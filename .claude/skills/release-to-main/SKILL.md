@@ -18,7 +18,9 @@ description: Cut a release — merge the worktree lanes, rebuild the offline sin
 > - **`changelog.html` gets its FIRST real entry**, replacing the `log-note-block` that reads
 >   *"Awaiting public launch"* — delete that block, it is not an entry and the gate does not
 >   count it. The page describes **the state of the sim at launch**, not a diff against
->   `Pre Alpha`: the page's own lead says the pre-launch years are deliberately not catalogued.
+>   `Pre Alpha` — its lead is *"This log begins with the public launch."* and nothing before that
+>   is listed. **DONE for Alpha 1.0.0** (2026-08-04): the entry is a single line, on the owner's
+>   call that a first release has nothing to be a change against.
 > - **CONCISE, and it is a cap** — **≤ 8 bullets, one line each** *(the number is the agent's
 >   operational reading; the brevity is the owner's directive)*. Aggregate a system's work into
 >   one line; never copy `CHANGELOG.md`'s shape, where one item runs 30 lines.
@@ -105,9 +107,11 @@ Add a new `<article class="log-entry">` at the **top** of `changelog.html`:
 
 - version in `<span class="log-ver mono">Alpha X.Y.Z</span>`
 - date as visible text **and** `datetime="YYYY-MM-DD"`
-- **Style: concise and factual.** One line per change, lead with the change. No marketing, no
-  filler ("great for…", "like a real plant"), no hedging. Player-facing wording, not commit
-  subjects. Tags: added / changed / fixed.
+- **FACTS ONLY, MINIMIZE PROSE** *(OWNER, 2026-08-04: "Just keep to facts in the changelog page.
+  Minimize prose.")*. One line per change: name the thing that changed and stop. No marketing or
+  filler ("great for…", "like a real plant"), no hedging, **no lead-in paragraphs**, and no
+  sentence that would still read fine if deleted. Player-facing wording, not commit subjects.
+  Tags: added / changed / fixed.
 - **Concise is a CAP: ≤ 8 bullets, one line each** *(OWNER DIRECTIVE, 2026-08-04: "Update
   tracking summaries/lists should be concise."; the number is the agent's operational reading
   of it)*. **Aggregate, do not enumerate** — one line for a system's worth of work, not one per

@@ -150,7 +150,16 @@ var BASELINES = {
   // it was a knife-edge timing pin (old plant 2180 °F at 90 min, new 2068 °F, BOTH
   // undamaged and both reaching damage at ~100 min), and the widened window passes on
   // both plants — which is what makes it a better test rather than a refit.
-  'run_behavior.js':       { code: 0, secs: 56, score: '49pass 0xfail' },
+  // 49 -> 50 (2026-08-04c, #334): CA-10, the sourced 17 % low-level heater cutoff.
+  // TWO EXISTING PROBES MOVED WITH IT, and both were pinning the old behaviour rather
+  // than being broken by the new one. CA-7 leg C sampled the LOOP heater response at
+  // 300 s, by which time the level interlock had fired and was masking the AC claim the
+  // leg exists to make — re-sampled at 10 s (28.9 % level, real margin) and given a
+  // positive check that the LATER cut-out is the level interlock with AC still up.
+  // TR-13b's `leak > 0.01` was a magnitude fixture measured on a plant whose heaters ran
+  // with the pressurizer empty; it now asserts the claim in its own title (the ΔP-scaled
+  // BASE survives the round trip), which it never did, and passes on the old engine too.
+  'run_behavior.js':       { code: 0, secs: 56, score: '50pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -494,7 +503,12 @@ var BASELINES = {
   // quotes for #328 (the rename directive and the 100-MWe unit ruling) across the manual
   // revision row, CHANGELOG, TUNING_LOG and BUILD_DECISIONS. MEASURED AFTER the docs, which
   // is the only order that gives the right number: an intermediate run mid-change read 143.
-  'run_hardrules.js':      { code: 0, score: '165checks 0failed' },
+  // 165 -> 170 on 2026-08-04b, #330: five citation sites for *(OWNER RULING,
+  // 2026-08-04: "A")* — the drain-rate ruling — across CLAUDE.md, CHANGELOG,
+  // TUNING_LOG, BUILD_DECISIONS and the ops-probe write-up's heading. The CODE moved
+  // this by ZERO, as usual: the ruling changed no constant, it only recorded a decision
+  // about one already shipped. MEASURED AFTER the docs.
+  'run_hardrules.js':      { code: 0, score: '170checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -1055,11 +1069,15 @@ var BASELINES = {
     // pressurizer drain-rate feel target, and re-banding it whenever the plant moves
     // would retire the target instead of reporting against it. The trade-off is measured
     // both ways in the probe's own comment (test/ops_pwr.js) and put to the owner on the
-    // issue. This red is an OPEN OWNER DECISION, not an accepted regression.
+    // issue. RULED *(OWNER RULING, 2026-08-04: "A")* — ship the corrected geometry and
+    // accept the faster drain. So this red is an ACCEPTED, RULED state, not a regression
+    // and not a pending question: do not re-band the threshold to clear it.
     code: 1, score: '58/69 350passed 12failed',
     note: 'Ops probes are tuning targets by design. #330 (2026-08-04) added a 12th red ' +
-          'and it is the only PWR one: ops_cvcs_pzr_drain_rate, 53.7 s vs >= 300 s, ' +
-          'awaiting an owner ruling on the drain-rate feel target — see the probe comment. ' +
+          'and it is the only PWR one: ops_cvcs_pzr_drain_rate, 53.7 s vs >= 300 s. ' +
+          'RULED (OWNER RULING, 2026-08-04: "A") — the corrected pressurizer geometry ' +
+          'ships and the faster drain is accepted; the threshold is NOT to be re-banded. ' +
+          'See the probe comment for both costed options. ' +
           'Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +

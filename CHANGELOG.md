@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The public changelog page is facts only** *(OWNER, 2026-08-04: "Just keep to facts in the
+  changelog page. Minimize prose.")*. Cut the "This log begins with the public launch" lead and
+  trimmed the Alpha 1.0.0 entry to *"Initial Alpha release. Pressurised water reactor."* The
+  rendered page is now the heading, the ordering note, and the entry — nothing else. The rule is
+  in `CLAUDE.md`, the `release-to-main` skill and the page's own `ADDING AN ENTRY` template:
+  name what changed and stop; no lead-in paragraphs, no sentence that would still read fine if
+  deleted. `CHANGELOG.md` stays dense — the two files are deliberately different documents.
+
 ### Fixed
 - **A release could merge, tag and pass CI without ever going live** *(OWNER, 2026-08-04: "Why is
   it taking so long to deploy?" → "Let's fix the gap and release.")*. Alpha 1.0.0 did exactly that:
@@ -46,6 +55,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   apart for its shared SHA, so preview-only is not the normal outcome. A missing production deploy
   is indistinguishable from a slow one from outside, permanently, so the check is now explicit
   rather than "wait and see". `release-to-main` §5b, and the rule in `CLAUDE.md`.
+- **A small LOCA destroyed the core while a bigger one was survivable — the pressurizer heaters
+  held an empty reactor at 2207 psi and deadheaded the ECCS** (#334). Reported from play-testing
+  ("some things didn't seem right"). Measured full stack with ECCS available and actuating
+  normally, 20 min: a **5 %** break reached fuel damage, **10 %** and **15 %** breaks fully
+  recovered, **16 %** damaged again. **The break was never the mechanism.** ECCS refilled the RCS
+  to 120 %, quenched the loop to ~212 °F (100 °C), and then the pressurizer heaters — still at
+  **92 %** with the level indicating a flat **0 %** — drove pressure back to **2207 psi
+  (15.22 MPa)** against coolant **240 °C subcooled**. Nothing thermodynamic produces that
+  pressure; it is heater power alone. At 15.5 MPa the pressure-driven ECCS curve delivers
+  **0.0034 frac/s against a 0.050 leak** — injection deadheaded, core dry, and heater ≈ break is
+  a *stable* equilibrium, so the core stayed dry indefinitely.
+  **The plant had no low-level heater cutoff at all.** Now built, and the setpoint is the
+  source's own: WTSM 10.3 *Pressurizer Level Control System* (ML11223A290) §10.3.4.1 — *"This
+  bistable provides a low level interlock at 17% level in the pressurizer … and turns off all
+  pressurizer heaters. … the heater cutoff protects the heaters which would be damaged if
+  operated in a steam environment."* They are damageable because they are *"replaceable,
+  direct-immersion, tubular-sheath type heaters … located in the lower portion of the
+  pressurizer vessel"* (WTSM 3.2, ML11223A213). It reads the **indicated** level, not truth, so a
+  failed level transmitter defeats it exactly as it fools the operator (HR1), and it is a
+  physical de-energization — the operator's selector and demand are left where they were put, the
+  #200/#329 rule.
+  **Outcome is now monotonic, and the boundary is derivable rather than fitted**: breaks survive
+  up to exactly `hpi_flow_max + lpi_flow_max·lpi_inventory_gain` = **0.160 frac/s** and not
+  beyond. `run_behavior` **49 → 50** (CA-10, 14 checks, injection-verified twice).
+  **Still open on #334**: LOCA break flow is pressure-independent (only SGTR is ΔP-scaled), the
+  break-size slider's *default* sits above the ECCS ceiling and so is unwinnable by construction,
+  and the letdown-isolation half of this same 17 % bistable is not built — which is why
+  pressurizer level parks on the setpoint and the cutoff chatters after a loss of offsite power.
+
 
 ## [Alpha 1.0.0] — 2026-08-04
 
@@ -222,12 +260,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   12 checks**. `run_reachability` B2 — *"an inventory loss can reach the 12 % pzr lo-lo scram"* — was
   the independent witness; the level used to fall 7.76× too slowly to reach its own trip.
 
-  **One declared cost, and it is an open owner decision**: the pressurizer now drains 7.76× faster in
-  wall-clock terms, so `ops_cvcs_pzr_drain_rate` reads 53.7 s against the ">= 300 s" feel target from
-  a 2026-07-22 owner request. It is **left red rather than re-banded** — re-banding a feel target
-  whenever the plant moves retires the target instead of reporting against it. The alternative that
-  preserves the rate exactly (scaling `cvcs_inventory_gain`) is measured in the probe comment and
-  costs 7 e2e checks of real CVCS leak-holding behaviour.
+  **One declared cost, ruled** *(OWNER RULING, 2026-08-04: "A")*: the pressurizer now drains 7.76×
+  faster in wall-clock terms, so `ops_cvcs_pzr_drain_rate` reads 53.7 s against the ">= 300 s" feel
+  target from a 2026-07-22 owner request. It is **left red rather than re-banded** — re-banding a feel
+  target whenever the plant moves retires the target instead of reporting against it — and that red is
+  now an *accepted, ruled state* rather than a pending question. The rejected alternative preserved the
+  rate exactly by scaling `cvcs_inventory_gain`, but shrank CVCS make-up authority 7.76× and cost 7 e2e
+  checks of real leak-holding behaviour. For scale, a real plant takes ~79 min for this drop, so both
+  values were game-feel numbers rather than prototypicality.
 - **`run_all` was silently losing the tail of a runner's output on Linux** (2026-08-04). Every
   runner here ends with `process.exit(code)`, and Node's I/O contract says pipes are
   **asynchronous on POSIX** and synchronous on Windows — so `process.exit()` can discard an

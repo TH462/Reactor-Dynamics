@@ -38,10 +38,6 @@
   <h1>Changelog</h1>
   <p class="lede">What has changed in the simulator, newest first.</p>
 
-  <p>This log begins with the public launch. The years of development before
-  that aren&rsquo;t listed &mdash; there is no point cataloguing changes to
-  something nobody could yet use.</p>
-
   <!-- ==================================================================
        ADDING AN ENTRY  (do this just BEFORE merging develop → main)
 
@@ -64,12 +60,15 @@
        fixed version of something already there = Z, however visible.
        DATE — set both the visible text and the datetime="" attr (YYYY-MM-DD).
 
-       STYLE — concise and factual. One line per change; lead with the change and
-       state what changed, not why it's nice. No marketing or filler ("great
-       for…", "handy for…", "like a real plant"), no hedging. Player-facing
-       wording, not commit subjects. Tags: added / changed / fixed.
-       (Blueprint/BUILD_DECISIONS.md + CHANGELOG.md are the engineering record;
-       this page is the public one.)
+       STYLE — FACTS ONLY, MINIMIZE PROSE (owner, 2026-08-04: "Just keep to facts
+       in the changelog page. Minimize prose."). One line per change; name the
+       thing that changed and stop. No marketing or filler ("great for…", "handy
+       for…", "like a real plant"), no hedging, no explaining an absence, no
+       sentence that would still read fine if deleted. If a line does not carry a
+       fact a player can act on or verify, cut it. Player-facing wording, not
+       commit subjects. Tags: added / changed / fixed.
+       (Blueprint/BUILD_DECISIONS.md + CHANGELOG.md are the engineering record and
+       stay dense; this page is the public one and stays bare.)
 
        LENGTH — CONCISE IS A CAP: at most 8 bullets per entry, one line each
        (owner, 2026-08-04: "Update tracking summaries/lists should be concise.";
@@ -115,8 +114,8 @@
       <time class="log-date mono" datetime="2026-08-04">4 August 2026</time>
     </div>
     <ul>
-      <li><span class="log-tag added">Added</span><strong>Initial Alpha release.</strong> First
-          public release, covering the pressurised water reactor. The RBMK and BWR follow later.</li>
+      <li><span class="log-tag added">Added</span><strong>Initial Alpha release.</strong>
+          Pressurised water reactor.</li>
     </ul>
   </article>
 

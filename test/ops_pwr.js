@@ -478,7 +478,14 @@
     // operator can respond. It also confirms the low-level letdown-isolation
     // interlock still bounds the (slower) drain before the primary empties.
     //
-    // ---- RED SINCE 2026-08-04 (#330), AND DELIBERATELY LEFT RED — OPEN OWNER DECISION.
+    // ---- RED SINCE 2026-08-04 (#330), AND DELIBERATELY LEFT RED — RULED, NOT DRIFTING.
+    // *(OWNER RULING, 2026-08-04: "A")* — selected option A below (ship the corrected
+    // geometry, accept the faster drain) from the two costed options put to him. So this
+    // red is an ACCEPTED, RULED state: do not "fix" it by re-banding the threshold, and do
+    // not quietly scale `cvcs_inventory_gain` to chase it. If the drain later proves too
+    // fast in play, the cheap lever is the letdown ORIFICE size (0.030 ≡ 20 gpm), which
+    // sets the drain independently of charging authority — UNMEASURED, and it moves the
+    // gpm gauge calibration and the AUTO charging balance, so measure before touching it.
     // MEASURED: 53.7 s for the 15-point drop, against this probe's ">= 300 s". Nothing
     // here changed; `level_per_mass` did, 100 → 776, and the rate above is a DIRECT
     // product of it (0.030 · gain · level_per_mass), so this threshold was a hard-coded
