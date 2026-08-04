@@ -190,6 +190,10 @@
     // Which of the currently-active alarms were acknowledged BY THE PLANT rather
     // than by the operator (#240) — see _evalAlarms. Cleared when the alarm clears.
     this.alarmAutoAcked = {};
+    // DROPOUT DELAY. How long each lit alarm's condition has been CONTINUOUSLY false, in
+    // sim seconds. Reset to 0 on every true, so it measures quiet rather than age. The alarm
+    // drops out once this reaches `alarm_min_on_s`. See _evalAlarms.
+    this.alarmClearFor = {};
     // For each low alarm, find a less-extreme low sibling on the same instrument;
     // an alarm with one is an escalation (lo_lo) and fires only with its lo active.
     this._loSibling = {};
@@ -361,12 +365,23 @@
   };
 
   // ============================================================== evaluate (§9)
-  ControlLayer.prototype.evaluate = function (instruments) {
+  // `dt` — SIM SECONDS since the previous evaluate, and OPTIONAL. It feeds exactly one
+  // thing: the alarm minimum on-time. Optional rather than required because `evaluate` has
+  // 43 call sites, most of them harnesses, and several drive plants that are ON HOLD; a
+  // caller that omits it gets `dt = 0`, the hold never accrues, and the alarm clears the
+  // instant its condition does — which is the pre-2026-08-03 behaviour exactly. So RBMK and
+  // BWR are byte-identical whether or not their harnesses are ever updated.
+  //
+  // It is NOT defaulted to PROTECTION_DT. The cadence is the CALLER'S property and this repo
+  // has already been bitten by a second copy of it (#153: the service's PROTECTION_DT and
+  // ops_harness's `evalEvery` are independent, so a plant can be certified on a cadence no
+  // player produces). A kernel-side default would be a third.
+  ControlLayer.prototype.evaluate = function (instruments, dt) {
     this.lastInstruments = instruments || this.engine.getInstruments();
     this._evalTrips(this.lastInstruments);
     this._evalActuations(this.lastInstruments);
     this._evalInterlocks(this.lastInstruments);
-    this._evalAlarms(this.lastInstruments);
+    this._evalAlarms(this.lastInstruments, dt);
     return this.getSnapshotSections();
   };
 
@@ -722,8 +737,47 @@
     }
   };
 
-  ControlLayer.prototype._evalAlarms = function (ins) {
+  // MINIMUM ON-TIME (annunciator "fill"). An alarm whose instrument sits ON its setpoint
+  // chatters at the evaluation cadence, because `_alarmRaw` is a bare comparison and the
+  // reading has noise on it. MEASURED before this existed, full stack, 10 sim-minutes:
+  //
+  //   rcp_seal_leak @ 0.20 — charging_high: 2135 transitions, 213/min, MEDIAN LIT 0.06 s
+  //   sgtr @ 0.25          — EIGHT alarms chattering, including pzr_level_lolo (CRITICAL)
+  //                          and opdt_approach, all at 0.06 s lit
+  //
+  // 60 ms is below what anyone can read, so a genuine critical was arriving invisibly. The
+  // cause is margin, not a bug: charging_flow means 0.03405 with sd 0.00286 against a 0.036
+  // setpoint, i.e. the signal parks 0.68 sd below the line and crosses it constantly.
+  // *(OWNER, 2026-08-03: "i keep getting the charging load high and other alerts flickering
+  // so fast i cant read them; would it make sense to have a decay timer where they must show
+  // for a minimum amout of time to stop the flickering?")* — and the owner then chose the
+  // minimum on-time over a per-alarm deadband when both were put to him with these numbers.
+  //
+  // WHY THIS AND NOT `clears_below`. A deadband attacks the cause and is the idiom this
+  // kernel already uses for interlocks and runbacks — but it needs sizing against each
+  // channel's own noise (charging alone would want ~17 % of its setpoint), and it CANNOT fix
+  // the opposite failure: a genuinely brief excursion that deserves to be seen. The 0.06 s
+  // `opdt_approach` above is real — the margin truly did reach the rod stop — and a deadband
+  // leaves it just as unreadable. A hold makes both cases legible with one constant. The two
+  // are complementary, not alternatives; `clears_below` on specific alarms is still open.
+  //
+  // IT IS A DROPOUT DELAY, NOT A BARE MINIMUM ON-TIME, and that distinction was MEASURED
+  // rather than reasoned. The first build held each alarm `alarm_min_on_s` from the moment it
+  // LIT. On the same seal leak that took charging_high from 2135 transitions to 386 and from
+  // 0.06 s lit to 2.06 s — readable, but still 193 on-cycles, because the instant the hold
+  // expired the alarm cleared on the first false sample and the noise re-lit it 0.2 s later.
+  // It swapped a 3.6 Hz flicker for a 0.44 Hz one. The timer therefore measures QUIET, not
+  // age: it resets on every true, so the alarm drops out only after the condition has been
+  // continuously false for `alarm_min_on_s`. Chatter never accumulates the quiet, so the
+  // indication is genuinely steady; a real recovery still clears it, `alarm_min_on_s` later.
+  //
+  // IT CANNOT SUPPRESS OR DELAY AN ARRIVAL. The clear->active transition is untouched and is
+  // still decided by the instrument condition alone, on the evaluation it occurs. This only
+  // ever EXTENDS a lit alarm, so no alarm arrives later than it used to, and none is missed.
+  ControlLayer.prototype._evalAlarms = function (ins, dt) {
     var alarms = this.config.alarms || [];
+    var minOn = this.config.alarm_min_on_s || 0;
+    dt = (typeof dt === 'number' && dt > 0) ? dt : 0;
     for (var i = 0; i < alarms.length; i++) {
       var alarm = alarms[i];
       var active = this._alarmRaw(alarm, ins);
@@ -765,9 +819,29 @@
           st = 'active_unacknowledged';
           delete this.alarmAutoAcked[alarm.id];
         }
-        // active_unacknowledged / active_acknowledged persist while condition holds
+        // active_unacknowledged / active_acknowledged persist while condition holds.
+        // The dropout timer RESETS on every true — see the note above _evalAlarms for why
+        // that, and not a bare minimum on-time, is what actually stops the flicker.
+        this.alarmClearFor[alarm.id] = 0;
+      // `dt > 0` GUARDS THE WHOLE HOLD, and it is load-bearing rather than defensive. With
+      // dt == 0 the accumulator can never grow, so without this test the comparison is
+      // `0 < minOn` on every evaluation and a lit alarm is held FOREVER — the exact opposite
+      // of the documented degradation, and it would have silently latched every alarm in the
+      // 40-odd harnesses that call `evaluate` with one argument. Caught by an existing #306
+      // check that drives the margin outside the band and expects LO to clear.
+      } else if (st !== 'clear' && dt > 0 && (this.alarmClearFor[alarm.id] || 0) + dt < minOn) {
+        // HELD. The condition has gone, but not for long enough to believe it. Keep the state
+        // EXACTLY as it is — including its acknowledged/unacknowledged half, so a hold neither
+        // demands a fresh ACK nor swallows one the operator gave.
+        //
+        // `alarmAutoAcked` is deliberately NOT deleted here: deleting it would let the very
+        // next evaluation re-enter the branch above and ESCALATE a status alarm to
+        // unacknowledged purely because it was being held, which would invent a flash the
+        // plant never asked for.
+        this.alarmClearFor[alarm.id] = (this.alarmClearFor[alarm.id] || 0) + dt;
       } else {
         st = 'clear';
+        this.alarmClearFor[alarm.id] = 0;
         delete this.alarmAutoAcked[alarm.id];
       }
       this.alarmStates[alarm.id] = st;

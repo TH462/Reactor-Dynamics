@@ -26,9 +26,13 @@ function Stack(initial, seed) {
   this.dt = 0.02;
 }
 Stack.prototype.cmd = function (c) { return this.layer.handleCommand(c); };
+// `evaluate` is given the dt DELIBERATELY. It is optional in the kernel, and a harness that
+// omits it silently gets the pre-2026-08-03 alarm behaviour — no dropout delay — which is
+// exactly the "certifying a plant no player can produce" trap CLAUDE.md documents for the
+// protection cadence (#153). This suite owns the alarm lifecycle, so it must run the real one.
 Stack.prototype.run = function (seconds) {
   var n = Math.round(seconds / this.dt);
-  for (var i = 0; i < n; i++) { this.engine.step(this.dt); this.layer.evaluate(this.engine.getInstruments()); }
+  for (var i = 0; i < n; i++) { this.engine.step(this.dt); this.layer.evaluate(this.engine.getInstruments(), this.dt); }
   return this;
 };
 Stack.prototype.ts = function () { return this.engine.getTrueState(); };
@@ -381,8 +385,72 @@ T.push(test('Alarm lifecycle — clear → unack → ack → clear', function (c
   s.run(0.2);
   ck('acknowledge → active_acknowledged', s.alarm('high_tavg').state, s.alarm('high_tavg').state === 'active_acknowledged', 'active_acknowledged');
   s.cmd({ action: 'clear_instrument_failure', instrument_id: 'tavg' });
-  s.run(2);
+  // 3 s, not 2: the annunciator holds a lit alarm for `alarm_min_on_s` (2.0 s) after its
+  // condition goes false. At exactly 2 s this lands on the boundary the dropout is decided
+  // on, which is a coin-flip to assert on. The lifecycle claim is unchanged — a cleared
+  // condition still clears the alarm — it simply has a documented delay to outlast now.
+  s.run(3);
   ck('condition clears → clear', s.alarm('high_tavg').state, s.alarm('high_tavg').state === 'clear', 'clear');
+}));
+
+T.push(test('Alarm DROPOUT DELAY — chatter is coalesced, a real recovery still clears', function (ck) {
+  // The defect this guards, MEASURED full stack before the fix: an instrument sitting ON its
+  // setpoint chattered at the evaluation cadence — charging_high did 2135 transitions in ten
+  // sim-minutes with a MEDIAN LIT TIME OF 0.06 s, and an SGTR flashed eight alarms that way
+  // including pzr_level_lolo, a CRITICAL. 60 ms cannot be read.
+  //
+  // Driven through a STUCK INSTRUMENT rather than by waiting for noise: the mechanism under
+  // test is the kernel's timer, and a probe that depends on a PRNG crossing a threshold a
+  // certain number of times would pin the noise stream instead (and re-seed into a different
+  // answer). Stuck values make the condition exactly controllable.
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  var hold = RD.PWR_CONTROL.protection.alarm_min_on_s;
+  ck('the plant declares a minimum on-time at all', hold, hold > 0, '> 0');
+
+  // A single evaluation's worth of condition — the 0.06 s case, made deterministic.
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck', value: 320 });
+  s.run(0.06);
+  s.cmd({ action: 'clear_instrument_failure', instrument_id: 'tavg' });
+  s.run(0.5);
+  ck('a momentary condition is still lit half a second later', s.alarm('high_tavg').state,
+    s.alarm('high_tavg').state !== 'clear', 'not clear');
+
+  // ...and it is the HOLD keeping it lit, not the condition: it must let go on its own.
+  s.run(hold + 0.5);
+  ck('and it drops out once the hold expires', s.alarm('high_tavg').state,
+    s.alarm('high_tavg').state === 'clear', 'clear');
+
+  // CHATTER: alternate the condition faster than the hold. The timer measures QUIET, not age,
+  // so each re-assert resets it and the indication never drops — this is the check that fails
+  // on a bare minimum-on-time, which cleared on the first false sample after expiry and
+  // re-lit 0.2 s later (measured: 193 on-cycles instead of 8).
+  var s2 = new Stack('hot_full_power');
+  s2.run(1);
+  var drops = 0, litOnce = false;
+  for (var k = 0; k < 12; k++) {
+    s2.cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck', value: 320 });
+    s2.run(0.06);
+    if (s2.alarm('high_tavg').state !== 'clear') litOnce = true;
+    s2.cmd({ action: 'clear_instrument_failure', instrument_id: 'tavg' });
+    s2.run(0.4);                                   // quiet gap, comfortably shorter than the hold
+    if (litOnce && s2.alarm('high_tavg').state === 'clear') drops++;
+  }
+  ck('the alarm actually lit — the chatter check is not vacuous', litOnce, litOnce === true, 'true');
+  ck('12 chatter cycles produce ZERO dropouts', drops, drops === 0, '0');
+
+  // The ACK survives a hold. Holding must not demand a fresh acknowledgement, or the hold
+  // would manufacture the very flashing it exists to remove.
+  var s3 = new Stack('hot_full_power');
+  s3.run(1);
+  s3.cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck', value: 320 });
+  s3.run(0.5);
+  s3.cmd({ action: 'acknowledge_alarm', alarm_id: 'high_tavg' });
+  s3.run(0.2);
+  s3.cmd({ action: 'clear_instrument_failure', instrument_id: 'tavg' });
+  s3.run(0.5);                                      // inside the hold
+  ck('an acknowledged alarm stays acknowledged while held', s3.alarm('high_tavg').state,
+    s3.alarm('high_tavg').state === 'active_acknowledged', 'active_acknowledged');
 }));
 
 // --------------------------------------------------------------------------

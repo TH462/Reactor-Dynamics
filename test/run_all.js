@@ -688,7 +688,15 @@ var BASELINES = {
   // approach annunciator and the kernel's published interlock state (`snapshot.interlocks`).
   // MERGED FIGURE MEASURED, not added up — both lanes moved this line from the same 34/194
   // base, so neither branch's number is right and arithmetic on them is how a drift ships.
-  'run_m4.js':             { code: 0, score: '37/37 237passed' },
+  // 37/37 237 -> 38/38 243 on 2026-08-03: the alarm DROPOUT DELAY. An instrument sitting on
+  // its setpoint chattered at the evaluation cadence — measured full stack, charging_high did
+  // 2135 transitions in ten sim-minutes with a MEDIAN LIT TIME OF 0.06 s, and an SGTR flashed
+  // eight alarms that way including pzr_level_lolo, a CRITICAL. This suite's harness now
+  // passes `dt` into `evaluate` deliberately: the parameter is optional, and a harness that
+  // omits it silently tests the OLD alarm behaviour, which is the #153 wrong-cadence trap.
+  // Injection-verified — `alarm_min_on_s: 0` reddens 4 checks, and the discriminating one
+  // ("12 chatter cycles produce ZERO dropouts") goes to 12.
+  'run_m4.js':             { code: 0, score: '38/38 243passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL

@@ -1213,6 +1213,23 @@
     instrument_labels: PWR_INSTRUMENT_LABELS,
     actuations: PWR_ACTUATIONS,
     alarms: PWR_ALARMS_A.concat(PWR_ALARMS_B),
+    // Annunciator MINIMUM ON-TIME, sim seconds. Once lit, an alarm stays lit at least this
+    // long even if its condition has gone — the "fill" timer on a real annunciator cabinet.
+    // See the measurement and the design argument over `_evalAlarms` in control_kernel.js.
+    //
+    // 2.0 s is chosen against READABILITY, not against the noise. The chatter it was measured
+    // on has a median lit time of 0.06 s and a median DARK time of 0.10-0.20 s, so anything
+    // comfortably above the dark gaps coalesces the burst into one steady indication; the
+    // question is then only how long a genuinely momentary alarm should stay up to be read,
+    // and 2 s is about the shortest that survives a glance away from the panel. It is the
+    // WHOLE cost of the feature — nothing else changes — so it is cheap to retune.
+    //
+    // UPPER BOUND, and it is the real constraint: the hold delays the CLEAR, so an alarm that
+    // has genuinely gone away stays lit for up to this long. Too long and the board lies in
+    // the other direction — the operator fixes something and the annunciator does not
+    // acknowledge it — which is worse than flicker because it breaks the feedback loop the
+    // board exists to provide. Do not push this into the tens of seconds.
+    alarm_min_on_s: 2.0,
     alarms_panel_a: PWR_ALARMS_A,
     alarms_panel_b: PWR_ALARMS_B,
     failures: PWR_FAILURES,
