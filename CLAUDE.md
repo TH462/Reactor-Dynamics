@@ -108,7 +108,7 @@ docs.
 >   git -C C:/grok_build/Reactor_Dynamics status --short && git log develop   -1 --format='%h %cr'
 >   git -C C:/grok_build/RD_workbench   status --short && git log workbench -1 --format='%h %cr'
 >   git -C C:/grok_build/RD_backshop    status --short && git log backshop  -1 --format='%h %cr'
->   gh issue list --repo TH462/Reactor-Dynamics --label status-wip-develop --label status-wip-workbench --label status-wip-backshop
+>   gh issue list --repo TH462/Reactor-Dynamics --search 'label:status-wip-develop,status-wip-workbench,status-wip-backshop'
 >   ```
 >   **The last line is the only one that is not a guess** *(OWNER DIRECTIVE, 2026-08-04:
 >   "Since that's done add an in process tag that shows which worktree it's being worked
@@ -117,6 +117,16 @@ docs.
 >   wrote *something*. **Tag your issue when you start and clear it when you stop**, or the
 >   next agent stands down for a session that ended hours ago. Full rule under *Issue tracking*.
 >   It does not replace the sweep: an agent can work without touching an issue, so run both.
+>
+>   **It must be `--search 'label:a,b,c'`, NOT three `--label` flags** (fixed 2026-08-04). `gh`
+>   **ANDs** repeated `--label`, so the original form asked for issues carrying all three lane
+>   tags at once — which the convention forbids one line below ("One only; the lane is the
+>   tree"). **It returned 0 for every issue, always**, from the day it was written. Measured: the
+>   AND form returns `0` while #337 is sitting there tagged `status-wip-workbench`. The comma
+>   form inside `--search` is the OR. This is the failure mode the tag was introduced to fix,
+>   arriving in the tool meant to read it — **a green-looking sweep that has never once been able
+>   to see anything.** Run it and expect output; a blank result means the lanes are free, and it
+>   should be rare enough to notice.
 >
 >   A commit inside the last hour or so means a live session; hours old means history.
 >   **Unmerged commits on `workbench` / `backshop` are NOT occupancy** — carrying work that has
@@ -1111,6 +1121,11 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
   an issue), so run both: `gh issue list --label status-wip-workbench` answers *who is in that
   tree and on what*, which the file sweep never could. **A tagged issue in your lane that you
   did not tag is a positive — warn and ask, same as the file check.**
+
+  **ONE `--label` is fine; THREE are not.** `gh` ANDs repeated `--label`, so a single-lane query
+  like the one above works, and the all-lanes sweep must be `--search 'label:a,b,c'`. The version
+  shipped with this directive used three flags and therefore returned 0 for every issue, always —
+  see the block at the top of this file, where it is fixed.
 
   **`status-deliberate` must name who decided it, and when** *(added 2026-07-27)*. The label
   turns any past call into standing law, so a comment on the issue has to say either
