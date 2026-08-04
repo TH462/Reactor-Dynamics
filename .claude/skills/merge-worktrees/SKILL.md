@@ -48,7 +48,7 @@ the `BASELINES` map in `test/run_all.js`.
 
 | Kind | What to do |
 |---|---|
-| **Newest-at-top prose** (CHANGELOG, TUNING_LOG, BUILD_DECISIONS) | Keep **both** sides. Both appended; neither is wrong. |
+| **Newest-at-top prose** (CHANGELOG, TUNING_LOG, BUILD_DECISIONS) | Keep **both** sides. Both appended; neither is wrong. **Do not renumber session headings** — since #339 the label carries the lane (`2026-08-05-develop-a`), so two lanes cannot collide and there is nothing to reallocate. That renumbering used to be a real step here (`b`→`c`, `c`→`d`, `d`→`e` at the 2026-08-04 merge, plus four cross-references), and it is retired. `node test/run_session_labels.js` after the merge says whether any label ended up naming two entries. |
 | **Generated artifacts** (`ui/manual_md.js`) | **Never hand-merge.** Take either side, then regenerate: `node tools/pack_manuals.js`. Hand-editing a build product is how it stops matching its source. |
 | **Mixed-fact lines** (a CLAUDE.md baselines line, a `BASELINES` entry) | Often needs a real **COMBINE**, not a choice. Each side may carry a unique fact — one adds a new runner, the other updates a score. Taking either whole silently drops the other. Read both, merge the facts. |
 

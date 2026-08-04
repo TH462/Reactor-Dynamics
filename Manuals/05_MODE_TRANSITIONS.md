@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 1  
+**Revision:** 3  
 
 ---
 
@@ -276,7 +276,7 @@ Raise power within Mode 1, At Power (e.g. 50 % → 100 %). See **PWR-N06** / **N
 | 1 | Verify SCRAM — rods in, power falling |
 | 2 | **Reset the RPS** — the SCRAM control reads `PRESS TO RESET`. Press it **once the rods are seated**; it is refused `RODS_NOT_INSERTED` before that. Resetting re-closes the trip breakers and does **not** withdraw the rods |
 | 3 | Verify turbine **Disconnected** |
-| 4 | Heat sink: SG level / **AFW**. Main feedwater **isolates on the trip and cannot be restored from the board** — AFW is the heat sink from here |
+| 4 | Heat sink: SG level / **AFW**. Main feedwater **isolates on the trip** — AFW is the heat sink from here, and in Mode 3 it is sufficient indefinitely. Main feed can be restored at **RESTORE** on the SG FEED card (**03 §9.0**) once the RPS is reset, but a stable Hot Standby does not need it |
 | 5 | Inventory / subcooling / HPI as needed |
 | 6 | Declare **Mode 3, Hot Standby** when subcritical and RCS still hot |
 

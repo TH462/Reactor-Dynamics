@@ -537,7 +537,8 @@
     //   t+1 s   power 33.4 % — reset REFUSED, `RODS_NOT_INSERTED`
     //   t+3 s   power 5.07 % — rods seated, reset ACCEPTED
     //   ~1 min  plant_mode 3; turbine tripped automatically
-    //   ~3 min  main feedwater ISOLATED (and the board cannot restore it — see cautions)
+    //   ~3 min  main feedwater ISOLATED (restorable at SG FEED → RESTORE since #341/#319 item 2,
+    //           but only after the RPS reset clears the trip half of the coincidence — see cautions)
     //   ~3 min  AFW auto-started; SG level 65 -> 36.6 % by t+7 min, then holds ~37 %
     //   settles 567.3 °F (297.4 °C) / 2235 psi (15.41 MPa) — hot, subcritical, Mode 3
     //
@@ -556,7 +557,9 @@
       cautions: [
         'Reset the RPS only AFTER the rods are seated. The reset is refused with RODS_NOT_INSERTED while they are still travelling — measured, that is the first ~2 seconds, with power still around 33 %.',
         'Resetting the RPS re-closes the trip breakers. It does NOT withdraw the rods: the plant stays subcritical until you deliberately withdraw, and the startup net governs any re-ascent.',
-        'MAIN FEEDWATER ISOLATES on the trip and there is no board control to restore it. Auxiliary feedwater is the heat sink from here — measured, AFW auto-starts and holds SG level near 37 %.',
+        'MAIN FEEDWATER ISOLATES on the trip. Auxiliary feedwater is the heat sink from here — measured, AFW auto-starts and holds SG level near 37 %, and that is sufficient in Mode 3 indefinitely.',
+        'Main feed can be restored at RESTORE on the SG FEED card, but the isolation SEALS IN: it is refused while the signal that closed it is still present. After a trip that means resetting the RPS first (step 2) — the low-Tavg isolation is a coincidence of low Tavg AND the trip latch. Restoring is optional here; a stable Hot Standby does not need main feed.',
+        'If you do restore, set SG FEED RATE to match STEAM FLOW first. Main feed returns at whatever the pump was last commanded — measured, restoring into a generator that is already recovering drives level 36.6 % → 77 % in about two minutes and isolates you again at the 90 % high level.',
         'A reactor trip is not a cooldown. The plant stays HOT — measured, it settles at 567.3 °F (297.4 °C) and 2235 psi (15.41 MPa). Cooling down is PWR-N15, a separate evolution.',
       ],
       steps: [

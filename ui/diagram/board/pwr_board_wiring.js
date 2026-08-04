@@ -554,6 +554,19 @@
     imrsgjmrjfg: { press: function () { cmd({ action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !!(c && c.engaged); } },
     imrsgjuh7l0: { press: function (s) { cmd({ action: 'set_feed_pump_speed', pct: CS(s).feed_pump_speed_pct || 100 }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !(c && c.engaged) && (CS(s).feed_pump_speed_pct || 0) > 0; } },
     imrsgjwq1q0: { press: function () { cmd({ action: 'set_feed_pump_speed', pct: 0 }); }, active: function (s) { var c = chan(s, 'feed_sg'); return !(c && c.engaged) && (CS(s).feed_pump_speed_pct || 0) === 0; } },
+    // MFW RESTORE (#341 / #319 item 2). Lights while main feed IS isolated — i.e. while it
+    // is the control that has something to do — and is dark the rest of the time, which is
+    // the whole board's idiom for "this is the live one".
+    //
+    // It is NOT disabled while the isolation signal still stands, and that is the point.
+    // The control layer refuses it with a labelled SEAL_IN message (WTSM 12.3.2.3, "the
+    // control room operator cannot interrupt … until the reset logic is satisfied"), and a
+    // refusal the player can read teaches why they cannot restore feed yet. A greyed-out
+    // button teaches nothing and is indistinguishable from a broken one — this repo's
+    // recurring dead-control failure mode, which is what the ACTION_LOCKED refusal above
+    // was written for.
+    bdMfwRestore: { press: function () { cmd({ action: 'isolate_feedwater', active: false }); },
+                    active: function (s) { return !!IN(s).mfw_isolated; } },
     // --- TRIP BLOCKS popover ---
     imrsk4xz2dm: { press: function (item, btn) { toggleTripBlocks(btn); } },
     // --- 1/M startup plot launcher (driver-injected tile; opens the draggable window) ---
@@ -613,6 +626,26 @@
     { id: 'bdFeedStatus', kind: 'value',
       name: 'SG feed controller status  ·  sim: automation feed_sg engaged / stand_down / saturated',
       left: 1855, top: 548, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 15, rAnchor: true },
+    // MFW RESTORE (#341 / #319 item 2). Main feedwater isolation LATCHES — measured, a
+    // turbine trip isolates it by 4m00s and it stays isolated with AFW as the only feed
+    // for as long as you watch. Every one of the three isolation signals is automatic and
+    // there was NO control anywhere in `ui/` to clear it, so the player could enter that
+    // state and not leave it. WTSM 11.1.4 (ML11223A293) lists the four overrides of SG
+    // level control and the first is "Manual control by the operator" — this is that one.
+    //
+    // The INDICATION already existed and this is deliberately not a second one: the SG FEED
+    // corner status word reads ISOLATED, because the `feed_sg` channel stands down on
+    // `mfw_isolated` (pwr_control.js offWhen). Adding an MFW lamp beside it would be Q4
+    // duplicate authority for a fact already on the card.
+    //
+    // GEOMETRY, measured off the doc rather than eyeballed: the SG FEED card is
+    // 1665,545 195x140; the row at y=600 holds only the feed-rate number, which is
+    // rAnchor-free and starts at x=1740 with width 105. So 1670..1735 at y 600..625 is
+    // empty, and a 55x25 button at (1670, 600) sits in it flush under AUTO and takes the
+    // authored button idiom exactly. Nothing is moved to make room.
+    { id: 'bdMfwRestore', kind: 'button',
+      name: 'Main feedwater restore  ·  sim: isolate_feedwater active:false',
+      left: 1670, top: 600, label: 'RESTORE', width: 55, height: 25, color: '#8ba4b6', fontSize: 12 },
     // (The ROD CONTROL card's top-right corner held a rod controller status word here from
     // #306 until 2026-08-03, when the owner removed it as redundant against the IN-OUT
     // lamps. The reasoning, and where each of its states is still shown, is at the
@@ -1690,7 +1723,9 @@
     'Turbine — Connect Grid': 'imro8k5pzem',
     // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old
     // "Automate → Reactor" directives now point at.
-    'Rod AUTO': 'ims5glucngg'
+    'Rod AUTO': 'ims5glucngg',
+    // #341 / #319 item 2 — the post-trip procedure's restore step points here.
+    'MFW Restore': 'bdMfwRestore'
   };
   // The board item the maintenance tag hangs over (TMI-2 AFW discharge valve).
   var TAG_ITEM = 'imrpp2g2m8k';

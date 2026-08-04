@@ -700,6 +700,15 @@
       'Stops main feedwater.',
       'Level then falls at whatever rate the generator is boiling. AFW is the backup path, and it ' +
       'auto-starts at about 20 % level if it is armed.', CI, '9.2'),
+    bdMfwRestore: e('RESTORE (main feedwater)',
+      'Re-opens main feedwater after an automatic isolation. Lit while feed is isolated.',
+      'Three signals isolate main feed automatically: a reactor trip with Tavg low, steam generator ' +
+      'level high, and safety injection. Any of them latches the isolation, and AFW becomes the only ' +
+      'feed path — the SG FEED corner reads ISOLATED. This button is the operator\'s way back, and it ' +
+      'is REFUSED while the signal that closed the valves is still present; the plant will tell you ' +
+      'so. After a trip, that usually means resetting the reactor protection system first, which is ' +
+      'what clears the trip half of the low-Tavg signal. Restoring full feed into a generator that ' +
+      'is already recovering will overfill it and isolate you again at 90 % level.', CI, '9.2'),
     imro8xhy2me: e('SG Feed Rate setpoint',
       'Commanded feed pump speed, shown as 0–1200 gpm (0–273 m³/h). Typing here takes feed to MANUAL.',
       'The scale is pump speed expressed as flow: 1200 gpm (273 m³/h) is 120 % speed. Arrows step by 20 gpm (4.5 m³/h). ' +

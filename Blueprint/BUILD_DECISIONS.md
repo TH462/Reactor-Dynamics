@@ -9,6 +9,12 @@ where the two differ or where judgment was exercised.
 **How to maintain (read this before editing).**
 - Append, don't rewrite history. When a flag is resolved, move it to the relevant module's
   "Resolved" note rather than deleting it.
+- **Dated entry headings are `YYYY-MM-DD-<lane>-<letter>`** — e.g. `## 2026-08-05-develop-a — #339: …`.
+  Lane = the worktree (`develop` / `workbench` / `backshop`); letter = the next one unused for that
+  date **in your own lane**, starting at `-a`, never bare. Three lanes allocating a per-day letter
+  independently collided: **10 labels here name two or three entries each**, so a citation against one
+  is ambiguous. Pre-2026-08-05 labels are **not** renamed *(OWNER RULING, 2026-08-04: "Work issue 339
+  in develop. Go with option 2.")*; see #339. Gated by `test/run_session_labels.js`.
 - Every entry: a one-line claim, then the *why*. Reference `file:symbol` where it helps.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
@@ -33,10 +39,109 @@ where the two differ or where judgment was exercised.
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
 | F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **RESOLVED (2026-07-25, #150 — 35/35; then 2026-07-29m, #194 — 39/39)** Both original reds were stale expectations, not regressions (spray has an owner-ruled flow cap; "auto holds ≥98 %" is unphysical at severity 1.0). **But the #150 rebuild introduced a worse check than the one it replaced**: *"CVCS covers a consistent fraction of the leak (droop)"* asserted coverage stayed inside 10–50 % and equal across leak sizes — measured 400 **cycles** in, i.e. 40 s of sim time against an 83 s control loop. It pinned a transient as a steady-state property and is the whole source of #194's false claim that no leak is ever held. Now five checks measured at 4.8 τ against the **config-derived** equilibrium. Negative control: the old check *passes* on a deliberately-broken servo and *fails* on the healthy plant — it was inverted. |
 | F13 | M4 | **`clip()` is defined four times** (`control_kernel.js:47`, `pwr_control.js:360`, `rbmk_control.js:127`, `bwr_control.js:100`) and issue #156 files it as HR3 drift. It is not: HR3 is *plant specifics in shared code*, and this is a one-line pure clamp local to each IIFE. **Deliberately not deduplicated** — `control_kernel.js` loads **after** all three plant control modules in every load list, so a shared `RD.*.clip` resolves only at call time (a real load-order coupling), and the alternative is a new shared-utils file that must be added to every load list. Bought for 60 characters that cannot meaningfully drift. **Measured before deciding: `clip` is the ONLY duplicated helper** — every other module-level function in those four files is genuinely local. **Revisit trigger:** if a *second* shared helper appears, create the utils file then and move `clip` in with it. The **other** half of #156 (a PWR field read inside generic kernel machinery) WAS real and is fixed — and note it had **moved**: `_stepBang` was already clean, but the boron batch-dose work re-created the same leak in `_stepConc`. See `Diagnostic/TUNING_LOG.md` 2026-07-27b. | cleanup | **RESOLVED (2026-07-27b) — won't fix, deliberate. OWNER-APPROVED**: Claude recommended won't-fix with the reasoning above; owner replied *"Do as you suggest"* (2026-07-27), so the decision is the owner's and the reasoning is Claude's. Recording it that way because the first draft of this row said only "ruled won't-fix", which reads as owner authority for what was then an agent's recommendation — the exact laundering `CONTEXT.md` §HR-provenance warns about. #156 closed `status-deliberate`. The recurrence it exposed (the leak was fixed in `_stepBang`, then re-created in `_stepConc` ~40 lines below the comment warning against it) is spun out as **#227** — nothing gates HR3 in the kernel. |
+| F14 | M1 | **Pressurizer heater authority is 27× its own source, which damps the loss-of-inventory cue** (#337, 2026-08-04). WTSM 3.2 (ML11223A213 p. 3.2-9): 1794 kW is *"capable of raising the temperature of the pressurizer and its contents at approximately 55 °F/hr"* = 0.23 psi/s; ×12.6 for this plant's declared Mode 5↔1 time compression = 0.020 MPa/s, and `K_heater` is **0.55**. The #337 surge fix gives inventory a real path to pressure, but the heaters rebalance against it, so a leak that empties the pressurizer to its 17 % cutoff costs ~**1 °F** of subcooling margin against ~**9 °F** at the sourced rating. **Correcting it is measured, not free**: at 0.05 the plant can no longer ride out a full load rejection without an OTΔT trip (TR-1h, ruled identity), and below 0.20 a stuck-open spray valve depressurises it to the containment floor (TR-11). Declared to the player at `Manuals/12` §12.15. | tuning / identity | **RULED — STAYS AT 0.55** *(OWNER RULING, 2026-08-04: "F14 go with the recommendation.")*. The recommendation was: the lesson is direction and ordering, the player now gets all three parameters, and closing the gap would trade the ride-out character the plant is built around. It is a **declared departure** (`Manuals/12` §12.15), not deferred work — do not re-open it as a tuning task. |
+| F15 | M1 | **A relief valve's pressure authority is carried TWICE since #337.** `K_surge_level · level_per_mass` = 310 and `K_porv_relief`/`K_safety_relief` = 300 — the two constants were always this same mass→pressure coupling, fitted per path, and the general surge law now supplies it again. Excluding relief from the surge driver is the physically obvious fix (the valves discharge from the pressurizer steam space, so that mass never crosses the surge line) but was **measured worse**: `run_meltdown` 12 → 11 and `run_scenarios` 3/3 → 1/3, i.e. it breaks physics acceptance where the double count breaks only authored content. All four combinations measured; table in `Diagnostic/TUNING_LOG.md` 2026-08-04g. | tuning | **open** — needs a dedicated pressurizer relief-ladder re-calibration, together with the TMI-2 trajectory re-author it implies. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
 
 ---
 
+## 2026-08-04-develop-i — #341 / #319 item 2: a protection function is not protection if the operator can switch it off
+
+**Decision.** Actuations may declare `seal_in`. While such an actuation's condition is currently
+satisfied, an operator command that would **undo** it is refused (`type: 'blocked'`,
+`code: 'SEAL_IN'`) with a register-aware message. The PWR's three main-feedwater isolations all
+carry it. A **MFW RESTORE** button on the SG FEED card is the operator's way back.
+
+**Why.** Main feedwater isolation latched with no control to clear it (#319 item 2 — a state the
+player could enter and not leave), and separately, a restore issued by *any* path was accepted while
+the isolating signal was still standing (#341). Measured full stack: restore 10 min into a post-trip
+ride with Tavg parked at 567.5 °F (297.5 °C) against a 572.0 °F (300.0 °C) setpoint — accepted, feed
+back at 0.3076, SG level 36.58 → 77.43 %. `actuationFired[i]` is the retentive memory, and since a
+fired actuation never re-fires, nothing contested the restore. The #295 F1/F2 class.
+
+**Shipped as ONE change on purpose.** The guard alone would protect a command no player can send
+(unreachable, so unfalsifiable — the reason #332 left RHR alone); the control alone would ship a
+defeatable protection function.
+
+**Sourced.** WTSM 12.3.2.3 (ML11223A310): *"The control room operator cannot interrupt any of the
+SI-initiated functions until the reset logic is satisfied. This 'locking out' of the operator
+prevents the interruption of a valid SI actuation."* WTSM 11.1.4 (ML11223A293) lists the four
+overrides of SG level control and the first is *"Manual control by the operator"* — the RESTORE
+button is that override, not a convenience. WTSM 12.3.6.1 confirms the three automatic signals map
+exactly onto this plant's three.
+
+**DECLARED DEPARTURE.** The real reset needs a 45–60 s time-delay relay plus P-4, and is a separate
+pushbutton that removes the start signal *without realigning anything* — two steps. This plant
+collapses it to one: refused while the signal stands, allowed once it clears. There is no SI-reset
+control on this board at all, and adding a timer plus a second pushbutton for the two-step dance is
+Q4 user complexity with no dynamics behind it. The refusal teaches the same fact.
+
+**Two design points that are not decoration.**
+
+*The predicate is shared, not re-written.* `_sealInBlocking` asks the same question `_evalActuations`
+fires on — same `arm`, same `condition`, same `crossed()` — so the refusal and the actuation cannot
+drift. "Undo" is disagreement with the actuation's own asserted `params`, which keeps the kernel free
+of any plant action name (HR3; `run_hr3` unmoved at 28/28).
+
+*The re-arm is what stops the fix becoming a new dead end.* A sealed-in actuation with no
+`reset_below` clears its fire latch when its condition clears — otherwise, after a legitimate
+restore, a second valid signal could never re-isolate and the protection would work exactly once per
+session. It issues no command, matching the source. `reset_below`, where present, remains the sole
+authority, so no existing hysteresis band moved.
+
+**What it creates.** Trip → rods seat → reset RPS (clears P-4, so the low-Tavg signal clears) →
+restore accepted. That gives `reset_rps` — one of #319's three orphaned engine capabilities,
+"required after every scram, and named by no checklist" — a real consequence. Restoring full feed
+into a recovering generator then overfills it and re-isolates on P-14 at 12m01s, which is the
+dynamics lesson rather than a rough edge.
+
+**Board.** Only the control was missing: the SG FEED corner status word already reads ISOLATED
+(`feedStatus` on the `feed_sg` stand-down, whose `offWhen` is `mfw_isolated`), so a dedicated lamp
+would be Q4 duplicate authority. Geometry measured off the doc — the y=600 row holds only the
+feed-rate number at x=1740, leaving 1670..1735 free for a 55×25 button in the authored idiom;
+nothing was moved and `verify_board_check` stayed at 194. The button is deliberately **not**
+disabled while the signal stands: a readable refusal teaches, a greyed-out button is
+indistinguishable from a broken one.
+
+**Gate:** `run_m4` 38/38 243 → **39/39 257**. Injection-verified three ways — refusal removed 4 red,
+`seal_in` dropped 2 red, re-arm removed 1 red. That last one was a **hollow check** until rewritten:
+it first tested re-arm on the P-14 actuation, which carries `reset_below: 85` and re-arms in a
+branch that runs first, so deleting the new code left everything green. The discriminating leg
+drives the SI isolation, which has no `reset_below`.
+
+**Open, named:** no manual entry for the RESTORE control (`Manuals/03` §3.5), and no procedure step
+names it — PWR-T06 post-trip is the home, and would give `reset_rps` its checklist step too.
+
+---
+
+## 2026-08-04-develop-g — #339: the session label names the LANE, because a per-day letter needed three trees to agree
+
+**Decision.** Session headings in this file and `Diagnostic/TUNING_LOG.md` are
+`YYYY-MM-DD-<lane>-<letter>` *(OWNER RULING, 2026-08-04: "Work issue 339 in develop. Go with option
+2.")*. Lane = the worktree (develop / workbench / backshop); letter = the next unused for that date
+**in that lane**, `-a` first, never bare.
+
+**Why, and it is not tidiness.** Both files are cited by their dated headings — that is what the
+suffix is *for*. Measured across both in full: **17 labels name more than one entry** (10 here, 7 in
+`TUNING_LOG.md`), including `2026-08-04b` ×3 and `2026-08-03d` ×3. The old scheme allocated one
+letter per **day across all lanes**, so its correctness depended on three sessions in three trees
+agreeing on who got `b` — and a worktree cannot see another's uncommitted file. It was also out of
+room: `2026-08-04` unsuffixed sorts *above* `2026-08-04a`, leaving no letter below `b` for a third
+lane without renumbering upward.
+
+**The departure, declared.** Option 2 as filed has no letter (`2026-08-04-develop`). Measured, **25
+sessions landed on 2026-08-03**, ~8 per lane — so a bare first entry collides *within* a lane on day
+one, and session two must either rename session one (the retro-rename churn option 2 exists to
+avoid) or start at `b` with no `a`. The letter is therefore mandatory. The lane still does what the
+ruling asked: no agent ever has to know what another lane chose.
+
+**Not retro-renamed**, by the same ruling. The 17 legacy collisions stay as the record of the day
+three lanes landed at once; `run_session_labels.js` reports them and never fails them. Enforcement
+is a date cutoff — labels dated 2026-08-05 or later must be lane-form.
+
+**Gate:** `test/run_session_labels.js`, NEW, **8 checks** (4 structural per file), `run_all` 37 → 38.
+Baselined on the count rather than on failures because the checks are structural and the file list
+fixed — the count moves only when a check is added, not when a session is appended.
 ## 2026-08-04i — #345: the gate checked the table's shape and never read the chapter
 
 **Claim.** `run_manual_rev` could not see a lane merge that drops manual content a revision row
@@ -139,6 +244,82 @@ exponent. Replaced with the #325/TR-15 idiom: solve `n = ln(q₂/q₁)/ln(Δp₂
 separated points on a real blowdown. Measured **0.500**; injection gives **0.000** for a constant
 law and **1.000** for the linear SGTR form. **Whenever a probe checks a law, check the exponent,
 not the arithmetic** — the arithmetic is the implementation talking to itself.
+## 2026-08-04g — #337: the pressurizer surge had one driver where it needs two
+
+**Claim.** `stepPressure`'s surge term read `_dTavg_dt` and nothing else, so RCS inventory had no
+path to primary pressure at all. It now reads a **pressurizer level rate** carrying both drivers.
+`K_surge: 1.0` (°C/s) → `K_surge_level: 0.4` (%/s), which is the **same number** — 1.0 divided by
+`level_per_tavg` — so the thermal channel is bit-identical and the only new physics is the mass one.
+
+**Why the currency changed rather than a second constant being added.** A surge is a volume
+displacement of the pressurizer, and WTSM 3.2 (ML11223A213, p. 3.2-8) describes it without
+reference to what caused it: *"Temperature changes produces changes in coolant density, which force
+water into (insurge) or out of (outsurge) the pressurizer. … the contraction of the coolant produces
+an outsurge from the pressurizer. This is accommodated by an expansion of the steam bubble and a
+corresponding decrease in steam density and pressure."* The conversion for both drivers already
+exists in `stepLevel` (`level_per_tavg`, `level_per_mass`), so stating the law per unit **level
+rate** lets one constant serve both and keeps the geometry stated once. The mass slope is taken
+piecewise on the current deviation exactly as `stepLevel` takes it, so they cannot drift apart.
+
+**Measured before**, full stack, `hot_full_power`, SGTR sev 0.03 at t=60 s: pzr level 55.0 → 15.7 %,
+pressure **2235 → 2230 psi**, subcooling **73.8 → 73.6 °F**. After: **−135 psi**, **−9.0 °F**.
+
+**`_dmass_dt` is the REALISED rate, not the raw balance** (`pwr_primary.stepInventory`, read one
+step late — the §11 explicit coupling). Taken post-clip and divided by `dt`, so a plant pinned at
+`mass_max` — an ECCS overfill holding 120 % — reports zero surge instead of a phantom insurge it
+has nowhere to put.
+
+**RELIEF IS STILL IN IT, AND A RELIEF VALVE'S AUTHORITY IS THEREFORE CARRIED TWICE — open.**
+`K_surge_level · level_per_mass` = **310**; `K_porv_relief` and `K_safety_relief` are **300**, which
+is the tell that those two constants were always this same coupling, fitted per path. Excluding
+relief is the obvious correction and is what `pwr_config`'s own comment argues for (the valves
+discharge from the pressurizer STEAM SPACE, so that mass never crosses the surge line). **Built,
+measured, WORSE**: it reddens `run_meltdown` (12 → 11) and `run_scenarios` (3/3 → 1/3) — PHYSICS
+acceptance — where including it reddens only authored CONTENT, and HR9 ranks those the other way
+round. All four combinations were measured; the table is in the `TUNING_LOG` entry. Tracked as **F15**.
+
+**STATE: NOT GATE-GREEN.** `run_behavior` 50/0 and `run_m4`/`run_autoctl`/`run_e2e_controls` back at
+baseline (all three re-authorings verified on the OLD engine too), but `run_procedures`,
+`run_procedures_stack` and `run_campaign` are red — content authored against the old trajectory.
+See the 2026-08-04g `TUNING_LOG` entry for the measured diagnosis of each.
+
+**It runs both ways, and that is what broke `PI-3`.** Its leg 2 ran to `primary_pressure < 12.0`
+and asserted no scram — reachable only because safety injection could not push back on pressure.
+Now unthrottled SI arrests the fall at 12.47 MPa and takes the plant **solid** (`pzr_level high`
+at 57 s, inventory 111.1 %), the behaviour operators throttle SI to avoid. Re-authored to assert at
+the actuation instead; it passes on the OLD engine too, so it is a better test, not a refit.
+
+### The heater is 27× its own source, and it is DELIBERATELY not fixed here
+
+WTSM 3.2 (ML11223A213, p. 3.2-9) rates the heaters directly in the currency `K_heater` uses:
+*"78 heaters … total capacity of 1794 kW. … capable of raising the temperature of the pressurizer
+and its contents at approximately 55 °F/hr."* At 2235 psia that is **0.23 psi/s (1.586e-3 MPa/s)**.
+× 12.6 for this plant's declared Mode 5↔1 time compression = **0.020 MPa/s**, which lands exactly
+on `setpoint_pressurize_slew_mpa_s` — the config states the same physical quantity twice and the
+two disagreed by 27×. `K_heater` is **0.55**, so the heaters rebalance against any surge the plant
+can produce, which is why adding the mass driver alone moved the sev-0.03 case by only 9 psi.
+
+**Not taken, because it changes ruled identity.** Measured, everything else held:
+
+| `K_heater` | subcooling cue (leak to the 17 % cutoff) | full load rejection | `run_behavior` |
+|---|---|---|---|
+| **0.55** | −0.7 °F | no scram | **48 pass** ← shipped |
+| 0.20 | −1.2 °F | no scram | 44 pass |
+| 0.10 | −3.1 °F | no scram | 43 pass |
+| 0.05 | −8.5 °F | **SCRAM 122 s** `otdt_margin low` | — |
+| 0.02 | −9.4 °F | **SCRAM 103 s** `otdt_margin low` | — |
+
+The wall between 0.10 and 0.05 is **TR-1h** — "no scram" on a full load rejection is this plant's
+ride-out character, a declared departure from the Westinghouse 50 % criterion, and **OTΔT is what
+binds it** (the #311 trap from the other side). Below 0.20 the pressurizer also stops winning
+against its own spray and TR-11's stuck-open spray valve runs the plant to 15 psi instead of
+parking. Open flag **F14**; declared to the player at `Manuals/12` §12.15.
+
+**`K_surge_level` 0.27 was tried and refused.** The same WTSM number gives the surge coefficient a
+sourced band of 0.27–0.63 (the spread is whether the vessel metal participates on a surge
+timescale; a fast surge does not reach it), and the fitted 0.4 sits inside it. 0.27 costs **TR-1c**:
+a 1.5× weaker insurge peaks the sub-arm rejection at 2246 psi instead of lifting the PORV, silently
+retiring the §8.21 declared backstop. Not a change to make on a number the source does not pin.
 
 ---
 

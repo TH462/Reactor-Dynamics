@@ -10,6 +10,15 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 **How to use it (read before editing).**
 - Newest session entries on top of the **Session log**.
+- **Your session heading is `YYYY-MM-DD-<lane>-<letter>`** — e.g. `## Session log — 2026-08-05-develop-a`.
+  The lane is the worktree you are in (`develop` / `workbench` / `backshop`); the letter is the next
+  one not already used for that date **in your own lane**, and the first entry takes `-a` rather than
+  going bare. The old per-day sequence needed three trees to agree on who got `b`, and they cannot see
+  each other: measured at the 2026-08-04 three-lane merge, **17 labels named more than one entry** (7
+  here, 10 in `BUILD_DECISIONS.md`), so a "see TUNING_LOG 2026-08-04b" citation resolves to two
+  different sessions. Entries dated before 2026-08-05 keep their old labels and are **not** renamed
+  *(OWNER RULING, 2026-08-04: "Work issue 339 in develop. Go with option 2.")* — #339 is the
+  explanation for the ambiguous ones. Gated by `test/run_session_labels.js`.
 - When you resolve a backlog item, move it to the session log with the fix, and mark the
   backlog row **RESOLVED (date)** — don't delete it (continuity beats tidiness).
 - When you *discover* something (a hard fail, an oddity, a suspicion), add a backlog row
@@ -20,6 +29,388 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-develop-k (#343 — the lane tags were never the problem; nothing was reading them)
+
+**Task:** *(OWNER, 2026-08-04: "I want tasks to get labeled with an in work label that also
+tells which worktree it's being worked in.")* The labels already existed to the owner's earlier
+directive. This is a **compliance** fix, not a feature. No engine, control or UI code.
+
+### The evidence that it was compliance: this session
+
+I tagged **#339** `status-wip-develop` at t=0, then worked **#341** and **#319** in the same tree
+for hours and tagged **neither**. At the moment the owner asked, the count of lane-tagged issues
+was **zero** with an agent live in `develop`. `CLAUDE.md` is loaded every turn and says to do it;
+that was not enough, which is the `run_release` shape exactly — a note and a skill step both said
+to roll `CHANGELOG.md` and both were skipped, twice.
+
+**A `run_*` gate cannot cover this**: labels live on GitHub, so it would make `run_all`
+network-dependent and red in CI for reasons unrelated to the code. A hook can, and this repo
+already runs one.
+
+### `tools/hook_lane_status.js` — a `SessionStart` hook
+
+Prints the lane, the three-tree sweep, and every lane-tagged issue into the opening context, plus
+the tagging reminder. **It reports; it never blocks and never decides** — the warn-and-ask rule is
+untouched.
+
+**Three failures found by PIPE-TESTING it rather than reading it**, which is the whole argument for
+that step:
+
+1. `--format=%h|%cr` **unquoted** — the shell reads the `|` as a pipe and the command fails. It
+   printed `(log failed)` for all three lanes.
+2. `--jq '…'` **fails on Windows**: `cmd.exe` does not treat single quotes as quotes, so the filter
+   arrives shredded. It surfaced as a bare *"gh failed"* — **indistinguishable from being
+   offline**. Now asks for `--json` and parses in Node, which is shell-independent.
+3. Both of those degrade to *"could not check"*, which is why the hook prints that **differently
+   from "none"**. A `gh` failure and an empty result render identically otherwise, and that
+   ambiguity is exactly what hid the broken sweep for days.
+
+### The hook's FIRST RUN found two live agents and proved me wrong
+
+Its first output showed `workbench` at **b59eded (15 min)** and `backshop` at **4ce3ff8 (75 min)**
+— both moved during this session. Both lanes are live: **#337** on workbench, **#334 item 2** on
+backshop.
+
+**#337 was correctly tagged `status-wip-workbench` the whole time.** At my t=0 sweep all three
+trees were clean and all three tips were the same commit `fb3ccc9`, so the file heuristic read
+*three free lanes* — and on that evidence **I twice reported the tag as stale, and it was
+cleared.** The workbench agent was simply between commits.
+
+**A clean tree with an un-advanced tip is exactly what an active agent looks like between
+commits.** No threshold fixes that. `CLAUDE.md` already says the sweep cannot tell a live session
+from the owner's edits from your own leftovers; this is a fourth case it cannot tell — *nothing at
+all*. **The tag was the only correct signal and I overrode it with the inference**, which inverts
+the rule. New standing line in `CLAUDE.md`: **when the tag and the sweep disagree, the tag wins** —
+it is a statement, the sweep is an inference. Tag restored on #337 with the correction recorded
+there.
+
+### Not done
+
+The **clear-on-stop** half. Nothing fires reliably at session end, so a tag left standing is still
+possible — the session-start report at least puts it in front of the *next* agent immediately,
+which is how this one surfaced. Tracked in #343.
+
+**The hook fires outside a turn, so it could not be proven in-session** (the skill's own caveat).
+Pipe-tested green and the JSON validated; if it does not appear at the next session start, open
+`/hooks` once to reload.
+
+---
+
+## Session log — 2026-08-04-develop-j (documenting RESTORE — and correcting four claims my own change had just falsified)
+
+**Task:** *(OWNER, 2026-08-04: "Do next")* — the follow-up named at the end of `-develop-i`.
+Manual set Rev 0 → **Rev 1**. No engine, control or UI code.
+
+### The change made existing content FALSE, in four places
+
+Shipping the MFW RESTORE control turned *"there is no board control to restore it"* into a lie, and
+it was written in four places — two of them player-facing:
+
+| site | what it said |
+|---|---|
+| `ui/manual_procedures.js` PWR-T06 caution | *"MAIN FEEDWATER ISOLATES on the trip and there is no board control to restore it"* |
+| `ui/manual_procedures.js` PWR-T06 header comment | *"and the board cannot restore it — see cautions"* |
+| `Manuals/05` PWR-T06 step 4 | *"isolates on the trip and cannot be restored from the board"* |
+| `Blueprint/CURRICULUM.md` Tier B/C audit | *"latches with no board control to restore it"* |
+
+All four corrected. This is the HR9 shape from the other side: content followed the plant, and the
+plant moved yesterday. **Grep for the sentence your change falsifies** — a feature that closes a gap
+leaves the description of that gap standing everywhere it was written down, and nothing gates prose.
+
+### `Manuals/03` §9.0 — the RESTORE control, documented
+
+What isolates main feed automatically (three signals), that the isolation **seals in** and the
+button is **refused rather than dead** while its signal stands, and the sequence that follows from
+that: **confirm trip → reset the RPS → restore**, because the low-Tavg isolation is a *coincidence*
+of low Tavg AND the trip latch, so clearing the latch clears half of it.
+
+Carries the measured warning: restoring into a generator already recovering on AFW, with feed demand
+still where it was, drives level **36.6 % → 77 % in about two minutes** and re-isolates at the 90 %
+high level. Set SG FEED RATE to match STEAM FLOW first.
+
+### Two measurements taken and NOT built on
+
+1. **Resetting the RPS promptly prevents the isolation entirely.** Measured: scram at 1m, reset at
+   2m, and `mfw_isolated` stayed **false for the whole run** — the coincidence never occurred
+   because Tavg had not yet fallen below the 572.0 °F setpoint. Real, and **deliberately not
+   taught**: Tavg reaching no-load in over a minute is a property of this lumped model, not of a
+   real plant where it falls in seconds. Teaching "reset fast to dodge the isolation" would be
+   teaching a timing artifact.
+2. **8 % feed demand is too much for decay heat.** Level climbed 65 → 87.7 % over ~13 min and
+   isolated on P-14. The matching demand is smaller than the smallest step the card offers, which is
+   why §9.0 says "match STEAM FLOW" rather than naming a number.
+
+### No PWR-T06 restore STEP, and that is the honest call
+
+The restore is documented as a control, not scripted as a procedure step. A step needs a defensible
+feed-rate recipe, and the two measurements above say the band is narrow and partly an artifact of
+how fast this plant's Tavg falls. Authoring a step now would pin a number I cannot yet defend —
+HR12, and the #319 lesson about content written from what already exists.
+
+**And it is optional.** Mode 3, Hot Standby is stable on AFW indefinitely; a post-trip procedure does
+not need main feed. The caution now says so, which is a truer thing to teach than a restore drill.
+
+`run_all` **OK, 38 runners**, no drift. Manual set **Rev 1**, digests re-sealed, in-app copy repacked.
+
+---
+
+## Session log — 2026-08-04-develop-i (#341 + #319 item 2 — the seal-in, and the RESTORE the board never had)
+
+**Task:** *(OWNER, 2026-08-04: "Do next.  I approve.")* — approving the recommendation to build
+#341 and #319 item 2 as one change. Control kernel + PWR control data + board control + probe.
+
+### What was wrong
+
+Main feedwater isolation **latches** (three signals: reactor trip with Tavg low, SG level high,
+SI). Two defects, and only the first was filed:
+
+1. **No board control to restore it** — nothing in `ui/` issued `isolate_feedwater {active:false}`,
+   so the player could enter the state and not leave it (#319 item 2).
+2. **A restore, once issued, was accepted while the actuating signal was still standing** (#341).
+   Measured full stack: restore at 10m into a post-trip ride, Tavg parked at **567.5 °F (297.5 °C)**
+   against a **572.0 °F (300.0 °C)** setpoint — signal continuously present — accepted anyway, feed
+   back at 0.3076 and SG level **36.58 → 77.43 %**. `actuationFired[i]` IS the retentive memory, and
+   because a fired actuation never re-fires, nothing contested it. The #295 F1/F2 class.
+
+**They had to ship together.** The guard alone protects a command no player can send; the control
+alone ships a defeatable protection function.
+
+### The fix is a NAME in the kernel, and the source chose its shape
+
+`seal_in` on an actuation (config data — the kernel names no plant action, instrument or field, so
+HR3 is untouched and `run_hr3` stayed 28/28). `_sealInBlocking` asks the **same question the
+actuation fires on** — same gate, same `crossed()` — so the refusal and the actuation cannot drift.
+Undo is decided by **disagreement with the actuation's own asserted params**, so `{active:false}`
+is an interruption and `{active:true}` is not; agreeing commands are never refused.
+
+Sourced — **WTSM 12.3.2.3** (ML11223A310): *"The control room operator cannot interrupt any of the
+SI-initiated functions until the reset logic is satisfied. This 'locking out' of the operator
+prevents the interruption of a valid SI actuation."* **WTSM 11.1.4** (ML11223A293) names the fourth
+override of SG level control as *"Manual control by the operator"* — that is the RESTORE button.
+
+**DECLARED DEPARTURE:** the real reset needs a 45–60 s time-delay relay plus P-4 and is a *separate*
+pushbutton that removes the start signal **without realigning anything**. This plant collapses that
+to one step. There is no SI-reset control on this board at all, and a timer plus a second
+pushbutton for a two-step dance is Q4 user complexity with no dynamics behind it.
+
+### The RE-ARM is the half that makes the seal-in safe
+
+A sealed-in actuation with no `reset_below` clears its fire latch when its condition clears. Without
+it the latch is permanent, so after a legitimate restore **a second valid signal could never
+re-isolate** — the protection would work exactly once per session. It issues no command, which
+matches the source: removing the actuation signal *"does not turn off any ESF equipment, realign any
+valves, or change any functions"*. `reset_below`, where present, stays the sole authority, so no
+existing hysteresis band widened.
+
+### The chain this creates, measured — and it gives `reset_rps` a home
+
+Trip → rods seat → **reset RPS** (clears P-4, so the low-Tavg signal clears) → restore accepted at
+10m01s, feed 0.3076. Then SG level ran to the 90 % P-14 setpoint and **re-isolated at 12m01s** —
+restoring full feed into a generator that is already recovering overfills it. `reset_rps` was one of
+#319's three orphaned engine capabilities, *"required after every scram, and named by no checklist"*;
+it is now the precondition for the restore rather than a button with no consequence.
+
+### The board half was smaller than filed, and the indication already existed
+
+**Correction to #319:** the SG FEED corner status word already reads **ISOLATED** — `feedStatus`
+keys on the `feed_sg` channel standing down, and that channel's `offWhen` is `mfw_isolated`. So a
+dedicated MFW lamp would be **Q4 duplicate authority** for a fact already on the card. Only the
+control was missing.
+
+**Geometry measured off the doc, not eyeballed** (CLAUDE.md's standing rule): the SG FEED card is
+1665,545 195×140, and the y=600 row holds only the feed-rate number at x=1740 w=105 — so
+1670..1735 is empty and a 55×25 button drops in flush under AUTO, taking the authored button idiom
+exactly. **Nothing was moved to make room**, and `verify_board_check` stayed at 194.
+
+**The button is NOT disabled while the signal stands.** The refusal carries a labelled message the
+player can read; a greyed-out button teaches nothing and is indistinguishable from a broken one,
+which is this repo's recurring dead-control failure.
+
+**`verify_board_check` caught the missing piece immediately** — *"driver: every control has its own
+inspect entry"*. The System Scanner copy is a third independent copy of every control, and it was
+the only gate that noticed.
+
+### Injection-verified three ways, and the second found a HOLLOW CHECK
+
+Refusal removed → **4 red**. `seal_in` dropped from the two latching actuations → **2 red**. Re-arm
+removed → **1 red — but only after the leg was rewritten.** The first draft tested re-arm on the
+**P-14** actuation, which carries `reset_below: 85`; that branch runs FIRST and clears the latch by
+itself, so deleting the new code left **every check green**. The discriminating leg drives the **SI**
+isolation, which has no `reset_below`. **Ask of any re-arm check whether the actuation under it
+already had another way to clear.**
+
+**One more probe trap, worth the line:** `getInstruments()` is refreshed by `step()`, so a probe that
+hand-sets an instrument and calls only `evaluate()` reads a **stale** snapshot afterwards and sees
+none of its own effect. The first draft reported the isolation never happening while the seal-in it
+was testing was demonstrably working. `driveWith()` steps and re-applies the patch every cycle.
+
+`run_m4` **38/38 243 → 39/39 257**. Everything else unmoved.
+
+**Not done, and named:** the manual has no entry for the RESTORE control (`Manuals/03` §3.5 is where
+it belongs), and no procedure step names it yet — PWR-T06 post-trip is the obvious home, which would
+also give `reset_rps` its checklist step.
+
+---
+
+## Session log — 2026-08-04-develop-h (the WIP sweep never worked; #319 item 2 evidence pass)
+
+**Task:** owner said *"Do next"*. Two outcomes: a one-line fix to the lane-occupancy check, and a
+sourced evidence pass on #319 item 2 that found a **second, unfiled defect**. No engine change yet.
+
+### The all-lanes WIP sweep returned 0 for every issue, always
+
+`CLAUDE.md`'s session-start command used three `--label` flags. **`gh` ANDs repeated `--label`**, so
+it asked for issues carrying `status-wip-develop` AND `status-wip-workbench` AND
+`status-wip-backshop` at once — which the convention one line below forbids (*"One only; the lane is
+the tree"*). Measured: the documented form returns **0** while **#337 is sitting there tagged
+`status-wip-workbench`**; `--search 'label:a,b,c'` returns it.
+
+**This session's own t=0 sweep reported nothing and #337 was tagged the whole time.** The one
+occupancy signal that is not a guess *(OWNER DIRECTIVE, 2026-08-04: "Since that's done add an in
+process tag that shows which worktree it's being worked on.")* has been unreadable since the day it
+was written, and a blank result is indistinguishable from "the lanes are free". A single `--label`
+is still correct, so the per-lane query in the Issue-tracking section is unchanged.
+
+**#337 is tagged `status-wip-workbench` and the workbench tree is CLEAN at `fb3ccc9`** — almost
+certainly a tag left standing when a session ended, which is the failure the tag rule names. Not
+cleared by me: clearing another lane's tag on a guess is the same mistake in the other direction.
+
+### #319 item 2 — the restore control. The evidence pass found a defeatable protection function
+
+The filed item is that `isolate_feedwater` **latches with no board control to clear it** — a state
+the player can enter and not leave. Confirmed, and two things the issue did not have:
+
+**There IS an indication** — `mfw_isolated` is a published instrument (`pwr_engine.js:604`), read by
+`pwr_control.js:985`. It is **not on the board**: nothing in `ui/` references it. So the gap is
+board face, not contract.
+
+**Measured, full stack, `hot_full_power`, turbine trip at 2m:** MFW isolates by 4m00s and
+`fw_flow_normalized` goes to 0; from 8m the only feed is AFW (`fw_flow` and `afw_flow` are the same
+number to four figures). Tavg parks at **567.5 °F (297.5 °C)**.
+
+**THE UNFILED DEFECT.** The low-Tavg isolation's setpoint is **572.0 °F (300.0 °C)**, so with Tavg
+parked at 567.5 °F the actuating signal is **still present for the whole post-trip ride** — and an
+`isolate_feedwater {active: false}` issued at 10m was **accepted**: `mfw_isolated` false at 12m01s,
+feed flow 0.3076, SG level **36.58 → 77.43 %**. The plant then re-isolated at ~14m when level
+reached the separate 90 % P-14 actuation, so it is protected from the overfill — but a **valid,
+standing feedwater-isolation signal was defeated by an operator command**, which is the #295 F1/F2
+class exactly.
+
+**Mechanism**: `actuationFired[i]` (`control_kernel.js:621`) is the retentive memory, and with no
+`reset_below` it stays set — so the actuation never re-fires and nothing contests the restore.
+
+### Sourced, and the source says more than "it latches"
+
+Fetched via the archive.org workaround (nrc.gov 403s here), extracts in `inbox/sources/`:
+
+- **WTSM 11.1.4** (ML11223A293) — *"Four inputs override the steam generator water level control
+  system: Manual control by the operator, Reactor trip (P-4) coincident with low Tavg, Steam
+  generator high level (P-14), and Safety injection actuation signal."* The three automatic ones are
+  **exactly** this sim's three `isolate_feedwater` actuations, and **manual operator control is the
+  first of the four** — the missing capability, named in the primary.
+- **WTSM 12.3.6.1** (ML11223A310) — *"Low Tavg (564°F) coincident with a reactor trip (permissive
+  P-4), High steam generator water level (permissive P-14) in any generator, and SI actuation."*
+- **WTSM 12.3.2.3** (ML11223A310) — the seal-in and the reset, and it settles the design question:
+  *"The control room operator cannot interrupt any of the SI-initiated functions until the reset
+  logic is satisfied. This 'locking out' of the operator prevents the interruption of a valid SI
+  actuation."* Reset needs a **45–60 s** time delay **and** P-4. And critically: *"Removing the 'ON'
+  signal … does not turn off any ESF equipment, realign any valves, or change any functions
+  initiated by the SI actuation. … after turning off the actuation circuitry the control room
+  operators can change system alignments."*
+
+**So the real plant is TWO steps — reset the signal, then realign the component — and the reset
+does not itself restore anything.** A single RESTORE button is not the prototypical shape.
+
+Two departures found while sourcing, **not chased**: this plant's low-Tavg setpoint is 572.0 °F
+against the source's **564 °F** (it derives from `TAVG_NOLOAD` = 566.6 °F, itself ~10 °F above a real
+no-load Tavg, so it is one number in a band that would have to move together); and the SG-level
+isolation carries `reset_below: 85` — it **auto-restores**, where the source treats P-14 as a
+feedwater isolation signal like the others.
+
+### Not built, deliberately — the two halves are unfalsifiable apart
+
+The lockout without a board control guards a command **no player can send** (unreachable, so
+unfalsifiable — the reason #332 left RHR alone). The board control without the lockout **ships a
+defeatable protection function**. Filed together with a recommendation rather than half-built.
+
+---
+
+## Session log — 2026-08-04-develop-g (#339 — the session label names the LANE now)
+
+**Task:** *(OWNER RULING, 2026-08-04: "Work issue 339 in develop. Go with option 2.")* Docs +
+one new static gate; no engine, config, layer or UI change.
+
+### The collision is 17 labels, not the 5 the issue measured
+
+#339 sampled 2026-08-04 and found `2026-08-04b` naming three entries in `BUILD_DECISIONS.md` and
+two here. Measured across both files in full:
+
+| file | session headings | labels naming >1 entry |
+|---|---|---|
+| `Diagnostic/TUNING_LOG.md` | 50 | **7** — `2026-08-01` ×4, `2026-07-31` ×3, then `2026-08-01d` · `2026-08-03k` · `2026-08-03v` · `2026-08-04b` · `2026-08-04f` ×2 each |
+| `Blueprint/BUILD_DECISIONS.md` | 63 | **10** — `2026-08-04b` ×3, `2026-08-03d` ×3, seven more ×2 |
+
+So a third of the days in these files are already ambiguous, and the day the issue caught is not
+even the worst one.
+
+### Why the old scheme could not be fixed by being careful
+
+It allocated one sequence letter per **day, across all lanes**, so it required three sessions in
+three separate working trees to agree on who got `b` — and a worktree cannot see another's
+uncommitted file. The scheme's correctness depended on information no participant had. It had also
+run out of room: `2026-08-04` (unsuffixed) sits *above* `2026-08-04a`, so `a` is older than
+no-suffix and there is no free letter below `b` for a third lane without renumbering upward.
+
+### The scheme, and the one place it departs from the ruling
+
+`YYYY-MM-DD-<lane>-<letter>` — `2026-08-05-develop-a`. Lane is the **tree** (develop / workbench /
+backshop), letter is the next unused for that date **in your own lane**.
+
+The letter is mandatory, and option 2 as written has no letter (`2026-08-04-develop`). Measured:
+**25 session entries landed on 2026-08-03**, ~8 per lane, so more than one session per lane per day
+is the norm. With a bare first entry, session two must either rename session one — the retro-rename
+churn option 2 was picked to avoid — or start at `b` with no `a` above it, which is the exact
+ordering wart the issue names. Two characters buys both away, and the lane still does the work the
+ruling asked of it: **no agent ever has to know what another lane chose.**
+
+This entry's own heading is the first use, which is why its letter is `g` and not `a` — develop had
+already spent a, c, d, e, f today under the old scheme, and "next unused for that date in this lane"
+gives `g` with no special case for the transition day.
+
+### `test/run_session_labels.js` — NEW, 8 checks
+
+Four structural checks per file: every label parses; **no duplicate lane-form label**; everything
+dated 2026-08-05 or later is lane-form; lane-form entries are newest-first within each date+lane.
+
+**Baselined on the count, not on failures.** The checks are structural and the file list is fixed,
+so the count moves only when a check is added — unlike `run_manual_units`, whose count moves on any
+prose edit. A per-label count would drift every session and train the next author to rewrite the
+number without reading it.
+
+**The date cutoff is the enforcement.** Legacy labels are grandfathered by the ruling (option 2 is
+explicitly "do not retro-rename"), so their 17 collisions are printed as information and never
+failed; they stay as the readable record of the day three lanes landed at once, with #339 as the
+explanation. Anything dated 2026-08-05 or later must be lane-form. **Moving that date forward to
+clear a red retires the gate** — the runner header says so.
+
+### Two things it deliberately does NOT check, both because they would redden on correct work
+
+**Contiguity of the letters.** A session that writes up here but not in `BUILD_DECISIONS.md` leaves
+a legitimate gap in the second file, so `a, c` is not a defect. **Ordering across lanes, or in the
+legacy region** — two lanes landing on one day have no defined order relative to each other, and the
+legacy region is already out of order (`2026-08-04a` sits *below* `2026-08-03w` in this file), which
+is history rather than a regression.
+
+### Injection-verified four ways, one per check
+
+Each check was made to go red before being trusted (`verify-checks-by-injection`): a legacy label
+dated after the cutoff → **1 red** (the cutoff check), an unknown lane word `-sideshop-a` → **1 red**
+(the parse check, and note it is the parse check that catches a misspelled lane, not a lane check),
+two letters ascending → **1 red** (the ordering check). The duplicate-label injection reddens **2**,
+not 1 — a repeated letter is also not strictly descending, so the ordering check fires too. That is
+honest rather than sloppy: the two checks overlap on exactly one case and disagree on the others.
+
+`run_all` **37 → 38 runners**.
 ## Session log — 2026-08-04i (#345 — the manual content canary, and what the gate could not see)
 
 **Task:** owner asked what was worth fixing in the three-tree workflow, and chose this.
@@ -259,6 +650,188 @@ quote from WTSM 10.3 was real; the inference from it was not, and one `grep` in 
 or one look at `letdown_flow_actual` would have killed it. **HR12 binds the follow-up paragraph
 as hard as the headline** — "what is still broken and why" is an assertion about plant dynamics
 like any other.
+## Session log — 2026-08-04g (#337 — the pressurizer surge had one driver where it needs two)
+
+**Task:** work #337 — primary pressure and subcooling margin do not respond to RCS inventory.
+Workbench lane. Engine + config + one probe re-authoring + one probe widening; `Manuals` Rev 1.
+
+### Reproduced first, on this tree, because the issue predates three merges
+
+`#337` was filed at 15:52 against a plant that has since taken #334. Re-measured full stack,
+`hot_full_power`, SGTR sev 0.03 at t=60 s: pressure **2235 → 2230 psi** while pzr level fell
+**55.0 → 15.7 %**, and the only movement (−37 psi) arrived *after* #334's 17 % heater cutoff
+fired. So the issue reproduces, and #334 did not close it.
+
+### The mechanism — the issue named three things and the ORDER was wrong
+
+#337 filed (1) "CVCS letdown has no path to pressure", (2) "even the connected path produces no
+legible signal", (3) the circular void gate. Measured, **(2) dominates and (1) is a symptom of
+it.** There is one surge term in `stepPressure` and it reads `_dTavg_dt` only:
+
+```js
++ (saturated ? 0 : p.K_surge * (s._dTavg_dt || 0));   // thermal surge
+```
+
+A surge is a **volume displacement of the pressurizer**, and WTSM 3.2 (ML11223A213, p. 3.2-8)
+describes it without reference to what caused it — *"Temperature changes produces changes in
+coolant density, which force water into (insurge) or out of (outsurge) the pressurizer. … If the
+RCS temperature decreases, the contraction of the coolant produces an outsurge from the
+pressurizer. This is accommodated by an expansion of the steam bubble and a corresponding
+decrease in steam density and pressure."* Losing RCS inventory displaces the same volume out of
+the same pressurizer — a subcooled loop is incompressible everywhere else — and it drove nothing.
+
+**But wiring it in on its own moves the plant by 9 psi.** Measured: adding the mass driver at the
+shipped gains took the sev-0.03 case from −5 psi to −9 psi of pre-trip signal, because the heater
+term simply rebalanced against it. Which is the real defect.
+
+### The heater authority is 27× the sourced value, and that is what erases the cue
+
+WTSM 3.2 (ML11223A213, p. 3.2-9) gives it directly, in rate units: *"There are 78 heaters
+installed for a total capacity of 1794 kW. … The heaters are capable of raising the temperature
+of the pressurizer and its contents at approximately 55 °F/hr."* At 2235 psia the engine's own
+`T_sat` correlation gives dP/dT = 0.18686 MPa/°C, so 55 °F/hr = **0.23 psi/s (1.586e-3 MPa/s)**.
+
+This plant declares a Mode 5↔1 time compression and `setpoint_pressurize_slew_mpa_s` = 0.02 MPa/s
+is fitted to it (cold→NOP ≈ 11 min). That factor is **12.6×**, so the compression-consistent
+heater authority is **0.020 MPa/s** — which lands *exactly on the slew rate*. That is the
+cross-check worth keeping: **the config states the same physical quantity twice, and until now
+the two disagreed by 27×.** `K_heater` is **0.55**.
+
+### `K_surge_level` moved by NOTHING, and that was a measured decision
+
+The same source fixes the surge coefficient: 1794 kW ⇒ 55 °F/hr is 8.842e-7 MPa/s per kW, and one
+%/s of pzr level is 12.44 ft³/s of bubble growth (#249's fit — 45 points of level = the
+0.40 × 1,400 ft³ steam space), i.e. 63.6 lbm/s of steam at v_g 0.1955 and h_fg 361 = **24,240 kW**
+of flashing demand. That is **0.0214 MPa/s** if the vessel metal participates and **0.0502** if
+only the pressurizer liquid does — a real spread, because a fast surge does not reach the metal.
+× 12.6 puts the sourced band at **0.27–0.63**, and the fitted 1.0 °C/s value re-expressed in
+level units is **0.4**, in the middle of it.
+
+**0.27 was tried and refused.** It costs TR-1c: a 1.5× weaker insurge peaks the sub-arm rejection
+at 2246 psi (15.49 MPa) instead of lifting the PORV, silently retiring the §8.21 declared
+backstop. Not a change to make on a number the source does not actually pin. So the thermal
+channel is **bit-identical across this change** and the only new physics is the mass driver.
+
+### What K_heater is worth, and why it did not move
+
+Measured full stack, everything else held — `run_behavior` probe count and the subcooling cue
+from a leak driven to the 17 % heater cutoff (SGTR sev 0.02):
+
+| `K_heater` | subcooling cue | full (100 %) load rejection | `run_behavior` |
+|---|---|---|---|
+| **0.55** | −0.7 °F | no scram | **48 pass** ← shipped |
+| 0.35 | −1.1 °F | no scram | 47 pass |
+| 0.20 | −1.2 °F | no scram | 44 pass |
+| 0.10 | −3.1 °F | no scram | 43 pass |
+| 0.05 | −8.5 °F | **SCRAM 122 s**, `otdt_margin low` | — |
+| 0.02 | −9.4 °F | **SCRAM 103 s**, `otdt_margin low` | — |
+
+The wall between 0.10 and 0.05 is **TR-1h**: "no scram" on a full load rejection is this plant's
+ride-out character, a ruled departure from the Westinghouse 50 % criterion, and **OTΔT is what
+binds it** — the #311 trap from the other side. Below 0.20 the pressurizer also stops winning
+against its own spray, so TR-11's stuck-open spray valve runs the plant to the containment floor
+(15.41 → 0.10 MPa) instead of parking.
+
+**RULED — it stays at 0.55** *(OWNER RULING, 2026-08-04: "F14 go with the recommendation.")*. The
+recommendation was A: the lesson is DIRECTION AND ORDERING (level, then pressure, then subcooling)
+and since #337 the player gets all three, so buying 8 °F of extra cue by giving up the ride-out
+trades a Tier A coupling the plant is built around for a sharper version of one it now has. This is
+now a **declared departure** at `Manuals/12` §12.15, not deferred work — F14 is closed, not parked.
+
+**What did land, measured on the SGTR sweep (pre-trip window, `hot_full_power`):**
+
+| sev | before | after |
+|---|---|---|
+| 0.005 | −3 psi / −0.2 °F | −3 psi / −0.2 °F |
+| 0.01 | −5 psi / −0.3 °F | −5 psi / −0.3 °F |
+| 0.02 | ~0 psi / −0.1 °F | −10 psi / −0.7 °F |
+| 0.03 | −5 psi / −0.2 °F, trip 178 s | **−135 psi / −9.0 °F**, trip 174 s |
+
+So the structural gap is closed — inventory now has a physical path to pressure, in **both**
+directions — and the magnitude is throttled by `K_heater` until that is ruled on.
+
+### Five things worth keeping
+
+1. **The `range()` trap landed again, and it made a NEW check hollow.** CA-9's added subcooling
+   check first measured the loss against `range('subcooling_c').max`, which spans the whole run —
+   and this event *recovers above where it started* (86 °F on ECCS). It scored **−15.1 °F on the
+   OLD engine**, where the true loss is −2.05 °F: the check passed against the very plant it
+   exists to exclude. Fixed by capturing the pre-event value at the injection.
+2. **Windowing an extremum on `[inject, trip]` is not optional here.** The first probe read
+   −256 psi at the *shipped* gains, all of it post-scram transient, where the pre-trip signal is
+   −5 psi. A whole-run minimum on an event that scrams measures the scram.
+3. **`PI-3` leg 2 was resting on the defect.** It ran to `primary_pressure < 12.0` and asserted no
+   scram — reachable only because SI could not push back. With mass driving the surge in **both**
+   directions, unthrottled SI now arrests the fall at 12.47 MPa and takes the plant **solid**
+   (`pzr_level high` at 57 s, inventory 111.1 %), which is the behaviour operators throttle SI to
+   avoid. Re-authored to assert at the actuation instead; **passes on the old engine too.**
+4. **`CA-9` leg E's trip-reason check was a WIDENING, said out loud.** It named `pzr_level`,
+   correct on a plant where level was the only instrument that could respond. Now the same leak
+   drops pressure and OTΔT gets there first. Enumerated rather than dropped, so an incidental
+   scram still reddens it, and it passes on the old engine.
+5. **`perturb_sweep` said the suite barely constrains any of these gains** — 3 % nudges to
+   `K_heater`, `K_surge_level` and `P_restore_rate_gain` produced **zero verdict flips** across
+   both suites, with `K_heater` "weak" (7/241 and 14/440 observed values moved). A constant this
+   load-bearing being that loosely pinned is itself the finding.
+
+### THE UNRESOLVED HALF — a relief valve's pressure authority is now carried TWICE
+
+`K_surge_level · level_per_mass` = **310**. `K_porv_relief` and `K_safety_relief` are **300**. So
+routing relief flow through the surge as well **doubles a relief valve's authority** — near enough
+exactly, which is itself the tell that those two constants were always this same coupling, fitted
+per path. It is not small: the **TMI-2 flagship blows the RCS down to 69 psi (0.48 MPa) by 681 s**
+where the canon trajectory recovers.
+
+**All four combinations were measured and none is clean:**
+
+| relief in the surge | `K_porv_relief` | result |
+|---|---|---|
+| **yes** | **300** | **SHIPPED.** Content red only: `run_procedures`/`_stack` ×1, `run_campaign` 48/51. TMI-2 reaches `b14_ident`. |
+| yes | 0 (total 310 ≈ the calibrated 300) | stalls TMI-2 **earlier**, at `b7_confusion` |
+| no | 300 | `run_meltdown` **12 → 11**, `run_scenarios` **3/3 → 1/3**, `run_campaign` **41/51** |
+| no | 0 / 150 | plant barely depressurises — 2205 psi, no damage; stalls at `b7_confusion` |
+
+The obvious correction is to take relief *out* of the surge, on the sound argument that the PORV
+and the code safeties discharge from the pressurizer **STEAM SPACE**, so that mass never crosses
+the surge line — which is exactly what `pwr_config`'s own `K_porv_relief` comment has said for as
+long as those constants have existed. **Built, measured, and it is WORSE**: it reddens PHYSICS
+acceptance (`run_meltdown`, `run_scenarios`) where including it only reddens authored CONTENT, and
+**HR9 ranks those the other way round**. So what ships is the variant that keeps the physics suites
+green. The double count is real and stays open on #337.
+
+**Lesson, and it cost most of the session:** before adding a general law, grep for the per-path
+constants that were standing in for it. Three existed here — `K_porv_relief`, `K_safety_relief`,
+`K_leak_depressurize` — and two of them are numerically the new law's own coefficient.
+
+### STATE: NOT GATE-GREEN. Committed on the lane, three runners red
+
+| runner | state |
+|---|---|
+| `run_behavior` | **50 pass / 0 xfail** — CA-9 +2 checks, PI-3 +1, both re-authorings injection-verified against the old engine |
+| `run_m4` · `run_autoctl` · `run_e2e_controls` | **back to baseline** — all three were sampling/fixture artifacts, all three re-authored and **verified to pass on the OLD engine too** |
+| `run_procedures` / `run_procedures_stack` | **RED**, 1 check each — `pwr_sgtr` step 6 |
+| `run_campaign` | **RED**, 3 missions / 4 checks — the TMI-2 flagship |
+
+**`pwr_sgtr` step 6 is a real finding, not a stale band.** The step walks the Pressure SP down to
+close the primary→secondary ΔP, and since #337 it **cannot**: HPI is still injecting, injection is
+an insurge, and the insurge holds pressure up. Measured engine-direct — with HPI left in, primary
+goes 2122 → 2046 psi and break flow *rises* 0.00521 → 0.00602; with HPI secured first it goes
+2122 → **1182 psi** and break flow collapses to **0.00016, a 97 % cut**. That is the real SGTR EOP
+(you cannot depressurize while injecting, which is why SI termination is a named step). **But
+securing HPI here DAMAGES THE CORE** — measured, uncovery 0.511 → 0.751, clad 2130 → 2325 °F,
+`fuel_damaged` latches — because at severity 0.25 the termination criteria are nowhere near met.
+So the authored procedure is right for this plant and the *acceptance* is what is stale; it now
+fails identically in **both** layers, so at least it is not the #209 class. Left red rather than
+re-banded on a guess.
+
+**The TMI-2 flagship needs a trajectory re-author, and it should not be rushed.** Part 1 stalls at
+`b7_confusion`; measured, the beat that used to fire there saw pzr level **67.0 %** and inventory
+**101.2 %** at 68 s and now sees **29.7 %** and **96.1 %** — the level is *falling* where the canon
+has it rising, because HPI has not actuated yet on the new pressure trajectory. The beats are
+hand-authored against the old one. This is the HR9 cascade working as intended (content follows the
+plant), but it is a second pass of comparable size with real judgement in it.
+
+**`Manuals` Rev 1** (12 §7.1 rewritten, new simplification row 12.15).
 
 ---
 

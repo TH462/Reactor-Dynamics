@@ -31,6 +31,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **MFW RESTORE control on the SG FEED card, and main-feedwater isolation now SEALS IN**
+  (#341 + #319 item 2, shipped as one change). Main feed isolates automatically on three signals
+  — reactor trip with Tavg low, steam generator level high, safety injection — and it **latched
+  with no control anywhere to clear it**, so the player could enter that state and not leave it.
+  Separately, a restore issued by any path was **accepted while the isolating signal was still
+  standing**: measured full stack, a restore 10 min into a post-trip ride with Tavg parked at
+  567.5 °F (297.5 °C) against a 572.0 °F (300.0 °C) setpoint went through, feed returned and SG
+  level ran 36.58 → 77.43 %. Actuations may now declare `seal_in`; an operator command that would
+  undo one is refused with a readable message while its condition holds, and the actuation re-arms
+  when the condition clears so a second valid signal can still isolate. Sourced to WTSM 12.3.2.3
+  (ML11223A310) — *"The control room operator cannot interrupt any of the SI-initiated functions
+  until the reset logic is satisfied"* — and WTSM 11.1.4 (ML11223A293), which names *"Manual
+  control by the operator"* as the fourth override. **Declared departure:** the real reset is two
+  steps behind a 45–60 s timer and a separate pushbutton; this plant collapses it to one.
+  The practical chain is **trip → reset the RPS → restore feed**, which finally gives `reset_rps`
+  a consequence. `run_m4` 38/38 → **39/39 (257 checks)**, injection-verified three ways.
 - **`run_manual_rev` gained a content canary — the check a lane merge walks through** (#345).
   The gate verified the revision table's *shape* (newest-first ordering, no gaps, set-wide stamp,
   content digests, packed copy) and never read chapter **body** text: its only chapter read pulled
@@ -77,8 +93,70 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   than Moody once the discharge flashes, so a real break stays stronger for longer than this one.
   `run_behavior` **50 → 51** (CA-11, 13 checks; the measured exponent is **0.500** against
   0.000 for a constant law and 1.000 for a linear one).
+### Fixed
+- **Losing reactor coolant now moves primary pressure and subcooling margin, not only pressurizer
+  level** (#337). The pressurizer's surge term had exactly one driver — thermal expansion of the
+  loop — so a leak displaced liquid out of the pressurizer and the model did not notice. Measured
+  full stack before the fix: a tube rupture that took pzr level **55.0 → 15.7 %** and scrammed the
+  reactor moved pressure **5 psi (0.034 MPa)** and the subcooling margin **0.2 °F (0.1 °C)**. The
+  PWR's primary "are we still safe" parameter could only degrade thermally.
+
+  A surge is a **volume displacement of the pressurizer**, and WTSM 3.2 (ML11223A213, p. 3.2-8)
+  states the mechanism without reference to its cause — *"Temperature changes produces changes in
+  coolant density, which force water into (insurge) or out of (outsurge) the pressurizer… the
+  contraction of the coolant produces an outsurge… accommodated by an expansion of the steam
+  bubble and a corresponding decrease in steam density and pressure."* A subcooled loop is
+  incompressible everywhere else, so inventory comes out of the pressurizer at exactly the rate
+  the level line already says it does. The law is now written in **level-rate** units so both
+  drivers convert into it through the geometry `stepLevel` already carries (`level_per_tavg`,
+  `level_per_mass`); `K_surge` (°C/s) became `K_surge_level` (%/s) and the thermal response is
+  **bit-identical**, because the fitted value re-expressed is 0.4 and the sourced band is 0.27–0.63.
+
+  It runs both ways, which matters as much: unthrottled safety injection now **repressurises** and
+  can take the plant solid, the behaviour operators throttle SI to avoid.
+
+  **NOT FINISHED, and the remainder is filed rather than guessed at.** A relief valve's pressure
+  authority is now carried twice (`K_surge_level · level_per_mass` = 310 against relief gains of
+  300 — the tell that those constants were always this same coupling), and the obvious correction
+  of excluding relief from the surge measured *worse*, breaking physics acceptance where the double
+  count breaks only authored content. The TMI-2 flagship and the SGTR procedure's depressurisation
+  step are still written against the old trajectory and are red. Flags **F14**/**F15**; the measured
+  detail is in `Diagnostic/TUNING_LOG.md` 2026-08-04g.
+
+  **The magnitude is still damped, deliberately and declared** (`Manuals/12` §12.15, and filed on
+  #337 as an owner decision). The pressurizer heaters are modelled at 27× the authority their own
+  source supports — WTSM 3.2 p. 3.2-9 rates 1794 kW as *"capable of raising the temperature of the
+  pressurizer and its contents at approximately 55 °F/hr"*, i.e. 0.23 psi/s, against this plant's
+  80 psi/s — so they rebalance against the surge and hold the cue to about **1 °F** of margin where
+  the sourced rating gives about **9 °F**. Correcting it is measured but not taken: below 0.10 the
+  plant can no longer ride out a full load rejection without a reactor trip, which is its ruled
+  identity, and below 0.20 a stuck-open spray valve runs it to the containment floor.
 
 ### Changed
+- **Manual set Rev 1 — the RESTORE control documented, and four "cannot be restored" claims
+  corrected.** `Manuals/03` §9.0 gains the control: what isolates main feed, that the isolation
+  seals in and the button is *refused rather than dead* while its signal stands, and the sequence
+  that follows — confirm trip → reset the RPS → restore, because the low-Tavg isolation is a
+  coincidence of low Tavg *and* the trip latch. It carries the measured warning that restoring into
+  a generator already recovering on AFW drives level 36.6 % → 77 % in about two minutes and
+  re-isolates at 90 %. The PWR-T06 post-trip checklist and `Manuals/05` both stated main feedwater
+  "cannot be restored from the board", which stopped being true when the control shipped; both are
+  corrected, and the checklist now says restoring is optional — Mode 3, Hot Standby is stable on
+  auxiliary feedwater indefinitely.
+- **Session-log headings name the LANE: `YYYY-MM-DD-<lane>-<letter>`** *(OWNER RULING, 2026-08-04:
+  "Work issue 339 in develop. Go with option 2.")*, #339. `Diagnostic/TUNING_LOG.md` and
+  `Blueprint/BUILD_DECISIONS.md` are cited by their dated headings, and the old per-day sequence
+  letter required three worktrees to agree on who got `b` — which they cannot, since a lane cannot
+  see another's uncommitted file. Measured across both files: **17 labels name more than one entry**
+  (7 + 10), `2026-08-04b` resolving to two sessions in one and three in the other. Lane = the tree
+  (develop / workbench / backshop); letter = the next unused for that date *in that lane*, `-a`
+  first. **The mandatory letter is a declared departure from the filed option**, which had none:
+  measured, 25 sessions landed on 2026-08-03, ~8 per lane, so a bare first entry collides within a
+  lane on day one and forces exactly the retro-rename the option existed to avoid. Existing labels
+  are **not** renamed, by the same ruling — they stay as the record of the day three lanes landed at
+  once. New gate `test/run_session_labels.js` (8 checks, `run_all` 37 → 38): parse, no duplicate
+  lane-form label, everything dated 2026-08-05 or later is lane-form, newest-first within each
+  date+lane. Grandfathered collisions are reported and never failed.
 - **The public changelog page is facts only** *(OWNER, 2026-08-04: "Just keep to facts in the
   changelog page. Minimize prose.")*. Cut the "This log begins with the public launch" lead and
   trimmed the Alpha 1.0.0 entry to *"Initial Alpha release. Pressurised water reactor."* The

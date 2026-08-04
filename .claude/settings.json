@@ -7,6 +7,13 @@
           { "type": "command", "command": "node tools/hook_repack_manuals.js" }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node tools/hook_lane_status.js", "timeout": 30, "statusMessage": "Checking lane occupancy..." }
+        ]
+      }
     ]
   },
   "permissions": {

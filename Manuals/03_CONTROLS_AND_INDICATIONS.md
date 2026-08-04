@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 1  
+**Revision:** 3  
 
 ---
 
@@ -460,6 +460,34 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
    back **before** you arrive, not after.  
 5. Re-engage **AUTO** (SG FEED RATE panel) when done; the channel captures current level as
    its setpoint, so engage it at a level you are happy to hold.  
+
+#### RESTORE — main feedwater isolation
+
+| Item | Detail |
+|------|--------|
+| **Purpose** | Re-open main feedwater after an **automatic isolation**. Lit while main feed is isolated |
+| **Location** | SG FEED card, below **AUTO** |
+| **Isolates automatically on** | Reactor trip coincident with low Tavg · SG level **high (≥ 90 %)** · safety injection |
+| **While isolated** | Main feed is zero. **AFW is the only feed path**, and the SG FEED corner reads `ISOLATED` |
+| **Refused when** | The signal that closed the valves is **still present**. The plant says so rather than the button going dead |
+
+The isolation **seals in**: it holds until the actuating signal clears, and pressing RESTORE
+before then is refused with a message naming the reason. This is deliberate — an isolation is a
+protective action, and being able to switch one off while it is still legitimately demanded would
+make it no protection at all.
+
+**After a reactor trip, the usual blocker is the trip itself.** The low-Tavg isolation is a
+*coincidence* — low Tavg **and** the trip latch — so resetting the RPS (**§3.5.1**) clears half of
+it and the restore is then accepted. That is the ordinary sequence: **confirm the trip → reset the
+RPS → restore main feed**, and only if you actually need main feed. In Mode 3, Hot Standby you do
+not: AFW carries decay heat indefinitely.
+
+**WARNING:** restore only after you have set feed demand to something decay heat can absorb.
+Main feed returns at whatever the pump was last commanded, and the generator is already
+recovering on AFW — measured, restoring into a recovering generator with feed demand still up
+drives level from 36.6 % to 77 % in about two minutes and isolates you again at the 90 % high
+level. Set **SG FEED RATE** to match **STEAM FLOW** first (see the matched pair above); at decay
+heat that is a very small number.
 
 #### MSIV — Open / Close
 
