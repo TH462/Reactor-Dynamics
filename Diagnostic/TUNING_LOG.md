@@ -411,6 +411,191 @@ not 1 — a repeated letter is also not strictly descending, so the ordering che
 honest rather than sloppy: the two checks overlap on exactly one case and disagree on the others.
 
 `run_all` **37 → 38 runners**.
+## Session log — 2026-08-04h (#334 item 2 — a break is a hole, not a pump)
+
+**Task:** owner ruled *"Do item 2"* — make LOCA break flow pressure-dependent.
+`engines/pwr/pwr_config.js` (two constants), `pwr_primary.js` (the law), new probe **CA-11**,
+CA-10 leg E re-authored, `run_behavior` **50 → 51**, manual set **Rev 0 → 1**.
+
+### The defect, in one line
+
+`s.leak_flow` for a LOCA was assigned once in `pwr_engine._applyFailure` and never touched
+again. The same break discharged identically at 15.41 MPa and at 0.1 MPa, and because `_mass`
+clips at zero, an already-empty RCS went on subtracting a full-rate leak forever. Only the SGTR
+branch was ΔP-modulated, and the comment beside it said *"Containment-side leaks (LOCA) are not
+ΔP-modulated here"* — the defect documented in place, which is how it survived.
+
+### The evidence pass, and the fetch route that worked
+
+nrc.gov 403s, and **ecfr.gov 302s to an "unblock" interstitial**, which is new — worth knowing
+before someone burns a turn on it. What worked: **govinfo's CFR volume XML through
+web.archive.org** (`web.archive.org/web/2023id_/https://www.govinfo.gov/content/pkg/
+CFR-2023-title10-vol1/xml/CFR-2023-title10-vol1.xml`, 6.2 MB, via curl with a browser UA —
+`WebFetch` cannot reach archive.org at all). Extract saved to
+`inbox/sources/10CFR50_AppendixK_discharge_model.txt`.
+
+**10 CFR 50 Appendix K, I.C.1.b "Discharge Model":** *"For all times after the discharging fluid
+has been calculated to be two-phase in composition, the discharge rate shall be calculated by use
+of the Moody model (F.J. Moody, 'Maximum Flow Rate of a Single Component, Two-Phase Mixture,'
+Journal of Heat Transfer, Trans ASME, 87, No. 1, February, 1965) … The calculation shall be
+conducted with at least three values of a **discharge coefficient applied to the postulated break
+area**, these values spanning the range from 0.6 to 1.0."*
+
+Two independent things fall out, and the second is the one I had not thought about: discharge is
+a **critical-flow function of the upstream state**, and a break is an **AREA**, not a flow. The
+severity slider has been labelled "% rated flow" all along, which is why it was so natural to
+store it as a flow and never revisit it.
+
+### The law, and why √Δp rather than Moody
+
+```js
+s.leak_flow = s._leak_base * Math.sqrt(clip((s.pressure_mpa - pb) / (pr - pb), 0, 1.5));
+```
+
+Moody's critical mass flux needs stagnation pressure **and enthalpy**; this plant has one lumped
+primary node and tracks no quality at the break, so there is nothing to evaluate it against.
+√Δp is the incompressible orifice law — **the same form `letdownFlow` already uses a few hundred
+lines up**, for orifice discharge out of the same RCS — so it is derivable rather than fitted and
+internally consistent. Declared in `Manuals/12` §12.4b **including the direction of the error**:
+√Δp falls off faster than Moody once the discharge flashes two-phase, so a real break stays
+stronger for longer than this one.
+
+**`break_p_ref_mpa` = 15.41 is the operating point, not a [tune].** Referencing to it makes the
+factor exactly 1 at nominal pressure, so **every existing severity keeps the calibration it was
+arbitrated with** and only the depressurized end of the curve is new. That is what kept the blast
+radius to one runner.
+
+### Measured: the plant now does the design-basis accident
+
+Severity 1.0 (the largest break there is), full stack, ECCS available:
+
+| t | inventory % | pressure | clad | uncovered | accumulator % |
+|---|---|---|---|---|---|
+| 1m30s | 0 | 566 psi (3.91 MPa) | 753.1 °C | **1.00** | 99.79 |
+| 2m00s | 99.23 | 113 psi (0.78 MPa) | 773.9 °C | 0 | **31.75** |
+| 2m30s | 120.0 | 33 psi (0.22 MPa) | 733.0 °C | 0 | 0 |
+| 6m01s | 120.0 | 68 psi (0.47 MPa) | 216.0 °C | 0 | 0 |
+
+Blowdown, full core uncovery, **accumulator dump**, reflood, cooldown. Peak clad 786 °C against
+a 1200 °C damage threshold. **Before this change the same break drained to zero and melted**, and
+nothing in the suite had ever exercised accumulator injection on a LOCA at all — the old constant
+break simply never let the plant reach that stage.
+
+### Blast radius: ONE runner, which is the number worth noticing
+
+`run_meltdown`, `run_pwr`, `run_campaign`, `run_procedures`, `run_procedures_stack`, `run_ops`
+and `run_scenarios` are **all at baseline** after a change to how every primary break discharges.
+The MD-* meltdown paths defeat ECCS explicitly, so they are unaffected by the plant becoming
+recoverable *with* ECCS; everything else measures away from the break. The single mover was
+`run_behavior`, and it was CA-10 leg E — a check I wrote yesterday.
+
+### CA-10 leg E: re-authored, and it was NOT broken by the fix
+
+It compared the break's rate against the ECCS capacity (`hpi_flow_max +
+lpi_flow_max·lpi_inventory_gain`) and required anything above that ceiling to destroy the core.
+**That is a valid steady-state argument only while the break is CONSTANT** — leak > injection
+forever. With discharge tracking pressure, a break that starts above the ceiling ends below it as
+the plant blows down, so the comparison decides nothing. Re-pointed at what must still be true:
+**ECCS is the thing that saves it** — the same break with injection defeated must still destroy
+the core. That fails on any change making a LOCA unconditionally survivable, which is the
+property the old leg was really protecting.
+
+### CA-11, and the tautological check I caught in my own probe
+
+13 checks. The first draft's central check recomputed the engine's own formula and compared —
+and reported **"worst error 0.00 %"**, which is the tell: it cannot fail while the formula merely
+has the wrong CONSTANTS in it. Added the shape check instead, the TR-15 idiom (#325): solve the
+exponent from two widely separated points on the real blowdown,
+`n = ln(q₂/q₁) / ln(Δp₂/Δp₁)`. Measured **0.500**. **Injection-verified against both
+neighbours** — a constant law gives **n = 0.000** (5 checks red) and the linear SGTR form gives
+**n = 1.000** (4 red), so it separates all three laws rather than merely detecting "not constant".
+
+Leg D exists because the fix restructured the branch SGTR shares: if the two references ever got
+crossed an SGTR would taper against containment instead of secondary pressure and the single-SG
+EOP would silently stop working. It checks SGTR still solves against primary−secondary ΔP.
+
+**Still open on #334:** item 3, the break-size slider's default. It is now less wrong than it was
+— a 0.200 frac/s break is survivable with ECCS where it used to melt — but the label still reads
+"% rated flow" for what Appendix K calls an area, and the scale question is the owner's.
+
+---
+
+## Session log — 2026-08-04g (#334 — the follow-up I filed did not exist, and my diagnosis of the chatter was wrong)
+
+**Task:** picked up my own recommended "next" from #334 — build the letdown-isolation half of the
+17 % bistable, to stop the heater cutoff chattering. **Neither premise survived measurement.**
+No engine or control change was made; this entry is the correction plus the guards it prompted.
+
+### 1. The letdown isolation was already built, one layer up
+
+`layers/control/pwr_control.js` PWR_ACTUATIONS, and it has been there all along:
+
+```js
+{ instrument: 'pzr_level', direction: 'low', setpoint: 17.0,
+  action: 'set_letdown_orifices', params: { a: false, b: false }, reset_below: 20.0 },
+```
+
+Same 17 % as the heater cutoff, **latched** (`reset_below` re-arms the fire latch at 20 % and
+there is no `reset_action`, so the operator re-opens an orifice deliberately), and its comment
+already cites the *"real Westinghouse interlock"*.
+
+**How I got it wrong:** I grepped `pwr_primary.letdownFlow` — the ENGINE — for a level gate,
+found only the #332 charging-pump gate, and concluded the half was missing. An interlock that
+reads an instrument and commands a valve is an **M4 actuation** and was never going to be in the
+engine. That is the *"Know which LAYER a gate runs at"* trap in CLAUDE.md, which this repo has
+now recorded three times, applied to a search rather than to a test.
+
+**It is also covered, which I checked rather than assumed.** Deleting the actuation and running
+`run_all --fast`: `run_reachability` 66 → 65, `run_ops` 350 → 349 passed / 12 → 13 failed,
+`run_behavior` 50 → 49 with one probe FAIL. Three runners.
+
+### 2. The chatter has nothing to do with it either — it is the PROBE RIG driving the PORV
+
+Measured through the whole chattering window, **`letdown_flow_actual` is a flat 0.0000**. The
+isolation had fired and latched. A latched isolation that is already holding cannot be the thing
+whose absence causes the fall, which on its own falsifies the story I wrote.
+
+What actually happens, measured (`hot_zero_power`, LOOP at 60 s, `set_heater power_pct: 100`):
+
+| t | pzr level % | pressure | `porv_open` | heater % | inventory % |
+|---|---|---|---|---|---|
+| 2m00s | 18.60 | 2380 psi (16.41 MPa) | false | 100.0 | 97.42 |
+| 2m15s | 16.09 | 2291 psi (15.79 MPa) | **true** | 0 | 97.08 |
+| 2m30s | 18.00 | 2363 psi (16.29 MPa) | **true** | 100.0 | 97.31 |
+
+`porv_open_mpa` is **16.20**. The rig holds a **full manual 100 % heater demand indefinitely**,
+which at no load walks pressure past that setpoint; the PORV lifts, takes mass out, level falls
+through the 17 % cutoff, the heaters drop, pressure falls, the PORV reseats, charging refills and
+the heaters come back. **A correct plant answering an incorrect operator action.**
+
+**The control:** the same LOOP with no manual heater demand shows **no chatter at all** — level
+holds 38–41 %, inventory **100.00 %**, heaters 0. I had run exactly that comparison earlier in
+the session and drawn the opposite conclusion from it, because the two runs differed by the
+`set_heater` command and I attributed the difference to the merge instead of to the command.
+
+### 3. Why the two halves live in different layers, which is worth writing down
+
+Letdown isolation is a **valve command**, so it is an ordinary M4 actuation. The heater cutoff
+**cannot be**: the only command that expresses it is `set_heater`, and an actuation writing the
+operator's own demand is wiped by the next button press — the #200 defect exactly, which CA-7's
+own comment already warns about. So it is a de-energization in `autoControl` beside #329's AC
+guard. The asymmetry is deliberate and is now documented at both sites.
+
+### What changed
+
+No plant behaviour. Corrections at every site that carried the wrong claim — the
+`pwr_pressurizer.js` comment, CA-7's comment in `behavior_pwr.js`, CLAUDE.md's `run_behavior`
+entry, `CHANGELOG.md`, `BUILD_DECISIONS.md`, the 2026-08-04f entry below (struck through in
+place rather than deleted, because the *shape* of the error is the lesson) and issue #334.
+
+### The lesson, and it is one this repo already had written down
+
+I wrote a confident, sourced-sounding, plausible mechanism into six files and an issue **without
+measuring it**, on a change where I had measured everything else to three decimal places. The
+quote from WTSM 10.3 was real; the inference from it was not, and one `grep` in the right layer
+or one look at `letdown_flow_actual` would have killed it. **HR12 binds the follow-up paragraph
+as hard as the headline** — "what is still broken and why" is an assertion about plant dynamics
+like any other.
 
 ---
 
@@ -575,7 +760,7 @@ right, and depressurizing to reduce break flow is the single-SG EOP's whole stra
 asserts the claim in its own title, that the **BASE** rate survives the round trip, which it
 never did. Both new forms pass on the pre-#334 engine, so they are better tests, not refits.
 
-### Known and left: the cutoff CHATTERS, and the source says why
+### Known and left: the cutoff CHATTERS — ~~and the source says why~~ **and this diagnosis was WRONG, see 2026-08-04d below**
 
 After a LOOP the level parks at 15–18 %, straddling the setpoint, and the heaters cycle. This is
 **#288's zero-deadband shape** — but the fix is probably not a deadband, because WTSM 10.3 says
@@ -583,6 +768,14 @@ the same bistable's letdown isolation is what *"prevents further lowering of the
 level"*. Building only the heater half leaves nothing to arrest the fall. Recorded on #334 rather
 than patched with an invented deadband, since the source specifies no hysteresis and inventing
 one would be exactly what the evidence-pass rule forbids.
+
+> **CORRECTED 2026-08-04d — both halves of the paragraph above are wrong.** Kept rather than
+> deleted because the *reasoning* is the lesson: it is a confident, sourced-sounding claim that
+> was never measured, written in my own voice, which is precisely the class this repo keeps
+> filing. The letdown isolation **already existed** (M4, same 17 %, latched) and letdown reads a
+> flat **zero** through the chattering window, so it cannot have been the missing piece. The
+> chatter is the CA-7 rig's own sustained manual 100 % heater demand driving the PORV. Details
+> in the 2026-08-04d entry at the top of this file.
 
 **Also still open on #334** (reported, not built): LOCA break flow is pressure-INDEPENDENT — set
 once at injection, only SGTR is ΔP-modulated — so a dry RCS keeps "leaking" at full rate; and the

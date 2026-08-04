@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 1 (2026-08-04)  
+**Set revision:** 2 (2026-08-04)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,7 +28,8 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
-| 1 | 2026-08-04 | **Main feedwater RESTORE control documented, and the "cannot be restored" statements corrected.** `03` gains a RESTORE entry on the SG FEED card — what isolates main feed automatically, that the isolation **seals in** and is refused while its signal stands, and that after a trip the blocker is the trip latch itself, so the sequence is confirm trip → reset RPS → restore. Carries the measured warning that restoring into a recovering generator with feed demand still up drives level 36.6 % → 77 % in about two minutes and re-isolates at the 90 % high level. `05` PWR-T06 step 4 corrected: it stated main feedwater "cannot be restored from the board", which stopped being true when the control shipped. | Claude |
+| 2 | 2026-08-04 | **Main feedwater RESTORE control documented, and the "cannot be restored" statements corrected.** `03` gains a RESTORE entry on the SG FEED card — what isolates main feed automatically, that the isolation **seals in** and is refused while its signal stands, and that after a trip the blocker is the trip latch itself, so the sequence is confirm trip → reset RPS → restore. Carries the measured warning that restoring into a recovering generator with feed demand still up drives level 36.6 % → 77 % in about two minutes and re-isolates at the 90 % high level. `05` PWR-T06 step 4 corrected: it stated main feedwater "cannot be restored from the board", which stopped being true when the control shipped. | Claude |
+| 1 | 2026-08-04 | **A break now weakens as the plant depressurizes** (#334). **12 §12.4b** is a new declared simplification, and it replaces something worse than a simplification: until now a LOCA discharged at a **constant rate**, fixed when the break opened and unchanged whether the reactor coolant system was at 2235 psi (15.41 MPa) or at atmospheric — so depressurizing did nothing to a break, and a vessel already empty went on discharging at full rate. 10 CFR 50 Appendix K I.C.1.b requires the discharge rate to be a critical-flow function of the upstream fluid, applied as *"a discharge coefficient applied to the postulated break area"* — a break is an **area**, not a flow. Break flow now follows the orifice law, ∝ **√Δp** to containment, the same form this manual's letdown orifices use. **§12.4b states which way it errs**: √Δp falls off faster than Moody's model does once the discharge flashes, so a real break stays stronger for longer than this one. The operational lesson is the shape, and the shape is now right — closing the pressure difference reduces break flow, which is why that is the response to a tube rupture, and an RCS at containment pressure has stopped discharging. | #334 break discharge |
 | 0 | 2026-08-04 | **Initial Alpha release.** The PWR operator manual set as issued for the first public Alpha. Revision counting starts here: this is the baseline the set ships at, not a change against anything a player has seen. Pre-release development history — every revision of every chapter — is in `git log` for `Manuals/`, not in this table. | Initial Alpha release |
 
 ## Source documents (authoritative for content)
@@ -56,7 +57,7 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 1 (2026-08-04). A mismatch means a chapter changed with no
+     Sealed at Rev 2 (2026-08-04). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
@@ -69,6 +70,6 @@
      09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md bf6cd0d8bda845a9
+     12_SIM_PHYSICS.md b3baab836d7705bc
      README.md 9a103035dfb47eca
 -->

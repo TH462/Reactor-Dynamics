@@ -98,6 +98,7 @@
     'CA-8': 'probe (the AC-load roster — CVCS + ECCS die in SBO, AFW + accumulators survive; WTSM 4.1 + 5.7)',
     'CA-9': 'probe (loss of CVCS make-up — the pzr level cue and the letdown isolation; #330)',
     'CA-10': 'probe (the 17 % low-level heater cutoff — WTSM 10.3 §10.3.4.1; #334)',
+    'CA-11': 'probe (break discharge follows RCS pressure — 10 CFR 50 App K I.C.1.b; #334)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -1812,11 +1813,22 @@
         // …and when they DO stop later in this same run, say which interlock did it — the
         // two are separately sourced and must not be allowed to blur into each other.
         // Sampled ACROSS the window, not at an instant, because the level parks ON the
-        // setpoint and the cutoff chatters. That chatter is a KNOWN #334 follow-up rather
-        // than noise: the same WTSM 10.3 bistable also isolates letdown, and the source
-        // says that is precisely what "prevents further lowering of the pressurizer
-        // level" — with only the heater half built, nothing arrests the fall, so the
-        // plant sits on the boundary. Same zero-deadband shape as #288's RHR valve.
+        // setpoint and the cutoff chatters in THIS RIG.
+        //
+        // WHAT THAT CHATTER IS, corrected 2026-08-04d. The #334 write-up first blamed a
+        // missing letdown-isolation half of the same bistable. Both halves of that were
+        // wrong. The isolation EXISTS (pwr_control.js, `pzr_level` low 17.0 ->
+        // set_letdown_orifices, latched at reset_below 20.0) and measured, letdown reads
+        // a flat ZERO through this whole window — it fired and latched, so it could not
+        // have been what was missing. The real driver is THIS PROBE'S OWN RIG: it holds a
+        // full MANUAL 100 % heater demand indefinitely, which at no load walks pressure
+        // past the 16.20 MPa PORV setpoint. Measured, porv_open goes true at 16.29 MPa;
+        // the PORV takes mass out, level falls through the cutoff, the heaters drop,
+        // pressure falls, the PORV reseats, charging refills and the heaters come back.
+        // That is a correct plant answering an incorrect operator action, not a defect —
+        // and without the manual demand a LOOP shows no chatter at all (level holds
+        // 38-41 %, inventory 100.00 %). Left as-is deliberately: the rig has to hold the
+        // demand to prove the AC point, and the cycling is what the plant should do.
         var lacAlive = true, lcutSeen = false;
         h3.run(330, function (hh) {
           if (hh.ts().ac_available === false) lacAlive = false;
@@ -2196,28 +2208,179 @@
           fmt(dFrac * 100, 1) + ' % of the low-level samples kept full heater power (' + dFooledN + '/' + dLow + ')',
           dFrac > 0.5, '> 50 %');
 
-        // ---- leg E: monotonicity. Computed from the ECCS capacity, not transcribed, so a
-        // retune of the injection curve moves the expectation with the plant.
+        // ---- leg E: the fix is not a blanket rescue.
+        //
+        // RE-AUTHORED for #334 item 2, and the reason is that its old criterion stopped
+        // being true of the plant. It used to compare the break's rate against the ECCS
+        // capacity — `hpi_flow_max + lpi_flow_max·lpi_inventory_gain` — and require
+        // anything above that ceiling to destroy the core. That is a valid STEADY-STATE
+        // argument only while break flow is CONSTANT, which it was: leak > injection
+        // forever, so the core could never be recovered. Now that discharge follows the
+        // upstream pressure (10 CFR 50 App K I.C.1.b), a break that starts above the
+        // ceiling ends below it as the RCS blows down, and the comparison decides nothing.
+        // Measured: at severity 1.0, the largest break there is, the core uncovers fully
+        // at 90 s and is then refilled by the accumulators and ECCS with peak clad at
+        // 773.9 °C — the design-basis success path, which is what ECCS is FOR.
+        //
+        // So the guard is re-pointed at what must still be true: ECCS is the thing that
+        // saves it. Defeat the injection and the same break must still destroy the core.
+        // That fails on any change which makes a LOCA unconditionally survivable, which is
+        // the property the old leg was really protecting.
         var em = RD.PWR_CONFIG.emergency;
-        var ceiling = em.hpi_flow_max + em.lpi_flow_max * em.lpi_inventory_gain;   // 0.160 frac/s
-        var sevMax = 50 / 100;                                                     // large_loca meta.max/100
-        var survivable = (ceiling / sevMax) * 0.85;                                // comfortably inside
-        var unrecoverable = (ceiling / sevMax) * 1.10;                             // comfortably outside
-        function outcome(sev, secs) {
+        var ceiling = em.hpi_flow_max + em.lpi_flow_max * em.lpi_inventory_gain;
+        var sevMax = 50 / 100;                                        // large_loca meta.max/100
+        var survivable = (ceiling / sevMax) * 0.85;
+        function outcome(sev, secs, killEccs) {
           var h = H('hot_full_power');
           h.run(60);
+          if (killEccs) {
+            h.cmd('set_eccs_armed', { armed: false });
+            h.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
+            h.cmd('set_hpi', { active: false });
+          }
           h.cmd('inject_failure', { failure_id: 'large_loca', severity: sev });
           h.run(secs);
           return h.ts();
         }
-        var eIn = outcome(survivable, 2100);
-        ck('a break INSIDE the ECCS capacity is survivable (sev ' + fmt(survivable, 3) + ')',
+        var eIn = outcome(survivable, 2100, false);
+        ck('a break inside the ECCS capacity is survivable WITH injection (sev ' + fmt(survivable, 3) + ')',
           fmt(eIn.core_inventory_pct, 1) + ' %, damaged ' + String(eIn.fuel_damaged),
           eIn.fuel_damaged === false && eIn.core_inventory_pct > 50, 'intact');
-        var eOut = outcome(unrecoverable, 2100);
-        ck('a break OUTSIDE it is not — the fix did not make everything survivable (sev ' + fmt(unrecoverable, 3) + ')',
+        var eOut = outcome(survivable, 2100, true);
+        ck('…and the SAME break destroys the core with ECCS defeated — injection is what saves it',
           fmt(eOut.core_inventory_pct, 1) + ' %, damaged ' + String(eOut.fuel_damaged),
           eOut.fuel_damaged === true, 'damaged');
+      });
+    },
+
+    /* CA-11 (#334 item 2) — A BREAK IS A HOLE, NOT A PUMP.
+     *
+     * `leak_flow` for a LOCA was set ONCE when the failure was injected and never varied,
+     * so the same break discharged identically at 2235 psi and at 14.5 psi, and an RCS
+     * clipped at zero mass went on "leaking" at full rate indefinitely. Only the SGTR path
+     * was ΔP-modulated; `stepInventory`'s own comment said "containment-side leaks stay
+     * static", which is the defect written down in the source.
+     *
+     * SOURCED: 10 CFR 50 Appendix K I.C.1.b "Discharge Model" — the discharge rate is a
+     * critical-flow function of the upstream state, with "a discharge coefficient applied
+     * to the postulated break AREA". A break is an area, not a flow.
+     *
+     * WHAT THIS PROBE IS FOR. Legs A–C pin the LAW, computed from config rather than
+     * transcribed, so a re-reference of `break_p_ref_mpa` moves the expectation with the
+     * plant. Leg D exists because the fix restructured the branch that SGTR also runs
+     * through, and leg E is the consequence worth teaching: with the break decaying as the
+     * plant blows down, a large-break LOCA becomes the design-basis event it should be —
+     * uncover, accumulator injection, reflood — instead of an unrecoverable drain.
+     */
+    'CA-11': function () {
+      return test('CA-11 break discharge follows RCS pressure — a break is a hole, not a pump (#334)', function (ck) {
+        var pri = RD.PWR_CONFIG.primary;
+        var pRef = pri.break_p_ref_mpa, pBack = pri.break_backpressure_mpa;
+        ck('the discharge reference is the operating point, not a fitted number',
+          pRef + ' MPa ref, ' + pBack + ' MPa backpressure',
+          Math.abs(pRef - 15.41) < 0.01 && pBack > 0 && pBack < 0.5, '15.41 / ~0.1');
+
+        // ---- leg A: CALIBRATION IS PRESERVED AT NOMINAL. This is what lets every severity
+        // keep the tuning it was arbitrated with — at rated pressure the factor is exactly
+        // 1, so the configured size still means its old rate and only the depressurized
+        // end of the curve is new. If this drifts, every pre-#334 LOCA number is stale.
+        var SEV = 0.20, RATED = SEV * 0.5;                       // severity · (meta.max/100)
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV });
+        a.run(2);                                                 // before the RCS has moved
+        var ta = a.ts();
+        ck('at nominal pressure the break flows its RATED size (old calibration intact)',
+          fmt(ta.leak_flow, 4) + ' vs ' + fmt(RATED, 4) + ' rated, at ' + fmt(ta.pressure_mpa, 2) + ' MPa',
+          Math.abs(ta.leak_flow - RATED) / RATED < 0.06, 'within 6 %');
+
+        // ---- leg B: THE LAW. Sample the same break across the blowdown and check every
+        // sample against √((P−Pb)/(Pref−Pb)) recomputed from that sample's own pressure.
+        // This is the whole assertion of item 2 and it is checked pointwise, not at ends.
+        var worst = 0, worstAt = 0, n = 0, hi = null, lo = null;
+        a.run(240, function (hh) {
+          var t = hh.ts();
+          if (t.pressure_mpa > pBack + 0.05) {
+            var want = RATED * Math.sqrt(Math.max(0, (t.pressure_mpa - pBack) / (pRef - pBack)));
+            var err = Math.abs(t.leak_flow - want) / Math.max(want, 1e-6);
+            n++;
+            if (err > worst) { worst = err; worstAt = t.pressure_mpa; }
+            // Two widely separated operating points for the EXPONENT check below.
+            if (t.pressure_mpa > 10 && t.leak_flow > 0) hi = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
+            if (t.pressure_mpa < 3 && t.leak_flow > 0 && lo === null) lo = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
+          }
+        });
+        ck('the blowdown was actually sampled (or leg B proves nothing)',
+          n + ' samples', n > 200, '> 200');
+        ck('break flow tracks √Δp against the RCS pressure at every sample',
+          'worst error ' + fmt(worst * 100, 2) + ' % at ' + fmt(worstAt, 2) + ' MPa',
+          worst < 0.02, '< 2 %');
+        // THE SHAPE, MEASURED — because the check above recomputes the engine's own formula
+        // and so cannot fail while the formula merely has the wrong CONSTANTS in it. This
+        // one takes two widely separated points off the real blowdown and solves for the
+        // exponent: n = ln(q2/q1) / ln(Δp2/Δp1). A constant break gives n = 0, a linear one
+        // n = 1, an orifice n = 0.5. Same idiom as TR-15's cube root (#325), and it is what
+        // reddens if someone "simplifies" the law back to either neighbour.
+        ck('the blowdown spanned both ends (needed to solve for the exponent)',
+          hi && lo ? fmt(hi.dp, 2) + ' → ' + fmt(lo.dp, 2) + ' MPa' : 'MISSING',
+          !!(hi && lo), 'a high and a low sample');
+        if (hi && lo) {
+          var nExp = Math.log(lo.q / hi.q) / Math.log(lo.dp / hi.dp);
+          ck('the measured exponent is the ORIFICE one — not constant (0) and not linear (1)',
+            'n = ' + fmt(nExp, 3), Math.abs(nExp - 0.5) < 0.05, '0.5 ± 0.05');
+        }
+
+        // ---- leg C: a depressurized RCS STOPS discharging. The pre-#334 engine kept
+        // flowing at the full rated rate here — including with the vessel already empty,
+        // which is the piece of #334 that read wrong on the board.
+        var tc = a.ts();
+        ck('the RCS really did depressurize (leg C needs the low end)',
+          fmt(tc.pressure_mpa, 2) + ' MPa', tc.pressure_mpa < 2.0, '< 2 MPa');
+        ck('a depressurized break flows a small fraction of its rated size',
+          fmt(tc.leak_flow, 4) + ' vs ' + fmt(RATED, 4) + ' rated',
+          tc.leak_flow < RATED * 0.55, '< 55 % of rated');
+
+        // ---- leg D: SGTR IS UNTOUCHED. The fix restructured the branch SGTR runs through,
+        // and its law references SECONDARY pressure, not containment — so if the two ever
+        // got crossed, an SGTR would taper against the wrong reference and the single-SG
+        // EOP would stop working. Cheapest possible guard on that.
+        var d = H('hot_full_power');
+        d.run(30);
+        d.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.5 });
+        d.run(30);
+        var td = d.ts();
+        var dpRef = pri.sgtr_dp_ref || 9.8;
+        var wantSg = (d.eng.s._leak_base || 0) *
+          Math.max(0, Math.min(1.2, (td.pressure_mpa - td.steam_pressure_mpa) / dpRef));
+        ck('SGTR still scales on PRIMARY−SECONDARY ΔP, not on containment',
+          fmt(td.leak_flow, 5) + ' vs ' + fmt(wantSg, 5) + ' expected (ΔP ' +
+          fmt(td.pressure_mpa - td.steam_pressure_mpa, 2) + ' MPa)',
+          wantSg > 0 && Math.abs(td.leak_flow - wantSg) / wantSg < 0.02, 'within 2 %');
+
+        // ---- leg E: the consequence. A full-size break is now the DESIGN-BASIS event —
+        // it uncovers the core, the accumulators dump, and the core refloods. Before the
+        // fix the same break drained to zero and melted, which is why nothing in this suite
+        // had ever exercised accumulator injection on a LOCA at all.
+        var e = H('hot_full_power');
+        e.run(60);
+        e.cmd('inject_failure', { failure_id: 'large_loca', severity: 1.0 });
+        var sawUncover = false, minAccum = 200;
+        e.run(600, function (hh) {
+          var t = hh.ts();
+          if (t.core_uncovered_frac >= 0.99) sawUncover = true;
+          if (t.accumulator_volume_pct < minAccum) minAccum = t.accumulator_volume_pct;
+        });
+        var te = e.ts();
+        ck('the core really does uncover first — this is not immunity',
+          sawUncover ? 'fully uncovered' : 'never uncovered', sawUncover === true, 'uncovered');
+        ck('the ACCUMULATORS discharge — the passive stage nothing here used to reach',
+          fmt(minAccum, 1) + ' % remaining', minAccum < 50, '< 50 %');
+        ck('and the core refloods and is not damaged',
+          fmt(te.core_inventory_pct, 1) + ' %, damaged ' + String(te.fuel_damaged),
+          te.fuel_damaged === false && te.core_inventory_pct > 90, 'intact');
+        ck('peak cladding stays below the damage threshold through the transient',
+          fmt(e.range('clad_temp_c').max, 0) + ' °C',
+          e.range('clad_temp_c').max < RD.PWR_CONFIG.thermal.fuel_damage_c, '< 1200 °C');
       });
     },
 

@@ -159,7 +159,19 @@ var BASELINES = {
   // TR-13b's `leak > 0.01` was a magnitude fixture measured on a plant whose heaters ran
   // with the pressurizer empty; it now asserts the claim in its own title (the ΔP-scaled
   // BASE survives the round trip), which it never did, and passes on the old engine too.
-  'run_behavior.js':       { code: 0, secs: 56, score: '50pass 0xfail' },
+  // 50 -> 51 (2026-08-04e, #334 item 2): CA-11, break discharge follows RCS pressure.
+  // A LOCA used to flow at a CONSTANT rate set when the break opened, so the same break
+  // discharged identically at 2235 psi and at 14.5 psi and an empty vessel went on
+  // "leaking" at full rate. 10 CFR 50 App K I.C.1.b requires a critical-flow function of
+  // the upstream state with "a discharge coefficient applied to the postulated break
+  // AREA". Now the orifice law, flow ~ sqrt(dp) to containment.
+  // CA-10 leg E was RE-AUTHORED in the same change and was not broken by it: it compared
+  // the break rate against the ECCS capacity and required anything above that ceiling to
+  // destroy the core — a valid STEADY-STATE argument only while the break was constant.
+  // With discharge tracking pressure, a break that starts above the ceiling ends below
+  // it, so the comparison decides nothing; the guard is re-pointed at ECCS being what
+  // saves the core (same break, injection defeated, must still destroy it).
+  'run_behavior.js':       { code: 0, secs: 56, score: '51pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

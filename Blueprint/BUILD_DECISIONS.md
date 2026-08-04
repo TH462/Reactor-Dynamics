@@ -140,6 +140,66 @@ is a date cutoff — labels dated 2026-08-05 or later must be lane-form.
 **Gate:** `test/run_session_labels.js`, NEW, **8 checks** (4 structural per file), `run_all` 37 → 38.
 Baselined on the count rather than on failures because the checks are structural and the file list
 fixed — the count moves only when a check is added, not when a session is appended.
+## 2026-08-04h — #334 item 2: a break is an AREA, and that is the whole decision
+
+### The change
+
+`pwr_primary.stepInventory`'s leak branch: a LOCA's discharge now follows √Δp against
+containment instead of holding the constant it was given when the break opened. Two config
+constants (`break_p_ref_mpa`, `break_backpressure_mpa`), new probe **CA-11**, CA-10 leg E
+re-authored, `run_behavior` **50 → 51**, `Manuals/12` §12.4b, manual set **Rev 1**.
+
+### The decision: the source redefines what the severity slider IS
+
+10 CFR 50 Appendix K I.C.1.b requires *"a discharge coefficient applied to the postulated break
+**area**"*. That is not a detail about the flow law — it says a break is an **area**, and the
+flow is an *output* of the area and the upstream state. This plant stored severity as a flow
+(`severity × meta.max/100`, labelled "% rated flow") and used it directly, which is why the idea
+of a break that responds to pressure never came up: a flow you assign has nothing to respond
+with.
+
+Reframing it as an area with a pressure-driven discharge is what makes every downstream
+behaviour fall out — the break weakens as you depressurize, an RCS at containment pressure has
+stopped discharging, and closing the ΔP is a real operator action rather than a ritual.
+
+### Why √Δp and not Moody, stated as a departure rather than absorbed
+
+Moody's critical mass flux is a function of stagnation pressure **and enthalpy**. This plant has
+one lumped primary node and tracks no steam quality at the break, so Moody has nothing to be
+evaluated against here — implementing it would mean inventing the quality it needs, which is a
+fitted number wearing a citation. √Δp is the incompressible orifice law, it is **already the form
+`letdownFlow` uses** for orifice discharge out of the same RCS, and it is derivable rather than
+fitted. Declared at `Manuals/12` §12.4b with the direction of the error stated: √Δp falls off
+**faster** than Moody once the discharge flashes, so a real break stays stronger for longer.
+
+### The reference point is what kept the blast radius at one runner
+
+`break_p_ref_mpa` = 15.41 makes the pressure factor exactly **1 at the operating point**, so every
+break size still means its old rate at nominal conditions and only the depressurized end of the
+curve is new. After a change to how every primary break discharges, `run_meltdown`, `run_pwr`,
+`run_campaign`, `run_procedures`, `run_ops` and `run_scenarios` were all at baseline. Choosing a
+reference that preserves the existing calibration is the difference between a physics fix and a
+retune of everything downstream of it.
+
+### CA-10 leg E was re-authored, and the distinction matters
+
+Its old criterion — break rate above the ECCS capacity ⇒ core destroyed — is a **steady-state**
+argument, valid only while the break is constant. Once discharge tracks pressure, a break that
+starts above the ceiling ends below it, and the comparison decides nothing. It was not *broken by*
+the fix; its premise stopped being a property of the plant. Re-pointed at what must remain true:
+**ECCS is what saves the core** — same break, injection defeated, must still destroy it. That is
+the property the old leg was actually protecting, expressed in a way the new physics cannot
+trivially satisfy.
+
+### The probe trap: a check that recomputes the implementation cannot fail
+
+CA-11's first central check re-derived the engine's own formula and compared against it. It
+reported **"worst error 0.00 %"** — which is the tell. It pins the *reference constants* but is
+blind to the *shape*, so it would have survived any change that kept the form and moved the
+exponent. Replaced with the #325/TR-15 idiom: solve `n = ln(q₂/q₁)/ln(Δp₂/Δp₁)` from two widely
+separated points on a real blowdown. Measured **0.500**; injection gives **0.000** for a constant
+law and **1.000** for the linear SGTR form. **Whenever a probe checks a law, check the exponent,
+not the arithmetic** — the arithmetic is the implementation talking to itself.
 
 ---
 
@@ -201,16 +261,35 @@ non-monotonic in break size** — 5 % destroyed the core, 10 % and 15 % were sur
 ### The decision worth recording: build the sourced HALF, do not invent the rest
 
 WTSM 10.3 §10.3.4.1's bistable does **three** things at 17 %: alarm, letdown isolation, heater
-cutoff. This plant now has the alarm (already at WTSM's own 25 % and a 12 % lolo) and the heater
-cutoff. The **letdown isolation is deliberately not built here** — it changes inventory control
-in a regime every gate visits, and it is a separate decision.
+cutoff. This plant has all three — the alarm at WTSM's own 25 % plus a 12 % lolo, the letdown
+isolation as an M4 actuation, and the heater cutoff added here.
 
-That leaves a known artifact: after a loss of offsite power the level parks at 15–18 %,
-straddling the setpoint, and the cutoff chatters — **#288's zero-deadband shape**. The tempting
-fix is a deadband. It was refused, because the source specifies no hysteresis and **says the
-letdown half is what "prevents further lowering of the pressurizer level"**. So the chatter is
-evidence that half an interlock is built, not evidence that the built half needs a fudge factor;
-inventing a deadband would bury the real finding under a fitted number. Recorded on #334.
+> **CORRECTED 2026-08-04d.** This section originally said *"the letdown isolation is deliberately
+> not built here"* and blamed a chatter artifact on its absence. **Both were wrong.** The
+> isolation was already in `pwr_control.js` PWR_ACTUATIONS at the same 17.0 setpoint, latched at
+> `reset_below: 20.0` — missed because I grepped `pwr_primary.letdownFlow`, the ENGINE, for a
+> level gate. An interlock that reads an instrument and commands a valve is an M4 actuation; the
+> *"know which LAYER a gate runs at"* trap, applied to a search instead of a test. Deleting it
+> reddens `run_reachability`, `run_ops` and `run_behavior`, so it is covered as well as built.
+>
+> **The chatter was not caused by it either.** Measured, `letdown_flow_actual` is a flat zero
+> through the whole window — the isolation had fired and latched, so its absence cannot be the
+> mechanism. The real driver is CA-7's own rig holding a **manual 100 % heater demand**
+> indefinitely, which at no load walks pressure past the 16.20 MPa PORV setpoint; the valve
+> cycles, takes mass out, level falls through the cutoff, and the loop repeats. A correct plant
+> answering an incorrect operator action. Without that demand a LOOP shows no chatter at all
+> (level 38–41 %, inventory 100.00 %). Full correction in `TUNING_LOG` 2026-08-04g.
+
+**The two halves live in different layers, and that is deliberate.** Letdown isolation is a valve
+command, so it is an ordinary M4 actuation. The heater cutoff cannot be: the only command that
+expresses it is `set_heater`, and an actuation writing the operator's own demand is wiped by the
+next button press — the #200 defect, which CA-7's comment already warns about. So it is a
+de-energization in `autoControl` beside #329's AC guard, which is the house idiom for removing
+power from a load without touching what the operator asked for.
+
+**A deadband was still refused**, and that part stands: the source specifies no hysteresis, and
+now that the chatter is understood as correct PORV cycling under a bad demand, there is nothing
+for a deadband to fix.
 
 ### The boundary is now DERIVED, which is the test that it is right
 

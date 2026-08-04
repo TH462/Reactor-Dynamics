@@ -132,9 +132,23 @@
     // is LIVE, so the heaters come back when level recovers. On the real plant the
     // operator resets. One operator action, not a different behaviour.
     //
-    // NOT the whole bistable: the LETDOWN-isolation half of this same 17 % interlock is
-    // still missing (filed as its own item on #334). Only the heater half is built here,
-    // and it is deliberately not called "the low-level interlock" anywhere.
+    // THE OTHER HALF OF THIS BISTABLE ALREADY EXISTED, ONE LAYER UP — corrected 2026-08-04d.
+    // The #334 write-up first claimed the letdown-isolation half was missing. It is not:
+    // `pwr_control.js` PWR_ACTUATIONS carries `pzr_level` low at the same 17.0 setpoint
+    // firing `set_letdown_orifices {a:false, b:false}`, LATCHED with `reset_below: 20.0`.
+    // The claim came from grepping `pwr_primary.letdownFlow` — the ENGINE — and finding no
+    // level gate there, which is the "know which LAYER a gate runs at" trap: an interlock
+    // that reads an instrument and commands a valve is an M4 actuation and was never going
+    // to be in the engine. Injection-verified afterwards: deleting that actuation reddens
+    // run_reachability (66→65), run_ops and run_behavior, so it is covered as well as built.
+    //
+    // The two halves therefore live in DIFFERENT LAYERS, deliberately. Letdown isolation
+    // is a valve command, so it is an M4 actuation like every other. The heater cutoff
+    // CANNOT be, because the only command that would express it is `set_heater`, and an
+    // actuation writing the operator's own demand is undone by the next button press —
+    // the #200 defect exactly. So it is a de-energization here, the same shape as #329's
+    // AC guard eleven lines up, which is the house idiom for taking power away from a
+    // load without touching what the operator asked for.
     //
     // Physical de-energization, not a written demand — the #200/#329 rule. The selector
     // and the operator's % stay where they were put; what goes to zero is delivered power.
