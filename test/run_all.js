@@ -1137,11 +1137,21 @@ async function main() {
   // `cores - 1`, capped at 10, floored at 2. The floor is what matters and it is MEASURED:
   // the first version was `cores - 2`, which is right on a workstation and wrong on CI —
   // GitHub's standard runner has FOUR cores, so it ran 2-way and the gate took 7m14s. Total
-  // work is ~850 s there, so the pool width is the whole story on that machine. `cores - 1`
-  // gives 3 and should take it to ~4.7 min; it changes nothing locally, where min(10, 11) is
-  // still 10. Leaving one core rather than two is safe because the runners are ordinary Node
-  // processes, not latency-sensitive work — the only cost of being slightly greedy is that
-  // per-runner times inflate further, and those are already contention times, not costs.
+  // work is ~850 s there, so the pool width is most of the story on that machine. `cores - 1`
+  // gives 3; it changes nothing locally, where min(10, 11) is still 10.
+  //
+  // MEASURED AFTERWARDS, and the prediction was OPTIMISTIC — record both, because the gap is
+  // the useful part. Expected ~4.7 min; actual 7m14s -> 6m37s, a 37 s gain, not the ~2 min the
+  // arithmetic implied. The arithmetic assumed the longest runner keeps its time while the
+  // pool widens, and it does not: verify_manual_follow went 171.9 s -> 206.5 s under the third
+  // worker. On a machine where ONE runner is the critical path, adding workers slows that
+  // runner and gives back much of what it wins. Still a real improvement and still fixes the
+  // 2-core degenerate case, so it stays — but do not widen further chasing the model. A fourth
+  // worker on four cores would very likely be NEGATIVE.
+  //
+  // Leaving one core rather than two is safe because the runners are ordinary Node processes,
+  // not latency-sensitive work — the only cost of being slightly greedy is that per-runner
+  // times inflate further, and those are already contention times, not costs.
   var jobsArg2 = jobsArg ? parseInt(jobsArg.split('=')[1], 10) : 0;
   var JOBS = jobsArg2 ? Math.max(1, jobsArg2)
                       : Math.max(2, Math.min(10, require('os').cpus().length - 1));
