@@ -800,30 +800,46 @@ directions — and the magnitude is throttled by `K_heater` until that is ruled 
    both suites, with `K_heater` "weak" (7/241 and 14/440 observed values moved). A constant this
    load-bearing being that loosely pinned is itself the finding.
 
-### THE UNRESOLVED HALF — a relief valve's pressure authority is now carried TWICE
+### F15 — RULED AND DONE: relief is out of the surge, and the gains are re-solved 300 → 600
 
-`K_surge_level · level_per_mass` = **310**. `K_porv_relief` and `K_safety_relief` are **300**. So
-routing relief flow through the surge as well **doubles a relief valve's authority** — near enough
-exactly, which is itself the tell that those two constants were always this same coupling, fitted
-per path. It is not small: the **TMI-2 flagship blows the RCS down to 69 psi (0.48 MPa) by 681 s**
-where the canon trajectory recovers.
+*(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*
 
-**All four combinations were measured and none is clean:**
+**The gate is `saturated ? 0`, and that is the finding.** The surge term is suppressed once the
+loop voids (pressure is pinned to Psat(Tavg), so the subcooled-liquid terms must not act). Routing
+relief through it therefore made a relief valve **double-strength while subcooled and
+half-strength once voided** — and voided is exactly the regime the meltdown paths, the TMI
+flagship and TR-15 live in. A valve vents steam regardless of what the bulk coolant is doing, so it
+must not inherit that gate. That is a better argument for the exclusion than the arithmetic was.
 
-| relief in the surge | `K_porv_relief` | result |
-|---|---|---|
-| **yes** | **300** | **SHIPPED.** Content red only: `run_procedures`/`_stack` ×1, `run_campaign` 48/51. TMI-2 reaches `b14_ident`. |
-| yes | 0 (total 310 ≈ the calibrated 300) | stalls TMI-2 **earlier**, at `b7_confusion` |
-| no | 300 | `run_meltdown` **12 → 11**, `run_scenarios` **3/3 → 1/3**, `run_campaign` **41/51** |
-| no | 0 / 150 | plant barely depressurises — 2205 psi, no damage; stalls at `b7_confusion` |
+**The sourced criterion did NOT solve it, and saying so is the point.** WTSM 3.2 (ML11223A213
+p. 3.2-11) — *"The PORVs are designed to limit the pressure in the pressurizer to a value below the
+high pressure reactor trip setpoint for design transients up to and including a 50-percent step
+load decrease with full steam dump actuation"* — is **satisfied at every value from 300 to 1200**:
+measured on a full load rejection, peak pressure is 2364–2372 psi against a 2384 psi trip, because
+the PORV setpoint and the trip are only 0.24 MPa apart and spray covers the gap. It is a necessary
+condition this plant already meets, not a solve. **A first-principles derivation does not close
+either**: venting `porv_flow_max` 0.0035 frac/s as saturated steam would empty a 560 ft³ bubble in
+under two seconds (1554 lbm/s against a real PORV's 58 lbm/s), so the flow constant and the gain
+are a matched *fitted* pair — deriving one requires re-deriving the other, and `porv_flow_max` is
+tuned for the TMI flagship's pacing.
 
-The obvious correction is to take relief *out* of the surge, on the sound argument that the PORV
-and the code safeties discharge from the pressurizer **STEAM SPACE**, so that mass never crosses
-the surge line — which is exactly what `pwr_config`'s own `K_porv_relief` comment has said for as
-long as those constants have existed. **Built, measured, and it is WORSE**: it reddens PHYSICS
-acceptance (`run_meltdown`, `run_scenarios`) where including it only reddens authored CONTENT, and
-**HR9 ranks those the other way round**. So what ships is the variant that keeps the physics suites
-green. The double count is real and stays open on #337.
+**So it was solved against behaviour, and the window is real:** `run_meltdown` and `run_scenarios`
+are **both red at 300, 400 and 450** and both green at 500 and 600. 600 is the value that
+reproduces the total authority the plant was calibrated with (300 direct + 310 surge), so it is the
+principled point inside the measured window rather than the first one that passed.
+
+**Known cost, left red deliberately: `run_behavior` TR-15 leg E.** *"With the heat sink gone the
+plant is still lost — circulation is not cooling"* now fails at **every** gain tested — Tavg 482 /
+455 / 448 / 447 °F at 400 / 450 / 500 / 600, monotone, core undamaged. With relief no longer losing
+authority in saturation, the plant rides out a lost heat sink on relief bleed. That is a **plant**
+question, not a tuning one, and it lands with the TMI-2 re-author.
+
+### The double count, for the record
+
+`K_surge_level · level_per_mass` = **310**; the two relief gains were **300**. That near-equality is
+the tell that those constants were always this same mass→pressure coupling, fitted per path before a
+general law existed. Measured with the double count live, the TMI-2 flagship blew the RCS down to
+**69 psi (0.48 MPa)** by 681 s.
 
 **Lesson, and it cost most of the session:** before adding a general law, grep for the per-path
 constants that were standing in for it. Three existed here — `K_porv_relief`, `K_safety_relief`,
