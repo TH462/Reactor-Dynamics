@@ -2,8 +2,14 @@
 
 **Read this instead of `CLAUDE.md`.** An audit session runs with the repo's `CLAUDE.md` and the
 auto-memory directory **excluded from loading** (`.claude/settings.audit.json`), because both are
-dense with conclusions about the very subsystems under audit — which is the priming problem
-`Blueprint/audit_programme` / GitHub #221 RoE 1 describes and admits the harness otherwise defeats.
+dense with conclusions about the very subsystems under audit — the priming problem **GitHub #221**
+RoE 1 describes. The audit programme, its rules of engagement and the per-slice tracking issues live
+in **GitHub #221 and #295–#301**; there is no Blueprint document for it.
+
+**If you cannot see this file's launch instructions, you are in the wrong session.** Start with
+`claude --settings .claude/settings.audit.json`, and on your first turn confirm you cannot see
+`CLAUDE.md`'s *Recent themes* section or a memory index — **a glob that failed to match looks
+exactly like a clean audit.**
 
 This file is the **operating half** of that document with the **diagnosis removed**: how the repo is
 wired, how to run it, how to measure it, and which rules bind you. It deliberately contains **no
