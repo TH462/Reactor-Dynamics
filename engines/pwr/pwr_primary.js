@@ -280,8 +280,37 @@
     var g_cvcs = rc.cvcs_inventory_gain != null ? rc.cvcs_inventory_gain : 1.0;
     var dm = (charging * g_cvcs + inj_inv + accum_inv)
            - (s.letdown_flow * g_cvcs + s.porv_flow + s.safety_flow + s.leak_flow);
+    var m_before = s._mass;
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;
+    // The PRESSURIZER SURGE driver (#337). Inventory leaving a subcooled RCS comes out of
+    // the pressurizer — it is the only place there is a free surface — so the bubble grows
+    // and pressure falls, exactly as a cooldown contraction does. pwr_pressurizer.stepPressure
+    // (step 7) reads this ONE STEP LATE, the CONTEXT §11 explicit coupling, same as
+    // stepCoolant reads `_eccs_inj_inv`. Taken as the REALISED change (post-clip, / dt) rather
+    // than the raw balance, so a plant pinned at mass_max — an ECCS overfill holding 120 % —
+    // reports zero surge instead of a phantom insurge it has nowhere to put.
+    //
+    // RELIEF IS INCLUDED, AND THAT IS AN OPEN CALIBRATION QUESTION — read this before "fixing" it.
+    // `K_surge_level · level_per_mass` = 310 and `K_porv_relief`/`K_safety_relief` are 300, so
+    // a relief valve's pressure authority is now carried TWICE, near enough exactly — which is
+    // itself the tell that those two constants were always this same coupling, fitted per path.
+    //
+    // The obvious correction is to take relief out of the surge, on the sound argument that the
+    // PORV and the code safeties discharge from the pressurizer STEAM SPACE, so that mass never
+    // crosses the surge line (which is exactly what the `K_porv_relief` comment in pwr_config has
+    // always said). IT WAS BUILT AND MEASURED AND IT IS WORSE: excluding relief reddens
+    // `run_meltdown` (12 → 11) and `run_scenarios` (3/3 → 1/3), i.e. it breaks PHYSICS acceptance
+    // where including it only breaks authored CONTENT, and HR9 ranks those the other way round.
+    // Retuning the gains does not resolve it either — with relief excluded, 0.0 leaves the plant
+    // at 2205 psi with no damage at all and 150.0 lands in the same place; with relief included,
+    // 0.0 (total authority 310, i.e. the calibrated 300) stalls the TMI-2 flagship EARLIER than
+    // 300 does, at `b7_confusion` rather than `b14_ident`.
+    //
+    // So all four combinations were measured and none is clean. What ships is the one that keeps
+    // the physics suites green and confines the damage to content authored against the old
+    // trajectory. The double count is REAL and still open — see #337 and `TUNING_LOG` 2026-08-04g.
+    s._dmass_dt = dt > 0 ? (s._mass - m_before) / dt : 0;
 
     // Boron transport on the emergency-injection path (HPI/LPI + accumulators carry
     // heavily borated RWST/SIT water at eccs_boron_ppm). Perfect-mixing update of the

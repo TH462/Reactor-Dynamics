@@ -6,6 +6,14 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 51 pass, 0 known gaps (xfail).
+Battery result: 49 pass, 0 known gaps (xfail), 2 UNEXPECTED FAIL.
 
-**No gaps — the battery is fully green. The tuning pass is complete.**
+## CA-10 — CA-10 the 17 % low-level heater cutoff — sourced, instrument-driven, and it breaks the LOCA deadlock  (FAIL)
+
+- **heater power is ZERO whenever level is settled below the cutoff, with a 100 % demand standing** — required `0 violations`, observed `1 violations (worst 100.0 % at 15.9 % level)`
+
+## CA-11 — CA-11 break discharge follows RCS pressure — a break is a hole, not a pump (#334)  (FAIL)
+
+- **at nominal pressure the break flows its RATED size (old calibration intact)** — required `within 6 %`, observed `0.0743 vs 0.1000 rated, at 8.56 MPa`
+- **the blowdown spanned both ends (needed to solve for the exponent)** — required `a high and a low sample`, observed `MISSING`
+- **the RCS really did depressurize (leg C needs the low end)** — required `< 2 MPa`, observed `3.90 MPa`

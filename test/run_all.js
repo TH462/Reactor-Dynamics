@@ -528,7 +528,11 @@ var BASELINES = {
   // 172 -> 173 later the same day: the TUNING_LOG entry for the WIP-sweep fix cites the
   // lane-tag directive. The one-word `gh` fix it writes up moved this by ZERO — the usual
   // split, and the reason this number is measured after the docs rather than before.
-  'run_hardrules.js':      { code: 0, score: '173checks 0failed' },
+  // 173 -> 175 at the 2026-08-04 three-lane merge: workbench's #337 F14 citation sites
+  // arrive with its write-ups. MEASURED on the merged tree — neither parent's number
+  // survives (develop 173, workbench 172) and they do not add up, as this entry has
+  // warned five times.
+  'run_hardrules.js':      { code: 0, score: '175checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
