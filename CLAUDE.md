@@ -118,6 +118,25 @@ docs.
 >   next agent stands down for a session that ended hours ago. Full rule under *Issue tracking*.
 >   It does not replace the sweep: an agent can work without touching an issue, so run both.
 >
+>   **A `SessionStart` HOOK now runs this whole check for you** *(OWNER, 2026-08-04: "I want
+>   tasks to get labeled with an in work label that also tells which worktree it's being worked
+>   in.")*, #343 — `tools/hook_lane_status.js`, wired in `.claude/settings.json`. It prints your
+>   lane, the sweep of all three trees and every lane-tagged issue into the opening context, and
+>   reminds you to tag. **It reports; it never blocks and never decides** — the warn-and-ask rule
+>   below is unchanged. Run the lines by hand if it did not fire.
+>   **"COULD NOT CHECK" is not "clear"** — the hook prints them differently on purpose, because a
+>   `gh` failure and an empty result are the same output otherwise, and that ambiguity is what
+>   hid the broken sweep for days.
+>
+>   **THE FILE SWEEP CANNOT SEE AN AGENT BETWEEN COMMITS, and that is not a tuning problem**
+>   (measured 2026-08-04). At one session's t=0 all three trees were clean and all three branch
+>   tips were the same commit — so the sweep read *three free lanes* — while agents were live in
+>   **both** overflow trees; they committed within the hour (#337 on workbench, #334 on
+>   backshop). **#337 was correctly tagged `status-wip-workbench` the whole time, and I called
+>   that tag stale on the sweep's evidence and got it cleared.** A clean tree with an
+>   un-advanced tip is exactly what an active agent looks like between commits. **When the tag
+>   and the sweep disagree, the TAG wins** — it is a statement, the sweep is an inference.
+>
 >   **It must be `--search 'label:a,b,c'`, NOT three `--label` flags** (fixed 2026-08-04). `gh`
 >   **ANDs** repeated `--label`, so the original form asked for issues carrying all three lane
 >   tags at once — which the convention forbids one line below ("One only; the lane is the

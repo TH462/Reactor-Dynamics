@@ -29,6 +29,73 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-develop-k (#343 — the lane tags were never the problem; nothing was reading them)
+
+**Task:** *(OWNER, 2026-08-04: "I want tasks to get labeled with an in work label that also
+tells which worktree it's being worked in.")* The labels already existed to the owner's earlier
+directive. This is a **compliance** fix, not a feature. No engine, control or UI code.
+
+### The evidence that it was compliance: this session
+
+I tagged **#339** `status-wip-develop` at t=0, then worked **#341** and **#319** in the same tree
+for hours and tagged **neither**. At the moment the owner asked, the count of lane-tagged issues
+was **zero** with an agent live in `develop`. `CLAUDE.md` is loaded every turn and says to do it;
+that was not enough, which is the `run_release` shape exactly — a note and a skill step both said
+to roll `CHANGELOG.md` and both were skipped, twice.
+
+**A `run_*` gate cannot cover this**: labels live on GitHub, so it would make `run_all`
+network-dependent and red in CI for reasons unrelated to the code. A hook can, and this repo
+already runs one.
+
+### `tools/hook_lane_status.js` — a `SessionStart` hook
+
+Prints the lane, the three-tree sweep, and every lane-tagged issue into the opening context, plus
+the tagging reminder. **It reports; it never blocks and never decides** — the warn-and-ask rule is
+untouched.
+
+**Three failures found by PIPE-TESTING it rather than reading it**, which is the whole argument for
+that step:
+
+1. `--format=%h|%cr` **unquoted** — the shell reads the `|` as a pipe and the command fails. It
+   printed `(log failed)` for all three lanes.
+2. `--jq '…'` **fails on Windows**: `cmd.exe` does not treat single quotes as quotes, so the filter
+   arrives shredded. It surfaced as a bare *"gh failed"* — **indistinguishable from being
+   offline**. Now asks for `--json` and parses in Node, which is shell-independent.
+3. Both of those degrade to *"could not check"*, which is why the hook prints that **differently
+   from "none"**. A `gh` failure and an empty result render identically otherwise, and that
+   ambiguity is exactly what hid the broken sweep for days.
+
+### The hook's FIRST RUN found two live agents and proved me wrong
+
+Its first output showed `workbench` at **b59eded (15 min)** and `backshop` at **4ce3ff8 (75 min)**
+— both moved during this session. Both lanes are live: **#337** on workbench, **#334 item 2** on
+backshop.
+
+**#337 was correctly tagged `status-wip-workbench` the whole time.** At my t=0 sweep all three
+trees were clean and all three tips were the same commit `fb3ccc9`, so the file heuristic read
+*three free lanes* — and on that evidence **I twice reported the tag as stale, and it was
+cleared.** The workbench agent was simply between commits.
+
+**A clean tree with an un-advanced tip is exactly what an active agent looks like between
+commits.** No threshold fixes that. `CLAUDE.md` already says the sweep cannot tell a live session
+from the owner's edits from your own leftovers; this is a fourth case it cannot tell — *nothing at
+all*. **The tag was the only correct signal and I overrode it with the inference**, which inverts
+the rule. New standing line in `CLAUDE.md`: **when the tag and the sweep disagree, the tag wins** —
+it is a statement, the sweep is an inference. Tag restored on #337 with the correction recorded
+there.
+
+### Not done
+
+The **clear-on-stop** half. Nothing fires reliably at session end, so a tag left standing is still
+possible — the session-start report at least puts it in front of the *next* agent immediately,
+which is how this one surfaced. Tracked in #343.
+
+**The hook fires outside a turn, so it could not be proven in-session** (the skill's own caveat).
+Pipe-tested green and the JSON validated; if it does not appear at the next session start, open
+`/hooks` once to reload.
+
+---
+
 ## Session log — 2026-08-04-develop-j (documenting RESTORE — and correcting four claims my own change had just falsified)
 
 **Task:** *(OWNER, 2026-08-04: "Do next")* — the follow-up named at the end of `-develop-i`.
