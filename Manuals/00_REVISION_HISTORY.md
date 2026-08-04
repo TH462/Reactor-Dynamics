@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 0 (2026-08-04)  
+**Set revision:** 1 (2026-08-04)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,6 +28,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 1 | 2026-08-04 | **Main feedwater RESTORE control documented, and the "cannot be restored" statements corrected.** `03` gains a RESTORE entry on the SG FEED card — what isolates main feed automatically, that the isolation **seals in** and is refused while its signal stands, and that after a trip the blocker is the trip latch itself, so the sequence is confirm trip → reset RPS → restore. Carries the measured warning that restoring into a recovering generator with feed demand still up drives level 36.6 % → 77 % in about two minutes and re-isolates at the 90 % high level. `05` PWR-T06 step 4 corrected: it stated main feedwater "cannot be restored from the board", which stopped being true when the control shipped. | Claude |
 | 0 | 2026-08-04 | **Initial Alpha release.** The PWR operator manual set as issued for the first public Alpha. Revision counting starts here: this is the baseline the set ships at, not a change against anything a player has seen. Pre-release development history — every revision of every chapter — is in `git log` for `Manuals/`, not in this table. | Initial Alpha release |
 
 ## Source documents (authoritative for content)
@@ -55,13 +56,13 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 0 (2026-08-04). A mismatch means a chapter changed with no
+     Sealed at Rev 1 (2026-08-04). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
-     03_CONTROLS_AND_INDICATIONS.md a3aa20fba274e2ae
+     03_CONTROLS_AND_INDICATIONS.md 38ca8b984d002955
      04_NORMAL_OPERATIONS.md d42cd39fc1fc676b
-     05_MODE_TRANSITIONS.md 04a8013bad9ca00f
+     05_MODE_TRANSITIONS.md 6d4e4986a2cd35e8
      06_ALARM_RESPONSE.md 4bc2d926b273f4d8
      07_ABNORMAL_EMERGENCY.md 75c7875dc7531302
      08_ACCIDENT_TMI.md d6a3ff47c6786021

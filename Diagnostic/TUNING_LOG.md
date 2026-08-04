@@ -29,6 +29,64 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-develop-j (documenting RESTORE — and correcting four claims my own change had just falsified)
+
+**Task:** *(OWNER, 2026-08-04: "Do next")* — the follow-up named at the end of `-develop-i`.
+Manual set Rev 0 → **Rev 1**. No engine, control or UI code.
+
+### The change made existing content FALSE, in four places
+
+Shipping the MFW RESTORE control turned *"there is no board control to restore it"* into a lie, and
+it was written in four places — two of them player-facing:
+
+| site | what it said |
+|---|---|
+| `ui/manual_procedures.js` PWR-T06 caution | *"MAIN FEEDWATER ISOLATES on the trip and there is no board control to restore it"* |
+| `ui/manual_procedures.js` PWR-T06 header comment | *"and the board cannot restore it — see cautions"* |
+| `Manuals/05` PWR-T06 step 4 | *"isolates on the trip and cannot be restored from the board"* |
+| `Blueprint/CURRICULUM.md` Tier B/C audit | *"latches with no board control to restore it"* |
+
+All four corrected. This is the HR9 shape from the other side: content followed the plant, and the
+plant moved yesterday. **Grep for the sentence your change falsifies** — a feature that closes a gap
+leaves the description of that gap standing everywhere it was written down, and nothing gates prose.
+
+### `Manuals/03` §9.0 — the RESTORE control, documented
+
+What isolates main feed automatically (three signals), that the isolation **seals in** and the
+button is **refused rather than dead** while its signal stands, and the sequence that follows from
+that: **confirm trip → reset the RPS → restore**, because the low-Tavg isolation is a *coincidence*
+of low Tavg AND the trip latch, so clearing the latch clears half of it.
+
+Carries the measured warning: restoring into a generator already recovering on AFW, with feed demand
+still where it was, drives level **36.6 % → 77 % in about two minutes** and re-isolates at the 90 %
+high level. Set SG FEED RATE to match STEAM FLOW first.
+
+### Two measurements taken and NOT built on
+
+1. **Resetting the RPS promptly prevents the isolation entirely.** Measured: scram at 1m, reset at
+   2m, and `mfw_isolated` stayed **false for the whole run** — the coincidence never occurred
+   because Tavg had not yet fallen below the 572.0 °F setpoint. Real, and **deliberately not
+   taught**: Tavg reaching no-load in over a minute is a property of this lumped model, not of a
+   real plant where it falls in seconds. Teaching "reset fast to dodge the isolation" would be
+   teaching a timing artifact.
+2. **8 % feed demand is too much for decay heat.** Level climbed 65 → 87.7 % over ~13 min and
+   isolated on P-14. The matching demand is smaller than the smallest step the card offers, which is
+   why §9.0 says "match STEAM FLOW" rather than naming a number.
+
+### No PWR-T06 restore STEP, and that is the honest call
+
+The restore is documented as a control, not scripted as a procedure step. A step needs a defensible
+feed-rate recipe, and the two measurements above say the band is narrow and partly an artifact of
+how fast this plant's Tavg falls. Authoring a step now would pin a number I cannot yet defend —
+HR12, and the #319 lesson about content written from what already exists.
+
+**And it is optional.** Mode 3, Hot Standby is stable on AFW indefinitely; a post-trip procedure does
+not need main feed. The caution now says so, which is a truer thing to teach than a restore drill.
+
+`run_all` **OK, 38 runners**, no drift. Manual set **Rev 1**, digests re-sealed, in-app copy repacked.
+
+---
+
 ## Session log — 2026-08-04-develop-i (#341 + #319 item 2 — the seal-in, and the RESTORE the board never had)
 
 **Task:** *(OWNER, 2026-08-04: "Do next.  I approve.")* — approving the recommendation to build

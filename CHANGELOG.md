@@ -49,6 +49,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   a consequence. `run_m4` 38/38 → **39/39 (257 checks)**, injection-verified three ways.
 
 ### Changed
+- **Manual set Rev 1 — the RESTORE control documented, and four "cannot be restored" claims
+  corrected.** `Manuals/03` §9.0 gains the control: what isolates main feed, that the isolation
+  seals in and the button is *refused rather than dead* while its signal stands, and the sequence
+  that follows — confirm trip → reset the RPS → restore, because the low-Tavg isolation is a
+  coincidence of low Tavg *and* the trip latch. It carries the measured warning that restoring into
+  a generator already recovering on AFW drives level 36.6 % → 77 % in about two minutes and
+  re-isolates at 90 %. The PWR-T06 post-trip checklist and `Manuals/05` both stated main feedwater
+  "cannot be restored from the board", which stopped being true when the control shipped; both are
+  corrected, and the checklist now says restoring is optional — Mode 3, Hot Standby is stable on
+  auxiliary feedwater indefinitely.
 - **Session-log headings name the LANE: `YYYY-MM-DD-<lane>-<letter>`** *(OWNER RULING, 2026-08-04:
   "Work issue 339 in develop. Go with option 2.")*, #339. `Diagnostic/TUNING_LOG.md` and
   `Blueprint/BUILD_DECISIONS.md` are cited by their dated headings, and the old per-day sequence
