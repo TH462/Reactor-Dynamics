@@ -39,7 +39,14 @@
     // place human-facing absolute ratings live (UI readouts, manuals, instructor
     // text, battery band checks). The name is the owner's call.
     identity: {
-      name: 'SLX-100',                  // Single-Loop eXperimental, 100 MWe (owner, 2026-07-21)
+      // Renamed SLX-100 -> SLS-100 (OWNER DIRECTIVE, 2026-08-04, issue #328: "Rename the
+      // plant the 'Single Loop Simulated - 100MWt' AKA 'SLS-100'."). The 100 is the
+      // ELECTRICAL rating, not the thermal one — the core is 300 MWt — so the expansion
+      // reads MWe (OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from three
+      // options put to him — 100 MWe, SLS-300 = 300 MWt, or no number; a selection, not
+      // verbatim words). Naming it 100 MWt would have contradicted `mwt_rated` below and
+      // every manual rating table by 3x.
+      name: 'SLS-100',                  // Single Loop Simulated, 100 MWe (owner, 2026-08-04)
       plant_class: 'single-loop experimental pressurized water reactor',
       mwt_rated: 300.0,                 // core thermal rating, MW
       mwe_rated: 100.0,                 // gross electrical rating, MW (= turbine.mwe_rated)

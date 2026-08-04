@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 26 (2026-08-04)  
+**Set revision:** 27 (2026-08-04)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -20,6 +20,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 27 | 2026-08-04 | **The plant is renamed SLX-100 → SLS-100** *(OWNER DIRECTIVE, 2026-08-04, issue #328: "Rename the plant the \"Single Loop Simulated - 100MWt\" AKA \"SLS-100\".")*. **01** and **12** carry the name and its expansion, which goes from *Single-Loop eXperimental* to **Single Loop Simulated**. **The 100 is the ELECTRICAL rating and stays that way** — the request said 100 MWt, but this plant's core is **≈ 300 MWt** against **≈ 100 MWe** and **12** states both — in its header and again at §14.0 — so reading the digit as thermal would have contradicted the ratings table by 3× *(OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from three options put to him — 100 MWe, SLS-300 = 300 MWt, or no number; a selection, not verbatim words)*. **No number in the manual set moves** — this is the two letters and the expansion only. The word *experimental* survives in ordinary prose describing the plant class (`identity.plant_class` is unchanged); what retires is the acronym reading. | #328 rename |
 | 26 | 2026-08-04 | **Natural circulation is modeled — a loss of offsite power was TERMINAL and is now survivable** (#325) *(OWNER RULING, 2026-08-04: "Go with one B")*. **12 §12.4** used to head the exclusions list with *"No natural circulation"*, and **01** carried *"Not modeled — flow decays to zero, so loss of flow is more severe here than reality"*. **"More severe" was a large understatement**: with the RCPs stopped there was no core→SG heat path at all, so a LOOP reached fuel damage at 30 minutes and melt at 45, and starting AFW moved melt to 50 minutes and changed nothing else. Now built: the steam generators sit above the core, so the hot/cold density difference drives flow — WTSM 3.2.6.3 (ML11223A213), *"The higher elevation of the steam generators relative to the reactor vessel produces a thermal driving head … sufficient only for decay heat removal of a shutdown reactor, not for power operation."* Buoyancy head scales with loop ΔT and resistance with flow squared, and the core rise is itself heat/flow, so the two close to **flow ∝ the cube root of core heat** — measured 4.1 % of rated at 5.3 % decay heat, 3.0 % at 2.1 %. **Two limits are the lesson and both are documented**: it needs a **liquid-filled loop** (a voided loop circulates nothing — the TMI-2 case), and it MOVES heat rather than removing it, so losing the secondary heat sink still ends in damage. **07 PWR-E05** drops its *"SBO may be unsurvivable under some physics configurations"* limitation note for a real acceptance and a verification step, and gains the #332 consequence — the blackout takes charging, letdown and SI with it, so inventory only falls. **The MAGNITUDE is fitted, not sourced**, and §12.4 now says so: the “2–5 %” this set used to quote was uncited inherited prose and is deliberately not the anchor. | #325 natural circulation |
 | 25 | 2026-08-03 | **Two corrections to the runback, and an operator load rate limit** (#318). **09** now says the runback waits for the ΔT margin to HOLD below the rod stop for about **8.5 seconds** rather than acting the instant it is touched — a brief dip does not count. That delay is not a convenience: the real signal needs *"ΔT in **two out of four** reactor coolant loops"* within 3 % (WTSM 12.2 §12.2.3.7/.8), and **that 2/4 coincidence voting is the law's noise immunity**, which a single-loop plant structurally cannot have. Without it the plant cut load permanently on a 0.10-second instrument-noise clip during an ordinary load increase. **Also new: an operator load rate limit of 10 %/min on load INCREASES** *(OWNER, 2026-08-03: "Come up with your own rate for this plant that's fast enough to keep it interesting and slow enough to be safe.")* — real turbine control is rate-limited (WTSM 11.3, ML11223A295) and this plant permitted an instantaneous step that took loop ΔT within 0.51 of the OPΔT trip. 10 %/min is the ceiling **09** §8.0 already documented. It applies to increases only: a load REJECTION is an event, not an operator ramp, and must still arrive at once. | #318 rate limit |
 | 24 | 2026-08-03 | **The runback law was INVENTED where the source specifies it exactly** (#318). The previous runback revision (**Rev 21**) described a continuous ramp with a persistence delay — both mine. WTSM 11.3 *Westinghouse Electrohydraulic Control System* (ML11223A295), Turbine Runbacks, gives the real law verbatim: *"the EHC system reduces load at 200%/min for 1.5 sec (a 5% load change), then holds the load constant for 28.5 sec. If the runback condition has not cleared, the load will be reduced by another 5% in the next 30-sec interval."* That is what *cyclic* means, and **the cycle is the restraint**: a transient dip costs one 5 % step and nothing more, which is precisely what the invented delay was trying to buy. **09** now describes the stepped behaviour the operator actually sees. Measured — a **15 % steam line break** takes **two steps to 90 MWe** and becomes a ride-out, where the invented ramp drove it to 76 MWe. The document was fetchable throughout; it simply was not fetched. | #318 sourced law |
@@ -73,9 +74,9 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 26 (2026-08-04). A mismatch means a chapter changed with no
+     Sealed at Rev 27 (2026-08-04). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
-     01_GENERAL_DESCRIPTION.md 0afb4cce195e2133
+     01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
      03_CONTROLS_AND_INDICATIONS.md a3aa20fba274e2ae
      04_NORMAL_OPERATIONS.md d42cd39fc1fc676b
@@ -86,6 +87,6 @@
      09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md fcc8b3b5f555a1e1
+     12_SIM_PHYSICS.md bf6cd0d8bda845a9
      README.md 9a103035dfb47eca
 -->

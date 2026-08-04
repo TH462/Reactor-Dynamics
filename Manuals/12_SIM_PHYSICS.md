@@ -1,8 +1,8 @@
 # 12 — Simulation Physics & Model Scope
 
 **Document:** PWR-SP-12  
-**Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 26  
+**Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
+**Revision:** 27  
 
 ---
 
@@ -24,7 +24,7 @@ It exists because every other document in this set describes the plant as though
 
 ## 2.0 What kind of model this is
 
-The SLX-100 is a **lumped-parameter, real-time behavioural model**. It is not a full-scope replica of a licensed reactor, and it is not a computational-fluid or nodal-thermal-hydraulic code.
+The SLS-100 is a **lumped-parameter, real-time behavioural model**. It is not a full-scope replica of a licensed reactor, and it is not a computational-fluid or nodal-thermal-hydraulic code.
 
 | Property | This simulator |
 |---|---|
@@ -639,7 +639,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | # | Simplification | What it misses | Does it change what you should do? |
 |---|---|---|---|
 | 12.1 | **Point kinetics — no spatial flux** | Local power peaking, axial tilts, flux redistribution on rod motion | **No** for this plant. The mechanisms are faithful; only spatial *magnitude* effects are absent. |
-| 12.2 | **One lumped loop, one SG, one RCP** | Loop-to-loop asymmetry, individual SG isolation, single-loop transients | **No** — the plant genuinely *is* single-loop by design. This is the SLX-100's identity, not a compromise. |
+| 12.2 | **One lumped loop, one SG, one RCP** | Loop-to-loop asymmetry, individual SG isolation, single-loop transients | **No** — the plant genuinely *is* single-loop by design. This is the SLS-100's identity, not a compromise. |
 | 12.3 | **Two-term decay heat** | Full ANS 5.1 accuracy; the two-term form is ~20 % accurate over hours to days | **No.** Decay heat exists, demands cooling for hours, and drives every long transient. |
 | 12.4 | **Natural-circulation MAGNITUDE is fitted, not sourced** *(rewritten 2026-08-04, #325 — this row used to read "No natural circulation")* | The mechanism and its scaling are sourced (WTSM 3.2.6.3, ML11223A213); the flow **coefficient** is fitted to this plant's own energy balance, because no primary for the magnitude could be obtained. The "2–5 %" this manual quoted before was uncited inherited prose and is **not** the anchor | **Minor.** The lessons that depend on natural circulation — that a loss of offsite power is survivable, that it needs a liquid loop, and that it still needs a heat sink — are all shape, not scale. Do not quote this plant's percentage as a real-plant figure. |
 | 12.5 | **Pressurizer uses effective coefficients, not two-phase thermodynamics** | Flash evaporation, condensation, subcooled surge into a steam space | **No.** Directions and magnitudes are right, and the TMI-critical level rise during voiding is fully captured. |
@@ -703,7 +703,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | Boron adjust rate, grab-sample turnaround, cold-plant pressurisation slew, mode-transition pacing, **ECCS injection pacing** and **cooldown depressurisation rate** — see §14.1 |
 | **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |
 
-> **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLX-100 is its own plant.
+> **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLS-100 is its own plant.
 
 ### 14.1 Two Compressed rates worth knowing by name
 
