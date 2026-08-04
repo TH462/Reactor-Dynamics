@@ -20,7 +20,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-08-04d (board caps · Physics-tab contrast + indication colours · failure groups)
+## Session log — 2026-08-04e (board caps · Physics-tab contrast + indication colours · failure groups)
 
 **Task:** three owner directives, 2026-08-04, UI only — no engine, config or control change.
 `verify_board_check` **192 → 194**, `run_inspect` **8/8 36 → 9/9 42**.
@@ -90,11 +90,11 @@ missing one. `run_inspect` guards it in both directions plus duplicates, injecti
 
 ---
 
-## Session log — 2026-08-04c (#282 — LAUNCH: Pre Alpha → Alpha 1.0.0, manual set back to Rev 0)
+## Session log — 2026-08-04d (#282 — LAUNCH: Pre Alpha → Alpha 1.0.0, manual set back to Rev 0)
 
 **Task:** three owner directives, 2026-08-04 — *"The plant manual revision number should be zeroed out
 for this release."*, *"The first release should not have change log entries other than saying it's the
-initial Alpha release."*, and the launch directive from 2026-08-04b. The release is **prepared on
+initial Alpha release."*, and the launch directive from 2026-08-04c. The release is **prepared on
 `develop` and NOT merged** — the merge is the owner's call.
 
 `run_release` **8 → 11**, `run_hardrules` **149 → 146**, `run_manual_rev` **13 unmoved**.
@@ -108,7 +108,7 @@ and the gate only requires that their **versions and dates** agree, explicitly n
 
 ### The predicted red was real, and the relabel is what makes the gate 11 rather than 10
 
-The 2026-08-04b simulation said rolling `[Unreleased]` to `## [Alpha 1.0.0]` would fail newest-first
+The 2026-08-04c simulation said rolling `[Unreleased]` to `## [Alpha 1.0.0]` would fail newest-first
 because this file still carried `## [Alpha 1.11.0]` down to `## [Alpha 1.7.0]`. Confirmed on the real
 files: nine pre-public headings are `## [Pre-launch 1.x.y]` now, individually relabelled with content
 and dates untouched, and `run_release` came out **11 / 0** — the 11th check being the CROSS row that
@@ -132,7 +132,7 @@ argument is only visible to someone who knows both resets happened.
 
 ---
 
-## Session log — 2026-08-04b (#282 — the version-bump suspension is LIFTED; next release is launch)
+## Session log — 2026-08-04c (#282 — the version-bump suspension is LIFTED; next release is launch)
 
 **Task:** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha and
 into Alpha and bring back the update tracking page. Update tracking summaries/lists should be
@@ -225,6 +225,118 @@ marker described in words **149**. So refer to the markers by description, never
 manual set to a single **Rev 0** row; `run_release` 8 → 11 in `BASELINES` **and** CLAUDE.md. Open
 owner call: the pre-launch `v1.10.0`/`v1.11.0` tags will sort above `v1.0.0` for ever —
 recommendation is to leave them, developer-facing only.
+
+---
+## Session log — 2026-08-04b (#330 — one pressurizer, two slopes, and a silent meltdown)
+
+**Task:** owner said *"Work issue 330"*. Priority-critical: standing down the `cvcs_makeup`
+automation channel at hot full power melted the core at 22.1 min with every primary gauge
+nominal. `engines/pwr/pwr_config.js` (`level_per_mass` 100 → **776**, `level_per_void`
+150 → **375.33**), new probe **CA-9**, `run_behavior` **48 → 49**, `run_ops` **59 → 58/69**
+(one new PWR red, deliberate — see below).
+
+### Reproduced first, and it is worse than filed
+
+Full stack, `hot_full_power`, `cvcs_makeup` off + `set_cvcs_auto false`, nothing else:
+inventory **100 → 62.55 %**, pzr level **55 → 17.55 %**, both parked there; pressure
+**2235 psi (15.41 MPa)** flat, Tavg **579.3 °F (304.1 °C)** flat, subcooling **+73.75 °F
+(+40.97 °C)** flat — and cladding to **24,958 °F (13,848 °C)** by 30 min. The issue said
+melt at 22.1 min; it did not record that the clad runs away to a physically absurd number
+with no coupling back to anything the player can see.
+
+### The filed diagnosis was right about the symptom and wrong about the defect
+
+#330's investigation isolated a **circular void gate** — void needs subcooling ≤ 0, pressure
+is pinned by the subcooled branch's restore term, and the branch is chosen by the void. That
+loop is real. **Fixing it is not the fix**, and measuring said so:
+
+- Adding a mass-based void route (sourced `pzr_liquid_holdup` 0.0870) broke the deadlock and
+  the plant scrammed at 4m03s with SI in. It also **made the 12 % pzr lo-lo scram
+  unreachable** — `run_reachability` **B2 went red, trough 54.34 %** — because the void term
+  lifts indicated level (`level_per_void` × `void_gain` = 450 effective) before level can
+  fall. That trades one unreachable protection path for another, which is #330's own defect
+  class. It also reddened **MD-11** (oxidation bands 184/172/86/40 → 104/160/82/40).
+- **The root cause is upstream of both.** `level_per_mass` was **100 %/frac** against
+  `level_per_mass_surplus` **776** — two slopes for one pressurizer. The surplus branch's own
+  comment has always said why it is steep: the pressurizer steam space is *"the only
+  compressible volume"*. That argument is direction-agnostic. The shallow deficit slope is
+  what let the loop shed 37.5 % of its mass while the gauge read 17.5 %.
+
+Both experiments were reverted; the shipped change is the slope.
+
+### The actuation was never broken — only the inventory it fired at
+
+This is #330's sharpest finding, inverted. The low-level letdown isolation fires at **20 %
+indicated on both plants**. What moved is what that corresponds to: **65 % inventory before**
+(core already uncovered — hence *"the protective actuation is what destroys the core"*),
+**95.1 % after**. Measured on the identical rig at 776: letdown isolates at ~2m30s, level
+parks **16.97 %**, inventory **95.10 %**, and it sits there to 40 min — covered, undamaged,
+**no scram needed**. An assertion that the isolation *fired* passes on both plants and proves
+nothing; **CA-9 leg C asserts the inventory at which it fired**, which is the whole defect in
+one number.
+
+### `level_per_void` is half of a matched pair and could not stay put
+
+The TMI deception is the **difference** `void_gain·level_per_void − level_per_mass`. At
+150/100 that is **+350 %/frac** (level rises as inventory falls — the lesson). At 150/**776**
+it is **−326**: level FALLS as the primary voids. Measured — `run_pwr flagship_tmi` *"pzr
+level rises as inventory falls"* read **0.0** against a 48.6 threshold, and `pwr_tmi2_p3`
+stopped reaching `level_complete`.
+
+Re-solved from the two documented targets rather than re-guessed: net = +350 ⇒
+`level_per_void` = (350 + 776)/3 = **375.33**, and the independent check is the other target —
+at the story-clock void of 0.2 the gauge reads **78.3 %**, still past the 75 % high alarm it
+was calibrated against. **Not** scaled proportionally (150 × 7.76 = 1164): that takes the net
+to +2716 and pegs the gauge at 100 % almost immediately, destroying the graded arc.
+
+### Three tests moved, and all three pass on the OLD plant too
+
+Per HR10, a moved test that passes only on the change is a refit. These do not:
+
+- **`run_e2e_controls` `SETTLE`** was a hard-coded 400 s. It is now `4.8/(cpl·gain·lpm)`,
+  which evaluates to **400.0 s exactly** at the old constant — byte-identical — plus a second
+  window `SATURATE` for the beyond-authority check. The split was forced: the equilibrium
+  checks settle on the loop **plus its 20 s error filter** (at 776 the loop is 10.7 s and the
+  filter now dominates; at 4.8 loop-τ alone coverage read **134 %** and inventory was still
+  drifting up), while the beyond-authority check needs a **ceiling** — held at 400 s it now
+  spans a reactor trip and read "charging 0.0000, drift 0.000" while asserting nothing.
+  **59/59 on both plants.**
+- **`run_behavior` TR-15 leg E** 90 → 120 min. It was a knife edge, not a measurement: A/B'd
+  full stack, the old plant reads clad **2180 °F** at 90 min and the new one **2068 °F** —
+  both undamaged, both still climbing, **both reaching damage at ~100 min**. Passes on both.
+- **CA-9** is new and reddens **6 of 12** on the old constant: inventory 62.35 %, damaged +
+  melted, the slope asymmetry (2.00 points down vs 15.52 up on ±0.02), the isolation firing at
+  62.35 %, and no scram on an unheld leak. Legs D and E's first check pass on both by design —
+  they are the false-positive guards.
+
+### The one red left standing, and why it is not being absorbed
+
+`ops_cvcs_pzr_drain_rate` — **53.7 s** for its 15-point drop against `>= 300 s`. That
+acceptance is a **direct product of the constant** (`0.030 · gain · level_per_mass`), so it
+was a hard-coded consequence of the defect. It is **NOT re-banded**: the probe exists because
+of a 2026-07-22 owner request for a drain-rate feel target, and re-banding a target whenever
+the plant moves retires it. Measured both ways so the ruling is a choice:
+
+| | drain rate | loop τ | `run_e2e_controls` |
+|---|---|---|---|
+| shipped (`cvcs_inventory_gain` 0.012) | 7.76× faster than target | 10.7 s | **59/59** |
+| scale gain to 0.00154639 | **exactly the old rate** | 83.3 s (unchanged) | **52/59** |
+
+The compensating scale also moves the sim's implied RCS volume 1,389 → 10,779 gal (real:
+~68,000) — but CVCS make-up authority shrinks 7.76× and leaks it used to hold stop being held.
+For scale: a real plant takes **~79 minutes** for this drop on one 20 gpm orifice, so both sim
+values are far from prototypical and this is a choice between two game-feel numbers.
+**Recommendation on the issue: accept the faster drain** — a real pressurizer level *is* the
+fast, sensitive inventory indicator operators watch, and the old 2 %/min is what made a total
+loss of make-up look benign.
+
+### Still open, filed rather than fixed
+
+The **inventory → pressure coupling** genuinely does not exist (#330's defect 2): letdown
+never writes `s.leak_flow`, and the circular void gate is real. With the slope corrected the
+plant is protected by level and the player is told, so it is no longer a safety hole — but a
+draining subcooled RCS still does not depressurize. Fixing it needs the void gate rework that
+broke MD-11 here, i.e. a re-calibration of the oxidation bands alongside. Separate issue.
 
 ---
 

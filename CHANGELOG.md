@@ -30,36 +30,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-### Changed
-- **Board text is ALL CAPS, units excepted** *(OWNER DIRECTIVE, 2026-08-04: "All text should be in
-  all caps except units should follow standard unit conventions for capitalization.")*. MEASURED by
-  mounting the board headless and reading every rendered text node: **225 nodes, 34 not all-caps —
-  and 30 of the 34 were units**, which the directive exempts. So the real work was four turbine-side
-  captions (LOAD / OUTPUT / GOVERNOR / TURBINE) and the five TRIP BLOCKS captions. The four live in
-  `DOC_PATCHES`, not in `pwr_board_data.js`, because that file is generated and a re-export would
-  undo an edit there. `board_check` now asserts the policy over the rendered board — units exempt as
-  whole **tokens**, never substrings, or stripping a bare "s" would eat the s out of ordinary prose.
-- **Physics tab numbers are brighter and carry the indication colours** *(OWNER DIRECTIVE,
-  2026-08-04: "make the physics numbers brighter under the physics tab. The contrast is currently too
-  low. Also make these physics numbers follow the indication color scheme (grey, green, yellow, red,
-  etc.)")*. The generic numeric-grid colour is `#4a6070` — **2.84:1** on the panel background, which
-  is deliberate for the quiet board and unreadable for a panel you read numbers off. Physics rows are
-  now grey `#98A3AF` at **7.27:1**, with green for a satisfied criterion (5.91:1), amber for caution
-  (8.29:1) and red for alarm (4.76:1); all four clear WCAG AA, the old value failed it. Scoped to
-  `.phys-grp`, so the quiet default survives in the All view and the RBMK/BWR grids.
-  **Grey vs green is the teaching distinction**: green means "something is being checked here and it
-  is fine", so the 18 rows with no health criterion stay grey or green stops meaning anything. A row
-  whose value is missing now gets **no** colour — a green em-dash asserts a criterion is satisfied
-  about a number nobody has, which the first cut of this change did for peak clad temperature.
-- **The Inject Failure list is grouped** *(OWNER DIRECTIVE, 2026-08-04: "organize the list of
-  failures into logical groupings.")*. 24 failures in seven groups on the **same energy-path spine**
-  as the Graph list and the Physics tab, so the three lists read alike. Deliberately *not* the
-  catalog's own `category`: those five values type the failure for the control layer and group badly
-  for a player — `power` held main feedwater, the turbine, offsite power, a station blackout,
-  condenser vacuum, SG overfeed and both steam line breaks. The badge still shows the category.
-  Membership is hand-maintained, so an unlisted failure renders under "Other" rather than vanishing,
-  and `run_inspect` checks both directions plus duplicates (**8/8 36 → 9/9 42**).
-
 ## [Alpha 1.0.0] — 2026-08-04
 
 ### Added
@@ -96,6 +66,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (`natural_circulation`).
 
 ### Changed
+- **Board text is ALL CAPS, units excepted** *(OWNER DIRECTIVE, 2026-08-04: "All text should be in
+  all caps except units should follow standard unit conventions for capitalization.")*. MEASURED by
+  mounting the board headless and reading every rendered text node: **225 nodes, 34 not all-caps —
+  and 30 of the 34 were units**, which the directive exempts. So the real work was four turbine-side
+  captions (LOAD / OUTPUT / GOVERNOR / TURBINE) and the five TRIP BLOCKS captions. The four live in
+  `DOC_PATCHES`, not in `pwr_board_data.js`, because that file is generated and a re-export would
+  undo an edit there. `board_check` now asserts the policy over the rendered board — units exempt as
+  whole **tokens**, never substrings, or stripping a bare "s" would eat the s out of ordinary prose.
+- **Physics tab numbers are brighter and carry the indication colours** *(OWNER DIRECTIVE,
+  2026-08-04: "make the physics numbers brighter under the physics tab. The contrast is currently too
+  low. Also make these physics numbers follow the indication color scheme (grey, green, yellow, red,
+  etc.)")*. The generic numeric-grid colour is `#4a6070` — **2.84:1** on the panel background, which
+  is deliberate for the quiet board and unreadable for a panel you read numbers off. Physics rows are
+  now grey `#98A3AF` at **7.27:1**, with green for a satisfied criterion (5.91:1), amber for caution
+  (8.29:1) and red for alarm (4.76:1); all four clear WCAG AA, the old value failed it. Scoped to
+  `.phys-grp`, so the quiet default survives in the All view and the RBMK/BWR grids.
+  **Grey vs green is the teaching distinction**: green means "something is being checked here and it
+  is fine", so the 18 rows with no health criterion stay grey or green stops meaning anything. A row
+  whose value is missing now gets **no** colour — a green em-dash asserts a criterion is satisfied
+  about a number nobody has, which the first cut of this change did for peak clad temperature.
+- **The Inject Failure list is grouped** *(OWNER DIRECTIVE, 2026-08-04: "organize the list of
+  failures into logical groupings.")*. 24 failures in seven groups on the **same energy-path spine**
+  as the Graph list and the Physics tab, so the three lists read alike. Deliberately *not* the
+  catalog's own `category`: those five values type the failure for the control layer and group badly
+  for a player — `power` held main feedwater, the turbine, offsite power, a station blackout,
+  condenser vacuum, SG overfeed and both steam line breaks. The badge still shows the category.
+  Membership is hand-maintained, so an unlisted failure renders under "Other" rather than vanishing,
+  and `run_inspect` checks both directions plus duplicates (**8/8 36 → 9/9 42**).
 - **`Pre Alpha` → `Alpha 1.0.0`, and the update-tracking page is live again** *(OWNER DIRECTIVE,
   2026-08-04: "The next release will take the program out of pre-Alpha and into Alpha and bring
   back the update tracking page. Update tracking summaries/lists should be concise.")*. One
@@ -143,6 +141,45 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   release skill and #282; not done now, because it is release-time work and a structural call.
 
 ### Fixed
+- **The pressurizer had two different slopes, and one of them melted the core in silence** (#330).
+  Turning the CVCS make-up channel off at full power — one button on the board, `defaultOn`, nothing
+  else touched — **melted the core at 22.1 min, un-scrammed**, with primary pressure, Tavg and the
+  subcooling margin **dead flat at nominal** and the cladding at 24,958 °F (13,848 °C). Two caution
+  annunciators on one level channel were the entire indication.
+
+  The cause was a geometry error, not a missing alarm. `level_per_mass` (the deficit slope) was
+  **100 %/frac** against `level_per_mass_surplus` **776** — two contradictory statements about one
+  pressurizer. A subcooled RCS is incompressible liquid everywhere except the pressurizer bubble, so
+  inventory leaving it comes out of the pressurizer at exactly the rate a surplus packs into it; the
+  geometry does not know which way the flow is going. At the shallow slope the loop could shed
+  **37.5 % of its mass while the gauge still read 17.5 %**. Both slopes are now the sourced 776
+  (BVPS-2 UFSAR Tbl 5.1-1/5.4-12 + WTSM 3.2 Tbl 3.2-2, the same three tables that fitted the surplus
+  branch in #249).
+
+  **The protective actuation was never broken.** The low-pressurizer-level letdown isolation fires at
+  20 % indicated on both plants — what moved is the *inventory* it corresponds to: **65 % before**
+  (core already uncovered, which is why #330 read it as the thing destroying the core), **95.1 %
+  after**. Measured on the identical rig, the plant now isolates letdown at ~2m30s and sits at
+  95.1 % inventory / 17.0 % level out to 40 minutes: core covered, no damage, no melt, **no scram
+  needed**.
+
+  `level_per_void` moved **150 → 375.33** in the same change and had to: the TMI deception is the
+  *difference* between the two terms, so leaving it at 150 inverted it (net +350 → −326 %/frac) and
+  pressurizer level **fell** as the primary voided — the one lesson this plant is built around. It is
+  re-solved from the two documented calibration targets rather than re-guessed, and it is deliberately
+  **not** scaled proportionally, which would peg the gauge at 100 % and destroy the graded arc the TMI
+  beats are written against.
+
+  New probe **CA-9** (`run_behavior` 48 → 49), injection-verified: the old constant reddens **6 of its
+  12 checks**. `run_reachability` B2 — *"an inventory loss can reach the 12 % pzr lo-lo scram"* — was
+  the independent witness; the level used to fall 7.76× too slowly to reach its own trip.
+
+  **One declared cost, and it is an open owner decision**: the pressurizer now drains 7.76× faster in
+  wall-clock terms, so `ops_cvcs_pzr_drain_rate` reads 53.7 s against the ">= 300 s" feel target from
+  a 2026-07-22 owner request. It is **left red rather than re-banded** — re-banding a feel target
+  whenever the plant moves retires the target instead of reporting against it. The alternative that
+  preserves the rate exactly (scaling `cvcs_inventory_gain`) is measured in the probe comment and
+  costs 7 e2e checks of real CVCS leak-holding behaviour.
 - **`run_all` was silently losing the tail of a runner's output on Linux** (2026-08-04). Every
   runner here ends with `process.exit(code)`, and Node's I/O contract says pipes are
   **asynchronous on POSIX** and synchronous on Windows — so `process.exit()` can discard an
