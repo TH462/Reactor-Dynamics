@@ -973,6 +973,34 @@ var BASELINES = {
   // data-flag, so it shows on both channels and the distinction they guarded is gone.
   'verify_flags_ui.js':      { code: 0, score: '42/42' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
+  // NEW 2026-08-04 — `ui/test_panel/board_check.html` under the gate at last. It is the PWR
+  // board's own harness (geometry, pipe animation state, colours, driver value functions,
+  // real clicks) and it was a PAGE YOU OPEN: CLAUDE.md has said "run it after any board
+  // change" since #235, which is an instruction, and instructions do not hold.
+  //
+  // MEASURED 2026-08-03: it sat at 1 FAILURE / 188 for hours. #318 split the operator's ASK
+  // from the EHC reference, so the check reading `load_target_mwe` in the same breath as the
+  // keystroke saw the PREVIOUS load — and that red went through a lane merge, a green
+  // 36-runner run_all, a green CI run and A RELEASE TO `main` with nothing going amber,
+  // because nothing here opened the page. Found by hand, during unrelated work.
+  //
+  // Second time this shape has bitten: run_manual_controls was `audit_manual_controls.js`,
+  // invisible to auto-discovery, and sat at 32 mismatches through three re-authorings (#224).
+  //
+  // NOT marked `slow`, and that is MEASURED, not assumed: 1.79 s, against 55 s for
+  // verify_e2e_ui and 199 s for verify_manual_follow. It uses Playwright but it is cheap,
+  // and `--fast` is the mode people run while iterating — which is exactly when a board
+  // change is most likely to be in the tree. Skipping it there would re-open the hole this
+  // gate was written to close. Safe because CI vendors playwright and installs chromium
+  // unconditionally (gates.yml), the condition that was NOT true when verify_flags_ui broke
+  // 32 consecutive CI runs in July.
+  //
+  // The count is board_check's own tally, so symmetric drift catches a board pin being ADDED
+  // or LOST as well as one failing — the point of baselining it rather than just pass/fail.
+  // 179 = 188 - 9, the rod-status-word driver checks removed with the word on 2026-08-03.
+  // INJECTION-VERIFIED against the real regression: strip the `ticks(1)` fix from
+  // board_check and this reports 1 failing of 179.
+  'verify_board_check.js':   { code: 0, score: '179checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

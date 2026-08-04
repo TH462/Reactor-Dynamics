@@ -86,7 +86,7 @@ jobs:
           test ! -f package-lock.json || { echo "::error::a package-lock.json appeared in the repo root"; exit 1; }
           git status --porcelain
 
-      - name: Aggregate gate (all 34 runners)
+      - name: Aggregate gate (all runners)
         run: node test/run_all.js
 
       - name: Upload diagnostic reports
