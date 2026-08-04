@@ -995,13 +995,20 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   `Blueprint/BUILD_DECISIONS.md` if a decision or flag changed.
 - **On release (merge `develop` → `main`)** → the ordinary procedure under *Website changelog &
   version numbers* below: version bump + `changelog.html` entry + `CHANGELOG.md` roll, all in
-  **one change**, then `run_release` green before the merge. **`Alpha 1.0.0` is PREPARED on
-  `develop` and awaiting the merge** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take
-  the program out of pre-Alpha and into Alpha and bring back the update tracking page. Update
-  tracking summaries/lists should be concise.")* — `RD_RELEASE`, the one-line player entry, the
-  rolled `CHANGELOG.md`, the `Pre-launch 1.x` relabels and the manual set at **Rev 0** are all
-  in. So **do not bump again for that merge**; the next bump is the release *after* it, on the
-  Platform.Feature.Refinement rules. `run_release` **8 → 11** and `run_manual_rev` unmoved at 13.
+  **one change**, then `run_release` green before the merge. **`Alpha 1.0.0` SHIPPED 2026-08-04**
+  *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha and into
+  Alpha and bring back the update tracking page. Update tracking summaries/lists should be
+  concise.")*; the next release is an ordinary Platform.Feature.Refinement bump.
+- **A RELEASE IS NOT DONE UNTIL A `Production` DEPLOYMENT EXISTS FOR THE RELEASED SHA** *(OWNER,
+  2026-08-04: "Let's fix the gap and release.")*. Alpha 1.0.0 merged, tagged and passed CI while
+  the **live site kept serving the previous release** — the only deployment Vercel created for that
+  commit was a **Preview**. A green *"Vercel — success"* commit status is satisfied by a preview and
+  is **not** evidence; check
+  `gh api "repos/TH462/Reactor-Dynamics/deployments?sha=<SHA>"` for `environment=Production`.
+  **And do not push `develop` until it exists** — fast-forwarding it to the same commit seconds
+  after the merge gives Vercel two events for one SHA, and that is when the production build went
+  missing. A missing production deploy is indistinguishable from a slow one from outside, for ever,
+  so waiting is never the answer. Full step: `release-to-main` skill §5b.
 
 ---
 

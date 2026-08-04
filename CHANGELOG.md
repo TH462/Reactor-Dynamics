@@ -30,6 +30,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A release could merge, tag and pass CI without ever going live** *(OWNER, 2026-08-04: "Why is
+  it taking so long to deploy?" → "Let's fix the gap and release.")*. Alpha 1.0.0 did exactly that:
+  `main` was correct, `v1.0.0` was pushed, `aggregate-gate` was green and the Vercel commit status
+  read **success** — and the production domain went on serving the previous release, because the
+  only deployment created for that commit was a **Preview** aliased to a `*.vercel.app` URL. The
+  newest `environment=Production` deployment was still the release from four hours earlier, which
+  is what the edge was serving (`X-Vercel-Cache: HIT`, `Age: 13895`).
+  **A green "Vercel — success" status is not evidence of a production deploy** — a preview build
+  satisfies it. The release procedure now asserts `environment=Production` for the released SHA via
+  `gh api`, and **holds the `develop` push until it exists**: fast-forwarding `develop` to the same
+  commit seconds after the merge gives Vercel two events for one SHA, and that is when the
+  production build went missing. Measured, the previous release got Production **and** Preview 11 s
+  apart for its shared SHA, so preview-only is not the normal outcome. A missing production deploy
+  is indistinguishable from a slow one from outside, permanently, so the check is now explicit
+  rather than "wait and see". `release-to-main` §5b, and the rule in `CLAUDE.md`.
 
 ## [Alpha 1.0.0] — 2026-08-04
 

@@ -37,6 +37,43 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04f — a release can merge, tag and pass CI without going live
+
+**Decision.** *(OWNER, 2026-08-04: "Let's fix the gap and release.")* The release procedure now
+asserts a **`environment=Production` deployment for the released SHA**, and holds the `develop`
+push until it exists. Process only — no engine, config, layer or UI change.
+
+**What happened.** Alpha 1.0.0 merged to `main` (`305835e`), was tagged `v1.0.0`, passed both
+`aggregate-gate` runs, and Vercel's commit status read **success** — while the production domain
+kept serving `d5c1d8b` / `Pre Alpha`. The only deployment created for the released commit was a
+**Preview** aliased to a `*.vercel.app` URL; the newest Production deployment was still the previous
+release, four hours old, which is exactly what the edge was serving (`X-Vercel-Cache: HIT`,
+`Age: 13895`).
+
+**The trap is that every normal signal was green.** A *"Vercel — success"* commit status is satisfied
+by a preview build, so it is not evidence of a production deploy — and nothing in the procedure
+looked at the one field that separates them.
+
+**Cause: ordering, inferred from outside.** The merge landed at 15:02:50Z and `develop` was
+fast-forwarded to the **same commit** and pushed seconds later; one deployment exists for that SHA
+and it is the preview. The prior release got Production **and** Preview 11 s apart for its shared
+SHA, so preview-only is not normal — it reads as two same-SHA events collapsing. Not confirmable
+from outside Vercel; the deployment records and the timing are what is evidenced.
+
+**Why an assertion and not a gate.** The check needs network and a GitHub token, so it cannot live
+in `run_release` (static, and CI has no `gh` auth). It is a checklist item carrying the exact
+`gh api` command instead — and it has to be explicit because **a missing production deploy is
+indistinguishable from a slow one from the client side, permanently**, so "wait and see" has no
+terminating condition. A duplicate SHA will not produce a production build either, so recovery is
+promoting the preview (owner, one click) or a **new commit** on `main`.
+
+**Known, not fixed here:** the `YYYY-MM-DDx` session-suffix scheme collides when three lanes work
+the same day — `2026-08-04b` now labels workbench's #330 entry and backshop's #326/#328 entries, so
+one citable label points at three things. Renumbering another session's headings mid-release was not
+worth the churn; filed instead.
+
+---
+
 ## 2026-08-04e — board ALL-CAPS · Physics-tab contrast + indication colours · failure groups
 
 **Decisions.** Three owner directives, 2026-08-04, UI only. `verify_board_check` **192 → 194**,

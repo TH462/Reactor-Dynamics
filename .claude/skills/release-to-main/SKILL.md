@@ -1,6 +1,6 @@
 ---
 name: release-to-main
-description: Cut a release — merge the worktree lanes, rebuild the offline single-file download, merge develop into main and push. Versioning and the player-facing changelog entry are LIVE again, and the NEXT release is the launch release (Pre Alpha → Alpha 1.0.0). Use when asked to "release", "cut a release", "ship it", "push to main", or "catch main up to develop".
+description: Cut a release — merge the worktree lanes, rebuild the offline single-file download, merge develop into main, confirm a PRODUCTION deployment exists, and push. Versioning is live; Alpha 1.0.0 shipped 2026-08-04 and the next release is an ordinary bump. Use when asked to "release", "cut a release", "ship it", "push to main", or "catch main up to develop".
 ---
 
 # Releasing to `main`
@@ -218,14 +218,47 @@ Re-check every release rather than remembering last time's answer.
 ```bash
 gh pr create --base main --head develop --title "Release Alpha X.Y.Z — <headline>" --body-file <path>
 gh pr merge --merge          # --merge, NOT --squash: squashing flattens the release history
+# STOP. Confirm the PRODUCTION deployment exists (§5b) BEFORE pushing develop.
 git checkout develop && git merge --ff-only main && git push origin develop
 ```
 
 **Ruleset off (direct):**
 ```bash
 git checkout main && git merge --no-ff develop && git push origin main
+# STOP. Confirm the PRODUCTION deployment exists (§5b) BEFORE pushing develop.
 git checkout develop && git push origin develop
 ```
+
+### 5b. CONFIRM A **PRODUCTION** DEPLOYMENT, AND DO NOT PUSH `develop` UNTIL IT EXISTS
+
+**This step exists because Alpha 1.0.0 shipped without going live** *(OWNER, 2026-08-04:
+"Why is it taking so long to deploy?" → "Let's fix the gap and release.")*. `main` was correct,
+the tag was correct, CI was green, and the Vercel commit status said **success** — but the only
+deployment created for that commit was a **Preview**, aliased to a `*.vercel.app` URL. The
+production domain went on serving the *previous* release for half an hour, and nothing anywhere
+said so.
+
+```bash
+REL=$(git rev-parse HEAD)                    # the released merge commit on main
+gh api "repos/TH462/Reactor-Dynamics/deployments?sha=$REL" \
+  --jq '.[] | "\(.environment)  \(.created_at)"'          # MUST list Production
+gh api "repos/TH462/Reactor-Dynamics/deployments?environment=Production&per_page=1" \
+  --jq '.[0].sha'                                          # MUST equal $REL
+```
+
+**A "Vercel — success" commit status is NOT evidence of a production deploy.** It is satisfied by
+a preview build. Only `environment=Production` for the released SHA is.
+
+**The ordering above is the fix, and it is the suspected cause.** Pushing `develop` to the *same
+commit* seconds after the merge gives Vercel two events for one SHA; measured on Alpha 1.0.0, only
+one deployment was created and it was the preview. The release before it got Production **and**
+Preview 11 s apart for its shared SHA, so a preview-only outcome is not normal. Let production
+deploy from `main` first, confirm it, and only then fast-forward `develop`. That inference is from
+the outside — the deployment records and the timing — not from anything visible inside Vercel.
+
+**If production is missing:** promoting the preview in the dashboard is one click and needs no
+build, but it is the owner's to do. Otherwise a **new commit** on `main` is required — a duplicate
+SHA will not produce one. Do not wait: it will not arrive on its own.
 
 Then tag and push tags — **tags go separately, a PR does not carry them**:
 
@@ -266,8 +299,14 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
 - [ ] `download.html` still describes what actually ships, and the changelog says so if it changed
 - [ ] Ruleset checked, and a **403 read as “private repo, no ruleset”** rather than as an error
 - [ ] Merged the way the ruleset check indicated
+- [ ] **A `environment=Production` deployment EXISTS for the released SHA (§5b)** — checked with
+      `gh api`, not inferred from a green "Vercel — success" status, which a *preview* satisfies
+- [ ] `develop` fast-forwarded and pushed **only after** that production deployment exists —
+      pushing it to the same SHA first is what cost Alpha 1.0.0 its production build
 - [ ] Annotated tag pushed separately (`git push origin --tags`) — a PR does not carry it
 - [ ] All three lanes fast-forwarded to the released commit
 - [ ] **After the deploy lands:** confirm the live `site/version.js` carries the released
       commit FIRST, then that `download/latest.zip` exists and unzips. A 404 before the
-      stamp matches means “not deployed yet”, not “build broken”.
+      stamp matches means “not deployed yet”, not “build broken”. **And if the stamp never
+      changes, stop waiting and check §5b** — a missing production deployment looks exactly
+      like a slow one from the outside, for ever.
