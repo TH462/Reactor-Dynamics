@@ -222,7 +222,7 @@ TMI deception = `void_gain·level_per_void − level_per_mass`. At 150/100 that 
 independent check is the other target (78.3 % at the story-clock void, past the 75 % alarm).
 Deliberately **not** scaled proportionally (1164), which takes the net to +2716 and pegs the gauge.
 
-### The one red left standing, and why it is not absorbed
+### The one red left standing — RULED A *(OWNER RULING, 2026-08-04: "A")*
 
 `ops_cvcs_pzr_drain_rate` reads **53.7 s** against `>= 300 s`. That acceptance is a direct product of
 the corrected constant, so it was a hard-coded consequence of the defect — but it encodes a
@@ -235,7 +235,13 @@ plant moves retires it rather than reporting against it. Measured both ways:
 | scale gain to 0.00154639 | **exactly the old rate** | 83.3 s (unchanged) | **52/59** |
 
 A real plant takes ~79 min for this drop on one 20 gpm orifice, so both sim values are far from
-prototypical — this is a choice between two game-feel numbers, and it is the owner's.
+prototypical — this was a choice between two game-feel numbers, and it was the owner's. **Ruled A.**
+What carried it: B spends 7 checks of *measured* CVCS leak-holding behaviour to buy a *feel* number,
+which is backwards under HR9; the 300 s target was never prototypical either, so there was no ground
+truth on that side to defend; and the slowness is what hid the defect in the first place. The red is
+now an **accepted, ruled state** — not to be cleared by re-banding the threshold or by scaling the
+gain. Cheap lever if it ever plays too fast: the letdown ORIFICE size, which sets the drain
+independently of charging authority (**unmeasured**; it moves the gpm calibration too).
 
 ### Three tests moved, all three validated against the OLD plant (HR10)
 
