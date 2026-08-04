@@ -30,6 +30,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A break is a hole, not a pump — LOCA discharge now follows reactor coolant system pressure**
+  (#334 item 2). A break used to flow at a **constant rate**, fixed the moment it opened and never
+  varying: the same break discharged identically at **2235 psi (15.41 MPa)** and at **14.5 psi
+  (0.1 MPa)**, so depressurizing did nothing to it, and a vessel already clipped at zero mass went
+  on discharging at full rate indefinitely. Only the steam-generator-tube-rupture path responded
+  to pressure at all — the code comment beside it said *"containment-side leaks stay static"*,
+  which is the defect written down in the source.
+  **Sourced to 10 CFR 50 Appendix K I.C.1.b** *Discharge Model*: the rate must come from the Moody
+  critical-flow model, applied as *"a discharge coefficient applied to the postulated break
+  **area**"*. A break is an area, not a flow. Discharge now follows the orifice law, ∝ **√Δp** to
+  containment, referenced to the operating point so **every existing break size keeps the
+  calibration it was tuned with** — only the depressurized end of the curve is new.
+  **What changes for the player:** a full-size break is now the design-basis event it should be —
+  the core uncovers at 90 s, the **accumulators dump**, the core refloods, and peak cladding
+  reaches **1447 °F (786 °C)**, below the damage threshold. Before this it drained to zero and
+  melted, and nothing in the test suite had ever exercised accumulator injection on a LOCA.
+  Closing the pressure difference now genuinely reduces break flow, which is why that is the
+  response to a tube rupture, and an RCS at containment pressure has stopped discharging.
+  **Declared** in `Manuals/12` §12.4b (Rev 1) including which way it errs: √Δp falls off faster
+  than Moody once the discharge flashes, so a real break stays stronger for longer than this one.
+  `run_behavior` **50 → 51** (CA-11, 13 checks; the measured exponent is **0.500** against
+  0.000 for a constant law and 1.000 for a linear one).
+
 ### Changed
 - **The public changelog page is facts only** *(OWNER, 2026-08-04: "Just keep to facts in the
   changelog page. Minimize prose.")*. Cut the "This log begins with the public launch" lead and

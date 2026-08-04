@@ -20,6 +20,115 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04h (#334 item 2 — a break is a hole, not a pump)
+
+**Task:** owner ruled *"Do item 2"* — make LOCA break flow pressure-dependent.
+`engines/pwr/pwr_config.js` (two constants), `pwr_primary.js` (the law), new probe **CA-11**,
+CA-10 leg E re-authored, `run_behavior` **50 → 51**, manual set **Rev 0 → 1**.
+
+### The defect, in one line
+
+`s.leak_flow` for a LOCA was assigned once in `pwr_engine._applyFailure` and never touched
+again. The same break discharged identically at 15.41 MPa and at 0.1 MPa, and because `_mass`
+clips at zero, an already-empty RCS went on subtracting a full-rate leak forever. Only the SGTR
+branch was ΔP-modulated, and the comment beside it said *"Containment-side leaks (LOCA) are not
+ΔP-modulated here"* — the defect documented in place, which is how it survived.
+
+### The evidence pass, and the fetch route that worked
+
+nrc.gov 403s, and **ecfr.gov 302s to an "unblock" interstitial**, which is new — worth knowing
+before someone burns a turn on it. What worked: **govinfo's CFR volume XML through
+web.archive.org** (`web.archive.org/web/2023id_/https://www.govinfo.gov/content/pkg/
+CFR-2023-title10-vol1/xml/CFR-2023-title10-vol1.xml`, 6.2 MB, via curl with a browser UA —
+`WebFetch` cannot reach archive.org at all). Extract saved to
+`inbox/sources/10CFR50_AppendixK_discharge_model.txt`.
+
+**10 CFR 50 Appendix K, I.C.1.b "Discharge Model":** *"For all times after the discharging fluid
+has been calculated to be two-phase in composition, the discharge rate shall be calculated by use
+of the Moody model (F.J. Moody, 'Maximum Flow Rate of a Single Component, Two-Phase Mixture,'
+Journal of Heat Transfer, Trans ASME, 87, No. 1, February, 1965) … The calculation shall be
+conducted with at least three values of a **discharge coefficient applied to the postulated break
+area**, these values spanning the range from 0.6 to 1.0."*
+
+Two independent things fall out, and the second is the one I had not thought about: discharge is
+a **critical-flow function of the upstream state**, and a break is an **AREA**, not a flow. The
+severity slider has been labelled "% rated flow" all along, which is why it was so natural to
+store it as a flow and never revisit it.
+
+### The law, and why √Δp rather than Moody
+
+```js
+s.leak_flow = s._leak_base * Math.sqrt(clip((s.pressure_mpa - pb) / (pr - pb), 0, 1.5));
+```
+
+Moody's critical mass flux needs stagnation pressure **and enthalpy**; this plant has one lumped
+primary node and tracks no quality at the break, so there is nothing to evaluate it against.
+√Δp is the incompressible orifice law — **the same form `letdownFlow` already uses a few hundred
+lines up**, for orifice discharge out of the same RCS — so it is derivable rather than fitted and
+internally consistent. Declared in `Manuals/12` §12.4b **including the direction of the error**:
+√Δp falls off faster than Moody once the discharge flashes two-phase, so a real break stays
+stronger for longer than this one.
+
+**`break_p_ref_mpa` = 15.41 is the operating point, not a [tune].** Referencing to it makes the
+factor exactly 1 at nominal pressure, so **every existing severity keeps the calibration it was
+arbitrated with** and only the depressurized end of the curve is new. That is what kept the blast
+radius to one runner.
+
+### Measured: the plant now does the design-basis accident
+
+Severity 1.0 (the largest break there is), full stack, ECCS available:
+
+| t | inventory % | pressure | clad | uncovered | accumulator % |
+|---|---|---|---|---|---|
+| 1m30s | 0 | 566 psi (3.91 MPa) | 753.1 °C | **1.00** | 99.79 |
+| 2m00s | 99.23 | 113 psi (0.78 MPa) | 773.9 °C | 0 | **31.75** |
+| 2m30s | 120.0 | 33 psi (0.22 MPa) | 733.0 °C | 0 | 0 |
+| 6m01s | 120.0 | 68 psi (0.47 MPa) | 216.0 °C | 0 | 0 |
+
+Blowdown, full core uncovery, **accumulator dump**, reflood, cooldown. Peak clad 786 °C against
+a 1200 °C damage threshold. **Before this change the same break drained to zero and melted**, and
+nothing in the suite had ever exercised accumulator injection on a LOCA at all — the old constant
+break simply never let the plant reach that stage.
+
+### Blast radius: ONE runner, which is the number worth noticing
+
+`run_meltdown`, `run_pwr`, `run_campaign`, `run_procedures`, `run_procedures_stack`, `run_ops`
+and `run_scenarios` are **all at baseline** after a change to how every primary break discharges.
+The MD-* meltdown paths defeat ECCS explicitly, so they are unaffected by the plant becoming
+recoverable *with* ECCS; everything else measures away from the break. The single mover was
+`run_behavior`, and it was CA-10 leg E — a check I wrote yesterday.
+
+### CA-10 leg E: re-authored, and it was NOT broken by the fix
+
+It compared the break's rate against the ECCS capacity (`hpi_flow_max +
+lpi_flow_max·lpi_inventory_gain`) and required anything above that ceiling to destroy the core.
+**That is a valid steady-state argument only while the break is CONSTANT** — leak > injection
+forever. With discharge tracking pressure, a break that starts above the ceiling ends below it as
+the plant blows down, so the comparison decides nothing. Re-pointed at what must still be true:
+**ECCS is the thing that saves it** — the same break with injection defeated must still destroy
+the core. That fails on any change making a LOCA unconditionally survivable, which is the
+property the old leg was really protecting.
+
+### CA-11, and the tautological check I caught in my own probe
+
+13 checks. The first draft's central check recomputed the engine's own formula and compared —
+and reported **"worst error 0.00 %"**, which is the tell: it cannot fail while the formula merely
+has the wrong CONSTANTS in it. Added the shape check instead, the TR-15 idiom (#325): solve the
+exponent from two widely separated points on the real blowdown,
+`n = ln(q₂/q₁) / ln(Δp₂/Δp₁)`. Measured **0.500**. **Injection-verified against both
+neighbours** — a constant law gives **n = 0.000** (5 checks red) and the linear SGTR form gives
+**n = 1.000** (4 red), so it separates all three laws rather than merely detecting "not constant".
+
+Leg D exists because the fix restructured the branch SGTR shares: if the two references ever got
+crossed an SGTR would taper against containment instead of secondary pressure and the single-SG
+EOP would silently stop working. It checks SGTR still solves against primary−secondary ΔP.
+
+**Still open on #334:** item 3, the break-size slider's default. It is now less wrong than it was
+— a 0.200 frac/s break is survivable with ECCS where it used to melt — but the label still reads
+"% rated flow" for what Appendix K calls an area, and the scale question is the owner's.
+
+---
+
 ## Session log — 2026-08-04g (#334 — the follow-up I filed did not exist, and my diagnosis of the chatter was wrong)
 
 **Task:** picked up my own recommended "next" from #334 — build the letdown-isolation half of the

@@ -181,13 +181,36 @@
 
   // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/LPI/accumulator/SI − losses).
   function stepInventory(s, cfg, dt) {
-    // SGTR leak scales with the primary→secondary ΔP across the ruptured tube
-    // (feel-plan P5): full rate at the rated ΔP (~9.8 MPa), tapering to ZERO as
-    // the primary is depressurized to SG pressure — the single-SG EOP's whole
-    // strategy. Containment-side leaks (LOCA) are not ΔP-modulated here.
-    if (s._leak_to_sg && s._leak_base) {
-      var dp_ref = cfg.primary.sgtr_dp_ref || 9.8;
-      s.leak_flow = s._leak_base * clip((s.pressure_mpa - s.steam_pressure_mpa) / dp_ref, 0, 1.2);
+    // Every primary leak is a DISCHARGE, driven by the pressure difference across
+    // whatever it is leaking through. Two paths, differing only in what is on the far
+    // side of the hole.
+    //
+    // SGTR leaks primary→secondary through the ruptured tube (feel-plan P5): full rate
+    // at the rated ΔP (~9.8 MPa), tapering to ZERO as the primary is depressurized to SG
+    // pressure — the single-SG EOP's whole strategy.
+    //
+    // A LOCA discharges to CONTAINMENT, and until #334 it did not taper at all: the rate
+    // was fixed when the failure was injected, so the same break flowed identically at
+    // 2235 psi and at 14.5 psi and an RCS clipped at zero mass went on "leaking" at full
+    // rate indefinitely. 10 CFR 50 Appendix K I.C.1.b requires the discharge to be a
+    // critical-flow function of the upstream state with "a discharge coefficient applied
+    // to the postulated break area" — an AREA, not a flow. See pwr_config.primary for the
+    // quote and for why the form here is the √Δp orifice law rather than Moody itself.
+    //
+    // Referenced to break_p_ref_mpa so a break's configured size still means its rated
+    // flow at nominal RCS pressure: at 15.41 MPa the factor is exactly 1 and every
+    // existing severity keeps the calibration it was tuned with. Only the depressurized
+    // end of the curve is new.
+    if (s._leak_base) {
+      if (s._leak_to_sg) {
+        var dp_ref = cfg.primary.sgtr_dp_ref || 9.8;
+        s.leak_flow = s._leak_base * clip((s.pressure_mpa - s.steam_pressure_mpa) / dp_ref, 0, 1.2);
+      } else {
+        var pb = cfg.primary.break_backpressure_mpa != null ? cfg.primary.break_backpressure_mpa : 0.1;
+        var pr = cfg.primary.break_p_ref_mpa != null ? cfg.primary.break_p_ref_mpa : 15.41;
+        var span = Math.max(pr - pb, 1e-6);
+        s.leak_flow = s._leak_base * Math.sqrt(clip((s.pressure_mpa - pb) / span, 0, 1.5));
+      }
     }
     // Letdown first — the auto make-up law and the mass balance below both read it.
     s.letdown_flow = letdownFlow(s, cfg);

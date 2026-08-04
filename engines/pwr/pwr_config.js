@@ -693,6 +693,38 @@
       natural_circ_indicate_frac: 0.01,   // [tune]
       low_flow_trip: 0.25,         // true-flow trip (documented HR1 exception)
       mass_max: 1.2,               // clip ceiling for primary_mass
+      // ------------------------------------------------- BREAK DISCHARGE (#334 item 2, 2026-08-04)
+      // A LOCA break used to flow at a CONSTANT rate, set once when the failure was
+      // injected and never varying — so the same break discharged identically at 2235 psi
+      // and at 14.5 psi, and an RCS already at zero mass went on "leaking" at full rate
+      // forever. Only the SGTR path was ΔP-modulated (`sgtr_dp_ref`, below in
+      // pwr_primary.stepInventory); the comment there said in as many words that
+      // "containment-side leaks stay static", which is the defect written down.
+      //
+      // SOURCED SHAPE: 10 CFR 50 Appendix K, I.C.1.b "Discharge Model" — "For all times
+      // after the discharging fluid has been calculated to be two-phase in composition, the
+      // discharge rate shall be calculated by use of the Moody model (F.J. Moody, 'Maximum
+      // Flow Rate of a Single Component, Two-Phase Mixture' … 1965). The calculation shall
+      // be conducted with at least three values of a DISCHARGE COEFFICIENT APPLIED TO THE
+      // POSTULATED BREAK AREA, these values spanning the range from 0.6 to 1.0."
+      // Two things follow, and both are what this change implements: the break is an AREA
+      // with a coefficient, not a flow, and its discharge is a CRITICAL-FLOW function of the
+      // upstream fluid state — never a constant.
+      //
+      // DECLARED SIMPLIFICATION: this is the incompressible ORIFICE law, W ∝ √Δp, not Moody.
+      // Moody's critical mass flux is a function of stagnation pressure AND enthalpy, and
+      // this plant has one lumped primary node with no quality tracked at the break, so
+      // there is nothing to evaluate it against. √Δp is the same form `letdownFlow` already
+      // uses a few hundred lines up for orifice discharge out of the same RCS, it is
+      // derivable rather than fitted, and it has the right monotonic shape. It falls off
+      // FASTER than Moody does in the two-phase regime, so a real break stays stronger
+      // longer than this one — stated in Manuals/12 rather than left for someone to find.
+      //
+      // `break_p_ref_mpa` is the pressure at which a break's configured size EQUALS its old
+      // constant rate, so every existing severity keeps its calibration at nominal and only
+      // the depressurized end of the curve moves. It is the operating point, not a [tune].
+      break_p_ref_mpa: 15.41,      // RCS pressure at which break size == its rated flow
+      break_backpressure_mpa: 0.1, // containment (atmospheric); flow stops when the RCS reaches it
       // Loop pressure distribution (pwr_primary.computeNodePressures). The primary
       // is incompressible liquid except for the pressurizer bubble, so there is ONE
       // dynamic pressure state (pressure_mpa, the pressurizer/hot-leg reference) plus

@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 0  
+**Revision:** 1  
 
 ---
 
@@ -642,6 +642,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.2 | **One lumped loop, one SG, one RCP** | Loop-to-loop asymmetry, individual SG isolation, single-loop transients | **No** — the plant genuinely *is* single-loop by design. This is the SLS-100's identity, not a compromise. |
 | 12.3 | **Two-term decay heat** | Full ANS 5.1 accuracy; the two-term form is ~20 % accurate over hours to days | **No.** Decay heat exists, demands cooling for hours, and drives every long transient. |
 | 12.4 | **Natural-circulation MAGNITUDE is fitted, not sourced** *(rewritten 2026-08-04, #325 — this row used to read "No natural circulation")* | The mechanism and its scaling are sourced (WTSM 3.2.6.3, ML11223A213); the flow **coefficient** is fitted to this plant's own energy balance, because no primary for the magnitude could be obtained. The "2–5 %" this manual quoted before was uncited inherited prose and is **not** the anchor | **Minor.** The lessons that depend on natural circulation — that a loss of offsite power is survivable, that it needs a liquid loop, and that it still needs a heat sink — are all shape, not scale. Do not quote this plant's percentage as a real-plant figure. |
+| 12.4b | **Break discharge is an orifice law, not the Moody critical-flow model** *(new 2026-08-04, #334 — before this, a break flowed at a CONSTANT rate that never varied with pressure at all)* | 10 CFR 50 Appendix K I.C.1.b requires the discharge rate to come from the Moody model, applied as a *discharge coefficient on the postulated break area*. Moody's critical mass flux depends on stagnation pressure **and enthalpy**; this plant has one lumped primary node and tracks no steam quality at the break, so there is nothing to evaluate it against. Break flow here is the incompressible orifice law, flow ∝ **√Δp** to containment — the same form the manual's letdown orifices use | **Know which way it errs.** √Δp falls off **faster** than Moody does once the discharge flashes to two-phase, so a real break stays **stronger for longer** than this one as the plant blows down. The *shape* is right and it is what matters operationally — the break weakens as you depressurize, which is why closing the pressure difference is the response to a tube rupture, and why an RCS at containment pressure has stopped discharging. Do not read a time-to-empty off this plant as a real-plant figure. |
 | 12.5 | **Pressurizer uses effective coefficients, not two-phase thermodynamics** | Flash evaporation, condensation, subcooled surge into a steam space | **No.** Directions and magnitudes are right, and the TMI-critical level rise during voiding is fully captured. |
 | 12.6 | **No sensor redundancy or voting** | Real plants use ~3 channels with 2-of-3 voting; one failed sensor cannot trip or block a trip alone | **Yes — instrument failures are *more* impactful here.** That is arguably better teaching, but it is not prototypical. |
 | 12.7 | **Xenon has no spatial oscillation** | Xenon power tilts swinging around a large core over hours | **No** at this plant size. Total inventory suppression is modelled. |

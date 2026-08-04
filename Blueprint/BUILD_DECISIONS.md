@@ -37,6 +37,69 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04h — #334 item 2: a break is an AREA, and that is the whole decision
+
+### The change
+
+`pwr_primary.stepInventory`'s leak branch: a LOCA's discharge now follows √Δp against
+containment instead of holding the constant it was given when the break opened. Two config
+constants (`break_p_ref_mpa`, `break_backpressure_mpa`), new probe **CA-11**, CA-10 leg E
+re-authored, `run_behavior` **50 → 51**, `Manuals/12` §12.4b, manual set **Rev 1**.
+
+### The decision: the source redefines what the severity slider IS
+
+10 CFR 50 Appendix K I.C.1.b requires *"a discharge coefficient applied to the postulated break
+**area**"*. That is not a detail about the flow law — it says a break is an **area**, and the
+flow is an *output* of the area and the upstream state. This plant stored severity as a flow
+(`severity × meta.max/100`, labelled "% rated flow") and used it directly, which is why the idea
+of a break that responds to pressure never came up: a flow you assign has nothing to respond
+with.
+
+Reframing it as an area with a pressure-driven discharge is what makes every downstream
+behaviour fall out — the break weakens as you depressurize, an RCS at containment pressure has
+stopped discharging, and closing the ΔP is a real operator action rather than a ritual.
+
+### Why √Δp and not Moody, stated as a departure rather than absorbed
+
+Moody's critical mass flux is a function of stagnation pressure **and enthalpy**. This plant has
+one lumped primary node and tracks no steam quality at the break, so Moody has nothing to be
+evaluated against here — implementing it would mean inventing the quality it needs, which is a
+fitted number wearing a citation. √Δp is the incompressible orifice law, it is **already the form
+`letdownFlow` uses** for orifice discharge out of the same RCS, and it is derivable rather than
+fitted. Declared at `Manuals/12` §12.4b with the direction of the error stated: √Δp falls off
+**faster** than Moody once the discharge flashes, so a real break stays stronger for longer.
+
+### The reference point is what kept the blast radius at one runner
+
+`break_p_ref_mpa` = 15.41 makes the pressure factor exactly **1 at the operating point**, so every
+break size still means its old rate at nominal conditions and only the depressurized end of the
+curve is new. After a change to how every primary break discharges, `run_meltdown`, `run_pwr`,
+`run_campaign`, `run_procedures`, `run_ops` and `run_scenarios` were all at baseline. Choosing a
+reference that preserves the existing calibration is the difference between a physics fix and a
+retune of everything downstream of it.
+
+### CA-10 leg E was re-authored, and the distinction matters
+
+Its old criterion — break rate above the ECCS capacity ⇒ core destroyed — is a **steady-state**
+argument, valid only while the break is constant. Once discharge tracks pressure, a break that
+starts above the ceiling ends below it, and the comparison decides nothing. It was not *broken by*
+the fix; its premise stopped being a property of the plant. Re-pointed at what must remain true:
+**ECCS is what saves the core** — same break, injection defeated, must still destroy it. That is
+the property the old leg was actually protecting, expressed in a way the new physics cannot
+trivially satisfy.
+
+### The probe trap: a check that recomputes the implementation cannot fail
+
+CA-11's first central check re-derived the engine's own formula and compared against it. It
+reported **"worst error 0.00 %"** — which is the tell. It pins the *reference constants* but is
+blind to the *shape*, so it would have survived any change that kept the form and moved the
+exponent. Replaced with the #325/TR-15 idiom: solve `n = ln(q₂/q₁)/ln(Δp₂/Δp₁)` from two widely
+separated points on a real blowdown. Measured **0.500**; injection gives **0.000** for a constant
+law and **1.000** for the linear SGTR form. **Whenever a probe checks a law, check the exponent,
+not the arithmetic** — the arithmetic is the implementation talking to itself.
+
+---
+
 ## 2026-08-04f — a release can merge, tag and pass CI without going live
 
 **Decision.** *(OWNER, 2026-08-04: "Let's fix the gap and release.")* The release procedure now
