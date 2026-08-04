@@ -429,7 +429,11 @@ var BASELINES = {
   // 141 -> 143 (2026-08-03, #311 flag ON): the two OTdT/OPdT approach ALARMS arrive, and
   // this gate's second contract makes them declare a `category` — the design working, not
   // drift. Enabling protection is expected to move this and run_reachability together.
-  'run_contract.js':       { code: 0, score: '143checks 0failed' },
+  // 143 -> 145 (2026-08-03): `core_uncovered_frac` and `zirc_heat_pct`, the two drivers
+  // BEHIND clad_temp_c, published for the Physics tab's new Core damage group. Both were
+  // locals inside stepCladding, so the panel could show the symptom (peak temperature) and
+  // the verdict (fuel_damaged) but nothing of the mechanism between them.
+  'run_contract.js':       { code: 0, score: '145checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

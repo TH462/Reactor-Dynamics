@@ -22,6 +22,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **The Physics tab shows CORE DAMAGE, and the two hidden drivers behind it** *(OWNER, 2026-08-03:
+  "the physics tab should also show core damage. are there any other physics things the user might
+  want to see?")*. A new **Core damage** group — peak clad temperature, **core uncovered**,
+  **Zr oxidation heat**, and a damage row that reports MARGIN while the core is intact
+  (`intact · 912 °F to damage`) and then `FUEL DAMAGE` / `CORE MELT`. The middle two are new
+  `true_state` (`core_uncovered_frac`, `zirc_heat_pct`): they were locals inside `stepCladding`,
+  so the panel could show the symptom (peak temperature) and the verdict, with the whole mechanism
+  between them invisible. Measured on a 0.8 large LOCA — uncovery reaches 100 % by 50 s and the
+  oxidation term climbs **0.077 → 0.943 % of rated** between 50 s and 400 s *while the decay tail
+  is falling*, which is the entire point of #238 and could not be seen anywhere. Also added:
+  **accumulator inventory** (the ECCS card shows flow, discharge pressure and alignment, but never
+  how much passive shot is left).
+- **The graph list is grouped, and carries the physics and the controls** *(OWNER, 2026-08-03:
+  "add all these physics indications to the graph tab so they can be graphed… add rod steps and
+  other controls like pzr heater, spray, etc. to the graph list. organize the graph list in an
+  intelligent order and group them in groups.")*. 16 plottable quantities → **51**, in seven groups
+  along the energy path: Reactor core · Core damage · Primary coolant · Loop pressure · Steam &
+  feed · Turbine & output · **Controls**. The controls are the new kind — rod steps (both banks),
+  pressurizer heater and spray, steam dump, feed pump speed, charging, letdown, and the three
+  setpoints — so a trend can finally show the *input* beside the response. Uninstrumented
+  quantities (decay heat, voiding, the loop pressure split, core damage) now trace in **Realistic**
+  mode too, where they used to draw nothing: there is no channel to plot, so they plot the physics,
+  which is what the Physics tab already is.
+  - The buffer got **cheaper**, not more expensive: measured at its cap, the naive version of this
+    change cost **75.8 MB** against the old 10.2 MB. Recording only the sides a series actually has,
+    plus one row per 0.5 s of sim time instead of one per broadcast, brings it to **8.8 MB** — with
+    three times the quantities. At the widest window that is still ~9× oversampled.
 - **An operator load rate limit — 10 %/min, increases only** *(OWNER, 2026-08-03: "Come up with your
   own rate for this plant that's fast enough to keep it interesting and slow enough to be safe.")*.
   Real turbine control is rate-limited (WTSM 11.3, ML11223A295: the operator sets a target and a
@@ -208,6 +235,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   **Rev 18**.
 
 ### Fixed
+- **The board's ECCS card showed emergency suction lined up in EVERY state of the plant**
+  *(OWNER, 2026-08-03: "the pipe coming out of the right of the ECCS shows flow when the ECCS is
+  off or not flowing")*. The RWST → charging-pump-suction cross-tie was gated on the charging
+  *pump*, which runs continuously at power, so the line animated forever. Measured at hot full
+  power with `eccs_mode=off`, `hpi_flow=0`, `hpi_active=false`: **running**. It follows the ECCS
+  train now — the same predicate the ECCS pump's own suction line already used — while the two
+  normal CVCS suction lines keep running on charging FLOW. The reason it was the only gate on that
+  pipe is worth knowing: its other endpoint is a plain box port, which carries no `data-active` at
+  all, so `portActive` returns true for it unconditionally.
+- **Three board geometry corrections from the owner's walk-round** (2026-08-03).
+  - The **pressurizer spray stub leaned 3 px** over a 17 px run — a 10° tilt on the one segment
+    the eye reads against the vessel top. The pressurizer moved down 3; the surge line and the
+    PORV tap are vertical runs, so they just got 3 px longer.
+  - The **condenser drop into the condensate pump was 2 px out of plumb** (1527 vs 1525). Only
+    that one of the three drops was crooked — pump→polisher and polisher→feed pump were already
+    plumb — and the **condenser** is what moved, not the pumps: `Pump` is a nudged kind, so pump
+    flange faces snap to the 5 px grid and can never land on 1527.
+  - The **core ΔT margin readout printed on top of `NUCLEAR INSTRUMENTATION (NIS)`**, overlapping
+    it by 58.8 px. The card title is now `NUC INSTR (NIS)`, sized against the widest value the
+    field can print (11 characters) rather than the one on screen. It survived the #311 geometry
+    pins because those skip `box` and `component` kinds — a readout deliberately sits inside its
+    card — and a card title is not an item, it is a child of the box, so the one element it could
+    collide with was the one the ruler was told to ignore. `board_check` pins card titles now.
+- **`board_check` was carrying a red the docs recorded as green** (187/188, not 188/188), for two
+  reasons that were both in the harness: the LOAD TARGET checks sat *after* the RCP OFF/ON pair,
+  which #314 turned into an immediate scram, and they read the snapshot without stepping, while
+  `set_load_target` reaches the plant through the load-mode controller. Both fixed; the clamp check
+  now asserts the emitted command, since #318's rate limit is one-sided (a load *decrease* lands at
+  once, an increase crawls at 10 %/min). Now **202/202** with 14 new pins.
 - **`run_pwr`'s "drifting pressure diverges" was measuring a blowdown depth, not the drift** (#321).
   A drifting pressure gauge accumulates +2.0 MPa, which pushes the *indication* past the code-safety
   setpoint; protection opens the safety on the instrument (HR1) and the plant really blows down
