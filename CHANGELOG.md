@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A small LOCA destroyed the core while a bigger one was survivable — the pressurizer heaters
+  held an empty reactor at 2207 psi and deadheaded the ECCS** (#334). Reported from play-testing
+  ("some things didn't seem right"). Measured full stack with ECCS available and actuating
+  normally, 20 min: a **5 %** break reached fuel damage, **10 %** and **15 %** breaks fully
+  recovered, **16 %** damaged again. **The break was never the mechanism.** ECCS refilled the RCS
+  to 120 %, quenched the loop to ~212 °F (100 °C), and then the pressurizer heaters — still at
+  **92 %** with the level indicating a flat **0 %** — drove pressure back to **2207 psi
+  (15.22 MPa)** against coolant **240 °C subcooled**. Nothing thermodynamic produces that
+  pressure; it is heater power alone. At 15.5 MPa the pressure-driven ECCS curve delivers
+  **0.0034 frac/s against a 0.050 leak** — injection deadheaded, core dry, and heater ≈ break is
+  a *stable* equilibrium, so the core stayed dry indefinitely.
+  **The plant had no low-level heater cutoff at all.** Now built, and the setpoint is the
+  source's own: WTSM 10.3 *Pressurizer Level Control System* (ML11223A290) §10.3.4.1 — *"This
+  bistable provides a low level interlock at 17% level in the pressurizer … and turns off all
+  pressurizer heaters. … the heater cutoff protects the heaters which would be damaged if
+  operated in a steam environment."* They are damageable because they are *"replaceable,
+  direct-immersion, tubular-sheath type heaters … located in the lower portion of the
+  pressurizer vessel"* (WTSM 3.2, ML11223A213). It reads the **indicated** level, not truth, so a
+  failed level transmitter defeats it exactly as it fools the operator (HR1), and it is a
+  physical de-energization — the operator's selector and demand are left where they were put, the
+  #200/#329 rule.
+  **Outcome is now monotonic, and the boundary is derivable rather than fitted**: breaks survive
+  up to exactly `hpi_flow_max + lpi_flow_max·lpi_inventory_gain` = **0.160 frac/s** and not
+  beyond. `run_behavior` **49 → 50** (CA-10, 14 checks, injection-verified twice).
+  **Still open on #334**: LOCA break flow is pressure-independent (only SGTR is ΔP-scaled), the
+  break-size slider's *default* sits above the ECCS ceiling and so is unwinnable by construction,
+  and the letdown-isolation half of this same 17 % bistable is not built — which is why
+  pressurizer level parks on the setpoint and the cutoff chatters after a loss of offsite power.
+
 
 ## [Alpha 1.0.0] — 2026-08-04
 

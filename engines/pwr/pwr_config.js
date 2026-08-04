@@ -429,6 +429,15 @@
       // Proportional bands (M1 §6.4: "Bands 0.207/0.345 MPa").
       heater_band_mpa: 0.207,
       spray_band_mpa: 0.345,
+      // Low-level heater cutoff, % INDICATED pressurizer level (#334, 2026-08-04).
+      // NOT [tune] — it is the source's own number, not a fitted one. WTSM 10.3
+      // (ML11223A290) §10.3.4.1: "This bistable provides a low level interlock at 17%
+      // level in the pressurizer … and turns off all pressurizer heaters. … the heater
+      // cutoff protects the heaters which would be damaged if operated in a steam
+      // environment." Sits below the existing `pzr_level_low` alarm (25 %, which is also
+      // WTSM 10.3's low level setpoint) and above `pzr_level_lolo` (12 %), so the operator
+      // gets the warning first and the CRITICAL alarm is still the one that means trouble.
+      heater_cutoff_level_pct: 17.0,
       // Pressure-balance gains (MPa-rate units) [tune].
       // PORV/safety relief gains are large: the valves vent the pressurizer STEAM
       // space, so a small mass flow has a big pressure effect — which is why the

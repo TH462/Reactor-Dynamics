@@ -97,6 +97,7 @@
     'CA-7': 'probe (pzr heaters are an AC load — dead in SBO, alive in LOOP; 10 CFR 50.2 + NUREG-0737 II.E.3.1)',
     'CA-8': 'probe (the AC-load roster — CVCS + ECCS die in SBO, AFW + accumulators survive; WTSM 4.1 + 5.7)',
     'CA-9': 'probe (loss of CVCS make-up — the pzr level cue and the letdown isolation; #330)',
+    'CA-10': 'probe (the 17 % low-level heater cutoff — WTSM 10.3 §10.3.4.1; #334)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -1560,14 +1561,34 @@
         h.run(30);
         h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.5 });
         h.run(30);
+        // THE THRESHOLD WAS A FIXTURE, and #334 moved the plant under it. A severity-0.5
+        // SGTR empties the pressurizer inside 40 s (level 0 %), so the 17 % heater cutoff
+        // now de-energizes the heaters, primary pressure falls further, and this ΔP-scaled
+        // leak legitimately shrinks — 0.0122 → 0.0067 at the sample point. That is the
+        // plant getting MORE right, not less: a real 17 % bistable cuts the heaters here,
+        // and depressurizing to reduce the break flow is the single-SG EOP's whole
+        // strategy. So the magnitude fixture is relaxed to "a leak is flowing at all" and
+        // the probe now asserts THE CLAIM IN ITS OWN TITLE, which it never did: that the
+        // leak SURVIVES THE RESTORE, i.e. before ≈ after. Both new forms pass on the
+        // pre-#334 engine too (0.0122 vs 0.0122), so this is a better test, not a refit.
         var leakBefore = h.ts().leak_flow;
-        ck('leak flowing before the save', fmt(leakBefore, 4), leakBefore > 0.01, '> 0.01');
+        ck('leak flowing before the save', fmt(leakBefore, 4), leakBefore > 0.001, '> 0.001');
         var save = h.eng.saveState();
         var h2 = H('hot_full_power');
         h2.eng.loadState(save);
         h2.run(10);
         var leakAfter = h2.ts().leak_flow;
-        ck('leak still flowing after the restore', fmt(leakAfter, 4), leakAfter > 0.01, '> 0.01');
+        ck('leak still flowing after the restore', fmt(leakAfter, 4), leakAfter > 0.001, '> 0.001');
+        // Compare the BASE rate, not the instantaneous flow. The instantaneous value is
+        // ΔP-scaled and this scenario is violently transient at the sample point (primary
+        // swinging 15.4 → 8.6 → 15.4 MPa as ECCS cycles), so a before/after magnitude
+        // comparison measures which phase of that swing each side landed on — 0.0067 vs
+        // 0.0022, and neither number is wrong. `_leak_base` is the invariant the restore
+        // actually has to carry, so that is what "survives" means here.
+        ck('…and it is the SAME leak — the ΔP-scaled BASE survived the round trip',
+          fmt(h.eng.s._leak_base || 0, 4) + ' → ' + fmt(h2.eng.s._leak_base || 0, 4),
+          (h.eng.s._leak_base || 0) > 0 &&
+          Math.abs((h2.eng.s._leak_base || 0) - (h.eng.s._leak_base || 0)) < 1e-9, 'identical');
         ck('restored leak still ΔP-scaled (base survives)', fmt(h2.eng.s._leak_base || 0, 3),
           (h2.eng.s._leak_base || 0) > 0.012 && h2.eng.s._leak_to_sg === true, 'base ≈ 0.015, to_sg');
       });
@@ -1765,15 +1786,48 @@
 
         // --- leg C: A LOSS OF OFFSITE POWER IS NOT A BLACKOUT. The diesels are running,
         // and II.E.3.1's heater group is on them. Full authority, same demand, same rig.
+        // OBSERVED WHILE THE PRESSURIZER IS STILL COVERED, and the reason is a SECOND
+        // interlock, not a weakening of this one. Since #334 the heaters also cut out
+        // below 17 % indicated level (WTSM 10.3 §10.3.4.1), and measured, this LOOP walks
+        // pzr level 38.0 % → 18.0 % in the TWENTY SECONDS after the LOOP, as inventory
+        // sags ~2.6 % against #330's 776 %-per-frac deficit slope — and then it PARKS at
+        // 15–18 %, chattering across the cutoff. So the old 300 s sample had the level
+        // interlock firing and MASKING the thing this leg exists to show, 60 s lands
+        // within 0.3 % of the setpoint and 30 s lands BELOW it. 10 s is the only sample
+        // with real margin (28.9 %), and it is also the right place to ask the question:
+        // an AC guard is INSTANTANEOUS, so a wrong one — e.g. keyed on `!s.pump_running`
+        // — has already fired by then, and this leg discriminates exactly as before.
         var h3 = H('hot_zero_power');
         h3.run(60);
         h3.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
         h3.cmd('set_heater', { power_pct: 100 });
-        h3.run(300);
+        h3.run(10);
         ck('LOOP is NOT a blackout — the flag stays clear', String(h3.ts().station_blackout),
           h3.ts().station_blackout !== true, 'false');
+        ck('the pressurizer is still covered, so this leg is asking the AC question',
+          fmt(h3.ins().pzr_level, 1) + ' % indicated',
+          h3.ins().pzr_level > RD.PWR_CONFIG.pressurizer.heater_cutoff_level_pct + 3, '> 20 %');
         ck('and the diesel-backed heaters answer at FULL power (II.E.3.1)',
           fmt(h3.ctl().heater_power_pct, 1) + ' %', h3.ctl().heater_power_pct > 99, '100 %');
+        // …and when they DO stop later in this same run, say which interlock did it — the
+        // two are separately sourced and must not be allowed to blur into each other.
+        // Sampled ACROSS the window, not at an instant, because the level parks ON the
+        // setpoint and the cutoff chatters. That chatter is a KNOWN #334 follow-up rather
+        // than noise: the same WTSM 10.3 bistable also isolates letdown, and the source
+        // says that is precisely what "prevents further lowering of the pressurizer
+        // level" — with only the heater half built, nothing arrests the fall, so the
+        // plant sits on the boundary. Same zero-deadband shape as #288's RHR valve.
+        var lacAlive = true, lcutSeen = false;
+        h3.run(330, function (hh) {
+          if (hh.ts().ac_available === false) lacAlive = false;
+          if ((hh.ctl().heater_power_pct || 0) < 0.01 &&
+              hh.ins().pzr_level < RD.PWR_CONFIG.pressurizer.heater_cutoff_level_pct) lcutSeen = true;
+        });
+        ck('AC never went away on a LOOP — the diesels carried the 1E buses throughout',
+          String(lacAlive), lacAlive === true, 'true');
+        ck('the later cut-out is the LEVEL interlock, not the AC one',
+          lcutSeen ? 'heaters off with AC up and level below cutoff' : 'never observed',
+          lcutSeen === true, 'observed');
       });
     },
 
@@ -1996,6 +2050,177 @@
     // LEG D PASSES ON THE OLD PLANT DELIBERATELY. It is the false-positive guard: the
     // SHIPPED lineup must be untouched by this. A change that made the level line stiffer
     // could easily make a healthy plant twitch, and nothing else here would notice.
+    /* CA-10 (#334) — THE 17 % LOW-LEVEL HEATER CUTOFF, and the deadlock it removes.
+     *
+     * SOURCED, setpoint and all: WTSM 10.3 *Pressurizer Level Control System*
+     * (ML11223A290) §10.3.4.1 — "This bistable provides a low level interlock at 17% level
+     * in the pressurizer … and turns off all pressurizer heaters. … the heater cutoff
+     * protects the heaters which would be damaged if operated in a steam environment."
+     * They are damageable because they are direct-immersion elements in the lower vessel
+     * (WTSM 3.2, ML11223A213).
+     *
+     * WHAT IT COST TO NOT HAVE IT. Measured full stack on a 5 %-of-max cold-leg LOCA: ECCS
+     * refilled the RCS to 120 %, quenched it to ~100 °C, and then the heaters — at 92 %
+     * with the pressurizer indicating a flat 0 % — drove pressure back to 2207 psi
+     * (15.22 MPa) with the coolant 240 °C SUBCOOLED. No thermodynamic source produces
+     * that; it is heater power alone. At 15.5 MPa the pressure-driven ECCS curve delivers
+     * 0.0034 frac/s against a 0.050 leak, so injection is DEADHEADED, the core drains and
+     * stays dry, and heater ≈ break is a STABLE equilibrium.
+     *
+     * THE SYMPTOM THAT GOT IT FILED WAS NON-MONOTONICITY, which is what leg E pins: a
+     * 10 % break destroyed the core while a 20 % and a 30 % break were fully survivable.
+     * After the fix the survival boundary is `hpi_flow_max + lpi_flow_max·lpi_inventory_gain`
+     * = 0.160 frac/s exactly — a number DERIVED from the ECCS capacity rather than an
+     * artifact, so leg E computes it from config instead of transcribing it.
+     *
+     * Leg D is the one that makes this an INTERLOCK rather than a truth read (HR1).
+     */
+    'CA-10': function () {
+      return test('CA-10 the 17 % low-level heater cutoff — sourced, instrument-driven, and it breaks the LOCA deadlock', function (ck) {
+        var pz = RD.PWR_CONFIG.pressurizer;
+        var CUT = pz.heater_cutoff_level_pct;
+        ck('the cutoff is configured at the SOURCE\'s setpoint (WTSM 10.3 §10.3.4.1)',
+          CUT + ' %', Math.abs(CUT - 17.0) < 0.001, '17 %');
+
+        // ---- leg A: it must not fire in normal operation. A cutoff that trips at power
+        // would be worse than the defect it fixes.
+        var a = H('hot_full_power');
+        var aMinHeat = 1e9, aSawDemand = false;
+        a.run(300, function (hh) {
+          var lvl = hh.ins().pzr_level;
+          if (lvl > 40) { var v = hh.ctl().heater_power_pct; if (v != null) { aSawDemand = true; if (v < aMinHeat) aMinHeat = v; } }
+        });
+        ck('normal operation stays well above the cutoff',
+          fmt(a.range('pzr_level_pct').min, 1) + ' % min level',
+          a.range('pzr_level_pct').min > CUT + 20, '> ' + (CUT + 20) + ' %');
+        ck('the heater channel is alive at power (leg A observed it)',
+          aSawDemand ? 'observed' : 'NEVER OBSERVED', aSawDemand === true, 'observed');
+
+        // ---- leg B: the interlock itself. Drain the pressurizer with a small break and a
+        // FULL MANUAL heater demand standing, then require that NO sample below the cutoff
+        // ever delivers heater power. Driven through set_heater deliberately — the #200
+        // rule: de-energization is physical, not a value parked in the operator's demand.
+        var b = H('hot_full_power');
+        b.run(60);
+        b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.10 });
+        b.cmd('set_heater', { power_pct: 100 });
+        // The band is CUT − 1, not CUT, and the reason is architectural rather than
+        // cosmetic: the interlock reads the PREVIOUS step's indication (instruments are
+        // step 15, autoControl is step 7 — CONTEXT §11 explicit coupling), so on the
+        // single step where level crosses down through the setpoint the heaters are still
+        // acting on an above-cutoff reading. Measured, that is exactly 2 samples out of
+        // 1369, both at 16.3 %. Asserting zero violations AT the setpoint would be pinning
+        // the absence of a one-step lag that the whole engine is built on. The claim worth
+        // making is that SUSTAINED operation below the cutoff delivers no heater power.
+        var bViol = 0, bBelow = 0, bWorst = 0, bWorstLvl = -1;
+        b.run(1500, function (hh) {
+          var lvl = hh.ins().pzr_level, hp = hh.ctl().heater_power_pct || 0;
+          if (lvl != null && lvl < CUT - 1.0) {
+            bBelow++;
+            if (hp > 0.01) { bViol++; if (hp > bWorst) { bWorst = hp; bWorstLvl = lvl; } }
+          }
+        });
+        ck('the run actually went below the cutoff (or leg B proves nothing)',
+          bBelow + ' samples below ' + fmt(CUT - 1.0, 0) + ' %', bBelow > 10, '> 10 samples');
+        ck('heater power is ZERO whenever level is settled below the cutoff, with a 100 % demand standing',
+          bViol + ' violations' + (bViol ? ' (worst ' + fmt(bWorst, 1) + ' % at ' + fmt(bWorstLvl, 1) + ' % level)' : ''),
+          bViol === 0, '0 violations');
+        ck('the operator\'s DEMAND is untouched — only delivered power went to zero',
+          fmt(b.ctl().heater_power_pct, 1) + ' % delivered, selector ' + String(b.ctl().heater_auto),
+          b.ctl().heater_auto === false, 'still in MANUAL where the operator put it');
+
+        // ---- leg C: THE REPORTED DEFECT. The pathological state is an EMPTY RCS held at
+        // high pressure — that combination is what deadheads the ECCS. Assert it never
+        // occurs, rather than asserting an outcome a tuning could reach another way.
+        var c = H('hot_full_power');
+        c.run(60);
+        c.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.10 });
+        // PERSISTENCE, not occurrence — the TR-1h trap. A LOCA blowdown legitimately
+        // TRANSITS "low inventory at pressure" on its way down (measured, 7 samples
+        // peaking at 9.63 MPa), so a bare "never happened" check pins a transient the
+        // plant is entitled to. What defined the defect was that the state was a STABLE
+        // EQUILIBRIUM — heater power balancing the break's own depressurization at 15.22
+        // MPa, indefinitely. So this measures the longest UNBROKEN stretch: on the
+        // pre-#334 engine it is the whole remainder of the run.
+        var cBad = 0, cWorstP = 0, cStreak = 0, cMaxStreak = 0, cSamples = 0;
+        c.run(1800, function (hh) {
+          var t = hh.ts();
+          cSamples++;
+          if (t.core_inventory_pct < 5 && t.pressure_mpa > 8.0) {
+            cBad++; cStreak++;
+            if (cStreak > cMaxStreak) cMaxStreak = cStreak;
+            if (t.pressure_mpa > cWorstP) cWorstP = t.pressure_mpa;
+          } else cStreak = 0;
+        });
+        var tc = c.ts();
+        var cFrac = cSamples ? cMaxStreak / cSamples : 0;
+        ck('the empty-and-pressurized state is a TRANSIENT, not the equilibrium',
+          fmt(cFrac * 100, 1) + ' % of the run in the longest unbroken stretch (' +
+          cMaxStreak + '/' + cSamples + ' samples, ' + cBad + ' total, worst ' + fmt(cWorstP, 2) + ' MPa)',
+          cFrac < 0.05, '< 5 % of the run');
+        ck('…and the plant is not sitting in it at the end',
+          fmt(tc.core_inventory_pct, 1) + ' % at ' + fmt(tc.pressure_mpa, 2) + ' MPa',
+          !(tc.core_inventory_pct < 5 && tc.pressure_mpa > 8.0), 'not deadheaded');
+        ck('a 10 %-of-max break recovers inventory instead of draining dry',
+          fmt(tc.core_inventory_pct, 1) + ' %', tc.core_inventory_pct > 50, '> 50 %');
+        ck('…and the core is not damaged', String(tc.fuel_damaged), tc.fuel_damaged === false, 'false');
+
+        // ---- leg D: HR1. The bistable is fed by a LEVEL TRANSMITTER, and WTSM 10.3 names
+        // the channel assignment twice over. `pzr_level_sensor_low` sticks the indication
+        // at 20 % — ABOVE the 17 % cutoff — so with true level below it the heaters must
+        // STAY ENERGIZED. This is what separates an instrument-driven interlock from a
+        // read of truth, and it is the check that fails if someone "simplifies" the guard
+        // to s.pzr_level_pct.
+        var d = H('hot_full_power');
+        d.run(60);
+        d.cmd('inject_failure', { failure_id: 'pzr_level_sensor_low' });   // stuck at 20 %
+        d.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.10 });
+        d.cmd('set_heater', { power_pct: 100 });
+        // SUSTAINED, not "ever" — and this is the trap worth keeping. The first draft set a
+        // boolean on any single sample with true level below the cutoff and heaters lit,
+        // and it PASSED against the truth-reading injection: because autoControl (step 7)
+        // reads state that pzr_level_pct (step 8) has not yet updated, even a truth-read
+        // guard leaves one lagging sample, which is enough to trip a bare "ever" flag. The
+        // discriminating claim is that a stuck transmitter keeps the heaters energized for
+        // essentially the WHOLE excursion, not for one step of coupling lag.
+        var dLow = 0, dFooledN = 0;
+        d.run(900, function (hh) {
+          var t = hh.ts(), hp = hh.ctl().heater_power_pct || 0;
+          if (t.pzr_level_pct < CUT) { dLow++; if (hp > 50) dFooledN++; }
+        });
+        var dFrac = dLow ? dFooledN / dLow : 0;
+        ck('true level really went below the cutoff on the failed-sensor leg',
+          fmt(d.range('pzr_level_pct').min, 1) + ' % true min, ' + dLow + ' samples',
+          dLow > 100, '> 100 samples below ' + CUT + ' %');
+        ck('a transmitter stuck at 20 % DEFEATS the cutoff throughout — it reads the instrument (HR1)',
+          fmt(dFrac * 100, 1) + ' % of the low-level samples kept full heater power (' + dFooledN + '/' + dLow + ')',
+          dFrac > 0.5, '> 50 %');
+
+        // ---- leg E: monotonicity. Computed from the ECCS capacity, not transcribed, so a
+        // retune of the injection curve moves the expectation with the plant.
+        var em = RD.PWR_CONFIG.emergency;
+        var ceiling = em.hpi_flow_max + em.lpi_flow_max * em.lpi_inventory_gain;   // 0.160 frac/s
+        var sevMax = 50 / 100;                                                     // large_loca meta.max/100
+        var survivable = (ceiling / sevMax) * 0.85;                                // comfortably inside
+        var unrecoverable = (ceiling / sevMax) * 1.10;                             // comfortably outside
+        function outcome(sev, secs) {
+          var h = H('hot_full_power');
+          h.run(60);
+          h.cmd('inject_failure', { failure_id: 'large_loca', severity: sev });
+          h.run(secs);
+          return h.ts();
+        }
+        var eIn = outcome(survivable, 2100);
+        ck('a break INSIDE the ECCS capacity is survivable (sev ' + fmt(survivable, 3) + ')',
+          fmt(eIn.core_inventory_pct, 1) + ' %, damaged ' + String(eIn.fuel_damaged),
+          eIn.fuel_damaged === false && eIn.core_inventory_pct > 50, 'intact');
+        var eOut = outcome(unrecoverable, 2100);
+        ck('a break OUTSIDE it is not — the fix did not make everything survivable (sev ' + fmt(unrecoverable, 3) + ')',
+          fmt(eOut.core_inventory_pct, 1) + ' %, damaged ' + String(eOut.fuel_damaged),
+          eOut.fuel_damaged === true, 'damaged');
+      });
+    },
+
     'CA-9': function () {
       return test('CA-9 loss of CVCS make-up — the level cue is real and the isolation protects', function (ck) {
         var pz = RD.PWR_CONFIG.pressurizer;

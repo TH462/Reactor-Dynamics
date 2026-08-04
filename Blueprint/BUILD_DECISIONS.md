@@ -37,6 +37,73 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04f — #334: the 17 % heater cutoff, and a plant where a small break was worse than a big one
+
+### The change
+
+A second de-energization in `pwr_pressurizer.autoControl`, beside #329's AC guard: heaters off
+below **17 % INDICATED** pressurizer level. `heater_cutoff_level_pct: 17.0` in config, marked
+**not `[tune]`**. New probe **CA-10** (14 checks), `run_behavior` **49 → 50**. No other constant
+moved.
+
+### Why this counts as a defect and not a missing feature
+
+The plant could reach, and then STAY IN, a state with no physical realisation: an **empty RCS at
+2207 psi (15.22 MPa) with the coolant 240 °C subcooled**, held there by heater power alone. That
+is not a simplification of a real plant, it is a state a real plant has an interlock to prevent —
+and the interlock exists precisely because the heaters are direct-immersion elements that burn
+out uncovered (WTSM 3.2, ML11223A213). The observable consequence was worse than the state: it
+deadheaded the pressure-driven ECCS (0.0034 frac/s against a 0.050 leak), so **the outcome became
+non-monotonic in break size** — 5 % destroyed the core, 10 % and 15 % were survivable.
+
+### The decision worth recording: build the sourced HALF, do not invent the rest
+
+WTSM 10.3 §10.3.4.1's bistable does **three** things at 17 %: alarm, letdown isolation, heater
+cutoff. This plant now has the alarm (already at WTSM's own 25 % and a 12 % lolo) and the heater
+cutoff. The **letdown isolation is deliberately not built here** — it changes inventory control
+in a regime every gate visits, and it is a separate decision.
+
+That leaves a known artifact: after a loss of offsite power the level parks at 15–18 %,
+straddling the setpoint, and the cutoff chatters — **#288's zero-deadband shape**. The tempting
+fix is a deadband. It was refused, because the source specifies no hysteresis and **says the
+letdown half is what "prevents further lowering of the pressurizer level"**. So the chatter is
+evidence that half an interlock is built, not evidence that the built half needs a fudge factor;
+inventing a deadband would bury the real finding under a fitted number. Recorded on #334.
+
+### The boundary is now DERIVED, which is the test that it is right
+
+After the fix, breaks survive up to exactly `hpi_flow_max + lpi_flow_max·lpi_inventory_gain` =
+**0.160 frac/s**. That number is the ECCS capacity, falling out of the injection curve rather
+than being fitted — so CA-10 leg E computes it from config instead of transcribing it, and a
+retune of the ECCS moves the expectation with the plant. Before the fix the boundary was
+somewhere in the middle of the range and pointed the wrong way.
+
+### Two probe-authoring traps, and the second is the one worth keeping
+
+**A one-step coupling lag can satisfy an "ever" assertion.** CA-10's HR1 leg asserts that a
+transmitter stuck at 20 % keeps the heaters energized while true level is below the cutoff. Its
+first draft set a boolean on any single qualifying sample and **passed against the truth-reading
+injection it exists to catch** — because `autoControl` (step 7) reads state that `pzr_level_pct`
+(step 8) has not yet written, so even a truth-read guard leaves one lagging sample. Demanding a
+SUSTAINED fraction separates 100 % (1589/1589) from 1.3 % (10/793). Anywhere a probe distinguishes
+"reads the instrument" from "reads truth", the explicit-coupling lag will forge one sample of
+evidence for the wrong answer.
+
+**And the mirror of it:** leg C first asserted the empty-and-pressurized state never OCCURS,
+which pins a transient a blowdown is entitled to (7 samples, 9.63 MPa). The defect was that the
+state was an EQUILIBRIUM — so the check measures the longest unbroken stretch, not occurrence.
+Same lesson as TR-1h: permanence, not occurrence.
+
+### Two existing probes moved and neither was broken
+
+Both were pinning the old behaviour (#206/#219 shape). **CA-7 leg C** sampled the LOOP heater
+response at 300 s, by which time the level interlock had fired and was masking the AC claim the
+leg exists to make. **TR-13b**'s `leak > 0.01` was a magnitude fixture from a plant whose heaters
+ran with the pressurizer empty; it now asserts the claim in its own title — that the ΔP-scaled
+BASE survives the restore — which it never did. Both new forms pass on the pre-#334 engine.
+
+---
+
 ## 2026-08-04e — board ALL-CAPS · Physics-tab contrast + indication colours · failure groups
 
 **Decisions.** Three owner directives, 2026-08-04, UI only. `verify_board_check` **192 → 194**,

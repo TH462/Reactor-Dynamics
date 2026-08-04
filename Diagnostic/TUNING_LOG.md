@@ -20,6 +20,140 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04f (#334 — the 17 % heater cutoff; a small LOCA was worse than a big one)
+
+**Task:** owner play-tested a LOCA and said *"some things didn't seem right"*, asking specifically
+about flow through the core, core level under emergency injection, and **where the break actually
+is in the loop**. Diagnosed, filed as **#334**, then built the first of three items on it.
+
+### The symptom: the outcome was NON-MONOTONIC in break size
+
+Full stack, `hot_full_power`, shipped lineup, ECCS available and actuating normally, 20 min:
+
+| slider (0–50) | severity | `leak_flow` frac/s | outcome |
+|---|---|---|---|
+| 5 | 0.10 | 0.050 | **FUEL DAMAGE** — dry at 2207 psi (15.22 MPa) |
+| 10 | 0.20 | 0.100 | recovers, 120 %, 167 °F (75 °C) |
+| 15 | 0.30 | 0.150 | recovers |
+| 16 | 0.32 | 0.160 | **FUEL DAMAGE** |
+| **20 (slider DEFAULT)** | 0.40 | 0.200 | **MELT** |
+
+A 5 % break destroys the core; 10 % and 15 % are fully survivable. That inversion is what the
+owner felt.
+
+### Answering the three questions he actually asked
+
+**"Where is the actual line break in the loop?"** — **Nowhere.** `large_loca` is
+`display: 'Large LOCA (Cold-Leg Break)'`, but the physics has no loop position at all:
+`pwr_primary.stepInventory` is one lumped scalar, `dm = (charging·g + HPI/LPI + accumulators) −
+(letdown·g + PORV + safeties + leak_flow)`. No node, no path from injection point to break. The
+cold leg appears ONLY as a pressure reference (`injectionFlowInv` reads `p_coldleg` for the
+driving head), never as a place mass goes. Hot-leg vs cold-leg break, and ECCS spill/bypass, do
+not exist. The label is on the failure card, not in the model.
+
+**"Why would the reactor be empty if we are flowing cooling water through it?"** — two different
+answers, and only the second is a defect. **(a)** For big breaks there is no THROUGHPUT concept:
+inventory is a net balance, so once leak > injection the scalar clips at 0 and stays there while
+both flows continue. Measured at severity 0.40, `hpi_flow_normalized` **0.9665** with
+`core_inventory_pct` **0**, indefinitely. **(b)** For SMALL breaks the ECCS is not flowing at all
+— it reads **0.021**.
+
+### The mechanism: the heaters pressurize an empty RCS, which deadheads the ECCS
+
+Instrumented the `dP` terms in `stepPressure`. Once ECCS refills to 120 % and quenches the loop
+to ~100 °C, `primary_void_fraction` → 0 and `Psat(Tavg)` ≈ 0.10 MPa < pressure, so `saturated`
+goes **false** and the saturation pull that was pinning pressure switches off. The heaters are
+still at 100 % (`heater` term **+0.5500 MPa/s**) chasing a 15.41 MPa setpoint nobody lowered,
+which beats the break's own depressurization (`leakdep` **−0.500**). Pressure climbs to
+**2207 psi in ~45 s with the coolant at 220 °F (105 °C)** — Psat(105 °C) is **0.106 MPa**, so the
+coolant is 240 °C subcooled and there is no thermodynamic source for that pressure. At 15.5 MPa
+the ECCS curve gives `q_hh` = 0.06·(16.44−15.52)/16.44 = **0.0034** and `q_lh` = **0** (LPI
+shutoff head is 4.5 MPa), against a 0.050 leak. The core drains and **stays dry, because
+heater ≈ leakdep is a STABLE equilibrium.**
+
+**There was no low-level heater cutoff anywhere in the tree**, and the heaters ran at 100 % with
+`pzr_level_pct` reading a flat 0.
+
+### The evidence pass found the interlock, its setpoint, and two things I did not expect
+
+nrc.gov 403s from this environment; the **archive.org workaround** from 2026-07-28q still works
+(`web.archive.org/web/2023id_/<url>` + browser UA via curl — `WebFetch` cannot reach
+archive.org either, so it has to be curl). The pressurizer chapters were not in the local
+corpus and had to be found by **probing ML numbers**: `ML11223A287` = WTSM **10.2** Pressurizer
+Pressure Control, `ML11223A290` = WTSM **10.3** Pressurizer Level Control. Both saved to
+`inbox/sources/`.
+
+WTSM 10.3 §10.3.4.1 is exact: *"This bistable provides a low level interlock at **17% level** in
+the pressurizer. In addition to providing a low level alarm, this interlock isolates the letdown
+from the chemical and volume control system by closing one letdown isolation valve and all
+orifice isolation valves, and **turns off all pressurizer heaters**. Isolating the letdown
+prevents further lowering of the pressurizer level, and the **heater cutoff protects the heaters
+which would be damaged if operated in a steam environment**."*
+
+Two things that came out of reading it rather than assuming it. **The 17 % I had guessed in the
+diagnostic injection is the source's own number** — luck, and it does not excuse having guessed.
+And **the bistable does THREE things**, of which this plant now has one: the alarm exists (at
+25 % and 12 %, and WTSM 10.3's own low-level setpoint is 25 %, so that one already agreed), the
+**letdown isolation does not**, and the source says that half is exactly what *"prevents further
+lowering of the pressurizer level"*. That matters below.
+
+### What was built
+
+`autoControl` gains a second de-energization beside #329's AC guard, reading the **indicated**
+level (HR1 — WTSM 10.3 names the transmitter channel assignment twice over), with
+`heater_cutoff_level_pct: 17.0` in config marked **not `[tune]`** because it is the source's
+number. Physical de-energization, not a written demand — the #200/#329 rule.
+
+Measured after: severity 0.10 **recovers** (120 %, no damage) where it previously went dry, and
+the survival boundary is now **exactly `hpi_flow_max + lpi_flow_max·lpi_inventory_gain` =
+0.160 frac/s** — i.e. derivable from ECCS capacity rather than an artifact. Monotonic.
+
+### CA-10, and the hollow check the second injection caught
+
+14 checks. Injection 1 (remove the cutoff): **5 red**, deadlock **88.1 % of the run**, worst
+15.23 MPa. Injection 2 (read `pzr_level_pct` instead of the instrument): **the HR1 leg PASSED**.
+Its first draft set a boolean on any single sample with true level low and heaters lit — and
+`autoControl` (step 7) reads state that `pzr_level_pct` (step 8) has not yet updated, so *even a
+truth-reading guard leaves one lagging sample*, which is enough to trip an "ever" flag. Rewritten
+to require SUSTAINED fooling it separates **100 % (1589/1589)** from **1.3 % (10/793)**. Leg C
+needed the same correction in the other direction: it first asserted the empty-and-pressurized
+state never OCCURS, which pins a transient the blowdown is entitled to (7 samples, 9.63 MPa) —
+the defect was that the state was an EQUILIBRIUM, so it measures the longest unbroken stretch.
+
+### Two existing probes moved, and neither was broken by the fix
+
+Both were pinning the old behaviour, which is the #206/#219 shape. **CA-7 leg C** sampled the
+LOOP heater response at 300 s; by then the level interlock had fired and was **masking the AC
+claim the leg exists to make**. Re-sampled at 10 s — measured, level falls **38.0 % → 18.0 % in
+twenty seconds** and then parks at 15–18 %, so 60 s lands within 0.3 % of the setpoint and 30 s
+lands below it; 10 s is the only sample with margin, and an AC guard is instantaneous anyway.
+Gained a positive check that the LATER cut-out is the level interlock with AC still up.
+**TR-13b**'s `leak > 0.01` was a magnitude fixture from a plant whose heaters ran with the
+pressurizer empty; a severity-0.5 SGTR now empties the pressurizer in 40 s, the cutoff fires,
+pressure falls and the ΔP-scaled leak legitimately shrinks to 0.0067 — the plant getting *more*
+right, and depressurizing to reduce break flow is the single-SG EOP's whole strategy. It now
+asserts the claim in its own title, that the **BASE** rate survives the round trip, which it
+never did. Both new forms pass on the pre-#334 engine, so they are better tests, not refits.
+
+### Known and left: the cutoff CHATTERS, and the source says why
+
+After a LOOP the level parks at 15–18 %, straddling the setpoint, and the heaters cycle. This is
+**#288's zero-deadband shape** — but the fix is probably not a deadband, because WTSM 10.3 says
+the same bistable's letdown isolation is what *"prevents further lowering of the pressurizer
+level"*. Building only the heater half leaves nothing to arrest the fall. Recorded on #334 rather
+than patched with an invented deadband, since the source specifies no hysteresis and inventing
+one would be exactly what the evidence-pass rule forbids.
+
+**Also still open on #334** (reported, not built): LOCA break flow is pressure-INDEPENDENT — set
+once at injection, only SGTR is ΔP-modulated — so a dry RCS keeps "leaking" at full rate; and the
+break-size slider's **default (20 → severity 0.40 → 0.200 frac/s) sits above the 0.160 ECCS
+ceiling**, so injecting the failure with no severity chosen produces a break the plant cannot
+survive under any operator action.
+
+**Gates:** `run_behavior` **49 → 50**. `run_all` green.
+
+---
+
 ## Session log — 2026-08-04e (board caps · Physics-tab contrast + indication colours · failure groups)
 
 **Task:** three owner directives, 2026-08-04, UI only — no engine, config or control change.
