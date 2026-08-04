@@ -37,6 +37,65 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04b — #282: the version-bump suspension is LIFTED, next release is launch
+
+**Decision.** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha
+and into Alpha and bring back the update tracking page. Update tracking summaries/lists should be
+concise.")* The 2026-07-31 suspension of versioning + the player-facing changelog is **superseded**.
+The next `develop` → `main` merge is the **launch release, `Alpha 1.0.0`** — one version for
+everything accumulated under `Pre Alpha`; the Platform.Feature.Refinement digit rules resume from the
+release *after* it. Docs/process only: no engine, config, layer or probe change.
+
+**Un-suspended in four places, because that is how many carried it.** `CLAUDE.md` twice (the
+*Definition of done* release bullet and the *Website changelog & version numbers* banner), the
+`release-to-main` skill (banner, six struck-through checklist rows, **and its frontmatter
+`description`** — the string an agent reads before opening the file), `changelog.html`'s
+`ADDING AN ENTRY` comment, and `site/release.js`'s note. A rule spread across four sites is
+un-suspended in four edits or not at all.
+
+**`run_release`'s pre-release mode makes the bump and the entry ONE change** — read off the gate, not
+assumed. `RELEASED` is derived from the **format** of `RD_RELEASE` (`test/run_release.js:65`), and
+while it is false the SITE rule requires **zero** published entries. So a `changelog.html` entry
+ahead of the bump is a red gate, and the bump without an entry is red the other way. Neither
+direction was documented anywhere; both are now, at all four sites. The release moves the runner
+**8 → 11** (two `RELEASED`-only checks plus one CROSS row arm on the format alone). This is also why
+the launch entry was deliberately **not** drafted into the page ahead of time.
+
+**Concise is a CAP: ≤ 8 bullets, one line each.** The brevity is the owner's directive; **the number
+is the agent's** operational reading and is labelled as such at every site. It guards a specific
+failure: the launch entry describes the *state of the sim* rather than a diff, so it is the one most
+likely to sprawl, and `CHANGELOG.md` — the obvious thing to copy from — carries a **30-line** single
+item. Rule: aggregate a system's work into one line; never derive the public page one-to-one from the
+developer one.
+
+**Simulating launch day found the plan ships a RED, and #282 records the opposite.** The three files
+were copied to a scratch tree, the launch edits applied and the real runner pointed at them.
+`CHANGELOG.md` still carries `## [Alpha 1.11.0]` down to `## [Alpha 1.7.0]`, so rolling
+`[Unreleased]` to `## [Alpha 1.0.0]` puts **1.0.0 above 1.11.0** and fails *"version headings are
+newest-first"* — **10 checks / 1 failed**. #282 says *"the ordering trap only existed because 1.0.0
+had to sort below 1.10.0/1.11.0 … not needed at all"*, which was true of the *site* changelog (it was
+emptied) and was never checked against the developer one. Relabelling the eight pre-launch headings so
+they fail the `^Alpha \d+\.\d+\.\d+$` test gives **11 / 0** — **relabel, do not merge**, because the
+per-version boundaries already took a tag diff to reconstruct once. **Second effect, which nothing
+would have surfaced:** while 1.0.0 sorts below the oldest named heading it falls under the CROSS
+rule's `floor`, so the launch entry's date agreement across the two files is **not checked at all**
+(measured: zero CROSS rows). Fix deferred to the release — it is release-time work and a structural
+call — and recorded in the skill checklist and #282.
+
+**`run_hardrules` 142 → 149, and the trap is in the write-up.** Measured net +7, **not decomposed**:
+a hand count of the citations added and the suspension quotes removed gives +5, and this gate is
+already documented as over-reporting its site count (#312). Two traps caught on the change: the Rev 0
+ruling was first quoted with **no date** (149/1 before 149/0), and **typing the literal marker into
+prose removes a site even inside backticks** — the CLAUDE.md line naming it went 149 → 148, because a
+backticked marker swallows the guard on a neighbouring real citation. Injection-verified three ways.
+Refer to the markers by description; never type them.
+
+**Still open, owner's call:** the pre-launch `v1.10.0`/`v1.11.0` tags will sort above `v1.0.0`
+permanently. Recommendation: leave them — developer-facing only, and renaming rewrites published refs
+on a public repo for a tidier sort nobody player-facing sees.
+
+---
+
 ## 2026-08-04 — #325: natural circulation, and the cheap version that was measured and refused
 
 ### The change

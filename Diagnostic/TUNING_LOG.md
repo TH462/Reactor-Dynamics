@@ -20,6 +20,102 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04b (#282 — the version-bump suspension is LIFTED; next release is launch)
+
+**Task:** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha and
+into Alpha and bring back the update tracking page. Update tracking summaries/lists should be
+concise.")* Docs/process only — no engine, config, layer or probe change. Nothing was pending
+release when this landed: `origin/main` and `origin/develop` were both at `d5c1d8b`.
+
+### The suspension was encoded in FOUR places, not one
+
+`CLAUDE.md` carried it twice (the *Definition of done* release bullet **and** the *Website changelog
+& version numbers* banner), the `release-to-main` skill carried it as a banner + six struck-through
+checklist rows, `changelog.html`'s `ADDING AN ENTRY` comment carried the style rules, and
+`site/release.js` carried the "set this at launch" note. All four are un-suspended, and the skill's
+frontmatter `description` too — that string is what the agent sees before it opens the file, and it
+said "SUSPENDED until the public release".
+
+### `run_release`'s pre-release mode makes the bump and the entry a SINGLE change
+
+Read the gate rather than assuming: `RELEASED` is derived from the **format** of `RD_RELEASE`
+(`/^Alpha \d+\.\d+\.\d+$/`, `test/run_release.js:65`), and with it false the SITE rule requires
+`siteEntries.length === 0` — *"none yet, correctly — nothing has been released"*. So a
+`changelog.html` entry added ahead of the bump is a **red gate**, and the bump without an entry is
+red the other way (two `RELEASED`-only checks plus a CROSS row arm on the format). That is why the
+launch entry was **not** drafted into the page now, and why the release moves the runner **8 → 11**.
+Written into all four sites, in both directions, since neither was documented anywhere.
+
+### Simulating launch day found that the release as #282 specifies it ships a RED
+
+Rather than trusting the plan, the three files were copied to a scratch tree, the launch edits applied
+and **the real runner pointed at them**. `CHANGELOG.md` still carries `## [Alpha 1.11.0]` down to
+`## [Alpha 1.7.0]`, so rolling `[Unreleased]` to `## [Alpha 1.0.0]` puts **1.0.0 above 1.11.0** and
+fails *"version headings are newest-first"* — **10 checks / 1 failed**. #282 states the opposite:
+*"The ordering trap only existed because 1.0.0 had to sort below 1.10.0/1.11.0 … not needed at all."*
+That is true of `changelog.html`, which was emptied, and was never checked against the developer file,
+which was not.
+
+Relabelling the eight pre-launch headings (`## [Pre-launch 1.11.0] — 2026-07-30`, …) so they fail the
+`^Alpha \d+\.\d+\.\d+$` test gives **11 checks / 0 failed**. **Relabel, do not merge into one
+catch-all** — the per-version boundaries took a tag diff to reconstruct once already (`run_release`'s
+own header records it).
+
+**The second effect is the one that would never have been noticed.** `floor` in the CROSS rule is the
+oldest individually-named version heading, and entries below it are skipped deliberately. While 1.0.0
+sorts below `Alpha 1.7.0` the launch entry falls under that floor, so **its date agreement across the
+two files is not checked at all** — measured, zero CROSS rows. The relabel restores it. A gate that
+silently drops its only cross-file check is the #224 shape: coverage decided by a list, not by the
+artifact.
+
+Not fixed now: it is release-time work and a structural call on the developer changelog. In the skill
+banner, the launch checklist and #282.
+
+### One measurement trap, in the write-up rather than the plant
+
+The first simulation was **invalid and looked plausible** — a one-shot string replace of
+`## [Unreleased]` hit the reference to it inside the *"Releasing:"* blockquote at the top of the file
+instead of the real heading 13 lines below, producing a heading dated ``2026-08-05` heading`` and
+**four** failures. Three were artefacts. Anchoring the match to the line (`ln.strip() == '## [Unreleased]'`)
+left the one real failure. A file that documents its own procedure contains its own procedure's
+strings — the same class as `board_check`'s page carrying the text `1 FAILURE/143` in a comment.
+
+### Concise is a CAP, and the number is mine
+
+The directive says concise; **≤ 8 bullets, one line each** is my operational reading of it and is
+labelled as such at every site. The failure mode it guards is specific and visible in this very
+file: `CHANGELOG.md`'s `[Unreleased]` has a **30-line** single item, and the launch entry describes
+the *state of the sim* rather than a diff, so it is the entry most likely to sprawl into a feature
+catalogue. Rule: aggregate a system's work into one line, never derive the page from `CHANGELOG.md`
+one-to-one.
+
+### `run_hardrules` 142 → 149, and typing a marker into prose REMOVES a site
+
+Write-up drift, from a change with no code in it. **Measured net +7 and deliberately not decomposed**
+— citations were added in six files and the 2026-07-31 suspension quotes removed from three, which
+hand-counts to +5, and the gate is already documented as over-reporting its site count (#312). Do not
+publish arithmetic here that has not been measured.
+
+Two traps, both caught rather than reasoned about. **(1)** The Rev 0 ruling was first quoted in the
+skill banner with **no date** — exactly what HR11 exists to stop — so it scored 149/1 before 149/0.
+A citation typed by hand is the likeliest place for a malformed one. **(2) Writing the literal marker
+string into prose costs a site, even inside backticks.** The CLAUDE.md write-up first read *"the
+`OWNER DIRECTIVE` now in site/release.js is invisible here"* and the gate went **149 → 148**: a
+backticked marker is not merely skipped, it swallows the guard on a real citation nearby, and that
+line carries many. Injection-verified three ways — paragraph removed **149**, marker typed **148**,
+marker described in words **149**. So refer to the markers by description, never type them.
+
+### Left for the release itself (all in #282)
+
+`site/release.js` → `Alpha 1.0.0`; first `changelog.html` entry (≤ 8 bullets) + delete the
+*"Awaiting public launch"* note-block; roll `CHANGELOG.md` `[Unreleased]` → `## [Alpha 1.0.0] —
+<date>`; **relabel the eight pre-launch version headings** (above — without it the gate is red);
+manual set to a single **Rev 0** row; `run_release` 8 → 11 in `BASELINES` **and** CLAUDE.md. Open
+owner call: the pre-launch `v1.10.0`/`v1.11.0` tags will sort above `v1.0.0` for ever —
+recommendation is to leave them, developer-facing only.
+
+---
+
 ## Session log — 2026-08-04 (#325 — natural circulation, and a LOOP stops being terminal)
 
 **Task:** owner asked for the options on #325 and then ruled *(OWNER RULING, 2026-08-04: "Go with one B")* —

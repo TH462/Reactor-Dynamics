@@ -71,6 +71,23 @@
        (Blueprint/BUILD_DECISIONS.md + CHANGELOG.md are the engineering record;
        this page is the public one.)
 
+       LENGTH — CONCISE IS A CAP: at most 8 bullets per entry, one line each
+       (owner, 2026-08-04: "Update tracking summaries/lists should be concise.";
+       the number of 8 is the operational reading of it, not the owner's figure).
+       AGGREGATE, DO NOT ENUMERATE — one line for a system's worth of work, never
+       one per commit. Do NOT derive this page from CHANGELOG.md line by line:
+       that file is dense on purpose and a single item in it runs 30 lines. If a
+       release has more than 8 lines' worth, group by system and summarise.
+
+       FIRST ENTRY (launch, Alpha 1.0.0) — delete the "Awaiting public launch"
+       note-block below when you add it; it is not an entry and run_release.js
+       does not count it. That entry describes the STATE OF THE SIM at launch,
+       not a diff against Pre Alpha — see the page lead above, which says the
+       pre-launch years are deliberately not catalogued. And the version bump in
+       site/release.js must be in the SAME change: run_release is in pre-release
+       mode, where zero published entries is the correct state, so an entry
+       without the bump is a red gate and a bump without an entry is red too.
+
   <article class="log-entry">
     <div class="log-head">
       <h2>Short headline</h2>

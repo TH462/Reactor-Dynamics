@@ -54,6 +54,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   verify natural circulation. New probe **TR-15**; `run_behavior` **47 → 48**, `run_contract` **144 → 145**
   (`natural_circulation`).
 
+### Changed
+- **Version bumps and the player-facing changelog are LIVE again, and the next release is the
+  LAUNCH release** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of
+  pre-Alpha and into Alpha and bring back the update tracking page. Update tracking
+  summaries/lists should be concise.")*. This supersedes the 2026-07-31 suspension. That release
+  is **`Alpha 1.0.0`** — one version for everything accumulated under `Pre Alpha`, not a replay
+  of the skipped bumps — and the digit rules resume from the release *after* it. Un-suspended in
+  all four places that encoded it: `CLAUDE.md` (Definition of done + *Website changelog & version
+  numbers*), the `release-to-main` skill, `changelog.html`'s `ADDING AN ENTRY` template and
+  `site/release.js`. Launch-only extras stay in **#282** (manual set to Rev 0, `BASELINES`, tags).
+- **`changelog.html` entries are capped at 8 one-line bullets**, aggregated by system rather than
+  enumerated per commit, and explicitly *not* derived line-by-line from this file — a single item
+  here runs 30 lines. The cap is the operational reading of the directive above; the brevity is
+  the directive.
+- **The bump and the first entry must land in ONE change.** `run_release.js` is in pre-release
+  mode, where **zero** published entries is the *correct* state, so an entry added while
+  `RD_RELEASE` still reads `Pre Alpha` is a red gate — and a bump with no entry is red the other
+  way. Setting the `Alpha X.Y.Z` format arms three further checks by itself, taking the runner
+  **8 → 11**. Not a new mechanism; it was undocumented, and both directions are now written down
+  where the mistake would be made.
+- **Found by simulating launch day against the real gate: the release as #282 specifies it ships
+  a RED.** `CHANGELOG.md` still carries `## [Alpha 1.11.0]` down to `## [Alpha 1.7.0]`, so
+  rolling `[Unreleased]` to `## [Alpha 1.0.0]` puts **1.0.0 above 1.11.0** and fails *"version
+  headings are newest-first"* — **10 checks / 1 failed**. #282 records the opposite ("the
+  ordering trap only existed because 1.0.0 had to sort below 1.10.0/1.11.0 … not needed at
+  all"), which was true of the *site* changelog and never checked against the developer one.
+  Relabelling the eight pre-launch headings so they stop parsing as released versions gives
+  **11 / 0**. It also restores a check that would otherwise be silently absent: while 1.0.0
+  sorts below the oldest named heading it falls under the CROSS rule's floor, so the launch
+  entry's date agreement across the two files is **not verified at all**. Recorded in the
+  release skill and #282; not done now, because it is release-time work and a structural call.
+
 ### Fixed
 - **`run_all` was silently losing the tail of a runner's output on Linux** (2026-08-04). Every
   runner here ends with `process.exit(code)`, and Node's I/O contract says pipes are

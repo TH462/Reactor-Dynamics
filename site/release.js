@@ -13,8 +13,12 @@
  * real version is `Alpha 1.0.0` on public launch day (#282) — its first value is
  * its launch value, which is the most honest use a version number gets.
  *
- * Set this to "Alpha X.Y.Z" at launch. `test/run_release.js` switches out of
- * pre-release mode automatically on the format and starts demanding a matching
- * changelog entry. RBMK and BWR are OUT OF SCOPE for that release — PWR only.
+ * THE NEXT RELEASE IS THAT LAUNCH *(OWNER DIRECTIVE, 2026-08-04: "The next release
+ * will take the program out of pre-Alpha and into Alpha and bring back the update
+ * tracking page.")* — so this line becomes "Alpha 1.0.0", and `test/run_release.js`
+ * switches out of pre-release mode automatically on the format. It then DEMANDS a
+ * matching `changelog.html` entry, so bump this and write that entry in ONE change:
+ * a bump alone is a red gate, and so is an entry alone. RBMK and BWR are OUT OF
+ * SCOPE for that release — PWR only. Checklist: #282.
  */
 window.RD_RELEASE = "Pre Alpha";

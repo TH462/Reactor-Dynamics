@@ -417,7 +417,28 @@ var BASELINES = {
   // either — this is the exact trap this file has recorded three times (the 83-on-merge note
   // below). Measured after resolving every conflict, never during: a tree that still has
   // markers in it carries BOTH sides' citations at once and counts the duplicates.
-  'run_hardrules.js':      { code: 0, score: '142checks 0failed' },
+  // 142 -> 149 on 2026-08-04b (#282): the version-bump suspension LIFTED. Write-up drift, and
+  // the biggest single move yet from a change with NO code in it at all — docs and one skill.
+  // MEASURED net +7. Deliberately NOT decomposed per site: citations were added in six files
+  // for the 2026-08-04 launch directive AND the 2026-07-31 suspension quotes were removed from
+  // three of them, and a hand count of that does not reconcile to +7 — which the note above
+  // already warns about, since this gate over-reports its site count and a false positive can
+  // lend its window to a neighbour. Do not publish arithmetic here you have not measured.
+  // The dated quote now in site/release.js is invisible to this gate — .js is not scanned,
+  // same as #310 and #137.
+  //
+  // TWO TRAPS, both caught on this change rather than reasoned about:
+  //   (1) The Rev 0 ruling was first quoted in the skill banner with NO DATE — exactly what
+  //       HR11 exists to stop — so it scored 149checks 1failed before 149/0. A citation typed
+  //       by hand is the likeliest place for a malformed one.
+  //   (2) WRITING THE LITERAL MARKER IN PROSE *REMOVES* A SITE, even inside backticks. The
+  //       CLAUDE.md write-up first read "the `OWNER DIRECTIVE` now in site/release.js is
+  //       invisible here" and the gate went 149 -> 148: a backticked marker is not merely
+  //       skipped, it swallows the guard on a real citation nearby (that line carries many).
+  //       Verified by injection three ways — remove the paragraph: 149; keep it with the
+  //       backticked marker: 148; keep it phrased as "the dated quote": 149. So refer to the
+  //       markers by description in prose, never by typing them.
+  'run_hardrules.js':      { code: 0, score: '149checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
