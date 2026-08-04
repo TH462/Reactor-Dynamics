@@ -532,7 +532,7 @@ var BASELINES = {
   // arrive with its write-ups. MEASURED on the merged tree — neither parent's number
   // survives (develop 173, workbench 172) and they do not add up, as this entry has
   // warned five times.
-  'run_hardrules.js':      { code: 0, score: '175checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '178checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
