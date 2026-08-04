@@ -1315,6 +1315,87 @@ T.push(test('#306 — the kernel PUBLISHES interlock state, so a board can show 
   ck('clears below clears_below', String(rodNow().active), rodNow().active === false, 'false');
 }));
 
+// Steps the engine AND evaluates, forcing chosen instrument values every cycle. Needed
+// because getInstruments() is refreshed by step() — a probe that hand-sets a value and only
+// calls evaluate() reads a STALE snapshot afterwards and sees none of its own effect. The
+// first draft of the suite below did exactly that and reported the isolation never happening
+// while the seal-in it was testing was demonstrably working.
+function driveWith(s, seconds, patch) {
+  var n = Math.round(seconds / s.dt);
+  for (var i = 0; i < n; i++) {
+    s.engine.step(s.dt);
+    var ins = s.engine.getInstruments();
+    if (patch) for (var k in patch) ins[k] = patch[k];
+    s.layer.evaluate(ins, s.dt);
+  }
+  return s.engine.getInstruments();
+}
+
+T.push(test('Seal-in — a standing feedwater-isolation signal cannot be undone by the operator (#341)', function (ck) {
+  // WTSM 12.3.2.3 (ML11223A310): "The control room operator cannot interrupt any of the
+  // SI-initiated functions until the reset logic is satisfied. This 'locking out' of the
+  // operator prevents the interruption of a valid SI actuation."
+  //
+  // Driven on the P-14 (SG level) signal rather than a real post-trip ride, because the claim
+  // under test is the KERNEL predicate — does a STANDING signal refuse the undo — and a real
+  // transient couples it to everything else the plant is doing. The full-stack story (trip →
+  // reset RPS → restore) is measured in the write-up.
+  var s = new Stack('hot_full_power');
+  driveWith(s, 2);
+
+  // FALSE-POSITIVE GUARD, and it passes on the OLD kernel too: with nothing actuating, the
+  // restore is an ordinary command. A seal-in that blocked here would be indistinguishable
+  // from a broken control.
+  var quiet = s.cmd({ action: 'isolate_feedwater', active: false });
+  ck('quiet plant: restore is not refused', String(quiet && quiet.code), !(quiet && quiet.code === 'SEAL_IN'), 'not SEAL_IN');
+
+  var ins = driveWith(s, 1, { sg_level: 95 });
+  ck('P-14 isolated main feed', String(ins.mfw_isolated), ins.mfw_isolated === true, 'true');
+
+  // THE DEFECT (#341): this used to be accepted, with the signal still standing.
+  var r = s.cmd({ action: 'isolate_feedwater', active: false });
+  ck('restore REFUSED while the signal stands', String(r && r.code), !!(r && r.type === 'blocked' && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  ck('the refusal is labelled for the operator', String(r && r.message).slice(0, 44), !!(r && r.message && /isolat/i.test(r.message)), 'names the isolation');
+  ins = driveWith(s, 1, { sg_level: 95 });
+  ck('main feed is STILL isolated', String(ins.mfw_isolated), ins.mfw_isolated === true, 'true');
+
+  // A command that AGREES with the actuation is not an interruption and must pass.
+  var agree = s.cmd({ action: 'isolate_feedwater', active: true });
+  ck('the AGREEING command is not refused', String(agree && agree.code), !(agree && agree.code === 'SEAL_IN'), 'not SEAL_IN');
+
+  // Signal clears (below the 85 % reset_below) — the operator may now restore.
+  ins = driveWith(s, 1, { sg_level: 60 });
+  var ok = s.cmd({ action: 'isolate_feedwater', active: false });
+  ck('restore ACCEPTED once the signal clears', String(ok && ok.code), !(ok && ok.code === 'SEAL_IN'), 'not SEAL_IN');
+  ins = driveWith(s, 1, { sg_level: 60 });
+  ck('main feed is restored', String(ins.mfw_isolated), ins.mfw_isolated === false, 'false');
+
+  // RE-ARM. Without it the seal-in is a NEW dead end: the protection would work exactly once
+  // per session, because the fire latch never clears and the actuation never re-fires.
+  ins = driveWith(s, 1, { sg_level: 95 });
+  ck('a SECOND valid signal re-isolates', String(ins.mfw_isolated), ins.mfw_isolated === true, 'true');
+  var r2 = s.cmd({ action: 'isolate_feedwater', active: false });
+  ck('and that one is sealed in too', String(r2 && r2.code), !!(r2 && r2.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+
+  // RE-ARM, ON AN ACTUATION THAT HAS NO reset_below — and this leg exists because the P-14
+  // one above does NOT test the re-arm at all. P-14 carries reset_below: 85, and that branch
+  // runs FIRST, so it clears the fire latch by itself: measured by injection, deleting the
+  // seal-in re-arm left every check above GREEN. The SI feedwater isolation (primary_pressure
+  // low, no reset_below) is the one where the new code is the only thing that can re-arm it.
+  var t = new Stack('hot_full_power');
+  driveWith(t, 2);
+  var ti = driveWith(t, 1, { primary_pressure: 12.0 });
+  ck('SI signal isolated main feed', String(ti.mfw_isolated), ti.mfw_isolated === true, 'true');
+  var tr = t.cmd({ action: 'isolate_feedwater', active: false });
+  ck('SI isolation is sealed in', String(tr && tr.code), !!(tr && tr.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  ti = driveWith(t, 1, { primary_pressure: 15.4 });
+  t.cmd({ action: 'isolate_feedwater', active: false });
+  ti = driveWith(t, 1, { primary_pressure: 15.4 });
+  ck('restored once the SI signal clears', String(ti.mfw_isolated), ti.mfw_isolated === false, 'false');
+  ti = driveWith(t, 1, { primary_pressure: 12.0 });
+  ck('a RETURNING SI signal re-isolates (the re-arm)', String(ti.mfw_isolated), ti.mfw_isolated === true, 'true');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

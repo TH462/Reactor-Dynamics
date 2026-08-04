@@ -846,7 +846,20 @@ var BASELINES = {
   // omits it silently tests the OLD alarm behaviour, which is the #153 wrong-cadence trap.
   // Injection-verified — `alarm_min_on_s: 0` reddens 4 checks, and the discriminating one
   // ("12 chatter cycles produce ZERO dropouts") goes to 12.
-  'run_m4.js':             { code: 0, score: '38/38 243passed' },
+  // 38/38 243 -> 39/39 257 on 2026-08-04 (#341 / #319 item 2): the SEAL-IN. A main-feedwater
+  // isolation could be undone by an operator command while its actuating signal was still
+  // standing — measured full stack, a restore 10 min into a post-trip ride was ACCEPTED with
+  // Tavg parked at 567.5 F against a 572.0 F setpoint, and SG level went 36.58 -> 77.43 %.
+  // actuationFired[i] is the retentive memory and a fired actuation never re-fires, so
+  // nothing contested the restore. Sourced to WTSM 12.3.2.3 (ML11223A310), which says the
+  // operator is locked out until the reset logic is satisfied.
+  // INJECTION-VERIFIED THREE WAYS, and the second one caught a HOLLOW CHECK: removing the
+  // refusal reddens 4; dropping seal_in from the two latching actuations reddens 2; removing
+  // the RE-ARM half reddens 1 — but only after the re-arm leg was rewritten. The first draft
+  // tested re-arm on the P-14 actuation, which carries reset_below: 85 and therefore re-arms
+  // itself in a branch that runs FIRST, so deleting the new code left every check green. The
+  // leg that discriminates drives the SI isolation, which has no reset_below.
+  'run_m4.js':             { code: 0, score: '39/39 257passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL

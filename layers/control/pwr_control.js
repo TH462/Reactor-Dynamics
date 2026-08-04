@@ -266,6 +266,33 @@
       message_industry: 'RPS RESET BLOCKED — rods not at bottom' },
   ];
 
+  // Main-feedwater isolation seals in: while ANY of the three actuating signals is still
+  // present, the operator cannot restore main feed. SOURCED — WTSM 12.3.2.3
+  // (ML11223A310): "The control room operator cannot interrupt any of the SI-initiated
+  // functions until the reset logic is satisfied. This 'locking out' of the operator
+  // prevents the interruption of a valid SI actuation."
+  //
+  // The three signals this plant models are exactly the three the primary lists. WTSM
+  // 12.3.6.1 (ML11223A310): "Low Tavg (564°F) coincident with a reactor trip (permissive
+  // P-4), High steam generator water level (permissive P-14) in any generator, and SI
+  // actuation." WTSM 11.1.4 (ML11223A293) names the fourth override as "Manual control by
+  // the operator" — which is the MFW RESTORE control this seal-in guards, added in the
+  // same change (#341 / #319 item 2). They ship together on purpose: the guard alone would
+  // protect a command no player can send, and the control alone would ship a defeatable
+  // protection function.
+  //
+  // DEPARTURE, declared: the real reset also needs a 45-60 s time delay relay and P-4, and
+  // is a separate pushbutton that removes the start signal WITHOUT realigning anything
+  // ("Removing the 'ON' signal ... does not turn off any ESF equipment, realign any valves,
+  // or change any functions"). This plant collapses that to one step — restore is refused
+  // while the signal stands, allowed once it clears — because there is no SI-reset control
+  // on this board at all, and adding a timer plus a second pushbutton for a two-step dance
+  // is Q4 user complexity with no dynamics behind it. The refusal teaches the same fact.
+  var FWI_SEAL_IN = {
+    message_learning: 'Main feedwater is still being isolated automatically — the condition that closed it has not cleared yet.',
+    message_industry: 'MFW RESTORE BLOCKED — feedwater isolation signal present',
+  };
+
   // Auto-actuation — reads instruments, issues commands (which pass through M4
   // interception, so a stuck PORV defeats the reclose).
   var PWR_ACTUATIONS = [
@@ -301,7 +328,8 @@
     { instrument: 'sg_level',         direction: 'high', setpoint: 90.0,
       action: 'trip_turbine', reset_below: 85.0 },
     { instrument: 'sg_level',         direction: 'high', setpoint: 90.0,
-      action: 'isolate_feedwater', params: { active: true }, reset_below: 85.0 },
+      action: 'isolate_feedwater', params: { active: true }, reset_below: 85.0,
+      seal_in: FWI_SEAL_IN },
     // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
     // armed by the 12.4 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
@@ -808,13 +836,13 @@
   var SI_MPA = 12.4;    // SI actuation pressure (raised 11.03 → 12.4, owner ruling, TMI-clock-gated) — shared by the ESF, PI-3 trip, and PI-5 FWI
   PWR_ACTUATIONS.push(
     { instrument: 'tavg', direction: 'low', setpoint: TAVG_NOLOAD + 3, condition: 'rps_scrammed',
-      action: 'isolate_feedwater', params: { active: true } },
+      action: 'isolate_feedwater', params: { active: true }, seal_in: FWI_SEAL_IN },
     { instrument: 'tavg', direction: 'low', setpoint: TAVG_NOLOAD + 3, condition: 'rps_scrammed',
       action: 'set_afw', active: true, arm: 'afw' },
     { instrument: 'fw_flow', direction: 'low', setpoint: 0.10, condition: 'above_p9',
       action: 'set_afw', active: true, arm: 'afw' },
     { instrument: 'primary_pressure', direction: 'low', setpoint: SI_MPA,
-      action: 'isolate_feedwater', params: { active: true }, arm: 'hpi' }
+      action: 'isolate_feedwater', params: { active: true }, arm: 'hpi', seal_in: FWI_SEAL_IN }
   );
   // PI-3: reactor trip on safety injection — SI actuating means a real casualty;
   // the reactor does not stay at power through it. Keyed on the same low-pressure

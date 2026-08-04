@@ -29,6 +29,104 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-develop-i (#341 + #319 item 2 — the seal-in, and the RESTORE the board never had)
+
+**Task:** *(OWNER, 2026-08-04: "Do next.  I approve.")* — approving the recommendation to build
+#341 and #319 item 2 as one change. Control kernel + PWR control data + board control + probe.
+
+### What was wrong
+
+Main feedwater isolation **latches** (three signals: reactor trip with Tavg low, SG level high,
+SI). Two defects, and only the first was filed:
+
+1. **No board control to restore it** — nothing in `ui/` issued `isolate_feedwater {active:false}`,
+   so the player could enter the state and not leave it (#319 item 2).
+2. **A restore, once issued, was accepted while the actuating signal was still standing** (#341).
+   Measured full stack: restore at 10m into a post-trip ride, Tavg parked at **567.5 °F (297.5 °C)**
+   against a **572.0 °F (300.0 °C)** setpoint — signal continuously present — accepted anyway, feed
+   back at 0.3076 and SG level **36.58 → 77.43 %**. `actuationFired[i]` IS the retentive memory, and
+   because a fired actuation never re-fires, nothing contested it. The #295 F1/F2 class.
+
+**They had to ship together.** The guard alone protects a command no player can send; the control
+alone ships a defeatable protection function.
+
+### The fix is a NAME in the kernel, and the source chose its shape
+
+`seal_in` on an actuation (config data — the kernel names no plant action, instrument or field, so
+HR3 is untouched and `run_hr3` stayed 28/28). `_sealInBlocking` asks the **same question the
+actuation fires on** — same gate, same `crossed()` — so the refusal and the actuation cannot drift.
+Undo is decided by **disagreement with the actuation's own asserted params**, so `{active:false}`
+is an interruption and `{active:true}` is not; agreeing commands are never refused.
+
+Sourced — **WTSM 12.3.2.3** (ML11223A310): *"The control room operator cannot interrupt any of the
+SI-initiated functions until the reset logic is satisfied. This 'locking out' of the operator
+prevents the interruption of a valid SI actuation."* **WTSM 11.1.4** (ML11223A293) names the fourth
+override of SG level control as *"Manual control by the operator"* — that is the RESTORE button.
+
+**DECLARED DEPARTURE:** the real reset needs a 45–60 s time-delay relay plus P-4 and is a *separate*
+pushbutton that removes the start signal **without realigning anything**. This plant collapses that
+to one step. There is no SI-reset control on this board at all, and a timer plus a second
+pushbutton for a two-step dance is Q4 user complexity with no dynamics behind it.
+
+### The RE-ARM is the half that makes the seal-in safe
+
+A sealed-in actuation with no `reset_below` clears its fire latch when its condition clears. Without
+it the latch is permanent, so after a legitimate restore **a second valid signal could never
+re-isolate** — the protection would work exactly once per session. It issues no command, which
+matches the source: removing the actuation signal *"does not turn off any ESF equipment, realign any
+valves, or change any functions"*. `reset_below`, where present, stays the sole authority, so no
+existing hysteresis band widened.
+
+### The chain this creates, measured — and it gives `reset_rps` a home
+
+Trip → rods seat → **reset RPS** (clears P-4, so the low-Tavg signal clears) → restore accepted at
+10m01s, feed 0.3076. Then SG level ran to the 90 % P-14 setpoint and **re-isolated at 12m01s** —
+restoring full feed into a generator that is already recovering overfills it. `reset_rps` was one of
+#319's three orphaned engine capabilities, *"required after every scram, and named by no checklist"*;
+it is now the precondition for the restore rather than a button with no consequence.
+
+### The board half was smaller than filed, and the indication already existed
+
+**Correction to #319:** the SG FEED corner status word already reads **ISOLATED** — `feedStatus`
+keys on the `feed_sg` channel standing down, and that channel's `offWhen` is `mfw_isolated`. So a
+dedicated MFW lamp would be **Q4 duplicate authority** for a fact already on the card. Only the
+control was missing.
+
+**Geometry measured off the doc, not eyeballed** (CLAUDE.md's standing rule): the SG FEED card is
+1665,545 195×140, and the y=600 row holds only the feed-rate number at x=1740 w=105 — so
+1670..1735 is empty and a 55×25 button drops in flush under AUTO, taking the authored button idiom
+exactly. **Nothing was moved to make room**, and `verify_board_check` stayed at 194.
+
+**The button is NOT disabled while the signal stands.** The refusal carries a labelled message the
+player can read; a greyed-out button teaches nothing and is indistinguishable from a broken one,
+which is this repo's recurring dead-control failure.
+
+**`verify_board_check` caught the missing piece immediately** — *"driver: every control has its own
+inspect entry"*. The System Scanner copy is a third independent copy of every control, and it was
+the only gate that noticed.
+
+### Injection-verified three ways, and the second found a HOLLOW CHECK
+
+Refusal removed → **4 red**. `seal_in` dropped from the two latching actuations → **2 red**. Re-arm
+removed → **1 red — but only after the leg was rewritten.** The first draft tested re-arm on the
+**P-14** actuation, which carries `reset_below: 85`; that branch runs FIRST and clears the latch by
+itself, so deleting the new code left **every check green**. The discriminating leg drives the **SI**
+isolation, which has no `reset_below`. **Ask of any re-arm check whether the actuation under it
+already had another way to clear.**
+
+**One more probe trap, worth the line:** `getInstruments()` is refreshed by `step()`, so a probe that
+hand-sets an instrument and calls only `evaluate()` reads a **stale** snapshot afterwards and sees
+none of its own effect. The first draft reported the isolation never happening while the seal-in it
+was testing was demonstrably working. `driveWith()` steps and re-applies the patch every cycle.
+
+`run_m4` **38/38 243 → 39/39 257**. Everything else unmoved.
+
+**Not done, and named:** the manual has no entry for the RESTORE control (`Manuals/03` §3.5 is where
+it belongs), and no procedure step names it yet — PWR-T06 post-trip is the obvious home, which would
+also give `reset_rps` its checklist step.
+
+---
+
 ## Session log — 2026-08-04-develop-h (the WIP sweep never worked; #319 item 2 evidence pass)
 
 **Task:** owner said *"Do next"*. Two outcomes: a one-line fix to the lane-occupancy check, and a

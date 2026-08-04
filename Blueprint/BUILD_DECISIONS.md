@@ -43,6 +43,75 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04-develop-i — #341 / #319 item 2: a protection function is not protection if the operator can switch it off
+
+**Decision.** Actuations may declare `seal_in`. While such an actuation's condition is currently
+satisfied, an operator command that would **undo** it is refused (`type: 'blocked'`,
+`code: 'SEAL_IN'`) with a register-aware message. The PWR's three main-feedwater isolations all
+carry it. A **MFW RESTORE** button on the SG FEED card is the operator's way back.
+
+**Why.** Main feedwater isolation latched with no control to clear it (#319 item 2 — a state the
+player could enter and not leave), and separately, a restore issued by *any* path was accepted while
+the isolating signal was still standing (#341). Measured full stack: restore 10 min into a post-trip
+ride with Tavg parked at 567.5 °F (297.5 °C) against a 572.0 °F (300.0 °C) setpoint — accepted, feed
+back at 0.3076, SG level 36.58 → 77.43 %. `actuationFired[i]` is the retentive memory, and since a
+fired actuation never re-fires, nothing contested the restore. The #295 F1/F2 class.
+
+**Shipped as ONE change on purpose.** The guard alone would protect a command no player can send
+(unreachable, so unfalsifiable — the reason #332 left RHR alone); the control alone would ship a
+defeatable protection function.
+
+**Sourced.** WTSM 12.3.2.3 (ML11223A310): *"The control room operator cannot interrupt any of the
+SI-initiated functions until the reset logic is satisfied. This 'locking out' of the operator
+prevents the interruption of a valid SI actuation."* WTSM 11.1.4 (ML11223A293) lists the four
+overrides of SG level control and the first is *"Manual control by the operator"* — the RESTORE
+button is that override, not a convenience. WTSM 12.3.6.1 confirms the three automatic signals map
+exactly onto this plant's three.
+
+**DECLARED DEPARTURE.** The real reset needs a 45–60 s time-delay relay plus P-4, and is a separate
+pushbutton that removes the start signal *without realigning anything* — two steps. This plant
+collapses it to one: refused while the signal stands, allowed once it clears. There is no SI-reset
+control on this board at all, and adding a timer plus a second pushbutton for the two-step dance is
+Q4 user complexity with no dynamics behind it. The refusal teaches the same fact.
+
+**Two design points that are not decoration.**
+
+*The predicate is shared, not re-written.* `_sealInBlocking` asks the same question `_evalActuations`
+fires on — same `arm`, same `condition`, same `crossed()` — so the refusal and the actuation cannot
+drift. "Undo" is disagreement with the actuation's own asserted `params`, which keeps the kernel free
+of any plant action name (HR3; `run_hr3` unmoved at 28/28).
+
+*The re-arm is what stops the fix becoming a new dead end.* A sealed-in actuation with no
+`reset_below` clears its fire latch when its condition clears — otherwise, after a legitimate
+restore, a second valid signal could never re-isolate and the protection would work exactly once per
+session. It issues no command, matching the source. `reset_below`, where present, remains the sole
+authority, so no existing hysteresis band moved.
+
+**What it creates.** Trip → rods seat → reset RPS (clears P-4, so the low-Tavg signal clears) →
+restore accepted. That gives `reset_rps` — one of #319's three orphaned engine capabilities,
+"required after every scram, and named by no checklist" — a real consequence. Restoring full feed
+into a recovering generator then overfills it and re-isolates on P-14 at 12m01s, which is the
+dynamics lesson rather than a rough edge.
+
+**Board.** Only the control was missing: the SG FEED corner status word already reads ISOLATED
+(`feedStatus` on the `feed_sg` stand-down, whose `offWhen` is `mfw_isolated`), so a dedicated lamp
+would be Q4 duplicate authority. Geometry measured off the doc — the y=600 row holds only the
+feed-rate number at x=1740, leaving 1670..1735 free for a 55×25 button in the authored idiom;
+nothing was moved and `verify_board_check` stayed at 194. The button is deliberately **not**
+disabled while the signal stands: a readable refusal teaches, a greyed-out button is
+indistinguishable from a broken one.
+
+**Gate:** `run_m4` 38/38 243 → **39/39 257**. Injection-verified three ways — refusal removed 4 red,
+`seal_in` dropped 2 red, re-arm removed 1 red. That last one was a **hollow check** until rewritten:
+it first tested re-arm on the P-14 actuation, which carries `reset_below: 85` and re-arms in a
+branch that runs first, so deleting the new code left everything green. The discriminating leg
+drives the SI isolation, which has no `reset_below`.
+
+**Open, named:** no manual entry for the RESTORE control (`Manuals/03` §3.5), and no procedure step
+names it — PWR-T06 post-trip is the home, and would give `reset_rps` its checklist step too.
+
+---
+
 ## 2026-08-04-develop-g — #339: the session label names the LANE, because a per-day letter needed three trees to agree
 
 **Decision.** Session headings in this file and `Diagnostic/TUNING_LOG.md` are

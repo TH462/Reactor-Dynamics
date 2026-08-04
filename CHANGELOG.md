@@ -30,6 +30,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **MFW RESTORE control on the SG FEED card, and main-feedwater isolation now SEALS IN**
+  (#341 + #319 item 2, shipped as one change). Main feed isolates automatically on three signals
+  — reactor trip with Tavg low, steam generator level high, safety injection — and it **latched
+  with no control anywhere to clear it**, so the player could enter that state and not leave it.
+  Separately, a restore issued by any path was **accepted while the isolating signal was still
+  standing**: measured full stack, a restore 10 min into a post-trip ride with Tavg parked at
+  567.5 °F (297.5 °C) against a 572.0 °F (300.0 °C) setpoint went through, feed returned and SG
+  level ran 36.58 → 77.43 %. Actuations may now declare `seal_in`; an operator command that would
+  undo one is refused with a readable message while its condition holds, and the actuation re-arms
+  when the condition clears so a second valid signal can still isolate. Sourced to WTSM 12.3.2.3
+  (ML11223A310) — *"The control room operator cannot interrupt any of the SI-initiated functions
+  until the reset logic is satisfied"* — and WTSM 11.1.4 (ML11223A293), which names *"Manual
+  control by the operator"* as the fourth override. **Declared departure:** the real reset is two
+  steps behind a 45–60 s timer and a separate pushbutton; this plant collapses it to one.
+  The practical chain is **trip → reset the RPS → restore feed**, which finally gives `reset_rps`
+  a consequence. `run_m4` 38/38 → **39/39 (257 checks)**, injection-verified three ways.
+
 ### Changed
 - **Session-log headings name the LANE: `YYYY-MM-DD-<lane>-<letter>`** *(OWNER RULING, 2026-08-04:
   "Work issue 339 in develop. Go with option 2.")*, #339. `Diagnostic/TUNING_LOG.md` and
