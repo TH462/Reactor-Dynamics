@@ -37,6 +37,97 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04b — #330: one pressurizer, two slopes, and the fix that was one layer up from the filed diagnosis
+
+### The change
+
+`level_per_mass` **100 → 776** and `level_per_void` **150 → 375.33** (`pwr_config.js`). New probe
+**CA-9** (`run_behavior` 48 → 49). `run_ops` **59 → 58/69** — one new PWR red, deliberate.
+
+### The defect
+
+Stand down the `cvcs_makeup` automation channel at `hot_full_power` — one `defaultOn` button on the
+board — and the core **melted at 22.1 min, un-scrammed**. Measured full stack: inventory
+**100 → 62.55 %**, pzr level **55 → 17.55 %**, and primary pressure **2235 psi (15.41 MPa)**, Tavg
+**579.3 °F (304.1 °C)** and subcooling **+73.75 °F (+40.97 °C)** all dead flat to the printed
+precision while the cladding ran to **24,958 °F (13,848 °C)**.
+
+### Why the filed diagnosis was not the fix — this is the decision worth recording
+
+#330's investigation isolated a **circular void gate**, and it is real: void requires subcooling ≤ 0,
+pressure is pinned at setpoint by the subcooled branch's restore term, and that branch is selected by
+`saturated`, which the void drives. Inventory loss had no path to pressure at all.
+
+**Fixing that is not the fix**, and only measuring said so. A mass-based void route (threshold =
+sourced pressurizer liquid holdup, 0.0870 of RCS) broke the deadlock and produced a defensible-looking
+plant — scram at 4m03s, SI in, no melt. It also:
+
+- made the **12 % pzr lo-lo scram unreachable** — `run_reachability` **B2 red, trough 54.34 %** —
+  because `level_per_void` × `void_gain` (450 effective) lifts indicated level before level can fall.
+  That is #330's own defect class: a protection setpoint that can never assert.
+- reddened **MD-11**, oxidation bands 184/172/86/40 → 104/160/82/40 (the monotonic escalation broke).
+
+Both reverted. **The root cause is one layer up**: `level_per_mass` was **100 %/frac** against
+`level_per_mass_surplus` **776** — two contradictory statements about one pressurizer. The surplus
+branch's own comment already carried the argument (the steam space is *"the only compressible
+volume"*), and **that argument is direction-agnostic**: a subcooled RCS is incompressible liquid
+everywhere else, so inventory leaving it comes out of the pressurizer at exactly the rate a surplus
+packs into it. Same three tables as #249 (BVPS-2 UFSAR Tbl 5.1-1 / 5.4-12 + WTSM 3.2 Tbl 3.2-2).
+
+With the slope corrected, the mass-based void route is unnecessary — and it is the thing that broke
+MD-11 — so it was dropped rather than shipped alongside.
+
+### The protective actuation was never broken; only the inventory it fired at
+
+The low-pressurizer-level letdown isolation fires at **20 % indicated on both plants**. What moved is
+what that corresponds to: **65 % inventory before** (core already uncovered — hence #330's "the
+protective actuation is what destroys the core"), **95.1 % after**. Measured at 776: letdown isolates
+at ~2m30s, level parks 16.97 %, inventory 95.10 %, and it holds there to 40 min — covered, undamaged,
+**no scram needed**. An assertion that the isolation *fired* passes on both plants and proves nothing;
+CA-9 leg C asserts **the inventory at which it fired**, which is the whole defect in one number.
+
+### `level_per_void` could not stay put — the deception is a DIFFERENCE
+
+TMI deception = `void_gain·level_per_void − level_per_mass`. At 150/100 that is **+350 %/frac**; at
+150/**776** it is **−326**, i.e. level FALLS as the primary voids. Measured — `run_pwr flagship_tmi`
+*"pzr level rises as inventory falls"* read **0.0** against 48.6, and `pwr_tmi2_p3` stopped reaching
+`level_complete`. Re-solved by holding both documented targets fixed: net +350 ⇒ **375.33**, and the
+independent check is the other target (78.3 % at the story-clock void, past the 75 % alarm).
+Deliberately **not** scaled proportionally (1164), which takes the net to +2716 and pegs the gauge.
+
+### The one red left standing, and why it is not absorbed
+
+`ops_cvcs_pzr_drain_rate` reads **53.7 s** against `>= 300 s`. That acceptance is a direct product of
+the corrected constant, so it was a hard-coded consequence of the defect — but it encodes a
+**2026-07-22 owner request** for a drain-rate feel target, and re-banding a feel target whenever the
+plant moves retires it rather than reporting against it. Measured both ways:
+
+| | drain rate | loop τ | `run_e2e_controls` |
+|---|---|---|---|
+| shipped (`cvcs_inventory_gain` 0.012) | 7.76× faster than target | 10.7 s | **59/59** |
+| scale gain to 0.00154639 | **exactly the old rate** | 83.3 s (unchanged) | **52/59** |
+
+A real plant takes ~79 min for this drop on one 20 gpm orifice, so both sim values are far from
+prototypical — this is a choice between two game-feel numbers, and it is the owner's.
+
+### Three tests moved, all three validated against the OLD plant (HR10)
+
+`run_e2e_controls` `SETTLE` became `4.8/(cpl·gain·lpm)` — **400.0 s exactly** at the old constant,
+byte-identical — plus a second `SATURATE` window, because the equilibrium checks settle on the loop
+**plus its 20 s error filter** (at 776 the filter dominates; at 4.8 loop-τ alone coverage read 134 %)
+while the beyond-authority check needs a **ceiling** or it spans a reactor trip. TR-15 leg E 90 → 120
+min: a knife edge, not a measurement (old 2180 °F / new 2068 °F at 90 min, both undamaged, both
+reaching damage at ~100 min). **59/59 and green on both plants.**
+
+### Still open, filed not fixed
+
+The inventory → pressure coupling genuinely does not exist. With the slope corrected the plant is
+protected by level and the player is told, so it is no longer a safety hole — but a draining subcooled
+RCS still does not depressurize, and closing that needs the void rework that broke MD-11 here, i.e. a
+re-calibration of the oxidation bands alongside it.
+
+---
+
 ## 2026-08-04 — #325: natural circulation, and the cheap version that was measured and refused
 
 ### The change

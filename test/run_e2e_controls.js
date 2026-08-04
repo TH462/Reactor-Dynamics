@@ -254,7 +254,34 @@ console.log(B + 'PWR — recently-added controls' + X);
   // retuned, scale them off tau.
   var rcv = RD.PWR_CONFIG.reactivity, gain = rcv.cvcs_inventory_gain;
   var cpl = rcv.cvcs_charge_per_level, lpm = RD.PWR_CONFIG.pressurizer.level_per_mass;
-  var SETTLE = 400;                        // sim seconds ~= 4.8 loop time constants
+  // DERIVED FROM tau, which is what the paragraph above told the next person to do
+  // ("if the loop is ever retuned, scale them off tau") — #330 is that retune.
+  //
+  // TWO WINDOWS, because the two things measured below settle on different clocks, and
+  // holding one hard-coded 400 s for both is what broke when level_per_mass moved.
+  //
+  //  SETTLE — for a leak INSIDE CVCS authority, which parks at a droop equilibrium. The
+  //    servo's error passes a first-order filter (cvcs_level_filter_tau, 20 s), so the
+  //    settling clock is the LOOP PLUS ITS FILTER. That distinction did not matter at
+  //    level_per_mass 100, where the loop was 83 s and swamped a 20 s filter; at 776 the
+  //    loop is 10.7 s and the FILTER now dominates. Measured: at 4.8 loop-tau alone
+  //    (51.5 s) coverage read 134 % and inventory was still drifting UP — the servo had
+  //    overshot and not come back, and two equilibrium checks failed against a transient.
+  //    That is #194's original mistake in a new place: a window quoted in tau, but the
+  //    wrong tau.
+  //
+  //  SATURATE — for a leak BEYOND authority, where there is no equilibrium and inventory
+  //    falls monotonically. This window has a CEILING rather than a floor: it must end
+  //    before the plant's own protection intervenes. Held at 400 s it now spans a reactor
+  //    trip — the leak outruns CVCS, the stiffer level line reaches the 12 % lo-lo scram
+  //    inside the window, SI parks inventory at the mass ceiling, and the check read
+  //    "charging 0.0000, drift 0.000" while asserting nothing about the servo it is named
+  //    for. It scales on the LOOP tau alone, and the band is wide: charging saturates at
+  //    4.0 loop-tau, the scram arrives at 23, so 4.8 clears both ends on both plants.
+  var TAU = 1 / (cpl * gain * lpm);                       // level-loop time constant
+  var TAU_F = rcv.cvcs_level_filter_tau != null ? rcv.cvcs_level_filter_tau : 20.0;
+  var SETTLE = 4.8 * (TAU + TAU_F);        // equilibrium: loop + its error filter
+  var SATURATE = 4.8 * TAU;                // pre-protection: loop only
   var leakA = sgtrRun(true, 0.004, SETTLE), leakB = sgtrRun(true, 0.008, SETTLE);
   var covA = leakA.chg * gain / leakA.leak, covB = leakB.chg * gain / leakB.leak;
   ck('CVCS make-up scales with the leak (proportional servo)',
@@ -288,7 +315,7 @@ console.log(B + 'PWR — recently-added controls' + X);
   // (5) The teaching limit: a leak BEYOND charging_max is NOT held, however long you
   //     wait. Authority is charging_max*gain = 7.2e-4 frac/s; severity 0.03 is ~92 % of
   //     it, which saturates the pump and still loses inventory.
-  var beyond = sgtrRun(true, 0.03, SETTLE);
+  var beyond = sgtrRun(true, 0.03, SATURATE);
   ck('a leak beyond CVCS authority is NOT held (saturated, still draining)',
     beyond.chg > rcv.charging_max * 0.98 && beyond.drift < -0.05,
     'chg ' + beyond.chg.toFixed(4) + ' (max ' + rcv.charging_max + '), drift ' +

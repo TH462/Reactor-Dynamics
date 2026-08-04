@@ -21,6 +21,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The pressurizer had two different slopes, and one of them melted the core in silence** (#330).
+  Turning the CVCS make-up channel off at full power — one button on the board, `defaultOn`, nothing
+  else touched — **melted the core at 22.1 min, un-scrammed**, with primary pressure, Tavg and the
+  subcooling margin **dead flat at nominal** and the cladding at 24,958 °F (13,848 °C). Two caution
+  annunciators on one level channel were the entire indication.
+
+  The cause was a geometry error, not a missing alarm. `level_per_mass` (the deficit slope) was
+  **100 %/frac** against `level_per_mass_surplus` **776** — two contradictory statements about one
+  pressurizer. A subcooled RCS is incompressible liquid everywhere except the pressurizer bubble, so
+  inventory leaving it comes out of the pressurizer at exactly the rate a surplus packs into it; the
+  geometry does not know which way the flow is going. At the shallow slope the loop could shed
+  **37.5 % of its mass while the gauge still read 17.5 %**. Both slopes are now the sourced 776
+  (BVPS-2 UFSAR Tbl 5.1-1/5.4-12 + WTSM 3.2 Tbl 3.2-2, the same three tables that fitted the surplus
+  branch in #249).
+
+  **The protective actuation was never broken.** The low-pressurizer-level letdown isolation fires at
+  20 % indicated on both plants — what moved is the *inventory* it corresponds to: **65 % before**
+  (core already uncovered, which is why #330 read it as the thing destroying the core), **95.1 %
+  after**. Measured on the identical rig, the plant now isolates letdown at ~2m30s and sits at
+  95.1 % inventory / 17.0 % level out to 40 minutes: core covered, no damage, no melt, **no scram
+  needed**.
+
+  `level_per_void` moved **150 → 375.33** in the same change and had to: the TMI deception is the
+  *difference* between the two terms, so leaving it at 150 inverted it (net +350 → −326 %/frac) and
+  pressurizer level **fell** as the primary voided — the one lesson this plant is built around. It is
+  re-solved from the two documented calibration targets rather than re-guessed, and it is deliberately
+  **not** scaled proportionally, which would peg the gauge at 100 % and destroy the graded arc the TMI
+  beats are written against.
+
+  New probe **CA-9** (`run_behavior` 48 → 49), injection-verified: the old constant reddens **6 of its
+  12 checks**. `run_reachability` B2 — *"an inventory loss can reach the 12 % pzr lo-lo scram"* — was
+  the independent witness; the level used to fall 7.76× too slowly to reach its own trip.
+
+  **One declared cost, and it is an open owner decision**: the pressurizer now drains 7.76× faster in
+  wall-clock terms, so `ops_cvcs_pzr_drain_rate` reads 53.7 s against the ">= 300 s" feel target from
+  a 2026-07-22 owner request. It is **left red rather than re-banded** — re-banding a feel target
+  whenever the plant moves retires the target instead of reporting against it. The alternative that
+  preserves the rate exactly (scaling `cvcs_inventory_gain`) is measured in the probe comment and
+  costs 7 e2e checks of real CVCS leak-holding behaviour.
+
 ### Added
 - **Natural circulation — a loss of offsite power was terminal and is now survivable** (#325)
   *(OWNER RULING, 2026-08-04: "Go with one B")*. With the RCPs stopped there was **no core→steam-generator

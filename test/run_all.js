@@ -144,7 +144,13 @@ var BASELINES = {
   // through full flow computed a 0.0 °F ΔT — and INDICATED, that put the cold leg
   // above the hot leg in 48 % of samples. Fission and total heat are equal in steady
   // state, which is why 44 probes measuring near equilibrium all agreed with it.
-  'run_behavior.js':       { code: 0, secs: 56, score: '48pass 0xfail' },
+  // 48 -> 49 on 2026-08-04 (#330): CA-9, loss of CVCS make-up. Injection-verified — the
+  // pre-#330 `level_per_mass` of 100 reddens 6 of its 12 checks, including inventory
+  // 62.35 % and a melted core. TR-15 leg E's ride went 90 -> 120 min in the same change;
+  // it was a knife-edge timing pin (old plant 2180 °F at 90 min, new 2068 °F, BOTH
+  // undamaged and both reaching damage at ~100 min), and the widened window passes on
+  // both plants — which is what makes it a better test rather than a refit.
+  'run_behavior.js':       { code: 0, secs: 56, score: '49pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -417,7 +423,14 @@ var BASELINES = {
   // either — this is the exact trap this file has recorded three times (the 83-on-merge note
   // below). Measured after resolving every conflict, never during: a tree that still has
   // markers in it carries BOTH sides' citations at once and counts the duplicates.
-  'run_hardrules.js':      { code: 0, score: '142checks 0failed' },
+  // 142 -> 144 on 2026-08-04: the two CLAUDE.md sites citing the lane-tag directive
+  // *(OWNER DIRECTIVE, 2026-08-04: "Since that's done add an in process tag that shows
+  // which worktree it's being worked on.")* — the Issue-tracking label section and the
+  // session-start lane check. #330's own write-ups moved this by ZERO: they quote no owner
+  // ruling, and the 2026-07-22 drain-rate request they DO quote lives in test/ops_pwr.js,
+  // which this gate does not scan (tracked MARKDOWN only). Measured AFTER the docs, per the
+  // standing note below.
+  'run_hardrules.js':      { code: 0, score: '144checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -945,8 +958,21 @@ var BASELINES = {
     // run_m5 above. The merge kept develop's baseline while bringing in workbench's
     // `ops_cooldown_to_rhr` rework, which turns that probe green — a red going green is
     // still drift, and it has to be acknowledged rather than absorbed.
-    code: 1, score: '59/69 351passed 11failed',
-    note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
+    // 59/69 351/11 -> 58/69 350/12 on 2026-08-04 (#330). A NEW PWR RED, and the first in
+    // a long time — flagged rather than absorbed. `ops_cvcs_pzr_drain_rate` measures
+    // 53.7 s for its 15-point pressurizer drop against a ">= 300 s" acceptance, because
+    // that acceptance is a direct product of `level_per_mass` (0.030 · gain ·
+    // level_per_mass) and #330 corrected that constant 100 -> 776. The probe is
+    // DELIBERATELY NOT re-banded: it exists because of a 2026-07-22 owner request for a
+    // pressurizer drain-rate feel target, and re-banding it whenever the plant moves
+    // would retire the target instead of reporting against it. The trade-off is measured
+    // both ways in the probe's own comment (test/ops_pwr.js) and put to the owner on the
+    // issue. This red is an OPEN OWNER DECISION, not an accepted regression.
+    code: 1, score: '58/69 350passed 12failed',
+    note: 'Ops probes are tuning targets by design. #330 (2026-08-04) added a 12th red ' +
+          'and it is the only PWR one: ops_cvcs_pzr_drain_rate, 53.7 s vs >= 300 s, ' +
+          'awaiting an owner ruling on the drain-rate feel target — see the probe comment. ' +
+          'Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
           'status-deliberate) is one of the RBMK seven ("ABUSE [post] time-acceleration"), ' +
