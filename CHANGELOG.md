@@ -21,6 +21,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The plant is renamed `SLX-100` → `SLS-100`** (#328) *(OWNER DIRECTIVE, 2026-08-04, issue #328:
+  "Rename the plant the \"Single Loop Simulated - 100MWt\" AKA \"SLS-100\".")*. The expansion goes
+  from *Single-Loop eXperimental* to **Single Loop Simulated**. **The digit stays ELECTRICAL** — the
+  request named 100 MWt, but this plant's core is **≈ 300 MWt** against **≈ 100 MWe** and `Manuals/01`
+  and `12` both state the pair, so reading it as thermal would have contradicted `identity.mwt_rated`
+  and every manual rating table by 3× *(OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from
+  three options put to him — 100 MWe, `SLS-300` = 300 MWt, or no number at all; a selection, not
+  verbatim words)*. **No number in the product moves**; this is two letters and the acronym reading.
+  22 sites across 12 files — `identity.name` is **not read at runtime**, so the name is duplicated by
+  hand into the manuals, the site pages and `tools/pack_manuals.js`, and no gate asserts the string.
+  `CHANGELOG`/`TUNING_LOG`/`behavior_results.json` keep `SLX-100` deliberately: they are record, and
+  they describe what was true then. Manual set **Rev 27**.
+
+### Fixed
+- **The core-material temperatures ran away without bound past melt — 355 618 °C (640 144 °F) at two
+  plant-hours** (#326). `melted` is the end of this model's declared validity, and **both** nodes kept
+  integrating through it, by two different mechanisms with no termination condition. `fuel_temp_c` is
+  a pure integrator: on a fully uncovered core `hFcEffective` returns 0, so `dTf` loses its only sink
+  — measured **5032 °C (9089 °F)** at 2 h, still climbing on a 1.87 % decay tail. `clad_temp_c` is
+  worse and is **not a follower of it**: the #238 Arrhenius oxidation term is exponential in the
+  node's own temperature while the protective oxide only grows as √(integral), so above melt the
+  exponential wins — **oxidation heat reached 1095 % OF RATED**, eleven times full reactor power out
+  of a core making 4 % decay heat. Both nodes now stop at `melted`. Nothing below melt moves: MD-11's
+  escalation bands are unchanged at 184 / 172 / 86 / 40 s.
+  **Two things the issue and its investigation had wrong, both because the tree moved under them.**
+  The filed mechanism (oxidation, Arrhenius) was rebutted as *"there is no zirconium-oxidation term in
+  this engine"* — true when written, **stale within the day**: #238 built exactly that on 2026-08-03.
+  And the rebuttal's fix — *"the termination has to go on `stepFuel`"* — was right for the pre-#238
+  plant and is **insufficient now**: injection-verified, a `stepFuel`-only freeze leaves 3 checks red
+  and the clad node drifting **312 089 °C**, indistinguishable from no fix. The filed reproduction
+  path is also gone — #325 made a loss of offsite power survivable, so a LOOP now parks at
+  **307.9 °C (586 °F)** with the core intact; the runaway reproduces on an unmitigated large break.
+  `run_meltdown` **11 → 12** (MD-12, 9 checks, injection-verified two ways).
+
 ### Added
 - **Natural circulation — a loss of offsite power was terminal and is now survivable** (#325)
   *(OWNER RULING, 2026-08-04: "Go with one B")*. With the RCPs stopped there was **no core→steam-generator

@@ -20,6 +20,87 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04b (#328 rename, #326 post-melt runaway) — backshop lane
+
+**Task:** owner asked for #328 and then #326. Both PWR, both closed out on `backshop`.
+
+### #328 — `SLX-100` → `SLS-100`, and the unit in the name was the only real question
+
+*(OWNER DIRECTIVE, 2026-08-04, issue #328: "Rename the plant the "Single Loop Simulated - 100MWt" AKA
+"SLS-100".")* The issue carried `status-needs-ruling` from a prior investigation, and the block was
+real: **the 100 is the ELECTRICAL rating.** `engines/pwr/pwr_config.js` `identity` says `mwt_rated:
+300.0` against `mwe_rated: 100.0`, and `Manuals/01` and `12` both print the pair, so "SLS-100 =
+100 MWt" would have contradicted the config and every rating table by 3×. Put to the owner with the
+recommendation; ruled *(OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from three options —
+100 MWe, `SLS-300` = 300 MWt, or no number; a selection, not verbatim words)*.
+
+Mechanical after that: 22 sites, 12 files. **`identity.name` is not read at runtime** — no consumer in
+`engines/`, `layers/`, `ui/app.js` or `test/` — so the name is hand-duplicated into two manual chapters,
+two site pages, `tools/pack_manuals.js`, two Blueprint docs and one probe *title*. **No gate asserts the
+string**; the only one that reacted was `run_manual_rev`, via the content digest, which is why the
+three-step dance (revision row → `stamp_manual_revision.js` → `pack_manuals.js`) was the whole gating
+cost. Manual set **Rev 27**. `CHANGELOG`, this file and `Diagnostic/behavior_results.json` keep the old
+name on purpose: they are record.
+
+**Trap worth keeping:** `pack_manuals.js` carries `plant_label` AND regenerates `ui/manual_md.js`, so
+the label must be edited **before** the packer runs, not after — otherwise the generated copy ships the
+old name with a fresh digest sealed over it.
+
+### #326 — both core-material nodes ran away past melt, and the issue's own investigation had gone stale
+
+Filed as *"`clad_temp_c` runs away without bound after melt — 336 091 °C at two hours"*. A prior
+investigation (same day, 11:39Z) rebutted the filed mechanism: *"There is no zirconium-oxidation term in
+this engine … the filed cause is not what the code does"*, and recommended re-scoping the issue onto
+`stepFuel`. **Both halves of that were overtaken by merges landing hours later**, which is the lesson
+here more than the fix.
+
+**1. The oxidation term exists now.** #238 built it on 2026-08-03 (`pwr_thermal.js:246-260`, Baker-Just
+Arrhenius with a parabolic oxide state). So the filed mechanism is the right one on the merged tree.
+
+**2. The filed reproduction path is gone.** #325 (merged the same morning) made a loss of offsite power
+survivable. Measured full stack, `hot_full_power`, LOOP at 60 s, 2 plant-hours: `clad_temp_c` **307.9 °C
+(586.2 °F)**, inventory **99.99 %**, `fuel_damaged` **false**. The runaway reproduces on an unmitigated
+large break instead — where it is **worse** than filed: **355 618 °C (640 144 °F)** at 2 h.
+
+**3. Two nodes, two different unbounded mechanisms.** The prior investigation found one and it is the
+smaller one.
+
+| node | mechanism | at 2 h, unmitigated large break |
+|---|---|---|
+| `fuel_temp_c` | pure integrator — `hFcEffective` returns 0 on a fully uncovered core, so `dTf = Q_total·heat_gen_coeff` with no sink | **5032 °C (9089 °F)** |
+| `clad_temp_c` | Arrhenius oxidation feedback, `q_ox = q_ref·arr/w` — `arr` is exponential in the node's own T, `w` only grows as √(integral) | **355 618 °C (640 144 °F)** |
+
+**The clad node is NOT a follower of the fuel node any more.** Below melt the lower clamp
+(`pwr_thermal.js:300`) does make it one, which is what the pre-#238 investigation measured; with
+oxidation it sits **above** — 2308 °C against fuel at 1852 °C at 20 min, 456 °C clear of the clamp.
+Injection-verified: freezing `stepFuel` alone — the recommended fix — leaves **3 checks red and the clad
+node drifting 312 089 °C**, indistinguishable from no fix at all.
+
+**4. A code comment carried a claim that was measurably false.** `pwr_thermal.js` said of the Arrhenius
+factor: *"w grows with it, so dw/dt self-limits and the term never needs a cap."* It self-limits below
+melt only. `q_ox` reduces to `q_ref·arr/w`, and once the node's own heat outruns the sink the exponential
+beats the square root — **oxidation heat measured 1095 % of rated at 30 min**, eleven times full reactor
+power out of a core making 4 % decay heat. Comment corrected in place rather than deleted, since the
+below-melt half of it is still true and load-bearing.
+
+**Fix:** `if (s.melted) return;` at the top of both `stepFuel` and `stepCladding`. `melted` is the end of
+declared validity (`CONTEXT.md`, `Manuals/12` §5.5 — *"the simulation ends at fuel damage"*), so nothing
+past it is a plant number. A clamp was rejected: it hides the runaway at whatever the clamp is, and the
+suite would then be pinning the clamp.
+
+**New probe MD-12**, 9 checks, `run_meltdown` **11 → 12**. It asserts that nothing MOVES past melt
+(a drift of < 0.01 °C over a further plant-hour) rather than that anything is below a ceiling — one
+direction, and not satisfiable by a tuning. Injection-verified **two ways**: remove both freezes → 4 red,
+clad drift 312 089 °C, oxidation 390.9 % of rated; restore `stepFuel`'s only → **3 still red, same clad
+drift to the third decimal**. MD-11's escalation bands are **unmoved at 184 / 172 / 86 / 40 s**, which is
+the check that the freeze did not reach below melt.
+
+**Standing trap:** an issue's own investigation comment is a claim like any other, and this repo's merge
+cadence can invalidate one inside a day. Two comments here were correct when written and wrong when
+acted on. Re-measure on the tree you are standing in before you implement someone else's diagnosis.
+
+---
+
 ## Session log — 2026-08-04 (#325 — natural circulation, and a LOOP stops being terminal)
 
 **Task:** owner asked for the options on #325 and then ruled *(OWNER RULING, 2026-08-04: "Go with one B")* —

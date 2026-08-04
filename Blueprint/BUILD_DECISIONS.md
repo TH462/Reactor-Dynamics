@@ -37,6 +37,94 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04b — #326: the model kept computing past the end of its own validity
+
+### The change
+
+`if (s.melted) return;` at the top of `stepFuel` and `stepCladding` (`engines/pwr/pwr_thermal.js`).
+New probe **MD-12**, `run_meltdown` **11 → 12**. No config constant moved; no behaviour below melt
+moved.
+
+### The decision worth recording: terminate, do not clamp
+
+The issue offered both — *"Terminate or freeze the thermal integration once `melted` is true … A hard
+clamp (say at the zirconium boiling point) would be a second-best; it hides the runaway rather than
+stopping it."* That is the right call and it holds for a reason beyond tidiness: **a clamp becomes the
+thing the suite pins.** Any probe written against a clamped model asserts the clamp, so the clamp can
+never afterwards be shown to be wrong, and the runaway underneath it stays live and invisible. A
+termination is falsifiable in one direction only — *nothing moved* — and cannot be satisfied by
+choosing a number.
+
+The boundary is not arbitrary either. `CONTEXT.md` and `Manuals/12` §5.5 both say the simulation ends
+at fuel damage, and `pwr_thermal.js` already carried a long #238 note conceding that above ~1900 °C the
+field *"stops meaning cladding"*. The model had a declared edge and simply kept integrating over it.
+
+### Two nodes, and the smaller one is the one previously found
+
+| node | why it is unbounded | 2 h, unmitigated large break |
+|---|---|---|
+| `fuel_temp_c` | `hFcEffective` returns 0 on a fully uncovered core, so `dTf` loses its only sink | **5032 °C (9089 °F)** |
+| `clad_temp_c` | #238 Arrhenius oxidation, `q_ox = q_ref·arr/w`; `arr` exponential in T, `w` only √(integral) | **355 618 °C (640 144 °F)** |
+
+**Below melt the clad node IS a follower** — the lower clamp at `pwr_thermal.js:300` pulls it to the
+fuel node — and that is what made a `stepFuel`-only fix look sufficient to the issue's investigation.
+With the oxidation term it leads: 2308 °C against fuel at 1852 °C at 20 min. Injection-verified, the
+`stepFuel`-only fix leaves 3 checks red and **the same 312 089 °C clad drift to three decimals** as no
+fix at all.
+
+### A comment that had become false, and why it was corrected rather than cut
+
+`pwr_thermal.js` asserted of the Arrhenius factor that *"w grows with it, so dw/dt self-limits and the
+term never needs a cap."* Measured, oxidation heat reaches **1095 % of rated** — the exponential beats
+the square root once the node's own heat outruns the sink. The below-melt half of the claim is true and
+load-bearing (it is why there is an oxide *state* rather than a temperature multiplier), so the comment
+was narrowed to say where it holds, not deleted. Same rule as the #220 finding that a comment carrying a
+premise rots when the plant departs from it.
+
+### The process finding, which outlives the fix
+
+Both of the issue's own investigation comments were **correct when written and wrong when acted on**.
+The rebuttal *"there is no zirconium-oxidation term in this engine"* was true until #238 merged the day
+before; the filed reproduction path (a LOOP melting the core) stopped reproducing when #325 merged the
+same morning — a LOOP now parks at **307.9 °C (586 °F)** with the core intact. Neither comment was
+careless. This repo merges lanes faster than an investigation ages well, and **an issue comment is a
+claim like any other**: re-measure on the tree you are standing in before implementing someone else's
+diagnosis. That is the standing "inherited claims are the risky ones" rule, arriving from a direction it
+had not arrived from before — the stale claim was *our own investigation of this very issue*.
+
+---
+
+## 2026-08-04b — #328: renaming the plant, and the one question that was not mechanical
+
+### The change
+
+`SLX-100` → `SLS-100`, expansion *Single-Loop eXperimental* → **Single Loop Simulated**. 22 sites, 12
+files. Manual set **Rev 27**. No code behaviour, no gate score except the manual digest.
+
+### The decision: the digit stays ELECTRICAL
+
+*(OWNER DIRECTIVE, 2026-08-04, issue #328: "Rename the plant the "Single Loop Simulated - 100MWt" AKA
+"SLS-100".")* — which names **MWt**. The plant's `identity` block is `mwt_rated: 300.0` /
+`mwe_rated: 100.0`, and `Manuals/01` and `12` both print the pair, so taking the request literally
+would have put a 3× contradiction between the name and every rating table in the set. Put to the owner
+with the recommendation rather than resolved silently, because the alternative (`SLS-300`) was a real
+option and the choice is his. Ruled *(OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from three
+options — 100 MWe, `SLS-300` = 300 MWt, or no number; a selection, not verbatim words)*.
+
+**The word *experimental* survives** in ordinary prose and in `identity.plant_class`
+(`'single-loop experimental pressurized water reactor'`), which is a class descriptor rather than an
+acronym expansion. What retired is the reading of the letter X.
+
+### Why this was 12 hand edits and not one
+
+`identity.name` has **no runtime consumer** — nothing in `engines/`, `layers/`, `ui/app.js` or `test/`
+reads it — despite the block's own header calling itself *"the ONE place human-facing absolute ratings
+live"*. That is true of the *ratings*; the **name** is duplicated by hand into the manuals, the site
+pages, `tools/pack_manuals.js` and two Blueprint docs. Worth knowing before the next identity change:
+the ratings are centralised and the name is not.
+
+---
+
 ## 2026-08-04 — #325: natural circulation, and the cheap version that was measured and refused
 
 ### The change
