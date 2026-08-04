@@ -20,6 +20,53 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04f (Alpha 1.0.0 shipped but did NOT go live — the deploy gap)
+
+**Task:** *(OWNER, 2026-08-04: "Why is it taking so long to deploy?" → "Let's fix the gap and
+release.")* Process fix; no engine, config, layer or UI change.
+
+### It was not slow. There was no production deployment at all
+
+Alpha 1.0.0 merged to `main` (`305835e`), `v1.0.0` was tagged and pushed, both `aggregate-gate` runs
+passed and the Vercel commit status read **success** — and 29 minutes later the live site still
+served `d5c1d8b` / `Pre Alpha`. Measured:
+
+| check | result |
+|---|---|
+| `origin/main` | `305835e` — correct |
+| deployments for `305835e` | **one, `environment=Preview`**, aliased to a `*.vercel.app` URL |
+| newest `environment=Production` | `d5c1d8b`, 11:40Z — the *previous* release |
+| live edge | `X-Vercel-Cache: HIT`, `Age: 13895` (3.86 h) — i.e. that 11:40 build |
+| `vercel.json` | unchanged; only disables `workbench` / `backshop` |
+
+**A green "Vercel — success" commit status is satisfied by a PREVIEW build.** That is the whole
+trap: every signal a release procedure normally checks was green, and the one that mattered —
+`environment=Production` for the released SHA — was never looked at because nothing said to look.
+
+### The suspected cause is the ORDERING, and it is inference from outside
+
+The PR merged at 15:02:50Z; `develop` was fast-forwarded to the **same commit** and pushed seconds
+later; the only deployment recorded for that SHA is the preview at 15:03:10Z. The previous release
+got Production **and** Preview 11 s apart for its shared SHA, so preview-only is not the normal
+outcome — it reads as Vercel collapsing two same-SHA events and keeping the preview. That mechanism
+is not visible from outside Vercel; what is evidenced is the deployment records and the timing.
+
+So the fix is ordering plus an assertion: **let production deploy from `main`, confirm it, and only
+then push `develop`.**
+
+### Waiting is never the answer, and that is the part worth remembering
+
+A missing production deployment and a slow one are **indistinguishable from the client side, for
+ever**. The release skill's existing live-site check ("stamp first, then the zip") is what stopped a
+false "broken build" report — but it had no terminating condition, so the honest outcome without
+this fix is waiting indefinitely. §5b now names the check and says explicitly that a duplicate SHA
+will not produce a production build, so a new commit on `main` is required.
+
+Also confirmed while diagnosing: the preview URL is behind Vercel's auth page, so a preview build's
+contents cannot be verified from here — checking the preview is not a substitute.
+
+---
+
 ## Session log — 2026-08-04e (board caps · Physics-tab contrast + indication colours · failure groups)
 
 **Task:** three owner directives, 2026-08-04, UI only — no engine, config or control change.
