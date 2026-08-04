@@ -1134,8 +1134,17 @@ async function main() {
   // the escape hatch: it restores the old sequential order exactly, which is what to reach
   // for if a runner is ever suspected of not being isolated.
   var jobsArg = argv.filter(function (a) { return /^--jobs=\d+$/.test(a); })[0];
-  var JOBS = jobsArg ? Math.max(1, parseInt(jobsArg.split('=')[1], 10))
-                     : Math.max(1, Math.min(10, require('os').cpus().length - 2));
+  // `cores - 1`, capped at 10, floored at 2. The floor is what matters and it is MEASURED:
+  // the first version was `cores - 2`, which is right on a workstation and wrong on CI —
+  // GitHub's standard runner has FOUR cores, so it ran 2-way and the gate took 7m14s. Total
+  // work is ~850 s there, so the pool width is the whole story on that machine. `cores - 1`
+  // gives 3 and should take it to ~4.7 min; it changes nothing locally, where min(10, 11) is
+  // still 10. Leaving one core rather than two is safe because the runners are ordinary Node
+  // processes, not latency-sensitive work — the only cost of being slightly greedy is that
+  // per-runner times inflate further, and those are already contention times, not costs.
+  var jobsArg2 = jobsArg ? parseInt(jobsArg.split('=')[1], 10) : 0;
+  var JOBS = jobsArg2 ? Math.max(1, jobsArg2)
+                      : Math.max(2, Math.min(10, require('os').cpus().length - 1));
 
   var found = discover();
 
