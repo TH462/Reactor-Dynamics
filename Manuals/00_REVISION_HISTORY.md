@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 0 (2026-08-04)  
+**Set revision:** 1 (2026-08-04)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,6 +28,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 1 | 2026-08-04 | **12** §7.1 — the pressurizer surge term now carries RCS **inventory** as well as thermal expansion (#337), so a loss of inventory shows up on pressure and subcooling margin and not only on pressurizer level; new §12.5-family simplification row **12.15** declaring that this plant's heater authority is far above the sourced 1794 kW / 55 °F/hr (WTSM 3.2, ML11223A213), which damps that cue to roughly 1 °F of margin where the real rating gives about 9 °F. | Claude |
 | 0 | 2026-08-04 | **Initial Alpha release.** The PWR operator manual set as issued for the first public Alpha. Revision counting starts here: this is the baseline the set ships at, not a change against anything a player has seen. Pre-release development history — every revision of every chapter — is in `git log` for `Manuals/`, not in this table. | Initial Alpha release |
 
 ## Source documents (authoritative for content)
@@ -55,7 +56,7 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 0 (2026-08-04). A mismatch means a chapter changed with no
+     Sealed at Rev 1 (2026-08-04). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
@@ -68,6 +69,6 @@
      09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md bf6cd0d8bda845a9
+     12_SIM_PHYSICS.md 201b97d4a5c1c8cc
      README.md 9a103035dfb47eca
 -->

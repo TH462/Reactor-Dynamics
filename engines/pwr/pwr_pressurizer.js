@@ -207,17 +207,44 @@
     // There, pressure is slaved to Psat(Tavg) by flashing (the sat-pull below), so the
     // subcooled-LIQUID terms — the break depressurization and the thermal expansion/
     // contraction surge — are suppressed: a rapid cooldown (e.g. an HPI cold quench)
-    // must NOT crash pressure via K_surge below saturation; the vapour space compensates
+    // must NOT crash pressure via the surge term below saturation; the vapour space compensates
     // and pressure just tracks Psat(Tavg) down as the coolant cools.
     var p_sat_tavg = P_sat_from_T(s.tavg_c);
     var saturated = s.primary_void_fraction > 0 || p_sat_tavg > s.pressure_mpa;
     var leak_depress = saturated ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
+    // SURGE — ONE LAW, TWO DRIVERS (#337). A surge is a VOLUME displacement of the
+    // pressurizer, and the pressurizer does not know what caused it. WTSM 3.2
+    // (ML11223A213, p. 3.2-8) states the mechanism without reference to the cause:
+    // "Temperature changes produces changes in coolant density, which force water into
+    // (insurge) or out of (outsurge) the pressurizer. … If the RCS temperature decreases,
+    // the contraction of the coolant produces an outsurge from the pressurizer. This is
+    // accommodated by an expansion of the steam bubble and a corresponding decrease in
+    // steam density and pressure."
+    //
+    // Until #337 only the THERMAL driver was wired. Losing RCS inventory displaces the same
+    // volume out of the same pressurizer — a subcooled loop is incompressible everywhere
+    // else, so there is nowhere else for it to come from — and moved pressure by nothing at
+    // all: measured full stack, an SGTR that took pzr level 55.0 → 15.7 % and scrammed the
+    // plant moved pressure 5 psi (0.034 MPa) and subcooling 0.2 F (0.1 C).
+    //
+    // The conversion for both drivers is ALREADY in the level line (stepLevel): level_per_tavg
+    // %/C for expansion, level_per_mass %/frac for inventory — the same geometry, stated once.
+    // So the law is written in LEVEL-RATE units and both drivers convert into it, which is why
+    // the constant is `K_surge_level` (%/s) and no longer `K_surge` (C/s). The mass slope is
+    // taken piecewise on the CURRENT deviation exactly as stepLevel takes it, so the two
+    // cannot drift apart (they are equal since #330; the piecewise is what keeps them tied).
+    //
+    // `_dmass_dt` is stepInventory's REALISED mass rate read ONE STEP LATE — inventory is
+    // step 9 and this is step 7 (CONTEXT §11 explicit coupling).
+    var dm_lvl = (s._mass != null ? s._mass : 1.0) - 1.0;
+    var surge_rate = p.level_per_tavg * (s._dTavg_dt || 0)
+                   + (dm_lvl < 0 ? p.level_per_mass : p.level_per_mass_surplus) * (s._dmass_dt || 0);
     var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
            - leak_depress
-           + (saturated ? 0 : p.K_surge * (s._dTavg_dt || 0));   // thermal surge — subcooled liquid only
+           + (saturated ? 0 : p.K_surge_level * surge_rate);   // subcooled liquid only
     if (saturated) {
       // Two-phase OR superheated: a liquid cannot superheat — as pressure falls to the
       // saturation pressure of Tavg the coolant flashes, and that flashing PINS pressure

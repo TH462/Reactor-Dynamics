@@ -136,8 +136,15 @@ T.push(test('PORV — a scenario can lock the operator switch, and relief still 
   // heaters and watch the valve lift anyway.
   s.cmd({ action: 'set_spray', pct: 0 });
   s.cmd({ action: 'set_heater', power_pct: 100 });
+  // SAMPLED FINELY, and that is not cosmetic (2026-08-04, #337). This read `porv_open` once
+  // every 15 s, which asserts a LATCH about something that is a pulse: the valve pops, blows
+  // down and reseats. Measured over the same 600 s, the lift is open 32.78 % of the time in
+  // ~1.55 s spans before #337 and 2.42 % in ~0.72 s spans after — because the PORV's own
+  // inventory loss now drives the surge term too, so it relieves more efficiently and cycles
+  // less. Nothing about relief got worse; the sample grid simply stopped landing on it. A
+  // 0.5 s slice cannot miss a 0.72 s span, and it passes on the pre-#337 engine as well.
   var lifted = false;
-  for (var i = 0; i < 40 && !lifted; i++) { s.run(15); lifted = s.ts().porv_open === true; }
+  for (var i = 0; i < 1200 && !lifted; i++) { s.run(0.5); lifted = s.ts().porv_open === true; }
   ck('AUTOMATIC relief still lifts while the operator switch is locked',
     lifted + ' @ ' + s.ins().primary_pressure.toFixed(2) + ' MPa', lifted === true, true);
 }));

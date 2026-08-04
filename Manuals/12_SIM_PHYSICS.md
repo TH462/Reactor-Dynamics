@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 0  
+**Revision:** 1  
 
 ---
 
@@ -432,9 +432,11 @@ These are separate states with separate calibrations on purpose. Combining them 
 
 ### 7.1 Pressure
 
-Pressure is an integrator driven by a signed sum of effects — heaters up; spray, PORV flow, safety flow and break depressurisation down; thermal expansion of the loop as a surge term. Gains are in MPa/s and are **effective coefficients, not thermodynamics** (§12.5).
+Pressure is an integrator driven by a signed sum of effects — heaters up; spray, PORV flow, safety flow and break depressurisation down; and a **surge** term. Gains are in MPa/s and are **effective coefficients, not thermodynamics** (§12.5).
 
-Two behaviours are worth understanding at the board:
+Three behaviours are worth understanding at the board:
+
+**A surge is a volume displacement, and the pressurizer does not know what caused it.** Coolant expanding or contracting with Tavg displaces liquid into or out of the pressurizer; so does gaining or losing RCS inventory, because a subcooled loop is incompressible everywhere else and the pressurizer is the only place with a free surface. Both drive the same term. What that means at the board: **a loss of inventory shows up on pressure and on subcooling margin, not only on pressurizer level** — and make-up or safety injection pushes all three back the other way. Until 2026-08-04 only the thermal driver was modelled, so a leak that emptied the pressurizer and scrammed the plant moved pressure 5 psi (0.034 MPa) and subcooling 0.2 °F (0.1 °C).
 
 **Spray cannot pull below core-exit saturation.** Its authority tapers to zero across a 435 psi (3 MPa) band above the saturation pressure of the *hot leg*. Below that the core exit flashes and boiling — not pressure control — takes over. This is self-limiting: on a real cooldown the hot leg falls too, so the floor tracks down and spray keeps working.
 
@@ -643,6 +645,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.3 | **Two-term decay heat** | Full ANS 5.1 accuracy; the two-term form is ~20 % accurate over hours to days | **No.** Decay heat exists, demands cooling for hours, and drives every long transient. |
 | 12.4 | **Natural-circulation MAGNITUDE is fitted, not sourced** *(rewritten 2026-08-04, #325 — this row used to read "No natural circulation")* | The mechanism and its scaling are sourced (WTSM 3.2.6.3, ML11223A213); the flow **coefficient** is fitted to this plant's own energy balance, because no primary for the magnitude could be obtained. The "2–5 %" this manual quoted before was uncited inherited prose and is **not** the anchor | **Minor.** The lessons that depend on natural circulation — that a loss of offsite power is survivable, that it needs a liquid loop, and that it still needs a heat sink — are all shape, not scale. Do not quote this plant's percentage as a real-plant figure. |
 | 12.5 | **Pressurizer uses effective coefficients, not two-phase thermodynamics** | Flash evaporation, condensation, subcooled surge into a steam space | **No.** Directions and magnitudes are right, and the TMI-critical level rise during voiding is fully captured. |
+| 12.15 | **Heater authority is far above the real one, so pressure droops LESS than it should during a loss of inventory** *(new 2026-08-04, #337)* | WTSM 3.2 (ML11223A213) rates the real heaters at 1794 kW, *"capable of raising the temperature of the pressurizer and its contents at approximately 55 °F/hr"* — 0.23 psi/s (1.6e-3 MPa/s). This plant runs 80 psi/s (0.55 MPa/s), which is 27× even the value its own declared Mode 5↔1 time compression justifies. | **Yes, in one direction, and it is deliberate.** The surge itself is modelled (§7.1), so pressure and subcooling *do* respond to inventory — but the heaters rebalance against them, so the cue is smaller than a real plant's. A leak that drives the pressurizer to its 17 % heater cutoff costs about **1 °F** of subcooling margin here against roughly **9 °F** at the sourced heater rating. Treat the *direction and ordering* as the lesson, never the magnitude. Reducing it is an open decision — the value is what lets this plant ride out a full load rejection without a trip. |
 | 12.6 | **No sensor redundancy or voting** | Real plants use ~3 channels with 2-of-3 voting; one failed sensor cannot trip or block a trip alone | **Yes — instrument failures are *more* impactful here.** That is arguably better teaching, but it is not prototypical. |
 | 12.7 | **Xenon has no spatial oscillation** | Xenon power tilts swinging around a large core over hours | **No** at this plant size. Total inventory suppression is modelled. |
 | 12.8 | **Turbine and condenser are behavioural** | Stage efficiencies, feedwater heaters, hotwell level | **No.** Trip and vacuum-loss behaviour is right; the thermodynamic detail is not part of any lesson. |

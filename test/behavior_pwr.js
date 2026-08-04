@@ -2304,8 +2304,22 @@
         // it is the casualty — an unheld leak must end in a trip, not a slow silent drain.
         var e = H('hot_full_power');
         e.run(60);
+        // The PRE-EVENT reference, taken here and not from `range()`. Both halves of that
+        // matter and the first draft got the second one wrong: `range()` spans the WHOLE run,
+        // and this event RECOVERS hard once the rods are in — subcooling comes back to 86 °F
+        // on ECCS, above where it started. Measuring the loss against `range().max` therefore
+        // scored the recovery, and read −15.1 °F on the OLD engine, where the true loss is
+        // −2.05 °F: the check passed against the very plant it exists to exclude.
+        var eSub0 = e.ts().subcooling_c;
         e.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.03 });
-        e.run(900);
+        // Sample the PRE-TRIP window explicitly, for the same reason in the other direction.
+        var ePmin = null, eSubMin = null;
+        e.run(900, function (hh) {
+          if (hh.tripTime != null) return;
+          var ts = hh.ts();
+          if (ePmin == null || ts.pressure_mpa < ePmin) ePmin = ts.pressure_mpa;
+          if (eSubMin == null || ts.subcooling_c < eSubMin) eSubMin = ts.subcooling_c;
+        });
         // Banded on TRUE level at 20 %, not at the 12 % setpoint, and deliberately: the
         // trip reads the INSTRUMENT (HR1), so true level troughs just past it — measured
         // 12.10 % against a trip that had already fired off the indicated channel. Pinning
@@ -2314,8 +2328,32 @@
         // and parks it near 50 % — nowhere near an alarm, let alone a trip.
         ck('an unheld leak drives the pressurizer down hard — past the lo alarm to its trip',
           fmt(e.range('pzr_level_pct').min, 2) + ' % min', e.range('pzr_level_pct').min < 20, '< 20 %');
-        ck('…and the plant scrams ON PRESSURIZER LEVEL, not on something incidental',
-          e.tripReason || 'never', /pzr_level/.test(e.tripReason || ''), 'pzr_level');
+        // RE-AUTHORED 2026-08-04 (#337), and this is a WIDENING — say so rather than imply it
+        // is neutral (HR10). It read `/pzr_level/` and named the trip. That was correct on a
+        // plant where losing inventory could not move pressure: the level channel was the ONLY
+        // instrument that responded, so it was also the only path to a scram. Since #337 the
+        // same leak drops pressure too, and OTΔT — a DNB protection reading ΔT against
+        // pressure — gets there first (174 s, with the level trip following). Both are
+        // inventory-driven, so the claim this leg makes is intact; what is no longer true is
+        // that only one path exists. Enumerated rather than dropped, so a scram from something
+        // genuinely incidental (a secondary upset, a flux trip) still reddens it, and it
+        // passes on the OLD engine as well, where the answer is `pzr_level`.
+        ck('…and the plant scrams on an INVENTORY-driven path, not on something incidental',
+          e.tripReason || 'never',
+          /pzr_level|otdt_margin|primary_pressure/.test(e.tripReason || ''),
+          'pzr_level | otdt_margin | primary_pressure');
+        // NEW with #337, and it FAILS ON THE OLD ENGINE — the point of the change. Before it,
+        // this leak took the pressurizer from 55.0 % to its trip while primary pressure moved
+        // 5 psi (0.03 MPa) and the subcooling margin moved 0.2 °F (0.1 °C): the PWR's primary
+        // "are we still safe" parameter could not degrade from a loss of inventory at all.
+        // Banded between the two measured values — OLD −2.05 °F, NEW −8.95 °F from the same
+        // 73.75 °F start — so it pins the MECHANISM being present, not one tuning of it.
+        ck('…and the PRIMARY parameters degrade with it — subcooling is no longer blind to inventory',
+          fmt((eSubMin - eSub0) * 9 / 5, 1) + ' °F from ' + fmt(eSub0 * 9 / 5, 1) +
+          ' °F (pre-#337: −2.1 °F)',
+          (eSub0 - eSubMin) * 9 / 5 > 5.0, '> 5 °F of margin lost');
+        ck('…and pressure with it (pre-#337: 5 psi across the whole event)',
+          fmt(ePmin * 145.038, 0) + ' psi min', ePmin * 145.038 < 2175, '< 2175 psi (nominal 2235)');
         T.checkSanity(ck, a);
       });
     },
@@ -2501,10 +2539,26 @@
         h2.cmd('inject_failure', { failure_id: 'stuck_porv_open' });
         h2.cmd('open_porv');
         h2.cmd('close_porv');
-        var dt2 = h2.runUntil(function (ts, ins) { return ins.primary_pressure < 12.0; }, 300);
-        ck('with both blocked, pressure crossed 12.4 MPa unscrammed',
-          dt2 >= 0 ? fmt(h2.ins().primary_pressure, 2) + ' MPa, rps.scrammed=' + h2.rps().scrammed : 'never got there',
-          dt2 >= 0 && h2.rps().scrammed === false, 'below 12.4, no scram');
+        // RE-AUTHORED 2026-08-04 (#337). This ran to `primary_pressure < 12.0` and asserted no
+        // scram there. It could only ever get to 12.0 because SI COULD NOT PUSH BACK: injection
+        // added mass with no path to pressure, so the depressurization walked straight through
+        // its own actuation setpoint. Since #337 mass drives the pressurizer surge in BOTH
+        // directions, so unthrottled SI arrests the fall at 12.47 MPa and then takes the plant
+        // solid — measured, `pzr_level high` at 57 s with inventory 111.1 % — which is the
+        // real behaviour operators throttle SI to avoid, and the mirror image of the TMI lesson.
+        //
+        // The claim this leg makes is about the BLOCKS, not about how far pressure travels, so
+        // it is asserted at the actuation itself: the plant reaches the SI setpoint with both
+        // pressure trips still blocked and no reactor trip. That passes on the OLD engine too
+        // (which also actuates SI there, unscrammed) — the 12.0 MPa target was the part that
+        // depended on the defect, not the assertion.
+        var dt2 = h2.runUntil(function (ts) { return !!ts.hpi_active; }, 300);
+        ck('with both blocked, pressure reached the SI actuation unscrammed',
+          dt2 >= 0 ? fmt(h2.ins().primary_pressure, 2) + ' MPa, rps.scrammed=' + h2.rps().scrammed : 'SI never actuated',
+          dt2 >= 0 && h2.rps().scrammed === false, 'SI actuates, no scram');
+        ck('…and the blocks HELD through the crossing (neither auto-reinstated)',
+          'lo_press=' + h2.rps().trip_blocks.lo_press + ', si_trip=' + h2.rps().trip_blocks.si_trip,
+          h2.rps().trip_blocks.lo_press === true && h2.rps().trip_blocks.si_trip === true, 'both true');
         ck('blocking the TRIP did not disable the SI ESF', String(h2.ts().hpi_active),
           !!h2.ts().hpi_active, 'true');
 

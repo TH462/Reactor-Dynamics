@@ -30,6 +30,45 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Losing reactor coolant now moves primary pressure and subcooling margin, not only pressurizer
+  level** (#337). The pressurizer's surge term had exactly one driver — thermal expansion of the
+  loop — so a leak displaced liquid out of the pressurizer and the model did not notice. Measured
+  full stack before the fix: a tube rupture that took pzr level **55.0 → 15.7 %** and scrammed the
+  reactor moved pressure **5 psi (0.034 MPa)** and the subcooling margin **0.2 °F (0.1 °C)**. The
+  PWR's primary "are we still safe" parameter could only degrade thermally.
+
+  A surge is a **volume displacement of the pressurizer**, and WTSM 3.2 (ML11223A213, p. 3.2-8)
+  states the mechanism without reference to its cause — *"Temperature changes produces changes in
+  coolant density, which force water into (insurge) or out of (outsurge) the pressurizer… the
+  contraction of the coolant produces an outsurge… accommodated by an expansion of the steam
+  bubble and a corresponding decrease in steam density and pressure."* A subcooled loop is
+  incompressible everywhere else, so inventory comes out of the pressurizer at exactly the rate
+  the level line already says it does. The law is now written in **level-rate** units so both
+  drivers convert into it through the geometry `stepLevel` already carries (`level_per_tavg`,
+  `level_per_mass`); `K_surge` (°C/s) became `K_surge_level` (%/s) and the thermal response is
+  **bit-identical**, because the fitted value re-expressed is 0.4 and the sourced band is 0.27–0.63.
+
+  It runs both ways, which matters as much: unthrottled safety injection now **repressurises** and
+  can take the plant solid, the behaviour operators throttle SI to avoid.
+
+  **NOT FINISHED, and the remainder is filed rather than guessed at.** A relief valve's pressure
+  authority is now carried twice (`K_surge_level · level_per_mass` = 310 against relief gains of
+  300 — the tell that those constants were always this same coupling), and the obvious correction
+  of excluding relief from the surge measured *worse*, breaking physics acceptance where the double
+  count breaks only authored content. The TMI-2 flagship and the SGTR procedure's depressurisation
+  step are still written against the old trajectory and are red. Flags **F14**/**F15**; the measured
+  detail is in `Diagnostic/TUNING_LOG.md` 2026-08-04g.
+
+  **The magnitude is still damped, deliberately and declared** (`Manuals/12` §12.15, and filed on
+  #337 as an owner decision). The pressurizer heaters are modelled at 27× the authority their own
+  source supports — WTSM 3.2 p. 3.2-9 rates 1794 kW as *"capable of raising the temperature of the
+  pressurizer and its contents at approximately 55 °F/hr"*, i.e. 0.23 psi/s, against this plant's
+  80 psi/s — so they rebalance against the surge and hold the cue to about **1 °F** of margin where
+  the sourced rating gives about **9 °F**. Correcting it is measured but not taken: below 0.10 the
+  plant can no longer ride out a full load rejection without a reactor trip, which is its ruled
+  identity, and below 0.20 a stuck-open spray valve runs it to the containment floor.
+
 ### Changed
 - **The public changelog page is facts only** *(OWNER, 2026-08-04: "Just keep to facts in the
   changelog page. Minimize prose.")*. Cut the "This log begins with the public launch" lead and

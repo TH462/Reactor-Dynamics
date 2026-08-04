@@ -442,7 +442,50 @@
       // PORV/safety relief gains are large: the valves vent the pressurizer STEAM
       // space, so a small mass flow has a big pressure effect — which is why the
       // inventory-loss gain (porv_flow_max) and the pressure gain are decoupled.
-      K_heater: 0.55, K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
+      // K_heater — SOURCED CEILING, FITTED VALUE, AND THE GAP IS DECLARED (#337).
+      //
+      // WTSM 3.2 (ML11223A213, p. 3.2-9) gives this authority directly, in rate units:
+      // "There are 78 heaters installed for a total capacity of 1794 kW. … The heaters are
+      // capable of raising the temperature of the pressurizer and its contents at
+      // approximately 55 EF/hr." Along the saturation line at 2235 psia the sim's own T_sat
+      // correlation gives dP/dT = 0.18686 MPa/°C, so 55 °F/hr = 30.56 °C/hr = 8.488e-3 °C/s
+      // is 1.586e-3 MPa/s of pressure — the REAL-TIME full-heater authority.
+      //
+      // This plant runs its pressurizer on a declared time compression: the Mode 5↔1 path is
+      // "deliberately time-compressed" and `setpoint_pressurize_slew_mpa_s` 0.02 is fitted to
+      // it (cold→NOP in ≈11 min against a real ≈2.7 h at NOP dP/dT). That factor is 12.6, so
+      // the compression-consistent heater authority is 1.586e-3 × 12.6 = 0.020 MPa/s — and it
+      // lands exactly on the slew rate, which is the cross-check: the config states the same
+      // physical quantity twice, and until #337 the two disagreed by 27×.
+      //
+      // 0.55 WAS 27× ABOVE THAT, and the consequence is #337: the heaters could hold nominal
+      // pressure against ANY surge this plant can produce, so an SGTR that took the
+      // pressurizer 55.0 → 15.7 % and scrammed the reactor moved pressure 5 psi (0.034 MPa) and
+      // subcooling 0.2 °F (0.1 °C). Adding the missing mass-surge driver alone changed that by
+      // 9 psi — measured — because the heater simply rebalanced against it.
+      //
+      // IT IS DELIBERATELY STILL 0.55, AND THAT IS AN OPEN OWNER DECISION, NOT AN OVERSIGHT.
+      // Closing the gap is a change to the plant's RULED IDENTITY, and the collateral
+      // escalates smoothly, so it is not a tuning call. Measured full stack, `run_behavior`
+      // red count and the subcooling cue from a leak that drives the pressurizer to the 17 %
+      // heater cutoff (SGTR sev 0.02), everything else held:
+      //
+      //     K_heater   subcooling cue   full (100 %) load rejection    run_behavior
+      //       0.55       −0.7 °F          no scram                      48 pass   <- shipped
+      //       0.35       −1.1 °F          no scram                      47 pass
+      //       0.20       −1.2 °F          no scram                      44 pass
+      //       0.10       −3.1 °F          no scram                      43 pass
+      //       0.05       −8.5 °F          SCRAM 122 s, otdt_margin low     —
+      //       0.02       −9.4 °F          SCRAM 103 s, otdt_margin low     —
+      //
+      // The wall between 0.10 and 0.05 is TR-1h: "no scram" on a full load rejection is this
+      // plant's ride-out character — a ruled departure from the Westinghouse 50 % criterion —
+      // and OTΔT is what binds it (the #311 trap, from the other side). Below 0.20 the
+      // pressurizer also stops winning against its own spray, so TR-11's stuck-open spray
+      // valve depressurizes the plant to the containment floor instead of parking. Both are
+      // real plant behaviours, and choosing them over the present ones is the owner's call.
+      K_heater: 0.55,
+      K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
       // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for
       // step insurges, NOT for a loss-of-heat-sink repressurization — capped at
       // this fraction of full spray flow (auto demand AND operator override), the
@@ -450,7 +493,33 @@
       // requires. Cooldowns still get real depressurization authority.
       spray_flow_max: 0.12,        // [tune] — binds below the TR-2 insurge equilibrium (~0.23 demand)
       spray_floor_band: 3.0,       // MPa — spray authority tapers to 0 across this band above Psat(THOT), the core-exit leg (see pwr_pressurizer spray_floor); floor is the hottest leg so spray can't pull below core-exit saturation (P6)
-      K_surge: 1.0, P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
+      // Pressurizer SURGE gain — MPa/s of pressure per %/s of pressurizer LEVEL rate.
+      //
+      // Was `K_surge: 1.0` in °C/s of Tavg until #337. The CURRENCY is the point: a surge is a
+      // volume displacement of the pressurizer, so inventory drives it as well as thermal
+      // expansion, and stating it per unit LEVEL rate is what lets one law carry both (see
+      // pwr_pressurizer.stepPressure for the law and the WTSM 3.2 quote). 1.0 / level_per_tavg
+      // (2.5) = 0.4 would have been the byte-identical thermal response in the new units.
+      //
+      // 0.4 IS UNCHANGED, AND IT IS INSIDE THE SOURCED RANGE — which is why it stays.
+      // Derived from the same WTSM 3.2 number that bounds K_heater below: 1794 kW ⇒ 55 °F/hr
+      // is 8.842e-7 MPa/s per kW at NOP. One %/s of level is 12.44 ft³/s of bubble growth
+      // (#249's fit: 45 points of level = the 0.40 × 1,400 ft³ steam space), which at
+      // v_g = 0.1955 ft³/lbm and h_fg = 361 Btu/lbm is 63.6 lbm/s of steam = 24,240 kW of
+      // flashing demand. That lands at 0.0214 MPa/s if the vessel METAL participates (the
+      // effective heat capacity the source's own 55 °F/hr implies) and 0.0502 if only the
+      // pressurizer liquid does — a real spread, because a fast surge does not reach the
+      // metal. × 12.6 for this plant's declared Mode 5↔1 time compression (see K_heater) puts
+      // the sourced band at 0.27..0.63, and the fitted 0.4 sits in the middle of it.
+      //
+      // So #337 moved this by NOTHING, deliberately. The thermal channel is bit-identical
+      // across the change and the only new physics is the mass driver — which matters,
+      // because 0.27 was tried and it costs TR-1c: a 1.5× weaker insurge peaks the
+      // sub-arm rejection at 2246 psi (15.49 MPa) instead of lifting the PORV, i.e. it
+      // silently retires the §8.21 declared backstop. Not a change to make on a number the
+      // source does not actually pin. [tune]
+      K_surge_level: 0.4,
+      P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
       // Operator-setpoint pressurization slew (Mode-5 heatup feel, 2026-07-23). K_heater
       // (0.55 MPa/s at full power) is the CONTROL authority for holding pressure against
       // transients (the SGTR plateau needs all of it) — but it made a RAISED operator

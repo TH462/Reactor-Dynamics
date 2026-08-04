@@ -20,6 +20,186 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04g (#337 — the pressurizer surge had one driver where it needs two)
+
+**Task:** work #337 — primary pressure and subcooling margin do not respond to RCS inventory.
+Workbench lane. Engine + config + one probe re-authoring + one probe widening; `Manuals` Rev 1.
+
+### Reproduced first, on this tree, because the issue predates three merges
+
+`#337` was filed at 15:52 against a plant that has since taken #334. Re-measured full stack,
+`hot_full_power`, SGTR sev 0.03 at t=60 s: pressure **2235 → 2230 psi** while pzr level fell
+**55.0 → 15.7 %**, and the only movement (−37 psi) arrived *after* #334's 17 % heater cutoff
+fired. So the issue reproduces, and #334 did not close it.
+
+### The mechanism — the issue named three things and the ORDER was wrong
+
+#337 filed (1) "CVCS letdown has no path to pressure", (2) "even the connected path produces no
+legible signal", (3) the circular void gate. Measured, **(2) dominates and (1) is a symptom of
+it.** There is one surge term in `stepPressure` and it reads `_dTavg_dt` only:
+
+```js
++ (saturated ? 0 : p.K_surge * (s._dTavg_dt || 0));   // thermal surge
+```
+
+A surge is a **volume displacement of the pressurizer**, and WTSM 3.2 (ML11223A213, p. 3.2-8)
+describes it without reference to what caused it — *"Temperature changes produces changes in
+coolant density, which force water into (insurge) or out of (outsurge) the pressurizer. … If the
+RCS temperature decreases, the contraction of the coolant produces an outsurge from the
+pressurizer. This is accommodated by an expansion of the steam bubble and a corresponding
+decrease in steam density and pressure."* Losing RCS inventory displaces the same volume out of
+the same pressurizer — a subcooled loop is incompressible everywhere else — and it drove nothing.
+
+**But wiring it in on its own moves the plant by 9 psi.** Measured: adding the mass driver at the
+shipped gains took the sev-0.03 case from −5 psi to −9 psi of pre-trip signal, because the heater
+term simply rebalanced against it. Which is the real defect.
+
+### The heater authority is 27× the sourced value, and that is what erases the cue
+
+WTSM 3.2 (ML11223A213, p. 3.2-9) gives it directly, in rate units: *"There are 78 heaters
+installed for a total capacity of 1794 kW. … The heaters are capable of raising the temperature
+of the pressurizer and its contents at approximately 55 °F/hr."* At 2235 psia the engine's own
+`T_sat` correlation gives dP/dT = 0.18686 MPa/°C, so 55 °F/hr = **0.23 psi/s (1.586e-3 MPa/s)**.
+
+This plant declares a Mode 5↔1 time compression and `setpoint_pressurize_slew_mpa_s` = 0.02 MPa/s
+is fitted to it (cold→NOP ≈ 11 min). That factor is **12.6×**, so the compression-consistent
+heater authority is **0.020 MPa/s** — which lands *exactly on the slew rate*. That is the
+cross-check worth keeping: **the config states the same physical quantity twice, and until now
+the two disagreed by 27×.** `K_heater` is **0.55**.
+
+### `K_surge_level` moved by NOTHING, and that was a measured decision
+
+The same source fixes the surge coefficient: 1794 kW ⇒ 55 °F/hr is 8.842e-7 MPa/s per kW, and one
+%/s of pzr level is 12.44 ft³/s of bubble growth (#249's fit — 45 points of level = the
+0.40 × 1,400 ft³ steam space), i.e. 63.6 lbm/s of steam at v_g 0.1955 and h_fg 361 = **24,240 kW**
+of flashing demand. That is **0.0214 MPa/s** if the vessel metal participates and **0.0502** if
+only the pressurizer liquid does — a real spread, because a fast surge does not reach the metal.
+× 12.6 puts the sourced band at **0.27–0.63**, and the fitted 1.0 °C/s value re-expressed in
+level units is **0.4**, in the middle of it.
+
+**0.27 was tried and refused.** It costs TR-1c: a 1.5× weaker insurge peaks the sub-arm rejection
+at 2246 psi (15.49 MPa) instead of lifting the PORV, silently retiring the §8.21 declared
+backstop. Not a change to make on a number the source does not actually pin. So the thermal
+channel is **bit-identical across this change** and the only new physics is the mass driver.
+
+### What K_heater is worth, and why it did not move
+
+Measured full stack, everything else held — `run_behavior` probe count and the subcooling cue
+from a leak driven to the 17 % heater cutoff (SGTR sev 0.02):
+
+| `K_heater` | subcooling cue | full (100 %) load rejection | `run_behavior` |
+|---|---|---|---|
+| **0.55** | −0.7 °F | no scram | **48 pass** ← shipped |
+| 0.35 | −1.1 °F | no scram | 47 pass |
+| 0.20 | −1.2 °F | no scram | 44 pass |
+| 0.10 | −3.1 °F | no scram | 43 pass |
+| 0.05 | −8.5 °F | **SCRAM 122 s**, `otdt_margin low` | — |
+| 0.02 | −9.4 °F | **SCRAM 103 s**, `otdt_margin low` | — |
+
+The wall between 0.10 and 0.05 is **TR-1h**: "no scram" on a full load rejection is this plant's
+ride-out character, a ruled departure from the Westinghouse 50 % criterion, and **OTΔT is what
+binds it** — the #311 trap from the other side. Below 0.20 the pressurizer also stops winning
+against its own spray, so TR-11's stuck-open spray valve runs the plant to the containment floor
+(15.41 → 0.10 MPa) instead of parking. Both are real behaviours; choosing them over the present
+ones changes ruled identity, so it is **filed on #337 as an owner decision**, not taken here.
+
+**What did land, measured on the SGTR sweep (pre-trip window, `hot_full_power`):**
+
+| sev | before | after |
+|---|---|---|
+| 0.005 | −3 psi / −0.2 °F | −3 psi / −0.2 °F |
+| 0.01 | −5 psi / −0.3 °F | −5 psi / −0.3 °F |
+| 0.02 | ~0 psi / −0.1 °F | −10 psi / −0.7 °F |
+| 0.03 | −5 psi / −0.2 °F, trip 178 s | **−135 psi / −9.0 °F**, trip 174 s |
+
+So the structural gap is closed — inventory now has a physical path to pressure, in **both**
+directions — and the magnitude is throttled by `K_heater` until that is ruled on.
+
+### Five things worth keeping
+
+1. **The `range()` trap landed again, and it made a NEW check hollow.** CA-9's added subcooling
+   check first measured the loss against `range('subcooling_c').max`, which spans the whole run —
+   and this event *recovers above where it started* (86 °F on ECCS). It scored **−15.1 °F on the
+   OLD engine**, where the true loss is −2.05 °F: the check passed against the very plant it
+   exists to exclude. Fixed by capturing the pre-event value at the injection.
+2. **Windowing an extremum on `[inject, trip]` is not optional here.** The first probe read
+   −256 psi at the *shipped* gains, all of it post-scram transient, where the pre-trip signal is
+   −5 psi. A whole-run minimum on an event that scrams measures the scram.
+3. **`PI-3` leg 2 was resting on the defect.** It ran to `primary_pressure < 12.0` and asserted no
+   scram — reachable only because SI could not push back. With mass driving the surge in **both**
+   directions, unthrottled SI now arrests the fall at 12.47 MPa and takes the plant **solid**
+   (`pzr_level high` at 57 s, inventory 111.1 %), which is the behaviour operators throttle SI to
+   avoid. Re-authored to assert at the actuation instead; **passes on the old engine too.**
+4. **`CA-9` leg E's trip-reason check was a WIDENING, said out loud.** It named `pzr_level`,
+   correct on a plant where level was the only instrument that could respond. Now the same leak
+   drops pressure and OTΔT gets there first. Enumerated rather than dropped, so an incidental
+   scram still reddens it, and it passes on the old engine.
+5. **`perturb_sweep` said the suite barely constrains any of these gains** — 3 % nudges to
+   `K_heater`, `K_surge_level` and `P_restore_rate_gain` produced **zero verdict flips** across
+   both suites, with `K_heater` "weak" (7/241 and 14/440 observed values moved). A constant this
+   load-bearing being that loosely pinned is itself the finding.
+
+### THE UNRESOLVED HALF — a relief valve's pressure authority is now carried TWICE
+
+`K_surge_level · level_per_mass` = **310**. `K_porv_relief` and `K_safety_relief` are **300**. So
+routing relief flow through the surge as well **doubles a relief valve's authority** — near enough
+exactly, which is itself the tell that those two constants were always this same coupling, fitted
+per path. It is not small: the **TMI-2 flagship blows the RCS down to 69 psi (0.48 MPa) by 681 s**
+where the canon trajectory recovers.
+
+**All four combinations were measured and none is clean:**
+
+| relief in the surge | `K_porv_relief` | result |
+|---|---|---|
+| **yes** | **300** | **SHIPPED.** Content red only: `run_procedures`/`_stack` ×1, `run_campaign` 48/51. TMI-2 reaches `b14_ident`. |
+| yes | 0 (total 310 ≈ the calibrated 300) | stalls TMI-2 **earlier**, at `b7_confusion` |
+| no | 300 | `run_meltdown` **12 → 11**, `run_scenarios` **3/3 → 1/3**, `run_campaign` **41/51** |
+| no | 0 / 150 | plant barely depressurises — 2205 psi, no damage; stalls at `b7_confusion` |
+
+The obvious correction is to take relief *out* of the surge, on the sound argument that the PORV
+and the code safeties discharge from the pressurizer **STEAM SPACE**, so that mass never crosses
+the surge line — which is exactly what `pwr_config`'s own `K_porv_relief` comment has said for as
+long as those constants have existed. **Built, measured, and it is WORSE**: it reddens PHYSICS
+acceptance (`run_meltdown`, `run_scenarios`) where including it only reddens authored CONTENT, and
+**HR9 ranks those the other way round**. So what ships is the variant that keeps the physics suites
+green. The double count is real and stays open on #337.
+
+**Lesson, and it cost most of the session:** before adding a general law, grep for the per-path
+constants that were standing in for it. Three existed here — `K_porv_relief`, `K_safety_relief`,
+`K_leak_depressurize` — and two of them are numerically the new law's own coefficient.
+
+### STATE: NOT GATE-GREEN. Committed on the lane, three runners red
+
+| runner | state |
+|---|---|
+| `run_behavior` | **50 pass / 0 xfail** — CA-9 +2 checks, PI-3 +1, both re-authorings injection-verified against the old engine |
+| `run_m4` · `run_autoctl` · `run_e2e_controls` | **back to baseline** — all three were sampling/fixture artifacts, all three re-authored and **verified to pass on the OLD engine too** |
+| `run_procedures` / `run_procedures_stack` | **RED**, 1 check each — `pwr_sgtr` step 6 |
+| `run_campaign` | **RED**, 3 missions / 4 checks — the TMI-2 flagship |
+
+**`pwr_sgtr` step 6 is a real finding, not a stale band.** The step walks the Pressure SP down to
+close the primary→secondary ΔP, and since #337 it **cannot**: HPI is still injecting, injection is
+an insurge, and the insurge holds pressure up. Measured engine-direct — with HPI left in, primary
+goes 2122 → 2046 psi and break flow *rises* 0.00521 → 0.00602; with HPI secured first it goes
+2122 → **1182 psi** and break flow collapses to **0.00016, a 97 % cut**. That is the real SGTR EOP
+(you cannot depressurize while injecting, which is why SI termination is a named step). **But
+securing HPI here DAMAGES THE CORE** — measured, uncovery 0.511 → 0.751, clad 2130 → 2325 °F,
+`fuel_damaged` latches — because at severity 0.25 the termination criteria are nowhere near met.
+So the authored procedure is right for this plant and the *acceptance* is what is stale; it now
+fails identically in **both** layers, so at least it is not the #209 class. Left red rather than
+re-banded on a guess.
+
+**The TMI-2 flagship needs a trajectory re-author, and it should not be rushed.** Part 1 stalls at
+`b7_confusion`; measured, the beat that used to fire there saw pzr level **67.0 %** and inventory
+**101.2 %** at 68 s and now sees **29.7 %** and **96.1 %** — the level is *falling* where the canon
+has it rising, because HPI has not actuated yet on the new pressure trajectory. The beats are
+hand-authored against the old one. This is the HR9 cascade working as intended (content follows the
+plant), but it is a second pass of comparable size with real judgement in it.
+
+**`Manuals` Rev 1** (12 §7.1 rewritten, new simplification row 12.15).
+
+---
+
 ## Session log — 2026-08-04f (Alpha 1.0.0 shipped but did NOT go live — the deploy gap)
 
 **Task:** *(OWNER, 2026-08-04: "Why is it taking so long to deploy?" → "Let's fix the gap and
