@@ -1,37 +1,53 @@
 ---
 name: release-to-main
-description: Cut a release — merge the worktree lanes, rebuild the offline single-file download, merge develop into main and push. Versioning and the player-facing changelog entry are SUSPENDED until the public release. Use when asked to "release", "cut a release", "ship it", "push to main", or "catch main up to develop".
+description: Cut a release — merge the worktree lanes, rebuild the offline single-file download, merge develop into main and push. Versioning and the player-facing changelog entry are LIVE again, and the NEXT release is the launch release (Pre Alpha → Alpha 1.0.0). Use when asked to "release", "cut a release", "ship it", "push to main", or "catch main up to develop".
 ---
 
 # Releasing to `main`
 
-> ## VERSIONING IS SUSPENDED — READ THIS BEFORE STEP 2
+> ## THE NEXT RELEASE IS THE LAUNCH RELEASE — READ THIS BEFORE STEP 2
 >
-> *(OWNER DIRECTIVE, 2026-07-31: "we are not doing version bumps when releasing to main until
-> the public release.")* Launch day — reset to `Alpha 1.0.0`, write the public changelog,
-> restamp the manual set — is tracked as **#282**. `site/release.js` reads `Pre Alpha`
-> until then, and `run_release.js` validates that empty-changelog state as correct.
+> *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha and
+> into Alpha and bring back the update tracking page. Update tracking summaries/lists should be
+> concise.")* This **lifts** the 2026-07-31 suspension. **§2 and §3 are LIVE again**, and the
+> next release is not an ordinary one:
 >
-> **Skip §2 and §3 entirely — but DO §4.** §4 is the offline-download build and has nothing
-> to do with versioning; skipping it ships a stale `latest.zip`. Until the public release, a
-> release to `main` is:
-> lanes merged → gates green → offline build rebuilt → merge → push. That is all.
+> - **Version is not a judgement call this time — it is `Alpha 1.0.0`.** §2's digit rules apply
+>   from the release *after* this one. One version covers everything accumulated under
+>   `Pre Alpha`; do not replay the bumps that were skipped.
+> - **`changelog.html` gets its FIRST real entry**, replacing the `log-note-block` that reads
+>   *"Awaiting public launch"* — delete that block, it is not an entry and the gate does not
+>   count it. The page describes **the state of the sim at launch**, not a diff against
+>   `Pre Alpha`: the page's own lead says the pre-launch years are deliberately not catalogued.
+> - **CONCISE, and it is a cap** — **≤ 8 bullets, one line each** *(the number is the agent's
+>   operational reading; the brevity is the owner's directive)*. Aggregate a system's work into
+>   one line; never copy `CHANGELOG.md`'s shape, where one item runs 30 lines.
+> - **The bump and the entry MUST be in ONE change.** `run_release` is in pre-release mode,
+>   where zero published entries is *correct* — so an entry added while `RD_RELEASE` still reads
+>   `Pre Alpha` is a **red gate**, and a bump with no entry is red the other way. Setting
+>   `RD_RELEASE` to the `Alpha X.Y.Z` format arms every released-state rule by itself.
+> - **`CHANGELOG.md`'s pre-launch version headings MUST stop parsing as released versions, or
+>   the gate goes RED — MEASURED, and #282 says otherwise.** The file still carries
+>   `## [Alpha 1.11.0]` down to `## [Alpha 1.7.0]`, so rolling `[Unreleased]` to
+>   `## [Alpha 1.0.0]` puts **1.0.0 above 1.11.0** and fails *"version headings are
+>   newest-first"*. Simulated against the real runner: **10 checks / 1 failed** as #282 writes
+>   it, **11 / 0** with the eight pre-launch headings relabelled (`## [Pre-launch 1.11.0] —
+>   2026-07-30`, …) so the `^Alpha \d+\.\d+\.\d+$` test skips them. **Relabel, do not merge
+>   them** — one catch-all would destroy the per-version boundaries that took a tag diff to
+>   reconstruct once already. Second effect, and the reason this is not merely cosmetic: while
+>   1.0.0 sorts *below* the oldest named heading it falls under the CROSS rule's floor, so the
+>   launch entry's **date agreement between the two files is not checked at all** (0 CROSS rows).
+>   The relabel restores it.
+> - **`run_release` 8 → 11** in `BASELINES` *and* CLAUDE.md's *Project status* — drift is
+>   symmetric, so the green-to-greener direction fails too. **11 assumes the relabel above**;
+>   without it the best case is 10.
+> - **Launch-only extras live in #282**, not here: the manual set resets to a single **Rev 0**
+>   row *(OWNER RULING, 2026-07-31: "Revsiion should start at rev 0.")* via
+>   `stamp_manual_revision.js` + `pack_manuals.js`, and the pre-launch `v1.10.0`/`v1.11.0` tags
+>   sorting above `v1.0.0` is an open owner call. Read the issue before starting §2.
 >
-> - **No** new `Alpha X.Y.Z`.
-> - **No** `changelog.html` entry.
-> - **No** `site/release.js` bump.
-> - **No** `CHANGELOG.md` `[Unreleased]` roll — leave the heading standing; work accumulates
->   under it until the public release takes **one** version for the lot.
-> - **No** annotated version tag (there is no version to tag).
->
-> `node test/run_release.js` stays green through this, because it gates *agreement* between
-> `site/release.js`, `changelog.html` and `CHANGELOG.md` — and none of the three move.
-> **Still run it**, so a pre-existing disagreement cannot be blamed on the suspension later.
->
-> §2–§3 are kept below, not deleted: they resume at the public release, which chooses **one**
-> version for everything accumulated rather than replaying the skipped bumps. The offline
-> build (**§4**) is **not** suspended — but note its filename comes from `site/release.js`, so
-> it will keep carrying the last released version. That is expected, not a bug to chase.
+> §4 (the offline build) is unchanged and was never suspended — but run it **after** the bump,
+> because the filename comes from `site/release.js`.
 
 `develop` is the integration branch; `main` is what the public site deploys.
 
@@ -92,6 +108,11 @@ Add a new `<article class="log-entry">` at the **top** of `changelog.html`:
 - **Style: concise and factual.** One line per change, lead with the change. No marketing, no
   filler ("great for…", "like a real plant"), no hedging. Player-facing wording, not commit
   subjects. Tags: added / changed / fixed.
+- **Concise is a CAP: ≤ 8 bullets, one line each** *(OWNER DIRECTIVE, 2026-08-04: "Update
+  tracking summaries/lists should be concise."; the number is the agent's operational reading
+  of it)*. **Aggregate, do not enumerate** — one line for a system's worth of work, not one per
+  commit. Do not derive it one-to-one from `CHANGELOG.md`: that file is dense on purpose and a
+  single item there runs 30 lines. More than 8 lines' worth? Group by system and summarise.
 
 This is the **public** page. `CHANGELOG.md` and `BUILD_DECISIONS.md` are the engineering
 record and stay dense; this one does not.
@@ -224,22 +245,28 @@ git -C C:/grok_build/RD_backshop  merge --ff-only develop
 
 - [ ] Lanes merged, `develop` == `origin/develop`, working tree clean
 - [ ] `node test/run_all.js` → **OK**, on the exact commit being released
-- [ ] ~~Version decided by **reading** `changelog.html` + `site/release.js`, and they agree~~
-      — **SUSPENDED**, see the banner at the top
-- [ ] ~~`changelog.html` entry added at the top, player-facing, dated both ways~~ — **SUSPENDED**
-- [ ] ~~`site/release.js` bumped to match~~ — **SUSPENDED**
-- [ ] ~~**`CHANGELOG.md`'s `## [Unreleased]` renamed to `## [Alpha X.Y.Z] — YYYY-MM-DD`**~~ —
-      **SUSPENDED**: leave `[Unreleased]` standing, work accumulates under it
-- [ ] `node test/run_release.js` → **OK**, run BEFORE the merge. **Not suspended** — it gates
-      agreement, and none of the three files move, so it must stay green on its own
-- [ ] **`make_portable.js` + `make_download.js` re-run**, `run_portable` green — as
-      VERIFICATION; neither artifact is committed, the deploy builds the published one. The
-      filename still carries the LAST released version, which is correct while versioning is
-      suspended
+- [ ] Version decided by **reading** `changelog.html` + `site/release.js`, and they agree —
+      **except at launch, where it is `Alpha 1.0.0` and there is nothing to read**
+- [ ] `changelog.html` entry added at the top, player-facing, dated both ways, **≤ 8 one-line
+      bullets**; at launch, the *"Awaiting public launch"* `log-note-block` **deleted**
+- [ ] `site/release.js` bumped to match — **in the same change as the entry**, or the gate is
+      red in one direction or the other
+- [ ] **`CHANGELOG.md`'s `## [Unreleased]` renamed to `## [Alpha X.Y.Z] — YYYY-MM-DD`**, fresh
+      empty `[Unreleased]` above it
+- [ ] **Launch only:** the eight **pre-launch** `## [Alpha 1.7.0]`…`## [Alpha 1.11.0]` headings
+      relabelled so they no longer parse as released versions, or `run_release` is RED on
+      newest-first ordering — see the banner. Keep them as separate sections
+- [ ] `node test/run_release.js` → **OK**, run BEFORE the merge — after it, it is a red gate on
+      `main`. At launch it goes **8 → 11**; put that in `BASELINES` and CLAUDE.md
+- [ ] **Launch only:** manual set rewritten to a single **Rev 0** row, stamped and packed;
+      `run_manual_rev` green. See **#282**
+- [ ] **`make_portable.js` + `make_download.js` re-run AFTER the bump**, `run_portable` green —
+      as VERIFICATION; neither artifact is committed, the deploy builds the published one. Built
+      before the bump it names itself for the *previous* release, which is the whole of #258
 - [ ] `download.html` still describes what actually ships, and the changelog says so if it changed
 - [ ] Ruleset checked, and a **403 read as “private repo, no ruleset”** rather than as an error
 - [ ] Merged the way the ruleset check indicated
-- [ ] ~~Annotated tag pushed separately~~ — **SUSPENDED**: there is no version to tag
+- [ ] Annotated tag pushed separately (`git push origin --tags`) — a PR does not carry it
 - [ ] All three lanes fast-forwarded to the released commit
 - [ ] **After the deploy lands:** confirm the live `site/version.js` carries the released
       commit FIRST, then that `download/latest.zip` exists and unzips. A 404 before the

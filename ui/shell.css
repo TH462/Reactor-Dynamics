@@ -837,6 +837,14 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .tabpane.on { display: block; }
 
 /* failures tab rows */
+/* Inject Failure group heading *(OWNER DIRECTIVE, 2026-08-04: "organize the list of
+   failures into logical groupings.")*. Same type treatment as the Physics tab's
+   .phys-grp h4, because both lists are ordered on the same energy-path spine and
+   should read as the same idea. No border: the .fail-row rules below already rule
+   off every row, and a second line under the heading reads as an empty row. */
+.fail-grp { font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+            color: var(--normal); margin: 12px 0 2px; }
+.fail-grp:first-child { margin-top: 2px; }
 .fail-row { padding: 7px 0; border-bottom: 1px solid #23272d; }
 .fail-head { display: flex; align-items: center; gap: 8px; }
 .fail-name { flex: 1 1 auto; font-size: 12px; }
@@ -870,8 +878,7 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .adv-fail .active-list { font-size: 11px; color: var(--caution); }
 
 /* physics tab — the true-state diagnostic overlay. One column, grouped along the
-   energy path; reuses the numeric grid's row styling (.num-line/.nk/.nv) so a
-   value reads the same here as it does in the All view. */
+   energy path; reuses the numeric grid's row styling (.num-line/.nk/.nv). */
 .phys-note { font-size: 10px; color: var(--muted); line-height: 1.5; margin: 0 0 10px; }
 .phys-note b { color: var(--text-2); font-weight: 600; }
 .phys-none { font-size: 11px; color: var(--muted); }
@@ -882,6 +889,27 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
    the whole column jitter as they do */
 .phys-grp .nv { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .phys-grp .nk { padding-right: 8px; }
+
+/* Physics values are BRIGHTER than the quiet-board default and carry the board's
+   INDICATION scheme *(OWNER DIRECTIVE, 2026-08-04: "make the physics numbers brighter
+   under the physics tab. The contrast is currently too low. Also make these physics
+   numbers follow the indication color scheme (grey, green, yellow, red, etc.)")*.
+   The generic `.num-line .nv` above paints every numeric grid in
+   --clr-status-normal (#4a6070), which is ~2.5:1 on --bg-elevated — deliberate for
+   the quiet board, and unreadable for a panel you are reading numbers off. These
+   rules are SCOPED to .phys-grp so the quiet default survives everywhere else; the
+   All view and the RBMK/BWR numeric grids are untouched.
+     grey   #98A3AF  a quantity with no health criterion — most of the panel
+     green  --running   a criterion that EXISTS and is currently satisfied
+     amber  --caution   caution band
+     red    --critical  alarm band
+   Grey vs green is the distinction that carries the teaching: green is not
+   decoration, it means "something is being checked here and it is fine", so a row
+   that is merely informational must stay grey or green stops meaning anything. */
+.phys-grp .nv           { color: var(--text-2); }
+.phys-grp .nv.q-ok      { color: var(--running); }
+.phys-grp .nv.q-caution { color: var(--caution); }
+.phys-grp .nv.q-alarm   { color: var(--critical); }
 
 /* settings tab rows */
 .set-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #23272d; }

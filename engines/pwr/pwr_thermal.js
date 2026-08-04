@@ -37,6 +37,16 @@
   // post-scram decay heat keeps the fuel hot (the TMI uncovery heatup).
   function stepFuel(s, cfg, dt) {
     var t = cfg.thermal;
+    // PAST MELT THE INTEGRATION STOPS (#326, 2026-08-04). `melted` is the end of this
+    // model's declared validity — CONTEXT.md and Manuals/12 §5.5 both say the simulation
+    // ends at fuel damage — and BOTH core-material nodes run away without a termination
+    // condition, in different ways. THIS one is a pure integrator: once the core is fully
+    // uncovered `hFcEffective` returns 0 (h_fc x mass/significant_uncover, mass = 0), so
+    // the line below loses its only sink and becomes `dTf = Q_total * heat_gen_coeff` with
+    // nothing on the other side. Measured on an unmitigated large break, full stack:
+    // 5032 C (9089 F) at 2 h and still climbing linearly on a decay tail of 1.87 %.
+    // See stepCladding for the other half, which is worse and is not a follower of this.
+    if (s.melted) return;
     var h_eff = hFcEffective(s, cfg);
     s._h_fc_eff = h_eff; // remembered for the coolant node (energy-consistent)
     var Q_total = s._Q_total; // P_fission + H_total, set by the engine (step 4)
@@ -206,6 +216,18 @@
   function stepCladding(s, cfg, dt) {
     var t = cfg.thermal, p = cfg.primary;
     if (s.clad_temp_c == null) s.clad_temp_c = (s.thot_c != null ? s.thot_c : s.tavg_c); // lazy init (new field; old saves)
+    // PAST MELT THE INTEGRATION STOPS (#326, 2026-08-04) — see stepFuel for the rule.
+    // This node's runaway is the OXIDATION term's, and the "self-limits, never needs a
+    // cap" claim eleven lines down was measurably WRONG above melt. q_ox works out to
+    // `q_ref * arr / w`: the oxide w self-limits only as fast as sqrt(integral), while
+    // `arr` is Arrhenius in clad_temp_c itself, so once the node's own heat outruns the
+    // sink the exponential beats the square root and there is no fixed point. Measured on
+    // an unmitigated large break, full stack: oxidation heat reaches 1095 % OF RATED at
+    // 30 min and clad_temp_c 355 618 C (640 144 F) at 2 h — eleven times the reactor's
+    // full power out of a core making 4 % decay heat, which is not a plant number in any
+    // regime. It is NOT a follower of the fuel node the way it is below melt: at 20 min it
+    // measured 2308 C against fuel at 1852 C, 456 C clear of the `clad < fuel` clamp below.
+    if (s.melted) return;
     var mass = s.core_inventory_pct / 100;
     var f_unc = (p.core_top_uncover - mass) / (p.core_top_uncover - p.significant_uncover);
     f_unc = f_unc < 0 ? 0 : (f_unc > 1 ? 1 : f_unc);
@@ -247,8 +269,15 @@
       if (z.q_ref) {
         var T_K = s.clad_temp_c + 273.15, Tref_K = (z.ref_temp_c || 1204) + 273.15;
         var tau = z.tau_ref_s || 80;
-        // 1.0 at the reference temperature; ~3140x at the melt point, but w grows with it,
-        // so dw/dt self-limits and the term never needs a cap.
+        // 1.0 at the reference temperature; ~3140x at the melt point. w grows with it, so
+        // dw/dt self-limits — BELOW MELT. It does not self-limit above it, and this comment
+        // used to claim "the term never needs a cap" full stop, which #326 measured false:
+        // q_ox reduces to `q_ref * arr / w`, and w only grows as sqrt(integral) while arr is
+        // exponential in T, so the exponential wins whenever the node's own heat outruns the
+        // sink. It reaches 1095 % of rated on an unmitigated large break. What bounds it is
+        // not a cap but the `melted` termination at the top of this function — the runaway
+        // is entirely past the end of the model's declared validity, which is why stopping
+        // there is the fix rather than clamping a number the trainer should not be showing.
         var arr = Math.exp((z.ea_over_r_k || 22898) * (1 / Tref_K - 1 / T_K));
         if (s._zr_ox2 == null) s._zr_ox2 = 0;          // lazy init (new field; old saves)
         var w_old = Math.sqrt(s._zr_ox2);

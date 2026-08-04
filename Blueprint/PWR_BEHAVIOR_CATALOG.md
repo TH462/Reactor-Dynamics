@@ -1,7 +1,8 @@
-# SLX-100 Behavior Catalog — v3.1 (feel-first, FROZEN-FINAL)
+# SLS-100 Behavior Catalog — v3.1 (feel-first, FROZEN-FINAL)
 
 **Status: v3.1 FROZEN-FINAL — 2026-07-21, feel-plan Phase 7 complete. The plant is the
-SLX-100** (Single-Loop eXperimental, 100 MWe — owner-named). **Every catalog gap is
+SLS-100** (Single Loop Simulated, 100 MWe — owner-named; SLX-100 until 2026-08-04, #328).
+**Every catalog gap is
 closed: the battery runs 26 pass / 0 xfail / 0 fail, and its bands ARE the minted
 character bands** — each probe was re-authored during the pass to this plant's own tuned
 behavior (297→~304 °C program, ~13 % shrink, graceful ride-out, TR-3 dryout arc, ΔP-

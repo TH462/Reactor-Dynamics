@@ -144,7 +144,13 @@ var BASELINES = {
   // through full flow computed a 0.0 °F ΔT — and INDICATED, that put the cold leg
   // above the hot leg in 48 % of samples. Fission and total heat are equal in steady
   // state, which is why 44 probes measuring near equilibrium all agreed with it.
-  'run_behavior.js':       { code: 0, secs: 56, score: '48pass 0xfail' },
+  // 48 -> 49 on 2026-08-04 (#330): CA-9, loss of CVCS make-up. Injection-verified — the
+  // pre-#330 `level_per_mass` of 100 reddens 6 of its 12 checks, including inventory
+  // 62.35 % and a melted core. TR-15 leg E's ride went 90 -> 120 min in the same change;
+  // it was a knife-edge timing pin (old plant 2180 °F at 90 min, new 2068 °F, BOTH
+  // undamaged and both reaching damage at ~100 min), and the widened window passes on
+  // both plants — which is what makes it a better test rather than a refit.
+  'run_behavior.js':       { code: 0, secs: 56, score: '49pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -158,7 +164,15 @@ var BASELINES = {
   // the core melts, never how fast or which way the rate is going. MD-11 asserts the
   // SECOND DERIVATIVE instead: each 400 °C band must be crossed faster than the one
   // below. Measured 184/172/86/40 s with oxidation, 218/334/378/428 s without.
-  'run_meltdown.js':       { code: 0, secs: 48, score: '11pass 0xfail' },
+  // 11 -> 12 (2026-08-04b, #326): MD-12, the post-melt freeze. Both core-material nodes
+  // integrated past `melted`, the end of this model's declared validity — fuel as a pure
+  // integrator (hFcEffective -> 0 on a dry core), clad on the #238 Arrhenius oxidation
+  // feedback, which is the larger half and is NOT a follower of the fuel node above melt.
+  // Injection-verified two ways: both freezes out -> 4 red, clad drift 312089 C; stepFuel's
+  // freeze alone (the fix the issue's own investigation recommended) -> 3 STILL red, same
+  // drift to three decimals. MD-11's bands are unmoved at 184/172/86/40 s, which is what
+  // says the freeze did not reach below melt.
+  'run_meltdown.js':       { code: 0, secs: 48, score: '12pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -417,7 +431,70 @@ var BASELINES = {
   // either — this is the exact trap this file has recorded three times (the 83-on-merge note
   // below). Measured after resolving every conflict, never during: a tree that still has
   // markers in it carries BOTH sides' citations at once and counts the duplicates.
-  'run_hardrules.js':      { code: 0, score: '142checks 0failed' },
+  // ---- MERGED 2026-08-04: BOTH LANES MOVED THIS FROM 142, INDEPENDENTLY ----------------
+  // develop took it 142 -> 149 -> 148 -> 157 and workbench 142 -> 144, so NEITHER branch
+  // figure is the merged one and 157 + 2 is not it either — the arithmetic this file has
+  // warned against four times. The number below is MEASURED on the fully merged tree, after
+  // every conflict was resolved (never during: a tree with markers in it carries both sides'
+  // citations at once and counts the duplicates). Both histories kept:
+  //
+  // 142 -> 144 on 2026-08-04: the two CLAUDE.md sites citing the lane-tag directive
+  // *(OWNER DIRECTIVE, 2026-08-04: "Since that's done add an in process tag that shows
+  // which worktree it's being worked on.")* — the Issue-tracking label section and the
+  // session-start lane check. #330's own write-ups moved this by ZERO: they quote no owner
+  // ruling, and the 2026-07-22 drain-rate request they DO quote lives in test/ops_pwr.js,
+  // which this gate does not scan (tracked MARKDOWN only). Measured AFTER the docs, per the
+  // standing note below.
+  //
+  // 142 -> 149 on 2026-08-04c (#282): the version-bump suspension LIFTED. Write-up drift, and
+  // the biggest single move yet from a change with NO code in it at all — docs and one skill.
+  // MEASURED net +7. Deliberately NOT decomposed per site: citations were added in six files
+  // for the 2026-08-04 launch directive AND the 2026-07-31 suspension quotes were removed from
+  // three of them, and a hand count of that does not reconcile to +7 — which the note above
+  // already warns about, since this gate over-reports its site count and a false positive can
+  // lend its window to a neighbour. Do not publish arithmetic here you have not measured.
+  // The dated quote now in site/release.js is invisible to this gate — .js is not scanned,
+  // same as #310 and #137.
+  //
+  // TWO TRAPS, both caught on this change rather than reasoned about:
+  //   (1) The Rev 0 ruling was first quoted in the skill banner with NO DATE — exactly what
+  //       HR11 exists to stop — so it scored 149checks 1failed before 149/0. A citation typed
+  //       by hand is the likeliest place for a malformed one.
+  //   (2) WRITING THE LITERAL MARKER IN PROSE *REMOVES* A SITE, even inside backticks. The
+  //       CLAUDE.md write-up first read "the `OWNER DIRECTIVE` now in site/release.js is
+  //       invisible here" and the gate went 149 -> 148: a backticked marker is not merely
+  //       skipped, it swallows the guard on a real citation nearby (that line carries many).
+  //       Verified by injection three ways — remove the paragraph: 149; keep it with the
+  //       backticked marker: 148; keep it phrased as "the dated quote": 149. So refer to the
+  //       markers by description in prose, never by typing them.
+  // 149 -> 148 on 2026-08-04d (#282, the launch itself): a DROP, and the mechanism is the one
+  // this entry has recorded twice for the themes cap — DELETING HISTORY DELETES CITATION SITES.
+  // Zeroing the manual set to Rev 0 collapsed 26 revision rows, and several of them quoted owner
+  // rulings ("issue 288, split them.", "Go with one B", "Let's go with your recommendations"),
+  // which outweighed the new citations added for the three launch directives. CHECKED BEFORE
+  // ACCEPTING, per the standing rule: every affected ruling still stands in other tracked files
+  // (4, 5 and 2 files respectively), so this is fewer citation SITES, not fewer rulings. The
+  // revision table and this gate pull against each other exactly as the themes cap does.
+  //
+  // IT READ 146 MID-CHANGE. That was measured after the code/data edits and BEFORE the
+  // TUNING_LOG and BUILD_DECISIONS write-ups, which added two sites — the "re-run this AFTER
+  // the docs" warning three comments up, arriving on the very entry that repeats it. And the
+  // write-up itself first cited two of the directives with the DATE IN THE PROSE rather than
+  // inside the citation, which HR11 scores as undeclared: 148checks 2failed before 148/0.
+  // 148 -> 157 on 2026-08-04e: the three UI directives (board ALL-CAPS, Physics-tab contrast
+  // + indication colours, failure groupings). NINE citation sites, and the split is the usual
+  // one — the CSS/JS changes moved this by zero, and the delta is the write-ups plus the
+  // directive quoted at each decision site in tracked markdown. The quotes in ui/app.js,
+  // ui/shell.css, pwr_board_wiring.js, board_check.html and run_inspect.js are invisible here
+  // (this gate scans tracked MARKDOWN only), which is a property of the guard, not a gap.
+  // ---- backshop's own chain, kept: it also started from 142 ------------------------
+  // 142 -> 149 (2026-08-04b, #328 + #326): write-up drift, the usual asymmetry. The CODE in
+  // both changes moved this by ZERO — a rename touches no rule and `if (s.melted) return;`
+  // cites nothing — and the entire delta is tracked markdown carrying the two dated owner
+  // quotes for #328 (the rename directive and the 100-MWe unit ruling) across the manual
+  // revision row, CHANGELOG, TUNING_LOG and BUILD_DECISIONS. MEASURED AFTER the docs, which
+  // is the only order that gives the right number: an intermediate run mid-change read 143.
+  'run_hardrules.js':      { code: 0, score: '165checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -538,7 +615,16 @@ var BASELINES = {
   // 35 -> 36 on 2026-08-01: the board renders SI since #238 and this copy cannot, so
   // an entry naming its display unit ("in °F") is contradicted the moment SI is picked.
   // The new check found two sites the hand pass had missed, and reddens on the old text.
-  'run_inspect.js':        { code: 0, score: '8/8 36/36' },
+  // 8/8 36 -> 9/9 42 on 2026-08-04: the Inject Failure GROUPINGS *(owner directive)*. The
+  // Failures tab orders the catalog through a hand-maintained `failGroups` table in
+  // ui/app.js — the #224 shape — and this suite already exists for exactly that rot, so the
+  // guard went here rather than into a new runner. `buildFailures` refuses to DROP an
+  // unlisted failure (it renders under "Other"), so the real failure mode is a MISFILED row
+  // nobody notices, not a missing one. Checked BOTH directions plus duplicates, and
+  // INJECTION-VERIFIED three ways: removing `sgtr` from its group, listing a failure that
+  // does not exist (`pzr_heaters_failed`), and naming one in two groups each take it to
+  // 8/9 41/42.
+  'run_inspect.js':        { code: 0, score: '9/9 42/42' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
@@ -657,7 +743,22 @@ var BASELINES = {
   // released-state rules stand down. They re-arm on the FORMAT: set RD_RELEASE to
   // "Alpha 1.0.0" on launch day and this goes back up. Verified by injection — with a
   // version set and the changelog still empty it fails 3 ways.
-  'run_release.js':        { code: 0, score: '8checks 0failed' },
+  // 8 -> 11 on 2026-08-04 (#282): LAUNCH. RD_RELEASE is "Alpha 1.0.0", changelog.html has its
+  // first published entry (ONE line, owner's call) and CHANGELOG.md's [Unreleased] is rolled.
+  // The three extra checks armed on the format alone, exactly as the note above predicted.
+  // WHAT DID NOT COME FOR FREE, and was found by SIMULATING the release before doing it:
+  // CHANGELOG.md still carried "## [Alpha 1.11.0]" down to "## [Alpha 1.7.0]" from the
+  // pre-public period, so rolling [Unreleased] to "## [Alpha 1.0.0]" put 1.0.0 ABOVE 1.11.0
+  // and failed "version headings are newest-first" — 10 checks / 1 failed. #282 recorded the
+  // opposite ("not needed at all"), which was true of changelog.html (emptied) and never
+  // checked against this file. The nine pre-public headings are "## [Pre-launch 1.x.y]" now,
+  // relabelled individually rather than merged, because merged boundaries cost a tag diff to
+  // recover (this runner's own header records that). SECOND EFFECT, which nothing would have
+  // surfaced: `floor` in the CROSS rule is the oldest individually-named version heading, so
+  // while 1.0.0 sorted under Alpha 1.7.0 the launch entry fell below the floor and its
+  // date agreement across the two files was NOT CHECKED AT ALL — zero CROSS rows, no failure.
+  // The relabel is what makes this 11 rather than 10, and the 11th check is that CROSS row.
+  'run_release.js':        { code: 0, score: '11checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from
@@ -945,8 +1046,21 @@ var BASELINES = {
     // run_m5 above. The merge kept develop's baseline while bringing in workbench's
     // `ops_cooldown_to_rhr` rework, which turns that probe green — a red going green is
     // still drift, and it has to be acknowledged rather than absorbed.
-    code: 1, score: '59/69 351passed 11failed',
-    note: 'Ops probes are tuning targets by design. Measured 2026-07-27b from ' +
+    // 59/69 351/11 -> 58/69 350/12 on 2026-08-04 (#330). A NEW PWR RED, and the first in
+    // a long time — flagged rather than absorbed. `ops_cvcs_pzr_drain_rate` measures
+    // 53.7 s for its 15-point pressurizer drop against a ">= 300 s" acceptance, because
+    // that acceptance is a direct product of `level_per_mass` (0.030 · gain ·
+    // level_per_mass) and #330 corrected that constant 100 -> 776. The probe is
+    // DELIBERATELY NOT re-banded: it exists because of a 2026-07-22 owner request for a
+    // pressurizer drain-rate feel target, and re-banding it whenever the plant moves
+    // would retire the target instead of reporting against it. The trade-off is measured
+    // both ways in the probe's own comment (test/ops_pwr.js) and put to the owner on the
+    // issue. This red is an OPEN OWNER DECISION, not an accepted regression.
+    code: 1, score: '58/69 350passed 12failed',
+    note: 'Ops probes are tuning targets by design. #330 (2026-08-04) added a 12th red ' +
+          'and it is the only PWR one: ops_cvcs_pzr_drain_rate, 53.7 s vs >= 300 s, ' +
+          'awaiting an owner ruling on the drain-rate feel target — see the probe comment. ' +
+          'Measured 2026-07-27b from ' +
           'Diagnostic/ops_results.json: PWR 21/21 with ZERO fails; all 11 reds are ' +
           '7 RBMK + 4 BWR, and the deliberately-red C2 accel-latency probe (#153, ' +
           'status-deliberate) is one of the RBMK seven ("ABUSE [post] time-acceleration"), ' +
@@ -1000,7 +1114,18 @@ var BASELINES = {
   // rendered rects and would otherwise pass or fail on the window they happened to get,
   // and an echo of the harness's own FAIL lines, so a red is diagnosable from the gate
   // output instead of requiring someone to reopen the page by hand.
-  'verify_board_check.js':   { code: 0, score: '192checks' },
+  // 192 -> 194 on 2026-08-04 (ALL-CAPS board text, owner directive): the caps policy plus its
+  // NON-VACUITY guard. Enforced over the RENDERED board, not the sources, because board text
+  // arrives from three places — the GENERATED pwr_board_data.js, DOC_PATCHES and driver-supplied
+  // strings — and only the DOM sees all three; that is what makes it survive a re-export.
+  // Units are exempt as WHOLE TOKENS, never substrings: stripping "psi" or a bare "s" anywhere
+  // would eat the s out of ordinary prose and mask a real violation. The second check exists
+  // because a policy scan that reached nothing passes for the wrong reason (#306) — it asserts
+  // >= 150 leaf text nodes against the 225 the shipped board renders.
+  // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
+  // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
+  // offenders, so a red here is diagnosable without reopening the page.
+  'verify_board_check.js':   { code: 0, score: '194checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

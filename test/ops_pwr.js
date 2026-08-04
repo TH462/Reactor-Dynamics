@@ -477,6 +477,27 @@
     // level_per_mass), so an uncompensated drain takes minutes to matter and the
     // operator can respond. It also confirms the low-level letdown-isolation
     // interlock still bounds the (slower) drain before the primary empties.
+    //
+    // ---- RED SINCE 2026-08-04 (#330), AND DELIBERATELY LEFT RED — OPEN OWNER DECISION.
+    // MEASURED: 53.7 s for the 15-point drop, against this probe's ">= 300 s". Nothing
+    // here changed; `level_per_mass` did, 100 → 776, and the rate above is a DIRECT
+    // product of it (0.030 · gain · level_per_mass), so this threshold was a hard-coded
+    // consequence of the constant #330 found to be wrong. It is NOT re-banded, because
+    // re-banding it would silently retire an owner-requested feel target — this probe
+    // exists because of a 2026-07-22 owner request, and a tuning target that moves
+    // whenever the plant moves is not a target.
+    //
+    // THE TRADE-OFF, measured both ways so the decision is a choice and not a guess:
+    //   - keep `cvcs_inventory_gain` at 0.012 (shipped): drain 7.76× faster than the
+    //     owner's target; run_e2e_controls 59/59.
+    //   - scale it to 0.00154639 to restore the rate EXACTLY: loop tau (83 s) and the
+    //     droop equilibrium are both preserved, and the sim's implied RCS volume goes
+    //     1,389 → 10,779 gal (real: ~68,000) — but CVCS make-up authority shrinks 7.76×,
+    //     and run_e2e_controls falls to 52/59 as leaks CVCS used to hold stop being held.
+    // For scale: on a real plant this 15-point drop on one 20 gpm orifice takes ~79
+    // minutes (1,400 ft³ pressurizer). BOTH sim values are far from prototypical — the
+    // compressed RCS scale is why — so this is a choice between two game-feel numbers,
+    // not between right and wrong. Recommendation on the issue: accept the faster drain.
     ops_cvcs_pzr_drain_rate: function () {
       return test('OPS CVCS pzr drain rate — letdown, no make-up (TUNING TARGET)', function (ck) {
         var h = H('hot_full_power');

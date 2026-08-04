@@ -37,6 +37,311 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04e — board ALL-CAPS · Physics-tab contrast + indication colours · failure groups
+
+**Decisions.** Three owner directives, 2026-08-04, UI only. `verify_board_check` **192 → 194**,
+`run_inspect` **8/8 36 → 9/9 42**.
+
+**Board text is ALL CAPS, units exempt** *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps
+except units should follow standard unit conventions for capitalization.")*. MEASURED on the rendered
+board: 225 leaf text nodes, 34 not all-caps, **30 of them units**. Nine strings actually changed. Two
+source-survey traps the DOM avoided: 113 lowercase `name` fields that are **rendered nowhere** (builder
+metadata), and `d TEMP AVG`, which `DOC_PATCHES` already fixes to `Δ TEMP AVG`. Patched via
+`DOC_PATCHES`, never the GENERATED `pwr_board_data.js`. The `board_check` guard exempts units as whole
+**tokens** — "psi" and a bare "s" occur inside words, so substring stripping would mask the violation —
+and is paired with a non-vacuity check, because a scan that reached nothing passes for the wrong reason.
+
+**Physics values: 2.84:1 → 7.27:1, and the scheme means something** *(OWNER DIRECTIVE, 2026-08-04:
+"make the physics numbers brighter under the physics tab. The contrast is currently too low. Also make
+these physics numbers follow the indication color scheme (grey, green, yellow, red, etc.)")*. The
+generic `.num-line .nv` colour `--clr-status-normal` #4a6070 is a deliberate QUIET-BOARD token, so the
+fix is **scoped to `.phys-grp`** rather than repainting the shell — the All view and the RBMK/BWR grids
+keep the quiet default. Grey #98A3AF 7.27:1, green 5.91, amber 8.29, red 4.76; all pass WCAG AA where
+the old value failed. **Grey vs green carries the teaching**: green = "a criterion exists and is
+satisfied", so the 18 purely informational rows stay grey, or green stops meaning anything. `nzCls`
+returns `q-ok` at zero because zero voiding/uncovery/oxidation/cavitation/leak is the criterion being
+met. **A missing value gets no colour** — the first cut painted a green em-dash for peak clad
+temperature, which asserts a satisfied criterion about a number nobody has.
+
+**Failure groups use the energy-path spine, not the catalog `category`** *(OWNER DIRECTIVE,
+2026-08-04: "organize the list of failures into logical groupings.")*. 24 failures, seven groups,
+matching the Graph list and Physics tab so all three read alike. The catalog's categories group badly
+for a player (`power` holds eight unrelated items; `safety_system` is the untyped default) and exist to
+type the failure for the control layer — the badge still shows them. Membership is hand-maintained, the
+**#224 trap**, so an unlisted failure renders under "Other" rather than vanishing and the failure mode
+is a misfiled row rather than a missing one; `run_inspect` guards both directions plus duplicates,
+injection-verified three ways.
+
+---
+
+## 2026-08-04d — #282: LAUNCH prepared — Pre Alpha → Alpha 1.0.0, manual set to Rev 0
+
+**Decisions.** Three owner directives. *(OWNER DIRECTIVE, 2026-08-04: "The plant manual revision number
+should be zeroed out for this release.")* — the manual set is back to a single **Rev 0** row, stamped
+through all 13 documents and repacked. *(OWNER DIRECTIVE, 2026-08-04: "The first release should not have
+change log entries other than saying it's the initial Alpha release.")* — `changelog.html` carries **one
+bullet**.
+`site/release.js` is `Alpha 1.0.0`. **Prepared on `develop`, NOT merged** — the merge is the owner's call.
+
+**A first release has nothing to be a change against**, which is why the one-line entry is correct
+rather than thin: every feature in it is new to every reader, so a feature list on a page that means
+*"what changed since the copy you had"* is a product tour under the wrong heading. `CHANGELOG.md` keeps
+its full history — the gate requires the two files agree on **version and date**, explicitly not on
+content.
+
+**The predicted red was real.** The nine pre-public `## [Alpha 1.x.y]` headings are
+`## [Pre-launch 1.x.y]` now, relabelled individually with content and dates untouched, and
+`run_release` came out **11 / 0** — the 11th check being the CROSS row that was silently absent while
+1.0.0 sorted below the rule's `floor`.
+
+**`run_hardrules` 149 → 146: deleting history deletes citation sites.** Collapsing 26 revision rows
+removed several that quoted owner rulings, outweighing the citations the launch directives added.
+Verified before accepting: every affected ruling still stands in other tracked files. The revision table
+and this gate pull against each other exactly as the *Recent themes* cap does.
+
+**Zero the revision AT a release, never ahead of one.** This is the second Rev 0 — the first was
+stamped 2026-07-31 in anticipation of go-public and the counter then ran to 26 before the release
+happened, so it bought nothing and had to be redone. Recorded in `00_REVISION_HISTORY.md` itself,
+because the argument is invisible to anyone who does not know both resets happened.
+
+---
+
+## 2026-08-04c — #282: the version-bump suspension is LIFTED, next release is launch
+
+**Decision.** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha
+and into Alpha and bring back the update tracking page. Update tracking summaries/lists should be
+concise.")* The 2026-07-31 suspension of versioning + the player-facing changelog is **superseded**.
+The next `develop` → `main` merge is the **launch release, `Alpha 1.0.0`** — one version for
+everything accumulated under `Pre Alpha`; the Platform.Feature.Refinement digit rules resume from the
+release *after* it. Docs/process only: no engine, config, layer or probe change.
+
+**Un-suspended in four places, because that is how many carried it.** `CLAUDE.md` twice (the
+*Definition of done* release bullet and the *Website changelog & version numbers* banner), the
+`release-to-main` skill (banner, six struck-through checklist rows, **and its frontmatter
+`description`** — the string an agent reads before opening the file), `changelog.html`'s
+`ADDING AN ENTRY` comment, and `site/release.js`'s note. A rule spread across four sites is
+un-suspended in four edits or not at all.
+
+**`run_release`'s pre-release mode makes the bump and the entry ONE change** — read off the gate, not
+assumed. `RELEASED` is derived from the **format** of `RD_RELEASE` (`test/run_release.js:65`), and
+while it is false the SITE rule requires **zero** published entries. So a `changelog.html` entry
+ahead of the bump is a red gate, and the bump without an entry is red the other way. Neither
+direction was documented anywhere; both are now, at all four sites. The release moves the runner
+**8 → 11** (two `RELEASED`-only checks plus one CROSS row arm on the format alone). This is also why
+the launch entry was deliberately **not** drafted into the page ahead of time.
+
+**Concise is a CAP: ≤ 8 bullets, one line each.** The brevity is the owner's directive; **the number
+is the agent's** operational reading and is labelled as such at every site. It guards a specific
+failure: the launch entry describes the *state of the sim* rather than a diff, so it is the one most
+likely to sprawl, and `CHANGELOG.md` — the obvious thing to copy from — carries a **30-line** single
+item. Rule: aggregate a system's work into one line; never derive the public page one-to-one from the
+developer one.
+
+**Simulating launch day found the plan ships a RED, and #282 records the opposite.** The three files
+were copied to a scratch tree, the launch edits applied and the real runner pointed at them.
+`CHANGELOG.md` still carries `## [Alpha 1.11.0]` down to `## [Alpha 1.7.0]`, so rolling
+`[Unreleased]` to `## [Alpha 1.0.0]` puts **1.0.0 above 1.11.0** and fails *"version headings are
+newest-first"* — **10 checks / 1 failed**. #282 says *"the ordering trap only existed because 1.0.0
+had to sort below 1.10.0/1.11.0 … not needed at all"*, which was true of the *site* changelog (it was
+emptied) and was never checked against the developer one. Relabelling the eight pre-launch headings so
+they fail the `^Alpha \d+\.\d+\.\d+$` test gives **11 / 0** — **relabel, do not merge**, because the
+per-version boundaries already took a tag diff to reconstruct once. **Second effect, which nothing
+would have surfaced:** while 1.0.0 sorts below the oldest named heading it falls under the CROSS
+rule's `floor`, so the launch entry's date agreement across the two files is **not checked at all**
+(measured: zero CROSS rows). Fix deferred to the release — it is release-time work and a structural
+call — and recorded in the skill checklist and #282.
+
+**`run_hardrules` 142 → 149, and the trap is in the write-up.** Measured net +7, **not decomposed**:
+a hand count of the citations added and the suspension quotes removed gives +5, and this gate is
+already documented as over-reporting its site count (#312). Two traps caught on the change: the Rev 0
+ruling was first quoted with **no date** (149/1 before 149/0), and **typing the literal marker into
+prose removes a site even inside backticks** — the CLAUDE.md line naming it went 149 → 148, because a
+backticked marker swallows the guard on a neighbouring real citation. Injection-verified three ways.
+Refer to the markers by description; never type them.
+
+**Still open, owner's call:** the pre-launch `v1.10.0`/`v1.11.0` tags will sort above `v1.0.0`
+permanently. Recommendation: leave them — developer-facing only, and renaming rewrites published refs
+on a public repo for a tidier sort nobody player-facing sees.
+
+---
+## 2026-08-04b — #330: one pressurizer, two slopes, and the fix that was one layer up from the filed diagnosis
+
+### The change
+
+`level_per_mass` **100 → 776** and `level_per_void` **150 → 375.33** (`pwr_config.js`). New probe
+**CA-9** (`run_behavior` 48 → 49). `run_ops` **59 → 58/69** — one new PWR red, deliberate.
+
+### The defect
+
+Stand down the `cvcs_makeup` automation channel at `hot_full_power` — one `defaultOn` button on the
+board — and the core **melted at 22.1 min, un-scrammed**. Measured full stack: inventory
+**100 → 62.55 %**, pzr level **55 → 17.55 %**, and primary pressure **2235 psi (15.41 MPa)**, Tavg
+**579.3 °F (304.1 °C)** and subcooling **+73.75 °F (+40.97 °C)** all dead flat to the printed
+precision while the cladding ran to **24,958 °F (13,848 °C)**.
+
+### Why the filed diagnosis was not the fix — this is the decision worth recording
+
+#330's investigation isolated a **circular void gate**, and it is real: void requires subcooling ≤ 0,
+pressure is pinned at setpoint by the subcooled branch's restore term, and that branch is selected by
+`saturated`, which the void drives. Inventory loss had no path to pressure at all.
+
+**Fixing that is not the fix**, and only measuring said so. A mass-based void route (threshold =
+sourced pressurizer liquid holdup, 0.0870 of RCS) broke the deadlock and produced a defensible-looking
+plant — scram at 4m03s, SI in, no melt. It also:
+
+- made the **12 % pzr lo-lo scram unreachable** — `run_reachability` **B2 red, trough 54.34 %** —
+  because `level_per_void` × `void_gain` (450 effective) lifts indicated level before level can fall.
+  That is #330's own defect class: a protection setpoint that can never assert.
+- reddened **MD-11**, oxidation bands 184/172/86/40 → 104/160/82/40 (the monotonic escalation broke).
+
+Both reverted. **The root cause is one layer up**: `level_per_mass` was **100 %/frac** against
+`level_per_mass_surplus` **776** — two contradictory statements about one pressurizer. The surplus
+branch's own comment already carried the argument (the steam space is *"the only compressible
+volume"*), and **that argument is direction-agnostic**: a subcooled RCS is incompressible liquid
+everywhere else, so inventory leaving it comes out of the pressurizer at exactly the rate a surplus
+packs into it. Same three tables as #249 (BVPS-2 UFSAR Tbl 5.1-1 / 5.4-12 + WTSM 3.2 Tbl 3.2-2).
+
+With the slope corrected, the mass-based void route is unnecessary — and it is the thing that broke
+MD-11 — so it was dropped rather than shipped alongside.
+
+### The protective actuation was never broken; only the inventory it fired at
+
+The low-pressurizer-level letdown isolation fires at **20 % indicated on both plants**. What moved is
+what that corresponds to: **65 % inventory before** (core already uncovered — hence #330's "the
+protective actuation is what destroys the core"), **95.1 % after**. Measured at 776: letdown isolates
+at ~2m30s, level parks 16.97 %, inventory 95.10 %, and it holds there to 40 min — covered, undamaged,
+**no scram needed**. An assertion that the isolation *fired* passes on both plants and proves nothing;
+CA-9 leg C asserts **the inventory at which it fired**, which is the whole defect in one number.
+
+### `level_per_void` could not stay put — the deception is a DIFFERENCE
+
+TMI deception = `void_gain·level_per_void − level_per_mass`. At 150/100 that is **+350 %/frac**; at
+150/**776** it is **−326**, i.e. level FALLS as the primary voids. Measured — `run_pwr flagship_tmi`
+*"pzr level rises as inventory falls"* read **0.0** against 48.6, and `pwr_tmi2_p3` stopped reaching
+`level_complete`. Re-solved by holding both documented targets fixed: net +350 ⇒ **375.33**, and the
+independent check is the other target (78.3 % at the story-clock void, past the 75 % alarm).
+Deliberately **not** scaled proportionally (1164), which takes the net to +2716 and pegs the gauge.
+
+### The one red left standing, and why it is not absorbed
+
+`ops_cvcs_pzr_drain_rate` reads **53.7 s** against `>= 300 s`. That acceptance is a direct product of
+the corrected constant, so it was a hard-coded consequence of the defect — but it encodes a
+**2026-07-22 owner request** for a drain-rate feel target, and re-banding a feel target whenever the
+plant moves retires it rather than reporting against it. Measured both ways:
+
+| | drain rate | loop τ | `run_e2e_controls` |
+|---|---|---|---|
+| shipped (`cvcs_inventory_gain` 0.012) | 7.76× faster than target | 10.7 s | **59/59** |
+| scale gain to 0.00154639 | **exactly the old rate** | 83.3 s (unchanged) | **52/59** |
+
+A real plant takes ~79 min for this drop on one 20 gpm orifice, so both sim values are far from
+prototypical — this is a choice between two game-feel numbers, and it is the owner's.
+
+### Three tests moved, all three validated against the OLD plant (HR10)
+
+`run_e2e_controls` `SETTLE` became `4.8/(cpl·gain·lpm)` — **400.0 s exactly** at the old constant,
+byte-identical — plus a second `SATURATE` window, because the equilibrium checks settle on the loop
+**plus its 20 s error filter** (at 776 the filter dominates; at 4.8 loop-τ alone coverage read 134 %)
+while the beyond-authority check needs a **ceiling** or it spans a reactor trip. TR-15 leg E 90 → 120
+min: a knife edge, not a measurement (old 2180 °F / new 2068 °F at 90 min, both undamaged, both
+reaching damage at ~100 min). **59/59 and green on both plants.**
+
+### Still open, filed not fixed
+
+The inventory → pressure coupling genuinely does not exist. With the slope corrected the plant is
+protected by level and the player is told, so it is no longer a safety hole — but a draining subcooled
+RCS still does not depressurize, and closing that needs the void rework that broke MD-11 here, i.e. a
+re-calibration of the oxidation bands alongside it.
+
+---
+## 2026-08-04b — #326: the model kept computing past the end of its own validity
+
+### The change
+
+`if (s.melted) return;` at the top of `stepFuel` and `stepCladding` (`engines/pwr/pwr_thermal.js`).
+New probe **MD-12**, `run_meltdown` **11 → 12**. No config constant moved; no behaviour below melt
+moved.
+
+### The decision worth recording: terminate, do not clamp
+
+The issue offered both — *"Terminate or freeze the thermal integration once `melted` is true … A hard
+clamp (say at the zirconium boiling point) would be a second-best; it hides the runaway rather than
+stopping it."* That is the right call and it holds for a reason beyond tidiness: **a clamp becomes the
+thing the suite pins.** Any probe written against a clamped model asserts the clamp, so the clamp can
+never afterwards be shown to be wrong, and the runaway underneath it stays live and invisible. A
+termination is falsifiable in one direction only — *nothing moved* — and cannot be satisfied by
+choosing a number.
+
+The boundary is not arbitrary either. `CONTEXT.md` and `Manuals/12` §5.5 both say the simulation ends
+at fuel damage, and `pwr_thermal.js` already carried a long #238 note conceding that above ~1900 °C the
+field *"stops meaning cladding"*. The model had a declared edge and simply kept integrating over it.
+
+### Two nodes, and the smaller one is the one previously found
+
+| node | why it is unbounded | 2 h, unmitigated large break |
+|---|---|---|
+| `fuel_temp_c` | `hFcEffective` returns 0 on a fully uncovered core, so `dTf` loses its only sink | **5032 °C (9089 °F)** |
+| `clad_temp_c` | #238 Arrhenius oxidation, `q_ox = q_ref·arr/w`; `arr` exponential in T, `w` only √(integral) | **355 618 °C (640 144 °F)** |
+
+**Below melt the clad node IS a follower** — the lower clamp at `pwr_thermal.js:300` pulls it to the
+fuel node — and that is what made a `stepFuel`-only fix look sufficient to the issue's investigation.
+With the oxidation term it leads: 2308 °C against fuel at 1852 °C at 20 min. Injection-verified, the
+`stepFuel`-only fix leaves 3 checks red and **the same 312 089 °C clad drift to three decimals** as no
+fix at all.
+
+### A comment that had become false, and why it was corrected rather than cut
+
+`pwr_thermal.js` asserted of the Arrhenius factor that *"w grows with it, so dw/dt self-limits and the
+term never needs a cap."* Measured, oxidation heat reaches **1095 % of rated** — the exponential beats
+the square root once the node's own heat outruns the sink. The below-melt half of the claim is true and
+load-bearing (it is why there is an oxide *state* rather than a temperature multiplier), so the comment
+was narrowed to say where it holds, not deleted. Same rule as the #220 finding that a comment carrying a
+premise rots when the plant departs from it.
+
+### The process finding, which outlives the fix
+
+Both of the issue's own investigation comments were **correct when written and wrong when acted on**.
+The rebuttal *"there is no zirconium-oxidation term in this engine"* was true until #238 merged the day
+before; the filed reproduction path (a LOOP melting the core) stopped reproducing when #325 merged the
+same morning — a LOOP now parks at **307.9 °C (586 °F)** with the core intact. Neither comment was
+careless. This repo merges lanes faster than an investigation ages well, and **an issue comment is a
+claim like any other**: re-measure on the tree you are standing in before implementing someone else's
+diagnosis. That is the standing "inherited claims are the risky ones" rule, arriving from a direction it
+had not arrived from before — the stale claim was *our own investigation of this very issue*.
+
+---
+
+## 2026-08-04b — #328: renaming the plant, and the one question that was not mechanical
+
+### The change
+
+`SLX-100` → `SLS-100`, expansion *Single-Loop eXperimental* → **Single Loop Simulated**. 22 sites, 12
+files. Manual set **Rev 27**. No code behaviour, no gate score except the manual digest.
+
+### The decision: the digit stays ELECTRICAL
+
+*(OWNER DIRECTIVE, 2026-08-04, issue #328: "Rename the plant the "Single Loop Simulated - 100MWt" AKA
+"SLS-100".")* — which names **MWt**. The plant's `identity` block is `mwt_rated: 300.0` /
+`mwe_rated: 100.0`, and `Manuals/01` and `12` both print the pair, so taking the request literally
+would have put a 3× contradiction between the name and every rating table in the set. Put to the owner
+with the recommendation rather than resolved silently, because the alternative (`SLS-300`) was a real
+option and the choice is his. Ruled *(OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from three
+options — 100 MWe, `SLS-300` = 300 MWt, or no number; a selection, not verbatim words)*.
+
+**The word *experimental* survives** in ordinary prose and in `identity.plant_class`
+(`'single-loop experimental pressurized water reactor'`), which is a class descriptor rather than an
+acronym expansion. What retired is the reading of the letter X.
+
+### Why this was 12 hand edits and not one
+
+`identity.name` has **no runtime consumer** — nothing in `engines/`, `layers/`, `ui/app.js` or `test/`
+reads it — despite the block's own header calling itself *"the ONE place human-facing absolute ratings
+live"*. That is true of the *ratings*; the **name** is duplicated by hand into the manuals, the site
+pages, `tools/pack_manuals.js` and two Blueprint docs. Worth knowing before the next identity change:
+the ratings are centralised and the name is not.
+
+---
+
 ## 2026-08-04 — #325: natural circulation, and the cheap version that was measured and refused
 
 ### The change

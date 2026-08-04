@@ -692,6 +692,51 @@
         (function () { var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (i) { return i.id === 'imrzmlyafa3'; })[0]; return it && it.left >= 1414; })());
       ck('geom: NIS delta-T caption reads "Δ TEMP AVG"',
         /Δ TEMP AVG/.test(tileText('imrsho1qu6t')), tileText('imrsho1qu6t'));
+
+      // ---- ALL-CAPS board text, units exempt ---------------------------------------
+      // *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps except units should
+      // follow standard unit conventions for capitalization.")* Enforced over the RENDERED
+      // board rather than the sources, because board text arrives from three places —
+      // the GENERATED pwr_board_data.js, DOC_PATCHES, and driver-supplied strings — and only
+      // the DOM sees all three. That is what makes this survive a re-export: a builder export
+      // that reintroduces title-case text reddens here instead of shipping quietly.
+      //
+      // Units are exempt as WHOLE TOKENS, never as substrings. Stripping "psi" or a bare "s"
+      // anywhere would eat the s out of ordinary prose and mask a real violation; the token
+      // boundaries below are what keep "REACTOR TRIP · 1800 psi (P-11 PERMISSIVE)" legal while
+      // "Reactor trip · loss of flow" is not. `bd-unit`/`bd-num-unit` spans are skipped
+      // outright — they are units by construction and the board deliberately keeps their
+      // authored spelling (F, psig, gpm).
+      (function () {
+        var UNIT_TOKEN = /(^|[\s(·\/,\-])(inHg|psig|psia|psi|gpm|ppm|pcm|cps|rpm|dpm|MWe|MWt|MPa|kg\/s|L\/min|m³\/h|hr|min|mm|in|ft|s|A|K|F|C)(?=$|[\s)·\/,\-])/g;
+        var stage = document.querySelector('.pwr-board-stage');
+        var scanned = 0, bad = [];
+        var all = stage ? stage.querySelectorAll('*') : [];
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i];
+          if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+          var cls = (el.className && el.className.toString) ? el.className.toString() : '';
+          if (/bd-unit|bd-num-unit/.test(cls)) continue;          // units by construction
+          var kid = false;
+          for (var k = 0; k < el.children.length; k++) {
+            if ((el.children[k].textContent || '').trim()) { kid = true; break; }
+          }
+          if (kid) continue;                                      // leaf text only
+          var t = (el.textContent || '').trim();
+          if (!t) continue;
+          scanned++;
+          var stripped = t, prev = null;
+          while (stripped !== prev) { prev = stripped; stripped = stripped.replace(UNIT_TOKEN, '$1 '); }
+          if (/[a-z]/.test(stripped)) bad.push(t);
+        }
+        // Non-vacuity FIRST: a policy check that scanned nothing passes for the wrong reason,
+        // which is the #306 lesson. 225 leaf text nodes render on the shipped board; 150 is a
+        // floor that a genuinely-mounted board clears and an empty stage cannot.
+        ck('caps: board text scan actually reached the board (non-vacuity)',
+          scanned >= 150, scanned + ' leaf text nodes');
+        ck('caps: all board text is ALL CAPS except unit tokens',
+          bad.length === 0, bad.length ? bad.length + ' offender(s): ' + JSON.stringify(bad.slice(0, 6)) : scanned + ' scanned');
+      })();
       (function () {
         var spTile = document.querySelector('[data-item="ims31tq7mgc"]');
         var spLab = spTile && spTile.querySelector('div');

@@ -55,7 +55,7 @@ var docs = DOCS.map(function (file) {
 
 var MANUAL_MD = {
   pwr: {
-    plant_label: 'SLX-100 — Pressurized Water Reactor',
+    plant_label: 'SLS-100 — Pressurized Water Reactor',
     docs: docs,
   },
 };

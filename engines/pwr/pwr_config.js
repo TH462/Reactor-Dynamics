@@ -39,7 +39,14 @@
     // place human-facing absolute ratings live (UI readouts, manuals, instructor
     // text, battery band checks). The name is the owner's call.
     identity: {
-      name: 'SLX-100',                  // Single-Loop eXperimental, 100 MWe (owner, 2026-07-21)
+      // Renamed SLX-100 -> SLS-100 (OWNER DIRECTIVE, 2026-08-04, issue #328: "Rename the
+      // plant the 'Single Loop Simulated - 100MWt' AKA 'SLS-100'."). The 100 is the
+      // ELECTRICAL rating, not the thermal one — the core is 300 MWt — so the expansion
+      // reads MWe (OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from three
+      // options put to him — 100 MWe, SLS-300 = 300 MWt, or no number; a selection, not
+      // verbatim words). Naming it 100 MWt would have contradicted `mwt_rated` below and
+      // every manual rating table by 3x.
+      name: 'SLS-100',                  // Single Loop Simulated, 100 MWe (owner, 2026-08-04)
       plant_class: 'single-loop experimental pressurized water reactor',
       mwt_rated: 300.0,                 // core thermal rating, MW
       mwe_rated: 100.0,                 // gross electrical rating, MW (= turbine.mwe_rated)
@@ -476,8 +483,43 @@
       level_per_tavg: 2.5,         // % level per °C Tavg — steepened 2.0 → 2.5 with the shallow 297→304
                                    // program so the level program keeps a visible span (~37.5 % no-load
                                    // → 55 % full power) [tune]
-      level_per_mass: 100.0,       // % level per inventory-fraction DEFICIT below nominal (a deficit
-                                   // draws down the whole loop) [tune]
+      // % level per inventory-fraction DEFICIT below nominal.
+      //
+      // THE SAME NUMBER AS THE SURPLUS BRANCH, and #330 is the record of what it cost to
+      // have them differ. This was 100.0 — "a deficit draws down the whole loop" — from v1
+      // until 2026-08-04. That sentence is not true of a subcooled PWR, and the surplus
+      // comment directly below has always said why: the pressurizer steam space is "the only
+      // compressible volume". A solid RCS is incompressible liquid EVERYWHERE else, so
+      // inventory taken out of it comes out of the PRESSURIZER and the bubble grows to fill
+      // the space — at exactly the rate a surplus packs into it. The geometry does not know
+      // which way the flow is going. Two slopes meant two contradictory statements about the
+      // same pressurizer, and the shallow one is the one that was wrong.
+      //
+      // WHAT IT COST — measured full stack, `hot_full_power`, `cvcs_makeup` stood down and
+      // nothing else touched (#330). At 100.0 the plant drained 37.5 % of the RCS through a
+      // 3 % letdown orifice and MELTED THE CORE at 22.1 min, un-scrammed, with primary
+      // pressure, Tavg and subcooling margin DEAD FLAT at nominal and the cladding at
+      // 24,958 °F (13,848 °C). The reason nothing caught it: the low-pzr-level letdown
+      // isolation fired at 20 % indicated and parked the level at 17.5 %, which is 5.5 points
+      // ABOVE the 12 % lo-lo scram — so the one protective actuation in the path removed the
+      // last indication that would have tripped the plant. #330 called that "the protective
+      // actuation is what destroys the core", and it was right, but the actuation is not the
+      // defect: it fired at the correct level and by then the loop had lost seven times more
+      // inventory than that level implied.
+      //
+      // AT 776 THE SAME ACTUATION PROTECTS. Measured on the identical rig: letdown isolates
+      // at ~2m30s with inventory at 95.10 %, level parks at 16.97 %, and the plant sits there
+      // to 40 min — core covered, no damage, no melt, no scram needed. The cue the player
+      // gets is a pressurizer level that moves the way a real one does.
+      //
+      // KNOCK-ON, DECLARED: the CVCS level loop is 7.76× stiffer on the deficit side, so its
+      // time constant 1/(cvcs_charge_per_level·cvcs_inventory_gain·level_per_mass) goes
+      // 83 s → 10.7 s. That is NOT a new number in this plant — it is exactly the surplus-side
+      // τ #249 measured and accepted ("the servo is simply faster on the surplus side now
+      // (27.8 → 10.7 s); measured, it does not hunt"). The two branches now share one τ, which
+      // is one fewer asymmetry, not one more. `cvcs_charge_per_level` was deliberately NOT
+      // scaled to hold 83 s: that would restore the split this change exists to remove. [tune]
+      level_per_mass: 776.0,
       // % level per inventory-fraction SURPLUS above nominal — steeper than the deficit
       // branch, because surplus packs into the pressurizer steam space, the only
       // compressible volume: the "going solid" regime.
@@ -515,11 +557,32 @@
       // slowed leak make-up to 215 s to fix a surplus-side number. The servo is simply
       // faster on the surplus side now (27.8 → 10.7 s); measured, it does not hunt. [tune]
       level_per_mass_surplus: 776.0,
-      level_per_void: 150.0,       // % level per void-fraction — the TMI lift. Calibrated so the
-                                   // story-clock void (~0.2 as HPI fires) lifts level past the 75 %
-                                   // high alarm (the "going solid" call that throttles HPI), and deep
-                                   // voiding pegs the gauge high (historical). ×void_gain 3 ⇒ net
-                                   // +350 %/frac vs the −100 mass term: any voided state deceives. [tune]
+      // % level per void-fraction — the TMI lift. Calibrated so the story-clock void
+      // (~0.2 as HPI fires) lifts level past the 75 % high alarm (the "going solid" call
+      // that throttles HPI), and deep voiding pegs the gauge high (historical).
+      // ×void_gain 3 ⇒ net +350 %/frac against the mass term: any voided state deceives.
+      //
+      // THIS AND `level_per_mass` ARE A MATCHED PAIR — the deception is their DIFFERENCE,
+      // so neither can move alone. 150.0 was the value paired with the old mass slope of
+      // 100 (3×150 − 100 = +350). When #330 corrected the mass slope to 776 and this was
+      // left at 150, the net went to 3×150 − 776 = −326: level FELL as the primary voided
+      // and the TMI deception — the single lesson this plant is built around — inverted.
+      // Measured, that is exactly what happened: `run_pwr flagship_tmi` "pzr level rises as
+      // inventory falls" read 0.0 against a 48.6 threshold, and `pwr_tmi2_p3` stopped
+      // reaching `level_complete`.
+      //
+      // RE-SOLVED, NOT RE-GUESSED: both documented targets above are held fixed and the
+      // constant falls out of them. net = void_gain·level_per_void − level_per_mass = +350
+      // ⇒ level_per_void = (350 + 776)/3 = 375.33. The independent check is the other
+      // target: at the story-clock void of 0.2 the gauge reads 78.3 %, still past the 75 %
+      // high alarm it was originally calibrated against.
+      //
+      // NOT scaled proportionally (150 × 7.76 = 1164), which is the obvious move and is
+      // wrong: it takes the net to +2716 %/frac and PEGS the gauge at 100 % almost
+      // immediately, destroying the graded "level looks fine, then looks too good" arc the
+      // TMI beats are written against. The deception is a difference, so it is solved from
+      // the difference. [tune]
+      level_per_void: 375.33,
       level_prog_floor: 28.0,      // % — base(Tavg) floor below the program band; 3 % above the
                                    // pzr_level_low alarm (25) so no-load/sagged states don't sit in alarm [tune]
       // % — the CVCS level program's MAXIMUM (pwr_pressurizer.levelProgram). NOT a physics

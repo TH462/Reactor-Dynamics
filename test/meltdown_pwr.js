@@ -443,6 +443,81 @@
       });
     },
 
+    /* MD-12 — PAST MELT, THE CORE-MATERIAL NODES STOP INTEGRATING (#326).
+     *
+     * `melted` is the end of this model's declared validity. Before the fix both nodes
+     * kept integrating past it, in two DIFFERENT ways, and neither had a termination
+     * condition — measured full stack on this same path, at 2 plant-hours:
+     *
+     *   fuel_temp_c  5032 °C (9089 °F)      — pure integrator: hFcEffective returns 0 on a
+     *                                          fully uncovered core, so dTf loses its sink
+     *   clad_temp_c  355 618 °C (640 144 °F) — Arrhenius oxidation feedback, q_ox reaching
+     *                                          1095 % OF RATED on a 4 % decay tail
+     *
+     * WHY THIS PROBE AND NOT A CEILING: a clamp would hide the runaway at whatever number
+     * the clamp is, and the suite would then be pinning the clamp. What is actually being
+     * asserted is that nothing MOVES once the run is over — which is falsifiable in one
+     * direction only and cannot be satisfied by a tuning.
+     *
+     * The clad leg is the load-bearing one. Before #326 the clad node was a FOLLOWER of
+     * the fuel node (the lower clamp at pwr_thermal.js) and freezing stepFuel alone would
+     * have looked sufficient; with the #238 oxidation term it runs away on its own and
+     * sits ABOVE the fuel node — measured 2308 °C against 1852 °C at 20 min. So a fix on
+     * stepFuel alone leaves the larger half of the defect standing, and this probe says so.
+     */
+    'MD-12': function () {
+      return test('MD-12 past melt, the thermal nodes stop integrating (#326)', function (ck) {
+        var h = new Harness('hot_full_power');
+        h.run(10);
+        h.cmd({ action: 'set_eccs_armed', armed: false });
+        h.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+
+        // Run to melt, then capture the endpoint the model is entitled to reach.
+        var t = 0;
+        for (var i = 0; i < 4000 && t < 16000; i++) {
+          h.run(2); t += 2;
+          if (h.eng.s.melted) break;
+        }
+        ck('the core melts on an unmitigated large break', h.eng.s.melted ? 'melted' : 'no',
+          h.eng.s.melted === true, 'melted');
+        if (!h.eng.s.melted) return;
+
+        var atMeltFuel = h.eng.s.fuel_temp_c, atMeltClad = h.eng.s.clad_temp_c;
+        var meltT = t;
+        ck('endpoint at melt (°C): fuel / clad',
+          fmt(atMeltFuel, 0) + ' / ' + fmt(atMeltClad, 0), true, 'recorded');
+        // The endpoint must still be a sane core temperature — i.e. the freeze happens AT
+        // melt and not after a decade of runaway. fuel_melt_c is 2800; allow the overshoot
+        // of a single step plus the clamp, not an order of magnitude.
+        ck('melt is declared at a physical temperature, not after a runaway',
+          fmt(Math.max(atMeltFuel, atMeltClad), 0) + ' °C',
+          Math.max(atMeltFuel, atMeltClad) < 4000, '< 4000 °C');
+
+        // ---- ride a further plant-hour past melt. NOTHING may move.
+        h.run(3600);
+        var dFuel = Math.abs(h.eng.s.fuel_temp_c - atMeltFuel);
+        var dClad = Math.abs(h.eng.s.clad_temp_c - atMeltClad);
+        ck('one plant-hour past melt: fuel node has not moved',
+          fmt(dFuel, 3) + ' °C drift', dFuel < 0.01, '< 0.01 °C');
+        // THE LOAD-BEARING LEG. Pre-#326 this drifted by ~350 000 °C; freezing stepFuel
+        // alone still leaves it drifting, because the oxidation term is this node's own.
+        ck('one plant-hour past melt: clad node has not moved',
+          fmt(dClad, 3) + ' °C drift', dClad < 0.01, '< 0.01 °C');
+        ck('the clad node is still a physical number an hour later',
+          fmt(h.eng.s.clad_temp_c, 0) + ' °C (' + fmt(h.eng.s.clad_temp_c * 9 / 5 + 32, 0) + ' °F)',
+          h.eng.s.clad_temp_c < 4000, '< 4000 °C');
+        // The oxidation heat is a published true_state field (Physics tab) — it must not
+        // be left reading a four-digit percentage of rated on a frozen core either.
+        ck('published oxidation heat stays a plausible fraction of rated',
+          fmt(h.eng.s.zirc_heat_pct, 1) + ' % of rated',
+          h.eng.s.zirc_heat_pct < 100, '< 100 %');
+        ck('the run is still flagged melted an hour on (the freeze does not clear it)',
+          String(h.eng.s.melted), h.eng.s.melted === true, 'true');
+        ck('melt was reached in a plausible time, so the freeze did not pre-empt the path',
+          fmt(meltT / 60, 1) + ' min', meltT > 60 && meltT < 14400, '1 min .. 4 h');
+      });
+    },
+
   };
 
   function runAll() {

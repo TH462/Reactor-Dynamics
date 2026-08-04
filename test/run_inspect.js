@@ -296,6 +296,45 @@ test('app wiring', function (ck) {
      shell.indexOf('pwr_board_inspect.js') < shell.indexOf('pwr_board_wiring.js'));
 });
 
+// ============================================ Inject Failure groupings (2026-08-04)
+// *(OWNER DIRECTIVE, 2026-08-04: "organize the list of failures into logical
+// groupings.")* The Failures tab orders the catalog through a hand-maintained
+// `failGroups` table in ui/app.js, which is the #224 shape: a list-driven view that
+// silently under-covers the artifact it presents. `buildFailures` already refuses to
+// DROP an unlisted failure — it renders under "Other" — so the failure mode is not a
+// vanished row but a MISFILED one, which nobody would notice. Both directions are
+// checked here, in the gate that already exists for exactly this class of rot.
+test('every failure is placed in a group', function (ck) {
+  var app = read('ui/app.js');
+  var from = app.indexOf('failGroups: [');
+  ck('failGroups table found in ui/app.js', from > 0);
+  if (from < 0) return;
+  var block = app.slice(from, app.indexOf('\n      ],', from) + 8);
+  var listed = {}, order = [], m, re = /'([a-z0-9_]+)'/g;
+  while ((m = re.exec(block)) !== null) { if (!listed[m[1]]) { listed[m[1]] = true; order.push(m[1]); } }
+  var titles = (block.match(/title:\s*'[^']+'/g) || []).length;
+  ck('groups are authored', titles >= 5, titles + ' groups');
+
+  var cat = Object.keys((RD.PWR_PROTECTION && RD.PWR_PROTECTION.failures) || {});
+  ck('failure catalog loaded', cat.length > 0, cat.length + ' failures');
+
+  // Direction 1: a catalog entry with no group falls into "Other" — present, misfiled.
+  var unplaced = cat.filter(function (id) { return !listed[id]; });
+  ck('no failure is left out of the groups', unplaced.length === 0, unplaced.join(', '));
+
+  // Direction 2: an id in the table that no longer exists in the catalog is dead
+  // weight and hides a rename — the group silently loses a row and reads complete.
+  var dead = order.filter(function (id) { return cat.indexOf(id) < 0; });
+  ck('no group lists a failure that does not exist', dead.length === 0, dead.join(', '));
+
+  // Each failure in exactly ONE group: a duplicate renders the row twice, and both
+  // copies carry the same DOM id, so the inject handler binds to whichever is first.
+  var dupes = [], seen = {};
+  var idsInOrder = (block.match(/'([a-z0-9_]+)'/g) || []).map(function (s) { return s.replace(/'/g, ''); });
+  idsInOrder.forEach(function (id) { if (seen[id]) dupes.push(id); seen[id] = true; });
+  ck('no failure appears in two groups', dupes.length === 0, dupes.join(', '));
+});
+
 // ==================================================================== report
 var C = { red: '\x1b[31m', green: '\x1b[32m', dim: '\x1b[2m', bold: '\x1b[1m', off: '\x1b[0m' };
 var passS = 0, failS = 0, passC = 0, failC = 0;

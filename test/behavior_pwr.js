@@ -96,6 +96,7 @@
     'CA-3': 'probe', 'CA-4': 'probe',
     'CA-7': 'probe (pzr heaters are an AC load — dead in SBO, alive in LOOP; 10 CFR 50.2 + NUREG-0737 II.E.3.1)',
     'CA-8': 'probe (the AC-load roster — CVCS + ECCS die in SBO, AFW + accumulators survive; WTSM 4.1 + 5.7)',
+    'CA-9': 'probe (loss of CVCS make-up — the pzr level cue and the letdown isolation; #330)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -114,7 +115,7 @@
     // ============================================== 1. steady-state operating map
 
     'SS-1': function () {
-      return test('SS-1 100% snapshot — the SLX-100 operating point', function (ck) {
+      return test('SS-1 100% snapshot — the SLS-100 operating point', function (ck) {
         var h = H('hot_full_power');
         h.run(600);
         var t = h.ts();
@@ -1156,11 +1157,20 @@
         e.run(60);
         e.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
         e.cmd('inject_failure', { failure_id: 'afw_failure' });
-        // 90 min, and it is LOAD-BEARING — trimmed to 60 first and the leg went red at
-        // Tavg 660 °F still climbing. Natural circulation distributes the heat while it
-        // has somewhere to put it, so losing the sink now takes LONGER to reach damage
-        // than the pre-#325 plant's 30 minutes. Do not shorten this to save gate time.
-        e.run(5400);
+        // LOAD-BEARING RIDE — trimmed to 60 min first and the leg went red at Tavg 660 °F
+        // still climbing. Natural circulation distributes the heat while it has somewhere to
+        // put it, so losing the sink takes LONGER to reach damage than the pre-#325 plant's
+        // 30 minutes. Do not shorten this to save gate time.
+        //
+        // 90 → 120 min at #330. The 90 was a KNIFE EDGE, not a measurement: A/B'd full stack
+        // across the #330 constants, the old plant read clad 2180 °F at 90 min and the new
+        // one 2068 °F — both undamaged, both still climbing, and both reaching damage at
+        // ~100 min. The old value passed only because it sat a few degrees the right side of
+        // the threshold, so ANY change touching the inventory path tipped it. #330's does:
+        // the corrected level slope holds more inventory through the pre-void phase (96.2 %
+        // vs 85.9 % at 40 min), so uncovery and the heat-up that follows both arrive later.
+        // The leg's CLAIM is unchanged and true on both plants; only the window was wrong.
+        e.run(7200);
         var te = e.ts();
         ck('with the heat sink gone the plant is still lost — circulation is not cooling',
           'damaged ' + String(te.fuel_damaged) + ' @ Tavg ' + fmt(te.tavg_c * 9 / 5 + 32, 0) + ' °F',
@@ -1955,6 +1965,133 @@
           fmt(h5.range('charging_flow_actual').max, 4), h5.range('charging_flow_actual').max > 0.01, '> 0.01');
         ck('and SI injects when asked — a LOOP is not a loss of the ECCS pump',
           fmt(h5.range('hpi_flow_normalized').max, 4), h5.range('hpi_flow_normalized').max > 0.001, '> 0.001');
+      });
+    },
+
+    // CA-9 — LOSING CVCS MAKE-UP (2026-08-04, #330). The pressurizer level IS the cue.
+    //
+    // #330: stand down the `cvcs_makeup` automation channel at hot full power, touch
+    // nothing else, and the core MELTED at 22.1 min — un-scrammed, with primary pressure,
+    // Tavg and subcooling margin dead flat at nominal and the cladding at 24,958 °F
+    // (13,848 °C). Two caution/warning annunciators on one level channel were the entire
+    // indication that the core was being destroyed. It is reachable today: `cvcs_makeup`
+    // is `defaultOn` and has an AUTO/MAN button on the board.
+    //
+    // THE ROOT CAUSE IS A GEOMETRY ERROR, not a missing alarm and not a missing trip.
+    // `level_per_mass` was 100 %/frac against `level_per_mass_surplus` 776 — two different
+    // slopes for the same pressurizer. A subcooled RCS is incompressible liquid everywhere
+    // except the pressurizer bubble (the surplus branch's own comment says so: "the only
+    // compressible volume"), so inventory leaving it comes out of the PRESSURIZER at
+    // exactly the rate a surplus packs into it. The geometry does not know which way the
+    // flow is going. At the shallow slope the loop could shed 37.5 % of its mass while the
+    // gauge still read 17.5 %.
+    //
+    // LEG C IS THE ONE THAT EARNED ITS KEEP, and it is #330's sharpest finding turned
+    // into a number. The low-pzr-level letdown isolation is not broken and never was — it
+    // fires at 20 % indicated on both plants. What changed is the INVENTORY it fires at:
+    // 65 % before (core already uncovered — the issue's "the protective actuation is what
+    // destroys the core"), 95.5 % after. An assertion that the isolation *fired* passes on
+    // both and proves nothing; the inventory at which it fired is the whole defect.
+    //
+    // LEG D PASSES ON THE OLD PLANT DELIBERATELY. It is the false-positive guard: the
+    // SHIPPED lineup must be untouched by this. A change that made the level line stiffer
+    // could easily make a healthy plant twitch, and nothing else here would notice.
+    'CA-9': function () {
+      return test('CA-9 loss of CVCS make-up — the level cue is real and the isolation protects', function (ck) {
+        var pz = RD.PWR_CONFIG.pressurizer;
+
+        // Stand down make-up the way the board does: the automation channel off AND the
+        // CVCS out of AUTO. Channel alone is not enough — `set_cvcs_auto` is a separate
+        // command and #330's reproduction issues both.
+        function noMakeup(h) {
+          h.cmd('set_auto_channel', { channel_id: 'cvcs_makeup', engaged: false });
+          h.cmd('set_cvcs_auto', { active: false });
+          return h;
+        }
+
+        // ---- leg A: the headline. #330's reproduction, run well past its 22.1 min melt.
+        var a = noMakeup(H('hot_full_power'));
+        a.run(2400);                                   // 40 min — the pre-#330 plant melted at 22.1
+        var ta = a.ts();
+        ck('letdown really is draining the loop (or this proves nothing)',
+          fmt(a.range('letdown_flow_actual').max, 4), a.range('letdown_flow_actual').max > 0.01, '> 0.01');
+        // The pre-#330 plant reached 62.55 % — far below core_top_uncover (0.70).
+        ck('the core never uncovers — inventory holds well above the uncovery threshold',
+          fmt(a.range('core_inventory_pct').min, 2) + ' % min',
+          a.range('core_inventory_pct').min > 90, '> 90 %');
+        ck('so there is no core damage and no melt (pre-#330: melted at 22.1 min)',
+          'damaged ' + String(ta.fuel_damaged) + ', melted ' + String(ta.melted),
+          ta.fuel_damaged !== true && ta.melted !== true, 'neither');
+        // The cue the player actually gets. Not "an alarm exists" — the GAUGE moves, a long
+        // way, and parks there. pzr_level_low is 25 %, so this is annunciated and stays so.
+        ck('and the pressurizer level gives an unmissable cue — parked deep in alarm',
+          fmt(ta.pzr_level_pct, 2) + ' %', ta.pzr_level_pct < 25, '< 25 % (in alarm)');
+
+        // ---- leg B: THE LAW. The pressurizer does not know which way the flow is going,
+        // so a deficit and a surplus of the SAME size must move the level the same distance.
+        // Measured off the engine's own level line rather than read out of the config, so it
+        // catches a divergence introduced anywhere between the constant and the gauge.
+        var lvlAt = function (dm) {
+          var probe = { tavg_c: 304.0, _tavg_fp: 304.0, _mass: 1.0 + dm, primary_void_fraction: 0 };
+          RD.pwrPressurizer.stepLevel(probe, RD.PWR_CONFIG, 0.1);
+          return probe.pzr_level_pct;
+        };
+        var dm = 0.02, base = lvlAt(0), down = base - lvlAt(-dm), up = lvlAt(dm) - base;
+        ck('a deficit moves the level as far as an equal surplus (one pressurizer, one slope)',
+          fmt(down, 2) + ' points down vs ' + fmt(up, 2) + ' up, on ±' + fmt(dm, 2) + ' inventory',
+          Math.abs(down - up) < 0.05 * Math.max(down, up), 'equal within 5 %');
+        // …and it is the SOURCED number, not merely self-consistent: 45 points of span over
+        // the 0.0580 pressurizer steam-space fraction (#249, BVPS-2 UFSAR + WTSM 3.2).
+        ck('and that slope is the sourced pressurizer geometry (45 / 0.0580)',
+          fmt(pz.level_per_mass, 1) + ' %/frac', Math.abs(pz.level_per_mass - 776) < 20, '776 ± 20');
+
+        // ---- leg C: the isolation fires while the core is still COVERED. #330's finding,
+        // inverted. Catch the inventory at the moment letdown actually shuts.
+        var c = noMakeup(H('hot_full_power'));
+        var invAtIso = null;
+        c.run(1200, function (hh) {
+          if (invAtIso == null && (hh.ts().letdown_flow_actual || 0) < 1e-6 && hh.t() > 30) {
+            invAtIso = hh.ts().core_inventory_pct;
+          }
+        });
+        ck('the low-level letdown isolation does fire (the actuation is not the defect)',
+          invAtIso == null ? 'never' : 'at ' + fmt(invAtIso, 2) + ' % inventory',
+          invAtIso != null, 'fires');
+        // 65 % before, 95.5 % after. THE ACTUATION IS IDENTICAL — only the inventory it
+        // corresponds to moved, which is why "did it fire?" cannot see this defect.
+        ck('…and it fires with the core still covered, not after it is lost',
+          invAtIso == null ? 'n/a' : fmt(invAtIso, 2) + ' % inventory (pre-#330: 65 %)',
+          invAtIso != null && invAtIso > 90, '> 90 %');
+
+        // ---- leg D: THE SHIPPED PLANT IS UNTOUCHED. Passes on the old engine too — this
+        // is the calibration guard, not a claim about the fix.
+        var d = H('hot_full_power');
+        d.run(2400);
+        ck('with make-up in AUTO the plant holds inventory indefinitely',
+          fmt(d.range('core_inventory_pct').min, 2) + ' % min', d.range('core_inventory_pct').min > 99, '> 99 %');
+        ck('…and the level sits on program, not near an alarm',
+          fmt(d.ts().pzr_level_pct, 2) + ' %',
+          d.ts().pzr_level_pct > 45 && d.ts().pzr_level_pct < 65, '45..65 %');
+
+        // ---- leg E: a leak BEYOND CVCS authority reaches the lo-lo scram. The other half
+        // of the same geometry error: at the shallow slope the level fell 7.76x too slowly
+        // to reach its own trip, which is what run_reachability B2 asserts statically. Here
+        // it is the casualty — an unheld leak must end in a trip, not a slow silent drain.
+        var e = H('hot_full_power');
+        e.run(60);
+        e.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.03 });
+        e.run(900);
+        // Banded on TRUE level at 20 %, not at the 12 % setpoint, and deliberately: the
+        // trip reads the INSTRUMENT (HR1), so true level troughs just past it — measured
+        // 12.10 % against a trip that had already fired off the indicated channel. Pinning
+        // true level below 12 would be asserting the lag is zero. What discriminates is the
+        // DISTANCE travelled: at the pre-#330 slope this leak moves the gauge 7.76x less
+        // and parks it near 50 % — nowhere near an alarm, let alone a trip.
+        ck('an unheld leak drives the pressurizer down hard — past the lo alarm to its trip',
+          fmt(e.range('pzr_level_pct').min, 2) + ' % min', e.range('pzr_level_pct').min < 20, '< 20 %');
+        ck('…and the plant scrams ON PRESSURIZER LEVEL, not on something incidental',
+          e.tripReason || 'never', /pzr_level/.test(e.tripReason || ''), 'pzr_level');
+        T.checkSanity(ck, a);
       });
     },
 

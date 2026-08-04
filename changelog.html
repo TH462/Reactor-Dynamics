@@ -71,6 +71,28 @@
        (Blueprint/BUILD_DECISIONS.md + CHANGELOG.md are the engineering record;
        this page is the public one.)
 
+       LENGTH — CONCISE IS A CAP: at most 8 bullets per entry, one line each
+       (owner, 2026-08-04: "Update tracking summaries/lists should be concise.";
+       the number of 8 is the operational reading of it, not the owner's figure).
+       AGGREGATE, DO NOT ENUMERATE — one line for a system's worth of work, never
+       one per commit. Do NOT derive this page from CHANGELOG.md line by line:
+       that file is dense on purpose and a single item in it runs 30 lines. If a
+       release has more than 8 lines' worth, group by system and summarise.
+
+       THE VERSION BUMP GOES IN THE SAME CHANGE as the entry. run_release.js
+       cross-checks changelog.html, site/release.js and CHANGELOG.md: an entry
+       whose version does not match RD_RELEASE is a red gate, and so is a bump
+       with no entry. Roll CHANGELOG.md's "## [Unreleased]" in the same breath —
+       that is the step that got skipped twice (Alpha 1.10.0 and 1.11.0).
+
+       DONE, 2026-08-04 — the first entry is Alpha 1.0.0, deliberately ONE line
+       (owner: "The first release should not have change log entries other than
+       saying it's the initial Alpha release."). A first release has nothing to
+       be a change against, so a feature list would be a product tour under the
+       wrong heading. Later entries are diffs and get the normal treatment.
+       The "Awaiting public launch" note-block that stood here is gone; it was
+       never an entry and run_release.js did not count it.
+
   <article class="log-entry">
     <div class="log-head">
       <h2>Short headline</h2>
@@ -86,14 +108,16 @@
 
        ================================================================== -->
 
-  <article class="log-note-block">
-    <h2>Awaiting public launch</h2>
-    <p>This build is <strong>pre&#8209;alpha</strong>. It has no version number yet &mdash; it
-       identifies itself by build SHA in the footer, which is the number to quote in a bug
-       report. The changelog starts at <strong>Alpha 1.0.0</strong> on public launch day;
-       until then, changes are tracked in the repository.</p>
-    <p>The first release covers the <strong>pressurised water reactor</strong>. The RBMK and
-       BWR are out of scope for it and will follow later.</p>
+  <article class="log-entry">
+    <div class="log-head">
+      <h2>Initial Alpha release</h2>
+      <span class="log-ver mono">Alpha 1.0.0</span>
+      <time class="log-date mono" datetime="2026-08-04">4 August 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>Initial Alpha release.</strong> First
+          public release, covering the pressurised water reactor. The RBMK and BWR follow later.</li>
+    </ul>
   </article>
 
 </main>

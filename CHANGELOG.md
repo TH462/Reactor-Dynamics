@@ -18,8 +18,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 > and reads plausibly either way — and it compounds, because once two releases are merged into
 > one block the boundaries can only be recovered by diffing this file at each tag. Which is
 > what it took.
+>
+> **`## [Pre-launch 1.x.y]` headings are DEVELOPMENT versions, not releases** (2026-08-04). The
+> project versioned itself `Alpha 1.2.0` → `1.11.0` before it was ever public, then dropped the
+> number entirely for `Pre Alpha`, and the first *real* release is **`Alpha 1.0.0`** below. Those
+> older sections keep their content and dates and are simply relabelled, because `1.0.0` sorting
+> above `1.11.0` fails the gate's newest-first check — measured, **10 checks / 1 failed** before
+> the relabel and **11 / 0** after. They are relabelled INDIVIDUALLY rather than merged into one
+> catch-all, for the reason the paragraph above gives: merged boundaries cost a tag diff to
+> recover. Nothing below `Alpha 1.0.0` was ever downloadable.
 
 ## [Unreleased]
+
+
+## [Alpha 1.0.0] — 2026-08-04
 
 ### Added
 - **Natural circulation — a loss of offsite power was terminal and is now survivable** (#325)
@@ -54,7 +66,152 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   verify natural circulation. New probe **TR-15**; `run_behavior` **47 → 48**, `run_contract` **144 → 145**
   (`natural_circulation`).
 
+### Changed
+- **The plant is renamed `SLX-100` → `SLS-100`** (#328) *(OWNER DIRECTIVE, 2026-08-04, issue #328:
+  "Rename the plant the \"Single Loop Simulated - 100MWt\" AKA \"SLS-100\".")*. The expansion goes
+  from *Single-Loop eXperimental* to **Single Loop Simulated**. **The digit stays ELECTRICAL** — the
+  request named 100 MWt, but this plant's core is **≈ 300 MWt** against **≈ 100 MWe** and `Manuals/01`
+  and `12` both state the pair, so reading it as thermal would have contradicted `identity.mwt_rated`
+  and every manual rating table by 3× *(OWNER RULING, 2026-08-04: selected "SLS-100 = 100 MWe" from
+  three options put to him — 100 MWe, `SLS-300` = 300 MWt, or no number at all; a selection, not
+  verbatim words)*. **No number in the product moves**; this is two letters and the acronym reading.
+  22 sites across 12 files — `identity.name` is **not read at runtime**, so the name is duplicated by
+  hand into the manuals, the site pages and `tools/pack_manuals.js`, and no gate asserts the string.
+  `CHANGELOG`/`TUNING_LOG`/`behavior_results.json` keep `SLX-100` deliberately: they are record, and
+  they describe what was true then. Manual set **Rev 27**.
+- **Board text is ALL CAPS, units excepted** *(OWNER DIRECTIVE, 2026-08-04: "All text should be in
+  all caps except units should follow standard unit conventions for capitalization.")*. MEASURED by
+  mounting the board headless and reading every rendered text node: **225 nodes, 34 not all-caps —
+  and 30 of the 34 were units**, which the directive exempts. So the real work was four turbine-side
+  captions (LOAD / OUTPUT / GOVERNOR / TURBINE) and the five TRIP BLOCKS captions. The four live in
+  `DOC_PATCHES`, not in `pwr_board_data.js`, because that file is generated and a re-export would
+  undo an edit there. `board_check` now asserts the policy over the rendered board — units exempt as
+  whole **tokens**, never substrings, or stripping a bare "s" would eat the s out of ordinary prose.
+- **Physics tab numbers are brighter and carry the indication colours** *(OWNER DIRECTIVE,
+  2026-08-04: "make the physics numbers brighter under the physics tab. The contrast is currently too
+  low. Also make these physics numbers follow the indication color scheme (grey, green, yellow, red,
+  etc.)")*. The generic numeric-grid colour is `#4a6070` — **2.84:1** on the panel background, which
+  is deliberate for the quiet board and unreadable for a panel you read numbers off. Physics rows are
+  now grey `#98A3AF` at **7.27:1**, with green for a satisfied criterion (5.91:1), amber for caution
+  (8.29:1) and red for alarm (4.76:1); all four clear WCAG AA, the old value failed it. Scoped to
+  `.phys-grp`, so the quiet default survives in the All view and the RBMK/BWR grids.
+  **Grey vs green is the teaching distinction**: green means "something is being checked here and it
+  is fine", so the 18 rows with no health criterion stay grey or green stops meaning anything. A row
+  whose value is missing now gets **no** colour — a green em-dash asserts a criterion is satisfied
+  about a number nobody has, which the first cut of this change did for peak clad temperature.
+- **The Inject Failure list is grouped** *(OWNER DIRECTIVE, 2026-08-04: "organize the list of
+  failures into logical groupings.")*. 24 failures in seven groups on the **same energy-path spine**
+  as the Graph list and the Physics tab, so the three lists read alike. Deliberately *not* the
+  catalog's own `category`: those five values type the failure for the control layer and group badly
+  for a player — `power` held main feedwater, the turbine, offsite power, a station blackout,
+  condenser vacuum, SG overfeed and both steam line breaks. The badge still shows the category.
+  Membership is hand-maintained, so an unlisted failure renders under "Other" rather than vanishing,
+  and `run_inspect` checks both directions plus duplicates (**8/8 36 → 9/9 42**).
+- **`Pre Alpha` → `Alpha 1.0.0`, and the update-tracking page is live again** *(OWNER DIRECTIVE,
+  2026-08-04: "The next release will take the program out of pre-Alpha and into Alpha and bring
+  back the update tracking page. Update tracking summaries/lists should be concise.")*. One
+  version for everything accumulated under `Pre Alpha`; the Platform.Feature.Refinement digit
+  rules resume from the *next* release. `changelog.html` carries its first real entry and the
+  "Awaiting public launch" placeholder is gone.
+- **The player-facing entry is ONE line** *(OWNER DIRECTIVE, 2026-08-04: "The first release should
+  not have change log entries other than saying it's the initial Alpha release.")*. A first
+  release has nothing to be a change *against*: every feature in it is new to every reader, so a
+  feature list would be a product tour filed under the wrong heading. This developer file keeps
+  its full history — it is the engineering record and the two are deliberately different
+  documents.
+- **The manual set is back to Rev 0** *(OWNER DIRECTIVE, 2026-08-04: "The plant manual revision
+  number should be zeroed out for this release.")*. The 26 development revisions are in
+  `git log` for `Manuals/`, which is where a per-chapter history belongs; a revision row exists to
+  tell a reader what changed since the copy they had, and nobody had a copy before Rev 0. Stamped
+  through all 13 documents and repacked; `run_manual_rev` unmoved at **13 / 0**. Note this is the
+  *second* reset — an earlier Rev 0 was stamped 2026-07-31 in anticipation of go-public and the
+  counter then ran to 26 before the release happened, which is the argument for zeroing **at** a
+  release rather than ahead of one.
+- **Versioning and the player-facing changelog are LIVE again**, superseding the 2026-07-31
+  suspension, in all five places that encoded it: `CLAUDE.md` (Definition of done + *Website
+  changelog & version numbers*), the `release-to-main` skill (banner, checklist **and its
+  frontmatter description**), `changelog.html`'s `ADDING AN ENTRY` template and `site/release.js`.
+- **`changelog.html` entries are capped at 8 one-line bullets**, aggregated by system rather than
+  enumerated per commit, and explicitly *not* derived line-by-line from this file — a single item
+  here runs 30 lines. The cap is the operational reading of the directive above; the brevity is
+  the directive.
+- **The bump and the first entry must land in ONE change.** `run_release.js` is in pre-release
+  mode, where **zero** published entries is the *correct* state, so an entry added while
+  `RD_RELEASE` still reads `Pre Alpha` is a red gate — and a bump with no entry is red the other
+  way. Setting the `Alpha X.Y.Z` format arms three further checks by itself, taking the runner
+  **8 → 11**. Not a new mechanism; it was undocumented, and both directions are now written down
+  where the mistake would be made.
+- **Found by simulating launch day against the real gate: the release as #282 specifies it ships
+  a RED.** `CHANGELOG.md` still carries `## [Alpha 1.11.0]` down to `## [Alpha 1.7.0]`, so
+  rolling `[Unreleased]` to `## [Alpha 1.0.0]` puts **1.0.0 above 1.11.0** and fails *"version
+  headings are newest-first"* — **10 checks / 1 failed**. #282 records the opposite ("the
+  ordering trap only existed because 1.0.0 had to sort below 1.10.0/1.11.0 … not needed at
+  all"), which was true of the *site* changelog and never checked against the developer one.
+  Relabelling the eight pre-launch headings so they stop parsing as released versions gives
+  **11 / 0**. It also restores a check that would otherwise be silently absent: while 1.0.0
+  sorts below the oldest named heading it falls under the CROSS rule's floor, so the launch
+  entry's date agreement across the two files is **not verified at all**. Recorded in the
+  release skill and #282; not done now, because it is release-time work and a structural call.
+
 ### Fixed
+- **The core-material temperatures ran away without bound past melt — 355 618 °C (640 144 °F) at two
+  plant-hours** (#326). `melted` is the end of this model's declared validity, and **both** nodes kept
+  integrating through it, by two different mechanisms with no termination condition. `fuel_temp_c` is
+  a pure integrator: on a fully uncovered core `hFcEffective` returns 0, so `dTf` loses its only sink
+  — measured **5032 °C (9089 °F)** at 2 h, still climbing on a 1.87 % decay tail. `clad_temp_c` is
+  worse and is **not a follower of it**: the #238 Arrhenius oxidation term is exponential in the
+  node's own temperature while the protective oxide only grows as √(integral), so above melt the
+  exponential wins — **oxidation heat reached 1095 % OF RATED**, eleven times full reactor power out
+  of a core making 4 % decay heat. Both nodes now stop at `melted`. Nothing below melt moves: MD-11's
+  escalation bands are unchanged at 184 / 172 / 86 / 40 s.
+  **Two things the issue and its investigation had wrong, both because the tree moved under them.**
+  The filed mechanism (oxidation, Arrhenius) was rebutted as *"there is no zirconium-oxidation term in
+  this engine"* — true when written, **stale within the day**: #238 built exactly that on 2026-08-03.
+  And the rebuttal's fix — *"the termination has to go on `stepFuel`"* — was right for the pre-#238
+  plant and is **insufficient now**: injection-verified, a `stepFuel`-only freeze leaves 3 checks red
+  and the clad node drifting **312 089 °C**, indistinguishable from no fix. The filed reproduction
+  path is also gone — #325 made a loss of offsite power survivable, so a LOOP now parks at
+  **307.9 °C (586 °F)** with the core intact; the runaway reproduces on an unmitigated large break.
+  `run_meltdown` **11 → 12** (MD-12, 9 checks, injection-verified two ways).
+- **The pressurizer had two different slopes, and one of them melted the core in silence** (#330).
+  Turning the CVCS make-up channel off at full power — one button on the board, `defaultOn`, nothing
+  else touched — **melted the core at 22.1 min, un-scrammed**, with primary pressure, Tavg and the
+  subcooling margin **dead flat at nominal** and the cladding at 24,958 °F (13,848 °C). Two caution
+  annunciators on one level channel were the entire indication.
+
+  The cause was a geometry error, not a missing alarm. `level_per_mass` (the deficit slope) was
+  **100 %/frac** against `level_per_mass_surplus` **776** — two contradictory statements about one
+  pressurizer. A subcooled RCS is incompressible liquid everywhere except the pressurizer bubble, so
+  inventory leaving it comes out of the pressurizer at exactly the rate a surplus packs into it; the
+  geometry does not know which way the flow is going. At the shallow slope the loop could shed
+  **37.5 % of its mass while the gauge still read 17.5 %**. Both slopes are now the sourced 776
+  (BVPS-2 UFSAR Tbl 5.1-1/5.4-12 + WTSM 3.2 Tbl 3.2-2, the same three tables that fitted the surplus
+  branch in #249).
+
+  **The protective actuation was never broken.** The low-pressurizer-level letdown isolation fires at
+  20 % indicated on both plants — what moved is the *inventory* it corresponds to: **65 % before**
+  (core already uncovered, which is why #330 read it as the thing destroying the core), **95.1 %
+  after**. Measured on the identical rig, the plant now isolates letdown at ~2m30s and sits at
+  95.1 % inventory / 17.0 % level out to 40 minutes: core covered, no damage, no melt, **no scram
+  needed**.
+
+  `level_per_void` moved **150 → 375.33** in the same change and had to: the TMI deception is the
+  *difference* between the two terms, so leaving it at 150 inverted it (net +350 → −326 %/frac) and
+  pressurizer level **fell** as the primary voided — the one lesson this plant is built around. It is
+  re-solved from the two documented calibration targets rather than re-guessed, and it is deliberately
+  **not** scaled proportionally, which would peg the gauge at 100 % and destroy the graded arc the TMI
+  beats are written against.
+
+  New probe **CA-9** (`run_behavior` 48 → 49), injection-verified: the old constant reddens **6 of its
+  12 checks**. `run_reachability` B2 — *"an inventory loss can reach the 12 % pzr lo-lo scram"* — was
+  the independent witness; the level used to fall 7.76× too slowly to reach its own trip.
+
+  **One declared cost, and it is an open owner decision**: the pressurizer now drains 7.76× faster in
+  wall-clock terms, so `ops_cvcs_pzr_drain_rate` reads 53.7 s against the ">= 300 s" feel target from
+  a 2026-07-22 owner request. It is **left red rather than re-banded** — re-banding a feel target
+  whenever the plant moves retires the target instead of reporting against it. The alternative that
+  preserves the rate exactly (scaling `cvcs_inventory_gain`) is measured in the probe comment and
+  costs 7 e2e checks of real CVCS leak-holding behaviour.
 - **`run_all` was silently losing the tail of a runner's output on Linux** (2026-08-04). Every
   runner here ends with `process.exit(code)`, and Node's I/O contract says pipes are
   **asynchronous on POSIX** and synchronous on Windows — so `process.exit()` can discard an
@@ -1842,7 +1999,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `RD_RELEASE` is a full `Alpha X.Y.Z`. All seven were proven to go **red by injection**
   before being counted green.
 
-## [Alpha 1.11.0] — 2026-07-30
+## [Pre-launch 1.11.0] — 2026-07-30
 
 ### Added
 - **Settings → About: Disclaimer, License, and Changelog popups** (#259). The portable
@@ -2014,7 +2171,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   annotation clears; drop back below P-10 and the block reinstates itself and the band comes
   back with it. **At power nothing changed** — the bands are identical to before.
 
-## [Alpha 1.10.0] — 2026-07-30
+## [Pre-launch 1.10.0] — 2026-07-30
 
 ### Fixed
 - **The moderator model was re-fitted to measured plant data, and the reactor is more
@@ -2263,7 +2420,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   anything is wrong. `run_hr3`, `run_contract` and `run_inspect` keep their counts in the
   baseline on purpose — theirs move when a real decision is made.
 
-## [Alpha 1.9.0] — 2026-07-29
+## [Pre-launch 1.9.0] — 2026-07-29
 
 ### Changed
 - **The manual now reads in both unit systems — US customary first, SI in parentheses.**
@@ -2548,7 +2705,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   *Migration note:* the new `clad_temp_c` state field is lazily initialized on the first
   step (to the hot-leg temperature), so saves written before this change load unchanged.
 
-## [Alpha 1.8.2] — 2026-07-28
+## [Pre-launch 1.8.2] — 2026-07-28
 
 ### Fixed
 - **The vital-parameter tiles no longer flicker at all.** The previous fix stopped their
@@ -2567,7 +2724,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   now measured from the number's real height, and if the column ever cannot fit it distributes
   evenly instead of piling up at the top edge.
 
-## [Alpha 1.8.1] — 2026-07-28
+## [Pre-launch 1.8.1] — 2026-07-28
 
 ### Fixed
 - **The vital-parameter tiles no longer flicker**, especially during a transient. Their
@@ -2598,7 +2755,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   spanning the meter's full 50–660 °F. The green programme band is now a readable width rather
   than a hairline in a field of grey.
 
-## [Alpha 1.8.0] — 2026-07-28
+## [Pre-launch 1.8.0] — 2026-07-28
 
 ### Added
 - **New control-room diagram (V2).** The PWR board was re-authored in the Claude Design
@@ -2704,7 +2861,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   progressed toward its acceptance check, quietly costing you up to five evaluations of
   credit. Both now survive a save. Older save files still load and behave exactly as they did.
 
-## [Alpha 1.7.1] — 2026-07-27
+## [Pre-launch 1.7.1] — 2026-07-27
 
 ### Changed
 - **The steam dump's temperature reference now slides with turbine load** (issue #219). It was
@@ -2762,7 +2919,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   the OS temp dir (a hardcoded session id). It now writes to `Diagnostic/`, with an optional
   argv override (issue #159).
 
-## [Alpha 1.7.0] — 2026-07-27
+## [Pre-launch 1.7.0] — 2026-07-27
 
 ### Added
 - **Reactor Trip on Turbine Trip (P-9).** Above ~50 % power a turbine trip now trips the reactor,
@@ -2950,7 +3107,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `inject_failure` by `failure_id`), so blocking the power-range trip does not also tick
   the intermediate-range step.
 
-## [Alpha 1.6.1 and earlier] — up to 2026-07-24
+## [Pre-launch 1.6.1 and earlier] — up to 2026-07-24
 
 _Everything below this line predates the convention above: it was kept as one running
 `[Unreleased]` log and was never cut per release, so it is not separated by version.
