@@ -799,6 +799,21 @@
       vacuum_max_kpa: 99.5,
       vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
       mwe_rated: 100.0,            // MWe — THIS PLANT'S RATING (identity below; feel-plan P6) [tune]
+      // OPERATOR LOAD RATE, % of rated per minute. Real turbine control is rate-limited
+      // (WTSM 11.3, ML11223A295: the operator sets a target and a rate on a thumbwheel and
+      // the EHC ramps between them), so an instantaneous load step is not a manoeuvre a real
+      // operator can make. This plant used to permit one, and that was measurable: a 70 -> 100
+      // MW step peaked loop dT at 109.1 % of rated, within 0.51 of the OPdT trip and
+      // indistinguishable from a 15 % steam line break at 109.8 %.
+      //
+      // 10 %/min is NOT invented and NOT taken from the source. `Manuals/09` §8.0 already
+      // documents "Power ramp ceiling ~10 %/min class where achievable" as this plant's
+      // authored operator limit — so the turbine now ENFORCES a limit the manual already
+      // stated. MEASURED sweep: at 100 %/min (the old behaviour) the OPdT margin bottoms at
+      // 2.07 and the runback fires on a normal ramp; at 10 %/min it is 4.57 and the runback
+      // stays silent; 5 %/min buys only 4.72 for double the wait. The source's own 1 %/min is
+      // an EXAMPLE of a selectable rate, not a maximum, so it is not a candidate.
+      load_rate_pct_per_min: 10.0,   // [tune]
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)
       // so steady-state delivered steam equals the load demand at any secondary

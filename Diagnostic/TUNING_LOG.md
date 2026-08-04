@@ -598,6 +598,71 @@ left in place after the procedure moved to 0.25. Corrected to the measured 0.25 
 
 ---
 
+## Session log — 2026-08-03k (the load rate limit, and Fable finding the bug I ruled out)
+
+*(OWNER, 2026-08-03: "Come up with your own rate for this plant that's fast enough to keep it
+interesting and slow enough to be safe.")* — **10 %/min, increases only**, plus the sourced
+runback keeping its persistence delay after all. Both halves were wrong first and the corrections
+are the entry.
+
+**THE RATE, and it is this plant's own number.** WTSM 11.3 (ML11223A295) shows operator load
+changes are rate-limited on a real unit — a target and a rate on a thumbwheel — so the
+instantaneous 30 % step this plant permitted was a fidelity gap, and it is why a *normal* ramp
+peaked loop ΔT at 109.1 % of rated, within **0.51** of the OPΔT trip and indistinguishable from a
+15 % steam line break at 109.8 %. My first pick was 5 %/min from a WTSM design-duty argument.
+Measured sweep says 10: OPΔT floor 2.07 at today's 100 %/min, **4.57 at 10 %/min**, 4.72 at
+5 %/min for double the wait, 3.01 at 20 %/min with the runback nuisance-firing. And 10 is not
+mine — `Manuals/09` §8.0 already documents *"Power ramp ceiling ~10 %/min class where achievable"*,
+so the turbine now ENFORCES a limit the manual already stated. **I reached for the external source
+before checking what this plant had already decided.**
+
+**INCREASES ONLY, and limiting both directions was measurably wrong.** A load *increase* drives
+power and ΔT up; a *decrease* does the opposite (a full rejection bottoms the OPΔT margin at 7.23).
+Throttling decreases turns a load REJECTION — the grid throwing load off, an EVENT — into a
+leisurely ramp, and it took out **5 behaviour probes, the `pwr_tour` greedy-ask branch and the SGTR
+EOP** before the direction test existed. Six probe sites now declare themselves events with
+`immediate: true`. The owner asked whether the rate would be too slow for gameplay; the honest
+answer was that speed was never the risk — I had throttled this plant's defining ride-out without
+noticing, and the gate caught it rather than me.
+
+**THE BUG I RULED OUT, AND FABLE FOUND.** With the rate limit in, `run_autoctl` sat at 29/30
+(power 91.5 vs 100±6) and `run_ops` SGTR at 53.7 % inventory, and I handed both over as
+unexplained. The cause was the `persist_s` deletion, not the rate limit:
+
+- the normal ramp clips the trigger for **0.10 s at margin 2.90** — instrument noise, not a
+  trajectory — and with no persistence the engage test fires on a **single physics step**;
+- `immediate: true` moves the operator's ASK as well as the reference, so the resulting 5 % cut is
+  permanent. Load parks at 91.6 MWe → mean **91.54**, the gate's 91.5 exactly;
+- same defect in SGTR: the runback engages **twice** instead of once, inventory 53.7 vs **54.4**.
+
+**Why I missed it — three failures that compounded.** I measured on a plain `SimulationService`
+rig at **seed 42**; the probe uses `run_autoctl.js`'s own rig at **seed 0xA07**. I cited
+`ops_harness.js:126` for the run-seconds check, which is **the wrong harness for that probe**. And
+I then wrote both up as RULED OUT in the handoff — which is worse than leaving them open, because
+it tells the next reader not to look there. Fable's advantage was declining to trust that list.
+Worse, my own handoff listed *"I tested a probe at the seed where the answer was comfortable"* as a
+mistake not to repeat, and that is precisely what caused the failure I was handing over.
+
+**THE PERSISTENCE DELAY IS SOURCED, and calling it invented was the substantive error.** I deleted
+it twice on the grounds that it was mine. It is not: the real signal requires *"ΔT in **two out of
+four** reactor coolant loops"* within 3 % (WTSM 12.2 §12.2.3.7/.8) — **2/4 coincidence voting IS the
+law's noise immunity**, and a single-loop plant structurally cannot have it. A dwell requirement is
+the substitute for the voting we cannot do, which makes it a declared ADAPTATION of a sourced
+feature. That quote was already in the file, a few lines above the code I removed.
+
+**The two are complements, not alternatives.** The rate limit takes the normal-ramp dwell from
+6.40 s to 0.10 s against a worst-casualty dwell of 10.58 s, so the constant now sits in a gap two
+orders of magnitude wide rather than the 4.18 s squeeze it was first sized into. **It may now be
+mis-sized in the other direction** — 8.5 s is 85× above the noise clip but only 2.08 s below the
+worst casualty; Fable suggests 2–4 s. Left alone deliberately: 8.5 is proven green, the retune is
+non-blocking, and **my rig still does not reproduce the gate's** (it reads 0.00 s of normal-ramp
+dwell where Fable measured 0.10), so I cannot size it honestly yet.
+
+**Gates:** `run_all` 36 runners at baseline. `run_autoctl` 30/30, `run_ops` 59/69 (its tracked
+RBMK/BWR reds), `run_otdt` 46/46, `run_behavior` 45, `run_campaign` 51/51.
+
+---
+
 ## Session log — 2026-08-03j (#319 item 3 — PWR-E23 seal leak, and the manual was right about everything)
 
 **Task:** continue #319. Item 2 (SGTR) was **blocked** first — see #322 — so this is item 3.

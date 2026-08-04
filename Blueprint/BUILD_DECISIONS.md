@@ -202,6 +202,45 @@ fetched"* and that the τ values are in it. Wrong on both halves: it has been re
 departure is **permanent unless a plant-specific source turns up**, not a pending fetch. The
 distinction matters: the old wording sends the next agent to wait on a document that cannot answer.
 
+## 2026-08-03e — #318: the load rate limit, and why the persistence delay is SOURCED
+
+**Decision.** Operator load changes are rate-limited to **10 %/min, increases only**; the runback
+**keeps** its persistence delay *(OWNER, 2026-08-03: "Come up with your own rate for this plant
+that's fast enough to keep it interesting and slow enough to be safe.")*.
+
+**The rate is this plant's own.** `Manuals/09` §8.0 already documented a ~10 %/min operator ramp
+ceiling; the turbine now enforces it. My first pick was 5 %/min from a WTSM design-duty argument —
+the measurement said 10 buys the same safety (OPΔT floor 4.57 vs 4.72) for half the wait, and I had
+reached for the external source before checking what this plant had already decided.
+
+**Increases only, because the direction is the whole point.** An increase drives ΔT up into the
+OPΔT line; a decrease does the opposite (full rejection bottoms at 7.23). Limiting decreases turned
+load REJECTIONS — events, not operator actions — into ramps and destroyed the ride-out.
+
+**THE PERSISTENCE DELAY IS AN ADAPTATION OF A SOURCED FEATURE, NOT AN INVENTION.** I deleted it
+twice believing it was mine. The real signal requires *"ΔT in **two out of four** reactor coolant
+loops"* within 3 % (WTSM 12.2 §12.2.3.7/.8) — that 2/4 coincidence IS the law's noise immunity, and a
+single-loop plant structurally cannot have it. A dwell requirement is the substitute for the voting
+we cannot do. **The quote was already in the file, a few lines above the code I removed.**
+
+**What the removal actually cost, and it was misattributed to the rate limit.** The engage test
+fires on a single physics step, so a 0.10 s noise clip at margin 2.90 during a normal ramp
+triggered a runback whose 5 % cut is permanent (`immediate` moves the operator's ask too). That is
+`run_autoctl`'s 91.5 % and the SGTR EOP's 53.7 % inventory. One constant heals both.
+
+**The two are complements.** The rate limit takes the normal-ramp dwell 6.40 s → 0.10 s against a
+worst-casualty 10.58 s, so the constant sits in a gap two orders of magnitude wide instead of a
+4.18 s squeeze. It may now be mis-sized the *other* way — 85× above the noise but only 2.08 s under
+the worst casualty. Left alone: proven green, non-blocking, and my rig still does not reproduce the
+gate's.
+
+**Process note worth more than the fix.** I handed this over with both failures listed as RULED
+OUT, having measured on the wrong rig (plain `SimulationService`, seed 42) for a probe that uses
+`run_autoctl.js`'s own rig at seed 0xA07, and cited `ops_harness.js` — the wrong harness entirely.
+A wrong "ruled out" is worse than an open question: it tells the next reader not to look there.
+
+---
+
 ## 2026-08-03d — #311: OTΔT/OPΔT ON, and why the board readout was the real precondition
 
 **Decision.** Wire the core ΔT margin to the board, then enable `otdt_opdt_trips`
