@@ -1198,6 +1198,11 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   (visible text *and* `datetime="YYYY-MM-DD"`), and a brief **player-facing** summary.
   **Style: concise and factual** — one line per change, lead with the change, no marketing
   or filler. Copy the template in the file's `ADDING AN ENTRY` comment.
+- **FACTS ONLY, MINIMIZE PROSE** *(OWNER, 2026-08-04: "Just keep to facts in the changelog page.
+  Minimize prose.")*. Name the thing that changed and stop. No explaining an absence, no sentence
+  that would still read fine if deleted, and **no lead-in paragraphs** — the page's own
+  "This log begins with the public launch" line was cut for exactly that. If a line carries no
+  fact a player can act on or verify, cut it. `CHANGELOG.md` stays dense; this page stays bare.
 - **BE CONCISE, and that is a CAP** *(OWNER DIRECTIVE, 2026-08-04: "Update tracking
   summaries/lists should be concise.")*. **At most 8 bullets per entry, one line each**
   *(the number is my operational reading, not the owner's — the directive is the brevity)*.

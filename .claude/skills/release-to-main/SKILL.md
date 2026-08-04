@@ -107,9 +107,11 @@ Add a new `<article class="log-entry">` at the **top** of `changelog.html`:
 
 - version in `<span class="log-ver mono">Alpha X.Y.Z</span>`
 - date as visible text **and** `datetime="YYYY-MM-DD"`
-- **Style: concise and factual.** One line per change, lead with the change. No marketing, no
-  filler ("great for…", "like a real plant"), no hedging. Player-facing wording, not commit
-  subjects. Tags: added / changed / fixed.
+- **FACTS ONLY, MINIMIZE PROSE** *(OWNER, 2026-08-04: "Just keep to facts in the changelog page.
+  Minimize prose.")*. One line per change: name the thing that changed and stop. No marketing or
+  filler ("great for…", "like a real plant"), no hedging, **no lead-in paragraphs**, and no
+  sentence that would still read fine if deleted. Player-facing wording, not commit subjects.
+  Tags: added / changed / fixed.
 - **Concise is a CAP: ≤ 8 bullets, one line each** *(OWNER DIRECTIVE, 2026-08-04: "Update
   tracking summaries/lists should be concise."; the number is the agent's operational reading
   of it)*. **Aggregate, do not enumerate** — one line for a system's worth of work, not one per
