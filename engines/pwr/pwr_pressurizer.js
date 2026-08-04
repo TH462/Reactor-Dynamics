@@ -99,6 +99,49 @@
     // negation would de-energize every one of them. Absent means energized, same
     // convention as pwr_primary.acAvailable.
     if (s.ac_available === false) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
+    // NO WATER, NO HEATERS — the 17 % low-level heater cutoff (#334, 2026-08-04).
+    // SOURCED, and the setpoint is the source's: WTSM 10.3 *Pressurizer Level Control
+    // System* (ML11223A290) §10.3.4.1 — "This bistable provides a low level interlock at
+    // 17% level in the pressurizer. In addition to providing a low level alarm, this
+    // interlock isolates the letdown from the chemical and volume control system by
+    // closing one letdown isolation valve and all orifice isolation valves, and turns off
+    // all pressurizer heaters. … the heater cutoff protects the heaters which would be
+    // damaged if operated in a steam environment." They are damageable because they are
+    // "replaceable, direct-immersion, tubular-sheath type heaters … located in the lower
+    // portion of the pressurizer vessel" (WTSM 3.2, ML11223A213).
+    //
+    // WHAT IT COST TO NOT HAVE IT, measured full stack: a 5 %-of-max cold-leg LOCA
+    // refilled on ECCS to 120 % inventory, quenched the loop to ~100 C, and then the
+    // heaters — still at 92 % with pzr_level_pct reading a flat 0 — drove the RCS back to
+    // 2207 psi (15.22 MPa) with the coolant 240 C subcooled. There is no thermodynamic
+    // source for that pressure; it is heater power alone. At 15.5 MPa the pressure-driven
+    // ECCS curve delivers 0.0034 frac/s against a 0.050 leak, so the injection is
+    // DEADHEADED, the core drains and stays dry, and the equilibrium heater ~ break is
+    // STABLE. A 10 % and a 15 % break both survived, so the outcome was non-monotonic in
+    // break size — the symptom that got #334 filed.
+    //
+    // HR1: reads the INDICATED level (previous step's instrument — instruments are step
+    // 15, this is step 7, the CONTEXT §11 explicit coupling), never `pzr_level_pct`. A
+    // real bistable is fed by a level transmitter channel and WTSM 10.3 says so twice
+    // over — "One channel is used for level control, letdown isolation, and pressurizer
+    // heater cutoff, while the other channel is used for backup letdown isolation and
+    // heater cutoff." So a failed level transmitter must fool this interlock exactly as
+    // it fools the operator, and run_behavior CA-9 leg D is what asserts that.
+    //
+    // DECLARED SIMPLIFICATION, same one #332 declared for the letdown interlock: the gate
+    // is LIVE, so the heaters come back when level recovers. On the real plant the
+    // operator resets. One operator action, not a different behaviour.
+    //
+    // NOT the whole bistable: the LETDOWN-isolation half of this same 17 % interlock is
+    // still missing (filed as its own item on #334). Only the heater half is built here,
+    // and it is deliberately not called "the low-level interlock" anywhere.
+    //
+    // Physical de-energization, not a written demand — the #200/#329 rule. The selector
+    // and the operator's % stay where they were put; what goes to zero is delivered power.
+    var lvlInd = (s._ins_pzr_level != null) ? s._ins_pzr_level : s.pzr_level_pct;
+    if (lvlInd != null && lvlInd < (p.heater_cutoff_level_pct != null ? p.heater_cutoff_level_pct : 17.0)) {
+      s.heater_power_frac = 0; s._heater_dp_frac = 0;
+    }
     // A spray valve stuck open is mechanical: it beats BOTH the auto controller and
     // any operator demand, the way porv_stuck beats porv_demand in relief() (#200).
     if (s.spray_stuck) { s.spray_flow_frac = 1; }

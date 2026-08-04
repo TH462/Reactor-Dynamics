@@ -150,7 +150,16 @@ var BASELINES = {
   // it was a knife-edge timing pin (old plant 2180 °F at 90 min, new 2068 °F, BOTH
   // undamaged and both reaching damage at ~100 min), and the widened window passes on
   // both plants — which is what makes it a better test rather than a refit.
-  'run_behavior.js':       { code: 0, secs: 56, score: '49pass 0xfail' },
+  // 49 -> 50 (2026-08-04c, #334): CA-10, the sourced 17 % low-level heater cutoff.
+  // TWO EXISTING PROBES MOVED WITH IT, and both were pinning the old behaviour rather
+  // than being broken by the new one. CA-7 leg C sampled the LOOP heater response at
+  // 300 s, by which time the level interlock had fired and was masking the AC claim the
+  // leg exists to make — re-sampled at 10 s (28.9 % level, real margin) and given a
+  // positive check that the LATER cut-out is the level interlock with AC still up.
+  // TR-13b's `leak > 0.01` was a magnitude fixture measured on a plant whose heaters ran
+  // with the pressurizer empty; it now asserts the claim in its own title (the ΔP-scaled
+  // BASE survives the round trip), which it never did, and passes on the old engine too.
+  'run_behavior.js':       { code: 0, secs: 56, score: '50pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
