@@ -22,6 +22,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The whole CVCS and the ECCS pump ran through a station blackout too** (#332) — #329 fixed the
+  heaters; this is the general case, and the plant turned out to have **no concept of AC
+  availability at all**. `station_blackout` was a bare boolean that four call sites happened to
+  consult, so everything else with a motor kept turning. Measured full stack, `hot_zero_power`,
+  blackout at t = 60 s: **letdown pinned at 0.0297 for three hours** and charging modulating against
+  pressurizer level exactly as it does with the grid up, bleeding inventory **100 % → 76.55 %**
+  through a system with no motive power. Worse, and not in the report — with the blackout in and the
+  operator pressing SI, the **de-energized ECCS pump injected the RCS from 100 % to 120 %** (solid)
+  in under five minutes. After the fix inventory holds at **99.99 %** over the same three hours and
+  the ECCS pump delivers **zero flow at zero discharge pressure**.
+- **There is now one place that answers "does this plant have electricity?"** — `true_state.ac_available`,
+  derived once per step in `pwr_engine` step 0a, which also carries the roster of what dies with it
+  and what does not. Every AC load reads that rather than inferring power from a casualty flag: the
+  RCPs, the pressurizer heaters, the CVCS charging pump (and with it letdown and borate/dilute) and
+  the ECCS injection pump. **A loss of offsite power still keeps all of it** — the diesels carry the
+  1E buses — which is the same LOOP/SBO split #329 established.
+- **Letdown is gated on the CHARGING PUMP, not on the blackout, and the source is why.** WTSM 4.1.3.1
+  (ADAMS **ML11223A214**, p. 4.1-7), letdown orifice isolation interlock 2: *"At least one charging
+  pump must be running in order to open any letdown orifice isolation valve. If the running charging
+  pump(s) is lost, then the letdown orifice isolation valves close."* That one guard covers a
+  **second defect the issue did not know about**: with the grid fully up, securing the charging pump
+  left letdown flowing and drained inventory **100 % → 79.5 % in 13 minutes**, until the low-level
+  isolation caught it at 17 %. Charging and safety injection are sourced to the same chapter (§4.1.3.4,
+  p. 4.1-16) — *"single-speed, horizontal centrifugal pumps powered from vital (Class 1E) ac power"*,
+  and *"The centrifugal charging pumps also serve as the high head safety injection pumps"*.
+- **AFW and the accumulators deliberately survive**, and that is sourced too — WTSM 5.7.5
+  (**ML11223A229**, p. 5.7-6): *"A station blackout fails all ac power except the vital Class IE ac
+  busses from the dc invertors. All decay heat removal systems, except the turbine-driven AFW pump,
+  also fail."* New probe **CA-8** asserts the survivors positively, because a suite of only
+  everything-went-to-zero checks would be satisfied by gating the entire plant on the blackout flag.
+  `run_behavior` **46 → 47**.
 - **The pressurizer heaters ran through a station blackout** (#329) — reported from free play, and the
   heaters were modelled as an unconditional heat source with nothing asking whether the plant had
   any electrical power. Measured full stack from full power, blackout at t = 60 s: heater power

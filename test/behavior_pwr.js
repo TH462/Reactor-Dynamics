@@ -94,6 +94,7 @@
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
     'CA-3': 'probe', 'CA-4': 'probe',
     'CA-7': 'probe (pzr heaters are an AC load — dead in SBO, alive in LOOP; 10 CFR 50.2 + NUREG-0737 II.E.3.1)',
+    'CA-8': 'probe (the AC-load roster — CVCS + ECCS die in SBO, AFW + accumulators survive; WTSM 4.1 + 5.7)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -1612,6 +1613,197 @@
           h3.ts().station_blackout !== true, 'false');
         ck('and the diesel-backed heaters answer at FULL power (II.E.3.1)',
           fmt(h3.ctl().heater_power_pct, 1) + ' %', h3.ctl().heater_power_pct > 99, '100 %');
+      });
+    },
+
+    // CA-8 — THE AC-LOAD ROSTER (2026-08-03, #332). CA-7's general case.
+    //
+    // #329 fixed the pressurizer heaters. #332 filed the rest: the plant had no concept
+    // of AC availability at all, so every motor added since kept turning through a
+    // blackout. Measured full stack before this fix, `hot_zero_power`, SBO at t = 60 s:
+    //
+    //   letdown pinned at 0.0297 for THREE HOURS, charging modulating against pzr level
+    //   exactly as it does with the grid up, and inventory bled 100 % -> 76.55 % through
+    //   a system with no motive power. Separately, with the SBO in and the operator
+    //   pressing SI, the DEAD ECCS pump injected the RCS from 100 % to 120 % — solid —
+    //   in under five minutes. That one is not in the issue; it turned up measuring it.
+    //
+    // SOURCED, and the sources changed the SHAPE of the fix twice.
+    //
+    //  (1) WTSM 4.1.3.4 (ML11223A214, p. 4.1-16): "Two of the pumps are single-speed,
+    //      horizontal centrifugal pumps powered from vital (Class 1E) ac power" — so the
+    //      charging pump is unambiguously an AC load, and "The centrifugal charging pumps
+    //      also serve as the high head safety injection pumps of the emergency core
+    //      cooling systems", which puts SI on the same bus.
+    //  (2) WTSM 4.1.3.1 (same doc, p. 4.1-7), letdown orifice isolation interlock 2: "At
+    //      least one charging pump must be running in order to open any letdown orifice
+    //      isolation valve. IF THE RUNNING CHARGING PUMP(S) IS LOST, THEN THE LETDOWN
+    //      ORIFICE ISOLATION VALVES CLOSE." Letdown is therefore gated on the PUMP, not
+    //      on the blackout flag — which is leg C, and it is a second defect the issue did
+    //      not know about: see below.
+    //  (3) WTSM 5.7.5 (ML11223A229, p. 5.7-6): "A station blackout fails all ac power
+    //      except the vital Class IE ac busses from the dc invertors. All decay heat
+    //      removal systems, EXCEPT THE TURBINE-DRIVEN AFW PUMP, also fail." That single
+    //      sentence is legs A/B/D together — everything motor-driven stops, AFW does not.
+    //
+    // LEG C IS THE ONE THAT EARNED ITS KEEP. Gating letdown on `ac_available` directly
+    // would have passed legs A, B, D and E and left a REAL defect standing: measured with
+    // the grid fully up, securing the charging pump left letdown flowing and drained
+    // 100 % -> 79.5 % of inventory in 13 minutes, until the low-pzr-level isolation (the
+    // other real interlock, in pwr_control) caught it at 17 %. The sourced interlock fixes
+    // both with one guard; a blackout-shaped guard fixes one and hides the other.
+    //
+    // LEG E is CA-7 leg C's argument applied to the whole roster: a LOOP keeps the 1E
+    // buses on the diesels, so any proxy that is also true in a LOOP — pumps stopped,
+    // turbine tripped, reactor scrammed — reddens E while A-D stay green.
+    //
+    // LEG D asserts the SURVIVORS POSITIVELY, and that is deliberate. Three of the four
+    // legs here say "this went to zero"; a suite of only-zero checks is satisfied by
+    // gating the entire plant on the blackout flag, which would be a much worse model
+    // than the one it replaced. AFW must still deliver and the accumulators must still
+    // dump, with every bus dead.
+    'CA-8': function () {
+      return test('CA-8 station blackout — the AC-load roster (CVCS + ECCS die, AFW + accumulators live)', function (ck) {
+        // h.range() spans the WHOLE run, and every leg here settles the plant before it
+        // injects anything — so a bare range() peak reports the healthy pre-event flow and
+        // the check fails against its own fixture. (It did, on the first draft, for both
+        // CVCS fields.) peakAfter() records only the window the callback is attached to.
+        function peakAfter(field) {
+          var p = 0;
+          var fn = function (hh) { var v = hh.ts()[field] || 0; if (v > p) p = v; };
+          fn.peak = function () { return p; };
+          return fn;
+        }
+
+        // --- leg A: the CVCS through a three-hour blackout.
+        //
+        // THE OPERATOR IS ASKING FOR CHARGING, in MANUAL, and that is load-bearing rather
+        // than colour. With the CVCS left in AUTO the charging guard is INVISIBLE: the
+        // auto law targets `letdown_flow + level_demand`, letdown is already zero on the
+        // interlock, and an SBO repressurizes so the level servo asks for nothing either —
+        // measured by injection, reverting the mass-balance guard alone left all 47 probes
+        // green. `set_charging_flow` parks a real demand in `charging_setpoint` and that
+        // is what the guard has to refuse. It is the #200 shape as well: the demand stays
+        // latched and only DELIVERED flow goes to zero.
+        var h = H('hot_zero_power');
+        h.run(60);
+        h.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h.cmd('set_charging_flow', { normalized: 0.05 });   // operator calls for charging, no AC to answer
+        var wLet = peakAfter('letdown_flow_actual'), wChg = peakAfter('charging_flow_actual');
+        h.run(3600, function (hh, ts) { wLet(hh, ts); wChg(hh, ts); });
+        var t = h.ts(), c = h.ctl();
+        ck('the blackout is actually in effect', 'ac_available ' + String(t.ac_available),
+          t.ac_available === false && t.station_blackout === true, 'false');
+        ck('letdown ISOLATES — no orifice bleed with the charging pump de-energized',
+          'peak ' + fmt(wLet.peak(), 4), wLet.peak() < 1e-4, '0');
+        ck('the charging pump delivers NOTHING (Class 1E ac load, WTSM 4.1.3.4)',
+          'peak ' + fmt(wChg.peak(), 4), wChg.peak() < 1e-4, '0');
+        // The pre-fix plant reached 76.55 % over three hours; one hour of it is ~92 %.
+        // Banded well inside that, so this fails loudly on the old engine rather than
+        // squeaking past on a slow leak.
+        ck('and inventory does not bleed away through a dead system',
+          fmt(h.range('core_inventory_pct').min, 2) + ' % min', h.range('core_inventory_pct').min > 99.5, '> 99.5 %');
+        // BOTH DIRECTIONS, because there are TWO guards and one check only sees one of
+        // them. The indication guard (`charging_flow_actual`) is what the check above
+        // reads; the MASS-BALANCE guard is a different line, and with the demand latched
+        // at 0.05 a dead pump that still moved water would push inventory UP. Measured by
+        // injection: without this check, reverting the mass-balance guard left all 47
+        // probes green — the defect was real, unobserved, and one assertion away.
+        ck('nor is it pumped UP by a dead pump answering a latched 0.05 demand',
+          fmt(h.range('core_inventory_pct').max, 2) + ' % max', h.range('core_inventory_pct').max < 100.5, '< 100.5 %');
+        // The SELECTOR is untouched — same #200 guard as CA-7 leg A. What went to zero
+        // is delivered flow, not the operator's lineup, so restoring AC gives the CVCS
+        // back with nothing to re-select.
+        ck('the operator\'s charging-pump switch is still in RUN (selector not rewritten)',
+          'charging_pump_running ' + String(c.charging_pump_running), c.charging_pump_running !== false, 'true');
+        ck('and their manual charging demand is still latched at 0.05 — only DELIVERY died',
+          'charging_flow_normalized ' + fmt(c.charging_flow_normalized, 3),
+          c.charging_flow_normalized > 0.04, '0.05');
+
+        // --- leg B: the operator presses SI with every bus dead. A dead pump makes no
+        // flow AND no head, so the discharge gauge must read the RCS, not a pump curve.
+        var h2 = H('hot_zero_power');
+        h2.run(60);
+        h2.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h2.cmd('set_hpi', { active: true });
+        h2.run(1200);
+        var t2 = h2.ts();
+        ck('SI is DEMANDED (the run lights stay honest — demand is not the same as flow)',
+          String(t2.hpi_active), t2.hpi_active === true, 'true');
+        ck('but the de-energized ECCS pump injects NOTHING',
+          'peak ' + fmt(h2.range('hpi_flow_normalized').max, 4), h2.range('hpi_flow_normalized').max < 1e-4, '0');
+        ck('and develops no head — discharge pressure is not a pump curve',
+          fmt(h2.range('hpi_discharge_pressure_mpa').max, 2) + ' MPa max',
+          h2.range('hpi_discharge_pressure_mpa').max < 1e-6, '0 MPa');
+        ck('so the RCS is not pumped solid by a pump with no electricity',
+          fmt(h2.range('core_inventory_pct').max, 2) + ' % max', h2.range('core_inventory_pct').max < 101, '< 101 %');
+
+        // --- leg C: THE GRID IS UP. Secure the charging pump and letdown must isolate
+        // on the sourced interlock alone (WTSM 4.1.3.1 #2). This is what distinguishes
+        // the pump interlock from a blackout-shaped guard.
+        var h3 = H('hot_zero_power');
+        h3.run(60);
+        h3.cmd('set_charging_pump', { running: false });
+        var wLet3 = peakAfter('letdown_flow_actual');
+        h3.run(1200, wLet3);
+        ck('AC is available throughout leg C (no blackout involved)',
+          'ac_available ' + String(h3.ts().ac_available), h3.ts().ac_available === true, 'true');
+        ck('losing the charging pump ISOLATES letdown (WTSM 4.1.3.1 interlock 2)',
+          'peak ' + fmt(wLet3.peak(), 4), wLet3.peak() < 1e-4, '0');
+        ck('so securing the pump does not quietly drain the RCS',
+          fmt(h3.range('core_inventory_pct').min, 2) + ' % min', h3.range('core_inventory_pct').min > 99.5, '> 99.5 %');
+
+        // --- leg D: THE SURVIVORS. AFW is turbine-driven and the accumulators are
+        // pressurized N2 behind a check valve; neither owes the switchgear anything.
+        // Driven on a LOCA so the accumulators actually reach their setpoint.
+        //
+        // AFW IS ASSERTED ON DISCHARGE PRESSURE, NOT DELIVERED FLOW, AND THAT IS NOT A
+        // WEAKENING — delivered flow is UNREACHABLE here, for #325's reason. Measured, a
+        // blackout at full power parks SG level at 61.6 % and holds it there for 25
+        // minutes: with the RCPs stopped there is no core->SG heat path, so the generator
+        // never boils down and the level-hold valve correctly throttles AFW shut. An
+        // `afw_flow_normalized > 0` check would pin a NON-EVENT and go green the day
+        // natural circulation is built. Discharge pressure is the honest observable: it
+        // is driven by `afw_pump_demand` alone (pwr_steam_generator, stepSecondary), so it
+        // reads 159.5 psi (1.10 MPa) with every bus dead and would collapse to 0 the
+        // moment someone gated the AFW pump on ac_available. Its contrast partner is the
+        // check below it — the ECCS pump, one line of code away, reading exactly zero.
+        var h4 = H('hot_full_power');
+        h4.run(60);
+        h4.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h4.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.3 });
+        h4.cmd('set_hpi', { active: true });
+        h4.cmd('set_afw', { active: true });
+        var wAfwP = peakAfter('afw_discharge_pressure_mpa'), wHpi4 = peakAfter('hpi_flow_normalized');
+        h4.run(600, function (hh, ts) { wAfwP(hh, ts); wHpi4(hh, ts); });
+        ck('every bus is still dead through leg D', 'ac_available ' + String(h4.ts().ac_available),
+          h4.ts().ac_available === false, 'false');
+        ck('the TURBINE-DRIVEN AFW pump still makes head (WTSM 5.7.5 — the one survivor)',
+          fmt(wAfwP.peak(), 2) + ' MPa', wAfwP.peak() > 0.5, '> 0.5 MPa');
+        ck('the PASSIVE accumulators still dump — no pump, no bus, no permission needed',
+          fmt(h4.range('accumulator_volume_pct').min, 1) + ' % remaining',
+          h4.range('accumulator_volume_pct').min < 50, '< 50 %');
+        ck('while the motor-driven ECCS pump beside them stays dead',
+          'peak ' + fmt(wHpi4.peak(), 4), wHpi4.peak() < 1e-4, '0');
+
+        // --- leg E: A LOSS OF OFFSITE POWER IS NOT A BLACKOUT (CA-7 leg C's argument,
+        // applied to the roster). The diesels carry the 1E buses, so the CVCS and the
+        // ECCS pump both keep working. Any proxy for "no AC" that is also true in a LOOP
+        // reddens THIS leg and nothing else here.
+        var h5 = H('hot_zero_power');
+        h5.run(60);
+        h5.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        h5.run(300);
+        h5.cmd('set_hpi', { active: true });
+        h5.run(300);
+        ck('LOOP leaves the 1E buses energized (the diesels have them)',
+          'ac_available ' + String(h5.ts().ac_available), h5.ts().ac_available === true, 'true');
+        ck('so letdown keeps flowing through a LOOP',
+          fmt(h5.range('letdown_flow_actual').max, 4), h5.range('letdown_flow_actual').max > 0.01, '> 0.01');
+        ck('the charging pump keeps running through a LOOP',
+          fmt(h5.range('charging_flow_actual').max, 4), h5.range('charging_flow_actual').max > 0.01, '> 0.01');
+        ck('and SI injects when asked — a LOOP is not a loss of the ECCS pump',
+          fmt(h5.range('hpi_flow_normalized').max, 4), h5.range('hpi_flow_normalized').max > 0.001, '> 0.001');
       });
     },
 

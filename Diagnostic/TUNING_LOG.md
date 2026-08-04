@@ -20,6 +20,154 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03w (#332 — the whole CVCS and the ECCS pump ran through a blackout too)
+
+**Task:** *"investigate then work issue 332."* #332 was filed by the #329 session, `status-needs-ruling`,
+recommending option **(2) an `ac_available` engine concept** but "not before #325 is ruled". #325 is
+still unruled; taken anyway, because what #325 decides is how much *detail* an SBO deserves, not
+whether a motor turns without electricity. Sourced, fixed, gated. `engines/pwr/pwr_engine.js` (step 0a),
+`pwr_primary.js`, `pwr_pressurizer.js`, new probe **CA-8**, `run_behavior` **46 → 47**.
+
+### The defect, and it is bigger than the issue said
+
+The plant had **no concept of AC availability at all**. `station_blackout` was a bare boolean on
+engine state that four call sites happened to consult; everything else with a motor kept turning.
+Measured full stack, `hot_zero_power`, SBO at t = 60 s — the issue's own table, reproduced exactly:
+
+| time | letdown | charging | core inventory |
+|---|---|---|---|
+| 30m | 0.0298 | 0.0297 | 99.98 % |
+| 1h | 0.0297 | 0.0268 | 99.51 % |
+| 3h | **0.0297** | **0.0275** | **76.55 %** |
+
+**And a third load the issue did not know about.** With the blackout in and the operator pressing
+SI (`set_hpi active:true` at 300 s), the de-energized ECCS pump injected the RCS from **100 % to
+120 % — solid — in under five minutes**, reading a full pump-curve discharge pressure the whole
+time. Point-fixing the two systems #332 named would have shipped that one untouched, which is the
+argument for (2) over (1) restated as a measurement.
+
+**After:** inventory holds at **99.99 %** over the same three hours; the ECCS pump delivers 0 flow
+at 0 MPa discharge.
+
+### The evidence pass changed the shape of the fix twice
+
+Both primaries fetched via the Wayback `2023id_` + browser-UA workaround (nrc.gov still 403s
+direct), saved to `inbox/sources/`. **Check the other lanes first** — this lane already had
+10 CFR 50.2 and ML003735234 from #329, so only two new documents were needed.
+
+**WTSM §4.1 Chemical and Volume Control System — ADAMS `ML11223A214`.** Two quotes, both
+load-bearing:
+
+> §4.1.3.4, p. 4.1-16: *"Two of the pumps are single-speed, horizontal centrifugal pumps **powered
+> from vital (Class 1E) ac power**, and the third is a positive displacement (reciprocating) pump…
+> powered from a nonvital ac source."* — and *"The centrifugal charging pumps also serve as the
+> **high head safety injection pumps** of the emergency core cooling systems."*
+
+> §4.1.3.1, p. 4.1-7, letdown orifice isolation interlock 2: *"**At least one charging pump must be
+> running in order to open any letdown orifice isolation valve. If the running charging pump(s) is
+> lost, then the letdown orifice isolation valves close.** This interlock ensures that cooling water
+> (charging) is available to the regenerative heat exchanger prior to the establishment of letdown
+> flow."*
+
+That second quote is the one that earned its fetch. The obvious fix — gate letdown on
+`ac_available` alongside everything else — would have been **wrong in a way no leg of the probe as
+first drafted could see.** Letdown follows the PUMP, and measured with the grid fully up, securing
+the charging pump left letdown flowing and drained inventory **100 % → 79.5 % in 13 minutes**,
+until the low-pzr-level isolation (the *other* real interlock, already modelled in `pwr_control`)
+caught it at 17 %. One sourced guard fixes both; a blackout-shaped guard fixes one and hides the
+other. That is CA-8 leg C, and injecting `acAvailable(s)` in place of `chargingPumpPowered(s)`
+reddens **leg C and nothing else in the suite**.
+
+**WTSM §5.7 Generic Auxiliary Feedwater — ADAMS `ML11223A229`**, §5.7.5 PRA Insights, p. 5.7-6:
+
+> *"A station blackout fails all ac power except the vital Class IE ac busses from the dc invertors.
+> **All decay heat removal systems, except the turbine-driven AFW pump, also fail.**"*
+
+One sentence that is legs A/B/D at once: everything motor-driven stops, AFW does not. It is also
+why AFW carries a **do not gate this** note at the derivation site.
+
+### The fix — `ac_available`, and why a boolean mirror is worth having
+
+`s.ac_available = !s.station_blackout`, derived at the top of `step()` (0a), published in
+`true_state`, documented in `CONTEXT.md` §6.3. Today it is *exactly* the negation and the comment
+says so — **the defect was never a wrong formula, it was that the question had no name.** A load
+reads `ac_available` because it needs power; it does not read a casualty flag and infer power from
+it. The derivation site carries the roster (dies: RCPs, heaters, charging + letdown + borate/dilute,
+ECCS pump; lives: AFW, accumulators, the board, spray-already-dead-with-the-RCPs) and the two
+source quotes.
+
+Read side is two predicates in `pwr_primary`, `acAvailable(s)` and `chargingPumpPowered(s)`, both
+of which **default to POWERED when the field is absent** — the engine's own `selfTest` and ad-hoc
+physics rigs call `letdownFlow`/`injectionFlowInv`/`autoControl` with hand-built state objects, and
+a bare `!s.ac_available` would have silently de-energized every one of them. Same reason the
+pressurizer guard is written `=== false`.
+
+Selectors are never touched (`charging_pump_running`, `heater_auto`, `hpi_active` stay where the
+operator put them) — the #200 trap #329 also had to dodge. `_migrateState` **recomputes** rather
+than defaulting to true, or a save taken mid-blackout reloads electrified for one step.
+
+### CA-8, and the two legs the first draft got wrong
+
+Five legs, 22 checks. A = the CVCS through a three-hour blackout, B = SI pressed with no AC,
+C = the sourced pump interlock **with the grid up**, D = the survivors, E = LOOP is not a blackout.
+
+**Injection-verified six ways, each with a distinct signature:**
+
+| injection | reddens |
+|---|---|
+| revert the letdown guard | 4 checks — legs A and C, incl. the 71.79 % and 79.54 % drains |
+| revert the charging mass-balance guard | 1 check — leg A inventory *max*, 120.00 % |
+| revert the ECCS guard | 3 checks — legs B and D, incl. `hpi_flow` peak 0.9838 → 120 % solid |
+| letdown on `ac_available` instead of the pump | **leg C only** (2 checks) |
+| `ac_available` := a LOOP-true proxy (`!!s.pump_running`) | **CA-7 leg C + CA-8 leg E only** (3 checks) |
+| gate the AFW pump on `ac_available` | **leg D AFW only** (1 check) |
+
+**Two authoring traps, both found by injection rather than by reading.**
+
+**(1) `h.range()` spans the WHOLE run, including the settle before the injection.** Legs A and C
+run 60 s of healthy plant first, so the bare range peak reported the *pre-event* letdown of 0.0300
+and the checks failed against their own fixture. Fixed with a `peakAfter()` sampler attached to the
+post-injection `run()` only — the same shape CA-7's `watchHeater` uses, for the same reason.
+
+**(2) The charging mass-balance guard was UNOBSERVABLE and the probe was green anyway.** Reverting
+it left **all 47 probes passing**: with the CVCS in AUTO the law targets `letdown_flow +
+level_demand`, letdown is already zero on the interlock, and an SBO *repressurizes* so the level
+servo asks for nothing either. Two changes make it bite — park a real demand with
+`set_charging_flow normalized: 0.05`, and assert inventory in **both directions**, since a dead
+pump that still moves water pushes it UP and every other check here watches it go down. *A guard
+you cannot make red is a guard you have not tested* — and the first draft of this probe had four
+checks covering three guards, one of which was decorative.
+
+**(3) AFW delivered flow is UNREACHABLE, so leg D asserts discharge pressure instead.** The first
+draft asserted `afw_flow_normalized > 0.01` and it read **0.000**. Not a defect: measured, a
+blackout at full power parks SG level at **61.6 % and holds it there for 25 minutes**, because with
+the RCPs stopped there is no core→SG heat path (#325) — the generator never boils down and the
+level-hold valve correctly throttles AFW shut. Asserting flow would have pinned a **non-event** and
+gone green the day natural circulation is built. `afw_discharge_pressure_mpa` is driven by pump
+demand alone, reads **8.96 MPa** with every bus dead, and collapses to 0 if anyone gates the AFW
+pump on AC — which the injection table above confirms.
+
+### Left alone, deliberately
+
+- **RHR** — its heat removal is already zero in an SBO (gated on `condenser_cooling_available`,
+  which `full_blackout` clears), and there is **no way to reach a state where AC is out and
+  condenser cooling is available**, so an extra guard there would be untestable by injection. The
+  `rhr_active` indication does still read true on a dead pump; filed rather than patched blind.
+- **`condensate_pump_running`** reads true through a blackout. The feed path is already dead
+  (`condOK` also needs `condenser_cooling_available`), so this is indication-only — and the
+  condensate pumps are **nonvital**, lost on a plain LOOP too, so `ac_available` is the wrong gate
+  for them. Wants the non-1E half of the bus model, which this change does not build.
+- **`loss_of_offsite_power` does not clear `main_feedwater_available`/`condenser_cooling_available`**
+  either, for the same missing-non-1E-bus reason. Out of scope; it would move #325's picture.
+
+### Not affected
+
+`ac_available` is `true` in every scenario, procedure, mission and probe that does not inject a
+blackout, so the at-power plant is byte-identical. The SBO **outcome** is unchanged — it stays
+terminal for #325's reason — this is a correctness and indication fix, not a save.
+
+---
+
 ## Session log — 2026-08-03v (#329 — pressurizer heaters ran through a station blackout)
 
 **Task:** owner report — *"the pressurizer heater was still on when i injected a station blackout

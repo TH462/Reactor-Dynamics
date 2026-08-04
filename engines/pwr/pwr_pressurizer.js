@@ -91,7 +91,14 @@
     // the power actually delivered, so the board's heater % reads the honest zero amps.
     // Same class as the spray's `flow_frac` scaling in stepPressure: an electrical/
     // hydraulic reality, not a control decision (HR2).
-    if (s.station_blackout) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
+    // Reads `ac_available` rather than `station_blackout` since #332 — same value, but
+    // the heaters are off because there is no ELECTRICITY, not because a casualty flag is
+    // set. pwr_engine step 0a derives it and lists everything else on that bus.
+    // `=== false`, not `!s.ac_available` — autoControl is called directly with hand-built
+    // state objects by the engine's selfTest and ad-hoc pressurizer rigs, and a bare
+    // negation would de-energize every one of them. Absent means energized, same
+    // convention as pwr_primary.acAvailable.
+    if (s.ac_available === false) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
     // A spray valve stuck open is mechanical: it beats BOTH the auto controller and
     // any operator demand, the way porv_stuck beats porv_demand in relief() (#200).
     if (s.spray_stuck) { s.spray_flow_frac = 1; }

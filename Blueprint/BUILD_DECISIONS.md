@@ -37,6 +37,76 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-03f — #332: `ac_available`, or what a bare boolean costs when nobody names the question
+
+### The change
+
+`true_state.ac_available` — one derived field, set at the top of `PWREngine.step()` (0a), read by
+every AC load. `engines/pwr/pwr_engine.js` (derivation + roster + `boron_adjust` + two indications),
+`engines/pwr/pwr_primary.js` (`acAvailable`/`chargingPumpPowered` predicates; letdown, charging and
+the ECCS pump), `engines/pwr/pwr_pressurizer.js` (#329's heater guard re-expressed through it),
+`Blueprint/CONTEXT.md` §6.3, new probe **CA-8**. `run_behavior` **46 → 47**.
+
+### Why (2) and not (1), and why not "wait for #325"
+
+#332 offered three options: point-fix each component, build an `ac_available` concept, or leave it.
+It recommended (2) *"but not urgently, and not before #325 is ruled"*. #325 is still unruled and
+this was taken anyway, on two grounds.
+
+**#325 decides a different question.** What it settles is whether the PWR blackout is a survivable
+evolution worth modelling in detail or a documented terminal path. Neither answer makes a motor turn
+without electricity. The correctness of the fix does not depend on it, and its *scope* barely does:
+`ac_available` is a name and a read, not a coping model.
+
+**(1) had already failed once, and measuring it showed it would fail again.** The heaters were
+missed in the first place because no list existed. Working this issue found a **third** load nobody
+had filed — the ECCS pump injecting the RCS solid with every bus dead — which point-fixing the two
+systems #332 named would have shipped untouched. That is the argument for (2) restated as a
+measurement rather than an aesthetic.
+
+### The design decisions worth recording
+
+**A boolean mirror is not a useless abstraction, and the comment says so out loud.** Today
+`ac_available === !station_blackout` exactly. The defect was never a wrong formula; it was that the
+question had no name, so nobody asked it. A load now reads `ac_available` *because it needs power*,
+rather than reading a casualty flag and inferring power from it. The derivation site carries the
+roster of what dies and what lives, with both source quotes, so "what does a blackout take?" is
+answerable in one place instead of by grepping for a flag.
+
+**Letdown is gated on the CHARGING PUMP, not on `ac_available`** — WTSM 4.1.3.1 (ML11223A214,
+p. 4.1-7) interlock 2, verbatim in `TUNING_LOG` 2026-08-03w. This was the evidence pass changing the
+shape of the fix rather than merely blessing it: the obvious guard would have left a real defect
+standing (grid up, charging pump secured → letdown drains 100 → 79.5 % in 13 minutes). Sourcing the
+mechanism rather than the outcome is what caught it.
+
+**Read predicates default to POWERED when the field is absent** (`s.ac_available !== false`, not
+`!s.ac_available`). `letdownFlow`, `injectionFlowInv` and `pwrPressurizer.autoControl` are all called
+directly with hand-built state objects by the engine's `selfTest` and by ad-hoc physics rigs; a bare
+negation de-energizes every one of them, and an isolated-physics rig would start reporting zero
+letdown and no injection with nothing in the fixture to explain it. Same convention in all three.
+
+**`_migrateState` recomputes rather than defaulting.** A save taken mid-blackout would otherwise
+reload with the plant electrified for one step.
+
+**Selectors are never written.** `charging_pump_running`, `heater_auto` and `hpi_active` stay exactly
+where the operator put them; only delivered flow/power/head go to zero. This is the #200 trap — a
+de-energization parked in the operator's demand heals itself on the next button press — and CA-8
+leg A pins it with a *positive* check that the 0.05 manual charging demand is still latched.
+
+### Deliberately not built
+
+| | why |
+|---|---|
+| RHR pump guard | Heat removal is already zero in an SBO (`condenser_cooling_available`). There is **no reachable state** where AC is out and condenser cooling is up, so the guard could not be injection-verified — and an unfalsifiable guard is worse than a filed gap. |
+| Condensate pump / main feed on LOOP | Both are **nonvital** loads, lost on a plain LOOP as well as an SBO, so `ac_available` (which a LOOP keeps) is the wrong gate. Wants a second, non-1E bus. |
+| A two-bus model | The honest structure, and where the two rows above go. Out of scope here: it changes LOOP behaviour, which moves #325's picture, and #325 is the owner's call. |
+
+### The flag this leaves
+
+**Adding an AC load is now a two-line obligation** — gate it at the read site and add a CA-8 leg.
+The derivation comment says so at the point of temptation. That is a convention, not a gate: nothing
+can statically detect a motor, and the only mechanised half is CA-8 itself.
+
 ## 2026-08-03e — #238: zirconium-steam oxidation, and why the sketched shape was not built
 
 ### The change

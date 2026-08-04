@@ -519,6 +519,11 @@ physical-quantity vocabulary.
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)
     "fuel_damaged": bool,             // latched when fuel exceeds fuel_damage_c — scenario outcome-grading hook
     "pump_running": bool, "pump_flow_pct": number, "station_blackout": bool,
+    "ac_available": bool,             // Class 1E (vital) ac switchgear energized (#332). Today exactly !station_blackout —
+                                      //   a plain LOOP KEEPS it (the diesels pick the 1E buses up). Every ac load reads THIS,
+                                      //   not the casualty flag: RCPs, pressurizer heaters, the CVCS charging pump (and with it
+                                      //   letdown and borate/dilute), the ECCS injection pump. AFW is turbine-driven and the
+                                      //   accumulators are passive N2, so both deliberately survive it. See pwr_engine step 0a.
     "turbine_rpm": float, "condenser_vacuum_kpa": number,
     "turbine_tripped": bool,          // turbine trip LATCHED. Arms the P-9 anticipatory scram and is what the
                                       //   board's lit states key on. A planned `disconnect_grid` is NOT a trip (#230).
