@@ -1812,11 +1812,22 @@
         // …and when they DO stop later in this same run, say which interlock did it — the
         // two are separately sourced and must not be allowed to blur into each other.
         // Sampled ACROSS the window, not at an instant, because the level parks ON the
-        // setpoint and the cutoff chatters. That chatter is a KNOWN #334 follow-up rather
-        // than noise: the same WTSM 10.3 bistable also isolates letdown, and the source
-        // says that is precisely what "prevents further lowering of the pressurizer
-        // level" — with only the heater half built, nothing arrests the fall, so the
-        // plant sits on the boundary. Same zero-deadband shape as #288's RHR valve.
+        // setpoint and the cutoff chatters in THIS RIG.
+        //
+        // WHAT THAT CHATTER IS, corrected 2026-08-04d. The #334 write-up first blamed a
+        // missing letdown-isolation half of the same bistable. Both halves of that were
+        // wrong. The isolation EXISTS (pwr_control.js, `pzr_level` low 17.0 ->
+        // set_letdown_orifices, latched at reset_below 20.0) and measured, letdown reads
+        // a flat ZERO through this whole window — it fired and latched, so it could not
+        // have been what was missing. The real driver is THIS PROBE'S OWN RIG: it holds a
+        // full MANUAL 100 % heater demand indefinitely, which at no load walks pressure
+        // past the 16.20 MPa PORV setpoint. Measured, porv_open goes true at 16.29 MPa;
+        // the PORV takes mass out, level falls through the cutoff, the heaters drop,
+        // pressure falls, the PORV reseats, charging refills and the heaters come back.
+        // That is a correct plant answering an incorrect operator action, not a defect —
+        // and without the manual demand a LOOP shows no chatter at all (level holds
+        // 38-41 %, inventory 100.00 %). Left as-is deliberately: the rig has to hold the
+        // demand to prove the AC point, and the cycling is what the plant should do.
         var lacAlive = true, lcutSeen = false;
         h3.run(330, function (hh) {
           if (hh.ts().ac_available === false) lacAlive = false;

@@ -95,16 +95,35 @@ non-monotonic in break size** — 5 % destroyed the core, 10 % and 15 % were sur
 ### The decision worth recording: build the sourced HALF, do not invent the rest
 
 WTSM 10.3 §10.3.4.1's bistable does **three** things at 17 %: alarm, letdown isolation, heater
-cutoff. This plant now has the alarm (already at WTSM's own 25 % and a 12 % lolo) and the heater
-cutoff. The **letdown isolation is deliberately not built here** — it changes inventory control
-in a regime every gate visits, and it is a separate decision.
+cutoff. This plant has all three — the alarm at WTSM's own 25 % plus a 12 % lolo, the letdown
+isolation as an M4 actuation, and the heater cutoff added here.
 
-That leaves a known artifact: after a loss of offsite power the level parks at 15–18 %,
-straddling the setpoint, and the cutoff chatters — **#288's zero-deadband shape**. The tempting
-fix is a deadband. It was refused, because the source specifies no hysteresis and **says the
-letdown half is what "prevents further lowering of the pressurizer level"**. So the chatter is
-evidence that half an interlock is built, not evidence that the built half needs a fudge factor;
-inventing a deadband would bury the real finding under a fitted number. Recorded on #334.
+> **CORRECTED 2026-08-04d.** This section originally said *"the letdown isolation is deliberately
+> not built here"* and blamed a chatter artifact on its absence. **Both were wrong.** The
+> isolation was already in `pwr_control.js` PWR_ACTUATIONS at the same 17.0 setpoint, latched at
+> `reset_below: 20.0` — missed because I grepped `pwr_primary.letdownFlow`, the ENGINE, for a
+> level gate. An interlock that reads an instrument and commands a valve is an M4 actuation; the
+> *"know which LAYER a gate runs at"* trap, applied to a search instead of a test. Deleting it
+> reddens `run_reachability`, `run_ops` and `run_behavior`, so it is covered as well as built.
+>
+> **The chatter was not caused by it either.** Measured, `letdown_flow_actual` is a flat zero
+> through the whole window — the isolation had fired and latched, so its absence cannot be the
+> mechanism. The real driver is CA-7's own rig holding a **manual 100 % heater demand**
+> indefinitely, which at no load walks pressure past the 16.20 MPa PORV setpoint; the valve
+> cycles, takes mass out, level falls through the cutoff, and the loop repeats. A correct plant
+> answering an incorrect operator action. Without that demand a LOOP shows no chatter at all
+> (level 38–41 %, inventory 100.00 %). Full correction in `TUNING_LOG` 2026-08-04g.
+
+**The two halves live in different layers, and that is deliberate.** Letdown isolation is a valve
+command, so it is an ordinary M4 actuation. The heater cutoff cannot be: the only command that
+expresses it is `set_heater`, and an actuation writing the operator's own demand is wiped by the
+next button press — the #200 defect, which CA-7's comment already warns about. So it is a
+de-energization in `autoControl` beside #329's AC guard, which is the house idiom for removing
+power from a load without touching what the operator asked for.
+
+**A deadband was still refused**, and that part stands: the source specifies no hysteresis, and
+now that the chatter is understood as correct PORV cycling under a bad demand, there is nothing
+for a deadband to fix.
 
 ### The boundary is now DERIVED, which is the test that it is right
 

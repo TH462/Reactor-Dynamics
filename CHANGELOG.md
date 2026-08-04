@@ -79,10 +79,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   **Outcome is now monotonic, and the boundary is derivable rather than fitted**: breaks survive
   up to exactly `hpi_flow_max + lpi_flow_max·lpi_inventory_gain` = **0.160 frac/s** and not
   beyond. `run_behavior` **49 → 50** (CA-10, 14 checks, injection-verified twice).
-  **Still open on #334**: LOCA break flow is pressure-independent (only SGTR is ΔP-scaled), the
-  break-size slider's *default* sits above the ECCS ceiling and so is unwinnable by construction,
-  and the letdown-isolation half of this same 17 % bistable is not built — which is why
-  pressurizer level parks on the setpoint and the cutoff chatters after a loss of offsite power.
+  **Still open on #334**: LOCA break flow is pressure-independent (only SGTR is ΔP-scaled), and
+  the break-size slider's *default* sits above the ECCS ceiling and so is unwinnable by
+  construction.
+  **Correction (2026-08-04d).** This entry first listed a third item — that the letdown-isolation
+  half of the same 17 % bistable was not built, and that its absence was why the cutoff chatters
+  after a loss of offsite power. Both halves of that were wrong. **The isolation already
+  existed**, one layer up, as an M4 actuation at the same 17 % (latched, restoring at 20 %); it
+  was missed by grepping the engine rather than the control layer. **And it was not the cause** —
+  letdown reads a flat zero through the whole chattering window. The chatter comes from a
+  sustained **manual 100 % heater demand** at no load walking pressure past the PORV setpoint, so
+  the valve cycles and takes the level with it: a correct plant answering an incorrect operator
+  action. Without that demand a loss of offsite power produces no chatter at all.
 
 
 ## [Alpha 1.0.0] — 2026-08-04

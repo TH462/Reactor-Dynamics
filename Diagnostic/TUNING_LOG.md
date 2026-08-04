@@ -20,6 +20,85 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04g (#334 — the follow-up I filed did not exist, and my diagnosis of the chatter was wrong)
+
+**Task:** picked up my own recommended "next" from #334 — build the letdown-isolation half of the
+17 % bistable, to stop the heater cutoff chattering. **Neither premise survived measurement.**
+No engine or control change was made; this entry is the correction plus the guards it prompted.
+
+### 1. The letdown isolation was already built, one layer up
+
+`layers/control/pwr_control.js` PWR_ACTUATIONS, and it has been there all along:
+
+```js
+{ instrument: 'pzr_level', direction: 'low', setpoint: 17.0,
+  action: 'set_letdown_orifices', params: { a: false, b: false }, reset_below: 20.0 },
+```
+
+Same 17 % as the heater cutoff, **latched** (`reset_below` re-arms the fire latch at 20 % and
+there is no `reset_action`, so the operator re-opens an orifice deliberately), and its comment
+already cites the *"real Westinghouse interlock"*.
+
+**How I got it wrong:** I grepped `pwr_primary.letdownFlow` — the ENGINE — for a level gate,
+found only the #332 charging-pump gate, and concluded the half was missing. An interlock that
+reads an instrument and commands a valve is an **M4 actuation** and was never going to be in the
+engine. That is the *"Know which LAYER a gate runs at"* trap in CLAUDE.md, which this repo has
+now recorded three times, applied to a search rather than to a test.
+
+**It is also covered, which I checked rather than assumed.** Deleting the actuation and running
+`run_all --fast`: `run_reachability` 66 → 65, `run_ops` 350 → 349 passed / 12 → 13 failed,
+`run_behavior` 50 → 49 with one probe FAIL. Three runners.
+
+### 2. The chatter has nothing to do with it either — it is the PROBE RIG driving the PORV
+
+Measured through the whole chattering window, **`letdown_flow_actual` is a flat 0.0000**. The
+isolation had fired and latched. A latched isolation that is already holding cannot be the thing
+whose absence causes the fall, which on its own falsifies the story I wrote.
+
+What actually happens, measured (`hot_zero_power`, LOOP at 60 s, `set_heater power_pct: 100`):
+
+| t | pzr level % | pressure | `porv_open` | heater % | inventory % |
+|---|---|---|---|---|---|
+| 2m00s | 18.60 | 2380 psi (16.41 MPa) | false | 100.0 | 97.42 |
+| 2m15s | 16.09 | 2291 psi (15.79 MPa) | **true** | 0 | 97.08 |
+| 2m30s | 18.00 | 2363 psi (16.29 MPa) | **true** | 100.0 | 97.31 |
+
+`porv_open_mpa` is **16.20**. The rig holds a **full manual 100 % heater demand indefinitely**,
+which at no load walks pressure past that setpoint; the PORV lifts, takes mass out, level falls
+through the 17 % cutoff, the heaters drop, pressure falls, the PORV reseats, charging refills and
+the heaters come back. **A correct plant answering an incorrect operator action.**
+
+**The control:** the same LOOP with no manual heater demand shows **no chatter at all** — level
+holds 38–41 %, inventory **100.00 %**, heaters 0. I had run exactly that comparison earlier in
+the session and drawn the opposite conclusion from it, because the two runs differed by the
+`set_heater` command and I attributed the difference to the merge instead of to the command.
+
+### 3. Why the two halves live in different layers, which is worth writing down
+
+Letdown isolation is a **valve command**, so it is an ordinary M4 actuation. The heater cutoff
+**cannot be**: the only command that expresses it is `set_heater`, and an actuation writing the
+operator's own demand is wiped by the next button press — the #200 defect exactly, which CA-7's
+own comment already warns about. So it is a de-energization in `autoControl` beside #329's AC
+guard. The asymmetry is deliberate and is now documented at both sites.
+
+### What changed
+
+No plant behaviour. Corrections at every site that carried the wrong claim — the
+`pwr_pressurizer.js` comment, CA-7's comment in `behavior_pwr.js`, CLAUDE.md's `run_behavior`
+entry, `CHANGELOG.md`, `BUILD_DECISIONS.md`, the 2026-08-04f entry below (struck through in
+place rather than deleted, because the *shape* of the error is the lesson) and issue #334.
+
+### The lesson, and it is one this repo already had written down
+
+I wrote a confident, sourced-sounding, plausible mechanism into six files and an issue **without
+measuring it**, on a change where I had measured everything else to three decimal places. The
+quote from WTSM 10.3 was real; the inference from it was not, and one `grep` in the right layer
+or one look at `letdown_flow_actual` would have killed it. **HR12 binds the follow-up paragraph
+as hard as the headline** — "what is still broken and why" is an assertion about plant dynamics
+like any other.
+
+---
+
 ## Session log — 2026-08-04f (Alpha 1.0.0 shipped but did NOT go live — the deploy gap)
 
 **Task:** *(OWNER, 2026-08-04: "Why is it taking so long to deploy?" → "Let's fix the gap and
@@ -181,7 +260,7 @@ right, and depressurizing to reduce break flow is the single-SG EOP's whole stra
 asserts the claim in its own title, that the **BASE** rate survives the round trip, which it
 never did. Both new forms pass on the pre-#334 engine, so they are better tests, not refits.
 
-### Known and left: the cutoff CHATTERS, and the source says why
+### Known and left: the cutoff CHATTERS — ~~and the source says why~~ **and this diagnosis was WRONG, see 2026-08-04d below**
 
 After a LOOP the level parks at 15–18 %, straddling the setpoint, and the heaters cycle. This is
 **#288's zero-deadband shape** — but the fix is probably not a deadband, because WTSM 10.3 says
@@ -189,6 +268,14 @@ the same bistable's letdown isolation is what *"prevents further lowering of the
 level"*. Building only the heater half leaves nothing to arrest the fall. Recorded on #334 rather
 than patched with an invented deadband, since the source specifies no hysteresis and inventing
 one would be exactly what the evidence-pass rule forbids.
+
+> **CORRECTED 2026-08-04d — both halves of the paragraph above are wrong.** Kept rather than
+> deleted because the *reasoning* is the lesson: it is a confident, sourced-sounding claim that
+> was never measured, written in my own voice, which is precisely the class this repo keeps
+> filing. The letdown isolation **already existed** (M4, same 17 %, latched) and letdown reads a
+> flat **zero** through the chattering window, so it cannot have been the missing piece. The
+> chatter is the CA-7 rig's own sustained manual 100 % heater demand driving the PORV. Details
+> in the 2026-08-04d entry at the top of this file.
 
 **Also still open on #334** (reported, not built): LOCA break flow is pressure-INDEPENDENT — set
 once at injection, only SGTR is ΔP-modulated — so a dry RCS keeps "leaking" at full rate; and the
