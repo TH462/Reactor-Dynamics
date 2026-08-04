@@ -599,7 +599,7 @@ var BASELINES = {
   // whose job is to state it. Found carrying a stale 'Set revision: 20 (2026-07-30)' directly
   // under the live 23 — hand-added in 85264ad (#277), survived three stampings. Verified by
   // injection: restoring the second line reddens it.
-  'run_manual_rev.js':     { code: 0, score: '13checks 0failed' },
+  'run_manual_rev.js':     { code: 0, score: '15checks 0failed' },
   // NEW 2026-07-31 (#224) — was `test/audit_manual_controls.js`, which is exactly why it is
   // here: not a `run_*.js`, so auto-discovery never saw it, so it had no baseline, so it sat
   // at **32 mismatches / exit 1** through the #197 / #202 / #206 procedure re-authoring with

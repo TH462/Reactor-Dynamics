@@ -37,6 +37,48 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04i — #345: the gate checked the table's shape and never read the chapter
+
+**Claim.** `run_manual_rev` could not see a lane merge that drops manual content a revision row
+claims. Verified by reading it, not inherited: the only `readFileSync` touching a chapter pulled
+the `**Revision:**` stamp (`test/run_manual_rev.js:92`). Shape, stamp, digest, pack — no body text.
+
+**Why the digest check cannot cover it.** The two failures are opposites. The digest catches
+*content changed with no row*. The merge case is *a row whose content went away* — and the digest
+is **re-sealed by the merge**, so it agrees with the surviving text and passes. Measured
+reproduction: drop the `### 5.5` heading from chapter 12, add a row claiming `**12 §5.5**`, run
+`tools/stamp_manual_revision.js`, and the pre-fix gate is **fully green on the digest**.
+
+**Decision — canary on what a row NAMES, not on what it SAYS.** Rows already carry
+chapter-qualified refs. Requiring each to resolve keeps the check structural, which is what makes
+it gateable at all; the file header's exclusion of prose accuracy (HR10/HR12 class) is narrowed,
+not crossed. *"Does §5.5 exist"* is structural. *"Is §5.5 correct"* is not, and stays out.
+
+**Three design calls, each measured rather than reasoned.**
+
+| Call | Why | Evidence |
+|---|---|---|
+| Heading **OR** register table row | Chapter 12's §12.0 holds declared simplifications as a numbered table, so `12 §12.4b` is a row | `grep -E "^#+ *12\.4"` on chapter 12 returns **nothing** while the ref is live and correct — heading-only reddens a clean tree |
+| Chapter-qualified refs **only** | Bare `§X.Y` points variously at a Blueprint doc, `CONTEXT.md`, or the chapter under discussion | **44** bare refs in the 26-row pre-zeroing table; resolving them guesses and reddens correct rows. Qualified: **11 of 11** resolve there, 1 of 1 live |
+| **One** check, not one per ref | A per-ref count moves the baseline on ordinary manual work | exactly why `run_manual_units` is not baselined at all |
+
+**The anti-hollow guard is the 15th check and injection is what earned it.** Changing the ref
+syntax made the canary pass reading `0 refs resolve` — green while asserting nothing, the
+coverage-claim failure this repo files under *"prove it by injection"*. The parser must now
+positively find refs.
+
+**Injection-verified three ways:** break the live ref → canary red, naming it; unqualify the ref →
+guard red at 0; full re-seal reproduction → **digest green, canary red**.
+
+**Gates.** `run_manual_rev` **13 → 15 checks / 0 failed**, `BASELINES` moved in the same change.
+No `Manuals/*.md` content touched, so no revision row owed — the digest check confirms that.
+
+**Standing obligation this creates:** write revision rows **chapter-qualified**. An unqualified
+row is a row the gate cannot guard, so `CLAUDE.md`'s "grep the chapter after a merge" instruction
+is narrowed, not retired.
+
+---
+
 ## 2026-08-04h — #334 item 2: a break is an AREA, and that is the whole decision
 
 ### The change

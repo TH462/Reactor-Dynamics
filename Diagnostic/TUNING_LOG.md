@@ -20,6 +20,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04i (#345 — the manual content canary, and what the gate could not see)
+
+**Task:** owner asked what was worth fixing in the three-tree workflow, and chose this.
+
+**The gap, verified rather than inherited.** `test/run_manual_rev.js` checked the revision
+table's *shape* — newest-first, no gaps, set-wide stamp, content digests, packed copy. Its only
+read of a chapter file was the `**Revision:**` stamp regex at `:92`. **No check connected a row's
+claim to chapter body text.**
+
+**Why that is the merge-shaped hole.** `Manuals/` chapters are edited in the MIDDLE by two lanes,
+so git resolves in one lane's favour silently — unlike `CHANGELOG.md` / this file /
+`BUILD_DECISIONS.md` / `BASELINES`, which are append-at-top and conflict loudly. The 2026-08-03
+backshop merge dropped an entire `Manuals/12` §5.5 section that way. The digest check was silent
+because **the merge re-sealed the digests**, so they agreed with the surviving text.
+
+**The fix.** Revision rows already name their target chapter-qualified (`**12 §5.5**`,
+`**09 §2.0**`, `**12 §12.4b**`). Parse those; require each to resolve in the named chapter.
+
+**Four things worth keeping.**
+
+1. **A section is a HEADING or a REGISTER TABLE ROW, and a heading-only matcher is wrong.**
+   Chapter 12's §12.0 holds its declared simplifications as a numbered table, so `12 §12.4b` is a
+   **row**, not a heading — measured, `grep -E "^#+ *12\.4"` on chapter 12 returns nothing while
+   the ref is live and correct. A heading-only check reddens on a clean tree.
+2. **Bare `§X.Y` is deliberately unresolved.** 44 of them in the 26-row pre-zeroing table, pointing
+   variously at a Blueprint document, `CONTEXT.md`, or the chapter under discussion. Resolving them
+   would guess and redden correct rows. Chapter-qualified only: **11 of 11 resolve** across that
+   full historical table, 1 of 1 live — validated against a corpus the matcher was not authored
+   from, which is the point.
+3. **ONE check, not one per ref.** A per-ref count would move this runner's baseline on ordinary
+   manual work, which is exactly why `run_manual_units` is not baselined at all.
+4. **The anti-hollow guard is the 15th check and it earned its place during injection.** Injection
+   B changed the ref syntax; the canary passed reading `0 refs resolve` — green while asserting
+   nothing. So the parser must positively find refs or the gate reds.
+
+**Injection-verified three ways.** (A) rename the live `12.4b` register row → canary red, names
+`Rev 1 names 12 §12.4b`. (B) unqualify the ref → parser guard red at 0. (C) **the faithful
+2026-08-03 reproduction** — drop the `### 5.5` heading, add a row claiming `**12 §5.5**`, then run
+`tools/stamp_manual_revision.js` to re-seal as the merge did: **digests GREEN, canary RED**. That
+green digest is the entire reason the original went unnoticed.
+
+**Scope boundary held, not crossed.** The file header rules prose accuracy out as HR10/HR12 class
+and that still stands. *"Does §5.5 exist"* is structural; *"is what §5.5 says about the clad node
+correct"* is not.
+
+**Gates:** `run_manual_rev` **13 → 15 checks / 0 failed**; `BASELINES` updated in the same change.
+No `Manuals/*.md` content changed, so no revision row is owed — the digest check confirms it.
+
+**Also found, not fixed (not mine to clear):** the `status-wip-*` lane tags added 2026-08-04 are
+not being applied. At session start `develop` and `workbench` had committed 5 and 25 minutes
+earlier and **neither carried a tag** — the one occupancy signal that is not a guess, unused.
+
+---
+
 ## Session log — 2026-08-04h (#334 item 2 — a break is a hole, not a pump)
 
 **Task:** owner ruled *"Do item 2"* — make LOCA break flow pressure-dependent.

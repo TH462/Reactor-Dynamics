@@ -30,6 +30,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **`run_manual_rev` gained a content canary — the check a lane merge walks through** (#345).
+  The gate verified the revision table's *shape* (newest-first ordering, no gaps, set-wide stamp,
+  content digests, packed copy) and never read chapter **body** text: its only chapter read pulled
+  the `**Revision:**` stamp. So nothing connected a row's **claim** to the chapter, which is the
+  gap a merge walks through — `Manuals/` files are edited in the MIDDLE by two lanes, so git
+  resolves in one lane's favour and says nothing, unlike the append-at-top logs that conflict
+  loudly. It has happened: the 2026-08-03 backshop merge silently dropped an entire `Manuals/12`
+  §5.5 section, the digests were **re-sealed by the merge** so they agreed with the surviving text,
+  and the row still claimed the change — *the record said it was documented and it was not.*
+  Every chapter-qualified section a row names — `**12 §5.5**`, `**09 §2.0**`, `**12 §12.4b**` —
+  must now resolve to a heading or a register table row in that chapter. **The 2026-08-03
+  signature is reproduced and caught**: digests green, canary red naming the row.
+  Measured: 11 of 11 chapter-qualified refs resolve across the full 26-row pre-zeroing table,
+  1 of 1 live. Bare `§7.5` is deliberately not resolved — 44 in that table, pointing variously at
+  a Blueprint document or the chapter under discussion, so resolving them would guess. Both a
+  heading and a register row count, because chapter 12's §12.0 holds its declared simplifications
+  as a numbered table. One check rather than one per ref, so ordinary manual work cannot move the
+  baseline. The second new check is an **anti-hollow guard**: changing the reference syntax made
+  the canary pass while checking nothing, so the parser must positively find refs.
+  **Scope unchanged where it matters** — this proves a named section still *exists*, never that a
+  row's prose is *true*; that stays out of scope as HR10/HR12 class.
+  `run_manual_rev` **13 → 15 checks**.
+
 ### Fixed
 - **A break is a hole, not a pump — LOCA discharge now follows reactor coolant system pressure**
   (#334 item 2). A break used to flow at a **constant rate**, fixed the moment it opened and never
