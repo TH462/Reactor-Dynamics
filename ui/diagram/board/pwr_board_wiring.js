@@ -307,7 +307,6 @@
   // just stood DOWN. Disengaged channels are reported here deliberately.
   var ITEM_CHANNEL = {
     ims5glucngg: 'rods_tavg',                                                  // ROD AUTO
-    bdRodStatus: 'rods_tavg',                                                  // the rod status word itself (#306)
     imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',                      // boron ON / OFF
     imrpq29jo7t: 'boron_conc',                                                 // boron target ppm
     imrsgjmrjfg: 'feed_sg', imrsgjuh7l0: 'feed_sg', imrsgjwq1q0: 'feed_sg',    // feed AUTO / MAN / OFF
@@ -363,55 +362,37 @@
     return { text: bindName + ' ' + bindVal.toFixed(1), color: col };
   }
 
-  // ---- the ROD status word (#306) --------------------------------------------------
-  // Same shape and the same discipline as feedStatus above: switched on CODES
-  // (`scrammed`, `engaged`, `at_insertion_limit`, `moving`/`direction`), never on the
-  // channel's note, which is prose written for a human and would break silently the
-  // first time someone reworded it.
+  // ---- the ROD status word: REMOVED, and why it is not coming back ------------------
+  // #306 put a word in the ROD CONTROL card's top-right corner reading MANUAL / IN / OUT /
+  // HOLDING / TRIPPED / AT LIMIT / BLOCKED. Withdrawn *(OWNER DIRECTIVE, 2026-08-03: "the
+  // new rod control indication that says "manual", "in", "out, is redundant. when in rod
+  // auto the withdraw or insert buttons glow amber when its automatically moving the rods.
+  // remove it")*.
   //
-  // ORDER IS DELIBERATE, and AT LIMIT deliberately outranks motion. The bank can be
-  // sitting on the insertion limit and withdrawing at the same time — the limit only
-  // stops INWARD motion — so the two facts are not exclusive, and the limit is the one
-  // that says the controller has run out of room in the direction it normally corrects.
-  // Nothing is lost by ranking it first: the IN-OUT lamps on the WITHDRAW/INSERT buttons
-  // report the motion at the same instant, which is exactly the division a real board
-  // uses (the ROD LIMIT annunciators are independent of the in-out lamps, WTSM 8.4).
+  // It is redundant against indications that were ALREADY on the board, and the owner is
+  // right about the mechanism: the IN-OUT lamps below light on `g.moving && g.direction`,
+  // which is the identical predicate IN/OUT switched on — the same fact, twice, one of them
+  // in a place the eye does not go. Every other state has its own home too:
   //
-  // AMBER for everything that is not "the controller has this and is regulating": a
-  // tripped bank, an operator-driven one, and one pinned against its limit are all states
-  // where nobody should read the green ROD AUTO lamp as "Tavg is being looked after".
-  // Is a standing interlock refusing rod WITHDRAWAL right now? Reads the kernel's published
-  // interlock state (#306) rather than re-deriving the latch from the instrument and the
-  // config table — the block engages on `setpoint` and clears on `clears_below`, so a
-  // board-side copy would be a second implementation of a hysteretic condition, which is
-  // the #294/#303 defect shape. Matches on the BLOCKS list, not on prose or on an index.
-  function rodWithdrawBlocked(s) {
-    var ils = (s && s.interlocks) || [];
-    for (var i = 0; i < ils.length; i++) {
-      var il = ils[i];
-      if (!il.active) continue;
-      var b = il.blocks || [];
-      if (b.indexOf('rod_start') >= 0 || b.indexOf('rod_nudge') >= 0) return true;
-    }
-    return false;
-  }
-  function rodStatus(s) {
-    var g = rodGroup(s, 'control_rods');
-    if (!g) return { text: '—', color: BD_WARN };
-    if (g.scrammed) return { text: 'TRIPPED', color: BD_WARN };
-    var c = chan(s, 'rods_tavg');
-    if (!c || !c.engaged) return { text: 'MANUAL', color: BD_WARN };
-    if (g.at_insertion_limit) return { text: 'AT LIMIT', color: BD_WARN };
-    // A withdrawal block outranks motion for the same reason AT LIMIT does — both say the
-    // controller has lost a direction — and it outranks AT LIMIT only in that it can be
-    // true while the bank is nowhere near its floor. Ordered after, because being ON the
-    // insertion limit is the more consequential of the two: the limit is a tech-spec floor,
-    // the SUR block is a transient rate guard that clears itself.
-    if (rodWithdrawBlocked(s)) return { text: 'BLOCKED', color: BD_WARN };
-    if (g.moving && g.direction > 0) return { text: 'OUT', color: BD_OK };
-    if (g.moving && g.direction < 0) return { text: 'IN', color: BD_OK };
-    return { text: 'HOLDING', color: BD_OK };
-  }
+  //   MANUAL    the ROD AUTO lamp (ims5glucngg), dark when the channel is disengaged
+  //   AT LIMIT  the ROD LIMIT LO / LO-LO annunciators (`rod_limit_approach`, `rod_limit`)
+  //   BLOCKED   SUR HI (`sur_high`) for the 1.5 DPM startup-rate block, OTΔT/OPΔT ROD STOP
+  //             (`otdt_approach`, `opdt_approach`) for the #311 rod stops, plus the
+  //             interlock's own refusal message when the player presses WITHDRAW
+  //   TRIPPED   the scram state and the rod bottom indication
+  //   HOLDING   no lamp lit, which is what "holding" means
+  //
+  // So this is a DESIGN_CRITERIA Q4 removal — user complexity with no information behind
+  // it. The card title stays shortened to 'ROD CONTROL' (DOC_PATCHES below): that patch was
+  // made to free this corner, but it stands on its own and restoring 'REACTOR/' would be
+  // churn for no gain.
+  //
+  // `rodWithdrawBlocked` went with it — it existed ONLY to compute the BLOCKED word. If a
+  // future indication needs it, the shape worth restoring is the one that read the kernel's
+  // published `interlocks` and matched on the BLOCKS list, rather than re-deriving the latch
+  // from the instrument and the config table: the block engages on `setpoint` and clears on
+  // `clears_below`, so a board-side copy would be a second implementation of a hysteretic
+  // condition, which is the #294/#303 defect shape.
   // Module scope so selfTest can reach it — the driver object literal cannot call its
   // own methods from inside selfTest.
   function liveNoteFor(id, s) {
@@ -632,16 +613,10 @@
     { id: 'bdFeedStatus', kind: 'value',
       name: 'SG feed controller status  ·  sim: automation feed_sg engaged / stand_down / saturated',
       left: 1855, top: 548, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 15, rAnchor: true },
-    // Rod controller status, in the REACTOR CONTROL card's top-right corner (#306) — the
-    // at-a-glance half of what `liveNote` already reported only on inspection. The ROD AUTO
-    // lamp says the channel is engaged; it never said what it was DOING, so a player in AUTO
-    // had nothing but the step count ticking to go on.
-    //
-    // It fits only because DOC_PATCHES shortens the card title to 'ROD CONTROL' — see the
-    // measured widths there. Same trade #214 made on the SG FEED card.
-    { id: 'bdRodStatus', kind: 'value',
-      name: 'Rod controller status  ·  sim: automation rods_tavg engaged + control bank scrammed / at_insertion_limit / moving',
-      left: 730, top: 243, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true },
+    // (The ROD CONTROL card's top-right corner held a rod controller status word here from
+    // #306 until 2026-08-03, when the owner removed it as redundant against the IN-OUT
+    // lamps. The reasoning, and where each of its states is still shown, is at the
+    // `rodStatus` removal note above. The corner is free; the card title stays short.)
     // Core ΔT margin, in the NIS card's top-right corner (#311 observability). The OTΔT and
     // OPΔT trips are computed from a setpoint that MOVES with Tavg and pressure, so without
     // this the player carries two reactor trips and a rod-withdrawal block driven by a number
@@ -795,7 +770,6 @@
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
     bdFeedStatus: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
-    bdRodStatus: function (s) { return rodStatus(s); },                                                // rod controller status (#306)
     bdDtMargin: function (s) { return dtMargin(s); },                                                  // core ΔT margin, OTΔT/OPΔT (#311)
     imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
@@ -1824,18 +1798,18 @@
       // rather than a builder edit because pwr_board_data.js is REGENERATED — the same
       // change made in the builder is lost the next time anyone re-exports.
       imrqxsodu5j: { props: { title: 'SG FEED' } },
-      // REACTOR/ROD CONTROL card title, shortened to free its top-right corner for the rod
-      // controller status word (#306, bdRodStatus in EXTRA_ITEMS). A patch and not a builder
-      // edit for the same reason as the SG FEED one above — pwr_board_data.js is REGENERATED.
+      // REACTOR/ROD CONTROL card title, shortened. A patch and not a builder edit for the
+      // same reason as the SG FEED one above — pwr_board_data.js is REGENERATED.
       //
-      // MEASURED headless in US mode, and the arithmetic was wrong TWICE before the ruler
-      // settled it. The authored 'REACTOR/ROD CONTROL' renders 161 px at fontSize 12 in a
-      // 195 px card — 34 px of corner, against 54 px for 'HOLDING'. 'REACTOR CONTROL' is
-      // 127 px and looks like it leaves 68 px, but it does not: the widest word is
-      // 'AT LIMIT' at 61 px, and an rAnchor item's rendered right edge sits 41 px inside its
-      // authored `left`, so even pinned at the card edge the word starts 14 px INSIDE the
-      // title. 'ROD CONTROL' is 93 px and clears it. Nothing is lost by dropping 'REACTOR/':
-      // everything on this card is a rod action, SCRAM included — it drops the banks.
+      // THE ORIGINAL REASON IS GONE and this comment is deliberately not left saying
+      // otherwise: #306 shortened it to free the top-right corner for a rod controller
+      // status word, and that word was removed 2026-08-03 as redundant (see the `rodStatus`
+      // removal note). The corner is now empty. The short title is KEPT on the merit the
+      // measurement already established — nothing is lost by dropping 'REACTOR/', since
+      // everything on this card is a rod action, SCRAM included; it drops the banks. Keeping
+      // it also avoids a re-measure: at the authored 'REACTOR/ROD CONTROL' the title renders
+      // 161 px at fontSize 12 in a 195 px card, and any future corner item inherits that
+      // 34 px problem the moment someone adds one.
       ims14ylw4az: { props: { title: 'ROD CONTROL' } },
       // The bottom of the rod card re-spaced *(OWNER, 2026-08-02: "Can you adjust the speed
       // buttons down so they have equal spacing above and below?", then "Shift the rod auto
@@ -2277,48 +2251,17 @@
         var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === 'imrqxsodu5j'; })[0];
         return it && it.title === 'SG FEED' ? true : (it ? it.title : 'card missing');
       })() === true);
-      // ---- the ROD status word and the IN-OUT lamps (#306) --------------------------------
-      // Same discipline as the feed block above: switched on CODES. The ordering checks are
-      // the load-bearing ones — AT LIMIT must outrank motion (the bank can be on its limit
-      // and withdrawing at the same time, and the limit is the fact that says the controller
-      // has run out of room), and SCRAM must outrank everything.
-      function rs(opts) {
-        opts = opts || {};
-        return rodStatus({
-          automation: { channels: [{ id: 'rods_tavg', engaged: opts.engaged !== false }] },
-          interlocks: [{ active: !!opts.blocked, blocks: ['rod_start', 'rod_nudge'], withdrawal_only: true }],
-          control_state: { rod_groups: [{ id: 'control_rods',
-            scrammed: !!opts.scrammed, moving: !!opts.moving, direction: opts.direction || 0,
-            at_insertion_limit: !!opts.atLimit }] }
-        });
-      }
-      ck('driver: rod status HOLDING when engaged, still, and off its limit',
-        rs().text === 'HOLDING', rs().text);
-      ck('driver: rod status IN / OUT follows the drive direction',
-        rs({ moving: true, direction: -1 }).text === 'IN' &&
-        rs({ moving: true, direction: 1 }).text === 'OUT',
-        rs({ moving: true, direction: -1 }).text + '/' + rs({ moving: true, direction: 1 }).text);
-      ck('driver: rod status MANUAL when the operator has the bank',
-        rs({ engaged: false }).text === 'MANUAL', rs({ engaged: false }).text);
-      ck('driver: rod status TRIPPED outranks everything, including a disengaged channel',
-        rs({ scrammed: true, engaged: false, moving: true, direction: -1 }).text === 'TRIPPED',
-        rs({ scrammed: true, engaged: false, moving: true, direction: -1 }).text);
-      ck('driver: rod status AT LIMIT outranks motion — the bank can withdraw off its limit',
-        rs({ atLimit: true, moving: true, direction: 1 }).text === 'AT LIMIT',
-        rs({ atLimit: true, moving: true, direction: 1 }).text);
-      ck('driver: rod status BLOCKED on a standing withdrawal interlock (#306)',
-        rs({ blocked: true }).text === 'BLOCKED' &&
-        rs({ blocked: true, moving: true, direction: -1 }).text === 'BLOCKED',
-        rs({ blocked: true }).text);
-      ck('driver: an INACTIVE interlock is not a block — the flag is read, not its presence',
-        rs({ blocked: false }).text === 'HOLDING', rs({ blocked: false }).text);
-      ck('driver: AT LIMIT still outranks BLOCKED — a tech-spec floor beats a rate guard',
-        rs({ blocked: true, atLimit: true }).text === 'AT LIMIT',
-        rs({ blocked: true, atLimit: true }).text);
-      ck('driver: rod status is GREEN only while the controller is actually regulating',
-        rs().color === BD_OK && rs({ moving: true, direction: -1 }).color === BD_OK &&
-        rs({ engaged: false }).color === BD_WARN && rs({ atLimit: true }).color === BD_WARN &&
-        rs({ blocked: true }).color === BD_WARN && rs({ scrammed: true }).color === BD_WARN);
+      // ---- the IN-OUT lamps and rod speed indication (#306) --------------------------------
+      // The nine ROD STATUS WORD checks that stood here went with the word itself on
+      // 2026-08-03 (owner: redundant against these lamps). They are NOT re-homed onto
+      // anything: each state they covered is asserted where it actually lives now — the ROD
+      // AUTO lamp, the ROD LIMIT annunciators in `run_m4`, the OTΔT/OPΔT rod stops in
+      // `run_otdt`, and the interlock refusals in `run_m4`. Re-adding a driver check here
+      // for a thing the board no longer draws would be a test with no subject.
+      //
+      // What survives is the pair that is genuinely load-bearing, and the SCRAM one is the
+      // reason: the lamps are now the ONLY indication of automatic rod motion, so the
+      // failure mode they guard got more consequential, not less.
       // The IN-OUT lamps. A SCRAM must leave them DARK: the rods fall on gravity with the
       // drive de-energized, and a lit IN lamp there would say the drive is running when it
       // has just been dropped. This is the check that fails if someone "simplifies"

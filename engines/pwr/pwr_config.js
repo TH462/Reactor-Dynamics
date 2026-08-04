@@ -813,7 +813,20 @@
       // 2.07 and the runback fires on a normal ramp; at 10 %/min it is 4.57 and the runback
       // stays silent; 5 %/min buys only 4.72 for double the wait. The source's own 1 %/min is
       // an EXAMPLE of a selectable rate, not a maximum, so it is not a candidate.
-      load_rate_pct_per_min: 10.0,   // [tune]
+      //
+      // OFF *(OWNER DIRECTIVE, 2026-08-03: "I dont like the new load increase rate limite;
+      // turn it off.")*. 0 disables it: `load_mode.js` gates the ramp on `rate > 0` and
+      // otherwise assigns the commanded load straight through, which is the pre-#318 path
+      // and the one RBMK/BWR have always taken (the option is absent there). The machinery
+      // stays because the sourcing is good and re-enabling it is this one number.
+      //
+      // WHAT TURNING IT OFF COSTS, measured rather than assumed — the excursion above is
+      // real and comes back: an instantaneous 70 -> 100 MW step is again available to the
+      // player, and it again takes loop dT to within ~0.5 of the OPdT trip. That is a trip
+      // the player can walk into with one box entry. It is the owner's call and it is not a
+      // defect; note it here so the next agent does not "fix" the excursion by restoring
+      // the limit.
+      load_rate_pct_per_min: 0,      // [tune] — 0 = no limit; 10.0 was the #318 value
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)
       // so steady-state delivered steam equals the load demand at any secondary

@@ -172,8 +172,22 @@
         return RD.PwrBoardDriver.suppressBuiltInControls(id);
       }));
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
-      setNum('imro8rmka2y', 80); ck('func: generator load 80 MW -> load_target', Math.abs(cs().load_target_mwe - 80) < 1);
-      setNum('imro8rmka2y', 850); ck('func: generator load clamps to rated (100 MW)', Math.abs(cs().load_target_mwe - 100) < 1);
+      // ONE TICK between the entry and the read, and it is not padding. #318 split the
+      // operator's ASK from the EHC reference: `set_load_target` writes `load_cmd_mwe`, and
+      // `load_target_mwe` is brought to it by LoadMode.step on the next step. So the command
+      // no longer writes the reference through, and a read taken in the same breath as the
+      // keystroke sees the PREVIOUS load. Nothing on the board is wrong — a player never
+      // observes the gap, because the plant is stepping continuously underneath them.
+      //
+      // This check had been RED since #318 landed and nobody knew: board_check is in neither
+      // `run_all` nor CI, so a board assertion can rot through a merge, a gate run and a
+      // release without anything going amber. Found 2026-08-03 while removing the rod status
+      // word — by running it, which is the only way this file is ever checked.
+      //
+      // The tick makes it a BETTER test rather than a refit: it passes on the pre-#318 engine
+      // too, where the command wrote `load_target_mwe` directly and a step left it alone.
+      setNum('imro8rmka2y', 80); ticks(1); ck('func: generator load 80 MW -> load_target', Math.abs(cs().load_target_mwe - 80) < 1);
+      setNum('imro8rmka2y', 850); ticks(1); ck('func: generator load clamps to rated (100 MW)', Math.abs(cs().load_target_mwe - 100) < 1);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
 
       // --- instructor glow ---
