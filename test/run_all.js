@@ -74,9 +74,9 @@ var BASELINES = {
   // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
   // protection acted on a reading the plant never had. Each half injection-verified and
   // they discriminate independently.
-  'run_pwr.js':            { code: 0, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
-  'run_bwr.js':            { code: 0, score: '15/15 92passed' },
+  'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
   // 34 since 2026-07-25 (#131): PI-3, PI-8, PI-9 and the TR-11 end-state pin were
   // catalogued behaviours the battery never probed — the coverage todo list is now empty.
@@ -143,7 +143,7 @@ var BASELINES = {
   // through full flow computed a 0.0 °F ΔT — and INDICATED, that put the cold leg
   // above the hot leg in 48 % of samples. Fission and total heat are equal in steady
   // state, which is why 44 probes measuring near equilibrium all agreed with it.
-  'run_behavior.js':       { code: 0, score: '45pass 0xfail' },
+  'run_behavior.js':       { code: 0, secs: 56, score: '45pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -157,7 +157,7 @@ var BASELINES = {
   // the core melts, never how fast or which way the rate is going. MD-11 asserts the
   // SECOND DERIVATIVE instead: each 400 °C band must be crossed faster than the one
   // below. Measured 184/172/86/40 s with oxidation, 218/334/378/428 s without.
-  'run_meltdown.js':       { code: 0, score: '11pass 0xfail' },
+  'run_meltdown.js':       { code: 0, secs: 48, score: '11pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -630,7 +630,7 @@ var BASELINES = {
   // and the extra check asserts its QUANTISATION — load lands on 5 % multiples because the real
   // EHC steps 5 % at 200 %/min then holds 28.5 s. A continuous ramp cannot land on that grid, so
   // this check fails on the implementation it replaced, which the old '< 90 MWe' band could not.
-  'run_otdt.js':           { code: 0, score: '46checks 0failed' },
+  'run_otdt.js':           { code: 0, secs: 21, score: '46checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of
@@ -762,7 +762,7 @@ var BASELINES = {
   // `steam_dump` were each a complete no-op at a green 24/24, and `boron_conc` is
   // `defaultOn` — it shipped inert in every free-play preset lineup. Each new probe
   // engages ONE channel and was verified red by injection.
-  'run_autoctl.js':        { code: 0, score: '30/30' },
+  'run_autoctl.js':        { code: 0, secs: 19, score: '30/30' },
   // Back to 51/51 2026-07-26 (#218): pwr_msiv re-authored for P-9. The mission had been
   // a RACE — reopen before an automatic low-SG trip — and with the scram now landing at
   // closure that race is gone; worse, the decision beat's `scram` branch fired instantly
@@ -798,7 +798,7 @@ var BASELINES = {
   // HR10 only because that boil-off was reachable solely through the missing trips.
   // Injection-verified: restoring the old `crossed()` comparator reddens exactly those two.
   // If this number rises again, check it is not the branch coming back by accident.
-  'run_campaign.js':       { code: 0, score: '51/51 3017passed' },
+  'run_campaign.js':       { code: 0, secs: 110, score: '51/51 3017passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
@@ -853,7 +853,7 @@ var BASELINES = {
   // with the flag GENUINELY EARNED — emergency boration runs through `set_auto_setpoint` on
   // the boron_conc channel, an M4-only command, so engine-direct would replay an ATWS with
   // NO RESPONSE at all. One check here (the flag is justified); the stack owns the rest.
-  'run_procedures.js':     { code: 0, score: '29/29 140/140' },
+  'run_procedures.js':     { code: 0, secs: 41, score: '29/29 140/140' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -899,10 +899,11 @@ var BASELINES = {
   // steps later missed it under the stack while still passing engine-direct (where the
   // transient is slower). It lives on the confirm-scram step now, whose hold covers the
   // peak in both layers. A `saw` is only as good as the window it is placed in.
-  'run_procedures_stack.js': { code: 0, score: '29/29 261/261' },
+  'run_procedures_stack.js': { code: 0, secs: 70, score: '29/29 261/261' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
+    secs: 96,   // scheduling hint only — see the longest-first note in main()
     // 334 -> 335 passed on 2026-07-31 (#136): abuse_porv_walkaway now ASSERTS that an
     // overfilled RCS reads overfilled on both gauges. It used to end at inventory 120 %
     // (pinned at mass_max) with pressurizer level 7 %, and the probe printed both numbers
@@ -971,8 +972,8 @@ var BASELINES = {
   // the dev half failed and the public half went VACUOUS -- passing because its pattern no
   // longer appears anywhere. Retired rather than re-pointed at #tourOverlay: the tour has no
   // data-flag, so it shows on both channels and the distinction they guarded is gone.
-  'verify_flags_ui.js':      { code: 0, score: '42/42' },
-  'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
+  'verify_flags_ui.js':      { code: 0, secs: 17, score: '42/42' },
+  'verify_e2e_ui.js':        { code: 0, secs: 54, score: '16screenshots', slow: true },
   // NEW 2026-08-04 — `ui/test_panel/board_check.html` under the gate at last. It is the PWR
   // board's own harness (geometry, pipe animation state, colours, driver value functions,
   // real clicks) and it was a PAGE YOU OPEN: CLAUDE.md has said "run it after any board
@@ -1029,7 +1030,7 @@ var BASELINES = {
   // 183 -> 198 on 2026-08-03 (#319): PWR-T06's five controlled steps, 3 checks each. Its
   // STEP_UI entries went in with the procedure, so this number and run_manual_controls moved
   // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
-  'verify_manual_follow.js': { code: 0, score: '258checks', slow: true },
+  'verify_manual_follow.js': { code: 0, secs: 158, score: '258checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run
@@ -1081,13 +1082,60 @@ function discover() {
     .sort();
 }
 
-function main() {
+// Spawn one runner and buffer everything it says. Async twin of the spawnSync this used to
+// do — the runners were ALREADY independent processes whose output was fully buffered before
+// being scored, which is the property that made going parallel a scheduling change rather
+// than a test change. Nothing about what is asserted moves.
+function runOne(f) {
+  return new Promise(function (resolve) {
+    var t0 = Date.now();
+    var child = cp.spawn(process.execPath, [path.join(TEST_DIR, f)], { cwd: path.join(TEST_DIR, '..') });
+    var out = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', function (d) { out += d; });
+    child.stderr.on('data', function (d) { out += d; });
+    child.on('error', function (e) { out += '\nspawn error: ' + (e && e.message) + '\n'; });
+    child.on('close', function (code) {
+      resolve({ file: f, out: out, code: code == null ? -1 : code,
+                secs: ((Date.now() - t0) / 1000).toFixed(1) });
+    });
+  });
+}
+
+// Fixed-size worker pool. Results are collected BY INDEX so the summary, --record output and
+// drift list stay in discovery order however the finishes interleave; only the live progress
+// lines are in completion order, which is what tells you the thing is actually running wide.
+function runPool(scripts, jobs, onDone) {
+  var next = 0, out = new Array(scripts.length);
+  function worker() {
+    var i = next++;
+    if (i >= scripts.length) return Promise.resolve();
+    return runOne(scripts[i]).then(function (r) {
+      out[i] = r;
+      onDone(r);
+      return worker();
+    });
+  }
+  var ws = [];
+  for (var w = 0; w < Math.min(jobs, scripts.length); w++) ws.push(worker());
+  return Promise.all(ws).then(function () { return out; });
+}
+
+async function main() {
   var argv = process.argv.slice(2);
   var fast = argv.indexOf('--fast') >= 0;
   var record = argv.indexOf('--record') >= 0;
   var quiet = argv.indexOf('--quiet') >= 0;
   var onlyIx = argv.indexOf('--only');
   var only = onlyIx >= 0 && argv[onlyIx + 1] ? argv[onlyIx + 1].split(',') : null;
+  // --jobs=N, default min(10, cores - 2). Leaves headroom so the machine stays usable and
+  // the browser gates are not fighting the physics runners for the last core. `--jobs=1` is
+  // the escape hatch: it restores the old sequential order exactly, which is what to reach
+  // for if a runner is ever suspected of not being isolated.
+  var jobsArg = argv.filter(function (a) { return /^--jobs=\d+$/.test(a); })[0];
+  var JOBS = jobsArg ? Math.max(1, parseInt(jobsArg.split('=')[1], 10))
+                     : Math.max(1, Math.min(10, require('os').cpus().length - 2));
 
   var found = discover();
 
@@ -1102,44 +1150,57 @@ function main() {
     return true;
   });
 
+  // LONGEST FIRST. Makespan on a fixed pool is dominated by when the slowest job STARTS, and
+  // discovery order is alphabetical, which puts `verify_manual_follow` — the longest runner
+  // by a factor of two — dead last. Sorting by the `secs` hint in BASELINES pulls the heavy
+  // ones to the front; anything without a hint sorts as 0 and fills in behind them.
+  //
+  // THE HINTS CANNOT AFFECT CORRECTNESS. They are a scheduling nudge and nothing else: a
+  // stale or missing number costs a slightly worse wall time and can never change a score, a
+  // drift verdict or an exit code. Do not maintain them as if they were baselines.
+  var order = scripts.slice().sort(function (a, b) {
+    var sa = (BASELINES[a] && BASELINES[a].secs) || 0, sb = (BASELINES[b] && BASELINES[b].secs) || 0;
+    return sb - sa || (a < b ? -1 : 1);
+  });
+
   console.log(C.bold + 'Aggregate gate — ' + scripts.length + ' runners' + C.off +
+    C.dim + '  (' + Math.min(JOBS, scripts.length) + '-way parallel)' + C.off +
     (fast ? C.dim + ' (--fast: browser gates skipped)' + C.off : ''));
   console.log('');
 
-  var results = [];
-  for (var i = 0; i < scripts.length; i++) {
-    var f = scripts[i];
-    var base = BASELINES[f] || null;
-    process.stdout.write(C.dim + '  running ' + f + '…' + C.off);
-    var t0 = Date.now();
-    var r = cp.spawnSync(process.execPath, [path.join(TEST_DIR, f)], {
-      cwd: path.join(TEST_DIR, '..'),
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    var secs = ((Date.now() - t0) / 1000).toFixed(1);
-    var out = (r.stdout || '') + (r.stderr || '');
-    var code = r.status == null ? -1 : r.status;
-    var score = scrapeScore(out);
-
+  var byFile = {};
+  var done = 0;
+  var raw = await runPool(order, JOBS, function (r) {
+    var base = BASELINES[r.file] || null;
+    var score = scrapeScore(r.out);
     var drift = [];
     if (!base) drift.push('no baseline recorded');
     else {
-      if (code !== base.code) drift.push('exit ' + code + ' (baseline ' + base.code + ')');
+      if (r.code !== base.code) drift.push('exit ' + r.code + ' (baseline ' + base.code + ')');
       if (base.score && score !== base.score) drift.push('score ' + (score || '?') + ' (baseline ' + base.score + ')');
     }
     var ok = drift.length === 0;
-    results.push({ file: f, code: code, score: score, secs: secs, ok: ok, drift: drift, out: out, base: base });
-
-    process.stdout.write('\r' + (ok ? C.green + '  PASS' : C.red + '  DRIFT') + C.off +
-      '  ' + f + Array(Math.max(1, 26 - f.length)).join(' ') +
-      C.dim + (score || '—') + '  ' + secs + 's' + C.off +
+    byFile[r.file] = { file: r.file, code: r.code, score: score, secs: r.secs, ok: ok,
+                       drift: drift, out: r.out, base: base };
+    done++;
+    process.stdout.write((ok ? C.green + '  PASS' : C.red + '  DRIFT') + C.off +
+      '  ' + r.file + Array(Math.max(1, 26 - r.file.length)).join(' ') +
+      C.dim + (score || '—') + '  ' + r.secs + 's' +
+      '  [' + done + '/' + order.length + ']' + C.off +
       (ok ? '' : '  ' + C.red + drift.join('; ') + C.off) + '\n');
+  });
+  void raw;
 
-    if (!quiet && !ok) {
-      var tail = strip(out).trimEnd().split('\n').slice(-14);
+  // Back into DISCOVERY order for everything downstream — --record emits a BASELINES block
+  // that a human pastes, and it must not be shuffled by which runner happened to finish first.
+  var results = scripts.map(function (f) { return byFile[f]; }).filter(Boolean);
+
+  if (!quiet) {
+    results.filter(function (r) { return !r.ok; }).forEach(function (r) {
+      console.log(C.red + '  ── ' + r.file + C.off);
+      var tail = strip(r.out).trimEnd().split('\n').slice(-14);
       console.log(C.dim + tail.map(function (l) { return '      │ ' + l; }).join('\n') + C.off);
-    }
+    });
   }
 
   if (record) {

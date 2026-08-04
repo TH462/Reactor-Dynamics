@@ -678,6 +678,19 @@ not a changelog.**
 
 **Current gate baselines — `node test/run_all.js` is now the authority.**
 
+> **`run_all` runs 10-WAY PARALLEL since 2026-08-04** — MEASURED 800 s → 203 s (3.9×) on 12
+> cores, all 37 runners still at baseline, no check removed. The runners were ALREADY
+> independent processes with fully-buffered output, so this was a scheduling change, not a
+> test change. Three things to know. **`--jobs=1` restores the old sequential order exactly**
+> — reach for it if a runner is ever suspected of not being isolated. **Per-runner times in
+> the output are now CONTENTION times, not costs**: `run_pwr` reads 54 s where it takes 22 s
+> alone, so never quote a number from a parallel run as a runner's cost. And **the gate is
+> now contention-bound, not structure-bound** — the top three land at 203/185/176 s, so
+> speeding up any ONE of them promotes the next and buys almost nothing; that is why
+> `verify_manual_follow` going 196 → 158 s moved the wall clock by only 24 s. The `secs:`
+> hints in `BASELINES` are a longest-first SCHEDULING nudge and cannot affect a score, a
+> drift verdict or an exit code — do not maintain them like baselines.
+>
 > Since 2026-07-25 the baselines live as **data** in the `BASELINES` map at the top of
 > `test/run_all.js`, not as prose here. Run it; it compares all 37 runners against that
 > map and exits non-zero on any drift. Prose baselines are what rotted (this section
@@ -685,8 +698,10 @@ not a changelog.**
 > you move a number, update `BASELINES` and this section together.**
 
 ```
-node test/run_all.js            # all 37 runners (~6 min)
-node test/run_all.js --fast     # skip the 2 Playwright gates (~2.5 min)
+node test/run_all.js            # all 37 runners (~3.5 min, 10-way parallel)
+node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
+node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — the escape hatch if a runner
+                                #   is ever suspected of not being isolated
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
 ```

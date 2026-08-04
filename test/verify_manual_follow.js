@@ -8,8 +8,23 @@ var map = require('./manual_ui_map.js');
 
 var ROOT = path.join(__dirname, '..');
 var SCRATCH = process.env.GROK_GOAL_SCRATCH || path.join(require('os').tmpdir(), 'grok-goal-0a451deb05ff', 'implementer');
-var PORT = 9760 + Math.floor(Math.random() * 40);
+// EPHEMERAL, assigned by the OS in startServer below — NOT a random pick from a range.
+// This gate used 9760-9799 and verify_e2e_ui used 9750-9799: overlapping, both random. That
+// never bit while run_all was sequential, and became an intermittent collision the moment it
+// went parallel (2026-08-04) — the worst failure mode to put in a gate, because it fails a
+// run that has nothing wrong with it and passes on the retry. `listen(0)` cannot collide.
+var PORT = 0;
 
+// `waitUntil: 'load'`, not `'networkidle'` (2026-08-04). MEASURED on this page, 5 samples:
+// networkidle 0.64 s, load 0.29 s, domcontentloaded 0.25 s — networkidle waits an extra
+// half-second of NETWORK QUIET after the page is already usable, and this gate navigates 87
+// times, so it was ~30 s of pure sitting still. Verified sufficient rather than assumed: at
+// `load` the shell has `#manualBtn` visible AND `RD.PwrBoard.isMounted()` true, which are the
+// two things every phase below immediately depends on.
+//
+// `domcontentloaded` is NOT taken. It is barely faster and it fires before the deferred
+// engine/layer scripts finish, so the board would not be mounted — this gate would then be
+// racing the thing it exists to inspect.
 require('../ui/manual_procedures.js');
 var RD = globalThis.RD;
 
@@ -26,7 +41,7 @@ function startServer() {
       res.writeHead(200, { 'Content-Type': mime });
       res.end(fs.readFileSync(fp));
     });
-    srv.listen(PORT, '127.0.0.1', function () { resolve(srv); });
+    srv.listen(0, '127.0.0.1', function () { PORT = srv.address().port; resolve(srv); });
   });
 }
 
@@ -73,7 +88,7 @@ async function verifyProcedure(page, prof, proc) {
   var log = [];
   var fails = 0;
 
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof, { waitUntil: 'networkidle', timeout: 90000 });
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof, { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(600);
   await page.click('#manualBtn');
   await page.click('#manualNav [data-msec="procedures"]');
@@ -114,7 +129,7 @@ async function verifyProcedure(page, prof, proc) {
   // affordable only while STEP_UI covered 17 steps; filling it to 58 would have made this
   // gate several minutes slower for no extra assurance. Load once, click the tab when the
   // plant has one, check each entry.
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof, { waitUntil: 'networkidle', timeout: 90000 });
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof, { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(500);
   var lastView = null;
   for (var b = 0; b < expects.length; b++) {
@@ -139,7 +154,7 @@ async function verifyProcedure(page, prof, proc) {
   // moves forward, and the entries are in step order, so walk it once: 17 clicks, 1 load.
   // Sorted defensively — an out-of-order entry would otherwise silently skip a step.
   var ordered = expects.slice().sort(function (p, q) { return p.i - q.i; });
-  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof + '&follow=' + proc.id, { waitUntil: 'networkidle', timeout: 90000 });
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof + '&follow=' + proc.id, { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(400);
   var at = 0;
   for (var f = 0; f < ordered.length; f++) {

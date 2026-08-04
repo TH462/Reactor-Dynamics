@@ -66,7 +66,7 @@ function startServer() {
       res.writeHead(200, { 'Content-Type': mime(fp) });
       res.end(fs.readFileSync(fp));
     });
-    srv.listen(PORT, '127.0.0.1', function () { resolve(srv); });
+    srv.listen(0, '127.0.0.1', function () { PORT = srv.address().port; resolve(srv); });
   });
 }
 
