@@ -464,9 +464,12 @@
       // subcooling 0.2 °F (0.1 °C). Adding the missing mass-surge driver alone changed that by
       // 9 psi — measured — because the heater simply rebalanced against it.
       //
-      // IT IS DELIBERATELY STILL 0.55, AND THAT IS AN OPEN OWNER DECISION, NOT AN OVERSIGHT.
-      // Closing the gap is a change to the plant's RULED IDENTITY, and the collateral
-      // escalates smoothly, so it is not a tuning call. Measured full stack, `run_behavior`
+      // IT STAYS AT 0.55, RULED *(OWNER RULING, 2026-08-04: "F14 go with the recommendation.")*,
+      // on the recommendation below: the lesson is DIRECTION AND ORDERING — level first, then
+      // pressure, then subcooling — and since #337 the player gets all three. The magnitude is a
+      // declared departure at `Manuals/12` §12.15, not a defect to be fixed later. Closing the gap
+      // would trade the ride-out character the plant is built around for a sharper version of a
+      // coupling it now has. Do not re-open this as a tuning task. Measured full stack, `run_behavior`
       // red count and the subcooling cue from a leak that drives the pressurizer to the 17 %
       // heater cutoff (SGTR sev 0.02), everything else held:
       //
@@ -483,7 +486,7 @@
       // and OTΔT is what binds it (the #311 trap, from the other side). Below 0.20 the
       // pressurizer also stops winning against its own spray, so TR-11's stuck-open spray
       // valve depressurizes the plant to the containment floor instead of parking. Both are
-      // real plant behaviours, and choosing them over the present ones is the owner's call.
+      // real plant behaviours, and the ruling above chose the present ones.
       K_heater: 0.55,
       K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
       // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for

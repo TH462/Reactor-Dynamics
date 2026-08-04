@@ -100,8 +100,13 @@ The wall between 0.10 and 0.05 is **TR-1h**: "no scram" on a full load rejection
 ride-out character, a ruled departure from the Westinghouse 50 % criterion, and **OTΔT is what
 binds it** — the #311 trap from the other side. Below 0.20 the pressurizer also stops winning
 against its own spray, so TR-11's stuck-open spray valve runs the plant to the containment floor
-(15.41 → 0.10 MPa) instead of parking. Both are real behaviours; choosing them over the present
-ones changes ruled identity, so it is **filed on #337 as an owner decision**, not taken here.
+(15.41 → 0.10 MPa) instead of parking.
+
+**RULED — it stays at 0.55** *(OWNER RULING, 2026-08-04: "F14 go with the recommendation.")*. The
+recommendation was A: the lesson is DIRECTION AND ORDERING (level, then pressure, then subcooling)
+and since #337 the player gets all three, so buying 8 °F of extra cue by giving up the ride-out
+trades a Tier A coupling the plant is built around for a sharper version of one it now has. This is
+now a **declared departure** at `Manuals/12` §12.15, not deferred work — F14 is closed, not parked.
 
 **What did land, measured on the SGTR sweep (pre-trip window, `hot_full_power`):**
 
