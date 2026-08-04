@@ -82,6 +82,7 @@
     'TR-7b': 'probe (post-trip leg ΔT vs the energy balance — the split read FISSION power, #315)',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-14': 'probe (LOFW drain rate vs Ginna UFSAR Table 15.2-4 — the SOURCED anchor, #135)',
+    'TR-15': 'probe (natural circulation — W ∝ Q^⅓, void-gated; LOOP/SBO survivable, WTSM 3.2.6.3)',
     // TR-11: the catalog row ("heaters lose, low-P trip unless isolated") predates
     // the P5 spray capacity cap — measured under the cap the heaters WIN, and the
     // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
@@ -1000,20 +1001,170 @@
           fmt(F(dt0), 1) + ' °F ± 0.9');
 
         // ---- leg D: the flow term. Lose the pumps after the trip and the same heat has
-        // to leave through less flow, so the split OPENS. `flow_floor` bounds it.
+        // to leave through less flow, so the split OPENS.
+        //
+        // RE-AUTHORED 2026-08-04 (#325), and the reason is the HR10 case this file keeps
+        // meeting. This leg used to assert *"flow is at or below the modelling floor"* and
+        // compute its expectation as `Q / floor`. Both were only true because the plant had
+        // NO NATURAL CIRCULATION: losing the pumps drove flow to zero, so the floor was
+        // always what divided. It was pinning the absence of the mechanism #325 built.
+        //
+        // The claim that survives is the ENERGY BALANCE — the same one legs A and A2 make —
+        // so it now divides by `max(flow, floor)` exactly as they do, and it passes on the
+        // OLD plant too (flow → 0 there, so the max picks the floor and the arithmetic is
+        // the previous check verbatim). The check BELOW it is the new assertion and fails on
+        // the old plant by construction: flow lands in the natural-circulation band instead
+        // of at zero. Two checks, one that got better and one that is genuinely new, rather
+        // than one refitted.
         var d = H('hot_full_power');
         d.run(30);
         d.cmd('scram');
         d.run(60);
         d.cmd('set_rcp', { running: false });
         d.run(240);
-        ck('flow is at or below the modelling floor', fmt(d.ts().pump_flow_pct, 1) + ' %',
-          d.ts().pump_flow_pct / 100 <= floor, '≤ ' + (floor * 100) + ' %');
-        var expD = dt0 * (d.ts().core_heat_pct / 100) / floor;
+        var flowD = d.ts().pump_flow_pct / 100;
+        var expD = dt0 * (d.ts().core_heat_pct / 100) / Math.max(flowD, floor);
         var obsD = d.ts().thot_c - d.ts().tcold_c;
         ck('losing forced flow OPENS the split — same heat, less flow',
           fmt(F(obsD), 1) + ' °F vs ' + fmt(F(expD), 1) + ' °F expected',
-          expD > 0 && Math.abs(obsD / expD - 1) < 0.05, 'within 5 % of Q/floor');
+          expD > 0 && Math.abs(obsD / expD - 1) < 0.05, 'within 5 % of Q/flow');
+        // The flow the split is dividing by is BUOYANCY-DRIVEN, not a stopped rotor (#325).
+        // Banded above the floor deliberately: `flow_floor` is set BELOW the weakest natural
+        // circulation this plant can make (~1.9 % at a fully-decayed core), so a reading
+        // inside the band proves the floor is not what is holding the number up.
+        ck('…and the flow it divides by is NATURAL CIRCULATION, not a stopped rotor',
+          fmt(d.ts().pump_flow_pct, 2) + ' % of rated', flowD > floor * 1.5 && flowD < 0.08,
+          '> ' + fmt(floor * 150, 1) + ' %, < 8 %');
+        T.checkSanity(ck, a);
+      });
+    },
+
+    /* TR-15 — NATURAL CIRCULATION (#325, ruled 2026-08-04: "Go with one B").
+     *
+     * Until 2026-08-04 `natural_circ_flow` was 0.0 and a loss of offsite power was
+     * TERMINAL on this plant: measured, damage at 30 min and melt at 45 min, and starting
+     * AFW moved melt to 50 min and nothing else. That is not conservatism, it is a missing
+     * heat-transport path — and it made two Tier C CORE casualties (E04/E05) evolutions in
+     * which nothing the player does matters.
+     *
+     * SOURCED — WTSM 3.2.6.3 (ML11223A213, p. 3.2-26): "The higher elevation of the steam
+     * generators relative to the reactor vessel produces a thermal driving head to establish
+     * and maintain flow in the RCS when heat is removed from the steam generators by dumping
+     * steam. Natural circulation flow is sufficient only for decay heat removal of a
+     * shutdown reactor, not for power operation."
+     *
+     * WHAT IS SOURCED AND WHAT IS NOT, because they are different claims. The SHAPE is:
+     * buoyancy head ∝ ΔT, resistance ∝ W², so W = C·√ΔT, and closing that against the core
+     * rise ΔT = delta_T_rated·Q/W gives W ∝ Q^⅓. Leg B asserts that exponent. The SCALE (C)
+     * is FITTED — every attempt at a primary for the magnitude failed from this environment,
+     * and the "2–5 %" this repo used to quote in §8.6 and Manuals/01 was uncited inherited
+     * prose, so it is deliberately NOT used as the anchor and no leg here asserts it.
+     *
+     * LEG C IS THE ONE THAT MAKES THIS PHYSICS RATHER THAN A FLOOR. A constant floor was
+     * measured first and rejected: it circulates through a FULLY VOIDED loop
+     * (`primary_void_fraction` 1.00 reading 3 % flow, driving Tavg to 245 °F while the clad
+     * melted at 3827 °F). Natural circulation needs a continuous liquid column — which is
+     * why tripping the pumps into a voided loop at TMI-2 established nothing.
+     *
+     * LEG E EXISTS SO THIS DOES NOT READ AS IMMUNITY. Natural circulation moves heat to the
+     * steam generator; it does not remove it. Take the secondary heat sink away and the
+     * plant must still be lost, or the change has traded one wrong lesson for another. */
+    'TR-15': function () {
+      return test('TR-15 natural circulation — decay heat rides out a LOOP, and a voided loop does not', function (ck) {
+        var cfgP = RD.PWR_CONFIG.primary;
+        var F = function (c) { return c * 9 / 5; };
+
+        // ---- leg A: the headline. LOOP at power, AFW on, ride it out.
+        var a = H('hot_full_power');
+        a.run(60);
+        a.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        a.run(120);
+        a.cmd('set_afw', { active: true });
+        a.run(3600);                                        // out to t+60 min — the pre-#325 plant melted at 45
+        var ta = a.ts();
+        ck('the RCPs are stopped', String(ta.pump_running), ta.pump_running === false, 'false');
+        ck('but flow does NOT decay to zero — buoyancy takes over',
+          fmt(ta.pump_flow_pct, 2) + ' % of rated',
+          ta.pump_flow_pct > 1.0 && ta.pump_flow_pct < 8.0, '1–8 %');
+        ck('…and the plant says so', String(ta.natural_circulation), ta.natural_circulation === true, 'true');
+        // The pre-#325 plant reached damage at 30 min and melt at 45 min on this exact rig.
+        ck('an hour in, the core is intact', 'damaged ' + String(ta.fuel_damaged) + ', melted ' + String(ta.melted),
+          ta.fuel_damaged !== true && ta.melted !== true, 'neither');
+        ck('and Tavg is being HELD, not merely rising slowly',
+          fmt(F(a.range('tavg_c').max - ta.tavg_c), 1) + ' °F below the peak, ' + fmt(ta.tavg_c * 9 / 5 + 32, 0) + ' °F',
+          ta.tavg_c < 310, '< 590 °F (310 °C)');
+
+        // ---- leg B: THE LAW. W ∝ Q^⅓. Sampled at two points down the decay tail and
+        // compared as a RATIO, so it tests the exponent rather than the fitted scale —
+        // a linear law (W ∝ Q) would give 2.46 where this expects 1.35 on the same data.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('scram');
+        b.cmd('set_rcp', { running: false });
+        b.cmd('set_afw', { active: true });
+        b.run(900);
+        var q1 = b.ts().core_heat_pct, w1 = b.ts().pump_flow_pct;
+        b.run(2700);                                        // ~t+60 min, decay tail well down
+        var q2 = b.ts().core_heat_pct, w2 = b.ts().pump_flow_pct;
+        var predicted = Math.pow(q1 / q2, 1 / 3), observed = w1 / w2;
+        ck('the decay tail actually fell between the samples (or the ratio is vacuous)',
+          fmt(q1, 2) + ' % → ' + fmt(q2, 2) + ' %', q1 / q2 > 1.5, 'ratio > 1.5');
+        ck('flow follows the CUBE ROOT of core heat (W ∝ Q^⅓, WTSM 3.2.6.3 driving head)',
+          'observed ' + fmt(observed, 3) + ' vs predicted ' + fmt(predicted, 3),
+          Math.abs(observed / predicted - 1) < 0.05, 'within 5 %');
+
+        // ---- leg C: A VOIDED LOOP DOES NOT CIRCULATE. The TMI-2 discriminator, and the
+        // check that separates this from a constant floor.
+        var c = H('hot_full_power');
+        c.run(60);
+        c.cmd('inject_failure', { failure_id: 'station_blackout' });
+        c.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.3 });
+        c.run(600);
+        var tc = c.ts();
+        ck('the loop really is voided', fmt(tc.primary_void_fraction, 2) + ' void fraction',
+          tc.primary_void_fraction > (cfgP.natural_circ_void_cutoff || 0.25), '> cutoff');
+        // Banded rather than exactly zero, and the reason is worth knowing:
+        // `primary_void_fraction` is a THRESHOLD function of subcooling, so it chatters as
+        // the bulk crosses saturation, and each flicker lets the 8 s coastdown τ leak a
+        // little flow back. Measured residue ~0.03 %; the rejected constant-floor design
+        // read 3.00 % here, so 0.5 % still discriminates by two orders of magnitude.
+        ck('so there is NO liquid column to drive — circulation is lost',
+          fmt(tc.pump_flow_pct, 3) + ' % of rated', tc.pump_flow_pct < 0.5, '< 0.5 % (residue only)');
+        ck('…and the plant does not claim natural circulation it does not have',
+          String(tc.natural_circulation), tc.natural_circulation === false, 'false');
+
+        // ---- leg D: SBO. AFW is turbine-driven (#332 leg D / WTSM 5.7.5) and the CVCS
+        // and ECCS pump are dead, so this is natural circulation carrying the plant with
+        // NOTHING electrical helping it.
+        var d = H('hot_full_power');
+        d.run(60);
+        d.cmd('inject_failure', { failure_id: 'station_blackout' });
+        d.run(120);
+        d.cmd('set_afw', { active: true });
+        d.run(3600);
+        var td = d.ts();
+        ck('every ac bus is dead (so no charging, no SI — #332)', String(td.ac_available),
+          td.ac_available === false, 'false');
+        ck('natural circulation still carries the core through an SBO',
+          String(td.natural_circulation) + ', ' + fmt(td.pump_flow_pct, 2) + ' %',
+          td.natural_circulation === true && td.fuel_damaged !== true, 'true, undamaged');
+
+        // ---- leg E: IT IS NOT IMMUNITY. Natural circulation MOVES heat to the steam
+        // generator; the secondary still has to remove it. Same LOOP as leg A with AFW
+        // blocked — if this passes, the change has traded one wrong lesson for another.
+        var e = H('hot_full_power');
+        e.run(60);
+        e.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        e.cmd('inject_failure', { failure_id: 'afw_failure' });
+        // 90 min, and it is LOAD-BEARING — trimmed to 60 first and the leg went red at
+        // Tavg 660 °F still climbing. Natural circulation distributes the heat while it
+        // has somewhere to put it, so losing the sink now takes LONGER to reach damage
+        // than the pre-#325 plant's 30 minutes. Do not shorten this to save gate time.
+        e.run(5400);
+        var te = e.ts();
+        ck('with the heat sink gone the plant is still lost — circulation is not cooling',
+          'damaged ' + String(te.fuel_damaged) + ' @ Tavg ' + fmt(te.tavg_c * 9 / 5 + 32, 0) + ' °F',
+          te.fuel_damaged === true, 'damaged');
         T.checkSanity(ck, a);
       });
     },

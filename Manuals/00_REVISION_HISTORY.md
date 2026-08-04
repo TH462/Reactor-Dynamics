@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 25 (2026-08-03)  
+**Set revision:** 26 (2026-08-04)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -20,6 +20,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 26 | 2026-08-04 | **Natural circulation is modeled — a loss of offsite power was TERMINAL and is now survivable** (#325) *(OWNER RULING, 2026-08-04: "Go with one B")*. **12 §12.4** used to head the exclusions list with *"No natural circulation"*, and **01** carried *"Not modeled — flow decays to zero, so loss of flow is more severe here than reality"*. **"More severe" was a large understatement**: with the RCPs stopped there was no core→SG heat path at all, so a LOOP reached fuel damage at 30 minutes and melt at 45, and starting AFW moved melt to 50 minutes and changed nothing else. Now built: the steam generators sit above the core, so the hot/cold density difference drives flow — WTSM 3.2.6.3 (ML11223A213), *"The higher elevation of the steam generators relative to the reactor vessel produces a thermal driving head … sufficient only for decay heat removal of a shutdown reactor, not for power operation."* Buoyancy head scales with loop ΔT and resistance with flow squared, and the core rise is itself heat/flow, so the two close to **flow ∝ the cube root of core heat** — measured 4.1 % of rated at 5.3 % decay heat, 3.0 % at 2.1 %. **Two limits are the lesson and both are documented**: it needs a **liquid-filled loop** (a voided loop circulates nothing — the TMI-2 case), and it MOVES heat rather than removing it, so losing the secondary heat sink still ends in damage. **07 PWR-E05** drops its *"SBO may be unsurvivable under some physics configurations"* limitation note for a real acceptance and a verification step, and gains the #332 consequence — the blackout takes charging, letdown and SI with it, so inventory only falls. **The MAGNITUDE is fitted, not sourced**, and §12.4 now says so: the “2–5 %” this set used to quote was uncited inherited prose and is deliberately not the anchor. | #325 natural circulation |
 | 25 | 2026-08-03 | **Two corrections to the runback, and an operator load rate limit** (#318). **09** now says the runback waits for the ΔT margin to HOLD below the rod stop for about **8.5 seconds** rather than acting the instant it is touched — a brief dip does not count. That delay is not a convenience: the real signal needs *"ΔT in **two out of four** reactor coolant loops"* within 3 % (WTSM 12.2 §12.2.3.7/.8), and **that 2/4 coincidence voting is the law's noise immunity**, which a single-loop plant structurally cannot have. Without it the plant cut load permanently on a 0.10-second instrument-noise clip during an ordinary load increase. **Also new: an operator load rate limit of 10 %/min on load INCREASES** *(OWNER, 2026-08-03: "Come up with your own rate for this plant that's fast enough to keep it interesting and slow enough to be safe.")* — real turbine control is rate-limited (WTSM 11.3, ML11223A295) and this plant permitted an instantaneous step that took loop ΔT within 0.51 of the OPΔT trip. 10 %/min is the ceiling **09** §8.0 already documented. It applies to increases only: a load REJECTION is an event, not an operator ramp, and must still arrive at once. | #318 rate limit |
 | 24 | 2026-08-03 | **The runback law was INVENTED where the source specifies it exactly** (#318). The previous runback revision (**Rev 21**) described a continuous ramp with a persistence delay — both mine. WTSM 11.3 *Westinghouse Electrohydraulic Control System* (ML11223A295), Turbine Runbacks, gives the real law verbatim: *"the EHC system reduces load at 200%/min for 1.5 sec (a 5% load change), then holds the load constant for 28.5 sec. If the runback condition has not cleared, the load will be reduced by another 5% in the next 30-sec interval."* That is what *cyclic* means, and **the cycle is the restraint**: a transient dip costs one 5 % step and nothing more, which is precisely what the invented delay was trying to buy. **09** now describes the stepped behaviour the operator actually sees. Measured — a **15 % steam line break** takes **two steps to 90 MWe** and becomes a ride-out, where the invented ramp drove it to 76 MWe. The document was fetchable throughout; it simply was not fetched. | #318 sourced law |
 | 23 | 2026-08-03 | **Rev 18's changes were LOST IN A MERGE and are restored here, plus the note they were missing.** The 2026-08-03 backshop merge resolved `12_SIM_PHYSICS.md` in the other lane's favour and silently dropped the whole zirconium-oxidation section — so **12 §5.5** went back to saying the cladding hot node heats "at the local decay-heat rate" and **§13** to "No hydrogen generation", while the engine did neither. The revision table still carried the Rev 18 row claiming those edits, and the content digests were re-sealed by the merge, so `run_manual_rev` agreed with the surviving text: **the record said it was documented and it was not.** Both sections restored. **New in §5.5:** *"Above about 3452 °F (1900 °C), 'peak cladding temperature' stops meaning cladding"* — the trainer has two endpoints (cladding failure 2192 °F / 1200 °C, fuel melt 5072 °F / 2800 °C) and **nothing between**, while a real core passes control-rod melt at 1520.6 °F (827 °C), control-rod failure at 2240.6–2600.6 °F (1227–1427 °C), **Zircaloy melting at 3194.6–3590.6 °F (1757–1977 °C)** and UO₂ liquefaction by dissolution from ~4580.6 °F (2527 °C) — sourced to OECD/NEA CSNI-R(2000)21. So the peak-cladding readout is a peak core-MATERIAL temperature above ~1900 °C and must not be quoted as a cladding temperature, and the melt endpoint is **late**. Declared deliberate: it is all past the point where the trainer teaches anything. **One correction to Rev 18's own text:** it listed "never steam-starved" among our simplifications; **10 CFR 50 Appendix K §5 requires it** — *"The reaction shall be assumed not to be steam limited"* — so it is the regulatory model, not a shortcut. | #238 restore + clad note |
@@ -72,19 +73,19 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 25 (2026-08-03). A mismatch means a chapter changed with no
+     Sealed at Rev 26 (2026-08-04). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
-     01_GENERAL_DESCRIPTION.md b0657dc935d36cbb
+     01_GENERAL_DESCRIPTION.md 0afb4cce195e2133
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
      03_CONTROLS_AND_INDICATIONS.md a3aa20fba274e2ae
      04_NORMAL_OPERATIONS.md d42cd39fc1fc676b
      05_MODE_TRANSITIONS.md 04a8013bad9ca00f
-     06_ALARM_RESPONSE.md 51f2004b1bb8bc9b
-     07_ABNORMAL_EMERGENCY.md 9fe261b35b98e5d1
+     06_ALARM_RESPONSE.md 4bc2d926b273f4d8
+     07_ABNORMAL_EMERGENCY.md 75c7875dc7531302
      08_ACCIDENT_TMI.md d6a3ff47c6786021
      09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md 91cf1f14bfb19e22
+     12_SIM_PHYSICS.md fcc8b3b5f555a1e1
      README.md 9a103035dfb47eca
 -->

@@ -716,6 +716,12 @@
       condensate_flow_normalized: s.condensate_flow_normalized || 0,
       condensate_pump_running: s.condensate_pump_running !== false,
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
+      // Buoyancy-driven flow with the RCPs stopped (#325). NOT an instrument and NOT a
+      // board lamp — a real crew verifies natural circulation from loop ΔT, subcooling and
+      // stable SG pressure, all of which this board already has. It is here because
+      // `pump_flow_pct` alone cannot tell 4 % of buoyancy from 4 % of a coasting rotor,
+      // and those are different plant states.
+      natural_circulation: !!s.natural_circulation,
       ac_available: s.ac_available !== false,   // Class 1E ac switchgear energized (#332) — see step 0a
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       cw_inlet_temp_c: s.cw_inlet_temp_c,

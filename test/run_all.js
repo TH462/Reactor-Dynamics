@@ -143,7 +143,7 @@ var BASELINES = {
   // through full flow computed a 0.0 °F ΔT — and INDICATED, that put the cold leg
   // above the hot leg in 48 % of samples. Fission and total heat are equal in steady
   // state, which is why 44 probes measuring near equilibrium all agreed with it.
-  'run_behavior.js':       { code: 0, score: '47pass 0xfail' },
+  'run_behavior.js':       { code: 0, score: '48pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -406,7 +406,7 @@ var BASELINES = {
   // the arithmetic this comment exists to stop.
   // MEASURED 136 on the fully merged tree — develop 125, workbench 128, backshop 127.
   // Adding them up gives 380. Three lanes, one measurement.
-  'run_hardrules.js':      { code: 0, score: '135checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '141checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -429,7 +429,7 @@ var BASELINES = {
   // 141 -> 143 (2026-08-03, #311 flag ON): the two OTdT/OPdT approach ALARMS arrive, and
   // this gate's second contract makes them declare a `category` — the design working, not
   // drift. Enabling protection is expected to move this and run_reachability together.
-  'run_contract.js':       { code: 0, score: '144checks 0failed' },
+  'run_contract.js':       { code: 0, score: '145checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

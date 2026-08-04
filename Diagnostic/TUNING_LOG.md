@@ -20,6 +20,114 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04 (#325 — natural circulation, and a LOOP stops being terminal)
+
+**Task:** owner asked for the options on #325 and then ruled *(OWNER RULING, 2026-08-04: "Go with one B")* —
+build it as the void-gated ΔT-driven form, not a constant floor. `engines/pwr/pwr_config.js`,
+`pwr_primary.js` (`naturalCircFlow` + `stepFlow`), new probe **TR-15**, `run_behavior` **47 → 48**,
+`run_contract` **144 → 145**, manual set **Rev 25 → 26**.
+
+### The options brief was wrong about the cost, and measuring said so
+
+#325 costed option (1) as *"the largest change; a real physics addition (flow as a function of core ΔT and
+loop geometry)"*. **`natural_circ_flow` already existed** as the pump-coastdown target in `pwr_config.js`,
+set to `0.0`, and `Q_coolant_to_sg` was already proportional to `flow_frac`. Flipping that one constant to
+0.03 made a LOOP fully survivable and **broke nothing** — nine runners (`run_pwr`, `run_meltdown` ×2,
+`run_behavior`, `run_campaign`, `run_procedures` ×2, `run_ops`, `run_scenarios`) all at baseline.
+
+**That zero is itself the finding.** Nothing in the suite asserted the terminal behaviour — the #315/#329
+shape a third time.
+
+### Why the cheap version was rejected, measured
+
+A constant floor **circulates through a fully voided loop**. Measured, SBO + large LOCA:
+`primary_void_fraction` **1.00** with `pump_flow_pct` reading **3.00**, Tavg driven to **245 °F (119 °C)**
+while the clad melted at **3827 °F (2108 °C)** — an incoherent picture, and precisely the TMI-2 case, where
+tripping the pumps into a voided loop established nothing. Right outcomes (the core still melts, because
+uncovery dominates), wrong mechanism: HR10. `_dry_factor` gates on *secondary* dryout only, so nothing else
+would have caught it.
+
+### The law, and why it is solved rather than iterated
+
+Sourced — WTSM 3.2.6.3 (**ML11223A213**, p. 3.2-26), fetched via the Wayback + browser-UA workaround:
+
+> *"It is essential to ensure sufficient flow to remove reactor decay heat even when reactor coolant pumps
+> are not operating. **The higher elevation of the steam generators relative to the reactor vessel produces
+> a thermal driving head** to establish and maintain flow in the RCS when heat is removed from the steam
+> generators by dumping steam. Natural circulation flow is sufficient only for **decay heat removal of a
+> shutdown reactor, not for power operation**."*
+
+Buoyancy head ∝ ΔH·β·ΔT, loop resistance ∝ W², so **W = C·√ΔT**. The core rise is itself
+ΔT = `delta_T_rated`·Q/W (the #315 form), so the loop closes:
+
+> W = C·√(delta_T_rated·Q/W) ⇒ W³ = C²·delta_T_rated·Q ⇒ **W ∝ Q^⅓**
+
+**Solved, not iterated, for two reasons that are not style.** The fixed-point form would read a ΔT that
+`flow_floor` CLAMPS below 10 % flow — exactly the band natural circulation lives in — and a lagged
+self-referential flow term rings. The cube root is not a fudge: it falls out of two independently-motivated
+relations, which is the internal check on both. Measured **1.343 observed vs 1.342 predicted**.
+
+**Q is `_Q_total`, not `power_pct`** — decay heat IS the point, and reading fission power would compute zero
+circulation for a scrammed core. That is #315's exact defect one function away, and the injection table
+below shows TR-15 catches it.
+
+### `flow_floor` 0.1 → 0.015, and why it was not optional
+
+`delta_T_raw = delta_T_rated·Q / max(flow_frac, flow_floor)`. With circulation at ~4 % and the floor at
+10 %, **the leg split under-read by 2.4×**: measured 34.5 °F where the energy balance says 81.9 °F. That is
+#315 again, in the regime this change exists to create — and **loop ΔT is the cue a real crew uses to verify
+natural circulation**, so shipping it clamped would have half-built the feature. 0.015 sits below the
+weakest circulation this plant can make (~1.9 % at a fully decayed core), so it never binds where it
+matters and still guards flow → 0. Blast radius measured: `run_otdt` unmoved at 46, everything else green,
+**one** probe red — TR-7b, which was pinning the defect.
+
+### TR-7b leg D was pinning the ABSENCE of the mechanism
+
+It asserted *"flow is at or below the modelling floor"* and computed its expectation as `Q / floor`. Both
+were true only because losing the pumps drove flow to zero. Re-authored: the energy balance now divides by
+`max(flow, floor)` exactly as legs A/A2 do — **and passes on the OLD plant too**, since flow → 0 there and
+the max picks the floor, making it the previous check verbatim. The new assertion is a separate check that
+fails on the old plant by construction: the flow it divides by is in the natural-circulation band. Two
+checks, one improved and one genuinely new, rather than one refitted (HR10).
+
+### TR-15, injection-verified six ways
+
+| injection | reddens |
+|---|---|
+| `natural_circ_coeff: 0` (the pre-#325 plant) | **9 checks** — TR-7b ×2, TR-15 ×7, incl. damaged **and** melted at 675 °F |
+| constant floor instead of the law | cube-root check (1.000 vs 1.342) + the SBO leg |
+| linear in Q instead of Q^⅓ | cube-root check (**2.423** vs 1.342) + the SBO leg |
+| void gate removed | **leg C only** — a fully voided loop circulates **4.178 %** |
+| `power_pct` instead of `_Q_total` | **8 checks** — reproduces the terminal plant exactly (#315's defect) |
+| `flow_floor` back to 0.1 | TR-7b's natural-circulation band check — the band is derived FROM the floor |
+
+**Leg E exists so this does not read as immunity**: circulation moves heat to the SG, it does not remove it,
+so a LOOP with AFW blocked must still reach damage. **Its 90-minute ride is load-bearing** — trimmed to 60
+to save gate time and it went red at Tavg 660 °F still climbing, because circulation distributes the heat
+while it has somewhere to put it, so losing the sink now takes LONGER than the pre-fix 30 minutes.
+
+**Runtime:** TR-15 costs **18 s** (`run_behavior` 64 → 82 s). The first draft cost 98 s; three of its four
+long rides were trimmed after measuring which margins were real.
+
+### The SBO picture is now worth having
+
+Measured, four hours, full stack, AFW started: subcooling squeezes to **9.2 °F (5.1 °C) at 30 min** — the
+real early pinch, before decay heat falls — then recovers to 14.8 → 24.7 → 30.9 → **39.0 °F**. Void stays 0,
+flow decays 3.72 → 2.68 % on the cube root, no damage. Inventory drifts **100 → 90.9 %**, because #332 took
+charging and SI away, which makes **inventory** the live concern rather than temperature. That is the RCP
+seal-LOCA lesson #332 named, now reachable.
+
+### Not built here
+
+- **PWR-E04/E05 checklists** (#319 item 6) are **unblocked** but not authored — separate work, and E05's
+  manual acceptance was rewritten to match the plant rather than a checklist being invented alongside it.
+- **No board indicator.** `true_state.natural_circulation` is diagnostic only. A real crew verifies
+  circulation from loop ΔT, subcooling and stable SG pressure, all of which this board already has; a
+  dedicated lamp would be duplicate authority (DESIGN_CRITERIA Q4). The field exists because
+  `pump_flow_pct` alone cannot tell 4 % of buoyancy from 4 % of a coasting rotor.
+
+---
+
 ## Session log — 2026-08-03w (#332 — the whole CVCS and the ECCS pump ran through a blackout too)
 
 **Task:** *"investigate then work issue 332."* #332 was filed by the #329 session, `status-needs-ruling`,

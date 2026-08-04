@@ -37,6 +37,62 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04 — #325: natural circulation, and the cheap version that was measured and refused
+
+### The change
+
+`pwr_primary.naturalCircFlow` + three config constants; `stepFlow` coasts toward it instead of toward zero.
+`flow_floor` 0.1 → 0.015. `true_state.natural_circulation`. New probe **TR-15**; TR-7b leg D re-authored.
+`DESIGN_COMPANION` §8.6 **retired**; manual set Rev 26. *(OWNER RULING, 2026-08-04: "Go with one B")*.
+
+### Q0 first, and it redrew the options
+
+#325 rated option (1) *"the largest change"*. It was not: `natural_circ_flow` already existed as the
+coastdown target at `0.0`, and flipping it to a constant 0.03 made a LOOP survivable with **nine runners
+unmoved**. The issue's own cost estimate was the thing that most needed measuring, and measuring it is what
+made (1) affordable enough to rule on at all.
+
+### Why (1b) and not (1a) — this is the decision worth recording
+
+The constant floor was **built and measured before being rejected**. It circulates through a fully voided
+loop: `primary_void_fraction` **1.00** with 3.00 % flow, Tavg dragged to 245 °F while the clad melted at
+3827 °F. The *outcomes* stayed right in every case tested — uncovery dominates, so the core still melts —
+which is exactly why it would have shipped. HR10: right answer, wrong mechanism, and the only thing that
+catches it is asking what the mechanism *is*.
+
+The void gate is also what preserves TMI-2, where tripping the pumps into a voided loop established nothing.
+
+### The law is solved, not iterated, and that is a correctness choice
+
+W = C·√ΔT closed against ΔT = `delta_T_rated`·Q/W gives W ∝ Q^⅓. The fixed-point form would have read a ΔT
+that `flow_floor` clamps below 10 % flow — the exact band circulation lives in — and a self-referential
+lagged flow term rings. Getting the cube root out of two independently-motivated relations is the internal
+validation; measured 1.343 against 1.342 predicted.
+
+### Sourced shape, fitted scale, and the distinction is declared
+
+WTSM 3.2.6.3 (ML11223A213) gives the driving head and *"sufficient only for decay heat removal … not for
+power operation"*. It does **not** give a magnitude, and neither did anything else reachable from this
+environment. The *"2–5 %"* in old §8.6 and `Manuals/01` was **uncited inherited prose** and was deliberately
+not used as the anchor — CLAUDE.md's "inherited claims are the risky ones" applied to this repo's own text.
+C is fitted to the plant's own energy balance instead, and `Manuals/12` §12.4 replaces §8.6 as the declared
+departure, naming the *magnitude* rather than the mechanism.
+
+### `flow_floor` had to move, and it is the #315 lesson recurring
+
+The leg split under-read **2.4×** under natural circulation because the floor clamped at 10 %. Loop ΔT is
+the real-plant verification cue for exactly this condition, so leaving it clamped would have shipped the
+feature with its indication broken — a term wrong in the one regime the change creates. Lowered to 1.5 %,
+below the weakest circulation the plant can make.
+
+### Deliberately not built
+
+| | why |
+|---|---|
+| A board "NATURAL CIRC" lamp | Q4 duplicate authority. A real crew verifies it from loop ΔT + subcooling + stable SG pressure, all already on the board. The `true_state` field is diagnostic, for the Physics tab and probes. |
+| PWR-E04/E05 checklists | Unblocked by this, but separate work (#319 item 6). E05's manual acceptance was corrected to match the plant; a checklist was not invented alongside it. |
+| Two-phase / reflux circulation | The void gate ramps to zero rather than modelling degraded two-phase circulation. Declared in `Manuals/12` §12.4's neighbourhood; the lesson is "it stops", not how it stops. |
+
 ## 2026-08-03f — #332: `ac_available`, or what a bare boolean costs when nobody names the question
 
 ### The change

@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 25  
+**Revision:** 26  
 
 ---
 

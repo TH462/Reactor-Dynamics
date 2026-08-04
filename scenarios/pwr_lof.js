@@ -58,10 +58,11 @@
  * the trip, with the pump breaker open and the rods on the bottom, which is the tell the
  * closing beat asks the player to read.
  *
- * Honesty acknowledgment voiced (M6 §13): v1 does not credit natural circulation, so
- * with the pumps off the flow reads zero — in a real plant, buoyancy-driven flow
- * would keep removing decay heat after the trip. The DNB heatup and the trip are
- * faithful. Authentic-units note (§13.1) in the intro.
+ * Natural circulation IS credited since #325 (2026-08-04) — this header used to carry an
+ * honesty acknowledgment (M6 §13) that it was not, and that flow read zero with the pumps
+ * off. It now settles at a few percent of rated, buoyancy-driven, and removes decay heat.
+ * The DNB heatup and the trip are unchanged: this casualty ends on the breaker-position
+ * trip about a second in, long before flow matters. Authentic-units note (§13.1) in the intro.
  */
 ;(function (RD) {
   'use strict';
@@ -106,7 +107,7 @@
         trigger: { type: 'scram' },
         commentary: {
           learning: 'One second. Now read the reason on the trip, because it is the whole lesson: NOT low flow. The reactor tripped on the pump BREAKER — a contact on the switchgear that closes a circuit when the breaker opens. And look at your flow gauge: still 100 %, right now, with the rods on the bottom. The trip that was supposed to handle a loss of flow never fired and never would have; it reads that gauge. What saved the core was a completely different signal — not a measurement of the coolant at all, but a piece of metal moving. That is why a real plant senses this one casualty four separate ways: low flow, breaker position, bus voltage, bus frequency. Four physical signals, so that no single failure can take the protection away.',
-          industry: 'Reactor trip on RCP breaker position (`rcp_running is_false`) at ≈1 s — NOT on RCS Flow - Low, which never actuated and could not: its channel is stuck at 100 % and remains so post-trip. Peak core_void 0.000, fuel unchanged at ≈693 °C, no DNB at any point. WTSM 12.2 §12.2.3.12 (ML11223A301) gives four diverse loss-of-flow trips — low loop flow (2/3 per loop), breaker position, RCP bus under-voltage, RCP bus under-frequency; this plant models the first two and declares the two bus trips as departures (`12` §10.7, DESIGN_COMPANION §8.24), because it does not model an RCP bus. Diversity of SIGNAL, not redundancy of channel, is what defeats a stuck transmitter. Model honesty (M6 §13): natural circulation is not modeled, so true flow goes to zero with the pump off.',
+          industry: 'Reactor trip on RCP breaker position (`rcp_running is_false`) at ≈1 s — NOT on RCS Flow - Low, which never actuated and could not: its channel is stuck at 100 % and remains so post-trip. Peak core_void 0.000, fuel unchanged at ≈693 °C, no DNB at any point. WTSM 12.2 §12.2.3.12 (ML11223A301) gives four diverse loss-of-flow trips — low loop flow (2/3 per loop), breaker position, RCP bus under-voltage, RCP bus under-frequency; this plant models the first two and declares the two bus trips as departures (`12` §10.7, DESIGN_COMPANION §8.24), because it does not model an RCP bus. Diversity of SIGNAL, not redundancy of channel, is what defeats a stuck transmitter. Natural circulation is modeled (#325): with the pump off, buoyancy-driven flow settles at a few percent of rated and carries decay heat to the SG — it needs a liquid-filled loop and a working secondary heat sink, and has neither if the loop voids.',
         },
         level_complete: {
           title: 'Loss of Flow — Caught by a Contact',

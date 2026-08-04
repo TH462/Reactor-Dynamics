@@ -306,6 +306,34 @@
       + (core_void_eq - (s.core_void_fraction || 0)) / (th.void_flux_tau || 3.0) * dt, 0, 1);
   }
 
+  // Natural-circulation flow, fraction of rated (#325). Zero until 2026-08-04, when
+  // `natural_circ_flow: 0.0` was replaced by this; DESIGN_COMPANION §8.6 was the
+  // departure it declared, and §8.6 is retired rather than justified.
+  //
+  // W = C·√ΔT with ΔT = delta_T_rated·Q/W, solved: W = (C²·delta_T_rated·Q)^⅓. The
+  // derivation, the source (WTSM 3.2.6.3) and why the fixed-point form is NOT used are in
+  // the `natural_circ_coeff` comment in pwr_config — read that before touching this.
+  //
+  // Q IS TOTAL CORE HEAT, not fission power (#315). Post-trip that IS the decay tail, and
+  // decay heat is the entire point of this function: reading `power_pct` here would compute
+  // zero circulation for a scrammed core, which is the exact defect #315 found in the leg
+  // split one function away.
+  function naturalCircFlow(s, cfg) {
+    var pr = cfg.primary, t = cfg.thermal;
+    if (!pr.natural_circ_coeff) return 0;          // 0 restores the pre-#325 plant exactly
+    var Q = (s._Q_total != null) ? s._Q_total : (s.power_pct || 0) / 100;
+    if (!(Q > 0)) return 0;
+    var w = Math.pow(pr.natural_circ_coeff * pr.natural_circ_coeff * t.delta_T_rated * Q, 1 / 3);
+    // A voided loop has no continuous liquid column to drive: ramp to zero across the
+    // cutoff. This is the TMI-2 discriminator — pumps off into a voided loop circulates
+    // nothing — and it is also how losing the heat sink stops circulation, since that
+    // route runs Tavg up, boils the core and voids the loop.
+    var voidf = s.primary_void_fraction || 0;
+    var cut = pr.natural_circ_void_cutoff || 0.25;
+    w *= clip(1 - voidf / cut, 0, 1);
+    return clip(w, 0, pr.natural_circ_max != null ? pr.natural_circ_max : 0.08);
+  }
+
   // Step 10 — reactor coolant pumps and flow.
   function stepFlow(s, cfg, dt) {
     var pr = cfg.primary;
@@ -316,16 +344,28 @@
       var target = 1.0 - pr.cavitation_flow_loss * (s.rcp_cavitation_frac || 0);
       s.flow_frac += (target - s.flow_frac) / pr.pump_spinup_tau * dt;
     } else {
-      s.flow_frac += (pr.natural_circ_flow - s.flow_frac) / pr.pump_coastdown_tau * dt;
+      // Coasting down TOWARD natural circulation, not toward zero. WTSM 3.2 (ML11223A213,
+      // p. 3.2-17) says the flywheel is there for exactly this handover — the coastdown
+      // "assures adequate heat removal during a plant trip and loss of power to the RCPs"
+      // and "also assists in INITIATING natural circulation flow" — so the same τ carrying
+      // the coastdown carrying it into the buoyancy-driven regime is the real sequence.
+      s.flow_frac += (naturalCircFlow(s, cfg) - s.flow_frac) / pr.pump_coastdown_tau * dt;
     }
     s.flow_frac = clip(s.flow_frac, 0.0, 1.0);
     s.pump_flow_pct = s.flow_frac * 100;
+    // Published so the board and the probes can tell buoyancy-driven flow from a coasting
+    // rotor: same number of percent, completely different plant state. Keyed on what the
+    // BUOYANCY LAW is producing, not on `flow_frac` — during a coastdown flow_frac is still
+    // mostly rotor inertia, and in a voided loop it is decaying residue. Both would read
+    // true off flow_frac and neither is natural circulation.
+    s.natural_circulation = !s.pump_running
+      && naturalCircFlow(s, cfg) > (pr.natural_circ_indicate_frac || 0.01);
   }
 
   RD.pwrPrimary = {
     computeNodePressures: computeNodePressures,
     stepCavitation: stepCavitation,
-    letdownFlow: letdownFlow,
+    letdownFlow: letdownFlow, naturalCircFlow: naturalCircFlow,
     acAvailable: acAvailable, chargingPumpPowered: chargingPumpPowered,   // #332 — see step 0a
     injectionFlowInv: injectionFlowInv,
     stepInventory: stepInventory,

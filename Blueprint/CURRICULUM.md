@@ -276,7 +276,7 @@ is Core if it demonstrates a Tier A coupling under stress.** Everything else is 
 | Small RCS leak, seal leak (E23) | **A4** — CVCS holds it, and *charging flow* is the cue, not level | yes (#262) | **yes** — `pwr_seal_leak` |
 | Stuck-open PORV (E07) | **A3/A4** — the TMI opener; tailpipe temperature is the honest tell | yes | yes |
 | SGTR (E06) | **A3** — primary→secondary path; depressurize to stop the leak | yes | **yes** — `pwr_sgtr` |
-| Loss of offsite power / SBO (E04/E05) | **A6** — everything at once, on batteries | partial | **no** |
+| Loss of offsite power / SBO (E04/E05) | **A6** — everything at once, on batteries | yes | **no — unblocked 2026-08-04** |
 | Steam line break (E19/E19u) | **A1** — overcooling is a reactivity event, through the same moderator coefficient A1 runs on (was mis-cited as A9, which is the SG-level *instrument* effect) | **no auto isolation** (#295 F5) | **no** |
 | Loss of shutdown cooling, Mode 5 (#287) | **A6** — decay heat with no SG | annunciator only | **no** |
 | **ATWS** (E13, `failure_to_scram`) | **A6 inverted + A8** — the reactor that will *not* switch off; boration is the only reactivity control left | yes | **no** |

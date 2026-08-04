@@ -519,6 +519,10 @@ physical-quantity vocabulary.
     "porv_tailpipe_temp_c": number,   // PORV discharge/quench-tank line temperature — warm baseline (seat leakage), hot while relief flows; feeds instruments.porv_tailpipe_temp (the TMI-2 tell)
     "fuel_damaged": bool,             // latched when fuel exceeds fuel_damage_c — scenario outcome-grading hook
     "pump_running": bool, "pump_flow_pct": number, "station_blackout": bool,
+    "natural_circulation": bool,      // buoyancy-driven flow with the RCPs stopped (#325). W = C·√ΔT closed against the
+                                      //   core rise ⇒ W ∝ Q^⅓; gated to zero by loop voiding (a voided loop has no liquid
+                                      //   column — the TMI-2 case). Diagnostic only: no board lamp, because a real crew
+                                      //   verifies it from loop ΔT + subcooling + stable SG pressure, which the board has.
     "ac_available": bool,             // Class 1E (vital) ac switchgear energized (#332). Today exactly !station_blackout —
                                       //   a plain LOOP KEEPS it (the diesels pick the 1E buses up). Every ac load reads THIS,
                                       //   not the casualty flag: RCPs, pressurizer heaters, the CVCS charging pump (and with it
