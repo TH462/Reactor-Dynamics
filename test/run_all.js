@@ -513,7 +513,10 @@ var BASELINES = {
   // it DOWN to 172, because CLAUDE.md's baselines paragraph is one enormous physical line and
   // inserting into it re-parses the parenthetical clipping for the citations already there.
   // Do not hand-reconcile this number; measure it after the docs, which is what happened here.
-  'run_hardrules.js':      { code: 0, score: '172checks 0failed' },
+  // 172 -> 173 later the same day: the TUNING_LOG entry for the WIP-sweep fix cites the
+  // lane-tag directive. The one-word `gh` fix it writes up moved this by ZERO — the usual
+  // split, and the reason this number is measured after the docs rather than before.
+  'run_hardrules.js':      { code: 0, score: '173checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

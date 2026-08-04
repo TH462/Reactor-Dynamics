@@ -29,6 +29,89 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-develop-h (the WIP sweep never worked; #319 item 2 evidence pass)
+
+**Task:** owner said *"Do next"*. Two outcomes: a one-line fix to the lane-occupancy check, and a
+sourced evidence pass on #319 item 2 that found a **second, unfiled defect**. No engine change yet.
+
+### The all-lanes WIP sweep returned 0 for every issue, always
+
+`CLAUDE.md`'s session-start command used three `--label` flags. **`gh` ANDs repeated `--label`**, so
+it asked for issues carrying `status-wip-develop` AND `status-wip-workbench` AND
+`status-wip-backshop` at once — which the convention one line below forbids (*"One only; the lane is
+the tree"*). Measured: the documented form returns **0** while **#337 is sitting there tagged
+`status-wip-workbench`**; `--search 'label:a,b,c'` returns it.
+
+**This session's own t=0 sweep reported nothing and #337 was tagged the whole time.** The one
+occupancy signal that is not a guess *(OWNER DIRECTIVE, 2026-08-04: "Since that's done add an in
+process tag that shows which worktree it's being worked on.")* has been unreadable since the day it
+was written, and a blank result is indistinguishable from "the lanes are free". A single `--label`
+is still correct, so the per-lane query in the Issue-tracking section is unchanged.
+
+**#337 is tagged `status-wip-workbench` and the workbench tree is CLEAN at `fb3ccc9`** — almost
+certainly a tag left standing when a session ended, which is the failure the tag rule names. Not
+cleared by me: clearing another lane's tag on a guess is the same mistake in the other direction.
+
+### #319 item 2 — the restore control. The evidence pass found a defeatable protection function
+
+The filed item is that `isolate_feedwater` **latches with no board control to clear it** — a state
+the player can enter and not leave. Confirmed, and two things the issue did not have:
+
+**There IS an indication** — `mfw_isolated` is a published instrument (`pwr_engine.js:604`), read by
+`pwr_control.js:985`. It is **not on the board**: nothing in `ui/` references it. So the gap is
+board face, not contract.
+
+**Measured, full stack, `hot_full_power`, turbine trip at 2m:** MFW isolates by 4m00s and
+`fw_flow_normalized` goes to 0; from 8m the only feed is AFW (`fw_flow` and `afw_flow` are the same
+number to four figures). Tavg parks at **567.5 °F (297.5 °C)**.
+
+**THE UNFILED DEFECT.** The low-Tavg isolation's setpoint is **572.0 °F (300.0 °C)**, so with Tavg
+parked at 567.5 °F the actuating signal is **still present for the whole post-trip ride** — and an
+`isolate_feedwater {active: false}` issued at 10m was **accepted**: `mfw_isolated` false at 12m01s,
+feed flow 0.3076, SG level **36.58 → 77.43 %**. The plant then re-isolated at ~14m when level
+reached the separate 90 % P-14 actuation, so it is protected from the overfill — but a **valid,
+standing feedwater-isolation signal was defeated by an operator command**, which is the #295 F1/F2
+class exactly.
+
+**Mechanism**: `actuationFired[i]` (`control_kernel.js:621`) is the retentive memory, and with no
+`reset_below` it stays set — so the actuation never re-fires and nothing contests the restore.
+
+### Sourced, and the source says more than "it latches"
+
+Fetched via the archive.org workaround (nrc.gov 403s here), extracts in `inbox/sources/`:
+
+- **WTSM 11.1.4** (ML11223A293) — *"Four inputs override the steam generator water level control
+  system: Manual control by the operator, Reactor trip (P-4) coincident with low Tavg, Steam
+  generator high level (P-14), and Safety injection actuation signal."* The three automatic ones are
+  **exactly** this sim's three `isolate_feedwater` actuations, and **manual operator control is the
+  first of the four** — the missing capability, named in the primary.
+- **WTSM 12.3.6.1** (ML11223A310) — *"Low Tavg (564°F) coincident with a reactor trip (permissive
+  P-4), High steam generator water level (permissive P-14) in any generator, and SI actuation."*
+- **WTSM 12.3.2.3** (ML11223A310) — the seal-in and the reset, and it settles the design question:
+  *"The control room operator cannot interrupt any of the SI-initiated functions until the reset
+  logic is satisfied. This 'locking out' of the operator prevents the interruption of a valid SI
+  actuation."* Reset needs a **45–60 s** time delay **and** P-4. And critically: *"Removing the 'ON'
+  signal … does not turn off any ESF equipment, realign any valves, or change any functions
+  initiated by the SI actuation. … after turning off the actuation circuitry the control room
+  operators can change system alignments."*
+
+**So the real plant is TWO steps — reset the signal, then realign the component — and the reset
+does not itself restore anything.** A single RESTORE button is not the prototypical shape.
+
+Two departures found while sourcing, **not chased**: this plant's low-Tavg setpoint is 572.0 °F
+against the source's **564 °F** (it derives from `TAVG_NOLOAD` = 566.6 °F, itself ~10 °F above a real
+no-load Tavg, so it is one number in a band that would have to move together); and the SG-level
+isolation carries `reset_below: 85` — it **auto-restores**, where the source treats P-14 as a
+feedwater isolation signal like the others.
+
+### Not built, deliberately — the two halves are unfalsifiable apart
+
+The lockout without a board control guards a command **no player can send** (unreachable, so
+unfalsifiable — the reason #332 left RHR alone). The board control without the lockout **ships a
+defeatable protection function**. Filed together with a recommendation rather than half-built.
+
+---
+
 ## Session log — 2026-08-04-develop-g (#339 — the session label names the LANE now)
 
 **Task:** *(OWNER RULING, 2026-08-04: "Work issue 339 in develop. Go with option 2.")* Docs +
