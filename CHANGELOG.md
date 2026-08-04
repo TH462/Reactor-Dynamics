@@ -52,13 +52,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   It runs both ways, which matters as much: unthrottled safety injection now **repressurises** and
   can take the plant solid, the behaviour operators throttle SI to avoid.
 
-  **NOT FINISHED, and the remainder is filed rather than guessed at.** A relief valve's pressure
-  authority is now carried twice (`K_surge_level · level_per_mass` = 310 against relief gains of
-  300 — the tell that those constants were always this same coupling), and the obvious correction
-  of excluding relief from the surge measured *worse*, breaking physics acceptance where the double
-  count breaks only authored content. The TMI-2 flagship and the SGTR procedure's depressurisation
-  step are still written against the old trajectory and are red. Flags **F14**/**F15**; the measured
-  detail is in `Diagnostic/TUNING_LOG.md` 2026-08-04g.
+  **Relief is excluded from the surge and the relief gains are re-solved, 300 → 600.** A PORV and a
+  code safety valve discharge from the pressurizer *steam space*, so that mass never crosses the
+  surge line. Leaving it in carried a valve's authority twice while subcooled and — because the
+  surge is suppressed once the loop voids — only half once it voided, which is the regime every
+  accident path lives in.
+
+  **NOT FINISHED.** The TMI-2 flagship and the SGTR procedure's depressurisation step are still
+  written against the old trajectory and are red, and one behaviour probe (TR-15 leg E) now says the
+  plant rides out a lost heat sink on relief bleed — a plant question, not a tuning one. Measured
+  detail in `Diagnostic/TUNING_LOG.md` 2026-08-04g.
 
   **The magnitude is still damped, deliberately and declared** (`Manuals/12` §12.15, and filed on
   #337 as an owner decision). The pressurizer heaters are modelled at 27× the authority their own

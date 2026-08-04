@@ -488,7 +488,60 @@
       // valve depressurizes the plant to the containment floor instead of parking. Both are
       // real plant behaviours, and the ruling above chose the present ones.
       K_heater: 0.55,
-      K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
+      K_spray: 1.7,
+      // K_porv_relief / K_safety_relief — RE-SOLVED 300 → 600 with #337 F15, ruled
+      // *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*. ONE constant applied twice:
+      // both valves vent the same saturated steam from the same steam space, so the pressure
+      // per unit vented mass is the same and only the FLOW capacities differ (porv_flow_max /
+      // safety_flow_max). They must move together.
+      //
+      // WHY THEY MOVED. #337 gave the pressurizer a general mass→surge law, and
+      // `K_surge_level · level_per_mass` = 310 — within 3 % of the 300 these gains carried.
+      // That is not a coincidence: these two constants WERE the mass→pressure coupling, fitted
+      // per path before a general law existed. Relief is excluded from the surge driver now
+      // (pwr_primary.stepInventory — the valves discharge STEAM from the bubble, which never
+      // crosses the surge line), so the gain has to carry the whole effect again, and 300 was
+      // fitted to a plant where ECCS could NOT push back on pressure. Since #337 injection is an
+      // insurge, so the same valve achieves less depressurization and needs more gain.
+      //
+      // HOW 600 WAS CHOSEN, and the honest part is what did NOT work. The sourced criterion —
+      // WTSM 3.2 (ML11223A213, p. 3.2-11), "The PORVs are designed to limit the pressure in the
+      // pressurizer to a value below the high pressure reactor trip setpoint for design
+      // transients up to and including a 50-percent step load decrease with full steam dump
+      // actuation" — is SATISFIED AT EVERY VALUE TESTED and therefore does not solve it:
+      // measured on a full load rejection, peak pressure is 2364..2372 psi across 300..1200
+      // against a 2384 psi trip, because the PORV setpoint and the trip are only 0.24 MPa apart
+      // and spray holds the gap regardless. It is a necessary condition this plant already meets.
+      //
+      // A first-principles solve does not close either, and that is worth knowing before anyone
+      // tries: venting `porv_flow_max` 0.0035 frac/s as SATURATED STEAM would empty a 560 ft³
+      // bubble in under two seconds (1554 lbm/s against a real PORV's 210,000 lb/hr = 58 lbm/s),
+      // so `porv_flow_max` and this gain are a matched FITTED pair with no clean physical
+      // decomposition. Deriving one requires re-deriving the other, and `porv_flow_max` is
+      // explicitly tuned for the TMI flagship's pacing.
+      //
+      // So it is solved against BEHAVIOUR: 600 excluded reproduces the total authority the plant
+      // was calibrated with (300 direct + 310 surge), and measured, it restores `run_meltdown`
+      // to 12 pass and `run_scenarios` to 3/3 — the two suites that hold this plant's relief
+      // ladder, and which BOTH go red at 300..450. What changed is that the constant now means
+      // what it says instead of being silently doubled.
+      //
+      // THE STRUCTURAL REASON THE TWO ARE NOT INTERCHANGEABLE, and it is the finding worth
+      // keeping: the surge term is gated `saturated ? 0` (a voided loop is pinned to Psat(Tavg),
+      // so the subcooled-liquid terms are suppressed). Routing relief through it therefore made
+      // a relief valve DOUBLE-strength while subcooled and HALF-strength once the plant voided —
+      // and voided is exactly the regime the meltdown paths, the TMI flagship and TR-15 live in.
+      // A valve vents steam regardless of what the bulk coolant is doing, so it must not inherit
+      // that gate. That, not the arithmetic, is the real argument for the exclusion.
+      //
+      // KNOWN COST, left red on purpose: `run_behavior` TR-15 leg E ("with the heat sink gone
+      // the plant is still lost — circulation is not cooling") now fails, at EVERY gain tested
+      // from 400 to 600 — Tavg 482 / 455 / 448 / 447 °F, monotone, core undamaged. With relief
+      // no longer losing authority in saturation, the plant rides out a lost heat sink on relief
+      // bleed. Whether that is right is a PLANT question (`porv_flow_max` and this gain are a
+      // matched fitted pair, and preserving leg E means moving both), so it belongs with the
+      // TMI-2 trajectory re-author rather than being tuned away here. [tune]
+      K_porv_relief: 600.0, K_safety_relief: 600.0,
       // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for
       // step insurges, NOT for a loss-of-heat-sink repressurization — capped at
       // this fraction of full spray flow (auto demand AND operator override), the

@@ -6,6 +6,8 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 50 pass, 0 known gaps (xfail).
+Battery result: 49 pass, 0 known gaps (xfail), 1 UNEXPECTED FAIL.
 
-**No gaps — the battery is fully green. The tuning pass is complete.**
+## TR-15 — TR-15 natural circulation — decay heat rides out a LOOP, and a voided loop does not  (FAIL)
+
+- **with the heat sink gone the plant is still lost — circulation is not cooling** — required `damaged`, observed `damaged false @ Tavg 447 °F`

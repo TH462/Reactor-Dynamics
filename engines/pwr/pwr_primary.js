@@ -268,26 +268,28 @@
     // than the raw balance, so a plant pinned at mass_max — an ECCS overfill holding 120 % —
     // reports zero surge instead of a phantom insurge it has nowhere to put.
     //
-    // RELIEF IS INCLUDED, AND THAT IS AN OPEN CALIBRATION QUESTION — read this before "fixing" it.
-    // `K_surge_level · level_per_mass` = 310 and `K_porv_relief`/`K_safety_relief` are 300, so
-    // a relief valve's pressure authority is now carried TWICE, near enough exactly — which is
-    // itself the tell that those two constants were always this same coupling, fitted per path.
+    // RELIEF IS EXCLUDED — F15, ruled *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*.
     //
-    // The obvious correction is to take relief out of the surge, on the sound argument that the
-    // PORV and the code safeties discharge from the pressurizer STEAM SPACE, so that mass never
-    // crosses the surge line (which is exactly what the `K_porv_relief` comment in pwr_config has
-    // always said). IT WAS BUILT AND MEASURED AND IT IS WORSE: excluding relief reddens
-    // `run_meltdown` (12 → 11) and `run_scenarios` (3/3 → 1/3), i.e. it breaks PHYSICS acceptance
-    // where including it only breaks authored CONTENT, and HR9 ranks those the other way round.
-    // Retuning the gains does not resolve it either — with relief excluded, 0.0 leaves the plant
-    // at 2205 psi with no damage at all and 150.0 lands in the same place; with relief included,
-    // 0.0 (total authority 310, i.e. the calibrated 300) stalls the TMI-2 flagship EARLIER than
-    // 300 does, at `b7_confusion` rather than `b14_ident`.
+    // The PORV and the code safety valves discharge from the pressurizer STEAM SPACE. That mass
+    // never crosses the surge line and never displaces loop liquid, so it is not a surge: it
+    // shrinks the bubble directly, which is what `K_porv_relief` / `K_safety_relief` are for.
+    // Sourced — WTSM 3.2 (ML11223A213, p. 3.2-10/11): the three code safeties are "totally
+    // enclosed pop-open-type valves … spring loaded, and self actuating", and the PORVs sit on
+    // the pressurizer and "release steam from the steam space".
     //
-    // So all four combinations were measured and none is clean. What ships is the one that keeps
-    // the physics suites green and confines the damage to content authored against the old
-    // trajectory. The double count is REAL and still open — see #337 and `TUNING_LOG` 2026-08-04g.
-    s._dmass_dt = dt > 0 ? (s._mass - m_before) / dt : 0;
+    // WHY IT MATTERS, and the arithmetic is the trap: `K_surge_level · level_per_mass` = 310 and
+    // both relief gains were 300, so routing relief through the surge as well carried a relief
+    // valve's authority TWICE — near enough exactly, which is itself the tell that those two
+    // constants were always this same coupling, fitted per path. Measured with the double count
+    // live, the TMI-2 flagship blew the RCS down to 69 psi (0.48 MPa) by 681 s.
+    //
+    // The gains were RE-SOLVED in the same change rather than merely left alone: they were fitted
+    // to a plant where ECCS could not push back on pressure, and since #337 injection is an
+    // insurge, so the same valve achieves less depressurization. See `K_porv_relief` in
+    // pwr_config for the sourced criterion it is now solved against.
+    var dm_surge = dm + (s.porv_flow || 0) + (s.safety_flow || 0);   // relief is not a surge
+    var m_surge = clip(m_before + dm_surge * dt, 0.0, cfg.primary.mass_max);
+    s._dmass_dt = dt > 0 ? (m_surge - m_before) / dt : 0;
 
     // Boron transport on the emergency-injection path (HPI/LPI + accumulators carry
     // heavily borated RWST/SIT water at eccs_boron_ppm). Perfect-mixing update of the
