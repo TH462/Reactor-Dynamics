@@ -108,7 +108,16 @@ docs.
 >   git -C C:/grok_build/Reactor_Dynamics status --short && git log develop   -1 --format='%h %cr'
 >   git -C C:/grok_build/RD_workbench   status --short && git log workbench -1 --format='%h %cr'
 >   git -C C:/grok_build/RD_backshop    status --short && git log backshop  -1 --format='%h %cr'
+>   gh issue list --repo TH462/Reactor-Dynamics --label status-wip-develop --label status-wip-workbench --label status-wip-backshop
 >   ```
+>   **The last line is the only one that is not a guess** *(OWNER DIRECTIVE, 2026-08-04:
+>   "Since that's done add an in process tag that shows which worktree it's being worked
+>   on.")*. The three `status-wip-<lane>` labels are an agent SAYING which tree it is in, so
+>   they name the issue as well as the lane — where the file sweep can only see that *someone*
+>   wrote *something*. **Tag your issue when you start and clear it when you stop**, or the
+>   next agent stands down for a session that ended hours ago. Full rule under *Issue tracking*.
+>   It does not replace the sweep: an agent can work without touching an issue, so run both.
+>
 >   A commit inside the last hour or so means a live session; hours old means history.
 >   **Unmerged commits on `workbench` / `backshop` are NOT occupancy** — carrying work that has
 >   not reached `develop` yet is what those lanes are *for*. On 2026-07-29 workbench held five
@@ -1038,6 +1047,26 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
     itself. It is **not** the same as closed: an issue can be complete and still open
     because it is waiting on a review, a release, or a decision on a follow-up. Apply it
     with the gate result in the comment, and **clear `status-work-next` when you do**.
+
+  **The three IN-PROGRESS lane tags** *(OWNER DIRECTIVE, 2026-08-04: "Since that's done add
+  an in process tag that shows which worktree it's being worked on.")*:
+  - **`status-wip-develop`** · **`status-wip-workbench`** · **`status-wip-backshop`** — an
+    agent is **live on this issue right now**, in the named tree. One only; the lane is the
+    tree, not the branch.
+
+  **Apply it when you START, clear it when you STOP** — not when you finish. A lane tag left
+  standing after a session ends is worse than no tag, because the next agent reads it as
+  occupancy and stands down for nobody. Clear it on the same turn you hand the issue back,
+  whether the work landed, is blocked, or you were interrupted.
+
+  **This is the FIRST occupancy signal that is not a guess.** The lane check at the top of
+  this file infers occupancy from uncommitted files plus a recent commit, and that heuristic
+  cannot tell another live session from the owner's own edits from your own leftovers — which
+  is exactly why it is only ever allowed to WARN AND ASK. A lane tag is an agent SAYING where
+  it is. It does not replace the `git status` sweep (an agent can start work without touching
+  an issue), so run both: `gh issue list --label status-wip-workbench` answers *who is in that
+  tree and on what*, which the file sweep never could. **A tagged issue in your lane that you
+  did not tag is a positive — warn and ask, same as the file check.**
 
   **`status-deliberate` must name who decided it, and when** *(added 2026-07-27)*. The label
   turns any past call into standing law, so a comment on the issue has to say either
