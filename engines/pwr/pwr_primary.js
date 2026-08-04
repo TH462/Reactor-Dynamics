@@ -288,8 +288,17 @@
     // and pressure falls, exactly as a cooldown contraction does. pwr_pressurizer.stepPressure
     // (step 7) reads this ONE STEP LATE, the CONTEXT §11 explicit coupling, same as
     // stepCoolant reads `_eccs_inj_inv`. Taken as the REALISED change (post-clip, / dt) rather
-    // than the raw balance, so a plant pinned at mass_max — an ECCS overfill holding 120 % —
-    // reports zero surge instead of a phantom insurge it has nowhere to put.
+    // than the raw balance, so a genuine clip cannot inject a surge the plant never took.
+    //
+    // THAT USED TO BE JUSTIFIED THE WRONG WAY ROUND, and #346 is the correction. This comment
+    // read: "so a plant pinned at mass_max — an ECCS overfill holding 120 % — reports zero
+    // surge instead of a phantom insurge it has nowhere to put." Both of those options are
+    // wrong. A water-solid RCS being injected into with no relief path does not absorb the
+    // mass and does not ignore it — it RELIEVES, and it could not, because the surge gain in
+    // force was the one for a pressurizer that still had a steam bubble. `mass_max` is a
+    // far-away NUMERICAL GUARD (#330's words for it) and the solid regime in
+    // pwr_pressurizer.stepPressure is what keeps the plant away from it: measured, the fill
+    // now arrests at 109.35 % against the 120.00 % ceiling. CA-12 leg C asserts exactly that.
     //
     // RELIEF IS EXCLUDED — F15, ruled *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*.
     //
@@ -310,6 +319,20 @@
     // to a plant where ECCS could not push back on pressure, and since #337 injection is an
     // insurge, so the same valve achieves less depressurization. See `K_porv_relief` in
     // pwr_config for the sourced criterion it is now solved against.
+    // F15 HOLDS IN THE SOLID REGIME TOO — MEASURED, NOT ASSUMED (#346). The obvious
+    // objection is that F15's premise is the valves "release steam from the steam space",
+    // and a water-solid pressurizer has none, so relief there passes LIQUID and is a genuine
+    // surge. That variant was BUILT: relief folded into `dm_surge` whenever solid and the
+    // steam-space gains stood down in stepPressure to avoid the double count. It is more
+    // physically honest and it is REFUSED, because it does not stand alone. Measured on the
+    // #346 rig, it moves the relieving equilibrium down about 145 psi (1 MPa), which puts the
+    // plant further below the ECCS shutoff head, and injection then out-runs the PORV: the
+    // fill stops arresting and inventory walks back to the 120.00 % clip — the very defect.
+    // The reason is that the same argument applies to SPRAY (nothing to condense) and to the
+    // HEATERS (no bubble to flash) at solid, and taking only the relief third of it leaves an
+    // unbalanced pressure controller. Doing it properly is a three-term regime plus a
+    // re-solve of `K_porv_relief`/`K_safety_relief`, which is a separate change; declared at
+    // `Manuals/12` §12.4c and left to it.
     var dm_surge = dm + (s.porv_flow || 0) + (s.safety_flow || 0);   // relief is not a surge
     var m_surge = clip(m_before + dm_surge * dt, 0.0, cfg.primary.mass_max);
     s._dmass_dt = dt > 0 ? (m_surge - m_before) / dt : 0;

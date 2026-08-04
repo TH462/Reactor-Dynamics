@@ -78,6 +78,17 @@ var BASELINES = {
   'run_pwr.js':            { code: 0, secs: 22, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
+  // DELIBERATELY NOT MOVED at #346, and reading 1/3 on the backshop lane. Both red suites are
+  // `flagship_tmi`, and the cause is #347: the TMI-2 decision point was resting on the very
+  // discard #346 removes. With `_mass` pinned at the clip the surge could not push back, so
+  // `K_porv_relief * porv_flow` ran unopposed and took the RCS to 52 psi (0.36 MPa) with the
+  // inventory gauge reading 120 % — two bugs agreeing. Now a stuck-open PORV is matched by
+  // unterminated ECCS (0.0035 vs 0.0038 frac/s), the plant goes solid at pressure, and
+  // `subcooling_low` never fires, so `injection_decision` is unreachable. That is the TMI-2
+  // counterfactual and it is right; what is missing is the crew's actual error, throttling HPI
+  // back on the rising level. The baseline stays at 3/3 BECAUSE it must come back — marking it
+  // an expected red would hide the next real regression here. Same root as run_campaign's
+  // pwr_tmi2_p3, which was already 2 missions red from #337 before this change.
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
   // 34 since 2026-07-25 (#131): PI-3, PI-8, PI-9 and the TR-11 end-state pin were
   // catalogued behaviours the battery never probed — the coverage todo list is now empty.
@@ -171,7 +182,25 @@ var BASELINES = {
   // With discharge tracking pressure, a break that starts above the ceiling ends below
   // it, so the comparison decides nothing; the guard is re-pointed at ECCS being what
   // saves the core (same break, injection defeated, must still destroy it).
-  'run_behavior.js':       { code: 0, secs: 56, score: '51pass 0xfail' },
+  // 51 -> 52 (2026-08-04, #346): CA-12, a water-solid RCS repressurizes. `_mass` clipped at
+  // `primary.mass_max` and, since #337, the surge driver clipped with it — so an RCS held
+  // solid by unterminated ECCS reported ZERO surge and sat flat at 2232 psi for 45 minutes
+  // with no relief lift. Raising the ceiling is NOT the fix and was measured: at 3.0 the
+  // plant runs to 300 % inventory with pressure still parked. The bubble is the only
+  // compressible volume, so once the level line reaches 100 % the gain steps to the bulk
+  // modulus of water (`solid_bulk_mpa`). Injection-verified — the pre-#346 gain reddens 4 of
+  // CA-12's checks. Leg B computes the settling inventory FROM the level geometry rather than
+  // transcribing it: 109.35 % measured against 109.28 % predicted.
+  // TWO EXISTING PROBES MOVED, both pinning the old behaviour rather than broken by the new.
+  // CA-4's `core_inventory_pct > 110` was a magnitude only reachable while the RCS accepted
+  // unbounded mass; it asserts the FLOODING directly now (true level solid at > 103 %
+  // inventory), which passes on the old engine too, plus a new check that the overfill shows
+  // on the relief path — 0.0 % PORV duty before, 4.8 % after. TR-15 leg E now defeats ECCS:
+  // the survival it was failing on is automatic feed-and-bleed, not circulation, and with
+  // injection defeated the plant is lost at 94 min on BOTH engines.
+  // THIS LANE READS 50, NOT 52 — CA-10 and CA-11 are the standing #337 cascade and predate
+  // this change (verified unmoved by it, same observed values either side).
+  'run_behavior.js':       { code: 0, secs: 56, score: '52pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -532,7 +561,16 @@ var BASELINES = {
   // arrive with its write-ups. MEASURED on the merged tree — neither parent's number
   // survives (develop 173, workbench 172) and they do not add up, as this entry has
   // warned five times.
-  'run_hardrules.js':      { code: 0, score: '178checks 0failed' },
+  // 178 -> 177 (2026-08-04, #346): a DROP, and it is the themes-cap mechanism this entry has
+  // recorded twice before, biting again. The #346 bullet took the *Recent themes* list over its
+  // five-bullet cap, evicting #311 and taking its *(OWNER RULING, 2026-08-02: "311: a.")* with
+  // it. CHECKED BEFORE ACCEPTING: that ruling still stands in BUILD_DECISIONS.md,
+  // DESIGN_COMPANION.md §8.23 and TUNING_LOG.md (twice), so this is one fewer citation SITE, not
+  // one fewer ruling. The engine, config and probe work of #346 moved this by ZERO and its
+  // write-ups quote no owner ruling at all — the change was a bug fix, not a decision — so the
+  // eviction is the entire delta. Measured AFTER the docs, which is the only order that gives
+  // the right number.
+  'run_hardrules.js':      { code: 0, score: '177checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

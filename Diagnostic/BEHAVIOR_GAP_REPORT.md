@@ -6,11 +6,7 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 48 pass, 0 known gaps (xfail), 3 UNEXPECTED FAIL.
-
-## TR-15 — TR-15 natural circulation — decay heat rides out a LOOP, and a voided loop does not  (FAIL)
-
-- **with the heat sink gone the plant is still lost — circulation is not cooling** — required `damaged`, observed `damaged false @ Tavg 447 °F`
+Battery result: 50 pass, 0 known gaps (xfail), 2 UNEXPECTED FAIL.
 
 ## CA-10 — CA-10 the 17 % low-level heater cutoff — sourced, instrument-driven, and it breaks the LOCA deadlock  (FAIL)
 

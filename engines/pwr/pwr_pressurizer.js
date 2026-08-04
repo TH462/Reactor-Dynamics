@@ -253,12 +253,37 @@
     var dm_lvl = (s._mass != null ? s._mass : 1.0) - 1.0;
     var surge_rate = p.level_per_tavg * (s._dTavg_dt || 0)
                    + (dm_lvl < 0 ? p.level_per_mass : p.level_per_mass_surplus) * (s._dmass_dt || 0);
+    // WATER-SOLID — the surge meets LIQUID, not a bubble (#346). K_surge_level is the
+    // gain of a pressurizer that still HAS a steam space: a surge is soft because the
+    // bubble absorbs it. Once the level line reaches 100 % there is no bubble, the RCS is
+    // incompressible everywhere, and the same displacement compresses water instead — so
+    // the gain steps up to the bulk modulus. Same law, same currency (%/s of level
+    // displacement), one factor; see `solid_bulk_mpa` in pwr_config for the number.
+    //
+    // Until #346 this was MISSING and the plant discarded the mass instead: `_mass` clipped
+    // at `primary.mass_max` and the surge driver clipped with it, so a solid RCS taking
+    // 0.024 frac/s of safety injection with no relief path reported ZERO surge and sat flat
+    // at 15.39 MPa for 45 minutes while ECCS never terminated. The clip's comment named
+    // the two options as "zero surge" or "a phantom insurge"; the physical answer is
+    // neither — the plant RELIEVES.
+    //
+    // Gated on `!saturated` with the rest of the surge, and that gate is not a formality:
+    // a two-phase RCS is compressible by definition, so "solid" and "saturated" cannot both
+    // be true, and the sat-pull branch below owns that regime.
+    //
+    // THE GAIN IS THE ONLY THING THAT CHANGES. Relief keeps its own steam-space gains under
+    // F15, and spray and the heaters keep theirs — none of which is strictly right in a
+    // vessel with no bubble. Moving them is a coupled three-term regime plus a re-solve of
+    // the relief gains, and taking only one term of it was measured to be WORSE than taking
+    // none: see the F15 note in pwr_primary.stepInventory, and `Manuals/12` §12.4c.
+    var solid = !saturated && levelRaw(s, cfg) >= 100;
+    var K_surge = solid ? (p.solid_bulk_mpa / p.level_per_mass_surplus) : p.K_surge_level;
     var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
            - leak_depress
-           + (saturated ? 0 : p.K_surge_level * surge_rate);   // subcooled liquid only
+           + (saturated ? 0 : K_surge * surge_rate);   // subcooled liquid only
     if (saturated) {
       // Two-phase OR superheated: a liquid cannot superheat — as pressure falls to the
       // saturation pressure of Tavg the coolant flashes, and that flashing PINS pressure
@@ -322,7 +347,7 @@
     return clip(levelBase(s, cfg), p.level_prog_floor, p.level_prog_ceiling);
   }
 
-  // Step 8 (pzr part) — pressurizer level, DERIVED from state (CC-10 rework):
+  // The pressurizer level line, DERIVED from state (CC-10 rework) and UNCLIPPED:
   //   level = base(Tavg) + level_per_mass·(mass − 1) + level_per_void·void
   // No integrator: level and inventory cannot silently drift apart. The void term
   // pushes liquid INTO the pressurizer as the primary voids, raising indicated
@@ -330,17 +355,25 @@
   // active ONLY when the primary actually saturates (primary_void_fraction is
   // saturation-gated in pwr_primary). Relief/leak/charging flows act on level
   // through the MASS balance (stepInventory), not through separate level terms.
-  function stepLevel(s, cfg, dt) {
+  //
+  // UNCLIPPED, and it has TWO consumers for that reason (#346). stepLevel clips it to
+  // the 0–100 gauge span for indication; stepPressure needs it raw, because "is there
+  // any steam space left" is exactly the water-solid question and a reading pinned at
+  // 100 cannot answer it. ONE formula, because a copy in the second consumer would not
+  // move when this one did.
+  function levelRaw(s, cfg) {
     var p = cfg.pressurizer;
     var dm = (s._mass != null ? s._mass : 1.0) - 1.0;
     // Piecewise mass term: a DEFICIT draws down the whole loop (shallow); a
     // SURPLUS packs into the pressurizer steam space — the only compressible
     // volume — so it reads ~3× steeper (the "going solid" regime).
     var mass_term = dm < 0 ? p.level_per_mass * dm : p.level_per_mass_surplus * dm;
-    var level = levelBase(s, cfg)
-              + mass_term
-              + p.level_per_void * (s.primary_void_fraction || 0);
-    s.pzr_level_pct = clip(level, 0, 100);
+    return levelBase(s, cfg) + mass_term + p.level_per_void * (s.primary_void_fraction || 0);
+  }
+
+  // Step 8 (pzr part) — indicated pressurizer level: the line above, on span.
+  function stepLevel(s, cfg, dt) {
+    s.pzr_level_pct = clip(levelRaw(s, cfg), 0, 100);
   }
 
   RD.pwrPressurizer = {
@@ -351,6 +384,7 @@
     stepPressure: stepPressure,
     levelBase: levelBase,
     levelProgram: levelProgram,
+    levelRaw: levelRaw,
     stepLevel: stepLevel,
     stepTailpipe: stepTailpipe,
   };

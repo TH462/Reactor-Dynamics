@@ -575,6 +575,42 @@
       // silently retires the §8.21 declared backstop. Not a change to make on a number the
       // source does not actually pin. [tune]
       K_surge_level: 0.4,
+      // solid_bulk_mpa — the WATER-SOLID surge gain (#346), MPa of primary pressure per
+      // unit RCS inventory FRACTION. `K_surge_level` above is the gain of a pressurizer
+      // that still has a steam bubble; this is the gain once the bubble is gone.
+      // pwr_pressurizer.stepPressure converts it into the shared level currency by
+      // dividing by `level_per_mass_surplus`, so the two are stated in the units their
+      // own derivations come in and neither has to be re-solved when the other moves.
+      //
+      // THIS IS A PHYSICAL CONSTANT, NOT A FIT. A water-solid RCS is a fixed volume of
+      // liquid: dP = B·dρ/ρ = B·dm/m, so the gain per inventory fraction IS the isothermal
+      // bulk modulus of the coolant. For water at ~300 °C / 15.5 MPa that is ≈ 1.3 GPa
+      // (it falls steeply with temperature from ≈ 2.2 GPa cold — the hot value is the one
+      // that matters, because every path that fills this plant solid is hot).
+      //
+      // THE INTERNAL CHECK, and it is worth more than the number. The same argument run on
+      // the STEAM side has to reproduce `K_surge_level`, and it does: compressing the bubble
+      // isothermally gives dP/P = −dV_s/V_s = −(V_RCS/V_steam)·dm/m, and #249's own geometry
+      // (BVPS-2 UFSAR Tbl 5.1-1 RCS 9,650 ft³; WTSM 3.2 Tbl 3.2-2 full-power steam volume
+      // 720 ft³) makes that 15.4 × 9650/720 = 206 MPa/frac against the shipped
+      // K_surge_level·level_per_mass_surplus = 310. Same order from an independent route,
+      // so the RATIO the plant actually feels — solid ≈ 4× stiffer than bubbled — is not an
+      // artifact of picking one of the two numbers.
+      //
+      // DECLARED SIMPLIFICATION (Manuals/12 §12.4c). Relief stays excluded from the surge
+      // under F15 even when solid, so a relieving solid plant vents through the steam-space
+      // gains (`K_porv_relief` / `K_safety_relief`) rather than at this bulk modulus — and the
+      // same goes for SPRAY, which has nothing to condense, and the HEATERS, which have no
+      // bubble to flash. All three are optimistic in a vessel with no steam space.
+      //
+      // THE RELIEF THIRD ALONE WAS BUILT AND IS WORSE THAN LEAVING ALL THREE. Measured on the
+      // #346 rig: folding relief into the surge drops the relieving equilibrium ~145 psi
+      // (1 MPa), which puts the plant further below `hpi_pressure_ref`, injection then
+      // out-runs the PORV, and inventory walks back to the `mass_max` clip — the defect this
+      // constant exists to fix, returning by another road. Correct is a coupled three-term
+      // regime plus a re-solve of `K_porv_relief`/`K_safety_relief`, which were themselves
+      // solved against run_meltdown and run_scenarios (#337 F15). Separate change. [tune]
+      solid_bulk_mpa: 1300.0,
       P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
       // Operator-setpoint pressurization slew (Mode-5 heatup feel, 2026-07-23). K_heater
       // (0.55 MPa/s at full power) is the CONTROL authority for holding pressure against

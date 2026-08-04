@@ -45,6 +45,60 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04-backshop-a — #346: the bubble is the compressibility, so losing it has to change the gain
+
+**Decision.** The pressurizer gets a **water-solid regime**. When the level line reaches 100 % the
+surge→pressure gain steps from `K_surge_level` (a pressurizer with a steam bubble) to
+`solid_bulk_mpa / level_per_mass_surplus` (a pressurizer full of liquid). One factor, one law, same
+currency. `primary.mass_max` is unchanged at 1.2 and stops being reachable on this path, which is
+what #330 already said it should be.
+
+**Why a gain and not a ceiling.** The filed defect is that `mass_max` discards ECCS overfill, so the
+instinct is to move the ceiling. Measured, that does nothing: at 3.0 the plant runs to **300 %
+inventory** with pressure still parked in the PORV band. The clip was hiding the real gap, which is
+that the plant had no concept of being solid at all — the surplus level slope IS the steam-space
+slope (#249 derives it from the 720 ft³ bubble), and it was still in force with the bubble gone.
+
+**`solid_bulk_mpa` = 1300 MPa/frac is a physical constant, not a fit.** A solid RCS is a fixed
+volume of liquid, so dP = B·dm/m and the gain per inventory fraction IS the isothermal bulk modulus
+of the coolant — ≈ 1.3 GPa for water at ~300 °C / 15.5 MPa. **The internal check:** the same
+argument on the steam side has to reproduce the shipped `K_surge_level`, and it does — isothermal
+bubble compression gives 15.4 × 9650/720 = **206 MPa/frac** on #249's own geometry against the
+shipped **310**. Two independent routes agreeing to within 50 % is what makes the *ratio* — solid
+≈ 4× stiffer — something other than a choice of which number to trust.
+
+**F15's premise fails at solid, and taking only that third of it is WORSE than taking none.** F15
+excludes relief from the surge because the valves "release steam from the steam space"; with no
+steam space they pass liquid, which is a real displacement. That variant was built: relief folded
+into `dm_surge` when solid, steam-space gains standing down. Measured, it drops the relieving
+equilibrium ~145 psi, which puts the plant below the ECCS shutoff head, injection out-runs the PORV,
+and inventory walks back to the 120.00 % clip — the defect returning by a different road. The same
+argument applies to **spray** (nothing to condense) and the **heaters** (no bubble to flash), so
+the correct version is a coupled three-term regime plus a re-solve of `K_porv_relief` /
+`K_safety_relief`. Declared at `Manuals/12` **§12.4c**, not attempted here.
+
+**Guard.** `run_behavior` CA-12, five legs. Leg B computes the settling inventory **from** the level
+geometry rather than transcribing it — 109.35 % measured vs 109.28 % predicted — so a retune of
+`level_per_mass_surplus` or `level_prog_floor` moves the expectation with the plant. Leg D is the
+calibration guard and passes on the old engine by design (a bubbled plant must be untouched); leg E
+is the not-a-rescue guard. Injection-verified: the pre-#346 gain reddens **4** checks.
+
+**Two probe-authoring traps, and the first is the one worth keeping.** "Solid" is not
+`pzr_level_pct >= 100`: the **void term pegs the same gauge at 100 % on a boiling, half-empty
+core** — the TMI deception, the exact opposite of solid — and this plant transits it here with the
+PORV at 55 % duty, so gating on level alone left every leg-A check green against the very engine
+they exist to exclude. And a window placed at t+80 min is still inside the ECCS refill, which
+swings pressure 161 psi on **both** plants; at t+100 min they read 0.0 % vs 18.0 % PORV duty.
+
+**Cost, and it is not paid here.** `run_scenarios` 3/3 → 1/3 and `run_campaign` 48/51 → 42/51, all
+TMI-2. The flagship's decision point was resting on this discard — with `_mass` pinned the surge
+could not push back and the PORV term ran unopposed to **52 psi with the inventory gauge reading
+120 %**. The new behaviour (unthrottled injection matches a stuck-open PORV and the plant holds) is
+the TMI-2 counterfactual and is right; the scenario is missing the crew's 1979 throttle-back.
+**#347**, recommended as a re-author, explicitly not as a physics weakening.
+
+---
+
 ## 2026-08-04-develop-i — #341 / #319 item 2: a protection function is not protection if the operator can switch it off
 
 **Decision.** Actuations may declare `seal_in`. While such an actuation's condition is currently
