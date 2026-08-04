@@ -356,7 +356,7 @@ Per HR10, a moved test that passes only on the change is a refit. These do not:
   62.35 %, and no scram on an unheld leak. Legs D and E's first check pass on both by design —
   they are the false-positive guards.
 
-### The one red left standing, and why it is not being absorbed
+### The one red left standing — RULED *(OWNER RULING, 2026-08-04: "A")*
 
 `ops_cvcs_pzr_drain_rate` — **53.7 s** for its 15-point drop against `>= 300 s`. That
 acceptance is a **direct product of the constant** (`0.030 · gain · level_per_mass`), so it
@@ -373,9 +373,17 @@ The compensating scale also moves the sim's implied RCS volume 1,389 → 10,779 
 ~68,000) — but CVCS make-up authority shrinks 7.76× and leaks it used to hold stop being held.
 For scale: a real plant takes **~79 minutes** for this drop on one 20 gpm orifice, so both sim
 values are far from prototypical and this is a choice between two game-feel numbers.
-**Recommendation on the issue: accept the faster drain** — a real pressurizer level *is* the
-fast, sensitive inventory indicator operators watch, and the old 2 %/min is what made a total
-loss of make-up look benign.
+**RULED: A, accept the faster drain** *(OWNER RULING, 2026-08-04: "A")*, taken from the two
+costed options above. The reasoning that carried it: B spends 7 checks of *measured* CVCS
+leak-holding behaviour to buy a *feel* number, which is backwards under HR9; the 300 s target
+was never prototypical either (real ~79 min), so there was no ground truth on that side to
+defend; and the slowness is precisely what hid the defect — a level moving at 2 %/min is what
+made a total loss of make-up look benign for 22 minutes. **The red is therefore an accepted,
+ruled state — do not re-band the threshold to clear it, and do not scale
+`cvcs_inventory_gain` to chase it.** If it ever plays too fast, the cheap lever is the
+letdown ORIFICE size (0.030 ≡ 20 gpm), which sets the drain independently of charging
+authority — **unmeasured**, and it moves the gpm gauge calibration and the AUTO charging
+balance, so measure first.
 
 ### Still open, filed rather than fixed
 

@@ -222,12 +222,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   12 checks**. `run_reachability` B2 — *"an inventory loss can reach the 12 % pzr lo-lo scram"* — was
   the independent witness; the level used to fall 7.76× too slowly to reach its own trip.
 
-  **One declared cost, and it is an open owner decision**: the pressurizer now drains 7.76× faster in
-  wall-clock terms, so `ops_cvcs_pzr_drain_rate` reads 53.7 s against the ">= 300 s" feel target from
-  a 2026-07-22 owner request. It is **left red rather than re-banded** — re-banding a feel target
-  whenever the plant moves retires the target instead of reporting against it. The alternative that
-  preserves the rate exactly (scaling `cvcs_inventory_gain`) is measured in the probe comment and
-  costs 7 e2e checks of real CVCS leak-holding behaviour.
+  **One declared cost, ruled** *(OWNER RULING, 2026-08-04: "A")*: the pressurizer now drains 7.76×
+  faster in wall-clock terms, so `ops_cvcs_pzr_drain_rate` reads 53.7 s against the ">= 300 s" feel
+  target from a 2026-07-22 owner request. It is **left red rather than re-banded** — re-banding a feel
+  target whenever the plant moves retires the target instead of reporting against it — and that red is
+  now an *accepted, ruled state* rather than a pending question. The rejected alternative preserved the
+  rate exactly by scaling `cvcs_inventory_gain`, but shrank CVCS make-up authority 7.76× and cost 7 e2e
+  checks of real leak-holding behaviour. For scale, a real plant takes ~79 min for this drop, so both
+  values were game-feel numbers rather than prototypicality.
 - **`run_all` was silently losing the tail of a runner's output on Linux** (2026-08-04). Every
   runner here ends with `process.exit(code)`, and Node's I/O contract says pipes are
   **asynchronous on POSIX** and synchronous on Windows — so `process.exit()` can discard an
