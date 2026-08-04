@@ -346,27 +346,54 @@
       clad_steam_h: 1.0e-4,        // 1/s — steam-convection cooling of the exposed clad toward Tsat; sets the equilibrium gradient (grazing uncovery late in decay stabilizes below damage; deep or early uncovery runs away) [tune]
       clad_quench_tau: 120.0,      // s — reflood/rewet relaxation of the hot node back to the wetted-core temperature (quench-front timescale, minutes) [tune]
       // ZIRCONIUM-STEAM OXIDATION on the exposed-clad hot node (#238, built 2026-08-03).
-      // Zr + 2H2O -> ZrO2 + 2H2, Q = 190 kJ/mol (Baker and Just). Three of the four
-      // constants are SOURCED; only the timescale is [tune]. See pwr_thermal.stepCladding
-      // for the form and why it is Arrhenius + parabolic rather than the linear multiplier
-      // #238 originally sketched.
+      // Zr + 2H2O -> ZrO2 + 2H2. See pwr_thermal.stepCladding for the form and why it is
+      // Arrhenius + parabolic rather than the linear multiplier #238 originally sketched.
+      //
+      // PROVENANCE, PER CONSTANT - and read the classes, they are NOT the same. Relabelled
+      // 2026-08-03 after an audit: the first version called this "three of four SOURCED",
+      // and only one was anchored to a primary that had actually been retrieved.
+      //   REGULATORY PRIMARY - retrieved and quoted;
+      //   SECONDARY          - widely reproduced, primary named but NOT retrieved;
+      //   [tune]             - ours, with whatever corroboration is stated.
+      //
+      // CHOOSING Baker-Just is not a judgement call: 10 CFR 50 Appendix K para 5 REQUIRES
+      // it - "The rate of energy release, hydrogen generation, and cladding oxidation from
+      // the metal/water reaction shall be calculated using the Baker-Just equation (Baker,
+      // L., Just, L.C., ... ANL-6548, page 7, May 1962)". REGULATORY PRIMARY (govinfo,
+      // CFR-2011-title10-vol1-part50-appK). Appendix K incorporates ANL-6548 BY REFERENCE
+      // and does not print its constants - which is why the numbers below are a weaker
+      // class than the choice of correlation is.
       zirc: {
-        // Baker-Just: w^2 = 33.3e6 * t * exp(-45500/RT), w in mg/cm^2, R = 1.987 cal/mol/K.
-        // 45500 / 1.987 = 22898 K. SOURCED.
+        // Baker-Just: w^2 = 33.3e6 * t * exp(-45500/RT), w in mg/cm^2, R = 1.987 cal/mol/K,
+        // so 45500 / 1.987 = 22898 K. SECONDARY - ANL-6548 is mandated and named by
+        // Appendix K but was not retrieved; these constants come from a reproduction. The
+        // risk is low (Baker-Just is among the most-reproduced correlations in the field)
+        // and that is still not the same as having read it. Upgrade if ANL-6548 is fetched.
         ea_over_r_k: 22898,
-        // 2200 °F — the 10 CFR 50.46(b)(1) peak-cladding-temperature limit, and the
-        // temperature the oxidation-vs-decay-heat crossover below is quoted at. SOURCED.
+        // 2200 F - the 10 CFR 50.46(b)(1) peak-cladding-temperature limit: "The calculated
+        // maximum fuel element cladding temperature shall not exceed 2200 F". REGULATORY
+        // PRIMARY, retrieved (govinfo, CFR-2011-title10-vol1-sec50-46).
         ref_temp_c: 1204,
-        // Oxidation heat at ref_temp_c, as a fraction of RATED core heat. The source says it
-        // equals the decay heat 8 hours after shutdown; on THIS plant's two-group decay curve
-        // that is 1.1243 %. SOURCED anchor, evaluated against our own decay model — so it
-        // moves if the decay groups are ever re-fitted, and should be re-derived if they are.
+        // Oxidation heat at ref_temp_c, as a fraction of RATED core heat. SECONDARY, and it
+        // is the LOAD-BEARING one - the whole calibration hangs off it. The claim is that at
+        // ~2200 F the oxidation heat equals the decay heat 8 hours after shutdown, and no
+        // primary for it was retrieved. Applied to THIS plant's two-group decay curve, whose
+        // 8-hour figure is 1.1243 % of rated - which transfers a RATIO stated for a real
+        // core onto our decay model. So: re-derive this if the decay groups are re-fitted,
+        // and note that if our 8-hour decay heat is unrepresentative the absolute oxidation
+        // heat inherits that. The melt timings are an output CONDITIONAL on this number.
         q_ref: 0.011243,
-        // s — time to grow the reference oxide at ref_temp_c; sets how fast the protective
-        // layer throttles the reaction. [tune], but corroborated rather than free: Baker-Just
-        // reaches 17 % ECR — the 10 CFR 50.46(b)(2) limit — in ~80 s at 1204 °C for typical
-        // Zircaloy geometry (0.057 cm wall, 6.56 g/cm^3, oxygen gain 32/91.22 of the metal).
+        // s - time to grow the reference oxide at ref_temp_c; sets how fast the protective
+        // layer throttles the reaction. [tune]. Corroboration: Baker-Just reaches 17 % ECR -
+        // the 10 CFR 50.46(b)(2) limit, REGULATORY PRIMARY - in ~80 s at 1204 C for typical
+        // Zircaloy geometry. The GEOMETRY in that check (0.057 cm wall, 6.56 g/cm^3, oxygen
+        // gain 32/91.22 of the metal) is RECALLED, not sourced, so treat it as an
+        // order-of-magnitude sanity check rather than a derivation.
         tau_ref_s: 80.0,
+        // NOT steam-limited - and that is the REQUIRED assumption, not a shortcut we are
+        // declaring. Appendix K para 5: "The reaction shall be assumed not to be steam
+        // limited." The first write-up listed steam starvation among our simplifications;
+        // it is the regulatory model.
       },
       // Break blowdown flash-cooling (pwr_thermal.stepCoolant). Coolant leaving a primary
       // break (s.leak_flow) carries enthalpy, and the remaining inventory flashes to replace
@@ -772,6 +799,21 @@
       vacuum_max_kpa: 99.5,
       vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
       mwe_rated: 100.0,            // MWe — THIS PLANT'S RATING (identity below; feel-plan P6) [tune]
+      // OPERATOR LOAD RATE, % of rated per minute. Real turbine control is rate-limited
+      // (WTSM 11.3, ML11223A295: the operator sets a target and a rate on a thumbwheel and
+      // the EHC ramps between them), so an instantaneous load step is not a manoeuvre a real
+      // operator can make. This plant used to permit one, and that was measurable: a 70 -> 100
+      // MW step peaked loop dT at 109.1 % of rated, within 0.51 of the OPdT trip and
+      // indistinguishable from a 15 % steam line break at 109.8 %.
+      //
+      // 10 %/min is NOT invented and NOT taken from the source. `Manuals/09` §8.0 already
+      // documents "Power ramp ceiling ~10 %/min class where achievable" as this plant's
+      // authored operator limit — so the turbine now ENFORCES a limit the manual already
+      // stated. MEASURED sweep: at 100 %/min (the old behaviour) the OPdT margin bottoms at
+      // 2.07 and the runback fires on a normal ramp; at 10 %/min it is 4.57 and the runback
+      // stays silent; 5 %/min buys only 4.72 for double the wait. The source's own 1 %/min is
+      // an EXAMPLE of a selectable rate, not a maximum, so it is not a candidate.
+      load_rate_pct_per_min: 10.0,   // [tune]
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)
       // so steady-state delivered steam equals the load demand at any secondary

@@ -282,7 +282,12 @@
         var h = rodsManual(H('hot_full_power'));
         h.run(30);
         // Full load rejection: demand to zero with the turbine still on line.
-        h.cmd('set_load_target', { mwe: 0 });
+        // `immediate` — a load REJECTION is an EVENT: the grid or the machine throwing load off.
+        // It is NOT the operator walking the EHC reference down at the unit's load rate, which is
+        // what turbine.load_rate_pct_per_min (10 %/min) governs. A rejection has to arrive at once
+        // or it is not a rejection. Without the flag these probes measured a leisurely ramp and
+        // this plant's defining ride-out disappeared — 5 red, caught by the gate, not the author.
+        h.cmd('set_load_target', { immediate: true, mwe: 0 });
         // Phase 1 — hands-off ride. The dump opens to its stop and STAYS there; from that
         // point the reactor itself has to shed the difference, through MTC. That handover
         // is the lesson, and at 105 % it never happened.
@@ -358,7 +363,8 @@
       return test('TR-1g 50% loss of load — the real design case: dump carries it, then rods take it', function (ck) {
         var h = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO (#289)
         h.run(30);
-        h.cmd('set_load_target', { mwe: 50 });
+        // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
+        h.cmd('set_load_target', { immediate: true, mwe: 50 });
         h.run(600);
         var t = h.ts();
         var cap = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
@@ -567,7 +573,8 @@
       return test('TR-1h full rejection on the SHIPPED lineup — rods take it back, relief RESEATS', function (ck) {
         var h = H('hot_full_power');            // rods AUTO + the clamped level program
         h.run(30);
-        h.cmd('set_load_target', { mwe: 0 });
+        // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
+        h.cmd('set_load_target', { immediate: true, mwe: 0 });
         h.run(900);
         var t = h.ts();
         var cap = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
@@ -676,7 +683,8 @@
         // ---- leg A: Manual load target 0 MWe while ON LINE. The rotor must not slow.
         var z = H('hot_full_power');
         z.run(30);
-        z.cmd('set_load_target', { mwe: 0 });
+        // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
+        z.cmd('set_load_target', { immediate: true, mwe: 0 });
         z.run(600);                                  // 10 plant-min — 2x the old decay time
         var tz = z.ts();
         ck('still on line — the breaker never opened', String(tz.load_mode),
@@ -697,7 +705,8 @@
         // turbine (46 % vs 50 MWe — they AGREE), and the leg would stop discriminating.
         var d = rodsManual(H('hot_full_power'));
         d.run(30);
-        d.cmd('set_load_target', { mwe: 50 });
+        // `immediate`: a 50 % load REJECTION is an event, not an operator ramp — see TR-1.
+        d.cmd('set_load_target', { immediate: true, mwe: 50 });
         d.run(600);
         var td = d.ts();
         ck('the dump is carrying the rejection', fmt(td.steam_dump_valve_pct, 0),
@@ -1083,7 +1092,8 @@
         // §8.21 write-up rather than smuggled in here by deleting the mechanism test.
         var lo = rodsManual(H('hot_full_power'));
         lo.run(30);
-        lo.cmd('set_load_target', { mwe: 100 - (arm - 1) });     // 39 MWe rejected
+        // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
+        lo.cmd('set_load_target', { immediate: true, mwe: 100 - (arm - 1) });     // 39 MWe rejected
         var loArmed = false;
         for (var i = 0; i < 180; i++) { lo.run(5); if (lo.eng.s.dump_reject_mode) loArmed = true; }
         ck('under the arm the fast dump never arms', String(loArmed), loArmed === false, 'false');
@@ -1095,7 +1105,8 @@
         // --- just OVER the arm: caught, and Tavg stays on program
         var hi = rodsManual(H('hot_full_power'));
         hi.run(30);
-        hi.cmd('set_load_target', { mwe: 100 - (arm + 1) });     // 41 MWe rejected
+        // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
+        hi.cmd('set_load_target', { immediate: true, mwe: 100 - (arm + 1) });     // 41 MWe rejected
         var hiArmed = false;
         for (var j = 0; j < 180; j++) { hi.run(5); if (hi.eng.s.dump_reject_mode) hiArmed = true; }
         ck('one MWe over the arm, the fast dump arms', String(hiArmed), hiArmed === true, 'true');

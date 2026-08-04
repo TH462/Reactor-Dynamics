@@ -707,6 +707,124 @@
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
       outcome: 'Turbine trip absorbed: reactor tripped automatically on P-9, the steam dump carried the transient at its full 40 % capacity, and the plant is stable in Mode 3, Hot Standby ready for the post-trip response.',
     },
+    // PWR-E13 — ATWS. Authored 2026-08-03 (#319 item 4). `stack_only`, and this is the first
+    // procedure I have authored where the flag is genuinely EARNED rather than unavailable:
+    // emergency boration is the whole response and it runs through `set_auto_setpoint` on the
+    // `boron_conc` channel, which is an M4-only command. Below M4 there is no boration at all,
+    // so replaying this engine-direct would not test a weaker ATWS — it would test one with no
+    // response. That is exactly the PWR-N15 case the flag exists for.
+    //
+    // A CLAIM THIS REPO CARRIED IS WRONG, AND THIS PROCEDURE IS WHERE IT WAS CAUGHT.
+    // `CLAUDE.md` says of the pressurizer code safeties that "a real transient cannot reach them
+    // at all ... so only an ATWS or a failed instrument gets there", and I repeated the ATWS half
+    // in my own voice when ruling Tier C. Measured 2026-08-03, three ways, full stack:
+    //   ATWS from a turbine trip                    peak 2321 psi (16.00 MPa), safeties NEVER lift
+    //   + total loss of feedwater                   peak 2293 psi (15.81 MPa), never lift
+    //   + PORV block valve shut as well             pressure never approaches the pop either
+    // The pop is 2484 psi (17.13 MPa). **An ATWS does not get there**, because the negative
+    // moderator coefficient collapses power before pressure can run: 100 % -> 43.6 % in five
+    // minutes with nobody touching anything. I have not proven NO ATWS could reach the safeties,
+    // only that these three do not. The code safeties' reachability is back to being an open
+    // question, and `CURRICULUM.md` no longer claims ATWS answers it.
+    //
+    // WHAT IT ACTUALLY TEACHES IS BETTER THAN WHAT I THOUGHT. This is A1 at its most dramatic —
+    // the negative MTC is *the* reason a PWR ATWS is survivable — followed by A8: boron is what
+    // finishes it. Measured mitigated, boron target to 1400 ppm at t+2 min:
+    //   5 min   43.6 %   (MTC alone, no operator action)
+    //   25 min  34.2 %   boron 684 ppm
+    //   35 min   9.6 %   boron 714 ppm
+    //   45 min   0.04 %  boron 744 ppm — subcritical
+    // 126 ppm and about 44 minutes, with pressure never leaving 2235 psi (15.41 MPa).
+    {
+      id: 'pwr_atws', category: 'emergency', manual_ref: 'PWR-E13', stack_only: true,
+      title: 'Mode 1 emergency — failure to scram (ATWS)',
+      purpose: 'A trip is demanded and the rods do not go in. The reactor will not be shut down by the control rods, so it has to be shut down chemically — boration is the response, and the negative temperature coefficient of the plant itself buys you the time to do it.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation.'],
+      cautions: [
+        'THE PLANT SAVES ITSELF FIRST. Measured, power falls 100 % → 43.6 % in five minutes with nobody doing anything — the negative moderator coefficient. That is the margin you are working inside; it is not a fix.',
+        'BORATION IS THE ONLY REAL ACTION. Measured, 126 ppm over about 44 minutes takes it from full power to subcritical. Start it early: the clock is the response.',
+        'Keep the heat sink. An ATWS with a dry steam generator is the catastrophic version — feed or AFW is not optional here.',
+        'The pressurizer code safeties are NOT the story. Measured three ways, an ATWS peaks at 2321 psi (16.00 MPa) against a 2484 psi (17.13 MPa) pop and never lifts them.',
+      ],
+      steps: [
+        { text: 'A trip is demanded — here by a turbine trip above P-9 — and the rods do not go in. (Failures tab → inject Failure to Scram first, then Turbine Trip.) The board shows the trip and power does not collapse.', control: '(observe rods and power)', target: 'trip demanded, power holding',
+          cmd: { action: 'inject_failure', failure_id: 'failure_to_scram' }, hold: 20 },
+        { text: 'Trip the turbine to remove load, which is what demands the reactor trip above P-9. Watch the demand arrive and the rods stay out.', control: 'Main Breaker', target: 'reactor trip demanded, rods stay out',
+          cmd: { action: 'trip_turbine' }, hold: 60 },
+        { text: 'Attempt the manual SCRAM again. It will not work — but confirming that is what tells you this is an ATWS and not a slow trip.', control: 'SCRAM', target: 'scram refused, rods stay out',
+          cmd: { action: 'scram' }, hold: 240,
+          note: 'Meanwhile the plant is already helping: power falls toward 43 % on the moderator coefficient alone as Tavg rises. Do not mistake that for the trip working.',
+          acc: { p: 'power_pct', op: '<', v: 60 } },
+        { text: 'EMERGENCY BORATION — Boron control ON, target well above current. This is the actual shutdown mechanism: with the rods unavailable, boron is the only reactivity control you have left.', control: 'Boron control', target: 'boron rising toward shutdown',
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 1400 }, hold: 1500,
+          note: 'Measured: boron 618 → 744 ppm over about 44 minutes takes the core from 100 % to subcritical. It is slow by design — that is what the temperature coefficient is buying you.',
+          acc: { p: 'boron_ppm', op: '>', v: 660 } },
+        { text: 'Hold the heat sink while the boron works — auxiliary feedwater on the steam generator, steam dump carrying what the core is still making. An ATWS with a dry generator is the version that damages fuel.', control: 'AFW', target: 'heat sink maintained',
+          cmd: { action: 'set_afw', active: true }, hold: 1200,
+          acc: { p: 'power_pct', op: '<', v: 5 } },
+        obs('Confirm the core is subcritical on boron — power collapsing toward zero with the rods still out. The plant is shut down chemically, not mechanically, and it stays that way until the boron comes back out.',
+          { p: 'power_pct', op: '<', v: 1 },
+          'Measured end state: 0.04 % power at 744 ppm, Tavg 567.3 °F (297.4 °C), pressure never left 2235 psi (15.41 MPa) — the code safeties are not part of this event.',
+          ['Boron control', 'SCRAM', 'AFW']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Reactor shut down CHEMICALLY with the rods unavailable: the moderator coefficient held power down while 126 ppm of boron over ~44 minutes took the core subcritical, heat sink maintained throughout and the pressurizer safeties never challenged.',
+    },
+    // PWR-E17 — continuous rod withdrawal. Authored 2026-08-03 (#319 item 5). This one is the
+    // direct BEFORE/AFTER for the #311 protection work, and it is worth having the pair:
+    //   flag OFF (#311's own measurement): 114.8 % power held for ~17 s with NO TRIP, because
+    //     the power-range high trip sits at 120 % and nothing else was watching.
+    //   flag ON  (measured 2026-08-03, full stack, severity 0.5 = 3 steps/s):
+    //     t+6.1 s  `opdt_approach` annunciates — 1.8 s of warning
+    //     t+7.9 s  SCRAM, reason `opdt_margin low`, at 114.6 % power
+    //   Same peak. The difference is that the plant STOPS there instead of riding it.
+    //
+    // THE ROD STOP NEVER ENGAGES, and that is the lesson rather than a defect. OPΔT's stop is
+    // an INTERLOCK on `rod_start`/`rod_nudge` — it blocks the OPERATOR. A runaway is not an
+    // operator, and `pwr_engine.js` refuses operator rod commands on the control bank outright
+    // while the failure is active (`!(g.id === 'control_rods' && s._fail.rod_runaway.active)`).
+    // So the control-grade defence is bypassed by construction and only the TRIP saves the core.
+    // Measured, the 1.5 DPM startup-rate block (§8.18) does not fire either: SUR peaks at
+    // 0.46 DPM, nowhere near it. At power, OPΔT is the whole defence.
+    //
+    // Step 2 has the operator try to insert AND EXPECT IT TO FAIL — that is PWR-E17 step 1 as
+    // written, and the failed attempt is what teaches that this is not a control problem.
+    // Step 3 carries an explicit scram for the usual layer reason: OPΔT is an M4 trip, so
+    // `run_procedures` engine-direct has no RPS and would ride the transient.
+    {
+      id: 'pwr_rod_withdrawal', category: 'emergency', manual_ref: 'PWR-E17',
+      title: 'Mode 1 emergency — continuous rod withdrawal',
+      purpose: 'The control bank is withdrawing on its own and power is climbing. Try to insert against it, find that you cannot, and trip the reactor — the overpower protection is what actually stops this, not the rod controls.',
+      from: 'hot_full_power',
+      prereq: ['At-power operation.'],
+      cautions: [
+        'YOU CANNOT ROD YOUR WAY OUT OF THIS. A runaway ignores operator rod commands on the control bank outright — attempting Lower is a diagnostic, not a fix.',
+        'The OPΔT ROD STOP will not save you either. It is an interlock on operator rod motion, and a runaway is not an operator. Only the trip stops it.',
+        'The startup-rate block does not fire at power. Measured, the rate peaks near 0.46 DPM against a 1.5 DPM block — that interlock is a startup defence, not this one.',
+        'Do not wait for the power-range high trip at 120 %. Measured, overpower ΔT trips first at about 114.6 %; without it this casualty rides above 114 % un-tripped.',
+      ],
+      steps: [
+        { text: 'The bank starts withdrawing on its own. (Failures tab → inject Continuous Rod Withdrawal.) Watch STARTUP RATE go positive and power climb off 100 %.', control: '(observe rod position and power)', target: 'power climbing',
+          cmd: { action: 'inject_failure', failure_id: 'continuous_rod_withdrawal', severity: 0.5 }, hold: 8,
+          saw: { p: 'power_pct', op: '>', v: 104 } },
+        { text: 'Try to insert against it — Reactor card → Control Bank → Lower, and hold. It will not work: the bank ignores you while the runaway is active. That failed attempt IS the diagnosis, and it tells you this is a protection problem, not a control problem.', control: 'Control Bank', target: 'insertion refused — rods keep going',
+          note: 'The engine refuses operator rod commands on the control bank outright while this failure is active. Expect no response at all, not a slow one.',
+          cmd: { action: 'rod_start', group_id: 'control', direction: -1 }, hold: 6,
+          saw: { p: 'power_pct', op: '>', v: 108 } },
+        { text: 'TRIP THE REACTOR. On the shipped plant overpower ΔT does it for you at about 114.6 % — you should be confirming a trip that has already happened, with the OPΔT approach alarm having come in a second or two before it. If power is still climbing, scram now.', control: 'SCRAM', target: 'power collapsing',
+          note: 'Measured: OPDT APPROACH at t+6.1 s, scram at t+7.9 s on `opdt_margin low`. Without that protection the plant holds 114.8 % for ~17 s and never trips, because power-range high sits at 120 %.',
+          cmd: { action: 'scram' }, hold: 60, acc: { p: 'power_pct', op: '<', v: 5 } },
+        { text: 'Verify the rods went in. A runaway that also sticks on the scram is a different and much worse event — PWR-E18 — so confirm power is genuinely collapsing and not levelling off.', control: 'Control Bank', target: 'rods in, power collapsing',
+          hold: 60, acc: { p: 'power_pct', op: '<', v: 1 } },
+        obs('Stabilize on the heat sink: turbine off the grid, steam dump carrying decay heat, auxiliary feedwater holding steam generator level. This is Mode 3, Hot Standby — the post-trip response (PWR-T06) takes it from here.',
+          { p: 'plant_mode', op: '~', v: 3, tol: 0.5 },
+          'The rod withdrawal failure is still injected — clear it before attempting any restart, or the same thing happens on the way back up.',
+          ['SCRAM', 'Control Bank', 'AFW']),
+      ],
+      guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
+      outcome: 'Runaway terminated by the reactor trip — overpower ΔT on the shipped plant — with the core undamaged and the plant stable in Mode 3, Hot Standby.',
+    },
     // PWR-E06 — SGTR. Authored 2026-08-03 (#319 item 2), AFTER #322 was investigated and ruled.
     //
     // THIS PROCEDURE WAS BLOCKED FOR A DAY BECAUSE TWO OF ITS SIX STEPS TAUGHT THINGS THE PLANT

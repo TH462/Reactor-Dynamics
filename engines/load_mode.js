@@ -47,6 +47,10 @@
   function initState(s, P0, mweRated) {
     if (s.load_mode == null) s.load_mode = 'follow';
     if (s.load_target_mwe == null) s.load_target_mwe = P0 * mweRated;
+    // The operator's ASK, separate from the effective reference that ramps toward it.
+    // Old saves have no such field: seed it from the effective value, which is exactly
+    // where a plant with no rate limit would have left them.
+    if (s.load_cmd_mwe == null) s.load_cmd_mwe = s.load_target_mwe;
     if (s.load_follow_tau == null) s.load_follow_tau = DEFAULT_TAU;
     if (s.feed_auto_coupled == null) s.feed_auto_coupled = true;
   }
@@ -101,7 +105,36 @@
       opts.setLoad(s, s.load_target_mwe, rated);
       if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, feedMax));
     } else {
-      // manual — load_target_mwe is the operator setpoint (slider)
+      // manual — `load_cmd_mwe` is what the operator ASKED for; `load_target_mwe` is the
+      // EHC reference that ramps toward it at the unit's load rate. Real turbine control
+      // works this way: WTSM 11.3 (ML11223A295) shows the operator setting a target and a
+      // RATE on a thumbwheel — *"the system electronically changes the reference load from
+      // 50% to 100% at 1%/min"* — so a step change in demand is not something a real
+      // operator can produce at all.
+      //
+      // `loadRatePctPerMin` is OPTIONAL and per-plant. Absent (RBMK, BWR) the reference
+      // snaps as before, so those plants are byte-identical — they are ON HOLD and must not
+      // move. The rate is % of RATED per minute, not % of the change.
+      //
+      // IT LIMITS INCREASES ONLY, and that is the whole reason the limit exists rather than a
+      // softening of it. The excursion it was built to stop is a load INCREASE: raising demand
+      // drives power up and loop dT with it, and a 70 -> 100 MW step peaked dT within 0.51 of
+      // the OPdT trip. A load DECREASE does the opposite — measured, a full rejection bottoms
+      // the OPdT margin at 7.23, nowhere near the line.
+      //
+      // Limiting decreases too was measurably WRONG, not merely unnecessary: a load REJECTION
+      // is the grid or the machine throwing load off, and throttling it to 10 %/min turns this
+      // plant's defining ride-out into a leisurely ramp. It took out 5 behaviour probes, the
+      // `pwr_tour` greedy-ask branch and the SGTR EOP before the direction test was added.
+      // Rejections still arrive instantly, as they must.
+      var rate = opts.loadRatePctPerMin;
+      var gap0 = (s.load_cmd_mwe != null) ? s.load_cmd_mwe - s.load_target_mwe : 0;
+      if (rate > 0 && s.load_cmd_mwe != null && gap0 > 0) {
+        var stepMwe = (rate / 100) * rated * (dt / 60);
+        s.load_target_mwe += (gap0 <= stepMwe) ? gap0 : stepMwe;
+      } else if (s.load_cmd_mwe != null) {
+        s.load_target_mwe = s.load_cmd_mwe;
+      }
       opts.setLoad(s, s.load_target_mwe, rated);
       if (s.feed_auto_coupled) opts.setFeed(s, clip(s.load_target_mwe / rated, 0, feedMax));
     }

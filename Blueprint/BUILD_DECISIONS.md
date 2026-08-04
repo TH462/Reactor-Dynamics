@@ -90,10 +90,12 @@ temperature by construction, verified 1.1243 % vs 1.1243 %. The melt timescales 
 
 | constant | value | status |
 |---|---|---|
-| `zirc.ea_over_r_k` | 22898 | **SOURCED** — Baker-Just |
-| `zirc.ref_temp_c` | 1204 | **SOURCED** — 10 CFR 50.46(b)(1) |
-| `zirc.q_ref` | 0.011243 | **SOURCED anchor**, evaluated on our own decay model |
-| `zirc.tau_ref_s` | 80 | `[tune]`, corroborated — 17 % ECR (50.46(b)(2)) in ~80 s at 1204 °C |
+| `zirc.ea_over_r_k` | 22898 | **SECONDARY** — Baker-Just as reproduced; ANL-6548 named but not retrieved |
+| `zirc.ref_temp_c` | 1204 | **REGULATORY PRIMARY**, retrieved — 10 CFR 50.46(b)(1) |
+| `zirc.q_ref` | 0.011243 | **SECONDARY**, and load-bearing — no primary retrieved for the crossover |
+| `zirc.tau_ref_s` | 80 | `[tune]`; corroboration uses the 50.46(b)(2) ECR limit (primary) with **recalled** clad geometry |
+
+**PROVENANCE CORRECTED 2026-08-03.** The first version of this row said "three of four sourced"; an audit found only **one** was anchored to a primary that had actually been retrieved. Restated above. Two things soften it and one hardens it. Softening: **choosing** Baker-Just is not a judgement call at all — **10 CFR 50 Appendix K §5 REQUIRES it**, *"The rate of energy release, hydrogen generation, and cladding oxidation from the metal/water reaction shall be calculated using the Baker-Just equation"* (regulatory primary, retrieved) — and Appendix K incorporates ANL-6548 by reference without printing its constants, which is exactly why the numbers are a weaker class than the correlation choice. Also **"never steam-starved" was wrongly listed below as one of our simplifications**: Appendix K §5 says *"The reaction shall be assumed not to be steam limited"*, so it is the required model. Hardening: **`q_ref` carries the whole calibration and has no primary at all**, and it transfers a ratio stated for a real core onto our own decay curve — so "the melt timescale is an output, not a target" is true only *conditional on that number*. Weaker than first written.
 
 Crossover measured: 1.0× the 8-hour decay heat at 1204 °C, 2.6× at 1300, **13.3×** at 1500, doubling
 every **+66.7 °C** while decay heat falls.
@@ -199,6 +201,45 @@ fetched"* and that the τ values are in it. Wrong on both halves: it has been re
 *"manually adjusted preset"*). They are plant Tech Spec / COLR numbers, so the compensation
 departure is **permanent unless a plant-specific source turns up**, not a pending fetch. The
 distinction matters: the old wording sends the next agent to wait on a document that cannot answer.
+
+## 2026-08-03e — #318: the load rate limit, and why the persistence delay is SOURCED
+
+**Decision.** Operator load changes are rate-limited to **10 %/min, increases only**; the runback
+**keeps** its persistence delay *(OWNER, 2026-08-03: "Come up with your own rate for this plant
+that's fast enough to keep it interesting and slow enough to be safe.")*.
+
+**The rate is this plant's own.** `Manuals/09` §8.0 already documented a ~10 %/min operator ramp
+ceiling; the turbine now enforces it. My first pick was 5 %/min from a WTSM design-duty argument —
+the measurement said 10 buys the same safety (OPΔT floor 4.57 vs 4.72) for half the wait, and I had
+reached for the external source before checking what this plant had already decided.
+
+**Increases only, because the direction is the whole point.** An increase drives ΔT up into the
+OPΔT line; a decrease does the opposite (full rejection bottoms at 7.23). Limiting decreases turned
+load REJECTIONS — events, not operator actions — into ramps and destroyed the ride-out.
+
+**THE PERSISTENCE DELAY IS AN ADAPTATION OF A SOURCED FEATURE, NOT AN INVENTION.** I deleted it
+twice believing it was mine. The real signal requires *"ΔT in **two out of four** reactor coolant
+loops"* within 3 % (WTSM 12.2 §12.2.3.7/.8) — that 2/4 coincidence IS the law's noise immunity, and a
+single-loop plant structurally cannot have it. A dwell requirement is the substitute for the voting
+we cannot do. **The quote was already in the file, a few lines above the code I removed.**
+
+**What the removal actually cost, and it was misattributed to the rate limit.** The engage test
+fires on a single physics step, so a 0.10 s noise clip at margin 2.90 during a normal ramp
+triggered a runback whose 5 % cut is permanent (`immediate` moves the operator's ask too). That is
+`run_autoctl`'s 91.5 % and the SGTR EOP's 53.7 % inventory. One constant heals both.
+
+**The two are complements.** The rate limit takes the normal-ramp dwell 6.40 s → 0.10 s against a
+worst-casualty 10.58 s, so the constant sits in a gap two orders of magnitude wide instead of a
+4.18 s squeeze. It may now be mis-sized the *other* way — 85× above the noise but only 2.08 s under
+the worst casualty. Left alone: proven green, non-blocking, and my rig still does not reproduce the
+gate's.
+
+**Process note worth more than the fix.** I handed this over with both failures listed as RULED
+OUT, having measured on the wrong rig (plain `SimulationService`, seed 42) for a probe that uses
+`run_autoctl.js`'s own rig at seed 0xA07, and cited `ops_harness.js` — the wrong harness entirely.
+A wrong "ruled out" is worse than an open question: it tells the next reader not to look there.
+
+---
 
 ## 2026-08-03d — #311: OTΔT/OPΔT ON, and why the board readout was the real precondition
 

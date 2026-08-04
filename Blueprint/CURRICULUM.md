@@ -94,7 +94,7 @@ modelled**; measurements are full stack, `hot_full_power`, free-play lineup.
 | **A5** | **The SG is the primary's only heat sink** | lose feed and Tavg climbs whatever the rods do | loss of feedwater; AFW starts |
 | **A6** | **A reactor cannot be switched off** | decay heat; subcritical ≠ cooled down | post-scram tail; the Mode 5 cooldown; SBO |
 | **A7** | **Xenon is a slow, invisible reactivity load** | ¹³⁵I decays to ¹³⁵Xe faster than flux burns it out, so poison *builds* after a power cut | run A1 and wait. **Measured:** `xenon_pct_eq` **100.0 → 104.9 %** peaking at **4–5 h**, back through **98.6 %** at 12 h — **−123 pcm** then **+159 pcm**, ~4 % of the 4068 pcm bank. **There is no xenon gauge**: the player sees the rods walk out |
-| **A8** | **Boron sets WHERE critical is; rods set HOW FAST you get there** | boron is slow, bulk, bank-wide; rods are fast and local | the two Hot Standby ICs. **Measured (#303 record, not re-measured here):** 857 ppm → ~**561 steps**, 683 ppm → **319** — ~1830 pcm apart |
+| **A8** | **Boron sets WHERE critical is; rods set HOW FAST you get there** | boron is slow, bulk, bank-wide; rods are fast and local | **the live one, and it is board-reachable:** at full power set the BORON target up 618 → 700 ppm and watch. **Measured 2026-08-03, full stack, rods in AUTO:** the control bank withdraws 839 → **912/912 and pegs at its stop** inside ten minutes, then Tavg falls away to **40.6 °F below its own program** because the rod channel has no travel left — 82 ppm of boron outruns the rods entirely, power settles 100 → 75.5 %. *Boron won.* (Also, statically: **#303 record** — 857 ppm → ~561 steps critical, 683 ppm → 319, ~1830 pcm apart.) |
 | **A9** | **The gauge moves the wrong way on the SECONDARY side too** | shrink-and-swell: indicated SG level leads on smoothed `power_rate` — an **instrument** effect (`swell_factor` 0.8, `M1` §8.4), not SG void physics | the A1 load drop. **Measured:** at t+10 s the gauge reads **66.40 %** while truth is **68.85 %** and still *rising* to 70.44 — **−2.45 %**, ~4× the ±0.6 % noise band. Why three-element feed exists |
 
 **A1's arithmetic is itself the lesson.** Tavg rose 12.6 °C against a measured MTC of
@@ -270,23 +270,48 @@ is Core if it demonstrates a Tier A coupling under stress.** Everything else is 
 
 | Casualty | Tier A coupling it stresses | Response | Runnable? |
 |---|---|---|---|
-| Turbine trip / load rejection (E03) | **A1/A2** — the dump is finite; P-9; power must go somewhere | 40 % dump + 10 % rod step | **no** |
+| Turbine trip / load rejection (E03) | **A1/A2** — the dump is finite; P-9; power must go somewhere | 40 % dump + 10 % rod step | **yes** — `pwr_turbine_trip` |
 | Loss of main feedwater (E01) | **A5/A9** — the SG is the only heat sink; AFW auto-start | yes | yes |
 | RCP trip / loss of flow (E02) | **A1** — flow → DNB margin; the P-7 gating | partial | yes |
-| Small RCS leak, seal leak (E23) | **A4** — CVCS holds it, and *charging flow* is the cue, not level | yes (#262) | **no** |
+| Small RCS leak, seal leak (E23) | **A4** — CVCS holds it, and *charging flow* is the cue, not level | yes (#262) | **yes** — `pwr_seal_leak` |
 | Stuck-open PORV (E07) | **A3/A4** — the TMI opener; tailpipe temperature is the honest tell | yes | yes |
-| SGTR (E06) | **A3** — primary→secondary path; depressurize to stop the leak | yes | **no** |
+| SGTR (E06) | **A3** — primary→secondary path; depressurize to stop the leak | yes | **yes** — `pwr_sgtr` |
 | Loss of offsite power / SBO (E04/E05) | **A6** — everything at once, on batteries | partial | **no** |
-| Steam line break (E19/E19u) | **A9** — overcooling is a reactivity event | **no auto isolation** (#295 F5) | **no** |
+| Steam line break (E19/E19u) | **A1** — overcooling is a reactivity event, through the same moderator coefficient A1 runs on (was mis-cited as A9, which is the SG-level *instrument* effect) | **no auto isolation** (#295 F5) | **no** |
 | Loss of shutdown cooling, Mode 5 (#287) | **A6** — decay heat with no SG | annunciator only | **no** |
 | **ATWS** (E13, `failure_to_scram`) | **A6 inverted + A8** — the reactor that will *not* switch off; boration is the only reactivity control left | yes | **no** |
 | **Uncontrolled rod withdrawal** (E17) | **A8** — rods fast, boron slow, in its dangerous direction | 1.5 DPM block (§8.18) | **no** |
 
-**The two additions are measured, and the measurement is why they are Core.** **ATWS** is the only
-reachable demonstration of the pressurizer **code safeties**: a real transient cannot reach them,
-because the high-pressure reactor trip caps indicated pressure at **2460 psi (16.96 MPa)** under
-the **2484 psi (17.13 MPa)** pop — so without this row an engine surface has no curriculum home at
-all. **Uncontrolled rod withdrawal** holds **114.8 % power for ~17 s with NO TRIP** (#311),
+**ONE CORE ROW DOES NOT SATISFY THE CORE TEST, and it is flagged rather than quietly rewritten**
+(found 2026-08-03 auditing this table against its own rule). **RCP trip / loss of flow (E02)** cites
+*"flow → DNB margin"* — and **DNB margin is not a Tier A coupling**. The nearest row, A3, is about
+*subcooling* margin, which is not the same quantity. So E02 sits in Core on prototypicality and on
+having a real automatic trip, not on the stated test. Two honest resolutions: add a Tier A row for
+flow → DNB margin (it is modelled — `dnb_margin_c` is a config constant and `hFcEffective`
+collapses on it), or say plainly that Core admits a casualty on **procedure** grounds as Tier B
+does. **Not resolved here** — it is a question about the ruling, not a typo in it.
+
+**The Runnable? column above went stale within hours of the ruling** — three checklists were built
+on 2026-08-03 (`pwr_turbine_trip`, `pwr_sgtr`, `pwr_seal_leak`) and this table still said "no".
+It is the same shape as the #224 trap: a hand-maintained list beside the artifact it describes.
+**Update it in the change that builds the checklist**, or `run_procdocs`' own coverage report is
+the only thing telling the truth.
+
+**The two additions are measured, and the measurement is why they are Core.** **ATWS** is
+**A1 at its most dramatic followed by A8**: measured 2026-08-03, power falls **100 % → 43.6 % in
+five minutes with nobody acting** — the negative moderator coefficient is *the* reason a PWR ATWS
+is survivable — and then **126 ppm of boron over ~44 minutes** takes the core subcritical with the
+rods unavailable.
+
+> **CORRECTION, 2026-08-03.** This paragraph used to justify ATWS as *"the only reachable
+> demonstration of the pressurizer code safeties"*. **That is false, and it was my own claim,
+> inherited from `CLAUDE.md` and repeated in my own voice.** Measured three ways, full stack —
+> ATWS from a turbine trip (peak **2321 psi / 16.00 MPa**), ATWS plus total loss of feedwater
+> (**2293 psi / 15.81 MPa**), and both with the PORV block valve shut as well — **the safeties
+> never lift**, against a **2484 psi (17.13 MPa)** pop. The moderator coefficient collapses power
+> long before pressure can run. I have **not** proven no ATWS could reach them; only that these
+> three do not. **The code safeties' reachability is an open question again**, and ATWS is Core on
+> its own merits, which are stronger. **Uncontrolled rod withdrawal** holds **114.8 % power for ~17 s with NO TRIP** (#311),
 recovering only because the bank runs out of travel: a demonstrated protection gap on the shipped
 plant, and what §8.18's declared departure exists for.
 

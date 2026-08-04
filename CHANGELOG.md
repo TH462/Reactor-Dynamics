@@ -22,6 +22,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **An operator load rate limit — 10 %/min, increases only** *(OWNER, 2026-08-03: "Come up with your
+  own rate for this plant that's fast enough to keep it interesting and slow enough to be safe.")*.
+  Real turbine control is rate-limited (WTSM 11.3, ML11223A295: the operator sets a target and a
+  rate, and the EHC ramps between them), so the instantaneous 30 % load step this plant permitted
+  was a fidelity gap — and a measurable one: a *normal* 70 → 100 MW step peaked loop ΔT at 109.1 %
+  of rated, within **0.51** of the OPΔT trip and indistinguishable from a 15 % steam line break at
+  109.8 %. **10 %/min is this plant's own number**: `Manuals/09` §8.0 already documented "Power ramp
+  ceiling ~10 %/min class where achievable", so the turbine now enforces a limit the manual stated.
+  Measured OPΔT floor on that ramp: **2.07 → 4.57**.
+- **It limits INCREASES only**, and limiting both directions was measurably wrong. A load
+  *rejection* is the grid or the machine throwing load off — an EVENT, not an operator ramp — and
+  throttling it turned this plant's defining ride-out into a leisurely descent, taking out five
+  behaviour probes, the `pwr_tour` greedy-ask branch and the SGTR EOP. Six probe sites now declare
+  themselves events via `immediate: true`.
+
+### Changed
+- **The runback's persistence delay is SOURCED, and removing it was the error** — it caused both of
+  the red gates previously blamed on the rate limit. The real signal needs *"ΔT in **two out of
+  four** reactor coolant loops"* within 3 % (WTSM 12.2): **2/4 coincidence voting is the law's noise
+  immunity**, and a single-loop plant structurally cannot have it, so a dwell requirement is the
+  substitute for the voting we cannot do. Without it the engage test fires on a **single physics
+  step**: the normal ramp clips the trigger for **0.10 s at margin 2.90** on instrument noise, and
+  because `immediate` moves the operator's ask the resulting 5 % cut is permanent — load parked at
+  91.6 MWe (`run_autoctl` 91.5 %), and the SGTR EOP ran the runback twice instead of once
+  (inventory 53.7 vs 54.4). Restored, with the rate limit widening its margin: the normal-ramp
+  dwell is 6.40 s → **0.10 s** against a worst-casualty 10.58 s.
+
+
+### Added
 - **Zirconium-steam oxidation on the exposed-cladding hot node — the second heat source** (#238).
   `Zr + 2H₂O → ZrO₂ + 2H₂`, 190 kJ/mol. Above ~2012 °F (1100 °C) the cladding burns in steam, and
   that reaction is what carried the TMI-2 and Fukushima cores from *hot* to *melting* faster than
@@ -51,6 +80,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     rewritten, §13 corrected (hydrogen *generation* is modelled; the *inventory* is what is absent).
 
 ### Added
+- **Failure to scram (ATWS) is a runnable checklist — and the reactor shuts down chemically**
+  (#319). A trip is demanded, the rods do not go in, and the plant saves itself first: measured,
+  power falls **100 % → 43.6 % in five minutes with nobody acting**, on the negative moderator
+  temperature coefficient alone. That is *the* reason a pressurized-water reactor survives an
+  ATWS. Boron finishes the job — **126 ppm over about 44 minutes** takes the core subcritical with
+  the control rods still unavailable.
+  **A claim the project carried turns out to be wrong, and this is where it was caught.** The
+  pressurizer code safeties were said to be reachable by an ATWS. Measured three ways — from a
+  turbine trip, with the feedwater also lost, and with the relief path isolated as well — an ATWS
+  peaks at **2321 psi (16.00 MPa)** against a **2484 psi (17.13 MPa)** pop and never lifts them.
+  Power collapses long before pressure can run. Corrected in the manuals and design notes.
+
+- **Continuous rod withdrawal is a runnable checklist — and it is the clearest demonstration of
+  why the new overpower protection exists** (#319). The bank starts withdrawing on its own and you
+  cannot rod your way out: the plant refuses operator rod commands on the control bank while the
+  runaway is active, so attempting to insert is a diagnosis rather than a fix. The OPΔT **rod
+  stop** does not help either — it is an interlock on operator motion, and a runaway is not an
+  operator. Only the trip stops it.
+  Measured with the protection **off**, the plant holds **114.8 % power for about 17 seconds and
+  never trips**, because the power-range high trip sits at 120 %. With it **on**, the approach
+  alarm comes in at 6.1 s and the reactor scrams at 7.9 s at **114.6 %**. Same peak — the plant
+  just stops there instead of riding it.
+
 - **`tools/perturb_sweep.js` — "which checks break if I retune this?"** Nudges `[tune]` constants
   by 2–3 %, runs a whole suite per nudge and diffs verdicts, so the question is answered *before*
   a retune instead of by a puzzling red afterwards. Built out of #321, where a check had been green

@@ -663,7 +663,13 @@
     // so `left` is the RIGHT edge, card right minus 5; `top` is card top plus 13.
     { id: 'bdDtMargin', kind: 'value',
       name: 'Core ΔT margin to the nearer of the OTΔT / OPΔT trip lines  ·  sim: in.otdt_margin / in.opdt_margin, % of rated ΔT',
-      left: 990, top: 243, value: '—', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true }
+      // top 234, NOT the 243 copied from bdRodStatus. MEASURED: at 243 the rendered box runs a
+      // few px into the 'STARTUP RATE' label below it (870-966 x 260-277) — a real collision
+      // that authored-coordinate arithmetic said could not happen, which is the rAnchor trap
+      // CLAUDE.md documents. Both elements still render, so only the ruler in board_check
+      // finds it. 234 sits in the card's title band, clear to the RIGHT of the title text
+      // ('NUCLEAR INSTRUMENTATION (NIS)' ends near x=905 at fontSize 11).
+      left: 990, top: 234, value: '—', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)

@@ -444,7 +444,7 @@ var BASELINES = {
   // 25 -> 27 on 2026-08-03 (#319): pwr_post_trip's two cross-reference checks — the checklist
   // names a manual procedure, and PWR-T06 is defined in the index. This gate also REPORTS the
   // coverage number #319 tracks (58 documented, N 15 / T 19 / E 24) without enforcing it.
-  'run_procdocs.js':       { code: 0, score: '33checks 0failed' },
+  'run_procdocs.js':       { code: 0, score: '37checks 0failed' },
   // New 2026-07-29 — the manual quotes US customary first with SI in parentheses
   // (owner request). This re-derives the US value from the SI value in every pair
   // and fails on bad arithmetic, on an SI quantity with no US partner, and on a
@@ -495,7 +495,7 @@ var BASELINES = {
   // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
   // 94 → 122 on 2026-08-02 (#310): the PWR-N15 cooldown checklist adds 14 controlled steps.
   // 122 -> 132 on 2026-08-03 (#319): PWR-T06 post-trip, 5 controlled steps x 2 checks.
-  'run_manual_controls.js': { code: 0, score: '158checks 0failed' },
+  'run_manual_controls.js': { code: 0, score: '172checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -513,7 +513,7 @@ var BASELINES = {
   // 292 -> 295 on 2026-08-03 (#319): the `procedure:pwr_post_trip` registry entry. This gate
   // caught its absence, which is the job — a procedure the player can open with no flag
   // behind it ships ungated (#310 is the worked case).
-  'run_flags.js':          { code: 0, score: '16/16 304/304' },
+  'run_flags.js':          { code: 0, score: '16/16 310/310' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -617,7 +617,15 @@ var BASELINES = {
   // steam line break MOVED out of the casualty block — the runback now saves it, so it is
   // asserted there as a save rather than here as a trip. What is left in the casualty block
   // is the pair the runback CANNOT save, which is the honest split.
-  'run_otdt.js':           { code: 0, score: '44checks 0failed' },
+  // 44 -> 45 (2026-08-03): +1 for the runback's NEVER-WORSE check. A/B'd across four seeds,
+  // the runback saves the 15 % steam line break on 3 and is NEUTRAL on the 4th (seed 7, where
+  // the casualty scrams at 66 s with and without it). Nothing else asserted that a protection
+  // action which takes load off cannot bring a trip FORWARD, which is the safety property.
+  // 45 -> 46 (2026-08-03): the runback was rebuilt to the SOURCED law (WTSM 11.3, ML11223A295)
+  // and the extra check asserts its QUANTISATION — load lands on 5 % multiples because the real
+  // EHC steps 5 % at 200 %/min then holds 28.5 s. A continuous ramp cannot land on that grid, so
+  // this check fails on the implementation it replaced, which the old '< 90 MWe' band could not.
+  'run_otdt.js':           { code: 0, score: '46checks 0failed' },
   // NEW 2026-07-31 — release bookkeeping: site/release.js, changelog.html and CHANGELOG.md
   // must say the same thing about what shipped. Written because the CHANGELOG.md roll (rename
   // "## [Unreleased]" to the version) was skipped for Alpha 1.10.0 AND 1.11.0 — 434 lines of
@@ -825,7 +833,14 @@ var BASELINES = {
   // asks for them (its steps 3 and 6); the severity is what moved.
   // 26/26 124 -> 27/27 132 on 2026-08-03 (#319 item 1): PWR-E03 turbine trip, the pair to
   // PWR-T06 (E03 is the procedure that SENDS you to the post-trip response).
-  'run_procedures.js':     { code: 0, score: '27/27 132/132' },
+  // 27/27 132 -> 28/28 139 on 2026-08-03 (#319 item 5): PWR-E17 rod withdrawal — the direct
+  // BEFORE/AFTER for the #311 protection. Flag OFF it held 114.8 % for ~17 s with NO trip;
+  // flag ON, OPdT scrams at 114.6 % after 7.9 s. Same peak, the plant just stops there.
+  // 28/28 139 -> 29/29 140 on 2026-08-03 (#319 item 4): PWR-E13 ATWS, and it is `stack_only`
+  // with the flag GENUINELY EARNED — emergency boration runs through `set_auto_setpoint` on
+  // the boron_conc channel, an M4-only command, so engine-direct would replay an ATWS with
+  // NO RESPONSE at all. One check here (the flag is justified); the stack owns the rest.
+  'run_procedures.js':     { code: 0, score: '29/29 140/140' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -871,7 +886,7 @@ var BASELINES = {
   // steps later missed it under the stack while still passing engine-direct (where the
   // transient is slower). It lives on the confirm-scram step now, whose hold covers the
   // peak in both layers. A `saw` is only as good as the window it is placed in.
-  'run_procedures_stack.js': { code: 0, score: '27/27 244/244' },
+  'run_procedures_stack.js': { code: 0, score: '29/29 261/261' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -973,7 +988,7 @@ var BASELINES = {
   // 183 -> 198 on 2026-08-03 (#319): PWR-T06's five controlled steps, 3 checks each. Its
   // STEP_UI entries went in with the procedure, so this number and run_manual_controls moved
   // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
-  'verify_manual_follow.js': { code: 0, score: '237checks', slow: true },
+  'verify_manual_follow.js': { code: 0, score: '258checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

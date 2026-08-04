@@ -20,6 +20,153 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03u (#319 item 4 — ATWS, and a claim this repo carried is FALSE)
+
+**Task:** #319 item 4, PWR-E13. Two findings, and the second is the one that matters.
+
+### `stack_only` is genuinely EARNED here — the first time in my work
+
+Emergency boration is the whole response and it runs through **`set_auto_setpoint`** on the
+`boron_conc` channel, which **is** in `NON_ENGINE_ACTIONS`. Below M4 there is no boration at all,
+so replaying this engine-direct would not test a weaker ATWS — it would test one with **no
+response**. That is exactly the PWR-N15 case the flag exists for, and the gate agrees:
+*"stack_only is justified — an M4-only command is load-bearing (set_auto_setpoint)"*.
+
+This also closes the loop on the doubt I investigated earlier: the flag was **unavailable** for
+T06/E03/E06/E23 because their operator actions really are engine commands, and it is **available**
+here because this one's is not. The rule works as designed; I had been right to not reach for it.
+
+### THE CODE-SAFETY CLAIM IS FALSE, AND IT WAS MINE
+
+`CLAUDE.md` said of the pressurizer code safeties that *"a real transient cannot reach them at all
+… so only an ATWS or a failed instrument gets there"*. **I repeated the ATWS half in my own voice**
+when ruling Tier C, and wrote it into `CURRICULUM.md` and issue #316 as the justification for ATWS
+being Core. Measured 2026-08-03, full stack, three ways:
+
+| case | peak pressure | safeties |
+|---|---|---|
+| ATWS from a turbine trip | **2321 psi (16.00 MPa)** | never lift |
+| + total loss of feedwater | **2293 psi (15.81 MPa)** | never lift |
+| + PORV block valve shut as well | never approaches the pop | never lift |
+
+The pop is **2484 psi (17.13 MPa)**. **An ATWS does not get there**, because the negative moderator
+coefficient collapses power long before pressure can run — 100 % → **43.6 % in five minutes** with
+nobody acting. Both files are corrected; `CLAUDE.md`'s line now reads *"only a failed instrument"*
+with the disproof attached.
+
+**I have NOT proven no ATWS could reach them** — only that these three do not. The code safeties'
+reachability is an open question again.
+
+**This is the inherited-claim trap, and I walked into it while citing it.** I have quoted
+*"repeating an inherited claim in your own voice launders it into a fresh assertion"* several times
+this session, and then did exactly that with a sentence from the file I was quoting.
+
+### What ATWS actually teaches is better than what I claimed
+
+**A1 at its most dramatic, then A8.** Measured mitigated (boron target 1400 ppm at t+2 min):
+
+| | | |
+|---|---|---|
+| 5 min | **43.6 %** | MTC alone, no operator action |
+| 25 min | 34.2 % | boron 684 ppm |
+| 35 min | 9.6 % | boron 714 ppm |
+| 45 min | **0.04 %** | boron **744 ppm** — subcritical |
+
+**126 ppm over ~44 minutes**, pressure never leaving 2235 psi (15.41 MPa). The negative moderator
+coefficient is *the* reason a PWR ATWS is survivable, and boron is what finishes it. ATWS stays
+Core on those merits, which are stronger than the claim I withdrew.
+
+**Gates:** `run_procedures` 28/28 139 → **29/29 140**; `run_procedures_stack` 28/28 253 →
+**29/29 261**; `run_manual_controls` 164 → **172**; `run_flags` 307 → **310**; `run_procdocs`
+35 → **37**; `verify_manual_follow` 246 → **258**.
+
+---
+
+## Session log — 2026-08-03t (#319 item 5 — PWR-E17, and the rod stop that cannot help)
+
+**Task:** #319 item 5, chosen because OTΔT/OPΔT went ON in the last release and that **is** this
+casualty's at-power protection — the casualty and its defence finally in one tree.
+
+### The direct before/after for #311
+
+| | |
+|---|---|
+| flag **OFF** (#311's own measurement) | **114.8 %** power held for ~**17 s**, **NO TRIP** — power-range high sits at 120 % and nothing else was watching |
+| flag **ON** (measured 2026-08-03, severity 0.5 = 3 steps/s) | `opdt_approach` at **t+6.1 s**; **SCRAM at t+7.9 s**, reason `opdt_margin low`, at **114.6 %** |
+
+**Same peak. The difference is that the plant stops there instead of riding it.** That is the
+clearest justification for the #311 work anywhere in the repo.
+
+### The rod stop never engages, and that is the lesson
+
+OPΔT's rod stop is an **interlock on `rod_start`/`rod_nudge`** — it blocks the **operator**. A
+runaway is not an operator. And `pwr_engine.js:796` refuses operator rod commands on the control
+bank outright while the failure is active:
+`if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active))`. So the control-grade defence
+is bypassed **by construction** and only the trip saves the core. Measured, the **1.5 DPM
+startup-rate block (§8.18) does not fire either** — SUR peaks at **0.46 DPM**, nowhere near it;
+that interlock is a startup defence, not this one. **At power, OPΔT is the whole defence.**
+
+The checklist has the operator attempt the insertion **and expect it to fail** — PWR-E17 step 1 as
+written — because the failed attempt is what tells them this is a protection problem, not a
+control problem.
+
+**No manual change** — E17 already documents the four actions. No revision bump.
+
+**Gates:** `run_procedures` 27/27 132 → **28/28 139**; `run_procedures_stack` 27/27 244 →
+**28/28 253**; `run_manual_controls` 158 → **164**; `run_flags` 304 → **307**; `run_procdocs`
+33 → **35**; `verify_manual_follow` 237 → **246**.
+
+---
+
+## Session log — 2026-08-03s (the boration Tavg droop — NOT a defect, and it is a better A8 than the one in the table)
+
+**Task:** close the observation I had flagged five times and never chased — borating 618 → 700 ppm
+at full power cooled the plant **43.3 °F (24.1 °C)** with `rods_tavg` in AUTO. Was the rod
+controller failing?
+
+**No. It ran out of travel, which is exactly what should happen.** Measured full stack,
+`hot_full_power`, shipped lineup:
+
+| | power | steam | Tavg | T-ref | dev | bank |
+|---|---|---|---|---|---|---|
+| t=0 | 100.0 | 1.000 | 579.3 °F | 579.3 °F | 0.0 | **839/912** |
+| 10 min | 94.2 | 0.963 | 572.9 | 578.9 | −6.0 | **912/912** |
+| 20 min | 84.4 | 0.875 | 556.6 | 577.7 | −21.1 | 912/912 |
+| 30 min | 74.7 | 0.775 | 537.3 | 576.5 | −39.2 | 912/912 |
+| 40 min | 75.5 | 0.769 | 535.8 | 576.4 | **−40.6** | 912/912, still |
+
+`rods_tavg` is **ON** the whole way. The bank withdraws to its stop inside ten minutes and then
+sits there: **82 ppm of boron outruns the entire remaining rod authority**, and the controller has
+nothing left to give. The droop is the plant telling the truth.
+
+**Two things I had wrong on the way in.** First I assumed the sliding Tavg program explained it —
+`trefFromLoad` drives T-ref off **`steam_flow`**, so a falling power does lower the target. It
+does, but only by **2.9 °F** (579.3 → 576.4): the program band is 7 °C across the whole load range,
+so it accounts for a fourteenth of the observed drop. Second I assumed the bank must already be at
+ARO at full power. It is **not** — 839/912, with 73 steps of margin — which is why the first ten
+minutes look like the controller working before it stops mattering.
+
+**IT IS ANNUNCIATED, but the CAUSE is not.** At the settled condition the board raises
+`low_tavg` and `load_imbalance` — the operator is told. What nothing says is *why*: `rod_at_limit`
+is **false** and `rod_limit_margin` reads **426**, because both are the **LOW** (insertion) limit
+from #306. There is no high-end "bank at its withdrawal stop" indication, even with the bank
+literally at 912/912. The information is on the board — the Control Bank card reads 912/912 — but
+the operator has to infer the link. Filed; it is an asymmetry against #306's ROD LIMIT LO, not
+obviously a defect, since the low limit guards shutdown margin and the high limit only guards
+control authority.
+
+**The payoff: `CURRICULUM.md` A8 has a better demonstration now.** It used to cite the #303 record
+— two Hot Standby ICs compared, 857 ppm → 561 steps against 683 → 319. That is a fact about two
+save files. **This is live and board-reachable**: set the boron target up 82 ppm at power and watch
+the bank walk to its stop and lose. *Boron won.* The static comparison is kept as the second half.
+
+**Five flags and no investigation is its own lesson.** I carried this forward through four
+checklists, each time saying "not chased", while authoring content on the same plant. It cost
+about fifteen minutes to settle.
+
+---
+
 ## Session log — 2026-08-03r (#238 zirconium oxidation — the escalation was pointing the wrong way)
 
 **Built the #238 checklist entry.** The exposed-clad hot node (#213) has its second heat source:
@@ -448,6 +595,71 @@ left in place after the procedure moved to 0.25. Corrected to the measured 0.25 
 **Gates:** `run_procedures` 25/25 115 → **26/26 124**; `run_procedures_stack` 25/25 223 →
 **26/26 234**; `run_manual_controls` 142 → **152**; `run_flags` 298 → **301**; `run_procdocs`
 29 → **31**; `verify_manual_follow` 213 → **228**; `run_manual_rev` 13/13 at Rev 19.
+
+---
+
+## Session log — 2026-08-03k (the load rate limit, and Fable finding the bug I ruled out)
+
+*(OWNER, 2026-08-03: "Come up with your own rate for this plant that's fast enough to keep it
+interesting and slow enough to be safe.")* — **10 %/min, increases only**, plus the sourced
+runback keeping its persistence delay after all. Both halves were wrong first and the corrections
+are the entry.
+
+**THE RATE, and it is this plant's own number.** WTSM 11.3 (ML11223A295) shows operator load
+changes are rate-limited on a real unit — a target and a rate on a thumbwheel — so the
+instantaneous 30 % step this plant permitted was a fidelity gap, and it is why a *normal* ramp
+peaked loop ΔT at 109.1 % of rated, within **0.51** of the OPΔT trip and indistinguishable from a
+15 % steam line break at 109.8 %. My first pick was 5 %/min from a WTSM design-duty argument.
+Measured sweep says 10: OPΔT floor 2.07 at today's 100 %/min, **4.57 at 10 %/min**, 4.72 at
+5 %/min for double the wait, 3.01 at 20 %/min with the runback nuisance-firing. And 10 is not
+mine — `Manuals/09` §8.0 already documents *"Power ramp ceiling ~10 %/min class where achievable"*,
+so the turbine now ENFORCES a limit the manual already stated. **I reached for the external source
+before checking what this plant had already decided.**
+
+**INCREASES ONLY, and limiting both directions was measurably wrong.** A load *increase* drives
+power and ΔT up; a *decrease* does the opposite (a full rejection bottoms the OPΔT margin at 7.23).
+Throttling decreases turns a load REJECTION — the grid throwing load off, an EVENT — into a
+leisurely ramp, and it took out **5 behaviour probes, the `pwr_tour` greedy-ask branch and the SGTR
+EOP** before the direction test existed. Six probe sites now declare themselves events with
+`immediate: true`. The owner asked whether the rate would be too slow for gameplay; the honest
+answer was that speed was never the risk — I had throttled this plant's defining ride-out without
+noticing, and the gate caught it rather than me.
+
+**THE BUG I RULED OUT, AND FABLE FOUND.** With the rate limit in, `run_autoctl` sat at 29/30
+(power 91.5 vs 100±6) and `run_ops` SGTR at 53.7 % inventory, and I handed both over as
+unexplained. The cause was the `persist_s` deletion, not the rate limit:
+
+- the normal ramp clips the trigger for **0.10 s at margin 2.90** — instrument noise, not a
+  trajectory — and with no persistence the engage test fires on a **single physics step**;
+- `immediate: true` moves the operator's ASK as well as the reference, so the resulting 5 % cut is
+  permanent. Load parks at 91.6 MWe → mean **91.54**, the gate's 91.5 exactly;
+- same defect in SGTR: the runback engages **twice** instead of once, inventory 53.7 vs **54.4**.
+
+**Why I missed it — three failures that compounded.** I measured on a plain `SimulationService`
+rig at **seed 42**; the probe uses `run_autoctl.js`'s own rig at **seed 0xA07**. I cited
+`ops_harness.js:126` for the run-seconds check, which is **the wrong harness for that probe**. And
+I then wrote both up as RULED OUT in the handoff — which is worse than leaving them open, because
+it tells the next reader not to look there. Fable's advantage was declining to trust that list.
+Worse, my own handoff listed *"I tested a probe at the seed where the answer was comfortable"* as a
+mistake not to repeat, and that is precisely what caused the failure I was handing over.
+
+**THE PERSISTENCE DELAY IS SOURCED, and calling it invented was the substantive error.** I deleted
+it twice on the grounds that it was mine. It is not: the real signal requires *"ΔT in **two out of
+four** reactor coolant loops"* within 3 % (WTSM 12.2 §12.2.3.7/.8) — **2/4 coincidence voting IS the
+law's noise immunity**, and a single-loop plant structurally cannot have it. A dwell requirement is
+the substitute for the voting we cannot do, which makes it a declared ADAPTATION of a sourced
+feature. That quote was already in the file, a few lines above the code I removed.
+
+**The two are complements, not alternatives.** The rate limit takes the normal-ramp dwell from
+6.40 s to 0.10 s against a worst-casualty dwell of 10.58 s, so the constant now sits in a gap two
+orders of magnitude wide rather than the 4.18 s squeeze it was first sized into. **It may now be
+mis-sized in the other direction** — 8.5 s is 85× above the noise clip but only 2.08 s below the
+worst casualty; Fable suggests 2–4 s. Left alone deliberately: 8.5 is proven green, the retune is
+non-blocking, and **my rig still does not reproduce the gate's** (it reads 0.00 s of normal-ramp
+dwell where Fable measured 0.10), so I cannot size it honestly yet.
+
+**Gates:** `run_all` 36 runners at baseline. `run_autoctl` 30/30, `run_ops` 59/69 (its tracked
+RBMK/BWR reds), `run_otdt` 46/46, `run_behavior` 45, `run_campaign` 51/51.
 
 ---
 

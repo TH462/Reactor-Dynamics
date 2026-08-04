@@ -66,6 +66,27 @@ A clean auto-merge means *textually* clean. It does not mean correct.
 - **New board controls/indications need a `pwr_board_inspect.js` entry** or `run_inspect`
   fails. Same for anything the manual documents.
 
+## 4b. Run the merge audit — the step that catches what no gate can
+
+```bash
+node tools/merge_audit.js <base> <lane>     # audits the WORKING TREE, before you commit
+```
+
+**Two merges on 2026-08-03 each silently dropped content and every gate stayed green.**
+`run_reachability`'s whole entry vanished from CLAUDE.md's gate-baselines line — that line is
+one enormous paragraph every lane appends to, so it is resolved by hand or by regex and a
+splice that eats a segment leaves valid markdown. `BASELINES` was untouched, so `run_all`
+passed. The second lost 45 lines of `Manuals/12_SIM_PHYSICS.md`, which `run_manual_rev` cannot
+see either because the digests are **re-sealed** by `stamp_manual_revision.js` after the edit.
+
+The audit compares the structural inventory of the result against **both parents** and reports
+anything a parent had and the result does not — gate entries, session-log headings, departure
+rows, revision rows, BASELINES keys, authored procedure ids, flag entries, manual headings.
+
+**Know its limit.** It catches a **named thing disappearing**. It does **not** catch paragraph
+loss inside a section that survives — verified: it flags the first 2026-08-03 loss and misses
+the second. A green MERGE AUDIT means "no named item vanished", not "the merge kept everything".
+
 ## 5. Gate, and attribute every red
 
 ```bash

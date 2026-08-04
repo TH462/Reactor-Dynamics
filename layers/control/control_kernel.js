@@ -100,6 +100,7 @@
     // Runback latches (#318). Same condition/hysteresis lifecycle as an interlock, but a
     // runback DRIVES a setpoint for as long as it is engaged rather than blocking a command.
     this.runbackActive = (this.config.runbacks || []).map(function () { return false; });
+    this.runbackPhase  = (this.config.runbacks || []).map(function () { return 0; });
     this.runbackDwell  = (this.config.runbacks || []).map(function () { return 0; });
     // Automation channel runtime (M4b automation): per-plant channel defs are config data.
     this.channels = [];
@@ -1151,8 +1152,11 @@
   // of time acceleration, which is the #153 defect exactly. `stepAutomation` is called once
   // per physics step with a fixed dt, so a rate expressed here is sim-time correct at 1× and
   // at 3600×. The consequence, stated rather than discovered later: the runback is a
-  // FULL-STACK behaviour — `stepAutomation` has one production caller (the service), so
-  // engine+M4 harnesses do not see it. Probe it through SimulationService.
+  // NOT full-stack-only, and an earlier version of this comment claimed it was. `test/
+  // ops_harness.js` calls `stepAutomation` too (:134, :152, wired to the shipped lineup by
+  // #209), so `run_ops` and `run_behavior` DO see the runback. Verified by grepping every
+  // caller rather than inherited from CLAUDE.md's layer table, which is about `engageDefaults`
+  // and does not imply this.
   //
   // IT IS NOT AN AUTOMATION CHANNEL, deliberately, even though it shares this entry point.
   // Channels are operator-engageable; protection is not, and a runback the player could take
@@ -1164,6 +1168,33 @@
   // `control_kernel.js:readback` in run_hardrules' exception list, not a sensed quantity.
   // Reading it every step is deliberate: if the operator types a higher load, the runback
   // picks that value up and walks it down again, which IS the authored behaviour.
+  // Responsibility 2c — RUNBACKS (#318). SOURCED, and the law is quoted rather than invented:
+  // WTSM 11.3 Westinghouse Electrohydraulic Control System (ML11223A295), Turbine Runbacks —
+  // *"A runback signal is developed when the dT in two out of four reactor coolant loops is
+  // within three percent of the OTdT or OPdT trip setpoint... the EHC system reduces load at
+  // 200%/min for 1.5 sec (a 5% load change), then holds the load constant for 28.5 sec. If the
+  // runback condition has not cleared, the load will be reduced by another 5% in the next
+  // 30-sec interval."*
+  //
+  // THE CYCLE IS THE RESTRAINT, AND IT REPLACES AN INVENTED DEPARTURE. A first version modelled
+  // this as a continuous ramp, called the word "cyclic" a departure, and then needed an 8.5 s
+  // PERSISTENCE DELAY of my own invention to stop a transient dip latching a permanent load
+  // reduction. That delay existed only because the real structure was missing: step 5 %, hold
+  // 28.5 s, RE-ASSESS. A dip that recovers inside the cycle costs one 5 % step and nothing more,
+  // which is what the delay was trying to buy. The document was fetchable the whole time.
+  //
+  // WHY IT LIVES HERE AND NOT IN evaluate(). `evaluate` is called on a VARIABLE cadence — inside
+  // the step loop whenever `sinceEval >= PROTECTION_DT` AND once unconditionally after it — so a
+  // RATE driven from it would scale with time acceleration (#153). `stepAutomation` is called
+  // once per physics step with a fixed dt.
+  //
+  // NOT full-stack-only: `test/ops_harness.js` calls stepAutomation too (:134, :152), so run_ops
+  // and run_behavior see it. It is NOT an automation channel — channels are operator-engageable
+  // and protection is not; it shares this entry point only because it is the fixed-dt seam.
+  //
+  // HR1: the DECISION reads instruments (otdt_margin / opdt_margin). The per-plant `read`
+  // callback returns the load SETPOINT the layer itself issues — command read-back, declared in
+  // run_hardrules as pwr_control.js:runback_readback, not a sensed quantity.
   ControlLayer.prototype._stepRunbacks = function (dt) {
     var rbs = this.config.runbacks || [];
     if (!rbs.length) return;
@@ -1171,46 +1202,39 @@
     for (var i = 0; i < rbs.length; i++) {
       var rb = rbs[i], v = ins[rb.instrument];
       if (v == null) continue;
+      var asserted = crossed(v, rb.direction, rb.setpoint);
+      var recovered = rb.direction === 'high'
+        ? v < (rb.clears_below != null ? rb.clears_below : rb.setpoint)
+        : v > (rb.clears_above != null ? rb.clears_above : rb.setpoint);
+
       if (!this.runbackActive[i]) {
-        // PERSISTENCE (`persist_s`) — the condition must HOLD, not merely be touched. Without
-        // it a runback is unbuildable on this plant, and the reason is measured rather than
-        // suspected: an out-of-duty load step (70 → 100 MW) peaks at 109.1 % of rated ΔT and
-        // a 15 % steam line break peaks at 109.8 %, so the two are INDISTINGUISHABLE to any
-        // ΔT setpoint — no value of K4 separates them. What does separate them is how long
-        // they last: 4.5 s of continuous dwell below the stop for the ramp, 24.5 s for the
-        // break. Anything less than persistence turns a transient manoeuvre overshoot into a
-        // permanent load reduction the plant never restores.
-        // The dwell counter is reset by RECOVERY, not by noise. A first cut reset it whenever
-        // the margin popped back above the setpoint, and MEASURED that way it never reached
-        // 10 s on ANY case — max 0.40 s — because the margin chatters across the threshold
-        // many times a second on instrument noise. That also exposed a measurement error of
-        // my own: the "24.5 s continuous dwell" that justified this delay was sampled at
-        // BROADCAST resolution, which smooths the chatter out. At the physics-step resolution
-        // the kernel actually runs at, there is no such continuous window.
-        //
-        // So the counter accumulates below the setpoint, HOLDS between setpoint and
-        // clears_above (the noise band), and only zeroes on a real recovery — the same
-        // hysteresis pair the engage/disengage logic already uses, applied to the timer.
-        var recovered = rb.direction === 'high'
-          ? v < (rb.clears_below != null ? rb.clears_below : rb.setpoint)
-          : v > (rb.clears_above != null ? rb.clears_above : rb.setpoint);
-        if (crossed(v, rb.direction, rb.setpoint)) {
+        // The CYCLE is the real restraint. `persist_s` is an OPTIONAL, DECLARED STOPGAP on top
+        // of it, and it exists for a reason outside this mechanism — see pwr_control.js. It
+        // accumulates only while asserted and zeroes only on a real recovery, never on the
+        // noise chatter across the setpoint (measured: a reset-on-any-recross counter peaks at
+        // 0.40 s because the margin crosses many times a second).
+        if (asserted) {
           this.runbackDwell[i] += dt;
-          if (this.runbackDwell[i] >= (rb.persist_s || 0)) this.runbackActive[i] = true;
-        } else if (recovered) {
-          this.runbackDwell[i] = 0;
-        }
+          if (this.runbackDwell[i] < (rb.persist_s || 0)) continue;
+          this.runbackActive[i] = true; this.runbackPhase[i] = 0; this.runbackDwell[i] = 0;
+        } else { if (recovered) this.runbackDwell[i] = 0; continue; }
       } else {
-        var cleared = rb.direction === 'high'
-          ? v < (rb.clears_below != null ? rb.clears_below : rb.setpoint)
-          : v > (rb.clears_above != null ? rb.clears_above : rb.setpoint);
-        if (cleared) { this.runbackActive[i] = false; this.runbackDwell[i] = 0; }
+        this.runbackPhase[i] += dt;
+        // End of a cycle: re-assess. Still asserted -> another step. Recovered -> stand down.
+        if (this.runbackPhase[i] >= rb.cycle_s) {
+          if (asserted) this.runbackPhase[i] = 0;
+          else if (recovered) { this.runbackActive[i] = false; continue; }
+          else { this.runbackPhase[i] = rb.cycle_s; continue; }   // in the band: hold, do not step
+        }
       }
-      if (!this.runbackActive[i]) continue;
+
+      // Deliver the step over `step_s`, then hold flat for the rest of the cycle.
+      if (this.runbackPhase[i] >= rb.step_s) continue;
       var cur = rb.read ? rb.read(this._ctx()) : null;
       if (cur == null) continue;
+      var perSec = (rb.step_pct_of_rated / 100) * rb.rated / rb.step_s;
       var floor = rb.floor != null ? rb.floor : 0;
-      var next = cur - rb.rate_per_s * dt;
+      var next = cur - perSec * dt;
       if (next < floor) next = floor;
       if (next < cur - 1e-9) this._sendInternal(rb.command(next));
     }

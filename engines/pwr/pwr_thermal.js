@@ -255,6 +255,21 @@
     // The bulk node can outrun the hot node on a fast deep uncovery (h_fc collapse
     // heats the average core directly) — the PEAK clad is never cooler than that.
     if (s.clad_temp_c < s.fuel_temp_c) s.clad_temp_c = s.fuel_temp_c;
+    // ABOVE ~1900 °C THIS IS NO LONGER "CLADDING" IN ANY PHYSICAL SENSE (#238, 2026-08-03).
+    // Zircaloy melts at 2030–2250 K (1757–1977 °C, depending on oxygen content) and molten
+    // Zircaloy then DISSOLVES UO2, liquefying it "up to 300 K or even more" below its own
+    // 3100 K melting point — OECD/NEA CSNI-R(2000)21 §2. This model has two thresholds and
+    // nothing between them, so the node sails through clad melt, control-rod relocation
+    // (Ag-In-Cd is molten at ~1100 K) and fuel dissolution as a SOLID, and reaches
+    // fuel_melt_c — the PURE UO2 melting point — several hundred °C after a real core would
+    // already have liquefied. Measured: 2.9–3.6 min above Zircaloy's melting point, ending
+    // ~950 °C past it with the fuel node ~900 °C cooler than the "cladding" wrapped round it.
+    //
+    // So read this field as a PEAK CORE-MATERIAL temperature above ~1900 °C, not as a clad
+    // temperature, and do not quote it as one. It is deliberately left that way: it drives
+    // nothing but checkDamage and one Physics-tab readout, and everything above 1200 °C is
+    // past the point where the trainer has anything left to teach (Manuals/12 §5.5 — "the
+    // simulation ends at fuel damage"). Investigated and parked on #238 with the staging.
   }
 
   // Step 14 — fuel damage / melt endpoint (thresholds fixed). Judged at the PEAK
