@@ -1576,16 +1576,20 @@
   // per popover open, so it follows the display mode like every other number on the board.
   // The pressure one also stops the setpoint being a hand-copied literal: it read a flat
   // "1800 psi" while the table said 12.41 MPa, which is 1799.9 and rounds there by luck.
+  // The captions are ALL CAPS *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps
+  // except units should follow standard unit conventions for capitalization.")*. Note the
+  // pressure one interpolates its unit through `uStr`, so the exemption is structural here —
+  // the caps live in the literal prose and the unit string is never touched by it.
   var BLOCKABLE_TRIPS = [
     { id: 'lo_press', label: 'PZR PRESS LO-LO',
-      sub: function () { return 'Reactor trip · ' + dP(tripSp('primary_pressure', 'low', 12.41)) + ' ' + uStr('press', 'psi') + ' (P-11 permissive)'; } },
-    { id: 'lo_flow', label: 'RCS LOW FLOW', sub: 'Reactor trip · loss of flow (P-7 permissive)' },
+      sub: function () { return 'REACTOR TRIP · ' + dP(tripSp('primary_pressure', 'low', 12.41)) + ' ' + uStr('press', 'psi') + ' (P-11 PERMISSIVE)'; } },
+    { id: 'lo_flow', label: 'RCS LOW FLOW', sub: 'REACTOR TRIP · LOSS OF FLOW (P-7 PERMISSIVE)' },
     // #314. Blockable, so it MUST be listed here or the player carries a reactor trip they
     // cannot see or manage — and it shares lo_flow's P-7 permissive because WTSM 12.2
     // §12.2.3.12 blocks ALL the loss-of-flow trips together below P-7.
-    { id: 'rcp_breaker', label: 'RCP BREAKER', sub: 'Reactor trip · pump breaker open (P-7 permissive)' },
-    { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'Startup trip · ~20% (P-10 permissive)' },
-    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'Startup trip · 25% (P-10 permissive)' }
+    { id: 'rcp_breaker', label: 'RCP BREAKER', sub: 'REACTOR TRIP · PUMP BREAKER OPEN (P-7 PERMISSIVE)' },
+    { id: 'ir_high', label: 'IR HIGH FLUX', sub: 'STARTUP TRIP · ~20% (P-10 PERMISSIVE)' },
+    { id: 'pr_low_setpoint', label: 'PR HIGH (LOW SETPT)', sub: 'STARTUP TRIP · 25% (P-10 PERMISSIVE)' }
   ];
 
   function closePop() { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null; }
@@ -1779,6 +1783,22 @@
       imrzmlyafa3: { props: { left: 1416, width: 72 } },
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // ---- ALL-CAPS board text -------------------------------------------------------
+      // *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps except units should
+      // follow standard unit conventions for capitalization.")* Four turbine-side captions
+      // were authored in title case and are the ONLY board text that was not already caps —
+      // MEASURED by mounting the board headless and reading every rendered text node inside
+      // `.pwr-board-stage`: 225 nodes, 34 not all-caps, and 30 of those 34 are UNITS
+      // (`bd-unit` / `bd-num-unit` spans plus the three "0-2500 ppm"-style range captions),
+      // which the directive explicitly exempts. Patched here rather than in
+      // `pwr_board_data.js` because that file is GENERATED — a re-export would silently undo
+      // an edit there, which is the whole reason DOC_PATCHES exists.
+      // `board_check.html` asserts the policy over the rendered board, so a future re-export
+      // that reintroduces title-case text reddens the gate instead of shipping quietly.
+      imrppvnburd: { props: { text: 'LOAD' } },
+      imrppilyy52: { props: { text: 'OUTPUT' } },
+      imrppim9gdg: { props: { text: 'GOVERNOR' } },
+      imrppgddg4e: { props: { text: 'TURBINE' } },
       // ROD AUTO active colour: authored #9fb3c4 (pale grey — reads WHITE when lit) against
       // #5aad7c on every other automation control *(OWNER, 2026-08-01: "the auto rod button
       // doesn't follow the color convention. Auto on it should be green not white.")*.

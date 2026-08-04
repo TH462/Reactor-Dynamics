@@ -452,7 +452,13 @@ var BASELINES = {
   // the docs" warning three comments up, arriving on the very entry that repeats it. And the
   // write-up itself first cited two of the directives with the DATE IN THE PROSE rather than
   // inside the citation, which HR11 scores as undeclared: 148checks 2failed before 148/0.
-  'run_hardrules.js':      { code: 0, score: '148checks 0failed' },
+  // 148 -> 157 on 2026-08-04d: the three UI directives (board ALL-CAPS, Physics-tab contrast
+  // + indication colours, failure groupings). NINE citation sites, and the split is the usual
+  // one — the CSS/JS changes moved this by zero, and the delta is the write-ups plus the
+  // directive quoted at each decision site in tracked markdown. The quotes in ui/app.js,
+  // ui/shell.css, pwr_board_wiring.js, board_check.html and run_inspect.js are invisible here
+  // (this gate scans tracked MARKDOWN only), which is a property of the guard, not a gap.
+  'run_hardrules.js':      { code: 0, score: '157checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -573,7 +579,16 @@ var BASELINES = {
   // 35 -> 36 on 2026-08-01: the board renders SI since #238 and this copy cannot, so
   // an entry naming its display unit ("in °F") is contradicted the moment SI is picked.
   // The new check found two sites the hand pass had missed, and reddens on the old text.
-  'run_inspect.js':        { code: 0, score: '8/8 36/36' },
+  // 8/8 36 -> 9/9 42 on 2026-08-04: the Inject Failure GROUPINGS *(owner directive)*. The
+  // Failures tab orders the catalog through a hand-maintained `failGroups` table in
+  // ui/app.js — the #224 shape — and this suite already exists for exactly that rot, so the
+  // guard went here rather than into a new runner. `buildFailures` refuses to DROP an
+  // unlisted failure (it renders under "Other"), so the real failure mode is a MISFILED row
+  // nobody notices, not a missing one. Checked BOTH directions plus duplicates, and
+  // INJECTION-VERIFIED three ways: removing `sgtr` from its group, listing a failure that
+  // does not exist (`pzr_heaters_failed`), and naming one in two groups each take it to
+  // 8/9 41/42.
+  'run_inspect.js':        { code: 0, score: '9/9 42/42' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
@@ -1050,7 +1065,18 @@ var BASELINES = {
   // rendered rects and would otherwise pass or fail on the window they happened to get,
   // and an echo of the harness's own FAIL lines, so a red is diagnosable from the gate
   // output instead of requiring someone to reopen the page by hand.
-  'verify_board_check.js':   { code: 0, score: '192checks' },
+  // 192 -> 194 on 2026-08-04 (ALL-CAPS board text, owner directive): the caps policy plus its
+  // NON-VACUITY guard. Enforced over the RENDERED board, not the sources, because board text
+  // arrives from three places — the GENERATED pwr_board_data.js, DOC_PATCHES and driver-supplied
+  // strings — and only the DOM sees all three; that is what makes it survive a re-export.
+  // Units are exempt as WHOLE TOKENS, never substrings: stripping "psi" or a bare "s" anywhere
+  // would eat the s out of ordinary prose and mask a real violation. The second check exists
+  // because a policy scan that reached nothing passes for the wrong reason (#306) — it asserts
+  // >= 150 leaf text nodes against the 225 the shipped board renders.
+  // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
+  // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
+  // offenders, so a red here is diagnosable without reopening the page.
+  'verify_board_check.js':   { code: 0, score: '194checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

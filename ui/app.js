@@ -126,7 +126,14 @@
     return (th && th.fuel_damage_c) || 1200;
   }
   // "should be exactly zero on a healthy plant" — voiding, cavitation, leakage
-  function nzCls(key) { return function (t) { return (t[key] || 0) > 0 ? 'q-caution' : ''; }; }
+  // Physics-tab row colour for a quantity that should be ZERO on a healthy plant
+  // (voiding, uncovery, oxidation heat, cavitation, leakage). Zero is not "no news" for
+  // these — it is the criterion being MET, so it reads green rather than grey
+  // *(OWNER DIRECTIVE, 2026-08-04: "make these physics numbers follow the indication
+  // color scheme (grey, green, yellow, red, etc.)")*. Grey is reserved for rows with no
+  // health criterion at all; see the .phys-grp block in shell.css for why that split is
+  // what makes green mean anything.
+  function nzCls(key) { return function (t) { return (t[key] || 0) > 0 ? 'q-caution' : 'q-ok'; }; }
   // Rod bank out of control_state, for the `ctl` chart series. `rod_groups` is an ARRAY of
   // records, not a map, so a chart accessor cannot index it — and a missing bank must come
   // back null rather than throw, because these run once per broadcast for 30 plant-minutes.
@@ -374,7 +381,7 @@
           // uncovery starts (#213), which is the state worth marking; the alarm
           // step is checkDamage's own criterion, fuel_damage_c.
           { k: 'Peak clad temp',     v: function (t) { return dispT(t.clad_temp_c); },
-            cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : ''; } },
+            cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : 'q-ok'; } },
           { k: 'Core uncovered',     v: function (t) { return pctOf(t.core_uncovered_frac, 1); }, cls: nzCls('core_uncovered_frac') },
           { k: 'Zr oxidation heat',  v: function (t) { return t.zirc_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.zirc_heat_pct).toFixed(2) + ' MWt'; },
             cls: nzCls('zirc_heat_pct') },
@@ -393,23 +400,23 @@
             cls: function (t) {
               if (t.melted || t.fuel_damaged) return 'q-alarm';
               var peak = t.clad_temp_c > t.fuel_temp_c ? t.clad_temp_c : t.fuel_temp_c;
-              return peak > fuelDamageC() - 200 ? 'q-caution' : '';
+              return peak > fuelDamageC() - 200 ? 'q-caution' : 'q-ok';
             } },
         ] },
         { title: 'Primary coolant', rows: [
           { k: 'Core ΔT (hot − cold)',   v: function (t) { return physTd(t.thot_c - t.tcold_c); } },
           { k: 'Subcooling margin',      v: function (t) { return physTd(t.subcooling_c) + (t.subcooling_c <= 0 ? ' · SATURATED' : ''); },
-            cls: function (t) { return t.subcooling_c < 11.1 ? 'q-alarm' : t.subcooling_c < 22.2 ? 'q-caution' : ''; } },
+            cls: function (t) { return t.subcooling_c < 11.1 ? 'q-alarm' : t.subcooling_c < 22.2 ? 'q-caution' : 'q-ok'; } },
           { k: 'Heatup / cooldown rate', v: function (t) { return sgnFix(conv(t.tavg_rate_c_per_hr, 'tempdiff'), 0) + ' ' + unit('tempdiff') + '/hr'; } },
           { k: 'RCS inventory',          v: function (t) { return t.core_inventory_pct.toFixed(1) + ' %'; },
-            cls: function (t) { return t.core_inventory_pct < 90 ? 'q-alarm' : t.core_inventory_pct < 99 ? 'q-caution' : ''; } },
+            cls: function (t) { return t.core_inventory_pct < 90 ? 'q-alarm' : t.core_inventory_pct < 99 ? 'q-caution' : 'q-ok'; } },
           { k: 'Loop void (inventory)',  v: function (t) { return pctOf(t.primary_void_fraction, 1); }, cls: nzCls('primary_void_fraction') },
           { k: 'RCS loop flow',          v: function (t) { return t.pump_flow_pct.toFixed(0) + ' %'; } },
           // The passive shot, and how much of it is left. The ECCS card shows HPI flow,
           // discharge pressure and alignment; nothing anywhere shows accumulator
           // inventory, so a player who has dumped the tanks has no way to know it.
           { k: 'Accumulator inventory',  v: function (t) { return t.accumulator_volume_pct.toFixed(0) + ' % · ' + physP(t.accumulator_pressure_mpa); },
-            cls: function (t) { return t.accumulator_volume_pct < 1 ? 'q-alarm' : t.accumulator_volume_pct < 99 ? 'q-caution' : ''; } },
+            cls: function (t) { return t.accumulator_volume_pct < 1 ? 'q-alarm' : t.accumulator_volume_pct < 99 ? 'q-caution' : 'q-ok'; } },
         ] },
         // There are no per-node pressure GAUGES on this plant — the one
         // primary_pressure instrument reads the hot-leg/pressurizer datum. The
@@ -420,7 +427,7 @@
           { k: 'Cold leg (pump disch)',   v: function (t) { return physP(t.p_coldleg); } },
           { k: 'Pump suction',            v: function (t) { return physP(t.p_pumpsuction); } },
           { k: 'Suction subcooling',      v: function (t) { return physTd(t.suction_subcool_c); },
-            cls: function (t) { return t.suction_subcool_c <= 0 ? 'q-alarm' : t.suction_subcool_c < 11.1 ? 'q-caution' : ''; } },
+            cls: function (t) { return t.suction_subcool_c <= 0 ? 'q-alarm' : t.suction_subcool_c < 11.1 ? 'q-caution' : 'q-ok'; } },
           { k: 'RCP cavitation',          v: function (t) { return pctOf(t.rcp_cavitation_frac, 0); }, cls: nzCls('rcp_cavitation_frac') },
           { k: 'Primary leak flow',       v: function (t) { return pctOf(t.leak_flow, 2); }, cls: nzCls('leak_flow') },
         ] },
@@ -434,6 +441,32 @@
           { k: 'Gross electrical',      v: function (t) { return t.mwe_output.toFixed(1) + ' MWe'; } },
           { k: 'Cycle efficiency',      v: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? (t.mwe_output / q * 100).toFixed(1) + ' %' : '—'; } },
         ] },
+      ],
+      // ------------------------------------------------------- Inject Failure grouping
+      // *(OWNER DIRECTIVE, 2026-08-04: "organize the list of failures into logical
+      // groupings.")* The order is the SAME ENERGY-PATH SPINE as the Graph list and the
+      // Physics tab — reactivity → coolant → pressure boundary → heat sink → support —
+      // with instruments as the diagnostic tail, so the three lists read alike.
+      //
+      // This does NOT use the catalog's own `category`, deliberately. Those five values
+      // exist to colour the badge and to type the failure for the control layer, and they
+      // group badly for a player: `power` holds eight unrelated things (main feedwater, the
+      // turbine, offsite power, a station blackout, condenser vacuum, SG overfeed and BOTH
+      // steam line breaks), while `safety_system` is the default for anything untyped. The
+      // badge still shows the category — the grouping is a separate question from the tag.
+      //
+      // Membership is HAND-MAINTAINED, which is the #224 trap, so `buildFailures` renders
+      // anything missing from this table under a trailing heading rather than dropping it.
+      // A new failure therefore SHOWS UP misfiled instead of disappearing, and
+      // `run_inspect` asserts every catalog entry is placed.
+      failGroups: [
+        { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram'] },
+        { title: 'Reactor coolant system',   ids: ['large_loca', 'sgtr', 'rcp_seal_leak', 'stuck_porv_open', 'rcp_trip'] },
+        { title: 'Pressurizer & pressure',   ids: ['stuck_open_spray', 'failed_pzr_heaters'] },
+        { title: 'Steam & feedwater',        ids: ['loss_of_feedwater', 'sg_overfeed', 'steam_line_break', 'steam_line_break_upstream'] },
+        { title: 'Turbine & condenser',      ids: ['turbine_trip', 'loss_of_condenser_vacuum'] },
+        { title: 'Electrical & safeguards',  ids: ['loss_of_offsite_power', 'station_blackout', 'degraded_hpi', 'afw_failure'] },
+        { title: 'Instruments',              ids: ['porv_indicator_stuck_closed', 'tavg_sensor_failure', 'pzr_level_sensor_stuck', 'pzr_level_sensor_low'] },
       ],
     },
 
@@ -834,28 +867,64 @@
       // A row that throws is a missing true_state field on this plant, not a
       // reason to take the whole frame down with it.
       try { txt = p.row.v(t, s); cls = p.row.cls ? p.row.cls(t, s) : ''; } catch (e) { txt = '—'; }
-      p.el.textContent = (txt == null ? '—' : txt);
-      p.el.className = 'nv ' + cls;
+      // A MISSING value gets no state colour. `cls` is computed from true_state and can
+      // come back 'q-ok' (green) or 'q-alarm' (red) for a row whose value renders as an
+      // em-dash — a field this plant has not published yet, which is the normal state for
+      // one broadcast at t=0 (measured: clad_temp_c is absent at t=0 and reads 1280 °F /
+      // 693 °C by the first sample). A green dash asserts "this criterion is satisfied"
+      // about a number nobody has, which is worse than saying nothing.
+      var missing = (txt == null || txt === '—');
+      p.el.textContent = missing ? '—' : txt;
+      p.el.className = 'nv' + (missing ? '' : ' ' + cls);
     });
+  }
+
+  // Order the catalog into the profile's `failGroups`, with a trailing catch-all.
+  // NOTHING MAY VANISH: the membership table is hand-maintained, so a failure absent from
+  // it renders under "Other" rather than being silently dropped — the #224 shape, where a
+  // list-driven view quietly under-covers the artifact it is meant to present. A plant with
+  // no table (RBMK/BWR, on hold) gets one unlabelled group and the old flat behaviour.
+  function groupFailures(cat) {
+    var groups = prof().failGroups;
+    if (!groups) return [{ title: null, rows: cat }];
+    var byId = {}; cat.forEach(function (f) { byId[f.id] = f; });
+    var placed = {}, out = [];
+    groups.forEach(function (g) {
+      var rows = [];
+      g.ids.forEach(function (id) { if (byId[id]) { rows.push(byId[id]); placed[id] = true; } });
+      if (rows.length) out.push({ title: g.title, rows: rows });
+    });
+    var rest = cat.filter(function (f) { return !placed[f.id]; });
+    if (rest.length) out.push({ title: 'Other', rows: rest });
+    return out;
   }
 
   function buildFailures() {
     var list = $('failList'); list.innerHTML = '';
-    var cat = service.layer.getFailureCatalog();
-    cat.forEach(function (f) {
-      var row = document.createElement('div'); row.className = 'fail-row'; row.id = 'fail-' + f.id;
-      var catShort = f.category === 'safety_system' ? 'safety' : f.category;
-      var html = '<div class="fail-head"><button class="fail-toggle" data-fail="' + f.id + '">Inject</button>' +
-        '<span class="fail-name">' + f.display + '</span><span class="fail-cat ' + f.category + '">' + catShort + '</span></div>';
-      if (f.severity_meta) {
-        var m = f.severity_meta;
-        html += '<div class="fail-slider"><input type="range" min="0" max="100" value="' +
-          Math.round((m.default - m.min) / (m.max - m.min) * 100) + '" data-sevfor="' + f.id + '">' +
-          '<span class="sv mono" data-svlabel="' + f.id + '">' + m.label + ': ' + m.default + ' ' + m.unit + '</span></div>';
-        row.setAttribute('data-meta', JSON.stringify(m));
+    groupFailures(service.layer.getFailureCatalog()).forEach(function (g) {
+      if (g.title) {
+        var h = document.createElement('div');
+        h.className = 'fail-grp'; h.textContent = g.title;
+        list.appendChild(h);
       }
-      row.innerHTML = html; list.appendChild(row);
+      g.rows.forEach(function (f) { list.appendChild(buildFailRow(f)); });
     });
+  }
+
+  function buildFailRow(f) {
+    var row = document.createElement('div'); row.className = 'fail-row'; row.id = 'fail-' + f.id;
+    var catShort = f.category === 'safety_system' ? 'safety' : f.category;
+    var html = '<div class="fail-head"><button class="fail-toggle" data-fail="' + f.id + '">Inject</button>' +
+      '<span class="fail-name">' + f.display + '</span><span class="fail-cat ' + f.category + '">' + catShort + '</span></div>';
+    if (f.severity_meta) {
+      var m = f.severity_meta;
+      html += '<div class="fail-slider"><input type="range" min="0" max="100" value="' +
+        Math.round((m.default - m.min) / (m.max - m.min) * 100) + '" data-sevfor="' + f.id + '">' +
+        '<span class="sv mono" data-svlabel="' + f.id + '">' + m.label + ': ' + m.default + ' ' + m.unit + '</span></div>';
+      row.setAttribute('data-meta', JSON.stringify(m));
+    }
+    row.innerHTML = html;
+    return row;
   }
 
   // ---- Advanced instrument failure (Failures tab) — fail any single instrument

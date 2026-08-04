@@ -20,6 +20,76 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04d (board caps · Physics-tab contrast + indication colours · failure groups)
+
+**Task:** three owner directives, 2026-08-04, UI only — no engine, config or control change.
+`verify_board_check` **192 → 194**, `run_inspect` **8/8 36 → 9/9 42**.
+
+### The caps job was 9 strings, and measuring is what said so
+
+*(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps except units should follow standard
+unit conventions for capitalization.")* Mounted the board headless and read every rendered text node
+inside `.pwr-board-stage`: **225 nodes, 34 not all-caps, and 30 of those 34 are UNITS** — the
+`bd-unit`/`bd-num-unit` spans plus three "0-2500 ppm"-style range captions — which the directive
+exempts. Real work: four turbine-side captions and the five TRIP BLOCKS captions.
+
+**Two things the source survey got wrong and the DOM got right.** The raw doc has **113 lowercase
+`name` fields**, and `name` is rendered NOWHERE — it is builder metadata, so a grep-driven pass would
+have "fixed" 113 invisible strings. And `d TEMP AVG` looked like a fifth offender in the doc but
+`DOC_PATCHES` already overrides it to `Δ TEMP AVG` and `board_check` already pins it. Read the
+rendered board, not the generated data.
+
+The four captions are patched through `DOC_PATCHES`, never `pwr_board_data.js` — that file is
+GENERATED and a re-export silently reverts an edit in it.
+
+### The guard exempts units as TOKENS, and that is the whole difficulty
+
+`board_check` now scans the rendered board for the policy. Units cannot be stripped as substrings:
+"psi" and a bare "s" appear inside ordinary words, so stripping them anywhere would eat the evidence
+and pass. Token boundaries keep `REACTOR TRIP · 1800 psi (P-11 PERMISSIVE)` legal while
+`Reactor trip · loss of flow` is not. Paired with a **non-vacuity** check (≥ 150 leaf nodes against
+the 225 that render), because a policy scan that reached nothing passes for the wrong reason (#306).
+Injection-verified: reverting one `DOC_PATCHES` entry AND one wiring literal reddens it and names
+both offenders.
+
+### The Physics tab was at 2.84:1, and the fix is scoped
+
+*(OWNER DIRECTIVE, 2026-08-04: "make the physics numbers brighter under the physics tab. The contrast
+is currently too low. Also make these physics numbers follow the indication color scheme (grey,
+green, yellow, red, etc.)")* Cause: `.num-line .nv` paints every numeric grid in
+`--clr-status-normal` **#4a6070**, a quiet-board token — **2.84:1** on `#0F1318`, i.e. failing WCAG AA
+for normal text by a wide margin. Measured after: grey **7.27:1**, green 5.91, amber 8.29, red 4.76 —
+all four pass. **Scoped to `.phys-grp`** so the deliberate quiet default survives in the All view and
+the RBMK/BWR numeric grids; this was a Physics-tab complaint, not a repaint of the shell.
+
+**Grey vs green is load-bearing.** Green means "a criterion exists here and is currently satisfied",
+so the 18 informational rows (fission power, xenon, boron, ΔT, loop pressures, efficiency) stay grey —
+paint them green and green stops meaning anything. `nzCls` flipped from `''` to `'q-ok'` because zero
+voiding/uncovery/oxidation/cavitation/leakage is the criterion being MET, not an absence of news.
+
+**A missing value now gets NO colour, and the first cut got this wrong.** `cls` is computed from
+true_state independently of the value, so `Peak clad temp` rendered a **green em-dash** — measured,
+`clad_temp_c` is absent at t=0 and reads 1280 °F (693 °C) by the first sample. A green dash asserts a
+criterion is satisfied about a number nobody has. Also measured and NOT a defect: `suction_subcool_c`
+reads 0 at t=0 and settles at **101.0 °F (56.13 °C)**, so the momentary red on an unstepped plant is
+the honest value, not a bug the colour change introduced.
+
+### Failure groups follow the same spine as the graph list, not the catalog's categories
+
+*(OWNER DIRECTIVE, 2026-08-04: "organize the list of failures into logical groupings.")* 24 failures,
+seven groups, energy-path order — the same spine the Graph list and Physics tab already use, so the
+three read alike. **The catalog's own `category` was rejected on measurement**: `power` holds eight
+unrelated things (main feedwater, turbine, offsite power, station blackout, condenser vacuum, SG
+overfeed, both steam line breaks) and `safety_system` is the default for anything untyped. The badge
+still shows the category — grouping and tagging are different questions.
+
+**The membership table is hand-maintained, which is the #224 trap**, so `buildFailures` renders an
+unlisted failure under "Other" instead of dropping it: the failure mode becomes a MISFILED row, not a
+missing one. `run_inspect` guards it in both directions plus duplicates, injection-verified three ways
+(drop `sgtr` → red; list a nonexistent `pzr_heaters_failed` → red; name one failure twice → red).
+
+---
+
 ## Session log — 2026-08-04c (#282 — LAUNCH: Pre Alpha → Alpha 1.0.0, manual set back to Rev 0)
 
 **Task:** three owner directives, 2026-08-04 — *"The plant manual revision number should be zeroed out

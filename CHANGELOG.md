@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Board text is ALL CAPS, units excepted** *(OWNER DIRECTIVE, 2026-08-04: "All text should be in
+  all caps except units should follow standard unit conventions for capitalization.")*. MEASURED by
+  mounting the board headless and reading every rendered text node: **225 nodes, 34 not all-caps —
+  and 30 of the 34 were units**, which the directive exempts. So the real work was four turbine-side
+  captions (LOAD / OUTPUT / GOVERNOR / TURBINE) and the five TRIP BLOCKS captions. The four live in
+  `DOC_PATCHES`, not in `pwr_board_data.js`, because that file is generated and a re-export would
+  undo an edit there. `board_check` now asserts the policy over the rendered board — units exempt as
+  whole **tokens**, never substrings, or stripping a bare "s" would eat the s out of ordinary prose.
+- **Physics tab numbers are brighter and carry the indication colours** *(OWNER DIRECTIVE,
+  2026-08-04: "make the physics numbers brighter under the physics tab. The contrast is currently too
+  low. Also make these physics numbers follow the indication color scheme (grey, green, yellow, red,
+  etc.)")*. The generic numeric-grid colour is `#4a6070` — **2.84:1** on the panel background, which
+  is deliberate for the quiet board and unreadable for a panel you read numbers off. Physics rows are
+  now grey `#98A3AF` at **7.27:1**, with green for a satisfied criterion (5.91:1), amber for caution
+  (8.29:1) and red for alarm (4.76:1); all four clear WCAG AA, the old value failed it. Scoped to
+  `.phys-grp`, so the quiet default survives in the All view and the RBMK/BWR grids.
+  **Grey vs green is the teaching distinction**: green means "something is being checked here and it
+  is fine", so the 18 rows with no health criterion stay grey or green stops meaning anything. A row
+  whose value is missing now gets **no** colour — a green em-dash asserts a criterion is satisfied
+  about a number nobody has, which the first cut of this change did for peak clad temperature.
+- **The Inject Failure list is grouped** *(OWNER DIRECTIVE, 2026-08-04: "organize the list of
+  failures into logical groupings.")*. 24 failures in seven groups on the **same energy-path spine**
+  as the Graph list and the Physics tab, so the three lists read alike. Deliberately *not* the
+  catalog's own `category`: those five values type the failure for the control layer and group badly
+  for a player — `power` held main feedwater, the turbine, offsite power, a station blackout,
+  condenser vacuum, SG overfeed and both steam line breaks. The badge still shows the category.
+  Membership is hand-maintained, so an unlisted failure renders under "Other" rather than vanishing,
+  and `run_inspect` checks both directions plus duplicates (**8/8 36 → 9/9 42**).
+
 ## [Alpha 1.0.0] — 2026-08-04
 
 ### Added

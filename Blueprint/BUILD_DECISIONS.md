@@ -37,6 +37,43 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04d — board ALL-CAPS · Physics-tab contrast + indication colours · failure groups
+
+**Decisions.** Three owner directives, 2026-08-04, UI only. `verify_board_check` **192 → 194**,
+`run_inspect` **8/8 36 → 9/9 42**.
+
+**Board text is ALL CAPS, units exempt** *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps
+except units should follow standard unit conventions for capitalization.")*. MEASURED on the rendered
+board: 225 leaf text nodes, 34 not all-caps, **30 of them units**. Nine strings actually changed. Two
+source-survey traps the DOM avoided: 113 lowercase `name` fields that are **rendered nowhere** (builder
+metadata), and `d TEMP AVG`, which `DOC_PATCHES` already fixes to `Δ TEMP AVG`. Patched via
+`DOC_PATCHES`, never the GENERATED `pwr_board_data.js`. The `board_check` guard exempts units as whole
+**tokens** — "psi" and a bare "s" occur inside words, so substring stripping would mask the violation —
+and is paired with a non-vacuity check, because a scan that reached nothing passes for the wrong reason.
+
+**Physics values: 2.84:1 → 7.27:1, and the scheme means something** *(OWNER DIRECTIVE, 2026-08-04:
+"make the physics numbers brighter under the physics tab. The contrast is currently too low. Also make
+these physics numbers follow the indication color scheme (grey, green, yellow, red, etc.)")*. The
+generic `.num-line .nv` colour `--clr-status-normal` #4a6070 is a deliberate QUIET-BOARD token, so the
+fix is **scoped to `.phys-grp`** rather than repainting the shell — the All view and the RBMK/BWR grids
+keep the quiet default. Grey #98A3AF 7.27:1, green 5.91, amber 8.29, red 4.76; all pass WCAG AA where
+the old value failed. **Grey vs green carries the teaching**: green = "a criterion exists and is
+satisfied", so the 18 purely informational rows stay grey, or green stops meaning anything. `nzCls`
+returns `q-ok` at zero because zero voiding/uncovery/oxidation/cavitation/leak is the criterion being
+met. **A missing value gets no colour** — the first cut painted a green em-dash for peak clad
+temperature, which asserts a satisfied criterion about a number nobody has.
+
+**Failure groups use the energy-path spine, not the catalog `category`** *(OWNER DIRECTIVE,
+2026-08-04: "organize the list of failures into logical groupings.")*. 24 failures, seven groups,
+matching the Graph list and Physics tab so all three read alike. The catalog's categories group badly
+for a player (`power` holds eight unrelated items; `safety_system` is the untyped default) and exist to
+type the failure for the control layer — the badge still shows them. Membership is hand-maintained, the
+**#224 trap**, so an unlisted failure renders under "Other" rather than vanishing and the failure mode
+is a misfiled row rather than a missing one; `run_inspect` guards both directions plus duplicates,
+injection-verified three ways.
+
+---
+
 ## 2026-08-04c — #282: LAUNCH prepared — Pre Alpha → Alpha 1.0.0, manual set to Rev 0
 
 **Decisions.** Three owner directives. *(OWNER DIRECTIVE, 2026-08-04: "The plant manual revision number
