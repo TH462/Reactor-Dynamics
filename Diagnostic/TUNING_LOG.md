@@ -29,6 +29,82 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-develop-l (#221 — an audit session no longer loads the conclusions it is auditing)
+
+**Task:** *(OWNER, 2026-08-04: "how can we defeat the harness?  waht if i save claude.md to a safe
+place and you rewrite it specifically for this test and after the test i restore claude.md?"* → on
+the recommendation to use the harness's own exclude switches plus a charter instead of swapping a
+tracked file: *"implement your recommendation.")* Docs + one settings file. No engine, control, UI or
+test-code change.
+
+### The problem, restated precisely
+
+#221 RoE 1 says *"do not hand the auditor prior conclusions"* and then admits the harness defeats it:
+`CLAUDE.md` loads into every agent's context on every turn, and the auto-memory index loads
+alongside it. Both are dense with per-subsystem conclusions — which is exactly what an independent
+audit must not start from.
+
+### Why the file-swap the owner proposed is not the fix — two reasons, and the second is the one
+
+**It misses the case #221 actually cites.** The worked example in RoE 1 is the
+`trip-block-hybrid-model` **memory**, which described the PWR trip-block model as settled and
+owner-confirmed on the day slice 1 audited that exact mechanism. That loads from the auto-memory
+directory, not from `CLAUDE.md`. **Swapping the file leaves the priming the rule was written about.**
+
+**It removes the competence along with the priming.** `CLAUDE.md` mixes conclusions with *operating
+rules* — never merge `develop`, never push the lanes, HR12, US-customary units, and the
+which-layer-does-this-gate-run-at map that RoE 3 itself depends on. An auditor stripped of those
+measures at the wrong layer and reports a plant no player can produce. It also loses the gate
+baselines, and **an auditor who cannot see the pre-existing state cannot tell a red it found from a
+red it caused.**
+
+Plus the mechanics: `CLAUDE.md` is tracked, so a swap leaves an uncommitted modification in a live
+tree — which the lane sweep reads as occupancy — and someone has to remember to restore it in three
+trees.
+
+### What was built
+
+**`.claude/settings.audit.json`** — `claudeMdExcludes` (eight patterns: both slash directions plus an
+explicit per-tree list, because the globs are matched against absolute Windows paths and picomatch is
+forward-slash oriented) and **`autoMemoryEnabled: false`**, which is the half the swap cannot reach.
+It **layers on top of** `.claude/settings.json`, so the project permissions and both hooks still
+apply. Launched with `claude --settings .claude/settings.audit.json`.
+
+**`Blueprint/AUDIT_CHARTER.md`** — `CLAUDE.md`'s operating half with the diagnosis removed: the Hard
+Rules as *rules* with no worked cases, the layer map, `measure_stack` and its four traps, the
+no-module-system conventions, lane rules, units, the issue axes, and #221's own RoE + six standing
+questions. **Verified mechanically: zero score-shaped strings in the file.**
+
+**The baseline problem is solved by a redirect, not by quoting numbers.** The charter says
+*establish the pre-existing state by RUNNING `run_all`, not by reading about it* — the baselines are
+data in the `BASELINES` map, and a score with its history attached is a finding. That gives the
+auditor the competence without the narrative.
+
+### The ceiling, stated rather than papered over
+
+**This cannot be fully defeated.** The auditor must read `pwr_control.js` to audit protection, and
+#221 says it itself — nearly every constant carries its rationale in a comment. Those comments are
+conclusions, and stripping them would change the artifact under audit. `TUNING_LOG`,
+`BUILD_DECISIONS`, `Manuals/` and the issue threads are the same. What is removed is the
+**unsolicited, always-on** priming. The charter's opening paragraph therefore does the other half of
+the job: everything in the repo's prose is a **CLAIM UNDER TEST**, read for intent, never for truth.
+
+### Unverified in-session, and it must be checked
+
+Both settings take effect at session start, so **they cannot be proven from inside the session that
+wrote them** — the same caveat as the `SessionStart` hook. The settings file carries the check in a
+comment: first thing in an audit session, confirm the agent cannot see `CLAUDE.md`'s *Recent themes*
+or the memory index. **If the glob did not match, the failure looks exactly like a clean audit**,
+which is the worst shape a failure can take.
+
+### Recommended before spending the effort
+
+Run slice 2 **twice** — once primed, once clean — and diff the findings. #221 asserts priming
+matters and that assertion is itself `INFERRED`. If the clean run finds the same things, the harness
+was not the binding constraint and this apparatus can be retired rather than maintained.
+
+---
+
 ## Session log — 2026-08-04-develop-k (#343 — the lane tags were never the problem; nothing was reading them)
 
 **Task:** *(OWNER, 2026-08-04: "I want tasks to get labeled with an in work label that also

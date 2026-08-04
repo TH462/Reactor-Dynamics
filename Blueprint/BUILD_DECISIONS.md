@@ -45,6 +45,39 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04-develop-l — #221: excluding the priming instead of swapping the file
+
+**Decision.** An audit slice runs with `claude --settings .claude/settings.audit.json`, which sets
+`claudeMdExcludes` (the repo `CLAUDE.md` across all three trees) and `autoMemoryEnabled: false`. It
+reads `Blueprint/AUDIT_CHARTER.md` instead — `CLAUDE.md`'s operating half with the diagnosis removed.
+
+**Why not the file swap the owner proposed.** Two reasons, and the second is decisive. (1) It misses
+the case #221 RoE 1 actually cites: the priming that fooled slice 1 was an auto-loaded MEMORY, not
+`CLAUDE.md`. (2) It removes the competence with the priming — the lane rules, HR12, the units
+convention and the which-layer map RoE 3 depends on all live in `CLAUDE.md`, and an auditor without
+the gate baselines cannot distinguish a red it found from a red it caused. Mechanically it is also
+worse: `CLAUDE.md` is tracked, so a swap leaves an uncommitted modification the lane sweep reads as
+occupancy, in three trees, with a restore step to forget.
+
+**The baseline is handled by a redirect.** The charter tells the auditor to establish the
+pre-existing state by RUNNING `run_all`, because the baselines are data in the `BASELINES` map while
+a score with its history attached is a finding. Verified mechanically: the charter contains zero
+score-shaped strings.
+
+**Declared ceiling.** This cannot be fully defeated. Source comments, `Diagnostic/`,
+`BUILD_DECISIONS` and the issue threads all carry conclusions, and stripping them would change the
+artifact under audit. What is removed is the unsolicited, always-on layer; the charter's opening
+rule does the rest by putting every piece of repo prose on trial as a CLAIM UNDER TEST.
+
+**Unverified in-session** — both switches take effect at session start, so the settings file carries
+its own first-thing check. **A glob that failed to match looks exactly like a clean audit**, which is
+why the check is written down rather than assumed.
+
+**Recommended before relying on it:** run slice 2 primed and clean and diff the findings. #221's
+claim that priming matters is itself `INFERRED`.
+
+---
+
 ## 2026-08-04-develop-i — #341 / #319 item 2: a protection function is not protection if the operator can switch it off
 
 **Decision.** Actuations may declare `seal_in`. While such an actuation's condition is currently

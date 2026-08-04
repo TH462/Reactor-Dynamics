@@ -31,6 +31,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **An audit session no longer loads the conclusions it is auditing** (#221). `Blueprint/AUDIT_CHARTER.md`
+  plus `.claude/settings.audit.json`, launched with `claude --settings .claude/settings.audit.json`.
+  The settings file excludes `CLAUDE.md` across all three worktrees **and** the auto-memory index;
+  the charter is `CLAUDE.md`'s operating half — Hard Rules, the layer map, `measure_stack` traps,
+  lane rules, units, the issue axes and #221's own rules of engagement — with every finding, gate
+  score and tuning conclusion removed. Developer-facing only; nothing in the sim changes.
 - **MFW RESTORE control on the SG FEED card, and main-feedwater isolation now SEALS IN**
   (#341 + #319 item 2, shipped as one change). Main feed isolates automatically on three signals
   — reactor trip with Tavg low, steam generator level high, safety injection — and it **latched
