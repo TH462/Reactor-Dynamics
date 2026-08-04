@@ -44,7 +44,14 @@ var C = { red: '\x1b[31m', green: '\x1b[32m', dim: '\x1b[2m', bold: '\x1b[1m', o
 (async function () {
   var playwright = require('playwright');
   var browser = await playwright.chromium.launch({ headless: true });
-  var page = await browser.newContext().then(function (c) { return c.newPage(); });
+  // 1400x900, PINNED, and it is load-bearing rather than tidy: this harness measures
+  // RENDERED rects (the #311 bdDtMargin overlap pins, the card-title clearance pins added
+  // 2026-08-04), a rect depends on the stage scale, and the stage scale depends on the
+  // viewport. Left to the default, a geometry check passes or fails on whatever window the
+  // runner happened to get — green here, red in CI, for no reason anyone could reproduce.
+  // Same size as the manual headless invocation CLAUDE.md documents.
+  var page = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+    .then(function (c) { return c.newPage(); });
 
   var pageErrors = [];
   page.on('pageerror', function (e) { pageErrors.push(String(e && e.message || e)); });
@@ -88,6 +95,13 @@ var C = { red: '\x1b[31m', green: '\x1b[32m', dim: '\x1b[2m', bold: '\x1b[1m', o
     'neither "ALL n CHECKS PASS" nor "n FAILURES / n" found');
   ck('board_check has zero failures', !badLine,
     badLine ? badLine[1] + ' failing of ' + badLine[2] : null);
+
+  // Echo the harness's OWN failing lines. Without this the gate can only say "n failing
+  // of m", and the next person has to reopen the page by hand to find out WHICH — most
+  // of the friction that kept anyone from running it in the first place.
+  body.split(String.fromCharCode(10)).forEach(function (l) {
+    if (/^FAIL/.test(l.trim())) console.log('   ' + C.red + l.trim() + C.off);
+  });
 
   var total = okLine ? Number(okLine[1]) : (badLine ? Number(badLine[2]) : 0);
 

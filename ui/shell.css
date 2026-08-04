@@ -980,6 +980,15 @@ select.num-input { width: auto; }
 /* Graph-tab parameter checklist */
 .g-section-title { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); margin: 0 0 6px; }
 .param-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); padding: 4px 0; cursor: pointer; }
+/* Grouped plot checklist (2026-08-03). The list went from 16 entries to 48 when the
+   physics quantities and the control positions were added, which is past the point a flat
+   run of checkboxes is readable. Headers are sticky so the group a row belongs to stays
+   named while the list scrolls. */
+.param-grp { margin: 0 0 6px; }
+.param-grp + .param-grp { border-top: 1px solid var(--border); padding-top: 5px; }
+.param-grp-h { position: sticky; top: 0; z-index: 1; background: var(--bg-panel, #12181f);
+  font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  padding: 3px 0 2px; }
 .param-row i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
 .param-row input { accent-color: var(--normal); }
 

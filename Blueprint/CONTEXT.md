@@ -498,6 +498,14 @@ physical-quantity vocabulary.
                                       //   the moment the rods drop. There is no gauge for either.
     "clad_temp_c": number,            // PEAK exposed-clad temperature — the partial-uncovery damage driver (#213).
                                       //   Above fuel/coolant temps whenever the core is partly uncovered.
+    "core_uncovered_frac": number,    // 0..1 — the fraction of the core the hot node treats as steam-cooled.
+                                      //   Ramps from 0 at core_top_uncover (70 % inventory) to 1 at
+                                      //   significant_uncover (50 %). The DRIVER behind clad_temp_c: it is what
+                                      //   exposes the hot node at all, and it has no instrument of any kind.
+    "zirc_heat_pct": number,          // Zr + 2H2O oxidation heat, % of RATED (#238). The second heat source, and
+                                      //   the one that makes core damage ACCELERATE rather than decay with the
+                                      //   decay tail. Exactly 0 on a covered core — the OXIDE state behind it is
+                                      //   monotonic and does not un-grow, but the heat release stops.
     "porv_open": bool,                // actual valve position
     "spray_stuck": bool,              // pressurizer spray valve mechanically stuck open — beats the auto
                                       //   controller AND any operator demand, the way porv_stuck beats

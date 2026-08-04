@@ -1069,9 +1069,26 @@
         legC: (IN(s).afw_active && (IN(s).afw_flow || 0) > 1e-4) ? 'in' : 'off' };
     },
     // CVCS charging-pump suction: B from the VCT, C from the ECCS panel cross-tie.
+    //
+    // THE TWO LEGS HAVE DIFFERENT GATES, and giving them one was a board that lied
+    // (owner, 2026-08-03: "the pipe coming out of the right of the ECCS shows flow when
+    // the ECCS is off or not flowing"). MEASURED at hot full power with eccs_mode=off,
+    // hpi_flow=0, hpi_active=false: `pms3xe4ia7n` (ECCS PANEL RIGHT → this leg C) came
+    // back `running`. It has to — its OTHER endpoint is a plain box port, which carries
+    // no `data-active` at all, so `portActive` returns true for it unconditionally and
+    // this leg is the pipe's only gate. Whatever gates leg C gates that pipe.
+    //
+    // Leg C is the RWST cross-tie to the charging pump suction, i.e. the SI suction swap.
+    // The charging pump runs continuously at power, so gating it on the PUMP showed
+    // emergency suction lined up in every state of the plant. It follows the ECCS train
+    // actually drawing instead — the same predicate the ECCS pump's own suction line
+    // already uses, so the two lines out of that panel now agree with each other.
+    // Normal make-up comes from the VCT on leg B, which is gated on charging FLOW.
     ims3x01kvp4: function (s) {
-      var on = !!CS(s).charging_pump_running;
-      return { temp: 50, contents: 'water', flowing: on, legC: on ? 'in' : 'off' };
+      var flow = !!CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-4;
+      var eccs = !!IN(s).hpi_active && (IN(s).hpi_flow || 0) > 1e-4;
+      return { temp: 50, contents: 'water', flowing: flow || eccs,
+        legB: flow ? 'in' : 'off', legC: eccs ? 'in' : 'off' };
     },
 
     // ---- vital-parameter tiles (Indicator Panel) -------------------------------------
@@ -1740,7 +1757,9 @@
       // Turbine exhaust → condenser steam inlet. The route is authored orthogonally, but its
       // two waypoints sit 1 px and 2 px off the ports they line up with, so both "vertical"
       // legs lean. Pin them to the real port x.
-      pmrr14xbt2h: { waypoints: [[1574, 340], [1553, 340]] },
+      // 1551, not 1553, since 2026-08-03: the CONDENSER item patch below moves the tile
+      // 2 px left, and this waypoint IS `condenser/steam-in`'s x. The two must move together.
+      pmrr14xbt2h: { waypoints: [[1574, 340], [1551, 340]] },
       // RCP suction/discharge swap, pipe half (#236) — see the imrobpq4a70 item patch
       // below. Same geometric endpoints (the two nozzle positions are unchanged); only
       // the port NAMES they bind to change, so the loop enters at suction and leaves at
@@ -1833,7 +1852,69 @@
       imrpk8grvcz: { props: { top: 402 } },
       imrpk8kjsjs: { props: { top: 402 } },
       // (ROD AUTO's `top: 428` rides on its colour entry above — same key, one object.)
-      imrsk4xz2dm: { props: { top: 428 } }
+      imrsk4xz2dm: { props: { top: 428 } },
+
+      // ---- 2026-08-03, owner's board walk-round: three geometry corrections -----------
+      //
+      // 1. PRESSURIZER down 3 px, so the spray stub runs level *(OWNER, 2026-08-03: "the
+      // top of the spray pipe is crooked going into the pressurizer. if you move the
+      // pressurizer down a few pixles to make that pipe horizontal it would look
+      // better.")*. MEASURED headless: `pressurizer/spray-in` scans at y=332 and the spray
+      // run's first waypoint is authored at y=335, so the 17 px stub between them drops
+      // 3 px — a 10° lean on the one segment the eye reads against the vessel top.
+      //
+      // The PRESSURIZER moves rather than the waypoint because its other three ports are
+      // all on lines that stay plumb under a pure Y shift: surge and the PORV tap are
+      // VERTICAL runs (the #231 plumb pins compare x, and x does not move), so they only
+      // get 3 px longer. Verified by re-running board_check, not by arithmetic.
+      pressurizer: { props: { top: 233 } },
+
+      // 2. CONDENSER left 2 px, so the drop into the condensate pump runs plumb *(OWNER,
+      // 2026-08-03: "the line going into the condensate pump is not vertical. move the
+      // condentate, feed pumps, and the polisher a few pixles to the right to make all
+      // those pipes vertical.")*.
+      //
+      // MEASURED, and it is ONE pipe out of the three, not three: at the authored
+      // positions `condenser/condensate-out` scans at x=1527 against a condensate-pump
+      // suction at 1525, while pump-discharge↔polisher (both 1525) and
+      // polisher↔feed-pump-suction (both 1455) were ALREADY plumb. So moving the three
+      // tiles right would have straightened one drop and bent two that were fine.
+      //
+      // AND THE PUMPS CANNOT BE THE THING THAT MOVES. `Pump` is in NUDGE_KINDS
+      // (pwr_board.js), so its flange faces are snapped onto the doc grid (5 px) — every
+      // pump port lands on a multiple of 5, which 1527 is not. Measured on the attempt:
+      // condensate pump left 1480→1482 moved its suction 1525→1530, a 5 px jump, not 2.
+      // The condenser is NOT a nudged kind, so it is the tile that can land on 1525.
+      //
+      // Collateral, checked: `bypass-in` takes a horizontal run from the steam-dump valve
+      // (just shorter), and both CW lines run horizontally to the cooling tower on the
+      // right (just longer). Only `steam-in` is on a vertical leg, and its waypoint is
+      // already pinned in DOC_PATCHES.pipes above — moved with it.
+      condenser: { props: { left: 1403 } },
+
+      // 3. NIS CARD TITLE shortened, to stop bdDtMargin printing on top of it *(OWNER,
+      // 2026-08-03: "The OP(delta)T indication is on top of the 'NUCLEAR INSTRUMENTATION'
+      // text.")*. Same trade, and the same reason, as the SG FEED and ROD CONTROL titles
+      // above: an rAnchor status word in a card corner needs the corner.
+      //
+      // MEASURED, and the #311 comment that placed the readout had this wrong by 84 px —
+      // it recorded the title as ending "near x=905" (authored) when it runs to x≈989, i.e.
+      // essentially the full 255 px card. The readout's authored left is 927, so it landed
+      // 62 px INSIDE the title and the overlap was 58.8 rendered px.
+      //
+      // WHY NOTHING CAUGHT IT: board_check's overlap pin skips `box` and `component` kinds
+      // (a readout deliberately sits inside its card), and a card title is not an item — it
+      // is rendered as a `.bd-box-title` child OF the box. So the one element it could
+      // collide with was the one element the ruler was told to ignore. board_check now pins
+      // the TITLE rect specifically.
+      //
+      // 'NUC INSTR (NIS)' and not something longer, sized against the WIDEST value rather
+      // than the current one: 'OPΔT 8.3' renders 59.8 px but the field is
+      // `bindName + ' ' + margin.toFixed(1)` over a [-500, 1500] instrument, so 11
+      // characters ('OTΔT -125.4') is the bound — 74.7 px, left edge 859.8. Measured ends:
+      // 'NUCLEAR INSTRUMENTATION' 887.1 (still overlaps), 'NUCLEAR INSTR (NIS)' 856.1
+      // (3.7 px — one retune of the readout from clearing), 'NUC INSTR (NIS)' 825.1.
+      ims175lciah: { props: { title: 'NUC INSTR (NIS)' } }
     }
   };
   function applyDocPatches(doc) {

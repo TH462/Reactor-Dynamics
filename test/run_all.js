@@ -439,7 +439,11 @@ var BASELINES = {
   // 141 -> 143 (2026-08-03, #311 flag ON): the two OTdT/OPdT approach ALARMS arrive, and
   // this gate's second contract makes them declare a `category` — the design working, not
   // drift. Enabling protection is expected to move this and run_reachability together.
-  'run_contract.js':       { code: 0, score: '145checks 0failed' },
+  // 143 -> 145 (2026-08-03): `core_uncovered_frac` and `zirc_heat_pct`, the two drivers
+  // BEHIND clad_temp_c, published for the Physics tab's new Core damage group. Both were
+  // locals inside stepCladding, so the panel could show the symptom (peak temperature) and
+  // the verdict (fuel_damaged) but nothing of the mechanism between them.
+  'run_contract.js':       { code: 0, score: '147checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -979,34 +983,23 @@ var BASELINES = {
   // data-flag, so it shows on both channels and the distinction they guarded is gone.
   'verify_flags_ui.js':      { code: 0, secs: 17, score: '42/42' },
   'verify_e2e_ui.js':        { code: 0, secs: 54, score: '16screenshots', slow: true },
-  // NEW 2026-08-04 — `ui/test_panel/board_check.html` under the gate at last. It is the PWR
-  // board's own harness (geometry, pipe animation state, colours, driver value functions,
-  // real clicks) and it was a PAGE YOU OPEN: CLAUDE.md has said "run it after any board
-  // change" since #235, which is an instruction, and instructions do not hold.
+  // 179 / 202 -> MEASURED ON THE MERGED TREE, 2026-08-04. BOTH lanes wrote a runner for
+  // board_check in the same session, independently, neither knowing about the other —
+  // develop's landed at 179 (188 minus the nine ROD-status-word pins that went out with
+  // the word itself) and workbench's at 202 (188 plus fourteen from the owner's board
+  // walk-round). The merged harness is neither, and it is not 179 + 202 - 188 either,
+  // because one of the walk-round pins asserted the clearance of the very status word
+  // the other lane deleted. MEASURED after resolving, which is the only way this file
+  // has ever been right about this number.
   //
-  // MEASURED 2026-08-03: it sat at 1 FAILURE / 188 for hours. #318 split the operator's ASK
-  // from the EHC reference, so the check reading `load_target_mwe` in the same breath as the
-  // keystroke saw the PREVIOUS load — and that red went through a lane merge, a green
-  // 36-runner run_all, a green CI run and A RELEASE TO `main` with nothing going amber,
-  // because nothing here opened the page. Found by hand, during unrelated work.
-  //
-  // Second time this shape has bitten: run_manual_controls was `audit_manual_controls.js`,
-  // invisible to auto-discovery, and sat at 32 mismatches through three re-authorings (#224).
-  //
-  // NOT marked `slow`, and that is MEASURED, not assumed: 1.79 s, against 55 s for
-  // verify_e2e_ui and 199 s for verify_manual_follow. It uses Playwright but it is cheap,
-  // and `--fast` is the mode people run while iterating — which is exactly when a board
-  // change is most likely to be in the tree. Skipping it there would re-open the hole this
-  // gate was written to close. Safe because CI vendors playwright and installs chromium
-  // unconditionally (gates.yml), the condition that was NOT true when verify_flags_ui broke
-  // 32 consecutive CI runs in July.
-  //
-  // The count is board_check's own tally, so symmetric drift catches a board pin being ADDED
-  // or LOST as well as one failing — the point of baselining it rather than just pass/fail.
-  // 179 = 188 - 9, the rod-status-word driver checks removed with the word on 2026-08-03.
-  // INJECTION-VERIFIED against the real regression: strip the `ticks(1)` fix from
-  // board_check and this reports 1 failing of 179.
-  'verify_board_check.js':   { code: 0, score: '179checks' },
+  // The surviving runner is develop's — thinner, and it documents a trap the other
+  // avoided only by luck (reading `body.textContent` picks up <script> source, and this
+  // page's own comments contain the string "1 FAILURE/143") — plus two properties
+  // ported from workbench's: a PINNED viewport, because the geometry pins measure
+  // rendered rects and would otherwise pass or fail on the window they happened to get,
+  // and an echo of the harness's own FAIL lines, so a red is diagnosable from the gate
+  // output instead of requiring someone to reopen the page by hand.
+  'verify_board_check.js':   { code: 0, score: '192checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

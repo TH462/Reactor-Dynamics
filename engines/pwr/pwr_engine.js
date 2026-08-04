@@ -695,6 +695,18 @@
       // moment the rods drop. Same pre-first-step guard as the §8.8 consumer above.
       core_heat_pct: (s._Q_total != null ? s._Q_total : (s._P || 0)) * 100,
       clad_temp_c: s.clad_temp_c,   // PEAK exposed-clad temp — the partial-uncovery damage driver (#213)
+      // The two hidden drivers BEHIND clad_temp_c, published 2026-08-03 for the Physics
+      // tab. Both were local to stepCladding, so the board and the panel between them
+      // showed the symptom (peak temperature) and the verdict (fuel_damaged) with the
+      // whole mechanism missing.
+      //   core_uncovered_frac — 0 covered, 1 at significant_uncover; the fraction of the
+      //     core the hot node models as steam-cooled. Ramps between core_top_uncover (0.70)
+      //     and significant_uncover (0.50) of inventory.
+      //   zirc_heat_pct — Zr + 2H2O oxidation heat, % of RATED, the #238 term that makes
+      //     the escalation ACCELERATE instead of decaying with the decay tail. Zero on a
+      //     covered core (the oxide itself is monotonic and does not un-grow).
+      core_uncovered_frac: s.core_uncovered_frac || 0,
+      zirc_heat_pct: s.zirc_heat_pct || 0,
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck, spray_stuck: !!s.spray_stuck,
       block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)
       porv_tailpipe_temp_c: s.tailpipe_temp_c,   // PORV discharge-line temperature (feeds instruments.porv_tailpipe_temp)

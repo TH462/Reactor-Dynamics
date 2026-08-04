@@ -398,6 +398,205 @@ no UA spoofing. The Wayback `2023id_` + browser-UA workaround still works for AD
    correction is *owed* — but it is where the teaching point belongs. Deliberately not edited: that
    file is modified in the `develop` lane right now, and a mid-file merge there is the silent-loss
    case CLAUDE.md warns about.
+## Session log — 2026-08-04a (board_check joins run_all — a number that rotted twice)
+
+**Task:** the owner asked, of the board_check count being wrong twice in a row, *"how can you
+keep that from happening again?"*
+
+**The answer is structural, and diligence is not it.** Both failures have the same shape:
+
+| when | CLAUDE.md said | the harness was at |
+|---|---|---|
+| before #289 | 143/143 | **1 FAILURE / 143** |
+| through 2026-08-03 | 188/188 | **1 FAILURE / 188** |
+
+Each time a pin was added and the file was not run. **The reason it survived is that nothing
+could contradict it.** `run_all`'s `discover()` globs `test/(run|verify)_*.js`; board_check is an
+HTML page under `ui/test_panel/`, so it was never discovered, never had a `BASELINES` entry, and
+its only record was prose — in the same document whose own gate-baseline section says *"Prose
+baselines are what rotted"*. A second, unverifiable copy of a number is the defect; asking people
+to be more careful with it is not a fix.
+
+**`test/verify_board_check.js`** — a RUNNER, not new coverage. It adds no checks; every assertion
+stays in the HTML harness, which is the right place for them (it mounts the real board with the
+real driver and service). It loads the page, waits for the harness to stamp `document.title`,
+reads the harness's own summary line, prints a scrapeable tally and exits on it. `BASELINES` gets
+`202checks 0failed`, so the count is DATA, drift is symmetric, and **a pin added without running
+the file now reddens `run_all` for whoever added it.**
+
+Precedent, and it is the same failure: `audit_manual_controls.js` was not a `run_*.js`, so
+auto-discovery never saw it, so it had no baseline, so it sat at **32 mismatches / exit 1**
+through three procedure re-authorings (#224). Renaming it to `run_manual_controls.js` fixed that
+class permanently. This is that move for the board.
+
+**Injection-verified four ways**, and the fourth is the one worth keeping:
+1. revert the ECCS leg gate → 1 red (`cross-tie PAUSED` reports `[running]`)
+2. restore the long NIS card title → 2 red, at the original **−58.8 px**
+3. put the pressurizer back to `top: 230` → 1 red, at the original **y 332 vs 335**
+4. throw an exception mid-harness → **exit 2, "DID NOT COMPLETE"**, not a smaller-but-green
+   tally. board_check builds its own count, so a partial run would otherwise look like a pass
+   with fewer checks — the silent-truncation shape this runner exists to stop.
+
+**A wiring trap, caught on the first run.** `run_all`'s scraper matches
+`/(^|[\s(])(\d+)\s+(pass|xfail|passed|failed|checks|screenshots)/` and strips whitespace
+*after* matching, so the `BASELINES` string reads `202checks 0failed` while the line the runner
+prints must be `202 checks, 0 failed`. Printing it closed up scrapes to `?`, which `run_all`
+reports as DRIFT against every possible baseline.
+
+**And the prose copy is GONE, not corrected.** The CLAUDE.md paragraph now points at `BASELINES`
+and says *do not restore a count here*; ~3.6 kB of stale count history went with it, which the
+"keep it SHORT" rule wanted anyway. The durable board-editing traps were carried forward rather
+than deleted — including two from this week that are not board-specific (`svc.tick()` no-ops
+unless `this.running`; writing `textContent` on a rendered board value destroys the child nodes
+the renderer updates).
+
+`run_all` **36 → 37 runners**. Not marked `slow`: it takes ~2 s, and hiding it from `--fast` —
+the invocation an agent actually runs mid-change — would give back most of what this buys. The
+#241 CI trap is real but already handled (CI installs playwright), and `gates.yml` now names four
+playwright runners instead of three.
+
+---
+
+## Session log — 2026-08-03v (owner's board walk-round + the Physics/Graph expansion)
+
+**Task:** six items straight from the owner, all UI/board. Every geometry claim below is
+measured off a mounted headless board (`RD.PwrBoard.ports()` + `getBoundingClientRect`),
+never off authored coordinates — which is the trap two of these were.
+
+### The ECCS card was showing emergency suction lined up at 100 % power
+
+*(OWNER: "the pipe coming out of the right of the ECCS shows flow when the ECCS is off or
+not flowing")*. MEASURED at hot full power, `eccs_mode=off`, `hpi_flow=0.0000`,
+`hpi_active=false`: `pms3xe4ia7n` (ECCS PANEL RIGHT → charging-suction tee leg C) came back
+**running**. It had to — leg C was gated on `charging_pump_running`, and the charging pump
+runs continuously at power, so that pipe animated in every state the plant can be in.
+
+**Why that leg was the pipe's ONLY gate, and this generalises.** A pipe animates when BOTH
+endpoints' ports report `data-active !== '0'`. This one's other endpoint is a plain BOX port,
+and box ports have no element at all (`portActive` returns `true` when `!p.el`). So for any
+pipe running from a card edge to a fitting, **the fitting leg is the entire gate** — there is
+no second opinion. Worth checking the other box-port pipes for the same shape.
+
+Fixed by following the ECCS train (`hpi_active && hpi_flow > 1e-4`), the same predicate the
+ECCS pump's own suction line already used, with leg B (VCT → charging) on charging FLOW. Both
+states pinned in `board_check`, because a gate stuck at `'off'` would pass the "is it dark at
+power" check perfectly.
+
+**A trap that cost a run:** the first ECCS-injecting pin used `set_hpi active:true` at 2235 psi
+and read the resulting dead pipe as a defect. It is not — the HPI pump has a shutoff head, so
+at full RCS pressure it delivers `hpi_flow ≈ 0.014`, under `comp_pump`'s own 2 % spin
+threshold, and the pump correctly renders STOPPED. A real injection needs a depressurized RCS:
+on a 0.2 `large_loca`, HPI arms at ~8 s / 12.1 MPa and reaches 0.198 by 20 s.
+
+### Two geometry fixes, and the pumps were the wrong thing to move
+
+**Spray stub:** `pressurizer/spray-in` scans at y=332 against a first waypoint authored at
+y=335 — a 3 px drop over a 17 px run. The PRESSURIZER moved down 3 (as the owner asked); its
+other three ports sit on VERTICAL runs, so a pure Y shift cannot break the #231 x-plumb pins,
+and re-running `board_check` confirmed it rather than arithmetic.
+
+**Condensate train:** the owner asked to move the condensate pump, feed pump and polisher
+right. MEASURED, only ONE of the three drops was crooked — condenser→condensate pump at 1527
+vs 1525; pump→polisher (1525/1525) and polisher→feed pump (1455/1455) were already plumb, so
+moving all three would have straightened one and bent two.
+
+**And the pumps CANNOT be the tile that moves.** `Pump` is in `NUDGE_KINDS`, so `gridNudge`
+snaps its flange faces onto the doc grid (5 px): every pump port lands on a multiple of 5,
+which 1527 is not. Measured on the attempt — condensate pump `left` 1480→1482 moved its
+suction **1525→1530**, a 5 px jump for a 2 px shift. The condenser is not a nudged kind, so
+it is what can land on 1525. It moved left 2, and its patched `steam-in` riser waypoint moved
+with it.
+
+### The core ΔT margin readout was printing on the NIS card title
+
+*(OWNER: "The OP(delta)T indication is on top of the 'NUCLEAR INSTRUMENTATION' text.")*
+MEASURED: title 708.9→933.5, readout 874.7→934.5 — **58.8 px of overlap**.
+
+**The #311 comment that placed it had the title's end wrong by 84 px** (it recorded "ends near
+x=905" authored; it runs to x≈989, essentially the full 255 px card). And **nothing caught it**:
+`board_check`'s overlap pin skips `box` and `component` kinds, because a readout deliberately
+sits inside its card — and **a card title is not an item**, it is a `.bd-box-title` child OF the
+box. So the one element it could collide with was the one element the ruler was told to ignore.
+
+Title → `NUC INSTR (NIS)`, and it is sized against the WIDEST value the field can print rather
+than the one on screen: `dtMargin` renders `name + ' ' + margin.toFixed(1)` over a [-500, 1500]
+instrument, so 11 characters is the bound. Measured ends — `NUCLEAR INSTRUMENTATION` 887.1 (still
+overlaps), `NUCLEAR INSTR (NIS)` 856.1 (**3.7 px** — one retune from failing), `NUC INSTR (NIS)`
+825.1. `board_check` pins card titles now, for all three corner status words, plus a full-width
+variant measured on a CLONE.
+
+**On whether to keep the readout at all** (the owner asked what it is for): keep. OTΔT/OPΔT are
+the only two reactor trips on this plant whose setpoint MOVES — every other trip has a fixed
+number a player can memorise — and since #311 went ON by default they drive a reactor trip, a
+rod-withdrawal block and (since #318) a turbine runback. Without it, a rod stop and an automatic
+load runback happen with no visible cause, which is a DESIGN_CRITERIA Q3 observability failure.
+
+### `board_check` was carrying a red the docs recorded as green
+
+187/188, not the 188/188 in CLAUDE.md, and reproducible on the untouched tree. TWO independent
+causes, both in the harness:
+1. The LOAD TARGET checks sat AFTER the RCP OFF/ON pair, and **#314 turned that fatal** — the RCP
+   breaker position is a reactor trip now, so RCP OFF at hot full power scrams the plant in
+   ~0.5 s (measured: `scrammed=true, turbine_tripped=true` five cycles after the click).
+2. They read the snapshot **without stepping**, and unlike spray/heater/letdown, `set_load_target`
+   reaches the plant through the load-mode controller, which runs in the step.
+
+The clamp check now asserts the emitted COMMAND, because **#318's rate limit is one-sided** —
+measured, a demand of 80 MW from 100 lands in full inside 3 cycles, but the way back up crawls
+at 10 %/min (80.05 after 3 cycles, 81.05 after 63). A settled-value check of an upward step is
+really a check of the ramp. And it was passing VACUOUSLY before: the plant ships at 100 MW, so
+"clamps 850 → 100" was true without the box doing anything.
+
+**`board_check` 187/188 → 202/202** (14 new pins).
+
+### Physics tab: core damage, and the mechanism behind it
+
+*(OWNER: "the physics tab should also show core damage. are there any other physics things the
+user might want to see?")* A new **Core damage** group, split out of Core heat rather than
+appended, because the four rows are a CHAIN: inventory falls → the top of the core goes
+steam-cooled → zirconium oxidation adds its own heat → peak temperature crosses a threshold.
+
+Two of the four are NEW `true_state`, and they were the missing middle: `core_uncovered_frac`
+and `zirc_heat_pct` were **locals inside `stepCladding`**, so the panel could show the symptom
+(peak clad temperature) and the verdict, with nothing in between. Published rather than
+re-derived in the UI — f_unc reads three config constants and q_ox five more, and a formula
+copied into a consumer does not move itself.
+
+MEASURED on a 0.8 `large_loca`: uncovery hits 100 % by 50 s, and the oxidation term climbs
+**0.077 → 0.943 % of rated** between 50 s and 400 s *while the decay tail is falling*. That is
+the whole #238 result and it was not visible anywhere.
+
+The damage row reports **margin while intact** (`intact · 912 °F to damage`) rather than a
+boolean — a false-for-the-whole-run boolean teaches nothing, and the distance to
+`fuel_damage_c` is the number that moves. Also added **accumulator inventory**: the ECCS card
+shows flow, discharge pressure and alignment, and nothing anywhere shows how much passive shot
+is left. `run_contract` **143 → 145**.
+
+### Graph tab: 16 series → 51, grouped, and the buffer got CHEAPER
+
+*(OWNER: "add all these physics indications to the graph tab… add rod steps and other controls
+like pzr heater, spray, etc… organize the graph list in an intelligent order and group them in
+groups.")* Seven groups along the energy path — the same spine the Physics tab uses. Group order
+is first-seen order in the profile array, so there is no second list to keep in step.
+
+**Three kinds of series, distinguished by their ACCESSORS rather than a flag**: `get`+`tru` is
+instrumented; `tru` alone is a quantity with no instrument on this plant; `ctl` alone is a
+commanded position. The `tru`-alone ones now trace in **Realistic** mode too — they used to draw
+nothing, because `seriesVal` only reached for truth in Learning. That is not a softening of HR1:
+there is no channel to plot, and they carry no channel, which is visible.
+
+**The memory was the real work.** MEASURED at the buffer's cap (1800 s of sim time at the 10 Hz
+normal broadcast = 18000 rows): 16 series cost **10.2 MB**, and the naive 51-series version cost
+**75.8 MB** — a 7× regression, and the old code comment names ~100 MB as the reason it does not
+store full dicts. Two changes:
+- `chartSample` writes only the sides a series HAS. Writing `null` into `v` for the 19
+  uninstrumented series cost exactly as much as a real number.
+- One row per **0.5 s of SIM time** rather than one per broadcast, capping the buffer at 3600
+  rows. Keyed on sim time, not a broadcast count, so it is invariant under `timeAcceleration`
+  and under the 100→50 ms transient cadence — above 5× nothing is dropped at all.
+
+Re-measured: **8.8 MB for 51 series**, i.e. *less* than the old 16-series buffer. Resolution cost
+is nil — the widest window is 1800 s across ~400 px, so 2 Hz is still ~9× oversampled.
 
 ---
 

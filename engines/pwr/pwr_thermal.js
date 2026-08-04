@@ -209,6 +209,17 @@
     var mass = s.core_inventory_pct / 100;
     var f_unc = (p.core_top_uncover - mass) / (p.core_top_uncover - p.significant_uncover);
     f_unc = f_unc < 0 ? 0 : (f_unc > 1 ? 1 : f_unc);
+    // Published (#213/#238 observability, 2026-08-03). Both of these were LOCAL to this
+    // function, and they are the two hidden drivers of the whole core-damage story: the
+    // uncovered fraction is what exposes the hot node at all, and the oxidation heat is
+    // what turns a hot core into a melting one. `clad_temp_c` and `fuel_damaged` were the
+    // only visible parts, i.e. the symptom and the verdict with the mechanism missing.
+    //
+    // Published rather than re-derived in the Physics tab: f_unc reads three config
+    // constants (`core_top_uncover`, `significant_uncover`, `core_inventory_pct`) and
+    // q_ox reads five more, and a formula copied into a consumer does not move itself
+    // when the constants are re-fitted.
+    s.core_uncovered_frac = f_unc;
     if (f_unc > 0) {
       // ZIRCONIUM-STEAM OXIDATION (#238, 2026-08-03). The second heat source, and the one
       // that turns a hot core into a melting one: Zr + 2H2O -> ZrO2 + 2H2, Q = 190 kJ/mol
@@ -245,10 +256,13 @@
         var dw_dt = (Math.sqrt(s._zr_ox2) - w_old) / dt;
         q_ox = z.q_ref * 2 * tau * dw_dt;               // = q_ref at w = 1, T = T_ref
       }
+      // % of RATED, like decay_heat_pct — q_ox is a fraction here (q_ref is 0.011243).
+      s.zirc_heat_pct = q_ox * 100;
       var heat = (t.clad_heat_gain || 0) * ((s._Q_total || 0) + q_ox) * f_unc;
       var cool = (t.clad_steam_h || 0) * (s.clad_temp_c - T_sat(s.pressure_mpa));
       s.clad_temp_c += (heat - cool) * dt;
     } else {
+      s.zirc_heat_pct = 0;   // a covered core is not oxidising; the OXIDE (_zr_ox2) stays
       var wet = (s.thot_c != null ? s.thot_c : s.tavg_c);
       s.clad_temp_c += (wet - s.clad_temp_c) * dt / ((t.clad_quench_tau || 120) + dt);
     }
