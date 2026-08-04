@@ -463,6 +463,32 @@ No `Manuals/*.md` content changed, so no revision row is owed — the digest che
 not being applied. At session start `develop` and `workbench` had committed 5 and 25 minutes
 earlier and **neither carried a tag** — the one occupancy signal that is not a guess, unused.
 
+### Correction, same session — the canary's own coverage claim was wrong
+
+**A three-lane merge landed in `backshop` an hour after the canary shipped, and it is the first
+real test of it. The canary guarded ONE claim of four and reported green.**
+
+**The parser was single-style, and so was the corpus that validated it.** 11 of 11 against the
+26-row pre-zeroing table looked like strong validation. It was not: **every row in that table was
+written by one lane**, spelling refs `**12 §5.5**` with the emphasis around the whole thing. The
+merged table put `**12** §7.1` beside it — emphasis around the **chapter only** — and the regex
+`\b(\d{2}) §` silently dropped it. Fixed to `\b(\d{2})[*_`]*\s+§`; refs found 1 → 2, and dropping
+`### 7.1` from chapter 12 now reds the gate naming `Rev 2 names 12 §7.1`.
+
+**This is HR12's neighbouring class landing on the check written to enforce it.** A coverage claim
+validated against a corpus one author wrote is not validated. The historical table could not
+disagree with the parser, because the same hand wrote both.
+
+**The residual limit is an AUTHORING one and is now stated in `CLAUDE.md`.** Develop's row names
+`` `03` ``, `` `05` `` and `06 step 4` — real content claims with **no `§` anchor**, so nothing
+resolves and no parser fixes it. Two of three content rows guarded, one unguardable by
+construction.
+
+**Worth recording about that merge:** it hand-verified all four lanes' manual content and its
+message calls that *"the check CLAUDE.md demands after a Manuals merge and the one no gate
+performs"*. It was performed by hand because `f3e2a9f` had not reached `develop` — the merge
+message itself notes backshop *"has moved again since its merge"*.
+
 ---
 
 ## Session log — 2026-08-04h (#334 item 2 — a break is a hole, not a pump)

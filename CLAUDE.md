@@ -236,8 +236,16 @@ docs.
 >   **It only sees what a row NAMES.** Bare `§5.5` with no chapter number is not resolved (44
 >   in the pre-zeroing table, pointing variously at Blueprint docs), and prose accuracy is
 >   still out of scope by design. So **after any merge that touches `Manuals/`, still grep the
->   chapter for the thing you wrote** — one `grep -c` per claim — and **write revision rows
->   chapter-qualified**, because an unqualified row is a row the gate cannot guard.
+>   chapter for the thing you wrote** — one `grep -c` per claim — and **WRITE REVISION ROWS
+>   CHAPTER-QUALIFIED WITH A `§` SECTION**, because a row without one cannot be guarded.
+>   **That obligation is not theoretical — the first real three-lane merge broke it the same
+>   day** (2026-08-04, the Rev 1/2/3 merge). Of its three content rows the gate could guard
+>   **one**: backshop's `**12 §12.4b**` parsed; workbench's `**12** §7.1` was missed by a
+>   parser that only tolerated emphasis around the *whole* ref (fixed — emphasis between the
+>   chapter and the `§` is now allowed); and develop's row named `` `03` ``, `` `05` `` and
+>   `06 step 4` with **no `§` anchor at all**, which no parser can resolve. That merge
+>   hand-verified all four claims and called it *"the check no gate performs"* — half right:
+>   the gate performs it, for rows written so it can.
 
 > **Four questions decide whether a feature or change goes in — `Blueprint/DESIGN_CRITERIA.md`
 > is BINDING** *(OWNER DIRECTIVE, 2026-08-02: "I think there are a few important criteria on

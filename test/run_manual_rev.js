@@ -147,12 +147,25 @@ if (r.status !== 0) {
 // human instruction this automates — "after any merge that touches Manuals/, grep the chapter
 // for the thing you wrote. One grep -c per claim is the whole check."
 //
-// WHAT IS PARSED: chapter-qualified references only — "12 §5.5", "09 §2.0", "12 §12.4b",
-// bolded or not. Bare "§7.5" is deliberately NOT resolved. There are 44 of them in the
-// pre-zeroing table and they point variously at a Blueprint document, at CONTEXT.md, or at
-// the chapter under discussion, so resolving them would guess and this gate would start
-// failing on correct rows. MEASURED against the full 26-row pre-zeroing table (e2b6452^):
-// 11 of 11 chapter-qualified refs resolve, and 1 of 1 in the live table.
+// WHAT IS PARSED: chapter-qualified references only — "12 §5.5", "09 §2.0", "12 §12.4b".
+// Bare "§7.5" is deliberately NOT resolved. There are 44 of them in the pre-zeroing table and
+// they point variously at a Blueprint document, at CONTEXT.md, or at the chapter under
+// discussion, so resolving them would guess and this gate would start failing on correct rows.
+//
+// MARKDOWN EMPHASIS BETWEEN THE CHAPTER AND THE § IS TOLERATED, and that is not defensive
+// coding — it is a measured correction. The first cut matched "\b(\d{2}) §" and was validated
+// at 11 of 11 against the full 26-row pre-zeroing table (e2b6452^). That corpus turned out to
+// be SINGLE-STYLE: every row in it was written by one lane, spelling the ref "**12 §5.5**"
+// with the emphasis around the whole thing. Hours later the first real three-lane merge put
+// "**12** §7.1" in the same table — emphasis around the CHAPTER only — and the parser silently
+// dropped it, guarding 1 claim of 4 while reporting green. A coverage claim validated against a
+// corpus one author wrote is not validated; see CLAUDE.md, "prove it by injection".
+//
+// WHAT IT STILL CANNOT GUARD, stated so nobody reads a green here as full coverage: a row that
+// names a chapter but no § section. The same merge produced one — "`03` gains a RESTORE entry",
+// "`05` PWR-...", "06 step 4 corrected" — all real content claims with no locatable anchor, so
+// there is nothing to resolve. That is an authoring obligation, not a parser bug: write
+// revision rows chapter-qualified WITH a § section, or the row cannot be guarded.
 //
 // A SECTION IS EITHER A HEADING OR A REGISTER ROW, and both forms are required. Chapter 12's
 // §12.0 holds its declared simplifications as a numbered TABLE, so "12 §12.4b" is a row and
@@ -176,7 +189,7 @@ function sectionPresent(text, sec) {
 
 var refs = [], seenRef = {};
 rows.forEach(function (r) {
-  var re = /\b(\d{2}) §(\d+(?:\.\d+)*[a-z]?)/g, m;
+  var re = /\b(\d{2})[*_`]*\s+§(\d+(?:\.\d+)*[a-z]?)/g, m;
   while ((m = re.exec(r.desc + ' ' + r.author))) {
     var key = m[1] + ' §' + m[2];
     if (!seenRef[key]) { seenRef[key] = true; refs.push({ rev: r.rev, ch: m[1], sec: m[2], key: key }); }

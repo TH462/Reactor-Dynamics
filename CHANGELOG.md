@@ -68,6 +68,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   the canary pass while checking nothing, so the parser must positively find refs.
   **Scope unchanged where it matters** — this proves a named section still *exists*, never that a
   row's prose is *true*; that stays out of scope as HR10/HR12 class.
+  **Corrected the same day, by the first real three-lane merge.** That 11-of-11 validation was
+  weaker than it looked: every row in the historical table was written by **one lane**, spelling
+  refs `**12 §5.5**` with the emphasis around the whole thing. The merged table put `**12** §7.1`
+  beside it — emphasis around the **chapter only** — and the parser silently dropped it, guarding
+  1 claim of 4 while reporting green. Emphasis between the chapter and the `§` is now tolerated;
+  refs found 1 → 2 on that table, and dropping `### 7.1` from chapter 12 reds the gate by name.
+  A coverage claim validated against a corpus one author wrote is not validated.
+  **Residual limit, stated rather than papered over:** a row naming a chapter but no `§` section
+  cannot be guarded at all — the same merge produced one (`` `03` ``, `` `05` ``, `06 step 4`).
+  That is an authoring obligation, now recorded in `CLAUDE.md`.
   `run_manual_rev` **13 → 15 checks**.
 
 ### Fixed
