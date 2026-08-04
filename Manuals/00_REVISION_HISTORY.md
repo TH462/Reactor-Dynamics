@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 23 (2026-08-03)  
+**Set revision:** 24 (2026-08-03)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -20,6 +20,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 24 | 2026-08-03 | **Two corrections to the runback, and an operator load rate limit** (#318). **09** now says the runback waits for the ΔT margin to HOLD below the rod stop for about **8.5 seconds** rather than acting the instant it is touched — a brief dip does not count. That delay is not a convenience: the real signal needs *"ΔT in **two out of four** reactor coolant loops"* within 3 % (WTSM 12.2 §12.2.3.7/.8), and **that 2/4 coincidence voting is the law's noise immunity**, which a single-loop plant structurally cannot have. Without it the plant cut load permanently on a 0.10-second instrument-noise clip during an ordinary load increase. **Also new: an operator load rate limit of 10 %/min on load INCREASES** *(OWNER, 2026-08-03: "Come up with your own rate for this plant that's fast enough to keep it interesting and slow enough to be safe.")* — real turbine control is rate-limited (WTSM 11.3, ML11223A295) and this plant permitted an instantaneous step that took loop ΔT within 0.51 of the OPΔT trip. 10 %/min is the ceiling **09** §8.0 already documented. It applies to increases only: a load REJECTION is an event, not an operator ramp, and must still arrive at once. | #318 rate limit |
 | 23 | 2026-08-03 | **The runback law was INVENTED where the source specifies it exactly** (#318). The previous revision described a continuous ramp with a persistence delay — both mine. WTSM 11.3 *Westinghouse Electrohydraulic Control System* (ML11223A295), Turbine Runbacks, gives the real law verbatim: *"the EHC system reduces load at 200%/min for 1.5 sec (a 5% load change), then holds the load constant for 28.5 sec. If the runback condition has not cleared, the load will be reduced by another 5% in the next 30-sec interval."* That is what *cyclic* means, and **the cycle is the restraint**: a transient dip costs one 5 % step and nothing more, which is precisely what the invented delay was trying to buy. **09** now describes the stepped behaviour the operator actually sees. Measured — a **15 % steam line break** takes **two steps to 90 MWe** and becomes a ride-out, where the invented ramp drove it to 76 MWe. The document was fetchable throughout; it simply was not fetched. | #318 sourced law |
 | 22 | 2026-08-03 | **Zirconium-steam oxidation on the cladding hot node — the second heat source, and the one that reverses the escalation** (#238). **12 §5.5** said the exposed-cladding node heats "at the local decay-heat rate", full stop. That understated the accident in a way worth naming: decay heat *falls*, so a core heating on it alone climbs **more and more slowly**. Measured before the change, an unmitigated large break crossed successive 720 °F (400 °C) bands in **218 / 334 / 378 / 428 s** — each one slower than the last. Real cores do the opposite, and it is what carried TMI-2 and Fukushima from hot to melting. The reaction `Zr + 2H₂O → ZrO₂ + 2H₂` (190 kJ/mol) is modelled now: the same bands run **184 / 172 / 86 / 40 s** and cladding failure to fuel melt goes **22.7 → 8.1 minutes**. **The calibration is sourced, not fitted** — at 2200 °F (1204.4 °C), the 10 CFR 50.46 peak-cladding limit, the oxidation heat equals the decay heat **8 hours after shutdown**; on this plant's own decay curve that is 1.1243 % of rated, so the melt timescale is an *output* rather than a target. The rate doubles every **120 °F (66.7 °C)** and reaches **13.3×** the 8-hour decay heat by 2732 °F (1500 °C). It is **self-limiting as well as self-accelerating** (the oxide layer is protective, a parabolic law), which is why a re-wetted and re-uncovered node oxidises more slowly the second time. **§13** corrected: hydrogen *generation* is no longer listed as absent — the reaction is modelled; what is absent is the H₂ **inventory**, since there is no containment for it to collect in. New §5.5 NOTE declares the three simplifications: peak node only rather than the whole uncovered region, never steam-starved, and hydrogen counted as oxide growth rather than as a mass. | #238 Zr oxidation |
 | 21 | 2026-08-03 | **The turbine runback is built, and it is the protection function that acts rather than refuses** (#318) *(OWNER RULING, 2026-08-03: "Go with your recommendation", choosing the shape with zero new player-facing rules)*. **09**'s rod-withdrawal-interlock note said the runback was *not* built; it now describes what the operator will actually see — with the ΔT margin held below the rod stop for **10 seconds**, the plant starts walking the **generator load target** down on its own, the number in the Generator Load box falling untouched, and keeps walking it down until the margin recovers. **It does not restore load afterwards** — that is the operator's to do once the condition is fixed. The behaviour is deliberately expressed in a control the player already uses, with **no new refusal message and no ceiling concept**, because a refusal would teach an interface rule rather than a coupling. What it teaches instead is the coupling: it never touches the reactor, it reduces **load**, and the core follows through the moderator coefficient. Measured — it converts a **15 % steam line break** from a reactor trip at 200 s into a ride-out at ~76 MWe, and it **cannot** save a 30 % break or a continuous rod withdrawal, because those outrun the very coupling it works through. **The 10-second delay is a declared departure**, and it is what makes the function buildable at all: an out-of-duty 30 % load step peaks at 109.1 % of rated ΔT against a 15 % steam line break's 109.8 %, so the two are indistinguishable to any ΔT setpoint — only their duration separates them. | #318 turbine runback |
@@ -70,7 +71,7 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 23 (2026-08-03). A mismatch means a chapter changed with no
+     Sealed at Rev 24 (2026-08-03). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md b0657dc935d36cbb
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
@@ -80,7 +81,7 @@
      06_ALARM_RESPONSE.md 51f2004b1bb8bc9b
      07_ABNORMAL_EMERGENCY.md 9fe261b35b98e5d1
      08_ACCIDENT_TMI.md d6a3ff47c6786021
-     09_SETPOINTS_LIMITS.md 27fc2a77b5e4d128
+     09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
      12_SIM_PHYSICS.md c95b161052871902

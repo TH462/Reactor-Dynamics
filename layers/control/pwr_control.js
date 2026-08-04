@@ -1170,21 +1170,26 @@
         step_pct_of_rated: 5.0,      // "a 5% load change"
         step_s: 1.5,                 // "at 200%/min for 1.5 sec"
         cycle_s: 30.0,               // "then holds the load constant for 28.5 sec" (1.5 + 28.5)
-        // DECLARED STOPGAP, NOT PART OF THE SOURCED LAW, and it has a removal condition.
-        // WTSM 11.3 describes no delay: the real runback acts as soon as the 3 % condition is
-        // met, because on a real unit that condition cannot be reached by an operator load
-        // change at all -- §11.3 shows load moved by selecting a TARGET and a RATE on a
-        // thumbwheel ("the system electronically changes the reference load from 50% to 100%
-        // at 1%/min"). This plant has NO load rate limit: `set_load_target` applies instantly,
-        // so a player can step 70 -> 100 MW in one action, which peaks loop dT at 109.1 % of
-        // rated -- indistinguishable from a 15 % steam line break at 109.8 % -- and the runback
-        // correctly fires on it. Measured without this delay: the normal ramp takes two 5 %
-        // steps to 90 MWe.
-        // DELETE THIS the moment a load rate limit lands (filed separately): the rate limit
-        // removes the dT excursion, and then the cycle alone is the restraint the source
-        // describes. The maximum load rate is NOT sourced -- §11.3 gives 1 %/min as an example
-        // of a selectable rate, not a limit -- which is why the rate limit is a separate,
-        // evidence-gated change rather than a number invented here.
+        // PERSISTENCE — and it is a SOURCED substitute, not the invention I twice called it.
+        // The real signal needs *"dT in TWO OUT OF FOUR reactor coolant loops"* within 3 % of the
+        // setpoint (WTSM 12.2 §12.2.3.7/.8). That 2/4 coincidence IS the law's noise immunity, and
+        // a single-loop plant structurally cannot have it. A dwell requirement is the substitute
+        // for the voting we cannot do — which makes it a declared ADAPTATION of a sourced feature
+        // rather than a departure invented to paper over a tuning problem.
+        //
+        // I deleted this on the reasoning that the 10 %/min load rate limit "removes that
+        // excursion at source, so the CYCLE is the only restraint". MEASURED, that is half right
+        // and the wrong half is fatal: the rate limit shrinks the normal-ramp dwell below the
+        // trigger from 6.40 s to 0.10 s — 64x — but it cannot remove the NOISE, and the engage
+        // test fires on a single physics step below the line. One 0.1 s clip at margin 2.90 =
+        // one permanent 5 % load cut, because `immediate` moves the operator's ask too and
+        // nothing ramps it back. That is the whole of run_autoctl's 91.5 % (load parked at 91.6
+        // MWe) and of run_ops SGTR's 53.7 % inventory (the runback engaged twice, not once).
+        //
+        // The rate limit still earns its place and the two are complements, not alternatives:
+        // it takes the normal-ramp dwell from 6.40 s to 0.10 s against a worst-casualty dwell of
+        // 10.58 s, so this constant sits in a gap two orders of magnitude wide instead of the
+        // 4.18 s squeeze it was originally sized into.
         persist_s: 8.5,
         rated: RD.PWR_CONFIG.turbine.mwe_rated,
         floor: 0,
@@ -1192,7 +1197,11 @@
         // READ-BACK of a setpoint the layer issues, so HR1 is untouched; re-reading it every
         // step is deliberate, so an operator who types a higher load has it walked back down.
         read: function (ctx) { return ctx.true_state ? ctx.true_state.load_target_mwe : null; },
-        command: function (mwe) { return { action: 'set_load_target', mwe: mwe }; }
+        // `immediate`: the runback is 200 %/min by the source, far faster than the operator
+        // load rate, so it must not be throttled by it. It moves the operator's ASK too, so
+        // the ramp has nothing to undo — which is also why the number in the Generator Load
+        // box is what the player sees falling.
+        command: function (mwe) { return { action: 'set_load_target', mwe: mwe, immediate: true }; }
       });
     });
   }

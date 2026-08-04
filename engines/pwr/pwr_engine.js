@@ -263,6 +263,9 @@
     var cfg = this.cfg;
     return {
       mweRated: cfg.turbine.mwe_rated,
+      // Operator load rate (% of rated per minute). Optional in LoadMode — absent, the
+      // reference snaps, which is what RBMK/BWR still do.
+      loadRatePctPerMin: cfg.turbine.load_rate_pct_per_min,
       // Cap the coupled feed demand at rated (issue #130). The governor below clamps
       // steam to 1.0, so anything above that is feed the plant can never boil off —
       // a permanent imbalance that walks SG level into the high-level scram. The
@@ -837,7 +840,13 @@
         break;
       case 'set_load_target':
         s.load_mode = 'manual';
-        s.load_target_mwe = cmd.mwe;
+        // The operator's ASK. The effective reference ramps toward it at the unit's load
+        // rate (LoadMode.step). `immediate` bypasses the ramp and is for AUTOMATIC action
+        // only — the OTdT/OPdT runback runs back at 200 %/min, deliberately far faster than
+        // an operator can drive the machine, and it moves the ASK as well so the ramp has
+        // nothing to undo. Nothing on the board sends it.
+        s.load_cmd_mwe = cmd.mwe;
+        if (cmd.immediate) s.load_target_mwe = cmd.mwe;
         break;
       case 'disconnect_grid':
         // PLANNED OFFLINE — the generator breaker opens and the turbine is NOT tripped,
@@ -853,10 +862,18 @@
         break;
       case 'set_steam_demand':
         s.load_mode = 'manual';
-        s.load_target_mwe = cmd.mwe;
-        s.steam_demand_mwe = cmd.mwe;
-        s.turbine_demand_frac = clip(cmd.mwe / this.cfg.turbine.mwe_rated, 0, 1.2);
-        s.generator_load = s.turbine_demand_frac;
+        // Sets the ASK only. The three derived fields below are re-computed from the
+        // EFFECTIVE reference by LoadMode's setLoad on every step, so writing them here
+        // would just be overwritten — except on the very first step, where it would show a
+        // jump the rate limit is meant to prevent. `immediate` is the automatic-action
+        // bypass (see set_load_target).
+        s.load_cmd_mwe = cmd.mwe;
+        if (cmd.immediate) {
+          s.load_target_mwe = cmd.mwe;
+          s.steam_demand_mwe = cmd.mwe;
+          s.turbine_demand_frac = clip(cmd.mwe / this.cfg.turbine.mwe_rated, 0, 1.2);
+          s.generator_load = s.turbine_demand_frac;
+        }
         if (s.turbine_demand_frac > 0 && s.condenser_vacuum_kpa >= this.cfg.turbine.vacuum_trip_kpa) s.turbine_tripped = false;
         break;
       case 'set_feedwater_flow':        // deprecated PWR alias — now drives the feed pump
