@@ -406,7 +406,12 @@ var BASELINES = {
   // the arithmetic this comment exists to stop.
   // MEASURED 136 on the fully merged tree — develop 125, workbench 128, backshop 127.
   // Adding them up gives 380. Three lanes, one measurement.
-  'run_hardrules.js':      { code: 0, score: '136checks 0failed' },
+  // 136 -> 137 on 2026-08-03: ONE citation site, and it is the usual shape — the code
+  // changes (load rate limit off, ROD status word removed) moved this by ZERO, because this
+  // gate scans tracked MARKDOWN only. The whole delta is CLAUDE.md's board_check line
+  // carrying the owner's words for the removal. The `OWNER DIRECTIVE` quoted at the decision
+  // site in pwr_config.js is invisible here, which is a property of the guard, not a gap.
+  'run_hardrules.js':      { code: 0, score: '137checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
