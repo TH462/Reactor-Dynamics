@@ -235,6 +235,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   **Rev 18**.
 
 ### Fixed
+- **`board_check` is in `run_all` now, because its score had been wrong twice** (2026-08-04).
+  `ui/test_panel/board_check.html` had existed for months with no runner, so `run_all`'s
+  auto-discovery — which globs `test/(run|verify)_*.js` — never saw it, it had no `BASELINES`
+  entry, and the only record of its score was a sentence in `CLAUDE.md`. That sentence read
+  **143/143 while the harness was at 1 FAILURE / 143**, and later **188/188 while it was at
+  1 FAILURE / 188**: both times a pin was added without running the file, and nothing could
+  contradict it. `test/verify_board_check.js` adds no checks of its own — every assertion stays
+  in the HTML harness — it loads the page, waits for the harness to stamp its own title, and
+  exits on the harness's own summary line. The count is data now, drift is symmetric, and CI
+  runs it. Injection-verified four ways; the one that matters is that an exception thrown
+  mid-harness exits **2** rather than reporting a smaller-but-green tally.
 - **The board's ECCS card showed emergency suction lined up in EVERY state of the plant**
   *(OWNER, 2026-08-03: "the pipe coming out of the right of the ECCS shows flow when the ECCS is
   off or not flowing")*. The RWST → charging-pump-suction cross-tie was gated on the charging

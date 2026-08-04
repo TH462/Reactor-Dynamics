@@ -1,16 +1,19 @@
 # The aggregate gate, run on every push and pull request.
 #
-# `node test/run_all.js` runs all 34 runners and compares each against the BASELINES
+# `node test/run_all.js` runs all 37 runners and compares each against the BASELINES
 # map at the top of that file. Drift is symmetric — a runner scoring BETTER than its
 # baseline fails too, so a red turning green has to be acknowledged rather than
 # silently absorbed.
 #
-# THERE IS STILL NO package.json, AND THERE MUST NOT BE ONE. Three runners
-# (verify_flags_ui, verify_e2e_ui, verify_manual_follow) `require('playwright')`,
+# THERE IS STILL NO package.json, AND THERE MUST NOT BE ONE. FOUR runners
+# (verify_flags_ui, verify_e2e_ui, verify_manual_follow, verify_board_check)
+# `require('playwright')`,
 # which is why the first version of this workflow — `--fast`, no install — was red on
 # every single run from 2026-07-27 to 2026-07-31: --fast only skips the two gates
 # carrying `slow: true`, and verify_flags_ui is not one of them (it takes 8 s, so
-# calling it slow would be a lie). #191 was filed believing a browser in CI required
+# calling it slow would be a lie), and neither is verify_board_check, which takes 2 s
+# and exists precisely so its count cannot drift unnoticed in a --fast run. #191 was
+# filed believing a browser in CI required
 # conceding a manifest. It does not: npm installs into a scratch --prefix outside the
 # checkout, and the result is copied to ./node_modules — which is gitignored, and is
 # exactly how the local trees are already arranged (playwright is vendored there, not

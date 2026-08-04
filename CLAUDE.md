@@ -326,7 +326,7 @@ to read everything.
 _Last updated: **2026-08-02**._
 
 **Where the PWR is.** All PWR engine, behaviour, ops and stack gates green; `run_all` is
-**36 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
+**37 runners at baseline**. Open backlog is dominated by RBMK/BWR operability (on hold) plus
 a handful of UI/doc items.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
@@ -592,19 +592,41 @@ anything here that is standing procedure rather than news belongs in the list be
   keyed by diagram ids, guard it the same way. A re-export can also silently undo **board
   geometry** fixes: `ui/test_panel/board_check.html` pins the pressurizer's plumb joints
   against the fittings above and below it (#231), pipe **animation play-state vs plant
-  state** in three states (#236), and the #235 board defects, for the same reason. **Run
-  board_check (headless Edge, `--dump-dom`; `document.title` says PASS/FAIL) after any
-  board change** — it is not in `run_all`. Currently **202/202** (188 → 202 on 2026-08-03 — the owner's board walk-round, and it opened at **187/188, not the 188/188 this line claimed**, reproducibly on the untouched tree: `func: generator load 80 MW` had TWO harness causes, the checks sitting AFTER the RCP OFF/ON pair that #314 turned into an immediate scram (~0.5 s), and reading the snapshot without stepping, because `set_load_target` reaches the plant through the load-mode controller rather than the command path. **Its clamp half was also passing vacuously** and cannot use a settled value at all, since #318's rate limit is ONE-SIDED — measured, 100 → 80 MW lands inside 3 cycles while 80 → 100 crawls at 10 %/min — so it asserts the emitted COMMAND. **The pin worth copying is the one for card TITLES**: `bdDtMargin` was printing on top of 'NUCLEAR INSTRUMENTATION (NIS)', 58.8 px of overlap, and the geometry pin below could not see it because it skips `box`/`component` kinds and **a card title is not an item — it is a `.bd-box-title` CHILD of the box**, so the only thing it could collide with was excluded by construction. Also: size a corner status word against the WIDEST value it can print, not the one on screen — `NUCLEAR INSTR (NIS)` cleared by 3.7 px and `NUC INSTR (NIS)` by 34.7. And **`Pump` is in `NUDGE_KINDS`, so pump ports quantise to the 5 px doc grid**: moving a pump `left` by 2 moved its port by 5, which is why the CONDENSER had to move to plumb the condensate drop) (186 → 188 on 2026-08-03 — the two GEOMETRY pins on `bdDtMargin`, and they caught a REAL overlap I would otherwise have shipped. The readout was placed by copying bdRodStatus's `top` and checking the NIS corner was free using AUTHORED coordinates; rendered, it ran into the 'STARTUP RATE' label below it. That is the rAnchor trap this file already documents — *both elements still render, so only a ruler finds it* — and arithmetic on authored positions is exactly the reasoning it warns is not enough. Moved to top 234. **The first version of the pin was itself a false positive**: it flagged the NIS card the readout deliberately sits inside, so the check skips `box` and `component` kinds — only CONTENT items can genuinely collide) (MEASURED 2026-08-03 on workbench; 182 → 186 for the #311 core-ΔT-margin readout `bdDtMargin`. Four pins, INJECTION-VERIFIED — unwiring the value function reddens three of them, correctly not the "exists" pin. **The one worth copying is "shows a live number, not the '—' placeholder"**: that is what catches a value function never wired into the id map, where the item renders, shows its authored placeholder, and looks entirely fine) (MEASURED 2026-08-02 on workbench; 168 → 182 for the #306 rod-controller indications — the IN-OUT lamps, the live speed indication and the ROD status word, plus a pin on the card-title patch that makes room for it. Two traps that cost a run each and are not board-specific: **`svc.tick()` no-ops unless `this.running`**, so a probe driving it directly measures a FROZEN plant and reports every lamp dark — use `advanceCycles(n)`; and writing `el.textContent` on a rendered board value **destroys the child nodes the renderer updates**, freezing the element at whatever you last wrote so every later sample lies — measure text widths on a `cloneNode(true)`. A third, board-specific: an **rAnchor item's rendered right edge sits 41 px inside its authored `left`**, which is why a corner that arithmetic says fits can still overlap — and both elements still render, so only a ruler finds it. A fourth, and the nastiest: **`DOC_PATCHES.items` is an object literal, so a second entry for the same id SILENTLY REPLACES the first** — adding a `top` patch beside an existing `color` patch for `ims5glucngg` dropped the ROD AUTO green with no error, caught only because two unrelated colour pins went red. Merge keys; never repeat them. Earlier figure: 168/168 MEASURED 2026-08-01 on the MERGED tree. Both branches moved it and neither figure survives: develop reported 149/149 after #289, workbench **162 checks with 1 FAILURE** after #238 — and workbench correctly predicted that its one red, *"func: SCRAM two-step trips the reactor"*, was a HARNESS bug already fixed in develop's #289 work, so the merge resolves it. **Before #289 this line claimed 143/143 while the harness was actually at 1 FAILURE / 143** — nobody had run it, which is the standing argument for running it rather than trusting this number. Both of those reds were harness bugs, not plant defects. **Four traps if you touch this file:** the TRIP BLOCKS check must restore the `ir_high` block BEFORE the plant is stepped — at full power the IR channel reads 2.0e-3 against a 1.67e-3 setpoint, so the trip condition is STANDING and the block is all that holds it off; `rps.scrammed` **LATCHES**, so re-blocking cannot undo a scram once it fires; `reset_rps` is refused **RODS_NOT_INSERTED** until the rods seat (measured, still coasting at 95 % power a few ticks after the scram); and the dual-mode SCRAM/RESET button reads which half it is off the **RENDERED** snapshot, so re-render after a reset or the clicks land on the wrong half — this line said 95/95 once, which was already stale when
-  written down; the count moves whenever a pin is added, so re-measure rather than trusting
-  it. History: 59 before the #235/#236 pins, +20 pipe-state/board-defect pins, +2 ROD AUTO,
-  +3 from the #237 comment items, +11 for the generator FOLLOW/MAN/OFF selector (#230),
-  +14 the #306 rod-controller indications, card spacing and the BLOCKED state,
-  **+7 power tile armed-trip bands (#267), +8 pressure tile (#270), +6 NIS thresholds
-  (#271), +4 ITEM_CHANNEL / liveNote, +7 the SG FEED corner status (#214) and +5 the SCRAM button's RESET half (#75) — including a pin on the ORIGINAL defect, so restoring the empty handler reddens it**; the previously recorded "60/60" never
-  matched the code either, #235 finding 6).
-  **Read the tally from the harness's own summary line** (`ALL n CHECKS PASS` /
-  `n FAILURES / n`) — scraping the page for the last `n/n` pair picks up unrelated
-  numbers and reports a nonsense total.
+  state** in three states (#236), and the #235 board defects, for the same reason. **Run `node test/verify_board_check.js`
+  after any board change** — and it is in `run_all` now (2026-08-04), so the score is DATA in
+  `BASELINES`, not a number written here. **That is the fix for a specific, repeated failure:
+  this line said "143/143" while the harness was at 1 FAILURE / 143, and later "188/188" while
+  it was at 1 FAILURE / 188** — both times a pin was added without running the file, and both
+  times nothing could contradict it, because board_check is an HTML page under `ui/` and
+  `run_all`'s auto-discovery only globs `test/(run|verify)_*.js`. **Do not restore a count to
+  this paragraph.** Read it from `BASELINES`, which drifts symmetrically and reddens for
+  whoever adds the pin. The runner adds no checks of its own; every assertion still lives in
+  the HTML harness, and it reads that harness's own summary line (`ALL n CHECKS PASS` /
+  `n FAILURES / n`) rather than scraping the page for `n/n` pairs — a scrape picks up the
+  geometry pins' own numbers and reports a nonsense total. An exception thrown mid-harness
+  exits **2**, because a partial run would otherwise report a smaller-but-green tally.
+  **Four traps if you touch the HTML harness:** the TRIP BLOCKS check must restore the
+  `ir_high` block BEFORE the plant is stepped — at full power the IR channel reads 2.0e-3
+  against a 1.67e-3 setpoint, so the trip condition is STANDING and the block is all that
+  holds it off; `rps.scrammed` **LATCHES**, so re-blocking cannot undo a scram once it fires;
+  `reset_rps` is refused **RODS_NOT_INSERTED** until the rods seat (measured, still coasting
+  at 95 % power a few ticks after the scram); and the dual-mode SCRAM/RESET button reads which
+  half it is off the **RENDERED** snapshot, so re-render after a reset or the clicks land on
+  the wrong half. Two more that are not board-specific and cost a run each: **`svc.tick()`
+  no-ops unless `this.running`**, so a probe driving it directly measures a FROZEN plant and
+  reports every lamp dark — use `advanceCycles(n)` or set `running` yourself; and writing
+  `el.textContent` on a rendered board value **destroys the child nodes the renderer updates**,
+  freezing that element at whatever you last wrote so every later sample lies — measure text
+  on a `cloneNode(true)`.
+  **Four board-editing traps that outlive any one pin.** A card TITLE is **not an item** — it
+  renders as a `.bd-box-title` CHILD of the box, so an item-vs-item overlap scan cannot see it,
+  which is how `bdDtMargin` came to print on top of the NIS title. An **rAnchor item's rendered
+  right edge sits 41 px inside its authored `left`**, so arithmetic on authored coordinates is
+  not enough — both elements still render, so only a ruler finds it. **`DOC_PATCHES.items` is
+  an object literal**, so a second entry for the same id SILENTLY REPLACES the first; merge
+  keys, never repeat them. And `Pump`/`Valve`/`Tee`/`Cross` are in `NUDGE_KINDS`, so their
+  ports **quantise to the 5 px doc grid** — moving a pump 2 px moves its port 5, which is why
+  a neighbouring tile is sometimes the one that has to move.
 - **Measure the board, don't eyeball it.** Mount it headless and read `RD.PwrBoard.ports()`:
   every port's scanned world coordinate is there, so an alignment claim is a subtraction, not
   a judgement. Two of #231's three filed leads were wrong and only this said so.
@@ -672,13 +694,13 @@ not a changelog.**
 **Current gate baselines — `node test/run_all.js` is now the authority.**
 
 > Since 2026-07-25 the baselines live as **data** in the `BASELINES` map at the top of
-> `test/run_all.js`, not as prose here. Run it; it compares all 36 runners against that
+> `test/run_all.js`, not as prose here. Run it; it compares all 37 runners against that
 > map and exits non-zero on any drift. Prose baselines are what rotted (this section
 > claimed `run_m5` **19/19** while its own status text said 18/19 — issue #161). **If
 > you move a number, update `BASELINES` and this section together.**
 
 ```
-node test/run_all.js            # all 36 runners (~6 min)
+node test/run_all.js            # all 37 runners (~6 min)
 node test/run_all.js --fast     # skip the 2 Playwright gates (~2.5 min)
 node test/run_all.js --only run_pwr,run_ops
 node test/run_all.js --record   # print observed results as a BASELINES block
@@ -690,7 +712,7 @@ being silently absorbed. Same convention as the strict xfails in `run_meltdown` 
 `run_behavior`.
 
 **CI runs the same command on every push and PR to `main`/`develop`**
-(`.github/workflows/gates.yml`, ~8 min) — all 36 runners, browser gates included; it
+(`.github/workflows/gates.yml`, ~8 min) — all 37 runners, browser gates included; it
 installs playwright into `./node_modules` from a scratch prefix and asserts no manifest
 appeared in the repo root. **Check it after you push** — `gh run list --workflow=gates.yml
 --limit 3`. It ran `--fast` with no install from 2026-07-27, which worked until
@@ -771,7 +793,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 36 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 37 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi

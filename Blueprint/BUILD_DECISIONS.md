@@ -37,6 +37,42 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04a — board_check joins `run_all`: retiring a number that rotted twice
+
+**Decision: a harness score may not live in prose.** `ui/test_panel/board_check.html` was the
+last check-bearing artifact outside `run_all`, and its count was wrong twice in the same
+direction — CLAUDE.md read "143/143" against 1 FAILURE / 143 before #289, and "188/188" against
+1 FAILURE / 188 through 2026-08-03. Both were a pin added without running the file. **What made
+them survivable is the part worth recording**: `discover()` globs `test/(run|verify)_*.js`, so an
+HTML page under `ui/` is invisible to it, so there was no `BASELINES` entry, so the only record
+was a sentence — and `run_all`'s own doc block says prose baselines are what rot.
+
+`test/verify_board_check.js` is a RUNNER and adds no checks. Every assertion stays in the HTML
+harness, which mounts the real board with the real driver and service; the runner loads it, waits
+for the harness to stamp its title, reads the harness's own summary line, and exits on it.
+
+**Three properties were chosen deliberately.**
+- **Not `slow`.** It is a playwright gate, and #241 is the cautionary tale (an unmarked playwright
+  gate under `--fast` was red in CI for 32 runs). Kept unmarked anyway: `--fast` is the invocation
+  an agent runs mid-change, and hiding the count from it gives back most of what this buys. CI
+  installs playwright; if this ever reddens on a fresh checkout, fix the install, do not add `slow`.
+- **A partial run is a HARD failure (exit 2), not a low score.** board_check accumulates its own
+  tally, so an exception thrown halfway leaves a smaller count that would otherwise read as a pass.
+- **The viewport is pinned (1400x900).** The harness measures rendered rects, which depend on the
+  stage scale, which depends on the viewport — an unpinned geometry check passes or fails on the
+  window size it happened to get.
+
+**And the prose copy was deleted rather than corrected.** The CLAUDE.md paragraph now points at
+`BASELINES` and says explicitly not to restore a count there; ~3.6 kB of stale count history went
+with it. The durable board-editing traps were carried forward, plus two new ones (a card TITLE is
+not an item — it is a `.bd-box-title` child of the box, which is why the item-vs-item overlap scan
+could not see `bdDtMargin` on the NIS title; and `NUDGE_KINDS` components quantise their ports to
+the 5 px doc grid).
+
+`run_all` 36 -> 37 runners. Injection-verified four ways.
+
+---
+
 ## 2026-08-03f — Owner's board walk-round; Physics/Graph expansion
 
 **Six owner items, all UI/board.** The engineering worth keeping is in four places.

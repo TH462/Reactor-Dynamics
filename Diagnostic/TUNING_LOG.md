@@ -20,6 +20,65 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04a (board_check joins run_all — a number that rotted twice)
+
+**Task:** the owner asked, of the board_check count being wrong twice in a row, *"how can you
+keep that from happening again?"*
+
+**The answer is structural, and diligence is not it.** Both failures have the same shape:
+
+| when | CLAUDE.md said | the harness was at |
+|---|---|---|
+| before #289 | 143/143 | **1 FAILURE / 143** |
+| through 2026-08-03 | 188/188 | **1 FAILURE / 188** |
+
+Each time a pin was added and the file was not run. **The reason it survived is that nothing
+could contradict it.** `run_all`'s `discover()` globs `test/(run|verify)_*.js`; board_check is an
+HTML page under `ui/test_panel/`, so it was never discovered, never had a `BASELINES` entry, and
+its only record was prose — in the same document whose own gate-baseline section says *"Prose
+baselines are what rotted"*. A second, unverifiable copy of a number is the defect; asking people
+to be more careful with it is not a fix.
+
+**`test/verify_board_check.js`** — a RUNNER, not new coverage. It adds no checks; every assertion
+stays in the HTML harness, which is the right place for them (it mounts the real board with the
+real driver and service). It loads the page, waits for the harness to stamp `document.title`,
+reads the harness's own summary line, prints a scrapeable tally and exits on it. `BASELINES` gets
+`202checks 0failed`, so the count is DATA, drift is symmetric, and **a pin added without running
+the file now reddens `run_all` for whoever added it.**
+
+Precedent, and it is the same failure: `audit_manual_controls.js` was not a `run_*.js`, so
+auto-discovery never saw it, so it had no baseline, so it sat at **32 mismatches / exit 1**
+through three procedure re-authorings (#224). Renaming it to `run_manual_controls.js` fixed that
+class permanently. This is that move for the board.
+
+**Injection-verified four ways**, and the fourth is the one worth keeping:
+1. revert the ECCS leg gate → 1 red (`cross-tie PAUSED` reports `[running]`)
+2. restore the long NIS card title → 2 red, at the original **−58.8 px**
+3. put the pressurizer back to `top: 230` → 1 red, at the original **y 332 vs 335**
+4. throw an exception mid-harness → **exit 2, "DID NOT COMPLETE"**, not a smaller-but-green
+   tally. board_check builds its own count, so a partial run would otherwise look like a pass
+   with fewer checks — the silent-truncation shape this runner exists to stop.
+
+**A wiring trap, caught on the first run.** `run_all`'s scraper matches
+`/(^|[\s(])(\d+)\s+(pass|xfail|passed|failed|checks|screenshots)/` and strips whitespace
+*after* matching, so the `BASELINES` string reads `202checks 0failed` while the line the runner
+prints must be `202 checks, 0 failed`. Printing it closed up scrapes to `?`, which `run_all`
+reports as DRIFT against every possible baseline.
+
+**And the prose copy is GONE, not corrected.** The CLAUDE.md paragraph now points at `BASELINES`
+and says *do not restore a count here*; ~3.6 kB of stale count history went with it, which the
+"keep it SHORT" rule wanted anyway. The durable board-editing traps were carried forward rather
+than deleted — including two from this week that are not board-specific (`svc.tick()` no-ops
+unless `this.running`; writing `textContent` on a rendered board value destroys the child nodes
+the renderer updates).
+
+`run_all` **36 → 37 runners**. Not marked `slow`: it takes ~2 s, and hiding it from `--fast` —
+the invocation an agent actually runs mid-change — would give back most of what this buys. The
+#241 CI trap is real but already handled (CI installs playwright), and `gates.yml` now names four
+playwright runners instead of three.
+
+---
+
 ## Session log — 2026-08-03v (owner's board walk-round + the Physics/Graph expansion)
 
 **Task:** six items straight from the owner, all UI/board. Every geometry claim below is

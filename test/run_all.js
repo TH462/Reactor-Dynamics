@@ -964,6 +964,35 @@ var BASELINES = {
   // data-flag, so it shows on both channels and the distinction they guarded is gone.
   'verify_flags_ui.js':      { code: 0, score: '42/42' },
   'verify_e2e_ui.js':        { code: 0, score: '16screenshots', slow: true },
+  // NEW 2026-08-04 — a RUNNER for `ui/test_panel/board_check.html`, which has existed for
+  // months and was never in this list. It adds no checks of its own; every assertion stays
+  // in the HTML harness, which mounts the real board with the real driver and service.
+  //
+  // It is here because the harness's SCORE lived only as a sentence in CLAUDE.md, and that
+  // sentence was wrong TWICE, in the same direction, for the same reason — "143/143" while
+  // the harness sat at 1 FAILURE / 143 (before #289), and "188/188" while it sat at 1
+  // FAILURE / 188 (through 2026-08-03). Both times a pin was added without running the
+  // file, and both times nothing could contradict it: board_check is an HTML page under
+  // `ui/`, so `discover()` (which globs `test/(run|verify)_*.js`) never saw it, so it had no
+  // entry here, so the only record was prose. Exactly the failure the #224 note below
+  // describes for `audit_manual_controls.js` — not a `run_*.js`, so no baseline, so it sat
+  // red through three re-authorings.
+  //
+  // NOT marked `slow`. It is a browser gate and does need playwright, which is the #241 CI
+  // trap (`--fast` runs an unmarked playwright gate, and that died MODULE_NOT_FOUND in a
+  // checkout with no node_modules for 32 straight runs). It is deliberate here: the whole
+  // point is that the number cannot drift unnoticed, and `--fast` is what an agent runs
+  // mid-change. CI installs playwright, so both paths are covered — but if this ever goes
+  // red on a fresh checkout, fix the install, do NOT hide it behind `slow`.
+  //
+  // The count moves whenever a pin is added — that is the design, not drift. 202 as of
+  // 2026-08-04: 188 inherited, +14 for the owner's board walk-round (the ECCS cross-tie
+  // both ways, the three condensate drops, the spray stub, the turbine-exhaust riser, and
+  // card-title clearance for all three corner status words). Injection-verified four ways,
+  // and the fourth is the one worth keeping: an exception thrown mid-harness exits **2**
+  // rather than reporting a smaller-but-green tally, because board_check builds its own
+  // count and a partial run would otherwise look like a pass.
+  'verify_board_check.js':   { code: 0, score: '202checks 0failed' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,
