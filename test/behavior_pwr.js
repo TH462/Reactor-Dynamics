@@ -93,6 +93,7 @@
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
     'CA-3': 'probe', 'CA-4': 'probe',
+    'CA-7': 'probe (pzr heaters are an AC load — dead in SBO, alive in LOOP; 10 CFR 50.2 + NUREG-0737 II.E.3.1)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -1509,6 +1510,108 @@
         ck('the single-channel trip was FOOLED (no scram — the CA-4 deception)',
           h2.tripReason || 'none', h2.tripTime == null, 'none');
         T.checkSanity(ck, h2);
+      });
+    },
+
+    // CA-7 — THE HEATERS ARE AN AC LOAD, AND A BLACKOUT HAS NO AC (2026-08-03).
+    //
+    // Reported from free play: the pressurizer heaters were still running after a
+    // station blackout was injected. Measured full stack from hot_full_power, SBO at
+    // t = 60 s: heater power reached 100.0 % at 17m15s and 68.5 % at 18m00s, with every
+    // AC bus in the plant dead. With the operator calling for heat it is worse and
+    // immediate — 100 % from the moment the button is pressed, pressure walked to
+    // 2352 psi (16.22 MPa), and a SPURIOUS `pzr_level low` reactor trip at 5m27s driven
+    // entirely by phantom heat boiling liquid out of the pressurizer.
+    //
+    // SOURCED. 10 CFR 50.2 defines the event as "the complete loss of alternating
+    // current (ac) electric power to the essential and nonessential switchgear buses in
+    // a nuclear power plant (i.e., loss of offsite electric power system concurrent with
+    // turbine trip and unavailability of the onsite emergency ac power system)", and it
+    // "does not include the loss of available ac power to buses fed by station batteries
+    // through inverters" — the vital instrument AC, which is why the board keeps reading
+    // while ~1 MW of resistance heating does not run off an inverter.
+    //
+    // WHY IT SURVIVED 36 GREEN RUNNERS, and it is the #315 shape: the heaters are only
+    // DEMANDED when pressure is below setpoint, and an SBO on this plant REPRESSURIZES.
+    // Measured, the Mode 3 blackout A/Bs byte-identical across the fix because the auto
+    // controller never asked for a single percent in an hour. The defect is only
+    // reachable once the code safeties have cycled pressure back down — or the instant
+    // an operator reaches for the heater controls, which is what free play found.
+    //
+    // LEG C IS THE ONE THAT MAKES THIS A TEST RATHER THAN A TRANSCRIPT. NUREG-0578 Item
+    // 2.1.1 / NUREG-0737 Item II.E.3.1 put the minimum heater group on redundant
+    // emergency diesel-backed buses precisely so it SURVIVES a loss of offsite power;
+    // the blackout is the event that takes the diesels too. So a plain LOOP must leave
+    // the heaters at FULL authority, and any "simplification" of the guard to a proxy
+    // that is also true in a LOOP — the pumps being stopped, the turbine tripped, the
+    // reactor scrammed — reddens leg C while legs A and B stay green.
+    //
+    // Injection-verified against the pre-fix engine: legs A and B go red (100.0 % with
+    // no AC, and the spurious level trip arrives), leg C passes on BOTH, which is what
+    // makes it the discriminator rather than a second copy of leg A.
+    'CA-7': function () {
+      return test('CA-7 station blackout — no AC, no pressurizer heaters (LOOP keeps them)', function (ck) {
+        // --- leg A: the operator calls for heat with every AC bus dead.
+        // Driven through set_heater DELIBERATELY. The obvious fix — writing
+        // heater_override = 0 when the blackout is injected — is defeated by the very
+        // next press of HEATER AUTO or the % box, which is exactly the defect #200 found
+        // in stuck_open_spray. De-energization is a physical fact about the plant, not a
+        // value parked in the operator's demand, so this probe is that fix's guard too.
+        // heater_power_pct is CONTROL_STATE, and the harness recorder only watches
+        // numeric true_state fields — h.range() would hand back a silent NaN, and
+        // `NaN < 0.01` is false, so the check would fail for the wrong reason rather
+        // than pass vacuously. Sample it through the run callback instead.
+        var peak = 0, peakAt = -1;
+        function watchHeater(hh, tsec) {
+          var v = hh.ctl().heater_power_pct || 0;
+          if (v > peak) { peak = v; peakAt = tsec; }
+        }
+        var h = H('hot_zero_power');
+        h.run(60);
+        h.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h.cmd('set_heater', { power_pct: 100 });     // full manual demand, no AC to answer it
+        h.run(600, watchHeater);
+        var c = h.ctl(), t = h.ts();
+        ck('the blackout is actually in effect', String(t.station_blackout), t.station_blackout === true, 'true');
+        ck('heater power stays at ZERO for the whole blackout',
+          'peak ' + fmt(peak, 1) + ' %' + (peakAt >= 0 ? ' @ ' + fmt(peakAt, 0) + ' s' : ''),
+          peak < 0.01, '0 %');
+        // The operator's SELECTOR is untouched — heater_auto false means the manual
+        // demand is still latched exactly where it was set. What went to zero is the
+        // power delivered, not the command; restoring AC must give the heaters back
+        // without the operator re-selecting anything.
+        ck('the operator\'s manual demand is still latched (selector not rewritten)',
+          'heater_auto ' + String(c.heater_auto), c.heater_auto === false, 'false');
+        ck('no phantom-heat pressurization', fmt(h.range('pressure_mpa').max, 2) + ' MPa max',
+          h.range('pressure_mpa').max < 15.7, '< 15.7');
+        ck('no spurious low-level trip driven by boiling the pzr dry',
+          h.tripReason || 'none', h.tripTime == null, 'none');
+
+        // --- leg B: same, but the heaters left in AUTO with pressure BELOW setpoint,
+        // so the auto controller is genuinely asking. Without this leg the probe only
+        // covers the manual path and a guard placed after the override branch would pass.
+        var h2 = H('hot_zero_power');
+        h2.run(60);
+        h2.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h2.cmd('set_heater', { auto: true });
+        h2.cmd('set_pressure_setpoint', { mpa: 16.5 });   // setpoint above pressure → auto demands heat
+        peak = 0; peakAt = -1;
+        h2.run(600, watchHeater);
+        ck('AUTO cannot energize them either (setpoint 16.5 MPa, pressure below it)',
+          'peak ' + fmt(peak, 1) + ' % at ' + fmt(h2.ts().pressure_mpa, 2) + ' MPa',
+          peak < 0.01 && h2.ts().pressure_mpa < 16.5, '0 %');
+
+        // --- leg C: A LOSS OF OFFSITE POWER IS NOT A BLACKOUT. The diesels are running,
+        // and II.E.3.1's heater group is on them. Full authority, same demand, same rig.
+        var h3 = H('hot_zero_power');
+        h3.run(60);
+        h3.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        h3.cmd('set_heater', { power_pct: 100 });
+        h3.run(300);
+        ck('LOOP is NOT a blackout — the flag stays clear', String(h3.ts().station_blackout),
+          h3.ts().station_blackout !== true, 'false');
+        ck('and the diesel-backed heaters answer at FULL power (II.E.3.1)',
+          fmt(h3.ctl().heater_power_pct, 1) + ' %', h3.ctl().heater_power_pct > 99, '100 %');
       });
     },
 

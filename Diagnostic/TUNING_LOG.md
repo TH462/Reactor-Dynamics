@@ -20,6 +20,131 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-03v (#329 — pressurizer heaters ran through a station blackout)
+
+**Task:** owner report — *"the pressurizer heater was still on when i injected a station blackout
+failure."* Reproduced, sourced, fixed, gated. `engines/pwr/pwr_pressurizer.js:autoControl`,
+new probe **CA-7** in `test/behavior_pwr.js`, `run_behavior` **45 → 46**.
+
+### The defect
+
+`autoControl()` resolved heater demand from `heater_override` or the proportional band and
+`stepPressure()` applied it through `K_heater`, with **nothing anywhere asking whether the plant
+had electrical power**. The pressurizer *spray* was already right — `spray_eff` is scaled by
+`flow_frac` in `stepPressure`, so it dies with the RCPs — and the heaters had no equivalent.
+
+Measured full stack, `hot_full_power`, SBO at t = 60 s: heater power **100.0 % at 17m15s** and
+68.5 % at 18m00s. With the operator calling for heat (`hot_zero_power`, SBO at 60 s, `set_heater
+power_pct: 100` at 120 s) it is immediate: **100 % sustained**, pressure walked to 2352 psi
+(16.22 MPa), and a **spurious `pzr_level low` reactor trip at 5m27s** — phantom heat boiling
+liquid out of the pressurizer until the level channel tripped the plant.
+
+### Why 36 green runners never asked — the #315 shape again
+
+**The heaters are only DEMANDED below setpoint, and a blackout on this plant repressurizes.** A
+Mode 3 blackout A/Bs **byte-identical** across the fix, measured over an hour: the auto controller
+never asked for a single percent, because Tavg drifts up and pressure with it. The defect is only
+reachable once the code safeties have cycled pressure back down (17 min at full power) — or the
+instant an operator touches the heater controls, which is what free play did and no probe did.
+*A term that is never exercised in the regime you test in is a term nothing tests.*
+
+### Sourced, and the LOOP distinction is the design of the fix
+
+**10 CFR 50.2** (PRIMARY, saved `inbox/sources/10CFR50.2_CFR-2023-title10-vol1.xml`, fetched from
+**govinfo.gov** — see the fetch note below):
+
+> *"Station blackout means the complete loss of alternating current (ac) electric power to the
+> essential and nonessential switchgear buses in a nuclear power plant (i.e., loss of offsite
+> electric power system concurrent with turbine trip and unavailability of the onsite emergency ac
+> power system). Station blackout does not include the loss of available ac power to buses fed by
+> station batteries through inverters or by alternate ac sources as defined in this section, nor
+> does it assume a concurrent single failure or design basis accident."*
+
+The exclusion is what makes the fix's shape right: what survives is **vital instrument AC through
+the battery inverters** — which is why the board keeps reading through a blackout, and why nobody
+runs ~1 MW of resistance heating off it.
+
+**NUREG-0578 Item 2.1.1 / NUREG-0737 Item II.E.3.1** — the minimum heater group needed to hold
+pressure in Mode 3 is on *redundant, emergency diesel-generator-backed* buses, so it **survives a
+LOOP**. **Source class stated honestly: this is a DOCKETED RESTATEMENT, not the NUREG** — ADAMS
+**ML003735234** (Florida Power Corp → NRC, 2000-07-20, Crystal River 3), saved locally, quoting the
+requirement verbatim. NUREG-0737 itself (ML051400209) is **unread**: nrc.gov 403s and Wayback has no
+copy. It is not load-bearing — 10 CFR 50.2 alone settles the question — and II.E.3.1 only supplies
+the LOOP/SBO split. Flagged rather than laundered, per the #315 §6 lesson.
+
+**So a plain LOOP must KEEP the heaters.** `loss_of_offsite_power` carries effect
+`coast_down_pumps` and never sets `station_blackout`, so gating on that flag gets the
+discrimination for free. Measured: LOOP + heaters demanded → **100.0 %**, flag false.
+
+### The fix is a PHYSICAL de-energization, not a value in the operator's demand (#200)
+
+```js
+if (s.station_blackout) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
+```
+
+The obvious fix — `heater_override = 0` on injection — **repeats #200 exactly**. `set_heater`
+writes `s.heater_override` directly (`pwr_engine.js:894`), so a blackout parked in the operator's
+demand is wiped by the next press of HEATER AUTO or the % box, the way the stuck-open spray used to
+heal itself. The selector (`heater_auto`) and latched demand are left as the operator set them;
+what goes to zero is the power **delivered**, so the board reads an honest zero and restoring AC
+gives the heaters back with no re-selection. Same class as the spray's `flow_frac` scaling twenty
+lines below: an electrical reality, not a control decision (HR2).
+
+### CA-7, and leg C is the whole point
+
+Three legs — **A** operator demands 100 % with no AC (also the #200 regression guard, driven
+through `set_heater` deliberately); **B** heaters in AUTO with the setpoint raised to 16.5 MPa so
+the controller is genuinely asking, without which a guard placed after the override branch would
+pass; **C** **LOOP is not a blackout**, full authority.
+
+**Injection-verified BOTH WAYS, and the second injection is the one worth copying.** On the
+pre-fix engine 4 checks red (`peak 100.0 % @ 61 s`, `16.50 MPa max`, the `pzr_level low` trip, the
+AUTO leg) — **and leg C passes on both**, which is what makes it a discriminator rather than a
+second copy of leg A. Then replace the guard with the plausible simplification `!s.pump_running`:
+legs A and B stay **GREEN** and **only leg C reddens** (`expected 100 %, observed 0.0 %`). Any
+proxy that is also true in a LOOP — pumps stopped, turbine tripped, reactor scrammed — is caught by
+that one check and by nothing else here.
+
+**Harness trap:** `heater_power_pct` is **control_state**, and `OpsHarness._sample` only records
+numeric **true_state** fields — so `h.range('heater_power_pct')` hands back a silent `NaN`, and
+`NaN < 0.01` is *false*, so the check fails for the wrong reason instead of passing vacuously.
+Sampled through the `h.run(sec, cb)` callback instead. Check any `range()` call against
+`getTrueState()`'s key list before trusting it.
+
+### What this does NOT change — stated rather than claimed
+
+**The SBO outcome is unaffected.** A/B from `hot_full_power` over an hour: core inventory 70.8 vs
+70.83 % at 10 min, **0 % at 20 min in both**, `fuel_damaged` at 30 min in both. The blackout is
+terminal here for the reason **#325** documents — no natural circulation, so no core→SG heat path —
+and the heaters never mattered to that. This is a correctness and indication fix.
+
+### Fetch note
+
+**govinfo.gov works from this environment and nrc.gov does not.** Measured: `www.nrc.gov` **403**,
+`www.ecfr.gov` **302** (to an `unblock.federalregister.gov` interstitial), `www.govinfo.gov`
+**200**, `web.archive.org` **200** but intermittent DNS failures and no copy of ML051400209. For
+**CFR primaries specifically, go to govinfo first** — `https://www.govinfo.gov/content/pkg/
+CFR-<year>-title<N>-vol<V>/xml/CFR-<year>-title<N>-vol<V>-sec<S>.xml` is the official XML and needs
+no UA spoofing. The Wayback `2023id_` + browser-UA workaround still works for ADAMS PDFs
+(ML003735234 came through it); `pypdf` is not installed by default, `pip install pypdf` is fine.
+
+### Found, filed, NOT fixed
+
+1. **Letdown flows through the blackout** — ~0.030 normalized, steady over 40 min, with no
+   charging. Orifice flow needs no pump, but the isolation valves are air/AC operated and a real
+   plant isolates letdown on loss of power. A slow inventory drain that should not be there.
+2. **`behavior_pwr.js` COVERAGE has a DUPLICATE `TR-14` key** (lines 84 and 92). The catalog's
+   TR-14 is the *station blackout* row; #135's loss-of-feedwater drain-rate probe was given the
+   same id. Object literal, so line 92 **silently replaces** line 84 and the #135 probe's coverage
+   string is gone — the `DOC_PATCHES.items` trap from CLAUDE.md, in a new place. The probe runs;
+   the gap report is wrong.
+3. **`pwr_board_inspect.js` does not mention the AC dependence.** Not contradicted, so no
+   correction is *owed* — but it is where the teaching point belongs. Deliberately not edited: that
+   file is modified in the `develop` lane right now, and a mid-file merge there is the silent-loss
+   case CLAUDE.md warns about.
+
+---
+
 ## Session log — 2026-08-03u (#319 item 4 — ATWS, and a claim this repo carried is FALSE)
 
 **Task:** #319 item 4, PWR-E13. Two findings, and the second is the one that matters.

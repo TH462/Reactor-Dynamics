@@ -21,6 +21,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The pressurizer heaters ran through a station blackout** (#329) — reported from free play, and the
+  heaters were modelled as an unconditional heat source with nothing asking whether the plant had
+  any electrical power. Measured full stack from full power, blackout at t = 60 s: heater power
+  reached **100.0 %** at 17m15s with every AC bus in the plant dead. With the operator calling for
+  heat it is immediate and worse — 100 % from the button press, pressure walked to 2352 psi
+  (16.22 MPa), and a **spurious `pzr_level low` reactor trip at 5m27s** driven entirely by phantom
+  heat boiling liquid out of the pressurizer. **10 CFR 50.2** defines the event as *"the complete
+  loss of alternating current (ac) electric power to the essential and nonessential switchgear
+  buses"*, excluding only *"buses fed by station batteries through inverters"* — that exclusion is
+  the vital instrument AC, which is why the board keeps reading while a megawatt of resistance
+  heating does not. The pressurizer **spray** was already right (scaled by `flow_frac`, so it dies
+  with the pumps); the heaters had no equivalent.
+- **A loss of offsite power deliberately KEEPS them.** NUREG-0578 Item 2.1.1 / NUREG-0737 Item
+  II.E.3.1 put the minimum heater group on redundant emergency diesel-backed buses precisely so it
+  survives a LOOP; the blackout is the event that takes the diesels too. `loss_of_offsite_power`
+  carries effect `coast_down_pumps` and never sets `station_blackout`, so gating on that flag gets
+  the discrimination for free — measured, LOOP with heaters demanded reads **100.0 %**.
+- **It is NOT written into the operator's demand, and that is the #200 lesson.** Setting
+  `heater_override = 0` would be undone by the very next press of HEATER AUTO or the % box, exactly
+  as the stuck-open spray used to heal itself. De-energization is a physical fact about the plant;
+  the selector position and the latched demand are left as the operator set them, and what goes to
+  zero is the power delivered. **Why 36 green runners missed it** is the #315 shape: the heaters are
+  only *demanded* below setpoint, and a blackout on this plant repressurizes — a Mode 3 blackout
+  A/Bs byte-identical across the fix because the controller never asked for a single percent in an
+  hour. **The SBO outcome is unchanged** (inventory 70.8 vs 70.83 % at 10 min, damage at 30 min
+  both): the blackout is terminal here for the natural-circulation reason #325 documents, and this
+  is a correctness and indication fix, not a save. `run_behavior` **45 → 46** (CA-7).
+
 ### Added
 - **An operator load rate limit — 10 %/min, increases only** *(OWNER, 2026-08-03: "Come up with your
   own rate for this plant that's fast enough to keep it interesting and slow enough to be safe.")*.
