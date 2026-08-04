@@ -18,8 +18,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 > and reads plausibly either way — and it compounds, because once two releases are merged into
 > one block the boundaries can only be recovered by diffing this file at each tag. Which is
 > what it took.
+>
+> **`## [Pre-launch 1.x.y]` headings are DEVELOPMENT versions, not releases** (2026-08-04). The
+> project versioned itself `Alpha 1.2.0` → `1.11.0` before it was ever public, then dropped the
+> number entirely for `Pre Alpha`, and the first *real* release is **`Alpha 1.0.0`** below. Those
+> older sections keep their content and dates and are simply relabelled, because `1.0.0` sorting
+> above `1.11.0` fails the gate's newest-first check — measured, **10 checks / 1 failed** before
+> the relabel and **11 / 0** after. They are relabelled INDIVIDUALLY rather than merged into one
+> catch-all, for the reason the paragraph above gives: merged boundaries cost a tag diff to
+> recover. Nothing below `Alpha 1.0.0` was ever downloadable.
 
 ## [Unreleased]
+
+## [Alpha 1.0.0] — 2026-08-04
 
 ### Added
 - **Natural circulation — a loss of offsite power was terminal and is now survivable** (#325)
@@ -55,15 +66,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (`natural_circulation`).
 
 ### Changed
-- **Version bumps and the player-facing changelog are LIVE again, and the next release is the
-  LAUNCH release** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of
-  pre-Alpha and into Alpha and bring back the update tracking page. Update tracking
-  summaries/lists should be concise.")*. This supersedes the 2026-07-31 suspension. That release
-  is **`Alpha 1.0.0`** — one version for everything accumulated under `Pre Alpha`, not a replay
-  of the skipped bumps — and the digit rules resume from the release *after* it. Un-suspended in
-  all four places that encoded it: `CLAUDE.md` (Definition of done + *Website changelog & version
-  numbers*), the `release-to-main` skill, `changelog.html`'s `ADDING AN ENTRY` template and
-  `site/release.js`. Launch-only extras stay in **#282** (manual set to Rev 0, `BASELINES`, tags).
+- **`Pre Alpha` → `Alpha 1.0.0`, and the update-tracking page is live again** *(OWNER DIRECTIVE,
+  2026-08-04: "The next release will take the program out of pre-Alpha and into Alpha and bring
+  back the update tracking page. Update tracking summaries/lists should be concise.")*. One
+  version for everything accumulated under `Pre Alpha`; the Platform.Feature.Refinement digit
+  rules resume from the *next* release. `changelog.html` carries its first real entry and the
+  "Awaiting public launch" placeholder is gone.
+- **The player-facing entry is ONE line** *(OWNER DIRECTIVE, 2026-08-04: "The first release should
+  not have change log entries other than saying it's the initial Alpha release.")*. A first
+  release has nothing to be a change *against*: every feature in it is new to every reader, so a
+  feature list would be a product tour filed under the wrong heading. This developer file keeps
+  its full history — it is the engineering record and the two are deliberately different
+  documents.
+- **The manual set is back to Rev 0** *(OWNER DIRECTIVE, 2026-08-04: "The plant manual revision
+  number should be zeroed out for this release.")*. The 26 development revisions are in
+  `git log` for `Manuals/`, which is where a per-chapter history belongs; a revision row exists to
+  tell a reader what changed since the copy they had, and nobody had a copy before Rev 0. Stamped
+  through all 13 documents and repacked; `run_manual_rev` unmoved at **13 / 0**. Note this is the
+  *second* reset — an earlier Rev 0 was stamped 2026-07-31 in anticipation of go-public and the
+  counter then ran to 26 before the release happened, which is the argument for zeroing **at** a
+  release rather than ahead of one.
+- **Versioning and the player-facing changelog are LIVE again**, superseding the 2026-07-31
+  suspension, in all five places that encoded it: `CLAUDE.md` (Definition of done + *Website
+  changelog & version numbers*), the `release-to-main` skill (banner, checklist **and its
+  frontmatter description**), `changelog.html`'s `ADDING AN ENTRY` template and `site/release.js`.
 - **`changelog.html` entries are capped at 8 one-line bullets**, aggregated by system rather than
   enumerated per commit, and explicitly *not* derived line-by-line from this file — a single item
   here runs 30 lines. The cap is the operational reading of the directive above; the brevity is
@@ -1874,7 +1900,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `RD_RELEASE` is a full `Alpha X.Y.Z`. All seven were proven to go **red by injection**
   before being counted green.
 
-## [Alpha 1.11.0] — 2026-07-30
+## [Pre-launch 1.11.0] — 2026-07-30
 
 ### Added
 - **Settings → About: Disclaimer, License, and Changelog popups** (#259). The portable
@@ -2046,7 +2072,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   annotation clears; drop back below P-10 and the block reinstates itself and the band comes
   back with it. **At power nothing changed** — the bands are identical to before.
 
-## [Alpha 1.10.0] — 2026-07-30
+## [Pre-launch 1.10.0] — 2026-07-30
 
 ### Fixed
 - **The moderator model was re-fitted to measured plant data, and the reactor is more
@@ -2295,7 +2321,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   anything is wrong. `run_hr3`, `run_contract` and `run_inspect` keep their counts in the
   baseline on purpose — theirs move when a real decision is made.
 
-## [Alpha 1.9.0] — 2026-07-29
+## [Pre-launch 1.9.0] — 2026-07-29
 
 ### Changed
 - **The manual now reads in both unit systems — US customary first, SI in parentheses.**
@@ -2580,7 +2606,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   *Migration note:* the new `clad_temp_c` state field is lazily initialized on the first
   step (to the hot-leg temperature), so saves written before this change load unchanged.
 
-## [Alpha 1.8.2] — 2026-07-28
+## [Pre-launch 1.8.2] — 2026-07-28
 
 ### Fixed
 - **The vital-parameter tiles no longer flicker at all.** The previous fix stopped their
@@ -2599,7 +2625,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   now measured from the number's real height, and if the column ever cannot fit it distributes
   evenly instead of piling up at the top edge.
 
-## [Alpha 1.8.1] — 2026-07-28
+## [Pre-launch 1.8.1] — 2026-07-28
 
 ### Fixed
 - **The vital-parameter tiles no longer flicker**, especially during a transient. Their
@@ -2630,7 +2656,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   spanning the meter's full 50–660 °F. The green programme band is now a readable width rather
   than a hairline in a field of grey.
 
-## [Alpha 1.8.0] — 2026-07-28
+## [Pre-launch 1.8.0] — 2026-07-28
 
 ### Added
 - **New control-room diagram (V2).** The PWR board was re-authored in the Claude Design
@@ -2736,7 +2762,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   progressed toward its acceptance check, quietly costing you up to five evaluations of
   credit. Both now survive a save. Older save files still load and behave exactly as they did.
 
-## [Alpha 1.7.1] — 2026-07-27
+## [Pre-launch 1.7.1] — 2026-07-27
 
 ### Changed
 - **The steam dump's temperature reference now slides with turbine load** (issue #219). It was
@@ -2794,7 +2820,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   the OS temp dir (a hardcoded session id). It now writes to `Diagnostic/`, with an optional
   argv override (issue #159).
 
-## [Alpha 1.7.0] — 2026-07-27
+## [Pre-launch 1.7.0] — 2026-07-27
 
 ### Added
 - **Reactor Trip on Turbine Trip (P-9).** Above ~50 % power a turbine trip now trips the reactor,
@@ -2982,7 +3008,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `inject_failure` by `failure_id`), so blocking the power-range trip does not also tick
   the intermediate-range step.
 
-## [Alpha 1.6.1 and earlier] — up to 2026-07-24
+## [Pre-launch 1.6.1 and earlier] — up to 2026-07-24
 
 _Everything below this line predates the convention above: it was kept as one running
 `[Unreleased]` log and was never cut per release, so it is not separated by version.

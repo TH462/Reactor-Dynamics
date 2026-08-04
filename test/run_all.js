@@ -438,7 +438,21 @@ var BASELINES = {
   //       Verified by injection three ways — remove the paragraph: 149; keep it with the
   //       backticked marker: 148; keep it phrased as "the dated quote": 149. So refer to the
   //       markers by description in prose, never by typing them.
-  'run_hardrules.js':      { code: 0, score: '149checks 0failed' },
+  // 149 -> 148 on 2026-08-04c (#282, the launch itself): a DROP, and the mechanism is the one
+  // this entry has recorded twice for the themes cap — DELETING HISTORY DELETES CITATION SITES.
+  // Zeroing the manual set to Rev 0 collapsed 26 revision rows, and several of them quoted owner
+  // rulings ("issue 288, split them.", "Go with one B", "Let's go with your recommendations"),
+  // which outweighed the new citations added for the three launch directives. CHECKED BEFORE
+  // ACCEPTING, per the standing rule: every affected ruling still stands in other tracked files
+  // (4, 5 and 2 files respectively), so this is fewer citation SITES, not fewer rulings. The
+  // revision table and this gate pull against each other exactly as the themes cap does.
+  //
+  // IT READ 146 MID-CHANGE. That was measured after the code/data edits and BEFORE the
+  // TUNING_LOG and BUILD_DECISIONS write-ups, which added two sites — the "re-run this AFTER
+  // the docs" warning three comments up, arriving on the very entry that repeats it. And the
+  // write-up itself first cited two of the directives with the DATE IN THE PROSE rather than
+  // inside the citation, which HR11 scores as undeclared: 148checks 2failed before 148/0.
+  'run_hardrules.js':      { code: 0, score: '148checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -678,7 +692,22 @@ var BASELINES = {
   // released-state rules stand down. They re-arm on the FORMAT: set RD_RELEASE to
   // "Alpha 1.0.0" on launch day and this goes back up. Verified by injection — with a
   // version set and the changelog still empty it fails 3 ways.
-  'run_release.js':        { code: 0, score: '8checks 0failed' },
+  // 8 -> 11 on 2026-08-04 (#282): LAUNCH. RD_RELEASE is "Alpha 1.0.0", changelog.html has its
+  // first published entry (ONE line, owner's call) and CHANGELOG.md's [Unreleased] is rolled.
+  // The three extra checks armed on the format alone, exactly as the note above predicted.
+  // WHAT DID NOT COME FOR FREE, and was found by SIMULATING the release before doing it:
+  // CHANGELOG.md still carried "## [Alpha 1.11.0]" down to "## [Alpha 1.7.0]" from the
+  // pre-public period, so rolling [Unreleased] to "## [Alpha 1.0.0]" put 1.0.0 ABOVE 1.11.0
+  // and failed "version headings are newest-first" — 10 checks / 1 failed. #282 recorded the
+  // opposite ("not needed at all"), which was true of changelog.html (emptied) and never
+  // checked against this file. The nine pre-public headings are "## [Pre-launch 1.x.y]" now,
+  // relabelled individually rather than merged, because merged boundaries cost a tag diff to
+  // recover (this runner's own header records that). SECOND EFFECT, which nothing would have
+  // surfaced: `floor` in the CROSS rule is the oldest individually-named version heading, so
+  // while 1.0.0 sorted under Alpha 1.7.0 the launch entry fell below the floor and its
+  // date agreement across the two files was NOT CHECKED AT ALL — zero CROSS rows, no failure.
+  // The relabel is what makes this 11 rather than 10, and the 11th check is that CROSS row.
+  'run_release.js':        { code: 0, score: '11checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from

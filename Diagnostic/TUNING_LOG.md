@@ -20,6 +20,48 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04c (#282 — LAUNCH: Pre Alpha → Alpha 1.0.0, manual set back to Rev 0)
+
+**Task:** three owner directives, 2026-08-04 — *"The plant manual revision number should be zeroed out
+for this release."*, *"The first release should not have change log entries other than saying it's the
+initial Alpha release."*, and the launch directive from 2026-08-04b. The release is **prepared on
+`develop` and NOT merged** — the merge is the owner's call.
+
+`run_release` **8 → 11**, `run_hardrules` **149 → 146**, `run_manual_rev` **13 unmoved**.
+
+### The one-line entry is not laziness — a first release has nothing to be a change against
+
+`changelog.html` carries a single bullet. Every feature in a first release is new to every reader, so
+a feature list there is a product tour filed under a heading that means *"what changed since the copy
+you had"*. The developer `CHANGELOG.md` keeps its full history: the two files are different documents
+and the gate only requires that their **versions and dates** agree, explicitly not their content.
+
+### The predicted red was real, and the relabel is what makes the gate 11 rather than 10
+
+The 2026-08-04b simulation said rolling `[Unreleased]` to `## [Alpha 1.0.0]` would fail newest-first
+because this file still carried `## [Alpha 1.11.0]` down to `## [Alpha 1.7.0]`. Confirmed on the real
+files: nine pre-public headings are `## [Pre-launch 1.x.y]` now, individually relabelled with content
+and dates untouched, and `run_release` came out **11 / 0** — the 11th check being the CROSS row that
+was silently absent while 1.0.0 sorted under the `floor`.
+
+### `run_hardrules` went DOWN, and deleting history is why
+
+Collapsing 26 revision rows to a single Rev 0 **deleted citation sites** — several rows quoted owner
+rulings (*"issue 288, split them."*, *"Go with one B"*, *"Let's go with your recommendations"*) — and
+that outweighed the citations the three launch directives added. **Checked before accepting the drop**,
+per the standing rule: all of them still stand in other tracked files (4, 5 and 2 files respectively),
+so this is fewer citation *sites*, not fewer rulings. The revision table and this gate pull against
+each other in exactly the way the *Recent themes* cap does.
+
+### Zero the revision AT the release, not ahead of one
+
+This is the **second** Rev 0. The first was stamped 2026-07-31 in anticipation of go-public, and
+development then ran the counter to 26 before the release actually happened — so the reset bought
+nothing and had to be done again. `00_REVISION_HISTORY.md` now says so in the file, because the
+argument is only visible to someone who knows both resets happened.
+
+---
+
 ## Session log — 2026-08-04b (#282 — the version-bump suspension is LIFTED; next release is launch)
 
 **Task:** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha and

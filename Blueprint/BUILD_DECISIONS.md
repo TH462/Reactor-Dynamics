@@ -37,6 +37,38 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04c — #282: LAUNCH prepared — Pre Alpha → Alpha 1.0.0, manual set to Rev 0
+
+**Decisions.** Three owner directives. *(OWNER DIRECTIVE, 2026-08-04: "The plant manual revision number
+should be zeroed out for this release.")* — the manual set is back to a single **Rev 0** row, stamped
+through all 13 documents and repacked. *(OWNER DIRECTIVE, 2026-08-04: "The first release should not have
+change log entries other than saying it's the initial Alpha release.")* — `changelog.html` carries **one
+bullet**.
+`site/release.js` is `Alpha 1.0.0`. **Prepared on `develop`, NOT merged** — the merge is the owner's call.
+
+**A first release has nothing to be a change against**, which is why the one-line entry is correct
+rather than thin: every feature in it is new to every reader, so a feature list on a page that means
+*"what changed since the copy you had"* is a product tour under the wrong heading. `CHANGELOG.md` keeps
+its full history — the gate requires the two files agree on **version and date**, explicitly not on
+content.
+
+**The predicted red was real.** The nine pre-public `## [Alpha 1.x.y]` headings are
+`## [Pre-launch 1.x.y]` now, relabelled individually with content and dates untouched, and
+`run_release` came out **11 / 0** — the 11th check being the CROSS row that was silently absent while
+1.0.0 sorted below the rule's `floor`.
+
+**`run_hardrules` 149 → 146: deleting history deletes citation sites.** Collapsing 26 revision rows
+removed several that quoted owner rulings, outweighing the citations the launch directives added.
+Verified before accepting: every affected ruling still stands in other tracked files. The revision table
+and this gate pull against each other exactly as the *Recent themes* cap does.
+
+**Zero the revision AT a release, never ahead of one.** This is the second Rev 0 — the first was
+stamped 2026-07-31 in anticipation of go-public and the counter then ran to 26 before the release
+happened, so it bought nothing and had to be redone. Recorded in `00_REVISION_HISTORY.md` itself,
+because the argument is invisible to anyone who does not know both resets happened.
+
+---
+
 ## 2026-08-04b — #282: the version-bump suspension is LIFTED, next release is launch
 
 **Decision.** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha
