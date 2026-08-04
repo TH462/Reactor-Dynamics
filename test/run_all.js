@@ -164,7 +164,15 @@ var BASELINES = {
   // the core melts, never how fast or which way the rate is going. MD-11 asserts the
   // SECOND DERIVATIVE instead: each 400 °C band must be crossed faster than the one
   // below. Measured 184/172/86/40 s with oxidation, 218/334/378/428 s without.
-  'run_meltdown.js':       { code: 0, secs: 48, score: '11pass 0xfail' },
+  // 11 -> 12 (2026-08-04b, #326): MD-12, the post-melt freeze. Both core-material nodes
+  // integrated past `melted`, the end of this model's declared validity — fuel as a pure
+  // integrator (hFcEffective -> 0 on a dry core), clad on the #238 Arrhenius oxidation
+  // feedback, which is the larger half and is NOT a follower of the fuel node above melt.
+  // Injection-verified two ways: both freezes out -> 4 red, clad drift 312089 C; stepFuel's
+  // freeze alone (the fix the issue's own investigation recommended) -> 3 STILL red, same
+  // drift to three decimals. MD-11's bands are unmoved at 184/172/86/40 s, which is what
+  // says the freeze did not reach below melt.
+  'run_meltdown.js':       { code: 0, secs: 48, score: '12pass 0xfail' },
   // New 2026-07-26d (#209 last thread): the same casualties HANDS OFF through the
   // full stack. run_meltdown is engine-direct and does not load control_kernel at
   // all, so its MD-4/MD-8 PROTECTION claims are proven with the operator hand-
@@ -479,7 +487,14 @@ var BASELINES = {
   // directive quoted at each decision site in tracked markdown. The quotes in ui/app.js,
   // ui/shell.css, pwr_board_wiring.js, board_check.html and run_inspect.js are invisible here
   // (this gate scans tracked MARKDOWN only), which is a property of the guard, not a gap.
-  'run_hardrules.js':      { code: 0, score: 'MEASURE_ME' },
+  // ---- backshop's own chain, kept: it also started from 142 ------------------------
+  // 142 -> 149 (2026-08-04b, #328 + #326): write-up drift, the usual asymmetry. The CODE in
+  // both changes moved this by ZERO — a rename touches no rule and `if (s.melted) return;`
+  // cites nothing — and the entire delta is tracked markdown carrying the two dated owner
+  // quotes for #328 (the rename directive and the 100-MWe unit ruling) across the manual
+  // revision row, CHANGELOG, TUNING_LOG and BUILD_DECISIONS. MEASURED AFTER the docs, which
+  // is the only order that gives the right number: an intermediate run mid-change read 143.
+  'run_hardrules.js':      { code: 0, score: '165checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

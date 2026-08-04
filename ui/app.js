@@ -3281,7 +3281,7 @@
     'load-follow': function () { cmd({ action: 'set_load_mode', mode: 'follow' }); },
     'load-manual': function () { cmd({ action: 'set_load_mode', mode: 'manual' }); },
     'load-disconnect': function () { cmd({ action: 'disconnect_grid' }); },
-    // Rated ask on breaker close — read from the active plant's config (SLX-100 = 100).
+    // Rated ask on breaker close — read from the active plant's config (SLS-100 = 100 MWe).
     'breaker-close': function () { var r = (RD['PWR_CONFIG'] && ui.plant === 'pwr') ? RD.PWR_CONFIG.turbine.mwe_rated : (ui.plant === 'bwr' ? 1100 : 1000); cmd({ action: 'set_steam_demand', mwe: r }); },
     'breaker-open': function (b) { armedConfirm(b, function () { cmd({ action: 'set_steam_demand', mwe: 0 }); }); },
     'mwe-set': function () { cmd({ action: 'set_steam_demand', mwe: inputVal('mweSet') }); },

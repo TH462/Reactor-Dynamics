@@ -1,7 +1,7 @@
 # Unified Test-and-Compare Runner — blueprint (owner request, 2026-07-21)
 
 **Goal:** one command that drives the sim through EVERY suite and compares results
-against the desired-behavior catalog — the standing retune harness for the SLX-100
+against the desired-behavior catalog — the standing retune harness for the SLS-100
 and the template for the RBMK and BWR tuning passes.
 
 ## What exists already (the pieces)
@@ -36,4 +36,4 @@ and the template for the RBMK and BWR tuning passes.
 1. Refactor the five runners to export results (keep CLI behavior identical).
 2. `run_all.js` + FULL_MATRIX report + baseline-delta store.
 3. Regroup by catalog ID; add the `identity` table to the report header.
-4. RBMK catalog draft using the SLX-100 catalog as the template.
+4. RBMK catalog draft using the SLS-100 catalog as the template.

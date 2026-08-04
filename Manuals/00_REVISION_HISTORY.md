@@ -57,7 +57,7 @@
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
      Sealed at Rev 0 (2026-08-04). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
-     01_GENERAL_DESCRIPTION.md 0afb4cce195e2133
+     01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
      03_CONTROLS_AND_INDICATIONS.md a3aa20fba274e2ae
      04_NORMAL_OPERATIONS.md d42cd39fc1fc676b
@@ -68,6 +68,6 @@
      09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md fcc8b3b5f555a1e1
+     12_SIM_PHYSICS.md bf6cd0d8bda845a9
      README.md 9a103035dfb47eca
 -->
