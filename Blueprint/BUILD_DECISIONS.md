@@ -9,6 +9,12 @@ where the two differ or where judgment was exercised.
 **How to maintain (read this before editing).**
 - Append, don't rewrite history. When a flag is resolved, move it to the relevant module's
   "Resolved" note rather than deleting it.
+- **Dated entry headings are `YYYY-MM-DD-<lane>-<letter>`** — e.g. `## 2026-08-05-develop-a — #339: …`.
+  Lane = the worktree (`develop` / `workbench` / `backshop`); letter = the next one unused for that
+  date **in your own lane**, starting at `-a`, never bare. Three lanes allocating a per-day letter
+  independently collided: **10 labels here name two or three entries each**, so a citation against one
+  is ambiguous. Pre-2026-08-05 labels are **not** renamed *(OWNER RULING, 2026-08-04: "Work issue 339
+  in develop. Go with option 2.")*; see #339. Gated by `test/run_session_labels.js`.
 - Every entry: a one-line claim, then the *why*. Reference `file:symbol` where it helps.
 - Update the **Open Flags** table at the top whenever a flag is opened or closed.
 - Keep it skimmable: tables and short bullets, not prose.
@@ -34,6 +40,37 @@ where the two differ or where judgment was exercised.
 | F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **RESOLVED (2026-07-25, #150 — 35/35; then 2026-07-29m, #194 — 39/39)** Both original reds were stale expectations, not regressions (spray has an owner-ruled flow cap; "auto holds ≥98 %" is unphysical at severity 1.0). **But the #150 rebuild introduced a worse check than the one it replaced**: *"CVCS covers a consistent fraction of the leak (droop)"* asserted coverage stayed inside 10–50 % and equal across leak sizes — measured 400 **cycles** in, i.e. 40 s of sim time against an 83 s control loop. It pinned a transient as a steady-state property and is the whole source of #194's false claim that no leak is ever held. Now five checks measured at 4.8 τ against the **config-derived** equilibrium. Negative control: the old check *passes* on a deliberately-broken servo and *fails* on the healthy plant — it was inverted. |
 | F13 | M4 | **`clip()` is defined four times** (`control_kernel.js:47`, `pwr_control.js:360`, `rbmk_control.js:127`, `bwr_control.js:100`) and issue #156 files it as HR3 drift. It is not: HR3 is *plant specifics in shared code*, and this is a one-line pure clamp local to each IIFE. **Deliberately not deduplicated** — `control_kernel.js` loads **after** all three plant control modules in every load list, so a shared `RD.*.clip` resolves only at call time (a real load-order coupling), and the alternative is a new shared-utils file that must be added to every load list. Bought for 60 characters that cannot meaningfully drift. **Measured before deciding: `clip` is the ONLY duplicated helper** — every other module-level function in those four files is genuinely local. **Revisit trigger:** if a *second* shared helper appears, create the utils file then and move `clip` in with it. The **other** half of #156 (a PWR field read inside generic kernel machinery) WAS real and is fixed — and note it had **moved**: `_stepBang` was already clean, but the boron batch-dose work re-created the same leak in `_stepConc`. See `Diagnostic/TUNING_LOG.md` 2026-07-27b. | cleanup | **RESOLVED (2026-07-27b) — won't fix, deliberate. OWNER-APPROVED**: Claude recommended won't-fix with the reasoning above; owner replied *"Do as you suggest"* (2026-07-27), so the decision is the owner's and the reasoning is Claude's. Recording it that way because the first draft of this row said only "ruled won't-fix", which reads as owner authority for what was then an agent's recommendation — the exact laundering `CONTEXT.md` §HR-provenance warns about. #156 closed `status-deliberate`. The recurrence it exposed (the leak was fixed in `_stepBang`, then re-created in `_stepConc` ~40 lines below the comment warning against it) is spun out as **#227** — nothing gates HR3 in the kernel. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
+
+---
+
+## 2026-08-04-develop-g — #339: the session label names the LANE, because a per-day letter needed three trees to agree
+
+**Decision.** Session headings in this file and `Diagnostic/TUNING_LOG.md` are
+`YYYY-MM-DD-<lane>-<letter>` *(OWNER RULING, 2026-08-04: "Work issue 339 in develop. Go with option
+2.")*. Lane = the worktree (develop / workbench / backshop); letter = the next unused for that date
+**in that lane**, `-a` first, never bare.
+
+**Why, and it is not tidiness.** Both files are cited by their dated headings — that is what the
+suffix is *for*. Measured across both in full: **17 labels name more than one entry** (10 here, 7 in
+`TUNING_LOG.md`), including `2026-08-04b` ×3 and `2026-08-03d` ×3. The old scheme allocated one
+letter per **day across all lanes**, so its correctness depended on three sessions in three trees
+agreeing on who got `b` — and a worktree cannot see another's uncommitted file. It was also out of
+room: `2026-08-04` unsuffixed sorts *above* `2026-08-04a`, leaving no letter below `b` for a third
+lane without renumbering upward.
+
+**The departure, declared.** Option 2 as filed has no letter (`2026-08-04-develop`). Measured, **25
+sessions landed on 2026-08-03**, ~8 per lane — so a bare first entry collides *within* a lane on day
+one, and session two must either rename session one (the retro-rename churn option 2 exists to
+avoid) or start at `b` with no `a`. The letter is therefore mandatory. The lane still does what the
+ruling asked: no agent ever has to know what another lane chose.
+
+**Not retro-renamed**, by the same ruling. The 17 legacy collisions stay as the record of the day
+three lanes landed at once; `run_session_labels.js` reports them and never fails them. Enforcement
+is a date cutoff — labels dated 2026-08-05 or later must be lane-form.
+
+**Gate:** `test/run_session_labels.js`, NEW, **8 checks** (4 structural per file), `run_all` 37 → 38.
+Baselined on the count rather than on failures because the checks are structural and the file list
+fixed — the count moves only when a check is added, not when a session is appended.
 
 ---
 

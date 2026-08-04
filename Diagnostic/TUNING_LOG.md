@@ -10,6 +10,15 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 **How to use it (read before editing).**
 - Newest session entries on top of the **Session log**.
+- **Your session heading is `YYYY-MM-DD-<lane>-<letter>`** — e.g. `## Session log — 2026-08-05-develop-a`.
+  The lane is the worktree you are in (`develop` / `workbench` / `backshop`); the letter is the next
+  one not already used for that date **in your own lane**, and the first entry takes `-a` rather than
+  going bare. The old per-day sequence needed three trees to agree on who got `b`, and they cannot see
+  each other: measured at the 2026-08-04 three-lane merge, **17 labels named more than one entry** (7
+  here, 10 in `BUILD_DECISIONS.md`), so a "see TUNING_LOG 2026-08-04b" citation resolves to two
+  different sessions. Entries dated before 2026-08-05 keep their old labels and are **not** renamed
+  *(OWNER RULING, 2026-08-04: "Work issue 339 in develop. Go with option 2.")* — #339 is the
+  explanation for the ambiguous ones. Gated by `test/run_session_labels.js`.
 - When you resolve a backlog item, move it to the session log with the fix, and mark the
   backlog row **RESOLVED (date)** — don't delete it (continuity beats tidiness).
 - When you *discover* something (a hard fail, an oddity, a suspicion), add a backlog row
@@ -17,6 +26,85 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 - Keep the gate snapshot below current — it is the at-a-glance "are we green?".
 - Every claim gets a pointer (`file:symbol`, a probe name, or a doc section) so the next
   session can verify, not just trust.
+
+---
+
+## Session log — 2026-08-04-develop-g (#339 — the session label names the LANE now)
+
+**Task:** *(OWNER RULING, 2026-08-04: "Work issue 339 in develop. Go with option 2.")* Docs +
+one new static gate; no engine, config, layer or UI change.
+
+### The collision is 17 labels, not the 5 the issue measured
+
+#339 sampled 2026-08-04 and found `2026-08-04b` naming three entries in `BUILD_DECISIONS.md` and
+two here. Measured across both files in full:
+
+| file | session headings | labels naming >1 entry |
+|---|---|---|
+| `Diagnostic/TUNING_LOG.md` | 50 | **7** — `2026-08-01` ×4, `2026-07-31` ×3, then `2026-08-01d` · `2026-08-03k` · `2026-08-03v` · `2026-08-04b` · `2026-08-04f` ×2 each |
+| `Blueprint/BUILD_DECISIONS.md` | 63 | **10** — `2026-08-04b` ×3, `2026-08-03d` ×3, seven more ×2 |
+
+So a third of the days in these files are already ambiguous, and the day the issue caught is not
+even the worst one.
+
+### Why the old scheme could not be fixed by being careful
+
+It allocated one sequence letter per **day, across all lanes**, so it required three sessions in
+three separate working trees to agree on who got `b` — and a worktree cannot see another's
+uncommitted file. The scheme's correctness depended on information no participant had. It had also
+run out of room: `2026-08-04` (unsuffixed) sits *above* `2026-08-04a`, so `a` is older than
+no-suffix and there is no free letter below `b` for a third lane without renumbering upward.
+
+### The scheme, and the one place it departs from the ruling
+
+`YYYY-MM-DD-<lane>-<letter>` — `2026-08-05-develop-a`. Lane is the **tree** (develop / workbench /
+backshop), letter is the next unused for that date **in your own lane**.
+
+The letter is mandatory, and option 2 as written has no letter (`2026-08-04-develop`). Measured:
+**25 session entries landed on 2026-08-03**, ~8 per lane, so more than one session per lane per day
+is the norm. With a bare first entry, session two must either rename session one — the retro-rename
+churn option 2 was picked to avoid — or start at `b` with no `a` above it, which is the exact
+ordering wart the issue names. Two characters buys both away, and the lane still does the work the
+ruling asked of it: **no agent ever has to know what another lane chose.**
+
+This entry's own heading is the first use, which is why its letter is `g` and not `a` — develop had
+already spent a, c, d, e, f today under the old scheme, and "next unused for that date in this lane"
+gives `g` with no special case for the transition day.
+
+### `test/run_session_labels.js` — NEW, 8 checks
+
+Four structural checks per file: every label parses; **no duplicate lane-form label**; everything
+dated 2026-08-05 or later is lane-form; lane-form entries are newest-first within each date+lane.
+
+**Baselined on the count, not on failures.** The checks are structural and the file list is fixed,
+so the count moves only when a check is added — unlike `run_manual_units`, whose count moves on any
+prose edit. A per-label count would drift every session and train the next author to rewrite the
+number without reading it.
+
+**The date cutoff is the enforcement.** Legacy labels are grandfathered by the ruling (option 2 is
+explicitly "do not retro-rename"), so their 17 collisions are printed as information and never
+failed; they stay as the readable record of the day three lanes landed at once, with #339 as the
+explanation. Anything dated 2026-08-05 or later must be lane-form. **Moving that date forward to
+clear a red retires the gate** — the runner header says so.
+
+### Two things it deliberately does NOT check, both because they would redden on correct work
+
+**Contiguity of the letters.** A session that writes up here but not in `BUILD_DECISIONS.md` leaves
+a legitimate gap in the second file, so `a, c` is not a defect. **Ordering across lanes, or in the
+legacy region** — two lanes landing on one day have no defined order relative to each other, and the
+legacy region is already out of order (`2026-08-04a` sits *below* `2026-08-03w` in this file), which
+is history rather than a regression.
+
+### Injection-verified four ways, one per check
+
+Each check was made to go red before being trusted (`verify-checks-by-injection`): a legacy label
+dated after the cutoff → **1 red** (the cutoff check), an unknown lane word `-sideshop-a` → **1 red**
+(the parse check, and note it is the parse check that catches a misspelled lane, not a lane check),
+two letters ascending → **1 red** (the ordering check). The duplicate-label injection reddens **2**,
+not 1 — a repeated letter is also not strictly descending, so the ordering check fires too. That is
+honest rather than sloppy: the two checks overlap on exactly one case and disagree on the others.
+
+`run_all` **37 → 38 runners**.
 
 ---
 

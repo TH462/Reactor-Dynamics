@@ -31,6 +31,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Session-log headings name the LANE: `YYYY-MM-DD-<lane>-<letter>`** *(OWNER RULING, 2026-08-04:
+  "Work issue 339 in develop. Go with option 2.")*, #339. `Diagnostic/TUNING_LOG.md` and
+  `Blueprint/BUILD_DECISIONS.md` are cited by their dated headings, and the old per-day sequence
+  letter required three worktrees to agree on who got `b` — which they cannot, since a lane cannot
+  see another's uncommitted file. Measured across both files: **17 labels name more than one entry**
+  (7 + 10), `2026-08-04b` resolving to two sessions in one and three in the other. Lane = the tree
+  (develop / workbench / backshop); letter = the next unused for that date *in that lane*, `-a`
+  first. **The mandatory letter is a declared departure from the filed option**, which had none:
+  measured, 25 sessions landed on 2026-08-03, ~8 per lane, so a bare first entry collides within a
+  lane on day one and forces exactly the retro-rename the option existed to avoid. Existing labels
+  are **not** renamed, by the same ruling — they stay as the record of the day three lanes landed at
+  once. New gate `test/run_session_labels.js` (8 checks, `run_all` 37 → 38): parse, no duplicate
+  lane-form label, everything dated 2026-08-05 or later is lane-form, newest-first within each
+  date+lane. Grandfathered collisions are reported and never failed.
 - **The public changelog page is facts only** *(OWNER, 2026-08-04: "Just keep to facts in the
   changelog page. Minimize prose.")*. Cut the "This log begins with the public launch" lead and
   trimmed the Alpha 1.0.0 entry to *"Initial Alpha release. Pressurised water reactor."* The

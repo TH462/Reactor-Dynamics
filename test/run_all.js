@@ -508,7 +508,12 @@ var BASELINES = {
   // TUNING_LOG, BUILD_DECISIONS and the ops-probe write-up's heading. The CODE moved
   // this by ZERO, as usual: the ruling changed no constant, it only recorded a decision
   // about one already shipped. MEASURED AFTER the docs.
-  'run_hardrules.js':      { code: 0, score: '170checks 0failed' },
+  // 170 -> 172 on 2026-08-04 (#339): the session-label ruling's citation sites. MEASURED, and
+  // net +2 against SIX new sites — an intermediate run read 173 and the CHANGELOG citation took
+  // it DOWN to 172, because CLAUDE.md's baselines paragraph is one enormous physical line and
+  // inserting into it re-parses the parenthetical clipping for the citations already there.
+  // Do not hand-reconcile this number; measure it after the docs, which is what happened here.
+  'run_hardrules.js':      { code: 0, score: '172checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -773,6 +778,23 @@ var BASELINES = {
   // date agreement across the two files was NOT CHECKED AT ALL — zero CROSS rows, no failure.
   // The relabel is what makes this 11 rather than 10, and the 11th check is that CROSS row.
   'run_release.js':        { code: 0, score: '11checks 0failed' },
+  // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
+  // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
+  // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane
+  // merge, 17 labels name more than one entry (7 + 10), so `2026-08-04b` resolves to two
+  // sessions in one file and three in the other. Scheme is now `YYYY-MM-DD-<lane>-<letter>`,
+  // which removes the cross-lane coordination the old one required and could not get.
+  // BASELINED ON THE CHECK COUNT, not on failures: the checks are STRUCTURAL (4 per file, and
+  // the files are fixed), so unlike run_manual_units the count does not move when a session is
+  // appended — only when a check is added. That is the property that makes it baselineable at
+  // all; a per-label count would drift on every session and train the next author to rewrite
+  // the number without reading it.
+  // Legacy labels are GRANDFATHERED by ruling *(OWNER RULING, 2026-08-04: "Work issue 339 in
+  // develop. Go with option 2." — option 2 is explicitly "for new entries, and do not
+  // retro-rename")*, so their 17 collisions are REPORTED and never failed. The enforcement is
+  // a date cutoff: anything dated 2026-08-05 or later must be lane-form. Do not move that date
+  // forward to clear a red — it retires the gate.
+  'run_session_labels.js': { code: 0, score: '8checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from
