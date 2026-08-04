@@ -55,6 +55,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (`natural_circulation`).
 
 ### Fixed
+- **`run_all` was silently losing the tail of a runner's output on Linux** (2026-08-04). Every
+  runner here ends with `process.exit(code)`, and Node's I/O contract says pipes are
+  **asynchronous on POSIX** and synchronous on Windows — so `process.exit()` can discard an
+  undrained write, and a runner exits **0 with its tally thrown away**. MEASURED on CI: `run_m4`
+  came back exit 0 with no tally, twice, stopping at two DIFFERENT points mid-suite. Exit 0 is
+  what rules out the alternatives — an OOM kill, a crash and a timeout all report a non-zero
+  code, and run_m4 passes under a 192 MB heap. It was invisible locally twice over: a runner
+  run by hand gets a TTY (synchronous on POSIX), and the parent runs on Windows, where pipes are
+  synchronous anyway. It surfaced when the pool went 3-way on CI's 4 cores.
+  The child writes to a FILE now, which is synchronous on both platforms — one place, whole
+  class, instead of editing `process.exit` in 38 runners and hoping the next one remembers.
 - **The whole CVCS and the ECCS pump ran through a station blackout too** (#332) — #329 fixed the
   heaters; this is the general case, and the plant turned out to have **no concept of AC
   availability at all**. `station_blackout` was a bare boolean that four call sites happened to

@@ -27,6 +27,7 @@
 var path = require('path');
 var fs = require('fs');
 var cp = require('child_process');
+var os = require('os');
 
 var TEST_DIR = __dirname;
 
@@ -1084,18 +1085,48 @@ function discover() {
 // do — the runners were ALREADY independent processes whose output was fully buffered before
 // being scored, which is the property that made going parallel a scheduling change rather
 // than a test change. Nothing about what is asserted moves.
+//
+// THE CHILD WRITES TO A FILE, NOT A PIPE, AND THAT IS LOAD-BEARING (2026-08-04).
+// Every runner in this directory ends with `process.exit(code)`, and Node's own I/O contract
+// says what that costs (docs, "process I/O — a note on process I/O"):
+//
+//     Files:        synchronous on Windows AND POSIX
+//     TTYs:         asynchronous on Windows, synchronous on POSIX
+//     Pipes/sockets: synchronous on Windows, ASYNCHRONOUS on POSIX
+//
+// `process.exit()` does not wait for an asynchronous write to drain, so a runner piped to a
+// parent on Linux can exit 0 with the tail of its own output thrown away. Locally that is
+// invisible twice over: a developer running a runner by hand gets a TTY (synchronous on
+// POSIX), and this parent runs on Windows, where pipes are synchronous anyway.
+//
+// MEASURED, on CI: `run_m4` came back **exit 0 with no tally**, twice, and the two runs
+// stopped at DIFFERENT points mid-suite. Exit 0 is what rules out every other candidate —
+// an OOM kill, a crash and a timeout all show a non-zero code, and run_m4 is fine under a
+// 192 MB heap. It surfaced when the pool went 3-way on CI's 4 cores: three children writing
+// while one reader keeps up with none of them is what makes the parent lag far enough behind
+// for the loss to bite, and the runner with the most output goes first.
+//
+// A file redirect makes the child's stdout synchronous on both platforms, which fixes the
+// whole CLASS in one place. The alternative was editing `process.exit` in 38 runners and
+// hoping the next one written remembers.
 function runOne(f) {
   return new Promise(function (resolve) {
     var t0 = Date.now();
-    var child = cp.spawn(process.execPath, [path.join(TEST_DIR, f)], { cwd: path.join(TEST_DIR, '..') });
-    var out = '';
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', function (d) { out += d; });
-    child.stderr.on('data', function (d) { out += d; });
-    child.on('error', function (e) { out += '\nspawn error: ' + (e && e.message) + '\n'; });
+    var tmp = path.join(os.tmpdir(),
+      'rd_gate_' + process.pid + '_' + f.replace(/[^a-z0-9]+/gi, '_') + '.log');
+    var fd;
+    try { fd = fs.openSync(tmp, 'w'); }
+    catch (e) { resolve({ file: f, out: 'could not open capture file: ' + e.message, code: -1, secs: '0.0' }); return; }
+    var child = cp.spawn(process.execPath, [path.join(TEST_DIR, f)],
+      { cwd: path.join(TEST_DIR, '..'), stdio: ['ignore', fd, fd] });
+    var spawnErr = '';
+    child.on('error', function (e) { spawnErr = '\nspawn error: ' + (e && e.message) + '\n'; });
     child.on('close', function (code) {
-      resolve({ file: f, out: out, code: code == null ? -1 : code,
+      var out = '';
+      try { fs.closeSync(fd); } catch (e) { /* already closed */ }
+      try { out = fs.readFileSync(tmp, 'utf8'); } catch (e) { out = 'could not read capture file: ' + e.message; }
+      try { fs.unlinkSync(tmp); } catch (e) { /* best effort */ }
+      resolve({ file: f, out: out + spawnErr, code: code == null ? -1 : code,
                 secs: ((Date.now() - t0) / 1000).toFixed(1) });
     });
   });
