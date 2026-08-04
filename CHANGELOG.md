@@ -22,6 +22,99 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Natural circulation — a loss of offsite power was terminal and is now survivable** (#325)
+  *(OWNER RULING, 2026-08-04: "Go with one B")*. With the RCPs stopped there was **no core→steam-generator
+  heat path at all**: measured full stack, a LOOP reached fuel damage at **30 min** and melt at **45 min**,
+  and starting AFW moved melt to 50 min and changed nothing else. `DESIGN_COMPANION` §8.6 declared this
+  departure and rated its impact *"slightly more severe (conservative)"* — that line was wrong by a wide
+  margin, and §8.6 is now **retired** rather than re-justified.
+- **The steam generators sit above the core, so density difference drives flow.** Sourced to WTSM 3.2.6.3
+  (ADAMS **ML11223A213**): *"The higher elevation of the steam generators relative to the reactor vessel
+  produces a thermal driving head to establish and maintain flow in the RCS … sufficient only for decay
+  heat removal of a shutdown reactor, not for power operation."* Buoyancy head scales with loop ΔT and
+  resistance with flow squared, and the core rise is itself heat/flow, so the two close to **flow ∝ the
+  cube root of core heat** — measured **4.1 %** of rated at 5.3 % decay heat, **3.0 %** at 2.1 %, matching
+  the predicted ratio to within 0.1 %. After the change the same LOOP parks Tavg at **567 °F (297 °C)**
+  indefinitely, and a station blackout squeezes to **9.2 °F (5.1 °C)** of subcooling at 30 min and then
+  recovers to 39 °F by four hours, with no fuel damage.
+- **Two limits are the lesson, and both are modelled.** It needs a **liquid-filled loop** — circulation
+  ramps to zero as the primary voids, which is why tripping the pumps into a voided loop at TMI-2
+  established nothing. And it **moves** heat rather than removing it: lose the secondary heat sink and the
+  plant is still lost. A constant-floor design was measured first and rejected for failing the first of
+  those — it circulated through a fully voided loop, reading 3 % flow at void fraction 1.00 while the
+  cladding melted.
+- **The magnitude is fitted and declared as such.** The mechanism and its cube-root scaling are sourced;
+  the coefficient is not, because no primary for the flow magnitude could be obtained. The *"2–5 %"* this
+  repo quoted in §8.6 and `Manuals/01` was uncited inherited prose and is deliberately **not** the anchor.
+  `Manuals/12` §12.4 now carries that as the declared departure in §8.6's place.
+- **Loop ΔT is honest under natural circulation too.** `flow_floor` clamped the leg split below 10 % flow —
+  exactly the band natural circulation lives in — so the split under-read by **2.4×** (34.5 °F where the
+  energy balance says 81.9 °F). Lowered to 1.5 %, below the weakest circulation this plant can make, so it
+  never binds in the regime that matters. This matters because loop ΔT is the cue a real crew uses to
+  verify natural circulation. New probe **TR-15**; `run_behavior` **47 → 48**, `run_contract` **144 → 145**
+  (`natural_circulation`).
+
+### Fixed
+- **The whole CVCS and the ECCS pump ran through a station blackout too** (#332) — #329 fixed the
+  heaters; this is the general case, and the plant turned out to have **no concept of AC
+  availability at all**. `station_blackout` was a bare boolean that four call sites happened to
+  consult, so everything else with a motor kept turning. Measured full stack, `hot_zero_power`,
+  blackout at t = 60 s: **letdown pinned at 0.0297 for three hours** and charging modulating against
+  pressurizer level exactly as it does with the grid up, bleeding inventory **100 % → 76.55 %**
+  through a system with no motive power. Worse, and not in the report — with the blackout in and the
+  operator pressing SI, the **de-energized ECCS pump injected the RCS from 100 % to 120 %** (solid)
+  in under five minutes. After the fix inventory holds at **99.99 %** over the same three hours and
+  the ECCS pump delivers **zero flow at zero discharge pressure**.
+- **There is now one place that answers "does this plant have electricity?"** — `true_state.ac_available`,
+  derived once per step in `pwr_engine` step 0a, which also carries the roster of what dies with it
+  and what does not. Every AC load reads that rather than inferring power from a casualty flag: the
+  RCPs, the pressurizer heaters, the CVCS charging pump (and with it letdown and borate/dilute) and
+  the ECCS injection pump. **A loss of offsite power still keeps all of it** — the diesels carry the
+  1E buses — which is the same LOOP/SBO split #329 established.
+- **Letdown is gated on the CHARGING PUMP, not on the blackout, and the source is why.** WTSM 4.1.3.1
+  (ADAMS **ML11223A214**, p. 4.1-7), letdown orifice isolation interlock 2: *"At least one charging
+  pump must be running in order to open any letdown orifice isolation valve. If the running charging
+  pump(s) is lost, then the letdown orifice isolation valves close."* That one guard covers a
+  **second defect the issue did not know about**: with the grid fully up, securing the charging pump
+  left letdown flowing and drained inventory **100 % → 79.5 % in 13 minutes**, until the low-level
+  isolation caught it at 17 %. Charging and safety injection are sourced to the same chapter (§4.1.3.4,
+  p. 4.1-16) — *"single-speed, horizontal centrifugal pumps powered from vital (Class 1E) ac power"*,
+  and *"The centrifugal charging pumps also serve as the high head safety injection pumps"*.
+- **AFW and the accumulators deliberately survive**, and that is sourced too — WTSM 5.7.5
+  (**ML11223A229**, p. 5.7-6): *"A station blackout fails all ac power except the vital Class IE ac
+  busses from the dc invertors. All decay heat removal systems, except the turbine-driven AFW pump,
+  also fail."* New probe **CA-8** asserts the survivors positively, because a suite of only
+  everything-went-to-zero checks would be satisfied by gating the entire plant on the blackout flag.
+  `run_behavior` **46 → 47**.
+- **The pressurizer heaters ran through a station blackout** (#329) — reported from free play, and the
+  heaters were modelled as an unconditional heat source with nothing asking whether the plant had
+  any electrical power. Measured full stack from full power, blackout at t = 60 s: heater power
+  reached **100.0 %** at 17m15s with every AC bus in the plant dead. With the operator calling for
+  heat it is immediate and worse — 100 % from the button press, pressure walked to 2352 psi
+  (16.22 MPa), and a **spurious `pzr_level low` reactor trip at 5m27s** driven entirely by phantom
+  heat boiling liquid out of the pressurizer. **10 CFR 50.2** defines the event as *"the complete
+  loss of alternating current (ac) electric power to the essential and nonessential switchgear
+  buses"*, excluding only *"buses fed by station batteries through inverters"* — that exclusion is
+  the vital instrument AC, which is why the board keeps reading while a megawatt of resistance
+  heating does not. The pressurizer **spray** was already right (scaled by `flow_frac`, so it dies
+  with the pumps); the heaters had no equivalent.
+- **A loss of offsite power deliberately KEEPS them.** NUREG-0578 Item 2.1.1 / NUREG-0737 Item
+  II.E.3.1 put the minimum heater group on redundant emergency diesel-backed buses precisely so it
+  survives a LOOP; the blackout is the event that takes the diesels too. `loss_of_offsite_power`
+  carries effect `coast_down_pumps` and never sets `station_blackout`, so gating on that flag gets
+  the discrimination for free — measured, LOOP with heaters demanded reads **100.0 %**.
+- **It is NOT written into the operator's demand, and that is the #200 lesson.** Setting
+  `heater_override = 0` would be undone by the very next press of HEATER AUTO or the % box, exactly
+  as the stuck-open spray used to heal itself. De-energization is a physical fact about the plant;
+  the selector position and the latched demand are left as the operator set them, and what goes to
+  zero is the power delivered. **Why 36 green runners missed it** is the #315 shape: the heaters are
+  only *demanded* below setpoint, and a blackout on this plant repressurizes — a Mode 3 blackout
+  A/Bs byte-identical across the fix because the controller never asked for a single percent in an
+  hour. **The SBO outcome is unchanged** (inventory 70.8 vs 70.83 % at 10 min, damage at 30 min
+  both): the blackout is terminal here for the natural-circulation reason #325 documents, and this
+  is a correctness and indication fix, not a save. `run_behavior` **45 → 46** (CA-7).
+
+### Added
 - **An operator load rate limit — 10 %/min, increases only** *(OWNER, 2026-08-03: "Come up with your
   own rate for this plant that's fast enough to keep it interesting and slow enough to be safe.")*.
   Real turbine control is rate-limited (WTSM 11.3, ML11223A295: the operator sets a target and a

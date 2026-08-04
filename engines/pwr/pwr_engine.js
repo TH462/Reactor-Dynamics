@@ -340,6 +340,48 @@
     // loaded saves (which lack the stash) recompute it once.
     if (s._tavg_fp == null) s._tavg_fp = this._computeEquilibriumTemps(1.0).Tavg;
 
+    // 0a. AC BUS AVAILABILITY — the one place that answers "does this plant have
+    //     electricity?", derived before anything that needs a motor runs (#332).
+    //
+    //     Today this is EXACTLY `!station_blackout`, and saying so is the point: the
+    //     defect #332 filed was not a wrong formula, it was that the question had no
+    //     name. `station_blackout` was a bare boolean four call sites happened to
+    //     consult, so every AC load added since was written without anyone asking, and
+    //     the pressurizer heaters (#329), the CVCS and the ECCS pump were each missed
+    //     independently. A load reads `s.ac_available` because it needs power; it does
+    //     not read a casualty flag and infer power from it.
+    //
+    //     WHAT THIS BUS IS: the Class 1E (vital) ac switchgear. 10 CFR 50.2 defines a
+    //     blackout as "the complete loss of alternating current (ac) electric power to
+    //     the essential and nonessential switchgear buses", excluding only "buses fed
+    //     by station batteries through inverters" — the vital INSTRUMENT ac, which is
+    //     why the board keeps reading here while the motors stop. A plain LOOP is NOT
+    //     this: the diesels pick the 1E buses up, `loss_of_offsite_power` carries effect
+    //     `coast_down_pumps` and never sets the flag, so ac_available stays true. That
+    //     distinction is pinned by run_behavior CA-7 leg C and CA-8 leg E.
+    //
+    //     WHAT DIES WITH IT, and the source that says so — WTSM 5.7.5 (ML11223A229,
+    //     p. 5.7-6): "A station blackout fails all ac power except the vital Class IE
+    //     ac busses from the dc invertors. All decay heat removal systems, EXCEPT THE
+    //     TURBINE-DRIVEN AFW PUMP, also fail."
+    //       dies    — RCPs (cmd gate + full_blackout), pressurizer heaters
+    //                 (pwr_pressurizer.autoControl), CVCS charging pump and with it
+    //                 letdown and borate/dilute, the ECCS injection pump
+    //                 (pwr_primary.injectionFlowInv)
+    //       lives   — AFW (turbine-driven, the sourced SBO survivor — DO NOT gate it),
+    //                 accumulators (passive N2), the board (battery inverters),
+    //                 pressurizer spray (already dies with the RCPs it draws from)
+    //     Adding an ac load? Gate it HERE-style and add a CA-8 leg, or it joins the
+    //     list of things that kept turning with no electricity.
+    //
+    //     The SELECTOR positions are never touched — `charging_pump_running`,
+    //     `heater_auto`, `hpi_active` stay exactly where the operator put them, so
+    //     restoring ac gives the plant back with no re-selection and the next
+    //     `set_charging_pump` cannot wipe the blackout. That is the #200 trap #329 had
+    //     to dodge too: a de-energization written into the operator's demand heals
+    //     itself on the next button press.
+    s.ac_available = !s.station_blackout;
+
     // 0. Rod motion (incl. runaway) before reactivity reads positions.
     this._stepRods(dt);
     // 1. Total reactivity from current (previous-step) state — explicit coupling.
@@ -414,7 +456,7 @@
     SG.stepTurbine(s, this.cfg, dt);
     // 13. Boron chemistry (CVCS): borate/dilute change concentration directly (needs
     //     the charging pump); decoupled from the net inventory balance.
-    if (s.charging_pump_running !== false) s.boron_ppm += (s.boron_adjust || 0) * dt;
+    if (PR.chargingPumpPowered(s)) s.boron_ppm += (s.boron_adjust || 0) * dt;
     if (s.boron_ppm < 0) s.boron_ppm = 0;
     // Mixing/transport lag: the CORE boron that drives reactivity follows the injected
     // concentration through a first-order filter (boron_mix_tau_s), so a borate/dilute changes
@@ -664,12 +706,23 @@
       // ECCS/feedwater discharge-pressure + condensate indications (feed instruments).
       // HPI/charging pump develops head above the RCS it injects into (clamped to shutoff);
       // afw_discharge_pressure_mpa + condensate_flow_normalized are set in stepSecondary.
-      hpi_discharge_pressure_mpa: s.hpi_active
+      // A de-energized pump develops no head, so this reads the same 0 as an
+      // undemanded one rather than a pump curve (#332). `hpi_active` itself stays the
+      // operator's DEMAND — run lights honest, same split as afw_pump_running vs
+      // afw_flow_normalized — so the board shows SI called for and delivering nothing.
+      hpi_discharge_pressure_mpa: (s.hpi_active && PR.acAvailable(s))
         ? clip(s.pressure_mpa + this.cfg.emergency.hpi_discharge_margin_mpa, 0, this.cfg.emergency.hpi_shutoff_mpa) : 0,
       afw_discharge_pressure_mpa: s.afw_discharge_pressure_mpa || 0,
       condensate_flow_normalized: s.condensate_flow_normalized || 0,
       condensate_pump_running: s.condensate_pump_running !== false,
       pump_running: s.pump_running, pump_flow_pct: s.pump_flow_pct, station_blackout: s.station_blackout,
+      // Buoyancy-driven flow with the RCPs stopped (#325). NOT an instrument and NOT a
+      // board lamp — a real crew verifies natural circulation from loop ΔT, subcooling and
+      // stable SG pressure, all of which this board already has. It is here because
+      // `pump_flow_pct` alone cannot tell 4 % of buoyancy from 4 % of a coasting rotor,
+      // and those are different plant states.
+      natural_circulation: !!s.natural_circulation,
+      ac_available: s.ac_available !== false,   // Class 1E ac switchgear energized (#332) — see step 0a
       turbine_rpm: s.turbine_rpm, condenser_vacuum_kpa: s.condenser_vacuum_kpa,
       cw_inlet_temp_c: s.cw_inlet_temp_c,
       condenser_cooling_available: s.condenser_cooling_available,
@@ -689,7 +742,7 @@
       // Main steam isolation + SG code safeties (upstream of the MSIV).
       msiv_open: s.msiv_open !== false, sg_safety_open: !!s.sg_safety_open,
       // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
-      charging_flow_actual: (s.charging_pump_running === false ? 0 : s.charging_flow),
+      charging_flow_actual: (PR.chargingPumpPowered(s) ? s.charging_flow : 0),
       letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
       turbine_tripped: !!s.turbine_tripped,
       leak_flow: s.leak_flow,
@@ -1477,6 +1530,9 @@
       accumulator_valve_open: true,           // motor-operated discharge isolation valve (default aligned)
       _eccs_inj_inv: 0,                       // cold-injection throughput for the stepCoolant quench term
       flow_frac: 1.0, pump_flow_pct: 100, pump_running: true, station_blackout: false,
+      // Class 1E ac bus availability (#332) — re-derived at the top of every step (0a);
+      // seeded here so a getTrueState() taken before the first step is not undefined.
+      ac_available: true,
       // Pumps stopped BY THE OPERATOR (lineup) rather than by a trip/coastdown/
       // blackout — the RCP annunciator's status-vs-casualty discriminator (#240).
       // False here because the base state runs them; the cold-shutdown IC sets it.
@@ -1757,6 +1813,10 @@
     // AFW throttle (added with the ESF AUTO/MAN arms).
     if (s.afw_throttle_frac == null) s.afw_throttle_frac = 1.0;
     if (s.afw_flow_normalized == null) s.afw_flow_normalized = 0;
+    // Class 1E ac availability (#332). DERIVED, not stored — an older save carries the
+    // casualty flag it was taken with, so recompute rather than defaulting to true, or a
+    // save taken mid-blackout reloads with the plant electrified for one step.
+    s.ac_available = !s.station_blackout;
     // Condensate pump + ECCS/feed discharge-pressure indications (2026-07). Older saves
     // ran with the condensate pump implicitly on; default it on so main feed is unchanged.
     if (s.condensate_pump_running == null) s.condensate_pump_running = true;

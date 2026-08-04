@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 25  
+**Revision:** 26  
 
 ---
 
@@ -324,7 +324,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Logic** | `station_blackout` true |
 | **Means** | AC power lost (as modeled). |
-| **Actions** | 1) Verify SCRAM / trip state. 2) Establish AFW if available. 3) Natural circulation mindset. 4) Recognize severe training challenge — see **PWR-E05**. |
+| **Actions** | 1) Verify SCRAM / trip state. 2) Establish AFW — turbine-driven, so it runs with no ac. 3) Verify natural circulation: loop ΔT steady, subcooling positive. 4) Expect **no charging, letdown or SI** (all ac) — watch inventory. See **PWR-E05**. |
 
 ---
 

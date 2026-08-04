@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLX-100** (Single-Loop eXperimental, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 25  
+**Revision:** 26  
 
 ---
 
@@ -375,7 +375,11 @@ There is only **one pressure gauge**, and it reads the reference. The node press
 
 One pump. Spin-up time constant 3 s, coastdown 8 s.
 
-> **WARNING — no natural circulation.** `natural_circ_flow = 0`. When the pump stops, flow decays to **zero**, not to the 2–5 % a real PWR would establish. Loss-of-flow events in this trainer are therefore **more severe than reality**, not less. See §12.4.
+> **Natural circulation is modeled** (#325, 2026-08-04 — it was not before, and this paragraph used to warn that it was not). The steam generators sit above the core, so a hot/cold density difference drives flow once the RCPs stop — WTSM 3.2.6.3: *"The higher elevation of the steam generators relative to the reactor vessel produces a thermal driving head."* Buoyancy head scales with the loop ΔT and resistance with flow squared, and the core rise is itself heat/flow, so the two close to **flow ∝ the cube root of core heat**: measured **4.1 %** of rated at 5.3 % decay heat, falling to **3.0 %** at 2.1 %.
+>
+> **It needs a liquid-filled loop, and that is the important limit.** Circulation ramps to zero as the primary voids, because a voided loop has no continuous column to drive — which is why tripping the pumps into a voided loop at TMI-2 established nothing. It also does not survive losing the secondary heat sink: circulation *moves* heat to the steam generator, it does not remove it, so a loss of feed still ends in damage.
+>
+> **The magnitude is this plant's, not a published number.** The shape (cube root, decay heat only) is sourced; the scale is fitted — see §12.4.
 
 **Cavitation is modelled and it bites.** The pump suction is the lowest-pressure node and sees cold-leg-temperature water, so it saturates first as the loop voids. Below 14.4 °F (8 °C) of suction subcooling the running pump begins to cavitate, reaching full severity 14.4 °F (8 °C) further down, and **loses up to 70 % of its delivered flow** — a mechanical effect, not just an indication. This is the TMI-2 "the pumps were objecting" phenomenon. A stopped pump does not cavitate.
 
@@ -637,7 +641,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.1 | **Point kinetics — no spatial flux** | Local power peaking, axial tilts, flux redistribution on rod motion | **No** for this plant. The mechanisms are faithful; only spatial *magnitude* effects are absent. |
 | 12.2 | **One lumped loop, one SG, one RCP** | Loop-to-loop asymmetry, individual SG isolation, single-loop transients | **No** — the plant genuinely *is* single-loop by design. This is the SLX-100's identity, not a compromise. |
 | 12.3 | **Two-term decay heat** | Full ANS 5.1 accuracy; the two-term form is ~20 % accurate over hours to days | **No.** Decay heat exists, demands cooling for hours, and drives every long transient. |
-| 12.4 | **No natural circulation** | Real PWRs establish 2–5 % flow on pump loss, removing decay heat | **Yes, in one direction: loss-of-flow is more severe here than reality.** Never take this trainer's pump-loss behaviour as a bound on a real plant's. |
+| 12.4 | **Natural-circulation MAGNITUDE is fitted, not sourced** *(rewritten 2026-08-04, #325 — this row used to read "No natural circulation")* | The mechanism and its scaling are sourced (WTSM 3.2.6.3, ML11223A213); the flow **coefficient** is fitted to this plant's own energy balance, because no primary for the magnitude could be obtained. The "2–5 %" this manual quoted before was uncited inherited prose and is **not** the anchor | **Minor.** The lessons that depend on natural circulation — that a loss of offsite power is survivable, that it needs a liquid loop, and that it still needs a heat sink — are all shape, not scale. Do not quote this plant's percentage as a real-plant figure. |
 | 12.5 | **Pressurizer uses effective coefficients, not two-phase thermodynamics** | Flash evaporation, condensation, subcooled surge into a steam space | **No.** Directions and magnitudes are right, and the TMI-critical level rise during voiding is fully captured. |
 | 12.6 | **No sensor redundancy or voting** | Real plants use ~3 channels with 2-of-3 voting; one failed sensor cannot trip or block a trip alone | **Yes — instrument failures are *more* impactful here.** That is arguably better teaching, but it is not prototypical. |
 | 12.7 | **Xenon has no spatial oscillation** | Xenon power tilts swinging around a large core over hours | **No** at this plant size. Total inventory suppression is modelled. |
@@ -668,7 +672,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 - No fission-product poisoning beyond xenon (no samarium)
 
 **Thermal-hydraulics**
-- No natural circulation (§12.4)
+- Natural-circulation magnitude fitted rather than sourced (§12.4) — the mechanism itself IS modeled
 - No steam-table property model — correlations only (§5.1)
 - No boron plate-out, boron dilution accidents, or boil-off boron concentration (steam carries no boron in reality; the loss term here is lumped)
 - No pressurizer relief tank or rupture disk — the stuck PORV and the lying indicator are the lesson; the tank filling and rupturing is not modelled

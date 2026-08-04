@@ -4,7 +4,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLX-100** (Single-Loop eXperimental, 100 MWe)
 **Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design, and reactor trips are reserved for genuine limits. The steam dump is sized at **40 %** of rated steam flow, the prototypical Westinghouse capacity: a **50 % loss of load** is absorbed with no trip and no relief lift, and a larger rejection is ridden out by the reactor itself running back, with the PORV as the backstop.  
-**Revision:** 25  
+**Revision:** 26  
 
 ---
 
@@ -179,7 +179,7 @@ These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 | Instrument channels | Redundant trains | Single sensors (can fail) — so instrument failures bite *harder* here than in a voting plant |
 | Point kinetics | Spatial power shape | Point model (lumped) |
 | Decay heat | Detailed groups | Two-term model (~7 % at scram after power run) |
-| Natural circulation | 2–5 % flow on pump loss | **Not modeled** — flow decays to zero, so loss of flow is *more* severe here than reality |
+| Natural circulation | Buoyancy-driven flow on pump loss | **Modeled** (#325) — the steam generators sit above the core, so the hot/cold density difference drives flow when the RCPs stop. Flow follows the cube root of core heat and is **gated on a liquid-filled loop**: a voided loop circulates nothing. Magnitude is fitted to this plant, not to a published figure |
 
 Where the model understates reality, training commentary and these manuals say so.
 

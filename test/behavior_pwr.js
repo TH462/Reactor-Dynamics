@@ -82,6 +82,7 @@
     'TR-7b': 'probe (post-trip leg ΔT vs the energy balance — the split read FISSION power, #315)',
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-14': 'probe (LOFW drain rate vs Ginna UFSAR Table 15.2-4 — the SOURCED anchor, #135)',
+    'TR-15': 'probe (natural circulation — W ∝ Q^⅓, void-gated; LOOP/SBO survivable, WTSM 3.2.6.3)',
     // TR-11: the catalog row ("heaters lose, low-P trip unless isolated") predates
     // the P5 spray capacity cap — measured under the cap the heaters WIN, and the
     // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
@@ -93,6 +94,8 @@
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
     'CA-3': 'probe', 'CA-4': 'probe',
+    'CA-7': 'probe (pzr heaters are an AC load — dead in SBO, alive in LOOP; 10 CFR 50.2 + NUREG-0737 II.E.3.1)',
+    'CA-8': 'probe (the AC-load roster — CVCS + ECCS die in SBO, AFW + accumulators survive; WTSM 4.1 + 5.7)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -998,20 +1001,170 @@
           fmt(F(dt0), 1) + ' °F ± 0.9');
 
         // ---- leg D: the flow term. Lose the pumps after the trip and the same heat has
-        // to leave through less flow, so the split OPENS. `flow_floor` bounds it.
+        // to leave through less flow, so the split OPENS.
+        //
+        // RE-AUTHORED 2026-08-04 (#325), and the reason is the HR10 case this file keeps
+        // meeting. This leg used to assert *"flow is at or below the modelling floor"* and
+        // compute its expectation as `Q / floor`. Both were only true because the plant had
+        // NO NATURAL CIRCULATION: losing the pumps drove flow to zero, so the floor was
+        // always what divided. It was pinning the absence of the mechanism #325 built.
+        //
+        // The claim that survives is the ENERGY BALANCE — the same one legs A and A2 make —
+        // so it now divides by `max(flow, floor)` exactly as they do, and it passes on the
+        // OLD plant too (flow → 0 there, so the max picks the floor and the arithmetic is
+        // the previous check verbatim). The check BELOW it is the new assertion and fails on
+        // the old plant by construction: flow lands in the natural-circulation band instead
+        // of at zero. Two checks, one that got better and one that is genuinely new, rather
+        // than one refitted.
         var d = H('hot_full_power');
         d.run(30);
         d.cmd('scram');
         d.run(60);
         d.cmd('set_rcp', { running: false });
         d.run(240);
-        ck('flow is at or below the modelling floor', fmt(d.ts().pump_flow_pct, 1) + ' %',
-          d.ts().pump_flow_pct / 100 <= floor, '≤ ' + (floor * 100) + ' %');
-        var expD = dt0 * (d.ts().core_heat_pct / 100) / floor;
+        var flowD = d.ts().pump_flow_pct / 100;
+        var expD = dt0 * (d.ts().core_heat_pct / 100) / Math.max(flowD, floor);
         var obsD = d.ts().thot_c - d.ts().tcold_c;
         ck('losing forced flow OPENS the split — same heat, less flow',
           fmt(F(obsD), 1) + ' °F vs ' + fmt(F(expD), 1) + ' °F expected',
-          expD > 0 && Math.abs(obsD / expD - 1) < 0.05, 'within 5 % of Q/floor');
+          expD > 0 && Math.abs(obsD / expD - 1) < 0.05, 'within 5 % of Q/flow');
+        // The flow the split is dividing by is BUOYANCY-DRIVEN, not a stopped rotor (#325).
+        // Banded above the floor deliberately: `flow_floor` is set BELOW the weakest natural
+        // circulation this plant can make (~1.9 % at a fully-decayed core), so a reading
+        // inside the band proves the floor is not what is holding the number up.
+        ck('…and the flow it divides by is NATURAL CIRCULATION, not a stopped rotor',
+          fmt(d.ts().pump_flow_pct, 2) + ' % of rated', flowD > floor * 1.5 && flowD < 0.08,
+          '> ' + fmt(floor * 150, 1) + ' %, < 8 %');
+        T.checkSanity(ck, a);
+      });
+    },
+
+    /* TR-15 — NATURAL CIRCULATION (#325, ruled 2026-08-04: "Go with one B").
+     *
+     * Until 2026-08-04 `natural_circ_flow` was 0.0 and a loss of offsite power was
+     * TERMINAL on this plant: measured, damage at 30 min and melt at 45 min, and starting
+     * AFW moved melt to 50 min and nothing else. That is not conservatism, it is a missing
+     * heat-transport path — and it made two Tier C CORE casualties (E04/E05) evolutions in
+     * which nothing the player does matters.
+     *
+     * SOURCED — WTSM 3.2.6.3 (ML11223A213, p. 3.2-26): "The higher elevation of the steam
+     * generators relative to the reactor vessel produces a thermal driving head to establish
+     * and maintain flow in the RCS when heat is removed from the steam generators by dumping
+     * steam. Natural circulation flow is sufficient only for decay heat removal of a
+     * shutdown reactor, not for power operation."
+     *
+     * WHAT IS SOURCED AND WHAT IS NOT, because they are different claims. The SHAPE is:
+     * buoyancy head ∝ ΔT, resistance ∝ W², so W = C·√ΔT, and closing that against the core
+     * rise ΔT = delta_T_rated·Q/W gives W ∝ Q^⅓. Leg B asserts that exponent. The SCALE (C)
+     * is FITTED — every attempt at a primary for the magnitude failed from this environment,
+     * and the "2–5 %" this repo used to quote in §8.6 and Manuals/01 was uncited inherited
+     * prose, so it is deliberately NOT used as the anchor and no leg here asserts it.
+     *
+     * LEG C IS THE ONE THAT MAKES THIS PHYSICS RATHER THAN A FLOOR. A constant floor was
+     * measured first and rejected: it circulates through a FULLY VOIDED loop
+     * (`primary_void_fraction` 1.00 reading 3 % flow, driving Tavg to 245 °F while the clad
+     * melted at 3827 °F). Natural circulation needs a continuous liquid column — which is
+     * why tripping the pumps into a voided loop at TMI-2 established nothing.
+     *
+     * LEG E EXISTS SO THIS DOES NOT READ AS IMMUNITY. Natural circulation moves heat to the
+     * steam generator; it does not remove it. Take the secondary heat sink away and the
+     * plant must still be lost, or the change has traded one wrong lesson for another. */
+    'TR-15': function () {
+      return test('TR-15 natural circulation — decay heat rides out a LOOP, and a voided loop does not', function (ck) {
+        var cfgP = RD.PWR_CONFIG.primary;
+        var F = function (c) { return c * 9 / 5; };
+
+        // ---- leg A: the headline. LOOP at power, AFW on, ride it out.
+        var a = H('hot_full_power');
+        a.run(60);
+        a.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        a.run(120);
+        a.cmd('set_afw', { active: true });
+        a.run(3600);                                        // out to t+60 min — the pre-#325 plant melted at 45
+        var ta = a.ts();
+        ck('the RCPs are stopped', String(ta.pump_running), ta.pump_running === false, 'false');
+        ck('but flow does NOT decay to zero — buoyancy takes over',
+          fmt(ta.pump_flow_pct, 2) + ' % of rated',
+          ta.pump_flow_pct > 1.0 && ta.pump_flow_pct < 8.0, '1–8 %');
+        ck('…and the plant says so', String(ta.natural_circulation), ta.natural_circulation === true, 'true');
+        // The pre-#325 plant reached damage at 30 min and melt at 45 min on this exact rig.
+        ck('an hour in, the core is intact', 'damaged ' + String(ta.fuel_damaged) + ', melted ' + String(ta.melted),
+          ta.fuel_damaged !== true && ta.melted !== true, 'neither');
+        ck('and Tavg is being HELD, not merely rising slowly',
+          fmt(F(a.range('tavg_c').max - ta.tavg_c), 1) + ' °F below the peak, ' + fmt(ta.tavg_c * 9 / 5 + 32, 0) + ' °F',
+          ta.tavg_c < 310, '< 590 °F (310 °C)');
+
+        // ---- leg B: THE LAW. W ∝ Q^⅓. Sampled at two points down the decay tail and
+        // compared as a RATIO, so it tests the exponent rather than the fitted scale —
+        // a linear law (W ∝ Q) would give 2.46 where this expects 1.35 on the same data.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('scram');
+        b.cmd('set_rcp', { running: false });
+        b.cmd('set_afw', { active: true });
+        b.run(900);
+        var q1 = b.ts().core_heat_pct, w1 = b.ts().pump_flow_pct;
+        b.run(2700);                                        // ~t+60 min, decay tail well down
+        var q2 = b.ts().core_heat_pct, w2 = b.ts().pump_flow_pct;
+        var predicted = Math.pow(q1 / q2, 1 / 3), observed = w1 / w2;
+        ck('the decay tail actually fell between the samples (or the ratio is vacuous)',
+          fmt(q1, 2) + ' % → ' + fmt(q2, 2) + ' %', q1 / q2 > 1.5, 'ratio > 1.5');
+        ck('flow follows the CUBE ROOT of core heat (W ∝ Q^⅓, WTSM 3.2.6.3 driving head)',
+          'observed ' + fmt(observed, 3) + ' vs predicted ' + fmt(predicted, 3),
+          Math.abs(observed / predicted - 1) < 0.05, 'within 5 %');
+
+        // ---- leg C: A VOIDED LOOP DOES NOT CIRCULATE. The TMI-2 discriminator, and the
+        // check that separates this from a constant floor.
+        var c = H('hot_full_power');
+        c.run(60);
+        c.cmd('inject_failure', { failure_id: 'station_blackout' });
+        c.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.3 });
+        c.run(600);
+        var tc = c.ts();
+        ck('the loop really is voided', fmt(tc.primary_void_fraction, 2) + ' void fraction',
+          tc.primary_void_fraction > (cfgP.natural_circ_void_cutoff || 0.25), '> cutoff');
+        // Banded rather than exactly zero, and the reason is worth knowing:
+        // `primary_void_fraction` is a THRESHOLD function of subcooling, so it chatters as
+        // the bulk crosses saturation, and each flicker lets the 8 s coastdown τ leak a
+        // little flow back. Measured residue ~0.03 %; the rejected constant-floor design
+        // read 3.00 % here, so 0.5 % still discriminates by two orders of magnitude.
+        ck('so there is NO liquid column to drive — circulation is lost',
+          fmt(tc.pump_flow_pct, 3) + ' % of rated', tc.pump_flow_pct < 0.5, '< 0.5 % (residue only)');
+        ck('…and the plant does not claim natural circulation it does not have',
+          String(tc.natural_circulation), tc.natural_circulation === false, 'false');
+
+        // ---- leg D: SBO. AFW is turbine-driven (#332 leg D / WTSM 5.7.5) and the CVCS
+        // and ECCS pump are dead, so this is natural circulation carrying the plant with
+        // NOTHING electrical helping it.
+        var d = H('hot_full_power');
+        d.run(60);
+        d.cmd('inject_failure', { failure_id: 'station_blackout' });
+        d.run(120);
+        d.cmd('set_afw', { active: true });
+        d.run(3600);
+        var td = d.ts();
+        ck('every ac bus is dead (so no charging, no SI — #332)', String(td.ac_available),
+          td.ac_available === false, 'false');
+        ck('natural circulation still carries the core through an SBO',
+          String(td.natural_circulation) + ', ' + fmt(td.pump_flow_pct, 2) + ' %',
+          td.natural_circulation === true && td.fuel_damaged !== true, 'true, undamaged');
+
+        // ---- leg E: IT IS NOT IMMUNITY. Natural circulation MOVES heat to the steam
+        // generator; the secondary still has to remove it. Same LOOP as leg A with AFW
+        // blocked — if this passes, the change has traded one wrong lesson for another.
+        var e = H('hot_full_power');
+        e.run(60);
+        e.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        e.cmd('inject_failure', { failure_id: 'afw_failure' });
+        // 90 min, and it is LOAD-BEARING — trimmed to 60 first and the leg went red at
+        // Tavg 660 °F still climbing. Natural circulation distributes the heat while it
+        // has somewhere to put it, so losing the sink now takes LONGER to reach damage
+        // than the pre-#325 plant's 30 minutes. Do not shorten this to save gate time.
+        e.run(5400);
+        var te = e.ts();
+        ck('with the heat sink gone the plant is still lost — circulation is not cooling',
+          'damaged ' + String(te.fuel_damaged) + ' @ Tavg ' + fmt(te.tavg_c * 9 / 5 + 32, 0) + ' °F',
+          te.fuel_damaged === true, 'damaged');
         T.checkSanity(ck, a);
       });
     },
@@ -1509,6 +1662,299 @@
         ck('the single-channel trip was FOOLED (no scram — the CA-4 deception)',
           h2.tripReason || 'none', h2.tripTime == null, 'none');
         T.checkSanity(ck, h2);
+      });
+    },
+
+    // CA-7 — THE HEATERS ARE AN AC LOAD, AND A BLACKOUT HAS NO AC (2026-08-03).
+    //
+    // Reported from free play: the pressurizer heaters were still running after a
+    // station blackout was injected. Measured full stack from hot_full_power, SBO at
+    // t = 60 s: heater power reached 100.0 % at 17m15s and 68.5 % at 18m00s, with every
+    // AC bus in the plant dead. With the operator calling for heat it is worse and
+    // immediate — 100 % from the moment the button is pressed, pressure walked to
+    // 2352 psi (16.22 MPa), and a SPURIOUS `pzr_level low` reactor trip at 5m27s driven
+    // entirely by phantom heat boiling liquid out of the pressurizer.
+    //
+    // SOURCED. 10 CFR 50.2 defines the event as "the complete loss of alternating
+    // current (ac) electric power to the essential and nonessential switchgear buses in
+    // a nuclear power plant (i.e., loss of offsite electric power system concurrent with
+    // turbine trip and unavailability of the onsite emergency ac power system)", and it
+    // "does not include the loss of available ac power to buses fed by station batteries
+    // through inverters" — the vital instrument AC, which is why the board keeps reading
+    // while ~1 MW of resistance heating does not run off an inverter.
+    //
+    // WHY IT SURVIVED 36 GREEN RUNNERS, and it is the #315 shape: the heaters are only
+    // DEMANDED when pressure is below setpoint, and an SBO on this plant REPRESSURIZES.
+    // Measured, the Mode 3 blackout A/Bs byte-identical across the fix because the auto
+    // controller never asked for a single percent in an hour. The defect is only
+    // reachable once the code safeties have cycled pressure back down — or the instant
+    // an operator reaches for the heater controls, which is what free play found.
+    //
+    // LEG C IS THE ONE THAT MAKES THIS A TEST RATHER THAN A TRANSCRIPT. NUREG-0578 Item
+    // 2.1.1 / NUREG-0737 Item II.E.3.1 put the minimum heater group on redundant
+    // emergency diesel-backed buses precisely so it SURVIVES a loss of offsite power;
+    // the blackout is the event that takes the diesels too. So a plain LOOP must leave
+    // the heaters at FULL authority, and any "simplification" of the guard to a proxy
+    // that is also true in a LOOP — the pumps being stopped, the turbine tripped, the
+    // reactor scrammed — reddens leg C while legs A and B stay green.
+    //
+    // Injection-verified against the pre-fix engine: legs A and B go red (100.0 % with
+    // no AC, and the spurious level trip arrives), leg C passes on BOTH, which is what
+    // makes it the discriminator rather than a second copy of leg A.
+    'CA-7': function () {
+      return test('CA-7 station blackout — no AC, no pressurizer heaters (LOOP keeps them)', function (ck) {
+        // --- leg A: the operator calls for heat with every AC bus dead.
+        // Driven through set_heater DELIBERATELY. The obvious fix — writing
+        // heater_override = 0 when the blackout is injected — is defeated by the very
+        // next press of HEATER AUTO or the % box, which is exactly the defect #200 found
+        // in stuck_open_spray. De-energization is a physical fact about the plant, not a
+        // value parked in the operator's demand, so this probe is that fix's guard too.
+        // heater_power_pct is CONTROL_STATE, and the harness recorder only watches
+        // numeric true_state fields — h.range() would hand back a silent NaN, and
+        // `NaN < 0.01` is false, so the check would fail for the wrong reason rather
+        // than pass vacuously. Sample it through the run callback instead.
+        var peak = 0, peakAt = -1;
+        function watchHeater(hh, tsec) {
+          var v = hh.ctl().heater_power_pct || 0;
+          if (v > peak) { peak = v; peakAt = tsec; }
+        }
+        var h = H('hot_zero_power');
+        h.run(60);
+        h.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h.cmd('set_heater', { power_pct: 100 });     // full manual demand, no AC to answer it
+        h.run(600, watchHeater);
+        var c = h.ctl(), t = h.ts();
+        ck('the blackout is actually in effect', String(t.station_blackout), t.station_blackout === true, 'true');
+        ck('heater power stays at ZERO for the whole blackout',
+          'peak ' + fmt(peak, 1) + ' %' + (peakAt >= 0 ? ' @ ' + fmt(peakAt, 0) + ' s' : ''),
+          peak < 0.01, '0 %');
+        // The operator's SELECTOR is untouched — heater_auto false means the manual
+        // demand is still latched exactly where it was set. What went to zero is the
+        // power delivered, not the command; restoring AC must give the heaters back
+        // without the operator re-selecting anything.
+        ck('the operator\'s manual demand is still latched (selector not rewritten)',
+          'heater_auto ' + String(c.heater_auto), c.heater_auto === false, 'false');
+        ck('no phantom-heat pressurization', fmt(h.range('pressure_mpa').max, 2) + ' MPa max',
+          h.range('pressure_mpa').max < 15.7, '< 15.7');
+        ck('no spurious low-level trip driven by boiling the pzr dry',
+          h.tripReason || 'none', h.tripTime == null, 'none');
+
+        // --- leg B: same, but the heaters left in AUTO with pressure BELOW setpoint,
+        // so the auto controller is genuinely asking. Without this leg the probe only
+        // covers the manual path and a guard placed after the override branch would pass.
+        var h2 = H('hot_zero_power');
+        h2.run(60);
+        h2.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h2.cmd('set_heater', { auto: true });
+        h2.cmd('set_pressure_setpoint', { mpa: 16.5 });   // setpoint above pressure → auto demands heat
+        peak = 0; peakAt = -1;
+        h2.run(600, watchHeater);
+        ck('AUTO cannot energize them either (setpoint 16.5 MPa, pressure below it)',
+          'peak ' + fmt(peak, 1) + ' % at ' + fmt(h2.ts().pressure_mpa, 2) + ' MPa',
+          peak < 0.01 && h2.ts().pressure_mpa < 16.5, '0 %');
+
+        // --- leg C: A LOSS OF OFFSITE POWER IS NOT A BLACKOUT. The diesels are running,
+        // and II.E.3.1's heater group is on them. Full authority, same demand, same rig.
+        var h3 = H('hot_zero_power');
+        h3.run(60);
+        h3.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        h3.cmd('set_heater', { power_pct: 100 });
+        h3.run(300);
+        ck('LOOP is NOT a blackout — the flag stays clear', String(h3.ts().station_blackout),
+          h3.ts().station_blackout !== true, 'false');
+        ck('and the diesel-backed heaters answer at FULL power (II.E.3.1)',
+          fmt(h3.ctl().heater_power_pct, 1) + ' %', h3.ctl().heater_power_pct > 99, '100 %');
+      });
+    },
+
+    // CA-8 — THE AC-LOAD ROSTER (2026-08-03, #332). CA-7's general case.
+    //
+    // #329 fixed the pressurizer heaters. #332 filed the rest: the plant had no concept
+    // of AC availability at all, so every motor added since kept turning through a
+    // blackout. Measured full stack before this fix, `hot_zero_power`, SBO at t = 60 s:
+    //
+    //   letdown pinned at 0.0297 for THREE HOURS, charging modulating against pzr level
+    //   exactly as it does with the grid up, and inventory bled 100 % -> 76.55 % through
+    //   a system with no motive power. Separately, with the SBO in and the operator
+    //   pressing SI, the DEAD ECCS pump injected the RCS from 100 % to 120 % — solid —
+    //   in under five minutes. That one is not in the issue; it turned up measuring it.
+    //
+    // SOURCED, and the sources changed the SHAPE of the fix twice.
+    //
+    //  (1) WTSM 4.1.3.4 (ML11223A214, p. 4.1-16): "Two of the pumps are single-speed,
+    //      horizontal centrifugal pumps powered from vital (Class 1E) ac power" — so the
+    //      charging pump is unambiguously an AC load, and "The centrifugal charging pumps
+    //      also serve as the high head safety injection pumps of the emergency core
+    //      cooling systems", which puts SI on the same bus.
+    //  (2) WTSM 4.1.3.1 (same doc, p. 4.1-7), letdown orifice isolation interlock 2: "At
+    //      least one charging pump must be running in order to open any letdown orifice
+    //      isolation valve. IF THE RUNNING CHARGING PUMP(S) IS LOST, THEN THE LETDOWN
+    //      ORIFICE ISOLATION VALVES CLOSE." Letdown is therefore gated on the PUMP, not
+    //      on the blackout flag — which is leg C, and it is a second defect the issue did
+    //      not know about: see below.
+    //  (3) WTSM 5.7.5 (ML11223A229, p. 5.7-6): "A station blackout fails all ac power
+    //      except the vital Class IE ac busses from the dc invertors. All decay heat
+    //      removal systems, EXCEPT THE TURBINE-DRIVEN AFW PUMP, also fail." That single
+    //      sentence is legs A/B/D together — everything motor-driven stops, AFW does not.
+    //
+    // LEG C IS THE ONE THAT EARNED ITS KEEP. Gating letdown on `ac_available` directly
+    // would have passed legs A, B, D and E and left a REAL defect standing: measured with
+    // the grid fully up, securing the charging pump left letdown flowing and drained
+    // 100 % -> 79.5 % of inventory in 13 minutes, until the low-pzr-level isolation (the
+    // other real interlock, in pwr_control) caught it at 17 %. The sourced interlock fixes
+    // both with one guard; a blackout-shaped guard fixes one and hides the other.
+    //
+    // LEG E is CA-7 leg C's argument applied to the whole roster: a LOOP keeps the 1E
+    // buses on the diesels, so any proxy that is also true in a LOOP — pumps stopped,
+    // turbine tripped, reactor scrammed — reddens E while A-D stay green.
+    //
+    // LEG D asserts the SURVIVORS POSITIVELY, and that is deliberate. Three of the four
+    // legs here say "this went to zero"; a suite of only-zero checks is satisfied by
+    // gating the entire plant on the blackout flag, which would be a much worse model
+    // than the one it replaced. AFW must still deliver and the accumulators must still
+    // dump, with every bus dead.
+    'CA-8': function () {
+      return test('CA-8 station blackout — the AC-load roster (CVCS + ECCS die, AFW + accumulators live)', function (ck) {
+        // h.range() spans the WHOLE run, and every leg here settles the plant before it
+        // injects anything — so a bare range() peak reports the healthy pre-event flow and
+        // the check fails against its own fixture. (It did, on the first draft, for both
+        // CVCS fields.) peakAfter() records only the window the callback is attached to.
+        function peakAfter(field) {
+          var p = 0;
+          var fn = function (hh) { var v = hh.ts()[field] || 0; if (v > p) p = v; };
+          fn.peak = function () { return p; };
+          return fn;
+        }
+
+        // --- leg A: the CVCS through a three-hour blackout.
+        //
+        // THE OPERATOR IS ASKING FOR CHARGING, in MANUAL, and that is load-bearing rather
+        // than colour. With the CVCS left in AUTO the charging guard is INVISIBLE: the
+        // auto law targets `letdown_flow + level_demand`, letdown is already zero on the
+        // interlock, and an SBO repressurizes so the level servo asks for nothing either —
+        // measured by injection, reverting the mass-balance guard alone left all 47 probes
+        // green. `set_charging_flow` parks a real demand in `charging_setpoint` and that
+        // is what the guard has to refuse. It is the #200 shape as well: the demand stays
+        // latched and only DELIVERED flow goes to zero.
+        var h = H('hot_zero_power');
+        h.run(60);
+        h.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h.cmd('set_charging_flow', { normalized: 0.05 });   // operator calls for charging, no AC to answer
+        var wLet = peakAfter('letdown_flow_actual'), wChg = peakAfter('charging_flow_actual');
+        h.run(3600, function (hh, ts) { wLet(hh, ts); wChg(hh, ts); });
+        var t = h.ts(), c = h.ctl();
+        ck('the blackout is actually in effect', 'ac_available ' + String(t.ac_available),
+          t.ac_available === false && t.station_blackout === true, 'false');
+        ck('letdown ISOLATES — no orifice bleed with the charging pump de-energized',
+          'peak ' + fmt(wLet.peak(), 4), wLet.peak() < 1e-4, '0');
+        ck('the charging pump delivers NOTHING (Class 1E ac load, WTSM 4.1.3.4)',
+          'peak ' + fmt(wChg.peak(), 4), wChg.peak() < 1e-4, '0');
+        // The pre-fix plant reached 76.55 % over three hours; one hour of it is ~92 %.
+        // Banded well inside that, so this fails loudly on the old engine rather than
+        // squeaking past on a slow leak.
+        ck('and inventory does not bleed away through a dead system',
+          fmt(h.range('core_inventory_pct').min, 2) + ' % min', h.range('core_inventory_pct').min > 99.5, '> 99.5 %');
+        // BOTH DIRECTIONS, because there are TWO guards and one check only sees one of
+        // them. The indication guard (`charging_flow_actual`) is what the check above
+        // reads; the MASS-BALANCE guard is a different line, and with the demand latched
+        // at 0.05 a dead pump that still moved water would push inventory UP. Measured by
+        // injection: without this check, reverting the mass-balance guard left all 47
+        // probes green — the defect was real, unobserved, and one assertion away.
+        ck('nor is it pumped UP by a dead pump answering a latched 0.05 demand',
+          fmt(h.range('core_inventory_pct').max, 2) + ' % max', h.range('core_inventory_pct').max < 100.5, '< 100.5 %');
+        // The SELECTOR is untouched — same #200 guard as CA-7 leg A. What went to zero
+        // is delivered flow, not the operator's lineup, so restoring AC gives the CVCS
+        // back with nothing to re-select.
+        ck('the operator\'s charging-pump switch is still in RUN (selector not rewritten)',
+          'charging_pump_running ' + String(c.charging_pump_running), c.charging_pump_running !== false, 'true');
+        ck('and their manual charging demand is still latched at 0.05 — only DELIVERY died',
+          'charging_flow_normalized ' + fmt(c.charging_flow_normalized, 3),
+          c.charging_flow_normalized > 0.04, '0.05');
+
+        // --- leg B: the operator presses SI with every bus dead. A dead pump makes no
+        // flow AND no head, so the discharge gauge must read the RCS, not a pump curve.
+        var h2 = H('hot_zero_power');
+        h2.run(60);
+        h2.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h2.cmd('set_hpi', { active: true });
+        h2.run(1200);
+        var t2 = h2.ts();
+        ck('SI is DEMANDED (the run lights stay honest — demand is not the same as flow)',
+          String(t2.hpi_active), t2.hpi_active === true, 'true');
+        ck('but the de-energized ECCS pump injects NOTHING',
+          'peak ' + fmt(h2.range('hpi_flow_normalized').max, 4), h2.range('hpi_flow_normalized').max < 1e-4, '0');
+        ck('and develops no head — discharge pressure is not a pump curve',
+          fmt(h2.range('hpi_discharge_pressure_mpa').max, 2) + ' MPa max',
+          h2.range('hpi_discharge_pressure_mpa').max < 1e-6, '0 MPa');
+        ck('so the RCS is not pumped solid by a pump with no electricity',
+          fmt(h2.range('core_inventory_pct').max, 2) + ' % max', h2.range('core_inventory_pct').max < 101, '< 101 %');
+
+        // --- leg C: THE GRID IS UP. Secure the charging pump and letdown must isolate
+        // on the sourced interlock alone (WTSM 4.1.3.1 #2). This is what distinguishes
+        // the pump interlock from a blackout-shaped guard.
+        var h3 = H('hot_zero_power');
+        h3.run(60);
+        h3.cmd('set_charging_pump', { running: false });
+        var wLet3 = peakAfter('letdown_flow_actual');
+        h3.run(1200, wLet3);
+        ck('AC is available throughout leg C (no blackout involved)',
+          'ac_available ' + String(h3.ts().ac_available), h3.ts().ac_available === true, 'true');
+        ck('losing the charging pump ISOLATES letdown (WTSM 4.1.3.1 interlock 2)',
+          'peak ' + fmt(wLet3.peak(), 4), wLet3.peak() < 1e-4, '0');
+        ck('so securing the pump does not quietly drain the RCS',
+          fmt(h3.range('core_inventory_pct').min, 2) + ' % min', h3.range('core_inventory_pct').min > 99.5, '> 99.5 %');
+
+        // --- leg D: THE SURVIVORS. AFW is turbine-driven and the accumulators are
+        // pressurized N2 behind a check valve; neither owes the switchgear anything.
+        // Driven on a LOCA so the accumulators actually reach their setpoint.
+        //
+        // AFW IS ASSERTED ON DISCHARGE PRESSURE, NOT DELIVERED FLOW, AND THAT IS NOT A
+        // WEAKENING — delivered flow is UNREACHABLE here, for #325's reason. Measured, a
+        // blackout at full power parks SG level at 61.6 % and holds it there for 25
+        // minutes: with the RCPs stopped there is no core->SG heat path, so the generator
+        // never boils down and the level-hold valve correctly throttles AFW shut. An
+        // `afw_flow_normalized > 0` check would pin a NON-EVENT and go green the day
+        // natural circulation is built. Discharge pressure is the honest observable: it
+        // is driven by `afw_pump_demand` alone (pwr_steam_generator, stepSecondary), so it
+        // reads 159.5 psi (1.10 MPa) with every bus dead and would collapse to 0 the
+        // moment someone gated the AFW pump on ac_available. Its contrast partner is the
+        // check below it — the ECCS pump, one line of code away, reading exactly zero.
+        var h4 = H('hot_full_power');
+        h4.run(60);
+        h4.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h4.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.3 });
+        h4.cmd('set_hpi', { active: true });
+        h4.cmd('set_afw', { active: true });
+        var wAfwP = peakAfter('afw_discharge_pressure_mpa'), wHpi4 = peakAfter('hpi_flow_normalized');
+        h4.run(600, function (hh, ts) { wAfwP(hh, ts); wHpi4(hh, ts); });
+        ck('every bus is still dead through leg D', 'ac_available ' + String(h4.ts().ac_available),
+          h4.ts().ac_available === false, 'false');
+        ck('the TURBINE-DRIVEN AFW pump still makes head (WTSM 5.7.5 — the one survivor)',
+          fmt(wAfwP.peak(), 2) + ' MPa', wAfwP.peak() > 0.5, '> 0.5 MPa');
+        ck('the PASSIVE accumulators still dump — no pump, no bus, no permission needed',
+          fmt(h4.range('accumulator_volume_pct').min, 1) + ' % remaining',
+          h4.range('accumulator_volume_pct').min < 50, '< 50 %');
+        ck('while the motor-driven ECCS pump beside them stays dead',
+          'peak ' + fmt(wHpi4.peak(), 4), wHpi4.peak() < 1e-4, '0');
+
+        // --- leg E: A LOSS OF OFFSITE POWER IS NOT A BLACKOUT (CA-7 leg C's argument,
+        // applied to the roster). The diesels carry the 1E buses, so the CVCS and the
+        // ECCS pump both keep working. Any proxy for "no AC" that is also true in a LOOP
+        // reddens THIS leg and nothing else here.
+        var h5 = H('hot_zero_power');
+        h5.run(60);
+        h5.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        h5.run(300);
+        h5.cmd('set_hpi', { active: true });
+        h5.run(300);
+        ck('LOOP leaves the 1E buses energized (the diesels have them)',
+          'ac_available ' + String(h5.ts().ac_available), h5.ts().ac_available === true, 'true');
+        ck('so letdown keeps flowing through a LOOP',
+          fmt(h5.range('letdown_flow_actual').max, 4), h5.range('letdown_flow_actual').max > 0.01, '> 0.01');
+        ck('the charging pump keeps running through a LOOP',
+          fmt(h5.range('charging_flow_actual').max, 4), h5.range('charging_flow_actual').max > 0.01, '> 0.01');
+        ck('and SI injects when asked — a LOOP is not a loss of the ECCS pump',
+          fmt(h5.range('hpi_flow_normalized').max, 4), h5.range('hpi_flow_normalized').max > 0.001, '> 0.001');
       });
     },
 

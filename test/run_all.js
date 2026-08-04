@@ -143,7 +143,7 @@ var BASELINES = {
   // through full flow computed a 0.0 °F ΔT — and INDICATED, that put the cold leg
   // above the hot leg in 48 % of samples. Fission and total heat are equal in steady
   // state, which is why 44 probes measuring near equilibrium all agreed with it.
-  'run_behavior.js':       { code: 0, secs: 56, score: '45pass 0xfail' },
+  'run_behavior.js':       { code: 0, secs: 56, score: '48pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -411,7 +411,12 @@ var BASELINES = {
   // gate scans tracked MARKDOWN only. The whole delta is CLAUDE.md's board_check line
   // carrying the owner's words for the removal. The `OWNER DIRECTIVE` quoted at the decision
   // site in pwr_config.js is invisible here, which is a property of the guard, not a gap.
-  'run_hardrules.js':      { code: 0, score: '137checks 0failed' },
+  // 137 / 141 -> MEASURED ON THE MERGED TREE, 2026-08-04. develop took it to 137 and backshop
+  // to 141 INDEPENDENTLY, so neither branch figure survives and their sum is not the answer
+  // either — this is the exact trap this file has recorded three times (the 83-on-merge note
+  // below). Measured after resolving every conflict, never during: a tree that still has
+  // markers in it carries BOTH sides' citations at once and counts the duplicates.
+  'run_hardrules.js':      { code: 0, score: '142checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -434,7 +439,7 @@ var BASELINES = {
   // 141 -> 143 (2026-08-03, #311 flag ON): the two OTdT/OPdT approach ALARMS arrive, and
   // this gate's second contract makes them declare a `category` — the design working, not
   // drift. Enabling protection is expected to move this and run_reachability together.
-  'run_contract.js':       { code: 0, score: '143checks 0failed' },
+  'run_contract.js':       { code: 0, score: '145checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

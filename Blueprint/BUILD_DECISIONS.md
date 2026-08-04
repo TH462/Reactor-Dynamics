@@ -37,6 +37,132 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04 — #325: natural circulation, and the cheap version that was measured and refused
+
+### The change
+
+`pwr_primary.naturalCircFlow` + three config constants; `stepFlow` coasts toward it instead of toward zero.
+`flow_floor` 0.1 → 0.015. `true_state.natural_circulation`. New probe **TR-15**; TR-7b leg D re-authored.
+`DESIGN_COMPANION` §8.6 **retired**; manual set Rev 26. *(OWNER RULING, 2026-08-04: "Go with one B")*.
+
+### Q0 first, and it redrew the options
+
+#325 rated option (1) *"the largest change"*. It was not: `natural_circ_flow` already existed as the
+coastdown target at `0.0`, and flipping it to a constant 0.03 made a LOOP survivable with **nine runners
+unmoved**. The issue's own cost estimate was the thing that most needed measuring, and measuring it is what
+made (1) affordable enough to rule on at all.
+
+### Why (1b) and not (1a) — this is the decision worth recording
+
+The constant floor was **built and measured before being rejected**. It circulates through a fully voided
+loop: `primary_void_fraction` **1.00** with 3.00 % flow, Tavg dragged to 245 °F while the clad melted at
+3827 °F. The *outcomes* stayed right in every case tested — uncovery dominates, so the core still melts —
+which is exactly why it would have shipped. HR10: right answer, wrong mechanism, and the only thing that
+catches it is asking what the mechanism *is*.
+
+The void gate is also what preserves TMI-2, where tripping the pumps into a voided loop established nothing.
+
+### The law is solved, not iterated, and that is a correctness choice
+
+W = C·√ΔT closed against ΔT = `delta_T_rated`·Q/W gives W ∝ Q^⅓. The fixed-point form would have read a ΔT
+that `flow_floor` clamps below 10 % flow — the exact band circulation lives in — and a self-referential
+lagged flow term rings. Getting the cube root out of two independently-motivated relations is the internal
+validation; measured 1.343 against 1.342 predicted.
+
+### Sourced shape, fitted scale, and the distinction is declared
+
+WTSM 3.2.6.3 (ML11223A213) gives the driving head and *"sufficient only for decay heat removal … not for
+power operation"*. It does **not** give a magnitude, and neither did anything else reachable from this
+environment. The *"2–5 %"* in old §8.6 and `Manuals/01` was **uncited inherited prose** and was deliberately
+not used as the anchor — CLAUDE.md's "inherited claims are the risky ones" applied to this repo's own text.
+C is fitted to the plant's own energy balance instead, and `Manuals/12` §12.4 replaces §8.6 as the declared
+departure, naming the *magnitude* rather than the mechanism.
+
+### `flow_floor` had to move, and it is the #315 lesson recurring
+
+The leg split under-read **2.4×** under natural circulation because the floor clamped at 10 %. Loop ΔT is
+the real-plant verification cue for exactly this condition, so leaving it clamped would have shipped the
+feature with its indication broken — a term wrong in the one regime the change creates. Lowered to 1.5 %,
+below the weakest circulation the plant can make.
+
+### Deliberately not built
+
+| | why |
+|---|---|
+| A board "NATURAL CIRC" lamp | Q4 duplicate authority. A real crew verifies it from loop ΔT + subcooling + stable SG pressure, all already on the board. The `true_state` field is diagnostic, for the Physics tab and probes. |
+| PWR-E04/E05 checklists | Unblocked by this, but separate work (#319 item 6). E05's manual acceptance was corrected to match the plant; a checklist was not invented alongside it. |
+| Two-phase / reflux circulation | The void gate ramps to zero rather than modelling degraded two-phase circulation. Declared in `Manuals/12` §12.4's neighbourhood; the lesson is "it stops", not how it stops. |
+
+## 2026-08-03f — #332: `ac_available`, or what a bare boolean costs when nobody names the question
+
+### The change
+
+`true_state.ac_available` — one derived field, set at the top of `PWREngine.step()` (0a), read by
+every AC load. `engines/pwr/pwr_engine.js` (derivation + roster + `boron_adjust` + two indications),
+`engines/pwr/pwr_primary.js` (`acAvailable`/`chargingPumpPowered` predicates; letdown, charging and
+the ECCS pump), `engines/pwr/pwr_pressurizer.js` (#329's heater guard re-expressed through it),
+`Blueprint/CONTEXT.md` §6.3, new probe **CA-8**. `run_behavior` **46 → 47**.
+
+### Why (2) and not (1), and why not "wait for #325"
+
+#332 offered three options: point-fix each component, build an `ac_available` concept, or leave it.
+It recommended (2) *"but not urgently, and not before #325 is ruled"*. #325 is still unruled and
+this was taken anyway, on two grounds.
+
+**#325 decides a different question.** What it settles is whether the PWR blackout is a survivable
+evolution worth modelling in detail or a documented terminal path. Neither answer makes a motor turn
+without electricity. The correctness of the fix does not depend on it, and its *scope* barely does:
+`ac_available` is a name and a read, not a coping model.
+
+**(1) had already failed once, and measuring it showed it would fail again.** The heaters were
+missed in the first place because no list existed. Working this issue found a **third** load nobody
+had filed — the ECCS pump injecting the RCS solid with every bus dead — which point-fixing the two
+systems #332 named would have shipped untouched. That is the argument for (2) restated as a
+measurement rather than an aesthetic.
+
+### The design decisions worth recording
+
+**A boolean mirror is not a useless abstraction, and the comment says so out loud.** Today
+`ac_available === !station_blackout` exactly. The defect was never a wrong formula; it was that the
+question had no name, so nobody asked it. A load now reads `ac_available` *because it needs power*,
+rather than reading a casualty flag and inferring power from it. The derivation site carries the
+roster of what dies and what lives, with both source quotes, so "what does a blackout take?" is
+answerable in one place instead of by grepping for a flag.
+
+**Letdown is gated on the CHARGING PUMP, not on `ac_available`** — WTSM 4.1.3.1 (ML11223A214,
+p. 4.1-7) interlock 2, verbatim in `TUNING_LOG` 2026-08-03w. This was the evidence pass changing the
+shape of the fix rather than merely blessing it: the obvious guard would have left a real defect
+standing (grid up, charging pump secured → letdown drains 100 → 79.5 % in 13 minutes). Sourcing the
+mechanism rather than the outcome is what caught it.
+
+**Read predicates default to POWERED when the field is absent** (`s.ac_available !== false`, not
+`!s.ac_available`). `letdownFlow`, `injectionFlowInv` and `pwrPressurizer.autoControl` are all called
+directly with hand-built state objects by the engine's `selfTest` and by ad-hoc physics rigs; a bare
+negation de-energizes every one of them, and an isolated-physics rig would start reporting zero
+letdown and no injection with nothing in the fixture to explain it. Same convention in all three.
+
+**`_migrateState` recomputes rather than defaulting.** A save taken mid-blackout would otherwise
+reload with the plant electrified for one step.
+
+**Selectors are never written.** `charging_pump_running`, `heater_auto` and `hpi_active` stay exactly
+where the operator put them; only delivered flow/power/head go to zero. This is the #200 trap — a
+de-energization parked in the operator's demand heals itself on the next button press — and CA-8
+leg A pins it with a *positive* check that the 0.05 manual charging demand is still latched.
+
+### Deliberately not built
+
+| | why |
+|---|---|
+| RHR pump guard | Heat removal is already zero in an SBO (`condenser_cooling_available`). There is **no reachable state** where AC is out and condenser cooling is up, so the guard could not be injection-verified — and an unfalsifiable guard is worse than a filed gap. |
+| Condensate pump / main feed on LOOP | Both are **nonvital** loads, lost on a plain LOOP as well as an SBO, so `ac_available` (which a LOOP keeps) is the wrong gate. Wants a second, non-1E bus. |
+| A two-bus model | The honest structure, and where the two rows above go. Out of scope here: it changes LOOP behaviour, which moves #325's picture, and #325 is the owner's call. |
+
+### The flag this leaves
+
+**Adding an AC load is now a two-line obligation** — gate it at the read site and add a CA-8 leg.
+The derivation comment says so at the point of temptation. That is a convention, not a gate: nothing
+can statically detect a motor, and the only mechanised half is CA-8 itself.
+
 ## 2026-08-03e — #238: zirconium-steam oxidation, and why the sketched shape was not built
 
 ### The change
