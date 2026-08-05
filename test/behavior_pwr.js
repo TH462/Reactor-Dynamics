@@ -1172,6 +1172,29 @@
         // the corrected level slope holds more inventory through the pre-void phase (96.2 %
         // vs 85.9 % at 40 min), so uncovery and the heat-up that follows both arrive later.
         // The leg's CLAIM is unchanged and true on both plants; only the window was wrong.
+        //
+        // RED SINCE #337 F15, AND DELIBERATELY NOT RE-AUTHORED — it is waiting on #346, and
+        // the measurement says why. A/B'd on this exact fixture, pre-F15 vs post-F15:
+        //
+        //     t        pre-F15                     post-F15
+        //     60 min   inv 90.2 %, void 0.295      inv 90.7 %, void 0.279
+        //     90 min   inv  0.0 %, clad 2100 °F    inv 120.0 %, void 0.000
+        //    120 min   MELTED, clad 5072 °F        Tavg 447 °F, undamaged
+        //    600 min   MELTED                      Tavg 166 °F, undamaged
+        //
+        // The mechanism is NOT that circulation started cooling. This leg injects
+        // `loss_of_offsite_power`, not a blackout, so the diesels are up and AC is available
+        // (#329's distinction) — and F15's stronger relief authority now takes pressure down
+        // to the SI actuation setpoint, so HPI comes in and refills the RCS. Safety injection
+        // doing its job on a design-basis event is the right answer; the leg's premise, that
+        // nothing can remove heat once the sink is gone, quietly assumed SI never got there.
+        //
+        // What is NOT right is the endpoint: inventory pins at exactly 120.0 % — `mass_max` —
+        // and stays, because the clip DISCARDS the overfill instead of repressurizing, so
+        // relief never lifts and injection never terminates. That is #346 verbatim, live in
+        // the backshop lane. Re-banding or re-authoring this leg before #346 lands would be
+        // fitting it to a plant that is about to change again. Verified not-the-accumulators:
+        // they read 100.0 % remaining with zero flow throughout.
         e.run(7200);
         var te = e.ts();
         ck('with the heat sink gone the plant is still lost — circulation is not cooling',
@@ -2116,27 +2139,50 @@
         b.run(60);
         b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.10 });
         b.cmd('set_heater', { power_pct: 100 });
-        // The band is CUT − 1, not CUT, and the reason is architectural rather than
-        // cosmetic: the interlock reads the PREVIOUS step's indication (instruments are
-        // step 15, autoControl is step 7 — CONTEXT §11 explicit coupling), so on the
-        // single step where level crosses down through the setpoint the heaters are still
-        // acting on an above-cutoff reading. Measured, that is exactly 2 samples out of
-        // 1369, both at 16.3 %. Asserting zero violations AT the setpoint would be pinning
-        // the absence of a one-step lag that the whole engine is built on. The claim worth
-        // making is that SUSTAINED operation below the cutoff delivers no heater power.
-        var bViol = 0, bBelow = 0, bWorst = 0, bWorstLvl = -1;
+        // THE LAG IS HANDLED BY RUN LENGTH, NOT BY A MARGIN (re-authored 2026-08-04, #348).
+        // The interlock reads the PREVIOUS step's indication (instruments are step 15,
+        // autoControl is step 7 — CONTEXT §11 explicit coupling), so on the step where level
+        // crosses down through the setpoint the heaters are still acting on an above-cutoff
+        // reading. This used to be absorbed by banding at CUT − 1 and demanding zero
+        // violations, on a measurement of "2 samples out of 1369, both at 16.3 %".
+        //
+        // That margin was really a proxy for HOW FAST the level crosses, and #337 changed
+        // exactly that — the pressurizer surge now moves level with pressure, so the crossing
+        // is quicker and the lagged sample lands DEEPER: measured, one violation at 15.9 %,
+        // 0.1 point under a 16.0 band. Chasing it with a wider margin would be tuning the
+        // fudge, and the next change to the inventory path would move it again.
+        //
+        // So the claim is asserted the way the check's own title states it — SETTLED operation
+        // below the cutoff. A one-step lag cannot produce CONSECUTIVE violating samples; a
+        // broken interlock produces hundreds. That is a property of the mechanism rather than
+        // of how fast this particular transient happens to cross, so it does not need
+        // re-tuning the next time something moves the inventory path.
+        //
+        // THE CUT − 1 BAND STAYS, and it is now carrying a DIFFERENT fact — worth knowing
+        // before anyone "simplifies" it away. Widening it to the real setpoint was tried:
+        // it reports 499 violations with a longest run of EIGHT, worst 100 % at 16.5 %. That
+        // is not the lag, it is the cutoff CHATTERING — the level parks around the setpoint
+        // and the interlock has no deadband, which is #334's own documented follow-up (the
+        // same zero-deadband shape as #288's RHR valve). This leg is about whether the
+        // interlock de-energizes the heaters, not about whether it chatters, so the band
+        // deliberately sits clear of that region and the chatter stays filed where it belongs.
+        var bViol = 0, bBelow = 0, bWorst = 0, bWorstLvl = -1, bRun = 0, bMaxRun = 0;
         b.run(1500, function (hh) {
           var lvl = hh.ins().pzr_level, hp = hh.ctl().heater_power_pct || 0;
           if (lvl != null && lvl < CUT - 1.0) {
             bBelow++;
-            if (hp > 0.01) { bViol++; if (hp > bWorst) { bWorst = hp; bWorstLvl = lvl; } }
+            if (hp > 0.01) {
+              bViol++; bRun++; if (bRun > bMaxRun) bMaxRun = bRun;
+              if (hp > bWorst) { bWorst = hp; bWorstLvl = lvl; }
+            } else bRun = 0;
           }
         });
         ck('the run actually went below the cutoff (or leg B proves nothing)',
           bBelow + ' samples below ' + fmt(CUT - 1.0, 0) + ' %', bBelow > 10, '> 10 samples');
         ck('heater power is ZERO whenever level is settled below the cutoff, with a 100 % demand standing',
-          bViol + ' violations' + (bViol ? ' (worst ' + fmt(bWorst, 1) + ' % at ' + fmt(bWorstLvl, 1) + ' % level)' : ''),
-          bViol === 0, '0 violations');
+          bViol + ' violations, longest run ' + bMaxRun +
+          (bViol ? ' (worst ' + fmt(bWorst, 1) + ' % at ' + fmt(bWorstLvl, 1) + ' % level)' : ''),
+          bMaxRun <= 1, 'no CONSECUTIVE violating samples (a one-step lag cannot make two)');
         ck('the operator\'s DEMAND is untouched — only delivered power went to zero',
           fmt(b.ctl().heater_power_pct, 1) + ' % delivered, selector ' + String(b.ctl().heater_auto),
           b.ctl().heater_auto === false, 'still in MANUAL where the operator put it');
@@ -2284,30 +2330,69 @@
         // keep the tuning it was arbitrated with — at rated pressure the factor is exactly
         // 1, so the configured size still means its old rate and only the depressurized
         // end of the curve is new. If this drifts, every pre-#334 LOCA number is stale.
+        // RE-FIXTURED 2026-08-04 (#348) — the claim is unchanged, the plant it is measured on
+        // is not. This ran a 0.20 break for 2 s and called that "before the RCS has moved".
+        // Since #337 a break DEPRESSURISES the RCS through the pressurizer surge, and measured,
+        // a 0.20 break takes it 15.41 → 8.80 MPa in HALF A SECOND — so at the 2 s sample the
+        // factor is legitimately 0.743 and the probe read a working break as under-flowing.
+        // The trajectory: ratio 0.999 at t+0.02 s, 0.915 at t+0.1, 0.754 at t+0.5.
+        //
+        // A SMALL break holds the plant AT the reference pressure, which is what the claim is
+        // actually about — "at rated pressure the factor is exactly 1, so the configured size
+        // still means its old rate". Measured, sev 0.002 sits at ratio 0.996..1.000 for 30 s
+        // instead of surviving for one engine step, and it passes on the pre-#337 engine too.
         var SEV = 0.20, RATED = SEV * 0.5;                       // severity · (meta.max/100)
+        var SEV_CAL = 0.002, RATED_CAL = SEV_CAL * 0.5;
+        var cal = H('hot_full_power');
+        cal.run(30);
+        cal.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV_CAL });
+        var calWorst = 0, calAtP = 0;
+        cal.run(30, function (hh) {
+          var t = hh.ts();
+          var err = Math.abs(t.leak_flow - RATED_CAL) / RATED_CAL;
+          if (err > calWorst) { calWorst = err; calAtP = t.pressure_mpa; }
+        });
+        ck('at nominal pressure the break flows its RATED size (old calibration intact)',
+          'worst ' + fmt(calWorst * 100, 2) + ' % off rated over 30 s, at ' + fmt(calAtP, 2) + ' MPa',
+          calWorst < 0.06, 'within 6 %');
+
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV });
-        a.run(2);                                                 // before the RCS has moved
-        var ta = a.ts();
-        ck('at nominal pressure the break flows its RATED size (old calibration intact)',
-          fmt(ta.leak_flow, 4) + ' vs ' + fmt(RATED, 4) + ' rated, at ' + fmt(ta.pressure_mpa, 2) + ' MPa',
-          Math.abs(ta.leak_flow - RATED) / RATED < 0.06, 'within 6 %');
+        // ONE STEP, taken by hand, and it is the high end of the exponent solve. `run`'s
+        // callback fires on the SAMPLE interval, not per step, so its first sample lands at
+        // ~0.5 s — by which time this break has already taken the RCS to 8.80 MPa. Seeding the
+        // high point from an explicit first step gives a Δp span of 15.28 → 3.78 (ratio 4.0)
+        // instead of 8.70 → 3.80 (ratio 2.3), which is the difference between a conditioned
+        // log-log solve and one sitting 15 % above its own floor.
+        a.run(0.02);
+        var t0 = a.ts();
+        var hi0 = t0.leak_flow > 0 ? { dp: t0.pressure_mpa - pBack, q: t0.leak_flow } : null;
 
         // ---- leg B: THE LAW. Sample the same break across the blowdown and check every
         // sample against √((P−Pb)/(Pref−Pb)) recomputed from that sample's own pressure.
         // This is the whole assertion of item 2 and it is checked pointwise, not at ends.
-        var worst = 0, worstAt = 0, n = 0, hi = null, lo = null;
-        a.run(240, function (hh) {
+        // SAMPLING STARTS AT THE INJECTION, not 2 s after it — the same #337 depressurization
+        // that broke leg A was also skipping the entire high-pressure end of the blowdown.
+        var worst = 0, worstAt = 0, n = 0, hi = hi0, lo = null;
+        a.run(242, function (hh) {
           var t = hh.ts();
           if (t.pressure_mpa > pBack + 0.05) {
             var want = RATED * Math.sqrt(Math.max(0, (t.pressure_mpa - pBack) / (pRef - pBack)));
             var err = Math.abs(t.leak_flow - want) / Math.max(want, 1e-6);
             n++;
             if (err > worst) { worst = err; worstAt = t.pressure_mpa; }
-            // Two widely separated operating points for the EXPONENT check below.
-            if (t.pressure_mpa > 10 && t.leak_flow > 0) hi = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
-            if (t.pressure_mpa < 3 && t.leak_flow > 0 && lo === null) lo = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
+            // Two widely separated operating points for the EXPONENT check below. Taken as the
+            // FIRST and LAST flowing samples and conditioned on their Δp RATIO, not on hardcoded
+            // pressures: the old form wanted a sample above 10 MPa and one below 3, and since
+            // #337 this break is under 10 MPa within 0.1 s and floors at 3.87 (ECCS and the
+            // accumulators balance a break that now self-limits), so it could reach NEITHER.
+            // A ratio keeps the log-log solve conditioned without pinning a pressure the plant
+            // may no longer visit. Measured span: 15.28 → 3.78 MPa, a ratio of 4.0.
+            if (t.leak_flow > 0) {
+              if (hi === null) hi = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
+              lo = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
+            }
           }
         });
         ck('the blowdown was actually sampled (or leg B proves nothing)',
@@ -2322,8 +2407,9 @@
         // n = 1, an orifice n = 0.5. Same idiom as TR-15's cube root (#325), and it is what
         // reddens if someone "simplifies" the law back to either neighbour.
         ck('the blowdown spanned both ends (needed to solve for the exponent)',
-          hi && lo ? fmt(hi.dp, 2) + ' → ' + fmt(lo.dp, 2) + ' MPa' : 'MISSING',
-          !!(hi && lo), 'a high and a low sample');
+          hi && lo ? fmt(hi.dp, 2) + ' → ' + fmt(lo.dp, 2) + ' MPa, ratio ' +
+            fmt(hi.dp / lo.dp, 2) : 'MISSING',
+          !!(hi && lo) && hi.dp / lo.dp > 2, 'Δp ratio > 2');
         if (hi && lo) {
           var nExp = Math.log(lo.q / hi.q) / Math.log(lo.dp / hi.dp);
           ck('the measured exponent is the ORIFICE one — not constant (0) and not linear (1)',
@@ -2333,9 +2419,16 @@
         // ---- leg C: a depressurized RCS STOPS discharging. The pre-#334 engine kept
         // flowing at the full rated rate here — including with the vessel already empty,
         // which is the piece of #334 that read wrong on the board.
+        // RE-BANDED 2 → 4.5 MPa (#348), and it IS a loosening — say so rather than imply it is
+        // neutral (HR10). The RCS no longer reaches 2 MPa on this break: measured, it floors at
+        // 3.87 MPa and stays there, because since #337 the break self-limits (√Δp against a
+        // pressure the break itself is pulling down) while ECCS and the accumulators inject
+        // against it — the accumulator setpoint is 4.14 MPa, so the floor sits just under it and
+        // that is the balance point, not a stall. 4.5 still proves the low end this leg needs,
+        // and it passes on the pre-#337 engine, which goes well below 2.
         var tc = a.ts();
         ck('the RCS really did depressurize (leg C needs the low end)',
-          fmt(tc.pressure_mpa, 2) + ' MPa', tc.pressure_mpa < 2.0, '< 2 MPa');
+          fmt(tc.pressure_mpa, 2) + ' MPa', tc.pressure_mpa < 4.5, '< 4.5 MPa');
         ck('a depressurized break flows a small fraction of its rated size',
           fmt(tc.leak_flow, 4) + ' vs ' + fmt(RATED, 4) + ' rated',
           tc.leak_flow < RATED * 0.55, '< 55 % of rated');
