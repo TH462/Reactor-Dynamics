@@ -88,9 +88,26 @@ Full `run_all`: **38 runners at baseline** on the lane, with every moved baselin
 
 Probes re-specified during the campaign, all declared in place: TR-1b (two-sided burst pin),
 TR-2 (post-burst scope), TR-1g (trailing mean), otdt 3b (one-sided never-worse), the e2e reset
-re-time, the e2e-ui steam-flow floor, board_check's leg-ΔT quantization band. Closing
-`perturb_sweep --suite=both` snapshot taken against the pre-campaign one (scratchpad,
-presweep/sweep_final). Seven commits: 245dad8 (#376), 5db3972 (#369), d35efa4 (#373),
+re-time, the e2e-ui steam-flow floor, board_check's leg-ΔT quantization band.
+
+**`perturb_sweep --suite=both`, pre-campaign vs close — the suite ended sharper, with one new
+thin band that is worth naming.** §14 half: zero verdict flips both ends, and
+`thermal.delta_T_rated*1.02` went from **INERT (0/241 — proved nothing)** to weakly
+discriminating (2/241), so the acceptance suite now has five perturbations with real power
+where it had four. Behaviour half: **6 flips → 3**, and the four that went are the fragile
+sourced-duty ones the second-wave plan flags as the likeliest collateral — TR-1g's ±5 °F
+return-to-program and core-reduction checks, and TR-1i's ramp duty (twice, on both thermal
+nudges). Those bands are no longer within a 2–3 % nudge of flipping. The two SS-5 pzr-program
+flips are unchanged (pre-existing, 38.2 → 40.6 on a ≤40 assertion — narrow band, not ours).
+
+**NEW and worth carrying to the second wave: TR-1c's hands-off PORV assertion is now thin.**
+Its sub-arm leg asserts the rejection *"ends at the PORV"* (peak ≥ 16.20) and the plant sits
+at **16.21** — one hundredth of a MPa of margin; a 3 % `coolant_heat_capacity` nudge takes it
+to 16.18 and flips it. The physics is honest (the #372 feed-enthalpy uptake damps that
+transient, exactly as it damped #373's trip burst from 16.26 to 16.04); the check simply now
+sits on the edge of its own event. **This is precisely the probe and the leg #377 is about**
+— posted there, because backshop re-measures that margin as its Step 2 and should have the
+number before it picks a threshold. Seven commits: 245dad8 (#376), 5db3972 (#369), d35efa4 (#373),
 44fd89d (#372), 65224f0 (#375), ef5efad (#374), 90cc757 (#370/#371 docs). End state:
 committed on workbench, gated, waiting — the merge is the owner's call.
 
