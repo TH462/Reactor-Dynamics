@@ -206,13 +206,18 @@
     s.steam_dump_frac = dump;
 
     // SG code safety valves — UPSTREAM of the MSIV, the relief that remains
-    // when the SG is bottled. COMMANDED state (open_sg_safety/close_sg_safety):
-    // the control layer's actuation pops them above sg_safety_open_mpa and
-    // reseats below sg_safety_reseat_mpa reading the steam_pressure INSTRUMENT
-    // (2026-07 ruling: relief logic lives in the control layer). The engine
-    // keeps the hydraulics — proportional flow between reseat and pop once
-    // open. Above the 8.90 MPa no-load dump setpoint, so the dump handles
+    // when the SG is bottled. SELF-ACTUATING on TRUE steam pressure (#369): a
+    // code safety is a spring-loaded ASME device opened by the fluid it
+    // protects against — no instrument, no logic, no power in its path, and
+    // that independence is the entire reason it is the backstop. The pop used
+    // to be a control-layer actuation reading the steam_pressure INSTRUMENT;
+    // the #297 audit measured one stuck transmitter carrying a survivable
+    // MSIV closure to clad melt (2696 psi SG, 3226 °F clad at 40 min). Same
+    // family as the RHR autoclosure and the accumulators: mechanical beats
+    // command. Sits above the steam_dump_setpoint anchor, so the dump handles
     // normal duty and the safeties are the backstop.
+    if (!s.sg_safety_open && s.steam_pressure_mpa > sg.sg_safety_open_mpa) s.sg_safety_open = true;
+    else if (s.sg_safety_open && s.steam_pressure_mpa < sg.sg_safety_reseat_mpa) s.sg_safety_open = false;
     var sg_relief = s.sg_safety_open
       ? sg.sg_safety_flow_max * clip((s.steam_pressure_mpa - sg.sg_safety_reseat_mpa)
           / (sg.sg_safety_open_mpa - sg.sg_safety_reseat_mpa), 0, 1)

@@ -155,8 +155,10 @@ engines keep valve state + flow hydraulics and expose the commands; setpoints ar
 from each engine's config (single source). Per plant:
 
 - **PWR** (pwr_control.js): pressurizer spring safeties — `open_pzr_safety` at 17.13 MPa /
-  reset `close_pzr_safety` below 16.55 on `primary_pressure`; SG code safeties —
-  `open_sg_safety` at 9.31 / `close_sg_safety` below 9.0 on `steam_pressure`.
+  reset `close_pzr_safety` below 16.55 on `primary_pressure`. The SG code safeties left this
+  list with #369 (audit #297 F2): they are engine-native on TRUE steam pressure now, because a
+  spring safety senses nothing, and an instrument-actuated one was defeatable by a single
+  stuck transmitter.
 - **RBMK** (rbmk_control.js): drum relief — `open_relief_valve` at 8.0 MPa /
   `close_relief_valve` below 7.8 on `steam_pressure` (built lazily at `forVersion()`, after
   the config loads).

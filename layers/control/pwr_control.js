@@ -364,6 +364,14 @@
   // and turbine trips are CONTROL decisions reading instruments, so they can be
   // manipulated and failed like every other actuation. Setpoints derive from
   // the engine config (single source — the engine keeps the valve hydraulics).
+  //
+  // NARROWED by #369 (audit #297 F2): the SG CODE SAFETIES are no longer here.
+  // A spring safety senses nothing — it is opened by the fluid itself — so an
+  // instrument-actuated one meant a stuck steam_pressure transmitter removed
+  // the SG's only overpressure protection (measured: MSIV closure to clad
+  // melt). The pop/reseat now lives in pwr_steam_generator.js on true
+  // pressure. The pzr spring safeties below share the structure; they are
+  // slice-2/4 audit scope and deliberately NOT moved in this change.
   var _pz = RD.PWR_CONFIG ? RD.PWR_CONFIG.pressurizer : {};
   var _sg = RD.PWR_CONFIG ? RD.PWR_CONFIG.steam_generator : {};
   var _tb = RD.PWR_CONFIG ? RD.PWR_CONFIG.turbine : {};
@@ -371,9 +379,7 @@
     // Pressurizer spring safety valves: pop / reseat.
     { instrument: 'primary_pressure', direction: 'high', setpoint: _pz.safety_open_mpa || 17.13,
       action: 'open_pzr_safety', reset_below: _pz.safety_reseat_mpa || 16.55, reset_action: 'close_pzr_safety' },
-    // SG code safety valves: pop / reseat (the bottled-SG backstop).
-    { instrument: 'steam_pressure', direction: 'high', setpoint: _sg.sg_safety_open_mpa || 9.31,
-      action: 'open_sg_safety', reset_below: _sg.sg_safety_reseat_mpa || 9.0, reset_action: 'close_sg_safety' },
+    // (SG code safeties were the next entry until #369 — engine-side now, see above.)
     // Turbine protection: low condenser vacuum, and overspeed. reset_below
     // re-arms the latch once the reading recovers (no reset command — a trip
     // is one-way; the operator restores the machine via connect_grid).

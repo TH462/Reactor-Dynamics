@@ -200,7 +200,9 @@ var BASELINES = {
   // injection defeated the plant is lost at 94 min on BOTH engines.
   // THIS LANE READS 50, NOT 52 — CA-10 and CA-11 are the standing #337 cascade and predate
   // this change (verified unmoved by it, same observed values either side).
-  'run_behavior.js':       { code: 0, secs: 56, score: '52pass 0xfail' },
+  // 52 → 53 (2026-08-05, #369): new probe TR-16 — SG safeties are self-actuating on true
+  // pressure; a dead steam_pressure channel must not defeat the lift (audit #297 F2).
+  'run_behavior.js':       { code: 0, secs: 56, score: '53pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -794,7 +796,11 @@ var BASELINES = {
   // 62 -> 66 (2026-08-03, #311 flag ON): Part A iterates the live protection tables, so it
   // picks up the two new trips and two new alarms automatically and asserts each sits
   // strictly inside its instrument's range. Nothing was hand-added here.
-  'run_reachability.js':   { code: 0, score: '66checks 0failed' },
+  // 66 → 65 (2026-08-05, #369): the SG-safety pop left PWR_ACTUATIONS for the engine
+  // (self-actuating on true pressure), so Part A has one fewer instrument-actuation row.
+  // The protection did not shrink — it moved below the instrument layer, where
+  // reachability-through-an-instrument is no longer the right question. TR-16 covers it.
+  'run_reachability.js':   { code: 0, score: '65checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so

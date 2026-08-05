@@ -31,6 +31,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The steam generator's code safety valves can no longer be defeated by a failed
+  steam-pressure transmitter** (#369). A code safety is a spring valve opened by the steam
+  itself; this plant's opened on an instrument reading, so sticking that one channel from the
+  Failures tab and bottling the generator ran an otherwise-survivable MSIV closure to clad
+  melt — 2696 psi on a valve set to pop at 1350. The pop and reseat now act on true pressure
+  in the engine, the healthy-channel behaviour is measurably unchanged, and new behaviour
+  probe TR-16 holds both legs: a dead gauge changes what you read, never whether the valves
+  lift. Manuals Rev 7 (`12 §8.5`) states the mechanism.
 - **The measurement harness can no longer print a clean table for a command the plant rejected**
   (#376). `test/measure_stack.js` used to discard the command result, so a typo'd failure id
   produced fifteen minutes of a perfectly flat plant that read as a real null result — the #297

@@ -975,8 +975,11 @@
       // this window (comp_steam_generator.js SG_WR_LO/HI) to place its narrow gauge.
       sg_wr_lo: 30.0, sg_wr_hi: 75.0,
       feed_pump_tau: 8.0,          // s — feed-pump speed→flow inertia (set_feed_pump_speed) [tune]
-      // SG code safety valves — upstream of the MSIV, above the 8.90 no-load
-      // dump setpoint: the backstop when the SG is bottled (MSIV shut). [tune]
+      // SG code safety valves — upstream of the MSIV, above the steam dump's
+      // steam_dump_setpoint anchor: the backstop when the SG is bottled (MSIV
+      // shut). Self-actuating on TRUE pressure in the engine since #369 — the
+      // pop is not an instrument decision and cannot be failed from the
+      // Failures tab, which is the point. [tune]
       sg_safety_open_mpa: 9.31,    // pop
       sg_safety_reseat_mpa: 9.0,   // reseat
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift

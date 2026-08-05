@@ -83,6 +83,7 @@
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-14': 'probe (LOFW drain rate vs Ginna UFSAR Table 15.2-4 — the SOURCED anchor, #135)',
     'TR-15': 'probe (natural circulation — W ∝ Q^⅓, void-gated; LOOP/SBO survivable, WTSM 3.2.6.3)',
+    'TR-16': 'probe (SG safeties are self-actuating — survive a dead steam_pressure channel, #369)',
     // TR-11: the catalog row ("heaters lose, low-P trip unless isolated") predates
     // the P5 spray capacity cap — measured under the cap the heaters WIN, and the
     // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
@@ -858,6 +859,49 @@
           !/sg_level high/.test(c.tripReason || ''), 'not sg_level high');
         T.checkSanity(ck, a);
         T.checkSanity(ck, b); T.checkSanity(ck, c);   // #376: the two failed-channel legs
+      });
+    },
+
+    /* TR-16 (#369, audit #297 F2) — the SG code safeties are SELF-ACTUATING. A code
+     * safety is a spring device opened by the fluid itself, so no instrument failure
+     * may defeat it. Before #369 the pop was a control-layer actuation reading the
+     * steam_pressure instrument, and this exact evolution — one stuck transmitter,
+     * then a bottled SG — ran to clad melt (2696 psi SG, 3226 °F clad at 40 min).
+     * Leg A pins the healthy-channel behaviour so the mechanism move is shown to
+     * change nothing; leg B fails the channel and asserts the lift POSITIVELY, per
+     * the standing rule that an absence check can pin a non-event. */
+    'TR-16': function () {
+      return test('TR-16 SG safeties are self-actuating — a dead steam_pressure channel cannot defeat them (#369)', function (ck) {
+        var pop = RD.PWR_CONFIG.steam_generator.sg_safety_open_mpa;
+        // ---- leg A: healthy channel. Bottle the SG at power; the safeties lift and hold.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('close_msiv');
+        var tA = a.runUntil(function (ts) { return !!ts.sg_safety_open; }, 300);
+        ck('healthy channel: safeties lift on the bottled SG',
+          tA >= 0 ? '+' + fmt(tA, 0) + ' s' : 'never', tA >= 0, 'within 300 s');
+        a.run(120);
+        ck('and regulate at the relief band, not past it', fmt(a.range('steam_pressure_mpa').max, 2),
+          a.range('steam_pressure_mpa').max < 9.6, '< 9.6 MPa');
+
+        // ---- leg B: the transmitter lies low the whole ride. TR-1f discipline —
+        // prove the lie took, and that truth is genuinely elsewhere, before asserting.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('set_instrument_failure', { instrument_id: 'steam_pressure', mode: 'stuck' });
+        b.run(10);
+        b.cmd('close_msiv');
+        var tB = b.runUntil(function (ts) { return !!ts.sg_safety_open; }, 300);
+        ck('channel stuck far below the pop the whole ride', fmt(b.ins().steam_pressure, 2),
+          b.ins().steam_pressure < pop - 2.0, '< ' + fmt(pop - 2.0, 2) + ' MPa (the lie)');
+        ck('while true pressure is really at the relief band', fmt(b.ts().steam_pressure_mpa, 2),
+          b.ts().steam_pressure_mpa > 8.5, '> 8.5 MPa');
+        ck('dead channel: safeties lift ANYWAY — the valve does not read a gauge',
+          tB >= 0 ? '+' + fmt(tB, 0) + ' s' : 'never', tB >= 0, 'within 300 s');
+        b.run(120);
+        ck('and hold the band there too', fmt(b.range('steam_pressure_mpa').max, 2),
+          b.range('steam_pressure_mpa').max < 9.6, '< 9.6 MPa');
+        T.checkSanity(ck, a); T.checkSanity(ck, b);
       });
     },
 

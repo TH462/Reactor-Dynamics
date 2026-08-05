@@ -741,8 +741,8 @@ close_msiv                                     // isolate main steam (trips a lo
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (B2)
 open_pzr_safety                                // pressurizer spring safeties — issued by the control-layer
 close_pzr_safety                               //   actuation (pop 17.13 / reseat 16.55 MPa); engine keeps hydraulics
-open_sg_safety                                 // SG code safeties — control-layer actuation
-close_sg_safety                                //   (pop 9.31 / reseat 9.0 MPa)
+                                               // (SG code safeties have NO command since #369 — engine-native,
+                                               //  self-actuating on true steam pressure; pop 9.31 / reseat 9.0)
 ```
 **RBMK plant control:**
 ```

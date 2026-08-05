@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 6 (2026-08-04)  
+**Set revision:** 7 (2026-08-05)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,6 +28,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 7 | 2026-08-05 | **The SG code safeties are self-actuating** (#369, audit #297 F2). **12 §8.5** now states the mechanism: the pop and reseat act on the steam pressure itself — a spring valve with no instrument channel in its path — so a failed steam-pressure transmitter changes what the gauge reads, never whether the valves lift. Until this change the pop was an instrument-actuated decision, and the audit measured a single stuck transmitter carrying an otherwise-survivable MSIV closure to clad melt (2696 psi (18.59 MPa) SG, 3226 °F (1774.4 °C) clad at 40 min). Measured after the change: with the same stuck transmitter the safeties lift and regulate at 1308 psi (9.02 MPa), indistinguishable from the healthy channel. Behaviour probe TR-16 pins both legs. | #369 SG safety self-actuation |
 | 6 | 2026-08-04 | **The tube-rupture procedure was missing the step it turns on: SECURE INJECTION before depressurizing** (#348). `07` **PWR-E06** gains immediate action **3a**, and the on-board checklist gains the matching step. The procedure's whole strategy is to close the primary-to-secondary pressure difference, and with high-pressure injection still running that is impossible — injection holds the primary up at pressure faster than the setpoint can ask it down. Measured: walking the Pressure SP 2235 → 1450 psi (15.41 → 10.0 MPa) with injection in cut break flow by **0 %** (0.00585 → 0.00586) and drifted the plant toward water-solid at 106.8 % inventory; securing injection first cut it **84 % in one minute** and 87 % held out to twenty, with the core covered throughout and peak fuel 1279.4 °F (693 °C) against the 2192 °F (1200 °C) guard. This is the trainer's version of the SI-termination step a real tube-rupture procedure carries, and it is there for the same reason: injection and depressurization work against each other. The step's own text tells the operator to check the criteria first — subcooling in hand, heat sink established, core covered — which at that point they are (99.3 °F / 55.2 °C of subcooling, 98.6 % inventory). | #348 SGTR SI termination |
 | 5 | 2026-08-04 | **Pressurizer spray stops working when the plant goes water-solid** (#347). **12 §12.4c** is revised: it previously declared spray's normal-operation authority as an accepted simplification, and measurement showed that was not survivable. Spray controls pressure by condensing the steam bubble; with no bubble there is nothing to condense. Credited anyway, it pinned pressure 164 psi (1.13 MPa) below the code-safety setpoint on a solid reactor coolant system taking safety injection — so the safeties could not lift, nothing arrested the fill, and inventory ran to the numerical ceiling the previous revision exists to keep the plant away from. The operator-visible lesson is sharpened rather than changed: **going solid costs you the pressurizer as a pressure controller** — spray does nothing, the heaters cannot help, and the relief valve becomes your pressure control whether you wanted it or not. The spray valve still opens and its indication still reads open; what is gone is the effect. | #347 solid-plant spray |
 | 4 | 2026-08-04 | **A water-solid reactor coolant system now repressurizes, and the relief valve is what ends the fill** (#346). New declared simplification **12 §12.4c**. Until now the pressurizer had no water-solid regime at all: surplus inventory was discarded at a numerical ceiling, so a solid RCS taking safety injection sat flat at 2232 psi (15.39 MPa) for 45 minutes while emergency injection ran on, with no relief lift and no way for the operator to see the overfill on any gauge but level. The pressurizer steam bubble is the only compressible volume in the RCS; when it is gone an insurge compresses liquid, and the pressure gain steps up to the bulk modulus of water. The fill now arrests where the vessel geometry says it must and cycles the PORV. **§12.4c states what is still bubbled-plant behaviour**: relief, spray and the heaters keep their normal-operation gains, all three of which are optimistic in a solid vessel, so a real solid plant is harder to control than this one. | #346 water-solid RCS |
@@ -61,7 +62,7 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 6 (2026-08-04). A mismatch means a chapter changed with no
+     Sealed at Rev 7 (2026-08-05). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
@@ -74,6 +75,6 @@
      09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md 80aa48d4a2bbeabd
+     12_SIM_PHYSICS.md f5c9b2d3323d99f9
      README.md 9a103035dfb47eca
 -->

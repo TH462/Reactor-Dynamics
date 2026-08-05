@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 6  
+**Revision:** 7  
 
 ---
 
@@ -525,7 +525,7 @@ Main feedwater requires the **condensate pump**, an available **condenser**, and
 
 ### 8.5 The MSIV and SG safeties
 
-**SG code safeties are upstream of the MSIV** (pop 1350 psi (9.31 MPa), reseat 9.0), above the 1194 psi (8.23 MPa) dump setpoint. They are the relief that remains when the generator is bottled.
+**SG code safeties are upstream of the MSIV** (pop 1350 psi (9.31 MPa), reseat 9.0), above the 1194 psi (8.23 MPa) dump setpoint. They are the relief that remains when the generator is bottled — and they are **self-actuating spring valves**: the pop and reseat act on the steam pressure itself, not on an instrument channel, so a failed steam-pressure transmitter changes what the gauge reads, never whether the valves lift.
 
 A **main steam line break is gated by break location.** A break *downstream* of the MSIV is isolable — shutting the valve stops the blowdown dead, and that is the operator's one real lever. A break *upstream*, between the SG and the valve, is on the wrong side of every isolation this single-loop plant owns and blows the generator down regardless.
 

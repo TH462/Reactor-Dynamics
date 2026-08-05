@@ -1051,12 +1051,6 @@
       case 'close_pzr_safety':
         s.safety_open = false;
         break;
-      case 'open_sg_safety':
-        s.sg_safety_open = true;
-        break;
-      case 'close_sg_safety':
-        s.sg_safety_open = false;
-        break;
       case 'open_msiv':
         s.msiv_open = true;
         break;
@@ -1927,9 +1921,11 @@
   function Harness(initial, seed) {
     this.eng = new PWREngine({ initial_state: initial || 'hot_full_power', seed: seed });
     this.dt = 0.02;
-    // Emulate M4's mechanical-protection actuations (relief valves + turbine
+    // Emulate M4's mechanical-protection actuations (pzr relief + turbine
     // trips moved in-stack, 2026-07 ruling) so the engine-only physics tests
     // keep the assembled plant's protections. Reads INSTRUMENTS, like M4.
+    // The SG code safeties are NOT emulated: they are engine-native on true
+    // pressure since #369, so the engine alone already has them.
     this.autoM4 = true;
     this._m4Acc = 0;
   }
@@ -1941,8 +1937,6 @@
     var pz = cfg.pressurizer, sg = cfg.steam_generator, tb = cfg.turbine;
     if (!s.safety_open && ins.primary_pressure > pz.safety_open_mpa) eng.applyCommand({ action: 'open_pzr_safety' });
     else if (s.safety_open && ins.primary_pressure < pz.safety_reseat_mpa) eng.applyCommand({ action: 'close_pzr_safety' });
-    if (!s.sg_safety_open && ins.steam_pressure > sg.sg_safety_open_mpa) eng.applyCommand({ action: 'open_sg_safety' });
-    else if (s.sg_safety_open && ins.steam_pressure < sg.sg_safety_reseat_mpa) eng.applyCommand({ action: 'close_sg_safety' });
     if (!s.turbine_tripped && (ins.condenser_vacuum < tb.vacuum_trip_kpa || ins.turbine_rpm > tb.rpm_overspeed_trip)) {
       eng.applyCommand({ action: 'trip_turbine' });
     }

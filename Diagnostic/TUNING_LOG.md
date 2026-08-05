@@ -66,6 +66,36 @@ Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69
 12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
 new checkSanity legs all pass — no latent authoring bug was hiding behind them.
 
+### #369 — the SG code safeties now open on the steam, not on a gauge
+
+A code safety is a spring-loaded ASME device opened by the fluid it protects against; this
+plant's popped on a control-layer actuation reading the `steam_pressure` INSTRUMENT, so one
+stuck transmitter removed the SG's only overpressure protection. Reproduced on this tree
+before the change (`measure_stack`, full stack, MSIV shut at 2 min, transmitter stuck at 1 min):
+**safeties never lift, SG 2155 psi (14.86 MPa) and climbing at 10 min, clad 980 °F and rising**
+— the audit carried the same run to clad melt at ~30 min.
+
+The pop/reseat moved into `pwr_steam_generator.js` on TRUE `steam_pressure_mpa` (the engine
+already owned the hydraulics; only the decision moved). Same family as the RHR autoclosure and
+the accumulators: mechanical beats command. Removed with it: the `PWR_ACTUATIONS` entry, the
+`open_sg_safety`/`close_sg_safety` command handlers (nothing else issued them; a stray command
+now errors loudly), and the engine harness's autoM4 emulation of the pair. The pzr spring
+safeties share the structure and are slice-2/4 audit scope — deliberately not touched.
+
+Measured after (same two runs): healthy channel **digit-identical** to before at every sample
+(pop between 2–3 min, regulates 1308 psi / 9.02 MPa) — the move itself changed nothing; stuck
+transmitter now **indistinguishable from healthy** (lifts, regulates 9.02, clad falling).
+
+Save-compat: `actuationFired` is positional and restore guards on length, so every pre-#369
+save resets its actuation latches — level-triggered actuations whose condition still stands
+re-fire idempotent commands. Documented at the guard in `control_kernel.js`.
+
+Baselines moved, both deliberate: `run_behavior` **52 → 53 pass** (new probe **TR-16**, both
+legs: healthy and dead channel lift identically, the lie pinned at 5.65 MPa indicated vs 9.27
+true); `run_reachability` **66 → 65 checks** (one fewer instrument-actuation row — the
+protection moved below the instrument layer, TR-16 covers it). Manuals **Rev 7**: `12 §8.5`
+states the mechanism to the player. `run_manual_rev` 15/0.
+
 **Task:** work #357, eight owner-filed diagram items. All eight done; `run_all` **38/38**.
 
 ### THE FIRST THING THAT HAPPENED IS THE LESSON: I worked four items against a stale base

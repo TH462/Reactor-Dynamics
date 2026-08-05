@@ -45,6 +45,28 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-b — #369: a spring safety senses nothing, so nothing it senses can fail
+
+**Decision.** The SG code safety pop/reseat moved from a control-layer actuation reading the
+`steam_pressure` instrument to the engine, on true pressure (`pwr_steam_generator.js`). The
+`open_sg_safety`/`close_sg_safety` commands are gone; the actuation row is gone; the engine
+harness no longer emulates the pair. Probe TR-16 pins both legs (`run_behavior` 53), and
+`run_reachability` drops to 65 — the row it lost moved below the instrument layer.
+
+**Why.** Audit #297 F2, measured: one stuck transmitter carried a survivable MSIV closure to
+clad melt — 2696 psi (18.59 MPa) on a valve set to pop at 1350 psi (9.31 MPa), reachable from
+the shipped Failures tab in two clicks. The 2026-07 "protections in-stack" ruling is for things
+that SENSE — trips, instrumented relief logic — and a code safety is opened by the fluid
+itself; that independence is why it is the backstop. HR1 does not require the old placement
+(the audit's HR11 read of the uncited ruling stands). The teaching lever lost — failing the
+safeties from the Failures tab — is a lever a real plant does not have either.
+
+**Boundary.** The pressurizer spring safeties have the identical structure on
+`primary_pressure` and are NOT moved: slice-2/4 audit scope, wants its own issue and its own
+measurement rather than a "while I'm here" (HR12).
+
+---
+
 ## 2026-08-05-workbench-a — #376: a measurement that cannot fail is not a measurement
 
 **Decision.** `measure_stack` treats a rejected `--cmd` and a `--cmd` scheduled past `--for` as
