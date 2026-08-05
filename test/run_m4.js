@@ -1403,6 +1403,39 @@ T.push(test('Seal-in — a standing feedwater-isolation signal cannot be undone 
   ck('a RETURNING SI signal re-isolates (the re-arm)', String(ti.mfw_isolated), ti.mfw_isolated === true, 'true');
 }));
 
+T.push(test('#370b — a condition can be a NUMERIC threshold on a second instrument (coincidence logic)', function (ck) {
+  // A real ESFAS function fires on one signal only while a SECOND analog signal agrees:
+  // "high steam flow coincident with low-low Tavg or low steam pressure" (WTSM §12.3.5.1,
+  // ML11223A310). Before #370b the kernel's conditions were truthy or membership only, so a
+  // coincidence could not be written down at all. Tested at the PREDICATE, because that is
+  // the claim — the isolation that uses it is TR-12c's subject, and a probe that exercised
+  // both at once could not say which one failed.
+  var s = new Stack('hot_full_power');
+  var L = s.layer;
+
+  ck('fires when the second signal is past the threshold',
+    String(L._evaluateCondition({ instrument: 'steam_pressure', direction: 'low', setpoint: 4.14 }, { steam_pressure: 3.0 })),
+    L._evaluateCondition({ instrument: 'steam_pressure', direction: 'low', setpoint: 4.14 }, { steam_pressure: 3.0 }) === true, 'true');
+  ck('…and does NOT while it is not (the half that makes it a coincidence)',
+    String(L._evaluateCondition({ instrument: 'steam_pressure', direction: 'low', setpoint: 4.14 }, { steam_pressure: 5.65 })),
+    L._evaluateCondition({ instrument: 'steam_pressure', direction: 'low', setpoint: 4.14 }, { steam_pressure: 5.65 }) === false, 'false');
+  ck('the other direction works too',
+    String(L._evaluateCondition({ instrument: 'tavg', direction: 'high', setpoint: 300 }, { tavg: 310 })),
+    L._evaluateCondition({ instrument: 'tavg', direction: 'high', setpoint: 300 }, { tavg: 310 }) === true, 'true');
+
+  // FAILS CLOSED on an absent instrument — the same rule the membership form already had.
+  // A condition that silently evaluated TRUE against a missing gauge would arm protection
+  // on a signal nobody is reading, which is the defect class HR1 exists for.
+  ck('an ABSENT instrument fails closed, not open',
+    String(L._evaluateCondition({ instrument: 'no_such_gauge', direction: 'low', setpoint: 1 }, { steam_pressure: 5.65 })),
+    L._evaluateCondition({ instrument: 'no_such_gauge', direction: 'low', setpoint: 1 }, { steam_pressure: 5.65 }) === false, 'false');
+
+  // The membership form is untouched — the numeric branch is additive, not a replacement.
+  ck('the { instrument, in: [...] } form still works',
+    String(L._evaluateCondition({ instrument: 'plant_mode', in: [4, 5] }, { plant_mode: 5 })),
+    L._evaluateCondition({ instrument: 'plant_mode', in: [4, 5] }, { plant_mode: 5 }) === true, 'true');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

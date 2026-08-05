@@ -1007,7 +1007,11 @@ var BASELINES = {
   // tested re-arm on the P-14 actuation, which carries reset_below: 85 and therefore re-arms
   // itself in a branch that runs FIRST, so deleting the new code left every check green. The
   // leg that discriminates drives the SI isolation, which has no reset_below.
-  'run_m4.js':             { code: 0, score: '39/39 257passed' },
+  // 39/39 257 → 40/40 262 (2026-08-05, #370b): the kernel gained a NUMERIC condition
+  // term so coincidence logic (high steam flow AND low steam pressure) can be written
+  // at all; the new suite pins it at the predicate — both directions, fail-closed on an
+  // absent instrument, and the membership form untouched.
+  'run_m4.js':             { code: 0, score: '40/40 262passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL

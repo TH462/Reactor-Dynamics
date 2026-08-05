@@ -78,6 +78,32 @@ Everything else held: `run_otdt` (its 15 %/30 % breaks are measurement baselines
 `run_campaign`, `run_scenarios`, `run_pwr`. PI-9 still blows to 0.70 MPa against its `< 1.0`, so it
 is not marginal.
 
+### #370b — the kernel could not express a coincidence, and the gate could not have seen one
+
+A real ESFAS function fires on one signal only while a SECOND analog signal agrees. The kernel's
+`_evaluateCondition` understood truthy, negation, array-AND and `{instrument, in:[…]}` membership —
+**no numeric threshold** — so "high steam flow coincident with low steam pressure" was literally
+unwritable. Added one branch to the existing object case: with `direction` present it returns
+`crossed(...)`, the same comparator `_permTest` has always used for block permissives. No new
+vocabulary, and the kernel still names no instrument (HR3). **OR stays two rows** — `pwr_control.js`
+already writes ORs that way, and a second way to say it would be duplicate authority in the config
+language.
+
+**The gate hole is the part worth recording.** `run_hardrules` finds conditions with
+`/condition:\s*'([a-z_0-9]+)'/` — **string form only**. An object-form condition would have been
+silently skipped, so HR1's scan would have reported a confident pass over protection it never
+looked at: the "a scan that reached nothing passes for the wrong reason" shape this repo has been
+bitten by before. Object conditions are HR1-clean by construction (they name an instrument), so the
+new check is an existence assertion — the named instrument must be declared — parsed statically out
+of the config, matching the file's design as a text scanner rather than loading the engine.
+**Injection-verified**: a condition pointed at `no_such_gauge` is named at its file:line
+(`178 → 179 checks, 1 failed`), and the tree restored clean.
+
+`run_m4` **39/39 257 → 40/40 262**: the predicate pinned directly — fires past the threshold, does
+NOT fire short of it (the half that makes it a coincidence), both directions, **fails closed on an
+absent instrument** (a condition evaluating true against a missing gauge would arm protection on a
+signal nobody reads), and the membership form untouched.
+
 ## Session log — 2026-08-05-develop-a (#296 slice-2 fixes: batches 0 and 1 — #362, #365, #366, #368)
 
 **Task:** start working the #296 fix plan (the slice-2 audit findings, #361–#368). Batch 0

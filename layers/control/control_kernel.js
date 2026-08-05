@@ -791,6 +791,17 @@
     // expresses "while in these modes" the one way rather than two.
     if (cond && typeof cond === 'object' && cond.instrument) {
       if (!(cond.instrument in ins)) return false;
+      // { instrument, direction, setpoint } — a NUMERIC THRESHOLD, which is what
+      // COINCIDENCE LOGIC needs: a real ESFAS function fires on one signal only
+      // while a SECOND analog signal also agrees ("high steam flow coincident with
+      // low-low Tavg or low steam pressure", WTSM §12.3.5.1). Until #370b the only
+      // conditions were truthy/membership, so a coincidence was unexpressible and
+      // the isolation could not be written at all. This is the SAME comparator
+      // `_permTest` has always used for block permissives — no new vocabulary, and
+      // the kernel still names no instrument (HR3); the plant supplies the word.
+      // An OR stays TWO ROWS (pwr_control.js already writes ORs that way): a second
+      // way to say it would be duplicate authority in the config language.
+      if (cond.direction) return crossed(ins[cond.instrument], cond.direction, cond.setpoint);
       return !!(cond.in && cond.in.indexOf(ins[cond.instrument]) !== -1);
     }
     if (cond in ins) return !!ins[cond];
