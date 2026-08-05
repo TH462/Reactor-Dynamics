@@ -670,7 +670,12 @@ var BASELINES = {
   // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
   // 94 → 122 on 2026-08-02 (#310): the PWR-N15 cooldown checklist adds 14 controlled steps.
   // 122 -> 132 on 2026-08-03 (#319): PWR-T06 post-trip, 5 controlled steps x 2 checks.
-  'run_manual_controls.js': { code: 0, score: '172checks 0failed' },
+  // 172 -> 174 (2026-08-04, #348): the SGTR procedure gained its SI-termination step, and a
+  // controlled step is 2 checks here (it must name a control the board can actually reveal).
+  // Its STEP_UI entry went in WITH the step, which is why this and verify_manual_follow moved
+  // together — the #224 failure was exactly the opposite, a step added without its entry and
+  // therefore silently UNVERIFIED.
+  'run_manual_controls.js': { code: 0, score: '174checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -1090,7 +1095,14 @@ var BASELINES = {
   // with the flag GENUINELY EARNED — emergency boration runs through `set_auto_setpoint` on
   // the boron_conc channel, an M4-only command, so engine-direct would replay an ATWS with
   // NO RESPONSE at all. One check here (the flag is justified); the stack owns the rest.
-  'run_procedures.js':     { code: 0, secs: 41, score: '29/29 140/140' },
+  // 140 -> 141 (2026-08-04, #348): +1 for pwr_sgtr's new SI-termination step. NET +1, and the
+  // composition is worth knowing: the new step adds an `acc`, and pwr_stuck_porv step 1 went
+  // from one `saw` + one `acc` to TWO `saw`s — even. That step's `acc` was an END-of-hold
+  // subcooling value, and the two layers stopped agreeing on any end-of-hold value at all
+  // (measured t+30 s: -5.2 C engine-direct, +36.6 C stacked, because safety injection catches
+  // the transient under the stack). It passed here and failed under the stack: the #209 class.
+  // `saw` now takes a LIST so a step can carry more than one transient claim.
+  'run_procedures.js':     { code: 0, secs: 41, score: '29/29 141/141' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -1136,7 +1148,10 @@ var BASELINES = {
   // steps later missed it under the stack while still passing engine-direct (where the
   // transient is slower). It lives on the confirm-scram step now, whose hold covers the
   // peak in both layers. A `saw` is only as good as the window it is placed in.
-  'run_procedures_stack.js': { code: 0, secs: 70, score: '29/29 261/261' },
+  // 261 -> 262 (2026-08-04, #348) — same two edits as run_procedures above. This runner is the
+  // one that was RED on pwr_stuck_porv, and it was right to be: it runs the plant the player
+  // actually gets.
+  'run_procedures_stack.js': { code: 0, secs: 70, score: '29/29 262/262' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -1284,7 +1299,8 @@ var BASELINES = {
   // 183 -> 198 on 2026-08-03 (#319): PWR-T06's five controlled steps, 3 checks each. Its
   // STEP_UI entries went in with the procedure, so this number and run_manual_controls moved
   // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
-  'verify_manual_follow.js': { code: 0, secs: 158, score: '258checks', slow: true },
+  // 258 -> 261 (2026-08-04, #348): the SGTR SI-termination step, 3 checks per controlled step.
+  'verify_manual_follow.js': { code: 0, secs: 158, score: '261checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

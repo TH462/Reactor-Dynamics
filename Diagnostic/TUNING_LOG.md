@@ -29,6 +29,88 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-backshop-c (#348 — the last of the #337 cascade, and a fudge band that was hiding a real defect)
+
+**Task:** clear the remaining reds. **`run_all` is 38/38 at baseline** for the first time since
+#337 merged.
+
+### CA-11 — the probe's SAMPLING assumed a plant that no longer exists
+
+#334 asserted break discharge ∝ √Δp by injecting a 20 % break and sampling 2 s later "before the
+RCS has moved". True on the plant #334 was written against; #337 gave inventory a path to pressure
+and that same break now takes the RCS to **8.56 MPa inside those 2 s**, so the probe was reading a
+break that had already throttled itself — 0.0743 against 0.1000 rated, a 26 % miss on a 6 % band.
+Neither change is at fault alone.
+
+Re-rigged, and the claims come out **stronger**: the calibration anchor is a SMALL break sampled on
+the first engine step, where the plant genuinely is still at the reference pressure — **15.346 MPa,
+0.21 % off rated**. Legs B/C ride a full-size break (0.20 parks at 3.87 MPa and never reaches the
+low end at all): worst pointwise error **0.00 %** across 1800 samples, exponent **0.500**, blowdown
+to 1.05 MPa.
+
+**The exponent's two points are the FIRST and LAST of the blowdown now, not samples at fixed
+pressures.** `> 10 MPa` / `< 3 MPa` were coordinates on the old plant; the RCS is below 10 by the
+first callback sample, so `hi` was never captured and the check printed **MISSING** — it had
+stopped asserting anything, and saying so is the only reason it was noticed. A span ratio is
+asserted with it so ends-of-run cannot go vacuous the other way. Injection-verified: a constant law
+reddens **6**, a linear law **4**.
+
+### CA-10 — the fudge band was not tolerating a lag, it was hiding a chattering bistable
+
+The check excluded a 1-point band below the cutoff, explained as tolerating the one-step
+step-7/step-15 coupling lag. Measured, that is not what it was hiding: the interlock had **no reset
+differential**, so on a noisy lagged channel it flickered — **499 of 1425 below-cutoff samples
+(35 %) at full heater power**, in runs of up to 8, all between 16.3 % and 17.0 %. A ~1 MW load
+cycling at the evaluation cadence, the #306 alarm-chatter defect one system over. The band excluded
+it by construction; #337 moved level faster, the chatter reached past the band, and only then did
+anyone look.
+
+**The differential was not invented.** WTSM 10.3 §10.3.4.1 describes ONE bistable at 17 % doing two
+things — cut the heaters AND isolate letdown — and this plant already models the letdown half
+latched at `reset_below: 20.0`. Two outputs of one bistable cannot reset differently. New
+`heater_restore_level_pct: 20.0`, engine-side for the #200/#334 reason (an M4 actuation writing the
+operator's own `set_heater` demand is undone by the next button press).
+
+Chatter **499 → 4**, longest run **8 → 2**, and the 4 are one per re-crossing as ECCS lifts level
+back past 20 %. The check asserts the STREAK now, not the count: a count would pin the number of
+refill cycles, a streak states the claim. Injection-verified — remove the latch, it reddens.
+
+### pwr_sgtr — the procedure was missing the step its own strategy turns on
+
+Step 6 walks the Pressure SP down to close the ΔP. Measured with HPI in: **0 % cut** (0.00585 →
+0.00586), because injection pressurizes the RCS faster than the setpoint asks it down, and the
+plant drifts toward solid at 106.8 % inventory. Securing injection first: **84 % in one minute**,
+87 % held to twenty, inventory 89–95 %, peak fuel 693 °C against the 1200 °C guard.
+
+So the missing step is **SI termination**, which is a real tube-rupture EOP step and is missing for
+the real reason — injection and depressurization work against each other. Added to the checklist,
+to `Manuals/07` PWR-E06 as action 3a (set **Rev 6**), and to `STEP_UI` in the same change (#224's
+rule: a controlled step without its entry is UNVERIFIED, not merely unmapped).
+
+**CLAUDE.md's note that securing injection "DAMAGES the core at that severity" is now WRONG** and
+was corrected here — measured, it does not: the plant stabilises with the core covered. That claim
+predates #346/#347, which is exactly the "re-measure on the tree you are standing in" rule.
+
+### pwr_stuck_porv — the two layers stopped agreeing on any end-of-hold value
+
+Its step 1 closed with `acc: subcooling_c < 20`. Measured at t+30 s: **−5.2 °C engine-direct** with
+the plant boiling, **+36.6 °C under the stack** with safety injection having caught it. It passed
+here and failed there — the #209 class, an acceptance certifying a plant the player never gets.
+
+What holds at BOTH layers is the TRANSIENT: the margin dives to 20.9 °C or below from ~41, and
+inventory dips under nominal, every layer every time. That is also what the step teaches — the leak
+announces itself and then hides again behind the injection that answered it — so **the layer-robust
+form and the honest form are the same sentence**. Both claims are `saw` now, and `saw` takes a LIST
+since this change (both runners, kept identical on purpose). The step's text says the trap out loud:
+*a margin that recovers is not a leak that stopped.*
+
+### Gates
+
+**`run_all` 38/38 at baseline.** `run_behavior` **52/52**, `run_procedures` **29/29 141/141**,
+`run_procedures_stack` **29/29 262/262**, `run_manual_controls` 174, `verify_manual_follow` 261.
+
+---
+
 ## Session log — 2026-08-04-backshop-b (#347 — the TMI-2 scenarios had the accident's causal order backwards)
 
 **Task:** work #347, together with the #337 half of the same cascade, as one pass.

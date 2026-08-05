@@ -2163,27 +2163,46 @@
         b.run(60);
         b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.10 });
         b.cmd('set_heater', { power_pct: 100 });
-        // The band is CUT − 1, not CUT, and the reason is architectural rather than
-        // cosmetic: the interlock reads the PREVIOUS step's indication (instruments are
-        // step 15, autoControl is step 7 — CONTEXT §11 explicit coupling), so on the
-        // single step where level crosses down through the setpoint the heaters are still
-        // acting on an above-cutoff reading. Measured, that is exactly 2 samples out of
-        // 1369, both at 16.3 %. Asserting zero violations AT the setpoint would be pinning
-        // the absence of a one-step lag that the whole engine is built on. The claim worth
-        // making is that SUSTAINED operation below the cutoff delivers no heater power.
-        var bViol = 0, bBelow = 0, bWorst = 0, bWorstLvl = -1;
+        // AT the setpoint, with no fudge band — tightened at #348 once the interlock was
+        // given the reset differential its own sibling already had. The band used to be
+        // CUT − 1 and was explained as tolerating a one-step coupling lag; measured, that was
+        // not what it was hiding. The bistable had NO deadband, so on a noisy lagged channel
+        // it chattered: **499 of 1425 below-cutoff samples (35 %) delivered full heater
+        // power**, in runs of up to 8, every one of them between 16.3 % and 17.0 % — the band
+        // was excluding a real defect by construction, and the defect grew past the band when
+        // #337 changed how fast level moves, which is the only reason anyone looked.
+        //
+        // With the latch (17 % out, 20 % back — `heater_restore_level_pct`) there is nothing
+        // to tolerate, so the claim is now the plain one: below the cutoff, no heater power.
+        var bViol = 0, bBelow = 0, bWorst = 0, bWorstLvl = -1, bStreak = 0, bMaxStreak = 0;
         b.run(1500, function (hh) {
           var lvl = hh.ins().pzr_level, hp = hh.ctl().heater_power_pct || 0;
-          if (lvl != null && lvl < CUT - 1.0) {
+          if (lvl != null && lvl < CUT) {
             bBelow++;
-            if (hp > 0.01) { bViol++; if (hp > bWorst) { bWorst = hp; bWorstLvl = lvl; } }
+            if (hp > 0.01) {
+              bViol++; bStreak++;
+              if (bStreak > bMaxStreak) bMaxStreak = bStreak;
+              if (hp > bWorst) { bWorst = hp; bWorstLvl = lvl; }
+            } else bStreak = 0;
           }
         });
         ck('the run actually went below the cutoff (or leg B proves nothing)',
-          bBelow + ' samples below ' + fmt(CUT - 1.0, 0) + ' %', bBelow > 10, '> 10 samples');
-        ck('heater power is ZERO whenever level is settled below the cutoff, with a 100 % demand standing',
-          bViol + ' violations' + (bViol ? ' (worst ' + fmt(bWorst, 1) + ' % at ' + fmt(bWorstLvl, 1) + ' % level)' : ''),
-          bViol === 0, '0 violations');
+          bBelow + ' samples below ' + fmt(CUT, 0) + ' %', bBelow > 10, '> 10 samples');
+        // THE STREAK, not the count — and the coordinate matters more than the number. What
+        // remains after the latch is the one-step coupling lag the engine is built on:
+        // `autoControl` is step 7 and the instruments are step 15, so on the single step where
+        // the indication first crosses down the heaters are still acting on the previous
+        // reading. It costs exactly ONE sample per crossing, and the plant re-crosses whenever
+        // ECCS lifts level back past the 20 % reset — measured 4 violations in 588 below-cutoff
+        // samples, longest run 2. A BROKEN interlock is not 4 samples, it is all of them.
+        // Asserting the count would pin the number of ECCS refill cycles; asserting the streak
+        // states the claim — no SUSTAINED heater power below the cutoff — and cannot be
+        // satisfied by a plant that simply crosses less often. Pre-latch this read 8.
+        ck('no SUSTAINED heater power below the cutoff, with a 100 % demand standing',
+          bMaxStreak + ' consecutive (of ' + bViol + ' in ' + bBelow + ' below-cutoff samples' +
+          (bViol ? ', worst ' + fmt(bWorst, 1) + ' % at ' + fmt(bWorstLvl, 2) + ' % level' : '') +
+          '; pre-#348 chatter: 8 consecutive, 499 of 1425)',
+          bMaxStreak <= 2, '≤ 2 consecutive (the step-7/step-15 lag)');
         ck('the operator\'s DEMAND is untouched — only delivered power went to zero',
           fmt(b.ctl().heater_power_pct, 1) + ' % delivered, selector ' + String(b.ctl().heater_auto),
           b.ctl().heater_auto === false, 'still in MANUAL where the operator put it');
@@ -2331,30 +2350,62 @@
         // keep the tuning it was arbitrated with — at rated pressure the factor is exactly
         // 1, so the configured size still means its old rate and only the depressurized
         // end of the curve is new. If this drifts, every pre-#334 LOCA number is stale.
-        var SEV = 0.20, RATED = SEV * 0.5;                       // severity · (meta.max/100)
+        //
+        // RE-RIGGED at #348, and the reason is the whole issue. This used to inject a 20 %
+        // break and sample 2 s later "before the RCS has moved" — true on the plant #334 was
+        // written against, where a break held the RCS near nominal. #337 gave inventory a path
+        // to pressure, so a 20 % break now drops the RCS to 8.56 MPa inside those 2 s and the
+        // probe was reading a break that had already throttled itself: 0.0743 against 0.1000
+        // rated, a 26 % miss on a 6 % band. Neither change is at fault alone; the composition
+        // is. The SAMPLING assumed a plant that no longer exists.
+        //
+        // The anchor is a SMALL break sampled on the first engine step, which is the condition
+        // the claim is actually about — the plant genuinely still at the reference pressure.
+        // Measured 15.346 MPa and 0.21 % off rated, where the old rig now reads 26 %: the
+        // claim is stated more strongly than before, not banded to fit.
+        var SEV_A = 0.01, RATED_A = SEV_A * 0.5;                 // severity · (meta.max/100)
+        var aCal = H('hot_full_power');
+        aCal.run(30);
+        aCal.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV_A });
+        aCal.run(0.05);                                          // one 0.02 s step
+        var tcal = aCal.ts();
+        ck('the plant really is still at the reference pressure (or leg A proves nothing)',
+          fmt(tcal.pressure_mpa, 3) + ' MPa vs ' + pRef + ' ref',
+          Math.abs(tcal.pressure_mpa - pRef) < 0.2, 'within 0.2 MPa');
+        ck('at nominal pressure the break flows its RATED size (old calibration intact)',
+          fmt(tcal.leak_flow, 5) + ' vs ' + fmt(RATED_A, 5) + ' rated, at ' + fmt(tcal.pressure_mpa, 2) + ' MPa',
+          Math.abs(tcal.leak_flow - RATED_A) / RATED_A < 0.06, 'within 6 %');
+
+        // Legs B and C ride a FULL-SIZE break. 0.20 no longer spans the blowdown: with the
+        // discharge self-limiting it parks at 3.87 MPa, so the low end the exponent solve and
+        // leg C both need is never reached. Measured, 1.00 runs 15.4 → 1.05 MPa.
+        var SEV = 1.00, RATED = SEV * 0.5;
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV });
-        a.run(2);                                                 // before the RCS has moved
-        var ta = a.ts();
-        ck('at nominal pressure the break flows its RATED size (old calibration intact)',
-          fmt(ta.leak_flow, 4) + ' vs ' + fmt(RATED, 4) + ' rated, at ' + fmt(ta.pressure_mpa, 2) + ' MPa',
-          Math.abs(ta.leak_flow - RATED) / RATED < 0.06, 'within 6 %');
 
         // ---- leg B: THE LAW. Sample the same break across the blowdown and check every
         // sample against √((P−Pb)/(Pref−Pb)) recomputed from that sample's own pressure.
         // This is the whole assertion of item 2 and it is checked pointwise, not at ends.
+        // The two points for the EXPONENT check are the FIRST and LAST of the blowdown, not
+        // samples at fixed pressures (#348). `> 10 MPa` and `< 3 MPa` were reasonable
+        // coordinates on the pre-#337 plant and are not on this one: the RCS is already below
+        // 10 MPa by the first callback sample, so `hi` was never captured and the check went
+        // MISSING — i.e. it stopped asserting anything and said so, which is the only reason
+        // this was noticed. Ends-of-the-run is drift-proof, and the span is asserted below so
+        // it cannot go vacuous the other way.
         var worst = 0, worstAt = 0, n = 0, hi = null, lo = null;
-        a.run(240, function (hh) {
+        a.run(0.05);                                    // one step: the top of the blowdown
+        var tTop = a.ts();
+        if (tTop.leak_flow > 0) hi = { dp: tTop.pressure_mpa - pBack, q: tTop.leak_flow };
+        a.run(900, function (hh) {
           var t = hh.ts();
           if (t.pressure_mpa > pBack + 0.05) {
             var want = RATED * Math.sqrt(Math.max(0, (t.pressure_mpa - pBack) / (pRef - pBack)));
             var err = Math.abs(t.leak_flow - want) / Math.max(want, 1e-6);
             n++;
             if (err > worst) { worst = err; worstAt = t.pressure_mpa; }
-            // Two widely separated operating points for the EXPONENT check below.
-            if (t.pressure_mpa > 10 && t.leak_flow > 0) hi = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
-            if (t.pressure_mpa < 3 && t.leak_flow > 0 && lo === null) lo = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
+            if (t.leak_flow > 0) lo = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
           }
         });
         ck('the blowdown was actually sampled (or leg B proves nothing)',
@@ -2368,9 +2419,13 @@
         // exponent: n = ln(q2/q1) / ln(Δp2/Δp1). A constant break gives n = 0, a linear one
         // n = 1, an orifice n = 0.5. Same idiom as TR-15's cube root (#325), and it is what
         // reddens if someone "simplifies" the law back to either neighbour.
-        ck('the blowdown spanned both ends (needed to solve for the exponent)',
-          hi && lo ? fmt(hi.dp, 2) + ' → ' + fmt(lo.dp, 2) + ' MPa' : 'MISSING',
-          !!(hi && lo), 'a high and a low sample');
+        // A SPAN, not merely two samples. Ends-of-the-run always yields two points, so without
+        // this the exponent solve could be run over a sliver of the curve and mean nothing —
+        // the failure mode the old fixed thresholds had by accident, made impossible on purpose.
+        // Measured 9.6× (9.10 → 0.944 MPa of Δp).
+        ck('the blowdown spanned a wide pressure range (or the exponent solve is meaningless)',
+          hi && lo ? fmt(hi.dp, 2) + ' → ' + fmt(lo.dp, 2) + ' MPa Δp, ' + fmt(hi.dp / lo.dp, 1) + '×' : 'MISSING',
+          !!(hi && lo) && hi.dp / lo.dp > 4, '> 4× span');
         if (hi && lo) {
           var nExp = Math.log(lo.q / hi.q) / Math.log(lo.dp / hi.dp);
           ck('the measured exponent is the ORIFICE one — not constant (0) and not linear (1)',

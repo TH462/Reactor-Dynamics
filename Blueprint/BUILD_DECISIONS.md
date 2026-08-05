@@ -45,6 +45,46 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04-backshop-c — #348: a fudge band, a stale sampling assumption, and a missing EOP step
+
+**Decision.** The 17 % heater cutoff gets the reset differential its own sibling already has
+(`heater_restore_level_pct: 20.0`). `pwr_sgtr` gets the SI-termination step its strategy depends on.
+CA-11's rig and CA-10's check are re-authored, and `saw` takes a list.
+
+**The heater latch is a defect fix, not a refinement, and the check was hiding it.** CA-10 excluded
+a 1-point band below the cutoff, documented as tolerating the step-7/step-15 coupling lag. Measured,
+the interlock had no differential at all and chattered: **499 of 1425 below-cutoff samples (35 %) at
+full heater power**, runs up to 8, all between 16.3 and 17.0 %. The band excluded it *by
+construction*; #337 moved level faster, the chatter reached past the band, and only then did anyone
+look. The differential is this plant's own — WTSM 10.3 §10.3.4.1 has ONE bistable at 17 % doing two
+things, and the letdown half is already `reset_below: 20.0`. Two outputs of one bistable cannot
+reset differently. Now 4 violations, longest run 2, one per ECCS refill cycle; the check asserts the
+STREAK, because a count would pin the number of cycles.
+
+**CA-11 was not wrong about the physics — its SAMPLING assumed a plant that no longer exists.**
+#334 sampled "2 s after injection, before the RCS has moved"; #337 made that false. Re-rigged, the
+claims come out stronger: a small break on the first engine step anchors the calibration at
+**0.21 % off rated** (was a 26 % miss on a 6 % band), and a full-size break gives worst pointwise
+error **0.00 %** over 1800 samples with exponent **0.500**. The exponent's two points are now the
+ends of the blowdown plus an asserted **span ratio**, rather than fixed pressures — those had gone
+MISSING, i.e. the check had stopped asserting anything and said so.
+
+**`pwr_sgtr` was missing SI termination.** Its strategy is to close the ΔP; with injection running
+that cut break flow by **0 %** and drifted the plant toward solid. Securing first: **84 % in one
+minute**. The step is real EOP content, added to the checklist, `Manuals/07` and `STEP_UI` in one
+change. CLAUDE.md's standing note that securing injection "DAMAGES the core at that severity" was
+measured false on this tree and corrected — it predates #346/#347.
+
+**`pwr_stuck_porv` step 1 is the #209 class caught in the act.** Its `acc` was an end-of-hold
+subcooling value, and the layers no longer agree on any end-of-hold value: **−5.2 °C** engine-direct
+against **+36.6 °C** stacked. Only the transient is layer-robust — and it is also what the step
+teaches, so the honest form and the robust form are one sentence. Hence `saw` as a list: a step can
+legitimately carry more than one during-the-hold claim, and this one's are the only claims it has.
+
+**`run_all` 38/38 at baseline** — the first fully green tree since #337 merged.
+
+---
+
 ## 2026-08-04-backshop-b — #347: a scenario that never asked the player the question the accident asked
 
 **Decision.** The TMI-2 beats are RE-ORDERED to match the plant's causal chain, and the flagship's

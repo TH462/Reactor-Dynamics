@@ -236,7 +236,11 @@ function runProcedure(profKey, proc) {
       if (SCRAM_ACTIONS[cmd.action] && scramCmdStep === null) scramCmdStep = curStep;
       issue(cmd);
     }
-    var sawHit = false, ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
+    // `saw` may be ONE predicate or a LIST of them (#348) — see the note in
+    // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
+    // SAME predicates through the stack, so a schema the two disagree on is worse than none.
+    var sawList = st.saw ? (Array.isArray(st.saw) ? st.saw : [st.saw]) : [];
+    var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
     for (var i = 0; i < ticks; i++) {
       if (st.ramp && (i % RAMP_EVERY === 0)) {
         var f = i / Math.max(1, ticks - 1);
@@ -252,14 +256,16 @@ function runProcedure(profKey, proc) {
         slowTicks++;
       }
       observe(s);
-      if (st.saw && pred(s.true_state, st.saw)) sawHit = true;
+      sawList.forEach(function (sw, k) { if (pred(s.true_state, sw)) sawHits[k] = true; });
     }
     // Land the ramp exactly on its last point: `f` never quite reaches 1 when
     // `ticks` is not a multiple of RAMP_EVERY, and a leg that stops a few tenths of
     // a psi short would leave the next leg's `from` wrong.
     if (st.ramp) st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = r.points[r.points.length - 1]; issue(c); });
     if (!lastSnap) lastSnap = svc._assembleWithInstructor();
-    if (st.saw) checks.push({ d: 'step ' + curStep + ' saw ' + st.saw.p + ' ' + st.saw.op + ' ' + st.saw.v, pass: sawHit, obs: sawHit });
+    sawList.forEach(function (sw, k) {
+      checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
+    });
     if (st.acc) {
       var ts = lastSnap.true_state;
       checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(ts, st.acc), obs: ts[st.acc.p] });

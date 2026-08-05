@@ -634,7 +634,7 @@
       prereq: ['At-power operation.'],
       cautions: ['Do NOT trust the PORV position light — it shows the command, not reality.', 'Do NOT throttle High-Pressure Injection (HPI) on a rising Pressurizer level; the level rises even as inventory is lost.'],
       steps: [
-        { text: 'The PORV is stuck open and its indicator reads closed. (Failures tab → inject PORV Stuck Open.) Inventory is leaking. Diagnose it on the SUBCOOLING readout (Power & Reactivity card), which erodes toward zero as coolant is lost.', control: '(observe subcooling)', target: 'recognize the leak',
+        { text: 'The PORV is stuck open and its indicator reads closed. (Failures tab → inject PORV Stuck Open.) Inventory is leaking. Diagnose it on the SUBCOOLING readout (Power & Reactivity card): it drops hard as coolant is lost. Watch what happens next, because it is the trap — emergency injection comes in by itself and the margin comes most of the way BACK, with the leak still running. A margin that recovers is not a leak that stopped.', control: '(observe subcooling)', target: 'recognize the leak',
           // `saw`, not `acc` (#245). The claim this step teaches is that inventory IS
           // being lost — which it is, from injection to about t=8 s. It is not a claim
           // about where inventory sits 30 s later, because by then automatic HPI has
@@ -647,8 +647,22 @@
           // contradicted it, and only ever passed because the harness was starving the
           // run to ~3 s of sim time. The subcooling `acc` below is the diagnosis signal
           // the step's own text points the player at, and it holds at both ends.
+          // BOTH claims are `saw`, and at #348 that stopped being a style choice. The step
+          // used to close with `acc: subcooling_c < 20` — an END-of-hold value — and the two
+          // layers no longer agree on any end-of-hold value at all. Measured at t+30 s:
+          // engine-direct the margin closes at **−5.2 °C** with the plant boiling, and under
+          // the stack safety injection catches it and it closes at **+36.6 °C**, recovered.
+          // The `acc` passed engine-direct and failed under the stack, which is the #209 class
+          // — an acceptance certifying a plant the player never gets.
+          //
+          // What is true at BOTH layers is the TRANSIENT: the margin dives to 20.9 °C or below
+          // (from ~41 °C) and inventory dips under nominal, on every layer, every time. That is
+          // also exactly what the step teaches — the leak announces itself and then hides again
+          // behind the injection that answered it — so the honest form of the claim and the
+          // layer-robust one are the same sentence. `saw` takes a list since this change.
           cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 30,
-          saw: { p: 'core_inventory_pct', op: '<', v: 100 }, acc: { p: 'subcooling_c', op: '<', v: 20 } },
+          saw: [{ p: 'core_inventory_pct', op: '<', v: 100 },
+                { p: 'subcooling_c', op: '<', v: 25 }] },
         { text: 'Also mask the indicator, as at TMI: Failures tab → inject PORV Indicator Stuck Closed. Trust subcooling, not the PORV light.', control: '(observe PORV light vs subcooling)', target: 'trust subcooling, not the light',
           cmd: { action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' }, hold: 10 },
         { text: 'ISOLATE the leak: Relief Valves card → PORV Block Valve → Isolate. This stops the loss even though the PORV itself is stuck open.', control: 'PORV Block Valve', target: 'inventory stops falling',
@@ -880,8 +894,12 @@
           cmd: { action: 'set_hpi', active: true }, hold: 60, acc: { p: 'hpi_active', op: '>', v: 0 } },
         { text: 'Confirm the diagnosis on the PRIMARY side — inventory down, pressurizer level low, subcooling shrinking. Do not go looking for it on the steam generator; on this plant the secondary tells you nothing.', control: 'Plant Pressure', target: 'primary-side signature',
           hold: 60, acc: { p: 'leak_flow', op: '>', v: 0.004 } },
+        { text: 'Secure high-pressure injection. Check your criteria FIRST — subcooling in hand, heat sink established, the core covered — because this is the step that makes the next one possible: injection is holding the primary up at pressure, and while it runs the Pressure SP does nothing at all and the leak does not move.', control: 'HPI/LPI', target: 'HPI secured',
+          note: 'MEASURED, and this is why the step exists (#348). With HPI left in, walking the Pressure SP from 2235 down to 1450 psi (15.41 → 10.0 MPa) cut break flow by 0 % — 0.00585 → 0.00586 — because injection was pressurizing the RCS faster than the setpoint could ask it down; the plant simply drifted toward solid (inventory 106.8 %) at 2053 psi. Securing it first: 0.00585 → 0.00094 in one minute, an 84 % cut, and 0.00076 (87 %) held out to 20 minutes. At the decision point the criteria are genuinely in hand — subcooling 99.3 °F (55.2 °C), inventory 98.6 %, heat sink on AFW. This is the plant\'s version of the SI-termination step every real SGTR procedure carries, and for the same reason: injection and depressurization are working against each other.',
+          cmd: { action: 'set_hpi', active: false }, hold: 60,
+          acc: { p: 'hpi_active', op: '<', v: 1 } },
         { text: 'Now close the pressure difference. Walk the PRESSURE SP down toward secondary pressure — the leak is driven by primary-minus-secondary ΔP, so every psi you come down is break flow you do not lose.', control: 'Pressure SP', target: 'break flow falling',
-          note: 'Measured engine-direct at this severity: closing the gap took primary 2049 → 1430 psi (14.13 → 9.86 MPa) and cut break flow 0.0062 → 0.0041, a 33 % reduction, with subcooling still positive. It creeps back as the secondary blows down and the ΔP reopens — see the closing step. The older figures here (0.0055 → 0.0021, "62 %") were measured before #334 on a trajectory where THE CORE WAS EMPTY — inventory sat at 0.0 % from step 2 through step 5 while the pressurizer heaters held the RCS at 2231 psi (15.38 MPa) and deadheaded the injection. This step now runs on a plant where step 4 actually refills the vessel, so its numbers are not comparable to those.',
+          note: 'Measured at this severity with injection secured at the previous step: closing the gap took primary 2124 → 1245 psi (14.65 → 8.58 MPa) and cut break flow 0.00585 → 0.00094, an 84 % reduction, with subcooling still positive at 19.5 °F (10.8 °C). It settles at 0.00076 (87 % down) and holds there, with the core covered at 89–95 % inventory and peak fuel 1279.4 °F (693 °C) against the 2192 °F (1200 °C) guard. The older figures here (0.0062 → 0.0041, "33 %") were measured with HPI still running, on a plant that could not repressurize on injection (#346) — the walk-down appeared to work only because injection could not push back. It does not work with injection in; it works because injection is secured.',
           cmd: { action: 'set_pressure_setpoint', mpa: 10.0 }, hold: 60,
           acc: { p: 'leak_flow', op: '<', v: 0.005 } },
         obs('Confirm the leak is throttled and the core is still covered. The plant is not fixed — it is stabilized, with the leak held down by the pressure you are holding. A real recovery continues into a cooldown on the intact loop.',

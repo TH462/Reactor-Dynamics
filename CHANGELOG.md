@@ -31,6 +31,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The pressurizer heater cutoff now latches, instead of chattering on its own setpoint**
+  (#348). The 17 % low-level interlock had no reset differential, so on a noisy lagged level
+  channel it did not cut out — it flickered: measured on a small break with a full manual heater
+  demand standing, **499 of 1425 samples below the setpoint (35 %) delivered full heater power**,
+  in runs of up to 8, every one of them between 16.3 % and 17.0 %. That is a ~1 MW load cycling
+  at the evaluation cadence. It cuts out at 17 % and restores at 20 % now — the same differential
+  this plant already models on the **other half of the same bistable**, the letdown isolation, so
+  the plant was inconsistent with itself rather than simplified.
+- **The tube-rupture procedure was missing the step it turns on: SECURE INJECTION before
+  depressurizing** (#348). PWR-E06's whole strategy is to close the primary-to-secondary pressure
+  difference, and with high-pressure injection running that is impossible — injection holds the
+  primary up faster than the setpoint can ask it down. Measured: walking the Pressure SP
+  2235 → 1450 psi (15.41 → 10.0 MPa) with injection in cut break flow by **0 %** and drifted the
+  plant toward water-solid at 106.8 % inventory; securing it first cut break flow **84 % in one
+  minute**, 87 % held out to twenty, core covered throughout. Added to the on-board checklist and
+  to `Manuals/07` as immediate action 3a (set Rev 6) — the trainer's version of the SI-termination
+  step a real tube-rupture procedure carries, and it is there for the same reason.
+- **The stuck-open PORV procedure no longer teaches a margin collapse that does not happen.**
+  Its first step diagnosed on subcooling "eroding toward zero"; with injection catching the
+  transient the margin dives and then comes most of the way **back** while the leak still runs.
+  The step now says that, because it is the trap — a margin that recovers is not a leak that
+  stopped — and its acceptance moved onto the transient, which is the only claim that holds at
+  both layers (measured at t+30 s: **−5.2 °C** engine-direct against **+36.6 °C** with the
+  control layer in).
 - **The Three Mile Island scenarios play again, and they now teach the error in its historical
   order** (#347). The flagship and the TMI‑2 campaign module were both built so that the
   subcooling margin eroded *before* the crew's decision — which was only ever true because the

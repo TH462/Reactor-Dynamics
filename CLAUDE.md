@@ -385,14 +385,13 @@ to read everything.
 
 _Last updated: **2026-08-04**._
 
-**Where the PWR is.** `run_all` is **38 runners**, and **three are below baseline on the `backshop`
-lane** — all of them one HR9 cascade from **#337**, which gave the pressurizer surge an inventory
-driver and left content authored against the old plant stale. `run_behavior` **50/52** (CA-10,
-CA-11) and `run_procedures` **28/29** / `run_procedures_stack` **27/29** (`pwr_sgtr` step 6 — the
-Pressure SP walk-down defeated by HPI). They want their own pass. The TMI-2 half of that same
-cascade is **CLEARED** (#347): `run_campaign` is **51/51** and `run_scenarios` **3/3**. Everything
-else is at baseline — `run_pwr` 36/36, `run_meltdown` 12/12, `run_autoctl` 30/30 included.
-Open backlog is otherwise dominated by RBMK/BWR operability (on hold) plus a handful of UI/doc items.
+**Where the PWR is.** `run_all` is **38 runners, ALL AT BASELINE** — the first fully green tree
+since #337 merged. The whole HR9 cascade that change set off is cleared: its TMI-2 half by **#347**
+(`run_campaign` 51/51, `run_scenarios` 3/3) and the rest by **#348** (`run_behavior` 52/52,
+`run_procedures` 29/29 141/141, `run_procedures_stack` 29/29 262/262). Open backlog is dominated by
+RBMK/BWR operability (on hold) plus a handful of UI/doc items, and **#349** — the pressurizer
+relief capacities are safeties:PORV **28.6×** against a sourced **3.0×**, latent because nothing
+reaches the code safeties in a real transient.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
@@ -406,6 +405,26 @@ anything here that is standing procedure rather than news belongs in the list be
 > rotated out intact and took its "do not trust a 1400 ppm crossover" warning with it, which
 > is the failure this paragraph exists to stop.
 
+- **A FUDGE BAND IN A CHECK WAS HIDING A REAL DEFECT, and a probe that stopped asserting anything
+  said so in its own output (2026-08-04, #348).** The tree is **38/38** for the first time since
+  #337. Three traps, all of them about tests rather than plant. **CA-10 excluded a 1-point band
+  below the 17 % heater cutoff, documented as tolerating the step-7/step-15 coupling lag. That is
+  not what it was hiding**: the interlock had **no reset differential at all** and chattered —
+  **499 of 1425 below-cutoff samples (35 %) at full heater power**, runs up to 8, every one between
+  16.3 % and 17.0 %, i.e. ~1 MW cycling at the evaluation cadence. The band excluded it BY
+  CONSTRUCTION; #337 moved level faster, the chatter reached past the band, and only then did
+  anyone look. **A tolerance band is a claim that what it excludes is harmless — measure that.**
+  The differential was not invented: WTSM 10.3 §10.3.4.1 has ONE bistable at 17 % doing two jobs,
+  and this plant already latched the letdown half at `reset_below: 20.0`, so it was inconsistent
+  with itself. **CA-11 was not wrong about the physics — its SAMPLING assumed a plant that no
+  longer exists**: #334 sampled a break "2 s after injection, before the RCS has moved", which
+  #337 made false, and it read a break that had already throttled itself (26 % miss on a 6 % band).
+  Its exponent check had gone **MISSING** — fixed pressure thresholds of `> 10` / `< 3 MPa` that
+  the plant no longer visits — and printing MISSING rather than passing is the only reason it was
+  caught. **Take the ends of the run and assert the SPAN**, not coordinates. **And a stale claim in
+  THIS FILE was measured false**: it said securing HPI on the SGTR "DAMAGES the core", which it
+  does not — it stabilises the plant and cuts break flow 84 %, so securing injection is now a step
+  in the procedure. It predated #346/#347. Re-measure on the tree you are standing in.
 - **A DECLARED SIMPLIFICATION WAS LOAD-BEARING, and the scenario that found it had the accident's
   causal order backwards (2026-08-04, #347).** Two things, one pass. **First: #346 was not
   finished.** It declared spray's normal-operation authority in a water-solid plant an accepted
@@ -515,11 +534,14 @@ anything here that is standing procedure rather than news belongs in the list be
   out a lost heat sink on relief BLEED. That is a plant question — `porv_flow_max` and the gain are
   a matched fitted pair, so preserving leg E means moving both — and it lands with the re-author.
   `run_procedures`/`run_procedures_stack`
-  (`pwr_sgtr` step 6: the Pressure SP walk-down is now defeated by HPI — with it in, break flow
-  RISES 0.00521 → 0.00602; with it secured, 0.00016, a 97 % cut — but securing it DAMAGES the core
-  at that severity, so the procedure is right and its acceptance is stale) and `run_campaign` (the
+  (`pwr_sgtr` step 6: the Pressure SP walk-down is now defeated by HPI) and `run_campaign` (the
   TMI-2 flagship stalls at `b7_confusion`, where pzr level now reads 29.7 % against the 67.0 % the
-  beat was authored on). Both are the HR9 cascade and both want their own pass.
+  beat was authored on). **ALL OF THIS IS CLEARED as of #347 + #348** — `run_all` is 38/38 — and one
+  claim in it was measured FALSE on the way: this entry said securing HPI at that SGTR severity
+  "DAMAGES the core", and it does not. It stabilises the plant with the core covered (peak fuel
+  693 °C against a 1200 °C guard) and cuts break flow **84 %**, which is why securing injection is
+  now a step in the procedure. The claim predates #346/#347, which is the standing rule landing on
+  this very file: **re-measure on the tree you are standing in.**
 - **A loss of offsite power was TERMINAL, and the doc declaring that departure rated it "slightly
   more severe" (2026-08-04, #325).** *(OWNER RULING, 2026-08-04: "Go with one B")*. With the RCPs
   stopped there was **no core→SG heat path at all** — measured, damage at **30 min**, melt at **45**,
@@ -549,36 +571,22 @@ anything here that is standing procedure rather than news belongs in the list be
   **leg E's 90-minute ride is load-bearing** — trimmed to 60 to save gate time and it went red at
   660 °F still climbing, because circulation distributes heat while it has somewhere to put it).
   `run_contract` **144 → 145**. Manual set **Rev 26**.
-- **The plant had NO CONCEPT OF AC POWER, so everything with a motor ran through a blackout
-  (2026-08-03, #332).** #329 fixed the heaters; this is the general case, and `station_blackout`
-  turned out to be a bare boolean that four call sites *happened* to consult. Five things to know.
-  **Measured** full stack, Mode 3, SBO at 60 s: letdown pinned at **0.0297 for three hours**,
-  charging modulating as if the grid were up, inventory **100 → 76.55 %** — and, not in the issue,
-  the **de-energized ECCS pump filled the RCS to 120 % (solid) in five minutes** when the operator
-  pressed SI. After: **99.99 %**, zero flow, zero discharge head. **The fix is a NAME**:
-  `true_state.ac_available`, derived once in `pwr_engine` step 0a, which carries the roster of what
-  dies and what lives. It is *exactly* `!station_blackout` and the comment says so — the defect was
-  never a wrong formula, it was that the question had no name, so each new load was written without
-  anyone asking. **The EVIDENCE PASS changed the shape of the fix, twice.** WTSM 4.1.3.1
-  (ML11223A214) interlock 2 — *"If the running charging pump(s) is lost, then the letdown orifice
-  isolation valves close"* — so letdown is gated on the **PUMP, not the blackout**, and that one
-  guard caught a **second defect nobody had filed**: grid fully up, secure the charging pump, and
-  letdown drained **100 → 79.5 % in 13 minutes**. Injecting the plausible `ac_available` gate there
-  reddens leg C *and nothing else in the suite*. WTSM 5.7.5 (ML11223A229) supplies the survivors —
-  *"All decay heat removal systems, except the turbine-driven AFW pump, also fail"* — which is why
-  **AFW carries a DO-NOT-GATE note** and CA-8 asserts survivors *positively*: a suite of only
-  everything-went-to-zero checks is satisfied by killing the whole plant on the flag. **Two probe
-  traps worth more than the probe.** `h.range()` spans the WHOLE run including the settle before
-  the injection, so both CVCS checks first failed against their own **pre-event fixture** (0.0300).
-  And **the charging mass-balance guard was UNOBSERVABLE at a green 47/47** — reverting it changed
-  nothing, because in AUTO the law targets `letdown + level_demand`, letdown was already zero on
-  the interlock, and an SBO *repressurizes* so the servo asks for nothing. It needed a latched
-  manual demand **and** an inventory assertion in the OTHER direction (a dead pump that still moves
-  water pushes level UP, and every other check here watches it fall). **Left alone on purpose**:
-  RHR (its guard would be **unreachable**, so unfalsifiable), and the condensate pump / main feed,
-  which are **nonvital** and lost on a plain LOOP too — they want a second, non-1E bus, which is
-  #325's territory. `run_behavior` **46 → 47**, `run_contract` **143 → 144**.
 **Standing procedure — not part of the rotation above; these do not expire.**
+
+- **`true_state.ac_available` is the question every motor load must ask** (rescued from the #332
+  bullet on eviction, 2026-08-04). It is *exactly* `!station_blackout`, and that is the point
+  rather than an apology: the defect was never a wrong formula, it was that the question had **no
+  name**, so four call sites consulted a casualty flag directly and every load added since was
+  written without anyone asking. A plain LOOP **KEEPS** it — the diesels carry the 1E buses — so it
+  is not a synonym for the flag. Two traps from that change that outlive it. **Letdown is gated on
+  the CHARGING PUMP, not the blackout** (WTSM 4.1.3.1, ML11223A214: *"If the running charging
+  pump(s) is lost, then the letdown orifice isolation valves close"*), and that sourced guard caught
+  a second defect nobody had filed — grid fully up, secure the charging pump, and letdown drained
+  **100 → 79.5 % in 13 minutes**. And **AFW carries a DO-NOT-GATE note** (WTSM 5.7.5: a blackout
+  fails *"all decay heat removal systems, except the turbine-driven AFW pump"*), which is why CA-8
+  asserts survivors POSITIVELY: a suite made only of everything-went-to-zero checks is satisfied by
+  killing the whole plant on the flag.
+
 
 - **`power_pct` is FISSION power, not core thermal power** (rescued from the Physics-tab bullet on
   eviction, 2026-08-04). Total core heat is `true_state.core_heat_pct` — published, not re-derived,

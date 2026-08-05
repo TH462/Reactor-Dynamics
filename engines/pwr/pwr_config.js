@@ -438,6 +438,17 @@
       // WTSM 10.3's low level setpoint) and above `pzr_level_lolo` (12 %), so the operator
       // gets the warning first and the CRITICAL alarm is still the one that means trouble.
       heater_cutoff_level_pct: 17.0,
+      // …and the RESET differential, % INDICATED level (#348, 2026-08-04). Also not [tune]:
+      // it is taken from this plant's own model of the OTHER half of the same bistable —
+      // `pzr_level` low 17.0 with `reset_below: 20.0` in `pwr_control.js` PWR_ACTUATIONS,
+      // the letdown isolation. WTSM 10.3 §10.3.4.1 describes ONE bistable at 17 % doing both
+      // jobs, so the two outputs cannot reset differently, and the heater half had no
+      // differential at all. Measured without it, on a 10 % break with a full manual demand
+      // standing: the indicated level dithers across the setpoint and the heater bank flickers
+      // on for **35 % of every sample below 17 %**, in runs of up to 8, all between 16.3 and
+      // 17.0 %. A ~1 MW load cycling at the evaluation cadence — the #306 alarm-chatter defect
+      // one system over. With the latch, zero.
+      heater_restore_level_pct: 20.0,
       // Pressure-balance gains (MPa-rate units) [tune].
       // PORV/safety relief gains are large: the valves vent the pressurizer STEAM
       // space, so a small mass flow has a big pressure effect — which is why the

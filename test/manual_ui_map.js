@@ -164,11 +164,14 @@ var STEP_UI = {
   pwr_turbine_trip: [{ i: 1, view: 'scram', control: 'SCRAM' },
                      { i: 2, view: 'board', control: 'Steam Dump' },
                      { i: 3, view: 'board', control: 'SG Level' }],
+  // i: 5 is the SI-termination step added at #348 — the walk-down at i: 6 does nothing
+  // with injection still in, so the two are one action in two halves.
   pwr_sgtr: [{ i: 1, view: 'scram', control: 'SCRAM' },
              { i: 2, view: 'board', control: 'AFW' },
              { i: 3, view: 'board', control: 'HPI/LPI' },
              { i: 4, view: 'board', control: 'Plant Pressure' },
-             { i: 5, view: 'board', control: 'Pressure SP' }],
+             { i: 5, view: 'board', control: 'HPI/LPI' },
+             { i: 6, view: 'board', control: 'Pressure SP' }],
   pwr_seal_leak: [{ i: 0, view: 'board', control: 'CVCS Inventory Control' },
                   { i: 1, view: 'board', control: 'CVCS Inventory Control' },
                   { i: 2, view: 'board', control: 'Pressurizer Heaters (PZR)' },

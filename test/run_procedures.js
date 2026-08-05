@@ -86,15 +86,23 @@ function runProcedure(prof, proc) {
     if (st.cmd && !st.ramp && !NON_ENGINE_ACTIONS[st.cmd.action]) { var cmd = {}; for (var k in st.cmd) cmd[k] = st.cmd[k];
       if (cmd.group_id === 'control' || cmd.group_id === 'shutdown') cmd.group_id = groupId(e, cmd.group_id);
       e.applyCommand(cmd); }
-    var sawHit = false, n = Math.round((st.hold || 0) / 0.02), every = Math.round(RAMP_EVERY_S / 0.02);
+    // `saw` may be ONE predicate or a LIST of them (#348). A step can legitimately have more
+    // than one claim that is only true DURING the hold — pwr_stuck_porv step 1 has two, and
+    // they are the only claims it has that hold at both layers, because with the control layer
+    // in, safety injection catches the transient and every END-of-hold value diverges (measured:
+    // subcooling closes at −5.2 °C engine-direct and +36.6 °C under the stack).
+    var sawList = st.saw ? (Array.isArray(st.saw) ? st.saw : [st.saw]) : [];
+    var sawHits = [], n = Math.round((st.hold || 0) / 0.02), every = Math.round(RAMP_EVERY_S / 0.02);
     for (var i = 0; i < n; i++) {
       if (st.ramp && (i % every === 0)) {
         var f = i / Math.max(1, n - 1);
         st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = rampValue(r.points, f); e.applyCommand(c); });
       }
-      e.step(0.02); tick(); if (st.saw && pred(e.getTrueState(), st.saw)) sawHit = true; }
+      e.step(0.02); tick(); sawList.forEach(function (sw, k) { if (pred(e.getTrueState(), sw)) sawHits[k] = true; }); }
     if (st.ramp) st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = r.points[r.points.length - 1]; e.applyCommand(c); });
-    if (st.saw) checks.push({ d: 'step ' + (idx + 1) + ' saw ' + st.saw.p + ' ' + st.saw.op + ' ' + st.saw.v, pass: sawHit, obs: sawHit });
+    sawList.forEach(function (sw, k) {
+      checks.push({ d: 'step ' + (idx + 1) + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
+    });
     if (st.acc) { var ts = e.getTrueState(); checks.push({ d: 'step ' + (idx + 1) + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(ts, st.acc), obs: ts[st.acc.p] }); }
   });
   if (proc.guard && proc.guard.never_melted) checks.push({ d: 'guard: never melted', pass: !meltHit, obs: meltHit });

@@ -152,10 +152,32 @@
     //
     // Physical de-energization, not a written demand — the #200/#329 rule. The selector
     // and the operator's % stay where they were put; what goes to zero is delivered power.
+    // IT LATCHES, with the reset differential its own sibling already has (#348). A bistable
+    // with no deadband on a noisy, lagged channel does not cut out — it CHATTERS, and this one
+    // did: measured on a 10 % break with a full manual demand standing, the indicated level
+    // dithers across 17 % and the heater bank flickers on for **35 % of every sample below the
+    // setpoint**, in runs of up to 8, all of them between 16.3 % and 17.0 %. That is ~1 MW of
+    // resistance heating cycling at the evaluation cadence, which is the #306 alarm-chatter
+    // defect one system over.
+    //
+    // The differential is NOT invented here: WTSM 10.3 §10.3.4.1 describes ONE bistable doing
+    // two things at 17 % — cut the heaters AND isolate letdown — and this plant already models
+    // the letdown half latched, `pzr_level` low 17.0 with `reset_below: 20.0` in
+    // PWR_ACTUATIONS. Two outputs of one bistable cannot have different reset behaviour, so
+    // the plant was inconsistent with itself and the heater half is brought into line.
+    //
+    // Engine-side rather than an M4 actuation for the reason #334 records: the only command
+    // that expresses this is `set_heater`, and an actuation writing the operator's own demand
+    // is undone by the next button press (#200). `_heater_cut` is the latch; it reads the
+    // INDICATED level on both edges (HR1), so a stuck transmitter still defeats it — leg D.
     var lvlInd = (s._ins_pzr_level != null) ? s._ins_pzr_level : s.pzr_level_pct;
-    if (lvlInd != null && lvlInd < (p.heater_cutoff_level_pct != null ? p.heater_cutoff_level_pct : 17.0)) {
-      s.heater_power_frac = 0; s._heater_dp_frac = 0;
+    var cutAt = (p.heater_cutoff_level_pct != null) ? p.heater_cutoff_level_pct : 17.0;
+    var restoreAt = (p.heater_restore_level_pct != null) ? p.heater_restore_level_pct : 20.0;
+    if (lvlInd != null) {
+      if (lvlInd < cutAt) s._heater_cut = true;
+      else if (lvlInd >= restoreAt) s._heater_cut = false;
     }
+    if (s._heater_cut) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
     // A spray valve stuck open is mechanical: it beats BOTH the auto controller and
     // any operator demand, the way porv_stuck beats porv_demand in relief() (#200).
     if (s.spray_stuck) { s.spray_flow_frac = 1; }
