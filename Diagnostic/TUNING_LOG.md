@@ -37,6 +37,14 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 baseline** on `7861dbb`; pre-campaign `perturb_sweep --suite=both` snapshot taken before any
 `[tune]` constant moves (#321).
 
+**SCOPE SPLIT mid-campaign** *(OWNER, 2026-08-05, plan-of-record comment on #297)*: the second
+wave — #378, #377, #379 — moved to the **backshop** lane with its own execution plan. This
+campaign keeps the first wave only. The #378 diagnosis in progress here was reverted
+uncommitted and handed off as a measurement comment on #378 (single-knob table: pvTau alone
+kills the ±12-pt cycle at every value 0.5–3 s but grazes TR-1i's sourced duty bands — the
+noise was dithering the plant through the deadband; kd amplifies; supports backshop's
+rung-1-first travel-cancel structure).
+
 ### #376 — the harness that could manufacture a clean slice now dies loudly instead
 
 `test/measure_stack.js` discarded `svc.handleCommand()`'s return, so a REJECTED command printed
@@ -65,6 +73,35 @@ duplicate `'TR-14'` COVERAGE key that silently overwrote the real probe entry.
 Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69, 350 passed,
 12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
 new checkSanity legs all pass — no latent authoring bug was hiding behind them.
+
+### #374 — evidence pass over the six action-gating secondary setpoints (no numbers moved)
+
+**The missing document is in the corpus now**: WTSM §11.2 (ML11223A294, steam dump — cited by
+this repo's most load-bearing secondary constant and absent from all three lanes, flagged twice
+by the audit) fetched via the recorded wayback workaround, text extracted alongside. Verdicts,
+full table on #374; quotes spot-verified against the extracted text:
+
+1. `sg_safety_open_mpa 9.31` / `reseat 9.0` — **PARTLY VERIFIED**: the FUNCTION is sourced
+   (§11.2: the dump *"avoids the lifting of steam generator safety valves following a turbine
+   trip and reactor trip from 100% power"* — met, measured 8.05–8.07 peak) — the VALUES have
+   no primary and the ladder deliberately runs high with the declared 297 °C anchor.
+2. `vacuum_trip_kpa 74.5` — **PARTLY VERIFIED**: mechanism sourced (§7.3 auto-stop oil trips
+   on low vacuum), value nowhere in the corpus.
+3. `afw_start_level 20.0` — **VERIFIED with the declared §8.19 offset**: SG lo-lo is condition
+   1 of the real five (§5.7), one signal for AFW start AND trip in the real design.
+4. SG lo-lo `17.0` — **VERIFIED-WITH-A-GAP**: the real function is sourced at ~30–32 % NR
+   (NUREG-1431); ours is half that. Type-tuning follow-up FILED (gated by TR-14's Ginna band).
+5. `dump_reject_clear_mwe 10.0` — **WRONG IN KIND**: the real arming clears only by MANUAL
+   operator reset (§11.2.2.3 verbatim); no automatic clear exists to source a value for. The
+   auto-clear stands in for a reset control the board lacks — declared-departure candidate.
+   Bonus fact for the §8.21 record: the real ARM is 10 % step / 5 %-per-min ramp — far more
+   sensitive than our 40 % — and the manual reset is what makes that sensitivity survivable.
+6. `afw_flow_frac 0.15` — **UNVERIFIED with the scaling worked**: real = 2×440 + 880 gpm
+   (§5.7) with §19.0's *"about two percent"* per motor-driven pump ⇒ full real AFW ≈ 8 % of
+   rated feed; ours is 1.9× that, for the stated single-SG TR-2 reason.
+
+Six sourced comment blocks landed at the constants (template: the `steam_dump_max` block).
+Numbers did not move; one follow-up issue filed.
 
 ### #375 — the cooldown rate is on the board, and the dump's flow carries its pressure
 

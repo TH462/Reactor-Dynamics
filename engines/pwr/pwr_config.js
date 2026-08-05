@@ -1003,10 +1003,37 @@
       // shut). Self-actuating on TRUE pressure in the engine since #369 — the
       // pop is not an instrument decision and cannot be failed from the
       // Failures tab, which is the point. [tune]
+      //
+      // PROVENANCE (#374 evidence pass, 2026-08-05): the FUNCTION is sourced —
+      // the dump is sized so it *"avoids the lifting of steam generator safety
+      // valves following a turbine trip and reactor trip from 100% power"*
+      // (WTSM §11.2, ML11223A294), and this plant meets that criterion measured:
+      // trip-from-100 % peak 8.05–8.07 MPa against the 9.31 pop, re-confirmed
+      // through the #373 stop-valve change. The VALUES are UNVERIFIED: no
+      // primary in the corpus names an MSSV setting for this ladder, and the
+      // whole secondary deliberately runs high relative to the real class (our
+      // 8.23 no-load anchor vs the real 1092 psig no-load header, WTSM §19.0
+      // ML11223A342 — the declared 297 °C anchor). Internally coherent — anchor
+      // < reseat < pop — but coherence is not a citation.
       sg_safety_open_mpa: 9.31,    // pop
       sg_safety_reseat_mpa: 9.0,   // reseat
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
+      // AFW capacity vs the real plant, worked (#374 evidence pass): the real
+      // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
+      // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0
+      // (ML11223A342) anchors one motor-driven pump at *"only about two percent
+      // of rated feed flow"*, so the full real lineup works out to ≈8 % of
+      // rated feed. Ours is 15 %: UNVERIFIED, a stated scaling choice rather
+      // than a citation — one lumped SG must out-run its own boil-off for the
+      // TR-2 recoverable ride-out, where the real figure splits across four
+      // generators. Its upper bound is honest since #375 (steam generation is
+      // energy- and pressure-limited, not a free boil). [tune]
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
+      // Auto-start CONDITION sourced — SG lo-lo level is condition 1 of the real
+      // five (WTSM §5.7, ML11223A229; full list quoted at the pwr_control lo-lo
+      // trip). The real plant starts AFW from the SAME signal that trips the
+      // reactor; the 3-point offset above our 17 lo-lo is the declared teaching
+      // departure, DESIGN_COMPANION §8.19 (#220, re-verdicted #374).
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
       // AFW LATCHES (owner ruling, #207): the pump demand set by the M4 actuation has no
       // reset, so it stands until the operator secures it — as in a real plant, where AFW
@@ -1114,6 +1141,18 @@
       dump_load_reject_mwe: 40.0,
       // ...and the mismatch below which the latch RESETS: the reactor has come back to
       // meet the load, so the ride-out is over and pressure-mode has it again. [tune]
+      //
+      // DEPARTURE IN KIND, not merely an unsourced number (#374 evidence pass):
+      // the real loss-of-load arming *"remains armed until the loss-of-load
+      // signal is manually reset by a control room operator"* (mode selector to
+      // RESET, spring return — WTSM §11.2, ML11223A294, §11.2.2.3). There is no
+      // automatic clear to source a value FOR; this auto-clear stands in for a
+      // reset control the board does not carry. The real ARM is also far more
+      // sensitive — *"a ramp load decrease at a rate greater than 5%/min, or a
+      // step load decrease of greater than 10%"* — and the operator-reset
+      // design is WHY it can be that sensitive without venting forever, which
+      // is the exact trade the §8.21 ruling (#219) weighed from the other side.
+      // Value UNVERIFIED.
       dump_reject_clear_mwe: 10.0,
     },
 
@@ -1150,7 +1189,11 @@
       // plant does in winter. Nothing in the default lineup reaches it: the reference
       // condition still lands exactly on vacuum_rated.
       vacuum_max_kpa: 99.5,
-      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
+      // Turbine trip on low vacuum: the MECHANISM is sourced — the auto-stop oil
+      // system *"provides turbine trips on low lube oil pressure, low vacuum,
+      // thrust bearing wear, and overspeed"* (WTSM §7.3, ML11223A247) — the
+      // VALUE is not: no setpoint anywhere in the corpus. UNVERIFIED (#374).
+      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer) [tune]
       mwe_rated: 100.0,            // MWe — THIS PLANT'S RATING (identity below; feel-plan P6) [tune]
       // OPERATOR LOAD RATE, % of rated per minute. Real turbine control is rate-limited
       // (WTSM 11.3, ML11223A295: the operator sets a target and a rate on a thumbwheel and

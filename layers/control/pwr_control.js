@@ -41,6 +41,13 @@
     // falling" window that a single-setpoint plant does not give a lone trainee. Our
     // other two starts DO match the real list — loss of main feed above P-9 is their
     // condition 3, and the SI start is their condition 4.
+    //
+    // The VALUE has a sourced real counterpart it departs from (#374 evidence
+    // pass): NUREG-1431 Rev 4 puts the real lo-lo function at ~30–32 % of
+    // narrow-range span (Tables 3.3.1-1 / 3.3.2-1, ML12100A228 — the #220
+    // corpus), against 17 % NR here. Moving it is type-tuning work sitting
+    // directly under TR-14's SOURCED Ginna drain band (25–60 s to trip) — split
+    // out with a perturb_sweep and a TR-14 re-measure, never adjusted in place.
     { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
     // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
     // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a
