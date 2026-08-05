@@ -1469,7 +1469,15 @@
     physics_failures: {
       ROD_RUNAWAY_RATE_MAX: 24.0,  // steps/s (fine steps — same fraction-of-travel/s as 6.0 on 228)
       STUCK_ROD_MAX_FRAC: 0.4,     // fraction of rod_worth_total
-      STEAM_BREAK_RATE: 1.5,       // MPa/s at full break size
+      // Break strength, still expressed as its RATED-PRESSURE dP/dt equivalent so the
+      // number means what it always meant — but since #370a the break is a MASS FLOW,
+      // not a pressure sink: pwr_steam_generator divides this by K_steam_pressure to
+      // get the flow that produces exactly this dP/dt through the pressure integral,
+      // then scales it by upstream pressure. Verified byte-identical to the old sink
+      // across {downstream, upstream} × {0.15, 0.30, 0.80} × {MSIV open, shut} when
+      // the flow is fed only to the pressure integral. Change this to change break
+      // strength; do not re-add a separate sink. [tune]
+      STEAM_BREAK_RATE: 1.5,       // MPa/s at full break size, at rated pressure
       DEFAULT_DRIFT_RATE: 0.5,     // instrument drift units/s
       DEFAULT_NOISE_SCALE: 5.0,    // noisy-mode sigma multiplier
     },

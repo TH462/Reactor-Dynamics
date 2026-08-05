@@ -45,6 +45,29 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-f — #370a: the break that removed no mass, and the lane that started green on purpose
+
+**Decision.** The main steam line break becomes a MASS FLOW in `steam_out` instead of a `dP/dt`
+sink applied after the pressure integral. Flow = `STEAM_BREAK_RATE / K_steam_pressure × size ×
+min(P/P_rated, 1)`, so `STEAM_BREAK_RATE` stays the single knob and the equivalence is structural
+rather than a comment. The break now drains the SG, is visible to the feed controller, and — the
+reason this had to come first — makes `sg_steam_flow` RISE during a break instead of falling.
+
+**Why the order matters.** Automatic steam line isolation reads high steam flow. On the old plant
+that signal moved the *wrong way* during the casualty it exists to detect, so building the
+isolation first would have been protection reading a fabricated relationship — the #220/§8.24
+defect class wearing a new costume.
+
+**Proof, not assertion.** A 12-case × 7-sample matrix is byte-identical when the new flow feeds
+only the pressure integral, which isolates the arithmetic from the new couplings. The divergence
+that remains is the couplings themselves, measured and tabled in TUNING_LOG.
+
+**Lane start.** Merged `7a40b9a` (last green develop) deliberately, not `develop`'s tip, which
+carries another session's in-flight #364 work at 5 red runners across the four files this campaign
+edits most. Recorded here so the eventual merge sees a deliberate choice rather than a stale lane.
+
+---
+
 ## 2026-08-05-develop-c — #367: buoyancy is not a pump, but a coasting rotor is
 
 Batch 2b of the #296 fix plan.

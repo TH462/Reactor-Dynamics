@@ -1676,8 +1676,21 @@
         ck('UPSTREAM: the same command changes nothing — the break is on the wrong side',
           fmt(u.atClose, 2) + ' → ' + fmt(u.t.steam_pressure_mpa, 2) + ' MPa',
           u.t.steam_pressure_mpa < 1.0, '< 1.0 (still blown down)');
-        ck('so the plant overcools regardless of the operator',
-          fmt(u.t.tavg_c, 1), u.t.tavg_c < 150, '< 150 °C');
+        // RE-ANCHORED 2026-08-05 (#370a) from an absolute `< 150 °C` to the CONTRAST,
+        // which is what the line actually claims. The old threshold was measuring the
+        // depth of a blowdown produced by a break that passed RATED mass flow at the
+        // 0.1 MPa floor — the flat-sink defect #370a removed (the break's flow now
+        // dies with the pressure that would have to drive it, exactly as the dump's
+        // did at #375). Measured after: upstream still overcools 304 → 166 °C with
+        // the MSIV shut, against 305 °C for the isolated downstream break — a 139 °C
+        // spread. The claim "the operator's command changed nothing" is tested by
+        // that spread, not by how far an unphysical break could drag the plant, and
+        // the comparative form cannot rot when either leg's absolute depth moves.
+        ck('so the plant overcools regardless of the operator (vs the isolated leg)',
+          fmt(u.t.tavg_c, 1) + ' vs ' + fmt(d.t.tavg_c, 1) + ' °C isolated',
+          d.t.tavg_c - u.t.tavg_c > 100, '> 100 °C colder than the isolated break');
+        ck('…and it is a deep overcool in absolute terms too',
+          fmt(u.t.tavg_c, 1), u.t.tavg_c < 200, '< 200 °C (measured 166.3; was < 150 on the flat-sink break)');
         ck('neither leg damages fuel', String(!!d.t.fuel_damaged) + ' / ' + String(!!u.t.fuel_damaged),
           !d.t.fuel_damaged && !u.t.fuel_damaged, 'false / false');
       });

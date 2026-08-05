@@ -29,6 +29,55 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-workbench-f (#370/#371 — building the two deferred systems)
+
+**Task:** the owner reversed the #370/#371 deferrals — build automatic main steam line isolation
+and atmospheric dump valves — and handed workbench the remaining follow-ups (#377, #378, #379,
+#380, the dump-arm declaration). Lane started at **`7a40b9a`** (the Alpha 1.1.0 release merge),
+**not** `develop`'s tip: `9063a11`/`4a67d88` are another session's in-flight #364 decay-heat refit
+carrying **5 red runners**, and they touch the same four files this campaign edits most, so merging
+the tip would have imported reds and made every baseline movement here unattributable. Zero point
+verified 38/38 before any edit.
+
+### #370a — the steam break is a MASS FLOW now, and the conversion is proven exact
+
+The break was a bare `dP/dt` sink applied *after* the pressure integral: it removed no steam and no
+water. It never entered `steam_out`, so the SG did not drain, the feed controller never saw it, and
+`sg_steam_flow` — the instrument a real plant isolates on — **fell** during a break. Building the
+isolation on that signal would have been protection reading a number that moves the wrong way, so
+this had to come first.
+
+**The calibration is structural, not a comment.** The pressure integral is
+`(generation − steam_out) × K_steam_pressure`, so a flow `F` produces `−K_steam_pressure·F` MPa/s;
+dividing `STEAM_BREAK_RATE` (1.5) by `K_steam_pressure` (2.0) reproduces the old sink identically
+and keeps one knob for break strength.
+
+**Proven, not asserted.** A 12-case matrix — {downstream, upstream} × {0.15, 0.30, 0.80} ×
+{MSIV open, shut}, sampled at t+1/5/10/30/60/120/300 s on pressure, both level ranges, Tavg, total
+steam draw and feed flow, plus trip time and reason. Feeding the new flow to the pressure integral
+alone (i.e. reproducing the old coupling exactly) is **byte-identical across all 84 sample rows**.
+That isolates the arithmetic from the new physics and is the whole proof.
+
+**What the full coupling then changes, measured:**
+- **The SG drains on a break**, which it never did before. 15 % break: level dips 65 → 63.9 % and
+  recovers as feed chases to 1.08 rated. 80 % break: narrow level to 0 %, wide to 15 %.
+- **The blowdown tail is shallower and honest.** The flow carries upstream pressure (the same
+  `min(P/P_rated, 1)` factor #375 gave the dump, and for the same reason — a flat term would
+  re-introduce the defect that commit removed). 80 % downstream at t+300: **0.89 → 1.88 MPa**. The
+  old sink subtracted 1.5 MPa/s at 0.2 MPa as readily as at 5.65; converting to mass is what made
+  that visible.
+- **One probe moved and it was the right one.** TR-12b's upstream leg asserted Tavg `< 150 °C` —
+  a threshold measuring the depth of a blowdown driven by rated mass flow at the 0.1 MPa floor.
+  Measured now: the plant still overcools **304 → 166.3 °C with the MSIV shut**, against 305.4 °C
+  for the isolated downstream leg. The line's *claim* is that the operator's command changed
+  nothing, so it now asserts the **139 °C spread** between the two legs — a form that cannot rot
+  when either leg's absolute depth moves — with the absolute bound kept and re-anchored, both
+  reasons stated in place.
+
+Everything else held: `run_otdt` (its 15 %/30 % breaks are measurement baselines), `run_ops`,
+`run_campaign`, `run_scenarios`, `run_pwr`. PI-9 still blows to 0.70 MPa against its `< 1.0`, so it
+is not marginal.
+
 ## Session log — 2026-08-05-develop-a (#296 slice-2 fixes: batches 0 and 1 — #362, #365, #366, #368)
 
 **Task:** start working the #296 fix plan (the slice-2 audit findings, #361–#368). Batch 0
