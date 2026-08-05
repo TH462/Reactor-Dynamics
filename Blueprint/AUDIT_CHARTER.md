@@ -27,7 +27,12 @@ protecting, so on your **first turn**, before any source file, state on the slic
 memory index. Ask it that way round: the Read tool can open `CLAUDE.md` at any time, so *"can I see
 it"* answers a different question. **A glob that failed to match looks exactly like a clean audit** —
 this self-report is the only evidence that it did not. The procedure is also saved as the
-`audit-slice` skill.
+`audit-slice` skill (with `audit-prep` before it and `audit-close` after — both run in an ordinary
+session, not in yours).
+
+**Your session is a fresh window, never a `/clear`** — measured 2026-08-05: `/clear` fires
+`SessionStart`, and this repo's lane hook then prints WIP-tagged issue *titles* into the fresh
+context. `/clear` clears the conversation, not the always-on layer.
 
 This file is the **operating half** of that document with the **diagnosis removed**: how the repo is
 wired, how to run it, how to measure it, and which rules bind you. It deliberately contains **no

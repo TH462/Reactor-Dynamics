@@ -36,12 +36,46 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 not be run from this session: `CLAUDE.md` was in context from the first turn, so RoE 1 was already
 defeated here. Built the launch instead and handed the slice off.
 
-**The finding that made this worth a session.** #297's close recommended a wrapper because its own
-two runs *"were launched bare"*. Checking the rest of the record: slice 1 predates the mechanism,
-and those two are slices 2 and 3. **`.claude/settings.audit.json` has never once been used.** It
-was added 2026-08-04 and every slice run to date was primed. Its own caveat — *"a glob that failed
-to match looks exactly like a clean audit"* — anticipated the wrong step; the failure was one
-earlier, at a flag nobody typed.
+**CORRECTION, same session — the framing above was wrong and is corrected here rather than
+rewritten, because the wrong version was committed (`b1292e0`) and posted to #221, #297 and #382.**
+
+What I first wrote: *"`.claude/settings.audit.json` has never once been used; every slice run to
+date was primed."* **False.** Read against the actual comment threads:
+
+| slice | independence | how |
+|---|---|---|
+| **1 (#295)**, 2026-08-01 | **partial** | predates the mechanism; ran under manual *directed blinding* (auditor denied `Diagnostic/`, `CHANGELOG`, `BUILD_DECISIONS`, `SOP`, issue history). `CLAUDE.md` + memory auto-loaded. |
+| **2 (#296)**, 2026-08-05 | **CLEAN — verified** | attempt 1 opened primed, was caught **by the first-turn check**, aborted **before any finding**, nothing carried forward. Attempt 2: *"First-turn priming check: PASSED. No `CLAUDE.md` Recent themes, no memory index."* |
+| **3 (#297)**, 2026-08-05 | **clean, by accident of tree** | opened primed at 09:23 Z, stopped at the first-turn check, no findings. The findings run (09:51 Z) and follow-up (10:23 Z) were *"launched bare"* — no flag — but `RD_workbench/.claude/settings.local.json` was created 09:29 Z and carries the same excludes, loaded by default. |
+
+**So the exclusion mechanism HAS been exercised and HAS been verified working** — twice, by the
+charter's own first-turn check. What has never worked is the **`--settings` flag route**: every
+successful run got there through `settings.local.json` layering instead. *"Launched bare"* in #297
+means *without the flag*, and I read it as *primed*. Those are different facts and the auditor's
+own first-turn check is what distinguishes them.
+
+**The thing I should have checked first, and did not:** `.claude/settings.local.json` **in this very
+tree**. It carries the 8 excludes and `autoMemoryEnabled: false`, and its own `_comment` says
+*"Loaded BY DEFAULT — no `--settings` flag — so every session started in this tree is unprimed and a
+`/clear` is enough to begin a slice."* Present in **backshop and workbench**; reverted in develop.
+So `CLAUDE.md` was **not** auto-loaded into this session — I read it with the Read tool on turn 1
+and then reasoned as though the harness had handed it to me. **I primed myself and called it the
+harness.** A session cannot establish its own priming state by introspection; that is the whole
+reason the first-turn check is a *question asked of the harness*, and I never asked it.
+
+**What survives unchanged:** the `/clear` leak is real and independently measured — this
+conversation opened with a `/clear`, `SessionStart` fired, and `tools/hook_lane_status.js` printed
+`#361 … PWR: a large-break LOCA walks inventory to the 120 % mass_ma…` into the fresh context. That
+is a plant defect by name, in a tree where the settings exclusion IS in force. **The hook is now the
+binding leak, not the settings** — and #296 already filed that as a suggested follow-up
+(*"make the priming state observable … have `tools/hook_lane_status.js` print whether `CLAUDE.md`
+exclusion is in force"*), never opened as an issue.
+
+**And a live hazard nobody is tracking:** while `settings.local.json` sits in backshop and
+workbench, **ordinary non-audit work in both lanes runs without `CLAUDE.md`**. #296 wrote *"This
+must not stay"* and applied a revert note — `inbox/REVERT_AUDIT_SETTINGS.md`, which exists **only in
+`Reactor_Dynamics/inbox/`**, the one tree where the file was actually reverted. Two lanes are
+silently unoriented and the reminder is in the third. Owner's call, filed as #383.
 
 **What landed** (`tools/audit.cmd`, `tools/audit.sh`, `tools/audit_preflight.js`,
 `.claude/skills/audit-slice/SKILL.md`):
@@ -90,6 +124,36 @@ It is inside the blast radius of the rule it enforces. It also states the limit 
 cannot launch a session with different settings** — it loads into the session already running,
 which in the primed branch is exactly the one to avoid. Wrapper launches, skill procedures,
 self-check verifies; none substitutes for another.
+
+**A `/clear`-based workflow was proposed and measured down** *(OWNER, 2026-08-05: "Why not make a
+skill that sets things up and then I can clear that conversation… We could have another skill that
+restores the work tree. What are your thoughts on this?" — then, on the recommendation below:
+"Let's do it your way.")*. The proposal was: a prep skill moves `CLAUDE.md` aside, `/clear`, run the
+audit in the same window, a restore skill puts it back. **`/clear` does not clear the always-on
+layer, and this conversation is the measurement** — it opened with a `/clear` and the `SessionStart`
+hook fired immediately after, printing `#361 [status-wip-develop] PWR: a large-break LOCA walks
+inventory to the 120 % mass_ma…` into the fresh context. A plant defect, by name, before any file
+was read. `/clear` clears the conversation history and nothing else.
+
+Three channels, and a skill can only close one and a half of them: conversation history (`/clear`
+handles it), the `SessionStart` hook (a skill could disable it), `CLAUDE.md` auto-load (a skill
+could move the file) — and **`autoMemoryEnabled` is process-level, so no skill can change it
+mid-session**. Moving `CLAUDE.md` also costs three new failure modes: it is TRACKED, so the audit
+tree goes dirty in a way the lane sweep reads as a live agent and a commit could swallow the
+deletion; the restore depends on a *later* conversation running a skill, with nothing linking them
+and nothing to put the file back if the window dies; and it re-opens a design the owner himself
+proposed on 2026-08-04 and that was ruled against then in favour of the settings exclusion.
+
+**Settled: keep the wrapper as the launch (one new window, closes all three channels, no state to
+restore) and put the skills around it, not inside it.** `audit-prep` does the two things only a
+primed session can do — refresh the slice's SUBJECTS TO TEST list against what is always-on *today*,
+and record the commit + `run_all` state the findings will be measured against, so a pre-existing red
+is not filed as a finding. `audit-close` clears the tag, triages findings into issues with the four
+axes, and maintains **the convergence table #221 asks for and nothing has ever tracked** (*"if slice
+N's findings are consistently less severe than slice N−1's, the audit is converging… If not, stop
+and re-scope"*) — including whether each slice was actually independent, read off the auditor's
+self-check comment. A slice with no self-check counts as primed, because inferring it was fine from
+a thorough-looking slice is the exact inference the mechanism replaces.
 
 **Not done here, by construction:** slice 9 itself. Backshop's second wave (#378 → #377 → #379)
 stays queued; #378's anchors were re-verified against `7a40b9a` in passing — bodies unchanged since

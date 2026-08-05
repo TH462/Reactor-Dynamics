@@ -31,6 +31,10 @@ conclusion, and the whole programme's value is that the auditor never had one.
 
 ## Branch A — you are PRIMED. You are not the auditor; you are the launcher.
 
+**If the slice has not been prepped, use the `audit-prep` skill instead** — it covers this branch
+and adds the two steps only a primed session can do: refreshing the slice's SUBJECTS TO TEST list,
+and recording the tree the findings will be measured against. What follows is the short form.
+
 1. Run the preflight and print the launch line:
 
    ```
@@ -106,6 +110,9 @@ Findings go as comments on the slice issue in the charter's finding format — f
 defect, evidence, severity by consequence, the rule it violates if any, and a one-line repro. Rank
 most severe first. **A finding whose measurement cannot be re-run is `INFERRED` wearing the wrong
 tag.** Real defects then get their own issues, linked back.
+
+Filing the issues, clearing the lane tag and recording the slice's yield are the `audit-close`
+skill — and that one is fine to run in an ordinary primed session, because the auditing is over.
 
 ---
 
