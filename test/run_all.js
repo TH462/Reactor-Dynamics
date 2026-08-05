@@ -586,7 +586,10 @@ var BASELINES = {
   // five (that eviction is itself worth −1 or so), never during — a tree with markers still in it
   // holds both sides' citations twice over and counts the duplicates. This entry has now warned
   // about hand-reconciling this number seven times.
-  'run_hardrules.js':      { code: 0, score: '177checks 0failed' },
+  // 177 → 178 (2026-08-05, #370): the §8.28 deferral row carries a new dated owner
+  // quote and the HR11 citation-format scan counts every one it tracks — by design,
+  // so a directive added with the count unmoved would read as NOT LOOKED AT.
+  'run_hardrules.js':      { code: 0, score: '178checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

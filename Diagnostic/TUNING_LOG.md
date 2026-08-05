@@ -74,6 +74,26 @@ Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69
 12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
 new checkSanity legs all pass — no latent authoring bug was hiding behind them.
 
+### Gates — campaign close
+
+Full `run_all`: **38 runners at baseline** on the lane, with every moved baseline recorded in
+`test/run_all.js` beside a dated comment and mirrored in CLAUDE.md's status:
+
+- `run_behavior` 52 → **53** (#369: TR-16, the failed-channel safety-lift pin)
+- `run_reachability` 66 → 65 (#369: one actuation row moved below the instrument layer) →
+  **68** (#375: two rate alarms + the B4 dynamic leg)
+- `run_contract` 148 → 149 (#373: `stop_valve_pct`) → **151** (#375: per-alarm coverage)
+- `run_ops` **58/69** — the tracked expected red, byte-identical throughout; nothing re-banded
+- Manuals Rev 6 → **11** (one revision per manual-touching issue, every row chapter-qualified)
+
+Probes re-specified during the campaign, all declared in place: TR-1b (two-sided burst pin),
+TR-2 (post-burst scope), TR-1g (trailing mean), otdt 3b (one-sided never-worse), the e2e reset
+re-time, the e2e-ui steam-flow floor, board_check's leg-ΔT quantization band. Closing
+`perturb_sweep --suite=both` snapshot taken against the pre-campaign one (scratchpad,
+presweep/sweep_final). Seven commits: 245dad8 (#376), 5db3972 (#369), d35efa4 (#373),
+44fd89d (#372), 65224f0 (#375), ef5efad (#374), 90cc757 (#370/#371 docs). End state:
+committed on workbench, gated, waiting — the merge is the owner's call.
+
 ### #370/#371 — the two deferred gaps are declared, not implied away (docs only)
 
 Per the owner's scope ruling: both features stay deferred; the record stops overstating the

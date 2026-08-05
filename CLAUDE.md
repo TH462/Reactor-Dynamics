@@ -384,7 +384,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-04**._
+_Last updated: **2026-08-05** (workbench lane)._
 
 **Where the PWR is.** `run_all` is **38 runners, ALL AT BASELINE on the fully merged tree** —
 all three lanes in, and the first fully green `develop` since #337. The whole HR9 cascade that
@@ -394,6 +394,17 @@ and the rest by **#348** (`run_behavior` 52/52, `run_procedures` 29/29 141/141,
 backlog is dominated by RBMK/BWR operability (on hold) plus a handful of UI/doc items, and
 **#349** — the pressurizer relief capacities are safeties:PORV **28.6×** against a sourced
 **3.0×**, latent because nothing reaches the code safeties in a real transient.
+
+**On the workbench lane (2026-08-05, unmerged): the #297 audit's first wave.** #376 (the
+measurement harness dies loudly on rejected commands), #369 (SG safeties self-actuating on true
+pressure — a dead transmitter can no longer carry an MSIV closure to clad melt), #373 (turbine
+stop valves — the trip burst is real), #372 (feedwater enthalpy — overfeed overcools, AFW
+removes heat, follow governor re-closed), #375 (cooldown-rate meter + ±100 °F/hr annunciators;
+dump mass flow carries its pressure), #374 (evidence pass, WTSM §11.2 fetched into the corpus,
+#380 filed), #370/#371 declared-departure rows. Lane baselines: `run_behavior` **53**,
+`run_reachability` **68**, `run_contract` **151**, Manuals **Rev 11**; `run_ops` tracked red
+**58/69** untouched. The second wave (#377/#378/#379) is **backshop's**, per the plan of record
+on #297.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
