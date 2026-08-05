@@ -49,7 +49,7 @@
     var h = env.h;
     var gid = env.uid('rv');
     var ids = {
-      steel: gid + 'Steel', cflow: gid + 'Cflow', pool: gid + 'Pool', strip: gid + 'Strip',
+      steel: gid + 'Steel', cflow: gid + 'Cflow', cdash: gid + 'Cdash', pool: gid + 'Pool', strip: gid + 'Strip',
       fuel: gid + 'Fuel', ctrl: gid + 'Ctrl', coreClip: gid + 'CoreClip',
       poolClip: gid + 'PoolClip', stripClip: gid + 'StripClip', glow: gid + 'Glow', glow2: gid + 'Glow2',
       cher: gid + 'Cher', cherCore: gid + 'CherCore'
@@ -65,6 +65,12 @@
         h('stop', { offset: '0', stopColor: '#2a3844' }), h('stop', { offset: '1', stopColor: '#0c141c' })),
       h('linearGradient', { id: ids.cflow, gradientUnits: 'userSpaceOnUse', x1: '0', y1: coreBot, x2: '0', y2: coreTop },
         R.cflow0 = h('stop', { offset: '0' }), R.cflow1 = h('stop', { offset: '0.5' }), R.cflow2 = h('stop', { offset: '1' })),
+      // The core upflow DASH runs the same inlet→exit temperature sweep as the channel it
+      // sits in, but in the darker of the two colours — the pipes' convention since #350
+      // item 20. It needs its own gradient because the channel fill under it uses the
+      // BRIGHT one, and a dash painted with its own background is not a dash.
+      h('linearGradient', { id: ids.cdash, gradientUnits: 'userSpaceOnUse', x1: '0', y1: coreBot, x2: '0', y2: coreTop },
+        R.cdash0 = h('stop', { offset: '0' }), R.cdash1 = h('stop', { offset: '0.5' }), R.cdash2 = h('stop', { offset: '1' })),
       h('linearGradient', { id: ids.pool, gradientUnits: 'userSpaceOnUse', x1: '0', y1: 244, x2: '0', y2: 585 },
         R.pool0 = h('stop', { offset: '0' }), R.pool1 = h('stop', { offset: '0.55' }), R.pool2 = h('stop', { offset: '1' })),
       h('linearGradient', { id: ids.strip, x1: '0', y1: '1', x2: '0', y2: '0' },
@@ -234,7 +240,7 @@
       h('rect', { x: coreL, y: 276, width: coreW, height: 180, fill: '#d7e0e5', opacity: 0.14 })));
     // core channel water + upflow, clipped to the (dynamic) core pool level
     R.wideflow = h('line', {
-      x1: cx, y1: 456, x2: cx, y2: 269, stroke: 'url(#' + ids.cflow + ')', strokeWidth: coreW,
+      x1: cx, y1: 456, x2: cx, y2: 269, stroke: 'url(#' + ids.cdash + ')', strokeWidth: coreW,
       strokeLinecap: 'butt', strokeDasharray: '15 9', opacity: 0.94,
       // .flowwide from the source, applied inline (dasharray 15 9 + flowmove 1.5s)
       style: { animation: 'flowmove 1.5s linear infinite' }
@@ -357,17 +363,32 @@
       var cold = env.StdPipe.phaseTempColor('water', st.tcold);
       var hot = env.StdPipe.phaseTempColor('water', st.thot);
       var mid = env.StdPipe.phaseTempColor('water', (st.tcold + st.thot) / 2);
+      // Since #350 item 20 the kit's `bore` is the fluid colour at full strength and `flow`
+      // is the darker dash. WATER BODIES take bore; anything that MOVES takes flow.
       // core channel (gradient bottom offset 0 = inlet/cold, top offset 1 = exit/hot)
-      R.cflow0.setAttribute('stop-color', cold.flow);
-      R.cflow1.setAttribute('stop-color', mid.flow);
-      R.cflow2.setAttribute('stop-color', hot.flow);
-      // downcomer + lower plenum: cold-leg water (darker fill toward the bottom)
-      R.pool0.setAttribute('stop-color', cold.flow);
-      R.pool1.setAttribute('stop-color', cold.flow);
+      R.cflow0.setAttribute('stop-color', cold.bore);
+      R.cflow1.setAttribute('stop-color', mid.bore);
+      R.cflow2.setAttribute('stop-color', hot.bore);
+      R.cdash0.setAttribute('stop-color', cold.flow);
+      R.cdash1.setAttribute('stop-color', mid.flow);
+      R.cdash2.setAttribute('stop-color', hot.flow);
+      // Downcomer + lower plenum: cold-leg water, FLAT *(OWNER DIRECTIVE, 2026-08-04: "the
+      // cold side of the reactor should not show a gradient. currently its darker on the
+      // bottom.")*, #350 item 22. The bottom stop used to be the dark `bore`, which shaded
+      // the plenum as though the water down there were colder — it is the same water, and a
+      // temperature-coded board must not spend its colour scale on depth. All three stops
+      // are one colour now; the gradient element stays so the three refs keep working.
+      R.pool0.setAttribute('stop-color', cold.bore);
+      R.pool1.setAttribute('stop-color', cold.bore);
       R.pool2.setAttribute('stop-color', cold.bore);
       // hot reservoir above the core + hot-leg throat: hot-leg water
-      R.hotres.setAttribute('fill', hot.flow);
-      R.hotThroat.setAttribute('fill', hot.flow);
+      R.hotres.setAttribute('fill', hot.bore);
+      R.hotThroat.setAttribute('fill', hot.bore);
+      // Downcomer circulation streaks — item 12. These were a hard-coded '#7fb0dd', the one
+      // water surface on the whole board that did NOT track temperature, so the cold leg read
+      // pale blue whether the plant was at 68 F or 550 F while the pipe feeding it swept the
+      // whole ramp. Painted from the same cold-leg colour as those pipes' dashes.
+      (R.connFlows || []).forEach(function (l) { l.setAttribute('stroke', cold.flow); });
     }
 
     function applyInventory(force) {
@@ -443,7 +464,8 @@
         var ph = K.dashPhase ? K.dashPhase(scaled, 1, CYC) : { pts: scaled, dir: 1, offset: 0, delay: 0 };
         return h('polyline', {
           points: ph.pts.map(function (q) { return q[0] + ',' + q[1]; }).join(' '),
-          fill: 'none', stroke: '#7fb0dd', strokeWidth: D * 0.42, strokeLinecap: 'round', strokeLinejoin: 'round',
+          fill: 'none', stroke: env.StdPipe.phaseTempColor('water', st.tcold).flow,
+          strokeWidth: D * 0.42, strokeLinecap: 'round', strokeLinejoin: 'round',
           strokeDasharray: '10 15', strokeDashoffset: ph.offset, opacity: 0.9,
           style: {
             animation: (ph.dir < 0 ? 'stdPipeFlowRev ' : 'stdPipeFlow ') + CYC.toFixed(3) + 's linear infinite',

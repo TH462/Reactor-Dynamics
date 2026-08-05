@@ -708,6 +708,11 @@
       core_uncovered_frac: s.core_uncovered_frac || 0,
       zirc_heat_pct: s.zirc_heat_pct || 0,
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck, spray_stuck: !!s.spray_stuck,
+      // DELIVERED pressurizer spray, % of the spray line's maximum flow (#350 item 1).
+      // NOT `spray_valve_pct`, which is the operator's/controller's DEMAND — this is what
+      // the line actually passes after the RCP-flow and pressure-floor terms in
+      // pwr_pressurizer.stepPressure. Feeds `instruments.pzr_spray_flow`.
+      spray_flow_pct: s.spray_flow_pct || 0,
       block_valve_open: s.block_valve_open,   // scenario-trigger hook (memory-free isolation grading)
       porv_tailpipe_temp_c: s.tailpipe_temp_c,   // PORV discharge-line temperature (feeds instruments.porv_tailpipe_temp)
       fuel_damaged: s.fuel_damaged,              // latched at fuel_damage_c — scenario outcome-grading hook

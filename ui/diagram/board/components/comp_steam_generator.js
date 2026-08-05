@@ -17,11 +17,18 @@
     s.textContent =
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
       '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
+      // The rise DISTANCE is per bubble *(OWNER DIRECTIVE, 2026-08-04: "SG bubbles should
+      // travel to the top of the water level. (but not into the steam above it)")*, #350
+      // item 24. It used to be a flat -150 px for every bubble whatever the level, so a bubble
+      // starting low stopped well short of the surface and one starting high ran into the
+      // clip and vanished mid-column. `--sg-rise` is set per element to exactly the distance
+      // from that bubble's start to the water line, so every one of them surfaces and none
+      // crosses into the steam space.
       '@keyframes sgBubbleRise{' +
         '0%{transform:translateY(0);opacity:0}' +
         '12%{opacity:1}' +
         '88%{opacity:1}' +
-        '100%{transform:translateY(-150px);opacity:0}}';
+        '100%{transform:translateY(calc(-1 * var(--sg-rise, 150px)));opacity:0}}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -64,7 +71,13 @@
     // tube tops exactly as the engine begins tube-bundle uncovery (heat transfer collapse).
     // Below it the tubes progressively emerge — the dryout the operator sees IS the dryout
     // the engine models. bendY = where the straight legs end and the bends arc up to the top.
-    var tubeRadii = [14, 26, 38, 50, 62], tubeMaxR = 62;
+    // FOUR tubes, not five, and each one fatter *(OWNER DIRECTIVE, 2026-08-04: "Make the SG
+    // u-tubes largeer to more easily see the flow. remove one tube if needed.")*, #350 item 11.
+    // The primary-flow dashes inside them were 1.6 px on a 4 px tube — invisible at board
+    // scale, which is the whole complaint. `tubeMaxR` STAYS 62: it sets bendY, and bendY is
+    // pinned to the engine's SG dryout threshold (see below), so widening the bundle would
+    // move the water surface off the level at which the engine actually uncovers the tubes.
+    var tubeRadii = [17, 32, 47, 62], tubeMaxR = 62;
     var tubeTopY = fullY(SG_WR_LO);                                   // outer bend apex = 30 % wide (= gBot)
     var bendY = tubeTopY + tubeMaxR;
     var bundleTopY = tubeTopY - 6, bundleBoxH = tubeSheetY - bundleTopY;   // glow + outline bounds (enclose the bends)
@@ -118,10 +131,10 @@
     var tubeGroups = tubeRadii.map(function (g) {
       var d = 'M' + (cx - g) + ',' + legBot + ' L' + (cx - g) + ',' + bendY +
         ' A' + g + ' ' + g + ' 0 0 1 ' + (cx + g) + ',' + bendY + ' L' + (cx + g) + ',' + legBot;
-      var flowPath = h('path', { d: d, fill: 'none', stroke: '#eaf4fb', strokeWidth: 1.6, strokeLinecap: 'round', opacity: 0.55, strokeDasharray: '10 16' });
+      var flowPath = h('path', { d: d, fill: 'none', stroke: '#eaf4fb', strokeWidth: 3.2, strokeLinecap: 'round', opacity: 0.6, strokeDasharray: '10 16' });
       flowEls.push(flowPath);
       return h('g', null,
-        h('path', { d: d, fill: 'none', stroke: 'url(#' + ids.tube + ')', strokeWidth: 4, strokeLinecap: 'round' }),
+        h('path', { d: d, fill: 'none', stroke: 'url(#' + ids.tube + ')', strokeWidth: 8, strokeLinecap: 'round' }),
         flowPath);
     });
 
@@ -218,12 +231,17 @@
       for (var i = 0; i < bubbleCount; i++) {
         var x = 132 + ((i * 37 + (i % 5) * 13) % 156);
         var startY = waterBot - ((i * 43) % Math.max(1, (waterBot - submergedTop)));
+        // Travel exactly to the surface. `submergedTop` is already max(bendY, levelY), i.e.
+        // the water line clamped to the top of the bundle, so this is a real distance in the
+        // same user units the circle is drawn in.
+        var rise = Math.max(4, startY - submergedTop);
         var dur = (2.4 - sgBoil * 1.2 + (i % 4) * 0.3).toFixed(2);
         var delay = (i * 0.21).toFixed(2);
         var r = (1 + (i % 3) * 0.45 + sgBoil * 2.6).toFixed(2);
         bubbleGroup.appendChild(h('circle', {
           cx: x, cy: startY, r: r, fill: '#bdf1ff', opacity: Math.min(0.9, 0.12 + sgBoil * 2),
-          style: { animation: 'sgBubbleRise ' + dur + 's linear infinite', animationDelay: delay + 's', transformBox: 'fill-box', transformOrigin: 'center' }
+          style: { animation: 'sgBubbleRise ' + dur + 's linear infinite', animationDelay: delay + 's',
+                   transformBox: 'fill-box', transformOrigin: 'center', '--sg-rise': rise.toFixed(1) + 'px' }
         }));
       }
     }
@@ -248,10 +266,14 @@
         // secondary fluid color follows the same global temperature ramp as the pipes
         var waterC = StdPipe.phaseTempColor('water', temp);
         var steamC = StdPipe.phaseTempColor('steam', temp);
-        waterStops[0].setAttribute('stop-color', waterC.flow);
-        waterStops[1].setAttribute('stop-color', waterC.bore);
-        steamStops[0].setAttribute('stop-color', steamC.flow);
-        steamStops[1].setAttribute('stop-color', steamC.bore);
+        // #350 item 20 inverted the kit: `bore` is now the fluid colour at full strength
+        // and `flow` is the darker dash. These stops are a WATER/STEAM BODY shaded with
+        // depth, so they take bore at the surface and flow below — which reproduces the
+        // shading this component has always had, rather than turning it upside down.
+        waterStops[0].setAttribute('stop-color', waterC.bore);
+        waterStops[1].setAttribute('stop-color', waterC.flow);
+        steamStops[0].setAttribute('stop-color', steamC.bore);
+        steamStops[1].setAttribute('stop-color', steamC.flow);
         last.temp = temp;
       }
 
@@ -260,8 +282,8 @@
       // the leg temperatures (hot-leg side / cold-leg side) on the same ramp as the pipes —
       // not power. The tube-bundle thermal glow stays power-gated (heat transferred).
       if (thot !== last.thot || tcold !== last.tcold) {
-        var hotC = StdPipe.phaseTempColor('water', thot).flow;
-        var coldC = StdPipe.phaseTempColor('water', tcold).flow;
+        var hotC = StdPipe.phaseTempColor('water', thot).bore;
+        var coldC = StdPipe.phaseTempColor('water', tcold).bore;
         tubeStops[0].setAttribute('stop-color', hotC);   // hot-leg side (left channel head)
         tubeStops[2].setAttribute('stop-color', coldC);  // cold-leg side (right channel head)
         hotcRect.setAttribute('fill', hotC);

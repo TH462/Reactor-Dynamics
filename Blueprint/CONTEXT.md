@@ -511,6 +511,10 @@ physical-quantity vocabulary.
                                       //   controller AND any operator demand, the way porv_stuck beats
                                       //   porv_demand. Note spray_auto can read TRUE while this is true:
                                       //   the controller really is in auto, the valve just isn't listening.
+    "spray_flow_pct": float,          // DELIVERED pressurizer spray, % of the spray line's maximum flow —
+                                      //   the valve demand (control_state.spray_valve_pct) AFTER the RCP-flow
+                                      //   and Psat(Thot) authority terms. Reads 0 with the pumps stopped and
+                                      //   the valve wide open. Feeds instruments.pzr_spray_flow (#350 item 1).
     "block_valve_open": bool,         // PORV block (isolation) valve position — the memory-free isolation-grading
                                       //   hook for scenarios; shutting it is what stops a stuck-open PORV
     "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,   // hpi_* = the ONE merged HPI/LPI emergency-injection system (two-segment pump curve; flow normalized to combined rated)

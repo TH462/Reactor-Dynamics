@@ -118,8 +118,79 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `subcooling_low` never fires — which is the TMI-2 counterfactual, correctly. What the scenario
   is missing is the crew's actual 1979 error, throttling injection back on the rising level.
   `run_scenarios` 3/3 → 1/3 and `run_campaign` 48/51 → 42/51 until that is re-authored.
+- **Every pump on the board spun on its RUN COMMAND instead of on delivered flow** (#350 items 7,
+  13, 15). Measured full stack with a station blackout injected at 120 s: the condensate pump's run
+  flag reads TRUE for the whole event — correctly, nobody stopped it — while its flow is 0; the
+  charging pump the same; and the feed pump's commanded speed winds **100 → 120 %** as the level
+  channel chases a level it can no longer reach, against feed flow of 1.5e-52. Three pumps drawn
+  spinning on a dead bus, one of them faster than at power. Run lights and handswitches still show
+  the operator's demand (the #329/#332 split); the impeller now shows the rotor. Item 7's other
+  half comes free: the feed pump's animation tracks feed rate during normal load-follow, which it
+  never did.
+- **The primary loop froze solid with the reactor coolant pumps stopped** (#350 item 18). Pipes
+  were gated on the components at their ends, and the pump art correctly reads STOPPED — but the
+  `rcs_flow` elbow-tap instrument measures **4.47 %** two minutes into a blackout (#325 natural
+  circulation), so the board was contradicting its own gauge. The loop now keeps a slow crawl,
+  driven from the instrument rather than from `true_state`.
+- **The PORV relief line ran blue water at 2235 psi (15.41 MPa) in every state of the plant**
+  (#350 item 6). Two of its three legs were authored as water. A relief valve on a pressurizer
+  with a steam bubble passes STEAM, and only passes water once the pressurizer goes solid — which
+  is the condition the TMI-2 lesson turns on. The phase is live now, read off indicated level
+  against the going-solid trip setpoint.
+- **The vital gauge strip strobed at steady power** (#350 item 16). Reactor power changed band
+  **49 times in 40 sim-seconds** at hot full power with nothing wrong, because 100.0 % sits on a
+  band boundary and the channel's own noise is 0.21 %. Hysteresis on the live reading's region:
+  49 → 0 at steady power, with real transient crossings unchanged.
+- **The steam-generator-to-feed line, the circulating-water runs and the whole secondary kept
+  animating through a blackout** (#350 items 9, 14). Each pipe now reads its own train's measured
+  flow, so a line is still when — and only when — nothing is moving through it.
+- **REACTIVITY removed from the board; PERIOD takes its place** (#350 item 5). Two readouts for
+  one fact; period is the form an operator works in.
 
 ### Added
+- **Pressurizer spray flow indication** (#350 item 1), in the spray panel. Delivered spray, not the
+  valve demand beside it — and the difference is the lesson: with spray commanded to 100 % and the
+  pumps running it reads 100 %, and with the pumps stopped the demand is unchanged at 12.00 while
+  delivered spray falls to 4.45, because the spray line takes its motive head from the loop.
+- **RCP FLOW indication under the reactor coolant pump card** (#350 item 17) — reactor coolant
+  flow as a percentage of rated, the same channel the low-flow reactor trip acts on. Not a
+  duplicate of the pump run lamps: those show the breaker, this shows flow, and the two disagree
+  on natural circulation.
+- **Dash speed on every pipe now tracks that line's flow** (#350 item 10), quantised so a rate
+  change is a rare re-phase rather than continuous jitter, and computed once per SYSTEM so a
+  fitting and the pipe it meets can never disagree.
+- **The System Scanner covers the Physics tab** (#350 item 3) — all 29 rows, each with a summary
+  and a paragraph, gated so a new row cannot ship without copy.
+- **A fully-minimized instructor panel** (#350 item 19). The minimize button is a ladder now:
+  expanded → collapsed → header only. The header survives because it carries the unread badge.
+- **A second column in the graph parameter list when the panel is wide enough** (#350 item 23).
+
+### Changed
+- **Pipe colours inverted: the moving dashes are the DARKER colour** (#350 item 20), so a pipe
+  reads as full of fluid rather than as empty with something glowing inside it. The reactor's
+  downcomer streaks pick up the same treatment and now track temperature at all, which they never
+  did (#350 item 12), and the cold-side depth gradient is gone (#350 item 22).
+- **Steam generator U-tubes: four fatter tubes instead of five thin ones** (#350 item 11), and
+  bubbles in both the steam generator and the pressurizer now rise to the water surface and stop
+  there instead of a fixed distance (#350 items 24, 25).
+- **The pressurizer surge line shows direction** (#350 item 26) — insurge and outsurge, derived
+  from the indicated level rate. It was drawn one-way, so it showed flow into a pressurizer whose
+  level was falling.
+- **Scanner copy spells out every system acronym in the entry that uses it** (#350 item 2) — 122
+  unexpanded uses across 166 entries, now gated. Unit symbols (psi, gpm, ppm, MWe) keep their
+  standard spelling.
+- **Graph value chips carry their units** (#350 item 21) — pressures and megawatt figures printed
+  bare numbers, and temperatures printed a bare degree sign in both display modes.
+- **CHARGING and LETDOWN captions enlarged to match BORON STATUS** (#350 item 27); the core ΔT
+  margin readout carries its unit (#350 item 4).
+
+### Added
+- **An audit session no longer loads the conclusions it is auditing** (#221). `Blueprint/AUDIT_CHARTER.md`
+  plus `.claude/settings.audit.json`, launched with `claude --settings .claude/settings.audit.json`.
+  The settings file excludes `CLAUDE.md` across all three worktrees **and** the auto-memory index;
+  the charter is `CLAUDE.md`'s operating half — Hard Rules, the layer map, `measure_stack` traps,
+  lane rules, units, the issue axes and #221's own rules of engagement — with every finding, gate
+  score and tuning conclusion removed. Developer-facing only; nothing in the sim changes.
 - **MFW RESTORE control on the SG FEED card, and main-feedwater isolation now SEALS IN**
   (#341 + #319 item 2, shipped as one change). Main feed isolates automatically on three signals
   — reactor trip with Tavg low, steam generator level high, safety injection — and it **latched

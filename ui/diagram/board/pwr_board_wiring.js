@@ -565,8 +565,18 @@
     // button teaches nothing and is indistinguishable from a broken one — this repo's
     // recurring dead-control failure mode, which is what the ACTION_LOCKED refusal above
     // was written for.
+    // WARN, not ACTIVE (#350 item 8). It lit green while main feedwater was isolated, and the
+    // board's green means "this mode is SELECTED" — so a button whose whole job is to clear a
+    // condition read as though the condition were the chosen lineup. Yellow is the board's
+    // "needs attention", which is what an isolated main feed is.
+    //
+    // This is the visible half of item 8's *"could not place it in auto"*. MEASURED full
+    // stack, turbine trip at 120 s: `mfw_isolated` latches by 4m00s, the SG FEED corner reads
+    // ISOLATED, the `feed_sg` channel stands down on it and refuses AUTO — all correct, and
+    // all of it unfixable from the card unless the operator notices that RESTORE is the way
+    // out. The refusal is right; the signposting was not.
     bdMfwRestore: { press: function () { cmd({ action: 'isolate_feedwater', active: false }); },
-                    active: function (s) { return !!IN(s).mfw_isolated; } },
+                    warn: function (s) { return !!IN(s).mfw_isolated; } },
     // --- TRIP BLOCKS popover ---
     imrsk4xz2dm: { press: function (item, btn) { toggleTripBlocks(btn); } },
     // --- 1/M startup plot launcher (driver-injected tile; opens the draggable window) ---
@@ -611,10 +621,49 @@
   // Period sits under the REACTIVITY readout (true-state teaching quantity, same
   // family as ρ pcm). Coordinates match the authored REACTIVITY / pcm pair.
   var EXTRA_ITEMS = [
+    // 455/470, the coordinates the deleted REACTIVITY pair occupied (see DOC_REMOVE) — item 5
+    // asks for the readout to move UP into that slot, not for a gap where it used to be.
     { id: 'bdRxPeriodLbl', kind: 'text', name: 'Reactor period label',
-      left: 885, top: 490, text: 'PERIOD', fontSize: 12, color: '#8ba4b6', weight: 600, mono: true },
+      left: 885, top: 455, text: 'PERIOD', fontSize: 12, color: '#8ba4b6', weight: 600, mono: true },
     { id: 'bdRxPeriod', kind: 'value', name: 'Reactor period  ·  sim: true_state.reactor_period_s',
-      left: 960, top: 505, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true },
+      left: 960, top: 470, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true },
+    // RCP FLOW, under the RCP card *(OWNER DIRECTIVE, 2026-08-04: "RCP needs flow indication.
+    // place it under the RCP card.")*, #350 item 17. It reads the `rcs_flow` elbow-tap channel,
+    // the same instrument the low-flow reactor trip acts on — so the player can watch the
+    // number the trip is watching, which nothing on the board previously showed.
+    //
+    // It is not a duplicate of the RCP ON/OFF lamps: those are the BREAKER, this is FLOW, and
+    // the whole of #325 lives in the gap between them — stop the pumps and the lamps go dark
+    // while this settles at ~4 % of rated on natural circulation rather than at zero.
+    //
+    // GEOMETRY, measured off the doc: the RCP tile is 1125,570 112x86 and its inner box
+    // 1140,585 85x95 (bottom 680); the CVCS LETDOWN readout below starts at 1150,725. So
+    // 1140..1230 x 684..722 is empty, and a 90x38 readout at (1140, 684) sits in it.
+    { id: 'bdRcpFlow', kind: 'readout',
+      name: 'Reactor coolant flow  ·  sim: instruments.rcs_flow, % of rated',
+      left: 1140, top: 684, label: 'RCP FLOW', value: '100', unit: '%',
+      color: '#5aad7c', fontSize: 16, width: 90, height: 38 },
+    // PZR SPRAY flow *(OWNER DIRECTIVE, 2026-08-04: "Pressurizer needs a spray flow
+    // indication.")*, #350 item 1. DELIVERED spray, not the valve demand the % box beside it
+    // already carries — see `spray_flow_pct` in pwr_pressurizer.js for why they are different
+    // quantities. MEASURED full stack: spray commanded to 100 % with the RCPs running reads
+    // 100 % delivered; stop the RCPs and the demand is unchanged at 12.00 while this reads
+    // 4.45, because the spray line draws its motive head from the loop.
+    //
+    // GEOMETRY, and the first placement was WRONG in exactly the way authored coordinates
+    // always are here. It went in the PRESSURIZER SPRAY PANEL under the demand box, on the
+    // arithmetic that three 25 px buttons end at 725 and a number is ~26 px tall. MEASURED,
+    // the demand box renders 730..777 — 47 px, because it carries ▲▼ nudge arrows — so the
+    // readout overlapped it by 80x20 px. Both elements still rendered; only a ruler finds it.
+    //
+    // It sits beside the pressurizer instead, as the third of the PZR TEMP / HTR PWR stack,
+    // which is where a pressurizer indication belongs anyway. 1065,510 came out of a free-slot
+    // scan over the rendered rects AND the pipe polylines (the surge line runs at x≈1055),
+    // not out of arithmetic: it is the only 95x40 gap in x 1040..1180 / y 300..560.
+    { id: 'bdPzrSprayFlow', kind: 'readout',
+      name: 'Pressurizer spray flow  ·  sim: instruments.pzr_spray_flow, % of maximum spray flow',
+      left: 1065, top: 510, label: 'SPRAY FLOW', value: '0', unit: '%',
+      color: '#5aad7c', fontSize: 15, width: 95, height: 40 },
     // Feed controller status, in the SG FEED card's top-right corner (#214). The AUTO/MAN
     // lamps say THAT the controller is off; nothing said WHY. Same shape as the steam dump
     // status (imrppq5r7kw): rAnchor, so `left` is the RIGHT edge.
@@ -677,7 +726,12 @@
       // CLAUDE.md documents. Both elements still render, so only the ruler in board_check
       // finds it. 234 sits in the card's title band, clear to the RIGHT of the title text
       // ('NUCLEAR INSTRUMENTATION (NIS)' ends near x=905 at fontSize 11).
-      left: 990, top: 234, value: '—', unit: '', color: '#5aad7c', fontSize: 13, rAnchor: true }
+      //
+      // The unit is '%' *(OWNER DIRECTIVE, 2026-08-04: "Add unit to OP(delta)T indication")*,
+      // #350 item 4. The number is a margin in PERCENT OF RATED ΔT — the same scale the trip
+      // setpoint is authored on — and unlabelled it read as a bare figure that could as easily
+      // have been °F or MW. See dtMargin() for why the readout names the binding limit.
+      left: 990, top: 234, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -753,6 +807,27 @@
     ims5gq44zgr: function (s) { return dT(satTempC(IN(s).primary_pressure)); },
     ims5gprvl7n: function (s) { return r0(CS(s).heater_power_pct || 0); },
     imro6qpci2d: function (s) { return dTd(IN(s).thot - IN(s).tcold); },   // leg dT (a DIFFERENCE - see the tempd family)
+    // RCP FLOW, % of rated (#350 item 17). Colour is the LOW-FLOW TRIP ladder, not a generic
+    // band: green above the trip, amber in the margin, red once the trip setpoint is crossed
+    // — read out of the live protection table so a retune moves the readout with it. The
+    // natural-circulation band (a few percent) therefore reads RED, which is correct: flow
+    // that low IS a tripped plant, and saying otherwise would be the #236 class of lie.
+    bdRcpFlow: function (s) {
+      var v = IN(s).rcs_flow;
+      if (v == null || isNaN(v)) return { text: '—', color: '#7f95a5' };
+      var sp = tripSp('rcs_flow', 'low', 90);
+      var col = v <= sp ? '#ff6a4d' : (v < sp + 5 ? BD_WARN : BD_OK);
+      return { text: v.toFixed(0), color: col };
+    },
+    // PZR SPRAY FLOW, % of maximum (#350 item 1). Amber whenever spray is being CALLED FOR
+    // and is not arriving — the demand is up and the delivery is not — because that gap is
+    // the whole reason this indication exists and it is invisible on the demand box alone.
+    bdPzrSprayFlow: function (s) {
+      var v = IN(s).pzr_spray_flow;
+      if (v == null || isNaN(v)) return { text: '—', color: '#7f95a5' };
+      var asked = (CS(s).spray_valve_pct || 0) > 2;
+      return { text: v.toFixed(0), color: (asked && v < 20) ? BD_WARN : BD_OK };
+    },
     // SUR, DPM (#271). NOT a log channel and it has no trip — the limits are the `sur_high`
     // ALARM at 1.0 and the rod-withdrawal INTERLOCK at 1.5 (clearing below 0.8), which is a
     // command block rather than a scram. Red therefore means "the withdrawal block is on", not
@@ -787,7 +862,6 @@
       var trip = nisArmed('intermediate_range', 'high', s);
       return { text: fmtExp(ir), color: nisLogColor(ir, trip, trip != null) };
     },
-    imro6rdwwdn: function (s) { var r = (s.true_state && s.true_state.reactivity_pcm) || 0; return (r >= 0 ? '+' : '') + r0(r); }, // reactivity pcm
     // Reactor period (s) — teaching readout under REACTIVITY. ∞ when steady.
     bdRxPeriod: function (s) {
       var per = s.true_state && s.true_state.reactor_period_s;
@@ -1016,11 +1090,30 @@
     // pumps — the fluid-color temperature is LIVE where the pump moves plant fluid whose
     // temperature changes with state (RCP on the cold leg; feed pump = feedwater); cold
     // make-up sources (HPI/RWST, charging/VCT, condensate/hotwell) stay near-constant cold.
-    imrobnzlha1: function (s) { return pumpProps(IN(s).hpi_active, IN(s).hpi_flow || 0, 50); },                                  // eccs pump (RWST — cold)
-    imrobph7xrq: function (s) { return pumpProps((CS(s).feed_pump_speed_pct || 0) > 0, (CS(s).feed_pump_speed_pct || 0) / 100, fwTemp(s)); }, // feed pump (feedwater — tracks load)
+    // EVERY PUMP HERE SPINS ON DELIVERED FLOW, NOT ON ITS RUN COMMAND (#350 items 7, 13, 15).
+    // The run lights and the handswitch positions stay the operator's demand — that split is
+    // the house idiom (#329/#332, `afw_pump_running` vs `afw_flow_normalized`) and it is what
+    // keeps the board honest about what was ASKED FOR versus what HAPPENED. But the impeller
+    // is not a demand: it is a picture of a rotor, and a de-energized rotor does not turn.
+    //
+    // MEASURED, full stack, hot full power with a station blackout injected at 120 s: the
+    // condensate pump's `condensate_pump_running` reads TRUE for the whole event (correctly —
+    // nobody stopped it) while `condensate_flow` is 0, the charging pump the same, and the
+    // feed pump's COMMANDED `feed_pump_speed_pct` winds up 100 → 120 % as the level channel
+    // chases a level it can no longer reach, against `fw_flow` of 1.5e-52. All three drew a
+    // spinning pump on a dead bus, and the feed pump drew a pump spinning FASTER than it does
+    // at power. Reading the delivered flow fixes both halves of item 7 at once: the impeller
+    // now tracks feed rate during normal load-follow as well, which it never did — the
+    // commanded speed sits at 100 whatever the plant is doing.
+    imrobnzlha1: function (s) { return pumpProps((IN(s).hpi_flow || 0) > 1e-4, IN(s).hpi_flow || 0, 50); },   // eccs pump (RWST — cold)
+    imrobph7xrq: function (s) { var f = IN(s).fw_flow || 0; return pumpProps(f > 1e-3, f, fwTemp(s)); },      // feed pump (feedwater — tracks load)
     imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, IN(s).tcold); },  // rcp (cold-leg coolant — live)
-    imrqp87ueqb: function (s) { return pumpProps(CS(s).charging_pump_running, CS(s).charging_pump_running ? 0.8 : 0, 50); },       // charging pump (VCT — cold)
-    imrqvzbd9hd: function (s) { var on = IN(s).condensate_pump_running !== false; return pumpProps(on, on ? 1 : 0, 40); }, // condensate pump (hotwell — cool)
+    // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so
+    // the impeller keys on running-and-powered rather than on flow magnitude. `charging_flow`
+    // is the powered evidence — it is zero on a dead bus and non-zero whenever the pump is
+    // actually turning, including at the low end of the make-up modulation.
+    imrqp87ueqb: function (s) { var on = !!CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-6; return pumpProps(on, on ? 0.8 : 0, 50); },
+    imrqvzbd9hd: function (s) { var f = IN(s).condensate_flow || 0; return pumpProps(f > 1e-3, f, 40); },     // condensate pump (hotwell — cool)
     // valves
     // AFW block/discharge valve — INDEPENDENT of the AFW START/STOP/AUTO (pump) buttons.
     // openFrac = block valve open (operator-set); it only shows FLOW when AFW is actually
@@ -1091,14 +1184,18 @@
     // Hot leg, at the point the pressurizer surge line branches off it. The surge line is
     // always open — it is how the pressurizer stays connected to the RCS.
     ims2kt7fu64: function (s) {
-      return { temp: IN(s).thot, contents: 'water', flowing: !!IN(s).rcp_running };
+      return { temp: IN(s).thot, contents: 'water', flowing: LF(s).primary > 0,
+        speed: sysSpeed(s, 'primary') };
     },
     // Feedwater: feed-pump discharge + the AFW branch, into the SG. Tracks the FW-heater
     // train temperature (load-dependent), not steam saturation — see fwTemp(). AFW is a
     // separate train, so its branch is gated on AFW actually delivering, not on main feed.
     ims31q71cmu: function (s) {
+      // The fitting moves if EITHER train is delivering — it is the point where they join —
+      // so it reads `sgfeed`, the same system as the run out of it to the SG (item 9).
       return { temp: fwTemp(s), contents: 'water',
-        flowing: (IN(s).fw_flow || 0) > 0.01,
+        flowing: LF(s).sgfeed > 0, speed: sysSpeed(s, 'sgfeed'),
+        legB: (IN(s).fw_flow || 0) > 1e-3 ? 'in' : 'off',
         legC: (IN(s).afw_active && (IN(s).afw_flow || 0) > 1e-4) ? 'in' : 'off' };
     },
     // CVCS charging-pump suction: B from the VCT, C from the ECCS panel cross-tie.
@@ -1120,7 +1217,7 @@
     ims3x01kvp4: function (s) {
       var flow = !!CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-4;
       var eccs = !!IN(s).hpi_active && (IN(s).hpi_flow || 0) > 1e-4;
-      return { temp: 50, contents: 'water', flowing: flow || eccs,
+      return { temp: 50, contents: 'water', flowing: flow || eccs, speed: sysSpeed(s, 'chgsuct'),
         legB: flow ? 'in' : 'off', legC: eccs ? 'in' : 'off' };
     },
 
@@ -1138,8 +1235,14 @@
 
   // Cold-leg header fitting: the straight run carries RCS flow (so it moves with the RCP),
   // plus whatever branch states the caller supplies for the system that taps in there.
+  // `flowing` follows MEASURED RCS flow rather than `rcp_running` since #350 item 18 — with
+  // the pumps stopped the loop still circulates on buoyancy, and a fitting frozen solid
+  // between two crawling pipes is the #236 defect from the other side. `speed` is the primary
+  // system's banded dash velocity, the same number the pipes either side of it read, which is
+  // what keeps the dashes matched across the joint (#231).
   function coldLeg(s, legs) {
-    var p = { temp: IN(s).tcold, contents: 'water', flowing: !!IN(s).rcp_running };
+    var p = { temp: IN(s).tcold, contents: 'water', flowing: LF(s).primary > 0,
+              speed: sysSpeed(s, 'primary') };
     if (legs) for (var k in legs) if (Object.prototype.hasOwnProperty.call(legs, k)) p[k] = legs[k];
     return p;
   }
@@ -1603,6 +1706,217 @@
     pms3l83etan: function () { return 25; }                                     // CW supply (cold)
   };
 
+  // ================================================================ LIVE LINE FLOW (#350)
+  // A pipe's dash VELOCITY, its RUN/STILL state and (on the relief line) its PHASE come from
+  // the plant, not from the authored diagram *(OWNER, 2026-08-04, #350 item 10: "All dashed
+  // lines rate of movement needs to scale with the flow rate.")*.
+  //
+  // ONE NUMBER PER SYSTEM, and that is the whole design. #231 already tried folding a
+  // component's own 0–100 rate into its dash velocity and had to revert it, because every
+  // fitting then ran at a different speed from the pipe it joins and the dashes stepped at
+  // the joint. The fix is not to give up on live speed, it is to make the number a property
+  // of the SYSTEM rather than of the element: `lineFrac` computes one fraction-of-rated per
+  // train, and the pipes, tees, crosses, valves and pumps on that train all read it. Two
+  // elements that meet are on the same train by construction, so they cannot disagree.
+  //
+  // Fractions are of RATED flow for that line, so 1.0 is the look the board has always had
+  // and the whole board still reads 1.0 at hot full power — this changes nothing at the
+  // operating point and everything on the way to and from it.
+  // EVERY ENTRY IS ONE LINE'S OWN FLOW, not a whole plant area's — that distinction is what
+  // lets the run-state below be AUTHORITATIVE rather than merely advisory. The first cut
+  // lumped the steam dump in with main steam and would have drawn a shut dump valve passing
+  // full flow at power, which is precisely the #236 class this board keeps re-learning.
+  var CHG_RATED = 0.030;    // one letdown orifice ≡ 20 gpm — normal CVCS letdown/charging
+  var DUMP_CAP = 0.40;      // steam dump capacity, fraction of rated steam (the #220 40 %)
+  function lineFrac(s) {
+    var i = IN(s), c = CS(s), t = s.true_state || {};
+    var porvFlowing = (t.porv_open != null ? !!t.porv_open : (i.porv_indicator === 'open'))
+      && c.porv_block_open !== false;
+    var chg = (i.charging_flow || 0) / CHG_RATED;
+    var eccs = i.hpi_flow || 0;
+    return {
+      // The RCS elbow-tap channel, NOT `rcp_running`. This is what makes item 18 fall out:
+      // with the pumps stopped `rcs_flow` still reads the buoyancy-driven flow (#325 —
+      // MEASURED 4.47 % two minutes into a station blackout), so the loop keeps a slow crawl
+      // instead of freezing solid, and it does it from an INDICATION rather than from
+      // `true_state.natural_circulation`, which #325 deliberately declined to put on the board.
+      primary:  (i.rcs_flow || 0) / 100,
+      surge:    surgeFrac(s),
+      spray:    (c.spray_valve_pct || 0) / 100,
+      relief:   porvFlowing ? 1 : 0,
+      // SG outlet and the header up to the TCV carry EVERYTHING leaving the generator;
+      // the two branches past it carry their own share.
+      steam:    i.sg_steam_flow || 0,
+      turbine:  i.steam_demand_low ? 0 : (i.steam_flow || 0),
+      dump:     ((i.steam_dump_valve || 0) > 2) ? (i.steam_dump_valve / 100) * DUMP_CAP : 0,
+      feed:     i.fw_flow || 0,
+      afw:      i.afw_flow || 0,
+      // The one run downstream of the feed tee: it carries main feed AND auxiliary feed, so
+      // it is still only when BOTH are — item 9, which no single-train gate could express.
+      sgfeed:   (i.fw_flow || 0) + (i.afw_flow || 0),
+      cond:     i.condensate_flow || 0,
+      // Circulating water has no flow transmitter on this board; it runs or it does not,
+      // and it stops with the circ pumps when the plant loses its cooling supply (item 14).
+      cw:       i.condenser_cooling_available ? 1 : 0,
+      charging: chg,
+      letdown:  (i.letdown_flow || 0) / CHG_RATED,
+      eccs:     eccs,
+      // Charging-pump suction takes the VCT and the RWST cross-tie, so it moves for either.
+      chgsuct:  Math.max(chg, eccs),
+      accum:    i.accumulators_discharging ? Math.max(0.15, i.accumulator_flow || 0) : 0
+    };
+  }
+
+  // ---- the speed ladder ------------------------------------------------------------
+  // A dash-speed change is a visual DISCONTINUITY and cannot be made otherwise — CSS
+  // computes progress as ((now − delay) / duration) mod 1 and `now` grows without bound, so
+  // retiming an animation moves the dashes by an amount that depends on how long the page
+  // has been open (std_pipe.setFlowSpeed carries the derivation). Quantising is what makes
+  // that acceptable: a line only re-times when it genuinely changes flow band, the hop is at
+  // most one dash period, and every element on the system hops together.
+  //
+  // Steps are fractions of rated. 0 means STILL (the line is paused outright, not crawled).
+  var FRAC_STEPS = [0, 0.04, 0.08, 0.15, 0.25, 0.40, 0.60, 0.80, 1.00, 1.25, 1.60, 2.00];
+  var BAND_HYST = 0.15;      // overshoot past a boundary, as a fraction of the step gap
+  var _band = {};
+  function bandOf(key, frac) {
+    if (!isFinite(frac) || frac < 0) frac = 0;
+    var i = FRAC_STEPS.length - 1;
+    while (i > 0 && frac < FRAC_STEPS[i]) i--;
+    var prev = _band[key];
+    // Hysteresis on ADJACENT bands only. A jump of two or more bands is a real transient
+    // (a trip, a break, a pump start) and must not be held back by a deadband.
+    if (prev != null && Math.abs(i - prev) === 1) {
+      var lo = Math.min(i, prev), edge = FRAC_STEPS[lo + 1], gap = edge - FRAC_STEPS[lo];
+      if (i > prev ? frac < edge + gap * BAND_HYST : frac > edge - gap * BAND_HYST) i = prev;
+    }
+    _band[key] = i;
+    return FRAC_STEPS[i];
+  }
+  // Fraction of rated → dash speed multiplier. Linear, because the dash IS the fluid: twice
+  // the flow through the same pipe is twice the velocity. Floored at 0.1 (StdPipe's own
+  // minimum) so a trickle reads as a slow crawl rather than as a stopped line — the
+  // difference between "no flow" and "4 % flow" is exactly what item 18 asks the board to show.
+  function speedOf(frac) { return frac <= 0 ? 0 : Math.max(0.1, Math.min(4, frac)); }
+
+  // Per-snapshot cache: lineFrac reads ~15 instruments and every pipe, fitting and pump asks
+  // for it. Same once-per-snapshot idiom as IN().
+  var _lf = { snap: null, out: null };
+  function LF(s) {
+    if (_lf.snap === s) return _lf.out;
+    _lf.snap = s; _lf.out = lineFrac(s);
+    return _lf.out;
+  }
+  // The banded speed for a system, for anything that draws on it.
+  function sysSpeed(s, sys) { return speedOf(bandOf(sys, LF(s)[sys] || 0)); }
+
+  // ---- pressurizer surge (#350 item 26) --------------------------------------------
+  // The surge line is the one pipe on the board whose flow REVERSES in normal operation:
+  // an insurge fills the pressurizer when the RCS expands, an outsurge drains it when the
+  // RCS shrinks. It was drawn as a fixed one-way run, so it showed a permanent flow into a
+  // pressurizer whose level was falling.
+  //
+  // Derived from the INDICATED level rate rather than from a published surge term, because
+  // there is no published surge term — and level rate is exactly the quantity a surge IS
+  // (#337 states the whole law per unit pressurizer level rate). Sign: rising level = insurge
+  // = flow INTO the pressurizer = the authored direction.
+  //
+  // The rate is smoothed over SURGE_TAU seconds of SIM time. Two reasons, and the second is
+  // the load-bearing one: the raw difference of a damped indication across one broadcast is
+  // mostly quantisation, and an unsmoothed sign would flip the line's direction several times
+  // a second on a plant that is merely holding level.
+  var SURGE_TAU = 8;             // s — smoothing on the level derivative
+  var SURGE_FULL = 0.60;         // %/s of pressurizer level that reads as a full-speed surge
+  var SURGE_DEAD = 0.012;        // %/s below which the line is STILL (level is being held)
+  var _surge = { t: null, level: null, rate: 0 };
+  function surgeRate(s) {
+    var lv = IN(s).pzr_level;
+    var t = (s && s.metadata && s.metadata.sim_time != null) ? s.metadata.sim_time : null;
+    if (lv == null || !isFinite(lv)) return 0;
+    if (t == null || _surge.t == null || t < _surge.t) {   // fresh mount, reset or rewind
+      _surge.t = t; _surge.level = lv; _surge.rate = 0; return 0;
+    }
+    var dt = t - _surge.t;
+    if (dt > 0) {
+      var raw = (lv - _surge.level) / dt;
+      _surge.rate += (raw - _surge.rate) * (dt / (SURGE_TAU + dt));
+      _surge.t = t; _surge.level = lv;
+    }
+    return _surge.rate;
+  }
+  function surgeFrac(s) {
+    var r = surgeRate(s);
+    return Math.abs(r) < SURGE_DEAD ? 0 : Math.abs(r) / SURGE_FULL;
+  }
+  // +1 = insurge (the authored direction, hot leg → pressurizer), −1 = outsurge.
+  function surgeDir(s) { return surgeRate(s) < 0 ? -1 : 1; }
+
+  // ---- pipe id → the system it belongs to ------------------------------------------
+  // Same fragile contract as PIPE_TEMP: these are PIPE ids and a pipe id changes whenever
+  // its run is re-drawn in the builder, so selfTest asserts every key is still live.
+  var PIPE_SYSTEM = {
+    // RCS loop — hot leg, cold leg, and the spray tap off the cold leg
+    pms2ktktnan: 'primary', pms2ktjq4ma: 'primary',
+    pms2kovvgnh: 'primary', pms2kozvu94: 'primary', pms2kp1148p: 'primary',
+    pms3yu50gqp: 'primary', pms3yu3x86i: 'primary', pms3x37ze9p: 'primary',
+    pms3ytzwwqw: 'spray',
+    pms2kupl3b2: 'surge',
+    // main steam — SG outlet and the header carry the total; the TCV and dump branches
+    // carry their own share, which is why they are separate systems (see lineFrac).
+    pmrr0u4vgri: 'steam', pmrr46n63pq: 'steam',
+    pmrr499yfkb: 'turbine', pmrr14xbt2h: 'turbine',
+    pmrr46oahnx: 'dump', pmrr0u9nib3: 'dump',
+    // relief path — the whole run is either passing or dead-ended
+    pms3tda86bw: 'relief', pms3tcop5ni: 'relief', pms3tdwi5n9: 'relief',
+    // condensate / feedwater
+    pms2ihy5skm: 'cond', pmrr0uryodr: 'cond', pmrr0ustj2z: 'feed',
+    pms31qm4iqh: 'feed', pms31qjbqhy: 'sgfeed',
+    pms31ro0qi0: 'afw', pms3kx59u4x: 'afw',
+    // circulating water
+    pms3l89l83h: 'cw', pms3l83etan: 'cw',
+    // CVCS + ECCS. `pms3x28fhhm` is the VCT leg (normal make-up) and `pms3xe4ia7n` the RWST
+    // cross-tie — the pair #236 spent a session separating, so they must NOT share a system.
+    pms3l178g39: 'charging', pms3x28fhhm: 'charging', pms3x29yoq0: 'chgsuct',
+    pms3xe4ia7n: 'eccs', pms3x1rbkod: 'eccs', pms3ytv6lm2: 'eccs',
+    pms3l18h7og: 'letdown',
+    pms3l053p3x: 'accum', pms3x3czo4r: 'accum'
+  };
+
+  // Live phase overrides. Only the relief path has one, and it is item 6.
+  //
+  // WHAT THE PORV IS PASSING IS THE POINT OF THE TMI-2 LESSON. The relief run was authored
+  // `phase: "water"` on two of its three legs, so a stuck-open PORV vented blue water at
+  // 2200 psi in every state of the plant. A PORV on a pressurizer with a steam bubble
+  // relieves STEAM; it only passes water once the pressurizer goes SOLID, which is the
+  // condition the operator has to recognise and is the reason the relief is worth watching.
+  //
+  // Solid is read off the INDICATED level against the going-solid trip setpoint, the same
+  // number the protection uses, rather than a board-local literal.
+  function pzrSolid(s) {
+    var sp = tripSp('pzr_level', 'high', 97);
+    return (IN(s).pzr_level || 0) >= sp - 3;
+  }
+  var PIPE_PHASE = {
+    pms3tda86bw: function (s) { return pzrSolid(s) ? 'water' : 'steam'; },
+    pms3tcop5ni: function (s) { return pzrSolid(s) ? 'water' : 'steam'; },
+    pms3tdwi5n9: function (s) { return pzrSolid(s) ? 'water' : 'steam'; }
+  };
+  // Live direction overrides (+1 as drawn, −1 reversed).
+  var PIPE_DIR = { pms2kupl3b2: surgeDir };
+
+  function pipeFlowOf(id, s) {
+    var sys = PIPE_SYSTEM[id];
+    if (!sys) return null;
+    var frac = bandOf(sys, LF(s)[sys] || 0);
+    var ph = PIPE_PHASE[id], dr = PIPE_DIR[id];
+    return {
+      speed: speedOf(frac),
+      active: frac > 0,
+      phase: ph ? ph(s) : null,
+      dir: dr ? dr(s) : 1
+    };
+  }
+
   // ================================================================ TRIP BLOCKS menu (task #5)
   // Only the 4 blockable trips (owner ruling).
   // `sub` may be a function (s) -> string where the caption carries a unit — it is rendered
@@ -1709,7 +2023,7 @@
     // Indication readouts — highlight vocabulary for checklist-step hover (glowLabels
     // in ui/app.js). Not named by campaign beats, so run_campaign never demands them.
     '1/M Plot Tool': 'bdOneOverM', 'Source Range': 'imro6qutiht', 'Intermediate Range': 'imro6rctcgm',
-    'Reactivity': 'imro6rdwwdn', 'Reactor Period': 'bdRxPeriod', 'Startup Rate': 'imro6qsncb9',
+    'Reactor Period': 'bdRxPeriod', 'Startup Rate': 'imro6qsncb9',
     // Tavg, plant pressure and SG level are no longer standalone readouts on the mimic —
     // V2 promoted all three into the vital-parameter tile strip, so these labels glow the
     // tile. (Highlighting an indication is checklist hover-glow only; campaign beats
@@ -1791,6 +2105,30 @@
   // Fold these back into the builder and delete them from here.
   // selfTest asserts every target still resolves, so a re-export that renames an id fails
   // loudly rather than silently dropping the correction.
+  // Authored items the driver DELETES at mount. Same contract as DOC_PATCHES — absolute and
+  // idempotent — and the same reason for existing: the generated doc comes out of the builder
+  // and cannot be hand-edited without being overwritten by the next re-export.
+  //
+  // REACTIVITY *(OWNER DIRECTIVE, 2026-08-04: "Remove reactivity and more period up to where
+  // reactivity was.")*, #350 item 5. It is a true-state teaching overlay — real plants infer
+  // reactivity from rate meters and rod worth curves rather than measuring it — and PERIOD,
+  // which sat under it, carries the same information in the form an operator actually works
+  // in: a short period IS positive reactivity, and it is the number the startup-rate block and
+  // the 1/M plot are both written against. Two readouts for one fact is DESIGN_CRITERIA Q4.
+  // PERIOD takes the vacated slot (see EXTRA_ITEMS) rather than leaving a hole.
+  var DOC_REMOVE = {
+    imro6rdwwdn: 1,    // reactivity readout (pcm)
+    imrshokxy4u: 1     // its "REACTIVITY" caption
+  };
+
+  // The CVCS flow captions, enlarged *(OWNER DIRECTIVE, 2026-08-04: "Make the \"Charging\" and
+  // \"letdown\" text larger. Try to match the \"BORON HOLD STATUS\" size. see if that fits.")*,
+  // #350 item 27. A readout's caption is derived from its reading size (fontSize x 0.66), which
+  // put these two at 11 px against the 14 px of the BORON STATUS caption a few tiles away —
+  // so `labelSize` overrides the derivation for these two without enlarging the reading, and
+  // without moving STEAM DUMP (the third readout, which is not part of the ask).
+  // MEASURED to fit: 'CHARGING' is 8 characters, and IBM Plex Mono at 14 px is 8.4 px/char,
+  // so 67 px inside a 95 px tile.
   var DOC_PATCHES = {
     pipes: {
       // Turbine exhaust → condenser steam inlet. The route is authored orthogonally, but its
@@ -1816,6 +2154,9 @@
       // valve tile (ends 1414) and too narrow for its own label. 1416/72 clears the valve
       // and, with the .bd-ro-label letter-spacing fix, fits "STEAM DUMP" with room.
       imrzmlyafa3: { props: { left: 1416, width: 72 } },
+      // CVCS flow captions to 14 px — #350 item 27, see the note above DOC_PATCHES.
+      imrzp8qps6u: { props: { labelSize: 14 } },   // CHARGING
+      imrzp89wdfu: { props: { labelSize: 14 } },   // LETDOWN
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
       // ---- ALL-CAPS board text -------------------------------------------------------
@@ -1974,6 +2315,9 @@
   };
   function applyDocPatches(doc) {
     if (!doc) return;
+    if (doc.items) {
+      doc.items = doc.items.filter(function (it) { return !DOC_REMOVE[it.id]; });
+    }
     function setProps(target, props) {
       for (var k in props) {
         if (!Object.prototype.hasOwnProperty.call(props, k)) continue;
@@ -2227,6 +2571,9 @@
     // Live fluid temperature (°C) for a pipe id, or null to keep its authored temp.
     // Lets the renderer repaint pipe fluid color each snapshot (see PIPE_TEMP).
     pipeTemp: function (id, s) { var f = PIPE_TEMP[id]; return f ? f(s) : null; },
+    // Live dash velocity / run-state / phase / direction for a pipe id, or null to leave the
+    // pipe exactly as the diagram authored it (#350 — see PIPE_SYSTEM above).
+    pipeFlow: function (id, s) { return pipeFlowOf(id, s); },
     compProps: function (item, s) {
       var f = COMPPROPS[item.id] || COMPPROPS[item.comp === undefined ? item.id : item.id];
       // fall back to comp-name keyed entries for the singletons

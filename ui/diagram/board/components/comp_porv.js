@@ -92,7 +92,7 @@
     var ventG = h('g', { key: 'vent', style: { display: 'none' } }, vent);
 
     // status glow behind body when open
-    var glowC = h('circle', { key: 'oglow', cx: cx, cy: 124, r: 40, fill: fl.flow, opacity: 0.2, filter: 'url(#' + GLOW + ')', style: { display: 'none' } });
+    var glowC = h('circle', { key: 'oglow', cx: cx, cy: 124, r: 40, fill: fl.bore, opacity: 0.2, filter: 'url(#' + GLOW + ')', style: { display: 'none' } });
 
     // ---- angle valve body (bottom inlet, left outlet) ----
     var bodyRect = h('rect', { key: 'body', x: 58, y: 100, width: 54, height: 48, rx: 16, fill: 'url(#' + STEEL + ')', stroke: '#46596a', strokeWidth: 2.4, style: { transition: 'stroke 0.4s ease' } });

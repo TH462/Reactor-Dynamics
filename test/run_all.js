@@ -577,7 +577,14 @@ var BASELINES = {
   // BUILD_DECISIONS.md, CHANGELOG.md and TUNING_LOG.md. One fewer citation SITE, not one fewer
   // directive. The scenario, engine and probe changes moved this by ZERO — #347's write-ups quote
   // no owner ruling, because it is a bug fix — so the eviction is again the entire delta.
-  'run_hardrules.js':      { code: 0, score: '176checks 0failed' },
+  // **MEASURED 177 ON THE MERGED TREE (2026-08-04) — not backshop's 176, not develop's figure,
+  // and not the two added up.** The #350 board work landed on develop while #346/#347/#348 were
+  // landing here, and both sides wrote citations into CLAUDE.md; the merged file carries both at
+  // once. Measured AFTER every conflict was resolved and AFTER the themes cap was brought back to
+  // five (that eviction is itself worth −1 or so), never during — a tree with markers still in it
+  // holds both sides' citations twice over and counts the duplicates. This entry has now warned
+  // about hand-reconciling this number seven times.
+  'run_hardrules.js':      { code: 0, score: '177checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -604,7 +611,7 @@ var BASELINES = {
   // BEHIND clad_temp_c, published for the Physics tab's new Core damage group. Both were
   // locals inside stepCladding, so the panel could show the symptom (peak temperature) and
   // the verdict (fuel_damaged) but nothing of the mechanism between them.
-  'run_contract.js':       { code: 0, score: '147checks 0failed' },
+  'run_contract.js':       { code: 0, score: '148checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -712,7 +719,7 @@ var BASELINES = {
   // INJECTION-VERIFIED three ways: removing `sgtr` from its group, listing a failure that
   // does not exist (`pzr_heaters_failed`), and naming one in two groups each take it to
   // 8/9 41/42.
-  'run_inspect.js':        { code: 0, score: '9/9 42/42' },
+  'run_inspect.js':        { code: 0, score: '9/9 47/47' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
@@ -1270,7 +1277,7 @@ var BASELINES = {
   // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
   // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
   // offenders, so a red here is diagnosable without reopening the page.
-  'verify_board_check.js':   { code: 0, score: '194checks' },
+  'verify_board_check.js':   { code: 0, score: '205checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

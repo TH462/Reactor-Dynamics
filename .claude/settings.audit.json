@@ -1,0 +1,22 @@
+{
+  "_comment_1": "AUDIT SESSION SETTINGS (#221 RoE 1). Launch with:  claude --settings .claude/settings.audit.json",
+  "_comment_2": "Excludes the two ALWAYS-ON priming sources so an audit slice is not handed prior conclusions about the subsystem it is auditing. Read Blueprint/AUDIT_CHARTER.md instead of CLAUDE.md — it carries the operating rules with the diagnosis removed.",
+  "_comment_3": "This layers ON TOP of .claude/settings.json, so the project permissions and the PostToolUse/SessionStart hooks still apply. Do not copy them here.",
+
+  "_comment_claudeMd": "CLAUDE.md is loaded into every agent's context on every turn and is dense with per-subsystem conclusions, gate-score narratives and standing traps. Globs are matched against ABSOLUTE paths. Both slash directions and an explicit per-tree list are given because the repo lives on Windows (C:\\grok_build\\...) and picomatch is forward-slash oriented — belt and braces beats a silently-unmatched pattern, which would look exactly like a clean audit.",
+  "claudeMdExcludes": [
+    "**/grok_build/**/CLAUDE.md",
+    "**\\grok_build\\**\\CLAUDE.md",
+    "C:/grok_build/Reactor_Dynamics/CLAUDE.md",
+    "C:/grok_build/RD_workbench/CLAUDE.md",
+    "C:/grok_build/RD_backshop/CLAUDE.md",
+    "C:\\grok_build\\Reactor_Dynamics\\CLAUDE.md",
+    "C:\\grok_build\\RD_workbench\\CLAUDE.md",
+    "C:\\grok_build\\RD_backshop\\CLAUDE.md"
+  ],
+
+  "_comment_memory": "The auto-memory index loads alongside CLAUDE.md and is the worked case #221 RoE 1 actually cites: on 2026-08-02 the trip-block-hybrid-model memory described the PWR trip-block model as settled and owner-confirmed — a prior conclusion about the exact mechanism slice 1 was auditing, priming in the 'this is deliberate, do not look' direction. Excluding CLAUDE.md alone leaves this in place, which is why a straight file-swap does not solve the problem.",
+  "autoMemoryEnabled": false,
+
+  "_comment_verify": "VERIFY, DO NOT ASSUME. These take effect at session start, so they cannot be proven from inside the session that writes them. First thing in an audit session, confirm the exclusion actually happened — ask the agent whether it can see CLAUDE.md's 'Recent themes' section or the memory index. If it can, the patterns did not match and the slice is NOT independent; fix the glob before auditing, and say so in the slice issue."
+}

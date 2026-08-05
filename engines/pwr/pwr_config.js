@@ -1494,6 +1494,11 @@
       // Without it a `noisy` flow-transmitter failure would be silently inert, and
       // failure injection on this channel is the entire reason to build it.
       rcs_flow:                { lag: 1.0, noise: 0, noise_failure: 0.5, range: [0, 120] },
+      // Pressurizer spray flow, % of the spray line's maximum (#350 item 1). Same appended-
+      // instrument rule as rcs_flow above: noise 0 so the cross-step PRNG sequence is
+      // byte-identical, with `noise_failure` carrying the sigma an injected `noisy` failure
+      // uses — without it that failure would be silently inert on this channel.
+      pzr_spray_flow:          { lag: 1.0, noise: 0, noise_failure: 2.0, range: [0, 110] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED

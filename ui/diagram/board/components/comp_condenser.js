@@ -198,10 +198,14 @@
         last.temp = cdTemp;
         var waterC = env.StdPipe.phaseTempColor('water', cdTemp);
         var steamC = env.StdPipe.phaseTempColor('steam', cdTemp);
-        waterStops[0].setAttribute('stop-color', waterC.flow);
-        waterStops[1].setAttribute('stop-color', waterC.bore);
-        steamStops[0].setAttribute('stop-color', steamC.flow);
-        steamStops[1].setAttribute('stop-color', steamC.bore);
+        // #350 item 20 inverted the kit: `bore` is now the fluid colour at full strength
+        // and `flow` is the darker dash. These stops are a WATER/STEAM BODY shaded with
+        // depth, so they take bore at the surface and flow below — which reproduces the
+        // shading this component has always had, rather than turning it upside down.
+        waterStops[0].setAttribute('stop-color', waterC.bore);
+        waterStops[1].setAttribute('stop-color', waterC.flow);
+        steamStops[0].setAttribute('stop-color', steamC.bore);
+        steamStops[1].setAttribute('stop-color', steamC.flow);
       }
       if (level !== last.level) {
         last.level = level;
@@ -229,12 +233,12 @@
         var supC = env.StdPipe.phaseTempColor('water', cwSupply);
         var retC = env.StdPipe.phaseTempColor('water', cwReturn);
         var avgC = env.StdPipe.phaseTempColor('water', (cwSupply + cwReturn) / 2);
-        outcRect.setAttribute('fill', retC.flow);
-        if (incRect) incRect.setAttribute('fill', supC.flow);
+        outcRect.setAttribute('fill', retC.bore);
+        if (incRect) incRect.setAttribute('fill', supC.bore);
         if (tubeStops[0]) {
-          tubeStops[0].setAttribute('stop-color', avgC.bore);
-          tubeStops[1].setAttribute('stop-color', avgC.flow);
-          tubeStops[2].setAttribute('stop-color', avgC.bore);
+          tubeStops[0].setAttribute('stop-color', avgC.flow);
+          tubeStops[1].setAttribute('stop-color', avgC.bore);
+          tubeStops[2].setAttribute('stop-color', avgC.flow);
         }
       }
 
