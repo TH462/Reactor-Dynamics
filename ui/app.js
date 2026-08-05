@@ -52,7 +52,7 @@
   // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
   var CHART_RECORD_SEC = 1800;   // keep 30 min of history; the chart DISPLAYS only ui.window of it
-  var CHART_SAMPLE_SEC = 0.5;    // …at most one row per 0.5 s of SIM time — see the record path
+  var CHART_SAMPLE_SEC = 0.2;    // …at most one row per 0.2 s of SIM time — see the record path
   var CHART_SHRINK_FRAMES = 40;  // frames a trace must sit well inside its band before the axis zooms in (~4 s)
   var smoothed = {};        // id -> display-damped instrument value
 
@@ -1193,18 +1193,39 @@
     // sim time at the 10 Hz normal broadcast = 18000 rows): 16 series cost 10.2 MB and 51
     // cost **75.8 MB**, because the cost is per stored property and the series list
     // tripled. Two changes bring it back:
-    //   · this gate — one row per 0.5 s of SIM time rather than one per broadcast, so the
-    //     cap is 3600 rows instead of 18000. It is keyed on sim time, not on a broadcast
-    //     COUNT, so it is invariant under timeAcceleration and under the 100→50 ms
-    //     transient cadence: at any acceleration above 5× the sim already advances more
-    //     than 0.5 s per broadcast and nothing is dropped at all.
+    //   · this gate — one row per CHART_SAMPLE_SEC of SIM time rather than one per
+    //     broadcast. It is keyed on sim time, not on a broadcast COUNT, so it is invariant
+    //     under timeAcceleration and under the 100→50 ms transient cadence: at any
+    //     acceleration where the sim advances more than one interval per broadcast nothing
+    //     is dropped at all.
+    //
+    //     RATE 0.5 → 0.2 s ON 2026-08-05 *(OWNER: "the current polling rate is too slow")*,
+    //     so the cap is 9000 rows rather than 3600 and the trace advances 5× a second
+    //     instead of twice. COST, and it is an EXTRAPOLATION rather than a fresh
+    //     measurement — say so rather than implying otherwise: the recorded figure below is
+    //     8.8 MB for 3600 rows at 51 series, which is linear in rows, so 9000 rows is about
+    //     **22 MB**. That is well under the 75.8 MB this decimation was introduced to avoid,
+    //     but it is three times the previous budget. I could not reproduce the 51-series
+    //     worst case headlessly (the series toggles are not addressable from outside the
+    //     board), so if the buffer is ever suspected again, measure it there before assuming
+    //     this line is still true.
     //   · chartSample only writing the sides a series actually HAS (see there).
     // Re-measured after both: **8.8 MB** for 51 series — LESS than the 10.2 MB the old
     // 16-series buffer cost, with three times the quantities. The resolution cost is nil
     // in practice: the widest window is 1800 s across ~400 px of plot, so 2 Hz is still
     // ~9x oversampled, and the preseed writes at 5 s intervals either way.
+    // SAMPLE TIMES ARE QUANTISED TO THE GRID, not taken as whatever sim_time happened to
+    // cross the gate (2026-08-05). The old form stamped the row with the raw `sim_time` of
+    // the first broadcast past the interval, so spacing was irregular — at 1x the broadcast
+    // is 0.1 s of sim time, but the transient cadence is 0.05 s and any acceleration makes
+    // the step arbitrary — and `t1` (hence the whole x-axis, `t0 = t1 - window`) advanced by
+    // a DIFFERENT amount each time. That is the second half of the owner's report: "the
+    // polling shifted with time so it shows different polled times of the line each polling
+    // time." On the grid, t1 advances in exact CHART_SAMPLE_SEC steps and the window scrolls
+    // evenly.
+    var gridT = Math.floor(s.metadata.sim_time / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
     var lastT = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
-    if (lastT != null && s.metadata.sim_time - lastT < CHART_SAMPLE_SEC) { drawChart(); return; }
+    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
     // #237 (owner): presets start with 30 minutes of history so the graphs are populated —
@@ -1219,13 +1240,13 @@
     // would freeze boot, every reset, every plant switch and every mission start. See
     // ensurePreseed. (sv/stv are frozen after this call, so sharing one object per row is safe.)
     if (!chartBuf.length) {
-      for (var pt = s.metadata.sim_time - CHART_RECORD_SEC; pt < s.metadata.sim_time; pt += 5) {
+      for (var pt = gridT - CHART_RECORD_SEC; pt < gridT; pt += 5) {
         chartBuf.push({ t: pt, v: sv, tv: stv });
       }
       ensurePreseed(s.metadata.sim_time);
     }
-    chartBuf.push({ t: s.metadata.sim_time, v: sv, tv: stv });
-    var cutoff = s.metadata.sim_time - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
+    chartBuf.push({ t: gridT, v: sv, tv: stv });
+    var cutoff = gridT - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
     drawChart();
   }
@@ -2839,12 +2860,32 @@
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
     // Downsample the VISIBLE window [t0, t1] into fixed TIME buckets — one per plot
-    // pixel. chartBuf holds up to 30 min (thousands of points at 10–20 Hz) but only
-    // ui.window shows; bucketing keeps drawChart O(pixels), and — unlike index-stride
-    // sampling — is STABLE as the window scrolls: a sample stays in the same time
-    // bucket, so the line doesn't change shape as it moves left. Averaging the
-    // sub-pixel samples per bucket also makes a noisy trace readable — this is
-    // pixel-resolution downsampling, NOT temporal smoothing (there's no lag).
+    // pixel. chartBuf holds up to 30 min but only ui.window shows; bucketing keeps
+    // drawChart O(pixels), and averaging the sub-pixel samples per bucket makes a noisy
+    // trace readable — this is pixel-resolution downsampling, NOT temporal smoothing
+    // (there's no lag).
+    //
+    // THE GRID IS ANCHORED IN ABSOLUTE TIME, and until 2026-08-05 it was not — which is
+    // why already-plotted history visibly crawled and deformed *(OWNER: "sometimes the
+    // lines that have already been plotted shift and move and it's not the auto fit of the
+    // unit range … the polling shifted with time so it shows different polled times of the
+    // line each polling time.")*. The comment that stood here claimed the opposite — "a
+    // sample stays in the same time bucket, so the line doesn't change shape as it moves
+    // left" — and that was FALSE by construction: the index was
+    // `floor((t − t0)/span·NB)` with `t0 = t1 − window`, so the whole grid slid every time
+    // a new sample landed. MEASURED with the shipped constants (344 buckets, 300 s window,
+    // 0.87 s per bucket): one FIXED sample at t = 1000 s moves bucket 114 → 113 → 112 → 111
+    // as t1 advances 1200 → 1203 s, i.e. it crosses a boundary about every 0.9 s. Each
+    // crossing changes that bucket's membership, and therefore both its mean VALUE and its
+    // mean TIME — which is exactly what gets plotted. Measured in the browser, points that
+    // should translate rigidly instead spread by up to 1.0 px per frame.
+    //
+    // Anchoring the grid to absolute multiples of the bucket width fixes it: a sample keeps
+    // its bucket for as long as the bucket width is unchanged, so the trace translates
+    // rigidly and only hops when the grid origin advances a whole bucket — one pixel, all
+    // points together. The plotted time is the bucket's OWN grid time rather than the mean
+    // of whatever samples currently fall in it, so x cannot wobble as membership changes at
+    // the edges; a bucket IS a pixel, so nothing is lost by quantising to its centre.
     var startI = 0;
     while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
     var NB = Math.max(2, Math.round(PW));   // one bucket per plot pixel
@@ -2854,22 +2895,24 @@
     // over a FIXED TIME width instead — the trace reads the same at 1 min and 30 min.
     // Truth needs none of this: the physics has no noise to remove.
     var secPerBucket = span / NB;
+    var bOrigin = Math.floor(t0 / secPerBucket);   // absolute grid index of the left edge
     var SMOOTH_SEC = 3;
     var kSmooth = chartTruth() ? 0 : Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
     active.forEach(function (ser, si) {
-      var sum = {}, cnt = {}, tsum = {};    // sparse per-bucket accumulators
+      var sum = {}, cnt = {};              // sparse per-bucket accumulators
       for (var j = startI; j < chartBuf.length; j++) {
         var val = seriesVal(ser, chartBuf[j]);
         if (val == null || !isFinite(val)) continue;
-        var bk = Math.floor((chartBuf[j].t - t0) / span * NB);
+        var bk = Math.floor(chartBuf[j].t / secPerBucket) - bOrigin;
         if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
-        if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; tsum[bk] = 0; }
-        sum[bk] += val; cnt[bk] += 1; tsum[bk] += chartBuf[j].t;
+        if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; }
+        sum[bk] += val; cnt[bk] += 1;
       }
       var means = [];
       for (var bk2 = 0; bk2 < NB; bk2++) {
         if (cnt[bk2] === undefined) continue;
-        means.push({ t: tsum[bk2] / cnt[bk2], v: sum[bk2] / cnt[bk2] });
+        // the bucket's OWN time, not the mean of its members — see the grid note above
+        means.push({ t: (bOrigin + bk2 + 0.5) * secPerBucket, v: sum[bk2] / cnt[bk2] });
       }
       // centred moving average — zero net lag, unlike an EWMA (a drifting or stuck
       // sensor survives it untouched; only the per-sample jitter goes)
