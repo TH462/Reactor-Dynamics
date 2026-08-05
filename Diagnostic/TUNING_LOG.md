@@ -66,6 +66,39 @@ Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69
 12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
 new checkSanity legs all pass — no latent authoring bug was hiding behind them.
 
+### #373 — the turbine has a stop valve now, and the trip burst it was hiding is real
+
+`tripTurbine` zeroed a demand and nothing else, so a "shut" machine kept drawing steam on the
+governor's 2.0 s load-control lag — **2.138 flow-seconds of rated steam** through a tripped
+turbine (audit #297 F5). One constant was doing two jobs the real machine does with two valves
+(WTSM §7.3: hydraulics dumped, springs slam the throttle valves, isolation *redundant* with the
+governor). New `stop_valve_frac` state, spring-shut on `turbine_tripped`, multiplies steam flow;
+`governor_tau` untouched — the load-control job keeps its lag. `stop_valve_tau 0.15` is
+**UNVERIFIED [tune]**: the mechanism is sourced verbatim, the number is not (WTSM says "rapidly
+close" and gives no figure); sub-second per the spring-slam description.
+
+Measured (full stack, trip at 100 %): steam flow **0.410 normalized at +2 s before → 2.2e-6
+after**; the whole draw 2.138 → ~0.13 flow-s. And the consequence the leak was hiding:
+**RCS peak 15.58 → 16.26 MPa, so the PORV now blips on the trip burst** — exactly the interval
+the audit's rig predicted (16.28 at prototypical closure). PORV reseats within seconds; pzr
+safety untouched (peak < 17.13); SG safeties stay seated (dump got there); settles at the
+no-load anchor. The plant's own relief ladder, one rung earlier than before.
+
+**Two probes re-specified, declared per HR10 — both new forms FAIL on the pre-#373 plant by
+construction, because that plant was the defect:**
+- **TR-1b**: "no PORV lift < 16.20" was green because the leaked steam flattened the transient
+  — the standing absence-check trap, second sighting in this probe family (the audit called
+  it). Rewritten POSITIVELY on TR-1's idiom: the PORV lifts (≥ 16.20), the safety never has to
+  (< 17.13), both config-derived; the SG-safety line now shows the peak it asserts (the old
+  evidence/predicate mismatch).
+- **TR-2**: its "AFW means no PORV" peaked 16.23 — but that is the trip BURST
+  (AFW-independent, TR-1b's phenomenon), not the heat-sink question TR-2 asks. Re-scoped: the
+  burst stays inside the safety; the PORV is not needed in the 4 minutes AFTER the burst
+  (measured post-burst peak well under 16.20). TR-3 keeps the sustained canon lift.
+
+Save-compat: `stop_valve_frac` migrates as `turbine_tripped ? 0 : 1` — a mid-trip save replays
+its trip. New true-state field `stop_valve_pct` + CONTEXT §6.3 row.
+
 ### #369 — the SG code safeties now open on the steam, not on a gauge
 
 A code safety is a spring-loaded ASME device opened by the fluid it protects against; this

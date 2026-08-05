@@ -640,10 +640,25 @@
         var t = h.ts();
         ck('the dump carries decay heat to the condenser', fmt(h.range('steam_dump_valve_pct').max, 0),
           h.range('steam_dump_valve_pct').max >= 20, '≥ 20 %');
-        ck('SG code safeties never lift (the dump got there first)', String(!!t.sg_safety_open),
-          h.range('steam_pressure_mpa').max < 9.31, 'no lift (< 9.31 MPa)');
-        ck('no PORV lift on the primary side', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        var _sg1b = RD.PWR_CONFIG.steam_generator, _pz1b = RD.PWR_CONFIG.pressurizer;
+        // Peak asserted AND shown — the old line printed the end-state boolean while
+        // testing the peak, so the printed evidence could not support the verdict.
+        ck('SG code safeties never lift (the dump got there first)',
+          fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa peak',
+          h.range('steam_pressure_mpa').max < _sg1b.sg_safety_open_mpa,
+          '< ' + fmt(_sg1b.sg_safety_open_mpa, 2) + ' (config)');
+        // The PORV LIFTS on the trip burst — briefly, on the stored energy the stop
+        // valve now bottles up (#373). Pre-#373, 2.138 flow-seconds of post-trip steam
+        // leaked through the governor's 2.0 s load lag and flattened exactly this
+        // transient, so the old "no PORV lift < 16.20" band was green because the event
+        // never happened — the standing absence-check trap, second sighting in this
+        // probe family. Re-specified POSITIVELY (TR-1's idiom) and DECLARED: this form
+        // fails on the pre-#373 plant by construction, because that plant was the defect.
+        ck('the PORV lifts on the trip burst — the designed backstop (#373)',
+          fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max >= _pz1b.porv_open_mpa, '≥ ' + fmt(_pz1b.porv_open_mpa, 2));
+        ck('…and the pressurizer SAFETY never has to', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < _pz1b.safety_open_mpa, '< ' + fmt(_pz1b.safety_open_mpa, 2));
         ck('settles at the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 6), '297 ±6');
         ck('SG level held well clear of the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25 %');
@@ -1376,8 +1391,20 @@
           h.ts().mwe_output < 5, 'true');
         ck('AFW auto-started and carries the SGs (no dryout)', String(!!h.ts().afw_active),
           !!h.ts().afw_active, 'true');
-        ck('with AFW available the PORV is NOT needed', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        // Two phenomena share this run since #373 and must not share one check: the
+        // ~2 s trip BURST (stored energy the stop valve bottles up — blips the PORV at
+        // ~16.2 on any trip from 100 %, AFW-independent, pinned positively by TR-1b)
+        // and the sustained heat-sink question this probe actually asks. "AFW means
+        // the PORV is not NEEDED" is a claim about the minutes AFTER the burst — the
+        // regime where TR-3's blocked-AFW twin genuinely does need it.
+        ck('the trip burst stays inside the pressurizer safety', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < RD.PWR_CONFIG.pressurizer.safety_open_mpa,
+          '< ' + fmt(RD.PWR_CONFIG.pressurizer.safety_open_mpa, 2) + ' (config)');
+        var postPeak = 0;
+        h.run(240, function (hh) { var p = hh.ts().pressure_mpa; if (p > postPeak) postPeak = p; });
+        ck('with AFW carrying the SGs the PORV is not needed post-burst', fmt(postPeak, 2),
+          postPeak > 0 && postPeak < RD.PWR_CONFIG.pressurizer.porv_open_mpa,
+          '< ' + fmt(RD.PWR_CONFIG.pressurizer.porv_open_mpa, 2) + ' after the burst');
         T.checkSanity(ck, h);
       });
     },
@@ -1385,8 +1412,10 @@
     // TR-3 / the CC-5 canon pin: loss of feed WITH AFW blocked (the actual TMI-2
     // lineup) — the SG dries out, decay heat has nowhere to go, the primary heats
     // to saturation and repressurizes over ~10-20 min, and the capped spray CANNOT
-    // stop it: the PORV lifts. This is the sim-honest home of the canon PORV lift
-    // (the first-seconds wave is caught by the trip-open dump on every rejection).
+    // stop it: the PORV lifts. This is the sim-honest home of the SUSTAINED canon
+    // PORV lift. (The first-seconds wave on a caught REJECTION is absorbed by the
+    // trip-open dump; on a full-power TRIP it blips the PORV since #373's stop
+    // valve made that burst real — TR-1b pins the blip, this probe pins the duty.)
     'TR-3': function () {
       return test('TR-3 loss of feed + AFW blocked — dryout repressurization lifts the PORV', function (ck) {
         var h = H('hot_full_power');

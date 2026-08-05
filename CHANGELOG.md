@@ -31,6 +31,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A tripped turbine stops drawing steam** (#373). There was no stop valve: a trip zeroed the
+  load demand and the machine kept pulling steam through the governor's two-second load lag —
+  2.1 flow-seconds of rated steam through a "shut" turbine, doing no work into no sink. The
+  spring-closed stop valves the real machine trips on now slam in ~0.15 s, and the primary
+  pressure burst that leak was flattening is real again: a trip from 100 % briefly lifts the
+  pressurizer PORV — the designed backstop — where before the transient quietly never
+  happened. Two behaviour probes were re-specified for the corrected plant and say so.
 - **The steam generator's code safety valves can no longer be defeated by a failed
   steam-pressure transmitter** (#369). A code safety is a spring valve opened by the steam
   itself; this plant's opened on an instrument reading, so sticking that one channel from the

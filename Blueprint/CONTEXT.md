@@ -565,6 +565,7 @@ physical-quantity vocabulary.
     "msiv_open": bool, "sg_safety_open": bool,   // main steam isolation valve + SG code safeties (upstream of the MSIV)
     // Synoptic additions (governor / ECCS / CVCS true flows — feed the §8.8 instruments; additive):
     "governor_valve_pct": number,     // turbine admission valve position, 0–100 %
+    "stop_valve_pct": number,         // trip stop (throttle) valves — spring-shut on a trip, 0–100 % (#373)
     "charging_flow_actual": float,    // TRUE CVCS charging (0 with pump off; AUTO-modulated) — feeds instruments.charging_flow, ≠ setpoint
     "letdown_flow_actual": float,     // TRUE CVCS letdown — feeds instruments.letdown_flow
     "leak_flow": float,               // primary break flow, normalized (LOCA/SGTR) — feeds instruments.primary_leak_flow

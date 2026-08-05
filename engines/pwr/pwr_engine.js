@@ -765,6 +765,7 @@
       leak_flow: s.leak_flow,
       // §7 true_state additions (governor / accumulators / RHR):
       governor_valve_pct: s.governor_valve_pct,
+      stop_valve_pct: (s.stop_valve_frac != null ? s.stop_valve_frac : 1) * 100,
       accumulators_discharging: s.accumulators_discharging,
       accumulator_flow_normalized: s.accumulator_flow_normalized,
       accumulator_volume_pct: s.accumulator_volume_pct,
@@ -1596,6 +1597,7 @@
       // Turbine governor valve tracks load demand (% open); starts matched to P0 so
       // steam_flow = (gov/100)·(P/Prated) reproduces the P0 steady state at reset.
       governor_valve_pct: onLine ? clip(P0, 0, 1) * 100 : 0,
+      stop_valve_frac: 1,   // authored states are untripped; the step drives it from turbine_tripped (#373)
       condenser_cooling_available: true, steam_demand_mwe: onLine ? P0 * cfg.turbine.mwe_rated : 0,
       mwe_output: onLine ? P0 * cfg.turbine.mwe_rated : 0,
       // ...and the LOAD MODE has to agree with the rotor. The subcritical states spawn
@@ -1862,6 +1864,9 @@
     if (s.ir_amps == null) s.ir_amps = 0;
     // MSIV + SG safeties.
     if (s.msiv_open == null) s.msiv_open = true;
+    // Turbine stop valves (#373): a pre-#373 save restored mid-trip replays the
+    // trip correctly — shut if tripped, open otherwise.
+    if (s.stop_valve_frac == null) s.stop_valve_frac = s.turbine_tripped ? 0 : 1;
     // Steam-break LOCATION (2026-07-25, #199): pre-MSIV-gate saves carry
     // `_fail.steam_break = {active, size}` with no location. Default DOWNSTREAM
     // (isolable) — that is what the plain `steam_line_break` id now means, and a

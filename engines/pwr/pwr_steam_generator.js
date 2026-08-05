@@ -298,8 +298,20 @@
     var gov_target = clip(clip(s.turbine_demand_frac, 0, 1) * p_comp, 0, 1) * 100;
     var galpha = dt / (cfg.turbine.governor_tau + dt);
     s.governor_valve_pct += galpha * (gov_target - s.governor_valve_pct);
+    // Stop (throttle) valves — the trip-closure path, redundant with the governor
+    // (#373; WTSM §7.3: hydraulics dumped, springs slam them shut). Separate from
+    // governor_tau on purpose: load control and trip closure are different jobs on
+    // different valves, and collapsing them let a tripped machine draw steam for
+    // ~10 s. Open (1.0) any time the turbine is not tripped, so the multiplier is
+    // exactly 1 in normal operation and calibration is untouched.
+    var svShut = s.turbine_tripped === true;
+    var svTau = svShut ? cfg.turbine.stop_valve_tau : (cfg.turbine.stop_valve_reopen_tau || 5.0);
+    var svAlpha = dt / (svTau + dt);
+    s.stop_valve_frac += svAlpha * ((svShut ? 0 : 1) - s.stop_valve_frac);
+    if (s.stop_valve_frac < 1e-6) s.stop_valve_frac = 0;           // seat the valve — same idiom as the rpm floor
+    else if (s.stop_valve_frac > 1 - 1e-6) s.stop_valve_frac = 1;
     s.steam_flow_normalized = (s.governor_valve_pct / 100) * sg.steam_flow_rated
-      * (s.steam_pressure_mpa / sg.steam_p_rated);
+      * (s.steam_pressure_mpa / sg.steam_p_rated) * s.stop_valve_frac;
     if (s.msiv_open === false) s.steam_flow_normalized = 0;   // MSIV shut — no steam past it, whatever the governor asks
   }
 

@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 7  
+**Revision:** 8  
 
 ---
 
@@ -529,9 +529,11 @@ Main feedwater requires the **condensate pump**, an available **condenser**, and
 
 A **main steam line break is gated by break location.** A break *downstream* of the MSIV is isolable — shutting the valve stops the blowdown dead, and that is the operator's one real lever. A break *upstream*, between the SG and the valve, is on the wrong side of every isolation this single-loop plant owns and blows the generator down regardless.
 
-### 8.6 The turbine governor
+### 8.6 The turbine governor and stop valves
 
 The governor valve target is **pressure-compensated**: demand divided by the upstream pressure ratio, clamped fully open. At steady state the delivered steam therefore equals the demand at any secondary pressure — the valve strokes open as pressure falls and closes down as it rises, like a real governor holding load.
+
+**On a turbine trip the stop (throttle) valves slam shut in a fraction of a second** — a separate spring-closed path, redundant with the governor, as on the real machine. A tripped turbine therefore stops drawing steam essentially instantly, and the stored-energy burst that follows a trip from full power is real: primary pressure spikes briefly and can blip the PORV — the designed backstop — before the steam dump and the scram catch the plant.
 
 ---
 

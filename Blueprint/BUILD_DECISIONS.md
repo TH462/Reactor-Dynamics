@@ -45,6 +45,25 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-c — #373: one constant was doing two valves' jobs, and a test was green because of it
+
+**Decision.** A turbine stop-valve path, separate from the governor: `stop_valve_frac`
+spring-shuts on `turbine_tripped` (`stop_valve_tau 0.15`, UNVERIFIED [tune] — the mechanism is
+WTSM §7.3 verbatim, the number is not) and multiplies steam flow. `governor_tau 2.0` keeps the
+load-control job unchanged. TR-1b rewritten positively (the PORV lifts on the trip burst — the
+leaked steam that used to suppress it was the defect); TR-2 re-scoped to the post-burst window
+its claim is actually about. Both re-specifications fail on the pre-#373 plant by construction
+and are declared as such (HR10).
+
+**Why the probe moves are not refits.** The audit measured the counterfactual before any fix
+existed: at prototypical closure the RCS peak crosses the PORV setpoint (rig: 16.28; on-tree
+after: 16.26), so TR-1b's "no PORV lift" was pinning a non-event — the same trap that
+rewrote TR-1's PORV check positively at the 40 % dump change. The plant's relief ladder is
+unchanged; the trip burst simply reaches one rung now that a tripped machine stops drawing
+steam.
+
+---
+
 ## 2026-08-05-workbench-b — #369: a spring safety senses nothing, so nothing it senses can fail
 
 **Decision.** The SG code safety pop/reseat moved from a control-layer actuation reading the

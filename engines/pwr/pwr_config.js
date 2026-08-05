@@ -1163,6 +1163,25 @@
       // pressure; the position itself strokes with a first-order lag and
       // modulates steam flow together with SG pressure. [tune]
       governor_tau: 2.0,           // s valve response time constant
+      // Turbine stop (throttle) valves — the TRIP-closure path (#373, audit #297
+      // F5). *"If a turbine trip signal is present, the high pressure hydraulic
+      // fluid will be dumped from the throttle valves. The dumping of the high
+      // pressure fluid allows spring force to rapidly close the throttle valves.
+      // Since all turbine valves close on a turbine trip, the throttle valves and
+      // governor valves provide redundant isolation of steam flow to the high
+      // pressure turbine."* (WTSM §7.3, ML11223A247). Until #373 a tripped
+      // turbine kept drawing steam on governor_tau alone — 2.138 flow-seconds of
+      // rated steam through a "shut" machine, because one constant was doing two
+      // jobs (load control AND trip closure) that the real machine does with two
+      // different valves. The MECHANISM is sourced above; the closure constant
+      // itself is not — WTSM says "rapidly close" and gives no number, so 0.15 s
+      // is UNVERIFIED [tune]: sub-second per the spring-slam description, and
+      // fast enough that the stop valve, not the governor, bounds trip steam
+      // (measured: 0.127 flow-s drawn vs 2.138 at governor_tau alone). The
+      // reopen tau is the relatch after a trip reset — deliberately slower, and
+      // inert in practice because the governor is at 0 demand at re-sync. [tune]
+      stop_valve_tau: 0.15,        // s — spring closure on trip (UNVERIFIED value, sourced mechanism)
+      stop_valve_reopen_tau: 5.0,  // s — reopen after the trip latch clears
     },
 
     // ----------------------------------------------------------- emergency cool
