@@ -109,6 +109,32 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Pressurizer, relief and the control board</h2>
+      <span class="log-ver mono">Alpha 1.0.1</span>
+      <time class="log-date mono" datetime="2026-08-05">5 August 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>A water-solid reactor coolant system now repressurizes.</strong>
+          Emergency injection into a full plant lifts the relief valve instead of vanishing.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Losing coolant now moves pressure and subcooling margin</strong>,
+          not just pressurizer level.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A break weakens as the plant depressurizes.</strong>
+          Closing the pressure difference reduces leak flow, and an empty vessel stops discharging.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The Three Mile Island scenarios and campaign play through again</strong>,
+          and the decision point is now the one the 1979 crew faced: restore the injection that was just secured.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The tube-rupture procedure secures injection before depressurizing</strong>
+          — without it, walking the pressure setpoint down does nothing.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The diagram shows delivered flow, not commanded flow.</strong>
+          Pumps, valves and pipes stop animating when nothing is moving.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Pipe colours read the plant.</strong>
+          Letdown, charging, emergency injection, accumulator and auxiliary feed lines take live temperatures; coolant green and orange are darker.</li>
+      <li><span class="log-tag added">Added</span><strong>Pressurizer spray flow indication</strong>
+          and a main feedwater RESTORE control on the steam generator feed card.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Initial Alpha release</h2>
       <span class="log-ver mono">Alpha 1.0.0</span>
       <time class="log-date mono" datetime="2026-08-04">4 August 2026</time>

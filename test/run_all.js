@@ -853,7 +853,11 @@ var BASELINES = {
   // while 1.0.0 sorted under Alpha 1.7.0 the launch entry fell below the floor and its
   // date agreement across the two files was NOT CHECKED AT ALL — zero CROSS rows, no failure.
   // The relabel is what makes this 11 rather than 10, and the 11th check is that CROSS row.
-  'run_release.js':        { code: 0, score: '11checks 0failed' },
+  // 11 -> 12 (2026-08-05, Alpha 1.0.1): a RELEASE adds a check, by design — every
+  // `changelog.html` entry down to the oldest version `CHANGELOG.md` still names individually
+  // is cross-checked, so the CROSS block grows by one row per published release. Nothing was
+  // added to the runner.
+  'run_release.js':        { code: 0, score: '12checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane

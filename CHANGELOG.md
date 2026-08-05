@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.0.1] — 2026-08-05
+
 ### Changed
 - **Eleven auxiliary pipes now take their colour from the plant instead of an authored guess**
   (#357). The letdown line rendered cold-blue at 60 °C while the cold leg it takes suction from
