@@ -29,6 +29,103 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-develop-g (strip chart: the axis, the rate, and the acceleration ceiling)
+
+Three owner-reported chart problems, and the third needed an M5 change rather than a UI one.
+
+### 1 — already-plotted history crawled and deformed
+
+*(OWNER: "sometimes the lines that have already been plotted shift and move and it's not the auto
+fit of the unit range … the polling shifted with time so it shows different polled times of the
+line each polling time.")*
+
+**The bucket grid was anchored to a MOVING axis, under a comment claiming the opposite.**
+`drawChart` buckets into one-pixel time bins with `floor((t − t0)/span·NB)`, and `t0 = t1 − window`
+where t1 is the newest sample — so the entire grid slid every time a sample landed. The comment
+read *"a sample stays in the same time bucket, so the line doesn't change shape as it moves left"*,
+which is false by construction. **Demonstrated** with the shipped constants (344 buckets, 300 s
+window, 0.87 s/bucket): a FIXED sample at t = 1000 s walks bucket 114 → 113 → 112 → 111 as t1 goes
+1200 → 1203 s. Every crossing changes that bucket's membership and hence its mean VALUE and mean
+TIME — which is what is plotted.
+
+Second half: **sample times were not on a grid** — the row was stamped with the raw `sim_time` of
+whichever broadcast crossed the interval, so spacing was irregular and t1 (hence the whole axis)
+advanced by a different amount each time.
+
+Fixed by anchoring the grid to absolute multiples of the bucket width, plotting the bucket's OWN
+grid time instead of the mean of its current members, and quantising rows onto the sample grid.
+**MEASURED in the browser**, per-frame x-shift of already-plotted points (a rigid scroll is one
+shift shared by all of them; any spread is the trace deforming):
+
+| | before | after |
+|---|---|---|
+| per-frame shift | 0.000 for several frames, then −0.700 and **+5.000 px** | steady −0.200/−0.300 px |
+| within-frame spread | up to **1.000 px** | **0.000 px on every frame** |
+
+### 2 — polling rate
+
+`CHART_SAMPLE_SEC` 0.5 → 0.2 s. Cost recorded at the site as an EXTRAPOLATION, not dressed up as a
+measurement: the documented 8.8 MB at 3600 rows / 51 series is linear in rows, so 9000 rows is
+about 22 MB, well under the 75.8 MB the decimation exists to avoid. The 51-series worst case could
+not be reproduced headlessly and the comment says so.
+
+### 3 — THE ACCELERATION CEILING, and the owner's proposed fix was backwards
+
+*(OWNER: "Should we fix the polling rate to real time so it polls less per sim unit of time as the
+speed increases?")* — measured, and **no**: wall-clock gating is worse at every speed above 1×,
+half the resolution at 10× and a quarter at 60×. **The gate was never the bottleneck — the
+BROADCAST was.** At 60× each broadcast carries 6 s of sim, so the finest possible spacing is 6 s
+no matter what the gate says; wall-clock gating discards broadcasts on top of that ceiling.
+
+Samples per plot pixel, 5-minute window, by arithmetic:
+
+| speed | sim/broadcast | sim-gated (was) | wall-gated (proposed) |
+|---|---|---|---|
+| 1× | 0.1 s | 4.36 | 4.36 |
+| 10× | 1.0 s | 0.87 | 0.44 |
+| 60× | 6.0 s | 0.15 | 0.07 |
+| 600× | 60 s | 0.01 | 0.01 |
+
+**The fix is to sample where the fine time exists.** `simulation_service.tick()` already steps at
+PHYSICS_DT and already evaluates protection on a SIM-time cadence for exactly this class of reason
+(#153 — the reactor gets the same protection at 3600× as at 1×). The chart now rides that seam:
+the UI registers a sampler via `setFineSampler`, the service calls it on a fixed sim-time interval
+inside the step loop, and the samples are collected with `takeFine()` at broadcast.
+
+- **Interval is `max(CHART_FINE_SEC, simPerBroadcast / CHART_FINE_MAX)`** — constant in sim time at
+  ordinary speeds, degrading gracefully instead of exploding at extreme ones. Cost is bounded at
+  60 samples per broadcast at any acceleration.
+- **NOT on the snapshot.** Snapshots are checkpointed into the rewind ring and saved; an array of
+  sub-samples riding along would bloat both for a purely visual concern. The UI pulls it.
+- **`_fineBuf` is cleared at all three timeline-move sites** (two resets and `loadState`), or a
+  rewind would splice pre-rewind plant onto post-rewind time — the buffer is keyed on sim time.
+- **Zero cost where nothing registers a sampler**: every headless runner and test harness leaves
+  `_fineSampler` null and the loop does no extra work. `run_all` 38/38 confirms it.
+
+**MEASURED A/B**, 1-minute window filled with live data (the 5-second-spaced preseed had to be
+flushed out first — a first attempt measured the preseed and reported a flat 67 vertices at every
+speed):
+
+| speed | before | after |
+|---|---|---|
+| 1× | 163 | **163** — byte-identical, the change costs nothing where it is not needed |
+| 60× | **11** | **300** of 344 pixels |
+| 600× | **2** | **61** |
+
+600× lands at 61 because one broadcast there IS the whole 1-minute window, so the per-broadcast cap
+is the binding constraint — the cap working, not a shortfall.
+
+**A measurement that was void and is recorded as such:** a Node-level rig reported 0 fine samples at
+every speed, which looked like the feature not working. The rig never loaded a plant, so
+`tick()` returned early on `!this.engine`. The browser A/B is the real evidence.
+
+**What this does NOT fix, stated so it is not assumed:** a transient shorter than the fine interval
+is still invisible — at 3600× the interval is 6 s of sim, so a 3-second relief lift can still fall
+between samples. Point sampling aliases; carrying min/max per interval would not, and that is the
+next step if it ever matters.
+
+---
+
 ## Session log — 2026-08-05-develop-f (#364 REFIT + #365 collapse — **WIP, 5 runners RED**)
 
 **STATUS: COMPLETE. `run_all` 38/38 at baseline.** The refit landed red (5 runners, 11 probes)

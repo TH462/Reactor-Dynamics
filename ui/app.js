@@ -1245,6 +1245,25 @@
       }
       ensurePreseed(s.metadata.sim_time);
     }
+    // FINE SUB-SAMPLES FIRST, then the broadcast instant. The service samples the plant on a
+    // fixed SIM-time interval inside its step loop (see setFineSampler there), so the chart's
+    // resolution stops depending on time acceleration: at 60× a broadcast carries 6 s of sim
+    // and hands over ~30 samples instead of the single one it used to. Each carries its own
+    // sim time and is quantised onto the same grid as the broadcast row, so they interleave
+    // with the existing history rather than forming a second series.
+    //
+    // Guarded against going backwards: a rewind or a reset clears the service's buffer, but a
+    // sample that predates the newest row would still splice the plant onto the wrong time.
+    var fine = (service && service.takeFine) ? service.takeFine() : null;
+    if (fine) {
+      for (var fi = 0; fi < fine.length; fi++) {
+        var fg = Math.floor(fine[fi].t / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
+        var fLast = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
+        if (fLast != null && fg - fLast < CHART_SAMPLE_SEC - 1e-9) continue;
+        if (fg >= gridT) continue;                       // the broadcast row below owns that instant
+        chartBuf.push({ t: fg, v: fine[fi].v.v, tv: fine[fi].v.tv });
+      }
+    }
     chartBuf.push({ t: gridT, v: sv, tv: stv });
     var cutoff = gridT - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
@@ -5165,6 +5184,16 @@
     if ($('logoVer')) $('logoVer').textContent = window.RD_RELEASE || '';
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
     service = new RD.SimulationService({ seed: 0x1234 });
+    // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
+    // its step loop, so the chart sees the plant between broadcasts and its resolution stops
+    // depending on time acceleration. It returns the same shape `chartSample` produces for
+    // the broadcast row, so the two interleave in chartBuf with no special case downstream.
+    // Registered here rather than on demand because the cost is already bounded service-side
+    // (CHART_FINE_MAX per broadcast) and a sampler that comes and goes would leave gaps in
+    // the history whenever the chart tab was closed.
+    if (service.setFineSampler) {
+      service.setFineSampler(function (ins, truth, ctl) { return chartSample(ins, truth, ctl); });
+    }
     service.subscribe(render);
     service.subscribe(diagTick);
     service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast

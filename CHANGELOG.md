@@ -30,6 +30,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the strip chart holds its resolution at every time acceleration
+
+The chart used to see exactly one sample per broadcast, so how much detail it had depended on how
+fast you were running: fine at 1×, but at 60× a whole 6 seconds of plant collapsed to a single
+point, and the line was drawn straight through everything in between. A relief-valve lift lasting
+three seconds could leave no mark at all.
+
+The simulator now samples the plant **between** broadcasts, on a fixed plant-time interval, so the
+trace looks the same at any speed. Measured on a one-minute window filled with live data, the
+number of points in the trace:
+
+- **60×** — 11 → **300** (of 344 across the plot)
+- **600×** — 2 → **61**
+- **1×** — unchanged, as it should be
+
+Also fixed, and separately: **already-drawn history no longer crawls or changes shape as the chart
+scrolls.** The time bins the trace is drawn into were anchored to the moving right-hand edge, so
+every new sample re-shuffled the whole line — measured, points that should have moved together
+drifted apart by up to a pixel each frame, and the trace occasionally jumped backwards. It now
+scrolls rigidly.
+
+The chart also updates **five times a second instead of twice**.
+
+
 ### Changed — decay heat is refitted to the published standard, and post-trip timings are longer (#364)
 
 Decay heat goes from two exponential groups to **four**, fitted to the published standard rather
