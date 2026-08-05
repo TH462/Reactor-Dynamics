@@ -30,6 +30,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The measurement harness can no longer print a clean table for a command the plant rejected**
+  (#376). `test/measure_stack.js` used to discard the command result, so a typo'd failure id
+  produced fifteen minutes of a perfectly flat plant that read as a real null result — the #297
+  audit nearly filed one. A rejected command, and a command scheduled past the end of the run,
+  are now loud exit-2 errors; the ops harness records lockout refusals it previously dropped,
+  and four behaviour probes now sanity-check harness legs they were silently trusting.
+
 ## [Alpha 1.0.1] — 2026-08-05
 
 ### Changed

@@ -90,7 +90,8 @@
     'TR-12': 'probe + run_campaign pwr_slb', 'TR-12b': 'probe (MSIV isolates a downstream break, #199)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
-    'TR-14': 'existing:campaign SBO fact (document in manual)',
+    // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
+    // in an object literal it silently OVERWROTE the real probe entry above)
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
     'CA-3': 'probe', 'CA-4': 'probe',
@@ -768,6 +769,9 @@
         ck('so the rotor coasts — it does not motor on the grid (was 1800 rpm)',
           fmt(tm.turbine_rpm, 0), tm.turbine_rpm < 1790, '< 1790 rpm and falling');
         T.checkSanity(ck, z);
+        // #376: every leg's harness gets the sanity pass — legs B–E drove commands
+        // whose rejections were recorded but never inspected.
+        T.checkSanity(ck, d); T.checkSanity(ck, o); T.checkSanity(ck, r); T.checkSanity(ck, m);
       });
     },
 
@@ -853,6 +857,7 @@
           dtC >= 0 ? 'scram at +' + fmt(dtC, 1) + ' s on ' + c.tripReason : 'no scram in 600 s',
           !/sg_level high/.test(c.tripReason || ''), 'not sg_level high');
         T.checkSanity(ck, a);
+        T.checkSanity(ck, b); T.checkSanity(ck, c);   // #376: the two failed-channel legs
       });
     },
 
@@ -1250,6 +1255,7 @@
           dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip in 900 s',
           dt >= 8, '≥ 8 s (no anticipatory trip), then a real limit');
         ck.info('trip cause', h.tripReason || 'none');
+        T.checkSanity(ck, h);
       });
     },
 
@@ -1304,6 +1310,7 @@
         ck('and the catch does not overcool into a power runup (< 101 %)',
           fmt(hi.range('power_pct').max, 1), hi.range('power_pct').max < 101, '< 101');
         T.checkSanity(ck, hi);
+        T.checkSanity(ck, lo);   // #376: the sub-arm leg's commands were never inspected
       });
     },
 

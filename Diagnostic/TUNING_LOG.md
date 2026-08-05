@@ -29,7 +29,42 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-08-04-backshop-d (#357 — board polish, and the lane check that should have run first)
+## Session log — 2026-08-05-workbench-a (audit #297 fix campaign — the harness first)
+
+**Task:** work the #297 fix-side issues on workbench, in dependency order: #376 (harness), #369,
+#373, #372 (physics), #375, #378 (control), #377 (declare+pin — owner ruling 2026-08-05), then
+#374 / #370-#371 docs / #379. Baseline at start: `run_all` **AGGREGATE OK, 38 runners at
+baseline** on `7861dbb`; pre-campaign `perturb_sweep --suite=both` snapshot taken before any
+`[tune]` constant moves (#321).
+
+### #376 — the harness that could manufacture a clean slice now dies loudly instead
+
+`test/measure_stack.js` discarded `svc.handleCommand()`'s return, so a REJECTED command printed
+a clean table of a plant in which nothing happened — the audit nearly filed a full-size steam
+line break as a null result that way (#297 process note). Two hard errors added, both exit 2,
+same class as the existing unknown-`--watch` guard:
+
+- **Rejected command** (`type` error/blocked/refused) → `command REJECTED at 10s —
+  COMMAND_ERROR: unknown failure` + the command JSON. Hand-fired with the audit's own typo
+  (`secondary_depressurize`, an effect name): exit 2, loud.
+- **Never-fired command** (scheduled at/past `--for`) → `command @120s never fired — the run
+  ends at 60s`. Hand-fired: exit 2. The header had already promised the command, which made the
+  old behaviour read as a measurement of an evolution that never ran.
+- Control leg: a valid `close_msiv` run prints its table and exits 0, untouched.
+
+`test/ops_harness.js` had the adjacent hole: `cmd()` recorded `error` and counted `blocked`, but
+`type:'refused'` (ACTION_LOCKED, control_kernel.js) hit **neither** branch — invisible to
+`checkSanity`'s rejected-command guard. Now recorded in `cmdErrors`. The deliberate-refusal
+probes (`run_m4` operator-open, `run_autoctl` early reset) capture their returns directly and
+do not route through `OpsHarness.cmd`, so they are unaffected.
+
+`test/behavior_pwr.js`: `T.checkSanity` extended to the harness legs that never got it — TR-8
+(had none at all), TR-1f legs b/c, TR-1c leg lo, TR-1e legs B–E. Also removed the stale
+duplicate `'TR-14'` COVERAGE key that silently overwrote the real probe entry.
+
+Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69, 350 passed,
+12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
+new checkSanity legs all pass — no latent authoring bug was hiding behind them.
 
 **Task:** work #357, eight owner-filed diagram items. All eight done; `run_all` **38/38**.
 

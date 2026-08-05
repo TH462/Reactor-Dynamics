@@ -45,6 +45,23 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-a — #376: a measurement that cannot fail is not a measurement
+
+**Decision.** `measure_stack` treats a rejected `--cmd` and a `--cmd` scheduled past `--for` as
+hard errors (exit 2), matching its own unknown-`--watch`-field convention; `ops_harness.cmd()`
+records `type:'refused'` alongside `error` so `checkSanity` can see it; the behaviour probes
+that built harnesses `checkSanity` never inspected (TR-8, TR-1f b/c, TR-1c lo, TR-1e B–E) now
+inspect them.
+
+**Why hard error and not a warning.** The failure is asymmetric in the worst direction: a
+swallowed command produces a plant where nothing happened, which reads as "the mechanism is
+fine" — a false negative indistinguishable from a real null result. The audit (#297) nearly
+published one. A warning is exactly the ambiguity CLAUDE.md's "COULD NOT CHECK is not clear"
+rule names; the engine's unknown-id guard (`pwr_engine.js`) was already loud, and the harness
+was the one swallowing it.
+
+---
+
 ## 2026-08-04-backshop-d — #357: the word "still" was telling me the base was stale
 
 **Decision.** Eight owner-filed board items, all done. Auxiliary pipes take live temperatures;

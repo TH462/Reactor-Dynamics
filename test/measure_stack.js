@@ -258,13 +258,31 @@ sample(snap0);
 nextSample = EVERY;
 while (svc.simTime < FOR) {
   SCHED.forEach(function (c) {
-    if (!c.sent && svc.simTime >= c.at) { c.sent = true; svc.handleCommand(c.body); }
+    if (!c.sent && svc.simTime >= c.at) {
+      c.sent = true;
+      // The return is the only evidence the command LANDED (#376). A rejected
+      // command with the run allowed to continue prints a clean table of a plant
+      // in which nothing happened — indistinguishable from a real null result,
+      // which is how a full-size steam line break nearly got filed as "no effect"
+      // (the engine's unknown-id guard fired; this loop swallowed it). Same
+      // quiet-wrong-answer class as the unknown --watch field above.
+      var r = svc.handleCommand(c.body);
+      if (r && (r.type === 'error' || r.type === 'blocked' || r.type === 'refused')) {
+        die('command REJECTED at ' + c.at + 's — ' + (r.code || r.type) +
+          (r.message ? ': ' + r.message : '') + '\n  ' + JSON.stringify(c.body));
+      }
+    }
   });
   var snap = svc.tick();
   if (svc.timeAcceleration !== ACCEL && !accelDropped) { accelDropped = true; }
   if (scrammedAt == null && snap && snap.rps_state && snap.rps_state.scrammed) scrammedAt = svc.simTime;
   if (svc.simTime >= nextSample) { sample(snap); nextSample += EVERY; }
 }
+// A command scheduled at or past --for never fires, while the header above already
+// promised it (#376). That run is not a measurement of the commanded evolution.
+SCHED.forEach(function (c) {
+  if (!c.sent) die('command @' + c.at + 's never fired — the run ends at ' + FOR + 's; schedule commands strictly before --for');
+});
 var finalSnap = svc.assembleSnapshot();
 if (rows[rows.length - 1].t < svc.simTime) sample(finalSnap);
 var wallMs = Number(process.hrtime.bigint() - t0) / 1e6;
