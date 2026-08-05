@@ -45,6 +45,29 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-d — #372: the calibrated constant was two physical things wearing one number
+
+**Decision.** `latent_heat_secondary 19.45` is split at the rated point into latent + feed
+sensible duty (`feed_sensible_frac 0.12`, steam-table derivation in the config), with
+`feedwater_temp_c 227` (UNVERIFIED — no in-tree primary; evidence-pass class) and `afw_temp_c
+40` (inside the sourced WTSM §5.7 40–120 °F band). The rated point is algebraically identical;
+overfeed now overcools and AFW is a real heat sink — measured both ways. The follow governor's
+`extractFrac` mirrors the split, because its old heat→steam identity left follow mode with no
+equilibrium off the rated point (SS-6 caught the secular walk: 8.03 → 6.89 MPa over 36 min,
+then a trip). TR-1b re-pinned from both sides (burst ≥ 15.80 visible, PORV < 16.20 holds);
+TR-1g's endpoint sample replaced with a 120 s trailing mean (it was reading the #378 limit
+cycle's phase, not the claim — mean 51.2 on a 50 ask, both plants).
+
+**Why a split and not a new model.** The four questions: Q0 measured (the null response was
+the finding); Q1 — the mechanism is textbook and the AFW temperature is sourced, the feed
+temperature is not and says so; Q2 — a whole Chapter 15 transient class (overcooling) becomes
+reachable with visible board cues; Q3 — zero new player-facing controls, silent. The split
+preserves every calibrated behaviour at the rated point by construction instead of re-fitting
+the plant, and DESIGN_COMPANION §8.27 declares what it deliberately does not buy (load-
+dependent feed temp, heater train, MSRs, the loss-of-feedwater-heating casualty).
+
+---
+
 ## 2026-08-05-workbench-c — #373: one constant was doing two valves' jobs, and a test was green because of it
 
 **Decision.** A turbine stop-valve path, separate from the governor: `stop_valve_frac`

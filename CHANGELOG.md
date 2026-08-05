@@ -31,13 +31,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Feedwater carries enthalpy — overfeeding overcools, and auxiliary feedwater is a real heat
+  sink** (#372). The steam generator's energy balance now heats feed to saturation before
+  boiling it. Overfeeding the generator drops its pressure and nudges power up on moderator
+  feedback — the classic overcooling signature the "SG Overfeed / Overcooling" malfunction
+  promised and could not deliver (measured before: a 15 % overfeed changed nothing to four
+  significant figures). Cold auxiliary feedwater genuinely removes heat: at decay-heat levels
+  full AFW flow pulls the tripped plant below the no-load anchor until the level hold throttles
+  it back. Steady-state calibration is untouched by construction, and what is still simplified
+  — constant final feed temperature, no feedwater-heater train — is declared in the manual
+  (Rev 9, `12 §12.16`).
 - **A tripped turbine stops drawing steam** (#373). There was no stop valve: a trip zeroed the
   load demand and the machine kept pulling steam through the governor's two-second load lag —
   2.1 flow-seconds of rated steam through a "shut" turbine, doing no work into no sink. The
   spring-closed stop valves the real machine trips on now slam in ~0.15 s, and the primary
-  pressure burst that leak was flattening is real again: a trip from 100 % briefly lifts the
-  pressurizer PORV — the designed backstop — where before the transient quietly never
-  happened. Two behaviour probes were re-specified for the corrected plant and say so.
+  pressure burst that leak was flattening is real again: a trip from 100 % now spikes primary
+  pressure to just under the PORV setpoint — visible on the board where before the transient
+  quietly never happened. Two behaviour probes were re-specified for the corrected plant and
+  pin the burst from both sides.
 - **The steam generator's code safety valves can no longer be defeated by a failed
   steam-pressure transmitter** (#369). A code safety is a spring valve opened by the steam
   itself; this plant's opened on an instrument reading, so sticking that one channel from the

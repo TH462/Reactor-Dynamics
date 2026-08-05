@@ -340,7 +340,11 @@ async function testSteamFeedPair(page) {
   // is unchanged in purpose and if anything sharper — governor 0 % against STEAM FLOW
   // ~64 gpm is a cleaner demonstration that the readout is not governor-only.
   if (!(num(tripped.dump) > 3)) throw new Error('steam dump did not pick up decay heat (dump=' + tripped.dump + ')');
-  if (!(num(tripped.steam) > 40)) {
+  // Floor 20, was 40 (#372): with feedwater enthalpy in, part of the decay heat goes to
+  // heating feed instead of making steam, so the post-trip dump draw reads ~39 gpm where
+  // the enthalpy-free plant read ~64. The check's discriminant is unchanged — a readout
+  // wired to the governor-only channel reads ~0 here, not tens of gpm.
+  if (!(num(tripped.steam) > 20)) {
     throw new Error('STEAM FLOW collapsed with the turbine (' + tripped.steam + ') — it is wired to the ' +
       'governor-only `steam_flow` instrument instead of `sg_steam_flow` (total SG draw). See #206.');
   }

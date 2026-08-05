@@ -362,14 +362,18 @@ ck('  …and that converts a scram into a ride-out (was SCRAM ~200 s)',
 ck('  …margin RECOVERS rather than hunting (stays above the trip line)',
   slb15.minMargin.toFixed(1), slb15.minMargin > 0, '> 0');
 
-// 3b. IT NEVER MAKES A CASUALTY WORSE. Asserted at seed 7, the harshest of the four, where the
-//     15 % break scrams at 66 s WITH the runback and at 66 s WITHOUT it. This is the safety
-//     property: a protection action that took load off at the wrong moment could in principle
-//     bring a trip FORWARD, and nothing else here would catch that.
+// 3b. IT NEVER MAKES A CASUALTY WORSE. Asserted at seed 7, the harshest of the four. On the
+//     pre-#372 plant the 15 % break scrammed at 66 s both WITH and WITHOUT the runback; with
+//     feedwater enthalpy in (#372) the with-runback leg RIDES IT OUT entirely — the feed
+//     sensible uptake absorbs part of the overcooling. The safety property is ONE-SIDED —
+//     a protection action must not bring a trip FORWARD — so no-scram satisfies it against
+//     any unhelped baseline, and the predicate accepts either outcome: ride-out, or a scram
+//     no earlier than the recorded 66 s. A scram BEFORE 60 s is still the failure this
+//     check exists to catch.
 var slb15h = runback('hot_full_power', [[30, { action: 'inject_failure', failure_id: 'steam_line_break', severity: 0.15 }]], 500, 7);
-ck('  …and on the harshest seed it is NEUTRAL, never worse (66 s with and without)',
+ck('  …and on the harshest seed it is NEUTRAL, never worse (ride-out, or no earlier than 66 s)',
   slb15h.scram_t == null ? 'no scram' : 'SCRAM ' + slb15h.scram_t.toFixed(0) + 's',
-  slb15h.scram_t != null && slb15h.scram_t > 60, 'scram no EARLIER than the un-helped 66 s');
+  slb15h.scram_t == null || slb15h.scram_t > 60, 'no scram, or no EARLIER than the un-helped 66 s');
 
 // 4. IT CANNOT SAVE THE FAST ONE, AND THAT IS THE DYNAMICS LESSON — not a tuning failure.
 //    The runback works THROUGH A1 (power follows load), and A1 has a thermal time constant,

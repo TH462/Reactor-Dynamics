@@ -933,6 +933,29 @@
       // Do not read this constant alone as "the rated heat": the pump-heat factor is
       // applied at the use site, pwr_steam_generator stepSecondary. [tune]
       latent_heat_secondary: 19.45,
+      // FEEDWATER ENTHALPY SPLIT (#372, audit #297 F4). The 19.45 above is the heat
+      // that makes one unit of steam FROM FEED AS DELIVERED — physically it was
+      // always sensible + latent, and until #372 the model spent all of it as
+      // latent, so feed TEMPERATURE could not matter and overfeeding produced zero
+      // thermal response (measured: digit-identical to 4 s.f. at +15 %). The split
+      // keeps 19.45 and its calibration exactly (the use site is algebraically
+      // identical at the rated point) and only distributes it:
+      //   at 819.5 psi (5.65 MPa), Tsat ≈ 271.5 °C: h_f ≈ 1193 kJ/kg,
+      //   h_fg ≈ 1597 kJ/kg; feed at 227 °C ≈ 977 kJ/kg
+      //   → sensible 216 of 1813 kJ/kg total = 0.119 ≈ 0.12.
+      // feedwater_temp_c is the FINAL feed temperature after the (unmodelled)
+      // regenerative heater train — UNVERIFIED [tune]: typical Westinghouse final
+      // feed practice, no primary source in the tree corpus names the number
+      // (evidence pass owed, #374 style). afw_temp_c IS sourced as a band: AFW
+      // design feedwater temperature 40–120 °F (WTSM §5.7, ML11223A229, system
+      // design data) — 104 °F (40 °C) chosen inside it, matching the constant the
+      // physics already injects ECCS/RWST water at. Cold AFW therefore removes
+      // real heat now: at decay-heat power the sensible demand of full AFW flow
+      // exceeds the heat crossing the tubes, steam generation clamps at zero, and
+      // the SG depressurizes — which is what "AFW is a heat sink" means.
+      feed_sensible_frac: 0.12,    // of latent_heat_secondary, at the rated point [tune]
+      feedwater_temp_c: 227,       // °C final feed (UNVERIFIED — regenerative train unmodelled) [tune]
+      afw_temp_c: 40,              // °C — inside the sourced 40–120 °F design band (WTSM §5.7)
       // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
       //
       // The level integrates the feed/steam imbalance: d(level)/dt = K_sg_level x

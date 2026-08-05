@@ -110,7 +110,35 @@
     // ΔT = 0.321 °F = Q_pump/h_sg to three decimals, and it sits there forever. That
     // is why the Mode 5 → Mode 3 mission had to take the reactor critical to heat the
     // plant up. Issue #251.
-    var steam_generation_rate = Q_sg / (sg.latent_heat_secondary * (1 + (cfg.thermal.pump_heat_frac || 0)));
+    // Feedwater ENTHALPY (#372, audit #297 F4): the heat crossing the SG first
+    // heats feed to saturation, THEN boils it. Until #372 feed entered the model
+    // only in the level integral — no temperature, no sensible term — so a 15 %
+    // overfeed produced digit-identical steam pressure and Tavg, the
+    // "SG Overfeed / Overcooling" malfunction could not overcool, and AFW moved
+    // level while removing zero heat. latent_heat_secondary keeps its value and
+    // is SPLIT at the rated point (feed_sensible_frac — derivation at the
+    // config), so at rated feed/temperature/pressure this is ALGEBRAICALLY
+    // IDENTICAL to the old line (calibration pinned by TR-1e leg D); only
+    // off-nominal feed — overfeed, cold AFW, low-load feed — moves the balance.
+    // The max(0,·) clamp is the lumped model's honest boundary: when cold feed
+    // can absorb more than the crossing heat (full AFW against decay heat),
+    // steam generation stops rather than going negative — the feed then simply
+    // does not all reach saturation, which a one-node SG cannot track further.
+    var _L = sg.latent_heat_secondary, _fs = sg.feed_sensible_frac || 0;
+    var _latent_eff = _L * (1 - _fs);
+    var _cNorm = _fs > 0
+      ? (_fs * _L) / Math.max(T_sat(sg.steam_p_rated) - sg.feedwater_temp_c, 1)
+      : 0;
+    var _sensible = _cNorm * (main_feed * Math.max(0, s.t_secondary_c - sg.feedwater_temp_c)
+      + afw_flow * Math.max(0, s.t_secondary_c - (sg.afw_temp_c != null ? sg.afw_temp_c : 40)));
+    // Stashed for the follow governor (pwr_engine extractFrac): "draw the steam the
+    // heat actually generates" now means AFTER the sensible duty. Without this the
+    // follow demand chases a steam flow the heat can no longer make and the
+    // secondary ratchets down until a trip (measured: the 5 % IC walked 8.03 →
+    // 6.89 MPa over 36 min and tripped).
+    s._sg_sensible_norm = _sensible / _L;
+    var steam_generation_rate = Math.max(0,
+      Q_sg / (1 + (cfg.thermal.pump_heat_frac || 0)) - _sensible) / _latent_eff;
 
     // B2 — steam dump / turbine bypass: vents steam straight to the condenser,
     // bypassing the turbine, to control SG pressure on a turbine trip / load

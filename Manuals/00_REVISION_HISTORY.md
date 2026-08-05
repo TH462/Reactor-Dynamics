@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 8 (2026-08-05)  
+**Set revision:** 9 (2026-08-05)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,6 +28,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 9 | 2026-08-05 | **Feedwater carries enthalpy** (#372, audit #297 F4). **12 §8.4** gains the energy-balance statement: heat crossing the tube bundle first raises feed to saturation, then boils it — so overfeeding overcools (measured: steam pressure falls and power rises on moderator feedback, where before a 15 % overfeed was digit-identical to four significant figures) and cold auxiliary feedwater is a genuine heat sink that can pull the tripped plant below the no-load anchor until the level hold throttles it back. New simplification row **12 §12.16** declares what is still missing — constant final feed temperature, no heater train, no moisture-separator reheaters. **12 §8.6**'s trip-burst sentence is refined: with feed heat uptake counted, the burst peaks just under the PORV setpoint. | #372 feedwater enthalpy |
 | 8 | 2026-08-05 | **The turbine has stop valves** (#373, audit #297 F5). **12 §8.6** retitled and extended: a trip now slams a separate spring-closed stop-valve path shut in a fraction of a second, redundant with the governor — before this, a "tripped" machine kept drawing steam on the governor's two-second load lag, about 2.1 flow-seconds of rated steam into a machine doing no work. The consequence that leak was hiding is documented with it: the stored-energy burst after a trip from full power now briefly lifts the pressurizer PORV — the designed backstop — where previously the transient quietly never happened. Behaviour probes TR-1b and TR-2 were re-specified for the corrected plant and declare it. | #373 turbine stop valves |
 | 7 | 2026-08-05 | **The SG code safeties are self-actuating** (#369, audit #297 F2). **12 §8.5** now states the mechanism: the pop and reseat act on the steam pressure itself — a spring valve with no instrument channel in its path — so a failed steam-pressure transmitter changes what the gauge reads, never whether the valves lift. Until this change the pop was an instrument-actuated decision, and the audit measured a single stuck transmitter carrying an otherwise-survivable MSIV closure to clad melt (2696 psi (18.59 MPa) SG, 3226 °F (1774.4 °C) clad at 40 min). Measured after the change: with the same stuck transmitter the safeties lift and regulate at 1308 psi (9.02 MPa), indistinguishable from the healthy channel. Behaviour probe TR-16 pins both legs. | #369 SG safety self-actuation |
 | 6 | 2026-08-04 | **The tube-rupture procedure was missing the step it turns on: SECURE INJECTION before depressurizing** (#348). `07` **PWR-E06** gains immediate action **3a**, and the on-board checklist gains the matching step. The procedure's whole strategy is to close the primary-to-secondary pressure difference, and with high-pressure injection still running that is impossible — injection holds the primary up at pressure faster than the setpoint can ask it down. Measured: walking the Pressure SP 2235 → 1450 psi (15.41 → 10.0 MPa) with injection in cut break flow by **0 %** (0.00585 → 0.00586) and drifted the plant toward water-solid at 106.8 % inventory; securing injection first cut it **84 % in one minute** and 87 % held out to twenty, with the core covered throughout and peak fuel 1279.4 °F (693 °C) against the 2192 °F (1200 °C) guard. This is the trainer's version of the SI-termination step a real tube-rupture procedure carries, and it is there for the same reason: injection and depressurization work against each other. The step's own text tells the operator to check the criteria first — subcooling in hand, heat sink established, core covered — which at that point they are (99.3 °F / 55.2 °C of subcooling, 98.6 % inventory). | #348 SGTR SI termination |
@@ -63,7 +64,7 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 8 (2026-08-05). A mismatch means a chapter changed with no
+     Sealed at Rev 9 (2026-08-05). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
@@ -76,6 +77,6 @@
      09_SETPOINTS_LIMITS.md ff616f13a1e0884d
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md 2eab20d474a87702
+     12_SIM_PHYSICS.md 9374b385f0adccb1
      README.md 9a103035dfb47eca
 -->

@@ -389,8 +389,18 @@
         // "until the rod control system returns Tavg", so it must come back OFF its stop.
         ck('…then COMES OFF it — the dump is transient, not the new steady state (WTSM 11.2)',
           fmt(t.steam_dump_valve_pct, 1), t.steam_dump_valve_pct < 5, '< 5 %');
-        ck('the core is reduced to the SECONDARY LOAD, not parked high', fmt(t.power_pct, 1),
-          t.power_pct > 40 && t.power_pct < 55, '40..55 % (ask = 50)');
+        // MEAN over a trailing window, not an endpoint (#372): the post-manoeuvre
+        // plant carries the #378 limit cycle (±7 pts, ~185 s period), so a single
+        // endpoint sample was reading cycle PHASE, not the claim — it flipped from
+        // 40-something to 39.2 when the feed-enthalpy term shifted the phase, with
+        // the 120 s mean sitting at 51.2 both ways. The mean tests what the line
+        // says: the core follows the load on average; parked-high would read ~89.
+        // Passes on the pre-#372 plant too (same cycle, same centre) — not a refit.
+        var _pSum = 0, _pN = 0;
+        h.run(120, function (hh) { _pSum += hh.ts().power_pct; _pN++; });
+        var _pMean = _pN ? _pSum / _pN : t.power_pct;
+        ck('the core is reduced to the SECONDARY LOAD, not parked high (120 s mean)',
+          fmt(_pMean, 1), _pMean > 40 && _pMean < 55, '40..55 % (ask = 50)');
         // RE-BANDED 2026-08-02 (#306) to the SOURCED criterion. WTSM 11.2 says the dump is an
         // alternate heat sink *"until the rod control system returns Tavg to within 5°F of
         // Tref"*, so ±5 °F of the LOAD PROGRAM is the number — not a hardcoded 299..308, which
@@ -647,18 +657,24 @@
           fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa peak',
           h.range('steam_pressure_mpa').max < _sg1b.sg_safety_open_mpa,
           '< ' + fmt(_sg1b.sg_safety_open_mpa, 2) + ' (config)');
-        // The PORV LIFTS on the trip burst — briefly, on the stored energy the stop
-        // valve now bottles up (#373). Pre-#373, 2.138 flow-seconds of post-trip steam
-        // leaked through the governor's 2.0 s load lag and flattened exactly this
-        // transient, so the old "no PORV lift < 16.20" band was green because the event
-        // never happened — the standing absence-check trap, second sighting in this
-        // probe family. Re-specified POSITIVELY (TR-1's idiom) and DECLARED: this form
-        // fails on the pre-#373 plant by construction, because that plant was the defect.
-        ck('the PORV lifts on the trip burst — the designed backstop (#373)',
+        // The trip BURST is REAL and the PORV holds it (#373 + #372). Pre-#373,
+        // 2.138 flow-seconds of post-trip steam leaked through the governor's 2.0 s
+        // load lag and flattened this transient entirely (peak 15.58) — the old
+        // "no PORV lift" band was green because the event never happened, the
+        // standing absence-check trap, second sighting in this probe family. The
+        // stop valve made the burst real (16.26 with feed enthalpy unmodelled);
+        // #372 then damps it physically — feed at 227 °C absorbs ~6 % of rated
+        // heat while saturation jumps toward the no-load anchor — measured peak
+        // 16.04. Pinned from BOTH sides so neither regression can slide through:
+        // the burst must stay VISIBLE (the floor reddens if trip leak-through
+        // returns) and the PORV must HOLD it (the cap reddens if the feed damping
+        // is lost).
+        ck('the trip burst is REAL — not flattened by post-trip steam leak-through (#373)',
           fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max >= _pz1b.porv_open_mpa, '≥ ' + fmt(_pz1b.porv_open_mpa, 2));
-        ck('…and the pressurizer SAFETY never has to', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max < _pz1b.safety_open_mpa, '< ' + fmt(_pz1b.safety_open_mpa, 2));
+          h.range('pressure_mpa').max >= 15.80, '≥ 15.80 (pre-#373 leak plant: 15.58)');
+        ck('…and the PORV holds it — cold-feed sensible uptake damps the spike (#372)',
+          fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < _pz1b.porv_open_mpa, '< ' + fmt(_pz1b.porv_open_mpa, 2));
         ck('settles at the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 6), '297 ±6');
         ck('SG level held well clear of the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25 %');
@@ -1392,11 +1408,12 @@
         ck('AFW auto-started and carries the SGs (no dryout)', String(!!h.ts().afw_active),
           !!h.ts().afw_active, 'true');
         // Two phenomena share this run since #373 and must not share one check: the
-        // ~2 s trip BURST (stored energy the stop valve bottles up — blips the PORV at
-        // ~16.2 on any trip from 100 %, AFW-independent, pinned positively by TR-1b)
-        // and the sustained heat-sink question this probe actually asks. "AFW means
-        // the PORV is not NEEDED" is a claim about the minutes AFTER the burst — the
-        // regime where TR-3's blocked-AFW twin genuinely does need it.
+        // ~2 s trip BURST (stored energy the stop valve bottles up — spikes the
+        // primary toward the PORV on any trip from 100 %, AFW-independent, pinned
+        // from both sides by TR-1b) and the sustained heat-sink question this probe
+        // actually asks. "AFW means the PORV is not NEEDED" is a claim about the
+        // minutes AFTER the burst — the regime where TR-3's blocked-AFW twin
+        // genuinely does need it.
         ck('the trip burst stays inside the pressurizer safety', fmt(h.range('pressure_mpa').max, 2),
           h.range('pressure_mpa').max < RD.PWR_CONFIG.pressurizer.safety_open_mpa,
           '< ' + fmt(RD.PWR_CONFIG.pressurizer.safety_open_mpa, 2) + ' (config)');

@@ -290,7 +290,19 @@
       // 1.0 needs no headroom bolted on.
       extractFrac: function (s) {
         var pf = cfg.thermal.pump_heat_frac || 0;
-        return ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);
+        var qn = ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);
+        // #372: "the steam that heat actually generates" (the follow contract, see
+        // load_mode.js) now subtracts the feed sensible duty, mirroring the SG's
+        // own split — at the rated point this is algebraically the old value. The
+        // duty comes from the SG's previous step (_sg_sensible_norm); the fallback
+        // is the rated-line share, so the first step and a feed-free plant are
+        // unchanged. Without this, follow demands steam the heat can no longer
+        // make and the secondary ratchets down with no equilibrium (measured on
+        // the 5 % IC: 8.03 → 6.89 MPa over 36 min, then a trip).
+        var fs = (cfg.steam_generator && cfg.steam_generator.feed_sensible_frac) || 0;
+        if (!fs) return qn;
+        var sens = s._sg_sensible_norm != null ? s._sg_sensible_norm : fs * qn;
+        return Math.max(0, qn - sens) / (1 - fs);
       },
       setLoad: function (s, mwe, rated) {
         s.steam_demand_mwe = mwe;

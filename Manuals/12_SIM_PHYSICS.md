@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 8  
+**Revision:** 9  
 
 ---
 
@@ -521,6 +521,8 @@ Main feedwater requires the **condensate pump**, an available **condenser**, and
 
 **AFW** is 15 % of rated feed capacity, auto-starting on 20 % narrow-range level. It **latches**: the pump demand has no reset and stands until the operator secures it, as in a real plant. Delivery is capacity × operator throttle × a built-in proportional level hold (full flow below 32 %, tapering to zero by 40 %), and the hold senses **the level instrument** — so a failed level sensor fools the AFW regulator exactly as it fools you.
 
+**Feedwater carries enthalpy.** The heat crossing the tube bundle first raises feed to saturation, then boils it — so overfeeding cools the generator and drops its pressure (the classic overcooling signature, with a small power rise on moderator feedback), and cold auxiliary feedwater is a **genuine heat sink**: at decay-heat levels, full AFW flow absorbs more heat than crosses the tubes, steam generation stops, and the plant is pulled below the no-load anchor until the level hold throttles the flow back. Main feed is modelled at a **constant final feed temperature** of 440.6 °F (227 °C) — the regenerative heater train is not modelled, so feed temperature does not fall at part load (declared, §12.16).
+
 **AFW pumps can run against a shut discharge valve.** When they do, discharge pressure sits at **shutoff head** rather than at SG-plus-margin. That distinction is the tell separating "AFW blocked" from "AFW not started" — and it is the TMI-2 pumps-running/valves-shut condition.
 
 ### 8.5 The MSIV and SG safeties
@@ -533,7 +535,7 @@ A **main steam line break is gated by break location.** A break *downstream* of 
 
 The governor valve target is **pressure-compensated**: demand divided by the upstream pressure ratio, clamped fully open. At steady state the delivered steam therefore equals the demand at any secondary pressure — the valve strokes open as pressure falls and closes down as it rises, like a real governor holding load.
 
-**On a turbine trip the stop (throttle) valves slam shut in a fraction of a second** — a separate spring-closed path, redundant with the governor, as on the real machine. A tripped turbine therefore stops drawing steam essentially instantly, and the stored-energy burst that follows a trip from full power is real: primary pressure spikes briefly and can blip the PORV — the designed backstop — before the steam dump and the scram catch the plant.
+**On a turbine trip the stop (throttle) valves slam shut in a fraction of a second** — a separate spring-closed path, redundant with the governor, as on the real machine. A tripped turbine therefore stops drawing steam essentially instantly, and the stored-energy burst that follows a trip from full power is real: primary pressure spikes briefly toward the PORV setpoint — the designed backstop — before feedwater heat uptake, the steam dump and the scram catch the plant.
 
 ---
 
@@ -657,6 +659,7 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.10 | **Boron chemistry is an idealised rate** | Blender dynamics, VCT mixing, real makeup-flow chemistry | **No**, but note the compressed time scale: borating/diluting runs at 2 ppm/s, and a grab sample returns in 60 s against a real lab's 30–60 min. |
 | 12.11 | **One control group and one shutdown group** | Multi-bank sequencing, programmed overlap, bank overlap indication, core maps | **Not for operating**, but the single bank carries the *whole* control worth, which is why its worth curve is deliberately flattened (§4.3). |
 | 12.12 | **Pressurizer level is geometric, not a calibrated span** | Reference-leg behaviour and a true narrow/wide calibration | **No.** Note this does **not** apply to SG level, which *does* have a real narrow/wide window (§8.1). |
+| 12.16 | **Final feedwater temperature is constant** *(new 2026-08-05, #372 — feed used to carry no enthalpy at all)* | Real final feed temperature falls with load as extraction-steam heating fades; here it is 440.6 °F (227 °C) at every load, and the feedwater-heater train and moisture-separator reheaters do not exist as components. Loss-of-feedwater-heating — a standard overcooling transient — therefore remains unreachable, and part-load overcooling from cold feed is milder than the real plant's. | No. Overfeed and AFW cues read correctly now; just don't expect a feed-heater casualty to exist. |
 | 12.14 | **No turbine roll or no-load speed hold — and the overspeed trip therefore cannot fire** | The whole off-line half of a real startup: rolling off the turning gear, holding rated speed on no-load steam, and synchronising before the breaker closes. On a real EHC machine that is a *setpoint-and-rate* evolution (select 1800 RPM and an acceleration rate; SLOW takes ~30 min), not a hand-throttled one — see **04** PWR-N05. | **Yes, for one procedure and one trip.** PWR-N05's synchronisation is **one action**: the rotor goes from rest to 1800 RPM and picks up load in a single press of FOLLOW or MAN, and measured, the plant barely notices (Tavg moves 0.1 °F, steam pressure 1196 → 1194 psi). And the **1980 RPM overspeed trip in §09 is configured but unreachable** — the rotor is either pinned at rated by the grid or coasting down, so nothing can drive it there. Do not read "no overspeed trip occurred" as evidence about a real machine. |
 | 12.13 | **Cold-plant mass bookkeeping is normalised** | The real cold-plant mass surplus | Level in the cold modes rests on a program floor standing in for CVCS keeping the pressurizer on span. Visible only in Mode 5. |
 

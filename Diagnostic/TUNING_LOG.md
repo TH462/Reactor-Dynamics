@@ -66,6 +66,65 @@ Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69
 12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
 new checkSanity legs all pass — no latent authoring bug was hiding behind them.
 
+### #372 — feedwater carries enthalpy, and the follow governor had to learn the same physics
+
+The SG energy balance spent all of `latent_heat_secondary 19.45` as latent heat, so feed
+TEMPERATURE could not matter: a +15 % overfeed was digit-identical to 4 s.f. (audit #297 F4,
+reproduced), the "SG Overfeed / Overcooling" malfunction could not overcool, and AFW moved
+level while removing zero heat. The fix splits 19.45 into sensible + latent at the rated point
+(`feed_sensible_frac 0.12` — steam-table derivation in the config comment) so the rated point
+is ALGEBRAICALLY IDENTICAL (measured: hot_full_power flat at 100.0 / 579.3 °F / 819.5 psi for
+10 min) and only off-nominal feed moves the balance. `feedwater_temp_c 227` is **UNVERIFIED
+[tune]** (no primary source in the tree corpus — evidence-pass class); `afw_temp_c 40` sits
+inside the sourced 40–120 °F AFW design band (WTSM §5.7, ML11223A229).
+
+Measured, the two couplings the audit found missing:
+- **Overfeed overcools**: feed 115 % for 2 min → steam pressure 819.5 → 812.3 psi, Tavg −0.5 °F,
+  power UP to 100.9 % on moderator feedback — the Condition II signature — then the P-14 level
+  trip. The malfunction's display name is honest now; no rename needed.
+- **AFW removes heat**: LOFW → trip → AFW at full 0.15 flow pulls the plant BELOW the no-load
+  anchor (563.3 °F / 295.2 °C, SG 7.65 MPa — steam generation clamped while cold feed absorbs
+  the crossing heat), then the level hold tapers AFW and the plant re-converges to 297.3 °C.
+  Before: pinned flat at 297.4 throughout, level-only.
+
+**SS-6 caught the half I got wrong on the first cut, and it is the lesson of the day.** The
+split held the identity at the RATED point only; the follow governor's `extractFrac` still
+converted heat → steam by the OLD identity, so in follow mode the turbine demanded steam the
+heat could no longer make — no equilibrium off the rated point. Measured: the 5 % IC walked
+8.03 → 6.89 MPa and 6 → 16 % power over 36 min, then tripped. `extractFrac` now mirrors the
+split ("the steam that heat actually generates", its own contract); re-measured, the 5 % IC is
+flat for 40 min (6.00 / 567.4 °F / 8.03 MPa). A calibration-preserving change must be
+calibration-preserving at EVERY closed-loop consumer of the old identity, not just the point
+you calibrated.
+
+Probe re-specs, both declared:
+- **TR-1b** (again, finally): the enthalpy uptake physically damps the #373 trip burst —
+  feed at 227 °C absorbs ~6 % of rated heat while saturation jumps toward the no-load anchor —
+  measured peak 16.26 → 16.04, back under the PORV. Now pinned from BOTH sides: burst visible
+  (≥ 15.80; the pre-#373 leak plant read 15.58) and PORV holds (< 16.20). Neither regression
+  can slide through.
+- **TR-1g**: its endpoint sample read 39.2 vs the 40..55 band — cycle PHASE, not the claim
+  (the #378 limit cycle swings ±7 pts; the 120 s trailing MEAN is 51.2, dead on the 50 ask).
+  Re-specified to the mean — passes old and new plants, phase-proof, same semantics.
+
+Docs: Manuals **Rev 9** (`12 §8.4` energy statement, new row `12 §12.16`, `12 §8.6` burst
+sentence refined); DESIGN_COMPANION **§8.27** declares the residual (constant feed temp, no
+heater train/MSR — loss-of-feedwater-heating still unbuildable).
+
+Full-suite triage, four drifts, each read as a canary and none re-banded blind:
+- `run_e2e_controls` 55/59: the reset-refusal block sampled at 400 s, where the new physics
+  had honestly CLEARED the SG level signal (less post-trip boil-off → AFW recovers narrow
+  level through 17 % sooner) — the refusal it tests never fired. Re-timed to 120 s, where the
+  signal stands on both plants. The interlock mechanism itself was never wrong.
+- `run_otdt` 3b: the with-runback 15 % break at the harshest seed now RIDES OUT (no scram)
+  where the record said 66 s — the predicate demanded a scram, so a strictly better outcome
+  failed it. The never-worse property is one-sided; predicate now accepts ride-out.
+- `verify_e2e_ui`: post-trip STEAM FLOW reads ~39 gpm vs the old ~64 (part of decay heat goes
+  to feed heating, not steam) against a floor of 40. Floor → 20; the governor-only failure it
+  discriminates against reads ~0.
+- `run_manual_units`: my own 441 °F (227 °C) pairs — 227 °C is 440.6 °F. Fixed to the exact
+  pair, three sites.
+
 ### #373 — the turbine has a stop valve now, and the trip burst it was hiding is real
 
 `tripTurbine` zeroed a demand and nothing else, so a "shut" machine kept drawing steam on the
