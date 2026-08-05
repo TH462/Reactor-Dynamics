@@ -294,6 +294,33 @@
                message: (this.register === 'industry' ? il.message_industry : il.message_learning) || 'Blocked by a plant interlock.' };
     }
 
+    // SEAL-IN (§4): an actuation marked `seal_in` may not be UNDONE by an operator
+    // command while its actuating condition is still present. Sourced — WTSM 12.3.2.3
+    // (ML11223A310): "The control room operator cannot interrupt any of the SI-initiated
+    // functions until the reset logic is satisfied. This 'locking out' of the operator
+    // prevents the interruption of a valid SI actuation."
+    //
+    // Why this is not an interlock. `actuationFired[i]` is ALREADY the retentive memory,
+    // and because a fired actuation never re-fires, nothing contested an operator command
+    // that undid its effect: measured (#341), a main-feedwater restore 10 min into a
+    // post-trip ride was ACCEPTED with the low-Tavg signal still standing — Tavg parked at
+    // 567.5 °F (297.5 °C) against a 572.0 °F (300.0 °C) setpoint — and SG level went
+    // 36.58 → 77.43 %. The #295 F1/F2 class: a protection function switchable off from the
+    // operator side while it is legitimately demanding action.
+    //
+    // The refusal asks the SAME question the actuation fires on — same gate, same
+    // `crossed()` — so the two cannot drift, which is the whole reason it lives here
+    // rather than in a hand-written per-plant guard. Operator commands only (`!_internal`):
+    // the plant's own actuations must never be blocked by their own seal-in.
+    if (!this._internal) {
+      var seal = this._sealInBlocking(command);
+      if (seal) {
+        return { type: 'blocked', code: 'SEAL_IN',
+                 message: (this.register === 'industry' ? seal.message_industry : seal.message_learning) ||
+                          'Blocked: the actuating signal is still present.' };
+      }
+    }
+
     // Plant commands pass through interception — at most ONE command_override
     // applies, in injection order (first wins, §7 precedence).
     var cmd = command;
@@ -633,6 +660,22 @@
           if (act.reset_action) this._sendInternal(this._actuationCommand(act, true));
         }
       }
+      // A SEALED-IN actuation with no reset_below re-arms when its actuating condition
+      // clears — and re-arming is the half that makes the seal-in safe rather than a new
+      // dead end. Without it the fire latch is permanent, so once the operator has
+      // legitimately restored the equipment a SECOND valid signal could never re-isolate
+      // it: the protection would work exactly once per session. It issues NO command, so
+      // nothing is realigned by the re-arm itself — matching WTSM 12.3.2.3, where removing
+      // the actuation signal "does not turn off any ESF equipment, realign any valves, or
+      // change any functions", and a later valid signal simply restarts the sequence.
+      //
+      // `reset_below`, where present, stays the sole authority — this cannot widen an
+      // existing hysteresis band. The PWR's P-14 feedwater isolation has both, and re-arms
+      // at its 85 % reset_below, not at the 90 % setpoint.
+      else if (act.seal_in && this.actuationFired[i] &&
+               !(gateOk && crossed(value, act.direction, act.setpoint))) {
+        this.actuationFired[i] = false;
+      }
     }
   };
 
@@ -675,6 +718,40 @@
       return il;
     }
     return null;
+  };
+
+  // Is a sealed-in actuation standing in the way of this command RIGHT NOW? Returns the
+  // actuation's `seal_in` descriptor (for its message) or null. Pure config data — the
+  // kernel names no plant action, instrument or field (HR3).
+  //
+  // "Undoing" is decided by DISAGREEMENT with the actuation's own asserted params: the
+  // actuation says `{active: true}`, so `{active: false}` is an undo and `{active: true}`
+  // is not. A command that AGREES is never blocked — re-commanding an isolation that is
+  // already demanded is not an interruption, and refusing it would make the control look
+  // broken in the one state where it is doing exactly what the plant wants.
+  ControlLayer.prototype._sealInBlocking = function (cmd) {
+    var acts = this.config.actuations || [], ins = this.lastInstruments || {};
+    for (var i = 0; i < acts.length; i++) {
+      var act = acts[i];
+      if (!act.seal_in || act.action !== cmd.action) continue;
+      // A disarmed ESF system neither fires nor seals in — same rule as _evalActuations,
+      // or a system the operator has deliberately taken to manual would lock its own
+      // control out.
+      if (act.arm && this.esfAuto[act.arm] === false) continue;
+      var gateOk = !act.condition || this._evaluateCondition(act.condition, ins);
+      if (!gateOk || !crossed(ins[act.instrument], act.direction, act.setpoint)) continue;
+      var p = act.params || {}, disagrees = false;
+      for (var k in p) if (cmd[k] !== undefined && cmd[k] !== p[k]) disagrees = true;
+      if (disagrees) return act.seal_in;
+    }
+    return null;
+  };
+
+  // True when a seal-in would refuse this command right now — the question a board wants
+  // answered without issuing the command, same shape and same reason as isCommandBlocked
+  // above (#306): the lamp and the refusal are ONE fact, computed by one predicate.
+  ControlLayer.prototype.isCommandSealed = function (cmd) {
+    return !!this._sealInBlocking(cmd);
   };
 
   ControlLayer.prototype._actuationCommand = function (act, isReset) {

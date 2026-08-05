@@ -155,6 +155,15 @@
       IDS.forEach(function (id) { portEls[id].setAttribute('data-temp', String(st.temp)); });
     }
 
+    // Live dash VELOCITY (#350 item 10) — see comp_tee.js retime() for why this never
+    // rebuilds and why the speed is a property of the SYSTEM rather than of this fitting.
+    function retime() {
+      for (var i = 0; i < livePipes.length; i++) {
+        var fe = livePipes[i].childNodes[2];
+        if (fe) K.setFlowSpeed(fe, st.speedMul);
+      }
+    }
+
     function geomDirty(props) {
       if (props.contents != null && props.contents !== st.contents) return true;
       var rate = st.rate;
@@ -180,12 +189,20 @@
       // (which exist to match dash speed across connected components) survive.
       if (props.flowing != null) st.rate = props.flowing ? authoredRate : 0;
       if (props.flow != null) st.rate = Math.max(0, Math.min(100, +props.flow));
+      var speedMoved = false;
+      if (props.speed != null && isFinite(+props.speed)) {
+        var sp = Math.max(0.1, Math.min(4, +props.speed || 1));
+        if (sp !== st.speedMul) { st.speedMul = sp; speedMoved = true; }
+      }
       IDS.forEach(function (id) {
         var v = props['leg' + id.toUpperCase()];
         if (v === 'in' || v === 'out' || v === 'off') st[id] = v;
       });
       if (rebuildNeeded) rebuild();
-      else if (tempMoved) repaint();
+      else {
+        if (tempMoved) repaint();
+        if (speedMoved) retime();
+      }
     }
 
     function destroy() { if (unwatch) { unwatch(); unwatch = null; } }

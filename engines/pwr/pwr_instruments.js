@@ -74,6 +74,10 @@
     // so every instrument above still draws its noise first and the PRNG order of the
     // existing set is unchanged. See pwr_config.js `rcs_flow` for the sourcing.
     rcs_flow: 'pump_flow_pct',
+    // DELIVERED pressurizer spray flow, % of maximum (#350 item 1). Appended last, so every
+    // instrument above still draws its noise first and the PRNG order of the existing set is
+    // unchanged — the same rule sg_steam_flow, cw_inlet_temp and rcs_flow were added under.
+    pzr_spray_flow: 'spray_flow_pct',
   };
 
   function PWRInstruments(config, seed) {

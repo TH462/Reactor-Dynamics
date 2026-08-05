@@ -438,11 +438,121 @@
       // WTSM 10.3's low level setpoint) and above `pzr_level_lolo` (12 %), so the operator
       // gets the warning first and the CRITICAL alarm is still the one that means trouble.
       heater_cutoff_level_pct: 17.0,
+      // …and the RESET differential, % INDICATED level (#348, 2026-08-04). Also not [tune]:
+      // it is taken from this plant's own model of the OTHER half of the same bistable —
+      // `pzr_level` low 17.0 with `reset_below: 20.0` in `pwr_control.js` PWR_ACTUATIONS,
+      // the letdown isolation. WTSM 10.3 §10.3.4.1 describes ONE bistable at 17 % doing both
+      // jobs, so the two outputs cannot reset differently, and the heater half had no
+      // differential at all. Measured without it, on a 10 % break with a full manual demand
+      // standing: the indicated level dithers across the setpoint and the heater bank flickers
+      // on for **35 % of every sample below 17 %**, in runs of up to 8, all between 16.3 and
+      // 17.0 %. A ~1 MW load cycling at the evaluation cadence — the #306 alarm-chatter defect
+      // one system over. With the latch, zero.
+      heater_restore_level_pct: 20.0,
       // Pressure-balance gains (MPa-rate units) [tune].
       // PORV/safety relief gains are large: the valves vent the pressurizer STEAM
       // space, so a small mass flow has a big pressure effect — which is why the
       // inventory-loss gain (porv_flow_max) and the pressure gain are decoupled.
-      K_heater: 0.55, K_spray: 1.7, K_porv_relief: 300.0, K_safety_relief: 300.0,
+      // K_heater — SOURCED CEILING, FITTED VALUE, AND THE GAP IS DECLARED (#337).
+      //
+      // WTSM 3.2 (ML11223A213, p. 3.2-9) gives this authority directly, in rate units:
+      // "There are 78 heaters installed for a total capacity of 1794 kW. … The heaters are
+      // capable of raising the temperature of the pressurizer and its contents at
+      // approximately 55 EF/hr." Along the saturation line at 2235 psia the sim's own T_sat
+      // correlation gives dP/dT = 0.18686 MPa/°C, so 55 °F/hr = 30.56 °C/hr = 8.488e-3 °C/s
+      // is 1.586e-3 MPa/s of pressure — the REAL-TIME full-heater authority.
+      //
+      // This plant runs its pressurizer on a declared time compression: the Mode 5↔1 path is
+      // "deliberately time-compressed" and `setpoint_pressurize_slew_mpa_s` 0.02 is fitted to
+      // it (cold→NOP in ≈11 min against a real ≈2.7 h at NOP dP/dT). That factor is 12.6, so
+      // the compression-consistent heater authority is 1.586e-3 × 12.6 = 0.020 MPa/s — and it
+      // lands exactly on the slew rate, which is the cross-check: the config states the same
+      // physical quantity twice, and until #337 the two disagreed by 27×.
+      //
+      // 0.55 WAS 27× ABOVE THAT, and the consequence is #337: the heaters could hold nominal
+      // pressure against ANY surge this plant can produce, so an SGTR that took the
+      // pressurizer 55.0 → 15.7 % and scrammed the reactor moved pressure 5 psi (0.034 MPa) and
+      // subcooling 0.2 °F (0.1 °C). Adding the missing mass-surge driver alone changed that by
+      // 9 psi — measured — because the heater simply rebalanced against it.
+      //
+      // IT STAYS AT 0.55, RULED *(OWNER RULING, 2026-08-04: "F14 go with the recommendation.")*,
+      // on the recommendation below: the lesson is DIRECTION AND ORDERING — level first, then
+      // pressure, then subcooling — and since #337 the player gets all three. The magnitude is a
+      // declared departure at `Manuals/12` §12.15, not a defect to be fixed later. Closing the gap
+      // would trade the ride-out character the plant is built around for a sharper version of a
+      // coupling it now has. Do not re-open this as a tuning task. Measured full stack, `run_behavior`
+      // red count and the subcooling cue from a leak that drives the pressurizer to the 17 %
+      // heater cutoff (SGTR sev 0.02), everything else held:
+      //
+      //     K_heater   subcooling cue   full (100 %) load rejection    run_behavior
+      //       0.55       −0.7 °F          no scram                      48 pass   <- shipped
+      //       0.35       −1.1 °F          no scram                      47 pass
+      //       0.20       −1.2 °F          no scram                      44 pass
+      //       0.10       −3.1 °F          no scram                      43 pass
+      //       0.05       −8.5 °F          SCRAM 122 s, otdt_margin low     —
+      //       0.02       −9.4 °F          SCRAM 103 s, otdt_margin low     —
+      //
+      // The wall between 0.10 and 0.05 is TR-1h: "no scram" on a full load rejection is this
+      // plant's ride-out character — a ruled departure from the Westinghouse 50 % criterion —
+      // and OTΔT is what binds it (the #311 trap, from the other side). Below 0.20 the
+      // pressurizer also stops winning against its own spray, so TR-11's stuck-open spray
+      // valve depressurizes the plant to the containment floor instead of parking. Both are
+      // real plant behaviours, and the ruling above chose the present ones.
+      K_heater: 0.55,
+      K_spray: 1.7,
+      // K_porv_relief / K_safety_relief — RE-SOLVED 300 → 600 with #337 F15, ruled
+      // *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*. ONE constant applied twice:
+      // both valves vent the same saturated steam from the same steam space, so the pressure
+      // per unit vented mass is the same and only the FLOW capacities differ (porv_flow_max /
+      // safety_flow_max). They must move together.
+      //
+      // WHY THEY MOVED. #337 gave the pressurizer a general mass→surge law, and
+      // `K_surge_level · level_per_mass` = 310 — within 3 % of the 300 these gains carried.
+      // That is not a coincidence: these two constants WERE the mass→pressure coupling, fitted
+      // per path before a general law existed. Relief is excluded from the surge driver now
+      // (pwr_primary.stepInventory — the valves discharge STEAM from the bubble, which never
+      // crosses the surge line), so the gain has to carry the whole effect again, and 300 was
+      // fitted to a plant where ECCS could NOT push back on pressure. Since #337 injection is an
+      // insurge, so the same valve achieves less depressurization and needs more gain.
+      //
+      // HOW 600 WAS CHOSEN, and the honest part is what did NOT work. The sourced criterion —
+      // WTSM 3.2 (ML11223A213, p. 3.2-11), "The PORVs are designed to limit the pressure in the
+      // pressurizer to a value below the high pressure reactor trip setpoint for design
+      // transients up to and including a 50-percent step load decrease with full steam dump
+      // actuation" — is SATISFIED AT EVERY VALUE TESTED and therefore does not solve it:
+      // measured on a full load rejection, peak pressure is 2364..2372 psi across 300..1200
+      // against a 2384 psi trip, because the PORV setpoint and the trip are only 0.24 MPa apart
+      // and spray holds the gap regardless. It is a necessary condition this plant already meets.
+      //
+      // A first-principles solve does not close either, and that is worth knowing before anyone
+      // tries: venting `porv_flow_max` 0.0035 frac/s as SATURATED STEAM would empty a 560 ft³
+      // bubble in under two seconds (1554 lbm/s against a real PORV's 210,000 lb/hr = 58 lbm/s),
+      // so `porv_flow_max` and this gain are a matched FITTED pair with no clean physical
+      // decomposition. Deriving one requires re-deriving the other, and `porv_flow_max` is
+      // explicitly tuned for the TMI flagship's pacing.
+      //
+      // So it is solved against BEHAVIOUR: 600 excluded reproduces the total authority the plant
+      // was calibrated with (300 direct + 310 surge), and measured, it restores `run_meltdown`
+      // to 12 pass and `run_scenarios` to 3/3 — the two suites that hold this plant's relief
+      // ladder, and which BOTH go red at 300..450. What changed is that the constant now means
+      // what it says instead of being silently doubled.
+      //
+      // THE STRUCTURAL REASON THE TWO ARE NOT INTERCHANGEABLE, and it is the finding worth
+      // keeping: the surge term is gated `saturated ? 0` (a voided loop is pinned to Psat(Tavg),
+      // so the subcooled-liquid terms are suppressed). Routing relief through it therefore made
+      // a relief valve DOUBLE-strength while subcooled and HALF-strength once the plant voided —
+      // and voided is exactly the regime the meltdown paths, the TMI flagship and TR-15 live in.
+      // A valve vents steam regardless of what the bulk coolant is doing, so it must not inherit
+      // that gate. That, not the arithmetic, is the real argument for the exclusion.
+      //
+      // KNOWN COST, left red on purpose: `run_behavior` TR-15 leg E ("with the heat sink gone
+      // the plant is still lost — circulation is not cooling") now fails, at EVERY gain tested
+      // from 400 to 600 — Tavg 482 / 455 / 448 / 447 °F, monotone, core undamaged. With relief
+      // no longer losing authority in saturation, the plant rides out a lost heat sink on relief
+      // bleed. Whether that is right is a PLANT question (`porv_flow_max` and this gain are a
+      // matched fitted pair, and preserving leg E means moving both), so it belongs with the
+      // TMI-2 trajectory re-author rather than being tuned away here. [tune]
+      K_porv_relief: 600.0, K_safety_relief: 600.0,
       // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for
       // step insurges, NOT for a loss-of-heat-sink repressurization — capped at
       // this fraction of full spray flow (auto demand AND operator override), the
@@ -450,7 +560,69 @@
       // requires. Cooldowns still get real depressurization authority.
       spray_flow_max: 0.12,        // [tune] — binds below the TR-2 insurge equilibrium (~0.23 demand)
       spray_floor_band: 3.0,       // MPa — spray authority tapers to 0 across this band above Psat(THOT), the core-exit leg (see pwr_pressurizer spray_floor); floor is the hottest leg so spray can't pull below core-exit saturation (P6)
-      K_surge: 1.0, P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
+      // Pressurizer SURGE gain — MPa/s of pressure per %/s of pressurizer LEVEL rate.
+      //
+      // Was `K_surge: 1.0` in °C/s of Tavg until #337. The CURRENCY is the point: a surge is a
+      // volume displacement of the pressurizer, so inventory drives it as well as thermal
+      // expansion, and stating it per unit LEVEL rate is what lets one law carry both (see
+      // pwr_pressurizer.stepPressure for the law and the WTSM 3.2 quote). 1.0 / level_per_tavg
+      // (2.5) = 0.4 would have been the byte-identical thermal response in the new units.
+      //
+      // 0.4 IS UNCHANGED, AND IT IS INSIDE THE SOURCED RANGE — which is why it stays.
+      // Derived from the same WTSM 3.2 number that bounds K_heater below: 1794 kW ⇒ 55 °F/hr
+      // is 8.842e-7 MPa/s per kW at NOP. One %/s of level is 12.44 ft³/s of bubble growth
+      // (#249's fit: 45 points of level = the 0.40 × 1,400 ft³ steam space), which at
+      // v_g = 0.1955 ft³/lbm and h_fg = 361 Btu/lbm is 63.6 lbm/s of steam = 24,240 kW of
+      // flashing demand. That lands at 0.0214 MPa/s if the vessel METAL participates (the
+      // effective heat capacity the source's own 55 °F/hr implies) and 0.0502 if only the
+      // pressurizer liquid does — a real spread, because a fast surge does not reach the
+      // metal. × 12.6 for this plant's declared Mode 5↔1 time compression (see K_heater) puts
+      // the sourced band at 0.27..0.63, and the fitted 0.4 sits in the middle of it.
+      //
+      // So #337 moved this by NOTHING, deliberately. The thermal channel is bit-identical
+      // across the change and the only new physics is the mass driver — which matters,
+      // because 0.27 was tried and it costs TR-1c: a 1.5× weaker insurge peaks the
+      // sub-arm rejection at 2246 psi (15.49 MPa) instead of lifting the PORV, i.e. it
+      // silently retires the §8.21 declared backstop. Not a change to make on a number the
+      // source does not actually pin. [tune]
+      K_surge_level: 0.4,
+      // solid_bulk_mpa — the WATER-SOLID surge gain (#346), MPa of primary pressure per
+      // unit RCS inventory FRACTION. `K_surge_level` above is the gain of a pressurizer
+      // that still has a steam bubble; this is the gain once the bubble is gone.
+      // pwr_pressurizer.stepPressure converts it into the shared level currency by
+      // dividing by `level_per_mass_surplus`, so the two are stated in the units their
+      // own derivations come in and neither has to be re-solved when the other moves.
+      //
+      // THIS IS A PHYSICAL CONSTANT, NOT A FIT. A water-solid RCS is a fixed volume of
+      // liquid: dP = B·dρ/ρ = B·dm/m, so the gain per inventory fraction IS the isothermal
+      // bulk modulus of the coolant. For water at ~300 °C / 15.5 MPa that is ≈ 1.3 GPa
+      // (it falls steeply with temperature from ≈ 2.2 GPa cold — the hot value is the one
+      // that matters, because every path that fills this plant solid is hot).
+      //
+      // THE INTERNAL CHECK, and it is worth more than the number. The same argument run on
+      // the STEAM side has to reproduce `K_surge_level`, and it does: compressing the bubble
+      // isothermally gives dP/P = −dV_s/V_s = −(V_RCS/V_steam)·dm/m, and #249's own geometry
+      // (BVPS-2 UFSAR Tbl 5.1-1 RCS 9,650 ft³; WTSM 3.2 Tbl 3.2-2 full-power steam volume
+      // 720 ft³) makes that 15.4 × 9650/720 = 206 MPa/frac against the shipped
+      // K_surge_level·level_per_mass_surplus = 310. Same order from an independent route,
+      // so the RATIO the plant actually feels — solid ≈ 4× stiffer than bubbled — is not an
+      // artifact of picking one of the two numbers.
+      //
+      // DECLARED SIMPLIFICATION (Manuals/12 §12.4c). Relief stays excluded from the surge
+      // under F15 even when solid, so a relieving solid plant vents through the steam-space
+      // gains (`K_porv_relief` / `K_safety_relief`) rather than at this bulk modulus — and the
+      // same goes for SPRAY, which has nothing to condense, and the HEATERS, which have no
+      // bubble to flash. All three are optimistic in a vessel with no steam space.
+      //
+      // THE RELIEF THIRD ALONE WAS BUILT AND IS WORSE THAN LEAVING ALL THREE. Measured on the
+      // #346 rig: folding relief into the surge drops the relieving equilibrium ~145 psi
+      // (1 MPa), which puts the plant further below `hpi_pressure_ref`, injection then
+      // out-runs the PORV, and inventory walks back to the `mass_max` clip — the defect this
+      // constant exists to fix, returning by another road. Correct is a coupled three-term
+      // regime plus a re-solve of `K_porv_relief`/`K_safety_relief`, which were themselves
+      // solved against run_meltdown and run_scenarios (#337 F15). Separate change. [tune]
+      solid_bulk_mpa: 1300.0,
+      P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
       // Operator-setpoint pressurization slew (Mode-5 heatup feel, 2026-07-23). K_heater
       // (0.55 MPa/s at full power) is the CONTROL authority for holding pressure against
       // transients (the SGTR plateau needs all of it) — but it made a RAISED operator
@@ -693,6 +865,38 @@
       natural_circ_indicate_frac: 0.01,   // [tune]
       low_flow_trip: 0.25,         // true-flow trip (documented HR1 exception)
       mass_max: 1.2,               // clip ceiling for primary_mass
+      // ------------------------------------------------- BREAK DISCHARGE (#334 item 2, 2026-08-04)
+      // A LOCA break used to flow at a CONSTANT rate, set once when the failure was
+      // injected and never varying — so the same break discharged identically at 2235 psi
+      // and at 14.5 psi, and an RCS already at zero mass went on "leaking" at full rate
+      // forever. Only the SGTR path was ΔP-modulated (`sgtr_dp_ref`, below in
+      // pwr_primary.stepInventory); the comment there said in as many words that
+      // "containment-side leaks stay static", which is the defect written down.
+      //
+      // SOURCED SHAPE: 10 CFR 50 Appendix K, I.C.1.b "Discharge Model" — "For all times
+      // after the discharging fluid has been calculated to be two-phase in composition, the
+      // discharge rate shall be calculated by use of the Moody model (F.J. Moody, 'Maximum
+      // Flow Rate of a Single Component, Two-Phase Mixture' … 1965). The calculation shall
+      // be conducted with at least three values of a DISCHARGE COEFFICIENT APPLIED TO THE
+      // POSTULATED BREAK AREA, these values spanning the range from 0.6 to 1.0."
+      // Two things follow, and both are what this change implements: the break is an AREA
+      // with a coefficient, not a flow, and its discharge is a CRITICAL-FLOW function of the
+      // upstream fluid state — never a constant.
+      //
+      // DECLARED SIMPLIFICATION: this is the incompressible ORIFICE law, W ∝ √Δp, not Moody.
+      // Moody's critical mass flux is a function of stagnation pressure AND enthalpy, and
+      // this plant has one lumped primary node with no quality tracked at the break, so
+      // there is nothing to evaluate it against. √Δp is the same form `letdownFlow` already
+      // uses a few hundred lines up for orifice discharge out of the same RCS, it is
+      // derivable rather than fitted, and it has the right monotonic shape. It falls off
+      // FASTER than Moody does in the two-phase regime, so a real break stays stronger
+      // longer than this one — stated in Manuals/12 rather than left for someone to find.
+      //
+      // `break_p_ref_mpa` is the pressure at which a break's configured size EQUALS its old
+      // constant rate, so every existing severity keeps its calibration at nominal and only
+      // the depressurized end of the curve moves. It is the operating point, not a [tune].
+      break_p_ref_mpa: 15.41,      // RCS pressure at which break size == its rated flow
+      break_backpressure_mpa: 0.1, // containment (atmospheric); flow stops when the RCS reaches it
       // Loop pressure distribution (pwr_primary.computeNodePressures). The primary
       // is incompressible liquid except for the pressurizer bubble, so there is ONE
       // dynamic pressure state (pressure_mpa, the pressurizer/hot-leg reference) plus
@@ -1290,6 +1494,11 @@
       // Without it a `noisy` flow-transmitter failure would be silently inert, and
       // failure injection on this channel is the entire reason to build it.
       rcs_flow:                { lag: 1.0, noise: 0, noise_failure: 0.5, range: [0, 120] },
+      // Pressurizer spray flow, % of the spray line's maximum (#350 item 1). Same appended-
+      // instrument rule as rcs_flow above: noise 0 so the cross-step PRNG sequence is
+      // byte-identical, with `noise_failure` carrying the sigma an injected `noisy` failure
+      // uses — without it that failure would be silently inert on this channel.
+      pzr_spray_flow:          { lag: 1.0, noise: 0, noise_failure: 2.0, range: [0, 110] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED

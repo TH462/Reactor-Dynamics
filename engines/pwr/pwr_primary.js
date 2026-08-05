@@ -181,13 +181,36 @@
 
   // Step 9 — primary inventory and voiding (CVCS charging/letdown + HPI/LPI/accumulator/SI − losses).
   function stepInventory(s, cfg, dt) {
-    // SGTR leak scales with the primary→secondary ΔP across the ruptured tube
-    // (feel-plan P5): full rate at the rated ΔP (~9.8 MPa), tapering to ZERO as
-    // the primary is depressurized to SG pressure — the single-SG EOP's whole
-    // strategy. Containment-side leaks (LOCA) are not ΔP-modulated here.
-    if (s._leak_to_sg && s._leak_base) {
-      var dp_ref = cfg.primary.sgtr_dp_ref || 9.8;
-      s.leak_flow = s._leak_base * clip((s.pressure_mpa - s.steam_pressure_mpa) / dp_ref, 0, 1.2);
+    // Every primary leak is a DISCHARGE, driven by the pressure difference across
+    // whatever it is leaking through. Two paths, differing only in what is on the far
+    // side of the hole.
+    //
+    // SGTR leaks primary→secondary through the ruptured tube (feel-plan P5): full rate
+    // at the rated ΔP (~9.8 MPa), tapering to ZERO as the primary is depressurized to SG
+    // pressure — the single-SG EOP's whole strategy.
+    //
+    // A LOCA discharges to CONTAINMENT, and until #334 it did not taper at all: the rate
+    // was fixed when the failure was injected, so the same break flowed identically at
+    // 2235 psi and at 14.5 psi and an RCS clipped at zero mass went on "leaking" at full
+    // rate indefinitely. 10 CFR 50 Appendix K I.C.1.b requires the discharge to be a
+    // critical-flow function of the upstream state with "a discharge coefficient applied
+    // to the postulated break area" — an AREA, not a flow. See pwr_config.primary for the
+    // quote and for why the form here is the √Δp orifice law rather than Moody itself.
+    //
+    // Referenced to break_p_ref_mpa so a break's configured size still means its rated
+    // flow at nominal RCS pressure: at 15.41 MPa the factor is exactly 1 and every
+    // existing severity keeps the calibration it was tuned with. Only the depressurized
+    // end of the curve is new.
+    if (s._leak_base) {
+      if (s._leak_to_sg) {
+        var dp_ref = cfg.primary.sgtr_dp_ref || 9.8;
+        s.leak_flow = s._leak_base * clip((s.pressure_mpa - s.steam_pressure_mpa) / dp_ref, 0, 1.2);
+      } else {
+        var pb = cfg.primary.break_backpressure_mpa != null ? cfg.primary.break_backpressure_mpa : 0.1;
+        var pr = cfg.primary.break_p_ref_mpa != null ? cfg.primary.break_p_ref_mpa : 15.41;
+        var span = Math.max(pr - pb, 1e-6);
+        s.leak_flow = s._leak_base * Math.sqrt(clip((s.pressure_mpa - pb) / span, 0, 1.5));
+      }
     }
     // Letdown first — the auto make-up law and the mass balance below both read it.
     s.letdown_flow = letdownFlow(s, cfg);
@@ -257,8 +280,62 @@
     var g_cvcs = rc.cvcs_inventory_gain != null ? rc.cvcs_inventory_gain : 1.0;
     var dm = (charging * g_cvcs + inj_inv + accum_inv)
            - (s.letdown_flow * g_cvcs + s.porv_flow + s.safety_flow + s.leak_flow);
+    var m_before = s._mass;
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;
+    // The PRESSURIZER SURGE driver (#337). Inventory leaving a subcooled RCS comes out of
+    // the pressurizer — it is the only place there is a free surface — so the bubble grows
+    // and pressure falls, exactly as a cooldown contraction does. pwr_pressurizer.stepPressure
+    // (step 7) reads this ONE STEP LATE, the CONTEXT §11 explicit coupling, same as
+    // stepCoolant reads `_eccs_inj_inv`. Taken as the REALISED change (post-clip, / dt) rather
+    // than the raw balance, so a genuine clip cannot inject a surge the plant never took.
+    //
+    // THAT USED TO BE JUSTIFIED THE WRONG WAY ROUND, and #346 is the correction. This comment
+    // read: "so a plant pinned at mass_max — an ECCS overfill holding 120 % — reports zero
+    // surge instead of a phantom insurge it has nowhere to put." Both of those options are
+    // wrong. A water-solid RCS being injected into with no relief path does not absorb the
+    // mass and does not ignore it — it RELIEVES, and it could not, because the surge gain in
+    // force was the one for a pressurizer that still had a steam bubble. `mass_max` is a
+    // far-away NUMERICAL GUARD (#330's words for it) and the solid regime in
+    // pwr_pressurizer.stepPressure is what keeps the plant away from it: measured, the fill
+    // now arrests at 109.35 % against the 120.00 % ceiling. CA-12 leg C asserts exactly that.
+    //
+    // RELIEF IS EXCLUDED — F15, ruled *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*.
+    //
+    // The PORV and the code safety valves discharge from the pressurizer STEAM SPACE. That mass
+    // never crosses the surge line and never displaces loop liquid, so it is not a surge: it
+    // shrinks the bubble directly, which is what `K_porv_relief` / `K_safety_relief` are for.
+    // Sourced — WTSM 3.2 (ML11223A213, p. 3.2-10/11): the three code safeties are "totally
+    // enclosed pop-open-type valves … spring loaded, and self actuating", and the PORVs sit on
+    // the pressurizer and "release steam from the steam space".
+    //
+    // WHY IT MATTERS, and the arithmetic is the trap: `K_surge_level · level_per_mass` = 310 and
+    // both relief gains were 300, so routing relief through the surge as well carried a relief
+    // valve's authority TWICE — near enough exactly, which is itself the tell that those two
+    // constants were always this same coupling, fitted per path. Measured with the double count
+    // live, the TMI-2 flagship blew the RCS down to 69 psi (0.48 MPa) by 681 s.
+    //
+    // The gains were RE-SOLVED in the same change rather than merely left alone: they were fitted
+    // to a plant where ECCS could not push back on pressure, and since #337 injection is an
+    // insurge, so the same valve achieves less depressurization. See `K_porv_relief` in
+    // pwr_config for the sourced criterion it is now solved against.
+    // F15 HOLDS IN THE SOLID REGIME TOO — MEASURED, NOT ASSUMED (#346). The obvious
+    // objection is that F15's premise is the valves "release steam from the steam space",
+    // and a water-solid pressurizer has none, so relief there passes LIQUID and is a genuine
+    // surge. That variant was BUILT: relief folded into `dm_surge` whenever solid and the
+    // steam-space gains stood down in stepPressure to avoid the double count. It is more
+    // physically honest and it is REFUSED, because it does not stand alone. Measured on the
+    // #346 rig, it moves the relieving equilibrium down about 145 psi (1 MPa), which puts the
+    // plant further below the ECCS shutoff head, and injection then out-runs the PORV: the
+    // fill stops arresting and inventory walks back to the 120.00 % clip — the very defect.
+    // The reason is that the same argument applies to SPRAY (nothing to condense) and to the
+    // HEATERS (no bubble to flash) at solid, and taking only the relief third of it leaves an
+    // unbalanced pressure controller. Doing it properly is a three-term regime plus a
+    // re-solve of `K_porv_relief`/`K_safety_relief`, which is a separate change; declared at
+    // `Manuals/12` §12.4c and left to it.
+    var dm_surge = dm + (s.porv_flow || 0) + (s.safety_flow || 0);   // relief is not a surge
+    var m_surge = clip(m_before + dm_surge * dt, 0.0, cfg.primary.mass_max);
+    s._dmass_dt = dt > 0 ? (m_surge - m_before) / dt : 0;
 
     // Boron transport on the emergency-injection path (HPI/LPI + accumulators carry
     // heavily borated RWST/SIT water at eccs_boron_ppm). Perfect-mixing update of the

@@ -1,6 +1,6 @@
 # The aggregate gate, run on every push and pull request.
 #
-# `node test/run_all.js` runs all 37 runners and compares each against the BASELINES
+# `node test/run_all.js` runs all 38 runners and compares each against the BASELINES
 # map at the top of that file. Drift is symmetric — a runner scoring BETTER than its
 # baseline fails too, so a red turning green has to be acknowledged rather than
 # silently absorbed.

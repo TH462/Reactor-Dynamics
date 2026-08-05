@@ -191,6 +191,13 @@ them**: **`reset_rps`** — board-reachable since #75 and required after *every*
 checklist; **`isolate_feedwater`**, which latches with **no board control to restore it** (#305);
 and **`set_condensate_pump`**, an engine capability with no board face at all.
 
+**Two of those three are now closed** (2026-08-04). `reset_rps` is step 2 of the PWR-T06 post-trip
+checklist (#319 item 1), and `isolate_feedwater` has a **RESTORE** control on the SG FEED card
+(#319 item 2) — which also closed **#341**, a defect the audit did not name: the restore, once
+issued by any path, was accepted **while the isolating signal was still standing**. The two shipped
+together because a guard on an unreachable command is unfalsifiable and a control without the guard
+is a defeatable protection function. `set_condensate_pump` is still open.
+
 Seven documented *normal* evolutions have no row:
 
 | Procedure | | Note |

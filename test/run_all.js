@@ -78,6 +78,17 @@ var BASELINES = {
   'run_pwr.js':            { code: 0, secs: 22, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
+  // DELIBERATELY NOT MOVED at #346, and reading 1/3 on the backshop lane. Both red suites are
+  // `flagship_tmi`, and the cause is #347: the TMI-2 decision point was resting on the very
+  // discard #346 removes. With `_mass` pinned at the clip the surge could not push back, so
+  // `K_porv_relief * porv_flow` ran unopposed and took the RCS to 52 psi (0.36 MPa) with the
+  // inventory gauge reading 120 % — two bugs agreeing. Now a stuck-open PORV is matched by
+  // unterminated ECCS (0.0035 vs 0.0038 frac/s), the plant goes solid at pressure, and
+  // `subcooling_low` never fires, so `injection_decision` is unreachable. That is the TMI-2
+  // counterfactual and it is right; what is missing is the crew's actual error, throttling HPI
+  // back on the rising level. The baseline stays at 3/3 BECAUSE it must come back — marking it
+  // an expected red would hide the next real regression here. Same root as run_campaign's
+  // pwr_tmi2_p3, which was already 2 missions red from #337 before this change.
   'run_scenarios.js':      { code: 0, score: '3/3 36passed' },
   // 34 since 2026-07-25 (#131): PI-3, PI-8, PI-9 and the TR-11 end-state pin were
   // catalogued behaviours the battery never probed — the coverage todo list is now empty.
@@ -159,7 +170,37 @@ var BASELINES = {
   // TR-13b's `leak > 0.01` was a magnitude fixture measured on a plant whose heaters ran
   // with the pressurizer empty; it now asserts the claim in its own title (the ΔP-scaled
   // BASE survives the round trip), which it never did, and passes on the old engine too.
-  'run_behavior.js':       { code: 0, secs: 56, score: '50pass 0xfail' },
+  // 50 -> 51 (2026-08-04e, #334 item 2): CA-11, break discharge follows RCS pressure.
+  // A LOCA used to flow at a CONSTANT rate set when the break opened, so the same break
+  // discharged identically at 2235 psi and at 14.5 psi and an empty vessel went on
+  // "leaking" at full rate. 10 CFR 50 App K I.C.1.b requires a critical-flow function of
+  // the upstream state with "a discharge coefficient applied to the postulated break
+  // AREA". Now the orifice law, flow ~ sqrt(dp) to containment.
+  // CA-10 leg E was RE-AUTHORED in the same change and was not broken by it: it compared
+  // the break rate against the ECCS capacity and required anything above that ceiling to
+  // destroy the core — a valid STEADY-STATE argument only while the break was constant.
+  // With discharge tracking pressure, a break that starts above the ceiling ends below
+  // it, so the comparison decides nothing; the guard is re-pointed at ECCS being what
+  // saves the core (same break, injection defeated, must still destroy it).
+  // 51 -> 52 (2026-08-04, #346): CA-12, a water-solid RCS repressurizes. `_mass` clipped at
+  // `primary.mass_max` and, since #337, the surge driver clipped with it — so an RCS held
+  // solid by unterminated ECCS reported ZERO surge and sat flat at 2232 psi for 45 minutes
+  // with no relief lift. Raising the ceiling is NOT the fix and was measured: at 3.0 the
+  // plant runs to 300 % inventory with pressure still parked. The bubble is the only
+  // compressible volume, so once the level line reaches 100 % the gain steps to the bulk
+  // modulus of water (`solid_bulk_mpa`). Injection-verified — the pre-#346 gain reddens 4 of
+  // CA-12's checks. Leg B computes the settling inventory FROM the level geometry rather than
+  // transcribing it: 109.35 % measured against 109.28 % predicted.
+  // TWO EXISTING PROBES MOVED, both pinning the old behaviour rather than broken by the new.
+  // CA-4's `core_inventory_pct > 110` was a magnitude only reachable while the RCS accepted
+  // unbounded mass; it asserts the FLOODING directly now (true level solid at > 103 %
+  // inventory), which passes on the old engine too, plus a new check that the overfill shows
+  // on the relief path — 0.0 % PORV duty before, 4.8 % after. TR-15 leg E now defeats ECCS:
+  // the survival it was failing on is automatic feed-and-bleed, not circulation, and with
+  // injection defeated the plant is lost at 94 min on BOTH engines.
+  // THIS LANE READS 50, NOT 52 — CA-10 and CA-11 are the standing #337 cascade and predate
+  // this change (verified unmoved by it, same observed values either side).
+  'run_behavior.js':       { code: 0, secs: 56, score: '52pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -508,7 +549,42 @@ var BASELINES = {
   // TUNING_LOG, BUILD_DECISIONS and the ops-probe write-up's heading. The CODE moved
   // this by ZERO, as usual: the ruling changed no constant, it only recorded a decision
   // about one already shipped. MEASURED AFTER the docs.
-  'run_hardrules.js':      { code: 0, score: '170checks 0failed' },
+  // 170 -> 172 on 2026-08-04 (#339): the session-label ruling's citation sites. MEASURED, and
+  // net +2 against SIX new sites — an intermediate run read 173 and the CHANGELOG citation took
+  // it DOWN to 172, because CLAUDE.md's baselines paragraph is one enormous physical line and
+  // inserting into it re-parses the parenthetical clipping for the citations already there.
+  // Do not hand-reconcile this number; measure it after the docs, which is what happened here.
+  // 172 -> 173 later the same day: the TUNING_LOG entry for the WIP-sweep fix cites the
+  // lane-tag directive. The one-word `gh` fix it writes up moved this by ZERO — the usual
+  // split, and the reason this number is measured after the docs rather than before.
+  // 173 -> 175 at the 2026-08-04 three-lane merge: workbench's #337 F14 citation sites
+  // arrive with its write-ups. MEASURED on the merged tree — neither parent's number
+  // survives (develop 173, workbench 172) and they do not add up, as this entry has
+  // warned five times.
+  // 178 -> 177 (2026-08-04, #346): a DROP, and it is the themes-cap mechanism this entry has
+  // recorded twice before, biting again. The #346 bullet took the *Recent themes* list over its
+  // five-bullet cap, evicting #311 and taking its *(OWNER RULING, 2026-08-02: "311: a.")* with
+  // it. CHECKED BEFORE ACCEPTING: that ruling still stands in BUILD_DECISIONS.md,
+  // DESIGN_COMPANION.md §8.23 and TUNING_LOG.md (twice), so this is one fewer citation SITE, not
+  // one fewer ruling. The engine, config and probe work of #346 moved this by ZERO and its
+  // write-ups quote no owner ruling at all — the change was a bug fix, not a decision — so the
+  // eviction is the entire delta. Measured AFTER the docs, which is the only order that gives
+  // the right number.
+  // 177 -> 176 (2026-08-04, #347): the themes cap biting a SECOND time in two sessions, and the
+  // mechanism is now well enough established to expect it. The #347 bullet took the list over
+  // five, evicting the Physics-tab entry and its *(OWNER DIRECTIVE, 2026-08-03: "Add a tab to
+  // the tools block called Physics…")*. CHECKED BEFORE ACCEPTING: that directive still stands in
+  // BUILD_DECISIONS.md, CHANGELOG.md and TUNING_LOG.md. One fewer citation SITE, not one fewer
+  // directive. The scenario, engine and probe changes moved this by ZERO — #347's write-ups quote
+  // no owner ruling, because it is a bug fix — so the eviction is again the entire delta.
+  // **MEASURED 177 ON THE MERGED TREE (2026-08-04) — not backshop's 176, not develop's figure,
+  // and not the two added up.** The #350 board work landed on develop while #346/#347/#348 were
+  // landing here, and both sides wrote citations into CLAUDE.md; the merged file carries both at
+  // once. Measured AFTER every conflict was resolved and AFTER the themes cap was brought back to
+  // five (that eviction is itself worth −1 or so), never during — a tree with markers still in it
+  // holds both sides' citations twice over and counts the duplicates. This entry has now warned
+  // about hand-reconciling this number seven times.
+  'run_hardrules.js':      { code: 0, score: '177checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -535,7 +611,7 @@ var BASELINES = {
   // BEHIND clad_temp_c, published for the Physics tab's new Core damage group. Both were
   // locals inside stepCladding, so the panel could show the symptom (peak temperature) and
   // the verdict (fuel_damaged) but nothing of the mechanism between them.
-  'run_contract.js':       { code: 0, score: '147checks 0failed' },
+  'run_contract.js':       { code: 0, score: '148checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -587,7 +663,7 @@ var BASELINES = {
   // whose job is to state it. Found carrying a stale 'Set revision: 20 (2026-07-30)' directly
   // under the live 23 — hand-added in 85264ad (#277), survived three stampings. Verified by
   // injection: restoring the second line reddens it.
-  'run_manual_rev.js':     { code: 0, score: '13checks 0failed' },
+  'run_manual_rev.js':     { code: 0, score: '15checks 0failed' },
   // NEW 2026-07-31 (#224) — was `test/audit_manual_controls.js`, which is exactly why it is
   // here: not a `run_*.js`, so auto-discovery never saw it, so it had no baseline, so it sat
   // at **32 mismatches / exit 1** through the #197 / #202 / #206 procedure re-authoring with
@@ -601,7 +677,12 @@ var BASELINES = {
   // 128 → 94 on 2026-07-31: nuclear-from-cold heatup STEP_UI map removed (17 steps).
   // 94 → 122 on 2026-08-02 (#310): the PWR-N15 cooldown checklist adds 14 controlled steps.
   // 122 -> 132 on 2026-08-03 (#319): PWR-T06 post-trip, 5 controlled steps x 2 checks.
-  'run_manual_controls.js': { code: 0, score: '172checks 0failed' },
+  // 172 -> 174 (2026-08-04, #348): the SGTR procedure gained its SI-termination step, and a
+  // controlled step is 2 checks here (it must name a control the board can actually reveal).
+  // Its STEP_UI entry went in WITH the step, which is why this and verify_manual_follow moved
+  // together — the #224 failure was exactly the opposite, a step added without its entry and
+  // therefore silently UNVERIFIED.
+  'run_manual_controls.js': { code: 0, score: '174checks 0failed' },
   // New 2026-07-28 (#241) — the feature-flag registry that decides what the PUBLIC
   // website offers vs what is still being vetted on `develop`. Coverage half: every
   // scenario, procedure and campaign mission has an entry and every entry still points
@@ -638,7 +719,7 @@ var BASELINES = {
   // INJECTION-VERIFIED three ways: removing `sgtr` from its group, listing a failure that
   // does not exist (`pzr_heaters_failed`), and naming one in two groups each take it to
   // 8/9 41/42.
-  'run_inspect.js':        { code: 0, score: '9/9 42/42' },
+  'run_inspect.js':        { code: 0, score: '9/9 47/47' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
@@ -772,7 +853,28 @@ var BASELINES = {
   // while 1.0.0 sorted under Alpha 1.7.0 the launch entry fell below the floor and its
   // date agreement across the two files was NOT CHECKED AT ALL — zero CROSS rows, no failure.
   // The relabel is what makes this 11 rather than 10, and the 11th check is that CROSS row.
-  'run_release.js':        { code: 0, score: '11checks 0failed' },
+  // 11 -> 12 (2026-08-05, Alpha 1.0.1): a RELEASE adds a check, by design — every
+  // `changelog.html` entry down to the oldest version `CHANGELOG.md` still names individually
+  // is cross-checked, so the CROSS block grows by one row per published release. Nothing was
+  // added to the runner.
+  'run_release.js':        { code: 0, score: '12checks 0failed' },
+  // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
+  // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
+  // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane
+  // merge, 17 labels name more than one entry (7 + 10), so `2026-08-04b` resolves to two
+  // sessions in one file and three in the other. Scheme is now `YYYY-MM-DD-<lane>-<letter>`,
+  // which removes the cross-lane coordination the old one required and could not get.
+  // BASELINED ON THE CHECK COUNT, not on failures: the checks are STRUCTURAL (4 per file, and
+  // the files are fixed), so unlike run_manual_units the count does not move when a session is
+  // appended — only when a check is added. That is the property that makes it baselineable at
+  // all; a per-label count would drift on every session and train the next author to rewrite
+  // the number without reading it.
+  // Legacy labels are GRANDFATHERED by ruling *(OWNER RULING, 2026-08-04: "Work issue 339 in
+  // develop. Go with option 2." — option 2 is explicitly "for new entries, and do not
+  // retro-rename")*, so their 17 collisions are REPORTED and never failed. The enforcement is
+  // a date cutoff: anything dated 2026-08-05 or later must be lane-form. Do not move that date
+  // forward to clear a red — it retires the gate.
+  'run_session_labels.js': { code: 0, score: '8checks 0failed' },
   // 19/19 86passed → 23/23 117passed (2026-07-28, #240): four suites for
   // mode/lineup-dependent alarm classification.
   // 26 -> 28 on 2026-07-31 (#125): the PORV's operator switch is a SEPARATE command from
@@ -821,7 +923,20 @@ var BASELINES = {
   // omits it silently tests the OLD alarm behaviour, which is the #153 wrong-cadence trap.
   // Injection-verified — `alarm_min_on_s: 0` reddens 4 checks, and the discriminating one
   // ("12 chatter cycles produce ZERO dropouts") goes to 12.
-  'run_m4.js':             { code: 0, score: '38/38 243passed' },
+  // 38/38 243 -> 39/39 257 on 2026-08-04 (#341 / #319 item 2): the SEAL-IN. A main-feedwater
+  // isolation could be undone by an operator command while its actuating signal was still
+  // standing — measured full stack, a restore 10 min into a post-trip ride was ACCEPTED with
+  // Tavg parked at 567.5 F against a 572.0 F setpoint, and SG level went 36.58 -> 77.43 %.
+  // actuationFired[i] is the retentive memory and a fired actuation never re-fires, so
+  // nothing contested the restore. Sourced to WTSM 12.3.2.3 (ML11223A310), which says the
+  // operator is locked out until the reset logic is satisfied.
+  // INJECTION-VERIFIED THREE WAYS, and the second one caught a HOLLOW CHECK: removing the
+  // refusal reddens 4; dropping seal_in from the two latching actuations reddens 2; removing
+  // the RE-ARM half reddens 1 — but only after the re-arm leg was rewritten. The first draft
+  // tested re-arm on the P-14 actuation, which carries reset_below: 85 and therefore re-arms
+  // itself in a branch that runs FIRST, so deleting the new code left every check green. The
+  // leg that discriminates drives the SI isolation, which has no reset_below.
+  'run_m4.js':             { code: 0, score: '39/39 257passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -923,7 +1038,20 @@ var BASELINES = {
   // HR10 only because that boil-off was reachable solely through the missing trips.
   // Injection-verified: restoring the old `crossed()` comparator reddens exactly those two.
   // If this number rises again, check it is not the branch coming back by accident.
-  'run_campaign.js':       { code: 0, secs: 110, score: '51/51 3017passed' },
+  // 3017 -> 3023 (2026-08-04, #347): no new checks were written. Six of the TMI-2 missions
+  // could not REACH their endpoint — five `pwr_tmi2_p3`, one `pwr_tmi2_p1` — so every check
+  // downstream of `level_complete` was skipped. They complete now, and the skipped checks run.
+  // Two of those six predate #346 and were the standing #337 cascade; the other four are #346's.
+  // ONE ROOT: the beats had the plant's causal chain backwards. `subcoolAlarm` was armed AHEAD
+  // of `hpiAuto`, but injection auto-starts at T+3 s and the subcooling margin does not move
+  // until injection is SECURED. That only ever worked because the pre-#346 plant discarded its
+  // ECCS overfill and drained regardless of injection; with the plant right, defending injection
+  // holds the margin and the confusion beat blocked the whole mission. The confusion is now the
+  // CONSEQUENCE of the securing rather than free-floating atmosphere, and on Part 3 it is
+  // reached from the COMPLIED branch only — refuse the order and there is nothing to be
+  // confused about, which is the deviation's whole point and something the old plant could not
+  // express.
+  'run_campaign.js':       { code: 0, secs: 110, score: '51/51 3023passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
@@ -978,7 +1106,14 @@ var BASELINES = {
   // with the flag GENUINELY EARNED — emergency boration runs through `set_auto_setpoint` on
   // the boron_conc channel, an M4-only command, so engine-direct would replay an ATWS with
   // NO RESPONSE at all. One check here (the flag is justified); the stack owns the rest.
-  'run_procedures.js':     { code: 0, secs: 41, score: '29/29 140/140' },
+  // 140 -> 141 (2026-08-04, #348): +1 for pwr_sgtr's new SI-termination step. NET +1, and the
+  // composition is worth knowing: the new step adds an `acc`, and pwr_stuck_porv step 1 went
+  // from one `saw` + one `acc` to TWO `saw`s — even. That step's `acc` was an END-of-hold
+  // subcooling value, and the two layers stopped agreeing on any end-of-hold value at all
+  // (measured t+30 s: -5.2 C engine-direct, +36.6 C stacked, because safety injection catches
+  // the transient under the stack). It passed here and failed under the stack: the #209 class.
+  // `saw` now takes a LIST so a step can carry more than one transient claim.
+  'run_procedures.js':     { code: 0, secs: 41, score: '29/29 141/141' },
   // New 2026-07-26 (#202/#206): the same procedures driven through the FULL STACK
   // (M4+M5+M6) rather than engine-direct. Same acc/saw/guard predicates, plus four
   // assertions only the stack can make (command accepted, no unexpected scram, no
@@ -1024,7 +1159,10 @@ var BASELINES = {
   // steps later missed it under the stack while still passing engine-direct (where the
   // transient is slower). It lives on the confirm-scram step now, whose hold covers the
   // peak in both layers. A `saw` is only as good as the window it is placed in.
-  'run_procedures_stack.js': { code: 0, secs: 70, score: '29/29 261/261' },
+  // 261 -> 262 (2026-08-04, #348) — same two edits as run_procedures above. This runner is the
+  // one that was RED on pwr_stuck_porv, and it was right to be: it runs the plant the player
+  // actually gets.
+  'run_procedures_stack.js': { code: 0, secs: 70, score: '29/29 262/262' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -1143,7 +1281,7 @@ var BASELINES = {
   // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
   // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
   // offenders, so a red here is diagnosable without reopening the page.
-  'verify_board_check.js':   { code: 0, score: '194checks' },
+  'verify_board_check.js':   { code: 0, score: '205checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,
@@ -1172,7 +1310,8 @@ var BASELINES = {
   // 183 -> 198 on 2026-08-03 (#319): PWR-T06's five controlled steps, 3 checks each. Its
   // STEP_UI entries went in with the procedure, so this number and run_manual_controls moved
   // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
-  'verify_manual_follow.js': { code: 0, secs: 158, score: '258checks', slow: true },
+  // 258 -> 261 (2026-08-04, #348): the SGTR SI-termination step, 3 checks per controlled step.
+  'verify_manual_follow.js': { code: 0, secs: 158, score: '261checks', slow: true },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

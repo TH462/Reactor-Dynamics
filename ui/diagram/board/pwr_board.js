@@ -508,7 +508,11 @@
     var el = tileBase(it, 'nohgt');
     el.className += ' bd-readout';
     var labelEl = h('div', { className: 'bd-ro-label' }, it.label || '');
-    labelEl.style.fontSize = Math.max(8, Math.round((it.fontSize || 16) * 0.66)) + 'px';
+    // The caption is derived from the reading size, EXCEPT where an item overrides it.
+    // `labelSize` exists for #350 item 27: the CVCS flow captions had to reach the 14 px of
+    // the BORON STATUS caption beside them without the reading growing to 21 px to get there.
+    labelEl.style.fontSize = (it.labelSize != null ? it.labelSize
+      : Math.max(8, Math.round((it.fontSize || 16) * 0.66))) + 'px';
 
     var readEl = h('div', { className: 'bd-ro-read' });
     readEl.style.color = it.color || '#4fe3ff';
@@ -727,11 +731,16 @@
         if (boreEl) pipeTempEls.push({ id: p.id, phase: p.phase, boreEl: boreEl, flowEl: flowEl });
       }
     });
-    updatePipeFlowStates();
+    updatePipeFlowStates(lastSnap);
     if (lastSnap) updatePipeTemps(lastSnap);
   }
 
   // Repaint live-temperature pipes: driver.pipeTemp(id, s) → °C → StdPipe color ramp.
+  //
+  // The PHASE can also be live (#350 item 6): a pipe whose driver reports one takes it over
+  // the authored `p.phase`, so the PORV relief run paints steam while the pressurizer has a
+  // bubble and water once it goes solid. Falls back to the authored phase, so a pipe with no
+  // live phase behaves exactly as before.
   function updatePipeTemps(s) {
     if (!s || !pipeTempEls.length || !window.StdPipe || !window.StdPipe.phaseTempColor) return;
     var d = driver();
@@ -740,7 +749,9 @@
       var rec = pipeTempEls[i];
       var t = d.pipeTemp(rec.id, s);
       if (t == null || isNaN(t)) continue;
-      var c = window.StdPipe.phaseTempColor(rec.phase, t);
+      var lf = (d.pipeFlow && rec.id) ? d.pipeFlow(rec.id, s) : null;
+      var phase = (lf && lf.phase) ? lf.phase : rec.phase;
+      var c = window.StdPipe.phaseTempColor(phase, t);
       if (rec.boreEl) rec.boreEl.setAttribute('stroke', c.bore);
       if (rec.flowEl) rec.flowEl.setAttribute('stroke', c.flow);
     }
@@ -752,10 +763,38 @@
   // pipe would rejoin its fitting a fraction of a dash out of step. Pausing also leaves the
   // dashes where they stopped instead of snapping them back to phase 0.
   // The board-wide freeze (.bd-frozen) uses `!important`, so it still wins over this.
-  function updatePipeFlowStates() {
+  //
+  // Since #350 a pipe can ALSO be stilled, re-timed or reversed by its own driver entry
+  // (`pipeFlow`), independently of the components at its ends. The two gates are ANDed: a
+  // line is only running when both ends are active AND its own system is carrying flow.
+  // That is what closes items 9 and 14 — the AFW-tee-to-SG segment and the circulating-water
+  // runs both sit between two ports that report active while the train behind them is dead,
+  // so the port gate alone could never still them.
+  function updatePipeFlowStates(s) {
+    var d = driver();
+    var live = !!(d && d.pipeFlow && s);
     pipeFlow.forEach(function (rec) {
       if (!rec.flowEl) return;
       var active = (!rec.fromKey || portActive(rec.fromKey)) && (!rec.toKey || portActive(rec.toKey));
+      var lf = (live && rec.id) ? d.pipeFlow(rec.id, s) : null;
+      if (lf) {
+        // AUTHORITATIVE, not merely ANDed with the port gate. The driver's entry is that
+        // line's OWN measured flow (one system per run — see PIPE_SYSTEM), which is strictly
+        // better evidence than "the fitting at each end thinks it is passing something".
+        // It has to replace the port gate rather than join it, because item 18 is exactly the
+        // case where they disagree and the driver is right: with the RCPs stopped the pump art
+        // correctly reads STOPPED and pulls its ports down, while `rcs_flow` still measures
+        // 4.5 % of buoyancy-driven flow through those same pipes.
+        active = !!lf.active;
+        // Re-time only when the band actually moved. setFlowSpeed rewrites the delay, and
+        // doing that every snapshot on an unchanged speed would re-seat the phase ~10x a
+        // second — cheap, but it makes the dashes stand still under time acceleration.
+        var key = lf.speed + '|' + (lf.dir < 0 ? 'r' : 'f');
+        if (key !== rec.flowKey) {
+          rec.flowKey = key;
+          if (lf.speed > 0) window.StdPipe.setFlowSpeed(rec.flowEl, lf.speed, lf.dir < 0);
+        }
+      }
       rec.flowEl.style.animationPlayState = active ? 'running' : 'paused';
       rec.flowEl.style.opacity = active ? 0.92 : 0.25;
     });
@@ -994,7 +1033,7 @@
       });
       if (d.afterRender) d.afterRender(s);
     }
-    updatePipeFlowStates();
+    updatePipeFlowStates(s);
     updatePipeTemps(s);
   }
 

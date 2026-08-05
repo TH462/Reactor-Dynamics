@@ -132,16 +132,52 @@
     // is LIVE, so the heaters come back when level recovers. On the real plant the
     // operator resets. One operator action, not a different behaviour.
     //
-    // NOT the whole bistable: the LETDOWN-isolation half of this same 17 % interlock is
-    // still missing (filed as its own item on #334). Only the heater half is built here,
-    // and it is deliberately not called "the low-level interlock" anywhere.
+    // THE OTHER HALF OF THIS BISTABLE ALREADY EXISTED, ONE LAYER UP — corrected 2026-08-04d.
+    // The #334 write-up first claimed the letdown-isolation half was missing. It is not:
+    // `pwr_control.js` PWR_ACTUATIONS carries `pzr_level` low at the same 17.0 setpoint
+    // firing `set_letdown_orifices {a:false, b:false}`, LATCHED with `reset_below: 20.0`.
+    // The claim came from grepping `pwr_primary.letdownFlow` — the ENGINE — and finding no
+    // level gate there, which is the "know which LAYER a gate runs at" trap: an interlock
+    // that reads an instrument and commands a valve is an M4 actuation and was never going
+    // to be in the engine. Injection-verified afterwards: deleting that actuation reddens
+    // run_reachability (66→65), run_ops and run_behavior, so it is covered as well as built.
+    //
+    // The two halves therefore live in DIFFERENT LAYERS, deliberately. Letdown isolation
+    // is a valve command, so it is an M4 actuation like every other. The heater cutoff
+    // CANNOT be, because the only command that would express it is `set_heater`, and an
+    // actuation writing the operator's own demand is undone by the next button press —
+    // the #200 defect exactly. So it is a de-energization here, the same shape as #329's
+    // AC guard eleven lines up, which is the house idiom for taking power away from a
+    // load without touching what the operator asked for.
     //
     // Physical de-energization, not a written demand — the #200/#329 rule. The selector
     // and the operator's % stay where they were put; what goes to zero is delivered power.
+    // IT LATCHES, with the reset differential its own sibling already has (#348). A bistable
+    // with no deadband on a noisy, lagged channel does not cut out — it CHATTERS, and this one
+    // did: measured on a 10 % break with a full manual demand standing, the indicated level
+    // dithers across 17 % and the heater bank flickers on for **35 % of every sample below the
+    // setpoint**, in runs of up to 8, all of them between 16.3 % and 17.0 %. That is ~1 MW of
+    // resistance heating cycling at the evaluation cadence, which is the #306 alarm-chatter
+    // defect one system over.
+    //
+    // The differential is NOT invented here: WTSM 10.3 §10.3.4.1 describes ONE bistable doing
+    // two things at 17 % — cut the heaters AND isolate letdown — and this plant already models
+    // the letdown half latched, `pzr_level` low 17.0 with `reset_below: 20.0` in
+    // PWR_ACTUATIONS. Two outputs of one bistable cannot have different reset behaviour, so
+    // the plant was inconsistent with itself and the heater half is brought into line.
+    //
+    // Engine-side rather than an M4 actuation for the reason #334 records: the only command
+    // that expresses this is `set_heater`, and an actuation writing the operator's own demand
+    // is undone by the next button press (#200). `_heater_cut` is the latch; it reads the
+    // INDICATED level on both edges (HR1), so a stuck transmitter still defeats it — leg D.
     var lvlInd = (s._ins_pzr_level != null) ? s._ins_pzr_level : s.pzr_level_pct;
-    if (lvlInd != null && lvlInd < (p.heater_cutoff_level_pct != null ? p.heater_cutoff_level_pct : 17.0)) {
-      s.heater_power_frac = 0; s._heater_dp_frac = 0;
+    var cutAt = (p.heater_cutoff_level_pct != null) ? p.heater_cutoff_level_pct : 17.0;
+    var restoreAt = (p.heater_restore_level_pct != null) ? p.heater_restore_level_pct : 20.0;
+    if (lvlInd != null) {
+      if (lvlInd < cutAt) s._heater_cut = true;
+      else if (lvlInd >= restoreAt) s._heater_cut = false;
     }
+    if (s._heater_cut) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
     // A spray valve stuck open is mechanical: it beats BOTH the auto controller and
     // any operator demand, the way porv_stuck beats porv_demand in relief() (#200).
     if (s.spray_stuck) { s.spray_flow_frac = 1; }
@@ -196,6 +232,43 @@
     var spray_floor = P_sat_from_T(s.thot_c != null ? s.thot_c : s.tavg_c);
     var spray_authority = clip((s.pressure_mpa - spray_floor) / (p.spray_floor_band || 1.0), 0, 1);
     var spray_eff = s.spray_flow_frac * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1) * spray_authority;
+    // MERGE (#347 x #350): both sides add here and both are kept, in THIS order. develop's
+    // `spray_flow_pct` is an INDICATION of delivered spray and is taken from `spray_eff` as it
+    // stands — the solid-plant gate below removes the spray's PRESSURE authority, not the water
+    // the nozzle passes, and zeroing the readout with it would tell the operator the valve had
+    // shut when it has not. Gate after publish.
+    // DELIVERED spray, as % of the spray line's maximum flow — the indication half (#350
+    // item 1). It is a genuinely different quantity from `spray_valve_pct`, which is the
+    // valve DEMAND: the two diverge whenever the loop cannot supply the line, and both of
+    // the ways that happens are physics the operator has to be able to see. Stop the RCPs
+    // and the demand is unchanged while delivered spray goes to zero (`flow_frac`, the
+    // comment above says so in words); run the plant down toward Psat(Thot) and the
+    // authority taper closes it out even with the pumps running.
+    //
+    // Scaled here rather than on the board, because `spray_flow_max` is the constant that
+    // makes the number mean anything and it lives in this layer. A percentage copied into
+    // the UI would not move when the constant is retuned (#315).
+    s.spray_flow_pct = clip(spray_eff / (p.spray_flow_max || 1), 0, 1.1) * 100;
+    // NO BUBBLE, NO SPRAY (#347). Spray controls pressure by CONDENSING the steam bubble —
+    // the sentence three lines above says so, and it is the whole mechanism. A water-solid
+    // pressurizer has no steam to condense, so the spray's pressure authority is not merely
+    // reduced, it is gone; what the nozzle adds is cold water, i.e. more mass.
+    //
+    // THIS WAS LOAD-BEARING, not cosmetic, which is why it is a fix and not a refinement.
+    // #346 declared it a simplification. Measured afterwards on the one path that change did
+    // not exercise — a stuck-open PORV with the operator correctly ISOLATING the block valve
+    // — spray pinned at its 0.120 cap held pressure at 2320 psi against a solid plant taking
+    // safety injection, which is 164 psi BELOW the code-safety setpoint. So the safeties never
+    // lifted, the fill was arrested by nothing, and inventory walked back to the 120.00 %
+    // `mass_max` clip: #346's defect exactly, re-entered through the pressure controller.
+    // With the bubble gone the ladder works — pressure reaches the safeties and they cycle.
+    //
+    // The HEATERS have the same physical argument (no bubble to flash) and are deliberately
+    // NOT changed here: they are already zero in this regime because pressure is above
+    // setpoint, so the term is unobservable, and their authority is a ruled declared
+    // departure (F14, `Manuals/12` §12.15). Nothing measured moves if they stay.
+    var pzr_solid = !(s.primary_void_fraction > 0) && levelRaw(s, cfg) >= 100;
+    if (pzr_solid) spray_eff = 0;
     // Break blowdown depressurizes the RCS — but ONLY while subcooled. Subcooled blowdown
     // (liquid out, bubble collapse) drives pressure directly down to saturation; once the
     // primary voids, the break vents steam that decay heat re-boils, so further depressurization
@@ -207,17 +280,69 @@
     // There, pressure is slaved to Psat(Tavg) by flashing (the sat-pull below), so the
     // subcooled-LIQUID terms — the break depressurization and the thermal expansion/
     // contraction surge — are suppressed: a rapid cooldown (e.g. an HPI cold quench)
-    // must NOT crash pressure via K_surge below saturation; the vapour space compensates
+    // must NOT crash pressure via the surge term below saturation; the vapour space compensates
     // and pressure just tracks Psat(Tavg) down as the coolant cools.
     var p_sat_tavg = P_sat_from_T(s.tavg_c);
     var saturated = s.primary_void_fraction > 0 || p_sat_tavg > s.pressure_mpa;
     var leak_depress = saturated ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
+    // SURGE — ONE LAW, TWO DRIVERS (#337). A surge is a VOLUME displacement of the
+    // pressurizer, and the pressurizer does not know what caused it. WTSM 3.2
+    // (ML11223A213, p. 3.2-8) states the mechanism without reference to the cause:
+    // "Temperature changes produces changes in coolant density, which force water into
+    // (insurge) or out of (outsurge) the pressurizer. … If the RCS temperature decreases,
+    // the contraction of the coolant produces an outsurge from the pressurizer. This is
+    // accommodated by an expansion of the steam bubble and a corresponding decrease in
+    // steam density and pressure."
+    //
+    // Until #337 only the THERMAL driver was wired. Losing RCS inventory displaces the same
+    // volume out of the same pressurizer — a subcooled loop is incompressible everywhere
+    // else, so there is nowhere else for it to come from — and moved pressure by nothing at
+    // all: measured full stack, an SGTR that took pzr level 55.0 → 15.7 % and scrammed the
+    // plant moved pressure 5 psi (0.034 MPa) and subcooling 0.2 F (0.1 C).
+    //
+    // The conversion for both drivers is ALREADY in the level line (stepLevel): level_per_tavg
+    // %/C for expansion, level_per_mass %/frac for inventory — the same geometry, stated once.
+    // So the law is written in LEVEL-RATE units and both drivers convert into it, which is why
+    // the constant is `K_surge_level` (%/s) and no longer `K_surge` (C/s). The mass slope is
+    // taken piecewise on the CURRENT deviation exactly as stepLevel takes it, so the two
+    // cannot drift apart (they are equal since #330; the piecewise is what keeps them tied).
+    //
+    // `_dmass_dt` is stepInventory's REALISED mass rate read ONE STEP LATE — inventory is
+    // step 9 and this is step 7 (CONTEXT §11 explicit coupling).
+    var dm_lvl = (s._mass != null ? s._mass : 1.0) - 1.0;
+    var surge_rate = p.level_per_tavg * (s._dTavg_dt || 0)
+                   + (dm_lvl < 0 ? p.level_per_mass : p.level_per_mass_surplus) * (s._dmass_dt || 0);
+    // WATER-SOLID — the surge meets LIQUID, not a bubble (#346). K_surge_level is the
+    // gain of a pressurizer that still HAS a steam space: a surge is soft because the
+    // bubble absorbs it. Once the level line reaches 100 % there is no bubble, the RCS is
+    // incompressible everywhere, and the same displacement compresses water instead — so
+    // the gain steps up to the bulk modulus. Same law, same currency (%/s of level
+    // displacement), one factor; see `solid_bulk_mpa` in pwr_config for the number.
+    //
+    // Until #346 this was MISSING and the plant discarded the mass instead: `_mass` clipped
+    // at `primary.mass_max` and the surge driver clipped with it, so a solid RCS taking
+    // 0.024 frac/s of safety injection with no relief path reported ZERO surge and sat flat
+    // at 15.39 MPa for 45 minutes while ECCS never terminated. The clip's comment named
+    // the two options as "zero surge" or "a phantom insurge"; the physical answer is
+    // neither — the plant RELIEVES.
+    //
+    // Gated on `!saturated` with the rest of the surge, and that gate is not a formality:
+    // a two-phase RCS is compressible by definition, so "solid" and "saturated" cannot both
+    // be true, and the sat-pull branch below owns that regime.
+    //
+    // THE GAIN IS THE ONLY THING THAT CHANGES. Relief keeps its own steam-space gains under
+    // F15, and spray and the heaters keep theirs — none of which is strictly right in a
+    // vessel with no bubble. Moving them is a coupled three-term regime plus a re-solve of
+    // the relief gains, and taking only one term of it was measured to be WORSE than taking
+    // none: see the F15 note in pwr_primary.stepInventory, and `Manuals/12` §12.4c.
+    var solid = !saturated && pzr_solid;
+    var K_surge = solid ? (p.solid_bulk_mpa / p.level_per_mass_surplus) : p.K_surge_level;
     var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
            - s.safety_flow * p.K_safety_relief
            - leak_depress
-           + (saturated ? 0 : p.K_surge * (s._dTavg_dt || 0));   // thermal surge — subcooled liquid only
+           + (saturated ? 0 : K_surge * surge_rate);   // subcooled liquid only
     if (saturated) {
       // Two-phase OR superheated: a liquid cannot superheat — as pressure falls to the
       // saturation pressure of Tavg the coolant flashes, and that flashing PINS pressure
@@ -281,7 +406,7 @@
     return clip(levelBase(s, cfg), p.level_prog_floor, p.level_prog_ceiling);
   }
 
-  // Step 8 (pzr part) — pressurizer level, DERIVED from state (CC-10 rework):
+  // The pressurizer level line, DERIVED from state (CC-10 rework) and UNCLIPPED:
   //   level = base(Tavg) + level_per_mass·(mass − 1) + level_per_void·void
   // No integrator: level and inventory cannot silently drift apart. The void term
   // pushes liquid INTO the pressurizer as the primary voids, raising indicated
@@ -289,17 +414,25 @@
   // active ONLY when the primary actually saturates (primary_void_fraction is
   // saturation-gated in pwr_primary). Relief/leak/charging flows act on level
   // through the MASS balance (stepInventory), not through separate level terms.
-  function stepLevel(s, cfg, dt) {
+  //
+  // UNCLIPPED, and it has TWO consumers for that reason (#346). stepLevel clips it to
+  // the 0–100 gauge span for indication; stepPressure needs it raw, because "is there
+  // any steam space left" is exactly the water-solid question and a reading pinned at
+  // 100 cannot answer it. ONE formula, because a copy in the second consumer would not
+  // move when this one did.
+  function levelRaw(s, cfg) {
     var p = cfg.pressurizer;
     var dm = (s._mass != null ? s._mass : 1.0) - 1.0;
     // Piecewise mass term: a DEFICIT draws down the whole loop (shallow); a
     // SURPLUS packs into the pressurizer steam space — the only compressible
     // volume — so it reads ~3× steeper (the "going solid" regime).
     var mass_term = dm < 0 ? p.level_per_mass * dm : p.level_per_mass_surplus * dm;
-    var level = levelBase(s, cfg)
-              + mass_term
-              + p.level_per_void * (s.primary_void_fraction || 0);
-    s.pzr_level_pct = clip(level, 0, 100);
+    return levelBase(s, cfg) + mass_term + p.level_per_void * (s.primary_void_fraction || 0);
+  }
+
+  // Step 8 (pzr part) — indicated pressurizer level: the line above, on span.
+  function stepLevel(s, cfg, dt) {
+    s.pzr_level_pct = clip(levelRaw(s, cfg), 0, 100);
   }
 
   RD.pwrPressurizer = {
@@ -310,6 +443,7 @@
     stepPressure: stepPressure,
     levelBase: levelBase,
     levelProgram: levelProgram,
+    levelRaw: levelRaw,
     stepLevel: stepLevel,
     stepTailpipe: stepTailpipe,
   };

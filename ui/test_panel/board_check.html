@@ -609,6 +609,97 @@
         ck('readout: PZR HTR PWR live indication numeric', !!ht && /\d/.test(ht.textContent), ht && ht.textContent);
       })();
 
+      // ---- #350: the two new indications, and the flow states that are the point --------
+      // These are pinned rather than trusted for the reason CLAUDE.md gives about rAnchor
+      // geometry: the FIRST placement of the spray readout was authored under the spray demand
+      // box on the arithmetic that a number tile is ~26 px tall. It renders 47 px (it carries
+      // ▲▼ arrows), so it overlapped by 80x20 px and BOTH elements still rendered. Only a ruler
+      // finds that, and only a pin keeps it found.
+      (function () {
+        function tileRect(id) {
+          var el = document.querySelector('[data-item="' + id + '"]');
+          if (!el) return null;
+          var t = el.closest('.bd-tile') || el, st = document.querySelector('.pwr-board-stage');
+          var r = t.getBoundingClientRect(), sr = st.getBoundingClientRect();
+          var sc = sr.width / (st.offsetWidth || 1);
+          return { l: (r.left - sr.left) / sc, t: (r.top - sr.top) / sc,
+                   r: (r.right - sr.left) / sc, b: (r.bottom - sr.top) / sc, el: t };
+        }
+        function overlaps(a, b) {
+          if (!a || !b) return false;
+          return Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5 &&
+                 Math.min(a.b, b.b) - Math.max(a.t, b.t) > 0.5;
+        }
+        RD.PwrBoard.render(svcHfp.assembleSnapshot());
+        // RCP FLOW reads the elbow-tap channel, so at power it is ~100 % of rated.
+        var rf = tileRect('bdRcpFlow');
+        var rv = rf ? parseInt((rf.el.textContent.match(/\d+/) || ['-1'])[0], 10) : -1;
+        ck('readout: RCP FLOW present and reads rated at power (95-105 %)', rv >= 95 && rv <= 105,
+           rf && rf.el.textContent);
+        // Delivered spray, not the demand: with the plant at power and the spray shut it is 0,
+        // and the DEMAND box beside it is what would read otherwise.
+        var sf = tileRect('bdPzrSprayFlow');
+        ck('readout: PZR SPRAY FLOW present and numeric', !!sf && /\d/.test(sf.el.textContent),
+           sf && sf.el.textContent);
+        // Neither may land on anything. The spray one is checked against the whole pressurizer
+        // indication stack and the demand box it was originally (wrongly) placed under.
+        var hits = [];
+        ['ims5gp0aicx', 'ims5gq44zgr', 'ims5gpdv96m', 'ims5gprvl7n', 'imro929i738',
+         'imro901sddd', 'imrsg8b7b9o'].forEach(function (id) {
+          if (overlaps(sf, tileRect(id))) hits.push('spray x ' + id);
+        });
+        ['imrsjy1m9g', 'imrsjy59pnu', 'imrzp89wdfu', 'imrzp8qps6u'].forEach(function (id) {
+          if (overlaps(rf, tileRect(id))) hits.push('rcpflow x ' + id);
+        });
+        ck('geometry: the two new readouts overlap nothing', hits.length === 0, hits.join(', '));
+        // REACTIVITY is GONE and PERIOD took its slot (item 5). Asserted positively both ways:
+        // a missing-item check alone would pass if PERIOD had simply been deleted too.
+        ck('item 5: the REACTIVITY readout is removed from the board',
+           !document.querySelector('[data-item="imro6rdwwdn"]') &&
+           !document.querySelector('[data-item="imrshokxy4u"]'));
+        var pl = tileRect('bdRxPeriodLbl');
+        ck('item 5: PERIOD moved up into the vacated slot (top ~455, was 490)',
+           !!pl && pl.t > 445 && pl.t < 470, pl && pl.t.toFixed(0));
+      })();
+
+      // ---- #350 items 14 + 18: the flow states the port gate could never express --------
+      // With the RCPs stopped the pump art correctly reads STOPPED and pulls its ports down,
+      // while the rcs_flow elbow tap still measures ~4.5 % of buoyancy-driven flow (#325). The
+      // loop must therefore keep crawling while the SECONDARY goes still — the two facts have
+      // to be asserted together, because "everything paused" would satisfy either alone.
+      (function () {
+        var sb = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'hot_full_power' });
+        sb.handleCommand({ action: 'inject_failure', failure_id: 'station_blackout' });
+        sb.running = true; for (var i = 0; i < 1200; i++) sb.tick(); sb.running = false;
+        var sn = sb.assembleSnapshot();
+        RD.PwrBoard.rescanPorts();
+        RD.PwrBoard.render(sn);
+        var f = (sn.instruments.rcs_flow || 0).toFixed(2);
+        ck('pipe: blackout -> primary loop STILL CRAWLS on natural circulation (rcs_flow ' + f + ' %)',
+           RD.PwrBoard.pipeFlowState('pms2ktjq4ma') === 'running', RD.PwrBoard.pipeFlowState('pms2ktjq4ma'));
+        // The RCP's OWN runs, and this is the check that discriminates the mechanism rather
+        // than the wiring: the pump art correctly reads STOPPED and pulls both its ports down,
+        // so these two pipes are only running because the driver's measured-flow verdict
+        // REPLACES the port gate instead of being ANDed with it. Injection-verified — restore
+        // the AND and these two go paused while the tee-to-SG run above stays green.
+        ck('pipe: blackout -> RCP discharge run crawls (driver verdict beats the port gate)',
+           RD.PwrBoard.pipeFlowState('pms2kozvu94') === 'running', RD.PwrBoard.pipeFlowState('pms2kozvu94'));
+        ck('pipe: blackout -> RCP suction run crawls',
+           RD.PwrBoard.pipeFlowState('pms2kp1148p') === 'running', RD.PwrBoard.pipeFlowState('pms2kp1148p'));
+        ck('pipe: blackout -> circulating water PAUSED (item 14)',
+           RD.PwrBoard.pipeFlowState('pms3l83etan') === 'paused', RD.PwrBoard.pipeFlowState('pms3l83etan'));
+        ck('pipe: blackout -> feed tee to SG PAUSED (item 9: no main feed, no AFW)',
+           RD.PwrBoard.pipeFlowState('pms31qjbqhy') === 'paused', RD.PwrBoard.pipeFlowState('pms31qjbqhy'));
+        // Mode 5 is the control: rcs_flow is ~0 there, so the SAME pipe must be still — without
+        // this the crawl check passes on a board that simply never stops the primary.
+        var m5 = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'cold_shutdown' });
+        m5.running = true; for (var j = 0; j < 40; j++) m5.tick(); m5.running = false;
+        RD.PwrBoard.render(m5.assembleSnapshot());
+        ck('pipe: Mode 5 -> primary loop PAUSED (the crawl is flow, not a floor)',
+           RD.PwrBoard.pipeFlowState('pms2ktjq4ma') === 'paused', RD.PwrBoard.pipeFlowState('pms2ktjq4ma'));
+        RD.PwrBoard.render(svcHfp.assembleSnapshot());
+      })();
+
       // Core ΔT margin (EXTRA_ITEMS, #311 observability). This readout is the ONLY thing on
       // the board that makes the OTΔT/OPΔT trips visible before their 3 %-out annunciator, so
       // it is pinned rather than trusted. Three checks, and each is chosen to fail a specific

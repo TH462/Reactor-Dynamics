@@ -146,9 +146,9 @@
       // rain is the warmer water entering at the inlet temperature. The plume/haze/glow are
       // heat-rejection vapor, not liquid water, so they keep their own tint.
       var basinC = env.StdPipe.phaseTempColor('water', outletTemp);
-      var rainC = env.StdPipe.phaseTempColor('water', inletTemp).flow;
-      waterTopStop.setAttribute('stop-color', basinC.flow);
-      waterBotStop.setAttribute('stop-color', basinC.bore);
+      var rainC = env.StdPipe.phaseTempColor('water', inletTemp).bore;
+      waterTopStop.setAttribute('stop-color', basinC.bore);
+      waterBotStop.setAttribute('stop-color', basinC.flow);
 
       plumeGroup.style.display = evap > 0.04 ? '' : 'none';
       var puffOpacity = 0.12 + evap * 0.22;

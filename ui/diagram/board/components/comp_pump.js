@@ -60,7 +60,7 @@
     // design's fluid-preset fallback (power term fixed at 100% — no power prop here)
     function fluidColors(tempC) {
       if (tempC != null && env.StdPipe.phaseTempColor) {
-        var base = toArr(env.StdPipe.phaseTempColor('water', tempC).flow);
+        var base = toArr(env.StdPipe.phaseTempColor('water', tempC).bore);
         return { dark: mix(base, [8, 14, 20], 0.12), light: mix(base, [255, 255, 255], 0.22) };
       }
       var heatBase = FLUID_HEAT[fluid] != null ? FLUID_HEAT[fluid] : 0.05;

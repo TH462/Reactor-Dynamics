@@ -175,11 +175,11 @@ console.log(B + 'PWR — recently-added controls' + X);
   // simSeconds is SIM TIME, driven through secs() — not a cycle count (#261). The
   // default 40 s is what the old `step(t, 400)` actually delivered, minus the cadence
   // shortfall; the equilibrium checks below pass an explicit, much longer window.
-  function sgtrRun(cvcsAuto, severity, simSeconds) {
+  function sgtrRun(cvcsAuto, severity, simSeconds, failureId) {
     var t = svc('pwr', 'hot_full_power');
     t.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
     t.handleCommand({ action: 'set_cvcs_auto', active: cvcsAuto });
-    t.handleCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: severity });
+    t.handleCommand({ action: 'inject_failure', failure_id: failureId || 'sgtr', severity: severity });
     secs(t, simSeconds || 40);
     // AVERAGE the servo output over a window; do NOT sample it once at the end.
     // charging_flow is driven by a filtered error on the INDICATED pzr level, so it carries
@@ -211,8 +211,25 @@ console.log(B + 'PWR — recently-added controls' + X);
   // previous version of this check fell into.
   ck('set_cvcs_auto OFF stops automatic charging', cvcsOff.chg === 0, cvcsOff.chg.toFixed(4), '0');
   ck('set_cvcs_auto ON commands charging', cvcsOn.chg > 0, cvcsOn.chg.toFixed(4), '>0');
-  ck('CVCS auto measurably slows the inventory loss',
-    cvcsOn.inv > cvcsOff.inv + 1, cvcsOn.inv.toFixed(2) + ' vs ' + cvcsOff.inv.toFixed(2),
+  // THE INVENTORY LEG MOVED OFF THE SGTR FIXTURE (2026-08-04, #337) — the fixture picked up a
+  // confound, the claim did not change. An SGTR leak is ΔP-MODULATED (`stepInventory`: it scales
+  // with primary−secondary ΔP, which is the single-SG EOP's whole strategy), and since #337
+  // make-up drives a pressurizer INSURGE, so charging now holds pressure up and thereby holds
+  // the leak open. Measured on this exact fixture: ON parks at 2137 psi with a 4.690e-3 leak,
+  // OFF at 2113 psi with 4.576e-3 — so the make-up buys back less than the extra leak it
+  // sustains, and inventory lands 96.40 % ON against 96.56 % OFF. That is the right plant
+  // (depressurising to stop the leak is the SGTR EOP) and the wrong test: this suite is control
+  // PLUMBING, and the check wants to know the command moved the plant, not to adjudicate an EOP.
+  //
+  // `large_loca` is containment-side and NOT ΔP-modulated, so the feedback is structurally
+  // absent. Severity 0.002 = 1.0e-3 frac/s, ~1.4× the CVCS authority of 7.2e-4, which keeps
+  // charging on its stop (the reason the old fixture chose 0.2) while leaving the servo clearly
+  // beaten. Measured **identical on both engines** — 97.42 % ON vs 94.80 % OFF, +2.62 points,
+  // before and after #337 to two decimals — which is what says the new fixture is not a refit.
+  var invOn = sgtrRun(true, 0.002, undefined, 'large_loca');
+  var invOff = sgtrRun(false, 0.002, undefined, 'large_loca');
+  ck('CVCS auto measurably slows the inventory loss (non-ΔP-modulated leak)',
+    invOn.inv > invOff.inv + 1, invOn.inv.toFixed(2) + ' vs ' + invOff.inv.toFixed(2),
     'ON > OFF + 1');
   // ...and at a leak small enough to be inside its authority the servo MODULATES
   // rather than sitting on its stop — otherwise "auto" would just be a fixed pump.

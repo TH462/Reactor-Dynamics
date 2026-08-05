@@ -2,7 +2,7 @@
 
 **Document:** PWR-EOP-01  
 **Title:** Failure Response — PWR Trainer  
-**Revision:** 0  
+**Revision:** 6  
 
 ---
 
@@ -272,6 +272,7 @@ Core covered and cooled on natural circulation with AFW. **This is achievable** 
 | 1 | SCRAM if not automatic / as pressure falls |
 | 2 | Identify the leak on the PRIMARY side — inventory falling with charging saturated, level below program and still going, subcooling eroding. The steam generator will not confirm it for you (see the departure above) |
 | 3 | Maximize charging / ensure HPI as needed |
+| 3a | **SECURE high-pressure injection before you depressurize — check the criteria first:** subcooling in hand, heat sink established on AFW, core covered. **This step is what makes step 4 work at all.** Injection holds the primary up at pressure, so with it running the Pressure SP does nothing and break flow does not move: measured, walking the setpoint 2235 → 1450 psi (15.41 → 10.0 MPa) with HPI in cut break flow by **0 %** and drifted the plant toward solid at 106.8 % inventory. Securing it first cut break flow **84 % in one minute** and 87 % held out to twenty. Same reason every real SGTR procedure carries an SI-termination step: injection and depressurization work against each other |
 | 4 | Depressurize primary carefully toward secondary pressure to reduce break flow (heaters off, spray if available, PORV only with care) |
 | 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **On this trainer the MSIV does not change the secondary pressure trend** — SG pressure is capped at Psat(Tavg), so it tracks primary temperature rather than steam inventory. Measured: 134.6 psi with the MSIV open against 134.0 psi shut, at the same point in the transient |
 | 6 | Maintain heat sink and subcooling |

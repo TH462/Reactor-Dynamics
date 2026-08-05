@@ -21,16 +21,20 @@
 
   // Fluid presets — bore = static fill inside the pipe, flow = moving dashed line.
   // Temperature + phase encoded as color, per the plant's convention.
+  // INVERTED 2026-08-04 (#350 item 20) to match phaseTempColor below: the bore carries the
+  // fluid colour at full strength and the DASH is the darker of the two. These are fallbacks
+  // only — every board pipe passes { phase, temp } — but a preset table disagreeing with the
+  // live model is the kind of thing that gets copied into a new component later.
   var FLUIDS = {
-    coldWater:  { bore: '#12314c', flow: '#5aa0e6', label: 'COLD WATER' },   // blue  - cold
-    coldLeg:    { bore: '#12314c', flow: '#5aa0e6', label: 'RCS COLD LEG' },
-    coolWater:  { bore: '#123a45', flow: '#3fd0d0', label: 'FEEDWATER' },    // teal  - cool/feed
-    condensate: { bore: '#123a45', flow: '#7fe0d0', label: 'CONDENSATE' },
-    warmWater:  { bore: '#2b2f2a', flow: '#c9d15a', label: 'WARM WATER' },   // amber-ish - warm
-    hotWater:   { bore: '#3a1512', flow: '#ff6a4d', label: 'HOT WATER' },    // red   - hot
-    hotLeg:     { bore: '#3a1512', flow: '#ff6a4d', label: 'RCS HOT LEG' },
-    steam:      { bore: '#c7d0d6', flow: '#ffffff', label: 'STEAM' },        // light grey - dry/hot steam
-    wetSteam:   { bore: '#7f8a91', flow: '#cfd6db', label: 'WET STEAM' },    // med grey  - near saturation
+    coldWater:  { bore: '#5aa0e6', flow: '#12314c', label: 'COLD WATER' },   // blue  - cold
+    coldLeg:    { bore: '#5aa0e6', flow: '#12314c', label: 'RCS COLD LEG' },
+    coolWater:  { bore: '#3fd0d0', flow: '#123a45', label: 'FEEDWATER' },    // teal  - cool/feed
+    condensate: { bore: '#7fe0d0', flow: '#123a45', label: 'CONDENSATE' },
+    warmWater:  { bore: '#c9d15a', flow: '#2b2f2a', label: 'WARM WATER' },   // amber-ish - warm
+    hotWater:   { bore: '#ff6a4d', flow: '#3a1512', label: 'HOT WATER' },    // red   - hot
+    hotLeg:     { bore: '#ff6a4d', flow: '#3a1512', label: 'RCS HOT LEG' },
+    steam:      { bore: '#ffffff', flow: '#7c868d', label: 'STEAM' },        // light grey - dry/hot steam
+    wetSteam:   { bore: '#cfd6db', flow: '#5c666d', label: 'WET STEAM' },    // med grey  - near saturation
     empty:      { bore: '#101a22', flow: '#101a22', label: 'ISOLATED', empty: true }
   };
 
@@ -54,10 +58,17 @@
     [0.00, [0x2b, 0x66, 0xd8]],  // cold — blue
     [0.20, [0x2a, 0xac, 0xe4]],  // azure
     [0.38, [0x2c, 0xd0, 0xc0]],  // teal
-    [0.54, [0x49, 0xcb, 0x60]],  // green
+    // The GREEN and ORANGE stops are the two the RCS actually lives on — cold leg lands near
+    // 0.50 of the ramp and hot leg near 0.90 — and both are darkened a step at #357 (owner:
+    // "make the coolant orange and greens a little darker"). Since #350 inverted the pipe
+    // convention these ARE the bore, i.e. the full width of every primary run, so they were the
+    // loudest thing on a board where they are the NORMAL state. The lime and yellow between them
+    // are transition stops the plant only sweeps through, and are left alone so the ramp keeps
+    // its continuous hue walk.
+    [0.54, [0x38, 0xa8, 0x4e]],  // green   (was 49cb60)
     [0.68, [0xc6, 0xd6, 0x3a]],  // lime
     [0.80, [0xf2, 0xc0, 0x33]],  // yellow
-    [0.90, [0xef, 0x8a, 0x2e]],  // orange
+    [0.90, [0xd4, 0x76, 0x22]],  // orange  (was ef8a2e)
     [1.00, [0xd8, 0x33, 0x26]]   // hot — red
   ];
   // Operating-band expansion. A PWR lives at ~280–345 °C, a thin slice of 15–345 that on a
@@ -94,16 +105,32 @@
     return ramp[ramp.length - 1][1];
   }
   // Map a phase + temperature (deg C) to { bore, flow } (+ empty flag).
-  //   bore = darker static fill inside the pipe;  flow = bright moving line.
+  //   bore = static fill inside the pipe;  flow = the moving dashed line.
+  //
+  // THE DASH IS THE DARKER OF THE TWO *(OWNER DIRECTIVE, 2026-08-04: "invert the colors on
+  // the pipes so the darker color is the dashes showing water movement.")*, #350 item 20.
+  // It used to be the other way round — a near-black bore with a bright dash — which read as
+  // an empty pipe with something glowing inside it rather than as a full pipe with fluid
+  // moving through it. Inverted, the BORE carries the temperature colour at full strength
+  // (so a hot leg reads hot across its whole width, not along a 42 %-wide stripe) and the
+  // dash is the same hue darkened, i.e. the shadow of the fluid moving in it.
+  //
+  // The dash mix is 0.55 toward black where the old bore mix was 0.74: 0.74 against a
+  // full-strength bore is nearly invisible at the cold end of the ramp, where the bore is
+  // already dark. 0.55 keeps the dash readable at every temperature in the ramp.
+  // Item 12 — the reactor's cold-side downcomer dashes — falls out of this: the vessel's
+  // internal flow arrows take their colour from the same function, so they now match the
+  // darker colour of the pipe they continue.
+  var DASH_MIX = 0.55;
   function phaseTempColor(phase, tempC) {
     if (phase === 'empty') return { bore: '#101a22', flow: '#101a22', empty: true, phase: 'empty', temp: tempC };
     var t = rampT(tempC);
     if (phase === 'steam') {
       var s = sampleRamp(STEAM_RAMP, t);
-      return { bore: toHex(mix3(s, [0x10, 0x17, 0x1d], 0.52)), flow: toHex(s), phase: 'steam', temp: tempC };
+      return { bore: toHex(s), flow: toHex(mix3(s, [0x10, 0x17, 0x1d], DASH_MIX)), phase: 'steam', temp: tempC };
     }
     var w = sampleRamp(WATER_RAMP, t);
-    return { bore: toHex(mix3(w, [0x06, 0x0a, 0x0e], 0.74)), flow: toHex(w), phase: 'water', temp: tempC };
+    return { bore: toHex(w), flow: toHex(mix3(w, [0x06, 0x0a, 0x0e], DASH_MIX)), phase: 'water', temp: tempC };
   }
 
   // THE THREE STANDARD PIPE SIZES (bore diameter, canvas px). Every connection stub
@@ -155,8 +182,53 @@
   // component's 0–100 `flow` into its velocity made every fitting run at a different
   // speed from the pipe it joins. `rate`/`flow` still gates whether flow moves AT ALL.
   // ---------------------------------------------------------------------------
+  //
+  // LIVE SPEED (#350 item 10, "all dashed lines rate of movement needs to scale with the
+  // flow rate"). `setFlowSpeed` re-times an already-drawn flow line WITHOUT rebuilding it,
+  // by writing the two animation LONGHANDS. Never the shorthand: it carries the delay, and
+  // the delay carries the world dash phase (#233).
+  //
+  // The phase is re-derived from the stashed `data-dash-t` (the run's 0..1 position on the
+  // world grid) so the new delay lands on the SAME grid the old one did — otherwise every
+  // speed change would walk the pipe out of step with the fitting it meets.
+  //
+  // A speed change is a DISCONTINUITY and cannot be made otherwise: CSS computes progress as
+  // ((now - delay) / duration) mod 1, `now` grows without bound, so changing `duration` moves
+  // the dashes by an amount that depends on how long the page has been open. That is why the
+  // caller quantises (see LINE_SPEED in pwr_board_wiring.js) — the hop is one dash period at
+  // worst, it happens only when a line genuinely changes flow band, and every element on that
+  // system hops together because they all read the same number.
   var DASH_PERIOD = 25;
   var DASH_CYCLE_S = 1.04;   // seconds per period at speed 1 (== the old 10.4s / 10 periods)
+  var SPEED_MIN = 0.1, SPEED_MAX = 4;
+
+  function clampSpeed(v) {
+    v = +v;
+    if (!isFinite(v) || v <= 0) return 1;
+    return v < SPEED_MIN ? SPEED_MIN : (v > SPEED_MAX ? SPEED_MAX : v);
+  }
+
+  // `reverse` flips the run against the sense it was DRAWN in — for a line whose direction is
+  // a plant state rather than a geometry fact (the pressurizer surge line, #350 item 26).
+  // Reversing swaps the keyframe AND takes the complement of the world phase, because
+  // dashPhase derives t as ph/P forward and (P−ph)/P reverse: keeping the forward t on the
+  // reverse keyframe would leave the line a fraction of a dash out of step with the tee it
+  // hangs off, which is the #233 defect arriving through the back door.
+  function setFlowSpeed(el, speed, reverse) {
+    if (!el || !el.style) return;
+    var cyc = DASH_CYCLE_S / clampSpeed(speed);
+    var t = parseFloat(el.getAttribute('data-dash-t'));
+    if (!isFinite(t)) t = 0;
+    var dir0 = parseFloat(el.getAttribute('data-dash-dir'));
+    if (!isFinite(dir0)) dir0 = 1;
+    var dir = reverse ? -dir0 : dir0;
+    if (reverse) t = (1 - t) % 1;
+    el.style.animationName = dir < 0 ? 'stdPipeFlowRev' : 'stdPipeFlow';
+    el.style.animationDuration = cyc.toFixed(3) + 's';
+    el.style.animationDelay = (-(t * cyc)).toFixed(3) + 's';
+    el.style.animationTimingFunction = 'linear';
+    el.style.animationIterationCount = 'infinite';
+  }
 
   function dashPhase(pts, dir, cycleDur, ox, oy) {
     var p = pts.slice();
@@ -169,7 +241,8 @@
     // forward keyframes run 0 → -25 and reverse 0 → +25, so the reverse case needs the
     // complement to land on the same visual phase
     var t = (dir < 0 ? (DASH_PERIOD - ph) % DASH_PERIOD : ph) / DASH_PERIOD;
-    return { pts: p, dir: dir, offset: -ph, delay: -(t * cycleDur) };
+    // `t` is published so setFlowSpeed can re-derive the delay for a new duration.
+    return { pts: p, dir: dir, offset: -ph, delay: -(t * cycleDur), t: t };
   }
   function resolveFluid(f) {
     if (f && typeof f === 'object') {
@@ -207,6 +280,7 @@
           fill: 'none', stroke: fl.flow,
           strokeWidth: Math.max(2, d * 0.42), strokeLinecap: 'round', strokeLinejoin: 'round',
           strokeDasharray: '10 15', strokeDashoffset: ph.offset, opacity: 0.92,
+          'data-dash-t': ph.t.toFixed(6), 'data-dash-dir': String(ph.dir),
           style: o.paused ? {} : {
             animation: (ph.dir < 0 ? 'stdPipeFlowRev ' : 'stdPipeFlow ') + cyc.toFixed(3) + 's linear infinite',
             animationDelay: ph.delay.toFixed(3) + 's'
@@ -264,7 +338,7 @@
       ]);
     }
 
-    return { pipe: pipe, flange: flange, stub: stub, junction: junction, dashPhase: dashPhase, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
+    return { pipe: pipe, flange: flange, stub: stub, junction: junction, dashPhase: dashPhase, setFlowSpeed: setFlowSpeed, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
   }
 
   // watchScale(svgEl, onChange): reports the svg's LAYOUT scale (CSS px per viewBox
@@ -289,5 +363,5 @@
     return function () { ro.disconnect(); };
   }
 
-  window.StdPipe = { createKit: createKit, watchScale: watchScale, dashPhase: dashPhase, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
+  window.StdPipe = { createKit: createKit, watchScale: watchScale, dashPhase: dashPhase, setFlowSpeed: setFlowSpeed, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
 })();

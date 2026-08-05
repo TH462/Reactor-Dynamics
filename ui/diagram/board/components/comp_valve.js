@@ -186,8 +186,11 @@
       var wet = open && !isEmpty && st.flow;   // flowing (streak + downstream pipe); st.flow gates a "open but not flowing" valve
       st.fl = fl; st.wet = wet;
 
-      fluidStopA.setAttribute('stop-color', fl.flow);
-      fluidStopB.setAttribute('stop-color', fl.bore);
+      // Valve-body fluid gradient — a BODY, so it takes bore at the bright end since the
+      // #350 item 20 inversion. The bore/flow pair above is a K.pipe stroke stack and is
+      // correct as written (case, bore, flow).
+      fluidStopA.setAttribute('stop-color', fl.bore);
+      fluidStopB.setAttribute('stop-color', fl.flow);
 
       // V-port wedge — height proportional to openFrac; greyed when empty
       var ho = (bore / 2 - 0.5) * openFrac;
@@ -200,8 +203,15 @@
       }
 
       // flow streak scaled by opening
+      // The moving streak takes the FLUID'S DASH COLOUR, not a fixed near-white (#357). It was
+      // hardcoded '#f2fbff', so every valve on the board showed a pale streak while the pipe it
+      // sits in showed the fluid — the one place on the plant where a fitting disagreed with its
+      // own line, and the owner's "valves STILL have the light colored dashes" after #350.
+      // `fl.flow` is the DARKER of the pair since #350 item 20 inverted the convention, and it is
+      // exactly what the adjoining pipe's dashes use, so a dash crosses the valve unchanged.
       if (wet) {
         streakEl.style.display = '';
+        streakEl.setAttribute('stroke', fl.flow);
         streakEl.setAttribute('stroke-width', String(Math.max(1.6, bore * 0.24 * openFrac + 0.6)));
         streakEl.setAttribute('opacity', String(0.4 + 0.4 * openFrac));
       } else {

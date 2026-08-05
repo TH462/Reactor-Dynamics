@@ -30,7 +30,333 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.0.1] — 2026-08-05
+
 ### Changed
+- **Eleven auxiliary pipes now take their colour from the plant instead of an authored guess**
+  (#357). The letdown line rendered cold-blue at 60 °C while the cold leg it takes suction from
+  ran green at 550 °F (288 °C), and the charging pair was authored **backwards** — 102 °C on the
+  pump *suction* against 60 °C on the discharge that returns to the reactor coolant system.
+  Letdown and charging discharge read the cold leg now; the ECCS, accumulator, refuelling-water
+  and auxiliary-feedwater runs read the plant's own injection temperature, 104 °F (40 °C), which
+  is the same constant the physics injects at. Suction is cooler than discharge, as it should be.
+- **The coolant green and orange are a step darker.** They are the two colours the reactor
+  coolant system actually sits on — cold leg near one, hot leg near the other — so they were the
+  loudest thing on the board in the state the plant is in most of the time.
+- **Pressurizer spray flow moved above PZR TEMP**, out from over the vessel art, and the steam
+  generator's u-tube flow dashes now carry the coolant colour instead of near-white, matching
+  every other primary run.
+- **Valves no longer show a pale streak.** The moving dash inside every valve was hardcoded
+  near-white, so a fitting disagreed with the line it sat in — the one place on the plant where
+  that happened. It takes the fluid's own dash colour now and crosses the valve unchanged.
+- **The pressurizer's internal spray runs are back in step with the spray line outside it.** They
+  were anchored to the pressurizer's own tile rather than the canvas, so the dashes sat a fixed
+  fraction of a period out and slid past each other at the vessel wall. Measured, the speeds were
+  always identical — 1.04 s per period and 22.7 px/s on both, at five window sizes from 1024 to
+  2560 wide — so this was never a speed difference, only a phase one.
+- **The SG FEED RESTORE button fits its own caption**, and the feed-rate box moved right to
+  balance the card: its right edge now lines up with the OFF button above it.
+
+### Fixed
+- **The pressurizer heater cutoff now latches, instead of chattering on its own setpoint**
+  (#348). The 17 % low-level interlock had no reset differential, so on a noisy lagged level
+  channel it did not cut out — it flickered: measured on a small break with a full manual heater
+  demand standing, **499 of 1425 samples below the setpoint (35 %) delivered full heater power**,
+  in runs of up to 8, every one of them between 16.3 % and 17.0 %. That is a ~1 MW load cycling
+  at the evaluation cadence. It cuts out at 17 % and restores at 20 % now — the same differential
+  this plant already models on the **other half of the same bistable**, the letdown isolation, so
+  the plant was inconsistent with itself rather than simplified.
+- **The tube-rupture procedure was missing the step it turns on: SECURE INJECTION before
+  depressurizing** (#348). PWR-E06's whole strategy is to close the primary-to-secondary pressure
+  difference, and with high-pressure injection running that is impossible — injection holds the
+  primary up faster than the setpoint can ask it down. Measured: walking the Pressure SP
+  2235 → 1450 psi (15.41 → 10.0 MPa) with injection in cut break flow by **0 %** and drifted the
+  plant toward water-solid at 106.8 % inventory; securing it first cut break flow **84 % in one
+  minute**, 87 % held out to twenty, core covered throughout. Added to the on-board checklist and
+  to `Manuals/07` as immediate action 3a (set Rev 6) — the trainer's version of the SI-termination
+  step a real tube-rupture procedure carries, and it is there for the same reason.
+- **The stuck-open PORV procedure no longer teaches a margin collapse that does not happen.**
+  Its first step diagnosed on subcooling "eroding toward zero"; with injection catching the
+  transient the margin dives and then comes most of the way **back** while the leak still runs.
+  The step now says that, because it is the trap — a margin that recovers is not a leak that
+  stopped — and its acceptance moved onto the transient, which is the only claim that holds at
+  both layers (measured at t+30 s: **−5.2 °C** engine-direct against **+36.6 °C** with the
+  control layer in).
+- **The Three Mile Island scenarios play again, and they now teach the error in its historical
+  order** (#347). The flagship and the TMI‑2 campaign module were both built so that the
+  subcooling margin eroded *before* the crew's decision — which was only ever true because the
+  plant discarded its emergency-injection overfill (#346) and therefore drained whether or not
+  injection was running. With that fixed, unthrottled injection **matches** a stuck-open relief
+  valve and holds the plant: measured, 109.3 % inventory and 149 °F (83 °C) of margin held
+  indefinitely. So the margin never fell, the decision point was unreachable, and six missions
+  plus both flagship endings could not be finished.
+- **That is the TMI‑2 counterfactual, and it is now the spine of the scenario.** Full injection
+  beats one stuck-open valve — which is exactly why the 1979 crew securing it is what caused the
+  accident. The flagship now enacts that securing at its historical cue (the pressurizer LEVEL
+  HIGH alarm, T+18 s) *before* the decision, so the player's choice is the one the real crew
+  faced — **restore** the injection that was just cut — instead of being asked to start something
+  already running. In the campaign module the confusion beat moved to where its own dialogue
+  belongs: after the securing, as its consequence. On Part 3 it is reached from the **complied**
+  branch only — defend injection and there is no confusion to have, which the old plant could not
+  express because it drained either way.
+- **Pressurizer spray no longer works when the plant is water-solid** (#347). Spray controls
+  pressure by condensing the steam bubble; with no bubble there is nothing to condense. Credited
+  anyway, it pinned pressure **164 psi (1.1 MPa) below the code-safety setpoint** on a solid RCS
+  taking injection — so the safeties could not lift, nothing arrested the fill, and inventory ran
+  back to the numerical ceiling #346 exists to keep it away from. Found on the one path #346 did
+  not exercise: the operator correctly **isolating** the stuck valve. The spray valve still opens
+  and still indicates open; what is gone is the effect. `Manuals/12` §12.4c revised (set Rev 5) —
+  going solid costs you the pressurizer as a pressure controller, and the relief valve becomes
+  your pressure control whether you wanted it or not.
+- **The final-exam mission was re-pointed at cues the plant still has.** `pwr_qualify` armed its
+  graded window on the subcooling alarm, which no longer sounds; it now arms on the pressurizer
+  going solid. The exam is harder and the lesson is the same — nothing screams the obvious
+  parameter, and the candidate has to notice a plant held solid by injection against an
+  unisolated relief path, behind a light that reads CLOSED. Its pass and fail text no longer
+  claims a margin erosion that does not happen.
+- **A water-solid reactor coolant system now repressurizes, and the relief valve is what ends
+  the fill** (#346). The pressurizer had no water-solid regime at all. `_mass` was clipped at
+  `primary.mass_max` (1.2) and — since #337 gave inventory a pressure channel — the surge driver
+  was clipped with it, deliberately, so a plant pinned at the ceiling "reports zero surge instead
+  of a phantom insurge it has nowhere to put". Both of those options are wrong: a solid RCS being
+  injected into with no relief path does not absorb the mass and does not ignore it, it
+  **relieves**. Measured full stack, a lost heat sink with emergency injection running: inventory
+  pinned at exactly **120.00 %** for 45 minutes, pressure flat at **2232 psi (15.39 MPa)**, no
+  PORV lift and no safety lift, while cold refuelling-water-storage-tank water quenched the plant
+  **660 → 447 °F (349 → 231 °C)** through a mass sink with no outlet.
+- **Raising the ceiling is not the fix, and was measured before the real one was written.** At
+  `mass_max` 3.0 the plant simply runs to **300 % inventory** with pressure still parked in the
+  PORV band, because the surge gain in use is the one for a pressurizer that still has a steam
+  bubble. The bubble is the RCS's only compressible volume; once the level line reaches 100 % it
+  is gone and the same displacement compresses **liquid**, so the gain steps to the bulk modulus
+  of water (≈ 1.3 GPa, new `pressurizer.solid_bulk_mpa`). The fill then arrests where the vessel
+  geometry says it must — measured **109.35 %** against **109.28 %** predicted from the level
+  slope — and cycles the PORV at ~18 % duty instead of pinning silently at a clip.
+- New declared simplification **`Manuals/12` §12.4c** (set Rev 4): only the *surge* stiffens.
+  Relief, spray and the heaters keep their bubbled-plant gains, all three of which are optimistic
+  in a vessel with no bubble, so a real solid plant is harder to control than this one. The
+  relief-only version of that correction was built and **measured to be worse than leaving all
+  three alone** — it drops the relieving equilibrium ~145 psi (1 MPa), which un-deadheads the
+  ECCS and lets injection out-run the PORV again, walking inventory straight back to the clip.
+- **Known cascade, tracked as #347 and not fixed here:** the TMI-2 flagship's decision point was
+  resting on this same discard. With the RCS pinned, the surge could not push back and the PORV
+  relief term ran unopposed to **52 psi (0.36 MPa)** while the inventory gauge read 120 %. A
+  stuck-open PORV is now matched by unterminated injection, the plant goes solid at pressure, and
+  `subcooling_low` never fires — which is the TMI-2 counterfactual, correctly. What the scenario
+  is missing is the crew's actual 1979 error, throttling injection back on the rising level.
+  `run_scenarios` 3/3 → 1/3 and `run_campaign` 48/51 → 42/51 until that is re-authored.
+- **Every pump on the board spun on its RUN COMMAND instead of on delivered flow** (#350 items 7,
+  13, 15). Measured full stack with a station blackout injected at 120 s: the condensate pump's run
+  flag reads TRUE for the whole event — correctly, nobody stopped it — while its flow is 0; the
+  charging pump the same; and the feed pump's commanded speed winds **100 → 120 %** as the level
+  channel chases a level it can no longer reach, against feed flow of 1.5e-52. Three pumps drawn
+  spinning on a dead bus, one of them faster than at power. Run lights and handswitches still show
+  the operator's demand (the #329/#332 split); the impeller now shows the rotor. Item 7's other
+  half comes free: the feed pump's animation tracks feed rate during normal load-follow, which it
+  never did.
+- **The primary loop froze solid with the reactor coolant pumps stopped** (#350 item 18). Pipes
+  were gated on the components at their ends, and the pump art correctly reads STOPPED — but the
+  `rcs_flow` elbow-tap instrument measures **4.47 %** two minutes into a blackout (#325 natural
+  circulation), so the board was contradicting its own gauge. The loop now keeps a slow crawl,
+  driven from the instrument rather than from `true_state`.
+- **The PORV relief line ran blue water at 2235 psi (15.41 MPa) in every state of the plant**
+  (#350 item 6). Two of its three legs were authored as water. A relief valve on a pressurizer
+  with a steam bubble passes STEAM, and only passes water once the pressurizer goes solid — which
+  is the condition the TMI-2 lesson turns on. The phase is live now, read off indicated level
+  against the going-solid trip setpoint.
+- **The vital gauge strip strobed at steady power** (#350 item 16). Reactor power changed band
+  **49 times in 40 sim-seconds** at hot full power with nothing wrong, because 100.0 % sits on a
+  band boundary and the channel's own noise is 0.21 %. Hysteresis on the live reading's region:
+  49 → 0 at steady power, with real transient crossings unchanged.
+- **The steam-generator-to-feed line, the circulating-water runs and the whole secondary kept
+  animating through a blackout** (#350 items 9, 14). Each pipe now reads its own train's measured
+  flow, so a line is still when — and only when — nothing is moving through it.
+- **REACTIVITY removed from the board; PERIOD takes its place** (#350 item 5). Two readouts for
+  one fact; period is the form an operator works in.
+
+### Added
+- **Pressurizer spray flow indication** (#350 item 1), in the spray panel. Delivered spray, not the
+  valve demand beside it — and the difference is the lesson: with spray commanded to 100 % and the
+  pumps running it reads 100 %, and with the pumps stopped the demand is unchanged at 12.00 while
+  delivered spray falls to 4.45, because the spray line takes its motive head from the loop.
+- **RCP FLOW indication under the reactor coolant pump card** (#350 item 17) — reactor coolant
+  flow as a percentage of rated, the same channel the low-flow reactor trip acts on. Not a
+  duplicate of the pump run lamps: those show the breaker, this shows flow, and the two disagree
+  on natural circulation.
+- **Dash speed on every pipe now tracks that line's flow** (#350 item 10), quantised so a rate
+  change is a rare re-phase rather than continuous jitter, and computed once per SYSTEM so a
+  fitting and the pipe it meets can never disagree.
+- **The System Scanner covers the Physics tab** (#350 item 3) — all 29 rows, each with a summary
+  and a paragraph, gated so a new row cannot ship without copy.
+- **A fully-minimized instructor panel** (#350 item 19). The minimize button is a ladder now:
+  expanded → collapsed → header only. The header survives because it carries the unread badge.
+- **A second column in the graph parameter list when the panel is wide enough** (#350 item 23).
+
+### Changed
+- **Pipe colours inverted: the moving dashes are the DARKER colour** (#350 item 20), so a pipe
+  reads as full of fluid rather than as empty with something glowing inside it. The reactor's
+  downcomer streaks pick up the same treatment and now track temperature at all, which they never
+  did (#350 item 12), and the cold-side depth gradient is gone (#350 item 22).
+- **Steam generator U-tubes: four fatter tubes instead of five thin ones** (#350 item 11), and
+  bubbles in both the steam generator and the pressurizer now rise to the water surface and stop
+  there instead of a fixed distance (#350 items 24, 25).
+- **The pressurizer surge line shows direction** (#350 item 26) — insurge and outsurge, derived
+  from the indicated level rate. It was drawn one-way, so it showed flow into a pressurizer whose
+  level was falling.
+- **Scanner copy spells out every system acronym in the entry that uses it** (#350 item 2) — 122
+  unexpanded uses across 166 entries, now gated. Unit symbols (psi, gpm, ppm, MWe) keep their
+  standard spelling.
+- **Graph value chips carry their units** (#350 item 21) — pressures and megawatt figures printed
+  bare numbers, and temperatures printed a bare degree sign in both display modes.
+- **CHARGING and LETDOWN captions enlarged to match BORON STATUS** (#350 item 27); the core ΔT
+  margin readout carries its unit (#350 item 4).
+
+### Added
+- **An audit session no longer loads the conclusions it is auditing** (#221). `Blueprint/AUDIT_CHARTER.md`
+  plus `.claude/settings.audit.json`, launched with `claude --settings .claude/settings.audit.json`.
+  The settings file excludes `CLAUDE.md` across all three worktrees **and** the auto-memory index;
+  the charter is `CLAUDE.md`'s operating half — Hard Rules, the layer map, `measure_stack` traps,
+  lane rules, units, the issue axes and #221's own rules of engagement — with every finding, gate
+  score and tuning conclusion removed. Developer-facing only; nothing in the sim changes.
+- **MFW RESTORE control on the SG FEED card, and main-feedwater isolation now SEALS IN**
+  (#341 + #319 item 2, shipped as one change). Main feed isolates automatically on three signals
+  — reactor trip with Tavg low, steam generator level high, safety injection — and it **latched
+  with no control anywhere to clear it**, so the player could enter that state and not leave it.
+  Separately, a restore issued by any path was **accepted while the isolating signal was still
+  standing**: measured full stack, a restore 10 min into a post-trip ride with Tavg parked at
+  567.5 °F (297.5 °C) against a 572.0 °F (300.0 °C) setpoint went through, feed returned and SG
+  level ran 36.58 → 77.43 %. Actuations may now declare `seal_in`; an operator command that would
+  undo one is refused with a readable message while its condition holds, and the actuation re-arms
+  when the condition clears so a second valid signal can still isolate. Sourced to WTSM 12.3.2.3
+  (ML11223A310) — *"The control room operator cannot interrupt any of the SI-initiated functions
+  until the reset logic is satisfied"* — and WTSM 11.1.4 (ML11223A293), which names *"Manual
+  control by the operator"* as the fourth override. **Declared departure:** the real reset is two
+  steps behind a 45–60 s timer and a separate pushbutton; this plant collapses it to one.
+  The practical chain is **trip → reset the RPS → restore feed**, which finally gives `reset_rps`
+  a consequence. `run_m4` 38/38 → **39/39 (257 checks)**, injection-verified three ways.
+- **`run_manual_rev` gained a content canary — the check a lane merge walks through** (#345).
+  The gate verified the revision table's *shape* (newest-first ordering, no gaps, set-wide stamp,
+  content digests, packed copy) and never read chapter **body** text: its only chapter read pulled
+  the `**Revision:**` stamp. So nothing connected a row's **claim** to the chapter, which is the
+  gap a merge walks through — `Manuals/` files are edited in the MIDDLE by two lanes, so git
+  resolves in one lane's favour and says nothing, unlike the append-at-top logs that conflict
+  loudly. It has happened: the 2026-08-03 backshop merge silently dropped an entire `Manuals/12`
+  §5.5 section, the digests were **re-sealed by the merge** so they agreed with the surviving text,
+  and the row still claimed the change — *the record said it was documented and it was not.*
+  Every chapter-qualified section a row names — `**12 §5.5**`, `**09 §2.0**`, `**12 §12.4b**` —
+  must now resolve to a heading or a register table row in that chapter. **The 2026-08-03
+  signature is reproduced and caught**: digests green, canary red naming the row.
+  Measured: 11 of 11 chapter-qualified refs resolve across the full 26-row pre-zeroing table,
+  1 of 1 live. Bare `§7.5` is deliberately not resolved — 44 in that table, pointing variously at
+  a Blueprint document or the chapter under discussion, so resolving them would guess. Both a
+  heading and a register row count, because chapter 12's §12.0 holds its declared simplifications
+  as a numbered table. One check rather than one per ref, so ordinary manual work cannot move the
+  baseline. The second new check is an **anti-hollow guard**: changing the reference syntax made
+  the canary pass while checking nothing, so the parser must positively find refs.
+  **Scope unchanged where it matters** — this proves a named section still *exists*, never that a
+  row's prose is *true*; that stays out of scope as HR10/HR12 class.
+  **Corrected the same day, by the first real three-lane merge.** That 11-of-11 validation was
+  weaker than it looked: every row in the historical table was written by **one lane**, spelling
+  refs `**12 §5.5**` with the emphasis around the whole thing. The merged table put `**12** §7.1`
+  beside it — emphasis around the **chapter only** — and the parser silently dropped it, guarding
+  1 claim of 4 while reporting green. Emphasis between the chapter and the `§` is now tolerated;
+  refs found 1 → 2 on that table, and dropping `### 7.1` from chapter 12 reds the gate by name.
+  A coverage claim validated against a corpus one author wrote is not validated.
+  **Residual limit, stated rather than papered over:** a row naming a chapter but no `§` section
+  cannot be guarded at all — the same merge produced one (`` `03` ``, `` `05` ``, `06 step 4`).
+  That is an authoring obligation, now recorded in `CLAUDE.md`.
+  `run_manual_rev` **13 → 15 checks**.
+
+### Fixed
+- **A break is a hole, not a pump — LOCA discharge now follows reactor coolant system pressure**
+  (#334 item 2). A break used to flow at a **constant rate**, fixed the moment it opened and never
+  varying: the same break discharged identically at **2235 psi (15.41 MPa)** and at **14.5 psi
+  (0.1 MPa)**, so depressurizing did nothing to it, and a vessel already clipped at zero mass went
+  on discharging at full rate indefinitely. Only the steam-generator-tube-rupture path responded
+  to pressure at all — the code comment beside it said *"containment-side leaks stay static"*,
+  which is the defect written down in the source.
+  **Sourced to 10 CFR 50 Appendix K I.C.1.b** *Discharge Model*: the rate must come from the Moody
+  critical-flow model, applied as *"a discharge coefficient applied to the postulated break
+  **area**"*. A break is an area, not a flow. Discharge now follows the orifice law, ∝ **√Δp** to
+  containment, referenced to the operating point so **every existing break size keeps the
+  calibration it was tuned with** — only the depressurized end of the curve is new.
+  **What changes for the player:** a full-size break is now the design-basis event it should be —
+  the core uncovers at 90 s, the **accumulators dump**, the core refloods, and peak cladding
+  reaches **1447 °F (786 °C)**, below the damage threshold. Before this it drained to zero and
+  melted, and nothing in the test suite had ever exercised accumulator injection on a LOCA.
+  Closing the pressure difference now genuinely reduces break flow, which is why that is the
+  response to a tube rupture, and an RCS at containment pressure has stopped discharging.
+  **Declared** in `Manuals/12` §12.4b (Rev 1) including which way it errs: √Δp falls off faster
+  than Moody once the discharge flashes, so a real break stays stronger for longer than this one.
+  `run_behavior` **50 → 51** (CA-11, 13 checks; the measured exponent is **0.500** against
+  0.000 for a constant law and 1.000 for a linear one).
+### Fixed
+- **Losing reactor coolant now moves primary pressure and subcooling margin, not only pressurizer
+  level** (#337). The pressurizer's surge term had exactly one driver — thermal expansion of the
+  loop — so a leak displaced liquid out of the pressurizer and the model did not notice. Measured
+  full stack before the fix: a tube rupture that took pzr level **55.0 → 15.7 %** and scrammed the
+  reactor moved pressure **5 psi (0.034 MPa)** and the subcooling margin **0.2 °F (0.1 °C)**. The
+  PWR's primary "are we still safe" parameter could only degrade thermally.
+
+  A surge is a **volume displacement of the pressurizer**, and WTSM 3.2 (ML11223A213, p. 3.2-8)
+  states the mechanism without reference to its cause — *"Temperature changes produces changes in
+  coolant density, which force water into (insurge) or out of (outsurge) the pressurizer… the
+  contraction of the coolant produces an outsurge… accommodated by an expansion of the steam
+  bubble and a corresponding decrease in steam density and pressure."* A subcooled loop is
+  incompressible everywhere else, so inventory comes out of the pressurizer at exactly the rate
+  the level line already says it does. The law is now written in **level-rate** units so both
+  drivers convert into it through the geometry `stepLevel` already carries (`level_per_tavg`,
+  `level_per_mass`); `K_surge` (°C/s) became `K_surge_level` (%/s) and the thermal response is
+  **bit-identical**, because the fitted value re-expressed is 0.4 and the sourced band is 0.27–0.63.
+
+  It runs both ways, which matters as much: unthrottled safety injection now **repressurises** and
+  can take the plant solid, the behaviour operators throttle SI to avoid.
+
+  **Relief is excluded from the surge and the relief gains are re-solved, 300 → 600.** A PORV and a
+  code safety valve discharge from the pressurizer *steam space*, so that mass never crosses the
+  surge line. Leaving it in carried a valve's authority twice while subcooled and — because the
+  surge is suppressed once the loop voids — only half once it voided, which is the regime every
+  accident path lives in.
+
+  **NOT FINISHED.** The TMI-2 flagship and the SGTR procedure's depressurisation step are still
+  written against the old trajectory and are red, and one behaviour probe (TR-15 leg E) now says the
+  plant rides out a lost heat sink on relief bleed — a plant question, not a tuning one. Measured
+  detail in `Diagnostic/TUNING_LOG.md` 2026-08-04g.
+
+  **The magnitude is still damped, deliberately and declared** (`Manuals/12` §12.15, and filed on
+  #337 as an owner decision). The pressurizer heaters are modelled at 27× the authority their own
+  source supports — WTSM 3.2 p. 3.2-9 rates 1794 kW as *"capable of raising the temperature of the
+  pressurizer and its contents at approximately 55 °F/hr"*, i.e. 0.23 psi/s, against this plant's
+  80 psi/s — so they rebalance against the surge and hold the cue to about **1 °F** of margin where
+  the sourced rating gives about **9 °F**. Correcting it is measured but not taken: below 0.10 the
+  plant can no longer ride out a full load rejection without a reactor trip, which is its ruled
+  identity, and below 0.20 a stuck-open spray valve runs it to the containment floor.
+
+### Changed
+- **Manual set Rev 1 — the RESTORE control documented, and four "cannot be restored" claims
+  corrected.** `Manuals/03` §9.0 gains the control: what isolates main feed, that the isolation
+  seals in and the button is *refused rather than dead* while its signal stands, and the sequence
+  that follows — confirm trip → reset the RPS → restore, because the low-Tavg isolation is a
+  coincidence of low Tavg *and* the trip latch. It carries the measured warning that restoring into
+  a generator already recovering on AFW drives level 36.6 % → 77 % in about two minutes and
+  re-isolates at 90 %. The PWR-T06 post-trip checklist and `Manuals/05` both stated main feedwater
+  "cannot be restored from the board", which stopped being true when the control shipped; both are
+  corrected, and the checklist now says restoring is optional — Mode 3, Hot Standby is stable on
+  auxiliary feedwater indefinitely.
+- **Session-log headings name the LANE: `YYYY-MM-DD-<lane>-<letter>`** *(OWNER RULING, 2026-08-04:
+  "Work issue 339 in develop. Go with option 2.")*, #339. `Diagnostic/TUNING_LOG.md` and
+  `Blueprint/BUILD_DECISIONS.md` are cited by their dated headings, and the old per-day sequence
+  letter required three worktrees to agree on who got `b` — which they cannot, since a lane cannot
+  see another's uncommitted file. Measured across both files: **17 labels name more than one entry**
+  (7 + 10), `2026-08-04b` resolving to two sessions in one and three in the other. Lane = the tree
+  (develop / workbench / backshop); letter = the next unused for that date *in that lane*, `-a`
+  first. **The mandatory letter is a declared departure from the filed option**, which had none:
+  measured, 25 sessions landed on 2026-08-03, ~8 per lane, so a bare first entry collides within a
+  lane on day one and forces exactly the retro-rename the option existed to avoid. Existing labels
+  are **not** renamed, by the same ruling — they stay as the record of the day three lanes landed at
+  once. New gate `test/run_session_labels.js` (8 checks, `run_all` 37 → 38): parse, no duplicate
+  lane-form label, everything dated 2026-08-05 or later is lane-form, newest-first within each
+  date+lane. Grandfathered collisions are reported and never failed.
 - **The public changelog page is facts only** *(OWNER, 2026-08-04: "Just keep to facts in the
   changelog page. Minimize prose.")*. Cut the "This log begins with the public launch" lead and
   trimmed the Alpha 1.0.0 entry to *"Initial Alpha release. Pressurised water reactor."* The
@@ -79,10 +405,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   **Outcome is now monotonic, and the boundary is derivable rather than fitted**: breaks survive
   up to exactly `hpi_flow_max + lpi_flow_max·lpi_inventory_gain` = **0.160 frac/s** and not
   beyond. `run_behavior` **49 → 50** (CA-10, 14 checks, injection-verified twice).
-  **Still open on #334**: LOCA break flow is pressure-independent (only SGTR is ΔP-scaled), the
-  break-size slider's *default* sits above the ECCS ceiling and so is unwinnable by construction,
-  and the letdown-isolation half of this same 17 % bistable is not built — which is why
-  pressurizer level parks on the setpoint and the cutoff chatters after a loss of offsite power.
+  **Still open on #334**: LOCA break flow is pressure-independent (only SGTR is ΔP-scaled), and
+  the break-size slider's *default* sits above the ECCS ceiling and so is unwinnable by
+  construction.
+  **Correction (2026-08-04d).** This entry first listed a third item — that the letdown-isolation
+  half of the same 17 % bistable was not built, and that its absence was why the cutoff chatters
+  after a loss of offsite power. Both halves of that were wrong. **The isolation already
+  existed**, one layer up, as an M4 actuation at the same 17 % (latched, restoring at 20 %); it
+  was missed by grepping the engine rather than the control layer. **And it was not the cause** —
+  letdown reads a flat zero through the whole chattering window. The chatter comes from a
+  sustained **manual 100 % heater demand** at no load walking pressure past the PORV setpoint, so
+  the valve cycles and takes the level with it: a correct plant answering an incorrect operator
+  action. Without that demand a loss of offsite power produces no chatter at all.
 
 
 ## [Alpha 1.0.0] — 2026-08-04
