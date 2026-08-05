@@ -30,6 +30,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The manual now says plainly what the plant will not do for you** (#370, #371). Two
+  deferred capability gaps the #297 audit measured are declared instead of implied away: MSIV
+  isolation is a manual action (a real plant also isolates its steam lines automatically on
+  break evidence — this one never will, so on an isolable break *you* are the isolation), and
+  the steam dump goes to the condenser only (no atmospheric dumps — lose the condenser and the
+  plant holds hot at the safety band; that is its honest floor, not a bug).
+
 ### Added
 - **A cooldown-rate meter and ±100 °F/hr rate annunciators** (#375). One steam-dump setpoint
   entry could cool the plant at nineteen times the technical-specification-class limit with no

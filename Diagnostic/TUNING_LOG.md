@@ -74,6 +74,17 @@ Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69
 12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
 new checkSanity legs all pass — no latent authoring bug was hiding behind them.
 
+### #370/#371 — the two deferred gaps are declared, not implied away (docs only)
+
+Per the owner's scope ruling: both features stay deferred; the record stops overstating the
+plant. DESIGN_COMPANION **§8.28** (no automatic MSIV isolation — the real design's
+operator-proof isolation quoted from WTSM §12.3.5.1 with the measured run-to-completion) and
+**§8.29** (no atmospheric dumps — the measured four-hour hot hold at the safety band, ADV
+sizing still could-not-establish). Manuals **Rev 11**: `12 §8.5` tells the player "you are the
+isolation", `12 §8.3` tells them "no condenser, no cooldown — that is the honest floor", rows
+`12 §12.17`/`12 §12.18` carry both with the operator guidance. No engine change; manual gates
+green.
+
 ### #374 — evidence pass over the six action-gating secondary setpoints (no numbers moved)
 
 **The missing document is in the corpus now**: WTSM §11.2 (ML11223A294, steam dump — cited by
