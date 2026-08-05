@@ -934,7 +934,26 @@
       // suppressing the real thing.
       natural_circ_indicate_frac: 0.01,   // [tune]
       low_flow_trip: 0.25,         // true-flow trip (documented HR1 exception)
-      mass_max: 1.2,               // clip ceiling for primary_mass
+      // NUMERICAL GUARD, NOT A PHYSICAL CEILING — and it must stay UNREACHABLE (#361).
+      //
+      // It has never been derived from anything, and it should not be: there is no vessel
+      // volume at which an RCS stops accepting mass, only a pressure at which the relief path
+      // opens. 1.2 is simply far enough above the physical settling point to be out of the way.
+      // THAT point IS derived, by the level geometry: the plant is solid where the level line
+      // reaches 100, i.e. m = 1 + (100 − base(Tavg))/level_per_mass_surplus, which on a quenched
+      // large break (base at the 28 % floor) is 1 + 72/776 = **1.0928**. MEASURED 109.3 % against
+      // 109.28 % predicted, ~10.7 points clear of this clip.
+      //
+      // WHEN IT IS REACHED, IT IS A BUG BY DEFINITION, and it hides itself: `stepInventory`
+      // clips `m_surge` here too, so `_dmass_dt` goes to zero at the ceiling and the surge
+      // driver stops seeing the very mass that is piling up (#346's defect, and #361 walked
+      // back into it from the other side — a liquid break double-counted through
+      // `K_leak_depressurize` held pressure 2000 psi below the relief ladder, so injection
+      // never terminated and inventory reached 120.00 % at 21 min and pinned).
+      // RAISING IT IS NOT A FIX AND WAS MEASURED: at 3.0 the plant runs to 300 % inventory with
+      // pressure still parked in the PORV band (#346). CA-12 leg C asserts the peak stays below
+      // 119.0 for exactly this reason — the ceiling must never be the thing that stops the fill.
+      mass_max: 1.2,               // clip ceiling for primary_mass — see above; keep unreachable
       // ------------------------------------------------- BREAK DISCHARGE (#334 item 2, 2026-08-04)
       // A LOCA break used to flow at a CONSTANT rate, set once when the failure was
       // injected and never varying — so the same break discharged identically at 2235 psi

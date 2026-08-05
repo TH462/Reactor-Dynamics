@@ -104,6 +104,7 @@
     'CA-12': 'probe (a water-solid RCS repressurizes and relieves — mass_max no longer discards; #346)',
     'CA-13': 'probe (the pzr level line is unbounded upward — a heatup fills it solid; #362)',
     'CA-14': 'probe (break flash-cooling is saturation-gated; the void model depended on it; #363)',
+    'CA-15': 'probe (a LIQUID break goes solid clear of mass_max — CA-12 on the other path; #361)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -3154,6 +3155,90 @@
           fmt(lg.ts().pressure_mpa * 145.038, 0) + ' psi (' + fmt(lg.ts().pressure_mpa, 2) + ' MPa)',
           lg.ts().pressure_mpa < 4.14, '< 600 psi (4.14 MPa)');
         T.checkSanity(ck, base);
+      });
+    },
+
+    /* CA-15 — A LIQUID BREAK GOES SOLID WITHOUT REACHING THE NUMERICAL CEILING (#361,
+     * 2026-08-05).
+     *
+     * #346 gave the pressurizer a water-solid regime and #347 took spray's authority away in
+     * it, and both were measured on ONE path: a stuck-open PORV with the block valve isolated.
+     * That is a STEAM-SPACE vent, where `leak_flow` is 0 by construction — so `leak_depress`
+     * was identically zero there and the solid gain had nothing to fight. The in-code claim
+     * that "the fill now arrests at 109.35 % against the 120.00 % ceiling" was generalised
+     * from it, and it did not generalise: the term that defeats the solid gain exists only
+     * when there is LIQUID break flow, which is the whole LOCA family.
+     *
+     * This probe is CA-12 on the other path. It exists because the two are the same claim
+     * measured through different holes, and only one of them was ever tested.
+     */
+    'CA-15': function () {
+      return test('CA-15 a LIQUID break goes solid and arrests clear of the ceiling — not at it', function (ck) {
+        var pz = RD.PWR_CONFIG.pressurizer, pr = RD.PWR_CONFIG.primary;
+
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.5 });
+        var invMax = 0, solidN = 0, n = 0;
+        a.run(2700, function (hh) {
+          var t = hh.ts(); n++;
+          if (t.core_inventory_pct > invMax) invMax = t.core_inventory_pct;
+          // Solid on a LIQUID break: gauge at the top, no void, and the break still flowing.
+          // The last clause is what makes this a different state from CA-12's isolated PORV.
+          if (t.pzr_level_pct >= 99.9 && !(t.primary_void_fraction > 0) && t.leak_flow > 0) solidN++;
+        });
+        var ta = a.ts();
+
+        ck('the plant really does go solid WITH the break still flowing (or this proves nothing)',
+          solidN + '/' + n + ' samples solid at leak ' + fmt(ta.leak_flow, 4),
+          solidN > 500 && ta.leak_flow > 0, '> 500 samples, break open');
+        // THE DEFECT, as a number. Pre-#361 this reads exactly 120.00 — mass_max x 100, the
+        // fingerprint of a clip rather than of any settling point — reached at 21 min and held.
+        ck('inventory never reaches the mass_max clip (pre-#361: exactly 120.00 % from 21 min)',
+          fmt(invMax, 2) + ' % peak vs the ' + fmt(pr.mass_max * 100, 2) + ' % ceiling',
+          invMax < pr.mass_max * 100 - 1.0, '> 1 point clear of ' + fmt(pr.mass_max * 100, 0) + ' %');
+        // …and it settles where the LEVEL GEOMETRY says solid is, computed rather than
+        // transcribed (CA-12 leg B's idiom), so a retune of the slope moves the expectation
+        // with the plant instead of leaving a stale constant here.
+        var base = RD.pwrPressurizer.levelBase(a.eng.s, RD.PWR_CONFIG);
+        var mSolid = 1 + (100 - base) / pz.level_per_mass_surplus;
+        ck('…it settles at the SOLID point the level geometry predicts',
+          fmt(ta.core_inventory_pct, 2) + ' % vs ' + fmt(mSolid * 100, 2) + ' % predicted from base ' +
+          fmt(base, 1) + ' % / ' + fmt(pz.level_per_mass_surplus, 0) + ' %/frac',
+          Math.abs(ta.core_inventory_pct - mSolid * 100) < 1.0, 'within 1 point');
+
+        // ---- THE MECHANISM, at function level. With the plant solid, the break must move
+        // pressure ONLY through the bulk-modulus surge — `leak_depress` is the bubbled-plant
+        // path and there is no bubble. Two clones of the settled state differing only in
+        // `leak_flow`, through the engine's own stepPressure.
+        var mk = function (leak) {
+          var c = Object.assign({}, a.eng.s);
+          c.leak_flow = leak;
+          c._dmass_dt = 0;               // isolate leak_depress from the surge driver
+          RD.pwrPressurizer.stepPressure(c, RD.PWR_CONFIG, 0.1);
+          return c.pressure_mpa;
+        };
+        var withLeak = mk(0.09), noLeak = mk(0);
+        ck('with the pressurizer solid the break adds NO separate depressurization term',
+          fmt((withLeak - noLeak) * 145.038, 6) + ' psi of extra fall from a 0.09 break ' +
+          '(pre-#361: K_leak_depressurize x leak = 0.9 MPa/s against a 0.26 MPa/s surge)',
+          withLeak === noLeak, 'exactly 0');
+
+        // ---- NOT A DELETION. A subcooled plant that is NOT solid must still depressurize on
+        // a break, or the fix has traded one wrong plant for another. Green on BOTH engines.
+        var b = H('hot_full_power'); b.run(60);
+        var mkb = function (leak) {
+          var c = Object.assign({}, b.eng.s);
+          c.leak_flow = leak; c._dmass_dt = 0;
+          RD.pwrPressurizer.stepPressure(c, RD.PWR_CONFIG, 0.1);
+          return c.pressure_mpa;
+        };
+        var bLeak = mkb(0.09), bDry = mkb(0);
+        ck('…but a BUBBLED plant still depressurizes on the same break (the term is not deleted)',
+          fmt((bLeak - bDry) * 145.038, 2) + ' psi of extra fall at ' +
+          fmt(b.ts().pzr_level_pct, 1) + ' % level',
+          bLeak < bDry - 1e-6, 'measurably negative');
+        T.checkSanity(ck, b);
       });
     },
 

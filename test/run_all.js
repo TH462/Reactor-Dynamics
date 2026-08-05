@@ -253,7 +253,26 @@ var BASELINES = {
   // survives and 54 + 53 is not the answer either — the count below is MEASURED on the
   // merged tree after every conflict was resolved, which is the standing rule this map has
   // warned about since #312.
-  'run_behavior.js':       { code: 0, secs: 56, score: '55pass 0xfail' },
+  // 55 -> 56 (2026-08-05-develop-d, #361): CA-15, a LIQUID break goes solid clear of the
+  // ceiling. #346's solid regime and #347's spray gate were both measured on ONE path — a
+  // stuck-open PORV with the block valve isolated, i.e. a STEAM-SPACE vent where `leak_flow`
+  // is 0 by construction — and the in-code arrest claim was generalised from it. It does not
+  // generalise: `K_leak_depressurize` exists only when there is LIQUID break flow, and it
+  // double-counted mass the surge driver already carries (`stepInventory` adds RELIEF back out
+  // of `dm_surge` and deliberately does not add the leak back). 10 x leak = 0.938 MPa/s against
+  // ~0.26 MPa/s of surge, so the plant never reached the ECCS shutoff head, injection never
+  // terminated, and inventory hit 120.00 % — mass_max exactly, the fingerprint of a clip — at
+  // 21 min and pinned there for the rest of the run with 274 F (152 C) of subcooling.
+  // Injection-verified: 3 checks red, and the injected run reproduces 120.00 % exactly. The
+  // other 2 pass on BOTH engines by design — a bubbled plant must still depressurize on the
+  // same break (-13.05 psi), or the gate could be satisfied by deleting the term.
+  // The settling point is COMPUTED from the level geometry rather than transcribed (CA-12 leg
+  // B's idiom): 109.28 % measured against 109.28 % predicted.
+  // NOTE THE ARREST MECHANISM IS NOT THE RELIEF LADDER on this path, which is what the fix
+  // plan predicted: measured, `porv_open` is false throughout and pressure settles at 326 psi.
+  // A plant with a hole in it does not repressurize — the equilibrium is injection = break
+  // flow at low pressure. CA-12's isolated-PORV path is where the relief ladder arrests it.
+  'run_behavior.js':       { code: 0, secs: 56, score: '56pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

@@ -30,6 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — a leaking plant that went water-solid never reached its relief valve (#361)
+
+#346 gave the pressurizer a water-solid regime and #347 took spray's authority away in it. Both
+were measured on **one** path — a stuck-open relief valve with its block valve isolated, which
+vents the *steam space*, so break flow is zero there by construction. The in-code claim that the
+fill "arrests at 109.35 % against the 120.00 % ceiling" was generalised from that, and it does not
+generalise: the term that defeats the solid gain only exists when liquid is leaving through a hole.
+
+- **Break blowdown is a bubbled-plant mechanism.** Liquid leaves, the steam bubble expands into
+  the space it vacated, pressure falls. With no bubble that path does not exist — and the break's
+  mass was *already* moving pressure through the stiffened solid gain, so it was being counted
+  twice: **0.938 MPa/s against ~0.26 MPa/s of surge**.
+- **Measured before**, a half-size break with injection running: the solid regime engages
+  correctly at ~9 min, is simply out-gunned, and inventory reaches **120.00 %** — the numerical
+  ceiling exactly, the fingerprint of a clip — at **21 min**, then holds for the rest of the run at
+  253 psi with 274 °F (152 °C) of subcooling.
+- **After**: the fill arrests at **109.3 %**, which is where the pressurizer geometry says the
+  vessel is full — 10.7 points clear of the ceiling, and matching the geometric prediction to two
+  decimals. Verified across break sizes from 5 % to 100 %; none reaches the ceiling and none
+  damages the core.
+- The three terms the manual still declares as bubbled-plant behaviour — relief, spray and the
+  heaters — are deliberately unchanged. Manuals Rev 13, `12` §12.4c.
+
+**The arrest is not the relief valve, and the fix plan predicted it would be.** Measured, the
+relief valve never lifts on this path and pressure settles at 326 psi: a plant with a hole in it
+does not repressurize. The equilibrium is injection matching break flow at low pressure. The
+relief ladder is what arrests the *isolated* path, which is a different event.
+
+
 ## [Alpha 1.1.0] — 2026-08-05
 
 ### Fixed — a stopped reactor coolant pump was still heating the coolant (#367)

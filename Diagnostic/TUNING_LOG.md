@@ -29,6 +29,80 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-develop-d (#361 — the solid regime meets a liquid break)
+
+**Task:** batch 3 of the #296 fix plan. `run_all` 38/38, `run_behavior` 55 → 56 (CA-15).
+
+### The defect reproduced WORSE than filed, on a tree that had moved four times
+
+Re-measured first (HR12), `large_loca` 0.5 full stack: inventory reaches the **120.00 %**
+`mass_max` clip at **21 min** (filed: 24 min) and holds for the rest of the run — 253 psi
+(1.75 MPa), Tavg 127 °F (53 °C), subcooling **274 °F (152 °C)**, void 0, level pegged 100.
+
+### The fix is one predicate, and the argument is a DOUBLE COUNT rather than a missing term
+
+`leak_depress` is a **bubbled-plant** mechanism: liquid leaves the break, the bubble expands into
+the volume it vacated, pressure falls. With no bubble that path does not exist. And the break's
+mass is *already* in the surge driver — `stepInventory` adds RELIEF back out of `dm_surge`
+(`dm + porv_flow + safety_flow`) and deliberately does **not** add the leak back, so a leak is
+carried by the surge and counting it again here put **0.938 MPa/s against ~0.26 MPa/s**.
+
+Reuses the `pzr_solid` already computed 17 lines above for the spray gate rather than recomputing
+the predicate — the two cannot drift and `levelRaw` is called once.
+
+**§12.4c does not forbid this and the distinction is recorded at the site**, because the next
+reader will check: §12.4c refused folding RELIEF into the surge, which moved the relieving
+equilibrium DOWN and un-deadheaded ECCS. This removes a SUBTRACTIVE term when solid, so the
+equilibrium moves UP; and `leak_depress` is not one of its three deferred terms.
+
+### Measured after
+
+Inventory arrests at **109.3 %**, 10.7 points clear of the ceiling, and CA-15 computes the
+expected point from the level geometry rather than transcribing it: **109.28 % measured against
+109.28 % predicted** (1 + (100 − 28)/776). Sweep 0.05 / 0.1 / 0.25 / 0.5 / 1.0 — all arrest, none
+reaches the clip, none damages the core.
+
+**THE FIX PLAN'S PREDICTED ARREST MECHANISM IS WRONG, measured.** It expected the relief ladder to
+cycle with HPI throttled (`porv_open_mpa` 2350 psi < `hpi_pressure_ref` 2384 psi). On this path
+`porv_open` is **false throughout** and pressure settles at 326 psi. A plant with a hole in it does
+not repressurize: the equilibrium is injection = break flow at low pressure. The relief ladder is
+what arrests CA-12's *isolated* PORV path, which is a different event, and that is now written
+into the baseline note so the two are not conflated again.
+
+### Boundary stiffness — measured, and it went the GOOD way
+
+The solid boundary now stacks three discontinuities (spray cut, `K_surge` step, and the new
+`leak_depress` cut, the largest). Instrumented per engine step, 135 000 steps at dt 0.02:
+
+| sev 1.0 | pre-#361 | post-#361 |
+|---|---|---|
+| boundary crossings | 21 679 | 41 102 |
+| **p95 abs(dP) per step** | **18.47 psi** | **7.10 psi** |
+
+Chatter is **not new** — it already existed at severity 1.0 — and the per-step excursion is **less
+than half** what shipped. At severity 0.5 the pre-change "1 crossing" is an artifact of the defect:
+the plant was pinned at the clip, which suppressed the boundary entirely.
+
+**Hysteresis was NOT added, deliberately.** The plan names it as the remedy if chatter appears, and
+it did. But measured on the board: `spray_flow_pct` is a flat **0** through the whole settled
+window (pressure is far below setpoint, so the controller calls for heaters), and pressure ripples
+**326.3–330.0 psi**, a 1.1 % band. Hysteresis buys a tuned constant, a persisted state field, a
+migration default and a §6.3 entry for a ripple no player can perceive — DESIGN_CRITERIA Q4. The
+measurement is recorded so the next person does not re-derive it.
+
+**Trap, and it cost a run:** the first stiffness rig was **engine-direct**, which has no ECCS
+actuation (that is M4), so the plant simply drained to 0 % and the solid regime was never entered.
+It reported **0 crossings** across every severity — a clean bill from a rig that could not reach
+the state. Injection has to be commanded explicitly at that layer.
+
+### Also in this change
+
+`primary.mass_max` gains the derivation comment it never had: it is a NUMERICAL GUARD and must
+stay unreachable, the physical settling point is the level geometry (1.0928), and raising the clip
+is not a fix (measured at 3.0, the plant runs to 300 % inventory — #346).
+
+---
+
 ## Session log — 2026-08-05-develop-a (#296 slice-2 fixes: batches 0 and 1 — #362, #365, #366, #368)
 
 **Task:** start working the #296 fix plan (the slice-2 audit findings, #361–#368). Batch 0

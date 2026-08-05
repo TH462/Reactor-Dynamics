@@ -45,6 +45,61 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-develop-d — #361: the solid regime was measured through one hole
+
+Batch 3 of the #296 fix plan, and the last engineering item in it.
+
+**The decision is that this is a DOUBLE COUNT, not a missing term**, which is what makes it a
+one-predicate fix rather than §12.4c's deferred three-term regime. `leak_depress` models a
+bubbled plant: liquid leaves the break, the steam bubble expands into the space it vacated,
+pressure falls. With no bubble that mechanism does not exist — and the break's mass is already
+carried by the surge driver, because `stepInventory` adds RELIEF back out of `dm_surge` and
+deliberately does not add the leak back. Counted twice it was 0.938 MPa/s against ~0.26.
+
+**§12.4c POINTS TOWARD THIS RATHER THAN FORBIDDING IT, and the distinction is recorded at the
+change site** because the next reader will check and could easily conclude the opposite.
+§12.4c's refusal was about folding RELIEF into the surge, which moved the relieving equilibrium
+DOWN, put the plant further below the ECCS shutoff head and un-deadheaded injection — the defect
+by another road. This removes a subtractive term when solid, so the equilibrium moves UP; and
+`leak_depress` is not one of the three terms §12.4c defers (relief, spray, heaters), all of which
+keep their steam-space gains here as that note requires.
+
+**WHY #346 AND #347 MISSED IT, which is the transferable part.** Both were measured on a
+stuck-open PORV with the block valve isolated — a STEAM-SPACE vent, where `leak_flow` is 0 by
+construction. On that path `leak_depress` is identically zero and the solid gain has nothing to
+fight, so it worked, and the in-code arrest claim was generalised from it. It does not
+generalise: the defeating term exists only when liquid is leaving, i.e. the whole LOCA family.
+This is #315's lesson in its exact original shape — a term that is an identity in the regime you
+test in is a term nothing tests — with `leak_depress` as the identity.
+
+**THE FIX PLAN'S PREDICTED ARREST MECHANISM WAS WRONG AND THE MEASUREMENT SAYS SO.** It expected
+the relief ladder to cycle with injection throttled, on the arithmetic that `porv_open_mpa`
+(2350 psi) sits below `hpi_pressure_ref` (2384 psi). Measured, `porv_open` is false throughout
+and pressure settles at 326 psi: a plant with a hole in it does not repressurize, and the
+equilibrium is injection matching break flow at low pressure. The relief ladder arrests CA-12's
+isolated path, which is a different event. Written into the CA-15 baseline note so the two are
+not conflated again.
+
+**Hysteresis was considered, measured, and NOT added.** The plan names it as the remedy if the
+boundary chatters, and it does — 41 102 crossings in 135 000 steps at severity 1.0. But the
+chatter is not new (21 679 pre-change) and the per-step excursion is less than half what shipped
+(p95 18.47 → 7.10 psi), and it is not observable: `spray_flow_pct` is a flat 0 through the
+settled window and pressure ripples 1.1 %. Hysteresis costs a tuned constant, a persisted state
+field, a migration default and a §6.3 entry for a ripple no player can perceive — DESIGN_CRITERIA
+Q4 answered in the negative. Recorded rather than left for someone to re-derive.
+
+**CA-15 guards it** (`run_behavior` 55 → 56): 3 checks red on injection with the injected run
+reproducing 120.00 % exactly, and 2 calibration checks green on both engines — a bubbled plant
+must still depressurize on the same break, or the gate could be satisfied by deleting the term.
+The settling point is computed from the level geometry rather than transcribed: 109.28 % measured
+against 109.28 % predicted.
+
+**`primary.mass_max` finally has a derivation comment**, and it says the honest thing: there is no
+physical ceiling at which an RCS stops accepting mass, only a pressure at which relief opens, so
+1.2 is a numerical guard whose job is to be unreachable. Reaching it is a bug by definition, and
+it hides itself — the clip also truncates `m_surge`, so `_dmass_dt` goes to zero at the ceiling
+and the surge driver stops seeing the mass piling up.
+
 ## 2026-08-05-develop-c — #367: buoyancy is not a pump, but a coasting rotor is
 
 Batch 2b of the #296 fix plan.

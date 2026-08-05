@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 12 (2026-08-05)  
+**Set revision:** 13 (2026-08-05)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,6 +28,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 13 | 2026-08-05 | **A leaking plant that goes water-solid now reaches its relief valve** (#361). **12 §12.4c** is revised: break blowdown joins the water-solid regime. Losing coolant through a break depressurizes the reactor coolant system because the steam bubble expands into the space the liquid vacated — with the bubble gone that path does not exist, and the break's mass already moves pressure through the stiffened solid gain. Counted both ways it held the plant roughly 2000 psi below the relief band, so emergency injection never terminated and inventory climbed to the model's numerical ceiling and stayed there. Measured after: the fill arrests at 109.3 % of normal inventory, which is where the pressurizer geometry says the vessel is full, about 10 points clear of that ceiling. The three terms §12.4c still declares as bubbled-plant behaviour — relief, spray and the heaters — are unchanged. | #361 solid-plant break blowdown |
 | 12 | 2026-08-05 | **The departure-from-nucleate-boiling datum is named correctly** (#368). **12 §10.7** described the low-flow reactor trip as firing "before the hot channel can boil". This simulator judges boiling at the **mixed-mean core exit**, not at the limiting fuel assembly — a real hot channel runs hotter than the mixed mean by the nuclear enthalpy-rise hot channel factor, which is not sourced anywhere in this plant's documents, so the departure threshold stands in for peaking implicitly. Nothing about the trip or its timing changed: it still fires at 1.8 s against a departure onset at 10.9 s. What changed is the claim, which named a quantity the plant does not compute. | #368 DNB datum |
 | 11 | 2026-08-05 | **Two deferred capability gaps are declared to the player instead of implied away** (#370, #371 — audit #297 F1/F3, both deferred by owner ruling 2026-08-05). **12 §8.5** now states that MSIV isolation is a manual action: the real plant also isolates its steam lines automatically on break evidence and refuses to let the operator block it; this plant has no automatic steam-line isolation signal, so on an isolable break the operator is the isolation. **12 §8.3** now states the dump goes to the condenser and only there — no atmospheric dump valves exist, so with the condenser lost the plant has no controlled cooldown path and holds hot at the code-safety band (measured: four plant-hours flat at 304–305 °C with the safeties chattering). New rows **12 §12.17** and **12 §12.18** carry both to the simplifications table with what the operator should do about each. | #370/#371 deferred gaps declared |
 | 10 | 2026-08-05 | **The cooldown rate is on the board now** (#375, audit #297 F7). Measured before this change: one Dump SP entry produced a 1939 °F/hr cooldown — 19× the 100 °F/hr technical-specification-class limit — with no rate indication, no alarm, and no feedback of any kind that a gross error was in progress. New derived instrument (indicated Tavg, differentiated and damped like a chart recorder), two annunciators — **PWR-A34** RCS COOLDOWN RATE HI and **PWR-A35** RCS HEATUP RATE HI at ±100 °F/hr, cards and index rows in `06`, setpoint rows in `09` — and **12 §8.3** documents both the meter and the physics fix that came with it: the dump's mass flow now carries the steam pressure, so a deep blowdown self-arrests at the asked-for setpoint instead of running to the model floor while an empty steam generator "boiled" 40 % rated flow indefinitely. | #375 cooldown rate |
@@ -67,7 +68,7 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 12 (2026-08-05). A mismatch means a chapter changed with no
+     Sealed at Rev 13 (2026-08-05). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
@@ -80,6 +81,6 @@
      09_SETPOINTS_LIMITS.md 1855447d070bcd6c
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md 53dfa58aab2c7543
+     12_SIM_PHYSICS.md 7c9d72a28bd9bd3b
      README.md 9a103035dfb47eca
 -->

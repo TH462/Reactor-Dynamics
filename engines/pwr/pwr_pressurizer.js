@@ -284,7 +284,35 @@
     // and pressure just tracks Psat(Tavg) down as the coolant cools.
     var p_sat_tavg = P_sat_from_T(s.tavg_c);
     var saturated = s.primary_void_fraction > 0 || p_sat_tavg > s.pressure_mpa;
-    var leak_depress = saturated ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
+    // NO BUBBLE, NO BLOWDOWN DEPRESSURIZATION (#361, 2026-08-05). `leak_depress` is a
+    // BUBBLED-PLANT mechanism: liquid leaves the break, the steam bubble expands to fill the
+    // volume it vacated, and pressure falls with it. A water-solid RCS has no bubble to
+    // expand, so that path does not exist — the only way mass can move pressure is through
+    // the bulk modulus, which is exactly what the solid surge term below already does.
+    //
+    // IT WAS A DOUBLE COUNT, and the arithmetic is why the solid gain never arrested the
+    // fill. The break's mass IS inside `_dmass_dt`: `stepInventory` adds RELIEF back out of
+    // the surge driver (`dm_surge = dm + porv_flow + safety_flow`) and deliberately does not
+    // add the leak back, so a leak is carried by the surge already. Counting it a second time
+    // here put 10·leak against the surge's 1300/776·net-dm. MEASURED full stack before this,
+    // `large_loca` 0.5: the solid regime engages correctly at ~9 min (level 100 %, void 0,
+    // deeply subcooled) and is simply out-gunned — 0.938 MPa/s of leak_depress against
+    // ~0.26 MPa/s of surge — so pressure sat at 327 psi (2.25 MPa), never reached the ECCS
+    // shutoff head, injection never terminated, and inventory walked to the 120.00 %
+    // `primary.mass_max` guard at 21 min and pinned there for the rest of the run with
+    // 274 °F (152 °C) of subcooling.
+    //
+    // `Manuals/12` §12.4c DOES NOT FORBID THIS, and the distinction matters enough to write
+    // down because the next reader will check. §12.4c records a REFUSAL to fold RELIEF into
+    // the surge: that moved the relieving equilibrium DOWN ~145 psi, put the plant further
+    // below the ECCS shutoff head and un-deadheaded injection — the defect by another road.
+    // This removes a SUBTRACTIVE term when solid, so the equilibrium moves UP, toward the
+    // relief ladder rather than away from it. And `leak_depress` is not one of §12.4c's three
+    // deferred terms (relief, spray, heaters), all three of which keep their steam-space
+    // gains here as that note requires.
+    // `pzr_solid` is the one computed above for the spray gate — reused, not recomputed, so
+    // the two cannot drift apart and `levelRaw` is called once.
+    var leak_depress = (saturated || pzr_solid) ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
     // SURGE — ONE LAW, TWO DRIVERS (#337). A surge is a VOLUME displacement of the
     // pressurizer, and the pressurizer does not know what caused it. WTSM 3.2
     // (ML11223A213, p. 3.2-8) states the mechanism without reference to the cause:

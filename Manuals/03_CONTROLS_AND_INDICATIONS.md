@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 12  
+**Revision:** 13  
 
 ---
 
