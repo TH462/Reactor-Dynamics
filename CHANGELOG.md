@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.1.0] — 2026-08-05
+
 ### Fixed — a stopped reactor coolant pump was still heating the coolant (#367)
 
 Pump shaft-work heat was scaled by loop flow outright. Natural circulation is buoyancy-driven and
