@@ -30,7 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **A cooldown-rate meter and ±100 °F/hr rate annunciators** (#375). One steam-dump setpoint
+  entry could cool the plant at nineteen times the technical-specification-class limit with no
+  indication or alarm of any kind. The board now carries a damped heatup/cooldown-rate channel
+  derived from the indicated Tavg, and RCS COOLDOWN RATE HI / HEATUP RATE HI annunciators at
+  ±100 °F/hr (alarm cards PWR-A34/A35). The error is still yours to make — nothing limits the
+  dump automatically — but it is no longer silent.
+
 ### Fixed
+- **An empty steam generator no longer boils 40 % of rated steam flow indefinitely** (#375).
+  The dump's mass flow now carries the steam pressure, so a deep blowdown self-arrests at the
+  setpoint you asked for instead of running to the model floor while the level clamp silently
+  absorbed a mass imbalance. At and above rated pressure nothing changes.
 - **Feedwater carries enthalpy — overfeeding overcools, and auxiliary feedwater is a real heat
   sink** (#372). The steam generator's energy balance now heats feed to saturation before
   boiling it. Overfeeding the generator drops its pressure and nudges power up on moderator

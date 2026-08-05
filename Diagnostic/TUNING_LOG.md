@@ -66,6 +66,59 @@ Gates on the final state: `run_behavior` **52 pass, 0 xfail**; `run_ops` **58/69
 12 failed** (the tracked expected red, unmoved); `run_session_labels` 8 checks 0 failed. The
 new checkSanity legs all pass — no latent authoring bug was hiding behind them.
 
+### #375 — the cooldown rate is on the board, and the dump's flow carries its pressure
+
+Three increments, per the owner's scope ruling:
+
+**(a) Derived `tavg_rate` instrument** — indicated Tavg differentiated + damped. Derived like
+`subcooling_margin` (HR1 — inherits the tavg channel's lag and failures), `noise: 0` and NOT
+in SOURCE (the appended-instrument PRNG rule), filter state rides in `lagged` so saves resume
+their trend. The trend graph's Heatup Rate channel gains its `get:` — it was `tru:`-only, the
+repo's own marker for "no instrument exists".
+
+**The damping constant is the alarm's spurious-actuation guard, and the first value failed the
+audit's own question 3 on the alarm built to answer its question 2.** At `rate_tau 45` the
+NORMAL post-trip Tavg settle (≈7 °C over ~90 s) read ≈ −200 °C/hr and fired COOLDOWN RATE HI
+on **every reactor trip** — measured directly, and caught in the wild by `verify_e2e_ui`,
+whose rewind test's checkpoint sequence the nuisance annunciator perturbed. A °F-per-HOUR
+limit wants hourly-scale damping: at `rate_tau 600` the trip settle peaks −35.5 (quiet, 1.6×
+under the setpoint), steady jitter is nil, and a genuine F7-scale blowdown still crosses the
+alarm within ~40 s — crossing time scales inversely with severity, the right shape for a rate
+alarm.
+
+**(b) ±100 °F/hr annunciators** — `cooldown_rate_high` / `heatup_rate_high` at ∓55.6 °C/hr,
+warning, panel A, NOT reclassified in Modes 4/5 (the limit binds exactly during a planned
+cooldown). Manuals: cards PWR-A34/A35 + index rows in `06`, setpoint rows in `09`, meter+alarm
+prose in `12 §8.3`. `run_reachability` 65 → 68: Part A audits both automatically, and new Part
+B leg B4 drives the F7 evolution and demands the INDICATED channel cross the alarm (measured:
+trough −300, pegged) — a rate channel is the easiest instrument to filter to death.
+
+**(c) The F7 mass fiction is dead, second attempt, and the first attempt is the lesson.** The
+first cut capped total `steam_out` by feed + wide-inventory drain. It fixed F7 but broke
+CA-12: capping the VENT side means a dry bottled SG cannot relieve its steam dome — wrong
+physics, and the solid-plant probe's inventory peak crept 109.35 → 119.83 % against its
+120 % ceiling guard (the mid-campaign perturb sweep had flagged CA-12's sensitivity — the
+canary was real). Replaced with the physical form: **the dump's MASS FLOW carries the upstream
+pressure** (`dump × min(P/P_rated, 1)`), like the turbine term always has and like the
+safeties' own ramp. At and above rated the factor is 1 — normal ops, every ride-out and the
+bottled evolutions are byte-identical (CA-12 back at exactly 109.35) — and in the blown-down
+regime the flow dies with the pressure that would have to drive it. Measured, the F7 repro
+transformed: pressure now regulates at the operator's 1.0 MPa ask (was: through to the 0.1
+floor), wide level dips to 24.8 % and recovers on AFW (was: 0 % for 40 straight minutes while
+"boiling" 40 % rated flow), and the rate meter pegs −300 with the annunciator in.
+
+The remaining honest gap: there is still no automatic rate limiter on the dump — declared to
+the player in `12 §8.3`: the meter and the alarm exist, holding the limit is the operator's
+job. That is the increment the owner chose (alarm, not limiter — the error stays makeable and
+is now visible).
+
+One tolerance fix rode along: `board_check`'s SI-leg-ΔT units check compares two
+integer-rounded display strings sampled at different instants of a live plant inside a ±1
+band — narrower than its own quantization noise (0.5·1.8 + 0.5 = 1.4). It had passed by luck
+until #375 nudged the sampled ΔT onto a rounding edge (12 °F vs 6 °C, off by 1.2). Band → 1.5,
+the method's own bound; the absolute-vs-difference discriminant it exists for sits > 10 away
+and is untouched.
+
 ### #372 — feedwater carries enthalpy, and the follow governor had to learn the same physics
 
 The SG energy balance spent all of `latent_heat_secondary 19.45` as latent heat, so feed

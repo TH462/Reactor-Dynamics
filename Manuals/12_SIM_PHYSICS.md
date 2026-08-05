@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 9  
+**Revision:** 10  
 
 ---
 
@@ -514,6 +514,8 @@ The fast mode's reference Tavg is **programmed on turbine load** — the same sl
 > **WARNING — a declared, deliberate cliff.** The fast mode arms on a **rate**: a step load rejection must exceed **40 MWe**, or a ramp must exceed roughly 40 MWe/min. Measured: a **39 MWe rejection does not arm** and lifts the PORV (Tavg 606 °F (318.9 °C)); **41 MWe arms and is caught** (Tavg 580.1 °F (304.5 °C)). It is also **blind to staircases** — 60 MWe delivered as four 15 MWe steps never arms at all.
 >
 > This is a ruled, intentional limitation, not a defect. Lowering the arm is not the fix: an arm low enough to catch an ordinary 15 MWe dispatch cut would leave the dump venting forever, holding the reactor at 100 % and destroying the load-follow behaviour. The sub-threshold rejection is a manoeuvre **you** are expected to handle, and the PORV is the honest backstop when you don't.
+
+**The dump's mass flow carries the steam pressure** — a valve on a blown-down generator passes little, however far open it is, so a deep cooldown self-arrests as pressure approaches the setpoint you asked for rather than running to the model floor. **There is no automatic rate limiter on a dump cooldown**: the board gives you a cooldown-rate meter and the **RCS COOLDOWN RATE HI** annunciator at the 100 °F/hr class limit (**A34**), and holding the plant inside it is your job.
 
 ### 8.4 Feedwater, AFW, and the isolation chain
 

@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 9 (2026-08-05)  
+**Set revision:** 10 (2026-08-05)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,6 +28,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 10 | 2026-08-05 | **The cooldown rate is on the board now** (#375, audit #297 F7). Measured before this change: one Dump SP entry produced a 1939 °F/hr cooldown — 19× the 100 °F/hr technical-specification-class limit — with no rate indication, no alarm, and no feedback of any kind that a gross error was in progress. New derived instrument (indicated Tavg, differentiated and damped like a chart recorder), two annunciators — **PWR-A34** RCS COOLDOWN RATE HI and **PWR-A35** RCS HEATUP RATE HI at ±100 °F/hr, cards and index rows in `06`, setpoint rows in `09` — and **12 §8.3** documents both the meter and the physics fix that came with it: the dump's mass flow now carries the steam pressure, so a deep blowdown self-arrests at the asked-for setpoint instead of running to the model floor while an empty steam generator "boiled" 40 % rated flow indefinitely. | #375 cooldown rate |
 | 9 | 2026-08-05 | **Feedwater carries enthalpy** (#372, audit #297 F4). **12 §8.4** gains the energy-balance statement: heat crossing the tube bundle first raises feed to saturation, then boils it — so overfeeding overcools (measured: steam pressure falls and power rises on moderator feedback, where before a 15 % overfeed was digit-identical to four significant figures) and cold auxiliary feedwater is a genuine heat sink that can pull the tripped plant below the no-load anchor until the level hold throttles it back. New simplification row **12 §12.16** declares what is still missing — constant final feed temperature, no heater train, no moisture-separator reheaters. **12 §8.6**'s trip-burst sentence is refined: with feed heat uptake counted, the burst peaks just under the PORV setpoint. | #372 feedwater enthalpy |
 | 8 | 2026-08-05 | **The turbine has stop valves** (#373, audit #297 F5). **12 §8.6** retitled and extended: a trip now slams a separate spring-closed stop-valve path shut in a fraction of a second, redundant with the governor — before this, a "tripped" machine kept drawing steam on the governor's two-second load lag, about 2.1 flow-seconds of rated steam into a machine doing no work. The consequence that leak was hiding is documented with it: the stored-energy burst after a trip from full power now briefly lifts the pressurizer PORV — the designed backstop — where previously the transient quietly never happened. Behaviour probes TR-1b and TR-2 were re-specified for the corrected plant and declare it. | #373 turbine stop valves |
 | 7 | 2026-08-05 | **The SG code safeties are self-actuating** (#369, audit #297 F2). **12 §8.5** now states the mechanism: the pop and reseat act on the steam pressure itself — a spring valve with no instrument channel in its path — so a failed steam-pressure transmitter changes what the gauge reads, never whether the valves lift. Until this change the pop was an instrument-actuated decision, and the audit measured a single stuck transmitter carrying an otherwise-survivable MSIV closure to clad melt (2696 psi (18.59 MPa) SG, 3226 °F (1774.4 °C) clad at 40 min). Measured after the change: with the same stuck transmitter the safeties lift and regulate at 1308 psi (9.02 MPa), indistinguishable from the healthy channel. Behaviour probe TR-16 pins both legs. | #369 SG safety self-actuation |
@@ -64,19 +65,19 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 9 (2026-08-05). A mismatch means a chapter changed with no
+     Sealed at Rev 10 (2026-08-05). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
      01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
      03_CONTROLS_AND_INDICATIONS.md 38ca8b984d002955
      04_NORMAL_OPERATIONS.md d42cd39fc1fc676b
      05_MODE_TRANSITIONS.md 6d4e4986a2cd35e8
-     06_ALARM_RESPONSE.md 4bc2d926b273f4d8
+     06_ALARM_RESPONSE.md 184da9a68cb71f36
      07_ABNORMAL_EMERGENCY.md 2145ea995f7124e2
      08_ACCIDENT_TMI.md d6a3ff47c6786021
-     09_SETPOINTS_LIMITS.md ff616f13a1e0884d
+     09_SETPOINTS_LIMITS.md 1855447d070bcd6c
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md 9374b385f0adccb1
+     12_SIM_PHYSICS.md 0c8a2a87182e620c
      README.md 9a103035dfb47eca
 -->

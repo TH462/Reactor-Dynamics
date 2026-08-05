@@ -1568,6 +1568,21 @@
       // before 2026-07-23). Not in SOURCE, so it draws no PRNG number and the cross-step noise
       // stream is unchanged (the appended-instrument rule).
       rod_limit_margin:  { lag: 0,   noise: 0,     range: [0, 912],  derived: true },
+      // ------------------------------------------------ cooldown/heatup rate (#375)
+      // Tavg RATE from the INDICATED tavg — the 100 °F/hr Tech-Spec-class limit had
+      // no instrument at all: the true-state trend existed, the board had nothing to
+      // alarm on, and audit #297 F7 measured a one-entry dump cooldown at 1939 °F/hr
+      // with no cue anywhere. Derived like subcooling_margin, so it inherits tavg's
+      // lag and failures (HR1). rate_tau is the meter's damping, and its SIZE is the
+      // alarm's spurious-actuation guard (the audit's standing question 3, applied
+      // to this very alarm): a °F-per-HOUR limit wants hourly-scale damping. At
+      // 45 s the normal post-trip Tavg settle (≈7 °C over ~90 s) read ≈ −200 °C/hr
+      // and fired COOLDOWN RATE HI on every reactor trip; at 600 s it reads ≈ −39
+      // (quiet), while a genuine F7-scale blowdown still crosses −55.6 within
+      // ~40 s — crossing time scales inversely with severity, which is the right
+      // shape for a rate alarm. Not in SOURCE, so it draws no PRNG number and the
+      // cross-step noise stream is unchanged (the appended-instrument rule).
+      tavg_rate:         { lag: 0,   noise: 0,     range: [-300, 300], rate_tau: 600, derived: true },
       // ------------------------------------------------ OTΔT / OPΔT channels (#311)
       // The loop-ΔT protection set. All five are DERIVED from indicated `thot`,
       // `tcold`, `tavg` and `primary_pressure`, so each inherits those channels' lag

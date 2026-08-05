@@ -615,7 +615,9 @@ var BASELINES = {
   // the verdict (fuel_damaged) but nothing of the mechanism between them.
   // 148 → 149 (2026-08-05, #373): new true_state field stop_valve_pct — the turbine trip
   // stop valves, spring-shut on a trip, documented in CONTEXT §6.3 with the change.
-  'run_contract.js':       { code: 0, score: '149checks 0failed' },
+  // 149 → 151 (2026-08-05, #375): the two ±100 °F/hr rate annunciators are picked up by
+  // the contract's per-alarm coverage automatically.
+  'run_contract.js':       { code: 0, score: '151checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -802,7 +804,11 @@ var BASELINES = {
   // (self-actuating on true pressure), so Part A has one fewer instrument-actuation row.
   // The protection did not shrink — it moved below the instrument layer, where
   // reachability-through-an-instrument is no longer the right question. TR-16 covers it.
-  'run_reachability.js':   { code: 0, score: '65checks 0failed' },
+  // 65 → 68 (2026-08-05, #375): Part A picks up the two new ±100 °F/hr rate alarms
+  // automatically, and Part B gains B4 — the dump-setpoint cooldown must drive the
+  // INDICATED tavg_rate channel past the alarm (a rate meter is the easiest instrument
+  // to filter to death, the #249 class).
+  'run_reachability.js':   { code: 0, score: '68checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so

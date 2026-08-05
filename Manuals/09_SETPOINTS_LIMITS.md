@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 9  
+**Revision:** 10  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -139,6 +139,8 @@
 | high_flux | HI FLUX | power_range | high | **108 %** | critical |
 | high_tavg | HI TAVG | tavg | high | **594 °F (312.2 °C)** | warning |
 | low_tavg | LO TAVG (P-12) | tavg | low | **552.2 °F (289 °C)** | warning † |
+| cooldown_rate_high | RCS COOLDOWN RATE HI | tavg_rate | low | **−100 °F/hr (−55.6 °C/hr)** | warning |
+| heatup_rate_high | RCS HEATUP RATE HI | tavg_rate | high | **100 °F/hr (55.6 °C/hr)** | warning |
 | pzr_pressure_high | PZR PRESS HI | primary_pressure | high | **2300 psi (15.86 MPa)** | warning |
 | pzr_pressure_low | PZR PRESS LO | primary_pressure | low | **2149 psi (14.82 MPa)** | warning † |
 | pzr_pressure_lolo | PZR PRESS LO LO | primary_pressure | low | **1800 psi (12.41 MPa)** | critical † |

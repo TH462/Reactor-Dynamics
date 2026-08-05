@@ -446,6 +446,14 @@
     // comment above requires, but a cooldown is not a casualty (#240).
     { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Coolant Temperature Low — expected, plant is cold', label_industry: 'LO TAVG (P-12) — EXPECTED' }] },
+    // Cooldown / heatup RATE (#375, audit #297 F7): the 100 °F/hr Tech-Spec-class
+    // heatup/cooldown limit. Measured before this alarm existed: one Dump SP entry
+    // produced a 1939 °F/hr cooldown with no rate indication or annunciator anywhere
+    // on the board. Reads the DERIVED tavg_rate channel (indicated tavg,
+    // differentiated + damped) — HR1-clean. NOT reclassified in Modes 4/5: the limit
+    // binds exactly during a planned cooldown — exceeding it there IS the error.
+    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
+    { id: 'heatup_rate_high',   instrument: 'tavg_rate', direction: 'high', setpoint: 55.6,  priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Heatup Rate High (>100 °F/hr)',   label_industry: 'RCS HEATUP RATE HI' },
     { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Pressurizer Pressure Low — expected, plant depressurized', label_industry: 'PZR PRESS LO — EXPECTED' }] },

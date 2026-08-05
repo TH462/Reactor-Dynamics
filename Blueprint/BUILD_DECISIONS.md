@@ -45,6 +45,26 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-e — #375: make the error visible, not impossible — and cap flows with physics, not bookkeeping
+
+**Decision.** A derived cooldown/heatup-rate instrument off indicated Tavg, ±100 °F/hr
+annunciators (PWR-A34/A35, not Mode-4/5-reclassified), and the dump's mass flow scaled by
+upstream pressure (`min(P/P_rated, 1)`). No automatic rate limiter — the owner's chosen
+increment keeps the gross cooldown makeable and makes it loud, which preserves the teaching
+case a hard limiter would delete. `run_reachability` 65 → 68 (two alarms + a Part B leg that
+drives the indicated rate past the setpoint).
+
+**The rejected first cut is the record-worthy part.** Capping total `steam_out` by water
+inventory fixed the empty-vessel fiction but blocked a dry bottled SG from venting its steam
+dome — the solid-plant probe CA-12's peak crept to 119.83 % against its 120 % ceiling guard,
+exactly where the perturb sweep had flagged fragility. The pressure-scaling form is physical
+(choked flow dies with its driving pressure), touches only the blown-down regime (factor ≡ 1
+at and above rated — CA-12 back at 109.35 % exactly), and the F7 evolution becomes
+self-arresting at the operator's setpoint. A conservation fix that adds a bookkeeping clamp
+where the model wants a physical dependence breaks the regime the clamp cannot see.
+
+---
+
 ## 2026-08-05-workbench-d — #372: the calibrated constant was two physical things wearing one number
 
 **Decision.** `latent_heat_secondary 19.45` is split at the rated point into latent + feed

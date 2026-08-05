@@ -252,7 +252,19 @@
       : 0;
     s.sg_safety_flow = sg_relief;
 
-    var steam_out = s.steam_flow_normalized + dump + sg_relief;
+    // #375 (audit #297 F7): the dump's MASS FLOW carries the upstream pressure,
+    // like every other steam path here (the turbine term scales by P/P_rated at
+    // its flow line; the safeties carry their own pressure ramp above reseat).
+    // The dump fraction used to enter steam_out bare, so a valve at the 0.1 MPa
+    // pressure floor still "passed" 40 % of rated mass flow — which is how the
+    // plant boiled 40 % rated steam out of a vessel holding zero water for 40
+    // straight minutes, with the level and pressure clamps silently absorbing
+    // the imbalance. At and above rated pressure the factor clips to 1, so
+    // normal operation, every trip ride-out and the bottled-SG evolutions are
+    // byte-identical — only the blown-down regime changes, and there the flow
+    // now dies with the pressure that would have to drive it.
+    var _dumpFlow = dump * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1);
+    var steam_out = s.steam_flow_normalized + _dumpFlow + sg_relief;
     // Total SG draw (turbine + dump + safeties) — the flow any feed regulation
     // actually matches. Exposed for the disconnected-mode feed coupling
     // (load_mode.js): after a turbine trip the dump still draws, and feed must
