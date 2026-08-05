@@ -17,6 +17,25 @@
     var foot = document.getElementById('ver');
     if (foot) foot.textContent = label;
 
+    // Release number beside the ALPHA badge in the header, on every page
+    // *(OWNER, 2026-08-05: "On the top of the website pages next to the alpha logo, put the
+    // version number ie. V1.1.0.")*. Rendered as V<digits> — the badge already says ALPHA, so
+    // repeating the word there would read "ALPHA Alpha 1.1.0".
+    //
+    // FILLED FROM RD_RELEASE, never hand-typed into the markup: the release string lives in
+    // site/release.js and run_release.js already cross-checks it against changelog.html and
+    // CHANGELOG.md, so this inherits that guarantee. A version stamped into eight HTML files
+    // would be eight things to forget at the next bump.
+    //
+    // If RD_RELEASE carries no digits (the old "Pre Alpha"), or release.js is not loaded at
+    // all, the span stays EMPTY rather than printing a bare "V" — the header simply looks the
+    // way it did before this existed.
+    var brandVer = document.getElementById('brandVer');
+    if (brandVer) {
+      var m = /(\d+(?:\.\d+)*)/.exec(rel);
+      brandVer.textContent = m ? 'V' + m[1] : '';
+    }
+
     // The offline download links a stable path (download/latest.zip) so download.html
     // never needs a per-release edit — but that is also the name the browser saves it
     // under, and "latest.zip" identifies nothing once it is sitting in a downloads
