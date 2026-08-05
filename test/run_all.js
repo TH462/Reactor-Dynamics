@@ -253,7 +253,11 @@ var BASELINES = {
   // survives and 54 + 53 is not the answer either — the count below is MEASURED on the
   // merged tree after every conflict was resolved, which is the standing rule this map has
   // warned about since #312.
-  'run_behavior.js':       { code: 0, secs: 56, score: '55pass 0xfail' },
+  // 55 → 56 (2026-08-05, #370c): TR-12c — the steam line isolation's COINCIDENCE.
+  // TR-12b proves it works on the casualty; TR-12c proves it stays out of a full
+  // cooldown and a bottled SG with its safeties lifting, and that the operator
+  // cannot reopen while it is sealed in. The half that is easiest to skip.
+  'run_behavior.js':       { code: 0, secs: 56, score: '56pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -640,7 +644,10 @@ var BASELINES = {
   // 177 → 178 (2026-08-05, #370): the §8.28 deferral row carries a new dated owner
   // quote and the HR11 citation-format scan counts every one it tracks — by design,
   // so a directive added with the count unmoved would read as NOT LOOKED AT.
-  'run_hardrules.js':      { code: 0, score: '178checks 0failed' },
+  // 178 → 179 (2026-08-05, #370c): the steam line isolation's numeric coincidence
+  // term is the first OBJECT-form condition, and it gets its own HR1 check — the
+  // string-only scan would have skipped it silently (see #370b).
+  'run_hardrules.js':      { code: 0, score: '179checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -862,7 +869,9 @@ var BASELINES = {
   // automatically, and Part B gains B4 — the dump-setpoint cooldown must drive the
   // INDICATED tavg_rate channel past the alarm (a rate meter is the easiest instrument
   // to filter to death, the #249 class).
-  'run_reachability.js':   { code: 0, score: '68checks 0failed' },
+  // 68 → 69 (2026-08-05, #370c): the steam line isolation's actuation setpoint
+  // (steam_pressure low 5.20) joins Part A's static audit.
+  'run_reachability.js':   { code: 0, score: '69checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so

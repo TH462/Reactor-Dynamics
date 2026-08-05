@@ -45,6 +45,38 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-g — #370c: a protection that extinguishes its own signal, and two rows that could never have armed
+
+**Decision.** Automatic main steam line isolation: `sg_steam_flow > 1.25` coincident with
+`steam_pressure < 5.20` closes the MSIV, latched-sealed against operator reopening until the
+generator recovers past 7.0 MPa. §8.28 RETIRED. Three parts of the real function are declared
+rather than built, each for a measured reason: no containment path (§8.31 — nothing to sense),
+a fixed rather than load-programmed flow setpoint (§8.32 — no impulse-pressure signal), and
+**no lo-lo Tavg leg (§8.33), because it cannot arm on this plant**.
+
+**The three findings worth carrying forward.**
+
+1. **A sourced row can still be dead.** The lo-lo Tavg leg is in the source and would have looked
+   right in the config forever. Measured, it never fires: break flow scales with the pressure it
+   destroys, so flow has decayed before Tavg falls. Building it would have shipped protection that
+   reads as real and does nothing — the "condition that can never arm" trap, arriving via the
+   sourced design rather than a mistake.
+2. **The transmitter saturated inside its own casualty.** A 1.2 span against a true 1.75 draw meant
+   every break above ~40 % read identically, and the 30 % break sat one thousandth from the
+   setpoint. A gauge that cannot resolve what its protection discriminates on is the defect, not
+   the setpoint.
+3. **A seal-in that tracks a live signal is useless when the action removes the signal.** Closing
+   the valve stops the flow that closed it, so the refusal evaporated in the instant it engaged —
+   measured, the operator reopened one second after actuation and the break resumed unprotected.
+   Latching on the fired latch with a physical release (pressure recovered) is the fix; the
+   general lesson is that self-extinguishing protections need a latch, and the kernel now has one.
+
+**Content moved, physics stood.** `pwr_slb`'s decision beat and two `run_m7` stimuli all assumed a
+plant that never isolates. Prompt tripping on a large steam line break is what a real plant does,
+so the scenario severity and the test stimuli moved (HR9), each with its reason written in place.
+
+---
+
 ## 2026-08-05-workbench-f — #370a: the break that removed no mass, and the lane that started green on purpose
 
 **Decision.** The main steam line break becomes a MASS FLOW in `steam_out` instead of a `dP/dt`

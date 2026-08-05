@@ -104,6 +104,74 @@ NOT fire short of it (the half that makes it a coincidence), both directions, **
 absent instrument** (a condition evaluating true against a missing gauge would arm protection on a
 signal nobody reads), and the membership form untouched.
 
+### #370c — the steam lines isolate themselves, and three things had to be measured to get there
+
+**Built:** `sg_steam_flow > 1.25` coincident with `steam_pressure < 5.20` closes the MSIV. Measured:
+a full-area downstream break isolates in **0.9 s**, the blowdown ends, and the generator recovers to
+its safety band — against the audit's F1 measurement of the same plant still unisolated at twelve
+minutes with the secondary on the 0.1 MPa floor and the RCS dragged to 98 °C.
+
+**1. The real primary signal does not work here, and only measurement said so.** The sourced logic is
+high steam flow coincident with lo-lo Tavg OR low steam pressure. Swept across every evolution, the
+**lo-lo Tavg leg NEVER fires** — not on a full-area break that reaches 168.7 °C — because the two
+signals are ANTI-CORRELATED in this model: break flow scales with the pressure it is destroying, so
+by the time Tavg falls the flow has decayed. At every instant flow exceeds its setpoint, Tavg is
+still ≥ 302. A row that cannot arm is worse than an absent one — it reads as protection while doing
+nothing — so it is **declared (§8.33), not shipped**. The containment leg is out for the older
+reason: there is no containment model to sense (§8.31).
+
+**2. The transmitter saturated inside the casualty it discriminates.** `sg_steam_flow` spanned
+[0, 1.2] while true draw on a full break is ~1.75, so every break from ~40 % up read the same pegged
+1.200. Measured consequence: the 30 % break peaked **1.149 against a 1.15 setpoint** — one
+thousandth deciding whether an OTΔT measurement baseline isolates. Span widened to 2.0; nothing else
+moves (noise is 0 so no PRNG draw shifts, and the only other consumer clips its own output).
+
+**3. The seal-in was defeated by its own success.** This protection EXTINGUISHES ITS OWN SIGNAL —
+shutting the valve stops the flow that shut it — so the live-signal seal-in released in the instant
+it engaged. Measured on the first cut: isolation at 31.2 s, operator reopen at +1 s **ACCEPTED**, and
+because the plant had already tripped the re-opened break sat at 0.734 flow, under the setpoint, so
+it never re-isolated. The protection was defeatable the moment it worked. Fixed with a `latched`
+seal-in blocking on the actuation's fired latch, released by `reset_below` on **steam pressure
+recovering past 7.0 MPa** — a physical condition (the generator is demonstrably isolated and intact),
+not a magic reset. Re-measured: reopen at +1 s **blocked SEAL_IN, valve stayed shut**; at +40 s, with
+the SG back at 9.08 MPa, permitted.
+
+**Spurious-actuation sweep (standing question 3), every evolution measured:** steady power, 50 % and
+full load rejection, turbine trip, MSIV closure, loss of condenser, loss of feedwater, a full
+operator cooldown to the dump floor and an SGTR all peak at **1.02** indicated flow against 1.25 —
+and the 15 %/30 % breaks OTΔT's runback baselines are measured on peak 1.077/1.149, so they still
+ride out. That is what keeps them runback cases rather than isolation cases.
+
+**Two gates and one scenario moved, each for a stated reason:**
+- **`run_m7` had the same string-only condition assumption `run_hardrules` did** — a second scanner
+  I had not touched, which stringified the object condition to `[object Object]` and reported a live
+  protection row as unresolvable. Taught it the object and array forms.
+- **`run_m7`'s lag and stuck-instrument checks drove truth with a DOWNSTREAM break**, which the plant
+  now isolates in a second, so Tavg *rose* (trueDrop −6.14) where the check needs it falling. Moved
+  to the upstream variant — no isolation can touch it — and the window to 60 s, because the
+  pressure-scaled break is self-limiting instead of slamming the secondary to the floor in four
+  seconds. Same claim, a stimulus that still produces it (HR9).
+- **`pwr_slb`'s decision beat became unreachable.** Its arc is "power is climbing and nothing has
+  tripped — do you scram or wait?", and at full area the plant now isolates, trips the turbine, and
+  scrams via P-9 within seconds: the automatics had already answered. That trip is **prototypical** —
+  a real plant trips promptly on a large steam line break — so the physics stands and the content
+  moved: severity 1.0 → 0.30, which stays under the isolation setpoint, still overcools to 214 °C,
+  and still walks power up through the negative MTC. The lesson survives on a casualty the plant
+  does not short-circuit.
+
+Probes: **TR-12b restructured** to sample the isolation instant event-driven with **no operator
+command at all** (the old form closed the valve by hand at t+60 and, with the plant now isolating
+itself, sampled an already-recovered SG — 9.07 → 9.01, nothing left to rise). It reads +1.5 s,
+5.94 → 9.01 MPa downstream, and the upstream leg fires identically and still blows to 0.76.
+**PI-9 split in two** rather than reddened: the #199 evidence — deep blowdown, no SI anywhere,
+primary above 12.4, inventory intact — moves verbatim to the UPSTREAM break where it still bites,
+and the downstream leg asserts the new truth. **TR-12c added** for the coincidence itself: fires on
+the break, stays out of a full cooldown and a bottled SG at 9.30 MPa, and is operator-proof.
+
+Baselines: `run_behavior` 55 → **56**, `run_hardrules` 178 → **179**, `run_reachability` 68 → **69**.
+Manuals **Rev 13** (`12 §8.5` rewritten, `09` MSLI row, new `12 §12.17`/`§12.19`); §8.28 RETIRED,
+§8.31/§8.32/§8.33 declared.
+
 ## Session log — 2026-08-05-develop-a (#296 slice-2 fixes: batches 0 and 1 — #362, #365, #366, #368)
 
 **Task:** start working the #296 fix plan (the slice-2 audit findings, #361–#368). Batch 0

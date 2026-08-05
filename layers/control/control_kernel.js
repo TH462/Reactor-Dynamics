@@ -733,13 +733,34 @@
     var acts = this.config.actuations || [], ins = this.lastInstruments || {};
     for (var i = 0; i < acts.length; i++) {
       var act = acts[i];
-      if (!act.seal_in || act.action !== cmd.action) continue;
+      // A seal-in normally guards ONE action against a disagreeing param
+      // (`isolate_feedwater {active:false}` undoing `{active:true}`). Some
+      // protections are a PAIR OF ACTIONS instead — `close_msiv` / `open_msiv` —
+      // and for those the undo is a different verb, which this loop used to skip
+      // outright. `undoes` names the opposite verbs, the same way an interlock's
+      // `blocks` names the actions it refuses (#370c). The plant supplies the
+      // words; the kernel still names no action of its own (HR3).
+      var _undoes = act.seal_in && act.seal_in.undoes;
+      var _isUndo = act.action !== cmd.action && _undoes && _undoes.indexOf(cmd.action) !== -1;
+      if (!act.seal_in || (act.action !== cmd.action && !_isUndo)) continue;
       // A disarmed ESF system neither fires nor seals in — same rule as _evalActuations,
       // or a system the operator has deliberately taken to manual would lock its own
       // control out.
       if (act.arm && this.esfAuto[act.arm] === false) continue;
-      var gateOk = !act.condition || this._evaluateCondition(act.condition, ins);
-      if (!gateOk || !crossed(ins[act.instrument], act.direction, act.setpoint)) continue;
+      // A `latched` seal-in blocks on the actuation's own FIRED LATCH instead of the
+      // live signal (#370c). Some protections EXTINGUISH THE SIGNAL THAT ACTUATED
+      // THEM — closing the MSIV stops the steam flow that closed it — so a live-signal
+      // seal-in releases in the same instant it engages and guards nothing. The latch
+      // is cleared the ordinary way, by `reset_below` on the actuating instrument, so
+      // the release stays a physical condition rather than a special case.
+      if (act.seal_in && act.seal_in.latched) {
+        if (!this.actuationFired[i]) continue;
+      } else {
+        var gateOk = !act.condition || this._evaluateCondition(act.condition, ins);
+        if (!gateOk || !crossed(ins[act.instrument], act.direction, act.setpoint)) continue;
+      }
+      // A named opposite verb IS the disagreement — there is no param to compare.
+      if (_isUndo) return act.seal_in;
       var p = act.params || {}, disagrees = false;
       for (var k in p) if (cmd[k] !== undefined && cmd[k] !== p[k]) disagrees = true;
       if (disagrees) return act.seal_in;

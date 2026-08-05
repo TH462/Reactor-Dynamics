@@ -30,6 +30,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The steam lines now isolate themselves on a break** (#370). High steam flow together with low
+  steam pressure shuts the main steam isolation valve with no operator action — about one second
+  on a full-area break, after which the generator bottles up and recovers instead of blowing down.
+  Before this the valve was yours alone and an unattended break ran to completion. It takes *both*
+  signals, so a cooldown does not trip it and neither does a bottled generator lifting its
+  safeties, and you cannot reopen the valve while the isolation is sealed in — only once the
+  generator has re-pressurized. Two parts of the real function are declared rather than built: no
+  containment-pressure path (this plant has no containment), and a fixed steam-flow setpoint where
+  a real one slides with load, so below about half power the valve is still your lever.
+
+### Fixed
+- **A steam line break now removes steam.** It used to be a pure pressure effect that drained no
+  water and showed on no flow gauge — so the generator level never moved and the very instrument a
+  real plant isolates on read *lower* during a break. Break trajectories are unchanged where they
+  were calibrated; what changed is that the break is now visible as flow and inventory, and the
+  blowdown tail self-limits as the pressure driving it falls.
+
 ## [Alpha 1.1.0] — 2026-08-05
 
 ### Fixed — a stopped reactor coolant pump was still heating the coolant (#367)

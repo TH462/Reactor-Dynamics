@@ -1623,7 +1623,18 @@
       // run_campaign pwr_rod_auto's override, run_m5's second alarm). Physically it is
       // also the right call: this transmitter measures the same steam as `steam_flow`,
       // so giving it an independent jitter would double-count the same noise source.
-      sg_steam_flow:           { lag: 1.0, noise: 0, range: [0, 1.2] },
+      // SPAN WIDENED 1.2 → 2.0 (2026-08-05, #370c). This is the transmitter the
+      // automatic steam line isolation reads, and at 1.2 it SATURATED during exactly
+      // the casualty it discriminates: true total draw on a full-area break is ~1.75
+      // rated (turbine 1.0 + break 0.75), so every break from ~40 % upward read the
+      // same pegged 1.200 and the gauge could not tell a nuisance from a rupture.
+      // Measured consequence at the old span: the 30 % break peaked 1.149 against a
+      // 1.15 setpoint — one thousandth of margin, i.e. a coin toss deciding whether
+      // an OTΔT measurement baseline isolates. Widening costs nothing elsewhere: the
+      // reading only differs where it used to peg, noise is 0 so no PRNG draw moves,
+      // and the sole other consumer (the three-element feed channel) clips its own
+      // output at 120 % regardless.
+      sg_steam_flow:           { lag: 1.0, noise: 0, range: [0, 2.0] },
       // Circulating-water inlet temperature, °C. Slow (a river/tower inlet does not move
       // fast) and noise:0 per the rule above — appended last, so the RNG sequence is
       // byte-identical to before this instrument existed.

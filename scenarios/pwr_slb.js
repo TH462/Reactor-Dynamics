@@ -60,7 +60,22 @@
         // shut it mid-scenario would terminate the casualty and strand the story.
         // The physics is also the honest one for a single-generator plant: there
         // is no intact SG to fall back on, so an upstream break has no isolation.
-        commands: [{ action: 'inject_failure', failure_id: 'steam_line_break_upstream', severity: 1.0 }],
+        //
+        // SEVERITY 1.0 → 0.30 (2026-08-05, #370c), and the reason is a PLANT change
+        // rather than a tuning preference. Automatic steam line isolation now fires
+        // on any break large enough to reach its flow setpoint — including an
+        // upstream one, because the plant cannot tell where the break is — and
+        // closing the MSIV trips the turbine, which above P-9 scrams the reactor.
+        // At full area the plant therefore trips within seconds, and this beat's
+        // decision ("power is climbing and nothing has tripped — do you scram, or
+        // wait for the automatics?") became unreachable: the automatics had already
+        // answered. That is PROTOTYPICAL — a real plant trips promptly on a large
+        // steam line break — so the physics stands and the CONTENT moved (HR9).
+        // A 30 % break stays under the isolation setpoint, still overcools hard
+        // (Tavg to 214 °C measured), and still walks power up through the negative
+        // MTC, so the authored lesson survives intact on a casualty the plant does
+        // not short-circuit.
+        commands: [{ action: 'inject_failure', failure_id: 'steam_line_break_upstream', severity: 0.30 }],
         advance: 'wait_for_trigger' },
 
       { id: 'reactivity_event',
