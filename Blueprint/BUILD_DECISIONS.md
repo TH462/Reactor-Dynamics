@@ -66,10 +66,34 @@ session — "CLAUDE.md is in my context, therefore the harness loaded it" — wh
 check is phrased as a question about what the harness did, not about what the agent can see, and I
 wrote that sentence into the charter this same session without applying it.
 
-**The wrapper and preflight still stand**, on a narrower and better-evidenced basis: the flag route
-is genuinely unused and unreliable; `develop` has no local file, so a slice launched there is primed
-unless the flag is used; and preflight's worktree, schema and SUBJECTS checks are unaffected by any
-of the above. What changes is the *claim*, not the tooling.
+**DECISION: FILES, NOT SKILLS** *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not
+the skills.")* — #383 option 1, and the session's third design for the same problem.
+
+The mechanism is the per-tree `.claude/settings.local.json`: `workbench` and `backshop` are
+**audit lanes** where the exclusion layers by default, so a fresh session or a `/clear` there is
+already unprimed. `develop` keeps the flag route. The three skills and both wrappers are **deleted**;
+the procedure lives in `AUDIT_CHARTER.md` §11 (before/after, explicitly not for the audit session).
+
+Two reasons beyond the owner's preference, both load-bearing: a skill's `description` is injected
+into **every** session's prompt including an auditor's, so the skills were a priming surface bought
+for nothing; and two documents describing one process drift, which is exactly how #297's *"launched
+bare"* got read three different ways in a single day.
+
+**`tools/audit_preflight.js` survives with a real correction**: it defaulted to checking
+`settings.audit.json` — *the file an audit lane never loads*. It now resolves whichever file is in
+force and reports how the current tree launches. Validating the file named after the job instead of
+the one in force is the same class of error the script exists to catch.
+
+**The hook leak (#383 item 1) is closed and A/B-proven.** `tools/hook_lane_status.js` reads
+`.claude/settings*.json`, and in an audit lane prints `#361 [status-wip-develop] (title withheld —
+audit lane)`. Proven on the real code path with a fixture row and the settings file temporarily
+renamed: withheld in the audit lane, `PWR: a large-break LOCA walks inventory to the 120 % mass_ma`
+in the normal one. Unreadable settings report **`unknown`, never `off`** — this hook's own header
+already carried that rule. A `--settings` flag remains invisible to it, and it says so: a process
+argument is not state on disk.
+
+**The hazard is now recorded in TRACKED files** — `CLAUDE.md`'s lane table and the charter header.
+Its only prior record was a comment inside a gitignored file, in the one tree already reverted.
 
 **Decision: make the launch refuse, rather than document harder.** `tools/audit.cmd` /
 `tools/audit.sh` are now the one launch path and run `tools/audit_preflight.js` first, which exits

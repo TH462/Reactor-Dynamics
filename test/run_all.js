@@ -640,7 +640,16 @@ var BASELINES = {
   // 177 → 178 (2026-08-05, #370): the §8.28 deferral row carries a new dated owner
   // quote and the HR11 citation-format scan counts every one it tracks — by design,
   // so a directive added with the count unmoved would read as NOT LOOKED AT.
-  'run_hardrules.js':      { code: 0, score: '178checks 0failed' },
+  // 178 → 183 (2026-08-05, #382/#383): five new citation sites, all the same two rulings
+  // written where they bind — the audit-lane ruling in CLAUDE.md's lane table, the
+  // AUDIT_CHARTER.md header and its §11, plus the TUNING_LOG and BUILD_DECISIONS entries.
+  // 0 failed throughout, i.e. every one is well-formed; the count moved, the compliance did not.
+  // **A STANDALONE `node test/run_hardrules.js` CANNOT CATCH THIS** and that is how it nearly
+  // shipped: the runner exits 0 on "0 failed" and says nothing about the count, so it printed
+  // OK while sitting five checks above baseline. Only run_all compares the tally, because the
+  // drift here is symmetric — MORE checks is drift too. Run the aggregate before you believe a
+  // doc-only change moved nothing.
+  'run_hardrules.js':      { code: 0, score: '183checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

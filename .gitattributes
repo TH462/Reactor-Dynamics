@@ -1,14 +1,15 @@
-# Line endings — SCOPED DELIBERATELY, added 2026-08-05 with tools/audit.sh (#382).
+# Line endings — SCOPED DELIBERATELY, added 2026-08-05 (#382).
 #
-# This machine has core.autocrlf=true globally, so without these two lines git hands
-# tools/audit.sh CRLF on checkout and `sh tools/audit.sh` dies on the \r ("$'\r': command
-# not found"). audit.sh is the repo's first .sh file, which is why nothing needed this before.
+# This machine has core.autocrlf=true globally. cmd.exe reads batch files in the OEM code page and
+# mis-parses LF-only files — it re-reads and loops. Measured while writing a wrapper that has since
+# been removed: 2.5 MB of "'his' is not recognized" before it was killed. tools/make_portable.cmd
+# has carried the ASCII half of that warning in its own header for months; this is the LF half, and
+# it is here so the next .cmd added to the repo does not have to re-learn it.
 #
-# KEEP THE PATTERNS NARROW. A broad `* text=auto` here would renormalize every tracked file on
-# the next checkout — a whole-repo line-ending diff, across three worktrees that merge into each
-# other. The cost of that lands on a merge, where it is hardest to read.
+# KEEP THE PATTERNS NARROW. A broad `* text=auto` would renormalize every tracked file on the next
+# checkout — a whole-repo line-ending diff across three worktrees that merge into each other. The
+# cost of that lands on a merge, where it is hardest to read.
 
-tools/*.sh   text eol=lf
-# cmd.exe reads batch files in the OEM code page and mis-parses LF-only files — it re-reads and
-# loops. Measured on the first draft of audit.cmd: 2.5 MB of "'his' is not recognized".
 tools/*.cmd  text eol=crlf
+# For any shell script added later: sh chokes on the \r, and autocrlf would supply one.
+tools/*.sh   text eol=lf

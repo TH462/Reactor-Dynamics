@@ -2,11 +2,15 @@
  * tools/audit_preflight.js — refuse to launch a #221 audit slice that is not actually independent.
  *
  * WHY THIS EXISTS (#382). #221 RoE 1 says: do not hand the auditor prior conclusions. That rule is
- * implemented by `.claude/settings.audit.json` (CLAUDE.md excluded from every tree, auto-memory
- * off) plus `Blueprint/AUDIT_CHARTER.md`. The mechanism was added 2026-08-04 and, measured against
- * the record, HAS NEVER ONCE BEEN EXERCISED: slice 1 predates it, and #297 records slices 2 and 3
- * as launched bare. The launch was a flag written in an issue body and two sessions running did
- * not use it.
+ * implemented by excluding CLAUDE.md and the auto-memory index from the session, plus
+ * `Blueprint/AUDIT_CHARTER.md` in their place.
+ *
+ * The exclusion itself WORKS and has been verified twice by the charter's first-turn check (#296
+ * caught a primed session and aborted before any finding; its clean re-run reported PASSED). What
+ * has never been reliable is ARMING it: the `--settings` flag lived in an issue body, and the runs
+ * that came out clean got there through `.claude/settings.local.json` layering instead. An earlier
+ * version of this header claimed the mechanism had "never once been exercised" — that was wrong,
+ * corrected 2026-08-05; see Diagnostic/TUNING_LOG.md 2026-08-05-backshop-a.
  *
  * THE FAILURE MODE THIS GUARDS. `settings.audit.json` names it in its own comments: a pattern that
  * silently fails to match "would look exactly like a clean audit". Every other way this breaks has
@@ -20,11 +24,15 @@
  * WHAT IT CANNOT DO. It is a static check running OUTSIDE the session it is protecting, so it can
  * only prove the configuration is right — never that the running session honoured it. That half is
  * the auditor's first-turn self-check, on the record in the slice issue before any finding
- * (AUDIT_CHARTER.md, and the `audit-slice` skill). Both halves are needed; neither substitutes.
+ * (AUDIT_CHARTER.md header + §11). Both halves are needed; neither substitutes for the other.
  *
- *   node tools/audit_preflight.js 344              # check, then print the launch line
- *   node tools/audit_preflight.js 344 --print      # same; --print is the default for this script,
- *                                                  #   the wrapper is what actually launches
+ * HOW A SLICE IS ACTUALLY LAUNCHED (ruled 2026-08-05, #383). `RD_workbench` and `RD_backshop` are
+ * AUDIT LANES: each carries `.claude/settings.local.json` with the exclusions, which layers BY
+ * DEFAULT and needs no flag, so a plain session started in either tree is already unprimed. In
+ * `develop`, which has no such file, use `claude --settings .claude/settings.audit.json`. This
+ * script checks either configuration; it never launches anything.
+ *
+ *   node tools/audit_preflight.js 344              # check, and print how this tree launches
  *   node tools/audit_preflight.js --settings=<p>   # check a copy instead (injection-testing)
  *   node tools/audit_preflight.js --no-gh          # skip the slice-issue checks (offline)
  */
@@ -34,7 +42,22 @@ var path = require('path');
 var cp = require('child_process');
 
 var REPO_ROOT = path.resolve(__dirname, '..');
-var DEFAULT_SETTINGS = path.join(REPO_ROOT, '.claude', 'settings.audit.json');
+var AUDIT_SETTINGS = path.join(REPO_ROOT, '.claude', 'settings.audit.json');
+var LOCAL_SETTINGS = path.join(REPO_ROOT, '.claude', 'settings.local.json');
+
+// CHECK THE FILE THAT IS ACTUALLY IN FORCE, not the one named after the job. In an audit lane the
+// operative file is settings.local.json — it layers by default, which is the whole point — and
+// checking settings.audit.json there would validate a file the session never loads. That is the
+// same class of error as the one this script exists to catch.
+function defaultSettings() {
+  try {
+    var c = JSON.parse(fs.readFileSync(LOCAL_SETTINGS, 'utf8'));
+    if ((c.claudeMdExcludes || []).length) return { path: LOCAL_SETTINGS, lane: true };
+  } catch (e) { /* absent or unreadable — fall through to the flag route */ }
+  return { path: AUDIT_SETTINGS, lane: false };
+}
+var DEFAULT = defaultSettings();
+var DEFAULT_SETTINGS = DEFAULT.path;
 var CHARTER = path.join(REPO_ROOT, 'Blueprint', 'AUDIT_CHARTER.md');
 var REPO = 'TH462/Reactor-Dynamics';
 // gh is installed per-user; a shell that predates the PATH edit will not have it (CLAUDE.md).
@@ -73,7 +96,7 @@ process.argv.slice(2).forEach(function (a) {
     console.log('usage: node tools/audit_preflight.js [<slice-issue>] [--settings=<path>] [--no-gh]');
     console.log('');
     console.log('  Checks that a #221 audit slice would actually be independent, and exits 2');
-    console.log('  naming the cause if not. Launch a slice with: tools\\audit.cmd <slice>');
+    console.log('  naming the cause if not. How this tree launches is printed on success.');
     process.exit(0);
   }
   else if (a === '--print') { /* accepted, no-op — this script never launches */ }
@@ -255,12 +278,22 @@ if (failures.length) {
 }
 
 var rel = path.relative(REPO_ROOT, settingsPath).replace(/\\/g, '/');
+var lane = settingsPath === LOCAL_SETTINGS;
 console.log('audit preflight OK — settings ' + rel + ', ' + excludes.length + ' exclude entries, ' +
             'auto-memory off' + (slice ? ', slice #' + slice + ' open with SUBJECTS TO TEST' : ''));
 console.log('');
-console.log('  launch:  claude --settings ' + rel);
+if (lane) {
+  console.log('  THIS IS AN AUDIT LANE (#383). settings.local.json layers by default, so a plain');
+  console.log('  session started in this tree is already unprimed — no flag, and a /clear is');
+  console.log('  enough to begin a slice. Ordinary non-audit work here also runs without CLAUDE.md;');
+  console.log('  that is the accepted cost of the ruling, not an accident.');
+} else {
+  console.log('  launch:  claude --settings ' + rel);
+  console.log('  (no settings.local.json here, so the flag is what arms the exclusion)');
+}
 console.log('');
 console.log('  This proves the CONFIGURATION is right. It cannot prove the SESSION honoured it —');
 console.log('  the auditor\'s first turn must state, in the slice issue, whether CLAUDE.md was');
 console.log('  auto-loaded into its context and whether it sees a memory index. #221 caveat (a).');
+console.log('  The SessionStart hook now reports the lane\'s mode in the opening context too.');
 process.exit(0);

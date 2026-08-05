@@ -155,6 +155,41 @@ and re-scope"*) — including whether each slice was actually independent, read 
 self-check comment. A slice with no self-check counts as primed, because inferring it was fine from
 a thorough-looking slice is the exact inference the mechanism replaces.
 
+**RULED, and the session's third design: FILES, NOT SKILLS** *(OWNER RULING, 2026-08-05, #383:
+"Let's do it with the files not the skills.")*. #383 option 1. The mechanism is the per-tree
+`.claude/settings.local.json`; the procedure moved into `AUDIT_CHARTER.md` §11; the three skills and
+both wrappers are **deleted**. Rationale beyond the owner's preference: a skill's `description` is
+injected into every session's prompt **including an auditor's**, so the skills were a priming
+surface for no gain — and two documents describing one process drift apart, which is how the
+"launched bare" wording got read three different ways in one day.
+
+- **`tools/audit_preflight.js` survives, corrected.** It was checking `settings.audit.json` by
+  default — *the file an audit lane never loads*. It now resolves the file actually in force
+  (`settings.local.json` when it carries excludes) and prints how **this tree** launches. Checking
+  the file named after the job rather than the one in force is the same class of error the script
+  exists to catch.
+- **The hook leak is closed and A/B-proven** (#383 item 1). `tools/hook_lane_status.js` detects
+  whether the exclusion is in force from `.claude/settings*.json` and, in an audit lane, prints
+  `#361 [status-wip-develop] (title withheld — audit lane)` instead of the title. Same code, same
+  fixture row, settings file temporarily renamed: audit lane withholds, normal lane prints
+  `PWR: a large-break LOCA walks inventory to the 120 % mass_ma`. **It reports `unknown`, never
+  `off`, when the settings files are unreadable** — "could not check" is not "clear", the rule this
+  hook's own header already carried. It **cannot** see a `--settings` flag: that is a process
+  argument, not state on disk, so the flag route stays invisible to it and says so.
+- **The hazard is now in TRACKED files** — `CLAUDE.md`'s lane table and the charter header both
+  state that workbench and backshop do not auto-load `CLAUDE.md` and that ordinary work there runs
+  without it. Previously the only record was a comment *inside* a gitignored file, sitting in the
+  one tree that had already been reverted.
+
+**Baseline moved: `run_hardrules` 178 → 183 checks, 0 failed** — five new HR11 citation sites, all
+the same two rulings written where they bind (CLAUDE.md's lane table, the charter header, charter
+§11, and the two session entries). Compliance did not move; the count did, which is the design.
+**A STANDALONE `node test/run_hardrules.js` CANNOT CATCH THIS, and it nearly shipped that way**: the
+runner exits 0 on *0 failed* and says nothing about the tally, so it printed **OK** while sitting
+five checks above baseline, and I read that as "the doc edits moved nothing". Only `run_all`
+compares counts, because drift here is **symmetric — more checks is drift too**. Run the aggregate
+before believing a doc-only change is inert; the fast per-runner check answers a different question.
+
 **Not done here, by construction:** slice 9 itself. Backshop's second wave (#378 → #377 → #379)
 stays queued; #378's anchors were re-verified against `7a40b9a` in passing — bodies unchanged since
 `7861dbb`, `pwr_control.js` +21 lines, `pwr_engine.js` command cases +23.

@@ -36,15 +36,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   conclusions it is auditing — is launched by a flag written in an issue body, and that flag has
   never once been the thing that made a slice independent: the runs that were clean got there via a
   per-tree settings file that layers by default. A slice now starts one way,
-  `tools\audit.cmd <slice>`, which runs a preflight that exits 2
-  and names the cause if the session would not actually be independent — auto-memory left on, a
-  worktree whose `CLAUDE.md` is not in the exclude list, a settings key renamed by a CLI upgrade,
-  or a slice issue missing its subjects-under-test list. Every one of those failures otherwise
-  produces an audit that reads as independent, which is why it refuses rather than warns. The
-  procedure is saved as three skills — `audit-prep` before, `audit-slice` for the run, `audit-close`
-  after — and the auditor must now state on the record whether the exclusion actually took, because
-  a check running outside the session can only prove the configuration. `audit-close` also keeps the
-  programme's convergence table, which #221 has asked for since it was written and nothing tracked.
+  two named audit lanes plus a preflight that refuses. The two overflow worktrees now carry the
+  exclusion by default, so a session started in either is unprimed without anyone remembering a
+  flag; `node tools/audit_preflight.js <slice>` exits 2 and names the cause if the configuration
+  would not actually be independent — auto-memory left on, a worktree whose `CLAUDE.md` is not in
+  the exclude list, a settings key renamed by a CLI upgrade, or a slice issue missing its
+  subjects-under-test list. Every one of those failures otherwise produces an audit that reads as
+  independent, which is why it refuses rather than warns. The session-start hook was itself printing
+  plant defects by name into contexts the exclusion had just cleaned; it now reports which mode the
+  lane is in and withholds issue titles in an audit lane. The procedure moved into
+  `Blueprint/AUDIT_CHARTER.md`, and the auditor must state on the record whether the exclusion
+  actually took, because a check running outside the session can only prove the configuration.
   Developer-facing only; nothing in the sim changes.
 
 ## [Alpha 1.1.0] — 2026-08-05
