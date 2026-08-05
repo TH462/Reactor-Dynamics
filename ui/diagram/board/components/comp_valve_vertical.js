@@ -151,8 +151,11 @@
       var wet = filled && st.flow;       // actually flowing (drives the streak + downstream pipe)
       st.fl = fl; st.wet = wet;
 
-      fluidStopA.setAttribute('stop-color', fl.flow);
-      fluidStopB.setAttribute('stop-color', fl.bore);
+      // Valve-body fluid gradient — a BODY, so it takes bore at the bright end since the
+      // #350 item 20 inversion. The bore/flow pair above is a K.pipe stroke stack and is
+      // correct as written (case, bore, flow).
+      fluidStopA.setAttribute('stop-color', fl.bore);
+      fluidStopB.setAttribute('stop-color', fl.flow);
 
       // ball pose: bore along the pipe when open, across it when closed (0.4s transition)
       ballRotG.style.transform = 'rotate(' + (open ? OPEN_ANG : OPEN_ANG + 90) + 'deg)';

@@ -208,9 +208,41 @@
       return REG[REG.length - 1];
     }
 
+    // ---- the CURRENT reading's region, with hysteresis (#350 item 16) ----------------
+    // A reading parked ON a band edge crosses it on instrument noise alone, and the tile
+    // repaints the value colour, the accent bar, the area fill and the trace dot from that
+    // region every render — so the whole strip strobes. MEASURED, board driven headless:
+    // reactor power at STEADY hot full power changed region **49 times in 40 sim-seconds**
+    // (~1.2 Hz) with nothing wrong with the plant, because 100.0 % sits on a boundary and the
+    // NIS channel's own sigma is 0.21 %. This is #306's alarm chatter one layer up, and the
+    // remedy is the one a real indicator has: the reading must get CLEAR of the edge before
+    // the tile agrees that it crossed.
+    //
+    // Hysteresis is 1 % of the displayed span, applied only to the edge being crossed — so a
+    // genuine excursion still repaints the instant it is unambiguous, and only dither is held.
+    // It is NOT applied to the trace segmentation below: those are historical samples, each
+    // one a fact about where the reading was, and a stateful classifier would rewrite history
+    // differently depending on which order the points happened to arrive in.
+    var heldRegion = null;
+    function currentRegion(REG, v) {
+      var r = regionAt(REG, v);
+      if (heldRegion) {
+        var hy = 0.01 * ((st.max - st.min) || 1);
+        // Still inside the held region once its edges are relaxed outward by hy? Stay.
+        var lo = isFinite(heldRegion.lo) ? heldRegion.lo - hy : -Infinity;
+        var hi = isFinite(heldRegion.hi) ? heldRegion.hi + hy : Infinity;
+        if (v >= lo && v < hi) return heldRegion;
+      }
+      heldRegion = r;
+      return r;
+    }
+
     // Gauge bands span the full authored scale, so they only change if min/max or
     // the region bounds change — rebuilt from setBands(), not every frame.
     function rebuildGaugeBands() {
+      // The held region (see currentRegion) is an object off the OLD band table; once the
+      // bands move it describes bounds the tile no longer has, so drop it and re-classify.
+      heldRegion = null;
       var REG = regions(), span = (st.max - st.min) || 1, used = 0;
       REG.forEach(function (r) {
         var a = Math.max(st.min, isFinite(r.lo) ? r.lo : st.min);
@@ -269,7 +301,8 @@
       function ys(v) { return PAD + (1 - (v - lo) / (hi - lo)) * (H - 2 * PAD); }
       function colorAt(v) { return REGION_COLORS[regionAt(REG, v).key]; }
 
-      var curColor = colorAt(cur);
+      // currentRegion, not regionAt — this is the live reading and it carries the hysteresis.
+      var curColor = REGION_COLORS[currentRegion(REG, cur).key];
       valEl.style.color = curColor;
       valEl.textContent = cur.toFixed(st.decimals);
       unitEl.textContent = st.unit;
@@ -402,7 +435,7 @@
 
     // Discard history — used when the sim rewinds or reloads, so the trace does not
     // splice a pre-rewind tail onto a post-rewind plant.
-    function reset() { hist.length = 0; lastT = null; seeded = false; valEl.textContent = '—'; }
+    function reset() { hist.length = 0; lastT = null; seeded = false; heldRegion = null; valEl.textContent = '—'; }
 
     rebuildGaugeBands();
     if (cfg.value != null && isFinite(+cfg.value)) update({ value: +cfg.value });

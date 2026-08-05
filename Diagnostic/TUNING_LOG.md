@@ -29,6 +29,157 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-develop-m (#350 — 27 board and shell items, and three of them were plant defects)
+
+**Task:** *(OWNER, 2026-08-04, GitHub #350 "Diagram adjustments and issues")* — a 27-item list
+of board and shell corrections. All 27 are addressed; four runners are red on this tree and
+**none of them is mine** (see *Gate state* below).
+
+### What it turned out to be
+
+Three of the 27 were not cosmetic:
+
+**Items 7, 13, 15 — every pump on the board spun on its RUN COMMAND, not on delivered flow.**
+MEASURED full stack, `hot_full_power` with a station blackout injected at 120 s
+(`test/measure_stack.js`): `condensate_pump_running` reads TRUE for the whole event — correctly,
+nobody stopped it — while `condensate_flow` is 0; `charging_pump_running` the same; and the feed
+pump's commanded `feed_pump_speed_pct` winds **100 → 120 %** as the three-element level channel
+chases a level it can no longer reach, against `fw_flow` of 1.5e-52. So the board drew three
+spinning pumps on a dead bus, and the feed pump spinning FASTER than it does at power. The run
+lights and handswitches stay the operator's demand — that split is the house idiom (#329/#332) —
+but an impeller is a picture of a rotor, and a de-energized rotor does not turn. Reading delivered
+flow fixes item 7's other half at the same time: the impeller now tracks feed rate during normal
+load-follow, which it never did, because the commanded speed sits at 100 whatever the plant does.
+
+**Item 18 — the primary loop froze solid with the pumps stopped.** Every pipe was gated on
+`portActive`, i.e. on the components at its ends, and the RCP art correctly pulls its ports down
+when the pump stops. But `rcs_flow` — a real elbow-tap instrument this board never read — measures
+**4.47 %** two minutes into that same blackout (#325's natural circulation). The board was
+therefore contradicting its own instrument. The fix reads the instrument rather than
+`true_state.natural_circulation`, which #325 deliberately declined to put on the board.
+
+**Item 16 — the vital gauge strip strobed at STEADY POWER, not during failures.** The owner
+reported it "during some failures especially during large LOCA". MEASURED, board mounted headless
+and driven through `SimulationService`, counting rendered value-colour changes: reactor power
+flipped region **49 times in 40 sim-seconds** (~1.2 Hz) at hot full power with nothing wrong,
+because 100.0 % sits on a band boundary and the NIS channel's own sigma is 0.21 %. During the LOCA
+it flips **once**. This is #306's alarm chatter one layer up. A/B, same probe, same counting
+method: **49 → 0** at steady power, and the LOCA/transient crossings are **unchanged** at
+1/4/6/1/5/0 both ways — hysteresis kills dither, not real excursions.
+
+### The design decision worth keeping: item 10
+
+*"All dashed lines rate of movement needs to scale with the flow rate."* #231 already tried this
+and had to revert it: folding a component's own 0–100 rate into its dash velocity made every
+fitting run at a different speed from the pipe it joins, and the dashes stepped at the joint. The
+comment in `std_pipe.js` still says so.
+
+The fix is not to give up on live speed, it is to make the number a property of the **SYSTEM**
+rather than of the element. `lineFrac()` in `pwr_board_wiring.js` computes one fraction-of-rated
+per train — primary, surge, spray, relief, steam, turbine, dump, feed, afw, sgfeed, cond, cw,
+charging, letdown, eccs, chgsuct, accum — and the pipes, tees, crosses and pumps on that train all
+read it. Two elements that meet are on the same train by construction, so they cannot disagree.
+
+**Every entry is ONE LINE's own flow, and that is what lets the run-state be authoritative rather
+than merely ANDed with the port gate.** The first cut lumped the steam dump in with main steam,
+which would have drawn a shut dump valve passing full flow at power — the #236 class this board
+keeps re-learning, caught by `board_check`'s existing pins before it shipped. Splitting `turbine`
+and `dump` out of `steam` is what made the authoritative form safe, and the authoritative form is
+what item 18 needs: the pump art and the flow instrument genuinely disagree there, and the
+instrument is right.
+
+**A speed change is a DISCONTINUITY and cannot be made otherwise.** CSS computes progress as
+`((now − delay) / duration) mod 1` and `now` grows without bound, so retiming an animation moves
+the dashes by an amount that depends on how long the page has been open. That is why the speed is
+quantised onto a ladder with hysteresis (`FRAC_STEPS`, `BAND_HYST`): a line only re-times when it
+genuinely changes flow band, the hop is at most one dash period, and every element on the system
+hops together. `StdPipe.setFlowSpeed` re-derives the delay from the stashed world phase
+(`data-dash-t`), so the re-timed pipe lands back on the same dash grid as the fitting it meets —
+#233's property survives.
+
+### Items that needed a plant change
+
+**Item 1 — pressurizer spray flow.** The engine computes delivered spray
+(`spray_flow_frac × flow_frac × spray_authority` in `pwr_pressurizer.stepPressure`) and threw it
+away. It is a genuinely different quantity from `spray_valve_pct`, and both ways they diverge are
+physics the operator must see. MEASURED: spray commanded to 100 % with the RCPs running reads
+**100 %** delivered; stop the RCPs and the demand is unchanged at **12.00** while delivered spray
+falls to **4.45**, because the spray line takes its motive head from the loop. Published as
+`true_state.spray_flow_pct` → `instruments.pzr_spray_flow`, scaled to `spray_flow_max` in the
+ENGINE rather than on the board, because a percentage copied into the UI does not move when the
+constant is retuned (#315). `run_contract` **147 → 148**; §6.3 documented in the same change.
+The instrument is appended LAST with `noise: 0` and a `noise_failure` sigma — the appended-
+instrument rule — so the cross-step PRNG sequence is byte-identical. Verified in the source:
+`_noise` returns without drawing when sigma ≤ 0, so no draw is added.
+
+**Item 6 — the PORV relief line ran BLUE WATER at 2235 psi in every state of the plant.**
+Two of its three legs were authored `phase: "water"`. What the PORV is passing is the point of the
+TMI-2 lesson: a PORV on a pressurizer with a steam bubble relieves STEAM, and only passes water
+once the pressurizer goes SOLID. The phase is now live, read off indicated level against the
+going-solid trip setpoint (`tripSp('pzr_level','high')`) rather than a board-local literal.
+
+**Item 5 — REACTIVITY removed, PERIOD moved into its slot.** A true-state teaching overlay that
+says the same thing PERIOD says in the form an operator works in. Removal goes through a new
+`DOC_REMOVE` in the driver (the generated board doc cannot be hand-edited — the next re-export
+would overwrite it), and `run_inspect` now filters the same list: without that it demands
+inspection copy for a tile nobody can point at, which is the mirror image of the gap it exists to
+catch.
+
+### Item 2 — the acronym pass, and the two ways a bulk prose edit goes wrong
+
+*(OWNER, 2026-08-04: "Scanner should spell out every acronym eg. Steam Generator (SG).")*
+Audited first: **122 unexpanded uses across 166 entries**. Scripted per ENTRY, not per file,
+because the block shows one entry at a time so "expanded elsewhere" is no help.
+
+**Both defects the first pass produced are worth knowing.** (1) Expanding blindly gave
+`Reactor Coolant System (Reactor Coolant System (RCS))` wherever the copy already spelled it out —
+fixed by skipping an acronym whose expansion the entry already carries, which is the whole reason
+the pass is per-entry. (2) The article stops agreeing: *"an RCS grab sample"* expands to *"an
+Reactor Coolant System…"*, because the article was written for the ACRONYM's sound. Also
+`TMI-2` had to be a token of its own or it became `Three Mile Island (TMI)-2`.
+
+**UNIT SYMBOLS ARE DELIBERATELY EXEMPT** (psi, gpm, ppm, pcm, MWe, MWt, cps). They are units, not
+acronyms; CLAUDE.md's unit directive says units keep their standard spelling, and *"2235 pounds
+per square inch (psi)"* in every entry buries the number the reader opened the block for. That is
+my reading of the directive, not the owner's words — flagged for review.
+
+Gated, and the gate is injection-verified: reverting one expansion (`CVCS` in `ims2k1rhzh3`) turns
+it red naming that entry. It also caught a real over-run — three expansions in the ECCS MODE brief
+took it to 146 characters against the collapsed-block cap, so the alignments expand in the detail
+instead.
+
+### Gate state — READ THIS BEFORE BLAMING THIS CHANGE
+
+`node test/run_all.js` — **34 of 38 runners at baseline.** Four drift:
+
+| runner | this tree | clean `develop` (stash A/B) |
+|---|---|---|
+| `run_behavior` | 48 pass / 3 FAIL | **48 pass / 3 FAIL** |
+| `run_procedures` | 28/29 139/140 | **28/29 139/140** |
+| `run_procedures_stack` | 27/29 259/261 | **27/29 259/261** |
+| `run_campaign` | 48/51 3006/4 | **48/51 3006/4** |
+
+MEASURED by stashing this change set and re-running — identical to the digit. These are #337's
+four, which CLAUDE.md's own themes bullet lists as "NOT FINISHED — four runners red on the lane";
+they arrived on `develop` with that merge and `BASELINES` was never moved. **Not absorbed into the
+baseline here**, because they are #337's open re-author and a baseline is how that stays visible.
+
+The two baselines this change DOES move are both green: `run_contract` **147 → 148**
+(`spray_flow_pct`) and `run_inspect` **42 → 47** (the physics-row and acronym checks).
+`verify_board_check` **194 → 205** — nine pins for the two new readouts' geometry, the REACTIVITY removal, and the blackout flow states, **injection-verified two ways**: putting the spray readout back where it overlapped reddens the geometry pin naming the collision, and restoring the ANDed port gate reddens the two RCP-run pins while leaving the tee-to-SG one GREEN — which is what makes them discriminate the mechanism rather than the wiring. `verify_e2e_ui` PASS (16), `run_m4` 39/39, `run_e2e_controls` 59/59,
+`run_hardrules` 178, `run_otdt` 46, `run_reachability` 66 — all unmoved.
+
+### Still open on this issue
+
+- **Item 8 is one third unfixed and it is a CONTROL-LAYER question, not a board one.** MEASURED,
+  turbine trip at 120 s: `mfw_isolated` latches by 4m00s, the SG FEED corner reads ISOLATED and
+  `feed_sg` refuses AUTO — all correct. The board half is fixed (`bdMfwRestore` is yellow
+  "needs attention" instead of green "selected", which read as though isolation were the chosen
+  lineup). What is NOT fixed: during a blackout the channel keeps integrating against a plant it
+  cannot move, winding `feed_pump_speed_pct` to its 120 % rail, so the gpm setpoint box shows a
+  demand nothing can deliver. That is integral windup with no plant response and it wants a
+  filed issue, not a board patch.
+
 ## Session log — 2026-08-04-develop-l (#221 — an audit session no longer loads the conclusions it is auditing)
 
 **Task:** *(OWNER, 2026-08-04: "how can we defeat the harness?  waht if i save claude.md to a safe

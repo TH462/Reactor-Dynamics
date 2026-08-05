@@ -186,8 +186,11 @@
       var wet = open && !isEmpty && st.flow;   // flowing (streak + downstream pipe); st.flow gates a "open but not flowing" valve
       st.fl = fl; st.wet = wet;
 
-      fluidStopA.setAttribute('stop-color', fl.flow);
-      fluidStopB.setAttribute('stop-color', fl.bore);
+      // Valve-body fluid gradient — a BODY, so it takes bore at the bright end since the
+      // #350 item 20 inversion. The bore/flow pair above is a K.pipe stroke stack and is
+      // correct as written (case, bore, flow).
+      fluidStopA.setAttribute('stop-color', fl.bore);
+      fluidStopB.setAttribute('stop-color', fl.flow);
 
       // V-port wedge — height proportional to openFrac; greyed when empty
       var ho = (bore / 2 - 0.5) * openFrac;

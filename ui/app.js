@@ -234,7 +234,7 @@
         // 2026-07-24 (owner request); the board itself still shows boron via the
         // chemistry SAMPLE mechanic, not a live boronometer.
         { id: 'boron',    grp: 'Reactor core', label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, tru: function (t) { return t.boron_ppm; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
-        { id: 'fuel_temp',grp: 'Reactor core', label: 'Fuel Temp (Doppler)', c: '#c07850', tru: function (t) { return t.fuel_temp_c; }, range: [200, 1300], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'fuel_temp',grp: 'Reactor core', label: 'Fuel Temp (Doppler)', c: '#c07850', tru: function (t) { return t.fuel_temp_c; }, range: [200, 1300], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'decay',    grp: 'Reactor core', label: 'Decay Heat', c: '#a08850', tru: function (t) { return t.decay_heat_pct; }, range: [0, 8], fmt: function (v) { return v.toFixed(2) + '%'; } },
         // TOTAL core heat, not fission — the two are equal by construction at steady
         // power and diverge completely after a scram (#315). Plotting it against `power`
@@ -242,21 +242,21 @@
         { id: 'core_heat',grp: 'Reactor core', label: 'Total Core Heat', c: '#8a7040', tru: function (t) { return t.core_heat_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
 
         // ---------------------------------------------------------------- core damage
-        { id: 'clad_temp',grp: 'Core damage', label: 'Peak Clad Temp', c: '#d05a3e', tru: function (t) { return t.clad_temp_c; }, range: [200, 1400], dHi: 1200, fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'clad_temp',grp: 'Core damage', label: 'Peak Clad Temp', c: '#d05a3e', tru: function (t) { return t.clad_temp_c; }, range: [200, 1400], dHi: 1200, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'core_void',grp: 'Core damage', label: 'Core Void', c: '#8fb0d0', tru: function (t) { return t.core_void_fraction * 100; }, range: [0, 100], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'uncovered',grp: 'Core damage', label: 'Core Uncovered', c: '#c04a6a', tru: function (t) { return t.core_uncovered_frac * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'zirc',     grp: 'Core damage', label: 'Zr Oxidation Heat', c: '#e07030', tru: function (t) { return t.zirc_heat_pct; }, range: [0, 5], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
 
         // ---------------------------------------------------------------- primary coolant
-        { id: 'tavg',     grp: 'Primary coolant', label: 'Tavg',     c: '#b07830', get: function (i) { return i.tavg; }, tru: function (t) { return t.tavg_c; }, range: [270, 330], dHi: 335, fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
-        { id: 'thot',     grp: 'Primary coolant', label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, tru: function (t) { return t.thot_c; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
-        { id: 'tcold',    grp: 'Primary coolant', label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, tru: function (t) { return t.tcold_c; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + '°'; } },
+        { id: 'tavg',     grp: 'Primary coolant', label: 'Tavg',     c: '#b07830', get: function (i) { return i.tavg; }, tru: function (t) { return t.tavg_c; }, range: [270, 330], dHi: 335, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'thot',     grp: 'Primary coolant', label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, tru: function (t) { return t.thot_c; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'tcold',    grp: 'Primary coolant', label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, tru: function (t) { return t.tcold_c; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         // Loop ΔT. INSTRUMENTED (both legs are), so it keeps a `get` — and #315 is
         // exactly why it is worth plotting: the indicated split put the cold leg above
         // the hot leg in 48.3 % of post-trip samples before that fix.
-        { id: 'loop_dt',  grp: 'Primary coolant', label: 'Loop ΔT',  c: '#9a6ab0', get: function (i) { return i.thot - i.tcold; }, tru: function (t) { return t.thot_c - t.tcold_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'tempdiff').toFixed(1) + '°'; } },
-        { id: 'pressure', grp: 'Primary coolant', label: 'Pressure', c: '#507048', get: function (i) { return i.primary_pressure; }, tru: function (t) { return t.pressure_mpa; }, range: [10, 17], dHi: 16.44, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
-        { id: 'subcool',  grp: 'Primary coolant', label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, tru: function (t) { return t.subcooling_c; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°'; } },
+        { id: 'loop_dt',  grp: 'Primary coolant', label: 'Loop ΔT',  c: '#9a6ab0', get: function (i) { return i.thot - i.tcold; }, tru: function (t) { return t.thot_c - t.tcold_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'tempdiff').toFixed(1) + unit('tempdiff'); } },
+        { id: 'pressure', grp: 'Primary coolant', label: 'Pressure', c: '#507048', get: function (i) { return i.primary_pressure; }, tru: function (t) { return t.pressure_mpa; }, range: [10, 17], dHi: 16.44, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'subcool',  grp: 'Primary coolant', label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, tru: function (t) { return t.subcooling_c; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff'); } },
         { id: 'pzr_level',grp: 'Primary coolant', label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, tru: function (t) { return t.pzr_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         // RCS loop flow (#247). The PWR was the only plant with no flow trend at all —
         // RBMK has Channel Flow and BWR has Recirc Flow — which is what an unbuilt
@@ -267,19 +267,19 @@
         { id: 'leak',     grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', tru: function (t) { return t.leak_flow * 100; }, range: [0, 30], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
         // Heatup / cooldown rate — the number the Mode 5↔1 procedures are written around
         // (the 100 °F/hr technical-specification class limit, and #310's ramped cooldown).
-        { id: 'tavg_rate',grp: 'Primary coolant', label: 'Heatup Rate', c: '#c8a050', tru: function (t) { return t.tavg_rate_c_per_hr; }, range: [-60, 60], fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°/hr'; } },
+        { id: 'tavg_rate',grp: 'Primary coolant', label: 'Heatup Rate', c: '#c8a050', tru: function (t) { return t.tavg_rate_c_per_hr; }, range: [-60, 60], fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff') + '/hr'; } },
 
         // ---------------------------------------------------------------- loop pressure
         // There is ONE pressure instrument and it reads the hot-leg/pressurizer datum, so
         // the whole three-node split is true-state only. It is why the cold leg reaches an
         // ECCS setpoint before the gauge does, and why the pump suction cavitates first.
-        { id: 'p_cold',   grp: 'Loop pressure', label: 'Cold Leg Press', c: '#6aa0c8', tru: function (t) { return t.p_coldleg; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
-        { id: 'p_suct',   grp: 'Loop pressure', label: 'Pump Suction Press', c: '#4a7090', tru: function (t) { return t.p_pumpsuction; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
-        { id: 'suct_sub', grp: 'Loop pressure', label: 'Suction Subcool', c: '#8a9070', tru: function (t) { return t.suction_subcool_c; }, range: [-10, 80], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + '°'; } },
+        { id: 'p_cold',   grp: 'Loop pressure', label: 'Cold Leg Press', c: '#6aa0c8', tru: function (t) { return t.p_coldleg; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'p_suct',   grp: 'Loop pressure', label: 'Pump Suction Press', c: '#4a7090', tru: function (t) { return t.p_pumpsuction; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'suct_sub', grp: 'Loop pressure', label: 'Suction Subcool', c: '#8a9070', tru: function (t) { return t.suction_subcool_c; }, range: [-10, 80], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff'); } },
         { id: 'cavit',    grp: 'Loop pressure', label: 'RCP Cavitation', c: '#d0704a', tru: function (t) { return t.rcp_cavitation_frac * 100; }, range: [0, 100], dHi: 0.01, fmt: function (v) { return v.toFixed(0) + '%'; } },
 
         // ---------------------------------------------------------------- steam & feed
-        { id: 'steam_p',  grp: 'Steam & feed', label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
+        { id: 'steam_p',  grp: 'Steam & feed', label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'sg_level', grp: 'Steam & feed', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, tru: function (t) { return t.sg_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'steam_flow',grp: 'Steam & feed', label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, tru: function (t) { return t.steam_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'fw_flow',  grp: 'Steam & feed', label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, tru: function (t) { return t.fw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
@@ -290,10 +290,10 @@
         { id: 'sg_bal',   grp: 'Steam & feed', label: 'Steam − Feed', c: '#b09050', tru: function (t) { return (t.steam_out_total - t.fw_flow_normalized) * 100; }, range: [-30, 30], fmt: function (v) { return v.toFixed(1) + '%'; } },
 
         // ---------------------------------------------------------------- turbine & output
-        { id: 'mwe',      grp: 'Turbine & output', label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, tru: function (t) { return t.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0); } },
-        { id: 'demand',   grp: 'Turbine & output', label: 'Steam Demand MW', c: '#7a90a8', tru: function (t) { return t.steam_demand_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0); } },
+        { id: 'mwe',      grp: 'Turbine & output', label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, tru: function (t) { return t.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
+        { id: 'demand',   grp: 'Turbine & output', label: 'Steam Demand MW', c: '#7a90a8', tru: function (t) { return t.steam_demand_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
         { id: 'gov',      grp: 'Turbine & output', label: 'Governor Valve', c: '#90a860', get: function (i) { return i.governor_valve; }, tru: function (t) { return t.governor_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'rpm',      grp: 'Turbine & output', label: 'Turbine RPM', c: '#a09070', get: function (i) { return i.turbine_rpm; }, tru: function (t) { return t.turbine_rpm; }, range: [0, 2000], fmt: function (v) { return v.toFixed(0); } },
+        { id: 'rpm',      grp: 'Turbine & output', label: 'Turbine RPM', c: '#a09070', get: function (i) { return i.turbine_rpm; }, tru: function (t) { return t.turbine_rpm; }, range: [0, 2000], fmt: function (v) { return v.toFixed(0) + ' rpm'; } },
         // Gross electrical over TOTAL core heat — the honest denominator (#315), not
         // fission power, or the number goes to infinity after a scram.
         { id: 'eff',      grp: 'Turbine & output', label: 'Cycle Efficiency', c: '#8a8a5a', tru: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? t.mwe_output / q * 100 : null; }, range: [0, 45], fmt: function (v) { return v.toFixed(1) + '%'; } },
@@ -313,9 +313,9 @@
         // card), so they keep a `get` — they sit here because the operator sets them.
         { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * 100; }, tru: function (t) { return t.charging_flow_actual * 100; }, range: [0, 20], fmt: function (v) { return v.toFixed(2) + '%'; } },
         { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * 100; }, tru: function (t) { return t.letdown_flow_actual * 100; }, range: [0, 20], fmt: function (v) { return v.toFixed(2) + '%'; } },
-        { id: 'load_tgt', grp: 'Controls', label: 'Load Target MW', c: '#8898b8', ctl: function (c) { return c.load_target_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0); } },
-        { id: 'press_sp', grp: 'Controls', label: 'Pressure Setpoint', c: '#70a070', ctl: function (c) { return c.pressure_setpoint; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
-        { id: 'dump_sp',  grp: 'Controls', label: 'Dump Setpoint', c: '#a0a860', ctl: function (c) { return c.steam_dump_setpoint; }, range: [0, 10], fmt: function (v) { return conv(v, 'pressure').toFixed(0); } },
+        { id: 'load_tgt', grp: 'Controls', label: 'Load Target MW', c: '#8898b8', ctl: function (c) { return c.load_target_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
+        { id: 'press_sp', grp: 'Controls', label: 'Pressure Setpoint', c: '#70a070', ctl: function (c) { return c.pressure_setpoint; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'dump_sp',  grp: 'Controls', label: 'Dump Setpoint', c: '#a0a860', ctl: function (c) { return c.steam_dump_setpoint; }, range: [0, 10], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
       ],
       // ------------------------------------------------------------ Physics tab
       // TRUE plant state — HR1's sanctioned explicit diagnostic overlay, NOT a
@@ -341,10 +341,18 @@
       // It is not a second alarm system — the alarm panel is the alarm panel.
       physics: [
         { title: 'Reactivity', rows: [
-          { k: 'Net reactivity',      v: function (t) { return sgnFix(t.reactivity_pcm, 0) + ' pcm'; } },
-          { k: 'Fuel temp (Doppler)', v: function (t) { return dispT(t.fuel_temp_c); } },
-          { k: 'Xenon',               v: function (t) { return t.xenon_pct_eq.toFixed(0) + ' % eq'; } },
-          { k: 'RCS boron',           v: function (t) { return t.boron_ppm.toFixed(0) + ' ppm'; } },
+          { k: 'Net reactivity',
+            hint: 'the net excess reactivity of the core, in per cent mille (pcm) — hundred-thousandths of a reactivity unit.',
+            detail: 'Zero is critical: power is steady. Positive and power is climbing, negative and it is falling, and how FAST depends on how far from zero — which is what the PERIOD readout on the board turns into seconds. This is a computed diagnostic, not a plant instrument; a real plant infers reactivity from rate meters and rod worth curves.',      v: function (t) { return sgnFix(t.reactivity_pcm, 0) + ' pcm'; } },
+          { k: 'Fuel temp (Doppler)',
+            hint: 'average fuel pellet temperature, the input to the Doppler reactivity feedback.',
+            detail: 'Fuel runs far hotter than the coolant around it because the heat has to cross the pellet, the gap and the cladding to get out. As it heats, resonance absorption in uranium-238 broadens and swallows more neutrons — the Doppler effect — which is prompt negative feedback and the first thing that arrests a power excursion, acting in milliseconds, long before the moderator or the operator can.', v: function (t) { return dispT(t.fuel_temp_c); } },
+          { k: 'Xenon',
+            hint: 'xenon-135 poisoning, as a percentage of its equilibrium worth at the current power.',
+            detail: 'Xenon-135 is the strongest neutron absorber the core makes. It builds from iodine-135 decay and burns out under flux, so it lags power by hours: after a power reduction it PEAKS several hours later, and if it out-runs your available rod and boron worth the reactor cannot be restarted until it decays — the xenon precluded window. 100 % means it has settled at the value that power sustains.',               v: function (t) { return t.xenon_pct_eq.toFixed(0) + ' % eq'; } },
+          { k: 'RCS boron',
+            hint: 'boron concentration in the Reactor Coolant System (RCS), in parts per million (ppm).',
+            detail: 'Boron is the slow, plant-wide reactivity control: it holds down the excess reactivity of fresh fuel so the control rods can stay nearly withdrawn and available. Adding boron (borating) is negative reactivity, adding pure water (diluting) is positive. It moves over minutes to hours through the Chemical and Volume Control System (CVCS), which is why rods, not boron, answer a transient.',           v: function (t) { return t.boron_ppm.toFixed(0) + ' ppm'; } },
         ] },
         // MEASURED, and the reason this group is split three ways: `power_pct` is
         // FISSION power alone. A few seconds into a 20 %-of-rated cold-leg LOCA it
@@ -353,10 +361,18 @@
         // paths actually burn (31.2 MWt in that same sample), and it is the honest
         // denominator for efficiency.
         { title: 'Core heat', rows: [
-          { k: 'Fission power',      v: function (t) { return mwtOf(t.power_pct).toFixed(1) + ' MWt'; } },
-          { k: 'Decay heat',         v: function (t) { return t.decay_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.decay_heat_pct).toFixed(1) + ' MWt'; } },
-          { k: 'Total core heat',    v: function (t) { return mwtOf(t.core_heat_pct).toFixed(1) + ' MWt'; } },
-          { k: 'Core void (boiling)', v: function (t) { return pctOf(t.core_void_fraction, 1); }, cls: nzCls('core_void_fraction') },
+          { k: 'Fission power',
+            hint: 'heat from fission alone, in megawatts thermal (MWt).',
+            detail: 'This is what the nuclear instruments read and what the reactor trip acts on — and it is NOT the total heat the core is making. The moment the rods drop, fission collapses in seconds while the decay tail keeps going, so immediately after a scram this number reads far BELOW the decay heat row underneath it. Anything treating reactor power as core thermal power is wrong from the instant of the trip.',      v: function (t) { return mwtOf(t.power_pct).toFixed(1) + ' MWt'; } },
+          { k: 'Decay heat',
+            hint: 'heat from the decay of fission products, as a percentage of rated and in megawatts thermal (MWt).',
+            detail: 'The heat you cannot switch off. Immediately after a trip from full power it is about 6–7 % of rated, falls to a few per cent within minutes and to around 1 % after a day — but it never reaches zero, which is why a shut-down core still needs a heat sink and why losing one is a real accident rather than an inconvenience.',         v: function (t) { return t.decay_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.decay_heat_pct).toFixed(1) + ' MWt'; } },
+          { k: 'Total core heat',
+            hint: 'fission plus decay heat — the heat the coolant actually has to carry away, in megawatts thermal (MWt).',
+            detail: 'This is the honest denominator for cycle efficiency and the number the loop temperature split is computed from. At steady power it is equal to fission power by construction, which is exactly why the difference is invisible in normal operation and matters enormously after a trip.',    v: function (t) { return mwtOf(t.core_heat_pct).toFixed(1) + ' MWt'; } },
+          { k: 'Core void (boiling)',
+            hint: 'the fraction of the core coolant channel that is steam rather than water.',
+            detail: 'Zero on a healthy Pressurized Water Reactor (PWR) — the whole point of holding the primary at about 2235 pounds per square inch (psi) is to keep the coolant liquid all the way through the core. Anything above zero means the coolant is boiling where it should not, heat transfer off the fuel is degrading, and the subcooling margin has already gone.', v: function (t) { return pctOf(t.core_void_fraction, 1); }, cls: nzCls('core_void_fraction') },
         ] },
         // ------------------------------------------------------ core damage (2026-08-03)
         // Added on the owner's ask ("the physics tab should also show core damage"), and
@@ -380,10 +396,16 @@
           // cautions the whole time. The node only SEPARATES from the fuel once
           // uncovery starts (#213), which is the state worth marking; the alarm
           // step is checkDamage's own criterion, fuel_damage_c.
-          { k: 'Peak clad temp',     v: function (t) { return dispT(t.clad_temp_c); },
+          { k: 'Peak clad temp',
+            hint: 'the hottest fuel cladding temperature in the core, at the top of the hot channel.',
+            detail: 'While the core is covered the cladding sits at the fuel temperature and this tracks it. Once the water level falls below the top of the core the uncovered part is cooled by steam instead of water, the cladding separates from the fuel node and runs away upward. This is the number core damage is judged on, because damage is local before it is average.',     v: function (t) { return dispT(t.clad_temp_c); },
             cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : 'q-ok'; } },
-          { k: 'Core uncovered',     v: function (t) { return pctOf(t.core_uncovered_frac, 1); }, cls: nzCls('core_uncovered_frac') },
-          { k: 'Zr oxidation heat',  v: function (t) { return t.zirc_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.zirc_heat_pct).toFixed(2) + ' MWt'; },
+          { k: 'Core uncovered',
+            hint: 'the fraction of the core the model treats as steam-cooled rather than water-cooled.',
+            detail: 'Zero while the Reactor Coolant System (RCS) inventory keeps the core covered. It ramps up as inventory falls past the top of the active fuel and reaches 100 % at significant uncovery. It is the first link in the damage chain: uncovery, then zirconium oxidation heat, then a cladding temperature excursion.',     v: function (t) { return pctOf(t.core_uncovered_frac, 1); }, cls: nzCls('core_uncovered_frac') },
+          { k: 'Zr oxidation heat',
+            hint: 'heat released by zirconium–steam oxidation of the cladding, as a percentage of rated and in megawatts thermal (MWt).',
+            detail: 'Above roughly 2200 °F (1200 °C) the zirconium cladding reacts with steam, producing zirconium dioxide, hydrogen and a great deal of heat. It is the reason a damaged core ACCELERATES: the reaction rate rises with temperature while the decay tail is falling, so the core heats itself faster and faster once it starts. The hydrogen is the other product, and it is what exploded at Three Mile Island Unit 2 and at Fukushima.',  v: function (t) { return t.zirc_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.zirc_heat_pct).toFixed(2) + ' MWt'; },
             cls: nzCls('zirc_heat_pct') },
           // The endpoint, and it reports MARGIN while the core is intact rather than just
           // "no". A boolean that is false for the entire run teaches nothing; the distance
@@ -391,7 +413,9 @@
           // — `melted` implies `fuel_damaged`), and the criterion is checkDamage's own:
           // the max of the hot node and the bulk node, because damage is local before it
           // is average.
-          { k: 'Core damage', v: function (t) {
+          { k: 'Core damage',
+            hint: 'how much margin is left to fuel damage, or the damage state once it has happened.',
+            detail: 'While the core is intact this reports the temperature margin from the peak node to the damage criterion, which is the number that actually moves — a boolean that reads "no" all run teaches nothing. Once damage or melt latches it stays latched, because neither un-happens.', v: function (t) {
               if (t.melted) return 'CORE MELT · ' + String(t.destruction_cause || 'thermal_melt').replace(/_/g, ' ');
               var peak = t.clad_temp_c > t.fuel_temp_c ? t.clad_temp_c : t.fuel_temp_c;
               if (t.fuel_damaged) return 'FUEL DAMAGE · peak ' + dispT(peak);
@@ -404,18 +428,32 @@
             } },
         ] },
         { title: 'Primary coolant', rows: [
-          { k: 'Core ΔT (hot − cold)',   v: function (t) { return physTd(t.thot_c - t.tcold_c); } },
-          { k: 'Subcooling margin',      v: function (t) { return physTd(t.subcooling_c) + (t.subcooling_c <= 0 ? ' · SATURATED' : ''); },
+          { k: 'Core ΔT (hot − cold)',
+            hint: 'the temperature rise the coolant picks up crossing the core — hot leg minus cold leg.',
+            detail: 'For a fixed flow this is directly proportional to the heat the core is making, which is why it is the input to the Overtemperature and Overpower Delta-T reactor trips. It runs about 59 °F (33 °C) at full power and near zero on a shut-down plant with the pumps running. Lose flow and it OPENS even though power has not changed.',   v: function (t) { return physTd(t.thot_c - t.tcold_c); } },
+          { k: 'Subcooling margin',
+            hint: 'how far the coolant is below its own boiling point at the current pressure.',
+            detail: 'The single most important number on a Pressurized Water Reactor (PWR) during an accident, and the one that tells you whether you still have a solid water loop. Positive means liquid; zero means the coolant is at saturation and will flash to steam anywhere pressure dips. Emergency procedures are written around keeping it, and losing it is what turns a leak into a loss-of-coolant accident.',      v: function (t) { return physTd(t.subcooling_c) + (t.subcooling_c <= 0 ? ' · SATURATED' : ''); },
             cls: function (t) { return t.subcooling_c < 11.1 ? 'q-alarm' : t.subcooling_c < 22.2 ? 'q-caution' : 'q-ok'; } },
-          { k: 'Heatup / cooldown rate', v: function (t) { return sgnFix(conv(t.tavg_rate_c_per_hr, 'tempdiff'), 0) + ' ' + unit('tempdiff') + '/hr'; } },
-          { k: 'RCS inventory',          v: function (t) { return t.core_inventory_pct.toFixed(1) + ' %'; },
+          { k: 'Heatup / cooldown rate',
+            hint: 'the rate average coolant temperature is moving, per hour.',
+            detail: 'Limited by the Reactor Pressure Vessel (RPV) itself: the thick steel wall heats and cools from the inside first, so a fast change puts the inner surface in tension against the outer. Technical Specifications cap it at 100 °F/hr (55.6 °C/hr) in each direction, and a controlled cooldown is spent holding that number, not chasing it.', v: function (t) { return sgnFix(conv(t.tavg_rate_c_per_hr, 'tempdiff'), 0) + ' ' + unit('tempdiff') + '/hr'; } },
+          { k: 'RCS inventory',
+            hint: 'how much water is in the Reactor Coolant System (RCS), as a percentage of the normal full mass.',
+            detail: 'The mass balance behind everything else. Above 100 % the plant is being over-filled and heads toward going solid; below it the pressurizer level and then the subcooling margin follow it down. It is TRUE mass, not a gauge — there is no plant instrument that reads it, which is exactly why pressurizer level has to be inferred from and cross-checked against everything else.',          v: function (t) { return t.core_inventory_pct.toFixed(1) + ' %'; },
             cls: function (t) { return t.core_inventory_pct < 90 ? 'q-alarm' : t.core_inventory_pct < 99 ? 'q-caution' : 'q-ok'; } },
-          { k: 'Loop void (inventory)',  v: function (t) { return pctOf(t.primary_void_fraction, 1); }, cls: nzCls('primary_void_fraction') },
-          { k: 'RCS loop flow',          v: function (t) { return t.pump_flow_pct.toFixed(0) + ' %'; } },
+          { k: 'Loop void (inventory)',
+            hint: 'the steam fraction in the loop as a whole, outside the core channel.',
+            detail: 'Zero on an intact plant. Steam in the loop breaks natural circulation, defeats the Reactor Coolant Pumps (RCPs) and makes pressurizer level lie — a voiding primary pushes water UP into the pressurizer, so level rises while the plant is losing inventory. That is the deception at the heart of the Three Mile Island accident.',  v: function (t) { return pctOf(t.primary_void_fraction, 1); }, cls: nzCls('primary_void_fraction') },
+          { k: 'RCS loop flow',
+            hint: 'coolant flow through the loop, as a percentage of rated flow.',
+            detail: '100 % with the Reactor Coolant Pumps (RCPs) running. Stop them and it does not fall to zero: buoyancy between the hot and cold legs keeps a few per cent circulating — natural circulation — which is enough to carry decay heat to the steam generator but nothing like enough for power operation.',          v: function (t) { return t.pump_flow_pct.toFixed(0) + ' %'; } },
           // The passive shot, and how much of it is left. The ECCS card shows HPI flow,
           // discharge pressure and alignment; nothing anywhere shows accumulator
           // inventory, so a player who has dumped the tanks has no way to know it.
-          { k: 'Accumulator inventory',  v: function (t) { return t.accumulator_volume_pct.toFixed(0) + ' % · ' + physP(t.accumulator_pressure_mpa); },
+          { k: 'Accumulator inventory',
+            hint: 'water remaining in the passive accumulator tanks, and their nitrogen pressure.',
+            detail: 'The accumulators are the passive shot: nitrogen-pressurized tanks that dump into the cold leg on their own the moment Reactor Coolant System (RCS) pressure falls below their check valves, with no power, no signal and no operator. They fire once. Once they are empty the core is on pumped Emergency Core Cooling System (ECCS) injection alone, and nothing else on the board says how much is left.',  v: function (t) { return t.accumulator_volume_pct.toFixed(0) + ' % · ' + physP(t.accumulator_pressure_mpa); },
             cls: function (t) { return t.accumulator_volume_pct < 1 ? 'q-alarm' : t.accumulator_volume_pct < 99 ? 'q-caution' : 'q-ok'; } },
         ] },
         // There are no per-node pressure GAUGES on this plant — the one
@@ -423,23 +461,43 @@
         // split is why the cold leg reaches an ECCS setpoint before the gauge does
         // and why the pump suction cavitates first.
         { title: 'Loop pressure', rows: [
-          { k: 'Hot leg (pzr datum)',     v: function (t) { return physP(t.p_hotleg); } },
-          { k: 'Cold leg (pump disch)',   v: function (t) { return physP(t.p_coldleg); } },
-          { k: 'Pump suction',            v: function (t) { return physP(t.p_pumpsuction); } },
-          { k: 'Suction subcooling',      v: function (t) { return physTd(t.suction_subcool_c); },
+          { k: 'Hot leg (pzr datum)',
+            hint: 'pressure at the hot leg, where the pressurizer connects — the datum the one pressure gauge reads.',
+            detail: 'The plant has a single primary pressure instrument and it reads here. Every other pressure below is computed from this one plus the pump head and the loop losses, and none of them has a gauge.',     v: function (t) { return physP(t.p_hotleg); } },
+          { k: 'Cold leg (pump disch)',
+            hint: 'pressure at the Reactor Coolant Pump (RCP) discharge, the high point of the loop.',
+            detail: 'The pump adds head, so the cold leg sits above the pressurizer datum by roughly the pump differential. It matters because Emergency Core Cooling System (ECCS) injection and the accumulator check valves see THIS pressure, not the one on the gauge — so injection can start or stop at a pressure the board never displays.',   v: function (t) { return physP(t.p_coldleg); } },
+          { k: 'Pump suction',
+            hint: 'pressure at the Reactor Coolant Pump (RCP) suction, the low point of the loop.',
+            detail: 'The lowest pressure anywhere in the primary, which makes it the first place the coolant can flash. If pressure falls here to the saturation pressure of the water arriving, the pump cavitates.',            v: function (t) { return physP(t.p_pumpsuction); } },
+          { k: 'Suction subcooling',
+            hint: 'how far the water arriving at the Reactor Coolant Pump (RCP) is below boiling, at the suction pressure.',
+            detail: 'The margin that actually protects the pumps, and it is always smaller than the loop subcooling margin above, because the suction is the lowest pressure in the system. It reaches zero before the bulk coolant does — the pumps are the first thing a depressurization threatens.',      v: function (t) { return physTd(t.suction_subcool_c); },
             cls: function (t) { return t.suction_subcool_c <= 0 ? 'q-alarm' : t.suction_subcool_c < 11.1 ? 'q-caution' : 'q-ok'; } },
-          { k: 'RCP cavitation',          v: function (t) { return pctOf(t.rcp_cavitation_frac, 0); }, cls: nzCls('rcp_cavitation_frac') },
-          { k: 'Primary leak flow',       v: function (t) { return pctOf(t.leak_flow, 2); }, cls: nzCls('leak_flow') },
+          { k: 'RCP cavitation',
+            hint: 'how badly the Reactor Coolant Pumps (RCPs) are cavitating, as a fraction.',
+            detail: 'Zero on a healthy plant. Above zero the pumps are passing steam bubbles that collapse violently against the impeller: flow falls off, the pumps are being damaged, and procedures call for tripping them and going to natural circulation rather than running them to destruction.',          v: function (t) { return pctOf(t.rcp_cavitation_frac, 0); }, cls: nzCls('rcp_cavitation_frac') },
+          { k: 'Primary leak flow',
+            hint: 'coolant leaving the Reactor Coolant System (RCS) through a break or a leak, as a fraction of rated flow.',
+            detail: 'Zero on an intact plant. Discharge is not fixed — a break is an AREA, so flow falls as the system depressurizes, which is why a large break is violent early and slows as it empties.',       v: function (t) { return pctOf(t.leak_flow, 2); }, cls: nzCls('leak_flow') },
         ] },
         // fw_flow_normalized is TOTAL feed (main + AFW — pwr_steam_generator.js:83),
         // and steam_out_total is everything leaving the SG (turbine + dump + safeties),
         // so the difference is the SG's mass balance: positive = boiling off faster
         // than it is being fed, i.e. the level is going down.
         { title: 'Heat sink & output', rows: [
-          { k: 'Steam − feed mismatch', v: function (t) { return sgnFix((t.steam_out_total - t.fw_flow_normalized) * 100, 1) + ' %'; } },
-          { k: 'Turbine steam demand',  v: function (t) { return t.steam_demand_mwe.toFixed(1) + ' MWe'; } },
-          { k: 'Gross electrical',      v: function (t) { return t.mwe_output.toFixed(1) + ' MWe'; } },
-          { k: 'Cycle efficiency',      v: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? (t.mwe_output / q * 100).toFixed(1) + ' %' : '—'; } },
+          { k: 'Steam − feed mismatch',
+            hint: 'steam leaving the steam generator minus feedwater going in, as a percentage of rated.',
+            detail: 'The steam generator mass balance in one number. Positive means it is boiling off faster than it is being fed and level is falling; negative means it is filling. It is element 2 and 3 of the three-element feedwater controller and the reason that controller can anticipate a load change instead of chasing level after the fact.', v: function (t) { return sgnFix((t.steam_out_total - t.fw_flow_normalized) * 100, 1) + ' %'; } },
+          { k: 'Turbine steam demand',
+            hint: 'what the turbine is asking the steam generator for, in megawatts electric (MWe).',
+            detail: 'The secondary side sets the pace on a Pressurized Water Reactor (PWR): open the turbine valves and the extra steam draw cools the primary, average temperature falls, and the negative moderator coefficient raises reactor power on its own. The reactor follows the turbine, not the other way round.',  v: function (t) { return t.steam_demand_mwe.toFixed(1) + ' MWe'; } },
+          { k: 'Gross electrical',
+            hint: 'generator output in megawatts electric (MWe), before station loads.',
+            detail: 'What the machine is actually putting on the grid. It reads the TURBINE, not the core — the two diverge whenever the generator breaker is open or steam is going to the dump valves instead of the turbine.',      v: function (t) { return t.mwe_output.toFixed(1) + ' MWe'; } },
+          { k: 'Cycle efficiency',
+            hint: 'electrical output divided by total core heat.',
+            detail: 'About a third on a Pressurized Water Reactor (PWR) — saturated steam at roughly 1000 pounds per square inch (psi) simply cannot do better, which is why a plant making around 100 megawatts electric (MWe) is burning three times that in the core. It collapses after a trip because the core keeps making decay heat with nothing taking load off it.',      v: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? (t.mwe_output / q * 100).toFixed(1) + ' %' : '—'; } },
         ] },
       ],
       // ------------------------------------------------------- Inject Failure grouping
@@ -843,11 +901,22 @@
       box.innerHTML = '<div class="phys-none">No physics panel is built for this plant yet.</div>';
       return;
     }
+    // Every row carries its own System Scanner copy (#350 item 3). The panel is the one
+    // place on the board where the numbers are UNDER-THE-HOOD physics rather than gauges —
+    // fuel temperature, xenon, void fraction, oxidation heat — so it is precisely the list
+    // a player is least able to interpret from the label alone, and it was the only surface
+    // in the shell with no inspection copy at all. `hint`/`detail` are authored beside the
+    // formatter in `prof().physics` so the two cannot drift apart, and `run_inspect` fails
+    // if a row ships without them.
     var html = '';
     groups.forEach(function (g) {
       html += '<div class="phys-grp"><h4>' + g.title + '</h4>';
       g.rows.forEach(function (r) {
-        html += '<div class="num-line"><span class="nk">' + r.k + '</span><span class="nv">—</span></div>';
+        // The block splits the summary on ' — ', so the row key becomes the title.
+        var hint = r.hint ? ' data-scanner-hint="' + esc(r.k + ' — ' + r.hint) + '"' : '';
+        var det = r.detail ? ' data-scanner-detail="' + esc(r.detail) + '"' : '';
+        html += '<div class="num-line"' + hint + det + '><span class="nk">' + r.k +
+                '</span><span class="nv">—</span></div>';
       });
       html += '</div>';
     });
@@ -2554,6 +2623,11 @@
     if (!iExp && !tExp) iExp = true;
     instr.classList.toggle('expanded', iExp);
     instr.classList.toggle('collapsed', !iExp);
+    // `mini` (#350 item 19) is a sub-state of collapsed and cannot survive an expansion:
+    // the card would take its flex share while still hiding its body. This is the choke
+    // point every expansion goes through — the header toggle, the tab strip, a scenario
+    // taking focus — so clearing it here covers the paths toggleInstructorCard does not.
+    if (iExp && instr.classList.contains('mini')) { instr.classList.remove('mini'); setMinGlyph(); }
     tools.classList.toggle('expanded', tExp);
     tools.classList.toggle('collapsed', !tExp);
     if (iExp) clearInstrAttention();
@@ -2578,6 +2652,39 @@
     if (iExp) applyFocus(false, true);
     else applyFocus(true, isLive() ? tExp : false);
   }
+  // ---- the third state: FULLY minimized (#350 item 19) -----------------------------
+  // *(OWNER DIRECTIVE, 2026-08-04: "Need button to be able to fully minimize instructor
+  // block.")* The minimize button is a LADDER, not a toggle: expanded -> collapsed (header
+  // plus a one-line preview) -> mini (header only). Two presses take the card down to a
+  // 22 px strip and hand the whole column to the tools.
+  //
+  // The header is deliberately what survives, rather than removing the card: it carries the
+  // unseen-content badge, which is the only signal that the instructor has said anything
+  // while minimized. A card that vanished entirely would need a separate restore control
+  // somewhere else on the shell, and the player would have no reason to look for it.
+  function minimizeInstructor() {
+    var c = $('instructorCard'); if (!c) return;
+    if (c.classList.contains('expanded')) { toggleInstructorCard(); return; }
+    if (!c.classList.contains('mini')) { c.classList.add('mini'); setMinGlyph(); }
+  }
+  function restoreInstructor() {
+    var c = $('instructorCard'); if (!c) return;
+    c.classList.remove('mini'); setMinGlyph();
+    if (!c.classList.contains('expanded')) toggleInstructorCard();
+  }
+  // The glyph says what the NEXT press does, which is the only way a three-state control
+  // is legible: '−' while there is still something to fold away, '▣' once it is folded.
+  function setMinGlyph() {
+    var c = $('instructorCard'), b = $('instrMinBtn'); if (!c || !b) return;
+    var mini = c.classList.contains('mini');
+    b.textContent = mini ? '▣' : '−';
+    b.title = mini ? 'Restore instructor panel' : 'Minimize instructor panel';
+    b.setAttribute('aria-label', b.title);
+    b.setAttribute('data-scanner-hint', mini
+      ? 'Restore — bring the instructor panel back so its messages are visible again.'
+      : 'Minimize — fold the instructor panel down a step. Press it twice to leave only the header, which still shows the unread badge.');
+  }
+
   // Tab strip: expand the tools (split while live, accordion in free play);
   // re-clicking the already-active tab collapses them back to the strip.
   function focusTools(activeAgain) {
@@ -3492,17 +3599,19 @@
       e.stopPropagation();
       // Minimize is the dedicated collapse affordance while expanded; clicking the
       // rest of the header still toggles (expand from collapsed / collapse from expanded).
-      if (e.target.closest('#instrMinBtn')) {
-        if ($('instructorCard').classList.contains('expanded')) toggleInstructorCard();
-        return;
-      }
+      if (e.target.closest('#instrMinBtn')) { minimizeInstructor(); return; }
+      // The header toggles; from FULLY minimized it restores rather than collapsing
+      // further, which would be a dead click on the only control left.
+      if ($('instructorCard').classList.contains('mini')) { restoreInstructor(); return; }
       toggleInstructorCard();
     });
     // Expand a collapsed instructor by clicking anywhere on the collapsed card.
     // When expanded, this is a no-op so the card's own buttons (Acknowledge,
     // chat, level-complete) still work normally.
     $('instructorCard').addEventListener('click', function () {
-      if ($('instructorCard').classList.contains('collapsed')) toggleInstructorCard();
+      var c = $('instructorCard');
+      if (c.classList.contains('mini')) { restoreInstructor(); return; }
+      if (c.classList.contains('collapsed')) toggleInstructorCard();
     });
     // generic segmented active state (delegated so rebuilt controls keep working)
     document.body.addEventListener('click', function (e) {

@@ -26,7 +26,13 @@
       '@keyframes flowmove{to{stroke-dashoffset:-24}}' +
       '.flow{stroke-dasharray:9 15;animation:flowmove 1.1s linear infinite}' +
       '@keyframes sprayFall{0%{transform:translateY(0);opacity:0}12%{opacity:1}100%{transform:translateY(72px);opacity:0}}' +
-      '@keyframes pzrBubbleRise{0%{transform:translateY(0);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:translateY(-150px);opacity:0}}';
+      // Per-bubble rise distance *(OWNER DIRECTIVE, 2026-08-04: "Pressurizer bubbles should
+      // travel to the top of the water level. (but not into the steam above it)")*, #350
+      // item 25. The flat -150 px carried heater bubbles straight up through the water line
+      // and into the steam space — the one place in a pressurizer a bubble cannot be, since
+      // reaching the surface IS the bubble ceasing to exist. `--pzr-rise` is the distance
+      // from that bubble's start to the surface, so they all stop there.
+      '@keyframes pzrBubbleRise{0%{transform:translateY(0);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:translateY(calc(-1 * var(--pzr-rise, 150px)));opacity:0}}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -208,7 +214,7 @@
       if (!lastS || Math.abs(s - lastS) / s > 0.015) { lastS = s; rebuildSprayPipes(s, !!lastSprayOn, lastShowFlow !== false); }
     });
 
-    function rebuildHeaterBubbles(hFrac) {
+    function rebuildHeaterBubbles(hFrac, surfY) {
       clearEl(heaterBubbles);
       if (hFrac <= 0.02) return;
       var span = (hwR - hL) - 14;
@@ -219,9 +225,13 @@
         var dur = (2.2 - hFrac * 1.3 + (i % 4) * 0.28).toFixed(2);
         var delay = (i * 0.19).toFixed(2);
         var r = (1 + (i % 3) * 0.4 + hFrac * 2.4).toFixed(2);
+        // A bubble that starts ABOVE the surface (level below the heaters — the plant is
+        // draining) gets no travel at all rather than a negative one.
+        var rise = Math.max(0, startY - (surfY == null ? startY - 150 : surfY));
         heaterBubbles.appendChild(h('circle', {
           cx: x, cy: startY, r: r, fill: '#bdf1ff', opacity: Math.min(0.9, 0.12 + hFrac * 2),
-          style: { animation: 'pzrBubbleRise ' + dur + 's linear infinite', animationDelay: delay + 's', transformBox: 'fill-box', transformOrigin: 'center' }
+          style: { animation: 'pzrBubbleRise ' + dur + 's linear infinite', animationDelay: delay + 's',
+                   transformBox: 'fill-box', transformOrigin: 'center', '--pzr-rise': rise.toFixed(1) + 'px' }
         }));
       }
     }
@@ -256,10 +266,14 @@
       if (temp !== last.temp) {
         var waterC = StdPipe.phaseTempColor('water', temp);
         var steamC = StdPipe.phaseTempColor('steam', temp);
-        waterStops[0].setAttribute('stop-color', waterC.flow);
-        waterStops[1].setAttribute('stop-color', waterC.bore);
-        steamStops[0].setAttribute('stop-color', steamC.flow);
-        steamStops[1].setAttribute('stop-color', steamC.bore);
+        // #350 item 20 inverted the kit: `bore` is now the fluid colour at full strength
+        // and `flow` is the darker dash. These stops are a WATER/STEAM BODY shaded with
+        // depth, so they take bore at the surface and flow below — which reproduces the
+        // shading this component has always had, rather than turning it upside down.
+        waterStops[0].setAttribute('stop-color', waterC.bore);
+        waterStops[1].setAttribute('stop-color', waterC.flow);
+        steamStops[0].setAttribute('stop-color', steamC.bore);
+        steamStops[1].setAttribute('stop-color', steamC.flow);
         last.temp = temp;
       }
 
@@ -276,15 +290,20 @@
         last.level = level;
       }
 
-      if (heaterPower !== last.heaterPower || glowOn !== last.glowOn) {
+      // The bubble field also has to be rebuilt when the LEVEL moves, because the surface is
+      // now what sets each bubble's travel. Quantised to ~3 px of surface movement so a
+      // steady plant's level noise does not restart the animation every broadcast (#233).
+      var surfKey = Math.round(levelY / 3);
+      if (heaterPower !== last.heaterPower || glowOn !== last.glowOn || surfKey !== last.surfKey) {
         var hFrac = heaterPower / 100;
+        last.surfKey = surfKey;
         heatStops[0].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
         heatStops[1].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac));
         heatStops[2].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
         heatGlow.setAttribute('fill', mix(HBROWN, HORANGE, hFrac));
         heatGlow.setAttribute('opacity', String(Math.min(0.42, 0.05 + hFrac * 0.42)));
         heatGlow.style.display = (glowOn && heaterPower > 4) ? '' : 'none';
-        rebuildHeaterBubbles(hFrac);
+        rebuildHeaterBubbles(hFrac, levelY);
         last.heaterPower = heaterPower; last.glowOn = glowOn;
       }
 

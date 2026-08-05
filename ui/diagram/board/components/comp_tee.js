@@ -171,6 +171,20 @@
       LEGS.forEach(function (L) { portEls[L.id].setAttribute('data-temp', String(st.temp)); });
     }
 
+    // Live dash VELOCITY (#350 item 10). Same no-rebuild treatment as repaint(): the speed
+    // is written straight onto the drawn flow lines, because a rebuild would restart every
+    // animation on the tile and the dashes would snap back to phase 0 (#233).
+    //
+    // The driver hands the same number to this fitting and to the pipes that meet it — it is
+    // a property of the SYSTEM, not of the element — which is what keeps the joint matched.
+    // That is the constraint #231 hit when it folded a per-element rate into the velocity.
+    function retime() {
+      for (var i = 0; i < livePipes.length; i++) {
+        var fe = livePipes[i].childNodes[2];
+        if (fe) K.setFlowSpeed(fe, st.speedMul);
+      }
+    }
+
     // rebuild() REPLACES the geometry, which restarts every CSS animation on it. update() is
     // called at snapshot cadence (~1/s) and one dash cycle is ~1.04s, so rebuilding
     // unconditionally meant each leg advanced most of a dash and then snapped back to its
@@ -204,12 +218,20 @@
       // driver knows whether the line is moving; the diagram knows how fast it should look.
       if (props.flowing != null) st.rate = props.flowing ? authoredRate : 0;
       if (props.flow != null) st.rate = Math.max(0, Math.min(100, +props.flow));
+      var speedMoved = false;
+      if (props.speed != null && isFinite(+props.speed)) {
+        var sp = Math.max(0.1, Math.min(4, +props.speed || 1));
+        if (sp !== st.speedMul) { st.speedMul = sp; speedMoved = true; }
+      }
       ['a', 'b', 'c'].forEach(function (id) {
         var v = props['leg' + id.toUpperCase()];
         if (v === 'in' || v === 'out' || v === 'off') st[id] = v;
       });
       if (rebuildNeeded) rebuild();
-      else if (tempMoved) repaint();
+      else {
+        if (tempMoved) repaint();
+        if (speedMoved) retime();
+      }
     }
 
     function destroy() { if (unwatch) { unwatch(); unwatch = null; } }

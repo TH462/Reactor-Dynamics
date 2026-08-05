@@ -47,7 +47,23 @@ global.window = global;                       // board scripts attach to window.
 var RD = globalThis.RD;
 var I = RD.PwrBoardInspect;
 var DOC = globalThis.RD_PWR_BOARD_DOC;
-var ITEMS = (DOC && DOC.items) || [];
+
+// Items the DRIVER DELETES at mount (`DOC_REMOVE` in pwr_board_wiring.js, #350 item 5) are
+// not on the board the player gets, so they must not be here either. Read out of the source
+// the same way EXTRA_IDS is below, and for the same reason — loading the driver would drag in
+// the renderer. Filtering them out is not a convenience: without it this gate demands
+// inspection copy for a tile nobody can point at, which is the mirror image of the gap it
+// exists to catch, and the copy would then rot with nothing able to notice.
+var REMOVED_IDS = (function () {
+  var src = read('ui/diagram/board/pwr_board_wiring.js');
+  var from = src.indexOf('var DOC_REMOVE');
+  if (from < 0) return {};
+  var block = src.slice(from, src.indexOf('};', from) + 2);
+  var out = {}, m, re = /^\s*([A-Za-z_$][\w$]*)\s*:\s*1\s*,?\s*(\/\/.*)?$/gm;
+  while ((m = re.exec(block)) !== null) out[m[1]] = true;
+  return out;
+})();
+var ITEMS = ((DOC && DOC.items) || []).filter(function (it) { return !REMOVED_IDS[it.id]; });
 
 // Driver-injected tiles are appended to the doc at mount, not present in the
 // generated data. Loading the whole driver here would drag in the renderer, so
@@ -156,6 +172,50 @@ test('copy quality', function (ck) {
   ck('every entry has a brief', noBrief.length === 0, noBrief.join(', '));
   ck('every entry has a detail', noDetail.length === 0, noDetail.join(', '));
   ck('briefs fit the collapsed block', longBrief.length === 0, longBrief.join(', '));
+
+  // ---- acronyms are spelled out (#350 item 2) --------------------------------------
+  // *(OWNER DIRECTIVE, 2026-08-04: "Scanner should spell out every acronym eg. Steam
+  // Generator (SG).")* Each entry is read STANDALONE — the block shows one at a time — so
+  // "expanded elsewhere" is no help; the expansion has to be in the entry that uses it.
+  //
+  // UNIT SYMBOLS ARE DELIBERATELY NOT ON THIS LIST (psi, gpm, ppm, pcm, MWe, MWt, cps).
+  // They are units, not acronyms, and CLAUDE.md's unit directive says units keep their
+  // standard spelling — writing "2235 pounds per square inch (psi)" in every entry would
+  // bury the number the reader opened the block for. The owner's example was a system name.
+  //
+  // Gated rather than trusted: this is prose across 166 hand-written entries, exactly the
+  // kind of property that holds on the day it is done and rots on the next edit.
+  var ACRONYMS = {
+    ECCS: 'Emergency Core Cooling System', CVCS: 'Chemical and Volume Control System',
+    MSIV: 'Main Steam Isolation Valve', RWST: 'Refueling Water Storage Tank',
+    PORV: 'Power-Operated Relief Valve', SGTR: 'Steam Generator Tube Rupture',
+    LOCA: 'loss-of-coolant accident', NPSH: 'Net Positive Suction Head',
+    LTOP: 'Low Temperature Overpressure Protection', AFW: 'Auxiliary Feedwater',
+    RCS: 'Reactor Coolant System', RCP: 'Reactor Coolant Pump', RHR: 'Residual Heat Removal',
+    TMI: 'Three Mile Island', HPI: 'High Pressure Injection', LPI: 'Low Pressure Injection',
+    NIS: 'Nuclear Instrumentation', MFW: 'Main Feedwater', RPS: 'Reactor Protection System',
+    DNB: 'Nucleate Boiling', VCT: 'Volume Control Tank', TCV: 'Turbine Control Valve',
+    ESF: 'Engineered Safety Feature', RPV: 'Reactor Pressure Vessel',
+    CRDM: 'Control Rod Drive Mechanism', SG: 'Steam Generator', SI: 'Safety Injection',
+    // 'decade', not 'decade(s) per minute': a rate of exactly 1 is singular, so both
+    // spellings are correct expansions and pinning either one red-cards the other.
+    DPM: 'decade'
+  };
+  var unexpanded = [];
+  I.ids().forEach(function (id) {
+    var e = I.entry(id);
+    if (!e || e.inherited) return;
+    var text = [e.title || '', e.brief || '', e.detail || ''].join(' ');
+    var low = text.toLowerCase();
+    Object.keys(ACRONYMS).forEach(function (a) {
+      // Not inside a longer token: SG must not fire on SGTR, SI must not fire on SIx.
+      if (!new RegExp('(^|[^A-Za-z0-9\\-])' + a + 's?([^A-Za-z0-9]|$)').test(text)) return;
+      if (low.indexOf(ACRONYMS[a].toLowerCase()) >= 0) return;
+      unexpanded.push(id + ':' + a);
+    });
+  });
+  ck('every acronym is spelled out in the entry that uses it', unexpanded.length === 0,
+     unexpanded.slice(0, 8).join(', ') + (unexpanded.length > 8 ? ' (+' + (unexpanded.length - 8) + ')' : ''));
   ck('details say something', shortDetail.length === 0, shortDetail.join(', '));
   ck('briefs are sentences', unpunctuated.length === 0, unpunctuated.join(', '));
 
@@ -294,6 +354,33 @@ test('app wiring', function (ck) {
   ck('the registry is loaded before the driver',
      shell.indexOf('pwr_board_inspect.js') > 0 &&
      shell.indexOf('pwr_board_inspect.js') < shell.indexOf('pwr_board_wiring.js'));
+
+  // ---- Physics tab rows carry scanner copy (#350 item 3) --------------------------
+  // The panel is the one surface in the shell whose numbers are under-the-hood physics
+  // rather than gauges, so it is the list a player is least able to read off the label —
+  // and it shipped with no inspection copy at all. Gated rather than trusted because the
+  // rows are a HAND-MAINTAINED table and a new one would otherwise arrive silently
+  // uncovered, which is the #224 trap exactly.
+  //
+  // Static, on the source: loading app.js here would need a DOM. The physics block runs
+  // from `physics: [` to the failure-grouping comment that follows it.
+  var pStart = app.indexOf('      physics: [');
+  var pEnd = app.indexOf('failGroups: [', pStart);
+  ck('the physics block is findable', pStart > 0 && pEnd > pStart);
+  if (pStart > 0 && pEnd > pStart) {
+    var pBlock = app.slice(pStart, pEnd);
+    var rowKeys = (pBlock.match(/\{ k: '((?:[^'\\]|\\.)*)'/g) || []);
+    var hints = (pBlock.match(/\n\s+hint: '/g) || []).length;
+    var details = (pBlock.match(/\n\s+detail: '/g) || []).length;
+    ck('every physics row has a scanner summary', rowKeys.length > 0 && hints === rowKeys.length,
+       hints + ' summaries for ' + rowKeys.length + ' rows');
+    ck('every physics row has a scanner detail', rowKeys.length > 0 && details === rowKeys.length,
+       details + ' details for ' + rowKeys.length + ' rows');
+    // The renderer has to actually emit them, or the copy is dead text — the same
+    // orphan-detail failure the shell tier checks for, one file over.
+    ck('buildPhysics emits the scanner attributes',
+       /data-scanner-hint[\s\S]{0,200}data-scanner-detail/.test(app.slice(app.indexOf('function buildPhysics'))));
+  }
 });
 
 // ============================================ Inject Failure groupings (2026-08-04)

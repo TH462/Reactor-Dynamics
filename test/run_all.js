@@ -559,7 +559,7 @@ var BASELINES = {
   // BEHIND clad_temp_c, published for the Physics tab's new Core damage group. Both were
   // locals inside stepCladding, so the panel could show the symptom (peak temperature) and
   // the verdict (fuel_damaged) but nothing of the mechanism between them.
-  'run_contract.js':       { code: 0, score: '147checks 0failed' },
+  'run_contract.js':       { code: 0, score: '148checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -662,7 +662,7 @@ var BASELINES = {
   // INJECTION-VERIFIED three ways: removing `sgtr` from its group, listing a failure that
   // does not exist (`pzr_heaters_failed`), and naming one in two groups each take it to
   // 8/9 41/42.
-  'run_inspect.js':        { code: 0, score: '9/9 42/42' },
+  'run_inspect.js':        { code: 0, score: '9/9 47/47' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
@@ -1197,7 +1197,7 @@ var BASELINES = {
   // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
   // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
   // offenders, so a red here is diagnosable without reopening the page.
-  'verify_board_check.js':   { code: 0, score: '194checks' },
+  'verify_board_check.js':   { code: 0, score: '205checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

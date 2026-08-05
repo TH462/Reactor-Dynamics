@@ -45,6 +45,107 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04-develop-m — #350: the board was drawing the DEMAND where it should have drawn the FLOW
+
+27 items off the owner's board-and-shell list. The engineering decision underneath most of them
+is one sentence: **a synoptic diagram shows what the plant is DOING, and this board was drawing
+what it had been ASKED to do.** Pumps spun on their run command, pipes animated on their fittings'
+opinion, the PORV relief line ran water because that is how it was authored, and the vital strip
+recoloured on a raw comparison. Full measurements in `Diagnostic/TUNING_LOG.md` 2026-08-04-develop-m.
+
+### The decision: one flow number per SYSTEM, not per element
+
+Item 10 asks for the dash velocity to track flow. **#231 already tried that and reverted it** —
+folding a component's own rate into its velocity made every fitting run at a different speed from
+the pipe it joins, and the dashes stepped at the joint. That constraint is real and the revert was
+right; what was wrong was the level the number lived at.
+
+`lineFrac()` computes one fraction-of-rated per TRAIN (17 of them), and every pipe, tee, cross,
+valve and pump on that train reads it. Two elements that meet are on the same train by
+construction, so they cannot disagree — the #231 failure mode is not mitigated, it is unreachable.
+
+**Each entry is one LINE's own flow, and that is load-bearing rather than tidy.** It is what lets
+`pipeFlow`'s run-state REPLACE the port gate instead of being ANDed with it, which item 18 needs:
+with the RCPs stopped the pump art correctly reads stopped and pulls its ports down, while
+`rcs_flow` still measures 4.47 % of buoyancy-driven flow through those same pipes, and the
+instrument is the better evidence. The first cut lumped the steam dump in with main steam, which
+under an authoritative run-state would have drawn a shut dump valve passing full flow at power.
+`board_check`'s existing #236 pins caught it before it shipped, which is the argument for those
+pins.
+
+### The trade the quantisation buys
+
+A dash-speed change is a **discontinuity that cannot be removed**: CSS computes progress as
+`((now − delay) / duration) mod 1`, `now` grows without bound, so retiming moves the dashes by an
+amount that depends on how long the page has been open. Three options were available — accept
+continuous jitter, abandon live speed, or quantise. Quantising onto a ladder with hysteresis means
+a line re-times only when it genuinely changes band, the hop is at most one dash period, and every
+element on that system hops together because they all read the one number. `setFlowSpeed`
+re-derives the delay from the stashed world phase so the re-timed run lands back on #233's dash
+grid rather than drifting off it.
+
+### The colour inversion is a convention change, and it propagates
+
+*(OWNER DIRECTIVE, 2026-08-04: "invert the colors on the pipes so the darker color is the dashes
+showing water movement.")* `phaseTempColor` now returns the fluid colour at full strength as
+`bore` and the darkened form as `flow`. That flips the meaning of a pair every component in the
+board kit consumes, so the sense had to be corrected wherever a component used them: water and
+steam BODIES take `bore`, anything that MOVES takes `flow`. Eleven components touched. Two places
+were already correct and deliberately left alone — `comp_tee` and `comp_pressurizer` write
+`kids[1] = bore, kids[2] = flow` onto a `K.pipe` stroke stack, which is the kit's own order.
+
+The dash mix is 0.55 toward black where the old bore mix was 0.74: against a full-strength bore,
+0.74 is invisible at the cold end of the ramp. Item 12 (the reactor's downcomer streaks) fell out
+of the same change once those streaks stopped being a hard-coded `#7fb0dd` — they were the one
+water surface on the board that did not track temperature.
+
+### Item 1 needed a new published quantity, and the scaling belongs in the engine
+
+Delivered spray was a local inside `stepPressure`. It differs from `spray_valve_pct` in two ways
+that are both physics the operator has to see — no RCPs means no motive head, and the authority
+taper closes it out near saturation at the core-exit temperature. Published as
+`true_state.spray_flow_pct` → `instruments.pzr_spray_flow`.
+
+**Scaled by `spray_flow_max` in the ENGINE, not on the board.** The constant that makes the
+percentage mean anything lives in that layer, and a formula copied into a consumer does not move
+itself when the constant is retuned (#315). The instrument is appended last with `noise: 0` and a
+`noise_failure` sigma, per the appended-instrument rule; verified in `pwr_instruments._noise`,
+which returns before drawing when sigma ≤ 0, so no PRNG draw is added and the existing sequence is
+byte-identical.
+
+### Two gates added, both because the property is hand-maintained
+
+`run_inspect` **42 → 47**. Three checks assert every Physics-tab row carries scanner copy and that
+`buildPhysics` actually emits it; one asserts every system acronym is spelled out in the entry that
+uses it; one anchors the physics block. The rows and the entries are both hand-maintained tables,
+which is the #224 shape exactly — a new row would otherwise arrive silently uncovered. The acronym
+check is injection-verified (revert one expansion → red, naming the entry) and it immediately
+earned its keep by catching a brief pushed to 146 characters past the collapsed-block cap.
+
+`run_inspect` also had to learn about `DOC_REMOVE`: it reads the generated board doc statically, so
+without filtering the driver's deletions it demands inspection copy for a tile nobody can point at.
+
+### What was NOT done, and why
+
+**Item 8's third clause.** During a blackout `feed_sg` keeps integrating against a plant it cannot
+move and winds `feed_pump_speed_pct` to its 120 % rail, so the SG feed gpm box shows a demand
+nothing can deliver. That is integral windup in the shared control kernel, not a board defect, and
+patching the board to hide it would be the wrong layer. The board half — `bdMfwRestore` reading
+green "selected" while main feed was isolated, when yellow "needs attention" is what an isolated
+main feed is — is fixed.
+
+**Unit symbols in the acronym pass** (psi, gpm, ppm, pcm, MWe, MWt, cps). Left alone: they are
+units, not acronyms, and the unit directive says units keep their standard spelling. That is my
+reading of a directive whose example was a system name, so it is flagged for owner review rather
+than presented as settled.
+
+### Gate state
+
+34 of 38 runners at baseline. `run_contract` 147 → 148, `run_inspect` 42 → 47 and `verify_board_check` 194 → 205 are this change.
+The other four drifts — `run_behavior` 48/3, `run_procedures` 28/29, `run_procedures_stack` 27/29,
+`run_campaign` 48/51 — were MEASURED identical on a stashed clean tree and are #337's open
+re-author, not absorbed here.
+
 ## 2026-08-04-develop-l — #221: excluding the priming instead of swapping the file
 
 **Decision.** An audit slice runs with `claude --settings .claude/settings.audit.json`, which sets

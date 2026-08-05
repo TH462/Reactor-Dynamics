@@ -210,6 +210,18 @@
     var spray_floor = P_sat_from_T(s.thot_c != null ? s.thot_c : s.tavg_c);
     var spray_authority = clip((s.pressure_mpa - spray_floor) / (p.spray_floor_band || 1.0), 0, 1);
     var spray_eff = s.spray_flow_frac * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1) * spray_authority;
+    // DELIVERED spray, as % of the spray line's maximum flow — the indication half (#350
+    // item 1). It is a genuinely different quantity from `spray_valve_pct`, which is the
+    // valve DEMAND: the two diverge whenever the loop cannot supply the line, and both of
+    // the ways that happens are physics the operator has to be able to see. Stop the RCPs
+    // and the demand is unchanged while delivered spray goes to zero (`flow_frac`, the
+    // comment above says so in words); run the plant down toward Psat(Thot) and the
+    // authority taper closes it out even with the pumps running.
+    //
+    // Scaled here rather than on the board, because `spray_flow_max` is the constant that
+    // makes the number mean anything and it lives in this layer. A percentage copied into
+    // the UI would not move when the constant is retuned (#315).
+    s.spray_flow_pct = clip(spray_eff / (p.spray_flow_max || 1), 0, 1.1) * 100;
     // Break blowdown depressurizes the RCS — but ONLY while subcooled. Subcooled blowdown
     // (liquid out, bubble collapse) drives pressure directly down to saturation; once the
     // primary voids, the break vents steam that decay heat re-boils, so further depressurization
