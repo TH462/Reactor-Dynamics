@@ -83,6 +83,7 @@
     'TR-9': 'existing:run_ops sg_overfeed_p14 + run_pwr feedwater_isolation',
     'TR-14': 'probe (LOFW drain rate vs Ginna UFSAR Table 15.2-4 — the SOURCED anchor, #135)',
     'TR-15': 'probe (natural circulation — W ∝ Q^⅓, void-gated; LOOP/SBO survivable, WTSM 3.2.6.3)',
+    'TR-16': 'probe (SG safeties are self-actuating — survive a dead steam_pressure channel, #369)',
     // TR-11: the catalog row ("heaters lose, low-P trip unless isolated") predates
     // the P5 spray capacity cap — measured under the cap the heaters WIN, and the
     // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
@@ -90,7 +91,8 @@
     'TR-12': 'probe + run_campaign pwr_slb', 'TR-12b': 'probe (MSIV isolates a downstream break, #199)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
-    'TR-14': 'existing:campaign SBO fact (document in manual)',
+    // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
+    // in an object literal it silently OVERWROTE the real probe entry above)
     'CA-1': 'existing:run_campaign tmi2 p1-p3 (re-validate after tuning)',
     'CA-2': 'existing:run_pwr merged_injection_curve + accumulator_arming_boundary',
     'CA-3': 'probe', 'CA-4': 'probe',
@@ -389,8 +391,18 @@
         // "until the rod control system returns Tavg", so it must come back OFF its stop.
         ck('…then COMES OFF it — the dump is transient, not the new steady state (WTSM 11.2)',
           fmt(t.steam_dump_valve_pct, 1), t.steam_dump_valve_pct < 5, '< 5 %');
-        ck('the core is reduced to the SECONDARY LOAD, not parked high', fmt(t.power_pct, 1),
-          t.power_pct > 40 && t.power_pct < 55, '40..55 % (ask = 50)');
+        // MEAN over a trailing window, not an endpoint (#372): the post-manoeuvre
+        // plant carries the #378 limit cycle (±7 pts, ~185 s period), so a single
+        // endpoint sample was reading cycle PHASE, not the claim — it flipped from
+        // 40-something to 39.2 when the feed-enthalpy term shifted the phase, with
+        // the 120 s mean sitting at 51.2 both ways. The mean tests what the line
+        // says: the core follows the load on average; parked-high would read ~89.
+        // Passes on the pre-#372 plant too (same cycle, same centre) — not a refit.
+        var _pSum = 0, _pN = 0;
+        h.run(120, function (hh) { _pSum += hh.ts().power_pct; _pN++; });
+        var _pMean = _pN ? _pSum / _pN : t.power_pct;
+        ck('the core is reduced to the SECONDARY LOAD, not parked high (120 s mean)',
+          fmt(_pMean, 1), _pMean > 40 && _pMean < 55, '40..55 % (ask = 50)');
         // RE-BANDED 2026-08-02 (#306) to the SOURCED criterion. WTSM 11.2 says the dump is an
         // alternate heat sink *"until the rod control system returns Tavg to within 5°F of
         // Tref"*, so ±5 °F of the LOAD PROGRAM is the number — not a hardcoded 299..308, which
@@ -640,10 +652,31 @@
         var t = h.ts();
         ck('the dump carries decay heat to the condenser', fmt(h.range('steam_dump_valve_pct').max, 0),
           h.range('steam_dump_valve_pct').max >= 20, '≥ 20 %');
-        ck('SG code safeties never lift (the dump got there first)', String(!!t.sg_safety_open),
-          h.range('steam_pressure_mpa').max < 9.31, 'no lift (< 9.31 MPa)');
-        ck('no PORV lift on the primary side', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        var _sg1b = RD.PWR_CONFIG.steam_generator, _pz1b = RD.PWR_CONFIG.pressurizer;
+        // Peak asserted AND shown — the old line printed the end-state boolean while
+        // testing the peak, so the printed evidence could not support the verdict.
+        ck('SG code safeties never lift (the dump got there first)',
+          fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa peak',
+          h.range('steam_pressure_mpa').max < _sg1b.sg_safety_open_mpa,
+          '< ' + fmt(_sg1b.sg_safety_open_mpa, 2) + ' (config)');
+        // The trip BURST is REAL and the PORV holds it (#373 + #372). Pre-#373,
+        // 2.138 flow-seconds of post-trip steam leaked through the governor's 2.0 s
+        // load lag and flattened this transient entirely (peak 15.58) — the old
+        // "no PORV lift" band was green because the event never happened, the
+        // standing absence-check trap, second sighting in this probe family. The
+        // stop valve made the burst real (16.26 with feed enthalpy unmodelled);
+        // #372 then damps it physically — feed at 227 °C absorbs ~6 % of rated
+        // heat while saturation jumps toward the no-load anchor — measured peak
+        // 16.04. Pinned from BOTH sides so neither regression can slide through:
+        // the burst must stay VISIBLE (the floor reddens if trip leak-through
+        // returns) and the PORV must HOLD it (the cap reddens if the feed damping
+        // is lost).
+        ck('the trip burst is REAL — not flattened by post-trip steam leak-through (#373)',
+          fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max >= 15.80, '≥ 15.80 (pre-#373 leak plant: 15.58)');
+        ck('…and the PORV holds it — cold-feed sensible uptake damps the spike (#372)',
+          fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < _pz1b.porv_open_mpa, '< ' + fmt(_pz1b.porv_open_mpa, 2));
         ck('settles at the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 6), '297 ±6');
         ck('SG level held well clear of the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25 %');
@@ -770,6 +803,9 @@
         ck('so the rotor coasts — it does not motor on the grid (was 1800 rpm)',
           fmt(tm.turbine_rpm, 0), tm.turbine_rpm < 1790, '< 1790 rpm and falling');
         T.checkSanity(ck, z);
+        // #376: every leg's harness gets the sanity pass — legs B–E drove commands
+        // whose rejections were recorded but never inspected.
+        T.checkSanity(ck, d); T.checkSanity(ck, o); T.checkSanity(ck, r); T.checkSanity(ck, m);
       });
     },
 
@@ -855,6 +891,50 @@
           dtC >= 0 ? 'scram at +' + fmt(dtC, 1) + ' s on ' + c.tripReason : 'no scram in 600 s',
           !/sg_level high/.test(c.tripReason || ''), 'not sg_level high');
         T.checkSanity(ck, a);
+        T.checkSanity(ck, b); T.checkSanity(ck, c);   // #376: the two failed-channel legs
+      });
+    },
+
+    /* TR-16 (#369, audit #297 F2) — the SG code safeties are SELF-ACTUATING. A code
+     * safety is a spring device opened by the fluid itself, so no instrument failure
+     * may defeat it. Before #369 the pop was a control-layer actuation reading the
+     * steam_pressure instrument, and this exact evolution — one stuck transmitter,
+     * then a bottled SG — ran to clad melt (2696 psi SG, 3226 °F clad at 40 min).
+     * Leg A pins the healthy-channel behaviour so the mechanism move is shown to
+     * change nothing; leg B fails the channel and asserts the lift POSITIVELY, per
+     * the standing rule that an absence check can pin a non-event. */
+    'TR-16': function () {
+      return test('TR-16 SG safeties are self-actuating — a dead steam_pressure channel cannot defeat them (#369)', function (ck) {
+        var pop = RD.PWR_CONFIG.steam_generator.sg_safety_open_mpa;
+        // ---- leg A: healthy channel. Bottle the SG at power; the safeties lift and hold.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('close_msiv');
+        var tA = a.runUntil(function (ts) { return !!ts.sg_safety_open; }, 300);
+        ck('healthy channel: safeties lift on the bottled SG',
+          tA >= 0 ? '+' + fmt(tA, 0) + ' s' : 'never', tA >= 0, 'within 300 s');
+        a.run(120);
+        ck('and regulate at the relief band, not past it', fmt(a.range('steam_pressure_mpa').max, 2),
+          a.range('steam_pressure_mpa').max < 9.6, '< 9.6 MPa');
+
+        // ---- leg B: the transmitter lies low the whole ride. TR-1f discipline —
+        // prove the lie took, and that truth is genuinely elsewhere, before asserting.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('set_instrument_failure', { instrument_id: 'steam_pressure', mode: 'stuck' });
+        b.run(10);
+        b.cmd('close_msiv');
+        var tB = b.runUntil(function (ts) { return !!ts.sg_safety_open; }, 300);
+        ck('channel stuck far below the pop the whole ride', fmt(b.ins().steam_pressure, 2),
+          b.ins().steam_pressure < pop - 2.0, '< ' + fmt(pop - 2.0, 2) + ' MPa (the lie)');
+        ck('while true pressure is really at the relief band', fmt(b.ts().steam_pressure_mpa, 2),
+          b.ts().steam_pressure_mpa > 8.5, '> 8.5 MPa');
+        ck('dead channel: safeties lift ANYWAY — the valve does not read a gauge',
+          tB >= 0 ? '+' + fmt(tB, 0) + ' s' : 'never', tB >= 0, 'within 300 s');
+        b.run(120);
+        ck('and hold the band there too', fmt(b.range('steam_pressure_mpa').max, 2),
+          b.range('steam_pressure_mpa').max < 9.6, '< 9.6 MPa');
+        T.checkSanity(ck, a); T.checkSanity(ck, b);
       });
     },
 
@@ -1285,6 +1365,7 @@
           dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip in 900 s',
           dt >= 8, '≥ 8 s (no anticipatory trip), then a real limit');
         ck.info('trip cause', h.tripReason || 'none');
+        T.checkSanity(ck, h);
       });
     },
 
@@ -1339,6 +1420,7 @@
         ck('and the catch does not overcool into a power runup (< 101 %)',
           fmt(hi.range('power_pct').max, 1), hi.range('power_pct').max < 101, '< 101');
         T.checkSanity(ck, hi);
+        T.checkSanity(ck, lo);   // #376: the sub-arm leg's commands were never inspected
       });
     },
 
@@ -1360,8 +1442,21 @@
           h.ts().mwe_output < 5, 'true');
         ck('AFW auto-started and carries the SGs (no dryout)', String(!!h.ts().afw_active),
           !!h.ts().afw_active, 'true');
-        ck('with AFW available the PORV is NOT needed', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max < 16.20, '< 16.20');
+        // Two phenomena share this run since #373 and must not share one check: the
+        // ~2 s trip BURST (stored energy the stop valve bottles up — spikes the
+        // primary toward the PORV on any trip from 100 %, AFW-independent, pinned
+        // from both sides by TR-1b) and the sustained heat-sink question this probe
+        // actually asks. "AFW means the PORV is not NEEDED" is a claim about the
+        // minutes AFTER the burst — the regime where TR-3's blocked-AFW twin
+        // genuinely does need it.
+        ck('the trip burst stays inside the pressurizer safety', fmt(h.range('pressure_mpa').max, 2),
+          h.range('pressure_mpa').max < RD.PWR_CONFIG.pressurizer.safety_open_mpa,
+          '< ' + fmt(RD.PWR_CONFIG.pressurizer.safety_open_mpa, 2) + ' (config)');
+        var postPeak = 0;
+        h.run(240, function (hh) { var p = hh.ts().pressure_mpa; if (p > postPeak) postPeak = p; });
+        ck('with AFW carrying the SGs the PORV is not needed post-burst', fmt(postPeak, 2),
+          postPeak > 0 && postPeak < RD.PWR_CONFIG.pressurizer.porv_open_mpa,
+          '< ' + fmt(RD.PWR_CONFIG.pressurizer.porv_open_mpa, 2) + ' after the burst');
         T.checkSanity(ck, h);
       });
     },
@@ -1369,8 +1464,10 @@
     // TR-3 / the CC-5 canon pin: loss of feed WITH AFW blocked (the actual TMI-2
     // lineup) — the SG dries out, decay heat has nowhere to go, the primary heats
     // to saturation and repressurizes over ~10-20 min, and the capped spray CANNOT
-    // stop it: the PORV lifts. This is the sim-honest home of the canon PORV lift
-    // (the first-seconds wave is caught by the trip-open dump on every rejection).
+    // stop it: the PORV lifts. This is the sim-honest home of the SUSTAINED canon
+    // PORV lift. (The first-seconds wave on a caught REJECTION is absorbed by the
+    // trip-open dump; on a full-power TRIP it blips the PORV since #373's stop
+    // valve made that burst real — TR-1b pins the blip, this probe pins the duty.)
     'TR-3': function () {
       return test('TR-3 loss of feed + AFW blocked — dryout repressurization lifts the PORV', function (ck) {
         var h = H('hot_full_power');

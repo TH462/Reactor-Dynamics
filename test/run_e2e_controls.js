@@ -496,7 +496,13 @@ console.log('\n' + B + 'PWR — RPS reset from the board (#75)' + X);
   var s3 = svc('pwr', 'hot_full_power');
   secs(s3, 10);
   s3.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater', severity: 1.0 });
-  secs(s3, 400);
+  // 120 s, not 400 (#372): the reset-interlock claim needs the level signal STILL
+  // STANDING at the sample. With feedwater enthalpy in, post-trip boil-off is lower
+  // and AFW walks narrow level back through the 17 % setpoint before 400 s — the
+  // signal had honestly CLEARED, so the refusal this block tests never fired. At
+  // 120 s the plant is scrammed with level deep below the setpoint on both the old
+  // and the new physics, which is the state the claim is about.
+  secs(s3, 120);
   var stuck = rps(s3);
   ck('loss of feedwater scrams the plant', stuck.scrammed === true, stuck.scrammed, true);
   ck('…and the reset stays blocked on the standing trip signal',

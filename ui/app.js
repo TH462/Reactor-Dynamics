@@ -267,7 +267,9 @@
         { id: 'leak',     grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', tru: function (t) { return t.leak_flow * 100; }, range: [0, 30], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
         // Heatup / cooldown rate — the number the Mode 5↔1 procedures are written around
         // (the 100 °F/hr technical-specification class limit, and #310's ramped cooldown).
-        { id: 'tavg_rate',grp: 'Primary coolant', label: 'Heatup Rate', c: '#c8a050', tru: function (t) { return t.tavg_rate_c_per_hr; }, range: [-60, 60], fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff') + '/hr'; } },
+        // #375: the channel has an INSTRUMENT now (derived from indicated tavg, damped) —
+        // `get` reads it; `tru` keeps the true-state trace for the divergence view.
+        { id: 'tavg_rate',grp: 'Primary coolant', label: 'Heatup Rate', c: '#c8a050', get: function (i) { return i.tavg_rate; }, tru: function (t) { return t.tavg_rate_c_per_hr; }, range: [-60, 60], dHi: 55.6, dLo: -55.6, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff') + '/hr'; } },
 
         // ---------------------------------------------------------------- loop pressure
         // There is ONE pressure instrument and it reads the hot-leg/pressurizer datum, so

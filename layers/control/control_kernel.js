@@ -1880,6 +1880,11 @@
     // conservative direction — the harmful error would be re-flashing a tile the
     // operator had already dealt with.
     this.alarmAutoAcked = Object.assign({}, st.alarmAutoAcked || {});
+    // Latches are POSITIONAL (no ids), so a length mismatch resets them all to
+    // false rather than misaligning them. #369 shortened the PWR actuation
+    // table (SG safety pop moved engine-side), so every pre-#369 save takes
+    // the reset path: a level-triggered actuation whose condition still stands
+    // simply re-fires its idempotent command — the designed degradation.
     var nActs = (this.config.actuations || []).length;
     var nIls = (this.config.interlocks || []).length;
     this.actuationFired = (st.actuationFired && st.actuationFired.length === nActs)

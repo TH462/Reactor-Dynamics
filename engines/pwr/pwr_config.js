@@ -1003,6 +1003,29 @@
       // Do not read this constant alone as "the rated heat": the pump-heat factor is
       // applied at the use site, pwr_steam_generator stepSecondary. [tune]
       latent_heat_secondary: 19.45,
+      // FEEDWATER ENTHALPY SPLIT (#372, audit #297 F4). The 19.45 above is the heat
+      // that makes one unit of steam FROM FEED AS DELIVERED — physically it was
+      // always sensible + latent, and until #372 the model spent all of it as
+      // latent, so feed TEMPERATURE could not matter and overfeeding produced zero
+      // thermal response (measured: digit-identical to 4 s.f. at +15 %). The split
+      // keeps 19.45 and its calibration exactly (the use site is algebraically
+      // identical at the rated point) and only distributes it:
+      //   at 819.5 psi (5.65 MPa), Tsat ≈ 271.5 °C: h_f ≈ 1193 kJ/kg,
+      //   h_fg ≈ 1597 kJ/kg; feed at 227 °C ≈ 977 kJ/kg
+      //   → sensible 216 of 1813 kJ/kg total = 0.119 ≈ 0.12.
+      // feedwater_temp_c is the FINAL feed temperature after the (unmodelled)
+      // regenerative heater train — UNVERIFIED [tune]: typical Westinghouse final
+      // feed practice, no primary source in the tree corpus names the number
+      // (evidence pass owed, #374 style). afw_temp_c IS sourced as a band: AFW
+      // design feedwater temperature 40–120 °F (WTSM §5.7, ML11223A229, system
+      // design data) — 104 °F (40 °C) chosen inside it, matching the constant the
+      // physics already injects ECCS/RWST water at. Cold AFW therefore removes
+      // real heat now: at decay-heat power the sensible demand of full AFW flow
+      // exceeds the heat crossing the tubes, steam generation clamps at zero, and
+      // the SG depressurizes — which is what "AFW is a heat sink" means.
+      feed_sensible_frac: 0.12,    // of latent_heat_secondary, at the rated point [tune]
+      feedwater_temp_c: 227,       // °C final feed (UNVERIFIED — regenerative train unmodelled) [tune]
+      afw_temp_c: 40,              // °C — inside the sourced 40–120 °F design band (WTSM §5.7)
       // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
       //
       // The level integrates the feed/steam imbalance: d(level)/dt = K_sg_level x
@@ -1045,12 +1068,42 @@
       // this window (comp_steam_generator.js SG_WR_LO/HI) to place its narrow gauge.
       sg_wr_lo: 30.0, sg_wr_hi: 75.0,
       feed_pump_tau: 8.0,          // s — feed-pump speed→flow inertia (set_feed_pump_speed) [tune]
-      // SG code safety valves — upstream of the MSIV, above the 8.90 no-load
-      // dump setpoint: the backstop when the SG is bottled (MSIV shut). [tune]
+      // SG code safety valves — upstream of the MSIV, above the steam dump's
+      // steam_dump_setpoint anchor: the backstop when the SG is bottled (MSIV
+      // shut). Self-actuating on TRUE pressure in the engine since #369 — the
+      // pop is not an instrument decision and cannot be failed from the
+      // Failures tab, which is the point. [tune]
+      //
+      // PROVENANCE (#374 evidence pass, 2026-08-05): the FUNCTION is sourced —
+      // the dump is sized so it *"avoids the lifting of steam generator safety
+      // valves following a turbine trip and reactor trip from 100% power"*
+      // (WTSM §11.2, ML11223A294), and this plant meets that criterion measured:
+      // trip-from-100 % peak 8.05–8.07 MPa against the 9.31 pop, re-confirmed
+      // through the #373 stop-valve change. The VALUES are UNVERIFIED: no
+      // primary in the corpus names an MSSV setting for this ladder, and the
+      // whole secondary deliberately runs high relative to the real class (our
+      // 8.23 no-load anchor vs the real 1092 psig no-load header, WTSM §19.0
+      // ML11223A342 — the declared 297 °C anchor). Internally coherent — anchor
+      // < reseat < pop — but coherence is not a citation.
       sg_safety_open_mpa: 9.31,    // pop
       sg_safety_reseat_mpa: 9.0,   // reseat
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
+      // AFW capacity vs the real plant, worked (#374 evidence pass): the real
+      // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
+      // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0
+      // (ML11223A342) anchors one motor-driven pump at *"only about two percent
+      // of rated feed flow"*, so the full real lineup works out to ≈8 % of
+      // rated feed. Ours is 15 %: UNVERIFIED, a stated scaling choice rather
+      // than a citation — one lumped SG must out-run its own boil-off for the
+      // TR-2 recoverable ride-out, where the real figure splits across four
+      // generators. Its upper bound is honest since #375 (steam generation is
+      // energy- and pressure-limited, not a free boil). [tune]
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
+      // Auto-start CONDITION sourced — SG lo-lo level is condition 1 of the real
+      // five (WTSM §5.7, ML11223A229; full list quoted at the pwr_control lo-lo
+      // trip). The real plant starts AFW from the SAME signal that trips the
+      // reactor; the 3-point offset above our 17 lo-lo is the declared teaching
+      // departure, DESIGN_COMPANION §8.19 (#220, re-verdicted #374).
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
       // AFW LATCHES (owner ruling, #207): the pump demand set by the M4 actuation has no
       // reset, so it stands until the operator secures it — as in a real plant, where AFW
@@ -1158,6 +1211,18 @@
       dump_load_reject_mwe: 40.0,
       // ...and the mismatch below which the latch RESETS: the reactor has come back to
       // meet the load, so the ride-out is over and pressure-mode has it again. [tune]
+      //
+      // DEPARTURE IN KIND, not merely an unsourced number (#374 evidence pass):
+      // the real loss-of-load arming *"remains armed until the loss-of-load
+      // signal is manually reset by a control room operator"* (mode selector to
+      // RESET, spring return — WTSM §11.2, ML11223A294, §11.2.2.3). There is no
+      // automatic clear to source a value FOR; this auto-clear stands in for a
+      // reset control the board does not carry. The real ARM is also far more
+      // sensitive — *"a ramp load decrease at a rate greater than 5%/min, or a
+      // step load decrease of greater than 10%"* — and the operator-reset
+      // design is WHY it can be that sensitive without venting forever, which
+      // is the exact trade the §8.21 ruling (#219) weighed from the other side.
+      // Value UNVERIFIED.
       dump_reject_clear_mwe: 10.0,
     },
 
@@ -1194,7 +1259,11 @@
       // plant does in winter. Nothing in the default lineup reaches it: the reference
       // condition still lands exactly on vacuum_rated.
       vacuum_max_kpa: 99.5,
-      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
+      // Turbine trip on low vacuum: the MECHANISM is sourced — the auto-stop oil
+      // system *"provides turbine trips on low lube oil pressure, low vacuum,
+      // thrust bearing wear, and overspeed"* (WTSM §7.3, ML11223A247) — the
+      // VALUE is not: no setpoint anywhere in the corpus. UNVERIFIED (#374).
+      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer) [tune]
       mwe_rated: 100.0,            // MWe — THIS PLANT'S RATING (identity below; feel-plan P6) [tune]
       // OPERATOR LOAD RATE, % of rated per minute. Real turbine control is rate-limited
       // (WTSM 11.3, ML11223A295: the operator sets a target and a rate on a thumbwheel and
@@ -1230,6 +1299,25 @@
       // pressure; the position itself strokes with a first-order lag and
       // modulates steam flow together with SG pressure. [tune]
       governor_tau: 2.0,           // s valve response time constant
+      // Turbine stop (throttle) valves — the TRIP-closure path (#373, audit #297
+      // F5). *"If a turbine trip signal is present, the high pressure hydraulic
+      // fluid will be dumped from the throttle valves. The dumping of the high
+      // pressure fluid allows spring force to rapidly close the throttle valves.
+      // Since all turbine valves close on a turbine trip, the throttle valves and
+      // governor valves provide redundant isolation of steam flow to the high
+      // pressure turbine."* (WTSM §7.3, ML11223A247). Until #373 a tripped
+      // turbine kept drawing steam on governor_tau alone — 2.138 flow-seconds of
+      // rated steam through a "shut" machine, because one constant was doing two
+      // jobs (load control AND trip closure) that the real machine does with two
+      // different valves. The MECHANISM is sourced above; the closure constant
+      // itself is not — WTSM says "rapidly close" and gives no number, so 0.15 s
+      // is UNVERIFIED [tune]: sub-second per the spring-slam description, and
+      // fast enough that the stop valve, not the governor, bounds trip steam
+      // (measured: 0.127 flow-s drawn vs 2.138 at governor_tau alone). The
+      // reopen tau is the relatch after a trip reset — deliberately slower, and
+      // inert in practice because the governor is at 0 demand at re-sync. [tune]
+      stop_valve_tau: 0.15,        // s — spring closure on trip (UNVERIFIED value, sourced mechanism)
+      stop_valve_reopen_tau: 5.0,  // s — reopen after the trip latch clears
     },
 
     // ----------------------------------------------------------- emergency cool
@@ -1593,6 +1681,21 @@
       // before 2026-07-23). Not in SOURCE, so it draws no PRNG number and the cross-step noise
       // stream is unchanged (the appended-instrument rule).
       rod_limit_margin:  { lag: 0,   noise: 0,     range: [0, 912],  derived: true },
+      // ------------------------------------------------ cooldown/heatup rate (#375)
+      // Tavg RATE from the INDICATED tavg — the 100 °F/hr Tech-Spec-class limit had
+      // no instrument at all: the true-state trend existed, the board had nothing to
+      // alarm on, and audit #297 F7 measured a one-entry dump cooldown at 1939 °F/hr
+      // with no cue anywhere. Derived like subcooling_margin, so it inherits tavg's
+      // lag and failures (HR1). rate_tau is the meter's damping, and its SIZE is the
+      // alarm's spurious-actuation guard (the audit's standing question 3, applied
+      // to this very alarm): a °F-per-HOUR limit wants hourly-scale damping. At
+      // 45 s the normal post-trip Tavg settle (≈7 °C over ~90 s) read ≈ −200 °C/hr
+      // and fired COOLDOWN RATE HI on every reactor trip; at 600 s it reads ≈ −39
+      // (quiet), while a genuine F7-scale blowdown still crosses −55.6 within
+      // ~40 s — crossing time scales inversely with severity, which is the right
+      // shape for a rate alarm. Not in SOURCE, so it draws no PRNG number and the
+      // cross-step noise stream is unchanged (the appended-instrument rule).
+      tavg_rate:         { lag: 0,   noise: 0,     range: [-300, 300], rate_tau: 600, derived: true },
       // ------------------------------------------------ OTΔT / OPΔT channels (#311)
       // The loop-ΔT protection set. All five are DERIVED from indicated `thot`,
       // `tcold`, `tavg` and `primary_pressure`, so each inherits those channels' lag

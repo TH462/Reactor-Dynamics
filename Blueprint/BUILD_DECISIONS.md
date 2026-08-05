@@ -183,6 +183,106 @@ the nuclear enthalpy-rise peaking factor implicitly — and that factor is **uns
 ML11223A342, carries the term as a Tech Spec heading with no value), so re-deriving the threshold
 would have been recall dressed as fidelity. Documentation only, in four places including
 `Manuals/12` §10.7 (Rev 7).
+## 2026-08-05-workbench-e — #375: make the error visible, not impossible — and cap flows with physics, not bookkeeping
+
+**Decision.** A derived cooldown/heatup-rate instrument off indicated Tavg, ±100 °F/hr
+annunciators (PWR-A34/A35, not Mode-4/5-reclassified), and the dump's mass flow scaled by
+upstream pressure (`min(P/P_rated, 1)`). No automatic rate limiter — the owner's chosen
+increment keeps the gross cooldown makeable and makes it loud, which preserves the teaching
+case a hard limiter would delete. `run_reachability` 65 → 68 (two alarms + a Part B leg that
+drives the indicated rate past the setpoint).
+
+**The rejected first cut is the record-worthy part.** Capping total `steam_out` by water
+inventory fixed the empty-vessel fiction but blocked a dry bottled SG from venting its steam
+dome — the solid-plant probe CA-12's peak crept to 119.83 % against its 120 % ceiling guard,
+exactly where the perturb sweep had flagged fragility. The pressure-scaling form is physical
+(choked flow dies with its driving pressure), touches only the blown-down regime (factor ≡ 1
+at and above rated — CA-12 back at 109.35 % exactly), and the F7 evolution becomes
+self-arresting at the operator's setpoint. A conservation fix that adds a bookkeeping clamp
+where the model wants a physical dependence breaks the regime the clamp cannot see.
+
+---
+
+## 2026-08-05-workbench-d — #372: the calibrated constant was two physical things wearing one number
+
+**Decision.** `latent_heat_secondary 19.45` is split at the rated point into latent + feed
+sensible duty (`feed_sensible_frac 0.12`, steam-table derivation in the config), with
+`feedwater_temp_c 227` (UNVERIFIED — no in-tree primary; evidence-pass class) and `afw_temp_c
+40` (inside the sourced WTSM §5.7 40–120 °F band). The rated point is algebraically identical;
+overfeed now overcools and AFW is a real heat sink — measured both ways. The follow governor's
+`extractFrac` mirrors the split, because its old heat→steam identity left follow mode with no
+equilibrium off the rated point (SS-6 caught the secular walk: 8.03 → 6.89 MPa over 36 min,
+then a trip). TR-1b re-pinned from both sides (burst ≥ 15.80 visible, PORV < 16.20 holds);
+TR-1g's endpoint sample replaced with a 120 s trailing mean (it was reading the #378 limit
+cycle's phase, not the claim — mean 51.2 on a 50 ask, both plants).
+
+**Why a split and not a new model.** The four questions: Q0 measured (the null response was
+the finding); Q1 — the mechanism is textbook and the AFW temperature is sourced, the feed
+temperature is not and says so; Q2 — a whole Chapter 15 transient class (overcooling) becomes
+reachable with visible board cues; Q3 — zero new player-facing controls, silent. The split
+preserves every calibrated behaviour at the rated point by construction instead of re-fitting
+the plant, and DESIGN_COMPANION §8.27 declares what it deliberately does not buy (load-
+dependent feed temp, heater train, MSRs, the loss-of-feedwater-heating casualty).
+
+---
+
+## 2026-08-05-workbench-c — #373: one constant was doing two valves' jobs, and a test was green because of it
+
+**Decision.** A turbine stop-valve path, separate from the governor: `stop_valve_frac`
+spring-shuts on `turbine_tripped` (`stop_valve_tau 0.15`, UNVERIFIED [tune] — the mechanism is
+WTSM §7.3 verbatim, the number is not) and multiplies steam flow. `governor_tau 2.0` keeps the
+load-control job unchanged. TR-1b rewritten positively (the PORV lifts on the trip burst — the
+leaked steam that used to suppress it was the defect); TR-2 re-scoped to the post-burst window
+its claim is actually about. Both re-specifications fail on the pre-#373 plant by construction
+and are declared as such (HR10).
+
+**Why the probe moves are not refits.** The audit measured the counterfactual before any fix
+existed: at prototypical closure the RCS peak crosses the PORV setpoint (rig: 16.28; on-tree
+after: 16.26), so TR-1b's "no PORV lift" was pinning a non-event — the same trap that
+rewrote TR-1's PORV check positively at the 40 % dump change. The plant's relief ladder is
+unchanged; the trip burst simply reaches one rung now that a tripped machine stops drawing
+steam.
+
+---
+
+## 2026-08-05-workbench-b — #369: a spring safety senses nothing, so nothing it senses can fail
+
+**Decision.** The SG code safety pop/reseat moved from a control-layer actuation reading the
+`steam_pressure` instrument to the engine, on true pressure (`pwr_steam_generator.js`). The
+`open_sg_safety`/`close_sg_safety` commands are gone; the actuation row is gone; the engine
+harness no longer emulates the pair. Probe TR-16 pins both legs (`run_behavior` 53), and
+`run_reachability` drops to 65 — the row it lost moved below the instrument layer.
+
+**Why.** Audit #297 F2, measured: one stuck transmitter carried a survivable MSIV closure to
+clad melt — 2696 psi (18.59 MPa) on a valve set to pop at 1350 psi (9.31 MPa), reachable from
+the shipped Failures tab in two clicks. The 2026-07 "protections in-stack" ruling is for things
+that SENSE — trips, instrumented relief logic — and a code safety is opened by the fluid
+itself; that independence is why it is the backstop. HR1 does not require the old placement
+(the audit's HR11 read of the uncited ruling stands). The teaching lever lost — failing the
+safeties from the Failures tab — is a lever a real plant does not have either.
+
+**Boundary.** The pressurizer spring safeties have the identical structure on
+`primary_pressure` and are NOT moved: slice-2/4 audit scope, wants its own issue and its own
+measurement rather than a "while I'm here" (HR12).
+
+---
+
+## 2026-08-05-workbench-a — #376: a measurement that cannot fail is not a measurement
+
+**Decision.** `measure_stack` treats a rejected `--cmd` and a `--cmd` scheduled past `--for` as
+hard errors (exit 2), matching its own unknown-`--watch`-field convention; `ops_harness.cmd()`
+records `type:'refused'` alongside `error` so `checkSanity` can see it; the behaviour probes
+that built harnesses `checkSanity` never inspected (TR-8, TR-1f b/c, TR-1c lo, TR-1e B–E) now
+inspect them.
+
+**Why hard error and not a warning.** The failure is asymmetric in the worst direction: a
+swallowed command produces a plant where nothing happened, which reads as "the mechanism is
+fine" — a false negative indistinguishable from a real null result. The audit (#297) nearly
+published one. A warning is exactly the ambiguity CLAUDE.md's "COULD NOT CHECK is not clear"
+rule names; the engine's unknown-id guard (`pwr_engine.js`) was already loud, and the harness
+was the one swallowing it.
+
+---
 
 ## 2026-08-04-backshop-d — #357: the word "still" was telling me the base was stale
 

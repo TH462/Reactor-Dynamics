@@ -183,6 +183,19 @@ ck('B3 — the ' + ospSp + ' RPM overspeed trip is UNREACHABLE (declared: no rol
 ck('B3 — …because the grid pins the rotor at rated, so nothing on line can overshoot it',
   'peak ' + r3.peak.toFixed(2) + ' vs rated ' + ratedRpm, r3.peak < ratedRpm * 1.02, '< rated + 2 %');
 
+// B4 — the cooldown-rate channel (#375). Its whole reason to exist is a gross operator
+// error, so prove the plant can actually drive the INDICATED rate past the −55.6 °C/hr
+// alarm: turbine trip, then Dump SP to 1.0 MPa — the audit #297 F7 evolution. A rate
+// channel is the easiest instrument in the plant to filter to death, which would leave
+// the new alarm looking armed while nothing could ever reach it (the #249 class).
+var svc4 = stack('hot_full_power');
+var r4 = peakIndicated(svc4, 'tavg_rate', 1200, function (s, i) {
+  if (i === 10) s.handleCommand({ action: 'inject_failure', failure_id: 'turbine_trip' });
+  if (i === 120) s.handleCommand({ action: 'set_steam_dump_setpoint', mpa: 1.0 });
+});
+ck('B4 — a dump-setpoint cooldown drives indicated tavg_rate past the −55.6 °C/hr alarm',
+  'trough ' + r4.trough.toFixed(1) + ' °C/hr', r4.trough < -55.6, '< −55.6');
+
 // ---------------------------------------------------------------- tally
 // Tally line matches the run_reactivity / run_contract convention so run_all's score
 // parser reads it ("N checks passed / M failed"), not a shape of my own invention.

@@ -142,6 +142,59 @@ the clip bound.
   exit. `dnb_margin_c` is `[tune]` and scenario-arbitrated, so it plausibly absorbs peaking
   implicitly — the hot-channel factor is **unsourced** (WTSM 19 carries the term as a Tech Spec
   heading with no value) and no constant was moved. Manuals Rev 7, `12` §10.7.
+### Changed
+- **The manual now says plainly what the plant will not do for you** (#370, #371). Two
+  deferred capability gaps the #297 audit measured are declared instead of implied away: MSIV
+  isolation is a manual action (a real plant also isolates its steam lines automatically on
+  break evidence — this one never will, so on an isolable break *you* are the isolation), and
+  the steam dump goes to the condenser only (no atmospheric dumps — lose the condenser and the
+  plant holds hot at the safety band; that is its honest floor, not a bug).
+
+### Added
+- **A cooldown-rate meter and ±100 °F/hr rate annunciators** (#375). One steam-dump setpoint
+  entry could cool the plant at nineteen times the technical-specification-class limit with no
+  indication or alarm of any kind. The board now carries a damped heatup/cooldown-rate channel
+  derived from the indicated Tavg, and RCS COOLDOWN RATE HI / HEATUP RATE HI annunciators at
+  ±100 °F/hr (alarm cards PWR-A34/A35). The error is still yours to make — nothing limits the
+  dump automatically — but it is no longer silent.
+
+### Fixed
+- **An empty steam generator no longer boils 40 % of rated steam flow indefinitely** (#375).
+  The dump's mass flow now carries the steam pressure, so a deep blowdown self-arrests at the
+  setpoint you asked for instead of running to the model floor while the level clamp silently
+  absorbed a mass imbalance. At and above rated pressure nothing changes.
+- **Feedwater carries enthalpy — overfeeding overcools, and auxiliary feedwater is a real heat
+  sink** (#372). The steam generator's energy balance now heats feed to saturation before
+  boiling it. Overfeeding the generator drops its pressure and nudges power up on moderator
+  feedback — the classic overcooling signature the "SG Overfeed / Overcooling" malfunction
+  promised and could not deliver (measured before: a 15 % overfeed changed nothing to four
+  significant figures). Cold auxiliary feedwater genuinely removes heat: at decay-heat levels
+  full AFW flow pulls the tripped plant below the no-load anchor until the level hold throttles
+  it back. Steady-state calibration is untouched by construction, and what is still simplified
+  — constant final feed temperature, no feedwater-heater train — is declared in the manual
+  (Rev 9, `12 §12.16`).
+- **A tripped turbine stops drawing steam** (#373). There was no stop valve: a trip zeroed the
+  load demand and the machine kept pulling steam through the governor's two-second load lag —
+  2.1 flow-seconds of rated steam through a "shut" turbine, doing no work into no sink. The
+  spring-closed stop valves the real machine trips on now slam in ~0.15 s, and the primary
+  pressure burst that leak was flattening is real again: a trip from 100 % now spikes primary
+  pressure to just under the PORV setpoint — visible on the board where before the transient
+  quietly never happened. Two behaviour probes were re-specified for the corrected plant and
+  pin the burst from both sides.
+- **The steam generator's code safety valves can no longer be defeated by a failed
+  steam-pressure transmitter** (#369). A code safety is a spring valve opened by the steam
+  itself; this plant's opened on an instrument reading, so sticking that one channel from the
+  Failures tab and bottling the generator ran an otherwise-survivable MSIV closure to clad
+  melt — 2696 psi on a valve set to pop at 1350. The pop and reseat now act on true pressure
+  in the engine, the healthy-channel behaviour is measurably unchanged, and new behaviour
+  probe TR-16 holds both legs: a dead gauge changes what you read, never whether the valves
+  lift. Manuals Rev 7 (`12 §8.5`) states the mechanism.
+- **The measurement harness can no longer print a clean table for a command the plant rejected**
+  (#376). `test/measure_stack.js` used to discard the command result, so a typo'd failure id
+  produced fifteen minutes of a perfectly flat plant that read as a real null result — the #297
+  audit nearly filed one. A rejected command, and a command scheduled past the end of the run,
+  are now loud exit-2 errors; the ops harness records lockout refusals it previously dropped,
+  and four behaviour probes now sanity-check harness legs they were silently trusting.
 
 ## [Alpha 1.0.1] — 2026-08-05
 

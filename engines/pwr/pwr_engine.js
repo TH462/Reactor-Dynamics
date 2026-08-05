@@ -300,7 +300,19 @@
       // same way pwr_thermal.stepCoolant does.
       extractFrac: function (s) {
         var pf = cfg.thermal.pump_heat_frac || 0;
-        return ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);
+        var qn = ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);
+        // #372: "the steam that heat actually generates" (the follow contract, see
+        // load_mode.js) now subtracts the feed sensible duty, mirroring the SG's
+        // own split — at the rated point this is algebraically the old value. The
+        // duty comes from the SG's previous step (_sg_sensible_norm); the fallback
+        // is the rated-line share, so the first step and a feed-free plant are
+        // unchanged. Without this, follow demands steam the heat can no longer
+        // make and the secondary ratchets down with no equilibrium (measured on
+        // the 5 % IC: 8.03 → 6.89 MPa over 36 min, then a trip).
+        var fs = (cfg.steam_generator && cfg.steam_generator.feed_sensible_frac) || 0;
+        if (!fs) return qn;
+        var sens = s._sg_sensible_norm != null ? s._sg_sensible_norm : fs * qn;
+        return Math.max(0, qn - sens) / (1 - fs);
       },
       setLoad: function (s, mwe, rated) {
         s.steam_demand_mwe = mwe;
@@ -775,6 +787,7 @@
       leak_flow: s.leak_flow,
       // §7 true_state additions (governor / accumulators / RHR):
       governor_valve_pct: s.governor_valve_pct,
+      stop_valve_pct: (s.stop_valve_frac != null ? s.stop_valve_frac : 1) * 100,
       accumulators_discharging: s.accumulators_discharging,
       accumulator_flow_normalized: s.accumulator_flow_normalized,
       accumulator_volume_pct: s.accumulator_volume_pct,
@@ -1060,12 +1073,6 @@
         break;
       case 'close_pzr_safety':
         s.safety_open = false;
-        break;
-      case 'open_sg_safety':
-        s.sg_safety_open = true;
-        break;
-      case 'close_sg_safety':
-        s.sg_safety_open = false;
         break;
       case 'open_msiv':
         s.msiv_open = true;
@@ -1617,6 +1624,7 @@
       // Turbine governor valve tracks load demand (% open); starts matched to P0 so
       // steam_flow = (gov/100)·(P/Prated) reproduces the P0 steady state at reset.
       governor_valve_pct: onLine ? clip(P0, 0, 1) * 100 : 0,
+      stop_valve_frac: 1,   // authored states are untripped; the step drives it from turbine_tripped (#373)
       condenser_cooling_available: true, steam_demand_mwe: onLine ? P0 * cfg.turbine.mwe_rated : 0,
       mwe_output: onLine ? P0 * cfg.turbine.mwe_rated : 0,
       // ...and the LOAD MODE has to agree with the rotor. The subcritical states spawn
@@ -1889,6 +1897,9 @@
     if (s.ir_amps == null) s.ir_amps = 0;
     // MSIV + SG safeties.
     if (s.msiv_open == null) s.msiv_open = true;
+    // Turbine stop valves (#373): a pre-#373 save restored mid-trip replays the
+    // trip correctly — shut if tripped, open otherwise.
+    if (s.stop_valve_frac == null) s.stop_valve_frac = s.turbine_tripped ? 0 : 1;
     // Steam-break LOCATION (2026-07-25, #199): pre-MSIV-gate saves carry
     // `_fail.steam_break = {active, size}` with no location. Default DOWNSTREAM
     // (isolable) — that is what the plain `steam_line_break` id now means, and a
@@ -1948,9 +1959,11 @@
   function Harness(initial, seed) {
     this.eng = new PWREngine({ initial_state: initial || 'hot_full_power', seed: seed });
     this.dt = 0.02;
-    // Emulate M4's mechanical-protection actuations (relief valves + turbine
+    // Emulate M4's mechanical-protection actuations (pzr relief + turbine
     // trips moved in-stack, 2026-07 ruling) so the engine-only physics tests
     // keep the assembled plant's protections. Reads INSTRUMENTS, like M4.
+    // The SG code safeties are NOT emulated: they are engine-native on true
+    // pressure since #369, so the engine alone already has them.
     this.autoM4 = true;
     this._m4Acc = 0;
   }
@@ -1962,8 +1975,6 @@
     var pz = cfg.pressurizer, sg = cfg.steam_generator, tb = cfg.turbine;
     if (!s.safety_open && ins.primary_pressure > pz.safety_open_mpa) eng.applyCommand({ action: 'open_pzr_safety' });
     else if (s.safety_open && ins.primary_pressure < pz.safety_reseat_mpa) eng.applyCommand({ action: 'close_pzr_safety' });
-    if (!s.sg_safety_open && ins.steam_pressure > sg.sg_safety_open_mpa) eng.applyCommand({ action: 'open_sg_safety' });
-    else if (s.sg_safety_open && ins.steam_pressure < sg.sg_safety_reseat_mpa) eng.applyCommand({ action: 'close_sg_safety' });
     if (!s.turbine_tripped && (ins.condenser_vacuum < tb.vacuum_trip_kpa || ins.turbine_rpm > tb.rpm_overspeed_trip)) {
       eng.applyCommand({ action: 'trip_turbine' });
     }

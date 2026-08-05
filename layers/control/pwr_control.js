@@ -41,6 +41,13 @@
     // falling" window that a single-setpoint plant does not give a lone trainee. Our
     // other two starts DO match the real list — loss of main feed above P-9 is their
     // condition 3, and the SI start is their condition 4.
+    //
+    // The VALUE has a sourced real counterpart it departs from (#374 evidence
+    // pass): NUREG-1431 Rev 4 puts the real lo-lo function at ~30–32 % of
+    // narrow-range span (Tables 3.3.1-1 / 3.3.2-1, ML12100A228 — the #220
+    // corpus), against 17 % NR here. Moving it is type-tuning work sitting
+    // directly under TR-14's SOURCED Ginna drain band (25–60 s to trip) — split
+    // out with a perturb_sweep and a TR-14 re-measure, never adjusted in place.
     { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
     // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
     // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a
@@ -364,6 +371,14 @@
   // and turbine trips are CONTROL decisions reading instruments, so they can be
   // manipulated and failed like every other actuation. Setpoints derive from
   // the engine config (single source — the engine keeps the valve hydraulics).
+  //
+  // NARROWED by #369 (audit #297 F2): the SG CODE SAFETIES are no longer here.
+  // A spring safety senses nothing — it is opened by the fluid itself — so an
+  // instrument-actuated one meant a stuck steam_pressure transmitter removed
+  // the SG's only overpressure protection (measured: MSIV closure to clad
+  // melt). The pop/reseat now lives in pwr_steam_generator.js on true
+  // pressure. The pzr spring safeties below share the structure; they are
+  // slice-2/4 audit scope and deliberately NOT moved in this change.
   var _pz = RD.PWR_CONFIG ? RD.PWR_CONFIG.pressurizer : {};
   var _sg = RD.PWR_CONFIG ? RD.PWR_CONFIG.steam_generator : {};
   var _tb = RD.PWR_CONFIG ? RD.PWR_CONFIG.turbine : {};
@@ -371,9 +386,7 @@
     // Pressurizer spring safety valves: pop / reseat.
     { instrument: 'primary_pressure', direction: 'high', setpoint: _pz.safety_open_mpa || 17.13,
       action: 'open_pzr_safety', reset_below: _pz.safety_reseat_mpa || 16.55, reset_action: 'close_pzr_safety' },
-    // SG code safety valves: pop / reseat (the bottled-SG backstop).
-    { instrument: 'steam_pressure', direction: 'high', setpoint: _sg.sg_safety_open_mpa || 9.31,
-      action: 'open_sg_safety', reset_below: _sg.sg_safety_reseat_mpa || 9.0, reset_action: 'close_sg_safety' },
+    // (SG code safeties were the next entry until #369 — engine-side now, see above.)
     // Turbine protection: low condenser vacuum, and overspeed. reset_below
     // re-arms the latch once the reading recovers (no reset command — a trip
     // is one-way; the operator restores the machine via connect_grid).
@@ -440,6 +453,14 @@
     // comment above requires, but a cooldown is not a casualty (#240).
     { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Coolant Temperature Low — expected, plant is cold', label_industry: 'LO TAVG (P-12) — EXPECTED' }] },
+    // Cooldown / heatup RATE (#375, audit #297 F7): the 100 °F/hr Tech-Spec-class
+    // heatup/cooldown limit. Measured before this alarm existed: one Dump SP entry
+    // produced a 1939 °F/hr cooldown with no rate indication or annunciator anywhere
+    // on the board. Reads the DERIVED tavg_rate channel (indicated tavg,
+    // differentiated + damped) — HR1-clean. NOT reclassified in Modes 4/5: the limit
+    // binds exactly during a planned cooldown — exceeding it there IS the error.
+    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
+    { id: 'heatup_rate_high',   instrument: 'tavg_rate', direction: 'high', setpoint: 55.6,  priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Heatup Rate High (>100 °F/hr)',   label_industry: 'RCS HEATUP RATE HI' },
     { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Pressurizer Pressure Low — expected, plant depressurized', label_industry: 'PZR PRESS LO — EXPECTED' }] },

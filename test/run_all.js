@@ -246,7 +246,14 @@ var BASELINES = {
   // 1.00 on both engines and the final value is 0.00 on both at this layer, because the void
   // line is gated `trueSubcooling <= 0` and a state a whisker either side of saturation reads
   // 1.00 or 0.00 on a coin toss.
-  'run_behavior.js':       { code: 0, secs: 56, score: '54pass 0xfail' },
+  // 52 → 53 (2026-08-05, #369): new probe TR-16 — SG safeties are self-actuating on true
+  // pressure; a dead steam_pressure channel must not defeat the lift (audit #297 F2).
+  // MERGED 2026-08-05: 52 base + 2 (develop: CA-13 #362, CA-14 #363) + 1 (workbench:
+  // TR-16 #369) = 55. Both lanes moved this from 52 independently, so NEITHER lane figure
+  // survives and 54 + 53 is not the answer either — the count below is MEASURED on the
+  // merged tree after every conflict was resolved, which is the standing rule this map has
+  // warned about since #312.
+  'run_behavior.js':       { code: 0, secs: 56, score: '55pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -630,7 +637,10 @@ var BASELINES = {
   // five (that eviction is itself worth −1 or so), never during — a tree with markers still in it
   // holds both sides' citations twice over and counts the duplicates. This entry has now warned
   // about hand-reconciling this number seven times.
-  'run_hardrules.js':      { code: 0, score: '177checks 0failed' },
+  // 177 → 178 (2026-08-05, #370): the §8.28 deferral row carries a new dated owner
+  // quote and the HR11 citation-format scan counts every one it tracks — by design,
+  // so a directive added with the count unmoved would read as NOT LOOKED AT.
+  'run_hardrules.js':      { code: 0, score: '178checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -657,7 +667,11 @@ var BASELINES = {
   // BEHIND clad_temp_c, published for the Physics tab's new Core damage group. Both were
   // locals inside stepCladding, so the panel could show the symptom (peak temperature) and
   // the verdict (fuel_damaged) but nothing of the mechanism between them.
-  'run_contract.js':       { code: 0, score: '148checks 0failed' },
+  // 148 → 149 (2026-08-05, #373): new true_state field stop_valve_pct — the turbine trip
+  // stop valves, spring-shut on a trip, documented in CONTEXT §6.3 with the change.
+  // 149 → 151 (2026-08-05, #375): the two ±100 °F/hr rate annunciators are picked up by
+  // the contract's per-alarm coverage automatically.
+  'run_contract.js':       { code: 0, score: '151checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -840,7 +854,15 @@ var BASELINES = {
   // 62 -> 66 (2026-08-03, #311 flag ON): Part A iterates the live protection tables, so it
   // picks up the two new trips and two new alarms automatically and asserts each sits
   // strictly inside its instrument's range. Nothing was hand-added here.
-  'run_reachability.js':   { code: 0, score: '66checks 0failed' },
+  // 66 → 65 (2026-08-05, #369): the SG-safety pop left PWR_ACTUATIONS for the engine
+  // (self-actuating on true pressure), so Part A has one fewer instrument-actuation row.
+  // The protection did not shrink — it moved below the instrument layer, where
+  // reachability-through-an-instrument is no longer the right question. TR-16 covers it.
+  // 65 → 68 (2026-08-05, #375): Part A picks up the two new ±100 °F/hr rate alarms
+  // automatically, and Part B gains B4 — the dump-setpoint cooldown must drive the
+  // INDICATED tavg_rate channel past the alarm (a rate meter is the easiest instrument
+  // to filter to death, the #249 class).
+  'run_reachability.js':   { code: 0, score: '68checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so

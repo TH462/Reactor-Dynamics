@@ -110,7 +110,35 @@
     // ΔT = 0.321 °F = Q_pump/h_sg to three decimals, and it sits there forever. That
     // is why the Mode 5 → Mode 3 mission had to take the reactor critical to heat the
     // plant up. Issue #251.
-    var steam_generation_rate = Q_sg / (sg.latent_heat_secondary * (1 + (cfg.thermal.pump_heat_frac || 0)));
+    // Feedwater ENTHALPY (#372, audit #297 F4): the heat crossing the SG first
+    // heats feed to saturation, THEN boils it. Until #372 feed entered the model
+    // only in the level integral — no temperature, no sensible term — so a 15 %
+    // overfeed produced digit-identical steam pressure and Tavg, the
+    // "SG Overfeed / Overcooling" malfunction could not overcool, and AFW moved
+    // level while removing zero heat. latent_heat_secondary keeps its value and
+    // is SPLIT at the rated point (feed_sensible_frac — derivation at the
+    // config), so at rated feed/temperature/pressure this is ALGEBRAICALLY
+    // IDENTICAL to the old line (calibration pinned by TR-1e leg D); only
+    // off-nominal feed — overfeed, cold AFW, low-load feed — moves the balance.
+    // The max(0,·) clamp is the lumped model's honest boundary: when cold feed
+    // can absorb more than the crossing heat (full AFW against decay heat),
+    // steam generation stops rather than going negative — the feed then simply
+    // does not all reach saturation, which a one-node SG cannot track further.
+    var _L = sg.latent_heat_secondary, _fs = sg.feed_sensible_frac || 0;
+    var _latent_eff = _L * (1 - _fs);
+    var _cNorm = _fs > 0
+      ? (_fs * _L) / Math.max(T_sat(sg.steam_p_rated) - sg.feedwater_temp_c, 1)
+      : 0;
+    var _sensible = _cNorm * (main_feed * Math.max(0, s.t_secondary_c - sg.feedwater_temp_c)
+      + afw_flow * Math.max(0, s.t_secondary_c - (sg.afw_temp_c != null ? sg.afw_temp_c : 40)));
+    // Stashed for the follow governor (pwr_engine extractFrac): "draw the steam the
+    // heat actually generates" now means AFTER the sensible duty. Without this the
+    // follow demand chases a steam flow the heat can no longer make and the
+    // secondary ratchets down until a trip (measured: the 5 % IC walked 8.03 →
+    // 6.89 MPa over 36 min and tripped).
+    s._sg_sensible_norm = _sensible / _L;
+    var steam_generation_rate = Math.max(0,
+      Q_sg / (1 + (cfg.thermal.pump_heat_frac || 0)) - _sensible) / _latent_eff;
 
     // B2 — steam dump / turbine bypass: vents steam straight to the condenser,
     // bypassing the turbine, to control SG pressure on a turbine trip / load
@@ -206,20 +234,37 @@
     s.steam_dump_frac = dump;
 
     // SG code safety valves — UPSTREAM of the MSIV, the relief that remains
-    // when the SG is bottled. COMMANDED state (open_sg_safety/close_sg_safety):
-    // the control layer's actuation pops them above sg_safety_open_mpa and
-    // reseats below sg_safety_reseat_mpa reading the steam_pressure INSTRUMENT
-    // (2026-07 ruling: relief logic lives in the control layer). The engine
-    // keeps the hydraulics — proportional flow between reseat and pop once
-    // open. Above the 8.90 MPa no-load dump setpoint, so the dump handles
+    // when the SG is bottled. SELF-ACTUATING on TRUE steam pressure (#369): a
+    // code safety is a spring-loaded ASME device opened by the fluid it
+    // protects against — no instrument, no logic, no power in its path, and
+    // that independence is the entire reason it is the backstop. The pop used
+    // to be a control-layer actuation reading the steam_pressure INSTRUMENT;
+    // the #297 audit measured one stuck transmitter carrying a survivable
+    // MSIV closure to clad melt (2696 psi SG, 3226 °F clad at 40 min). Same
+    // family as the RHR autoclosure and the accumulators: mechanical beats
+    // command. Sits above the steam_dump_setpoint anchor, so the dump handles
     // normal duty and the safeties are the backstop.
+    if (!s.sg_safety_open && s.steam_pressure_mpa > sg.sg_safety_open_mpa) s.sg_safety_open = true;
+    else if (s.sg_safety_open && s.steam_pressure_mpa < sg.sg_safety_reseat_mpa) s.sg_safety_open = false;
     var sg_relief = s.sg_safety_open
       ? sg.sg_safety_flow_max * clip((s.steam_pressure_mpa - sg.sg_safety_reseat_mpa)
           / (sg.sg_safety_open_mpa - sg.sg_safety_reseat_mpa), 0, 1)
       : 0;
     s.sg_safety_flow = sg_relief;
 
-    var steam_out = s.steam_flow_normalized + dump + sg_relief;
+    // #375 (audit #297 F7): the dump's MASS FLOW carries the upstream pressure,
+    // like every other steam path here (the turbine term scales by P/P_rated at
+    // its flow line; the safeties carry their own pressure ramp above reseat).
+    // The dump fraction used to enter steam_out bare, so a valve at the 0.1 MPa
+    // pressure floor still "passed" 40 % of rated mass flow — which is how the
+    // plant boiled 40 % rated steam out of a vessel holding zero water for 40
+    // straight minutes, with the level and pressure clamps silently absorbing
+    // the imbalance. At and above rated pressure the factor clips to 1, so
+    // normal operation, every trip ride-out and the bottled-SG evolutions are
+    // byte-identical — only the blown-down regime changes, and there the flow
+    // now dies with the pressure that would have to drive it.
+    var _dumpFlow = dump * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1);
+    var steam_out = s.steam_flow_normalized + _dumpFlow + sg_relief;
     // Total SG draw (turbine + dump + safeties) — the flow any feed regulation
     // actually matches. Exposed for the disconnected-mode feed coupling
     // (load_mode.js): after a turbine trip the dump still draws, and feed must
@@ -293,8 +338,20 @@
     var gov_target = clip(clip(s.turbine_demand_frac, 0, 1) * p_comp, 0, 1) * 100;
     var galpha = dt / (cfg.turbine.governor_tau + dt);
     s.governor_valve_pct += galpha * (gov_target - s.governor_valve_pct);
+    // Stop (throttle) valves — the trip-closure path, redundant with the governor
+    // (#373; WTSM §7.3: hydraulics dumped, springs slam them shut). Separate from
+    // governor_tau on purpose: load control and trip closure are different jobs on
+    // different valves, and collapsing them let a tripped machine draw steam for
+    // ~10 s. Open (1.0) any time the turbine is not tripped, so the multiplier is
+    // exactly 1 in normal operation and calibration is untouched.
+    var svShut = s.turbine_tripped === true;
+    var svTau = svShut ? cfg.turbine.stop_valve_tau : (cfg.turbine.stop_valve_reopen_tau || 5.0);
+    var svAlpha = dt / (svTau + dt);
+    s.stop_valve_frac += svAlpha * ((svShut ? 0 : 1) - s.stop_valve_frac);
+    if (s.stop_valve_frac < 1e-6) s.stop_valve_frac = 0;           // seat the valve — same idiom as the rpm floor
+    else if (s.stop_valve_frac > 1 - 1e-6) s.stop_valve_frac = 1;
     s.steam_flow_normalized = (s.governor_valve_pct / 100) * sg.steam_flow_rated
-      * (s.steam_pressure_mpa / sg.steam_p_rated);
+      * (s.steam_pressure_mpa / sg.steam_p_rated) * s.stop_valve_frac;
     if (s.msiv_open === false) s.steam_flow_normalized = 0;   // MSIV shut — no steam past it, whatever the governor asks
   }
 
