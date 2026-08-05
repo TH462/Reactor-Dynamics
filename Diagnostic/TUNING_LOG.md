@@ -111,12 +111,77 @@ ICs**: 55.000000 / 37.349932 / 38.408920 / 46.174957 / 30.000000, measured again
   while both existing level checks stay green. The **collapse** decision stays deferred behind #361
   per the plan, since #361 reworks that same line.
 
+### Batch 2 — #363, the flash-cooling saturation gate
+
+Reproduced on this tree first: 2 % break, 20 min, **225.6 °F (107.5 °C)** at **1583 psi
+(10.92 MPa)** with **378.4 °F (210.2 °C)** of subcooling and void 0 — the filed numbers exactly.
+
+The gate is one line, and the point is that it is **the same test the pressure half already had**.
+`stepPressure` computes `saturated = void > 0 || P_sat(Tavg) > P`; `stepCoolant` now asks
+`void > 0 || trueSubcooling(s) <= 0`. Those are the **same** test — `T_sat` and `P_sat_from_T` are
+exact inverses (179.47·P^0.239 and its reciprocal power) — spelled in each file's own currency
+rather than importing a second copy of the formula. Both inputs are one step old, which is the
+house convention: this is step 6, pressure is written at step 7 and void at step 9, so
+`stepPressure` reads the same stale void.
+
+**THE FILED SYMPTOM IS MOSTLY A DIFFERENT TERM, and measuring that first is what kept this
+honest.** Gating the blowdown moves the reported case by only **15 °F** (225.6 → 240.9 °F at
+20 min). The dominant cooling on that path is the **ECCS cold-injection quench**
+(`eccs_cooling_gain`), which is correctly *un*gated — cold water mixing removes sensible heat
+whether or not anything is boiling — i.e. unterminated injection, **#361's family**. Isolate with
+`degraded_hpi` before attributing anything on a break path to this term.
+
+**Isolated (ECCS defeated), which is where the term actually operates:**
+
+| 2 % break, t+20m | old | new |
+|---|---|---|
+| Tavg | 472.5 °F (244.7 °C) | **547.4 °F (286.3 °C)** |
+| final subcooling | **55.8 °F (31.0 °C), still falling** | **0.00** |
+| late-drain samples > 9 °F (5 °C) subcooled | **1194 / 2358 (50.6 %)** | **0 / 2358** |
+
+The core is already **melted** in both — a term that exists only because the coolant is boiling was
+driving the coolant further from boiling the longer it ran.
+
+**The tuning criterion did not move, so neither `[tune]` constant was retuned.** Re-measured rather
+than assumed: 8 % SGTR holds **2267 psi (15.63 MPa)** against its >600 psi target, and the 20 %
+LOCA lands at **3.94 MPa** against the 4.14 MPa accumulator setpoint (4.00 before). SGTR is
+identical to three significant figures at 2 / 5 / 8 % — that path stays subcooled, so the term was
+barely acting on it.
+
+**The config's stated small-break mechanism was FALSE and is rewritten in three sites.** It claimed
+`Psat(tavg)` pins pressure above 600 psi; measured, Tavg reaches 240.9 °F (116.1 °C) where `Psat`
+is ~25 psi. Pressure is above 600 psi because the **heaters** outrun the break — K_heater
+0.55 MPa/s against `K_leak_depressurize · leak_flow` ≈ 0.21 MPa/s. Right behaviour, wrong reason.
+
+### CA-14, and THREE drafting traps it caught — all by A/B, none by reasoning
+
+`run_behavior` **53 → 54**. Injection-verified: 3 checks red on the ungated term; the other 4 pass
+on **both** engines by design (leg B: the term is still live when saturated, so the gate cannot be
+satisfied by *deleting* the term; leg D: the two-point tuning criterion).
+
+1. **Leg C's first datum was `tavg_c` 110 °C — exactly `blowdown_sink_c`** — so the term evaluated
+   to gain × flow × (110 − 110) = 0 and the check **passed against the ungated engine**. A test
+   state sitting on the sink of the term under test measures nothing. Moved to 250 °C at 15.4 MPa:
+   old −0.056 °C/s, new exactly 0.
+2. **Leg A first took a run-wide max of subcooling** — the `h.range()` trap rescued into CLAUDE.md
+   earlier in this same session, landing immediately. The plant *starts* 73.8 °F (41.0 °C)
+   subcooled and its first subcooled minutes are correct physics, so the check failed on **both**
+   engines. Replaced with a count over a window keyed on "break flowing and well into the drain".
+3. **A void check was drafted and CUT.** Full stack the pre-fix engine ends this event with
+   `primary_void_fraction` **0 at ZERO inventory** — an empty core reading no void, which looks
+   like the headline and which I stated as one before measuring it properly. It is **not robust**:
+   peak void is **1.00 on both** engines and the final value is **0.00 on both** at this layer,
+   because the void line is gated `trueSubcooling <= 0` and a state a whisker either side of
+   saturation reads 1.00 or 0.00 on a coin toss.
+
 ### Still open from the plan
 
-Batches 2 (#363 flash-cooling gate), 2b (#367 pump heat), 3 (#361 solid overfill) and 4 (#364 decay
-heat, blocked on a source and a ruling). Batch 3's measurement basis has now moved twice — #362
-arms `pzr_solid` on paths that never armed it — so **re-measure #361's repro before touching it**,
-which the plan already says.
+Batches 2b (#367 pump heat), 3 (#361 solid overfill) and 4 (#364 decay heat, blocked on a source
+and a ruling). **#361's measurement basis has now moved twice** — #362 arms `pzr_solid` on paths
+that never armed it, and #363 changes when `leak_depress` acts — so re-measure its repro first,
+which the plan already says. Noted while measuring #363: at severity 0.5 the gated plant reaches
+the **120.00 % `mass_max` clip** at 20 min where the ungated one read 118.1 %, i.e. #361's defect
+arrives sooner. That is expected and is exactly why the plan orders #363 before #361.
 
 ---
 

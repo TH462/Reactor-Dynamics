@@ -45,6 +45,49 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-develop-b — #363: one break, two halves, one regime test
+
+Batch 2 of the #296 fix plan.
+
+**The decision is that this is a GATE, not a retune.** Flash-cooling removes latent heat, so it can
+only act at saturation; `stepPressure` has gated its half of the same break on `saturated` all
+along, and the temperature half ran on `leak_flow > 0`. The two are now the same test, written in
+each file's own currency (`trueSubcooling(s) <= 0` against `P_sat(Tavg) > P`) with the inverse
+relation recorded at the site rather than a second copy of the formula imported across the seam.
+The one deliberate difference is the boundary — `<= 0` includes exactly-saturated, where flashing
+does occur, against the pressure side's strict `>` — a measure-zero disagreement on the physical
+side of the line.
+
+**Neither `[tune]` constant moved, and that was checked rather than assumed.** `blowdown_gain` and
+`blowdown_sink_c` are calibrated against a two-point criterion (≤8 % SGTR holds the plateau above
+600 psi; the 20 % LOCA crosses below the 4.14 MPa accumulator setpoint). Re-measured after the
+gate: **2267 psi** and **3.94 MPa** — unmoved. SGTR is identical to three significant figures at
+2/5/8 %, because that path stays subcooled and the term was barely acting on it. CA-14 leg D now
+**asserts** that criterion instead of leaving it as a claim in a comment.
+
+**THE FILED DIAGNOSIS NAMED THE RIGHT DEFECT AND THE WRONG DRIVER, which is the entry worth
+keeping.** #363 reported a 2 % break sitting 378 °F (210 °C) subcooled. Gating the blowdown moves
+that by **15 °F**. The dominant cooling there is the **ECCS cold-injection quench** — a separate
+term, correctly *un*gated, because cold water mixing removes sensible heat whether or not anything
+is boiling — i.e. unterminated injection, #361's family. The gate's real effect is only visible
+with ECCS defeated: the old engine ends 55.8 °F (31.0 °C) subcooled and still falling with the core
+melted, and spends 1194 of 2358 late-drain samples more than 9 °F (5 °C) subcooled, against 0 of
+2358 after. **Isolate the neighbouring term before crediting a fix with a symptom.**
+
+**The config's small-break narrative was false and is rewritten in three sites.** It credited
+`Psat(tavg)` with holding pressure above 600 psi; measured, Tavg reaches 240.9 °F (116.1 °C) where
+`Psat` is ~25 psi. The **heaters** hold that pressure (0.55 MPa/s against 0.21). Right behaviour,
+wrong mechanism — the failure mode slice 2's key question exists to catch.
+
+**CA-14, and three drafting traps recorded at the site** (`run_behavior` 53 → 54; 3 checks red on
+injection, 4 green on both by design). A test datum at `tavg_c` 110 °C sat exactly on
+`blowdown_sink_c`, so the term evaluated to zero and the check **passed against the ungated
+engine**. A run-wide `max` of subcooling measured the initial condition (the plant starts 41 °C
+subcooled) and failed on both engines — the `h.range()` trap, landing in the same session it was
+rescued into `CLAUDE.md`. And a void check drafted from the full-stack final state was **cut** as
+not robust: peak void is 1.00 on both engines and the final value 0.00 on both, because the void
+line is gated `trueSubcooling <= 0` and a state a whisker either side of saturation is a coin toss.
+
 ## 2026-08-05-develop-a — #362/#365/#366/#368: a clip nothing could see, and three claims that expired the day another change landed
 
 Batches 0 and 1 of the #296 fix plan (the #221 slice-2 audit findings).

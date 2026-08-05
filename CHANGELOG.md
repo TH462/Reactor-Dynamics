@@ -30,6 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — a break kept "flash"-cooling a plant that had stopped boiling (#363)
+
+A break has two halves, and only one of them knew what regime it was in. The pressure half has
+always been gated on saturation; the **temperature** half — flash-cooling, which pulls Tavg toward
+containment saturation — was keyed on "is there a break" alone. Flashing removes **latent** heat,
+and subcooled liquid has none, so the term went on cooling long after there was nothing left to
+boil. Both halves are now gated on the same test.
+
+- **Measured** with ECCS defeated, so the cold-injection quench (a different term, correctly
+  *un*gated — cold water mixing cools whether or not anything is boiling) cannot mask it: the old
+  engine ends a 2 % break **55.8 °F (31.0 °C) subcooled and still falling**, with the core already
+  melted, and spends **1194 of 2358** late-drain samples more than 9 °F (5 °C) subcooled. After:
+  **0 of 2358**, sitting at saturation.
+- **The config's stated small-break mechanism was wrong, and is corrected.** It claimed
+  `Psat(Tavg)` pins RCS pressure above 600 psi on a small break. Measured, Tavg reaches 240.9 °F
+  (116.1 °C), where `Psat` is about **25 psi** — it pins nothing. Pressure is above 600 psi because
+  the **pressurizer heaters** outrun the break (0.55 MPa/s against 0.21). Right behaviour, wrong
+  reason.
+- **No constant was retuned.** The two `[tune]` values are calibrated against a two-point criterion
+  — an 8 % tube rupture holds the plateau above 600 psi, a 20 % break crosses below the accumulator
+  setpoint — and it was re-measured after the gate and is unmoved (**2267 psi** and **3.94 MPa**).
+  The tube-rupture path is unaffected to three significant figures, because it stays subcooled and
+  the term was barely acting on it.
+- Guarded by a new probe, **CA-14**; `run_behavior` **53 → 54**.
+
+**What this does *not* fix.** The originally reported symptom — a 2 % break sitting 378 °F (210 °C)
+subcooled — is only ~15 °F of this term. The rest is **unterminated emergency injection** quenching
+the plant, which is a separate open defect.
+
 ### Fixed — the pressurizer level line was clipped at 100, so a heating plant stopped reading (#362)
 
 `levelBase` — the thermal-expansion line the true pressurizer level is built on — carried an

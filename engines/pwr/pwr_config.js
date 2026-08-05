@@ -429,13 +429,28 @@
       // rate, scaled by blowdown_gain (same dimensionless form as the ECCS cold-injection
       // quench). This makes the saturation plateau RESPOND to break size, which is the physical
       // small-vs-large discriminator: a SMALL break — decay heat dominates the weak cooling, so
-      // Tavg holds the hot plateau and Psat(tavg) pins RCS pressure well above 600 psi (the TMI
-      // inventory/void lesson); a LARGE break — this term dominates decay heat, Tavg falls toward
-      // containment, and Psat(tavg) (and thus pressure, via the two-phase sat-pull) drops through
-      // the ECCS/accumulator band. Keyed on leak_flow ONLY — a stuck-open PORV/safety vents the
-      // steam space (K_porv_relief) and leaves leak_flow=0, so the flagship TMI path is untouched.
-      // Tuned so ≤8 % SGTR holds the plateau (>600 psi) while the 20 % large-LOCA default crosses
-      // below the 4.14 MPa accumulator setpoint. [tune]
+      // Tavg holds the hot plateau; a LARGE break — this term dominates decay heat, Tavg falls
+      // toward containment, and Psat(tavg) (and thus pressure, via the two-phase sat-pull) drops
+      // through the ECCS/accumulator band. Keyed on leak_flow ONLY — a stuck-open PORV/safety
+      // vents the steam space (K_porv_relief) and leaves leak_flow=0, so the flagship TMI path is
+      // untouched. SATURATION-GATED since #363: flashing removes latent heat only at saturation,
+      // and the gate lives at the term (pwr_thermal.stepCoolant) with the derivation.
+      //
+      // WHAT THIS PARAGRAPH USED TO CLAIM, AND WHY IT WAS WRONG. It said of a small break that
+      // "Psat(tavg) pins RCS pressure well above 600 psi (the TMI inventory/void lesson)".
+      // MEASURED full stack on a 2 % break (#363): at 20 min Tavg is 240.9 F (116.1 C), so
+      // Psat(Tavg) is about 25 psi (0.17 MPa) — it pins NOTHING. Pressure is above 600 psi
+      // because the PRESSURIZER HEATERS are winning against the break (K_heater 0.55 MPa/s
+      // against K_leak_depressurize · leak_flow ≈ 0.21 MPa/s). Right behaviour, wrong mechanism,
+      // which is worth more than a wrong number: the sat-pull only pins pressure once the plant
+      // IS saturated, and on a small break with make-up available it never gets there.
+      //
+      // THE TUNING CRITERION STILL HOLDS AND IS UNMOVED BY THE GATE, re-measured rather than
+      // assumed: ≤8 % SGTR holds the plateau (2267 psi / 15.63 MPa at 8 %, against the >600 psi
+      // criterion) and the 20 % large-LOCA default still crosses below the 4.14 MPa accumulator
+      // setpoint (3.98 MPa, against 4.00 MPa before the gate). SGTR is unaffected to three
+      // significant figures, because that path stays subcooled and the term was barely active on
+      // it. So neither constant below was retuned. [tune]
       blowdown_gain: 0.02,         // dimensionless scale on the break flash-cooling mixing term [tune]
       blowdown_sink_c: 110.0,      // °C — containment-saturation floor the blowdown pulls Tavg toward [tune]
     },
@@ -661,7 +676,19 @@
       // to containment and depressurizes the RCS — unlike CVCS letdown, which is a
       // controlled inventory bleed at pressure. This is what pushes a LARGE break
       // below saturation (voiding → sat-pull takes over) and into the ECCS/accumulator
-      // band; a small PORV break floors higher (TMI). Zero when no break. [tune]
+      // band; a small PORV break floors higher (TMI). Zero when no break.
+      //
+      // THIS TERM AND `thermal.blowdown_gain` ARE THE TWO HALVES OF ONE BREAK, and until
+      // #363 only this half knew what regime it was in: `stepPressure` gates this on
+      // `saturated`, while the temperature half ran on `leak_flow > 0` alone and went on
+      // "flash"-cooling a plant that had stopped boiling. They are gated on the same test
+      // now, spelled in each file's own currency (see pwr_thermal.stepCoolant for the
+      // algebra showing the two spellings are inverses, not opinions).
+      //
+      // The gate did NOT change what this constant does, and the small-break pressure is
+      // still held ABOVE the accumulator band — but by the HEATERS, not by the sat-pull the
+      // old `blowdown_gain` comment credited. Measured on a 2 % break: K_heater 0.55 MPa/s
+      // against this term's 0.21 MPa/s at that leak rate. [tune]
       K_leak_depressurize: 10.0,
       // PORV: auto-open 16.20 MPa (2350 psia), command-close 15.86 MPa (2300 psia).
       porv_open_mpa: 16.20, porv_close_mpa: 15.86,

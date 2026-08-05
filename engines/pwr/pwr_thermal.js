@@ -146,18 +146,38 @@
     if (q_inj > 0 && e.eccs_temp_c != null) {
       dTavg += (e.eccs_cooling_gain != null ? e.eccs_cooling_gain : 0) * q_inj * (e.eccs_temp_c - s.tavg_c);
     }
-    // Break blowdown flash-cooling (§6.2/§6.3): coolant leaving a primary break (s.leak_flow)
-    // carries enthalpy, and the remaining inventory flashes to replace it, removing latent heat.
+    // Break blowdown FLASH-cooling (§6.2/§6.3): coolant leaving a primary break (s.leak_flow)
+    // carries enthalpy, and the remaining inventory FLASHES to replace it, removing latent heat.
     // Self-limiting perfect-mixing pull of Tavg toward blowdown_sink_c (containment saturation)
     // at the break throughput rate, scaled by blowdown_gain — the SAME form as the ECCS quench
-    // above. This is what makes the saturation plateau respond to break size (small break: decay
-    // heat dominates, Tavg holds high, Psat pins pressure > 600 psi; large break: this dominates,
-    // Tavg falls toward containment, pressure follows Psat(tavg) below the accumulator setpoint).
-    // Keyed on leak_flow ONLY (a stuck-open PORV vents the steam space, leak_flow=0 → no effect,
-    // so the flagship TMI path is untouched). Cannot cool below blowdown_sink_c; exactly 0 with
-    // no break.
+    // above. Keyed on leak_flow, so a stuck-open PORV vents the steam space with leak_flow = 0
+    // and the flagship TMI path is untouched. Cannot cool below blowdown_sink_c.
+    //
+    // SATURATION-GATED (#363, 2026-08-05), AND IT IS THE SAME GATE THE PRESSURE SIDE ALREADY
+    // HAD. Flashing removes latent heat only while the fluid is AT saturation. Once the residual
+    // inventory is subcooled at RCS pressure nothing flashes and this term must stop — it was
+    // keyed on `leak_flow > 0` alone, so it kept pulling bulk Tavg toward a fixed 230 F (110 C)
+    // sink through a plant that had long since stopped boiling. MEASURED full stack before the
+    // gate, a 2 % break at 20 min: Tavg 225.6 F (107.5 C) at 1583 psi (10.92 MPa) with void 0 —
+    // 378.4 F (210.2 C) of subcooling with a break open, falling monotonically from 579.3 F
+    // (304.1 C). Half of one break's physics was regime-aware and the other half was not:
+    // `stepPressure` has gated `leak_depress` on `saturated` all along.
+    //
+    // `trueSubcooling(s) <= 0` IS THAT TEST, not a second opinion about it. stepPressure asks
+    // `P_sat(Tavg) > P`; T_sat and P_sat_from_T are exact inverses (179.47·P^0.239 and its
+    // reciprocal power), so `P_sat(Tavg) > P` <=> `Tavg > T_sat(P)` <=> `trueSubcooling < 0`.
+    // Written in THIS file's own currency rather than importing the pressure spelling, which
+    // would be a second copy of the formula. The one deliberate difference is the boundary:
+    // `<= 0` includes exactly-saturated, where flashing does occur, against stepPressure's
+    // strict `>` — a measure-zero disagreement, and the physical side of it.
+    //
+    // Both inputs are ONE STEP OLD and that is the house convention, not an oversight: this is
+    // step 6, `pressure_mpa` is written by stepPressure (step 7) and `primary_void_fraction` by
+    // stepInventory (step 9), so stepPressure reads the same stale void this does (CONTEXT §11
+    // explicit coupling).
     var q_leak = s.leak_flow || 0;
-    if (q_leak > 0 && t.blowdown_gain) {
+    var flashing = (s.primary_void_fraction > 0) || trueSubcooling(s) <= 0;
+    if (q_leak > 0 && flashing && t.blowdown_gain) {
       dTavg += t.blowdown_gain * q_leak * ((t.blowdown_sink_c != null ? t.blowdown_sink_c : 100) - s.tavg_c);
     }
     s.tavg_c += dTavg * dt;

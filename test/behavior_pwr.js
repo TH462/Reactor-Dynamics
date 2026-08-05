@@ -101,6 +101,7 @@
     'CA-11': 'probe (break discharge follows RCS pressure — 10 CFR 50 App K I.C.1.b; #334)',
     'CA-12': 'probe (a water-solid RCS repressurizes and relieves — mass_max no longer discards; #346)',
     'CA-13': 'probe (the pzr level line is unbounded upward — a heatup fills it solid; #362)',
+    'CA-14': 'probe (break flash-cooling is saturation-gated; the void model depended on it; #363)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -2902,6 +2903,127 @@
           fmt(d.ts().pzr_level_pct, 2) + ' %',
           d.ts().pzr_level_pct > 45 && d.ts().pzr_level_pct < 65, '45..65 %');
         T.checkSanity(ck, d);
+      });
+    },
+
+    /* CA-14 — BREAK FLASH-COOLING IS SATURATION-GATED (#363, 2026-08-05).
+     *
+     * A break has two halves and until now only one of them knew what regime it was in.
+     * `stepPressure` has always gated `leak_depress` on `saturated`; the TEMPERATURE half ran
+     * on `leak_flow > 0` alone, so it went on "flash"-cooling a plant that had stopped boiling.
+     * Flashing removes LATENT heat, and there is no latent heat to remove from subcooled liquid.
+     *
+     * THE SEVERE CONSEQUENCE IS NOT THE TEMPERATURE, IT IS WHAT THE TEMPERATURE SUPPRESSED.
+     * The void line is `trueSubcooling <= 0 && _mass < 1`, so dragging Tavg far below saturation
+     * makes voiding UNREACHABLE. Measured full stack on a 2 % break with ECCS defeated: the old
+     * engine drained the plant to ZERO inventory and reported `primary_void_fraction` 0, sitting
+     * 53.2 °F (29.5 °C) SUBCOOLED. An empty core reading no void, held there by a cooling term
+     * that only exists because the coolant is boiling.
+     *
+     * Legs B and C are at FUNCTION level on purpose. Leg A alone cannot tell a correctly-gated
+     * term from a DELETED one — a drained core reaches saturation on decay heat either way — so
+     * the two legs assert the term is off when subcooled AND still live when saturated.
+     */
+    'CA-14': function () {
+      return test('CA-14 break flash-cooling stops when the flashing does — a drained core cannot be subcooled', function (ck) {
+        var t = RD.PWR_CONFIG.thermal;
+
+        // ---- leg A: THE PLANT. Small break, ECCS defeated so the cold-injection quench (a
+        // DIFFERENT term, correctly ungated — cold water mixing cools whether or not anything
+        // is boiling) cannot mask the one under test.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.05 });
+        a.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
+        // COUNT THE LATE DRAIN, do not take a peak over the whole run. The plant STARTS
+        // 73.8 F (41.0 C) subcooled and its first subcooled minutes are correct physics — the
+        // ordinary subcooled blowdown, which is exactly when this term SHOULD be off. A
+        // run-wide `max` therefore measures the initial condition, which is the `h.range()`
+        // trap in its usual clothes; a first draft of this leg did precisely that and failed
+        // on BOTH engines. The window is "a break is flowing and the plant is well into the
+        // drain", identical on both engines, and the statistic is how much of it is spent
+        // subcooled while the coolant is supposedly flashing.
+        //
+        // A VOID CHECK WAS DRAFTED HERE AND CUT, because it was measured and is NOT robust.
+        // Full stack the pre-#363 engine ends this event with `primary_void_fraction` 0 at
+        // ZERO inventory — an empty core reading no void — which looks like the headline. But
+        // PEAK void over the run is 1.00 on BOTH engines, and the final value is 0.00 on both
+        // at this layer, because the void line is gated `trueSubcooling <= 0` and a state
+        // sitting a whisker either side of saturation reads 1.00 or 0.00 on a coin toss. The
+        // defensible claim is the one below: where the plant is held, not what the void gauge
+        // happens to catch.
+        var lateN = 0, lateSub = 0;
+        a.run(1200, function (hh) {
+          var s = hh.ts();
+          if (!(s.leak_flow > 0) || s.core_inventory_pct > 60) return;
+          lateN++;
+          if (s.subcooling_c > 5) lateSub++;
+        });
+        var ta = a.ts();
+        // The break has to have actually emptied the plant, or the rest of leg A is vacuous.
+        ck('the break really did drain the plant (or leg A proves nothing)',
+          fmt(ta.core_inventory_pct, 2) + ' % inventory', ta.core_inventory_pct < 20, '< 20 %');
+        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core sits AT
+        // saturation. Pre-#363 this runs 53.2 °F (29.5 °C) subcooled.
+        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core sits AT
+        // saturation. Pre-#363 it ends 55.8 F (31.0 C) subcooled and STILL FALLING, with the
+        // core already melted — a term that only exists because the coolant is boiling, driving
+        // the coolant further from boiling the longer it runs.
+        ck('…and it ends AT saturation, not below it (pre-#363: 55.8 F / 31.0 C subcooled)',
+          fmt(ta.subcooling_c * 9 / 5, 2) + ' F (' + fmt(ta.subcooling_c, 2) + ' C) of subcooling',
+          Math.abs(ta.subcooling_c) < 2.0, 'within 3.6 F (2.0 C) of saturation');
+        ck('…and is never driven subcooled while the break flows (pre-#363: 1194 of 2358)',
+          lateSub + '/' + lateN + ' late-drain samples more than 9 F (5 C) subcooled',
+          lateN > 500 && lateSub === 0, '0 of > 500 samples');
+
+        // ---- leg B: THE TERM IS STILL LIVE WHEN SATURATED. Without this, deleting the term
+        // outright satisfies leg A. Two clones of a real engine state, saturated, differing
+        // only in leak_flow; the engine's own selfTest uses this shape for the ECCS quench.
+        var base = H('hot_full_power'); base.run(60);
+        var mk = function (tavg, press, leak) {
+          var c = Object.assign({}, base.eng.s);
+          c.tavg_c = tavg; c.pressure_mpa = press; c.p_coldleg = press; c.p_hotleg = press;
+          c.primary_void_fraction = 0; c.leak_flow = leak; c._eccs_inj_inv = 0;
+          RD.pwrThermal.stepCoolant(c, RD.PWR_CONFIG, 0.1);
+          return c._dTavg_dt;
+        };
+        // 7.0 MPa: Tsat = 285.8 C, so 290 C is saturated (trueSubcooling < 0) with void 0 —
+        // the gate is exercised through the SUBCOOLING test, not through the void shortcut.
+        var satLeak = mk(290.0, 7.0, 0.02), satDry = mk(290.0, 7.0, 0);
+        ck('when the plant IS saturated the break still cools it (the gate is not a deletion)',
+          fmt(satLeak - satDry, 5) + ' C/s of extra cooling from the break',
+          satLeak - satDry < -1e-4, 'measurably negative');
+
+        // ---- leg C: AND IT IS EXACTLY ZERO WHEN SUBCOOLED. This is the fix itself, at the
+        // mechanism, and it is THE discriminating check of the probe.
+        //
+        // 15.4 MPa: Tsat = 345.1 C, so 250 C is 95 C subcooled. THE TEMPERATURE IS NOT FREELY
+        // CHOSEN — a first draft used 110 C, which is exactly `blowdown_sink_c`, so the term
+        // evaluated to gain x flow x (110 - 110) = 0 and the check PASSED ON THE UNGATED
+        // ENGINE. A test state sitting on the sink of the term under test measures nothing.
+        // Keep this datum well away from `blowdown_sink_c`.
+        var subLeak = mk(250.0, 15.4, 0.02), subDry = mk(250.0, 15.4, 0);
+        ck('…and when it is SUBCOOLED the break removes no heat at all — nothing is flashing',
+          fmt(subLeak - subDry, 8) + ' C/s (pre-#363: a pull toward ' +
+          fmt(t.blowdown_sink_c, 0) + ' C at any subcooling)',
+          subLeak === subDry, 'exactly 0');
+
+        // ---- leg D: CALIBRATION, green on BOTH engines by design. The config tunes these two
+        // constants against a two-point criterion; re-measured after the gate and unmoved, which
+        // is why neither was retuned. Asserted here rather than only described in a comment.
+        var sg = H('hot_full_power');
+        sg.run(30); sg.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.08 });
+        sg.run(1200);
+        ck('the tuning criterion holds — an 8 % SGTR still holds the plateau above 600 psi',
+          fmt(sg.ts().pressure_mpa * 145.038, 0) + ' psi (' + fmt(sg.ts().pressure_mpa, 2) + ' MPa)',
+          sg.ts().pressure_mpa > 4.14, '> 600 psi (4.14 MPa)');
+        var lg = H('hot_full_power');
+        lg.run(30); lg.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.2 });
+        lg.run(1200);
+        ck('…and the 20 % large break still crosses below the accumulator setpoint',
+          fmt(lg.ts().pressure_mpa * 145.038, 0) + ' psi (' + fmt(lg.ts().pressure_mpa, 2) + ' MPa)',
+          lg.ts().pressure_mpa < 4.14, '< 600 psi (4.14 MPa)');
+        T.checkSanity(ck, base);
       });
     },
 

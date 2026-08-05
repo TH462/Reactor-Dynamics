@@ -221,7 +221,32 @@ var BASELINES = {
   // 0.00 % on both engines. It "passed" on 0 of 0 samples. An earlier draft of the inventory
   // check was cut for the same class of reason: it passed on the old engine (3.49 points of
   // travel against a > 2.0 band), so it discriminated nothing.
-  'run_behavior.js':       { code: 0, secs: 56, score: '53pass 0xfail' },
+  // 53 -> 54 (2026-08-05-develop-a, #363): CA-14, break flash-cooling is saturation-gated.
+  // A break has two halves and only one knew its regime: stepPressure has always gated
+  // `leak_depress` on `saturated`, while the TEMPERATURE half ran on `leak_flow > 0` alone and
+  // went on "flash"-cooling a plant that had stopped boiling. Flashing removes LATENT heat and
+  // subcooled liquid has none. MEASURED, ECCS defeated so the (correctly ungated) cold-injection
+  // quench cannot mask it: the pre-fix engine ends a 2 % break 55.8 °F (31.0 °C) SUBCOOLED and
+  // still falling, with the core already melted, and spends 1194 of 2358 late-drain samples more
+  // than 9 °F (5 °C) subcooled against 0 of 2358 after.
+  // Injection-verified: 3 checks red on the ungated term. The other 4 pass on BOTH engines by
+  // design — leg B (the term is still LIVE when saturated, so the gate cannot be satisfied by
+  // deleting the term) and leg D (the config's own two-point tuning criterion, re-measured and
+  // unmoved: 8 % SGTR holds 2267 psi against its > 600 psi target, the 20 % LOCA lands at
+  // 3.94 MPa against the 4.14 MPa accumulator setpoint — which is why neither `[tune]` constant
+  // was retuned).
+  // THREE DRAFTING TRAPS, all caught by A/B rather than by reasoning, all recorded at the site.
+  // (1) Leg C's first datum was `tavg_c` 110 °C — exactly `blowdown_sink_c` — so the term
+  // evaluated to gain x flow x (110 - 110) = 0 and the check PASSED ON THE UNGATED ENGINE. A
+  // test state sitting on the sink of the term under test measures nothing. (2) Leg A first took
+  // a run-wide max of subcooling, which is the `h.range()` trap: the plant STARTS 73.8 °F
+  // (41.0 °C) subcooled and its first subcooled minutes are correct physics, so it failed on
+  // both engines. (3) A void check was drafted on the strength of the full-stack final state
+  // (pre-fix: void 0 at ZERO inventory, an empty core reading no void) and CUT — peak void is
+  // 1.00 on both engines and the final value is 0.00 on both at this layer, because the void
+  // line is gated `trueSubcooling <= 0` and a state a whisker either side of saturation reads
+  // 1.00 or 0.00 on a coin toss.
+  'run_behavior.js':       { code: 0, secs: 56, score: '54pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
