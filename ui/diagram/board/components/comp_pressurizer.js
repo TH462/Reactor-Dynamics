@@ -132,9 +132,22 @@
       // temperature the external spray pipe renders (sprayTemp prop = tcold) instead of
       // the static cold-blue preset — the colour no longer jumps at the vessel boundary.
       var sprayFluid = lastSprayTemp != null ? { phase: 'water', temp: lastSprayTemp } : 'coldLeg';
-      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, points: [S(34, 124), S(52, 124)] }));
-      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, points: [S(50, 124), S(140, 124)] }));
-      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, points: [S(spx, 124), S(spx, 133)] }));
+      // WORLD-SPACE DASH ANCHOR (#357) — the same fix comp_tee and comp_cross carry for #233.
+      // These runs passed no phaseX/phaseY, so StdPipe anchored their dash grid to the
+      // PRESSURIZER'S OWN TILE instead of the canvas, while the spray line outside the vessel is
+      // on the world grid. MEASURED: the two run at the same period and the same velocity —
+      // 1.04 s and 22.69 px/s on both, at five viewports from 1024 to 2560 wide — so this was
+      // never a speed difference. It is a fixed PHASE offset: the vertical drop leg sat about
+      // half a dash out of step, and two lines at equal speed in different phase slide past
+      // each other at the vessel wall, which is what reads as a different speed.
+      //
+      // Legs are drawn at (localViewBoxUnits x s) and the viewBox crop starts at 10,90, so
+      // subtracting vbMin*s turns a local coordinate into a canvas one — for PHASE only.
+      var phX = (cfg.left || 0) - 10 * (s || 0.55);
+      var phY = (cfg.top || 0) - 90 * (s || 0.55);
+      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, phaseX: phX, phaseY: phY, points: [S(34, 124), S(52, 124)] }));
+      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, phaseX: phX, phaseY: phY, points: [S(50, 124), S(140, 124)] }));
+      sprayConns.appendChild(K.pipe({ d: 4, fluid: sprayFluid, flow: flow, dir: 1, phaseX: phX, phaseY: phY, points: [S(spx, 124), S(spx, 133)] }));
     }
     rebuildSprayPipes(null, false, true);
 

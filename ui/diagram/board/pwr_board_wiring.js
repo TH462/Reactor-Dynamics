@@ -41,6 +41,10 @@
   // Condenser hotwell / condensate temperature — cold (condensing under vacuum), rising
   // modestly with load (higher backpressure). Shared by the condenser and the condensate pipes.
   function condTemp(s) { return 33 + 0.12 * ((s.instruments || {}).power_range || 0); }
+  // RWST / SIT injection temperature — the engine's own constant, so a board pipe and the
+  // quench term in pwr_thermal.stepCoolant cannot drift apart (#357). Also stands in for the
+  // volume control tank and the condensate storage tank, which this plant does not model.
+  function ECCS_T() { return _EM.eccs_temp_c != null ? _EM.eccs_temp_c : 40; }
   function r0(v) { return Math.round(v); }
   function r1(v) { return (Math.round(v * 10) / 10); }
 
@@ -656,14 +660,25 @@
     // the demand box renders 730..777 — 47 px, because it carries ▲▼ nudge arrows — so the
     // readout overlapped it by 80x20 px. Both elements still rendered; only a ruler finds it.
     //
-    // It sits beside the pressurizer instead, as the third of the PZR TEMP / HTR PWR stack,
-    // which is where a pressurizer indication belongs anyway. 1065,510 came out of a free-slot
-    // scan over the rendered rects AND the pipe polylines (the surge line runs at x≈1055),
-    // not out of arithmetic: it is the only 95x40 gap in x 1040..1180 / y 300..560.
+    // It sits beside the pressurizer instead, as part of the PZR TEMP / HTR PWR stack, which
+    // is where a pressurizer indication belongs anyway. #350 put it BELOW that stack at
+    // 1065,510 and the owner moved it again *(OWNER, 2026-08-04, #357: "remove the pressurizer
+    // spray flow indication from on top of the pressurizer card … put it above PZR TEMP
+    // indication to the right of the pressurizer")* — at 510 it printed across the vessel's
+    // lower dome, which a free-slot scan cannot see, because the pressurizer TILE is 108 px of
+    // box around a much narrower piece of art and every scan treats the tile as solid. That is
+    // also why the first scan for this new position returned ZERO slots: excluding `component`
+    // tiles from the obstacle set (their art is caught by the path/polyline pass) is what makes
+    // the column measurable at all. PZR TEMP and HTR PWR both live inside that same tile.
+    //
+    // 1088,348 at 90x38 — MEASURED clear, zero clashes against every rendered rect and every
+    // art path. The band is genuinely tight: the quench-tank box ends at y 340, PZR TEMP starts
+    // at 395, the surge-line pipe occupies x ≤ 1085 and the STEAM card box starts at x 1180.
+    // 95 wide does NOT fit (it clips the STEAM card); 90 does, with 2 px to spare.
     { id: 'bdPzrSprayFlow', kind: 'readout',
       name: 'Pressurizer spray flow  ·  sim: instruments.pzr_spray_flow, % of maximum spray flow',
-      left: 1065, top: 510, label: 'SPRAY FLOW', value: '0', unit: '%',
-      color: '#5aad7c', fontSize: 15, width: 95, height: 40 },
+      left: 1088, top: 348, label: 'SPRAY FLOW', value: '0', unit: '%',
+      color: '#5aad7c', fontSize: 15, width: 90, height: 38 },
     // Feed controller status, in the SG FEED card's top-right corner (#214). The AUTO/MAN
     // lamps say THAT the controller is off; nothing said WHY. Same shape as the steam dump
     // status (imrppq5r7kw): rAnchor, so `left` is the RIGHT edge.
@@ -694,7 +709,14 @@
     // authored button idiom exactly. Nothing is moved to make room.
     { id: 'bdMfwRestore', kind: 'button',
       name: 'Main feedwater restore  ·  sim: isolate_feedwater active:false',
-      left: 1670, top: 600, label: 'RESTORE', width: 55, height: 25, color: '#8ba4b6', fontSize: 12 },
+      // WIDTH 68, not the 55 the row above uses (#357). MEASURED at the pinned 1400x900 harness
+      // viewport: "RESTORE" renders 55.99 px against a 51.92 px box — it overflowed by 4.07 px,
+      // i.e. 4.31 authored px, because it is the only caption on this card longer than four
+      // characters and it inherited the AUTO/MAN/OFF button width. 68 authored px gives the 12 px
+      // mono caption 64 px of content box against 59.3 px of text. The feed-rate number moves
+      // right to 1750 with it (DOC_PATCHES below) — the other half of this fix, and the two must
+      // stay together or the button lands on top of the number.
+      left: 1670, top: 600, label: 'RESTORE', width: 68, height: 25, color: '#8ba4b6', fontSize: 12 },
     // (The ROD CONTROL card's top-right corner held a rod controller status word here from
     // #306 until 2026-08-03, when the owner removed it as redundant against the IN-OUT
     // lamps. The reasoning, and where each of its states is still shown, is at the
@@ -1703,7 +1725,35 @@
     pms2ihy5skm: function (s) { return condTemp(s); },    // condenser hotwell → condensate pump
     // --- circulating cooling-water loop (condenser ↔ cooling tower)
     pms3l89l83h: function (s) { return 25 + 0.14 * (IN(s).power_range || 0); }, // CW return (warm)
-    pms3l83etan: function () { return 25; }                                     // CW supply (cold)
+    pms3l83etan: function () { return 25; },                                    // CW supply (cold)
+    // --- CVCS, ECCS, accumulators and AFW (#357 items 1 and 2). These eleven runs were the
+    // last on the board still painting an AUTHORED temperature, and every one of them was
+    // wrong in a way you can see: the letdown line rendered at 60 °C — cold-blue — while the
+    // cold leg it takes suction from ran green at 292 °C, and the charging pair was authored
+    // BACKWARDS, 102 °C on the pump SUCTION against 60 °C on the discharge that returns to the
+    // RCS. (#350 gave all of them live FLOW; their colour was never revisited.)
+    //
+    // Two of the three groups tie to numbers this plant already owns, so they are not fits:
+    //   letdown / charging discharge → `tcold`, because that is the node they connect to.
+    //   ECCS + accumulators → `emergency.eccs_temp_c`, the RWST/SIT temperature the engine
+    //     actually injects at (40 °C / 104 °F) — the same constant `stepCoolant`'s quench term
+    //     reads, so the pipe cannot disagree with the physics.
+    // The suction side is the third: the volume control tank and the condensate storage tank
+    // are NOT modelled, so those runs take the RWST temperature as the nearest thing this
+    // plant has to "a tank at containment ambient". DECLARED, not measured — what matters for
+    // the board is that suction reads COOLER than discharge, which is the relationship that
+    // was inverted.
+    pms3l18h7og: function (s) { return IN(s).tcold; },      // letdown: cold leg → CVCS
+    pms3l178g39: function (s) { return IN(s).tcold; },      // charging pump discharge → cold leg
+    pms3x29yoq0: function () { return ECCS_T(); },          // charging pump SUCTION (tank-side)
+    pms3x28fhhm: function () { return ECCS_T(); },          // VCT make-up leg → charging suction
+    pms3xe4ia7n: function () { return ECCS_T(); },          // RWST cross-tie → charging line
+    pms3x1rbkod: function () { return ECCS_T(); },          // RWST → ECCS pump suction
+    pms3ytv6lm2: function () { return ECCS_T(); },          // ECCS pump discharge
+    pms3l053p3x: function () { return ECCS_T(); },          // accumulator shutoff B
+    pms3x3czo4r: function () { return ECCS_T(); },          // accumulators → cold leg
+    pms31ro0qi0: function () { return ECCS_T(); },          // AFW valve A → feed line
+    pms3kx59u4x: function () { return ECCS_T(); }           // CST → AFW valve B
   };
 
   // ================================================================ LIVE LINE FLOW (#350)
@@ -2159,6 +2209,14 @@
       imrzp89wdfu: { props: { labelSize: 14 } },   // LETDOWN
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // SG FEED rate box: 1740 → 1750, the other half of the RESTORE widening (#357). With
+      // RESTORE at 68 wide it ends at 1738, so the old 1740 left a 2 px gap; 1750 restores a
+      // 12 px one, comparable to the 10 px between AUTO/MAN/OFF in the row above. It also
+      // BALANCES the card, which is what the owner asked for: the box is 105 wide, so 1750 puts
+      // its right edge on 1855 — flush with OFF's right edge above it and 5 px inside the card,
+      // mirroring RESTORE's 5 px left margin. Patched here, not in `pwr_board_data.js`, because
+      // that file is GENERATED and a re-export would silently undo the edit.
+      imro8xhy2me: { props: { left: 1750 } },
       // ---- ALL-CAPS board text -------------------------------------------------------
       // *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps except units should
       // follow standard unit conventions for capitalization.")* Four turbine-side captions

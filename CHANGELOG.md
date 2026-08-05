@@ -30,6 +30,31 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Eleven auxiliary pipes now take their colour from the plant instead of an authored guess**
+  (#357). The letdown line rendered cold-blue at 60 °C while the cold leg it takes suction from
+  ran green at 550 °F (288 °C), and the charging pair was authored **backwards** — 102 °C on the
+  pump *suction* against 60 °C on the discharge that returns to the reactor coolant system.
+  Letdown and charging discharge read the cold leg now; the ECCS, accumulator, refuelling-water
+  and auxiliary-feedwater runs read the plant's own injection temperature, 104 °F (40 °C), which
+  is the same constant the physics injects at. Suction is cooler than discharge, as it should be.
+- **The coolant green and orange are a step darker.** They are the two colours the reactor
+  coolant system actually sits on — cold leg near one, hot leg near the other — so they were the
+  loudest thing on the board in the state the plant is in most of the time.
+- **Pressurizer spray flow moved above PZR TEMP**, out from over the vessel art, and the steam
+  generator's u-tube flow dashes now carry the coolant colour instead of near-white, matching
+  every other primary run.
+- **Valves no longer show a pale streak.** The moving dash inside every valve was hardcoded
+  near-white, so a fitting disagreed with the line it sat in — the one place on the plant where
+  that happened. It takes the fluid's own dash colour now and crosses the valve unchanged.
+- **The pressurizer's internal spray runs are back in step with the spray line outside it.** They
+  were anchored to the pressurizer's own tile rather than the canvas, so the dashes sat a fixed
+  fraction of a period out and slid past each other at the vessel wall. Measured, the speeds were
+  always identical — 1.04 s per period and 22.7 px/s on both, at five window sizes from 1024 to
+  2560 wide — so this was never a speed difference, only a phase one.
+- **The SG FEED RESTORE button fits its own caption**, and the feed-rate box moved right to
+  balance the card: its right edge now lines up with the OFF button above it.
+
 ### Fixed
 - **The pressurizer heater cutoff now latches, instead of chattering on its own setpoint**
   (#348). The 17 % low-level interlock had no reset differential, so on a noisy lagged level

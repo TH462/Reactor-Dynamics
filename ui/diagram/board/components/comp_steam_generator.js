@@ -45,7 +45,7 @@
     // per-instance unique ids for every gradient / clipPath / filter
     var ids = {
       steel: env.uid('sgSteel'), water: env.uid('sgWater'), steam: env.uid('sgSteam'),
-      tube: env.uid('sgTube'), clip: env.uid('sgClip'), waterclip: env.uid('sgWClip'),
+      tube: env.uid('sgTube'), tubeDash: env.uid('sgTubeDash'), clip: env.uid('sgClip'), waterclip: env.uid('sgWClip'),
       glow: env.uid('sgGlow'), steamblur: env.uid('sgSBlur')
     };
 
@@ -92,7 +92,16 @@
     // ---- defs (dynamic stops kept as refs) ----
     var waterStops = [h('stop', { offset: '0' }), h('stop', { offset: '1' })];
     var steamStops = [h('stop', { offset: '0' }), h('stop', { offset: '1' })];
-    var tubeStops = [h('stop', { offset: '0' }), h('stop', { offset: '0.5', stopColor: '#7a5a9a' }), h('stop', { offset: '1' })];
+    // TWO tube gradients now, both running hot-leg side → cold-leg side (#357). `tube` is the
+    // tube BODY and already carries the full-strength fluid colour since #350 item 20 inverted
+    // the convention; `tubeDash` is new and carries the DARKER dash colour for the moving flow
+    // line, which was a flat near-white '#eaf4fb' — the one primary-coolant path on the board
+    // that did not look like a pipe, and what the owner asked to match.
+    // The mid stop was a hardcoded '#7a5a9a' purple — a blend that made sense when the legs
+    // rendered red and blue, and stale since #237 put them at orange-red and green. Computed
+    // from the mean leg temperature now, which is also what the fluid does along the tube.
+    var tubeStops = [h('stop', { offset: '0' }), h('stop', { offset: '0.5' }), h('stop', { offset: '1' })];
+    var tubeDashStops = [h('stop', { offset: '0' }), h('stop', { offset: '0.5' }), h('stop', { offset: '1' })];
     var steamGrad = h('linearGradient', { id: ids.steam, gradientUnits: 'userSpaceOnUse', x1: '0', y1: 195, x2: '0', y2: shellTop }, steamStops);
     var waterClipRect = h('rect', { x: 124, y: bendY, width: 172, height: waterBot - bendY });
     var defs = h('defs', null,
@@ -101,6 +110,7 @@
       h('linearGradient', { id: ids.water, x1: '0', y1: '0', x2: '0', y2: '1' }, waterStops),
       steamGrad,
       h('linearGradient', { id: ids.tube, x1: '0', y1: '0', x2: '1', y2: '0' }, tubeStops),
+      h('linearGradient', { id: ids.tubeDash, x1: '0', y1: '0', x2: '1', y2: '0' }, tubeDashStops),
       h('clipPath', { id: ids.clip }, h('path', { d: inner })),
       h('clipPath', { id: ids.waterclip }, waterClipRect),
       h('filter', { id: ids.glow, x: '-40%', y: '-40%', width: '180%', height: '180%' }, h('feGaussianBlur', { stdDeviation: '8' })),
@@ -131,7 +141,7 @@
     var tubeGroups = tubeRadii.map(function (g) {
       var d = 'M' + (cx - g) + ',' + legBot + ' L' + (cx - g) + ',' + bendY +
         ' A' + g + ' ' + g + ' 0 0 1 ' + (cx + g) + ',' + bendY + ' L' + (cx + g) + ',' + legBot;
-      var flowPath = h('path', { d: d, fill: 'none', stroke: '#eaf4fb', strokeWidth: 3.2, strokeLinecap: 'round', opacity: 0.6, strokeDasharray: '10 16' });
+      var flowPath = h('path', { d: d, fill: 'none', stroke: 'url(#' + ids.tubeDash + ')', strokeWidth: 3.2, strokeLinecap: 'round', opacity: 0.85, strokeDasharray: '10 16' });
       flowEls.push(flowPath);
       return h('g', null,
         h('path', { d: d, fill: 'none', stroke: 'url(#' + ids.tube + ')', strokeWidth: 8, strokeLinecap: 'round' }),
@@ -282,10 +292,16 @@
       // the leg temperatures (hot-leg side / cold-leg side) on the same ramp as the pipes —
       // not power. The tube-bundle thermal glow stays power-gated (heat transferred).
       if (thot !== last.thot || tcold !== last.tcold) {
-        var hotC = StdPipe.phaseTempColor('water', thot).bore;
-        var coldC = StdPipe.phaseTempColor('water', tcold).bore;
-        tubeStops[0].setAttribute('stop-color', hotC);   // hot-leg side (left channel head)
-        tubeStops[2].setAttribute('stop-color', coldC);  // cold-leg side (right channel head)
+        var hotFl = StdPipe.phaseTempColor('water', thot);
+        var coldFl = StdPipe.phaseTempColor('water', tcold);
+        var midFl = StdPipe.phaseTempColor('water', (thot + tcold) / 2);
+        var hotC = hotFl.bore, coldC = coldFl.bore;
+        tubeStops[0].setAttribute('stop-color', hotC);          // body, hot-leg side
+        tubeStops[1].setAttribute('stop-color', midFl.bore);    // body, mid-tube
+        tubeStops[2].setAttribute('stop-color', coldC);         // body, cold-leg side
+        tubeDashStops[0].setAttribute('stop-color', hotFl.flow);   // dash, hot-leg side
+        tubeDashStops[1].setAttribute('stop-color', midFl.flow);   // dash, mid-tube
+        tubeDashStops[2].setAttribute('stop-color', coldFl.flow);  // dash, cold-leg side
         hotcRect.setAttribute('fill', hotC);
         coldcRect.setAttribute('fill', coldC);
         hotNoz.setAttribute('fill', hotC);

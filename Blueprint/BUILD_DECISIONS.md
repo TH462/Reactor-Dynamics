@@ -45,6 +45,45 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04-backshop-d — #357: the word "still" was telling me the base was stale
+
+**Decision.** Eight owner-filed board items, all done. Auxiliary pipes take live temperatures;
+coolant green/orange darkened a step; the spray-flow readout moves above PZR TEMP; u-tube and valve
+dashes take the fluid colour; the pressurizer's internal spray runs are anchored to the canvas dash
+grid; the SG FEED RESTORE button fits its caption.
+
+**THE PROCESS FINDING IS WORTH MORE THAN ANY OF THEM.** #357 says *"valves STILL have the light
+colored dashes"* and I worked four items before noticing what "still" implied: **#350 had already
+landed on `develop`** and had touched every file I was editing — including INVERTING the pipe
+bore/flow convention, which two of my fixes and all of their comments were written against. The
+session-start lane sweep checks tags and uncommitted files; I checked the tag on #350, noted an
+agent was in `develop`, and never ran `git log develop`. **A lane tag tells you someone is there. The
+log tells you what they have already done, and for feedback-shaped issues that is the part that
+matters.** Merged `develop` in, dropped the stash, re-applied each fix against the real base.
+
+**A free-slot scan that returns ZERO is usually the scan being wrong.** Item 4's target column
+returned no 95x40 gap, then no 100x30 either — while PZR TEMP and HTR PWR are visibly sitting in it.
+The scan treated the `pressurizer` COMPONENT TILE as solid: 108 px of box around much narrower art,
+with both existing readouts inside it. Component tiles have to be excluded from the obstacle set
+(their art is caught by the path pass); then the column measures, and 1088,348 at 90x38 is clear.
+95 wide is not — the STEAM card starts at x 1180.
+
+**Item 6 was mis-diagnosed in the issue and the measurement says so.** Reported as a dash SPEED
+mismatch; measured at 1.04 s per period and 22.69 px/s on both the internal and external spray runs,
+at five viewports from 1024 to 2560 wide. The defect is PHASE — the internal runs passed no
+`phaseX/phaseY`, so their dash grid was anchored to the pressurizer's tile instead of the canvas, and
+the vertical leg sat half a period out. Equal speed, different phase, at a joint, reads as different
+speed. Same fix `comp_tee`/`comp_cross` carry for #233.
+
+**One defect nobody filed, found while auditing item 2:** the charging pair was authored BACKWARDS —
+102 °C on the pump suction against 60 °C on the discharge returning to the RCS. Letdown and charging
+discharge read `tcold` now; tank-sourced runs read `emergency.eccs_temp_c`, the constant the quench
+term already uses, so a pipe cannot disagree with the physics.
+
+`run_all` **38/38**, `verify_board_check` **205**.
+
+---
+
 ## 2026-08-04-backshop-c — #348: a fudge band, a stale sampling assumption, and a missing EOP step
 
 **Decision.** The 17 % heater cutoff gets the reset differential its own sibling already has

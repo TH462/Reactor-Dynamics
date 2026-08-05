@@ -161,6 +161,13 @@
       ballRotG.style.transform = 'rotate(' + (open ? OPEN_ANG : OPEN_ANG + 90) + 'deg)';
       // bore shows fluid when open+filled (even if not flowing); grey when closed or empty
       boreRect.setAttribute('fill', filled ? ('url(#' + FLUID + ')') : '#5a6874');
+      // The moving streak takes the FLUID'S DASH COLOUR, not a fixed near-white (#357). It was
+      // hardcoded '#f2fbff', so every valve on the board showed a pale streak while the pipe it
+      // sits in showed the fluid — the one place on the plant where a fitting disagreed with its
+      // own line, and the owner's "valves STILL have the light colored dashes" after #350.
+      // `fl.flow` is the DARKER of the pair since #350 item 20 inverted the convention, and it is
+      // exactly what the adjoining pipe's dashes use, so a dash crosses the valve unchanged.
+      streakEl.setAttribute('stroke', fl.flow);
       streakEl.style.display = wet ? '' : 'none';
 
       // ports — data-active gates downstream pipe animation on open, non-empty AND flowing

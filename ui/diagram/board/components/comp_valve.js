@@ -203,8 +203,15 @@
       }
 
       // flow streak scaled by opening
+      // The moving streak takes the FLUID'S DASH COLOUR, not a fixed near-white (#357). It was
+      // hardcoded '#f2fbff', so every valve on the board showed a pale streak while the pipe it
+      // sits in showed the fluid — the one place on the plant where a fitting disagreed with its
+      // own line, and the owner's "valves STILL have the light colored dashes" after #350.
+      // `fl.flow` is the DARKER of the pair since #350 item 20 inverted the convention, and it is
+      // exactly what the adjoining pipe's dashes use, so a dash crosses the valve unchanged.
       if (wet) {
         streakEl.style.display = '';
+        streakEl.setAttribute('stroke', fl.flow);
         streakEl.setAttribute('stroke-width', String(Math.max(1.6, bore * 0.24 * openFrac + 0.6)));
         streakEl.setAttribute('opacity', String(0.4 + 0.4 * openFrac));
       } else {

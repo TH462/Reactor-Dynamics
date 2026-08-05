@@ -933,6 +933,23 @@ anything here that is standing procedure rather than news belongs in the list be
   every port's scanned world coordinate is there, so an alignment claim is a subtraction, not
   a judgement. Two of #231's three filed leads were wrong and only this said so.
 
+- **A free-slot scan that returns ZERO is usually the SCAN being wrong** (2026-08-04, #357). Placing
+  a readout "above PZR TEMP" found no 95x40 gap in that column, then no 100x30 either — while PZR
+  TEMP and HTR PWR are visibly sitting in it. The scan was treating the `pressurizer` **COMPONENT
+  TILE** as solid: 108 px of box around much narrower vessel art, with both existing readouts inside
+  it. **Exclude `kind: 'component'` tiles from the obstacle set** — their art is caught by the
+  path/polyline pass anyway — or the whole instrument column reads as full. Corollary from the same
+  item: a readout can print ON TOP of component art and no item-vs-item scan will see it, which is
+  how #350's spray-flow readout came to sit across the pressurizer's lower dome. **Screenshot it.**
+
+- **On a board issue, read `git log develop` — not just the lane TAGS** (2026-08-04, #357). That
+  issue said valves *"STILL"* had light dashes, and "still" meant a previous round had landed: #350
+  had merged to `develop` touching every file the new issue was about, and had **inverted the pipe
+  bore/flow convention** on the way (`bore` is the full-strength fluid colour now, `flow` the darker
+  dash). Four items were worked against the pre-#350 convention before that surfaced, and their
+  comments described the opposite of what the code did. A lane tag says someone is THERE; the log
+  says what they have already DONE, and for feedback-shaped issues that is the half that matters.
+
 - **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were
   stale or mis-framed — leaks already fixed, "reasons" that measurement disproved, premises
   copied between files. Read `Diagnostic/TUNING_LOG.md`'s top entry, then check the code.

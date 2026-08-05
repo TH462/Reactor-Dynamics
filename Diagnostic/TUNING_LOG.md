@@ -29,6 +29,84 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-backshop-d (#357 — board polish, and the lane check that should have run first)
+
+**Task:** work #357, eight owner-filed diagram items. All eight done; `run_all` **38/38**.
+
+### THE FIRST THING THAT HAPPENED IS THE LESSON: I worked four items against a stale base
+
+#357 is titled *"More diagram issues"* and several items say **"still"** — *"valves STILL have the
+light colored dashes"*. That word was the tell and I read past it. **#350 "Diagram adjustments and
+issues" had already landed on `develop`** (`0bcae7d`, 27 items) touching *exactly* the files I was
+editing: all three valve components, `comp_steam_generator.js`, `std_pipe.js`, `pwr_board_wiring.js`.
+I found it only when item 4 — "remove the spray flow indication from on top of the pressurizer card"
+— pointed at an indication **that does not exist in this tree**, because #350 is what added it.
+
+**The lane sweep at session start says to check all three trees, and I checked the TAGS but not what
+`develop` had COMMITTED.** #350 was tagged `status-wip-develop`, which I noted and worked around;
+what I did not do is `git log develop`. The tag told me someone was there. The log would have told me
+what they had already done.
+
+**And #350 INVERTED the pipe convention** (its item 20, owner: *"invert the colors on the pipes so
+the darker color is the dashes"*) — `bore` is now the full-strength fluid colour and `flow` the
+darker dash. Two of my four in-flight fixes were written against the opposite convention and their
+comments said so. Merged `develop` into `backshop`, dropped the stash, and re-applied each one
+against the real base.
+
+### What #350 had already done, and what it had not
+
+- **Valve streaks**: NOT fixed — still hardcoded `#f2fbff`. The owner's "still" is exactly right.
+- **U-tube dashes**: NOT fixed — still `#eaf4fb`, though #350 widened them and made the tube BODY
+  take the bore colour. So the fix shrank: add a second gradient for the dash rather than restructure.
+- **All 37 pipes given live FLOW** (`PIPE_SYSTEM`, speed/active/phase/dir) — but **not live
+  temperature**. Eleven auxiliary runs were still painting authored constants, which is items 1–2.
+- **Spray flow indication**: added by #350 and already moved once by it, from the spray panel (where
+  it overlapped the demand box by 80x20 px) to 1065,510 — where it prints over the vessel's lower
+  dome, which is what the owner is objecting to now.
+
+### The measurement that changed an item's diagnosis
+
+Item 6: *"the spray pipe inside the pressurizer dash speed doesnt match the rest of the spray line."*
+**It matches. Measured 1.04 s per dash period and 22.69 px/s on both, at five viewports from 1024 to
+2560 wide — identical to three decimals.** What is actually wrong is the **phase**: the internal runs
+passed no `phaseX/phaseY`, so `dashPhase` anchored their grid to the pressurizer's own tile while the
+external line is on the canvas grid. The vertical drop leg sat about half a period out. Two lines at
+equal speed in different phase slide past each other at the joint, which is what reads as a speed
+difference. Fixed the way `comp_tee` and `comp_cross` already do it for #233; verified by computing
+the expected world-anchored offset and matching all three runs to 0.01 px.
+
+### A free-slot scan that returns ZERO is usually the scan being wrong
+
+Item 4 wants the readout *"above PZR TEMP … to the right of the pressurizer"*. The first scan found
+**no 95x40 gap anywhere in that column** — and then no 100x30 either, which is when it stopped being
+believable, because PZR TEMP and HTR PWR are sitting in that column. **The scan was treating the
+`pressurizer` COMPONENT TILE as solid**: 108 px of box around a much narrower piece of vessel art,
+and both existing readouts live inside it. Excluding `component` tiles from the obstacle set (their
+art is caught by the path/polyline pass anyway) makes the column measurable. **1088,348 at 90x38,
+zero clashes** — the band is genuinely tight: quench tank ends at y 340, PZR TEMP starts at 395, the
+surge line occupies x ≤ 1085 and the STEAM card starts at x 1180. 95 wide does not fit; 90 does.
+
+### Items 1–2, and one defect nobody filed
+
+Eleven runs still on authored temperatures. Letdown rendered **60 °C cold-blue against a 287.6 °C
+cold leg it takes suction from** — item 1, and visible at a glance. Auditing the rest for item 2
+turned up the charging pair authored **backwards**: 102 °C on the pump SUCTION, 60 °C on the
+discharge. Letdown and charging discharge now read `tcold`; the tank-sourced runs read
+`emergency.eccs_temp_c` (40 °C) — the same constant `stepCoolant`'s quench term uses, so a pipe
+cannot disagree with the physics. The volume control tank and condensate storage tank are not
+modelled, so those runs borrow the RWST temperature; declared in the comment, not measured.
+
+Measured after: letdown and charging discharge 287.6 °C green (identical to the cold leg), every
+tank-sourced run 40.0 °C blue, feedwater 220 °C teal, hot leg 320.4 °C orange.
+
+### Gates
+
+`run_all` **38/38 at baseline**, `verify_board_check` **205 checks**. `run_hardrules` is **177** on
+the merged tree — neither parent's figure, measured after resolving and after the themes cap was
+brought back to five.
+
+---
+
 ## Session log — 2026-08-04-backshop-c (#348 — the last of the #337 cascade, and a fudge band that was hiding a real defect)
 
 **Task:** clear the remaining reds. **`run_all` is 38/38 at baseline** for the first time since

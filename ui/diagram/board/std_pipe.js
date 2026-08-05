@@ -58,10 +58,17 @@
     [0.00, [0x2b, 0x66, 0xd8]],  // cold — blue
     [0.20, [0x2a, 0xac, 0xe4]],  // azure
     [0.38, [0x2c, 0xd0, 0xc0]],  // teal
-    [0.54, [0x49, 0xcb, 0x60]],  // green
+    // The GREEN and ORANGE stops are the two the RCS actually lives on — cold leg lands near
+    // 0.50 of the ramp and hot leg near 0.90 — and both are darkened a step at #357 (owner:
+    // "make the coolant orange and greens a little darker"). Since #350 inverted the pipe
+    // convention these ARE the bore, i.e. the full width of every primary run, so they were the
+    // loudest thing on a board where they are the NORMAL state. The lime and yellow between them
+    // are transition stops the plant only sweeps through, and are left alone so the ramp keeps
+    // its continuous hue walk.
+    [0.54, [0x38, 0xa8, 0x4e]],  // green   (was 49cb60)
     [0.68, [0xc6, 0xd6, 0x3a]],  // lime
     [0.80, [0xf2, 0xc0, 0x33]],  // yellow
-    [0.90, [0xef, 0x8a, 0x2e]],  // orange
+    [0.90, [0xd4, 0x76, 0x22]],  // orange  (was ef8a2e)
     [1.00, [0xd8, 0x33, 0x26]]   // hot — red
   ];
   // Operating-band expansion. A PWR lives at ~280–345 °C, a thin slice of 15–345 that on a
