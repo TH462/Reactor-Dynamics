@@ -29,6 +29,74 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-backshop-a (#382 — the audit launch, and a mechanism nothing had ever used)
+
+**Task:** work the next audit item. The next one to *run* is **#344** (slice 9, normal operations
+& long-run integrity) — #221's order is 1·2·3·**9**·8·4·5·6·7 and #344 had zero comments. It could
+not be run from this session: `CLAUDE.md` was in context from the first turn, so RoE 1 was already
+defeated here. Built the launch instead and handed the slice off.
+
+**The finding that made this worth a session.** #297's close recommended a wrapper because its own
+two runs *"were launched bare"*. Checking the rest of the record: slice 1 predates the mechanism,
+and those two are slices 2 and 3. **`.claude/settings.audit.json` has never once been used.** It
+was added 2026-08-04 and every slice run to date was primed. Its own caveat — *"a glob that failed
+to match looks exactly like a clean audit"* — anticipated the wrong step; the failure was one
+earlier, at a flag nobody typed.
+
+**What landed** (`tools/audit.cmd`, `tools/audit.sh`, `tools/audit_preflight.js`,
+`.claude/skills/audit-slice/SKILL.md`):
+
+- **Preflight exits 2 and names the cause.** Six checks, each chosen because *skipping* it produces
+  a clean-looking audit rather than a red: settings parse; `autoMemoryEnabled === false`; every tree
+  from `git worktree list` has its `CLAUDE.md` in `claudeMdExcludes` **verbatim, both slash
+  directions**; the key names still exist in the installed CLI; charter present; slice issue open
+  and carrying `SUBJECTS TO TEST`.
+- **The exclude list is per-tree and hand-maintained**, so it is correct for three trees and would
+  silently stop covering a fourth. Enumerating from `git worktree list` rather than hardcoding is
+  the whole point of that check.
+- **Verbatim string comparison, deliberately.** Re-implementing the CLI's glob semantics to decide
+  whether `**/grok_build/**/CLAUDE.md` matches would put a second, differently-buggy matcher in
+  front of the first, and a matcher disagreeing with itself is exactly the invisible failure.
+- **The upgrade trap is a real check, not a nicety.** An unknown settings key is ignored in
+  *silence*, so a rename at CLI upgrade degrades to a bare launch that still prints a `--settings`
+  flag. Measured: both keys are present in `@anthropic-ai/claude-code@2.1.222` — the file was never
+  addressing a phantom schema, which was an open possibility given nothing had exercised it. The
+  binary is 279 MB, so the scan is chunked with overlap, not a `readFileSync`.
+- **Asymmetric on purpose:** failing to *locate* the CLI is a note (the wrapper may run elsewhere);
+  locating it and not finding the key is a hard failure. Absence of evidence is not evidence.
+
+**Injection-verified** (#376's rule — a check that cannot fail is not a check). Green in **1.4 s**
+on this tree; red, naming the right cause, on each of: one tree's path removed from
+`claudeMdExcludes`; `autoMemoryEnabled` flipped to `true`; unparseable JSON; a non-existent slice
+number. Wrapper refusal paths — no argument, non-numeric argument, failed preflight — all exit 2.
+Mutations were scratchpad copies via `--settings=<path>`; no tracked file was touched.
+
+**Two traps in the batch file itself, both from the repo's own history.** The first draft was
+LF-only and UTF-8: `cmd.exe` re-read it and looped, spewing 2.5 MB of `'his' is not recognized`
+before it was killed. `tools/make_portable.cmd` carries the warning in its header — *keep this file
+pure ASCII*, because cmd.exe reads batch files in the OEM code page — and the LF half is the same
+class. It is now ASCII + CRLF and `file(1)` says so.
+
+**The half a wrapper cannot cover, and it is the important half.** Preflight runs *outside* the
+session it protects, so it proves the configuration and never the session. The charter header and
+the skill now require the auditor's first turn, before any source file, to state on the slice issue
+whether `CLAUDE.md` was **auto-loaded into its context without it reading the file** — asked that
+way round, because the Read tool can open `CLAUDE.md` at any time and *"can I see it"* answers a
+different question with a misleading yes.
+
+**The skill's own constraint.** A skill `description` is injected into every session's prompt
+*including the audit session's*, so `audit-slice` names no subsystem, no finding and no gate score.
+It is inside the blast radius of the rule it enforces. It also states the limit plainly: **a skill
+cannot launch a session with different settings** — it loads into the session already running,
+which in the primed branch is exactly the one to avoid. Wrapper launches, skill procedures,
+self-check verifies; none substitutes for another.
+
+**Not done here, by construction:** slice 9 itself. Backshop's second wave (#378 → #377 → #379)
+stays queued; #378's anchors were re-verified against `7a40b9a` in passing — bodies unchanged since
+`7861dbb`, `pwr_control.js` +21 lines, `pwr_engine.js` command cases +23.
+
+---
+
 ## Session log — 2026-08-05-develop-a (#296 slice-2 fixes: batches 0 and 1 — #362, #365, #366, #368)
 
 **Task:** start working the #296 fix plan (the slice-2 audit findings, #361–#368). Batch 0

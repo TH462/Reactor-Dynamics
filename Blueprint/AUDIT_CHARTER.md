@@ -6,10 +6,28 @@ dense with conclusions about the very subsystems under audit — the priming pro
 RoE 1 describes. The audit programme, its rules of engagement and the per-slice tracking issues live
 in **GitHub #221 and #295–#301**; there is no Blueprint document for it.
 
-**If you cannot see this file's launch instructions, you are in the wrong session.** Start with
-`claude --settings .claude/settings.audit.json`, and on your first turn confirm you cannot see
-`CLAUDE.md`'s *Recent themes* section or a memory index — **a glob that failed to match looks
-exactly like a clean audit.**
+**A slice is started ONE way** *(added 2026-08-05, #382)*:
+
+```
+tools\audit.cmd <slice>          (PowerShell / cmd)      e.g.  tools\audit.cmd 344
+sh tools/audit.sh <slice>        (Git Bash)
+```
+
+The wrapper runs `tools/audit_preflight.js` first, which **exits 2 and names the cause** if the
+session would not actually be independent — settings unparseable, auto-memory on, a worktree whose
+`CLAUDE.md` is not in the exclude list, a settings key a CLI upgrade has renamed, or a slice issue
+with no `SUBJECTS TO TEST` section. The raw `claude --settings .claude/settings.audit.json` form
+still works and is the fallback if the wrapper cannot run; **do not reach for it to get past a
+preflight failure.** It exists because the launch was previously a flag written in an issue body,
+and two consecutive slices were launched without it.
+
+**Preflight proves the CONFIGURATION, never the SESSION.** It runs outside the session it is
+protecting, so on your **first turn**, before any source file, state on the slice issue whether
+`CLAUDE.md` was **auto-loaded into your context without you reading it** and whether you see a
+memory index. Ask it that way round: the Read tool can open `CLAUDE.md` at any time, so *"can I see
+it"* answers a different question. **A glob that failed to match looks exactly like a clean audit** —
+this self-report is the only evidence that it did not. The procedure is also saved as the
+`audit-slice` skill.
 
 This file is the **operating half** of that document with the **diagnosis removed**: how the repo is
 wired, how to run it, how to measure it, and which rules bind you. It deliberately contains **no
@@ -93,6 +111,9 @@ WALL time. Drive `tick()` / `advanceCycles(n)` directly. Two more that cost a ru
 ---
 
 ## 3. Running it
+
+Your own session was started by `tools\audit.cmd <slice>` (see the header block). The rest of this
+section is the simulator.
 
 No build step, no `package.json`, no module system.
 

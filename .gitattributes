@@ -1,0 +1,14 @@
+# Line endings — SCOPED DELIBERATELY, added 2026-08-05 with tools/audit.sh (#382).
+#
+# This machine has core.autocrlf=true globally, so without these two lines git hands
+# tools/audit.sh CRLF on checkout and `sh tools/audit.sh` dies on the \r ("$'\r': command
+# not found"). audit.sh is the repo's first .sh file, which is why nothing needed this before.
+#
+# KEEP THE PATTERNS NARROW. A broad `* text=auto` here would renormalize every tracked file on
+# the next checkout — a whole-repo line-ending diff, across three worktrees that merge into each
+# other. The cost of that lands on a merge, where it is hardest to read.
+
+tools/*.sh   text eol=lf
+# cmd.exe reads batch files in the OEM code page and mis-parses LF-only files — it re-reads and
+# loops. Measured on the first draft of audit.cmd: 2.5 MB of "'his' is not recognized".
+tools/*.cmd  text eol=crlf
