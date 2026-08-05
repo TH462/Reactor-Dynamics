@@ -18,10 +18,28 @@
   function trueSubcooling(s) { return T_sat(s.pressure_mpa) - s.tavg_c; }
 
   // Effective fuel→coolant coupling: degrades on DNB and on core uncovery (§6.1, §6.5).
-  // DNB is judged at the HOT LEG (core exit) — the hot channel dries out first — using
-  // the exit margin computed last step (explicit coupling, CONTEXT §11); this is what
-  // makes DNB reachable at power (steam-line-break / loss-of-flow), where the bulk Tavg
-  // never approaches saturation. Falls back to the bulk margin before the first step.
+  // DNB is judged at the CORE EXIT, on the MIXED-MEAN outlet — `_subcool_hot_c`, from
+  // last step (explicit coupling, CONTEXT §11) — which is what makes DNB reachable at
+  // power (steam-line-break / loss-of-flow), where the bulk Tavg never approaches
+  // saturation. Falls back to the bulk margin before the first step.
+  //
+  // THE DATUM IS THE MIXED MEAN, NOT THE HOT CHANNEL, and this comment said otherwise
+  // until 2026-08-05 (#368). `thot_raw = tavg + delta_T_rated·Q/flow / 2` (stepCoolant)
+  // is the mixed core outlet; a real DNBR is evaluated at the LIMITING ASSEMBLY, which
+  // runs hotter than the mixed mean by the nuclear enthalpy-rise hot-channel factor. So
+  // this lumped datum reaches the threshold LATER than a real core's hot channel would,
+  // for the same margin.
+  //
+  // That is not necessarily a physics error, and the difference was not resolved: the
+  // threshold `dnb_margin_c` is `[tune]` and is arbitrated by the at-power scenarios, so
+  // a margin set on the mixed mean plausibly ABSORBS the peaking factor implicitly. The
+  // factor itself is UNSOURCED — WTSM 19 (ML11223A342) lists "Nuclear Enthalpy Rise Hot
+  // Channel Factor" as a Tech Spec section heading with no value, WTSM 3.2 (ML11223A213)
+  // gives the DNBR limit ("greater than 1.3") but no enthalpy-rise factor. Reopening
+  // `dnb_margin_c` needs a retrieved factor first, and is a tuning question against those
+  // scenarios rather than a bug fix. Measured negative result (#368): on the plant's
+  // designed 100 % load rejection the hot-leg margin bottoms at 32.6 F (18.1 C) against
+  // the 14.4 F (8.0 C) threshold — the mechanism does not fire when it should not.
   function hFcEffective(s, cfg) {
     var t = cfg.thermal;
     var margin = (s._subcool_hot_c != null) ? s._subcool_hot_c : trueSubcooling(s);

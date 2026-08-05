@@ -200,7 +200,28 @@ var BASELINES = {
   // injection defeated the plant is lost at 94 min on BOTH engines.
   // THIS LANE READS 50, NOT 52 — CA-10 and CA-11 are the standing #337 cascade and predate
   // this change (verified unmoved by it, same observed values either side).
-  'run_behavior.js':       { code: 0, secs: 56, score: '52pass 0xfail' },
+  // 52 -> 53 (2026-08-05-develop-a, #362): CA-13, a HEATUP fills the pressurizer solid.
+  // `levelBase` carried an undocumented upper clip at 100 from v1, binding at Tavg 611.6 °F
+  // (322.0 °C) — INSIDE the subcooled operating range at NOP, where Tsat is 653.2 °F
+  // (345.1 °C). MEASURED incidence before the fix, per sample: 95.7 % of a loss of heat sink
+  // and 87.9 % of a station blackout, against 0.0 % on hot_full_power idle, large LOCA 0.5,
+  // small LOCA 0.05, SGTR 0.25, stuck-open PORV and both cold ICs — a LOCA drains and COOLS,
+  // so its base line runs the other way. That is why removing it reddened NOTHING in the
+  // suite and needed a probe written for it.
+  // ITS SOLID IS NOT CA-12's, which is why it is a probe and not a leg there: CA-12 gates on
+  // level-at-top AND OVERFILLED AND no void because its case is an ECCS fill, and this plant
+  // goes solid at an inventory DEFICIT (94.39 %) with nothing added — the water expanded into
+  // the bubble. CA-12's gate EXCLUDES this event.
+  // Injection-verified (restore the clip): 4 checks red — base line 144.5 -> 100.0 %, peak
+  // indicated level 100.00 -> 82.44 %, solid samples 790 -> 0, PORV duty 0.8 -> 0.0 %. Its
+  // two remaining checks are calibration guards that pass on BOTH engines and say so.
+  // A FIFTH CHECK WAS WRITTEN AND CUT, which is the trap worth keeping: it asserted #347's
+  // no-bubble-no-spray gate, and that gate is UNOBSERVABLE on this path by construction — a
+  // blackout stops the RCPs and spray takes its motive head from the loop, so spray is
+  // 0.00 % on both engines. It "passed" on 0 of 0 samples. An earlier draft of the inventory
+  // check was cut for the same class of reason: it passed on the old engine (3.49 points of
+  // travel against a > 2.0 band), so it discriminated nothing.
+  'run_behavior.js':       { code: 0, secs: 56, score: '53pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

@@ -29,6 +29,97 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-develop-a (#296 slice-2 fixes: batches 0 and 1 — #362, #365, #366, #368)
+
+**Task:** start working the #296 fix plan (the slice-2 audit findings, #361–#368). Batch 0
+(#366, #368, #365-lite) and batch 1 (#362) done. `run_all` re-run after the write-ups.
+
+### #362 — the level line was clipped at 100, and REMOVING IT REDDENED NOTHING
+
+`levelBase` returned `clip(base, level_prog_floor, 100)`. The upper clip was undocumented and
+contradicted the stated contract of both its consumers — `levelProgram`'s *"levelBase is unbounded
+upward"* and `levelRaw`'s *"a reading pinned at 100 cannot answer"* the water-solid question. It
+bound at Tavg **611.6 °F (322.0 °C)**, inside the subcooled range at NOP (Tsat 653.2 °F / 345.1 °C).
+
+**MEASURED INCIDENCE FIRST, and it is the reason a new probe was needed.** A scratch counter inside
+`levelBase`, engine-direct, per sample:
+
+| evolution | samples | clip bound | % | max unclipped base |
+|---|---|---|---|---|
+| loss of heat sink (afw + lofw) | 108000 | 103323 | **95.7** | 447.6 |
+| station blackout | 108000 | 94970 | **87.9** | 400.5 |
+| hot_full_power idle | 54000 | 0 | 0.0 | — |
+| large LOCA 0.5 | 73965 | 0 | 0.0 | — |
+| small LOCA 0.05 | 52765 | 0 | 0.0 | — |
+| SGTR 0.25 | 66262 | 0 | 0.0 | — |
+| stuck-open PORV | 108000 | 0 | 0.0 | — |
+| cold_shutdown / hot_zero_power idle | 54000 each | 0 | 0.0 | — |
+
+**Only the hot-and-drained family.** A LOCA drains and *cools*, so its base line runs the other
+way; every accident path the suite is built around lives on the 0.0 % rows. That is why the fix
+moved **no gate at all** — `run_all` came back with one drift and it was the manual digest.
+
+**A/B, full stack, the issue's own repro** (loss of heat sink). Old: gauge dead flat at **61.5 %**
+18m→28m while Tavg went 614.2 → 651.2 °F (323.4 → 344.0 °C) and subcooling collapsed 39.0 → 6.2 °F
+(21.7 → 3.4 °C); inventory frozen at **95.04 %**; spray running **8.6–23.9 %**. New: level tracks
+(62.8 → 62.4), inventory falls **94.76 → 88.11 %**, spray **zero** from 16m.
+
+**The station blackout is the cleaner demonstration** and is what CA-13 uses. Old: level parks at
+**72.79 %** and inventory at **96.49 %** for the last 24 minutes, PORV never lifts. New: level
+78 → 88 → 97.3 → **100.0 %**, **PORV lifts at ~16 min**, inventory continues to 94.33 %.
+
+**SOLID IS NOT OVERFILLED, and that is why CA-13 is a probe rather than a CA-12 leg.** CA-12 gates
+on level-at-top AND overfilled AND no void, because its case is an ECCS fill. This plant goes solid
+at an inventory **DEFICIT** — 94.39 %, nothing injected — because the water expanded into the
+bubble. CA-12's gate *excludes* the event. Injection-verified (restore the clip): 4 checks red —
+base line 144.5 → 100.0 %, peak indicated 100.00 → 82.44 %, solid samples 790 → 0, PORV duty
+0.8 → 0.0 %. `run_behavior` **52 → 53**.
+
+**TWO CHECKS WERE WRITTEN AND CUT, both for the same reason, and they are the lesson.** An
+inventory-travel check ("the false CVCS equilibrium is gone") **passed on the old engine** — 3.49
+points of travel against a > 2.0 band — because both plants reach *an* equilibrium; what differs is
+where the gauge is when they do, which two other checks already say. And a check for #347's
+no-bubble-no-spray gate **passed on 0 of 0 samples**: a blackout stops the RCPs and spray takes its
+motive head from the loop, so spray is 0.00 % on *both* engines and that gate is unobservable here
+by construction. It is named in the probe as not-covered rather than left silent — covering it
+needs a solid plant with the pumps RUNNING, i.e. CA-12's shape.
+
+**The init copy was de-duplicated in the same change.** `pwr_engine`'s state literal restated the
+`levelBase` algebra inline — a second copy of the very line whose clip had drifted from its own
+consumers. It now calls `PZ.stepLevel` over the finished state. **Bit-identical across all five
+ICs**: 55.000000 / 37.349932 / 38.408920 / 46.174957 / 30.000000, measured against the HEAD files.
+
+### Batch 0 — three findings, no behaviour change
+
+- **#366** `primary.void_onset: 0.85` deleted. Zero readers repo-wide, and it misdescribed where
+  voiding starts (any deficit once the bulk saturates; zero above saturation at any inventory).
+  Its two live neighbours on the same line under one *"Uncovery thresholds"* heading are what made
+  it read as a working member of a set — the comment now says so.
+- **#368** the DNB datum is the **mixed-mean core exit**, not the hot channel the comment claimed.
+  `dnb_margin_c` is `[tune]` and scenario-arbitrated, so it plausibly absorbs the enthalpy-rise
+  peaking factor implicitly; that factor is **UNSOURCED** (WTSM 19 / ML11223A342 carries the term
+  as a Tech Spec heading with no value) so **no constant moved**. Three sites corrected: the
+  function comment, the `dnb_margin_c` tune site, `Blueprint/M1`, and `Manuals/12` §10.7 (Rev 7)
+  — which said the low-flow trip fires "before the hot channel can boil".
+- **#365-lite** the two "surplus reads ~3× steeper" claims retired (both slopes have been 776 since
+  #330), plus **three CVCS figures that were 7.76× stale from that same day** — MEASURED off the
+  shipped config: orifice-A drain **16.8 %/min** (said ~2), max charging **33.5 %/min** (said ~13),
+  loop τ **10.7 s on both branches** (said 83 s, the pre-#330 deficit figure). **The guard the plan
+  asked for went on the branch that had none**: CA-9 leg B already pinned the two slopes through
+  `levelRaw`, but `stepPressure`'s surge rate takes the same piecewise one function away where **no
+  gauge can see it**. Injection-verified — splitting the surge branch alone reddens the new check
+  while both existing level checks stay green. The **collapse** decision stays deferred behind #361
+  per the plan, since #361 reworks that same line.
+
+### Still open from the plan
+
+Batches 2 (#363 flash-cooling gate), 2b (#367 pump heat), 3 (#361 solid overfill) and 4 (#364 decay
+heat, blocked on a source and a ruling). Batch 3's measurement basis has now moved twice — #362
+arms `pzr_solid` on paths that never armed it — so **re-measure #361's repro before touching it**,
+which the plan already says.
+
+---
+
 ## Session log — 2026-08-04-backshop-d (#357 — board polish, and the lane check that should have run first)
 
 **Task:** work #357, eight owner-filed diagram items. All eight done; `run_all` **38/38**.

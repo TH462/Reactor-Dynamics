@@ -30,6 +30,64 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the pressurizer level line was clipped at 100, so a heating plant stopped reading (#362)
+
+`levelBase` — the thermal-expansion line the true pressurizer level is built on — carried an
+**undocumented upper clip at 100** from v1. It bound at Tavg **611.6 °F (322.0 °C)**, which is
+inside the normal subcooled range at operating pressure (Tsat is 653.2 °F / 345.1 °C), so it was
+reachable on ordinary casualties rather than only in extremis.
+
+- **What the operator saw.** Measured full stack on a loss of heat sink, the gauge sat **dead flat
+  at 61.5 %** — `level_prog_ceiling`, the number a healthy plant reads — for ten plant-minutes
+  while Tavg rose 614.2 → 651.2 °F (323.4 → 344.0 °C) and subcooling collapsed 39.0 → 6.2 °F
+  (21.7 → 3.4 °C). It did not peg at 100, which would have read as *going solid*; it parked on
+  normal. Inventory stopped with it at 95.04 %, because the level program and the indication rode
+  the same clip so the make-up servo converged with charging = letdown.
+- **On a station blackout it is starker.** The gauge parked at **72.79 %** and inventory at
+  **96.49 %** for the last 24 minutes of the run. Fixed, level climbs 78 → **100 %**, the **PORV
+  lifts at ~16 min**, and the plant reads the going-solid cue it is supposed to.
+- **Two regimes were disarmed by it.** `pzr_solid` is `levelRaw >= 100`, so #347's *no bubble, no
+  spray* gate and #346's bulk-modulus surge gain (`K_surge` 0.400 against the solid 1.675, a
+  **4.19×** understatement) could not arm on any hot path.
+- The **lower** clip is deliberate and stays (cold-plant mass bookkeeping, #289). `levelProgram`
+  re-clips at both ends, so the CVCS program band is untouched.
+- The init copy of the same algebra in `pwr_engine` now calls `stepLevel` instead of restating it
+  — measured **bit-identical** across all five initial conditions.
+
+**Solid is not the same as overfilled.** This plant goes solid at an inventory **deficit** (94.4 %,
+nothing injected) because the water expands into the bubble — so CA-12's gate (level at top AND
+overfilled AND no void) excludes the case entirely. That is why the guard is a new probe, **CA-13**,
+not a leg there. `run_behavior` **52 → 53**.
+
+**Removing the clip reddened nothing**, which is the reason CA-13 exists: measured incidence per
+sample before the fix was 95.7 % on a loss of heat sink and 87.9 % on a blackout, against **0.0 %**
+on hot full power, large LOCA 0.5, small LOCA 0.05, SGTR 0.25, stuck-open PORV and both cold ICs —
+a LOCA drains and *cools*, so its base line runs the other way, and no existing probe lived where
+the clip bound.
+
+### Fixed — three constants and a comment that had been wrong since the change that made them so
+
+- **#365** — `level_per_mass` and `level_per_mass_surplus` are both 776, so the piecewise branch
+  that chooses between them is an identity, in **two** places (`levelRaw`'s mass term and
+  `stepPressure`'s surge rate). Two comments still claimed a surplus reads "~3× steeper". The
+  claims are retired and the surge branch now has a guard of its own: CA-9 leg B pins the two
+  against each other through `stepPressure`, where **no gauge can see them** — injection-verified,
+  splitting the surge branch alone reddens it while both existing level checks stay green.
+  Collapsing the branch is deferred behind #361, which reworks the same line.
+- **#365, the arithmetic** — three CVCS figures were direct products of `level_per_mass` and were
+  **7.76× stale** from the day #330 moved it 100 → 776. Measured off the shipped config: the
+  orifice-A drain is **16.8 %/min** (documented as ~2), max charging fills **33.5 %/min**
+  (documented as ~13), and the make-up loop τ is **10.7 s on both branches** (documented as 83 s,
+  which was the pre-#330 deficit figure).
+- **#366** — `primary.void_onset: 0.85` had **zero readers repo-wide** and misdescribed the physics
+  it appeared to set: voiding engages at any inventory deficit once the bulk saturates, and is zero
+  above saturation at any inventory. Deleted. Its two live neighbours on the same line are what made
+  it look real.
+- **#368** — the DNB comment claimed the **hot channel**; the code computes the **mixed-mean** core
+  exit. `dnb_margin_c` is `[tune]` and scenario-arbitrated, so it plausibly absorbs peaking
+  implicitly — the hot-channel factor is **unsourced** (WTSM 19 carries the term as a Tech Spec
+  heading with no value) and no constant was moved. Manuals Rev 7, `12` §10.7.
+
 ## [Alpha 1.0.1] — 2026-08-05
 
 ### Changed

@@ -1525,9 +1525,14 @@
       // DERIVED level at init: on the thermal-expansion base line at nominal mass —
       // so every state starts exactly where stepLevel will hold it (SS-5: partial-
       // load states init at their programmed level, not a flat nominal).
+      //
+      // FILLED IN BELOW, not here, and that is the point (#362). This restated the
+      // levelBase algebra inline — a second copy of the line, which is exactly how the
+      // clip that #362 removed could disagree with its own consumers. It is now
+      // `stepLevel`'s own expression over the finished state, so init and step 8 cannot
+      // differ by construction. Placeholder only; the literal cannot reference itself.
       _tavg_fp: Tfp,
-      pzr_level_pct: clip(cfg.pressurizer.pzr_level_nominal
-        + cfg.pressurizer.level_per_tavg * (Tavg - Tfp), cfg.pressurizer.level_prog_floor, 100),
+      pzr_level_pct: 0,
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
       // Letdown: two independent orifices (off / A / B / A+B). letdown_flow is the
@@ -1625,6 +1630,12 @@
         steam_break: { active: false, size: 0, upstream: false },
       },
     };
+
+    // The DERIVED init level promised in the literal (#362) — step 8's own expression,
+    // over the state as just built (mass 1.0, void 0, so it is the base line alone).
+    // Overrides below that move tavg_c or level (the cold branch's cold_pzr_level) run
+    // after this and still win, exactly as they did when this was inline.
+    PZ.stepLevel(s, cfg, 0);
 
     // Place the control group at this state's operating position (% withdrawn),
     // per-state data so the rods track the starting power; boron (below) closes

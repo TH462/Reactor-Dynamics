@@ -383,11 +383,41 @@
   // Tavg (s._tavg_fp, stashed by the engine), floored below the program band —
   // the CVCS level program (pwr_primary) targets this same line, so setpoint and
   // physics agree by construction and thermal expansion never reads as a leak.
+  //
+  // UNBOUNDED UPWARD, because the coolant really does expand and there is nothing
+  // physical at 100 to stop it — the vessel simply fills. It carried an UNDOCUMENTED
+  // upper clip at 100 from v1 until 2026-08-05 (#362), which contradicted the stated
+  // contract of BOTH consumers (levelProgram's "levelBase is unbounded upward", and
+  // levelRaw's "a reading pinned at 100 cannot answer the water-solid question") and
+  // disarmed the two regimes that read it. It bound at Tavg 611.6 F (322.0 C), which is
+  // INSIDE the subcooled operating range at NOP — Tsat is 653.2 F (345.1 C).
+  //
+  // WHAT IT COST, measured full stack on a loss of heat sink (afw_failure +
+  // loss_of_feedwater): the gauge sat DEAD FLAT at 61.5 % — `level_prog_ceiling`, the
+  // number a healthy plant reads — for ten plant-minutes while Tavg rose 614.2 → 651.2 F
+  // (323.4 → 344.0 C) and subcooling collapsed 39.0 → 6.2 F (21.7 → 3.4 C). Not pegged at
+  // 100, which an operator would read as going solid: parked on normal. The CVCS servo
+  // converged on the same false equilibrium, because program and indication rode the same
+  // clip, so charging = letdown and inventory stopped moving at 95.04 %. With it,
+  // #347's NO-BUBBLE-NO-SPRAY gate never armed (spray held 20–24 % authority in a vessel
+  // with no steam to condense) and #346's bulk-modulus surge gain never armed (K_surge
+  // 0.400 against the solid 1.675, a 4.19x understatement).
+  //
+  // The clip bound ONLY on the hot-and-drained family — measured incidence per sample:
+  // loss of heat sink 95.7 %, station blackout 87.9 %, and 0.0 % on hot_full_power idle,
+  // large LOCA 0.5, small LOCA 0.05, SGTR 0.25, stuck-open PORV, cold_shutdown and
+  // hot_zero_power. A LOCA path drains and COOLS, so its base line runs the other way.
+  //
+  // THE LOWER CLIP STAYS and is deliberate (#289): the normalized mass bookkeeping does
+  // not model the real cold-plant mass surplus, so `level_prog_floor` stands in for CVCS
+  // keeping the pressurizer on span in the cold modes. `levelProgram` re-clips at BOTH
+  // ends, so the program band is untouched by this; `stepLevel` clips the GAUGE to 0..100,
+  // so indication now pegs at 100 (reads as going solid) instead of parking on 61.5.
   function levelBase(s, cfg) {
     var p = cfg.pressurizer;
     var tref = (s._tavg_fp != null) ? s._tavg_fp : 304.0;
     var base = p.pzr_level_nominal + p.level_per_tavg * (s.tavg_c - tref);
-    return clip(base, p.level_prog_floor, 100);
+    return Math.max(base, p.level_prog_floor);
   }
 
   // The CVCS LEVEL PROGRAM — what the level controller holds, and what the deviation gauge
@@ -423,9 +453,19 @@
   function levelRaw(s, cfg) {
     var p = cfg.pressurizer;
     var dm = (s._mass != null ? s._mass : 1.0) - 1.0;
-    // Piecewise mass term: a DEFICIT draws down the whole loop (shallow); a
-    // SURPLUS packs into the pressurizer steam space — the only compressible
-    // volume — so it reads ~3× steeper (the "going solid" regime).
+    // Piecewise mass term — and THE TWO SLOPES ARE EQUAL (#330; both 776 %/frac), so
+    // this branch is an identity today and the comment here used to say the opposite
+    // ("a surplus reads ~3× steeper"), which is what #365 filed. It reads one way in
+    // both directions because the pressurizer steam space is the ONLY compressible
+    // volume in a subcooled loop: mass taken out comes out of the pressurizer and the
+    // bubble grows to fill the space at exactly the rate a surplus packs into it. The
+    // geometry does not know which way the flow is going.
+    //
+    // KEPT AS A BRANCH, NOT COLLAPSED, and that is a live decision rather than inertia
+    // — the collapse is deferred behind the #361 solid-regime work, which reworks the
+    // second consumer of this same piecewise (stepPressure's surge_rate). Until then a
+    // future split is DELIBERATE rather than silent: CA-9 leg B pins the two against
+    // each other through this very line, and a second check pins the surge branch.
     var mass_term = dm < 0 ? p.level_per_mass * dm : p.level_per_mass_surplus * dm;
     return levelBase(s, cfg) + mass_term + p.level_per_void * (s.primary_void_fraction || 0);
   }

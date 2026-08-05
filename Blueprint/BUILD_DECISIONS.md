@@ -45,6 +45,65 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-develop-a — #362/#365/#366/#368: a clip nothing could see, and three claims that expired the day another change landed
+
+Batches 0 and 1 of the #296 fix plan (the #221 slice-2 audit findings).
+
+**#362 — `levelBase`'s undocumented upper clip at 100 is removed.** It bound at Tavg 611.6 °F
+(322.0 °C), *inside* the subcooled range at NOP, and contradicted the written contract of both its
+consumers. The lower `level_prog_floor` clip stays (deliberate, #289); `levelProgram` re-clips at
+both ends so the CVCS programme band is unmoved; `stepLevel` still clips the GAUGE 0..100, so
+indication now pegs at 100 and reads *going solid* instead of parking on 61.5.
+
+**The decision worth recording is why this needed a NEW PROBE rather than a repaired one.** Removing
+the clip moved **no runner**. Measured incidence per sample beforehand: 95.7 % of a loss of heat
+sink and 87.9 % of a station blackout, and **0.0 %** of hot full power, large LOCA 0.5, small LOCA
+0.05, SGTR 0.25, stuck-open PORV, `cold_shutdown` and `hot_zero_power`. The clip lived exclusively
+in the hot-and-drained corner — a LOCA drains and *cools* — and nothing in the battery was standing
+there. A green suite was not evidence the clip was harmless; it was evidence of where the suite
+does not look.
+
+**CA-13 is a probe and not a CA-12 leg because the two "solids" are different states.** CA-12 gates
+on level-at-top AND overfilled AND no void — right for an ECCS fill, and it *excludes* this event,
+which reaches solid at an inventory DEFICIT of 94.39 % with nothing added, by thermal expansion
+alone. Injection-verified: restoring the clip reddens 4 of its 6 checks (base line 144.5 → 100.0 %,
+peak indicated 100.00 → 82.44 %, solid samples 790 → 0, PORV duty 0.8 → 0.0 %); the other two are
+calibration guards that pass on both engines and say so. `run_behavior` **52 → 53**.
+
+**Two checks were cut from it, both for failing to discriminate**, and the second is the more
+instructive: a #347 no-bubble-no-spray check passed on **0 of 0 samples**, because a blackout stops
+the RCPs and spray takes its motive head from the loop, so spray is 0.00 % on both engines. That
+gate is unobservable on this path *by construction*. It is named in the probe as not-covered rather
+than quietly dropped — covering it needs a solid plant with the pumps running.
+
+**The init copy of the level algebra is gone.** `pwr_engine`'s state literal restated `levelBase`
+inline; it calls `PZ.stepLevel` over the finished state now, so init and step 8 cannot differ.
+Bit-identical across all five ICs, measured against the HEAD files.
+
+**#365 (partial) — the piecewise slope branch is an identity and the comments now say so.** Both
+constants have been 776 since #330. The claims that a surplus "reads ~3× steeper" are retired, and
+the guard was added where one was missing: CA-9 leg B pinned the two through `levelRaw`, but
+`stepPressure`'s `surge_rate` takes the same piecewise where no gauge can see it. Injection-verified
+— splitting the surge branch alone reddens the new check while both level checks stay green.
+**Collapsing the branch is deferred behind #361**, which reworks that line; keeping it means a
+future split is deliberate rather than silent.
+
+**Three CVCS figures were 7.76× stale from the day #330 landed**, all direct products of
+`level_per_mass`. Measured off the shipped config, not recited: orifice-A drain **16.8 %/min**
+(documented ~2), max charging **33.5 %/min** (documented ~13), make-up loop τ **10.7 s on both
+branches** (documented 83 s — the pre-#330 deficit figure, and #330's own note already carried the
+new number without this site being updated to it).
+
+**#366 — `primary.void_onset` deleted**, zero readers repo-wide. It was not merely dead: it
+misdescribed the physics it appeared to set, under a shared heading with two live constants.
+
+**#368 — the DNB datum is documented as the mixed-mean core exit; NO CONSTANT MOVED.** The comment
+claimed the hot channel. `dnb_margin_c` is `[tune]` and scenario-arbitrated, so it plausibly absorbs
+the nuclear enthalpy-rise peaking factor implicitly — and that factor is **unsourced** (WTSM 19,
+ML11223A342, carries the term as a Tech Spec heading with no value), so re-deriving the threshold
+would have been recall dressed as fidelity. Documentation only, in four places including
+`Manuals/12` §10.7 (Rev 7).
+
 ## 2026-08-04-backshop-d — #357: the word "still" was telling me the base was stale
 
 **Decision.** Eight owner-filed board items, all done. Auxiliary pipes take live temperatures;

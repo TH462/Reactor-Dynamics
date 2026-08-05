@@ -258,18 +258,30 @@
       // the mass balance 1:1 like the accident-scale flows do — that read a 20 gpm
       // bleed as ~3 %/s of total inventory and drained the pressurizer in seconds.
       // This gain converts CVCS normalized flow → inventory-fraction/s; leak/ECCS/
-      // relief keep the lumped fast scale (accident pacing is tuned there). Sized so
-      // an uncompensated orifice-A drain walks pzr level down ~2 %/min
-      // (0.030·gain·level_per_mass — minutes to respond, the letdown-isolation
-      // interlock and low-level trip still bound it) and max manual charging fills
-      // ~13 %/min in the going-solid regime (CA-4's PI-8 backstop fires in ~3 min). [tune]
+      // relief keep the lumped fast scale (accident pacing is tuned there).
+      //
+      // THE TWO RATES BELOW ARE PRODUCTS OF `level_per_mass`, which #330 moved 100 → 776,
+      // so both were 7.76× stale from that day until 2026-08-05 (#365 — the same drift as
+      // the τ note below). MEASURED off the shipped config, not recited: an uncompensated
+      // orifice-A drain walks pzr level down 16.8 %/min (0.030·gain·level_per_mass) and
+      // max manual charging fills 33.5 %/min in the going-solid regime (charging_max·gain·
+      // level_per_mass_surplus; CA-4's PI-8 backstop still fires in ~3 min). The drain is
+      // no longer "minutes to respond" — it is the ruled #330 trade, and `ops_pwr.js`
+      // `ops_cvcs_pzr_drain_rate` is red against its 2026-07-22 feel target BY DESIGN
+      // (OWNER RULING, 2026-08-04: "A"). The letdown-isolation interlock and the low-level
+      // trip are what bound it. [tune]
       cvcs_inventory_gain: 0.012,
       // AUTO make-up: charging above letdown per % PZR-level deficit (the error is
       // damped through cvcs_level_filter_tau first — the M/A station's damping —
-      // so this can be stiff without chasing gauge noise, CA-3). Loop τ =
-      // 1/(0.01·cvcs_inventory_gain·level_per_mass) ≈ 83 s; a leak L parks the
-      // level (L/cvcs_inventory_gain)/0.01 % below setpoint (a 2.4e-4 leak → ~2 %,
-      // visible but held — CC-8/CC-10). [tune]
+      // so this can be stiff without chasing gauge noise, CA-3). Loop
+      // τ = 1/(0.01·cvcs_inventory_gain·level_per_mass) = 10.7 s, MEASURED off the
+      // shipped config — this said "≈ 83 s" from v1 until 2026-08-05 (#365), which was
+      // the τ at the pre-#330 deficit slope of 100 and has been wrong since #330 raised
+      // it to 776. #330's own note (see `level_per_mass_surplus`) already recorded the
+      // new figure and that BOTH branches now share it; this line was simply not updated
+      // with it. The parked offset is independent of that slope and is unchanged: a leak
+      // L parks the level (L/cvcs_inventory_gain)/0.01 % below setpoint (a 2.4e-4 leak →
+      // 2.00 %, visible but held — CC-8/CC-10). [tune]
       cvcs_charge_per_level: 0.01,
       cvcs_level_filter_tau: 20.0, // s — first-order damping on the servo's level error [tune]
       charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
@@ -312,7 +324,15 @@
       // — DNBR<1.3 — occurs subcooled, before bulk boiling). Distinct regime from the
       // inventory-driven void (post-scram, primary.void_gain); combined by max, so
       // neither perturbs the other. All [tune] — the at-power scenarios arbitrate.
-      dnb_margin_c: 8.0,           // hot-leg subcooling (°C) at which DNB begins [tune]
+      //
+      // THE DATUM IS THE MIXED-MEAN EXIT, NOT THE LIMITING ASSEMBLY (#368). A real DNBR
+      // is evaluated at the hot channel, which runs hotter than the mixed mean by the
+      // nuclear enthalpy-rise hot-channel factor, so this margin is measured on a cooler
+      // number than a real one is — i.e. this threshold stands in for peaking implicitly,
+      // and that is the reason it is `[tune]` and scenario-arbitrated rather than sourced.
+      // The factor itself is UNSOURCED; see pwr_thermal.hFcEffective for the accessions
+      // that do not carry it. Do not re-derive this constant without one.
+      dnb_margin_c: 8.0,           // MIXED-MEAN core-exit subcooling (°C) at which DNB begins [tune]
       // SG tube-bundle uncovery (TR-3/TMI dryout, feel-plan P5): heat transfer
       // scales to a small steam-side residual as the WIDE-range level falls below
       // the threshold. Residual sized BELOW post-trip decay heat so a dry SG
@@ -701,9 +721,16 @@
       // is one fewer asymmetry, not one more. `cvcs_charge_per_level` was deliberately NOT
       // scaled to hold 83 s: that would restore the split this change exists to remove. [tune]
       level_per_mass: 776.0,
-      // % level per inventory-fraction SURPLUS above nominal — steeper than the deficit
-      // branch, because surplus packs into the pressurizer steam space, the only
-      // compressible volume: the "going solid" regime.
+      // % level per inventory-fraction SURPLUS above nominal — the "going solid" regime.
+      //
+      // THE SAME NUMBER AS THE DEFICIT BRANCH SINCE #330, and this comment claimed
+      // "steeper than the deficit branch" until 2026-08-05 (#365), which had been false
+      // since the day #330 landed. The reason they are equal is directly below and in
+      // `level_per_mass`: the pressurizer steam space is the only compressible volume in
+      // a subcooled loop, so it absorbs a deficit at the same rate it absorbs a surplus.
+      // The two consumers of the piecewise (pwr_pressurizer levelRaw and stepPressure's
+      // surge_rate) therefore take the same slope on both legs. Moving ONE of these two
+      // constants is silently wrong in two places at once; move both or neither.
       //
       // FITTED TO REAL GEOMETRY 2026-07-30 (#249, OWNER RULING 2026-07-30: "249 - fit it.").
       // Was 300, which was never derived from anything. The physical surplus between
@@ -734,9 +761,12 @@
       //
       // NOT changed alongside it: `cvcs_charge_per_level`. An earlier draft proposed
       // scaling it to hold the loop τ — that was wrong, because the documented τ (83 s)
-      // is the DEFICIT branch (level_per_mass 100) and scaling the gain would have
-      // slowed leak make-up to 215 s to fix a surplus-side number. The servo is simply
-      // faster on the surplus side now (27.8 → 10.7 s); measured, it does not hunt. [tune]
+      // was the DEFICIT branch at the then-current level_per_mass of 100, and scaling the
+      // gain would have slowed leak make-up to 215 s to fix a surplus-side number.
+      // WRITTEN WHEN THE TWO BRANCHES STILL DIFFERED (#249): it said "the servo is simply
+      // faster on the SURPLUS side now (27.8 → 10.7 s)". Since #330 raised the deficit
+      // slope to match, there is no side — both branches are 10.7 s, which is the one τ
+      // this plant has. Measured, it does not hunt. [tune]
       level_per_mass_surplus: 776.0,
       // % level per void-fraction — the TMI lift. Calibrated so the story-clock void
       // (~0.2 as HPI fires) lifts level past the 75 % high alarm (the "going solid" call
@@ -808,8 +838,21 @@
     // ------------------------------------------------------------------ primary
     primary: {
       void_gain: 3.0,              // [tune]
-      // Uncovery thresholds (fraction of full inventory).
-      void_onset: 0.85, core_top_uncover: 0.70, significant_uncover: 0.50,
+      // Uncovery thresholds (fraction of full inventory). BOTH are live —
+      // `core_top_uncover` in pwr_primary/stepCladding, `significant_uncover` in
+      // pwr_thermal.hFcEffective — which is what made the third member of this set
+      // dangerous rather than merely dead: `void_onset: 0.85` sat here from v1 to
+      // 2026-08-05 with ZERO readers repo-wide (#366), looking like a working
+      // threshold because of the company it kept. It also misdescribed the physics
+      // it appeared to set. Voiding does not begin at 85 % inventory: the void line
+      // (pwr_primary, stepInventory) engages at ANY inventory deficit once the bulk
+      // reaches saturation, and is zero above saturation at any inventory —
+      //     void = (trueSubcooling <= 0 && _mass < 1) ? clip((1 − _mass)·void_gain, 0, 1) : 0
+      // — so there is no inventory onset threshold in this model to tune. Someone
+      // moving 0.85 would have been tuning nothing, with no feedback saying so.
+      // A real inventory-keyed onset is a physics question, not a restore of the
+      // constant; file it if it is wanted.
+      core_top_uncover: 0.70, significant_uncover: 0.50,
       pump_spinup_tau: 3.0, pump_coastdown_tau: 8.0, // s [tune]
       // ----------------------------------------------------------------- NATURAL CIRCULATION
       // (#325, ruled 2026-08-04. `natural_circ_flow: 0.0` lived here from v1 to 2026-08-04

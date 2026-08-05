@@ -252,9 +252,11 @@ T\_fuel = T\_fuel + dTf\_dt \* dt;
 `h\_fc = 0.05` s⁻¹ (normal); `h\_fc\_dnb = 0.004` s⁻¹ during departure from nucleate boiling
 **\[tune]**. **DNB triggers when the hot-leg (core-exit) subcooling margin falls to
 `dnb\_margin\_c = 8.0 °C`** **\[tune]** *(as built — real DNB (DNBR < 1.3) occurs subcooled,
-before bulk boiling, and the hot channel dries out first; judging the margin at the core exit
-is what makes DNB reachable at power, where bulk Tavg never nears saturation —
-`pwr\_thermal.js` `hFcEffective`)*. Then `h\_fc\_effective = h\_fc\_dnb`; otherwise
+before bulk boiling; judging the margin at the core exit is what makes DNB reachable at power,
+where bulk Tavg never nears saturation — `pwr\_thermal.js` `hFcEffective`. The datum is the
+**mixed-mean** exit, not the limiting assembly: a real hot channel runs hotter by the nuclear
+enthalpy-rise hot-channel factor, which is unsourced here, so `dnb\_margin\_c` stands in for
+peaking implicitly — #368)*. Then `h\_fc\_effective = h\_fc\_dnb`; otherwise
 `h\_fc\_effective = h\_fc` (further degraded on uncovery, §6.5).
 
 **Flux-driven core boiling *(as built)*.** The raw hot-leg enthalpy rise can pass saturation
