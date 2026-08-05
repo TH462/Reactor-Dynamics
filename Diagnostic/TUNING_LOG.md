@@ -29,6 +29,75 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-develop-e (#364 — the decay-heat evidence pass; NO code change)
+
+**Task:** batch 4 of the #296 fix plan, evidence half only. The magnitude #364 left open is now
+**measured against a retrieved primary**. No constant was moved — the plan and the issue both say
+none may move before the ruling.
+
+### The source
+
+**NRC ADAMS ML021720702**, *"Attachment 1, Appendix K Decay Heat Standards"*, **Table 2 —
+Comparison of Decay Heat Models**, fraction of operating power vs time after shutdown, infinite
+operating history. Fetched from `nrc.gov` from the develop lane (HTTP 200; the audit sandbox got
+403, which is why #364 could not close this itself). Dropped in `inbox/sources/` as
+`ML021720702_AppK_decay_heat_standards.pdf` + `.txt`.
+
+Two columns matter and they bracket the answer:
+- **col 0 — ANS73 + actinides × 1.2**: this IS the current 10 CFR 50 Appendix K regulatory curve,
+  and it is *already conservative* — the ×1.2 is "the maximum positive value from the uncertainty
+  table … for shutdown times less than 10⁷ seconds".
+- **col 5 — ORIGEN 17×17 assembly**: best estimate.
+
+This closes the gap #364 recorded: App K I.A.4 mandates 1.2 × the ANS 1971 draft but
+**incorporates it by reference without printing it**, and ANS-5.1 is not open-access. This NRC
+attachment prints the resulting curve, which is what was needed.
+
+### The comparison — MEASURED by stepping the plant, not read off the formula
+
+| t after scram | model | App K (×1.2) | ratio | ORIGEN (best est.) | ratio |
+|---|---|---|---|---|---|
+| 1 s | 7.00 % | 7.87 % | 0.89× | 5.57 % | 1.26× |
+| 10 s | 6.98 % | 6.37 % | 1.09× | 4.38 % | 1.59× |
+| 100 s | 6.76 % | 4.34 % | 1.56× | 3.03 % | 2.23× |
+| 400 s | 6.08 % | 3.16 % | 1.92× | 2.33 % | 2.61× |
+| **800 s** | 5.32 % | 2.66 % | **2.00×** | 2.00 % | **2.66×** |
+| 2000 s | 3.76 % | 2.13 % | 1.76× | 1.57 % | 2.40× |
+| 10000 s | 1.67 % | 1.33 % | 1.26× | 0.99 % | 1.69× |
+
+**The initial value is right and the DECAY is what is wrong** — the model starts at 7.00 % against
+7.87 % / 5.57 %, then crosses over within ~4 s and runs high for the rest of the transient. The
+departure **peaks at 2.00× the regulatory conservative curve at ~13 minutes**, and 2.66× best
+estimate. It is still 1.26× / 1.69× at 10 000 s.
+
+That is #364's structural claim confirmed with a number: two groups at τ = 2000 s and 13.9 h have
+nothing to represent the short-lived fission products, so the curve is flat exactly where a real
+one falls fastest.
+
+**Long-time points, full stack:** 8 h **1.12 %**, 24 h **0.356 %**. The 8 h figure is what
+`thermal.zirc.q_ref` (0.011243) is anchored to, so the oxidation-heat ratio inherits this
+departure — as that constant's own comment already warns.
+
+**Table limit, stated rather than papered over:** Table 2 stops at 10 000 s (2.8 h), so the 8 h and
+24 h ratios are **NOT sourced** — only the model's own values are measured there. Do not quote a
+ratio past 10 000 s from this pass.
+
+### Two fitted constants were solved against the wrong curve, which is new information
+
+- **`natural_circ_coeff`** is fitted against *"~5 % decay heat a few minutes post-trip"*
+  (`pwr_config.js`). Sourced, a few minutes post-trip is **3.66 % (App K) / 2.64 % (best est.)** at
+  200 s — so that fit was anchored ~1.4–1.9× high. Circulation flow carries it as the cube root,
+  so the flow error is ~1.1–1.2×, small; the anchor being wrong is the point.
+- **`zirc.q_ref`** carries a real-plant ratio (oxidation heat = decay heat at 8 h) off this model's
+  own 8 h number, and its comment already declares the melt timings conditional on it.
+
+### NOT DONE, and deliberately: no constant moved
+
+The ruling (refit vs declared departure) is the owner's and is unblocked now that the numbers
+exist. See the issue comment for both options costed.
+
+---
+
 ## Session log — 2026-08-05-develop-d (#361 — the solid regime meets a liquid break)
 
 **Task:** batch 3 of the #296 fix plan. `run_all` 38/38, `run_behavior` 55 → 56 (CA-15).
