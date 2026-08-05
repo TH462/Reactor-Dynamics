@@ -783,6 +783,7 @@
       // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
       charging_flow_actual: (PR.chargingPumpPowered(s) ? s.charging_flow : 0),
       letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
+      adv_valve_pct: (s.adv_frac || 0) * 100, adv_flow_normalized: s.adv_flow || 0,
       turbine_tripped: !!s.turbine_tripped,
       leak_flow: s.leak_flow,
       // §7 true_state additions (governor / accumulators / RHR):
@@ -846,6 +847,9 @@
       cw_inlet_temp_c: s.cw_inlet_temp_c,   // circ-water inlet setting (set_condenser_cw_temp)
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
+      adv_pct: (s.adv_frac || 0) * 100,
+      adv_auto: s.adv_override == null,
+      adv_setpoint: (s.adv_setpoint != null ? s.adv_setpoint : this.cfg.steam_generator.adv_setpoint),
       steam_dump_setpoint: (s.steam_dump_setpoint != null ? s.steam_dump_setpoint : this.cfg.steam_generator.steam_dump_setpoint),
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
       hpi_active: s.hpi_active, rhr_active: s.rhr_active, rhr_valve_open: !!s.rhr_valve_open,
@@ -1116,6 +1120,21 @@
         else if (cmd.mode === 'open') s.steam_dump_override = 1.0;
         else if (cmd.mode === 'closed') s.steam_dump_override = 0.0;
         else if (cmd.pct != null) s.steam_dump_override = clip(cmd.pct / 100, 0, 1);
+        break;
+      case 'set_adv':
+        // Atmospheric dump valves (#371) — same verbs as the condenser dump so the
+        // operator learns ONE idiom for both steam paths. Ships CLOSED, not AUTO:
+        // see the declaration at pwr_steam_generator's ADV block.
+        if (cmd.mode === 'auto') s.adv_override = null;
+        else if (cmd.mode === 'open') s.adv_override = 1.0;
+        else if (cmd.mode === 'closed') s.adv_override = 0.0;
+        else if (cmd.pct != null) s.adv_override = clip(cmd.pct / 100, 0, 1);
+        break;
+      case 'set_adv_setpoint':
+        // Same clamp as the condenser dump's setpoint: never above the code-safety
+        // pop (a valve that opened above it would pre-empt the mechanical backstop),
+        // never below the 0.2 MPa floor where RHR takes over.
+        s.adv_setpoint = clip(cmd.mpa, 0.2, this.cfg.steam_generator.sg_safety_open_mpa);
         break;
       case 'set_rhr':
       case 'set_dhr':   // set_dhr: one-release alias for save/restore compatibility (RHR was DHR)
@@ -1601,10 +1620,15 @@
       condensate_pump_running: true, condensate_flow_normalized: P0,
       afw_discharge_pressure_mpa: 0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
+      // ADV ships SHUT (override 0, not null): with the condenser there the
+      // condenser dump does all normal duty, and a valve that opened on its own
+      // would take the code safeties out of every bottled-SG evolution (#371).
+      adv_override: 0, adv_frac: 0, adv_flow: 0,
       // Operator steam-dump pressure setpoint (the no-load secondary target the
       // AUTO dump holds). Default is the config no-load point; lowered during a
       // cooldown so the secondary — and with it the primary through the SG — cools.
       steam_dump_setpoint: cfg.steam_generator.steam_dump_setpoint,
+      adv_setpoint: cfg.steam_generator.adv_setpoint,
       feedwater_demand_frac: P0, feed_pump_speed_pct: P0 * 100, feedwater_flow: P0, main_feedwater_available: true,
       feedwater_isolated: false,   // P-14 main-feedwater isolation latch (AFW unaffected)
       afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
@@ -1922,6 +1946,12 @@
     // state — seed it at the commanded setpoint (the save is settled there).
     if (s._pressure_sp_eff == null) s._pressure_sp_eff = s.pressure_setpoint;
     if (s.steam_dump_setpoint == null) s.steam_dump_setpoint = this.cfg.steam_generator.steam_dump_setpoint;
+    // ADV (#371). A pre-#371 save has no ADV at all, and the safe restore is SHUT —
+    // the lineup the plant ships with. `adv_override === undefined` rather than
+    // `== null`, because null is the meaningful AUTO value and must survive.
+    if (s.adv_setpoint == null) s.adv_setpoint = this.cfg.steam_generator.adv_setpoint;
+    if (s.adv_override === undefined) s.adv_override = 0;
+    if (s.adv_frac == null) s.adv_frac = 0;
     // Saves that predate the CW-temperature model restore at the reference temperature, so
     // they replay with exactly the vacuum behaviour they were recorded under.
     if (s.cw_inlet_temp_c == null) {

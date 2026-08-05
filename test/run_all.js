@@ -257,7 +257,10 @@ var BASELINES = {
   // TR-12b proves it works on the casualty; TR-12c proves it stays out of a full
   // cooldown and a bottled SG with its safeties lifting, and that the operator
   // cannot reopen while it is sealed in. The half that is easiest to skip.
-  'run_behavior.js':       { code: 0, secs: 56, score: '56pass 0xfail' },
+  // 56 → 57 (2026-08-05, #371): TR-17 — the atmospheric dump. Leg A is the null
+  // control (valve ships SHUT, plant still holds hot as audit F3 measured); leg B
+  // opens it and the plant cools 304.5 → 187.7 °C with no condenser at all.
+  'run_behavior.js':       { code: 0, secs: 56, score: '57pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -678,7 +681,9 @@ var BASELINES = {
   // stop valves, spring-shut on a trip, documented in CONTEXT §6.3 with the change.
   // 149 → 151 (2026-08-05, #375): the two ±100 °F/hr rate annunciators are picked up by
   // the contract's per-alarm coverage automatically.
-  'run_contract.js':       { code: 0, score: '151checks 0failed' },
+  // 151 → 153 (2026-08-05, #371): two new true_state fields for the atmospheric dump
+  // (adv_valve_pct, adv_flow_normalized), documented in CONTEXT §6.3 with the change.
+  'run_contract.js':       { code: 0, score: '153checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

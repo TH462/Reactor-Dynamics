@@ -78,6 +78,9 @@
     // instrument above still draws its noise first and the PRNG order of the existing set is
     // unchanged — the same rule sg_steam_flow, cw_inlet_temp and rcs_flow were added under.
     pzr_spray_flow: 'spray_flow_pct',
+    // Atmospheric dump valve position, % (#371). Appended last for the same reason
+    // as the four above — the PRNG draw order of every existing instrument stays put.
+    adv_valve: 'adv_valve_pct',
   };
 
   function PWRInstruments(config, seed) {

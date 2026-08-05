@@ -45,6 +45,28 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-h — #371a: the valve ships shut, and that is the design
+
+**Decision.** Atmospheric dump valves — a condenser-independent steam path, upstream of the MSIV and
+outside the C-9 interlock. Capacity 0.10, setpoint 8.60, both UNVERIFIED and declared (§8.34).
+Measured: 579.3 → 359 °F (304 → 182 °C) in three hours with no condenser, against §8.29's record of
+four plant-hours with no cooldown at all. §8.29 RETIRED.
+
+**Default SHUT is the load-bearing decision.** Shut, the term is identically zero and the plant is
+byte-identical — the null test confirmed the entire suite unchanged but for the two contract
+fields. AUTO at 8.60 would have quietly removed the SG code safeties from every bottled-generator
+evolution the sim teaches, which is a large re-baseline hidden inside a feature. The declared gap
+was "there is no controlled cooldown path"; a lever the operator reaches for closes it without
+rewriting anything else.
+
+**The capacity argument is worth keeping.** 0.10 is chosen so the ~55 °C/hr technical-specification
+limit is achievable AND exceedable — measured, a fully-open ADV cools at −165 °C/hr, three times the
+limit. #375 had just given the board a cooldown-rate meter and annunciator; sizing the valve so it
+cannot break the limit would have made that instrumentation decorative. The valve and the meter were
+designed against each other.
+
+---
+
 ## 2026-08-05-workbench-g — #370c: a protection that extinguishes its own signal, and two rows that could never have armed
 
 **Decision.** Automatic main steam line isolation: `sg_steam_flow > 1.25` coincident with

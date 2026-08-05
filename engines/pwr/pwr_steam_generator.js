@@ -233,6 +233,28 @@
     if (s.condenser_cooling_available === false) dump = 0;
     s.steam_dump_frac = dump;
 
+    // ATMOSPHERIC DUMP VALVES (#371) — a SEPARATE relief path, deliberately
+    // outside every gate above. Not capped by steam_dump_max (that is the
+    // sourced 40 % turbine-bypass capacity of a different valve), not zeroed by
+    // the MSIV (ADVs are upstream of it, like the code safeties below), and not
+    // zeroed by the condenser — which is the entire point of building them.
+    // It does NOT touch s.steam_dump_frac, so the dump's own indication,
+    // control_state and TR-8's "dump reads < 5 % with the condenser lost"
+    // assertion all stay exactly what they were.
+    //
+    // DEFAULT SHUT, and that is a design decision rather than an oversight
+    // (declared, §8.34): with adv_override 0 this term is identically zero and
+    // the plant is byte-identical, so every bottled-SG evolution the sim
+    // teaches — TR-5, TR-8, the MSIV mission, TR-12b's safety lift — is
+    // untouched. Shipping it AUTO at 8.60 would silently take the code safeties
+    // out of all of them. The gap §8.29 named is "there is no controlled
+    // cooldown path", and a lever the operator reaches for is what closes it.
+    var adv_sp = (s.adv_setpoint != null) ? s.adv_setpoint : sg.adv_setpoint;
+    var adv = (s.adv_override != null)
+      ? s.adv_override
+      : clip((s.steam_pressure_mpa - adv_sp) / sg.adv_band, 0, 1);
+    s.adv_frac = adv;
+
     // SG code safety valves — UPSTREAM of the MSIV, the relief that remains
     // when the SG is bottled. SELF-ACTUATING on TRUE steam pressure (#369): a
     // code safety is a spring-loaded ASME device opened by the fluid it
@@ -299,7 +321,10 @@
           * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1)
       : 0;
     s.steam_break_flow = _breakFlow;
-    var steam_out = s.steam_flow_normalized + _dumpFlow + _breakFlow + sg_relief;
+    // The ADV carries upstream pressure like every other steam path here.
+    var _advFlow = adv * sg.adv_max * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1);
+    s.adv_flow = _advFlow;
+    var steam_out = s.steam_flow_normalized + _dumpFlow + _breakFlow + _advFlow + sg_relief;
     // Total SG draw (turbine + dump + safeties) — the flow any feed regulation
     // actually matches. Exposed for the disconnected-mode feed coupling
     // (load_mode.js): after a turbine trip the dump still draws, and feed must

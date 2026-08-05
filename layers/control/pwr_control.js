@@ -1146,6 +1146,18 @@
       engage: function () { return [{ action: 'set_steam_dump', mode: 'auto' }]; },
       disengage: function (s) { return [{ action: 'set_steam_dump', pct: s.control_state.steam_dump_pct || 0 }]; } },
 
+    // The ADV's channel exists so the condenser-independent cooldown can be run the
+    // same way as any other — but note it ships OFF, unlike the dump's: the valve's
+    // default lineup is SHUT, and engaging AUTO is the operator saying "hold the
+    // generator at the ADV setpoint", which is a cooldown decision rather than a
+    // normal-operation one (#371).
+    { id: 'adv', kind: 'mode', group: 'Secondary',
+      label: 'Atmospheric dump (ADV)',
+      hint: 'Automatic pressure-mode atmospheric dump — vents steam to atmosphere above the ADV setpoint, and unlike the turbine bypass it does NOT need the condenser. This is the cooldown path when the condenser is gone. Manual = freeze at the current valve position (the shipped lineup is SHUT).',
+      isOn: function (cs) { return !!cs.adv_auto; },
+      engage: function () { return [{ action: 'set_adv', mode: 'auto' }]; },
+      disengage: function (s) { return [{ action: 'set_adv', pct: s.control_state.adv_pct || 0 }]; } },
+
     { id: 'grid_follow', kind: 'mode', group: 'Secondary',
       label: 'Turbine / grid (load follow)',
       hint: 'Load-follow — turbine demand tracks reactor power (feedwater couples to load). Turn OFF to set grid demand yourself and let the other channels chase it.',

@@ -172,6 +172,47 @@ Baselines: `run_behavior` 55 → **56**, `run_hardrules` 178 → **179**, `run_r
 Manuals **Rev 13** (`12 §8.5` rewritten, `09` MSLI row, new `12 §12.17`/`§12.19`); §8.28 RETIRED,
 §8.31/§8.32/§8.33 declared.
 
+### #371a — atmospheric dump valves: the cooldown path that does not need the condenser
+
+**Built.** A separate relief fraction teed in after the dump's own gates, so it is **not** capped by
+`steam_dump_max` (a different valve's sourced capacity), **not** zeroed by the MSIV (ADVs are
+upstream of it, like the code safeties) and **not** zeroed by the condenser — which is the entire
+point. Its flow carries upstream pressure like every other steam path here, and it never touches
+`s.steam_dump_frac`, so the condenser dump's indication, control state and TR-8's "dump reads < 5 %
+with the condenser lost" assertion are all exactly what they were.
+
+**Measured, against the §8.29 record of four plant-hours flat at 304–305 °C with no cooldown path
+at all:** condenser lost, ADV opened → **579.3 → 359 °F (304 → 182 °C) in three hours**, reaching
+shutdown-cooling entry temperature. TR-17 pins both legs, and leg A is the one that matters for
+honesty: with the valve left shut the plant *still* holds at 304.5 °C, so the old behaviour is what
+you get if you do nothing. The probe also pins that the condenser dump stayed at **0 %** throughout
+— if the ADV had been wired into `steam_dump_frac` instead of its own path, nothing else would have
+noticed.
+
+**Two decisions declared rather than buried (§8.34):**
+- **It ships SHUT, not AUTO.** With `adv_override 0` the term is identically zero and the plant is
+  byte-identical — verified by the null test: the whole suite unchanged except the two new
+  true-state fields the contract required. Shipping it AUTO at 8.60 would have silently taken the
+  code safeties out of every bottled-SG evolution the sim teaches, which is a large unattributable
+  re-baseline smuggled inside a feature commit. And the gap §8.29 named was *"there is no
+  controlled cooldown path"* — a lever the operator reaches for is what closes it.
+- **Capacity 0.10 is sized, not guessed**, and the sizing argument is the interesting part: it
+  clears the decay-heat hold five times over so it can genuinely cool, and it reaches RHR-entry
+  temperature on a timescale where the ~55 °C/hr limit is **achievable and exceedable**. Measured, a
+  fully-open ADV cools at **−165 °C/hr initially — three times the limit** — so #375's brand-new
+  cooldown-rate meter and annunciator are live equipment during this evolution and throttling is
+  the skill. A valve that could not exceed the limit would have made holding it a formality.
+
+**Sourcing is honest about being thin**: no document in any lane's corpus contains "atmospheric" in
+a steam-relief sense. What IS sourced is why the ADV sits outside the C-9 condenser interlock and
+that the condenser dump is *"not required for the safe shutdown of the reactor"* — i.e. something
+else does that job. Existence, capacity and setpoint are UNVERIFIED and say so.
+
+The `adv_valve` instrument is **appended last with `noise: 0`**, per the standing PRNG rule — one
+extra draw shifts every downstream reading, and the `sg_steam_flow` comment names three endpoints
+that moved for exactly one. Baselines: `run_behavior` 56 → **57**, `run_contract` 151 → **153**
+(the two new true-state fields, documented in CONTEXT §6.3). Manuals **Rev 14**; §8.29 RETIRED.
+
 ## Session log — 2026-08-05-develop-a (#296 slice-2 fixes: batches 0 and 1 — #362, #365, #366, #368)
 
 **Task:** start working the #296 fix plan (the slice-2 audit findings, #361–#368). Batch 0

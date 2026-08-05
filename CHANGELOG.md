@@ -31,6 +31,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Atmospheric dump valves — you can cool the plant down without the condenser** (#371). Until now
+  the only controllable steam path went to the condenser, so losing it left no cooldown path at all:
+  the plant simply sat hot at the safety band. The new valves vent to atmosphere, work whether the
+  condenser is there or not, and take the plant from full operating temperature to shutdown-cooling
+  entry. They **ship shut** — opening them is your call, not the plant's — and at full open they
+  cool about three times faster than the 100 °F/hr limit, so the cooldown-rate meter and its
+  annunciator are equipment you will actually be using.
 - **The steam lines now isolate themselves on a break** (#370). High steam flow together with low
   steam pressure shuts the main steam isolation valve with no operator action — about one second
   on a full-area break, after which the generator bottles up and recovers instead of blowing down.

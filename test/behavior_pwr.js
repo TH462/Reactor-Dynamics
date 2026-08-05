@@ -90,6 +90,7 @@
     'TR-10': 'probe', 'TR-11': 'probe (end-state pin) + existing:run_ops heaters vs spray fight',
     'TR-12': 'probe + run_campaign pwr_slb', 'TR-12b': 'probe (MSIV isolates a downstream break, #199)',
     'TR-12c': 'probe (automatic steam line isolation — the coincidence, and that it stays out of normal evolutions, #370c)',
+    'TR-17': 'probe (atmospheric dump — a condenser-independent cooldown path exists, #371)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
@@ -3545,6 +3546,49 @@
         ck('…and the valve really stayed shut', String(d.ts().msiv_open),
           d.ts().msiv_open === false, 'false');
         T.checkSanity(ck, a);
+      });
+    },
+
+    /* TR-17 (#371) — LOSING THE CONDENSER NO LONGER MEANS LOSING THE COOLDOWN.
+     * Audit #297 F3 measured this plant, with the condenser gone, sitting at
+     * 304–305 °C for four plant-hours with the safeties chattering and the dump at
+     * 0 % — no controlled cooldown path existed at all. The ADV is that path.
+     * Leg A is the null control (the valve ships SHUT, so the old behaviour is
+     * still what you get if you do nothing — that is what makes it a lever); leg B
+     * opens it and measures the cooldown. */
+    'TR-17': function () {
+      return test('TR-17 atmospheric dump — a cooldown exists without the condenser (#371)', function (ck) {
+        // ---- leg A: condenser lost, ADV untouched. The F3 measurement, still true.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
+        a.run(3600);
+        ck('shipped lineup: the ADV is SHUT and nothing has changed',
+          fmt(a.ts().adv_valve_pct, 1) + ' %', a.ts().adv_valve_pct < 0.01, '0 %');
+        ck('…so the plant still holds hot, as audit F3 measured', fmt(a.ts().tavg_c, 1) + ' °C',
+          a.ts().tavg_c > 290, '> 290 °C (no cooldown without operator action)');
+
+        // ---- leg B: the operator opens it. This is the gap #297 F3 named.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
+        b.run(270);
+        b.cmd('set_adv', { mode: 'open' });
+        b.run(7200);
+        ck('opening the ADV cools the plant with no condenser at all',
+          fmt(a.ts().tavg_c, 1) + ' → ' + fmt(b.ts().tavg_c, 1) + ' °C',
+          b.ts().tavg_c < 230, '< 230 °C (leg A stays above 290)');
+        ck('…and it vents to ATMOSPHERE — the condenser is still gone',
+          String(b.ts().condenser_cooling_available) + ', adv ' + fmt(b.ts().adv_valve_pct, 0) + ' %',
+          b.ts().condenser_cooling_available === false && b.ts().adv_valve_pct > 50,
+          'condenser false, ADV open');
+        // The dump must NOT have carried this — it is gated on the condenser, and if
+        // the ADV had been wired into steam_dump_frac this check would not notice.
+        ck('the condenser dump stayed dead throughout (the ADV is a separate path)',
+          fmt(b.range('steam_dump_valve_pct').max, 1) + ' % peak',
+          b.range('steam_dump_valve_pct').max < 5, '< 5 %');
+        ck('no fuel damage', String(!!b.ts().fuel_damaged), !b.ts().fuel_damaged, 'false');
+        T.checkSanity(ck, b);
       });
     },
 

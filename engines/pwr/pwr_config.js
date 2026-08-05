@@ -1088,6 +1088,42 @@
       sg_safety_open_mpa: 9.31,    // pop
       sg_safety_reseat_mpa: 9.0,   // reseat
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
+      // ---- ATMOSPHERIC DUMP VALVES (ADV) — #371, audit #297 F3 -------------
+      // The condenser-independent steam path. Until #371 the ONLY controllable
+      // secondary heat sink was dump-to-condenser, so losing the condenser left
+      // no cooldown path at all: measured, four plant-hours flat at 304–305 °C
+      // with the safeties chattering and RHR entry unreachable. ADVs are
+      // UPSTREAM of the MSIV, like the code safeties, and OUTSIDE the C-9
+      // condenser-available interlock — which is the one thing here the corpus
+      // does source, since WTSM §11.2 (ML11223A294) puts the condenser dump
+      // squarely behind that interlock and calls the whole system *"not
+      // required for the safe shutdown of the reactor"*, i.e. something else
+      // does the safety-grade job.
+      //
+      // EXISTENCE, PURPOSE, CAPACITY AND SETPOINT ARE ALL UNVERIFIED. **No
+      // document in any lane's corpus contains "atmospheric" in a steam-relief
+      // sense** — §11.2 is dump-to-condenser throughout, §5.7's only hit is the
+      // turbine-driven AFW pump's own exhaust, §19.0 has none. The closest
+      // support is indirect: §5.7.6 defines AFW as maintaining inventory *"for
+      // removal of heat energy from the RCS by secondary side steam release"*
+      // and never names the release path. So this is a stated engineering
+      // choice, not a citation — the `afw_flow_frac` convention.
+      //
+      // adv_max 0.10 IS SIZED, not guessed, against two measurable duties:
+      //   · hold a bottled SG below the 9.31 MPa pop on decay heat (~2 % of
+      //     rated at an hour), which 10 % clears 5× over — so it can COOL, not
+      //     merely hold; and
+      //   · reach the RHR block-open permissive (2.76 MPa, Tavg ≈ 193 °C) on a
+      //     timescale where the ~55 °C/hr technical-specification cooldown limit
+      //     is achievable AND exceedable. That is the point: #375 just gave the
+      //     board a cooldown-rate meter and ±100 °F/hr annunciators, and a valve
+      //     that cannot exceed the limit turns holding it into a formality
+      //     rather than a skill.
+      // Setpoint sits ABOVE the 8.23 dump anchor so the condenser dump does all
+      // normal duty and the ADV never lifts while the condenser is there, and
+      // full-open (8.85) stays below the 9.31 pop so without a condenser it is
+      // the ADV, not the safeties, that holds the generator. [tune]
+      adv_setpoint: 8.60, adv_band: 0.25, adv_max: 0.10,
       // AFW capacity vs the real plant, worked (#374 evidence pass): the real
       // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
       // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0
@@ -1740,6 +1776,12 @@
       // requires the channel to actually get there.
       otdt_margin:       { lag: 0,   noise: 0,     range: [-500, 1500], derived: true },
       opdt_margin:       { lag: 0,   noise: 0,     range: [-500, 1500], derived: true },
+      // ADV position (#371). APPENDED LAST and noise: 0, both deliberately — the
+      // instrument PRNG is one continuous cross-step stream, so a single extra
+      // draw shifts every downstream reading from that step on (the sg_steam_flow
+      // comment above names three marginal endpoints that moved for exactly one).
+      // Appending keeps the draw order of everything already here.
+      adv_valve:         { lag: 0.3, noise: 0,     range: [0, 100] },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/
