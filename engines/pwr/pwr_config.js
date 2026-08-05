@@ -417,7 +417,32 @@
       // stayed unremarkable). The bulk h_fc collapse below 0.50 is unchanged; this
       // node covers the band above it that previously had zero consequence.
       clad_heat_gain: 15.0,        // °C/s of exposed-clad heatup per unit total heat (_Q_total is FRACTIONAL, 1.0 = rated) at full uncovery — ~0.9 °C/s at early (6 %) decay heat, the observed TMI/severe-accident order [tune]
-      clad_steam_h: 1.0e-4,        // 1/s — steam-convection cooling of the exposed clad toward Tsat; sets the equilibrium gradient (grazing uncovery late in decay stabilizes below damage; deep or early uncovery runs away) [tune]
+      // 1/s — steam-convection cooling of the exposed clad toward Tsat. Sets the EQUILIBRIUM
+      // GRADIENT of the hot node: clad_eq − Tsat = clad_heat_gain·Q·f_unc / clad_steam_h, so
+      // this constant is what decides which uncoveries damage (grazing uncovery late in decay
+      // stabilizes below damage; deep or early uncovery runs away). [tune]
+      //
+      // RE-SOLVED 1.0e-4 -> 4.0e-5 FOR THE #364 DECAY REFIT (2026-08-05). It sits on the
+      // COOLING side of a balance whose HEATING side is decay heat, and the refit cut decay
+      // heat ~2.4x in the band this node lives in — so the line it draws moved, and a core
+      // held in the 50–70 % band stopped damaging at all. MEASURED before the re-solve: held
+      // at 60 % inventory, the clad climbed 698 -> 1109 °C and DECELERATED below the 1200 °C
+      // threshold, never damaging even at 40 000 s (11 h).
+      //
+      // 2.5x DOWN AGAINST A 2.4x DROP IN THE HEAT INPUT — i.e. the coefficient tracks the
+      // change on the other side of its own balance, which is the derivation and not a fit to
+      // a probe. Swept, held-at-60 % branch, time to clad damage:
+      //     1.0e-4  never (peak 1109)   8.0e-5  8990 s      6.0e-5  6855 s
+      //     5.0e-5  6215 s              **4.0e-5  5710 s**  3.0e-5  5300 s   2.0e-5  4950 s
+      // The PROMPT-REFLOOD branch is protected at EVERY value in that sweep (peak 592 °C), so
+      // the discrimination this constant exists for is not what the choice within the range
+      // is about — inventory recovery protects that case, not this coefficient. What the
+      // choice sets is the damage TIMING on the held branch, and 4.0e-5 puts it at 95 min,
+      // inside the TMI-2 window MD-9 asserts (core damage there began around 2.5 h).
+      //
+      // perturb_sweep BEFORE the move (house rule): ±30 % flips NO verdict in either the §14
+      // scenario suite or the behaviour battery, so the blast radius is genuinely local.
+      clad_steam_h: 4.0e-5,
       clad_quench_tau: 120.0,      // s — reflood/rewet relaxation of the hot node back to the wetted-core temperature (quench-front timescale, minutes) [tune]
       // ZIRCONIUM-STEAM OXIDATION on the exposed-clad hot node (#238, built 2026-08-03).
       // Zr + 2H2O -> ZrO2 + 2H2. See pwr_thermal.stepCladding for the form and why it is

@@ -30,6 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — decay heat is refitted to the published standard, and post-trip timings are longer (#364)
+
+Decay heat goes from two exponential groups to **four**, fitted to the published standard rather
+than chosen: ANSI/ANS 5.1-1971 fission-product decay as tabulated by the NRC, plus actinide decay,
+with the ×1.2 Appendix K margin removed — that margin belongs to a licensing calculation, and this
+is a simulator of a plant.
+
+- **The old curve had nothing faster than a 33-minute time constant**, so it was flat exactly where
+  a real one falls fastest: measured, as much as **2.4× high** through the ten-minute-to-half-hour
+  band that most casualties play out in. The new fit is within **5 %** of the standard from 1 second
+  to 28 hours.
+- **Post-trip events now take longer, and are closer to a real plant.** Station blackout reaches
+  core damage at **2.6 h** and total loss of heat sink at **2.4 h**, against under 2 h before —
+  TMI-2's core damage began around 2.5 h.
+- Decay heat at scram reads **6.2 %** where it read 7 %.
+- A station blackout with auxiliary feedwater available **no longer heats the plant at all** — the
+  turbine-driven pump removes the real decay heat where it could not remove 2.4× of it.
+- Natural circulation settles a little lower (3.0 % of rated at 2.2 % decay heat), and the board's
+  pipe animation was adjusted so buoyancy flow still shows as moving rather than stopped.
+
+Manuals Rev 14, `12` §4.5 — including a plain note that post-trip timings changed and why.
+
+### Changed — one pressurizer level constant instead of two (#365)
+
+The level line chose between two constants depending on whether the plant was above or below normal
+inventory. They have held the same value since the geometry was corrected, so the choice was between
+two identical numbers — in three places. Collapsed to one. No behaviour change.
+
+
 ### Fixed — a leaking plant that went water-solid never reached its relief valve (#361)
 
 #346 gave the pressurizer a water-solid regime and #347 took spray's authority away in it. Both

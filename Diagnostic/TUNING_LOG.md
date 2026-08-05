@@ -31,9 +31,9 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ## Session log — 2026-08-05-develop-f (#364 REFIT + #365 collapse — **WIP, 5 runners RED**)
 
-**STATUS: NOT FINISHED. Committed on the lane, NOT pushed, 33 of 38 runners at baseline.** The
-physics is in and sourced; the timing pins calibrated against the old curve are not yet
-adjudicated. Read the red list at the bottom before continuing.
+**STATUS: COMPLETE. `run_all` 38/38 at baseline.** The refit landed red (5 runners, 11 probes)
+and every one was adjudicated individually rather than bulk-rebanded; the resolution is the
+second half of this entry.
 
 ### #364 — the decay curve is refitted to a sourced standard
 
@@ -89,7 +89,7 @@ solid-gain denominator) and the engine's cold-IC inversion all read the one cons
 carries a retirement note saying how to re-split it properly if that is ever wanted. Added **zero**
 new reds — the two runs bracketing it are identical.
 
-### RED LIST — all eleven are TIMING PINS against the old curve
+### RESOLVED — the eleven, adjudicated one at a time
 
 Every one reads decay heat or a rate derived from it, and every one was banded against a curve
 now known to be 142 % wrong. Per HR9 the plant is ground truth and content follows it; per HR10
@@ -106,6 +106,84 @@ pinning the defect or is genuinely broken.
 **`run_campaign` is 51/51 and `run_procedures` / `run_procedures_stack` / `run_ops` /
 `run_scenarios` are all at baseline** — the missions the ruling was willing to sacrifice did not
 in fact break.
+
+
+### How each one went — and TWO were genuine defects, not bands
+
+**MD-11 was a STALE FORMULA COPY, and the probe promised it would not be.** `meltdown_pwr.js`
+computed this plant's 8-hour decay heat for the oxidation anchor with a hardcoded **two-group**
+copy of the decay law. Four groups walked into it: groups 3 and 4 were simply absent from the sum,
+so it read **0.0000 %** and failed against a `q_ref` that was correct. The comment three lines
+above it promised the check *"tracks the decay groups instead of silently going stale"*. It now
+sums whatever groups the config declares, by key. Anchor reads 0.8658 % vs 0.8655 % — which
+independently confirms the `q_ref` re-derivation.
+
+**MD-11's band check WAS pinning the old defect.** It required all four 400 °C bands to decrease
+strictly; the corrected plant reads **362 / 404 / 182 / 84** — band 2 slower than band 1. That is
+the true shape of a two-source balance (decay still helping at the bottom, oxidation not yet in
+control, then Arrhenius runs away). The old plant hid the dip because it carried 2.4× the decay
+heat. Re-authored to bands 2→3→4; holds on the recorded pre-#364 bands (184/172/86/40) and
+injection-verified — `q_ref = 0` gives 434/932/1230/1396, INCREASING.
+
+**MD-3 / MD-6 / MD-10, TR-15 leg E, CA-12 leg E — horizons only.** The claims are unchanged and
+still true; the plant is slower. MEASURED: SBO damage **9510 s (2.6 h)**, melt 12340 s; loss of
+heat sink damage **8635 s (2.4 h)**, melt 11405 s. **These are the MORE prototypical numbers** —
+TMI-2's core damage began around 2.5 h, where the old plant got there in under 2 h.
+
+**MD-9 needed a CONSTANT re-solved, and it was the one the fix plan predicted.** A core held at
+60 % inventory stopped damaging at all — clad climbed 698 → 1109 °C and decelerated below the
+1200 °C threshold, never damaging even at 40 000 s. `thermal.clad_steam_h` sits on the COOLING side
+of a balance whose heating side is decay heat, and its own comment states its job as drawing this
+exact line. Re-solved **1.0e-4 → 4.0e-5**, i.e. 2.5× down against a 2.4× drop in the heat input —
+the coefficient tracking the other side of its own balance, not a fit to a probe.
+`perturb_sweep` first (house rule): ±30 % flips **no verdict** in either suite. Swept, the
+prompt-reflood branch is protected at EVERY value, so the discrimination was never what the choice
+inside the range was about — only the damage timing, and 4.0e-5 puts it at 95 min.
+
+**CA-13's CARRIER had to change, and that is the plant getting better.** Its station blackout no
+longer heats the plant at all: measured, Tavg peaks at 326.6 °C at ~41 min and then FALLS, because
+the turbine-driven AFW removes the real decay heat where it could not remove 2.4× of it. Correct
+for an SBO with AFW — it just stops being a heat-up. Re-pointed at total loss of heat sink (#362's
+own repro), sampled after the voided transit; the probe is stronger for it (PORV duty 0.8 % → 10.7 %).
+
+**CA-12's window closed inside the voided transit** — 6000 → 12000 s. The path still boils down,
+uncovers, refills and settles solid and overfilled, just later (109.3 % inventory, PORV lifting at
+13260 s). Its 0-solid-samples reading was the window, not the plant.
+
+**CA-15 was MY OWN BUG, twice, and both times the same mistake.** Its mechanism leg cloned the
+state at the END of the run — fine only while the plant happened to be solid there. Fixed to
+snapshot during the run, and it still failed: the snapshot was gated on `pzr_level_pct >= 99.9`,
+which is the CLIPPED gauge, and a qualifying sample had `levelRaw` = **99.91** — not solid. The
+plant rides that boundary (the #361 chatter, ~24 000 crossings in 135 000 steps). Gated on the
+engine's own predicate now.
+
+**TR-7b's 5–9 % band was a fixture of the old curve** (sourced value at t+3 min is ~3.1 %, plant
+reads 3.21 %). Its two INDICATION checks were re-banded with the honest reason: the post-trip leg
+split is `delta_T_rated × Q/flow`, so correcting decay heat down 2.4× scales it down too — **1.33 °F
+mean measured, 2 of 250 samples inverted by channel noise**. That is a tripped plant telling the
+truth. The guard still discriminates by two orders of magnitude: #315's defect inverted **48.3 %**
+of samples because the split read fission power and computed 0.0 °F.
+
+**`run_pwr`'s selfTest band** 4–8 % → 2.5–5.5 % at t+60 s (sourced ~3.9 %, plant 3.88 %).
+
+**The two browser gates were REAL consequences, not bands.** `board_check`: natural circulation
+moved 4.47 % → 3.64 % (W ∝ Q^⅓), which put it under the pipe-animation ladder's 0.04 floor, so the
+board painted a **stopped** primary loop during a blackout — the exact distinction #350 item 18
+built that ladder to show. Added a 0.02 step. `verify_e2e_ui`: three post-trip thresholds carried
+the old heat (dump > 3 → > 1, steam > 20 → > 10, feed > 30 → > 10), and its feed-tracking tolerance
+was **tightened** on the way — a flat 15 gpm band was 23 % of a 64 gpm draw and would have been
+79 % at 19 gpm, i.e. the absolute form loosened itself every time the plant carried less heat. It
+is 35 % of the draw now, which holds the claim at any scale.
+
+### Dependent constants
+
+`zirc.q_ref` **0.011243 → 0.008658** (its own comment instructed the re-derivation).
+`clad_steam_h` **1.0e-4 → 4.0e-5** (above). `natural_circ_coeff` **unchanged** and deliberately so —
+it is hydraulic and does not depend on how much heat there is; only where the plant lands moves.
+`f0` needed no action at all: it is derived from the group sum.
+
+Manuals **Rev 14**: `12` §4.5 rewritten (four groups, 6.2 % at scram, the provenance of the curve,
+and a plain warning that post-trip timings are longer), plus the natural-circulation figures.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 13  
+**Revision:** 14  
 
 ---
 
@@ -204,14 +204,24 @@ took the reactor critical cold and tripped it on source-range high flux.
 
 ### 4.5 Decay heat
 
-A **two-term exponential** model with a production term, so decay heat **builds while the reactor runs** and persists after a scram:
+A **four-term exponential** model with a production term, so decay heat **builds while the reactor runs** and persists after a scram. The four groups are a fit to the published decay-heat standard rather than chosen constants — see the note below on where the curve comes from:
 
 | Component | Fraction at scram | Decay constant | Time constant |
 |---|---|---|---|
 | Fast | 0.05 | 5 × 10⁻⁴ s⁻¹ | ≈ 33 min |
 | Slow | 0.02 | 2 × 10⁻⁵ s⁻¹ | ≈ 14 h |
 
-A core that has been at power carries **≈ 7 %** decay heat at scram. A core that has just been started carries almost none — which is why a fresh startup and a post-trip plant behave completely differently with the same rod position.
+A core that has been at power carries **≈ 6.2 %** decay heat at scram. A core that has just been started carries almost none — which is why a fresh startup and a post-trip plant behave completely differently with the same rod position.
+
+> **Where this curve comes from.** The four groups are fitted to the published decay-heat
+> standard — ANSI/ANS 5.1-1971 fission-product decay as tabulated by the NRC (ADAMS
+> ML050910161 Table 8-3), plus actinide decay from ADAMS ML021720702 Table 2 — with the
+> ×1.2 Appendix K margin **removed**, because that margin belongs to a licensing
+> calculation and this is a simulator of a plant. The fit is within **5 %** of that curve
+> from 1 second to 28 hours after shutdown. Before 2026-08-05 the model used two groups
+> and ran as much as **2.4× high** through the ten-minute-to-half-hour band, which is
+> where most casualties in this trainer play out — so post-trip timings here are
+> noticeably longer than they used to be, and closer to a real plant's.
 
 Total core heat is **prompt fission power plus the tracked decay inventory**, always. At any steady state that is exactly the neutron power. Through a fast runback it is not: the decay inventory lags on its ~33-minute tail, so several percent of thermal output persists after the flux has gone.
 
@@ -375,7 +385,7 @@ There is only **one pressure gauge**, and it reads the reference. The node press
 
 One pump. Spin-up time constant 3 s, coastdown 8 s.
 
-> **Natural circulation is modeled** (#325, 2026-08-04 — it was not before, and this paragraph used to warn that it was not). The steam generators sit above the core, so a hot/cold density difference drives flow once the RCPs stop — WTSM 3.2.6.3: *"The higher elevation of the steam generators relative to the reactor vessel produces a thermal driving head."* Buoyancy head scales with the loop ΔT and resistance with flow squared, and the core rise is itself heat/flow, so the two close to **flow ∝ the cube root of core heat**: measured **4.1 %** of rated at 5.3 % decay heat, falling to **3.0 %** at 2.1 %.
+> **Natural circulation is modeled** (#325, 2026-08-04 — it was not before, and this paragraph used to warn that it was not). The steam generators sit above the core, so a hot/cold density difference drives flow once the RCPs stop — WTSM 3.2.6.3: *"The higher elevation of the steam generators relative to the reactor vessel produces a thermal driving head."* Buoyancy head scales with the loop ΔT and resistance with flow squared, and the core rise is itself heat/flow, so the two close to **flow ∝ the cube root of core heat**: measured **3.0 %** of rated at 2.2 % decay heat, falling to **2.6 %** at 1.4 %.
 >
 > **It needs a liquid-filled loop, and that is the important limit.** Circulation ramps to zero as the primary voids, because a voided loop has no continuous column to drive — which is why tripping the pumps into a voided loop at TMI-2 established nothing. It also does not survive losing the secondary heat sink: circulation *moves* heat to the steam generator, it does not remove it, so a loss of feed still ends in damage.
 >

@@ -1046,8 +1046,14 @@
         a.run(180);
         var expA = dt0 * (a.ts().core_heat_pct / 100) / Math.max(a.ts().pump_flow_pct / 100, floor);
         var obsA = a.ts().thot_c - a.ts().tcold_c;
+        // BAND RE-DERIVED FOR #364 (2026-08-05). It was 5–9 %, which was a fixture of the
+        // pre-refit two-group curve — that plant read ~6.9 % here. The SOURCED curve
+        // (ANS 5.1-1971 + actinides, un-multiplied; see pwr_config.kinetics.decay) puts
+        // t+3 min at ~3.1 % of rated, and the plant measures 3.21 %. The claim — the core is
+        // still making decay heat, and a real amount of it — is unchanged; the band now comes
+        // from the standard instead of from the old fit.
         ck('t+3 min: the core is still making decay heat', fmt(a.ts().core_heat_pct, 2) + ' % of rated',
-          a.ts().core_heat_pct > 5 && a.ts().core_heat_pct < 9, '5–9 %');
+          a.ts().core_heat_pct > 2.5 && a.ts().core_heat_pct < 4.5, '2.5–4.5 % (sourced ~3.1 %)');
         ck('…and flow is unchanged', fmt(a.ts().pump_flow_pct, 0) + ' %', a.ts().pump_flow_pct > 95, '> 95 %');
         ck('t+3 min: leg ΔT matches the heat being removed',
           fmt(F(obsA), 2) + ' °F vs ' + fmt(F(expA), 2) + ' °F expected',
@@ -1072,11 +1078,23 @@
           var d = b.ins().thot - b.ins().tcold;
           samples++; sum += d; if (d < 0) inverted++;
         }
+        // RE-BANDED FOR #364, and the honest reading is that the SIGNAL genuinely shrank.
+        // The post-trip split is delta_T_rated x Q/flow, so correcting decay heat down ~2.4x
+        // scales it down with it: the mean was comfortably over 2 °F on the old curve and
+        // MEASURES 1.33 °F now, with 2 of 250 samples inverted by channel noise. That is the
+        // plant telling the truth — a tripped plant with the pumps running really does have
+        // only a couple of °F across the legs — not a regression.
+        //
+        // WHAT THIS LEG GUARDS IS UNCHANGED AND STILL DISCRIMINATES BY TWO ORDERS OF
+        // MAGNITUDE. #315's defect put the cold leg above the hot leg in 48.3 % of samples
+        // because the split read FISSION power and computed 0.0 °F on a scrammed core.
+        // 0.8 % is noise on a small real signal; 48 % is no signal at all.
         ck('indicated ΔT stays POSITIVE for 25 min after the trip',
-          inverted + ' of ' + samples + ' samples read the cold leg hotter',
-          inverted === 0, '0 inversions');
-        ck('…and the signal clears the noise rather than sitting in it',
-          fmt(F(sum / samples), 2) + ' °F mean', F(sum / samples) > 2.0, '> 2 °F');
+          inverted + ' of ' + samples + ' samples read the cold leg hotter (#315: 48.3 %)',
+          inverted <= 5, '≤ 5 of 250 (≤ 2 %)');
+        ck('…and the signal is still a real one, not zero',
+          fmt(F(sum / samples), 2) + ' °F mean (pre-#364: > 2 °F, on 2.4x the decay heat)',
+          F(sum / samples) > 1.0, '> 1 °F');
 
         // ---- leg C: THE CALIBRATION GUARD. Passes on the old form too, by design —
         // at rated, fission and total heat are equal, and that identity is what lets
@@ -1306,7 +1324,11 @@
         // pressurizer discarding ECCS mass at `mass_max` (#346), which let cold RWST water
         // quench the plant through a sink with no outlet. See CA-12.
         e.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
-        e.run(7200);
+        // 7200 -> 15000 s, #364. Same adjudication as MD-3/6/10: the CLAIM (heat sink gone,
+        // no injection, the plant is still lost) is unchanged and still true — MD-6 measures
+        // this casualty damaging at 8635 s on the corrected curve, past the old window. A
+        // window catching up to a slower, more prototypical plant, not a weakened assertion.
+        e.run(15000);
         var te = e.ts();
         ck('with the heat sink gone AND no injection the plant is still lost — circulation is not cooling',
           'damaged ' + String(te.fuel_damaged) + ' @ Tavg ' + fmt(te.tavg_c * 9 / 5 + 32, 0) + ' °F',
@@ -2854,7 +2876,13 @@
         // overfilled AND no void, so all three are required below.
         var aInvMax = 0;
         var seen = function (hh) { var v = hh.ts().core_inventory_pct; if (v > aInvMax) aInvMax = v; };
-        a.run(6000, seen);                                  // through the transit
+        // 6000 -> 12000 s for the #364 decay refit (2026-08-05). Same sequence — boil-down,
+        // uncovery, ECCS refill — it simply takes longer now the plant does not carry ~2.4x
+        // the real decay heat. MEASURED on the corrected curve: still draining at 9060 s,
+        // voids at ~9660 s, settles solid and overfilled only from ~12000 s (inventory
+        // 109.3 %, PORV lifting at 13260 s). The old window closed at 9600 s — inside the
+        // voided transit — which is why the leg read 0 solid samples rather than a wrong one.
+        a.run(12000, seen);                                 // through the transit
         var aN = 0, aSolid = 0, aInjWhileSolid = 0, aPorv = 0, aPmin = 1e9, aPmax = -1e9;
         a.run(3600, function (hh) {                         // the settled overfill
           var t = hh.ts();
@@ -2929,7 +2957,9 @@
         e.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
         e.cmd('inject_failure', { failure_id: 'afw_failure' });
         e.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
-        e.run(7200);
+        // 7200 -> 15000 s, #364 — see the identical note on TR-15 leg E. This is MD-6's
+        // casualty, which damages at 8635 s on the corrected decay curve.
+        e.run(15000);
         var te = e.ts();
         ck('with ECCS defeated the same event still destroys the core',
           'damaged ' + String(te.fuel_damaged) + ', melted ' + String(te.melted),
@@ -2960,12 +2990,25 @@
     'CA-13': function () {
       return test('CA-13 a heatup fills the pressurizer solid — the level line is unbounded upward', function (ck) {
         var pz = RD.PWR_CONFIG.pressurizer;
+        // CARRIER CHANGED FOR THE #364 DECAY REFIT (2026-08-05): station blackout -> total
+        // loss of heat sink. NOT a hunt for a path that passes — the SBO no longer heats the
+        // plant AT ALL now that decay heat is correct. Measured on the corrected curve, an SBO
+        // stabilises: Tavg peaks at 326.6 °C at ~41 min and then FALLS, because the
+        // turbine-driven AFW (#332, WTSM 5.7.5) removes the real decay heat where it could not
+        // remove 2.4x of it. That is the plant getting BETTER and is the correct outcome for an
+        // SBO with AFW available; it just stops being a heat-up. Losing the heat sink outright
+        // is, and it is also #362's own reported repro.
         var h = H('hot_full_power');
         h.run(60);
-        h.cmd('inject_failure', { failure_id: 'station_blackout' });
+        h.cmd('inject_failure', { failure_id: 'afw_failure' });
+        h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
+        // Skip the transit. This path boils, voids (gauge pegs at 100 on the TMI deception
+        // with void 1.00 — the OPPOSITE state), then ECCS refills and it settles SOLID and
+        // subcooled from ~80 min. Sampling before that measures the deception, not the fill.
+        h.run(4800);
 
         var n = 0, solid = 0, porv = 0, lvlMax = -1e9, baseMax = -1e9;
-        h.run(1500, function (hh) {
+        h.run(3000, function (hh) {
           var t = hh.ts(); n++;
           if (t.pzr_level_pct > lvlMax) lvlMax = t.pzr_level_pct;
           // Read the TRUE line off the engine's own state, not a copy of the formula
@@ -2997,7 +3040,12 @@
 
         // ---- and it is solid at a DEFICIT. This is the check that separates CA-13 from
         // CA-12: no injection, less water than nominal, and still no steam space.
-        ck('and it is solid at an inventory DEFICIT — expansion filled it, nothing was added',
+        // SOLID AT A DEFICIT — the discriminator against CA-12, which reaches solid by being
+        // OVERFILLED (> 100 %). Here the vessel is full with LESS water than nominal, because
+        // the water expanded into the bubble. ECCS does inject on this path (inventory
+        // recovers to ~94.5 % after the voided transit), so the claim is stated as the
+        // measurable one — solid below nominal inventory — rather than "nothing was added".
+        ck('and it is solid at an inventory DEFICIT, not an overfill (CA-12 is the other case)',
           fmt(solid, 0) + ' solid samples at ' + fmt(t.core_inventory_pct, 2) + ' % inventory',
           solid > 100 && t.core_inventory_pct < 100, '> 100 samples, inventory < 100 %');
 
@@ -3179,13 +3227,29 @@
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.5 });
-        var invMax = 0, solidN = 0, n = 0;
+        var invMax = 0, solidN = 0, n = 0, solidSnap = null;
         a.run(2700, function (hh) {
           var t = hh.ts(); n++;
           if (t.core_inventory_pct > invMax) invMax = t.core_inventory_pct;
           // Solid on a LIQUID break: gauge at the top, no void, and the break still flowing.
           // The last clause is what makes this a different state from CA-12's isolated PORV.
-          if (t.pzr_level_pct >= 99.9 && !(t.primary_void_fraction > 0) && t.leak_flow > 0) solidN++;
+          if (t.pzr_level_pct >= 99.9 && !(t.primary_void_fraction > 0) && t.leak_flow > 0) {
+            solidN++;
+            // Keep a snapshot of the engine state WHILE SOLID for the mechanism leg below,
+            // gated on the ENGINE'S OWN predicate rather than on the gauge. Two bugs were
+            // found here in one sitting and both were the same mistake. It first cloned the
+            // state at the END of the run, which worked only while the plant happened to be
+            // solid there — the #364 decay refit moved the transient and it stopped
+            // qualifying. Then it snapshotted on `pzr_level_pct >= 99.9`, and that is the
+            // CLIPPED gauge: measured, a qualifying sample had `levelRaw` = 99.91, i.e. NOT
+            // solid, because the plant rides this boundary (the #361 chatter measurement:
+            // ~24 000 crossings in 135 000 steps). `pzr_solid` is `levelRaw >= 100`, so that
+            // is what the snapshot has to test or the leg measures a bubbled plant and
+            // correctly reports the term still acting.
+            if (!solidSnap && RD.pwrPressurizer.levelRaw(hh.eng.s, RD.PWR_CONFIG) >= 100) {
+              solidSnap = Object.assign({}, hh.eng.s);
+            }
+          }
         });
         var ta = a.ts();
 
@@ -3212,7 +3276,7 @@
         // path and there is no bubble. Two clones of the settled state differing only in
         // `leak_flow`, through the engine's own stepPressure.
         var mk = function (leak) {
-          var c = Object.assign({}, a.eng.s);
+          var c = Object.assign({}, solidSnap || a.eng.s);
           c.leak_flow = leak;
           c._dmass_dt = 0;               // isolate leak_depress from the surge driver
           RD.pwrPressurizer.stepPressure(c, RD.PWR_CONFIG, 0.1);

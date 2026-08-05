@@ -1826,7 +1826,15 @@
   // most one dash period, and every element on the system hops together.
   //
   // Steps are fractions of rated. 0 means STILL (the line is paused outright, not crawled).
-  var FRAC_STEPS = [0, 0.04, 0.08, 0.15, 0.25, 0.40, 0.60, 0.80, 1.00, 1.25, 1.60, 2.00];
+  // A 0.02 step was added for the #364 decay refit (2026-08-05). The bottom of this ladder
+  // has to sit BELOW this plant's natural-circulation flow, or buoyancy-driven flow quantises
+  // to 0 and the board paints a stopped loop — which is precisely the distinction item 18 and
+  // the comment on `speedOf` say the board exists to show. Correcting decay heat moved that
+  // flow 4.47 % -> 3.64 % (W ∝ Q^⅓, so a 2.4x cut in heat is a 1.34x cut in flow), which put
+  // it under the old 0.04 floor: measured, `board_check` reported the primary loop, the RCP
+  // discharge run and the RCP suction run all PAUSED during a blackout while `rcs_flow` read
+  // 3.64 %. If natural circulation is ever re-tuned again, check this floor with it.
+  var FRAC_STEPS = [0, 0.02, 0.04, 0.08, 0.15, 0.25, 0.40, 0.60, 0.80, 1.00, 1.25, 1.60, 2.00];
   var BAND_HYST = 0.15;      // overshoot past a boundary, as a fraction of the step gap
   var _band = {};
   function bandOf(key, frac) {

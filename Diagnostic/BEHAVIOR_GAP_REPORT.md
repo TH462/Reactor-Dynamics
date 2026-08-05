@@ -6,32 +6,6 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 51 pass, 0 known gaps (xfail), 5 UNEXPECTED FAIL.
+Battery result: 56 pass, 0 known gaps (xfail).
 
-## TR-7b — TR-7b post-trip leg ΔT — decay heat still leaves through the legs (#315)  (FAIL)
-
-- **t+3 min: the core is still making decay heat** — required `5–9 %`, observed `3.21 % of rated`
-- **indicated ΔT stays POSITIVE for 25 min after the trip** — required `0 inversions`, observed `2 of 250 samples read the cold leg hotter`
-- **…and the signal clears the noise rather than sitting in it** — required `> 2 °F`, observed `1.33 °F mean`
-
-## TR-15 — TR-15 natural circulation — decay heat rides out a LOOP, and a voided loop does not  (FAIL)
-
-- **with the heat sink gone AND no injection the plant is still lost — circulation is not cooling** — required `damaged`, observed `damaged false @ Tavg 616 °F`
-
-## CA-12 — CA-12 a water-solid RCS repressurizes — mass_max stops discarding ECCS overfill  (FAIL)
-
-- **the plant really is solid and still being injected into (or leg A proves nothing)** — required `> 500 samples of each`, observed `0/7200 settled samples solid, injecting on 0`
-- **pressure RESPONDS to the injection instead of sitting flat** — required `> 50 psi`, observed `-290076000000 psi of swing while solid (145038000000..-145038000000 psi; pre-#346: 2 psi)`
-- **…and it lifts the PORV — relief is what terminates the fill** — required `> 5 % duty`, observed `0.0 % relieving duty while solid (pre-#346: 0.0 %)`
-- **inventory settles at the SOLID point the level geometry predicts** — required `within 1 point`, observed `72.71 % vs 91.20 % predicted from base 168.3 % / 776 %/frac`
-- **with ECCS defeated the same event still destroys the core** — required `damaged`, observed `damaged false, melted false`
-
-## CA-13 — CA-13 a heatup fills the pressurizer solid — the level line is unbounded upward  (FAIL)
-
-- **…so the gauge reaches the top and reads GOING SOLID (pre-#362: parked at 72.8 %)** — required `>= 99.9 %`, observed `81.29 % peak indicated`
-- **and it is solid at an inventory DEFICIT — expansion filled it, nothing was added** — required `> 100 samples, inventory < 100 %`, observed `0 solid samples at 95.69 % inventory`
-- **…and the PORV lifts — with the bubble gone, relief is the pressure control** — required `> 0 % duty`, observed `0.0 % relieving duty while solid (pre-#362: 0.0 %)`
-
-## CA-15 — CA-15 a LIQUID break goes solid and arrests clear of the ceiling — not at it  (FAIL)
-
-- **with the pressurizer solid the break adds NO separate depressurization term** — required `exactly 0`, observed `-13.053420 psi of extra fall from a 0.09 break (pre-#361: K_leak_depressurize x leak = 0.9 MPa/s against a 0.26 MPa/s surge)`
+**No gaps — the battery is fully green. The tuning pass is complete.**

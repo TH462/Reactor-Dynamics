@@ -2309,7 +2309,13 @@
         h.run(60);
         var t = h.ts();
         ck('fission collapsed', t.power_pct.toFixed(3), t.power_pct < 5, '< 5%');
-        ck('decay heat persists ~7%→', t.decay_heat_pct.toFixed(2), t.decay_heat_pct > 4 && t.decay_heat_pct < 8, '4..8%');
+        // BAND RE-DERIVED FOR #364 (2026-08-05), sampled at t+60 s. It was 4..8 %, a fixture
+        // of the pre-refit two-group curve (~6.9 % here). The sourced curve — ANS 5.1-1971
+        // plus actinides, un-multiplied, see kinetics.decay — gives ~3.9 % at 60 s, and the
+        // plant measures 3.88 %. The claim, that fission collapses while decay heat persists
+        // at a substantial fraction of rated, is unchanged.
+        ck('decay heat persists (sourced ~3.9 % at t+60 s)', t.decay_heat_pct.toFixed(2),
+          t.decay_heat_pct > 2.5 && t.decay_heat_pct < 5.5, '2.5..5.5%');
         ck('rods inserted', h.eng.s.power_pct >= 0, h.eng._controlGroup().steps < 30, 'control rods in');
         ck('load disconnected on scram', h.eng.s.load_mode, h.eng.s.load_mode === 'disconnected', 'disconnected');
         ck('steam demand zero', t.steam_demand_mwe.toFixed(0), t.steam_demand_mwe === 0, '0');

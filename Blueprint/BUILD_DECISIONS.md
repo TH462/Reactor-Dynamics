@@ -45,6 +45,60 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-develop-f — #364 decay-heat refit + #365 collapse: the fallout was the finding
+
+Batch 4 of the #296 plan, ruled a REFIT rather than the declared departure the plan and I both
+recommended *(OWNER RULING, 2026-08-05: "I think we should re-fit the decay heat curve for several
+reasons one this is going to be used to train engineers and some of them are nuclear engineers and
+will nitpick this if it's not correct two I need to redo all of the missions anyway they need a
+complete redo so I am not worried about it messing up missions.")*. **The ruling was right and the
+cost estimate was wrong**: the retune took one session, and `run_campaign` never broke at all.
+
+**The decision that mattered was the TARGET, not the fit.** Two independent NRC primaries that
+cross-check — ML050910161 Table 8-3 (ANS 5.1-1971 fission products in closed form, 0.1 s…2e8 s) and
+ML021720702 Table 2 (actinides, as the difference) — **divided by 1.2**, because that multiplier is
+a licensing margin and this is a simulator of a plant, not an ECCS evaluation model. Four groups is
+the knee of the fit (3 → 11.8 %, 4 → 4.86 %, 5 → 3.31 %). The old two-group curve measured **142.5 %
+maximum relative error** against that target.
+
+**#365 collapsed in the same change** *(OWNER RULING, 2026-08-05: "365: collapse.")* — one constant,
+the fork deleted, a retirement note left saying how to re-split properly. Zero new reds.
+
+**THE ADJUDICATION IS THE ENTRY.** Eleven probes went red and every one was taken individually
+(HR10), which is the only reason two genuine defects surfaced instead of being bulk-rebanded away:
+
+- **A stale two-group copy of the decay law inside `meltdown_pwr.js`**, computing the oxidation
+  anchor. It read 0.0000 % and failed a `q_ref` that was correct — and the comment directly above
+  it promised the check "tracks the decay groups instead of silently going stale". #315's shape, in
+  a probe written to guard against exactly this.
+- **`thermal.clad_steam_h` was a constant fitted against the wrong curve.** It sits on the cooling
+  side of a balance whose heating side is decay heat and its own comment states its job as deciding
+  which uncoveries damage. Re-solved 1.0e-4 → 4.0e-5: **2.5× down against a 2.4× drop in the heat
+  input**, i.e. tracking the other side of its own balance rather than fitting a probe.
+  `perturb_sweep` first, per the house rule — ±30 % flips no verdict in either suite.
+
+**Three probes were pinning the old defect and are now better tests.** MD-11's band check required
+a monotonic escalation that only held while decay heat was overstated. TR-7b's indication checks
+asserted a leg split that was 2.4× too big — the corrected plant reads 1.33 °F with 2 of 250 samples
+inverted by noise, against #315's defect at 48.3 %, so the guard still discriminates by two orders
+of magnitude. And CA-13's station-blackout carrier stopped working because **the plant got better**:
+with real decay heat the turbine-driven AFW now wins and an SBO no longer heats at all.
+
+**Two of my own probes from earlier today had bugs the refit exposed**, both the same mistake —
+using a proxy where the engine has a predicate. CA-15 snapshotted on the clipped gauge
+(`pzr_level_pct >= 99.9`) where a qualifying sample had `levelRaw` = 99.91, i.e. not solid.
+
+**The browser gates were real consequences.** Natural circulation moved 4.47 % → 3.64 % (W ∝ Q^⅓),
+under the pipe-animation ladder's 0.04 floor, so the board painted a stopped primary loop in a
+blackout — the exact distinction #350 item 18 built that ladder to show. A 0.02 step was added.
+`verify_e2e_ui`'s feed-tracking tolerance was **tightened** while re-deriving it: a flat 15 gpm band
+was 23 % of a 64 gpm draw and would have been 79 % at 19 gpm, so the absolute form had been
+loosening itself every time the plant carried less heat.
+
+**Post-trip timings are now the more prototypical ones** and that is the headline for a trainer:
+station blackout to core damage **2.6 h**, total loss of heat sink **2.4 h**, against under 2 h
+before — TMI-2's core damage began around 2.5 h.
+
 ## 2026-08-05-develop-d — #361: the solid regime was measured through one hole
 
 Batch 3 of the #296 fix plan, and the last engineering item in it.

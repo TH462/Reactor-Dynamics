@@ -336,22 +336,37 @@ async function testSteamFeedPair(page) {
            ' gov=' + tripped.gov + ' dump=' + tripped.dump);
   if (!(num(tripped.gov) < 20)) throw new Error('turbine_trip did not shut the governor (gov=' + tripped.gov + ')');
   // Decay-heat scale since #216: above P-9 a turbine trip now SCRAMS the reactor, so the
-  // dump carries ~7 % (decay heat) rather than the ~98 % of the old ride-out. The check
-  // is unchanged in purpose and if anything sharper — governor 0 % against STEAM FLOW
-  // ~64 gpm is a cleaner demonstration that the readout is not governor-only.
-  if (!(num(tripped.dump) > 3)) throw new Error('steam dump did not pick up decay heat (dump=' + tripped.dump + ')');
-  // Floor 20, was 40 (#372): with feedwater enthalpy in, part of the decay heat goes to
-  // heating feed instead of making steam, so the post-trip dump draw reads ~39 gpm where
-  // the enthalpy-free plant read ~64. The check's discriminant is unchanged — a readout
-  // wired to the governor-only channel reads ~0 here, not tens of gpm.
-  if (!(num(tripped.steam) > 20)) {
+  // dump carries DECAY HEAT rather than the ~98 % of the old ride-out. The check is unchanged
+  // in purpose and if anything sharper — governor 0 % against a non-zero STEAM FLOW is a
+  // cleaner demonstration that the readout is not governor-only.
+  //
+  // THRESHOLD RE-DERIVED FOR #364 (2026-08-05): was `> 3`, which came from the pre-refit
+  // curve carrying ~7 % here. The sourced curve (ANS 5.1-1971 + actinides, un-multiplied)
+  // puts t+600 s at ~2.4 % of rated and the dump reads 2 %. The claim is that the dump picks
+  // decay heat up AT ALL, so the threshold tracks the heat there is to pick up.
+  if (!(num(tripped.dump) > 1)) throw new Error('steam dump did not pick up decay heat (dump=' + tripped.dump + ')');
+  // Floor 10, was 20, was 40. Both drops are the same story and neither touches the claim:
+  // #372 put feedwater enthalpy in, so part of the decay heat goes to heating feed rather
+  // than making steam (~64 -> ~39 gpm); #364 then corrected decay heat itself down ~2.4x in
+  // this band, so there is simply less heat to carry (~39 -> 19 gpm measured). The check's
+  // DISCRIMINANT is untouched and is what matters — a readout wired to the governor-only
+  // `steam_flow` channel reads ~0 here, not tens of gpm, so 19 against 0 still separates
+  // them by the full width of the defect (#206).
+  if (!(num(tripped.steam) > 10)) {
     throw new Error('STEAM FLOW collapsed with the turbine (' + tripped.steam + ') — it is wired to the ' +
       'governor-only `steam_flow` instrument instead of `sg_steam_flow` (total SG draw). See #206.');
   }
   // Assert TRACKING, not just "nonzero": the #206 claim is that feed follows the TOTAL
   // steam draw when the turbine is offline and the dump is carrying the plant. A bare
   // `feed > 30` passes on a channel reading governor flow that happens to be mid-swing.
-  if (!(num(tripped.feed) > 30) || Math.abs(num(tripped.feed) - num(tripped.steam)) > 15) {
+  // Floor 30 -> 10 with the steam floor above, same reason (#372 then #364 left less heat to
+  // carry: feed reads 18 gpm against steam 19). The TOLERANCE is now RELATIVE rather than a
+  // flat 15 gpm, which makes this a tighter test than it was: 15 gpm was a 23 % band when the
+  // draw was 64 gpm and would have been a 79 % band at 19 — i.e. the absolute form quietly
+  // loosened itself every time the plant carried less heat. 35 % of the steam draw holds the
+  // same claim at any scale, and passes on the pre-#364 numbers too.
+  if (!(num(tripped.feed) > 10) ||
+      Math.abs(num(tripped.feed) - num(tripped.steam)) > 0.35 * num(tripped.steam)) {
     throw new Error('feed is not tracking the dump draw (feed=' + tripped.feed + ' vs steam=' +
       tripped.steam + ') — the three-element channel should match TOTAL steam flow with the ' +
       'turbine offline. See #206.');

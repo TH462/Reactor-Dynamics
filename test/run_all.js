@@ -659,7 +659,13 @@ var BASELINES = {
   // 177 → 178 (2026-08-05, #370): the §8.28 deferral row carries a new dated owner
   // quote and the HR11 citation-format scan counts every one it tracks — by design,
   // so a directive added with the count unmoved would read as NOT LOOKED AT.
-  'run_hardrules.js':      { code: 0, score: '178checks 0failed' },
+  // 178 -> 183 (2026-08-05-develop-f, #364 + #365): write-up drift, and the usual asymmetry —
+  // the engine, config and probe work moved this by ZERO, and the entire delta is tracked
+  // markdown carrying the two dated owner rulings (the decay refit and the #365 collapse)
+  // across CLAUDE.md, CHANGELOG, TUNING_LOG, BUILD_DECISIONS and the manual revision row.
+  // MEASURED AFTER the docs, which is the only order that gives the right number: an
+  // intermediate run with the code done and the write-ups pending read 180.
+  'run_hardrules.js':      { code: 0, score: '183checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
