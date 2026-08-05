@@ -2827,7 +2827,7 @@
      *
      * LEG B IS THE ONE THAT MAKES IT PHYSICS RATHER THAN A NUMBER. The settling inventory is
      * not transcribed — it is COMPUTED here from the same geometry the engine uses, so a
-     * retune of `level_per_mass_surplus` or `level_prog_floor` moves the expectation with the
+     * retune of `level_per_mass` or `level_prog_floor` moves the expectation with the
      * plant instead of leaving a stale constant behind. */
     'CA-12': function () {
       return test('CA-12 a water-solid RCS repressurizes — mass_max stops discarding ECCS overfill', function (ck) {
@@ -2891,10 +2891,10 @@
         // formula that does not move when the engine's does (the #315 lesson, and why
         // `levelRaw` itself has one definition and two consumers).
         var base = RD.pwrPressurizer.levelBase(a.eng.s, RD.PWR_CONFIG);
-        var mSolid = 1 + (100 - base) / pz.level_per_mass_surplus;
+        var mSolid = 1 + (100 - base) / pz.level_per_mass;
         ck('inventory settles at the SOLID point the level geometry predicts',
           fmt(ta.core_inventory_pct, 2) + ' % vs ' + fmt(mSolid * 100, 2) + ' % predicted from ' +
-          'base ' + fmt(base, 1) + ' % / ' + fmt(pz.level_per_mass_surplus, 0) + ' %/frac',
+          'base ' + fmt(base, 1) + ' % / ' + fmt(pz.level_per_mass, 0) + ' %/frac',
           Math.abs(ta.core_inventory_pct - mSolid * 100) < 1.0, 'within 1 point');
 
         // ---- leg C: MASS IS NO LONGER DISCARDED. The clip is a far-away numerical guard
@@ -3201,10 +3201,10 @@
         // transcribed (CA-12 leg B's idiom), so a retune of the slope moves the expectation
         // with the plant instead of leaving a stale constant here.
         var base = RD.pwrPressurizer.levelBase(a.eng.s, RD.PWR_CONFIG);
-        var mSolid = 1 + (100 - base) / pz.level_per_mass_surplus;
+        var mSolid = 1 + (100 - base) / pz.level_per_mass;
         ck('…it settles at the SOLID point the level geometry predicts',
           fmt(ta.core_inventory_pct, 2) + ' % vs ' + fmt(mSolid * 100, 2) + ' % predicted from base ' +
-          fmt(base, 1) + ' % / ' + fmt(pz.level_per_mass_surplus, 0) + ' %/frac',
+          fmt(base, 1) + ' % / ' + fmt(pz.level_per_mass, 0) + ' %/frac',
           Math.abs(ta.core_inventory_pct - mSolid * 100) < 1.0, 'within 1 point');
 
         // ---- THE MECHANISM, at function level. With the plant solid, the break must move

@@ -174,10 +174,20 @@
   // core carries ~none. Replaces the old "switch on only at scram" form (§3).
   PWREngine.prototype._stepDecay = function (dt) {
     var s = this.s, dc = this.cfg.kinetics.decay;
+    // FOUR groups since #364 — see the sourced fit in pwr_config.kinetics.decay. Same law per
+    // group as the two-group form it replaces, so this is a widening rather than a new model.
     s._H1 += (dc.H1_0 * dc.lambda_1 * s._P - dc.lambda_1 * s._H1) * dt;
     s._H2 += (dc.H2_0 * dc.lambda_2 * s._P - dc.lambda_2 * s._H2) * dt;
-    s.decay_heat_pct = (s._H1 + s._H2) * 100;
+    s._H3 += (dc.H3_0 * dc.lambda_3 * s._P - dc.lambda_3 * s._H3) * dt;
+    s._H4 += (dc.H4_0 * dc.lambda_4 * s._P - dc.lambda_4 * s._H4) * dt;
+    s.decay_heat_pct = (s._H1 + s._H2 + s._H3 + s._H4) * 100;
   };
+
+  // The decay-heat group sum, in one place. `_Q_total` and every initializer read it, so a
+  // fifth group would be one edit here rather than five scattered ones — the copy-of-a-formula
+  // trap (#315) that this file has paid for repeatedly.
+  function decaySum0(dc) { return dc.H1_0 + dc.H2_0 + dc.H3_0 + dc.H4_0; }
+  function decaySum(s) { return s._H1 + s._H2 + s._H3 + s._H4; }
 
   // Xenon / iodine (§4).
   PWREngine.prototype._stepXenon = function (dt) {
@@ -427,7 +437,7 @@
     //    discontinuously when P crossed the decay floor. Both artifacts gone.
     this._stepDecay(dt);
     var _dc0 = this.cfg.kinetics.decay;
-    s._Q_total = s._P * (1 - (_dc0.H1_0 + _dc0.H2_0)) + (s._H1 + s._H2);
+    s._Q_total = s._P * (1 - decaySum0(_dc0)) + decaySum(s);
     // Emergency injection multiplier already on state; HPI flow computed in §9.
     // 5–6. Fuel and coolant temperatures (legs, true subcooling).
     TH.stepFuel(s, this.cfg, dt);
@@ -1514,7 +1524,9 @@
       // reactor that has been running a while), ~0 for a subcritical cold start.
       _H1: init.subcritical ? 0 : cfg.kinetics.decay.H1_0 * P0,
       _H2: init.subcritical ? 0 : cfg.kinetics.decay.H2_0 * P0,
-      decay_heat_pct: init.subcritical ? 0 : (cfg.kinetics.decay.H1_0 + cfg.kinetics.decay.H2_0) * P0 * 100,
+      _H3: init.subcritical ? 0 : cfg.kinetics.decay.H3_0 * P0,
+      _H4: init.subcritical ? 0 : cfg.kinetics.decay.H4_0 * P0,
+      decay_heat_pct: init.subcritical ? 0 : decaySum0(cfg.kinetics.decay) * P0 * 100,
       xenon_pct_eq: init.subcritical ? 0 : (X_eq0 / this._X_eq) * 100,   // % of full-power equilibrium xenon
       boron_ppm: 800,
 
@@ -1682,9 +1694,15 @@
       s._dTavg_dt = 0;
       // Recent-shutdown decay maintains hot loop while subcritical (not scrammed — HZP lineup).
       var dh = cfg.kinetics.decay;
+      // Long-shutdown residual: a Mode 5 plant has been down long enough that the fast
+      // groups are gone, so the residual is seeded as a small fraction of each group's
+      // equilibrium amplitude. Kept as the same 0.07 factor across all four groups, which
+      // reproduces the previous seeding for the two that already existed.
       s._H1 = dh.H1_0 * 0.07;
       s._H2 = dh.H2_0 * 0.07;
-      s.decay_heat_pct = (s._H1 + s._H2) * 100;
+      s._H3 = dh.H3_0 * 0.07;
+      s._H4 = dh.H4_0 * 0.07;
+      s.decay_heat_pct = decaySum(s) * 100;
       // Shutdown bank stays parked withdrawn at HZP (see SHUTDOWN_DRIVE hint); control bank is fully inserted.
     }
 
@@ -1706,7 +1724,7 @@
       s._Q_coolant_to_sg = 0; s._dTavg_dt = 0;
       // No decay heat — a core shut down long enough to be cold (overrides the
       // subcritical preload above, which is already ~0, and is explicit here).
-      s._H1 = 0; s._H2 = 0; s.decay_heat_pct = 0;
+      s._H1 = 0; s._H2 = 0; s._H3 = 0; s._H4 = 0; s.decay_heat_pct = 0;
       // RCPs secured; RHR forced circulation provides flow. flow_frac 0 decouples
       // the SG from the primary (heat path is RHR, not the steam generator).
       // rcp_secured: this is the planned cold lineup, not a lost pump — the board
@@ -1724,10 +1742,10 @@
       s.msiv_open = true;
       // Pressurizer level at a cold band. With DERIVED level, an IC level implies a
       // mass surplus over nominal (a cold plant really does hold more mass): invert
-      // level = floor + level_per_mass_surplus·(mass − 1) for the cold base line.
+      // level = floor + level_per_mass·(mass − 1) for the cold base line.
       if (init.cold_pzr_level != null) {
         s._mass = clip(1.0 + (init.cold_pzr_level - cfg.pressurizer.level_prog_floor)
-          / cfg.pressurizer.level_per_mass_surplus, 0, cfg.primary.mass_max);
+          / cfg.pressurizer.level_per_mass, 0, cfg.primary.mass_max);
         s.core_inventory_pct = s._mass * 100;
         s.pzr_level_pct = init.cold_pzr_level;
       }
@@ -1832,6 +1850,20 @@
   // documents the release that introduced it). Old fields are left in place —
   // extra keys in `s` are harmless.
   PWREngine.prototype._migrateState = function (s) {
+    // Decay heat went from two exponential groups to four (#364, 2026-08-05). A save written
+    // before that carries only _H1/_H2, and those two amplitudes belong to the OLD fit, so
+    // they cannot simply be kept. Re-seed all four from the power the save was at: decay heat
+    // is a function of operating history, and the best estimate of that history available in
+    // an old save is its own steady-state amplitude. Reconstruct P0 from the stored _H1 (the
+    // old H1_0 was 0.05), fall back to power_pct, and let the new groups take it from there.
+    if (s._H3 == null || s._H4 == null) {
+      var dcm = this.cfg.kinetics.decay;
+      var P0m = (s._H1 != null && s._H1 > 0) ? Math.min(s._H1 / 0.05, 1.2)
+              : (s.power_pct != null ? s.power_pct / 100 : 0);
+      s._H1 = dcm.H1_0 * P0m; s._H2 = dcm.H2_0 * P0m;
+      s._H3 = dcm.H3_0 * P0m; s._H4 = dcm.H4_0 * P0m;
+      s.decay_heat_pct = decaySum(s) * 100;
+    }
     // HPI/LPI merge: lpi_active folded into the one hpi_active flag.
     if (s.lpi_active) { s.hpi_active = true; }
     delete s.lpi_active; delete s.lpi_flow_normalized;

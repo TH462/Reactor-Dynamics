@@ -29,6 +29,86 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-develop-f (#364 REFIT + #365 collapse — **WIP, 5 runners RED**)
+
+**STATUS: NOT FINISHED. Committed on the lane, NOT pushed, 33 of 38 runners at baseline.** The
+physics is in and sourced; the timing pins calibrated against the old curve are not yet
+adjudicated. Read the red list at the bottom before continuing.
+
+### #364 — the decay curve is refitted to a sourced standard
+
+*(OWNER RULING, 2026-08-05: "I think we should re-fit the decay heat curve for several reasons one
+this is going to be used to train engineers and some of them are nuclear engineers and will nitpick
+this if it's not correct two I need to redo all of the missions anyway they need a complete redo so
+I am not worried about it messing up missions.")* — the plan and I had both recommended the cheaper
+declared departure; this overrides that, and the ruling names mission breakage as an accepted cost.
+
+**Two independent NRC primaries, which cross-check.** Fission products from **ML050910161**
+(WCOBRA/TRAC ch. 8) **Table 8-3** — ANSI/ANS 5.1-1971 in closed form, `DH = A·t^B` piecewise over
+**0.1 s … 2×10⁸ s**, stated to include "20% required Appendix K uncertainty". Actinides from
+**ML021720702** Table 2 col 0 minus Table 8-3, measured 0.18–0.34 % of rated and carried as
+5.401e-3·t^-0.0984. Their difference being a physically sensible actinide term — rather than noise —
+is the cross-check; either document alone would have been one source.
+
+**Divided by 1.2 deliberately.** That multiplier is a *licensing* margin ("the maximum positive
+value from the uncertainty table"), and belongs in an ECCS evaluation model, not in a simulator
+claiming to show what a plant does.
+
+**The old model measured against that target: 142.5 % maximum relative error, worst at t = 794 s** —
+~2.4× the real decay heat through the ten-minutes-to-half-hour band every casualty lives in.
+
+**Fit:** relative-error least squares on a λ ladder, then coordinate descent, over 1 s … 10⁵ s
+(27.8 h). Four groups is the knee — 3 groups 11.8 %, **4 groups 4.86 %**, 5 groups 3.31 %.
+
+| t | model | sourced target | error |
+|---|---|---|---|
+| 1 s | 6.22 % | 6.48 % | −4.0 % |
+| 100 s | 3.47 % | 3.61 % | −4.0 % |
+| 1000 s | 2.09 % | 2.07 % | +1.1 % |
+| 10 000 s | 1.18 % | 1.14 % | +3.4 % |
+| 8 h | 0.866 % | 0.875 % | −1.1 % |
+| 24 h | 0.6681 % | 0.6682 % | −0.01 % |
+
+**`f0` needed no separate re-solve** — the engine derives it (`_Q_total = _P·(1 − ΣH₀) + ΣH`), so
+it moved 0.0700 → 0.06248 on its own and rated core heat still normalizes to **100.0000 %**.
+
+**Two dependent constants handled, and they went different ways.** `zirc.q_ref` was **re-derived**
+0.011243 → **0.008658**, which is exactly what its own comment instructed ("re-derive this if the
+decay groups are re-fitted") — its ratio is still unsourced, but it now rides a curve that tracks a
+standard instead of one 2.4× high. `natural_circ_coeff` was **deliberately NOT changed**: C is a
+hydraulic constant in W = C·√ΔT and does not depend on how much heat there is. What moved is where
+the plant lands — re-derived at Q = 0.03, flow **3.4 %** and loop split **29 °C (53 °F)**, and the
+old note's "must be larger than the rated split" reasoning only held while the decay heat was
+overstated. Comment restated rather than left to rot.
+
+### #365 — the piecewise slope branch is collapsed
+
+*(OWNER RULING, 2026-08-05: "365: collapse.")* `level_per_mass_surplus` is retired; the three sites
+that chose between it and `level_per_mass` (levelRaw's mass term, stepPressure's surge_rate, the
+solid-gain denominator) and the engine's cold-IC inversion all read the one constant now. The config
+carries a retirement note saying how to re-split it properly if that is ever wanted. Added **zero**
+new reds — the two runs bracketing it are identical.
+
+### RED LIST — all eleven are TIMING PINS against the old curve
+
+Every one reads decay heat or a rate derived from it, and every one was banded against a curve
+now known to be 142 % wrong. Per HR9 the plant is ground truth and content follows it; per HR10
+they must be **adjudicated individually**, not bulk-rebanded — for each, decide whether it was
+pinning the defect or is genuinely broken.
+
+- `run_behavior` **51/56** — TR-7b (post-trip leg ΔT, reads decay heat directly), TR-15 (natural
+  circulation, W ∝ Q^⅓), CA-12 / CA-13 / CA-15 (solid-regime paths; heat-up rates moved).
+- `run_meltdown` **7/12** — MD-3, MD-6, MD-9, MD-10, MD-11. Melt timings, exactly as the fix plan
+  predicted. MD-11 recomputes its anchor from config, so it should partly self-correct.
+- `run_pwr` **35/36** — "Shutdown — scram dynamics + decay heat", i.e. the decay scenario itself.
+- `verify_e2e_ui`, `verify_board_check` — browser gates, **not yet investigated**.
+
+**`run_campaign` is 51/51 and `run_procedures` / `run_procedures_stack` / `run_ops` /
+`run_scenarios` are all at baseline** — the missions the ruling was willing to sacrifice did not
+in fact break.
+
+---
+
 ## Session log — 2026-08-05-develop-e (#364 — the decay-heat evidence pass; NO code change)
 
 **Task:** batch 4 of the #296 fix plan, evidence half only. The magnitude #364 left open is now

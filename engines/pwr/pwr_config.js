@@ -84,10 +84,57 @@
       // of silent until prompt-critical. Sized so the hot_zero_power margin
       // (−1000 pcm) equilibrates at exactly the state's P0 = 1e-6. [tune]
       source: 1.0e-6,
-      // Decay heat: two-term exponential, initialized at scram (→ ~7% of rated).
+      // DECAY HEAT — FOUR exponential groups, FITTED TO A SOURCED CURVE (#364, 2026-08-05).
+      // NOT `[tune]`: these are a fit to a published standard, not free parameters. Do not
+      // nudge them to make a scenario behave; if a scenario needs different pacing, that is a
+      // scenario problem.
+      //
+      // WHAT THEY REPLACED, and why it had to move. Two groups at tau 2000 s and 13.9 h, with
+      // nothing faster — so the curve was flat exactly where a real one falls fastest.
+      // MEASURED against the target below: **142.5 % maximum relative error**, worst at
+      // t = 794 s, i.e. the model carried ~2.4x the real decay heat through the ten-minutes-to-
+      // half-hour band that every casualty in this trainer plays out in. Ruled a refit rather
+      // than a declared departure *(OWNER RULING, 2026-08-05: "I think we should re-fit the
+      // decay heat curve for several reasons one this is going to be used to train engineers
+      // and some of them are nuclear engineers and will nitpick this if it's not correct two I
+      // need to redo all of the missions anyway they need a complete redo so I am not worried
+      // about it messing up missions.")*.
+      //
+      // THE TARGET — two independent NRC primaries, which CROSS-CHECK:
+      //   FISSION PRODUCTS — ML050910161 (WCOBRA/TRAC ch. 8) Table 8-3, "Decay Heat Standard
+      //     Data for U-235 Thermal Fission", ANSI/ANS 5.1-1971 in closed form over
+      //     0.1 s .. 2e8 s:  DH(t) = A·t^B, with (A, B) = (0.07236, −0.0639) for t < 10 s,
+      //     (0.09192, −0.181) to 150 s, (0.156, −0.283) to 4e6 s, (0.3192, −0.335) beyond.
+      //     The table states it "includes 20% required Appendix K uncertainty".
+      //   ACTINIDES — ML021720702 ("Attachment 1, Appendix K Decay Heat Standards") Table 2
+      //     column 0 is (fission products + actinides) x 1.2, so the actinide term is that
+      //     column minus Table 8-3. Measured 0.18..0.34 % of rated across the band; carried as
+      //     the power law 5.401e-3·t^-0.0984 that fits those seven points.
+      //   THE CROSS-CHECK IS THE POINT: two documents, different authors, different methods,
+      //     and their difference is a physically sensible actinide contribution rather than
+      //     noise. Either alone would have been one source.
+      //
+      // DIVIDED BY 1.2, deliberately. That multiplier is a LICENSING margin — the document
+      // calls it "the maximum positive value from the uncertainty table … for shutdown times
+      // less than 10^7 seconds" — and it belongs in an ECCS evaluation model, not in a
+      // simulator claiming to show what a plant actually does. We model the plant.
+      //
+      // THE FIT: amplitudes by relative-error least squares on a fixed lambda ladder, lambdas
+      // by grid search then coordinate descent, over 1 s .. 1e5 s (27.8 h) — the window every
+      // casualty and every long ride in this trainer lives in. Four groups is the knee:
+      // 3 groups 11.8 %, **4 groups 4.86 %**, 5 groups 3.31 %. Beyond 1e5 s the fit
+      // EXTRAPOLATES; the sourced fission-product law runs to 2e8 s but the actinide power law
+      // is fitted only to 1e4 s, so do not quote this curve past ~28 h as sourced.
+      //
+      // f0 IS DERIVED FROM THESE, NOT SEPARATE: pwr_engine step 4 computes
+      // `_Q_total = _P·(1 − sum H_0) + sum H`, so the sum below IS the fraction of rated power
+      // that is decay heat at equilibrium. It moves 0.0700 -> 0.06248, which is the sourced
+      // curve's own t->0 value and is why full-power core heat still normalizes to 1.0.
       decay: {
-        H1_0: 0.05, H2_0: 0.02,            // components at scram
-        lambda_1: 0.0005, lambda_2: 0.00002, // s^-1 [tune]
+        H1_0: 0.0268319, lambda_1: 0.0303948,    // tau     33 s
+        H2_0: 0.0193747, lambda_2: 0.00130630,   // tau    766 s
+        H3_0: 0.00772324, lambda_3: 0.0000794659, // tau  12584 s
+        H4_0: 0.00855037, lambda_4: 0.00000287062, // tau 348357 s
       },
       // Xenon / iodine (normalized to equilibrium xenon at full power).
       xenon: {
@@ -404,12 +451,21 @@
         // Oxidation heat at ref_temp_c, as a fraction of RATED core heat. SECONDARY, and it
         // is the LOAD-BEARING one - the whole calibration hangs off it. The claim is that at
         // ~2200 F the oxidation heat equals the decay heat 8 hours after shutdown, and no
-        // primary for it was retrieved. Applied to THIS plant's two-group decay curve, whose
-        // 8-hour figure is 1.1243 % of rated - which transfers a RATIO stated for a real
-        // core onto our decay model. So: re-derive this if the decay groups are re-fitted,
-        // and note that if our 8-hour decay heat is unrepresentative the absolute oxidation
-        // heat inherits that. The melt timings are an output CONDITIONAL on this number.
-        q_ref: 0.011243,
+        // primary for it was retrieved. The RATIO is still unsourced; what changed is what it
+        // is applied to.
+        //
+        // RE-DERIVED 2026-08-05 FOR THE #364 REFIT, which is what the previous note here
+        // instructed ("re-derive this if the decay groups are re-fitted") and why that note
+        // was written. This plant's 8-hour decay heat was **1.1243 %** of rated on the old
+        // two-group curve and is **0.8658 %** on the sourced four-group one, so the same claim
+        // now transfers onto a decay model that tracks a published standard within ~4 % rather
+        // than one running ~2.4x high. The warning the old note carried — "if our 8-hour decay
+        // heat is unrepresentative the absolute oxidation heat inherits that" — is materially
+        // weaker now, and that is the whole benefit: the inherited error is gone even though
+        // the ratio itself is no better sourced than before.
+        // MEASURED full stack, scram at 30 s: 8 h = 0.8658 % (sourced target 0.8750 %, -1.1 %).
+        // The melt timings remain an output CONDITIONAL on this number.
+        q_ref: 0.008658,
         // s - time to grow the reference oxide at ref_temp_c; sets how fast the protective
         // layer throttles the reaction. [tune]. Corroboration: Baker-Just reaches 17 % ECR -
         // the 10 CFR 50.46(b)(2) limit, REGULATORY PRIMARY - in ~80 s at 1204 C for typical
@@ -748,53 +804,22 @@
       // is one fewer asymmetry, not one more. `cvcs_charge_per_level` was deliberately NOT
       // scaled to hold 83 s: that would restore the split this change exists to remove. [tune]
       level_per_mass: 776.0,
-      // % level per inventory-fraction SURPLUS above nominal — the "going solid" regime.
+      // `level_per_mass_surplus` WAS HERE AND IS RETIRED (#365, collapsed 2026-08-05 on
+      // OWNER RULING: "365: collapse."). It was 776.0 — the SAME value as `level_per_mass`
+      // since #330 — so the piecewise branch that chose between them returned one number on
+      // both legs, in two places (pwr_pressurizer's `levelRaw` mass term and `stepPressure`'s
+      // `surge_rate`), and in a third as the solid-gain denominator.
       //
-      // THE SAME NUMBER AS THE DEFICIT BRANCH SINCE #330, and this comment claimed
-      // "steeper than the deficit branch" until 2026-08-05 (#365), which had been false
-      // since the day #330 landed. The reason they are equal is directly below and in
-      // `level_per_mass`: the pressurizer steam space is the only compressible volume in
-      // a subcooled loop, so it absorbs a deficit at the same rate it absorbs a surplus.
-      // The two consumers of the piecewise (pwr_pressurizer levelRaw and stepPressure's
-      // surge_rate) therefore take the same slope on both legs. Moving ONE of these two
-      // constants is silently wrong in two places at once; move both or neither.
+      // WHY IT COULD NOT JUST BE LEFT: a fork whose branches are identical can never be
+      // exercised apart, so no gate can see a future edit to one and not the other — the
+      // plant would then behave two ways in two places with every runner green. That is
+      // #315's shape, and it is why this was a maintenance hazard rather than a spare knob.
+      // The physics is `level_per_mass`'s own note: the pressurizer steam space is the only
+      // compressible volume in a subcooled loop, so it absorbs a deficit at the rate it
+      // absorbs a surplus — the geometry does not know which way the flow is going.
       //
-      // FITTED TO REAL GEOMETRY 2026-07-30 (#249, OWNER RULING 2026-07-30: "249 - fit it.").
-      // Was 300, which was never derived from anything. The physical surplus between
-      // full-power level and water-solid is the pressurizer STEAM SPACE as a fraction of
-      // RCS volume:
-      //     BVPS-2 UFSAR Table 5.1-1 (ML22144A118) — total RCS incl. pressurizer and
-      //       surge line = 9,650 ft³; Table 5.4-12 — pressurizer = 1,400 ft³
-      //     WTSM 3.2 Table 3.2-2 (ML11223A213) — full-power steam volume is 720 of
-      //       1,800 ft³, i.e. 40 % of the vessel
-      //     ⇒ 0.40 × 1,400 / 9,650 = 0.0580 of RCS volume. THAT IS THE WHOLE HEADROOM.
-      // This sim spans nominal (55 %) → solid (100 %) = 45 points of level, so
-      //     45 / 0.0580 = 776 %/frac.
-      // Assumes indicated level ≈ volumetric fraction — this sim's convention, not
-      // necessarily a real calibrated span. Stated because it is the one soft step.
-      //
-      // WHY IT HAD TO MOVE, not just "for fidelity". At 300 the going-solid coordinate
-      // was 0.15 wide, and `primary.mass_max` (1.2) clipped inventory BEFORE the
-      // pressurizer could read solid: with base(Tavg) at its 28 % floor — which every
-      // quench below 559.8 °F (293.2 °C) reaches — indicated level pinned at exactly
-      // 28 + 300×0.20 = 88.00 % and stayed there. Measured, HPI at HFP: inventory
-      // clipped at 120.00 %, level 88.00 %, forever. So THE PLANT COULD NOT GO SOLID ON
-      // INJECTION — the TMI lesson it is built around. Injection-verified: 776 reaches
-      // 100.0 % with mass_max untouched; raising mass_max instead "works" but reads
-      // 134.8 % inventory, and zeroing the floor makes it worse (peak 71.5 %).
-      // `mass_max` is no longer binding on this path (solid lands at Δm 0.058 hot,
-      // 0.093 floored) — it is now a far-away numerical guard, which is what it should
-      // always have been.
-      //
-      // NOT changed alongside it: `cvcs_charge_per_level`. An earlier draft proposed
-      // scaling it to hold the loop τ — that was wrong, because the documented τ (83 s)
-      // was the DEFICIT branch at the then-current level_per_mass of 100, and scaling the
-      // gain would have slowed leak make-up to 215 s to fix a surplus-side number.
-      // WRITTEN WHEN THE TWO BRANCHES STILL DIFFERED (#249): it said "the servo is simply
-      // faster on the SURPLUS side now (27.8 → 10.7 s)". Since #330 raised the deficit
-      // slope to match, there is no side — both branches are 10.7 s, which is the one τ
-      // this plant has. Measured, it does not hunt. [tune]
-      level_per_mass_surplus: 776.0,
+      // To re-split it, restore the branch AND derive the second slope; do not reintroduce a
+      // second name holding the same number.
       // % level per void-fraction — the TMI lift. Calibrated so the story-clock void
       // (~0.2 as HPI fires) lifts level past the 75 % high alarm (the "going solid" call
       // that throttles HPI), and deep voiding pegs the gauge high (historical).
@@ -911,11 +936,25 @@
       // (nrc.gov 403s; the ERG/EOP verification criteria are not public), and the "2–5 %"
       // in the old §8.6 and Manuals/01 was inherited prose with no citation — so it is NOT
       // being used as an anchor. C is fitted so the plant lands where its OWN energy balance
-      // says it must: ~4 % flow against ~5 % decay heat a few minutes post-trip, which the
-      // ΔT relation then puts at a loop split of ~41 °C (74 °F) — larger than the 33 °C
-      // (59 °F) rated split, as it must be when the same heat moves on a twentieth of the
-      // flow. The claim being made is the SHAPE (W ∝ Q^⅓, and "decay heat only") which is
-      // sourced; the SCALE is this plant's, and is marked as such in §8.6's replacement row.
+      // says it must. The claim being made is the SHAPE (W ∝ Q^⅓, and "decay heat only")
+      // which is sourced; the SCALE is this plant's, and is marked as such in §8.6's
+      // replacement row.
+      //
+      // C IS UNCHANGED BY THE #364 DECAY REFIT, AND THAT IS DELIBERATE — but the numbers it
+      // was justified with have moved, so the justification is restated rather than left to
+      // rot. C is a HYDRAULIC constant: it encodes loop geometry and resistance in
+      // W = C·√ΔT, and it does not depend on how much decay heat there is. What depends on
+      // decay heat is where the plant LANDS, and that moves on its own through W ∝ Q^⅓.
+      //
+      // The old note read "~4 % flow against ~5 % decay heat a few minutes post-trip …
+      // a loop split of ~41 °C (74 °F), larger than the 33 °C (59 °F) rated split". That
+      // anchor was measured against the pre-#364 curve and was ~1.7x high: the sourced curve
+      // puts a few minutes post-trip at ~3 % of rated, not 5 %. Re-derived on the same two
+      // relations at Q = 0.03: W = (C²·delta_T_rated·Q)^⅓ = **3.4 %** of rated flow, and
+      // ΔT = delta_T_rated·Q/W = **29 °C (53 °F)**. Note the split is now slightly BELOW the
+      // rated 33 °C rather than above it — flow falls as the cube root of heat, so it does not
+      // fall as far as the heat does, and the old "must be larger" reasoning only held while
+      // the decay heat was overstated. TR-15 leg A's 1–8 % band still contains it.
       natural_circ_coeff: 6.228e-3,   // C in W = C·√ΔT  [tune] — see the fit above
       natural_circ_max: 0.08,         // hard cap, frac of rated. WTSM: "not for power operation" [tune]
       // VOID CUTOFF. Natural circulation needs a CONTINUOUS LIQUID PATH; once the loop

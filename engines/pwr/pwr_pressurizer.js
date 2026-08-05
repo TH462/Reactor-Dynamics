@@ -339,7 +339,7 @@
     // step 9 and this is step 7 (CONTEXT §11 explicit coupling).
     var dm_lvl = (s._mass != null ? s._mass : 1.0) - 1.0;
     var surge_rate = p.level_per_tavg * (s._dTavg_dt || 0)
-                   + (dm_lvl < 0 ? p.level_per_mass : p.level_per_mass_surplus) * (s._dmass_dt || 0);
+                   + p.level_per_mass * (s._dmass_dt || 0);
     // WATER-SOLID — the surge meets LIQUID, not a bubble (#346). K_surge_level is the
     // gain of a pressurizer that still HAS a steam space: a surge is soft because the
     // bubble absorbs it. Once the level line reaches 100 % there is no bubble, the RCS is
@@ -364,7 +364,7 @@
     // the relief gains, and taking only one term of it was measured to be WORSE than taking
     // none: see the F15 note in pwr_primary.stepInventory, and `Manuals/12` §12.4c.
     var solid = !saturated && pzr_solid;
-    var K_surge = solid ? (p.solid_bulk_mpa / p.level_per_mass_surplus) : p.K_surge_level;
+    var K_surge = solid ? (p.solid_bulk_mpa / p.level_per_mass) : p.K_surge_level;
     var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
@@ -494,7 +494,7 @@
     // second consumer of this same piecewise (stepPressure's surge_rate). Until then a
     // future split is DELIBERATE rather than silent: CA-9 leg B pins the two against
     // each other through this very line, and a second check pins the surge branch.
-    var mass_term = dm < 0 ? p.level_per_mass * dm : p.level_per_mass_surplus * dm;
+    var mass_term = p.level_per_mass * dm;
     return levelBase(s, cfg) + mass_term + p.level_per_void * (s.primary_void_fraction || 0);
   }
 
