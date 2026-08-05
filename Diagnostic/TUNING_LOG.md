@@ -174,10 +174,50 @@ satisfied by *deleting* the term; leg D: the two-point tuning criterion).
    because the void line is gated `trueSubcooling <= 0` and a state a whisker either side of
    saturation reads 1.00 or 0.00 on a coin toss.
 
+### Batch 2b — #367, pump heat on the ROTOR-DRIVEN part of flow
+
+`Q_pump = heat_gen_coeff · pump_heat_frac · flow_frac` — and buoyancy carries `flow_frac` while
+doing no shaft work, so a stopped RCP kept depositing pump heat for as long as the plant
+circulated. The fraction **grows**: 0.55 % of core heat at rated, **0.85 % at 2 h, 2.57 % at 24 h**,
+because decay heat falls faster than buoyancy flow does (W ∝ Q^⅓ — the law TR-15 leg B pins).
+
+**The fix is a SUBTRACTION, not a switch**, and that is the whole design: a coasting rotor really
+is doing flywheel work (WTSM 3.2, ML11223A213 p. 3.2-17, has the flywheel carrying the coastdown
+*"into"* natural circulation), so the term takes `flow_frac − naturalCircFlow(s, cfg)` when the
+pump is stopped. **Continuous by construction** — `stepFlow` decays `flow_frac` toward
+`naturalCircFlow`, so the difference decays with it, established circulation gets exactly zero,
+there is no step at the handover and **no new state field**, hence no §6.3 / `run_contract`
+obligation. `naturalCircFlow` is a pure exported function called same-step; its void input is one
+step old here (step 6 vs stepFlow's step 10), a sub-step disagreement on a term worth 0.55 % of
+core heat. Absent `pwr_primary` the fallback is 0 buoyancy, i.e. the pre-#367 behaviour.
+
+**IT IS UNOBSERVABLE ON A PLANT WITH A HEAT SINK, and measuring that is what set the guard's
+form.** The plan asked for a 24 h post-scram before/after; it is **identical to every printed
+digit** — the SG absorbs the phantom heat and the dump holds Tavg on programme. Take the sink away
+(scram + secure RCP + `afw_failure` + `loss_of_feedwater`) and it appears: Tavg **0.7 °F at 30 min,
+1.2 °F at 1 h, 1.7 °F at 3 h**, growing. Too small to band without pinning a tuning.
+
+**So the guard reads the ENGINE at the mechanism** — TR-15 leg B2, two clones of the settled
+natural-circulation state through `stepCoolant` differing ONLY in `pump_running`, which
+`stepCoolant` reads nowhere else, so the whole `_dTavg_dt` difference is the shaft-work term:
+**0.00017398 °C/s** now against **exactly 0.00000000** before. No probe count change, so no
+baseline move. **A first draft RECOMPUTED the term inside the probe and read identically on both
+engines** — a copy of the formula tests the copy, not the engine.
+
+**Two adjacent same-shape sites checked and DELIBERATELY LEFT**, with the reason recorded at the
+site: the governor's `extractFrac` scales the same constant by raw `flow_frac`, but its wrong
+regime needs pumps stopped AND the turbine on line, and this plant cannot reach it — measured full
+stack, securing the RCPs at power scrams on the #314 breaker-position trip at **31 s** and the
+turbine is tripped with `mwe_output` 0 by t+1 min. The SG's `(1 + pump_heat_frac)` normalizer is a
+rated-condition constant, not a flow-scaled term.
+
+**No on-hold twins to file** (the #239 precedent): grepped, RBMK and BWR have **no pump-heat term
+at all**, and neither has a `leak_flow` flash-cooling term either, so #363 has no twin there
+either. A measured negative rather than two speculative issues.
+
 ### Still open from the plan
 
-Batches 2b (#367 pump heat), 3 (#361 solid overfill) and 4 (#364 decay heat, blocked on a source
-and a ruling). **#361's measurement basis has now moved twice** — #362 arms `pzr_solid` on paths
+Batches 3 (#361 solid overfill) and 4 (#364 decay heat, blocked on a source and a ruling). **#361's measurement basis has now moved twice** — #362 arms `pzr_solid` on paths
 that never armed it, and #363 changes when `leak_depress` acts — so re-measure its repro first,
 which the plan already says. Noted while measuring #363: at severity 0.5 the gated plant reaches
 the **120.00 % `mass_max` clip** at 20 min where the ungated one read 118.1 %, i.e. #361's defect

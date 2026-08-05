@@ -30,6 +30,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — a stopped reactor coolant pump was still heating the coolant (#367)
+
+Pump shaft-work heat was scaled by loop flow outright. Natural circulation is buoyancy-driven and
+does no shaft work, but it carries flow — so a **stopped** pump went on depositing "pump heat" for
+as long as the plant circulated, and the fraction **grew** over time, because decay heat falls
+faster than buoyancy flow does (flow follows the cube root of core heat). Measured on a 24 h
+post-scram ride with the pump secured: **0.55 %** of core heat at rated with the pump running
+(correct), **0.85 %** at 2 h and **2.57 %** at 24 h with it stopped.
+
+- **The coastdown keeps its heat**, which is why this is a subtraction and not a switch: a coasting
+  rotor really is doing flywheel work on the fluid. The term now takes total flow minus the part
+  buoyancy is producing, so it decays smoothly to zero as the coastdown hands over and established
+  natural circulation gets exactly none — no step at the handover, no new saved state.
+- **Effect on the plant is small and was measured both ways.** With a working heat sink it is
+  *invisible* — the steam generator absorbs it and a 24 h A/B is identical to every printed digit.
+  With the heat sink gone it shows as **0.7 °F at 30 min growing to 1.7 °F at 3 h**.
+- Guarded inside the existing natural-circulation probe, asserted through the engine's own heat
+  balance: with the pump stopped and flow unchanged, the balance now differs by 0.00017 °C/s from
+  the pump-running case — **exactly 0** before.
+
+Two neighbouring places with the same shape were checked and **deliberately left**: the turbine's
+steam-extraction fraction, whose wrong regime (pumps stopped, turbine on line) this plant cannot
+reach — securing the pumps scrams the reactor in 31 s and trips the turbine inside a minute — and
+the steam generator's rated normalizer, which is a rated-condition constant rather than a
+flow-scaled term. Neither RBMK nor BWR has a pump-heat term at all, so there is no twin to file.
+
 ### Fixed — a break kept "flash"-cooling a plant that had stopped boiling (#363)
 
 A break has two halves, and only one of them knew what regime it was in. The pressure half has

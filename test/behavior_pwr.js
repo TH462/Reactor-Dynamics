@@ -1119,6 +1119,39 @@
           'observed ' + fmt(observed, 3) + ' vs predicted ' + fmt(predicted, 3),
           Math.abs(observed / predicted - 1) < 0.05, 'within 5 %');
 
+        // ---- leg B2: BUOYANCY IS NOT A PUMP (#367). Shaft-work heat was scaled by
+        // `flow_frac` outright, so a STOPPED RCP went on depositing pump heat for as long as
+        // the plant circulated — and the fraction GREW, because decay heat falls faster than
+        // buoyancy flow does (W ∝ Q^⅓, the very law leg B just pinned): measured 0.55 % of
+        // core heat at rated, 0.85 % at 2 h, 2.57 % at 24 h.
+        //
+        // ASSERTED THROUGH THE ENGINE, and at the mechanism rather than on the plant. Two
+        // reasons, both measured. On a plant with a working heat sink the term is
+        // UNOBSERVABLE — the SG absorbs it and the dump holds Tavg on programme, so a 24 h
+        // post-scram A/B is identical to every printed digit; take the sink away and it shows
+        // as 0.7 °F at 30 min growing to 1.7 °F at 3 h, too small to band without pinning a
+        // tuning. And a first draft of this check RECOMPUTED the term in the probe, which made
+        // it read identically on both engines — a copy of the formula tests the copy.
+        //
+        // So: two clones of the settled natural-circulation state through the ENGINE's own
+        // `stepCoolant`, differing ONLY in `pump_running`. `stepCoolant` reads that flag
+        // nowhere else, so the whole difference in `_dTavg_dt` is the shaft-work term. Pre-#367
+        // the term read `flow_frac` outright and the flag changed nothing: the difference is
+        // EXACTLY ZERO, which is the defect stated as a number.
+        var bs = b.eng.s;
+        var dT = function (running) {
+          var c = Object.assign({}, bs);
+          c.pump_running = running;
+          RD.pwrThermal.stepCoolant(c, RD.PWR_CONFIG, 0.1);
+          return c._dTavg_dt;
+        };
+        var gap = dT(true) - dT(false);
+        ck('the heat balance can tell a STOPPED pump from a running one at the same flow',
+          fmt(gap, 8) + ' °C/s of shaft work removed, at ' + fmt(bs.flow_frac * 100, 2) +
+          ' % flow (pre-#367: exactly 0 — buoyancy was billed as pump work)',
+          bs.pump_running === false && bs.flow_frac > 0.01 && gap > 1e-6,
+          '> 0, with flow still running');
+
         // ---- leg C: A VOIDED LOOP DOES NOT CIRCULATE. The TMI-2 discriminator, and the
         // check that separates this from a constant floor.
         var c = H('hot_full_power');

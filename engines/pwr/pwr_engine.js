@@ -288,6 +288,16 @@
       // heat (the same NSSS-rated normalizer the SG uses). So 100 % core power at full
       // flow is exactly 1.0 — rated steam flow, rated MWe — and the governor's clip at
       // 1.0 needs no headroom bolted on.
+      // `pf * flow_frac` IS THE #367 SHAPE AND IS DELIBERATELY LEFT, measured rather than
+      // argued (2026-08-05). #367 corrected the thermal shaft-work term to the ROTOR-DRIVEN
+      // part of flow, because buoyancy carries flow_frac while doing no shaft work; this line
+      // scales the same constant by the same raw flow. The regime where that is wrong needs
+      // the pumps STOPPED and the turbine ON LINE making steam, and this plant cannot reach
+      // it: securing the RCPs at power scrams the reactor at 31 s on the #314 breaker-position
+      // trip and the turbine trips inside the same minute (measured full stack —
+      // `turbine_tripped` true, `mwe_output` 0 by t+1 min). With the turbine tripped nothing
+      // reads this. If a plant variant ever runs on line without all RCPs, fix it here the
+      // same way pwr_thermal.stepCoolant does.
       extractFrac: function (s) {
         var pf = cfg.thermal.pump_heat_frac || 0;
         return ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);

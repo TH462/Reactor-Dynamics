@@ -128,10 +128,41 @@
       var sink = e.rhr_sink_c + (cwNow - cwRef);
       Q_rhr = e.rhr_gain * hxFrac * Math.max(0, s.tavg_c - sink);
     }
-    // RCP heat: pump shaft work deposited in the coolant, scaled by flow — the
-    // real no-load heat source (heats the plant if the heat sink is isolated),
-    // and its loss slightly speeds a post-trip cooldown.
-    var Q_pump = t.heat_gen_coeff * (t.pump_heat_frac || 0) * s.flow_frac;
+    // RCP heat: pump shaft work deposited in the coolant — the real no-load heat source
+    // (it heats the plant if the heat sink is isolated), and its loss slightly speeds a
+    // post-trip cooldown.
+    //
+    // SCALED BY THE ROTOR-DRIVEN PART OF FLOW, NOT BY FLOW (#367, 2026-08-05). This read
+    // `s.flow_frac` outright, and natural circulation carries flow_frac while doing no shaft
+    // work at all — buoyancy is not a pump. So a stopped RCP went on depositing "pump heat"
+    // for as long as the plant circulated. MEASURED on a 24 h post-scram ride with the RCP
+    // secured at 60 s, the term as a fraction of core heat: 0.55 % at rated with the pumps
+    // running (correct), 0.85 % at 2 h and 2.57 % at 24 h with `pump_running` false. It GROWS,
+    // because decay heat falls faster than buoyancy flow does — W ∝ Q^⅓, so flow falls as the
+    // cube root — making it a permanent phantom source on a long blackout rather than a
+    // vanishing one. Same class as #315: a term reading the wrong driver, exactly right at the
+    // rated test point where flow_frac = 1 and pump_running = true, wrong everywhere else.
+    //
+    // THE COASTDOWN KEEPS ITS HEAT, and that is the reason for the subtraction rather than a
+    // bare `pump_running ?` gate. A coasting rotor really is doing flywheel work on the fluid —
+    // WTSM 3.2 (ML11223A213 p. 3.2-17) has the flywheel carrying the coastdown "into" natural
+    // circulation — so the honest split is total flow minus the part buoyancy is producing.
+    // It is CONTINUOUS BY CONSTRUCTION: stepFlow decays flow_frac toward naturalCircFlow, so
+    // this difference decays to 0 with it and established natural circulation gets exactly
+    // zero, with no step at the handover and no new state field to migrate.
+    //
+    // `naturalCircFlow` is a pure exported function, called same-step. Its void input is one
+    // step old here (stepInventory is step 9, this is step 6) where stepFlow at step 10 sees
+    // the current one — a sub-step disagreement on a term worth 0.55 % of core heat. The
+    // fallback when pwr_primary is absent is 0 buoyancy, i.e. the pre-#367 behaviour, so an
+    // ad-hoc rig that loads only this file is unchanged rather than silently altered.
+    var Q_pump_flow = s.flow_frac;
+    if (!s.pump_running) {
+      var buoy = (RD.pwrPrimary && RD.pwrPrimary.naturalCircFlow)
+        ? RD.pwrPrimary.naturalCircFlow(s, cfg) : 0;
+      Q_pump_flow = Math.max(0, s.flow_frac - buoy);
+    }
+    var Q_pump = t.heat_gen_coeff * (t.pump_heat_frac || 0) * Q_pump_flow;
     var dTavg = (Q_fuel_to_coolant + Q_pump - Q_coolant_to_sg - Q_rhr) / t.coolant_heat_capacity;
     // Cold ECCS injection quench (§6.2/§6.3): HPI/LPI and the accumulators inject borated
     // RWST/SIT water well below Tavg, removing sensible heat as it mixes — the thermal

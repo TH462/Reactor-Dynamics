@@ -453,6 +453,24 @@ anything here that is standing procedure rather than news belongs in the list be
   and a void check drafted from the full-stack final state was **cut as not robust** — peak void
   is 1.00 on both engines, because the void line is gated `trueSubcooling <= 0` and a state a
   whisker either side of saturation is a coin toss.
+  **Batch 2b (#367) is the third fix in a row that reddened nothing, and its lesson is about the
+  GUARD rather than the plant: a term can be invisible on a healthy plant by construction.** Pump
+  shaft work was scaled by `flow_frac` outright, and buoyancy carries flow while doing no shaft
+  work — so a STOPPED RCP kept depositing pump heat, at a fraction that GREW (0.55 % of core heat
+  at rated, **0.85 % at 2 h, 2.57 % at 24 h**), because decay heat falls faster than buoyancy flow
+  does. **The plan asked for a 24 h post-scram A/B and it is IDENTICAL TO EVERY PRINTED DIGIT** —
+  the SG absorbs the phantom heat and the dump holds Tavg on programme. Take the heat sink away and
+  it appears: 0.7 °F at 30 min growing to 1.7 °F at 3 h. Too small to band, so the guard reads the
+  ENGINE at the mechanism — two clones through `stepCoolant` differing ONLY in `pump_running`,
+  which it reads nowhere else, so the whole `_dTavg_dt` difference is the term: **0.00017398 °C/s
+  against exactly 0**. A first draft RECOMPUTED the term inside the probe and read identically on
+  both engines; **a copy of the formula tests the copy**. **The fix is a SUBTRACTION, not a switch**
+  (`flow_frac − naturalCircFlow`), because a coasting rotor really is doing flywheel work —
+  continuous by construction, and no new state field. **Two same-shape neighbours were measured and
+  LEFT**: `extractFrac` needs pumps-stopped-and-turbine-on-line, which is unreachable (securing the
+  RCPs scrams at 31 s on #314 and trips the turbine inside a minute), and the SG normalizer is a
+  rated constant. **No RBMK/BWR twins filed for #367 OR #363** — grepped, neither plant has a
+  pump-heat term or a flash-cooling term at all.
 - **A FUDGE BAND IN A CHECK WAS HIDING A REAL DEFECT, and a probe that stopped asserting anything
   said so in its own output (2026-08-04, #348).** The tree is **38/38** for the first time since
   #337. Three traps, all of them about tests rather than plant. **CA-10 excluded a 1-point band

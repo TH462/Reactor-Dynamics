@@ -45,6 +45,43 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-develop-c — #367: buoyancy is not a pump, but a coasting rotor is
+
+Batch 2b of the #296 fix plan.
+
+**The decision is the SUBTRACTION rather than a `pump_running ?` switch.** Shaft-work heat was
+scaled by `flow_frac` outright, and natural circulation carries flow while doing no shaft work — so
+a stopped RCP kept depositing pump heat, at a fraction that GREW (0.55 % of core heat at rated,
+0.85 % at 2 h, 2.57 % at 24 h) because decay heat falls faster than buoyancy flow does. But a
+plain gate on `pump_running` would have thrown away the coastdown, where the flywheel really is
+doing work on the fluid (WTSM 3.2, ML11223A213 p. 3.2-17). Taking `flow_frac − naturalCircFlow`
+keeps it and is **continuous by construction**: `stepFlow` decays flow toward the buoyancy value,
+so the difference decays with it and established circulation gets exactly zero. No step at the
+handover, and **no new state field**, so no §6.3 / `run_contract` obligation — `naturalCircFlow`
+is already a pure exported function and is called same-step.
+
+**THE GUARD'S FORM WAS SET BY A MEASUREMENT, NOT A PREFERENCE.** The plan asked for a 24 h
+post-scram before/after; it is **identical to every printed digit**, because a plant with a working
+heat sink puts the phantom heat straight out through the SG while the dump holds Tavg on
+programme. Remove the sink and it appears as 0.7 °F at 30 min growing to 1.7 °F at 3 h — real,
+directional, and far too small to band without pinning a tuning. So the guard is at the mechanism:
+two clones of the settled natural-circulation state through `stepCoolant` differing only in
+`pump_running`, a flag `stepCoolant` reads nowhere else, so the entire `_dTavg_dt` difference is
+the term — 0.00017398 °C/s now against **exactly 0** before. A first draft recomputed the term
+inside the probe and therefore read identically on both engines; a copy of the formula tests the
+copy.
+
+**Two adjacent sites with the same shape are deliberately LEFT, and the reason is recorded at the
+site so it is not re-derived.** The governor's `extractFrac` scales the same constant by raw
+`flow_frac`, but its wrong regime requires pumps stopped AND the turbine on line, which this plant
+cannot reach — measured, securing the RCPs at power scrams on the #314 breaker-position trip at
+31 s and the turbine is tripped with `mwe_output` 0 by t+1 min. The steam generator's
+`(1 + pump_heat_frac)` is a rated-condition normalizer, not a flow-scaled term.
+
+**No on-hold twins filed, and that is a measured negative rather than an omission** (#239 set the
+precedent of filing them): RBMK and BWR have no pump-heat term at all, and no `leak_flow`
+flash-cooling term either, so #363 has no twin there either.
+
 ## 2026-08-05-develop-b — #363: one break, two halves, one regime test
 
 Batch 2 of the #296 fix plan.
