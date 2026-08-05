@@ -200,9 +200,60 @@ var BASELINES = {
   // injection defeated the plant is lost at 94 min on BOTH engines.
   // THIS LANE READS 50, NOT 52 — CA-10 and CA-11 are the standing #337 cascade and predate
   // this change (verified unmoved by it, same observed values either side).
+  // 52 -> 53 (2026-08-05-develop-a, #362): CA-13, a HEATUP fills the pressurizer solid.
+  // `levelBase` carried an undocumented upper clip at 100 from v1, binding at Tavg 611.6 °F
+  // (322.0 °C) — INSIDE the subcooled operating range at NOP, where Tsat is 653.2 °F
+  // (345.1 °C). MEASURED incidence before the fix, per sample: 95.7 % of a loss of heat sink
+  // and 87.9 % of a station blackout, against 0.0 % on hot_full_power idle, large LOCA 0.5,
+  // small LOCA 0.05, SGTR 0.25, stuck-open PORV and both cold ICs — a LOCA drains and COOLS,
+  // so its base line runs the other way. That is why removing it reddened NOTHING in the
+  // suite and needed a probe written for it.
+  // ITS SOLID IS NOT CA-12's, which is why it is a probe and not a leg there: CA-12 gates on
+  // level-at-top AND OVERFILLED AND no void because its case is an ECCS fill, and this plant
+  // goes solid at an inventory DEFICIT (94.39 %) with nothing added — the water expanded into
+  // the bubble. CA-12's gate EXCLUDES this event.
+  // Injection-verified (restore the clip): 4 checks red — base line 144.5 -> 100.0 %, peak
+  // indicated level 100.00 -> 82.44 %, solid samples 790 -> 0, PORV duty 0.8 -> 0.0 %. Its
+  // two remaining checks are calibration guards that pass on BOTH engines and say so.
+  // A FIFTH CHECK WAS WRITTEN AND CUT, which is the trap worth keeping: it asserted #347's
+  // no-bubble-no-spray gate, and that gate is UNOBSERVABLE on this path by construction — a
+  // blackout stops the RCPs and spray takes its motive head from the loop, so spray is
+  // 0.00 % on both engines. It "passed" on 0 of 0 samples. An earlier draft of the inventory
+  // check was cut for the same class of reason: it passed on the old engine (3.49 points of
+  // travel against a > 2.0 band), so it discriminated nothing.
+  // 53 -> 54 (2026-08-05-develop-a, #363): CA-14, break flash-cooling is saturation-gated.
+  // A break has two halves and only one knew its regime: stepPressure has always gated
+  // `leak_depress` on `saturated`, while the TEMPERATURE half ran on `leak_flow > 0` alone and
+  // went on "flash"-cooling a plant that had stopped boiling. Flashing removes LATENT heat and
+  // subcooled liquid has none. MEASURED, ECCS defeated so the (correctly ungated) cold-injection
+  // quench cannot mask it: the pre-fix engine ends a 2 % break 55.8 °F (31.0 °C) SUBCOOLED and
+  // still falling, with the core already melted, and spends 1194 of 2358 late-drain samples more
+  // than 9 °F (5 °C) subcooled against 0 of 2358 after.
+  // Injection-verified: 3 checks red on the ungated term. The other 4 pass on BOTH engines by
+  // design — leg B (the term is still LIVE when saturated, so the gate cannot be satisfied by
+  // deleting the term) and leg D (the config's own two-point tuning criterion, re-measured and
+  // unmoved: 8 % SGTR holds 2267 psi against its > 600 psi target, the 20 % LOCA lands at
+  // 3.94 MPa against the 4.14 MPa accumulator setpoint — which is why neither `[tune]` constant
+  // was retuned).
+  // THREE DRAFTING TRAPS, all caught by A/B rather than by reasoning, all recorded at the site.
+  // (1) Leg C's first datum was `tavg_c` 110 °C — exactly `blowdown_sink_c` — so the term
+  // evaluated to gain x flow x (110 - 110) = 0 and the check PASSED ON THE UNGATED ENGINE. A
+  // test state sitting on the sink of the term under test measures nothing. (2) Leg A first took
+  // a run-wide max of subcooling, which is the `h.range()` trap: the plant STARTS 73.8 °F
+  // (41.0 °C) subcooled and its first subcooled minutes are correct physics, so it failed on
+  // both engines. (3) A void check was drafted on the strength of the full-stack final state
+  // (pre-fix: void 0 at ZERO inventory, an empty core reading no void) and CUT — peak void is
+  // 1.00 on both engines and the final value is 0.00 on both at this layer, because the void
+  // line is gated `trueSubcooling <= 0` and a state a whisker either side of saturation reads
+  // 1.00 or 0.00 on a coin toss.
   // 52 → 53 (2026-08-05, #369): new probe TR-16 — SG safeties are self-actuating on true
   // pressure; a dead steam_pressure channel must not defeat the lift (audit #297 F2).
-  'run_behavior.js':       { code: 0, secs: 56, score: '53pass 0xfail' },
+  // MERGED 2026-08-05: 52 base + 2 (develop: CA-13 #362, CA-14 #363) + 1 (workbench:
+  // TR-16 #369) = 55. Both lanes moved this from 52 independently, so NEITHER lane figure
+  // survives and 54 + 53 is not the answer either — the count below is MEASURED on the
+  // merged tree after every conflict was resolved, which is the standing rule this map has
+  // warned about since #312.
+  'run_behavior.js':       { code: 0, secs: 56, score: '55pass 0xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -874,7 +925,10 @@ var BASELINES = {
   // `changelog.html` entry down to the oldest version `CHANGELOG.md` still names individually
   // is cross-checked, so the CROSS block grows by one row per published release. Nothing was
   // added to the runner.
-  'run_release.js':        { code: 0, score: '12checks 0failed' },
+  // 12 -> 13 on 2026-08-05 with Alpha 1.1.0 — a RELEASE adds a check by design: the CROSS
+  // block cross-checks every changelog.html entry down to the oldest version CHANGELOG.md
+  // still names individually, so it grows by one row per published release.
+  'run_release.js':        { code: 0, score: '13checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane

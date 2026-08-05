@@ -288,6 +288,16 @@
       // heat (the same NSSS-rated normalizer the SG uses). So 100 % core power at full
       // flow is exactly 1.0 — rated steam flow, rated MWe — and the governor's clip at
       // 1.0 needs no headroom bolted on.
+      // `pf * flow_frac` IS THE #367 SHAPE AND IS DELIBERATELY LEFT, measured rather than
+      // argued (2026-08-05). #367 corrected the thermal shaft-work term to the ROTOR-DRIVEN
+      // part of flow, because buoyancy carries flow_frac while doing no shaft work; this line
+      // scales the same constant by the same raw flow. The regime where that is wrong needs
+      // the pumps STOPPED and the turbine ON LINE making steam, and this plant cannot reach
+      // it: securing the RCPs at power scrams the reactor at 31 s on the #314 breaker-position
+      // trip and the turbine trips inside the same minute (measured full stack —
+      // `turbine_tripped` true, `mwe_output` 0 by t+1 min). With the turbine tripped nothing
+      // reads this. If a plant variant ever runs on line without all RCPs, fix it here the
+      // same way pwr_thermal.stepCoolant does.
       extractFrac: function (s) {
         var pf = cfg.thermal.pump_heat_frac || 0;
         var qn = ((s._Q_total != null ? s._Q_total : (s._P || 0)) + pf * (s.flow_frac || 0)) / (1 + pf);
@@ -1532,9 +1542,14 @@
       // DERIVED level at init: on the thermal-expansion base line at nominal mass —
       // so every state starts exactly where stepLevel will hold it (SS-5: partial-
       // load states init at their programmed level, not a flat nominal).
+      //
+      // FILLED IN BELOW, not here, and that is the point (#362). This restated the
+      // levelBase algebra inline — a second copy of the line, which is exactly how the
+      // clip that #362 removed could disagree with its own consumers. It is now
+      // `stepLevel`'s own expression over the finished state, so init and step 8 cannot
+      // differ by construction. Placeholder only; the literal cannot reference itself.
       _tavg_fp: Tfp,
-      pzr_level_pct: clip(cfg.pressurizer.pzr_level_nominal
-        + cfg.pressurizer.level_per_tavg * (Tavg - Tfp), cfg.pressurizer.level_prog_floor, 100),
+      pzr_level_pct: 0,
 
       _mass: 1.0, core_inventory_pct: 100, primary_void_fraction: 0,
       // Letdown: two independent orifices (off / A / B / A+B). letdown_flow is the
@@ -1633,6 +1648,12 @@
         steam_break: { active: false, size: 0, upstream: false },
       },
     };
+
+    // The DERIVED init level promised in the literal (#362) — step 8's own expression,
+    // over the state as just built (mass 1.0, void 0, so it is the base line alone).
+    // Overrides below that move tavg_c or level (the cold branch's cold_pzr_level) run
+    // after this and still win, exactly as they did when this was inline.
+    PZ.stepLevel(s, cfg, 0);
 
     // Place the control group at this state's operating position (% withdrawn),
     // per-state data so the rods track the starting power; boron (below) closes
