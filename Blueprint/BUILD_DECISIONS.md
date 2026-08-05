@@ -45,6 +45,48 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-04-backshop-b — #347: a scenario that never asked the player the question the accident asked
+
+**Decision.** The TMI-2 beats are RE-ORDERED to match the plant's causal chain, and the flagship's
+historical HPI securing moves from the damage branch (after the decision) to its own beat on its
+historical cue, before it. `pwr_qualify`'s graded window arms on the pressurizer going solid rather
+than on a subcooling alarm that no longer sounds.
+
+**Why it was broken is one sentence.** The beats armed `subcoolAlarm` ahead of `hpiAuto`, but
+injection auto-starts at T+3 s and the margin does not move until injection is SECURED. That
+ordering only worked because the pre-#346 plant discarded its ECCS overfill and drained regardless
+of injection; correcting the plant made it load-bearing and blocked nine missions.
+
+**The re-order is not a repair, it is the lesson.** Full injection beats one stuck-open relief
+valve — measured, 109.3 % inventory and 149 °F of margin held indefinitely — which is precisely
+why the 1979 crew securing it is what caused the accident. The flagship previously asked the
+player to *start* injection that had been running automatically for two minutes; it now enacts the
+securing on the PZR LEVEL HIGH alarm and asks the real question, **restore it or not**. In Part 3
+the confusion beat is reached from the COMPLIED branch alone: refuse the order and there is nothing
+to be confused about. The old plant could not express that asymmetry, because it drained either way.
+
+**#346 WAS NOT FINISHED, and `pwr_qualify` is what found it.** On the exam's win path — the
+candidate correctly isolates the block valve — inventory ran straight back to the 120.00 % clip.
+Measured: spray pinned at its 0.120 cap held pressure at 2320 psi, **164 psi below the code-safety
+setpoint**, so the safeties could not lift and nothing arrested the fill. Spray controls pressure by
+condensing the steam bubble and a solid pressurizer has none. #346 declared that a simplification;
+it is load-bearing, and the declaration was wrong rather than generous. Gated at solid: the isolated
+path holds 110.3 %. The HEATERS carry the same argument and are deliberately untouched — they are
+already zero in this regime, so the term is unobservable, and their authority is ruled (F14).
+
+**Both probes that moved pass on the pre-change engine.** `run_autoctl`'s pressure-setpoint probe
+was passing only because spray was credited with authority it does not have — its own comment
+already said the rig ends "with the pressurizer solid". It now secures SI first, which is the
+operator action (E-1), and lands on 15.41 MPa exactly; A/B'd against the pre-gate engine, 30/30.
+CA-4's flooding check was my own knife edge from the #346 session and now reads `range().max`.
+
+**Cost: none outstanding from this pass.** `run_campaign` 51/51 (3017 → 3023 checks, no new checks
+written — six missions that could not reach `level_complete` now do), `run_scenarios` 3/3,
+`run_autoctl` 30/30. The remaining reds are the non-TMI half of the #337 cascade (CA-10, CA-11,
+`run_procedures`, `run_procedures_stack`), untouched and verified unmoved.
+
+---
+
 ## 2026-08-04-backshop-a — #346: the bubble is the compressibility, so losing it has to change the gain
 
 **Decision.** The pressurizer gets a **water-solid regime**. When the level line reaches 100 % the

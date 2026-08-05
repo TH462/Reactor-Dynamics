@@ -1713,9 +1713,15 @@
         // vessel with inventory above nominal is what "flooded" means. Measured 100.0 % on
         // BOTH engines, so this passes on the old one too (HR10 — a better statement of the
         // same claim, not a re-band to fit the change).
+        // The PEAK, not the closing sample. Once the plant is solid the relief valve cycles it
+        // across the boundary, so a single end-of-run read is a knife edge — it landed on
+        // 99.85 % and reddened a claim that was true throughout (the TR-15 90-minute trap, in
+        // one line). "Was driven solid" is a claim about the run, so `range()` is what states
+        // it; the closing inventory carries the other half.
         ck('charging flooded the plant water-solid, chasing the stuck-low reading',
-          fmt(t2.pzr_level_pct, 1) + ' % TRUE level at ' + fmt(t2.core_inventory_pct, 1) + ' % inventory',
-          t2.pzr_level_pct >= 99.9 && t2.core_inventory_pct > 103, 'solid, > 103 % inventory');
+          fmt(h2.range('pzr_level_pct').max, 1) + ' % peak TRUE level at ' +
+          fmt(t2.core_inventory_pct, 1) + ' % inventory',
+          h2.range('pzr_level_pct').max >= 99.9 && t2.core_inventory_pct > 103, 'solid, > 103 % inventory');
         // NEW at #346, and it FAILS ON THE OLD ENGINE — 0.0 % duty, pressure flat at 2238 psi
         // for the whole five minutes. A deceived level channel no longer means the plant is
         // silent: the water it cannot see still has to go somewhere, and the relief path is

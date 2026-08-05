@@ -134,12 +134,12 @@
         dialogue: E.reseat,
         advance: 'wait_for_trigger' },
 
-      { id: 'p3_b7_confusion',
-        story_min: 9,
-        trigger: TRIG.subcoolAlarm,
-        dialogue: E.confusion,
-        advance: 'wait_for_trigger' },
-
+      // ORDER CORRECTED at #347 — see the matching note in Part 1. Injection auto-starts on
+      // low pressure at T+3 s; the subcooling margin does not erode until injection is
+      // SECURED. `p3_b7_confusion` used to sit here, ahead of this beat, and blocked the
+      // mission once #346 stopped the RCS draining on its own. It is now on the COMPLIED
+      // branch only, which is the honest place for it: defend injection and there is no
+      // confusion to have, because the plant is stable and says so.
       { id: 'p3_b8_hpi',
         story_min: 9,
         trigger: TRIG.hpiAuto,
@@ -171,6 +171,19 @@
             learning: 'Injection secured — good. Level should settle. For the record: rising level, low pressure, valve shut. The board says we\'re full of water, and you go with your instruments. That\'s the job.',
             industry: 'HPI secured, acknowledged. Basis on the record: PZR level high and rising, PORV indicating shut. We act on indications.' },
         ],
+        advance: 'wait_for_trigger' },
+
+      // The margin goes, and it goes BECAUSE the order was obeyed — measured, the subcooling
+      // alarm arrives about 4 s after the securing. Reached from `p3_b10_complied` only:
+      // `p3_b10_refused` jumps straight to the watch, because on that branch injection is
+      // still holding the plant and there is nothing to be confused about. That asymmetry is
+      // the point of the deviation, and the pre-#346 plant could not express it — it drained
+      // either way, so this beat fired on both branches and read as weather rather than as
+      // the consequence of a choice (#347).
+      { id: 'p3_b7_confusion',
+        story_min: 11,
+        trigger: TRIG.subcoolAlarm,
+        dialogue: E.confusion,
         advance: 'wait_for_trigger' },
 
       // -------------------------------------------- the watch: tag or history

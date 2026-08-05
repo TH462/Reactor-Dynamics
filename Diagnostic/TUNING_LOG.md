@@ -29,6 +29,96 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-04-backshop-b (#347 — the TMI-2 scenarios had the accident's causal order backwards)
+
+**Task:** work #347, together with the #337 half of the same cascade, as one pass.
+
+### The whole cascade was ONE bug in the beats, and it was not a trigger that went stale
+
+Nine campaign missions and both flagship suites were failing across three families (`pwr_qualify`,
+`pwr_tmi2_p1`, `pwr_tmi2_p3`) — **6 of them mine from #346, 3 pre-existing from #337.** Measured
+where each one stalled rather than guessing: every single one was blocked on the **subcooling
+alarm**, directly or one beat downstream.
+
+The beats armed `subcoolAlarm` **ahead of** `hpiAuto`. That is the plant's causal chain backwards.
+Measured on the module's own sequence: injection auto-starts at **T+3 s** on low pressure, the
+pressurizer LEVEL HIGH alarm — the 1979 deception — comes at **T+18 s**, and the subcooling margin
+does not move at all until injection is **SECURED**, after which it alarms in **4 s** and the core
+is damaged at **T+17 min**. Defend injection and the margin never moves: 109.3 % inventory,
+149 °F of margin, held indefinitely.
+
+**The old order only ever worked because the pre-#346 plant drained either way.** With the overfill
+discarded, the RCS lost inventory whether or not injection ran, so both conditions were true by the
+time the slower one fired and nobody noticed the beats were in the wrong order. Fixing the plant
+made the ordering load-bearing.
+
+### The fix is a re-order, and it makes the scenarios better rather than merely green
+
+`b8_hpi` now precedes the confusion beat in both p1 and p3, and the confusion beat moves to where
+its own dialogue already belonged — **after** the securing, as its consequence. The supervisor's
+wrong explanation ("cooldown from the trip, probably") now lands immediately after his own order
+instead of as free-floating atmosphere.
+
+**On Part 3 the confusion is reached from the COMPLIED branch only.** Refuse the order and there is
+nothing to be confused about, because injection is holding the plant and the board says so. That
+asymmetry IS the deviation, and the old plant could not express it — it drained on both branches.
+
+The flagship needed the same correction one level up. Its `set_hpi active:false` was sitting on the
+**damage branch, after the decision**, and the decision beat asked the player to *start* injection
+that had been running automatically since T+3 s. The securing moved to a new `injection_secured`
+beat on its historical cue (`pzr_level_high`), before the decision; the decision now asks what the
+1979 crew was actually asked — **restore** what was just cut — and `damage_path` no longer secures
+injection a second time.
+
+**All 51 campaign missions green, `run_scenarios` 3/3.** `run_campaign` 3017 → **3023 checks** with
+no new checks written: six missions that could not reach `level_complete` now do, so the checks
+downstream of it stop being skipped.
+
+### #346 was NOT finished — spray defeats the code safeties in a solid plant
+
+Found while measuring `pwr_qualify`: the exam's WIN path — the candidate correctly isolates the
+block valve — drove inventory straight back to **120.00 %**, the `mass_max` clip. That is #346's
+defect, on the one path #346 never exercised.
+
+Instrumented it: **spray pinned at its 0.120 cap holds pressure at 2320 psi**, which is 164 psi
+**below** the 2484 psi code-safety setpoint. So the safeties never lift, nothing arrests the fill,
+and mass walks to the ceiling. Spray controls pressure by CONDENSING the steam bubble — the
+engine's own comment says so three lines above the term — and a water-solid pressurizer has none.
+
+#346 declared this a simplification. **It is not; it is load-bearing**, and the declaration was
+wrong rather than merely generous. Gated: the isolated path now holds **110.3 %** instead of
+120.00 %. `Manuals/12` §12.4c revised, set **Rev 5**. The HEATERS have the same argument and are
+deliberately left alone — they are already zero in this regime (pressure is above setpoint), so the
+term is unobservable, and their authority is ruled (F14).
+
+### Two probes moved for it, and BOTH pass on the pre-change engine
+
+`run_autoctl`'s *pzr_pressure returns the plant to its pressure setpoint* went red at 16.14 MPa. The
+probe's own comment already noted it ends "with the pressurizer solid" — so it was asking the
+channel to regulate with its actuator disconnected from the physics, and passing only because spray
+was credited with authority it does not have. It now secures SI first, which is what an operator
+does (E-1 SI termination), and the channel lands on **15.41 MPa — exactly the setpoint**, tighter
+than the ±0.15 band. **A/B'd against the pre-spray-gate engine: 30/30.**
+
+CA-4's flooding check was a knife edge of my own making from the #346 session — it read the closing
+sample, and once the plant cycles across the solid boundary that landed on 99.85 %. It reads
+`range().max` now: "was driven solid" is a claim about the run.
+
+### Gates
+
+`run_campaign` **51/51** (baseline 3017 → 3023), `run_scenarios` **3/3**, `run_autoctl` **30/30**,
+`run_behavior` **50/52**, and `run_pwr` / `run_meltdown` / `run_ops` / `run_m4` / `run_e2e_controls`
+all at baseline.
+
+### STILL OPEN — the non-TMI half of the #337 cascade
+
+`run_behavior` CA-10 and CA-11, and `run_procedures` 28/29 / `run_procedures_stack` 27/29
+(`pwr_sgtr` step 6 — the Pressure SP walk-down defeated by HPI). Untouched by this pass and
+verified unmoved by it. Same root as everything above: #337 gave inventory a path to pressure and
+the content authored against the old plant is stale. They want their own pass.
+
+---
+
 ## Session log — 2026-08-04-backshop-a (#346 — a water-solid RCS had no physics, so it discarded the mass instead)
 
 **Task:** work #346. `primary.mass_max` clipped `_mass` and, since #337, the surge driver with it,

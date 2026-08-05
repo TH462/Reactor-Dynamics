@@ -210,6 +210,26 @@
     var spray_floor = P_sat_from_T(s.thot_c != null ? s.thot_c : s.tavg_c);
     var spray_authority = clip((s.pressure_mpa - spray_floor) / (p.spray_floor_band || 1.0), 0, 1);
     var spray_eff = s.spray_flow_frac * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1) * spray_authority;
+    // NO BUBBLE, NO SPRAY (#347). Spray controls pressure by CONDENSING the steam bubble —
+    // the sentence three lines above says so, and it is the whole mechanism. A water-solid
+    // pressurizer has no steam to condense, so the spray's pressure authority is not merely
+    // reduced, it is gone; what the nozzle adds is cold water, i.e. more mass.
+    //
+    // THIS WAS LOAD-BEARING, not cosmetic, which is why it is a fix and not a refinement.
+    // #346 declared it a simplification. Measured afterwards on the one path that change did
+    // not exercise — a stuck-open PORV with the operator correctly ISOLATING the block valve
+    // — spray pinned at its 0.120 cap held pressure at 2320 psi against a solid plant taking
+    // safety injection, which is 164 psi BELOW the code-safety setpoint. So the safeties never
+    // lifted, the fill was arrested by nothing, and inventory walked back to the 120.00 %
+    // `mass_max` clip: #346's defect exactly, re-entered through the pressure controller.
+    // With the bubble gone the ladder works — pressure reaches the safeties and they cycle.
+    //
+    // The HEATERS have the same physical argument (no bubble to flash) and are deliberately
+    // NOT changed here: they are already zero in this regime because pressure is above
+    // setpoint, so the term is unobservable, and their authority is a ruled declared
+    // departure (F14, `Manuals/12` §12.15). Nothing measured moves if they stay.
+    var pzr_solid = !(s.primary_void_fraction > 0) && levelRaw(s, cfg) >= 100;
+    if (pzr_solid) spray_eff = 0;
     // Break blowdown depressurizes the RCS — but ONLY while subcooled. Subcooled blowdown
     // (liquid out, bubble collapse) drives pressure directly down to saturation; once the
     // primary voids, the break vents steam that decay heat re-boils, so further depressurization
@@ -276,7 +296,7 @@
     // vessel with no bubble. Moving them is a coupled three-term regime plus a re-solve of
     // the relief gains, and taking only one term of it was measured to be WORSE than taking
     // none: see the F15 note in pwr_primary.stepInventory, and `Manuals/12` §12.4c.
-    var solid = !saturated && levelRaw(s, cfg) >= 100;
+    var solid = !saturated && pzr_solid;
     var K_surge = solid ? (p.solid_bulk_mpa / p.level_per_mass_surplus) : p.K_surge_level;
     var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray

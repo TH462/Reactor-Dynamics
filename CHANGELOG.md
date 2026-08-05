@@ -31,6 +31,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The Three Mile Island scenarios play again, and they now teach the error in its historical
+  order** (#347). The flagship and the TMI‑2 campaign module were both built so that the
+  subcooling margin eroded *before* the crew's decision — which was only ever true because the
+  plant discarded its emergency-injection overfill (#346) and therefore drained whether or not
+  injection was running. With that fixed, unthrottled injection **matches** a stuck-open relief
+  valve and holds the plant: measured, 109.3 % inventory and 149 °F (83 °C) of margin held
+  indefinitely. So the margin never fell, the decision point was unreachable, and six missions
+  plus both flagship endings could not be finished.
+- **That is the TMI‑2 counterfactual, and it is now the spine of the scenario.** Full injection
+  beats one stuck-open valve — which is exactly why the 1979 crew securing it is what caused the
+  accident. The flagship now enacts that securing at its historical cue (the pressurizer LEVEL
+  HIGH alarm, T+18 s) *before* the decision, so the player's choice is the one the real crew
+  faced — **restore** the injection that was just cut — instead of being asked to start something
+  already running. In the campaign module the confusion beat moved to where its own dialogue
+  belongs: after the securing, as its consequence. On Part 3 it is reached from the **complied**
+  branch only — defend injection and there is no confusion to have, which the old plant could not
+  express because it drained either way.
+- **Pressurizer spray no longer works when the plant is water-solid** (#347). Spray controls
+  pressure by condensing the steam bubble; with no bubble there is nothing to condense. Credited
+  anyway, it pinned pressure **164 psi (1.1 MPa) below the code-safety setpoint** on a solid RCS
+  taking injection — so the safeties could not lift, nothing arrested the fill, and inventory ran
+  back to the numerical ceiling #346 exists to keep it away from. Found on the one path #346 did
+  not exercise: the operator correctly **isolating** the stuck valve. The spray valve still opens
+  and still indicates open; what is gone is the effect. `Manuals/12` §12.4c revised (set Rev 5) —
+  going solid costs you the pressurizer as a pressure controller, and the relief valve becomes
+  your pressure control whether you wanted it or not.
+- **The final-exam mission was re-pointed at cues the plant still has.** `pwr_qualify` armed its
+  graded window on the subcooling alarm, which no longer sounds; it now arms on the pressurizer
+  going solid. The exam is harder and the lesson is the same — nothing screams the obvious
+  parameter, and the candidate has to notice a plant held solid by injection against an
+  unisolated relief path, behind a light that reads CLOSED. Its pass and fail text no longer
+  claims a margin erosion that does not happen.
 - **A water-solid reactor coolant system now repressurizes, and the relief valve is what ends
   the fill** (#346). The pressurizer had no water-solid regime at all. `_mass` was clipped at
   `primary.mass_max` (1.2) and — since #337 gave inventory a pressure channel — the surge driver

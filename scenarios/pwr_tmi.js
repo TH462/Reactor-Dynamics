@@ -77,11 +77,42 @@
         commands: [{ action: 'set_afw', active: true }],
         advance: 'wait_for_trigger' },
 
+      // ---- the 1979 error, in its historical place ---------------------------
+      // Emergency injection starts BY ITSELF on low pressure, about three seconds after the
+      // valve sticks — as it did in 1979. What the crew then did, and what actually caused
+      // the accident, was SECURE it: the pressurizer level gauge was climbing (water flashing
+      // to the stuck valve lifts it), the board looked like a plant going solid, and they
+      // believed the gauge. This beat enacts that, on its historical cue — the PZR LEVEL HIGH
+      // alarm, measured at T+18 s on every branch.
+      //
+      // IT USED TO SIT ON THE DAMAGE BRANCH, AFTER THE DECISION, and that had the accident
+      // backwards (#347). It also left `injection_decision` asking the player to "start HPI"
+      // that was already running. The old order survived only because the plant discarded its
+      // ECCS overfill (#346) and therefore drained whether or not injection was running; with
+      // that fixed, unthrottled injection MATCHES the stuck valve and holds the plant — so the
+      // subcooling margin never eroded, the decision beat became unreachable, and the scenario
+      // could not be played at all. Measured: injection defended, the RCS holds at 109.3 %
+      // inventory and 149 °F of margin indefinitely; injection secured, the margin alarms four
+      // seconds later and the core is damaged at T+17 min.
+      //
+      // That is the TMI-2 counterfactual, and it is now the scenario's spine: full injection
+      // beats one stuck-open relief valve. The player's decision is the one the 1979 crew
+      // faced — RESTORE what has just been secured — not a decision to start something.
+      { id: 'injection_secured',
+        trigger: { type: 'alarm', alarm_id: 'pzr_level_high' },
+        commentary: {
+          learning: 'Emergency injection started by itself a moment ago — pressure got low enough to trip it automatically. Now watch the pressurizer level: it is climbing, and the board looks like a plant filling up with water. In 1979 the crew read exactly that and shut the injection OFF to keep from going solid. The same hands do it here. Remember: the valve indicator still says CLOSED, and it is lying.',
+          industry: 'HPI auto-initiated on low RCS pressure. PZR level rising — the classic misleading indication with a stuck-open PORV. Replaying the historical action: HPI secured on high pressurizer level. Note the PORV indication remains CLOSED and remains false.',
+        },
+        commands: [{ action: 'set_hpi', active: false }],
+        speed: 1,
+        advance: 'wait_for_trigger' },
+
       { id: 'injection_decision',
         trigger: { type: 'alarm', alarm_id: 'subcooling_low' },
         commentary: {
-          learning: 'Your subcooling margin is falling — the coolant is getting close to boiling, which means water is escaping somewhere. The valve indicator still says CLOSED, but THIS number is the truth. You can start High-Pressure Injection (HPI) to put water back in. What will you do?',
-          industry: 'Subcooling margin eroding despite a CLOSED PORV indication — inventory is leaving through the pressurizer. HPI is available. Decision point.',
+          learning: 'There it is. With the injection off, your subcooling margin is falling — the coolant is getting close to boiling, which means water is escaping somewhere. The level gauge that justified securing injection still reads high; the valve indicator still says CLOSED. THIS number is the truth. You can put High-Pressure Injection (HPI) back on. What will you do?',
+          industry: 'Subcooling margin eroding since HPI was secured, despite a CLOSED PORV indication and a high PZR level — inventory is leaving through the pressurizer. HPI available for restoration. Decision point.',
         },
         branches: [
           { trigger: { type: 'operator_action', command: 'set_hpi', params: { active: true } }, goto: 'recovery_path' },
@@ -119,18 +150,17 @@
         advance: 'end' },
 
       // ---- damage branch ----------------------------------------------------
-      // The plant's automatic injection starts by itself on low pressure — just
-      // as it did in 1979. The historical error was SECURING it: the operators,
-      // misled by a full-looking pressurizer (the level rises as water flashes
-      // to the stuck valve), shut the injection off. Hesitation here replays
-      // their mistake, enacted by the beat.
+      // The securing already happened, at `injection_secured` — its historical moment, on
+      // the level gauge, before the margin ever moved (#347). This beat no longer re-enacts
+      // it and no longer carries the `set_hpi` command: hesitating here simply means the
+      // player left it secured, which is the 1979 outcome by omission rather than by a second
+      // command. It used to do both, which read as the plant securing injection twice.
       { id: 'damage_path',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'You hesitated — and now the trap closes. The automatic injection started on its own, and the pressurizer level gauge is reading high, as if the system were overfull. In 1979 the operators believed that gauge and shut the injection OFF. Watch: the same hands now turn it off here. The draining takes time, so I am running the clock at 30× — the subcooling margin knew the truth all along, and the water is boiling away.',
-          industry: 'Auto-HPI initiated on low pressure, as in 1979. PZR level reads high — the classic misleading indication with a stuck-open PORV. Replaying the historical action: HPI secured. Time acceleration 30× through the boil-off; reverts to 1× at core uncovery.',
+          learning: 'You left it off — and now the trap closes. The level gauge still reads high, still says the system is full of water, and it is still wrong: what is filling that gauge is steam space collapsing toward a valve that is open. The draining takes time, so I am running the clock at 30× — the subcooling margin knew the truth all along, and the water is boiling away.',
+          industry: 'HPI remains secured. PZR level continues to read high — the classic misleading indication with a stuck-open PORV. Time acceleration 30× through the boil-off; reverts to 1× at core uncovery.',
         },
-        commands: [{ action: 'set_hpi', active: false }],
         // 10× (not 30): this card explains WHY the operators secured injection
         // — at 30× it was replaced in ~7 s, well under its read time (playtest).
         speed: 10,

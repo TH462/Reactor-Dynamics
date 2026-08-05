@@ -570,7 +570,14 @@ var BASELINES = {
   // write-ups quote no owner ruling at all — the change was a bug fix, not a decision — so the
   // eviction is the entire delta. Measured AFTER the docs, which is the only order that gives
   // the right number.
-  'run_hardrules.js':      { code: 0, score: '177checks 0failed' },
+  // 177 -> 176 (2026-08-04, #347): the themes cap biting a SECOND time in two sessions, and the
+  // mechanism is now well enough established to expect it. The #347 bullet took the list over
+  // five, evicting the Physics-tab entry and its *(OWNER DIRECTIVE, 2026-08-03: "Add a tab to
+  // the tools block called Physics…")*. CHECKED BEFORE ACCEPTING: that directive still stands in
+  // BUILD_DECISIONS.md, CHANGELOG.md and TUNING_LOG.md. One fewer citation SITE, not one fewer
+  // directive. The scenario, engine and probe changes moved this by ZERO — #347's write-ups quote
+  // no owner ruling, because it is a bug fix — so the eviction is again the entire delta.
+  'run_hardrules.js':      { code: 0, score: '176checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -1015,7 +1022,20 @@ var BASELINES = {
   // HR10 only because that boil-off was reachable solely through the missing trips.
   // Injection-verified: restoring the old `crossed()` comparator reddens exactly those two.
   // If this number rises again, check it is not the branch coming back by accident.
-  'run_campaign.js':       { code: 0, secs: 110, score: '51/51 3017passed' },
+  // 3017 -> 3023 (2026-08-04, #347): no new checks were written. Six of the TMI-2 missions
+  // could not REACH their endpoint — five `pwr_tmi2_p3`, one `pwr_tmi2_p1` — so every check
+  // downstream of `level_complete` was skipped. They complete now, and the skipped checks run.
+  // Two of those six predate #346 and were the standing #337 cascade; the other four are #346's.
+  // ONE ROOT: the beats had the plant's causal chain backwards. `subcoolAlarm` was armed AHEAD
+  // of `hpiAuto`, but injection auto-starts at T+3 s and the subcooling margin does not move
+  // until injection is SECURED. That only ever worked because the pre-#346 plant discarded its
+  // ECCS overfill and drained regardless of injection; with the plant right, defending injection
+  // holds the margin and the confusion beat blocked the whole mission. The confusion is now the
+  // CONSEQUENCE of the securing rather than free-floating atmosphere, and on Part 3 it is
+  // reached from the COMPLIED branch only — refuse the order and there is nothing to be
+  // confused about, which is the deviation's whole point and something the old plant could not
+  // express.
+  'run_campaign.js':       { code: 0, secs: 110, score: '51/51 3023passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

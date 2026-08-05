@@ -156,12 +156,15 @@
         dialogue: E.reseat,   // shared with Part 3 (Spec §6 parity)
         advance: 'wait_for_trigger' },
 
-      { id: 'b7_confusion',
-        story_min: 9,   // in-fiction clock anchor (03:53 + N min — historical timing)
-        trigger: TRIG.subcoolAlarm,
-        dialogue: E.confusion,   // shared with Part 3 (Spec §6 parity)
-        advance: 'wait_for_trigger' },
-
+      // ORDER CORRECTED at #347: `b8_hpi` used to sit AFTER `b7_confusion`, which had the
+      // plant's own causal chain backwards. Injection auto-starts on low pressure at T+3 s;
+      // the subcooling margin does not erode until injection is SECURED, ~4 s after the
+      // crew's historical call. The old order only worked because both conditions happened
+      // to be true by the time the slower one fired — the plant discarded the ECCS overfill
+      // (#346), so it drained whether or not injection was running. With that fixed, holding
+      // injection holds the margin, `subcoolAlarm` never comes, and this beat blocked the
+      // whole mission. `b7_confusion` now sits where it belongs: after the securing, as its
+      // CONSEQUENCE. See the note on it below.
       { id: 'b8_hpi',
         story_min: 9,   // in-fiction clock anchor (03:53 + N min — historical timing)
         trigger: TRIG.hpiAuto,
@@ -198,7 +201,7 @@
             industry: 'Logged: HPI secured, basis high PZR level.' },
         ],
         // Jump PAST the boss-secures fallback (the very next array beat) into the watch.
-        branches: jump('b11_lull') },
+        branches: jump('b7_confusion') },
 
       // The player let the order sit — the supervisor makes the historical call himself.
       { id: 'b10_boss_secures',
@@ -212,7 +215,21 @@
             learning: '…Logged. HPI secured on high pressurizer level.',
             industry: 'Logged: HPI secured, basis high PZR level.' },
         ],
-        branches: jump('b11_lull') },
+        branches: jump('b7_confusion') },
+
+      // The margin goes, and it goes BECAUSE injection was secured — measured, the subcooling
+      // alarm arrives about 4 s after the call on either branch (comply or the boss takes it).
+      // That is why this beat is here and not before `b8_hpi`, where it used to sit: it is the
+      // consequence of the decision, which is the whole lesson, and the supervisor's wrong
+      // explanation — "cooldown from the trip, probably" — now lands immediately after his own
+      // order rather than as free-floating atmosphere. On the pre-#346 plant the RCS drained
+      // whether or not injection ran, so the ordering never mattered and the beat read as
+      // weather. It is causation now (#347).
+      { id: 'b7_confusion',
+        story_min: 11,   // in-fiction clock anchor (03:53 + N min — historical timing)
+        trigger: TRIG.subcoolAlarm,
+        dialogue: E.confusion,   // shared with Part 3 (Spec §6 parity)
+        advance: 'wait_for_trigger' },
 
       { id: 'b11_lull',
         trigger: { type: 'delay', value: 20.0 },
