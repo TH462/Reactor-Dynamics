@@ -794,6 +794,31 @@
       'bottles up toward its safeties, and with feed lost the level can drain to a trip. As a casualty ' +
       'response it terminates a steam line break DOWNSTREAM of the valve — a break between generator ' +
       'and valve has no isolation on this single-generator plant. Two-press confirm.', CI, '9.2'),
+    // --- ADV (#371) — the condenser-independent steam path -------------------
+    bdAdvBox: e('Atmospheric Dump Valves (ADV)',
+      'Vents steam straight to atmosphere — the cooldown path that does not need the condenser.',
+      'The turbine bypass dumps to the condenser and dies with it. These valves vent outside instead, ' +
+      'sit upstream of the isolation valve, and work whether the condenser is there or not. They ship ' +
+      'SHUT: after a loss of vacuum or a blackout, opening them is what starts a cooldown, and with ' +
+      'them shut the plant simply holds hot at the safety band.', CI, '12.3'),
+    bdAdvAuto: e('AUTO (atmospheric dump)',
+      'ADV follows Steam Generator (SG) pressure toward the ADV setpoint.',
+      'Holds the generator at the ADV setpoint the way the turbine bypass holds it at the dump ' +
+      'setpoint — lower the setpoint and the valve opens to chase it, which is how you walk a ' +
+      'cooldown down without a condenser.', CI, '12.3'),
+    bdAdvClose: e('CLOSE (atmospheric dump)',
+      'Shuts the atmospheric dump valves. This is the shipped lineup.',
+      'With the valves shut the plant behaves exactly as it did before they existed — the code ' +
+      'safeties are the only relief on a bottled generator. Shut them when the cooldown is done or ' +
+      'when the rate needs arresting.', CI, '12.3'),
+    bdAdvSp: e('ADV Set Point',
+      'Steam pressure the automatic atmospheric dump holds, in the pressure unit shown.',
+      'Same idiom as the Dump SP box and the same limits: it clamps to the code-safety band, and ' +
+      'lowering it walks the secondary — and the primary with it — down the saturation curve.', CI, '12.3'),
+    bdAdvPct: e('ADV Position',
+      'How far the atmospheric dump valves are open, in per cent.',
+      'Reads the valve position, not the demand. At zero the valves are seated and nothing is venting ' +
+      'to atmosphere.', CI, '12.3'),
     imrop5ouw7h: e('Steam Dump',
       'Dumps steam straight to the condenser, bypassing the turbine — the secondary heat sink.',
       'AUTO holds SG pressure at the dump setpoint; OPEN and CLOSE take it manual. The dump is what ' +

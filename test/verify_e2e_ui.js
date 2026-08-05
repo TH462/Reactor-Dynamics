@@ -37,6 +37,9 @@ var REQUIRED_BOARD_LABELS = {
     'Reactor Coolant Pumps (RCP)', 'Residual Heat Removal (RHR)',
     'HPI', 'AFW', 'Feed Pumps', 'MSIV',
     'Steam Dump', 'Dump SP', 'Turbine Load',
+    // #371 — the atmospheric dump. It is the only cooldown path once the condenser
+    // is gone, so "is it reachable on the board at all" is worth a gate.
+    'ADV', 'ADV SP',
     'Control Bank', 'Shutdown Bank', 'SCRAM',
   ],
 };

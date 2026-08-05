@@ -310,6 +310,16 @@
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
 
+      // --- ADV (#371). The condenser-independent steam path — the only cooldown
+      // route once the condenser is gone, so its controls are pinned like the
+      // dump's. Note the shipped lineup is SHUT, not AUTO: that is the design
+      // (DESIGN_COMPANION §8.34), and asserting it here means a future change to
+      // the default has to come and edit this line rather than slide past.
+      ck('func: ADV ships SHUT, not auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
+      clickBtn('bdAdvAuto'); ck('func: ADV AUTO -> auto', cs().adv_auto === true);
+      clickBtn('bdAdvClose'); ck('func: ADV SHUT -> shut and out of auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
+      setNum('bdAdvSp', 1000); ck('func: ADV setpoint 1000 psi -> ~6.89 MPa', Math.abs(cs().adv_setpoint - 1000 / 145.038) < 0.05);
+
       // --- instructor glow ---
       ck('glow: revealControl(HPI) returns a tile', !!RD.PwrBoard.revealControl('HPI'));
       ck('glow: revealControl(SCRAM) returns a tile', !!RD.PwrBoard.revealControl('SCRAM'));
@@ -1005,6 +1015,15 @@
           ck('units: SI ▲▼ step is 0.01 MPa, not 1', d.stepFor(it) === 0.01, d.stepFor(it));
           // The hint is DERIVED from the bounds in SI, so it cannot drift from them.
           ck('units: SI range hint is derived from the bounds', d.numberHint(it) === '0.2-9.31 MPa', d.numberHint(it));
+          // The ADV SP box takes the SAME engine clip as the Dump SP, so it must
+          // convert identically — a second setpoint box that read psi while its
+          // neighbour read MPa would be worse than no unit layer at all (#371).
+          var advIt = item('bdAdvSp'), advB = d.boundsFor(advIt);
+          ck('units: ADV SP bounds are the engine clip in MPa', advB[0] === 0.2 && advB[1] === 9.31, JSON.stringify(advB));
+          // The ADV SP tile carries NO inline unit — in 90 px of card the suffix cost
+          // the input the width it needed — so the DERIVED RANGE HINT is what names
+          // the unit, and that is what must convert.
+          ck('units: ADV SP range hint converts to MPa', d.numberHint(advIt) === '0.2-9.31 MPa', d.numberHint(advIt));
           ck('units: SI charging box keeps a usable resolution (0-13.6 m³/h at 0.1)',
             d.numberDigits(item('imrpq48hn3t')) === 1 && d.stepFor(item('imrpq48hn3t')) === 0.1,
             d.numberDigits(item('imrpq48hn3t')) + ' / ' + d.stepFor(item('imrpq48hn3t')));

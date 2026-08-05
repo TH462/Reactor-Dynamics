@@ -1370,7 +1370,11 @@ var BASELINES = {
   // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
   // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
   // offenders, so a red here is diagnosable without reopening the page.
-  'verify_board_check.js':   { code: 0, score: '205checks' },
+  // 205 → 211 (2026-08-05, #371): the ADV card's pins — it ships SHUT not AUTO
+  // (asserted, so a future change to the default has to edit the line), AUTO/SHUT
+  // both drive the engine, the setpoint box converts, and its range hint carries
+  // the unit the tile itself deliberately omits.
+  'verify_board_check.js':   { code: 0, score: '211checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

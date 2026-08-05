@@ -173,6 +173,10 @@
     // vents the SG down and cools the primary through it, and it also sets the no-load
     // bottom of the Tavg program (T_sat(steam_dump_setpoint), pwr_engine.js:1147).
     ims31tq7mgc: [0.2, _SG.sg_safety_open_mpa || 9.31],
+    // ADV SP takes the SAME engine clip as the dump setpoint, and for the same
+    // reason: set_adv_setpoint clamps to [0.2, sg_safety_open_mpa], so the box
+    // refuses what the engine would silently clamp. Read from config, never a literal.
+    bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 9.31],
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the
     // same band, so the box refuses what the engine would clamp).
@@ -187,6 +191,7 @@
     imrpq48hn3t: { fam: 'flow', SI: { d: 1, step: 0.1 } },
     imrsg8b7b9o: { fam: 'press' },
     ims31tq7mgc: { fam: 'press' },
+    bdAdvSp: { fam: 'press' },
     ims3v42jghn: { fam: 'temp' }
   };
   // The active display spec for an editable box: its family's mode entry, with any
@@ -243,7 +248,7 @@
     steam_pressure: 3, steam_flow: 2, fw_flow: 2, sg_steam_flow: 2,
     charging_flow: 3, letdown_flow: 3,
     hpi_flow: 2, accumulator_flow: 2, primary_leak_flow: 2,
-    mwe_output: 2, turbine_rpm: 2, governor_valve: 2, steam_dump_valve: 2,
+    mwe_output: 2, turbine_rpm: 2, governor_valve: 2, steam_dump_valve: 2, adv_valve: 2,
     boron_analyzer: 6, startup_rate: 3, porv_tailpipe_temp: 5, condenser_vacuum: 4
   };
   // A damped indicator must never hide a real transient. Past this many sigma of change in
@@ -535,6 +540,11 @@
     imrppqg6mcc: { press: function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); }, active: function (s) { return CS(s).steam_dump_auto; } },
     imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
     imrppqxggbj: { press: function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) <= 50; } },
+    // --- ADV: AUTO / OPEN / CLOSE (#371). Same verbs as the dump above, because it
+    // is the same kind of valve doing the same job to a different sink — one idiom
+    // for both steam paths. Ships SHUT, so CLOSE is lit on a fresh plant.
+    bdAdvAuto:  { press: function () { cmd({ action: 'set_adv', mode: 'auto' }); },   active: function (s) { return CS(s).adv_auto; } },
+    bdAdvClose: { press: function () { cmd({ action: 'set_adv', mode: 'closed' }); }, active: function (s) { return !CS(s).adv_auto && (CS(s).adv_pct || 0) <= 50; } },
     // --- Generator load mode: FOLLOW / MAN / OFF ---
     // FOLLOW and MAN bring the turbine ONLINE — connect_grid clears a prior trip/
     // disconnect (if condenser vacuum permits) and closes the breaker; set_load_mode
@@ -707,6 +717,50 @@
     // rAnchor-free and starts at x=1740 with width 105. So 1670..1735 at y 600..625 is
     // empty, and a 55x25 button at (1670, 600) sits in it flush under AUTO and takes the
     // authored button idiom exactly. Nothing is moved to make room.
+    // ---------------------------------------------------------- ADV card (#371)
+    // ATMOSPHERIC DUMP VALVES — the steam path that does NOT need the condenser,
+    // and the only way to cool down after a loss of vacuum or an SBO. It has to be
+    // reachable on the board, not by command only.
+    //
+    // GEOMETRY — MEASURED, and the first attempt was rejected on sight. A 195x135
+    // card below the right-hand column looked free to a scan (the canvas is a fixed
+    // 2400x1600 while content ends at y 855) but it EXTENDED THE CONTENT BOUNDS, and
+    // the board scales to fit its column, so every other tile shrank to make room
+    // for it *(OWNER, 2026-08-05: "That atmos dump card is unacceptable. It is out of
+    // bounds of the original diagram and now makes the whole diagram too small. We
+    // need to fit it inside the current boundaries.")*. A free-rectangle scan over the
+    // whole content box then found exactly ONE usable gap — 90x115 at (1575, 490),
+    // under the cooling tower, between the condensate pump and the polisher status —
+    // which is where the owner said to look.
+    //
+    // WHAT IT CARRIES, and what it deliberately does not. The triad + setpoint +
+    // position + status the STEAM DUMP card uses does not fit in 90 px and does not
+    // need to *(OWNER: "Does it need all those controls?")*. The SETPOINT is the
+    // control that matters: a cooldown is walked DOWN by setpoint, and at full open
+    // this valve cools about three times faster than the technical-specification
+    // limit, so "just open it" is the wrong lesson to make easy. OPEN is therefore
+    // dropped — lowering the setpoint is how you open it — and the status word is
+    // dropped because the position readout beside it says the same thing. What is
+    // left is AUTO / SHUT, the setpoint box, and position.
+    { id: 'bdAdvBox', kind: 'box', name: '',
+      left: 1575, top: 490, width: 90, height: 115,
+      bg: '#0e1620', border: '#8ba4b6', radius: 8, title: 'ATMOS DUMP', fontSize: 10 },
+    // AUTO must be #5aad7c — selfTest asserts every button captioned AUTO carries the
+    // standard green, so one colour keeps one meaning across the board.
+    { id: 'bdAdvAuto', kind: 'button', name: 'ADV auto  ·  sim: set_adv mode:auto',
+      left: 1579, top: 508, label: 'AUTO', width: 40, height: 22, color: '#5aad7c', fontSize: 11 },
+    { id: 'bdAdvClose', kind: 'button', name: 'ADV shut  ·  sim: set_adv mode:closed',
+      left: 1621, top: 508, label: 'SHUT', width: 40, height: 22, color: '#ffd166', fontSize: 11 },
+    { id: 'bdAdvSp', kind: 'number', name: 'ADV SET POINT  ·  sim: set_adv_setpoint',
+      // No `unit` on the tile: the derived range hint above the box already names it
+      // ("29-1350 psi" / "0.2-9.31 MPa"), and in 90 px of card the suffix cost the
+      // input 20 px it needed — measured, "1247" overflowed a 32 px field by 12 px.
+      left: 1578, top: 534, label: 'ADV SP', width: 84, value: 1247, step: 1, digits: 0,
+      editable: true, color: '#4fe3ff', fontSize: 12 },
+    { id: 'bdAdvPct', kind: 'value', name: 'ADV position  ·  sim: instruments.adv_valve, % open',
+      // rAnchor — `left` is the RIGHT edge for a value tile. Measured the hard way:
+      // left-anchored at 1579 it rendered 12 px OUTSIDE the card's left border.
+      left: 1658, top: 584, value: '0', unit: '%', color: '#5aad7c', fontSize: 12, rAnchor: true },
     { id: 'bdMfwRestore', kind: 'button',
       name: 'Main feedwater restore  ·  sim: isolate_feedwater active:false',
       // WIDTH 68, not the 55 the row above uses (#357). MEASURED at the pinned 1400x900 harness
@@ -773,6 +827,7 @@
     // STEAM PRESS indication on the card so the gap between the two is legible: at power
     // the SG runs ~819 psi against a 1194 psi setpoint, which is WHY the dump is shut.
     ims31tq7mgc: { set: function (v) { cmd({ action: 'set_steam_dump_setpoint', mpa: v }); }, get: function (s) { return CS(s).steam_dump_setpoint || 0; } },
+    bdAdvSp:     { set: function (v) { cmd({ action: 'set_adv_setpoint', mpa: v }); },        get: function (s) { return CS(s).adv_setpoint || 0; } },
     // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
     // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
     // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
@@ -911,6 +966,9 @@
       if (r !== 0 && rem != null && Math.abs(rem) > 0.05) base += ' ' + Math.round(Math.abs(rem)) + '→';
       return base;
     },
+    // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion
+    // layer that touched it would be worse than none (board_check pins that).
+    bdAdvPct: function (s) { return r0(IN(s).adv_valve); },
     // Boron chem sample (lab result). The V1 item carried no unit so the text baked one in;
     // the V2 item is authored with unit 'ppm', which rendered "734 PPM ppm". Return the
     // unit explicitly instead: 'ppm' with a number, blank for the non-numeric states, so
@@ -2083,6 +2141,9 @@
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',
+    // ADV (#371) — both names point at the card, so highlighting either lights the
+    // whole group, the same way 'Dump SP' points at the STEAM DUMP card above.
+    'ADV': 'bdAdvBox', 'Atmospheric Dump': 'bdAdvBox', 'ADV SP': 'bdAdvBox',
     'Pressure SP': 'imrsg8b7b9o', 'Accumulator valve': 'imrppx5n1ay',
     'Turbine — Connect Grid': 'imro8k5pzem',
     // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old

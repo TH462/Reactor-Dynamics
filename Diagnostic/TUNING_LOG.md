@@ -208,6 +208,50 @@ a steam-relief sense. What IS sourced is why the ADV sits outside the C-9 conden
 that the condenser dump is *"not required for the safe shutdown of the reactor"* — i.e. something
 else does that job. Existence, capacity and setpoint are UNVERIFIED and say so.
 
+### #371b — the ADV card, and a placement the owner rejected on sight
+
+**The first attempt was wrong and the rejection was correct.** A 195x135 card below the
+right-hand column looked free to a scan — the canvas is a fixed 2400x1600 while content ends at
+y 855 — but the board **scales to fit its column**, so putting a card outside the content bounds
+shrank every other tile to make room *(OWNER: "That atmos dump card is unacceptable. It is out of
+bounds of the original diagram and now makes the whole diagram too small.")*. A free-slot scan is
+not a placement: it has to be constrained to the CONTENT box, not the canvas.
+
+Re-scanned properly — largest free rectangles inside the content box, components solid —
+there are exactly **two** on the whole board: **90x115 at (1575, 490)**, under the cooling tower
+between the condensate pump and the polisher status, and 105x60 by the pressurizer. The first is
+where the owner said to look.
+
+**The control set was cut from seven elements to four** *(OWNER: "Does it need all those
+controls?")*, and the cut is a teaching decision rather than a space one. The **setpoint is the
+control that matters**: a cooldown is walked DOWN by setpoint, and at full open this valve cools
+about three times the technical-specification limit — so making "just open it" the easy path
+would teach the wrong habit. OPEN is therefore dropped (lower the setpoint), and the status word
+is dropped because the position readout beside it says the same thing. What is left: AUTO / SHUT,
+the setpoint box, position.
+
+**Three defects only a screenshot found**, which is the reason for taking one:
+- the position readout, left-anchored like a `readout`, rendered **12 px outside the card's left
+  border** — a `value` tile anchors from the right (`rAnchor`), which the status word already knew
+  and I did not;
+- the setpoint **truncated to "12"** — measured, `scrollWidth` 44 against `clientWidth` 32. In 90 px
+  of card the inline `psi` suffix cost the input the width it needed, and the derived range hint
+  above the box already names the unit, so the suffix went;
+- the first layout **overlapped the SP box and the readout by 16 px**, because a `number` tile is
+  ~47 px tall with its ▲▼ arrows, not the ~26 px a bare number suggests — the same arithmetic that
+  produced the recorded 80x20 px overlap in #350.
+
+**And one self-inflicted wound worth recording**: a regex used to remove the retired status entry
+matched across four unrelated `VALUES` rows — accumulator N2 pressure, accumulator status,
+accumulator fill and boron status — deleting them silently. `board_check` caught it (the ΔT margin
+readout went to its "—" placeholder), and the block was restored from `git show HEAD:`. A
+multi-line regex delete over a table of function literals is not worth the keystrokes it saves.
+
+Baseline `verify_board_check` **205 → 211**: the card ships SHUT not AUTO (asserted, so changing
+the default has to edit the line), AUTO and SHUT both drive the engine, the setpoint converts, and
+its range hint carries the unit the tile omits. `run_inspect` 47/47 with an entry per element;
+`verify_e2e_ui` gains ADV/ADV SP to its reachability list.
+
 The `adv_valve` instrument is **appended last with `noise: 0`**, per the standing PRNG rule — one
 extra draw shifts every downstream reading, and the `sg_steam_flow` comment names three endpoints
 that moved for exactly one. Baselines: `run_behavior` 56 → **57**, `run_contract` 151 → **153**
