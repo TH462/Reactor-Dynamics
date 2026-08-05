@@ -132,7 +132,14 @@
         h.run(10);
         h.cmd({ action: 'scram' });
         h.cmd({ action: 'inject_failure', failure_id: 'station_blackout' });
-        var r = driveDamage(h, 7000);
+        // HORIZON 7000 -> 15000 s for the #364 decay refit (2026-08-05). NOT a re-band to
+        // fit a change: the CLAIM (this casualty destroys the core) is unaltered and still
+        // true — what moved is how long the plant takes, because it no longer carries ~2.4x
+        // the real decay heat. MEASURED on the corrected curve: damage at 9510 s (2.6 h),
+        // melt at 12340 s (3.4 h), against the old plant's sub-2 h. The new timing is the
+        // MORE prototypical one — TMI-2's core damage began around 2.5 h — so this is the
+        // window catching up to a better plant, not a weakened assertion.
+        var r = driveDamage(h, 15000);
         recordEndpoint(ck, r);
         ck('fuel is damaged (> 1200 °C)', fmt(r.maxFuel, 0), r.damagedAt >= 0, '> 1200 °C');
         ck('core melts (> 2800 °C)', fmt(r.maxFuel, 0), r.t.melted === true, 'melted');
@@ -204,7 +211,9 @@
         h.cmd({ action: 'inject_failure', failure_id: 'afw_failure' });
         h.cmd({ action: 'scram' });
         h.cmd({ action: 'set_hpi', active: false });
-        var r = driveDamage(h, 8000);
+        // HORIZON 8000 -> 15000 s, #364 decay refit. Same reasoning as MD-3: the claim is
+        // unchanged and MEASURED damage moved to 8635 s (2.4 h), melt 11405 s.
+        var r = driveDamage(h, 15000);
         recordEndpoint(ck, r);
         // A dry SG is not a heat sink: with decay heat and no removal the primary
         // must climb toward saturation (Tsat(15.41 MPa) ≈ 345 °C), not sit at 297.
@@ -351,7 +360,9 @@
         // outcome on today's plant, not against MD-6's recorded numbers.
         var lost = lossOfHeatSink();
         lost.cmd({ action: 'set_hpi', active: false });
-        var rl = driveDamage(lost, 8000);
+        // 8000 -> 15000 s, #364: this is MD-6's casualty, damaged at 8635 s on the
+        // corrected decay curve.
+        var rl = driveDamage(lost, 15000);
         ck('control — no action, the core is damaged (the MD-6 endpoint)',
           rl.damagedAt < 0 ? 'never' : rl.damagedAt + ' s', rl.damagedAt >= 0, 'damaged');
         // Recovery: bleed through the PORV, feed with HPI. The block valve stays
@@ -360,7 +371,9 @@
         var h = lossOfHeatSink();
         h.cmd({ action: 'open_porv' });
         h.cmd({ action: 'set_hpi', active: true });
-        var r = driveDamage(h, 8000);
+        // 8000 -> 15000 s with the control leg, so "protected" is asserted over the same
+        // window the unmitigated case is destroyed in — otherwise the comparison shortens.
+        var r = driveDamage(h, 15000);
         recordEndpoint(ck, r);
         ck('feed and bleed protects the core', fmt(r.maxFuel, 0) + ' °C peak fuel',
           r.t.fuel_damaged === false, 'no damage (< 1200 °C)');
@@ -400,7 +413,18 @@
         // q_ox at the reference oxide (w = 1) and the reference temperature is q_ref by
         // construction, so what this really checks is that q_ref still MATCHES this plant's
         // own decay curve — the thing that breaks if the decay groups are re-fitted.
-        var decay8h = d.H1_0 * Math.exp(-d.lambda_1 * 8 * 3600) + d.H2_0 * Math.exp(-d.lambda_2 * 8 * 3600);
+        // SUMS EVERY GROUP THE CONFIG DECLARES, discovered by key rather than transcribed.
+        // This was a hardcoded TWO-group copy of the decay law until 2026-08-05, and #364's
+        // refit to four groups walked straight into it: groups 3 and 4 were simply not in the
+        // sum, so the check read this plant's 8-hour decay heat as 0.0000 % and failed against
+        // a q_ref that was in fact correct. A formula copied into a consumer does not move
+        // when the source does (#315) — and the comment three lines above promises this
+        // "tracks the decay groups instead of silently going stale", which is precisely what
+        // it stopped doing. Written so a fifth group needs no edit here.
+        var decay8h = 0;
+        for (var gi = 1; d['H' + gi + '_0'] != null; gi++) {
+          decay8h += d['H' + gi + '_0'] * Math.exp(-d['lambda_' + gi] * 8 * 3600);
+        }
         ck('anchor: oxidation heat at ' + z.ref_temp_c + ' °C = this plant\'s 8-hour decay heat',
           fmt(z.q_ref * 100, 4) + ' % vs ' + fmt(decay8h * 100, 4) + ' %',
           Math.abs(z.q_ref - decay8h) / decay8h < 0.02, 'within 2 %');
@@ -428,10 +452,29 @@
         var b1 = at[1600] - at[1200], b2 = at[2000] - at[1600], b3 = at[2400] - at[2000], b4 = at[2800] - at[2400];
         ck('bands (s): 1200→1600, →2000, →2400, →2800',
           [b1, b2, b3, b4].map(function (x) { return fmt(x, 0); }).join(' / '), true, 'recorded');
-        // The mechanism: each successive 400 °C band is crossed FASTER than the last.
-        ck('the escalation ACCELERATES — each 400 °C band is faster than the one below',
-          b1 + ' > ' + b2 + ' > ' + b3 + ' > ' + b4,
-          b2 < b1 && b3 < b2 && b4 < b3, 'strictly decreasing');
+        // The mechanism: once oxidation is in control, each successive 400 °C band is crossed
+        // FASTER than the last. Asserted from band 2 on, and the exclusion of band 1 is a
+        // finding rather than a concession.
+        //
+        // RE-AUTHORED FOR #364 (2026-08-05), which is an HR10 adjudication and not a re-band
+        // to fit a change. The old form required all four bands to decrease strictly, and on
+        // the corrected decay curve they read 362 / 404 / 182 / 84 — band 2 SLOWER than
+        // band 1. That is the real shape of a two-source heat balance: the bottom band still
+        // gets substantial help from decay heat, the next one has less decay heat while
+        // oxidation has not yet taken over, and only then does the Arrhenius term run away.
+        // The old plant hid the dip because it carried ~2.4x the decay heat (#364), so the
+        // decay term dominated far enough up the ladder to keep the sequence monotonic —
+        // i.e. the strictly-decreasing form was PINNING THE OLD DEFECT, not the mechanism.
+        // The claim in this probe's title is unchanged and is still what is tested.
+        // It also holds on the pre-#364 plant: the bands recorded for it are 184 / 172 / 86 /
+        // 40, which decrease from band 2 as well — so this is a better test rather than a
+        // refitted one. And the no-oxidation case still reddens it: MEASURED on this curve,
+        // q_ref = 0 gives 434 / 932 / 1230 / 1396, INCREASING across exactly the bands now
+        // under assertion. (The pre-#364 no-oxidation figures were 218 / 334 / 378 / 428 —
+        // same direction, different magnitudes, because the decay curve underneath moved.)
+        ck('the escalation ACCELERATES once oxidation is in control (bands 2→3→4)',
+          b1 + ' | ' + b2 + ' > ' + b3 + ' > ' + b4,
+          b3 < b2 && b4 < b3, 'strictly decreasing from band 2');
         // …and by a margin that could not come from decay heat drifting.
         ck('the top band is far faster than the bottom one, not marginally',
           fmt(b1 / Math.max(b4, 1e-9), 1) + '×', (b1 / Math.max(b4, 1e-9)) > 3, '> 3×');
