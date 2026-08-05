@@ -51,7 +51,38 @@
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
   // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
-  var CHART_RECORD_SEC = 1800;   // keep 30 min of history; the chart DISPLAYS only ui.window of it
+  // WINDOWS SCALE WITH TIME ACCELERATION *(OWNER: "Can you also extend the time window
+  // automatically when choosing faster time warps? At 3600 it's going to zoom past 30 minutes
+  // really fast. Maybe have the time window buttons dynamically change depending on the speed
+  // setting.")*. The fixed 1m/5m/10m/30m ladder is right at 1× and useless at 3600×, where
+  // 30 minutes of plant passes in half a second of wall clock — the window empties and
+  // refills faster than it can be read. Each rung is chosen so its WALL-CLOCK duration is
+  // roughly what the 1× ladder gives: divide by the speed and you get back 1/5/10/30 minutes.
+  // CAPPED AT 12 h, NOT SCALED BY THE SPEED NUMBER — and the cap is the whole lesson here.
+  // The first cut simply divided by the requested acceleration, which produced a 27-DAY
+  // widest rung at 3600×. MEASURED against it: 20 s of wall at a requested 3600× filled about
+  // 5 % of an 18 h window, i.e. roughly 3200 s of sim — an ACHIEVED rate near 160×, nowhere
+  // near the requested 3600. The requested number is a target the engine does not have to
+  // meet (18000 physics steps per broadcast at 3600×), so sizing a window from it produces
+  // rungs that can never fill.
+  //
+  // A shift is the longest span worth reading on a strip chart, so 12 h caps the ladder at
+  // every speed and the rungs below it stay proportionate. Anything wider is a job for the
+  // CSV export, not the plot.
+  var CHART_WINDOWS = {
+    1:    [60, 300, 600, 1800],
+    10:   [300, 900, 3600, 10800],
+    60:   [900, 3600, 10800, 43200],
+    600:  [3600, 10800, 21600, 43200],
+    3600: [3600, 10800, 21600, 43200],
+  };
+  function chartWindowsFor(spd) { return CHART_WINDOWS[spd] || CHART_WINDOWS[1]; }
+  // Retention follows the WIDEST window on offer at the current speed, so switching rungs
+  // never shows an empty axis. It is a sim-time span, and at 3600× that span is enormous —
+  // which is exactly why the row budget below is enforced by THINNING rather than by a
+  // shorter memory: the alternative is a 27-day buffer at 0.2 s resolution.
+  var CHART_RECORD_SEC = 1800;   // recomputed from the speed; the chart DISPLAYS only ui.window
+  var CHART_ROW_BUDGET = 9000;   // rows retained, regardless of how much sim time they span
   var CHART_SAMPLE_SEC = 0.2;    // …at most one row per 0.2 s of SIM time — see the record path
   var CHART_SHRINK_FRAMES = 40;  // frames a trace must sit well inside its band before the axis zooms in (~4 s)
   var smoothed = {};        // id -> display-damped instrument value
@@ -1261,12 +1292,30 @@
         var fLast = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
         if (fLast != null && fg - fLast < CHART_SAMPLE_SEC - 1e-9) continue;
         if (fg >= gridT) continue;                       // the broadcast row below owns that instant
-        chartBuf.push({ t: fg, v: fine[fi].v.v, tv: fine[fi].v.tv });
+        var fr = fine[fi];
+        // lo/hi are the EXTREMES over the sub-interval the service folded, so a transient
+        // between fine samples still leaves a mark (see CHART_SUB_MAX there). Carried onto
+        // the row; drawChart bands them.
+        chartBuf.push({ t: fg, v: fr.v, tv: fr.tv, lo: fr.lo, hi: fr.hi, tlo: fr.tlo, thi: fr.thi });
       }
     }
     chartBuf.push({ t: gridT, v: sv, tv: stv });
-    var cutoff = gridT - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
+    var cutoff = gridT - CHART_RECORD_SEC;   // retain the widest window on offer at this speed
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
+    // THIN THE OLD HALF rather than shortening the memory. Retention has to cover the widest
+    // window the current speed offers — 27 days of sim at 3600× — and at 0.2 s that is
+    // millions of rows. Recent history stays at full resolution and the older half is halved
+    // whenever the budget is exceeded, which is what a strip chart's paper does anyway: the
+    // part you are reading is fine, the part scrolling away is coarse. Cost is bounded at
+    // CHART_ROW_BUDGET rows at ANY acceleration or window.
+    while (chartBuf.length > CHART_ROW_BUDGET) {
+      var keep = [], half = chartBuf.length >> 1;
+      for (var ti = 0; ti < chartBuf.length; ti++) {
+        if (ti >= half || (ti & 1) === 0) keep.push(chartBuf[ti]);
+      }
+      if (keep.length === chartBuf.length) break;   // cannot thin further — bail rather than spin
+      chartBuf = keep;
+    }
     drawChart();
   }
 
@@ -1589,6 +1638,38 @@
     if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', +b.getAttribute('data-speed') === v); });
     var fb = $('ffBadge');
     if (fb) { var fast = v >= 600; fb.style.display = fast ? 'block' : 'none'; if (fast) fb.textContent = '⚡ ' + v + '×'; }
+    syncChartWindows(v);
+  }
+
+  // Re-label the strip-chart window buttons for the current speed, and keep the SAME RUNG
+  // selected rather than the same number of seconds — the player picked "the short one", not
+  // "60 seconds", and at 3600× sixty seconds of plant is a sixtieth of a second of watching.
+  // Retention follows the widest rung so switching to it never shows an empty axis.
+  var lastWinSpeed = null;
+  function syncChartWindows(spd) {
+    var seg = $('graphWindow');
+    if (!seg) return;
+    var wins = chartWindowsFor(spd);
+    var btns = seg.querySelectorAll('[data-win]');
+    if (btns.length !== wins.length) return;
+    var rung = 0;
+    for (var i = 0; i < btns.length; i++) if (btns[i].classList.contains('on')) rung = i;
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].setAttribute('data-win', wins[j]);
+      btns[j].textContent = chartWinLabel(wins[j]);
+    }
+    CHART_RECORD_SEC = wins[wins.length - 1];
+    if (lastWinSpeed !== spd) {
+      lastWinSpeed = spd;
+      ui.window = wins[rung];
+      chartRange = {};
+      drawChart();
+    }
+  }
+  function chartWinLabel(sec) {
+    if (sec < 3600) return Math.round(sec / 60) + 'm';
+    if (sec < 86400) { var h = sec / 3600; return (h < 10 ? h.toFixed(h % 1 ? 1 : 0) : Math.round(h)) + 'h'; }
+    return Math.round(sec / 86400) + 'd';
   }
 
   // ---- Scenario ui_policy (TMI-2 M5) — a scenario may drive the synoptic mode
@@ -2787,6 +2868,16 @@
     var v = src ? src[ser.id] : null;
     return (v == null || !isFinite(v)) ? null : v;
   }
+  // The EXTREMES this sample covers, on whichever side is being plotted. Fine rows carry
+  // the min/max the service folded over their sub-interval (see setFineSampler there);
+  // broadcast rows and the preseed carry none, and collapse to the point value — which is
+  // correct, they represent one instant rather than a span.
+  function seriesExt(ser, sample, val) {
+    var t = seriesTruth(ser);
+    var l = t ? sample.tlo : sample.lo, h = t ? sample.thi : sample.hi;
+    var a = l ? l[ser.id] : null, b = h ? h[ser.id] : null;
+    return [(a == null || !isFinite(a)) ? val : a, (b == null || !isFinite(b)) ? val : b];
+  }
   // Alarm emphasis on a trace. Latching with a release deadband (5 % of the distance
   // back into the band): a value sitting exactly on its setpoint used to strobe the
   // whole polyline once per frame.
@@ -2918,20 +3009,24 @@
     var SMOOTH_SEC = 3;
     var kSmooth = chartTruth() ? 0 : Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
     active.forEach(function (ser, si) {
-      var sum = {}, cnt = {};              // sparse per-bucket accumulators
+      var sum = {}, cnt = {}, blo = {}, bhi = {};   // sparse per-bucket accumulators
       for (var j = startI; j < chartBuf.length; j++) {
         var val = seriesVal(ser, chartBuf[j]);
         if (val == null || !isFinite(val)) continue;
         var bk = Math.floor(chartBuf[j].t / secPerBucket) - bOrigin;
         if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
-        if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; }
+        if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; blo[bk] = Infinity; bhi[bk] = -Infinity; }
         sum[bk] += val; cnt[bk] += 1;
+        var ex = seriesExt(ser, chartBuf[j], val);
+        if (ex[0] < blo[bk]) blo[bk] = ex[0];
+        if (ex[1] > bhi[bk]) bhi[bk] = ex[1];
       }
       var means = [];
       for (var bk2 = 0; bk2 < NB; bk2++) {
         if (cnt[bk2] === undefined) continue;
         // the bucket's OWN time, not the mean of its members — see the grid note above
-        means.push({ t: (bOrigin + bk2 + 0.5) * secPerBucket, v: sum[bk2] / cnt[bk2] });
+        means.push({ t: (bOrigin + bk2 + 0.5) * secPerBucket, v: sum[bk2] / cnt[bk2],
+                     lo: blo[bk2], hi: bhi[bk2] });
       }
       // centred moving average — zero net lag, unlike an EWMA (a drifting or stuck
       // sensor survives it untouched; only the per-sample jitter goes)
@@ -2940,12 +3035,20 @@
         for (var m = 0; m < means.length; m++) {
           var a = Math.max(0, m - kSmooth), z = Math.min(means.length - 1, m + kSmooth), acc = 0;
           for (var q = a; q <= z; q++) acc += means[q].v;
-          sm[m] = { t: means[m].t, v: acc / (z - a + 1) };
+          // the BAND is not smoothed — it is an envelope, and averaging it would shrink
+          // the very excursions it exists to show
+          sm[m] = { t: means[m].t, v: acc / (z - a + 1), lo: means[m].lo, hi: means[m].hi };
         }
         means = sm;
       }
       var vmin = Infinity, vmax = -Infinity;
-      means.forEach(function (p) { if (p.v < vmin) vmin = p.v; if (p.v > vmax) vmax = p.v; });
+      // the BAND sets the range, not the line — otherwise a transient the band exists to
+      // reveal would be drawn outside the axis and clipped away
+      means.forEach(function (p) {
+        var a2 = (p.lo != null && isFinite(p.lo)) ? p.lo : p.v;
+        var b2 = (p.hi != null && isFinite(p.hi)) ? p.hi : p.v;
+        if (a2 < vmin) vmin = a2; if (b2 > vmax) vmax = b2;
+      });
       seriesMeans[ser.id] = means;
       // STABLE auto-range. The old model eased lo/hi toward the data every frame, which
       // re-projected the WHOLE trace every frame — history that had already been drawn
@@ -3022,6 +3125,30 @@
         return x.toFixed(1) + ',' + y.toFixed(1);
       }).join(' ');
       var hot = seriesAlarmed(ser);
+      // MIN/MAX BAND, drawn UNDER the line. Each bucket knows the extremes the plant reached
+      // over the sim time it covers, so a transient shorter than the sample interval still
+      // shows — at 3600× a bucket spans several seconds of plant and the line alone would
+      // step straight over a relief lift inside it. Emitted only where the band is wider
+      // than the stroke: at 1× it collapses onto the line (one instant per sample, nothing
+      // to span) and drawing a degenerate polygon there would just thicken the trace.
+      var yOf = function (v) {
+        var f2 = Math.max(0, Math.min(1, (v - lo) / rng));
+        return H - 8 - f2 * (H - 16);
+      };
+      var mmB = seriesMeans[ser.id], wide = false, up = [], dn = [];
+      for (var bi = 0; bi < mmB.length; bi++) {
+        var m2 = mmB[bi];
+        if (m2.lo == null || !isFinite(m2.lo) || m2.hi == null || !isFinite(m2.hi)) continue;
+        var xb = ((m2.t - t0) / span * PW).toFixed(1);
+        var yh = yOf(m2.hi), yl = yOf(m2.lo);
+        if (yl - yh > 1.2) wide = true;
+        up.push(xb + ',' + yh.toFixed(1));
+        dn.push(xb + ',' + yl.toFixed(1));
+      }
+      if (wide && up.length > 1) {
+        html += '<polygon points="' + up.concat(dn.reverse()).join(' ') + '" fill="' + ser.c +
+          '" fill-opacity="0.22" stroke="none"/>';
+      }
       html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
       var mm = seriesMeans[ser.id];
       lastY.push({ ser: ser, y: ly, hot: hot, val: mm.length ? mm[mm.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1]) });

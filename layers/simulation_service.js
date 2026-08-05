@@ -87,6 +87,40 @@
   // this scheme. The ceiling was never the gate, it was the broadcast.
   var CHART_FINE_SEC = 0.2;        // sim-time interval between fine samples — matches the UI's grid
   var CHART_FINE_MAX = 60;         // …but never more than this many per broadcast (see below)
+  // MIN/MAX BANDING. Point sampling aliases: a fine sample every 6 s of sim (3600×) still
+  // steps straight over a three-second relief lift. So each emitted bucket carries the
+  // EXTREMES over its interval, not just one instant — the chart draws the band and the
+  // transient is visible however fast the plant is being run.
+  //
+  // Bounded by a TOTAL per broadcast rather than a count per bucket, because the per-bucket
+  // form multiplies: 8 sub-samples × 60 buckets is 480 sampler calls per broadcast, and the
+  // sampler walks every series in the profile. A flat ceiling keeps the cost the same at
+  // 3600× as at 60× and simply gives coarser extremes where there is more sim time to cover.
+  var CHART_SUB_MAX = 240;         // sampler calls per broadcast, total, across all buckets
+
+  // Fold one sampler reading into a bucket accumulator. GENERIC over the reading's shape —
+  // it walks whatever side-dicts the sampler returned ({v, tv} today) and tracks the last
+  // value plus the extremes per key, so the service never learns what a "series" is and a
+  // new plotted quantity needs no change here. Keys that are null (a series with no reading
+  // on that side) stay out of the extremes entirely rather than poisoning them with nulls.
+  function foldExtremes(acc, one) {
+    if (!one) return acc;
+    if (!acc) { acc = { t: 0, v: {}, tv: {}, lo: {}, hi: {}, tlo: {}, thi: {} }; }
+    foldSide(one.v, acc.v, acc.lo, acc.hi);
+    foldSide(one.tv, acc.tv, acc.tlo, acc.thi);
+    return acc;
+  }
+  function foldSide(src, last, lo, hi) {
+    if (!src) return;
+    for (var k in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+      var x = src[k];
+      if (x == null || !isFinite(x)) continue;
+      last[k] = x;
+      if (lo[k] === undefined || x < lo[k]) lo[k] = x;
+      if (hi[k] === undefined || x > hi[k]) hi[k] = x;
+    }
+  }
 
   // Plant id → engine constructor. RBMK/BWR register when M2/M3 land.
   function engineCtor(plantId) {
@@ -232,12 +266,14 @@
     // broadcast carries 6 s of sim and yields 30 samples at 0.2 s; at 3600× it carries 360 s
     // and yields 60 at 6 s — still ~1 per plot pixel on the widest window, where the OLD
     // path gave one sample per 360 s. Cost is bounded by CHART_FINE_MAX at any acceleration.
-    var fineEvery = 0;
+    var fineEvery = 0, subEvery = 0;
     if (this._fineSampler) {
       var simPerBroadcast = steps * PHYSICS_DT;
       fineEvery = Math.max(CHART_FINE_SEC, simPerBroadcast / CHART_FINE_MAX);
+      subEvery = Math.max(PHYSICS_DT, simPerBroadcast / CHART_SUB_MAX);
+      if (subEvery > fineEvery) subEvery = fineEvery;   // at least one sample per bucket
     }
-    var sinceFine = 0;
+    var sinceFine = 0, sinceSub = 0, acc = null;
     for (var i = 0; i < steps; i++) {
       // Automation channels run in-stack at physics rate (fixed sim-time
       // cadence inside), reading the previous step's instruments — so
@@ -258,12 +294,17 @@
       // a "series" is. Skipped on the last step: the post-loop broadcast carries that
       // instant anyway, and sampling it twice would double-weight it in the chart's buckets.
       sinceFine += PHYSICS_DT;
-      if (fineEvery && sinceFine >= fineEvery - 1e-9 && i < steps - 1) {
-        this._fineBuf.push({
-          t: this.simTime + (i + 1) * PHYSICS_DT,
-          v: this._fineSampler(this.engine.getInstruments(), this.engine.getTrueState(),
-                               this.engine.getControlState ? this.engine.getControlState() : null),
-        });
+      sinceSub += PHYSICS_DT;
+      if (subEvery && sinceSub >= subEvery - 1e-9) {
+        acc = foldExtremes(acc, this._fineSampler(
+          this.engine.getInstruments(), this.engine.getTrueState(),
+          this.engine.getControlState ? this.engine.getControlState() : null));
+        sinceSub = 0;
+      }
+      if (fineEvery && acc && sinceFine >= fineEvery - 1e-9 && i < steps - 1) {
+        acc.t = this.simTime + (i + 1) * PHYSICS_DT;
+        this._fineBuf.push(acc);
+        acc = null;
         sinceFine = 0;
       }
       if (sinceEval >= PROTECTION_DT && i < steps - 1) {

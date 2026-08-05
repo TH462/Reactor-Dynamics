@@ -30,6 +30,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the graph shows the full range a value reached, not just where it happened to be sampled
+
+At speed the chart samples the plant every few seconds of plant time, so anything faster than that
+used to vanish between points. Each point now carries the **highest and lowest** the value reached
+over the time it covers, drawn as a shaded band behind the line — so a spike, a valve lift or a
+trip shows up however fast you are running. Measured on a turbine trip at 600×, the power band
+covers 85 of the plot's 120 pixels; at 1× there is nothing to span and no band is drawn.
+
+### Added — the graph's time windows follow the speed setting
+
+The window buttons now offer longer spans as you speed up — 1m/5m/10m/30m at 1×, up to
+1h/3h/6h/12h at high speed — because 30 minutes of plant goes by in seconds at 3600×. Switching
+speed keeps the same button position rather than the same number of minutes.
+
+Capped at 12 hours deliberately: scaling the window by the speed *number* produced spans of up to
+27 days, and the plant does not actually run that fast — measured, a requested 3600× achieves
+closer to 160× — so those windows could never fill.
+
+
 ### Fixed — the strip chart holds its resolution at every time acceleration
 
 The chart used to see exactly one sample per broadcast, so how much detail it had depended on how

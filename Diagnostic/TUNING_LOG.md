@@ -29,6 +29,69 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-develop-h (chart: min/max banding, and speed-scaled windows)
+
+Both owner-requested; the second one turned up a plant-throughput finding that changed its design.
+
+### Min/max banding — the transient the line steps over
+
+Fine sampling (develop-g) raised the chart's resolution but point sampling still ALIASES: at
+3600× a fine sample every 6 s of sim steps straight over a three-second relief lift. Each emitted
+bucket now carries the EXTREMES over its interval, folded service-side.
+
+- **`foldExtremes` is GENERIC over the sampler's return shape** — it walks whatever side-dicts
+  came back (`{v, tv}` today) and tracks last + min + max per key, so the service still never
+  learns what a "series" is and a new plotted quantity needs no change there.
+- **Bounded by a TOTAL per broadcast (`CHART_SUB_MAX` 240), not a count per bucket.** The
+  per-bucket form multiplies: 8 sub-samples × 60 buckets is 480 sampler calls, and the sampler
+  walks every series in the profile. A flat ceiling costs the same at 3600× as at 60× and simply
+  gives coarser extremes where there is more sim time to cover.
+- **The band is not smoothed** — it is an envelope, and the centred moving average would shrink
+  the very excursions it exists to show. It also **sets the auto-range**, or a spike the band
+  exists to reveal would be drawn outside the axis and clipped away.
+- **Drawn only where it is wider than the stroke.** At 1× it collapses onto the line (one instant
+  per sample, nothing to span) and a degenerate polygon would just thicken the trace.
+
+**MEASURED**, turbine trip injected at 600× (one fine sample per 1 s of sim), band height on a
+120 px plot: power **85 px**, pressure **41.4 px**, temperature **27.5 px**, pzr level **12.9 px**.
+At 1×, zero bands — correct.
+
+**A test that proved nothing, recorded so it is not repeated:** the first transient probe looked
+for a scram button by matching `/scram/i` against button text, found nothing, and measured a
+steady plant — reporting a 1.6 px band as if that were the answer. The screenshot showed power
+still at 100 % and gave it away. Use the supported `?inject=` parameter.
+
+### Speed-scaled window buttons — and the ladder had to be CAPPED, not scaled
+
+*(OWNER: "Can you also extend the time window automatically when choosing faster time warps? At
+3600 it's going to zoom past 30 minutes really fast.")*
+
+First cut divided the wall-clock duration by the requested acceleration, giving rungs up to
+**27 days** at 3600×. **MEASURED against it: 20 s of wall at a requested 3600× filled about 5 % of
+an 18 h window — roughly 3200 s of sim, an ACHIEVED rate near 160×.** The requested number is a
+target the engine does not have to meet (18000 physics steps per broadcast at 3600×), so sizing a
+window from it produces rungs that can never fill. Ladder now **caps at 12 h** — a shift is the
+longest span worth reading on a strip chart, and anything wider is a job for the CSV export.
+
+Buttons re-label on speed change and keep the same RUNG selected rather than the same number of
+seconds: the player picked "the short one", not "60 seconds". Retention follows the widest rung.
+
+**Retention is enforced by THINNING, not by a shorter memory** — 12 h at 0.2 s is 216 000 rows.
+The older half is halved whenever the row budget is exceeded, so recent history stays at full
+resolution and the part scrolling away goes coarse, which is what a strip chart's paper does.
+Bounded at `CHART_ROW_BUDGET` rows at any speed or window.
+
+### A clamp that broke a documented invariant, caught by the gate
+
+To stop a freshly-selected wide window rendering mostly-blank, I clamped `chartExtent`'s `t0` to
+the oldest sample. `verify_e2e_ui` went red: *"clicking the checkpoint mark at T+19 s landed the
+plant at T+0 s."* The comment on that function states the invariant plainly — *"the axis always
+spans the full ui.window … rather than the span growing until it fills"* — and the rewind picker
+inverts against it. **Bisected rather than reasoned about**: removing the clamp alone restored the
+gate. Dropped, and the blank view is self-correcting anyway as history accrues.
+
+---
+
 ## Session log — 2026-08-05-develop-g (strip chart: the axis, the rate, and the acceleration ceiling)
 
 Three owner-reported chart problems, and the third needed an M5 change rather than a UI one.
