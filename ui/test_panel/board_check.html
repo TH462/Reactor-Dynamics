@@ -977,8 +977,13 @@
         })();
         (function () {
           var si = parseFloat(valOf('imro6qpci2d')), us = parseFloat(usDT);
+          // Tolerance 1.5, was 1 (#375): both strings are INTEGER-rounded and sampled at
+          // different instants of a live plant, so the check's own quantization noise is
+          // up to 0.5·1.8 + 0.5 = 1.4 — the old band was narrower than its own method
+          // and failed on a rounding edge (12 °F vs 6 °C, off by 1.2). The absolute-vs-
+          // difference discriminant is untouched: the +32 error sits > 10 away.
           ck('units: SI leg ΔT is a difference, not an absolute temperature',
-            / C$/.test(valOf('imro6qpci2d')) && Math.abs(us - si * 9 / 5) <= 1 && Math.abs(us - (si * 9 / 5 + 32)) > 10,
+            / C$/.test(valOf('imro6qpci2d')) && Math.abs(us - si * 9 / 5) <= 1.5 && Math.abs(us - (si * 9 / 5 + 32)) > 10,
             usDT + ' -> ' + valOf('imro6qpci2d'));
         })();
         // Flow. gpm is an authored display scale, so SI is m³/h (owner selection).

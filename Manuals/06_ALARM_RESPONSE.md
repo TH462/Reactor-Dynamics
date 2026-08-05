@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 6  
+**Revision:** 12  
 
 ---
 
@@ -100,6 +100,8 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A31 | PZR LVL DEV LO | caution | A |
 | PWR-A32 | SI ACCUM ALIGNED &lt; 1000 PSI | caution | B |
 | PWR-A33 | RHR NOT IN SERVICE | warning | B |
+| PWR-A34 | RCS COOLDOWN RATE HI | warning | A |
+| PWR-A35 | RCS HEATUP RATE HI | warning | A |
 
 ---
 
@@ -471,6 +473,28 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **If it comes in with pressure ABOVE the interlock** | Expected, briefly. Losing the valve took **600 psi (4.14 MPa)**; getting it back takes **400 psi (2.76 MPa)** — the block-open permissive is the lower of the two setpoints, so you must come down past where you lost it. Get pressure down, then re-align. |
 | **What told you before this tile existed** | Nothing, directly. The only indication was the ECCS card quietly changing from **RHR** back to **LPI**, which is why this annunciator was added. |
 | **Watch for** | Losing RHR in **Mode 5 with the steam generators unavailable** — there is no other heat sink in that lineup, and the temperature rise is slow enough to be missed until it is not. |
+
+---
+
+## PWR-A34 — Cooldown Rate High (RCS COOLDOWN RATE HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Indicated Tavg falling faster than **100 °F/hr** (55.6 °C/hr) — the technical-specification-class heatup/cooldown limit |
+| **Means** | The primary is shedding heat faster than the limit written to protect the vessel and nozzles from thermal stress. The classic cause is a steam path taken too far: a Dump SP walked deep below the program, a stuck-open dump or relief, or an uncontrolled blowdown. |
+| **The meter** | The rate channel is **derived from the indicated Tavg** and damped like a chart recorder, so it inherits the Tavg channel's lag and any failure on it. Steady plant jitter reads a few °F/hr; a genuine excursion reads tens to hundreds. |
+| **Immediate operator actions** | 1) Find the heat path: steam dump position and setpoint, PORV/SG safeties, feed lineup. 2) Close it down — raising the Dump SP back toward the program arrests a dump-driven cooldown at once. 3) Cross-check pressure and pressurizer level: a cooling primary shrinks. 4) If the cooldown is *planned*, slow it to the limit — the limit applies **especially** during planned cooldowns. |
+| **Not reclassified when cold** | Modes 4/5 do **not** demote this tile. The limit binds exactly during a planned cooldown; exceeding it there is the error, not the lineup. |
+
+---
+
+## PWR-A35 — Heatup Rate High (RCS HEATUP RATE HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Indicated Tavg rising faster than **100 °F/hr** (55.6 °C/hr) — the same technical-specification-class limit, in the other direction |
+| **Means** | The primary is gaining heat faster than the vessel stress limit allows. Causes run from an overdriven heatup (rods, pumps against a bottled secondary) to a lost heat sink with the core still making power. |
+| **Immediate operator actions** | 1) Check the heat sink first: steam path open, feed available, condenser alive. 2) If this is a planned heatup, slow it to the limit. 3) Cross-check pressurizer pressure and level — an expanding primary swells into the pressurizer. |
 
 ---
 

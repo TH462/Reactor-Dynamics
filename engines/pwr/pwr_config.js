@@ -258,18 +258,30 @@
       // the mass balance 1:1 like the accident-scale flows do — that read a 20 gpm
       // bleed as ~3 %/s of total inventory and drained the pressurizer in seconds.
       // This gain converts CVCS normalized flow → inventory-fraction/s; leak/ECCS/
-      // relief keep the lumped fast scale (accident pacing is tuned there). Sized so
-      // an uncompensated orifice-A drain walks pzr level down ~2 %/min
-      // (0.030·gain·level_per_mass — minutes to respond, the letdown-isolation
-      // interlock and low-level trip still bound it) and max manual charging fills
-      // ~13 %/min in the going-solid regime (CA-4's PI-8 backstop fires in ~3 min). [tune]
+      // relief keep the lumped fast scale (accident pacing is tuned there).
+      //
+      // THE TWO RATES BELOW ARE PRODUCTS OF `level_per_mass`, which #330 moved 100 → 776,
+      // so both were 7.76× stale from that day until 2026-08-05 (#365 — the same drift as
+      // the τ note below). MEASURED off the shipped config, not recited: an uncompensated
+      // orifice-A drain walks pzr level down 16.8 %/min (0.030·gain·level_per_mass) and
+      // max manual charging fills 33.5 %/min in the going-solid regime (charging_max·gain·
+      // level_per_mass_surplus; CA-4's PI-8 backstop still fires in ~3 min). The drain is
+      // no longer "minutes to respond" — it is the ruled #330 trade, and `ops_pwr.js`
+      // `ops_cvcs_pzr_drain_rate` is red against its 2026-07-22 feel target BY DESIGN
+      // (OWNER RULING, 2026-08-04: "A"). The letdown-isolation interlock and the low-level
+      // trip are what bound it. [tune]
       cvcs_inventory_gain: 0.012,
       // AUTO make-up: charging above letdown per % PZR-level deficit (the error is
       // damped through cvcs_level_filter_tau first — the M/A station's damping —
-      // so this can be stiff without chasing gauge noise, CA-3). Loop τ =
-      // 1/(0.01·cvcs_inventory_gain·level_per_mass) ≈ 83 s; a leak L parks the
-      // level (L/cvcs_inventory_gain)/0.01 % below setpoint (a 2.4e-4 leak → ~2 %,
-      // visible but held — CC-8/CC-10). [tune]
+      // so this can be stiff without chasing gauge noise, CA-3). Loop
+      // τ = 1/(0.01·cvcs_inventory_gain·level_per_mass) = 10.7 s, MEASURED off the
+      // shipped config — this said "≈ 83 s" from v1 until 2026-08-05 (#365), which was
+      // the τ at the pre-#330 deficit slope of 100 and has been wrong since #330 raised
+      // it to 776. #330's own note (see `level_per_mass_surplus`) already recorded the
+      // new figure and that BOTH branches now share it; this line was simply not updated
+      // with it. The parked offset is independent of that slope and is unchanged: a leak
+      // L parks the level (L/cvcs_inventory_gain)/0.01 % below setpoint (a 2.4e-4 leak →
+      // 2.00 %, visible but held — CC-8/CC-10). [tune]
       cvcs_charge_per_level: 0.01,
       cvcs_level_filter_tau: 20.0, // s — first-order damping on the servo's level error [tune]
       charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
@@ -312,7 +324,15 @@
       // — DNBR<1.3 — occurs subcooled, before bulk boiling). Distinct regime from the
       // inventory-driven void (post-scram, primary.void_gain); combined by max, so
       // neither perturbs the other. All [tune] — the at-power scenarios arbitrate.
-      dnb_margin_c: 8.0,           // hot-leg subcooling (°C) at which DNB begins [tune]
+      //
+      // THE DATUM IS THE MIXED-MEAN EXIT, NOT THE LIMITING ASSEMBLY (#368). A real DNBR
+      // is evaluated at the hot channel, which runs hotter than the mixed mean by the
+      // nuclear enthalpy-rise hot-channel factor, so this margin is measured on a cooler
+      // number than a real one is — i.e. this threshold stands in for peaking implicitly,
+      // and that is the reason it is `[tune]` and scenario-arbitrated rather than sourced.
+      // The factor itself is UNSOURCED; see pwr_thermal.hFcEffective for the accessions
+      // that do not carry it. Do not re-derive this constant without one.
+      dnb_margin_c: 8.0,           // MIXED-MEAN core-exit subcooling (°C) at which DNB begins [tune]
       // SG tube-bundle uncovery (TR-3/TMI dryout, feel-plan P5): heat transfer
       // scales to a small steam-side residual as the WIDE-range level falls below
       // the threshold. Residual sized BELOW post-trip decay heat so a dry SG
@@ -409,13 +429,28 @@
       // rate, scaled by blowdown_gain (same dimensionless form as the ECCS cold-injection
       // quench). This makes the saturation plateau RESPOND to break size, which is the physical
       // small-vs-large discriminator: a SMALL break — decay heat dominates the weak cooling, so
-      // Tavg holds the hot plateau and Psat(tavg) pins RCS pressure well above 600 psi (the TMI
-      // inventory/void lesson); a LARGE break — this term dominates decay heat, Tavg falls toward
-      // containment, and Psat(tavg) (and thus pressure, via the two-phase sat-pull) drops through
-      // the ECCS/accumulator band. Keyed on leak_flow ONLY — a stuck-open PORV/safety vents the
-      // steam space (K_porv_relief) and leaves leak_flow=0, so the flagship TMI path is untouched.
-      // Tuned so ≤8 % SGTR holds the plateau (>600 psi) while the 20 % large-LOCA default crosses
-      // below the 4.14 MPa accumulator setpoint. [tune]
+      // Tavg holds the hot plateau; a LARGE break — this term dominates decay heat, Tavg falls
+      // toward containment, and Psat(tavg) (and thus pressure, via the two-phase sat-pull) drops
+      // through the ECCS/accumulator band. Keyed on leak_flow ONLY — a stuck-open PORV/safety
+      // vents the steam space (K_porv_relief) and leaves leak_flow=0, so the flagship TMI path is
+      // untouched. SATURATION-GATED since #363: flashing removes latent heat only at saturation,
+      // and the gate lives at the term (pwr_thermal.stepCoolant) with the derivation.
+      //
+      // WHAT THIS PARAGRAPH USED TO CLAIM, AND WHY IT WAS WRONG. It said of a small break that
+      // "Psat(tavg) pins RCS pressure well above 600 psi (the TMI inventory/void lesson)".
+      // MEASURED full stack on a 2 % break (#363): at 20 min Tavg is 240.9 F (116.1 C), so
+      // Psat(Tavg) is about 25 psi (0.17 MPa) — it pins NOTHING. Pressure is above 600 psi
+      // because the PRESSURIZER HEATERS are winning against the break (K_heater 0.55 MPa/s
+      // against K_leak_depressurize · leak_flow ≈ 0.21 MPa/s). Right behaviour, wrong mechanism,
+      // which is worth more than a wrong number: the sat-pull only pins pressure once the plant
+      // IS saturated, and on a small break with make-up available it never gets there.
+      //
+      // THE TUNING CRITERION STILL HOLDS AND IS UNMOVED BY THE GATE, re-measured rather than
+      // assumed: ≤8 % SGTR holds the plateau (2267 psi / 15.63 MPa at 8 %, against the >600 psi
+      // criterion) and the 20 % large-LOCA default still crosses below the 4.14 MPa accumulator
+      // setpoint (3.98 MPa, against 4.00 MPa before the gate). SGTR is unaffected to three
+      // significant figures, because that path stays subcooled and the term was barely active on
+      // it. So neither constant below was retuned. [tune]
       blowdown_gain: 0.02,         // dimensionless scale on the break flash-cooling mixing term [tune]
       blowdown_sink_c: 110.0,      // °C — containment-saturation floor the blowdown pulls Tavg toward [tune]
     },
@@ -641,7 +676,19 @@
       // to containment and depressurizes the RCS — unlike CVCS letdown, which is a
       // controlled inventory bleed at pressure. This is what pushes a LARGE break
       // below saturation (voiding → sat-pull takes over) and into the ECCS/accumulator
-      // band; a small PORV break floors higher (TMI). Zero when no break. [tune]
+      // band; a small PORV break floors higher (TMI). Zero when no break.
+      //
+      // THIS TERM AND `thermal.blowdown_gain` ARE THE TWO HALVES OF ONE BREAK, and until
+      // #363 only this half knew what regime it was in: `stepPressure` gates this on
+      // `saturated`, while the temperature half ran on `leak_flow > 0` alone and went on
+      // "flash"-cooling a plant that had stopped boiling. They are gated on the same test
+      // now, spelled in each file's own currency (see pwr_thermal.stepCoolant for the
+      // algebra showing the two spellings are inverses, not opinions).
+      //
+      // The gate did NOT change what this constant does, and the small-break pressure is
+      // still held ABOVE the accumulator band — but by the HEATERS, not by the sat-pull the
+      // old `blowdown_gain` comment credited. Measured on a 2 % break: K_heater 0.55 MPa/s
+      // against this term's 0.21 MPa/s at that leak rate. [tune]
       K_leak_depressurize: 10.0,
       // PORV: auto-open 16.20 MPa (2350 psia), command-close 15.86 MPa (2300 psia).
       porv_open_mpa: 16.20, porv_close_mpa: 15.86,
@@ -701,9 +748,16 @@
       // is one fewer asymmetry, not one more. `cvcs_charge_per_level` was deliberately NOT
       // scaled to hold 83 s: that would restore the split this change exists to remove. [tune]
       level_per_mass: 776.0,
-      // % level per inventory-fraction SURPLUS above nominal — steeper than the deficit
-      // branch, because surplus packs into the pressurizer steam space, the only
-      // compressible volume: the "going solid" regime.
+      // % level per inventory-fraction SURPLUS above nominal — the "going solid" regime.
+      //
+      // THE SAME NUMBER AS THE DEFICIT BRANCH SINCE #330, and this comment claimed
+      // "steeper than the deficit branch" until 2026-08-05 (#365), which had been false
+      // since the day #330 landed. The reason they are equal is directly below and in
+      // `level_per_mass`: the pressurizer steam space is the only compressible volume in
+      // a subcooled loop, so it absorbs a deficit at the same rate it absorbs a surplus.
+      // The two consumers of the piecewise (pwr_pressurizer levelRaw and stepPressure's
+      // surge_rate) therefore take the same slope on both legs. Moving ONE of these two
+      // constants is silently wrong in two places at once; move both or neither.
       //
       // FITTED TO REAL GEOMETRY 2026-07-30 (#249, OWNER RULING 2026-07-30: "249 - fit it.").
       // Was 300, which was never derived from anything. The physical surplus between
@@ -734,9 +788,12 @@
       //
       // NOT changed alongside it: `cvcs_charge_per_level`. An earlier draft proposed
       // scaling it to hold the loop τ — that was wrong, because the documented τ (83 s)
-      // is the DEFICIT branch (level_per_mass 100) and scaling the gain would have
-      // slowed leak make-up to 215 s to fix a surplus-side number. The servo is simply
-      // faster on the surplus side now (27.8 → 10.7 s); measured, it does not hunt. [tune]
+      // was the DEFICIT branch at the then-current level_per_mass of 100, and scaling the
+      // gain would have slowed leak make-up to 215 s to fix a surplus-side number.
+      // WRITTEN WHEN THE TWO BRANCHES STILL DIFFERED (#249): it said "the servo is simply
+      // faster on the SURPLUS side now (27.8 → 10.7 s)". Since #330 raised the deficit
+      // slope to match, there is no side — both branches are 10.7 s, which is the one τ
+      // this plant has. Measured, it does not hunt. [tune]
       level_per_mass_surplus: 776.0,
       // % level per void-fraction — the TMI lift. Calibrated so the story-clock void
       // (~0.2 as HPI fires) lifts level past the 75 % high alarm (the "going solid" call
@@ -808,8 +865,21 @@
     // ------------------------------------------------------------------ primary
     primary: {
       void_gain: 3.0,              // [tune]
-      // Uncovery thresholds (fraction of full inventory).
-      void_onset: 0.85, core_top_uncover: 0.70, significant_uncover: 0.50,
+      // Uncovery thresholds (fraction of full inventory). BOTH are live —
+      // `core_top_uncover` in pwr_primary/stepCladding, `significant_uncover` in
+      // pwr_thermal.hFcEffective — which is what made the third member of this set
+      // dangerous rather than merely dead: `void_onset: 0.85` sat here from v1 to
+      // 2026-08-05 with ZERO readers repo-wide (#366), looking like a working
+      // threshold because of the company it kept. It also misdescribed the physics
+      // it appeared to set. Voiding does not begin at 85 % inventory: the void line
+      // (pwr_primary, stepInventory) engages at ANY inventory deficit once the bulk
+      // reaches saturation, and is zero above saturation at any inventory —
+      //     void = (trueSubcooling <= 0 && _mass < 1) ? clip((1 − _mass)·void_gain, 0, 1) : 0
+      // — so there is no inventory onset threshold in this model to tune. Someone
+      // moving 0.85 would have been tuning nothing, with no feedback saying so.
+      // A real inventory-keyed onset is a physics question, not a restore of the
+      // constant; file it if it is wanted.
+      core_top_uncover: 0.70, significant_uncover: 0.50,
       pump_spinup_tau: 3.0, pump_coastdown_tau: 8.0, // s [tune]
       // ----------------------------------------------------------------- NATURAL CIRCULATION
       // (#325, ruled 2026-08-04. `natural_circ_flow: 0.0` lived here from v1 to 2026-08-04
@@ -933,6 +1003,29 @@
       // Do not read this constant alone as "the rated heat": the pump-heat factor is
       // applied at the use site, pwr_steam_generator stepSecondary. [tune]
       latent_heat_secondary: 19.45,
+      // FEEDWATER ENTHALPY SPLIT (#372, audit #297 F4). The 19.45 above is the heat
+      // that makes one unit of steam FROM FEED AS DELIVERED — physically it was
+      // always sensible + latent, and until #372 the model spent all of it as
+      // latent, so feed TEMPERATURE could not matter and overfeeding produced zero
+      // thermal response (measured: digit-identical to 4 s.f. at +15 %). The split
+      // keeps 19.45 and its calibration exactly (the use site is algebraically
+      // identical at the rated point) and only distributes it:
+      //   at 819.5 psi (5.65 MPa), Tsat ≈ 271.5 °C: h_f ≈ 1193 kJ/kg,
+      //   h_fg ≈ 1597 kJ/kg; feed at 227 °C ≈ 977 kJ/kg
+      //   → sensible 216 of 1813 kJ/kg total = 0.119 ≈ 0.12.
+      // feedwater_temp_c is the FINAL feed temperature after the (unmodelled)
+      // regenerative heater train — UNVERIFIED [tune]: typical Westinghouse final
+      // feed practice, no primary source in the tree corpus names the number
+      // (evidence pass owed, #374 style). afw_temp_c IS sourced as a band: AFW
+      // design feedwater temperature 40–120 °F (WTSM §5.7, ML11223A229, system
+      // design data) — 104 °F (40 °C) chosen inside it, matching the constant the
+      // physics already injects ECCS/RWST water at. Cold AFW therefore removes
+      // real heat now: at decay-heat power the sensible demand of full AFW flow
+      // exceeds the heat crossing the tubes, steam generation clamps at zero, and
+      // the SG depressurizes — which is what "AFW is a heat sink" means.
+      feed_sensible_frac: 0.12,    // of latent_heat_secondary, at the rated point [tune]
+      feedwater_temp_c: 227,       // °C final feed (UNVERIFIED — regenerative train unmodelled) [tune]
+      afw_temp_c: 40,              // °C — inside the sourced 40–120 °F design band (WTSM §5.7)
       // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
       //
       // The level integrates the feed/steam imbalance: d(level)/dt = K_sg_level x
@@ -975,12 +1068,42 @@
       // this window (comp_steam_generator.js SG_WR_LO/HI) to place its narrow gauge.
       sg_wr_lo: 30.0, sg_wr_hi: 75.0,
       feed_pump_tau: 8.0,          // s — feed-pump speed→flow inertia (set_feed_pump_speed) [tune]
-      // SG code safety valves — upstream of the MSIV, above the 8.90 no-load
-      // dump setpoint: the backstop when the SG is bottled (MSIV shut). [tune]
+      // SG code safety valves — upstream of the MSIV, above the steam dump's
+      // steam_dump_setpoint anchor: the backstop when the SG is bottled (MSIV
+      // shut). Self-actuating on TRUE pressure in the engine since #369 — the
+      // pop is not an instrument decision and cannot be failed from the
+      // Failures tab, which is the point. [tune]
+      //
+      // PROVENANCE (#374 evidence pass, 2026-08-05): the FUNCTION is sourced —
+      // the dump is sized so it *"avoids the lifting of steam generator safety
+      // valves following a turbine trip and reactor trip from 100% power"*
+      // (WTSM §11.2, ML11223A294), and this plant meets that criterion measured:
+      // trip-from-100 % peak 8.05–8.07 MPa against the 9.31 pop, re-confirmed
+      // through the #373 stop-valve change. The VALUES are UNVERIFIED: no
+      // primary in the corpus names an MSSV setting for this ladder, and the
+      // whole secondary deliberately runs high relative to the real class (our
+      // 8.23 no-load anchor vs the real 1092 psig no-load header, WTSM §19.0
+      // ML11223A342 — the declared 297 °C anchor). Internally coherent — anchor
+      // < reseat < pop — but coherence is not a citation.
       sg_safety_open_mpa: 9.31,    // pop
       sg_safety_reseat_mpa: 9.0,   // reseat
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
+      // AFW capacity vs the real plant, worked (#374 evidence pass): the real
+      // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
+      // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0
+      // (ML11223A342) anchors one motor-driven pump at *"only about two percent
+      // of rated feed flow"*, so the full real lineup works out to ≈8 % of
+      // rated feed. Ours is 15 %: UNVERIFIED, a stated scaling choice rather
+      // than a citation — one lumped SG must out-run its own boil-off for the
+      // TR-2 recoverable ride-out, where the real figure splits across four
+      // generators. Its upper bound is honest since #375 (steam generation is
+      // energy- and pressure-limited, not a free boil). [tune]
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
+      // Auto-start CONDITION sourced — SG lo-lo level is condition 1 of the real
+      // five (WTSM §5.7, ML11223A229; full list quoted at the pwr_control lo-lo
+      // trip). The real plant starts AFW from the SAME signal that trips the
+      // reactor; the 3-point offset above our 17 lo-lo is the declared teaching
+      // departure, DESIGN_COMPANION §8.19 (#220, re-verdicted #374).
       afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
       // AFW LATCHES (owner ruling, #207): the pump demand set by the M4 actuation has no
       // reset, so it stands until the operator secures it — as in a real plant, where AFW
@@ -1088,6 +1211,18 @@
       dump_load_reject_mwe: 40.0,
       // ...and the mismatch below which the latch RESETS: the reactor has come back to
       // meet the load, so the ride-out is over and pressure-mode has it again. [tune]
+      //
+      // DEPARTURE IN KIND, not merely an unsourced number (#374 evidence pass):
+      // the real loss-of-load arming *"remains armed until the loss-of-load
+      // signal is manually reset by a control room operator"* (mode selector to
+      // RESET, spring return — WTSM §11.2, ML11223A294, §11.2.2.3). There is no
+      // automatic clear to source a value FOR; this auto-clear stands in for a
+      // reset control the board does not carry. The real ARM is also far more
+      // sensitive — *"a ramp load decrease at a rate greater than 5%/min, or a
+      // step load decrease of greater than 10%"* — and the operator-reset
+      // design is WHY it can be that sensitive without venting forever, which
+      // is the exact trade the §8.21 ruling (#219) weighed from the other side.
+      // Value UNVERIFIED.
       dump_reject_clear_mwe: 10.0,
     },
 
@@ -1124,7 +1259,11 @@
       // plant does in winter. Nothing in the default lineup reaches it: the reference
       // condition still lands exactly on vacuum_rated.
       vacuum_max_kpa: 99.5,
-      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer)
+      // Turbine trip on low vacuum: the MECHANISM is sourced — the auto-stop oil
+      // system *"provides turbine trips on low lube oil pressure, low vacuum,
+      // thrust bearing wear, and overspeed"* (WTSM §7.3, ML11223A247) — the
+      // VALUE is not: no setpoint anywhere in the corpus. UNVERIFIED (#374).
+      vacuum_trip_kpa: 74.5,       // turbine trip setpoint (actuated by the control layer) [tune]
       mwe_rated: 100.0,            // MWe — THIS PLANT'S RATING (identity below; feel-plan P6) [tune]
       // OPERATOR LOAD RATE, % of rated per minute. Real turbine control is rate-limited
       // (WTSM 11.3, ML11223A295: the operator sets a target and a rate on a thumbwheel and
@@ -1160,6 +1299,25 @@
       // pressure; the position itself strokes with a first-order lag and
       // modulates steam flow together with SG pressure. [tune]
       governor_tau: 2.0,           // s valve response time constant
+      // Turbine stop (throttle) valves — the TRIP-closure path (#373, audit #297
+      // F5). *"If a turbine trip signal is present, the high pressure hydraulic
+      // fluid will be dumped from the throttle valves. The dumping of the high
+      // pressure fluid allows spring force to rapidly close the throttle valves.
+      // Since all turbine valves close on a turbine trip, the throttle valves and
+      // governor valves provide redundant isolation of steam flow to the high
+      // pressure turbine."* (WTSM §7.3, ML11223A247). Until #373 a tripped
+      // turbine kept drawing steam on governor_tau alone — 2.138 flow-seconds of
+      // rated steam through a "shut" machine, because one constant was doing two
+      // jobs (load control AND trip closure) that the real machine does with two
+      // different valves. The MECHANISM is sourced above; the closure constant
+      // itself is not — WTSM says "rapidly close" and gives no number, so 0.15 s
+      // is UNVERIFIED [tune]: sub-second per the spring-slam description, and
+      // fast enough that the stop valve, not the governor, bounds trip steam
+      // (measured: 0.127 flow-s drawn vs 2.138 at governor_tau alone). The
+      // reopen tau is the relatch after a trip reset — deliberately slower, and
+      // inert in practice because the governor is at 0 demand at re-sync. [tune]
+      stop_valve_tau: 0.15,        // s — spring closure on trip (UNVERIFIED value, sourced mechanism)
+      stop_valve_reopen_tau: 5.0,  // s — reopen after the trip latch clears
     },
 
     // ----------------------------------------------------------- emergency cool
@@ -1523,6 +1681,21 @@
       // before 2026-07-23). Not in SOURCE, so it draws no PRNG number and the cross-step noise
       // stream is unchanged (the appended-instrument rule).
       rod_limit_margin:  { lag: 0,   noise: 0,     range: [0, 912],  derived: true },
+      // ------------------------------------------------ cooldown/heatup rate (#375)
+      // Tavg RATE from the INDICATED tavg — the 100 °F/hr Tech-Spec-class limit had
+      // no instrument at all: the true-state trend existed, the board had nothing to
+      // alarm on, and audit #297 F7 measured a one-entry dump cooldown at 1939 °F/hr
+      // with no cue anywhere. Derived like subcooling_margin, so it inherits tavg's
+      // lag and failures (HR1). rate_tau is the meter's damping, and its SIZE is the
+      // alarm's spurious-actuation guard (the audit's standing question 3, applied
+      // to this very alarm): a °F-per-HOUR limit wants hourly-scale damping. At
+      // 45 s the normal post-trip Tavg settle (≈7 °C over ~90 s) read ≈ −200 °C/hr
+      // and fired COOLDOWN RATE HI on every reactor trip; at 600 s it reads ≈ −39
+      // (quiet), while a genuine F7-scale blowdown still crosses −55.6 within
+      // ~40 s — crossing time scales inversely with severity, which is the right
+      // shape for a rate alarm. Not in SOURCE, so it draws no PRNG number and the
+      // cross-step noise stream is unchanged (the appended-instrument rule).
+      tavg_rate:         { lag: 0,   noise: 0,     range: [-300, 300], rate_tau: 600, derived: true },
       // ------------------------------------------------ OTΔT / OPΔT channels (#311)
       // The loop-ΔT protection set. All five are DERIVED from indicated `thot`,
       // `tcold`, `tavg` and `primary_pressure`, so each inherits those channels' lag

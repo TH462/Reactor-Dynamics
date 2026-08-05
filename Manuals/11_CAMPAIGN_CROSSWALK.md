@@ -1,7 +1,7 @@
 # 11 — Campaign ↔ Manuals Crosswalk
 
 **Document:** PWR-XW-01  
-**Revision:** 6  
+**Revision:** 12  
 **Campaign:** PWR — Zero to Operator (`ui/campaign_data.js`) — **34 missions + 1 bonus**  
 **Manuals:** this `Manuals/` set (MODE naming Rev 2)  
 

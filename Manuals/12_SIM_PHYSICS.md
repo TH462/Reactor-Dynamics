@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 6  
+**Revision:** 12  
 
 ---
 
@@ -515,23 +515,33 @@ The fast mode's reference Tavg is **programmed on turbine load** — the same sl
 >
 > This is a ruled, intentional limitation, not a defect. Lowering the arm is not the fix: an arm low enough to catch an ordinary 15 MWe dispatch cut would leave the dump venting forever, holding the reactor at 100 % and destroying the load-follow behaviour. The sub-threshold rejection is a manoeuvre **you** are expected to handle, and the PORV is the honest backstop when you don't.
 
+**The dump's mass flow carries the steam pressure** — a valve on a blown-down generator passes little, however far open it is, so a deep cooldown self-arrests as pressure approaches the setpoint you asked for rather than running to the model floor. **There is no automatic rate limiter on a dump cooldown**: the board gives you a cooldown-rate meter and the **RCS COOLDOWN RATE HI** annunciator at the 100 °F/hr class limit (**A34**), and holding the plant inside it is your job.
+
+**The dump goes to the condenser, and only there.** There are no SG atmospheric dump valves: lose the condenser and the plant has no controlled cooldown path at all — it holds hot at the code-safety band until the condenser comes back (declared, §12.18). A real plant would cool down on its atmospheric dumps; the standard condenser-independent cooldowns are not representable here.
+
 ### 8.4 Feedwater, AFW, and the isolation chain
 
 Main feedwater requires the **condensate pump**, an available **condenser**, and an **open MSIV** — the feed pumps are steam-driven off the main line downstream of the MSIV, and the condensate pump draws from the hotwell. Any of the three closes the chain: heat-sink loss → main feed loss → SG inventory falls → low-low level trip. **The ride-out plant trips on a genuine limit, never on anticipation.**
 
 **AFW** is 15 % of rated feed capacity, auto-starting on 20 % narrow-range level. It **latches**: the pump demand has no reset and stands until the operator secures it, as in a real plant. Delivery is capacity × operator throttle × a built-in proportional level hold (full flow below 32 %, tapering to zero by 40 %), and the hold senses **the level instrument** — so a failed level sensor fools the AFW regulator exactly as it fools you.
 
+**Feedwater carries enthalpy.** The heat crossing the tube bundle first raises feed to saturation, then boils it — so overfeeding cools the generator and drops its pressure (the classic overcooling signature, with a small power rise on moderator feedback), and cold auxiliary feedwater is a **genuine heat sink**: at decay-heat levels, full AFW flow absorbs more heat than crosses the tubes, steam generation stops, and the plant is pulled below the no-load anchor until the level hold throttles the flow back. Main feed is modelled at a **constant final feed temperature** of 440.6 °F (227 °C) — the regenerative heater train is not modelled, so feed temperature does not fall at part load (declared, §12.16).
+
 **AFW pumps can run against a shut discharge valve.** When they do, discharge pressure sits at **shutoff head** rather than at SG-plus-margin. That distinction is the tell separating "AFW blocked" from "AFW not started" — and it is the TMI-2 pumps-running/valves-shut condition.
 
 ### 8.5 The MSIV and SG safeties
 
-**SG code safeties are upstream of the MSIV** (pop 1350 psi (9.31 MPa), reseat 9.0), above the 1194 psi (8.23 MPa) dump setpoint. They are the relief that remains when the generator is bottled.
+**SG code safeties are upstream of the MSIV** (pop 1350 psi (9.31 MPa), reseat 9.0), above the 1194 psi (8.23 MPa) dump setpoint. They are the relief that remains when the generator is bottled — and they are **self-actuating spring valves**: the pop and reseat act on the steam pressure itself, not on an instrument channel, so a failed steam-pressure transmitter changes what the gauge reads, never whether the valves lift.
+
+**MSIV isolation is a manual action — yours.** A real plant also isolates the steam lines automatically (high-high containment pressure, or high steam flow with low-low Tavg / low steam pressure); this plant has no automatic steam-line isolation signal, so on an isolable break the closure happens when *you* perform it (declared, §12.17).
 
 A **main steam line break is gated by break location.** A break *downstream* of the MSIV is isolable — shutting the valve stops the blowdown dead, and that is the operator's one real lever. A break *upstream*, between the SG and the valve, is on the wrong side of every isolation this single-loop plant owns and blows the generator down regardless.
 
-### 8.6 The turbine governor
+### 8.6 The turbine governor and stop valves
 
 The governor valve target is **pressure-compensated**: demand divided by the upstream pressure ratio, clamped fully open. At steady state the delivered steam therefore equals the demand at any secondary pressure — the valve strokes open as pressure falls and closes down as it rises, like a real governor holding load.
+
+**On a turbine trip the stop (throttle) valves slam shut in a fraction of a second** — a separate spring-closed path, redundant with the governor, as on the real machine. A tripped turbine therefore stops drawing steam essentially instantly, and the stored-energy burst that follows a trip from full power is real: primary pressure spikes briefly toward the PORV setpoint — the designed backstop — before feedwater heat uptake, the steam dump and the scram catch the plant.
 
 ---
 
@@ -607,7 +617,7 @@ Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow i
 
 **RCS Loop Flow** is modelled on the real measurement: **elbow taps** on the crossover-leg 90° elbow, reading the differential pressure between the inner and outer radius of the bend, with ΔP ∝ flow². Nothing is inserted into the flow path. Real accuracy figures for this channel are ±10 % absolute, with trip-point repeatability around ±1 %.
 
-The **setpoint is the real one — 90 % of rated, blocked below P-7 (10 % power)**. Adopted 2026-07-29, replacing an unsourced 25 % / 5 % pair. Measured on an RCP trip from full power: the indication crosses 90 % at **1.8 s** and DNB onset is at **10.9 s**, so the trip now fires about nine seconds *before* the hot channel can boil. The old 25 % setpoint fired at 16.2 s — about five seconds *after* it. Its entire practical effect was to let DNB happen.
+The **setpoint is the real one — 90 % of rated, blocked below P-7 (10 % power)**. Adopted 2026-07-29, replacing an unsourced 25 % / 5 % pair. Measured on an RCP trip from full power: the indication crosses 90 % at **1.8 s** and DNB onset is at **10.9 s**, so the trip now fires about nine seconds *before* the core exit reaches DNB. The old 25 % setpoint fired at 16.2 s — about five seconds *after* it. Its entire practical effect was to let DNB happen.
 
 **One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is now built to teach:
 
@@ -655,6 +665,9 @@ Each of these is intentional, acceptable for the educational purpose, and stated
 | 12.10 | **Boron chemistry is an idealised rate** | Blender dynamics, VCT mixing, real makeup-flow chemistry | **No**, but note the compressed time scale: borating/diluting runs at 2 ppm/s, and a grab sample returns in 60 s against a real lab's 30–60 min. |
 | 12.11 | **One control group and one shutdown group** | Multi-bank sequencing, programmed overlap, bank overlap indication, core maps | **Not for operating**, but the single bank carries the *whole* control worth, which is why its worth curve is deliberately flattened (§4.3). |
 | 12.12 | **Pressurizer level is geometric, not a calibrated span** | Reference-leg behaviour and a true narrow/wide calibration | **No.** Note this does **not** apply to SG level, which *does* have a real narrow/wide window (§8.1). |
+| 12.16 | **Final feedwater temperature is constant** *(new 2026-08-05, #372 — feed used to carry no enthalpy at all)* | Real final feed temperature falls with load as extraction-steam heating fades; here it is 440.6 °F (227 °C) at every load, and the feedwater-heater train and moisture-separator reheaters do not exist as components. Loss-of-feedwater-heating — a standard overcooling transient — therefore remains unreachable, and part-load overcooling from cold feed is milder than the real plant's. | No. Overfeed and AFW cues read correctly now; just don't expect a feed-heater casualty to exist. |
+| 12.17 | **No automatic main steam line isolation** *(new 2026-08-05, #370 — deferred by ruling)* | The real plant shuts the MSIVs automatically on evidence of a downstream steam line break, and the operator cannot block that isolation. Here the MSIV is a manual control only: an unattended downstream break runs to completion. | **Yes.** On a downstream steam line break, *you* are the isolation — close the MSIV. The E-series break procedure says exactly this; the plant will not do it for you. |
+| 12.18 | **No atmospheric dump valves** *(new 2026-08-05, #371 — deferred by ruling)* | A real plant cools down without its condenser on SG atmospheric dumps — the SBO, loss-of-vacuum and natural-circulation cooldowns all run on them. Here the dump goes only to the condenser. | **Yes.** With the condenser lost, do not plan a cooldown: the plant holds hot at the SG code-safety band, and that is its honest floor. Recover the condenser first. |
 | 12.14 | **No turbine roll or no-load speed hold — and the overspeed trip therefore cannot fire** | The whole off-line half of a real startup: rolling off the turning gear, holding rated speed on no-load steam, and synchronising before the breaker closes. On a real EHC machine that is a *setpoint-and-rate* evolution (select 1800 RPM and an acceleration rate; SLOW takes ~30 min), not a hand-throttled one — see **04** PWR-N05. | **Yes, for one procedure and one trip.** PWR-N05's synchronisation is **one action**: the rotor goes from rest to 1800 RPM and picks up load in a single press of FOLLOW or MAN, and measured, the plant barely notices (Tavg moves 0.1 °F, steam pressure 1196 → 1194 psi). And the **1980 RPM overspeed trip in §09 is configured but unreachable** — the rotor is either pinned at rated by the grid or coasting down, so nothing can drive it there. Do not read "no overspeed trip occurred" as evidence about a real machine. |
 | 12.13 | **Cold-plant mass bookkeeping is normalised** | The real cold-plant mass surplus | Level in the cold modes rests on a program floor standing in for CVCS keeping the pressurizer on span. Visible only in Mode 5. |
 

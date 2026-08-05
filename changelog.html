@@ -109,6 +109,32 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Cooldown rate indication, turbine stop valves, and a run of physics fixes</h2>
+      <span class="log-ver mono">Alpha 1.1.0</span>
+      <time class="log-date mono" datetime="2026-08-05">5 August 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>RCS cooldown and heatup rate meter</strong>, with
+          high-rate annunciators at &plusmn;100 &deg;F/hr.</li>
+      <li><span class="log-tag added">Added</span><strong>Turbine stop valves.</strong> A trip now shuts
+          steam off in a fraction of a second, separately from the governor.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Feedwater carries heat.</strong> Overfeeding
+          overcools the plant, and auxiliary feedwater is a real heat sink.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Steam generator code safety valves act on steam
+          pressure itself.</strong> A failed pressure transmitter can no longer stop them lifting.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Pressurizer level no longer freezes at a normal
+          reading</strong> as the plant heats. It rises to the top and the relief valve lifts.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A break stops cooling the plant once the coolant
+          stops boiling.</strong></li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A stopped reactor coolant pump no longer heats the
+          coolant.</strong></li>
+      <li><span class="log-tag changed">Changed</span><strong>Two limits are stated in the manual:</strong>
+          steam line isolation is a manual action, and the steam dump goes to the condenser only.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Pressurizer, relief and the control board</h2>
       <span class="log-ver mono">Alpha 1.0.1</span>
       <time class="log-date mono" datetime="2026-08-05">5 August 2026</time>

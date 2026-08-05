@@ -30,6 +30,174 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.1.0] — 2026-08-05
+
+### Fixed — a stopped reactor coolant pump was still heating the coolant (#367)
+
+Pump shaft-work heat was scaled by loop flow outright. Natural circulation is buoyancy-driven and
+does no shaft work, but it carries flow — so a **stopped** pump went on depositing "pump heat" for
+as long as the plant circulated, and the fraction **grew** over time, because decay heat falls
+faster than buoyancy flow does (flow follows the cube root of core heat). Measured on a 24 h
+post-scram ride with the pump secured: **0.55 %** of core heat at rated with the pump running
+(correct), **0.85 %** at 2 h and **2.57 %** at 24 h with it stopped.
+
+- **The coastdown keeps its heat**, which is why this is a subtraction and not a switch: a coasting
+  rotor really is doing flywheel work on the fluid. The term now takes total flow minus the part
+  buoyancy is producing, so it decays smoothly to zero as the coastdown hands over and established
+  natural circulation gets exactly none — no step at the handover, no new saved state.
+- **Effect on the plant is small and was measured both ways.** With a working heat sink it is
+  *invisible* — the steam generator absorbs it and a 24 h A/B is identical to every printed digit.
+  With the heat sink gone it shows as **0.7 °F at 30 min growing to 1.7 °F at 3 h**.
+- Guarded inside the existing natural-circulation probe, asserted through the engine's own heat
+  balance: with the pump stopped and flow unchanged, the balance now differs by 0.00017 °C/s from
+  the pump-running case — **exactly 0** before.
+
+Two neighbouring places with the same shape were checked and **deliberately left**: the turbine's
+steam-extraction fraction, whose wrong regime (pumps stopped, turbine on line) this plant cannot
+reach — securing the pumps scrams the reactor in 31 s and trips the turbine inside a minute — and
+the steam generator's rated normalizer, which is a rated-condition constant rather than a
+flow-scaled term. Neither RBMK nor BWR has a pump-heat term at all, so there is no twin to file.
+
+### Fixed — a break kept "flash"-cooling a plant that had stopped boiling (#363)
+
+A break has two halves, and only one of them knew what regime it was in. The pressure half has
+always been gated on saturation; the **temperature** half — flash-cooling, which pulls Tavg toward
+containment saturation — was keyed on "is there a break" alone. Flashing removes **latent** heat,
+and subcooled liquid has none, so the term went on cooling long after there was nothing left to
+boil. Both halves are now gated on the same test.
+
+- **Measured** with ECCS defeated, so the cold-injection quench (a different term, correctly
+  *un*gated — cold water mixing cools whether or not anything is boiling) cannot mask it: the old
+  engine ends a 2 % break **55.8 °F (31.0 °C) subcooled and still falling**, with the core already
+  melted, and spends **1194 of 2358** late-drain samples more than 9 °F (5 °C) subcooled. After:
+  **0 of 2358**, sitting at saturation.
+- **The config's stated small-break mechanism was wrong, and is corrected.** It claimed
+  `Psat(Tavg)` pins RCS pressure above 600 psi on a small break. Measured, Tavg reaches 240.9 °F
+  (116.1 °C), where `Psat` is about **25 psi** — it pins nothing. Pressure is above 600 psi because
+  the **pressurizer heaters** outrun the break (0.55 MPa/s against 0.21). Right behaviour, wrong
+  reason.
+- **No constant was retuned.** The two `[tune]` values are calibrated against a two-point criterion
+  — an 8 % tube rupture holds the plateau above 600 psi, a 20 % break crosses below the accumulator
+  setpoint — and it was re-measured after the gate and is unmoved (**2267 psi** and **3.94 MPa**).
+  The tube-rupture path is unaffected to three significant figures, because it stays subcooled and
+  the term was barely acting on it.
+- Guarded by a new probe, **CA-14**; `run_behavior` **53 → 54**.
+
+**What this does *not* fix.** The originally reported symptom — a 2 % break sitting 378 °F (210 °C)
+subcooled — is only ~15 °F of this term. The rest is **unterminated emergency injection** quenching
+the plant, which is a separate open defect.
+
+### Fixed — the pressurizer level line was clipped at 100, so a heating plant stopped reading (#362)
+
+`levelBase` — the thermal-expansion line the true pressurizer level is built on — carried an
+**undocumented upper clip at 100** from v1. It bound at Tavg **611.6 °F (322.0 °C)**, which is
+inside the normal subcooled range at operating pressure (Tsat is 653.2 °F / 345.1 °C), so it was
+reachable on ordinary casualties rather than only in extremis.
+
+- **What the operator saw.** Measured full stack on a loss of heat sink, the gauge sat **dead flat
+  at 61.5 %** — `level_prog_ceiling`, the number a healthy plant reads — for ten plant-minutes
+  while Tavg rose 614.2 → 651.2 °F (323.4 → 344.0 °C) and subcooling collapsed 39.0 → 6.2 °F
+  (21.7 → 3.4 °C). It did not peg at 100, which would have read as *going solid*; it parked on
+  normal. Inventory stopped with it at 95.04 %, because the level program and the indication rode
+  the same clip so the make-up servo converged with charging = letdown.
+- **On a station blackout it is starker.** The gauge parked at **72.79 %** and inventory at
+  **96.49 %** for the last 24 minutes of the run. Fixed, level climbs 78 → **100 %**, the **PORV
+  lifts at ~16 min**, and the plant reads the going-solid cue it is supposed to.
+- **Two regimes were disarmed by it.** `pzr_solid` is `levelRaw >= 100`, so #347's *no bubble, no
+  spray* gate and #346's bulk-modulus surge gain (`K_surge` 0.400 against the solid 1.675, a
+  **4.19×** understatement) could not arm on any hot path.
+- The **lower** clip is deliberate and stays (cold-plant mass bookkeeping, #289). `levelProgram`
+  re-clips at both ends, so the CVCS program band is untouched.
+- The init copy of the same algebra in `pwr_engine` now calls `stepLevel` instead of restating it
+  — measured **bit-identical** across all five initial conditions.
+
+**Solid is not the same as overfilled.** This plant goes solid at an inventory **deficit** (94.4 %,
+nothing injected) because the water expands into the bubble — so CA-12's gate (level at top AND
+overfilled AND no void) excludes the case entirely. That is why the guard is a new probe, **CA-13**,
+not a leg there. `run_behavior` **52 → 53**.
+
+**Removing the clip reddened nothing**, which is the reason CA-13 exists: measured incidence per
+sample before the fix was 95.7 % on a loss of heat sink and 87.9 % on a blackout, against **0.0 %**
+on hot full power, large LOCA 0.5, small LOCA 0.05, SGTR 0.25, stuck-open PORV and both cold ICs —
+a LOCA drains and *cools*, so its base line runs the other way, and no existing probe lived where
+the clip bound.
+
+### Fixed — three constants and a comment that had been wrong since the change that made them so
+
+- **#365** — `level_per_mass` and `level_per_mass_surplus` are both 776, so the piecewise branch
+  that chooses between them is an identity, in **two** places (`levelRaw`'s mass term and
+  `stepPressure`'s surge rate). Two comments still claimed a surplus reads "~3× steeper". The
+  claims are retired and the surge branch now has a guard of its own: CA-9 leg B pins the two
+  against each other through `stepPressure`, where **no gauge can see them** — injection-verified,
+  splitting the surge branch alone reddens it while both existing level checks stay green.
+  Collapsing the branch is deferred behind #361, which reworks the same line.
+- **#365, the arithmetic** — three CVCS figures were direct products of `level_per_mass` and were
+  **7.76× stale** from the day #330 moved it 100 → 776. Measured off the shipped config: the
+  orifice-A drain is **16.8 %/min** (documented as ~2), max charging fills **33.5 %/min**
+  (documented as ~13), and the make-up loop τ is **10.7 s on both branches** (documented as 83 s,
+  which was the pre-#330 deficit figure).
+- **#366** — `primary.void_onset: 0.85` had **zero readers repo-wide** and misdescribed the physics
+  it appeared to set: voiding engages at any inventory deficit once the bulk saturates, and is zero
+  above saturation at any inventory. Deleted. Its two live neighbours on the same line are what made
+  it look real.
+- **#368** — the DNB comment claimed the **hot channel**; the code computes the **mixed-mean** core
+  exit. `dnb_margin_c` is `[tune]` and scenario-arbitrated, so it plausibly absorbs peaking
+  implicitly — the hot-channel factor is **unsourced** (WTSM 19 carries the term as a Tech Spec
+  heading with no value) and no constant was moved. Manuals Rev 7, `12` §10.7.
+### Changed
+- **The manual now says plainly what the plant will not do for you** (#370, #371). Two
+  deferred capability gaps the #297 audit measured are declared instead of implied away: MSIV
+  isolation is a manual action (a real plant also isolates its steam lines automatically on
+  break evidence — this one never will, so on an isolable break *you* are the isolation), and
+  the steam dump goes to the condenser only (no atmospheric dumps — lose the condenser and the
+  plant holds hot at the safety band; that is its honest floor, not a bug).
+
+### Added
+- **A cooldown-rate meter and ±100 °F/hr rate annunciators** (#375). One steam-dump setpoint
+  entry could cool the plant at nineteen times the technical-specification-class limit with no
+  indication or alarm of any kind. The board now carries a damped heatup/cooldown-rate channel
+  derived from the indicated Tavg, and RCS COOLDOWN RATE HI / HEATUP RATE HI annunciators at
+  ±100 °F/hr (alarm cards PWR-A34/A35). The error is still yours to make — nothing limits the
+  dump automatically — but it is no longer silent.
+
+### Fixed
+- **An empty steam generator no longer boils 40 % of rated steam flow indefinitely** (#375).
+  The dump's mass flow now carries the steam pressure, so a deep blowdown self-arrests at the
+  setpoint you asked for instead of running to the model floor while the level clamp silently
+  absorbed a mass imbalance. At and above rated pressure nothing changes.
+- **Feedwater carries enthalpy — overfeeding overcools, and auxiliary feedwater is a real heat
+  sink** (#372). The steam generator's energy balance now heats feed to saturation before
+  boiling it. Overfeeding the generator drops its pressure and nudges power up on moderator
+  feedback — the classic overcooling signature the "SG Overfeed / Overcooling" malfunction
+  promised and could not deliver (measured before: a 15 % overfeed changed nothing to four
+  significant figures). Cold auxiliary feedwater genuinely removes heat: at decay-heat levels
+  full AFW flow pulls the tripped plant below the no-load anchor until the level hold throttles
+  it back. Steady-state calibration is untouched by construction, and what is still simplified
+  — constant final feed temperature, no feedwater-heater train — is declared in the manual
+  (Rev 9, `12 §12.16`).
+- **A tripped turbine stops drawing steam** (#373). There was no stop valve: a trip zeroed the
+  load demand and the machine kept pulling steam through the governor's two-second load lag —
+  2.1 flow-seconds of rated steam through a "shut" turbine, doing no work into no sink. The
+  spring-closed stop valves the real machine trips on now slam in ~0.15 s, and the primary
+  pressure burst that leak was flattening is real again: a trip from 100 % now spikes primary
+  pressure to just under the PORV setpoint — visible on the board where before the transient
+  quietly never happened. Two behaviour probes were re-specified for the corrected plant and
+  pin the burst from both sides.
+- **The steam generator's code safety valves can no longer be defeated by a failed
+  steam-pressure transmitter** (#369). A code safety is a spring valve opened by the steam
+  itself; this plant's opened on an instrument reading, so sticking that one channel from the
+  Failures tab and bottling the generator ran an otherwise-survivable MSIV closure to clad
+  melt — 2696 psi on a valve set to pop at 1350. The pop and reseat now act on true pressure
+  in the engine, the healthy-channel behaviour is measurably unchanged, and new behaviour
+  probe TR-16 holds both legs: a dead gauge changes what you read, never whether the valves
+  lift. Manuals Rev 7 (`12 §8.5`) states the mechanism.
+- **The measurement harness can no longer print a clean table for a command the plant rejected**
+  (#376). `test/measure_stack.js` used to discard the command result, so a typo'd failure id
+  produced fifteen minutes of a perfectly flat plant that read as a real null result — the #297
+  audit nearly filed one. A rejected command, and a command scheduled past the end of the run,
+  are now loud exit-2 errors; the ops harness records lockout refusals it previously dropped,
+  and four behaviour probes now sanity-check harness legs they were silently trusting.
+
 ## [Alpha 1.0.1] — 2026-08-05
 
 ### Changed

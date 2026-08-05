@@ -116,7 +116,12 @@
     if (params) for (var k in params) c[k] = params[k];
     var r = this.cfl.handleCommand(c);
     if (r && r.type === 'blocked') this.blockedCount++;
-    if (r && r.type === 'error' && this.cmdErrors.length < 5) this.cmdErrors.push(action + ': ' + r.message);
+    // 'refused' (ACTION_LOCKED) is recorded alongside 'error' (#376): a lockout a
+    // probe never meant to hit is the same authoring bug as a typo'd action, and it
+    // was invisible to checkSanity's rejected-command guard — neither branch saw it.
+    if (r && (r.type === 'error' || r.type === 'refused') && this.cmdErrors.length < 5) {
+      this.cmdErrors.push(action + ': ' + (r.message || r.code || r.type));
+    }
     return r;
   };
 

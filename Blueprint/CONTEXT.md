@@ -565,6 +565,7 @@ physical-quantity vocabulary.
     "msiv_open": bool, "sg_safety_open": bool,   // main steam isolation valve + SG code safeties (upstream of the MSIV)
     // Synoptic additions (governor / ECCS / CVCS true flows — feed the §8.8 instruments; additive):
     "governor_valve_pct": number,     // turbine admission valve position, 0–100 %
+    "stop_valve_pct": number,         // trip stop (throttle) valves — spring-shut on a trip, 0–100 % (#373)
     "charging_flow_actual": float,    // TRUE CVCS charging (0 with pump off; AUTO-modulated) — feeds instruments.charging_flow, ≠ setpoint
     "letdown_flow_actual": float,     // TRUE CVCS letdown — feeds instruments.letdown_flow
     "leak_flow": float,               // primary break flow, normalized (LOCA/SGTR) — feeds instruments.primary_leak_flow
@@ -741,8 +742,8 @@ close_msiv                                     // isolate main steam (trips a lo
 set_steam_dump      { mode: "auto"|"open"|"closed" | pct }   // turbine bypass to condenser (B2)
 open_pzr_safety                                // pressurizer spring safeties — issued by the control-layer
 close_pzr_safety                               //   actuation (pop 17.13 / reseat 16.55 MPa); engine keeps hydraulics
-open_sg_safety                                 // SG code safeties — control-layer actuation
-close_sg_safety                                //   (pop 9.31 / reseat 9.0 MPa)
+                                               // (SG code safeties have NO command since #369 — engine-native,
+                                               //  self-actuating on true steam pressure; pop 9.31 / reseat 9.0)
 ```
 **RBMK plant control:**
 ```

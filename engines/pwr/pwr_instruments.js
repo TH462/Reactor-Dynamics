@@ -185,6 +185,7 @@
     this.reading.pzr_level_dev = this._levelDev(extras);
     this.reading.rod_limit_margin = this._rodLimitMargin(extras);
     this._deltaTChannels(extras);
+    if (this.specs.tavg_rate) this.reading.tavg_rate = 0;   // #375: a fresh plant has no trend
     this._copyStatus(extras);
   };
 
@@ -328,6 +329,20 @@
     this.reading.pzr_level_dev = this._levelDev(extras);
     this.reading.rod_limit_margin = this._rodLimitMargin(extras);
     this._deltaTChannels(extras);
+
+    // Cooldown/heatup rate from INDICATED tavg (#375) — see the spec comment.
+    // Filter state rides in `lagged` (keyed writes), so save/restore carries it
+    // and a restored save resumes its trend instead of spiking.
+    var rSpec = this.specs.tavg_rate;
+    if (rSpec) {
+      var tNow = this.reading.tavg;
+      var tPrev = this.lagged.tavg_rate_prev != null ? this.lagged.tavg_rate_prev : tNow;
+      this.lagged.tavg_rate_prev = tNow;
+      var rRaw = dt > 0 ? (tNow - tPrev) * 3600 / dt : 0;
+      if (this.lagged.tavg_rate == null) this.lagged.tavg_rate = 0;
+      this.lagged.tavg_rate += (dt / ((rSpec.rate_tau || 45) + dt)) * (rRaw - this.lagged.tavg_rate);
+      this.reading.tavg_rate = clip(this.lagged.tavg_rate, rSpec.range[0], rSpec.range[1]);
+    }
 
     this._copyStatus(extras);
     return this.reading;

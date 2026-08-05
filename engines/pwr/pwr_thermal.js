@@ -18,10 +18,28 @@
   function trueSubcooling(s) { return T_sat(s.pressure_mpa) - s.tavg_c; }
 
   // Effective fuel→coolant coupling: degrades on DNB and on core uncovery (§6.1, §6.5).
-  // DNB is judged at the HOT LEG (core exit) — the hot channel dries out first — using
-  // the exit margin computed last step (explicit coupling, CONTEXT §11); this is what
-  // makes DNB reachable at power (steam-line-break / loss-of-flow), where the bulk Tavg
-  // never approaches saturation. Falls back to the bulk margin before the first step.
+  // DNB is judged at the CORE EXIT, on the MIXED-MEAN outlet — `_subcool_hot_c`, from
+  // last step (explicit coupling, CONTEXT §11) — which is what makes DNB reachable at
+  // power (steam-line-break / loss-of-flow), where the bulk Tavg never approaches
+  // saturation. Falls back to the bulk margin before the first step.
+  //
+  // THE DATUM IS THE MIXED MEAN, NOT THE HOT CHANNEL, and this comment said otherwise
+  // until 2026-08-05 (#368). `thot_raw = tavg + delta_T_rated·Q/flow / 2` (stepCoolant)
+  // is the mixed core outlet; a real DNBR is evaluated at the LIMITING ASSEMBLY, which
+  // runs hotter than the mixed mean by the nuclear enthalpy-rise hot-channel factor. So
+  // this lumped datum reaches the threshold LATER than a real core's hot channel would,
+  // for the same margin.
+  //
+  // That is not necessarily a physics error, and the difference was not resolved: the
+  // threshold `dnb_margin_c` is `[tune]` and is arbitrated by the at-power scenarios, so
+  // a margin set on the mixed mean plausibly ABSORBS the peaking factor implicitly. The
+  // factor itself is UNSOURCED — WTSM 19 (ML11223A342) lists "Nuclear Enthalpy Rise Hot
+  // Channel Factor" as a Tech Spec section heading with no value, WTSM 3.2 (ML11223A213)
+  // gives the DNBR limit ("greater than 1.3") but no enthalpy-rise factor. Reopening
+  // `dnb_margin_c` needs a retrieved factor first, and is a tuning question against those
+  // scenarios rather than a bug fix. Measured negative result (#368): on the plant's
+  // designed 100 % load rejection the hot-leg margin bottoms at 32.6 F (18.1 C) against
+  // the 14.4 F (8.0 C) threshold — the mechanism does not fire when it should not.
   function hFcEffective(s, cfg) {
     var t = cfg.thermal;
     var margin = (s._subcool_hot_c != null) ? s._subcool_hot_c : trueSubcooling(s);
@@ -110,10 +128,41 @@
       var sink = e.rhr_sink_c + (cwNow - cwRef);
       Q_rhr = e.rhr_gain * hxFrac * Math.max(0, s.tavg_c - sink);
     }
-    // RCP heat: pump shaft work deposited in the coolant, scaled by flow — the
-    // real no-load heat source (heats the plant if the heat sink is isolated),
-    // and its loss slightly speeds a post-trip cooldown.
-    var Q_pump = t.heat_gen_coeff * (t.pump_heat_frac || 0) * s.flow_frac;
+    // RCP heat: pump shaft work deposited in the coolant — the real no-load heat source
+    // (it heats the plant if the heat sink is isolated), and its loss slightly speeds a
+    // post-trip cooldown.
+    //
+    // SCALED BY THE ROTOR-DRIVEN PART OF FLOW, NOT BY FLOW (#367, 2026-08-05). This read
+    // `s.flow_frac` outright, and natural circulation carries flow_frac while doing no shaft
+    // work at all — buoyancy is not a pump. So a stopped RCP went on depositing "pump heat"
+    // for as long as the plant circulated. MEASURED on a 24 h post-scram ride with the RCP
+    // secured at 60 s, the term as a fraction of core heat: 0.55 % at rated with the pumps
+    // running (correct), 0.85 % at 2 h and 2.57 % at 24 h with `pump_running` false. It GROWS,
+    // because decay heat falls faster than buoyancy flow does — W ∝ Q^⅓, so flow falls as the
+    // cube root — making it a permanent phantom source on a long blackout rather than a
+    // vanishing one. Same class as #315: a term reading the wrong driver, exactly right at the
+    // rated test point where flow_frac = 1 and pump_running = true, wrong everywhere else.
+    //
+    // THE COASTDOWN KEEPS ITS HEAT, and that is the reason for the subtraction rather than a
+    // bare `pump_running ?` gate. A coasting rotor really is doing flywheel work on the fluid —
+    // WTSM 3.2 (ML11223A213 p. 3.2-17) has the flywheel carrying the coastdown "into" natural
+    // circulation — so the honest split is total flow minus the part buoyancy is producing.
+    // It is CONTINUOUS BY CONSTRUCTION: stepFlow decays flow_frac toward naturalCircFlow, so
+    // this difference decays to 0 with it and established natural circulation gets exactly
+    // zero, with no step at the handover and no new state field to migrate.
+    //
+    // `naturalCircFlow` is a pure exported function, called same-step. Its void input is one
+    // step old here (stepInventory is step 9, this is step 6) where stepFlow at step 10 sees
+    // the current one — a sub-step disagreement on a term worth 0.55 % of core heat. The
+    // fallback when pwr_primary is absent is 0 buoyancy, i.e. the pre-#367 behaviour, so an
+    // ad-hoc rig that loads only this file is unchanged rather than silently altered.
+    var Q_pump_flow = s.flow_frac;
+    if (!s.pump_running) {
+      var buoy = (RD.pwrPrimary && RD.pwrPrimary.naturalCircFlow)
+        ? RD.pwrPrimary.naturalCircFlow(s, cfg) : 0;
+      Q_pump_flow = Math.max(0, s.flow_frac - buoy);
+    }
+    var Q_pump = t.heat_gen_coeff * (t.pump_heat_frac || 0) * Q_pump_flow;
     var dTavg = (Q_fuel_to_coolant + Q_pump - Q_coolant_to_sg - Q_rhr) / t.coolant_heat_capacity;
     // Cold ECCS injection quench (§6.2/§6.3): HPI/LPI and the accumulators inject borated
     // RWST/SIT water well below Tavg, removing sensible heat as it mixes — the thermal
@@ -128,18 +177,38 @@
     if (q_inj > 0 && e.eccs_temp_c != null) {
       dTavg += (e.eccs_cooling_gain != null ? e.eccs_cooling_gain : 0) * q_inj * (e.eccs_temp_c - s.tavg_c);
     }
-    // Break blowdown flash-cooling (§6.2/§6.3): coolant leaving a primary break (s.leak_flow)
-    // carries enthalpy, and the remaining inventory flashes to replace it, removing latent heat.
+    // Break blowdown FLASH-cooling (§6.2/§6.3): coolant leaving a primary break (s.leak_flow)
+    // carries enthalpy, and the remaining inventory FLASHES to replace it, removing latent heat.
     // Self-limiting perfect-mixing pull of Tavg toward blowdown_sink_c (containment saturation)
     // at the break throughput rate, scaled by blowdown_gain — the SAME form as the ECCS quench
-    // above. This is what makes the saturation plateau respond to break size (small break: decay
-    // heat dominates, Tavg holds high, Psat pins pressure > 600 psi; large break: this dominates,
-    // Tavg falls toward containment, pressure follows Psat(tavg) below the accumulator setpoint).
-    // Keyed on leak_flow ONLY (a stuck-open PORV vents the steam space, leak_flow=0 → no effect,
-    // so the flagship TMI path is untouched). Cannot cool below blowdown_sink_c; exactly 0 with
-    // no break.
+    // above. Keyed on leak_flow, so a stuck-open PORV vents the steam space with leak_flow = 0
+    // and the flagship TMI path is untouched. Cannot cool below blowdown_sink_c.
+    //
+    // SATURATION-GATED (#363, 2026-08-05), AND IT IS THE SAME GATE THE PRESSURE SIDE ALREADY
+    // HAD. Flashing removes latent heat only while the fluid is AT saturation. Once the residual
+    // inventory is subcooled at RCS pressure nothing flashes and this term must stop — it was
+    // keyed on `leak_flow > 0` alone, so it kept pulling bulk Tavg toward a fixed 230 F (110 C)
+    // sink through a plant that had long since stopped boiling. MEASURED full stack before the
+    // gate, a 2 % break at 20 min: Tavg 225.6 F (107.5 C) at 1583 psi (10.92 MPa) with void 0 —
+    // 378.4 F (210.2 C) of subcooling with a break open, falling monotonically from 579.3 F
+    // (304.1 C). Half of one break's physics was regime-aware and the other half was not:
+    // `stepPressure` has gated `leak_depress` on `saturated` all along.
+    //
+    // `trueSubcooling(s) <= 0` IS THAT TEST, not a second opinion about it. stepPressure asks
+    // `P_sat(Tavg) > P`; T_sat and P_sat_from_T are exact inverses (179.47·P^0.239 and its
+    // reciprocal power), so `P_sat(Tavg) > P` <=> `Tavg > T_sat(P)` <=> `trueSubcooling < 0`.
+    // Written in THIS file's own currency rather than importing the pressure spelling, which
+    // would be a second copy of the formula. The one deliberate difference is the boundary:
+    // `<= 0` includes exactly-saturated, where flashing does occur, against stepPressure's
+    // strict `>` — a measure-zero disagreement, and the physical side of it.
+    //
+    // Both inputs are ONE STEP OLD and that is the house convention, not an oversight: this is
+    // step 6, `pressure_mpa` is written by stepPressure (step 7) and `primary_void_fraction` by
+    // stepInventory (step 9), so stepPressure reads the same stale void this does (CONTEXT §11
+    // explicit coupling).
     var q_leak = s.leak_flow || 0;
-    if (q_leak > 0 && t.blowdown_gain) {
+    var flashing = (s.primary_void_fraction > 0) || trueSubcooling(s) <= 0;
+    if (q_leak > 0 && flashing && t.blowdown_gain) {
       dTavg += t.blowdown_gain * q_leak * ((t.blowdown_sink_c != null ? t.blowdown_sink_c : 100) - s.tavg_c);
     }
     s.tavg_c += dTavg * dt;
