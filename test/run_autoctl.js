@@ -412,6 +412,21 @@ test('PWR · pzr_pressure returns the plant to its pressure setpoint (#154)', fu
   var dip = ts(r).pressure_mpa;
   for (var d = 0; d < 90; d++) { r.run(1); if (ts(r).pressure_mpa < dip) dip = ts(r).pressure_mpa; }
   r.cmd({ action: 'set_spray', pct: 0 });
+  // SECURE SI BEFORE HANDING THE PLANT TO THE CHANNEL (2026-08-04, #347). The blast trips
+  // safety injection, and injection into a tripped plant fills the pressurizer SOLID — level
+  // pegged at 100 %, inventory 106.4 %. A solid pressurizer has no steam bubble, and spray
+  // controls pressure by CONDENSING that bubble, so the `pzr_pressure` channel is being asked
+  // to regulate with its actuator disconnected from the physics: measured, it parks at
+  // 16.14 MPa (2340 psi) and cannot come down. That is the plant being right, not the channel
+  // being wrong — losing pressure control when you go solid is the real behaviour, declared at
+  // `Manuals/12` §12.4c — so the probe now does what an operator does at this point and
+  // terminates injection (E-1 SI termination) before grading the channel.
+  //
+  // It is a BETTER TEST, not a re-band: with SI secured the plant comes off solid (level
+  // 92.2 %) and the channel lands on 15.41 MPa — EXACTLY the setpoint, tighter than the
+  // ±0.15 band — and it does so on the pre-#347 engine too, where spray worked solid or not.
+  // The old form only passed because the actuator was credited with authority it did not have.
+  r.cmd({ action: 'set_hpi', active: false });
   r.engage(['pzr_pressure']);
   r.run(900);
   ck('spray blast dropped pressure', dip.toFixed(2) + ' MPa', dip < 13.0, '< 13.0 MPa');

@@ -99,6 +99,7 @@
     'CA-9': 'probe (loss of CVCS make-up — the pzr level cue and the letdown isolation; #330)',
     'CA-10': 'probe (the 17 % low-level heater cutoff — WTSM 10.3 §10.3.4.1; #334)',
     'CA-11': 'probe (break discharge follows RCS pressure — 10 CFR 50 App K I.C.1.b; #334)',
+    'CA-12': 'probe (a water-solid RCS repressurizes and relieves — mass_max no longer discards; #346)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -1173,31 +1174,25 @@
         // vs 85.9 % at 40 min), so uncovery and the heat-up that follows both arrive later.
         // The leg's CLAIM is unchanged and true on both plants; only the window was wrong.
         //
-        // RED SINCE #337 F15, AND DELIBERATELY NOT RE-AUTHORED — it is waiting on #346, and
-        // the measurement says why. A/B'd on this exact fixture, pre-F15 vs post-F15:
+        // ECCS IS DEFEATED HERE SINCE #346, and that is a correction to the leg rather than a
+        // concession to a change. The leg's claim is about CIRCULATION — it moves heat to the
+        // steam generator and does not remove it — so anything else that removes heat has to
+        // be out of the picture or the leg is measuring the wrong system. It was not: with
+        // the overfill path fixed the plant survives this event, and measurement says
+        // circulation has nothing to do with it. What saves it is ECCS running unterminated
+        // into a relieving RCS, i.e. automatic feed-and-bleed, cooling the plant 660 → 443 °F
+        // over three hours with the PORV at ~45 % duty. Defeat the injection and it is lost at
+        // 94 min — and MEASURED IDENTICALLY on the pre-#346 engine, damage at 94 min, peak clad
+        // 5072 °F both sides. So this passes on the old plant too: it is the same claim,
+        // finally isolated to the mechanism it names (HR10), rather than a band moved to fit.
         //
-        //     t        pre-F15                     post-F15
-        //     60 min   inv 90.2 %, void 0.295      inv 90.7 %, void 0.279
-        //     90 min   inv  0.0 %, clad 2100 °F    inv 120.0 %, void 0.000
-        //    120 min   MELTED, clad 5072 °F        Tavg 447 °F, undamaged
-        //    600 min   MELTED                      Tavg 166 °F, undamaged
-        //
-        // The mechanism is NOT that circulation started cooling. This leg injects
-        // `loss_of_offsite_power`, not a blackout, so the diesels are up and AC is available
-        // (#329's distinction) — and F15's stronger relief authority now takes pressure down
-        // to the SI actuation setpoint, so HPI comes in and refills the RCS. Safety injection
-        // doing its job on a design-basis event is the right answer; the leg's premise, that
-        // nothing can remove heat once the sink is gone, quietly assumed SI never got there.
-        //
-        // What is NOT right is the endpoint: inventory pins at exactly 120.0 % — `mass_max` —
-        // and stays, because the clip DISCARDS the overfill instead of repressurizing, so
-        // relief never lifts and injection never terminates. That is #346 verbatim, live in
-        // the backshop lane. Re-banding or re-authoring this leg before #346 lands would be
-        // fitting it to a plant that is about to change again. Verified not-the-accumulators:
-        // they read 100.0 % remaining with zero flow throughout.
+        // The survival it used to assert away was NOT circulation immunity; it was the
+        // pressurizer discarding ECCS mass at `mass_max` (#346), which let cold RWST water
+        // quench the plant through a sink with no outlet. See CA-12.
+        e.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
         e.run(7200);
         var te = e.ts();
-        ck('with the heat sink gone the plant is still lost — circulation is not cooling',
+        ck('with the heat sink gone AND no injection the plant is still lost — circulation is not cooling',
           'damaged ' + String(te.fuel_damaged) + ' @ Tavg ' + fmt(te.tavg_c * 9 / 5 + 32, 0) + ' °F',
           te.fuel_damaged === true, 'damaged');
         T.checkSanity(ck, a);
@@ -1703,10 +1698,39 @@
         h2.cmd('set_cvcs_auto', { active: true });
         h2.run(30);
         h2.cmd('inject_failure', { failure_id: 'pzr_level_sensor_low' });
-        h2.run(300);
+        var h2n = 0, h2porv = 0;
+        h2.run(300, function (hh) { h2n++; if (hh.ts().porv_open) h2porv++; });
         var t2 = h2.ts();
-        ck('charging flooded the plant chasing the stuck-low reading',
-          fmt(t2.core_inventory_pct, 1) + ' %', t2.core_inventory_pct > 110, '> 110');
+        // RE-AUTHORED at #346, and the old form was pinning that change's defect. It read
+        // `core_inventory_pct > 110`, a magnitude only reachable while the RCS would accept
+        // unbounded mass: `_mass` clipped at 1.2 and the surplus was DISCARDED, so charging
+        // could walk past the water-solid point without the plant noticing. Now the fill
+        // arrests where the geometry says it must (measured 105.8 % against the old 110.8 %),
+        // and the number the leg was reading is gone.
+        //
+        // What it was really claiming — the plant is FLOODED — is unchanged and is asserted
+        // directly instead of through a proxy magnitude: true level pinned at the top of the
+        // vessel with inventory above nominal is what "flooded" means. Measured 100.0 % on
+        // BOTH engines, so this passes on the old one too (HR10 — a better statement of the
+        // same claim, not a re-band to fit the change).
+        // The PEAK, not the closing sample. Once the plant is solid the relief valve cycles it
+        // across the boundary, so a single end-of-run read is a knife edge — it landed on
+        // 99.85 % and reddened a claim that was true throughout (the TR-15 90-minute trap, in
+        // one line). "Was driven solid" is a claim about the run, so `range()` is what states
+        // it; the closing inventory carries the other half.
+        ck('charging flooded the plant water-solid, chasing the stuck-low reading',
+          fmt(h2.range('pzr_level_pct').max, 1) + ' % peak TRUE level at ' +
+          fmt(t2.core_inventory_pct, 1) + ' % inventory',
+          h2.range('pzr_level_pct').max >= 99.9 && t2.core_inventory_pct > 103, 'solid, > 103 % inventory');
+        // NEW at #346, and it FAILS ON THE OLD ENGINE — 0.0 % duty, pressure flat at 2238 psi
+        // for the whole five minutes. A deceived level channel no longer means the plant is
+        // silent: the water it cannot see still has to go somewhere, and the relief path is
+        // where it goes. That is the honest cue behind the lying gauge, and the PI-8 trip is
+        // still fooled either way (the check below is unchanged).
+        ck('…and the overfill announces itself on the RELIEF path, which the sensor cannot lie about',
+          fmt(100 * h2porv / h2n, 1) + ' % PORV duty, peak ' +
+          fmt(h2.range('pressure_mpa').max * 145.038, 0) + ' psi (pre-#346: 0.0 %, 2238 psi flat)',
+          h2porv > 0 && h2.range('pressure_mpa').max * 145.038 > 2300, 'PORV lifts above 2300 psi');
         // Threshold 95 → 85 (#209). This leg deliberately keeps the SHIPPED lineup —
         // CVCS in AUTO with letdown Orifice A open is the board a player is handed —
         // so the overfill it drives is bounded by that 0.030 drain: measured 87.3 %
@@ -2611,6 +2635,142 @@
         ck('…and pressure with it (pre-#337: 5 psi across the whole event)',
           fmt(ePmin * 145.038, 0) + ' psi min', ePmin * 145.038 < 2175, '< 2175 psi (nominal 2235)');
         T.checkSanity(ck, a);
+      });
+    },
+
+    /* CA-12 — A WATER-SOLID RCS REPRESSURIZES, AND RELIEF IS WHAT ENDS IT (#346, 2026-08-04).
+     *
+     * THE DEFECT. `_mass` was clipped at `primary.mass_max` (1.2) and, since #337, the surge
+     * driver was clipped with it — deliberately, so a pinned plant would report "zero surge
+     * instead of a phantom insurge it has nowhere to put". Both of those options are wrong.
+     * A solid RCS being injected into with no relief path does not absorb the mass and does
+     * not ignore it: it RELIEVES. Measured full stack before the fix, LOOP + `afw_failure`:
+     * inventory pinned at exactly 120.00 % while ECCS injected for 45 minutes, pressure flat
+     * at 2232 psi (15.39 MPa), no PORV lift, no safety lift, and cold RWST water quenching
+     * the plant 660 → 447 °F through a mass sink with no outlet.
+     *
+     * WHY NOTHING CAUGHT IT. Before #337 inventory could not move pressure at all, so the
+     * clip was unobservable — the #315 shape: a term that is an identity in the regime the
+     * gates live in. #337 made the coupling real and made this boundary load-bearing.
+     *
+     * THE FIX IS A REGIME, NOT A CEILING. Raising `mass_max` was tried first and is NOT the
+     * answer: measured at 3.0 the plant simply ran to 300 % inventory with pressure still
+     * parked in the PORV band, because the surge gain in use is the one for a pressurizer
+     * that still HAS a steam bubble. The bubble is the RCS's only compressible volume; once
+     * the level line reaches 100 % it is gone and the same displacement compresses liquid,
+     * so the gain steps to the bulk modulus (`solid_bulk_mpa`). `mass_max` then stops being
+     * reachable on this path, which is what leg C asserts.
+     *
+     * LEG B IS THE ONE THAT MAKES IT PHYSICS RATHER THAN A NUMBER. The settling inventory is
+     * not transcribed — it is COMPUTED here from the same geometry the engine uses, so a
+     * retune of `level_per_mass_surplus` or `level_prog_floor` moves the expectation with the
+     * plant instead of leaving a stale constant behind. */
+    'CA-12': function () {
+      return test('CA-12 a water-solid RCS repressurizes — mass_max stops discarding ECCS overfill', function (ck) {
+        var pz = RD.PWR_CONFIG.pressurizer, pr = RD.PWR_CONFIG.primary;
+
+        // ---- leg A: THE REPORTED CASE. Lose the heat sink, let the plant boil down, let
+        // ECCS actuate and refill it solid, then ride. The pre-#346 engine sits here flat.
+        var a = H('hot_full_power');
+        a.run(60);
+        a.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        a.cmd('inject_failure', { failure_id: 'afw_failure' });
+        // TWO SEGMENTS, and the split is what makes the leg discriminate. The first ~100
+        // minutes are the boil-down, the uncovery and the ECCS refill — a violent transit in
+        // which the PORV lifts at 55 % duty and pressure swings 160 psi ON BOTH PLANTS. Only
+        // the SETTLED overfill after it separates them. Measured, the first draft ran one
+        // segment over the whole ride and the pre-#346 engine passed every leg-A check: they
+        // were answered by the uncovery, not by the thing under test. A 2400 s window at
+        // t+80 min was still contaminated (the pin completes at ~85 min: 1.1 % duty,
+        // 161 psi). At t+100 min the two plants are 0.0 % vs 18.0 % duty and 1.8 vs 126 psi.
+        //
+        // "LEVEL == 100" IS ALSO NOT THE GATE, for the same reason one layer down. The void
+        // term pegs the SAME gauge at 100 % on a boiling, half-empty core — that is the TMI
+        // deception, the exact opposite of solid. Solid means the gauge at the top AND
+        // overfilled AND no void, so all three are required below.
+        var aInvMax = 0;
+        var seen = function (hh) { var v = hh.ts().core_inventory_pct; if (v > aInvMax) aInvMax = v; };
+        a.run(6000, seen);                                  // through the transit
+        var aN = 0, aSolid = 0, aInjWhileSolid = 0, aPorv = 0, aPmin = 1e9, aPmax = -1e9;
+        a.run(3600, function (hh) {                         // the settled overfill
+          var t = hh.ts();
+          seen(hh); aN++;
+          if (!(t.pzr_level_pct >= 99.99 && t.core_inventory_pct > 100 && !(t.primary_void_fraction > 0))) return;
+          aSolid++;
+          if (t.hpi_flow_normalized > 0.001) aInjWhileSolid++;
+          if (t.porv_open) aPorv++;
+          if (t.pressure_mpa < aPmin) aPmin = t.pressure_mpa;
+          if (t.pressure_mpa > aPmax) aPmax = t.pressure_mpa;
+        });
+        ck('the plant really is solid and still being injected into (or leg A proves nothing)',
+          aSolid + '/' + aN + ' settled samples solid, injecting on ' + aInjWhileSolid,
+          aSolid > 500 && aInjWhileSolid > 500, '> 500 samples of each');
+        // POSITIVE, not "pressure was not flat" — the absence-assertion trap. Pre-#346 this
+        // reads 2232..2233 psi (15.39..15.40 MPa) across the whole hour of injection.
+        ck('pressure RESPONDS to the injection instead of sitting flat',
+          fmt((aPmax - aPmin) * 145.038, 0) + ' psi of swing while solid (' +
+          fmt(aPmin * 145.038, 0) + '..' + fmt(aPmax * 145.038, 0) + ' psi; pre-#346: 2 psi)',
+          (aPmax - aPmin) * 145.038 > 50, '> 50 psi');
+        // …and the relief valve is what ends it. Also positive, and stated as a DUTY rather
+        // than a sample count: pre-#346 the PORV does not lift once in the settled hour.
+        ck('…and it lifts the PORV — relief is what terminates the fill',
+          fmt(100 * aPorv / Math.max(aSolid, 1), 1) + ' % relieving duty while solid (pre-#346: 0.0 %)',
+          aPorv / Math.max(aSolid, 1) > 0.05, '> 5 % duty');
+
+        // ---- leg B: THE BOUNDARY IS THE GEOMETRY. Solid is where the level line reaches
+        // 100 %, so the settling inventory falls out of the same three constants stepLevel
+        // uses. Computed, never transcribed.
+        var ta = a.ts();
+        // `levelBase` is called on the ENGINE'S OWN state rather than re-derived from the
+        // true-state snapshot, for two reasons: the thermal-expansion reference `_tavg_fp` is
+        // engine-internal and not published, and a second copy of the line here would be a
+        // formula that does not move when the engine's does (the #315 lesson, and why
+        // `levelRaw` itself has one definition and two consumers).
+        var base = RD.pwrPressurizer.levelBase(a.eng.s, RD.PWR_CONFIG);
+        var mSolid = 1 + (100 - base) / pz.level_per_mass_surplus;
+        ck('inventory settles at the SOLID point the level geometry predicts',
+          fmt(ta.core_inventory_pct, 2) + ' % vs ' + fmt(mSolid * 100, 2) + ' % predicted from ' +
+          'base ' + fmt(base, 1) + ' % / ' + fmt(pz.level_per_mass_surplus, 0) + ' %/frac',
+          Math.abs(ta.core_inventory_pct - mSolid * 100) < 1.0, 'within 1 point');
+
+        // ---- leg C: MASS IS NO LONGER DISCARDED. The clip is a far-away numerical guard
+        // again (#330's words for it), and this is the check that says so. Pre-#346 the peak
+        // is exactly mass_max × 100 — 120.00 %, to the last digit, which is the fingerprint
+        // of a clip rather than of any physical settling point.
+        ck('inventory never reaches the mass_max clip — the ceiling is not the physics',
+          fmt(aInvMax, 2) + ' % peak vs the ' + fmt(pr.mass_max * 100, 2) + ' % ceiling',
+          aInvMax < pr.mass_max * 100 - 1.0, '> 1 point clear of ' + fmt(pr.mass_max * 100, 0) + ' %');
+
+        // ---- leg D: THE CALIBRATION GUARD, and it PASSES ON THE OLD ENGINE deliberately.
+        // A normally-bubbled plant must be untouched: the stiff gain applies only where the
+        // bubble is gone, so hot full power has to A/B identically. Without this leg, raising
+        // the gain everywhere would satisfy legs A–C while wrecking every pressure transient
+        // in the suite. (The rest of the battery would catch that; saying it here is what
+        // makes the SCOPE of the change an assertion rather than an accident.)
+        var d = H('hot_full_power');
+        d.run(600);
+        var td = d.ts();
+        ck('a bubbled plant is untouched — level well off solid at steady power',
+          fmt(td.pzr_level_pct, 1) + ' %', td.pzr_level_pct > 45 && td.pzr_level_pct < 65, '45..65 %');
+        ck('…and pressure is still on programme there',
+          fmt(td.pressure_mpa * 145.038, 0) + ' psi',
+          td.pressure_mpa > 15.30 && td.pressure_mpa < 15.55, '2219..2255 psi');
+
+        // ---- leg E: IT IS NOT A RESCUE. Relief terminating the fill must not turn into
+        // immunity — defeat the injection and the same event must still destroy the core.
+        // Measured identical pre- and post-#346 (damage at 94 min), which is the point: this
+        // change moves the OVERFILL path and nothing else.
+        var e = H('hot_full_power');
+        e.run(60);
+        e.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        e.cmd('inject_failure', { failure_id: 'afw_failure' });
+        e.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
+        e.run(7200);
+        var te = e.ts();
+        ck('with ECCS defeated the same event still destroys the core',
+          'damaged ' + String(te.fuel_damaged) + ', melted ' + String(te.melted),
+          te.fuel_damaged === true, 'damaged');
+        T.checkSanity(ck, d);
       });
     },
 

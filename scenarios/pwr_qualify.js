@@ -43,23 +43,39 @@
 
       // The fault: TMI mechanics, unannounced — the relief valve sticks open
       // while its indicator lies CLOSED. A sharp candidate may isolate on the
-      // pressure trend alone (early branch); otherwise the eroding subcooling
-      // margin arms the graded challenge. The isolation branches grade the
+      // pressure trend alone (early branch); otherwise the PRESSURIZER GOING
+      // SOLID arms the graded challenge. The isolation branches grade the
       // block valve's true STATE (block_valve_open), not the command — a press
       // made before this beat fires would be wiped from the instructor's
       // action memory and previously left the exam unfinishable (playtest).
       // `open_block_valve` at injection enforces the briefed normal lineup, so
       // pre-emptively isolating during the briefing cannot cheese the exam.
+      //
+      // THE ARMING CUE WAS `subcooling_low` UNTIL #347, and re-pointing it is a
+      // correction to the exam, not a concession. That alarm described a plant that
+      // discarded its ECCS overfill (#346) and therefore drained through a stuck-open
+      // relief valve no matter what injection did. With that fixed, safety injection
+      // matches the valve and holds the RCS: measured hands-off for 40 minutes, the
+      // margin sits at 149 °F (83 °C) and never moves, so the graded window never armed
+      // and the exam could not be failed OR passed. What the plant does instead is go
+      // WATER-SOLID — inventory 109.3 %, level pegged, PZR LEVEL HIGH standing from
+      // T+23 s on every path — while the relief line quietly passes water to
+      // containment behind a light that reads CLOSED.
+      //
+      // That is a harder exam and the same lesson. Nothing screams the obvious
+      // parameter; the candidate has to notice a solid pressurizer being held solid by
+      // injection against an unisolated path, and the hot tailpipe behind a "shut"
+      // valve. `pzr_level_high` is the alarm that says so, and it is annunciated.
       { id: 'fault',
         trigger: { type: 'delay', value: 25.0 },
         commands: [{ action: 'open_block_valve' }],
         inject_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
         branches: [
           { trigger: { type: 'true_state', field: 'block_valve_open', direction: 'is_false' }, goto: 'verify_early' },
-          { trigger: { type: 'alarm', alarm_id: 'subcooling_low' }, goto: 'challenge' },
+          { trigger: { type: 'alarm', alarm_id: 'pzr_level_high' }, goto: 'challenge' },
         ] },
 
-      // Isolated before the margin alarm — verify the recovery holds.
+      // Isolated before the plant goes solid — verify the recovery holds.
       { id: 'verify_early',
         trigger: { type: 'delay', value: 2.0 },
         branches: [
@@ -67,13 +83,21 @@
               { type: 'delay', value: 180.0 },
               { type: 'instrument', instrument: 'subcooling_margin', direction: 'above', value: 11.5 },
             ] }, goto: 'passed' },
-          { trigger: { type: 'alarm', alarm_id: 'subcooling_low' }, goto: 'challenge' },
+          { trigger: { type: 'alarm', alarm_id: 'pzr_level_high' }, goto: 'challenge' },
         ] },
 
-      // Margin eroding — the graded window is open. Pass = valve isolated
-      // (true state) AND margin restored, in either order; frozen = five
-      // minutes with the relief path still open (was ten — playtest: the
-      // silent fail ran 11+ real minutes past the mission budget).
+      // The plant is solid on injection against an unisolated relief path — the graded
+      // window is open. Pass = valve isolated (true state) AND margin held, in either
+      // order; frozen = five minutes with the relief path still open (was ten —
+      // playtest: the silent fail ran 11+ real minutes past the mission budget).
+      //
+      // THE UNCOVERY BRANCH IS KEPT THOUGH IT IS NOW UNREACHABLE ON THIS PATH (#347).
+      // With injection matching the valve the core cannot uncover here — measured, the
+      // minimum inventory across a 40-minute hands-off run is 99.2 %. It stays because it
+      // guards the direction that matters: anything that weakens injection, strengthens
+      // the valve, or brings back the #346 discard makes it reachable again, and this is
+      // the branch that must catch it. An unreachable failure branch costs nothing; a
+      // missing one costs the exam its worst outcome. `failed_frozen` is the live failure.
       { id: 'challenge',
         trigger: { type: 'delay', value: 2.0 },
         branches: [
@@ -91,8 +115,8 @@
       { id: 'passed',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'Exam over — you passed. A relief valve stuck open and its indicator lied to your face, exactly as it lied to the crew at Three Mile Island. You read the pressure, believed the subcooling margin, isolated the block valve, and put the water back. There is nothing more this campaign can teach you.',
-          industry: 'Unannounced stuck-open PORV with failed-closed indication: diagnosed on secondary indications, isolated via block valve, subcooling margin restored. Examination standard met in full.',
+          learning: 'Exam over — you passed. A relief valve stuck open and its indicator lied to your face, exactly as it lied to the crew at Three Mile Island. Nothing screamed: your margins stayed comfortable the whole time, because the emergency pumps were quietly replacing every drop the valve threw away. You caught it anyway — a pressurizer that went solid and stayed there, a hot tailpipe behind a shut light — and you isolated it. There is nothing more this campaign can teach you.',
+          industry: 'Unannounced stuck-open PORV with failed-closed indication: diagnosed without margin degradation — SI make-up masked the loss — on solid-plant indication and relief-line temperature, isolated via block valve. Examination standard met in full.',
         },
         clear_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
         level_complete: {
@@ -106,8 +130,8 @@
       { id: 'failed_frozen',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'Time. The board had been telling you for five minutes: pressure sagging, subcooling margin bleeding away, a pressurizer behaving strangely — while one little light said CLOSED. You have seen this exact trap before, at Three Mile Island. Rewind, look at what the pressure did right after the fault, and act on the physics this time.',
-          industry: 'No corrective action within the graded window despite converging indications of an open relief path. Review: PZR pressure trend, subcooling margin, PORV discharge indications. Rewind available.',
+          learning: 'Time. Nothing was screaming — and that was the exam. Your margins never moved, because the emergency pumps were making up every drop the relief valve threw away, and they will go on doing that until the tank they draw from is empty. What the board WAS telling you, for five minutes: a pressurizer gone solid and pegged there, injection running that nothing asked you to stop, and a discharge line hot behind a light that said CLOSED. You have seen this exact trap before, at Three Mile Island. Rewind, look at the pressurizer level right after the fault, and act on the physics this time.',
+          industry: 'No corrective action within the graded window. Note the absence of margin degradation: SI make-up was masking the loss, and does so only while the RWST lasts. Available indications: PZR level pegged high (solid plant), unterminated SI, relief-line temperature elevated against a closed PORV indication. Rewind available.',
         },
         clear_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
         level_complete: {
