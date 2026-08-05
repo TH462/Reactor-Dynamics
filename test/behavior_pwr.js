@@ -2359,22 +2359,35 @@
         // rated, a 26 % miss on a 6 % band. Neither change is at fault alone; the composition
         // is. The SAMPLING assumed a plant that no longer exists.
         //
-        // The anchor is a SMALL break sampled on the first engine step, which is the condition
-        // the claim is actually about — the plant genuinely still at the reference pressure.
-        // Measured 15.346 MPa and 0.21 % off rated, where the old rig now reads 26 %: the
-        // claim is stated more strongly than before, not banded to fit.
-        var SEV_A = 0.01, RATED_A = SEV_A * 0.5;                 // severity · (meta.max/100)
+        // The anchor is a break small enough that the plant HOLDS at the reference pressure,
+        // asserted across a 30 s window rather than at an instant. This rig comes from the
+        // workbench lane's independent #348 fix (63ceac1) and is adopted over the one that
+        // landed here, because it is measurably the sturdier of the two: at severity 0.002 the
+        // ratio sits in 0.9961..0.9975 for the whole 30 s with the RCS at 15.290 MPa, where the
+        // 0.01 break this leg first used decays to 0.8898 over the same window and passes only
+        // because it is read on a single engine step. A calibration anchor that depends on
+        // being sampled before the plant can react is a fixture waiting to break again — which
+        // is the entire lesson of this issue.
+        var SEV_A = 0.002, RATED_A = SEV_A * 0.5;                // severity · (meta.max/100)
         var aCal = H('hot_full_power');
         aCal.run(30);
         aCal.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV_A });
-        aCal.run(0.05);                                          // one 0.02 s step
-        var tcal = aCal.ts();
-        ck('the plant really is still at the reference pressure (or leg A proves nothing)',
-          fmt(tcal.pressure_mpa, 3) + ' MPa vs ' + pRef + ' ref',
-          Math.abs(tcal.pressure_mpa - pRef) < 0.2, 'within 0.2 MPa');
-        ck('at nominal pressure the break flows its RATED size (old calibration intact)',
-          fmt(tcal.leak_flow, 5) + ' vs ' + fmt(RATED_A, 5) + ' rated, at ' + fmt(tcal.pressure_mpa, 2) + ' MPa',
-          Math.abs(tcal.leak_flow - RATED_A) / RATED_A < 0.06, 'within 6 %');
+        var calMin = 9, calMax = 0, calPmin = 99, calN = 0;
+        aCal.run(30, function (hh) {
+          var t = hh.ts();
+          if (!(t.leak_flow > 0)) return;
+          var r = t.leak_flow / RATED_A;
+          calN++;
+          if (r < calMin) calMin = r;
+          if (r > calMax) calMax = r;
+          if (t.pressure_mpa < calPmin) calPmin = t.pressure_mpa;
+        });
+        ck('the plant really did hold at the reference pressure (or leg A proves nothing)',
+          fmt(calPmin, 3) + ' MPa min vs ' + pRef + ' ref, over ' + calN + ' samples',
+          calN > 20 && Math.abs(calPmin - pRef) < 0.25, 'within 0.25 MPa');
+        ck('at nominal pressure the break flows its RATED size, and KEEPS flowing it',
+          'ratio ' + fmt(calMin, 4) + '..' + fmt(calMax, 4) + ' across 30 s',
+          Math.abs(calMin - 1) < 0.06 && Math.abs(calMax - 1) < 0.06, 'within 6 % throughout');
 
         // Legs B and C ride a FULL-SIZE break. 0.20 no longer spans the blowdown: with the
         // discharge self-limiting it parks at 3.87 MPa, so the low end the exponent solve and

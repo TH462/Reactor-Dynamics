@@ -386,13 +386,14 @@ to read everything.
 
 _Last updated: **2026-08-04**._
 
-**Where the PWR is.** `run_all` is **38 runners, ALL AT BASELINE** — the first fully green tree
-since #337 merged. The whole HR9 cascade that change set off is cleared: its TMI-2 half by **#347**
-(`run_campaign` 51/51, `run_scenarios` 3/3) and the rest by **#348** (`run_behavior` 52/52,
-`run_procedures` 29/29 141/141, `run_procedures_stack` 29/29 262/262). Open backlog is dominated by
-RBMK/BWR operability (on hold) plus a handful of UI/doc items, and **#349** — the pressurizer
-relief capacities are safeties:PORV **28.6×** against a sourced **3.0×**, latent because nothing
-reaches the code safeties in a real transient.
+**Where the PWR is.** `run_all` is **38 runners, ALL AT BASELINE on the fully merged tree** —
+all three lanes in, and the first fully green `develop` since #337. The whole HR9 cascade that
+change set off is cleared: its TMI-2 half by **#347** (`run_campaign` 51/51, `run_scenarios` 3/3)
+and the rest by **#348** (`run_behavior` 52/52, `run_procedures` 29/29 141/141,
+`run_procedures_stack` 29/29 262/262), with the board work of **#350** and **#357** on top. Open
+backlog is dominated by RBMK/BWR operability (on hold) plus a handful of UI/doc items, and
+**#349** — the pressurizer relief capacities are safeties:PORV **28.6×** against a sourced
+**3.0×**, latent because nothing reaches the code safeties in a real transient.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and
