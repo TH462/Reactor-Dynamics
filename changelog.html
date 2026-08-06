@@ -110,6 +110,38 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>Containment, atmospheric dumps, and automatic steam line isolation</h2>
+      <span class="log-ver mono">Alpha 1.2.0</span>
+      <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>A containment building.</strong> It has pressure,
+          temperature and a sump, and a break or relief discharge pressurizes it. A steam generator tube
+          rupture does not &mdash; that break bypasses containment.</li>
+      <li><span class="log-tag added">Added</span><strong>Atmospheric dump valves.</strong> You can cool the
+          plant down with the condenser lost. They ship shut, and at full open they cool about three times
+          faster than the 100 &deg;F/hr limit.</li>
+      <li><span class="log-tag added">Added</span><strong>Automatic main steam line isolation</strong> on high
+          steam flow together with low steam pressure. It cannot be reopened until the generator
+          re-pressurizes.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Decay heat is refitted to the published
+          standard.</strong> Post-trip timings are longer: a station blackout reaches core damage at 2.6
+          hours, against under 2 before.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The graph shows the full range a value
+          reached</strong>, its time windows follow the speed setting, and its resolution no longer depends
+          on speed.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A leaking plant that goes water-solid now reaches
+          its relief valve</strong> instead of filling to the model ceiling.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A steam line break no longer empties the generator
+          to the model floor.</strong> It is a mass flow now, so the generator recovers to its safety
+          band.</li>
+      <li><span class="log-tag added">Added</span><strong>The release number is shown beside the ALPHA
+          badge</strong> on every page.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Cooldown rate indication, turbine stop valves, and a run of physics fixes</h2>
       <span class="log-ver mono">Alpha 1.1.0</span>
       <time class="log-date mono" datetime="2026-08-05">5 August 2026</time>

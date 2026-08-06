@@ -5,7 +5,22 @@ description: Cut a release — merge the worktree lanes, rebuild the offline sin
 
 # Releasing to `main`
 
-> ## THE NEXT RELEASE IS THE LAUNCH RELEASE — READ THIS BEFORE STEP 2
+> ## THE LAUNCH IS DONE — THIS BANNER IS HISTORY, NOT INSTRUCTIONS
+>
+> **RETIRED 2026-08-06, after `Alpha 1.2.0`.** Everything below this line describes the
+> **`Alpha 1.0.0` launch**, which shipped 2026-08-04. `Alpha 1.0.1`, `1.1.0` and `1.2.0` have
+> shipped since. **Releases are now ORDINARY: follow §1–§6 and use §2's digit rules.** The
+> launch-only steps — the fixed version, the first `changelog.html` entry, the
+> `Pre-launch` heading relabel, the `Rev 0` manual reset — are all done and must not be
+> replayed. A plan stops binding the moment it is executed (`CLAUDE.md`, rule 3).
+>
+> **Two things below are still LIVE and are repeated in §3, so you cannot miss them:** the
+> **≤ 8 one-line bullet cap** on `changelog.html`, and that the bump, the entry and the
+> `CHANGELOG.md` roll must be **one change**. Everything else here is a record of what the
+> launch needed. **The `run_release` baseline moves on every release** — it was 8 → 11 at
+> launch and is **14** as of `Alpha 1.2.0` — so read it from `BASELINES`, never from this page.
+>
+> <details><summary>The launch-release banner, kept for the record</summary>
 >
 > *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha and
 > into Alpha and bring back the update tracking page. Update tracking summaries/lists should be
@@ -50,6 +65,8 @@ description: Cut a release — merge the worktree lanes, rebuild the offline sin
 >
 > §4 (the offline build) is unchanged and was never suspended — but run it **after** the bump,
 > because the filename comes from `site/release.js`.
+>
+> </details>
 
 `develop` is the integration branch; `main` is what the public site deploys.
 

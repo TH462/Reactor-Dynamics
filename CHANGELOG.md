@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.2.0] — 2026-08-06
+
 ### Changed — the manual revision number is a release marker, not a change counter (lane merge, 2026-08-06)
 
 *(OWNER DIRECTIVE, 2026-08-06: "The revision number only matters during a release to the
