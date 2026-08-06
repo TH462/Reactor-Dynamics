@@ -473,11 +473,12 @@ There is **no level integrator**, so level and inventory cannot silently drift a
 | Term | Behaviour |
 |---|---|
 | `base(Tavg)` | Thermal expansion — 1.39 % level per °F (2.5 % per °C), anchored at 55 % for full-power Tavg, floored at 28 % |
-| Mass **deficit** | −100 % per inventory fraction — a deficit draws down the whole loop (shallow) |
-| Mass **surplus** | −300 % per inventory fraction — surplus packs into the steam space, the only compressible volume: the "going solid" regime |
-| **Void** | **+150 % per void fraction** — and it is saturation-gated |
+| **Mass** | ±776 % per inventory fraction, the same slope in both directions — the pressurizer steam space is the only compressible volume in a subcooled loop, so inventory taken out comes out of the pressurizer and surplus packs into it at the same geometric rate |
+| **Void** | **+375 % per void fraction** — saturation-gated, and since Rev 13 weighted by the discharge path (below) |
 
-That last row is **the TMI deception, and it is arithmetic**. Void fraction itself grows at three times the inventory deficit, so in a voided state the void term contributes about **+450 % per inventory fraction lost** against the mass term's **−100 %** — a net **rise** of roughly +350. **Indicated level rises while inventory falls** — and nowhere outside the saturated regime does it do that. The gauge is not lying. It is telling the truth about a quantity that has stopped meaning what you think it means.
+That void row is **the TMI deception, and it is arithmetic**. Void fraction itself grows at three times the inventory deficit, so in a voided state the void term contributes about **+1126 % per inventory fraction lost** against the mass term's **−776 %** — a net **rise** of roughly +350. **Indicated level rises while inventory falls** — and nowhere outside the saturated regime does it do that. The gauge is not lying. It is telling the truth about a quantity that has stopped meaning what you think it means.
+
+**The lift needs the surge line to be the discharge path (Rev 13).** The void term models loop steam displacing liquid *up the surge line* into the pressurizer — which is what happens when the break is at or above the pressurizer steam space (the stuck-open relief valve: TMI), or when there is no break at all and the loop is boiling (loss of heat sink). With a hole in the **loop**, the displaced liquid has a second exit and the pressurizer discharges through the surge line instead — the real large-break behaviour (WCAP-16009-NP-A §11-4-5, the two-phase surge-line discharge during blowdown). The term is therefore scaled by the split between the two paths: at the failure panel's default cold-leg break the lift is cut to about an eighth, so the level gauge **empties in seconds and stays empty while the core uncovers** — where before this revision it read exactly 100 % at the moment the core top uncovered, at every break size above about 15 %. A stuck-open PORV, the code safeties and a boiling no-break loop keep the full calibrated lift: on those paths the deception is the lesson.
 
 ### 7.4 Relief valves and the tailpipe
 

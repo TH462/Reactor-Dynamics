@@ -119,6 +119,7 @@
     'CA-15': 'probe (a LIQUID break goes solid clear of mass_max — CA-12 on the other path; #361)',
     'CA-16': 'probe (containment is the receiving volume — a LOCA pressurizes it, an SGTR bypasses it, relief lands in it, and it decays on the passive sink; #386 stage 1)',
     'CA-17': 'probe (break/relief backpressure is the LIVE containment pressure — clone-rig mechanism pin, red on the pre-#386 engine; #386 stage 1)',
+    'CA-18': 'probe (the void-displacement level lift is PATH-AWARE — a loop break drains the pressurizer, the relief path keeps the TMI deception; WCAP-16009 §11-4-5; #385 stage 2)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -3580,6 +3581,82 @@
         ck('an open PORV passes LESS against a pressurized containment',
           fmt(rAmb.porv_flow, 6) + ' at ambient vs ' + fmt(rHot.porv_flow, 6) + ' at 1.0 MPa',
           rHot.porv_flow > 0 && rHot.porv_flow < rAmb.porv_flow - 1e-12, 'strictly less, nonzero');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* CA-18 (#385 stage 2) — THE VOID LIFT IS PATH-AWARE.
+     *
+     * The TMI deception term (`level_per_void·void`) models loop steam displacing
+     * liquid up the SURGE LINE. On a LOOP break the displaced liquid has a second
+     * exit — the pressurizer DISCHARGES instead (WCAP-16009-NP-A §11-4-5, the
+     * 2-phase surge-line discharge during blowdown) — so `levelRaw` weights the
+     * term by w = ref/(ref + leak_flow). Unweighted, the algebra collapsed to
+     * base + 350·(1−m) on any saturated drain and TRUE level read EXACTLY 100 at
+     * the moment the core top uncovered, at every board severity ≥ 0.15: the
+     * gauge argued against a LOCA while SI actuated (#385 sweep, TUNING_LOG
+     * 2026-08-06-develop-e).
+     *
+     * Leg A is the plant claim and is RED ON THE PRE-#385 ENGINE (100.0 / 93.5).
+     * Leg B pins the algebra through the real levelRaw — a clone differing only
+     * in leak_flow moves by exactly level_per_void·void·(1−w), and RELIEF flow
+     * (porv/safety) moves it by NOTHING, which is the fence that keeps the TMI
+     * family byte-identical. Leg C asserts the documented calibration target
+     * (pwr_config: "at the story-clock void of 0.2 the gauge reads 78.3 %") for
+     * the first time. Leg D is the no-break scope fence: a voided state with no
+     * leak keeps the FULL calibrated lift — loss-of-heat-sink boiling still
+     * deceives, as it should.
+     */
+    'CA-18': function () {
+      return test('CA-18 a loop break drains the pressurizer; the relief path keeps the deception (#385)', function (ck) {
+        var CFG = RD.PWR_CONFIG, p = CFG.pressurizer;
+
+        // ---- leg A: the plant. Board-default break, engine+M4. The core top
+        // uncovers within two minutes; the gauge must not be arguing against it.
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.20 });
+        var maxInd = 0, lvlAtUnc = null;
+        var tUnc = h.runUntil(function (ts, ins) {
+          if (ins.pzr_level > maxInd) maxInd = ins.pzr_level;
+          if (lvlAtUnc == null && ts.core_uncovered_frac > 0) lvlAtUnc = ts.pzr_level_pct;
+          return lvlAtUnc != null;
+        }, 120);
+        ck('a 20 % break uncovers the core top (probe precondition)',
+          tUnc >= 0 ? fmt(tUnc, 1) + ' s' : 'never', tUnc >= 0, '≤ 120 s');
+        ck('TRUE pzr level is EMPTY when the core top uncovers — the drain order',
+          fmt(lvlAtUnc, 1), lvlAtUnc != null && lvlAtUnc < 25, '< 25 (pre-#385: 100.0)');
+        ck('the indicated gauge never re-rises past the 75 % high alarm on a cold-leg break',
+          fmt(maxInd, 1), maxInd < 75, '< 75 (pre-#385 peak: 93.5)');
+
+        // ---- leg B: the algebra, through the real levelRaw (a copy would test
+        // the copy — #367). Clones differ ONLY in what is discharging.
+        var lvl = function (extra) {
+          return RD.pwrPressurizer.levelRaw(Object.assign(
+            { tavg_c: 304.0, _tavg_fp: 304.0, _mass: 0.85, primary_void_fraction: 0.45 },
+            extra), CFG);
+        };
+        var lv0 = lvl({ leak_flow: 0 }), lvLeak = lvl({ leak_flow: 0.05 });
+        var w = p.void_weight_surge_ref / (p.void_weight_surge_ref + 0.05);
+        var wantDiff = p.level_per_void * 0.45 * (1 - w);
+        ck('a loop leak moves the line by exactly level_per_void·void·(1−w)',
+          fmt(lv0 - lvLeak, 4) + ' vs ' + fmt(wantDiff, 4),
+          Math.abs((lv0 - lvLeak) - wantDiff) < 1e-9, 'exact');
+        var lvRelief = lvl({ leak_flow: 0, porv_flow: 0.30, safety_flow: 0.10 });
+        ck('RELIEF discharge moves it by NOTHING — the TMI fence',
+          fmt(lv0, 4) + ' vs ' + fmt(lvRelief, 4), lv0 === lvRelief, 'identical');
+
+        // ---- leg C: the documented calibration target, on the deception line
+        // (void = void_gain·(1−m)), asserted for the first time.
+        var mC = 1 - 0.2 / CFG.primary.void_gain;
+        var lvC = lvl({ _mass: mC, primary_void_fraction: 0.2, leak_flow: 0 });
+        ck('the config target holds: void 0.2 on the deception line reads 78.3 %',
+          fmt(lvC, 2), Math.abs(lvC - 78.3) < 0.2, '78.3 ± 0.2');
+
+        // ---- leg D: the no-break scope fence — full calibrated lift, by hand.
+        var hand = p.pzr_level_nominal + p.level_per_mass * (0.85 - 1) + p.level_per_void * 0.45;
+        ck('a NO-BREAK voided state keeps the FULL lift (loss of heat sink still deceives)',
+          fmt(lv0, 4) + ' vs hand ' + fmt(hand, 4), Math.abs(lv0 - hand) < 1e-9, 'exact');
         T.checkSanity(ck, h);
       });
     },

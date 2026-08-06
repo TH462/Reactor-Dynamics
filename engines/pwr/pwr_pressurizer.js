@@ -502,7 +502,31 @@
     // future split is DELIBERATE rather than silent: CA-9 leg B pins the two against
     // each other through this very line, and a second check pins the surge branch.
     var mass_term = p.level_per_mass * dm;
-    return levelBase(s, cfg) + mass_term + p.level_per_void * (s.primary_void_fraction || 0);
+    // PATH-AWARE VOID WEIGHTING (#385 stage 2). The void term models loop steam
+    // displacing liquid UP THE SURGE LINE into the pressurizer — the TMI deception.
+    // That displacement needs the surge line to be the discharge path. With a hole in
+    // the LOOP, the displaced liquid splits between the hole and the surge line, and
+    // on a large cold-leg break the pressurizer DISCHARGES instead: WCAP-16009-NP-A
+    // (ML050910161) §11-4-5 — "the 2-phase discharge from the pressurizer surge line
+    // … during the reverse flow period of blowdown" — and WTSM 5.0 (ML11223A218)
+    // §5.0.1.1 has the loop flashed to steam, so there is no liquid reservoir to
+    // displace anywhere. Unweighted, this term collapsed to base + 350·(1−m) on any
+    // saturated drain and read EXACTLY 100 at the moment the core top uncovers, at
+    // every board severity ≥ 0.15 (the #385 sweep, TUNING_LOG 2026-08-06-develop-e).
+    //
+    // The weight is a flow split, not a switch: w = ref/(ref + leak_flow), so
+    // leak_flow == 0 (or absent — every rig-built state) gives w = 1.0 EXACTLY and
+    // the stuck-PORV/safeties/loss-of-heat-sink families — the calibrated TMI arc,
+    // whose breaks are at/above the pressurizer steam space — are byte-identical by
+    // construction. CA-18 leg B pins the algebra, leg D pins the no-break fence.
+    // *(OWNER RULING, 2026-08-06: selected "Term fix now + node follow-on" from three
+    // options in plan review — a selection, not verbatim words.)*
+    //
+    // `leak_flow` is stepInventory's (step 9) read ONE STEP LATE — this is called
+    // from steps 7/8 — the CONTEXT §11 explicit coupling, same as `_dmass_dt`.
+    var wref = p.void_weight_surge_ref;
+    var w = (wref != null) ? wref / (wref + (s.leak_flow || 0)) : 1;
+    return levelBase(s, cfg) + mass_term + p.level_per_void * w * (s.primary_void_fraction || 0);
   }
 
   // Step 8 (pzr part) — indicated pressurizer level: the line above, on span.

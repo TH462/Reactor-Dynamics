@@ -313,7 +313,7 @@ var BASELINES = {
   // knife-edge PORV sample carried as info. Injection-verified: severing the arm reddens
   // 5+4, forcing it always-armed reddens 4+5, and the capacity nudge that flipped the old
   // form leaves all 37 TR-1c/TR-1k checks green.
-  'run_behavior.js':       { code: 0, secs: 56, score: '61pass 1xfail' },
+  'run_behavior.js':       { code: 0, secs: 56, score: '62pass 1xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -743,7 +743,7 @@ var BASELINES = {
   // baseline in this map that CANNOT be reasoned about, only measured, because it counts
   // citation SITES in tracked markdown — so writing a merge up moves it, and deleting history
   // (the manual revision collapse) moves it the other way.
-  'run_hardrules.js':      { code: 0, score: '203checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '205checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

@@ -45,6 +45,41 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-develop-f — #385 stage 2: the TMI void lift is a flow split, and the discriminator is BREAK PATH, not void magnitude
+
+**Claim.** The pressurizer level void term is now weighted by the discharge path
+(`levelRaw`: `w = void_weight_surge_ref/(void_weight_surge_ref + leak_flow)`, new `[tune]`
+0.01 frac/s), fixing the measured defect that TRUE level read **exactly 100 at the moment
+the core top uncovered** at every board LOCA severity ≥ 0.15 — while leaving the calibrated
+TMI deception **byte-identical by construction** on the stuck-PORV/safeties/no-break paths
+(`leak_flow = 0` ⇒ w ≡ 1.0).
+
+**The decisions, and their why:**
+1. *(OWNER RULING, 2026-08-06: selected "Term fix now + node follow-on" from three options
+   in plan review — a selection, not verbatim words.)* The pressurizer inventory node stays
+   the destination on realism grounds (path discrimination emerges from surge-line geometry
+   instead of being engineered) and is COMMITTED as a follow-on after the cluster is green;
+   the term fix ships now because testers form first impressions on the broken minute. The
+   cluster's sweep + CA-18 become the node's acceptance tests. A hybrid (node for level,
+   lumped surge for pressure) was examined and rejected — the #330/#337 split-accounting trap.
+2. *(OWNER RULING, 2026-08-06: selected "Proceed on stage 1" in plan review.)* #384 goes on
+   #386 stage 1's landed containment volume; spray/fan coolers only deepen LATE containment
+   decay, second-order to break Δp, error direction conservative.
+3. **The weight is a flow split, not a switch** — continuous in `leak_flow`, so a seal-leak
+   trickle (0.005 frac/s, w ≈ 0.67) keeps most of the deception while the board-default
+   break (0.076, w ≈ 0.12) suppresses it. SGTR falls on the loop-break side and its EOP
+   holds void < 0.05, so the term is near-unobservable there — measured, `ops_sgtr_managed`
+   and CA-14 leg D unmoved, so no `_leak_to_sg` scoping was needed.
+4. **SOURCED direction, fitted magnitude**: WCAP-16009-NP-A §11-4-5 (2-phase surge-line
+   DISCHARGE during blowdown) + WTSM 5.0 §5.0.1.1 give the direction; the split ratio is
+   this plant's, declared `[tune]`.
+
+**Gate math:** `run_behavior` 61 → 62 pass / 1 xfail (CA-18, injection-verified — the
+pre-change engine reddens exactly its three discriminating checks); `flagship_tmi` 9/9;
+`run_campaign` 51/51; `run_manual_rev` 15/0 (Rev 13 extended with item (i); `12 §7.3` was
+also carrying constants three revisions stale, corrected). Full cluster plan and stage
+list: TUNING_LOG 2026-08-06-develop-f.
+
 ## 2026-08-06-develop-d — #392 follow-up: a probe scoped to your hypothesis cannot disconfirm it
 
 **Decision — the render pass writes only what changed, and it writes all of it inside the paint

@@ -30,6 +30,40 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the pressurizer level gauge no longer argues against a large LOCA (#385 stage 2, 2026-08-06)
+
+The TMI void-displacement lift (`level_per_void·void`) is now **path-aware**
+(`pwr_pressurizer.levelRaw`): weighted by `w = ref/(ref + leak_flow)`, one new `[tune]`
+constant `void_weight_surge_ref` (0.01 frac/s). The term models loop steam displacing
+liquid up the surge line; with a hole in the loop, the displaced liquid takes the hole —
+the pressurizer discharges instead (WCAP-16009-NP-A §11-4-5, the 2-phase surge-line
+discharge during blowdown; WTSM 5.0 §5.0.1.1 has the loop flashed to steam).
+
+Measured before (full stack, #385 sweep): on any saturated drain the level line collapsed
+to `base + 350·(1−m)` and TRUE level read **exactly 100 at the moment the core top
+uncovered**, at every board severity ≥ 15 %; at the slider default the indicated gauge
+peaked **93.5 % at t+7.5 s** — arguing against a LOCA while SI actuated. After: the gauge
+empties in ~2 s and stays empty through the uncovery (TRUE 0.0 / indicated 2.3 at
+uncovery), no re-rise past the 75 % high alarm (peak 55.1, the pre-break reading).
+`leak_flow = 0` gives `w = 1.0` exactly, so the stuck-PORV / safeties / loss-of-heat-sink
+families — the calibrated TMI deception arc — are **byte-identical by construction**:
+`flagship_tmi` 9/9 and `run_campaign` 51/51 unmoved. Small breaks (≤ 10 %) keep their
+correct drain order; the sev-0.5 water-solid endgame (#361 CA-15 arrest) is unmoved.
+
+New probe **CA-18** (`run_behavior` 61 → 62 pass): the drain order (red on the pre-#385
+engine: 100.0), the no-re-rise, the exact `level_per_void·void·(1−w)` algebra through the
+real `levelRaw`, the relief-path fence (PORV flow moves the line by NOTHING), the
+documented 78.3 %-at-void-0.2 calibration target (asserted for the first time), and the
+no-break fence (a boiling loop with no leak keeps the full lift). Injection-verified: the
+pre-change engine reddens exactly the three discriminating checks.
+
+Manuals Rev 13(i): `12 §7.3` re-written path-aware — and its term table carried constants
+three revisions stale (−100/−300/+150 against the live ±776/+375.33), now corrected.
+
+Owner rulings recorded on the issues (2026-08-06, plan-review selections): #385 ships the
+lumped term fix now with the pressurizer inventory node **committed as a follow-on**;
+#384 proceeds on #386 stage 1's landed containment volume.
+
 ## [Alpha 1.2.2] — 2026-08-06
 
 ## [Alpha 1.2.1] — 2026-08-06

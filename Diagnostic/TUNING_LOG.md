@@ -29,6 +29,66 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-develop-f (LOCA cluster stage 2 — the void lift is path-aware; #385 shipped, node committed as follow-on)
+
+**Task:** execute the approved coordinated LOCA-fix plan (#385/#384/#407/#334-3; plan file
+`group-whatever-issues-you-structured-starlight.md`). This entry is stages 1–2; stages 3–6
+continue under this heading or the next session's.
+
+**Stage 1 (evidence + rulings).** Two owner rulings taken in plan review, recorded on the
+issues *(both selections from options, not verbatim)*: **#385** — "Term fix now + node
+follow-on": the lumped void-term fix ships now, the pressurizer inventory node is COMMITTED
+as a follow-on once the cluster is green (supersedes-and-confirms the 2026-08-05 node ruling
+via the staged path; `status-needs-ruling` cleared). **#384** — "Proceed on stage 1": the
+pressure work goes on #386 stage 1's landed containment volume; #386 stages 2–3 stay parked
+on the owner's board-real-estate task. The stage-2 claim is SOURCED from the corpus, no
+fetch needed: **WCAP-16009-NP-A** (ML050910161) §11-4-5 — *"the 2-phase discharge from the
+pressurizer surge line … during the reverse flow period of blowdown"* — plus §9-6 (PRIZER
+imposes a sharp interface "during the pressurizer discharge"); **WTSM 5.0** (ML11223A218)
+§5.0.1.1 (loop flashed to steam, pressure equalized with containment = end of blowdown);
+**WTSM 12.3** (ML11223A310) low-pzr-pressure SI basis ("the drop in reactor coolant pressure
+which accompanies inventory loss during a LOCA"). **NUREG-0737 II.F.2 could NOT be fetched**
+— nrc.gov 403s direct and the Wayback CDX endpoint 503'd all session — deferred to stage 5,
+which is the only consumer.
+
+**Stage 2 (the fix).** `pwr_pressurizer.levelRaw`: the void term is weighted
+`w = void_weight_surge_ref / (void_weight_surge_ref + leak_flow)` — new `[tune]` constant
+0.01 frac/s in `pwr_config.pressurizer`. A flow split, not a switch: `leak_flow = 0` (or
+absent — every rig-built state) gives w = 1.0 EXACTLY, so the stuck-PORV/safeties/no-break
+families are byte-identical by construction. `leak_flow` is a step-9 value read at steps
+7/8 — one step late, the CONTEXT §11 coupling, declared at the site.
+
+**Measured (severity sweep, seed 4242, accel 10, method in develop-e):**
+- TRUE level at core-top uncovery: **100.0 → 0** at sev 0.15/0.17/0.20/0.35/0.50 (all five).
+- Indicated at uncovery (sev 0.20): 90.0 → **2.3**; indicated peak after break: 93.5 → 55.1
+  (the pre-break reading — no re-rise at all). t_pzrTrue_empty ≈ 1.5–2 s, stays empty.
+- Sev ≤ 0.10: unchanged drain order; 0.01/0.02/0.05 rows byte-same. Sev 0.50 solid endgame
+  (CA-15 arrest, 109.3 %) unmoved — void is 0 there, w never engages.
+- **A coupling the plan predicted, confirmed**: the honest gauge fires the 17 % heater
+  cutoff immediately on deep breaks, so drains bottom SHALLOWER (min inv at sev 0.12:
+  68.1 → 71.6; 0.15: 30.6 → 34.3; 0.17: 0.8 → 3.4) — the heaters stop propping pressure,
+  ECCS delivers more, earlier. This is stage 4's small-break-floor baseline.
+- `flagship_tmi` 9/9, `run_campaign` 51/51 (all six TMI tests), `run_behavior` 61→62 pass /
+  1 xfail (CA-18 added; zero fallout elsewhere — no CA/TR probe moved).
+
+**CA-18** (behavior_pwr.js): drain order + no-re-rise (plant leg), exact
+`level_per_void·void·(1−w)` algebra through the real `levelRaw` (a copy tests the copy,
+#367), the relief-path fence (porv/safety flow moves the line by NOTHING — the TMI
+guarantee), the 78.3 %-at-void-0.2 documented calibration target (asserted for the first
+time anywhere), and the no-break fence. **Injection-verified**: stashing the levelRaw edit
+reddens exactly the three discriminating checks (100.0 / 91.1 / 0.0000-vs-140.7488) with
+all three fences green.
+
+**Manuals Rev 13(i)**: `12 §7.3` path-aware rewrite — and its term table was **three
+revisions stale** (−100/−300/+150 %/frac against the live ±776/+375.33; the #330/#337/#365
+re-solves never reached it). Corrected with the net-+350 arithmetic restated. Stamped,
+packed, `run_manual_rev` 15/0.
+
+**Still open in the cluster:** stage 3 (#384 exit — solid-regime `saturated` predicate),
+stage 4 (#384 floors — `K_break_vent`, path-scoped sat-pull, CA-15 re-author), stage 5
+(#407 + the NUREG-0737 fetch), stage 6 (#334 slider memo). The node follow-on starts only
+after the cluster is green.
+
 ## Session log — 2026-08-06-develop-e (LOCA severity sweep — the void term owns the legible band; #385 evidence, #407 filed)
 
 **Task (owner, 2026-08-06):** "During a Large LOCA or other evolution involving loss of coolant

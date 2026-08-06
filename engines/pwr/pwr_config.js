@@ -848,7 +848,11 @@
       // % level per void-fraction — the TMI lift. Calibrated so the story-clock void
       // (~0.2 as HPI fires) lifts level past the 75 % high alarm (the "going solid" call
       // that throttles HPI), and deep voiding pegs the gauge high (historical).
-      // ×void_gain 3 ⇒ net +350 %/frac against the mass term: any voided state deceives.
+      // ×void_gain 3 ⇒ net +350 %/frac against the mass term: any voided state on the
+      // RELIEF/steam-space path deceives. Since #385 stage 2 the term is weighted by
+      // `void_weight_surge_ref` below — a LOOP break suppresses it (the displacement
+      // discharges through the hole, not up the surge line); leak_flow = 0 keeps the
+      // full calibrated lift, so everything in this comment block is about that path.
       //
       // THIS AND `level_per_mass` ARE A MATCHED PAIR — the deception is their DIFFERENCE,
       // so neither can move alone. 150.0 was the value paired with the old mass slope of
@@ -871,6 +875,19 @@
       // TMI beats are written against. The deception is a difference, so it is solved from
       // the difference. [tune]
       level_per_void: 375.33,
+      // frac/s — the surge-line share of the void-displacement split (#385 stage 2,
+      // pwr_pressurizer.levelRaw): the void term is weighted w = ref/(ref + leak_flow).
+      // A LOOP break gives the displaced liquid a second exit, so the TMI lift is
+      // suppressed in the ratio of the two paths' flows; leak_flow = 0 → w = 1.0
+      // EXACTLY, which is what keeps the calibrated stuck-PORV/no-break arc above
+      // byte-identical. Sized against the #385 severity sweep: at the board default
+      // (leak ~0.076 frac/s) w ≈ 0.12, which takes TRUE level at core-top uncovery
+      // from a pegged 100.0 to empty; at a seal-leak trickle (0.005) w ≈ 0.67 and the
+      // deception survives, which is right — a trickle does not re-plumb the surge
+      // line. SOURCED direction (not magnitude — the split ratio is this plant's):
+      // WCAP-16009-NP-A §11-4-5, the pressurizer's 2-phase surge-line DISCHARGE
+      // during blowdown. CA-18 pins the algebra and both fences. [tune]
+      void_weight_surge_ref: 0.01,
       level_prog_floor: 28.0,      // % — base(Tavg) floor below the program band; 3 % above the
                                    // pzr_level_low alarm (25) so no-load/sagged states don't sit in alarm [tune]
       // % — the CVCS level program's MAXIMUM (pwr_pressurizer.levelProgram). NOT a physics
