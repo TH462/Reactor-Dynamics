@@ -84,10 +84,38 @@ revisions stale** (−100/−300/+150 %/frac against the live ±776/+375.33; the
 re-solves never reached it). Corrected with the net-+350 arithmetic restated. Stamped,
 packed, `run_manual_rev` 15/0.
 
-**Still open in the cluster:** stage 3 (#384 exit — solid-regime `saturated` predicate),
-stage 4 (#384 floors — `K_break_vent`, path-scoped sat-pull, CA-15 re-author), stage 5
-(#407 + the NUREG-0737 fetch), stage 6 (#334 slider memo). The node follow-on starts only
-after the cluster is green.
+**Stage 3 (#384 exit) — MEASURED, and the plan's engine edit was NOT SHIPPED.** The plan
+committed `saturated = !pzr_solid && (…)` on the revert post-mortem's premise that a
+quenched refill at marginal saturation reads "saturated" and the solid arrest never
+engages. **The premise does not reproduce**: forced-state rig (RCS liquid-full at 0.15 MPa
+/ Tavg 115 °C, sev-0.4 break, HPI on, engine-direct), the ECCS quench takes Tavg below
+Tsat(P) within seconds, the solid branch engages, and the CURRENT engine repressurizes to
+the **injection ≈ spillage equilibrium**: settles P **2.70 MPa (392 psi)** against a 2.89
+config solve of `injectionFlowInv(P*) = leak law(P*)`, mass pinned ON the solid line
+(1.0927 vs 1.0928 computed), leak = injection to 0.1 % (both 0.0824 frac/s, flowing
+continuously), stable (last-300-s p2p 0.044 MPa), same endpoint from two different starting
+overfills. **This answers #334's open "can we add a throughput concept?" — it exists, no
+new state needed**: the #361 gate + #346 solid gain ARE the mechanism. A predicate change
+with no reachable broken state behind it would be code no A/B can see (HR12) — if stage 4's
+floors resurrect the state, it ships then, with its measurement. **CA-19** pins the
+equilibrium (`run_behavior` 62 → 63): the solid-line settle, the real balanced throughput,
+P* ± 25 % from the in-probe config solve, stability, and the not-a-rescue leg (injection
+defeated → drains to 0, no repressurization). **Injection-verified**: un-gating
+`leak_depress` at solid (the pre-#361 double count) walks mass to exactly **1.2000 =
+mass_max** and breaks the balance — 2 checks red naming the regression signature.
+**Rig trap for the next forced-state probe**: the first minute of a hand-assembled state
+measures the RIG (stale loop nodes from the HFP IC produced a phantom 13.7 MPa excursion);
+settle before you assert, and compute the expected equilibrium from config, not from the
+first run's output. **The standing P* ≈ 390 psi is itself too high** — a real post-LBLOCA
+RCS sits near containment pressure because a guillotine passes the full ECCS flow at tiny
+Δp; ours doesn't because the √Δp orifice law referenced to rated-flow-at-rated-Δp is far
+too restrictive at low Δp. That is the §12.4b declared departure meeting #334 item 3 (the
+slider/law semantics) — carried to stage 6, NOT tuned here.
+
+**Still open in the cluster:** stage 4 (#384 floors — `K_break_vent`, path-scoped
+sat-pull, CA-15 re-author; the drain-phase Psat slaving is now the WHOLE of #384), stage 5
+(#407 + the NUREG-0737 fetch), stage 6 (#334 slider memo + the low-Δp break-law question
+above). The node follow-on starts only after the cluster is green.
 
 ## Session log — 2026-08-06-develop-e (LOCA severity sweep — the void term owns the legible band; #385 evidence, #407 filed)
 

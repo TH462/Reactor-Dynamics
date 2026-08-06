@@ -6,7 +6,7 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 62 pass, 1 known gaps (xfail).
+Battery result: 63 pass, 1 known gaps (xfail).
 
 ## TR-18 — TR-18 load-change settling — a manual step ENDS, the plant does not hunt forever (#378)
 *Known gap:* rod channel limit-cycles after a load step (#378) — shippable fix not yet found

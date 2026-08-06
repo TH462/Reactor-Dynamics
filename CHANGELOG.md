@@ -64,6 +64,25 @@ Owner rulings recorded on the issues (2026-08-06, plan-review selections): #385 
 lumped term fix now with the pressurizer inventory node **committed as a follow-on**;
 #384 proceeds on #386 stage 1's landed containment volume.
 
+### Verified — the LOCA throughput equilibrium exists and is now pinned (#384 stage 3 / #334, 2026-08-06)
+
+The open #334 question — *"there is no throughput concept… can we add one?"* — is answered
+by measurement: **it exists, and no new state was needed.** A refilled liquid-full RCS with
+a 40 %-severity break open and HPI running repressurizes to the balance point where
+injection equals break discharge — settles at 392 psi (2.70 MPa) against a 2.89 MPa config
+solve, inventory pinned ON the solid line (10.7 points clear of the `mass_max` guard),
+both flows running continuously at 0.0824 frac/s, stable, and reached from different
+starting overfills. The #361 `leak_depress` gate plus the #346 bulk-modulus surge ARE the
+mechanism. New probe **CA-19** (`run_behavior` 62 → 63 pass) pins the equilibrium plus the
+not-a-rescue leg (injection defeated → the same state drains to nothing). Injection-
+verified: restoring the pre-#361 double count walks inventory to exactly 1.2000 =
+`mass_max` and breaks the balance.
+
+The cluster plan's stage-3 engine edit (a `!pzr_solid` term in the `saturated` predicate)
+was **measured unnecessary and not shipped** — the state it defended against self-heals
+via the ECCS quench within seconds. Recorded in TUNING_LOG develop-f; if stage 4's
+pressure-floor work resurrects the state, it ships then, with its measurement.
+
 ## [Alpha 1.2.2] — 2026-08-06
 
 ## [Alpha 1.2.1] — 2026-08-06

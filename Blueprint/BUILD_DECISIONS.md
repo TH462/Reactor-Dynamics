@@ -80,6 +80,20 @@ pre-change engine reddens exactly its three discriminating checks); `flagship_tm
 also carrying constants three revisions stale, corrected). Full cluster plan and stage
 list: TUNING_LOG 2026-08-06-develop-f.
 
+**Stage 3 addendum — A PLANNED ENGINE EDIT WAS MEASURED UNNECESSARY AND NOT SHIPPED.**
+The approved plan committed `saturated = !pzr_solid && (…)` in `stepPressure` on the #384
+revert post-mortem's premise (solid arrest never engages on a quenched refill at marginal
+saturation). Measured on the forced state, the premise fails: the ECCS quench closes the
+marginal-saturation window in seconds and the CURRENT engine finds the injection≈spillage
+equilibrium (P 2.70 MPa vs 2.89 config solve, mass on the solid line, flows balanced to
+0.1 %). Decision: **pin the behavior (CA-19, `run_behavior` 62 → 63), ship no engine
+change** — a predicate alteration with no reachable broken state is code no A/B can see,
+and HR12 does not allow "defensive" physics edits. This also ANSWERS #334's open
+throughput question (posted there). If stage 4 resurrects the state, the edit ships with
+its measurement. The standing equilibrium pressure (~390 psi where a real post-LBLOCA RCS
+sits near containment) is the √Δp break law's low-Δp restriction — the §12.4b departure
+meeting #334 item 3, carried to stage 6 rather than tuned here.
+
 ## 2026-08-06-develop-d — #392 follow-up: a probe scoped to your hypothesis cannot disconfirm it
 
 **Decision — the render pass writes only what changed, and it writes all of it inside the paint

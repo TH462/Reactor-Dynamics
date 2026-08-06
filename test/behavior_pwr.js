@@ -120,6 +120,7 @@
     'CA-16': 'probe (containment is the receiving volume — a LOCA pressurizes it, an SGTR bypasses it, relief lands in it, and it decays on the passive sink; #386 stage 1)',
     'CA-17': 'probe (break/relief backpressure is the LIVE containment pressure — clone-rig mechanism pin, red on the pre-#386 engine; #386 stage 1)',
     'CA-18': 'probe (the void-displacement level lift is PATH-AWARE — a loop break drains the pressurizer, the relief path keeps the TMI deception; WCAP-16009 §11-4-5; #385 stage 2)',
+    'CA-19': 'probe (the THROUGHPUT equilibrium — a refilled solid RCS with a break open settles where injection = break discharge, and it is not a free rescue; #384 stage 3 / the #334 throughput question)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -3658,6 +3659,102 @@
         ck('a NO-BREAK voided state keeps the FULL lift (loss of heat sink still deceives)',
           fmt(lv0, 4) + ' vs hand ' + fmt(hand, 4), Math.abs(lv0 - hand) < 1e-9, 'exact');
         T.checkSanity(ck, h);
+      });
+    },
+
+    /* CA-19 (#384 stage 3 / #334) — THE THROUGHPUT EQUILIBRIUM, PINNED.
+     *
+     * #334's open question: "there is no throughput concept — can we add one?"
+     * (inventory is a net scalar; the fear was injection and a break both running
+     * at full rate against a clipped state forever). MEASURED 2026-08-06: the
+     * concept EXISTS and is a stable attractor — no new state was needed. Force a
+     * post-LOCA refilled state (RCS liquid-full at near-containment pressure, a
+     * 40 %-severity break open, HPI running) and the plant repressurizes along
+     * the injection-vs-discharge curve to the balance point where
+     * `injectionFlowInv(P*) = _leak_base·√((P*−ctmt)/span)`, with inventory
+     * pinned at the solid line — water flows IN at the pumps and OUT at the
+     * break, continuously, at equal rates. The #361 leak_depress gate and the
+     * #346 bulk-modulus surge ARE the mechanism; this probe is what stops either
+     * from silently regressing (nothing else asserted the balance).
+     *
+     * THE PLAN'S STAGE-3 ENGINE EDIT WAS MEASURED UNNECESSARY AND NOT SHIPPED.
+     * The cluster plan committed a `saturated = !pzr_solid && (…)` predicate on
+     * the premise that a quenched refill at marginal saturation reads
+     * "saturated" and the solid arrest never engages (the 2026-08-06 #384
+     * revert's post-mortem). Measured on the forced state: the ECCS quench takes
+     * Tavg below Tsat(P) within seconds, the solid branch engages, and the
+     * CURRENT engine settles at P 2.70 MPa vs a 2.89 config solve — from two
+     * different starting overfills, to the same endpoint, balance within 0.2 %.
+     * A predicate change with no reachable state behind it would be code no A/B
+     * can see (HR12); if stage 4's floors resurrect the state, it ships THEN,
+     * with its measurement.
+     *
+     * Leg A settles 20 min and asserts the equilibrium: mass ON the solid line
+     * (computed from config geometry, the CA-15 idiom) and 10+ points clear of
+     * mass_max, throughput real (both flows > 0.05 frac/s, equal within 5 %),
+     * P inside ±25 % of the in-probe config solve, and stable. Leg B defeats
+     * injection: the same state DRAINS — the equilibrium is bought with ECCS
+     * flow, not granted by the model.
+     */
+    'CA-19': function () {
+      return test('CA-19 a refilled solid RCS with a break settles at injection = discharge (#384/#334)', function (ck) {
+        var CFG = RD.PWR_CONFIG, e = CFG.emergency, pri = CFG.primary, pz = CFG.pressurizer;
+        var mk = function (hpi) {
+          var eng = new RD.PWREngine({ initial_state: 'hot_full_power', seed: 7 });
+          var s = eng.s;
+          eng.applyCommand({ action: 'scram' });
+          var lb = RD.pwrPressurizer.levelBase({ tavg_c: 115.0, _tavg_fp: s._tavg_fp }, CFG);
+          var mSolid = 1 + (100 - lb) / pz.level_per_mass;
+          s.tavg_c = 115; s.thot_c = 115; s.tcold_c = 115; s.fuel_temp_c = 130;
+          s.pressure_mpa = 0.15; s.pressure_setpoint = 15.41; s._pressure_sp_eff = 15.41;
+          s._mass = mSolid + 0.01; s.core_inventory_pct = s._mass * 100;
+          s.primary_void_fraction = 0; s.hpi_active = hpi;
+          if (!hpi) s.hpi_flow_multiplier = 0;
+          s._leak_base = 0.20; s.containment_pressure_mpa = 0.1013;
+          return { eng: eng, s: s, mSolid: mSolid };
+        };
+
+        // in-probe config solve of P*: injection curve vs the break law (a copy
+        // would go stale with either — both sides read config, not literals).
+        var inj = function (P) {
+          var hh = e.hpi_flow_max * clip01((e.hpi_pressure_ref - P) / e.hpi_pressure_ref);
+          var lh = e.lpi_flow_max * e.lpi_inventory_gain * clip01((e.lpi_pressure_ref - P) / e.lpi_pressure_ref);
+          return hh + lh;
+        };
+        function clip01(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+        var brk = function (P) {
+          return 0.20 * Math.sqrt(Math.max(0, (P - 0.1013) / (pri.break_p_ref_mpa - pri.break_backpressure_mpa)));
+        };
+        var lo = 0.11, hi = 15.0;
+        for (var i = 0; i < 60; i++) { var mid = (lo + hi) / 2; if (inj(mid) > brk(mid)) lo = mid; else hi = mid; }
+        var pStar = lo;
+
+        // ---- leg A: the equilibrium. 20 min forced-state ride, engine-direct.
+        var A = mk(true), dt = 0.05, pMin = 1e9, pMax = -1e9;
+        for (var t = 0; t < 1200; t += dt) {
+          A.eng.step(dt);
+          if (t >= 900) { if (A.s.pressure_mpa < pMin) pMin = A.s.pressure_mpa; if (A.s.pressure_mpa > pMax) pMax = A.s.pressure_mpa; }
+        }
+        var injA = A.s.hpi_flow_normalized * (e.hpi_flow_max + e.lpi_flow_max * e.lpi_inventory_gain);
+        ck('inventory settles ON the solid line, 10+ points clear of mass_max',
+          fmt(A.s._mass, 4) + ' vs mSolid ' + fmt(A.mSolid, 4),
+          Math.abs(A.s._mass - A.mSolid) < 0.005 && (pri.mass_max - A.s._mass) > 0.10,
+          'mSolid ± 0.005, clear of ' + pri.mass_max);
+        ck('throughput is REAL — injection and break discharge both flowing, equal within 5 %',
+          'inj ' + fmt(injA, 4) + ' vs brk ' + fmt(A.s.leak_flow, 4),
+          injA > 0.05 && A.s.leak_flow > 0.05 && Math.abs(injA - A.s.leak_flow) / A.s.leak_flow < 0.05, 'balanced');
+        ck('pressure settles at the config-solved balance point (±25 %)',
+          fmt(A.s.pressure_mpa, 3) + ' vs P* ' + fmt(pStar, 3),
+          Math.abs(A.s.pressure_mpa - pStar) / pStar < 0.25, 'P* ± 25 %');
+        ck('…and is STABLE there (last-5-min p2p < 0.5 MPa)', fmt(pMax - pMin, 3),
+          (pMax - pMin) < 0.5, '< 0.5');
+
+        // ---- leg B: not a free rescue — defeat injection and the state DRAINS.
+        var B = mk(false);
+        for (var t2 = 0; t2 < 600; t2 += dt) B.eng.step(dt);
+        ck('with injection defeated the same state drains instead (no repressurization)',
+          'P ' + fmt(B.s.pressure_mpa, 3) + ', mass ' + fmt(B.s._mass, 3),
+          B.s.pressure_mpa < 1.0 && B.s._mass < 0.5, 'P < 1.0, mass < 0.5');
       });
     },
 
