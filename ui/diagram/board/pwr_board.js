@@ -1060,6 +1060,16 @@
       return null;
     },
     lastSnapshot: function () { return lastSnap; },
+    // A mounted component's own instance, for harnesses that need to drive one directly
+    // rather than through a snapshot. Added 2026-08-06 for board_check's vital-gauge
+    // sparkline pins: those assert the TRACE MATHS (bucket decimation, rigid scrolling,
+    // held axis, behaviour at 3600x), and going through `render()` would make the input a
+    // moving plant and every assertion timing-dependent. Same category as `ports()` and
+    // `lastSnapshot()` — a read accessor for the test harness, not a control path.
+    componentInstance: function (id) {
+      var rec = comps[id];
+      return rec ? rec.inst : null;
+    },
     // Instructor-highlight hooks. The driver owns the control-label vocabulary;
     // the renderer resolves it to a board tile to glow.
     revealControl: function (label) {

@@ -227,6 +227,21 @@
       if (!lastS || Math.abs(s - lastS) / s > 0.015) { lastS = s; rebuildSprayPipes(s, !!lastSprayOn, lastShowFlow !== false); }
     });
 
+    // Re-aim the EXISTING bubbles at a moved water surface, without rebuilding them.
+    // Writing a CSS custom property does not restart an animation — only replacing the
+    // element (or reassigning `animation`/`animationDelay`) does. Each bubble's `cy` is
+    // its fixed start, so the new travel is just cy − surfY, exactly as rebuild computes
+    // it. This is what lets the level drop OUT of the rebuild key: a draining plant moves
+    // the surface continuously, and re-aiming is free where rebuilding is a visible pop.
+    function retargetHeaterBubbles(surfY) {
+      for (var n = heaterBubbles.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType !== 1) continue;
+        var startY = +n.getAttribute('cy');
+        var rise = Math.max(0, startY - (surfY == null ? startY - 150 : surfY));
+        n.style.setProperty('--pzr-rise', rise.toFixed(1) + 'px');
+      }
+    }
+
     function rebuildHeaterBubbles(hFrac, surfY) {
       clearEl(heaterBubbles);
       if (hFrac <= 0.02) return;
@@ -303,22 +318,52 @@
         last.level = level;
       }
 
-      // The bubble field also has to be rebuilt when the LEVEL moves, because the surface is
-      // now what sets each bubble's travel. Quantised to ~3 px of surface movement so a
-      // steady plant's level noise does not restart the animation every broadcast (#233).
-      var surfKey = Math.round(levelY / 3);
-      if (heaterPower !== last.heaterPower || glowOn !== last.glowOn || surfKey !== last.surfKey) {
+      // THE GLOW AND THE BUBBLE FIELD ARE SPLIT, and the split is the whole fix
+      // (2026-08-06). They used to share one guard, which meant they shared its
+      // sensitivity — and a REBUILD needs a far coarser trigger than an attribute write.
+      //
+      // The glow is `setAttribute` only, so it costs nothing and should track the raw
+      // reading: a heater that is smoothly modulating should glow smoothly.
+      if (heaterPower !== last.heaterPower || glowOn !== last.glowOn) {
         var hFrac = heaterPower / 100;
-        last.surfKey = surfKey;
         heatStops[0].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
         heatStops[1].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac));
         heatStops[2].setAttribute('stop-color', mix(HBROWN, HORANGE, hFrac * 0.6));
         heatGlow.setAttribute('fill', mix(HBROWN, HORANGE, hFrac));
         heatGlow.setAttribute('opacity', String(Math.min(0.42, 0.05 + hFrac * 0.42)));
         heatGlow.style.display = (glowOn && heaterPower > 4) ? '' : 'none';
-        rebuildHeaterBubbles(hFrac, levelY);
         last.heaterPower = heaterPower; last.glowOn = glowOn;
       }
+
+      // The bubble field is a clearEl() + re-append of ~35 styled circles, so every
+      // rebuild is a fresh CSS animation from t=0 AND a re-staggered animationDelay —
+      // the field visibly snaps back into a synchronized start. That is the flicker the
+      // owner reported on 2026-08-06 ("when it flickers the steam bubbles restart their
+      // animation … the larger the transients the more flickering").
+      //
+      // The rebuild key is the bubble COUNT's input only. `heaterPower` was a RAW FLOAT
+      // straight off the proportional controller, so any modulation at all rebuilt the
+      // field every broadcast — #233 had already coarsened the LEVEL term to ~3 px for
+      // exactly this reason, but the two sat in an `||`, so the un-quantised neighbour
+      // reopened the hole the quantisation closed. MEASURED before this, MSIV closure at
+      // power: 312 pressurizer rebuilds in 10 plant-minutes, 26 % of all renders — at the
+      // 20 Hz transient cadence about five animation restarts a second.
+      //
+      // The LEVEL is deliberately NOT in this key any more. It changes the travel, not the
+      // population, and travel can be re-aimed in place (see retargetHeaterBubbles) — so a
+      // draining plant, which moves the surface every single broadcast, now costs nothing.
+      // Quantising it instead would only have traded a fast pop for a slower one.
+      //
+      // 5 % of heater power is well inside one bubble of the ~35 the field holds, so
+      // nothing observable is lost by not redrawing between the steps.
+      var bubbleKey = Math.round(heaterPower / 5);
+      if (bubbleKey !== last.bubbleKey) {
+        last.bubbleKey = bubbleKey;
+        rebuildHeaterBubbles(heaterPower / 100, levelY);
+      } else if (levelY !== last.bubbleSurfY) {
+        retargetHeaterBubbles(levelY);
+      }
+      last.bubbleSurfY = levelY;
 
       // live spray-water temperature (tcold from the wiring) — repaint the internal
       // spray runs IN PLACE when it moves materially (≥1 °C). A rebuild would restart

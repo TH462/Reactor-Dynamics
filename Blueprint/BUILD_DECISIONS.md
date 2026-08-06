@@ -45,6 +45,125 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-develop-c — #392: the ADV default reverses #371a, and a 5-minute sample interval nearly shipped the reason backwards
+
+**Decision 1 — the ADV ships in AUTO** *(OWNER, 2026-08-06: "Amos dump should start in auto"
+— ADV, dictated)*. `adv_override` `0` → `null` in the engine's initial state and in
+`_migrateState`, so it covers every IC, instructed content and migrated save. **No `defaultOn`
+on the automation channel**: it is `kind: 'mode'`, so `_isEngaged` reads the plant
+(`adv_auto` ≡ `adv_override == null`) and the flag would be redundant *and* narrower —
+`engageDefaults` runs for free play only.
+
+**This reverses 2026-08-05-workbench-h (#371a), and the reversal is measured rather than
+argued.** #371a shipped the valve SHUT because AUTO "would take the code safeties out of every
+bottled-SG evolution — TR-5, TR-8, the MSIV mission, TR-12b's safety lift". Measured full
+stack, MSIV closure at hot full power:
+
+| | ADV SHUT | ADV AUTO |
+|---|---|---|
+| peak | 1351 psi (9.32 MPa) | 1350 psi (9.31 MPa) |
+| safeties lift | 1318 psi (9.09 MPa) @ 65.8 s | **1317 psi (9.08 MPa) @ 68.5 s** |
+| then | **still open at 10 min** | **reseat at 5.0 min** |
+| settles | 1305 psi (9.00 MPa), on the safeties | **1249 psi (8.61 MPa)**, the ADV setpoint |
+
+Peak and lift time are essentially **identical** — AUTO delays the lift by three seconds and
+does not prevent it (**TR-5 and TR-16 pin it and both pass unchanged**) — so the premise fails,
+by a wider margin than the first pass suggested. **These are PEAK-TRACKED**; an earlier draft
+quoted 9.06 MPa as the lift, which is the relieving plateau the safeties settle onto, not where
+they popped. Sampling found the plateau; only per-step tracking finds the pop. What changed is the *steady* state, and it changed toward
+prototypicality: a plant does not sit on its main steam safety valves for half an hour, and
+relieving to atmosphere below the code setpoint is the entire reason an ADV exists at 8.60
+against their 9.31. At power it does not open at all (819 psi / 5.65 MPa). **AUTO caps
+pressure but does not cool** — Tavg holds 574 °F (301 °C) with the condenser lost — so §8.29's
+"no controlled cooldown path" is still closed by an operator lever, which is what keeps TR-17
+leg B meaningful.
+
+**THE PROCESS LESSON IS THE BIGGER ONE, and it is mine: I gave the owner a recommendation
+resting on an unmeasured premise, then a coarse measurement appeared to confirm the opposite.**
+The recommendation said the safeties would still lift because "heat ≫ the 10 % ADV capacity".
+That is wrong — the MSIV closure trips the turbine, which scrams the reactor at 1m01s, so it is
+a decay-heat case within the minute. Then `--every=5m` read `sg_safety_open` FALSE throughout
+and made #371a look simply correct, which would have shipped a write-up that was backwards in
+the other direction. `--every=20s` found the real shape. **A 5-minute interval cannot see a
+2-minute event**: when the claim is about a transient, sample the transient, not its tail —
+this is `h.range()`'s trap in a new costume.
+
+Content follows the plant (HR9), so two probes were re-authored and both injection-verified:
+**TR-17** leg A (the null control rested on "the valve ships SHUT") now measures what AUTO
+bought, with a **new leg A2** forcing the valve shut to keep reproducing audit #297 F3, and its
+"still holds hot" check retained as a calibration guard **green on both engines**; **TR-12b**'s
+safety-lift check became a relief-path check. The distinction is worth keeping: TR-5 bottles
+from full power and SPIKES past the ADV; TR-12b's generator re-pressurizes *up* from a
+blown-down break and never spikes. `DESIGN_COMPANION` §8.34 and `Manuals/12` §12.18 are
+narrowed to the unsourced capacity; the ship-SHUT half is retired.
+
+**Decision 2 — a rebuild guard's trigger must be the thing that changes the POPULATION, not
+the thing that changes its aim.** The owner's flicker report came with the mechanism attached
+(*"the steam bubbles restart their animation … the larger the transients the more
+flickering"*). Measured, animation-restarting rebuilds per plant-minute on an MSIV closure:
+**31.9 → 3.6**; the alarm stack separately **9.2 rebuilds/second → 0** on an *idle* plant.
+
+Three things settled here. **A single wholesale re-render was ruled out first** rather than
+assumed — mount/unmount is plant-switch only, the board render does no node churn, and the
+ResizeObserver writes a transform, which does not restart descendant animations. **The
+quantisation has to cover every term of the guard**: the pressurizer's level term was already
+coarsened to ~3 px citing #233, but it sat in an `||` with a raw-float `heaterPower`, so the
+neighbour reopened the hole — a fix applied to one term of an OR is not applied. And **travel
+can be re-aimed without rebuilding**: writing a CSS custom property does not restart an
+animation, so level leaves the rebuild key entirely, which matters because a draining plant
+moves the surface every broadcast. Quantising it instead would only have traded a fast pop for
+a slow one.
+
+**Two planned items were measured and deliberately NOT done.** `diagTick` was on the list to
+rAF-coalesce and must not be: it is an accumulator that diffs alarm states, so coalescing would
+drop diagnostic history. `renderAutomate`'s expensive document sweep turns out to be RBMK-only.
+The residue is a pane-visibility guard (`physicsVisible()` generalised to `paneVisible(name)`)
+plus a repaint on tab switch, without which both it and the Physics tab open stale on a paused
+sim.
+
+**Decision 3 — a check that cannot be made to fail does not ship.** The vital-gauge sparklines
+took the strip chart's bucketing, min/max envelope, held 1-2-5 axis, thinning, speed-following
+window and fine sampling. Four `board_check` pins were drafted; **three shipped and one was
+cut**. "History translates rigidly as it scrolls" stayed green against *both* defects it
+describes — a moving-origin grid and a per-paint re-fit — while the held-axis pin went red on
+both, so its property was already covered from a better angle. The held-axis pin was hollow on
+its own first draft too: a ±0.4 psi wobble is floored by `MIN_WINDOW` to the same range either
+way, and the discriminator had to be a ramp. **Both were caught by injection, neither by
+reading.**
+
+The port also surfaced an unfiled defect: **the six vital tiles were BLANK above ~600×** (a
+fixed 180 s window against `accel × 0.1` sim-seconds per broadcast holds one sample at 3600×,
+and the trace collapses to a single vertex — injection-confirmed 1 vertex vs 230 now).
+Fine sampling needed **no new sampler** — `chartSample` already walks every series and the six
+tile readings are among them, and there could not be a second one anyway since the service
+holds one sampler slot and `takeFine()` clears. The cost was routing, and the drain is now
+**split** (`pendingFine` for the chart, which may skip a frame; `RD.ChartFine` for the board,
+which wants this frame only).
+
+**Deferred, with the reason:** `ui/chart_math.js`, to share `niceStep` + the hold policy
+between `drawChart` and the tile. It is 8 duplicated lines plus a policy block, both marked
+KEEP IN SYNC, weighed against re-pointing a working strip-chart fitter for no user-visible
+gain. Worth doing; not worth bundling into a five-defect fix.
+---
+
+## 2026-08-06-workbench-b — #377: a probe must not flip on a coin, and a mitigation nobody measured is dead
+
+**Decision.** TR-1c's backstop check asserted `peak ≥ 16.20 MPa` — the PORV setpoint itself — and
+the merged plant peaks 16.212 hands-off, 16.198 shipped: the physics lands ON the number, so the
+check (and the `porv_open` EVENT, measured flipping together with it) is a coin toss under a 3 %
+thermal nudge. Re-authored to the robust pair — the DOORSTEP (`≥ porv_open_mpa − 0.15`, from
+config) and the CLIFF SPAN (sub-arm minus caught ≥ 0.5 MPa; both legs ride any nudge together, so
+the difference holds at 0.71 worst-seen) — with the knife-edge ornament demoted to info. New
+**TR-1k** runs the same legs on the SHIPPED lineup, where the audit's "rod control absorbs it,
+12.9 psi to spare" mitigation is measured DEAD (#372 ate it; both lineups end at the backstop),
+and pins the declared cliff's real cost: the sub-arm cut undershoots ~15 points deeper than the
+caught one. **The §8.21 ruling comes out strengthened** — the PORV is the honest backstop on
+every lineup now — and the mitigation claim turned out to live nowhere but TR-1c's own comment,
+which cited a "§8.21 write-up" that never carried it. Full record:
+`Diagnostic/TUNING_LOG.md` 2026-08-06-workbench-b; injections and the nudge/seed matrix there.
+
+---
+
 ## 2026-08-06-develop-b — lane merge `develop` ← `backshop`: verifying an audit lane rather than reasoning about it
 
 **Decision.** The backshop merge is carried as-is (no judgement calls in it — 3 commits of

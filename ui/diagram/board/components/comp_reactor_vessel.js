@@ -409,7 +409,13 @@
     }
 
     function applyBubbles(force) {
-      var bq = Math.round(clamp(st.boil, 0, 100));
+      // Quantised to 5 % of boil, not 1 % (2026-08-06) — this teardown-and-re-append
+      // restarts every circle's CSS animation from t=0, so the trigger has to be coarser
+      // than the noise. `st.boil` is `max(voidFrac * 400, -subcool * 3)`
+      // (pwr_board_wiring.js): a 400x gain on void fraction, so one integer is 0.0025 of
+      // void and the field flipped continuously through any transient that voids the
+      // core. Same fix as the SG and pressurizer fields.
+      var bq = Math.round(clamp(st.boil, 0, 100) / 5) * 5;
       if (!force && bq === lastBoil) return;
       lastBoil = bq;
       while (R.bubbleG.firstChild) R.bubbleG.removeChild(R.bubbleG.firstChild);

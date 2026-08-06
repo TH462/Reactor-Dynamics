@@ -110,6 +110,39 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>A steadier board, and the atmospheric dumps start in auto</h2>
+      <span class="log-ver mono">Alpha 1.2.1</span>
+      <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>The atmospheric dump valves start in
+          AUTO.</strong> They hold a bottled steam generator at 1247 psi (8.60 MPa) instead of
+          leaving it on its code safety valves. They still do not cool the plant on their own
+          &mdash; lower the setpoint or open them for that.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Flickering during large transients.</strong>
+          Gauges, the trend chart, the alarm list and the clock no longer strobe when a lot is
+          happening at once.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Alarm acknowledgements that did not
+          register.</strong> During an alarm flood a click could land on nothing. The alarm list can
+          also be scrolled while alarms are coming in.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The six vital gauge trends were blank
+          above 600&times; speed.</strong> Their window now follows the speed setting and they
+          sample between updates.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The vital gauge trends match the strip
+          chart.</strong> They show a min/max band, hold a steady scale instead of rescaling every
+          frame, and no longer drop brief spikes.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The turbine exhaust pipe ran underneath the
+          turbine control card.</strong></li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Steam generator bubbles stopped partway up
+          the water.</strong> They now rise to the surface and fade there.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Manual corrections.</strong> The
+          full-open cooldown rate is re-measured at about 630 &deg;F/hr, and the steam dump section
+          carries current numbers.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>Containment, atmospheric dumps, and automatic steam line isolation</h2>
       <span class="log-ver mono">Alpha 1.2.0</span>
       <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>

@@ -573,7 +573,8 @@ physical-quantity vocabulary.
     "adv_valve_pct": number,          // atmospheric dump valve position, 0–100 % — feeds instruments.adv_valve (#371)
     "adv_flow_normalized": float,     // steam vented to ATMOSPHERE, normalized to rated. Independent of the
                                       //   condenser and upstream of the MSIV — the cooldown path when the
-                                      //   condenser is gone. Ships SHUT; see DESIGN_COMPANION §8.34
+                                      //   condenser is gone. Ships in AUTO (2026-08-06, was SHUT);
+                                      //   see DESIGN_COMPANION §8.34
     "accumulators_discharging": bool, "accumulator_flow_normalized": float, "accumulator_volume_pct": number,  // passive accumulators (finite volume)
     "accumulator_pressure_mpa": number,   // N2 cover-gas pressure (the board's SIT pressure readout). INDICATION
                                       //   ONLY: injection is gated on cold-leg pressure vs the FIXED

@@ -176,16 +176,35 @@
         jetEl.setAttribute('points', [cx - 9, MOUTH + 2, cx + 9, MOUTH + 2,
           cx + 5, MOUTH - 26 * f - 6, cx - 5, MOUTH - 26 * f - 6].join(' '));
         // Alternating drift so the plume looks turbulent rather than pulsing in step.
+        //
+        // DURATION-ONLY UPDATES once the animation is running (2026-08-06). This used to
+        // reassign the `animation` SHORTHAND and `animationDelay` on every call, and both
+        // restart the animation from t=0 — while the guard above compares raw floats, so
+        // any movement in valve position or saturation temperature triggered it. During a
+        // secondary transient, which is exactly when the ADV is lifting, the plume was
+        // being restarted every broadcast. Same class as the SG/vessel/pressurizer bubble
+        // fields; the correct idiom already existed at comp_turbine_generator.js:150.
+        //
+        // The delay is set ONCE per opening rather than tracked: it is only a stagger, and
+        // animation-delay restarts the animation just as the shorthand does, so following
+        // `dur` with it would defeat the whole thing.
         puffEls.forEach(function (p, i) {
           var dur = (1.35 - 0.5 * f) * (1 + (i % 3) * 0.16);
           var drift = ((i % 2 ? 1 : -1) * (3 + (i % 4) * 4)) * (0.5 + f);
           p.style.setProperty('--adv-dx', drift.toFixed(1) + 'px');
-          p.style.animation = 'advPuff ' + dur.toFixed(2) + 's linear infinite';
-          p.style.animationDelay = (i * (dur / NPUFF)).toFixed(2) + 's';
+          if (!p.__bdAnim) {
+            p.style.animation = 'advPuff ' + dur.toFixed(2) + 's linear infinite';
+            p.style.animationDelay = (i * (dur / NPUFF)).toFixed(2) + 's';
+            p.__bdAnim = true;
+          } else {
+            p.style.animationDuration = dur.toFixed(2) + 's';
+          }
         });
       } else {
         plumeG.style.display = 'none';
-        puffEls.forEach(function (p) { p.style.animation = 'none'; });
+        // Clearing the shorthand drops the running animation, so the flag has to go with
+        // it — otherwise the next opening would only set a duration on nothing.
+        puffEls.forEach(function (p) { p.style.animation = 'none'; p.__bdAnim = false; });
       }
 
       portEl.setAttribute('data-phase', st.contents || '');

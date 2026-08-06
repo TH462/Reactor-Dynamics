@@ -281,9 +281,19 @@ var BASELINES = {
   // TR-12b proves it works on the casualty; TR-12c proves it stays out of a full
   // cooldown and a bottled SG with its safeties lifting, and that the operator
   // cannot reopen while it is sealed in. The half that is easiest to skip.
-  // 56 → 57 (2026-08-05, #371): TR-17 — the atmospheric dump. Leg A is the null
-  // control (valve ships SHUT, plant still holds hot as audit F3 measured); leg B
-  // opens it and the plant cools 304.5 → 187.7 °C with no condenser at all.
+  // 56 → 57 (2026-08-05, #371): TR-17 — the atmospheric dump. Leg B opens it and the
+  // plant cools 304.5 → 187.7 °C with no condenser at all.
+  //   RE-AUTHORED 2026-08-06 (probe count unmoved; the CHECKS changed, which a
+  //   probe-count baseline cannot see). Leg A was the null control on the grounds that
+  //   the valve ships SHUT; the shipped lineup is AUTO now, so it measures what that
+  //   bought — safeties never lift in an hour vs parked open at 9.00 MPa — and a new
+  //   leg A2 forces the valve shut to keep reproducing audit F3. The "still holds hot"
+  //   check is retained as a calibration guard and passes on BOTH engines: AUTO caps
+  //   the pressure, it does not remove the heat, so leg B is still a real lever.
+  //   TR-12b moved in the same change, for a reason worth keeping: TR-5 still lifts the
+  //   code safeties because bottling from full power SPIKES past the ADV, while TR-12b's
+  //   generator is re-pressurizing UP from a blown-down break, so there is no spike and
+  //   the ADV catches it at 8.60. Same valve, different history, different relief path.
   // +1 xfail (2026-08-06, #378): TR-18 — load-change settling, shipped as a STRICT
   // XFAIL pinning an OPEN defect: the plant limit-cycles ~13 pts p2p forever after a
   // manual 100→50 MWe step. The fix that kills it (stop-exit rod-travel cancel) was
@@ -293,7 +303,17 @@ var BASELINES = {
   // MEASURED ON THE MERGED TREE (2026-08-06 lane merge): develop read 58pass 0xfail and
   // workbench 57pass 1xfail from the same 55pass base; neither figure survives and their
   // sum is not the answer. The standing rule since #312 — measure, never add up.
-  'run_behavior.js':       { code: 0, secs: 56, score: '60pass 1xfail' },
+  // 60 → 61 (2026-08-06, #377): TR-1k — the arm cliff on the SHIPPED lineup, which no
+  // probe measured while TR-1c's legs are deliberately rod-less. Measured: rod control in
+  // AUTO does NOT keep the PORV shut on a sub-arm rejection (the audit's 12.9 psi margin
+  // was eaten by #372), and the sub-arm cut undershoots ~15 pts deeper than the caught
+  // one. TR-1c re-authored the same day: its backstop check sat exactly ON the PORV
+  // setpoint (16.212 vs >= 16.20) and flipped under a 3 % coolant_heat_capacity nudge —
+  // now the robust doorstep (>= setpoint - 0.15) + cliff-span (>= 0.5 MPa) pair, with the
+  // knife-edge PORV sample carried as info. Injection-verified: severing the arm reddens
+  // 5+4, forcing it always-armed reddens 4+5, and the capacity nudge that flipped the old
+  // form leaves all 37 TR-1c/TR-1k checks green.
+  'run_behavior.js':       { code: 0, secs: 56, score: '61pass 1xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -1025,7 +1045,7 @@ var BASELINES = {
   // 12 -> 13 on 2026-08-05 with Alpha 1.1.0 — a RELEASE adds a check by design: the CROSS
   // block cross-checks every changelog.html entry down to the oldest version CHANGELOG.md
   // still names individually, so it grows by one row per published release.
-  'run_release.js':        { code: 0, score: '14checks 0failed' },
+  'run_release.js':        { code: 0, score: '15checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane
@@ -1453,8 +1473,29 @@ var BASELINES = {
   // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
   // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
   // offenders, so a red here is diagnosable without reopening the page.
-  // 205 → 211 (2026-08-05, #371): the ADV card's pins — it ships SHUT not AUTO
-  // (asserted, so a future change to the default has to edit the line), AUTO/SHUT
+  // 209 → 214 (2026-08-06, #392): +2 for the turbine exhaust run — a MIRROR pin on the
+  // first waypoint against `turbineGenerator/exhaust-out`, and a crossover-clearance pin
+  // that the run's horizontal leg sits between the two tiles. Only the LAST waypoint was
+  // pinned before, which is exactly how the #371b re-export left the first one inside the
+  // TURBINE-GENERATOR card for a day with every gate green; a one-sided pin on a two-ended
+  // run is not coverage, and the clearance pin is the one that describes the SYMPTOM (two
+  // plumb pins both pass on a run drawn at any y). +3 for the vital-gauge sparklines, the
+  // first pins on that component's trace maths: a one-sample spike survives decimation
+  // (0.0 px above the flat trace under the old index stride — a spike vanishing outright
+  // from a VITAL gauge — against 16+ px now), a rising trend does not re-project drawn
+  // history every paint (60 of 60 paints moved vertices under a raw per-paint re-fit), and
+  // the trace is not blank at 3600x (1 vertex on the old fixed 180 s window, 230 now).
+  // They drive the component through `RD.PwrBoard.componentInstance()`, added for them —
+  // going through render() would make the input a moving plant and every assertion
+  // timing-dependent.
+  // A FOURTH was drafted and CUT for not discriminating: "history translates rigidly as it
+  // scrolls" stayed GREEN against both defects it describes (a moving-origin bucket grid
+  // and a per-paint re-fit) while the held-axis pin went red on both. The held-axis pin was
+  // hollow on its first draft too — a ±0.4 psi wobble is floored by MIN_WINDOW to the same
+  // range either way, so the discriminator had to be a RAMP.
+  // 205 → 211 (2026-08-05, #371): the ADV card's pins — its shipped lineup is
+  // asserted (so a future change to the default has to edit the line — which is
+  // exactly what happened on 2026-08-06 when it went SHUT → AUTO), AUTO/SHUT
   // both drive the engine, the setpoint box converts, and its range hint carries
   // the unit the tile itself deliberately omits.
   // 211 → 209 (2026-08-05, #371): the owner's diagram re-export retires `imrzmlyafa3`,
@@ -1463,7 +1504,7 @@ var BASELINES = {
   // clear-of-the-dump-valve) go with it rather than being kept alive against an item that
   // no longer renders. Net -2. Everything else the re-export moved was re-pinned, not
   // dropped: four pipe ids, five item ids, two re-measured runs and the rod-card spacing.
-  'verify_board_check.js':   { code: 0, score: '209checks' },
+  'verify_board_check.js':   { code: 0, score: '214checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

@@ -45,26 +45,43 @@
 
   var W = 240, H = 36, PAD = 5;   // sparkline viewBox
   var GW = W - 4;                 // gauge inner width
-  // Trace window: the last WINDOW_S of SIM time, sampled evenly at SAMPLE_S. Sampling on
-  // sim time rather than per render is what keeps the window honest — the board renders at
-  // whatever rate the browser gives it (~10 Hz) and the sim can run at up to 3600x, so a
-  // per-render buffer showed ~36 s of plant as a coarse staircase and called it three
-  // minutes. HIST_MAX points across a 240 px sparkline is ~1.5 samples per pixel, which is
-  // what makes the trace read as a curve rather than a series of steps.
-  // Sample EVERY update (the board renders once per sim broadcast, ~10 Hz) and position the
-  // trace by TIME, not by index. Sampling on a slower fixed interval made the leading edge
-  // advance in visible steps; index positioning also made the whole trace slide and compress
-  // while the buffer filled. With a time axis the window is a true WINDOW_S regardless of
-  // sample rate or time acceleration, and the line advances as smoothly as the data arrives.
-  var WINDOW_S = 180, HIST_MAX = 2400;
-  // Cap how many points are actually DRAWN: past ~2 per pixel the extra points are invisible
-  // and only cost paint time. The newest sample is always kept so the leading edge is exact.
-  var DRAW_MAX = 460;
+  // Trace window: the last WINDOW_S of SIM time. Sampling on SIM time rather than per
+  // render is what keeps the window honest — the board renders at whatever rate the
+  // browser gives it (~10 Hz) while the sim can run at up to 3600x, so a per-render buffer
+  // showed ~36 s of plant and called it three minutes. Position by TIME, not by index:
+  // index positioning made the whole trace slide and compress while the buffer filled.
+  var WINDOW_S = 180;
+  // Window vs time acceleration. See the `speed:` note in pwr_board_wiring.js tile().
+  // Keys are the shipped speed settings; anything else takes the nearest rung at or below.
+  var TILE_WINDOWS = [[1, 180], [10, 600], [60, 1800], [600, 3600], [3600, 3600]];
+  function windowFor(speed) {
+    var w = TILE_WINDOWS[0][1];
+    for (var i = 0; i < TILE_WINDOWS.length; i++) if (speed >= TILE_WINDOWS[i][0]) w = TILE_WINDOWS[i][1];
+    return w;
+  }
+  // One bucket per plot pixel — the decimation unit. See paint().
+  var NB = W - 2 * PAD;
+  // Retention. Thin the older half rather than truncating the oldest rows: at the 20 Hz
+  // transient cadence a flat count silently SHORTENS the window (a 2400-row cap turned
+  // "3 minutes" into ~2.4 during exactly the events worth watching). Same idiom as
+  // ui/app.js's CHART_ROW_BUDGET.
+  var ROW_BUDGET = 1200;
   // Smallest vertical window the sparkline will auto-scale to, as a fraction of full scale.
   // Caps how far instrument noise can be magnified — see paint().
   var MIN_WINDOW = 0.15;
+  // Auto-range dwell: how many consecutive paints the data must sit well inside the held
+  // band before the axis is allowed to zoom back in. Mirrors CHART_SHRINK_FRAMES.
+  var SHRINK_FRAMES = 40;
 
   function num(v, d) { var n = +v; return isFinite(n) ? n : d; }
+
+  // 1-2-5 ladder step, so a held axis lands on a round number rather than wherever the
+  // data happened to be when it re-fitted. KEEP IN SYNC WITH ui/app.js niceStep().
+  function niceStep(raw) {
+    if (!(raw > 0) || !isFinite(raw)) return 1;
+    var e = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), f = raw / e;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e;
+  }
 
   function build(cfg, env) {
     var h = env.h;
@@ -82,6 +99,11 @@
     var hist = [];
     var lastT = null;   // sim time of the last committed sample (see update())
     var seeded = false; // has the flat preload been laid down? (see update())
+    // Held vertical axis + its zoom-in dwell counter. Null means "re-fit on the next
+    // paint" — which is also how a band change, a rewind and reset() invalidate it.
+    var held = null, shrinkFor = 0;
+    var winS = WINDOW_S;   // current trace window, sized by time acceleration
+    var unitKey = null;    // display unit the buffer was recorded in
 
     var padX = num(cfg.padX, 8), padY = num(cfg.padY, 7), gap = num(cfg.gap, 5);
     var labelSize = num(cfg.labelSize, 13), valueSize = num(cfg.valueSize, 28);
@@ -143,12 +165,15 @@
     // sparkline: bands + area + per-region trace segments + current-sample dot
     var chartBandsG = h('g', null);
     var areaEl = h('path', { d: '', fill: REGION_COLORS.normal, opacity: 0.07 });
+    // Per-bucket min/max envelope, drawn UNDER the trace — one polygon per region run, so
+    // it inherits the trace's own colour segmentation instead of inventing a second one.
+    var envG = h('g', null);
     var segsG = h('g', null);
     var dotEl = h('circle', { cx: W - PAD, cy: H / 2, r: 2.4, fill: REGION_COLORS.normal });
     var sparkSvg = h('svg', {
       viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none',
       style: { position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }
-    }, chartBandsG, areaEl, segsG, dotEl);
+    }, chartBandsG, areaEl, envG, segsG, dotEl);
     var sparkWrap = h('div', { style: { flex: 1, minHeight: 0, position: 'relative' } }, sparkSvg);
 
     // gauge: static track + static full-scale region bands + moving marker
@@ -263,36 +288,105 @@
       var REG = regions();
       var n = hist.length, cur = hist[n - 1].v;
 
-      // Sparkline window auto-scales to what is visible, but with a FLOOR of MIN_WINDOW of
-      // the tile's full scale. Without the floor a dead-steady plant fills the whole 36 px
-      // with instrument noise: primary pressure sitting at 2235 ±1 psi drew a trace that
-      // looked like a transient. Magnifying sub-resolution noise to full height is not
-      // showing the operator more information, it is showing them alarm where there is
-      // none. With the floor, noise renders as the small wiggle it actually is and a real
-      // excursion is the thing that moves the line.
-      // Decimate for DRAWING only — the buffer keeps every sample, the trace draws at most
-      // DRAW_MAX of them (the newest always included, so the leading edge is exact).
-      var pts = hist;
-      if (n > DRAW_MAX) {
-        var stride = Math.ceil(n / DRAW_MAX);
+      // x by TIME across a fixed WINDOW_S, so the trace scrolls at a constant rate instead
+      // of stretching to fill the width while the buffer fills.
+      var tNow = hist[n - 1].t, tHave = hist[0].t;
+      var useTime = (tNow != null && tHave != null && tNow > tHave);
+      var t0 = useTime ? Math.min(tHave, tNow - winS) : 0;
+      var tSpan = useTime ? (tNow - t0) : 1;
+
+      // ---- DECIMATION: absolute-grid time buckets carrying min/max, one bucket per pixel.
+      //
+      // This replaced an INDEX STRIDE (`for q += ceil(n/DRAW_MAX)`), which had two faults
+      // that the strip chart underneath had already been fixed for (ui/app.js drawChart,
+      // 2026-08-05) and this tile had not:
+      //
+      //  1. A stride DROPS EXTREMES. A spike between two sampled indices simply vanished —
+      //     from a VITAL gauge. Bucketing keeps each bucket's min and max, so a transient
+      //     can be thinned but not hidden.
+      //  2. The bucket grid was effectively anchored to a moving origin, so points shifted
+      //     WITHIN the trace as it scrolled and old history kept changing shape. The grid
+      //     here is absolute (`floor(t / secPerBucket)`), and each point is plotted at its
+      //     bucket's OWN grid time rather than the mean of whatever members it currently
+      //     holds — so a drawn point never moves once drawn.
+      var secPerBucket = tSpan / NB;
+      var bOrigin = Math.floor(t0 / secPerBucket);
+      var pts;
+      if (!useTime || n <= 2) {
+        pts = hist.map(function (r) { return { t: r.t, v: r.v, lo: r.v, hi: r.v }; });
+      } else {
+        var sum = {}, cnt = {}, blo = {}, bhi = {};
+        for (var q = 0; q < n; q++) {
+          var rv = hist[q].v;
+          if (rv == null || !isFinite(rv)) continue;
+          var bk = Math.floor(hist[q].t / secPerBucket) - bOrigin;
+          if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
+          if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; blo[bk] = Infinity; bhi[bk] = -Infinity; }
+          sum[bk] += rv; cnt[bk] += 1;
+          // A fine row already carries the EXTREMES the service folded over its own
+          // sub-interval, so fold those rather than just its mean — otherwise the
+          // sub-sampling buys resolution and throws the excursions away again.
+          var rlo = (hist[q].lo != null && isFinite(hist[q].lo)) ? hist[q].lo : rv;
+          var rhi = (hist[q].hi != null && isFinite(hist[q].hi)) ? hist[q].hi : rv;
+          if (rlo < blo[bk]) blo[bk] = rlo;
+          if (rhi > bhi[bk]) bhi[bk] = rhi;
+        }
         pts = [];
-        for (var q = 0; q < n; q += stride) pts.push(hist[q]);
-        if (pts[pts.length - 1] !== hist[n - 1]) pts.push(hist[n - 1]);
+        for (var bk2 = 0; bk2 < NB; bk2++) {
+          if (cnt[bk2] === undefined) continue;
+          pts.push({ t: (bOrigin + bk2 + 0.5) * secPerBucket, v: sum[bk2] / cnt[bk2],
+                     lo: blo[bk2], hi: bhi[bk2] });
+        }
       }
       var m = pts.length;
+      if (!m) return;
+
+      // ---- RANGE. Two rules, and the order matters.
+      //
+      // (a) THE BAND SETS IT, NOT THE LINE. Otherwise the excursion the envelope exists to
+      //     reveal gets drawn outside the axis and clipped away.
+      // (b) A FLOOR of MIN_WINDOW of full scale. Without it a dead-steady plant fills the
+      //     whole 36 px with instrument noise: primary pressure sitting at 2235 ±1 psi drew
+      //     a trace that looked like a transient. Magnifying sub-resolution noise is not
+      //     showing the operator more, it is showing them alarm where there is none.
       var lo = Infinity, hi = -Infinity;
-      for (var w = 0; w < m; w++) { var vv = pts[w].v; if (vv < lo) lo = vv; if (vv > hi) hi = vv; }
+      for (var w = 0; w < m; w++) {
+        if (pts[w].lo < lo) lo = pts[w].lo;
+        if (pts[w].hi > hi) hi = pts[w].hi;
+      }
       var floorSpan = (st.max - st.min) * MIN_WINDOW;
       if ((hi - lo) < floorSpan) {
         var mid = (hi + lo) / 2;
         lo = mid - floorSpan / 2; hi = mid + floorSpan / 2;
       }
-      // x by TIME across a fixed WINDOW_S, so the trace scrolls at a constant rate instead
-      // of stretching to fill the width while the buffer fills.
-      var tNow = pts[m - 1].t, tHave = pts[0].t;
-      var useTime = (tNow != null && tHave != null && tNow > tHave);
-      var t0 = useTime ? Math.min(tHave, tNow - WINDOW_S) : 0;
-      var tSpan = useTime ? (tNow - t0) : 1;
+      // ---- HOLD the axis on a 1-2-5 ladder instead of re-fitting every paint.
+      // Re-fitting each frame re-projects the WHOLE trace each frame: history that had
+      // already been drawn kept sliding and changing shape, which reads as the tile
+      // breathing and contributed to the transient flicker reported 2026-08-06. Between
+      // re-fits every drawn point is frozen. Same policy as ui/app.js drawChart —
+      // KEEP IN SYNC WITH ui/app.js drawChart().
+      var fits = held && lo >= held.lo && hi <= held.hi;
+      if (fits) {
+        // zoom back in only after the data has been SMALL inside the band for a dwell,
+        // so a single quiet moment cannot snap the axis
+        var small = (hi - lo) * 1.6 < (held.hi - held.lo);
+        shrinkFor = small ? shrinkFor + 1 : 0;
+        if (shrinkFor < SHRINK_FRAMES) { lo = held.lo; hi = held.hi; }
+        else { held = null; shrinkFor = 0; }
+      } else { held = null; shrinkFor = 0; }
+      if (!held) {
+        var need = Math.max(hi - lo, floorSpan) * 1.3;    // 30 % headroom
+        var step = niceStep(need / 4);
+        var c = (hi + lo) / 2;
+        lo = Math.floor((c - need / 2) / step) * step;
+        hi = Math.ceil((c + need / 2) / step) * step;
+        // never show a range the instrument cannot reach — a level axis running to −50 %
+        // reads as a broken gauge
+        if (lo < st.min) { hi += (st.min - lo); lo = st.min; }
+        if (hi > st.max) { lo -= (hi - st.max); hi = st.max; if (lo < st.min) lo = st.min; }
+        held = { lo: lo, hi: hi };
+      }
+      if (hi - lo < 1e-9) hi = lo + 1;
       function xs(i) {
         if (m < 2) return W - PAD;
         if (!useTime) return PAD + (i / (m - 1)) * (W - 2 * PAD);
@@ -312,22 +406,42 @@
 
       // trace, split into one polyline per run of samples in the same region so the
       // line changes colour where it crosses a band edge; each run is extended one
-      // sample so consecutive runs stay visually joined
-      var segUsed = 0;
+      // sample so consecutive runs stay visually joined.
+      //
+      // The min/max ENVELOPE is emitted from the SAME run boundaries, one translucent
+      // polygon per run, which is what keeps the two in step by construction — a single
+      // envelope in the current colour would be wrong wherever it straddles a band edge.
+      // Only where the band is actually wider than the stroke (~1.2 px), so a steady
+      // trace does not get a permanent grey halo.
+      var segUsed = 0, envUsed = 0;
       var runStart = 0, runKey = regionAt(REG, pts[0].v).key;
       for (var i = 1; i <= m; i++) {
         var k = i < m ? regionAt(REG, pts[i].v).key : null;
         if (k === runKey) continue;
-        var end = Math.min(m - 1, i), seg = [];
-        for (var j = runStart; j <= end; j++) seg.push(xs(j).toFixed(1) + ',' + ys(pts[j].v).toFixed(1));
+        var end = Math.min(m - 1, i), seg = [], top = [], bot = [], wide = false;
+        for (var j = runStart; j <= end; j++) {
+          var x = xs(j), yl = ys(pts[j].lo), yh = ys(pts[j].hi);
+          seg.push(x.toFixed(1) + ',' + ys(pts[j].v).toFixed(1));
+          top.push(x.toFixed(1) + ',' + yh.toFixed(1));
+          bot.push(x.toFixed(1) + ',' + yl.toFixed(1));
+          if (yl - yh > 1.2) wide = true;
+        }
         setAttrs(poolAt(segsG, segUsed++, 'polyline'), {
           points: seg.join(' '), fill: 'none', stroke: REGION_COLORS[runKey],
           'stroke-width': 1.6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
           opacity: 0.9, 'vector-effect': 'non-scaling-stroke'
         });
+        if (wide) {
+          bot.reverse();
+          setAttrs(poolAt(envG, envUsed++, 'polygon'), {
+            points: top.concat(bot).join(' '), fill: REGION_COLORS[runKey],
+            stroke: 'none', opacity: 0.22
+          });
+        }
         runStart = i; runKey = k;
       }
       poolTrim(segsG, segUsed);
+      poolTrim(envG, envUsed);
 
       // faint region shading behind the trace — tracks the auto-scaled window
       var bandUsed = 0;
@@ -391,7 +505,29 @@
       }
       if (props.unit != null) st.unit = props.unit;
       if (props.decimals != null) st.decimals = Math.max(0, Math.round(+props.decimals));
-      if (bandsChanged) rebuildGaugeBands();
+      // A band change is a SCALE change, so the held axis no longer describes this tile.
+      if (bandsChanged) { rebuildGaugeBands(); held = null; shrinkFor = 0; }
+
+      // A DISPLAY-UNIT FLIP invalidates the whole buffer. st.min/st.max arrive already
+      // converted but `hist` holds readings in the previous unit, so keeping it would
+      // splice °F onto °C — a step discontinuity in the middle of the trace, and a held
+      // axis fitted to the wrong numbers. Drop it and re-preload, the same thing a rewind
+      // does. Only the three convertible tiles ever see this; the rest never change key.
+      if (props.unitKey != null && props.unitKey !== unitKey) {
+        if (unitKey !== null) { hist.length = 0; lastT = null; seeded = false; held = null; shrinkFor = 0; }
+        unitKey = props.unitKey;
+      }
+
+      // Window follows the speed setting. Changing it does NOT clear the buffer — the rows
+      // are timestamped, so widening simply exposes more of what is already there and
+      // narrowing trims on the next pass. A widen therefore leaves the trace occupying the
+      // right-hand fraction of the card until the plant fills it, which is DELIBERATE:
+      // back-filling flat history for a stretch the tile watched and knows was not flat
+      // would be fabricating instrument data (HR1, and departure 1 in the file header).
+      if (props.speed != null) {
+        var w2 = windowFor(+props.speed || 1);
+        if (w2 !== winS) { winS = w2; held = null; shrinkFor = 0; }
+      }
 
       // A missing/failed instrument must not push a fabricated sample onto the trace.
       if (props.value == null || !isFinite(+props.value)) { valEl.textContent = '—'; return; }
@@ -400,42 +536,82 @@
       // Sample on SIM time so the window is a true 3 minutes at any speed. A rewind (or a
       // reload to an earlier state) moves sim time BACKWARDS — drop the stale tail rather
       // than splicing a pre-rewind trace onto a post-rewind plant.
-      // A rewind (or a reload to an earlier state) moves sim time BACKWARDS — drop the
-      // stale tail rather than splicing a pre-rewind trace onto a post-rewind plant.
       var t = (props.t != null && isFinite(+props.t)) ? +props.t : null;
-      if (t != null && lastT != null && t < lastT) { hist.length = 0; lastT = null; seeded = false; }
+      if (t != null && lastT != null && t < lastT) {
+        hist.length = 0; lastT = null; seeded = false;
+        held = null; shrinkFor = 0;   // the held axis described the abandoned future
+      }
       // PRELOAD (see departure 1 in the file header): on the first sample that carries
       // sim time, lay down a full window of flat history at that reading so the tile
       // opens looking like a plant that has been running. Gated on `seeded` rather than
       // on an empty buffer because build() calls update() once with the authored config
       // value and NO `t` — that untimed sample is a placeholder, not history, so it is
       // dropped here rather than left to anchor the trace.
+      // Seeded at the BUCKET PITCH rather than 1 s: paint() folds the buffer onto NB
+      // buckets anyway, so a finer preload is rows nobody can see.
       if (!seeded && t != null) {
         seeded = true;
         hist.length = 0;
-        for (var pt = t - WINDOW_S; pt < t; pt += 1) hist.push({ t: pt, v: st.value });
+        var pitch = winS / NB;
+        for (var pt = t - winS; pt < t; pt += pitch) hist.push({ t: pt, v: st.value });
       }
-      // Commit a sample every SAMPLE_S of SIM time, not once per render. The board renders
-      // at whatever rate the browser gives it (~10 Hz) while the sim advances 0.1 s a step,
-      // so a per-render buffer covered only ~36 s — the trace was a coarse staircase over a
-      // tiny window instead of a smooth curve like the strip chart underneath. On sim time
-      // the window is a true WINDOW_S at any time acceleration: at 3600x, SAMPLE_S passes
-      // every frame and it simply samples every render.
+      // SUB-BROADCAST SAMPLES FIRST, then the broadcast instant. Without them the trace has
+      // one vertex per broadcast, and sim-seconds per broadcast is accel x 0.1 — so at 600x
+      // a 3600 s window holds 6 points across 230 px. The service already folds these on a
+      // fixed SIM-time interval, so vertex density stops depending on speed.
+      //
+      // `t <= lastT` is dropped, which does double duty: it keeps the buffer monotonic, and
+      // it makes a RE-DELIVERED batch a no-op. PwrBoard.render() can legitimately be called
+      // twice with the same snapshot — a display-unit flip does exactly that, and
+      // board_check does it ~20 times — so without the guard those rows would be appended
+      // twice. No sequence bookkeeping needed.
+      //
+      // Absent `props.fine` is a clean no-op: board_check never loads app.js, so nothing
+      // sets RD.ChartFine there and the tile simply falls back to broadcast-rate sampling.
+      if (props.fine && props.fine.length && t != null) {
+        for (var fi = 0; fi < props.fine.length; fi++) {
+          var fr = props.fine[fi];
+          if (fr.t == null || !isFinite(fr.t)) continue;
+          if (lastT != null && fr.t <= lastT) continue;
+          if (fr.t >= t) continue;                  // the broadcast row below owns that instant
+          hist.push({ t: fr.t, v: fr.v, lo: fr.lo, hi: fr.hi });
+          lastT = fr.t;
+        }
+      }
+      // One sample per update. The board renders once per broadcast, and paint() decimates
+      // to one bucket per pixel, so there is no interval gate here and no need for one.
+      // (Three comments used to describe committing "every SAMPLE_S of SIM time". There is
+      // no SAMPLE_S — it was named in prose only, never declared, and no gate existed. They
+      // were leftovers of a superseded design, and self-contradictory: the same blocks went
+      // on to say "Sample EVERY update … position the trace by TIME, not by index".)
       lastT = t;
       hist.push({ t: t, v: st.value });
       // Drop by TIME, not by count, so the window is honest at any acceleration.
       if (t != null) {
-        var cut = t - WINDOW_S, d = 0;
+        var cut = t - winS, d = 0;
         while (d < hist.length && hist[d].t != null && hist[d].t < cut) d++;
         if (d) hist.splice(0, d);
       }
-      if (hist.length > HIST_MAX) hist.splice(0, hist.length - HIST_MAX);
+      // Over budget: THIN the older half rather than truncating the oldest rows. Truncating
+      // silently shortens the window exactly when it matters — at the 20 Hz transient
+      // cadence the old flat cap turned a "3 minute" trace into ~2.4 minutes mid-event.
+      // Halving the old half keeps the full span at lower resolution, and the buckets it
+      // feeds carry min/max, so thinning cannot hide a spike either.
+      if (hist.length > ROW_BUDGET) {
+        var halfway = hist.length >> 1, kept = [];
+        for (var z = 0; z < halfway; z += 2) kept.push(hist[z]);
+        hist = kept.concat(hist.slice(halfway));
+      }
       paint();
     }
 
     // Discard history — used when the sim rewinds or reloads, so the trace does not
     // splice a pre-rewind tail onto a post-rewind plant.
-    function reset() { hist.length = 0; lastT = null; seeded = false; heldRegion = null; valEl.textContent = '—'; }
+    function reset() {
+      hist.length = 0; lastT = null; seeded = false; heldRegion = null;
+      held = null; shrinkFor = 0;
+      valEl.textContent = '—';
+    }
 
     rebuildGaugeBands();
     if (cfg.value != null && isFinite(+cfg.value)) update({ value: +cfg.value });

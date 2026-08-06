@@ -218,7 +218,14 @@
         hotcRect, coldcRect,
         h('rect', { x: cx - 2, y: tubeSheetY + 10, width: 4, height: 90, fill: '#0e1620' })),
       tubeGroups,
-      bubbleGroup,
+      // TWO clips, and both are needed. The inner one (`waterclip`, on bubbleGroup itself)
+      // is the water body and now ends at the surface; this outer one is the vessel's inner
+      // shell — nested clipPaths INTERSECT, so a bubble is drawn only where the water and
+      // the shell agree. Without the shell clip, a high level puts the water surface at
+      // fullY(100) = 48, well above the dome springline at y≈111, and circles would paint
+      // outside the vessel. The water and steam bodies at :217 have always been shell-
+      // clipped; the bubble field was the one thing in the boiler that was not.
+      h('g', { clipPath: 'url(#' + ids.clip + ')' }, bubbleGroup),
       h('circle', { cx: 310, cy: 269, r: 0.75, fill: 'none', 'data-port': 'fw-in', 'data-fluid': 'coolWater', 'data-dir': 'right', 'data-size': 'medium', 'data-out': '0' }),
       h('rect', { x: 180, y: 55, width: 60, height: 30, rx: 6, fill: '#20303a', stroke: '#425863', strokeWidth: 1 }),
       h('circle', { cx: 210, cy: 55, r: 0.75, fill: 'none', 'data-port': 'steam-out', 'data-fluid': 'steam', 'data-dir': 'up', 'data-size': 'medium', 'data-out': '1' }),
@@ -233,18 +240,43 @@
       if (!lastS || Math.abs(s - lastS) / s > 0.015) { lastS = s; rebuildConns(); }
     });
 
+    // Re-aim the EXISTING bubbles at a moved water surface without rebuilding them.
+    // A CSS custom property write does not restart an animation; replacing the element
+    // does. Each circle's `cy` is its fixed birth point, so the new travel is the same
+    // cy − levelY the rebuild computes. This is what keeps the LEVEL out of the rebuild
+    // key below — an SG whose level is moving would otherwise pop continuously.
+    function retargetBubbles(levelY) {
+      for (var n = bubbleGroup.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType !== 1) continue;
+        var rise = Math.max(4, (+n.getAttribute('cy')) - levelY);
+        n.style.setProperty('--sg-rise', rise.toFixed(1) + 'px');
+      }
+    }
+
     function rebuildBubbles(sgBoil, levelY) {
       clearEl(bubbleGroup);
       if (sgBoil <= 0.02) return;
       var bubbleCount = Math.round(4 + sgBoil * 40);
-      var submergedTop = Math.max(bendY, levelY);
+      // WHERE BUBBLES ARE BORN is not WHERE THEY GO, and conflating the two is the bug this
+      // replaced. Steam is generated on the tube bundle, so the birth zone is the bundle —
+      // or the water surface instead, once the level has fallen BELOW the bundle top, since
+      // nothing boils where there is no water. In SVG coords a larger y is LOWER on screen,
+      // so `Math.max` of two y values is the lower of the two, and max(bendY, levelY) is
+      // exactly that rule. It is correct here and was wrong as the travel target below.
+      var birthTop = Math.max(bendY, levelY);
       for (var i = 0; i < bubbleCount; i++) {
         var x = 132 + ((i * 37 + (i % 5) * 13) % 156);
-        var startY = waterBot - ((i * 43) % Math.max(1, (waterBot - submergedTop)));
-        // Travel exactly to the surface. `submergedTop` is already max(bendY, levelY), i.e.
-        // the water line clamped to the top of the bundle, so this is a real distance in the
-        // same user units the circle is drawn in.
-        var rise = Math.max(4, startY - submergedTop);
+        var startY = waterBot - ((i * 43) % Math.max(1, (waterBot - birthTop)));
+        // Travel to the WATER SURFACE and fade there (the keyframe ends at opacity 0), which
+        // is what the owner asked for: up the column, never on into the steam space.
+        //
+        // This used to target `birthTop`, described in a comment as "the water line clamped
+        // to the top of the bundle" — but max() picks the LOWER point, so above ~14 % wide it
+        // returned bendY (380.9) and never the water line at all. Measured at a normal 59 %
+        // level, levelY is 206.7: bubbles lived in a 54 px strip at the bottom of a 387 px
+        // column and stopped dead 174 px short of the surface. #350 item 24 had already
+        // fixed the older fixed-distance version; this is the clamp it left behind.
+        var rise = Math.max(4, startY - levelY);
         var dur = (2.4 - sgBoil * 1.2 + (i % 4) * 0.3).toFixed(2);
         var delay = (i * 0.21).toFixed(2);
         var r = (1 + (i % 3) * 0.45 + sgBoil * 2.6).toFixed(2);
@@ -325,9 +357,12 @@
         waterRect.setAttribute('height', String(Math.max(0, waterBot + 40 - levelY)));
         surfLine.style.transform = 'translate(0px,' + levelY.toFixed(2) + 'px)';
         steamGrad.setAttribute('y1', String(levelY));
-        var clipTop = Math.max(bendY, levelY);
-        waterClipRect.setAttribute('y', String(clipTop));
-        waterClipRect.setAttribute('height', String(Math.max(0, waterBot - clipTop)));
+        // The bubble clip is the WATER, so it ends at the water surface — same correction as
+        // the rise target in rebuildBubbles(). Clipping to max(bendY, levelY) put a second,
+        // independent ceiling at the tube bundle, so even a corrected rise would have been
+        // cut off at the bends. Above the surface belongs to the steam space.
+        waterClipRect.setAttribute('y', String(levelY));
+        waterClipRect.setAttribute('height', String(Math.max(0, waterBot - levelY)));
         last.level = level;
       }
       if (narrowLevel !== last.narrowLevel) {
@@ -335,10 +370,31 @@
         last.narrowLevel = narrowLevel;
       }
 
-      var bubbleKey = Math.round(boil) + '|' + Math.round(levelY / 3);
+      // THE KEY IS THE BUBBLE POPULATION, NOT ITS AIM (2026-08-06). A rebuild restarts
+      // every circle's CSS animation from t=0, so it must be triggered only by what
+      // actually changes the set of circles.
+      //
+      // `boil` quantised to 5, not 1: it is `steam_flow * 85` (pwr_board_wiring.js), an
+      // 85x gain on a NOISY normalized instrument, so `Math.round` flipped on sensor noise
+      // alone at steady state and swept dozens of integers through any secondary
+      // transient. One integer of `boil` is 0.0118 of rated flow — far below what ~44
+      // circles can show.
+      //
+      // The LEVEL term is now only the part of the level that changes the BIRTH zone.
+      // Travel is re-aimed in place (retargetBubbles) so it needs no rebuild at all, and
+      // birth is `max(bendY, levelY)` — identically bendY while the water is above the
+      // tube bundle, which is every normal level. So this term is a constant 0 until the
+      // generator drains into the bundle, and only then does it step. Keying on the raw
+      // levelY instead (the old `levelY / 3`) rebuilt continuously on any moving level,
+      // which is most of a transient.
+      var bubbleKey = Math.round(boil / 5) + '|' + Math.round(Math.max(0, levelY - bendY) / 12);
       if (bubbleKey !== last.bubbleKey) {
         rebuildBubbles(boil / 100, levelY);
         last.bubbleKey = bubbleKey;
+        last.bubbleSurfY = levelY;
+      } else if (levelY !== last.bubbleSurfY) {
+        retargetBubbles(levelY);
+        last.bubbleSurfY = levelY;
       }
 
       if (showFlow !== last.showFlow) {
