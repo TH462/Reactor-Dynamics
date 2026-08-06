@@ -45,6 +45,52 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-develop-d — #392 follow-up: a probe scoped to your hypothesis cannot disconfirm it
+
+**Decision — the render pass writes only what changed, and it writes all of it inside the paint
+cycle.** Three mechanisms: a changed-only `txt()`/`setHTML()` guard, every DOM-writing subscriber
+moved into the rAF (with `diagTick` **split** — accumulation stays synchronous because it diffs
+alarm states, only its readout moves), and the three bubble fields **pooled** rather than torn
+down. Measured on the real shell, childList mutations per 10 s of transient: **~10 900 → ~690**,
+with everything left being a value that genuinely changed.
+
+**THE METHOD FAILURES ARE THE POINT OF THIS ENTRY.** develop-c fixed a real contributor and the
+owner reported the flicker *"still happening, slightly better"* — which is precisely what a
+partial fix feels like, and should have been read as "keep measuring" rather than "close".
+
+**1. The first probe could not have found this.** It counted only adds of elements carrying an
+inline `animation` — the mechanism already suspected. **A probe scoped to your hypothesis cannot
+disconfirm it**; it can only tell you how big the thing you already believe in is.
+
+**2. A probe that aggregates by a non-unique key manufactures its own signal.** The
+whole-page restart probe keyed on `tagName + className`, collapsing ~41 pipe polylines into one
+bucket and comparing different elements' clocks between frames. It reported **8512
+`stdPipeFlow` restarts in 10 s** and I was one step from shipping that as the root cause —
+*against this repo's own standing note that the pipes are handled correctly*. Per-element
+identity: **zero**. When a measurement contradicts a documented fact, suspect the measurement.
+
+**3. A plausible cost argument is not a measurement.** The owner's timeline pointed at the
+strip chart and every 2026-08-05 chart commit did raise per-frame cost. Neutering `drawChart`
+outright moved frame p95 **25.7 → 20.3 ms** and left the longtask count unchanged. Not the cause.
+
+**4. The answer was already in the file.** `ui/app.js`'s rAF note describes exactly this
+failure — *"the compositor present a frame mid-rebuild on real GPUs … while software-rendered
+headless looked fine"* — including the reason no probe here could see it. Only `render` had ever
+been wrapped. **Read the note next to the thing you are debugging before instrumenting it.**
+
+**5. A pin per PROPERTY is not a pin per FAILURE MODE.** The held-axis clamp added that morning
+could exclude the data, putting the trace outside the viewBox — and `overflow: visible` meant it
+drew on the board rather than clipping. Three sparkline pins existed by then, covering the
+trace's shape, stability and existence; none looked at **where it was drawn**, so it took an
+owner screenshot. The clamp is now a preference that re-expands to contain the data, `ys()` is
+hard-clamped into the box, and the new pin is injection-verified at 229 vertices outside.
+
+**And the owner's three clues each out-performed the instruments**: "inconsistent what flickers"
+ruled out a single element, "started after the strip chart changes" produced a testable (and
+false) hypothesis worth eliminating, and "brief blank/blink" identified the mechanism outright.
+
+---
+
 ## 2026-08-06-develop-c — #392: the ADV default reverses #371a, and a 5-minute sample interval nearly shipped the reason backwards
 
 **Decision 1 — the ADV ships in AUTO** *(OWNER, 2026-08-06: "Amos dump should start in auto"

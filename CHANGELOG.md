@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.2.2] — 2026-08-06
+
 ## [Alpha 1.2.1] — 2026-08-06
 
 ### Changed — the atmospheric dump valves ship in AUTO (#392, 2026-08-06)

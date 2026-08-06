@@ -29,6 +29,84 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-develop-d (#392 follow-up — the flicker, found by the owner's three clues and not by my instruments)
+
+**Task:** the owner retested after 2026-08-06-develop-c and reported the flicker was **still
+happening, slightly better**. Three follow-up clues arrived and each one moved the diagnosis
+further than anything I measured: *"not every animation restarts now, it's not consistent what
+always flickers"*, *"I think it started after the strip chart changes yesterday"*, and finally
+— the decisive one — that it is a **brief blank/blink**, at **all speeds**.
+
+**THE FIRST PASS WAS AIMED TOO NARROWLY, AND THE PROBE IS WHY.** develop-c's probe counted only
+*adds of elements carrying an inline `animation`*, i.e. the mechanism I had already decided on.
+Anything flickering by another route was invisible to it. It measured a real thing (bubble
+rebuilds 31.9 → 3.6 per plant-minute) which is exactly why the owner saw *some* improvement, and
+it could never have found the rest. **A probe scoped to your hypothesis cannot disconfirm it.**
+
+**TWO WRONG TURNS, both worth recording because both looked convincing.**
+
+*The strip chart.* The owner's timeline pointed at it and the reasoning was good — all four
+2026-08-05 chart commits raised per-frame cost (sample rate 0.5 → 0.2 s, fine sampling, a
+min/max band per row), and `drawChart` does four wholesale `innerHTML` writes plus a forced
+layout on every broadcast. Measured by neutering `drawChart` entirely: frame p95 **25.7 → 20.3
+ms** at 60×, longtask count unchanged, median a solid 16.7 ms both ways. **Not the cause.** A
+plausible cost argument is not a measurement.
+
+*The pipes.* A whole-page restart probe reported **8512 `stdPipeFlow` restarts in 10 s** and I
+was one step from shipping that as the root cause — against CLAUDE.md's own standing note that
+pipe dash animations are handled correctly. The probe keyed restarts on `tagName + className`,
+so all ~41 pipe polylines collapsed into ONE key and it was comparing **different elements'
+clocks** frame to frame. With per-element identity: **zero**. The pipes were never involved.
+**A probe that aggregates by a non-unique key manufactures the signal it is looking for.**
+
+**THE ANSWER WAS ALREADY WRITTEN DOWN IN `ui/app.js`.** Its rAF note says mutating DOM off the
+paint cycle *"let the compositor present a frame mid-rebuild on real GPUs … dispersing and
+reappearing … while software-rendered headless looked fine"*. That is the owner's blank/blink
+verbatim, **and the last clause is why no headless probe in this repo can ever reproduce it.**
+Only `render` was ever wrapped in the coalescer; `renderAutomate` and `inspectLiveTick` were
+separate subscribers writing straight from the broadcast's `setTimeout`, and `diagTick` wrote
+its readout there too.
+
+**Fixes, all measured on the real shell, childList mutations per 10 s of scram + large LOCA:**
+
+| | before | after |
+|---|---|---|
+| failure-list buttons (24 rows × every frame) | 3960 | **0** |
+| the six vital tiles (value + a unit that never changes) | 1980 | 90 |
+| chart x-axis (six `<span>`s cleared and re-appended) | 1155 | **0** |
+| gauge values | 990 | 475 |
+| trend arrows | 875 | **0** |
+| SG bubble field | 733 | **0** |
+| reactor-vessel bubble field | 733 | **0** |
+| clock / alarm title / severity label | 494 | **0** |
+| **total** | **~10 900** | **~690** |
+
+Everything remaining is a value that genuinely changed. Three mechanisms: a `txt()`/`setHTML()`
+changed-only guard (`textContent =` destroys and recreates the text node even when the string is
+byte-identical); every DOM write moved **inside the rAF**, with `diagTick` **split** so its
+accumulation stays synchronous (it diffs alarm states and must not miss a broadcast) while only
+its readout moves; and the three bubble fields **pooled** instead of torn down, which removes the
+empty intermediate state *and* stops the field snapping to phase 0, because a surviving element
+keeps its running animation.
+
+**THEN THE FIX HAD A REGRESSION, AND IT TOOK A SCREENSHOT TO FIND.** develop-c's held axis clamps
+itself to the tile's declared scale so it cannot show a range the instrument cannot reach. That
+clamp could **exclude the data**: a cold plant reading 355 °F against an at-power Tavg band falls
+below `st.min`, the clamp pins `lo` there, the reading is then outside `[lo, hi]`, and `ys()`
+returns a coordinate outside the plot box — and the sparkline svg is `overflow: visible`, so it
+does not clip, **it draws on the board**. The clamp is a PREFERENCE now and re-expands to contain
+the data, plus `ys()` is hard-clamped into the viewBox so a future range bug is a pinned trace
+rather than a board-wide defect. New pin, injection-verified at **229 vertices outside** in each
+direction with the fix reverted.
+
+**The lesson from that last one is the sharpest of the session: a pin per PROPERTY is not a pin
+per FAILURE MODE.** The three sparkline pins written that morning check the trace's shape, its
+stability and its existence. Not one of them looked at **where it was drawn**.
+
+`run_all` 38/38 throughout. Shipped as Alpha 1.2.2.
+
+---
+
 ## Session log — 2026-08-06-develop-c (#392 — five board defects, and three of them were not what they looked like)
 
 **Task:** five defects the owner reported from play (#392). They are independent; what they

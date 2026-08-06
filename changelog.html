@@ -110,6 +110,26 @@
 
   <article class="log-entry">
     <div class="log-head">
+      <h2>The board stops flickering during transients</h2>
+      <span class="log-ver mono">Alpha 1.2.2</span>
+      <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>
+    </div>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>Elements blinking during large
+          transients.</strong> Gauges, the trend chart, the alarm list and the clock were being
+          rebuilt many times a second whether or not their values had changed, and could be
+          caught mid-rebuild on screen.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Bubbles in the reactor, steam
+          generator and pressurizer restarting.</strong> The bubble fields are reused instead of
+          rebuilt, so they keep rising instead of snapping back to the start.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Vital gauge trends drawing outside
+          their card,</strong> across the gauge band and onto the board, when a reading sat
+          outside that gauge's scale. An off-scale reading now pins to the edge of its trace box.</li>
+    </ul>
+  </article>
+
+  <article class="log-entry">
+    <div class="log-head">
       <h2>A steadier board, and the atmospheric dumps start in auto</h2>
       <span class="log-ver mono">Alpha 1.2.1</span>
       <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>
