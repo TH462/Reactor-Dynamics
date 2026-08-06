@@ -29,6 +29,48 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-develop-e (LOCA severity sweep — the void term owns the legible band; #385 evidence, #407 filed)
+
+**Task (owner, 2026-08-06):** "During a Large LOCA or other evolution involving loss of coolant
+the reactor drains before the pressurizer… Investigate the LOCA behavior at different levels of
+coolant loss." Investigation only — **no code changed, no gates run** (nothing to re-baseline).
+
+**Method.** Full stack (SimulationService tick-driven, default lineup, `hot_full_power`, seed
+4242, accel 10), `large_loca` injected at t+10 s, 40 plant-min per run, severities 0.01–0.50
+(the whole board slider) plus a 0.12/0.15/0.17 bracket. Script was session-scratch; the sweep
+table and traces are on #385 (comment, 2026-08-06) — reproduce from the parameters above.
+
+**Findings.**
+1. **TRUE pzr level reads exactly 100 at the moment the core top uncovers, at every severity
+   ≥ 0.15 — by construction.** While saturated, `void = min(3·(1−m),1)` (pwr_primary.js:379)
+   makes `levelRaw` collapse to `base + 350·(1−m)` for inv ≥ ⅔: level RISES as the plant
+   drains (the calibrated TMI slope, #330) and crosses 100 before inv reaches
+   `core_top_uncover` 0.70 from any base (floor 28). At sev 0.20 (the slider default) the
+   indicated gauge peaks **93.5 % at t+7.5 s with inventory ~60 %** — the level gauge argues
+   against a LOCA while SI actuates. This is #385's "one-second excursion" measured across the
+   slider: at 0.12–0.20 it spans 5–15 s and peaks 82–94 % indicated. `level_per_void` 375.33
+   was solved at void 0.2 / inv ~93 % (steam-space break); a cold-leg LOCA runs it at void 1.0
+   / inv 50–70 % — 5× past calibration. Posted to #385 with the recommendation: bound the
+   displacement term by available liquid (guards: flagship_tmi, pwr_tmi2_p1/p3, CA-9/12/13/15),
+   fix the drain rate with #384, THEN re-judge the pzr-node ruling — **the drain-rate fix alone
+   makes this defect MORE visible** (longer saturated window pegged full). Still needs-ruling.
+2. **Subcooling margin reads +5.9 → +163 °F (+3.3 → +90.6 °C) while the core is 100 %
+   uncovered** (sev 0.20, t+61…150 s, clad 1380 → 1602 °F / 749 → 872 °C): the datum is bulk
+   Tavg (pwr_thermal.js:271) and the bulk is the ECCS-chilled remnant. Sibling snap:
+   `primary_void_fraction` 1.0 → 0.0 at t+61 s with **1.9 % inventory** (bulk-saturation gate).
+   The post-TMI instrument deceives in the unsafe direction during the most-tested casualty.
+   **Filed #407** (priority-medium, type-bug).
+3. **What is fine:** sev ≤ 0.10 drains in the correct order (pzr empties on a 7 % inventory
+   loss — the #249 geometry — core never uncovers) and settles into held feed-and-bleed
+   grading cleanly with size (2213 → 1059 psi / 15.26 → 7.30 MPa). No board severity damages
+   the core with ECCS working (worst clad 1602 °F / 872 °C at 0.20; min inv 0.0 % for
+   0.17–0.50 with full recovery) — the design basis working, not a missing casualty. Sev 0.50
+   ends at the known #361 CA-15 water-solid arrest (109.3 %, 331 psi / 2.28 MPa).
+
+**Probe trap worth keeping:** the first sweep sampled every 10 s and would have missed the
+whole excursion (it lives in t+2…15 s); #385's original "cannot drain first" premise was the
+same artifact at 10-s sampling. Sample a blowdown at broadcast resolution or not at all.
+
 ## Session log — 2026-08-06-develop-d (#392 follow-up — the flicker, found by the owner's three clues and not by my instruments)
 
 **Task:** the owner retested after 2026-08-06-develop-c and reported the flicker was **still
