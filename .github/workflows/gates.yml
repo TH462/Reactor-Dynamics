@@ -54,9 +54,23 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v4
+      # ACTION MAJORS ARE ON THE NODE 24 RUNTIME (#389, 2026-08-06). All four were on `@v4`,
+      # which declares `using: node20` — deprecated, and the runner was force-running them on
+      # Node 24 while printing a warning on every run. A warning is not a gate: nothing here
+      # goes red, so the only signal was the raw CI log. This repo has already lost CI silently
+      # once (32 consecutive red runs through a release to `main`), so it is fixed now rather
+      # than when the forcing stops.
+      #
+      # The majors differ per action and are NOT all v5 — checked, not recalled: checkout v7,
+      # setup-node v7, cache v6, upload-artifact v7 are the latest, and each declares
+      # `using: node24`. Pinned to the MOVING major tag, matching what this file already did.
+      # None of the breaking changes touch this workflow: checkout takes no inputs at all and
+      # its v7 fork-PR block is scoped to `pull_request_target`/`workflow_run`, which this file
+      # does not use; upload-artifact v7's `archive` is opt-in and defaults to the old
+      # behaviour; the rest is ESM migration. Re-check `runs.using` when bumping again.
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
 
@@ -64,7 +78,7 @@ jobs:
       # ~60 s download into a few seconds. A miss just downloads, so this is never
       # load-bearing for correctness.
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ env.PW_VERSION }}
@@ -94,7 +108,7 @@ jobs:
 
       - name: Upload diagnostic reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagnostic-reports
           path: Diagnostic/
