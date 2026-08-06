@@ -272,7 +272,28 @@ var BASELINES = {
   // plan predicted: measured, `porv_open` is false throughout and pressure settles at 326 psi.
   // A plant with a hole in it does not repressurize — the equilibrium is injection = break
   // flow at low pressure. CA-12's isolated-PORV path is where the relief ladder arrests it.
-  'run_behavior.js':       { code: 0, secs: 56, score: '58pass 0xfail' },   // 56 -> 58 (#386 stage 1): CA-16 (containment receives the discharge; SGTR bypasses) + CA-17 (LIVE backpressure clone rig, red on the pre-#386 engine). Injection-verified three ways: press_gain 0 reddens 4 of CA-16, dropping the _leak_to_sg gate reddens leg B alone, reverting the live reads reddens all 3 of CA-17.
+  // 56 -> 58 (#386 stage 1): CA-16 (containment receives the discharge; SGTR bypasses)
+  // + CA-17 (LIVE backpressure clone rig, red on the pre-#386 engine). Injection-verified
+  // three ways: press_gain 0 reddens 4 of CA-16, dropping the _leak_to_sg gate reddens leg
+  // B alone, reverting the live reads reddens all 3 of CA-17.
+  // --- workbench lane, same base ---
+  // 55 → 56 (2026-08-05, #370c): TR-12c — the steam line isolation's COINCIDENCE.
+  // TR-12b proves it works on the casualty; TR-12c proves it stays out of a full
+  // cooldown and a bottled SG with its safeties lifting, and that the operator
+  // cannot reopen while it is sealed in. The half that is easiest to skip.
+  // 56 → 57 (2026-08-05, #371): TR-17 — the atmospheric dump. Leg A is the null
+  // control (valve ships SHUT, plant still holds hot as audit F3 measured); leg B
+  // opens it and the plant cools 304.5 → 187.7 °C with no condenser at all.
+  // +1 xfail (2026-08-06, #378): TR-18 — load-change settling, shipped as a STRICT
+  // XFAIL pinning an OPEN defect: the plant limit-cycles ~13 pts p2p forever after a
+  // manual 100→50 MWe step. The fix that kills it (stop-exit rod-travel cancel) was
+  // built, measured, and REJECTED — it takes TR-1i's sourced ramp duty 4.34 → 5.26 °F
+  // vs the WTSM ≤ 5.00, i.e. the duty is currently met partly BY the defect. Strict:
+  // if settling starts passing, the XFAIL entry must go in the same change.
+  // MEASURED ON THE MERGED TREE (2026-08-06 lane merge): develop read 58pass 0xfail and
+  // workbench 57pass 1xfail from the same 55pass base; neither figure survives and their
+  // sum is not the answer. The standing rule since #312 — measure, never add up.
+  'run_behavior.js':       { code: 0, secs: 56, score: '60pass 1xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -665,7 +686,25 @@ var BASELINES = {
   // across CLAUDE.md, CHANGELOG, TUNING_LOG, BUILD_DECISIONS and the manual revision row.
   // MEASURED AFTER the docs, which is the only order that gives the right number: an
   // intermediate run with the code done and the write-ups pending read 180.
-  'run_hardrules.js':      { code: 0, score: '189checks 0failed' },   // 183 -> 189 (#386 stage 1) MEASURED AFTER THE DOCS, the only order that gives the right number: the code moved this by ZERO, the delta is the tracked-markdown citation sites for the two dated rulings (Tier 3, the TMI-2-style burn) across CLAUDE.md, CHANGELOG, TUNING_LOG and BUILD_DECISIONS -- net of the #346 themes-bullet eviction, whose bullet carried no ruling
+  // 183 -> 189 (#386 stage 1) MEASURED AFTER THE DOCS: the code moved this by ZERO, the
+  // delta is the tracked-markdown citation sites for the two dated rulings (Tier 3, the
+  // TMI-2-style burn) across CLAUDE.md, CHANGELOG, TUNING_LOG and BUILD_DECISIONS -- net
+  // of the #346 themes-bullet eviction, whose bullet carried no ruling.
+  // --- workbench lane, same base ---
+  // 178 → 179 (2026-08-05, #370c): the steam line isolation's numeric coincidence
+  // term is the first OBJECT-form condition, and it gets its own HR1 check — the
+  // string-only scan would have skipped it silently (see #370b).
+  // MEASURED ON THE MERGED TREE (2026-08-06 lane merge), AFTER the write-ups and AFTER
+  // the manual revision table collapsed six rows into one — that collapse DELETES
+  // citation sites, the same mechanism the themes cap has bitten this number with twice.
+  // develop read 189, workbench 179; the merged figure is neither and is not their sum.
+  // The AFTER-the-docs rule earned its keep again: 192 with the merge resolved and the
+  // write-ups still to come, 195 once CHANGELOG/TUNING_LOG/BUILD_DECISIONS were written.
+  // Recording the 192 would have shipped a three-check drift. And HR11 caught a malformed
+  // citation of the very directive this merge introduced — the collapsed revision row first
+  // said `per OWNER DIRECTIVE 2026-08-06 the...` with no comma, colon or verbatim quote,
+  // scoring 175 sites / 1 undeclared. A hand-typed citation is the likeliest bad one.
+  'run_hardrules.js':      { code: 0, score: '195checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -696,7 +735,15 @@ var BASELINES = {
   // stop valves, spring-shut on a trip, documented in CONTEXT §6.3 with the change.
   // 149 → 151 (2026-08-05, #375): the two ±100 °F/hr rate annunciators are picked up by
   // the contract's per-alarm coverage automatically.
-  'run_contract.js':       { code: 0, score: '154checks 0failed' },   // 151 -> 154 (#386 stage 1): containment_pressure_mpa / containment_temp_c / containment_sump_pct, documented in CONTEXT.md 6.3 in the same change
+  // 151 -> 154 (#386 stage 1): containment_pressure_mpa / containment_temp_c /
+  // containment_sump_pct, documented in CONTEXT.md §6.3 in the same change.
+  // --- workbench lane, same base ---
+  // 151 → 153 (2026-08-05, #371): two new true_state fields for the atmospheric dump
+  // (adv_valve_pct, adv_flow_normalized), documented in CONTEXT §6.3 with the change.
+  // MEASURED ON THE MERGED TREE (2026-08-06 lane merge): five new fields between the two
+  // lanes, and this gate counts each name on BOTH sides of the diff, so it moves by more
+  // than the field count. develop read 154, workbench 153 — neither survives.
+  'run_contract.js':       { code: 0, score: '156checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -826,7 +873,11 @@ var BASELINES = {
   // packs legal.html + changelog.html into ui/site_docs.js, one more <script src> on the
   // shell, so Settings can open Disclaimer / License / Changelog offline in the portable
   // build. The merged figure is MEASURED, not 123 + 1 arithmetic.
-  'run_portable.js':       { code: 0, score: '124checks 0failed' },
+  // 124 → 125 (2026-08-05, #371): one more shipped script for the portable build to inline —
+  // `ui/diagram/board/components/comp_atmospheric_dump.js`, the ADV's schematic component,
+  // registered on the shell and on board_check. The guard counts shipped scripts, so a new
+  // board component is exactly one check. MEASURED after `node tools/make_portable.js`.
+  'run_portable.js':       { code: 0, score: '125checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -887,7 +938,9 @@ var BASELINES = {
   // automatically, and Part B gains B4 — the dump-setpoint cooldown must drive the
   // INDICATED tavg_rate channel past the alarm (a rate meter is the easiest instrument
   // to filter to death, the #249 class).
-  'run_reachability.js':   { code: 0, score: '68checks 0failed' },
+  // 68 → 69 (2026-08-05, #370c): the steam line isolation's actuation setpoint
+  // (steam_pressure low 5.20) joins Part A's static audit.
+  'run_reachability.js':   { code: 0, score: '69checks 0failed' },
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
@@ -1032,7 +1085,11 @@ var BASELINES = {
   // tested re-arm on the P-14 actuation, which carries reset_below: 85 and therefore re-arms
   // itself in a branch that runs FIRST, so deleting the new code left every check green. The
   // leg that discriminates drives the SI isolation, which has no reset_below.
-  'run_m4.js':             { code: 0, score: '39/39 257passed' },
+  // 39/39 257 → 40/40 262 (2026-08-05, #370b): the kernel gained a NUMERIC condition
+  // term so coincidence logic (high steam flow AND low steam pressure) can be written
+  // at all; the new suite pins it at the predicate — both directions, fail-closed on an
+  // absent instrument, and the membership form untouched.
+  'run_m4.js':             { code: 0, score: '40/40 262passed' },
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -1377,7 +1434,17 @@ var BASELINES = {
   // INJECTION-VERIFIED both ways: restoring one DOC_PATCHES entry to "Turbine" AND one wiring
   // literal to "Reactor trip · loss of flow (P-7 permissive)" reddens it and NAMES both
   // offenders, so a red here is diagnosable without reopening the page.
-  'verify_board_check.js':   { code: 0, score: '205checks' },
+  // 205 → 211 (2026-08-05, #371): the ADV card's pins — it ships SHUT not AUTO
+  // (asserted, so a future change to the default has to edit the line), AUTO/SHUT
+  // both drive the engine, the setpoint box converts, and its range hint carries
+  // the unit the tile itself deliberately omits.
+  // 211 → 209 (2026-08-05, #371): the owner's diagram re-export retires `imrzmlyafa3`,
+  // the labelled STEAM DUMP readout — dragged off the canvas with a schematic-side % tag
+  // put beside the dump valve in its place — so its two geometry pins (label-fits-tile,
+  // clear-of-the-dump-valve) go with it rather than being kept alive against an item that
+  // no longer renders. Net -2. Everything else the re-export moved was re-pinned, not
+  // dropped: four pipe ids, five item ids, two re-measured runs and the rod-card spacing.
+  'verify_board_check.js':   { code: 0, score: '209checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

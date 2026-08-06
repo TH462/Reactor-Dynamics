@@ -30,6 +30,72 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the manual revision number is a release marker, not a change counter (lane merge, 2026-08-06)
+
+*(OWNER DIRECTIVE, 2026-08-06: "The revision number only matters during a release to the
+website. Revision numbers should never go up until a release happens.")*
+
+**Rev 12 is what the website carries** (Alpha 1.1.0, `main` at `7a40b9a`). Everything built
+since is one pending **Rev 13**, however many changes it contains — so the `develop` ←
+`workbench` merge collapsed six unreleased revision rows into one, carrying all six changes
+as (a)–(f). **Do not open a new revision row for a manual edit; extend Rev 13's.**
+
+This is a fix for a *collision*, not just tidying. Both lanes edited `Manuals/` from the same
+base and both allocated numbers from it — develop took 13/14/15, workbench took 13/14 — so
+**Rev 13 and Rev 14 each named two different changes.** That is the #339 session-label problem
+one artifact over, and it has the same cause: a counter needing coordination between worktrees
+that cannot see each other. A number that only moves at a release cannot be allocated twice
+between releases.
+
+**One declared simplification was corrected in the same pass.** `12 §12.17` (from #370, built
+on the workbench lane) declared that this simulator has no containment at all — while #386
+stage 1, built on `develop` the same day, was giving it pressure, temperature and a sump.
+Chapter 12 would have asserted both. §12.17 and the `12 §8.5` sentence pointing at it now say
+what is actually true: the containment pressure signal **exists**, and no protective actuation
+reads it yet — that is #386 stage 2. No plant behaviour changed.
+
+### Added
+- **The atmospheric dump appears on the plant diagram** (#371). The relief valve now tees off the
+  main steam header on the generator side of the isolation valve — where it has to be, since an
+  isolated steam line still needs somewhere to send its heat — and vents through a silencer that
+  plumes when the valve is open. Its position, the condenser dump's, and turbine steam flow are
+  tagged beside the valves they belong to, and the ATMOS DUMP panel carries the AUTO/SHUT buttons,
+  the pressure setpoint and the position readout.
+- **Atmospheric dump valves — you can cool the plant down without the condenser** (#371). Until now
+  the only controllable steam path went to the condenser, so losing it left no cooldown path at all:
+  the plant simply sat hot at the safety band. The new valves vent to atmosphere, work whether the
+  condenser is there or not, and take the plant from full operating temperature to shutdown-cooling
+  entry. They **ship shut** — opening them is your call, not the plant's — and at full open they
+  cool about three times faster than the 100 °F/hr limit, so the cooldown-rate meter and its
+  annunciator are equipment you will actually be using.
+- **The steam lines now isolate themselves on a break** (#370). High steam flow together with low
+  steam pressure shuts the main steam isolation valve with no operator action — about one second
+  on a full-area break, after which the generator bottles up and recovers instead of blowing down.
+  Before this the valve was yours alone and an unattended break ran to completion. It takes *both*
+  signals, so a cooldown does not trip it and neither does a bottled generator lifting its
+  safeties, and you cannot reopen the valve while the isolation is sealed in — only once the
+  generator has re-pressurized. Two parts of the real function are declared rather than built: no
+  containment-pressure path (this plant has no containment), and a fixed steam-flow setpoint where
+  a real one slides with load, so below about half power the valve is still your lever.
+
+### Fixed
+- **A steam line break now removes steam.** It used to be a pure pressure effect that drained no
+  water and showed on no flow gauge — so the generator level never moved and the very instrument a
+  real plant isolates on read *lower* during a break. Break trajectories are unchanged where they
+  were calibrated; what changed is that the break is now visible as flow and inventory, and the
+  blowdown tail self-limits as the pressure driving it falls.
+
+### Tests
+- **TR-18 pins the open #378 defect as a strict xfail** — after a manual load step the plant
+  limit-cycles ~13 points of power indefinitely instead of settling. The fix that kills the cycle
+  (cancelling in-flight rod travel at the controller's deadband exit: 13.8 → 2.0 pts, settled at
+  14.6 min vs never) was built, measured, and **rejected**, because it takes the rod channel's
+  sourced ±5 °F ramp duty (TR-1i, WTSM 8.1.1) from 4.34 to 5.26 °F — the duty is currently met
+  partly *by* the defect, as is the case for every PV-filter value tried. No plant behaviour
+  changed; the probe keeps the defect visible and goes loudly XPASS-red the day settling is fixed
+  without its annotation moving. Measurement record: `Diagnostic/TUNING_LOG.md`
+  2026-08-06-workbench-a, issue #378.
+
 ### Added — the containment building exists (#386 stage 1)
 
 Containment used to be two constants and a declared exclusion: a break discharged into a fixed
@@ -53,7 +119,7 @@ building, pressure, temperature or sump." The PWR now has a lumped containment v
 - A stuck-open PORV pressurizes the building too (no relief tank is modeled — declared,
   `Manuals/12` §12.4d, along with the fitted stiffness and the indication-only sump).
 - New behaviour probes **CA-16** (the receiving volume) and **CA-17** (the live backpressure,
-  red on the pre-#386 engine); CA-11 leg B re-pointed at the live law. Manual set at **Rev 15**.
+  red on the pre-#386 engine); CA-11 leg B re-pointed at the live law. Manual set at **Rev 13** (the merge collapsed six unreleased revisions into one — Rev 12 is what the site carries).
 - **Staged next under #386**: stage 2 — containment spray + fan coolers as ESF with the sourced
   3.5/30 psig actuations (after the workbench merge); stage 3 — hydrogen inventory from the
   existing oxidation model, recombiners, and a TMI-2-style burn *(OWNER RULING, 2026-08-05:
@@ -123,7 +189,7 @@ is a simulator of a plant.
 - Natural circulation settles a little lower (3.0 % of rated at 2.2 % decay heat), and the board's
   pipe animation was adjusted so buoyancy flow still shows as moving rather than stopped.
 
-Manuals Rev 14, `12` §4.5 — including a plain note that post-trip timings changed and why.
+Manuals Rev 13, `12` §4.5 — including a plain note that post-trip timings changed and why.
 
 ### Changed — one pressurizer level constant instead of two (#365)
 

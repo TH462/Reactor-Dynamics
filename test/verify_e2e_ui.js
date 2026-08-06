@@ -37,6 +37,9 @@ var REQUIRED_BOARD_LABELS = {
     'Reactor Coolant Pumps (RCP)', 'Residual Heat Removal (RHR)',
     'HPI', 'AFW', 'Feed Pumps', 'MSIV',
     'Steam Dump', 'Dump SP', 'Turbine Load',
+    // #371 — the atmospheric dump. It is the only cooldown path once the condenser
+    // is gone, so "is it reachable on the board at all" is worth a gate.
+    'ADV', 'ADV SP',
     'Control Bank', 'Shutdown Bank', 'SCRAM',
   ],
 };
@@ -280,7 +283,7 @@ async function testSteamFeedPair(page) {
         var r = e.getBoundingClientRect();
         return { right: Math.round(r.right), top: Math.round(r.top) };
       };
-      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imrzmlyafa3'),
+      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imsgunuyvon'),
                steamBox: box('ims3wm0d0bu'), feedBox: box('imrsgkz4lq0') };
     });
   };

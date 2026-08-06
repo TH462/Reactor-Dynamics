@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 15  
+**Revision:** 13  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -97,6 +97,8 @@
 | HPI start (SI on PZR level lo-lo) | pzr_level | low | **12 %** | Inventory-protecting SI path — fires with the 12 % low-level trip even if the heaters are holding pressure; re-arms above **20 %**; rides the HPI arm |
 | Letdown isolation | pzr_level | low | **17 %** | Closes both letdown orifices before the 12 % low-level trip; re-arms above **20 %**; restoration is a deliberate operator action (no auto-reopen) |
 | Feedwater isolation (on SI) | primary_pressure | low | **1798 psi (12.4 MPa)** | Rides the HPI arm (PI-5) |
+| **Atmospheric dump (ADV)** | steam_pressure | high | **1247 psi (8.60 MPa)** | **OPERATOR-OPENED — ships SHUT.** Vents to atmosphere, upstream of the MSIV and independent of the condenser: this is the cooldown path when the condenser is gone. Full open at 1283 psi (8.85 MPa); capacity 10 % of rated steam flow. Setpoint box clamps to the same 29–1350 psi band as the Dump SP. Cools well past the 100 °F/hr limit at full open — see `12` §12.18 |
+| **Main steam line isolation (MSLI)** | steam_pressure | low | **754 psi (5.20 MPa)** | **COINCIDENCE**: also requires `sg_steam_flow` **> 1.25** of rated. Closes the MSIV automatically on a steam line break — measured, a full-area break isolates in ~1 s. **Seals in**: reopening is refused until steam pressure recovers past **1015 psi (7.0 MPa)**. Cannot be blocked. No containment-pressure path and a fixed rather than load-programmed flow setpoint — see `12` §12.17 / §12.19 |
 | AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
 | AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |
 | MFW isolation + AFW start (P-4) | tavg | low | **572 °F (300 °C)** | Condition: reactor tripped — the post-trip MFW→AFW handoff |

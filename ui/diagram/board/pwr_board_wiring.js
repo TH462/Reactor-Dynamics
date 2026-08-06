@@ -173,6 +173,10 @@
     // vents the SG down and cools the primary through it, and it also sets the no-load
     // bottom of the Tavg program (T_sat(steam_dump_setpoint), pwr_engine.js:1147).
     ims31tq7mgc: [0.2, _SG.sg_safety_open_mpa || 9.31],
+    // ADV SP takes the SAME engine clip as the dump setpoint, and for the same
+    // reason: set_adv_setpoint clamps to [0.2, sg_safety_open_mpa], so the box
+    // refuses what the engine would silently clamp. Read from config, never a literal.
+    bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 9.31],
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the
     // same band, so the box refuses what the engine would clamp).
@@ -187,6 +191,7 @@
     imrpq48hn3t: { fam: 'flow', SI: { d: 1, step: 0.1 } },
     imrsg8b7b9o: { fam: 'press' },
     ims31tq7mgc: { fam: 'press' },
+    bdAdvSp: { fam: 'press' },
     ims3v42jghn: { fam: 'temp' }
   };
   // The active display spec for an editable box: its family's mode entry, with any
@@ -243,7 +248,7 @@
     steam_pressure: 3, steam_flow: 2, fw_flow: 2, sg_steam_flow: 2,
     charging_flow: 3, letdown_flow: 3,
     hpi_flow: 2, accumulator_flow: 2, primary_leak_flow: 2,
-    mwe_output: 2, turbine_rpm: 2, governor_valve: 2, steam_dump_valve: 2,
+    mwe_output: 2, turbine_rpm: 2, governor_valve: 2, steam_dump_valve: 2, adv_valve: 2,
     boron_analyzer: 6, startup_rate: 3, porv_tailpipe_temp: 5, condenser_vacuum: 4
   };
   // A damped indicator must never hide a real transient. Past this many sigma of change in
@@ -315,7 +320,7 @@
     imrpq29jo7t: 'boron_conc',                                                 // boron target ppm
     imrsgjmrjfg: 'feed_sg', imrsgjuh7l0: 'feed_sg', imrsgjwq1q0: 'feed_sg',    // feed AUTO / MAN / OFF
     imro8xhy2me: 'feed_sg',                                                    // SG feed rate setpoint box
-    bdFeedStatus: 'feed_sg'                                                    // the corner status word itself
+    ims89lnqmip: 'feed_sg'                                                    // the corner status word itself
   };
   // ---- the SG FEED corner status word (#214) --------------------------------------
   // The one-word compression of what the scanner says in a sentence. Switched on CODES
@@ -535,6 +540,11 @@
     imrppqg6mcc: { press: function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); }, active: function (s) { return CS(s).steam_dump_auto; } },
     imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
     imrppqxggbj: { press: function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) <= 50; } },
+    // --- ADV: AUTO / OPEN / CLOSE (#371). Same verbs as the dump above, because it
+    // is the same kind of valve doing the same job to a different sink — one idiom
+    // for both steam paths. Ships SHUT, so CLOSE is lit on a fresh plant.
+    bdAdvAuto:  { press: function () { cmd({ action: 'set_adv', mode: 'auto' }); },   active: function (s) { return CS(s).adv_auto; } },
+    bdAdvClose: { press: function () { cmd({ action: 'set_adv', mode: 'closed' }); }, active: function (s) { return !CS(s).adv_auto && (CS(s).adv_pct || 0) <= 50; } },
     // --- Generator load mode: FOLLOW / MAN / OFF ---
     // FOLLOW and MAN bring the turbine ONLINE — connect_grid clears a prior trip/
     // disconnect (if condenser vacuum permits) and closes the breaker; set_load_mode
@@ -627,10 +637,6 @@
   var EXTRA_ITEMS = [
     // 455/470, the coordinates the deleted REACTIVITY pair occupied (see DOC_REMOVE) — item 5
     // asks for the readout to move UP into that slot, not for a gap where it used to be.
-    { id: 'bdRxPeriodLbl', kind: 'text', name: 'Reactor period label',
-      left: 885, top: 455, text: 'PERIOD', fontSize: 12, color: '#8ba4b6', weight: 600, mono: true },
-    { id: 'bdRxPeriod', kind: 'value', name: 'Reactor period  ·  sim: true_state.reactor_period_s',
-      left: 960, top: 470, value: '∞', unit: 's', color: '#8ba4b6', fontSize: 14, rAnchor: true },
     // RCP FLOW, under the RCP card *(OWNER DIRECTIVE, 2026-08-04: "RCP needs flow indication.
     // place it under the RCP card.")*, #350 item 17. It reads the `rcs_flow` elbow-tap channel,
     // the same instrument the low-flow reactor trip acts on — so the player can watch the
@@ -643,10 +649,6 @@
     // GEOMETRY, measured off the doc: the RCP tile is 1125,570 112x86 and its inner box
     // 1140,585 85x95 (bottom 680); the CVCS LETDOWN readout below starts at 1150,725. So
     // 1140..1230 x 684..722 is empty, and a 90x38 readout at (1140, 684) sits in it.
-    { id: 'bdRcpFlow', kind: 'readout',
-      name: 'Reactor coolant flow  ·  sim: instruments.rcs_flow, % of rated',
-      left: 1140, top: 684, label: 'RCP FLOW', value: '100', unit: '%',
-      color: '#5aad7c', fontSize: 16, width: 90, height: 38 },
     // PZR SPRAY flow *(OWNER DIRECTIVE, 2026-08-04: "Pressurizer needs a spray flow
     // indication.")*, #350 item 1. DELIVERED spray, not the valve demand the % box beside it
     // already carries — see `spray_flow_pct` in pwr_pressurizer.js for why they are different
@@ -675,10 +677,6 @@
     // art path. The band is genuinely tight: the quench-tank box ends at y 340, PZR TEMP starts
     // at 395, the surge-line pipe occupies x ≤ 1085 and the STEAM card box starts at x 1180.
     // 95 wide does NOT fit (it clips the STEAM card); 90 does, with 2 px to spare.
-    { id: 'bdPzrSprayFlow', kind: 'readout',
-      name: 'Pressurizer spray flow  ·  sim: instruments.pzr_spray_flow, % of maximum spray flow',
-      left: 1088, top: 348, label: 'SPRAY FLOW', value: '0', unit: '%',
-      color: '#5aad7c', fontSize: 15, width: 90, height: 38 },
     // Feed controller status, in the SG FEED card's top-right corner (#214). The AUTO/MAN
     // lamps say THAT the controller is off; nothing said WHY. Same shape as the steam dump
     // status (imrppq5r7kw): rAnchor, so `left` is the RIGHT edge.
@@ -687,9 +685,6 @@
     // full 'STEAM GEN FEED' runs to x=1812, and the longest status word (ISOLATED, 73 px at
     // fontSize 15) has to start at 1782 — a 30 px overlap. Owner's call, 2026-07-31: "you
     // could shorten STEAM GEN to SG and fit it in the corner just like steam dump."
-    { id: 'bdFeedStatus', kind: 'value',
-      name: 'SG feed controller status  ·  sim: automation feed_sg engaged / stand_down / saturated',
-      left: 1855, top: 548, value: 'HOLDING', unit: '', color: '#5aad7c', fontSize: 15, rAnchor: true },
     // MFW RESTORE (#341 / #319 item 2). Main feedwater isolation LATCHES — measured, a
     // turbine trip isolates it by 4m00s and it stays isolated with AFW as the only feed
     // for as long as you watch. Every one of the three isolation signals is automatic and
@@ -707,6 +702,47 @@
     // rAnchor-free and starts at x=1740 with width 105. So 1670..1735 at y 600..625 is
     // empty, and a 55x25 button at (1670, 600) sits in it flush under AUTO and takes the
     // authored button idiom exactly. Nothing is moved to make room.
+    // ---------------------------------------------------------- ADV card (#371)
+    // ATMOSPHERIC DUMP VALVES — the steam path that does NOT need the condenser,
+    // and the only way to cool down after a loss of vacuum or an SBO. It has to be
+    // reachable on the board, not by command only.
+    //
+    // GEOMETRY — MEASURED, and the first attempt was rejected on sight. A 195x135
+    // card below the right-hand column looked free to a scan (the canvas is a fixed
+    // 2400x1600 while content ends at y 855) but it EXTENDED THE CONTENT BOUNDS, and
+    // the board scales to fit its column, so every other tile shrank to make room
+    // for it *(OWNER, 2026-08-05: "That atmos dump card is unacceptable. It is out of
+    // bounds of the original diagram and now makes the whole diagram too small. We
+    // need to fit it inside the current boundaries.")*. A free-rectangle scan over the
+    // whole content box then found exactly ONE usable gap — 90x115 at (1575, 490),
+    // under the cooling tower, between the condensate pump and the polisher status —
+    // which is where the owner said to look.
+    //
+    // WHAT IT CARRIES, and what it deliberately does not. The triad + setpoint +
+    // position + status the STEAM DUMP card uses does not fit in 90 px and does not
+    // need to *(OWNER: "Does it need all those controls?")*. The SETPOINT is the
+    // control that matters: a cooldown is walked DOWN by setpoint, and at full open
+    // this valve cools about three times faster than the technical-specification
+    // limit, so "just open it" is the wrong lesson to make easy. OPEN is therefore
+    // dropped — lowering the setpoint is how you open it — and the status word is
+    // dropped because the position readout beside it says the same thing. What is
+    // left is AUTO / SHUT, the setpoint box, and position.
+    // AUTO must be #5aad7c — selfTest asserts every button captioned AUTO carries the
+    // standard green, so one colour keeps one meaning across the board.
+    { id: 'bdAdvAuto', kind: 'button', name: 'ADV auto  ·  sim: set_adv mode:auto',
+      left: 1351, top: 458, label: 'AUTO', width: 44, height: 22, color: '#5aad7c', fontSize: 11 },
+    { id: 'bdAdvClose', kind: 'button', name: 'ADV shut  ·  sim: set_adv mode:closed',
+      left: 1398, top: 458, label: 'SHUT', width: 44, height: 22, color: '#ffd166', fontSize: 11 },
+    { id: 'bdAdvSp', kind: 'number', name: 'ADV SET POINT  ·  sim: set_adv_setpoint',
+      // No `unit` on the tile: the derived range hint above the box already names it
+      // ("29-1350 psi" / "0.2-9.31 MPa"), and in 90 px of card the suffix cost the
+      // input 20 px it needed — measured, "1247" overflowed a 32 px field by 12 px.
+      left: 1351, top: 488, label: 'ADV SP', width: 90, value: 1247, step: 1, digits: 0,
+      editable: true, color: '#4fe3ff', fontSize: 12 },
+    { id: 'bdAdvPct', kind: 'value', name: 'ADV position  ·  sim: instruments.adv_valve, % open',
+      // rAnchor — `left` is the RIGHT edge for a value tile. Measured the hard way:
+      // left-anchored at 1579 it rendered 12 px OUTSIDE the card's left border.
+      left: 1440, top: 540, value: '0', unit: '%', color: '#5aad7c', fontSize: 12, rAnchor: true },
     { id: 'bdMfwRestore', kind: 'button',
       name: 'Main feedwater restore  ·  sim: isolate_feedwater active:false',
       // WIDTH 68, not the 55 the row above uses (#357). MEASURED at the pinned 1400x900 harness
@@ -716,7 +752,17 @@
       // mono caption 64 px of content box against 59.3 px of text. The feed-rate number moves
       // right to 1750 with it (DOC_PATCHES below) — the other half of this fix, and the two must
       // stay together or the button lands on top of the number.
-      left: 1670, top: 600, label: 'RESTORE', width: 68, height: 25, color: '#8ba4b6', fontSize: 12 },
+      //
+      // 2026-08-05: (1670, 600) was inside the OLD SG FEED card, which spanned x 1595-1855.
+      // The re-export moved that card to `imrqxsodu5j` at 1455-1650, leaving this button
+      // 20 px off its right edge *(OWNER, 2026-08-05: "steam press indication, and restore
+      // are off to the right")*. MEASURED for the new card: the AUTO/MAN/OFF row fills
+      // 1460-1645 at y 535, the feed-rate number occupies 1530-1635 at y 560, and the STEAM
+      // FLOW / FEED FLOW rows start at 595 — so the only rectangle that takes a 68x25 button
+      // is 1460-1528 x 560-585, immediately LEFT of the feed-rate number. That is also where
+      // it belongs: the note above says the button and the number must stay together, and
+      // side by side is a stronger form of together than the stacked pair they were before.
+      left: 1460, top: 560, label: 'RESTORE', width: 68, height: 25, color: '#8ba4b6', fontSize: 12 },
     // (The ROD CONTROL card's top-right corner held a rod controller status word here from
     // #306 until 2026-08-03, when the owner removed it as redundant against the IN-OUT
     // lamps. The reasoning, and where each of its states is still shown, is at the
@@ -753,7 +799,15 @@
       // #350 item 4. The number is a margin in PERCENT OF RATED ΔT — the same scale the trip
       // setpoint is authored on — and unlabelled it read as a bare figure that could as easily
       // have been °F or MW. See dtMargin() for why the readout names the binding limit.
-      left: 990, top: 234, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true }
+      //
+      // 2026-08-05: (990, 234) was the old NIS card's top-right corner. The re-export moved
+      // that card from x 870-995 to `ims175lciah` at 530-785, leaving this tile stranded on
+      // the schematic where it landed on the PORV tailpipe and saturation-temperature tags.
+      // Re-derived from the SAME corner idiom rather than dragged to the nearest gap: card
+      // right 785 minus 5 = 780, card top 190 plus 10 = 200. MEASURED clear both ways — the
+      // 'NUC INSTR (NIS)' title is 15 characters of 11 px mono ending near x 637, and the
+      // SOURCE RANGE / STARTUP RATE boxes below start at y 220.
+      left: 780, top: 200, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -773,6 +827,7 @@
     // STEAM PRESS indication on the card so the gap between the two is legible: at power
     // the SG runs ~819 psi against a 1194 psi setpoint, which is WHY the dump is shut.
     ims31tq7mgc: { set: function (v) { cmd({ action: 'set_steam_dump_setpoint', mpa: v }); }, get: function (s) { return CS(s).steam_dump_setpoint || 0; } },
+    bdAdvSp:     { set: function (v) { cmd({ action: 'set_adv_setpoint', mpa: v }); },        get: function (s) { return CS(s).adv_setpoint || 0; } },
     // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
     // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
     // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
@@ -834,7 +889,7 @@
     // — read out of the live protection table so a retune moves the readout with it. The
     // natural-circulation band (a few percent) therefore reads RED, which is correct: flow
     // that low IS a tripped plant, and saying otherwise would be the #236 class of lie.
-    bdRcpFlow: function (s) {
+    imsgteavgid: function (s) {
       var v = IN(s).rcs_flow;
       if (v == null || isNaN(v)) return { text: '—', color: '#7f95a5' };
       var sp = tripSp('rcs_flow', 'low', 90);
@@ -844,7 +899,7 @@
     // PZR SPRAY FLOW, % of maximum (#350 item 1). Amber whenever spray is being CALLED FOR
     // and is not arriving — the demand is up and the delivery is not — because that gap is
     // the whole reason this indication exists and it is invisible on the demand box alone.
-    bdPzrSprayFlow: function (s) {
+    imsgt6qmdgx: function (s) {
       var v = IN(s).pzr_spray_flow;
       if (v == null || isNaN(v)) return { text: '—', color: '#7f95a5' };
       var asked = (CS(s).spray_valve_pct || 0) > 2;
@@ -885,7 +940,7 @@
       return { text: fmtExp(ir), color: nisLogColor(ir, trip, trip != null) };
     },
     // Reactor period (s) — teaching readout under REACTIVITY. ∞ when steady.
-    bdRxPeriod: function (s) {
+    ims89mkaj2r: function (s) {
       var per = s.true_state && s.true_state.reactor_period_s;
       if (per == null) return { text: '—', unit: 's' };
       if (!isFinite(per) || Math.abs(per) > 9999) return { text: '∞', unit: 's' };
@@ -894,11 +949,20 @@
     imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? g.steps : 0; },         // control rod steps
     imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? g.steps : 0; },        // shutdown rod steps
     imrppee04aj: function (s) { return r0(IN(s).turbine_rpm); },                                        // turbine rpm
-    imrzmlyafa3: function (s) { return r0(IN(s).steam_dump_valve); },                                   // steam dump % (readout)
+    // ---- steam-side indications, authored in the 2026-08-05 diagram (#371) ----
+    // Read positionally off the board: each sits beside the valve it reports, and the
+    // builder's copied names ("STEAM TURB FLOW" on three of them) do NOT identify them.
+    imsguptyg16: function (s) { return r0(IN(s).adv_valve); },          // ADV position — beside the ADV valve, SG side of the MSIV
+    imsgunuyvon: function (s) { return r0(IN(s).steam_dump_valve); },   // condenser-dump position — beside that valve, downstream
+    imsgupfprkp: function (s) { return r0(IN(s).steam_flow * 100); },   // turbine steam flow, % of rated — at the TCV/turbine inlet
+    imsgt98wjjc: function (s) { return r0(satTempC(IN(s).steam_pressure)); },  // SG saturation temperature
+    // The two CVCS flows the authored doc replaced (the old readouts were deleted).
+    imsgti1p0rm: function (s) { return r0(IN(s).charging_flow); },
+    imsgti0gnpf: function (s) { return r0(IN(s).letdown_flow); },
     imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
-    bdFeedStatus: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
+    ims89lnqmip: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
     bdDtMargin: function (s) { return dtMargin(s); },                                                  // core ΔT margin, OTΔT/OPΔT (#311)
     imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
@@ -911,6 +975,9 @@
       if (r !== 0 && rem != null && Math.abs(rem) > 0.05) base += ' ' + Math.round(Math.abs(rem)) + '→';
       return base;
     },
+    // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion
+    // layer that touched it would be worse than none (board_check pins that).
+    bdAdvPct: function (s) { return r0(IN(s).adv_valve); },
     // Boron chem sample (lab result). The V1 item carried no unit so the text baked one in;
     // the V2 item is authored with unit 'ppm', which rendered "734 PPM ppm". Return the
     // unit explicitly instead: 'ppm' with a number, blank for the non-numeric states, so
@@ -1164,6 +1231,34 @@
     // discharge only "flows" while accumulators_discharging (no flow into the Rx at power).
     imrppxt2aqd: function (s) { return valveProps(CS(s).accumulator_valve_open === false ? 0 : 1, 'water', 50, IN(s).accumulators_discharging); },
     imrprmm4u5q: function (s) { return valveProps((IN(s).steam_dump_valve || 0) / 100, (IN(s).steam_dump_valve || 0) > 2 ? 'steam' : 'empty', satTempC(IN(s).steam_pressure)); }, // steam dump valve
+    // ---- the ADV branch, SG side of the MSIV (#371) ------------------------
+    // The valve is the throttling element; the Atmospheric Dump beyond it is the
+    // discharge to air. Both read `adv_valve`, so the plume and the valve position
+    // are the same signal — the plume cannot show steam a shut valve is not passing.
+    imsgu6qi776: function (s) {
+      var v = IN(s).adv_valve || 0;
+      return valveProps(v / 100, v > 2 ? 'steam' : 'empty', satTempC(IN(s).steam_pressure));
+    },
+    imsgujvh6iw: function (s) {
+      var v = IN(s).adv_valve || 0;
+      return { openFrac: v / 100, contents: v > 2 ? 'steam' : 'empty', temp: satTempC(IN(s).steam_pressure) };
+    },
+    // The two steam-header tees. UPSTREAM (imsgu622dld) splits SG steam between the
+    // MSIV and the ADV branch; DOWNSTREAM (imsgu024ehh) splits it between the turbine
+    // and the condenser dump. Their legs gate on the branch that is actually passing
+    // steam, so a shut ADV or a shut dump leaves its leg dark.
+    imsgu622dld: function (s) {
+      return { temp: satTempC(IN(s).steam_pressure), contents: 'steam',
+        flowing: LF(s).steam > 0 || (IN(s).adv_valve || 0) > 2, speed: sysSpeed(s, 'steam'),
+        legB: s.true_state && s.true_state.msiv_open === false ? 'off' : 'out',
+        legC: (IN(s).adv_valve || 0) > 2 ? 'out' : 'off' };
+    },
+    imsgu024ehh: function (s) {
+      return { temp: satTempC(IN(s).steam_pressure), contents: 'steam',
+        flowing: LF(s).steam > 0 || LF(s).dump > 0, speed: sysSpeed(s, 'steam'),
+        legB: (IN(s).steam_flow || 0) > 0.02 ? 'out' : 'off',
+        legC: (IN(s).steam_dump_valve || 0) > 2 ? 'out' : 'off' };
+    },
     // TCV (turbine control valve) — only shows steam FLOW when the turbine is actually taking
     // load; a tripped/unloaded turbine (steam_demand_low) closes the governor to a crack, so
     // the turbine-inlet pipe should go still even though the valve isn't fully shut.
@@ -1700,11 +1795,17 @@
     // condenses steam in the pressurizer: it is the coldest water in the primary.
     pms3ytzwwqw: function (s) { return IN(s).tcold; },                    // cold-leg cross → pressurizer spray
     // --- main steam (saturated at SG pressure)
-    pmrr0u4vgri: function (s) { return satTempC(IN(s).steam_pressure); }, // SG main steam-out (saturated)
-    pmrr46n63pq: function (s) { return satTempC(IN(s).steam_pressure); }, // main steam header (MSIV → TCV)
     pmrr499yfkb: function (s) { return satTempC(IN(s).steam_pressure); }, // main steam → turbine (TCV out)
     pmrr0u9nib3: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump → condenser bypass
-    pmrr46oahnx: function (s) { return satTempC(IN(s).steam_pressure); }, // steam dump branch
+    // Re-cut steam header (#371 diagram): SG → upstream tee → MSIV → downstream tee,
+    // with the ADV branch off the upstream tee and the condenser dump off the downstream.
+    pmsgu7y5cn4: function (s) { return satTempC(IN(s).steam_pressure); }, // SG steam-out → upstream tee
+    pmsgu7yzs7q: function (s) { return satTempC(IN(s).steam_pressure); }, // upstream tee → MSIV
+    pmsgu7mar1c: function (s) { return satTempC(IN(s).steam_pressure); }, // MSIV → downstream tee
+    pmsgu156z57: function (s) { return satTempC(IN(s).steam_pressure); }, // downstream tee → TCV
+    pmsgu16h63l: function (s) { return satTempC(IN(s).steam_pressure); }, // downstream tee → condenser dump
+    pmsgugdumjc: function (s) { return satTempC(IN(s).steam_pressure); }, // upstream tee → ADV valve
+    pmsgum4orcr: function (s) { return satTempC(IN(s).steam_pressure); }, // ADV valve → atmosphere
     // --- PORV relief path. NOTE V2 re-ordered this: the block valve is now UPSTREAM of the
     // PORV (pressurizer → block valve → PORV → quench drain), which is the prototypical
     // arrangement — the block valve exists to isolate a stuck-open PORV, so it has to be
@@ -1778,6 +1879,7 @@
   // full flow at power, which is precisely the #236 class this board keeps re-learning.
   var CHG_RATED = 0.030;    // one letdown orifice ≡ 20 gpm — normal CVCS letdown/charging
   var DUMP_CAP = 0.40;      // steam dump capacity, fraction of rated steam (the #220 40 %)
+  var ADV_CAP = (_SG.adv_max != null ? _SG.adv_max : 0.10);   // #371, from engine config
   function lineFrac(s) {
     var i = IN(s), c = CS(s), t = s.true_state || {};
     var porvFlowing = (t.porv_open != null ? !!t.porv_open : (i.porv_indicator === 'open'))
@@ -1799,6 +1901,10 @@
       steam:    i.sg_steam_flow || 0,
       turbine:  i.steam_demand_low ? 0 : (i.steam_flow || 0),
       dump:     ((i.steam_dump_valve || 0) > 2) ? (i.steam_dump_valve / 100) * DUMP_CAP : 0,
+      // ADV (#371) — scaled by its own capacity, which is a quarter of the condenser
+      // dump's, so a fully-open ADV animates slower than a fully-open bypass. That is
+      // the honest picture: it is the smaller valve.
+      adv:      ((i.adv_valve || 0) > 2) ? (i.adv_valve / 100) * ADV_CAP : 0,
       feed:     i.fw_flow || 0,
       afw:      i.afw_flow || 0,
       // The one run downstream of the feed tee: it carries main feed AND auxiliary feed, so
@@ -1921,9 +2027,11 @@
     pms2kupl3b2: 'surge',
     // main steam — SG outlet and the header carry the total; the TCV and dump branches
     // carry their own share, which is why they are separate systems (see lineFrac).
-    pmrr0u4vgri: 'steam', pmrr46n63pq: 'steam',
+    pmsgu7y5cn4: 'steam', pmsgu7yzs7q: 'steam', pmsgu7mar1c: 'steam', pmsgu156z57: 'steam',
     pmrr499yfkb: 'turbine', pmrr14xbt2h: 'turbine',
-    pmrr46oahnx: 'dump', pmrr0u9nib3: 'dump',
+    pmsgu16h63l: 'dump', pmrr0u9nib3: 'dump',
+    // The ADV branch is its own system — it must animate when the condenser dump is dead.
+    pmsgugdumjc: 'adv', pmsgum4orcr: 'adv',
     // relief path — the whole run is either passing or dead-ended
     pms3tda86bw: 'relief', pms3tcop5ni: 'relief', pms3tdwi5n9: 'relief',
     // condensate / feedwater
@@ -2081,7 +2189,7 @@
     // Indication readouts — highlight vocabulary for checklist-step hover (glowLabels
     // in ui/app.js). Not named by campaign beats, so run_campaign never demands them.
     '1/M Plot Tool': 'bdOneOverM', 'Source Range': 'imro6qutiht', 'Intermediate Range': 'imro6rctcgm',
-    'Reactor Period': 'bdRxPeriod', 'Startup Rate': 'imro6qsncb9',
+    'Reactor Period': 'ims89mkaj2r', 'Startup Rate': 'imro6qsncb9',
     // Tavg, plant pressure and SG level are no longer standalone readouts on the mimic —
     // V2 promoted all three into the vital-parameter tile strip, so these labels glow the
     // tile. (Highlighting an indication is checklist hover-glow only; campaign beats
@@ -2091,6 +2199,11 @@
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrobpq4a70', 'Dump SP': 'imrop5ouw7h',
+    // ADV (#371) — both names point at the card, so highlighting either lights the
+    // whole group, the same way 'Dump SP' points at the STEAM DUMP card above.
+    // The ATMOS DUMP card is AUTHORED now (#371) — the driver-injected box it replaced
+    // is gone, and both names point at the authored box so a highlight lights the group.
+    'ADV': 'imsgt1ebv1d', 'Atmospheric Dump': 'imsgt1ebv1d', 'ADV SP': 'imsgt1ebv1d',
     'Pressure SP': 'imrsg8b7b9o', 'Accumulator valve': 'imrppx5n1ay',
     'Turbine — Connect Grid': 'imro8k5pzem',
     // The rods_tavg channel toggle (EXTRA_ITEMS, #237) — the control the old
@@ -2176,7 +2289,17 @@
   // PERIOD takes the vacated slot (see EXTRA_ITEMS) rather than leaving a hole.
   var DOC_REMOVE = {
     imro6rdwwdn: 1,    // reactivity readout (pcm)
-    imrshokxy4u: 1     // its "REACTIVITY" caption
+    imrshokxy4u: 1,    // its "REACTIVITY" caption
+    // The labelled STEAM DUMP readout tile. The 2026-08-05 diagram re-export drags it to
+    // (1247, 875) — clear of every card, 90 px below the lowest board content, and the sole
+    // reason the board's bounding box extended into an empty band that shrank every other
+    // tile. In the same export the owner added `imsgunuyvon` at (1235, 290): a right-anchored
+    // % tag sitting beside the condenser dump valve, the same idiom as the new ADV tag beside
+    // `imsgu6qi776` and the turbine-flow tag beside the TCV. Dragging a tile off the canvas
+    // while placing its replacement on the schematic is as explicit as an export gets, so this
+    // is a RETIREMENT, not a re-home: carrying both would put `steam_dump_valve` on the board
+    // twice under two labels, which is the duplicate-authority shape the board rules forbid.
+    imrzmlyafa3: 1
   };
 
   // The CVCS flow captions, enlarged *(OWNER DIRECTIVE, 2026-08-04: "Make the \"Charging\" and
@@ -2192,9 +2315,10 @@
       // Turbine exhaust → condenser steam inlet. The route is authored orthogonally, but its
       // two waypoints sit 1 px and 2 px off the ports they line up with, so both "vertical"
       // legs lean. Pin them to the real port x.
-      // 1551, not 1553, since 2026-08-03: the CONDENSER item patch below moves the tile
-      // 2 px left, and this waypoint IS `condenser/steam-in`'s x. The two must move together.
-      pmrr14xbt2h: { waypoints: [[1574, 340], [1551, 340]] },
+      // This waypoint IS `condenser/steam-in`'s x, so it moves with the CONDENSER item patch
+      // below — always that tile's left + 148. 1553 → 1551 on 2026-08-03 when the patch first
+      // took 2 px off; 1551 → 1341 on 2026-08-05 when the re-export moved the tile itself.
+      pmrr14xbt2h: { waypoints: [[1574, 340], [1341, 340]] },
       // RCP suction/discharge swap, pipe half (#236) — see the imrobpq4a70 item patch
       // below. Same geometric endpoints (the two nozzle positions are unchanged); only
       // the port NAMES they bind to change, so the loop enters at suction and leaves at
@@ -2202,7 +2326,14 @@
       // overpower the backwards port semantics — with them corrected it is dropped and
       // the direction comes from the ports, like every other pipe.
       pms2kozvu94: { props: { to: 'imrobpq4a70/suction' } },
-      pms2kp1148p: { props: { from: 'imrobpq4a70/discharge', flowDir: null } }
+      pms2kp1148p: { props: { from: 'imrobpq4a70/discharge', flowDir: null } },
+      // SG outlet → upstream steam tee, authored `phase: 'water'` in the 2026-08-05 re-export
+      // *(OWNER, 2026-08-05: "the pipe coming off the SG is water green, it should be steam")*.
+      // The other six runs the same export added are all authored steam; this one leaves the
+      // steam nozzle, so it is a slip in the drawing rather than a claim about the plant. The
+      // phase drives the pipe's COLOUR only — flow state comes from PIPE_SYSTEM — so this is
+      // purely the fix the owner asked for, with nothing else riding on it.
+      pmsgu7y5cn4: { props: { phase: 'steam' } }
     },
     items: {
       // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
@@ -2211,10 +2342,7 @@
       // STEAM DUMP readout (#235): authored left 1410 / width 65 — 4 px under the dump
       // valve tile (ends 1414) and too narrow for its own label. 1416/72 clears the valve
       // and, with the .bd-ro-label letter-spacing fix, fits "STEAM DUMP" with room.
-      imrzmlyafa3: { props: { left: 1416, width: 72 } },
       // CVCS flow captions to 14 px — #350 item 27, see the note above DOC_PATCHES.
-      imrzp8qps6u: { props: { labelSize: 14 } },   // CHARGING
-      imrzp89wdfu: { props: { labelSize: 14 } },   // LETDOWN
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
       // SG FEED rate box: 1740 → 1750, the other half of the RESTORE widening (#357). With
@@ -2224,7 +2352,6 @@
       // its right edge on 1855 — flush with OFF's right edge above it and 5 px inside the card,
       // mirroring RESTORE's 5 px left margin. Patched here, not in `pwr_board_data.js`, because
       // that file is GENERATED and a re-export would silently undo the edit.
-      imro8xhy2me: { props: { left: 1750 } },
       // ---- ALL-CAPS board text -------------------------------------------------------
       // *(OWNER DIRECTIVE, 2026-08-04: "All text should be in all caps except units should
       // follow standard unit conventions for capitalization.")* Four turbine-side captions
@@ -2253,7 +2380,7 @@
       // is an object literal, so a second `ims5glucngg:` key silently REPLACES this one and
       // the colour patch disappears with no error. That is exactly what happened while writing
       // the re-spacing, and the two AUTO-green pins are what caught it.
-      ims5glucngg: { props: { color: '#5aad7c', top: 428 } },
+      ims5glucngg: { props: { color: '#5aad7c', top: 388 } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -2262,8 +2389,6 @@
       // into its caption ("STEAM PRESS1194 psi", #235 comment / #237). Move the value
       // anchor to the panel edge (matching its 1845-1855 siblings) and the caption
       // 5 px left for ~15 px of clearance at 4 digits.
-      imrr1gwi93j: { props: { left: 1850 } },
-      ims3wu2kxnl: { props: { left: 1670 } },
       // RCP suction/discharge swap, item half (#236): the loop physically enters this
       // pump from the letdown tee on its RIGHT and leaves toward the charging tee on its
       // LEFT, but the nozzles were authored suction-left/discharge-right — water entered
@@ -2310,11 +2435,17 @@
       // The band 395 → 465 is 70 px and holds 50 px of buttons, so the three gaps want 20/3 =
       // 6.67 px each. Integers cannot do that, so they are 7 / 6 / 7 — symmetric top and
       // bottom, one pixel tighter in the middle, which is the arrangement that reads level.
-      imrpk8169ds: { props: { top: 402 } },
-      imrpk8grvcz: { props: { top: 402 } },
-      imrpk8kjsjs: { props: { top: 402 } },
-      // (ROD AUTO's `top: 428` rides on its colour entry above — same key, one object.)
-      imrsk4xz2dm: { props: { top: 428 } },
+      //
+      // RE-SOLVED 2026-08-05: the re-export moved the whole card up and shortened it, so the
+      // band is now 356 → 425 — 69 px holding the same 50 px of buttons. The arithmetic is
+      // the same shape and the answer is the same rhythm: 3g = 19, so 6 / 6 / 7. Only the
+      // three tops move (402 → 362, 428 → 388); the reasoning above is unchanged, which is
+      // why it is re-solved here rather than replaced.
+      imrpk8169ds: { props: { top: 362 } },
+      imrpk8grvcz: { props: { top: 362 } },
+      imrpk8kjsjs: { props: { top: 362 } },
+      // (ROD AUTO's `top: 388` rides on its colour entry above — same key, one object.)
+      imrsk4xz2dm: { props: { top: 388 } },
 
       // ---- 2026-08-03, owner's board walk-round: three geometry corrections -----------
       //
@@ -2329,7 +2460,6 @@
       // all on lines that stay plumb under a pure Y shift: surge and the PORV tap are
       // VERTICAL runs (the #231 plumb pins compare x, and x does not move), so they only
       // get 3 px longer. Verified by re-running board_check, not by arithmetic.
-      pressurizer: { props: { top: 233 } },
 
       // 2. CONDENSER left 2 px, so the drop into the condensate pump runs plumb *(OWNER,
       // 2026-08-03: "the line going into the condensate pump is not vertical. move the
@@ -2352,7 +2482,6 @@
       // (just shorter), and both CW lines run horizontally to the cooling tower on the
       // right (just longer). Only `steam-in` is on a vertical leg, and its waypoint is
       // already pinned in DOC_PATCHES.pipes above — moved with it.
-      condenser: { props: { left: 1403 } },
 
       // 3. NIS CARD TITLE shortened, to stop bdDtMargin printing on top of it *(OWNER,
       // 2026-08-03: "The OP(delta)T indication is on top of the 'NUCLEAR INSTRUMENTATION'
@@ -2376,7 +2505,29 @@
       // characters ('OTΔT -125.4') is the bound — 74.7 px, left edge 859.8. Measured ends:
       // 'NUCLEAR INSTRUMENTATION' 887.1 (still overlaps), 'NUCLEAR INSTR (NIS)' 856.1
       // (3.7 px — one retune of the readout from clearing), 'NUC INSTR (NIS)' 825.1.
-      ims175lciah: { props: { title: 'NUC INSTR (NIS)' } }
+      ims175lciah: { props: { title: 'NUC INSTR (NIS)' } },
+
+      // ---- 2026-08-05: two alignment nudges RE-DERIVED against the re-exported doc -------
+      // Both of these were authored here as ABSOLUTE tops/lefts, and that is what made them
+      // dangerous: the owner moved both tiles in the re-export, so the absolute values stopped
+      // being small corrections and became large displacements *(OWNER, 2026-08-05: "The
+      // condenser is shifted to the right. the pressurizer is shifted down.")* — 208 px and
+      // 43 px respectively. The fix is not to delete them: each still corrects a real 2-3 px
+      // lean that the re-export did not touch. They are re-derived from the NEW authored
+      // position, and written as authored + delta so the next re-export makes the arithmetic
+      // visible instead of silently re-displacing the tile.
+      //
+      // PRESSURIZER +3. `pressurizer/spray-in` sits 3 px above the spray run's first
+      // waypoint (MEASURED: port y 292, waypoint y 295), so the 17 px stub leans about 10°
+      // — the one segment the eye reads flat against the vessel top. Authored top 190 + 3.
+      // Nudging the vessel rather than the waypoint keeps the surge, relief and PORV-tap
+      // runs (all pinned plumb against this same tile) moving as one body.
+      pressurizer: { props: { top: 193 } },
+      // CONDENSER -2. `condenser/condensate-out` sits 2 px right of the condensate pump's
+      // suction (MEASURED: outlet x 1317, suction 1315), and `Pump` is in NUDGE_KINDS so the
+      // pump's flange snaps to the 5 px doc grid and can never meet it halfway. Authored
+      // left 1195 - 2. The turbine-exhaust riser waypoint above rides on this number.
+      condenser: { props: { left: 1193 } }
     }
   };
   function applyDocPatches(doc) {

@@ -54,6 +54,14 @@
     // Emptied 2026-07-21 (feel-plan P5): TR-2/CC-5 left with the spray cap +
     // trip-open dump + TR-3 re-spec; TR-1/CC-3 left with the P4 ride-out and
     // P-4 handoff; SS-5/CC-10 left with the P2 derived-level rework.
+
+    // #378 — the rod channel never settles after a manual load step (limit cycle,
+    // ~13 pts p2p indefinitely). The fix that kills it (stop-exit travel cancel in
+    // the kernel) was measured to take TR-1i's SOURCED ramp duty 4.34 → 5.26 °F vs
+    // ≤ 5.00 and was rejected per the pre-declared criterion — see the TR-18 probe
+    // comment and issue #378. Strict: when settling is fixed, this entry must be
+    // removed in the same change.
+    'TR-18': 'rod channel limit-cycles after a load step (#378) — shippable fix not yet found',
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -89,6 +97,9 @@
     // probe pins that end state. See the probe comment and Diagnostic/TUNING_LOG.md.
     'TR-10': 'probe', 'TR-11': 'probe (end-state pin) + existing:run_ops heaters vs spray fight',
     'TR-12': 'probe + run_campaign pwr_slb', 'TR-12b': 'probe (MSIV isolates a downstream break, #199)',
+    'TR-12c': 'probe (automatic steam line isolation — the coincidence, and that it stays out of normal evolutions, #370c)',
+    'TR-17': 'probe (atmospheric dump — a condenser-independent cooldown path exists, #371)',
+    'TR-18': 'probe (load-change settling — the manual step ends instead of hunting forever, #378)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
@@ -1676,33 +1687,64 @@
     // only the side of the valve the pipe failed on differs.
     'TR-12b': function () {
       return test('TR-12b steam line break — the MSIV ends a downstream break, and cannot touch an upstream one', function (ck) {
+        // RESTRUCTURED 2026-08-05 (#370c) — EVENT-DRIVEN, and with NO OPERATOR COMMAND.
+        // The old form ran the break 60 s, sampled `atClose`, then closed the MSIV by
+        // hand. Now the plant isolates itself in about a second, so a sample taken at
+        // t+60 reads an already-recovered generator and "rises ≥ 1 MPa" had nothing
+        // left to rise (measured 9.07 → 9.01). Sampling AT THE ISOLATION INSTANT tests
+        // the same claim against the mechanism that now performs it.
+        //
+        // HR10, stated rather than hidden: this form CANNOT pass on the pre-#370c
+        // plant, because that plant never closes the valve on its own — `isoAt` stays
+        // null and the probe fails at the first check. The probe's subject changed
+        // when the plant gained the function; that is a re-specification, not a refit.
         function run(failure) {
           var h = H('hot_full_power');
           h.run(30);
           h.cmd('inject_failure', { failure_id: failure, severity: 0.8 });
-          h.run(60);
-          var atClose = h.ts().steam_pressure_mpa;
-          h.cmd('close_msiv');
-          h.cmd('close_msiv');                      // two-press arm/confirm
+          var atIso = null, isoAt = null;
+          for (var i = 0; i < 300 && isoAt == null; i++) {   // 0.5 s resolution
+            h.run(0.5);
+            if (h.ts().msiv_open === false) { isoAt = h.t() - 30; atIso = h.ts().steam_pressure_mpa; }
+          }
           h.run(900);
-          return { h: h, atClose: atClose, t: h.ts() };
+          return { h: h, atIso: atIso, isoAt: isoAt, t: h.ts() };
         }
         var d = run('steam_line_break');
+        ck('DOWNSTREAM: the plant isolates ITSELF — no operator action in this probe',
+          d.isoAt != null ? '+' + fmt(d.isoAt, 1) + ' s' : 'never', d.isoAt != null && d.isoAt < 10,
+          'within 10 s of the break');
         ck('MSIV shut', String(d.t.msiv_open), d.t.msiv_open === false, 'false');
-        ck('DOWNSTREAM: isolating ends the blowdown — the bottled SG re-pressurizes',
-          fmt(d.atClose, 2) + ' → ' + fmt(d.t.steam_pressure_mpa, 2) + ' MPa',
-          d.t.steam_pressure_mpa > d.atClose + 1.0, 'rises ≥ 1 MPa');
+        ck('…and isolating ends the blowdown — the bottled SG re-pressurizes',
+          fmt(d.atIso, 2) + ' → ' + fmt(d.t.steam_pressure_mpa, 2) + ' MPa',
+          d.t.steam_pressure_mpa > d.atIso + 1.0, 'rises ≥ 1 MPa from the isolation instant');
         ck('and the overcooling is arrested (Tavg back near the no-load anchor)',
           fmt(d.t.tavg_c, 1), d.t.tavg_c > 280, '> 280 °C');
         ck('the bottled generator lifts its code safeties, as in TR-5',
           String(d.t.sg_safety_open), !!d.t.sg_safety_open, 'true');
 
         var u = run('steam_line_break_upstream');
-        ck('UPSTREAM: the same command changes nothing — the break is on the wrong side',
-          fmt(u.atClose, 2) + ' → ' + fmt(u.t.steam_pressure_mpa, 2) + ' MPa',
+        ck('UPSTREAM: the SAME protection fires — the plant cannot tell the location',
+          u.isoAt != null ? '+' + fmt(u.isoAt, 1) + ' s' : 'never', u.isoAt != null && u.isoAt < 10,
+          'within 10 s (it actuates identically)');
+        ck('…and it changes nothing — the break is on the wrong side of the valve',
+          fmt(u.atIso, 2) + ' → ' + fmt(u.t.steam_pressure_mpa, 2) + ' MPa',
           u.t.steam_pressure_mpa < 1.0, '< 1.0 (still blown down)');
-        ck('so the plant overcools regardless of the operator',
-          fmt(u.t.tavg_c, 1), u.t.tavg_c < 150, '< 150 °C');
+        // RE-ANCHORED 2026-08-05 (#370a) from an absolute `< 150 °C` to the CONTRAST,
+        // which is what the line actually claims. The old threshold was measuring the
+        // depth of a blowdown produced by a break that passed RATED mass flow at the
+        // 0.1 MPa floor — the flat-sink defect #370a removed (the break's flow now
+        // dies with the pressure that would have to drive it, exactly as the dump's
+        // did at #375). Measured after: upstream still overcools 304 → 166 °C with
+        // the MSIV shut, against 305 °C for the isolated downstream break — a 139 °C
+        // spread. The claim "the operator's command changed nothing" is tested by
+        // that spread, not by how far an unphysical break could drag the plant, and
+        // the comparative form cannot rot when either leg's absolute depth moves.
+        ck('so the plant overcools regardless of the operator (vs the isolated leg)',
+          fmt(u.t.tavg_c, 1) + ' vs ' + fmt(d.t.tavg_c, 1) + ' °C isolated',
+          d.t.tavg_c - u.t.tavg_c > 100, '> 100 °C colder than the isolated break');
+        ck('…and it is a deep overcool in absolute terms too',
+          fmt(u.t.tavg_c, 1), u.t.tavg_c < 200, '< 200 °C (measured 166.3; was < 150 on the flat-sink break)');
         ck('neither leg damages fuel', String(!!d.t.fuel_damaged) + ' / ' + String(!!u.t.fuel_damaged),
           !d.t.fuel_damaged && !u.t.fuel_damaged, 'false / false');
       });
@@ -3778,11 +3820,138 @@
     // and the severe case already gets borated water from the accumulators.
     // Adding the interlock reddens this probe — which is the point: it re-opens
     // the ruling deliberately instead of drifting past it. Catalog §10.
+    /* TR-12c (#370c) — THE COINCIDENCE ITSELF. TR-12b proves the isolation works on
+     * the casualty; this proves it does NOT work on everything else, which is the
+     * harder and more easily-skipped half (the audit's standing question 3: a
+     * protective action that fires on a normal evolution destroys the teaching case
+     * rather than merely failing to protect it). Four legs: it fires on the break,
+     * stays out of a full cooldown and a bottled SG with the safeties at full lift,
+     * and cannot be undone by the operator while it is sealed in. */
+    'TR-12c': function () {
+      return test('TR-12c steam line isolation — fires on the break, not on the plant (#370c)', function (ck) {
+        // ---- leg A: the casualty it exists for.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'steam_line_break', severity: 1.0 });
+        var tIso = a.runUntil(function (ts) { return ts.msiv_open === false; }, 120);
+        ck('a full-area downstream break isolates automatically',
+          tIso >= 0 ? '+' + fmt(tIso, 1) + ' s' : 'never', tIso >= 0, 'within 120 s');
+
+        // ---- leg B: a full operator cooldown takes steam pressure FAR below the
+        // isolation's pressure term (to ~1.3 MPa against a 5.20 setpoint) and must
+        // not isolate — the flow term is what keeps it out, which is exactly why the
+        // real function is a coincidence and not a bare low-pressure trip.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'turbine_trip' });
+        b.run(240);
+        b.cmd('set_steam_dump_setpoint', { mpa: 4.0 });
+        b.run(600);
+        b.cmd('set_steam_dump_setpoint', { mpa: 2.4 });
+        b.run(600);
+        b.cmd('set_steam_dump_setpoint', { mpa: 1.36 });
+        b.run(900);
+        ck('a full cooldown to the dump floor does NOT isolate',
+          fmt(b.range('steam_pressure_mpa').min, 2) + ' MPa min, msiv ' + String(b.ts().msiv_open),
+          b.ts().msiv_open !== false, 'MSIV still open');
+
+        // ---- leg C: a bottled SG pegs the flow transmitter through its own code
+        // safeties, so the FLOW term alone would fire here. The pressure term is what
+        // keeps it out — the other half of the same argument as leg B.
+        var c = H('hot_full_power');
+        c.run(30);
+        c.cmd('close_msiv');
+        c.run(600);
+        c.cmd('open_msiv');
+        c.run(300);
+        ck('a bottled SG with its safeties lifting does NOT re-isolate on reopening',
+          'msiv ' + String(c.ts().msiv_open) + ', SG ' + fmt(c.range('steam_pressure_mpa').max, 2) + ' MPa peak',
+          c.ts().msiv_open === true, 'MSIV open (the operator reopened it and it stayed)');
+
+        // ---- leg D: operator-proof while sealed in. The real function is deliberately
+        // not defeatable (*"manually blocking the high steam flow SI actuation does not
+        // block the high steam flow steam line isolation"* — WTSM §12.3.5.1), and this
+        // protection extinguishes its own signal, so without the latch the refusal
+        // would evaporate in the instant it engaged (measured: it did).
+        var d = H('hot_full_power');
+        d.run(30);
+        d.cmd('inject_failure', { failure_id: 'steam_line_break', severity: 1.0 });
+        d.runUntil(function (ts) { return ts.msiv_open === false; }, 120);
+        d.run(1);
+        var refused = d.cmd('open_msiv');
+        ck('the operator cannot reopen while the isolation is sealed in',
+          refused && refused.code ? refused.code : 'ACCEPTED',
+          !!(refused && refused.type === 'blocked'), 'blocked');
+        ck('…and the valve really stayed shut', String(d.ts().msiv_open),
+          d.ts().msiv_open === false, 'false');
+        T.checkSanity(ck, a);
+      });
+    },
+
+    /* TR-17 (#371) — LOSING THE CONDENSER NO LONGER MEANS LOSING THE COOLDOWN.
+     * Audit #297 F3 measured this plant, with the condenser gone, sitting at
+     * 304–305 °C for four plant-hours with the safeties chattering and the dump at
+     * 0 % — no controlled cooldown path existed at all. The ADV is that path.
+     * Leg A is the null control (the valve ships SHUT, so the old behaviour is
+     * still what you get if you do nothing — that is what makes it a lever); leg B
+     * opens it and measures the cooldown. */
+    'TR-17': function () {
+      return test('TR-17 atmospheric dump — a cooldown exists without the condenser (#371)', function (ck) {
+        // ---- leg A: condenser lost, ADV untouched. The F3 measurement, still true.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
+        a.run(3600);
+        ck('shipped lineup: the ADV is SHUT and nothing has changed',
+          fmt(a.ts().adv_valve_pct, 1) + ' %', a.ts().adv_valve_pct < 0.01, '0 %');
+        ck('…so the plant still holds hot, as audit F3 measured', fmt(a.ts().tavg_c, 1) + ' °C',
+          a.ts().tavg_c > 290, '> 290 °C (no cooldown without operator action)');
+
+        // ---- leg B: the operator opens it. This is the gap #297 F3 named.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
+        b.run(270);
+        b.cmd('set_adv', { mode: 'open' });
+        b.run(7200);
+        ck('opening the ADV cools the plant with no condenser at all',
+          fmt(a.ts().tavg_c, 1) + ' → ' + fmt(b.ts().tavg_c, 1) + ' °C',
+          b.ts().tavg_c < 230, '< 230 °C (leg A stays above 290)');
+        ck('…and it vents to ATMOSPHERE — the condenser is still gone',
+          String(b.ts().condenser_cooling_available) + ', adv ' + fmt(b.ts().adv_valve_pct, 0) + ' %',
+          b.ts().condenser_cooling_available === false && b.ts().adv_valve_pct > 50,
+          'condenser false, ADV open');
+        // The dump must NOT have carried this — it is gated on the condenser, and if
+        // the ADV had been wired into steam_dump_frac this check would not notice.
+        ck('the condenser dump stayed dead throughout (the ADV is a separate path)',
+          fmt(b.range('steam_dump_valve_pct').max, 1) + ' % peak',
+          b.range('steam_dump_valve_pct').max < 5, '< 5 %');
+        ck('no fuel damage', String(!!b.ts().fuel_damaged), !b.ts().fuel_damaged, 'false');
+        T.checkSanity(ck, b);
+      });
+    },
+
     'PI-9': function () {
       return test('PI-9 SLB gate — RETIRED: no low-steam-line-pressure SI, and none needed (#199)', function (ck) {
+        // SPLIT INTO TWO LEGS 2026-08-05 (#370c). This probe fences the #199 ruling —
+        // that no low-steam-line-pressure SI is needed, evidenced by a deep blowdown
+        // that never calls for injection. Automatic isolation (#370c) arrests a
+        // DOWNSTREAM break in about a second, so on that break the deep blowdown no
+        // longer happens and the old assertions would have been measuring a
+        // non-event: green because the transient was gone, the exact trap this repo
+        // has been bitten by twice.
+        //
+        // So the evidence moves to the break location where it still bites — an
+        // UPSTREAM break, which no isolation can touch — and it is reproduced
+        // VERBATIM there (blowdown < 1.0 MPa, no SI anywhere, primary above 12.4,
+        // inventory intact). The downstream leg then asserts the NEW truth: the
+        // question the ruling answered never arises, because the plant isolates.
+        // Strictly more coverage than before, and the ruling keeps its evidence.
+
+        // ---- leg A: UPSTREAM — the #199 evidence, unchanged and still measured.
         var h = H('hot_full_power');
         h.run(30);
-        h.cmd('inject_failure', { failure_id: 'steam_line_break', severity: 0.8 });
+        h.cmd('inject_failure', { failure_id: 'steam_line_break_upstream', severity: 0.8 });
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
         var siEver = false;
         h.run(900, function (hh) { if (hh.ts().hpi_active) siEver = true; });
@@ -3801,6 +3970,92 @@
           t.core_inventory_pct > 98 && t.subcooling_c > 50, '> 98 %, subcooled');
         ck.info('end state — a cold primary held at pressure (PTS, unmodelled)',
           fmt(t.tavg_c, 1) + ' °C at ' + fmt(t.pressure_mpa, 2) + ' MPa');
+
+        // ---- leg B: DOWNSTREAM — the question no longer arises (#370c).
+        var d = H('hot_full_power');
+        d.run(30);
+        d.cmd('inject_failure', { failure_id: 'steam_line_break', severity: 0.8 });
+        var dSi = false;
+        d.run(900, function (hh) { if (hh.ts().hpi_active) dSi = true; });
+        ck('DOWNSTREAM: the isolation arrests it, so the deep blowdown never happens',
+          fmt(d.range('steam_pressure_mpa').min, 2) + ' MPa min',
+          d.range('steam_pressure_mpa').min > 1.0, '> 1.0 (was < 1.0 unisolated)');
+        ck('…and still no safety injection — the ruling holds on this leg too',
+          String(dSi), !dSi, 'never');
+      });
+    },
+
+    /* TR-18 (#378, audit #297 F9) — A LOAD CHANGE ENDS. Nothing in the suite asserted
+     * settling: the plant limit-cycles ±7 points of power at ~185 s period FOREVER after a
+     * manual 100→50 MWe step (measured: 13.8 pts p2p in the final 10 min of a 60-minute
+     * hands-off ride, settling NEVER reached), while the same authored 50 % IC is stable to
+     * 0.7 pts — the loop can hold the point, it cannot arrive at it. The mechanism is the
+     * kernel's stop exits: a `rod_nudge` drives the bank over time, and the deadband /
+     * damping decisions return without cancelling the in-flight travel, so up to 8 steps
+     * (~72 pcm) of overshoot land after every decision to stop — the per-half-cycle kick
+     * that keeps the cycle fed.
+     *
+     * SHIPS AS A STRICT XFAIL — the fix was BUILT, MEASURED, AND REJECTED (2026-08-06).
+     * Cancelling the in-flight travel at the kernel's deadband exit kills the cycle
+     * completely (this probe goes green: settles 14.6 min, window 3.95 pts) — and takes
+     * TR-1i's SOURCED ramp duty 4.34 → 5.26 °F vs the WTSM 8.1.1 ≤ 5.00, because the
+     * overshoot travel was silently helping the bank chase a sliding Tref: the duty is
+     * currently met PARTLY BY the defect. pvTau filtering fails the same band at every
+     * value tried (0.2-3.0 s). Per the pre-declared reject criterion, neither shipped;
+     * the candidate that threads the needle (cancel gated on a stationary program) is on
+     * the issue. This probe pins the DEFECT meanwhile: if settling starts passing, the
+     * fix landed — remove the XFAIL entry in the same change or the gate goes XPASS-red.
+     *
+     * BANDS ARE HOUSE CALLS, declared as such: a real Westinghouse plant settles after a
+     * design manoeuvre (the WTSM 8.1.1 duty TR-1i pins is stated over sustained ramps, which
+     * only means anything on a plant that settles), but no source gives a settling time or a
+     * residual band, so these are the fixed plant's measured envelope with margin: settled
+     * (ask ±2 pts held 5 min) by 25 min against 13.8-18.5 over four seeds under the cancel,
+     * and the post-settle window ≤ 6 pts against 0.3-4.0 measured (worst-seed excursions
+     * ~4.9 appear only after 45 min, outside this ride). Today's plant fails both — never
+     * settles, post-settle window 13.4 — and the mean-on-target check passes on BOTH
+     * kernels deliberately (the cycle is roughly symmetric, so its mean was always right):
+     * it is the false-positive guard against a "fix" that settles at the wrong load, not a
+     * discriminator.
+     *
+     * The late window is sampled EXPLICITLY (25-35 min), not via h.range(): the run includes
+     * the transient's 55-pt first swing, so a run-wide range asserts nothing — the standing
+     * CA-9/#332 trap. */
+    'TR-18': function () {
+      return test('TR-18 load-change settling — a manual step ENDS, the plant does not hunt forever (#378)', function (ck) {
+        var h = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO
+        h.run(30);
+        var ask = 50;
+        h.cmd('set_load_target', { immediate: true, mwe: ask });
+        var t0 = h.t();
+        var settledAt = null, inBandSince = null;
+        var wMin = 1e9, wMax = -1e9, wTavgMin = 1e9, wTavgMax = -1e9;  // 25-35 min window
+        var lateSum = 0, lateN = 0;                                    // last 5 min mean
+        h.run(2100, function (hh) {
+          var tt = hh.t() - t0, pw = hh.ts().power_pct;
+          if (Math.abs(pw - ask) <= 2) {
+            if (inBandSince == null) inBandSince = tt;
+            if (settledAt == null && tt - inBandSince >= 300) settledAt = inBandSince;
+          } else inBandSince = null;
+          if (tt >= 1500) {
+            if (pw < wMin) wMin = pw; if (pw > wMax) wMax = pw;
+            var tv = hh.ts().tavg_c;
+            if (tv < wTavgMin) wTavgMin = tv; if (tv > wTavgMax) wTavgMax = tv;
+          }
+          if (tt >= 1800) { lateSum += pw; lateN++; }
+        });
+        ck('no reactor trip on an ordinary dispatch cut', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('the plant SETTLES — ask ±2 pts held 5 min, reached inside 25 min (pre-fix: never)',
+          settledAt == null ? 'never' : fmt(settledAt / 60, 1) + ' min',
+          settledAt != null && settledAt <= 1500, '≤ 25 min');
+        ck('…and STAYS settled — 25-35 min p2p ≤ 6 pts (pre-fix: 12.7-13.1, the limit cycle)',
+          fmt(wMax - wMin, 2) + ' pts', (wMax - wMin) <= 6.0, '≤ 6');
+        ck('settled AT the ask, not merely quiet somewhere (mean guard — green on both kernels;'
+          + ' the broken cycle was symmetric, so this alone discriminates nothing)',
+          fmt(lateSum / Math.max(lateN, 1), 2) + ' %', Math.abs(lateSum / Math.max(lateN, 1) - ask) <= 2, ask + ' ±2');
+        ck.info('25-35 min Tavg swing (pre-fix sustained ~6 °F)',
+          fmt((wTavgMax - wTavgMin) * 9 / 5, 2) + ' °F (' + fmt(wTavgMax - wTavgMin, 2) + ' °C)');
+        T.checkSanity(ck, h);
       });
     },
   };

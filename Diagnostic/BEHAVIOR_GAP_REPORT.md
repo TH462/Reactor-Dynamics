@@ -6,6 +6,11 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 58 pass, 0 known gaps (xfail).
+Battery result: 60 pass, 1 known gaps (xfail).
 
-**No gaps — the battery is fully green. The tuning pass is complete.**
+## TR-18 — TR-18 load-change settling — a manual step ENDS, the plant does not hunt forever (#378)
+*Known gap:* rod channel limit-cycles after a load step (#378) — shippable fix not yet found
+
+- **the plant SETTLES — ask ±2 pts held 5 min, reached inside 25 min (pre-fix: never)** — required `≤ 25 min`, observed `never`
+- **…and STAYS settled — 25-35 min p2p ≤ 6 pts (pre-fix: 12.7-13.1, the limit cycle)** — required `≤ 6`, observed `14.75 pts`
+- measurement: 25-35 min Tavg swing (pre-fix sustained ~6 °F) = `5.08 °F (2.82 °C)`

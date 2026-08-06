@@ -45,6 +45,194 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-develop-a — lane merge: a revision number that is a release marker, not a counter
+
+**Decision.** The manual set's revision number **does not advance until a website release**
+*(OWNER DIRECTIVE, 2026-08-06: "The revision number only matters during a release to the
+website. Revision numbers should never go up until a release happens.")*. Rev 12 is what the
+site carries (Alpha 1.1.0, `main` at `7a40b9a`); everything since is one pending **Rev 13**,
+no matter how many changes it accumulates. The `develop` ← `workbench` merge collapsed six
+unreleased rows into that one row, carrying all six changes as (a)–(f).
+
+**Why it came up, and why the rule is better than the fix.** Both lanes edited `Manuals/` from
+the same base and both allocated revision numbers from it: develop took 13/14/15 (#361, #364,
+#386 stage 1), workbench took 13/14 (#370, #371). **Rev 13 and Rev 14 each named two different
+changes.** That is the session-label collision #339 fixed, one artifact over, with the same
+root cause — a counter that requires cross-lane coordination the lanes structurally cannot
+have, since a worktree cannot see its siblings. Renumbering workbench's rows to 16/17 would
+have resolved *this* collision and left the mechanism in place for the next one. Tying the
+number to releases removes the class: **between releases there is exactly one pending row, so
+there is nothing to allocate twice.** The cost is that a single row now describes several
+changes, which is what the (a)–(f) structure absorbs, and the revision table stops being a
+change log — `CHANGELOG.md` and this file already are one.
+
+**Consequence for future manual edits:** do not open a new revision row. **Extend Rev 13's.**
+The next release rolls it to 14 and starts a fresh one. Recorded in `CLAUDE.md`'s status
+section, because a rule that lands only here has not landed.
+
+**Second decision, smaller: a declared simplification was corrected rather than carried.**
+Workbench's `12 §12.17` (#370) declared that this simulator has no containment at all;
+develop's #386 stage 1 built containment pressure, temperature and sump the same day in the
+other tree. Merged as written, chapter 12 asserted both. The §12.17 row and the `12 §8.5`
+sentence that points at it now state the true position — the signal exists (§12.4d), nothing
+protective reads it yet (#386 stage 2). **Withdrawing a claim that stopped being true is not
+designing**, which is what made this safe to do inside a merge; anything that changed plant
+behaviour would not have been. Owner-approved before the merge began.
+
+**Gates.** `run_all` 38/38 at baseline, one tracked red (`run_ops` 58/69, unmoved). The three
+keys both lanes moved were measured, not added: `run_behavior` **60pass 1xfail**,
+`run_contract` **156**, `run_hardrules` **192** — the first two additive because the probes
+and `true_state` fields are disjoint, the third not, because it counts citation sites and the
+revision collapse *deleted* six rows' worth while the write-ups added more.
+
+---
+
+## 2026-08-06-workbench-a — #378: a fix that measures perfectly and is rejected anyway
+
+**Decision.** The rod-channel limit cycle (#378, audit #297 F9) has a fix that works — cancelling
+in-flight `rod_nudge` travel at the kernel's deadband exit takes a 100→50 MWe step from
+13.78 pts p2p forever / never settling to 2.03 pts / settled at 14.6 min — and it is **not
+shipped**, because it takes TR-1i's sourced WTSM 8.1.1 ramp duty from 4.34 to **5.26 °F against
+≤ 5.00**. The uncancelled overshoot travel has been silently helping the bank chase a sliding
+Tref: the sourced duty is met partly by the defect. That was the plan's pre-declared reject
+criterion, applied as written. pvTau fails the same band at every value tried (0.2–3.0 s,
+measured across two sessions); `kd` makes the cycle worse (measured, prior diagnosis). What
+ships instead is **TR-18 as a strict xfail** — the settling probe, injection-verified in both
+directions, pinning the open defect so it cannot be quietly forgotten or quietly "fixed" without
+the XFAIL entry moving in the same change.
+
+**Why record a rejection here.** The natural next attempt is one of the two things now measured
+dead (filter the PV, add derivative) — and the actually promising variant (gate the cancel on a
+stationary program, so step-settling cancels and ramp-chasing keeps its travel) needs the full
+verification pass a wrap-up session could not give it. It is filed on #378. Full measurement
+tables: `Diagnostic/TUNING_LOG.md` 2026-08-06-workbench-a.
+
+**Session end state, for the merge** *(OWNER, 2026-08-06: "I want to merge develop and workbench
+before they drift too far apart. Get yourself into a good stopping point for a clean merge.")*:
+lane committed and gated; #377, #379, #380 and the §8.30 row remain open on this lane per the
+2026-08-05 "Workbench takes everything left" ruling.
+
+---
+
+## 2026-08-05-workbench-i — #371b: an absolute patch is a time bomb under a generated file
+
+**Decision.** `pwr_board_data.js` is GENERATED from the owner's diagram export, so every correction
+the driver makes lives in `DOC_PATCHES` instead. Those corrections were written as **absolute**
+tops and lefts. This re-export proved that is the wrong form: the owner moved the pressurizer up
+40 px and the condenser left 208 px, and because each patch re-asserted the old absolute number,
+the board silently put both tiles back where they used to be. The owner saw it immediately — *"The
+condenser is shifted to the right. the pressurizer is shifted down."*
+
+The trap is that both patches were **still correct in intent**. The pressurizer one is a +3 px
+nudge that levels the spray stub; the condenser one is a −2 px nudge that squares the hotwell drop
+onto a pump flange the 5 px doc grid will not let meet it halfway. Deleting them — the first thing
+I did — traded a visible 208 px error for two invisible 2 px leans, which is a worse outcome
+because only the ruler in board_check can see it. **Re-derived, not deleted**: `authored + delta`,
+with the arithmetic written at the patch so the next re-export shows its working instead of
+silently re-displacing a tile.
+
+Three more patches were genuinely spent and are gone: two CVCS caption sizes whose readouts the
+owner replaced with a different tile kind, and a feed-rate reposition the owner has now authored
+into the diagram directly.
+
+**Retired, not re-homed: the labelled STEAM DUMP readout (`imrzmlyafa3`).** The export drags it to
+(1247, 875) — clear of every card, 90 px below the lowest content, and the sole reason the board's
+bounding box grew an empty band that shrank every other tile. In the same export the owner added a
+right-anchored % tag beside the condenser dump valve, matching the new ADV and turbine-flow tags.
+Dragging a tile off the canvas while placing its replacement on the schematic is as explicit as an
+export gets. Carrying both would have put `steam_dump_valve` on the board twice under two labels.
+
+**What this costs and what it buys.** Two board_check pins go with it (−2, 211 → 209), and they
+are DELETED rather than repointed: a tile-fit assertion against an item that no longer renders
+passes forever and asserts nothing. Everything else the re-export moved was **re-pinned**, not
+dropped — four pipe ids where one header became four, five item ids, two re-measured runs, and the
+rod-card spacing re-solved against the new card height (3g = 19 again, so the same 6/6/7 rhythm).
+
+**One near-miss worth recording.** Adding a second `imrpk8169ds`-style spacing block created a
+duplicate key in the `DOC_PATCHES.items` object literal, which silently replaced ROD AUTO's colour
+entry and un-greened the button. The file carries a comment warning about exactly that hazard,
+nine lines above where I put the duplicate. The gate caught it; the comment did not, because I
+wrote before I read. The existing block was edited in place instead.
+
+---
+
+## 2026-08-05-workbench-h — #371a: the valve ships shut, and that is the design
+
+**Decision.** Atmospheric dump valves — a condenser-independent steam path, upstream of the MSIV and
+outside the C-9 interlock. Capacity 0.10, setpoint 8.60, both UNVERIFIED and declared (§8.34).
+Measured: 579.3 → 359 °F (304 → 182 °C) in three hours with no condenser, against §8.29's record of
+four plant-hours with no cooldown at all. §8.29 RETIRED.
+
+**Default SHUT is the load-bearing decision.** Shut, the term is identically zero and the plant is
+byte-identical — the null test confirmed the entire suite unchanged but for the two contract
+fields. AUTO at 8.60 would have quietly removed the SG code safeties from every bottled-generator
+evolution the sim teaches, which is a large re-baseline hidden inside a feature. The declared gap
+was "there is no controlled cooldown path"; a lever the operator reaches for closes it without
+rewriting anything else.
+
+**The capacity argument is worth keeping.** 0.10 is chosen so the ~55 °C/hr technical-specification
+limit is achievable AND exceedable — measured, a fully-open ADV cools at −165 °C/hr, three times the
+limit. #375 had just given the board a cooldown-rate meter and annunciator; sizing the valve so it
+cannot break the limit would have made that instrumentation decorative. The valve and the meter were
+designed against each other.
+
+---
+
+## 2026-08-05-workbench-g — #370c: a protection that extinguishes its own signal, and two rows that could never have armed
+
+**Decision.** Automatic main steam line isolation: `sg_steam_flow > 1.25` coincident with
+`steam_pressure < 5.20` closes the MSIV, latched-sealed against operator reopening until the
+generator recovers past 7.0 MPa. §8.28 RETIRED. Three parts of the real function are declared
+rather than built, each for a measured reason: no containment path (§8.31 — nothing to sense),
+a fixed rather than load-programmed flow setpoint (§8.32 — no impulse-pressure signal), and
+**no lo-lo Tavg leg (§8.33), because it cannot arm on this plant**.
+
+**The three findings worth carrying forward.**
+
+1. **A sourced row can still be dead.** The lo-lo Tavg leg is in the source and would have looked
+   right in the config forever. Measured, it never fires: break flow scales with the pressure it
+   destroys, so flow has decayed before Tavg falls. Building it would have shipped protection that
+   reads as real and does nothing — the "condition that can never arm" trap, arriving via the
+   sourced design rather than a mistake.
+2. **The transmitter saturated inside its own casualty.** A 1.2 span against a true 1.75 draw meant
+   every break above ~40 % read identically, and the 30 % break sat one thousandth from the
+   setpoint. A gauge that cannot resolve what its protection discriminates on is the defect, not
+   the setpoint.
+3. **A seal-in that tracks a live signal is useless when the action removes the signal.** Closing
+   the valve stops the flow that closed it, so the refusal evaporated in the instant it engaged —
+   measured, the operator reopened one second after actuation and the break resumed unprotected.
+   Latching on the fired latch with a physical release (pressure recovered) is the fix; the
+   general lesson is that self-extinguishing protections need a latch, and the kernel now has one.
+
+**Content moved, physics stood.** `pwr_slb`'s decision beat and two `run_m7` stimuli all assumed a
+plant that never isolates. Prompt tripping on a large steam line break is what a real plant does,
+so the scenario severity and the test stimuli moved (HR9), each with its reason written in place.
+
+---
+
+## 2026-08-05-workbench-f — #370a: the break that removed no mass, and the lane that started green on purpose
+
+**Decision.** The main steam line break becomes a MASS FLOW in `steam_out` instead of a `dP/dt`
+sink applied after the pressure integral. Flow = `STEAM_BREAK_RATE / K_steam_pressure × size ×
+min(P/P_rated, 1)`, so `STEAM_BREAK_RATE` stays the single knob and the equivalence is structural
+rather than a comment. The break now drains the SG, is visible to the feed controller, and — the
+reason this had to come first — makes `sg_steam_flow` RISE during a break instead of falling.
+
+**Why the order matters.** Automatic steam line isolation reads high steam flow. On the old plant
+that signal moved the *wrong way* during the casualty it exists to detect, so building the
+isolation first would have been protection reading a fabricated relationship — the #220/§8.24
+defect class wearing a new costume.
+
+**Proof, not assertion.** A 12-case × 7-sample matrix is byte-identical when the new flow feeds
+only the pressure integral, which isolates the arithmetic from the new couplings. The divergence
+that remains is the couplings themselves, measured and tabled in TUNING_LOG.
+
+**Lane start.** Merged `7a40b9a` (last green develop) deliberately, not `develop`'s tip, which
+carries another session's in-flight #364 work at 5 red runners across the four files this campaign
+edits most. Recorded here so the eventual merge sees a deliberate choice rather than a stale lane.
+
+---
+
 ## 2026-08-05-develop-i — #386 stage 1: the containment building exists
 
 Ruled Tier 3 *(OWNER RULING, 2026-08-05: "Tier 3 for 386.")* — pressure + heat removal +
@@ -93,7 +281,7 @@ re-litigated when stage 3 starts.
   reddens all 3 CA-17 checks — the pre-#386 engine exactly.
 - **Gate movements** (all measured): `run_behavior` 56 → 58 (CA-16, CA-17), `run_contract`
   151 → 154 (+3 fields both ways), `run_pwr` 241 → 242 (containment save-migration assert),
-  Manuals Rev 14 → 15. `run_meltdown` 12, `run_scenarios` 3/3, `run_inspect` 47/47 unmoved —
+  Manuals Rev 13 (collapsed by the 2026-08-06 lane merge). `run_meltdown` 12, `run_scenarios` 3/3, `run_inspect` 47/47 unmoved —
   for a change to break/relief backpressure, the flagship not moving is the number that
   matters (the relief Δp change at 16 MPa is < 0.1 %).
 

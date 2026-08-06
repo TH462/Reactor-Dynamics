@@ -183,6 +183,31 @@ var HR1_CONDITION = {
   'bwr:hpci_unavailable': { kind: 'hold', why: 'BWR is ON HOLD. Recorded, not assessed.' },
 };
 var condUsed = {};
+// Declared instrument ids for a plant, read STATICALLY out of its config's
+// `instruments:` block — this file is a text scanner by design (it must be able to
+// see what the code SAYS, not what it evaluates to), so it parses rather than loads.
+// Used by the object-form condition check below.
+var instrIdCache = {};
+function plantInstrumentSpecs(plant) {
+  if (instrIdCache[plant] !== undefined) return instrIdCache[plant];
+  var abs = path.join(ROOT, 'engines/' + plant + '/' + plant + '_config.js');
+  if (!fs.existsSync(abs)) return (instrIdCache[plant] = null);
+  var src = stripComments(fs.readFileSync(abs, 'utf8'));
+  var start = src.indexOf('instruments:');
+  if (start < 0) return (instrIdCache[plant] = null);
+  // To the `status:` list that follows the spec object, or a generous window.
+  var end = src.indexOf('status:', start);
+  var body = src.slice(start, end < 0 ? start + 20000 : end);
+  var ids = {}, re = /(^|\n)\s*([a-z_0-9]+)\s*:\s*\{/g, m;
+  while ((m = re.exec(body))) ids[m[2]] = true;
+  // Status booleans are instruments too, for condition purposes.
+  if (end >= 0) {
+    var statusBlock = src.slice(end, src.indexOf(']', end) + 1);
+    var sre = /'([a-z_0-9]+)'/g, sm;
+    while ((sm = sre.exec(statusBlock))) ids[sm[1]] = true;
+  }
+  return (instrIdCache[plant] = ids);
+}
 // The engine's _instrExtras() body, per plant — where a status word is computed.
 function instrExtrasBody(plant) {
   var rel = 'engines/' + plant + '/' + plant + '_engine.js';
@@ -199,7 +224,25 @@ var extrasCache = {};
 walk('layers/control', /_control\.js$/).forEach(function (rel) {
   var plant = path.basename(rel).replace('_control.js', '');
   var src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8')).split('\n');
+  // OBJECT-FORM conditions — { instrument: 'x', direction: 'low', setpoint: n } — are
+  // HR1-clean BY CONSTRUCTION (they name an instrument and the kernel reads `ins`), but
+  // the string scan below cannot see them, so before #370b a coincidence row would have
+  // been SILENTLY SKIPPED and this gate would have reported a confident pass over
+  // protection it never looked at. That is the "a scan that reached nothing passes for
+  // the wrong reason" shape this file exists to prevent, so the object form gets its own
+  // check: the named instrument must exist in the plant's instrument specs.
   src.forEach(function (line, i) {
+    var mo = /condition:\s*\{\s*instrument:\s*'([a-z_0-9]+)'\s*,\s*direction:/.exec(line);
+    if (mo) {
+      var specsOk = plantInstrumentSpecs(plant);
+      check('HR1', rel, i + 1, "condition: { instrument: '" + mo[1] + "', … } — numeric coincidence term",
+        specsOk && specsOk[mo[1]] ? 'reads a declared instrument (HR1-clean by construction)' : null);
+      if (!(specsOk && specsOk[mo[1]])) {
+        violations[violations.length - 1].text = "condition names '" + mo[1] + "', which is not a declared "
+          + plant.toUpperCase() + " instrument";
+      }
+      return;
+    }
     var m = /condition:\s*'([a-z_0-9]+)'/.exec(line);
     if (!m) return;
     var key = plant + ':' + m[1];

@@ -50,6 +50,7 @@
   <script src="../diagram/board/components/comp_porv.js"></script>
   <script src="../diagram/board/components/comp_pump.js"></script>
   <script src="../diagram/board/components/comp_valve.js"></script>
+  <script src="../diagram/board/components/comp_atmospheric_dump.js"></script>
   <script src="../diagram/board/components/comp_valve_horizontal.js"></script>
   <script src="../diagram/board/components/comp_valve_vertical.js"></script>
   <script src="../diagram/board/components/comp_turbine_generator.js"></script>
@@ -165,6 +166,9 @@
         // straightens one by bending the others goes unnoticed. The condenser is what
         // moved: `Pump` is in NUDGE_KINDS, so pump flange faces snap to the 5 px doc grid
         // and can never land on 1527.
+        // Still a plumb drop after the 2026-08-05 re-export: the owner moved the condensate
+        // train 210 px left AND the condenser with it, so the pair stayed together and only
+        // the same 2 px lean the CONDENSER item patch has always corrected was left over.
         plumb('geom: condenser drop into the condensate pump', 'condenser/condensate-out', 'imrqvzbd9hd/suction', 'x');
         plumb('geom: condensate pump up to the polisher', 'imrqvzbd9hd/discharge', 'imrqrnclhn/~ptmrqteexd9e', 'x');
         plumb('geom: polisher down to the feed pump', 'imrqrnclhn/~ptmrqted2hiw', 'imrobph7xrq/suction', 'x');
@@ -212,7 +216,7 @@
         //  not made tolerant of a missing element: a clearance check whose subject no longer
         //  exists would pass forever and assert nothing, which is the vacuous shape this file
         //  keeps finding. It failed loudly at the merge, which is what a pin is for.)
-        noTitleOverlap('geom: feed status clears the SG FEED title', 'bdFeedStatus', 'imrqxsodu5j');
+        noTitleOverlap('geom: feed status clears the SG FEED title', 'ims89lnqmip', 'imrqxsodu5j');
         // The gap has to survive the WIDEST value the field can print, not the one that
         // happens to be on screen. `dtMargin` renders `name + ' ' + margin.toFixed(1)` over
         // a [-500, 1500] instrument, so 11 characters is the bound. Measured on a CLONE —
@@ -309,6 +313,16 @@
       }));
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
+
+      // --- ADV (#371). The condenser-independent steam path — the only cooldown
+      // route once the condenser is gone, so its controls are pinned like the
+      // dump's. Note the shipped lineup is SHUT, not AUTO: that is the design
+      // (DESIGN_COMPANION §8.34), and asserting it here means a future change to
+      // the default has to come and edit this line rather than slide past.
+      ck('func: ADV ships SHUT, not auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
+      clickBtn('bdAdvAuto'); ck('func: ADV AUTO -> auto', cs().adv_auto === true);
+      clickBtn('bdAdvClose'); ck('func: ADV SHUT -> shut and out of auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
+      setNum('bdAdvSp', 1000); ck('func: ADV setpoint 1000 psi -> ~6.89 MPa', Math.abs(cs().adv_setpoint - 1000 / 145.038) < 0.05);
 
       // --- instructor glow ---
       ck('glow: revealControl(HPI) returns a tile', !!RD.PwrBoard.revealControl('HPI'));
@@ -545,14 +559,14 @@
       var svcHfp = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'hot_full_power' });
       RD.PwrBoard.render(svcHfp.assembleSnapshot());
       ck('pipe: full power hot leg RUNNING', pipeState('pms2ktjq4ma') === 'running', pipeState('pms2ktjq4ma'));
-      ck('pipe: full power main steam RUNNING', pipeState('pmrr0u4vgri') === 'running', pipeState('pmrr0u4vgri'));
+      ck('pipe: full power main steam RUNNING', pipeState('pmsgu7y5cn4') === 'running', pipeState('pmsgu7y5cn4'));
       ck('pipe: full power turbine exhaust RUNNING', pipeState('pmrr14xbt2h') === 'running', pipeState('pmrr14xbt2h'));
       ck('pipe: full power RWST->ECCS suction PAUSED (HPI off; pump-init gate, #236)',
         pipeState('pms3x1rbkod') === 'paused', pipeState('pms3x1rbkod'));
       ck('pipe: full power PORV relief line PAUSED (dead-ended, PORV seated)',
         pipeState('pms3tda86bw') === 'paused', pipeState('pms3tda86bw'));
       ck('pipe: full power steam dump branch PAUSED (dump shut at power)',
-        pipeState('pmrr46oahnx') === 'paused', pipeState('pmrr46oahnx'));
+        pipeState('pmsgu16h63l') === 'paused', pipeState('pmsgu16h63l'));
       // The RWST → charging-pump-suction cross-tie, out of the ECCS panel's RIGHT side.
       // Owner, 2026-08-03: "the pipe coming out of the right of the ECCS shows flow when
       // the ECCS is off or not flowing" — and it did, in EVERY state of the plant, because
@@ -632,13 +646,13 @@
         }
         RD.PwrBoard.render(svcHfp.assembleSnapshot());
         // RCP FLOW reads the elbow-tap channel, so at power it is ~100 % of rated.
-        var rf = tileRect('bdRcpFlow');
+        var rf = tileRect('imsgteavgid');
         var rv = rf ? parseInt((rf.el.textContent.match(/\d+/) || ['-1'])[0], 10) : -1;
         ck('readout: RCP FLOW present and reads rated at power (95-105 %)', rv >= 95 && rv <= 105,
            rf && rf.el.textContent);
         // Delivered spray, not the demand: with the plant at power and the spray shut it is 0,
         // and the DEMAND box beside it is what would read otherwise.
-        var sf = tileRect('bdPzrSprayFlow');
+        var sf = tileRect('imsgt6qmdgx');
         ck('readout: PZR SPRAY FLOW present and numeric', !!sf && /\d/.test(sf.el.textContent),
            sf && sf.el.textContent);
         // Neither may land on anything. The spray one is checked against the whole pressurizer
@@ -648,7 +662,7 @@
          'imro901sddd', 'imrsg8b7b9o'].forEach(function (id) {
           if (overlaps(sf, tileRect(id))) hits.push('spray x ' + id);
         });
-        ['imrsjy1m9g', 'imrsjy59pnu', 'imrzp89wdfu', 'imrzp8qps6u'].forEach(function (id) {
+        ['imrsjy1m9g', 'imrsjy59pnu', 'imsgti1p0rm', 'imsgti0gnpf'].forEach(function (id) {
           if (overlaps(rf, tileRect(id))) hits.push('rcpflow x ' + id);
         });
         ck('geometry: the two new readouts overlap nothing', hits.length === 0, hits.join(', '));
@@ -657,7 +671,7 @@
         ck('item 5: the REACTIVITY readout is removed from the board',
            !document.querySelector('[data-item="imro6rdwwdn"]') &&
            !document.querySelector('[data-item="imrshokxy4u"]'));
-        var pl = tileRect('bdRxPeriodLbl');
+        var pl = tileRect('ims89mc0hl3');
         ck('item 5: PERIOD moved up into the vacated slot (top ~455, was 490)',
            !!pl && pl.t > 445 && pl.t < 470, pl && pl.t.toFixed(0));
       })();
@@ -763,7 +777,7 @@
       RD.PwrBoard.render(svc5.assembleSnapshot());
       ck('pipe: Mode 5 hot leg PAUSED (RCPs secured)', pipeState('pms2ktjq4ma') === 'paused', pipeState('pms2ktjq4ma'));
       ck('pipe: Mode 5 cold leg PAUSED', pipeState('pms2kozvu94') === 'paused', pipeState('pms2kozvu94'));
-      ck('pipe: Mode 5 main steam PAUSED (no steam flow)', pipeState('pmrr0u4vgri') === 'paused', pipeState('pmrr0u4vgri'));
+      ck('pipe: Mode 5 main steam PAUSED (no steam flow)', pipeState('pmsgu7y5cn4') === 'paused', pipeState('pmsgu7y5cn4'));
       ck('pipe: Mode 5 turbine exhaust PAUSED', pipeState('pmrr14xbt2h') === 'paused', pipeState('pmrr14xbt2h'));
       ck('pipe: Mode 5 feed line PAUSED (no feed flow)', pipeState('pms31qjbqhy') === 'paused', pipeState('pms31qjbqhy'));
 
@@ -775,12 +789,13 @@
       ck('readout: Mode 5 turbine rpm reads ~0 (was pinned 1800, #235)',
         Math.abs(parseInt(rpmTxt, 10)) < 100, tileText('imrppee04aj'));
       // authored-geometry corrections (DOC_PATCHES + label tracking, #235/#236):
-      var roLabel = document.querySelector('[data-item="imrzmlyafa3"] .bd-ro-label');
-      ck('geom: STEAM DUMP readout label fits its tile',
-        !!roLabel && roLabel.scrollWidth <= roLabel.parentElement.clientWidth,
-        roLabel && (roLabel.scrollWidth + ' vs ' + roLabel.parentElement.clientWidth));
-      ck('geom: STEAM DUMP readout clear of the dump valve tile',
-        (function () { var it = (window.RD_PWR_BOARD_DOC.items || []).filter(function (i) { return i.id === 'imrzmlyafa3'; })[0]; return it && it.left >= 1414; })());
+      // (The two STEAM DUMP readout pins that lived here — label-fits-its-tile and
+      //  clear-of-the-dump-valve — are DELETED, not repointed. Their subject `imrzmlyafa3`
+      //  is retired in DOC_REMOVE: the 2026-08-05 re-export dragged it off the canvas and
+      //  put a schematic-side % tag beside the dump valve instead. A tile-fit assertion
+      //  against an item that no longer renders passes forever and asserts nothing — the
+      //  vacuous shape this file already deleted a rod-status pin for. Dump position is
+      //  still covered: `readout: full power steam dump reads shut` reads imsgunuyvon.)
       ck('geom: NIS delta-T caption reads "Δ TEMP AVG"',
         /Δ TEMP AVG/.test(tileText('imrsho1qu6t')), tileText('imrsho1qu6t'));
 
@@ -1005,6 +1020,15 @@
           ck('units: SI ▲▼ step is 0.01 MPa, not 1', d.stepFor(it) === 0.01, d.stepFor(it));
           // The hint is DERIVED from the bounds in SI, so it cannot drift from them.
           ck('units: SI range hint is derived from the bounds', d.numberHint(it) === '0.2-9.31 MPa', d.numberHint(it));
+          // The ADV SP box takes the SAME engine clip as the Dump SP, so it must
+          // convert identically — a second setpoint box that read psi while its
+          // neighbour read MPa would be worse than no unit layer at all (#371).
+          var advIt = item('bdAdvSp'), advB = d.boundsFor(advIt);
+          ck('units: ADV SP bounds are the engine clip in MPa', advB[0] === 0.2 && advB[1] === 9.31, JSON.stringify(advB));
+          // The ADV SP tile carries NO inline unit — in 90 px of card the suffix cost
+          // the input the width it needed — so the DERIVED RANGE HINT is what names
+          // the unit, and that is what must convert.
+          ck('units: ADV SP range hint converts to MPa', d.numberHint(advIt) === '0.2-9.31 MPa', d.numberHint(advIt));
           ck('units: SI charging box keeps a usable resolution (0-13.6 m³/h at 0.1)',
             d.numberDigits(item('imrpq48hn3t')) === 1 && d.stepFor(item('imrpq48hn3t')) === 0.1,
             d.numberDigits(item('imrpq48hn3t')) + ' / ' + d.stepFor(item('imrpq48hn3t')));

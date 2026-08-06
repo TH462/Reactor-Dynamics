@@ -84,6 +84,14 @@
     containment_pressure: 'containment_pressure_mpa',
     containment_temp: 'containment_temp_c',
     containment_sump_level: 'containment_sump_pct',
+    // Atmospheric dump valve position, % (#371). Appended last for the same reason
+    // as the four above — the PRNG draw order of every existing instrument stays put.
+    // MERGE NOTE (2026-08-06): #371 and #386 stage 1 each appended to this tail in
+    // their own lane, so both claim to be last. Order between them is arbitrary and
+    // costs nothing — all four ship `noise: 0`, and _noise() returns BEFORE drawing
+    // when sigma <= 0, so none of them draws from the PRNG stream at all and the
+    // existing sequence is byte-identical whichever way round they sit.
+    adv_valve: 'adv_valve_pct',
   };
 
   function PWRInstruments(config, seed) {
