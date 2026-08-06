@@ -138,6 +138,15 @@
   // SPLIT — 2235/2279/2199 psi all print as "15 MPa" — which is the one thing that
   // group exists to show.
   function physP(mpa) { return mpa == null ? '—' : conv(mpa, 'pressure').toFixed(ui.units === 'SI' ? 2 : 0) + ' ' + unit('pressure'); }
+  // Containment pressure reads in GAUGE units (#386): the sourced setpoints are
+  // psig (3.5 psig SI, 30 psig spray) and a building at atmospheric must read 0,
+  // not 14.7. Subtract one atmosphere, then scale as a DIFFERENCE — no offset.
+  function physPg(mpa) {
+    if (mpa == null) return '—';
+    var g = mpa - 0.1013;
+    if (Math.abs(g) < 0.005) g = 0;
+    return ui.units === 'SI' ? (g * 1000).toFixed(0) + ' kPa g' : (g * 145.038).toFixed(1) + ' psig';
+  }
   // Temperature DIFFERENCE without the "-0" artefact. A subcooling margin sitting
   // a hundredth of a degree below saturation is 0, not "-0 °F" — the minus sign is
   // the only thing on that line, and it is noise.
@@ -513,6 +522,31 @@
           { k: 'Primary leak flow',
             hint: 'coolant leaving the Reactor Coolant System (RCS) through a break or a leak, as a fraction of rated flow.',
             detail: 'Zero on an intact plant. Discharge is not fixed — a break is an AREA, so flow falls as the system depressurizes, which is why a large break is violent early and slows as it empties.',       v: function (t) { return pctOf(t.leak_flow, 2); }, cls: nzCls('leak_flow') },
+        ] },
+        // Containment (#386 stage 1) — the receiving volume the break and relief
+        // discharge into. Sits after Loop pressure on the energy-path spine: it is
+        // where the primary's mass and energy END UP when the boundary is open.
+        { title: 'Containment', rows: [
+          { k: 'Containment pressure',
+            hint: 'building pressure above atmospheric, in gauge units — 0 on a healthy plant.',
+            detail: 'The receiving volume for a primary break or an open relief valve. Hot discharge partly flashes to steam and pressurizes the building, so rising containment pressure is the direct evidence of a high-energy line break inside it — a real plant starts safety injection on it at 3.5 pounds per square inch gauge (psig). An intact plant reads exactly 0, and a steam generator tube rupture ALSO reads 0, because that break discharges into the steam generator instead: the one leak containment cannot see.',
+            v: function (t) { return physPg(t.containment_pressure_mpa); },
+            cls: function (t) {
+              var c = (RD.PWR_CONFIG || {}).containment || {};
+              var amb = c.ambient_pressure_mpa != null ? c.ambient_pressure_mpa : 0.1013;
+              var p = t.containment_pressure_mpa != null ? t.containment_pressure_mpa : amb;
+              return p > 0.308 ? 'q-alarm' : (p > amb + 0.01 ? 'q-caution' : 'q-ok');
+            } },
+          { k: 'Containment temperature',
+            hint: 'atmosphere temperature inside the building.',
+            detail: 'Rides the steam content: a steam and air mixture sits at the saturation temperature of its steam fraction, so temperature and pressure rise together during a blowdown and fall together as the passive heat sinks condense steam out onto the structures. Around 100 °F (38 °C) on a healthy plant.',
+            v: function (t) { return conv(t.containment_temp_c, 'temp').toFixed(0) + ' ' + unit('temp'); },
+            cls: function (t) { return t.containment_temp_c > 100 ? 'q-alarm' : t.containment_temp_c > 45 ? 'q-caution' : 'q-ok'; } },
+          { k: 'Containment sump level',
+            hint: 'water collected on the building floor, as a percentage of the sump reference volume.',
+            detail: 'Every pound the primary loses to the building ends up here — spilled liquid directly, flashed steam after the structures condense it back out. A climbing sump with steady pressure is the signature of a small cold leak, which is exactly the diagnosis the alarm-response procedures send you here for. Indication only: this plant models no recirculation from the sump.',
+            v: function (t) { return (t.containment_sump_pct != null ? t.containment_sump_pct : 0).toFixed(1) + ' %'; },
+            cls: nzCls('containment_sump_pct') },
         ] },
         // fw_flow_normalized is TOTAL feed (main + AFW — pwr_steam_generator.js:83),
         // and steam_out_total is everything leaving the SG (turbine + dump + safeties),

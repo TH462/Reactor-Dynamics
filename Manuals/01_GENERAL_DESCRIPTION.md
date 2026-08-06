@@ -4,7 +4,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLS-100** (Single Loop Simulated, 100 MWe)
 **Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design, and reactor trips are reserved for genuine limits. The steam dump is sized at **40 %** of rated steam flow, the prototypical Westinghouse capacity: a **50 % loss of load** is absorbed with no trip and no relief lift, and a larger rejection is ridden out by the reactor itself running back, with the PORV as the backstop.  
-**Revision:** 14  
+**Revision:** 15  
 
 ---
 
@@ -175,7 +175,7 @@ These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 | Rod banks | Multiple banks + overlap | One control + one shutdown |
 | RCS loops | Multi-loop with individual RCPs | Single lumped loop — and this plant genuinely *is* single-loop |
 | Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[sim]** on integrated physics — Free Play can start in **Mode 5, Cold Shutdown**; the full loop is **PWR-T20** / **PWR-T21**. Pacing is deliberately time-compressed. |
-| Containment / dose | Full models | Not modeled. Core **damage and melt are** simulated — cladding failure at **2192 °F (1200 °C)**, fuel melt at **5072 °F (2800 °C)** — but nothing past them is: no containment, no source term, no release, no dose. **Consequences** end at fuel damage, not the model |
+| Containment / dose | Full models | Partially modeled (#386 stage 1). Containment **pressure, temperature and sump level** exist — the building receives break and relief discharge, and break flow throttles against its rising pressure — but it has no spray or fan coolers yet, no hydrogen inventory, and nothing past fuel damage: no source term, no release, no dose. Core **damage and melt are** simulated — cladding failure at **2192 °F (1200 °C)**, fuel melt at **5072 °F (2800 °C)** |
 | Instrument channels | Redundant trains | Single sensors (can fail) — so instrument failures bite *harder* here than in a voting plant |
 | Point kinetics | Spatial power shape | Point model (lumped) |
 | Decay heat | Detailed groups | Two-term model (~7 % at scram after power run) |

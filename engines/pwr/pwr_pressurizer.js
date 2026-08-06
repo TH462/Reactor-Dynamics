@@ -198,7 +198,14 @@
     var p = cfg.pressurizer;
     // PORV actual position: commanded demand, unless stuck open (a command-level failure).
     s.porv_open = s.porv_stuck || (s.porv_demand === 'open');
-    var dP_ratio = Math.sqrt(Math.max(0, (s.pressure_mpa - p.P_containment) / p.P_flow_ref));
+    // Backpressure is the LIVE containment pressure since #386 stage 1 (it was the
+    // P_containment constant, forever). Null-guarded fallback to the constant so
+    // rig-built states without containment fields keep the old behaviour. The
+    // P_flow_ref denominator stays fixed — the valve coefficient is a rated-flow
+    // calibration; only the numerator Δp goes live. Reads LAST step's containment
+    // pressure (stepContainment runs at 14c) — explicit coupling, CONTEXT §11.
+    var pb_ctmt = s.containment_pressure_mpa != null ? s.containment_pressure_mpa : p.P_containment;
+    var dP_ratio = Math.sqrt(Math.max(0, (s.pressure_mpa - pb_ctmt) / p.P_flow_ref));
     // The PORV block (isolation) valve is upstream of the PORV. Closing it stops
     // ALL flow through the PORV line — relief AND inventory loss — regardless of
     // PORV position. This is the key TMI recovery action (isolate a stuck-open

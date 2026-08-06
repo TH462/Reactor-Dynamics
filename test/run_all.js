@@ -75,7 +75,7 @@ var BASELINES = {
   // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
   // protection acted on a reading the plant never had. Each half injection-verified and
   // they discriminate independently.
-  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 241passed' },   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 242passed' },   // 241 -> 242 (#386 stage 1): save_migration asserts the five containment fields restore at ambient   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
   // DELIBERATELY NOT MOVED at #346, and reading 1/3 on the backshop lane. Both red suites are
@@ -272,7 +272,7 @@ var BASELINES = {
   // plan predicted: measured, `porv_open` is false throughout and pressure settles at 326 psi.
   // A plant with a hole in it does not repressurize — the equilibrium is injection = break
   // flow at low pressure. CA-12's isolated-PORV path is where the relief ladder arrests it.
-  'run_behavior.js':       { code: 0, secs: 56, score: '56pass 0xfail' },
+  'run_behavior.js':       { code: 0, secs: 56, score: '58pass 0xfail' },   // 56 -> 58 (#386 stage 1): CA-16 (containment receives the discharge; SGTR bypasses) + CA-17 (LIVE backpressure clone rig, red on the pre-#386 engine). Injection-verified three ways: press_gain 0 reddens 4 of CA-16, dropping the _leak_to_sg gate reddens leg B alone, reverting the live reads reddens all 3 of CA-17.
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -665,7 +665,7 @@ var BASELINES = {
   // across CLAUDE.md, CHANGELOG, TUNING_LOG, BUILD_DECISIONS and the manual revision row.
   // MEASURED AFTER the docs, which is the only order that gives the right number: an
   // intermediate run with the code done and the write-ups pending read 180.
-  'run_hardrules.js':      { code: 0, score: '183checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '189checks 0failed' },   // 183 -> 189 (#386 stage 1) MEASURED AFTER THE DOCS, the only order that gives the right number: the code moved this by ZERO, the delta is the tracked-markdown citation sites for the two dated rulings (Tier 3, the TMI-2-style burn) across CLAUDE.md, CHANGELOG, TUNING_LOG and BUILD_DECISIONS -- net of the #346 themes-bullet eviction, whose bullet carried no ruling
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -696,7 +696,7 @@ var BASELINES = {
   // stop valves, spring-shut on a trip, documented in CONTEXT §6.3 with the change.
   // 149 → 151 (2026-08-05, #375): the two ±100 °F/hr rate annunciators are picked up by
   // the contract's per-alarm coverage automatically.
-  'run_contract.js':       { code: 0, score: '151checks 0failed' },
+  'run_contract.js':       { code: 0, score: '154checks 0failed' },   // 151 -> 154 (#386 stage 1): containment_pressure_mpa / containment_temp_c / containment_sump_pct, documented in CONTEXT.md 6.3 in the same change
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

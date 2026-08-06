@@ -206,9 +206,18 @@
         var dp_ref = cfg.primary.sgtr_dp_ref || 9.8;
         s.leak_flow = s._leak_base * clip((s.pressure_mpa - s.steam_pressure_mpa) / dp_ref, 0, 1.2);
       } else {
-        var pb = cfg.primary.break_backpressure_mpa != null ? cfg.primary.break_backpressure_mpa : 0.1;
+        // Backpressure is the LIVE containment pressure since #386 stage 1 (it was
+        // this constant, forever). Null-guarded fallback to the config constant so
+        // rig-built states without containment fields keep the old behaviour — the
+        // acAvailable "absent means energized" pattern. The SPAN stays config-fixed:
+        // the orifice coefficient is a rated-flow-at-rated-Δp calibration and must
+        // not drift as containment pressurizes; only the numerator Δp goes live.
+        // Note this reads LAST step's containment pressure (stepContainment runs at
+        // 14c, after this) — explicit coupling, CONTEXT §11.
+        var pb0 = cfg.primary.break_backpressure_mpa != null ? cfg.primary.break_backpressure_mpa : 0.1;
+        var pb = s.containment_pressure_mpa != null ? s.containment_pressure_mpa : pb0;
         var pr = cfg.primary.break_p_ref_mpa != null ? cfg.primary.break_p_ref_mpa : 15.41;
-        var span = Math.max(pr - pb, 1e-6);
+        var span = Math.max(pr - pb0, 1e-6);
         s.leak_flow = s._leak_base * Math.sqrt(clip((s.pressure_mpa - pb) / span, 0, 1.5));
       }
     }
@@ -439,6 +448,45 @@
       && naturalCircFlow(s, cfg) > (pr.natural_circ_indicate_frac || 0.01);
   }
 
+  // Step 14c — the containment building as a lumped receiving volume (#386 stage 1).
+  // Model, sizing measurements and sources: the `containment` section header in
+  // pwr_config.js. Runs AFTER inventory/pressure/cladding, so every source term it
+  // reads (leak_flow from step 9, porv_flow/safety_flow from step 7, tavg_c from
+  // step 6) is same-step fresh; its two CONSUMERS — the break law in stepInventory
+  // and relief() in pwr_pressurizer — read the pressure it writes one step LATE
+  // (explicit coupling, CONTEXT §11), which is what breaks the algebraic loop
+  // break flow → containment pressure → break flow.
+  function stepContainment(s, cfg, dt) {
+    var c = cfg.containment;
+    if (!c) return;   // config without the section (hand-built rigs) — containment stays absent
+    if (s._ctmt_steam == null) s._ctmt_steam = 0;    // lazy init: old saves, rig states
+    if (s._ctmt_sump == null) s._ctmt_sump = 0;
+    var pNow = s.containment_pressure_mpa != null ? s.containment_pressure_mpa : c.ambient_pressure_mpa;
+    // Break source: containment-side leaks ONLY. An SGTR discharges into the
+    // steam generator — the one break that BYPASSES containment, which is the
+    // diagnosis lesson (probe CT-1 asserts this exclusion).
+    var q_break = (s._leak_to_sg ? 0 : (s.leak_flow || 0));
+    // Flash fraction of the break liquid: cp·(T − T_sat(P_ctmt))/h_fg. Liquid at or
+    // below the containment saturation temperature rains into the sump and moves
+    // pressure not at all — the gate that makes sustained cold ECCS spill benign.
+    var flash = clip((s.tavg_c - T_sat(pNow)) / (c.flash_span_c || 540), 0, 1);
+    // Relief source: the PORV/safety lines vent the pressurizer STEAM SPACE, so the
+    // discharge is steam already, weight 1.0. No pressurizer relief tank is modeled
+    // (declared, Manuals/12 §13.0) — relief lands directly in the atmosphere.
+    var q_relief = (s.porv_flow || 0) + (s.safety_flow || 0);
+    var steam_in = q_break * flash + q_relief;
+    // Passive heat sink: condensation on the structures, condensate to the sump.
+    var cond = s._ctmt_steam / (c.passive_sink_tau_s || 1800);
+    s._ctmt_steam = Math.max(0, s._ctmt_steam + (steam_in - cond) * dt);
+    s._ctmt_sump += (q_break * (1 - flash) + cond) * dt;
+    var p_steam = (c.press_gain || 0) * s._ctmt_steam;
+    s.containment_pressure_mpa = c.ambient_pressure_mpa + p_steam;
+    // Atmosphere temperature: a steam/air mixture sits at the steam partial
+    // pressure's saturation temperature, floored at ambient.
+    s.containment_temp_c = Math.max(c.ambient_temp_c, T_sat(p_steam));
+    s.containment_sump_pct = clip(s._ctmt_sump / (c.sump_ref || 300) * 100, 0, 100);
+  }
+
   RD.pwrPrimary = {
     computeNodePressures: computeNodePressures,
     stepCavitation: stepCavitation,
@@ -447,6 +495,7 @@
     injectionFlowInv: injectionFlowInv,
     stepInventory: stepInventory,
     stepFlow: stepFlow,
+    stepContainment: stepContainment,
   };
 
 })(globalThis.RD || (globalThis.RD = {}));

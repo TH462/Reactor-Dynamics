@@ -2,7 +2,7 @@
 
 **Document set:** PWR Operator’s Manuals  
 **Plant:** Reactor⚛️Dynamics PWR  
-**Set revision:** 14 (2026-08-05)  
+**Set revision:** 15 (2026-08-05)  
 
 > **This table is NEWEST FIRST, and the revision is SET-WIDE.** Every chapter carries the
 > same `**Revision:**` as the newest row here — there is one number for the whole set, not
@@ -28,6 +28,7 @@
 
 | Rev | Date | Description | Author |
 |-----|------|-------------|--------|
+| 15 | 2026-08-05 | **The containment building exists** (#386 stage 1). Before this, containment was two constants and a declared exclusion: the break discharged into a fixed 0.1 MPa forever and the relief valves into a fixed 0.103, with the boundary stated as "no containment building, pressure, temperature or sump". Now one lumped volume with pressure, temperature and a sump level receives break and relief discharge, and the break/relief √Δp laws read its **live pressure** as their backpressure — measured, a full-size break peaks at 41 psig (⅔ of the 60 psig design pressure inferred from WTSM 5.0 + 12.3) and a steam generator tube rupture reads **nothing**, the one break that bypasses containment. New simplification row **12 §12.4d** declares the model's shape and what is still missing (spray, fan coolers, hydrogen tracking, any protection actuation — all staged next under #386); **12 §13.0**'s containment block is rewritten from "does not exist" to "exists, staged"; **12 §12.4b** now names the live backpressure; **12 §5.5**'s hydrogen note points at the building the H₂ will collect in; chapter 01 §8.0's scope table row moves from "Not modeled" to "Partially modeled". | #386 containment stage 1 |
 | 14 | 2026-08-05 | **Decay heat is refitted to the published standard** (#364). **12 §4.5** — the model goes from two exponential groups to four, fitted to ANSI/ANS 5.1-1971 fission-product decay as tabulated by the NRC (ADAMS ML050910161 Table 8-3) plus actinide decay (ADAMS ML021720702 Table 2), with the x1.2 Appendix K licensing margin removed because this is a simulator of a plant rather than an evaluation model. The old two-group curve had nothing faster than a 33-minute time constant, so it was flat exactly where a real curve falls fastest and ran as much as **2.4x high** through the ten-minute-to-half-hour band every casualty plays out in; the new fit is within 5 % of the standard from 1 second to 28 hours. **Post-trip timings are noticeably longer and closer to a real plant** — a station blackout now reaches core damage at 2.6 h and a total loss of heat sink at 2.4 h, against under 2 h before, and TMI-2's core damage began around 2.5 h. Core decay heat at scram reads 6.2 % where it read 7 %. | #364 decay heat |
 | 13 | 2026-08-05 | **A leaking plant that goes water-solid now reaches its relief valve** (#361). **12 §12.4c** is revised: break blowdown joins the water-solid regime. Losing coolant through a break depressurizes the reactor coolant system because the steam bubble expands into the space the liquid vacated — with the bubble gone that path does not exist, and the break's mass already moves pressure through the stiffened solid gain. Counted both ways it held the plant roughly 2000 psi below the relief band, so emergency injection never terminated and inventory climbed to the model's numerical ceiling and stayed there. Measured after: the fill arrests at 109.3 % of normal inventory, which is where the pressurizer geometry says the vessel is full, about 10 points clear of that ceiling. The three terms §12.4c still declares as bubbled-plant behaviour — relief, spray and the heaters — are unchanged. | #361 solid-plant break blowdown |
 | 12 | 2026-08-05 | **The departure-from-nucleate-boiling datum is named correctly** (#368). **12 §10.7** described the low-flow reactor trip as firing "before the hot channel can boil". This simulator judges boiling at the **mixed-mean core exit**, not at the limiting fuel assembly — a real hot channel runs hotter than the mixed mean by the nuclear enthalpy-rise hot channel factor, which is not sourced anywhere in this plant's documents, so the departure threshold stands in for peaking implicitly. Nothing about the trip or its timing changed: it still fires at 1.8 s against a departure onset at 10.9 s. What changed is the claim, which named a quantity the plant does not compute. | #368 DNB datum |
@@ -69,9 +70,9 @@
 | Licensing / real-plant use | **Not applicable** — training software only |
 
 <!-- CONTENT-DIGESTS — maintained by tools/stamp_manual_revision.js; do not hand-edit.
-     Sealed at Rev 14 (2026-08-05). A mismatch means a chapter changed with no
+     Sealed at Rev 15 (2026-08-05). A mismatch means a chapter changed with no
      revision row added — add one and re-run the tool. See test/run_manual_rev.js.
-     01_GENERAL_DESCRIPTION.md a29f9d911a8efc97
+     01_GENERAL_DESCRIPTION.md 57738cdc745faf2c
      02_SIMULATOR_USER_GUIDE.md eb34fd2d961ed23e
      03_CONTROLS_AND_INDICATIONS.md 38ca8b984d002955
      04_NORMAL_OPERATIONS.md d42cd39fc1fc676b
@@ -82,6 +83,6 @@
      09_SETPOINTS_LIMITS.md 1855447d070bcd6c
      10_GLOSSARY.md 2e16faf4275c172b
      11_CAMPAIGN_CROSSWALK.md ac0f36ebc7ded8b9
-     12_SIM_PHYSICS.md 72ee0e7e792a3b7c
+     12_SIM_PHYSICS.md 445297e026a6e923
      README.md 9a103035dfb47eca
 -->

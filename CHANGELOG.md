@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the containment building exists (#386 stage 1)
+
+Containment used to be two constants and a declared exclusion: a break discharged into a fixed
+0.1 MPa forever, the relief valves into a fixed 0.103, and the manual said "no containment
+building, pressure, temperature or sump." The PWR now has a lumped containment volume:
+
+- **Containment pressure, temperature and sump level** — new true-state fields, new instruments
+  (`containment_pressure`, `containment_temp`, `containment_sump_level`), and a new **Containment
+  group on the Physics tab** (pressure in psig, temperature, sump). Board readouts arrive with the
+  stage-2 heat-removal systems.
+- **The break and relief valves discharge INTO it, and it pushes back.** The √Δp discharge laws
+  read the live containment pressure as their backpressure. Hot break liquid partly flashes to
+  steam and pressurizes the building (cp·ΔT/h_fg — a physical ratio, not a fit); cold ECCS spill
+  rains to the sump and moves pressure not at all, which is why pressure peaks on the hot early
+  blowdown and then decays on the passive structural heat sink.
+- **Measured** (full stack): a full-size break peaks at **41 psig** at ~2 min — ⅔ of the 60 psig
+  design pressure inferred from WTSM 5.0 + 12.3 — and every containment-side break crosses the
+  sourced 3.5 psig SI-backup setpoint within minutes, while only large breaks reach the 30 psig
+  spray point. An **SGTR reads exactly nothing**: that break discharges into the steam generator,
+  the one leak containment cannot see, and that asymmetry is the diagnosis lesson.
+- A stuck-open PORV pressurizes the building too (no relief tank is modeled — declared,
+  `Manuals/12` §12.4d, along with the fitted stiffness and the indication-only sump).
+- New behaviour probes **CA-16** (the receiving volume) and **CA-17** (the live backpressure,
+  red on the pre-#386 engine); CA-11 leg B re-pointed at the live law. Manual set at **Rev 15**.
+- **Staged next under #386**: stage 2 — containment spray + fan coolers as ESF with the sourced
+  3.5/30 psig actuations (after the workbench merge); stage 3 — hydrogen inventory from the
+  existing oxidation model, recombiners, and a TMI-2-style burn *(OWNER RULING, 2026-08-05:
+  selected "TMI-2-style burn" from three options put to him — a selection, not verbatim words)*.
+  Then #384 (large-LOCA depressurization) on top of all three.
+
 ### Added — the graph shows the full range a value reached, not just where it happened to be sampled
 
 At speed the chart samples the plant every few seconds of plant time, so anything faster than that

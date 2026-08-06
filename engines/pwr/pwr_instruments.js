@@ -78,6 +78,12 @@
     // instrument above still draws its noise first and the PRNG order of the existing set is
     // unchanged — the same rule sg_steam_flow, cw_inlet_temp and rcs_flow were added under.
     pzr_spray_flow: 'spray_flow_pct',
+    // Containment (#386 stage 1): building pressure (ABSOLUTE MPa internally — the
+    // board's psig conversion is display), atmosphere temperature, and sump level.
+    // Appended LAST, noise: 0 + noise_failure in the specs, same rule as above.
+    containment_pressure: 'containment_pressure_mpa',
+    containment_temp: 'containment_temp_c',
+    containment_sump_level: 'containment_sump_pct',
   };
 
   function PWRInstruments(config, seed) {

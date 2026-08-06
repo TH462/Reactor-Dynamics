@@ -45,6 +45,67 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-develop-i — #386 stage 1: the containment building exists
+
+Ruled Tier 3 *(OWNER RULING, 2026-08-05: "Tier 3 for 386.")* — pressure + heat removal +
+hydrogen, staged, each stage landing green. This entry is stage 1: the lumped volume and the
+live backpressure. Planned against `inbox/TURNOVER_containment_planning.md`; the plan was
+approved and the H₂ combustion question ruled the same day *(OWNER RULING, 2026-08-05:
+selected "TMI-2-style burn" from three options put to him — one-time deflagration pressure
+spike + latched event, containment holds; indication-only and end-state rejected. A
+selection, not verbatim words)* — that ruling BINDS STAGE 3, recorded here so it is not
+re-litigated when stage 3 starts.
+
+**Decisions taken, and why:**
+
+- **Hosted in `pwr_primary.js` (`stepContainment`, step 14c), not a new file.** A new engine
+  file costs ~25 per-runner load-list edits (every `test/run_*.js`, `ui/shell.html`,
+  `test_pwr.html`, the portable build); the receiving volume of the primary's discharge
+  belongs beside the break law anyway. Step 14c makes every source same-step fresh; the two
+  consumers read one step stale (CONTEXT §11), which breaks the algebraic loop.
+- **The flash gate is the model.** Q0 sweep (TUNING_LOG 2026-08-05-develop-i): with unlimited
+  RWST a LOCA is sustained feed-and-bleed, 36–229 RCS masses in 30 min — unbounded — but the
+  flash-weighted steam yield (cp·ΔT/h_fg ≈ (T−T_sat)/540, a physical ratio) is BOUNDED at
+  3.3–5.2 units, saturating as the ECCS quench takes the source below flashing. Without the
+  gate the model rises forever; with it, pressure peaks on the hot blowdown and decays.
+- **`press_gain` 0.08 is fitted and says so** — no document in any lane's corpus gives a free
+  volume. Anchors: design pressure 0.515 MPa abs (60 psig) by citable inference (WTSM 5.0's
+  "approximately half of design pressure" against WTSM 12.3's 30 psig spray setpoint).
+  Measured grading: full break peaks 41 psig (⅔ design — the licensing-margin shape), only
+  breaks ≥ ~25 % rated reach the 30 psig spray point, everything crosses 3.5 psig in minutes.
+- **The spans stay config-fixed; only the Δp numerators go live.** The orifice coefficients
+  are rated-flow-at-rated-Δp calibrations (#334 leg A depends on the break one); CA-17
+  asserts the exact law — live numerator over config span — pointwise.
+- **SGTR is excluded from the source sum** and CA-16 leg B pins the exclusion: the tube
+  rupture discharges into the SG, the one break that bypasses containment. Dropping the gate
+  reads 0.2278 MPa where ambient is required — that is the diagnosis lesson, guarded.
+- **No PRT, no recirculation, indication-only sump** — declared at `Manuals/12` §12.4d rather
+  than implied. The new declared row went in as **§12.4d** (the break-discharge family), NOT
+  §12.19, deliberately: both lanes have collided on §12.17/§12.18 already and workbench's
+  uncommitted work claims §12.19; a family letter cannot collide at the merge.
+- **No board readouts in stage 1, Physics tab only.** Workbench holds uncommitted edits to
+  all three board files; the Physics tab is the conflict-safe observability route, and the
+  board half lands with stage 2's controls after the merge. `ui/manual_data.js` regeneration
+  is likewise deferred to stage 2 (it would touch the same generated surface the board work
+  regenerates).
+- **Injection-verified three ways with distinct signatures**: `press_gain: 0` reddens 4
+  CA-16 checks; dropping the SGTR gate reddens leg B alone; reverting the two live reads
+  reddens all 3 CA-17 checks — the pre-#386 engine exactly.
+- **Gate movements** (all measured): `run_behavior` 56 → 58 (CA-16, CA-17), `run_contract`
+  151 → 154 (+3 fields both ways), `run_pwr` 241 → 242 (containment save-migration assert),
+  Manuals Rev 14 → 15. `run_meltdown` 12, `run_scenarios` 3/3, `run_inspect` 47/47 unmoved —
+  for a change to break/relief backpressure, the flagship not moving is the number that
+  matters (the relief Δp change at 16 MPa is < 0.1 %).
+
+**Stage 2 (blocked on the workbench merge):** upstream-SLB source, fan coolers + spray as M4
+actuations (SI 3.5 psig unblockable, spray 30 psig sealed-in), board readouts via a new
+gauge-pressure unit family (`MPa2psi` is absolute — 0.125 MPa would read "18 psi" instead of
+3.5 psig). **Stage 3:** H₂ from the existing `_zr_ox2` oxide state (BUILD_DECISIONS 2026-08-03
+called it "the hook for if containment lands" — it is), 10 CFR 50.46 1 %/17 % anchors,
+recombiners, and the ruled burn. **Then #384**, which stage 1 deliberately does NOT attempt:
+a rising backpressure only reduces break flow (CA-15 stays green), and the ECCS/break balance
+at low Δp is #384's own coupled plan.
+
 ## 2026-08-05-develop-f — #364 decay-heat refit + #365 collapse: the fallout was the finding
 
 Batch 4 of the #296 plan, ruled a REFIT rather than the declared departure the plan and I both

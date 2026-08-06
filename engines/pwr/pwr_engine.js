@@ -511,6 +511,11 @@
     TH.stepCladding(s, this.cfg, dt);
     TH.checkDamage(s, this.cfg);
 
+    // 14c. Containment (#386 stage 1) — the lumped receiving volume for break and
+    // relief discharge. After inventory/pressure/cladding so its sources are
+    // same-step fresh; its consumers (break law, relief Δp) read it one step late.
+    PR.stepContainment(s, this.cfg, dt);
+
     // Smoothed power rate for shrink-and-swell.
     var raw_rate = (s.power_pct - s._prev_power_pct) / dt;
     var a = dt / (2.0 + dt);
@@ -808,6 +813,13 @@
       accumulator_valve_open: s.accumulator_valve_open !== false,   // discharge isolation valve position
       // RHR hot-leg suction valve + ECCS mode (HPI/LPI/RHR/off) for the ECCS card.
       rhr_valve_open: !!s.rhr_valve_open, eccs_mode: s.eccs_mode || 'off',
+      // Containment (#386 stage 1) — the lumped receiving volume for break/relief
+      // discharge. Pressure is ABSOLUTE (the board's gauge conversion is display).
+      containment_pressure_mpa: s.containment_pressure_mpa != null
+        ? s.containment_pressure_mpa : this.cfg.containment.ambient_pressure_mpa,
+      containment_temp_c: s.containment_temp_c != null
+        ? s.containment_temp_c : this.cfg.containment.ambient_temp_c,
+      containment_sump_pct: s.containment_sump_pct || 0,
     };
   };
 
@@ -1590,6 +1602,10 @@
       rcp_secured: false,
       // RCP cavitation (suction-node subcooling; pwr_primary.stepCavitation).
       suction_subcool_c: 0, rcp_cavitation_frac: 0, rcp_cavitating: false,
+      // Containment (#386 stage 1) — starts at ambient with nothing discharged.
+      containment_pressure_mpa: cfg.containment.ambient_pressure_mpa,
+      containment_temp_c: cfg.containment.ambient_temp_c,
+      containment_sump_pct: 0, _ctmt_steam: 0, _ctmt_sump: 0,
       // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
       sr_energized: !!init.sr_on,
       sr_counts_cps: init.sr_on ? cfg.nis.k_sr * P0 : 0,
@@ -1921,6 +1937,15 @@
       s.rcp_secured = (s.pump_running === false && !!s.rhr_active && !s.station_blackout);
     }
     if (s._eccs_inj_inv == null) s._eccs_inj_inv = 0;
+    // Containment (#386 stage 1). A pre-containment save carries no discharge
+    // history to reconstruct, so it restores at AMBIENT — a save taken mid-LOCA
+    // resumes with a clean containment and repressurizes it from the still-open
+    // break. Declared in the migration rather than guessed at.
+    if (s.containment_pressure_mpa == null) s.containment_pressure_mpa = this.cfg.containment.ambient_pressure_mpa;
+    if (s.containment_temp_c == null) s.containment_temp_c = this.cfg.containment.ambient_temp_c;
+    if (s.containment_sump_pct == null) s.containment_sump_pct = 0;
+    if (s._ctmt_steam == null) s._ctmt_steam = 0;
+    if (s._ctmt_sump == null) s._ctmt_sump = 0;
     // Feed pump (replaced direct feedwater-flow demand).
     if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;
     // Nuclear instrumentation (SR/IR detectors).
@@ -2981,6 +3006,9 @@
         delete legacy.afw_discharge_pressure_mpa; delete legacy.steam_out_total;
         delete legacy.sr_energized; delete legacy.sr_counts_cps; delete legacy.ir_amps;
         delete legacy.rhr_hx_fraction; delete legacy._eccs_inj_inv;
+        // Containment (#386 stage 1): a pre-containment save has none of the five.
+        delete legacy.containment_pressure_mpa; delete legacy.containment_temp_c;
+        delete legacy.containment_sump_pct; delete legacy._ctmt_steam; delete legacy._ctmt_sump;
         // rcp_secured (#240) is INFERRED, not defaulted: a pre-#240 save has no
         // record of WHY the pumps are stopped, so the lineup has to say. This one
         // is the judgement call in the whole migration and it was unasserted.
@@ -3029,6 +3057,12 @@
           s.sr_energized === false && s.sr_counts_cps === 0 && s.ir_amps === 0, 'false / 0 / 0');
         ck('steam_out_total seeded from the turbine flow the save does carry',
           String(s.steam_out_total), typeof s.steam_out_total === 'number' && isFinite(s.steam_out_total), 'a finite number');
+        ck('containment restores at AMBIENT — a pre-#386 save carries no discharge history',
+          s.containment_pressure_mpa + ' MPa / ' + s.containment_temp_c + ' °C / sump ' + s.containment_sump_pct + ' %',
+          s.containment_pressure_mpa === cfg.containment.ambient_pressure_mpa
+            && s.containment_temp_c === cfg.containment.ambient_temp_c
+            && s.containment_sump_pct === 0 && s._ctmt_steam === 0 && s._ctmt_sump === 0,
+          'ambient / ambient / 0');
         // rcp_secured is the INFERENCE, and this save has pumps RUNNING — so the
         // benign "planned securing" reading must NOT be invented. The conservative
         // direction matters: mislabelling a real trip as a planned securing is the

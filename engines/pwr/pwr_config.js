@@ -1507,6 +1507,78 @@
       rhr_gain: 0.03,              // heat-removal gain at full HX flow (Q per °C above sink)
     },
 
+    // ------------------------------------------------------------------ containment
+    // #386 stage 1 (2026-08-05) — the containment BUILDING as a lumped receiving
+    // volume. Before this, containment was two constants and a declared exclusion
+    // (Manuals/12 §13.0): the break discharged into a fixed 0.1 MPa
+    // (primary.break_backpressure_mpa) and the relief valves into a fixed 0.103
+    // (pressurizer.P_containment), forever. Both constants REMAIN, as the initial /
+    // fallback backpressure — the live state starts there and rig-built states
+    // without containment fields fall back to them — but the running plant now
+    // discharges into a volume whose pressure RISES, and the break/relief √Δp laws
+    // read that live pressure in their numerators. The spans stay config-fixed:
+    // the orifice coefficient is a rated-flow-at-rated-Δp calibration, not a
+    // function of where the discharge lands.
+    //
+    // MODEL. One steam inventory (_ctmt_steam, normalized RCS-mass units — the same
+    // currency leak_flow and the ECCS curve use) behind three terms:
+    //   in:   break liquid × a FLASH FRACTION + relief flow at 1.0 (already steam)
+    //   out:  _ctmt_steam / passive_sink_tau_s (condensation on structures → sump)
+    //   P  =  ambient_pressure_mpa (air partial, fixed) + press_gain · _ctmt_steam
+    // The flash fraction is cp·(T_source − T_sat(P_ctmt))/h_fg ≈ (Tavg − T_sat)/540:
+    // liquid discharged from a hot RCS flashes partly to steam; liquid at or below
+    // the containment saturation temperature rains into the sump and moves pressure
+    // NOT AT ALL. That gate is what makes the model behave, and the Q0 sweep below
+    // is why: with unlimited RWST a LOCA is sustained feed-and-bleed, discharging
+    // 36–229 RCS masses in 30 min (severity 0.05–1.0) — unbounded in time — but the
+    // FLASH-WEIGHTED steam yield is bounded and severity-compressed, 3.3–5.2 units,
+    // saturating in 5–10 min as the ECCS quench takes the source below flashing.
+    // Containment pressure therefore peaks on the hot early blowdown and then
+    // decays on the passive sink while cold spill runs to the sump — which is the
+    // real shape of a LOCA containment response.
+    //
+    // SOURCES (fetched, inbox/sources/). Setpoint anchors for stage 2, quoted here
+    // because they SIZE stage 1's gain: WTSM 12.3 (ML11223A310): SI actuation on
+    // high containment pressure "The setpoint for this protection signal is
+    // 3.5 psig … cannot be blocked by the operator"; containment spray on hi-hi,
+    // "The setpoint is 30 psig." WTSM 5.0 (ML11223A218): spray actuates "when
+    // containment pressure reaches approximately half of design pressure" — with
+    // spray at 30 psig that puts DESIGN PRESSURE ≈ 60 psig = 0.515 MPa abs, the
+    // only design-pressure statement in any lane's corpus (a citable inference,
+    // and design_pressure_mpa below carries it). NO document in the corpus gives
+    // free volume, so press_gain is FITTED. MEASURED at 0.08 (full stack, hot full
+    // power, TUNING_LOG 2026-08-05-develop-a): full-size break peaks 0.384 MPa abs
+    // (41 psig) at ~2 min — ⅔ of design pressure, the licensing-margin shape (a
+    // real DBA calculated peak sits UNDER design, that being what the margin is
+    // for) — and the stage-2 setpoints grade correctly: every containment-side
+    // break crosses 3.5 psig within minutes (severity 0.05 in under 2 min), while
+    // only large breaks reach the 30 psig spray point (severity 0.5 peaks 33 psig,
+    // 0.2 peaks 25 psig), matching WTSM 12.3's "a very high containment pressure
+    // is indicative of a large line break".
+    containment: {
+      ambient_pressure_mpa: 0.1013, // MPa abs — air partial pressure; fixed, NOT [tune]
+      ambient_temp_c: 38.0,         // °C (~100 °F) — normal containment ambient
+      // Design pressure, abs. Sourced by inference (see header): 60 psig.
+      // Structural reference for indication/probes — nothing clips to it.
+      design_pressure_mpa: 0.515,
+      // MPa of steam partial pressure per normalized unit of steam inventory.
+      // FITTED (no sourced free volume exists): full-size break peaks at ~design
+      // pressure. Q0: yield 5.2 units → 0.08. [tune]
+      press_gain: 0.08,
+      // Flash-fraction span, °C: fraction = (T_source − T_sat(P_ctmt)) / this.
+      // h_fg/cp at ~atmospheric ≈ 2257/4.18 ≈ 540 — a PHYSICAL ratio, not a fit.
+      flash_span_c: 540.0,
+      // Passive heat-sink condensation time constant (walls, structures, coolers
+      // OFF — stage 2 adds the active systems). Sets both the no-spray decay after
+      // a blowdown and the equilibrium a sustained hot leak parks at. [tune]
+      passive_sink_tau_s: 1800.0,
+      // Normalized discharged-liquid units at 100 % indicated sump level. Sizing:
+      // the full-break 30-min ride discharges ~229 units → reads ~76 %; an RCP seal
+      // leak creeps. Indication only — no recirculation (no RWST inventory exists
+      // to swap from; declared, Manuals/12 §13.0). [tune]
+      sump_ref: 300.0,
+    },
+
     // ------------------------------------------------------------------ rods
     rods: {
       // Fine-step drive (rod-granularity retune 2026-07-23). The single lumped bank
@@ -1740,6 +1812,18 @@
       // byte-identical, with `noise_failure` carrying the sigma an injected `noisy` failure
       // uses — without it that failure would be silently inert on this channel.
       pzr_spray_flow:          { lag: 1.0, noise: 0, noise_failure: 2.0, range: [0, 110] },
+      // Containment (#386 stage 1) — building pressure in ABSOLUTE MPa (the board
+      // shows psig; the conversion is display-side), atmosphere temperature, sump
+      // level. Same appended-instrument rule as rcs_flow/pzr_spray_flow: noise 0
+      // keeps the cross-step PRNG stream byte-identical, noise_failure carries the
+      // sigma an injected `noisy` failure would use. Pressure range [0, 0.8] holds
+      // the stage-2 protection setpoints (0.125 SI, 0.308 spray) and the 0.515
+      // design pressure STRICTLY inside — the run_reachability Part A requirement.
+      // The temperature channel is slow (a containment RTD reads a building, not a
+      // pipe); the sump channel is a float gauge.
+      containment_pressure:    { lag: 1.0,  noise: 0, noise_failure: 0.007, range: [0, 0.8] },
+      containment_temp:        { lag: 10.0, noise: 0, noise_failure: 0.5,   range: [0, 200] },
+      containment_sump_level:  { lag: 5.0,  noise: 0, noise_failure: 1.0,   range: [0, 100] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED

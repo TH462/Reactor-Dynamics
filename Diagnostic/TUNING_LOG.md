@@ -29,6 +29,65 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-develop-i (#386 stage 1 — the containment building exists)
+
+Owner: "plan the fix to issue 386", plan approved same session ("Looks good. Do it").
+Ruled Tier 3 *(OWNER RULING, 2026-08-05: "Tier 3 for 386.")*; the stage-3 combustion
+question was put to him with a recommendation and ruled *(OWNER RULING, 2026-08-05:
+selected "TMI-2-style burn" from three options — a selection, not verbatim words)*.
+Full decision record: `Blueprint/BUILD_DECISIONS.md` 2026-08-05-develop-i. This entry is
+the measurements.
+
+**Q0 sweep (full stack, hot full power, inject at 30 s, 30 plant-min, accel 10).** Total
+discharged mass is UNBOUNDED — with unlimited RWST a LOCA is sustained feed-and-bleed:
+
+| case | ∫leak dt (RCS masses) | flash-weighted steam yield | end leak rate | end Tavg |
+|---|---|---|---|---|
+| LOCA sev 0.05 (2.5 % rated) | 36.7 | 3.51 (saturates ~20 min) | 0.0207/s | 180 °F (82 °C) |
+| LOCA sev 0.10 | 59.7 | 3.35 (~10 min) | 0.0336/s | 156 °F (69 °C) |
+| LOCA sev 0.20 | 89.5 | 3.43 (~10 min) | 0.0501/s | 143 °F (62 °C) |
+| LOCA sev 0.50 | 169.6 | 4.23 (~5 min) | 0.0937/s | 127 °F (53 °C) |
+| LOCA sev 1.00 | 229.0 | 5.20 (~5 min) | 0.1242/s | 122 °F (50 °C) |
+| SGTR sev 0.25 (control) | 13.9 — **to the SG, not containment** | 3.29, still accruing | 0.0090/s | 333 °F (167 °C) |
+
+The flash-weighted yield (cp·ΔT/h_fg ≈ (T−100)/540 per °C) is BOUNDED and severity-
+compressed because the ECCS quench takes every case below flashing — that measurement is
+what made the flash gate the model rather than a refinement, and it sizes `press_gain`:
+0.414 MPa of design margin / ~5.2 units ≈ 0.08.
+
+**Calibration (full stack, measured after the build):** full-size break peaks **0.384 MPa
+abs = 41 psig at ~2 min** (⅔ of the inferred 60 psig design pressure — the licensing-margin
+shape); sev 0.5 peaks 33 psig (crosses the 30 psig spray point); sev 0.20 peaks 25 psig
+(crosses SI 3.5 psig at ~90 s, stays under spray); sev 0.05 reaches 22 psig at 10 min and
+plateaus. Healthy plant: flat 14.69 psia for 20 min, sump 0. Passive decay measured on the
+sev 0.20 case: (P−amb) falls to 0.51× over 20 min against e^(−1200/1800) = 0.513 — the
+1800 s τ is honest. Stuck-open PORV: containment reaches **35 psig in 20 min** (relief is
+steam, weight 1.0 — no PRT, declared), HIGHER than a 10 % break, which is right: the break's
+liquid is flash-gated, the PORV's steam is not.
+
+**Probe traps worth keeping:** none new — but two idioms carried: CA-17 is the #367
+clone-rig shape (a copy of the formula tests the copy; two clones through the SAME code
+differing only in `containment_pressure_mpa`), and CA-11 leg B's re-point keeps the config
+fallback so it passes on the pre-#386 engine (HR10: better test, not a refit — measured,
+recomputing against the constant reads up to ~16 % high late in a full blowdown against a
+2 % band, because the building is at ~0.38 MPa by then).
+
+**Injections (all restored, distinct signatures):** `press_gain: 0` → CA-16 reddens 4
+(SI crossing, temp, decay, PORV; sump stays green — liquid is press_gain-independent);
+SGTR gate dropped → leg B alone (0.2278 MPa vs ambient); live reads reverted → CA-17
+reddens 3, flows identical at ambient and 1.0 MPa.
+
+**Gates:** `run_behavior` 56 → **58**, `run_contract` 151 → **154**, `run_pwr` 241 → **242**
+(all 36 suites green), `run_meltdown` **12**, `run_scenarios` **3/3**, `run_inspect`
+**47/47**, `run_manual_rev` **15 checks / 0 failed** at Rev 15. Full `run_all` at session
+end. Board work deliberately absent (workbench holds all three board files uncommitted) —
+stage 2, after the merge, per the plan.
+
+**Still open on #386:** stage 2 (spray + fan coolers + ESF actuations + board), stage 3
+(H₂ + recombiners + the ruled burn), then #384. #384 remains blocked on nothing now that
+stage 1 is in — but its fix is a coupled plan of its own (ECCS/break balance at low Δp),
+NOT a patch on this one.
+
 ## Session log — 2026-08-05-develop-h (chart: min/max banding, and speed-scaled windows)
 
 Both owner-requested; the second one turned up a plant-throughput finding that changed its design.

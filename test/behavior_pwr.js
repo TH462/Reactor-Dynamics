@@ -105,6 +105,8 @@
     'CA-13': 'probe (the pzr level line is unbounded upward — a heatup fills it solid; #362)',
     'CA-14': 'probe (break flash-cooling is saturation-gated; the void model depended on it; #363)',
     'CA-15': 'probe (a LIQUID break goes solid clear of mass_max — CA-12 on the other path; #361)',
+    'CA-16': 'probe (containment is the receiving volume — a LOCA pressurizes it, an SGTR bypasses it, relief lands in it, and it decays on the passive sink; #386 stage 1)',
+    'CA-17': 'probe (break/relief backpressure is the LIVE containment pressure — clone-rig mechanism pin, red on the pre-#386 engine; #386 stage 1)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -2555,6 +2557,14 @@
         // ---- leg B: THE LAW. Sample the same break across the blowdown and check every
         // sample against √((P−Pb)/(Pref−Pb)) recomputed from that sample's own pressure.
         // This is the whole assertion of item 2 and it is checked pointwise, not at ends.
+        //
+        // RE-POINTED at #386 stage 1: Pb in the NUMERATOR is the LIVE containment
+        // pressure now — a full blowdown pressurizes the building to ~0.38 MPa, and
+        // recomputing against the config constant reads up to ~16 % high late in the
+        // blowdown against this 2 % band. The DENOMINATOR stays the config span,
+        // mirroring the engine (the orifice coefficient is a rated-flow calibration).
+        // The fallback keeps this leg green on a pre-#386 engine, where the field is
+        // absent and the constant was the backpressure — a better test, not a refit.
         // The two points for the EXPONENT check are the FIRST and LAST of the blowdown, not
         // samples at fixed pressures (#348). `> 10 MPa` and `< 3 MPa` were reasonable
         // coordinates on the pre-#337 plant and are not on this one: the RCS is already below
@@ -2562,18 +2572,22 @@
         // MISSING — i.e. it stopped asserting anything and said so, which is the only reason
         // this was noticed. Ends-of-the-run is drift-proof, and the span is asserted below so
         // it cannot go vacuous the other way.
+        var pbOf = function (t) {
+          return t.containment_pressure_mpa != null ? t.containment_pressure_mpa : pBack;
+        };
         var worst = 0, worstAt = 0, n = 0, hi = null, lo = null;
         a.run(0.05);                                    // one step: the top of the blowdown
         var tTop = a.ts();
-        if (tTop.leak_flow > 0) hi = { dp: tTop.pressure_mpa - pBack, q: tTop.leak_flow };
+        if (tTop.leak_flow > 0) hi = { dp: tTop.pressure_mpa - pbOf(tTop), q: tTop.leak_flow };
         a.run(900, function (hh) {
           var t = hh.ts();
-          if (t.pressure_mpa > pBack + 0.05) {
-            var want = RATED * Math.sqrt(Math.max(0, (t.pressure_mpa - pBack) / (pRef - pBack)));
+          var pbT = pbOf(t);
+          if (t.pressure_mpa > pbT + 0.05) {
+            var want = RATED * Math.sqrt(Math.max(0, (t.pressure_mpa - pbT) / (pRef - pBack)));
             var err = Math.abs(t.leak_flow - want) / Math.max(want, 1e-6);
             n++;
             if (err > worst) { worst = err; worstAt = t.pressure_mpa; }
-            if (t.leak_flow > 0) lo = { dp: t.pressure_mpa - pBack, q: t.leak_flow };
+            if (t.leak_flow > 0) lo = { dp: t.pressure_mpa - pbT, q: t.leak_flow };
           }
         });
         ck('the blowdown was actually sampled (or leg B proves nothing)',
@@ -3303,6 +3317,173 @@
           fmt(b.ts().pzr_level_pct, 1) + ' % level',
           bLeak < bDry - 1e-6, 'measurably negative');
         T.checkSanity(ck, b);
+      });
+    },
+
+    /* CA-16 (#386 stage 1) — CONTAINMENT IS THE RECEIVING VOLUME.
+     *
+     * Before this, containment was two constants (break_backpressure_mpa,
+     * P_containment) and a declared exclusion (Manuals/12 §13.0): the break
+     * discharged into a fixed 0.1 MPa forever, and nothing anywhere answered the
+     * owner's question "what's the pressure supposed to be in the containment?"
+     *
+     * The model is a lumped steam inventory behind a FLASH GATE — hot break liquid
+     * partly flashes to steam and pressurizes the building; liquid at or below the
+     * containment saturation temperature rains into the sump and moves pressure not
+     * at all. That gate is load-bearing, not a refinement: measured (Q0 sweep,
+     * TUNING_LOG 2026-08-05-develop-a), a LOCA on this plant is sustained ECCS
+     * feed-and-bleed discharging 36–229 RCS masses in 30 min — unbounded in time —
+     * while the flash-weighted steam yield is BOUNDED (3.3–5.2 units), so pressure
+     * peaks on the hot early blowdown and then decays as the quench takes the
+     * source below flashing. Without the gate the model rises forever.
+     *
+     * Legs: A — a 10 % break crosses the sourced 3.5 psig SI-backup setpoint
+     * (WTSM 12.3, ML11223A310: "The setpoint for this protection signal is
+     * 3.5 psig") but peaks BELOW the 30 psig spray point (same source: spray is
+     * for "a large line break"); temperature and sump move with it. B — an SGTR
+     * leaves containment at ambient: the one break that BYPASSES containment,
+     * which is the diagnosis lesson. C — a stuck-open PORV pressurizes it too
+     * (no relief tank is modeled; relief lands in the atmosphere — the no-PRT
+     * tell). D — after the source quenches, pressure DECAYS on the passive sink.
+     *
+     * Injection-verified: press_gain: 0 reddens A, C and D (nothing ever rises);
+     * dropping the _leak_to_sg exclusion from stepContainment reddens B (an SGTR
+     * would read like a small LOCA); on the pre-#386 engine every leg is red
+     * because the fields do not exist.
+     */
+    'CA-16': function () {
+      return test('CA-16 containment receives the discharge — LOCA pressurizes, SGTR bypasses (#386)', function (ck) {
+        var cc = RD.PWR_CONFIG.containment;
+        var AMB = cc.ambient_pressure_mpa;
+        var SI_P = 0.125;                     // 3.5 psig abs — the sourced stage-2 SI backup setpoint
+        var SPRAY_P = 0.308;                  // 30 psig abs — the sourced hi-hi spray setpoint
+
+        // ---- leg A: a 10 % break. Measured: crosses 0.125 MPa inside 2 min, peaks
+        // 0.275 MPa abs (25 psig) at ~6 min — above the SI signal, below the spray one.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.20 });
+        a.run(600);
+        var pk = a.range('containment_pressure_mpa');
+        var ta = a.ts();
+        ck('a 10 % break pressurizes containment past the 3.5 psig SI-backup setpoint',
+          fmt(pk.max, 3) + ' MPa abs peak vs ' + fmt(SI_P, 3),
+          pk.max > SI_P, '> 0.125 MPa abs');
+        ck('…but peaks BELOW the 30 psig spray setpoint — spray is for LARGE breaks',
+          fmt(pk.max, 3) + ' MPa abs vs ' + fmt(SPRAY_P, 3),
+          pk.max < SPRAY_P, '< 0.308 MPa abs');
+        ck('the atmosphere heated with the steam content',
+          fmt(a.range('containment_temp_c').max, 1) + ' °C peak',
+          a.range('containment_temp_c').max > 100, '> 100 °C');
+        ck('the spilled liquid is collecting in the sump',
+          fmt(ta.containment_sump_pct, 1) + ' %', ta.containment_sump_pct > 2, '> 2 %');
+
+        // ---- leg D rides leg A's plant onward: by 10 min the ECCS quench has taken the
+        // source below flashing (Tavg ~83 °C against a >100 °C containment saturation),
+        // so the input is ~0 and what remains is the passive-sink decay. Measured:
+        // (P−amb) falls to 0.51× over the next 20 min — e^(−1200/1800) = 0.513 on the
+        // 1800 s τ. The band is wide because the tail of the quench still feeds a little.
+        var pPk = a.ts().containment_pressure_mpa;
+        a.run(1200);
+        var pLate = a.ts().containment_pressure_mpa;
+        var frac = (pLate - AMB) / Math.max(pPk - AMB, 1e-9);
+        ck('with the source quenched below flashing, pressure DECAYS on the passive sink',
+          fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 20 min (ratio ' + fmt(frac, 2) + ')',
+          frac > 0.30 && frac < 0.70, '0.30..0.70 of the excess remains');
+
+        // ---- leg B: SGTR full severity — containment reads NOTHING. The tube rupture
+        // discharges into the steam generator, so the building the operator checks for
+        // a leak is clean; that asymmetry is how you tell the two apart.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.5 });
+        b.run(600);
+        var pkB = b.range('containment_pressure_mpa');
+        ck('an SGTR leaves containment at ambient — the one break that BYPASSES it',
+          fmt(pkB.max, 4) + ' MPa abs peak vs ambient ' + fmt(AMB, 4),
+          pkB.max < AMB + 0.001, 'within 0.001 MPa of ambient');
+
+        // ---- leg C: a stuck-open PORV. The relief line vents the pressurizer STEAM
+        // SPACE straight into the building (no relief tank is modeled — declared,
+        // Manuals/12 §13.0), so containment pressure rises on a stuck valve too —
+        // TMI's containment did. Slower than a 10 % break: the PORV is a 0.0035-frac/s
+        // orifice against the break's 0.10.
+        var c = H('hot_full_power');
+        c.run(30);
+        c.cmd('inject_failure', { failure_id: 'stuck_porv_open', severity: 1.0 });
+        c.cmd('open_porv');
+        c.run(1200);
+        var pkC = c.range('containment_pressure_mpa');
+        ck('a stuck-open PORV pressurizes containment (relief lands in the building)',
+          fmt(pkC.max, 3) + ' MPa abs peak after 20 min',
+          pkC.max > AMB + 0.01, '> ambient + 0.01 MPa');
+        T.checkSanity(ck, a);
+      });
+    },
+
+    /* CA-17 (#386 stage 1) — THE BACKPRESSURE IS LIVE.
+     *
+     * The mechanism pin for the stage: the break law (pwr_primary.stepInventory)
+     * and the relief Δp (pwr_pressurizer relief()) read the CONTAINMENT PRESSURE
+     * STATE in their numerators, not the config constant. Two clones through the
+     * same code differing ONLY in s.containment_pressure_mpa — the CA-15/#367
+     * clone-rig idiom, because a copy of the formula would test the copy.
+     *
+     * RED ON THE PRE-#386 ENGINE by construction: there the field is ignored and
+     * both clones compute identical flows. This is the stage's injection
+     * verification.
+     *
+     * The span check is the other half: the DENOMINATOR must stay the config span
+     * (the orifice coefficient is a rated-flow-at-rated-Δp calibration — #334's
+     * leg A depends on it), so the clone's flow must equal the law recomputed with
+     * a live numerator over the CONFIG span, exactly.
+     */
+    'CA-17': function () {
+      return test('CA-17 break and relief read the LIVE containment backpressure (#386)', function (ck) {
+        var pri = RD.PWR_CONFIG.primary;
+        var pb0 = pri.break_backpressure_mpa, pRef = pri.break_p_ref_mpa;
+
+        // ---- break law. A mid-blowdown state with the break open, cloned twice.
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.20 });
+        h.run(120);
+        var mk = function (pCtmt) {
+          var c = Object.assign({}, h.eng.s);
+          c.containment_pressure_mpa = pCtmt;
+          RD.pwrPrimary.stepInventory(c, RD.PWR_CONFIG, 0.05);
+          return c;
+        };
+        var cAmb = mk(0.1013), cHot = mk(1.0);
+        ck('the same break flows LESS against a pressurized containment',
+          fmt(cAmb.leak_flow, 5) + ' at ambient vs ' + fmt(cHot.leak_flow, 5) + ' at 1.0 MPa',
+          cHot.leak_flow < cAmb.leak_flow - 1e-9, 'strictly less');
+        var base = h.eng.s._leak_base;
+        var wantHot = base * Math.sqrt(Math.max(0, Math.min(1.5,
+          (cHot.pressure_mpa - 1.0) / (pRef - pb0))));
+        ck('…and the flow is the law with a LIVE numerator over the CONFIG span, exactly',
+          fmt(cHot.leak_flow, 6) + ' vs ' + fmt(wantHot, 6),
+          Math.abs(cHot.leak_flow - wantHot) < 1e-9, 'exact');
+
+        // ---- relief Δp. Same idiom through stepPressure (relief() resolves inside
+        // it): PORV commanded open, block valve open, clones differing only in
+        // containment pressure. The difference is ~3 % at 1.0 MPa — small, but the
+        // comparison is between two deterministic floats, so strict inequality is
+        // the whole assertion.
+        var r = H('hot_full_power');
+        r.run(30);
+        var mkR = function (pCtmt) {
+          var c = Object.assign({}, r.eng.s);
+          c.porv_demand = 'open'; c.block_valve_open = true; c._dmass_dt = 0;
+          c.containment_pressure_mpa = pCtmt;
+          RD.pwrPressurizer.stepPressure(c, RD.PWR_CONFIG, 0.05);
+          return c;
+        };
+        var rAmb = mkR(0.1013), rHot = mkR(1.0);
+        ck('an open PORV passes LESS against a pressurized containment',
+          fmt(rAmb.porv_flow, 6) + ' at ambient vs ' + fmt(rHot.porv_flow, 6) + ' at 1.0 MPa',
+          rHot.porv_flow > 0 && rHot.porv_flow < rAmb.porv_flow - 1e-12, 'strictly less, nonzero');
+        T.checkSanity(ck, h);
       });
     },
 
