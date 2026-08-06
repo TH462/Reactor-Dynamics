@@ -173,6 +173,70 @@ changed.
 
 ---
 
+## Session log — 2026-08-06-workbench-b (#377 — the cliff pin re-authored robust; the shipped-lineup mitigation is measured dead)
+
+**Task:** #377 (audit #297 F8), after the develop merge and its assumption re-check. Also carries
+the merge-staleness repairs committed just before it (§8.31's premise died with #386 stage 1;
+§8.34's ADV numbers moved with #364 — see that commit).
+
+**The issue's premise no longer holds, in the direction that SIMPLIFIES the ruling.** The audit
+measured the shipped lineup absorbing a 39 MWe rejection with the PORV shut and 12.9 psi to spare,
+and asked whether §8.21's ruling — "the PORV is the honest backstop" — still described the plant,
+since the backstop was not what actually caught it. Measured on the merged tree: **#372's
+feedwater enthalpy ate that margin.** The shipped lineup now peaks **2349 psi (16.198 MPa)** with
+the PORV catching a sample via the instrument read; hands-off peaks 2351 psi (16.212). **Both
+lineups end at the declared backstop**, which is the 2026-07-27 ruling's original story. What the
+mitigation bought is gone; what remains of it is pinned: the sub-arm cut on the shipped lineup
+undershoots to **32.3 % vs 47.8 %** for a caught 41 MWe cut — the ~15-point non-monotonic
+inversion, the declared cliff's real cost at the board.
+
+**"Assert the event, not the crossing" — the plan of record's fix — was REFUTED by measurement
+before any code moved.** The `porv_open` event and the `≥ 16.20 MPa` crossing flip TOGETHER under
+`thermal.coolant_heat_capacity*1.03` (peak 16.181, no lift, hands-off; 16.112 shipped): the
+physics genuinely lands on the setpoint, so no re-phrasing of the terminal ornament is robust.
+Full matrix over five ±2–3 % nudges and four seeds: sub-arm peak worst-seen **16.112**, caught
+side ~15.42–15.43 everywhere, span worst-seen **0.71 MPa**, code safety never lifted anywhere
+(0.9 MPa clear).
+
+**The re-authored form asserts what is robust and demotes the coin toss to info:**
+- **Doorstep**: sub-arm peak ≥ `porv_open_mpa − 0.15` (config-read, not a literal) — margin
+  0.06 MPa at the worst nudge, vs 0.01 for the old `≥ 16.20`.
+- **Span**: sub-arm minus caught ≥ 0.5 MPa — both legs move together under any thermal nudge, so
+  the difference holds while either endpoint alone is noise. This is the probe's actual subject:
+  the cliff, not the ornament.
+- **Ladder guard**: the code safety never lifts on either side.
+- The true peak and whether the PORV caught a sample are `ck.info` — on this plant that is
+  genuinely a coin toss, and a suite must not flip on a coin.
+
+**TR-1k** (`run_behavior` 60 → 61 pass / 1 xfail): the same legs on the SHIPPED lineup — the
+first probe ever to measure the sub-arm rejection on the plant a player gets. Its last check pins
+the non-monotonicity ordering (sub-arm min power ≤ caught − 5 pts) with the depth left to #378's
+rod-loop work; if a rod fix ever narrows the inversion under 5 points, the check reddens and
+§8.21's cost paragraph gets revisited — that is the pin working, not breaking.
+
+**Injection-verified three ways with distinct signatures:** severing the arm
+(`pwr_steam_generator.js:175` → `if (false)`) reddens **TR-1c 5 / TR-1k 4** (the caught legs and
+both spans); forcing it always-armed reddens **TR-1c 4 / TR-1k 5** (the sub-arm legs); and the
+capacity nudge that flipped the old TR-1c leaves **all 37 TR-1c/TR-1k checks green** — the
+fragility the sweep flagged is closed. Both probes read the arm from config, so retuning
+`dump_load_reject_mwe` moves the legs with it and neither probe pins the number 40.
+
+**Docs:** §8.21 re-measured numbers + the shipped-lineup fact + TR-1k pin; `Manuals/12` §8.3
+warning block likewise, its "settles the core at 89.3 %" corrected (a rod-less artefact
+pinned as prose — TR-1g re-banded it under #289 and the manual never followed), and the ADV
+rate note refreshed to the post-#364 measurement (~630 °F/hr, 6.4×) — all under Rev 13's
+accumulating row, clause (g), per the 2026-08-06 revision directive. TR-1c's comment carried the
+mitigation claim and cited "the §8.21 write-up" as its record; measured false AND never recorded
+— §8.21 never said it. The comment was the claim's only home. Rewritten.
+
+**Issue:** measurement tables posted; outcome 1 delivered (the margin is pinned — as what it
+actually is now), outcome 2 answered (the ruling's story is *restored*, not undermined: the
+backstop is the backstop on both lineups), outcome 3 (second arm path) explicitly not built —
+§8.21's v2 column already names it. `status-needs-ruling` → `status-owner-review`: the one thing
+worth eyes is the reading that both-lineups-at-the-backstop *strengthens* the 2026-07-27 ruling.
+
+---
+
 ## Session log — 2026-08-06-workbench-a (#378 — the limit-cycle fix that works is not shippable; TR-18 pins the defect)
 
 **Task:** work #378 (the plant never settles after a load change — audit #297 F9), per the owner's

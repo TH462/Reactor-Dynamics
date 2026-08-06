@@ -45,6 +45,24 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-workbench-b — #377: a probe must not flip on a coin, and a mitigation nobody measured is dead
+
+**Decision.** TR-1c's backstop check asserted `peak ≥ 16.20 MPa` — the PORV setpoint itself — and
+the merged plant peaks 16.212 hands-off, 16.198 shipped: the physics lands ON the number, so the
+check (and the `porv_open` EVENT, measured flipping together with it) is a coin toss under a 3 %
+thermal nudge. Re-authored to the robust pair — the DOORSTEP (`≥ porv_open_mpa − 0.15`, from
+config) and the CLIFF SPAN (sub-arm minus caught ≥ 0.5 MPa; both legs ride any nudge together, so
+the difference holds at 0.71 worst-seen) — with the knife-edge ornament demoted to info. New
+**TR-1k** runs the same legs on the SHIPPED lineup, where the audit's "rod control absorbs it,
+12.9 psi to spare" mitigation is measured DEAD (#372 ate it; both lineups end at the backstop),
+and pins the declared cliff's real cost: the sub-arm cut undershoots ~15 points deeper than the
+caught one. **The §8.21 ruling comes out strengthened** — the PORV is the honest backstop on
+every lineup now — and the mitigation claim turned out to live nowhere but TR-1c's own comment,
+which cited a "§8.21 write-up" that never carried it. Full record:
+`Diagnostic/TUNING_LOG.md` 2026-08-06-workbench-b; injections and the nudge/seed matrix there.
+
+---
+
 ## 2026-08-06-develop-b — lane merge `develop` ← `backshop`: verifying an audit lane rather than reasoning about it
 
 **Decision.** The backshop merge is carried as-is (no judgement calls in it — 3 commits of
