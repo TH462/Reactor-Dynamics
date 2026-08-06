@@ -59,3 +59,4 @@ terminals/
 # Generated at deploy by site/make_download.js (see #258): the offline zip is built
 # from the commit being deployed, so a committed copy could only ever be stale.
 download/
+pylibs/
