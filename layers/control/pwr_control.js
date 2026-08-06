@@ -1348,10 +1348,23 @@
         // nothing ramps it back. That is the whole of run_autoctl's 91.5 % (load parked at 91.6
         // MWe) and of run_ops SGTR's 53.7 % inventory (the runback engaged twice, not once).
         //
-        // The rate limit still earns its place and the two are complements, not alternatives:
-        // it takes the normal-ramp dwell from 6.40 s to 0.10 s against a worst-casualty dwell of
-        // 10.58 s, so this constant sits in a gap two orders of magnitude wide instead of the
-        // 4.18 s squeeze it was originally sized into.
+        // THE PARAGRAPH ABOVE IS HISTORY, NOT THE SHIPPED PLANT (#379, audit #297 F10 —
+        // re-measured 2026-08-06). Its closing argument sized this constant into a gap the
+        // rate limit created — and `turbine.load_rate_pct_per_min` is now OFF (0, owner
+        // directive 2026-08-03), so that "two orders of magnitude" gap does not exist on
+        // the shipped tree. What the gap actually is, measured on the merged plant with the
+        // kernel's own accounting (accumulate below 3.0, HOLD between 3.0 and 6.0, reset
+        // only above 6.0 — the naive contiguous-time reading under-counts): an instantaneous
+        // 70 -> 100 MWe step peaks the dwell accumulator at 3.0 s (min OPdT margin 2.35, no
+        // engage, no trip — the one-box excursion the config note prices is real but stays
+        // 5.5 s short of this trigger); a 15 % steam line break reaches 8.5 s of dwell 40 s
+        // after the break and takes its 5 % cut (min margin 1.55, no trip). The mechanism
+        // still separates the two cases — by 2.8x, not by orders of magnitude — and 8.5 is
+        // load-bearing from BOTH sides now: below ~3 s the one-box step engages a permanent
+        // 5 % cut (the #318 defect returns), and the only noise immunity this signal has is
+        // the dwell itself, since the 2/4 coincidence above cannot be built. If either
+        // constant of the pair moves, re-measure this gap — the other half of the pair is
+        // annotated at `load_rate_pct_per_min` in pwr_config.js.
         persist_s: 8.5,
         rated: RD.PWR_CONFIG.turbine.mwe_rated,
         floor: 0,

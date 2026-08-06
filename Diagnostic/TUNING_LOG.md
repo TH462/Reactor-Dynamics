@@ -173,6 +173,39 @@ changed.
 
 ---
 
+## Session log — 2026-08-06-workbench-c (#379 — a sizing argument that named its complement outlived it; the pair is cross-annotated)
+
+**Task:** #379 (audit #297 F10). Comments only, and the gate run proves it: `run_otdt` 46/0,
+`run_autoctl` 30/30, no constant moved, no baseline moved.
+
+**The stale claim:** `persist_s: 8.5`'s sizing comment said the `load_rate_pct_per_min` rate
+limit gave it "a gap two orders of magnitude wide" (normal-ramp dwell 0.10 s vs worst-casualty
+10.58 s). That limit is **off** by owner directive (2026-08-03), so the argument of record
+described a configuration the plant is not in — and neither file was wrong alone; the pair was.
+
+**Re-measured on the merged plant** (the issue's own figures predate #370a's break mass flow and
+#364's decay refit, so this is a fresh take, kernel accounting emulated exactly — accumulate
+below 3.0, HOLD 3.0–6.0, reset only above 6.0):
+
+| evolution | peak dwell accumulator | vs `persist_s` 8.5 s | min OT/OPΔT margin | trip |
+|---|---|---|---|---|
+| instantaneous 70 → 100 MWe step | **3.00 s** | 5.5 s short — no engage | 2.345 | none |
+| 15 % steam line break | reaches 8.5 s at **t+40.0 s** | **engages**, 5 % cut at t+41.5 s | 1.547 | none |
+
+The gap is **2.8×** (8.5 / 3.0), not two orders of magnitude — and the casualty engage moved
+93.5 → 40.0 s vs the issue's measurement, which is #370a's stronger early blowdown at work. The
+mechanism still separates the cases correctly, and 8.5 is now load-bearing from BOTH sides:
+below ~3 s the one-box step engages a permanent 5 % cut (the #318 defect returns), and the dwell
+is the only noise immunity the signal has (the sourced 2/4 coincidence cannot be built here).
+
+**The fix is the cross-annotation, both directions:** the `persist_s` comment now carries the
+measured gap and names its pair; `load_rate_pct_per_min`'s cost note — which was complete within
+its file — now names the squeeze its switch re-opened. Whoever moves either constant re-measures
+the gap. The sourced-substitute paragraph (WTSM 12.2 §12.2.3.7/.8) and the deletion-history
+paragraph are untouched — they are correct history.
+
+---
+
 ## Session log — 2026-08-06-workbench-b (#377 — the cliff pin re-authored robust; the shipped-lineup mitigation is measured dead)
 
 **Task:** #377 (audit #297 F8), after the develop merge and its assumption re-check. Also carries
