@@ -704,7 +704,23 @@ var BASELINES = {
   // citation of the very directive this merge introduced — the collapsed revision row first
   // said `per OWNER DIRECTIVE 2026-08-06 the...` with no comma, colon or verbatim quote,
   // scoring 175 sites / 1 undeclared. A hand-typed citation is the likeliest bad one.
-  'run_hardrules.js':      { code: 0, score: '195checks 0failed' },
+  // --- backshop lane, same base ---
+  // 178 → 183 (2026-08-05, #382/#383): five new citation sites, all the same two rulings
+  // written where they bind — the audit-lane ruling in CLAUDE.md's lane table, the
+  // AUDIT_CHARTER.md header and its §11, plus the TUNING_LOG and BUILD_DECISIONS entries.
+  // 0 failed throughout, i.e. every one is well-formed; the count moved, the compliance did not.
+  // **A STANDALONE `node test/run_hardrules.js` CANNOT CATCH THIS** and that is how it nearly
+  // shipped: the runner exits 0 on "0 failed" and says nothing about the count, so it printed
+  // OK while sitting five checks above baseline. Only run_all compares the tally, because the
+  // drift here is symmetric — MORE checks is drift too. Run the aggregate before you believe a
+  // doc-only change moved nothing.
+  // MEASURED ON THE MERGED TREE (2026-08-06-develop-b, backshop merge), AFTER the write-ups.
+  // This key has now been a three-way combine in one day: base 178 → develop 189, workbench
+  // 179, backshop 183, and none of those figures survives any of the merges. It is the one
+  // baseline in this map that CANNOT be reasoned about, only measured, because it counts
+  // citation SITES in tracked markdown — so writing a merge up moves it, and deleting history
+  // (the manual revision collapse) moves it the other way.
+  'run_hardrules.js':      { code: 0, score: '200checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

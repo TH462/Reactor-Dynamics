@@ -29,6 +29,58 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-develop-b (lane merge: `develop` ← `backshop`, and the audit lane stays unprimed)
+
+**Task:** merge the backshop lane (3 commits — #382/#383, the audit-launch independence
+mechanism) into develop, and **confirm backshop is still in audit mode afterwards** (owner's
+instruction). All three lanes are now in.
+
+**Result: `run_all` 38/38 at baseline, one tracked red (`run_ops` 58/69, unmoved).** Five
+conflicts, all the routine append-at-top ones plus `BASELINES`; **`merge_audit` clean, 27
+artifacts, nothing dropped** — unlike the workbench merge, backshop touched no `Manuals/`
+file, so there was no revision collision and no content canary risk.
+
+**`run_hardrules` was a THREE-WAY combine in one day, and no lane figure survived any merge:**
+base **178** → develop **189**, workbench **179**, backshop **183**; after the workbench merge
+**195**, after this one **200**. Backshop's +5 were all one ruling written where it binds — the
+audit-lane ruling in CLAUDE.md's lane table, the `AUDIT_CHARTER.md` header and its §11, plus
+its `TUNING_LOG`/`BUILD_DECISIONS` entries — with **0 failed throughout**, so the count moved
+and the compliance did not. **This key cannot be reasoned about, only measured**, because it
+counts citation *sites* in tracked markdown: writing a merge up moves it, and deleting history
+moves it back (2026-08-06-develop-a's revision collapse did exactly that).
+
+**Backshop's own baseline note carries the trap worth keeping, and it is about the RUNNER:**
+a standalone `node test/run_hardrules.js` **cannot catch this class of drift** — it exits 0 on
+"0 failed" and says nothing about the tally, so it prints OK while sitting five checks above
+baseline. Only `run_all` compares counts, because the drift here is **symmetric**. Kept
+verbatim in `BASELINES`.
+
+**AUDIT MODE: VERIFIED, NOT ASSUMED.** *(OWNER, 2026-08-06: "Merge backshop. It's in audit
+mode. Make sure it's in audit mode after the merge.")* The mechanism is a per-tree
+`.claude/settings.local.json` carrying `claudeMdExcludes` + `autoMemoryEnabled: false`, which
+layers **by default** — no `--settings` flag — so any session started in that tree is unprimed
+(#383). That file is **gitignored (`.gitignore:53`)**, so a merge or fast-forward structurally
+cannot touch it. **Structurally-cannot is an argument, not a measurement**, which is the whole
+point of `tools/audit_preflight.js` — its own header says a pattern that silently fails to
+match "would look exactly like a clean audit". So it was measured on both sides:
+
+| | before the merge | after the ff-sync |
+|---|---|---|
+| `audit_preflight` | OK — 8 excludes, auto-memory off, exit 0 | OK — 8 excludes, auto-memory off, exit 0 |
+| `settings.local.json` md5 | `f3a978f19a0eac9f5df575976dac0524` | `f3a978f19a0eac9f5df575976dac0524` |
+
+**Worth knowing: `RD_workbench` is NOT an audit lane right now.** Backshop's settings file
+says in its own comment that it "Mirrors `C:/grok_build/RD_workbench/.claude/settings.local.json`"
+— that file **does not exist**. It was presumably removed to give that lane its CLAUDE.md back
+for the ordinary #370/#371/#378 work, which is exactly what the comment tells you to do. The
+comment is now stale and points at a file that is gone; left alone here rather than edited,
+because whether workbench should be re-armed as an audit lane is the owner's call, not a
+merge's. **The preflight only ever checks the tree it is run in**, so it cannot see this.
+
+**Not in this merge:** nothing — all three lanes are now merged and at the same commit.
+
+---
+
 ## Session log — 2026-08-06-develop-a (lane merge: `develop` ← `workbench`, and a revision number that stopped being a counter)
 
 **Task:** merge the workbench lane into develop. 11 develop commits (#361, #364/#365, #386
@@ -1000,6 +1052,171 @@ the state. Injection has to be commanded explicitly at that layer.
 `primary.mass_max` gains the derivation comment it never had: it is a NUMERICAL GUARD and must
 stay unreachable, the physical settling point is the level geometry (1.0928), and raising the clip
 is not a fix (measured at 3.0, the plant runs to 300 % inventory — #346).
+
+## Session log — 2026-08-05-backshop-a (#382 — the audit launch, and a mechanism nothing had ever used)
+
+**Task:** work the next audit item. The next one to *run* is **#344** (slice 9, normal operations
+& long-run integrity) — #221's order is 1·2·3·**9**·8·4·5·6·7 and #344 had zero comments. It could
+not be run from this session: `CLAUDE.md` was in context from the first turn, so RoE 1 was already
+defeated here. Built the launch instead and handed the slice off.
+
+**CORRECTION, same session — the framing above was wrong and is corrected here rather than
+rewritten, because the wrong version was committed (`b1292e0`) and posted to #221, #297 and #382.**
+
+What I first wrote: *"`.claude/settings.audit.json` has never once been used; every slice run to
+date was primed."* **False.** Read against the actual comment threads:
+
+| slice | independence | how |
+|---|---|---|
+| **1 (#295)**, 2026-08-01 | **partial** | predates the mechanism; ran under manual *directed blinding* (auditor denied `Diagnostic/`, `CHANGELOG`, `BUILD_DECISIONS`, `SOP`, issue history). `CLAUDE.md` + memory auto-loaded. |
+| **2 (#296)**, 2026-08-05 | **CLEAN — verified** | attempt 1 opened primed, was caught **by the first-turn check**, aborted **before any finding**, nothing carried forward. Attempt 2: *"First-turn priming check: PASSED. No `CLAUDE.md` Recent themes, no memory index."* |
+| **3 (#297)**, 2026-08-05 | **clean, by accident of tree** | opened primed at 09:23 Z, stopped at the first-turn check, no findings. The findings run (09:51 Z) and follow-up (10:23 Z) were *"launched bare"* — no flag — but `RD_workbench/.claude/settings.local.json` was created 09:29 Z and carries the same excludes, loaded by default. |
+
+**So the exclusion mechanism HAS been exercised and HAS been verified working** — twice, by the
+charter's own first-turn check. What has never worked is the **`--settings` flag route**: every
+successful run got there through `settings.local.json` layering instead. *"Launched bare"* in #297
+means *without the flag*, and I read it as *primed*. Those are different facts and the auditor's
+own first-turn check is what distinguishes them.
+
+**The thing I should have checked first, and did not:** `.claude/settings.local.json` **in this very
+tree**. It carries the 8 excludes and `autoMemoryEnabled: false`, and its own `_comment` says
+*"Loaded BY DEFAULT — no `--settings` flag — so every session started in this tree is unprimed and a
+`/clear` is enough to begin a slice."* Present in **backshop and workbench**; reverted in develop.
+So `CLAUDE.md` was **not** auto-loaded into this session — I read it with the Read tool on turn 1
+and then reasoned as though the harness had handed it to me. **I primed myself and called it the
+harness.** A session cannot establish its own priming state by introspection; that is the whole
+reason the first-turn check is a *question asked of the harness*, and I never asked it.
+
+**What survives unchanged:** the `/clear` leak is real and independently measured — this
+conversation opened with a `/clear`, `SessionStart` fired, and `tools/hook_lane_status.js` printed
+`#361 … PWR: a large-break LOCA walks inventory to the 120 % mass_ma…` into the fresh context. That
+is a plant defect by name, in a tree where the settings exclusion IS in force. **The hook is now the
+binding leak, not the settings** — and #296 already filed that as a suggested follow-up
+(*"make the priming state observable … have `tools/hook_lane_status.js` print whether `CLAUDE.md`
+exclusion is in force"*), never opened as an issue.
+
+**And a live hazard nobody is tracking:** while `settings.local.json` sits in backshop and
+workbench, **ordinary non-audit work in both lanes runs without `CLAUDE.md`**. #296 wrote *"This
+must not stay"* and applied a revert note — `inbox/REVERT_AUDIT_SETTINGS.md`, which exists **only in
+`Reactor_Dynamics/inbox/`**, the one tree where the file was actually reverted. Two lanes are
+silently unoriented and the reminder is in the third. Owner's call, filed as #383.
+
+**What landed** (`tools/audit.cmd`, `tools/audit.sh`, `tools/audit_preflight.js`,
+`.claude/skills/audit-slice/SKILL.md`):
+
+- **Preflight exits 2 and names the cause.** Six checks, each chosen because *skipping* it produces
+  a clean-looking audit rather than a red: settings parse; `autoMemoryEnabled === false`; every tree
+  from `git worktree list` has its `CLAUDE.md` in `claudeMdExcludes` **verbatim, both slash
+  directions**; the key names still exist in the installed CLI; charter present; slice issue open
+  and carrying `SUBJECTS TO TEST`.
+- **The exclude list is per-tree and hand-maintained**, so it is correct for three trees and would
+  silently stop covering a fourth. Enumerating from `git worktree list` rather than hardcoding is
+  the whole point of that check.
+- **Verbatim string comparison, deliberately.** Re-implementing the CLI's glob semantics to decide
+  whether `**/grok_build/**/CLAUDE.md` matches would put a second, differently-buggy matcher in
+  front of the first, and a matcher disagreeing with itself is exactly the invisible failure.
+- **The upgrade trap is a real check, not a nicety.** An unknown settings key is ignored in
+  *silence*, so a rename at CLI upgrade degrades to a bare launch that still prints a `--settings`
+  flag. Measured: both keys are present in `@anthropic-ai/claude-code@2.1.222` — the file was never
+  addressing a phantom schema, which was an open possibility given nothing had exercised it. The
+  binary is 279 MB, so the scan is chunked with overlap, not a `readFileSync`.
+- **Asymmetric on purpose:** failing to *locate* the CLI is a note (the wrapper may run elsewhere);
+  locating it and not finding the key is a hard failure. Absence of evidence is not evidence.
+
+**Injection-verified** (#376's rule — a check that cannot fail is not a check). Green in **1.4 s**
+on this tree; red, naming the right cause, on each of: one tree's path removed from
+`claudeMdExcludes`; `autoMemoryEnabled` flipped to `true`; unparseable JSON; a non-existent slice
+number. Wrapper refusal paths — no argument, non-numeric argument, failed preflight — all exit 2.
+Mutations were scratchpad copies via `--settings=<path>`; no tracked file was touched.
+
+**Two traps in the batch file itself, both from the repo's own history.** The first draft was
+LF-only and UTF-8: `cmd.exe` re-read it and looped, spewing 2.5 MB of `'his' is not recognized`
+before it was killed. `tools/make_portable.cmd` carries the warning in its header — *keep this file
+pure ASCII*, because cmd.exe reads batch files in the OEM code page — and the LF half is the same
+class. It is now ASCII + CRLF and `file(1)` says so.
+
+**The half a wrapper cannot cover, and it is the important half.** Preflight runs *outside* the
+session it protects, so it proves the configuration and never the session. The charter header and
+the skill now require the auditor's first turn, before any source file, to state on the slice issue
+whether `CLAUDE.md` was **auto-loaded into its context without it reading the file** — asked that
+way round, because the Read tool can open `CLAUDE.md` at any time and *"can I see it"* answers a
+different question with a misleading yes.
+
+**The skill's own constraint.** A skill `description` is injected into every session's prompt
+*including the audit session's*, so `audit-slice` names no subsystem, no finding and no gate score.
+It is inside the blast radius of the rule it enforces. It also states the limit plainly: **a skill
+cannot launch a session with different settings** — it loads into the session already running,
+which in the primed branch is exactly the one to avoid. Wrapper launches, skill procedures,
+self-check verifies; none substitutes for another.
+
+**A `/clear`-based workflow was proposed and measured down** *(OWNER, 2026-08-05: "Why not make a
+skill that sets things up and then I can clear that conversation… We could have another skill that
+restores the work tree. What are your thoughts on this?" — then, on the recommendation below:
+"Let's do it your way.")*. The proposal was: a prep skill moves `CLAUDE.md` aside, `/clear`, run the
+audit in the same window, a restore skill puts it back. **`/clear` does not clear the always-on
+layer, and this conversation is the measurement** — it opened with a `/clear` and the `SessionStart`
+hook fired immediately after, printing `#361 [status-wip-develop] PWR: a large-break LOCA walks
+inventory to the 120 % mass_ma…` into the fresh context. A plant defect, by name, before any file
+was read. `/clear` clears the conversation history and nothing else.
+
+Three channels, and a skill can only close one and a half of them: conversation history (`/clear`
+handles it), the `SessionStart` hook (a skill could disable it), `CLAUDE.md` auto-load (a skill
+could move the file) — and **`autoMemoryEnabled` is process-level, so no skill can change it
+mid-session**. Moving `CLAUDE.md` also costs three new failure modes: it is TRACKED, so the audit
+tree goes dirty in a way the lane sweep reads as a live agent and a commit could swallow the
+deletion; the restore depends on a *later* conversation running a skill, with nothing linking them
+and nothing to put the file back if the window dies; and it re-opens a design the owner himself
+proposed on 2026-08-04 and that was ruled against then in favour of the settings exclusion.
+
+**Settled: keep the wrapper as the launch (one new window, closes all three channels, no state to
+restore) and put the skills around it, not inside it.** `audit-prep` does the two things only a
+primed session can do — refresh the slice's SUBJECTS TO TEST list against what is always-on *today*,
+and record the commit + `run_all` state the findings will be measured against, so a pre-existing red
+is not filed as a finding. `audit-close` clears the tag, triages findings into issues with the four
+axes, and maintains **the convergence table #221 asks for and nothing has ever tracked** (*"if slice
+N's findings are consistently less severe than slice N−1's, the audit is converging… If not, stop
+and re-scope"*) — including whether each slice was actually independent, read off the auditor's
+self-check comment. A slice with no self-check counts as primed, because inferring it was fine from
+a thorough-looking slice is the exact inference the mechanism replaces.
+
+**RULED, and the session's third design: FILES, NOT SKILLS** *(OWNER RULING, 2026-08-05, #383:
+"Let's do it with the files not the skills.")*. #383 option 1. The mechanism is the per-tree
+`.claude/settings.local.json`; the procedure moved into `AUDIT_CHARTER.md` §11; the three skills and
+both wrappers are **deleted**. Rationale beyond the owner's preference: a skill's `description` is
+injected into every session's prompt **including an auditor's**, so the skills were a priming
+surface for no gain — and two documents describing one process drift apart, which is how the
+"launched bare" wording got read three different ways in one day.
+
+- **`tools/audit_preflight.js` survives, corrected.** It was checking `settings.audit.json` by
+  default — *the file an audit lane never loads*. It now resolves the file actually in force
+  (`settings.local.json` when it carries excludes) and prints how **this tree** launches. Checking
+  the file named after the job rather than the one in force is the same class of error the script
+  exists to catch.
+- **The hook leak is closed and A/B-proven** (#383 item 1). `tools/hook_lane_status.js` detects
+  whether the exclusion is in force from `.claude/settings*.json` and, in an audit lane, prints
+  `#361 [status-wip-develop] (title withheld — audit lane)` instead of the title. Same code, same
+  fixture row, settings file temporarily renamed: audit lane withholds, normal lane prints
+  `PWR: a large-break LOCA walks inventory to the 120 % mass_ma`. **It reports `unknown`, never
+  `off`, when the settings files are unreadable** — "could not check" is not "clear", the rule this
+  hook's own header already carried. It **cannot** see a `--settings` flag: that is a process
+  argument, not state on disk, so the flag route stays invisible to it and says so.
+- **The hazard is now in TRACKED files** — `CLAUDE.md`'s lane table and the charter header both
+  state that workbench and backshop do not auto-load `CLAUDE.md` and that ordinary work there runs
+  without it. Previously the only record was a comment *inside* a gitignored file, sitting in the
+  one tree that had already been reverted.
+
+**Baseline moved: `run_hardrules` 178 → 183 checks, 0 failed** — five new HR11 citation sites, all
+the same two rulings written where they bind (CLAUDE.md's lane table, the charter header, charter
+§11, and the two session entries). Compliance did not move; the count did, which is the design.
+**A STANDALONE `node test/run_hardrules.js` CANNOT CATCH THIS, and it nearly shipped that way**: the
+runner exits 0 on *0 failed* and says nothing about the tally, so it printed **OK** while sitting
+five checks above baseline, and I read that as "the doc edits moved nothing". Only `run_all`
+compares counts, because drift here is **symmetric — more checks is drift too**. Run the aggregate
+before believing a doc-only change is inert; the fast per-runner check answers a different question.
+
+**Not done here, by construction:** slice 9 itself. Backshop's second wave (#378 → #377 → #379)
+stays queued; #378's anchors were re-verified against `7a40b9a` in passing — bodies unchanged since
+`7861dbb`, `pwr_control.js` +21 lines, `pwr_engine.js` command cases +23.
 
 ---
 

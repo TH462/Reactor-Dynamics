@@ -45,6 +45,40 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-develop-b — lane merge `develop` ← `backshop`: verifying an audit lane rather than reasoning about it
+
+**Decision.** The backshop merge is carried as-is (no judgement calls in it — 3 commits of
+audit tooling, no `Manuals/` edits, no engine change), and **audit mode is confirmed by
+measurement on both sides of the merge rather than by argument** *(OWNER, 2026-08-06: "Merge
+backshop. It's in audit mode. Make sure it's in audit mode after the merge.")*.
+
+**Why measurement, when the argument is airtight.** A lane is in audit mode because its tree
+carries `.claude/settings.local.json` with `claudeMdExcludes` + `autoMemoryEnabled: false`,
+which layers by default and needs no flag (#383). That file is **gitignored**, so no merge or
+fast-forward can touch it — the argument really is airtight. It was still measured before and
+after (`audit_preflight` OK / OK, file md5 unchanged), because **this is precisely the failure
+class `tools/audit_preflight.js` was built for**: its header states that a pattern which
+silently fails to match "would look exactly like a clean audit". A mode whose failure is
+invisible is one you check, not one you deduce. The same reasoning is why the charter pairs the
+static preflight with the auditor's own first-turn self-check — neither substitutes for the
+other, and this merge can only speak to the first half.
+
+**One thing found and deliberately NOT changed.** Backshop's settings file documents itself as
+mirroring `RD_workbench`'s equivalent; that file does not exist, so workbench is not an audit
+lane at present — consistent with it having done ordinary #370/#371/#378 work, which is what
+the comment's own "REMOVE THIS FILE to give the lane its CLAUDE.md back" instruction produces.
+The comment is stale. **Re-arming workbench as an audit lane is an owner decision about how the
+lanes are allocated, not a merge resolution**, so it is recorded rather than acted on. Note the
+structural gap it exposes: `audit_preflight` only ever checks the tree it runs in, so no tool
+in the repo can answer "which lanes are currently unprimed?" — the SessionStart hook reports a
+lane's own mode, and nothing aggregates.
+
+**Gates.** `run_all` 38/38 at baseline, `run_ops` 58/69 tracked red unmoved, `merge_audit` OK
+(27 artifacts, nothing dropped). `run_hardrules` **200** — measured, and the third distinct
+value for that key in one day (base 178; lanes 189/179/183; 195 after the workbench merge).
+
+---
+
 ## 2026-08-06-develop-a — lane merge: a revision number that is a release marker, not a counter
 
 **Decision.** The manual set's revision number **does not advance until a website release**
@@ -402,6 +436,138 @@ physical ceiling at which an RCS stops accepting mass, only a pressure at which 
 1.2 is a numerical guard whose job is to be unreachable. Reaching it is a bug by definition, and
 it hides itself — the clip also truncates `m_surge`, so `_dmass_dt` goes to zero at the ceiling
 and the surge driver stops seeing the mass piling up.
+
+
+## 2026-08-05-backshop-a — #382: the audit's independence mechanism had never been used
+
+**CORRECTED IN PLACE, same session.** The first version of this entry claimed *"no slice has ever
+run under the mechanism"*. That is **false** and the correction is the more interesting finding —
+full table in `Diagnostic/TUNING_LOG.md` 2026-08-05-backshop-a.
+
+**What is actually true.** The exclusion mechanism has been exercised **twice and verified working**
+by the charter's first-turn check: slice 2's attempt 1 was caught primed and aborted *before any
+finding*, and its clean re-run reported *"First-turn priming check: PASSED"*. Slice 3's findings
+runs were also unprimed. What has **never** worked is the **`--settings` flag route** — every
+successful run got there through `.claude/settings.local.json`, which layers by default and needs no
+flag. #297's *"launched bare"* means *without the flag*; I read it as *primed*. Different facts,
+and the auditor's first-turn check is exactly what separates them.
+
+**The error has a shape worth keeping.** I reasoned about my own priming state from inside the
+session — "CLAUDE.md is in my context, therefore the harness loaded it" — when in fact
+`settings.local.json` is in force in this tree and I had simply *read the file myself* on turn 1.
+**A session cannot establish its own priming state by introspection.** That is why the first-turn
+check is phrased as a question about what the harness did, not about what the agent can see, and I
+wrote that sentence into the charter this same session without applying it.
+
+**DECISION: FILES, NOT SKILLS** *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not
+the skills.")* — #383 option 1, and the session's third design for the same problem.
+
+The mechanism is the per-tree `.claude/settings.local.json`: `workbench` and `backshop` are
+**audit lanes** where the exclusion layers by default, so a fresh session or a `/clear` there is
+already unprimed. `develop` keeps the flag route. The three skills and both wrappers are **deleted**;
+the procedure lives in `AUDIT_CHARTER.md` §11 (before/after, explicitly not for the audit session).
+
+Two reasons beyond the owner's preference, both load-bearing: a skill's `description` is injected
+into **every** session's prompt including an auditor's, so the skills were a priming surface bought
+for nothing; and two documents describing one process drift, which is exactly how #297's *"launched
+bare"* got read three different ways in a single day.
+
+**`tools/audit_preflight.js` survives with a real correction**: it defaulted to checking
+`settings.audit.json` — *the file an audit lane never loads*. It now resolves whichever file is in
+force and reports how the current tree launches. Validating the file named after the job instead of
+the one in force is the same class of error the script exists to catch.
+
+**The hook leak (#383 item 1) is closed and A/B-proven.** `tools/hook_lane_status.js` reads
+`.claude/settings*.json`, and in an audit lane prints `#361 [status-wip-develop] (title withheld —
+audit lane)`. Proven on the real code path with a fixture row and the settings file temporarily
+renamed: withheld in the audit lane, `PWR: a large-break LOCA walks inventory to the 120 % mass_ma`
+in the normal one. Unreadable settings report **`unknown`, never `off`** — this hook's own header
+already carried that rule. A `--settings` flag remains invisible to it, and it says so: a process
+argument is not state on disk.
+
+**The hazard is now recorded in TRACKED files** — `CLAUDE.md`'s lane table and the charter header.
+Its only prior record was a comment inside a gitignored file, in the one tree already reverted.
+
+**Decision: make the launch refuse, rather than document harder.** `tools/audit.cmd` /
+`tools/audit.sh` are now the one launch path and run `tools/audit_preflight.js` first, which exits
+2 and names the cause. The raw `claude --settings ...` form stays as a named fallback, with a
+written prohibition on using it to get past a preflight failure.
+
+**Check-selection rule: every preflight check is one whose omission yields a clean-looking audit,
+not a red.** Settings parse; `autoMemoryEnabled === false`; every tree from `git worktree list`
+carries its `CLAUDE.md` in `claudeMdExcludes` verbatim in both slash directions; the settings key
+names still exist in the installed CLI; charter present; slice issue open with a `SUBJECTS TO TEST`
+section (#221 process step 1, checked rather than assumed).
+
+Three sub-decisions worth the record:
+
+- **Verbatim comparison, not glob evaluation.** Re-implementing the CLI's picomatch semantics to
+  test `**/grok_build/**/CLAUDE.md` would place a second, differently-buggy matcher in front of the
+  first. The explicit per-path entries are what must hold; enumerating trees from git means a
+  fourth worktree fails loudly instead of leaking.
+- **The CLI-schema check exists because an unknown settings key is ignored in silence.** A rename
+  at upgrade would degrade the audit to a bare launch that still prints a `--settings` flag.
+  Measured: both keys present in `@anthropic-ai/claude-code@2.1.222`. Binary is 279 MB → chunked
+  scan with overlap.
+- **Asymmetric verdicts.** Not locating the CLI is a note; locating it and not finding the key is a
+  hard failure. Absence of evidence is not evidence of a rename.
+
+**Injection-verified** (#376's rule): green in 1.4 s; red with the right cause on a removed tree
+path, `autoMemoryEnabled: true`, unparseable JSON, and a bogus slice number, all on scratchpad
+copies via `--settings=<path>`.
+
+**What the wrapper structurally cannot do, now written into the charter and the skill.** Preflight
+runs outside the session it protects — it proves the configuration, never the session. The
+auditor's first turn must state on the slice issue whether `CLAUDE.md` was **auto-loaded without it
+reading the file**, phrased that way round because the Read tool can open `CLAUDE.md` at any time
+and *"can I see it"* answers a different question with a misleading yes.
+
+**`.claude/skills/audit-slice/SKILL.md`** saves the procedure and branches on whether the session is
+primed (print the launch line, stop, do not read the slice's code) or is the auditor. Its
+`description` is injected into every session's prompt **including the audit session's**, so it names
+no subsystem, finding or gate score — the skill is inside the blast radius of the rule it enforces.
+It also states the limit: a skill cannot launch a session with different settings, so wrapper,
+skill and self-check are three parts of one mechanism and none substitutes for another.
+
+**Batch-file trap, re-learned.** The first `audit.cmd` was LF-only and UTF-8; `cmd.exe` re-read it
+in a loop and emitted 2.5 MB of `'his' is not recognized`. `tools/make_portable.cmd` already carried
+the ASCII half of the warning in its header. Now ASCII + CRLF, verified with `file(1)`.
+
+**DECISION: the skills go AROUND the wrapper, not inside it — a `/clear` workflow was proposed and
+measured down** *(OWNER, 2026-08-05: "Why not make a skill that sets things up and then I can clear
+that conversation… We could have another skill that restores the work tree. What are your thoughts
+on this?" → "Let's do it your way.")*.
+
+The proposal — prep skill moves `CLAUDE.md` aside, `/clear`, audit in the same window, restore skill
+puts it back — fails on a measurement available in the session that proposed it: **that conversation
+opened with a `/clear`, and `SessionStart` fired immediately after**, printing a WIP-tagged issue
+*title* naming a plant defect into the fresh context. `/clear` clears conversation history and
+nothing else.
+
+Three priming channels; a skill closes one and a half. Conversation history — `/clear` handles it.
+The `SessionStart` hook — a skill could disable it. `CLAUDE.md` auto-load — a skill could move the
+file. **`autoMemoryEnabled` is a process-level setting, so no skill running inside the process can
+change it**, which is the structural reason the design cannot be completed rather than merely
+tightened.
+
+Moving `CLAUDE.md` adds three failure modes the settings exclusion does not have: the file is
+TRACKED, so the audit tree goes dirty in a way the lane sweep reads as a live agent and a commit
+could swallow the deletion; restore depends on a *later* conversation running a skill, with no state
+linking them and nothing to put the file back if the window dies; and it revisits a design the owner
+proposed on 2026-08-04 and that was ruled against then in favour of the exclusion. The automation
+makes it more convenient, not safer.
+
+**So: `audit-prep` → `tools\audit.cmd <slice>` in a NEW WINDOW → `audit-close`.** The two new skills
+are scoped to what a primed session can uniquely do. `audit-prep` refreshes the slice's SUBJECTS TO
+TEST list — a list of exactly what a primed session can see and an auditor cannot, so no other
+session can write it — and records the commit + `run_all` state the findings are measured against,
+so a pre-existing red is not filed as a finding. `audit-close` triages into issues with the four
+axes and maintains **the convergence table #221 asks for and nothing has ever tracked**, carrying
+each slice's independence verdict read off the auditor's self-check comment; **a slice with no
+self-check counts as primed**, because inferring it was fine from a thorough-looking slice is the
+inference the mechanism exists to replace.
+
+---
 
 ## 2026-08-05-develop-c — #367: buoyancy is not a pump, but a coasting rotor is
 

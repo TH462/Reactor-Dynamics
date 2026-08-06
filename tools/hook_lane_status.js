@@ -31,6 +31,7 @@
 'use strict';
 var cp = require('child_process');
 var path = require('path');
+var fs = require('fs');
 
 var LANES = [
   { lane: 'develop',   tree: 'C:/grok_build/Reactor_Dynamics', branch: 'develop' },
@@ -89,6 +90,47 @@ LANES.forEach(function (L) {
 });
 function pad(s) { while (s.length < 11) s += ' '; return s; }
 
+// ---- am I in an audit lane? (#383) -----------------------------------------------
+// MEASURED 2026-08-05: this hook printed a WIP issue TITLE — "#361 PWR: a large-break LOCA walks
+// inventory to the 120 % mass_max clip" — into a session where the #221 exclusion had just removed
+// CLAUDE.md and the memory index. A plant defect, by name, in the opening context of what was meant
+// to be an unprimed auditor. Hooks fire regardless of claudeMdExcludes, so this is the ONE priming
+// channel neither the settings file nor tools/audit_preflight.js can close. It has to close here.
+//
+// It also answers the question #296 asked and never got: make the priming state OBSERVABLE rather
+// than remembered. Until now the only detector was the auditor being honest on turn one.
+//
+// WHAT IT CAN AND CANNOT SEE. Settings that apply BY DEFAULT — .claude/settings.json and
+// .claude/settings.local.json — are readable, and settings.local.json is how the lanes are set up.
+// A session launched with `--settings <file>` is NOT visible from here: the flag is a process
+// argument, not state on disk. So a lane can be audit-mode without this knowing, and it says
+// UNKNOWN rather than NORMAL — "could not check" is never printed as "clear" (see header).
+function auditModeHere() {
+  var seen = false, unreadable = false;
+  ['settings.json', 'settings.local.json'].forEach(function (f) {
+    var p = path.join(process.cwd(), '.claude', f);
+    if (!fs.existsSync(p)) return;
+    try {
+      var c = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if ((c.claudeMdExcludes || []).length || c.autoMemoryEnabled === false) seen = true;
+    } catch (e) { unreadable = true; }
+  });
+  return seen ? 'on' : (unreadable ? 'unknown' : 'off');
+}
+var audit = auditModeHere();
+
+lines.push('');
+if (audit === 'on') {
+  lines.push('AUDIT LANE — CLAUDE.md exclusion IS in force here (.claude/settings*.json).');
+  lines.push('  Ordinary work in this tree runs WITHOUT the orientation document. Issue titles are');
+  lines.push('  suppressed below so this hook cannot prime a slice. See CLAUDE.md "Audit lanes".');
+} else if (audit === 'unknown') {
+  lines.push('AUDIT LANE: COULD NOT CHECK — .claude/settings*.json unreadable. NOT the same as "off".');
+} else {
+  lines.push('Normal lane — CLAUDE.md exclusion is NOT in force by default here.');
+  lines.push('  (A session started with `--settings` is invisible to this hook; it is a process flag.)');
+}
+
 // ---- the lane tags — the only signal that is not a guess -------------------------
 lines.push('');
 var gh = ghBin();
@@ -118,7 +160,12 @@ if (!gh) {
     rows.forEach(function (it) {
       var tags = (it.labels || []).map(function (l) { return l.name; })
         .filter(function (n) { return n.indexOf('status-wip-') === 0; }).join(',');
-      lines.push('    #' + it.number + ' [' + tags + '] ' + String(it.title || '').slice(0, 60));
+      // The NUMBER and the LANE are what occupancy needs; the title is what primes. In an audit
+      // lane the number alone still tells the auditor the lane is claimed, and looking the issue
+      // up is then a deliberate act it must declare — not something done to it at t=0.
+      lines.push('    #' + it.number + ' [' + tags + ']' +
+                 (audit === 'on' ? ' (title withheld — audit lane)'
+                                 : ' ' + String(it.title || '').slice(0, 60)));
     });
     lines.push('  A tag naming YOUR lane that you did not set: warn the owner and ask (CLAUDE.md).');
   }
