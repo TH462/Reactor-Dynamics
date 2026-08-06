@@ -98,9 +98,9 @@
     // ---- vessel contents (dynamic) ----
     var steamRect = h('rect', { x: 40, y: 96, width: 120, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5 });
     var waterRect = h('rect', { x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72,
-      style: { transition: 'y 0.5s ease, height 0.5s ease' } });
+      style: { transition: 'y 0.15s linear, height 0.15s linear' } });
     var surfLine = h('line', { x1: 52, y1: 0, x2: 148, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
-      strokeDasharray: '18 10', style: { transition: 'transform 0.5s ease' } });
+      strokeDasharray: '18 10', style: { transition: 'transform 0.15s linear' } });
 
     // ---- heater elements ----
     var heatGlow = h('rect', { x: hL - 8, y: hys[0] - 9, width: (hwR - hL) + 14, height: (hys[3] - hys[0]) + 18, rx: 10,
@@ -163,7 +163,7 @@
     [0, 50, 100].forEach(function (pct) {
       gEls.push(h('line', { x1: barX + barW, y1: wlY(pct), x2: barX + barW + 4, y2: wlY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
     });
-    var wlMarker = h('g', { style: { transition: 'transform 0.5s ease' } },
+    var wlMarker = h('g', { style: { transition: 'transform 0.15s linear' } },
       h('polygon', { points: (barX - 3) + ',0 ' + (barX - 12) + ',-6 ' + (barX - 12) + ',6', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
       h('line', { x1: barX - 3, y1: 0, x2: barX + barW + 7, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.4, strokeDasharray: '4 3' }));
     gEls.push(wlMarker);
@@ -243,25 +243,43 @@
     }
 
     function rebuildHeaterBubbles(hFrac, surfY) {
-      clearEl(heaterBubbles);
-      if (hFrac <= 0.02) return;
+      // POOLED, not torn down (2026-08-06) — same fix as the SG and the vessel. A teardown
+      // of ~35 animated circles is what the owner's "brief blank" looks like when the
+      // compositor presents a frame mid-rebuild (ui/app.js's rAF note), and reused elements
+      // keep their running animation instead of snapping back to phase 0.
       var span = (hwR - hL) - 14;
-      var count = Math.round(3 + hFrac * 32);
-      for (var i = 0; i < count; i++) {
+      var want = hFrac <= 0.02 ? 0 : Math.round(3 + hFrac * 32);
+      var kids = heaterBubbles.childNodes;
+      for (var i = 0; i < want; i++) {
         var x = hL + 8 + ((i * 19 + (i % 5) * 7) % span);
         var startY = hys[0] - 3 - ((i * 13) % 22);
         var dur = (2.2 - hFrac * 1.3 + (i % 4) * 0.28).toFixed(2);
         var delay = (i * 0.19).toFixed(2);
         var r = (1 + (i % 3) * 0.4 + hFrac * 2.4).toFixed(2);
+        var op = Math.min(0.9, 0.12 + hFrac * 2);
         // A bubble that starts ABOVE the surface (level below the heaters — the plant is
         // draining) gets no travel at all rather than a negative one.
         var rise = Math.max(0, startY - (surfY == null ? startY - 150 : surfY));
-        heaterBubbles.appendChild(h('circle', {
-          cx: x, cy: startY, r: r, fill: '#bdf1ff', opacity: Math.min(0.9, 0.12 + hFrac * 2),
-          style: { animation: 'pzrBubbleRise ' + dur + 's linear infinite', animationDelay: delay + 's',
-                   transformBox: 'fill-box', transformOrigin: 'center', '--pzr-rise': rise.toFixed(1) + 'px' }
-        }));
+        var el = kids[i];
+        if (!el) {
+          el = h('circle', { fill: '#bdf1ff',
+            style: { transformBox: 'fill-box', transformOrigin: 'center' } });
+          heaterBubbles.appendChild(el);
+        }
+        if (el.getAttribute('cx') !== String(x)) el.setAttribute('cx', x);
+        if (el.getAttribute('cy') !== String(startY)) el.setAttribute('cy', startY);
+        if (el.getAttribute('r') !== r) el.setAttribute('r', r);
+        if (el.getAttribute('opacity') !== String(op)) el.setAttribute('opacity', op);
+        if (!el.__anim) {
+          el.style.animation = 'pzrBubbleRise ' + dur + 's linear infinite';
+          el.style.animationDelay = delay + 's';
+          el.__anim = true;
+        } else if (el.style.animationDuration !== dur + 's') {
+          el.style.animationDuration = dur + 's';
+        }
+        el.style.setProperty('--pzr-rise', rise.toFixed(1) + 'px');
       }
+      while (heaterBubbles.childNodes.length > want) heaterBubbles.removeChild(heaterBubbles.lastChild);
     }
 
     function rebuildSprayDrops(sprayFrac) {

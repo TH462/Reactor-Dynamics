@@ -19,6 +19,24 @@
   var RD = globalThis.RD;
   var $ = function (id) { return document.getElementById(id); };
 
+  // WRITE ONLY WHAT CHANGED. `el.textContent = s` and `el.innerHTML = s` DESTROY and
+  // recreate the element's child nodes even when the string is byte-identical — the DOM
+  // has no idea the value is the same. The render pass runs once per broadcast, which is
+  // 10 Hz normally and 20 Hz in a transient, and it was doing this unconditionally right
+  // across the right-hand column.
+  //
+  // MEASURED on the real shell during a scram + large LOCA, childList mutations in 10 s:
+  // 3960 on the failure list's buttons (24 rows x every frame, and the text only changes
+  // when a failure toggles), 990 on the vital gauge values, 1155 on the chart x-axis,
+  // 866 on the trend arrows. Thousands of node replacements a second, none of them
+  // carrying new information — and these are exactly the elements the owner reported
+  // flickering (2026-08-06: "vital gauges, bottom strip chart, alarm box, time stamp").
+  //
+  // Cheap to compare, so the guard is always worth it: a string compare against the
+  // property is far less work than the node churn it avoids.
+  function txt(el, s) { if (el && el.textContent !== s) el.textContent = s; }
+  function setHTML(el, s) { if (el && el.__h !== s) { el.__h = s; el.innerHTML = s; } }
+
   // ----------------------------------------------------------- UI state
   var ui = {
     units: 'US',            // 'US' | 'SI'
@@ -1225,7 +1243,7 @@
     // any more (#217), so it is simply the instruments — kept as a named local
     // because the chart paths below read it a few times (#158).
     var rawIns = s.instruments;
-    $('clock').textContent = 'T+' + hms(s.metadata.sim_time);
+    txt($('clock'), 'T+' + hms(s.metadata.sim_time));
     $('clock').classList.toggle('running', s.metadata.running);
     $('clock').classList.toggle('accel', s.metadata.time_acceleration > 1);
 
@@ -1273,6 +1291,17 @@
     if (ui.plant !== 'pwr' && scramInd && !lastScrammed && ui.view !== 'diagram') setView('diagram');
     renderPlantDisplay(s);
     renderPhysics(s);
+    // INSIDE the rAF, not as their own subscribers (2026-08-06). The rationale above says
+    // a DOM write off the paint cycle "let the compositor present a frame mid-rebuild on
+    // real GPUs ... dispersing and reappearing ... while software-rendered headless looked
+    // fine" — which is exactly the blank/blink the owner reports, and exactly why no
+    // headless probe in this repo could reproduce it. Only `render` was ever wrapped;
+    // these two kept writing straight from the broadcast's setTimeout.
+    renderAutomate(s);
+    inspectLiveTick(s);
+    // diagTick's ACCUMULATION stays a synchronous subscriber — it diffs alarm states and
+    // must not miss a broadcast. Only its readout belongs in the paint cycle.
+    diagReadout();
     lastScrammed = scramInd;
 
     // Time moved backwards (a rewind, or a walkthrough/scenario reset): drop the
@@ -1543,7 +1572,7 @@
       // the plant) can deliver one snapshot from the NEW plant to the OLD
       // profile's gauges — read defensively or the whole render pass dies.
       try { raw = g.raw(s); } catch (e) { raw = null; }
-      if (raw == null || isNaN(raw)) { root.querySelector('[data-val]').textContent = '—'; return; }
+      if (raw == null || isNaN(raw)) { txt(root.querySelector('[data-val]'), '—'); return; }
       // Auto-ranging gauge: a gauge may pick a different scale/bands from the reading
       // (e.g. Tavg swaps to a wide LOW-RANGE scale in cold shutdown to save a second gauge).
       var eff = g.autorange ? Object.assign({}, g, g.autorange(raw) || {}) : g;
@@ -1554,7 +1583,7 @@
       root.classList.toggle('alarm', st === 'alarm');
       var disp = g.dim ? conv(raw, g.dim) : raw * (g.mul || 1);
       var units = g.dim ? unit(g.dim) : g.units;
-      root.querySelector('[data-val]').innerHTML = disp.toFixed(g.dp) + '<span class="g-units"> ' + units + '</span>';
+      setHTML(root.querySelector('[data-val]'), disp.toFixed(g.dp) + '<span class="g-units"> ' + units + '</span>');
       var frac = (raw - eff.min) / (eff.max - eff.min), cf = Math.max(0, Math.min(1, frac));
       root.querySelector('[data-needle]').style.left = (cf * 100) + '%';
       // single dim bar track; colored fill (to the needle) only when in a band
@@ -1587,8 +1616,11 @@
         else if (dd <= -stepU) t1 = -1;
         else if (Math.abs(dd) < stepU * 0.5 || (t0 === 1 && dd < 0) || (t0 === -1 && dd > 0)) t1 = 0;
         gaugeTrend[g.id] = t1;
-        tr.textContent = t1 > 0 ? '▲' : t1 < 0 ? '▼' : '▶';
-        tr.className = 'g-trend ' + (t1 > 0 ? 'trend-up' : t1 < 0 ? 'trend-down' : 'trend-flat');
+        // textContent replaces the text node even when the glyph is identical, and the
+        // trend only changes when the arrow flips — measured 875 replacements in 10 s.
+        txt(tr, t1 > 0 ? '▲' : t1 < 0 ? '▼' : '▶');
+        var trCls = 'g-trend ' + (t1 > 0 ? 'trend-up' : t1 < 0 ? 'trend-down' : 'trend-flat');
+        if (tr.className !== trCls) tr.className = trCls;
       }
       var vals = h.map(function (p) { return p.v; });
       var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), rng = (mx - mn) || 1;
@@ -1677,7 +1709,7 @@
     });
     var nUnack = active.filter(function (a) { return a.state === 'active_unacknowledged'; }).length;
     var title = $('alarmTitle');
-    if (title) title.textContent = nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms';
+    txt(title, nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms');
 
     // Everything below this line is DOM the tile markup depends on, so the key has to
     // carry all of it: order, state, both priorities, the annunciation stamp, and the
@@ -2956,12 +2988,12 @@
     document.querySelectorAll('.fail-row').forEach(function (row) {
       var id = row.id.replace('fail-', ''), on = !!act[id];
       row.classList.toggle('active', on);
-      var btn = row.querySelector('.fail-toggle'); if (btn) btn.textContent = on ? 'Clear' : 'Inject';
+      var btn = row.querySelector('.fail-toggle'); txt(btn, on ? 'Clear' : 'Inject');
       var sl = row.querySelector('[data-sevfor]');
       if (sl && on && act[id].severity != null && document.activeElement !== sl) {
         var m = JSON.parse(row.getAttribute('data-meta'));
         sl.value = Math.round(act[id].severity * 100);
-        row.querySelector('[data-svlabel="' + id + '"]').textContent = m.label + ': ' + Math.round(m.min + act[id].severity * (m.max - m.min)) + ' ' + m.unit;
+        txt(row.querySelector('[data-svlabel="' + id + '"]'), m.label + ': ' + Math.round(m.min + act[id].severity * (m.max - m.min)) + ' ' + m.unit);
       }
     });
   }
@@ -3083,9 +3115,9 @@
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
       chartRange = {};   // no data → forget held ranges so the next fit starts clean
-      $('chartLegend').innerHTML = active.map(function (s) {
+      setHTML($('chartLegend'), active.map(function (s) {
         return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
-      }).join('');
+      }).join(''));
       svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
     }
     var ext = chartExtent(), t1 = ext.t1, t0 = ext.t0, span = ext.span;
@@ -3231,10 +3263,10 @@
     // Bounds render through the series' own fmt — the same conversion + unit suffix
     // the float chips use — so the legend agrees with the chips in either display
     // unit (it used to print raw internal SI beside imperial chips, #235).
-    $('chartLegend').innerHTML = active.map(function (s) {
+    setHTML($('chartLegend'), active.map(function (s) {
       var r = ranges[s.id];
       return '<span class="leg" style="color:' + s.c + ';margin-right:10px"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.fmt(r[0]) + '–' + s.fmt(r[1]) + '</b></span>';
-    }).join('');
+    }).join(''));
     // horizontal gridlines — barely visible, thin; recede behind the traces
     [20, 40, 60, 80, 100].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1e2831" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
     var lastY = [];
@@ -3285,20 +3317,21 @@
                 '<circle cx="' + x + '" cy="6" r="2.5" fill="#7ab0ff"/>';
       });
     }
-    svg.innerHTML = html;
+    setHTML(svg, html);
     drawFloats(lastY, H);
     // low-profile x-axis
-    var ax = $('chartXAxis'); ax.innerHTML = '';
     // Seconds read fine over a 30-min window; a rewind-pick span can be many hours
     // of sim, where "−72000s" is unreadable. Switch to h:mm:ss past ten minutes.
-    var axLong = span > 600;
+    // Built as a STRING behind the changed-only guard: this used to clear and re-append
+    // six <span>s EVERY frame, for labels that only change when the window scrolls past
+    // a tick.
+    var axLong = span > 600, axHtml = '';
     for (var i = 0; i <= 5; i++) {
       var rel = (t0 + span * i / 5) - t1;
-      var sp = document.createElement('span');
-      sp.textContent = rel === 0 ? '0' : '−' + (axLong ? hms(-rel) : Math.round(-rel) + 's');
-      ax.appendChild(sp);
+      axHtml += '<span>' + (rel === 0 ? '0' : '−' + (axLong ? hms(-rel) : Math.round(-rel) + 's')) + '</span>';
     }
-    $('chartWindowLbl').textContent = '−' + (span > 3600 ? hms(span) : hms(span).slice(3));
+    setHTML($('chartXAxis'), axHtml);
+    txt($('chartWindowLbl'), '−' + (span > 3600 ? hms(span) : hms(span).slice(3)));
   }
 
   // Live floating value labels at the right edge, one per trace, color-coded and
@@ -3332,10 +3365,11 @@
       var step = (MAX - MIN) / Math.max(1, items.length - 1);
       for (var k = 0; k < items.length; k++) items[k].pct = MIN + k * step;
     }
-    floats.innerHTML = items.map(function (it) {
+    var floatHtml = items.map(function (it) {
       var col = it.hot ? lighten(it.ser.c) : it.ser.c;
       return '<span class="cfloat" style="top:' + it.pct.toFixed(1) + '%;color:' + col + '">' + it.ser.fmt(it.val) + '</span>';
     }).join('');
+    setHTML(floats, floatHtml);
     if (!_cfloatH) {
       var first = floats.firstChild;
       if (first && first.offsetHeight) _cfloatH = first.offsetHeight;
@@ -3560,8 +3594,13 @@
     }
     diag.lastScrammed = sc;
     if (t >= diag.nextT || !diag.samples.length) { diagSample(s, t); diag.nextT = Math.floor(t) + 1; }
-    var el = $('diagSessionInfo');
-    if (el) el.textContent = ui.plant + ' · ' + diag.reason + ' · ' + t.toFixed(0) + ' s · ' + diag.samples.length + ' samples';
+  }
+  // The readout half of diagTick, called from renderNow so it lands inside the paint
+  // cycle with every other DOM write.
+  function diagReadout() {
+    if (!diag) return;
+    txt($('diagSessionInfo'), ui.plant + ' · ' + diag.reason + ' · ' +
+      (diag.lastT || 0).toFixed(0) + ' s · ' + diag.samples.length + ' samples');
   }
   function buildDiagBundle() {
     if (!diag) return null;
@@ -5458,8 +5497,9 @@
     }
     service.subscribe(render);
     service.subscribe(diagTick);
-    service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast
-    service.subscribe(inspectLiveTick);  // #214: keep a displayed channel status from freezing
+    // renderAutomate and inspectLiveTick are called from renderNow instead, so every DOM
+    // write for one broadcast happens inside the same rAF frame. Subscribing them here put
+    // them on the broadcast's setTimeout, off the paint cycle — see renderNow.
     if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)

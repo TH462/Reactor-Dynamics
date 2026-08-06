@@ -75,6 +75,14 @@
 
   function num(v, d) { var n = +v; return isFinite(n) ? n : d; }
 
+  // Write only what changed. `el.textContent = s` replaces the text node even when the
+  // string is byte-identical, and paint() runs once per board render (10 Hz, 20 Hz in a
+  // transient). MEASURED before this: 330 childList mutations per tile per 10 s of
+  // transient — 2000 across the six-tile strip, none carrying new information. The unit
+  // never changes at all, and the value only changes when the rounded reading does.
+  function txt(el, v) { if (el && el.textContent !== v) el.textContent = v; }
+  function sty(el, k, v) { if (el && el.style[k] !== v) el.style[k] = v; }
+
   // 1-2-5 ladder step, so a held axis lands on a round number rather than wherever the
   // data happened to be when it re-fitted. KEEP IN SYNC WITH ui/app.js niceStep().
   function niceStep(raw) {
@@ -354,6 +362,9 @@
         if (pts[w].lo < lo) lo = pts[w].lo;
         if (pts[w].hi > hi) hi = pts[w].hi;
       }
+      // Keep the real data extremes: whatever the axis preferences below decide, the
+      // axis must still CONTAIN the trace (see the clamp).
+      var dLo = lo, dHi = hi;
       var floorSpan = (st.max - st.min) * MIN_WINDOW;
       if ((hi - lo) < floorSpan) {
         var mid = (hi + lo) / 2;
@@ -380,10 +391,20 @@
         var c = (hi + lo) / 2;
         lo = Math.floor((c - need / 2) / step) * step;
         hi = Math.ceil((c + need / 2) / step) * step;
-        // never show a range the instrument cannot reach — a level axis running to −50 %
-        // reads as a broken gauge
+        // Prefer not to show a range the instrument cannot reach — a level axis running to
+        // −50 % reads as a broken gauge.
         if (lo < st.min) { hi += (st.min - lo); lo = st.min; }
         if (hi > st.max) { lo -= (hi - st.max); hi = st.max; if (lo < st.min) lo = st.min; }
+        // …but that is only a PREFERENCE, and it must never win over showing the trace.
+        // Re-expand to contain the data. Without this the clamp silently excluded any
+        // reading outside the tile's declared scale, ys() returned coordinates outside the
+        // plot box, and — the sparkline svg being overflow:visible — the trace DREW OUTSIDE
+        // THE CARD, down across the gauge band and the board beneath it (owner screenshot,
+        // 2026-08-06: a cold-shutdown plant at 355 °F against an at-power Tavg band). The
+        // pre-2026-08-06 code fit purely to the data and so could not do this; the clamp
+        // arrived with the held axis and brought the bug with it.
+        if (dLo < lo) lo = dLo;
+        if (dHi > hi) hi = dHi;
         held = { lo: lo, hi: hi };
       }
       if (hi - lo < 1e-9) hi = lo + 1;
@@ -392,15 +413,22 @@
         if (!useTime) return PAD + (i / (m - 1)) * (W - 2 * PAD);
         return PAD + ((pts[i].t - t0) / tSpan) * (W - 2 * PAD);
       }
-      function ys(v) { return PAD + (1 - (v - lo) / (hi - lo)) * (H - 2 * PAD); }
+      // HARD GUARD. The range logic above should always contain the data, but a value
+      // plotted outside the viewBox escapes the card entirely (overflow:visible), so a
+      // range bug becomes a board-wide visual defect rather than a clipped trace. Pinned
+      // to the edge it reads as "off scale", which is honest and stays inside the tile.
+      function ys(v) {
+        var y = PAD + (1 - (v - lo) / (hi - lo)) * (H - 2 * PAD);
+        return y < 0 ? 0 : y > H ? H : y;
+      }
       function colorAt(v) { return REGION_COLORS[regionAt(REG, v).key]; }
 
       // currentRegion, not regionAt — this is the live reading and it carries the hysteresis.
       var curColor = REGION_COLORS[currentRegion(REG, cur).key];
-      valEl.style.color = curColor;
-      valEl.textContent = cur.toFixed(st.decimals);
-      unitEl.textContent = st.unit;
-      accentBar.style.background = 'linear-gradient(90deg,transparent,' + curColor + ',transparent)';
+      sty(valEl, 'color', curColor);
+      txt(valEl, cur.toFixed(st.decimals));
+      txt(unitEl, st.unit);
+      sty(accentBar, 'background', 'linear-gradient(90deg,transparent,' + curColor + ',transparent)');
       areaEl.setAttribute('fill', curColor);
       dotEl.setAttribute('fill', curColor);
 
@@ -476,9 +504,9 @@
       function avg(arr) { var s = 0; for (var q = 0; q < arr.length; q++) s += arr[q].v; return s / (arr.length || 1); }
       var ra = avg(recent), oa = older.length ? avg(older) : ra;
       var slope = (ra - oa) / ((hi - lo) || 1);
-      if (slope > 0.03) { trendEl.textContent = '▲'; trendEl.style.color = '#6fe0a8'; }
-      else if (slope < -0.03) { trendEl.textContent = '▼'; trendEl.style.color = '#e8975a'; }
-      else { trendEl.textContent = '–'; trendEl.style.color = '#5c7182'; }
+      if (slope > 0.03) { txt(trendEl, '▲'); sty(trendEl, 'color', '#6fe0a8'); }
+      else if (slope < -0.03) { txt(trendEl, '▼'); sty(trendEl, 'color', '#e8975a'); }
+      else { txt(trendEl, '–'); sty(trendEl, 'color', '#5c7182'); }
     }
 
     // ----------------------------------------------------------------- update --
@@ -530,7 +558,7 @@
       }
 
       // A missing/failed instrument must not push a fabricated sample onto the trace.
-      if (props.value == null || !isFinite(+props.value)) { valEl.textContent = '—'; return; }
+      if (props.value == null || !isFinite(+props.value)) { txt(valEl, '—'); return; }
       st.value = +props.value;
 
       // Sample on SIM time so the window is a true 3 minutes at any speed. A rewind (or a
@@ -610,7 +638,7 @@
     function reset() {
       hist.length = 0; lastT = null; seeded = false; heldRegion = null;
       held = null; shrinkFor = 0;
-      valEl.textContent = '—';
+      txt(valEl, '—');
     }
 
     rebuildGaugeBands();
