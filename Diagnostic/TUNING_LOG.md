@@ -331,6 +331,206 @@ changed.
 
 ---
 
+## Session log — 2026-08-06-workbench-f (#297 follow-up campaign CLOSED on this lane)
+
+**End state: `run_all` 38 runners at recorded baselines** (sole tracked red `run_ops` 58/69,
+ruled), lane committed and clean, every WIP tag cleared. The campaign's ledger since the merge:
+
+| item | outcome | commit |
+|---|---|---|
+| merge assumption re-check | #378 reject re-proven on the merged plant; #371a/#386 compatible; #377 knife edge unchanged | (measured, no commit) |
+| item 0 staleness repairs | §8.31 premise post-#386, §8.34 numbers post-#364 | `0362b62` |
+| #377 | TR-1c re-authored robust, TR-1k pins the shipped lineup, docs refreshed | `3b6a5f7` |
+| #379 | persist_s pair cross-annotated, 2.8× gap measured, closed | `d6088c4` |
+| #380 | evidence pass: sourced setpoint PASSES the Ginna band; blocker is the ladder; open needs-ruling | `0b3905e` |
+| §8.30 | auto-clear declared, arm+clear named one indivisible trade | `37aaaae` |
+
+**Closing `perturb_sweep --suite=both --seeds=4`, diffed against the campaign zero point:**
+
+- **The claim the close exists to verify, verified: TR-1c no longer flips on
+  `coolant_heat_capacity*1.03`** — no TR-1c, TR-1k or TR-18 flip under any nudge or seed. The
+  first seeded sweep of the battery: **zero behavior verdict flips across all four seeds**
+  (observations move 20–23 %, verdicts hold), so the three probes this campaign added are
+  seed-robust, not merely default-seed-green.
+- Behavior nudge flips **3 → 3, different composition**: the two SS-5 pzr-program flips are the
+  known pre-existing pair (38.0 → 40.4 on ≤ 40; 17.0 → 14.7 on ≥ 15); TR-1c's retired slot is
+  taken by **SS-2's 50 % Tavg lower bound at 0.4 °C of margin** (299.4 → 298.9 vs ≥ 299 under
+  `h_sg*1.03`) — NOT flipping at the first-wave close, moved by the develop merge's #364/#386
+  side, untouched by this campaign. Filed **#391**.
+- §14 half: **zero nudge flips both ends**. `thermal.delta_T_rated*1.02` is INERT again
+  (0/242; it was 2/241 at first-wave close — the #386-side check growth re-absorbed its only
+  two movers). New seed information: **P-14's "AFW delivers through the isolation" flips on
+  2 of 4 seeds** (0.022 → 0.016/0.019) — a thin band the nudges-only zero point could not see,
+  owned by the #341 FWI family, filed in **#391** rather than adjudicated from here.
+
+**Still open at close, deliberately:** #380 (`status-needs-ruling` — the lo-lo ladder decision,
+measurement in hand), #377/#378 (`status-owner-review` — done and gated, awaiting eyes), #391
+(the two thin bands), and TR-18's strict xfail (the settling defect stays pinned until a
+shippable fix exists; the one untried candidate is on #378). The merge to develop is the
+owner's call, as always.
+
+---
+
+## Session log — 2026-08-06-workbench-e (§8.30 — the auto-clear departure gets its register row; the arm and the clear are named as one trade)
+
+**Task:** the last docs item of the #297 follow-up campaign. The `dump_reject_clear_mwe` config
+comment has carried the full departure since the #374 evidence pass — the real fast-open arming
+*"remains armed until the loss-of-load signal is manually reset by a control room operator"*
+(WTSM §11.2, ML11223A294, §11.2.2.3), so there is no automatic clear to source a value for and
+ours (10 MWe) is UNVERIFIED by construction — but the register where departures live never got
+the row. Now it has one.
+
+**§8.30** (DESIGN_COMPANION, placed beside §8.21 and cross-referenced both ways): the departure,
+the sourced quote, and the point that makes it worth a row rather than a comment — **the blunt
+40 MWe arm and the 10 MWe auto-clear are ONE design trade seen from two sides.** The real arm is
+four times more sensitive (*"a ramp load decrease at a rate greater than 5%/min, or a step load
+decrease of greater than 10%"*) and can afford to be precisely because a human de-arms it; an
+arm that sensitive with our auto-clear vents on every dispatch cut, and our blunt arm with a
+manual latch leaves the dump armed forever on a board that carries no RESET. The v2 column names
+the reset control and the sensitive arm as **one indivisible piece of work** — building either
+half alone re-opens the §8.21 cliff ruling (#219) from whichever side was built.
+
+**Manuals mirror:** `12` §12.9 extended with the operator-facing half (the fast mode stands down
+on its own; a real one waits for a RESET selector), Rev 13 clause (h), stamped and packed.
+
+**Editing traps for the next agent, both hit here:** DESIGN_COMPANION is CRLF, and an insertion
+computed against `indexOf('\n')` lands BETWEEN `\r` and `\n`, leaving the new text dangling
+outside the table row's final pipe — verify cell counts after any row surgery (`split('|')`
+against a neighbour row). And a clause appended to a table row must land inside the last CELL,
+not after the last pipe.
+
+---
+
+## Session log — 2026-08-06-workbench-d (#380 — the lo-lo evidence pass; the physics clears the sourced setpoint, the ladder does not)
+
+**Task:** #380 (split out of the #374 evidence pass). Measurement-only; the setpoint does not
+move, no baseline moves, and the reason it stays is now the measured one rather than the feared
+one.
+
+**The experiment** (local, reverted, never committed): the SG lo-lo scram moved 17.0 → 30.5 % NR
+(the NUREG-1431 Rev 4 sourced band is ~30–32 %), TR-14's loss-of-feedwater evolution re-run:
+
+| | trip time | Ginna band 25–60 s | warning→trip window |
+|---|---|---|---|
+| shipped 17 % | 40.0 s | inside | 10.5 s |
+| sourced 30.5 % | **28.5 s** | **inside — nearer Ginna's own 35 s** | **NEVER — trip precedes the 30 % warning** |
+
+**`K_sg_level` is NOT the blocker.** The issue (and the trip row's own comment) feared the
+sourced setpoint would walk TR-14 out of its sourced drain band from the other side; measured,
+the opposite — the drain constant is *more* consistent with the sourced setpoint than with the
+shipped one. No K_sg_level finding to file.
+
+**The blocker is the setpoint LADDER, structurally:** a 30.5 % trip sits above the 30 % LO
+warning (TR-14's ≥ 7 s board-reading window, #135, goes to zero by construction — the probe's
+own shape assumes the departure) and 10 points above the 20 % AFW auto-start, inverting §8.19's
+declared teaching window (*AFW started — level still falling* — then the trip). Moving the trip
+is therefore one coordinated decision about warning + AFW anchor + a ruled educational
+departure, not a tuning edit. Recorded at the trip row (`pwr_control.js`), §8.19's impact cell,
+and the issue.
+
+**perturb_sweep note:** #321's rule gates MOVING a constant; nothing moved, and the direct
+experiment answered the sharper question the sweep would have approximated. TR-14's shipped
+margin is wide either way (40.0 in 25–60).
+
+---
+
+## Session log — 2026-08-06-workbench-c (#379 — a sizing argument that named its complement outlived it; the pair is cross-annotated)
+
+**Task:** #379 (audit #297 F10). Comments only, and the gate run proves it: `run_otdt` 46/0,
+`run_autoctl` 30/30, no constant moved, no baseline moved.
+
+**The stale claim:** `persist_s: 8.5`'s sizing comment said the `load_rate_pct_per_min` rate
+limit gave it "a gap two orders of magnitude wide" (normal-ramp dwell 0.10 s vs worst-casualty
+10.58 s). That limit is **off** by owner directive (2026-08-03), so the argument of record
+described a configuration the plant is not in — and neither file was wrong alone; the pair was.
+
+**Re-measured on the merged plant** (the issue's own figures predate #370a's break mass flow and
+#364's decay refit, so this is a fresh take, kernel accounting emulated exactly — accumulate
+below 3.0, HOLD 3.0–6.0, reset only above 6.0):
+
+| evolution | peak dwell accumulator | vs `persist_s` 8.5 s | min OT/OPΔT margin | trip |
+|---|---|---|---|---|
+| instantaneous 70 → 100 MWe step | **3.00 s** | 5.5 s short — no engage | 2.345 | none |
+| 15 % steam line break | reaches 8.5 s at **t+40.0 s** | **engages**, 5 % cut at t+41.5 s | 1.547 | none |
+
+The gap is **2.8×** (8.5 / 3.0), not two orders of magnitude — and the casualty engage moved
+93.5 → 40.0 s vs the issue's measurement, which is #370a's stronger early blowdown at work. The
+mechanism still separates the cases correctly, and 8.5 is now load-bearing from BOTH sides:
+below ~3 s the one-box step engages a permanent 5 % cut (the #318 defect returns), and the dwell
+is the only noise immunity the signal has (the sourced 2/4 coincidence cannot be built here).
+
+**The fix is the cross-annotation, both directions:** the `persist_s` comment now carries the
+measured gap and names its pair; `load_rate_pct_per_min`'s cost note — which was complete within
+its file — now names the squeeze its switch re-opened. Whoever moves either constant re-measures
+the gap. The sourced-substitute paragraph (WTSM 12.2 §12.2.3.7/.8) and the deletion-history
+paragraph are untouched — they are correct history.
+
+---
+
+## Session log — 2026-08-06-workbench-b (#377 — the cliff pin re-authored robust; the shipped-lineup mitigation is measured dead)
+
+**Task:** #377 (audit #297 F8), after the develop merge and its assumption re-check. Also carries
+the merge-staleness repairs committed just before it (§8.31's premise died with #386 stage 1;
+§8.34's ADV numbers moved with #364 — see that commit).
+
+**The issue's premise no longer holds, in the direction that SIMPLIFIES the ruling.** The audit
+measured the shipped lineup absorbing a 39 MWe rejection with the PORV shut and 12.9 psi to spare,
+and asked whether §8.21's ruling — "the PORV is the honest backstop" — still described the plant,
+since the backstop was not what actually caught it. Measured on the merged tree: **#372's
+feedwater enthalpy ate that margin.** The shipped lineup now peaks **2349 psi (16.198 MPa)** with
+the PORV catching a sample via the instrument read; hands-off peaks 2351 psi (16.212). **Both
+lineups end at the declared backstop**, which is the 2026-07-27 ruling's original story. What the
+mitigation bought is gone; what remains of it is pinned: the sub-arm cut on the shipped lineup
+undershoots to **32.3 % vs 47.8 %** for a caught 41 MWe cut — the ~15-point non-monotonic
+inversion, the declared cliff's real cost at the board.
+
+**"Assert the event, not the crossing" — the plan of record's fix — was REFUTED by measurement
+before any code moved.** The `porv_open` event and the `≥ 16.20 MPa` crossing flip TOGETHER under
+`thermal.coolant_heat_capacity*1.03` (peak 16.181, no lift, hands-off; 16.112 shipped): the
+physics genuinely lands on the setpoint, so no re-phrasing of the terminal ornament is robust.
+Full matrix over five ±2–3 % nudges and four seeds: sub-arm peak worst-seen **16.112**, caught
+side ~15.42–15.43 everywhere, span worst-seen **0.71 MPa**, code safety never lifted anywhere
+(0.9 MPa clear).
+
+**The re-authored form asserts what is robust and demotes the coin toss to info:**
+- **Doorstep**: sub-arm peak ≥ `porv_open_mpa − 0.15` (config-read, not a literal) — margin
+  0.06 MPa at the worst nudge, vs 0.01 for the old `≥ 16.20`.
+- **Span**: sub-arm minus caught ≥ 0.5 MPa — both legs move together under any thermal nudge, so
+  the difference holds while either endpoint alone is noise. This is the probe's actual subject:
+  the cliff, not the ornament.
+- **Ladder guard**: the code safety never lifts on either side.
+- The true peak and whether the PORV caught a sample are `ck.info` — on this plant that is
+  genuinely a coin toss, and a suite must not flip on a coin.
+
+**TR-1k** (`run_behavior` 60 → 61 pass / 1 xfail): the same legs on the SHIPPED lineup — the
+first probe ever to measure the sub-arm rejection on the plant a player gets. Its last check pins
+the non-monotonicity ordering (sub-arm min power ≤ caught − 5 pts) with the depth left to #378's
+rod-loop work; if a rod fix ever narrows the inversion under 5 points, the check reddens and
+§8.21's cost paragraph gets revisited — that is the pin working, not breaking.
+
+**Injection-verified three ways with distinct signatures:** severing the arm
+(`pwr_steam_generator.js:175` → `if (false)`) reddens **TR-1c 5 / TR-1k 4** (the caught legs and
+both spans); forcing it always-armed reddens **TR-1c 4 / TR-1k 5** (the sub-arm legs); and the
+capacity nudge that flipped the old TR-1c leaves **all 37 TR-1c/TR-1k checks green** — the
+fragility the sweep flagged is closed. Both probes read the arm from config, so retuning
+`dump_load_reject_mwe` moves the legs with it and neither probe pins the number 40.
+
+**Docs:** §8.21 re-measured numbers + the shipped-lineup fact + TR-1k pin; `Manuals/12` §8.3
+warning block likewise, its "settles the core at 89.3 %" corrected (a rod-less artefact
+pinned as prose — TR-1g re-banded it under #289 and the manual never followed), and the ADV
+rate note refreshed to the post-#364 measurement (~630 °F/hr, 6.4×) — all under Rev 13's
+accumulating row, clause (g), per the 2026-08-06 revision directive. TR-1c's comment carried the
+mitigation claim and cited "the §8.21 write-up" as its record; measured false AND never recorded
+— §8.21 never said it. The comment was the claim's only home. Rewritten.
+
+**Issue:** measurement tables posted; outcome 1 delivered (the margin is pinned — as what it
+actually is now), outcome 2 answered (the ruling's story is *restored*, not undermined: the
+backstop is the backstop on both lineups), outcome 3 (second arm path) explicitly not built —
+§8.21's v2 column already names it. `status-needs-ruling` → `status-owner-review`: the one thing
+worth eyes is the reading that both-lineups-at-the-backstop *strengthens* the 2026-07-27 ruling.
+
+---
+
 ## Session log — 2026-08-06-workbench-a (#378 — the limit-cycle fix that works is not shippable; TR-18 pins the defect)
 
 **Task:** work #378 (the plant never settles after a load change — audit #297 F9), per the owner's

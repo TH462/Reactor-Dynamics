@@ -303,7 +303,17 @@ var BASELINES = {
   // MEASURED ON THE MERGED TREE (2026-08-06 lane merge): develop read 58pass 0xfail and
   // workbench 57pass 1xfail from the same 55pass base; neither figure survives and their
   // sum is not the answer. The standing rule since #312 — measure, never add up.
-  'run_behavior.js':       { code: 0, secs: 56, score: '60pass 1xfail' },
+  // 60 → 61 (2026-08-06, #377): TR-1k — the arm cliff on the SHIPPED lineup, which no
+  // probe measured while TR-1c's legs are deliberately rod-less. Measured: rod control in
+  // AUTO does NOT keep the PORV shut on a sub-arm rejection (the audit's 12.9 psi margin
+  // was eaten by #372), and the sub-arm cut undershoots ~15 pts deeper than the caught
+  // one. TR-1c re-authored the same day: its backstop check sat exactly ON the PORV
+  // setpoint (16.212 vs >= 16.20) and flipped under a 3 % coolant_heat_capacity nudge —
+  // now the robust doorstep (>= setpoint - 0.15) + cliff-span (>= 0.5 MPa) pair, with the
+  // knife-edge PORV sample carried as info. Injection-verified: severing the arm reddens
+  // 5+4, forcing it always-armed reddens 4+5, and the capacity nudge that flipped the old
+  // form leaves all 37 TR-1c/TR-1k checks green.
+  'run_behavior.js':       { code: 0, secs: 56, score: '61pass 1xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

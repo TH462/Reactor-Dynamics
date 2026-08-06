@@ -100,6 +100,7 @@
     'TR-12c': 'probe (automatic steam line isolation — the coincidence, and that it stays out of normal evolutions, #370c)',
     'TR-17': 'probe (atmospheric dump — a condenser-independent cooldown path exists, #371)',
     'TR-18': 'probe (load-change settling — the manual step ends instead of hunting forever, #378)',
+    'TR-1k': 'probe (the arm cliff on the SHIPPED lineup — both lineups end at the backstop, #377)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
@@ -1414,28 +1415,59 @@
      * simplification (DESIGN_COMPANION §8.21), not a defect, and this probe pins BOTH sides
      * of the cliff so it cannot move silently. Lowering the arm is not the fix: an arm low
      * enough to catch an ordinary 15 MWe dispatch cut leaves the dump venting the difference
-     * forever, holding the reactor at 100 % and destroying the EV-11 load-follow lesson. */
+     * forever, holding the reactor at 100 % and destroying the EV-11 load-follow lesson.
+     *
+     * RE-AUTHORED 2026-08-06 (#377): the backstop check was `peak >= 16.20` — the PORV
+     * setpoint itself — and the physics sits ON that number: measured, the sub-arm peak is
+     * 16.212 MPa and a 3 % `coolant_heat_capacity` nudge reads 16.181, flipping the check
+     * (and the porv_open EVENT with it — the two flip TOGETHER under every nudge tried, so
+     * asserting the event instead is no more robust; that idea was measured and dropped).
+     * The old form was not wrong, it was knife-edge: #372's feedwater enthalpy damped the
+     * transient until the margin was noise-wide. What is ROBUST under every nudge and seed
+     * tried (worst-seen values): the sub-arm peak reaches the PORV's DOORSTEP (>= 16.11 vs
+     * the caught side's ~15.43), the CLIFF SPAN between the two legs (>= 0.68 MPa), and the
+     * code safety never lifting (0.9 MPa clear). Those are the checks now; the terminal
+     * ornament — whether the PORV catches a sample or the peak grazes just under the
+     * setpoint — is carried as info, because on this plant it is genuinely a coin toss.
+     *
+     * The shipped-lineup story this comment used to carry ("rod control absorbs a sub-arm
+     * rejection, which MITIGATES this declared cliff") was MEASURED FALSE on 2026-08-06 —
+     * the shipped lineup peaks 16.198 and the PORV catches a sample there too — and was
+     * never recorded in the §8.21 write-up it claimed to live in. TR-1k now pins what the
+     * shipped lineup actually does. */
     'TR-1c': function () {
       return test('TR-1c sub-threshold load rejection — the C-7 arm is a cliff (declared, §8.21)', function (ck) {
         var arm = RD.PWR_CONFIG.steam_generator.dump_load_reject_mwe;
+        var porvSp = RD.PWR_CONFIG.pressurizer.porv_open_mpa;
         ck.info('arm threshold under test', fmt(arm, 0) + ' MWe');
 
         // --- just UNDER the arm: no fast dump, operator's problem, PORV is the backstop
         // Both legs rod-less (#289): this probe pins the ARM discontinuity, and "hands-off"
-        // is its premise. On the shipped auto lineup rod control absorbs a sub-arm rejection
-        // the way the real one does, which MITIGATES this declared cliff — recorded in the
-        // §8.21 write-up rather than smuggled in here by deleting the mechanism test.
+        // is its premise. The SHIPPED lineup's answer is TR-1k's subject, not a softer
+        // version of this one — measured 2026-08-06, both end at the PORV's doorstep.
         var lo = rodsManual(H('hot_full_power'));
         lo.run(30);
         // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
         lo.cmd('set_load_target', { immediate: true, mwe: 100 - (arm - 1) });     // 39 MWe rejected
-        var loArmed = false;
-        for (var i = 0; i < 180; i++) { lo.run(5); if (lo.eng.s.dump_reject_mode) loArmed = true; }
+        var loArmed = false, loPorv = false, loSafety = false;
+        for (var i = 0; i < 180; i++) {
+          lo.run(5, function (hh) {
+            var t = hh.ts();
+            if (t.porv_open) loPorv = true;
+            if (t.safety_open) loSafety = true;
+          });
+          if (lo.eng.s.dump_reject_mode) loArmed = true;
+        }
         ck('under the arm the fast dump never arms', String(loArmed), loArmed === false, 'false');
         ck('so Tavg climbs well past program (> 315 °C)', fmt(lo.range('tavg_c').max, 1),
           lo.range('tavg_c').max > 315, '> 315');
-        ck('and hands-off it ends at the PORV — the declared backstop',
-          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max >= 16.20, '≥ 16.20');
+        ck('and hands-off it runs to the PORV\'s doorstep — the declared backstop (≥ setpoint − 0.15)',
+          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max >= porvSp - 0.15,
+          '≥ ' + fmt(porvSp - 0.15, 2) + ' (config)');
+        ck('…but never escalates past it to the code safety',
+          String(loSafety), loSafety === false, 'false');
+        ck.info('terminal ornament (knife-edge, not asserted): true peak / PORV sample seen',
+          fmt(lo.range('pressure_mpa').max, 3) + ' MPa / ' + String(loPorv));
 
         // --- just OVER the arm: caught, and Tavg stays on program
         var hi = rodsManual(H('hot_full_power'));
@@ -1449,12 +1481,20 @@
           hi.range('steam_dump_valve_pct').max >= 30, '≥ 30');
         ck('Tavg stays on program (< 310 °C)', fmt(hi.range('tavg_c').max, 1),
           hi.range('tavg_c').max < 310, '< 310');
-        ck('no PORV lift on this side of the cliff', fmt(hi.range('pressure_mpa').max, 2),
-          hi.range('pressure_mpa').max < 16.20, '< 16.20');
+        ck('no PORV lift on this side of the cliff — clear by a quarter MPa, not a whisker',
+          fmt(hi.range('pressure_mpa').max, 2), hi.range('pressure_mpa').max < porvSp - 0.25,
+          '< ' + fmt(porvSp - 0.25, 2) + ' (config)');
         // The programmed reference (#219) is what keeps the caught side proportional: with
         // the old fixed no-load anchor the demand saturated and MTC ran power to 102.7 %.
         ck('and the catch does not overcool into a power runup (< 101 %)',
           fmt(hi.range('power_pct').max, 1), hi.range('power_pct').max < 101, '< 101');
+        // THE CLIFF AS A SPAN (#377) — the probe's actual subject, and the robust form:
+        // both legs move together under any thermal nudge, so their DIFFERENCE holds
+        // (measured 0.77 MPa, worst-seen 0.71 across ±3 % nudges and four seeds) while
+        // either endpoint alone sits on the PORV setpoint to within noise.
+        ck('the cliff itself: the uncaught side peaks ≥ 0.5 MPa above the caught side',
+          fmt(lo.range('pressure_mpa').max - hi.range('pressure_mpa').max, 2) + ' MPa apart',
+          lo.range('pressure_mpa').max - hi.range('pressure_mpa').max >= 0.5, '≥ 0.5');
         T.checkSanity(ck, hi);
         T.checkSanity(ck, lo);   // #376: the sub-arm leg's commands were never inspected
       });
@@ -4106,6 +4146,82 @@
         ck.info('25-35 min Tavg swing (pre-fix sustained ~6 °F)',
           fmt((wTavgMax - wTavgMin) * 9 / 5, 2) + ' °F (' + fmt(wTavgMax - wTavgMin, 2) + ' °C)');
         T.checkSanity(ck, h);
+      });
+    },
+
+    /* TR-1k (#377, audit #297 F8) — THE ARM CLIFF ON THE SHIPPED LINEUP, which no probe
+     * measured: TR-1c's legs are deliberately rod-less (its premise is "hands-off"), and the
+     * §8.21 mitigation story — that rod control in AUTO absorbs a sub-arm rejection and
+     * keeps the PORV shut — lived only in TR-1c's comment, measured nowhere. Measured
+     * 2026-08-06, it is FALSE on the current plant: #372's feedwater enthalpy ate the
+     * 12.9 psi margin the audit found, and the shipped lineup now peaks 16.198 MPa with the
+     * PORV catching a sample via the instrument read. Both lineups end at the declared
+     * backstop, which is CLOSER to the 2026-07-27 ruling's story than what the audit
+     * measured — but it is a different fact from the one §8.21 used to imply, so it is
+     * pinned here and recorded there.
+     *
+     * Same robust forms as TR-1c's re-authoring (the endpoint sits on the PORV setpoint to
+     * within noise, so the DOORSTEP band and the SPAN are asserted, the terminal ornament is
+     * info): sub-arm worst-seen peak 16.112 across ±3 % nudges and four seeds, caught side
+     * ~15.43, span worst-seen 0.71 MPa.
+     *
+     * The last check pins the NON-MONOTONICITY the issue is about — the sub-arm rejection
+     * undershoots DEEPER than the larger, caught one (measured 30.0 % vs 45.2 % min power, a
+     * 15-point inversion) — because that inversion is the declared cliff's cost on the plant
+     * a player actually gets, and nothing else asserts it. The undershoot's DEPTH belongs to
+     * #378's badly-damped rod loop; only the ORDERING is asserted here, with a ≥ 5-point
+     * gap. If a rod-channel fix ever narrows the inversion below that, this check should
+     * redden and §8.21's cost paragraph should be revisited — that is the pin working. */
+    'TR-1k': function () {
+      return test('TR-1k sub-threshold rejection, SHIPPED lineup — both lineups end at the backstop (#377)', function (ck) {
+        var arm = RD.PWR_CONFIG.steam_generator.dump_load_reject_mwe;
+        var porvSp = RD.PWR_CONFIG.pressurizer.porv_open_mpa;
+
+        // --- arm − 1, rods in AUTO (the plant a player gets)
+        var lo = H('hot_full_power');
+        lo.run(30);
+        lo.cmd('set_load_target', { immediate: true, mwe: 100 - (arm - 1) });
+        var loArmed = false, loPorv = false, loSafety = false;
+        for (var i = 0; i < 180; i++) {
+          lo.run(5, function (hh) {
+            var t = hh.ts();
+            if (t.porv_open) loPorv = true;
+            if (t.safety_open) loSafety = true;
+          });
+          if (lo.eng.s.dump_reject_mode) loArmed = true;
+        }
+        ck('under the arm the fast dump never arms — rod control does not change that',
+          String(loArmed), loArmed === false, 'false');
+        ck('Tavg climbs well past program even with rods in AUTO (> 312 °C)',
+          fmt(lo.range('tavg_c').max, 1), lo.range('tavg_c').max > 312, '> 312');
+        ck('the shipped lineup ALSO runs to the PORV\'s doorstep (≥ setpoint − 0.15) — the §8.21 mitigation story is dead',
+          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max >= porvSp - 0.15,
+          '≥ ' + fmt(porvSp - 0.15, 2) + ' (config)');
+        ck('…and never escalates to the code safety', String(loSafety), loSafety === false, 'false');
+        ck.info('terminal ornament (knife-edge, not asserted): true peak / PORV sample seen',
+          fmt(lo.range('pressure_mpa').max, 3) + ' MPa / ' + String(loPorv));
+
+        // --- arm + 1, rods in AUTO: caught, clear of the relief neighborhood
+        var hi = H('hot_full_power');
+        hi.run(30);
+        hi.cmd('set_load_target', { immediate: true, mwe: 100 - (arm + 1) });
+        var hiArmed = false;
+        for (var j = 0; j < 180; j++) { hi.run(5); if (hi.eng.s.dump_reject_mode) hiArmed = true; }
+        ck('one MWe more rejected, the fast dump arms and carries it (≥ 30 %)',
+          String(hiArmed) + ' / ' + fmt(hi.range('steam_dump_valve_pct').max, 1) + ' %',
+          hiArmed === true && hi.range('steam_dump_valve_pct').max >= 30, 'armed, ≥ 30 %');
+        ck('no PORV lift on the caught side — clear by a quarter MPa',
+          fmt(hi.range('pressure_mpa').max, 2), hi.range('pressure_mpa').max < porvSp - 0.25,
+          '< ' + fmt(porvSp - 0.25, 2) + ' (config)');
+        ck('the cliff span holds on the shipped lineup too (≥ 0.5 MPa)',
+          fmt(lo.range('pressure_mpa').max - hi.range('pressure_mpa').max, 2) + ' MPa apart',
+          lo.range('pressure_mpa').max - hi.range('pressure_mpa').max >= 0.5, '≥ 0.5');
+        // The declared cliff's cost, pinned: the SMALLER rejection is the WORSE plant.
+        ck('the declared non-monotonicity: the sub-arm cut undershoots ≥ 5 pts deeper than the caught one',
+          fmt(lo.range('power_pct').min, 1) + ' % vs ' + fmt(hi.range('power_pct').min, 1) + ' %',
+          lo.range('power_pct').min <= hi.range('power_pct').min - 5, 'lo ≤ hi − 5');
+        T.checkSanity(ck, lo);
+        T.checkSanity(ck, hi);
       });
     },
   };

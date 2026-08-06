@@ -1411,6 +1411,14 @@
       // the player can walk into with one box entry. It is the owner's call and it is not a
       // defect; note it here so the next agent does not "fix" the excursion by restoring
       // the limit.
+      //
+      // AND IT RE-OPENED A SQUEEZE IN ANOTHER FILE'S CONSTANT (#379): the runback dwell
+      // `persist_s` in pwr_control.js was sized citing this limit as its complement ("a gap
+      // two orders of magnitude wide"), and with the limit off that argument is void — the
+      // real gap, re-measured 2026-08-06, is 2.8x (normal-step peak dwell 3.0 s vs the 8.5 s
+      // requirement; a 15 % steam line break engages at 40 s). The two constants are a PAIR:
+      // whoever moves this one re-measures that one's gap, and vice versa. The full
+      // accounting lives at the `persist_s` comment.
       load_rate_pct_per_min: 0,      // [tune] — 0 = no limit; 10.0 was the #318 value
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)

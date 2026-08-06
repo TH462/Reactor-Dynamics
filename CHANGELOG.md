@@ -150,7 +150,30 @@ reads it yet — that is #386 stage 2. No plant behaviour changed.
   were calibrated; what changed is that the break is now visible as flow and inventory, and the
   blowdown tail self-limits as the pressure driving it falls.
 
+### Docs
+- **The audit's paper trail is squared with the merged plant** (#379, #380, §8.30–§8.31, §8.34).
+  The runback dwell constant's sizing comment described a rate limit that is switched off — both
+  halves of that pair now carry the re-measured 2.8× gap and name each other. The SG lo-lo
+  evidence pass ran: the sourced ~30 % setpoint **passes** the Ginna drain band (28.5 s vs
+  25–60), so the blocker is the warning/AFW setpoint ladder, not the drain physics — measured,
+  recorded, setpoint unchanged pending that ladder decision (#380). The dump arm's self-clearing
+  is declared (§8.30): the real one latches until a control-room RESET, and the blunt arm plus
+  the auto-clear are one indivisible trade. Two rows staled by the merge are repaired: §8.31's
+  "nothing to sense" died with containment stage 1, and §8.34's ADV sizing numbers moved with
+  the decay refit (authority 6.9×, full-open ~634 °F/hr — the argument only strengthened).
+
 ### Tests
+- **The steam-dump cliff is pinned on the lineup a player actually gets, and its probe stops
+  flipping coins** (#377). Measured: rod control in automatic does **not** keep the relief valve
+  shut on a just-under-the-arm load rejection — both lineups now run to the PORV setpoint (the
+  margin the audit found was eaten by the feedwater-enthalpy fix) — and the smaller cut
+  undershoots ~15 points deeper than a caught one, the declared cliff's real cost. New probe
+  TR-1k pins both facts on the shipped lineup; TR-1c is re-authored from `peak ≥ 2350 psi` —
+  which sat exactly ON the setpoint and flipped under a 3 % thermal nudge, as did the
+  valve-opened event — to the robust doorstep-band + cliff-span pair, knife-edge ornament
+  demoted to info. §8.21 and the manual's §8.3 warning carry the re-measured numbers, and the
+  manual's "settles at 89.3 %" (a rod-less artefact) is corrected. Injection-verified both
+  directions; the nudge that flipped the old form leaves all 37 checks green.
 - **TR-18 pins the open #378 defect as a strict xfail** — after a manual load step the plant
   limit-cycles ~13 points of power indefinitely instead of settling. The fix that kills the cycle
   (cancelling in-flight rod travel at the controller's deadband exit: 13.8 → 2.0 pts, settled at
