@@ -45,6 +45,42 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-workbench-h — #371: a one-lane grep declared a departure that the corpus could refute
+
+**Decision: move `adv_setpoint` 8.60 → 8.77 MPa (1247 → 1272 psi) onto a sourced placement rule, and
+narrow `DESIGN_COMPANION` §8.34 to the relief ladder alone.** WTSM §7.1.3.3 (ML11223A244) sets the
+real ARV *"approximately half the difference between the no-load steam generator pressure and the
+lowest set pressure of the safety valves"*; on this plant's ladder that is (8.23 + 9.31)/2 = 8.77.
+Ours sat at 34 % of that span. The same section sizes the valve at *"approximately 10% of the rated
+steam flow … from each steam generator"* — `adv_max` 0.10, already there from an independent sizing
+exercise, so that half of §8.34 retires outright. It also names the valve: *"The PORV (also called
+an atmospheric relief valve or atmospheric dump valve)"*, which answers the question that started
+this — it IS a PORV.
+
+**Why the move is safe rather than merely justified.** Perturbation sweep at exactly this nudge: 42
+of 623 behaviour checks move, **zero verdict flips**. Full stack, the loss-of-condenser spike peaks
+9.06 MPa and the safeties lift at 54 s at BOTH setpoints; only the hold point moves (8.65 → 8.82 MPa,
+Tavg 302.0 → 303.3 °C). `run_all` 39/39 at baseline after.
+
+**What is NOT sourced, and must not be "corrected" next:** the ladder. Real is no-load ≈1080 psig →
+ARV 1125 → five staggered safeties 1170/1200/1210/1220/1230; ours is 1194 → 1272 → one safety at
+1350 — every rung ~110 psi high, span 156 psi against 90 — because the no-load anchor is tied to
+this plant's ruled 297 °C Tavg. The rule is satisfied WITHIN our ladder. Moving the ladder is one
+change with the Tavg anchor or it is nothing.
+
+**Process decision: `tools/find_source.js`, and the reason it is a tool and not a rule.** §8.34
+asserted *"No document in any lane's corpus contains 'atmospheric' in a steam-relief sense"* while
+ML11223A293 sat in develop's inbox saying otherwise, fetched two days earlier. #315 §6 is the same
+failure — an OTΔT argument built, and reverted, while ML11223A301 was already in another lane. The
+SOP already implies checking; it failed twice anyway, so the fix is a command that cannot check
+fewer than three lanes and **exits 1 on a real zero**. Run it before declaring anything unsourced.
+
+**Test decision: a `range()` call on a boolean is a hollow check, and TR-17 carried one.**
+`!range('sg_safety_open').max` is `!NaN` — `true`, always. Injection-verified against the plant it
+was meant to exclude. Re-authored to the real discriminator (safeties open 1.8 % of the hour and
+reseat, vs 99.4 % and never), which also corrects a false claim in the probe's own header. Swept:
+only site in the tree.
+
 ## 2026-08-06-workbench-g — #395/#396: the precondition layer, and the gate for the day no reload can see
 
 **Decision — preconditions WARN AND NEVER BLOCK** *(OWNER RULING, 2026-08-06: selected "Warn,

@@ -6,7 +6,34 @@ follows [Keep a Changelog](https://keepachangelog.com/); newest entries on top.
 For the dense engineering rationale behind each change (spec deviations, tuning, gate
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
-> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
+> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
+
+### Changed
+- **PWR atmospheric dump valve — setpoint sourced, 1247 → 1272 psi (8.60 → 8.77 MPa)** (#371).
+  WTSM §7.1.3.3 (ADAMS ML11223A244) sets the real valve *"approximately half the difference between
+  the no-load steam generator pressure and the lowest set pressure of the safety valves"*; ours sat
+  at 34 % of that span. Capacity `adv_max` 0.10 needs no change — it already matches the sourced
+  *"approximately 10% of the rated steam flow … from each steam generator"*. Nearly inert in play:
+  the loss-of-condenser spike and the code-safety lift are identical at both values; only the hold
+  point moves. Perturbation sweep at this exact nudge: 42/623 checks move, zero verdict flips.
+  `DESIGN_COMPANION` §8.34 narrows from "capacity and setpoint unsourced" to the relief ladder,
+  which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
+
+### Fixed
+- **A behaviour check that could never fail** (TR-17, shipped with #392). `sg_safety_open` is a
+  boolean and `range()` returns `NaN` on it, so `!range(...).max` was `!NaN` — true, always.
+  Injection-verified: the plant it exists to exclude passed it. The claim it guarded was also
+  wrong — the code safeties lift at 54 s whether the ADV is in AUTO or shut, because that spike is
+  the steam generator's. The check now asserts what actually differs, the tail: safeties open 1.8 %
+  of the hour and reseat, against 99.4 % and never reseating with the valve shut.
+
+### Added
+- **`tools/find_source.js`** — searches the source corpus across all three worktree lanes and exits
+  non-zero on a genuine miss. The corpus is three gitignored directories that cannot see each other,
+  and one-lane greps have now cost two evidence passes: #315 §6 (an OTΔT argument built and
+  reverted while the primary sat in another lane) and §8.34 (a departure declared on
+  *"no document in any lane's corpus"* that another lane could refute).
+` heading
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
 > empty `## [Unreleased]` above it. The version must match the top entry of
 > `changelog.html` and the string in `site/release.js`.

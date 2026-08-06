@@ -814,6 +814,13 @@ anything here that is standing procedure rather than news belongs in the list be
   separating from FUEL (#213 uncovery), not clad above coolant.
 **Standing procedure — not part of the rotation above; these do not expire.**
 
+- **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
+  three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped two
+  wrong claims — #315 §6 (an OTΔT argument built and reverted while the primary sat in another lane)
+  and `DESIGN_COMPANION` §8.34, which declared *"no document in any lane's corpus"* two days after
+  the refuting document landed in develop's. It exits **1** on a genuine zero, so "not in the corpus"
+  is a command's verdict rather than your claim.
+
 - **A SINGLE TERM of a coupled pressure/inventory regime is WORSE THAN NONE** (rescued from the
   #346 bullet on eviction, 2026-08-05). Three independent measurements of the same trap: #346
   (relief folded into the surge with the other terms standing drops the relieving equilibrium

@@ -29,6 +29,65 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-workbench-h (#371 — the ADV's numbers were sourceable all along, and the probe guarding them could not fail)
+
+**Trigger: an owner question, not a defect.** *"From issue 297 we added a steam dump to atmo. Why
+not put a PORV here?"* — then, when I answered by measuring this plant: *"Instead of testing our
+plant why not just look up the answer? I'm asking a general question."* Correct, and the lookup
+settled more than the question.
+
+**WTSM §7.1.3.3 (ML11223A244), fetched via the Wayback/CDX recipe, answers it in its own words:**
+*"The PORV (also called an atmospheric relief valve or atmospheric dump valve) in each steam line
+is a 6-in. air-operated, spring-opposed globe valve capable of relieving approximately 10% of the
+rated steam flow at no-load pressure from each steam generator (2.5% of the total steam system
+flow)."* It IS a PORV — one valve, three names. Setpoint is given as a RULE: *"approximately half
+the difference between the no-load steam generator pressure and the lowest set pressure of the
+safety valves."* Purpose, verbatim: *"If the main condenser is unavailable or the steam dumps are
+inoperable, the PORVs are manually controlled from the control room to relieve steam to the
+atmosphere and thereby to cool down the plant."*
+
+**Three things came out of it.**
+
+**1. §8.34's central claim was FALSE WHEN WRITTEN, and the cause is structural.** It declared *"No
+document in any lane's corpus contains 'atmospheric' in a steam-relief sense"* and shipped a
+departure on it. ML11223A293 had been in **develop's** `inbox/sources` since 2026-08-04, naming
+*"the steam generator atmospheric relief valve"*. The corpus is three gitignored directories that
+cannot see each other and an agent greps its own. **This is the second time**: #315 §6 built a whole
+OTΔT argument on a secondary source while ML11223A301 sat in another lane's inbox, fetched that
+morning. Fix is a command, not a paragraph — **`tools/find_source.js`** searches all three lanes and
+**exits 1 on a genuine zero**, so "not in the corpus" becomes a verdict instead of a claim.
+
+**2. `adv_max` 0.10 was already right; `adv_setpoint` moved 8.60 → 8.77 MPa (1247 → 1272 psi).**
+The capacity was independently sized here against two duties and lands **exactly** on the sourced
+per-SG figure — the source's 2.5 % parenthetical is a four-loop plant, this one models a single
+generator, so 10 % is the figure that maps. The setpoint had been at **34 %** of the no-load→safety
+span where the rule says half; (8.23 + 9.31)/2 = 8.77. **Measured before moving it**: perturbation
+sweep at exactly that nudge moved 42 of 623 behaviour checks with **zero verdict flips**, and full
+stack the loss-of-condenser spike peaks **9.06 MPa and the safeties lift at 54 s at BOTH values** —
+only the hold point moves, 8.65 → 8.82 MPa, Tavg 302.0 → 303.3 °C. What is still unsourced is the
+**ladder**: real is no-load ≈1080 psig → ARV 1125 → five staggered safeties 1170–1230; ours is
+1194 → 1272 → one safety at 1350, every rung ~110 psi high, because the no-load anchor is tied to
+this plant's ruled 297 °C. §8.34 narrows to that.
+
+**3. THE PROBE GUARDING THIS COULD NEVER FAIL.** TR-17 leg A asserted *"keeps the plant OFF its code
+safeties for the whole hour"* as `!a.range('sg_safety_open').max`. **`sg_safety_open` is a BOOLEAN and
+`range()` takes a numeric min/max, so it returns `NaN` — and `!NaN` is `true`.** Injection-verified:
+run leg A2's own plant through it (ADV forced shut, safeties open the entire hour) and the expression
+still **PASSED**. It shipped with #392 and has never once been able to fail. Swept — the only
+range()-on-a-boolean site in the tree.
+
+**And the claim it was pretending to guard was itself wrong.** Measured, the safeties lift at **54 s
+at the same instant with the valve shut**: that spike is the SG's, not the valve's. What the ADV
+changes is the **tail**, which is what §8.34 always actually claimed — **AUTO: open 1.8 % of the hour,
+last lift 118 s, shut at the end. SHUT: 99.4 %, last lift 3630 s, never reseats.** The check now
+asserts reseat, and goes red on the ADV-shut plant.
+
+**Layer note.** TR-17 is engine+M4, where the safeties never lift on this event; full stack they do,
+at both setpoints. Recorded, not tuned — the #209 class.
+
+**Gate: `run_all` 39/39 at baseline.** `run_behavior` 61 pass / 1 xfail unmoved — the probe count
+cannot see a check being repaired, which is the same blind spot #337 recorded.
+
 ## Session log — 2026-08-06-workbench-g (#395/#396 — procedures verify the plant they stand on; the continuous day gets its gate)
 
 **Task:** audit #344's F5/F4. Measured there: the six Tier B evolutions run to completion,

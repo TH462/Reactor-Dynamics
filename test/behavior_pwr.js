@@ -3955,10 +3955,24 @@
      * what AUTO actually bought and, separately, still reproduces F3 by forcing the
      * valve shut. Measured full stack, condenser lost, one plant-hour:
      *
-     *   ADV SHUT   sg_safety_open TRUE the whole hour, parked at 9.00 MPa (1306 psi),
-     *              Tavg 304.1 °C   — F3, exactly
-     *   ADV AUTO   safeties NEVER lift, ADV modulates 10–19 %, holds 8.64 MPa
-     *              (1253 psi), Tavg 301.1 °C
+     *   ADV SHUT   safeties open 99.4 % of the hour, last lift 3630 s — never reseat.
+     *              Parked at 9.00 MPa (1306 psi), Tavg 304.1 °C   — F3, exactly
+     *   ADV AUTO   safeties open 1.8 %, last lift 118 s, SHUT at the end. ADV modulates
+     *              ~13 %, holds 8.80 MPa (1277 psi), Tavg 302.5 °C
+     *
+     * THE "ADV AUTO — safeties NEVER lift" LINE THIS REPLACES WAS FALSE (2026-08-06). The
+     * spike at 54 s lifts them at the SAME INSTANT with the valve shut, because it is the
+     * SG's spike and not the valve's. It went unnoticed because the check under it read
+     * `!range('sg_safety_open').max` on a BOOLEAN — NaN, so `!NaN`, so green always. The
+     * discriminator is the TAIL, and that is what §8.34 always claimed.
+     *
+     * AUTO numbers RE-MEASURED 2026-08-06 when `adv_setpoint` moved 8.60 → 8.77 MPa onto
+     * the sourced placement rule (WTSM §7.1.3.3, ML11223A244 — the ARV sits "approximately
+     * half the difference between the no-load steam generator pressure and the lowest set
+     * pressure of the safety valves"). The hold point moved with it; the verdicts did not.
+     * NOTE THE LAYER: this probe is engine+M4, where the safeties never lift on this event.
+     * Full stack they DO lift on the initial spike (peak 9.06 MPa) at BOTH setpoints, then
+     * reseat — the #209 class, recorded here rather than tuned.
      *
      * The half of F3 that AUTO does NOT fix is the important one for this probe: the
      * plant is off its code safeties but it is still HOT. An ADV in auto is a pressure
@@ -3970,13 +3984,35 @@
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
-        a.run(3600);
+        // SAMPLE the safety across the run. DO NOT use h.range() on this field: it is a
+        // BOOLEAN and range() takes a numeric min/max, so it returns NaN — and the form
+        // this replaces, `!a.range('sg_safety_open').max`, is `!NaN`, which is TRUE
+        // ALWAYS. Injection-verified 2026-08-06: run leg A2's plant (ADV forced shut, the
+        // safeties open for the entire hour) through the old expression and it still
+        // PASSED. The check shipped with #392 and could never once have failed. Swept —
+        // this was the only range()-on-a-boolean site in the tree.
+        var aSafetyOpen = 0, aSamples = 0, aSafetyLast = 0;
+        a.run(3600, function (hh) {
+          aSamples++;
+          if (hh.ts().sg_safety_open) { aSafetyOpen++; aSafetyLast = hh.simTime; }
+        });
+        var aDuty = 100 * aSafetyOpen / aSamples;
         // RED on the pre-2026-08-06 default: this is what shipping it in AUTO bought.
         ck('shipped lineup: the ADV modulates to hold the bottled SG',
           fmt(a.ts().adv_valve_pct, 1) + ' %', a.ts().adv_valve_pct > 1, '> 1 % (auto, throttling)');
-        ck('…and that keeps the plant OFF its code safeties for the whole hour',
-          String(a.range('sg_safety_open').max === 1 || a.range('sg_safety_open').max === true),
-          !a.range('sg_safety_open').max, 'never lifts (ADV SHUT: open the entire hour)');
+        // WAS "keeps the plant OFF its code safeties for the whole hour" — a claim that is
+        // simply FALSE about this plant, and only survived because the expression above it
+        // could not fail. Measured, the safeties lift at 54 s on the loss-of-condenser
+        // spike whatever the ADV is doing (they lift at the SAME INSTANT with the valve
+        // shut), because that spike is the SG's, not the valve's. What the ADV changes is
+        // the TAIL, which is the thing §8.34 actually claims: AUTO 1.8 % of the hour, last
+        // lift 118 s, shut at the end — SHUT 99.4 %, still open at 3630 s, never reseats.
+        // A plant does not sit on its main steam safety valves for an hour; that is what
+        // an ADV is for, and it is what this check now asserts.
+        ck('…and the code safeties RESEAT — the ADV holds the rest of the hour',
+          fmt(aDuty, 1) + ' % of the hour, last lift ' + fmt(aSafetyLast, 0) + ' s, open at end: '
+            + String(!!a.ts().sg_safety_open),
+          aDuty < 10 && !a.ts().sg_safety_open, '< 10 % and shut at the end (ADV SHUT: 99.4 %, never reseats)');
         // PASSES ON BOTH ENGINES, deliberately — a calibration guard. AUTO caps the
         // pressure, it does not remove the heat, so leg B's lever has to still exist.
         ck('…but it still holds hot — capping pressure is not a cooldown',
