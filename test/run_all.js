@@ -313,7 +313,7 @@ var BASELINES = {
   // knife-edge PORV sample carried as info. Injection-verified: severing the arm reddens
   // 5+4, forcing it always-armed reddens 4+5, and the capacity nudge that flipped the old
   // form leaves all 37 TR-1c/TR-1k checks green.
-  'run_behavior.js':       { code: 0, secs: 56, score: '63pass 1xfail' },
+  'run_behavior.js':       { code: 0, secs: 70, score: '64pass 1xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

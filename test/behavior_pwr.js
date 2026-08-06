@@ -121,6 +121,7 @@
     'CA-17': 'probe (break/relief backpressure is the LIVE containment pressure — clone-rig mechanism pin, red on the pre-#386 engine; #386 stage 1)',
     'CA-18': 'probe (the void-displacement level lift is PATH-AWARE — a loop break drains the pressurizer, the relief path keeps the TMI deception; WCAP-16009 §11-4-5; #385 stage 2)',
     'CA-19': 'probe (the THROUGHPUT equilibrium — a refilled solid RCS with a break open settles where injection = break discharge, and it is not a free rescue; #384 stage 3 / the #334 throughput question)',
+    'CA-20': 'probe (a vented RCS blows down PAST Psat toward the building and never below it — path-scoped vent + weakened pin, the SGTR/relief fence, and the DBA arc preserved; WTSM 5.0 §5.0.1.1; #384 stage 4)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -3255,15 +3256,24 @@
         // The break has to have actually emptied the plant, or the rest of leg A is vacuous.
         ck('the break really did drain the plant (or leg A proves nothing)',
           fmt(ta.core_inventory_pct, 2) + ' % inventory', ta.core_inventory_pct < 20, '< 20 %');
-        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core sits AT
-        // saturation. Pre-#363 this runs 53.2 °F (29.5 °C) subcooled.
-        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core sits AT
-        // saturation. Pre-#363 it ends 55.8 F (31.0 C) subcooled and STILL FALLING, with the
+        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core cannot be
+        // SUBCOOLED. Pre-#363 it ends 55.8 F (31.0 C) subcooled and STILL FALLING, with the
         // core already melted — a term that only exists because the coolant is boiling, driving
         // the coolant further from boiling the longer it runs.
-        ck('…and it ends AT saturation, not below it (pre-#363: 55.8 F / 31.0 C subcooled)',
+        //
+        // ONE-SIDED SINCE #384 STAGE 4, and the re-authored form passes on BOTH the #363
+        // engine and today's (a better test, not a refit — HR10). The original band was
+        // two-sided ("within 2 C of saturation"), which was not pinning thermodynamics: it
+        // was pinning the SAT-PULL, whose full-strength pin held P at Psat(Tavg) so
+        // subcooling read ~0 BY CONSTRUCTION. With a loop break venting the RCS the pin is
+        // path-scoped away at full void and the drained core's remnant STEAM superheats
+        // against the hot fuel — subcooling reads deeply NEGATIVE (measured −208 F at this
+        // event's end), which is physical: steam can superheat, liquid cannot, and there is
+        // no liquid left. The defect #363 fixed was the SUBCOOLED side only, so the check
+        // now asserts exactly that side and no more.
+        ck('…and it ends NOT SUBCOOLED (pre-#363: 55.8 F / 31.0 C subcooled; superheat is physical — the loop is steam)',
           fmt(ta.subcooling_c * 9 / 5, 2) + ' F (' + fmt(ta.subcooling_c, 2) + ' C) of subcooling',
-          Math.abs(ta.subcooling_c) < 2.0, 'within 3.6 F (2.0 C) of saturation');
+          ta.subcooling_c < 2.0, '< 3.6 F (2.0 C) subcooled');
         ck('…and is never driven subcooled while the break flows (pre-#363: 1194 of 2358)',
           lateSub + '/' + lateN + ' late-drain samples more than 9 F (5 C) subcooled',
           lateN > 500 && lateSub === 0, '0 of > 500 samples');
@@ -3755,6 +3765,116 @@
         ck('with injection defeated the same state drains instead (no repressurization)',
           'P ' + fmt(B.s.pressure_mpa, 3) + ', mass ' + fmt(B.s._mass, 3),
           B.s.pressure_mpa < 1.0 && B.s._mass < 0.5, 'P < 1.0, mass < 0.5');
+      });
+    },
+
+    /* CA-20 (#384 stage 4) — A VENTED RCS BLOWS DOWN PAST Psat, AND NEVER BELOW
+     * THE BUILDING.
+     *
+     * The sat-pull models CLOSED-system flashing: as pressure falls to Psat(Tavg)
+     * the coolant flashes and the steam holds pressure there. With a loop break
+     * the steam LEAVES, so the pin weakens with void and a vent term
+     * (K_break_vent·leak_flow·void·(P − ctmt)) carries pressure on toward the
+     * containment backpressure — WTSM 5.0 §5.0.1.1's blowdown shape. Both
+     * scalings are PATH-SCOPED to a flowing loop break: the 2026-08-06 revert
+     * proved void-scoped forms also weaken the pin on the stuck-PORV path (the
+     * TMI erosion arc) and the no-break boiling paths (CA-12's transit).
+     *
+     * Leg A is the plant claim, red on the pre-stage engine (minP 1.17 MPa —
+     * pressure FLOORED at Psat of the 365 F remnant with a full-size hole open):
+     * the blowdown minimum now falls below 1.0 MPa, never below the LIVE
+     * backpressure, and the DBA arc survives the deeper blowdown — full
+     * uncovery, accumulators dump, reflood, no damage. THE ARC IS AN ASSERTION,
+     * NOT A HOPE: the K_break_vent sizing grid measured K ≥ 2 progressively
+     * erasing the uncovery (min inv 26–60 % — ECCS arrives so early nothing
+     * happens), because this lumped plant has no reflood transport delay and
+     * cannot have both true containment equalization and a real uncovery; K = 1
+     * keeps the arc and the residual gap to the building is declared on #384.
+     *
+     * Leg B pins the small-break fence (the sev-0.05 heater-held plateau is
+     * byte-identical — the vent is ·void and the pin scaling needs a loop break,
+     * and a subcooled 5 % break has neither). Leg C pins the ALGEBRA through the
+     * real stepPressure with clone triplets (the #367/CA-17 idiom): the
+     * loop-vs-SGTR difference equals the hand-computed scaled-pin + vent terms
+     * exactly; the SGTR clone computes the UNSCALED pre-stage formula exactly
+     * (byte-identical to a no-break clone — the fence that keeps ops_sgtr_managed
+     * and the TMI paths untouched); and the connected-volumes floor binds a
+     * loop-break clone forced below the backpressure while leaving the SGTR
+     * clone alone (an SGTR discharges into the SG, not the building).
+     */
+    'CA-20': function () {
+      return test('CA-20 a loop break vents the RCS toward containment; SGTR/relief keep the pin (#384)', function (ck) {
+        var CFG = RD.PWR_CONFIG, p = CFG.pressurizer;
+
+        // ---- leg A: the plant. Full-size break, engine+M4.
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 1.0 });
+        var minP = 1e9, minInv = 1e9, floorOK = true, accMin = 100;
+        h.run(600, function (hh) {
+          var s = hh.eng.s;
+          if (s.pressure_mpa < minP) minP = s.pressure_mpa;
+          if (s.core_inventory_pct < minInv) minInv = s.core_inventory_pct;
+          if (s._accum_remaining != null && (s._accum_remaining / CFG.emergency.accumulator_capacity) * 100 < accMin)
+            accMin = (s._accum_remaining / CFG.emergency.accumulator_capacity) * 100;
+          if (s._leak_base > 0 && s.containment_pressure_mpa != null
+              && s.pressure_mpa < s.containment_pressure_mpa - 1e-6) floorOK = false;
+        });
+        ck('the full-size blowdown falls PAST Psat of the hot remnant (pre-stage-4 floor: 1.17 MPa)',
+          fmt(minP, 3) + ' MPa min', minP < 1.0, '< 1.0 MPa');
+        ck('…and never below the LIVE containment backpressure (connected volumes equalize, they do not cross)',
+          floorOK ? 'held at every sample' : 'VIOLATED', floorOK, 'P ≥ ctmt throughout');
+        ck('the DBA arc survives the deeper blowdown: the core still fully uncovers',
+          fmt(minInv, 1) + ' % min inventory', minInv < 5, '< 5 %');
+        ck('…the accumulators dump', fmt(accMin, 1) + ' % remaining', accMin < 50, '< 50 %');
+        var ta = h.ts();
+        ck('…and ECCS still wins — refloods, no damage', 'inv ' + fmt(ta.core_inventory_pct, 1) + ' %, damaged ' + ta.fuel_damaged,
+          ta.core_inventory_pct > 90 && !ta.fuel_damaged, '> 90 %, false');
+
+        // ---- leg B: the small-break fence — the sev-0.05 plateau is untouched.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.05 });
+        b.run(600);
+        ck('a 5 % break still holds its heater-held plateau (the vent needs void AND a loop break)',
+          fmt(b.ts().pressure_mpa, 2) + ' MPa at t+600', b.ts().pressure_mpa > 8.0, '> 8.0 MPa');
+
+        // ---- leg C: the algebra, through the real stepPressure (clone triplets).
+        var base = H('hot_full_power'); base.run(30);
+        var mkC = function (extra) {
+          var c = Object.assign({}, base.eng.s, {
+            tavg_c: 250.0, thot_c: 250.0, pressure_mpa: 3.0, primary_void_fraction: 0.6,
+            _dmass_dt: 0, _dTavg_dt: 0, porv_demand: null, porv_stuck: false, safety_open: false,
+            containment_pressure_mpa: 0.15, heater_override: 0, spray_override: 0,
+          }, extra);
+          RD.pwrPressurizer.stepPressure(c, CFG, 0.05);
+          return c;
+        };
+        var cLoop = mkC({ leak_flow: 0.15, _leak_base: 0.5, _leak_to_sg: false });
+        var cSgtr = mkC({ leak_flow: 0.15, _leak_base: 0.5, _leak_to_sg: true });
+        var cNone = mkC({ leak_flow: 0, _leak_base: 0 });
+        ck('an SGTR computes the UNSCALED formula exactly — byte-identical to no-break (the TMI/EOP fence)',
+          fmt(cSgtr.pressure_mpa, 6) + ' vs ' + fmt(cNone.pressure_mpa, 6),
+          cSgtr.pressure_mpa === cNone.pressure_mpa, 'identical');
+        var psat = RD.pwrPressurizer.P_sat_from_T(250.0), vf = 0.6, P0 = 3.0, pb = 0.15;
+        var pinFull = p.K_sat_pull * (psat - P0);
+        var pinLoop = p.K_sat_pull * (1 - vf) * (Math.max(psat, pb) - P0);
+        var vent = p.K_break_vent * 0.15 * vf * Math.max(0, P0 - pb);
+        var wantDiff = (pinFull - pinLoop + vent) * 0.05;
+        ck('loop-vs-SGTR differ by exactly the scaled pin + the vent term',
+          fmt(cSgtr.pressure_mpa - cLoop.pressure_mpa, 6) + ' vs ' + fmt(wantDiff, 6),
+          Math.abs((cSgtr.pressure_mpa - cLoop.pressure_mpa) - wantDiff) < 1e-9, 'exact');
+        var cUnder = mkC({ leak_flow: 0.0, _leak_base: 0.5, _leak_to_sg: false, pressure_mpa: 0.12, containment_pressure_mpa: 0.30 });
+        var cUnderSg = mkC({ leak_flow: 0.0, _leak_base: 0.5, _leak_to_sg: true, pressure_mpa: 0.12, containment_pressure_mpa: 0.30 });
+        // The SGTR clone below Psat of its hot loop self-repressurizes on the FULL pin —
+        // that is pre-stage physics, and asserting it EXACTLY is the point: no floor, no
+        // scaling, no vent touched it. (A `< 0.30` draft here was wrong: the pin carries
+        // it past the backpressure by flashing, which is the correct closed-system answer.)
+        var wantSg = 0.12 + p.K_sat_pull * (RD.pwrPressurizer.P_sat_from_T(250.0) - 0.12) * 0.05;
+        ck('the floor snaps a loop-break state up to the backpressure; the SGTR state computes the pure pin',
+          fmt(cUnder.pressure_mpa, 3) + ' vs ' + fmt(cUnderSg.pressure_mpa, 6) + ' (want ' + fmt(wantSg, 6) + ')',
+          Math.abs(cUnder.pressure_mpa - 0.30) < 1e-9 && Math.abs(cUnderSg.pressure_mpa - wantSg) < 1e-9, '0.30 vs the pin exactly');
+        T.checkSanity(ck, h);
       });
     },
 

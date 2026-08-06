@@ -345,7 +345,24 @@
     // `_dmass_dt` is stepInventory's REALISED mass rate read ONE STEP LATE — inventory is
     // step 9 and this is step 7 (CONTEXT §11 explicit coupling).
     var dm_lvl = (s._mass != null ? s._mass : 1.0) - 1.0;
-    var surge_rate = p.level_per_tavg * (s._dTavg_dt || 0)
+    var surge_thermal = p.level_per_tavg * (s._dTavg_dt || 0);
+    // THE SURGE MUST READ THE SAME LINE THE LEVEL SHOWS (#384 stage 4, latent since
+    // #337). `levelBase` FLOORS at `level_prog_floor` below ~293 °C (the #289
+    // cold-modes bookkeeping stand-in), so on a cold plant the level line credits
+    // NO room from thermal contraction — while this term, reading `_dTavg_dt` raw,
+    // went on crediting it. Two accountings of one vessel (the #330/#337 trap):
+    // measured on the post-stage-4 sev-0.5 LOCA, the ECCS refill now arrives with
+    // Tavg still ~360 °F and falling, the phantom contraction room (−2.9 %/s)
+    // out-credited the insurge (+2.4 %/s), the solid arrest never fired, and
+    // inventory rode the cooldown to the 120.00 % `mass_max` clip — #361's
+    // signature by a THIRD road. Suppressed only where the inconsistency lives:
+    // SOLID, base ON its floor, and CONTRACTING — the narrowest predicate that
+    // restores agreement. The deeper question (a cold solid RCS really does hold
+    // more mass — the floor denies the capacity growth) is the pressurizer
+    // inventory node's to answer (#385 follow-on), noted there.
+    if (surge_thermal < 0 && pzr_solid
+        && levelBase(s, cfg) <= p.level_prog_floor + 1e-9) surge_thermal = 0;
+    var surge_rate = surge_thermal
                    + p.level_per_mass * (s._dmass_dt || 0);
     // WATER-SOLID — the surge meets LIQUID, not a bubble (#346). K_surge_level is the
     // gain of a pressurizer that still HAS a steam space: a surge is soft because the
@@ -372,6 +389,14 @@
     // none: see the F15 note in pwr_primary.stepInventory, and `Manuals/12` §12.4c.
     var solid = !saturated && pzr_solid;
     var K_surge = solid ? (p.solid_bulk_mpa / p.level_per_mass) : p.K_surge_level;
+    // Computed BEFORE the regime branch — the containment floor below applies in BOTH
+    // branches, and a `var` inside the saturated arm would read undefined on exactly
+    // the flicker steps that need it (#384 stage 4). Keyed on the HOLE EXISTING
+    // (`_leak_base`), not on flow: below the backpressure the √Δp law clips forward
+    // flow to zero, so a `leak_flow > 0` key would disarm the floor at exactly the
+    // pressure it exists to hold — measured, minP pinned on the 0.1 clamp that way.
+    var loopBreak = (s._leak_base > 0) && !s._leak_to_sg;
+    var pb_vent = s.containment_pressure_mpa != null ? s.containment_pressure_mpa : p.P_containment;
     var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray
            - s.porv_flow * p.K_porv_relief
@@ -387,7 +412,41 @@
       // superheat branch is independent of the void bookkeeping, so a depressurization at
       // FULL/overfilled inventory (e.g. an SGTR EOP on HPI) still holds saturation without
       // touching primary_void_fraction (and thus the calibrated pressurizer void-surge).
-      dP += p.K_sat_pull * (p_sat_tavg - s.pressure_mpa);
+      //
+      // WITH A LOOP BREAK VENTING THE STEAM, THE PIN WEAKENS AND A VENT TERM JOINS IT
+      // (#384 stage 4). The sat-pull models flashing REPLACING the pressure the break
+      // removes — closed-system physics. A loop break is an open hole: the steam the
+      // flash makes LEAVES, so as the loop approaches full void the pin approaches zero
+      // authority and the vented RCS blows down toward the containment backpressure —
+      // WTSM 5.0 §5.0.1.1: "In a short time the reactor coolant system has flashed to
+      // steam and the pressure has equalized with the pressure inside the containment.
+      // At this time the blowdown phase … has ended." Measured before this term, a
+      // full-size break FLOORED at 9.4× saturation with the hole open (#384).
+      //
+      // BOTH scalings are PATH-SCOPED to a flowing loop break, and that is the fix the
+      // 2026-08-06 revert taught: its terms were VOID-scoped, so they also weakened the
+      // pin on the stuck-PORV path (relief is not a loop hole — the discharge is the
+      // PORV's own metered flow, and the TMI erosion arc lives on the full pin) and on
+      // the no-break boiling paths (CA-12's transit). `_leak_to_sg` is excluded — an
+      // SGTR discharges into the SG, a closed receiver, not containment.
+      //
+      // The vent term is ·void TWICE over: scoped by loopBreak (leak_flow > 0) and
+      // scaled by void, so it is IDENTICALLY ZERO when solid (void 0) — CA-19's
+      // injection≈spillage equilibrium and CA-15's solid arrest cannot be reached by
+      // it, which is what un-does the revert's overfill failure. Backpressure is the
+      // LIVE containment pressure (#386 stage 1), one step late, CONTEXT §11.
+      var vf = s.primary_void_fraction || 0;
+      // (`loopBreak` / `pb_vent` computed above the branch, with the floor.)
+      // The pull TARGET floors at the containment backpressure when vented: two
+      // connected volumes equalize, they do not cross — without this floor the
+      // weakened pin drags P toward Psat of the ECCS-quenched bulk (~1.5 psia),
+      // BELOW the receiving building, and the run pins on the 0.1 numerical clamp
+      // (measured in the K_break_vent sizing grid).
+      var p_pin = loopBreak ? Math.max(p_sat_tavg, pb_vent) : p_sat_tavg;
+      dP += p.K_sat_pull * (loopBreak ? (1 - vf) : 1) * (p_pin - s.pressure_mpa);
+      if (loopBreak && p.K_break_vent) {
+        dP -= p.K_break_vent * s.leak_flow * vf * Math.max(0, s.pressure_mpa - pb_vent);
+      }
     } else {
       // Gentle self-restore toward the (slewed) operator setpoint (heaters/charging
       // holding pressure). Tracks the effective setpoint so a cold/depressurized
@@ -396,6 +455,16 @@
       dP += p.P_restore_rate_gain * (spEff - s.pressure_mpa);
     }
     s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dP * dt);
+    // TWO CONNECTED VOLUMES EQUALIZE, THEY DO NOT CROSS (#384 stage 4): with a loop
+    // break open the RCS cannot end a step below the building it discharges into —
+    // backflow through the hole holds it up. Applied in BOTH regime branches, because
+    // the undershoot is not the vent/pin terms (both die at the backpressure): it is
+    // the void bookkeeping's saturation-gate flicker dropping single steps into the
+    // SUBCOOLED branch, where `leak_depress` is a constant-rate sink with no Δp in it
+    // (#384's own mechanism-2 note; the full Δp re-solve of that term stays deferred
+    // on #384's staging). A declared floor, not a silent clip: CA-20 asserts it — and
+    // asserts the approach to it — so this line is load-bearing in a probe.
+    if (loopBreak) s.pressure_mpa = Math.max(s.pressure_mpa, Math.min(pb_vent, 15.41));
   }
 
   // PORV tailpipe / quench-tank line temperature. First-order pull toward the

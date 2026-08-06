@@ -83,6 +83,37 @@ was **measured unnecessary and not shipped** — the state it defended against s
 via the ECCS quench within seconds. Recorded in TUNING_LOG develop-f; if stage 4's
 pressure-floor work resurrects the state, it ships then, with its measurement.
 
+### Fixed — a large break now blows down toward the building, not to a phantom floor (#384 stage 4, 2026-08-06)
+
+With a loop break flowing, the saturation pin weakens with void (`K_sat_pull·(1−void)`,
+target floored at the live backpressure) and a new vent term (`K_break_vent` 1.0 `[tune]`)
+carries pressure toward containment — the WTSM 5.0 §5.0.1.1 blowdown shape. Measured
+family (full stack, minP): 1340 / 980 / 470 / **218** / **116 psi** at severities
+5/10/20/50/100 %, against 1340 / 980 / 570 / 330 / 170 psi before — small breaks
+byte-identical, the full break falls past Psat of its hot remnant. Both scalings are
+**path-scoped** (`_leak_base > 0 && !_leak_to_sg`): stuck-PORV, tube-rupture and no-break
+boiling paths compute the old formula exactly (probe-pinned to 1e-9). A declared
+connected-volumes floor keeps the RCS from ending a step below the building.
+
+**Sizing found a real trade**: higher K raises the floor and erases the core uncovery
+(ECCS arrives before anything happens) — this lumped plant has no reflood transport
+delay, so true containment equalization and a real uncovery are mutually exclusive.
+K = 1 keeps the DBA arc (full uncovery → accumulators dump → reflood → clad 1341 °F, no
+damage); the residual is declared in `12 §7.2` and on #384.
+
+**A latent split-accounting defect fixed on the way** (#361's signature by a third road,
+latent since #337): below ~560 °F the level line's floored base credits no contraction
+room while the pressure surge still did, so the now-earlier ECCS refill rode the cooldown
+past the solid arrest to the 120.00 % numerical ceiling. The surge now reads the same
+line the level shows (thermal term zeroed only at solid + base-on-floor + contracting);
+CA-15 returned green without re-authoring. CA-14's "ends AT saturation" band was pinning
+the old pin, not thermodynamics — re-authored one-sided (a drained core must never be
+SUBCOOLED; superheat is physical, the loop is steam), passes on both engines.
+
+`run_behavior` 63 → 64 (CA-20: blowdown shape, both fences, the floor, exact clone
+algebra; injection-verified — the pre-stage engine reds exactly the three discriminating
+checks). Manuals Rev 13(j).
+
 ## [Alpha 1.2.2] — 2026-08-06
 
 ## [Alpha 1.2.1] — 2026-08-06

@@ -80,6 +80,28 @@ pre-change engine reddens exactly its three discriminating checks); `flagship_tm
 also carrying constants three revisions stale, corrected). Full cluster plan and stage
 list: TUNING_LOG 2026-08-06-develop-f.
 
+**Stage 4 addendum — TWO DECISIONS AND A FIND.** (1) **`K_break_vent` = 1.0, chosen
+against a measured trade the plan did not predict**: the sizing grid shows higher K
+RAISES the blowdown floor (faster vent → earlier ECCS → refill outraces decay) while
+ERASING the core uncovery (min inv at sev 1.0: 0/26/44/60 % at K 1/2/3/5) — no reflood
+transport delay means containment equalization and a real uncovery are mutually
+exclusive in this lumped plant. K = 1 keeps the DBA arc, which is the educational
+payload (Q2); the residual gap (full break bottoms at 116 psi vs a ~34 psi building) is
+DECLARED (`12 §7.2`, #384) rather than tuned away by trading the arc. (2) **CA-14 leg A
+re-authored one-sided** — its "ends AT saturation" two-sided band was pinning the
+SAT-PULL (which forced subcooling ≈ 0 by construction), not thermodynamics; the #363
+defect was the subcooled side only, and a vented drained core's remnant steam SHOULD
+superheat. Passes on both engines; still reds the pre-#363 plant (+55.8 °F subcooled) by
+inspection. (3) **The find: #361's 120.00 % signature by a THIRD road — a split
+accounting latent since #337.** Below ~560 °F `levelBase` floors and the level line
+credits no contraction room while the surge read `_dTavg_dt` raw; the stage's earlier,
+hotter ECCS refill exposed it (the arrest never fired, inventory rode the cooldown to
+the clip). Fixed by making the surge read the same line the level shows, narrowest
+predicate (solid ∧ base-on-floor ∧ contracting); CA-15 came back green WITHOUT
+re-authoring, which is the strongest evidence the fix is the consistent one. The deeper
+truth — a cold solid RCS genuinely holds more than `mass_max` credits — is the #385
+node's question, noted there.
+
 **Stage 3 addendum — A PLANNED ENGINE EDIT WAS MEASURED UNNECESSARY AND NOT SHIPPED.**
 The approved plan committed `saturated = !pzr_solid && (…)` in `stepPressure` on the #384
 revert post-mortem's premise (solid arrest never engages on a quenched refill at marginal

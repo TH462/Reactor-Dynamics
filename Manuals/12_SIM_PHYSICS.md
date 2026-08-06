@@ -460,6 +460,8 @@ When the primary voids, **or** whenever the saturation pressure of Tavg exceeds 
 
 The consequence for the operator is the important part: **in the saturated regime you depressurise by cooling, not by spraying.**
 
+**With a loop break open, the pin weakens and the blowdown carries on toward the building (Rev 13).** The pin models closed-system flashing — steam made by the flash holds pressure at saturation. A hole in the loop lets that steam *leave*, so as void grows the pin loses authority and a vent term carries pressure past Psat toward the **live containment backpressure**: on a full-size break the RCS now bottoms near the building pressure instead of flooring at the saturation pressure of the hot remnant, which is the real blowdown shape — "the pressure has equalized with the pressure inside the containment. At this time the blowdown phase … has ended" (WTSM 5.0 §5.0.1.1). Two boundaries are deliberate: the RCS can never be pulled *below* the building it discharges into (connected volumes equalize, they do not cross), and the weakening is **path-scoped** — a stuck-open relief valve is not a loop hole (its discharge is the valve's own metered flow, so the TMI erosion keeps the full pin), and a tube rupture discharges into the steam generator, not the containment. Steam-space breaks and no-break boiling behave exactly as before. What remains declared rather than modeled: injection has no transport delay, so full equalization with the building and a prolonged core uncovery cannot both occur — the model keeps the uncovery (the accident arc the simulator teaches) and accepts a blowdown floor a little above the building.
+
 ### 7.3 Level is derived, not integrated
 
 Pressurizer level is a **pure function of state**:

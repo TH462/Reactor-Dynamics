@@ -752,7 +752,19 @@
       setpoint_pressurize_slew_mpa_s: 0.02,
       // When the primary voids it is two-phase: pressure is pulled to the
       // saturation pressure of Tavg (so subcooling → 0). [tune]
+      // Since #384 stage 4 the pull is scaled ·(1−void) WHEN A LOOP BREAK IS FLOWING
+      // (pwr_pressurizer.stepPressure) — closed-system flashing cannot hold pressure in
+      // a vented RCS. The PORV/SGTR/no-break paths keep the full pull, path-scoped.
       K_sat_pull: 1.5,
+      // /(MPa·frac/s·s) — the OPEN-SYSTEM half of the two-phase regime (#384 stage 4):
+      // with a loop break flowing and the primary voided, steam leaves through the hole
+      // and pressure decays toward the LIVE containment backpressure at rate
+      // K_break_vent·leak_flow·void·(P − P_ctmt). Path-scoped (never SGTR, never the
+      // relief path) and ·void, so it is identically zero when solid — it cannot reach
+      // CA-19's throughput equilibrium or CA-15's arrest. Sized against the WTSM 5.0
+      // blowdown-ends-at-containment shape on a full-size break while the sev-0.05
+      // family's plateau grading survives; CA-20 pins the shape. [tune]
+      K_break_vent: 1.0,
       // Break blowdown: a primary break (LOCA/SGTR, s.leak_flow) vents the coolant
       // to containment and depressurizes the RCS — unlike CVCS letdown, which is a
       // controlled inventory bleed at pressure. This is what pushes a LARGE break

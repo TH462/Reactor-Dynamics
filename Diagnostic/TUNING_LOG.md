@@ -112,10 +112,61 @@ RCS sits near containment pressure because a guillotine passes the full ECCS flo
 too restrictive at low Δp. That is the §12.4b declared departure meeting #334 item 3 (the
 slider/law semantics) — carried to stage 6, NOT tuned here.
 
-**Still open in the cluster:** stage 4 (#384 floors — `K_break_vent`, path-scoped
-sat-pull, CA-15 re-author; the drain-phase Psat slaving is now the WHOLE of #384), stage 5
-(#407 + the NUREG-0737 fetch), stage 6 (#334 slider memo + the low-Δp break-law question
-above). The node follow-on starts only after the cluster is green.
+**Stage 4 (#384 floors) — LANDED, and the hard part was not the vent term.** Three engine
+changes in `stepPressure`, all path-scoped to a flowing loop break (`_leak_base > 0 &&
+!_leak_to_sg` — the 2026-08-06 revert's terms were VOID-scoped, which is what broke the
+PORV and no-break paths):
+1. **The pin weakens with void** — `K_sat_pull·(1−void)` when a loop break flows, target
+   floored at the live backpressure. Closed-system flashing cannot hold pressure in a
+   vented RCS.
+2. **`K_break_vent` 1.0 [tune]** — `−K·leak_flow·void·(P − ctmt)` in the saturated branch.
+   **Sized by measurement against an unexpected trade**: the grid (K ∈ 0/1/2/3/5/10 ×
+   sev 0.05–1.0) shows HIGHER K RAISES the blowdown floor (faster vent → earlier
+   ECCS/accums → refill outraces the decay) while ERODING the uncovery (min inv at sev
+   1.0: 0.0 / 26 / 44 / 60 % at K 1/2/3/5). This lumped plant has no reflood transport
+   delay, so true containment equalization and a real core uncovery are mutually
+   exclusive; **K = 1 keeps the DBA arc** (full uncovery, accum dump, reflood, clad
+   1341 °F / 727 °C, no damage) and the residual gap is DECLARED (`12 §7.2` Rev 13(j),
+   noted on #384). Family after: minP 9.2 / 6.8 / 3.2 / 1.5 / 0.80 MPa at sev
+   0.05/0.1/0.2/0.5/1.0 (was 9.2 / 6.8 / 3.9 / 2.3 / 1.17) — small breaks byte-identical,
+   the full break falls past Psat of the hot remnant.
+3. **The connected-volumes floor** — with a hole open the RCS never ends a step below the
+   building (`P ≥ ctmt`). Keyed on the HOLE (`_leak_base`), not the flow: below the
+   backpressure the √Δp law clips flow to 0 and a flow-keyed floor disarms exactly where
+   it is needed (measured — minP pinned on the 0.1 numerical clamp that way). The
+   undershoot it stops is the void bookkeeping's saturation-gate flicker dropping single
+   steps into the subcooled branch where `leak_depress` has no Δp in it; that term's full
+   Δp re-solve stays deferred on #384's staging.
+
+**THE FIND OF THE STAGE — #361's signature by a THIRD road, and it was a split accounting
+(latent since #337).** First full battery: CA-15 red at exactly **120.00 %**. Traced at
+1-s resolution: the deeper blowdown brings the ECCS refill in EARLY, with Tavg still
+~360 °F and falling — and below ~560 °F `levelBase` sits ON its `level_prog_floor`, so
+the LEVEL line credits no room from contraction while the SURGE still read
+`level_per_tavg·_dTavg_dt` raw (−2.9 %/s of phantom room vs +2.4 %/s of insurge). Net
+negative → the solid arrest never fired → inventory rode the cooldown to the clip. Two
+accountings of one vessel — the #330/#337 trap exactly. **Fix: the surge reads the same
+line the level shows** — the thermal term is zeroed only where the inconsistency lives
+(solid AND base-on-floor AND contracting, the narrowest predicate). CA-15 came back green
+**without re-authoring** (arrest at 109.28 = the geometry's own prediction). The deeper
+question — a cold solid RCS really does hold more mass than `mass_max` 1.2 credits — is
+the pressurizer node's to answer (#385 follow-on).
+
+**Fallout, adjudicated:** CA-14 leg A's "ends AT saturation" band was **pinning the pin,
+not thermodynamics** — with the pin path-scoped away at full void, the drained core's
+remnant STEAM superheats against the hot fuel (−208 °F reading; steam can superheat,
+liquid cannot, and there is no liquid). Re-authored ONE-SIDED (never subcooled — the
+actual #363 defect), passes on both engines, still reds the pre-#363 plant by inspection
+(+55.8 °F subcooled). Everything else held: CA-16's containment bands, CA-8 leg D, TR-15
+leg C, the SGTR family (fence exact), flagship + campaign. `run_behavior` 63 → **64**
+(CA-20: the blowdown shape red-on-old at 1.198, the floor held at every sample, the DBA
+arc asserted not hoped, the small-break fence, and the exact clone algebra — loop-vs-SGTR
+differs by precisely the scaled pin + vent, SGTR byte-identical to no-break).
+**Injection-verified**: pre-stage-4 engine reds exactly the three discriminating checks.
+
+**Still open in the cluster:** stage 5 (#407 + the NUREG-0737 fetch), stage 6 (#334
+slider memo + the low-Δp break-law question). The node follow-on starts only after the
+cluster is green.
 
 ## Session log — 2026-08-06-develop-e (LOCA severity sweep — the void term owns the legible band; #385 evidence, #407 filed)
 
