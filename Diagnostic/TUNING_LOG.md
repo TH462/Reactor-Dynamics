@@ -29,6 +29,95 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-workbench-g (#395/#396 — procedures verify the plant they stand on; the continuous day gets its gate)
+
+**Task:** audit #344's F5/F4. Measured there: the six Tier B evolutions run to completion,
+in order, on ONE plant across 17 plant-hours with the reactor never critical — because the
+three precondition-shaped fields in the procedure schema (`from:`, `prereq`, `guard`) are
+respectively a harness input, display-only `<li>` text, and gate-runner-only. And the
+heatup→startup boron seam (#396) is documented accurately on BOTH sides yet enforced by
+nothing: heatup preserves cold-shutdown boron (~857 ppm), startup is authored at the
+~683 ppm ECC, the bank stops 215 steps short, and the two at-power trip blocks are refused
+below P-10 with nothing reading the refusal.
+
+**Session pick context.** First pick was #386 stage 2 (`status-work-next`) — planned in
+full, then PARKED on an owner call: *(OWNER, 2026-08-06: "There is not enough real estate.
+We are going to have to figure out some tabbed cards or something. I'm going to have to
+play with my diagram building tool to find a spot for it. Save this plan in the issue(s)
+and find something that doesn't need real estate in the diagram.")* The complete stage-2
+plan is preserved on #386 (comment 5208083961) and the #387 rider on #387; both wait on
+diagram space.
+
+**What shipped (all on this lane, gated):**
+- **`precond` schema** (`ui/manual_procedures.js` header): `[{p, op, v, tol, text}]`, the
+  `acc` predicate vocabulary, beside `prereq` (stays human prose) and `guard` (stays the
+  whole-run invariant). Authored for the six Tier B evolutions from their prereq prose +
+  measured IC facts — **all 16 rows measured MET on their six own `from:` ICs through the
+  real mechanism before shipping** (the false-positive guard; scratch rig, this session).
+  `pwr_startup`'s boron row `~683 ±70` is the seam: ±70 ppm ≈ the caution's ±750 pcm ECC
+  band at ~10.6 pcm/ppm, and 857 misses it by 104 ppm of margin.
+- **Live instructor evaluation** (`layers/instructor_layer.js _stepChecklist`): graded
+  every tick via the existing `_grade`/`_predMet` (instrument-first, HR1 — no fourth copy
+  of the predicate evaluator; `_grade` now also returns `value` for display). Verdicts
+  ship in `getSnapshotBlock().checklist.preconditions` as `{met, obs, graded_by}` —
+  verdicts only, prose stays in the artifact. One register-aware `pendingMessage` raised
+  per unmet episode, cleared when all rows recover or the checklist stops. Restore path
+  rebuilds verdicts on the next tick (derived state, nothing saved).
+- **The banner** (`ui/app.js renderChecklist`): NOT MET rows with expected-vs-measured
+  (`OPSYM`, `.m-caution` styling), **warn-never-block** *(OWNER RULING, 2026-08-06:
+  selected "Warn, never block" from three options put to him — a selection, not verbatim
+  words)*. The verdict vector joined the render key with obs keyed ROUNDED — repaints on
+  whole-unit movement, not per-broadcast analog noise (#392's DOM-churn lesson).
+- **`test/procedures_harness.js`** — the stack runner's entire replay machinery, extracted
+  verbatim with one new seam (`opts.svc` = replay on the plant as it sits).
+  **`run_procedures_stack` 29/29 262/262 before and after — the refactor-neutrality
+  assertion, measured both sides.**
+- **`test/run_procedures_chain.js` (NEW, 50/50)** — the continuous day: heatup (arrives
+  Mode 3 at **856.8 ppm**, the seam premise pinned) → seam probe (boron row UNMET, Mode-3
+  rows MET — exactly the seam named; comment raised) → the documented remedy
+  (`set_auto_setpoint boron_conc 683`, the board's actual boron surface; arrives ≤ 690 in
+  **55.6 plant-min** against the manual's ~58) → probe all-MET → startup ON THE CONTINUOUS
+  PLANT: **zero refusals** (both step-14/15 trip blocks ACCEPTED), never scrams, every
+  authored acc, day ends **critical at 10.75 % — Mode 1** (12.7 plant-hours on one plant).
+  raise/lower/shutdown/cooldown deliberately NOT chained — their acc values are authored
+  against their own ICs and no procedure bridges ~10 % → 50 % (the known Tier B gap,
+  #319); chaining them would be authoring content inside a gate.
+- **PWR-N02 dilute checklist stays deferred** *(OWNER RULING, 2026-08-06: selected "Defer
+  to Tier B pass" from two options put to him — a selection, not verbatim words)*; the
+  chain gate scripts the dilution directly.
+
+**Injection verification, all measured this session:**
+- Neutered evaluation (`_stepChecklist`): `run_checklist` **7 red (27/34)** clean, no
+  crash; `run_procedures_chain` **5 red (45/50)** — both probes dark, plant still green.
+- Dilution skipped (`DIL_BUDGET 0`): chain **15 red (35/50)** — #396's EXACT signature:
+  probe B `yyyn`, SR ladder stalls at 195–293 cps vs the 550–3500 acc ladder, power
+  0.000 %, plant_mode 3, and both `set_trip_block` refusals with the issue's verbatim
+  message.
+
+**Traps for the next reader:**
+- `start_checklist` returns a snapshot that has ALREADY run one instructor step
+  (`_assembleWithInstructor`), so verdicts are graded in the very snapshot the command
+  hands back — a "null until first tick" assumption is wrong and was the session's one
+  first-draft red.
+- The banner had to join the checklist render key (`ui/app.js`) or it never repaints —
+  and keying the raw obs would repaint every broadcast; it is keyed rounded.
+- `mwe_output` has no instrument twin in `PARAM_INSTRUMENT`, so its rows grade
+  `true_state` (the banner marks "(true value)"). Do NOT "fix" that by adding a mapping —
+  the map is shared with `acc` grading, and a new entry silently flips how existing acc
+  rows grade (e.g. pwr_heatup's `pump_flow_pct`).
+- `boron_analyzer` is a live 45 s-lag instrument, not sample-gated — a boron precondition
+  tracks a dilution on its own.
+
+**Gates: `run_checklist` 24 → 38, `run_procedures_chain` NEW 50/50, `run_procedures`
+29/29 141/141 and `run_procedures_stack` 29/29 262/262 unmoved (by design), `run_m6`
+18/18 117 unmoved, `run_manual_rev` 15/0 at Rev 13 (row extended, not advanced — the
+2026-08-06 revision directive). Full `run_all` at close of session.**
+
+**Still open from this session:** live-app refusal→checklist-step correlation
+(`ui/app.js cmd()` flashes an INTERLOCK but the checklist step is not told;
+`instructor_layer.handleCommand` sees the command, not the result) — small, unfiled;
+and the Tier B second pass (#319) now has the precondition machinery waiting for it.
+
 ## Session log — 2026-08-06-develop-d (#392 follow-up — the flicker, found by the owner's three clues and not by my instruments)
 
 **Task:** the owner retested after 2026-08-06-develop-c and reported the flicker was **still

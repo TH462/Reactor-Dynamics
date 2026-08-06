@@ -157,10 +157,19 @@
       doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual'
       cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
       gradedBy: null, complete: false,
+      // Precondition verdicts (#395) — evaluated on the first step() tick, never
+      // here: load has no snapshot. null = no `precond` authored or not yet graded.
+      precond: null,
+      precondMsg: false,   // an unmet-precondition instructor comment is standing
     };
   };
 
-  InstructorLayer.prototype.stopChecklist = function () { this.checklist = null; };
+  InstructorLayer.prototype.stopChecklist = function () {
+    // Take our own precondition comment down with the checklist (it names a
+    // banner that no longer exists); anyone else's message is left alone.
+    if (this.checklist && this.checklist.precondMsg) this.pendingMessage = null;
+    this.checklist = null;
+  };
 
   // Manual tick — only the ACTIVE step can be checked (a checklist is sequential).
   // Allowed even on auto-gradable steps: the operator's judgment outranks a
@@ -543,6 +552,37 @@
   InstructorLayer.prototype._stepChecklist = function (snapshot) {
     var c = this.checklist;
     if (c.complete) return;
+
+    // Preconditions (#395) — grade each authored {p, op, v, tol} against the LIVE
+    // plant every tick, instrument-first like `acc`, so the banner clears itself
+    // the moment the operator fixes the condition (dilutes to the ECC, restores
+    // the lineup). Verdicts only; the row text stays in the procedure artifact,
+    // same rule as step text. Nothing here blocks a command or a check-off —
+    // *(OWNER RULING, 2026-08-06: selected "Warn, never block" from three options
+    // put to him — a selection, not verbatim words)*.
+    if (c.proc.precond && c.proc.precond.length) {
+      var pv = [], anyUnmet = false;
+      for (var pi = 0; pi < c.proc.precond.length; pi++) {
+        var pg = this._grade(snapshot, c.proc.precond[pi]);
+        pv.push({ met: pg.met, obs: pg.value, graded_by: pg.graded_by });
+        if (!pg.met) anyUnmet = true;
+      }
+      c.precond = pv;
+      if (anyUnmet && !c.precondMsg) {
+        // One register-aware comment per unmet episode — the checklist banner
+        // carries the row-by-row detail, this just points the operator at it.
+        c.precondMsg = true;
+        this.pendingMessage = {
+          learning: 'Before you lean on this checklist: the plant does not match one or more of its prerequisites — the checklist panel lists each one with what the plant actually reads. Nothing is blocked; the steps simply may not verify until the plant is where the procedure assumes.',
+          industry: 'CHECKLIST PRECONDITIONS NOT MET — see the checklist panel for the failed items.',
+        };
+      } else if (!anyUnmet && c.precondMsg) {
+        // All rows recovered — clear OUR message (set under precondMsg only).
+        c.precondMsg = false;
+        this.pendingMessage = null;
+      }
+    }
+
     var st = c.proc.steps[c.idx];
     if (!st) { c.complete = true; return; }
 
@@ -587,7 +627,9 @@
     } else {
       v = snapshot.true_state ? snapshot.true_state[pred.p] : undefined; by = 'true_state';
     }
-    return { met: this._predMet(v, pred), graded_by: by };
+    // `value` rides along for consumers that display the reading (#395's
+    // precondition banner); met/graded_by callers are unaffected.
+    return { met: this._predMet(v, pred), graded_by: by, value: v };
   };
 
   // Same op vocabulary as the manual/harness: > < >= <= ~ (within tol).
@@ -796,6 +838,12 @@
         acc_met: this.checklist.accMetNow,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
+        // Precondition verdicts (#395): {met, obs, graded_by} order-parallel to
+        // the procedure's `precond` array; null until first graded or when the
+        // procedure authors none. Row text is NOT duplicated (same rule as steps).
+        preconditions: this.checklist.precond
+          ? this.checklist.precond.map(function (p) { return { met: p.met, obs: p.obs, graded_by: p.graded_by }; })
+          : null,
       } : null,
     };
   };
@@ -895,6 +943,11 @@
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
           accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
           gradedBy: null, complete: !!cs.complete,
+          // Precondition verdicts are DERIVED state — never saved; the first
+          // step() tick after a restore regrades them against the live plant
+          // (and re-raises the comment if rows are still unmet, which is right:
+          // a fresh session deserves the warning again).
+          precond: null, precondMsg: false,
         };
       } else if (typeof console !== 'undefined') {
         console.warn('InstructorLayer.loadState: checklist procedure "' + cs.procedure_id + '" not found — dropped.');

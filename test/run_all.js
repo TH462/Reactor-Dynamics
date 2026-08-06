@@ -743,7 +743,12 @@ var BASELINES = {
   // baseline in this map that CANNOT be reasoned about, only measured, because it counts
   // citation SITES in tracked markdown — so writing a merge up moves it, and deleting history
   // (the manual revision collapse) moves it the other way.
-  'run_hardrules.js':      { code: 0, score: '203checks 0failed' },
+  // 203 -> 208 on 2026-08-06-workbench-g (#395/#396) — write-up drift, the usual
+  // split: the mechanism/harness/gate code moved this by ZERO, and the entire
+  // delta is tracked markdown carrying the two dated owner rulings (warn-never-
+  // block; defer PWR-N02) across TUNING_LOG, BUILD_DECISIONS, CHANGELOG and the
+  // CLAUDE.md status line. Measured AFTER the docs, per the standing rule.
+  'run_hardrules.js':      { code: 0, score: '208checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -1244,7 +1249,15 @@ var BASELINES = {
   // confused about, which is the deviation's whole point and something the old plant could not
   // express.
   'run_campaign.js':       { code: 0, secs: 110, score: '51/51 3023passed' },
-  'run_checklist.js':      { code: 0, score: '24/24' },
+  // 24 -> 38 on 2026-08-06 (#395): preconditions. Section 7 is the MECHANISM on a
+  // synthetic procedure (graded live instrument-first, warn-never-block, the
+  // comment raised/cleared/re-raised, stop takes it down) — injection-verified:
+  // neutering the evaluation in _stepChecklist reds 7 cleanly (27/34 at the
+  // time). Section 8 is the CONTENT: pwr_startup's #396 boron seam row reads
+  // UNMET at cold_shutdown's own 857 ppm — the same boron a pump-heat heatup
+  // preserves — while all 16 authored Tier B rows were measured MET on their six
+  // from: ICs before shipping (the false-positive guard).
+  'run_checklist.js':      { code: 0, score: '38/38' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.
@@ -1354,7 +1367,26 @@ var BASELINES = {
   // 261 -> 262 (2026-08-04, #348) — same two edits as run_procedures above. This runner is the
   // one that was RED on pwr_stuck_porv, and it was right to be: it runs the plant the player
   // actually gets.
+  // UNCHANGED at 29/29 262/262 through the 2026-08-06 #395 extraction of its whole
+  // replay machinery to test/procedures_harness.js — that score IS the
+  // refactor-neutrality assertion, measured before and after.
   'run_procedures_stack.js': { code: 0, secs: 70, score: '29/29 262/262' },
+  // NEW 2026-08-06 (#395/#396): the CONTINUOUS operating day, the assertion both
+  // reloading gates are blind to by construction (each reloads proc.from per
+  // procedure). ONE service: pwr_heatup (arrives Mode 3 at 856.8 ppm — the seam's
+  // premise, pinned), the #395 seam probe (startup's boron precondition row UNMET
+  // with the Mode-3 rows MET — exactly the seam named), the documented remedy
+  // (PWR-N02 step 15 dilution via the boron_conc target; arrives in 55.6
+  // plant-min against the manual's ~58), the probe again (all MET, comment down),
+  // then pwr_startup ON THE CONTINUOUS PLANT: zero refusals (the two step-14/15
+  // trip blocks that #396 measured REFUSED are accepted), never scrams, and the
+  // day ends critical at 10.75 % — Mode 1. raise/lower/shutdown/cooldown are
+  // deliberately NOT chained: their acc values are authored against their own ICs
+  // and no procedure bridges ~10 % to 50 % (the known Tier B content gap, #319) —
+  // chaining them would be authoring content inside a gate. Injection-verified:
+  // dilution skipped reproduces #396 (see the runner header for the measured
+  // signature); the precondition-evaluation injection reds the probes.
+  'run_procedures_chain.js': { code: 0, secs: 55, score: '50/50' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {

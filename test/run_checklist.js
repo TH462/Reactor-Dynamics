@@ -118,6 +118,69 @@ var snap3 = svc2.handleCommand({ action: 'start_follow', procedure_id: 'pwr_lowe
 ck('follow loads', !!(snap3 && snap3.instructor && snap3.instructor.follow), snap3 && snap3.instructor && snap3.instructor.follow ? snap3.instructor.follow.procedure_id : 'none');
 ck('checklist cleared by follow', ckl(snap3) === null, 'null');
 
+// ------------------------------------------------- 7. preconditions (#395)
+head('7. Preconditions — graded live, WARN and never block');
+// Mechanism probe with a SYNTHETIC procedure so this section does not depend on
+// which real procedures carry `precond`. Two rows: one met at hot_full_power,
+// one deliberately unmet but FIXABLE by a single command (hpi_active coerces to
+// 1/0 under the ~ op), which is what lets the live-clear path be observed.
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_precond_probe', category: 'control', title: 'precondition mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  precond: [
+    { p: 'power_pct', op: '>', v: 90, text: 'reactor at power' },
+    { p: 'hpi_active', op: '~', v: 1, tol: 0.5, text: 'safety injection running (test row)' },
+  ],
+  steps: [{ text: 'observe (never auto-checks; the section watches the banner, not the steps)' }],
+});
+var svc3 = mkService();
+run(svc3, 3);
+snap = svc3.handleCommand({ action: 'start_checklist', procedure_id: 'zz_precond_probe' });
+c = ckl(snap);
+// _assembleWithInstructor steps the instructor on the snapshot it returns, so
+// the verdicts are graded in the SAME snapshot the start command hands back —
+// the operator never sees a bannerless frame first.
+ck('verdicts graded in the start snapshot itself', !!(c && c.preconditions), c && (c.preconditions ? 'graded' : String(c.preconditions)));
+snap = run(svc3, 2);
+c = ckl(snap);
+// pcv(): null-safe row accessor so a neutered evaluation (the injection this
+// section is verified against) produces clean reds, not a TypeError.
+function pcv(cc, i) { return (cc && cc.preconditions && cc.preconditions[i]) || {}; }
+ck('verdicts in snapshot after a tick, order-parallel', !!(c && c.preconditions && c.preconditions.length === 2), c && c.preconditions && c.preconditions.length);
+ck('met row graded true', pcv(c, 0).met === true, 'power obs ' + pcv(c, 0).obs);
+ck('unmet row graded false, observation shipped', pcv(c, 1).met === false && pcv(c, 1).obs !== undefined, 'obs ' + pcv(c, 1).obs);
+ck('instructor comment raised while unmet', !!(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message).slice(0, 40) + '…');
+var r2 = svc3.handleCommand({ action: 'set_heater', power_pct: 40 });
+ck('commands not blocked while unmet (warn, never block)', !(r2 && r2.type === 'blocked'), r2 ? (r2.type || 'ok') : 'ok');
+svc3.handleCommand({ action: 'set_hpi', active: true });
+snap = run(svc3, 2);
+c = ckl(snap);
+ck('fixing the plant clears the row live', pcv(c, 1).met === true, 'obs ' + pcv(c, 1).obs);
+ck('all rows met → the comment comes down', !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message));
+svc3.handleCommand({ action: 'set_hpi', active: false });
+snap = run(svc3, 2);
+ck('re-breaking the condition re-raises the comment (new episode)', !!(snap.instructor && snap.instructor.message), 'raised');
+snap = svc3.handleCommand({ action: 'stop_checklist' });
+snap = run(svc3, 1);
+ck('stop takes the standing comment down with the banner', !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message));
+
+// ------------------------------------------------- 8. real content (#395/#396)
+head('8. Tier B content — pwr_startup\'s seam row discriminates');
+// cold_shutdown carries the SAME 857 ppm a pump-heat heatup preserves (#396's
+// seam), so starting the startup checklist there must flag the boron row — plus
+// the cold rows — while the own-IC case (measured in batch 2, all 16 rows MET on
+// their six from: ICs) stays banner-free.
+var svc4 = new RD.SimulationService({ seed: 42, plant_id: 'pwr', initial_state: 'cold_shutdown' });
+svc4.running = true;
+run(svc4, 10);
+snap = svc4.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+c = ckl(snap);
+ck('startup ships 4 precondition rows', !!(c && c.preconditions && c.preconditions.length === 4), c && c.preconditions && c.preconditions.length);
+ck('the #396 boron seam row reads UNMET at ~857 ppm', pcv(c, 3).met === false && Math.abs(pcv(c, 3).obs - 857) < 15, 'obs ' + (pcv(c, 3).obs != null ? (+pcv(c, 3).obs).toFixed(1) : '—'));
+ck('the temperature row reads UNMET on a cold plant', pcv(c, 0).met === false, 'obs ' + (pcv(c, 0).obs != null ? (+pcv(c, 0).obs).toFixed(1) : '—'));
+ck('instructor comment raised for the seam', !!(snap.instructor && snap.instructor.message), 'raised');
+svc4.handleCommand({ action: 'stop_checklist' });
+
 // ---------------------------------------------------------------- summary
 console.log('\n' + B + '──────────' + X);
 var ok = passed === total;

@@ -30,6 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — checklists check the plant they stand on (#395/#396, 2026-08-06)
+
+Audit #344 ran the six Tier B normal evolutions as one continuous 17-hour shift and every
+one "completed" on a reactor that never went critical — the three precondition-shaped
+fields in the procedure data (`from:`, `prereq`, `guard`) were all harness inputs or
+display text, none evaluated at runtime. Now:
+
+- **Procedures carry machine-checkable `precond` rows** (`{p, op, v, tol, text}`, the same
+  predicate vocabulary as `acc`), authored for the six Tier B evolutions and measured MET
+  on their own initial conditions before shipping. `pwr_startup`'s boron row (683 ± 70 ppm)
+  is the #396 heatup→startup seam: a pump-heat heatup arrives at ≈ 857 ppm, 173.8 ppm
+  outside the band, where criticality sits ≈ 561 steps instead of the 319 the checklist
+  assumes.
+- **The Instructor grades them live, instrument-first, every tick** the checklist runs
+  (`_grade`/`_predMet` — no fourth copy of the predicate evaluator), ships verdicts in the
+  snapshot's checklist block, and raises one register-aware comment while any row is unmet.
+- **The checklist panel shows a NOT MET banner** naming each failed row with expected vs
+  measured. It **warns and never blocks** *(OWNER RULING, 2026-08-06: selected "Warn,
+  never block" from three options put to him — a selection, not verbatim words)*: commands
+  are never refused, steps still check off, and the banner clears itself when the operator
+  fixes the condition — graded live, so diluting to the ECC takes the boron row from unmet
+  to met with no button press.
+- **A new continuous-day gate** (`test/run_procedures_chain.js`, 50 checks) proves the
+  documented day works on ONE plant: heatup arrives Mode 3 at 856.8 ppm, the seam probe
+  flags exactly the boron row, the PWR-N02 step-15 dilution lands in 55.6 plant-min
+  (manual says ~58), the probe reads all-MET, and the startup then takes the same plant
+  critical to Mode 1 at 10.75 % with both at-power trip blocks ACCEPTED — the two refusals
+  #396 measured are zero. Injection-verified: skipping the dilution reproduces #396's
+  exact signature (15 red — power 0.000 %, Mode 3, both `set_trip_block` refusals
+  verbatim). The replay machinery it shares with `run_procedures_stack.js` was extracted
+  to `test/procedures_harness.js`; the stack gate's unchanged 29/29 262/262 is the
+  refactor-neutrality assertion.
+- Gates: `run_checklist` 24 → **38** (mechanism + content sections, injection-verified
+  7 red on a neutered evaluation), `run_procedures_chain` **NEW 50/50**, `run_procedures`
+  and `run_procedures_stack` deliberately unmoved. Manuals: new `02 §8.3` (the banner,
+  Rev 13 pending row extended).
+
 ## [Alpha 1.2.2] — 2026-08-06
 
 ## [Alpha 1.2.1] — 2026-08-06

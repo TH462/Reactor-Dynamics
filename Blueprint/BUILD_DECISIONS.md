@@ -45,6 +45,45 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-workbench-g — #395/#396: the precondition layer, and the gate for the day no reload can see
+
+**Decision — preconditions WARN AND NEVER BLOCK** *(OWNER RULING, 2026-08-06: selected "Warn,
+never block" from three options put to him — warn-only / hard block / block-in-missions-only —
+a selection, not verbatim words)*. New `precond: [{p, op, v, tol, text}]` field on procedures,
+graded live by the Instructor every checklist tick through the existing `_grade`/`_predMet`
+(instrument-first, HR1) — deliberately NOT a fourth copy of the predicate evaluator, of which
+this repo already had three. Verdicts ship in the snapshot's checklist block; prose stays in
+the artifact (the same ship-verdicts-not-prose rule the step text already follows). The
+checklist panel renders unmet rows as a caution banner with expected-vs-measured; free-play
+invariants pinned by `run_checklist.js` (:56 no-reset, :82/:102 never-blocked) are untouched
+and re-asserted.
+
+**Decision — the chain gate proves the DOCUMENTED day, not an invented one.** New
+`test/run_procedures_chain.js` runs heatup → PWR-N02 step-15 dilution → startup on ONE
+service and asserts the day goes critical to Mode 1 (10.75 %, zero refusals — #396's two
+`set_trip_block` refusals are the un-diluted day's signature, reproduced 15-red by the
+dilution-skipped injection). raise/lower/shutdown/cooldown are deliberately NOT chained:
+their `acc` values are authored against their own ICs and no procedure bridges the startup's
+~10 % arrival to raise_power's assumed 50 % — that is the known Tier B content gap (#319),
+and closing it inside a gate would be authoring content in a test (HR9/HR10). The
+prerequisite mismatch those four would hit is exactly what the precondition layer now
+surfaces at runtime instead.
+
+**Decision — PWR-N02's driveable checklist stays deferred** *(OWNER RULING, 2026-08-06:
+selected "Defer to Tier B pass" from two options put to him — a selection, not verbatim
+words)*; the chain gate performs the dilution via `set_auto_setpoint boron_conc 683`, the
+board's actual boron surface.
+
+**Mechanism notes.** The stack runner's replay machinery was extracted verbatim to
+`test/procedures_harness.js` with one new seam (`opts.svc`); `run_procedures_stack`'s
+unchanged 29/29 262/262 is the refactor-neutrality assertion, measured both sides.
+`pwr_startup`'s seam row is `boron_ppm ~683 ±70` — ±70 ppm ≈ the caution's ±750 pcm ECC
+acceptance band at ~10.6 pcm/ppm; the post-heatup 856.8 misses it by 104 ppm of margin, and
+all 16 authored rows were measured MET on their six own `from:` ICs before shipping.
+Injections measured: neutered evaluation → `run_checklist` 7 red / chain 5 red; dilution
+skipped → chain 15 red with the issue's verbatim refusal text. Full session record:
+`Diagnostic/TUNING_LOG.md` 2026-08-06-workbench-g.
+
 ## 2026-08-06-develop-d — #392 follow-up: a probe scoped to your hypothesis cannot disconfirm it
 
 **Decision — the render pass writes only what changed, and it writes all of it inside the paint
