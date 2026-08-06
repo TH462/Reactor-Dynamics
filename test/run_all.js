@@ -1488,6 +1488,13 @@ var BASELINES = {
   // They drive the component through `RD.PwrBoard.componentInstance()`, added for them —
   // going through render() would make the input a moving plant and every assertion
   // timing-dependent.
+  // 214 -> 215 (2026-08-06): the trace must stay INSIDE the card. The sparkline svg is
+  // overflow:visible, so a vertex outside the viewBox does not clip — it draws on the BOARD.
+  // That shipped: the held axis clamped itself to the tile's declared scale, so a reading
+  // outside that scale fell outside [lo,hi] and plotted below the box, down across the gauge
+  // band. Found from an owner screenshot, because nothing here looked at the trace's
+  // GEOMETRY — the three pins above all measure its shape or its content. Injection-verified:
+  // reverting both halves of the fix gives 229 vertices outside, above and below scale.
   // A FOURTH was drafted and CUT for not discriminating: "history translates rigidly as it
   // scrolls" stayed GREEN against both defects it describes (a moving-origin bucket grid
   // and a per-paint re-fit) while the held-axis pin went red on both. The held-axis pin was
@@ -1504,7 +1511,7 @@ var BASELINES = {
   // clear-of-the-dump-valve) go with it rather than being kept alive against an item that
   // no longer renders. Net -2. Everything else the re-export moved was re-pinned, not
   // dropped: four pipe ids, five item ids, two re-measured runs and the rod-card spacing.
-  'verify_board_check.js':   { code: 0, score: '214checks' },
+  'verify_board_check.js':   { code: 0, score: '215checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

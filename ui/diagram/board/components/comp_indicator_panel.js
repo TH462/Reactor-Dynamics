@@ -362,6 +362,9 @@
         if (pts[w].lo < lo) lo = pts[w].lo;
         if (pts[w].hi > hi) hi = pts[w].hi;
       }
+      // Keep the real data extremes: whatever the axis preferences below decide, the
+      // axis must still CONTAIN the trace (see the clamp).
+      var dLo = lo, dHi = hi;
       var floorSpan = (st.max - st.min) * MIN_WINDOW;
       if ((hi - lo) < floorSpan) {
         var mid = (hi + lo) / 2;
@@ -388,10 +391,20 @@
         var c = (hi + lo) / 2;
         lo = Math.floor((c - need / 2) / step) * step;
         hi = Math.ceil((c + need / 2) / step) * step;
-        // never show a range the instrument cannot reach — a level axis running to −50 %
-        // reads as a broken gauge
+        // Prefer not to show a range the instrument cannot reach — a level axis running to
+        // −50 % reads as a broken gauge.
         if (lo < st.min) { hi += (st.min - lo); lo = st.min; }
         if (hi > st.max) { lo -= (hi - st.max); hi = st.max; if (lo < st.min) lo = st.min; }
+        // …but that is only a PREFERENCE, and it must never win over showing the trace.
+        // Re-expand to contain the data. Without this the clamp silently excluded any
+        // reading outside the tile's declared scale, ys() returned coordinates outside the
+        // plot box, and — the sparkline svg being overflow:visible — the trace DREW OUTSIDE
+        // THE CARD, down across the gauge band and the board beneath it (owner screenshot,
+        // 2026-08-06: a cold-shutdown plant at 355 °F against an at-power Tavg band). The
+        // pre-2026-08-06 code fit purely to the data and so could not do this; the clamp
+        // arrived with the held axis and brought the bug with it.
+        if (dLo < lo) lo = dLo;
+        if (dHi > hi) hi = dHi;
         held = { lo: lo, hi: hi };
       }
       if (hi - lo < 1e-9) hi = lo + 1;
@@ -400,7 +413,14 @@
         if (!useTime) return PAD + (i / (m - 1)) * (W - 2 * PAD);
         return PAD + ((pts[i].t - t0) / tSpan) * (W - 2 * PAD);
       }
-      function ys(v) { return PAD + (1 - (v - lo) / (hi - lo)) * (H - 2 * PAD); }
+      // HARD GUARD. The range logic above should always contain the data, but a value
+      // plotted outside the viewBox escapes the card entirely (overflow:visible), so a
+      // range bug becomes a board-wide visual defect rather than a clipped trace. Pinned
+      // to the edge it reads as "off scale", which is honest and stays inside the tile.
+      function ys(v) {
+        var y = PAD + (1 - (v - lo) / (hi - lo)) * (H - 2 * PAD);
+        return y < 0 ? 0 : y > H ? H : y;
+      }
       function colorAt(v) { return REGION_COLORS[regionAt(REG, v).key]; }
 
       // currentRegion, not regionAt — this is the live reading and it carries the hysteresis.

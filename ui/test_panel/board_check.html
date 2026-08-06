@@ -441,7 +441,25 @@
         ck('spark: a rising trend does not re-project drawn history every paint (held axis)',
           moved <= PAINTS / 3, moved + ' of ' + PAINTS + ' paints moved already-drawn vertices');
 
-        // 3. NOT BLANK AT SPEED. sim-seconds per broadcast is accel x 0.1, so a fixed
+        // 3. THE TRACE STAYS INSIDE THE CARD. The sparkline svg is overflow:visible, so a
+        //    vertex outside the viewBox does not clip — it DRAWS ON THE BOARD, down across
+        //    the gauge band and whatever is under the tile. That shipped on 2026-08-06: the
+        //    held axis clamped itself to the tile's declared scale, so a reading outside that
+        //    scale (a cold-shutdown plant at 355 °F against an at-power Tavg band) fell
+        //    outside [lo,hi] and plotted below the box. Reported from a screenshot, because
+        //    nothing here was looking at the geometry of the trace.
+        fresh();
+        t = 30000;
+        // drive the reading far BELOW the tile's own min, then far above its max
+        for (var iA = 0; iA < 120; iA++) { push(t, BASE.min - 400); t += 0.2; }
+        var out1 = verts('polyline,polygon').filter(function (p) { return p.y < -0.01 || p.y > 36.01; }).length;
+        for (var iB = 0; iB < 120; iB++) { push(t, BASE.max + 400); t += 0.2; }
+        var out2 = verts('polyline,polygon').filter(function (p) { return p.y < -0.01 || p.y > 36.01; }).length;
+        ck('spark: an off-scale reading stays INSIDE the card (overflow:visible has no clip)',
+          out1 === 0 && out2 === 0,
+          out1 + ' vertices outside below-scale, ' + out2 + ' above-scale (0/0 required)');
+
+        // 4. NOT BLANK AT SPEED. sim-seconds per broadcast is accel x 0.1, so a fixed
         //    180 s window held ONE sample at 3600x, the time-trim dropped the rest and the
         //    polyline collapsed to a single vertex — the six vital gauges were BLANK.
         fresh();
