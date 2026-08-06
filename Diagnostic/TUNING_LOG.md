@@ -51,15 +51,24 @@ one:
 
 | | ADV SHUT | ADV AUTO |
 |---|---|---|
-| spike | safeties lift, 1306 psi (9.00 MPa) | safeties lift, **1313 psi (9.06 MPa)** at 1m20s, ADV already 100 % |
-| then | **open for the whole 30 min** | **reseat at 3m21s** |
-| settles | 1306 psi (9.00 MPa), on the safeties | **1247 psi (8.60 MPa)**, the ADV setpoint |
+| peak | 1351 psi (9.32 MPa) | 1350 psi (9.31 MPa) |
+| safeties lift | 1318 psi (9.09 MPa) @ 65.8 s | **1317 psi (9.08 MPa) @ 68.5 s** |
+| then | **still open at 10 min** | **reseat at 5.0 min** |
+| settles | 1305 psi (9.00 MPa), on the safeties | **1249 psi (8.61 MPa)**, the ADV setpoint |
 
-So the transient still reaches the code safeties (**TR-5** and **TR-16** pin that and both pass
-unchanged), and what changed is the steady state: a plant that used to sit on its main steam
+Peak and lift time are essentially IDENTICAL — AUTO delays the lift by three seconds and does
+not prevent it (**TR-5** and **TR-16** pin it and both pass unchanged). The entire difference is
+the tail: a plant that used to sit on its main steam
 safety valves indefinitely now relieves below them. **A 5-minute sample interval hid the entire
 mechanism** — it read only the tail, and would have shipped a write-up that was exactly
 backwards. Take the ends *and* the shape when the claim is about a transient.
+
+**AND 20 s WAS STILL NOT ENOUGH.** The table above is PEAK-TRACKED per step. The 20 s pass
+reported the lift at 9.06 MPa, which is the **relieving plateau** the safeties settle onto once
+their 1.2-of-rated capacity has crushed the spike — not where they popped. The pop is 9.08–9.09
+and the peak 9.31–9.32, and no sample interval finds them, because the safeties are large enough
+to erase their own overshoot between samples. **When a valve is fast and big, sampling measures
+what it left behind; only per-step tracking measures the event.**
 
 Two probes re-authored, not re-banded (HR9), both injection-verified against the old default:
 **TR-17** leg A was the null control on "the valve ships SHUT" — rebuilt to measure what AUTO

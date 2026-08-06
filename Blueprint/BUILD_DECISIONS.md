@@ -61,12 +61,16 @@ stack, MSIV closure at hot full power:
 
 | | ADV SHUT | ADV AUTO |
 |---|---|---|
-| spike | safeties lift, 1306 psi (9.00 MPa) | safeties lift, **1313 psi (9.06 MPa)** at 1m20s, ADV already 100 % |
-| then | **open the whole 30 min** | **reseat at 3m21s** |
-| settles | 1306 psi (9.00 MPa), on the safeties | **1247 psi (8.60 MPa)**, the ADV setpoint |
+| peak | 1351 psi (9.32 MPa) | 1350 psi (9.31 MPa) |
+| safeties lift | 1318 psi (9.09 MPa) @ 65.8 s | **1317 psi (9.08 MPa) @ 68.5 s** |
+| then | **still open at 10 min** | **reseat at 5.0 min** |
+| settles | 1305 psi (9.00 MPa), on the safeties | **1249 psi (8.61 MPa)**, the ADV setpoint |
 
-The transient still reaches the safeties — **TR-5 and TR-16 pin that and both pass unchanged**
-— so the premise fails. What changed is the *steady* state, and it changed toward
+Peak and lift time are essentially **identical** — AUTO delays the lift by three seconds and
+does not prevent it (**TR-5 and TR-16 pin it and both pass unchanged**) — so the premise fails,
+by a wider margin than the first pass suggested. **These are PEAK-TRACKED**; an earlier draft
+quoted 9.06 MPa as the lift, which is the relieving plateau the safeties settle onto, not where
+they popped. Sampling found the plateau; only per-step tracking finds the pop. What changed is the *steady* state, and it changed toward
 prototypicality: a plant does not sit on its main steam safety valves for half an hour, and
 relieving to atmosphere below the code setpoint is the entire reason an ADV exists at 8.60
 against their 9.31. At power it does not open at all (819 psi / 5.65 MPa). **AUTO caps

@@ -45,12 +45,14 @@ reactor at 1m01s, so it is a decay-heat case within the minute):
 
 | | ADV SHUT | ADV AUTO |
 |---|---|---|
-| on the spike | safeties lift, 1306 psi (9.00 MPa) | safeties lift, 1313 psi (9.06 MPa) at 1m20s |
-| then | open for the whole 30 min | **reseat at 3m21s** |
-| settles at | 1306 psi (9.00 MPa), on the safeties | **1247 psi (8.60 MPa)**, the ADV setpoint |
+| peak | 1351 psi (9.32 MPa) | 1350 psi (9.31 MPa) |
+| safeties lift | 1318 psi (9.09 MPa) at 65.8 s | 1317 psi (9.08 MPa) at 68.5 s |
+| then | **still open at 10 min** | **reseat at 5.0 min** |
+| settles at | 1305 psi (9.00 MPa), on the safeties | **1249 psi (8.61 MPa)**, the ADV setpoint |
 
-The transient still reaches the code safeties — TR-5 and TR-16 pin that and both pass
-unchanged. What changed is the steady state: a plant that used to sit on its main steam safety
+Peak and lift time are essentially **identical** — AUTO delays the lift by three seconds and
+does not prevent it (TR-5 and TR-16 pin it and both pass unchanged). The entire difference is
+the tail: a plant that used to sit on its main steam safety
 valves indefinitely now relieves to atmosphere below them and holds there, which is what an
 atmospheric dump is for. At power the valve does not open at all (steam pressure ≈819 psi /
 5.65 MPa). **AUTO caps pressure but does not cool the plant** — Tavg holds at 574 °F (301 °C)

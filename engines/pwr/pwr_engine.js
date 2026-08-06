@@ -1655,17 +1655,22 @@
       // safeties out of every bottled-SG evolution". Measured full stack — MSIV closure
       // at hot full power, which trips the turbine and scrams the reactor at 1m01s:
       //
-      //   ADV SHUT   safeties lift on the spike and STAY lifted: 9.00 MPa (1306 psi),
-      //              sg_safety_open true for the whole 30-minute ride
-      //   ADV AUTO   safeties still lift on the spike — 9.06 MPa (1313 psi) at 1m20s
-      //              with the ADV already wide open — then RESEAT at 3m21s, and the ADV
-      //              modulates down to hold 8.60 MPa (1247 psi), its setpoint exactly
+      // PEAK-TRACKED, not sampled — an earlier write-up of this quoted 9.06 MPa as the
+      // lift pressure, which is the RELIEVING PLATEAU the safeties settle onto, not where
+      // they popped. Tracked per step at 1x:
       //
-      // So the worry does not survive the measurement: the transient still reaches the
-      // code safeties (TR-5 and TR-16 both pin that and both pass on this default). What
-      // changes is the STEADY state — a plant that used to sit on its main steam safety
-      // valves indefinitely now relieves to atmosphere below them and holds there, which
-      // is what an atmospheric dump IS and why 8.60 sits under their 9.31.
+      //             peak                  safeties lift        reseat
+      //   ADV SHUT  9.32 MPa (1351 psi)   9.09 MPa @ 65.8 s    STILL OPEN at 10 min
+      //   ADV AUTO  9.31 MPa (1350 psi)   9.08 MPa @ 68.5 s    5.0 min, then the ADV
+      //                                                        holds 8.60 MPa (1247 psi)
+      //
+      // So the worry does not survive the measurement, and by a wider margin than the
+      // first pass suggested: peak and lift time are essentially IDENTICAL — AUTO delays
+      // the lift by three seconds and does not prevent it (TR-5 and TR-16 both pin the
+      // lift and both pass on this default). The ENTIRE difference is the tail. A plant
+      // that used to sit on its main steam safety valves for the whole event now relieves
+      // to atmosphere below them and holds there, which is what an atmospheric dump IS
+      // and why 8.60 sits under their 9.31.
       //
       // At power the valve does not open at all (steam pressure ≈5.65 MPa), so nothing
       // about normal operation moves.
