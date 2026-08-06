@@ -7,15 +7,23 @@ conclusions about the very subsystems under audit: the priming problem **GitHub 
 describes. The audit programme, its rules of engagement and the per-slice tracking issues live
 in **GitHub #221 and #295–#301**; there is no Blueprint document for it.
 
-**How you got here — the AUDIT LANES** *(OWNER RULING, 2026-08-05, #383: "Let's do it with the
-files not the skills.")*. `C:\grok_build\RD_workbench` and `C:\grok_build\RD_backshop` each carry
+**How you got here — the AUDIT LANE** *(OWNER RULING, 2026-08-06: "Workbench will not be an audit
+lane.")*. **`C:\grok_build\RD_backshop` is the audit lane, and it is the only one.** It carries
 `.claude/settings.local.json` with the `CLAUDE.md` exclusions and `autoMemoryEnabled: false`. That
-file **layers by default and needs no flag**, so any session started in either tree is already
-unprimed, and a `/clear` is enough to begin a slice. `develop` has no such file: a slice launched
-there needs `claude --settings .claude/settings.audit.json`.
+file **layers by default and needs no flag**, so any session started in that tree is already
+unprimed, and a `/clear` is enough to begin a slice. `develop` and `RD_workbench` have no such
+file: a slice launched in either needs `claude --settings .claude/settings.audit.json`.
 
-The accepted cost, stated so it is not rediscovered as a bug: **ordinary non-audit work in those two
-lanes also runs without `CLAUDE.md`.** That is the ruling, not an accident.
+The earlier arrangement *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
+skills.")* armed both overflow lanes. Workbench's copy was removed during ordinary work and the
+2026-08-06 ruling makes that permanent.
+
+The accepted cost, stated so it is not rediscovered as a bug: **ordinary non-audit work in
+`backshop` also runs without `CLAUDE.md`.** That is the ruling, not an accident.
+
+**Whichever tree you are in, prove the configuration before you audit** — `node
+tools/audit_preflight.js`. A settings key that silently fails to match looks exactly like a clean
+audit, and the preflight only ever checks the tree it is run in.
 
 ```
 node tools/audit_preflight.js <slice>      # verifies the config; launches nothing

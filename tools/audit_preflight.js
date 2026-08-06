@@ -26,11 +26,17 @@
  * the auditor's first-turn self-check, on the record in the slice issue before any finding
  * (AUDIT_CHARTER.md header + §11). Both halves are needed; neither substitutes for the other.
  *
- * HOW A SLICE IS ACTUALLY LAUNCHED (ruled 2026-08-05, #383). `RD_workbench` and `RD_backshop` are
- * AUDIT LANES: each carries `.claude/settings.local.json` with the exclusions, which layers BY
- * DEFAULT and needs no flag, so a plain session started in either tree is already unprimed. In
- * `develop`, which has no such file, use `claude --settings .claude/settings.audit.json`. This
- * script checks either configuration; it never launches anything.
+ * HOW A SLICE IS ACTUALLY LAUNCHED (ruled 2026-08-05 #383, NARROWED 2026-08-06). `RD_backshop` is
+ * THE AUDIT LANE and the only one: it carries `.claude/settings.local.json` with the exclusions,
+ * which layers BY DEFAULT and needs no flag, so a plain session started in that tree is already
+ * unprimed. In `develop` and `RD_workbench`, which have no such file, use
+ * `claude --settings .claude/settings.audit.json`. This script checks either configuration; it
+ * never launches anything.
+ *
+ * #383 originally armed BOTH overflow lanes. Workbench's copy was removed during ordinary work,
+ * and the owner ruled on 2026-08-06 that workbench will not be an audit lane. Note what this
+ * script cannot tell you: it only ever checks the tree it is RUN IN, so it can never answer
+ * "which lanes are currently unprimed?" — run it where you intend to audit, not somewhere else.
  *
  *   node tools/audit_preflight.js 344              # check, and print how this tree launches
  *   node tools/audit_preflight.js --settings=<p>   # check a copy instead (injection-testing)

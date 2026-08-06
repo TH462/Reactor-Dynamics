@@ -714,13 +714,16 @@ var BASELINES = {
   // OK while sitting five checks above baseline. Only run_all compares the tally, because the
   // drift here is symmetric — MORE checks is drift too. Run the aggregate before you believe a
   // doc-only change moved nothing.
+  // 200 -> 202 (2026-08-06): the workbench-is-not-an-audit-lane ruling, cited where it binds —
+  // CLAUDE.md lane table, AUDIT_CHARTER.md header, tools/audit_preflight.js header (that last one
+  // is INVISIBLE to this gate, which scans tracked MARKDOWN only, so the +2 is the two .md sites).
   // MEASURED ON THE MERGED TREE (2026-08-06-develop-b, backshop merge), AFTER the write-ups.
   // This key has now been a three-way combine in one day: base 178 → develop 189, workbench
   // 179, backshop 183, and none of those figures survives any of the merges. It is the one
   // baseline in this map that CANNOT be reasoned about, only measured, because it counts
   // citation SITES in tracked markdown — so writing a merge up moves it, and deleting history
   // (the manual revision collapse) moves it the other way.
-  'run_hardrules.js':      { code: 0, score: '200checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '202checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
