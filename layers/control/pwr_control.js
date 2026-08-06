@@ -1164,12 +1164,18 @@
 
     // The ADV's channel exists so the condenser-independent cooldown can be run the
     // same way as any other — but note it ships OFF, unlike the dump's: the valve's
-    // default lineup is SHUT, and engaging AUTO is the operator saying "hold the
-    // generator at the ADV setpoint", which is a cooldown decision rather than a
-    // normal-operation one (#371).
+    // default lineup is AUTO since 2026-08-06 *(OWNER, 2026-08-06: "Amos dump should
+    // start in auto" — ADV, dictated)*, reversing #371's SHUT default. Measured, AUTO
+    // holds a bottled generator at 8.60 MPa instead of parking it on the 9.31 code
+    // safeties for the whole event; the safeties still lift on the initial spike.
+    // NOTE there is deliberately no `defaultOn` here — it would be redundant. This is a
+    // `kind: 'mode'` channel, so `_isEngaged` reads the PLANT (`adv_auto`, i.e.
+    // `adv_override == null`) rather than the channel's own flag, and the engine now
+    // ships that null. A `defaultOn` would also only reach free play, missing instructed
+    // content and migrated saves — see pwr_engine.js's initial state.
     { id: 'adv', kind: 'mode', group: 'Secondary',
       label: 'Atmospheric dump (ADV)',
-      hint: 'Automatic pressure-mode atmospheric dump — vents steam to atmosphere above the ADV setpoint, and unlike the turbine bypass it does NOT need the condenser. This is the cooldown path when the condenser is gone. Manual = freeze at the current valve position (the shipped lineup is SHUT).',
+      hint: 'Automatic pressure-mode atmospheric dump — vents steam to atmosphere above the ADV setpoint, and unlike the turbine bypass it does NOT need the condenser. This is the cooldown path when the condenser is gone. Manual = freeze at the current valve position. The shipped lineup is AUTO, which caps a bottled generator below its code safeties but does NOT cool the plant — lower the setpoint, or open the valve, to do that.',
       isOn: function (cs) { return !!cs.adv_auto; },
       engage: function () { return [{ action: 'set_adv', mode: 'auto' }]; },
       disengage: function (s) { return [{ action: 'set_adv', pct: s.control_state.adv_pct || 0 }]; } },

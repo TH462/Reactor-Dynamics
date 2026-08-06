@@ -30,6 +30,67 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the atmospheric dump valves ship in AUTO (#392, 2026-08-06)
+
+*(OWNER, 2026-08-06: "Amos dump should start in auto" — ADV, dictated.)* `adv_override`
+`0` → `null`, in the engine's initial state and in `_migrateState`, so it applies to every
+initial condition, instructed content and migrated save. No `defaultOn` on the automation
+channel: it is a `mode` channel whose engaged state is read from the plant, and `defaultOn`
+would reach free play only.
+
+**This reverses #371a, whose stated worry does not survive measurement.** That decision
+shipped the valve SHUT because AUTO "would take the code safeties out of every bottled-SG
+evolution". Measured full stack, MSIV closure at hot full power (the turbine trip scrams the
+reactor at 1m01s, so it is a decay-heat case within the minute):
+
+| | ADV SHUT | ADV AUTO |
+|---|---|---|
+| on the spike | safeties lift, 1306 psi (9.00 MPa) | safeties lift, 1313 psi (9.06 MPa) at 1m20s |
+| then | open for the whole 30 min | **reseat at 3m21s** |
+| settles at | 1306 psi (9.00 MPa), on the safeties | **1247 psi (8.60 MPa)**, the ADV setpoint |
+
+The transient still reaches the code safeties — TR-5 and TR-16 pin that and both pass
+unchanged. What changed is the steady state: a plant that used to sit on its main steam safety
+valves indefinitely now relieves to atmosphere below them and holds there, which is what an
+atmospheric dump is for. At power the valve does not open at all (steam pressure ≈819 psi /
+5.65 MPa). **AUTO caps pressure but does not cool the plant** — Tavg holds at 574 °F (301 °C)
+with the condenser lost — so starting a cooldown still takes the operator.
+
+One evolution genuinely lost its lift: an SG re-pressurizing *from below* (a steam line break,
+then isolated) never spikes, so the ADV catches it at the setpoint. **TR-12b** and **TR-17**
+were re-authored rather than re-banded, both injection-verified. `DESIGN_COMPANION` §8.34 is
+narrowed to the unsourced capacity; `Manuals/12` §12.18 likewise.
+
+### Fixed — board defects reported from play (#392, 2026-08-06)
+
+- **Turbine exhaust ran under the TURBINE-GENERATOR card.** A stale `DOC_PATCHES` waypoint: the
+  #371b re-export moved the turbine 210 px left and 40 px up, and the fix-up updated only the
+  second of the two points. Corrected from measured port positions. `board_check` pinned only
+  the last waypoint, so the mirror pin and a crossover-clearance pin were added.
+- **Steam generator bubbles stopped at the tube bundle** instead of rising to the water
+  surface — 171.6 px short at a normal 59 % level, and the bubble band was a fixed 54 px strip
+  at any level above 20 %. `Math.max(bendY, levelY)` picks the *lower* point on screen in SVG
+  coordinates; it is correct for where bubbles are born and was wrong as their travel target.
+  Bubbles are now also clipped to the vessel shell, which they never were.
+- **On-screen flicker during transients, and alarm acknowledgements that did not register.**
+  Both came from DOM being rebuilt rather than updated. Animation-restarting component rebuilds
+  fell from 31.9 to 3.6 per plant-minute on an MSIV closure; the alarm stack went from 9.2
+  wholesale rebuilds per second on an idle plant to none. The dropped clicks were a consequence
+  of the same rebuild — a press that straddled one landed on nothing. Vital gauges also stop
+  strobing when a reading sits exactly on a setpoint.
+- **The six vital gauges were blank above ~600× time acceleration** (unreported): a fixed
+  3-minute window held one sample per broadcast at that speed, and the trace collapsed to a
+  single point. Their sparklines now follow the speed setting and take sub-broadcast samples.
+
+### Changed — vital-gauge sparklines match the strip chart (#392, 2026-08-06)
+
+Time-bucketed decimation with a min/max envelope replaces an index stride that **dropped
+extremes** — a one-sample spike could vanish outright from a vital gauge — and the axis is held
+on a 1-2-5 ladder instead of re-fitting every frame, so drawn history stops sliding. Three new
+`board_check` pins, all injection-verified; a fourth was drafted and cut for not
+discriminating. Still open: `ui/chart_math.js`, to share the ladder between the chart and the
+tiles rather than duplicating it behind a KEEP IN SYNC marker.
+
 ## [Alpha 1.2.0] — 2026-08-06
 
 ### Changed — the manual revision number is a release marker, not a change counter (lane merge, 2026-08-06)

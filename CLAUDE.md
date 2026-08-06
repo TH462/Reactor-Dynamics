@@ -427,6 +427,13 @@ blocked on the workbench merge and is **UNBLOCKED as of 2026-08-06-develop-a**; 
 (hydrogen + the ruled TMI-2-style burn) follows it; **#384 remains its own coupled plan on
 top of all three** — stage 1 only gave the break a receiving volume, it did not touch
 `leak_depress` or the ECCS/break balance.
+**#392 landed 2026-08-06-develop-c**: five board defects from play. The **ADV now ships in
+AUTO**, reversing #371a on measurement (the safeties still lift on the spike and reseat at
+3m21s; what ended is a plant parking on them for half an hour) — TR-12b and TR-17 re-authored.
+Plus the turbine-exhaust waypoint, SG bubbles reaching the water surface, the transient
+flicker + dropped ACK clicks, and the vital-gauge sparklines, which were **blank above ~600×**.
+`verify_board_check` 209 → **214**. Open from it: `ui/chart_math.js`, to stop duplicating the
+chart's 1-2-5 ladder in the tile.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision

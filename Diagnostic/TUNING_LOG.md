@@ -29,6 +29,155 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-develop-c (#392 — five board defects, and three of them were not what they looked like)
+
+**Task:** five defects the owner reported from play (#392). They are independent; what they
+have in common is that the *filed symptom* and the *mechanism* diverged in three of the five,
+and the measurement is what separated them.
+
+**1. ADV starts in AUTO** *(OWNER, 2026-08-06: "Amos dump should start in auto" — ADV,
+dictated)*. `pwr_engine.js` `adv_override` `0` → `null`, in the initial state and in
+`_migrateState`. No `defaultOn` on the channel: it is `kind: 'mode'`, so `_isEngaged` reads
+the PLANT (`adv_auto` ≡ `adv_override == null`), and `defaultOn` would reach free play only —
+not instructed content, not migrated saves.
+
+**This reverses #371a, and I gave the owner the wrong reason for it before measuring.** The
+recommendation said the safeties would still lift on an MSIV closure because "heat ≫ 10 % ADV
+capacity". Measured full stack, that premise is false: the MSIV closure trips the turbine
+which scrams the reactor at **1m01s**, so it is a decay-heat case within a minute and the ADV
+holds it easily. Sampled every 5 min, `sg_safety_open` read FALSE throughout and #371a looked
+simply correct. **Sampled every 20 s, the real shape appears** — and it is the prototypical
+one:
+
+| | ADV SHUT | ADV AUTO |
+|---|---|---|
+| spike | safeties lift, 1306 psi (9.00 MPa) | safeties lift, **1313 psi (9.06 MPa)** at 1m20s, ADV already 100 % |
+| then | **open for the whole 30 min** | **reseat at 3m21s** |
+| settles | 1306 psi (9.00 MPa), on the safeties | **1247 psi (8.60 MPa)**, the ADV setpoint |
+
+So the transient still reaches the code safeties (**TR-5** and **TR-16** pin that and both pass
+unchanged), and what changed is the steady state: a plant that used to sit on its main steam
+safety valves indefinitely now relieves below them. **A 5-minute sample interval hid the entire
+mechanism** — it read only the tail, and would have shipped a write-up that was exactly
+backwards. Take the ends *and* the shape when the claim is about a transient.
+
+Two probes re-authored, not re-banded (HR9), both injection-verified against the old default:
+**TR-17** leg A was the null control on "the valve ships SHUT" — rebuilt to measure what AUTO
+bought (safeties never lift in an hour, vs open the entire hour), plus a **new leg A2** that
+forces the valve shut and reproduces audit #297 F3. Its "still holds hot" check is retained as
+a calibration guard and **passes on both engines** — AUTO caps pressure, it does not remove
+heat, so leg B is still a real lever. **TR-12b** asserted "the bottled generator lifts its code
+safeties, as in TR-5"; it no longer does, and the reason is worth keeping: TR-5 bottles from
+full power and SPIKES past the ADV, while TR-12b's generator is re-pressurizing *up* from a
+blown-down break, so there is no spike and the ADV catches it at 8.60. Same valve, different
+history, different relief path.
+
+**2. Turbine→condenser pipe under the turbine card — a STALE HAND PATCH, not a diagram fault.**
+`DOC_PATCHES.pipes.pmrr14xbt2h` read `[[1574, 340], [1341, 340]]`. The #371b re-export moved
+the turbine 210 px left / 40 px up; the fix-up commit updated wp[1] (1551 → 1341) and left
+wp[0] at its pre-export value, which by then was inside box `imro8k5pzem` (TURBINE-GENERATOR,
+x 1455–1650, y 190–360). Corrected to `[[1364, 300], [1341, 300]]`, both **measured** off
+`RD.PwrBoard.ports()` rather than computed. **`DOC_PATCHES` replaces the waypoint LIST
+wholesale**, which is how a patch meaning to move one point drops the other.
+**The coverage hole is the lesson:** `board_check` pinned only the LAST waypoint, and
+`pwr_board_wiring.js`'s selfTest asserts a patch's target id still *resolves* — never that its
+numbers still mean anything. A one-sided pin on a two-ended run is not coverage. Added the
+mirror pin and a crossover-clearance pin (the one that actually describes the symptom: two
+plumb pins would both pass on a run at any y). Injection reddens both.
+
+**3. SG bubbles stop at the tube bundle.** `Math.max(bendY, levelY)` — in SVG coordinates
+`max` of two y values picks the **lower point on screen**, so above ~14 % wide it returned the
+bundle top and never the water line, and the in-code comment asserted the opposite of what the
+code did. Measured gap from the top of the bubble band to the surface, before → after:
+10 % `0.0 → 0.0`, 30 % `59.4 → 0.0`, **59 % (normal) `171.6 → 0.0`**, 100 % `330.3 → 0.0`;
+the clip height was pinned at 54.1 px for every level above 20 %. **The expression was correct
+for one of its two jobs**: birth position really is `max(bendY, levelY)` (bubbles form on the
+bundle, or at the surface once water falls below it) and it was only wrong as the travel
+target — one variable doing two jobs. Also intersected the bubble group with the vessel
+inner-shell clip, which it had never had: at 100 % wide the surface is above the dome
+springline, so re-aiming to the surface would otherwise paint circles outside the shell.
+
+**4. Transient flicker + controls not responding.** Owner: *"when it flickers the steam bubbles
+restart their animation … the larger the transients the more flickering."* **Ruled out a single
+wholesale re-render before chasing components** — `mount`/`unmount` are plant-switch only, the
+per-tick board render does no node churn (one `className` write), and the ResizeObserver's
+`layout()` only writes `stage.style.transform`, which does not restart descendant animations.
+It is the per-component rebuild guards firing independently on the same 20 Hz cadence, which is
+why they read as one refresh. Measured with a MutationObserver counting adds of elements
+carrying an inline `animation` (one per owner per render), rebuilds per plant-minute:
+
+| | steady HFP | MSIV closure | large LOCA |
+|---|---|---|---|
+| before | 0 | **31.9** | 1.3 |
+| after | 0 | **3.6** | 0.4 |
+
+"Larger transient → more flicker" is the **signature of gain-amplified guards**: the SG keyed on
+`Math.round(steam_flow × 85)` (one integer per 0.0118 of rated flow) and the vessel on a **400×**
+gain on void fraction. The pressurizer dominated (312 of 319) and is the instructive one: its
+level term *was* quantised to ~3 px, with a comment citing #233 for exactly this reason — but it
+sat in an `||` with a raw-float `heaterPower`, so **the un-quantised neighbour reopened the hole
+the quantisation had closed.** Three fixes: split the cheap colour writes from the expensive
+rebuild; quantise the population terms to 5 %; and **re-aim travel in place** by writing the CSS
+custom property (which does not restart an animation) instead of rebuilding — that takes level
+out of the rebuild key entirely, which matters because a draining plant moves the surface every
+broadcast. The ADV plume moved to the duration-only `__bdAnim` idiom that
+`comp_turbine_generator.js:150` already had.
+
+**The alarm box was the other half, and it is also the reported input problem.**
+`renderAlarms` did `stack.innerHTML = …` unconditionally per broadcast. Measured on an idle
+plant **with zero alarms**: **110 rebuilds in 12 s (9.2/s) → 0**; with 5 alarms up, 5 rebuilds
+per 5 real changes instead of ~90. `.alarm-tile.unack.crit` carries a 0.9 s `alarmCritFlash`, so
+the flash never advanced past its first step — it strobed. And a `click` only fires on the
+nearest common ancestor of its mousedown and mouseup, so **any ACK press straddling a rebuild
+resolved to `#alarmStack`, which carries no `[data-ack]`, and was silently DROPPED** — a lost
+input, not a slow one. It also reset `scrollTop` 9×/s, so the list could not be scrolled during
+a flood. Key-gated on the tuple that determines the markup, including the first-out trip reason
+(the one alarm whose label changes without its id changing).
+
+**Two items from the fix plan were measured and NOT done, which is worth recording.**
+`diagTick` was on the list to rAF-coalesce; it is an **accumulator** (it diffs alarm states and
+records samples/events), so coalescing would silently drop diagnostic history. `inspectLiveTick`
+is already key-gated and `OneOverM.tick` is a five-line state detector. Only `renderAutomate` was
+a real renderer, and its expensive `querySelectorAll` sweep turns out to be RBMK-only — so it got
+a pane-visibility guard (generalising `physicsVisible()` into `paneVisible(name)`) plus a repaint
+on tab switch, because both it and the Physics tab would otherwise open stale on a paused sim.
+
+**5. Vital-gauge sparklines brought up to the strip chart's behaviour** — and it surfaced an
+unfiled defect. **Above ~600× the six vital tiles were BLANK.** Sim-seconds per broadcast is
+`accel × 0.1`, so a fixed 180 s window held 3 samples at 600× and **1** at 3600×; the time-trim
+dropped the rest, `paint()` hit `m < 2` and the polyline collapsed to a single vertex.
+Injection-confirmed: **1 vertex** with the old fixed window, **230** now. Ported: absolute-grid
+time bucketing (replacing index-stride, which **drops extremes** — a spike could vanish outright
+from a *vital* gauge), a per-bucket min/max envelope drawn per region run so it inherits the
+trace's own colour segmentation, a held 1-2-5 axis with a 40-frame dwell, retention by thinning,
+a discrete speed-following window, a display-unit clear, and sub-broadcast fine sampling.
+
+Fine sampling needed **no new sampler** — `chartSample` already walks all of `prof().series` and
+the six tile readings are among them; nor could there be a second one, since the service holds a
+single sampler slot and `takeFine()` clears. The cost was routing: the board renders 80 lines
+*before* the old drain, so it was hoisted and **split** — `pendingFine` for the chart (which may
+skip a frame and must keep its rows) and an `RD.ChartFine` side channel for the board (which
+wants only this frame's batch). Sub-samples go through the **same `m.to()`** as the reading, so
+one cannot land in a different unit from the band it is plotted against. Measured live: 0 fine
+rows at 1× (expected — `fineEvery` is never reached inside a 5-step broadcast), 29/59/59 per
+frame at 60/600/3600×.
+
+Three new `board_check` pins, all injection-verified: a one-sample spike reaches **0.0 px** above
+the flat trace under index-stride vs 16+ px now; a rising trend moved already-drawn vertices on
+**60 of 60** paints under per-paint re-fit; and the 3600× case. **A fourth was drafted and CUT
+for not discriminating** — "history translates rigidly as it scrolls" stayed green against *both*
+defects it was meant to describe, while the held-axis pin went red on both. Its property is real
+but already covered from a better angle, and a check that cannot be made to fail is worse than
+none. **The held-axis pin itself was hollow on the first try too**: it fed a ±0.4 psi wobble,
+which `MIN_WINDOW` floors to the same range either way, so both forms passed. The discriminator
+had to be a *ramp*.
+
+**Still open:** the `ui/chart_math.js` extraction (sharing `niceStep` + the hold policy between
+`drawChart` and the tile) is deferred — 8 duplicated lines plus a policy block, both marked KEEP
+IN SYNC, against re-pointing a working strip-chart fitter for no user-visible gain.
+
+---
+
 ## Session log — 2026-08-06-develop-b (lane merge: `develop` ← `backshop`, and the audit lane stays unprimed)
 
 **Task:** merge the backshop lane (3 commits — #382/#383, the audit-launch independence

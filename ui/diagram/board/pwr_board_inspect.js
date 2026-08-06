@@ -831,15 +831,16 @@
       'Vents steam straight to atmosphere — the cooldown path that does not need the condenser.',
       'The turbine bypass dumps to the condenser and dies with it. These valves vent outside instead, ' +
       'sit upstream of the isolation valve, and work whether the condenser is there or not. They ship ' +
-      'SHUT: after a loss of vacuum or a blackout, opening them is what starts a cooldown, and with ' +
-      'them shut the plant simply holds hot at the safety band.', CI, '12.3'),
+      'in AUTO, which holds a bottled generator at the ADV setpoint instead of parking it on the code ' +
+      'safeties — but that caps pressure, it does not cool the plant. After a loss of vacuum or a ' +
+      'blackout, lowering the setpoint or opening the valves is what starts a cooldown.', CI, '12.3'),
     bdAdvAuto: e('AUTO (atmospheric dump)',
       'ADV follows Steam Generator (SG) pressure toward the ADV setpoint.',
       'Holds the generator at the ADV setpoint the way the turbine bypass holds it at the dump ' +
       'setpoint — lower the setpoint and the valve opens to chase it, which is how you walk a ' +
       'cooldown down without a condenser.', CI, '12.3'),
     bdAdvClose: e('CLOSE (atmospheric dump)',
-      'Shuts the atmospheric dump valves. This is the shipped lineup.',
+      'Shuts the atmospheric dump valves. Takes them out of the shipped AUTO lineup.',
       'With the valves shut the plant behaves exactly as it did before they existed — the code ' +
       'safeties are the only relief on a bottled generator. Shut them when the cooldown is done or ' +
       'when the rate needs arresting.', CI, '12.3'),

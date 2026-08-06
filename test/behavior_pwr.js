@@ -1720,8 +1720,23 @@
           d.t.steam_pressure_mpa > d.atIso + 1.0, 'rises ≥ 1 MPa from the isolation instant');
         ck('and the overcooling is arrested (Tavg back near the no-load anchor)',
           fmt(d.t.tavg_c, 1), d.t.tavg_c > 280, '> 280 °C');
-        ck('the bottled generator lifts its code safeties, as in TR-5',
-          String(d.t.sg_safety_open), !!d.t.sg_safety_open, 'true');
+        // RE-AUTHORED 2026-08-06 (ADV shipped lineup SHUT → AUTO). This used to read
+        // "the bottled generator lifts its code safeties, as in TR-5". TR-5 still does
+        // lift them and still passes — the difference is the DIRECTION of approach, and
+        // it is worth stating because it is not obvious: TR-5 bottles the SG from full
+        // power, so there is a pressure SPIKE that briefly outruns the ADV and reaches
+        // 9.31. Here the SG has already been blown down by the break and is coming back
+        // UP from 5.94 MPa, so there is no spike at all and the ADV catches it on the way
+        // through 8.60. Same bottled generator, different history, different relief path.
+        //
+        // What the probe actually wants is unchanged: isolating the break leaves the
+        // generator bottled and HOLDING ON A RELIEF PATH, rather than drifting. So that
+        // is what it asserts now, positively and by name.
+        ck('…and the bottled generator settles on a relief path — the ADV catches it first',
+          fmt(d.t.steam_pressure_mpa, 2) + ' MPa, adv ' + fmt(d.t.adv_valve_pct, 1) + ' %, safety ' +
+            String(!!d.t.sg_safety_open),
+          d.t.adv_valve_pct > 1 && d.t.steam_pressure_mpa > 8.5 && d.t.steam_pressure_mpa < 9.31,
+          'throttling at the 8.60 setpoint, under the 9.31 safeties');
 
         var u = run('steam_line_break_upstream');
         ck('UPSTREAM: the SAME protection fires — the plant cannot tell the location',
@@ -3892,20 +3907,55 @@
      * Audit #297 F3 measured this plant, with the condenser gone, sitting at
      * 304–305 °C for four plant-hours with the safeties chattering and the dump at
      * 0 % — no controlled cooldown path existed at all. The ADV is that path.
-     * Leg A is the null control (the valve ships SHUT, so the old behaviour is
-     * still what you get if you do nothing — that is what makes it a lever); leg B
-     * opens it and measures the cooldown. */
+     *
+     * RE-AUTHORED 2026-08-06 when the ADV's shipped lineup went SHUT → AUTO. Leg A
+     * used to be the null control on the grounds that "the valve ships SHUT, so the
+     * old behaviour is still what you get if you do nothing". That sentence stopped
+     * being true, so the leg is rebuilt rather than re-banded (HR9): it now measures
+     * what AUTO actually bought and, separately, still reproduces F3 by forcing the
+     * valve shut. Measured full stack, condenser lost, one plant-hour:
+     *
+     *   ADV SHUT   sg_safety_open TRUE the whole hour, parked at 9.00 MPa (1306 psi),
+     *              Tavg 304.1 °C   — F3, exactly
+     *   ADV AUTO   safeties NEVER lift, ADV modulates 10–19 %, holds 8.64 MPa
+     *              (1253 psi), Tavg 301.1 °C
+     *
+     * The half of F3 that AUTO does NOT fix is the important one for this probe: the
+     * plant is off its code safeties but it is still HOT. An ADV in auto is a pressure
+     * controller sitting at its setpoint, not a cooldown — cooling still takes an
+     * operator, which is what keeps leg B a real lever. */
     'TR-17': function () {
       return test('TR-17 atmospheric dump — a cooldown exists without the condenser (#371)', function (ck) {
-        // ---- leg A: condenser lost, ADV untouched. The F3 measurement, still true.
+        // ---- leg A: condenser lost, ADV untouched — i.e. the SHIPPED lineup, now AUTO.
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
         a.run(3600);
-        ck('shipped lineup: the ADV is SHUT and nothing has changed',
-          fmt(a.ts().adv_valve_pct, 1) + ' %', a.ts().adv_valve_pct < 0.01, '0 %');
-        ck('…so the plant still holds hot, as audit F3 measured', fmt(a.ts().tavg_c, 1) + ' °C',
+        // RED on the pre-2026-08-06 default: this is what shipping it in AUTO bought.
+        ck('shipped lineup: the ADV modulates to hold the bottled SG',
+          fmt(a.ts().adv_valve_pct, 1) + ' %', a.ts().adv_valve_pct > 1, '> 1 % (auto, throttling)');
+        ck('…and that keeps the plant OFF its code safeties for the whole hour',
+          String(a.range('sg_safety_open').max === 1 || a.range('sg_safety_open').max === true),
+          !a.range('sg_safety_open').max, 'never lifts (ADV SHUT: open the entire hour)');
+        // PASSES ON BOTH ENGINES, deliberately — a calibration guard. AUTO caps the
+        // pressure, it does not remove the heat, so leg B's lever has to still exist.
+        ck('…but it still holds hot — capping pressure is not a cooldown',
+          fmt(a.ts().tavg_c, 1) + ' °C',
           a.ts().tavg_c > 290, '> 290 °C (no cooldown without operator action)');
+
+        // ---- leg A2: force the valve SHUT and audit F3 comes straight back. This is
+        // the null control leg A used to be, kept explicitly rather than relied upon —
+        // it is what says the ADV is the thing making the difference, and it is the
+        // check that would notice if the ADV ever became the ONLY path off the safeties.
+        var a2 = H('hot_full_power');
+        a2.run(30);
+        a2.cmd('set_adv', { mode: 'closed' });
+        a2.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
+        a2.run(3600);
+        ck('ADV forced SHUT: the F3 measurement is reproduced — parked on the safeties',
+          fmt(a2.ts().steam_pressure_mpa, 2) + ' MPa, safety ' + String(!!a2.ts().sg_safety_open),
+          !!a2.ts().sg_safety_open && a2.ts().tavg_c > 290,
+          'safeties lifted AND still hot (9.00 MPa / 304 °C)');
 
         // ---- leg B: the operator opens it. This is the gap #297 F3 named.
         var b = H('hot_full_power');

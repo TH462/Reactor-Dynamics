@@ -542,7 +542,8 @@
     imrppqxggbj: { press: function () { cmd({ action: 'set_steam_dump', mode: 'closed' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) <= 50; } },
     // --- ADV: AUTO / OPEN / CLOSE (#371). Same verbs as the dump above, because it
     // is the same kind of valve doing the same job to a different sink — one idiom
-    // for both steam paths. Ships SHUT, so CLOSE is lit on a fresh plant.
+    // for both steam paths. Ships in AUTO, so AUTO is lit on a fresh plant — same as
+    // the dump above (2026-08-06; it shipped SHUT, with CLOSE lit, until then).
     bdAdvAuto:  { press: function () { cmd({ action: 'set_adv', mode: 'auto' }); },   active: function (s) { return CS(s).adv_auto; } },
     bdAdvClose: { press: function () { cmd({ action: 'set_adv', mode: 'closed' }); }, active: function (s) { return !CS(s).adv_auto && (CS(s).adv_pct || 0) <= 50; } },
     // --- Generator load mode: FOLLOW / MAN / OFF ---
@@ -1703,6 +1704,17 @@
   // `var TILE_BANDS = {…}` assignment below it. `var` hoists the declaration but not the
   // value, so capturing eagerly read undefined and threw on the first render. (Since #233
   // they also have to be resolved per-snapshot anyway — see bandsFor.)
+  //
+  // FINE SUB-SAMPLES. Each tile shows one of the six quantities the strip chart already
+  // samples between broadcasts, so the tiles can share that work rather than sprouting a
+  // second sampler — and could not have one anyway: the service holds a SINGLE sampler slot
+  // and `takeFine()` clears. app.js drains it into `RD.ChartFine` once per render (see the
+  // drain site in renderNow); this maps tile → chart series so the rows can be read out.
+  // Without it a tile gets one sample per broadcast, which at 3600x is one per 360 sim-s.
+  var TILE_SERIES = {
+    imrzl4b7g9m: 'power', ims2immk7ks: 'tavg',      ims2immxl2s: 'subcool',
+    ims2immsvn6: 'pressure', ims2immon9z: 'pzr_level', ims2imn1nny: 'sg_level'
+  };
   function tile(id, read) {
     return function (s) {
       var b = bandsFor(id, s);           // already in the active DISPLAY unit
@@ -1710,6 +1722,24 @@
       var t = TILE_UNIT[id], m = t ? fam(t.fam) : null;
       var v = read(s);                   // …but the reading arrives in BASE units
       if (v != null && isFinite(v) && m) v = m.to(v);
+      // Sub-samples go through the SAME `m.to()` as the reading above. That is the whole
+      // safety property here: convert them anywhere else and a fine sample could land in a
+      // different unit from the band it is plotted against, which is invisible until
+      // someone flips to SI.
+      var fine = null, serId = TILE_SERIES[id], rows = RD.ChartFine;
+      if (serId && rows && rows.length) {
+        fine = [];
+        for (var fi = 0; fi < rows.length; fi++) {
+          var r = rows[fi];
+          var fv = r.v ? r.v[serId] : null;
+          if (fv == null || !isFinite(fv)) continue;
+          var flo = (r.lo && r.lo[serId] != null) ? r.lo[serId] : fv;
+          var fhi = (r.hi && r.hi[serId] != null) ? r.hi[serId] : fv;
+          fine.push(m ? { t: r.t, v: m.to(fv), lo: m.to(flo), hi: m.to(fhi) }
+                      : { t: r.t, v: fv, lo: flo, hi: fhi });
+        }
+        if (!fine.length) fine = null;
+      }
       return {
         value: (v == null || !isFinite(v)) ? null : v,
         // The tile's unit follows the display mode too. In US this is the authored string
@@ -1731,8 +1761,26 @@
         // the instrument, but how many digits it hides behind is a property of the unit —
         // 0.56 psi and 0.0039 MPa are the same noise and want 0 and 2 decimals.
         decimals: tileDigits(id, b),
-        // sim clock drives the tile's 3-minute sampling window (see comp_indicator_panel)
+        // sim clock drives the tile's sampling window (see comp_indicator_panel)
         t: (s.metadata && s.metadata.sim_time != null) ? s.metadata.sim_time : null,
+        // …and the SPEED sizes that window. A fixed 3 minutes of SIM time is ~0.05 s of
+        // wall clock at 3600x: sim seconds per broadcast is accel x 0.1, so a 180 s window
+        // held 3 samples at 600x and ONE at 3600x — the time-trim then deleted everything
+        // but the newest and the trace collapsed to a single vertex. The six vital gauges
+        // were simply BLANK above ~600x.
+        //
+        // DISCRETE, not accel x 180, for the reason CHART_WINDOWS is already a table: the
+        // requested acceleration is a target the engine does not meet, so a window sized
+        // off the number never fills. Capped an order of magnitude below the strip chart's
+        // — the tile's job is "what has this been doing recently"; the history belongs to
+        // the chart underneath it.
+        speed: (s.metadata && s.metadata.time_acceleration) || 1,
+        fine: fine,
+        // Display unit, so the tile can drop a history recorded in the OTHER one. st.min /
+        // st.max flip with the unit but `hist` does not, so without this the trace shows a
+        // °F→°C step discontinuity. It was invisible while the axis re-fitted every paint;
+        // with the axis now HELD it would paint a wrong band and keep it.
+        unitKey: U(),
         min: sc.min, max: sc.max,
         normLo: b.normLo, normHi: b.normHi,
         alarmLo: b.alarmLo, alarmHi: b.alarmHi,
@@ -2313,12 +2361,26 @@
   var DOC_PATCHES = {
     pipes: {
       // Turbine exhaust → condenser steam inlet. The route is authored orthogonally, but its
-      // two waypoints sit 1 px and 2 px off the ports they line up with, so both "vertical"
-      // legs lean. Pin them to the real port x.
-      // This waypoint IS `condenser/steam-in`'s x, so it moves with the CONDENSER item patch
-      // below — always that tile's left + 148. 1553 → 1551 on 2026-08-03 when the patch first
-      // took 2 px off; 1551 → 1341 on 2026-08-05 when the re-export moved the tile itself.
-      pmrr14xbt2h: { waypoints: [[1574, 340], [1341, 340]] },
+      // two waypoints sit a pixel or two off the ports they line up with, so both "vertical"
+      // legs lean. Pin each to the real port x — MEASURED off `RD.PwrBoard.ports()`, never
+      // computed from the authored `left`: an rAnchor item's rendered edge is not its
+      // authored one, and the whole point of this patch is that both x values track a port.
+      //   wp[0] = `turbineGenerator/exhaust-out`.x = 1364
+      //   wp[1] = `condenser/steam-in`.x           = 1341   (the condenser item patch below
+      //                                                      moves it — always that left + 148)
+      // y = 300 for both: the crossover leg has to clear the turbine tile's bottom (295) and
+      // stay above the condenser's top (325), and 300 is the authored value that does.
+      //
+      // BOTH POINTS MUST BE GIVEN — `applyDocPatches` replaces the waypoint LIST wholesale,
+      // so a patch that means to move one point still has to restate the other. That is
+      // exactly how this went wrong: on 2026-08-05 the #371b re-export moved the turbine
+      // 210 px left and 40 px up, the fix-up updated wp[1] (1551 → 1341) and left wp[0] at
+      // its pre-export 1574,340 — which by then was INSIDE the TURBINE-GENERATOR card
+      // (imro8k5pzem, x 1455–1650, y 190–360), so the exhaust run vanished under it.
+      // Nothing caught it for a day: the selfTest below only checks that a patch's target id
+      // still resolves, never that its coordinates still mean anything, and board_check
+      // pinned only the LAST waypoint. The mirror pin on wp[0] was added with this fix.
+      pmrr14xbt2h: { waypoints: [[1364, 300], [1341, 300]] },
       // RCP suction/discharge swap, pipe half (#236) — see the imrobpq4a70 item patch
       // below. Same geometric endpoints (the two nozzle positions are unchanged); only
       // the port NAMES they bind to change, so the loop enters at suction and leaves at

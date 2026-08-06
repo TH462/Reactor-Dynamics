@@ -1648,10 +1648,34 @@
       condensate_pump_running: true, condensate_flow_normalized: P0,
       afw_discharge_pressure_mpa: 0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
-      // ADV ships SHUT (override 0, not null): with the condenser there the
-      // condenser dump does all normal duty, and a valve that opened on its own
-      // would take the code safeties out of every bottled-SG evolution (#371).
-      adv_override: 0, adv_frac: 0, adv_flow: 0,
+      // ADV ships in AUTO (override null, like the condenser dump on the line above)
+      // *(OWNER, 2026-08-06: "Amos dump should start in auto" — ADV, dictated)*.
+      //
+      // This REVERSES #371a, which shipped it SHUT because AUTO "would take the code
+      // safeties out of every bottled-SG evolution". Measured full stack — MSIV closure
+      // at hot full power, which trips the turbine and scrams the reactor at 1m01s:
+      //
+      //   ADV SHUT   safeties lift on the spike and STAY lifted: 9.00 MPa (1306 psi),
+      //              sg_safety_open true for the whole 30-minute ride
+      //   ADV AUTO   safeties still lift on the spike — 9.06 MPa (1313 psi) at 1m20s
+      //              with the ADV already wide open — then RESEAT at 3m21s, and the ADV
+      //              modulates down to hold 8.60 MPa (1247 psi), its setpoint exactly
+      //
+      // So the worry does not survive the measurement: the transient still reaches the
+      // code safeties (TR-5 and TR-16 both pin that and both pass on this default). What
+      // changes is the STEADY state — a plant that used to sit on its main steam safety
+      // valves indefinitely now relieves to atmosphere below them and holds there, which
+      // is what an atmospheric dump IS and why 8.60 sits under their 9.31.
+      //
+      // At power the valve does not open at all (steam pressure ≈5.65 MPa), so nothing
+      // about normal operation moves.
+      //
+      // One real consequence, recorded rather than waved off: an SG re-pressurizing from
+      // BELOW — a steam line break that is then isolated — has no spike, so the ADV
+      // catches it at 8.60 and the safeties never lift at all. TR-12b asserted that lift
+      // and was re-authored here, not re-banded.
+      // Numbers and the full A/B: BUILD_DECISIONS 2026-08-06.
+      adv_override: null, adv_frac: 0, adv_flow: 0,
       // Operator steam-dump pressure setpoint (the no-load secondary target the
       // AUTO dump holds). Default is the config no-load point; lowered during a
       // cooldown so the secondary — and with it the primary through the SG — cools.
@@ -2003,11 +2027,14 @@
     // state — seed it at the commanded setpoint (the save is settled there).
     if (s._pressure_sp_eff == null) s._pressure_sp_eff = s.pressure_setpoint;
     if (s.steam_dump_setpoint == null) s.steam_dump_setpoint = this.cfg.steam_generator.steam_dump_setpoint;
-    // ADV (#371). A pre-#371 save has no ADV at all, and the safe restore is SHUT —
-    // the lineup the plant ships with. `adv_override === undefined` rather than
-    // `== null`, because null is the meaningful AUTO value and must survive.
+    // ADV (#371). A pre-#371 save has no ADV at all, so it restores to the lineup the
+    // plant ships with — AUTO since 2026-08-06, was SHUT before that.
+    // `adv_override === undefined` rather than `== null`, because null is the meaningful
+    // AUTO value and must survive. That distinction is what makes this safe to move: a
+    // save taken while the ADV was deliberately SHUT stores `0` and keeps it, so this
+    // line only ever decides for saves that never had the valve at all.
     if (s.adv_setpoint == null) s.adv_setpoint = this.cfg.steam_generator.adv_setpoint;
-    if (s.adv_override === undefined) s.adv_override = 0;
+    if (s.adv_override === undefined) s.adv_override = null;
     if (s.adv_frac == null) s.adv_frac = 0;
     // Saves that predate the CW-temperature model restore at the reference temperature, so
     // they replay with exactly the vacuum behaviour they were recorded under.

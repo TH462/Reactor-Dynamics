@@ -172,16 +172,40 @@
         plumb('geom: condenser drop into the condensate pump', 'condenser/condensate-out', 'imrqvzbd9hd/suction', 'x');
         plumb('geom: condensate pump up to the polisher', 'imrqvzbd9hd/discharge', 'imrqrnclhn/~ptmrqteexd9e', 'x');
         plumb('geom: polisher down to the feed pump', 'imrqrnclhn/~ptmrqted2hiw', 'imrobph7xrq/suction', 'x');
-        // Moving the condenser drags `steam-in`, whose riser waypoint is pinned in
-        // DOC_PATCHES.pipes — the two have to travel together or the turbine exhaust leans.
+        // The turbine exhaust run. BOTH waypoints are pinned in DOC_PATCHES.pipes, one to
+        // each end's port, so BOTH need a pin here — moving either tile drags its port and
+        // the corresponding riser leans.
+        //
+        // Only the condenser end was pinned until 2026-08-06, and that gap is what let the
+        // defect ship: the #371b re-export moved the turbine 210 px left / 40 px up, the
+        // fix-up patched wp[1] and forgot wp[0], and the first waypoint sat inside the
+        // TURBINE-GENERATOR card for a day with every gate green. A one-sided pin on a
+        // two-ended run is not coverage. `pwr_board_wiring.js`'s selfTest cannot substitute:
+        // it asserts a patch's target id still RESOLVES, never that its numbers still mean
+        // anything, and no overlap scan anywhere looks at pipes-over-cards.
         (function () {
           var wp = null;
           (window.RD_PWR_BOARD_DOC.pipes || []).forEach(function (p) {
-            if (p.id === 'pmrr14xbt2h' && p.waypoints && p.waypoints.length) wp = p.waypoints[p.waypoints.length - 1];
+            if (p.id === 'pmrr14xbt2h' && p.waypoints && p.waypoints.length >= 2) wp = p.waypoints;
           });
-          var pa = P['condenser/steam-in'];
-          ck('geom: turbine exhaust riser plumb into the condenser (x ' + (pa ? pa.x : '?') + ' vs waypoint ' + (wp ? wp[0] : '?') + ')',
-            !!(pa && wp) && Math.abs(pa.x - wp[0]) <= 1, pa && wp ? 'off by ' + (pa.x - wp[0]) : 'missing');
+          var pt = P['turbineGenerator/exhaust-out'], pc = P['condenser/steam-in'];
+          ck('geom: turbine exhaust riser plumb out of the turbine (x ' + (pt ? pt.x : '?') + ' vs waypoint ' + (wp ? wp[0][0] : '?') + ')',
+            !!(pt && wp) && Math.abs(pt.x - wp[0][0]) <= 1, pt && wp ? 'off by ' + (pt.x - wp[0][0]) : 'missing');
+          ck('geom: turbine exhaust riser plumb into the condenser (x ' + (pc ? pc.x : '?') + ' vs waypoint ' + (wp ? wp[1][0] : '?') + ')',
+            !!(pc && wp) && Math.abs(pc.x - wp[1][0]) <= 1, pc && wp ? 'off by ' + (pc.x - wp[1][0]) : 'missing');
+          // …and the crossover leg between them must clear both tiles, or the run is drawn
+          // THROUGH the turbine card or the condenser body. This is the check that actually
+          // describes the reported symptom; the two plumb pins above would both pass on a
+          // run at any y.
+          var doc = window.RD_PWR_BOARD_DOC, tg = null, cd = null;
+          (doc.items || []).forEach(function (it) {
+            if (it.id === 'turbineGenerator') tg = it;
+            if (it.id === 'condenser') cd = it;
+          });
+          var lo = tg ? tg.top + tg.height : null, hi = cd ? cd.top : null;
+          ck('geom: turbine exhaust crossover clears both tiles (y ' + (wp ? wp[0][1] : '?') + ' in ' + lo + '..' + hi + ')',
+            !!(wp && lo != null && hi != null) && wp[0][1] === wp[1][1] && wp[0][1] > lo && wp[0][1] < hi,
+            wp ? 'y=' + wp[0][1] + '/' + wp[1][1] : 'missing');
         })();
       })();
 
@@ -316,13 +340,117 @@
 
       // --- ADV (#371). The condenser-independent steam path — the only cooldown
       // route once the condenser is gone, so its controls are pinned like the
-      // dump's. Note the shipped lineup is SHUT, not AUTO: that is the design
-      // (DESIGN_COMPANION §8.34), and asserting it here means a future change to
-      // the default has to come and edit this line rather than slide past.
-      ck('func: ADV ships SHUT, not auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
+      // dump's. The shipped lineup is AUTO *(OWNER, 2026-08-06: "Amos dump should
+      // start in auto" — ADV, dictated)*, reversing #371's SHUT default; asserting
+      // it here means a future change has to come and edit this line rather than
+      // slide past, which is what caught the reversal itself.
+      ck('func: ADV ships in AUTO, like the condenser dump', cs().adv_auto === true);
       clickBtn('bdAdvAuto'); ck('func: ADV AUTO -> auto', cs().adv_auto === true);
       clickBtn('bdAdvClose'); ck('func: ADV SHUT -> shut and out of auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
       setNum('bdAdvSp', 1000); ck('func: ADV setpoint 1000 psi -> ~6.89 MPa', Math.abs(cs().adv_setpoint - 1000 / 145.038) < 0.05);
+
+      // --- vital-gauge sparklines (2026-08-06) -----------------------------------
+      // The six tiles got the strip chart's decimation and auto-range treatment; these
+      // four pins are the negative controls for it. All four FAIL on the pre-change
+      // component, which is what makes them worth their runtime — nothing here pinned
+      // sparkline behaviour before, so the port would otherwise have been unguarded.
+      //
+      // They drive the tile's `update()` directly rather than stepping the plant: the
+      // point is the trace maths, and a real transient would make the input a moving
+      // target and the assertions timing-dependent.
+      (function () {
+        var TID = 'ims2immsvn6';                       // primary pressure
+        function tileInst() { return RD.PwrBoard.componentInstance ? RD.PwrBoard.componentInstance(TID) : null; }
+        var inst = tileInst();
+        if (!inst || !inst.update) { ck('spark: tile instance reachable', false, 'no component handle'); return; }
+        var el = document.querySelector('[data-item="' + TID + '"]');
+        // `polyline` is the trace (bucket MEANS); `polygon` is the min/max envelope. Which
+        // one a check should read matters: a single-sample spike shares its bucket with
+        // ~3 neighbours, so the mean barely moves and only the envelope carries it. That
+        // is the whole point of keeping min/max — read `verts('polyline,polygon')` for
+        // "does the drawn geometry reach the excursion", `verts('polyline')` for the line.
+        function verts(sel) {
+          var out = [];
+          el.querySelectorAll(sel || 'polyline').forEach(function (p) {
+            (p.getAttribute('points') || '').trim().split(/\s+/).forEach(function (xy) {
+              var a = xy.split(','); if (a.length === 2) out.push({ x: +a[0], y: +a[1] });
+            });
+          });
+          return out;
+        }
+        var BASE = { min: 1800, max: 2500, normLo: 2150, normHi: 2300,
+                     alarmLo: 2050, alarmHi: 2350, tripLo: 1900, tripHi: 2450,
+                     unit: 'psi', decimals: 0, unitKey: 'US', speed: 1 };
+        function push(t, v, extra) {
+          var p = { value: v, t: t }; for (var k in BASE) p[k] = BASE[k];
+          if (extra) for (var k2 in extra) p[k2] = extra[k2];
+          inst.update(p);
+        }
+        function fresh() { if (inst.reset) inst.reset(); }
+
+        // 1. SPIKE SURVIVAL. An index stride samples every Nth point, so a one-sample
+        //    excursion between two sampled indices simply disappears — from a VITAL
+        //    gauge. Bucketing keeps each bucket's min/max, so it cannot.
+        fresh();
+        var t = 1000; push(t, 2235);
+        for (var i = 0; i < 700; i++) { t += 0.2; push(t, 2235); }
+        t += 0.2; push(t, 2420);                        // the spike, one sample
+        for (var i2 = 0; i2 < 300; i2++) { t += 0.2; push(t, 2235); }
+        // Read the ENVELOPE as well as the line: the spike shares its ~0.8 s bucket with
+        // three flat neighbours, so the mean only lifts ~4 px while the band carries the
+        // full excursion. Under the old index stride the sample was simply not sampled and
+        // there was no band at all, so nothing reached.
+        var vs = verts('polyline,polygon'), yTop = Infinity;
+        vs.forEach(function (p) { if (p.y < yTop) yTop = p.y; });
+        var flatY = null;
+        verts('polyline').forEach(function (p) { if (flatY === null && p.x < 40) flatY = p.y; });
+        ck('spark: a one-sample spike survives decimation (it is a VITAL gauge)',
+          isFinite(yTop) && flatY != null && (flatY - yTop) > 10,
+          'spike reaches ' + (flatY != null ? (flatY - yTop).toFixed(1) : '?') + ' px above the flat trace');
+
+        // (A fourth pin was drafted here — "history translates rigidly as it scrolls",
+        // comparing the per-vertex dx spread before and after advancing the clock — and
+        // CUT for not discriminating. Injected against both defects it is meant to
+        // describe, a moving-origin bucket grid and a per-paint axis re-fit, it stayed
+        // GREEN both times, while the held-axis pin below went red on both. Its property
+        // is real but it is already covered from a better angle, and a check that cannot
+        // be made to fail is worse than no check.)
+
+        // 2. HELD AXIS. Re-fitting to the visible min/max every paint re-projects the
+        //    WHOLE trace every paint: history that was already drawn keeps sliding, which
+        //    reads as the tile breathing. A held 1-2-5 axis moves only at discrete moments.
+        //
+        //    The discriminator is a slow RAMP, not a steady plant — and that took two
+        //    tries. The first version fed a ±0.4 psi wobble and passed on BOTH forms,
+        //    because MIN_WINDOW floors the range at 15 % of full scale (105 psi here), so
+        //    a re-fitting axis lands on exactly the same numbers as a held one and there
+        //    is nothing to tell apart. A hollow check, of the kind this repo keeps finding.
+        //    Under a ramp the data max rises every sample, so a re-fitting axis grows every
+        //    paint and EVERY drawn vertex moves; a held one is flat between re-fits. Count
+        //    the paints on which anything moved rather than averaging the movement.
+        fresh();
+        t = 9000;
+        for (var i6 = 0; i6 < 500; i6++) { push(t, 2100 + i6 * 0.5); t += 0.2; }
+        var moved = 0, PAINTS = 60, prev = verts();
+        for (var i7 = 0; i7 < PAINTS; i7++) {
+          push(t, 2350 + i7 * 0.5); t += 0.2;
+          var now = verts(), nn = Math.min(prev.length, now.length), diff = 0;
+          for (var i8 = 5; i8 < nn - 5; i8++) if (Math.abs(now[i8].y - prev[i8].y) > 0.05) { diff = 1; break; }
+          moved += diff; prev = now;
+        }
+        ck('spark: a rising trend does not re-project drawn history every paint (held axis)',
+          moved <= PAINTS / 3, moved + ' of ' + PAINTS + ' paints moved already-drawn vertices');
+
+        // 3. NOT BLANK AT SPEED. sim-seconds per broadcast is accel x 0.1, so a fixed
+        //    180 s window held ONE sample at 3600x, the time-trim dropped the rest and the
+        //    polyline collapsed to a single vertex — the six vital gauges were BLANK.
+        fresh();
+        t = 20000;
+        for (var i9 = 0; i9 < 12; i9++) { push(t, 2235 + i9 * 3, { speed: 3600 }); t += 360; }
+        ck('spark: the trace survives 3600x (window follows the speed setting)',
+          verts().length >= 2, verts().length + ' vertices after 12 broadcasts at 3600x');
+        fresh();
+      })();
 
       // --- instructor glow ---
       ck('glow: revealControl(HPI) returns a tile', !!RD.PwrBoard.revealControl('HPI'));

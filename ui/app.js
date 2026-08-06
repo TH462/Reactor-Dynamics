@@ -45,6 +45,11 @@
   // the Automate tab is a pure face over snapshot.automation, issuing
   // set_auto_channel / set_auto_setpoint commands like any operator action.
   var chartBuf = [];        // { t, v:{serId:instrumentVal}, tv:{serId:trueVal} } — one value per plotted series
+  // Sub-broadcast rows drained from the service but not yet folded into chartBuf. They are
+  // held rather than consumed on the spot because the drain now happens EARLY in renderNow
+  // (the board's vital tiles need them before it) while the chart's own sample-grid gate may
+  // skip the frame. See the drain site in renderNow.
+  var pendingFine = null;
   var chartRange = {};      // id -> { lo, hi } — peak-hold auto-range (expands fast, re-tightens slow)
   var gaugeHist = {};       // id -> [{ t, v }]
   var gaugeTrend = {};      // id -> -1|0|1 — latched trend-arrow state (#237 hysteresis)
@@ -991,10 +996,16 @@
     var cells = box.querySelectorAll('.nv'), n = 0;
     groups.forEach(function (g) { g.rows.forEach(function (r) { physRows.push({ el: cells[n++], row: r }); }); });
   }
-  function physicsVisible() {
-    var card = $('toolsCard'), pane = document.querySelector('.tabpane[data-pane="physics"]');
+  // Is a Tools-block tab actually on screen? Generalised from physicsVisible() on
+  // 2026-08-06 so renderAutomate can use the same test — a pane that is behind another
+  // tab, or inside a collapsed card, is DOM nobody can see, and writing to it every
+  // broadcast is pure cost. Matters most at the 20 Hz transient cadence, which is
+  // exactly when the frame budget is tight.
+  function paneVisible(name) {
+    var card = $('toolsCard'), pane = document.querySelector('.tabpane[data-pane="' + name + '"]');
     return !!(pane && pane.classList.contains('on') && card && !card.classList.contains('collapsed'));
   }
+  function physicsVisible() { return paneVisible('physics'); }
   function renderPhysics(s) {
     if (!physRows.length || !physicsVisible()) return;
     var t = s.true_state; if (!t) return;
@@ -1224,7 +1235,30 @@
     // profile-bound reader would throw on the foreign instrument set. Catch
     // up the UI instead of rendering the mismatch.
     var snapPlant = s.metadata.plant_id;
-    if (snapPlant && ui.plant && snapPlant !== ui.plant) { afterPlantChange(); return; }
+    if (snapPlant && ui.plant && snapPlant !== ui.plant) {
+      RD.ChartFine = null;              // an old plant's sub-samples must not reach a new one
+      afterPlantChange(); return;
+    }
+
+    // DRAIN THE FINE SUB-SAMPLES HERE, above the board render — and split them two ways.
+    //
+    // `takeFine()` CLEARS the service's buffer and has exactly ONE caller, which is this
+    // line. Do not add a second: whoever calls it again gets the rows and the strip chart
+    // silently loses them, and nothing would go red.
+    //
+    // The two consumers have different lifetimes, which is why this is a split and not a
+    // shared variable. The strip chart may skip a frame (its own sample-grid gate below)
+    // and must KEEP the rows until it draws, so they accumulate in `pendingFine`. The
+    // board's vital tiles want only this frame's batch and are driven from a snapshot they
+    // cannot reach `service` from, so they get it through an RD side channel — the house
+    // pattern for cross-file reach (RD.PWR_CONTROL, RD.PwrBoardInspect).
+    var _f = (service && service.takeFine) ? service.takeFine() : null;
+    if (_f && _f.length) {
+      pendingFine = pendingFine ? pendingFine.concat(_f) : _f;
+      RD.ChartFine = _f;
+    } else {
+      RD.ChartFine = null;
+    }
 
     applyUiPolicy(s);
     renderGauges(s);
@@ -1319,7 +1353,7 @@
     //
     // Guarded against going backwards: a rewind or a reset clears the service's buffer, but a
     // sample that predates the newest row would still splice the plant onto the wrong time.
-    var fine = (service && service.takeFine) ? service.takeFine() : null;
+    var fine = pendingFine; pendingFine = null;
     if (fine) {
       for (var fi = 0; fi < fine.length; fi++) {
         var fg = Math.floor(fine[fi].t / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
@@ -1473,12 +1507,33 @@
     })();
   }
 
+  // Held between frames, per gauge: the LATCHED band, so a reading parked on a setpoint
+  // cannot toggle the class at the broadcast rate. `.gauge.alarm .g-value` carries a
+  // `gauge-alarm-flash` animation and `.warn`/`.alarm` swap the bar colour, so a class
+  // that flips 20x a second in a transient reads as an irregular strobe on the vital
+  // strip — the owner's 2026-08-06 report, of which this is one contributor.
+  //
+  // Same latch-with-release-deadband the strip chart already uses (`seriesAlarmed`, below):
+  // once in a band you stay in it until the reading comes 5 % of full scale back OUT.
+  // Entry thresholds are untouched, so nothing annunciates later than it did.
+  var gaugeBand = {};
   function gaugeState(g, raw) {
-    if (g.danger != null && raw >= g.danger) return 'alarm';
-    if (g.danger_lo != null && raw <= g.danger_lo) return 'alarm';
-    if (g.caution != null && raw >= g.caution) return 'warn';
-    if (g.caution_lo != null && raw <= g.caution_lo) return 'warn';
-    return 'normal';
+    var full = Math.abs((g.max != null ? g.max : 1) - (g.min != null ? g.min : 0)) || 1;
+    var dead = full * 0.05;
+    var was = gaugeBand[g.id] || 'normal';
+    function hit(hi, lo, band) {
+      // widen by the deadband only for the band we are ALREADY in — that is what makes
+      // it a release hysteresis rather than a lowered setpoint
+      var slack = (was === band) ? dead : 0;
+      if (hi != null && raw >= hi - slack) return true;
+      if (lo != null && raw <= lo + slack) return true;
+      return false;
+    }
+    var st = hit(g.danger, g.danger_lo, 'alarm') ? 'alarm'
+           : hit(g.caution, g.caution_lo, 'warn') ? 'warn'
+           : 'normal';
+    gaugeBand[g.id] = st;
+    return st;
   }
   function renderGauges(s) {
     prof().gauges.forEach(function (g) {
@@ -1584,6 +1639,20 @@
   // Re-annunciation re-stamps (the entry clears when the alarm does), and a rewind
   // that lands before a stamp discards it (a stamp from the abandoned future).
   var alarmSeen = {};
+  // Last rendered tile set, as a key. The stack is a wholesale `innerHTML` rebuild, and
+  // rebuilding it on an UNCHANGED alarm list is what produced the transient flicker the
+  // owner reported (2026-08-06): `.alarm-tile.unack.crit` carries a 0.9 s
+  // `alarmCritFlash` animation, and destroying the element restarts that animation from
+  // t=0. At the 20 Hz transient broadcast cadence the flash never advanced past its first
+  // step — it strobed. Two more things rode on the same line: `.alarm-stack` has
+  // `overflow:auto`, so `innerHTML =` reset `scrollTop` 20 times a second and the list
+  // could not be scrolled during a flood; and a `click` only fires on the nearest common
+  // ancestor of its mousedown and mouseup, so any ACK press that straddled a rebuild
+  // resolved to `#alarmStack` — which carries no `[data-ack]` — and was silently DROPPED.
+  // That last one is the "delay when clicking controls" half of the report, and it was a
+  // LOST input rather than a slow one.
+  // Same idiom as renderChecklist and updateSimSummary.
+  var lastAlarmKey = null;
   function alarmClock(t) {
     t = Math.max(0, Math.floor(t));
     var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
@@ -1609,6 +1678,20 @@
     var nUnack = active.filter(function (a) { return a.state === 'active_unacknowledged'; }).length;
     var title = $('alarmTitle');
     if (title) title.textContent = nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms';
+
+    // Everything below this line is DOM the tile markup depends on, so the key has to
+    // carry all of it: order, state, both priorities, the annunciation stamp, and the
+    // first-out trip reason (the one alarm whose LABEL changes without its id changing).
+    // Anything rendered but not keyed would freeze on screen — which is the failure mode
+    // a dirty-check trades for the flicker, so it is the thing to get right.
+    var tripCause = tripCauseLabel(s.rps_state && s.rps_state.last_trip_reason) || '';
+    var key = active.length ? (tripCause + '\u0002' + active.map(function (a) {
+      return a.id + '\u0001' + a.state + '\u0001' + a.priority + '\u0001' +
+        (a.base_priority || '') + '\u0001' + (alarmSeen[a.id] || 0);
+    }).join('\u0002')) : '';
+    if (key === lastAlarmKey) return;
+    lastAlarmKey = key;
+
     if (!active.length) { stack.innerHTML = '<div class="alarm-empty">— no active alarms —</div>'; return; }
     stack.innerHTML = active.map(function (a) {
       var cat = alarmCategory(a);
@@ -3353,6 +3436,8 @@
     if (!list || !list.firstChild) return;
     // Sync any AUTO/MAN mirror segs on the plant display (RBMK AR card) to the
     // rod channel's true state — the seg is a second face of the same channel.
+    // This half runs even when the pane is hidden, ON PURPOSE: the segs it writes are
+    // on the PLANT DISPLAY, not in the pane, so they are visible whatever tab is up.
     var arc = autoChan(s, 'rods_power');
     if (arc) {
       var on = arc.engaged;
@@ -3361,6 +3446,11 @@
         b.classList.toggle('run', b.getAttribute('data-arsync') === 'on' && on);
       });
     }
+    // The row updates below are all INSIDE the Automate pane, so they are skipped while
+    // it is not on screen — same test renderPhysics has used since the Physics tab was
+    // built. Nothing latches here: every row is recomputed from the snapshot, so opening
+    // the tab paints current values on the next broadcast.
+    if (!paneVisible('automate')) return;
     autoChans(s).forEach(function (c) {
       var on = c.engaged;
       var row = list.querySelector('[data-autorow="' + c.id + '"]'); if (!row) return;
@@ -3819,6 +3909,12 @@
       $('tabbar').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
       document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
       focusTools(again);
+      // Repaint the pane that just came up. Physics and Automate both skip their work
+      // while hidden (see paneVisible), so without this they show whatever was last
+      // painted until the next broadcast — and on a PAUSED sim no broadcast is coming,
+      // so the tab would open stale and stay that way. Cheap: both are no-ops for the
+      // pane that is not on screen.
+      if (latest) { renderPhysics(latest); renderAutomate(latest); }
     });
     // Persona header (now visible in every mode, chat included): collapse/expand
     // via the header or the explicit minimize button (top-right). stopPropagation
