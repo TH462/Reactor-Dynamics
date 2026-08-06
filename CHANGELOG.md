@@ -61,6 +61,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   were calibrated; what changed is that the break is now visible as flow and inventory, and the
   blowdown tail self-limits as the pressure driving it falls.
 
+### Tests
+- **TR-18 pins the open #378 defect as a strict xfail** — after a manual load step the plant
+  limit-cycles ~13 points of power indefinitely instead of settling. The fix that kills the cycle
+  (cancelling in-flight rod travel at the controller's deadband exit: 13.8 → 2.0 pts, settled at
+  14.6 min vs never) was built, measured, and **rejected**, because it takes the rod channel's
+  sourced ±5 °F ramp duty (TR-1i, WTSM 8.1.1) from 4.34 to 5.26 °F — the duty is currently met
+  partly *by* the defect, as is the case for every PV-filter value tried. No plant behaviour
+  changed; the probe keeps the defect visible and goes loudly XPASS-red the day settling is fixed
+  without its annotation moving. Measurement record: `Diagnostic/TUNING_LOG.md`
+  2026-08-06-workbench-a, issue #378.
+
 ## [Alpha 1.1.0] — 2026-08-05
 
 ### Fixed — a stopped reactor coolant pump was still heating the coolant (#367)

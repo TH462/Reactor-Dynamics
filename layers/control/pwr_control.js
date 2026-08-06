@@ -1034,6 +1034,22 @@
       speeds: [{ above: 0.8, speed: 'slow' }, { above: 2.0, speed: 'normal' }, { above: 4.0, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
       // 228-step values, so the channel's authority in %-of-travel is unchanged.
+      // NO pvTau, AND NO STOP-EXIT TRAVEL CANCEL — both measured against the sourced TR-1i
+      // duty and both REJECTED (#378, 2026-08-06). The post-step limit cycle (TR-18, xfail)
+      // has two fixes that work and neither is shippable:
+      //   * pvTau breaks the duty at EVERY value tried — 0.5-3.0 s in the first diagnosis
+      //     (ramp 5.04-5.30 vs ≤ 5.00 °F) and even 0.2 s (5.38, step return 1.64 vs
+      //     < 1.5 °F). The instrument noise DITHERS the plant through the ±0.8 °C deadband,
+      //     so the raw-PV plant parks closer to program on average than the honest deadband
+      //     allows; filtered, it parks at the deadband edge, just outside the sourced bands.
+      //   * cancelling in-flight `rod_nudge` travel at the kernel's deadband exit kills the
+      //     cycle completely (13.8 pts p2p → 2.0, settles 14.6 min vs never) — and takes
+      //     the ramp duty 4.34 → 5.26 vs the sourced ≤ 5.00 °F, because the uncancelled
+      //     overshoot travel was silently helping the bank chase a sliding Tref. Same
+      //     collision as pvTau, arrived at from the opposite side: the duty is currently
+      //     met PARTLY BY the defect. Candidate that threads it (untried): gate the cancel
+      //     on the PROGRAM being stationary, so step-settling gets it and ramp-chasing
+      //     does not — see #378.
       gain: 1.6, db: 0.8, maxStep: 8, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
 
     { id: 'boron_trim', kind: 'bang', group: 'Reactor',

@@ -401,10 +401,17 @@ pressure — a dead transmitter can no longer carry an MSIV closure to clad melt
 stop valves — the trip burst is real), #372 (feedwater enthalpy — overfeed overcools, AFW
 removes heat, follow governor re-closed), #375 (cooldown-rate meter + ±100 °F/hr annunciators;
 dump mass flow carries its pressure), #374 (evidence pass, WTSM §11.2 fetched into the corpus,
-#380 filed), #370/#371 declared-departure rows. Lane baselines: `run_behavior` **53**,
-`run_reachability` **68**, `run_contract` **151**, Manuals **Rev 11**; `run_ops` tracked red
-**58/69** untouched. The second wave (#377/#378/#379) is **backshop's**, per the plan of record
-on #297.
+#380 filed), #370/#371 declared-departure rows. Then the build wave (2026-08-05/06): #370a/b/c
+(break mass flow, kernel numeric conditions, MSIV auto-isolation), #371a/b (ADVs + board card +
+the owner's diagram re-export), and **#378 measured to a REJECT** — the stop-exit rod-travel
+cancel kills the post-step limit cycle completely (13.8 pts p2p → 2.0, settles 14.6 min vs
+never) but takes TR-1i's SOURCED ramp duty 4.34 → 5.26 °F vs ≤ 5.00, and pvTau fails the same
+band at every value tried: **the duty is currently met partly BY the defect**, so nothing
+shipped and **TR-18 pins the open defect as a strict xfail** (`run_behavior` 57 pass /
+**1 xfail**). Lane baselines: read `BASELINES` (this paragraph's copy went stale inside one
+day); `run_ops` tracked red **58/69** untouched. Remaining on this lane by owner ruling
+2026-08-05 ("Workbench takes everything left"): #377, #379, #380, §8.30 — superseding the
+earlier backshop note.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.**
 They are a reading aid, not a record: the full history is `Diagnostic/TUNING_LOG.md`, and

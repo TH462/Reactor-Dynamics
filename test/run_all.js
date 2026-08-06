@@ -260,7 +260,13 @@ var BASELINES = {
   // 56 → 57 (2026-08-05, #371): TR-17 — the atmospheric dump. Leg A is the null
   // control (valve ships SHUT, plant still holds hot as audit F3 measured); leg B
   // opens it and the plant cools 304.5 → 187.7 °C with no condenser at all.
-  'run_behavior.js':       { code: 0, secs: 56, score: '57pass 0xfail' },
+  // +1 xfail (2026-08-06, #378): TR-18 — load-change settling, shipped as a STRICT
+  // XFAIL pinning an OPEN defect: the plant limit-cycles ~13 pts p2p forever after a
+  // manual 100→50 MWe step. The fix that kills it (stop-exit rod-travel cancel) was
+  // built, measured, and REJECTED — it takes TR-1i's sourced ramp duty 4.34 → 5.26 °F
+  // vs the WTSM ≤ 5.00, i.e. the duty is currently met partly BY the defect. Strict:
+  // if settling starts passing, the XFAIL entry must go in the same change.
+  'run_behavior.js':       { code: 0, secs: 56, score: '57pass 1xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).

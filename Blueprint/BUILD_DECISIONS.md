@@ -45,6 +45,33 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-workbench-a — #378: a fix that measures perfectly and is rejected anyway
+
+**Decision.** The rod-channel limit cycle (#378, audit #297 F9) has a fix that works — cancelling
+in-flight `rod_nudge` travel at the kernel's deadband exit takes a 100→50 MWe step from
+13.78 pts p2p forever / never settling to 2.03 pts / settled at 14.6 min — and it is **not
+shipped**, because it takes TR-1i's sourced WTSM 8.1.1 ramp duty from 4.34 to **5.26 °F against
+≤ 5.00**. The uncancelled overshoot travel has been silently helping the bank chase a sliding
+Tref: the sourced duty is met partly by the defect. That was the plan's pre-declared reject
+criterion, applied as written. pvTau fails the same band at every value tried (0.2–3.0 s,
+measured across two sessions); `kd` makes the cycle worse (measured, prior diagnosis). What
+ships instead is **TR-18 as a strict xfail** — the settling probe, injection-verified in both
+directions, pinning the open defect so it cannot be quietly forgotten or quietly "fixed" without
+the XFAIL entry moving in the same change.
+
+**Why record a rejection here.** The natural next attempt is one of the two things now measured
+dead (filter the PV, add derivative) — and the actually promising variant (gate the cancel on a
+stationary program, so step-settling cancels and ramp-chasing keeps its travel) needs the full
+verification pass a wrap-up session could not give it. It is filed on #378. Full measurement
+tables: `Diagnostic/TUNING_LOG.md` 2026-08-06-workbench-a.
+
+**Session end state, for the merge** *(OWNER, 2026-08-06: "I want to merge develop and workbench
+before they drift too far apart. Get yourself into a good stopping point for a clean merge.")*:
+lane committed and gated; #377, #379, #380 and the §8.30 row remain open on this lane per the
+2026-08-05 "Workbench takes everything left" ruling.
+
+---
+
 ## 2026-08-05-workbench-i — #371b: an absolute patch is a time bomb under a generated file
 
 **Decision.** `pwr_board_data.js` is GENERATED from the owner's diagram export, so every correction

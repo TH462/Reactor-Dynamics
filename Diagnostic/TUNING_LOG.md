@@ -29,6 +29,71 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-workbench-a (#378 — the limit-cycle fix that works is not shippable; TR-18 pins the defect)
+
+**Task:** work #378 (the plant never settles after a load change — audit #297 F9), per the owner's
+2026-08-05 ruling assigning the remaining audit follow-ups to this lane, and *(OWNER, 2026-08-06:
+"I want to merge develop and workbench before they drift too far apart. Get yourself into a good
+stopping point for a clean merge.")* — which is why this entry ends the session with the lane
+committed and the rest of the campaign (#377/#379/#380/§8.30) still pending.
+
+**Outcome: the pre-declared reject criterion fired. No behaviour shipped.** TR-18 lands as a
+strict XFAIL pinning the open defect; the measurement record is the deliverable.
+
+**Baseline reproduction** (ops_harness rig, `hot_full_power`, `set_load_target immediate 50` at
+t=30 s, 60 min hands-off, 5-min-window p2p of true power): decays for ~15 min then stops decaying
+— windows from 20 min onward read 11.1–13.8 pts p2p indefinitely, final 10 min **13.78 pts**,
+settling (ask ±2 held 5 min) **never** reached. Last-10-min Tavg swing 5.04 °F (2.80 °C), SG
+pressure swing 37.6 psi (0.259 MPa). Matches the issue's table on the current tree.
+
+**Rung 1 — cancel in-flight `rod_nudge` travel at the kernel's stop exits — kills the cycle
+completely.** Mechanism: `control_kernel.js _stepRods` sends up to `maxStep: 8` fine steps and the
+engine drives the bank to `nudge_target` over time; the deadband (`'holding'`) and anti-reverse
+(`'damping'`) exits return without stopping the bank, so ~72 pcm of travel lands after every
+decision to stop — the per-half-cycle kick. With a `_cancelRodTravel` helper (same idiom as the
+disengage stand-down, `rod_stop` gated on `c.nudgeLive` so operator motion is never
+countermanded): final 10 min **13.78 → 2.03 pts**, settles **14.6 min**; seeds 1/7/4242 read
+1.83/2.06/4.89 pts, settling 13.8–18.5 min. Seed 4242's residual is isolated single-cycle
+excursions after 45 min, not the 185-s sustained cycle.
+
+**Three participation facts measured, not reasoned:**
+- The **zero-step exit does not participate**: adding a cancel there changed nothing on any seed
+  to every printed digit — by the time `eEff` rounds to zero mid-flight, another exit has already
+  cancelled. Left out as an unobservable (unfalsifiable) guard.
+- The **damping exit does not participate either**: removing its cancel left both the cycle kill
+  AND the TR-1i collision identical to the digit (5.26). The deadband exit alone is the whole
+  mechanism, both directions.
+- **`rod_stop` is deliberately not in `manual_overrides`**, so the internal cancel cannot knock
+  the channel to MAN.
+
+**Why it is NOT SHIPPED — the fix collides with a SOURCED band, and the collision is the finding.**
+With the cancel in, TR-1i's ramp-duty check reads **5.26 °F vs the WTSM 8.1.1 ≤ 5.00** (4.34 on
+the reverted tree — the #372 feed-enthalpy wave had improved it from #321's 4.77). The uncancelled
+overshoot travel was silently helping the bank chase the sliding Tref through a 5 %/min ramp:
+**the sourced duty is currently met partly BY the defect.** pvTau (rung 2) fails the same band at
+every value tried — 0.5–3.0 s in the prior diagnosis (ramp 5.04–5.30), and **0.2 s here: ramp
+5.38, step return 1.64 vs < 1.5 °F** — the noise-dither mechanism from the #378 comment holds all
+the way down. Per the plan's pre-declared reject ("if a rung pushes TR-1i outside its sourced
+band, report and stop"), the kernel change was reverted. `kd` was already rejected on the prior
+measurement (10/15 → 16.2/23.2 pts, worse). **Candidate that could thread it, untried and filed
+on #378:** gate the cancel on the PROGRAM being stationary (`spEff` slew is bounded, so a slow
+follower on its rate discriminates a ramp from noise) — step-settling gets the cancel,
+ramp-chasing keeps its travel.
+
+**TR-18** (`run_behavior` **57 pass / 1 xfail**, BASELINES updated): settles ≤ 25 min; 25–35-min
+window p2p ≤ 6 pts; mean-at-ask ±2 as a false-positive guard that is deliberately green on both
+kernels (the broken cycle is symmetric, so the mean was always right). Bands are declared house
+calls from the fixed plant's four-seed envelope. **Injection-verified both ways**: with the cancel
+in, all green (14.6 min / 3.95 pts); cancel a no-op, exactly the two discriminating checks red
+(never / 13.39 pts). The late window is sampled explicitly, not via `h.range()` — the run contains
+the transient's 55-pt first swing, the standing CA-9/#332 trap.
+
+**Where the rejected fix lives if wanted:** this entry + the `rods_tavg` def comment
+(`pwr_control.js`) + the TR-18 probe comment. The diff itself was reverted uncommitted; it is
+four lines plus a helper, trivially re-creatable from the description here.
+
+---
+
 ## Session log — 2026-08-05-workbench-i (#371b — incorporating the owner's diagram re-export)
 
 **Task:** *(OWNER, 2026-08-05: "i saved diagram.json in the workbench inbox folder. i made some

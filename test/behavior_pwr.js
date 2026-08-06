@@ -54,6 +54,14 @@
     // Emptied 2026-07-21 (feel-plan P5): TR-2/CC-5 left with the spray cap +
     // trip-open dump + TR-3 re-spec; TR-1/CC-3 left with the P4 ride-out and
     // P-4 handoff; SS-5/CC-10 left with the P2 derived-level rework.
+
+    // #378 — the rod channel never settles after a manual load step (limit cycle,
+    // ~13 pts p2p indefinitely). The fix that kills it (stop-exit travel cancel in
+    // the kernel) was measured to take TR-1i's SOURCED ramp duty 4.34 → 5.26 °F vs
+    // ≤ 5.00 and was rejected per the pre-declared criterion — see the TR-18 probe
+    // comment and issue #378. Strict: when settling is fixed, this entry must be
+    // removed in the same change.
+    'TR-18': 'rod channel limit-cycles after a load step (#378) — shippable fix not yet found',
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -91,6 +99,7 @@
     'TR-12': 'probe + run_campaign pwr_slb', 'TR-12b': 'probe (MSIV isolates a downstream break, #199)',
     'TR-12c': 'probe (automatic steam line isolation — the coincidence, and that it stays out of normal evolutions, #370c)',
     'TR-17': 'probe (atmospheric dump — a condenser-independent cooldown path exists, #371)',
+    'TR-18': 'probe (load-change settling — the manual step ends instead of hunting forever, #378)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
@@ -3643,6 +3652,80 @@
           d.range('steam_pressure_mpa').min > 1.0, '> 1.0 (was < 1.0 unisolated)');
         ck('…and still no safety injection — the ruling holds on this leg too',
           String(dSi), !dSi, 'never');
+      });
+    },
+
+    /* TR-18 (#378, audit #297 F9) — A LOAD CHANGE ENDS. Nothing in the suite asserted
+     * settling: the plant limit-cycles ±7 points of power at ~185 s period FOREVER after a
+     * manual 100→50 MWe step (measured: 13.8 pts p2p in the final 10 min of a 60-minute
+     * hands-off ride, settling NEVER reached), while the same authored 50 % IC is stable to
+     * 0.7 pts — the loop can hold the point, it cannot arrive at it. The mechanism is the
+     * kernel's stop exits: a `rod_nudge` drives the bank over time, and the deadband /
+     * damping decisions return without cancelling the in-flight travel, so up to 8 steps
+     * (~72 pcm) of overshoot land after every decision to stop — the per-half-cycle kick
+     * that keeps the cycle fed.
+     *
+     * SHIPS AS A STRICT XFAIL — the fix was BUILT, MEASURED, AND REJECTED (2026-08-06).
+     * Cancelling the in-flight travel at the kernel's deadband exit kills the cycle
+     * completely (this probe goes green: settles 14.6 min, window 3.95 pts) — and takes
+     * TR-1i's SOURCED ramp duty 4.34 → 5.26 °F vs the WTSM 8.1.1 ≤ 5.00, because the
+     * overshoot travel was silently helping the bank chase a sliding Tref: the duty is
+     * currently met PARTLY BY the defect. pvTau filtering fails the same band at every
+     * value tried (0.2-3.0 s). Per the pre-declared reject criterion, neither shipped;
+     * the candidate that threads the needle (cancel gated on a stationary program) is on
+     * the issue. This probe pins the DEFECT meanwhile: if settling starts passing, the
+     * fix landed — remove the XFAIL entry in the same change or the gate goes XPASS-red.
+     *
+     * BANDS ARE HOUSE CALLS, declared as such: a real Westinghouse plant settles after a
+     * design manoeuvre (the WTSM 8.1.1 duty TR-1i pins is stated over sustained ramps, which
+     * only means anything on a plant that settles), but no source gives a settling time or a
+     * residual band, so these are the fixed plant's measured envelope with margin: settled
+     * (ask ±2 pts held 5 min) by 25 min against 13.8-18.5 over four seeds under the cancel,
+     * and the post-settle window ≤ 6 pts against 0.3-4.0 measured (worst-seed excursions
+     * ~4.9 appear only after 45 min, outside this ride). Today's plant fails both — never
+     * settles, post-settle window 13.4 — and the mean-on-target check passes on BOTH
+     * kernels deliberately (the cycle is roughly symmetric, so its mean was always right):
+     * it is the false-positive guard against a "fix" that settles at the wrong load, not a
+     * discriminator.
+     *
+     * The late window is sampled EXPLICITLY (25-35 min), not via h.range(): the run includes
+     * the transient's 55-pt first swing, so a run-wide range asserts nothing — the standing
+     * CA-9/#332 trap. */
+    'TR-18': function () {
+      return test('TR-18 load-change settling — a manual step ENDS, the plant does not hunt forever (#378)', function (ck) {
+        var h = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO
+        h.run(30);
+        var ask = 50;
+        h.cmd('set_load_target', { immediate: true, mwe: ask });
+        var t0 = h.t();
+        var settledAt = null, inBandSince = null;
+        var wMin = 1e9, wMax = -1e9, wTavgMin = 1e9, wTavgMax = -1e9;  // 25-35 min window
+        var lateSum = 0, lateN = 0;                                    // last 5 min mean
+        h.run(2100, function (hh) {
+          var tt = hh.t() - t0, pw = hh.ts().power_pct;
+          if (Math.abs(pw - ask) <= 2) {
+            if (inBandSince == null) inBandSince = tt;
+            if (settledAt == null && tt - inBandSince >= 300) settledAt = inBandSince;
+          } else inBandSince = null;
+          if (tt >= 1500) {
+            if (pw < wMin) wMin = pw; if (pw > wMax) wMax = pw;
+            var tv = hh.ts().tavg_c;
+            if (tv < wTavgMin) wTavgMin = tv; if (tv > wTavgMax) wTavgMax = tv;
+          }
+          if (tt >= 1800) { lateSum += pw; lateN++; }
+        });
+        ck('no reactor trip on an ordinary dispatch cut', h.tripReason || 'none', h.tripTime == null, 'none');
+        ck('the plant SETTLES — ask ±2 pts held 5 min, reached inside 25 min (pre-fix: never)',
+          settledAt == null ? 'never' : fmt(settledAt / 60, 1) + ' min',
+          settledAt != null && settledAt <= 1500, '≤ 25 min');
+        ck('…and STAYS settled — 25-35 min p2p ≤ 6 pts (pre-fix: 12.7-13.1, the limit cycle)',
+          fmt(wMax - wMin, 2) + ' pts', (wMax - wMin) <= 6.0, '≤ 6');
+        ck('settled AT the ask, not merely quiet somewhere (mean guard — green on both kernels;'
+          + ' the broken cycle was symmetric, so this alone discriminates nothing)',
+          fmt(lateSum / Math.max(lateN, 1), 2) + ' %', Math.abs(lateSum / Math.max(lateN, 1) - ask) <= 2, ask + ' ±2');
+        ck.info('25-35 min Tavg swing (pre-fix sustained ~6 °F)',
+          fmt((wTavgMax - wTavgMin) * 9 / 5, 2) + ' °F (' + fmt(wTavgMax - wTavgMin, 2) + ' °C)');
+        T.checkSanity(ck, h);
       });
     },
   };
