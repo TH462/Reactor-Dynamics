@@ -409,31 +409,50 @@
     }
 
     function applyBubbles(force) {
-      // Quantised to 5 % of boil, not 1 % (2026-08-06) — this teardown-and-re-append
-      // restarts every circle's CSS animation from t=0, so the trigger has to be coarser
-      // than the noise. `st.boil` is `max(voidFrac * 400, -subcool * 3)`
-      // (pwr_board_wiring.js): a 400x gain on void fraction, so one integer is 0.0025 of
-      // void and the field flipped continuously through any transient that voids the
-      // core. Same fix as the SG and pressurizer fields.
+      // Quantised to 5 % of boil, not 1 % (2026-08-06) — `st.boil` is
+      // `max(voidFrac * 400, -subcool * 3)` (pwr_board_wiring.js), a 400x gain on void
+      // fraction, so one integer is 0.0025 of void and the field flipped continuously
+      // through any transient that voids the core.
       var bq = Math.round(clamp(st.boil, 0, 100) / 5) * 5;
       if (!force && bq === lastBoil) return;
       lastBoil = bq;
-      while (R.bubbleG.firstChild) R.bubbleG.removeChild(R.bubbleG.firstChild);
+      // POOLED, not torn down. The teardown-and-re-append was 733 childList mutations per
+      // 10 s of transient and the largest single source on the board after the SG's — and a
+      // teardown is what the owner's "brief blank" looks like when the compositor presents
+      // a frame mid-rebuild (see ui/app.js's rAF note). Reused circles also KEEP their
+      // running animation, so the field stops snapping back to phase 0.
       var boil = bq / 100;
-      if (boil <= 0.02) return;
-      var bubbleCount = Math.round(4 + boil * 48);
+      var want = boil <= 0.02 ? 0 : Math.round(4 + boil * 48);
       var rises = ['bubbleRiseS', 'bubbleRiseM', 'bubbleRiseL'];
-      for (var i = 0; i < bubbleCount; i++) {
+      var kids = R.bubbleG.childNodes;
+      for (var i = 0; i < want; i++) {
         var x = coreL + 8 + ((i * 41 + (i % 5) * 17) % (coreW - 16));
         var startY = 450 - ((i * 53) % 150);
         var dur = (2.6 - boil * 1.3 + (i % 4) * 0.32).toFixed(2);
         var delay = (i * 0.23).toFixed(2);
         var r = (1.1 + (i % 3) * 0.5 + boil * 3.3).toFixed(2);
-        R.bubbleG.appendChild(h('circle', {
-          cx: x, cy: startY, r: r, fill: '#bdf1ff', opacity: Math.min(0.92, 0.12 + boil * 2.1),
-          style: { animation: rises[i % 3] + ' ' + dur + 's linear infinite', animationDelay: delay + 's', transformBox: 'fill-box', transformOrigin: 'center' }
-        }));
+        var op = Math.min(0.92, 0.12 + boil * 2.1);
+        var el = kids[i];
+        if (!el) {
+          el = h('circle', { fill: '#bdf1ff',
+            style: { transformBox: 'fill-box', transformOrigin: 'center' } });
+          R.bubbleG.appendChild(el);
+        }
+        if (el.getAttribute('cx') !== String(x)) el.setAttribute('cx', x);
+        if (el.getAttribute('cy') !== String(startY)) el.setAttribute('cy', startY);
+        if (el.getAttribute('r') !== r) el.setAttribute('r', r);
+        if (el.getAttribute('opacity') !== String(op)) el.setAttribute('opacity', op);
+        // Set once. Element i always draws the same keyframe name (i % 3), so a reused
+        // circle never needs its animation reassigned — only re-timed.
+        if (!el.__anim) {
+          el.style.animation = rises[i % 3] + ' ' + dur + 's linear infinite';
+          el.style.animationDelay = delay + 's';
+          el.__anim = true;
+        } else if (el.style.animationDuration !== dur + 's') {
+          el.style.animationDuration = dur + 's';
+        }
       }
+      while (R.bubbleG.childNodes.length > want) R.bubbleG.removeChild(R.bubbleG.lastChild);
     }
 
     function applyFlow(force) {

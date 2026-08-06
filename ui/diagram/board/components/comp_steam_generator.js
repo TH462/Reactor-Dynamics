@@ -254,9 +254,18 @@
     }
 
     function rebuildBubbles(sgBoil, levelY) {
-      clearEl(bubbleGroup);
-      if (sgBoil <= 0.02) return;
-      var bubbleCount = Math.round(4 + sgBoil * 40);
+      // POOLED, not torn down (2026-08-06). This used to clearEl() and re-append every
+      // circle, which is a teardown of ~44 animated elements — and the owner reports the
+      // flicker as a brief BLANK, which is what a teardown looks like if the compositor
+      // presents a frame mid-rebuild (ui/app.js's rAF note documents that happening on
+      // real GPUs while headless looks fine). MEASURED: 733 childList mutations per 10 s
+      // of transient, the largest single source left on the board.
+      //
+      // Reusing the circles removes the empty intermediate state entirely AND stops the
+      // animation restarting, because a surviving element keeps its running animation —
+      // only the delta in COUNT touches the DOM at all. Same idiom as
+      // comp_indicator_panel's poolAt/poolTrim.
+      var want = sgBoil <= 0.02 ? 0 : Math.round(4 + sgBoil * 40);
       // WHERE BUBBLES ARE BORN is not WHERE THEY GO, and conflating the two is the bug this
       // replaced. Steam is generated on the tube bundle, so the birth zone is the bundle —
       // or the water surface instead, once the level has fallen BELOW the bundle top, since
@@ -264,7 +273,8 @@
       // so `Math.max` of two y values is the lower of the two, and max(bendY, levelY) is
       // exactly that rule. It is correct here and was wrong as the travel target below.
       var birthTop = Math.max(bendY, levelY);
-      for (var i = 0; i < bubbleCount; i++) {
+      var kids = bubbleGroup.childNodes;
+      for (var i = 0; i < want; i++) {
         var x = 132 + ((i * 37 + (i % 5) * 13) % 156);
         var startY = waterBot - ((i * 43) % Math.max(1, (waterBot - birthTop)));
         // Travel to the WATER SURFACE and fade there (the keyframe ends at opacity 0), which
@@ -280,12 +290,30 @@
         var dur = (2.4 - sgBoil * 1.2 + (i % 4) * 0.3).toFixed(2);
         var delay = (i * 0.21).toFixed(2);
         var r = (1 + (i % 3) * 0.45 + sgBoil * 2.6).toFixed(2);
-        bubbleGroup.appendChild(h('circle', {
-          cx: x, cy: startY, r: r, fill: '#bdf1ff', opacity: Math.min(0.9, 0.12 + sgBoil * 2),
-          style: { animation: 'sgBubbleRise ' + dur + 's linear infinite', animationDelay: delay + 's',
-                   transformBox: 'fill-box', transformOrigin: 'center', '--sg-rise': rise.toFixed(1) + 'px' }
-        }));
+        var op = Math.min(0.9, 0.12 + sgBoil * 2);
+        var el = kids[i];
+        if (!el) {
+          el = h('circle', { fill: '#bdf1ff',
+            style: { transformBox: 'fill-box', transformOrigin: 'center' } });
+          bubbleGroup.appendChild(el);
+        }
+        if (el.getAttribute('cx') !== String(x)) el.setAttribute('cx', x);
+        if (el.getAttribute('cy') !== String(startY)) el.setAttribute('cy', startY);
+        if (el.getAttribute('r') !== r) el.setAttribute('r', r);
+        if (el.getAttribute('opacity') !== String(op)) el.setAttribute('opacity', op);
+        // The animation is set ONCE per element. Re-assigning the shorthand or the delay
+        // restarts it, which is the whole thing this is avoiding — a reused circle keeps
+        // the flight it was already on, and `dur` only re-times it.
+        if (!el.__anim) {
+          el.style.animation = 'sgBubbleRise ' + dur + 's linear infinite';
+          el.style.animationDelay = delay + 's';
+          el.__anim = true;
+        } else if (el.style.animationDuration !== dur + 's') {
+          el.style.animationDuration = dur + 's';
+        }
+        el.style.setProperty('--sg-rise', rise.toFixed(1) + 'px');
       }
+      while (bubbleGroup.childNodes.length > want) bubbleGroup.removeChild(bubbleGroup.lastChild);
     }
 
     // ---- update: cache last-applied values, only touch DOM on change ----

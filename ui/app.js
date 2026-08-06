@@ -1291,6 +1291,17 @@
     if (ui.plant !== 'pwr' && scramInd && !lastScrammed && ui.view !== 'diagram') setView('diagram');
     renderPlantDisplay(s);
     renderPhysics(s);
+    // INSIDE the rAF, not as their own subscribers (2026-08-06). The rationale above says
+    // a DOM write off the paint cycle "let the compositor present a frame mid-rebuild on
+    // real GPUs ... dispersing and reappearing ... while software-rendered headless looked
+    // fine" — which is exactly the blank/blink the owner reports, and exactly why no
+    // headless probe in this repo could reproduce it. Only `render` was ever wrapped;
+    // these two kept writing straight from the broadcast's setTimeout.
+    renderAutomate(s);
+    inspectLiveTick(s);
+    // diagTick's ACCUMULATION stays a synchronous subscriber — it diffs alarm states and
+    // must not miss a broadcast. Only its readout belongs in the paint cycle.
+    diagReadout();
     lastScrammed = scramInd;
 
     // Time moved backwards (a rewind, or a walkthrough/scenario reset): drop the
@@ -1698,7 +1709,7 @@
     });
     var nUnack = active.filter(function (a) { return a.state === 'active_unacknowledged'; }).length;
     var title = $('alarmTitle');
-    if (title) title.textContent = nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms';
+    txt(title, nUnack ? 'Alarms (' + nUnack + ')' : 'Alarms');
 
     // Everything below this line is DOM the tile markup depends on, so the key has to
     // carry all of it: order, state, both priorities, the annunciation stamp, and the
@@ -2982,7 +2993,7 @@
       if (sl && on && act[id].severity != null && document.activeElement !== sl) {
         var m = JSON.parse(row.getAttribute('data-meta'));
         sl.value = Math.round(act[id].severity * 100);
-        row.querySelector('[data-svlabel="' + id + '"]').textContent = m.label + ': ' + Math.round(m.min + act[id].severity * (m.max - m.min)) + ' ' + m.unit;
+        txt(row.querySelector('[data-svlabel="' + id + '"]'), m.label + ': ' + Math.round(m.min + act[id].severity * (m.max - m.min)) + ' ' + m.unit);
       }
     });
   }
@@ -3104,9 +3115,9 @@
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
       chartRange = {};   // no data → forget held ranges so the next fit starts clean
-      $('chartLegend').innerHTML = active.map(function (s) {
+      setHTML($('chartLegend'), active.map(function (s) {
         return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
-      }).join('');
+      }).join(''));
       svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
     }
     var ext = chartExtent(), t1 = ext.t1, t0 = ext.t0, span = ext.span;
@@ -3252,10 +3263,10 @@
     // Bounds render through the series' own fmt — the same conversion + unit suffix
     // the float chips use — so the legend agrees with the chips in either display
     // unit (it used to print raw internal SI beside imperial chips, #235).
-    $('chartLegend').innerHTML = active.map(function (s) {
+    setHTML($('chartLegend'), active.map(function (s) {
       var r = ranges[s.id];
       return '<span class="leg" style="color:' + s.c + ';margin-right:10px"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.fmt(r[0]) + '–' + s.fmt(r[1]) + '</b></span>';
-    }).join('');
+    }).join(''));
     // horizontal gridlines — barely visible, thin; recede behind the traces
     [20, 40, 60, 80, 100].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1e2831" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
     var lastY = [];
@@ -3583,8 +3594,13 @@
     }
     diag.lastScrammed = sc;
     if (t >= diag.nextT || !diag.samples.length) { diagSample(s, t); diag.nextT = Math.floor(t) + 1; }
-    var el = $('diagSessionInfo');
-    if (el) el.textContent = ui.plant + ' · ' + diag.reason + ' · ' + t.toFixed(0) + ' s · ' + diag.samples.length + ' samples';
+  }
+  // The readout half of diagTick, called from renderNow so it lands inside the paint
+  // cycle with every other DOM write.
+  function diagReadout() {
+    if (!diag) return;
+    txt($('diagSessionInfo'), ui.plant + ' · ' + diag.reason + ' · ' +
+      (diag.lastT || 0).toFixed(0) + ' s · ' + diag.samples.length + ' samples');
   }
   function buildDiagBundle() {
     if (!diag) return null;
@@ -5481,8 +5497,9 @@
     }
     service.subscribe(render);
     service.subscribe(diagTick);
-    service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast
-    service.subscribe(inspectLiveTick);  // #214: keep a displayed channel status from freezing
+    // renderAutomate and inspectLiveTick are called from renderNow instead, so every DOM
+    // write for one broadcast happens inside the same rAF frame. Subscribing them here put
+    // them on the broadcast's setTimeout, off the paint cycle — see renderNow.
     if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)

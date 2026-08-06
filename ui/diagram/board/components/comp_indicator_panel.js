@@ -75,6 +75,14 @@
 
   function num(v, d) { var n = +v; return isFinite(n) ? n : d; }
 
+  // Write only what changed. `el.textContent = s` replaces the text node even when the
+  // string is byte-identical, and paint() runs once per board render (10 Hz, 20 Hz in a
+  // transient). MEASURED before this: 330 childList mutations per tile per 10 s of
+  // transient — 2000 across the six-tile strip, none carrying new information. The unit
+  // never changes at all, and the value only changes when the rounded reading does.
+  function txt(el, v) { if (el && el.textContent !== v) el.textContent = v; }
+  function sty(el, k, v) { if (el && el.style[k] !== v) el.style[k] = v; }
+
   // 1-2-5 ladder step, so a held axis lands on a round number rather than wherever the
   // data happened to be when it re-fitted. KEEP IN SYNC WITH ui/app.js niceStep().
   function niceStep(raw) {
@@ -397,10 +405,10 @@
 
       // currentRegion, not regionAt — this is the live reading and it carries the hysteresis.
       var curColor = REGION_COLORS[currentRegion(REG, cur).key];
-      valEl.style.color = curColor;
-      valEl.textContent = cur.toFixed(st.decimals);
-      unitEl.textContent = st.unit;
-      accentBar.style.background = 'linear-gradient(90deg,transparent,' + curColor + ',transparent)';
+      sty(valEl, 'color', curColor);
+      txt(valEl, cur.toFixed(st.decimals));
+      txt(unitEl, st.unit);
+      sty(accentBar, 'background', 'linear-gradient(90deg,transparent,' + curColor + ',transparent)');
       areaEl.setAttribute('fill', curColor);
       dotEl.setAttribute('fill', curColor);
 
@@ -476,9 +484,9 @@
       function avg(arr) { var s = 0; for (var q = 0; q < arr.length; q++) s += arr[q].v; return s / (arr.length || 1); }
       var ra = avg(recent), oa = older.length ? avg(older) : ra;
       var slope = (ra - oa) / ((hi - lo) || 1);
-      if (slope > 0.03) { trendEl.textContent = '▲'; trendEl.style.color = '#6fe0a8'; }
-      else if (slope < -0.03) { trendEl.textContent = '▼'; trendEl.style.color = '#e8975a'; }
-      else { trendEl.textContent = '–'; trendEl.style.color = '#5c7182'; }
+      if (slope > 0.03) { txt(trendEl, '▲'); sty(trendEl, 'color', '#6fe0a8'); }
+      else if (slope < -0.03) { txt(trendEl, '▼'); sty(trendEl, 'color', '#e8975a'); }
+      else { txt(trendEl, '–'); sty(trendEl, 'color', '#5c7182'); }
     }
 
     // ----------------------------------------------------------------- update --
@@ -530,7 +538,7 @@
       }
 
       // A missing/failed instrument must not push a fabricated sample onto the trace.
-      if (props.value == null || !isFinite(+props.value)) { valEl.textContent = '—'; return; }
+      if (props.value == null || !isFinite(+props.value)) { txt(valEl, '—'); return; }
       st.value = +props.value;
 
       // Sample on SIM time so the window is a true 3 minutes at any speed. A rewind (or a
@@ -610,7 +618,7 @@
     function reset() {
       hist.length = 0; lastT = null; seeded = false; heldRegion = null;
       held = null; shrinkFor = 0;
-      valEl.textContent = '—';
+      txt(valEl, '—');
     }
 
     rebuildGaugeBands();
