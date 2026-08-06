@@ -31,6 +31,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **The atmospheric dump appears on the plant diagram** (#371). The relief valve now tees off the
+  main steam header on the generator side of the isolation valve — where it has to be, since an
+  isolated steam line still needs somewhere to send its heat — and vents through a silencer that
+  plumes when the valve is open. Its position, the condenser dump's, and turbine steam flow are
+  tagged beside the valves they belong to, and the ATMOS DUMP panel carries the AUTO/SHUT buttons,
+  the pressure setpoint and the position readout.
 - **Atmospheric dump valves — you can cool the plant down without the condenser** (#371). Until now
   the only controllable steam path went to the condenser, so losing it left no cooldown path at all:
   the plant simply sat hot at the safety band. The new valves vent to atmosphere, work whether the

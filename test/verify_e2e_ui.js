@@ -283,7 +283,7 @@ async function testSteamFeedPair(page) {
         var r = e.getBoundingClientRect();
         return { right: Math.round(r.right), top: Math.round(r.top) };
       };
-      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imrzmlyafa3'),
+      return { steam: t('ims3wm0d0bu'), feed: t('imrsgkz4lq0'), gov: t('imrppej8ulo'), dump: t('imsgunuyvon'),
                steamBox: box('ims3wm0d0bu'), feedBox: box('imrsgkz4lq0') };
     });
   };

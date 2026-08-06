@@ -813,7 +813,11 @@ var BASELINES = {
   // packs legal.html + changelog.html into ui/site_docs.js, one more <script src> on the
   // shell, so Settings can open Disclaimer / License / Changelog offline in the portable
   // build. The merged figure is MEASURED, not 123 + 1 arithmetic.
-  'run_portable.js':       { code: 0, score: '124checks 0failed' },
+  // 124 → 125 (2026-08-05, #371): one more shipped script for the portable build to inline —
+  // `ui/diagram/board/components/comp_atmospheric_dump.js`, the ADV's schematic component,
+  // registered on the shell and on board_check. The guard counts shipped scripts, so a new
+  // board component is exactly one check. MEASURED after `node tools/make_portable.js`.
+  'run_portable.js':       { code: 0, score: '125checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -1374,7 +1378,13 @@ var BASELINES = {
   // (asserted, so a future change to the default has to edit the line), AUTO/SHUT
   // both drive the engine, the setpoint box converts, and its range hint carries
   // the unit the tile itself deliberately omits.
-  'verify_board_check.js':   { code: 0, score: '211checks' },
+  // 211 → 209 (2026-08-05, #371): the owner's diagram re-export retires `imrzmlyafa3`,
+  // the labelled STEAM DUMP readout — dragged off the canvas with a schematic-side % tag
+  // put beside the dump valve in its place — so its two geometry pins (label-fits-tile,
+  // clear-of-the-dump-valve) go with it rather than being kept alive against an item that
+  // no longer renders. Net -2. Everything else the re-export moved was re-pinned, not
+  // dropped: four pipe ids, five item ids, two re-measured runs and the rod-card spacing.
+  'verify_board_check.js':   { code: 0, score: '209checks' },
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,

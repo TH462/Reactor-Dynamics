@@ -29,6 +29,75 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-05-workbench-i (#371b — incorporating the owner's diagram re-export)
+
+**Task:** *(OWNER, 2026-08-05: "i saved diagram.json in the workbench inbox folder. i made some
+other tweaks to the diagram. i moved some things a little for visual appeal, added some things and
+added what you asked for. theres also a box to add atmos dump controls. incorporate the changes.")*
+Regenerate the board from `inbox/Diagram.JSON`, wire the new hardware, and re-pin everything the
+owner moved. 217 items / 41 pipes, up from 194 / 37.
+
+**Topology MEASURED from the regenerated doc — the ADV is on the right side of the MSIV:**
+
+| pipe | from → to | phase |
+|---|---|---|
+| `pmsgu7y5cn4` | `steamGenerator/steam-out` → upstream tee `imsgu622dld/a` | **authored `water` — corrected** |
+| `pmsgugdumjc` | tee `/c` → ADV valve `imsgu6qi776/a` | steam |
+| `pmsgum4orcr` | ADV valve `/b` → Atmospheric Dump `imsgujvh6iw/in` | steam |
+| `pmsgu7yzs7q` | tee `/b` → MSIV `imrpp99kx2y/a` | steam |
+| `pmsgu7mar1c` | MSIV `/b` → downstream tee `imsgu024ehh/a` | steam |
+| `pmsgu156z57` | tee `/b` → TCV `imrr45syy4v/a` | steam |
+| `pmsgu16h63l` | tee `/c` → condenser dump `imrprmm4u5q/a` | steam |
+
+The ADV tees off **upstream** of the MSIV, which is the whole reason it exists — an isolated steam
+line must still have a relief and cooldown path. Confirmed against the engine's tee-in point,
+which is likewise ahead of the MSIV gate.
+
+**The green pipe** *(OWNER, 2026-08-05: "the pipe coming off the SG is water green, it should be
+steam")*. `pmsgu7y5cn4` is the only one of the seven new runs authored `phase: 'water'`, and it is
+the one leaving the steam nozzle — a slip in the drawing, not a claim about the plant. Patched to
+`steam`. Phase drives colour only; flow state comes from `PIPE_SYSTEM`, so nothing else moved.
+
+**Four indications re-homed from driver-injected ids to ids the owner authored**, so the tiles are
+now the owner's and the driver only supplies the reading: RCP flow → `imsgteavgid`, PZR spray flow
+→ `imsgt6qmdgx`, reactor period → `ims89mkaj2r`, feed status → `ims89lnqmip`. Six new indications
+wired: ADV position, dump position, turbine steam flow, SG saturation temperature, charging and
+letdown flow. Position assignments were **read off the geometry, not the names** — the owner's
+`name` strings are copy-paste leftovers ("STEAM TURB FLOW" on the tag that sits beside the ADV
+valve), so each right-anchored tag was matched to the valve it abuts.
+
+**Displacements MEASURED and re-derived** (see BUILD_DECISIONS -i for why re-derived beats deleted):
+
+| tile | authored | old absolute patch | displacement | re-derived |
+|---|---|---|---|---|
+| `pressurizer` | top 190 | `top: 233` | +43 px down | `top: 193` (+3, levels the spray stub) |
+| `condenser` | left 1195 | `left: 1403` | +208 px right | `left: 1193` (−2, squares the hotwell drop) |
+| `imrr1gwi93j` STEAM PRESS | left 1647 | `left: 1850` | +203 px right | patch dropped — owner placed it |
+| `ims3wu2kxnl` its caption | left 1462 | `left: 1670` | +208 px right | patch dropped — owner placed it |
+| `imro8xhy2me` feed rate | left 1530 | `left: 1750` | +220 px right | patch dropped — owner placed it |
+| `bdMfwRestore` RESTORE | driver item | `left: 1670` | 20 px off the card | `left: 1460, top: 560` |
+
+RESTORE's new home was **measured, not guessed**: the SG FEED card is 1455–1650 × 505–645, the
+AUTO/MAN/OFF row fills 1460–1645 at y 535, the feed-rate number takes 1530–1635 at y 560, and the
+flow rows start at 595 — leaving exactly one rectangle that fits a 68 × 25 button, at 1460–1528 ×
+560–585, immediately left of the number it is documented to stay beside.
+
+**Rod card bottom re-solved.** The card is now 190–425 instead of 221–465, so the band below INSERT
+is 356 → 425 — 69 px holding 50 px of buttons. Same arithmetic as 2026-08-02: 3g = 19 has no
+integer answer, so the gaps are 6 / 6 / 7, and only the three tops move (402 → 362, 428 → 388).
+
+**Gate movements**
+
+| runner | was | now | why |
+|---|---|---|---|
+| `verify_board_check` | 211checks | **209checks** | the two retired STEAM DUMP readout pins; every other moved pin was re-pointed, not dropped |
+| `run_portable` | 124checks | **125checks** | one more shipped script to inline — `comp_atmospheric_dump.js` |
+
+Final: `node test/run_all.js` → **38 runners at baseline**, one tracked expected red (`run_ops`).
+`verify_board_check` 209/209, `run_inspect` 47/47.
+
+---
+
 ## Session log — 2026-08-05-workbench-f (#370/#371 — building the two deferred systems)
 
 **Task:** the owner reversed the #370/#371 deferrals — build automatic main steam line isolation

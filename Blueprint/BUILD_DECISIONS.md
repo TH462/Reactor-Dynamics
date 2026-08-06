@@ -45,6 +45,48 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-05-workbench-i — #371b: an absolute patch is a time bomb under a generated file
+
+**Decision.** `pwr_board_data.js` is GENERATED from the owner's diagram export, so every correction
+the driver makes lives in `DOC_PATCHES` instead. Those corrections were written as **absolute**
+tops and lefts. This re-export proved that is the wrong form: the owner moved the pressurizer up
+40 px and the condenser left 208 px, and because each patch re-asserted the old absolute number,
+the board silently put both tiles back where they used to be. The owner saw it immediately — *"The
+condenser is shifted to the right. the pressurizer is shifted down."*
+
+The trap is that both patches were **still correct in intent**. The pressurizer one is a +3 px
+nudge that levels the spray stub; the condenser one is a −2 px nudge that squares the hotwell drop
+onto a pump flange the 5 px doc grid will not let meet it halfway. Deleting them — the first thing
+I did — traded a visible 208 px error for two invisible 2 px leans, which is a worse outcome
+because only the ruler in board_check can see it. **Re-derived, not deleted**: `authored + delta`,
+with the arithmetic written at the patch so the next re-export shows its working instead of
+silently re-displacing a tile.
+
+Three more patches were genuinely spent and are gone: two CVCS caption sizes whose readouts the
+owner replaced with a different tile kind, and a feed-rate reposition the owner has now authored
+into the diagram directly.
+
+**Retired, not re-homed: the labelled STEAM DUMP readout (`imrzmlyafa3`).** The export drags it to
+(1247, 875) — clear of every card, 90 px below the lowest content, and the sole reason the board's
+bounding box grew an empty band that shrank every other tile. In the same export the owner added a
+right-anchored % tag beside the condenser dump valve, matching the new ADV and turbine-flow tags.
+Dragging a tile off the canvas while placing its replacement on the schematic is as explicit as an
+export gets. Carrying both would have put `steam_dump_valve` on the board twice under two labels.
+
+**What this costs and what it buys.** Two board_check pins go with it (−2, 211 → 209), and they
+are DELETED rather than repointed: a tile-fit assertion against an item that no longer renders
+passes forever and asserts nothing. Everything else the re-export moved was **re-pinned**, not
+dropped — four pipe ids where one header became four, five item ids, two re-measured runs, and the
+rod-card spacing re-solved against the new card height (3g = 19 again, so the same 6/6/7 rhythm).
+
+**One near-miss worth recording.** Adding a second `imrpk8169ds`-style spacing block created a
+duplicate key in the `DOC_PATCHES.items` object literal, which silently replaced ROD AUTO's colour
+entry and un-greened the button. The file carries a comment warning about exactly that hazard,
+nine lines above where I put the duplicate. The gate caught it; the comment did not, because I
+wrote before I read. The existing block was edited in place instead.
+
+---
+
 ## 2026-08-05-workbench-h — #371a: the valve ships shut, and that is the design
 
 **Decision.** Atmospheric dump valves — a condenser-independent steam path, upstream of the MSIV and

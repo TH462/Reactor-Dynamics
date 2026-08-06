@@ -228,14 +228,13 @@
       'pumps are running. Both legs carry a 4-second instrument lag, so ΔT lags a load change.', CI, '4.1'),
     // (The REACTIVITY readout was here until 2026-08-04; #350 item 5 removed it from the
     // board as a second copy of what PERIOD already says, so its entry went with it.)
-    bdRxPeriod: e('Reactor period',
+    ims89mkaj2r: e('Reactor period',
       'Reactor period in seconds — the time for reactor power to change by a factor of e.',
       'A teaching readout from true state, not a field instrument. It is the operator-facing form ' +
       'of core reactivity: a short period means reactivity is positive and power is running away ' +
       'from you, a long one (tens of seconds or more) means you are in control, and ∞ means the ' +
       'reactor is critical and steady. Near criticality this is the number to watch.', CI, '4.1'),
-    bdRxPeriodLbl: 'bdRxPeriod',
-    bdRcpFlow: e('Reactor Coolant Flow (RCP FLOW)',
+    imsgteavgid: e('Reactor Coolant Flow (RCP FLOW)',
       'Reactor Coolant System (RCS) loop flow, as a percentage of rated flow.',
       'Measured at an elbow tap in the loop, and it is the same channel the low-flow reactor trip ' +
       'acts on — so this is the gauge the protection is watching. It is not the same fact as the ' +
@@ -243,7 +242,7 @@
       'and flow does not fall to zero — it settles at a few percent on natural circulation, driven by ' +
       'the density difference between the hot and cold legs, which is enough to carry decay heat but ' +
       'nothing like enough for power operation.', CI, '4.1'),
-    bdPzrSprayFlow: e('Pressurizer Spray Flow',
+    imsgt6qmdgx: e('Pressurizer Spray Flow',
       'Spray water actually reaching the pressurizer, as a percentage of maximum spray flow.',
       'Different from the spray valve demand in the box above it, and the difference is the lesson. ' +
       'Spray is taken off the cold leg downstream of a Reactor Coolant Pump (RCP), so the pumps are ' +
@@ -498,14 +497,6 @@
       'Read as a pair: charging above letdown fills the plant, letdown above charging drains it, and ' +
       'pressurizer level is the slow integral of the difference. The boron status line tells you ' +
       'whether a dose is riding in on that charging flow.', CI, '7.0'),
-    imrzp89wdfu: e('Letdown Flow',
-      'Measured letdown flow — coolant leaving the primary.',
-      'Pressure-driven flow: the number falls as Reactor Coolant System (RCS) pressure falls, even with the same orifices ' +
-      'lined up. Compare it against charging to know which way inventory is going.', CI, '7.3'),
-    imrzp8qps6u: e('Charging Flow',
-      'Measured charging flow — make-up entering the primary.',
-      'What the pump is actually delivering, not what you asked for. If charging reads zero with the ' +
-      'pump commanded on, the boron dose sitting on it is not being delivered either.', CI, '7.2'),
 
     // ------------------------------------------------------------------- boron
     imrmtlyf64y: e('Boron Control',
@@ -648,11 +639,6 @@
       'Primary water flows through the U-tubes; secondary water boils around them. The tube boundary ' +
       'is what keeps the two sides separate, and a tube rupture is what breaches it. Level, pressure ' +
       'and steam flow are the three numbers that say whether the heat sink is working.', CI, '9.0'),
-    imrobjh73o5: e('Steam Generator Indications',
-      'Steam temperature and steam flow at the generator outlet.',
-      'Steam temperature is saturation at SG pressure — the secondary side boils, so pressure and ' +
-      'temperature are the same measurement in two units. Steam flow is total draw from the ' +
-      'generator, which is what feed has to match.', CI, '9.2'),
     imrr1gwi93j: e('SG Pressure',
       'Steam generator pressure — the secondary side\'s working pressure.',
       'About 819 psi (5.65 MPa) at full power. It rises when steam demand falls (a turbine trip bottles the ' +
@@ -675,7 +661,7 @@
       'set, with no level feedback at all, which is safe only while you keep feed matched to steam. ' +
       'There is no speed that is safe at every power — matching flow is about 1000 gpm (227 m³/h) at full load ' +
       'and 50 gpm (11 m³/h) at 6 %.', CI, '9.2'),
-    bdFeedStatus: e('Steam Generator (SG) FEED status',
+    ims89lnqmip: e('Steam Generator (SG) FEED status',
       'What the feedwater controller is doing: HOLDING, SAT HI/LO, ISOLATED, MANUAL or OFF.',
       'The AUTO and MAN lamps tell you WHICH mode the controller is in; this tells you whether it is ' +
       'actually regulating. HOLDING (green) is the only state where level is being looked after for ' +
@@ -795,7 +781,53 @@
       'response it terminates a steam line break DOWNSTREAM of the valve — a break between generator ' +
       'and valve has no isolation on this single-generator plant. Two-press confirm.', CI, '9.2'),
     // --- ADV (#371) — the condenser-independent steam path -------------------
-    bdAdvBox: e('Atmospheric Dump Valves (ADV)',
+    // ---- indications authored in the 2026-08-05 diagram (#371) --------------
+    // the ADV branch hardware, and the two header tees the 2026-08-05 diagram added
+    imsgu6qi776: e('Atmospheric Dump Valve',
+      'The throttling valve that lets steam out to atmosphere.',
+      'It sits on the steam-generator side of the isolation valve, so it keeps working when the ' +
+      'main steam line is isolated and when the condenser is gone. Its opening modulates — the ' +
+      'wedge and the needle show how far — because a cooldown is walked down rather than switched on.', CI, '12.3'),
+    imsgujvh6iw: e('Atmospheric Dump Discharge',
+      'Where the steam actually leaves the plant.',
+      'The silencer stack and its plume. The plume grows with discharge rate, so a cracked relief ' +
+      'and a full-open dump look different. Steam leaving here is heat leaving the plant, and ' +
+      'inventory leaving the steam generator — feed has to make it up.', CI, '12.3'),
+    imsgu622dld: e('Main Steam Tee (generator side)',
+      'Splits generator steam between the isolation valve and the atmospheric dump.',
+      'Everything upstream of the isolation valve. Shutting the isolation valve dead-ends the ' +
+      'left leg and leaves this tee feeding the atmospheric dump only.', CI, '12.3'),
+    imsgu024ehh: e('Main Steam Tee (turbine side)',
+      'Splits main steam between the turbine and the condenser dump.',
+      'Everything downstream of the isolation valve. Both legs die when the valve shuts, which ' +
+      'is why an isolated generator has only its safeties and the atmospheric dump.', CI, '12.3'),
+    imsguptyg16: e('Atmospheric Dump Position',
+      'How far the atmospheric dump valve is open, in per cent.',
+      'This is the valve on the steam-generator side of the isolation valve — the one that vents ' +
+      'to atmosphere. It reads position, not demand. At zero it is seated and nothing is leaving ' +
+      'the plant.', CI, '12.3'),
+    imsgunuyvon: e('Steam Dump Position',
+      'How far the turbine-bypass dump valve is open, in per cent.',
+      'The dump that discharges to the condenser, downstream of the isolation valve. It goes to ' +
+      'zero whenever the condenser is unavailable, which is exactly when the atmospheric dump ' +
+      'becomes your only steam path.', CI, '12.3'),
+    imsgupfprkp: e('Turbine Steam Flow',
+      'Steam admitted to the turbine, as a percentage of rated flow.',
+      'Follows the turbine control valve. It falls to zero on a turbine trip or an isolation, ' +
+      'while total generator output can still be leaving through the dumps.', CI, '12.3'),
+    imsgt98wjjc: e('Steam Temperature',
+      'Saturation temperature of the steam in the generator.',
+      'Derived from steam pressure — the secondary is saturated, so pressure and temperature ' +
+      'are one measurement in two units. Watching it fall is watching a cooldown happen.', CI, '8.2'),
+    imsgti1p0rm: e('Charging Flow',
+      'Chemical and volume control system make-up flow into the reactor coolant system.',
+      'The make-up half of the inventory balance. A charging flow that climbs on its own means ' +
+      'the level controller is chasing something — usually a leak.', CI, '4.2'),
+    imsgti0gnpf: e('Letdown Flow',
+      'Chemical and volume control system letdown flow out of the reactor coolant system.',
+      'The removal half of the inventory balance, set by which letdown orifices are open. It ' +
+      'isolates automatically at low pressurizer level.', CI, '4.2'),
+    imsgt1ebv1d: e('Atmospheric Dump Valves (ADV)',
       'Vents steam straight to atmosphere — the cooldown path that does not need the condenser.',
       'The turbine bypass dumps to the condenser and dies with it. These valves vent outside instead, ' +
       'sit upstream of the isolation valve, and work whether the condenser is there or not. They ship ' +
@@ -846,14 +878,6 @@
       'NORMAL, DUMPING or MANUAL.',
       'NORMAL means the dump is in automatic and has nothing to do. DUMPING means it is passing steam. ' +
       'MANUAL means you own it, whatever pressure does.', CI, '12.3'),
-    imrzmlyafa3: e('Steam Dump Position',
-      'Dump valve position on a 0–100 % scale — but 40 % is the stop, because that is the whole dump capacity.',
-      'A turbine trip drives it straight to that stop. It sits pinned at 40 % for about a minute while ' +
-      'stored heat comes off, then backs down as decay heat falls — near 9 % three minutes in, 7.5 % ' +
-      'after ten. Forty per cent is a real Westinghouse capacity, not a limitation of the model, which ' +
-      'is why a full load rejection needs a rod step as well as the dump. Pinned at 40 % with Steam Generator (SG) ' +
-      'pressure still climbing means the dump has run out and the safeties are next. Read it beside ' +
-      'STEAM FLOW to see where the steam is going.', CI, '12.3'),
     imrprmm4u5q: e('Steam Dump Valve',
       'The bypass valve itself — steam from the main line to the condenser.',
       'Position follows the dump command. Its schematic fills and animates only when it is actually ' +
@@ -995,7 +1019,18 @@
   // the card, which is the right answer.)
   var ALIASES = {
     ims5gp0aicx: 'ims5gq44zgr',         // "PZR TEMP" caption beside the pressurizer
-    ims5gpdv96m: 'ims5gprvl7n'          // "HTR PWR" caption beside the pressurizer
+    ims5gpdv96m: 'ims5gprvl7n',         // "HTR PWR" caption beside the pressurizer
+    // Captions and their surrounds from the 2026-08-05 diagram — each inspects as the
+    // reading it labels, so hovering the word explains the number (#371).
+    ims89mc0hl3: 'ims89mkaj2r',         // "PERIOD"
+    imsgt6tl11c: 'imsgt6qmdgx',         // "PZR SPRAY"
+    imsgt8z606k: 'imsgt98wjjc',         // "SG TEMP"
+    imsgus30fl2: 'imsgt98wjjc',         // the SG TEMP readout's surround
+    imrr1gttt2l: 'imsgupfprkp',         // "STEAM"
+    imsgt8to27x: 'imsgupfprkp',         // its surround
+    imsgurhunn9: 'imrsgch20pv',         // "PORV" caption beside the relief-line temperature
+    imsgt7mfbq1: 'ims2jf7fv7m',         // the PORV panel surround
+    ims3wu2kxnl: 'imrr1gwi93j'          // "STEAM PRESS" caption over the SG pressure reading
   };
 
   // ================================================================ containment
