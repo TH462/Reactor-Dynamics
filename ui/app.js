@@ -2949,8 +2949,13 @@
     var cps = ui.rewindPick && service ? (service.checkpoints || []) : [];
     if (cps.length) {
       var oldest = cps[0].metadata.sim_time;
-      // a margin so the oldest mark is not welded to the axis and stays clickable
-      if (oldest < t0) t0 = oldest - (t1 - oldest) * 0.04;
+      // Pick mode frames the CHECKPOINTS, not the selected window — in BOTH directions.
+      // It used to only widen (`if (oldest < t0)`), which was safe while the window was
+      // a fixed 5 min. Now that the ladder follows time acceleration, a fast speed
+      // selects a window far longer than the run, and every mark squeezes into a few
+      // pixels at the right edge — measured on CI, the T+13 s mark and the T+0 s mark
+      // resolved to the same click. The margin keeps the oldest mark off the axis.
+      t0 = oldest - (t1 - oldest) * 0.04;
     }
     if (t1 - t0 < 1e-6) t0 = t1 - 1;
     return { t0: t0, t1: t1, span: t1 - t0 };
