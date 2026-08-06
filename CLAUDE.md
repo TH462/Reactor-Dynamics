@@ -444,10 +444,12 @@ never) but takes TR-1i's SOURCED ramp duty 4.34 → 5.26 °F vs ≤ 5.00, and pv
 band at every value tried: **the duty is currently met partly BY the defect**, so nothing
 shipped and **TR-18 pins the open defect as a strict xfail** (`run_behavior` 57 pass /
 **1 xfail**). Baselines: read `BASELINES` (this paragraph's copy went stale inside one
-day); `run_ops` tracked red **58/69** untouched. Remaining on this lane by owner ruling
-2026-08-05 ("Workbench takes everything left"): #379, #380, §8.30 — superseding the earlier
-backshop note. #377 closed 2026-08-06 (TR-1c re-authored robust, TR-1k pins the shipped
-lineup, §8.21/Manuals §8.3 refreshed).
+day); `run_ops` tracked red **58/69** untouched. **The #297 follow-up campaign is COMPLETE on
+this lane (2026-08-06)**: #377 (TR-1c re-authored robust + TR-1k pins the shipped lineup),
+#378 (measured to a reject, TR-18 xfail), #379 (persist_s pair cross-annotated, closed), #380
+(evidence pass — the sourced lo-lo setpoint PASSES the Ginna band, the blocker is the
+warning/AFW ladder; open `status-needs-ruling` for that ladder decision), §8.30 declared, and
+the two merge-staled rows (§8.31, §8.34) repaired. #377 and #378 carry `status-owner-review`.
 
 **`backshop` is NOT in this merge** — it is 3 commits ahead (newest `0cd0106`, #383 audit
 tooling) and now ~20 behind. The owner asked for develop + workbench only; merge it when

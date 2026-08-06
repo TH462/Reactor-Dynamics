@@ -173,6 +173,46 @@ changed.
 
 ---
 
+## Session log — 2026-08-06-workbench-f (#297 follow-up campaign CLOSED on this lane)
+
+**End state: `run_all` 38 runners at recorded baselines** (sole tracked red `run_ops` 58/69,
+ruled), lane committed and clean, every WIP tag cleared. The campaign's ledger since the merge:
+
+| item | outcome | commit |
+|---|---|---|
+| merge assumption re-check | #378 reject re-proven on the merged plant; #371a/#386 compatible; #377 knife edge unchanged | (measured, no commit) |
+| item 0 staleness repairs | §8.31 premise post-#386, §8.34 numbers post-#364 | `0362b62` |
+| #377 | TR-1c re-authored robust, TR-1k pins the shipped lineup, docs refreshed | `3b6a5f7` |
+| #379 | persist_s pair cross-annotated, 2.8× gap measured, closed | `d6088c4` |
+| #380 | evidence pass: sourced setpoint PASSES the Ginna band; blocker is the ladder; open needs-ruling | `0b3905e` |
+| §8.30 | auto-clear declared, arm+clear named one indivisible trade | `37aaaae` |
+
+**Closing `perturb_sweep --suite=both --seeds=4`, diffed against the campaign zero point:**
+
+- **The claim the close exists to verify, verified: TR-1c no longer flips on
+  `coolant_heat_capacity*1.03`** — no TR-1c, TR-1k or TR-18 flip under any nudge or seed. The
+  first seeded sweep of the battery: **zero behavior verdict flips across all four seeds**
+  (observations move 20–23 %, verdicts hold), so the three probes this campaign added are
+  seed-robust, not merely default-seed-green.
+- Behavior nudge flips **3 → 3, different composition**: the two SS-5 pzr-program flips are the
+  known pre-existing pair (38.0 → 40.4 on ≤ 40; 17.0 → 14.7 on ≥ 15); TR-1c's retired slot is
+  taken by **SS-2's 50 % Tavg lower bound at 0.4 °C of margin** (299.4 → 298.9 vs ≥ 299 under
+  `h_sg*1.03`) — NOT flipping at the first-wave close, moved by the develop merge's #364/#386
+  side, untouched by this campaign. Filed **#391**.
+- §14 half: **zero nudge flips both ends**. `thermal.delta_T_rated*1.02` is INERT again
+  (0/242; it was 2/241 at first-wave close — the #386-side check growth re-absorbed its only
+  two movers). New seed information: **P-14's "AFW delivers through the isolation" flips on
+  2 of 4 seeds** (0.022 → 0.016/0.019) — a thin band the nudges-only zero point could not see,
+  owned by the #341 FWI family, filed in **#391** rather than adjudicated from here.
+
+**Still open at close, deliberately:** #380 (`status-needs-ruling` — the lo-lo ladder decision,
+measurement in hand), #377/#378 (`status-owner-review` — done and gated, awaiting eyes), #391
+(the two thin bands), and TR-18's strict xfail (the settling defect stays pinned until a
+shippable fix exists; the one untried candidate is on #378). The merge to develop is the
+owner's call, as always.
+
+---
+
 ## Session log — 2026-08-06-workbench-e (§8.30 — the auto-clear departure gets its register row; the arm and the clear are named as one trade)
 
 **Task:** the last docs item of the #297 follow-up campaign. The `dump_reject_clear_mwe` config
