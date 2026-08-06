@@ -213,8 +213,27 @@ reds are the same mechanism the cluster exists to remove:
 `run_campaign` 51/51 at **3026** checks (3023 → 3026, the re-routed branch's structural
 validation). The finale dialogue now plays true statements at the true moment.
 
-**Still open in the cluster:** stage 6 (#334 slider memo + the low-Δp break-law
-question). The node follow-on starts only after the cluster is green.
+**STAGE 6 WAS SUPERSEDED IN THE ROOM — the accident clock goes to REAL FLOWS (#408).**
+The owner asked for the full-break blowdown at ~20 s *(OWNER, 2026-08-06: "4 seconds seems
+too abrupt. Let's try to get it closer to 20 seconds.")*. Measured: **no `leak_scale`
+alone gets there with the vessel still emptying** — at any pace slower than ~10 s, ECCS
+out-runs the guillotine (min inv 40–50 % across the grid), because `hpi_flow_max` 0.06
+frac/s refloods this RCS in ~13 s single-handed (~500× a real high-head pump relative to
+vessel volume); slowing LPI/accumulators moved the reflood 21 → 30 s only, since HPI owns
+it. The whole accident-inventory family shares one compressed clock and the break cannot
+be re-paced alone. Presented the fork (4× family slowdown vs real flows vs keep+declare);
+the owner asked *"Explain why we shouldn't use the full physics model?"* and then RULED
+*(OWNER RULING, 2026-08-06: selected "Go real flows (tier 1) as its own project" — a
+selection, not verbatim words)*: the accident-inventory clock moves to real
+fractions-per-second, casualties run at real duration, **time acceleration carries the
+pacing** — a plant-identity change, planned before touching anything. **#408** is the
+umbrella (ratios-plus-anchor method, staged: evidence pass → constants table for owner
+sign-off → the acceleration-UX design note → adjudication waves). #334 item 3 and the
+low-Δp law question are absorbed into it; the thermal ×12.6 compression is explicitly NOT
+reopened. **No code moved for stage 6** — the sizing grids are the measurement record.
+
+The node follow-on (#385) sequencing recommendation moved into #408: re-clock first,
+node second, so the surge-line law is fitted against real-flow behavior.
 
 ## Session log — 2026-08-06-develop-e (LOCA severity sweep — the void term owns the legible band; #385 evidence, #407 filed)
 

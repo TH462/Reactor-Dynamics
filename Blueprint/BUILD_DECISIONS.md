@@ -47,6 +47,22 @@ where the two differ or where judgment was exercised.
 
 ## 2026-08-06-develop-f — #385 stage 2: the TMI void lift is a flow split, and the discriminator is BREAK PATH, not void magnitude
 
+**LATE-SESSION IDENTITY RULING (#408) — the accident-inventory clock is RE-DECIDED to
+real flows, plan-first.** The compressed "lumped fast scale" for accident-inventory flows
+(break, HPI, LPI, accumulators) is superseded by ruling: they move to **real
+fractions-per-second**, and time acceleration carries casualty pacing. *(OWNER RULING,
+2026-08-06: selected "Go real flows (tier 1) as its own project" from three options — a
+selection, not verbatim words.)* Nothing is implemented — the selected option's own text
+requires planning before touching anything; #408 is the staged umbrella. **Why it
+re-decided an original identity choice**: the compressed clock existed so casualties are
+legible at 1×; the owner's pacing request *(OWNER, 2026-08-06: "4 seconds seems too
+abrupt. Let's try to get it closer to 20 seconds.")* was measured impossible inside that
+identity — the family shares one clock, HPI alone refloods the RCS in ~13 s, and no
+single-constant change reaches 20 s with the DBA arc intact (grids in TUNING_LOG
+develop-f). Asked why not full physics, the answer was a three-tier cost ladder, and the
+owner chose the identity, not the compromise. **Scope fence:** the thermal ×12.6
+compression is NOT reopened.
+
 **Claim.** The pressurizer level void term is now weighted by the discharge path
 (`levelRaw`: `w = void_weight_surge_ref/(void_weight_surge_ref + leak_flow)`, new `[tune]`
 0.01 frac/s), fixing the measured defect that TRUE level read **exactly 100 at the moment
