@@ -173,6 +173,36 @@ changed.
 
 ---
 
+## Session log — 2026-08-06-workbench-e (§8.30 — the auto-clear departure gets its register row; the arm and the clear are named as one trade)
+
+**Task:** the last docs item of the #297 follow-up campaign. The `dump_reject_clear_mwe` config
+comment has carried the full departure since the #374 evidence pass — the real fast-open arming
+*"remains armed until the loss-of-load signal is manually reset by a control room operator"*
+(WTSM §11.2, ML11223A294, §11.2.2.3), so there is no automatic clear to source a value for and
+ours (10 MWe) is UNVERIFIED by construction — but the register where departures live never got
+the row. Now it has one.
+
+**§8.30** (DESIGN_COMPANION, placed beside §8.21 and cross-referenced both ways): the departure,
+the sourced quote, and the point that makes it worth a row rather than a comment — **the blunt
+40 MWe arm and the 10 MWe auto-clear are ONE design trade seen from two sides.** The real arm is
+four times more sensitive (*"a ramp load decrease at a rate greater than 5%/min, or a step load
+decrease of greater than 10%"*) and can afford to be precisely because a human de-arms it; an
+arm that sensitive with our auto-clear vents on every dispatch cut, and our blunt arm with a
+manual latch leaves the dump armed forever on a board that carries no RESET. The v2 column names
+the reset control and the sensitive arm as **one indivisible piece of work** — building either
+half alone re-opens the §8.21 cliff ruling (#219) from whichever side was built.
+
+**Manuals mirror:** `12` §12.9 extended with the operator-facing half (the fast mode stands down
+on its own; a real one waits for a RESET selector), Rev 13 clause (h), stamped and packed.
+
+**Editing traps for the next agent, both hit here:** DESIGN_COMPANION is CRLF, and an insertion
+computed against `indexOf('\n')` lands BETWEEN `\r` and `\n`, leaving the new text dangling
+outside the table row's final pipe — verify cell counts after any row surgery (`split('|')`
+against a neighbour row). And a clause appended to a table row must land inside the last CELL,
+not after the last pipe.
+
+---
+
 ## Session log — 2026-08-06-workbench-d (#380 — the lo-lo evidence pass; the physics clears the sourced setpoint, the ladder does not)
 
 **Task:** #380 (split out of the #374 evidence pass). Measurement-only; the setpoint does not
