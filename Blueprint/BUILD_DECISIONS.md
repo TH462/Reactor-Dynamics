@@ -45,6 +45,32 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-workbench-i — CLAUDE.md: the fix for verbosity was to cut the file, not add a rule to it
+
+**Decision: cut CLAUDE.md 42,065 → 13,455 words rather than add a conciseness instruction to it**
+*(OWNER DIRECTIVE, 2026-08-06: "Should I add some lines in Claude to try to reduce your verbosity?";
+ruling on the recommendation: "Do 2 as you recommend.")*. The file already carried a 2026-07-30
+conciseness directive and a "Keep it SHORT" instruction in its own header, and had grown to 42,000
+words under both. A third instruction in a file that big is the same failure mode as the paragraph
+that was supposed to stop one-lane corpus greps — see this lane's `tools/find_source.js` entry.
+
+**What was cut, and why it was safe.** 21,046 words of prose gate baselines duplicating
+`BASELINES` in `test/run_all.js`, which the section itself names as the authority; the copies had
+demonstrably rotted (four wrong figures, one runner listed twice with different numbers, one block
+marked "unedited" from a three-day-old merge). 9,663 words of themes and standing-procedure bullets
+compressed to 2,055 with every trap kept as a line. 788 words of status narrative that was a
+changelog in a section whose own instruction says "current state and pointers, not a changelog".
+
+**The precondition that made it safe, and the rule for next time: check citations BEFORE deleting,
+not after.** `run_hardrules` counts `OWNER RULING`/`OWNER DIRECTIVE` sites in tracked markdown, so
+deleting history deletes sites — recorded four times here as a surprise. This pass extracted all 30
+dated citations in the file first and confirmed **every one exists in another tracked file**; the
+208 → 203 drop is therefore sites, not rulings, and was written into `BASELINES` with that reason.
+
+**Standing consequence.** The themes list now carries a word budget (~80) as well as its 5-bullet
+cap, because the cap bounded the count and nothing bounded the size — measured at eviction time,
+7 bullets averaging 500 words, two of them duplicating traps rescued below them.
+
 ## 2026-08-06-workbench-h — #371: a one-lane grep declared a departure that the corpus could refute
 
 **Decision: move `adv_setpoint` 8.60 → 8.77 MPa (1247 → 1272 psi) onto a sourced placement rule, and

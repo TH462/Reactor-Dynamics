@@ -748,7 +748,15 @@ var BASELINES = {
   // delta is tracked markdown carrying the two dated owner rulings (warn-never-
   // block; defer PWR-N02) across TUNING_LOG, BUILD_DECISIONS, CHANGELOG and the
   // CLAUDE.md status line. Measured AFTER the docs, per the standing rule.
-  'run_hardrules.js':      { code: 0, score: '208checks 0failed' },
+  // 208 -> 205 on 2026-08-06-workbench-i: the CLAUDE.md bloat pass cut 42,065 words to 13,455,
+  // and deleting history deletes CITATION SITES — the mechanism this map already records for the
+  // themes cap. Every one of the 30 dated owner citations in that file was checked against the
+  // rest of the tracked tree FIRST: all 30 exist elsewhere, so this is fewer SITES and zero fewer
+  // rulings. NET -3, not -5: the cut removed 5 and the write-ups put 2 back, which is why this is
+  // MEASURED AFTER THE DOCS. An intermediate run with the file cut and the entries unwritten read
+  // 203, and recording that would have shipped a 2-check drift — the standing rule landing on the
+  // very change that shortened the paragraph stating it.
+  'run_hardrules.js':      { code: 0, score: '205checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

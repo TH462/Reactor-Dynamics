@@ -29,6 +29,54 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-workbench-i (CLAUDE.md bloat pass — 42,065 words to 13,455)
+
+*(OWNER DIRECTIVE, 2026-08-06: "I've also noticed that you tend to be very verbose. Should I add
+some lines in Claude to try to reduce your verbosity? … I've noticed some of your documents end up
+having massive amounts of text."; then, on the recommendation to cut the file rather than add a
+rule to it: "Do 2 as you recommend.")*
+
+**Measured before touching it: 42,065 words, 1,735 lines, loaded into every agent's context on
+every turn — under a heading that reads "Keep it SHORT."** The longest single physical line was
+**5,310 words**. Three cuts, no rule deleted:
+
+| region | before | after |
+|---|---|---|
+| gate baselines (prose) | 21,046 | 535 |
+| Recent themes + standing procedure | 9,663 | 2,055 |
+| status narrative | 788 | 297 |
+| **file total** | **42,065** | **13,455** |
+
+**The baselines section was the whole problem and it had already been solved.** `BASELINES` in
+`test/run_all.js` has been the authority since 2026-07-25 and the section said so in its own first
+sentence — then carried 21,000 words of per-runner prose underneath. Every copy rotted, and the
+file recorded the rot without acting on it: `run_inspect` written 8/8 against a map saying 9/9,
+`verify_flags_ui` 48/48 against a gate that has always scored 42, `run_otdt` stuck at 39 through
+three commits that took it to 46, and **`run_contract` appearing twice with different numbers**
+(147 and 156) after a merge, plus a `run_hardrules` block labelled "carried from workbench at the
+2026-08-03 merge, unedited". Replaced with a pointer and the four notes that are procedure rather
+than history (symmetric drift, auto-discovery, contention times, CI).
+
+**The themes list was running 7 bullets against its own cap of 5, averaging 500 words**, and two of
+those bullets were full-length duplicates of traps already rescued into the standing list below
+them (`ac_available`, `power_pct`). Compressed to 5 at ~80 words with a stated word budget, since
+"max 5 bullets" bounded the count and nothing bounded the size.
+
+**Safety step, done first: every dated owner citation was checked against the rest of the tracked
+tree before anything was deleted.** 30 citations in the file, **0 of them unique to it**. So the
+`run_hardrules` drop **208 → 203** is 5 fewer citation SITES and zero fewer rulings — the mechanism
+this repo has recorded four times for the themes cap, this time anticipated instead of discovered.
+`BASELINES` updated in the same change with the reason at the entry.
+
+**Gate: `run_all` 39/39 at baseline.** Spot-checked by grep that every load-bearing rule survived:
+never-merge-into-develop, never-push-the-lanes, the lane table, the four questions, the Hard Rule
+pointers, US-customary-first, RBMK/BWR on hold, the issue-label scheme, the manual revision
+workflow, and the three response-shape directives.
+
+**What this does not fix.** `Diagnostic/TUNING_LOG.md` is 152,617 words — but it is the
+session-continuity record, it is read on demand rather than every turn, and its own size is the
+point of it. The bloat rule is about what is *auto-loaded*.
+
 ## Session log — 2026-08-06-workbench-h (#371 — the ADV's numbers were sourceable all along, and the probe guarding them could not fail)
 
 **Trigger: an owner question, not a defect.** *"From issue 297 we added a steam dump to atmo. Why

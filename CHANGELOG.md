@@ -9,6 +9,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
 
 ### Changed
+- **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
+  loaded into every agent's context on every turn and had grown to 1,735 lines under its own
+  "Keep it SHORT" heading, with a single physical line of 5,310 words. Removed: 21,046 words of
+  prose gate baselines duplicating the `BASELINES` map that the same section names as the
+  authority -- and which had rotted into four wrong figures, a runner listed twice with different
+  numbers, and a block marked "unedited" from an old merge. Themes and standing-procedure bullets
+  compressed 9,663 -> 2,055 with every trap kept; the themes list gains a word budget, having run
+  7 bullets against its own cap of 5. All 30 dated owner citations were verified to exist in other
+  tracked files before anything was deleted, so `run_hardrules` 208 -> 205 is fewer citation sites
+  and zero fewer rulings (`BASELINES` updated in the same change).
 - **PWR atmospheric dump valve — setpoint sourced, 1247 → 1272 psi (8.60 → 8.77 MPa)** (#371).
   WTSM §7.1.3.3 (ADAMS ML11223A244) sets the real valve *"approximately half the difference between
   the no-load steam generator pressure and the lowest set pressure of the safety valves"*; ours sat
