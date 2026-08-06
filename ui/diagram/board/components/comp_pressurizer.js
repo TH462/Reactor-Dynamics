@@ -98,9 +98,9 @@
     // ---- vessel contents (dynamic) ----
     var steamRect = h('rect', { x: 40, y: 96, width: 120, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5 });
     var waterRect = h('rect', { x: 40, y: waterTop, width: 120, height: 0, fill: 'url(#' + ids.water + ')', opacity: 0.72,
-      style: { transition: 'y 0.5s ease, height 0.5s ease' } });
+      style: { transition: 'y 0.15s linear, height 0.15s linear' } });
     var surfLine = h('line', { x1: 52, y1: 0, x2: 148, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
-      strokeDasharray: '18 10', style: { transition: 'transform 0.5s ease' } });
+      strokeDasharray: '18 10', style: { transition: 'transform 0.15s linear' } });
 
     // ---- heater elements ----
     var heatGlow = h('rect', { x: hL - 8, y: hys[0] - 9, width: (hwR - hL) + 14, height: (hys[3] - hys[0]) + 18, rx: 10,
@@ -163,7 +163,7 @@
     [0, 50, 100].forEach(function (pct) {
       gEls.push(h('line', { x1: barX + barW, y1: wlY(pct), x2: barX + barW + 4, y2: wlY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
     });
-    var wlMarker = h('g', { style: { transition: 'transform 0.5s ease' } },
+    var wlMarker = h('g', { style: { transition: 'transform 0.15s linear' } },
       h('polygon', { points: (barX - 3) + ',0 ' + (barX - 12) + ',-6 ' + (barX - 12) + ',6', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
       h('line', { x1: barX - 3, y1: 0, x2: barX + barW + 7, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.4, strokeDasharray: '4 3' }));
     gEls.push(wlMarker);

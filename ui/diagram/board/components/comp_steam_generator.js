@@ -119,15 +119,15 @@
     // ---- shell + secondary side ----
     var steamRect = h('rect', {
       x: 110, y: 20, width: 200, height: 0, fill: 'url(#' + ids.steam + ')', opacity: 0.5,
-      style: { transition: 'height 0.5s ease' }
+      style: { transition: 'height 0.15s linear' }
     });
     var waterRect = h('rect', {
       x: 110, y: waterBot, width: 200, height: 40, fill: 'url(#' + ids.water + ')', opacity: 0.72,
-      style: { transition: 'y 0.5s ease, height 0.5s ease' }
+      style: { transition: 'y 0.15s linear, height 0.15s linear' }
     });
     var surfLine = h('line', {
       x1: 124, y1: 0, x2: 296, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
-      strokeDasharray: '22 12', style: { transition: 'transform 0.5s ease' }
+      strokeDasharray: '22 12', style: { transition: 'transform 0.15s linear' }
     });
     var flowEls = [surfLine];
 
@@ -186,7 +186,7 @@
     [0, 25, 50, 75, 100].forEach(function (pct) {
       gEls.push(h('line', { x1: gx + gw, y1: pctY(pct), x2: gx + gw + 4, y2: pctY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
     });
-    var markerGroup = h('g', { style: { transition: 'transform 0.5s ease' } },
+    var markerGroup = h('g', { style: { transition: 'transform 0.15s linear' } },
       h('polygon', { points: (gx - 2) + ',0 ' + (gx - 9) + ',-5 ' + (gx - 9) + ',5', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
       h('line', { x1: gx, y1: 0, x2: gx + gw, y2: 0, stroke: '#eaf4fb', strokeWidth: 1.6 }));
     gEls.push(markerGroup);
