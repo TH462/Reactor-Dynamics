@@ -45,9 +45,19 @@
     // The VALUE has a sourced real counterpart it departs from (#374 evidence
     // pass): NUREG-1431 Rev 4 puts the real lo-lo function at ~30–32 % of
     // narrow-range span (Tables 3.3.1-1 / 3.3.2-1, ML12100A228 — the #220
-    // corpus), against 17 % NR here. Moving it is type-tuning work sitting
-    // directly under TR-14's SOURCED Ginna drain band (25–60 s to trip) — split
-    // out with a perturb_sweep and a TR-14 re-measure, never adjusted in place.
+    // corpus), against 17 % NR here.
+    //
+    // THE RE-MEASURE HAPPENED (#380, 2026-08-06) and the result is the opposite of the
+    // fear this comment used to carry: at the sourced 30.5 the loss-of-feed drain trips
+    // at 28.5 s — INSIDE TR-14's Ginna band (25–60 s, their measured 35) and nearer its
+    // center than the shipped value's 40.0 s — so `K_sg_level` does NOT block the move.
+    // What blocks it is the SETPOINT LADDER: the 30 % LO warning never precedes a 30.5 %
+    // trip (TR-14's ≥ 7 s board-reading window goes to zero structurally), and the 20 %
+    // AFW auto-start lands 10 points BELOW the trip, inverting the declared §8.19
+    // teaching window (AFW starts, level still falling, THEN the trip). Moving this
+    // number is therefore a decision about the whole ladder — warning, AFW anchor,
+    // §8.19's ruled departure — not a tuning edit. Measured record: TUNING_LOG
+    // 2026-08-06-workbench-d and issue #380.
     { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
     // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
     // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a

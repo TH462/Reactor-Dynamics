@@ -173,6 +173,39 @@ changed.
 
 ---
 
+## Session log — 2026-08-06-workbench-d (#380 — the lo-lo evidence pass; the physics clears the sourced setpoint, the ladder does not)
+
+**Task:** #380 (split out of the #374 evidence pass). Measurement-only; the setpoint does not
+move, no baseline moves, and the reason it stays is now the measured one rather than the feared
+one.
+
+**The experiment** (local, reverted, never committed): the SG lo-lo scram moved 17.0 → 30.5 % NR
+(the NUREG-1431 Rev 4 sourced band is ~30–32 %), TR-14's loss-of-feedwater evolution re-run:
+
+| | trip time | Ginna band 25–60 s | warning→trip window |
+|---|---|---|---|
+| shipped 17 % | 40.0 s | inside | 10.5 s |
+| sourced 30.5 % | **28.5 s** | **inside — nearer Ginna's own 35 s** | **NEVER — trip precedes the 30 % warning** |
+
+**`K_sg_level` is NOT the blocker.** The issue (and the trip row's own comment) feared the
+sourced setpoint would walk TR-14 out of its sourced drain band from the other side; measured,
+the opposite — the drain constant is *more* consistent with the sourced setpoint than with the
+shipped one. No K_sg_level finding to file.
+
+**The blocker is the setpoint LADDER, structurally:** a 30.5 % trip sits above the 30 % LO
+warning (TR-14's ≥ 7 s board-reading window, #135, goes to zero by construction — the probe's
+own shape assumes the departure) and 10 points above the 20 % AFW auto-start, inverting §8.19's
+declared teaching window (*AFW started — level still falling* — then the trip). Moving the trip
+is therefore one coordinated decision about warning + AFW anchor + a ruled educational
+departure, not a tuning edit. Recorded at the trip row (`pwr_control.js`), §8.19's impact cell,
+and the issue.
+
+**perturb_sweep note:** #321's rule gates MOVING a constant; nothing moved, and the direct
+experiment answered the sharper question the sweep would have approximated. TR-14's shipped
+margin is wide either way (40.0 in 25–60).
+
+---
+
 ## Session log — 2026-08-06-workbench-c (#379 — a sizing argument that named its complement outlived it; the pair is cross-annotated)
 
 **Task:** #379 (audit #297 F10). Comments only, and the gate run proves it: `run_otdt` 46/0,
