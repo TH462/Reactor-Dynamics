@@ -45,6 +45,530 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-develop-b — lane merge `develop` ← `backshop`: verifying an audit lane rather than reasoning about it
+
+**Decision.** The backshop merge is carried as-is (no judgement calls in it — 3 commits of
+audit tooling, no `Manuals/` edits, no engine change), and **audit mode is confirmed by
+measurement on both sides of the merge rather than by argument** *(OWNER, 2026-08-06: "Merge
+backshop. It's in audit mode. Make sure it's in audit mode after the merge.")*.
+
+**Why measurement, when the argument is airtight.** A lane is in audit mode because its tree
+carries `.claude/settings.local.json` with `claudeMdExcludes` + `autoMemoryEnabled: false`,
+which layers by default and needs no flag (#383). That file is **gitignored**, so no merge or
+fast-forward can touch it — the argument really is airtight. It was still measured before and
+after (`audit_preflight` OK / OK, file md5 unchanged), because **this is precisely the failure
+class `tools/audit_preflight.js` was built for**: its header states that a pattern which
+silently fails to match "would look exactly like a clean audit". A mode whose failure is
+invisible is one you check, not one you deduce. The same reasoning is why the charter pairs the
+static preflight with the auditor's own first-turn self-check — neither substitutes for the
+other, and this merge can only speak to the first half.
+
+**One thing found and deliberately NOT changed.** Backshop's settings file documents itself as
+mirroring `RD_workbench`'s equivalent; that file does not exist, so workbench is not an audit
+lane at present — consistent with it having done ordinary #370/#371/#378 work, which is what
+the comment's own "REMOVE THIS FILE to give the lane its CLAUDE.md back" instruction produces.
+The comment is stale. **Re-arming workbench as an audit lane is an owner decision about how the
+lanes are allocated, not a merge resolution**, so it is recorded rather than acted on. Note the
+structural gap it exposes: `audit_preflight` only ever checks the tree it runs in, so no tool
+in the repo can answer "which lanes are currently unprimed?" — the SessionStart hook reports a
+lane's own mode, and nothing aggregates.
+
+**Gates.** `run_all` 38/38 at baseline, `run_ops` 58/69 tracked red unmoved, `merge_audit` OK
+(27 artifacts, nothing dropped). `run_hardrules` **200** — measured, and the third distinct
+value for that key in one day (base 178; lanes 189/179/183; 195 after the workbench merge).
+
+---
+
+## 2026-08-06-develop-a — lane merge: a revision number that is a release marker, not a counter
+
+**Decision.** The manual set's revision number **does not advance until a website release**
+*(OWNER DIRECTIVE, 2026-08-06: "The revision number only matters during a release to the
+website. Revision numbers should never go up until a release happens.")*. Rev 12 is what the
+site carries (Alpha 1.1.0, `main` at `7a40b9a`); everything since is one pending **Rev 13**,
+no matter how many changes it accumulates. The `develop` ← `workbench` merge collapsed six
+unreleased rows into that one row, carrying all six changes as (a)–(f).
+
+**Why it came up, and why the rule is better than the fix.** Both lanes edited `Manuals/` from
+the same base and both allocated revision numbers from it: develop took 13/14/15 (#361, #364,
+#386 stage 1), workbench took 13/14 (#370, #371). **Rev 13 and Rev 14 each named two different
+changes.** That is the session-label collision #339 fixed, one artifact over, with the same
+root cause — a counter that requires cross-lane coordination the lanes structurally cannot
+have, since a worktree cannot see its siblings. Renumbering workbench's rows to 16/17 would
+have resolved *this* collision and left the mechanism in place for the next one. Tying the
+number to releases removes the class: **between releases there is exactly one pending row, so
+there is nothing to allocate twice.** The cost is that a single row now describes several
+changes, which is what the (a)–(f) structure absorbs, and the revision table stops being a
+change log — `CHANGELOG.md` and this file already are one.
+
+**Consequence for future manual edits:** do not open a new revision row. **Extend Rev 13's.**
+The next release rolls it to 14 and starts a fresh one. Recorded in `CLAUDE.md`'s status
+section, because a rule that lands only here has not landed.
+
+**Second decision, smaller: a declared simplification was corrected rather than carried.**
+Workbench's `12 §12.17` (#370) declared that this simulator has no containment at all;
+develop's #386 stage 1 built containment pressure, temperature and sump the same day in the
+other tree. Merged as written, chapter 12 asserted both. The §12.17 row and the `12 §8.5`
+sentence that points at it now state the true position — the signal exists (§12.4d), nothing
+protective reads it yet (#386 stage 2). **Withdrawing a claim that stopped being true is not
+designing**, which is what made this safe to do inside a merge; anything that changed plant
+behaviour would not have been. Owner-approved before the merge began.
+
+**Gates.** `run_all` 38/38 at baseline, one tracked red (`run_ops` 58/69, unmoved). The three
+keys both lanes moved were measured, not added: `run_behavior` **60pass 1xfail**,
+`run_contract` **156**, `run_hardrules` **192** — the first two additive because the probes
+and `true_state` fields are disjoint, the third not, because it counts citation sites and the
+revision collapse *deleted* six rows' worth while the write-ups added more.
+
+---
+
+## 2026-08-06-workbench-a — #378: a fix that measures perfectly and is rejected anyway
+
+**Decision.** The rod-channel limit cycle (#378, audit #297 F9) has a fix that works — cancelling
+in-flight `rod_nudge` travel at the kernel's deadband exit takes a 100→50 MWe step from
+13.78 pts p2p forever / never settling to 2.03 pts / settled at 14.6 min — and it is **not
+shipped**, because it takes TR-1i's sourced WTSM 8.1.1 ramp duty from 4.34 to **5.26 °F against
+≤ 5.00**. The uncancelled overshoot travel has been silently helping the bank chase a sliding
+Tref: the sourced duty is met partly by the defect. That was the plan's pre-declared reject
+criterion, applied as written. pvTau fails the same band at every value tried (0.2–3.0 s,
+measured across two sessions); `kd` makes the cycle worse (measured, prior diagnosis). What
+ships instead is **TR-18 as a strict xfail** — the settling probe, injection-verified in both
+directions, pinning the open defect so it cannot be quietly forgotten or quietly "fixed" without
+the XFAIL entry moving in the same change.
+
+**Why record a rejection here.** The natural next attempt is one of the two things now measured
+dead (filter the PV, add derivative) — and the actually promising variant (gate the cancel on a
+stationary program, so step-settling cancels and ramp-chasing keeps its travel) needs the full
+verification pass a wrap-up session could not give it. It is filed on #378. Full measurement
+tables: `Diagnostic/TUNING_LOG.md` 2026-08-06-workbench-a.
+
+**Session end state, for the merge** *(OWNER, 2026-08-06: "I want to merge develop and workbench
+before they drift too far apart. Get yourself into a good stopping point for a clean merge.")*:
+lane committed and gated; #377, #379, #380 and the §8.30 row remain open on this lane per the
+2026-08-05 "Workbench takes everything left" ruling.
+
+---
+
+## 2026-08-05-workbench-i — #371b: an absolute patch is a time bomb under a generated file
+
+**Decision.** `pwr_board_data.js` is GENERATED from the owner's diagram export, so every correction
+the driver makes lives in `DOC_PATCHES` instead. Those corrections were written as **absolute**
+tops and lefts. This re-export proved that is the wrong form: the owner moved the pressurizer up
+40 px and the condenser left 208 px, and because each patch re-asserted the old absolute number,
+the board silently put both tiles back where they used to be. The owner saw it immediately — *"The
+condenser is shifted to the right. the pressurizer is shifted down."*
+
+The trap is that both patches were **still correct in intent**. The pressurizer one is a +3 px
+nudge that levels the spray stub; the condenser one is a −2 px nudge that squares the hotwell drop
+onto a pump flange the 5 px doc grid will not let meet it halfway. Deleting them — the first thing
+I did — traded a visible 208 px error for two invisible 2 px leans, which is a worse outcome
+because only the ruler in board_check can see it. **Re-derived, not deleted**: `authored + delta`,
+with the arithmetic written at the patch so the next re-export shows its working instead of
+silently re-displacing a tile.
+
+Three more patches were genuinely spent and are gone: two CVCS caption sizes whose readouts the
+owner replaced with a different tile kind, and a feed-rate reposition the owner has now authored
+into the diagram directly.
+
+**Retired, not re-homed: the labelled STEAM DUMP readout (`imrzmlyafa3`).** The export drags it to
+(1247, 875) — clear of every card, 90 px below the lowest content, and the sole reason the board's
+bounding box grew an empty band that shrank every other tile. In the same export the owner added a
+right-anchored % tag beside the condenser dump valve, matching the new ADV and turbine-flow tags.
+Dragging a tile off the canvas while placing its replacement on the schematic is as explicit as an
+export gets. Carrying both would have put `steam_dump_valve` on the board twice under two labels.
+
+**What this costs and what it buys.** Two board_check pins go with it (−2, 211 → 209), and they
+are DELETED rather than repointed: a tile-fit assertion against an item that no longer renders
+passes forever and asserts nothing. Everything else the re-export moved was **re-pinned**, not
+dropped — four pipe ids where one header became four, five item ids, two re-measured runs, and the
+rod-card spacing re-solved against the new card height (3g = 19 again, so the same 6/6/7 rhythm).
+
+**One near-miss worth recording.** Adding a second `imrpk8169ds`-style spacing block created a
+duplicate key in the `DOC_PATCHES.items` object literal, which silently replaced ROD AUTO's colour
+entry and un-greened the button. The file carries a comment warning about exactly that hazard,
+nine lines above where I put the duplicate. The gate caught it; the comment did not, because I
+wrote before I read. The existing block was edited in place instead.
+
+---
+
+## 2026-08-05-workbench-h — #371a: the valve ships shut, and that is the design
+
+**Decision.** Atmospheric dump valves — a condenser-independent steam path, upstream of the MSIV and
+outside the C-9 interlock. Capacity 0.10, setpoint 8.60, both UNVERIFIED and declared (§8.34).
+Measured: 579.3 → 359 °F (304 → 182 °C) in three hours with no condenser, against §8.29's record of
+four plant-hours with no cooldown at all. §8.29 RETIRED.
+
+**Default SHUT is the load-bearing decision.** Shut, the term is identically zero and the plant is
+byte-identical — the null test confirmed the entire suite unchanged but for the two contract
+fields. AUTO at 8.60 would have quietly removed the SG code safeties from every bottled-generator
+evolution the sim teaches, which is a large re-baseline hidden inside a feature. The declared gap
+was "there is no controlled cooldown path"; a lever the operator reaches for closes it without
+rewriting anything else.
+
+**The capacity argument is worth keeping.** 0.10 is chosen so the ~55 °C/hr technical-specification
+limit is achievable AND exceedable — measured, a fully-open ADV cools at −165 °C/hr, three times the
+limit. #375 had just given the board a cooldown-rate meter and annunciator; sizing the valve so it
+cannot break the limit would have made that instrumentation decorative. The valve and the meter were
+designed against each other.
+
+---
+
+## 2026-08-05-workbench-g — #370c: a protection that extinguishes its own signal, and two rows that could never have armed
+
+**Decision.** Automatic main steam line isolation: `sg_steam_flow > 1.25` coincident with
+`steam_pressure < 5.20` closes the MSIV, latched-sealed against operator reopening until the
+generator recovers past 7.0 MPa. §8.28 RETIRED. Three parts of the real function are declared
+rather than built, each for a measured reason: no containment path (§8.31 — nothing to sense),
+a fixed rather than load-programmed flow setpoint (§8.32 — no impulse-pressure signal), and
+**no lo-lo Tavg leg (§8.33), because it cannot arm on this plant**.
+
+**The three findings worth carrying forward.**
+
+1. **A sourced row can still be dead.** The lo-lo Tavg leg is in the source and would have looked
+   right in the config forever. Measured, it never fires: break flow scales with the pressure it
+   destroys, so flow has decayed before Tavg falls. Building it would have shipped protection that
+   reads as real and does nothing — the "condition that can never arm" trap, arriving via the
+   sourced design rather than a mistake.
+2. **The transmitter saturated inside its own casualty.** A 1.2 span against a true 1.75 draw meant
+   every break above ~40 % read identically, and the 30 % break sat one thousandth from the
+   setpoint. A gauge that cannot resolve what its protection discriminates on is the defect, not
+   the setpoint.
+3. **A seal-in that tracks a live signal is useless when the action removes the signal.** Closing
+   the valve stops the flow that closed it, so the refusal evaporated in the instant it engaged —
+   measured, the operator reopened one second after actuation and the break resumed unprotected.
+   Latching on the fired latch with a physical release (pressure recovered) is the fix; the
+   general lesson is that self-extinguishing protections need a latch, and the kernel now has one.
+
+**Content moved, physics stood.** `pwr_slb`'s decision beat and two `run_m7` stimuli all assumed a
+plant that never isolates. Prompt tripping on a large steam line break is what a real plant does,
+so the scenario severity and the test stimuli moved (HR9), each with its reason written in place.
+
+---
+
+## 2026-08-05-workbench-f — #370a: the break that removed no mass, and the lane that started green on purpose
+
+**Decision.** The main steam line break becomes a MASS FLOW in `steam_out` instead of a `dP/dt`
+sink applied after the pressure integral. Flow = `STEAM_BREAK_RATE / K_steam_pressure × size ×
+min(P/P_rated, 1)`, so `STEAM_BREAK_RATE` stays the single knob and the equivalence is structural
+rather than a comment. The break now drains the SG, is visible to the feed controller, and — the
+reason this had to come first — makes `sg_steam_flow` RISE during a break instead of falling.
+
+**Why the order matters.** Automatic steam line isolation reads high steam flow. On the old plant
+that signal moved the *wrong way* during the casualty it exists to detect, so building the
+isolation first would have been protection reading a fabricated relationship — the #220/§8.24
+defect class wearing a new costume.
+
+**Proof, not assertion.** A 12-case × 7-sample matrix is byte-identical when the new flow feeds
+only the pressure integral, which isolates the arithmetic from the new couplings. The divergence
+that remains is the couplings themselves, measured and tabled in TUNING_LOG.
+
+**Lane start.** Merged `7a40b9a` (last green develop) deliberately, not `develop`'s tip, which
+carries another session's in-flight #364 work at 5 red runners across the four files this campaign
+edits most. Recorded here so the eventual merge sees a deliberate choice rather than a stale lane.
+
+---
+
+## 2026-08-05-develop-i — #386 stage 1: the containment building exists
+
+Ruled Tier 3 *(OWNER RULING, 2026-08-05: "Tier 3 for 386.")* — pressure + heat removal +
+hydrogen, staged, each stage landing green. This entry is stage 1: the lumped volume and the
+live backpressure. Planned against `inbox/TURNOVER_containment_planning.md`; the plan was
+approved and the H₂ combustion question ruled the same day *(OWNER RULING, 2026-08-05:
+selected "TMI-2-style burn" from three options put to him — one-time deflagration pressure
+spike + latched event, containment holds; indication-only and end-state rejected. A
+selection, not verbatim words)* — that ruling BINDS STAGE 3, recorded here so it is not
+re-litigated when stage 3 starts.
+
+**Decisions taken, and why:**
+
+- **Hosted in `pwr_primary.js` (`stepContainment`, step 14c), not a new file.** A new engine
+  file costs ~25 per-runner load-list edits (every `test/run_*.js`, `ui/shell.html`,
+  `test_pwr.html`, the portable build); the receiving volume of the primary's discharge
+  belongs beside the break law anyway. Step 14c makes every source same-step fresh; the two
+  consumers read one step stale (CONTEXT §11), which breaks the algebraic loop.
+- **The flash gate is the model.** Q0 sweep (TUNING_LOG 2026-08-05-develop-i): with unlimited
+  RWST a LOCA is sustained feed-and-bleed, 36–229 RCS masses in 30 min — unbounded — but the
+  flash-weighted steam yield (cp·ΔT/h_fg ≈ (T−T_sat)/540, a physical ratio) is BOUNDED at
+  3.3–5.2 units, saturating as the ECCS quench takes the source below flashing. Without the
+  gate the model rises forever; with it, pressure peaks on the hot blowdown and decays.
+- **`press_gain` 0.08 is fitted and says so** — no document in any lane's corpus gives a free
+  volume. Anchors: design pressure 0.515 MPa abs (60 psig) by citable inference (WTSM 5.0's
+  "approximately half of design pressure" against WTSM 12.3's 30 psig spray setpoint).
+  Measured grading: full break peaks 41 psig (⅔ design — the licensing-margin shape), only
+  breaks ≥ ~25 % rated reach the 30 psig spray point, everything crosses 3.5 psig in minutes.
+- **The spans stay config-fixed; only the Δp numerators go live.** The orifice coefficients
+  are rated-flow-at-rated-Δp calibrations (#334 leg A depends on the break one); CA-17
+  asserts the exact law — live numerator over config span — pointwise.
+- **SGTR is excluded from the source sum** and CA-16 leg B pins the exclusion: the tube
+  rupture discharges into the SG, the one break that bypasses containment. Dropping the gate
+  reads 0.2278 MPa where ambient is required — that is the diagnosis lesson, guarded.
+- **No PRT, no recirculation, indication-only sump** — declared at `Manuals/12` §12.4d rather
+  than implied. The new declared row went in as **§12.4d** (the break-discharge family), NOT
+  §12.19, deliberately: both lanes have collided on §12.17/§12.18 already and workbench's
+  uncommitted work claims §12.19; a family letter cannot collide at the merge.
+- **No board readouts in stage 1, Physics tab only.** Workbench holds uncommitted edits to
+  all three board files; the Physics tab is the conflict-safe observability route, and the
+  board half lands with stage 2's controls after the merge. `ui/manual_data.js` regeneration
+  is likewise deferred to stage 2 (it would touch the same generated surface the board work
+  regenerates).
+- **Injection-verified three ways with distinct signatures**: `press_gain: 0` reddens 4
+  CA-16 checks; dropping the SGTR gate reddens leg B alone; reverting the two live reads
+  reddens all 3 CA-17 checks — the pre-#386 engine exactly.
+- **Gate movements** (all measured): `run_behavior` 56 → 58 (CA-16, CA-17), `run_contract`
+  151 → 154 (+3 fields both ways), `run_pwr` 241 → 242 (containment save-migration assert),
+  Manuals Rev 13 (collapsed by the 2026-08-06 lane merge). `run_meltdown` 12, `run_scenarios` 3/3, `run_inspect` 47/47 unmoved —
+  for a change to break/relief backpressure, the flagship not moving is the number that
+  matters (the relief Δp change at 16 MPa is < 0.1 %).
+
+**Stage 2 (blocked on the workbench merge):** upstream-SLB source, fan coolers + spray as M4
+actuations (SI 3.5 psig unblockable, spray 30 psig sealed-in), board readouts via a new
+gauge-pressure unit family (`MPa2psi` is absolute — 0.125 MPa would read "18 psi" instead of
+3.5 psig). **Stage 3:** H₂ from the existing `_zr_ox2` oxide state (BUILD_DECISIONS 2026-08-03
+called it "the hook for if containment lands" — it is), 10 CFR 50.46 1 %/17 % anchors,
+recombiners, and the ruled burn. **Then #384**, which stage 1 deliberately does NOT attempt:
+a rising backpressure only reduces break flow (CA-15 stays green), and the ECCS/break balance
+at low Δp is #384's own coupled plan.
+
+## 2026-08-05-develop-f — #364 decay-heat refit + #365 collapse: the fallout was the finding
+
+Batch 4 of the #296 plan, ruled a REFIT rather than the declared departure the plan and I both
+recommended *(OWNER RULING, 2026-08-05: "I think we should re-fit the decay heat curve for several
+reasons one this is going to be used to train engineers and some of them are nuclear engineers and
+will nitpick this if it's not correct two I need to redo all of the missions anyway they need a
+complete redo so I am not worried about it messing up missions.")*. **The ruling was right and the
+cost estimate was wrong**: the retune took one session, and `run_campaign` never broke at all.
+
+**The decision that mattered was the TARGET, not the fit.** Two independent NRC primaries that
+cross-check — ML050910161 Table 8-3 (ANS 5.1-1971 fission products in closed form, 0.1 s…2e8 s) and
+ML021720702 Table 2 (actinides, as the difference) — **divided by 1.2**, because that multiplier is
+a licensing margin and this is a simulator of a plant, not an ECCS evaluation model. Four groups is
+the knee of the fit (3 → 11.8 %, 4 → 4.86 %, 5 → 3.31 %). The old two-group curve measured **142.5 %
+maximum relative error** against that target.
+
+**#365 collapsed in the same change** *(OWNER RULING, 2026-08-05: "365: collapse.")* — one constant,
+the fork deleted, a retirement note left saying how to re-split properly. Zero new reds.
+
+**THE ADJUDICATION IS THE ENTRY.** Eleven probes went red and every one was taken individually
+(HR10), which is the only reason two genuine defects surfaced instead of being bulk-rebanded away:
+
+- **A stale two-group copy of the decay law inside `meltdown_pwr.js`**, computing the oxidation
+  anchor. It read 0.0000 % and failed a `q_ref` that was correct — and the comment directly above
+  it promised the check "tracks the decay groups instead of silently going stale". #315's shape, in
+  a probe written to guard against exactly this.
+- **`thermal.clad_steam_h` was a constant fitted against the wrong curve.** It sits on the cooling
+  side of a balance whose heating side is decay heat and its own comment states its job as deciding
+  which uncoveries damage. Re-solved 1.0e-4 → 4.0e-5: **2.5× down against a 2.4× drop in the heat
+  input**, i.e. tracking the other side of its own balance rather than fitting a probe.
+  `perturb_sweep` first, per the house rule — ±30 % flips no verdict in either suite.
+
+**Three probes were pinning the old defect and are now better tests.** MD-11's band check required
+a monotonic escalation that only held while decay heat was overstated. TR-7b's indication checks
+asserted a leg split that was 2.4× too big — the corrected plant reads 1.33 °F with 2 of 250 samples
+inverted by noise, against #315's defect at 48.3 %, so the guard still discriminates by two orders
+of magnitude. And CA-13's station-blackout carrier stopped working because **the plant got better**:
+with real decay heat the turbine-driven AFW now wins and an SBO no longer heats at all.
+
+**Two of my own probes from earlier today had bugs the refit exposed**, both the same mistake —
+using a proxy where the engine has a predicate. CA-15 snapshotted on the clipped gauge
+(`pzr_level_pct >= 99.9`) where a qualifying sample had `levelRaw` = 99.91, i.e. not solid.
+
+**The browser gates were real consequences.** Natural circulation moved 4.47 % → 3.64 % (W ∝ Q^⅓),
+under the pipe-animation ladder's 0.04 floor, so the board painted a stopped primary loop in a
+blackout — the exact distinction #350 item 18 built that ladder to show. A 0.02 step was added.
+`verify_e2e_ui`'s feed-tracking tolerance was **tightened** while re-deriving it: a flat 15 gpm band
+was 23 % of a 64 gpm draw and would have been 79 % at 19 gpm, so the absolute form had been
+loosening itself every time the plant carried less heat.
+
+**Post-trip timings are now the more prototypical ones** and that is the headline for a trainer:
+station blackout to core damage **2.6 h**, total loss of heat sink **2.4 h**, against under 2 h
+before — TMI-2's core damage began around 2.5 h.
+
+## 2026-08-05-develop-d — #361: the solid regime was measured through one hole
+
+Batch 3 of the #296 fix plan, and the last engineering item in it.
+
+**The decision is that this is a DOUBLE COUNT, not a missing term**, which is what makes it a
+one-predicate fix rather than §12.4c's deferred three-term regime. `leak_depress` models a
+bubbled plant: liquid leaves the break, the steam bubble expands into the space it vacated,
+pressure falls. With no bubble that mechanism does not exist — and the break's mass is already
+carried by the surge driver, because `stepInventory` adds RELIEF back out of `dm_surge` and
+deliberately does not add the leak back. Counted twice it was 0.938 MPa/s against ~0.26.
+
+**§12.4c POINTS TOWARD THIS RATHER THAN FORBIDDING IT, and the distinction is recorded at the
+change site** because the next reader will check and could easily conclude the opposite.
+§12.4c's refusal was about folding RELIEF into the surge, which moved the relieving equilibrium
+DOWN, put the plant further below the ECCS shutoff head and un-deadheaded injection — the defect
+by another road. This removes a subtractive term when solid, so the equilibrium moves UP; and
+`leak_depress` is not one of the three terms §12.4c defers (relief, spray, heaters), all of which
+keep their steam-space gains here as that note requires.
+
+**WHY #346 AND #347 MISSED IT, which is the transferable part.** Both were measured on a
+stuck-open PORV with the block valve isolated — a STEAM-SPACE vent, where `leak_flow` is 0 by
+construction. On that path `leak_depress` is identically zero and the solid gain has nothing to
+fight, so it worked, and the in-code arrest claim was generalised from it. It does not
+generalise: the defeating term exists only when liquid is leaving, i.e. the whole LOCA family.
+This is #315's lesson in its exact original shape — a term that is an identity in the regime you
+test in is a term nothing tests — with `leak_depress` as the identity.
+
+**THE FIX PLAN'S PREDICTED ARREST MECHANISM WAS WRONG AND THE MEASUREMENT SAYS SO.** It expected
+the relief ladder to cycle with injection throttled, on the arithmetic that `porv_open_mpa`
+(2350 psi) sits below `hpi_pressure_ref` (2384 psi). Measured, `porv_open` is false throughout
+and pressure settles at 326 psi: a plant with a hole in it does not repressurize, and the
+equilibrium is injection matching break flow at low pressure. The relief ladder arrests CA-12's
+isolated path, which is a different event. Written into the CA-15 baseline note so the two are
+not conflated again.
+
+**Hysteresis was considered, measured, and NOT added.** The plan names it as the remedy if the
+boundary chatters, and it does — 41 102 crossings in 135 000 steps at severity 1.0. But the
+chatter is not new (21 679 pre-change) and the per-step excursion is less than half what shipped
+(p95 18.47 → 7.10 psi), and it is not observable: `spray_flow_pct` is a flat 0 through the
+settled window and pressure ripples 1.1 %. Hysteresis costs a tuned constant, a persisted state
+field, a migration default and a §6.3 entry for a ripple no player can perceive — DESIGN_CRITERIA
+Q4 answered in the negative. Recorded rather than left for someone to re-derive.
+
+**CA-15 guards it** (`run_behavior` 55 → 56): 3 checks red on injection with the injected run
+reproducing 120.00 % exactly, and 2 calibration checks green on both engines — a bubbled plant
+must still depressurize on the same break, or the gate could be satisfied by deleting the term.
+The settling point is computed from the level geometry rather than transcribed: 109.28 % measured
+against 109.28 % predicted.
+
+**`primary.mass_max` finally has a derivation comment**, and it says the honest thing: there is no
+physical ceiling at which an RCS stops accepting mass, only a pressure at which relief opens, so
+1.2 is a numerical guard whose job is to be unreachable. Reaching it is a bug by definition, and
+it hides itself — the clip also truncates `m_surge`, so `_dmass_dt` goes to zero at the ceiling
+and the surge driver stops seeing the mass piling up.
+
+
+## 2026-08-05-backshop-a — #382: the audit's independence mechanism had never been used
+
+**CORRECTED IN PLACE, same session.** The first version of this entry claimed *"no slice has ever
+run under the mechanism"*. That is **false** and the correction is the more interesting finding —
+full table in `Diagnostic/TUNING_LOG.md` 2026-08-05-backshop-a.
+
+**What is actually true.** The exclusion mechanism has been exercised **twice and verified working**
+by the charter's first-turn check: slice 2's attempt 1 was caught primed and aborted *before any
+finding*, and its clean re-run reported *"First-turn priming check: PASSED"*. Slice 3's findings
+runs were also unprimed. What has **never** worked is the **`--settings` flag route** — every
+successful run got there through `.claude/settings.local.json`, which layers by default and needs no
+flag. #297's *"launched bare"* means *without the flag*; I read it as *primed*. Different facts,
+and the auditor's first-turn check is exactly what separates them.
+
+**The error has a shape worth keeping.** I reasoned about my own priming state from inside the
+session — "CLAUDE.md is in my context, therefore the harness loaded it" — when in fact
+`settings.local.json` is in force in this tree and I had simply *read the file myself* on turn 1.
+**A session cannot establish its own priming state by introspection.** That is why the first-turn
+check is phrased as a question about what the harness did, not about what the agent can see, and I
+wrote that sentence into the charter this same session without applying it.
+
+**DECISION: FILES, NOT SKILLS** *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not
+the skills.")* — #383 option 1, and the session's third design for the same problem.
+
+The mechanism is the per-tree `.claude/settings.local.json`: `workbench` and `backshop` are
+**audit lanes** where the exclusion layers by default, so a fresh session or a `/clear` there is
+already unprimed. `develop` keeps the flag route. The three skills and both wrappers are **deleted**;
+the procedure lives in `AUDIT_CHARTER.md` §11 (before/after, explicitly not for the audit session).
+
+Two reasons beyond the owner's preference, both load-bearing: a skill's `description` is injected
+into **every** session's prompt including an auditor's, so the skills were a priming surface bought
+for nothing; and two documents describing one process drift, which is exactly how #297's *"launched
+bare"* got read three different ways in a single day.
+
+**`tools/audit_preflight.js` survives with a real correction**: it defaulted to checking
+`settings.audit.json` — *the file an audit lane never loads*. It now resolves whichever file is in
+force and reports how the current tree launches. Validating the file named after the job instead of
+the one in force is the same class of error the script exists to catch.
+
+**The hook leak (#383 item 1) is closed and A/B-proven.** `tools/hook_lane_status.js` reads
+`.claude/settings*.json`, and in an audit lane prints `#361 [status-wip-develop] (title withheld —
+audit lane)`. Proven on the real code path with a fixture row and the settings file temporarily
+renamed: withheld in the audit lane, `PWR: a large-break LOCA walks inventory to the 120 % mass_ma`
+in the normal one. Unreadable settings report **`unknown`, never `off`** — this hook's own header
+already carried that rule. A `--settings` flag remains invisible to it, and it says so: a process
+argument is not state on disk.
+
+**The hazard is now recorded in TRACKED files** — `CLAUDE.md`'s lane table and the charter header.
+Its only prior record was a comment inside a gitignored file, in the one tree already reverted.
+
+**Decision: make the launch refuse, rather than document harder.** `tools/audit.cmd` /
+`tools/audit.sh` are now the one launch path and run `tools/audit_preflight.js` first, which exits
+2 and names the cause. The raw `claude --settings ...` form stays as a named fallback, with a
+written prohibition on using it to get past a preflight failure.
+
+**Check-selection rule: every preflight check is one whose omission yields a clean-looking audit,
+not a red.** Settings parse; `autoMemoryEnabled === false`; every tree from `git worktree list`
+carries its `CLAUDE.md` in `claudeMdExcludes` verbatim in both slash directions; the settings key
+names still exist in the installed CLI; charter present; slice issue open with a `SUBJECTS TO TEST`
+section (#221 process step 1, checked rather than assumed).
+
+Three sub-decisions worth the record:
+
+- **Verbatim comparison, not glob evaluation.** Re-implementing the CLI's picomatch semantics to
+  test `**/grok_build/**/CLAUDE.md` would place a second, differently-buggy matcher in front of the
+  first. The explicit per-path entries are what must hold; enumerating trees from git means a
+  fourth worktree fails loudly instead of leaking.
+- **The CLI-schema check exists because an unknown settings key is ignored in silence.** A rename
+  at upgrade would degrade the audit to a bare launch that still prints a `--settings` flag.
+  Measured: both keys present in `@anthropic-ai/claude-code@2.1.222`. Binary is 279 MB → chunked
+  scan with overlap.
+- **Asymmetric verdicts.** Not locating the CLI is a note; locating it and not finding the key is a
+  hard failure. Absence of evidence is not evidence of a rename.
+
+**Injection-verified** (#376's rule): green in 1.4 s; red with the right cause on a removed tree
+path, `autoMemoryEnabled: true`, unparseable JSON, and a bogus slice number, all on scratchpad
+copies via `--settings=<path>`.
+
+**What the wrapper structurally cannot do, now written into the charter and the skill.** Preflight
+runs outside the session it protects — it proves the configuration, never the session. The
+auditor's first turn must state on the slice issue whether `CLAUDE.md` was **auto-loaded without it
+reading the file**, phrased that way round because the Read tool can open `CLAUDE.md` at any time
+and *"can I see it"* answers a different question with a misleading yes.
+
+**`.claude/skills/audit-slice/SKILL.md`** saves the procedure and branches on whether the session is
+primed (print the launch line, stop, do not read the slice's code) or is the auditor. Its
+`description` is injected into every session's prompt **including the audit session's**, so it names
+no subsystem, finding or gate score — the skill is inside the blast radius of the rule it enforces.
+It also states the limit: a skill cannot launch a session with different settings, so wrapper,
+skill and self-check are three parts of one mechanism and none substitutes for another.
+
+**Batch-file trap, re-learned.** The first `audit.cmd` was LF-only and UTF-8; `cmd.exe` re-read it
+in a loop and emitted 2.5 MB of `'his' is not recognized`. `tools/make_portable.cmd` already carried
+the ASCII half of the warning in its header. Now ASCII + CRLF, verified with `file(1)`.
+
+**DECISION: the skills go AROUND the wrapper, not inside it — a `/clear` workflow was proposed and
+measured down** *(OWNER, 2026-08-05: "Why not make a skill that sets things up and then I can clear
+that conversation… We could have another skill that restores the work tree. What are your thoughts
+on this?" → "Let's do it your way.")*.
+
+The proposal — prep skill moves `CLAUDE.md` aside, `/clear`, audit in the same window, restore skill
+puts it back — fails on a measurement available in the session that proposed it: **that conversation
+opened with a `/clear`, and `SessionStart` fired immediately after**, printing a WIP-tagged issue
+*title* naming a plant defect into the fresh context. `/clear` clears conversation history and
+nothing else.
+
+Three priming channels; a skill closes one and a half. Conversation history — `/clear` handles it.
+The `SessionStart` hook — a skill could disable it. `CLAUDE.md` auto-load — a skill could move the
+file. **`autoMemoryEnabled` is a process-level setting, so no skill running inside the process can
+change it**, which is the structural reason the design cannot be completed rather than merely
+tightened.
+
+Moving `CLAUDE.md` adds three failure modes the settings exclusion does not have: the file is
+TRACKED, so the audit tree goes dirty in a way the lane sweep reads as a live agent and a commit
+could swallow the deletion; restore depends on a *later* conversation running a skill, with no state
+linking them and nothing to put the file back if the window dies; and it revisits a design the owner
+proposed on 2026-08-04 and that was ruled against then in favour of the exclusion. The automation
+makes it more convenient, not safer.
+
+**So: `audit-prep` → `tools\audit.cmd <slice>` in a NEW WINDOW → `audit-close`.** The two new skills
+are scoped to what a primed session can uniquely do. `audit-prep` refreshes the slice's SUBJECTS TO
+TEST list — a list of exactly what a primed session can see and an auditor cannot, so no other
+session can write it — and records the commit + `run_all` state the findings are measured against,
+so a pre-existing red is not filed as a finding. `audit-close` triages into issues with the four
+axes and maintains **the convergence table #221 asks for and nothing has ever tracked**, carrying
+each slice's independence verdict read off the auditor's self-check comment; **a slice with no
+self-check counts as primed**, because inferring it was fine from a thorough-looking slice is the
+inference the mechanism exists to replace.
+
+---
+
 ## 2026-08-05-develop-c — #367: buoyancy is not a pump, but a coasting rotor is
 
 Batch 2b of the #296 fix plan.

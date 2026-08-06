@@ -67,6 +67,61 @@
   // instrument lag is coarser than 0.1 s.
   var PROTECTION_DT = 0.1;
 
+  // ---------------------------------------------------- FINE CHART SAMPLING (2026-08-05)
+  // The strip chart used to see exactly ONE sample per broadcast, so its resolution in SIM
+  // time was `timeAcceleration × broadcastMs` — 0.1 s at 1×, but 6 s at 60× and 360 s at
+  // 3600×. Measured against the chart's own geometry (344 buckets across the window), that
+  // is 4.36 samples per plot pixel at 1× and **0.15 at 60×**: one vertex every seven pixels,
+  // with the polyline interpolating straight through everything between. A relief-valve lift
+  // lasting three seconds fell entirely between two samples and left no mark at all.
+  //
+  // The fix is to sample where the fine time actually exists. This loop already steps at
+  // PHYSICS_DT and already evaluates protection on a SIM-time cadence for exactly the same
+  // reason (#153 — the reactor gets the same protection at 3600× as at 1×); the chart now
+  // rides that seam. The UI registers a sampler, the service calls it on a fixed sim-time
+  // interval, and the samples are handed over with the broadcast.
+  //
+  // WALL-CLOCK GATING WAS CONSIDERED AND IS WORSE, which is worth recording because it is
+  // the intuitive answer: sampling every N ms of wall time gives FEWER samples per sim
+  // second as acceleration rises — half the resolution at 10× and a quarter at 60× against
+  // this scheme. The ceiling was never the gate, it was the broadcast.
+  var CHART_FINE_SEC = 0.2;        // sim-time interval between fine samples — matches the UI's grid
+  var CHART_FINE_MAX = 60;         // …but never more than this many per broadcast (see below)
+  // MIN/MAX BANDING. Point sampling aliases: a fine sample every 6 s of sim (3600×) still
+  // steps straight over a three-second relief lift. So each emitted bucket carries the
+  // EXTREMES over its interval, not just one instant — the chart draws the band and the
+  // transient is visible however fast the plant is being run.
+  //
+  // Bounded by a TOTAL per broadcast rather than a count per bucket, because the per-bucket
+  // form multiplies: 8 sub-samples × 60 buckets is 480 sampler calls per broadcast, and the
+  // sampler walks every series in the profile. A flat ceiling keeps the cost the same at
+  // 3600× as at 60× and simply gives coarser extremes where there is more sim time to cover.
+  var CHART_SUB_MAX = 240;         // sampler calls per broadcast, total, across all buckets
+
+  // Fold one sampler reading into a bucket accumulator. GENERIC over the reading's shape —
+  // it walks whatever side-dicts the sampler returned ({v, tv} today) and tracks the last
+  // value plus the extremes per key, so the service never learns what a "series" is and a
+  // new plotted quantity needs no change here. Keys that are null (a series with no reading
+  // on that side) stay out of the extremes entirely rather than poisoning them with nulls.
+  function foldExtremes(acc, one) {
+    if (!one) return acc;
+    if (!acc) { acc = { t: 0, v: {}, tv: {}, lo: {}, hi: {}, tlo: {}, thi: {} }; }
+    foldSide(one.v, acc.v, acc.lo, acc.hi);
+    foldSide(one.tv, acc.tv, acc.tlo, acc.thi);
+    return acc;
+  }
+  function foldSide(src, last, lo, hi) {
+    if (!src) return;
+    for (var k in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+      var x = src[k];
+      if (x == null || !isFinite(x)) continue;
+      last[k] = x;
+      if (lo[k] === undefined || x < lo[k]) lo[k] = x;
+      if (hi[k] === undefined || x > hi[k]) hi[k] = x;
+    }
+  }
+
   // Plant id → engine constructor. RBMK/BWR register when M2/M3 land.
   function engineCtor(plantId) {
     if (plantId === 'pwr') return RD.PWREngine;
@@ -107,6 +162,8 @@
     this.instructor = opts.instructor
       || (RD.InstructorLayer ? new RD.InstructorLayer(null) : new DefaultInstructor(null));
     this.subscribers = [];
+    this._fineSampler = null;   // set by setFineSampler(); see the CHART note above
+    this._fineBuf = [];
 
     this.engine = null;
     this.layer = null;                 // M4
@@ -115,6 +172,7 @@
     this.activeRegister = 'learning';
 
     this.simTime = 0;
+    this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
     this.timeAcceleration = 1.0;
     // True while the CURRENT acceleration was requested by a scenario beat (an
     // authored fast-forward), false once the user touches the speed control. A
@@ -168,6 +226,7 @@
     this.activePlantId = plantId;
     this.activeDesignVersion = designVersion || null;
     this.simTime = 0;
+    this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;
@@ -201,6 +260,20 @@
     if (!this.running || !this.engine) return null;
     var steps = this._stepsPerBroadcast();
     var sinceEval = 0;
+    // Fine chart sampling. The interval is the LARGER of the fixed sim-time grid and what
+    // fits in the per-broadcast cap, so resolution is constant in sim time at ordinary
+    // speeds and degrades gracefully instead of exploding at extreme ones: at 60× the
+    // broadcast carries 6 s of sim and yields 30 samples at 0.2 s; at 3600× it carries 360 s
+    // and yields 60 at 6 s — still ~1 per plot pixel on the widest window, where the OLD
+    // path gave one sample per 360 s. Cost is bounded by CHART_FINE_MAX at any acceleration.
+    var fineEvery = 0, subEvery = 0;
+    if (this._fineSampler) {
+      var simPerBroadcast = steps * PHYSICS_DT;
+      fineEvery = Math.max(CHART_FINE_SEC, simPerBroadcast / CHART_FINE_MAX);
+      subEvery = Math.max(PHYSICS_DT, simPerBroadcast / CHART_SUB_MAX);
+      if (subEvery > fineEvery) subEvery = fineEvery;   // at least one sample per bucket
+    }
+    var sinceFine = 0, sinceSub = 0, acc = null;
     for (var i = 0; i < steps; i++) {
       // Automation channels run in-stack at physics rate (fixed sim-time
       // cadence inside), reading the previous step's instruments — so
@@ -215,6 +288,25 @@
       // `getInstruments()` is a pure read of `instruments.reading`; the noise PRNG
       // advances inside `engine.step`, so evaluating more often perturbs no stream.
       sinceEval += PHYSICS_DT;
+      // Fine chart sample. Taken INSIDE the step loop, after the step, so it sees the plant
+      // at that sim instant rather than only at broadcast boundaries. The sampler is the
+      // UI's, and it returns whatever small object it needs — the service never learns what
+      // a "series" is. Skipped on the last step: the post-loop broadcast carries that
+      // instant anyway, and sampling it twice would double-weight it in the chart's buckets.
+      sinceFine += PHYSICS_DT;
+      sinceSub += PHYSICS_DT;
+      if (subEvery && sinceSub >= subEvery - 1e-9) {
+        acc = foldExtremes(acc, this._fineSampler(
+          this.engine.getInstruments(), this.engine.getTrueState(),
+          this.engine.getControlState ? this.engine.getControlState() : null));
+        sinceSub = 0;
+      }
+      if (fineEvery && acc && sinceFine >= fineEvery - 1e-9 && i < steps - 1) {
+        acc.t = this.simTime + (i + 1) * PHYSICS_DT;
+        this._fineBuf.push(acc);
+        acc = null;
+        sinceFine = 0;
+      }
       if (sinceEval >= PROTECTION_DT && i < steps - 1) {
         // `sinceEval` is the SIM time this evaluation covers, and it is passed so the alarm
         // minimum on-time accrues in plant seconds rather than in evaluations. That is what
@@ -671,6 +763,28 @@
   };
 
   // ----------------------------------------------------------- broadcast (§10)
+  // Register the strip chart's sampler. `fn(instruments, true_state, control_state)` is
+  // called on a fixed SIM-time interval inside tick() and should return a small plain object
+  // — the service stores it verbatim and hands it over with the next broadcast. Pass null to
+  // stop sampling; with no sampler registered the loop does no extra work at all, which is
+  // what keeps every headless runner and every test harness on the old cost.
+  SimulationService.prototype.setFineSampler = function (fn) {
+    this._fineSampler = (typeof fn === 'function') ? fn : null;
+    if (!this._fineSampler) this._fineBuf = [];
+  };
+
+  // Take the fine samples accrued since the last call, and clear. Deliberately NOT part of
+  // the snapshot: snapshots are checkpointed into the rewind ring and saved, and an array of
+  // sub-samples riding along would bloat both for a purely visual concern. The UI pulls this
+  // in its broadcast handler; anything that does not pull simply never accumulates, because
+  // nothing registers a sampler.
+  SimulationService.prototype.takeFine = function () {
+    if (!this._fineBuf.length) return null;
+    var out = this._fineBuf;
+    this._fineBuf = [];
+    return out;
+  };
+
   SimulationService.prototype.subscribe = function (cb) {
     this.subscribers.push(cb);
     var self = this;
@@ -726,6 +840,7 @@
     this.activePlantId = m.plant_id;
     this.activeDesignVersion = m.design_version || null;
     this.simTime = m.sim_time;
+    this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
     this.timeAcceleration = m.time_acceleration;
     this._authoredSpeed = false;
     this._prevTrueState = null;

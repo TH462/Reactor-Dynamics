@@ -570,6 +570,10 @@ physical-quantity vocabulary.
     "letdown_flow_actual": float,     // TRUE CVCS letdown — feeds instruments.letdown_flow
     "leak_flow": float,               // primary break flow, normalized (LOCA/SGTR) — feeds instruments.primary_leak_flow
     "steam_dump_valve_pct": number,   // steam-dump/bypass valve position, 0–100 % — feeds instruments.steam_dump_valve
+    "adv_valve_pct": number,          // atmospheric dump valve position, 0–100 % — feeds instruments.adv_valve (#371)
+    "adv_flow_normalized": float,     // steam vented to ATMOSPHERE, normalized to rated. Independent of the
+                                      //   condenser and upstream of the MSIV — the cooldown path when the
+                                      //   condenser is gone. Ships SHUT; see DESIGN_COMPANION §8.34
     "accumulators_discharging": bool, "accumulator_flow_normalized": float, "accumulator_volume_pct": number,  // passive accumulators (finite volume)
     "accumulator_pressure_mpa": number,   // N2 cover-gas pressure (the board's SIT pressure readout). INDICATION
                                       //   ONLY: injection is gated on cold-leg pressure vs the FIXED
@@ -577,6 +581,17 @@ physical-quantity vocabulary.
                                       //   (isothermal gas expansion), which is why real injection tails off.
     "accumulator_valve_open": bool,   // discharge isolation valve position (shut = the tank cannot inject at all)
     "rhr_active": bool, "rhr_valve_open": bool, "eccs_mode": string,   // RHR (formerly DHR) aligned = hot-leg suction valve open; eccs_mode = "HPI"|"LPI"|"RHR"|"off" for the ECCS card
+    "containment_pressure_mpa": float, // containment building pressure, ABSOLUTE (#386 stage 1 — the board's psig
+                                      //   is a display conversion). Air partial at ambient + steam partial from
+                                      //   break/relief discharge; the break and relief √Δp laws read it LIVE as
+                                      //   their backpressure. An SGTR discharges to the SG and moves it not at all
+                                      //   — the one break that BYPASSES containment, the diagnosis lesson.
+    "containment_temp_c": float,      // containment atmosphere temperature — saturation at the steam partial
+                                      //   pressure, floored at ambient (~38 °C)
+    "containment_sump_pct": float,    // integrated liquid on the containment floor, % of the sump reference.
+                                      //   INDICATION ONLY: no recirculation (no RWST inventory exists to swap
+                                      //   from — declared, Manuals/12 §13.0). The leak-diagnosis indication
+                                      //   Manuals/06 §PWR-A12 and 07 already told the operator to check.
 }
 ```
 
@@ -913,9 +928,11 @@ deferred — resist the instinct to build outward before the core is solid):
   were TMI-2-specific; with one control group they have no place.)
 - Pressurizer discharge tank and rupture disk. (The stuck PORV + lying indicator are fully
   modeled; the discharge tank is secondary.)
-- Sensor redundancy / voting, containment modeling, fuel burnup, thermodynamic
-  turbine/condenser detail. (PWR low-pressure injection was later merged into the one
-  HPI/LPI system, and passive accumulators were built — both post-v1-plan extensions.)
+- Sensor redundancy / voting, fuel burnup, thermodynamic turbine/condenser detail.
+  (PWR low-pressure injection was later merged into the one HPI/LPI system, and passive
+  accumulators were built — both post-v1-plan extensions. **Containment modeling left this
+  list 2026-08-05**: #386 stage 1 built the lumped building — pressure, temperature, sump,
+  live break/relief backpressure — with heat removal and hydrogen staged behind it.)
 - Automatic fast-forward dropout. (In v1 the user sets time acceleration manually.)
 
 ### Physics simplifications the Instructor must acknowledge
@@ -938,9 +955,12 @@ the product's honesty, see M6):
   effect is still modeled — it lives in the instrument, not the calibration — so the level reading
   can still move the wrong way on a pressure transient; only the narrow/wide-range calibration is
   simplified away.
-- **[tell user] No containment model.** The simulation ends at fuel damage; subsequent
-  containment events (the Chernobyl explosion, Fukushima hydrogen explosions) are described
-  in commentary, not modeled.
+- **[tell user] Containment is a lumped volume, and it ends at fuel damage.** Since #386
+  stage 1 (2026-08-05) the PWR containment has pressure, temperature and a sump receiving
+  break/relief discharge (`Manuals/12` §12.4d) — but no heat-removal systems or hydrogen
+  inventory yet (staged), and the simulation still ends at fuel damage; consequence events
+  (the Chernobyl explosion, Fukushima hydrogen explosions) are described in commentary,
+  not modeled. RBMK/BWR have no containment model at all.
 - Lumped decay heat (two-term exponential, ~20% accurate over hours), lumped single steam
   generator (PWR) / single channel (RBMK), gain-coefficient pressurizer, timed BWR battery
   depletion (not charge-tracked), fixed jet-pump M-ratio, no xenon spatial oscillations, no

@@ -30,6 +30,224 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.2.0] — 2026-08-06
+
+### Changed — the manual revision number is a release marker, not a change counter (lane merge, 2026-08-06)
+
+*(OWNER DIRECTIVE, 2026-08-06: "The revision number only matters during a release to the
+website. Revision numbers should never go up until a release happens.")*
+
+**Rev 12 is what the website carries** (Alpha 1.1.0, `main` at `7a40b9a`). Everything built
+since is one pending **Rev 13**, however many changes it contains — so the `develop` ←
+`workbench` merge collapsed six unreleased revision rows into one, carrying all six changes
+as (a)–(f). **Do not open a new revision row for a manual edit; extend Rev 13's.**
+
+This is a fix for a *collision*, not just tidying. Both lanes edited `Manuals/` from the same
+base and both allocated numbers from it — develop took 13/14/15, workbench took 13/14 — so
+**Rev 13 and Rev 14 each named two different changes.** That is the #339 session-label problem
+one artifact over, and it has the same cause: a counter needing coordination between worktrees
+that cannot see each other. A number that only moves at a release cannot be allocated twice
+between releases.
+
+**One declared simplification was corrected in the same pass.** `12 §12.17` (from #370, built
+on the workbench lane) declared that this simulator has no containment at all — while #386
+stage 1, built on `develop` the same day, was giving it pressure, temperature and a sump.
+Chapter 12 would have asserted both. §12.17 and the `12 §8.5` sentence pointing at it now say
+what is actually true: the containment pressure signal **exists**, and no protective actuation
+reads it yet — that is #386 stage 2. No plant behaviour changed.
+
+### Added
+- **The atmospheric dump appears on the plant diagram** (#371). The relief valve now tees off the
+  main steam header on the generator side of the isolation valve — where it has to be, since an
+  isolated steam line still needs somewhere to send its heat — and vents through a silencer that
+  plumes when the valve is open. Its position, the condenser dump's, and turbine steam flow are
+  tagged beside the valves they belong to, and the ATMOS DUMP panel carries the AUTO/SHUT buttons,
+  the pressure setpoint and the position readout.
+- **Atmospheric dump valves — you can cool the plant down without the condenser** (#371). Until now
+  the only controllable steam path went to the condenser, so losing it left no cooldown path at all:
+  the plant simply sat hot at the safety band. The new valves vent to atmosphere, work whether the
+  condenser is there or not, and take the plant from full operating temperature to shutdown-cooling
+  entry. They **ship shut** — opening them is your call, not the plant's — and at full open they
+  cool about three times faster than the 100 °F/hr limit, so the cooldown-rate meter and its
+  annunciator are equipment you will actually be using.
+- **The steam lines now isolate themselves on a break** (#370). High steam flow together with low
+  steam pressure shuts the main steam isolation valve with no operator action — about one second
+  on a full-area break, after which the generator bottles up and recovers instead of blowing down.
+  Before this the valve was yours alone and an unattended break ran to completion. It takes *both*
+  signals, so a cooldown does not trip it and neither does a bottled generator lifting its
+  safeties, and you cannot reopen the valve while the isolation is sealed in — only once the
+  generator has re-pressurized. Two parts of the real function are declared rather than built: no
+  containment-pressure path (this plant has no containment), and a fixed steam-flow setpoint where
+  a real one slides with load, so below about half power the valve is still your lever.
+
+### Fixed
+- **A steam line break now removes steam.** It used to be a pure pressure effect that drained no
+  water and showed on no flow gauge — so the generator level never moved and the very instrument a
+  real plant isolates on read *lower* during a break. Break trajectories are unchanged where they
+  were calibrated; what changed is that the break is now visible as flow and inventory, and the
+  blowdown tail self-limits as the pressure driving it falls.
+
+### Tests
+- **TR-18 pins the open #378 defect as a strict xfail** — after a manual load step the plant
+  limit-cycles ~13 points of power indefinitely instead of settling. The fix that kills the cycle
+  (cancelling in-flight rod travel at the controller's deadband exit: 13.8 → 2.0 pts, settled at
+  14.6 min vs never) was built, measured, and **rejected**, because it takes the rod channel's
+  sourced ±5 °F ramp duty (TR-1i, WTSM 8.1.1) from 4.34 to 5.26 °F — the duty is currently met
+  partly *by* the defect, as is the case for every PV-filter value tried. No plant behaviour
+  changed; the probe keeps the defect visible and goes loudly XPASS-red the day settling is fixed
+  without its annotation moving. Measurement record: `Diagnostic/TUNING_LOG.md`
+  2026-08-06-workbench-a, issue #378.
+
+### Added — the containment building exists (#386 stage 1)
+
+Containment used to be two constants and a declared exclusion: a break discharged into a fixed
+0.1 MPa forever, the relief valves into a fixed 0.103, and the manual said "no containment
+building, pressure, temperature or sump." The PWR now has a lumped containment volume:
+
+- **Containment pressure, temperature and sump level** — new true-state fields, new instruments
+  (`containment_pressure`, `containment_temp`, `containment_sump_level`), and a new **Containment
+  group on the Physics tab** (pressure in psig, temperature, sump). Board readouts arrive with the
+  stage-2 heat-removal systems.
+- **The break and relief valves discharge INTO it, and it pushes back.** The √Δp discharge laws
+  read the live containment pressure as their backpressure. Hot break liquid partly flashes to
+  steam and pressurizes the building (cp·ΔT/h_fg — a physical ratio, not a fit); cold ECCS spill
+  rains to the sump and moves pressure not at all, which is why pressure peaks on the hot early
+  blowdown and then decays on the passive structural heat sink.
+- **Measured** (full stack): a full-size break peaks at **41 psig** at ~2 min — ⅔ of the 60 psig
+  design pressure inferred from WTSM 5.0 + 12.3 — and every containment-side break crosses the
+  sourced 3.5 psig SI-backup setpoint within minutes, while only large breaks reach the 30 psig
+  spray point. An **SGTR reads exactly nothing**: that break discharges into the steam generator,
+  the one leak containment cannot see, and that asymmetry is the diagnosis lesson.
+- A stuck-open PORV pressurizes the building too (no relief tank is modeled — declared,
+  `Manuals/12` §12.4d, along with the fitted stiffness and the indication-only sump).
+- New behaviour probes **CA-16** (the receiving volume) and **CA-17** (the live backpressure,
+  red on the pre-#386 engine); CA-11 leg B re-pointed at the live law. Manual set at **Rev 13** (the merge collapsed six unreleased revisions into one — Rev 12 is what the site carries).
+- **Staged next under #386**: stage 2 — containment spray + fan coolers as ESF with the sourced
+  3.5/30 psig actuations (after the workbench merge); stage 3 — hydrogen inventory from the
+  existing oxidation model, recombiners, and a TMI-2-style burn *(OWNER RULING, 2026-08-05:
+  selected "TMI-2-style burn" from three options put to him — a selection, not verbatim words)*.
+  Then #384 (large-LOCA depressurization) on top of all three.
+
+### Added — the graph shows the full range a value reached, not just where it happened to be sampled
+
+At speed the chart samples the plant every few seconds of plant time, so anything faster than that
+used to vanish between points. Each point now carries the **highest and lowest** the value reached
+over the time it covers, drawn as a shaded band behind the line — so a spike, a valve lift or a
+trip shows up however fast you are running. Measured on a turbine trip at 600×, the power band
+covers 85 of the plot's 120 pixels; at 1× there is nothing to span and no band is drawn.
+
+### Added — the graph's time windows follow the speed setting
+
+The window buttons now offer longer spans as you speed up — 1m/5m/10m/30m at 1×, up to
+1h/3h/6h/12h at high speed — because 30 minutes of plant goes by in seconds at 3600×. Switching
+speed keeps the same button position rather than the same number of minutes.
+
+Capped at 12 hours deliberately: scaling the window by the speed *number* produced spans of up to
+27 days, and the plant does not actually run that fast — measured, a requested 3600× achieves
+closer to 160× — so those windows could never fill.
+
+
+### Fixed — the strip chart holds its resolution at every time acceleration
+
+The chart used to see exactly one sample per broadcast, so how much detail it had depended on how
+fast you were running: fine at 1×, but at 60× a whole 6 seconds of plant collapsed to a single
+point, and the line was drawn straight through everything in between. A relief-valve lift lasting
+three seconds could leave no mark at all.
+
+The simulator now samples the plant **between** broadcasts, on a fixed plant-time interval, so the
+trace looks the same at any speed. Measured on a one-minute window filled with live data, the
+number of points in the trace:
+
+- **60×** — 11 → **300** (of 344 across the plot)
+- **600×** — 2 → **61**
+- **1×** — unchanged, as it should be
+
+Also fixed, and separately: **already-drawn history no longer crawls or changes shape as the chart
+scrolls.** The time bins the trace is drawn into were anchored to the moving right-hand edge, so
+every new sample re-shuffled the whole line — measured, points that should have moved together
+drifted apart by up to a pixel each frame, and the trace occasionally jumped backwards. It now
+scrolls rigidly.
+
+The chart also updates **five times a second instead of twice**.
+
+
+### Changed — decay heat is refitted to the published standard, and post-trip timings are longer (#364)
+
+Decay heat goes from two exponential groups to **four**, fitted to the published standard rather
+than chosen: ANSI/ANS 5.1-1971 fission-product decay as tabulated by the NRC, plus actinide decay,
+with the ×1.2 Appendix K margin removed — that margin belongs to a licensing calculation, and this
+is a simulator of a plant.
+
+- **The old curve had nothing faster than a 33-minute time constant**, so it was flat exactly where
+  a real one falls fastest: measured, as much as **2.4× high** through the ten-minute-to-half-hour
+  band that most casualties play out in. The new fit is within **5 %** of the standard from 1 second
+  to 28 hours.
+- **Post-trip events now take longer, and are closer to a real plant.** Station blackout reaches
+  core damage at **2.6 h** and total loss of heat sink at **2.4 h**, against under 2 h before —
+  TMI-2's core damage began around 2.5 h.
+- Decay heat at scram reads **6.2 %** where it read 7 %.
+- A station blackout with auxiliary feedwater available **no longer heats the plant at all** — the
+  turbine-driven pump removes the real decay heat where it could not remove 2.4× of it.
+- Natural circulation settles a little lower (3.0 % of rated at 2.2 % decay heat), and the board's
+  pipe animation was adjusted so buoyancy flow still shows as moving rather than stopped.
+
+Manuals Rev 13, `12` §4.5 — including a plain note that post-trip timings changed and why.
+
+### Changed — one pressurizer level constant instead of two (#365)
+
+The level line chose between two constants depending on whether the plant was above or below normal
+inventory. They have held the same value since the geometry was corrected, so the choice was between
+two identical numbers — in three places. Collapsed to one. No behaviour change.
+
+
+### Fixed — a leaking plant that went water-solid never reached its relief valve (#361)
+
+#346 gave the pressurizer a water-solid regime and #347 took spray's authority away in it. Both
+were measured on **one** path — a stuck-open relief valve with its block valve isolated, which
+vents the *steam space*, so break flow is zero there by construction. The in-code claim that the
+fill "arrests at 109.35 % against the 120.00 % ceiling" was generalised from that, and it does not
+generalise: the term that defeats the solid gain only exists when liquid is leaving through a hole.
+
+- **Break blowdown is a bubbled-plant mechanism.** Liquid leaves, the steam bubble expands into
+  the space it vacated, pressure falls. With no bubble that path does not exist — and the break's
+  mass was *already* moving pressure through the stiffened solid gain, so it was being counted
+  twice: **0.938 MPa/s against ~0.26 MPa/s of surge**.
+- **Measured before**, a half-size break with injection running: the solid regime engages
+  correctly at ~9 min, is simply out-gunned, and inventory reaches **120.00 %** — the numerical
+  ceiling exactly, the fingerprint of a clip — at **21 min**, then holds for the rest of the run at
+  253 psi with 274 °F (152 °C) of subcooling.
+- **After**: the fill arrests at **109.3 %**, which is where the pressurizer geometry says the
+  vessel is full — 10.7 points clear of the ceiling, and matching the geometric prediction to two
+  decimals. Verified across break sizes from 5 % to 100 %; none reaches the ceiling and none
+  damages the core.
+- The three terms the manual still declares as bubbled-plant behaviour — relief, spray and the
+  heaters — are deliberately unchanged. Manuals Rev 13, `12` §12.4c.
+
+**The arrest is not the relief valve, and the fix plan predicted it would be.** Measured, the
+relief valve never lifts on this path and pressure settles at 326 psi: a plant with a hole in it
+does not repressurize. The equilibrium is injection matching break flow at low pressure. The
+relief ladder is what arrests the *isolated* path, which is a different event.
+
+
+### Added
+- **The audit launch now refuses instead of relying on someone remembering a flag** (#382).
+  `.claude/settings.audit.json` — the mechanism that keeps an audit session from being handed the
+  conclusions it is auditing — is launched by a flag written in an issue body, and that flag has
+  never once been the thing that made a slice independent: the runs that were clean got there via a
+  per-tree settings file that layers by default. A slice now starts one way,
+  two named audit lanes plus a preflight that refuses. The two overflow worktrees now carry the
+  exclusion by default, so a session started in either is unprimed without anyone remembering a
+  flag; `node tools/audit_preflight.js <slice>` exits 2 and names the cause if the configuration
+  would not actually be independent — auto-memory left on, a worktree whose `CLAUDE.md` is not in
+  the exclude list, a settings key renamed by a CLI upgrade, or a slice issue missing its
+  subjects-under-test list. Every one of those failures otherwise produces an audit that reads as
+  independent, which is why it refuses rather than warns. The session-start hook was itself printing
+  plant defects by name into contexts the exclusion had just cleaned; it now reports which mode the
+  lane is in and withholds issue titles in an audit lane. The procedure moved into
+  `Blueprint/AUDIT_CHARTER.md`, and the auditor must state on the record whether the exclusion
+  actually took, because a check running outside the session can only prove the configuration.
+  Developer-facing only; nothing in the sim changes.
+
 ## [Alpha 1.1.0] — 2026-08-05
 
 ### Fixed — a stopped reactor coolant pump was still heating the coolant (#367)

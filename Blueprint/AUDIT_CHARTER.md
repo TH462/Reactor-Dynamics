@@ -1,15 +1,56 @@
 # AUDIT_CHARTER.md — orientation for an INDEPENDENT audit session
 
 **Read this instead of `CLAUDE.md`.** An audit session runs with the repo's `CLAUDE.md` and the
-auto-memory directory **excluded from loading** (`.claude/settings.audit.json`), because both are
-dense with conclusions about the very subsystems under audit — the priming problem **GitHub #221**
-RoE 1 describes. The audit programme, its rules of engagement and the per-slice tracking issues live
+auto-memory index **excluded from loading** — by `.claude/settings.local.json` in an audit lane, or
+by `.claude/settings.audit.json` behind a flag elsewhere (see below) — because both are dense with
+conclusions about the very subsystems under audit: the priming problem **GitHub #221** RoE 1
+describes. The audit programme, its rules of engagement and the per-slice tracking issues live
 in **GitHub #221 and #295–#301**; there is no Blueprint document for it.
 
-**If you cannot see this file's launch instructions, you are in the wrong session.** Start with
-`claude --settings .claude/settings.audit.json`, and on your first turn confirm you cannot see
-`CLAUDE.md`'s *Recent themes* section or a memory index — **a glob that failed to match looks
-exactly like a clean audit.**
+**How you got here — the AUDIT LANE** *(OWNER RULING, 2026-08-06: "Workbench will not be an audit
+lane.")*. **`C:\grok_build\RD_backshop` is the audit lane, and it is the only one.** It carries
+`.claude/settings.local.json` with the `CLAUDE.md` exclusions and `autoMemoryEnabled: false`. That
+file **layers by default and needs no flag**, so any session started in that tree is already
+unprimed, and a `/clear` is enough to begin a slice. `develop` and `RD_workbench` have no such
+file: a slice launched in either needs `claude --settings .claude/settings.audit.json`.
+
+The earlier arrangement *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
+skills.")* armed both overflow lanes. Workbench's copy was removed during ordinary work and the
+2026-08-06 ruling makes that permanent.
+
+The accepted cost, stated so it is not rediscovered as a bug: **ordinary non-audit work in
+`backshop` also runs without `CLAUDE.md`.** That is the ruling, not an accident.
+
+**Whichever tree you are in, prove the configuration before you audit** — `node
+tools/audit_preflight.js`. A settings key that silently fails to match looks exactly like a clean
+audit, and the preflight only ever checks the tree it is run in.
+
+```
+node tools/audit_preflight.js <slice>      # verifies the config; launches nothing
+```
+
+Six checks, **exit 2 naming the cause** — settings unparseable, auto-memory on, a worktree whose
+`CLAUDE.md` is missing from the exclude list, a settings key a CLI upgrade has renamed, no charter,
+or a slice issue with no `SUBJECTS TO TEST` section. Every one of those is a failure whose signature
+is *a clean-looking audit* rather than a red, which is why it refuses instead of warning.
+
+**Preflight proves the CONFIGURATION, never the SESSION.** It runs outside the session it is
+protecting, so on your **first turn**, before any source file, state on the slice issue whether
+`CLAUDE.md` was **auto-loaded into your context without you reading it** and whether you see a
+memory index. Ask it that way round: the Read tool can open `CLAUDE.md` at any time, so *"can I see
+it"* answers a different question with a misleading yes. **A glob that failed to match looks exactly
+like a clean audit** — this self-report is the only evidence that it did not, and it has already
+caught two primed sessions before either filed a finding (#296, #297).
+
+**It has also caught an agent reasoning about its own priming from the inside** (2026-08-05): a
+session concluded it was primed because `CLAUDE.md` was in its context, when it had simply *read the
+file itself* and the exclusion was in force the whole time. **A session cannot establish its own
+priming state by introspection.** The check asks what the *harness* did.
+
+**The `SessionStart` hook now tells you which mode the lane is in**, and withholds WIP issue
+*titles* in an audit lane. That was a measured leak: on 2026-08-05 it printed a plant defect by name
+into a context the exclusion had just cleaned (#383). Hooks fire regardless of `claudeMdExcludes`,
+so it is the one priming channel no settings file can close.
 
 This file is the **operating half** of that document with the **diagnosis removed**: how the repo is
 wired, how to run it, how to measure it, and which rules bind you. It deliberately contains **no
@@ -252,3 +293,67 @@ each subsystem behaves and why**. All of it is excluded from an audit session on
 If you find yourself needing one of those facts, that is the signal to **measure it**, not to go
 read it. If you genuinely cannot proceed without it, say so in the slice issue and name the fact —
 that is itself a finding about how much of this plant is only knowable from its own prose.
+
+---
+
+## 11. Before and after a slice — NOT FOR THE AUDIT SESSION
+
+**If you are the auditor, stop reading here.** §11 is for the ordinary, *primed* session that
+prepares a slice or closes one out. It lives in this file so there is one document rather than
+several that can drift apart *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
+skills.")* — the earlier version of this procedure was three skills, and a skill's description
+loads into every session's prompt including an auditor's, which is a priming surface for no gain.
+
+### 11a. Preparing a slice (primed session)
+
+Everything here is work an audit session must not do, and two steps can *only* be done by a session
+that can see `CLAUDE.md` and the memory index.
+
+1. **Pick the slice and check the lane.** Running order is **1 · 2 · 3 · 9 · 8 · 4 · 5 · 6 · 7** —
+   issues **#295 #296 #297 #344 #342 #298 #299 #300 #301**, by blast radius, not by ease. A slice
+   with comments has run; one with none has not. Sweep the lane tags before claiming one.
+2. **Refresh SUBJECTS TO TEST — the step that needs a primed session.** #221 process step 1 requires
+   each slice issue to name the auto-loaded claims inside its scope, marked as on trial. That is a
+   list of exactly what a primed session can see and an auditor cannot, so **no other session can
+   write it.** Add what has arrived since it was last written, *with the measured numbers* — a claim
+   carrying its number is testable, "the coupling was fixed" is not. Do not delete an entry because
+   it now looks settled; settled is the property under test. Preflight refuses a slice without this
+   section.
+3. **Record the tree the findings will be measured against** — the commit SHA and a `run_all`
+   result, posted to the slice issue. **Name any runner that is already red**, or the auditor may
+   file a pre-existing red as a finding and the fix side will chase it.
+4. **Tag** the slice `status-wip-<lane>` — the lane the audit will *run* in.
+5. **Preflight**: `node tools/audit_preflight.js <slice>`. If it refuses, fix the cause; never
+   hand-arm the exclusion to get past it.
+6. **Stop.** Do not read the slice's source files "to help while you're here" — anything you
+   conclude becomes a conclusion the auditor inherits. Fix-side issues from *previous* slices,
+   scope/rubric edits and programme tooling are all still fair game.
+
+### 11b. Closing a slice (primed session)
+
+**Triage is not re-auditing.** Do not re-derive, soften, or drop a finding because you can think of
+a reason the code is that way. Disagree on the issue, as a separate comment, with a measurement.
+
+1. **Clear the lane tag first.** A tag left standing makes the next agent stand down for nobody.
+2. **Check the slice was actually independent** — find the auditor's first-turn self-check. Reported
+   clean, note it. Reported primed, the findings stand as observations but the *slice* is marked
+   non-independent. **No self-check at all counts as primed**: inferring it was fine from a
+   thorough-looking slice is the exact inference the mechanism replaces.
+3. **File each real defect** as its own issue linked to the slice comment, carrying the `Claude`
+   label and all four axes (`priority-*` by consequence, `type-*`, `system-*`, `plant-*`; see #61),
+   plus the file:line, the evidence tag with its layer, and the repro line. **A finding whose
+   measurement cannot be re-run is `INFERRED` wearing the wrong tag** — re-tag rather than file it
+   as measured. Do not file: results the slice recorded as *holding*; a declared departure the slice
+   re-derived (unless its stated basis no longer matches the shipped plant — *that* is the finding);
+   or anything handed to another slice by name.
+4. **Update the convergence table on #221.** Its own stopping rule — *"if slice N's findings are
+   consistently less severe than slice N−1's, the audit is converging and should continue. If not,
+   stop and re-scope"* — went untracked from the day it was written until 2026-08-05. One row per
+   slice: findings, counts by severity, and whether it was independent. Count by the severity you
+   filed, not the slice's adjectives, then say in one line whether it is converging. **The rule has
+   a consequence attached; a table that never triggers it is decoration.**
+5. **Record it**: a close comment on the slice issue, and lane-form session entries in
+   `Diagnostic/TUNING_LOG.md` / `Blueprint/BUILD_DECISIONS.md` if the tree changed. **An empty slice
+   is a real result** — record it as one rather than manufacturing findings to justify the run.
+6. **Name what runs next** in the order above, and whether fix-side work blocks it. Fixes are
+   separate work; do not start them in the same session without saying so.

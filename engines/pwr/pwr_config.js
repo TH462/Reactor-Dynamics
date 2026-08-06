@@ -84,10 +84,57 @@
       // of silent until prompt-critical. Sized so the hot_zero_power margin
       // (−1000 pcm) equilibrates at exactly the state's P0 = 1e-6. [tune]
       source: 1.0e-6,
-      // Decay heat: two-term exponential, initialized at scram (→ ~7% of rated).
+      // DECAY HEAT — FOUR exponential groups, FITTED TO A SOURCED CURVE (#364, 2026-08-05).
+      // NOT `[tune]`: these are a fit to a published standard, not free parameters. Do not
+      // nudge them to make a scenario behave; if a scenario needs different pacing, that is a
+      // scenario problem.
+      //
+      // WHAT THEY REPLACED, and why it had to move. Two groups at tau 2000 s and 13.9 h, with
+      // nothing faster — so the curve was flat exactly where a real one falls fastest.
+      // MEASURED against the target below: **142.5 % maximum relative error**, worst at
+      // t = 794 s, i.e. the model carried ~2.4x the real decay heat through the ten-minutes-to-
+      // half-hour band that every casualty in this trainer plays out in. Ruled a refit rather
+      // than a declared departure *(OWNER RULING, 2026-08-05: "I think we should re-fit the
+      // decay heat curve for several reasons one this is going to be used to train engineers
+      // and some of them are nuclear engineers and will nitpick this if it's not correct two I
+      // need to redo all of the missions anyway they need a complete redo so I am not worried
+      // about it messing up missions.")*.
+      //
+      // THE TARGET — two independent NRC primaries, which CROSS-CHECK:
+      //   FISSION PRODUCTS — ML050910161 (WCOBRA/TRAC ch. 8) Table 8-3, "Decay Heat Standard
+      //     Data for U-235 Thermal Fission", ANSI/ANS 5.1-1971 in closed form over
+      //     0.1 s .. 2e8 s:  DH(t) = A·t^B, with (A, B) = (0.07236, −0.0639) for t < 10 s,
+      //     (0.09192, −0.181) to 150 s, (0.156, −0.283) to 4e6 s, (0.3192, −0.335) beyond.
+      //     The table states it "includes 20% required Appendix K uncertainty".
+      //   ACTINIDES — ML021720702 ("Attachment 1, Appendix K Decay Heat Standards") Table 2
+      //     column 0 is (fission products + actinides) x 1.2, so the actinide term is that
+      //     column minus Table 8-3. Measured 0.18..0.34 % of rated across the band; carried as
+      //     the power law 5.401e-3·t^-0.0984 that fits those seven points.
+      //   THE CROSS-CHECK IS THE POINT: two documents, different authors, different methods,
+      //     and their difference is a physically sensible actinide contribution rather than
+      //     noise. Either alone would have been one source.
+      //
+      // DIVIDED BY 1.2, deliberately. That multiplier is a LICENSING margin — the document
+      // calls it "the maximum positive value from the uncertainty table … for shutdown times
+      // less than 10^7 seconds" — and it belongs in an ECCS evaluation model, not in a
+      // simulator claiming to show what a plant actually does. We model the plant.
+      //
+      // THE FIT: amplitudes by relative-error least squares on a fixed lambda ladder, lambdas
+      // by grid search then coordinate descent, over 1 s .. 1e5 s (27.8 h) — the window every
+      // casualty and every long ride in this trainer lives in. Four groups is the knee:
+      // 3 groups 11.8 %, **4 groups 4.86 %**, 5 groups 3.31 %. Beyond 1e5 s the fit
+      // EXTRAPOLATES; the sourced fission-product law runs to 2e8 s but the actinide power law
+      // is fitted only to 1e4 s, so do not quote this curve past ~28 h as sourced.
+      //
+      // f0 IS DERIVED FROM THESE, NOT SEPARATE: pwr_engine step 4 computes
+      // `_Q_total = _P·(1 − sum H_0) + sum H`, so the sum below IS the fraction of rated power
+      // that is decay heat at equilibrium. It moves 0.0700 -> 0.06248, which is the sourced
+      // curve's own t->0 value and is why full-power core heat still normalizes to 1.0.
       decay: {
-        H1_0: 0.05, H2_0: 0.02,            // components at scram
-        lambda_1: 0.0005, lambda_2: 0.00002, // s^-1 [tune]
+        H1_0: 0.0268319, lambda_1: 0.0303948,    // tau     33 s
+        H2_0: 0.0193747, lambda_2: 0.00130630,   // tau    766 s
+        H3_0: 0.00772324, lambda_3: 0.0000794659, // tau  12584 s
+        H4_0: 0.00855037, lambda_4: 0.00000287062, // tau 348357 s
       },
       // Xenon / iodine (normalized to equilibrium xenon at full power).
       xenon: {
@@ -370,7 +417,32 @@
       // stayed unremarkable). The bulk h_fc collapse below 0.50 is unchanged; this
       // node covers the band above it that previously had zero consequence.
       clad_heat_gain: 15.0,        // °C/s of exposed-clad heatup per unit total heat (_Q_total is FRACTIONAL, 1.0 = rated) at full uncovery — ~0.9 °C/s at early (6 %) decay heat, the observed TMI/severe-accident order [tune]
-      clad_steam_h: 1.0e-4,        // 1/s — steam-convection cooling of the exposed clad toward Tsat; sets the equilibrium gradient (grazing uncovery late in decay stabilizes below damage; deep or early uncovery runs away) [tune]
+      // 1/s — steam-convection cooling of the exposed clad toward Tsat. Sets the EQUILIBRIUM
+      // GRADIENT of the hot node: clad_eq − Tsat = clad_heat_gain·Q·f_unc / clad_steam_h, so
+      // this constant is what decides which uncoveries damage (grazing uncovery late in decay
+      // stabilizes below damage; deep or early uncovery runs away). [tune]
+      //
+      // RE-SOLVED 1.0e-4 -> 4.0e-5 FOR THE #364 DECAY REFIT (2026-08-05). It sits on the
+      // COOLING side of a balance whose HEATING side is decay heat, and the refit cut decay
+      // heat ~2.4x in the band this node lives in — so the line it draws moved, and a core
+      // held in the 50–70 % band stopped damaging at all. MEASURED before the re-solve: held
+      // at 60 % inventory, the clad climbed 698 -> 1109 °C and DECELERATED below the 1200 °C
+      // threshold, never damaging even at 40 000 s (11 h).
+      //
+      // 2.5x DOWN AGAINST A 2.4x DROP IN THE HEAT INPUT — i.e. the coefficient tracks the
+      // change on the other side of its own balance, which is the derivation and not a fit to
+      // a probe. Swept, held-at-60 % branch, time to clad damage:
+      //     1.0e-4  never (peak 1109)   8.0e-5  8990 s      6.0e-5  6855 s
+      //     5.0e-5  6215 s              **4.0e-5  5710 s**  3.0e-5  5300 s   2.0e-5  4950 s
+      // The PROMPT-REFLOOD branch is protected at EVERY value in that sweep (peak 592 °C), so
+      // the discrimination this constant exists for is not what the choice within the range
+      // is about — inventory recovery protects that case, not this coefficient. What the
+      // choice sets is the damage TIMING on the held branch, and 4.0e-5 puts it at 95 min,
+      // inside the TMI-2 window MD-9 asserts (core damage there began around 2.5 h).
+      //
+      // perturb_sweep BEFORE the move (house rule): ±30 % flips NO verdict in either the §14
+      // scenario suite or the behaviour battery, so the blast radius is genuinely local.
+      clad_steam_h: 4.0e-5,
       clad_quench_tau: 120.0,      // s — reflood/rewet relaxation of the hot node back to the wetted-core temperature (quench-front timescale, minutes) [tune]
       // ZIRCONIUM-STEAM OXIDATION on the exposed-clad hot node (#238, built 2026-08-03).
       // Zr + 2H2O -> ZrO2 + 2H2. See pwr_thermal.stepCladding for the form and why it is
@@ -404,12 +476,21 @@
         // Oxidation heat at ref_temp_c, as a fraction of RATED core heat. SECONDARY, and it
         // is the LOAD-BEARING one - the whole calibration hangs off it. The claim is that at
         // ~2200 F the oxidation heat equals the decay heat 8 hours after shutdown, and no
-        // primary for it was retrieved. Applied to THIS plant's two-group decay curve, whose
-        // 8-hour figure is 1.1243 % of rated - which transfers a RATIO stated for a real
-        // core onto our decay model. So: re-derive this if the decay groups are re-fitted,
-        // and note that if our 8-hour decay heat is unrepresentative the absolute oxidation
-        // heat inherits that. The melt timings are an output CONDITIONAL on this number.
-        q_ref: 0.011243,
+        // primary for it was retrieved. The RATIO is still unsourced; what changed is what it
+        // is applied to.
+        //
+        // RE-DERIVED 2026-08-05 FOR THE #364 REFIT, which is what the previous note here
+        // instructed ("re-derive this if the decay groups are re-fitted") and why that note
+        // was written. This plant's 8-hour decay heat was **1.1243 %** of rated on the old
+        // two-group curve and is **0.8658 %** on the sourced four-group one, so the same claim
+        // now transfers onto a decay model that tracks a published standard within ~4 % rather
+        // than one running ~2.4x high. The warning the old note carried — "if our 8-hour decay
+        // heat is unrepresentative the absolute oxidation heat inherits that" — is materially
+        // weaker now, and that is the whole benefit: the inherited error is gone even though
+        // the ratio itself is no better sourced than before.
+        // MEASURED full stack, scram at 30 s: 8 h = 0.8658 % (sourced target 0.8750 %, -1.1 %).
+        // The melt timings remain an output CONDITIONAL on this number.
+        q_ref: 0.008658,
         // s - time to grow the reference oxide at ref_temp_c; sets how fast the protective
         // layer throttles the reaction. [tune]. Corroboration: Baker-Just reaches 17 % ECR -
         // the 10 CFR 50.46(b)(2) limit, REGULATORY PRIMARY - in ~80 s at 1204 C for typical
@@ -748,53 +829,22 @@
       // is one fewer asymmetry, not one more. `cvcs_charge_per_level` was deliberately NOT
       // scaled to hold 83 s: that would restore the split this change exists to remove. [tune]
       level_per_mass: 776.0,
-      // % level per inventory-fraction SURPLUS above nominal — the "going solid" regime.
+      // `level_per_mass_surplus` WAS HERE AND IS RETIRED (#365, collapsed 2026-08-05 on
+      // OWNER RULING: "365: collapse."). It was 776.0 — the SAME value as `level_per_mass`
+      // since #330 — so the piecewise branch that chose between them returned one number on
+      // both legs, in two places (pwr_pressurizer's `levelRaw` mass term and `stepPressure`'s
+      // `surge_rate`), and in a third as the solid-gain denominator.
       //
-      // THE SAME NUMBER AS THE DEFICIT BRANCH SINCE #330, and this comment claimed
-      // "steeper than the deficit branch" until 2026-08-05 (#365), which had been false
-      // since the day #330 landed. The reason they are equal is directly below and in
-      // `level_per_mass`: the pressurizer steam space is the only compressible volume in
-      // a subcooled loop, so it absorbs a deficit at the same rate it absorbs a surplus.
-      // The two consumers of the piecewise (pwr_pressurizer levelRaw and stepPressure's
-      // surge_rate) therefore take the same slope on both legs. Moving ONE of these two
-      // constants is silently wrong in two places at once; move both or neither.
+      // WHY IT COULD NOT JUST BE LEFT: a fork whose branches are identical can never be
+      // exercised apart, so no gate can see a future edit to one and not the other — the
+      // plant would then behave two ways in two places with every runner green. That is
+      // #315's shape, and it is why this was a maintenance hazard rather than a spare knob.
+      // The physics is `level_per_mass`'s own note: the pressurizer steam space is the only
+      // compressible volume in a subcooled loop, so it absorbs a deficit at the rate it
+      // absorbs a surplus — the geometry does not know which way the flow is going.
       //
-      // FITTED TO REAL GEOMETRY 2026-07-30 (#249, OWNER RULING 2026-07-30: "249 - fit it.").
-      // Was 300, which was never derived from anything. The physical surplus between
-      // full-power level and water-solid is the pressurizer STEAM SPACE as a fraction of
-      // RCS volume:
-      //     BVPS-2 UFSAR Table 5.1-1 (ML22144A118) — total RCS incl. pressurizer and
-      //       surge line = 9,650 ft³; Table 5.4-12 — pressurizer = 1,400 ft³
-      //     WTSM 3.2 Table 3.2-2 (ML11223A213) — full-power steam volume is 720 of
-      //       1,800 ft³, i.e. 40 % of the vessel
-      //     ⇒ 0.40 × 1,400 / 9,650 = 0.0580 of RCS volume. THAT IS THE WHOLE HEADROOM.
-      // This sim spans nominal (55 %) → solid (100 %) = 45 points of level, so
-      //     45 / 0.0580 = 776 %/frac.
-      // Assumes indicated level ≈ volumetric fraction — this sim's convention, not
-      // necessarily a real calibrated span. Stated because it is the one soft step.
-      //
-      // WHY IT HAD TO MOVE, not just "for fidelity". At 300 the going-solid coordinate
-      // was 0.15 wide, and `primary.mass_max` (1.2) clipped inventory BEFORE the
-      // pressurizer could read solid: with base(Tavg) at its 28 % floor — which every
-      // quench below 559.8 °F (293.2 °C) reaches — indicated level pinned at exactly
-      // 28 + 300×0.20 = 88.00 % and stayed there. Measured, HPI at HFP: inventory
-      // clipped at 120.00 %, level 88.00 %, forever. So THE PLANT COULD NOT GO SOLID ON
-      // INJECTION — the TMI lesson it is built around. Injection-verified: 776 reaches
-      // 100.0 % with mass_max untouched; raising mass_max instead "works" but reads
-      // 134.8 % inventory, and zeroing the floor makes it worse (peak 71.5 %).
-      // `mass_max` is no longer binding on this path (solid lands at Δm 0.058 hot,
-      // 0.093 floored) — it is now a far-away numerical guard, which is what it should
-      // always have been.
-      //
-      // NOT changed alongside it: `cvcs_charge_per_level`. An earlier draft proposed
-      // scaling it to hold the loop τ — that was wrong, because the documented τ (83 s)
-      // was the DEFICIT branch at the then-current level_per_mass of 100, and scaling the
-      // gain would have slowed leak make-up to 215 s to fix a surplus-side number.
-      // WRITTEN WHEN THE TWO BRANCHES STILL DIFFERED (#249): it said "the servo is simply
-      // faster on the SURPLUS side now (27.8 → 10.7 s)". Since #330 raised the deficit
-      // slope to match, there is no side — both branches are 10.7 s, which is the one τ
-      // this plant has. Measured, it does not hunt. [tune]
-      level_per_mass_surplus: 776.0,
+      // To re-split it, restore the branch AND derive the second slope; do not reintroduce a
+      // second name holding the same number.
       // % level per void-fraction — the TMI lift. Calibrated so the story-clock void
       // (~0.2 as HPI fires) lifts level past the 75 % high alarm (the "going solid" call
       // that throttles HPI), and deep voiding pegs the gauge high (historical).
@@ -911,11 +961,25 @@
       // (nrc.gov 403s; the ERG/EOP verification criteria are not public), and the "2–5 %"
       // in the old §8.6 and Manuals/01 was inherited prose with no citation — so it is NOT
       // being used as an anchor. C is fitted so the plant lands where its OWN energy balance
-      // says it must: ~4 % flow against ~5 % decay heat a few minutes post-trip, which the
-      // ΔT relation then puts at a loop split of ~41 °C (74 °F) — larger than the 33 °C
-      // (59 °F) rated split, as it must be when the same heat moves on a twentieth of the
-      // flow. The claim being made is the SHAPE (W ∝ Q^⅓, and "decay heat only") which is
-      // sourced; the SCALE is this plant's, and is marked as such in §8.6's replacement row.
+      // says it must. The claim being made is the SHAPE (W ∝ Q^⅓, and "decay heat only")
+      // which is sourced; the SCALE is this plant's, and is marked as such in §8.6's
+      // replacement row.
+      //
+      // C IS UNCHANGED BY THE #364 DECAY REFIT, AND THAT IS DELIBERATE — but the numbers it
+      // was justified with have moved, so the justification is restated rather than left to
+      // rot. C is a HYDRAULIC constant: it encodes loop geometry and resistance in
+      // W = C·√ΔT, and it does not depend on how much decay heat there is. What depends on
+      // decay heat is where the plant LANDS, and that moves on its own through W ∝ Q^⅓.
+      //
+      // The old note read "~4 % flow against ~5 % decay heat a few minutes post-trip …
+      // a loop split of ~41 °C (74 °F), larger than the 33 °C (59 °F) rated split". That
+      // anchor was measured against the pre-#364 curve and was ~1.7x high: the sourced curve
+      // puts a few minutes post-trip at ~3 % of rated, not 5 %. Re-derived on the same two
+      // relations at Q = 0.03: W = (C²·delta_T_rated·Q)^⅓ = **3.4 %** of rated flow, and
+      // ΔT = delta_T_rated·Q/W = **29 °C (53 °F)**. Note the split is now slightly BELOW the
+      // rated 33 °C rather than above it — flow falls as the cube root of heat, so it does not
+      // fall as far as the heat does, and the old "must be larger" reasoning only held while
+      // the decay heat was overstated. TR-15 leg A's 1–8 % band still contains it.
       natural_circ_coeff: 6.228e-3,   // C in W = C·√ΔT  [tune] — see the fit above
       natural_circ_max: 0.08,         // hard cap, frac of rated. WTSM: "not for power operation" [tune]
       // VOID CUTOFF. Natural circulation needs a CONTINUOUS LIQUID PATH; once the loop
@@ -934,7 +998,26 @@
       // suppressing the real thing.
       natural_circ_indicate_frac: 0.01,   // [tune]
       low_flow_trip: 0.25,         // true-flow trip (documented HR1 exception)
-      mass_max: 1.2,               // clip ceiling for primary_mass
+      // NUMERICAL GUARD, NOT A PHYSICAL CEILING — and it must stay UNREACHABLE (#361).
+      //
+      // It has never been derived from anything, and it should not be: there is no vessel
+      // volume at which an RCS stops accepting mass, only a pressure at which the relief path
+      // opens. 1.2 is simply far enough above the physical settling point to be out of the way.
+      // THAT point IS derived, by the level geometry: the plant is solid where the level line
+      // reaches 100, i.e. m = 1 + (100 − base(Tavg))/level_per_mass_surplus, which on a quenched
+      // large break (base at the 28 % floor) is 1 + 72/776 = **1.0928**. MEASURED 109.3 % against
+      // 109.28 % predicted, ~10.7 points clear of this clip.
+      //
+      // WHEN IT IS REACHED, IT IS A BUG BY DEFINITION, and it hides itself: `stepInventory`
+      // clips `m_surge` here too, so `_dmass_dt` goes to zero at the ceiling and the surge
+      // driver stops seeing the very mass that is piling up (#346's defect, and #361 walked
+      // back into it from the other side — a liquid break double-counted through
+      // `K_leak_depressurize` held pressure 2000 psi below the relief ladder, so injection
+      // never terminated and inventory reached 120.00 % at 21 min and pinned).
+      // RAISING IT IS NOT A FIX AND WAS MEASURED: at 3.0 the plant runs to 300 % inventory with
+      // pressure still parked in the PORV band (#346). CA-12 leg C asserts the peak stays below
+      // 119.0 for exactly this reason — the ceiling must never be the thing that stops the fill.
+      mass_max: 1.2,               // clip ceiling for primary_mass — see above; keep unreachable
       // ------------------------------------------------- BREAK DISCHARGE (#334 item 2, 2026-08-04)
       // A LOCA break used to flow at a CONSTANT rate, set once when the failure was
       // injected and never varying — so the same break discharged identically at 2235 psi
@@ -1088,6 +1171,42 @@
       sg_safety_open_mpa: 9.31,    // pop
       sg_safety_reseat_mpa: 9.0,   // reseat
       sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
+      // ---- ATMOSPHERIC DUMP VALVES (ADV) — #371, audit #297 F3 -------------
+      // The condenser-independent steam path. Until #371 the ONLY controllable
+      // secondary heat sink was dump-to-condenser, so losing the condenser left
+      // no cooldown path at all: measured, four plant-hours flat at 304–305 °C
+      // with the safeties chattering and RHR entry unreachable. ADVs are
+      // UPSTREAM of the MSIV, like the code safeties, and OUTSIDE the C-9
+      // condenser-available interlock — which is the one thing here the corpus
+      // does source, since WTSM §11.2 (ML11223A294) puts the condenser dump
+      // squarely behind that interlock and calls the whole system *"not
+      // required for the safe shutdown of the reactor"*, i.e. something else
+      // does the safety-grade job.
+      //
+      // EXISTENCE, PURPOSE, CAPACITY AND SETPOINT ARE ALL UNVERIFIED. **No
+      // document in any lane's corpus contains "atmospheric" in a steam-relief
+      // sense** — §11.2 is dump-to-condenser throughout, §5.7's only hit is the
+      // turbine-driven AFW pump's own exhaust, §19.0 has none. The closest
+      // support is indirect: §5.7.6 defines AFW as maintaining inventory *"for
+      // removal of heat energy from the RCS by secondary side steam release"*
+      // and never names the release path. So this is a stated engineering
+      // choice, not a citation — the `afw_flow_frac` convention.
+      //
+      // adv_max 0.10 IS SIZED, not guessed, against two measurable duties:
+      //   · hold a bottled SG below the 9.31 MPa pop on decay heat (~2 % of
+      //     rated at an hour), which 10 % clears 5× over — so it can COOL, not
+      //     merely hold; and
+      //   · reach the RHR block-open permissive (2.76 MPa, Tavg ≈ 193 °C) on a
+      //     timescale where the ~55 °C/hr technical-specification cooldown limit
+      //     is achievable AND exceedable. That is the point: #375 just gave the
+      //     board a cooldown-rate meter and ±100 °F/hr annunciators, and a valve
+      //     that cannot exceed the limit turns holding it into a formality
+      //     rather than a skill.
+      // Setpoint sits ABOVE the 8.23 dump anchor so the condenser dump does all
+      // normal duty and the ADV never lifts while the condenser is there, and
+      // full-open (8.85) stays below the 9.31 pop so without a condenser it is
+      // the ADV, not the safeties, that holds the generator. [tune]
+      adv_setpoint: 8.60, adv_band: 0.25, adv_max: 0.10,
       // AFW capacity vs the real plant, worked (#374 evidence pass): the real
       // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
       // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0
@@ -1424,6 +1543,78 @@
       rhr_gain: 0.03,              // heat-removal gain at full HX flow (Q per °C above sink)
     },
 
+    // ------------------------------------------------------------------ containment
+    // #386 stage 1 (2026-08-05) — the containment BUILDING as a lumped receiving
+    // volume. Before this, containment was two constants and a declared exclusion
+    // (Manuals/12 §13.0): the break discharged into a fixed 0.1 MPa
+    // (primary.break_backpressure_mpa) and the relief valves into a fixed 0.103
+    // (pressurizer.P_containment), forever. Both constants REMAIN, as the initial /
+    // fallback backpressure — the live state starts there and rig-built states
+    // without containment fields fall back to them — but the running plant now
+    // discharges into a volume whose pressure RISES, and the break/relief √Δp laws
+    // read that live pressure in their numerators. The spans stay config-fixed:
+    // the orifice coefficient is a rated-flow-at-rated-Δp calibration, not a
+    // function of where the discharge lands.
+    //
+    // MODEL. One steam inventory (_ctmt_steam, normalized RCS-mass units — the same
+    // currency leak_flow and the ECCS curve use) behind three terms:
+    //   in:   break liquid × a FLASH FRACTION + relief flow at 1.0 (already steam)
+    //   out:  _ctmt_steam / passive_sink_tau_s (condensation on structures → sump)
+    //   P  =  ambient_pressure_mpa (air partial, fixed) + press_gain · _ctmt_steam
+    // The flash fraction is cp·(T_source − T_sat(P_ctmt))/h_fg ≈ (Tavg − T_sat)/540:
+    // liquid discharged from a hot RCS flashes partly to steam; liquid at or below
+    // the containment saturation temperature rains into the sump and moves pressure
+    // NOT AT ALL. That gate is what makes the model behave, and the Q0 sweep below
+    // is why: with unlimited RWST a LOCA is sustained feed-and-bleed, discharging
+    // 36–229 RCS masses in 30 min (severity 0.05–1.0) — unbounded in time — but the
+    // FLASH-WEIGHTED steam yield is bounded and severity-compressed, 3.3–5.2 units,
+    // saturating in 5–10 min as the ECCS quench takes the source below flashing.
+    // Containment pressure therefore peaks on the hot early blowdown and then
+    // decays on the passive sink while cold spill runs to the sump — which is the
+    // real shape of a LOCA containment response.
+    //
+    // SOURCES (fetched, inbox/sources/). Setpoint anchors for stage 2, quoted here
+    // because they SIZE stage 1's gain: WTSM 12.3 (ML11223A310): SI actuation on
+    // high containment pressure "The setpoint for this protection signal is
+    // 3.5 psig … cannot be blocked by the operator"; containment spray on hi-hi,
+    // "The setpoint is 30 psig." WTSM 5.0 (ML11223A218): spray actuates "when
+    // containment pressure reaches approximately half of design pressure" — with
+    // spray at 30 psig that puts DESIGN PRESSURE ≈ 60 psig = 0.515 MPa abs, the
+    // only design-pressure statement in any lane's corpus (a citable inference,
+    // and design_pressure_mpa below carries it). NO document in the corpus gives
+    // free volume, so press_gain is FITTED. MEASURED at 0.08 (full stack, hot full
+    // power, TUNING_LOG 2026-08-05-develop-a): full-size break peaks 0.384 MPa abs
+    // (41 psig) at ~2 min — ⅔ of design pressure, the licensing-margin shape (a
+    // real DBA calculated peak sits UNDER design, that being what the margin is
+    // for) — and the stage-2 setpoints grade correctly: every containment-side
+    // break crosses 3.5 psig within minutes (severity 0.05 in under 2 min), while
+    // only large breaks reach the 30 psig spray point (severity 0.5 peaks 33 psig,
+    // 0.2 peaks 25 psig), matching WTSM 12.3's "a very high containment pressure
+    // is indicative of a large line break".
+    containment: {
+      ambient_pressure_mpa: 0.1013, // MPa abs — air partial pressure; fixed, NOT [tune]
+      ambient_temp_c: 38.0,         // °C (~100 °F) — normal containment ambient
+      // Design pressure, abs. Sourced by inference (see header): 60 psig.
+      // Structural reference for indication/probes — nothing clips to it.
+      design_pressure_mpa: 0.515,
+      // MPa of steam partial pressure per normalized unit of steam inventory.
+      // FITTED (no sourced free volume exists): full-size break peaks at ~design
+      // pressure. Q0: yield 5.2 units → 0.08. [tune]
+      press_gain: 0.08,
+      // Flash-fraction span, °C: fraction = (T_source − T_sat(P_ctmt)) / this.
+      // h_fg/cp at ~atmospheric ≈ 2257/4.18 ≈ 540 — a PHYSICAL ratio, not a fit.
+      flash_span_c: 540.0,
+      // Passive heat-sink condensation time constant (walls, structures, coolers
+      // OFF — stage 2 adds the active systems). Sets both the no-spray decay after
+      // a blowdown and the equilibrium a sustained hot leak parks at. [tune]
+      passive_sink_tau_s: 1800.0,
+      // Normalized discharged-liquid units at 100 % indicated sump level. Sizing:
+      // the full-break 30-min ride discharges ~229 units → reads ~76 %; an RCP seal
+      // leak creeps. Indication only — no recirculation (no RWST inventory exists
+      // to swap from; declared, Manuals/12 §13.0). [tune]
+      sump_ref: 300.0,
+    },
+
     // ------------------------------------------------------------------ rods
     rods: {
       // Fine-step drive (rod-granularity retune 2026-07-23). The single lumped bank
@@ -1469,7 +1660,15 @@
     physics_failures: {
       ROD_RUNAWAY_RATE_MAX: 24.0,  // steps/s (fine steps — same fraction-of-travel/s as 6.0 on 228)
       STUCK_ROD_MAX_FRAC: 0.4,     // fraction of rod_worth_total
-      STEAM_BREAK_RATE: 1.5,       // MPa/s at full break size
+      // Break strength, still expressed as its RATED-PRESSURE dP/dt equivalent so the
+      // number means what it always meant — but since #370a the break is a MASS FLOW,
+      // not a pressure sink: pwr_steam_generator divides this by K_steam_pressure to
+      // get the flow that produces exactly this dP/dt through the pressure integral,
+      // then scales it by upstream pressure. Verified byte-identical to the old sink
+      // across {downstream, upstream} × {0.15, 0.30, 0.80} × {MSIV open, shut} when
+      // the flow is fed only to the pressure integral. Change this to change break
+      // strength; do not re-add a separate sink. [tune]
+      STEAM_BREAK_RATE: 1.5,       // MPa/s at full break size, at rated pressure
       DEFAULT_DRIFT_RATE: 0.5,     // instrument drift units/s
       DEFAULT_NOISE_SCALE: 5.0,    // noisy-mode sigma multiplier
     },
@@ -1615,7 +1814,18 @@
       // run_campaign pwr_rod_auto's override, run_m5's second alarm). Physically it is
       // also the right call: this transmitter measures the same steam as `steam_flow`,
       // so giving it an independent jitter would double-count the same noise source.
-      sg_steam_flow:           { lag: 1.0, noise: 0, range: [0, 1.2] },
+      // SPAN WIDENED 1.2 → 2.0 (2026-08-05, #370c). This is the transmitter the
+      // automatic steam line isolation reads, and at 1.2 it SATURATED during exactly
+      // the casualty it discriminates: true total draw on a full-area break is ~1.75
+      // rated (turbine 1.0 + break 0.75), so every break from ~40 % upward read the
+      // same pegged 1.200 and the gauge could not tell a nuisance from a rupture.
+      // Measured consequence at the old span: the 30 % break peaked 1.149 against a
+      // 1.15 setpoint — one thousandth of margin, i.e. a coin toss deciding whether
+      // an OTΔT measurement baseline isolates. Widening costs nothing elsewhere: the
+      // reading only differs where it used to peg, noise is 0 so no PRNG draw moves,
+      // and the sole other consumer (the three-element feed channel) clips its own
+      // output at 120 % regardless.
+      sg_steam_flow:           { lag: 1.0, noise: 0, range: [0, 2.0] },
       // Circulating-water inlet temperature, °C. Slow (a river/tower inlet does not move
       // fast) and noise:0 per the rule above — appended last, so the RNG sequence is
       // byte-identical to before this instrument existed.
@@ -1657,6 +1867,18 @@
       // byte-identical, with `noise_failure` carrying the sigma an injected `noisy` failure
       // uses — without it that failure would be silently inert on this channel.
       pzr_spray_flow:          { lag: 1.0, noise: 0, noise_failure: 2.0, range: [0, 110] },
+      // Containment (#386 stage 1) — building pressure in ABSOLUTE MPa (the board
+      // shows psig; the conversion is display-side), atmosphere temperature, sump
+      // level. Same appended-instrument rule as rcs_flow/pzr_spray_flow: noise 0
+      // keeps the cross-step PRNG stream byte-identical, noise_failure carries the
+      // sigma an injected `noisy` failure would use. Pressure range [0, 0.8] holds
+      // the stage-2 protection setpoints (0.125 SI, 0.308 spray) and the 0.515
+      // design pressure STRICTLY inside — the run_reachability Part A requirement.
+      // The temperature channel is slow (a containment RTD reads a building, not a
+      // pipe); the sump channel is a float gauge.
+      containment_pressure:    { lag: 1.0,  noise: 0, noise_failure: 0.007, range: [0, 0.8] },
+      containment_temp:        { lag: 10.0, noise: 0, noise_failure: 0.5,   range: [0, 200] },
+      containment_sump_level:  { lag: 5.0,  noise: 0, noise_failure: 1.0,   range: [0, 100] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED
@@ -1721,6 +1943,12 @@
       // requires the channel to actually get there.
       otdt_margin:       { lag: 0,   noise: 0,     range: [-500, 1500], derived: true },
       opdt_margin:       { lag: 0,   noise: 0,     range: [-500, 1500], derived: true },
+      // ADV position (#371). APPENDED LAST and noise: 0, both deliberately — the
+      // instrument PRNG is one continuous cross-step stream, so a single extra
+      // draw shifts every downstream reading from that step on (the sg_steam_flow
+      // comment above names three marginal endpoints that moved for exactly one).
+      // Appending keeps the draw order of everything already here.
+      adv_valve:         { lag: 0.3, noise: 0,     range: [0, 100] },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/

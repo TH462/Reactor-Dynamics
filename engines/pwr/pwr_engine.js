@@ -174,10 +174,20 @@
   // core carries ~none. Replaces the old "switch on only at scram" form (§3).
   PWREngine.prototype._stepDecay = function (dt) {
     var s = this.s, dc = this.cfg.kinetics.decay;
+    // FOUR groups since #364 — see the sourced fit in pwr_config.kinetics.decay. Same law per
+    // group as the two-group form it replaces, so this is a widening rather than a new model.
     s._H1 += (dc.H1_0 * dc.lambda_1 * s._P - dc.lambda_1 * s._H1) * dt;
     s._H2 += (dc.H2_0 * dc.lambda_2 * s._P - dc.lambda_2 * s._H2) * dt;
-    s.decay_heat_pct = (s._H1 + s._H2) * 100;
+    s._H3 += (dc.H3_0 * dc.lambda_3 * s._P - dc.lambda_3 * s._H3) * dt;
+    s._H4 += (dc.H4_0 * dc.lambda_4 * s._P - dc.lambda_4 * s._H4) * dt;
+    s.decay_heat_pct = (s._H1 + s._H2 + s._H3 + s._H4) * 100;
   };
+
+  // The decay-heat group sum, in one place. `_Q_total` and every initializer read it, so a
+  // fifth group would be one edit here rather than five scattered ones — the copy-of-a-formula
+  // trap (#315) that this file has paid for repeatedly.
+  function decaySum0(dc) { return dc.H1_0 + dc.H2_0 + dc.H3_0 + dc.H4_0; }
+  function decaySum(s) { return s._H1 + s._H2 + s._H3 + s._H4; }
 
   // Xenon / iodine (§4).
   PWREngine.prototype._stepXenon = function (dt) {
@@ -427,7 +437,7 @@
     //    discontinuously when P crossed the decay floor. Both artifacts gone.
     this._stepDecay(dt);
     var _dc0 = this.cfg.kinetics.decay;
-    s._Q_total = s._P * (1 - (_dc0.H1_0 + _dc0.H2_0)) + (s._H1 + s._H2);
+    s._Q_total = s._P * (1 - decaySum0(_dc0)) + decaySum(s);
     // Emergency injection multiplier already on state; HPI flow computed in §9.
     // 5–6. Fuel and coolant temperatures (legs, true subcooling).
     TH.stepFuel(s, this.cfg, dt);
@@ -500,6 +510,11 @@
     // 14. Partial-uncovery hot node (#213), then fuel damage / melt at the peak.
     TH.stepCladding(s, this.cfg, dt);
     TH.checkDamage(s, this.cfg);
+
+    // 14c. Containment (#386 stage 1) — the lumped receiving volume for break and
+    // relief discharge. After inventory/pressure/cladding so its sources are
+    // same-step fresh; its consumers (break law, relief Δp) read it one step late.
+    PR.stepContainment(s, this.cfg, dt);
 
     // Smoothed power rate for shrink-and-swell.
     var raw_rate = (s.power_pct - s._prev_power_pct) / dt;
@@ -783,6 +798,7 @@
       // §8.8 instrument sources — TRUE sim flows/positions (indications ≠ command setpoints):
       charging_flow_actual: (PR.chargingPumpPowered(s) ? s.charging_flow : 0),
       letdown_flow_actual: s.letdown_flow, steam_dump_valve_pct: s.steam_dump_frac * 100,
+      adv_valve_pct: (s.adv_frac || 0) * 100, adv_flow_normalized: s.adv_flow || 0,
       turbine_tripped: !!s.turbine_tripped,
       leak_flow: s.leak_flow,
       // §7 true_state additions (governor / accumulators / RHR):
@@ -798,6 +814,13 @@
       accumulator_valve_open: s.accumulator_valve_open !== false,   // discharge isolation valve position
       // RHR hot-leg suction valve + ECCS mode (HPI/LPI/RHR/off) for the ECCS card.
       rhr_valve_open: !!s.rhr_valve_open, eccs_mode: s.eccs_mode || 'off',
+      // Containment (#386 stage 1) — the lumped receiving volume for break/relief
+      // discharge. Pressure is ABSOLUTE (the board's gauge conversion is display).
+      containment_pressure_mpa: s.containment_pressure_mpa != null
+        ? s.containment_pressure_mpa : this.cfg.containment.ambient_pressure_mpa,
+      containment_temp_c: s.containment_temp_c != null
+        ? s.containment_temp_c : this.cfg.containment.ambient_temp_c,
+      containment_sump_pct: s.containment_sump_pct || 0,
     };
   };
 
@@ -846,6 +869,9 @@
       cw_inlet_temp_c: s.cw_inlet_temp_c,   // circ-water inlet setting (set_condenser_cw_temp)
       steam_dump_pct: s.steam_dump_frac * 100,
       steam_dump_auto: s.steam_dump_override == null,
+      adv_pct: (s.adv_frac || 0) * 100,
+      adv_auto: s.adv_override == null,
+      adv_setpoint: (s.adv_setpoint != null ? s.adv_setpoint : this.cfg.steam_generator.adv_setpoint),
       steam_dump_setpoint: (s.steam_dump_setpoint != null ? s.steam_dump_setpoint : this.cfg.steam_generator.steam_dump_setpoint),
       governor_valve_pct: s.governor_valve_pct,   // turbine admission valve (engine-driven; read-only)
       hpi_active: s.hpi_active, rhr_active: s.rhr_active, rhr_valve_open: !!s.rhr_valve_open,
@@ -1116,6 +1142,21 @@
         else if (cmd.mode === 'open') s.steam_dump_override = 1.0;
         else if (cmd.mode === 'closed') s.steam_dump_override = 0.0;
         else if (cmd.pct != null) s.steam_dump_override = clip(cmd.pct / 100, 0, 1);
+        break;
+      case 'set_adv':
+        // Atmospheric dump valves (#371) — same verbs as the condenser dump so the
+        // operator learns ONE idiom for both steam paths. Ships CLOSED, not AUTO:
+        // see the declaration at pwr_steam_generator's ADV block.
+        if (cmd.mode === 'auto') s.adv_override = null;
+        else if (cmd.mode === 'open') s.adv_override = 1.0;
+        else if (cmd.mode === 'closed') s.adv_override = 0.0;
+        else if (cmd.pct != null) s.adv_override = clip(cmd.pct / 100, 0, 1);
+        break;
+      case 'set_adv_setpoint':
+        // Same clamp as the condenser dump's setpoint: never above the code-safety
+        // pop (a valve that opened above it would pre-empt the mechanical backstop),
+        // never below the 0.2 MPa floor where RHR takes over.
+        s.adv_setpoint = clip(cmd.mpa, 0.2, this.cfg.steam_generator.sg_safety_open_mpa);
         break;
       case 'set_rhr':
       case 'set_dhr':   // set_dhr: one-release alias for save/restore compatibility (RHR was DHR)
@@ -1514,7 +1555,9 @@
       // reactor that has been running a while), ~0 for a subcritical cold start.
       _H1: init.subcritical ? 0 : cfg.kinetics.decay.H1_0 * P0,
       _H2: init.subcritical ? 0 : cfg.kinetics.decay.H2_0 * P0,
-      decay_heat_pct: init.subcritical ? 0 : (cfg.kinetics.decay.H1_0 + cfg.kinetics.decay.H2_0) * P0 * 100,
+      _H3: init.subcritical ? 0 : cfg.kinetics.decay.H3_0 * P0,
+      _H4: init.subcritical ? 0 : cfg.kinetics.decay.H4_0 * P0,
+      decay_heat_pct: init.subcritical ? 0 : decaySum0(cfg.kinetics.decay) * P0 * 100,
       xenon_pct_eq: init.subcritical ? 0 : (X_eq0 / this._X_eq) * 100,   // % of full-power equilibrium xenon
       boron_ppm: 800,
 
@@ -1578,6 +1621,10 @@
       rcp_secured: false,
       // RCP cavitation (suction-node subcooling; pwr_primary.stepCavitation).
       suction_subcool_c: 0, rcp_cavitation_frac: 0, rcp_cavitating: false,
+      // Containment (#386 stage 1) — starts at ambient with nothing discharged.
+      containment_pressure_mpa: cfg.containment.ambient_pressure_mpa,
+      containment_temp_c: cfg.containment.ambient_temp_c,
+      containment_sump_pct: 0, _ctmt_steam: 0, _ctmt_sump: 0,
       // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
       sr_energized: !!init.sr_on,
       sr_counts_cps: init.sr_on ? cfg.nis.k_sr * P0 : 0,
@@ -1601,10 +1648,15 @@
       condensate_pump_running: true, condensate_flow_normalized: P0,
       afw_discharge_pressure_mpa: 0,
       steam_dump_override: null, steam_dump_frac: 0,   // B2 (null = auto)
+      // ADV ships SHUT (override 0, not null): with the condenser there the
+      // condenser dump does all normal duty, and a valve that opened on its own
+      // would take the code safeties out of every bottled-SG evolution (#371).
+      adv_override: 0, adv_frac: 0, adv_flow: 0,
       // Operator steam-dump pressure setpoint (the no-load secondary target the
       // AUTO dump holds). Default is the config no-load point; lowered during a
       // cooldown so the secondary — and with it the primary through the SG — cools.
       steam_dump_setpoint: cfg.steam_generator.steam_dump_setpoint,
+      adv_setpoint: cfg.steam_generator.adv_setpoint,
       feedwater_demand_frac: P0, feed_pump_speed_pct: P0 * 100, feedwater_flow: P0, main_feedwater_available: true,
       feedwater_isolated: false,   // P-14 main-feedwater isolation latch (AFW unaffected)
       afw_active: false, afw_pump_demand: false, afw_blocked: false, rhr_active: false,
@@ -1682,9 +1734,15 @@
       s._dTavg_dt = 0;
       // Recent-shutdown decay maintains hot loop while subcritical (not scrammed — HZP lineup).
       var dh = cfg.kinetics.decay;
+      // Long-shutdown residual: a Mode 5 plant has been down long enough that the fast
+      // groups are gone, so the residual is seeded as a small fraction of each group's
+      // equilibrium amplitude. Kept as the same 0.07 factor across all four groups, which
+      // reproduces the previous seeding for the two that already existed.
       s._H1 = dh.H1_0 * 0.07;
       s._H2 = dh.H2_0 * 0.07;
-      s.decay_heat_pct = (s._H1 + s._H2) * 100;
+      s._H3 = dh.H3_0 * 0.07;
+      s._H4 = dh.H4_0 * 0.07;
+      s.decay_heat_pct = decaySum(s) * 100;
       // Shutdown bank stays parked withdrawn at HZP (see SHUTDOWN_DRIVE hint); control bank is fully inserted.
     }
 
@@ -1706,7 +1764,7 @@
       s._Q_coolant_to_sg = 0; s._dTavg_dt = 0;
       // No decay heat — a core shut down long enough to be cold (overrides the
       // subcritical preload above, which is already ~0, and is explicit here).
-      s._H1 = 0; s._H2 = 0; s.decay_heat_pct = 0;
+      s._H1 = 0; s._H2 = 0; s._H3 = 0; s._H4 = 0; s.decay_heat_pct = 0;
       // RCPs secured; RHR forced circulation provides flow. flow_frac 0 decouples
       // the SG from the primary (heat path is RHR, not the steam generator).
       // rcp_secured: this is the planned cold lineup, not a lost pump — the board
@@ -1724,10 +1782,10 @@
       s.msiv_open = true;
       // Pressurizer level at a cold band. With DERIVED level, an IC level implies a
       // mass surplus over nominal (a cold plant really does hold more mass): invert
-      // level = floor + level_per_mass_surplus·(mass − 1) for the cold base line.
+      // level = floor + level_per_mass·(mass − 1) for the cold base line.
       if (init.cold_pzr_level != null) {
         s._mass = clip(1.0 + (init.cold_pzr_level - cfg.pressurizer.level_prog_floor)
-          / cfg.pressurizer.level_per_mass_surplus, 0, cfg.primary.mass_max);
+          / cfg.pressurizer.level_per_mass, 0, cfg.primary.mass_max);
         s.core_inventory_pct = s._mass * 100;
         s.pzr_level_pct = init.cold_pzr_level;
       }
@@ -1832,6 +1890,20 @@
   // documents the release that introduced it). Old fields are left in place —
   // extra keys in `s` are harmless.
   PWREngine.prototype._migrateState = function (s) {
+    // Decay heat went from two exponential groups to four (#364, 2026-08-05). A save written
+    // before that carries only _H1/_H2, and those two amplitudes belong to the OLD fit, so
+    // they cannot simply be kept. Re-seed all four from the power the save was at: decay heat
+    // is a function of operating history, and the best estimate of that history available in
+    // an old save is its own steady-state amplitude. Reconstruct P0 from the stored _H1 (the
+    // old H1_0 was 0.05), fall back to power_pct, and let the new groups take it from there.
+    if (s._H3 == null || s._H4 == null) {
+      var dcm = this.cfg.kinetics.decay;
+      var P0m = (s._H1 != null && s._H1 > 0) ? Math.min(s._H1 / 0.05, 1.2)
+              : (s.power_pct != null ? s.power_pct / 100 : 0);
+      s._H1 = dcm.H1_0 * P0m; s._H2 = dcm.H2_0 * P0m;
+      s._H3 = dcm.H3_0 * P0m; s._H4 = dcm.H4_0 * P0m;
+      s.decay_heat_pct = decaySum(s) * 100;
+    }
     // HPI/LPI merge: lpi_active folded into the one hpi_active flag.
     if (s.lpi_active) { s.hpi_active = true; }
     delete s.lpi_active; delete s.lpi_flow_normalized;
@@ -1889,6 +1961,15 @@
       s.rcp_secured = (s.pump_running === false && !!s.rhr_active && !s.station_blackout);
     }
     if (s._eccs_inj_inv == null) s._eccs_inj_inv = 0;
+    // Containment (#386 stage 1). A pre-containment save carries no discharge
+    // history to reconstruct, so it restores at AMBIENT — a save taken mid-LOCA
+    // resumes with a clean containment and repressurizes it from the still-open
+    // break. Declared in the migration rather than guessed at.
+    if (s.containment_pressure_mpa == null) s.containment_pressure_mpa = this.cfg.containment.ambient_pressure_mpa;
+    if (s.containment_temp_c == null) s.containment_temp_c = this.cfg.containment.ambient_temp_c;
+    if (s.containment_sump_pct == null) s.containment_sump_pct = 0;
+    if (s._ctmt_steam == null) s._ctmt_steam = 0;
+    if (s._ctmt_sump == null) s._ctmt_sump = 0;
     // Feed pump (replaced direct feedwater-flow demand).
     if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;
     // Nuclear instrumentation (SR/IR detectors).
@@ -1922,6 +2003,12 @@
     // state — seed it at the commanded setpoint (the save is settled there).
     if (s._pressure_sp_eff == null) s._pressure_sp_eff = s.pressure_setpoint;
     if (s.steam_dump_setpoint == null) s.steam_dump_setpoint = this.cfg.steam_generator.steam_dump_setpoint;
+    // ADV (#371). A pre-#371 save has no ADV at all, and the safe restore is SHUT —
+    // the lineup the plant ships with. `adv_override === undefined` rather than
+    // `== null`, because null is the meaningful AUTO value and must survive.
+    if (s.adv_setpoint == null) s.adv_setpoint = this.cfg.steam_generator.adv_setpoint;
+    if (s.adv_override === undefined) s.adv_override = 0;
+    if (s.adv_frac == null) s.adv_frac = 0;
     // Saves that predate the CW-temperature model restore at the reference temperature, so
     // they replay with exactly the vacuum behaviour they were recorded under.
     if (s.cw_inlet_temp_c == null) {
@@ -2277,7 +2364,13 @@
         h.run(60);
         var t = h.ts();
         ck('fission collapsed', t.power_pct.toFixed(3), t.power_pct < 5, '< 5%');
-        ck('decay heat persists ~7%→', t.decay_heat_pct.toFixed(2), t.decay_heat_pct > 4 && t.decay_heat_pct < 8, '4..8%');
+        // BAND RE-DERIVED FOR #364 (2026-08-05), sampled at t+60 s. It was 4..8 %, a fixture
+        // of the pre-refit two-group curve (~6.9 % here). The sourced curve — ANS 5.1-1971
+        // plus actinides, un-multiplied, see kinetics.decay — gives ~3.9 % at 60 s, and the
+        // plant measures 3.88 %. The claim, that fission collapses while decay heat persists
+        // at a substantial fraction of rated, is unchanged.
+        ck('decay heat persists (sourced ~3.9 % at t+60 s)', t.decay_heat_pct.toFixed(2),
+          t.decay_heat_pct > 2.5 && t.decay_heat_pct < 5.5, '2.5..5.5%');
         ck('rods inserted', h.eng.s.power_pct >= 0, h.eng._controlGroup().steps < 30, 'control rods in');
         ck('load disconnected on scram', h.eng.s.load_mode, h.eng.s.load_mode === 'disconnected', 'disconnected');
         ck('steam demand zero', t.steam_demand_mwe.toFixed(0), t.steam_demand_mwe === 0, '0');
@@ -2943,6 +3036,9 @@
         delete legacy.afw_discharge_pressure_mpa; delete legacy.steam_out_total;
         delete legacy.sr_energized; delete legacy.sr_counts_cps; delete legacy.ir_amps;
         delete legacy.rhr_hx_fraction; delete legacy._eccs_inj_inv;
+        // Containment (#386 stage 1): a pre-containment save has none of the five.
+        delete legacy.containment_pressure_mpa; delete legacy.containment_temp_c;
+        delete legacy.containment_sump_pct; delete legacy._ctmt_steam; delete legacy._ctmt_sump;
         // rcp_secured (#240) is INFERRED, not defaulted: a pre-#240 save has no
         // record of WHY the pumps are stopped, so the lineup has to say. This one
         // is the judgement call in the whole migration and it was unasserted.
@@ -2991,6 +3087,12 @@
           s.sr_energized === false && s.sr_counts_cps === 0 && s.ir_amps === 0, 'false / 0 / 0');
         ck('steam_out_total seeded from the turbine flow the save does carry',
           String(s.steam_out_total), typeof s.steam_out_total === 'number' && isFinite(s.steam_out_total), 'a finite number');
+        ck('containment restores at AMBIENT — a pre-#386 save carries no discharge history',
+          s.containment_pressure_mpa + ' MPa / ' + s.containment_temp_c + ' °C / sump ' + s.containment_sump_pct + ' %',
+          s.containment_pressure_mpa === cfg.containment.ambient_pressure_mpa
+            && s.containment_temp_c === cfg.containment.ambient_temp_c
+            && s.containment_sump_pct === 0 && s._ctmt_steam === 0 && s._ctmt_sump === 0,
+          'ambient / ambient / 0');
         // rcp_secured is the INFERENCE, and this save has pumps RUNNING — so the
         // benign "planned securing" reading must NOT be invented. The conservative
         // direction matters: mislabelling a real trip as a planned securing is the

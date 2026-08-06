@@ -865,6 +865,91 @@
     { instrument: 'primary_pressure', direction: 'low', setpoint: SI_MPA,
       action: 'isolate_feedwater', params: { active: true }, arm: 'hpi', seal_in: FWI_SEAL_IN }
   );
+
+  // ---------------------------------------------------------------- MSLI (#370)
+  // AUTOMATIC MAIN STEAM LINE ISOLATION. The real function (WTSM §12.3.5.1,
+  // ML11223A310): *"The main steam lines are isolated by (1) a high-high
+  // containment pressure signal or (2) high steam flow coincident with low-low
+  // Tavg or low steam pressure… this action should isolate the break from the
+  // steam generators and end its effects on the plant."* — and, pointedly,
+  // *"manually blocking the high steam flow SI actuation does NOT block the high
+  // steam flow steam line isolation."* Until #370 this plant had none of it: the
+  // MSIV was an operator control only, and an unattended downstream break ran to
+  // completion (audit #297 F1 — secondary to the 0.1 MPa floor in six minutes).
+  //
+  // WHAT IS BUILT, AND WHAT DELIBERATELY IS NOT — both decided by measurement:
+  //
+  //  (1) HIGH-HIGH CONTAINMENT PRESSURE is NOT built. This plant has no
+  //      containment model at all — no pressure, no temperature, no sump. There
+  //      is nothing to sense, and synthesising a signal to actuate protection on
+  //      is the #220 defect class §8.24 already refuses for the RCP-bus trips.
+  //
+  //  (2b) LO-LO TAVG is NOT built, and this one had to be MEASURED to know.
+  //      The flow and temperature terms are ANTI-CORRELATED here: break flow
+  //      scales with the pressure it is destroying, so by the time Tavg falls the
+  //      flow has already decayed. Measured with the pressure leg disabled, the
+  //      Tavg leg NEVER fires — not even on a 100 % break that reaches 168.7 °C,
+  //      because at every instant flow exceeds its setpoint Tavg is still ≥ 302.
+  //      A row that cannot arm is worse than an absent one: it reads as protection
+  //      on the board and in this file while doing nothing. Declared, not shipped.
+  //
+  //  (2c) LOW STEAM PRESSURE is the coincidence partner that works, and the pair
+  //      separates cleanly — measured across every normal evolution and both
+  //      break locations (see the write-up): steady power, 50 % and full load
+  //      rejection, turbine trip, MSIV closure, loss of condenser, loss of
+  //      feedwater, a full operator cooldown to 1.36 MPa and an SGTR all peak at
+  //      **1.02** indicated flow against a 1.25 setpoint, and the 15 %/30 % breaks
+  //      that OTΔT's runback baselines are measured on peak 1.077/1.149 — so they
+  //      still ride out, which is what makes them a runback case rather than an
+  //      isolation case. An 80 % break reaches 1.366 and a full-area one 1.443,
+  //      and both isolate ~1–2 s after the break opens.
+  //
+  // SETPOINTS ARE TUNED TO THIS PLANT, and say so. The real values are 600 psig
+  // low steam pressure and a high-steam-flow setpoint that *"varies with turbine
+  // load (impulse pressure)"* (Table 12.3-1). We build a FIXED flow setpoint —
+  // there is no impulse-pressure signal here — which is a declared departure: it
+  // under-protects at low load, where a break large in relative terms need not
+  // reach 1.25 of RATED flow. 5.20 MPa is high for a "low steam pressure" trip
+  // (normal is 5.65) because it is the CONFIRMING term, not the primary one: it
+  // has to be crossed while the flow spike is still up, and every normal
+  // evolution that takes pressure below it — the cooldown, the SGTR — holds flow
+  // at or under 1.00, so the coincidence is what protects them, exactly as in the
+  // real design. [tune]
+  //
+  // NO `arm`. An ESF system auto-disarms when the operator issues any command in
+  // its list (_esfManualScan), so an 'msiv' system listing open_msiv would let an
+  // operator silently take this isolation to MANUAL — precisely what the source
+  // forbids. The FWI rows above carry no arm for the same reason.
+  // THE SEAL-IN HAS TO LATCH, and finding out why is the measurement worth keeping:
+  // this protection EXTINGUISHES ITS OWN SIGNAL. Shutting the MSIV stops the steam
+  // flow that shut it, so a live-signal seal-in (the FWI kind) releases in the very
+  // instant it engages. Measured on the first cut: the isolation fired at 31.2 s and
+  // the operator reopened 1 s later with the command ACCEPTED, and because the plant
+  // had already tripped, the re-opened break sat at 0.734 indicated flow — under the
+  // setpoint — so it never re-isolated. The protection was defeatable the moment it
+  // worked. `latched` blocks on the actuation's fired latch instead.
+  //
+  // WHICH SIGNAL IS THE ROW'S OWN decides where the release comes from, so the pair
+  // is written pressure-primary / flow-confirming (the same coincidence either way).
+  // `reset_below` then reads STEAM PRESSURE RECOVERING: once the bottled generator
+  // has climbed back to 7.0 MPa it is demonstrably isolated and intact, which is a
+  // physical release condition rather than a magic reset button. Reopening before
+  // then is refused; after it, reopening is the operator's deliberate call on a
+  // plant that has visibly recovered.
+  var MSLI_SEAL_IN = {
+    latched: true,
+    // This protection is a PAIR OF ACTIONS, not one action with a param, so the
+    // kernel is told which verb is the undo — the same shape an interlock's
+    // `blocks` list already uses.
+    undoes: ['open_msiv'],
+    message_learning: 'The steam lines were isolated automatically on a steam line break. The valve stays shut until the generator has re-pressurized.',
+    message_industry: 'MSIV OPEN BLOCKED — steam line isolation sealed in',
+  };
+  PWR_ACTUATIONS.push(
+    { instrument: 'steam_pressure', direction: 'low', setpoint: 5.20,
+      condition: { instrument: 'sg_steam_flow', direction: 'high', setpoint: 1.25 },
+      action: 'close_msiv', reset_below: 7.0, seal_in: MSLI_SEAL_IN }
+  );
   // PI-3: reactor trip on safety injection — SI actuating means a real casualty;
   // the reactor does not stay at power through it. Keyed on the same low-pressure
   // signal as the SI ESF; blockable in the cold/shutdown regime via the same P-11
@@ -949,6 +1034,22 @@
       speeds: [{ above: 0.8, speed: 'slow' }, { above: 2.0, speed: 'normal' }, { above: 4.0, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
       // 228-step values, so the channel's authority in %-of-travel is unchanged.
+      // NO pvTau, AND NO STOP-EXIT TRAVEL CANCEL — both measured against the sourced TR-1i
+      // duty and both REJECTED (#378, 2026-08-06). The post-step limit cycle (TR-18, xfail)
+      // has two fixes that work and neither is shippable:
+      //   * pvTau breaks the duty at EVERY value tried — 0.5-3.0 s in the first diagnosis
+      //     (ramp 5.04-5.30 vs ≤ 5.00 °F) and even 0.2 s (5.38, step return 1.64 vs
+      //     < 1.5 °F). The instrument noise DITHERS the plant through the ±0.8 °C deadband,
+      //     so the raw-PV plant parks closer to program on average than the honest deadband
+      //     allows; filtered, it parks at the deadband edge, just outside the sourced bands.
+      //   * cancelling in-flight `rod_nudge` travel at the kernel's deadband exit kills the
+      //     cycle completely (13.8 pts p2p → 2.0, settles 14.6 min vs never) — and takes
+      //     the ramp duty 4.34 → 5.26 vs the sourced ≤ 5.00 °F, because the uncancelled
+      //     overshoot travel was silently helping the bank chase a sliding Tref. Same
+      //     collision as pvTau, arrived at from the opposite side: the duty is currently
+      //     met PARTLY BY the defect. Candidate that threads it (untried): gate the cancel
+      //     on the PROGRAM being stationary, so step-settling gets it and ramp-chasing
+      //     does not — see #378.
       gain: 1.6, db: 0.8, maxStep: 8, period: 5.0, fastAt: 4.0, kd: 5, spSlew: 0.05 },
 
     { id: 'boron_trim', kind: 'bang', group: 'Reactor',
@@ -1060,6 +1161,18 @@
       isOn: function (cs) { return !!cs.steam_dump_auto; },
       engage: function () { return [{ action: 'set_steam_dump', mode: 'auto' }]; },
       disengage: function (s) { return [{ action: 'set_steam_dump', pct: s.control_state.steam_dump_pct || 0 }]; } },
+
+    // The ADV's channel exists so the condenser-independent cooldown can be run the
+    // same way as any other — but note it ships OFF, unlike the dump's: the valve's
+    // default lineup is SHUT, and engaging AUTO is the operator saying "hold the
+    // generator at the ADV setpoint", which is a cooldown decision rather than a
+    // normal-operation one (#371).
+    { id: 'adv', kind: 'mode', group: 'Secondary',
+      label: 'Atmospheric dump (ADV)',
+      hint: 'Automatic pressure-mode atmospheric dump — vents steam to atmosphere above the ADV setpoint, and unlike the turbine bypass it does NOT need the condenser. This is the cooldown path when the condenser is gone. Manual = freeze at the current valve position (the shipped lineup is SHUT).',
+      isOn: function (cs) { return !!cs.adv_auto; },
+      engage: function () { return [{ action: 'set_adv', mode: 'auto' }]; },
+      disengage: function (s) { return [{ action: 'set_adv', pct: s.control_state.adv_pct || 0 }]; } },
 
     { id: 'grid_follow', kind: 'mode', group: 'Secondary',
       label: 'Turbine / grid (load follow)',

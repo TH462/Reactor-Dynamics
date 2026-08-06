@@ -233,6 +233,28 @@
     if (s.condenser_cooling_available === false) dump = 0;
     s.steam_dump_frac = dump;
 
+    // ATMOSPHERIC DUMP VALVES (#371) — a SEPARATE relief path, deliberately
+    // outside every gate above. Not capped by steam_dump_max (that is the
+    // sourced 40 % turbine-bypass capacity of a different valve), not zeroed by
+    // the MSIV (ADVs are upstream of it, like the code safeties below), and not
+    // zeroed by the condenser — which is the entire point of building them.
+    // It does NOT touch s.steam_dump_frac, so the dump's own indication,
+    // control_state and TR-8's "dump reads < 5 % with the condenser lost"
+    // assertion all stay exactly what they were.
+    //
+    // DEFAULT SHUT, and that is a design decision rather than an oversight
+    // (declared, §8.34): with adv_override 0 this term is identically zero and
+    // the plant is byte-identical, so every bottled-SG evolution the sim
+    // teaches — TR-5, TR-8, the MSIV mission, TR-12b's safety lift — is
+    // untouched. Shipping it AUTO at 8.60 would silently take the code safeties
+    // out of all of them. The gap §8.29 named is "there is no controlled
+    // cooldown path", and a lever the operator reaches for is what closes it.
+    var adv_sp = (s.adv_setpoint != null) ? s.adv_setpoint : sg.adv_setpoint;
+    var adv = (s.adv_override != null)
+      ? s.adv_override
+      : clip((s.steam_pressure_mpa - adv_sp) / sg.adv_band, 0, 1);
+    s.adv_frac = adv;
+
     // SG code safety valves — UPSTREAM of the MSIV, the relief that remains
     // when the SG is bottled. SELF-ACTUATING on TRUE steam pressure (#369): a
     // code safety is a spring-loaded ASME device opened by the fluid it
@@ -264,7 +286,45 @@
     // byte-identical — only the blown-down regime changes, and there the flow
     // now dies with the pressure that would have to drive it.
     var _dumpFlow = dump * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1);
-    var steam_out = s.steam_flow_normalized + _dumpFlow + sg_relief;
+    // §9.1 MAIN STEAM LINE BREAK — a MASS FLOW out of the generator (#370a, audit
+    // #297 F1 follow-on). It used to be a bare dP/dt sink applied after the
+    // pressure integral below, which meant a break removed no steam and no water:
+    // it never entered steam_out, so the SG did not drain, the feed controller
+    // never saw it, and `sg_steam_flow` — the instrument a real plant isolates on
+    // — FELL during a break instead of rising. Building the isolation on that
+    // signal would have been protection reading a number that moves the wrong way.
+    //
+    // CALIBRATION IS EXACT AND STRUCTURAL, not a comment: the pressure integral
+    // below is (generation − steam_out) × K_steam_pressure, so a flow F produces
+    // −K_steam_pressure·F MPa/s. Dividing STEAM_BREAK_RATE by K_steam_pressure
+    // therefore reproduces the old sink identically at rated pressure, and keeps
+    // STEAM_BREAK_RATE as the single knob for break strength.
+    //
+    // The break LOCATION gate is unchanged and is the whole of #199: a break
+    // DOWNSTREAM of the MSIV stops dead when the valve shuts — the operator's one
+    // real lever, and now also the automatic isolation's — while an UPSTREAM break
+    // is on the wrong side of every isolation this single-loop plant owns.
+    // The flow carries the UPSTREAM PRESSURE, the same factor the dump term above
+    // takes and for the same reason (#375): a hole in a blown-down line passes less
+    // than a hole in a pressurized one, and shipping a flat mass flow here would
+    // re-introduce the defect the previous change removed. The old sink had that
+    // defect in pressure form — it subtracted 1.5 MPa/s at 0.2 MPa as readily as at
+    // 5.65 — and converting it to mass is what makes it visible. At and above rated
+    // the two forms are identical, so every entry condition and ride-out is
+    // unchanged; only the blown-down tail moves, and there this form is the honest
+    // one. (Unclipped choked flow — a real break passes MORE above rated — is a
+    // separate question, filed rather than bundled into a commit that has to be
+    // provably faithful.)
+    var brk = s._fail.steam_break;
+    var _breakFlow = (brk && brk.active && (brk.upstream || s.msiv_open !== false))
+      ? (cfg.physics_failures.STEAM_BREAK_RATE / sg.K_steam_pressure) * brk.size
+          * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1)
+      : 0;
+    s.steam_break_flow = _breakFlow;
+    // The ADV carries upstream pressure like every other steam path here.
+    var _advFlow = adv * sg.adv_max * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1);
+    s.adv_flow = _advFlow;
+    var steam_out = s.steam_flow_normalized + _dumpFlow + _breakFlow + _advFlow + sg_relief;
     // Total SG draw (turbine + dump + safeties) — the flow any feed regulation
     // actually matches. Exposed for the disconnected-mode feed coupling
     // (load_mode.js): after a turbine trip the dump still draws, and feed must
@@ -301,20 +361,10 @@
     var dSteamP = (steam_generation_rate - steam_out) * sg.K_steam_pressure;
     s.steam_pressure_mpa += dSteamP * dt;
 
-    // §9.1 main steam line break: blows the secondary down (overcooling).
-    // The MSIV gates it, by break LOCATION (#199). A break DOWNSTREAM of the valve
-    // (turbine hall) has the MSIV between it and the generator, so shutting the
-    // valve isolates the SG and the blowdown stops dead — the operator's one real
-    // lever on this casualty, and the reason the alarm-response card sends you to
-    // the MSIV. A break UPSTREAM (inside containment, between SG and valve) is on
-    // the wrong side of every isolation this single-loop plant owns: it blows the
-    // generator down no matter what the operator shuts. Before this the sink ran
-    // unconditionally, so closing the MSIV mid-break changed nothing at all while
-    // the manual and the catalog both claimed it did.
-    var brk = s._fail.steam_break;
-    if (brk.active && (brk.upstream || s.msiv_open !== false)) {
-      s.steam_pressure_mpa -= cfg.physics_failures.STEAM_BREAK_RATE * brk.size * dt;
-    }
+    // (The §9.1 steam line break used to apply its dP/dt sink here. Since #370a it
+    // is a mass flow in steam_out above, so the pressure effect arrives through
+    // this same integral — see the calibration note at the flow term.)
+    //
     // Thermodynamic bound (feel-plan P5): the secondary saturates from PRIMARY
     // heat, so it can never sit hotter than the coolant heating it — cap SG
     // pressure at Psat(Tavg). Kills the cold-SG pressurization runaway (a

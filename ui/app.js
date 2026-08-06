@@ -51,8 +51,39 @@
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
   // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
-  var CHART_RECORD_SEC = 1800;   // keep 30 min of history; the chart DISPLAYS only ui.window of it
-  var CHART_SAMPLE_SEC = 0.5;    // …at most one row per 0.5 s of SIM time — see the record path
+  // WINDOWS SCALE WITH TIME ACCELERATION *(OWNER: "Can you also extend the time window
+  // automatically when choosing faster time warps? At 3600 it's going to zoom past 30 minutes
+  // really fast. Maybe have the time window buttons dynamically change depending on the speed
+  // setting.")*. The fixed 1m/5m/10m/30m ladder is right at 1× and useless at 3600×, where
+  // 30 minutes of plant passes in half a second of wall clock — the window empties and
+  // refills faster than it can be read. Each rung is chosen so its WALL-CLOCK duration is
+  // roughly what the 1× ladder gives: divide by the speed and you get back 1/5/10/30 minutes.
+  // CAPPED AT 12 h, NOT SCALED BY THE SPEED NUMBER — and the cap is the whole lesson here.
+  // The first cut simply divided by the requested acceleration, which produced a 27-DAY
+  // widest rung at 3600×. MEASURED against it: 20 s of wall at a requested 3600× filled about
+  // 5 % of an 18 h window, i.e. roughly 3200 s of sim — an ACHIEVED rate near 160×, nowhere
+  // near the requested 3600. The requested number is a target the engine does not have to
+  // meet (18000 physics steps per broadcast at 3600×), so sizing a window from it produces
+  // rungs that can never fill.
+  //
+  // A shift is the longest span worth reading on a strip chart, so 12 h caps the ladder at
+  // every speed and the rungs below it stay proportionate. Anything wider is a job for the
+  // CSV export, not the plot.
+  var CHART_WINDOWS = {
+    1:    [60, 300, 600, 1800],
+    10:   [300, 900, 3600, 10800],
+    60:   [900, 3600, 10800, 43200],
+    600:  [3600, 10800, 21600, 43200],
+    3600: [3600, 10800, 21600, 43200],
+  };
+  function chartWindowsFor(spd) { return CHART_WINDOWS[spd] || CHART_WINDOWS[1]; }
+  // Retention follows the WIDEST window on offer at the current speed, so switching rungs
+  // never shows an empty axis. It is a sim-time span, and at 3600× that span is enormous —
+  // which is exactly why the row budget below is enforced by THINNING rather than by a
+  // shorter memory: the alternative is a 27-day buffer at 0.2 s resolution.
+  var CHART_RECORD_SEC = 1800;   // recomputed from the speed; the chart DISPLAYS only ui.window
+  var CHART_ROW_BUDGET = 9000;   // rows retained, regardless of how much sim time they span
+  var CHART_SAMPLE_SEC = 0.2;    // …at most one row per 0.2 s of SIM time — see the record path
   var CHART_SHRINK_FRAMES = 40;  // frames a trace must sit well inside its band before the axis zooms in (~4 s)
   var smoothed = {};        // id -> display-damped instrument value
 
@@ -107,6 +138,15 @@
   // SPLIT — 2235/2279/2199 psi all print as "15 MPa" — which is the one thing that
   // group exists to show.
   function physP(mpa) { return mpa == null ? '—' : conv(mpa, 'pressure').toFixed(ui.units === 'SI' ? 2 : 0) + ' ' + unit('pressure'); }
+  // Containment pressure reads in GAUGE units (#386): the sourced setpoints are
+  // psig (3.5 psig SI, 30 psig spray) and a building at atmospheric must read 0,
+  // not 14.7. Subtract one atmosphere, then scale as a DIFFERENCE — no offset.
+  function physPg(mpa) {
+    if (mpa == null) return '—';
+    var g = mpa - 0.1013;
+    if (Math.abs(g) < 0.005) g = 0;
+    return ui.units === 'SI' ? (g * 1000).toFixed(0) + ' kPa g' : (g * 145.038).toFixed(1) + ' psig';
+  }
   // Temperature DIFFERENCE without the "-0" artefact. A subcooling margin sitting
   // a hundredth of a degree below saturation is 0, not "-0 °F" — the minus sign is
   // the only thing on that line, and it is noise.
@@ -482,6 +522,31 @@
           { k: 'Primary leak flow',
             hint: 'coolant leaving the Reactor Coolant System (RCS) through a break or a leak, as a fraction of rated flow.',
             detail: 'Zero on an intact plant. Discharge is not fixed — a break is an AREA, so flow falls as the system depressurizes, which is why a large break is violent early and slows as it empties.',       v: function (t) { return pctOf(t.leak_flow, 2); }, cls: nzCls('leak_flow') },
+        ] },
+        // Containment (#386 stage 1) — the receiving volume the break and relief
+        // discharge into. Sits after Loop pressure on the energy-path spine: it is
+        // where the primary's mass and energy END UP when the boundary is open.
+        { title: 'Containment', rows: [
+          { k: 'Containment pressure',
+            hint: 'building pressure above atmospheric, in gauge units — 0 on a healthy plant.',
+            detail: 'The receiving volume for a primary break or an open relief valve. Hot discharge partly flashes to steam and pressurizes the building, so rising containment pressure is the direct evidence of a high-energy line break inside it — a real plant starts safety injection on it at 3.5 pounds per square inch gauge (psig). An intact plant reads exactly 0, and a steam generator tube rupture ALSO reads 0, because that break discharges into the steam generator instead: the one leak containment cannot see.',
+            v: function (t) { return physPg(t.containment_pressure_mpa); },
+            cls: function (t) {
+              var c = (RD.PWR_CONFIG || {}).containment || {};
+              var amb = c.ambient_pressure_mpa != null ? c.ambient_pressure_mpa : 0.1013;
+              var p = t.containment_pressure_mpa != null ? t.containment_pressure_mpa : amb;
+              return p > 0.308 ? 'q-alarm' : (p > amb + 0.01 ? 'q-caution' : 'q-ok');
+            } },
+          { k: 'Containment temperature',
+            hint: 'atmosphere temperature inside the building.',
+            detail: 'Rides the steam content: a steam and air mixture sits at the saturation temperature of its steam fraction, so temperature and pressure rise together during a blowdown and fall together as the passive heat sinks condense steam out onto the structures. Around 100 °F (38 °C) on a healthy plant.',
+            v: function (t) { return conv(t.containment_temp_c, 'temp').toFixed(0) + ' ' + unit('temp'); },
+            cls: function (t) { return t.containment_temp_c > 100 ? 'q-alarm' : t.containment_temp_c > 45 ? 'q-caution' : 'q-ok'; } },
+          { k: 'Containment sump level',
+            hint: 'water collected on the building floor, as a percentage of the sump reference volume.',
+            detail: 'Every pound the primary loses to the building ends up here — spilled liquid directly, flashed steam after the structures condense it back out. A climbing sump with steady pressure is the signature of a small cold leak, which is exactly the diagnosis the alarm-response procedures send you here for. Indication only: this plant models no recirculation from the sump.',
+            v: function (t) { return (t.containment_sump_pct != null ? t.containment_sump_pct : 0).toFixed(1) + ' %'; },
+            cls: nzCls('containment_sump_pct') },
         ] },
         // fw_flow_normalized is TOTAL feed (main + AFW — pwr_steam_generator.js:83),
         // and steam_out_total is everything leaving the SG (turbine + dump + safeties),
@@ -1193,18 +1258,39 @@
     // sim time at the 10 Hz normal broadcast = 18000 rows): 16 series cost 10.2 MB and 51
     // cost **75.8 MB**, because the cost is per stored property and the series list
     // tripled. Two changes bring it back:
-    //   · this gate — one row per 0.5 s of SIM time rather than one per broadcast, so the
-    //     cap is 3600 rows instead of 18000. It is keyed on sim time, not on a broadcast
-    //     COUNT, so it is invariant under timeAcceleration and under the 100→50 ms
-    //     transient cadence: at any acceleration above 5× the sim already advances more
-    //     than 0.5 s per broadcast and nothing is dropped at all.
+    //   · this gate — one row per CHART_SAMPLE_SEC of SIM time rather than one per
+    //     broadcast. It is keyed on sim time, not on a broadcast COUNT, so it is invariant
+    //     under timeAcceleration and under the 100→50 ms transient cadence: at any
+    //     acceleration where the sim advances more than one interval per broadcast nothing
+    //     is dropped at all.
+    //
+    //     RATE 0.5 → 0.2 s ON 2026-08-05 *(OWNER: "the current polling rate is too slow")*,
+    //     so the cap is 9000 rows rather than 3600 and the trace advances 5× a second
+    //     instead of twice. COST, and it is an EXTRAPOLATION rather than a fresh
+    //     measurement — say so rather than implying otherwise: the recorded figure below is
+    //     8.8 MB for 3600 rows at 51 series, which is linear in rows, so 9000 rows is about
+    //     **22 MB**. That is well under the 75.8 MB this decimation was introduced to avoid,
+    //     but it is three times the previous budget. I could not reproduce the 51-series
+    //     worst case headlessly (the series toggles are not addressable from outside the
+    //     board), so if the buffer is ever suspected again, measure it there before assuming
+    //     this line is still true.
     //   · chartSample only writing the sides a series actually HAS (see there).
     // Re-measured after both: **8.8 MB** for 51 series — LESS than the 10.2 MB the old
     // 16-series buffer cost, with three times the quantities. The resolution cost is nil
     // in practice: the widest window is 1800 s across ~400 px of plot, so 2 Hz is still
     // ~9x oversampled, and the preseed writes at 5 s intervals either way.
+    // SAMPLE TIMES ARE QUANTISED TO THE GRID, not taken as whatever sim_time happened to
+    // cross the gate (2026-08-05). The old form stamped the row with the raw `sim_time` of
+    // the first broadcast past the interval, so spacing was irregular — at 1x the broadcast
+    // is 0.1 s of sim time, but the transient cadence is 0.05 s and any acceleration makes
+    // the step arbitrary — and `t1` (hence the whole x-axis, `t0 = t1 - window`) advanced by
+    // a DIFFERENT amount each time. That is the second half of the owner's report: "the
+    // polling shifted with time so it shows different polled times of the line each polling
+    // time." On the grid, t1 advances in exact CHART_SAMPLE_SEC steps and the window scrolls
+    // evenly.
+    var gridT = Math.floor(s.metadata.sim_time / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
     var lastT = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
-    if (lastT != null && s.metadata.sim_time - lastT < CHART_SAMPLE_SEC) { drawChart(); return; }
+    if (lastT != null && gridT - lastT < CHART_SAMPLE_SEC - 1e-9) { drawChart(); return; }
     var one = chartSample(rawIns, s.true_state, s.control_state);
     var sv = one.v, stv = one.tv;
     // #237 (owner): presets start with 30 minutes of history so the graphs are populated —
@@ -1219,14 +1305,51 @@
     // would freeze boot, every reset, every plant switch and every mission start. See
     // ensurePreseed. (sv/stv are frozen after this call, so sharing one object per row is safe.)
     if (!chartBuf.length) {
-      for (var pt = s.metadata.sim_time - CHART_RECORD_SEC; pt < s.metadata.sim_time; pt += 5) {
+      for (var pt = gridT - CHART_RECORD_SEC; pt < gridT; pt += 5) {
         chartBuf.push({ t: pt, v: sv, tv: stv });
       }
       ensurePreseed(s.metadata.sim_time);
     }
-    chartBuf.push({ t: s.metadata.sim_time, v: sv, tv: stv });
-    var cutoff = s.metadata.sim_time - CHART_RECORD_SEC;   // retain 30 min regardless of the display window
+    // FINE SUB-SAMPLES FIRST, then the broadcast instant. The service samples the plant on a
+    // fixed SIM-time interval inside its step loop (see setFineSampler there), so the chart's
+    // resolution stops depending on time acceleration: at 60× a broadcast carries 6 s of sim
+    // and hands over ~30 samples instead of the single one it used to. Each carries its own
+    // sim time and is quantised onto the same grid as the broadcast row, so they interleave
+    // with the existing history rather than forming a second series.
+    //
+    // Guarded against going backwards: a rewind or a reset clears the service's buffer, but a
+    // sample that predates the newest row would still splice the plant onto the wrong time.
+    var fine = (service && service.takeFine) ? service.takeFine() : null;
+    if (fine) {
+      for (var fi = 0; fi < fine.length; fi++) {
+        var fg = Math.floor(fine[fi].t / CHART_SAMPLE_SEC) * CHART_SAMPLE_SEC;
+        var fLast = chartBuf.length ? chartBuf[chartBuf.length - 1].t : null;
+        if (fLast != null && fg - fLast < CHART_SAMPLE_SEC - 1e-9) continue;
+        if (fg >= gridT) continue;                       // the broadcast row below owns that instant
+        var fr = fine[fi];
+        // lo/hi are the EXTREMES over the sub-interval the service folded, so a transient
+        // between fine samples still leaves a mark (see CHART_SUB_MAX there). Carried onto
+        // the row; drawChart bands them.
+        chartBuf.push({ t: fg, v: fr.v, tv: fr.tv, lo: fr.lo, hi: fr.hi, tlo: fr.tlo, thi: fr.thi });
+      }
+    }
+    chartBuf.push({ t: gridT, v: sv, tv: stv });
+    var cutoff = gridT - CHART_RECORD_SEC;   // retain the widest window on offer at this speed
     while (chartBuf.length > 2 && chartBuf[0].t < cutoff) chartBuf.shift();
+    // THIN THE OLD HALF rather than shortening the memory. Retention has to cover the widest
+    // window the current speed offers — 27 days of sim at 3600× — and at 0.2 s that is
+    // millions of rows. Recent history stays at full resolution and the older half is halved
+    // whenever the budget is exceeded, which is what a strip chart's paper does anyway: the
+    // part you are reading is fine, the part scrolling away is coarse. Cost is bounded at
+    // CHART_ROW_BUDGET rows at ANY acceleration or window.
+    while (chartBuf.length > CHART_ROW_BUDGET) {
+      var keep = [], half = chartBuf.length >> 1;
+      for (var ti = 0; ti < chartBuf.length; ti++) {
+        if (ti >= half || (ti & 1) === 0) keep.push(chartBuf[ti]);
+      }
+      if (keep.length === chartBuf.length) break;   // cannot thin further — bail rather than spin
+      chartBuf = keep;
+    }
     drawChart();
   }
 
@@ -1549,6 +1672,38 @@
     if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', +b.getAttribute('data-speed') === v); });
     var fb = $('ffBadge');
     if (fb) { var fast = v >= 600; fb.style.display = fast ? 'block' : 'none'; if (fast) fb.textContent = '⚡ ' + v + '×'; }
+    syncChartWindows(v);
+  }
+
+  // Re-label the strip-chart window buttons for the current speed, and keep the SAME RUNG
+  // selected rather than the same number of seconds — the player picked "the short one", not
+  // "60 seconds", and at 3600× sixty seconds of plant is a sixtieth of a second of watching.
+  // Retention follows the widest rung so switching to it never shows an empty axis.
+  var lastWinSpeed = null;
+  function syncChartWindows(spd) {
+    var seg = $('graphWindow');
+    if (!seg) return;
+    var wins = chartWindowsFor(spd);
+    var btns = seg.querySelectorAll('[data-win]');
+    if (btns.length !== wins.length) return;
+    var rung = 0;
+    for (var i = 0; i < btns.length; i++) if (btns[i].classList.contains('on')) rung = i;
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].setAttribute('data-win', wins[j]);
+      btns[j].textContent = chartWinLabel(wins[j]);
+    }
+    CHART_RECORD_SEC = wins[wins.length - 1];
+    if (lastWinSpeed !== spd) {
+      lastWinSpeed = spd;
+      ui.window = wins[rung];
+      chartRange = {};
+      drawChart();
+    }
+  }
+  function chartWinLabel(sec) {
+    if (sec < 3600) return Math.round(sec / 60) + 'm';
+    if (sec < 86400) { var h = sec / 3600; return (h < 10 ? h.toFixed(h % 1 ? 1 : 0) : Math.round(h)) + 'h'; }
+    return Math.round(sec / 86400) + 'd';
   }
 
   // ---- Scenario ui_policy (TMI-2 M5) — a scenario may drive the synoptic mode
@@ -2747,6 +2902,16 @@
     var v = src ? src[ser.id] : null;
     return (v == null || !isFinite(v)) ? null : v;
   }
+  // The EXTREMES this sample covers, on whichever side is being plotted. Fine rows carry
+  // the min/max the service folded over their sub-interval (see setFineSampler there);
+  // broadcast rows and the preseed carry none, and collapse to the point value — which is
+  // correct, they represent one instant rather than a span.
+  function seriesExt(ser, sample, val) {
+    var t = seriesTruth(ser);
+    var l = t ? sample.tlo : sample.lo, h = t ? sample.thi : sample.hi;
+    var a = l ? l[ser.id] : null, b = h ? h[ser.id] : null;
+    return [(a == null || !isFinite(a)) ? val : a, (b == null || !isFinite(b)) ? val : b];
+  }
   // Alarm emphasis on a trace. Latching with a release deadband (5 % of the distance
   // back into the band): a value sitting exactly on its setpoint used to strobe the
   // whole polyline once per frame.
@@ -2818,8 +2983,13 @@
     var cps = ui.rewindPick && service ? (service.checkpoints || []) : [];
     if (cps.length) {
       var oldest = cps[0].metadata.sim_time;
-      // a margin so the oldest mark is not welded to the axis and stays clickable
-      if (oldest < t0) t0 = oldest - (t1 - oldest) * 0.04;
+      // Pick mode frames the CHECKPOINTS, not the selected window — in BOTH directions.
+      // It used to only widen (`if (oldest < t0)`), which was safe while the window was
+      // a fixed 5 min. Now that the ladder follows time acceleration, a fast speed
+      // selects a window far longer than the run, and every mark squeezes into a few
+      // pixels at the right edge — measured on CI, the T+13 s mark and the T+0 s mark
+      // resolved to the same click. The margin keeps the oldest mark off the axis.
+      t0 = oldest - (t1 - oldest) * 0.04;
     }
     if (t1 - t0 < 1e-6) t0 = t1 - 1;
     return { t0: t0, t1: t1, span: t1 - t0 };
@@ -2839,12 +3009,32 @@
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
     var html = '';
     // Downsample the VISIBLE window [t0, t1] into fixed TIME buckets — one per plot
-    // pixel. chartBuf holds up to 30 min (thousands of points at 10–20 Hz) but only
-    // ui.window shows; bucketing keeps drawChart O(pixels), and — unlike index-stride
-    // sampling — is STABLE as the window scrolls: a sample stays in the same time
-    // bucket, so the line doesn't change shape as it moves left. Averaging the
-    // sub-pixel samples per bucket also makes a noisy trace readable — this is
-    // pixel-resolution downsampling, NOT temporal smoothing (there's no lag).
+    // pixel. chartBuf holds up to 30 min but only ui.window shows; bucketing keeps
+    // drawChart O(pixels), and averaging the sub-pixel samples per bucket makes a noisy
+    // trace readable — this is pixel-resolution downsampling, NOT temporal smoothing
+    // (there's no lag).
+    //
+    // THE GRID IS ANCHORED IN ABSOLUTE TIME, and until 2026-08-05 it was not — which is
+    // why already-plotted history visibly crawled and deformed *(OWNER: "sometimes the
+    // lines that have already been plotted shift and move and it's not the auto fit of the
+    // unit range … the polling shifted with time so it shows different polled times of the
+    // line each polling time.")*. The comment that stood here claimed the opposite — "a
+    // sample stays in the same time bucket, so the line doesn't change shape as it moves
+    // left" — and that was FALSE by construction: the index was
+    // `floor((t − t0)/span·NB)` with `t0 = t1 − window`, so the whole grid slid every time
+    // a new sample landed. MEASURED with the shipped constants (344 buckets, 300 s window,
+    // 0.87 s per bucket): one FIXED sample at t = 1000 s moves bucket 114 → 113 → 112 → 111
+    // as t1 advances 1200 → 1203 s, i.e. it crosses a boundary about every 0.9 s. Each
+    // crossing changes that bucket's membership, and therefore both its mean VALUE and its
+    // mean TIME — which is exactly what gets plotted. Measured in the browser, points that
+    // should translate rigidly instead spread by up to 1.0 px per frame.
+    //
+    // Anchoring the grid to absolute multiples of the bucket width fixes it: a sample keeps
+    // its bucket for as long as the bucket width is unchanged, so the trace translates
+    // rigidly and only hops when the grid origin advances a whole bucket — one pixel, all
+    // points together. The plotted time is the bucket's OWN grid time rather than the mean
+    // of whatever samples currently fall in it, so x cannot wobble as membership changes at
+    // the edges; a bucket IS a pixel, so nothing is lost by quantising to its centre.
     var startI = 0;
     while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
     var NB = Math.max(2, Math.round(PW));   // one bucket per plot pixel
@@ -2854,22 +3044,28 @@
     // over a FIXED TIME width instead — the trace reads the same at 1 min and 30 min.
     // Truth needs none of this: the physics has no noise to remove.
     var secPerBucket = span / NB;
+    var bOrigin = Math.floor(t0 / secPerBucket);   // absolute grid index of the left edge
     var SMOOTH_SEC = 3;
     var kSmooth = chartTruth() ? 0 : Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
     active.forEach(function (ser, si) {
-      var sum = {}, cnt = {}, tsum = {};    // sparse per-bucket accumulators
+      var sum = {}, cnt = {}, blo = {}, bhi = {};   // sparse per-bucket accumulators
       for (var j = startI; j < chartBuf.length; j++) {
         var val = seriesVal(ser, chartBuf[j]);
         if (val == null || !isFinite(val)) continue;
-        var bk = Math.floor((chartBuf[j].t - t0) / span * NB);
+        var bk = Math.floor(chartBuf[j].t / secPerBucket) - bOrigin;
         if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
-        if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; tsum[bk] = 0; }
-        sum[bk] += val; cnt[bk] += 1; tsum[bk] += chartBuf[j].t;
+        if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; blo[bk] = Infinity; bhi[bk] = -Infinity; }
+        sum[bk] += val; cnt[bk] += 1;
+        var ex = seriesExt(ser, chartBuf[j], val);
+        if (ex[0] < blo[bk]) blo[bk] = ex[0];
+        if (ex[1] > bhi[bk]) bhi[bk] = ex[1];
       }
       var means = [];
       for (var bk2 = 0; bk2 < NB; bk2++) {
         if (cnt[bk2] === undefined) continue;
-        means.push({ t: tsum[bk2] / cnt[bk2], v: sum[bk2] / cnt[bk2] });
+        // the bucket's OWN time, not the mean of its members — see the grid note above
+        means.push({ t: (bOrigin + bk2 + 0.5) * secPerBucket, v: sum[bk2] / cnt[bk2],
+                     lo: blo[bk2], hi: bhi[bk2] });
       }
       // centred moving average — zero net lag, unlike an EWMA (a drifting or stuck
       // sensor survives it untouched; only the per-sample jitter goes)
@@ -2878,12 +3074,20 @@
         for (var m = 0; m < means.length; m++) {
           var a = Math.max(0, m - kSmooth), z = Math.min(means.length - 1, m + kSmooth), acc = 0;
           for (var q = a; q <= z; q++) acc += means[q].v;
-          sm[m] = { t: means[m].t, v: acc / (z - a + 1) };
+          // the BAND is not smoothed — it is an envelope, and averaging it would shrink
+          // the very excursions it exists to show
+          sm[m] = { t: means[m].t, v: acc / (z - a + 1), lo: means[m].lo, hi: means[m].hi };
         }
         means = sm;
       }
       var vmin = Infinity, vmax = -Infinity;
-      means.forEach(function (p) { if (p.v < vmin) vmin = p.v; if (p.v > vmax) vmax = p.v; });
+      // the BAND sets the range, not the line — otherwise a transient the band exists to
+      // reveal would be drawn outside the axis and clipped away
+      means.forEach(function (p) {
+        var a2 = (p.lo != null && isFinite(p.lo)) ? p.lo : p.v;
+        var b2 = (p.hi != null && isFinite(p.hi)) ? p.hi : p.v;
+        if (a2 < vmin) vmin = a2; if (b2 > vmax) vmax = b2;
+      });
       seriesMeans[ser.id] = means;
       // STABLE auto-range. The old model eased lo/hi toward the data every frame, which
       // re-projected the WHOLE trace every frame — history that had already been drawn
@@ -2960,6 +3164,30 @@
         return x.toFixed(1) + ',' + y.toFixed(1);
       }).join(' ');
       var hot = seriesAlarmed(ser);
+      // MIN/MAX BAND, drawn UNDER the line. Each bucket knows the extremes the plant reached
+      // over the sim time it covers, so a transient shorter than the sample interval still
+      // shows — at 3600× a bucket spans several seconds of plant and the line alone would
+      // step straight over a relief lift inside it. Emitted only where the band is wider
+      // than the stroke: at 1× it collapses onto the line (one instant per sample, nothing
+      // to span) and drawing a degenerate polygon there would just thicken the trace.
+      var yOf = function (v) {
+        var f2 = Math.max(0, Math.min(1, (v - lo) / rng));
+        return H - 8 - f2 * (H - 16);
+      };
+      var mmB = seriesMeans[ser.id], wide = false, up = [], dn = [];
+      for (var bi = 0; bi < mmB.length; bi++) {
+        var m2 = mmB[bi];
+        if (m2.lo == null || !isFinite(m2.lo) || m2.hi == null || !isFinite(m2.hi)) continue;
+        var xb = ((m2.t - t0) / span * PW).toFixed(1);
+        var yh = yOf(m2.hi), yl = yOf(m2.lo);
+        if (yl - yh > 1.2) wide = true;
+        up.push(xb + ',' + yh.toFixed(1));
+        dn.push(xb + ',' + yl.toFixed(1));
+      }
+      if (wide && up.length > 1) {
+        html += '<polygon points="' + up.concat(dn.reverse()).join(' ') + '" fill="' + ser.c +
+          '" fill-opacity="0.22" stroke="none"/>';
+      }
       html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
       var mm = seriesMeans[ser.id];
       lastY.push({ ser: ser, y: ly, hot: hot, val: mm.length ? mm[mm.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1]) });
@@ -5122,6 +5350,16 @@
     if ($('logoVer')) $('logoVer').textContent = window.RD_RELEASE || '';
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
     service = new RD.SimulationService({ seed: 0x1234 });
+    // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
+    // its step loop, so the chart sees the plant between broadcasts and its resolution stops
+    // depending on time acceleration. It returns the same shape `chartSample` produces for
+    // the broadcast row, so the two interleave in chartBuf with no special case downstream.
+    // Registered here rather than on demand because the cost is already bounded service-side
+    // (CHART_FINE_MAX per broadcast) and a sampler that comes and goes would leave gaps in
+    // the history whenever the chart tab was closed.
+    if (service.setFineSampler) {
+      service.setFineSampler(function (ins, truth, ctl) { return chartSample(ins, truth, ctl); });
+    }
     service.subscribe(render);
     service.subscribe(diagTick);
     service.subscribe(renderAutomate);   // channels run in-stack; the tab just re-renders per broadcast

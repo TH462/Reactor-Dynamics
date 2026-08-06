@@ -93,11 +93,23 @@
 
     // Lag: drive true Tavg steadily down (steam-line break overcooling); the
     // lagged tavg reading trails above the still-falling truth (tavg lag = 4 s).
+    // UPSTREAM break since #370c: a DOWNSTREAM one is now isolated automatically in
+    // about a second, after which the bottled generator re-pressurizes and Tavg
+    // RISES — measured, this stimulus produced trueDrop = -6.14, i.e. the opposite
+    // of what the check needs. The upstream break is on the wrong side of every
+    // isolation this plant owns, so it still delivers the sustained overcooling the
+    // lag signature is read against. The claim under test is unchanged; only the
+    // stimulus that still produces it moved (HR9 — the content was stale, not the
+    // physics).
     this._reset('pwr', 'hot_full_power');
     this._step(2);
     var tavg0_true = this._step(1).true_state.tavg_c;
-    this._cmd({ action: 'inject_failure', failure_id: 'steam_line_break', severity: 1.0 });
-    var after = this._runSeconds(12);
+    this._cmd({ action: 'inject_failure', failure_id: 'steam_line_break_upstream', severity: 1.0 });
+    // 60 s, was 12: the break is a pressure-scaled MASS FLOW since #370a, so the
+    // blowdown is self-limiting instead of slamming the secondary to the 0.1 MPa
+    // floor in about four seconds. Tavg still falls monotonically; it takes longer
+    // to move far enough for the lag gap to be read cleanly above the noise.
+    var after = this._runSeconds(60);
     var trueDrop = tavg0_true - after.true_state.tavg_c;
     var lagGap = after.instruments.tavg - after.true_state.tavg_c; // > 0 ⇒ reading lags above falling truth
     emit('reading LAGS truth (trails a falling true value)', trueDrop > 0.8 && lagGap > 0.4, 'true falling, reading above it by >0.4 °C', 'trueDrop=' + trueDrop.toFixed(2) + ', lagGap=' + lagGap.toFixed(2), 'instrument lag not applied (HR6)');
@@ -107,8 +119,9 @@
     this._step(2);
     this._cmd({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'stuck' });
     var held = this._step(1).instruments.tavg;     // frozen at the injection-time reading
-    this._cmd({ action: 'inject_failure', failure_id: 'steam_line_break', severity: 1.0 });
-    var moved = this._runSeconds(12);
+    // Upstream, same reason as the lag check above (#370c).
+    this._cmd({ action: 'inject_failure', failure_id: 'steam_line_break_upstream', severity: 1.0 });
+    var moved = this._runSeconds(60);   // 60 s for the same reason as the lag check
     emit('stuck instrument holds while truth moves', approx(moved.instruments.tavg, held, 0.01) && (held - moved.true_state.tavg_c) > 0.8, 'reading frozen, truth diverged > 0.8 °C', moved.instruments.tavg.toFixed(2) + ' vs true ' + moved.true_state.tavg_c.toFixed(2), 'stuck-failure not applied');
   };
 
@@ -232,6 +245,17 @@
     var badCond = [];
     function condOk(c) {
       if (!c) return true;
+      // ARRAY = AND over terms; each must resolve on its own.
+      if (Array.isArray(c)) return c.every(condOk);
+      // OBJECT = { instrument, direction, setpoint } (a numeric coincidence term,
+      // #370b) or { instrument, in: [...] } (membership). Both name an ANALOG or
+      // status instrument rather than a status word, so they resolve against the
+      // instrument specs, not the status list. Added with #370c: this scanner
+      // assumed the string form, so an object condition stringified to
+      // "[object Object]", matched nothing, and reported a real protection row as
+      // unresolvable — the same string-only assumption run_hardrules carried.
+      if (typeof c === 'object' && c.instrument) return !!ids[c.instrument];
+      if (typeof c === 'string' && c.charAt(0) === '!') return condOk(c.slice(1));
       if (ids[c]) return true;
       if (/_unavailable$/.test(c)) return !!ids[c.replace(/_unavailable$/, '_running')];
       return false;
