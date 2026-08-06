@@ -455,7 +455,13 @@ RULING, 2026-08-06: selected "Go real flows (tier 1) as its own project")* — t
 accident-inventory clock moves to REAL fractions-per-second, acceleration carries the
 pacing, **plan-first, nothing implemented**. #334 item 3 absorbed; thermal ×12.6 NOT
 reopened; node follow-on (#385) sequences AFTER the re-clock. Stage list: TUNING_LOG
-develop-f.
+develop-f. **#408 stages 0–2 are DONE (2026-08-06-develop-g, no code)**: evidence pass
+recovered + re-fetched the sources (Ginna ch. 15 is the same-document ratio base; WTSM 5.2
+re-fetched), and the two ruling artifacts — the constants table and the acceleration-UX note —
+are posted on #408, which now carries `status-needs-ruling`. The table's headline: the family
+is 10×–300× real (NOT one factor), and the evidence reversed the Decision-1 recommendation to
+**CVCS joins the real scale** (a real-scaled SGTR falls UNDER compressed charging authority).
+Wave 1 starts only after both rulings.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision

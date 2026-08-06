@@ -29,6 +29,66 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-develop-g (#408 stages 0–2 — evidence pass + both ruling artifacts posted; no code)
+
+**Task:** execute stages 0–2 of the #408 umbrella (the accident-inventory clock to real flows;
+identity ruling recorded in the develop-f entry below and `BUILD_DECISIONS` 2026-08-06-develop-f
+— not re-quoted here). Plan file `plan-the-work-of-buzzing-chipmunk.md`; the plan, the stage-1
+constants table and the stage-2 acceleration-UX note are all posted on #408. **Zero
+engine/config/test edits, per the plan-first ruling. Work now STOPS on #408 for two rulings**
+(`status-needs-ruling`; lane tag cleared).
+
+**Stage 0 — the evidence pass was mostly a RECOVERY, and the check-the-record rule paid twice.**
+Before fetching anything, `find_source.js` + the 2026-07-30j entry (below, ~line 9155) turned out
+to already hold the core numbers with accession + table cites: WTSM 5.2 CCP/SI pump curves,
+BVPS-2's 9,650 ft³ RCS, WTSM 3.2's 210,000 lb/hr PORV, and the measured 115–440× injection
+compression. Second find: `inbox/src135/ginna15.txt` (Ginna UFSAR ch. 15, 619 KB, fetched for
+#135 and invisible to `find_source.js` — it lives outside `inbox/sources/`) is the best
+single source in any lane for this task: **same-document flows AND volume**, so every ratio
+avoids cross-plant contamination. Ledger (all in the stage-1 table on #408, with lines):
+- **Ginna ch. 15**: RCS **5,123 ft³ = 38,323 gal** excl. pzr (§15.6.3.3 assumption C); HHSI 300
+  gpm shutoff 1,389.7 psia + LHSI 1,200 gpm shutoff ~215 psia (T15.6-17); accumulators 1,115 ft³
+  ≥714.7 psia (T15.6-11); RWST 184,950 gal usable; SI water max 104 °F (matches `eccs_temp_c`
+  exactly); SGTR **175,870 lbm over 5,684 s** (§15.6.3.4); SBLOCA timings — 1.5-in uncovery
+  **2,820 s**, accumulators **8,544 s** (T15.6-13); LBLOCA — blowdown ends **38.0 s**,
+  accumulators empty 49 s, quench 450 s (T15.6-15); PORV 16.65 ft³/s both valves (§15.2).
+- **WTSM 5.2 (ML11223A220) RE-FETCHED** — its extract was in no lane (only the 2026-07-30j quotes
+  survived). Wayback CDX: two clean snapshots (20220123002121, 20250206044357 — 200 +
+  application/pdf); fetched, `%PDF-1.6`, 33 pp, extract in `inbox/sources/`. Adds what
+  2026-07-30j did not quote: accumulators 4 × 870–930 ft³ @ 600–650 psig (T5.2-1/2), RWST
+  428,000 gal min @ 2,000–2,500 ppm (T5.2-5), RHR "several thousand gpm" shutoff ~200 psid.
+- **WTSM 12.3**: the low-pzr-pressure SI actuation is **1807 psig, 2/3 logic** (:204) — the sim's
+  12.4 MPa (1,784 psig) sits between it and Ginna's 1,715 psia, so Decision 3 is a clean
+  re-affirm and the 2026-07-21 "TMI-clock-gated" justification retires with a dated note.
+- WCAP-16009 §12-4-3 anchor re-read verbatim (~:8409): blowdown ends **~25 s**.
+- UNVERIFIED remainder: code-safety capacity (~3 × ~350,000 lb/hr class, recall) and the SGTR
+  initial-vs-average flow shape (~2×, figures not tabulated) — both flagged in the table.
+
+**Stage 1 — the table's headline: the family is NOT uniformly compressed.** Break ~12×, PORV
+~17×, accumulator rate ~10×, SGTR ~120×, LPI ~190×, HPI ~300× real — the spread is *why* no
+single `leak_scale` reached 20 s (develop-f's grids). **And the evidence pass REVERSED the
+plan's Decision-1 recommendation**: CVCS is itself ~9× real (7.2e-4 vs 7.8e-5 frac/s), so a
+real-scaled SGTR (2.5e-4) falls UNDER the still-compressed make-up authority (3.6e-4) —
+charging would hold a full double-ended tube rupture, inverting `ops_sgtr_managed`'s premise
+(real ratio ~3.3× the other way). Recommendation flipped from CVCS-stays to **CVCS joins the
+real scale**, consequences costed in the table (touches the 2026-08-04 "A" drain-rate ruling —
+at real scale the drain slows ~9× and may land near its ≥300 s feel target, UNMEASURED).
+Table also names: `sgtr_dp_ref` has no config entry (`|| 9.8` ×3), RWST capacity is unmodeled
+(infinite ECCS — invisible at compressed durations, declared-exclusion candidate at real ones),
+and the E-group dividers (`eccs_cooling_gain` 0.08, `blowdown_gain` 0.02) should re-solve
+toward the physical 1.0 once the rates they divide out are real.
+
+**Stage 2 — the UX note leads with requested ≠ achieved** (3600× requested ≈ 160× achieved,
+`ui/app.js:85-90`): pacing must anchor on events or govern on the achieved rate. Recommends
+authored beat speeds (A, the `bwr_fukushima` precedent) + free-play affordances (C,
+achieved-rate readout beside the FF badge) now, auto-accel governor (B) deferred to its own
+issue. Ride-alongs named: #137's 20 s WALL checkpoint cadence spans ~53 min of sim at an honest
+160× (one rewind slot straddles a whole small-break arc); the 2.0 s SIM alarm min-on is 0.55 ms
+of wall at 3600×; `ui/shell.html:93` still says "No automatic dropout" (stale, false).
+
+**Gates**: no code moved; `run_all --fast` at baseline before commit (see below). Next: the two
+#408 rulings, then wave 1 (LOCA family) per the posted plan.
+
 ## Session log — 2026-08-06-develop-f (LOCA cluster stage 2 — the void lift is path-aware; #385 shipped, node committed as follow-on)
 
 **Task:** execute the approved coordinated LOCA-fix plan (#385/#384/#407/#334-3; plan file
