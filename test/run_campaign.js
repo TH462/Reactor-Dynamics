@@ -1499,7 +1499,13 @@ function ackThrough(s, pred, simBudget, actions) {
 
 test('pwr_tmi2_p1 — Fog of War plays to the historical outcome', function (ck) {
   var s = startScenario('pwr_tmi2_p1');
-  var snap = ackThrough(s, function (sn) { return lc(sn); }, 4000, []);
+  // Budget 9000, not the original 4000 (#407, 2026-08-06): the finale beat waits on
+  // subcoolRestored, and the core-exit datum only grants it once the core genuinely
+  // re-covers (~t+4300) and reads coolant again. The old 4000 fit because the BULK
+  // margin restored on repressurization one minute after the takeover — measured,
+  // the finale played over a core at 11 % inventory with clad at 1343 C. The
+  // instrument stopped accepting that, and the budget was pinning it.
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 9000, []);
   ck('reaches level_complete', !!snap, !!snap, 'level_complete');
   if (!snap) return;
   ck('endpoint is the Fog of War card', lc(snap).title, /Fog of War/.test(lc(snap).title), 'Part 1 card');

@@ -296,7 +296,7 @@
     // full power out of a core making 4 % decay heat, which is not a plant number in any
     // regime. It is NOT a follower of the fuel node the way it is below melt: at 20 min it
     // measured 2308 C against fuel at 1852 C, 456 C clear of the `clad < fuel` clamp below.
-    if (s.melted) return;
+    if (s.melted) { publishCoreExit(s); return; }
     var mass = s.core_inventory_pct / 100;
     var f_unc = (p.core_top_uncover - mass) / (p.core_top_uncover - p.significant_uncover);
     f_unc = f_unc < 0 ? 0 : (f_unc > 1 ? 1 : f_unc);
@@ -382,6 +382,38 @@
     // nothing but checkDamage and one Physics-tab readout, and everything above 1200 °C is
     // past the point where the trainer has anything left to teach (Manuals/12 §5.5 — "the
     // simulation ends at fuel damage"). Investigated and parked on #238 with the staging.
+    publishCoreExit(s);
+  }
+
+  // CORE-EXIT temperature + the subcooling override (#407, cluster stage 5). The
+  // core-exit datum tracks the steam-cooled hot node as the core uncovers: covered
+  // (f = 0) it IS the bulk, so every covered-core regime is byte-identical by
+  // construction; uncovered it climbs toward the clad node, which is what a real
+  // core-exit thermocouple reads over a dry core.
+  //
+  // SOURCED — NUREG-0737 (ML051400209) Item II.F.2, the post-TMI inadequate-core-
+  // cooling instrumentation requirement: the indication "must cover the full range
+  // from normal operation to complete core uncovery", supplementing the "primary
+  // coolant saturation monitors" with "core-exit thermocouples provided that the
+  // indicated temperatures can be correlated to provide indication of the existence
+  // of ICC and to infer the extent of core uncovery" (Clarification item 6); the
+  // operator display reads "the highest of all operable thermocouples or the
+  // average of five highest" (Attachment 1, item 2b) — hence max(bulk, core exit).
+  //
+  // TWO SPELLINGS OF SUBCOOLING, DELIBERATELY DIFFERENT (do not "unify" them):
+  // `trueSubcooling()` — the BULK datum — remains the regime gate for the void law
+  // (pwr_primary) and the flash gate above, because those model bulk thermodynamics.
+  // `subcooling_c` — the MARGIN — is what the operator must know, and NUREG-0737 is
+  // the record of why the two diverge over a dry core: the bulk (ECCS-chilled
+  // remnant) read +163 °F of comfort while the clad climbed through 1600 °F (#407).
+  //
+  // Called from stepCladding's tail AND its melted early-return, so the datum stays
+  // continuous past the model's validity end (clad freezes at melt — MD-12 — and
+  // this follows it) instead of snapping back to the bulk.
+  function publishCoreExit(s) {
+    var f = s.core_uncovered_frac || 0;
+    s.t_core_exit_c = s.tavg_c + f * Math.max(0, (s.clad_temp_c != null ? s.clad_temp_c : s.tavg_c) - s.tavg_c);
+    if (f > 0) s.subcooling_c = T_sat(s.pressure_mpa) - Math.max(s.tavg_c, s.t_core_exit_c);
   }
 
   // Step 14 — fuel damage / melt endpoint (thresholds fixed). Judged at the PEAK

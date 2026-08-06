@@ -313,7 +313,7 @@ var BASELINES = {
   // knife-edge PORV sample carried as info. Injection-verified: severing the arm reddens
   // 5+4, forcing it always-armed reddens 4+5, and the capacity nudge that flipped the old
   // form leaves all 37 TR-1c/TR-1k checks green.
-  'run_behavior.js':       { code: 0, secs: 70, score: '64pass 1xfail' },
+  'run_behavior.js':       { code: 0, secs: 80, score: '65pass 1xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -782,7 +782,7 @@ var BASELINES = {
   // MEASURED ON THE MERGED TREE (2026-08-06 lane merge): five new fields between the two
   // lanes, and this gate counts each name on BOTH sides of the diff, so it moves by more
   // than the field count. develop read 154, workbench 153 — neither survives.
-  'run_contract.js':       { code: 0, score: '156checks 0failed' },
+  'run_contract.js':       { code: 0, score: '157checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -1243,7 +1243,7 @@ var BASELINES = {
   // reached from the COMPLIED branch only — refuse the order and there is nothing to be
   // confused about, which is the deviation's whole point and something the old plant could not
   // express.
-  'run_campaign.js':       { code: 0, secs: 110, score: '51/51 3023passed' },
+  'run_campaign.js':       { code: 0, secs: 130, score: '51/51 3026passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they

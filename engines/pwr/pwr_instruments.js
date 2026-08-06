@@ -92,6 +92,10 @@
     // when sigma <= 0, so none of them draws from the PRNG stream at all and the
     // existing sequence is byte-identical whichever way round they sit.
     adv_valve: 'adv_valve_pct',
+    // Core-exit temperature (#407) — the NUREG-0737 II.F.2 ICC channel. Appended
+    // LAST, noise 0 (see the spec comment): PRNG order of everything above is
+    // byte-identical, and the subcooling margin below takes max(tavg, this).
+    core_exit_temp: 't_core_exit_c',
   };
 
   function PWRInstruments(config, seed) {
@@ -335,8 +339,17 @@
 
     // Derived subcooling margin from INSTRUMENT P and T (HR1, §8.6) — inherits
     // their lag and any failure; this is what tells the truth at TMI.
+    // Since #407 the datum is the HOTTER of the bulk and the core-exit channel —
+    // NUREG-0737 II.F.2 Attachment 1 (2)(b): the displayed value is "the highest of
+    // all operable thermocouples". On a covered core the two channels lag the same
+    // source with the same τ, so the max IS the bulk, byte-identical (CA-21 fence);
+    // over a dry core the exit channel reads superheat and the margin goes negative
+    // — which is the post-TMI point of the instrument. Null-guarded so a rig-built
+    // reading set without the appended channel keeps the bulk datum.
+    var cetInd = this.reading.core_exit_temp;
+    var tHotSide = (cetInd != null && cetInd > this.reading.tavg) ? cetInd : this.reading.tavg;
     this.reading.subcooling_margin = clip(
-      T_sat(this.reading.primary_pressure) - this.reading.tavg,
+      T_sat(this.reading.primary_pressure) - tHotSide,
       this.specs.subcooling_margin.range[0], this.specs.subcooling_margin.range[1]);
 
     // Level deviation from program (#262) — the inventory cue. See _levelDev.

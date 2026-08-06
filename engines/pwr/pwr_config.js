@@ -1916,6 +1916,15 @@
       containment_pressure:    { lag: 1.0,  noise: 0, noise_failure: 0.007, range: [0, 0.8] },
       containment_temp:        { lag: 10.0, noise: 0, noise_failure: 0.5,   range: [0, 200] },
       containment_sump_level:  { lag: 5.0,  noise: 0, noise_failure: 1.0,   range: [0, 100] },
+      // CORE-EXIT temperature (#407, cluster stage 5) — the post-TMI inadequate-core-
+      // cooling channel. RANGE IS SOURCED: NUREG-0737 (ML051400209) Item II.F.2
+      // Attachment 1 item (2)(c) — "The range should extend from 200°F (or less) to
+      // 1800°F (or more)" → 93–982 °C. Lag matches `tavg` (4.0 s) DELIBERATELY: on a
+      // covered core the source equals the bulk exactly, and identical lag on identical
+      // input keeps `max(tavg_ind, core_exit_ind)` byte-identical to `tavg_ind` — the
+      // covered-core fence CA-21 asserts. Appended LAST, noise 0 + noise_failure, the
+      // standing PRNG rule (the stream is byte-identical; a `noisy` failure still bites).
+      core_exit_temp:          { lag: 4.0,  noise: 0, noise_failure: 0.17,  range: [93, 982] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED

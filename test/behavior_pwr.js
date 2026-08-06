@@ -122,6 +122,7 @@
     'CA-18': 'probe (the void-displacement level lift is PATH-AWARE — a loop break drains the pressurizer, the relief path keeps the TMI deception; WCAP-16009 §11-4-5; #385 stage 2)',
     'CA-19': 'probe (the THROUGHPUT equilibrium — a refilled solid RCS with a break open settles where injection = break discharge, and it is not a free rescue; #384 stage 3 / the #334 throughput question)',
     'CA-20': 'probe (a vented RCS blows down PAST Psat toward the building and never below it — path-scoped vent + weakened pin, the SGTR/relief fence, and the DBA arc preserved; WTSM 5.0 §5.0.1.1; #384 stage 4)',
+    'CA-21': 'probe (the subcooling margin reads the CORE EXIT over a dry core — negative with the clad hot, byte-equal to the bulk when covered, and a failed TC restores the deception; NUREG-0737 II.F.2; #407)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -3874,6 +3875,95 @@
         ck('the floor snaps a loop-break state up to the backpressure; the SGTR state computes the pure pin',
           fmt(cUnder.pressure_mpa, 3) + ' vs ' + fmt(cUnderSg.pressure_mpa, 6) + ' (want ' + fmt(wantSg, 6) + ')',
           Math.abs(cUnder.pressure_mpa - 0.30) < 1e-9 && Math.abs(cUnderSg.pressure_mpa - wantSg) < 1e-9, '0.30 vs the pin exactly');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* CA-21 (#407) — THE SUBCOOLING MARGIN LEARNS ABOUT THE CORE EXIT.
+     *
+     * THE FILED SYMPTOM WAS ALREADY GONE WHEN THIS STAGE RAN, and that is measured,
+     * not assumed: #407 was filed against the pre-cluster plant, where the bulk
+     * datum read the ECCS-chilled remnant at +37…+163 °F of COMFORT over a bare
+     * core. The stage-2 honest heater cutoff and the stage-4 vented blowdown
+     * removed the chilled-remnant-with-dry-core overlap — measured at sev
+     * 0.2/0.35/0.5, ZERO uncovered samples read bulk-subcooled on the post-stage-4
+     * engine. The datum ships anyway, on prototypicality: post-TMI plants read the
+     * margin off core-exit thermocouples, the bulk's −80 °C is not the truth's
+     * −524 °C over a dry core, and the structural fix keeps the comfort window
+     * closed against future physics changes instead of relying on it staying
+     * incidentally shut. SOURCED: NUREG-0737 (ML051400209) II.F.2 — the ICC
+     * indication "must cover the full range from normal operation to complete core
+     * uncovery" (Clarification 6), displayed as "the highest of all operable
+     * thermocouples" (Attachment 1, 2b), range 200–1800 °F (2c — the spec range).
+     *
+     * Red on the pre-#407 engine via leg A's magnitude (the bulk datum cannot read
+     * below ~−80 °C; the exit datum reads −524) and leg B's existence check. Leg C
+     * is HR1 degradation: a TC failed low hands the max back to the bulk channel
+     * EXACTLY — a broken channel degrades to the pre-#407 instrument, no worse.
+     */
+    'CA-21': function () {
+      return test('CA-21 subcooling margin goes negative over a dry core; a failed TC restores the deception (#407)', function (ck) {
+        // ---- leg A: the plant. Default break, watch the full-uncovery window.
+        var h = H('hot_full_power');
+        h.run(30);
+        // Severity 0.5, not the slider default: the stage-4 blowdown physics brings
+        // ECCS in early enough that a 20 % break now bottoms at ~50 % inventory —
+        // core_uncovered_frac grazes 1 without holding it. The half-slider break
+        // still drains to ~4 % and holds the window this probe needs.
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.50 });
+        var nDry = 0, nDryNeg = 0, worstMargin = 1e9, worstTrue = 1e9, sawHotClad = false;
+        h.run(300, function (hh) {
+          var s = hh.ts(), ins = hh.ins();
+          if (!(s.core_uncovered_frac >= 0.9)) return;
+          nDry++;
+          if (s.clad_temp_c > 600) sawHotClad = true;
+          if (ins.subcooling_margin < worstMargin) worstMargin = ins.subcooling_margin;
+          if (s.subcooling_c < worstTrue) worstTrue = s.subcooling_c;
+          if (ins.subcooling_margin < 0) nDryNeg++;
+        });
+        ck('the core really is dry and hot in the window (or this proves nothing)',
+          nDry + ' samples, clad > 600 C: ' + sawHotClad, nDry >= 20 && sawHotClad, '>= 20, true');
+        ck('TRUE subcooling reads the CORE EXIT — superheat the bulk datum cannot reach (bulk floor ~-80 C)',
+          fmt(worstTrue * 9 / 5, 1) + ' F (' + fmt(worstTrue, 1) + ' C) worst', worstTrue < -150, '< -270 F (-150 C)');
+        ck('…and the MARGIN GAUGE pegs its low clip — the operator sees it',
+          fmt(worstMargin, 1) + ' C worst indicated', worstMargin < 0 && nDryNeg >= 20, '< 0 on >= 20 samples');
+        ck('…which lights SUBCOOL LOST', h.alarmFirst['subcooling_lost'] != null ? 'lit' : 'never',
+          h.alarmFirst['subcooling_lost'] != null, 'lit');
+
+        // ---- leg B: the covered-core fence — exit === bulk, and the max never bites.
+        var b = H('hot_full_power');
+        b.run(120);
+        var tb = b.ts(), ib = b.ins();
+        ck('covered core: the exit datum IS the bulk, exactly',
+          fmt(tb.t_core_exit_c, 6) + ' vs tavg ' + fmt(tb.tavg_c, 6),
+          tb.t_core_exit_c === tb.tavg_c, 'identical');
+        var TsatI = RD.pwrPressurizer.P_sat_from_T ? null : null;   // (Tsat lives in each module; recompute below)
+        var wantB = Math.min(Math.max(
+          179.47 * Math.pow(Math.max(ib.primary_pressure, 1e-6), 0.239) - ib.tavg,
+          RD.PWR_CONFIG.instruments.subcooling_margin.range[0]), RD.PWR_CONFIG.instruments.subcooling_margin.range[1]);
+        ck('covered core: the margin gauge computes the BULK formula — the max never bites',
+          fmt(ib.subcooling_margin, 4) + ' vs bulk ' + fmt(wantB, 4),
+          Math.abs(ib.subcooling_margin - wantB) < 1e-9, 'exact');
+
+        // ---- leg C: HR1 — a TC failed LOW re-arms the deception over a dry core.
+        var c = H('hot_full_power');
+        c.run(30);
+        c.cmd('set_instrument_failure', { instrument_id: 'core_exit_temp', mode: 'stuck', value: 100.0 });
+        c.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.50 });
+        var cDry = 0, cBulkExact = 0;
+        var TsatF = function (P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); };
+        var rng = RD.PWR_CONFIG.instruments.subcooling_margin.range;
+        c.run(300, function (hh) {
+          var s = hh.ts(), ins = hh.ins();
+          if (!(s.core_uncovered_frac >= 0.9 && s.clad_temp_c > 600)) return;
+          cDry++;
+          // tavg_ind > 100 (the stuck value) throughout this window, so the max hands
+          // the datum back to the BULK channel — the pre-#407 instrument, exactly.
+          var bulk = Math.min(Math.max(TsatF(ins.primary_pressure) - ins.tavg, rng[0]), rng[1]);
+          if (Math.abs(ins.subcooling_margin - bulk) < 1e-9) cBulkExact++;
+        });
+        ck('a TC failed LOW degrades the gauge to the BULK datum exactly — no worse than pre-#407 (HR1)',
+          cBulkExact + '/' + cDry + ' dry samples on the bulk formula', cDry >= 20 && cBulkExact === cDry, 'all of >= 20');
         T.checkSanity(ck, h);
       });
     },

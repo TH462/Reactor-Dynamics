@@ -506,6 +506,12 @@ physical-quantity vocabulary.
                                       //   the one that makes core damage ACCELERATE rather than decay with the
                                       //   decay tail. Exactly 0 on a covered core — the OXIDE state behind it is
                                       //   monotonic and does not un-grow, but the heat release stops.
+    "t_core_exit_c": number,          // CORE-EXIT temperature (#407) — the NUREG-0737 II.F.2 inadequate-core-
+                                      //   cooling datum. EQUALS tavg_c on a covered core by construction; tracks
+                                      //   the steam-cooled clad hot node as the core uncovers. subcooling_c (and
+                                      //   the subcooling_margin instrument) read max(bulk, this), so the margin
+                                      //   goes negative over a dry core instead of reporting the ECCS-chilled
+                                      //   remnant's comfort. The core_exit_temp channel is its instrument.
     "porv_open": bool,                // actual valve position
     "spray_stuck": bool,              // pressurizer spray valve mechanically stuck open — beats the auto
                                       //   controller AND any operator demand, the way porv_stuck beats

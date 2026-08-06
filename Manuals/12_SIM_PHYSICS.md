@@ -618,6 +618,8 @@ Noise is **not** simple white noise. It is a correlated random walk with a confi
 
 **Subcooling margin is computed from the instrument pressure and the instrument temperature** — never from truth. It therefore inherits their lag and any failure. This is deliberate and it is the whole TMI lesson: subcooling margin is the most trustworthy single number on the board *and* it is still an instrument.
 
+**The temperature side reads the hotter of two channels (Rev 13): the loop bulk and a core-exit thermocouple.** On a covered core the two are the same number by construction and the margin behaves exactly as it always has. Over an uncovering core the exit channel reads the steam superheating against the exposed cladding, so the margin goes hard negative and **SUBCOOL LOST** lights while the bulk — by then quenched cold by injection — would have read comfort. This is the post-TMI inadequate-core-cooling instrumentation, as required: the indication "must cover the full range from normal operation to complete core uncovery", displayed as "the highest of all operable thermocouples" (NUREG-0737, Item II.F.2 and its Attachment 1; the channel's 200–1800 °F range is that attachment's figure). Being an instrument, the thermocouple can fail like any other — a channel failed low hands the margin back to the bulk datum, which is the pre-Rev-13 gauge exactly.
+
 ### 10.3 The PORV indicator reports the command, not the valve
 
 The indicator shows **commanded** state. A stuck-open PORV with a "closed" indication is not a bug and not an instrument failure — it is the plant as built, and it is the flagship deception.

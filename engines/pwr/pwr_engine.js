@@ -744,6 +744,11 @@
       //     covered core (the oxide itself is monotonic and does not un-grow).
       core_uncovered_frac: s.core_uncovered_frac || 0,
       zirc_heat_pct: s.zirc_heat_pct || 0,
+      // CORE-EXIT temperature (#407, NUREG-0737 II.F.2) — the ICC datum: equals the
+      // bulk on a covered core BY CONSTRUCTION, tracks the steam-cooled clad node as
+      // the core uncovers. `subcooling_c` reads max(bulk, this) while uncovered, so
+      // the margin gauge stops reporting ECCS-chilled remnant comfort over a dry core.
+      t_core_exit_c: (s.t_core_exit_c != null ? s.t_core_exit_c : s.tavg_c),
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck, spray_stuck: !!s.spray_stuck,
       // DELIVERED pressurizer spray, % of the spray line's maximum flow (#350 item 1).
       // NOT `spray_valve_pct`, which is the operator's/controller's DEMAND — this is what
@@ -1941,6 +1946,9 @@
     if (s.rhr_valve_open == null) s.rhr_valve_open = !!s.rhr_active;
     if (s.rhr_hx_fraction == null) s.rhr_hx_fraction = 1.0;
     if (s.eccs_mode == null) s.eccs_mode = 'off';
+    // #407 core-exit datum: a pre-#407 save restores with the bulk — exact for any
+    // covered core, and an uncovered save reconverges in one stepCladding pass.
+    if (s.t_core_exit_c == null) s.t_core_exit_c = s.tavg_c;
     // Spray valve stuck open (#200, 2026-07-27). The failure used to be encoded by
     // writing `spray_override = true` — a boolean shoved into the OPERATOR'S demand
     // field, which is exactly why any later set_spray overwrote and cleared it. It is

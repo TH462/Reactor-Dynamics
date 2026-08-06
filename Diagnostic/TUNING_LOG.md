@@ -164,9 +164,57 @@ arc asserted not hoped, the small-break fence, and the exact clone algebra — l
 differs by precisely the scaled pin + vent, SGTR byte-identical to no-break).
 **Injection-verified**: pre-stage-4 engine reds exactly the three discriminating checks.
 
-**Still open in the cluster:** stage 5 (#407 + the NUREG-0737 fetch), stage 6 (#334
-slider memo + the low-Δp break-law question). The node follow-on starts only after the
-cluster is green.
+**Stage 5 (#407) — LANDED, and the headline is that the filed symptom was ALREADY DEAD.**
+Measured before building anything more: at sev 0.2/0.35/0.5 on the post-stage-4 engine,
+**zero** uncovered samples read bulk-subcooled — the stage-2 honest heater cutoff plus the
+stage-4 vented blowdown removed the chilled-remnant-with-dry-core overlap that #407 was
+filed against (+37…+163 °F of comfort over a bare core, pre-cluster). The datum ships
+anyway, on prototypicality (Q2) and structure: `t_core_exit_c` (pwr_thermal
+publishCoreExit — equals the bulk on a covered core BY CONSTRUCTION, tracks the
+steam-cooled clad node as the core uncovers, continuous past melt via the stepCladding
+early-return path), `subcooling_c = Tsat(P) − max(bulk, core exit)` while uncovered, and a
+new appended `core_exit_temp` instrument channel with `subcooling_margin` reading
+max(tavg_ind, cet_ind). **SOURCED — NUREG-0737 (ML051400209) fetched this session** (the
+Wayback CDX recovered; corpus + txt extract in inbox/sources): II.F.2 Clarification 6
+("must cover the full range from normal operation to complete core uncovery"), Attachment
+1 (2)(b) ("the highest of all operable thermocouples" — the max), (2)(c) (200–1800 °F —
+the channel's spec range, 93–982 °C). Fences: covered-core byte-identity (identical lag
+on identical source; the max never bites — asserted exact), the appended-instrument PRNG
+rule (noise 0 + noise_failure), migration default (pre-#407 saves restore with the bulk).
+Measured over a dry core: TRUE subcooling −944 °F (−524 °C) where the bulk datum floors
+at ~−110 °F; the gauge pegs its −28 °C clip; SUBCOOL LOST lights. **A TC failed LOW
+degrades the gauge to the bulk datum exactly** (HR1 leg — 27/27 dry samples on the bulk
+formula). `run_behavior` 64 → 65 (CA-21), `run_contract` 156 → 157 (`t_core_exit_c` §6.3
+both ways). **CA-21 authoring trap worth keeping**: two of its first drafts were built on
+stale plant knowledge — sev 0.20 no longer fully uncovers (stage 4 brings ECCS in at inv
+50.1) and the failed-TC-restores-comfort leg was impossible on the new plant (the bulk
+reads negative during the now-hot dry window) — the probe was re-scoped against the tree
+it stands on, the #326 rule.
+
+**THE STAGE'S REAL FIND — TWO AUTHORED TMI ENDINGS WERE RIDING THE DECEPTION, and the
+honest instrument refused to play them.** First full gate: `run_campaign` 49/51, and both
+reds are the same mechanism the cluster exists to remove:
+- **`pwr_tmi2_p3` "Plugged, Not Refilled"**: its route required `subcoolRestored`, and the
+  path (comply, isolate at t+320, never re-inject) parks the plant at **41.4 % inventory,
+  core FULLY uncovered, clad climbing ~19 °C/min** — the OLD bulk margin "restored" on
+  repressurization over that dry core and the card said *"margin's back, and the core
+  stayed covered — that's the night saved."* Measured: false on every count. Re-routed on
+  the facts the card can honestly claim (isolated ∧ undamaged ∧ injection never restored —
+  the `hpi_active is_false` leg is load-bearing or the row catches the full-save path
+  mid-refill), and the dialogue re-authored to the measured state: margin still LOST, and
+  *"it is not lying to you this time."* The teaching improves — isolation is half the pair.
+- **`pwr_tmi2_p1` "Fog of War"**: the finale beat waits on `subcoolRestored` after the
+  supervisor's takeover restores injection — and the OLD margin granted it **one minute
+  later, over a core at 11 % inventory with clad at 1343 °C** ("the water's water again").
+  The honest datum grants it when the core actually re-covers (~t+4300, HPI throttled to a
+  trickle by the isolated RCS repressurizing to 15.95 MPa — the refill is SLOW, which is
+  itself the right lesson). The mission needed nothing; the TEST's 4000 s budget was
+  pinning the deception-fast ending — raised to 9000 with the reason at the site (HR10).
+`run_campaign` 51/51 at **3026** checks (3023 → 3026, the re-routed branch's structural
+validation). The finale dialogue now plays true statements at the true moment.
+
+**Still open in the cluster:** stage 6 (#334 slider memo + the low-Δp break-law
+question). The node follow-on starts only after the cluster is green.
 
 ## Session log — 2026-08-06-develop-e (LOCA severity sweep — the void term owns the legible band; #385 evidence, #407 filed)
 

@@ -114,6 +114,38 @@ SUBCOOLED; superheat is physical, the loop is steam), passes on both engines.
 algebra; injection-verified — the pre-stage engine reds exactly the three discriminating
 checks). Manuals Rev 13(j).
 
+### Added — the subcooling margin reads a core-exit thermocouple (#407, 2026-08-06)
+
+The margin's temperature datum is now **max(loop bulk, core exit)**: new true field
+`t_core_exit_c` (equals the bulk on a covered core by construction; tracks the
+steam-cooled clad node as the core uncovers) and a new appended `core_exit_temp`
+instrument channel — sourced to **NUREG-0737 Item II.F.2** (fetched into the corpus this
+session): "the highest of all operable thermocouples", range 200–1800 °F per its
+Attachment 1. Over a dry core the TRUE margin now reads −944 °F of superheat where the
+bulk datum floors at ~−110; the gauge pegs its low clip and SUBCOOL LOST lights. A TC
+failed low degrades the gauge to the bulk datum exactly (HR1).
+
+**The symptom #407 filed was already dead before this landed — measured**: zero
+comfortable uncovered samples at any board severity on the post-stage-4 engine (the
+honest heater cutoff + the vented blowdown removed the chilled-remnant overlap). The
+channel ships on prototypicality and keeps that window closed structurally.
+
+`run_behavior` 64 → 65 (CA-21, injection-verified), `run_contract` 156 → 157
+(`t_core_exit_c`), Manuals Rev 13(k).
+
+**The honest instrument caught two authored TMI endings riding the deception** (HR9 —
+content follows the plant): `pwr_tmi2_p3`'s "Plugged, Not Refilled" card claimed
+*"margin's back, core stayed covered — the night saved"* on a path measured at **41 %
+inventory, core fully uncovered, clad climbing** (the old bulk margin "restored" on
+repressurization over the dry core); re-routed on the facts it can claim (isolated ∧
+undamaged ∧ injection never restored) and re-worded to the measured state. And
+`pwr_tmi2_p1`'s finale played *"the water's water again"* one minute after the takeover,
+over a core at 11 % inventory and clad at 2450 °F — the honest datum makes the finale
+wait for the core to genuinely re-cover (~18 min later: the isolated RCS repressurizes
+and throttles HPI to a trickle, which is itself the right lesson); the test's 4000 s
+budget was pinning the deception-fast ending, raised to 9000. `run_campaign` 51/51 at
+3026 checks (3023 → 3026, structural validation of the re-routed branch).
+
 ## [Alpha 1.2.2] — 2026-08-06
 
 ## [Alpha 1.2.1] — 2026-08-06
