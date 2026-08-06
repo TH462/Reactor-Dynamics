@@ -45,6 +45,37 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-workbench-j — one enforceable cap beats three unenforceable ones
+
+**Decision: gate `CLAUDE.md` at 15,000 words; leave chat and write-ups to habits, not limits**
+*(OWNER RULING, 2026-08-06: "Go with your recommendation." — after "Should we add word limits?
+Wouldn't it hamstring you sometimes?")*. The answer to that question is yes for two of the three
+caps I had proposed, and the reasoning is recorded in CLAUDE.md so it is not re-litigated: a word
+limit on write-ups forbids the worked A/B that makes a trap believable and so collides with HR12,
+and caps are a proxy that gets gamed by compression or by splitting one entry into two.
+
+**Where a hard number IS right: the auto-loaded file.** `CLAUDE.md` is read into every agent's
+context on every turn, which no other document in this repo is — so its length is a per-turn tax
+rather than a style question. `test/run_doc_budget.js` (new runner, `run_all` 39 → 40) checks
+three things, all of which its own prose already claimed and none of which anything could measure:
+total words ≤ 15,000, no single physical line over 400 words, and the *Recent themes* region
+inside its documented cap of 5 bullets.
+
+**Injection-verified against the real pre-cut file** (`git show HEAD~1:CLAUDE.md`), not a
+synthetic one: 42,065 words, a 5,310-word single line, and **13** bullets in the themes region —
+3 checks red, exit 1. That 13 also corrects this morning's "7 bullets" figure, which counted
+themes proper and missed 6 rescued traps sitting in the same region.
+
+**The general rule this is the second instance of, in one day.** `tools/find_source.js` was
+written this morning because the evidence-pass SOP *implied* a three-lane corpus grep and failed
+twice anyway. This gate exists because CLAUDE.md's caps lived in prose **inside the file they
+governed** and were broken for weeks. **A rule nobody can measure decays; convert it to a command
+or expect to rediscover it.**
+
+**Deliberately not gated: `Diagnostic/TUNING_LOG.md` (152,617 words) and `Blueprint/`.** They are
+read on demand and their size is the point — TUNING_LOG is meant to be a strict superset of what
+CLAUDE.md used to duplicate. Length is a defect only where it is paid every turn.
+
 ## 2026-08-06-workbench-i — CLAUDE.md: the fix for verbosity was to cut the file, not add a rule to it
 
 **Decision: cut CLAUDE.md 42,065 → 13,455 words rather than add a conciseness instruction to it**

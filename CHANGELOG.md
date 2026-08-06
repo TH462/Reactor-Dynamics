@@ -8,6 +8,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
 
+### Added
+- **`test/run_doc_budget.js`** — gates the one document that is auto-loaded into every agent's
+  context on every turn: `CLAUDE.md` <= 15,000 words, no single physical line over 400 words, and
+  the *Recent themes* region inside its own documented 5-bullet cap. `run_all` 39 -> 40 runners.
+  It exists because all three limits were already written in that file's prose and all three were
+  being broken -- injection-verified against the pre-cut file, which fails every check (42,065
+  words, a 5,310-word line, 13 bullets). `Diagnostic/TUNING_LOG.md` is deliberately NOT gated:
+  it is read on demand, and length is only a defect where it is paid on every turn.
+
 ### Changed
 - **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
   loaded into every agent's context on every turn and had grown to 1,735 lines under its own

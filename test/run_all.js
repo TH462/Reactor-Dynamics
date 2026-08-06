@@ -756,7 +756,18 @@ var BASELINES = {
   // MEASURED AFTER THE DOCS. An intermediate run with the file cut and the entries unwritten read
   // 203, and recording that would have shipped a 2-check drift — the standing rule landing on the
   // very change that shortened the paragraph stating it.
-  'run_hardrules.js':      { code: 0, score: '205checks 0failed' },
+  // 205 -> 208 on 2026-08-06-workbench-j: three citation sites for the conciseness-shape ruling.
+  // MEASURED after the write-ups; the entry that records it first predicted 206.
+  'run_hardrules.js':      { code: 0, score: '208checks 0failed' },
+  // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
+  // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
+  // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
+  // 5,310, and 13 bullets in a themes region documented as "max 5". Injection-verified against
+  // the real pre-cut file at HEAD~1 — all 3 checks red, exit 1. Thresholds carry headroom over
+  // the measured 13,455 / 164 / 5, so ordinary work cannot trip them; if a cut ever has to fight
+  // this gate the answer is a pointer into TUNING_LOG, not a bigger number.
+  'run_doc_budget.js':     { code: 0, score: '3checks 0failed' },
+
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was

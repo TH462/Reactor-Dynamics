@@ -27,6 +27,26 @@ docs.
 > anything that changes what he does next. Detail belongs in the commit message, the issue or
 > `Diagnostic/TUNING_LOG.md` — the reply is not where the record lives. The two delimited blocks
 > below are already bounded; this does not shrink them further.
+>
+> **The shape** *(OWNER RULING, 2026-08-06: "Go with your recommendation." — given after
+> "Should we add word limits? Wouldn't it hamstring you sometimes?", on the recommendation that
+> only ONE of three proposed caps should be a hard number)*. **One number, two habits.**
+> - **A hard cap where length is the harm: `CLAUDE.md` ≤ 15,000 words**, gated by
+>   `test/run_doc_budget.js`. This file is paid for on every turn by every agent, which no other
+>   document is. It hit **42,065** words under its own "Keep it SHORT" heading, with a single
+>   physical line of 5,310, because the caps lived in prose inside the file they governed.
+>   **When it binds, CUT — do not raise the number**; the history belongs in `TUNING_LOG`.
+> - **A chat DEFAULT, not a cap: lead with the answer in ~150 words.** Expand when he asks, or
+>   when a table of measurements *is* the answer — a 30-row A/B is not verbosity.
+> - **Write-ups get no word limit — they get a content rule:** don't restate what the diff shows;
+>   record the trap and the numbers that prove it. Length then falls out.
+>
+> **Why not three caps** (the reasoning, so it is not re-litigated): a word limit on write-ups
+> would forbid the worked A/B that makes a trap believable — #363's lesson is worthless without
+> the 15 °F number that disproved the filed symptom — and HR12 would then be unsatisfiable. Caps
+> are also a proxy that an honest writer games without noticing, by compressing prose or splitting
+> one entry into two. The gate-baselines blob was not bad because it was 21,000 words; it was bad
+> because it duplicated a machine-readable authority.
 
 > **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
 > claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly

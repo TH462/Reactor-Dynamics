@@ -29,6 +29,55 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-06-workbench-j (the conciseness rule becomes a gate, and only one of three caps survived the question)
+
+*(OWNER RULING, 2026-08-06: "Go with your recommendation." — given after "Should we add word
+limits? Wouldn't it hamstring you sometimes?", on the recommendation that only ONE of three
+proposed caps should be a hard number.)*
+
+**The owner's question killed two thirds of my own proposal, correctly.** I had proposed three
+word caps — replies 200, write-ups 400, register rows 150. A cap on write-ups would forbid the
+worked A/B that makes a trap believable (#363's lesson is worthless without the 15 °F number that
+disproved the filed symptom), which puts it in direct conflict with HR12. And caps are a proxy an
+honest writer games without noticing, by compressing prose or splitting one entry in two. **The
+gate-baselines blob was not bad because it was 21,000 words; it was bad because it duplicated a
+machine-readable authority.** Length was the symptom.
+
+**What shipped instead: one number where length genuinely is the harm, two habits where it is
+not.**
+
+- **`CLAUDE.md` ≤ 15,000 words, gated** — `test/run_doc_budget.js`, new runner, `run_all` 39 → 40.
+  That file is paid for on every turn by every agent; no other document is.
+- **Chat: a DEFAULT of ~150 words**, expandable when asked or when a table of measurements *is*
+  the answer.
+- **Write-ups: no word limit, a content rule** — don't restate what the diff shows; record the
+  trap and the numbers that prove it.
+
+**The gate exists because the caps were prose inside the file they governed.** Three checks, and
+each one caught something real when run against the pre-cut file at `HEAD~1`:
+
+| check | pre-cut | now |
+|---|---|---|
+| total words | **42,065** | 13,455 |
+| longest single physical line | **5,310** | 164 |
+| bullets in the *Recent themes* region (documented cap: 5) | **13** | 5 |
+
+All three red, exit 1 — injection-verified against the real historical file rather than a
+synthetic one. **The 13 corrects a number I published this morning**: the workbench-i write-ups
+say "7 bullets against a cap of 5", which counted themes proper; the region also held 6 rescued
+traps that belonged in the standing list below it. The gate counts what the rule actually says.
+
+**A deliberate non-target: `Diagnostic/TUNING_LOG.md` is 152,617 words and is NOT gated.** It is
+read on demand and its size is the point — it is deliberately a strict superset of what CLAUDE.md
+used to duplicate. **Length is only a defect where it is paid on every turn.**
+
+**Gate: `run_all` 40/40 at baseline.** `run_hardrules` **205 → 208** — three citation sites for
+the ruling above (CLAUDE.md, this entry, BUILD_DECISIONS). **I wrote 206 into this paragraph from
+prediction and the measurement said 208**, which is the standing "re-run it AFTER the docs" rule
+catching its own write-up for the second time today. Also caught: the first draft cited the ruling
+as `*(OWNER: …)*`, a form the gate counts as neither a site nor a violation — a ruling recorded
+where nothing can guard it. Corrected to `OWNER RULING, <date>: "<verbatim>"` before measuring.
+
 ## Session log — 2026-08-06-workbench-i (CLAUDE.md bloat pass — 42,065 words to 13,455)
 
 *(OWNER DIRECTIVE, 2026-08-06: "I've also noticed that you tend to be very verbose. Should I add
