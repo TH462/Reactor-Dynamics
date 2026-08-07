@@ -453,12 +453,13 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
   secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
   MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
-- **#419 tier 3 — SIGNED (all four rulings 2026-08-07) and WAVE 1 (pace) LANDED**: the ×12.6
-  retirement is in (slew 1.586e-3, K_surge_level 0.032, boron ceiling 0.14 live-clamped, lab
-  1800 s; TR-1 re-derived to spray-contains; Manuals Rev 14 item (g)). **Wave 2 next: the F15
-  K re-solve, bracketed [K_phys derivation, 600-measured-green]**, then the ladder wave
-  (Ginna 7.03/7.31/7.58/7.33 MPa, retires §8.34) carrying D1's dump measure-first (28 % vs the
-  ruled 40 %). F14 re-affirmed, not in scope. The cascade table + rulings live on the issue.
+- **#419 tier 3 — WAVES 1–2 LANDED**: the ×12.6 retirement (slew 1.586e-3, K_surge_level
+  0.032, boron ceiling live-clamped; Manuals Rev 14 (g)) and the F15 re-solve — K 3144 →
+  **2500 [derived-net, F14-coupled]**: physical K≈304 validates against TMI-2's clock but the
+  ruled F14 heater inverts the stuck-PORV race under it, so the shipped value preserves the
+  plant's physical NET under F14 (one pair; re-solve together). **Wave 3 next: the Ginna
+  ladder + program re-anchor** (7.03/7.31/7.58/7.33 MPa, retires §8.34) carrying D1's dump
+  measure-first (28 % vs the ruled 40 %). The cascade table + rulings live on the issue.
 - **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
   the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
   #418's new ledger, not the old gain**. `status-needs-ruling`.
@@ -481,13 +482,14 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **The pace compression is retired, and its constant was a ghost** (2026-08-07, #419 wave 1).
-  Slew 0.02 → 1.586e-3 [derived, the config's own sourced arithmetic]: NOP at ~1.8 plant-h, the
-  accumulator window ~14 min, the ride ~12.3 plant-h at 30 °F/hr — acceleration carries pacing.
-  `K_surge_level` 0.4 → 0.032 (band un-compressed, fit position kept) — TR-1's PORV-lift claim
-  INVERTED honestly: spray contains the full rejection at 15.42 MPa, the with-credit
-  Westinghouse class. `boron_adjust_rate` 2.0 was read by NOTHING — "go real" landed as a live
-  engine clamp at the derived 0.14. **Check the consumer before proposing a `[tune]` value.**
+- **The pace compression is retired (wave 1) and F15 is anchored by its F14 coupling (wave 2)**
+  (2026-08-07, #419). Slew 1.586e-3 [derived]: the ride is ~12.3 plant-h at 30 °F/hr,
+  acceleration carries pacing; `boron_adjust_rate` was a GHOST (read by nothing) — now a live
+  clamp at 0.14. **Wave 2's trap: a physically-derived constant can be RIGHT and unshippable**
+  — K_phys ≈ 304 validates against TMI-2's own clock, but under the ruled 347× F14 heater the
+  stuck-PORV race inverts (level crashes to 0, no deception). Shipped K = 2500 = the plant's
+  physical NET under the ruled heater; **K and K_heater are one pair — if F14 moves, re-solve
+  both** (stated at the constant).
 - **A constant 142 % wrong survived because nothing checked it against a source** (2026-08-05,
   #364/#365). Decay heat ran on two exponential groups with nothing faster than 33 min, so it was
   flat where a real curve falls fastest. Refit to four groups, within **4.86 %** of the standard

@@ -76,6 +76,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the relief-valve pressure authority is anchored: physical net under the ruled heater (#419 wave 2, 2026-08-07)
+
+- **`K_porv_relief`/`K_safety_relief` 3144 → 2500 [derived-net, F14-coupled]** — the audit's
+  "unanchored" resolved. The physical value is ≈ 304 (a capacitance derivation that reproduces
+  TMI-2's own ~6-minute saturation on TMI-2's geometry, and lands within 2 % of the pre-F15
+  original 300) — but shipped bare it inverts the stuck-PORV race against the ruled 347× F14
+  heater: measured, the heaters hold pressure while the valve drains the pressurizer to 0 %,
+  and the TMI level-rise deception never forms. The shipped 2500 preserves the plant's own
+  physical NET depressurization under the ruled heater (K×2.5e-4 − K_heater = 0.0744 MPa/s);
+  the constant now re-solves with F14 by declaration if that identity ever moves.
+- **Measured at 2500**: stuck-PORV saturation ~5 min (TMI-2: ~6); the deception level rise
+  crosses the 75 % annunciator at ~25 min and reaches 100 % by 50 min on a quasi-stable
+  ~1190-psi ride — the deception cue the #418 A1 re-clock had pushed under the alarm is
+  plausibly restored. TMI campaign cluster 8/8, qualify 5/5, meltdown 12/12, scenarios 3/3.
+- `pwr_tmi2_p3`'s FULL-SAVE ending now routes on the full terminating pair (`hpi_active`
+  added — at the honest clock an early isolation self-recovers past 85 % on normal charging,
+  which had let the full card fire without re-injection); the "Plugged, Not Refilled" card's
+  margin language re-stated to the measured behavior; PI-3's level guard re-banded 30 → 14 %.
+
 ### Changed — the Mode 5↔1 pace compression is retired: the heatup runs real rates end to end (#419 wave 1, 2026-08-07)
 
 - **The pressurization setpoint slew runs the sourced heater class** — `setpoint_pressurize_slew_mpa_s`

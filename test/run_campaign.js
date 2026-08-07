@@ -1638,8 +1638,13 @@ test('pwr_tmi2_p3 — plugged not refilled: comply + early isolation, no re-inje
   if (!snap) return;
   ck('ending: Plugged, Not Refilled', lc(snap).title, /Plugged, Not Refilled/.test(lc(snap).title), 'plugged card');
   ck('no core damage', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === false, 'fuel_damaged false');
+  // 85 → 90 at #419 wave 2 (K 3144 → 2500): on the honest relief clock an early isolation
+  // loses less inventory and normal CVCS makeup claws some back before the ending latches —
+  // measured 86.9 %. The card's premise is "not RECOVERED" (the full-save class is ~95+),
+  // not "deeply short"; the FULL row now also requires hpi_active so this path cannot
+  // steal its ending regardless.
   ck('inventory NOT recovered (the card\'s premise)', snap.true_state.core_inventory_pct.toFixed(1),
-    snap.true_state.core_inventory_pct <= 85, '≤ 85%');
+    snap.true_state.core_inventory_pct <= 90, '≤ 90%');
 });
 
 test('pwr_tmi2_p3 — caught late: isolation only after damage begins', function (ck) {

@@ -710,14 +710,15 @@
           // also exactly what the step teaches — the leak announces itself and then hides again
           // behind the injection that answered it — so the honest form of the claim and the
           // layer-robust one are the same sentence. `saw` takes a list since this change.
-          // hold 90, was 30 (#408): at the real relief flow the dive crosses 25 °C at
-          // ~50 s after the inject (measured full stack: 41 °C → saturation by 1m21s),
-          // not ~8 s — the compressed clock was inside the old window, the real one is
-          // not. Same claim, wider watch. Also true at real flows and worth knowing:
+          // hold 240, was 90 (#408), was 30 — the third re-clock of the same watch, same
+          // claim each time. #419 wave 2 (K 3144 → 2500): the honest pressure authority
+          // dives 41 → ~34 °C by 40 s, PLATEAUS ~37 °C while the post-scram settle fights
+          // the leak (1m–2m30), then collapses through 25 °C at ~2m50s and saturates
+          // (measured full stack). Also true at real flows and worth knowing:
           // injection no longer refills past nominal — a full-open PORV (1.31e-3 frac/s)
           // outruns full HPI (2.0e-4) on this plant, and inventory keeps falling with
           // injection in, so the deception below rides the void/level term alone.
-          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 90,
+          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 240,
           saw: [{ p: 'core_inventory_pct', op: '<', v: 100 },
                 { p: 'subcooling_c', op: '<', v: 25 }] },
         { text: 'Also mask the indicator, as at TMI: Failures tab → inject PORV Indicator Stuck Closed. Trust subcooling, not the PORV light.', control: '(observe PORV light vs subcooling)', target: 'trust subcooling, not the light',

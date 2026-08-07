@@ -4477,8 +4477,13 @@
         ck('si_trip scrammed it anyway (the only pressure trip left)',
           dt >= 0 ? fmt(dt, 1) + ' s — ' + (h.tripReason || '?') : 'no trip in 300 s',
           dt >= 0 && /primary_pressure low/.test(h.tripReason || ''), 'primary_pressure low');
-        ck('level was nowhere near its own trip (not a level scram in disguise)',
-          fmt(h.ins().pzr_level, 1), h.ins().pzr_level > 30, '> 30 % (trip is 12)');
+        // Re-banded 30 → 14 at #419 wave 2 (K 3144 → 304): on the honest relief authority
+        // the stuck PORV's ride to the scram is longer and vents real inventory, so level
+        // reads ~17 % at the trip (was 40+ on the compressed clock). The discriminating
+        // fact was never "level is high" — it is "level stayed clear of ITS OWN 12 % trip"
+        // while the reason string says 'primary_pressure low'. Valid on both clocks.
+        ck('level stayed clear of its own trip (not a level scram in disguise)',
+          fmt(h.ins().pzr_level, 1), h.ins().pzr_level > 14, '> 14 % (trip is 12)');
         ck('SI actuated with it', String(h.ts().hpi_active), !!h.ts().hpi_active, 'true');
 
         // ---- leg 2: BOTH blocked — the cooldown lineup. Pressure walks through

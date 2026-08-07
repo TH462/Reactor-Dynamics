@@ -123,6 +123,39 @@ had updated the trust table) — retired with attribution. Mission narration re-
 (`pwr_mode5_to_mode3` header + beats, `pwr_return_to_mode1`); `run_campaign`'s 60,000 s heatup
 budget untouched (~12.5 plant-h fits). Wave 2 (F15 re-solve, bracketed [K_phys, 600]) is next.
 
+**WAVE 2 BUILT (same session) — F15 re-solved 3144 → 2500 [derived-net], and the MEASUREMENT
+WALKED US OUT OF THE STAGE-1 BRACKET. THE FINDING IS THE F14 COUPLING.**
+- **K_phys ≈ 304** (the C_eff method, one basis — the declared currency IS power-scaled Ginna
+  to 1.3 %): dome ≈ 16 + liquid-flash ≈ 52 = 68 kg/MPa; 5.13 kg/s full-open → 0.076 MPa/s →
+  K ≈ 304, within 2 % of the pre-F15 original 300. **Method validated against history**: the
+  same arithmetic on TMI-2's real geometry gives ~5.3 min to saturation vs the historical ~6.
+- **At 304**: `run_meltdown` 12/12, `run_scenarios` 3/3 — the two old discriminators that were
+  red at 300–450 on the compressed plant are GREEN at the physical value now (the 600 solve
+  was compensating clocks since retired). **But the TMI ARC RE-ORDERS**: the ruled F14 heater
+  (0.55 MPa/s, ~347× real) out-muscles the physical relief (0.076), a stuck PORV cannot
+  depressurize the loop — measured, level 55 → 28 → **0 %** in 8 min (heaters holding
+  2231 psi), heater cutoff, then an 8.6↔15.4 MPa limit cycle. **Level CRASHES instead of
+  RISING — the TMI deception never forms.** The campaign's whole TMI cluster + qualify went
+  red (43/51). K=3144 was implicitly the second half of the F14 pair (0.786 > 0.55).
+- **The resolution: preserve the plant's OWN physical net under the ruled heater** —
+  K×2.5e-4 − 0.55 = K_phys − heater_real = 0.0744 MPa/s → **K = 2498 ≈ 2500**. The constant
+  is now ANCHORED (the audit's "unanchored" resolved): its free parameter is F14, which is
+  ruled — **if F14 ever moves, this re-solves with it; they are one pair through the
+  stuck-PORV race** (recorded at the constant).
+- **Measured at 2500**: saturation ~5 min (TMI-2: ~6); the deception level rise crosses the
+  **75 % annunciator at ~25 min** and reaches 100 % by 50 min on a quasi-stable 8.1–8.25 MPa
+  ride — **the A1 owner-review item (crest 69.4 %, alarm never) is plausibly RESTORED**;
+  re-measure in the mission environment noted on #418. TMI cluster 8/8, qualify 5/5.
+- **One content re-key, the grid's third for the same reason**: at the honest clock an EARLY
+  isolation self-recovers past 85 % on normal CVCS makeup with subcooling restored, so
+  `pwr_tmi2_p3`'s FULL-SAVE row fired on a path that never re-injected. FULL now requires
+  `hpi_active` (routes on the pair its card narrates); the plugged card's two "margin LOST"
+  sentences re-stated to what the plant shows (slow charging-alone recovery); the test's
+  premise band 85 → 90 with the measured 86.9 printed.
+- **PI-3's leg-1 guard re-banded 30 → 14 %** (level at the SI scram): the honest ride to the
+  scram vents real inventory (measured 17.0); the discriminating fact is clearance of the
+  12 % level trip, not a high level. Valid on both clocks.
+
 ---
 
 ## Session log — 2026-08-07-develop-c (INVESTIGATION ONLY: the secondary loop's fidelity gap, measured — filed as #418, the tier-2 umbrella. No code.)

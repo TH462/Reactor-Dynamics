@@ -729,7 +729,38 @@
       // shared K (F15: one steam-venting physics, capacities differ), so their authority
       // rises 1.32 -> 2.52 MPa/s — their old capacity was UNVERIFIED recall, and the
       // sourced 3.2 flow ratio is now what sets it.
-      K_porv_relief: 3144.0, K_safety_relief: 3144.0,
+      //
+      // RE-SOLVED 3144 -> 2500 [derived-net, F14-COUPLED] at #419 wave 2 (2026-08-07). Both
+      // of 3144's pins had dissolved (the TR-1k doorstep went thermal at #418 B1; the 0.786
+      // preserve was the ×12.6 pace duty, retired at wave 1), so the constant was re-derived
+      // from physics — and the measurement that followed is the anchor:
+      //
+      // K_phys ≈ 304 (the K_steam_pressure C_eff method, ONE basis — the declared RCS
+      // currency IS power-scaled Ginna to 1.3 %: 38,323 gal × 300/1520 ≈ 7,467 gal):
+      //   pzr = Ginna ~747 ft³ (TS Bases B 3.4.10: 650 ft³ = 87 %) × 300/1520 = 4.13 m³,
+      //   60/40 split; C_eff = dome V_s·dρg/dP (≈16 kg/MPa) + liquid flash m_l·cp·(dTsat/dP)
+      //   /h_fg (≈52) ≈ 68 kg/MPa; full-open 5.13 kg/s → 0.076 MPa/s → K ≈ 304 — within 2 %
+      //   of the pre-F15 original 300. The same C_eff method run on TMI-2's real geometry
+      //   gives ~5.3 min to saturation against the historical ~6 — the method validates.
+      //
+      // MEASURED AT 304: run_meltdown 12/12, run_scenarios 3/3 — but the TMI ARC RE-ORDERS.
+      // The ruled F14 heater (0.55 MPa/s, ~347× real) out-muscles the physical relief
+      // authority (0.076), so a stuck-open PORV cannot depressurize the loop: the heaters
+      // hold pressure while the valve drains the pressurizer to 0 % (measured — level
+      // 55 → 28 → 0 in 8 min, heater cutoff, then an 8.6↔15.4 MPa limit cycle). Level
+      // CRASHES instead of RISING: the TMI deception — Tier-A content and historical fact —
+      // never forms. K=3144 was implicitly the second half of the F14 pair (0.786 > 0.55).
+      //
+      // THE RESOLUTION: preserve this plant's OWN physical NET depressurization under the
+      // ruled heater — K×2.5e-4 − K_heater(0.55) = K_phys−heater_real = 0.0744 MPa/s
+      // → K = 2498 ≈ 2500. Anchored, not fitted: the free parameter is F14, which is RULED
+      // (re-affirmed 2026-08-07). If F14 ever moves, re-solve this with it — they are one
+      // pair through the stuck-PORV race. Measured at 2500: saturation ~5 min (TMI-2: ~6),
+      // the deception level rise crosses the 75 % annunciator at ~25 min and reaches 100 %
+      // by 50 min on a quasi-stable 8.1–8.25 MPa ride; TMI campaign cluster 8/8, qualify
+      // 5/5, meltdown/scenarios green. Safeties inherit the shared K (F15): bank authority
+      // 2500 × 8.0e-4 = 2.0 MPa/s.
+      K_porv_relief: 2500.0, K_safety_relief: 2500.0,
       // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for
       // step insurges, NOT for a loss-of-heat-sink repressurization — capped at
       // this fraction of full spray flow (auto demand AND operator override), the

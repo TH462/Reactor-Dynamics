@@ -85,7 +85,7 @@ function run(ic, cmds, dur, opts) {
     if (s.true_state.power_pct > r.maxPwr) r.maxPwr = s.true_state.power_pct;
     if (r.stop_t == null && (n.otdt_margin < STOP || n.opdt_margin < STOP)) r.stop_t = svc.simTime;
     (s.alarms || []).forEach(function (a) { if (a.state && a.state !== 'clear') r.alarm[a.id] = a.state; });
-    if (r.scram_t == null && s.rps_state && s.rps_state.scrammed) { r.scram_t = svc.simTime; r.reason = s.rps_state.last_trip_reason; }
+    if (r.scram_t == null && s.rps_state && s.rps_state.scrammed) { r.scram_t = svc.simTime; r.reason = s.rps_state.last_trip_reason; r.scram_p = s.instruments.primary_pressure; }
     r.last = s;
   }
   return r;
@@ -231,8 +231,13 @@ var porv = run('hot_full_power', [[5, { action: 'inject_failure', failure_id: 's
 ck('stuck-open PORV — OTΔT trips on the collapsing DNB line',
   porv.scram_t == null ? 'NO SCRAM' : 'SCRAM ' + porv.scram_t.toFixed(1) + 's on ' + porv.reason,
   porv.scram_t != null && /^otdt_margin/.test(porv.reason || ''), 'scram on otdt_margin');
-ck('  …and it beats the low-pressure trip that used to catch it at 12.5 s',
-  porv.scram_t.toFixed(1) + ' s', porv.scram_t < 12.5, '< 12.5 s');
+// Re-derived at #419 wave 2 (K 3144 → 2500): the honest depressurization is slower, so the
+// absolute "< 12.5 s" was pinning the OLD clock's race time, not the race. The claim is that
+// OTΔT PREEMPTS the low-pressure trip — proven by the reason string above plus pressure still
+// sitting ABOVE the 12.41 MPa lo_press setpoint at the scram instant. Valid on both clocks.
+ck('  …and it beats the low-pressure trip (pressure still above 12.41 at the scram)',
+  porv.scram_t.toFixed(1) + ' s, ' + porv.scram_p.toFixed(2) + ' MPa',
+  /^otdt_margin/.test(porv.reason || '') && porv.scram_p > 12.41, 'otdt first, p > 12.41');
 
 // HR1, and the reason these read INDICATED Tavg: a drifting transmitter moves the trip
 // LINE, not just the gauge. Single-channel protection believes it — the #220 lesson made

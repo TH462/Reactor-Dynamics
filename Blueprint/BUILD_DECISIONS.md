@@ -131,6 +131,30 @@ record from the build:
   plant-h / 30.0 °F/hr steady; PI-3 leg budget 3000 → 8000 s; §14 recovery window 300 → 900 s.
   Manuals Rev 14 pending item (g); CHANGELOG carries the wave.
 
+**WAVE 2 (same session) — F15 IS ANCHORED, AND THE ANCHOR IS THE F14 COUPLING.** The stage-1
+bracket was [K_phys derivation, 600-measured-green]; the measurement walked out of it and the
+walk is the decision record:
+
+1. **K_phys ≈ 304 is real physics** — the C_eff derivation (dome + liquid-flash, one
+   power-scaled-Ginna basis) lands within 2 % of the pre-F15 original 300, and the same method
+   on TMI-2's actual geometry reproduces its ~6-minute saturation. The old suites that forced
+   the 600 solve (`run_meltdown`, `run_scenarios`, red at 300–450 then) are GREEN at 304 on
+   the current plant — the compensation target was the compressed clocks, all since retired.
+2. **But F14 forbids shipping it**: at relief 0.076 vs the ruled heater 0.55 MPa/s the
+   stuck-PORV race INVERTS — the heaters hold pressure while the valve drains the pressurizer
+   to 0 % (measured), so the TMI deception (level RISING on a voiding loop — Tier-A content,
+   historical fact) never forms, and the campaign's TMI cluster went 43/51. K=3144 had been
+   the silent second half of the F14 pair.
+3. **Shipped: K = 2500 [derived-net, F14-coupled]** — K×2.5e-4 − K_heater = the plant's own
+   physical net (0.0744 MPa/s). Not a fit: the only free parameter is F14, which is RULED and
+   re-affirmed; the constant re-solves with F14 if that identity ever moves (stated at the
+   constant). Measured at 2500: saturation ~5 min, deception crest through the 75 % annunciator
+   at ~25 min (the #418 A1 owner-review crest plausibly restored), TMI 8/8 + qualify 5/5 +
+   meltdown/scenarios green.
+4. One content re-key on facts (`pwr_tmi2_p3` FULL row gains `hpi_active` — the third re-key
+   of that grid, same reason class as #407's two) and one guard re-band (PI-3 leg 1, 30 → 14 %,
+   the honest ride vents real inventory before the scram).
+
 ---
 
 ## 2026-08-07-develop-c — tier 2 RULED: the secondary joins the primary's fidelity (A+B, ladder stays), and content-follows-physics becomes standing law

@@ -1367,7 +1367,10 @@ var BASELINES = {
   // pwr_tmi2_common.js carries the record), +evidence lines (the no-dev cue telemetry, the
   // pwr_esf starved-drain duration), and the pwr_esf starved budget 400 -> 900 s at the
   // honest decay-heat boil-off. MEASURED standalone 51/51 3034.
-  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3034passed' },
+  // 3034 -> 3037 (2026-08-07, #419 wave 2): the pwr_tmi2_p3 FULL row's new hpi_active leg
+  // routes the no-reinjection variant through more of its beat graph before the PLUGGED
+  // ending latches — three more checks execute and pass; suites unchanged at 51/51.
+  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3037passed' },
   // 24 -> 38 on 2026-08-06 (#395): preconditions. Section 7 is the MECHANISM on a
   // synthetic procedure (graded live instrument-first, warn-never-block, the
   // comment raised/cleared/re-raised, stop takes it down) — injection-verified:
