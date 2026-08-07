@@ -88,6 +88,76 @@ across the three lanes (SG mass 85,359 lbm T15.6-1, MSSVs 0.84× rated, feed tem
 WTSM §5.1, Ginna ch. 10, the truncated ML11223A246, NUREG-1431. Work proceeds on #418
 (`status-wip-develop` tagged).
 
+
+**WAVE A1 BUILT (late session).** `K_steam_pressure` 2.0 → **0.30** [derived — full arithmetic
+at the constant: C_P ≈ 1,025 MJ/MPa effective capacitance, Ginna basis, band 0.23–0.33 pending
+WTSM §5.1]; the steam break re-expressed as its own **`STEAM_BREAK_FLOW_FRAC: 0.75`** (mass
+byte-identical; the `/K` division would have ×6.7'd break mass flow); `feedwater_temp_c`
+227 → **224** (top of Ginna's sourced 390–435 °F — the old value sat ABOVE the ceiling;
+UNVERIFIED flag closed) with `feed_sensible_frac` re-derived 0.12 → 0.127 (the split telescopes,
+rated identity exact for any feed temp). Perturb sweep at ±5 %: 18/242 moved, zero flips.
+
+**Measured on the new clock (full stack, MSIV closure at 100 %):** first bottled second
+**+43 psi** (inside Ginna T15.2-1's 35–47 psi/s class; was +223); the safety pop arrives at
+**~40–45 s** on the primary's STORED-HEAT burst (the SG keeps eating stored energy through the
+still-open ΔT while its Tsat climbs) — which is why the run_m4/TR-16/campaign lift windows all
+stayed green without widening.
+
+**Adjudication ledger (8 drifting runners, every red adjudicated one at a time, HR10):**
+- **The one mechanism behind five behavior reds**: the SG liquid's thermal inertia soaks
+  transients the compressed clock let spike. TR-1b's trip burst flattened 16.04 → 15.42 — and
+  the #373 leak-plant burst measured **15.416**, 0.006 apart: the pressure-peak fence was DEAD,
+  re-derived as a post-trip **flow-seconds integral** (healthy 0.139, leak 1.035, band 0.45,
+  validated red-by-injection at stop_valve_tau 2.1). TR-1c/TR-1k: the §8.21 cliff went
+  **THERMAL** — PORV doorstep never arrives (peak 15.544 @ 26 s, spray equilibrium after; 3600-s
+  watch), the cliff is 11.1 °C of Tavg (315.6 vs 305.8) — probes re-derived, §8.21 +
+  catalog TR-1c row re-written with both clocks' numbers. TR-3: **"spray loses" inverted** —
+  the dry-SG repressurization can no longer outrun spray (peak 15.43, no lift in 40 min);
+  re-derived to the real-clock signature (SG dry + Tavg climbing 316.5 → 334.8 °C over the
+  last 15 min + spray holds). Ginna's own loss-of-load analyses lift pzr relief only with NO
+  pressure-control credit, so this is Westinghouse-class behavior; the TMI flagship injects
+  `stuck_porv_open` and is unaffected; MD-6 still terminates (run_meltdown stayed green).
+  TR-12b: the bottled generator settles on the **Psat(Tavg) seam** (7.59 vs Psat 7.61) instead
+  of climbing to the ADV inside 1800 s — check re-derived to seam-or-ADV, valid on both clocks.
+- **CC-10b** was pinning a compressed-clock prop: the 120-s sample sat past a pzr-level-low
+  scram (t+104 s) whose post-trip trajectory diverges by clock (old: bottled-SG props the plant
+  hot and subcooled; new: the slow-Tsat SG keeps soaking stored heat, the contraction + drain
+  empty the pzr, saturation at ~145 s, void 0.188). Re-anchored to the MECHANISM (sample at pzr
+  level 25 %, deep in the subcooled drain, pre-trip) — passes byte-identically on both clocks.
+- **The TMI-2 deception crest dropped below the 75 % alarm** (measured in the mission
+  environment: peak **69.4 %** at ~50 min, alarm NEVER) — the deeper post-scram overcool shaved
+  it. Four campaign variants (p2 replay, p3 no-dev/plugged/holding) were parked forever on that
+  cue. Content follows physics: the SHARED trigger (`TMI2.TRIG.pzrLevelHigh`) re-anchored to
+  level > 65 % (the historical cue is level HIGH AND RISING; robust under wave B, which can
+  only raise the crest), plus the no-dev test script. All 8 TMI2 suites green after ONE site.
+  **OWNER-REVIEW flag**: the deception no longer sounds the level-high annunciator on the A1
+  plant — wave B re-measures; if B does not restore the crest, the manuals' deception
+  description needs a row.
+- **board_check #230** ("planned offline does NOT trip") — the harness's 200-check-history
+  plant crossed the OTΔT trip mid-window (depressurized fixture + overcool) and the SCRAM's
+  turbine-trip interlock did the tripping. The check now records trip PROVENANCE (an
+  applyCommand shim) and discriminates the actual #230 defect shape: tripped with an EMPTY
+  log. run_campaign gained a name-filter argv (dev convenience).
+- **Mechanical, measured**: m5 cadence band 1.0 → 2.0 s (shallower flux approach at the soak;
+  the C2 defect class it fences is 10× outside); `pwr_heatup` step-8 hold 40,000 → 42,000 s
+  (545 °F arrived reading 543.2); chain/stack/procedures green after.
+- **run_hardrules** rose on this session's own dated-citation comments — baseline re-measured.
+- **pwr_esf starved branch**: the zero-throttle drain to 10 % runs at the honest decay-heat
+  boil-off now (several hundred s vs the compressed ~53 s sprint) — test budget 400 -> 900 s
+  with the measured drain printed in the check; mission + test comments re-dated.
+
+**Stage-0 fetches landed** (six documents, inbox/sources): Ginna UFSAR ch. 10 (ML20339A040
+— MSSV bank 1085 + 3x1140 psig, min capacity 6.58e6 lbm/hr), NUREG-1431 Rev 4 Vols 1+2
+(ML12100A222/228 — SG lo-lo [30.4]/[32.3] % NR, the #380 source), WTSM 7.2 re-fetched clean
+(the truncated ML11223A246), WTSM 3.2 with Table 3.2-7 SG design parameters. NOTE the WTSM
+chapter map correction: 5.1 is RHR in this edition — the dedicated SG data is 3.2.3.4, and
+NO source in corpus carries SG water mass/metal mass/HT area (the C_P metal question stays
+on the declared 0.23-0.33 band).
+
+**Gates at A1 close**: run_all 42 runners — run_hardrules re-baselined 220 -> 224 (this
+session's dated citations), run_campaign re-baselined (the telemetry/duration evidence
+lines), all else at baseline. Wave A2 (SG mass ledger + level map) is next.
+
 ---
 
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)

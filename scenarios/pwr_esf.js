@@ -95,7 +95,10 @@
       // The MAN drop is narrated here (no snapshot trigger can read the
       // automation arms — the branch graded the set_afw_flow command instead).
       // The drained branch is the teaching catch for a strangled throttle:
-      // probed, a 0 % throttle drains the hold below 10 % in ~53 s.
+      // probed, a 0 % throttle drains the hold below 10 % in several hundred
+      // seconds — the honest decay-heat boil-off rate on the derived secondary
+      // clock (#418 wave A1, 2026-08-07; the old ~53 s sprint was the
+      // compressed clock's).
       { id: 'went_manual',
         trigger: { type: 'delay', value: 1.0 },
         commentary: {

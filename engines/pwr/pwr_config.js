@@ -1166,20 +1166,25 @@
       // keeps 19.45 and its calibration exactly (the use site is algebraically
       // identical at the rated point) and only distributes it:
       //   at 819.5 psi (5.65 MPa), Tsat ≈ 271.5 °C: h_f ≈ 1193 kJ/kg,
-      //   h_fg ≈ 1597 kJ/kg; feed at 227 °C ≈ 977 kJ/kg
-      //   → sensible 216 of 1813 kJ/kg total = 0.119 ≈ 0.12.
+      //   h_fg ≈ 1597 kJ/kg; feed at 224 °C ≈ 963 kJ/kg
+      //   → sensible 230 of 1813 kJ/kg total = 0.127.
       // feedwater_temp_c is the FINAL feed temperature after the (unmodelled)
-      // regenerative heater train — UNVERIFIED [tune]: typical Westinghouse final
-      // feed practice, no primary source in the tree corpus names the number
-      // (evidence pass owed, #374 style). afw_temp_c IS sourced as a band: AFW
+      // regenerative heater train — SOURCED as a band since #418 wave A1
+      // (2026-08-07): Ginna UFSAR Table 15.0-3 gives final feedwater temperature
+      // "390 to 435 °F" (also T15.6-12 and the SG performance cases at :463-481).
+      // 224 °C = 435.2 °F, the top of the band — the prior 227 °C (440.6 °F) sat
+      // ABOVE the sourced ceiling. The old UNVERIFIED flag closes; the split
+      // fraction re-derives with it (0.119 → 0.127) so the rated-point identity
+      // is preserved by the same construction as before (TR-1e leg D pins it).
+      // afw_temp_c IS sourced as a band: AFW
       // design feedwater temperature 40–120 °F (WTSM §5.7, ML11223A229, system
       // design data) — 104 °F (40 °C) chosen inside it, matching the constant the
       // physics already injects ECCS/RWST water at. Cold AFW therefore removes
       // real heat now: at decay-heat power the sensible demand of full AFW flow
       // exceeds the heat crossing the tubes, steam generation clamps at zero, and
       // the SG depressurizes — which is what "AFW is a heat sink" means.
-      feed_sensible_frac: 0.12,    // of latent_heat_secondary, at the rated point [tune]
-      feedwater_temp_c: 227,       // °C final feed (UNVERIFIED — regenerative train unmodelled) [tune]
+      feed_sensible_frac: 0.127,   // of latent_heat_secondary, at the rated point [tune]
+      feedwater_temp_c: 224,       // °C final feed = 435 °F, top of Ginna's sourced 390–435 °F band
       afw_temp_c: 40,              // °C — inside the sourced 40–120 °F design band (WTSM §5.7)
       // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
       //
@@ -1212,7 +1217,42 @@
       // alarm comes in still trips, at 40.6 s. That is correct -- a real loss of normal
       // feedwater DOES trip the reactor on lo-lo level (it is the credited trip in the Ginna
       // analysis above). The window is for reading the board, not for preventing the trip.
-      K_sg_level: 1.37, K_steam_pressure: 2.0, // [tune]
+      K_sg_level: 1.37, // [tune]
+      // K_steam_pressure DERIVED FROM THE PLANT'S OWN STEAM-SPACE PHYSICS (#418 wave A1,
+      // 2026-08-07), 2.0 -> 0.30. The old 2.0 was fitted with no mass basis, and it made a
+      // bottled SG at full generation rise 223 psi in the FIRST SECOND (measured, full
+      // stack) — Ginna UFSAR Table 15.2-1's bounding total-loss-of-load lifts the MSSVs at
+      // 7.0–9.4 s over ~755→1085 psia, i.e. 35–47 psi/s at sustained full power. The
+      // secondary's pressure clock was ~5–6× compressed; #408 removed exactly this class of
+      // clock from the primary.
+      //
+      // THE DERIVATION (Ginna anchor, per-MWt scale s = 300/908.5 = 0.3302 — one Ginna SG
+      // carries 1817/2 MWt):
+      //   SG secondary liquid mass  85,359 lbm/SG nominal (UFSAR Table 15.6-1, the Nominal
+      //     column; the 94,000/70,000 columns are declared conservatisms) × s = 12,785 kg.
+      //   Shell volume 4,512.7 ft³ (UFSAR §15.6.3) − liquid ⇒ steam space ~2,700 ft³ × s
+      //     = 25.2 m³.
+      //   Rated steam flow from the energy balance: 301.65 MW / (h_g − h_feed) = 165.3 kg/s
+      //     (cross-checks the per-MWt scaling of Ginna's 3.7–3.95e6 lb/hr per SG).
+      //   Pressurizing a BOTTLED SG forces the whole saturated liquid up the Tsat line, so
+      //   the capacitance is NOT the dome alone. Per MPa at 5.65 MPa (Tsat 271.6 °C,
+      //   dTsat/dP ≈ 11.7 °C/MPa, dρg/dP ≈ 5.47 kg/m³·MPa, h_fg ≈ 1600 kJ/kg):
+      //     liquid sensible   12,785 kg × 5.2 kJ/kg·K × 11.7 K  ≈ 778 MJ
+      //     boil-up (densify) 25.2 m³ × 5.47 kg/m³ × 1600 kJ/kg ≈ 221 MJ
+      //     dome vapor heating                                  ≈  26 MJ
+      //     C_P ≈ 1,025 MJ/MPa  (tube/shell METAL excluded — declared; including a scaled
+      //     ~45 t of steel gives ~1,290 ⇒ K 0.23. Band 0.23–0.33; the WTSM §5.1 fetch
+      //     arbitrates. Dome-only C_P gives K = 1.19, REJECTED: predicts a 3.1-s pop,
+      //     outside the Ginna class — the liquid's thermal inertia IS the pressure clock.)
+      //   K = Q_NSSS,rated / C_P = 301.65 MW / 1,025 MJ/MPa = 0.294 → 0.30.
+      //
+      // PREDICTED AND THEN MEASURED: bottled first second +43 psi (inside 35–47); sustained
+      // full generation reaches the Psat(Tavg) cap (9.08 MPa at rated Tavg — NOTE the cap
+      // binds BELOW the 9.31 pop) at ~11.6 s and rides primary heatup to the pop at ~14 s.
+      // The RATE is the sourced claim; the extra time over Ginna's 7.0–9.4 s is this
+      // plant's RULED ladder span (3.66 MPa from operating to pop, vs Ginna's 2.28) — the
+      // ladder is identity (2026-08-07 ruling) and does not move with the clock.
+      K_steam_pressure: 0.30,      // MPa/s per unit net normalized flow [derived — see above]
       steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
       steam_flow_rated: 1.0,       // rated steam flow, in those normalized units [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
@@ -1769,15 +1809,22 @@
     physics_failures: {
       ROD_RUNAWAY_RATE_MAX: 24.0,  // steps/s (fine steps — same fraction-of-travel/s as 6.0 on 228)
       STUCK_ROD_MAX_FRAC: 0.4,     // fraction of rod_worth_total
-      // Break strength, still expressed as its RATED-PRESSURE dP/dt equivalent so the
-      // number means what it always meant — but since #370a the break is a MASS FLOW,
-      // not a pressure sink: pwr_steam_generator divides this by K_steam_pressure to
-      // get the flow that produces exactly this dP/dt through the pressure integral,
-      // then scales it by upstream pressure. Verified byte-identical to the old sink
-      // across {downstream, upstream} × {0.15, 0.30, 0.80} × {MSIV open, shut} when
-      // the flow is fed only to the pressure integral. Change this to change break
-      // strength; do not re-add a separate sink. [tune]
-      STEAM_BREAK_RATE: 1.5,       // MPa/s at full break size, at rated pressure
+      // Break strength AS A MASS FLOW — the break's OWN constant since #418 wave A1
+      // (2026-08-07). History: #370a converted the break from a bare dP/dt sink to a
+      // mass flow, but expressed it as STEAM_BREAK_RATE (1.5 MPa/s) divided by
+      // K_steam_pressure at the use site so the old pressure effect was reproduced
+      // exactly. That division made the break's MASS inversely proportional to the
+      // pressure-clock constant — re-deriving K_steam_pressure 2.0 → 0.30 (see the
+      // steam_generator block) would have silently QUINTUPLED every steam-break mass
+      // flow, pegged the sg_steam_flow instrument (range [0, 2.0]), saturated the
+      // three-element feed channel's ff clip, and trivialized the MSLI flow leg. So
+      // the flow is now stated directly: 0.75 = the exact value the old pair produced
+      // (1.5 / 2.0), byte-identical mass flow at every size and pressure. What CHANGED
+      // is the break's pressure effect, deliberately: 0.75 × K(0.30) = 0.225 MPa/s at
+      // full size, so a full MSLB now blows the header down over ~25 s instead of ~4 —
+      // the depressurization runs on the real steam-space capacitance like every other
+      // flow. [tune] pending a sourced Moody critical-flow number (stage-0 fetch).
+      STEAM_BREAK_FLOW_FRAC: 0.75, // fraction of rated steam flow at full break size, at rated pressure
       DEFAULT_DRIFT_RATE: 0.5,     // instrument drift units/s
       DEFAULT_NOISE_SCALE: 5.0,    // noisy-mode sigma multiplier
     },

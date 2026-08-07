@@ -667,7 +667,12 @@
           dt >= 0 && /turbine_tripped/.test(h.tripReason || ''), 'turbine_tripped is_true');
         ck('it is ANTICIPATORY — inside 5 s, not waiting for a process limit',
           dt >= 0 ? fmt(dt, 1) + ' s' : 'never', dt >= 0 && dt <= 5, '≤ 5 s');
-        h.run(600);
+        // The #373 leak-through window is the FIRST 20 s after the trip — integrate
+        // HERE, before the settle, or the fence reads a dead flow and passes on
+        // anything (the hollow-check trap). Fence comment + measured band below.
+        var _leak1b = 0;
+        for (var i1b = 0; i1b < 40; i1b++) { h.run(0.5); _leak1b += (h.ts().steam_flow_normalized || 0) * 0.5; }
+        h.run(580);
         var t = h.ts();
         ck('the dump carries decay heat to the condenser', fmt(h.range('steam_dump_valve_pct').max, 0),
           h.range('steam_dump_valve_pct').max >= 20, '≥ 20 %');
@@ -678,24 +683,29 @@
           fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa peak',
           h.range('steam_pressure_mpa').max < _sg1b.sg_safety_open_mpa,
           '< ' + fmt(_sg1b.sg_safety_open_mpa, 2) + ' (config)');
-        // The trip BURST is REAL and the PORV holds it (#373 + #372). Pre-#373,
-        // 2.138 flow-seconds of post-trip steam leaked through the governor's 2.0 s
-        // load lag and flattened this transient entirely (peak 15.58) — the old
-        // "no PORV lift" band was green because the event never happened, the
-        // standing absence-check trap, second sighting in this probe family. The
-        // stop valve made the burst real (16.26 with feed enthalpy unmodelled);
-        // #372 then damps it physically — feed at 227 °C absorbs ~6 % of rated
-        // heat while saturation jumps toward the no-load anchor — measured peak
-        // 16.04. Pinned from BOTH sides so neither regression can slide through:
-        // the burst must stay VISIBLE (the floor reddens if trip leak-through
-        // returns) and the PORV must HOLD it (the cap reddens if the feed damping
-        // is lost).
-        ck('the trip burst is REAL — not flattened by post-trip steam leak-through (#373)',
-          fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max >= 15.80, '≥ 15.80 (pre-#373 leak plant: 15.58)');
-        ck('…and the PORV holds it — cold-feed sensible uptake damps the spike (#372)',
+        // THE #373 FENCE MOVED FROM THE PRESSURE PEAK TO THE LEAKED STEAM ITSELF
+        // (#418 wave A1, 2026-08-07). The old floor — peak ≥ 15.80, leak plant
+        // 15.58 — discriminated on the compressed secondary clock, where the SG
+        // bottled in ~2 s and the trip burst stood tall. On the derived
+        // K_steam_pressure the SG LIQUID soaks the burst (that is the sourced
+        // physics: the secondary's thermal capacitance IS the pressure clock), and
+        // the peak collapses to the same number healthy or leaking — measured
+        // 15.422 healthy vs 15.416 with #373 re-injected (stop_valve_tau 2.1, the
+        // old governor-lag closure): 0.006 MPa apart, no band can separate them.
+        // Re-banding the floor would have shipped a hollow check. What #373 was —
+        // "a tripped machine drew steam for ~10 s" — is a FLOW-SECONDS quantity,
+        // so the fence now measures exactly that: ∫steam_flow·dt over the 20 s
+        // after the trip (_leak1b, integrated above BEFORE the settle). Measured:
+        // healthy 0.139 flow-s (stop valves slam, tau 0.15), leak plant 1.035
+        // flow-s — a 7.4× separation. Band ≤ 0.45.
+        ck('the stop valves actually shut — post-trip steam leak-through bounded (#373)',
+          fmt(_leak1b, 3) + ' flow-s in 20 s',
+          _leak1b <= 0.45, '≤ 0.45 (healthy 0.139, #373 leak plant 1.035)');
+        ck('the PORV holds the trip burst — never lifts past the setpoint (#372)',
           fmt(h.range('pressure_mpa').max, 2),
           h.range('pressure_mpa').max < _pz1b.porv_open_mpa, '< ' + fmt(_pz1b.porv_open_mpa, 2));
+        ck.info('trip-burst peak (soaked by the SG liquid on the real clock — was 16.04 compressed)',
+          fmt(h.range('pressure_mpa').max, 2) + ' MPa');
         ck('settles at the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 6), '297 ±6');
         ck('SG level held well clear of the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25 %');
@@ -1465,12 +1475,22 @@
         ck('under the arm the fast dump never arms', String(loArmed), loArmed === false, 'false');
         ck('so Tavg climbs well past program (> 315 °C)', fmt(lo.range('tavg_c').max, 1),
           lo.range('tavg_c').max > 315, '> 315');
-        ck('and hands-off it runs to the PORV\'s doorstep — the declared backstop (≥ setpoint − 0.15)',
-          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max >= porvSp - 0.15,
-          '≥ ' + fmt(porvSp - 0.15, 2) + ' (config)');
-        ck('…but never escalates past it to the code safety',
+        // THE CLIFF WENT THERMAL (#418 wave A1, 2026-08-07). On the derived
+        // K_steam_pressure the SG liquid soaks the rejected power, the transient is
+        // slow enough for spray to keep up, and the PORV doorstep NEVER arrives —
+        // measured over a full 3600 s hands-off: peak 15.544 MPa at t+26 s, then
+        // spray equilibrium 15.41 forever (the old doorstep ≥ 16.05 was the
+        // compressed clock's rendering; §8.21 re-written with both sets of numbers).
+        // The excursion the arm cliff creates is now read on TEMPERATURE — the
+        // Tavg checks above and the span check below — which is also the board's
+        // honest cue (the Tavg/Tref deviation). HR10: the old plant passes the
+        // thermal form too (316.1 vs 304.6 on the 2026-08-06 numbers).
+        ck('spray holds the uncaught side clear of the PORV (the doorstep died with the compressed clock)',
+          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max < porvSp,
+          '< ' + fmt(porvSp, 2) + ' (config)');
+        ck('…and never escalates to the code safety',
           String(loSafety), loSafety === false, 'false');
-        ck.info('terminal ornament (knife-edge, not asserted): true peak / PORV sample seen',
+        ck.info('uncaught-side peak (was ~16.1 on the compressed clock) / PORV sample seen',
           fmt(lo.range('pressure_mpa').max, 3) + ' MPa / ' + String(loPorv));
 
         // --- just OVER the arm: caught, and Tavg stays on program
@@ -1492,13 +1512,16 @@
         // the old fixed no-load anchor the demand saturated and MTC ran power to 102.7 %.
         ck('and the catch does not overcool into a power runup (< 101 %)',
           fmt(hi.range('power_pct').max, 1), hi.range('power_pct').max < 101, '< 101');
-        // THE CLIFF AS A SPAN (#377) — the probe's actual subject, and the robust form:
-        // both legs move together under any thermal nudge, so their DIFFERENCE holds
-        // (measured 0.77 MPa, worst-seen 0.71 across ±3 % nudges and four seeds) while
-        // either endpoint alone sits on the PORV setpoint to within noise.
-        ck('the cliff itself: the uncaught side peaks ≥ 0.5 MPa above the caught side',
-          fmt(lo.range('pressure_mpa').max - hi.range('pressure_mpa').max, 2) + ' MPa apart',
-          lo.range('pressure_mpa').max - hi.range('pressure_mpa').max >= 0.5, '≥ 0.5');
+        // THE CLIFF AS A SPAN — in TEMPERATURE since #418 wave A1 (the pressure span
+        // collapsed to 0.125 MPa when spray started outrunning the soaked transient;
+        // asserting it would pin noise). Both legs move together under any thermal
+        // nudge, so their Tavg-peak DIFFERENCE holds: measured 9.8 °C on the new
+        // clock (315.6 vs 305.8), 11.5 °C on the old (HR10 — valid both sides).
+        ck('the cliff itself: the uncaught side peaks ≥ 5 °C hotter than the caught side',
+          fmt(lo.range('tavg_c').max - hi.range('tavg_c').max, 1) + ' °C apart',
+          lo.range('tavg_c').max - hi.range('tavg_c').max >= 5, '≥ 5');
+        ck.info('pressure span (was the asserted cliff on the compressed clock, 0.77 MPa)',
+          fmt(lo.range('pressure_mpa').max - hi.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, hi);
         T.checkSanity(ck, lo);   // #376: the sub-arm leg's commands were never inspected
       });
@@ -1556,10 +1579,34 @@
         h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
         ck('reactor trips on the lo-lo limit first', dt >= 0 ? fmt(dt, 0) + ' s' : 'no trip', dt >= 0, 'trips');
-        var dl = h.runUntil(function (ts) { return ts.porv_open; }, 1800);
-        ck('the dry-SG repressurization lifts the PORV (spray loses)',
-          dl >= 0 ? fmt(dl, 0) + ' s after trip' : 'no lift in 30 min — peak ' + fmt(h.range('pressure_mpa').max, 2),
-          dl >= 0, 'PORV lifts');
+        // RE-DERIVED FOR THE REAL SECONDARY CLOCK (#418 wave A1, 2026-08-07), and
+        // this one is a genuine BEHAVIOR change, stated as such (HR10: the old form
+        // cannot pass on the new plant because the plant changed under ruled
+        // physics, not because the probe was refitted). Compressed clock: the
+        // dry-SG repressurization outran the spray and lifted the PORV at ~25 min
+        // ("spray loses"). Derived clock: the SG liquid's capacitance slows every
+        // secondary-driven rate, the repressurization is gentle, and SPRAY WINS —
+        // measured in this probe's own environment: peak 15.43 MPa over 40 min, no
+        // lift. That is Westinghouse-class physics: Ginna's loss-of-load analyses
+        // lift pressurizer relief only when NO credit is taken for pressure
+        // control (UFSAR 15.2.2 case 2); with spray active the DNB/OTΔT side
+        // carries the event. The TMI flagship is NOT this fixture — it injects the
+        // stuck PORV explicitly — and the terminal path is MD-6's (still green in
+        // run_meltdown: the dry SG cooks the plant on the hours scale). What the
+        // heat-sink loss reads on NOW is TEMPERATURE: Tavg climbs off the no-load
+        // anchor with nothing to remove decay heat but the dry residual.
+        h.run(1500);                                    // through dryout + depletion
+        var _tavgDry3 = h.ts().tavg_c;
+        h.run(900);
+        var t3 = h.ts();
+        ck('the SG is genuinely dry — wide-range level at the floor',
+          fmt(t3.sg_level_wide_pct, 1) + ' %', t3.sg_level_wide_pct < 2, '< 2 %');
+        ck('with the heat sink lost, Tavg climbs off the no-load anchor (the real-clock signature)',
+          fmt(_tavgDry3, 1) + ' → ' + fmt(t3.tavg_c, 1) + ' °C over the last 15 min',
+          t3.tavg_c > _tavgDry3 + 3 && t3.tavg_c > 305, 'rising, > 305 °C');
+        ck('spray holds the repressurization under the PORV (was "spray loses" on the compressed clock)',
+          fmt(h.range('pressure_mpa').max, 2) + ' MPa peak',
+          h.range('pressure_mpa').max < RD.PWR_CONFIG.pressurizer.porv_open_mpa, '< PORV setpoint');
         ck.info('peak pressure', fmt(h.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, h);
       });
@@ -1779,23 +1826,29 @@
           d.t.steam_pressure_mpa > d.atIso + 1.0, 'rises ≥ 1 MPa from the isolation instant');
         ck('and the overcooling is arrested (Tavg back near the no-load anchor)',
           fmt(d.t.tavg_c, 1), d.t.tavg_c > 280, '> 280 °C');
-        // RE-AUTHORED 2026-08-06 (ADV shipped lineup SHUT → AUTO). This used to read
-        // "the bottled generator lifts its code safeties, as in TR-5". TR-5 still does
-        // lift them and still passes — the difference is the DIRECTION of approach, and
-        // it is worth stating because it is not obvious: TR-5 bottles the SG from full
-        // power, so there is a pressure SPIKE that briefly outruns the ADV and reaches
-        // 9.31. Here the SG has already been blown down by the break and is coming back
-        // UP from 5.94 MPa, so there is no spike at all and the ADV catches it on the way
-        // through 8.60. Same bottled generator, different history, different relief path.
-        //
-        // What the probe actually wants is unchanged: isolating the break leaves the
-        // generator bottled and HOLDING ON A RELIEF PATH, rather than drifting. So that
-        // is what it asserts now, positively and by name.
-        ck('…and the bottled generator settles on a relief path — the ADV catches it first',
-          fmt(d.t.steam_pressure_mpa, 2) + ' MPa, adv ' + fmt(d.t.adv_valve_pct, 1) + ' %, safety ' +
-            String(!!d.t.sg_safety_open),
-          d.t.adv_valve_pct > 1 && d.t.steam_pressure_mpa > 8.5 && d.t.steam_pressure_mpa < 9.31,
-          'throttling at the 8.60 setpoint, under the 9.31 safeties');
+        // RE-AUTHORED 2026-08-06 (ADV SHUT → AUTO), and AGAIN for #418 wave A1
+        // (2026-08-07). The 2026-08-06 form asserted arrival AT the ADV band
+        // (8.5 < P < 9.31, throttling) because on the compressed clock the
+        // decay-heat climb reached 8.63 inside the 1800 s settle. On the derived
+        // K_steam_pressure the deeper, longer blowdown overcools the primary
+        // further and the bottled generator parks at the THERMAL SEAM instead:
+        // P_sg = Psat(Tavg) — zero-ΔT equilibrium with the primary that heats it —
+        // and creeps upward only as decay heat reheats the loop (measured: 7.59
+        // MPa = Psat(291.3 °C) at 1800 s, ADV shut, safeties shut). The claim the
+        // probe wants is unchanged — the bottled generator HOLDS with the plant
+        // rather than drifting — so it asserts the seam, plus the relief ceiling.
+        // The ADV arrival is asserted only once pressure gets there (the old form,
+        // kept as the branch), so the check is valid on BOTH clocks (HR10: the old
+        // plant read 8.63 = Psat(~300.3) — inside the seam band AND in the ADV
+        // branch).
+        var _psatTavg12 = Math.pow(Math.max(d.t.tavg_c, 1) / 179.47, 1 / 0.239);
+        var _onSeam12 = Math.abs(d.t.steam_pressure_mpa - _psatTavg12) < 0.5;
+        var _onAdv12 = d.t.steam_pressure_mpa > 8.5 && d.t.adv_valve_pct > 1;
+        ck('…and the bottled generator holds with the primary — on the Psat(Tavg) seam (or throttling at the ADV), under the safeties',
+          fmt(d.t.steam_pressure_mpa, 2) + ' MPa vs Psat(Tavg) ' + fmt(_psatTavg12, 2) +
+            ', adv ' + fmt(d.t.adv_valve_pct, 1) + ' %, safety ' + String(!!d.t.sg_safety_open),
+          (_onSeam12 || _onAdv12) && d.t.steam_pressure_mpa < 9.31,
+          'seam ±0.5 MPa or ADV throttling, under 9.31');
 
         var u = run('steam_line_break_upstream');
         ck('UPSTREAM: the SAME protection fires — the plant cannot tell the location',
@@ -4315,7 +4368,20 @@
         var sgDb = RD.PWR_CONFIG.protection.failures.sgtr;
         var sgRb = (sgDb.severity_meta.max / 100) * (sgDb.leak_scale != null ? sgDb.leak_scale : 1);
         h.cmd('inject_failure', { failure_id: 'sgtr', severity: Math.min(1, 7.2e-4 / sgRb) });
-        h.run(120);
+        // SAMPLE AT A MECHANISM ANCHOR, NOT A CLOCK (#418 wave A1, 2026-08-07). This
+        // used to run a flat 120 s and sample there — and that window was quietly
+        // load-bearing on the COMPRESSED secondary pressure clock: this drain trips
+        // the reactor on pzr level low at ~104 s, and on the old K_steam_pressure the
+        // instantly-bottled SG PROPPED the primary hot and subcooled through 120 s.
+        // On the real clock the bottled SG's Tsat climbs slowly, so post-trip it keeps
+        // soaking the primary's stored heat, the contraction + drain empty the
+        // pressurizer, and the plant honestly saturates at ~145 s (measured: P 15.31 →
+        // 8.59 MPa in the 46 s after the trip, void onset 0.188 at t+120). The probe's
+        // CLAIM — the gauge is honest while subcooled — is about the SUBCOOLED DRAIN,
+        // so it samples while that regime holds: at pzr level 25 %, deep in the drain
+        // and comfortably before the trip. Validated against the pre-A1 plant too
+        // (HR10): the old plant passes this form at the same anchor.
+        for (var i9 = 0; i9 < 300 && h.ts().pzr_level_pct > 25; i9++) h.run(1);
         var t = h.ts();
         ck('still subcooled through the early drain', fmt(t.subcooling_c, 1), t.subcooling_c > 0, '> 0');
         ck('no void yet (deception gated on saturation)', fmt(t.primary_void_fraction, 3),
@@ -4860,11 +4926,17 @@
           String(loArmed), loArmed === false, 'false');
         ck('Tavg climbs well past program even with rods in AUTO (> 312 °C)',
           fmt(lo.range('tavg_c').max, 1), lo.range('tavg_c').max > 312, '> 312');
-        ck('the shipped lineup ALSO runs to the PORV\'s doorstep (≥ setpoint − 0.15) — the §8.21 mitigation story is dead',
-          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max >= porvSp - 0.15,
-          '≥ ' + fmt(porvSp - 0.15, 2) + ' (config)');
+        // #418 wave A1 re-derivation, mirroring TR-1c: the PORV doorstep died with
+        // the compressed secondary clock (spray outruns the SG-liquid-soaked
+        // transient), so the #377 finding re-states as: the shipped lineup ALSO
+        // carries the THERMAL excursion — rods in AUTO still do not catch a
+        // sub-arm rejection (the Tavg > 312 check above is the pin) — while spray
+        // holds pressure clear of the valve on both lineups.
+        ck('spray holds the shipped lineup clear of the PORV too (the §8.21 story is thermal now)',
+          fmt(lo.range('pressure_mpa').max, 2), lo.range('pressure_mpa').max < porvSp,
+          '< ' + fmt(porvSp, 2) + ' (config)');
         ck('…and never escalates to the code safety', String(loSafety), loSafety === false, 'false');
-        ck.info('terminal ornament (knife-edge, not asserted): true peak / PORV sample seen',
+        ck.info('shipped-lineup peak (was 16.198 on the compressed clock) / PORV sample seen',
           fmt(lo.range('pressure_mpa').max, 3) + ' MPa / ' + String(loPorv));
 
         // --- arm + 1, rods in AUTO: caught, clear of the relief neighborhood
@@ -4879,9 +4951,10 @@
         ck('no PORV lift on the caught side — clear by a quarter MPa',
           fmt(hi.range('pressure_mpa').max, 2), hi.range('pressure_mpa').max < porvSp - 0.25,
           '< ' + fmt(porvSp - 0.25, 2) + ' (config)');
-        ck('the cliff span holds on the shipped lineup too (≥ 0.5 MPa)',
-          fmt(lo.range('pressure_mpa').max - hi.range('pressure_mpa').max, 2) + ' MPa apart',
-          lo.range('pressure_mpa').max - hi.range('pressure_mpa').max >= 0.5, '≥ 0.5');
+        // Temperature form since #418 wave A1, same reasoning as TR-1c's span check.
+        ck('the cliff span holds on the shipped lineup too (≥ 4 °C in Tavg)',
+          fmt(lo.range('tavg_c').max - hi.range('tavg_c').max, 1) + ' °C apart',
+          lo.range('tavg_c').max - hi.range('tavg_c').max >= 4, '≥ 4');
         // The declared cliff's cost, pinned: the SMALLER rejection is the WORSE plant.
         ck('the declared non-monotonicity: the sub-arm cut undershoots ≥ 5 pts deeper than the caught one',
           fmt(lo.range('power_pct').min, 1) + ' % vs ' + fmt(hi.range('power_pct').min, 1) + ' %',

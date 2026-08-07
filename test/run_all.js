@@ -783,7 +783,12 @@ var BASELINES = {
   // website work gets no changelog.html entry. An intermediate run taken with the merge written
   // up and the release not yet written read 218 — recording that would have shipped a 2-check
   // drift, which is this key's own standing warning arriving twice in one session.
-  'run_hardrules.js':      { code: 0, score: '220checks 0failed' },
+  // 220 -> 224 (2026-08-07-develop-c, #418 wave A1): four new dated-citation sites from the
+  // tier-2 ruling write-ups — the content-follows-physics directive in CLAUDE.md's HR9 block,
+  // the scope-ruling records in BUILD_DECISIONS/TUNING_LOG, and the K_steam_pressure
+  // derivation's ruling reference in pwr_config. MEASURED after the write-ups, per this key's
+  // standing warning (prose moves this score; run the aggregate after the docs, not before).
+  'run_hardrules.js':      { code: 0, score: '224checks 0failed' },
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
@@ -1346,7 +1351,12 @@ var BASELINES = {
   // holding rigs no longer pull the AFW tag — a running heat sink prevents the
   // deception, so the order those variants depend on never arms (the tag+defend
   // quiet-night is a filed design gap, not a reachable ending yet).
-  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3029passed' },
+  // 3029 -> 3034 (2026-08-07-develop-c, #418 wave A1): the TMI-2 securing cue re-anchored
+  // (pzr_level_high alarm -> level > 65 %, measured crest 69.4 % — the shared TRIG in
+  // pwr_tmi2_common.js carries the record), +evidence lines (the no-dev cue telemetry, the
+  // pwr_esf starved-drain duration), and the pwr_esf starved budget 400 -> 900 s at the
+  // honest decay-heat boil-off. MEASURED standalone 51/51 3034.
+  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3034passed' },
   // 24 -> 38 on 2026-08-06 (#395): preconditions. Section 7 is the MECHANISM on a
   // synthetic procedure (graded live instrument-first, warn-never-block, the
   // comment raised/cleared/re-raised, stop takes it down) — injection-verified:

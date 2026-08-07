@@ -99,7 +99,16 @@
     reseatMoment:   { type: 'delay', value: 12.0 },              // PORV open ~12 s (historical 13)
     subcoolAlarm:   { type: 'alarm', alarm_id: 'subcooling_low' },
     hpiAuto:        { type: 'true_state', field: 'hpi_active', direction: 'is_true' },
-    pzrLevelHigh:   { type: 'alarm', alarm_id: 'pzr_level_high' },
+    // RE-ANCHORED 2026-08-07 (#418 wave A1): was the `pzr_level_high` ALARM (75 %).
+    // On the derived secondary clock the deeper post-scram overcool shaves the void
+    // deception's crest — measured in the mission environment: indicated level peaks
+    // 69.4 % at ~50 min and the 75 % alarm NEVER fires, so every beat keyed on it
+    // parked forever. The alarm SETPOINT is a plant setpoint and does not move; the
+    // story cue re-anchors to what TMI-2's crew actually acted on — pressurizer level
+    // indicating HIGH AND RISING against a draining plant — which 65 % (ten points
+    // over program, deep in the deception) captures on this plant. Robust under the
+    // #418 wave-B tube node too: B can only raise the crest back toward the alarm.
+    pzrLevelHigh:   { type: 'instrument', instrument: 'pzr_level', direction: 'above', value: 65.0 },
     afwDiscovery:   { type: 'delay', value: 355.0 },             // ≈ T+8 min from the HPI beat
     // RE-ANCHORED 2026-08-07 (the proportional valve): was fuel_temp_c > 1300, a
     // compressed-era calibration. On the real clock the drain uncovers the core at

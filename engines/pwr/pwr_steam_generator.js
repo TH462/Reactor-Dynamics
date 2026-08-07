@@ -294,11 +294,15 @@
     // — FELL during a break instead of rising. Building the isolation on that
     // signal would have been protection reading a number that moves the wrong way.
     //
-    // CALIBRATION IS EXACT AND STRUCTURAL, not a comment: the pressure integral
-    // below is (generation − steam_out) × K_steam_pressure, so a flow F produces
-    // −K_steam_pressure·F MPa/s. Dividing STEAM_BREAK_RATE by K_steam_pressure
-    // therefore reproduces the old sink identically at rated pressure, and keeps
-    // STEAM_BREAK_RATE as the single knob for break strength.
+    // THE FLOW IS THE BREAK'S OWN CONSTANT (#418 wave A1) — STEAM_BREAK_FLOW_FRAC,
+    // a fraction of rated steam flow at full size and rated pressure. It used to be
+    // derived as STEAM_BREAK_RATE / K_steam_pressure so the old dP/dt sink was
+    // reproduced exactly; that division coupled the break's MASS to the pressure
+    // clock, and the #418 re-derivation of K_steam_pressure (2.0 → 0.30) would have
+    // quintupled it. 0.75 is the exact flow the old pair produced — mass flow is
+    // byte-identical; the break's PRESSURE effect now runs on the real steam-space
+    // capacitance through the same integral as every other flow (0.225 MPa/s at
+    // full size, ~25-s full-header blowdown — see the constant's comment).
     //
     // The break LOCATION gate is unchanged and is the whole of #199: a break
     // DOWNSTREAM of the MSIV stops dead when the valve shuts — the operator's one
@@ -317,7 +321,7 @@
     // provably faithful.)
     var brk = s._fail.steam_break;
     var _breakFlow = (brk && brk.active && (brk.upstream || s.msiv_open !== false))
-      ? (cfg.physics_failures.STEAM_BREAK_RATE / sg.K_steam_pressure) * brk.size
+      ? cfg.physics_failures.STEAM_BREAK_FLOW_FRAC * brk.size
           * Math.min(s.steam_pressure_mpa / sg.steam_p_rated, 1)
       : 0;
     s.steam_break_flow = _breakFlow;
