@@ -29,6 +29,48 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-07-develop-c (INVESTIGATION ONLY: the secondary loop's fidelity gap, measured — filed as #418, the tier-2 umbrella. No code.)
+
+**Task:** the owner asked to bring the secondary up to #408-wave-1 fidelity ("proper heat
+transfer as well"), reporting loop ΔT reaching ~3 °F within 20 s of an MSIV closure at 100 %
+as "seems fast". Measured (full stack, `close_msiv`, accel 1×, 1-s sampling) and filed
+**#418** with the full table. No engine/config/test edits.
+
+**The verdict splits.** The ~3 °F END value is correct by construction (post-scram
+ΔT = 59.4 °F × Q_total/flow ≈ 3.6 °F at decay+pump heat, full flow — the real class). The
+SPEED is the defect and it is structural: **true ΔT collapses 59.4 → 7.4 °F in 2 s** (the
+anticipatory scram lands ~1 s after closure, and ΔT is same-step algebra around Tavg — no
+loop transport, no SG node), the **true cold leg rises 27.5 °F in 2 s**, and the 20-s shape
+the board shows is almost entirely the 4-s RTD lag smoothing a 2-second physics step. The
+RTD lag itself is the right class (Ginna §15.2.2.7: 1–2 s RTD + 3.5–4.5 s filter).
+
+**The SG pressure clock measured ~4–6× compressed** — the #408 stage-1 finding, one loop
+over. Bottled at full generation the SG rose **223 psi in the first second**
+(`K_steam_pressure` 2.0 MPa/s, `[tune]`, no mass basis); Ginna Table 15.2-1
+(`inbox/src135/ginna15.txt` :4235, same-document) lifts MSSVs at **7.0–9.4 s of SUSTAINED
+full power** over ~755→1085 psia ⇒ ~45–55 psi/s. Our pop at ~9.5 s lands in Ginna's window
+only because the scram (which Ginna does not credit) collapsed generation after 1 s. The
+safeties themselves behaved (1.2× rated capacity, pop/reseat 1350/1305, latched weeping
+decay heat); the LADDER runs deliberately high (1194 psi no-load anchor vs the real 1092
+psig header — config's own "coherence is not a citation" note, tied to the 297 °C identity).
+
+**Structural findings** (details and staging in #418): no SG mass/volume constant exists
+anywhere (grep zero); level/pressure/Tsec are three parallel integrals with independent
+gains — the LEVEL clock is ~real (`K_sg_level` event-fitted to Ginna, #135) while the
+PRESSURE clock is ~5× fast, which one shared mass ledger would make impossible; secondary
+flows have no real currency (`steam_flow_rated: 1.0`); `coolant_heat_capacity` 20.0 is
+~2.7× heavy vs the declared ~7,500 gal / 300 MWt (needs an evidence row — some is wetted
+metal). Corpus is nearly bare on the secondary (1 SG-mass hit across 22 docs, 3 lanes) —
+stage 0 must fetch (Ginna ch. 5/10, WTSM §5.1/§7.1).
+
+**The gating ruling**: #408's fence ("the thermal ×12.6 compression is NOT reopened") splits
+this wave — the secondary inventory/pressure re-clock fits inside it; loop transport + an SG
+tube-side node ("proper heat transfer") and the ladder identity sit on or over it. #418
+recommends: tier 2 = inventory clock now, node/transport staged with #385, fence re-affirmed
+or amended by ruling before stage 3.
+
+---
+
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)
 
 **Task:** full merge and release. This entry is the MERGE half; the release follows in the same
@@ -13944,6 +13986,7 @@ real smell worth a look during this effort.
 |---|---|---|---|
 | **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30j (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. **RESOLVED 2026-07-31 (#136 closed).** The retune was ruled and landed *(OWNER RULING, 2026-07-30: "249 - fit it.")* — `level_per_mass_surplus` 300 → **776**, fitted to the pressurizer steam space as 5.8 % of RCS volume. Re-measured on this probe: the end state is now **120.0 % inventory / 100.0 % level** — solid, and the two gauges agree. The clip is still what pins inventory at 120 %, and that remains load-bearing and correct; what changed is that indicated level can now express the surplus instead of pinning at 88.00 %. **Now ASSERTED**, not just observed: `abuse_porv_walkaway` gained a both-gauges-agree check (run_ops 334 → 335 passed), because the two numbers had been printed on an `info` line every run and asserted on none — which is the whole reason this survived. Reddens by injection at 88.0 % on the pre-#249 gain |
 | **S14** (#273) | PWR | **The by-the-book Mode 3 → Mode 5 cooldown dumps all four accumulators.** Measured endpoint: `accum_vol=0.0 %`, `boron=2310 ppm` (SIT charge is 2,500), `inv=120.00 %` clipped. Nothing tells the player to isolate them — **zero** "accumulator" mentions in `ui/campaign_data.js` or `Manuals/05_MODE_TRANSITIONS.md` | Found 2026-07-30j while working #249. The cooldown crosses the 600 psi (4.14 MPa) SIT arming pressure with the discharge valve still open. Invisible until now because the 88 % level pin (S1) kept the overfill below the 97 % high-level trip — the `pwr_mode3_to_mode5` "arrived UNscrammed" check has been passing **for the wrong reason (HR10)**. The engine's own driver isolates correctly (`pwr_engine.js:1833`); the heatup procedure re-opens a lineup the cooldown never establishes (`ui/manual_procedures.js:58`) |
+| **S15** (#418) | PWR | **The secondary runs on the compressed clock #408 removed from the primary.** MSIV closure at 100 %: SG +223 psi in 1 s vs Ginna's implied ~45–55 psi/s (Table 15.2-1, MSSV lift 7.0–9.4 s at sustained full power) — `K_steam_pressure` ~4–6× fast; true loop ΔT 59.4 → 7.4 °F in 2 s and true Tcold +27.5 °F in 2 s (no SG node, no loop transport); the 20-s board shape is the 4-s RTD lag, not physics | Filed 2026-08-07 (develop-c session) as the tier-2 umbrella: SG mass/energy ledger (no SG mass/volume constant exists in the repo), one real flow currency, transport/node staged with #385. Gated on re-affirming or amending #408's "thermal ×12.6 NOT reopened" fence |
 | **S2** | PWR | **RESOLVED (2026-07-31, issue #135)** — and this row was right where the GitHub issue was wrong. The window was **2.9 s**, not ~4, and #135 filed it as "a setpoint/lag question… not a physics change", which was arithmetically impossible: the setpoints are 13 points apart, so at the old drain rate no spacing could buy more than a few seconds. "Slowing SG boil-down" was the correct instinct and "slightly" understated it 3.6×. `K_sg_level` **5.0 → 1.37**, fitted to Ginna UFSAR Table 15.2-4 (ADAMS ML20339A101): 35 s from feed loss to lo-lo trip. Window now **11.6 s**. Pinned by TR-14 | Was: too fast for a player to react — consider slowing SG boil-down slightly |
 | **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |
