@@ -11,6 +11,31 @@
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
   function T_sat(P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); }
 
+  // SG level-geometry map (#418 wave A2): wide-range level from the mass ledger and its
+  // inverse. Piecewise linear over the sg_mass_map knots ([m, wide-%], monotone in both
+  // coordinates), clamped at the end knots. The inverse exists because the map is strictly
+  // monotone; it seeds the ledger from a save's (or an IC's) wide level, byte-identically.
+  function wideFromMass(m, sg) {
+    var k = sg.sg_mass_map;
+    if (m <= k[0][0]) return k[0][1];
+    for (var i = 1; i < k.length; i++) {
+      if (m <= k[i][0]) {
+        return k[i - 1][1] + (k[i][1] - k[i - 1][1]) * (m - k[i - 1][0]) / (k[i][0] - k[i - 1][0]);
+      }
+    }
+    return k[k.length - 1][1];
+  }
+  function massFromWide(w, sg) {
+    var k = sg.sg_mass_map;
+    if (w <= k[0][1]) return k[0][0];
+    for (var i = 1; i < k.length; i++) {
+      if (w <= k[i][1]) {
+        return k[i - 1][0] + (k[i][0] - k[i - 1][0]) * (w - k[i - 1][1]) / (k[i][1] - k[i - 1][1]);
+      }
+    }
+    return k[k.length - 1][0];
+  }
+
   // Saturation pressure of water in kPa for 0–100 °C (Antoine, mmHg form).
   //
   // The plant-wide T_sat/P_sat_from_T pair is a power-law fitted to the 0.1–10 MPa range
@@ -336,14 +361,24 @@
     s.steam_out_total = steam_out;
 
     // SG level (the true level; shrink/swell is added in the instrument model §8.4).
-    // WIDE range is the integrated inventory over the whole vessel, clamped only at the
-    // physical bounds [0,100]. NARROW (working) range is derived as the sg_wr_lo..sg_wr_hi
-    // window of it — so when narrow pegs on an overfill/dryout, wide keeps moving. The wide
-    // gain is scaled from K_sg_level so the narrow reading's IN-WINDOW dynamics are identical
-    // to the old direct-narrow integration (d(narrow) = K_sg_level·imbalance while unpegged).
+    // SINCE #418 WAVE A2 THE STATE IS A MASS LEDGER, NOT A LEVEL INTEGRAL: sg_mass_frac
+    // (1.0 = nominal secondary mass) integrates the real flow imbalance over the sourced
+    // boil-dry clock, and BOTH level ranges DERIVE from it through the sg_mass_map
+    // geometry (see pwr_config — the map's middle segment reproduces the retired
+    // K_sg_level's in-window drain to three decimals, so the Ginna 35-s trip event and
+    // every feed-controller calibration are preserved by construction, while total
+    // inventory now honors the sourced 77.5-s full boil-dry instead of the old implied
+    // ~162 s). WIDE range is the whole-vessel reading; NARROW (working) range is the
+    // sg_wr_lo..sg_wr_hi window of it — narrow pegs on overfill/dryout, wide keeps moving.
     var wr_lo = sg.sg_wr_lo, wr_hi = sg.sg_wr_hi, wr_span = wr_hi - wr_lo;
-    var dWide = (feedwater_flow - steam_out) * sg.K_sg_level * (wr_span / 100);
-    s.sg_level_wide_pct = clip((s.sg_level_wide_pct != null ? s.sg_level_wide_pct : wr_lo + wr_span * s.sg_level_pct / 100) + dWide * dt, 0, 100);
+    if (s.sg_mass_frac == null) {   // lazy init (new field; old saves + rig states)
+      s.sg_mass_frac = massFromWide(
+        s.sg_level_wide_pct != null ? s.sg_level_wide_pct
+          : wr_lo + wr_span * (s.sg_level_pct != null ? s.sg_level_pct : 65) / 100, sg);
+    }
+    var _mMax = sg.sg_mass_map[sg.sg_mass_map.length - 1][0];
+    s.sg_mass_frac = clip(s.sg_mass_frac + (feedwater_flow - steam_out) / sg.sg_mass_boil_tau_s * dt, 0, _mMax);
+    s.sg_level_wide_pct = wideFromMass(s.sg_mass_frac, sg);
     s.sg_level_pct = clip((s.sg_level_wide_pct - wr_lo) / wr_span * 100, 0, 100);
 
     // Tube-bundle dryout DEPLETION (MD-6 structural fix — see pwr_config sg_dryout_*):
@@ -519,6 +554,8 @@
     stepSecondary: stepSecondary,
     stepTurbine: stepTurbine,
     tripTurbine: tripTurbine,
+    wideFromMass: wideFromMass,   // level-geometry map + inverse (#418 A2) — the engine's
+    massFromWide: massFromWide,   // save migration seeds the ledger through these
   };
 
 })(globalThis.RD || (globalThis.RD = {}));

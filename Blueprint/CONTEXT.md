@@ -467,10 +467,15 @@ physical-quantity vocabulary.
 "true_state": {
     "power_pct": number, "tavg_c": number, "thot_c": number, "tcold_c": number,
     "pressure_mpa": number, "pzr_level_pct": number, "sg_level_pct": number,
-    "sg_level_wide_pct": number,      // WIDE-range SG level — the whole vessel column (tube sheet → separators),
-                                      //   i.e. the integrated inventory state. `sg_level_pct` above is the narrow
-                                      //   (working) range derived from it as an sg_wr_lo..sg_wr_hi window; narrow
-                                      //   PEGS on an overfill or a dryout, wide keeps reading. Feeds the UI water column.
+    "sg_level_wide_pct": number,      // WIDE-range SG level — the whole vessel column (tube sheet → separators).
+                                      //   DERIVED since #418 wave A2 from `sg_mass_frac` below through the
+                                      //   sg_mass_map geometry. `sg_level_pct` above is the narrow (working) range
+                                      //   derived from it as an sg_wr_lo..sg_wr_hi window; narrow PEGS on an
+                                      //   overfill or a dryout, wide keeps reading. Feeds the UI water column.
+    "sg_mass_frac": number,           // SG secondary MASS LEDGER (#418 wave A2) — fraction of the nominal
+                                      //   secondary mass (1.0 = 12,785 kg, Ginna 85,359 lbm per-MWt-scaled). THE
+                                      //   inventory state; both level ranges derive from it, and it integrates
+                                      //   (feed − steam_out)/sg_mass_boil_tau_s on the sourced 77.5-s boil-dry clock.
     "steam_flow_normalized": number, "fw_flow_normalized": number, "mwe_output": number,
     "steam_out_total": number,        // TOTAL steam leaving the SG (turbine + dump + safeties) — the source behind
                                       //   the `sg_steam_flow` main-steam-line instrument, and the flow feed regulation

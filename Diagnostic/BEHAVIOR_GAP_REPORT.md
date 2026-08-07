@@ -12,5 +12,5 @@ Battery result: 65 pass, 1 known gaps (xfail).
 *Known gap:* rod channel limit-cycles after a load step (#378) — shippable fix not yet found
 
 - **the plant SETTLES — ask ±2 pts held 5 min, reached inside 25 min (pre-fix: never)** — required `≤ 25 min`, observed `never`
-- **…and STAYS settled — 25-35 min p2p ≤ 6 pts (pre-fix: 12.7-13.1, the limit cycle)** — required `≤ 6`, observed `12.37 pts`
-- measurement: 25-35 min Tavg swing (pre-fix sustained ~6 °F) = `3.70 °F (2.06 °C)`
+- **…and STAYS settled — 25-35 min p2p ≤ 6 pts (pre-fix: 12.7-13.1, the limit cycle)** — required `≤ 6`, observed `13.15 pts`
+- measurement: 25-35 min Tavg swing (pre-fix sustained ~6 °F) = `4.52 °F (2.51 °C)`

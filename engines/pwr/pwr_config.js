@@ -1217,7 +1217,44 @@
       // alarm comes in still trips, at 40.6 s. That is correct -- a real loss of normal
       // feedwater DOES trip the reactor on lo-lo level (it is the credited trip in the Ginna
       // analysis above). The window is for reading the board, not for preventing the trip.
-      K_sg_level: 1.37, // [tune]
+      // THE LEVEL GAIN RETIRED INTO A MASS LEDGER (#418 wave A2, 2026-08-07).
+      // K_sg_level 1.37 %/s is not a constant any more — it is the middle SEGMENT of the
+      // level-geometry map below, preserved exactly. What forced the ledger: the two Ginna
+      // anchors cannot share one linear gain. The 35-s trip EVENT above fits 48 narrow
+      // points in 35 s (1.371 %/s — the #135 fit), but Ginna's SG carries 85,359 lbm
+      // nominal (UFSAR T15.6-1) against ~3.95e6 lb/hr rated steaming = ~78 s to FULL
+      // boil-dry — and the old single gain implied ~162 s. Both are same-document Ginna;
+      // the reconciliation is GEOMETRY (level per unit mass is not constant over the
+      // vessel — the narrow-range band lives where level moves fastest per pound), which
+      // is what the piecewise map encodes.
+      //
+      // THE LEDGER: sg_mass_frac integrates (feed − steam_out)/sg_mass_boil_tau_s —
+      // 1.0 = the nominal secondary mass (12,785 kg = 85,359 lbm × the 0.3302 per-MWt
+      // scale), and tau 77.5 s [derived] is that mass over rated steam flow (165.3 kg/s).
+      // Level DERIVES from mass through sg_mass_map: [m, wide-%] knots, piecewise linear,
+      // monotone, invertible. THE DESIGN RULE: the calibrated level slope holds across the
+      // ENTIRE narrow window (wide 30–75), not just below nominal — the first cut anchored
+      // only the drain side and the overfill leg (narrow 65→100) ran 1.7× slow, which
+      // parked pwr_sg_flood's 75 % watch (measured, 2026-08-07). Constant in-window slope
+      // 47.83 wide-%/m ÷ 77.5 s ÷ 0.45 window = 1.371 narrow-%/s — the retired K to three
+      // decimals, BOTH directions. Knots:
+      //   (0, 0)          dry vessel
+      //   (0.38845, 30)   narrow-window BOTTOM (narrow 0). From nominal at unit drain the
+      //                   window bottom arrives at (1 − 0.38845)×77.5 = 47.4 s — the same
+      //                   dryout-onset the old gain gave, preserved exactly; the sub-window
+      //                   region below is where the ledger runs FASTER than the old linear
+      //                   gain (total boil-dry 77.5 s vs the old implied ~162)
+      //   (0.5484, 37.65) the lo-lo trip point (narrow 17) — collinear with its neighbors
+      //                   by construction; kept as the documented #135 anchor: the 65→17
+      //                   narrow drain spends 0.4516 of nominal mass in the Ginna 35 s
+      //   (1.0, 59.25)    nominal: narrow 65 at the sg_level_nominal operating point
+      //   (1.32929, 75)   narrow-window TOP (narrow 100) — same slope up: the overfill
+      //                   probes (75 % @ ~63 s, 96 % @ ~132 s) hold
+      //   (2.45, 100)     flood-solid: total shell volume over nominal liquid volume
+      //                   (Ginna 4,512.7 ft³ shell — the same volume the K_steam_pressure
+      //                   derivation uses; one sourced geometry, two clocks)
+      sg_mass_boil_tau_s: 77.5,     // s — nominal mass / rated steam flow [derived — see above]
+      sg_mass_map: [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]],
       // K_steam_pressure DERIVED FROM THE PLANT'S OWN STEAM-SPACE PHYSICS (#418 wave A1,
       // 2026-08-07), 2.0 -> 0.30. The old 2.0 was fitted with no mass basis, and it made a
       // bottled SG at full generation rise 223 psi in the FIRST SECOND (measured, full

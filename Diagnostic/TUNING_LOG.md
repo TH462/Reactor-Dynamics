@@ -158,6 +158,25 @@ on the declared 0.23-0.33 band).
 session's dated citations), run_campaign re-baselined (the telemetry/duration evidence
 lines), all else at baseline. Wave A2 (SG mass ledger + level map) is next.
 
+**WAVE A2 BUILT (same session).** The SG secondary is a MASS LEDGER: `sg_mass_frac` (1.0 =
+12,785 kg, Ginna 85,359 lbm per-MWt-scaled) integrates (feed − steam_out)/`sg_mass_boil_tau_s`
+(77.5 s [derived] = nominal mass / rated steam flow), and BOTH level ranges derive through the
+`sg_mass_map` piecewise geometry. `K_sg_level` retired — its 1.371 %/s is now the map's
+in-window SLOPE, preserved to three decimals. **The two same-document Ginna anchors reconcile**:
+the 35-s trip event holds (TR-14 measured 40.0 s, band 25–60) while total inventory honors the
+77.5-s boil-dry (was an implied ~162 s). Dryout onset from nominal lands at 47.4 s — the OLD
+number exactly, by construction. **The knot-placement lesson, caught by a gate the same hour**:
+the first map anchored the calibrated slope only BELOW nominal, so the overfill leg (narrow
+65→100) ran 1.7× slow and `pwr_sg_flood`'s 75 % watch parked — the design rule is that the
+calibrated slope holds across the ENTIRE narrow window (wide 30–75), both directions; the
+fast/slow geometry lives OUTSIDE the window. Migration seeds the ledger through the map's
+INVERSE (derived wide byte-identical on load; `save_migration` asserts the round-trip);
+`sg_mass_frac` documented in §6.3 (`run_contract` 158); perturb-sweep knobs updated
+(`sg_mass_boil_tau_s` replaces the retired K; `K_steam_pressure` added — it was never swept).
+`run_all` 42 at baseline (`run_pwr` 243, `run_campaign` 3034, `run_contract` 158). A1's CI
+green (the earlier docs-only push had failed CI on exactly the run_hardrules prose-drift this
+file's own BASELINES comment warns about — re-baselined in the A1 commit).
+
 ---
 
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)

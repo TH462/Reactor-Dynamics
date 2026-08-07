@@ -696,11 +696,16 @@
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
-      // Wide-range SG level (whole-vessel column, tube sheet → separators). This is the
-      // integrated inventory state; the narrow (working) range above is derived as its
-      // sg_wr_lo..sg_wr_hi window (pwr_steam_generator.js). Wide keeps reading when narrow
-      // pegs on an overfill/dryout — feeds the SG vessel water column in the UI.
+      // Wide-range SG level (whole-vessel column, tube sheet → separators), DERIVED since
+      // #418 wave A2 from the mass ledger below through the sg_mass_map geometry; the
+      // narrow (working) range above is its sg_wr_lo..sg_wr_hi window
+      // (pwr_steam_generator.js). Wide keeps reading when narrow pegs on an
+      // overfill/dryout — feeds the SG vessel water column in the UI.
       sg_level_wide_pct: s.sg_level_wide_pct,
+      // SG secondary mass ledger (#418 wave A2): fraction of the nominal secondary mass
+      // (1.0 = 12,785 kg, the Ginna 85,359 lbm per-MWt-scaled). THE inventory state both
+      // level ranges derive from; integrates (feed − steam_out)/sg_mass_boil_tau_s.
+      sg_mass_frac: s.sg_mass_frac,
       // Loop pressure distribution (true state; the single primary_pressure
       // instrument still reads pressure_mpa — no per-node gauges). Cold leg = pump
       // discharge (highest, ECCS/letdown datum); pump suction = between SG and RCP
@@ -1985,11 +1990,18 @@
     if (s.condensate_pump_running == null) s.condensate_pump_running = true;
     if (s.condensate_flow_normalized == null) s.condensate_flow_normalized = s.fw_flow_normalized || 0;
     if (s.afw_discharge_pressure_mpa == null) s.afw_discharge_pressure_mpa = 0;
-    // Wide-range SG level (integrated inventory state). Older saves have only the narrow
-    // sg_level_pct — seed wide from it via the window so the derived narrow is unchanged.
+    // Wide-range SG level. Older saves have only the narrow sg_level_pct — seed wide
+    // from it via the window so the derived narrow is unchanged.
     if (s.sg_level_wide_pct == null) {
       var sgw = this.cfg.steam_generator;
       s.sg_level_wide_pct = sgw.sg_wr_lo + (sgw.sg_wr_hi - sgw.sg_wr_lo) * (s.sg_level_pct != null ? s.sg_level_pct : sgw.sg_level_nominal) / 100;
+    }
+    // SG secondary mass ledger (#418 wave A2). Saves written before the ledger carry only
+    // the level — seed the mass through the geometry map's INVERSE so the derived wide
+    // (and therefore narrow) is byte-identical on load; behavior reconverges from the
+    // same reading the save showed.
+    if (s.sg_mass_frac == null && RD.pwrSteamGenerator && RD.pwrSteamGenerator.massFromWide) {
+      s.sg_mass_frac = RD.pwrSteamGenerator.massFromWide(s.sg_level_wide_pct, this.cfg.steam_generator);
     }
     // Accumulator discharge isolation valve + cold-injection thermal coupling (2026-07).
     // Older saves have no isolation valve — default aligned (open) so behavior is
@@ -3135,6 +3147,7 @@
         // of the load-bearing ones too — every field below is one a save written
         // before its rework simply does not have.
         delete legacy.sg_level_wide_pct; delete legacy.accumulator_valve_open;
+        delete legacy.sg_mass_frac;   // #418 A2: pre-ledger saves carry only the level
         delete legacy.msiv_open; delete legacy.feed_pump_speed_pct;
         delete legacy.condensate_pump_running; delete legacy.condensate_flow_normalized;
         delete legacy.afw_throttle_frac; delete legacy.afw_flow_normalized;
@@ -3176,6 +3189,13 @@
           s.sg_level_wide_pct.toFixed(2) + ' % wide',
           s.sg_level_wide_pct > sgw.sg_wr_lo && s.sg_level_wide_pct < sgw.sg_wr_hi,
           'inside [' + sgw.sg_wr_lo + ',' + sgw.sg_wr_hi + ']');
+        // #418 A2: the mass ledger seeds through the geometry map's INVERSE, so the wide
+        // level a pre-ledger save showed is reproduced byte-identically on load.
+        var _wBack = RD.pwrSteamGenerator.wideFromMass(s.sg_mass_frac, sgw);
+        ck('sg_mass_frac seeded through the inverse map — derived wide is byte-identical',
+          s.sg_mass_frac.toFixed(4) + ' → ' + _wBack.toFixed(4) + ' vs ' + s.sg_level_wide_pct.toFixed(4),
+          typeof s.sg_mass_frac === 'number' && Math.abs(_wBack - s.sg_level_wide_pct) < 1e-9,
+          'round-trips exactly');
         ck('accumulator isolation defaults ALIGNED (old behaviour preserved)',
           String(s.accumulator_valve_open), s.accumulator_valve_open === true, 'true');
         ck('MSIV defaults open', String(s.msiv_open), s.msiv_open === true, 'true');
