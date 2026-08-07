@@ -1311,15 +1311,29 @@
       // valves following a turbine trip and reactor trip from 100% power"*
       // (WTSM §11.2, ML11223A294), and this plant meets that criterion measured:
       // trip-from-100 % peak 8.05–8.07 MPa against the 9.31 pop, re-confirmed
-      // through the #373 stop-valve change. The VALUES are UNVERIFIED: no
-      // primary in the corpus names an MSSV setting for this ladder, and the
-      // whole secondary deliberately runs high relative to the real class (our
-      // 8.23 no-load anchor vs the real 1092 psig no-load header, WTSM §19.0
-      // ML11223A342 — the declared 297 °C anchor). Internally coherent — anchor
-      // < reseat < pop — but coherence is not a citation.
+      // through the #373 stop-valve change. The SETPOINT values remain this
+      // plant's ruled ladder: the secondary deliberately runs high relative to
+      // the real class (our 8.23 no-load anchor vs the real 1092 psig no-load
+      // header, WTSM §19.0 ML11223A342 — the declared 297 °C anchor, RE-AFFIRMED
+      // by the 2026-08-07 tier-2 ruling: "A+B, keep 297 °C"). Internally
+      // coherent — anchor < reseat < pop. NOTE the two no-load figures are
+      // different PLANTS: 1092 psig / 557 °F is the 4-loop WTSM reference plant;
+      // Ginna (the anchor plant) is 547 °F ≈ 990 psig — recorded so the ladder
+      // comparison stops mixing them.
       sg_safety_open_mpa: 9.31,    // pop
       sg_safety_reseat_mpa: 9.0,   // reseat
-      sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
+      // CAPACITY SOURCED (#418 wave A3, 2026-08-07), 1.2 → 0.84: Ginna's MSSV
+      // bank is 4 valves/SG at 1085 + 3×1140 psig passing 797,700 + 3×837,600
+      // lbm/hr = 3.31e6 lbm/hr per SG (UFSAR Table 15.6-12) against ~3.95e6
+      // lb/hr rated steam flow = 0.84× rated — corroborated by ch. 10 §10.3.2.4
+      // ("minimum total relieving capacity 6.58e6 lbm/hr" for both SGs). The
+      // 4-loop WTSM plant runs 1.09× (20 valves, 16.47e6 lbm/hr, "109% of
+      // full-power steam flow", §7.1) — the anchor plant's ratio is the method's
+      // choice. Capacity below full generation is safe HERE because generation
+      // dies at the Psat(Tavg) cap (the bottled SG cannot out-boil the primary
+      // that heats it); what changes is duty shape — fewer, longer lifts on the
+      // slower re-climb (TR-1h/TR-17 re-measured with the A-wave clock).
+      sg_safety_flow_max: 0.84,    // × rated steam flow at full lift [sourced — see above]
       // ---- ATMOSPHERIC DUMP VALVES (ADV) — #371, audit #297 F3 -------------
       // The condenser-independent steam path. Until #371 the ONLY controllable
       // secondary heat sink was dump-to-condenser, so losing the condenser left

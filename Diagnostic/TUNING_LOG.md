@@ -177,6 +177,17 @@ INVERSE (derived wide byte-identical on load; `save_migration` asserts the round
 green (the earlier docs-only push had failed CI on exactly the run_hardrules prose-drift this
 file's own BASELINES comment warns about — re-baselined in the A1 commit).
 
+**WAVE A3 BUILT (same session).** `sg_safety_flow_max` 1.2 → **0.84** [sourced]: Ginna's MSSV
+bank passes 3.31e6 lbm/hr per SG against ~3.95e6 rated = 0.84× rated flow (UFSAR T15.6-12,
+corroborated by ch. 10 §10.3.2.4's 6.58e6 minimum for both SGs; the 4-loop WTSM plant runs
+1.09× — the anchor plant's ratio is the method's choice). Capacity below full generation is
+safe on this plant because generation dies at the Psat(Tavg) cap. TR-1h and TR-17 fully green
+at the sourced value (duty 1.3 % of the hour, last lift 123 s; forced-shut leg still parks on
+the safeties; ADV cooldown leg 302.5 → 176.5 °C). The ladder-comparison record also stops
+mixing plants: 1092 psig / 557 °F is the 4-LOOP reference plant's no-load; Ginna's is
+547 °F ≈ 990 psig. `run_all` 42 at baseline. **Wave A complete** — the secondary's inventory,
+pressure, and relief now run one sourced basis; wave B (tube node + transport) is next.
+
 ---
 
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)
