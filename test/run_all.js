@@ -1175,7 +1175,15 @@ var BASELINES = {
   // CUT after the live board disproved it: play does not route through the command
   // dispatcher, so the flag read false on a session that had plainly run. `sim_seconds`
   // already answers it, because the sim clock only advances while running.
-  'run_telemetry.js':      { code: 0, score: '50checks 0failed' },
+  // 50 -> 78 on 2026-08-07 (slice 3, the Worker): +28 from a CROSS-CHECK between
+  // site/telemetry.js's registry and worker/src/index.js's KEY_OF column map. Two silent
+  // failures live in that seam and neither is visible from either side alone: declare an
+  // event and forget the receiver, and it is collected then thrown away (the Worker drops
+  // unknown names); rename a property, and its column arrives empty for ever.
+  // The map is parsed as TEXT — the Worker is an ES module and these runners are CommonJS.
+  // INJECTION-VERIFIED: an event the Worker never learned about scores 76/1, a renamed
+  // property 78/1, a stale mapping 80/2.
+  'run_telemetry.js':      { code: 0, score: '78checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane

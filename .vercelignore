@@ -23,3 +23,7 @@ Manuals
 test_pwr.html
 test_bwr.html
 test_rbmk.html
+# The usage-data receiver is a separate Cloudflare Worker with its own deploy
+# (worker/README.md). It is not part of the site and must not be published with it —
+# it would serve wrangler.toml, including the bucket and dataset names, as static files.
+worker

@@ -192,6 +192,55 @@ function load(opts) {
     JSON.stringify(Object.keys(globalThis.localStorage._all)));
 }());
 
+// ============================================ the client and the Worker must agree
+// The receiver drops any event name it does not recognise (`if (!hasOwnProperty(
+// KEY_OF, name)) continue`) and reads each event's principal string out of a NAMED
+// property. So there are two silent failures available: declare an event here and
+// forget the Worker, and it is collected and thrown away; rename a property, and the
+// column arrives empty for ever. Neither errors, and neither is visible from either
+// side alone — which is exactly the shape of thing worth gating.
+//
+// Parsed as TEXT, not required: worker/src/index.js is an ES module (`export default`)
+// and this repo's runners are CommonJS.
+(function () {
+  var fs = require('fs');
+  var wsrc;
+  try { wsrc = fs.readFileSync(path.join(ROOT, 'worker', 'src', 'index.js'), 'utf8'); }
+  catch (e) { ck('the Worker source is present', false, String(e)); return; }
+
+  var m = /const KEY_OF = \{([\s\S]*?)\n\};/.exec(wsrc);
+  ck('the Worker declares a KEY_OF column map', !!m);
+  if (!m) return;
+
+  var map = {};
+  m[1].split('\n').forEach(function (line) {
+    var r = /^\s*([a-z_]+)\s*:\s*(null|'([^']*)')\s*,?\s*$/.exec(line);
+    if (r) map[r[1]] = r[3] === undefined ? null : r[3];
+  });
+
+  var declared = Object.keys(globalThis.RD.Telemetry.EVENTS);
+  var mapped = Object.keys(map);
+  ck('the Worker map parsed', mapped.length > 0, JSON.stringify(mapped));
+
+  declared.forEach(function (name) {
+    ck('the Worker knows "' + name + '"',
+      Object.prototype.hasOwnProperty.call(map, name),
+      'declared in telemetry.js but the receiver would drop it');
+  });
+  mapped.forEach(function (name) {
+    ck('the Worker map has no stale entry "' + name + '"', declared.indexOf(name) !== -1);
+  });
+  // And the named property must actually exist on that event, or blob4 is always ''.
+  mapped.forEach(function (name) {
+    var field = map[name];
+    if (field === null) return;                       // plant_mode carries no key string
+    var spec = globalThis.RD.Telemetry.EVENTS[name];
+    ck('"' + name + '" really carries the property "' + field + '"',
+      !!(spec && Object.prototype.hasOwnProperty.call(spec.props, field)),
+      spec ? 'props are ' + Object.keys(spec.props).join(', ') : 'no such event');
+  });
+}());
+
 // ======================================================= path 2 is a separate path
 // Run WITHOUT compression first: the body is plain JSON and can be read directly.
 // Consent is deliberately left UNDECIDED throughout — pressing send in the feedback

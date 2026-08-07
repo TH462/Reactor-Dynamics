@@ -76,6 +76,46 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the usage-data receiver (#413, 2026-08-07)
+
+Slice 3: the server half, in `worker/`. Deployed separately from the site (Pages is the
+site; this is a Worker) and excluded from the site deploy — publishing it would serve
+`wrangler.toml`, bucket and dataset names included, as static files.
+
+- **Two routes, matching the client's two paths.** `POST /` writes an event batch to
+  Analytics Engine; `POST /?kind=bundle` writes a gzipped session recording to R2. They
+  stay apart for the same reason they do in the client, and because they physically must:
+  a 30-minute bundle is **44x over** Analytics Engine's 16 KB blob cap.
+- **What the receiver must not ADD.** The client is careful about what it sends; a Worker
+  sees far more than a page does. The IP is used as the rate-limit key and never written,
+  logged or passed on; the User-Agent is not read at all; nothing is logged, because
+  `console.log` in a Worker goes to a stream that is a place data lives.
+- **`Content-Encoding` is not a CORS-safelisted request header**, so the bundle POST
+  triggers a preflight that fails without it in `Access-Control-Allow-Headers` — and it
+  fails *only* for bug reports while the event path keeps working, which is a confusing
+  way to find out.
+- **The gzip header is SNIFFED, not trusted.** An edge or proxy may decompress before the
+  Worker sees the body; storing that object with `contentEncoding: gzip` would break every
+  later read of a file that is actually plain JSON. The magic number settles it.
+- **POSITION IS THE SCHEMA.** Analytics Engine has none, and Cloudflare's docs require
+  values "in consistent order across all writes". The column map is append-only: reorder
+  or reuse a slot and every query already written silently mixes old rows with new — no
+  migration, no error, numbers that quietly stop meaning what they say. Written down in
+  both the Worker and its README.
+- **`run_telemetry` 50 -> 78: a cross-check between the client's event registry and the
+  Worker's column map.** Two silent failures live in that seam, neither visible from
+  either side alone — declare an event and forget the receiver and it is collected then
+  discarded; rename a property and its column arrives empty for ever.
+  INJECTION-VERIFIED: unknown event 76/1, renamed property 78/1, stale mapping 80/2.
+- **`worker/README.md`** carries the four setup commands, an R2 lifecycle rule (90 days,
+  matching Analytics Engine's fixed three months so both halves age out together), the
+  curl checks including the 413, and the SQL for the questions this was built to answer —
+  where people stop, how far through a startup they get, which controls nobody touches,
+  and whether missions get finished.
+
+Nothing in this repo can test the server. The first deploy is a test, not a launch.
+
+
 ### Added — usage data and an in-sim bug report, both wired (2026-08-07)
 
 Slice 2 of #413's telemetry work, completing the client landed in slice 1 *(OWNER,
