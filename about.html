@@ -5,10 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About — Reactor Dynamics</title>
     <meta name="description" content="A nuclear plant you run in the browser — learn plant operation and the dynamics that drive it.">
+    <link rel="canonical" href="https://reactordynamics.com/about.html">
+    <meta property="og:site_name" content="Reactor Dynamics">
+    <meta property="og:url" content="https://reactordynamics.com/about.html">
     <meta property="og:title" content="About — Reactor Dynamics">
-    <meta property="og:description" content="Learn plant operation and plant dynamics on a pressurized-water reactor you run in the browser.">
-    <meta property="og:image" content="site/hero.png">
+    <meta property="og:description" content="What Reactor Dynamics is and who it is for. No nuclear background required: run a pressurized-water plant in the browser and learn why it responds the way it does.">
+    <meta property="og:image" content="https://reactordynamics.com/site/hero.png">
+    <meta property="og:image:width" content="1915">
+    <meta property="og:image:height" content="1045">
+    <meta property="og:image:alt" content="The Reactor Dynamics PWR control-room board">
     <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="About — Reactor Dynamics">
+    <meta name="twitter:description" content="What Reactor Dynamics is and who it is for. No nuclear background required: run a pressurized-water plant in the browser and learn why it responds the way it does.">
+    <meta name="twitter:image" content="https://reactordynamics.com/site/hero.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
     <script defer src="/_vercel/insights/script.js"></script>
@@ -54,6 +64,22 @@
     <img src="site/hero.png" alt="The Reactor Dynamics PWR control-room interface"
          onerror="this.parentNode.style.display='none'">
   </div>
+
+  <h2>Who this is for</h2>
+  <p><strong>No nuclear background is required.</strong> If you have ever wanted
+  to know what the people in that room are actually doing, this is built for
+  you. The control room opens with a quick tour, the operator&rsquo;s manual is
+  on the same screen, and nothing you do to the plant is unrecoverable &mdash;
+  reload and start again.</p>
+  <p>It is also built to hold up if you <em>do</em> have the background. If you
+  are a Navy nuke, a nuclear-engineering student, a plant worker, or someone who
+  has read more about Three Mile Island than is strictly healthy, the couplings
+  are modelled rather than scripted: boration and dilution, xenon, the
+  pressurizer, and the steam plant all act on one another, and the plant does
+  not stop you making a real mistake.</p>
+  <p>What it asks of you is patience rather than knowledge. A plant startup is a
+  slow evolution, and the interesting part is watching one thing move because
+  another one did.</p>
 
   <h2>What this is</h2>
   <p>A pressurized-water plant in the browser, cold shutdown to full power on
@@ -103,11 +129,19 @@
   a local copy, or a
   <a href="download.html">single downloadable file</a> for offline use.</p>
 
-  <h2>Contact</h2>
-  <p>Questions, bugs, or &ldquo;this does not match plant behavior&rdquo;?
-  Email <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.
-  In the simulator, Contact has that address and optional session diagnostics
-  to attach.</p>
+  <h2>Bugs, and &ldquo;that is not what a plant does&rdquo;</h2>
+  <p><strong>Bug reports and physics corrections go to
+  <a href="https://github.com/TH462/Reactor-Dynamics/issues" rel="noopener">GitHub
+  Issues</a></strong> &mdash; they are public and tracked there, you can see what
+  is already known before writing one, and a correction with a source attached is
+  the most useful thing anyone sends. No GitHub account, or you would rather not
+  file in public? Email
+  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>
+  instead; in the simulator, Contact has that address and optional session
+  diagnostics to attach.</p>
+  <p>Prototypicality claims here are meant to be sourced to published documents
+  rather than to memory, so &ldquo;a real plant does not do that&rdquo; is a
+  report worth filing &mdash; especially with an NRC document number.</p>
 
   <h2>Physics</h2>
   <p>For the written why — what the model computes, how systems couple, what is
@@ -117,18 +151,21 @@
   <p class="page-cta page-cta-bottom">
     <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
   </p>
-
-  <p class="page-disclaimer">Reactor Dynamics is an educational simulation. It
-  is not a substitute for licensed operator training and must not be used to
-  operate, design, or analyze a real nuclear facility.</p>
+  <!-- The page-level safety disclaimer that stood here was deleted 2026-08-06: it
+       printed the same sentence the site footer prints, immediately above the site
+       footer, so the page said it twice in a row. The footer carries it on every
+       page and legal.html carries the operative version. -->
 </main>
 
 <footer class="site-footer">
   <div class="inner">
     <div>Reactor Dynamics is an educational simulation — not engineering
     software, and no substitute for real operator training.</div>
-    <div style="margin-top: 8px;">Comments, questions, or feedback? Email
-    <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
+    <div style="margin-top: 8px;">Found a bug, or something that does not match
+    plant behavior? <a href="https://github.com/TH462/Reactor-Dynamics/issues"
+    rel="noopener">Open a GitHub issue</a> &mdash; public and tracked, and you can
+    read what is already known before you write. Anything else: <a
+    href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
     <div class="links">
       <a href="about.html">About</a>
       <a href="physics.html">Physics</a>

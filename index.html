@@ -5,14 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reactor Dynamics — run a nuclear power plant in your browser</title>
     <meta name="description" content="Browser-based pressurized water reactor trainer. Learn plant operation; practice startups, load changes, and failures. Nothing to install.">
+    <!-- Social preview. THE IMAGE URL MUST BE ABSOLUTE — it was `site/hero.png` until
+         2026-08-06, and a relative og:image is not resolved by several scrapers
+         (Slack, Discord, iMessage and X among them), so shared links rendered with
+         no picture. This project spreads almost entirely by someone pasting a link,
+         which made it the most expensive bug on the site. test/run_site_meta.js now
+         fails on any relative og:image or twitter:image, and on a page with no card
+         at all — Changelog, Privacy and Legal each shipped with none. -->
+    <link rel="canonical" href="https://reactordynamics.com/">
+    <meta property="og:site_name" content="Reactor Dynamics">
+    <meta property="og:url" content="https://reactordynamics.com/">
     <meta property="og:title" content="Reactor Dynamics — run a nuclear power plant in your browser">
-    <meta property="og:description" content="Browser-based PWR trainer. Learn plant operation; practice startups, load changes, and failures. Runs in the browser.">
-    <meta property="og:image" content="site/hero.png">
+    <meta property="og:description" content="Browser-based PWR trainer. No nuclear background needed. Learn plant operation; practice startups, load changes, and failures. Nothing to install.">
+    <meta property="og:image" content="https://reactordynamics.com/site/hero.png">
+    <meta property="og:image:width" content="1915">
+    <meta property="og:image:height" content="1045">
+    <meta property="og:image:alt" content="The Reactor Dynamics PWR control-room board">
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Reactor Dynamics — run a nuclear power plant in your browser">
-    <meta name="twitter:description" content="Browser-based PWR trainer. Learn plant operation; practice startups, load changes, and failures.">
-    <meta name="twitter:image" content="site/hero.png">
+    <meta name="twitter:description" content="Browser-based PWR trainer. No nuclear background needed. Learn plant operation; practice startups, load changes, and failures.">
+    <meta name="twitter:image" content="https://reactordynamics.com/site/hero.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
     <!-- Release channel + feature flags (#241). Loaded in <head> so gated copy
@@ -48,14 +61,27 @@
 </header>
 
 <section class="hero">
-  <div class="alpha-note">🚧 Alpha · desktop or laptop only — not for phones or tablets yet</div>
   <h1>Run a nuclear power plant<br>from your browser.</h1>
   <p class="sub" data-flag="campaign"
      data-flag-off="Real reactor physics — a whole plant, from cold shutdown to full power. Nothing to install: it all runs locally in your browser.">Real
   reactor physics — a whole plant, from cold shutdown to full power. Guided
   training when you&rsquo;re ready. Nothing to install — it all runs locally in
   your browser.</p>
+  <!-- WHO IT IS FOR. Say it before the CTA, in plain words, and say it about the
+       reader rather than about the product. Everything else near the top of this
+       page is written in plant vocabulary — boration, hot standby, xenon — which
+       tells a curious non-specialist that the site is not addressed to them.
+       The tour and the operator's manual named here are UNGATED (ui/shell.html
+       helpBtn / helpTourBtn, no data-flag), so this promise holds on the public
+       channel too — do not add a claim here that rests on a `preview` feature. -->
+  <p class="hero-who"><strong>Who it&rsquo;s for:</strong> anyone curious about
+  how a nuclear plant actually behaves &mdash; <strong>no nuclear background
+  required</strong>. The control room opens with a quick tour and a full
+  operator&rsquo;s manual, and you can break the plant on purpose from the first
+  minute. If you do have the background &mdash; Navy nuke, NE student, plant
+  staff &mdash; the physics is modelled to reward it.</p>
   <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
+  <div class="alpha-note">🚧 Alpha · desktop or laptop only — not for phones or tablets yet</div>
   <div class="hero-shot">
     <!-- Full PWR control-room board (site/hero.png). onerror collapses the frame
          if the asset is missing so the page still reads cleanly. -->
@@ -107,8 +133,11 @@
   <div class="inner">
     <div>Reactor Dynamics is an educational simulation — not engineering
     software, and no substitute for real operator training.</div>
-    <div style="margin-top: 8px;">Comments, questions, or feedback? Email
-    <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
+    <div style="margin-top: 8px;">Found a bug, or something that does not match
+    plant behavior? <a href="https://github.com/TH462/Reactor-Dynamics/issues"
+    rel="noopener">Open a GitHub issue</a> &mdash; public and tracked, and you can
+    read what is already known before you write. Anything else: <a
+    href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
     <div class="links">
       <a href="about.html">About</a>
       <a href="physics.html">Physics</a>

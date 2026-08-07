@@ -758,7 +758,14 @@ var BASELINES = {
   // very change that shortened the paragraph stating it.
   // 205 -> 208 on 2026-08-06-workbench-j: three citation sites for the conciseness-shape ruling.
   // MEASURED after the write-ups; the entry that records it first predicted 206.
-  'run_hardrules.js':      { code: 0, score: '208checks 0failed' },
+  // 208 -> 209 on 2026-08-06-workbench-k: ONE new citation site — the CHANGELOG.md entry for the
+  // website pass cites the 2026-08-06 "changelog is strictly for simulator changes" directive as
+  // its reason for adding no changelog.html entry. HR11 counts declared citation SITES, so writing
+  // up a change against a ruling moves this score even when the change itself touches no rule;
+  // 0 undeclared throughout. MEASURED by pulling that one citation back out (209 -> 208 -> 209),
+  // not inferred from the diff — the count is the sum of two independent scans and "it must be my
+  // line" is exactly the assumption that would hide a second, undeclared one arriving beside it.
+  'run_hardrules.js':      { code: 0, score: '209checks 0failed' },
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
@@ -1070,6 +1077,21 @@ var BASELINES = {
   // block cross-checks every changelog.html entry down to the oldest version CHANGELOG.md
   // still names individually, so it grows by one row per published release.
   'run_release.js':        { code: 0, score: '16checks 0failed' },
+  // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
+  // `og:image` ("site/hero.png") from launch, and Slack / Discord / iMessage / X do not
+  // resolve a relative og:image, so every link ever shared into a chat rendered with no
+  // preview picture. Invisible from inside the repo: the pages are correct html, the
+  // image loads fine in a browser, and until this runner nothing here read those tags at
+  // all. Changelog, Privacy and Legal had no card whatsoever — the block only ever
+  // existed in the pages that already had it, so each new page started from zero.
+  // THE PAGE LIST IS GLOBBED AND FILTERED THROUGH .vercelignore, deliberately: a
+  // hand-kept list would have tested the list, passing at full marks on the very page it
+  // had never heard of. VERIFIED BY INJECTION before baselining, which is the only reason
+  // the number below means anything — the original bug reintroduced in one page scores
+  // 116/3 (the count moves because the stray-url sweep emits a row naming it), a page
+  // stripped of its card 115/13, and a stale og:image:width 115/1. 115 checks is
+  // 8 pages × 14 + the discovery row and the hero-file row.
+  'run_site_meta.js':      { code: 0, score: '115checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane

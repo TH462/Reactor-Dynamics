@@ -648,6 +648,22 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .doc-body .log-head h2 {
   margin: 0; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--text);
 }
+/* The packed changelog is changelog.html verbatim (tools/pack_site_docs.js), so it
+   arrives as <details class="log-entry"><summary class="log-head"> — collapsible in
+   the About → Changelog modal exactly as on the site. `display:flex` above kills the
+   default disclosure triangle in every engine, so draw one. */
+.doc-body summary.log-head { cursor: pointer; list-style: none; flex-wrap: nowrap; }
+.doc-body summary.log-head h2 { flex: 1 1 auto; min-width: 0; }
+.doc-body summary.log-head .log-ver,
+.doc-body summary.log-head .log-date { flex: 0 0 auto; }
+.doc-body summary.log-head::-webkit-details-marker { display: none; }
+.doc-body summary.log-head::before {
+  content: '▸'; flex: 0 0 auto; color: var(--muted); font-size: 13px; line-height: 1;
+  transition: transform 0.12s; transform-origin: 50% 45%;
+}
+.doc-body details[open] > summary.log-head::before { transform: rotate(90deg); }
+.doc-body summary.log-head:hover h2 { color: var(--normal); }
+.doc-body .log-note { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
 .doc-body .log-ver {
   font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--normal);
   border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;

@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog — Reactor Dynamics</title>
     <meta name="description" content="What has changed in Reactor Dynamics since launch.">
+    <link rel="canonical" href="https://reactordynamics.com/changelog.html">
+    <meta property="og:site_name" content="Reactor Dynamics">
+    <meta property="og:url" content="https://reactordynamics.com/changelog.html">
+    <meta property="og:title" content="Changelog — Reactor Dynamics">
+    <meta property="og:description" content="What has changed in the simulator, newest first — physics, board, controls, procedures and manuals.">
+    <meta property="og:image" content="https://reactordynamics.com/site/hero.png">
+    <meta property="og:image:width" content="1915">
+    <meta property="og:image:height" content="1045">
+    <meta property="og:image:alt" content="The Reactor Dynamics PWR control-room board">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Changelog — Reactor Dynamics">
+    <meta name="twitter:description" content="What has changed in the simulator, newest first — physics, board, controls, procedures and manuals.">
+    <meta name="twitter:image" content="https://reactordynamics.com/site/hero.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
     <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
@@ -38,6 +52,7 @@
 <main class="page">
   <h1>Changelog</h1>
   <p class="lede">What has changed in the simulator, newest first.</p>
+  <p class="log-note">Older releases are collapsed — click a version to open it.</p>
 
   <!-- ==================================================================
        ADDING AN ENTRY  (do this just BEFORE merging develop → main)
@@ -93,27 +108,54 @@
        The "Awaiting public launch" note-block that stood here is gone; it was
        never an entry and run_release.js did not count it.
 
-  <article class="log-entry">
-    <div class="log-head">
+       COLLAPSIBLE (2026-08-06) — entries are <details>, not <article>, and only
+       the NEWEST carries `open`. Six releases landed in the first three days; at
+       that rate the page stops being scannable long before it stops being useful,
+       and a collapsed list of versions is the part a returning visitor actually
+       wants. So: when you add an entry, put `open` on the new one and REMOVE it
+       from the one below. The markup is otherwise unchanged.
+
+  <details class="log-entry" open>
+    <summary class="log-head">
       <h2>Short headline</h2>
       <span class="log-ver mono">Alpha 1.5.0</span>
       <time class="log-date mono" datetime="2026-01-01">1 January 2026</time>
-    </div>
+    </summary>
     <ul>
       <li><span class="log-tag added">Added</span><strong>New thing.</strong> One factual sentence.</li>
       <li><span class="log-tag changed">Changed</span><strong>Changed thing.</strong> What is different now.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>Fixed thing.</strong> What was broken.</li>
     </ul>
-  </article>
+  </details>
+
+       WEBSITE CHANGES DO NOT GO IN THIS FILE (owner, 2026-08-06: "don't include
+       website changes in the changelog. The changelog is strictly for simulator
+       changes."). Physics, board, controls, procedures and the in-app manuals —
+       yes. A page, its styling, navigation, the download plumbing, this page
+       itself — no, however visible. Those go to CHANGELOG.md only. A release made
+       of nothing but website work gets a version bump and no entry here.
+
+       WHEN THIS PAGE NEEDS AN ARCHIVE. Not yet — collapsing bought the room. The
+       trigger to watch is roughly 20 entries or a Platform (X) bump, whichever
+       lands first; the split is by platform generation, not by count, so the cut
+       is "everything before Alpha 2.0.0" rather than "the oldest ten".
+       THE TRAP, and it is not obvious: test/run_release.js reads THIS FILE ONLY.
+       It cross-checks every entry here against a CHANGELOG.md version heading and
+       requires them strictly newest-first. Move entries to changelog-archive.html
+       and each one silently stops being checked — the gate does not fail, it just
+       covers less, which is the failure mode this project keeps re-learning. So
+       the archive split is not a copy-paste job: teach run_release.js to parse
+       both files, and make the "newest-first" and "every site entry has a
+       CHANGELOG.md heading" checks span the pair, IN THE SAME CHANGE.
 
        ================================================================== -->
 
-  <article class="log-entry">
-    <div class="log-head">
+  <details class="log-entry" open>
+    <summary class="log-head">
       <h2>The board stops flickering during transients</h2>
       <span class="log-ver mono">Alpha 1.2.2</span>
       <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>
-    </div>
+    </summary>
     <ul>
       <li><span class="log-tag fixed">Fixed</span><strong>Elements blinking during large
           transients.</strong> Gauges, the trend chart, the alarm list and the clock were being
@@ -126,14 +168,14 @@
           their card,</strong> across the gauge band and onto the board, when a reading sat
           outside that gauge's scale. An off-scale reading now pins to the edge of its trace box.</li>
     </ul>
-  </article>
+  </details>
 
-  <article class="log-entry">
-    <div class="log-head">
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>A steadier board, and the atmospheric dumps start in auto</h2>
       <span class="log-ver mono">Alpha 1.2.1</span>
       <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>
-    </div>
+    </summary>
     <ul>
       <li><span class="log-tag changed">Changed</span><strong>The atmospheric dump valves start in
           AUTO.</strong> They hold a bottled steam generator at 1247 psi (8.60 MPa) instead of
@@ -159,14 +201,14 @@
           full-open cooldown rate is re-measured at about 630 &deg;F/hr, and the steam dump section
           carries current numbers.</li>
     </ul>
-  </article>
+  </details>
 
-  <article class="log-entry">
-    <div class="log-head">
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>Containment, atmospheric dumps, and automatic steam line isolation</h2>
       <span class="log-ver mono">Alpha 1.2.0</span>
       <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>
-    </div>
+    </summary>
     <ul>
       <li><span class="log-tag added">Added</span><strong>A containment building.</strong> It has pressure,
           temperature and a sump, and a break or relief discharge pressurizes it. A steam generator tube
@@ -191,14 +233,14 @@
       <li><span class="log-tag added">Added</span><strong>The release number is shown beside the ALPHA
           badge</strong> on every page.</li>
     </ul>
-  </article>
+  </details>
 
-  <article class="log-entry">
-    <div class="log-head">
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>Cooldown rate indication, turbine stop valves, and a run of physics fixes</h2>
       <span class="log-ver mono">Alpha 1.1.0</span>
       <time class="log-date mono" datetime="2026-08-05">5 August 2026</time>
-    </div>
+    </summary>
     <ul>
       <li><span class="log-tag added">Added</span><strong>RCS cooldown and heatup rate meter</strong>, with
           high-rate annunciators at &plusmn;100 &deg;F/hr.</li>
@@ -217,14 +259,14 @@
       <li><span class="log-tag changed">Changed</span><strong>Two limits are stated in the manual:</strong>
           steam line isolation is a manual action, and the steam dump goes to the condenser only.</li>
     </ul>
-  </article>
+  </details>
 
-  <article class="log-entry">
-    <div class="log-head">
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>Pressurizer, relief and the control board</h2>
       <span class="log-ver mono">Alpha 1.0.1</span>
       <time class="log-date mono" datetime="2026-08-05">5 August 2026</time>
-    </div>
+    </summary>
     <ul>
       <li><span class="log-tag fixed">Fixed</span><strong>A water-solid reactor coolant system now repressurizes.</strong>
           Emergency injection into a full plant lifts the relief valve instead of vanishing.</li>
@@ -243,19 +285,19 @@
       <li><span class="log-tag added">Added</span><strong>Pressurizer spray flow indication</strong>
           and a main feedwater RESTORE control on the steam generator feed card.</li>
     </ul>
-  </article>
+  </details>
 
-  <article class="log-entry">
-    <div class="log-head">
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>Initial Alpha release</h2>
       <span class="log-ver mono">Alpha 1.0.0</span>
       <time class="log-date mono" datetime="2026-08-04">4 August 2026</time>
-    </div>
+    </summary>
     <ul>
       <li><span class="log-tag added">Added</span><strong>Initial Alpha release.</strong>
           Pressurised water reactor.</li>
     </ul>
-  </article>
+  </details>
 
 </main>
 
@@ -263,8 +305,11 @@
   <div class="inner">
     <div>Reactor Dynamics is an educational simulation — not engineering
     software, and no substitute for real operator training.</div>
-    <div style="margin-top: 8px;">Comments, questions, or feedback? Email
-    <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
+    <div style="margin-top: 8px;">Found a bug, or something that does not match
+    plant behavior? <a href="https://github.com/TH462/Reactor-Dynamics/issues"
+    rel="noopener">Open a GitHub issue</a> &mdash; public and tracked, and you can
+    read what is already known before you write. Anything else: <a
+    href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
     <div class="links">
       <a href="about.html">About</a>
       <a href="physics.html">Physics</a>

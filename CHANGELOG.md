@@ -76,6 +76,76 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the public site says who it is for, and its links preview again (2026-08-06)
+
+Website only, so **no `changelog.html` entry** *(OWNER DIRECTIVE, 2026-08-06: "don't include
+website changes in the changelog. The changelog is strictly for simulator changes.")*. Nothing
+in `engines/`, `layers/`, `scenarios/` or the board moved; `ui/shell.css` and `ui/site_docs.js`
+are here only because the site's changelog is packed into the control room's About panel.
+
+- **Every shared link was previewing with no image, and had been since launch.** `og:image`
+  was the relative `site/hero.png` on all four pages that had a card at all; Slack, Discord,
+  iMessage and X do not resolve a relative og:image against the page url, so the card rendered
+  as a bare text row. For a project that spreads by someone pasting a link into a chat, that is
+  most of the first impression. All eight pages now carry an absolute
+  `https://reactordynamics.com/site/hero.png`, plus `og:url`, `og:site_name`, `og:image:width`
+  / `:height` / `:alt` and a `rel="canonical"`. **Changelog, Privacy and Legal previously had no
+  card whatsoever** — the block only ever existed in pages that already had it, so each new page
+  started from zero. That is the half a one-line fix would have missed.
+- **`test/run_site_meta.js`** — new gate, `run_all` 40 → 41 runners, `115checks 0failed`. The
+  page list is **globbed from the root and filtered through `.vercelignore`**, not declared: a
+  hand-kept list would test the list, passing at full marks on the one page it had never heard
+  of, which is exactly how three pages came to have no card. It also pins what a copy-paste
+  cannot get right on its own — `og:url` and canonical must name the file they sit in, and the
+  declared `og:image:width`/`:height` must match the real pixels of `site/hero.png`, read from
+  the PNG header. **Verified by injection before baselining**: the original relative-url bug
+  reintroduced in one page scores 116/3, a page stripped of its card 115/13, a stale
+  `og:image:width` 115/1.
+- **The landing page says who it is for, above the CTA.** It never did. The copy around it is
+  written in plant vocabulary — boration and dilution, hot standby, holding through xenon —
+  which reads as a filter to anyone without a nuclear background, and a reader who has to guess
+  whether they are the audience leaves. Now states plainly that **no nuclear background is
+  required**, names the tour and manual that make that true, and says the physics rewards one if
+  you have it. `about.html` carries the longer version as its first section. The claim is
+  anchored to **ungated** features (`helpBtn` / `helpTourBtn` carry no `data-flag`), so it holds
+  on the public channel where the campaign and scenarios do not.
+- **The alpha / no-phones banner moved below the CTA.** It was the first thing on the page: the
+  opening handshake was a limitation, before the reader had been told what this is. Same caution
+  styling, same above-the-fold position, no longer the lede.
+- **The download page states version, date and size** — "Alpha 1.2.2 · 6 August 2026 · 1.0 MB".
+  The button said `latest.zip` and nothing else, so a returning visitor could not tell this build
+  from the copy already in their downloads folder, and nobody on a metered connection knew what
+  they were agreeing to. Filled from `download/manifest.js`, which `site/make_download.js` now
+  writes at deploy beside the zip it builds — the size is not knowable before that, and
+  `download/` is gitignored precisely so no committed copy can go stale. **The date comes from
+  the newest `changelog.html` entry, not from the clock**: a build-time `new Date()` would
+  re-date the download on every redeploy and make two deploys of one commit differ. Absent
+  manifest (any local checkout) hides the line rather than printing blanks.
+- **Changelog entries collapse.** Six releases landed in the first three days; `<article>` is
+  now `<details class="log-entry">` with only the newest `open`, so the version list stays
+  scannable as it grows. `run_release.js` still parses all six, and the markup packs into the
+  in-sim About → Changelog panel unchanged. **The archive is planned, not built**, and the
+  ADDING AN ENTRY comment records the trap: `run_release.js` reads `changelog.html` ONLY, so
+  moving entries to an archive page silently narrows what it checks rather than failing — the
+  split has to teach the gate about both files in the same change.
+- **The roadmap is tiered** — Open now / Nearly there / In progress / Later. "Nearly there" is
+  exactly the set of areas sitting at `stage: 'preview'` in `site/flags.js` (built, gated until
+  played end to end, #241), so the tier is anchored to something checkable rather than to a
+  feeling. **The BWR and RBMK line is no longer buried**: both engines pass their own suites
+  (`run_rbmk` 23/23, `run_bwr` 15/15) and the page now leads with that.
+- **Bug reports route to GitHub Issues**, in the footer of all eight pages and in `about.html`,
+  with email kept as the no-account fallback. Public and tracked beats a mailbox, and a reporter
+  can read what is already known first.
+- **`about.html` printed the safety disclaimer twice in a row** — a page-level copy immediately
+  above the identical footer copy. The page-level one is gone; the footer carries it on every
+  page and `legal.html` carries the operative version.
+
+Not done, deliberately: the **"who built this" paragraph**, held *(OWNER, 2026-08-06: "Hold —
+don't add it yet")* pending a decision on how prominently to be named — **#410**, which carries
+the ready-to-drop draft and the PERSEC/LLC reasoning. Two follow-ups filed from the same pass:
+**#411** the changelog archive split (and the `run_release.js` blind spot it would open), **#412**
+the in-sim Contact dialog, which still offers email only.
+
 ### Added — checklists check the plant they stand on (#395/#396, 2026-08-06)
 
 Audit #344 ran the six Tier B normal evolutions as one continuous 17-hour shift and every
