@@ -121,7 +121,7 @@ This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Po
 - **Mode 5, Cold Shutdown → Mode 1, At Power** — procedure **PWR-T20**, starting from the `cold_shutdown` initial condition.  
 - **Mode 1, At Power → Mode 5, Cold Shutdown** — procedure **PWR-T21**, down to a cold, depressurized plant on RHR.  
 
-**NOTE:** heatup and cooldown are deliberately **time-compressed** — the evolution is real, its duration is not. See `12_SIM_PHYSICS.md` §14.
+**NOTE:** the heatup runs on **real plant rates** (#419 — ride the long legs at time acceleration); on the cooldown side the depressurisation rate remains deliberately compressed. See `12_SIM_PHYSICS.md` §14.
 
 **Sim-only everyday path:** Mode 3, Hot Standby ↔ Mode 1, At Power (**PWR-T03** / **PWR-T04**).
 
@@ -174,7 +174,7 @@ These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 |-------|------------|--------------|
 | Rod banks | Multiple banks + overlap | One control + one shutdown |
 | RCS loops | Multi-loop with individual RCPs | Single lumped loop — and this plant genuinely *is* single-loop |
-| Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[sim]** on integrated physics — Free Play can start in **Mode 5, Cold Shutdown**; the full loop is **PWR-T20** / **PWR-T21**. Pacing is deliberately time-compressed. |
+| Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[sim]** on integrated physics — Free Play can start in **Mode 5, Cold Shutdown**; the full loop is **PWR-T20** / **PWR-T21**. Heatup pacing is real since #419 (ride at time acceleration); the cooldown depressurisation leg remains compressed. |
 | Containment / dose | Full models | Partially modeled (#386 stage 1). Containment **pressure, temperature and sump level** exist — the building receives break and relief discharge, and break flow throttles against its rising pressure — but it has no spray or fan coolers yet, no hydrogen inventory, and nothing past fuel damage: no source term, no release, no dose. Core **damage and melt are** simulated — cladding failure at **2192 °F (1200 °C)**, fuel melt at **5072 °F (2800 °C)** |
 | Instrument channels | Redundant trains | Single sensors (can fail) — so instrument failures bite *harder* here than in a voting plant |
 | Point kinetics | Spatial power shape | Point model (lumped) |

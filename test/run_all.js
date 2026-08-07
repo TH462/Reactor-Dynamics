@@ -792,7 +792,11 @@ var BASELINES = {
   // turnover — the same prose-moves-this-score trap as this morning's CI red, caught
   // LOCALLY this time by running the gate after the docs, which is what this key's own
   // comment says to do.
-  'run_hardrules.js':      { code: 0, score: '225checks 0failed' },
+  // 225 -> 228 (2026-08-07, #419 wave 1): three new dated-citation sites — the pace/D-row
+  // rulings quoted in the Manuals/00 Rev 14 item (g) and this session's TUNING_LOG and
+  // BUILD_DECISIONS entries. Measured standalone on the final tree AFTER all docs were
+  // written (the docs-move-the-score rule above, honored locally again).
+  'run_hardrules.js':      { code: 0, score: '228checks 0failed' },
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of

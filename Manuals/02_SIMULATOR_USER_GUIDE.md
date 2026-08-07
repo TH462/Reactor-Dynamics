@@ -214,7 +214,7 @@ Entry: the plant & mission status line under the sim controls, or **Operate** ta
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
 | `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS ~122 °F (50 °C) / ~363 psi (2.5 MPa), **RCPs secured**, **RHR in service**, SR on, PZR level 30 % |
 
-**NOTE:** **Mode 5, Cold Shutdown is a Free Play initial condition and the whole Mode 5 ↔ Mode 1 path is simulated** on integrated physics — start at Cold Shutdown and take the plant to power with **PWR-T20**, or run **PWR-T21** the other way. Mode 4, Hot Shutdown is the transit between them and is simulated too. Heatup and cooldown are **time-compressed**: the evolution is real, its duration is not. See `05_MODE_TRANSITIONS.md` and `12_SIM_PHYSICS.md` §14.
+**NOTE:** **Mode 5, Cold Shutdown is a Free Play initial condition and the whole Mode 5 ↔ Mode 1 path is simulated** on integrated physics — start at Cold Shutdown and take the plant to power with **PWR-T20**, or run **PWR-T21** the other way. Mode 4, Hot Shutdown is the transit between them and is simulated too. The heatup runs on **real plant rates** since #419 — use **time acceleration** for the long legs (the full ride is ~12.3 plant-hours); the cooldown depressurisation rate remains compressed. See `05_MODE_TRANSITIONS.md` and `12_SIM_PHYSICS.md` §14.
 
 **NOTE:** the engine also carries a `5_percent` state used by scenarios and the reference tables in `09` §11.0. It is **not** offered in the Free Play picker.
 

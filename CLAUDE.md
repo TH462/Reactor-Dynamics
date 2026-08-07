@@ -453,12 +453,12 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
   secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
   MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
-- **#419 tier 3 — STAGE 1 POSTED, AWAITING SIGN-OFF** (`status-needs-ruling`, 2026-08-07): the
-  identity re-anchor's cascade table is on the issue — proposed Ginna ladder 7.03/7.31/7.58/7.33
-  MPa (retires §8.34), program 286→304.5 °C, slew 1.586e-3, F15 K bracketed [K_phys, 600] —
-  with three decision rows (dump 40 % vs Ginna 28 %; K_surge_level to the real band; boron pair
-  real). F14 re-affirmed, not in scope. Sign-off unblocks stage 2 (sequencing: pace → F15 →
-  ladder), then waves. E-dividers already at #408 values — that ride-along is RE-AFFIRM.
+- **#419 tier 3 — SIGNED (all four rulings 2026-08-07) and WAVE 1 (pace) LANDED**: the ×12.6
+  retirement is in (slew 1.586e-3, K_surge_level 0.032, boron ceiling 0.14 live-clamped, lab
+  1800 s; TR-1 re-derived to spray-contains; Manuals Rev 14 item (g)). **Wave 2 next: the F15
+  K re-solve, bracketed [K_phys derivation, 600-measured-green]**, then the ladder wave
+  (Ginna 7.03/7.31/7.58/7.33 MPa, retires §8.34) carrying D1's dump measure-first (28 % vs the
+  ruled 40 %). F14 re-affirmed, not in scope. The cascade table + rulings live on the issue.
 - **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
   the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
   #418's new ledger, not the old gain**. `status-needs-ruling`.
@@ -481,13 +481,13 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **The containment building exists** (2026-08-05, #386 stage 1). A lumped volume in
-  `stepContainment` whose live pressure is the break/relief √Δp backpressure. The **flash gate is
-  the model**: cold ECCS spill rains to the sump and moves pressure not at all, so pressure peaks
-  on hot blowdown and decays. An SGTR reads **nothing** — it discharges into the SG. A stuck-open
-  PORV pressurizes it MORE than a 10 % break (relief is steam at weight 1.0, break liquid is
-  flash-gated). Full break peaks 41 psig = ⅔ design. `press_gain` is fitted and says so. Stages 2
-  (spray/fan coolers/ESF) and 3 (hydrogen, ruled TMI-2-style burn) follow.
+- **The pace compression is retired, and its constant was a ghost** (2026-08-07, #419 wave 1).
+  Slew 0.02 → 1.586e-3 [derived, the config's own sourced arithmetic]: NOP at ~1.8 plant-h, the
+  accumulator window ~14 min, the ride ~12.3 plant-h at 30 °F/hr — acceleration carries pacing.
+  `K_surge_level` 0.4 → 0.032 (band un-compressed, fit position kept) — TR-1's PORV-lift claim
+  INVERTED honestly: spray contains the full rejection at 15.42 MPa, the with-credit
+  Westinghouse class. `boron_adjust_rate` 2.0 was read by NOTHING — "go real" landed as a live
+  engine clamp at the derived 0.14. **Check the consumer before proposing a `[tune]` value.**
 - **A constant 142 % wrong survived because nothing checked it against a source** (2026-08-05,
   #364/#365). Decay heat ran on two exponential groups with nothing faster than 33 min, so it was
   flat where a real curve falls fastest. Refit to four groups, within **4.86 %** of the standard
@@ -581,6 +581,10 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   inverts it. **Touch one, re-solve the set.** And a SINGLE TERM of a coupled pressure/inventory
   regime is worse than none — three independent measurements say so (#346, `Manuals/12` §12.4c,
   the #384 attempt).
+- **Containment's flash gate decides what it sees** (#386, rescued 2026-08-07): a stuck-open
+  PORV pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break
+  liquid is flash-gated), and an SGTR reads NOTHING — it discharges into the SG. `press_gain`
+  is fitted and says so. Stages 2 (spray/fan coolers/ESF) and 3 (hydrogen) are #386's.
 - **Natural circulation: the SHAPE is sourced (W ∝ Q^⅓), the SCALE is this plant's** and is fitted
   — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
   ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the

@@ -82,9 +82,9 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 | **CAUTION** | Do **not** withdraw rods or dilute. Hot Standby is hot **and** subcritical. |
 | **CAUTION** | Keep the steam generator **bottled** (turbine off, dumps shut). Opening dump removes pump heat faster than the pumps can put it in. A small manual dump demand (about 5 %) is roughly ten times pump-heat generation, and it does not trim the heatup — it reverses it, measured at **−263 °F/hr (−146 °C/hr)** anywhere above about 302 °F (150 °C). Below roughly **219.2 °F (104 °C)** the same 5 % only *arrests* the climb; the secondary has too little steam to carry more. |
 | **CAUTION** | Rate control at these powers: **secure the RCP** to slow or hold the heatup — measured, the rate falls to **0.004 °F/hr (0.002 °C/hr)**, i.e. the heatup simply stops. This plant models one lumped RCP (see **PWR-N13** scope note), so securing it removes *all* forced flow and uncouples the steam generator; on a multi-loop plant you would secure one pump of four. Do not use the dump as a fine throttle. |
-| **WARNING** | **Re-align SI accumulators DURING the pressurization (step 6), not after it.** They must be open once RCS pressure is above their **600 psi (4.14 MPa)** cover gas and **before 1000 psi (6.895 MPa)** — and measured on this plant that window is only about **100 seconds wide**: from the moment the Pressure SP is raised, 600 psi is crossed at **+24 s**, 1000 psi at **+122 s**, and NOP at **+3.5 min**. There is **no automatic open** — re-alignment is an operator action. Skip it and the plant reaches power with no passive injection. Basis: NUREG-1431 Rev 4.0 **LCO 3.5.1** (OPERABLE in MODE 3 with RCS pressure > ~1000 psig) and the isolation counterpart on cooldown (**SR 3.4.12.3**). |
+| **WARNING** | **Re-align SI accumulators DURING the pressurization (step 6), not after it.** They must be open once RCS pressure is above their **600 psi (4.14 MPa)** cover gas and **before 1000 psi (6.895 MPa)** — measured on the real pressurization clock (#419) that window is about **14 plant-minutes wide**: from the moment the Pressure SP is raised, 600 psi is crossed at **~+9 min**, 1000 psi at **~+23 min**, and NOP at **~1.8 plant-hours**. There is **no automatic open** — re-alignment is an operator action. Skip it and the plant reaches power with no passive injection. Basis: NUREG-1431 Rev 4.0 **LCO 3.5.1** (OPERABLE in MODE 3 with RCS pressure > ~1000 psig) and the isolation counterpart on cooldown (**SR 3.4.12.3**). |
 | **NOTE** | RHR auto-isolates above its **600 psi (4.14 MPa)** autoclosure interlock as you pressurize — expected. That is a *separate* setpoint from the **400 psi (2.76 MPa)** block-open permissive that governs putting RHR *in* service (#288). |
-| **NOTE** | Training time is accelerated; heatup **plant hours** and rates in this procedure are real plant-time figures. |
+| **NOTE** | This procedure runs on **real plant rates** — the training time-compression of the pressurization and boron clocks was retired (#419). Ride the long legs at time acceleration; every plant-hour and rate printed here is a real plant-time figure. |
 
 ### Procedure
 
@@ -95,7 +95,7 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 | 3 | 5 / 4 | Confirm generator **disconnected** (Disconnect Grid if needed). Do not reconnect | Turbine Load | Load mode disconnected; 0 MWe |
 | 4 | 5 / 4 | Engage **Feed AUTO** at cold SG level (~65 %) so three-element captures the right setpoint | Feed Pumps | Feed AUTO engaged |
 | 5 | 5 / 4 | Set **Dump SP** to no-load anchor **1194 psi (8.23 MPa)**; leave dump **shut** | Dump SP | SP set; dump demand ~0 |
-| 6 | 5 → 4 | Raise **Pressure SP** to **2235 psi (15.41 MPa)** and stay on the board — the plant reaches NOP in about **3.5 plant-minutes**. RHR isolates on the way past its 600 psi (4.14 MPa) autoclosure interlock. **As pressure passes 600 psi, do step 7 without leaving this step** | Pressure SP | P > 2176 psi (15.0 MPa) |
+| 6 | 5 → 4 | Raise **Pressure SP** to **2235 psi (15.41 MPa)** — the setpoint walks up at the real **0.23 psi/s** heater pace and the plant reaches NOP in about **1.8 plant-hours** (ride it at acceleration). RHR isolates on the way past its 600 psi (4.14 MPa) autoclosure interlock. **As pressure passes 600 psi, do step 7 without leaving this step** | Pressure SP | P > 2176 psi (15.0 MPa) |
 | 7 | Mode 4 | **Open SI accumulator discharge isolation** (re-align) *while pressure is between 600 psi (4.14 MPa) and 1000 psi (6.895 MPa)* — see the WARNING. Verify SIT fill on ECCS side | Accumulator valve | Valve open; opened below 1000 psi (6.895 MPa) |
 | 8 | 4 → 3 | Monitor heatup: Tavg and rate, SG pressure tracking Psat(Tavg), PZR level swelling, **reactivity still negative**. No rod motion. Arrive at no-load band | (observe) | Tavg ≥ 545 °F (285 °C); Mode 3; ρ ≪ 0; power ~0 |
 
@@ -122,11 +122,11 @@ boundary, not the Mode 5 → 4 one.
 
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
-| Pressurized to NOP, RCPs on | **~4 plant-min** | ~3.5 min from the Pressure SP command (≈ 8.9 psi/s / 0.061 MPa/s); RHR isolates at 600 psi (4.14 MPa) on the way up |
+| Pressurized to NOP, RCPs on | **~1.8 plant-h** | From the Pressure SP command, on the real 0.23 psi/s (1.586e-3 MPa/s) setpoint slew — early thermal swell rides ahead of it (600 psi at ~+9 min); RHR isolates at 600 psi (4.14 MPa) on the way up (#419) |
 | **Mode 4 entry** (199.4 °F (93 °C)) | **~18 plant-min** | The plant is only ~30 °F above cold — Mode 4 arrives long before it looks hot |
-| **Mode 3 entry** (350 °F (176.7 °C)) | ~4.7 plant-h | Still deeply subcritical |
-| Near no-load band (~546.8 °F (286.0 °C)) | ~10.7 plant-h | Steady rate after the first hour **32.7 °F/hr (18.2 °C/hr)** |
-| Settled no-load (~567.0 °F (297.2 °C)) | ~11.3 plant-h | ρ = **−2828 pcm** on **856.8 ppm**; bank still fully inserted |
+| **Mode 3 entry** (350 °F (176.7 °C)) | ~4.6 plant-h | Still deeply subcritical |
+| Near no-load band (~546.8 °F (286.0 °C)) | ~11.3 plant-h | Steady rate after the first hour **30.0 °F/hr (16.7 °C/hr)** |
+| Settled no-load (~567.0 °F (297.2 °C)) | ~12.3 plant-h | ρ = **−2828 pcm** on **856.8 ppm**; bank still fully inserted |
 
 To slow or hold the climb, secure the RCP — measured, the rate falls to **0.004 °F/hr**. Do not
 use the steam dump as a fine throttle: at 5 % it reverses the heatup at **−263 °F/hr (−146 °C/hr)**.

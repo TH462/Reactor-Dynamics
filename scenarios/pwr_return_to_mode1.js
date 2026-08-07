@@ -12,7 +12,7 @@
  * Honesty: the wall clock is compressed (time acceleration). The heat source is NOT
  * fictional — this mission drives the heatup on fission because it is going straight
  * on to power and the criticality is the point, but the plant no longer needs it to:
- * since #251 pump heat alone makes Hot Standby in 10.71 plant-hours with the reactor
+ * since #251 pump heat alone makes Hot Standby in ~12.3 plant-hours (#419 real rates) with the reactor
  * subcritical, which is what `pwr_mode5_to_mode3` now teaches.
  */
 ;(function (RD) {

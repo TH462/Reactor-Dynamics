@@ -298,13 +298,16 @@
      *
      * WHAT THIS PROBE ASSERTS NOW is the DEFENCE-IN-DEPTH LADDER running in order, which
      * is the thing a 40 % dump makes visible and a 105 % dump hides: the dump saturates at
-     * its stop, the core self-throttles to match, the PORV lifts as the designed backstop,
-     * and the pressurizer safety never has to. FG-4 is unchanged and still checked first —
-     * NO SCRAM, and the operator still walks it down at their own pace.
+     * its stop, the core self-throttles to match, and pressure control CONTAINS the ride —
+     * since #419 wave 1 the honest surge gain (K_surge_level 0.032) keeps the peak inside
+     * spray authority (15.42 measured), so the PORV is never challenged, which is the
+     * Westinghouse-class result WITH pressure-control credit (Ginna's loss-of-load analyses
+     * lift pressurizer relief only when that credit is removed; on the old compressed gain
+     * the insurge outran spray and the lift was asserted as the designed backstop). FG-4 is
+     * unchanged and still checked first — NO SCRAM, the operator walks it down at their pace.
      *
      * A real Westinghouse plant does not ride a full rejection either (its design case is
-     * a 50 % loss of load), so the relief lifts here are prototypical rather than a
-     * defect. The 50 % case is the one that must stay clean, and TR-1g pins it. */
+     * a 50 % loss of load). The 50 % case is the one that must stay clean — TR-1g pins it. */
     'TR-1': function () {
       return test('TR-1 load rejection @100% — RIDE-OUT: the ladder runs in order, no scram', function (ck) {
         // Rod-less on purpose: this probe is the MTC handover past the dump's stop and the
@@ -342,11 +345,16 @@
         var t = h.ts();
         ck('no scram through the recovery either', h.tripReason || 'none', h.tripTime == null, 'none');
         ck('Tavg settled to the no-load anchor (297 ±5 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 5), '297 ±5');
-        // The PORV is SUPPOSED to lift here — it is the next rung once the dump is at its
-        // stop. Asserted positively, so that a future change quietly restoring enough dump
-        // capacity to suppress it has to come and edit this line.
-        ck('the PORV lifts — the designed backstop, not a defect', fmt(h.range('pressure_mpa').max, 2),
-          h.range('pressure_mpa').max >= 16.20, '≥ 16.20 MPa');
+        // RE-DERIVED at #419 wave 1 (K_surge_level 0.4 → 0.032, the honest surge gain).
+        // On the compressed gain the insurge outran spray and the PORV lifted (peak 16.24,
+        // asserted positively here since #289). On the real gain the peak is 15.42 — SPRAY
+        // CONTAINS the ride, which is the Westinghouse-class result WITH pressure-control
+        // credit (Ginna's own loss-of-load analyses lift pressurizer relief only when that
+        // credit is removed). The mechanism half is pinned by the phase-1 checks above
+        // (dump saturated + core self-throttles + Tavg 312..335), so this outcome check
+        // cannot pass hollow on a ride that never happened (the TR-3 lesson).
+        ck('spray contains the ride — the PORV is never challenged (with-credit class)',
+          fmt(h.range('pressure_mpa').max, 2), h.range('pressure_mpa').max < 16.20, '< 16.20 MPa');
         ck('…and the pressurizer SAFETY never has to (17.13)', fmt(h.range('pressure_mpa').max, 2),
           h.range('pressure_mpa').max < 17.13, '< 17.13 MPa');
         ck('SG never approached the lo-lo trip (min ≥ 25 %)', fmt(h.range('sg_level_pct').min, 1),
@@ -4513,7 +4521,9 @@
         ck('si_trip auto-blocked at the depressurized init (P-11)',
           String(h3.rps().trip_blocks.si_trip), h3.rps().trip_blocks.si_trip === true, 'true');
         h3.cmd('set_pressure_setpoint', { mpa: 15.4 });
-        var dt3 = h3.runUntil(function (ts, ins) { return ins.primary_pressure > 13.8; }, 3000);
+        // 3000 → 8000 s at #419 wave 1: the setpoint slew runs the real 1.586e-3 MPa/s, so
+        // 2.5 → 13.8 MPa takes ~7,100 s of honest pressurization (was ~565 s compressed).
+        var dt3 = h3.runUntil(function (ts, ins) { return ins.primary_pressure > 13.8; }, 8000);
         h3.run(10);
         ck('and auto-reinstated on the heatup past 13.6 MPa',
           dt3 >= 0 ? fmt(h3.ins().primary_pressure, 2) + ' MPa → blocked=' + !!h3.rps().trip_blocks.si_trip

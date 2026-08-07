@@ -1278,8 +1278,14 @@
         s.feedwater_isolated = (cmd.active !== false);
         break;
       case 'set_boron_adjust':
-        // ppm/s: + borate, − dilute, 0 hold (needs the charging pump running)
-        s.boron_adjust = cmd.rate || 0;
+        // ppm/s: + borate, − dilute, 0 hold (needs the charging pump running).
+        // Clamped to ±boron_adjust_rate since #419 wave 1 ("D3: go real") — the constant
+        // is the PHYSICAL ceiling of the makeup path (max boric-acid/blend flow on the
+        // declared RCS currency, derivation at the constant). Before the clamp it was a
+        // dead comment: any raw command could firehose (a fixture drove 3.0 ppm/s, 21×
+        // the honest ceiling) while both automation channels meter at 0.05 beneath it.
+        s.boron_adjust = clip(cmd.rate || 0,
+          -this.cfg.reactivity.boron_adjust_rate, this.cfg.reactivity.boron_adjust_rate);
         break;
       case 'take_boron_sample':
         // Draw an RCS grab sample; the result posts after the lab turnaround
@@ -3293,7 +3299,9 @@
         ck('pressure tracks a lowered setpoint', p0.toFixed(2) + ' → ' + p1.toFixed(2),
           p1 < p0 - 1 && near(p1, 13.0, 1.0), '≈ 13.0 (±1)');
         h.cmd({ action: 'set_pressure_setpoint', mpa: 15.41 });
-        h.run(300);
+        // 300 → 900 s at #419 wave 1: a raised setpoint walks up at the REAL slew
+        // (1.586e-3 MPa/s), so +1 MPa of recovery needs ~630 s of honest pressurization.
+        h.run(900);
         ck('pressure recovers to a raised setpoint', p1.toFixed(2) + ' → ' + h.ts().pressure_mpa.toFixed(2),
           h.ts().pressure_mpa > p1 + 1, '> lowered');
 

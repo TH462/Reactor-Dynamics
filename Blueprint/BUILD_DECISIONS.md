@@ -104,6 +104,33 @@ recommended pace → F15 → ladder). Owed fetches named in the table: Ginna UFS
 (ML20339A035 is the figures volume), TS proper (OTΔT Ks, P-12, MSSV SR table), PTLR. No code
 this session; `run_all` 42 at baseline, no re-baseline needed (`run_hardrules` 225/0 unchanged).
 
+**SIGNED OFF AND WAVE 1 BUILT (same session)** *(OWNER RULING, 2026-08-07, verbatim: "D1:
+measure first. […] D2: move it. D3: go real. Stage 2: go with recommendation.")*. Decisions of
+record from the build:
+
+- **The boron pair's "go real" changed shape on contact with the code, and the finding is the
+  record**: `boron_adjust_rate` 2.0 was a GHOST — no engine read, no clamp, while raw
+  `set_boron_adjust` commands ran any rate (a §14 fixture drives 3.0 ppm/s) and both automation
+  channels meter at their own 0.05. The ruling landed as the constant becoming the LIVE ceiling
+  (0.14, derived from WTSM 4.1's 10-gpm BA valve / 80-gpm blend / 4 wt % (7000 ppm) storage on
+  the declared 7,467-gal currency; engine clamps ±). The channels sit beneath it untouched. A
+  `[tune]` value nothing consumes is documentation wearing a tag.
+- **TR-1's PORV-lift assertion was the compressed surge gain's rendering, and the honest gain
+  inverts it**: peak 16.24 → 15.42 MPa, spray contains the full-rejection ride. Adjudicated as
+  the plant being RIGHT (Ginna's loss-of-load analyses lift pressurizer relief only with no
+  pressure-control credit), probe re-derived with the mechanism half pinned (dump saturated +
+  self-throttle + Tavg 312..335) so the inverted claim cannot pass hollow.
+- **`K_surge_level` moved position-preserving** (0.4 ÷ 12.6 = 0.032, mid-band of the
+  un-compressed sourced 0.0214–0.0502) rather than re-fitted — the compression retires, the
+  fit's information survives.
+- **§14.1's ECCS trust-class row was stale since #408** — injection went to the real Ginna
+  pump scale that wave and the trust table never heard. Retired with attribution; the
+  Compressed class now holds ONE member (cooldown depressurisation).
+- Re-measures with numbers: NOP at ~1.8 plant-h from the command (thermal swell rides ahead of
+  the 2.26-h pure slew), accumulator window ~14 plant-min (~+9 → ~+23), full ride ~12.3
+  plant-h / 30.0 °F/hr steady; PI-3 leg budget 3000 → 8000 s; §14 recovery window 300 → 900 s.
+  Manuals Rev 14 pending item (g); CHANGELOG carries the wave.
+
 ---
 
 ## 2026-08-07-develop-c — tier 2 RULED: the secondary joins the primary's fidelity (A+B, ladder stays), and content-follows-physics becomes standing law

@@ -293,12 +293,25 @@
       // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
       // mode makes up identified leakage by modulating charging up to charging_max.
-      boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
+      //
+      // REAL-TIME CEILING since #419 wave 1 *(OWNER RULING, 2026-08-07: "D3: go real")* —
+      // was 2.0 and UNENFORCED (no engine read; a dead constant while raw `set_boron_adjust`
+      // commands could drive any rate — one fixture ran 3.0 ppm/s). The engine now CLAMPS
+      // the commanded rate to ±this. Both automation channels (`boron_conc` batch dose,
+      // `boron_trim` bang) meter at 0.05 beneath it and are unaffected. Derived from WTSM
+      // 4.1 (ML11223A214) on this plant's declared RCS currency: boric acid stored at
+      // "approximately 4 weight percent (7000 ppm)" (:595), the blender's boric-acid valve
+      // limited to ~10 gpm (:771) and total blended makeup ~80 gpm (:730); the declared RCS
+      // is ≈ 7,467 gal (the #408 currency: porv_flow_max 2.5e-4 frac/s ≡ 112 gpm). Boration
+      // at max boric-acid flow: 10/(7467·60) × (7000−800) ≈ 0.138 ppm/s; dilution at the
+      // 80 gpm blend from ~800 ppm: 80/(7467·60) × 800 ≈ 0.143 ppm/s — one class, 0.14.
+      boron_adjust_rate: 0.14,     // ppm/s CEILING on set_boron_adjust (engine clamps) [derived — see above]
       // RCS boron grab sample (take_boron_sample): lab turnaround before the
-      // result posts. Real labs run ~30–60 min; compressed for training like the
-      // adjust rate above. The result is the mixed (reactive) concentration
-      // rounded to 1 ppm — authoritative, deterministic (no PRNG draw). [tune]
-      boron_sample_lab_s: 60.0,
+      // result posts. REAL-TIME since #419 wave 1 (same ruling): "real labs run ~30–60
+      // min" (this comment's own admission since it was written) — 1800 s is the bottom
+      // of that class. The result is the mixed (reactive) concentration rounded to 1 ppm
+      // — authoritative, deterministic (no PRNG draw). [tune]
+      boron_sample_lab_s: 1800.0,
       // CVCS↔inventory coupling (P7 drain-rate retune, 2026-07-22). Charging and
       // letdown are TENS of gpm against the whole RCS, so their normalized flows
       // (sized for the gauges/lineup: orifice A ≈ 0.030 ≡ 20 gpm) must NOT enter
@@ -613,14 +626,16 @@
       // correlation gives dP/dT = 0.18686 MPa/°C, so 55 °F/hr = 30.56 °C/hr = 8.488e-3 °C/s
       // is 1.586e-3 MPa/s of pressure — the REAL-TIME full-heater authority.
       //
-      // This plant runs its pressurizer on a declared time compression: the Mode 5↔1 path is
-      // "deliberately time-compressed" and `setpoint_pressurize_slew_mpa_s` 0.02 is fitted to
-      // it (cold→NOP in ≈11 min against a real ≈2.7 h at NOP dP/dT). That factor is 12.6, so
-      // the compression-consistent heater authority is 1.586e-3 × 12.6 = 0.020 MPa/s — and it
-      // lands exactly on the slew rate, which is the cross-check: the config states the same
-      // physical quantity twice, and until #337 the two disagreed by 27×.
+      // The ×12.6 Mode 5↔1 compression is RETIRED (#419 wave 1, 2026-08-07 pace ruling), so
+      // `setpoint_pressurize_slew_mpa_s` now IS this real-time 1.586e-3 — the config still
+      // states the same physical quantity twice, and the cross-check now closes at the REAL
+      // value instead of the compressed 0.020. Against the real authority the shipped 0.55 is
+      // ~347× (0.55 / 1.586e-3), where the §12.15 departure used to read 27× against the
+      // compression-consistent figure. The DEPARTURE'S SIZE changed on paper only — the
+      // behavioral wall below (TR-1h / TR-11) is what rules it, and was re-measured
+      // 2026-08-07 (the #419 audit) on the post-#418 plant.
       //
-      // 0.55 WAS 27× ABOVE THAT, and the consequence is #337: the heaters could hold nominal
+      // 0.55 WAS 27× ABOVE THE COMPRESSED FIGURE, and the consequence is #337: the heaters could hold nominal
       // pressure against ANY surge this plant can produce, so an SGTR that took the
       // pressurizer 55.0 → 15.7 % and scrammed the reactor moved pressure 5 psi (0.034 MPa) and
       // subcooling 0.2 °F (0.1 °C). Adding the missing mass-surge driver alone changed that by
@@ -730,7 +745,8 @@
       // pwr_pressurizer.stepPressure for the law and the WTSM 3.2 quote). 1.0 / level_per_tavg
       // (2.5) = 0.4 would have been the byte-identical thermal response in the new units.
       //
-      // 0.4 IS UNCHANGED, AND IT IS INSIDE THE SOURCED RANGE — which is why it stays.
+      // 0.032 SINCE #419 WAVE 1 — the ×12.6 compression retired *(OWNER RULING, 2026-08-07:
+      // "D2: move it.")*, the value keeps its fitted POSITION in the sourced band.
       // Derived from the same WTSM 3.2 number that bounds K_heater below: 1794 kW ⇒ 55 °F/hr
       // is 8.842e-7 MPa/s per kW at NOP. One %/s of level is 12.44 ft³/s of bubble growth
       // (#249's fit: 45 points of level = the 0.40 × 1,400 ft³ steam space), which at
@@ -738,16 +754,16 @@
       // flashing demand. That lands at 0.0214 MPa/s if the vessel METAL participates (the
       // effective heat capacity the source's own 55 °F/hr implies) and 0.0502 if only the
       // pressurizer liquid does — a real spread, because a fast surge does not reach the
-      // metal. × 12.6 for this plant's declared Mode 5↔1 time compression (see K_heater) puts
-      // the sourced band at 0.27..0.63, and the fitted 0.4 sits in the middle of it.
+      // metal. THAT band (0.0214–0.0502) is now the operative one; the shipped 0.032 =
+      // 0.4 ÷ 12.6, the old fit's mid-band position un-compressed.
       //
-      // So #337 moved this by NOTHING, deliberately. The thermal channel is bit-identical
-      // across the change and the only new physics is the mass driver — which matters,
-      // because 0.27 was tried and it costs TR-1c: a 1.5× weaker insurge peaks the
-      // sub-arm rejection at 2246 psi (15.49 MPa) instead of lifting the PORV, i.e. it
-      // silently retires the §8.21 declared backstop. Not a change to make on a number the
-      // source does not actually pin. [tune]
-      K_surge_level: 0.4,
+      // History: the pre-#419 value was 0.4, mid-band of the ×12.6-multiplied range
+      // 0.27–0.63, and 0.27 was once refused because a 1.5× weaker insurge kept TR-1c's
+      // sub-arm rejection off the PORV (the §8.21 backstop). That objection is SUPERSEDED:
+      // the §8.21 cliff went THERMAL at #418 B1, and the #419 stage-1 sweep measured 0.27
+      // and 0.05 flipping the SAME five checks (TR-1's lift claim, CA-21's dry-core
+      // fixture) — both re-derived in this wave, neither a ruled behavior. [tune]
+      K_surge_level: 0.032,
       // solid_bulk_mpa — the WATER-SOLID surge gain (#346), MPa of primary pressure per
       // unit RCS inventory FRACTION. `K_surge_level` above is the gain of a pressurizer
       // that still has a steam bubble; this is the gain once the bubble is gone.
@@ -785,17 +801,20 @@
       // solved against run_meltdown and run_scenarios (#337 F15). Separate change. [tune]
       solid_bulk_mpa: 1300.0,
       P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
-      // Operator-setpoint pressurization slew (Mode-5 heatup feel, 2026-07-23). K_heater
-      // (0.55 MPa/s at full power) is the CONTROL authority for holding pressure against
-      // transients (the SGTR plateau needs all of it) — but it made a RAISED operator
-      // setpoint arrive near-instantly: a 350→600 psi step in Mode 5 completed in ~3 s.
+      // Operator-setpoint pressurization slew — REAL-TIME since #419 wave 1 *(OWNER RULING,
+      // 2026-08-07: "D2: move it. D3: go real. Stage 2: go with recommendation." — the pace
+      // ruling; the ×12.6 Mode 5↔1 compression is RETIRED, acceleration carries pacing)*.
+      // K_heater (0.55 MPa/s at full power) is the CONTROL authority for holding pressure
+      // against transients — but it made a RAISED operator setpoint arrive near-instantly.
       // Physically, heating a big subcooled pressurizer to a higher saturation point takes
-      // time regardless of heater margin. So the EFFECTIVE control target walks UP toward
-      // the commanded setpoint at this rate (full cold→NOP pressurization ≈ 11 min sim,
-      // matching the deliberately time-compressed Mode 5↔1 pacing); a LOWERED setpoint
-      // takes effect immediately (depressurization is spray/cooling-limited on its own).
-      // Disturbance response at a FIXED setpoint is untouched. [tune]
-      setpoint_pressurize_slew_mpa_s: 0.02,
+      // time regardless of heater margin, and the honest rate is the sourced full-heater
+      // authority derived in the K_heater block: WTSM 3.2's 1794 kW ⇒ 55 °F/hr ⇒
+      // 1.586e-3 MPa/s along the saturation line. Cold→NOP is now ≈ 2.26 plant-hours
+      // ((15.41 − 2.5)/1.586e-3 ≈ 8,140 s — was ≈ 11 min at the compressed 0.02); ride it
+      // at time acceleration. A LOWERED setpoint still takes effect immediately
+      // (depressurization is spray/cooling-limited on its own), and disturbance response at
+      // a FIXED setpoint is untouched. [derived — see K_heater block]
+      setpoint_pressurize_slew_mpa_s: 1.586e-3,
       // When the primary voids it is two-phase: pressure is pulled to the
       // saturation pressure of Tavg (so subcooling → 0). [tune]
       // Since #384 stage 4 the pull is scaled ·(1−void) WHEN A LOOP BREAK IS FLOWING

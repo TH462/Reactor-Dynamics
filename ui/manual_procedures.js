@@ -45,7 +45,7 @@
   // ---- PWR -----------------------------------------------------------------
   var PWR = [
     // PWR-N01 — commercial pump-heat heatup. Measured full-stack (cold_shutdown
-    // IC, default lineup): settles 567.0 °F (297.2 °C) at ~11.3 plant-h, ρ ≈ −2828
+    // IC, default lineup): settles 567.0 °F (297.2 °C) at ~12.3 plant-h (#419 real rates), ρ ≈ −2828
     // pcm, zero rod motion. The old nuclear-from-cold heatup path was removed —
     // not a commercial NOP (heatup is subcritical; approach is hot, N03).
     {
@@ -62,11 +62,11 @@
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down' },
       ],
       cautions: [
-        'Rates are time-compressed for training — a real heatup takes many hours against brittle-fracture and pressurizer limits. The PLANT hours are real: measured full-stack, cold to the no-load anchor is about 11.3 plant-hours at an average ~39 °F/hr (21.7 °C/hr), settling to a steady ~32 °F/hr (17.8 °C/hr) after the first hour.',
+        'This heatup runs on REAL rates (#419 wave 1 — the training compression is retired; time acceleration carries the pacing). Measured full-stack, cold to the no-load anchor is about 12.3 plant-hours at a steady ~30 °F/hr (16.7 °C/hr) after the first hour, and normal operating pressure arrives about 1.8 plant-hours after the Pressure SP command (the setpoint walks at the sourced 0.23 psi/s heater class; early thermal swell rides ahead of it).',
         'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull rods or dilute — Hot Standby means hot AND subcritical. The control bank stays at its cold-shutdown position the whole way.',
         'The steam dump is a COARSE lever at these powers: measured, a 5 % manual dump demand is roughly ten times pump-heat generation and reverses the heatup at −263 °F/hr (−146 °C/hr) anywhere above about 302 °F (150 °C); below ~219.2 °F (104 °C) the same demand only ARRESTS the climb. To slow or hold a heatup, secure the RCP — measured, that takes the rate to 0.004 °F/hr.',
         'Keep the turbine OFF LINE and the dumps SHUT so the SG bottles: heat crossing the tubes then has nowhere to go but into secondary pressure, which rides up with Tavg. A turbine left in FOLLOW opens its governor and takes the whole heat source (~6 % open is enough on pump heat alone). The cold_shutdown IC spawns already off line (#251); the Disconnect Grid step confirms rather than changes.',
-        'Step 7 (re-align the SI accumulators) is YOURS, nothing does it for you, and it belongs INSIDE step 6 rather than after it — measured, the compliant 600-to-1000 psi window is ~100 s wide and shuts about 90 s before a full pressurization completes. The cold lineup ships them isolated — correct below their 600 psi (4.14 MPa) cover gas — and re-alignment is deliberately procedural *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. Skip it and you reach Mode 1 with no passive injection; the SI ACCUM ALIGNED annunciator (PWR-A32) is silent on this case because shut tanks are what it clears on.',
+        'Step 7 (re-align the SI accumulators) is YOURS, nothing does it for you, and it belongs INSIDE step 6 rather than after it — on the real pressurization clock the compliant 600-to-1000 psi window is ~14 plant-minutes wide (measured: opens ~+9 min, shuts ~+23 min) and closes about an hour and a half before the full pressurization completes. The cold lineup ships them isolated — correct below their 600 psi (4.14 MPa) cover gas — and re-alignment is deliberately procedural *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. Skip it and you reach Mode 1 with no passive injection; the SI ACCUM ALIGNED annunciator (PWR-A32) is silent on this case because shut tanks are what it clears on.',
         'Engage Feed AUTO at the start (step 4) while level is still at its cold 65 %. A standing manual feed demand fills a generator that is not yet boiling. On pump heat the SG barely boils, so AUTO simply holds the captured setpoint — measured, level stays ~65 % across the whole 12 plant-hour ride.'
       ],
       auto_channels: ['feed_sg'],
@@ -91,20 +91,20 @@
           control: 'Dump SP', target: '1194 psi (8.23 MPa)',
           cmd: { action: 'set_steam_dump_setpoint', mpa: 8.23 }, hold: 5,
           hl: ['Dump SP', 'Steam Dump'] },
-        { text: 'Raise the Pressurizer Pressure Setpoint to 2235 psi (15.41 MPa). The heaters pressurize FAST — measured 8.9 psi/s (0.061 MPa/s), so normal operating pressure arrives in about three and a half plant-minutes, not ten to fifteen. Stay on the board: the accumulator window in the next step opens and shuts inside this one. Watch RHR isolate on the way past its 600 psi (4.14 MPa) autoclosure interlock (#288).',
+        { text: 'Raise the Pressurizer Pressure Setpoint to 2235 psi (15.41 MPa). The setpoint walks up at the real full-heater pace — 0.23 psi/s (1.586e-3 MPa/s) — and measured full-stack, normal operating pressure arrives in about 1.8 plant-hours (#419 wave 1: the compressed clock is retired; ride it at time acceleration). The accumulator window in the next step opens and shuts inside this climb. Watch RHR isolate on the way past its 600 psi (4.14 MPa) autoclosure interlock (#288).',
           control: 'Pressure SP', target: '2235 psi (15.41 MPa)',
-          cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 900,
+          cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 9000,
           acc: { p: 'pressure_mpa', op: '>', v: 15.0 },
           hl: ['Pressure SP', 'Plant Pressure'] },
-        { text: 'Re-align the Safety Injection accumulators (isolated for the cold lineup) AS PRESSURE PASSES 600 psi (4.14 MPa) — do not wait for the previous step to finish. They must be aligned before 1000 psi (6.895 MPa), where LCO 3.5.1 requires them OPERABLE, and measured that window is only ~100 s wide: 600 psi at +24 s from the Pressure SP command, 1000 psi at +122 s, normal operating pressure at +3.5 min. Nothing opens them for you.',
+        { text: 'Re-align the Safety Injection accumulators (isolated for the cold lineup) AS PRESSURE PASSES 600 psi (4.14 MPa) — do not wait for the previous step to finish. They must be aligned before 1000 psi (6.895 MPa), where LCO 3.5.1 requires them OPERABLE. On the real pressurization clock (#419 wave 1, measured full-stack) the window is ~14 plant-minutes wide: 600 psi at ~+9 min from the Pressure SP command, 1000 psi at ~+23 min, normal operating pressure at ~1.8 plant-hours — it closes about an hour and a half before the pressurization completes. Nothing opens them for you.',
           control: 'Accumulator valve', target: 'accumulators armed',
           note: 'Owner ruling 2026-07-30: re-alignment is procedural, no automatic open. Skip this and Mode 1 has no passive injection; PWR-A32 will not tell you.',
           cmd: { action: 'open_accumulator_valve' }, hold: 5,
           acc: { p: 'accumulator_valve_open', op: '>', v: 0 },
           hl: ['Accumulator valve', 'ECCS'] },
-        { text: 'Ride the heatup. Tavg climbs at roughly 32 °F/hr (17.8 °C/hr) on pump heat — about eleven plant-hours cold to the no-load anchor. Monitor Tavg and its rate, secondary pressure tracking Psat(Tavg), pressurizer level swelling on thermal expansion, and the reactor staying exactly where you left it. Do not pull rods. Do not dilute. If you need to slow down, secure an RCP.',
+        { text: 'Ride the heatup. Tavg climbs at roughly 30 °F/hr (16.7 °C/hr) on pump heat — about twelve plant-hours cold to the no-load anchor. Monitor Tavg and its rate, secondary pressure tracking Psat(Tavg), pressurizer level swelling on thermal expansion, and the reactor staying exactly where you left it. Do not pull rods. Do not dilute. If you need to slow down, secure an RCP.',
           control: '(observe)', target: 'Tavg ≥ 545 °F (285 °C), still subcritical',
-          note: 'Measured full-stack with no rod motion: Mode 3 entry (~350 °F / 176.7 °C) at ~4.7 plant-h; 546.8 °F (286.0 °C) at 10.67 plant-h; settles 567.0 °F (297.2 °C) at 11.3 plant-h, ρ = −2828 pcm on 856.8 ppm, power 3.5e-5 %. The first hour reads faster because pressurization is quick, not because the pump-heat ramp is. Hold 40 000 → 42 000 s (#418 wave A1, 2026-08-07): on the derived secondary pressure clock the bottling SG lags the heatup slightly further, and 545 °F arrived at 40 000 s reading 543.2 °F (284.0 °C) — ~1 °F short; the extension covers the stretch with margin.',
+          note: 'Measured full-stack with no rod motion (#419 wave 1, real rates): Mode 3 entry (~350 °F / 176.7 °C) at ~4.6 plant-h; 546.8 °F (286.0 °C) at ~11.3 plant-h; settles 567.0 °F (297.2 °C) at ~12.3 plant-h, ρ = −2828 pcm on 856.8 ppm. The first hour still reads faster because the heater/pressurization leg adds heat early, not because the pump-heat ramp is quick. Hold 42 000 s: the observe step starts after the ~1.8 plant-h pressurization leg, so ~9.7 h of ride remain to the 545 °F acceptance — the hold covers it with margin (#418 A1 set 42 000 on the derived secondary clock; re-checked at #419).',
           hold: 42000,
           saw: { p: 'tavg_c', op: '>', v: 150 },
           acc: { p: 'tavg_c', op: '>', v: 285 },

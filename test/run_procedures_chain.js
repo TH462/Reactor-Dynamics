@@ -90,7 +90,7 @@ svc.running = true;
 svc.timeAcceleration = PH.ACCEL;
 svc.attentionStops = false;   // headless gate — see the harness note (#245)
 
-head('1. pwr_heatup on the chain (Mode 5 → Mode 3, ~11.3 plant-hours)');
+head('1. pwr_heatup on the chain (Mode 5 → Mode 3, ~12.3 plant-hours — #419 real rates)');
 var rHeat = PH.runProcedure('pwr', proc('pwr_heatup'), { svc: svc });
 reportChecks(rHeat);
 var ts = rHeat.lastSnap.true_state;

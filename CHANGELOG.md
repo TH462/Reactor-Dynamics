@@ -76,6 +76,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the Mode 5↔1 pace compression is retired: the heatup runs real rates end to end (#419 wave 1, 2026-08-07)
+
+- **The pressurization setpoint slew runs the sourced heater class** — `setpoint_pressurize_slew_mpa_s`
+  0.02 → 1.586e-3 MPa/s (0.23 psi/s, WTSM 3.2's 1794 kW ⇒ 55 °F/hr, the arithmetic the config
+  already carried). Measured full stack: NOP arrives ~1.8 plant-hours after the Pressure SP
+  command (early thermal swell rides ahead of the pure slew), the SI-accumulator compliance
+  window widens ~100 s → ~14 plant-minutes (~+9 → ~+23 min), and the full cold-to-no-load ride
+  is ~12.3 plant-hours at a steady 30 °F/hr — time acceleration carries the pacing (the owner's
+  #408 identity, applied by the 2026-08-07 #419 rulings: "D2: move it. D3: go real. Stage 2: go
+  with recommendation.").
+- **The pressurizer surge gain runs its sourced band un-compressed** — `K_surge_level` 0.4 →
+  0.032 (= 0.4 ÷ 12.6, the fit's mid-band position preserved in the real 0.0214–0.0502 band).
+  Consequence, adjudicated as the plant being right: a full 100 % load rejection now ends with
+  SPRAY containing the pressure peak (15.42 MPa measured) instead of a PORV lift — the
+  Westinghouse-class result with pressure-control credit; TR-1 re-derived with its mechanism
+  half pinned. CA-21 and the meltdown/scenario suites unchanged.
+- **The boron clock is real, and the rate constant is finally load-bearing** —
+  `boron_adjust_rate` 2.0 was a ghost (nothing read it; raw commands ran unclamped). It is now
+  the LIVE physical ceiling (0.14 ppm/s, derived from WTSM 4.1's blend/BA flows on the declared
+  RCS currency) enforced by an engine clamp; `boron_sample_lab_s` 60 → 1800 s (a real 30-minute
+  lab). Both automation channels already metered beneath the ceiling and are unaffected.
+- **Manuals Rev 14 (pending) item (g)** — 01/02/04/05/12 re-stated on the measured numbers;
+  `12` §14.0's *Compressed* trust class empties to the cooldown-depressurisation rate alone
+  (also recording that ECCS injection pacing had already left the class at #408 — a stale
+  trust-table row found and retired). PWR-N01's checklist holds and mission narration re-paced.
+- Probe re-derivations (each validated on both clocks where applicable): TR-1 (spray-contains),
+  PI-3's P-11 reinstate budget 3000 → 8000 s, the §14 Mode-5-controls recovery window
+  300 → 900 s.
+
 ### Changed — the secondary loop joins the primary's fidelity (#418 tier 2, waves A1–A3 + B1)
 
 **Ruled 2026-08-07** ("A+B, keep 297 °C") and built the same day, all four waves gated at

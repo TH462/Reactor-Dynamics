@@ -81,6 +81,48 @@ drift (these entries cite rulings without adding formal declaration sites, so th
 re-baseline pattern was armed but not needed). Stage 2 (sequencing ruling: pace → F15 → ladder)
 follows sign-off.
 
+**RULED (same session, all four)** *(OWNER RULING, 2026-08-07, verbatim: "D1: measure first.
+[…] D2: move it. D3: go real. Stage 2: go with recommendation.")* — D1's dump measurement lands
+in the ladder wave; D2/D3 fold into the pace wave; sequencing pace → F15 → ladder. The owner
+also asked for the dump-sizing rationale (answered: WTSM §11.2's rule — capacity = the 50 %
+step-rejection target minus rod authority; Ginna meets the same target at 28 %; a bespoke
+fitted size rejected on Q2 citability + HR10 circularity).
+
+**WAVE 1 BUILT (same session) — the pace family runs real.** `setpoint_pressurize_slew_mpa_s`
+0.02 → **1.586e-3** [derived — the K_heater block's own sourced arithmetic, WTSM 1794 kW ⇒
+55 °F/hr]: cold→NOP measured **~1.8 plant-h** from the command (early thermal swell rides ahead
+of the pure-slew 2.26 h), the SI-accumulator compliance window ~100 s → **~14 plant-min**
+(opens ~+9, shuts ~+23), full ride **~12.3 plant-h / 30.0 °F/hr steady**. `K_surge_level` 0.4 →
+**0.032** (= 0.4 ÷ 12.6 — the fit keeps its mid-band position in the un-compressed sourced band
+0.0214–0.0502). **The boron "rate" was a GHOST**: `boron_adjust_rate` 2.0 was read by NOTHING —
+the engine applied any commanded rate unclamped (a §14 fixture drives 3.0 ppm/s raw) while both
+automation channels meter at their own 0.05 — so "go real" landed as the constant becoming the
+LIVE physical ceiling (**0.14** [derived: max BA/blend flow on the declared 7,467-gal currency,
+WTSM 4.1], engine clamps ±); `boron_sample_lab_s` 60 → **1800** (the real 30-min class). A
+`[tune]` constant nothing reads is a dead comment wearing a tag — check the consumer before
+proposing a value.
+
+**Adjudication (3 drifting runners, every red one at a time, HR10):** TR-1's "the PORV lifts —
+the designed backstop" **INVERTED on the honest surge gain** (peak 16.24 → 15.42 MPa; spray
+contains the ride — the with-credit Westinghouse-class result, and Ginna's own loss-of-load
+analyses lift pressurizer relief only when pressure-control credit is removed) — re-derived to
+"spray contains, PORV never challenged", with the mechanism half pinned by the existing phase-1
+checks so neither side passes hollow (the TR-3 lesson). PI-3's P-11 reinstate leg budget
+3000 → 8000 s (2.5 → 13.8 MPa takes ~7,100 s honest). The §14 Mode-5-controls recovery window
+300 → 900 s (+1 MPa needs ~630 s at the real slew; valid on both clocks). Two unit-pair typos
+in this session's own new prose (16.6 → 16.7 °C/hr, caught by `run_manual_units`). **CA-21
+survived at 0.032** — the sweep flipped it at 0.27 AND 0.05, and the shipped value between
+them passes; fixture untouched.
+
+**Content that became false, fixed with the physics** (the 2026-08-07 standing directive):
+PWR-N01 step-5 hold 900 → 9000 + step/caution text on measured numbers; Manuals 01/02/04/05/12
+re-stated as Rev 14 pending item (g); `12` §14.0's Compressed trust class emptied to the
+cooldown-depressurisation rate alone — and **§14.1's "ECCS injection pacing is 22–440×" was
+found STALE since #408** (injection has run the real Ginna pump scale since that wave; nobody
+had updated the trust table) — retired with attribution. Mission narration re-measured
+(`pwr_mode5_to_mode3` header + beats, `pwr_return_to_mode1`); `run_campaign`'s 60,000 s heatup
+budget untouched (~12.5 plant-h fits). Wave 2 (F15 re-solve, bracketed [K_phys, 600]) is next.
+
 ---
 
 ## Session log — 2026-08-07-develop-c (INVESTIGATION ONLY: the secondary loop's fidelity gap, measured — filed as #418, the tier-2 umbrella. No code.)

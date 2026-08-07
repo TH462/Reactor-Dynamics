@@ -16,6 +16,12 @@
  * approach to criticality — those beats already live in `pwr_startup_challenge`
  * and `pwr_return_to_mode1`, which is where an approach to criticality belongs.
  *
+ * #419 WAVE 1 (2026-08-07) RE-CLOCKED THE PRESSURIZATION LEG — the table below is the
+ * pre-#419 record (kept: the layer-agreement lesson it documents is unchanged). On the
+ * real slew the pressurization takes ~1.8 plant-h instead of ~4 min, so measured
+ * 2026-08-07: Mode 3 at ~4.6 plant-h, 545 °F at ~11.3, settles 567.0 °F at ~12.3
+ * plant-h, steady ~30.0 °F/hr — arrival state unchanged (−2828 pcm, 856.8 ppm).
+ *
  * MEASURED on the as-built plant, cold_shutdown IC, no rod motion at all —
  * **at BOTH layers, and they agree to every digit** (re-measured 2026-07-30, #266):
  *   enters Mode 4                       0.27 plant-h  (200 °F / 93.3 °C at 0.28)
@@ -134,8 +140,8 @@
       { id: 'ride_up',
         trigger: { type: 'true_state', field: 'tavg_c', direction: 'above', value: 150 },
         commentary: {
-          learning: 'This is the evolution: you wait, and you watch. Tavg climbs at roughly 32 °F/hr (18 °C/hr) on pump heat, and it takes about ten plant-hours to reach operating temperature — which is why a real heatup is an all-shift job and why the clock in the corner is running fast. Your work is monitoring, not acting: Tavg and its RATE, steam pressure tracking it, pressurizer level swelling as the water expands, and the reactor staying exactly where you left it. If you ever needed to slow down, you would secure a pump; measured, that takes the rate to essentially zero.',
-          industry: 'Nuclear heatup rate is not applicable — the core is subcritical. Measured on the as-built plant with no rod motion: ~32 °F/hr (17.8 °C/hr) steady, 39.8 °F/hr (22.1 °C/hr) averaged over the climb, 10.71 plant-hours cold to 548 °F (286.7 °C). Monitor Tavg and rate, secondary pressure tracking Psat(Tavg), pressurizer level on thermal expansion. Rate control: secure an RCP (measured, rate → 0.1 °F/hr) — the steam dump is too coarse.',
+          learning: 'This is the evolution: you wait, and you watch. Tavg climbs at roughly 30 °F/hr (17 °C/hr) on pump heat, and it takes about twelve plant-hours to reach operating temperature — which is why a real heatup is an all-shift job and why the clock in the corner is running fast. Your work is monitoring, not acting: Tavg and its RATE, steam pressure tracking it, pressurizer level swelling as the water expands, and the reactor staying exactly where you left it. If you ever needed to slow down, you would secure a pump; measured, that takes the rate to essentially zero.',
+          industry: 'Nuclear heatup rate is not applicable — the core is subcritical. Measured on the as-built plant with no rod motion (#419 real rates): ~30 °F/hr (16.7 °C/hr) steady, ~12.3 plant-hours cold to the settled 567.0 °F (297.2 °C) no-load anchor. Monitor Tavg and rate, secondary pressure tracking Psat(Tavg), pressurizer level on thermal expansion. Rate control: secure an RCP (measured, rate → 0.1 °F/hr) — the steam dump is too coarse.',
         },
         highlight: { control_label: null, instrument_id: 'tavg' },
         speed: 300,
@@ -155,7 +161,7 @@
         level_complete: {
           title: 'Hot Standby — Reached',
           outcome_learning: 'You took a cold, dead plant and warmed it to operating temperature without ever starting the reactor — on the heat the coolant pumps alone put into the water. Pressurize, start the pumps, bottle the steam generator, and wait out the climb. That is the real first half of every startup, and the reactor comes next.',
-          outcome_industry: 'Mode 5 → Mode 3 heatup complete on integrated physics: pressurization to NOP, RCP start, RHR auto-isolation, bottled-SG heat balance, and a 10.7 plant-hour pump-heat ramp to Hot Standby with the reactor subcritical throughout and no rod motion.',
+          outcome_industry: 'Mode 5 → Mode 3 heatup complete on integrated physics: pressurization to NOP, RCP start, RHR auto-isolation, bottled-SG heat balance, and a ~12-plant-hour pump-heat ramp to Hot Standby with the reactor subcritical throughout and no rod motion.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

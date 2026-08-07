@@ -1151,7 +1151,7 @@ test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby on PUMP HEAT, no ro
     var d = Math.abs(s.engine.rod_groups[0].steps - rod0); if (d > rodMoved) rodMoved = d;
     pumpHeatStep(s);
     return lc(sn);
-  }, 60000);                                            // 16.7 plant-h; the heatup measures 10.71
+  }, 60000);                                            // 16.7 plant-h; the heatup measures ~12.3 (#419 real rates)
   ck('heatup reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) {
     ck('endpoint is the Hot Standby card', lc(snap).title, /Hot Standby/i.test(lc(snap).title), 'Hot Standby — Reached');
