@@ -335,7 +335,10 @@ docs.
 > behaviour change is **"what should this plant actually do?"** — never "what keeps this
 > mission green?" Authority runs one way: physics/prototypicality → this plant's ruled-on
 > identity → the behaviour catalog + physics acceptance suites → control setpoints →
-> authored content → that content's gates. **Content never votes on physics.** When a
+> authored content → that content's gates. **Content never votes on physics** — and content
+> CHURN is never a consideration either *(OWNER DIRECTIVE, 2026-08-07: "Documentation and
+> gameplay always follow the model/physics, not the other way around.")*: the cost of
+> re-authoring manuals, missions or checklists is not an input to a physics decision. When a
 > mission, procedure or checklist breaks after a plant change, presume the *content* is
 > stale. Read the break — it is a canary, not an authority — but settle it against the top
 > three levels, and say which behaviour you are treating as ground truth. Full rule and the
@@ -447,8 +450,12 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#385 node / #409 governor** — the pressurizer inventory NODE (ruled as a follow-on in the
   LOCA-cluster plan review, sequenced AFTER the #408 re-clock) and the deferred auto-acceleration
   governor. The rest of the LOCA cluster (#384/#407/#334-3) is landed.
+- **#418 tier 2** — the secondary re-clock + SG tube node/loop transport, RULED 2026-08-07
+  ("A+B, keep 297 °C") and planned: waves A1–A3 (K_steam_pressure 0.30 derived, SG mass
+  ledger + level map, MSSV 0.84×) then B1–B2 (node + transport, measure-first on OTΔT).
 - **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
-  the sourced setpoint passes on physics, the ladder is the blocker. `status-needs-ruling`.
+  the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
+  #418's new ledger, not the old gain**. `status-needs-ruling`.
 - **#378** — a post-step rod limit cycle, measured to a REJECT (the fix costs TR-1i's sourced ramp
   duty). `run_behavior` carries **TR-18** as a strict xfail pinning it.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.

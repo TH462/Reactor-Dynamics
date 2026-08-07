@@ -45,6 +45,41 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-07-develop-c — tier 2 RULED: the secondary joins the primary's fidelity (A+B, ladder stays), and content-follows-physics becomes standing law
+
+**THE SCOPE RULING** *(OWNER RULING, 2026-08-07: selected **"A+B, keep 297 °C"** from four
+options — a selection, not verbatim words, the #408 convention)*: the secondary gets (A) the
+inventory/pressure re-clock from one sourced basis (Ginna anchor, per-MWt scale), THEN (B) an
+SG tube-side node + hot/cold-leg transport delays — sequenced so the node is fitted on real
+currency, the #408→#385 precedent. **The pressure ladder (8.23 / 8.77 / 9.31 / 9.0) is ruled
+identity and does not move**; option C (re-anchor to a real-class ladder) is out of tier 2 and
+survives only as a possible future identity ruling. **The #408 thermal fence is NARROWED by
+the selection**: the ×12.6 Mode 5↔1 *pace* compression stays; transient loop *structure* is
+declared not part of that fence (option text agent-authored, owner-selected).
+
+**THE STANDING DIRECTIVE** *(OWNER DIRECTIVE, 2026-08-07: "changing the manual or training or
+scenarios should never be a consideration for weather to change the physics … Documentation
+and gameplay always follow the model/physics, not the other way around.")* — content-churn
+cost is never an input to a physics decision; content re-authors to follow. Given while
+probing whether the option-C rejection rested on content churn (it half did; the surviving
+grounds are that the 297 °C anchor is a ruled identity and the ladder's *ordering* is what
+teaches). Recorded in CLAUDE.md's HR9 block the same session.
+
+**The plan** (approved same-session, plan-mode file + #418): three explorer sweeps + a design
+pass produced wave A (K_steam_pressure 2.0 → 0.30 derived from an effective capacitance
+C_P ≈ 1,025 MJ/MPa — the liquid's sensible heat dominates, dome-only measured-rejected; the
+steam break re-expressed as its own mass-flow constant 0.75 because the `/K` division
+otherwise quintuples break mass flow; `sg_mass_frac` state + piecewise level map whose
+in-window slope reproduces K_sg_level 1.371 %/s EXACTLY so TR-14's Ginna event holds while
+total inventory honors the 77.5-s boil-dry; MSSV capacity → 0.84× Ginna) and wave B (series
+conductances with 1/h1 + 1/h2 = 1/h_sg and shared flow×dry factors, which makes the four-site
+steady-state identity `Tavg = Tsat + Q/h_sg` INVARIANT — no formula moves, ICs get seeds;
+first-order leg lags, no delay lines; raw thot keeps the DNB datum; OTΔT measure-first with
+the sourced WTSM Tavg lead-lag as the pre-named remedy). Gate reds are pre-inventoried as
+mechanical widenings vs re-derivations — nothing absorbed silently. Full plan on #418.
+
+---
+
 ## 2026-08-07-develop-b — the lane merge: a deliberate deletion looks exactly like a merge loss
 
 **THE DECISION.** `workbench` cut `CLAUDE.md` from 42,065 to 13,455 words and gated the result

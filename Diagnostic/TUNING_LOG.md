@@ -69,6 +69,25 @@ tube-side node ("proper heat transfer") and the ladder identity sit on or over i
 recommends: tier 2 = inventory clock now, node/transport staged with #385, fence re-affirmed
 or amended by ruling before stage 3.
 
+**LATE SESSION — RULED AND PLANNED.** Scope *(OWNER RULING, 2026-08-07: selected "A+B, keep
+297 °C" — a selection)*: re-clock then node/transport, ladder stays, fence narrowed (pace
+compression stays; transient structure is not the fence). Standing directive *(OWNER
+DIRECTIVE, 2026-08-07: "Documentation and gameplay always follow the model/physics, not the
+other way around.")* — recorded in `BUILD_DECISIONS` 2026-08-07-develop-c and CLAUDE.md HR9.
+Plan-mode pass (owner: "Plan the work first") ran three explorer sweeps + a design agent;
+the approved plan lives on #418 and in `BUILD_DECISIONS` develop-c. Headline design results:
+`K_steam_pressure` 2.0 → **0.30** [derived, C_P ≈ 1,025 MJ/MPa effective capacitance — the
+SG liquid's sensible heat IS the pressure clock; dome-only 1.19 fails the Ginna 35–47 psi/s
+class]; the steam break becomes its own constant (0.75, byte-identical) because the `/K`
+division otherwise ×5's break mass flow; `sg_mass_frac` + piecewise level map reconciles the
+two same-document Ginna anchors (35-s trip event vs 77.5-s boil-dry — impossible in one
+linear gain); wave B's series-conductance invariance rule keeps `Tavg = Tsat + Q/h_sg`
+exact at all four spelling sites. Stage-0 corpus sweep found most numbers already on disk
+across the three lanes (SG mass 85,359 lbm T15.6-1, MSSVs 0.84× rated, feed temp 390–435 °F
+— `feedwater_temp_c` 440.6 °F sits ABOVE the ceiling, closes at 224 °C); still to fetch:
+WTSM §5.1, Ginna ch. 10, the truncated ML11223A246, NUREG-1431. Work proceeds on #418
+(`status-wip-develop` tagged).
+
 ---
 
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)
