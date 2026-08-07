@@ -57,7 +57,12 @@
     session_start: { props: { plant: ['pwr', 'rbmk', 'bwr'], initial_state: 'enum', channel: ['public', 'preview', 'dev'] } },
     // The single most useful row here: WHERE PEOPLE STOP. `last_panel` and the two
     // durations together answer "did they bounce, or did they get stuck somewhere".
-    session_end:   { props: { seconds: 'num', sim_seconds: 'num', last_panel: 'enum', reached_play: 'bool' } },
+    // `sim_seconds` doubles as "did they ever press play" — the sim clock only advances
+    // while running, so > 0 is the answer and a separate reached_play flag was both
+    // redundant and WRONG: play does not route through the command dispatcher, so the
+    // first implementation reported false on a session that had plainly run. Measured
+    // against the live board before it was cut.
+    session_end:   { props: { seconds: 'num', sim_seconds: 'num', last_panel: 'enum' } },
 
     // --- what they touch ----------------------------------------------------
     // Action NAME only. Never the value — "set_rod_position" is a usage fact,
@@ -71,10 +76,17 @@
     mission_abandon:  { props: { id: 'enum', seconds: 'num', beat: 'num' } },
 
     // --- the funnel ---------------------------------------------------------
-    // Entered -> pressed play -> went critical -> on the grid -> full power. This
-    // is the row that answers "is the startup too hard", which is the question a
-    // silent user base cannot be asked directly.
-    milestone:     { props: { name: ['critical', 'on_grid', 'full_power', 'scram', 'core_damage'], sim_seconds: 'num' } },
+    // THE MODE IS THE FUNNEL, and it is the engine's own answer rather than a
+    // threshold invented here. `true_state.plant_mode` is the DERIVED commercial
+    // mode 1-6, computed from power, reactivity and Tavg (CONTEXT.md §6.3), so
+    // "how far did they get" is Mode 5 -> 3 -> 2 -> 1 with no judgement of mine in
+    // it. An analytics threshold picked by eye would have been a plant-dynamics
+    // claim wearing a product-metric hat, and wrong thresholds make wrong funnels.
+    plant_mode:    { props: { mode: 'num', sim_seconds: 'num' } },
+    // The three that are latched flags or recorded events already, not inferences:
+    // on_grid from mwe_output first going positive, scram from the existing recorder,
+    // core_damage from true_state.fuel_damaged, which the engine latches itself.
+    milestone:     { props: { name: ['on_grid', 'scram', 'core_damage'], sim_seconds: 'num' } },
   };
 
   var CONSENT_KEY = 'rd_telemetry_consent';   // 'granted' | 'denied' — localStorage

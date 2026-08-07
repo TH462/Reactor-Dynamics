@@ -55,6 +55,33 @@ function release() {
   return m ? m[1] : 'Alpha';
 }
 
+/* LOCAL scripts the portable build must not contain AT ALL. Distinct from DROP above,
+ * which is for absolute/external tags that could never be inlined — these are ordinary
+ * repo files that would inline perfectly well and simply have no business in an offline
+ * artifact.
+ *
+ * THE ORDERING TRAP: the deploy runs stamp_version.js BEFORE this script, so by the
+ * time we read site/telemetry_endpoint.js it holds the PRODUCTION endpoint. Inlining it
+ * would put a live URL inside a file whose whole promise is that it never touches the
+ * network — an offline build that phones home, emailed to people who chose it precisely
+ * because it does not.
+ *
+ * Blanking the endpoint would be enough to make it inert, but "cannot fire" and "is not
+ * present" are different promises and this build makes the stronger one. test/run_portable.js
+ * scans every shipped script for loaders and failed on the `fetch(` in telemetry.js the
+ * first time it was wired — that is the guard working, and the right answer to it is to
+ * ship neither file rather than to add an exception to the scan.
+ *
+ * Every caller in ui/app.js already guards on `window.RD && RD.Telemetry`, so absence is
+ * a supported state: the consent prompt never opens and the in-sim report form stays
+ * hidden, which is correct for a build that has nowhere to send anything. */
+const OMIT = {
+  '../site/telemetry.js':
+    'usage-data client — an offline build collects nothing, and does not carry the code that could.',
+  '../site/telemetry_endpoint.js':
+    'the endpoint it reads; nothing to point at once the client is gone.',
+};
+
 function readAsset(href) {
   const abs = path.join(SHELL_DIR, href);
   if (!fs.existsSync(abs)) throw new Error('missing asset referenced by ui/shell.html: ' + href);
@@ -94,6 +121,7 @@ function build() {
           '\nA portable build cannot fetch it. Either inline it, or add it to DROP in ' +
           'tools/make_portable.js with the reason it is safe to lose offline.');
       }
+      if (OMIT[src]) { dropped.push(src); return ''; }
       js.push(src);
       // `</script` anywhere in a JS body — even in a comment, which is where the one
       // real case lives (ui/diagram/board/std_pipe.js:6) — would close the tag early
@@ -133,4 +161,4 @@ if (require.main === module) {
   console.log('quarantine .html attachments, and the recipient sees nothing at all.\n');
 }
 
-module.exports = { build: build, release: release, DROP: DROP, SHELL: SHELL };
+module.exports = { build: build, release: release, DROP: DROP, OMIT: OMIT, SHELL: SHELL };

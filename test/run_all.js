@@ -976,7 +976,18 @@ var BASELINES = {
   // `ui/diagram/board/components/comp_atmospheric_dump.js`, the ADV's schematic component,
   // registered on the shell and on board_check. The guard counts shipped scripts, so a new
   // board component is exactly one check. MEASURED after `node tools/make_portable.js`.
-  'run_portable.js':       { code: 0, score: '125checks 0failed' },
+  // 125 -> 129 on 2026-08-07: the bundler gained an OMIT set (local scripts the offline
+  // build must not contain at all, as opposed to DROP's external tags), and the gate was
+  // taught about it — +1 TAGS row per omitted file, +2 BUNDLE rows proving each one
+  // actually left, and the inlined-script tally now subtracts them.
+  // THE GATE FOUND THIS ITSELF, which is the whole reason it exists: wiring telemetry put
+  // a `fetch(` into a script ui/shell.html ships, and the LOADS scan failed on it. The
+  // right answer was to ship neither site/telemetry.js nor its endpoint file in the
+  // portable build rather than to add an exception to the scan — "cannot fire" and "is
+  // not present" are different promises and the offline build makes the stronger one.
+  // The per-file BUNDLE rows exist because the tally alone is satisfiable by a TYPO: a
+  // mis-keyed OMIT entry ships the file and the count still matches scripts.length.
+  'run_portable.js':       { code: 0, score: '129checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -1157,7 +1168,14 @@ var BASELINES = {
   // not clearing the queue 49/1, a real URL committed to the endpoint file 49/1.
   // NOTHING IS WIRED YET — no caller emits an event, so this gate pins a contract the
   // sim does not exercise. That is deliberate: the contract lands before the collection.
-  'run_telemetry.js':      { code: 0, score: '49checks 0failed' },
+  // 49 -> 50 on 2026-08-07 (slice 2, the wiring): one added check, and one CORRECTED.
+  // The registry gained `plant_mode` — the funnel is now the engine's own derived
+  // commercial mode rather than a power threshold picked by eye, which would have been a
+  // plant-dynamics claim wearing a product-metric hat. And `session_end.reached_play` was
+  // CUT after the live board disproved it: play does not route through the command
+  // dispatcher, so the flag read false on a session that had plainly run. `sim_seconds`
+  // already answers it, because the sim clock only advances while running.
+  'run_telemetry.js':      { code: 0, score: '50checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane

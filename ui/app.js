@@ -3414,6 +3414,7 @@
       diag.commands.push({ t: latest && latest.metadata ? latest.metadata.sim_time : 0, command: c, blocked: !!(r && r.type === 'blocked'), error: !!(r && r.type === 'error') });
       if (diag.commands.length > 2000) diag.commands.shift();
     }
+    TEL.command(c, !!(r && r.type === 'blocked'));
     // The command was blocked, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
     // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
@@ -3582,14 +3583,134 @@
     bwr: ['power_pct', 'fuel_temp_c', 'vessel_pressure_mpa', 'vessel_level_pct', 'core_void_fraction', 'recirc_flow_pct', 'decay_heat_pct']
   };
   var diag = null;
+  // ======================================================== usage data (aggregate)
+  // The adapter for site/telemetry.js. It exists so the emit points scattered through
+  // this file stay one-line calls and all the state — what has already been reported,
+  // when the session started — lives in one place.
+  //
+  // EVERY METHOD IS A NO-OP unless the player granted consent AND a deploy stamped an
+  // endpoint; telemetry.js enforces that, and this layer never second-guesses it. It
+  // also never throws: usage data is the least important thing in this application and
+  // must not be able to interrupt the plant, so every call is wrapped.
+  //
+  // It rides the EXISTING session recorder rather than adding a second set of probes.
+  // diagEvent/diagReset/diagTick already sit at exactly the moments worth reporting,
+  // and a parallel set of hooks would be a second thing to keep in step with the first.
+  var TEL = (function () {
+    var seen = {};            // one-shot milestones, cleared per session
+    var lastMode = null, lastPanel = null;
+    var startedAt = 0, mission = null, ended = false;
+    // session_start fires during BOOT, which on a first visit is before the consent
+    // prompt has been answered — so it would be dropped, and first visits are exactly
+    // the sessions worth having. Hold the facts locally (the app knows them anyway)
+    // and emit once an answer exists. Nothing is queued inside telemetry.js while
+    // consent is undecided, so its invariant is untouched.
+    var pendingStart = null;
+
+    function api() { try { return (window.RD && RD.Telemetry) || null; } catch (e) { return null; } }
+    // Returns whether the event was ACCEPTED, which the held session_start depends on:
+    // clearing it on a refusal would silently lose the row it exists to preserve.
+    function ev(name, props) {
+      var t = api(); if (!t) return false;
+      try { return t.event(name, props) === true; } catch (e) { return false; }   // never break the sim
+    }
+    function since(ms) { return Math.max(0, Math.round((Date.now() - ms) / 1000)); }
+
+    return {
+      sessionStart: function (reason, meta) {
+        seen = {}; lastMode = null; mission = null; ended = false;
+        startedAt = Date.now();
+        pendingStart = {
+          plant: ui.plant,
+          initial_state: (meta && meta.initial_state) || ui.initState || 'unknown',
+          channel: (typeof window.RD_CHANNEL === 'string') ? window.RD_CHANNEL : 'dev',
+        };
+        this.consentAnswered();                   // a no-op until an answer exists
+        if (reason === 'scenario' && meta && meta.scenario_id) {
+          mission = { id: meta.scenario_id, at: Date.now() };
+          ev('mission_start', { id: meta.scenario_id });
+        }
+      },
+
+      // Called by sessionStart and again by the consent prompt when it is answered.
+      // Emitting is idempotent: the held facts are cleared on the first success.
+      consentAnswered: function () {
+        var t = api();
+        if (!pendingStart || !t) return;
+        try { if (!t.granted()) return; } catch (e) { return; }
+        if (ev('session_start', pendingStart)) pendingStart = null;
+      },
+
+      // Action NAME only, never its value: "set_rod_position" is a usage fact,
+      // "set_rod_position 143" is a recording of what someone did.
+      command: function (c, blocked) {
+        if (!c || !c.action) return;
+        ev('command', { action: String(c.action), blocked: !!blocked });
+      },
+
+      panel: function (id) {
+        if (!id || id === lastPanel) return;      // a re-click is not a visit
+        lastPanel = id;
+        ev('panel_open', { panel: String(id) });
+      },
+
+      milestone: function (name, simT) {
+        if (seen[name]) return;                   // latched: first crossing only
+        seen[name] = true;
+        ev('milestone', { name: name, sim_seconds: Math.round(simT || 0) });
+      },
+
+      // Driven from diagTick, so it sees every snapshot the recorder does.
+      tick: function (s) {
+        if (!s || !s.true_state) return;
+        var ts = s.true_state, t = (s.metadata && s.metadata.sim_time) || 0;
+
+        // THE FUNNEL. plant_mode is the engine's own derived commercial mode (1-6),
+        // so "how far did they get" carries no threshold of mine.
+        if (typeof ts.plant_mode === 'number' && ts.plant_mode !== lastMode) {
+          lastMode = ts.plant_mode;
+          ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });
+        }
+        if (typeof ts.mwe_output === 'number' && ts.mwe_output > 0) this.milestone('on_grid', t);
+        if (ts.fuel_damaged) this.milestone('core_damage', t);   // engine-latched, not inferred
+
+        if (mission && s.instructor && s.instructor.level_complete) {
+          ev('mission_complete', { id: mission.id, seconds: since(mission.at) });
+          mission = null;
+        }
+      },
+
+      // Called once, from pagehide. sendBeacon is the only transport that survives
+      // the page going away, and session_end is the most useful row in the set.
+      end: function () {
+        if (ended) return;
+        ended = true;
+        if (mission) ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: 0 });
+        // sim_seconds > 0 IS "they pressed play" — the clock only advances while
+        // running, so no separate flag is needed (and the one that was here read
+        // false on a session that had obviously run: play is not a dispatched command).
+        ev('session_end', {
+          seconds: startedAt ? since(startedAt) : 0,
+          sim_seconds: Math.round((latest && latest.metadata && latest.metadata.sim_time) || 0),
+          last_panel: lastPanel || 'none',
+        });
+        var t = api(); if (t) { try { t.flush(true); } catch (e) {} }
+      },
+    };
+  }());
+
   function diagEvent(t, type, detail) {
     diag.events.push({ t: t, type: type, detail: detail });
     if (diag.events.length > 5000) diag.events.shift();
+    // Every recorded scram passes through here, so hooking the recorder covers each
+    // site that reports one without a second call to keep in step.
+    if (type === 'scram') TEL.milestone('scram', t);
   }
   function diagReset(reason, meta) {
     var t = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag = { reason: reason, meta: meta || null, startSim: t, lastT: t, nextT: Math.floor(t), samples: [], events: [], commands: [], lastAlarms: null, lastScrammed: false };
     diagEvent(t, 'session_start', { reason: reason, meta: meta || null });
+    TEL.sessionStart(reason, meta);
   }
   function diagSample(s, t) {
     var ts = s.true_state || {}, row = { t: t, accel: s.metadata.time_acceleration };
@@ -3599,6 +3720,7 @@
     if (diag.samples.length > 14400) diag.samples.shift();   // ~4 h at 1 Hz
   }
   function diagTick(s) {
+    TEL.tick(s);          // before the early return: usage data does not depend on the recorder
     if (!diag || !s || !s.metadata) return;
     var t = s.metadata.sim_time;
     if (t < diag.lastT - 0.001) {          // rewind / replay — drop the recorded future
@@ -3975,6 +4097,7 @@
       var again = b.classList.contains('on');   // re-click of the active tab = collapse toggle (#237)
       $('tabbar').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
       document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
+      TEL.panel(b.getAttribute('data-tab'));   // which parts of the board get used at all
       focusTools(again);
       // Repaint the pane that just came up. Physics and Automate both skip their work
       // while hidden (see paneVisible), so without this they show whatever was last
@@ -4123,6 +4246,91 @@
     initTour();
     // Contact (email) overlay — status line resets each open. RD_VERSION is stamped
     // at deploy time and may be absent when opened straight off disk.
+    // session_end, and the only chance to send it. `pagehide` fires where
+    // `beforeunload` is unreliable (mobile, bfcache), and TEL.end() is idempotent, so
+    // firing on both costs nothing and missing the row costs the most useful signal
+    // in the set — where people stop.
+    window.addEventListener('pagehide', function () { TEL.end(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') { var t = window.RD && RD.Telemetry; if (t) { try { t.flush(true); } catch (e) {} } }
+    });
+
+    // Assigned by the Settings block below; called by the launch prompt so the two
+    // controls cannot disagree. Answering "yes" at launch and then finding Settings
+    // still showing Off is the kind of small lie that makes a consent control
+    // untrustworthy — and it is exactly what the first version did.
+    var repaintTelemetryToggle = function () {};
+
+    // ---- usage-data consent, first launch only ------------------------------
+    // Only asked when there is something to ask about: a stamped endpoint and no
+    // recorded answer. Everything stays collected-nothing until a button is pressed,
+    // so closing the tab on the prompt is the private outcome, not an ambiguous one.
+    (function () {
+      var T = window.RD && RD.Telemetry;
+      var ov = $('consentOverlay');
+      if (!ov || !T || !T.enabled() || T.consent() !== null) return;
+      ov.hidden = false;
+      function answer(v) {
+        try { T.setConsent(v); } catch (e) { /* storage refused: stays undecided, sends nothing */ }
+        TEL.consentAnswered();     // releases the held session_start, if granted
+        repaintTelemetryToggle();  // keep Settings in step with the answer just given
+        ov.hidden = true;
+      }
+      $('consentYes').addEventListener('click', function () { answer('granted'); });
+      $('consentNo').addEventListener('click', function () { answer('denied'); });
+    }());
+
+    // ---- the Settings toggle the consent prompt promises ---------------------
+    (function () {
+      var T = window.RD && RD.Telemetry;
+      var row = $('telemetryRow'), seg = $('telSeg');
+      if (!row || !seg || !T || !T.enabled()) return;   // no endpoint: no toggle to offer
+      row.hidden = false;
+      function paint() {
+        var on = T.consent() === 'granted';
+        seg.querySelectorAll('button').forEach(function (b) {
+          b.classList.toggle('on', (b.getAttribute('data-tel') === 'on') === on);
+        });
+      }
+      seg.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-tel]'); if (!b) return;
+        var on = b.getAttribute('data-tel') === 'on';
+        try { T.setConsent(on ? 'granted' : 'denied'); } catch (err) {}
+        if (on) TEL.consentAnswered();
+        paint();
+        showToast(on ? 'Usage data on — thank you.' : 'Usage data off. Nothing is sent.');
+      });
+      paint();
+      repaintTelemetryToggle = paint;
+    }());
+
+    // ---- send a bug report, with the session attached ------------------------
+    (function () {
+      var T = window.RD && RD.Telemetry;
+      var block = $('fbSendBlock'), btn = $('fbSend');
+      if (!block || !btn || !T || !T.enabled()) return;   // no endpoint: email route only
+      block.hidden = false;
+      btn.addEventListener('click', function () {
+        var note = ($('fbNote').value || '').trim();
+        var attach = $('fbAttach').checked;
+        if (!note && !attach) { showToast('Add a message, or attach the session.', 'error'); return; }
+        var bundle = attach ? buildDiagBundle() : { kind: 'reactor_dynamics_note_only' };
+        btn.disabled = true;
+        txt($('fbStatus'), 'Sending…');
+        T.sendBundle(bundle, note).then(function (r) {
+          btn.disabled = false;
+          if (r && r.ok) {
+            txt($('fbStatus'), 'Sent — thank you.');
+            $('fbNote').value = '';
+          } else {
+            // Never a dead end: the address above still works, and the download
+            // button beside it produces the same bundle as a file.
+            txt($('fbStatus'), 'Could not send — please email instead.');
+          }
+        });
+      });
+    }());
+
     $('fbBtn').addEventListener('click', function () {
       $('fbStatus').textContent = '';
       $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)

@@ -76,6 +76,57 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — usage data and an in-sim bug report, both wired (2026-08-07)
+
+Slice 2 of #413's telemetry work, completing the client landed in slice 1 *(OWNER,
+2026-08-07: "I want automatic collection of data and a feedback form within the sim that
+sends full session logs")*. **No `changelog.html` entry until an endpoint exists** — with
+none stamped, the consent prompt never opens and the report form stays hidden, so nothing a
+player can observe has changed yet.
+
+- **The emit points ride the EXISTING session recorder.** `diagEvent` / `diagReset` /
+  `diagTick` already sit at exactly the moments worth reporting, so a `TEL` adapter hooks
+  those rather than adding a parallel set of probes to keep in step. Hooking `diagEvent`
+  covers every recorded scram wherever it is raised.
+- **The funnel is the engine's own answer.** `plant_mode` — the derived commercial mode
+  1-6 (`CONTEXT.md` §6.3) — replaced the `critical` / `full_power` thresholds proposed in
+  slice 1. Those would have been plant-dynamics claims wearing a product-metric hat, and a
+  wrong threshold makes a wrong funnel. `on_grid` comes from `mwe_output`, `core_damage`
+  from the engine-latched `fuel_damaged`.
+- **`session_end.reached_play` was CUT, not fixed.** Driving the live board showed it
+  reading `false` on a session that had plainly run: **play does not route through the
+  command dispatcher**, so the flag could never be true. `sim_seconds` already answers it —
+  the sim clock only advances while running.
+- **`session_start` is HELD until consent is answered.** It fires during boot, which on a
+  first visit is before the prompt — so it was being dropped, and first visits are exactly
+  the sessions worth having. A second defect went with it: the held row was cleared even
+  when the emit was *refused*, so `ev()` now returns whether the event was accepted.
+- **Consent, and a Settings toggle that agrees with it.** First-launch prompt, shown only
+  when an endpoint was stamped and no answer is recorded. Measured on the live board:
+  prompt shown, **0 requests before the answer**, `session_start` released intact on grant,
+  a returning refuser silent and unprompted. The toggle initially still read *Off* after
+  answering *yes* at launch — the two controls did not talk, which is the small lie that
+  makes a consent control untrustworthy.
+- **The report form sends from inside the sim** — message, optional session recording, one
+  button. It never dead-ends: the email address and the diagnostics download stay beside
+  it, and a failed send says so.
+- **`run_portable` CAUGHT THE OFFLINE LEAK ITSELF** — wiring telemetry put a `fetch(` into
+  a script `ui/shell.html` ships, and the LOADS scan failed. The answer was to ship
+  **neither** `site/telemetry.js` nor its endpoint file in the portable build rather than
+  add an exception to the scan: *cannot fire* and *is not present* are different promises,
+  and the offline build makes the stronger one. New `OMIT` set in the bundler, and the gate
+  taught about it (125 -> 129, including a per-file row because the tally alone is
+  satisfiable by a mis-keyed entry).
+- **`privacy.html` rewritten** to match what the code does — what is collected, what never
+  is, that two visits cannot be linked, that bug reports are a separate deliberate act, and
+  that the offline download contains none of it. It points at `site/telemetry.js` so nobody
+  has to take the page's word for it.
+
+`run_telemetry` 49 -> 50, `run_portable` 125 -> 129. Still no endpoint: **#413** covers the
+Worker, R2 (bundles are 63 KB-504 KB gzipped, far over Analytics Engine's 16 KB blob cap)
+and the Analytics Engine dataset.
+
+
 ## [Alpha 1.3.0] — 2026-08-07
 
 ### Released — the lane merge and the version

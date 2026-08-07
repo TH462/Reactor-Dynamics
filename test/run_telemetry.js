@@ -161,7 +161,7 @@ function load(opts) {
 
   // Closed enums accept only their listed values.
   ck('a closed enum accepts a listed value',
-    a.T._clean('milestone', { name: 'critical' }).name === 'critical');
+    a.T._clean('milestone', { name: 'on_grid' }).name === 'on_grid');
   ck('a closed enum rejects an unlisted value',
     !('name' in a.T._clean('milestone', { name: 'anything_else' })));
 

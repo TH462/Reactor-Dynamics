@@ -123,6 +123,17 @@ function main() {
    * is the belt to that pair of braces. Generated rather than committed so it cannot
    * disagree with the channel it is supposed to follow — and gitignored for the same
    * reason site/version.js's real value is. */
+  /* The usage-data endpoint, stamped the same way and for the same reason: the repo
+   * copy is empty, so a clone and a local file:// run send nothing without anyone
+   * having to remember to switch them off. Supplied by the deploy environment
+   * (RD_TELEMETRY_ENDPOINT), so it is configuration rather than source — and if it
+   * is not set, every deploy is silent too. Failing to an empty string is the whole
+   * point: the safe state must be the one that needs no action. */
+  const tel = (process.env.RD_TELEMETRY_ENDPOINT || '').trim();
+  fs.writeFileSync(path.join(__dirname, 'telemetry_endpoint.js'),
+    '/* Generated at deploy by site/stamp_version.js. Empty = collect nothing. */\n' +
+    'window.RD_TELEMETRY_ENDPOINT = ' + JSON.stringify(tel) + ';\n');
+
   const robots = r.channel === 'public'
     ? 'User-agent: *\nAllow: /\n'
     : '# ' + r.channel + ' build (' + r.host + '): not the released site — keep it out of search.\n' +
@@ -131,7 +142,8 @@ function main() {
 
   console.log('stamp: host=' + r.host + '  branch=' + (r.branch || '<none>') +
     '  channel=' + r.channel + '  version=' + JSON.stringify(r.label) +
-    '  robots=' + (r.channel === 'public' ? 'Allow' : 'Disallow'));
+    '  robots=' + (r.channel === 'public' ? 'Allow' : 'Disallow') +
+    '  telemetry=' + (tel ? 'configured' : 'OFF (no RD_TELEMETRY_ENDPOINT)'));
   console.log('       ' + r.why);
   if (r.suspect) {
     console.warn('  !! UNRECOGNISED BUILD HOST. Channel forced to "public" so no unvetted\n' +
