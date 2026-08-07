@@ -788,7 +788,11 @@ var BASELINES = {
   // the scope-ruling records in BUILD_DECISIONS/TUNING_LOG, and the K_steam_pressure
   // derivation's ruling reference in pwr_config. MEASURED after the write-ups, per this key's
   // standing warning (prose moves this score; run the aggregate after the docs, not before).
-  'run_hardrules.js':      { code: 0, score: '224checks 0failed' },
+  // 224 -> 225 (2026-08-07-develop-c close): the tier-3 ruling citation in the TUNING_LOG
+  // turnover — the same prose-moves-this-score trap as this morning's CI red, caught
+  // LOCALLY this time by running the gate after the docs, which is what this key's own
+  // comment says to do.
+  'run_hardrules.js':      { code: 0, score: '225checks 0failed' },
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
