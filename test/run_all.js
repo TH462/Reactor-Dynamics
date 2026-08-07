@@ -743,7 +743,10 @@ var BASELINES = {
   // baseline in this map that CANNOT be reasoned about, only measured, because it counts
   // citation SITES in tracked markdown — so writing a merge up moves it, and deleting history
   // (the manual revision collapse) moves it the other way.
-  'run_hardrules.js':      { code: 0, score: '208checks 0failed' },
+  // 208 -> 210 on 2026-08-07: two citation sites for the proportional-valve ruling
+  // (BUILD_DECISIONS + the CLAUDE.md status). The engine/config/mission work moved this
+  // by ZERO — write-up drift, the usual split; measured AFTER the docs.
+  'run_hardrules.js':      { code: 0, score: '210checks 0failed' },
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -1243,7 +1246,16 @@ var BASELINES = {
   // reached from the COMPLIED branch only — refuse the order and there is nothing to be
   // confused about, which is the deviation's whole point and something the old plant could not
   // express.
-  'run_campaign.js':       { code: 0, secs: 130, score: '51/51 3026passed' },
+  // 3026 -> 3029 on 2026-08-07 (#408 + the proportional-valve ruling): the TMI-2
+  // missions run the 1979 clock now — deception ~38 min, damage ~2 h 20 m, the refill
+  // at the honest high-pressure HPI trickle — with authored beat speeds carrying the
+  // long stretches and gate budgets raised to 42,000 sim-s (the ackThrough guard rose
+  // with them; at the 0.05 s transient cadence the old 6e5-cycle guard exhausted at
+  // ~30,000 sim-s and read exactly like a mission that cannot finish). The plugged and
+  // holding rigs no longer pull the AFW tag — a running heat sink prevents the
+  // deception, so the order those variants depend on never arms (the tag+defend
+  // quiet-night is a filed design gap, not a reachable ending yet).
+  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3029passed' },
   'run_checklist.js':      { code: 0, score: '24/24' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
@@ -1402,7 +1414,14 @@ var BASELINES = {
     // issue. RULED *(OWNER RULING, 2026-08-04: "A")* — ship the corrected geometry and
     // accept the faster drain. So this red is an ACCEPTED, RULED state, not a regression
     // and not a pending question: do not re-band the threshold to clear it.
-    code: 1, score: '58/69 350passed 12failed',
+    // 350 -> 351 passed on 2026-08-07: abuse_porv_walkaway's size-fact leg re-authored
+    // to the proportional-valve ruling — full injection BEATS one wide-open plant-sized
+    // valve (74.7 % min inventory held), the 1979 counterfactual as a size fact. The
+    // 12 tracked fails are unchanged: 6 RBMK + 4 BWR (on hold) + the PWR drain-rate
+    // probe, which now reads 284.3 s against its ruled >= 300 s target (was 53.7 —
+    // the #408 real CVCS scale nearly delivers the owner's original feel target; the
+    // probe stays red by the 2026-08-04 "A" ruling and must not be re-banded).
+    code: 1, score: '58/69 351passed 12failed',
     note: 'Ops probes are tuning targets by design. #330 (2026-08-04) added a 12th red ' +
           'and it is the only PWR one: ops_cvcs_pzr_drain_rate, 53.7 s vs >= 300 s. ' +
           'RULED (OWNER RULING, 2026-08-04: "A") — the corrected pressurizer geometry ' +

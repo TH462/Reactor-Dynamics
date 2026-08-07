@@ -45,6 +45,69 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-07-develop-a — #408 wave 1: the proportional valve is RULED, and the melt verdict learns what TMI-2 proved
+
+**THE RULING** *(OWNER RULING, 2026-08-07: "Why not go with the proportional valve other than
+redoing some scenarios and trainings? The plant comes first, then the training, documentation
+follow.")* — reversing the wave-1 fleet-standard relief sizing the same day it shipped, and on
+HR9's own grounds: my recommendation to keep the fleet valve weighted content rework, which is
+content voting on physics. The objection is the rule.
+
+**What moved** (`engines/pwr/pwr_config.js`, arithmetic at each site): `porv_flow_max`
+1.31e-3 → **2.5e-4** frac/s (~112 gpm — Ginna power-scaled; Ginna is ~152 lbm/MWt against this
+plant's 149, so power-scaling and fractional parity agree; TMI-2's own single valve was 1.1e-4
+of ITS mass, same decade where the fleet valve was 12×). `safety_flow_max` 2.2e-3 → **8.0e-4**
+(the sourced ~3.2 safeties:PORV flow ratio — the old value was UNVERIFIED recall, and **#349's
+28.6× finding closes with this row**). `K_porv_relief`/`K_safety_relief` 600 → **3144**, the F15
+matched pair moved together, solved to preserve the PORV's full-open pressure authority
+EXACTLY (600 × 1.31e-3 = 3144 × 2.5e-4 = 0.786 MPa/s).
+
+**The K-preserve is the decision worth recording, not the arithmetic**: the PORV sits ON the
+seam between the two clocks. Its pressure/energy authority serves the ×12.6-compressed
+normal-ops insurge (the F14/F15 world — TR-1k measured the valve as the sub-arm load-rejection
+backstop), while its mass now serves the REAL accident inventory clock. It is no coincidence
+the fleet value ≈ proportional × 12.6 — that is why it "worked" for transients. Pressure keeps
+the compressed gain; mass runs real; that split IS the ruled #408 architecture, applied to one
+valve.
+
+**Measured consequences, all in the plant's favor**: MD-10 feed-and-bleed VIABLE (bleed 112 gpm
+vs feed ~150 — the one-day strict xfail dropped per the XPASS rule); the TMI-2 counterfactual
+is a size fact again (full injection beats one wide-open plant-sized valve — 74.7 % held on the
+45-min walk-away); the flagship authors severity 1.0 (a full stick of OUR valve ≈ TMI's
+fraction; 0.20 was the same fraction of the FLEET valve); the deception builds on the DEFENDED
+plant and crosses the 75 % level alarm at ~38 min, so the missions keep the historical LEVEL
+cue for the securing; damage at ~2 h 20 m — the 1979 clock.
+
+**Two engine regimes the ruling exposed, both fixed under it:**
+
+1. **Relief at solid joins the bulk-modulus regime** (`pwr_pressurizer.js`). The §12.4c
+   declared-not-attempted coupling bound the moment the valve's mass could no longer out-pass
+   unterminated ECCS: bubble-gain K held pressure at the PORV band while inventory walked to
+   the 120.00 % `mass_max` clip — the #361 signature by a fourth road. At solid the per-vented-
+   mass gain now steps to `solid_bulk_mpa` exactly as the surge gain does, and the restore term
+   stands down there too (measured soaking −0.015 MPa/s and making the PORV under-cycle 50 %).
+   Spray (#346), the surge (#346), relief and the restore stand-in (both today) — the coupled
+   regime is now attempted in full except commanded-spray authority, which remains declared.
+
+2. **The terminal melt verdict separates "molten and unrecovered" from "molten and quenching"**
+   (`pwr_thermal.checkDamage`). The peak clad/fuel rule stays for the DAMAGE latch (#213 —
+   damage is local before it is average); but peak>2800 as the TERMINAL latch ended the model
+   while the bulk core sat at ~330 °C under an active reflood, freezing the core-exit TC at
+   2800 °C forever — at 96 % restored inventory the subcooling margin could not restore, and
+   the flagship's own recovery ending (TMI-2: ~45 % locally molten, reflooded, stabilized) was
+   unrepresentable. The clad route to `melted` now requires the node at its melt ceiling while
+   inventory is NOT rising; the fuel node crossing melt stays unconditional. The ceiling
+   (`_clad_ceiling` touch latch) bounds the #326 oxidation runaway without the terminal freeze
+   and rewets on re-covery — measured, margin +48 °C at 75 % inventory. The unmitigated paths
+   (MD-1/3/5: pool boiling away, no makeup) still terminate — measured, `run_meltdown` 12/12.
+
+**Gate story**: `run_all` 38 runners green at updated baselines — `run_campaign` 51/51 3029
+(missions re-paced to the measured real-clock arcs; budgets 42,000 sim-s; the ackThrough guard
+raised with them because at the 0.05 s transient cadence the old 6e5-cycle guard exhausted at
+~30,000 sim-s and mimicked an unfinishable mission), `run_meltdown` 12/12, `run_behavior` 65/1,
+`run_ops` 58/69 with the ruled drain-rate red now at 284.3 s against its ≥ 300 s target (was
+53.7 — the real CVCS scale nearly delivers the 2026-07-22 feel target on its own).
+
 ## 2026-08-06-develop-g — #408 stages 0–2 ruled: CVCS joins the real scale, and the sizing question splits the constants table in two
 
 **Both #408 stage gates are RULED, five decisions in one reply** *(OWNER RULING, 2026-08-06:

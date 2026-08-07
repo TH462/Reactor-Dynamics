@@ -98,11 +98,20 @@
       // That is the TMI-2 counterfactual, and it is now the scenario's spine: full injection
       // beats one stuck-open relief valve. The player's decision is the one the 1979 crew
       // faced — RESTORE what has just been secured — not a decision to start something.
+      // TIME-CUED, and this is the settled form (2026-08-07, measured three ways).
+      // THIS scenario restores AFW at the stick — its own story beat — so the running
+      // heat sink keeps the defended drain mild: the post-trip swell peaks at 69.8 %
+      // and the defended plateau tops at ~53 %, five-plus points under the 75 % alarm
+      // that cued the securing historically. (The TMI-2 MISSIONS reach the alarm
+      // honestly because their AFW stays failed until the 8-minute discovery — a
+      // dry-SG drain is deeper.) So the securing takes the historical clock:
+      // ~4.5 min after the lift, on a level gauge that at that moment IS climbing —
+      // the void term is building it at ~1.3 %/min with injection running.
       { id: 'injection_secured',
-        trigger: { type: 'alarm', alarm_id: 'pzr_level_high' },
+        trigger: { type: 'delay', value: 260.0 },
         commentary: {
-          learning: 'Emergency injection started by itself a moment ago — pressure got low enough to trip it automatically. Now watch the pressurizer level: it is climbing, and the board looks like a plant filling up with water. In 1979 the crew read exactly that and shut the injection OFF to keep from going solid. The same hands do it here. Remember: the valve indicator still says CLOSED, and it is lying.',
-          industry: 'HPI auto-initiated on low RCS pressure. PZR level rising — the classic misleading indication with a stuck-open PORV. Replaying the historical action: HPI secured on high pressurizer level. Note the PORV indication remains CLOSED and remains false.',
+          learning: 'Emergency injection started by itself a few minutes ago — pressure got low enough to trip it automatically. Now watch the pressurizer level: it is climbing, and the board reads like a plant filling up with water. In 1979 the crew looked at exactly that picture and shut the injection OFF to keep from going solid. The same hands do it here. Remember: the valve indicator still says CLOSED, and it is lying.',
+          industry: 'HPI auto-initiated on low RCS pressure. PZR level rising on void growth — the classic misleading indication with a stuck-open PORV. Replaying the historical action (~4.5 min after the lift): HPI secured on the going-solid read. PORV indication remains CLOSED and remains false.',
         },
         commands: [{ action: 'set_hpi', active: false }],
         speed: 1,

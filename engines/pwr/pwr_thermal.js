@@ -382,6 +382,19 @@
     // nothing but checkDamage and one Physics-tab readout, and everything above 1200 °C is
     // past the point where the trainer has anything left to teach (Manuals/12 §5.5 — "the
     // simulation ends at fuel damage"). Investigated and parked on #238 with the staging.
+    //
+    // CEILINGED AT fuel_melt_c (2026-08-07, with the melt-verdict fix in checkDamage).
+    // The oxidation runaway has no fixed point (#326), and it used to be bounded by the
+    // TERMINAL melt latch this node itself tripped. With melt now the FUEL node's verdict
+    // (see checkDamage), the hot node needs its own physical ceiling: locally-molten core
+    // material relocates and slumps into the water below — it does not integrate to
+    // 355,618 °C (#326's measured runaway). Held at the melt point while exposed, it
+    // REWETS through the quench branch above once the refill re-covers the core, which
+    // is what lets the core-exit TC read coolant again — the TMI-2 recovery state. The
+    // damage latch fired thousands of seconds before this ceiling can bind, so no
+    // discrimination is lost below it.
+    if (s.clad_temp_c >= t.fuel_melt_c) { s.clad_temp_c = t.fuel_melt_c; s._clad_ceiling = true; }
+    else if (s._clad_ceiling && s.clad_temp_c < t.fuel_melt_c - 200) s._clad_ceiling = false;   // a real quench clears it; a few degrees of low-Tsat shedding does not
     publishCoreExit(s);
   }
 
@@ -424,7 +437,41 @@
     var t = cfg.thermal;
     var peak = (s.clad_temp_c != null && s.clad_temp_c > s.fuel_temp_c) ? s.clad_temp_c : s.fuel_temp_c;
     if (peak > t.fuel_damage_c) s.fuel_damaged = true;
-    if (peak > t.fuel_melt_c) {
+    // THE TERMINAL MELT VERDICT SEPARATES "MOLTEN AND UNRECOVERED" FROM "MOLTEN AND
+    // QUENCHING" (2026-08-07, found by the #408 real refill clock). The peak rule
+    // above is right for the DAMAGE latch — damage is local before it is average
+    // (#213) — but a bare peak > melt TERMINAL latch made a locally-molten hot node
+    // end the whole model while the bulk core sat at ~330 °C with injection actively
+    // reflooding it. That state is not hypothetical: it is TMI-2 itself — ~45 % of
+    // that core melted locally, the molten region slumped into the water still in the
+    // lower vessel, and the plant was reflooded and stabilized. Measured before this
+    // change: on the real-clock refill the clad's oxidation runaway crossed 2800 °C
+    // ~1 h into an ACTIVE reflood (inventory 12 % and RISING), the terminal latch
+    // froze stepCladding, core_uncovered_frac read 1.00 forever, and at 96 % restored
+    // inventory the core-exit TC still published 2800 °C — the flagship's own
+    // recovery ending was unrepresentable.
+    //
+    // What separates TMI-2 from the unmitigated MD-1/3/5 paths is WATER COMING
+    // BACK: TMI-2's molten region was quenched because injection was restored and
+    // the level was RISING through it. Molten material over a static or shrinking
+    // pool keeps going — the unmitigated large break stalls at ~41 % inventory
+    // (measured: the residual pool boiling away at -1e-5 frac/s under a
+    // ceiling-pinned hot node) and that is terminal in every physical sense even
+    // though the vessel is not dry. So the clad route to `melted` is the hot node
+    // AT the melt ceiling while inventory is NOT rising; an active refill is the
+    // recovery in progress and holds the verdict open while the quench climbs to
+    // it. The FUEL node crossing melt stays terminal unconditionally.
+    // A latched TOUCH, not a temperature test: at low containment-vented pressures
+    // Tsat ~100 °C makes the ceiling-clamped node shed a few degrees between samples
+    // (heat − cool < 0 AT the clamp), so a point test razor-misses a node pinned at
+    // the melt point — and a tolerance band below 2800 would latch melt EARLY and
+    // freeze the node under the very threshold probes watch (measured: MD-11's 2800
+    // mark went unreachable at a −25 band). stepCladding sets `_clad_ceiling` the
+    // step the clamp binds and clears it only when a genuine quench pulls the node
+    // 200 °C clear.
+    var cladMolten = !!s._clad_ceiling;
+    var refilling = (s._dmass_dt || 0) > 0;
+    if (s.fuel_temp_c > t.fuel_melt_c || (cladMolten && !refilling)) {
       s.melted = true;
       if (s.destruction_cause === 'none') s.destruction_cause = 'thermal_melt';
     }

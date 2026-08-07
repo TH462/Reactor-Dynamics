@@ -30,6 +30,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the accident-inventory clock runs REAL flows, and the relief valves are plant-sized (#408 wave 1 + the 2026-08-07 proportional-valve ruling)
+
+The whole LOCA family — break discharge, HPI/LPI, accumulators, relief, CVCS — now moves
+real fractions-per-second (`pwr_config.js`, the ruled stage-1 table; every constant carries
+its arithmetic at the site). The DEG break rides the sourced 25–38 s class blowdown on this
+plant's declared ~7,500 gal volume; a stuck-open PORV with injection secured drains on the
+1979 clock (~2 h 20 m to damage); board gpm readouts are now literal (frac/s × 450,000).
+The mass ledger gained a discharge-composition model (steam fraction + Δp entrainment +
+nozzle-elevation spill) so a drained vessel stops shipping phantom liquid, and the
+charging/letdown instrument declarations plus the CHG FLOW HI setpoint joined the real
+currency (the alarm was 16× above the pump's new maximum — permanently dark).
+
+**The relief valves are proportional to THIS plant** *(OWNER RULING, 2026-08-07: "The plant
+comes first, then the training, documentation follow.")*: `porv_flow_max` 2.5e-4 frac/s
+(~112 gpm, Ginna power-scaled), `safety_flow_max` 8.0e-4 (the sourced ~3.2 ratio — closes
+#349), the F15 K-pair re-solved together to preserve the PORV's transient pressure authority
+exactly. Measured consequences: **feed-and-bleed is viable** (MD-10 green), **full injection
+beats one wide-open valve** — the TMI-2 counterfactual as a size fact — and the TMI missions'
+deception builds on the defended plant through the historical level alarm at ~38 min.
+
+Two regimes fixed under the ruling: at SOLID, relief joins the bulk-modulus gain family and
+the pressure-restore stand-in stands down (the #361 mass_max-clip signature by a fourth
+road); and the TERMINAL melt verdict now separates molten-and-unrecovered from
+molten-and-quenching — the clad route to `melted` requires inventory NOT rising, so a
+reflooded TMI-style core rewets, the core-exit TC reads coolant again, and the flagship's
+recovery ending is reachable (unmitigated paths still terminate; `run_meltdown` 12/12).
+
+TMI-2 missions re-paced to the measured real-clock arcs (identification re-anchored to the
+damage latch, recovery beats at authored 30–60×, ending routes on card facts). Gates:
+`run_all` 38 runners green — `run_campaign` 51/51 (3029), `run_behavior` 65/1, `run_pwr`
+36/36; the ruled ops drain-rate red reads 284.3 s against its ≥ 300 s target (was 53.7).
+
+
 ### Fixed — the pressurizer level gauge no longer argues against a large LOCA (#385 stage 2, 2026-08-06)
 
 The TMI void-displacement lift (`level_per_void·void`) is now **path-aware**

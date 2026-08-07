@@ -29,6 +29,113 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-07-develop-a (#408 wave 1 BUILT + the PROPORTIONAL-VALVE ruling — the accident clock is real, the plant re-learned TMI, run_all 38 runners green)
+
+**Task:** #408 wave 1 (the LOCA-family re-clock the two 2026-08-06 rulings authorized), then —
+mid-close-out — a fresh owner ruling that re-sized the relief valves, and the cascade of both.
+**End state: `run_all` 38/38 at (updated) baseline**, `run_campaign` 51/51 3029, `run_behavior`
+65 pass/1 xfail, `run_meltdown` 12/12, `run_pwr` 36/36, `run_scenarios` 3/3, ops 58/69 with the
+ruled drain red now reading **284.3 s vs its ≥ 300 s target** (was 53.7 — the real CVCS scale
+nearly delivers the 2026-07-22 feel target by itself).
+
+**Wave 1 proper (the first ~two-thirds of the session).** The accident-inventory constants went
+to the ruled real scale (`pwr_config.js`: ECCS/accumulators/relief/breaks/CVCS — the stage-1
+table's values, each with its arithmetic at the site). The pieces with their own findings:
+- **The discharge composition model** (`pwr_primary.stepInventory`): the mass ledger discharges
+  `leak_flow × (bsf + (1−bsf)·max(entrain, spill))` — quadratic Δp entrainment × availability,
+  plus a nozzle-elevation spill band (0.72–0.85) ABOVE `core_top_uncover`. Built because the raw
+  √Δp law shipped phantom liquid out of an empty vessel; three drafts measured before this one.
+- **The DEG anchor holds**: full-break blowdown drains 62 % @ 20 s, accumulators 16→80 s,
+  reflood, PCT 1,332 °F, quench — the WCAP/Ginna 25–38 s class blowdown on OUR volume.
+- **The restore term** (`P_restore_rate_gain`) collected three gates in one session — off with a
+  loop break flowing, off under the 17 % heater cut, and (later, with the valve work) off at
+  solid: it is a heater/charging stand-in, and each regime it survived in was the #334
+  heater-deadhead shape in new clothing. Measured park states for each are in the code comment.
+- **The instrument-currency sweep**: `charging_flow`/`letdown_flow` declarations were compressed
+  currency (a 42 gpm signal under a ±270 gpm noise sigma, span 900× the pump) and `charging_high`
+  sat at 0.036 — unreachable forever once max charging became 1.333e-4. Re-currencied; the alarm
+  is 8.0e-5 (36 gpm), keeping the documented "from about severity 0.2 up" seal-leak cue.
+- **Procedures re-measured**: the SGTR EOP's SI-termination step's REASON inverted at real flows
+  — real HPI cannot freeze the SP walk-down (the old measured basis); the measured reason is now
+  OVERFILL (101 % and climbing at ten minutes), which is the real plant's reason. The step-5
+  diagnosis acceptance re-pointed at inventory (the leg's own text) because engine-direct the
+  post-scram drain transits ΔP≈0 and a break-flow band there is a seed coin-toss. Seal-leak and
+  stuck-PORV holds re-measured; `pwr_stuck_porv` step 1's window 30 → 90 s.
+- **MSLI re-sourced** (600 psig + flow, WTSM 12.3 §12.3.5.1) with a `held_within_s` condition
+  latch added to the control kernel — the sourced deep setpoint arrives ~2 min into a full break
+  (TR-12b re-banded to 180 s with the rate-sensitivity residual declared).
+
+**THE PROPORTIONAL-VALVE RULING** *(recorded verbatim in `BUILD_DECISIONS` 2026-08-07-develop-a)*:
+the owner reversed wave 1's fleet-standard relief on HR9 grounds — the plant comes first. On a
+300 MWt RCS a 2,900 MWt plant's valve out-bled full ECCS 6×, made feed-and-bleed unviable
+(MD-10, briefly a strict xfail), and ran every TMI clock ~5× fast. Now: `porv_flow_max` 2.5e-4
+(Ginna power-scaled — Ginna is ~152 lbm/MWt like this plant's 149, so power-scale ≈ fractional
+parity), `safety_flow_max` 8.0e-4 (the sourced ~3.2 safeties:PORV ratio — **this closes #349's
+28.6× finding**), and the F15 K-pair re-solved 600 → 3144 preserving the PORV's full-open
+pressure authority exactly (0.786 MPa/s). **The K-preserve is the two-clock seam made explicit**:
+the valve's PRESSURE/energy authority keeps the compressed-clock transient duty (TR-1k's
+backstop) while its MASS runs the real accident clock — the same split the whole of #408 is.
+
+**What the valve ruling bought, measured:** feed-and-bleed viable (MD-10 green, xfail dropped
+same-day per the strict-XPASS rule); the flagship's TMI event is now a FULL stick of the
+plant-sized valve (severity 1.0 ≈ TMI-2's own single-valve fraction — the partial-stick 0.20
+expressed the same fraction OF the fleet valve); the deception arrives on the DEFENDED plant
+(saturation ~10 min, void lift through the 75 % alarm at ~38 min — the securing beat keeps its
+historical LEVEL cue in the missions); damage lands at ~2 h 20 m ≈ TMI's own clock; and
+`abuse_porv_walkaway`'s size-fact leg re-authored to the restored counterfactual — full
+injection BEATS one wide-open plant-sized valve, 74.7 % held.
+
+**The solid-regime coupling §12.4c declared "not attempted" is now three-quarters attempted,**
+because the proportional valve made its absence bind: at solid the relief K-terms (bubble-gain)
+held pressure at the PORV band while the valve's real mass could not pass unterminated ECCS —
+inventory walked to the 120.00 % `mass_max` clip, the #361 signature by a FOURTH road. At solid
+the per-unit-mass relief gain now steps to `solid_bulk_mpa` exactly as the surge's does
+(`pwr_pressurizer.js`), and the restore term stands down there too (it soaked −0.015 MPa/s and
+made the PORV under-cycle 50 %). CA-12 passes computing the arrest from the geometry. **Still
+open in that regime**: commanded spray at solid + an SP walk-down can still drive the clip state
+(measured on a rejected mission-script trial) — filed as a follow-up issue.
+
+**THE MELT VERDICT got its TMI honesty** (`pwr_thermal.checkDamage` + the clad ceiling): the
+peak rule stays for the DAMAGE latch (#213), but a bare peak>2800 TERMINAL latch made a
+locally-molten hot node end the model while the bulk core sat at ~330 °C under an active
+reflood — at 96 % restored inventory the core-exit TC still published 2800 and the margin could
+never restore, which is why the missions could not finish. What separates TMI-2 (quenched,
+recovered) from MD-1/3/5 (terminal) is WATER COMING BACK: the clad route to `melted` is now
+the node at its melt ceiling while inventory is NOT rising; the FUEL node crossing melt stays
+unconditional. The ceiling itself (`clad = fuel_melt_c`, a `_clad_ceiling` touch latch) bounds
+the #326 runaway without the terminal freeze, and the node REWETS through the quench branch as
+the refill re-covers it — measured: margin restores to +48 °C at 75 % inventory. **Probe-author
+trap from this**: a −25 °C "molten band" latched melt EARLY and froze the node under the very
+2800 mark MD-11 watches — the touch latch is the correct form.
+
+**Missions re-paced to the real clocks** (`pwr_tmi2_*`): `identification` re-anchored to the
+damage latch (the dry core's honest equilibrium tops at 1188 °C — fuel > 1300 was a
+compressed-era anchor nothing could reach), draindown/recovery beat speeds 6/10 → 30/60, p3's
+caught-late ending routes on the FACTS its card narrates (isolated ∧ damaged ∧ re-injecting —
+the same re-key PLUGGED got in #407, for the same margin-is-hours reason), and the campaign
+budgets went to the measured arcs (42,000 sim-s) **with the ackThrough guard raised to match —
+at the 0.05 s transient cadence the old 6e5-cycle guard exhausted at ~30,000 sim-s and read
+exactly like a mission that cannot finish**. The plugged/holding rigs no longer pull the AFW
+tag: a running heat sink prevents the deception, so the order those variants comply with/refuse
+never arms (measured: 12,000 s parked at `p3_b9_order`, 83 °C subcooled). The tag+defend
+"quiet night" is a real sixth story the beat graph cannot express — filed, wave 3. The classic
+`pwr_tmi` keeps a TIME cue for its securing (its own story restores AFW at the stick, so its
+defended drain tops at level 53 — five points under the alarm; the missions reach the alarm
+honestly because their SGs stay dry until the 8-minute discovery).
+
+**For the owner's report, the findings that change what the plant teaches:** (1) feed-and-bleed
+works and the drain-rate target is nearly met — the real scale fixed two owner-flagged feels at
+once; (2) the TMI-2 counterfactual is a SIZE FACT again; (3) the single-node RCS cannot produce
+the pre-securing level rise at small severities (the #385 node is the honest fix — sequenced);
+(4) the refill from a dry core at high pressure honestly takes hours (TMI took 6.5) — authored
+speeds carry it, and #409 (the KSP-style governor) is the deferred general answer.
+
+**Backlog rows added below**: solid-regime spray/SP-walk clip state; quiet-night mission route;
+instrument-currency sweep for any remaining compressed declarations (accumulator_flow audited
+clean; primary_leak_flow re-currencied).
+
+---
+
 ## Session log — 2026-08-06-develop-g (#408 stages 0–2 — evidence pass + both ruling artifacts posted; no code)
 
 **Task:** execute stages 0–2 of the #408 umbrella (the accident-inventory clock to real flows;

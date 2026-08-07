@@ -211,7 +211,17 @@
     // PORV position. This is the key TMI recovery action (isolate a stuck-open
     // PORV the indicator falsely reads "closed"). Default open.
     var isolated = (s.block_valve_open === false);
-    s.porv_flow = (s.porv_open && !isolated) ? p.porv_flow_max * dP_ratio : 0;
+    // #408: a PARTIALLY stuck PORV passes its stuck fraction of rated flow; an
+    // operator demand for full-open still gets the whole valve. Absent field → 1
+    // (legacy saves and every pre-#408 rig are byte-identical by construction).
+    var stuckFrac = (s.porv_stuck && s.porv_stuck_frac != null) ? s.porv_stuck_frac : 1;
+    // When STUCK, the fraction rules REGARDLESS of demand: a hung disc answers
+    // neither an open nor a close (the stuck_porv_open failure also intercepts
+    // close_porv into open_porv for the indicator story, which would otherwise
+    // silently promote a 20 % stick to a full-open demand — measured, the TMI
+    // flagship's partial stick drained at 4.8x its fraction through that path).
+    var openFrac = s.porv_stuck ? stuckFrac : ((s.porv_demand === 'open') ? 1 : 0);
+    s.porv_flow = (s.porv_open && !isolated) ? p.porv_flow_max * openFrac * dP_ratio : 0;
 
     // Spring safety valves: COMMANDED state (open_pzr_safety/close_pzr_safety —
     // the control layer's actuation pops them at safety_open_mpa and reseats at
@@ -397,10 +407,27 @@
     // pressure it exists to hold — measured, minP pinned on the 0.1 clamp that way.
     var loopBreak = (s._leak_base > 0) && !s._leak_to_sg;
     var pb_vent = s.containment_pressure_mpa != null ? s.containment_pressure_mpa : p.P_containment;
+    // RELIEF AT SOLID JOINS THE BULK-MODULUS REGIME (2026-08-07, with the proportional
+    // valve ruling). K_porv/K_safety_relief are steam-space gains — a bubble absorbs the
+    // vent softly, so the fitted K is large per unit mass. A SOLID vessel has no bubble:
+    // the pressure a vented mass releases is the same bulk-modulus stiffness the surge
+    // uses, so the per-unit-mass gain switches to `solid_bulk_mpa` exactly as K_surge
+    // does. This is the third term of the §12.4c coupled regime (spray was zeroed at
+    // solid in #346, the surge stepped to the bulk modulus in #346, relief now follows).
+    // It went unmeasured while the valve out-passed injection; at the plant-sized valve
+    // the incoherence BOUND — the bubble-gain K (0.786 MPa/s authority) parked pressure
+    // at the PORV band while the valve's real 2.5e-4 frac/s could not pass the 3.3e-4
+    // of unterminated ECCS, and inventory walked to the mass_max clip (CA-12 red, the
+    // #361 signature by a fourth road). With the switch, pressure honestly climbs to
+    // the SAFETIES, whose 8e-4 passes the flow, and the fill arrests clear of the clip.
+    // Relief mass is NOT in surge_rate (#361 adds it back out of dm_surge), so there is
+    // no double count.
+    var K_pv = solid ? p.solid_bulk_mpa : p.K_porv_relief;
+    var K_sv = solid ? p.solid_bulk_mpa : p.K_safety_relief;
     var dP = (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) * p.K_heater
            - spray_eff * p.K_spray
-           - s.porv_flow * p.K_porv_relief
-           - s.safety_flow * p.K_safety_relief
+           - s.porv_flow * K_pv
+           - s.safety_flow * K_sv
            - leak_depress
            + (saturated ? 0 : K_surge * surge_rate);   // subcooled liquid only
     if (saturated) {
@@ -436,6 +463,14 @@
       // it, which is what un-does the revert's overfill failure. Backpressure is the
       // LIVE containment pressure (#386 stage 1), one step late, CONTEXT §11.
       var vf = s.primary_void_fraction || 0;
+      // The steam path at the break is max(THERMAL void, DRAINED fraction) — #408
+      // wave 1, measured: an ECCS-quenched sev-0.1 break read void 0.000 at 55 %
+      // inventory (the void line is subcooling-gated, and half the coolant being
+      // GONE is not thermal voiding), which killed the ×void vent below and let the
+      // restore/heater side repressurize a drained RCS to 6.9 MPa against a
+      // 13-inch-class hole — clad ran to damage. A drained RCS has a steam space
+      // at the break by construction, whatever the bulk subcooling reads.
+      var vfVent = Math.max(vf, Math.min(1, Math.max(0, 1 - (s._mass != null ? s._mass : 1))));
       // (`loopBreak` / `pb_vent` computed above the branch, with the floor.)
       // The pull TARGET floors at the containment backpressure when vented: two
       // connected volumes equalize, they do not cross — without this floor the
@@ -443,16 +478,32 @@
       // BELOW the receiving building, and the run pins on the 0.1 numerical clamp
       // (measured in the K_break_vent sizing grid).
       var p_pin = loopBreak ? Math.max(p_sat_tavg, pb_vent) : p_sat_tavg;
-      dP += p.K_sat_pull * (loopBreak ? (1 - vf) : 1) * (p_pin - s.pressure_mpa);
+      dP += p.K_sat_pull * (loopBreak ? (1 - vfVent) : 1) * (p_pin - s.pressure_mpa);
       if (loopBreak && p.K_break_vent) {
-        dP -= p.K_break_vent * s.leak_flow * vf * Math.max(0, s.pressure_mpa - pb_vent);
+        dP -= p.K_break_vent * s.leak_flow * vfVent * Math.max(0, s.pressure_mpa - pb_vent);
       }
     } else {
       // Gentle self-restore toward the (slewed) operator setpoint (heaters/charging
       // holding pressure). Tracks the effective setpoint so a cold/depressurized
       // plant holds its low pressure instead of being dragged back to NOP — and a
       // raised setpoint pressurizes at the slew pace, not at restore-gain speed.
-      dP += p.P_restore_rate_gain * (spEff - s.pressure_mpa);
+      // GATED OFF while a loop break flows, AND while the 17 % heater cutoff is in
+      // force (#408 wave 1): this term is a stand-in for heater/charging authority.
+      // With a hole open there is nothing physical behind it (measured: it balanced
+      // leak_depress at 6.9 MPa and held a drained sev-0.1 RCS there until clad
+      // damage); with the heaters CUT on low level, 60 gpm of charging cannot
+      // restore RCS pressure either (measured: it parked a TMI-fraction stuck-PORV
+      // plant at 10.93 MPa, 21 °F subcooled, FOREVER — the deception arc could
+      // never reach saturation). The #334 heater-deadhead shape, third clothing.
+      //
+      // AND GATED OFF AT SOLID (2026-08-07, the fourth clothing, found the same day
+      // the relief gains joined the bulk-modulus regime): with no bubble, pulling
+      // pressure toward the setpoint without mass leaving is the discard class —
+      // measured, at P 16.15 it soaked −0.015 MPa/s (over half the 1300 x 2.1e-5
+      // repressurization from unterminated ECCS), so the PORV under-cycled ~50 %
+      // and inventory crept 1.65e-5 frac/s to the mass_max clip anyway. Heaters
+      // and spray are already stood down in this regime; their stand-in follows.
+      if (!loopBreak && !s._heater_cut && !solid) dP += p.P_restore_rate_gain * (spEff - s.pressure_mpa);
     }
     s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dP * dt);
     // TWO CONNECTED VOLUMES EQUALIZE, THEY DO NOT CROSS (#384 stage 4): with a loop

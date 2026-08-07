@@ -393,7 +393,10 @@
         // RESTORES the margin (>15) — the blowdown tail overlaps the start of
         // this window by a few seconds.)
         var minSubEop = 1e9, eopArmed = false;
-        h.run(2400, function (hh) {
+        // 3600 s, was 2400 (#408): the margin-guarded walk-down paces ~4.3 MPa per
+        // 40 min on the real-flow plant and needs the extra leg to close on SG
+        // pressure — the real Ginna analysis runs 62-95 min to termination.
+        h.run(3600, function (hh) {
           if (!eopArmed && hh.ts().subcooling_c > 15) eopArmed = true;
           if (eopArmed) minSubEop = Math.min(minSubEop, hh.ts().subcooling_c);
           var ins = hh.ins();
@@ -409,6 +412,11 @@
           var target = m > 28 ? Math.max(sgP, 2.0) : hh.ts().pressure_mpa + 0.3;
           hh.cmd('set_pressure_setpoint', { mpa: Math.max(2.0, Math.min(target, 15.41)) });
           hh.cmd('set_spray', { pct: m > 40 ? 100 : (m > 28 ? 25 : 0) });
+          // #408: COOL DOWN to reopen the margin — the real EOP's own order (Ginna
+          // 15.6.3.3.3.1: cooldown, THEN depressonize). On the real-flow plant the
+          // margin-frozen walk parks at ~11 MPa forever without it; a modest dump
+          // pulls Tavg down, the margin reopens, and the walk closes on SG pressure.
+          hh.cmd('set_steam_dump', { pct: m < 30 ? 10 : 0 });
           // SI termination: margin comfortable AND level back on span (recovering).
           // SI (re)initiation: margin thin OR level lost off the bottom of the span.
           if (m > 30 && lvl > 33 && hh.ts().hpi_active) hh.cmd('set_hpi', { active: false });
@@ -421,8 +429,13 @@
         // subcooling ≈ 0⁻ (a −2..−3 °C flashing band) by construction. The real
         // requirement is no SUSTAINED margin loss and no actual bulk voiding.
         ck('managed phase rides ≥ the sat-line band (min ≥ −3)', fmt(minSubEop, 1), minSubEop >= -3, '≥ −3');
-        ck('no bulk voiding anywhere (peak void < 0.05)', fmt(h.range('primary_void_fraction').max, 3),
-          h.range('primary_void_fraction').max < 0.05, '< 0.05');
+        // Split since #408: the INITIAL blowdown at the real scale drains further
+        // before SI catches it (measured peak 0.176 — transient, physics), so the
+        // transient band widens and the managed-phase claim moves to the END state.
+        ck('transient voiding bounded during the initial blowdown', fmt(h.range('primary_void_fraction').max, 3),
+          h.range('primary_void_fraction').max < 0.25, '< 0.25 transient');
+        ck('…and the MANAGED plant ends with no bulk void', fmt(t.primary_void_fraction || 0, 3),
+          (t.primary_void_fraction || 0) < 0.02, '< 0.02 at end');
         ck('primary walked down toward SG pressure', fmt(t.pressure_mpa, 2) + ' vs SG ' + fmt(t.steam_pressure_mpa, 2),
           t.pressure_mpa < t.steam_pressure_mpa + 2.5, '≤ SG + 2.5');
         ck('ΔP collapse killed most of the leak', fmt(t.leak_flow, 4) + ' vs initial ' + fmt(leak0, 3),
@@ -669,11 +682,22 @@
         h.cmd('open_porv');
         h.run(2700);
         var t = h.ts();
-        ck('no fuel damage hands-off (HPI carries it)', t.melted, !t.melted, 'false');
+        // RE-AUTHORED TWICE IN TWO DAYS, and the second time is the RULING, not drift
+        // *(OWNER RULING, 2026-08-07 — the proportional valve; see porv_flow_max)*.
+        // Under the wave-1 FLEET-standard valve this leg asserted the inversion — full
+        // HPI losing 6x to a 2,900 MWt plant's valve bolted onto a 300 MWt RCS. The
+        // plant-sized valve restores the 1979 counterfactual as a SIZE FACT: full
+        // injection + charging (~150 gpm) beats one wide-open plant-sized PORV
+        // (~112 gpm), so a walked-away open valve on a plant with honest instruments
+        // and automatic injection is SURVIVABLE — which is exactly why the TMI-2 crew
+        // SECURING injection is what caused the accident. Measured: min inventory
+        // 74.7 %, no damage, automation carries the whole event.
+        ck('no melt — automatic injection carries the walked-away valve', t.melted, !t.melted, 'false');
         ck('reactor tripped itself', h.tripReason || 'none', h.tripTime != null, 'tripped');
         ck('HPI auto-started', t.hpi_active, t.hpi_active === true, 'true');
-        ck('core inventory floor', fmt(h.range('core_inventory_pct').min, 1) + '%',
-          h.range('core_inventory_pct').min > 60, '> 60%');
+        ck('the size fact: full injection BEATS one wide-open plant-sized valve (the 1979 counterfactual)',
+          fmt(h.range('core_inventory_pct').min, 1) + '% min inventory',
+          h.range('core_inventory_pct').min > 60, '> 60% held (measured 74.7 on the proportional valve)');
         ck.info('min subcooling', fmt(h.range('subcooling_c').min, 1) + ' °C');
         ck.info('pressure floor', fmt(h.range('pressure_mpa').min, 2) + ' MPa');
         // THE TWO GAUGES MUST TELL THE SAME STORY (#136). This end state used to read
@@ -694,9 +718,11 @@
         // (level_prog_floor 28 + 300 × the clipped 0.20), so a 90 % bar would clear it by
         // two points. Healthy reads 100.0. 95 sits with margin on both sides — verified by
         // injection, restoring level_per_mass_surplus to its pre-#249 300 reddens this.
-        ck('overfilled RCS reads overfilled on BOTH gauges, not just one (#136)',
+        // #136's one-story check survives with the inverted state: a drained RCS must
+        // not read full. (The overfilled direction is CA-12/B1's territory now.)
+        ck('drained RCS reads drained on BOTH gauges, not just one (#136, inverted by #408)',
           fmt(t.core_inventory_pct, 1) + '% inv / ' + fmt(t.pzr_level_pct, 1) + '% level',
-          !(t.core_inventory_pct > 105 && t.pzr_level_pct < 95), 'inv high ⇒ level solid');
+          !(t.core_inventory_pct < 20 && t.pzr_level_pct > 50), 'inv lost ⇒ level not normal');
         ck.info('state at +45 min: P / pzr level / inv', fmt(t.pressure_mpa, 2) + ' / ' + fmt(t.pzr_level_pct, 0) + '% / ' + fmt(t.core_inventory_pct, 0) + '%');
         T.checkSanity(ck, h);
       });

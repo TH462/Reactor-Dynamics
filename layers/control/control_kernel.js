@@ -404,6 +404,10 @@
   // ops_harness's `evalEvery` are independent, so a plant can be certified on a cadence no
   // player produces). A kernel-side default would be a third.
   ControlLayer.prototype.evaluate = function (instruments, dt) {
+    // Sim-time accumulator for `held_within_s` condition latches (#408). dt is the
+    // OPTIONAL evaluate cadence arg (see the alarm dropout notes); without it the
+    // latch degrades to instantaneous coincidence — the pre-#408 behaviour.
+    this._simT = (this._simT || 0) + (dt || 0);
     this.lastInstruments = instruments || this.engine.getInstruments();
     this._evalTrips(this.lastInstruments);
     this._evalActuations(this.lastInstruments);
@@ -822,7 +826,26 @@
       // the kernel still names no instrument (HR3); the plant supplies the word.
       // An OR stays TWO ROWS (pwr_control.js already writes ORs that way): a second
       // way to say it would be duplicate authority in the config language.
-      if (cond.direction) return crossed(ins[cond.instrument], cond.direction, cond.setpoint);
+      if (cond.direction) {
+        var rawC = crossed(ins[cond.instrument], cond.direction, cond.setpoint);
+        // `held_within_s` (#408): the condition counts if it held at ANY point in
+        // the last N sim-seconds — the kernel-level model of a real LATCHED analog
+        // bistable (a tripped channel holds while its coincidence partner arrives;
+        // WTSM 12.3's low-steam-pressure leg is "rate sensitive" for the same
+        // timing reason). Without it, a strict same-sample AND misses any pair
+        // whose signals peak at different times — measured on the MSLI at the
+        // sourced 600 psig: a full downstream break's flow collapses before its
+        // pressure crossing arrives, and the isolation never fired at all.
+        // Degrades to instantaneous coincidence when evaluate() gets no dt.
+        if (cond.held_within_s != null) {
+          this._condHeld = this._condHeld || {};
+          var keyC = cond.instrument + '|' + cond.direction + '|' + cond.setpoint;
+          if (rawC) this._condHeld[keyC] = this._simT || 0;
+          return rawC || (this._condHeld[keyC] != null &&
+            ((this._simT || 0) - this._condHeld[keyC]) <= cond.held_within_s);
+        }
+        return rawC;
+      }
       return !!(cond.in && cond.in.indexOf(ins[cond.instrument]) !== -1);
     }
     if (cond in ins) return !!ins[cond];

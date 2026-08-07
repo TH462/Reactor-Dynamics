@@ -314,7 +314,7 @@
       { id: 'p3_b15c_crew_does',
         trigger: { type: 'delay', value: 1.5 },
         commands: PHYS.isolate.commands,
-        speed: 10,
+        speed: 60,   // 60x, was 10 (#408): the refill to subcoolRestored runs the real hours
         dialogue: [
           { speaker: 'sup',
             learning: 'Fine — my hands then. Block valve driving shut, injection back on. When I hand somebody the board, I expect them to use it.',
@@ -355,9 +355,19 @@
               { type: 'true_state', field: 'fuel_damaged', direction: 'is_false' },
               { type: 'true_state', field: 'hpi_active', direction: 'is_false' },
             ] }, goto: 'p3_end_plugged' },
+          // LATE routes on the FACTS its card narrates, the same re-key PLUGGED got
+          // (#407) and for the same reason a second time (2026-08-07, #408 real
+          // flows): post-damage the core-exit TC keeps the margin LOST until the
+          // dry core is re-covered, and at the honest high-pressure HPI trickle
+          // that is HOURS — no branch window can wait for it. The card's facts:
+          // the leak is isolated, injection is back in, and the core was damaged
+          // before the hands moved. `hpi_active is_true` keeps this row off the
+          // PLUGGED path (isolated, undamaged, never re-injected) and the damage
+          // requirement keeps it off the FULL-SAVE path.
           { trigger: { type: 'all', triggers: [
-              TRIG.subcoolRestored,
+              TRIG.isolated,
               TRIG.fuelDamaged,
+              { type: 'true_state', field: 'hpi_active', direction: 'is_true' },
             ] }, goto: 'p3_end_late' },
           { trigger: { type: 'inaction', window: 900.0 }, goto: 'p3_end_bleed_watch' },
         ] },

@@ -944,7 +944,10 @@ test('pwr_qualify — blind stuck PORV isolated and recovered (win path)', funct
   // Candidate waits for the margin alarm (the graded window), then acts.
   // challenge fires 2 s after it arms — settle past the fire so the actions
   // land inside its branch-watch window (action memory clears on fire).
-  snap = waitBeat(s, 'challenge', 1800);
+  // 3600, was 1800 (#408): with SI defended the deception builds on the slow real
+  // drain — the level-high window opens at ~37 min (measured on p1's identical
+  // timeline), not ~1 min.
+  snap = waitBeat(s, 'challenge', 3600);
   ck('margin erosion opens the graded window', !!snap, !!snap, 'challenge beat');
   if (!snap) return;
   settle(s, 6);
@@ -1485,7 +1488,10 @@ test('bwr_qualify — greedy ask overshoots and fails', function (ck) {
 // Continue (or plain patience) drives them; decision points are plant actions.
 function ackThrough(s, pred, simBudget, actions) {
   var start = s.simTime, lastAck = s.simTime, snap = null, done = {};
-  for (var guard = 0; guard < 600000; guard++) {
+  // Guard 2.5e6, was 6e5 (#408): a 42,000 s mission at the 0.05 s transient cadence
+  // is ~840,000 cycles — the old guard exhausted at ~30,000 sim-s and returned null
+  // BELOW the stated budget, which reads exactly like a mission that cannot finish.
+  for (var guard = 0; guard < 2500000; guard++) {
     snap = s.advanceCycles(1);
     if (pred(snap)) return snap;
     if (s.simTime - start > simBudget) return null;
@@ -1505,7 +1511,11 @@ test('pwr_tmi2_p1 — Fog of War plays to the historical outcome', function (ck)
   // margin restored on repressurization one minute after the takeover — measured,
   // the finale played over a core at 11 % inventory with clad at 1343 C. The
   // instrument stopped accepting that, and the budget was pinning it.
-  var snap = ackThrough(s, function (sn) { return lc(sn); }, 9000, []);
+  // 42000, was 9000 (#408 + the 2026-08-07 proportional valve): the mission now runs
+  // the 1979 clock — securing ~38 min, uncovery ~2 h, damage/ident ~2 h 20 m, and the
+  // post-isolation refill from a dry core at the high-pressure HPI trickle (~3e-5
+  // frac/s) to core re-covery, where the core-exit TC finally grants subcoolRestored.
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 42000, []);
   ck('reaches level_complete', !!snap, !!snap, 'level_complete');
   if (!snap) return;
   ck('endpoint is the Fog of War card', lc(snap).title, /Fog of War/.test(lc(snap).title), 'Part 1 card');
@@ -1533,7 +1543,7 @@ test('pwr_tmi2_p1 — Part 1 gate blocks plant actions in character', function (
 
 test('pwr_tmi2_p2 — Under a Microscope replay completes', function (ck) {
   var s = startScenario('pwr_tmi2_p2');
-  var snap = ackThrough(s, function (sn) { return lc(sn); }, 5000, []);
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 42000, []);   // 42000, was 5000 (#408): the replay runs the same real clock as p1
   ck('reaches level_complete', !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the Part 2 card', lc(snap).title, /Microscope/.test(lc(snap).title), 'Part 2 card');
   if (snap) ck('replay reproduced the damage (truth shown)', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === true, 'fuel_damaged true');
@@ -1558,7 +1568,7 @@ test('pwr_tmi2_p3 — full save: tag + defended HPI + early isolation', function
 test('pwr_tmi2_p3 — no deviations: history repeats gracefully', function (ck) {
   var s = startScenario('pwr_tmi2_p3');
   var complied = { done: false, alarmAt: null };
-  var snap = ackThrough(s, function (sn) { return lc(sn); }, 6000, [
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 42000, [   // 42000 (#408): damage ~2 h 20 m, then the crew's historical termination rides the real refill clock
     { when: function (sn) {
         var al = (sn.alarms || []).some(function (a) { return a.id === 'pzr_level_high' && a.state !== 'clear'; });
         if (al && complied.alarmAt == null) complied.alarmAt = sn.metadata.sim_time;
@@ -1578,14 +1588,26 @@ test('pwr_tmi2_p3 — no deviations: history repeats gracefully', function (ck) 
 
 test('pwr_tmi2_p3 — plugged not refilled: comply + early isolation, no re-injection', function (ck) {
   var s = startScenario('pwr_tmi2_p3');
-  var snap = ackThrough(s, function (sn) { return lc(sn); }, 5000, [
-    { when: function (sn) { return sn.metadata.sim_time > 20; },
-      act: function (s2) { s2.handleCommand({ action: 'instructor_interact', interaction_id: 'afw_tag' }); } },
+  var complied2 = { at: null };
+  // NO TAG PULL, same reason as the holding variant one test down (#408, 2026-08-07):
+  // a running heat sink from t=20 prevents the deception, the order never arms, and
+  // the comply this card is ABOUT can never happen. The card's deviations are the
+  // comply + the early catch; the tag was rig dressing.
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 42000, [
     // comply with the HPI order the moment it arms (the historical action)
-    { when: function (sn) { return sn.instructor.current_beat_id === 'p3_b9_order'; },
+    { when: function (sn) {
+        var f = s.instructor.firedBeats.has('p3_b9_order');
+        if (f && complied2.at == null) complied2.at = sn.metadata.sim_time;
+        return f;
+      },
       act: function (s2) { s2.handleCommand({ action: 'set_hpi', active: false }); } },
-    // …but catch the tailpipe early: isolate pre-damage, never put water back
-    { when: function (sn) { return sn.metadata.sim_time > 320 && sn.true_state.porv_stuck; },
+    // …but catch the tailpipe early: isolate pre-damage, never put water back.
+    // AFTER the comply, not at t>320 (#408 real clock): the order now arms on a
+    // deception that takes ~38 min to develop, so a fixed-time isolation landed
+    // BEFORE the order, recovered the plant, and the comply then secured HPI on a
+    // full RCS — the full-save arc wearing the plugged label. The intended story
+    // is comply-then-catch: isolate ~5 min after securing, with the drain underway.
+    { when: function (sn) { return complied2.at != null && sn.metadata.sim_time > complied2.at + 300 && sn.true_state.porv_stuck; },
       act: function (s2) { s2.handleCommand({ action: 'close_block_valve' }); } },
   ]);
   ck('reaches level_complete', !!snap, !!snap, 'level_complete');
@@ -1598,7 +1620,7 @@ test('pwr_tmi2_p3 — plugged not refilled: comply + early isolation, no re-inje
 
 test('pwr_tmi2_p3 — caught late: isolation only after damage begins', function (ck) {
   var s = startScenario('pwr_tmi2_p3');
-  var snap = ackThrough(s, function (sn) { return lc(sn); }, 9000, [
+  var snap = ackThrough(s, function (sn) { return lc(sn); }, 16000, [   // 16000, was 9000 (#408): isolation waits on the ~2 h 20 m damage latch
     { when: function (sn) { return sn.instructor.current_beat_id === 'p3_b9_order'; },
       act: function (s2) { s2.handleCommand({ action: 'set_hpi', active: false }); } },
     // act only once the core has already started to fail
@@ -1613,10 +1635,15 @@ test('pwr_tmi2_p3 — caught late: isolation only after damage begins', function
 
 test('pwr_tmi2_p3 — holding not won: HPI defended, leak never isolated', function (ck) {
   var s = startScenario('pwr_tmi2_p3');
+  // NO TAG PULL (#408, 2026-08-07): the rig used to pull the AFW tag too, and at real
+  // flows that is a DIFFERENT story — with the heat sink running from t=20 the primary
+  // never saturates, the deception never builds, the supervisor's order never arms, and
+  // the mission has no route anywhere (measured: 12,000 s parked at p3_b9_order,
+  // 83 °C subcooled, level 17 %). The Holding card's own premise is the deviation being
+  // ONLY the defended injection; the tag+defend quiet-night is a sixth story the beat
+  // graph cannot express yet — filed as a wave-3 design gap rather than forced here.
   var snap = ackThrough(s, function (sn) { return lc(sn); }, 9000, [
-    { when: function (sn) { return sn.metadata.sim_time > 20; },
-      act: function (s2) { s2.handleCommand({ action: 'instructor_interact', interaction_id: 'afw_tag' }); } },
-    // refuse the HPI order by simply never securing it; never touch the valve
+    // refuse the HPI order by simply never securing it; never touch the valve or the tag
   ]);
   ck('reaches level_complete', !!snap, !!snap, 'level_complete');
   if (!snap) return;

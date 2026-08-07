@@ -205,6 +205,7 @@
       if (s._leak_to_sg) {
         var dp_ref = cfg.primary.sgtr_dp_ref || 9.8;
         s.leak_flow = s._leak_base * clip((s.pressure_mpa - s.steam_pressure_mpa) / dp_ref, 0, 1.2);
+        s._leak_dp = Math.max(s.pressure_mpa - s.steam_pressure_mpa, 0);
       } else {
         // Backpressure is the LIVE containment pressure since #386 stage 1 (it was
         // this constant, forever). Null-guarded fallback to the config constant so
@@ -219,8 +220,54 @@
         var pr = cfg.primary.break_p_ref_mpa != null ? cfg.primary.break_p_ref_mpa : 15.41;
         var span = Math.max(pr - pb0, 1e-6);
         s.leak_flow = s._leak_base * Math.sqrt(clip((s.pressure_mpa - pb) / span, 0, 1.5));
+        s._leak_dp = Math.max(s.pressure_mpa - pb, 0);
       }
     }
+    // Discharge COMPOSITION (#408 wave 1): what leaves the hole is the fluid that is
+    // there, and that has TWO regimes (the lumped shadow of Appendix K's Moody quality
+    // dependence — the √Δp law above has no quality input, so this factor carries it):
+    //   ENTRAINMENT — while blowdown Δp lasts, the high-velocity discharge carries
+    //     liquid/two-phase regardless of elevation (this is what empties a vessel in
+    //     tens of seconds), keyed clip(Δp/break_entrain_ref_mpa, 0, 1);
+    //   SPILL — once Δp has collapsed, elevation rules: the cold-leg nozzle sits ABOVE
+    //     the core top, so the vessel refills to the spill band and the break passes
+    //     liquid only for inventory above it, keyed clip((mass−lo)/(hi−lo), 0, 1).
+    //     Below the band a drained RCS sends a STEAM trickle (break_steam_mass_frac),
+    //     which is why real-scale ECCS can reflood a vessel with a full-bore hole in
+    //     it — measured without this split: DEG endInv 0.0 % with the accumulators
+    //     fully discharged (phantom liquid-density mass from an empty vessel), or a
+    //     standing near-dry equilibrium at ~10 % with clad parked near 1000 °C.
+    // liquidFrac = max(entrain, spill): each regime alone is sufficient to carry
+    // liquid. The MASS ledger discharges the reduced flow; `s.leak_flow` itself stays
+    // the full open-area flow because the pressure half (K_break_vent, leak_depress)
+    // and the CA-18 level weight are area/venting physics, not mass transport. An
+    // SGTR always runs at multi-MPa Δp, so entrain ≈ 1 and its calibrations are
+    // untouched by construction; all constants absent → factor 1 (legacy states).
+    var bsf = cfg.primary.break_steam_mass_frac != null ? cfg.primary.break_steam_mass_frac : 1.0;
+    var er = cfg.primary.break_entrain_ref_mpa || 0;
+    var slo = cfg.primary.break_spill_lo, shi = cfg.primary.break_spill_hi;
+    // entrain is QUADRATIC in Δp: entrained carry-off scales with discharge velocity
+    // squared, and the linear form's tail was measured to matter — at Δp ~0.1 MPa it
+    // still credited ~5 % liquid carry-off, which balanced the whole real-scale ECCS
+    // and parked the plant at 61 % inventory, uncovered, clad creeping, forever.
+    // It is ALSO weighted by liquid availability (mass/spill_lo): entrainment can only
+    // carry off liquid that reaches the break, and without the weight a small break
+    // holding Δp ~2.4 MPa entrained phantom liquid from below its own elevation and
+    // parked sev 0.1 at 36 % inventory with clad at 890 °C forever (measured) — a
+    // real SBLOCA recovers exactly because the drained break passes steam.
+    // Availability window [break_entrain_floor, spill_lo]: a small-to-medium break
+    // HOLDS Δp indefinitely, so Δp weighting alone can never retire the entrainment
+    // credit — measured, sev 0.1 parked at 40 % inventory / 2.9 MPa with the liquid
+    // credit (0.33) out-running HPI forever. Standing entrainment from below the
+    // break elevation is not physical; the window lets the violent early drain
+    // carry liquid down through the band and then dies, which is what turns a
+    // medium break from a permanent drain into the drain → steam → refill arc.
+    var efl = cfg.primary.break_entrain_floor != null ? cfg.primary.break_entrain_floor : 0;
+    var avail = (slo != null && slo > efl) ? clip((s._mass - efl) / (slo - efl), 0, 1) : 1;
+    var entrain = er > 0 ? clip((s._leak_dp || 0) / er, 0, 1) : 1;
+    entrain = entrain * entrain * avail;
+    var spill = (slo != null && shi != null && shi > slo) ? clip((s._mass - slo) / (shi - slo), 0, 1) : 1;
+    s._leak_mass_flow = s.leak_flow * (bsf + (1 - bsf) * Math.max(entrain, spill));
     // Letdown first — the auto make-up law and the mass balance below both read it.
     s.letdown_flow = letdownFlow(s, cfg);
     var inj_inv = injectionFlowInv(s, cfg);
@@ -288,7 +335,7 @@
     var charging = chargingPumpPowered(s) ? s.charging_flow : 0;
     var g_cvcs = rc.cvcs_inventory_gain != null ? rc.cvcs_inventory_gain : 1.0;
     var dm = (charging * g_cvcs + inj_inv + accum_inv)
-           - (s.letdown_flow * g_cvcs + s.porv_flow + s.safety_flow + s.leak_flow);
+           - (s.letdown_flow * g_cvcs + s.porv_flow + s.safety_flow + s._leak_mass_flow);
     var m_before = s._mass;
     s._mass = clip(s._mass + dm * dt, 0.0, cfg.primary.mass_max);
     s.core_inventory_pct = s._mass * 100;
@@ -376,7 +423,18 @@
     //      This is the SOLE driver of the pressurizer sat-pull / void-surge (pwr_pressurizer),
     //      the calibrated TMI deception.
     var true_subcooling = T_sat(s.pressure_mpa) - s.tavg_c;
-    s.primary_void_fraction = (true_subcooling <= 0 && s._mass < 1.0)
+    // Onset band widens to +1.0 °C ON A FLOWING RELIEF PATH (#408 wave 1): at real
+    // relief scale a stuck-valve draindown rides QUASI-STATICALLY just above the
+    // sat line (measured: +0.4..+2.5 °C for tens of minutes — the sat-pull holds P
+    // at Psat(Tavg) from below and the bulk never crosses), so the strict <= 0 gate
+    // parked the TMI arc one coin-edge above its own deception forever (#363's
+    // boundary note, met as an equilibrium). Physically, the venting flow entrains
+    // two-phase up the surge line while the RCS is AT saturation — that is the TMI
+    // pressurizer swell — so relief-path saturation-riding IS the voided regime.
+    // No-relief paths keep the strict gate (CC-10b's subcooled-drain fence).
+    var reliefFlowing = (s.porv_flow || 0) > 0 || (s.safety_flow || 0) > 0;
+    var onset_c = reliefFlowing ? 1.0 : 0;
+    s.primary_void_fraction = (true_subcooling <= onset_c && s._mass < 1.0)
       ? clip((1.0 - s._mass) * cfg.primary.void_gain, 0, 1) : 0;
     //  (2) Flux-driven core boiling (steam-line-break / loss-of-flow AT POWER) —
     //      core_void_fraction: the core exit passes saturation and boils even at full
@@ -465,7 +523,10 @@
     // Break source: containment-side leaks ONLY. An SGTR discharges into the
     // steam generator — the one break that BYPASSES containment, which is the
     // diagnosis lesson (probe CT-1 asserts this exclusion).
-    var q_break = (s._leak_to_sg ? 0 : (s.leak_flow || 0));
+    // The building receives the MASS that actually left (#408 wave 1: the
+    // composition-reduced flow — a voided RCS sends a steam trickle, not
+    // liquid-density phantom mass; conservation with stepInventory's ledger).
+    var q_break = (s._leak_to_sg ? 0 : (s._leak_mass_flow != null ? s._leak_mass_flow : (s.leak_flow || 0)));
     // Flash fraction of the break liquid: cp·(T − T_sat(P_ctmt))/h_fg. Liquid at or
     // below the containment saturation temperature rains into the sump and moves
     // pressure not at all — the gate that makes sustained cold ECCS spill benign.

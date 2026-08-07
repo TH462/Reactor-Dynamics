@@ -78,6 +78,11 @@
   //   the recoverable-MFW-loss dip (TR-2) at the full residual. Structural fix in
   //   pwr_steam_generator.stepSecondary + pwr_thermal.stepCoolant.
   var XFAIL = {};
+  // MD-10 was strict-xfail for one day (2026-08-07): under the WAVE-1 fleet-standard
+  // PORV, feed-and-bleed lost to the valve (bleed ~590 gpm vs ~150 gpm feed, RCS
+  // dried end-to-end). The 2026-08-07 proportional-valve ruling re-sized the pair
+  // (porv_flow_max 2.5e-4, see pwr_config) and the EOP is viable again — the xfail
+  // entry was dropped the same day per the strict-XPASS rule.
 
   var PROBES = {
 
@@ -93,7 +98,12 @@
         h.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
         h.cmd({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 1.0 });
         h.cmd({ action: 'set_hpi', active: false });
-        var r = driveDamage(h, 3000);
+        // "no ECCS" includes the PASSIVE stage (#408): at real flows the accumulators
+        // alone reflood a DEG (0.012 frac/s vs the drained break's steam trickle) and
+        // the "melt" path quietly became a recovery. Window 6000 s — the real-clock
+        // uncovered-core heatup runs ~45-75 min to melt.
+        h.cmd({ action: 'close_accumulator_valve' });
+        var r = driveDamage(h, 6000);
         recordEndpoint(ck, r);
         ck('core uncovers (min inventory < 50 %)', fmt(r.minInv, 1), r.minInv < 50, '< 50');
         ck('fuel is damaged (> 1200 °C)', fmt(r.maxFuel, 0), r.damagedAt >= 0, '> 1200 °C');
@@ -115,7 +125,10 @@
         h.cmd({ action: 'open_porv' });
         h.cmd({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
         h.cmd({ action: 'set_hpi', active: false });
-        var r = driveDamage(h, 6000);
+        // 18000 s, was 6000 (#408 + the 2026-08-07 proportional valve): the plant-sized
+        // PORV drains ~5x slower, so uncovery, damage and melt all arrive on the real
+        // multi-hour clock — which is the 1979 clock (TMI-2 damage began ~2.5 h in).
+        var r = driveDamage(h, 18000);
         recordEndpoint(ck, r);
         ck('PORV truly stuck open', String(r.t.porv_open), r.t.porv_open === true, 'true');
         ck('core uncovers (min inventory < 50 %)', fmt(r.minInv, 1), r.minInv < 50, '< 50');
@@ -158,8 +171,12 @@
         h.runUntil(function (ts, ins) { return ins.sg_level <= 12; }, 600);
         h.cmd({ action: 'scram' });
         h.runUntil(function (ts, ins) { return ins.primary_pressure >= 16.20; }, 60);
-        h.cmd({ action: 'open_porv' });
-        h.cmd({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+        // Stuck at the TMI FRACTION (#408, ruled 2026-08-06): full HPI cannot hold a
+        // FULLY stuck standard valve on this small plant (a size fact, free-play's
+        // default lesson); the protected path this probe pins is the TMI-equivalent
+        // partial stick, where injection out-runs the bleed. NOTE: no open_porv —
+        // an operator demand for full-open would get the whole valve.
+        h.cmd({ action: 'inject_failure', failure_id: 'stuck_porv_open', severity: 0.2 });
         h.cmd({ action: 'set_hpi', active: true });   // the recovery HPI makes up the bleed
         var r = driveDamage(h, 3000);
         recordEndpoint(ck, r);
@@ -236,7 +253,8 @@
         h.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
         h.cmd({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 1.0 });
         h.cmd({ action: 'set_hpi', active: false });
-        var r = driveDamage(h, 3000);
+        h.cmd({ action: 'close_accumulator_valve' });   // no ECCS includes the tanks (#408, MD-1's note)
+        var r = driveDamage(h, 6000);
         recordEndpoint(ck, r);
         ck('the core actually melted (precondition)', String(r.t.melted), r.t.melted === true, 'true');
         ck('engine.s records the cause', String(r.s.destruction_cause),
@@ -325,7 +343,7 @@
         // destroys the core on a TMI-like timescale, and a prompt reflood does not — and the
         // reflood branch is protected at every value of clad_steam_h swept, so it is the
         // timing that moved, not the discrimination.
-        var r = driveDamage(b.h, 9000);
+        var r = driveDamage(b.h, 16000);   // 16000, was 9000 (#408 proportional valve — see the band note below)
         recordEndpoint(ck, r);
         ck('inventory stays PARTIAL throughout (> 50 %)', fmt(r.minInv, 1), r.minInv > 50, '> 50');
         ck('held partial uncovery damages the core (> 1200 °C)',
@@ -333,8 +351,9 @@
         // TMI-2's core damage began around 2.5 h into the accident; this is measured from
         // the start of the HOLD, so 2 h is the loose end of that window and still excludes
         // both "never" and "many hours". 5710 s measured leaves ~25 min of margin.
-        ck('damage arrives on a TMI timescale (< 2 h from the hold)',
-          r.damagedAt < 0 ? 'never' : r.damagedAt + ' s', r.damagedAt >= 0 && r.damagedAt < 7200, '< 7200 s');
+        ck('damage arrives on a TMI timescale (< 4 h from the hold)',
+          fmt(r.damagedAt, 0) + ' s', r.damagedAt >= 0 && r.damagedAt < 14400,
+          '< 14400 s (measured 9920 s on the 2026-08-07 proportional valve — the hold now starts later, ~50 min post-scram, so decay heat is lower; TMI-2 damage began ~2.5 h in. The band excludes "never" and "many hours" without sitting on the number — 9920 vs the old 10800 was an 8 % margin, the TR-1c knife-edge class)');
         // Recovery branch: same bleed, but HPI restored immediately — the core
         // refloods above top-of-core before the exposed clad can fail.
         var g = bleedTo(65);
@@ -380,6 +399,13 @@
         var h = lossOfHeatSink();
         h.cmd({ action: 'open_porv' });
         h.cmd({ action: 'set_hpi', active: true });
+        // FULL feed (#408): real feed-and-bleed feeds with everything that pumps —
+        // HPI AND max charging, letdown isolated. On the real-flow plant the bleed
+        // through one standard valve out-runs HPI alone through the mid-pressure
+        // range; the EOP's viability hinges on total feed + the accumulator dump
+        // once the bleed-down crosses 4.14 MPa.
+        h.cmd({ action: 'set_charging_flow', normalized: RD.PWR_CONFIG.reactivity.charging_max });
+        h.cmd({ action: 'set_letdown_orifices', a: false, b: false });
         // 8000 -> 15000 s with the control leg, so "protected" is asserted over the same
         // window the unmitigated case is destroyed in — otherwise the comparison shortens.
         var r = driveDamage(h, 15000);

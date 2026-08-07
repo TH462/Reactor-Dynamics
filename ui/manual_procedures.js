@@ -660,7 +660,14 @@
           // also exactly what the step teaches — the leak announces itself and then hides again
           // behind the injection that answered it — so the honest form of the claim and the
           // layer-robust one are the same sentence. `saw` takes a list since this change.
-          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 30,
+          // hold 90, was 30 (#408): at the real relief flow the dive crosses 25 °C at
+          // ~50 s after the inject (measured full stack: 41 °C → saturation by 1m21s),
+          // not ~8 s — the compressed clock was inside the old window, the real one is
+          // not. Same claim, wider watch. Also true at real flows and worth knowing:
+          // injection no longer refills past nominal — a full-open PORV (1.31e-3 frac/s)
+          // outruns full HPI (2.0e-4) on this plant, and inventory keeps falling with
+          // injection in, so the deception below rides the void/level term alone.
+          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 90,
           saw: [{ p: 'core_inventory_pct', op: '<', v: 100 },
                 { p: 'subcooling_c', op: '<', v: 25 }] },
         { text: 'Also mask the indicator, as at TMI: Failures tab → inject PORV Indicator Stuck Closed. Trust subcooling, not the PORV light.', control: '(observe PORV light vs subcooling)', target: 'trust subcooling, not the light',
@@ -882,7 +889,7 @@
       ],
       steps: [
         { text: 'The rupture opens. (Failures tab → inject Steam Generator Tube Rupture.) Primary inventory starts leaving through the tube into the secondary — charging comes up to meet it and cannot.', control: '(observe inventory and charging)', target: 'inventory falling',
-          note: 'Measured at half severity: break flow starts near 0.012 inventory-frac/s, well beyond the CVCS make-up authority of ~7.2e-4.',
+          note: 'Measured at this severity (#408 real flows): break flow starts near 145 gpm (3.2e-4 inventory-frac/s), well beyond the 60 gpm (1.33e-4) maximum the charging pump can make up.',
           cmd: { action: 'inject_failure', failure_id: 'sgtr', severity: 0.25 }, hold: 90,
           saw: { p: 'core_inventory_pct', op: '<', v: 100 } },
         { text: 'Trip the reactor. On the real plant the low pressurizer level trip does it for you as make-up loses the race — do not wait for it if pressure and level are already going.', control: 'SCRAM', target: 'power collapsing',
@@ -893,15 +900,21 @@
           note: 'On the shipped plant HPI actuates itself on low pressure. Confirming it is a real step, not a formality — engine-direct, without it, this casualty takes fuel temperature past 2192 °F (1200 °C).',
           cmd: { action: 'set_hpi', active: true }, hold: 60, acc: { p: 'hpi_active', op: '>', v: 0 } },
         { text: 'Confirm the diagnosis on the PRIMARY side — inventory down, pressurizer level low, subcooling shrinking. Do not go looking for it on the steam generator; on this plant the secondary tells you nothing.', control: 'Plant Pressure', target: 'primary-side signature',
-          hold: 60, acc: { p: 'leak_flow', op: '>', v: 0.004 } },
+          // #408 RE-POINTED (was leak_flow > 0.004): engine-direct the post-scram drain takes
+          // the primary THROUGH secondary pressure (P 8.8 vs SG 8.1 with the heater-cut latch
+          // holding the pzr restore off), so a break-flow acceptance there is a coin toss
+          // around dP = 0 — while under the stack it reads 1.56e-4. The step's own text names
+          // the confirmation: the PRIMARY-side signature. Inventory is that signature in both
+          // layers (95.7 engine-direct / 96.9 stack, vs 100 healthy).
+          hold: 60, acc: { p: 'core_inventory_pct', op: '<', v: 98 } },
         { text: 'Secure high-pressure injection. Check your criteria FIRST — subcooling in hand, heat sink established, the core covered — because this is the step that makes the next one possible: injection is holding the primary up at pressure, and while it runs the Pressure SP does nothing at all and the leak does not move.', control: 'HPI/LPI', target: 'HPI secured',
-          note: 'MEASURED, and this is why the step exists (#348). With HPI left in, walking the Pressure SP from 2235 down to 1450 psi (15.41 → 10.0 MPa) cut break flow by 0 % — 0.00585 → 0.00586 — because injection was pressurizing the RCS faster than the setpoint could ask it down; the plant simply drifted toward solid (inventory 106.8 %) at 2053 psi. Securing it first: 0.00585 → 0.00094 in one minute, an 84 % cut, and 0.00076 (87 %) held out to 20 minutes. At the decision point the criteria are genuinely in hand — subcooling 99.3 °F (55.2 °C), inventory 98.6 %, heat sink on AFW. This is the plant\'s version of the SI-termination step every real SGTR procedure carries, and for the same reason: injection and depressurization are working against each other.',
+          note: 'RE-MEASURED at the #408 real flows, and the reason this step exists CHANGED with them. On the compressed plant, injection out-pressurized the setpoint channel and the SP walk-down cut break flow by 0 % until HPI was secured. Real HPI (2.0e-4 frac/s) cannot do that: measured, the walk-down works with injection still in — but the plant then climbs through 101 % inventory at ten minutes and keeps filling toward solid, which challenges the PORV. That overfill is exactly what the SI-termination criteria in every real SGTR procedure exist to prevent, and it is now the measured reason for this step. Check the criteria first: subcooling in hand, heat sink on AFW, core covered.',
           cmd: { action: 'set_hpi', active: false }, hold: 60,
           acc: { p: 'hpi_active', op: '<', v: 1 } },
         { text: 'Now close the pressure difference. Walk the PRESSURE SP down toward secondary pressure — the leak is driven by primary-minus-secondary ΔP, so every psi you come down is break flow you do not lose.', control: 'Pressure SP', target: 'break flow falling',
-          note: 'Measured at this severity with injection secured at the previous step: closing the gap took primary 2124 → 1245 psi (14.65 → 8.58 MPa) and cut break flow 0.00585 → 0.00094, an 84 % reduction, with subcooling still positive at 19.5 °F (10.8 °C). It settles at 0.00076 (87 % down) and holds there, with the core covered at 89–95 % inventory and peak fuel 1279.4 °F (693 °C) against the 2192 °F (1200 °C) guard. The older figures here (0.0062 → 0.0041, "33 %") were measured with HPI still running, on a plant that could not repressurize on injection (#346) — the walk-down appeared to work only because injection could not push back. It does not work with injection in; it works because injection is secured.',
+          note: 'Measured at this severity with injection secured at the previous step (#408 real flows): closing the gap took primary 1774 -> 1452 psi (12.23 -> 10.01 MPa) and cut break flow 1.36e-4 -> 6.2e-5, a 54 % reduction. It holds near 6.1e-5 (27 gpm) with inventory RECOVERING on charging alone - 97 -> 99.6 % over ten minutes - and peak fuel 581 F (305 C) against the 2192 F (1200 C) guard.',
           cmd: { action: 'set_pressure_setpoint', mpa: 10.0 }, hold: 60,
-          acc: { p: 'leak_flow', op: '<', v: 0.005 } },
+          acc: { p: 'leak_flow', op: '<', v: 1.0e-4 } },   // #408 re-band: discriminates — 1.36e-4 before the walk-down, 6.2e-5 after (was < 0.005, which real flows never exceed)
         obs('Confirm the leak is throttled and the core is still covered. The plant is not fixed — it is stabilized, with the leak held down by the pressure you are holding. A real recovery continues into a cooldown on the intact loop.',
           { p: 'melted', op: '<', v: 1 },
           'The break flow will creep back up as the secondary blows down and the ΔP reopens. That is the physics, not a failure of the action — it is why a real SGTR ends in a cooldown rather than a hold.',
@@ -936,11 +949,11 @@
     //
     // THE CHARGING CUE IS M4-DEPENDENT AND THE ACCEPTANCES HAD TO GIVE WAY TO THAT. I assumed
     // `set_cvcs_auto` being an ENGINE command would make the charging number layer-robust. It
-    // does not: measured on the SAME leak, charging settles at 0.042 under the stack and
-    // 0.010 engine-direct — 4x apart — because the `cvcs_makeup` M4 channel is what actually
-    // drives make-up on the shipped plant. What IS layer-robust is the OUTCOME: pzr level
-    // parks at 53.79 % and subcooling holds at 40.99 °C in BOTH layers, identically.
-    // So the charging acceptance is only `> 0.005` (make-up is running at all) and the tight
+    // does not: measured on the SAME leak (#408 real currency), charging settles at 9.4e-5
+    // under the stack and 2.57e-5 engine-direct — apart because the `cvcs_makeup` M4 channel
+    // (and its letdown lineup) is what actually drives make-up on the shipped plant. What IS
+    // layer-robust is the OUTCOME: pzr level parks near 54 % and subcooling holds, in BOTH.
+    // So the charging acceptance is only `> 1.5e-5` (make-up is running at all) and the tight
     // numbers live in the step notes. The #209 class — a gate certifying a lineup that does
     // not ship — is why this is written down rather than tuned until it passed.
     {
@@ -959,9 +972,9 @@
         { text: 'Confirm the inventory lineup first: CVCS in AUTO, so charging is free to make up whatever is lost. You are about to judge a leak by how hard make-up is working — that only means anything if make-up is actually in control.', control: 'CVCS Inventory Control', target: 'CVCS in AUTO',
           cmd: { action: 'set_cvcs_auto', active: true }, hold: 30 },
         { text: 'The leak starts. (Failures tab → inject Reactor Coolant Pump Seal Leak.) Nothing dramatic happens — watch CHARGING FLOW rise and settle while LETDOWN stays where it was. That imbalance IS the leak.', control: 'CVCS Inventory Control', target: 'charging rises, letdown steady',
-          note: 'Measured: charging settles near 0.042 against letdown 0.030. CHG FLOW HI comes in about three minutes after the leak starts — it is the only alarm you will get.',
+          note: 'Measured (#408 real flows): charging settles near 42 gpm against letdown’s 30 — the 12 gpm difference IS the leak. CHG FLOW HI (36 gpm) comes in a few minutes after the leak starts — it is the only alarm you will get.',
           cmd: { action: 'inject_failure', failure_id: 'rcp_seal_leak', severity: 0.4 }, hold: 300,
-          acc: { p: 'charging_flow_actual', op: '>', v: 0.005 } },
+          acc: { p: 'charging_flow_actual', op: '>', v: 1.5e-5 } },   // #408 re-band: engine-direct settles 2.57e-5, full stack 9.4e-5 (the documented layer split); was > 0.005, which real charging (max 1.33e-4) never reaches
         { text: 'Now confirm the make-up is winning. Pressurizer level should sit a little BELOW program and hold there — stable, not falling. A level that is still descending means make-up is losing and this is no longer this procedure.', control: 'Pressurizer Heaters (PZR)', target: 'level stable just below program',
           hold: 300, acc: { p: 'pzr_level_pct', op: '~', v: 54, tol: 3 } },
         { text: 'Check subcooling. A leak this size costs you none of it — if subcooling is eroding, you have a bigger leak than a seal and you are heading for the loss-of-coolant response instead.', control: 'Plant Pressure', target: 'subcooling unchanged',

@@ -48,14 +48,24 @@
   function r0(v) { return Math.round(v); }
   function r1(v) { return (Math.round(v * 10) / 10); }
 
-  // Nominal full-scale flows for indications the engine exposes only as normalized/pct.
-  var GPM_HPI = 600, GPM_AFW = 640, GPM_CHARGING = 1000, GPM_LETDOWN = 1000, GPM_FEED_PER_PCT = 10;
+  // #408 wave 1: ONE declared volume, ONE conversion. The plant's RCS is the
+  // declared ~7,500 gal (1,000 ft3 at 300 MWt, sourced fleet ratio), so every
+  // RCS-side gpm display is now LITERAL: gpm = frac/s x 7,500 gal x 60 s/min.
+  // The old per-family full-scales (600/1000/1000) were display flavour over a
+  // currency no single volume could make true — the config identity block used
+  // to have to disclaim exactly that.
+  var GPM_RCS_PER_FRAC = 450000;
+  var GPM_AFW = 640, GPM_FEED_PER_PCT = 10;   // SECONDARY side — its own ledger, untouched by the re-clock
   var GPM_FEED = 1000;   // full-rated feed flow, for the measured fw_flow indication (normalized 0-1)
   var _CFG = (typeof RD !== 'undefined' && RD.PWR_CONFIG) || {};
   var _RX = _CFG.reactivity || {}, _PZ = _CFG.pressurizer || {}, _ID = _CFG.identity || {};
   var _SG = _CFG.steam_generator || {}, _EM = _CFG.emergency || {}, _TB = _CFG.turbine || {};
-  // Charging: the normal make-up band (reactivity.charging_max 0.06) on the gpm scale = 60.
-  var CHARGING_MAX_GPM = GPM_CHARGING * (_RX.charging_max || 0.06);
+  var GPM_CHARGING = 450000, GPM_LETDOWN = 450000;   // = GPM_RCS_PER_FRAC (literals: run_manual_units parses these statically)
+  // ECCS full-scale = the RATED combined injection in real gpm (~324 on the declared
+  // volume — the Ginna-scaled number), computed from config so a retune moves it.
+  var GPM_HPI = Math.round(((_EM.hpi_flow_max || 2.0e-4) +
+    (_EM.lpi_flow_max || 1.0) * (_EM.lpi_inventory_gain || 5.2e-4)) * GPM_RCS_PER_FRAC);
+  var CHARGING_MAX_GPM = GPM_CHARGING * (_RX.charging_max || 60 / 450000);
 
   // ================================================== display-unit layer (#238)
   // The board used to render US customary at every readout, which is why the Settings SI
@@ -1282,10 +1292,10 @@
     // renders it empty and still. Legs are named by their authored direction, so 'off'
     // is the only value that ever changes here — the in/out sense stays as drawn.
     ims2k1rhzh3: function (s) {                       // cold-leg header; branch C = charging
-      return coldLeg(s, { legC: CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-4 ? 'in' : 'off' });
+      return coldLeg(s, { legC: CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-5 ? 'in' : 'off' });   // 1e-5 ≈ 4.5 gpm on the #408 real scale (was 1e-4, the old currency)
     },
     ims2k3q7ehq: function (s) {                       // cold-leg header; branch C = letdown out
-      return coldLeg(s, { legC: (IN(s).letdown_flow || 0) > 1e-4 ? 'in' : 'off' });
+      return coldLeg(s, { legC: (IN(s).letdown_flow || 0) > 1e-5 ? 'in' : 'off' });   // #408 real scale
     },
     ims3x2n4o2p: function (s) {                       // cold-leg header; branch C = accumulators
       return coldLeg(s, { legC: IN(s).accumulators_discharging ? 'in' : 'off' });
@@ -1333,7 +1343,7 @@
     // already uses, so the two lines out of that panel now agree with each other.
     // Normal make-up comes from the VCT on leg B, which is gated on charging FLOW.
     ims3x01kvp4: function (s) {
-      var flow = !!CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-4;
+      var flow = !!CS(s).charging_pump_running && (IN(s).charging_flow || 0) > 1e-5;   // #408 real scale
       var eccs = !!IN(s).hpi_active && (IN(s).hpi_flow || 0) > 1e-4;
       return { temp: 50, contents: 'water', flowing: flow || eccs, speed: sysSpeed(s, 'chgsuct'),
         legB: flow ? 'in' : 'off', legC: eccs ? 'in' : 'off' };
@@ -1925,7 +1935,11 @@
   // lets the run-state below be AUTHORITATIVE rather than merely advisory. The first cut
   // lumped the steam dump in with main steam and would have drawn a shut dump valve passing
   // full flow at power, which is precisely the #236 class this board keeps re-learning.
-  var CHG_RATED = 0.030;    // one letdown orifice ≡ 20 gpm — normal CVCS letdown/charging
+  // #408 real scale: normal CVCS full-scale = orifice-A NOP flow (30 gpm on the
+  // declared volume). The old 0.030 was the retired currency — dividing the real
+  // 6.7e-5 frac/s by it quantized every CVCS line to dash-speed 0 (the #350/#364
+  // ladder trap: a running system painted PAUSED).
+  var CHG_RATED = 30 / 450000;
   var DUMP_CAP = 0.40;      // steam dump capacity, fraction of rated steam (the #220 40 %)
   var ADV_CAP = (_SG.adv_max != null ? _SG.adv_max : 0.10);   // #371, from engine config
   function lineFrac(s) {

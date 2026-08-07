@@ -317,7 +317,7 @@
       // `ops_cvcs_pzr_drain_rate` is red against its 2026-07-22 feel target BY DESIGN
       // (OWNER RULING, 2026-08-04: "A"). The letdown-isolation interlock and the low-level
       // trip are what bound it. [tune]
-      cvcs_inventory_gain: 0.012,
+      cvcs_inventory_gain: 1.0,    // #408 ruling 1(a): CVCS joins the real scale — the two-scale split collapses; flows below are true frac/s of the declared 7,500 gal RCS
       // AUTO make-up: charging above letdown per % PZR-level deficit (the error is
       // damped through cvcs_level_filter_tau first — the M/A station's damping —
       // so this can be stiff without chasing gauge noise, CA-3). Loop
@@ -329,9 +329,9 @@
       // with it. The parked offset is independent of that slope and is unchanged: a leak
       // L parks the level (L/cvcs_inventory_gain)/0.01 % below setpoint (a 2.4e-4 leak →
       // 2.00 %, visible but held — CC-8/CC-10). [tune]
-      cvcs_charge_per_level: 0.01,
+      cvcs_charge_per_level: 2.217e-5,  // = old 0.01 x (1.33e-4/0.06): same fractional authority per % of level error on the real scale (#408; stack-level servo re-solve owed)
       cvcs_level_filter_tau: 20.0, // s — first-order damping on the servo's level error [tune]
-      charging_max: 0.06,          // max charging flow, normalized (normal makeup band) [tune]
+      charging_max: 1.33333e-4,   // == exactly 60 gpm / 7,500 gal       // max charging flow, frac/s == 60 gpm / 7,500 gal — the board display becomes literally true (#408) [tune]
       // Letdown: TWO fixed orifices, each independently in/out (four states: off /
       // A / B / A+B). Letdown is a pressure-driven bleed from the cold leg through
       // an orifice to the letdown HX / VCT — so flow ∝ √(p_coldleg − backpressure),
@@ -343,8 +343,8 @@
       // A ≈ 0.030 (normal letdown), B ≈ 0.040, A+B ≈ 0.070 (max — exceeds charging_max,
       // a net drain for level reduction / depressurization). [tune]
       letdown_backpressure_mpa: 2.4,
-      letdown_orifice_a_coeff: 0.00822,   // ≈ 0.030 normalized at NOP
-      letdown_orifice_b_coeff: 0.01096,   // ≈ 0.040 normalized at NOP
+      letdown_orifice_a_coeff: 1.8656e-5,   // == exactly 30 gpm at NOP   // = old 0.00822 x (6.7e-5/0.030): orifice A == 30 gpm at NOP on the real scale (#408)
+      letdown_orifice_b_coeff: 2.4874e-5,   // == exactly 40 gpm at NOP   // scaled with A (#408): orifice B == 40 gpm at NOP
     },
 
     // ------------------------------------------------------------------ thermal
@@ -532,7 +532,7 @@
       // setpoint (3.98 MPa, against 4.00 MPa before the gate). SGTR is unaffected to three
       // significant figures, because that path stays subcooled and the term was barely active on
       // it. So neither constant below was retuned. [tune]
-      blowdown_gain: 0.02,         // dimensionless scale on the break flash-cooling mixing term [tune]
+      blowdown_gain: 0.25,         // dimensionless scale on the break flash-cooling mixing term — re-solved x12.5 with the #408 re-clock (leak currency shrank ~12x; solved against the anchored DEG arc) [tune]
       blowdown_sink_c: 110.0,      // °C — containment-saturation floor the blowdown pulls Tavg toward [tune]
     },
 
@@ -668,7 +668,18 @@
       // bleed. Whether that is right is a PLANT question (`porv_flow_max` and this gain are a
       // matched fitted pair, and preserving leg E means moving both), so it belongs with the
       // TMI-2 trajectory re-author rather than being tuned away here. [tune]
-      K_porv_relief: 600.0, K_safety_relief: 600.0,
+      //
+      // RE-SOLVED 600 -> 3144 with the 2026-08-07 proportional-valve ruling (see
+      // porv_flow_max above), preserving the PORV's full-open PRESSURE AUTHORITY exactly:
+      // 600 x 1.31e-3 = 3144 x 2.5e-4 = 0.786 MPa/s. This is the matched-pair rule the
+      // paragraph above states, applied in the other direction — the valve's MASS now runs
+      // on the real #408 accident clock while its pressure/energy authority keeps the
+      // compressed-clock duty (the transient backstop TR-1k measures, and the blowdown
+      // pacing every relief-ladder suite was calibrated against). The safeties inherit the
+      // shared K (F15: one steam-venting physics, capacities differ), so their authority
+      // rises 1.32 -> 2.52 MPa/s — their old capacity was UNVERIFIED recall, and the
+      // sourced 3.2 flow ratio is now what sets it.
+      K_porv_relief: 3144.0, K_safety_relief: 3144.0,
       // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for
       // step insurges, NOT for a loss-of-heat-sink repressurization — capped at
       // this fraction of full spray flow (auto demand AND operator override), the
@@ -764,7 +775,7 @@
       // CA-19's throughput equilibrium or CA-15's arrest. Sized against the WTSM 5.0
       // blowdown-ends-at-containment shape on a full-size break while the sev-0.05
       // family's plateau grading survives; CA-20 pins the shape. [tune]
-      K_break_vent: 1.0,
+      K_break_vent: 5.0,
       // Break blowdown: a primary break (LOCA/SGTR, s.leak_flow) vents the coolant
       // to containment and depressurizes the RCS — unlike CVCS letdown, which is a
       // controlled inventory bleed at pressure. This is what pushes a LARGE break
@@ -782,13 +793,28 @@
       // still held ABOVE the accumulator band — but by the HEATERS, not by the sat-pull the
       // old `blowdown_gain` comment credited. Measured on a 2 % break: K_heater 0.55 MPa/s
       // against this term's 0.21 MPa/s at that leak rate. [tune]
-      K_leak_depressurize: 10.0,
+      K_leak_depressurize: 60.0,
       // PORV: auto-open 16.20 MPa (2350 psia), command-close 15.86 MPa (2300 psia).
       porv_open_mpa: 16.20, porv_close_mpa: 15.86,
-      porv_flow_max: 0.0035,       // normalized inventory loss (slow, TMI-realistic) [tune]
+      // PROPORTIONAL relief, not fleet-absolute *(OWNER RULING, 2026-08-07: "Why not go
+      // with the proportional valve other than redoing some scenarios and trainings?
+      // The plant comes first, then the training, documentation follow.")* — reversing
+      // the wave-1 fleet-standard 1.31e-3, which sized a 2,900 MWt plant's valve onto a
+      // 300 MWt RCS and (measured) out-bled full ECCS 6x, made feed-and-bleed unviable
+      // (MD-10), and put every TMI clock ~5x fast. A real plant sizes relief to ITS
+      // rating; the per-unit hardware that genuinely stays absolute is the SG tube and
+      // the RCP seal, not a spec'd valve.
+      //   Sizing (Ginna is the same-document ratio base, ~152 lbm/MWt like this plant's
+      //   149): 210,000 lb/hr valve class x (300/1,520 MWt) = 41,400 lb/hr = 11.5 lbm/s
+      //   / 44,600 lbm = 2.58e-4; BVPS fractional parity gives 1.0e-4; adopted 2.5e-4
+      //   (~112 gpm equivalent). Full-open ~= TMI-2's own single-PORV fraction (1.1e-4
+      //   on 540,000 lbm) x2.3 — same decade, where the fleet valve was 12x.
+      //   The TMI draindown with injection secured is ~2-2.5 h now (net ~1.2e-4 against
+      //   auto charging), i.e. the 1979 clock — was "~20-25 min" under the fleet valve.
+      porv_flow_max: 2.5e-4,       // normalized inventory loss, one plant-sized valve (#408 + 2026-08-07 ruling) [tune]
       // Spring safety valves: mechanical open 17.13 MPa (2485), reseat 16.55 (2400).
       safety_open_mpa: 17.13, safety_reseat_mpa: 16.55,
-      safety_flow_max: 0.10,       // [tune]
+      safety_flow_max: 8.0e-4,     // safeties:PORV = 3.2 sourced (#349's 3.0-3.3 band; Ginna 2x345k vs 2x210k lb/hr = 3.29 per-valve-bank) x 2.5e-4 — closes #349's 28.6x finding; was 2.2e-3 UNVERIFIED recall (#408) [tune]
       P_containment: 0.103,        // MPa backpressure [tune]
       P_flow_ref: 15.41,           // reference ΔP for relief-flow sqrt scaling, MPa
       // Pressurizer level — DERIVED (catalog v3 FG-3 / CC-10 rework, 2026-07-21).
@@ -1079,6 +1105,23 @@
       // the depressurized end of the curve moves. It is the operating point, not a [tune].
       break_p_ref_mpa: 15.41,      // RCS pressure at which break size == its rated flow
       break_backpressure_mpa: 0.1, // containment (atmospheric); flow stops when the RCS reaches it
+      sgtr_dp_ref: 9.8,            // MPa — SGTR dP normalization; folded into config by #408 (was a || 9.8 fallback in 3 files)
+      // Discharge COMPOSITION (#408 wave 1, two-regime — see pwr_primary.stepInventory
+      // for the full rationale): the mass ledger discharges
+      //   leak_flow × (bsf + (1−bsf)·max(entrain, spill))
+      // entrain = clip(Δp/break_entrain_ref_mpa) — blowdown entrainment carries liquid
+      // while Δp lasts; spill = clip((mass−lo)/(hi−lo)) — after Δp collapses the
+      // cold-leg nozzle ELEVATION rules, and it sits above the core top, so the spill
+      // band is the long-term injection≈spillage equilibrium with the core COVERED.
+      // Steam mass flux ~an order under liquid's (UNVERIFIED recall, Moody-class);
+      // band placement is elevation-derived (nozzle above core top — recall, declare).
+      // The pressure/venting half keeps the full open-area flow. All [tune], solved
+      // against the sourced DEG arc (WCAP-16009 §12-4-3 / Ginna T15.6-15).
+      break_steam_mass_frac: 0.05,
+      break_entrain_ref_mpa: 4.0,  // Δp above which discharge is fully liquid/two-phase — at 2.0 the (Δp/ref)² tail at mid-Δp still balanced the whole real-scale ECCS and parked sev 0.1-0.4 breaks partially uncovered forever (measured); 4.0 lets the mid-family refill while the DEG blowdown (Δp 4-15 MPa) still drains full-bore [tune]
+      break_spill_lo: 0.72,        // inventory frac — below: break passes steam only. SITS ABOVE core_top_uncover 0.70: the cold-leg nozzle is above the core top, so the spill equilibrium leaves the core COVERED (#408) [tune]
+      break_spill_hi: 0.85,        // inventory frac — above: full liquid spill [tune]
+      break_entrain_floor: 0.55,   // inventory frac at which entrained liquid carry-off dies entirely — standing mid-dP entrainment below the break elevation is not physical (#408; measured: without it sev 0.1 parks at 40 % forever) [tune]
       // Loop pressure distribution (pwr_primary.computeNodePressures). The primary
       // is incompressible liquid except for the pressurizer bubble, so there is ONE
       // dynamic pressure state (pressure_mpa, the pressurizer/hot-leg reference) plus
@@ -1490,15 +1533,15 @@
       //                                 (inventory-frac/s at 0 MPa), shutoff
       //                                 head lpi_pressure_ref.
       // s.hpi_flow_normalized = delivered / combined rated (0–1). [tune]
-      hpi_flow_max: 0.06,          // high-head segment, inventory-frac/s [tune]
-      hpi_pressure_ref: 16.44,     // MPa; high-head flow → 0 as P approaches this [tune]
-      lpi_pressure_ref: 4.5,       // MPa low-head shutoff head
+      hpi_flow_max: 2.0e-4,        // high-head segment, inventory-frac/s — #408 wave 1 REAL scale: Ginna 300-600 gpm HHSI / 38,323 gal (T15.6-10/17); was 0.06 (~300x real) [tune]
+      hpi_pressure_ref: 18.4,      // MPa; high-head flow → 0 as P approaches this — CCP shutoff 2,670 psig, WTSM 5.2 T5.2-3 (#408) [tune]
+      lpi_pressure_ref: 1.5,       // MPa low-head shutoff head — RHR ~200 psid (WTSM 5.2), Ginna LHSI dead-heads ~215 psia (T15.6-17) (#408)
       lpi_flow_max: 1.0,           // normalized rated low-head flow
-      lpi_inventory_gain: 0.10,    // inventory frac/s per unit normalized low-head flow
+      lpi_inventory_gain: 5.2e-4,  // inventory frac/s per unit normalized low-head flow — Ginna 1,200 gpm LHSI / 38,323 gal (#408; was 0.10, ~190x real)
       // ECCS pump discharge-pressure indication (MPa): the head the running
       // pump develops against the RCS it injects into (system pressure + line margin,
       // clamped to shutoff head). 0 when HPI is not active. [tune]
-      hpi_shutoff_mpa: 12.4,       // ≈ 1800 psi — ECCS pump shutoff head (classic centrifugal-charging curve)
+      hpi_shutoff_mpa: 18.4,       // ≈ 2,670 psig — CCP shutoff head (WTSM 5.2 T5.2-3), tracks hpi_pressure_ref (#408)
       hpi_discharge_margin_mpa: 0.4, // head above RCS pressure while injecting
       // Accumulators: passive borated tanks that discharge into the cold leg once
       // primary pressure falls below the arming pressure; finite capacity depletes.
@@ -1515,8 +1558,8 @@
       // K_leak_depressurize to force pressure below saturation, which never reached 1.5.) [tune]
       accumulator_trip_mpa: 4.14,  // arming pressure — real CFT/SIT cover-gas setpoint (600 psi)
       accumulator_flow_max: 1.0,   // normalized rated accumulator flow
-      accumulator_inventory_gain: 0.12, // inventory frac/s per unit normalized flow
-      accumulator_capacity: 2.5,   // total deliverable inventory fractions (finite)
+      accumulator_inventory_gain: 0.012, // inventory frac/s per unit normalized flow — Ginna dump 0.435 RCS in ~36 s (T15.6-15) (#408; was 0.12)
+      accumulator_capacity: 0.40,  // total deliverable inventory fractions (finite) — Ginna 2x1,115 ft3 / 5,123 ft3 = 0.435 same-document (#408; was 2.5, ~6x real)
       // N2 cover-gas volume as a fraction of the initial WATER volume, used to drive the
       // tank-pressure indication as the accumulator empties. A real SIT is ~1350 ft³ holding
       // ~1000 ft³ of borated water, so the gas space is ~0.35 of the water volume. The gas
@@ -1546,7 +1589,7 @@
       // dramatic-but-observable (~°C/s) rather than an instantaneous single-step
       // crash. The mixing form is self-limiting — it cannot cool below eccs_temp_c. [tune]
       eccs_temp_c: 40.0,           // °C — RWST / SIT injection temperature (~104 °F) [tune]
-      eccs_cooling_gain: 0.08,     // dimensionless scale on the cold-injection mixing term [tune]
+      eccs_cooling_gain: 1.0,      // dimensionless scale on the cold-injection mixing term — at REAL rates the physical value of this mixing form IS 1.0 (true enthalpy mixing); the 0.08 divider existed only to decouple the compressed rate (#408) [tune]
       // Residual Heat Removal (RHR, formerly DHR): the low-pressure shutdown-cooling
       // loop that doubles as LPI. Suction is taken from the HOT LEG through a valve
       // interlocked to primary pressure. Aligned = suction valve open (rhr_active).
@@ -1637,19 +1680,19 @@
       // MPa of steam partial pressure per normalized unit of steam inventory.
       // FITTED (no sourced free volume exists): full-size break peaks at ~design
       // pressure. Q0: yield 5.2 units → 0.08. [tune]
-      press_gain: 0.08,
+      press_gain: 2.3,             // #408 wave 1 REFIT (was 0.08, fitted to the compressed 36-229-RCS-mass throughput): re-solved against the sourced grading on REAL discharge — DBA peaks 38.2 psig (~2/3 of 60 psig design), 30-psig spray point reached only at sev >= 0.25, every containment-side break crosses 3.5 psig inside a minute [tune]
       // Flash-fraction span, °C: fraction = (T_source − T_sat(P_ctmt)) / this.
       // h_fg/cp at ~atmospheric ≈ 2257/4.18 ≈ 540 — a PHYSICAL ratio, not a fit.
       flash_span_c: 540.0,
       // Passive heat-sink condensation time constant (walls, structures, coolers
       // OFF — stage 2 adds the active systems). Sets both the no-spray decay after
       // a blowdown and the equilibrium a sustained hot leak parks at. [tune]
-      passive_sink_tau_s: 1800.0,
+      passive_sink_tau_s: 220.0,   // #408 refit (was 1800): the sink must bite SLOW discharges harder than the blowdown pulse or the family's peaks read flat — this is what grades sev 0.05 (22.9 psig) under the spray point while the DBA pulse keeps its peak [tune]
       // Normalized discharged-liquid units at 100 % indicated sump level. Sizing:
       // the full-break 30-min ride discharges ~229 units → reads ~76 %; an RCP seal
       // leak creeps. Indication only — no recirculation (no RWST inventory exists
       // to swap from; declared, Manuals/12 §13.0). [tune]
-      sump_ref: 300.0,
+      sump_ref: 3.0,               // #408 refit (was 300, on 229 discharged RCS masses): a real 30-min full-break ride discharges ~2-3 — sump reads 58 % on the DBA, graded to 36 % at sev 0.05 [tune]
     },
 
     // ------------------------------------------------------------------ rods
@@ -1817,15 +1860,19 @@
       // §8.8 synoptic additions — CVCS flows, SG pressure, chemistry, governor, ECCS
       // (LPI/accumulator), and Animation-HR1 helpers (steam dump, primary leak).
       // Sources track TRUE sim quantities, not command setpoints (see pwr_instruments SOURCE).
-      charging_flow:     { lag: 2.0, noise: 0.0006, range: [0, 0.12], noise_ref: 0.004 },   // true CVCS charging (≠ setpoint under AUTO)
-      letdown_flow:      { lag: 2.0, noise: 0.0006, range: [0, 0.12], noise_ref: 0.004 },   // true CVCS letdown
+      // Re-currencied with the #408 real flows: full charging is 60 gpm = 1.333e-4
+      // frac/s, so the old compressed declarations left a 42 gpm signal under a
+      // ±270 gpm noise sigma and a span 900x the pump. Span = 120 gpm; sigma kept
+      // at the same fraction of span (0.5 %), noise_ref at 3.3 %.
+      charging_flow:     { lag: 2.0, noise: 1.3e-6, range: [0, 2.67e-4], noise_ref: 8.9e-6 },   // true CVCS charging (≠ setpoint under AUTO)
+      letdown_flow:      { lag: 2.0, noise: 1.3e-6, range: [0, 2.67e-4], noise_ref: 8.9e-6 },   // true CVCS letdown
       steam_pressure:    { lag: 0.5, noise: 0.0034,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
       boron_analyzer:    { lag: 45,  noise: 0.3,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
       governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100], noise_ref: 5 },    // turbine admission valve %
       hpi_flow:          { lag: 1.0, noise: 0.001, range: [0, 1.2], noise_ref: 0.02 },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)
       accumulator_flow:  { lag: 0.5, noise: 0.001, range: [0, 1.2], noise_ref: 0.02 },    // passive accumulator injection, normalized
       steam_dump_valve:  { lag: 0.3, noise: 0.3,   range: [0, 100], noise_ref: 5 },    // turbine bypass valve % (Animation HR1)
-      primary_leak_flow: { lag: 0.2, noise: 0.0006, range: [0, 1.0], noise_ref: 0.01 },    // LOCA/SGTR break flow, normalized (Animation HR1)
+      primary_leak_flow: { lag: 0.2, noise: 3e-5, range: [0, 0.06], noise_ref: 6e-4 },    // LOCA/SGTR break flow, frac/s (Animation HR1) — #408 real currency: DEG peak ~0.047, sigma ~0.06 % of it as before
       startup_rate:      { lag: 2.0, noise: 0.004,  range: [-5, 10] },    // SUR (dpm) — startup-range rate meter; feeds the rod-withdrawal interlock
       porv_tailpipe_temp:{ lag: 10.0, noise: 0.17,  range: [0, 250] },    // PORV discharge/quench-tank line temperature — the unalarmed indication that reveals a stuck-open PORV (TMI-2)
       // Nuclear instrumentation (startup ranges) — LOG-scale detectors (lag +
