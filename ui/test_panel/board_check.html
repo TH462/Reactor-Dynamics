@@ -69,6 +69,7 @@
     var RD = globalThis.RD;
     var out = [], nPass = 0, nFail = 0;
     function ck(name, cond, detail) {
+
       if (cond) { nPass++; out.push('<span class="p">PASS</span> ' + name); }
       else { nFail++; out.push('<span class="f">FAIL</span> ' + name + (detail != null ? '  [' + detail + ']' : '')); }
     }

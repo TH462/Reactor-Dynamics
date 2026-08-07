@@ -233,7 +233,7 @@
 
       { id: 'b11_lull',
         trigger: { type: 'delay', value: 20.0 },
-        speed: 6,   // begin the smooth compression of the long draindown (no skip button)
+        speed: 30,   // the long draindown — 30x, was 6 (#408 real clock: uncovery ~2 h, damage ~2 h 20 m; at 6x that stretch was ~20 wall-minutes of a non-reconciling board)
         // Injection is off the board for the draindown — the trap can't be undone from
         // here. On-order actions only again until the truth is identified.
         gate: watchGate(TRIG.identification, HOLD_INJECTION_MSG),
@@ -312,7 +312,9 @@
         story_min: 149,   // in-fiction clock anchor (03:53 + N min — historical timing)
         trigger: { type: 'delay', value: 1.5 },
         commands: PHYS.hpiRestore ? PHYS.hpiRestore.commands : [{ action: 'set_hpi', active: true }],
-        speed: 6,
+        speed: 60,   // 60x, was 6 (#408): the refill from a dry core runs at the honest
+                     // high-pressure HPI trickle (~3e-5 frac/s), i.e. hours — the 1979
+                     // recovery took ~6.5 h to re-cover. 60x carries it in wall-minutes.
         dialogue: [
           { speaker: 'sup',
             learning: 'Block valve\'s shut — the hole\'s plugged. Injection back on, full flow, and it does not come off again while I\'m standing here. Good hands. Now we refill the primary — I\'m running the clock forward while we recover. Watch the pressure and the subcooling number climb back to sanity.',
@@ -329,7 +331,7 @@
         story_min: 149,   // in-fiction clock anchor (03:53 + N min — historical timing)
         trigger: { type: 'delay', value: 1.5 },
         commands: PHYS.isolate.commands,
-        speed: 6,
+        speed: 60,   // same re-pace as b15_isolated (#408)
         dialogue: [
           { speaker: 'sup',
             learning: 'You\'re still on it — my hands then. Block valve driving shut NOW, and injection back on, full flow, and it does not come off again. Refill the primary. I\'m running the clock forward while we recover — watch the pressure and the subcooling number climb back to sanity.',

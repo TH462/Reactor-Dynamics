@@ -84,6 +84,7 @@
           <div class="brand">
             <a class="logo" href="../index.html" title="Back to the Reactor Dynamics home page">Reactor<span class="a">⚛️</span>Dynamics</a>
             <span class="logo-ver mono" id="logoVer" title="Release version — see the changelog"></span>
+            <span class="logo-test" title="This is the unstable test build, not the released simulator. The stable version is at reactordynamics.com.">TEST BUILD</span>
           </div>
           <div class="clock mono" id="clock">T+00:00:00</div>
         </div>
@@ -431,6 +432,14 @@
   <script src="../site/release.js"></script>  <!-- player-facing Alpha X.Y.Z, shown by the logo -->
   <script src="../site/channel.js"></script>  <!-- release channel: public | preview | dev -->
   <script src="../site/flags.js"></script>    <!-- feature flags: what this channel OFFERS (#241) -->
+  <!-- TEST-BUILD marker, same contract as the site pages: html[data-channel] drives
+       .logo-test in shell.css. The control room is where a tester actually spends the
+       session, so the site's banner alone would leave the distinction behind at the
+       door. Must run after channel.js above — it reads what that file defines. -->
+  <script>(function (c) {
+    document.documentElement.setAttribute('data-channel', c);
+    if (c !== 'public') document.title = '[TEST] ' + document.title;
+  }(window.RD_CHANNEL || 'dev'));</script>
   <script src="../engines/load_mode.js"></script>
   <script src="../engines/pwr/pwr_config.js"></script>
   <script src="../layers/control/pwr_control.js"></script>

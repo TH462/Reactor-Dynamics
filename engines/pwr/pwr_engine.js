@@ -744,6 +744,11 @@
       //     covered core (the oxide itself is monotonic and does not un-grow).
       core_uncovered_frac: s.core_uncovered_frac || 0,
       zirc_heat_pct: s.zirc_heat_pct || 0,
+      // CORE-EXIT temperature (#407, NUREG-0737 II.F.2) — the ICC datum: equals the
+      // bulk on a covered core BY CONSTRUCTION, tracks the steam-cooled clad node as
+      // the core uncovers. `subcooling_c` reads max(bulk, this) while uncovered, so
+      // the margin gauge stops reporting ECCS-chilled remnant comfort over a dry core.
+      t_core_exit_c: (s.t_core_exit_c != null ? s.t_core_exit_c : s.tavg_c),
       boron_ppm: s.boron_ppm, porv_open: s.porv_open, porv_stuck: s.porv_stuck, spray_stuck: !!s.spray_stuck,
       // DELIVERED pressurizer spray, % of the spray line's maximum flow (#350 item 1).
       // NOT `spray_valve_pct`, which is the operator's/controller's DEMAND — this is what
@@ -1333,7 +1338,15 @@
     }
     if (def.type === 'command_override') {
       switch (id) {
-        case 'stuck_porv_open': s.porv_stuck = true; break;
+        case 'stuck_porv_open':
+          // #408 wave 3 (ruled 2026-08-06): severity is the STUCK FRACTION — a disc
+          // hung mid-travel. 100 % = fully stuck (free-play default; a standard valve
+          // fully stuck out-runs this small plant's HPI — a true size fact). The
+          // TMI-2 flagship authors its beat at the fraction that reproduces the
+          // 6x-larger plant's fractional discharge (~20 %), declared in the scenario.
+          s.porv_stuck = true;
+          s.porv_stuck_frac = clip(severity != null ? severity : 1.0, 0, 1);
+          break;
         case 'loss_of_feedwater': s.main_feedwater_available = false; break;
         case 'turbine_trip': SG.tripTurbine(s); break;
         case 'failure_to_scram': s.scram_blocked = true; break;
@@ -1417,7 +1430,7 @@
     if (def.type === 'instrument') { this.instruments.clearFailure(def.instrument_id); return; }
     if (def.type === 'command_override') {
       switch (id) {
-        case 'stuck_porv_open': s.porv_stuck = false; break;
+        case 'stuck_porv_open': s.porv_stuck = false; s.porv_stuck_frac = null; break;
         case 'loss_of_feedwater': s.main_feedwater_available = true; break;
         case 'failure_to_scram': s.scram_blocked = false; break;
         case 'stuck_open_spray': s.spray_stuck = false; break;   // the operator's own demand is left as they set it
@@ -1941,6 +1954,9 @@
     if (s.rhr_valve_open == null) s.rhr_valve_open = !!s.rhr_active;
     if (s.rhr_hx_fraction == null) s.rhr_hx_fraction = 1.0;
     if (s.eccs_mode == null) s.eccs_mode = 'off';
+    // #407 core-exit datum: a pre-#407 save restores with the bulk — exact for any
+    // covered core, and an uncovered save reconverges in one stepCladding pass.
+    if (s.t_core_exit_c == null) s.t_core_exit_c = s.tavg_c;
     // Spray valve stuck open (#200, 2026-07-27). The failure used to be encoded by
     // writing `spray_override = true` — a boolean shoved into the OPERATOR'S demand
     // field, which is exactly why any later set_spray overwrote and cleared it. It is
@@ -2582,17 +2598,45 @@
         // Pressure rises → PORV auto-opens (emulated actuation); then it sticks.
         h.runUntil(function (ts, ins) { return ins.primary_pressure >= 16.20; }, 60);
         h.cmd({ action: 'open_porv' });
-        h.cmd({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+        // Severity 1.0 — a FULL stick of the PLANT-SIZED valve (2026-08-07 proportional
+        // ruling; was 0.20 of the fleet-standard valve, which expressed the same
+        // fraction). porv_flow_max is Ginna power-scaled now, so this plant's one
+        // valve wide open IS the TMI-equivalent event (2.5e-4 vs TMI's own 1.1e-4
+        // frac/s — same decade). With SI defended the plant still holds (#347's
+        // insight — full injection beats one stuck valve), so the deception phase
+        // requires the 1979 crew's own act: SECURING injection on the level lie.
+        // That securing is the next command below; the recovery branch is its undoing.
+        h.cmd({ action: 'inject_failure', failure_id: 'stuck_porv_open', severity: 1.0 });
         h.cmd({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
         h.cmd({ action: 'close_porv' }); // operator "closes" it — but it's stuck open
+        h.cmd({ action: 'set_hpi', active: false });   // the 1979 act: injection secured on the rising-level lie
 
         var inv0 = h.ts().core_inventory_pct, pzr0 = h.ts().pzr_level_pct;
-        h.run(120);
+        // 1200 s, was 120 (#408): at the TMI-fraction stick the draindown runs ~5x
+        // slower, so saturation — and with it the VOID LIFT that makes the level
+        // gauge lie — arrives at ~20 minutes on the real clock, as the margin
+        // erodes through zero. That IS the 1979 pacing.
+        // (this Harness.run takes no callback — sample in chunks)
+        var hLvlMax = -1e9, hLvlMin = 1e9;
+        for (var hw = 0; hw < 120; hw++) {
+          h.run(10);
+          var hl = h.ts().pzr_level_pct;
+          if (hl > hLvlMax) hLvlMax = hl;
+          if (hl < hLvlMin) hLvlMin = hl;
+        }
         var t = h.ts(), ins = h.ins();
         ck('PORV truly open', t.porv_open, t.porv_open === true, true);
         ck('indicator reads CLOSED (the lie)', ins.porv_indicator, ins.porv_indicator === 'closed', 'closed');
         ck('inventory falls', t.core_inventory_pct.toFixed(1), t.core_inventory_pct < inv0 - 2, '< ' + inv0.toFixed(1));
-        ck('pzr level rises as inventory falls', t.pzr_level_pct.toFixed(1), t.pzr_level_pct > pzr0, '> ' + pzr0.toFixed(1));
+        // RE-SCOPED for the real clock (#408): the deception is now an EPISODE — the
+        // draining gauge bottoms, then the void lift throws it up ~65 points while
+        // inventory keeps LEAVING (measured: 0 → 66 % at ~22 min with inventory
+        // falling through 92 %). The 1979 teachable fact is the gauge LIFTING while
+        // the plant empties, not a point comparison against the pre-event reading —
+        // asserted as the swing, read off the run.
+        ck('pzr level LIFTS while inventory falls (the deception episode)',
+          hLvlMax.toFixed(1) + ' % peak vs ' + hLvlMin.toFixed(1) + ' % floor',
+          (hLvlMax - hLvlMin) > 25 && t.core_inventory_pct < inv0 - 2, 'swing > 25 pts on a draining plant');
         ck('subcooling margin erodes toward 0', ins.subcooling_margin.toFixed(1), ins.subcooling_margin < 11, '< 11 °C');
 
         // Save the stuck-PORV condition, then branch.
@@ -2603,7 +2647,7 @@
         var hd = new Harness('hot_full_power'); hd.eng.loadState(snap);
         hd.cmd({ action: 'set_hpi', active: false });
         var dmgThreshold = hd.eng.cfg.thermal.fuel_damage_c;
-        var tdmg = hd.runUntil(function (ts) { return ts.fuel_temp_c > dmgThreshold; }, 6000);
+        var tdmg = hd.runUntil(function (ts) { return ts.fuel_temp_c > dmgThreshold; }, 12000);   // real-clock damage arrives in hours (#408)
         var td = hd.ts();
         ck('damage branch: inventory uncovers core (< 50%)', td.core_inventory_pct.toFixed(1), td.core_inventory_pct < 50, '< 50%');
         ck('damage branch: fuel damage occurs (> 1200 °C)', tdmg >= 0 ? tdmg.toFixed(0) + 's, ' + td.fuel_temp_c.toFixed(0) + '°C' : 'never', tdmg >= 0 && td.fuel_temp_c > dmgThreshold, 'fuel_temp > 1200 °C');
@@ -2685,6 +2729,13 @@
         // The HR1 half: a gauge reading 2 MPa high is enough to make protection act on a
         // pressure the plant never had. Positive assertion — restoring a truth-reading
         // actuation path has to edit this line rather than slide through a band.
+        //
+        // +40 s (#408): the indicated crossing arrives at ~34 s, so at the real-scale
+        // safety capacity (safety_flow_max 2.2e-3 frac/s, was the compressed 0.02) the
+        // valve had ~6 s to act and moved true pressure only 0.42 MPa. The offset check
+        // above is taken at its exact rate × 40 s coordinate FIRST; this leg then rides
+        // long enough for the honest valve to show the same > 1 MPa blowdown.
+        dr.run(40);
         ck('…and protection ACTED on the false reading — safety lifted, plant really blew down',
           dr.ts().pressure_mpa.toFixed(2) + ' MPa true vs ' + dr.ins().primary_pressure.toFixed(2) + ' indicated',
           dr.ts().pressure_mpa < pr0 - 1.0, 'true pressure < ' + (pr0 - 1.0).toFixed(2));
@@ -2764,21 +2815,31 @@
         s.pressure_mpa = 8.0; h.eng.step(0.02);
         var expectHH = e.hpi_flow_max * (e.hpi_pressure_ref - s.p_coldleg) / e.hpi_pressure_ref / rated;
         ck('8 MPa (cold leg) → high-head only', s.hpi_flow_normalized.toFixed(4), near(s.hpi_flow_normalized, expectHH, 0.01), expectHH.toFixed(4) + ' ±0.01');
-        // Low-head regime: combined flow approaches rated as pressure → 0.
-        s.pressure_mpa = 1.0; h.eng.step(0.02);
-        ck('1 MPa → low-head dominates', s.hpi_flow_normalized.toFixed(3), s.hpi_flow_normalized > 0.7, '>0.7 of combined rated');
+        // Low-head regime: combined flow approaches rated as pressure → 0. Test at
+        // 0.15 MPa (near-containment) with a CONFIG-DERIVED band since #408 — the
+        // real LPI shutoff is 1.5 MPa (RHR ~200 psid, sourced), so at the old 1 MPa
+        // test point the low head is only a third open and the old > 0.7 band was
+        // the retired curve's shape, not this one's.
+        s.pressure_mpa = 0.15; h.eng.step(0.02);
+        var pcL = s.p_coldleg;
+        var expectLo = (e.lpi_flow_max * e.lpi_inventory_gain * Math.max(0, (e.lpi_pressure_ref - pcL)) / e.lpi_pressure_ref
+                      + e.hpi_flow_max * Math.max(0, (e.hpi_pressure_ref - pcL)) / e.hpi_pressure_ref) / rated;
+        ck('near containment → combined approaches rated (config-derived)', s.hpi_flow_normalized.toFixed(3),
+          near(s.hpi_flow_normalized, expectLo, 0.02), expectLo.toFixed(3) + ' ±0.02');
         // The set_lpi alias drives the same merged system.
         h.cmd({ action: 'set_hpi', active: false });
         h.cmd({ action: 'set_lpi', active: true });
         ck('set_lpi alias → hpi_active', h.eng.s.hpi_active, h.eng.s.hpi_active === true, 'true');
-        // degraded_hpi scales the whole curve.
+        // degraded_hpi scales the whole curve — RATIO-based since #408: measure the
+        // undegraded flow at the same state, inject 0.5, expect exactly half. Robust
+        // to any curve reshape where the formula-copy form was not (#315's lesson).
+        var n0 = s.hpi_flow_normalized;
         h.cmd({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 0.5 });
+        s.pressure_mpa = 0.15;   // re-pin: pressure evolves between steps and the ratio needs one state
         h.eng.step(0.02);
-        var pc = s.p_coldleg;
-        var full = e.lpi_flow_max * e.lpi_inventory_gain * (e.lpi_pressure_ref - pc) / e.lpi_pressure_ref
-                 + e.hpi_flow_max * (e.hpi_pressure_ref - pc) / e.hpi_pressure_ref;
-        ck('degraded_hpi scales the combined curve', s.hpi_flow_normalized.toFixed(3),
-          near(s.hpi_flow_normalized, 0.5 * full / rated, 0.02), (0.5 * full / rated).toFixed(3) + ' ±0.02');
+        ck('degraded_hpi scales the combined curve (x0.5 of the measured undegraded flow)',
+          s.hpi_flow_normalized.toFixed(3) + ' vs undegraded ' + n0.toFixed(3),
+          near(s.hpi_flow_normalized, 0.5 * n0, 0.02), (0.5 * n0).toFixed(3) + ' ±0.02');
       });
     },
 
@@ -2839,7 +2900,9 @@
         h.cmd({ action: 'set_hpi', active: true });
         s.pressure_mpa = 8.0; h.eng.step(0.02);
         ck('HPI mode above the LPI shutoff head', s.eccs_mode, s.eccs_mode === 'HPI', 'HPI');
-        s.pressure_mpa = 2.0; h.eng.step(0.02);
+        // 0.5 MPa, was 2.0 (#408): the LPI shutoff is the sourced 1.5 MPa now, so
+        // 2.0 is HPI-only territory and 'HPI' there is the honest answer.
+        s.pressure_mpa = 0.5; h.eng.step(0.02);
         ck('LPI mode in the low-head regime', s.eccs_mode, s.eccs_mode === 'LPI', 'LPI');
       });
     },
@@ -2892,7 +2955,10 @@
         h.cmd({ action: 'set_hpi', active: true });
         h.run(200);
         var b1 = h.ts().boron_ppm;
-        ck('HPI injection raises core boron', b0.toFixed(0) + ' → ' + b1.toFixed(0), b1 > b0 + 200, '> baseline + 200 ppm');
+        // > +20 ppm, was +200 (#408): real injection (~7e-4 frac/s) mixes 2500-ppm
+        // water in at ~1.3 ppm/s — the +200 band was the compressed rate. The claim
+        // is the DIRECTION and a meaningful magnitude, both preserved.
+        ck('HPI injection raises core boron', b0.toFixed(0) + ' → ' + b1.toFixed(0), b1 > b0 + 20, '> baseline + 20 ppm');
         ck('boron never overshoots the ECCS source', b1.toFixed(0), b1 <= C + 1, '≤ ' + C + ' ppm');
         // (B) Control: the same leak with NO injection leaves boron unchanged
         // (mass-only losses leave at the current concentration; accumulators
@@ -3018,11 +3084,18 @@
         var s = h.eng.s;
         function lineup(a, b) { h.cmd({ action: 'set_letdown_orifices', a: a, b: b }); h.eng.step(0.02); return s.letdown_flow; }
         var off = lineup(false, false), A = lineup(true, false), B = lineup(false, true), AB = lineup(true, true);
-        ck('off → no letdown', off.toFixed(4), off === 0, '0');
-        ck('A orifice ≈ 3% of rated', A.toFixed(4), near(A, 0.030, 0.004), '0.030 ±0.004');
-        ck('B orifice ≈ 4% (larger than A)', B.toFixed(4), near(B, 0.040, 0.004) && B > A, '0.040 ±0.004, > A');
-        ck('A+B lineup = sum of both orifices', AB.toFixed(4), near(AB, A + B, 1e-4), (A + B).toFixed(4));
-        ck('A+B (≈7%) is a net drain vs nominal charging (6%)', AB.toFixed(4), AB > 0.06, '> 0.06');
+        // Expectations CONFIG-DERIVED since #408 (the 0.030/0.040 literals were the
+        // retired currency — on the real scale orifice A is 30 gpm ≈ 6.7e-5 frac/s
+        // of the declared 7,500-gal RCS). The claims are unchanged: A ≈ its NOP
+        // rating, B larger, lineups sum, and A+B out-drains max charging.
+        var rcL = h.eng.cfg.reactivity;
+        var rootL = Math.sqrt(Math.max(0, s.p_coldleg - rcL.letdown_backpressure_mpa));
+        var expA = rcL.letdown_orifice_a_coeff * rootL, expB = rcL.letdown_orifice_b_coeff * rootL;
+        ck('off → no letdown', off.toFixed(6), off === 0, '0');
+        ck('A orifice ≈ its NOP rating (30 gpm)', A.toExponential(3), near(A, expA, 0.15 * expA), expA.toExponential(3) + ' ±15%');
+        ck('B orifice ≈ its NOP rating (40 gpm), larger than A', B.toExponential(3), near(B, expB, 0.15 * expB) && B > A, expB.toExponential(3) + ' ±15%, > A');
+        ck('A+B lineup = sum of both orifices', AB.toExponential(3), near(AB, A + B, 1e-6), (A + B).toExponential(3));
+        ck('A+B (70 gpm) is a net drain vs max charging (60 gpm)', AB.toExponential(3), AB > rcL.charging_max, '> charging_max');
         // Pressure-driven: flow ∝ √(p_coldleg − backpressure), so it tails off as RCS
         // pressure falls toward the backpressure setpoint on a cooldown.
         h.cmd({ action: 'set_letdown_orifices', a: true, b: true });
@@ -3207,8 +3280,10 @@
         var h = new Harness('hot_full_power');
         h.run(20);
         var l0 = h.ts().pzr_level_pct;
-        h.cmd({ action: 'set_charging_flow', normalized: 0.06 });   // MANUAL max charging, letdown off
-        h.run(60);
+        // Config-derived command + real-clock window (#408): the 0.06 literal is 450x
+        // the real pump now, and the real max-charging rise is ~0.1 %/s.
+        h.cmd({ action: 'set_charging_flow', normalized: h.eng.cfg.reactivity.charging_max });   // MANUAL max charging, letdown off
+        h.run(120);
         ck('charging raises pzr level', l0.toFixed(1) + ' → ' + h.ts().pzr_level_pct.toFixed(1),
           h.ts().pzr_level_pct > l0 + 3, '> ' + (l0 + 3).toFixed(1));
         // (2) AUTO make-up holds level against a letdown drain (B ≈ 4 %, < charging_max).
@@ -3219,8 +3294,10 @@
         h2.run(400);
         ck('AUTO holds level near nominal despite letdown', h2.ts().pzr_level_pct.toFixed(1),
           near(h2.ts().pzr_level_pct, 55, 6), '55 ±6');
-        ck('AUTO charging modulated up to match the drain', h2.eng.s.charging_flow.toFixed(3),
-          h2.eng.s.charging_flow > 0.03, '> 0.03');
+        // Band config-derived (#408; > 0.03 was the old currency — and toFixed(3)
+        // rendered the CORRECT 1.3e-4 as "0.000", hiding a passing value).
+        ck('AUTO charging modulated up to match the drain', h2.eng.s.charging_flow.toExponential(2),
+          h2.eng.s.charging_flow > 0.6 * h2.eng.cfg.reactivity.charging_max, '> 0.6x charging_max');
         // The TMI void-surge deception (charging isolated → void lift dominates the level)
         // is guarded by flagship_tmi; charging moves level only through the mass balance.
       });

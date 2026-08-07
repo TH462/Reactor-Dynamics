@@ -6,7 +6,53 @@ follows [Keep a Changelog](https://keepachangelog.com/); newest entries on top.
 For the dense engineering rationale behind each change (spec deviations, tuning, gate
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
-> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
+> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
+
+### Added
+- **`test/run_doc_budget.js`** — gates the one document that is auto-loaded into every agent's
+  context on every turn: `CLAUDE.md` <= 15,000 words, no single physical line over 400 words, and
+  the *Recent themes* region inside its own documented 5-bullet cap. `run_all` 39 -> 40 runners.
+  It exists because all three limits were already written in that file's prose and all three were
+  being broken -- injection-verified against the pre-cut file, which fails every check (42,065
+  words, a 5,310-word line, 13 bullets). `Diagnostic/TUNING_LOG.md` is deliberately NOT gated:
+  it is read on demand, and length is only a defect where it is paid on every turn.
+
+### Changed
+- **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
+  loaded into every agent's context on every turn and had grown to 1,735 lines under its own
+  "Keep it SHORT" heading, with a single physical line of 5,310 words. Removed: 21,046 words of
+  prose gate baselines duplicating the `BASELINES` map that the same section names as the
+  authority -- and which had rotted into four wrong figures, a runner listed twice with different
+  numbers, and a block marked "unedited" from an old merge. Themes and standing-procedure bullets
+  compressed 9,663 -> 2,055 with every trap kept; the themes list gains a word budget, having run
+  7 bullets against its own cap of 5. All 30 dated owner citations were verified to exist in other
+  tracked files before anything was deleted, so `run_hardrules` 208 -> 205 is fewer citation sites
+  and zero fewer rulings (`BASELINES` updated in the same change).
+- **PWR atmospheric dump valve — setpoint sourced, 1247 → 1272 psi (8.60 → 8.77 MPa)** (#371).
+  WTSM §7.1.3.3 (ADAMS ML11223A244) sets the real valve *"approximately half the difference between
+  the no-load steam generator pressure and the lowest set pressure of the safety valves"*; ours sat
+  at 34 % of that span. Capacity `adv_max` 0.10 needs no change — it already matches the sourced
+  *"approximately 10% of the rated steam flow … from each steam generator"*. Nearly inert in play:
+  the loss-of-condenser spike and the code-safety lift are identical at both values; only the hold
+  point moves. Perturbation sweep at this exact nudge: 42/623 checks move, zero verdict flips.
+  `DESIGN_COMPANION` §8.34 narrows from "capacity and setpoint unsourced" to the relief ladder,
+  which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
+
+### Fixed
+- **A behaviour check that could never fail** (TR-17, shipped with #392). `sg_safety_open` is a
+  boolean and `range()` returns `NaN` on it, so `!range(...).max` was `!NaN` — true, always.
+  Injection-verified: the plant it exists to exclude passed it. The claim it guarded was also
+  wrong — the code safeties lift at 54 s whether the ADV is in AUTO or shut, because that spike is
+  the steam generator's. The check now asserts what actually differs, the tail: safeties open 1.8 %
+  of the hour and reseat, against 99.4 % and never reseating with the valve shut.
+
+### Added
+- **`tools/find_source.js`** — searches the source corpus across all three worktree lanes and exits
+  non-zero on a genuine miss. The corpus is three gitignored directories that cannot see each other,
+  and one-lane greps have now cost two evidence passes: #315 §6 (an OTΔT argument built and
+  reverted while the primary sat in another lane) and §8.34 (a departure declared on
+  *"no document in any lane's corpus"* that another lane could refute).
+` heading
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
 > empty `## [Unreleased]` above it. The version must match the top entry of
 > `changelog.html` and the string in `site/release.js`.
@@ -29,6 +75,335 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 > recover. Nothing below `Alpha 1.0.0` was ever downloadable.
 
 ## [Unreleased]
+
+## [Alpha 1.3.0] — 2026-08-07
+
+### Released — the lane merge and the version
+
+`workbench` merged into `develop` (2026-08-07-develop-b) and the result shipped as **Alpha
+1.3.0**. **Y**, not Z: the release carries both a major change (#408 wave 1 re-clocks the entire
+accident-inventory family and resizes the relief valves) and a genuinely new capability
+(#395/#396, checklists grading their own preconditions against the live plant) — the operative
+test is whether it would go on the Roadmap as a line item, and both would.
+
+The manual set's **Rev 13 is what the website carries from this release**, thirteen lettered
+items from two lanes under one revision number, per the 2026-08-06 directive that the number
+advances only at a release. The next manual edit extends a pending Rev 14.
+
+**No `changelog.html` entry for the website work** in this release — the social-card metadata,
+the deploy-stamp channel fix and the test-build banner are site changes, and that page is
+strictly for simulator changes *(OWNER DIRECTIVE, 2026-08-06: "Also, don't include website
+changes in the changelog. The changelog is strictly for simulator changes.")*. They are recorded
+below, which is what this file is for.
+
+
+### Changed — the accident-inventory clock runs REAL flows, and the relief valves are plant-sized (#408 wave 1 + the 2026-08-07 proportional-valve ruling)
+
+The whole LOCA family — break discharge, HPI/LPI, accumulators, relief, CVCS — now moves
+real fractions-per-second (`pwr_config.js`, the ruled stage-1 table; every constant carries
+its arithmetic at the site). The DEG break rides the sourced 25–38 s class blowdown on this
+plant's declared ~7,500 gal volume; a stuck-open PORV with injection secured drains on the
+1979 clock (~2 h 20 m to damage); board gpm readouts are now literal (frac/s × 450,000).
+The mass ledger gained a discharge-composition model (steam fraction + Δp entrainment +
+nozzle-elevation spill) so a drained vessel stops shipping phantom liquid, and the
+charging/letdown instrument declarations plus the CHG FLOW HI setpoint joined the real
+currency (the alarm was 16× above the pump's new maximum — permanently dark).
+
+**The relief valves are proportional to THIS plant** *(OWNER RULING, 2026-08-07: "The plant
+comes first, then the training, documentation follow.")*: `porv_flow_max` 2.5e-4 frac/s
+(~112 gpm, Ginna power-scaled), `safety_flow_max` 8.0e-4 (the sourced ~3.2 ratio — closes
+#349), the F15 K-pair re-solved together to preserve the PORV's transient pressure authority
+exactly. Measured consequences: **feed-and-bleed is viable** (MD-10 green), **full injection
+beats one wide-open valve** — the TMI-2 counterfactual as a size fact — and the TMI missions'
+deception builds on the defended plant through the historical level alarm at ~38 min.
+
+Two regimes fixed under the ruling: at SOLID, relief joins the bulk-modulus gain family and
+the pressure-restore stand-in stands down (the #361 mass_max-clip signature by a fourth
+road); and the TERMINAL melt verdict now separates molten-and-unrecovered from
+molten-and-quenching — the clad route to `melted` requires inventory NOT rising, so a
+reflooded TMI-style core rewets, the core-exit TC reads coolant again, and the flagship's
+recovery ending is reachable (unmitigated paths still terminate; `run_meltdown` 12/12).
+
+TMI-2 missions re-paced to the measured real-clock arcs (identification re-anchored to the
+damage latch, recovery beats at authored 30–60×, ending routes on card facts). Gates:
+`run_all` 38 runners green — `run_campaign` 51/51 (3029), `run_behavior` 65/1, `run_pwr`
+36/36; the ruled ops drain-rate red reads 284.3 s against its ≥ 300 s target (was 53.7).
+
+
+### Fixed — the pressurizer level gauge no longer argues against a large LOCA (#385 stage 2, 2026-08-06)
+
+The TMI void-displacement lift (`level_per_void·void`) is now **path-aware**
+(`pwr_pressurizer.levelRaw`): weighted by `w = ref/(ref + leak_flow)`, one new `[tune]`
+constant `void_weight_surge_ref` (0.01 frac/s). The term models loop steam displacing
+liquid up the surge line; with a hole in the loop, the displaced liquid takes the hole —
+the pressurizer discharges instead (WCAP-16009-NP-A §11-4-5, the 2-phase surge-line
+discharge during blowdown; WTSM 5.0 §5.0.1.1 has the loop flashed to steam).
+
+Measured before (full stack, #385 sweep): on any saturated drain the level line collapsed
+to `base + 350·(1−m)` and TRUE level read **exactly 100 at the moment the core top
+uncovered**, at every board severity ≥ 15 %; at the slider default the indicated gauge
+peaked **93.5 % at t+7.5 s** — arguing against a LOCA while SI actuated. After: the gauge
+empties in ~2 s and stays empty through the uncovery (TRUE 0.0 / indicated 2.3 at
+uncovery), no re-rise past the 75 % high alarm (peak 55.1, the pre-break reading).
+`leak_flow = 0` gives `w = 1.0` exactly, so the stuck-PORV / safeties / loss-of-heat-sink
+families — the calibrated TMI deception arc — are **byte-identical by construction**:
+`flagship_tmi` 9/9 and `run_campaign` 51/51 unmoved. Small breaks (≤ 10 %) keep their
+correct drain order; the sev-0.5 water-solid endgame (#361 CA-15 arrest) is unmoved.
+
+New probe **CA-18** (`run_behavior` 61 → 62 pass): the drain order (red on the pre-#385
+engine: 100.0), the no-re-rise, the exact `level_per_void·void·(1−w)` algebra through the
+real `levelRaw`, the relief-path fence (PORV flow moves the line by NOTHING), the
+documented 78.3 %-at-void-0.2 calibration target (asserted for the first time), and the
+no-break fence (a boiling loop with no leak keeps the full lift). Injection-verified: the
+pre-change engine reddens exactly the three discriminating checks.
+
+Manuals Rev 13(i): `12 §7.3` re-written path-aware — and its term table carried constants
+three revisions stale (−100/−300/+150 against the live ±776/+375.33), now corrected.
+
+Owner rulings recorded on the issues (2026-08-06, plan-review selections): #385 ships the
+lumped term fix now with the pressurizer inventory node **committed as a follow-on**;
+#384 proceeds on #386 stage 1's landed containment volume.
+
+### Verified — the LOCA throughput equilibrium exists and is now pinned (#384 stage 3 / #334, 2026-08-06)
+
+The open #334 question — *"there is no throughput concept… can we add one?"* — is answered
+by measurement: **it exists, and no new state was needed.** A refilled liquid-full RCS with
+a 40 %-severity break open and HPI running repressurizes to the balance point where
+injection equals break discharge — settles at 392 psi (2.70 MPa) against a 2.89 MPa config
+solve, inventory pinned ON the solid line (10.7 points clear of the `mass_max` guard),
+both flows running continuously at 0.0824 frac/s, stable, and reached from different
+starting overfills. The #361 `leak_depress` gate plus the #346 bulk-modulus surge ARE the
+mechanism. New probe **CA-19** (`run_behavior` 62 → 63 pass) pins the equilibrium plus the
+not-a-rescue leg (injection defeated → the same state drains to nothing). Injection-
+verified: restoring the pre-#361 double count walks inventory to exactly 1.2000 =
+`mass_max` and breaks the balance.
+
+The cluster plan's stage-3 engine edit (a `!pzr_solid` term in the `saturated` predicate)
+was **measured unnecessary and not shipped** — the state it defended against self-heals
+via the ECCS quench within seconds. Recorded in TUNING_LOG develop-f; if stage 4's
+pressure-floor work resurrects the state, it ships then, with its measurement.
+
+### Fixed — a large break now blows down toward the building, not to a phantom floor (#384 stage 4, 2026-08-06)
+
+With a loop break flowing, the saturation pin weakens with void (`K_sat_pull·(1−void)`,
+target floored at the live backpressure) and a new vent term (`K_break_vent` 1.0 `[tune]`)
+carries pressure toward containment — the WTSM 5.0 §5.0.1.1 blowdown shape. Measured
+family (full stack, minP): 1340 / 980 / 470 / **218** / **116 psi** at severities
+5/10/20/50/100 %, against 1340 / 980 / 570 / 330 / 170 psi before — small breaks
+byte-identical, the full break falls past Psat of its hot remnant. Both scalings are
+**path-scoped** (`_leak_base > 0 && !_leak_to_sg`): stuck-PORV, tube-rupture and no-break
+boiling paths compute the old formula exactly (probe-pinned to 1e-9). A declared
+connected-volumes floor keeps the RCS from ending a step below the building.
+
+**Sizing found a real trade**: higher K raises the floor and erases the core uncovery
+(ECCS arrives before anything happens) — this lumped plant has no reflood transport
+delay, so true containment equalization and a real uncovery are mutually exclusive.
+K = 1 keeps the DBA arc (full uncovery → accumulators dump → reflood → clad 1341 °F, no
+damage); the residual is declared in `12 §7.2` and on #384.
+
+**A latent split-accounting defect fixed on the way** (#361's signature by a third road,
+latent since #337): below ~560 °F the level line's floored base credits no contraction
+room while the pressure surge still did, so the now-earlier ECCS refill rode the cooldown
+past the solid arrest to the 120.00 % numerical ceiling. The surge now reads the same
+line the level shows (thermal term zeroed only at solid + base-on-floor + contracting);
+CA-15 returned green without re-authoring. CA-14's "ends AT saturation" band was pinning
+the old pin, not thermodynamics — re-authored one-sided (a drained core must never be
+SUBCOOLED; superheat is physical, the loop is steam), passes on both engines.
+
+`run_behavior` 63 → 64 (CA-20: blowdown shape, both fences, the floor, exact clone
+algebra; injection-verified — the pre-stage engine reds exactly the three discriminating
+checks). Manuals Rev 13(j).
+
+### Added — the subcooling margin reads a core-exit thermocouple (#407, 2026-08-06)
+
+The margin's temperature datum is now **max(loop bulk, core exit)**: new true field
+`t_core_exit_c` (equals the bulk on a covered core by construction; tracks the
+steam-cooled clad node as the core uncovers) and a new appended `core_exit_temp`
+instrument channel — sourced to **NUREG-0737 Item II.F.2** (fetched into the corpus this
+session): "the highest of all operable thermocouples", range 200–1800 °F per its
+Attachment 1. Over a dry core the TRUE margin now reads −944 °F of superheat where the
+bulk datum floors at ~−110; the gauge pegs its low clip and SUBCOOL LOST lights. A TC
+failed low degrades the gauge to the bulk datum exactly (HR1).
+
+**The symptom #407 filed was already dead before this landed — measured**: zero
+comfortable uncovered samples at any board severity on the post-stage-4 engine (the
+honest heater cutoff + the vented blowdown removed the chilled-remnant overlap). The
+channel ships on prototypicality and keeps that window closed structurally.
+
+`run_behavior` 64 → 65 (CA-21, injection-verified), `run_contract` 156 → 157
+(`t_core_exit_c`), Manuals Rev 13(k).
+
+**The honest instrument caught two authored TMI endings riding the deception** (HR9 —
+content follows the plant): `pwr_tmi2_p3`'s "Plugged, Not Refilled" card claimed
+*"margin's back, core stayed covered — the night saved"* on a path measured at **41 %
+inventory, core fully uncovered, clad climbing** (the old bulk margin "restored" on
+repressurization over the dry core); re-routed on the facts it can claim (isolated ∧
+undamaged ∧ injection never restored) and re-worded to the measured state. And
+`pwr_tmi2_p1`'s finale played *"the water's water again"* one minute after the takeover,
+over a core at 11 % inventory and clad at 2450 °F — the honest datum makes the finale
+wait for the core to genuinely re-cover (~18 min later: the isolated RCS repressurizes
+and throttles HPI to a trickle, which is itself the right lesson); the test's 4000 s
+budget was pinning the deception-fast ending, raised to 9000. `run_campaign` 51/51 at
+3026 checks (3023 → 3026, structural validation of the re-routed branch).
+
+### Fixed — the deploy stamp was Vercel-only, and 'dev' is its most permissive answer (#413, 2026-08-07)
+
+Website and build tooling. **No `changelog.html` entry**: the site markers below are
+invisible on the released channel by construction, so nothing a player can observe on
+reactordynamics.com changes, and a line that names no verifiable fact is one the page's own
+style rule says to cut *(OWNER DIRECTIVE, 2026-08-04: "Just keep to facts in the changelog
+page. Minimize prose.")*.
+
+- **A host migration would have published four unvetted areas to the live site, silently.**
+  `site/stamp_version.js` read `VERCEL_ENV` and nothing else. Cloudflare Pages does not set
+  it — it sets `CF_PAGES` / `CF_PAGES_BRANCH` / `CF_PAGES_COMMIT_SHA` — so the stamper fell
+  through to its `'dev'` default. **Measured with the Vercel variables absent**: channel
+  `dev`, and `on(campaign)`, `on(scenarios)`, `on(checklists)`, `on(walkthroughs)` all
+  **true**. Those are exactly the four the owner declared placeholders *(#241: "Most of the
+  training campaign and scenarios and even the checklist I haven't checked so I consider
+  them placeholders until I have gone through them")*. `site/flags.js` resolves preview
+  content as `channel() !== 'public'`, which makes **`'dev'` the most permissive value, not
+  the safest** — the failure was in the DEFAULT, not the variable name. `RD_VERSION` also
+  degraded to `alpha · dev`, so every bug report would have lost its build SHA. Nothing
+  would have failed; no gate would have reddened.
+- **`resolve()` is now a pure function of an env object**, host-agnostic across Cloudflare
+  and Vercel, with the file writes behind `require.main`. An unrecognised CI lands on
+  **`'public'`** — the restrictive answer — and says so loudly in the build log: a uselessly
+  conservative test site is recoverable, unvetted content on the public one is not.
+- **`test/run_channel.js`** — new gate, `run_all` 41 → 42, `25checks 0failed`. Seven
+  deployment situations, and for each it asks **what the channel actually offers** rather
+  than trusting the string: a channel called `'public'` that fails to gate is the whole
+  defect. Injection-verified — `resolve()` blinded to Cloudflare again scores **25/10**, the
+  unrecognised-CI fallback flipped to `'dev'` **25/2**, `PRODUCTION_BRANCH` renamed
+  **25/4**.
+- **TEST BUILD markers**, for `dev.reactordynamics.com` off `develop`. A filled amber banner
+  at the top of every page, a `TEST` pill in the sticky header, `TEST BUILD` beside the
+  version in the control room, and `[TEST]` on the tab title. All keyed off
+  `html[data-channel]`, **hidden by default and opted into per channel** — a missing or
+  misspelled attribute leaves the released site unmarked rather than falsely branded.
+  Rendered on all three channels and measured: `public` shows nothing anywhere.
+- **`robots.txt` is generated to follow the channel** — `Allow` on the released site,
+  `Disallow` everywhere else, so the test domain cannot compete with production in search.
+  Gitignored: a committed copy would carry one answer to both hosts.
+- **The download page names the build it is offering.** `download/manifest.js` gained
+  `channel` and `sha`; off the released channel the meta line reads `TEST BUILD · Alpha
+  1.2.2 · … · 9f8e7d6`. The zip's **filename** is still the release's — that is a
+  three-file change pinned by `run_portable`, tracked as **#414**.
+- `run_flags` **310 → 320 is a counting artifact, not new coverage**: its deploy-stamp suite
+  emits one check per `/'(public|preview|dev)'/` literal in the stamper, and the rewrite has
+  18 where the old file had 8 (measured both ways; delta exactly 10). Worth recording why
+  that suite was no defence — **it never mentions `CF_PAGES`**, and its one semantic check
+  only ever inspected the Vercel branch, so it sat green throughout.
+
+Migration checklist for the rest — `.vercelignore`, the `/sim` rewrite, analytics, and the
+Vercel-specific release-verification step that would otherwise pass vacuously — is **#413**.
+
+### Changed — the public site says who it is for, and its links preview again (2026-08-06)
+
+Website only, so **no `changelog.html` entry** *(OWNER DIRECTIVE, 2026-08-06: "don't include
+website changes in the changelog. The changelog is strictly for simulator changes.")*. Nothing
+in `engines/`, `layers/`, `scenarios/` or the board moved; `ui/shell.css` and `ui/site_docs.js`
+are here only because the site's changelog is packed into the control room's About panel.
+
+- **Every shared link was previewing with no image, and had been since launch.** `og:image`
+  was the relative `site/hero.png` on all four pages that had a card at all; Slack, Discord,
+  iMessage and X do not resolve a relative og:image against the page url, so the card rendered
+  as a bare text row. For a project that spreads by someone pasting a link into a chat, that is
+  most of the first impression. All eight pages now carry an absolute
+  `https://reactordynamics.com/site/hero.png`, plus `og:url`, `og:site_name`, `og:image:width`
+  / `:height` / `:alt` and a `rel="canonical"`. **Changelog, Privacy and Legal previously had no
+  card whatsoever** — the block only ever existed in pages that already had it, so each new page
+  started from zero. That is the half a one-line fix would have missed.
+- **`test/run_site_meta.js`** — new gate, `run_all` 40 → 41 runners, `115checks 0failed`. The
+  page list is **globbed from the root and filtered through `.vercelignore`**, not declared: a
+  hand-kept list would test the list, passing at full marks on the one page it had never heard
+  of, which is exactly how three pages came to have no card. It also pins what a copy-paste
+  cannot get right on its own — `og:url` and canonical must name the file they sit in, and the
+  declared `og:image:width`/`:height` must match the real pixels of `site/hero.png`, read from
+  the PNG header. **Verified by injection before baselining**: the original relative-url bug
+  reintroduced in one page scores 116/3, a page stripped of its card 115/13, a stale
+  `og:image:width` 115/1.
+- **The landing page says who it is for, above the CTA.** It never did. The copy around it is
+  written in plant vocabulary — boration and dilution, hot standby, holding through xenon —
+  which reads as a filter to anyone without a nuclear background, and a reader who has to guess
+  whether they are the audience leaves. Now states plainly that **no nuclear background is
+  required**, names the tour and manual that make that true, and says the physics rewards one if
+  you have it. `about.html` carries the longer version as its first section. The claim is
+  anchored to **ungated** features (`helpBtn` / `helpTourBtn` carry no `data-flag`), so it holds
+  on the public channel where the campaign and scenarios do not.
+- **The alpha / no-phones banner moved below the CTA.** It was the first thing on the page: the
+  opening handshake was a limitation, before the reader had been told what this is. Same caution
+  styling, same above-the-fold position, no longer the lede.
+- **The download page states version, date and size** — "Alpha 1.2.2 · 6 August 2026 · 1.0 MB".
+  The button said `latest.zip` and nothing else, so a returning visitor could not tell this build
+  from the copy already in their downloads folder, and nobody on a metered connection knew what
+  they were agreeing to. Filled from `download/manifest.js`, which `site/make_download.js` now
+  writes at deploy beside the zip it builds — the size is not knowable before that, and
+  `download/` is gitignored precisely so no committed copy can go stale. **The date comes from
+  the newest `changelog.html` entry, not from the clock**: a build-time `new Date()` would
+  re-date the download on every redeploy and make two deploys of one commit differ. Absent
+  manifest (any local checkout) hides the line rather than printing blanks.
+- **Changelog entries collapse.** Six releases landed in the first three days; `<article>` is
+  now `<details class="log-entry">` with only the newest `open`, so the version list stays
+  scannable as it grows. `run_release.js` still parses all six, and the markup packs into the
+  in-sim About → Changelog panel unchanged. **The archive is planned, not built**, and the
+  ADDING AN ENTRY comment records the trap: `run_release.js` reads `changelog.html` ONLY, so
+  moving entries to an archive page silently narrows what it checks rather than failing — the
+  split has to teach the gate about both files in the same change.
+- **The roadmap is tiered** — Open now / Nearly there / In progress / Later. "Nearly there" is
+  exactly the set of areas sitting at `stage: 'preview'` in `site/flags.js` (built, gated until
+  played end to end, #241), so the tier is anchored to something checkable rather than to a
+  feeling. **The BWR and RBMK line is no longer buried**: both engines pass their own suites
+  (`run_rbmk` 23/23, `run_bwr` 15/15) and the page now leads with that.
+- **Bug reports route to GitHub Issues**, in the footer of all eight pages and in `about.html`,
+  with email kept as the no-account fallback. Public and tracked beats a mailbox, and a reporter
+  can read what is already known first.
+- **`about.html` printed the safety disclaimer twice in a row** — a page-level copy immediately
+  above the identical footer copy. The page-level one is gone; the footer carries it on every
+  page and `legal.html` carries the operative version.
+
+Not done, deliberately: the **"who built this" paragraph**, held *(OWNER, 2026-08-06: "Hold —
+don't add it yet")* pending a decision on how prominently to be named — **#410**, which carries
+the ready-to-drop draft and the PERSEC/LLC reasoning. Two follow-ups filed from the same pass:
+**#411** the changelog archive split (and the `run_release.js` blind spot it would open), **#412**
+the in-sim Contact dialog, which still offers email only.
+
+### Added — checklists check the plant they stand on (#395/#396, 2026-08-06)
+
+Audit #344 ran the six Tier B normal evolutions as one continuous 17-hour shift and every
+one "completed" on a reactor that never went critical — the three precondition-shaped
+fields in the procedure data (`from:`, `prereq`, `guard`) were all harness inputs or
+display text, none evaluated at runtime. Now:
+
+- **Procedures carry machine-checkable `precond` rows** (`{p, op, v, tol, text}`, the same
+  predicate vocabulary as `acc`), authored for the six Tier B evolutions and measured MET
+  on their own initial conditions before shipping. `pwr_startup`'s boron row (683 ± 70 ppm)
+  is the #396 heatup→startup seam: a pump-heat heatup arrives at ≈ 857 ppm, 173.8 ppm
+  outside the band, where criticality sits ≈ 561 steps instead of the 319 the checklist
+  assumes.
+- **The Instructor grades them live, instrument-first, every tick** the checklist runs
+  (`_grade`/`_predMet` — no fourth copy of the predicate evaluator), ships verdicts in the
+  snapshot's checklist block, and raises one register-aware comment while any row is unmet.
+- **The checklist panel shows a NOT MET banner** naming each failed row with expected vs
+  measured. It **warns and never blocks** *(OWNER RULING, 2026-08-06: selected "Warn,
+  never block" from three options put to him — a selection, not verbatim words)*: commands
+  are never refused, steps still check off, and the banner clears itself when the operator
+  fixes the condition — graded live, so diluting to the ECC takes the boron row from unmet
+  to met with no button press.
+- **A new continuous-day gate** (`test/run_procedures_chain.js`, 50 checks) proves the
+  documented day works on ONE plant: heatup arrives Mode 3 at 856.8 ppm, the seam probe
+  flags exactly the boron row, the PWR-N02 step-15 dilution lands in 55.6 plant-min
+  (manual says ~58), the probe reads all-MET, and the startup then takes the same plant
+  critical to Mode 1 at 10.75 % with both at-power trip blocks ACCEPTED — the two refusals
+  #396 measured are zero. Injection-verified: skipping the dilution reproduces #396's
+  exact signature (15 red — power 0.000 %, Mode 3, both `set_trip_block` refusals
+  verbatim). The replay machinery it shares with `run_procedures_stack.js` was extracted
+  to `test/procedures_harness.js`; the stack gate's unchanged 29/29 262/262 is the
+  refactor-neutrality assertion.
+- Gates: `run_checklist` 24 → **38** (mechanism + content sections, injection-verified
+  7 red on a neutered evaluation), `run_procedures_chain` **NEW 50/50**, `run_procedures`
+  and `run_procedures_stack` deliberately unmoved. Manuals: new `02 §8.3` (the banner,
+  Rev 13 pending row extended).
 
 ## [Alpha 1.2.2] — 2026-08-06
 

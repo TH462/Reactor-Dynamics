@@ -61,6 +61,20 @@
     porvLift: { commands: [{ action: 'open_porv' }] },
     // The reseat that never happened: the close SIGNAL goes out (light off),
     // the valve stays open, and the indicator is locked on the signal.
+    //
+    // FULL stick, deliberately, and MEASURED both ways at the #408 real flows
+    // (2026-08-07): the missions stay at severity 1.0 pending the PORV-sizing
+    // ruling. At the flagship's partial-stick 0.20 (2.6e-4 frac/s) full HPI
+    // prevents voiding outright — subcooling bottoms at 2 °C and recovers, the
+    // pressurizer honestly DRAINS, and `pzrLevelHigh` (the deception beat's
+    // trigger, b9) never fires: the module's spine cannot arm. The single-node
+    // RCS only produces the pre-securing level rise once BULK coolant saturates,
+    // which at real flows needs the full valve (~80 s to saturation, level
+    // 21 → 100 through the alarm). The honest fix is the #385 hot-leg/pzr node —
+    // sequenced AFTER the re-clock — so until then the story plays the valve
+    // size that reproduces the 1979 indications. The ENGINE flagship suite
+    // (pwr_engine.js flagship_tmi) authors 0.20 because it scripts the securing
+    // itself and measures the drain that follows.
     porvStick: {
       inject_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
       commands: [{ action: 'close_porv' }],
@@ -87,7 +101,13 @@
     hpiAuto:        { type: 'true_state', field: 'hpi_active', direction: 'is_true' },
     pzrLevelHigh:   { type: 'alarm', alarm_id: 'pzr_level_high' },
     afwDiscovery:   { type: 'delay', value: 355.0 },             // ≈ T+8 min from the HPI beat
-    identification: { type: 'true_state', field: 'fuel_temp_c', direction: 'above', value: 1300.0 },
+    // RE-ANCHORED 2026-08-07 (the proportional valve): was fuel_temp_c > 1300, a
+    // compressed-era calibration. On the real clock the drain uncovers the core at
+    // lower decay heat and the dry core's heatup EQUILIBRATES at ~1188 °C — one
+    // step shy of a trigger nothing could reach (measured: fuel froze at 1188 for
+    // 20,000+ s while damage was long latched). The anchor is the DAMAGE latch now,
+    // which is the same story moment — the reveal comes as the core begins to fail.
+    identification: { type: 'true_state', field: 'fuel_damaged', direction: 'is_true' },
     subcoolRestored:{ type: 'instrument', instrument: 'subcooling_margin', direction: 'above', value: 11.1 },
     isolated:       { type: 'true_state', field: 'block_valve_open', direction: 'is_false' },
     fuelDamaged:    { type: 'true_state', field: 'fuel_damaged', direction: 'is_true' },

@@ -119,6 +119,10 @@
     'CA-15': 'probe (a LIQUID break goes solid clear of mass_max — CA-12 on the other path; #361)',
     'CA-16': 'probe (containment is the receiving volume — a LOCA pressurizes it, an SGTR bypasses it, relief lands in it, and it decays on the passive sink; #386 stage 1)',
     'CA-17': 'probe (break/relief backpressure is the LIVE containment pressure — clone-rig mechanism pin, red on the pre-#386 engine; #386 stage 1)',
+    'CA-18': 'probe (the void-displacement level lift is PATH-AWARE — a loop break drains the pressurizer, the relief path keeps the TMI deception; WCAP-16009 §11-4-5; #385 stage 2)',
+    'CA-19': 'probe (the THROUGHPUT equilibrium — a refilled solid RCS with a break open settles where injection = break discharge, and it is not a free rescue; #384 stage 3 / the #334 throughput question)',
+    'CA-20': 'probe (a vented RCS blows down PAST Psat toward the building and never below it — path-scoped vent + weakened pin, the SGTR/relief fence, and the DBA arc preserved; WTSM 5.0 §5.0.1.1; #384 stage 4)',
+    'CA-21': 'probe (the subcooling margin reads the CORE EXIT over a dry core — negative with the clad hot, byte-equal to the bulk when covered, and a failed TC restores the deception; NUREG-0737 II.F.2; #407)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -1680,7 +1684,13 @@
         h.run(60);
         var inv0 = h.ts().core_inventory_pct;
         h.cmd('inject_failure', { failure_id: 'pzr_level_sensor_stuck' });
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.012 });   // leak 3.6e-4 frac/s (severity ×4 with the 0.12→0.03 leak_scale — same absolute leak)
+        // Severity CONFIG-DERIVED (#408 wave 1): the leg needs a leak the frozen
+        // sensor hides that moves truth ~3 % over the 600 s window (5e-5 frac/s),
+        // whatever the catalog's scale. The old hardcoded 0.012 was that number on
+        // the pre-#408 map and a third of it on the re-clocked one.
+        var sgD3 = RD.PWR_CONFIG.protection.failures.sgtr;
+        var sgR3 = (sgD3.severity_meta.max / 100) * (sgD3.leak_scale != null ? sgD3.leak_scale : 1);
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: Math.min(1, 5e-5 / sgR3) });
         var ind0 = h.ins().pzr_level;
         h.run(600);
         var t = h.ts();
@@ -1689,7 +1699,7 @@
           Math.abs(h.ins().pzr_level - ind0) <= 0.5, 'frozen');
         ck('charging did NOT chase truth (follows the stuck instrument)',
           fmt(h.range('charging_flow_actual').max, 3) + ' vs letdown ' + fmt(t.letdown_flow_actual, 3),
-          h.range('charging_flow_actual').max <= t.letdown_flow_actual + 0.012, 'no make-up response');
+          h.range('charging_flow_actual').max <= t.letdown_flow_actual + 0.1 * RD.PWR_CONFIG.reactivity.charging_max, 'no make-up response');
         ck('truth diverged from indication (inventory moved ≥ 1.5 % while the gauge held still)',
           fmt(t.core_inventory_pct - inv0, 2), Math.abs(t.core_inventory_pct - inv0) >= 1.5, '|Δ| ≥ 1.5');
         T.checkSanity(ck, h);
@@ -1743,17 +1753,26 @@
           h.run(30);
           h.cmd('inject_failure', { failure_id: failure, severity: 0.8 });
           var atIso = null, isoAt = null;
-          for (var i = 0; i < 300 && isoAt == null; i++) {   // 0.5 s resolution
+          for (var i = 0; i < 600 && isoAt == null; i++) {   // 0.5 s resolution, 300 s watch (#408)
             h.run(0.5);
             if (h.ts().msiv_open === false) { isoAt = h.t() - 30; atIso = h.ts().steam_pressure_mpa; }
           }
-          h.run(900);
+          // 1800 s settle, was 900 (#408): the sourced deeper isolation lets the break
+          // blow the SG down to ~4.35 MPa before the MSIV shuts, and the decay-heat
+          // climb back to the 8.60 ADV setpoint honestly takes ~30 min (measured:
+          // reaches 8.63 at ~1800 s and parks there, safeties never lift).
+          h.run(1800);
           return { h: h, atIso: atIso, isoAt: isoAt, t: h.ts() };
         }
         var d = run('steam_line_break');
         ck('DOWNSTREAM: the plant isolates ITSELF — no operator action in this probe',
-          d.isoAt != null ? '+' + fmt(d.isoAt, 1) + ' s' : 'never', d.isoAt != null && d.isoAt < 10,
-          'within 10 s of the break');
+          // < 180 s, was < 10 (#408): the SOURCED 600 psig leg (WTSM 12.3) sits far
+          // deeper than the retired 5.20, so a full break's crossing — and the
+          // isolation — honestly arrives ~2 min in (measured +115.5 s). The real
+          // channel's rate sensitivity would fire earlier; the held-flow latch
+          // form declares that residual.
+          d.isoAt != null ? '+' + fmt(d.isoAt, 1) + ' s' : 'never', d.isoAt != null && d.isoAt < 180,
+          'within 180 s of the break (sourced deep setpoint)');
         ck('MSIV shut', String(d.t.msiv_open), d.t.msiv_open === false, 'false');
         ck('…and isolating ends the blowdown — the bottled SG re-pressurizes',
           fmt(d.atIso, 2) + ' → ' + fmt(d.t.steam_pressure_mpa, 2) + ' MPa',
@@ -1780,8 +1799,8 @@
 
         var u = run('steam_line_break_upstream');
         ck('UPSTREAM: the SAME protection fires — the plant cannot tell the location',
-          u.isoAt != null ? '+' + fmt(u.isoAt, 1) + ' s' : 'never', u.isoAt != null && u.isoAt < 10,
-          'within 10 s (it actuates identically)');
+          u.isoAt != null ? '+' + fmt(u.isoAt, 1) + ' s' : 'never', u.isoAt != null && u.isoAt < 180,   // same re-band as downstream (#408)
+          'within 180 s (it actuates identically)');
         ck('…and it changes nothing — the break is on the wrong side of the valve',
           fmt(u.atIso, 2) + ' → ' + fmt(u.t.steam_pressure_mpa, 2) + ' MPa',
           u.t.steam_pressure_mpa < 1.0, '< 1.0 (still blown down)');
@@ -1844,14 +1863,18 @@
         // the probe now asserts THE CLAIM IN ITS OWN TITLE, which it never did: that the
         // leak SURVIVES THE RESTORE, i.e. before ≈ after. Both new forms pass on the
         // pre-#334 engine too (0.0122 vs 0.0122), so this is a better test, not a refit.
+        // Thresholds are CONFIG-DERIVED since #408 wave 1 (the re-clock took the SGTR
+        // map 0.03 → 1.3e-3 and the old absolute bands read a healthy leak as absent).
+        var sgDef = RD.PWR_CONFIG.protection.failures.sgtr;
+        var sgRate = (sgDef.severity_meta.max / 100) * (sgDef.leak_scale != null ? sgDef.leak_scale : 1);
         var leakBefore = h.ts().leak_flow;
-        ck('leak flowing before the save', fmt(leakBefore, 4), leakBefore > 0.001, '> 0.001');
+        ck('leak flowing before the save', fmt(leakBefore, 5), leakBefore > 0.15 * 0.5 * sgRate, '> 0.15x base');
         var save = h.eng.saveState();
         var h2 = H('hot_full_power');
         h2.eng.loadState(save);
         h2.run(10);
         var leakAfter = h2.ts().leak_flow;
-        ck('leak still flowing after the restore', fmt(leakAfter, 4), leakAfter > 0.001, '> 0.001');
+        ck('leak still flowing after the restore', fmt(leakAfter, 5), leakAfter > 0.15 * 0.5 * sgRate, '> 0.15x base');
         // Compare the BASE rate, not the instantaneous flow. The instantaneous value is
         // ΔP-scaled and this scenario is violently transient at the sample point (primary
         // swinging 15.4 → 8.6 → 15.4 MPa as ECCS cycles), so a before/after magnitude
@@ -1862,8 +1885,8 @@
           fmt(h.eng.s._leak_base || 0, 4) + ' → ' + fmt(h2.eng.s._leak_base || 0, 4),
           (h.eng.s._leak_base || 0) > 0 &&
           Math.abs((h2.eng.s._leak_base || 0) - (h.eng.s._leak_base || 0)) < 1e-9, 'identical');
-        ck('restored leak still ΔP-scaled (base survives)', fmt(h2.eng.s._leak_base || 0, 3),
-          (h2.eng.s._leak_base || 0) > 0.012 && h2.eng.s._leak_to_sg === true, 'base ≈ 0.015, to_sg');
+        ck('restored leak still ΔP-scaled (base survives)', fmt(h2.eng.s._leak_base || 0, 5),
+          (h2.eng.s._leak_base || 0) > 0.8 * 0.5 * sgRate && h2.eng.s._leak_to_sg === true, 'base ≈ sev x catalog rate, to_sg');
       });
     },
 
@@ -1876,8 +1899,10 @@
         h.run(10);
         h.cmd('inject_failure', { failure_id: 'sgtr', severity: 40 });
         h.run(2);
+        var sgDefC = RD.PWR_CONFIG.protection.failures.sgtr;
+        var sgFull = (sgDefC.severity_meta.max / 100) * (sgDefC.leak_scale != null ? sgDefC.leak_scale : 1);
         ck('severity 40 clamps to a full rupture, not 40 of them',
-          fmt(h.eng.s._leak_base, 3), h.eng.s._leak_base <= 0.031, '≤ 0.031');
+          fmt(h.eng.s._leak_base, 5), h.eng.s._leak_base <= sgFull * 1.05, '≤ 1.05x full rupture (config-derived, #408)');
       });
     },
 
@@ -1899,9 +1924,13 @@
         var base = h.eng.s._leak_base;
         var rc = h.eng.cfg.reactivity;
         var makeup = (rc.charging_max || 0.06) * (rc.cvcs_inventory_gain != null ? rc.cvcs_inventory_gain : 1);
-        ck('full-severity BASE leak dwarfs CVCS make-up authority (≥ 10×)',
-          fmt(base, 3) + ' vs make-up ' + fmt(makeup, 4),
-          base > 10 * makeup, '> ' + fmt(10 * makeup, 3));
+        // ≥ 8×, was ≥ 10×: on the #408 real scale both sides are SOURCED — a DEG tube
+        // is ~600 gpm-class against 60 gpm max charging, a ~10× ratio — and the shipped
+        // constants land at 9.8×. The old 10× band was written when the ratio was an
+        // artifact (~40×); at the real ratio it sat exactly on the line.
+        ck('full-severity BASE leak dwarfs CVCS make-up authority (≥ 8×, real ratio ~10×)',
+          fmt(base, 5) + ' vs make-up ' + fmt(makeup, 5),
+          base > 8 * makeup, '> ' + fmt(8 * makeup, 5));
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 900);
         ck('CVCS cannot hold it — the plant trips', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
           dt >= 0, 'trips');
@@ -1944,8 +1973,11 @@
         // (engine.getStartupLineup()), which drains 0.030 against 0.060 of charging —
         // half the fill rate, and the overfill no longer reaches PI-8 inside 300 s.
         h.cmd('set_letdown_orifices', { a: false, b: false });
-        h.cmd('set_charging_flow', { normalized: 0.06 });
-        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
+        // Config-derived max charging + real-clock window (#408: the literal 0.06 was
+        // the old currency — 450x the real pump; at the real 1.33e-4 frac/s the flood
+        // to the 97 % trip takes ~7 min with letdown isolated).
+        h.cmd('set_charging_flow', { normalized: RD.PWR_CONFIG.reactivity.charging_max });
+        var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 900);
         ck('PI-8 tripped the sensed overfill', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
           dt >= 0 && /pzr_level high/.test(h.tripReason || ''), 'pzr_level high');
         var h2 = H('hot_full_power');
@@ -1953,7 +1985,10 @@
         h2.run(30);
         h2.cmd('inject_failure', { failure_id: 'pzr_level_sensor_low' });
         var h2n = 0, h2porv = 0;
-        h2.run(300, function (hh) { h2n++; if (hh.ts().porv_open) h2porv++; });
+        // 3000 s, was 300 (#408): the servo chases the stuck-low reading at the real
+        // net rate (~6.6e-5 frac/s above the open orifice), so the walk to solid and
+        // the relief lift take ~25-40 min instead of the old-currency minutes.
+        h2.run(3000, function (hh) { h2n++; if (hh.ts().porv_open) h2porv++; });
         var t2 = h2.ts();
         // RE-AUTHORED at #346, and the old form was pinning that change's defect. It read
         // `core_inventory_pct > 110`, a magnitude only reachable while the RCS would accept
@@ -2130,8 +2165,12 @@
         // and without the manual demand a LOOP shows no chatter at all (level holds
         // 38-41 %, inventory 100.00 %). Left as-is deliberately: the rig has to hold the
         // demand to prove the AC point, and the cycling is what the plant should do.
+        // 3600 s, was 330 (#408 + the 2026-08-07 proportional valve): the mechanism is
+        // unchanged — the held demand walks pressure to the PORV and the vented mass
+        // drains level through the cutoff — but the plant-sized valve removes mass 5x
+        // slower, so the cut arrives at ~3000 s (measured) instead of inside 330.
         var lacAlive = true, lcutSeen = false;
-        h3.run(330, function (hh) {
+        h3.run(3600, function (hh) {
           if (hh.ts().ac_available === false) lacAlive = false;
           if ((hh.ctl().heater_power_pct || 0) < 0.01 &&
               hh.ins().pzr_level < RD.PWR_CONFIG.pressurizer.heater_cutoff_level_pct) lcutSeen = true;
@@ -2326,10 +2365,13 @@
         h5.run(300);
         ck('LOOP leaves the 1E buses energized (the diesels have them)',
           'ac_available ' + String(h5.ts().ac_available), h5.ts().ac_available === true, 'true');
+        // Bands are CONFIG-DERIVED since #408 wave 1 (CVCS joined the real scale;
+        // the old absolute > 0.01 was ~150x the real orifice-A flow).
+        var _cvB = RD.PWR_CONFIG.reactivity, _ldNop = _cvB.letdown_orifice_a_coeff * Math.sqrt(15.17 - _cvB.letdown_backpressure_mpa);
         ck('so letdown keeps flowing through a LOOP',
-          fmt(h5.range('letdown_flow_actual').max, 4), h5.range('letdown_flow_actual').max > 0.01, '> 0.01');
+          fmt(h5.range('letdown_flow_actual').max, 5), h5.range('letdown_flow_actual').max > 0.5 * _ldNop, '> 0.5x orifice-A NOP');
         ck('the charging pump keeps running through a LOOP',
-          fmt(h5.range('charging_flow_actual').max, 4), h5.range('charging_flow_actual').max > 0.01, '> 0.01');
+          fmt(h5.range('charging_flow_actual').max, 5), h5.range('charging_flow_actual').max > 0.3 * _cvB.charging_max, '> 0.3x charging_max');
         ck('and SI injects when asked — a LOOP is not a loss of the ECCS pump',
           fmt(h5.range('hpi_flow_normalized').max, 4), h5.range('hpi_flow_normalized').max > 0.001, '> 0.001');
       });
@@ -2456,7 +2498,12 @@
           bMaxStreak + ' consecutive (of ' + bViol + ' in ' + bBelow + ' below-cutoff samples' +
           (bViol ? ', worst ' + fmt(bWorst, 1) + ' % at ' + fmt(bWorstLvl, 2) + ' % level' : '') +
           '; pre-#348 chatter: 8 consecutive, 499 of 1425)',
-          bMaxStreak <= 2, '≤ 2 consecutive (the step-7/step-15 lag)');
+          // ≤ 6, was ≤ 2 (#408): at real drain flows the level LINGERS in the noise
+          // band around the 17.0 crossing for minutes rather than seconds, so the
+          // probe's sample and the control's read can disagree for a few samples per
+          // crossing instead of exactly one (measured: 4 consecutive, 21 of 2084).
+          // The discriminant is unchanged — a broken interlock is hundreds, not six.
+          bMaxStreak <= 6, '≤ 6 consecutive (crossing-lag at real drain pace)');
         ck('the operator\'s DEMAND is untouched — only delivered power went to zero',
           fmt(b.ctl().heater_power_pct, 1) + ' % delivered, selector ' + String(b.ctl().heater_auto),
           b.ctl().heater_auto === false, 'still in MANUAL where the operator put it');
@@ -2548,25 +2595,43 @@
         // the property the old leg was really protecting.
         var em = RD.PWR_CONFIG.emergency;
         var ceiling = em.hpi_flow_max + em.lpi_flow_max * em.lpi_inventory_gain;
-        var sevMax = 50 / 100;                                        // large_loca meta.max/100
-        var survivable = (ceiling / sevMax) * 0.85;
+        // Flow-per-severity is READ FROM THE CATALOG (#408 wave 1): meta.max/100 ×
+        // leak_scale. The hardcoded 50/100 predated the re-clock and computed a
+        // microscopic break (2.4e-5 frac/s) that ECCS-defeated could not drain in
+        // the window — the leg went vacuous, not wrong.
+        var llD10 = RD.PWR_CONFIG.protection.failures.large_loca;
+        var flowPerSev = (llD10.severity_meta.max / 100) * (llD10.leak_scale != null ? llD10.leak_scale : 1);
+        var survivable = (ceiling / flowPerSev) * 0.85;
         function outcome(sev, secs, killEccs) {
           var h = H('hot_full_power');
           h.run(60);
           if (killEccs) {
-            h.cmd('set_eccs_armed', { armed: false });
+            // set_eccs_armed is an M4-layer command — engine-direct it was a silently
+            // rejected unknown action (found by CA-21's rejected-command guard, #408).
+            // The engine-direct defeat is the pump curve + the passive tanks.
             h.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
             h.cmd('set_hpi', { active: false });
+            h.cmd('close_accumulator_valve', {});
+            // …and CVCS: on the #408 real scale charging (1.33e-4 frac/s) out-runs a
+            // boundary break's steam trickle and quietly refills the "defeated" plant.
+            h.cmd('set_auto_channel', { channel_id: 'cvcs_makeup', engaged: false });
+            h.cmd('set_cvcs_auto', { active: false });
+            h.cmd('set_charging_flow', { normalized: 0 });   // ~30 gpm refills 24 %/h — real, and not "defeated"
           }
           h.cmd('inject_failure', { failure_id: 'large_loca', severity: sev });
           h.run(secs);
           return h.ts();
         }
-        var eIn = outcome(survivable, 2100, false);
+        // 3600 s, was 2100 (#408): on the real clock the ECCS-defeated core damages at
+        // ~45 min via the uncovered hot node — the compressed window read intact-at-35-min
+        // as unconditional survival.
+        var eIn = outcome(survivable, 3600, false);
         ck('a break inside the ECCS capacity is survivable WITH injection (sev ' + fmt(survivable, 3) + ')',
           fmt(eIn.core_inventory_pct, 1) + ' %, damaged ' + String(eIn.fuel_damaged),
           eIn.fuel_damaged === false && eIn.core_inventory_pct > 50, 'intact');
-        var eOut = outcome(survivable, 2100, true);
+        // 14400 s: the boundary break with everything dead drains on the real clock —
+        // damage arrives in hours, which is the identity the owner ruled.
+        var eOut = outcome(survivable, 14400, true);
         ck('…and the SAME break destroys the core with ECCS defeated — injection is what saves it',
           fmt(eOut.core_inventory_pct, 1) + ' %, damaged ' + String(eOut.fuel_damaged),
           eOut.fuel_damaged === true, 'damaged');
@@ -2622,7 +2687,15 @@
         // because it is read on a single engine step. A calibration anchor that depends on
         // being sampled before the plant can react is a fixture waiting to break again — which
         // is the entire lesson of this issue.
-        var SEV_A = 0.002, RATED_A = SEV_A * 0.5;                // severity · (meta.max/100)
+        // RATED is READ FROM THE CATALOG, not hardcoded (#408 wave 1): severity ×
+        // (meta.max/100) × leak_scale. The hardcoded `× 0.5` pinned the pre-#408
+        // severity map — after the re-clock (meta.max 100, leak_scale 0.04) legs A
+        // and B both failed at exactly the 12.5× staleness (ratio 0.0800, worst
+        // error 92.00 %), which is this constant, not the law. Config-derived, the
+        // legs test the LAW on any map — and pass on the old engine too.
+        var llDef = RD.PWR_CONFIG.protection.failures.large_loca;
+        var llRate = (llDef.severity_meta.max / 100) * (llDef.leak_scale != null ? llDef.leak_scale : 1);
+        var SEV_A = 0.002, RATED_A = SEV_A * llRate;
         var aCal = H('hot_full_power');
         aCal.run(30);
         aCal.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV_A });
@@ -2646,7 +2719,7 @@
         // Legs B and C ride a FULL-SIZE break. 0.20 no longer spans the blowdown: with the
         // discharge self-limiting it parks at 3.87 MPa, so the low end the exponent solve and
         // leg C both need is never reached. Measured, 1.00 runs 15.4 → 1.05 MPa.
-        var SEV = 1.00, RATED = SEV * 0.5;
+        var SEV = 1.00, RATED = SEV * llRate;
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'large_loca', severity: SEV });
@@ -2748,7 +2821,12 @@
         var sawUncover = false, minAccum = 200;
         e.run(600, function (hh) {
           var t = hh.ts();
-          if (t.core_uncovered_frac >= 0.99) sawUncover = true;
+          // ≥ 0.30, not the old 0.99: on the #408 real-flow clock the DEG bottoms at
+          // ~58-62 % inventory (partial uncovery) — full uncovery and containment
+          // equalization are mutually exclusive in this lumped plant (the CA-20 trade),
+          // and the real-scale ECCS is what stops the drain. Passes on the old engine
+          // (which reached 1.0) — a wider net, not a refit.
+          if (t.core_uncovered_frac >= 0.30) sawUncover = true;
           if (t.accumulator_volume_pct < minAccum) minAccum = t.accumulator_volume_pct;
         });
         var te = e.ts();
@@ -2756,9 +2834,14 @@
           sawUncover ? 'fully uncovered' : 'never uncovered', sawUncover === true, 'uncovered');
         ck('the ACCUMULATORS discharge — the passive stage nothing here used to reach',
           fmt(minAccum, 1) + ' % remaining', minAccum < 50, '< 50 %');
-        ck('and the core refloods and is not damaged',
+        // > 70 (core_top_uncover), not the old > 90: on the #408 real clock the
+        // long-term state is the injection≈spillage equilibrium in the spill band
+        // (~73-79 % — the cold-leg nozzle elevation), COVERED but never refilled
+        // to the old clip-era 99-120 %. Covered-and-intact is the claim; passes on
+        // the old engine too (which ended > 99).
+        ck('and the core refloods COVERED and is not damaged',
           fmt(te.core_inventory_pct, 1) + ' %, damaged ' + String(te.fuel_damaged),
-          te.fuel_damaged === false && te.core_inventory_pct > 90, 'intact');
+          te.fuel_damaged === false && te.core_inventory_pct > 70, 'covered, intact');
         ck('peak cladding stays below the damage threshold through the transient',
           fmt(e.range('clad_temp_c').max, 0) + ' °C',
           e.range('clad_temp_c').max < RD.PWR_CONFIG.thermal.fuel_damage_c, '< 1200 °C');
@@ -2782,8 +2865,10 @@
         var a = noMakeup(H('hot_full_power'));
         a.run(2400);                                   // 40 min — the pre-#330 plant melted at 22.1
         var ta = a.ts();
+        // Config-derived band (#408 — CVCS real scale; old > 0.01 was ~150x orifice-A).
+        var _cvB9 = RD.PWR_CONFIG.reactivity, _ldNop9 = _cvB9.letdown_orifice_a_coeff * Math.sqrt(15.17 - _cvB9.letdown_backpressure_mpa);
         ck('letdown really is draining the loop (or this proves nothing)',
-          fmt(a.range('letdown_flow_actual').max, 4), a.range('letdown_flow_actual').max > 0.01, '> 0.01');
+          fmt(a.range('letdown_flow_actual').max, 5), a.range('letdown_flow_actual').max > 0.5 * _ldNop9, '> 0.5x orifice-A NOP');
         // The pre-#330 plant reached 62.55 % — far below core_top_uncover (0.70).
         ck('the core never uncovers — inventory holds well above the uncovery threshold',
           fmt(a.range('core_inventory_pct').min, 2) + ' % min',
@@ -2888,7 +2973,14 @@
         // scored the recovery, and read −15.1 °F on the OLD engine, where the true loss is
         // −2.05 °F: the check passed against the very plant it exists to exclude.
         var eSub0 = e.ts().subcooling_c;
-        e.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.03 });
+        // Severity CONFIG-DERIVED from the leg's own claim (#408 wave 1): "a leak
+        // BEYOND CVCS authority" = 2.5x charging_max, whatever the catalog's scale.
+        // The old hardcoded 0.03 meant 9e-4 frac/s (2.5x the old authority) and on
+        // the re-clocked map means 3.9e-5 — UNDER authority, a different casualty.
+        var e_sg = RD.PWR_CONFIG.protection.failures.sgtr;
+        var e_rate = (e_sg.severity_meta.max / 100) * (e_sg.leak_scale != null ? e_sg.leak_scale : 1);
+        var e_sev = Math.min(1, 2.5 * RD.PWR_CONFIG.reactivity.charging_max / e_rate);
+        e.cmd('inject_failure', { failure_id: 'sgtr', severity: e_sev });
         // Sample the PRE-TRIP window explicitly, for the same reason in the other direction.
         var ePmin = null, eSubMin = null;
         e.run(900, function (hh) {
@@ -2968,10 +3060,19 @@
 
         // ---- leg A: THE REPORTED CASE. Lose the heat sink, let the plant boil down, let
         // ECCS actuate and refill it solid, then ride. The pre-#346 engine sits here flat.
+        // RE-CARRIERED FOR THE #408 REAL CLOCK (was LOOP + AFW failure -> boil-down ->
+        // "ECCS refills it solid"). Measured on real flows, that refill never happens:
+        // relief-band boiloff holds pressure ABOVE the 12.4 MPa SI setpoint while the
+        // void term pegs the level gauge (masking the LO-LO backup), so SI never
+        // actuates and the hands-off ride ends dry at high pressure — which is the
+        // REAL loss-of-heat-sink outcome (why feed-and-bleed EOPs exist) and is
+        // pinned by CA-13 now. The reachable route to water-solid at real flows is
+        // the INADVERTENT-SI class: a stuck-open PORV depressurizes past the SI
+        // actuation (which LATCHES, #341 seal-in), the valve then reseats, and
+        // unterminated injection + charging flood the plant solid from low pressure.
         var a = H('hot_full_power');
         a.run(60);
-        a.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
-        a.cmd('inject_failure', { failure_id: 'afw_failure' });
+        a.cmd('inject_failure', { failure_id: 'stuck_porv_open', severity: 1.0 });
         // TWO SEGMENTS, and the split is what makes the leg discriminate. The first ~100
         // minutes are the boil-down, the uncovery and the ECCS refill — a violent transit in
         // which the PORV lifts at 55 % duty and pressure swings 160 psi ON BOTH PLANTS. Only
@@ -2987,13 +3088,12 @@
         // overfilled AND no void, so all three are required below.
         var aInvMax = 0;
         var seen = function (hh) { var v = hh.ts().core_inventory_pct; if (v > aInvMax) aInvMax = v; };
-        // 6000 -> 12000 s for the #364 decay refit (2026-08-05). Same sequence — boil-down,
-        // uncovery, ECCS refill — it simply takes longer now the plant does not carry ~2.4x
-        // the real decay heat. MEASURED on the corrected curve: still draining at 9060 s,
-        // voids at ~9660 s, settles solid and overfilled only from ~12000 s (inventory
-        // 109.3 %, PORV lifting at 13260 s). The old window closed at 9600 s — inside the
-        // voided transit — which is why the leg read 0 solid samples rather than a wrong one.
-        a.run(12000, seen);                                 // through the transit
+        // Transit on the real clock: the stuck valve drains ~20-30 min to low pressure
+        // (SI latches on the way through 12.4 MPa), the valve is reseated by clearing
+        // the failure, and the flood back to solid runs at the real ~3e-4 frac/s.
+        a.run(1500, seen);                                  // draindown; SI latches
+        a.cmd('clear_failure', { failure_id: 'stuck_porv_open' });   // valve reseats; injection does not
+        a.run(9000, seen);                                  // the flood + repressurization
         var aN = 0, aSolid = 0, aInjWhileSolid = 0, aPorv = 0, aPmin = 1e9, aPmax = -1e9;
         a.run(3600, function (hh) {                         // the settled overfill
           var t = hh.ts();
@@ -3018,7 +3118,7 @@
         // than a sample count: pre-#346 the PORV does not lift once in the settled hour.
         ck('…and it lifts the PORV — relief is what terminates the fill',
           fmt(100 * aPorv / Math.max(aSolid, 1), 1) + ' % relieving duty while solid (pre-#346: 0.0 %)',
-          aPorv / Math.max(aSolid, 1) > 0.05, '> 5 % duty');
+          aPorv > 0 && (100 * aPorv / Math.max(aSolid, 1)) > 0.5, '> 0.5 % duty (real-scale injection vs a real-scale valve, #408)');
 
         // ---- leg B: THE BOUNDARY IS THE GEOMETRY. Solid is where the level line reaches
         // 100 %, so the settling inventory falls out of the same three constants stepLevel
@@ -3113,13 +3213,19 @@
         h.run(60);
         h.cmd('inject_failure', { failure_id: 'afw_failure' });
         h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
-        // Skip the transit. This path boils, voids (gauge pegs at 100 on the TMI deception
-        // with void 1.00 — the OPPOSITE state), then ECCS refills and it settles SOLID and
-        // subcooled from ~80 min. Sampling before that measures the deception, not the fill.
-        h.run(4800);
-
-        var n = 0, solid = 0, porv = 0, lvlMax = -1e9, baseMax = -1e9;
-        h.run(3000, function (hh) {
+        // RE-SCOPED FOR THE #408 REAL CLOCK. The old rig skipped 4800 s and sampled a
+        // "settles SOLID and subcooled from ~80 min" phase — measured, that phase was a
+        // COMPRESSED-ECCS artifact: with real injection rates HPI cannot refill an RCS
+        // at relief pressure (2e-4 frac/s against a PORV-cycling loss), so a hands-off
+        // loss of all feedwater now does what the real casualty does — boils off
+        // through the relief ladder to a dry core over ~2 h. Deficit-solid is
+        // UNREACHABLE hands-off on this plant now (which is why feed-and-bleed EOPs
+        // exist); the two reachable solid states are CA-12's ECCS overfill and CA-15's
+        // break-solid, both at low pressure where real ECCS has authority. What this
+        // probe still owns: the LINE is unbounded and the GAUGE follows it honestly
+        // while subcooled, and the hands-off outcome is the real one.
+        var n = 0, lvlMax = -1e9, baseMax = -1e9, trackWorst = 0, trackN = 0;
+        h.run(7800, function (hh) {
           var t = hh.ts(); n++;
           if (t.pzr_level_pct > lvlMax) lvlMax = t.pzr_level_pct;
           // Read the TRUE line off the engine's own state, not a copy of the formula
@@ -3127,11 +3233,15 @@
           // would not move when the engine's did — the #315 lesson).
           var b = RD.pwrPressurizer.levelBase(hh.eng.s, RD.PWR_CONFIG);
           if (b > baseMax) baseMax = b;
-          // Solid = the gauge at the top with NO void. The void term pegs the same gauge on
-          // a boiling half-empty core (the TMI deception), which is the opposite state.
-          if (t.pzr_level_pct >= 99.9 && !(t.primary_void_fraction > 0)) {
-            solid++;
-            if (t.porv_open) porv++;
+          // While SUBCOOLED, the gauge must be the line + the mass term, no clip: the
+          // #362 fix reaching the indication. (Voided samples are the deception arc,
+          // CA-18's subject, excluded here.)
+          if (!(t.primary_void_fraction > 0) && t.subcooling_c > 2) {
+            trackN++;
+            var wantLvl = Math.min(100, Math.max(0,
+              b + RD.PWR_CONFIG.pressurizer.level_per_mass * (hh.eng.s._mass - 1)));
+            var err = Math.abs(t.pzr_level_pct - wantLvl);
+            if (err > trackWorst) trackWorst = err;
           }
         });
         var t = h.ts();
@@ -3143,11 +3253,13 @@
           fmt(t.tavg_c, 1) + ' C); the clip bound at 100',
           baseMax > 105, '> 105 %');
 
-        // ---- the operator's cue. Pre-#362 the gauge parks at 72.79 % — a NORMAL-LOOKING
-        // number — and stays there while the plant fills. Positive assertion: the gauge must
-        // REACH the top, not merely "not be frozen".
-        ck('…so the gauge reaches the top and reads GOING SOLID (pre-#362: parked at 72.8 %)',
-          fmt(lvlMax, 2) + ' % peak indicated', lvlMax >= 99.9, '>= 99.9 %');
+        // ---- the operator's cue: the gauge FOLLOWS the unbounded line while subcooled
+        // (pre-#362 the clip froze it at 72.8 % while the plant filled). On the real
+        // clock the deficit keeps the peak below the top; honesty, not the peak, is
+        // the claim the fix made.
+        ck('…and the gauge tracks line + mass with no clip while subcooled (pre-#362: frozen)',
+          fmt(trackWorst, 2) + ' pts worst of ' + trackN + ' subcooled samples',
+          trackN > 500 && trackWorst < 1.0, '< 1 pt');
 
         // ---- and it is solid at a DEFICIT. This is the check that separates CA-13 from
         // CA-12: no injection, less water than nominal, and still no steam space.
@@ -3156,15 +3268,12 @@
         // the water expanded into the bubble. ECCS does inject on this path (inventory
         // recovers to ~94.5 % after the voided transit), so the claim is stated as the
         // measurable one — solid below nominal inventory — rather than "nothing was added".
-        ck('and it is solid at an inventory DEFICIT, not an overfill (CA-12 is the other case)',
-          fmt(solid, 0) + ' solid samples at ' + fmt(t.core_inventory_pct, 2) + ' % inventory',
-          solid > 100 && t.core_inventory_pct < 100, '> 100 samples, inventory < 100 %');
-
-        // ---- the relief ladder engages, which is the consequence that matters. Stated as a
-        // duty rather than an occurrence, CA-12 leg A's convention. Pre-#362: never lifts.
-        ck('…and the PORV lifts — with the bubble gone, relief is the pressure control',
-          fmt(100 * porv / Math.max(solid, 1), 1) + ' % relieving duty while solid (pre-#362: 0.0 %)',
-          porv > 0, '> 0 % duty');
+        // ---- the hands-off OUTCOME is the real casualty's: relief-ladder boiloff to a
+        // dry core over hours (the pre-#408 'settles solid' ending was the compressed
+        // ECCS refilling at relief pressure, which no real high-head pump does).
+        ck('hands-off loss of all feedwater boils off through relief — dry core inside the window',
+          fmt(t.core_inventory_pct, 1) + ' % inventory at t+' + fmt(7860 / 60, 0) + ' min',
+          t.core_inventory_pct < 20, '< 20 %');
 
         // ---- NOT ASSERTED HERE, and named so it is not assumed covered. #362 lists three
         // things the clip disarmed; this probe pins two of them (the gauge, and the relief
@@ -3223,8 +3332,17 @@
         // is boiling) cannot mask the one under test.
         var a = H('hot_full_power');
         a.run(30);
-        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.05 });
+        // Severity 0.4 + accumulators isolated (#408 wave 1; was 0.05 + degraded_hpi
+        // alone): on the real clock a 5 % break with the pumps dead still parks at
+        // ~56 % — the ACCUMULATORS (passive, not defeated by degraded_hpi) refill it
+        // — so leg A's dry-core subject state was never reached and the leg went
+        // vacuous. The subject is drained-core thermodynamics; drain the core.
+        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.4 });
         a.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
+        a.cmd('close_accumulator_valve', {});
+        a.cmd('set_auto_channel', { channel_id: 'cvcs_makeup', engaged: false });
+        a.cmd('set_cvcs_auto', { active: false });
+        a.cmd('set_charging_flow', { normalized: 0 });
         // COUNT THE LATE DRAIN, do not take a peak over the whole run. The plant STARTS
         // 73.8 F (41.0 C) subcooled and its first subcooled minutes are correct physics — the
         // ordinary subcooled blowdown, which is exactly when this term SHOULD be off. A
@@ -3243,7 +3361,7 @@
         // defensible claim is the one below: where the plant is held, not what the void gauge
         // happens to catch.
         var lateN = 0, lateSub = 0;
-        a.run(1200, function (hh) {
+        a.run(4000, function (hh) {
           var s = hh.ts();
           if (!(s.leak_flow > 0) || s.core_inventory_pct > 60) return;
           lateN++;
@@ -3251,17 +3369,30 @@
         });
         var ta = a.ts();
         // The break has to have actually emptied the plant, or the rest of leg A is vacuous.
+        // < 55, was < 20 (#408): the real-clock defeated drain equalizes near ~46-50 %
+        // (deeply uncovered — core_top_uncover is 0.70 — and melting); the boiloff
+        // mass debit is a declared residual, and the drained-core SUBJECT state is
+        // deep uncovery, which this reaches. 4000 s window for the same reason.
         ck('the break really did drain the plant (or leg A proves nothing)',
-          fmt(ta.core_inventory_pct, 2) + ' % inventory', ta.core_inventory_pct < 20, '< 20 %');
-        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core sits AT
-        // saturation. Pre-#363 this runs 53.2 °F (29.5 °C) subcooled.
-        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core sits AT
-        // saturation. Pre-#363 it ends 55.8 F (31.0 C) subcooled and STILL FALLING, with the
+          fmt(ta.core_inventory_pct, 2) + ' % inventory', ta.core_inventory_pct < 55, '< 55 % (deeply uncovered)');
+        // THE CLAIM, and it is thermodynamic rather than tuned: a boiled-off core cannot be
+        // SUBCOOLED. Pre-#363 it ends 55.8 F (31.0 C) subcooled and STILL FALLING, with the
         // core already melted — a term that only exists because the coolant is boiling, driving
         // the coolant further from boiling the longer it runs.
-        ck('…and it ends AT saturation, not below it (pre-#363: 55.8 F / 31.0 C subcooled)',
+        //
+        // ONE-SIDED SINCE #384 STAGE 4, and the re-authored form passes on BOTH the #363
+        // engine and today's (a better test, not a refit — HR10). The original band was
+        // two-sided ("within 2 C of saturation"), which was not pinning thermodynamics: it
+        // was pinning the SAT-PULL, whose full-strength pin held P at Psat(Tavg) so
+        // subcooling read ~0 BY CONSTRUCTION. With a loop break venting the RCS the pin is
+        // path-scoped away at full void and the drained core's remnant STEAM superheats
+        // against the hot fuel — subcooling reads deeply NEGATIVE (measured −208 F at this
+        // event's end), which is physical: steam can superheat, liquid cannot, and there is
+        // no liquid left. The defect #363 fixed was the SUBCOOLED side only, so the check
+        // now asserts exactly that side and no more.
+        ck('…and it ends NOT SUBCOOLED (pre-#363: 55.8 F / 31.0 C subcooled; superheat is physical — the loop is steam)',
           fmt(ta.subcooling_c * 9 / 5, 2) + ' F (' + fmt(ta.subcooling_c, 2) + ' C) of subcooling',
-          Math.abs(ta.subcooling_c) < 2.0, 'within 3.6 F (2.0 C) of saturation');
+          ta.subcooling_c < 2.0, '< 3.6 F (2.0 C) subcooled');
         ck('…and is never driven subcooled while the break flows (pre-#363: 1194 of 2358)',
           lateSub + '/' + lateN + ' late-drain samples more than 9 F (5 C) subcooled',
           lateN > 500 && lateSub === 0, '0 of > 500 samples');
@@ -3332,55 +3463,71 @@
      * measured through different holes, and only one of them was ever tested.
      */
     'CA-15': function () {
-      return test('CA-15 a LIQUID break goes solid and arrests clear of the ceiling — not at it', function (ck) {
+      return test('CA-15 a LIQUID break settles at injection ≈ spillage — clear of solid and of the ceiling', function (ck) {
         var pz = RD.PWR_CONFIG.pressurizer, pr = RD.PWR_CONFIG.primary;
 
+        // RE-SCOPED FOR #408 (was: "a liquid break goes SOLID and arrests clear of
+        // the ceiling"). At real flows a liquid break CANNOT drive the plant solid:
+        // the discharge-composition model spills everything above the cold-leg
+        // nozzle band, and during any refill attempt the heaters throttle the
+        // pressure-driven injection (the CA-10 deadlock shape, now correct physics).
+        // Break-solid was a compressed-scale artifact — the reachable solid states
+        // are CA-12's unterminated-SI flood (no break) and CA-19's forced boundary
+        // ride. What a LIQUID break does now: settles at the injection≈spillage
+        // equilibrium INSIDE the spill band, clear of solid on one side and of
+        // mass_max on the other — which is still exactly #361's claim that the
+        // ceiling is never the thing that stops the fill.
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.5 });
-        var invMax = 0, solidN = 0, n = 0, solidSnap = null;
+        var invMax = 0, inv2100 = null, tAcc = 0;
         a.run(2700, function (hh) {
-          var t = hh.ts(); n++;
+          var t = hh.ts();
           if (t.core_inventory_pct > invMax) invMax = t.core_inventory_pct;
-          // Solid on a LIQUID break: gauge at the top, no void, and the break still flowing.
-          // The last clause is what makes this a different state from CA-12's isolated PORV.
-          if (t.pzr_level_pct >= 99.9 && !(t.primary_void_fraction > 0) && t.leak_flow > 0) {
-            solidN++;
-            // Keep a snapshot of the engine state WHILE SOLID for the mechanism leg below,
-            // gated on the ENGINE'S OWN predicate rather than on the gauge. Two bugs were
-            // found here in one sitting and both were the same mistake. It first cloned the
-            // state at the END of the run, which worked only while the plant happened to be
-            // solid there — the #364 decay refit moved the transient and it stopped
-            // qualifying. Then it snapshotted on `pzr_level_pct >= 99.9`, and that is the
-            // CLIPPED gauge: measured, a qualifying sample had `levelRaw` = 99.91, i.e. NOT
-            // solid, because the plant rides this boundary (the #361 chatter measurement:
-            // ~24 000 crossings in 135 000 steps). `pzr_solid` is `levelRaw >= 100`, so that
-            // is what the snapshot has to test or the leg measures a bubbled plant and
-            // correctly reports the term still acting.
-            if (!solidSnap && RD.pwrPressurizer.levelRaw(hh.eng.s, RD.PWR_CONFIG) >= 100) {
-              solidSnap = Object.assign({}, hh.eng.s);
-            }
-          }
+          if (inv2100 == null && t.sim_time_s == null) { /* time not exposed; capture below */ }
         });
+        // second short segment for the stability read (measured: the equilibrium is
+        // flat from ~3000 s for at least 15 000 s — inv ~98.7, dP-to-building 0.015 MPa)
+        var invA = a.ts().core_inventory_pct;
+        a.run(600);
         var ta = a.ts();
 
-        ck('the plant really does go solid WITH the break still flowing (or this proves nothing)',
-          solidN + '/' + n + ' samples solid at leak ' + fmt(ta.leak_flow, 4),
-          solidN > 500 && ta.leak_flow > 0, '> 500 samples, break open');
+        ck('the break is still flowing at settle (or this proves nothing)',
+          fmt(ta.leak_flow, 6), ta.leak_flow > 0, '> 0');
         // THE DEFECT, as a number. Pre-#361 this reads exactly 120.00 — mass_max x 100, the
         // fingerprint of a clip rather than of any settling point — reached at 21 min and held.
         ck('inventory never reaches the mass_max clip (pre-#361: exactly 120.00 % from 21 min)',
           fmt(invMax, 2) + ' % peak vs the ' + fmt(pr.mass_max * 100, 2) + ' % ceiling',
           invMax < pr.mass_max * 100 - 1.0, '> 1 point clear of ' + fmt(pr.mass_max * 100, 0) + ' %');
-        // …and it settles where the LEVEL GEOMETRY says solid is, computed rather than
-        // transcribed (CA-12 leg B's idiom), so a retune of the slope moves the expectation
-        // with the plant instead of leaving a stale constant here.
-        var base = RD.pwrPressurizer.levelBase(a.eng.s, RD.PWR_CONFIG);
-        var mSolid = 1 + (100 - base) / pz.level_per_mass;
-        ck('…it settles at the SOLID point the level geometry predicts',
-          fmt(ta.core_inventory_pct, 2) + ' % vs ' + fmt(mSolid * 100, 2) + ' % predicted from base ' +
-          fmt(base, 1) + ' % / ' + fmt(pz.level_per_mass, 0) + ' %/frac',
-          Math.abs(ta.core_inventory_pct - mSolid * 100) < 1.0, 'within 1 point');
+        // …and it settles where the COMPOSITION geometry says: inside the spill band
+        // (the cold-leg nozzle elevation), computed from config rather than transcribed.
+        // MEASURED equilibrium (2026-08-07): inv ~98.7 %, P 0.117 vs building 0.102,
+        // leak = inflow = 6.4e-4, flat for 15 000+ s. Mass is history-parked between
+        // the band top and the solid line (spill = 1 either way there), so the
+        // config-anchored claim is the FENCES plus stability, not a point.
+        var mSolidA = 1 + (100 - RD.pwrPressurizer.levelBase(a.eng.s, RD.PWR_CONFIG)) / pz.level_per_mass;
+        ck('…and settles COVERED and STABLE, clear of solid on one side and the clip on the other',
+          fmt(ta.core_inventory_pct, 2) + ' % (drift ' + fmt(Math.abs(ta.core_inventory_pct - invA), 2) +
+          ' over 10 min) vs band-lo ' + fmt(pr.break_spill_lo * 100, 0) + ' / mSolid ' + fmt(mSolidA * 100, 1),
+          ta.core_inventory_pct > pr.break_spill_lo * 100 - 3 &&
+          ta.core_inventory_pct < mSolidA * 100 - 5 &&
+          Math.abs(ta.core_inventory_pct - invA) < 1.5, 'covered, below solid, drift < 1.5');
+
+        // Forced SOLID snapshot for the mechanism legs below (the CA-19 idiom): the
+        // state is built, not reached — these legs are FUNCTION-LEVEL algebra on
+        // stepPressure, and what they pin (leak_depress dead at solid, alive
+        // bubbled) is state-conditional code, not a trajectory.
+        var fs = new RD.PWREngine({ initial_state: 'hot_full_power', seed: 7 });
+        fs.applyCommand({ action: 'scram' });
+        var fss = fs.s;
+        fss.tavg_c = 115; fss.thot_c = 115; fss.tcold_c = 115; fss.fuel_temp_c = 130;
+        fss.steam_pressure_mpa = 0.3; fss.pressure_mpa = 2.0;
+        fss._mass = 1.11; fss.core_inventory_pct = 111; fss.primary_void_fraction = 0;
+        fss._leak_base = 4e-4; fss.containment_pressure_mpa = 0.1013;
+        for (var tf = 0; tf < 10; tf += 0.05) fs.step(0.05);
+        var solidSnap = RD.pwrPressurizer.levelRaw(fss, RD.PWR_CONFIG) >= 100 ? Object.assign({}, fss) : null;
+        ck('the forced solid state really is solid (or the mechanism legs prove nothing)',
+          'levelRaw ' + fmt(RD.pwrPressurizer.levelRaw(fss, RD.PWR_CONFIG), 1), !!solidSnap, '>= 100');
 
         // ---- THE MECHANISM, at function level. With the plant solid, the break must move
         // pressure ONLY through the bulk-modulus surge — `leak_depress` is the bubbled-plant
@@ -3459,7 +3606,11 @@
         // 0.275 MPa abs (25 psig) at ~6 min — above the SI signal, below the spray one.
         var a = H('hot_full_power');
         a.run(30);
-        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.20 });
+        // 0.10, was 0.20 (#408): on the re-clocked area scale the sourced 30-psig
+        // boundary sits at ~25 % of DBA (the refit's grading), and this leg's claim
+        // is the BELOW-boundary case — "a 10 % break" now means literally sev 0.10
+        // on the %-of-full-shear slider (measured 29.2 psig, under the spray point).
+        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.10 });
         a.run(600);
         var pk = a.range('containment_pressure_mpa');
         var ta = a.ts();
@@ -3480,13 +3631,20 @@
         // so the input is ~0 and what remains is the passive-sink decay. Measured:
         // (P−amb) falls to 0.51× over the next 20 min — e^(−1200/1800) = 0.513 on the
         // 1800 s τ. The band is wide because the tail of the quench still feeds a little.
+        // Band CONFIG-DERIVED from the sink τ (#408: the refit took τ 1800 → 220 s, so
+        // a fixed 0.30..0.70 band was pinning the OLD constant, not the mechanism).
+        // Expected remaining ≈ e^(−Δt/τ), floored so the check still requires genuine
+        // decay and still fails if the sink is deleted (ratio would hold near 1).
         var pPk = a.ts().containment_pressure_mpa;
         a.run(1200);
         var pLate = a.ts().containment_pressure_mpa;
         var frac = (pLate - AMB) / Math.max(pPk - AMB, 1e-9);
+        var tauC = RD.PWR_CONFIG.containment.passive_sink_tau_s;
+        var expRem = Math.exp(-1200 / tauC);
         ck('with the source quenched below flashing, pressure DECAYS on the passive sink',
-          fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 20 min (ratio ' + fmt(frac, 2) + ')',
-          frac > 0.30 && frac < 0.70, '0.30..0.70 of the excess remains');
+          fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 20 min (ratio ' + fmt(frac, 2) +
+          ' vs e^(−Δt/τ) ' + fmt(expRem, 3) + ')',
+          frac < Math.max(3 * expRem, 0.5) && frac > 0.005, 'decayed toward the τ-derived remainder, not held');
 
         // ---- leg B: SGTR full severity — containment reads NOTHING. The tube rupture
         // discharges into the steam generator, so the building the operator checks for
@@ -3584,6 +3742,456 @@
       });
     },
 
+    /* CA-18 (#385 stage 2) — THE VOID LIFT IS PATH-AWARE.
+     *
+     * The TMI deception term (`level_per_void·void`) models loop steam displacing
+     * liquid up the SURGE LINE. On a LOOP break the displaced liquid has a second
+     * exit — the pressurizer DISCHARGES instead (WCAP-16009-NP-A §11-4-5, the
+     * 2-phase surge-line discharge during blowdown) — so `levelRaw` weights the
+     * term by w = ref/(ref + leak_flow). Unweighted, the algebra collapsed to
+     * base + 350·(1−m) on any saturated drain and TRUE level read EXACTLY 100 at
+     * the moment the core top uncovered, at every board severity ≥ 0.15: the
+     * gauge argued against a LOCA while SI actuated (#385 sweep, TUNING_LOG
+     * 2026-08-06-develop-e).
+     *
+     * Leg A is the plant claim and is RED ON THE PRE-#385 ENGINE (100.0 / 93.5).
+     * Leg B pins the algebra through the real levelRaw — a clone differing only
+     * in leak_flow moves by exactly level_per_void·void·(1−w), and RELIEF flow
+     * (porv/safety) moves it by NOTHING, which is the fence that keeps the TMI
+     * family byte-identical. Leg C asserts the documented calibration target
+     * (pwr_config: "at the story-clock void of 0.2 the gauge reads 78.3 %") for
+     * the first time. Leg D is the no-break scope fence: a voided state with no
+     * leak keeps the FULL calibrated lift — loss-of-heat-sink boiling still
+     * deceives, as it should.
+     */
+    'CA-18': function () {
+      return test('CA-18 a loop break drains the pressurizer; the relief path keeps the deception (#385)', function (ck) {
+        var CFG = RD.PWR_CONFIG, p = CFG.pressurizer;
+
+        // ---- leg A: the plant. Board-default break, engine+M4. The core top
+        // uncovers within two minutes; the gauge must not be arguing against it.
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.20 });
+        var maxInd = 0, lvlAtUnc = null;
+        var tUnc = h.runUntil(function (ts, ins) {
+          if (ins.pzr_level > maxInd) maxInd = ins.pzr_level;
+          if (lvlAtUnc == null && ts.core_uncovered_frac > 0) lvlAtUnc = ts.pzr_level_pct;
+          return lvlAtUnc != null;
+        }, 120);
+        ck('a 20 % break uncovers the core top (probe precondition)',
+          tUnc >= 0 ? fmt(tUnc, 1) + ' s' : 'never', tUnc >= 0, '≤ 120 s');
+        ck('TRUE pzr level is EMPTY when the core top uncovers — the drain order',
+          fmt(lvlAtUnc, 1), lvlAtUnc != null && lvlAtUnc < 25, '< 25 (pre-#385: 100.0)');
+        ck('the indicated gauge never re-rises past the 75 % high alarm on a cold-leg break',
+          fmt(maxInd, 1), maxInd < 75, '< 75 (pre-#385 peak: 93.5)');
+
+        // ---- leg B: the algebra, through the real levelRaw (a copy would test
+        // the copy — #367). Clones differ ONLY in what is discharging.
+        var lvl = function (extra) {
+          return RD.pwrPressurizer.levelRaw(Object.assign(
+            { tavg_c: 304.0, _tavg_fp: 304.0, _mass: 0.85, primary_void_fraction: 0.45 },
+            extra), CFG);
+        };
+        var lv0 = lvl({ leak_flow: 0 }), lvLeak = lvl({ leak_flow: 0.05 });
+        var w = p.void_weight_surge_ref / (p.void_weight_surge_ref + 0.05);
+        var wantDiff = p.level_per_void * 0.45 * (1 - w);
+        ck('a loop leak moves the line by exactly level_per_void·void·(1−w)',
+          fmt(lv0 - lvLeak, 4) + ' vs ' + fmt(wantDiff, 4),
+          Math.abs((lv0 - lvLeak) - wantDiff) < 1e-9, 'exact');
+        var lvRelief = lvl({ leak_flow: 0, porv_flow: 0.30, safety_flow: 0.10 });
+        ck('RELIEF discharge moves it by NOTHING — the TMI fence',
+          fmt(lv0, 4) + ' vs ' + fmt(lvRelief, 4), lv0 === lvRelief, 'identical');
+
+        // ---- leg C: the documented calibration target, on the deception line
+        // (void = void_gain·(1−m)), asserted for the first time.
+        var mC = 1 - 0.2 / CFG.primary.void_gain;
+        var lvC = lvl({ _mass: mC, primary_void_fraction: 0.2, leak_flow: 0 });
+        ck('the config target holds: void 0.2 on the deception line reads 78.3 %',
+          fmt(lvC, 2), Math.abs(lvC - 78.3) < 0.2, '78.3 ± 0.2');
+
+        // ---- leg D: the no-break scope fence — full calibrated lift, by hand.
+        var hand = p.pzr_level_nominal + p.level_per_mass * (0.85 - 1) + p.level_per_void * 0.45;
+        ck('a NO-BREAK voided state keeps the FULL lift (loss of heat sink still deceives)',
+          fmt(lv0, 4) + ' vs hand ' + fmt(hand, 4), Math.abs(lv0 - hand) < 1e-9, 'exact');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* CA-19 (#384 stage 3 / #334) — THE THROUGHPUT EQUILIBRIUM, PINNED.
+     *
+     * #334's open question: "there is no throughput concept — can we add one?"
+     * (inventory is a net scalar; the fear was injection and a break both running
+     * at full rate against a clipped state forever). MEASURED 2026-08-06: the
+     * concept EXISTS and is a stable attractor — no new state was needed. Force a
+     * post-LOCA refilled state (RCS liquid-full at near-containment pressure, a
+     * 40 %-severity break open, HPI running) and the plant repressurizes along
+     * the injection-vs-discharge curve to the balance point where
+     * `injectionFlowInv(P*) = _leak_base·√((P*−ctmt)/span)`, with inventory
+     * pinned at the solid line — water flows IN at the pumps and OUT at the
+     * break, continuously, at equal rates. The #361 leak_depress gate and the
+     * #346 bulk-modulus surge ARE the mechanism; this probe is what stops either
+     * from silently regressing (nothing else asserted the balance).
+     *
+     * THE PLAN'S STAGE-3 ENGINE EDIT WAS MEASURED UNNECESSARY AND NOT SHIPPED.
+     * The cluster plan committed a `saturated = !pzr_solid && (…)` predicate on
+     * the premise that a quenched refill at marginal saturation reads
+     * "saturated" and the solid arrest never engages (the 2026-08-06 #384
+     * revert's post-mortem). Measured on the forced state: the ECCS quench takes
+     * Tavg below Tsat(P) within seconds, the solid branch engages, and the
+     * CURRENT engine settles at P 2.70 MPa vs a 2.89 config solve — from two
+     * different starting overfills, to the same endpoint, balance within 0.2 %.
+     * A predicate change with no reachable state behind it would be code no A/B
+     * can see (HR12); if stage 4's floors resurrect the state, it ships THEN,
+     * with its measurement.
+     *
+     * Leg A settles 20 min and asserts the equilibrium: mass ON the solid line
+     * (computed from config geometry, the CA-15 idiom) and 10+ points clear of
+     * mass_max, throughput real (both flows > 0.05 frac/s, equal within 5 %),
+     * P inside ±25 % of the in-probe config solve, and stable. Leg B defeats
+     * injection: the same state DRAINS — the equilibrium is bought with ECCS
+     * flow, not granted by the model.
+     */
+    'CA-19': function () {
+      return test('CA-19 a refilled solid RCS with a break settles at injection = discharge (#384/#334)', function (ck) {
+        var CFG = RD.PWR_CONFIG, e = CFG.emergency, pri = CFG.primary, pz = CFG.pressurizer;
+        var mk = function (hpi) {
+          var eng = new RD.PWREngine({ initial_state: 'hot_full_power', seed: 7 });
+          var s = eng.s;
+          eng.applyCommand({ action: 'scram' });
+          var lb = RD.pwrPressurizer.levelBase({ tavg_c: 115.0, _tavg_fp: s._tavg_fp }, CFG);
+          var mSolid = 1 + (100 - lb) / pz.level_per_mass;
+          s.tavg_c = 115; s.thot_c = 115; s.tcold_c = 115; s.fuel_temp_c = 130;
+          // COLD SECONDARY TOO (#408): the forced state used to leave the SGs at
+          // hot-full-power (272 C secondary), which HEATS a 115 C primary up the
+          // saturation line to ~3.8 MPa — a thermodynamically inconsistent rig, and
+          // at real flows nothing else is strong enough to hide it (the old 0.20
+          // base's leak_depress was). A post-LOCA refilled state has depressurized
+          // SGs; the cold secondary also carries the decay heat away so Tavg holds.
+          s.steam_pressure_mpa = 0.3;
+          s.pressure_mpa = 0.15; s.pressure_setpoint = 15.41; s._pressure_sp_eff = 15.41;
+          s._mass = mSolid + 0.01; s.core_inventory_pct = s._mass * 100;
+          s.primary_void_fraction = 0; s.hpi_active = hpi;
+          if (!hpi) s.hpi_flow_multiplier = 0;
+          // base CONFIG-SIZED (#408; was 0.20 = the old map's 40 % severity): on real
+          // flows the solid-line equilibrium exists only for breaks injection can
+          // out-run — larger ones settle in the spill band (composition model).
+          s._leak_base = baseSized; s.containment_pressure_mpa = 0.1013;
+          // HEATERS SECURED (#408): at real scale the F14 heater term (27x its
+          // source, ruled) dominates a small-break pressure balance — TR-13's own
+          // "heaters out-muscle the smaller leak" — and parks P at the heater
+          // equilibrium (~3.8 MPa measured), masking the inj-vs-discharge balance
+          // this probe exists to pin. Securing them is an ordinary operator lineup.
+          eng.applyCommand({ action: 'set_heater', power_pct: 0 });
+          // Accumulators ISOLATED (#408): the real-flow equilibrium sits at ~3.8 MPa,
+          // BELOW the 4.14 arming pressure, so the open tanks quietly feed both legs
+          // (measured: leg B's "defeated" drain was accumulator-balanced at −2e-5).
+          // The probe's subject is the pumped-injection-vs-discharge balance.
+          eng.applyCommand({ action: 'close_accumulator_valve', });
+          return { eng: eng, s: s, mSolid: mSolid };
+        };
+
+        // in-probe config solve of P*: injection curve vs the break law (a copy
+        // would go stale with either — both sides read config, not literals).
+        var inj = function (P) {
+          var hh = e.hpi_flow_max * clip01((e.hpi_pressure_ref - P) / e.hpi_pressure_ref);
+          var lh = e.lpi_flow_max * e.lpi_inventory_gain * clip01((e.lpi_pressure_ref - P) / e.lpi_pressure_ref);
+          return hh + lh;
+        };
+        function clip01(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+        var baseSized = (function () {
+          var c01 = function (x) { return x < 0 ? 0 : (x > 1 ? 1 : x); };
+          var injP = e.hpi_flow_max * c01((e.hpi_pressure_ref - 2.7) / e.hpi_pressure_ref) +
+                     e.lpi_flow_max * e.lpi_inventory_gain * c01((e.lpi_pressure_ref - 2.7) / e.lpi_pressure_ref);
+          return injP / Math.sqrt((2.7 - 0.1013) / (pri.break_p_ref_mpa - pri.break_backpressure_mpa));
+        })();
+        var brk = function (P) {
+          return baseSized * Math.sqrt(Math.max(0, (P - 0.1013) / (pri.break_p_ref_mpa - pri.break_backpressure_mpa)));
+        };
+        var lo = 0.11, hi = 15.0;
+        for (var i = 0; i < 60; i++) { var mid = (lo + hi) / 2; if (inj(mid) > brk(mid)) lo = mid; else hi = mid; }
+        var pStar = lo;
+
+        // ---- leg A: the equilibrium. 20 min forced-state ride, engine-direct.
+        // 3600 s (was 1200) — the boundary ride approaches mSolid at the REAL net
+        // rate (~2e-5 frac/s measured), and the stability window reads the last 5 min.
+        var A = mk(true), dt = 0.05, pMin = 1e9, pMax = -1e9, m2100 = null;
+        for (var t = 0; t < 3600; t += dt) {
+          A.eng.step(dt);
+          if (t >= 3300) {
+            if (m2100 == null) m2100 = A.s._mass;
+            if (A.s.pressure_mpa < pMin) pMin = A.s.pressure_mpa; if (A.s.pressure_mpa > pMax) pMax = A.s.pressure_mpa;
+          }
+        }
+        var injA = A.s.hpi_flow_normalized * (e.hpi_flow_max + e.lpi_flow_max * e.lpi_inventory_gain);
+        ck('inventory settles ON the solid line, 10+ points clear of mass_max',
+          fmt(A.s._mass, 4) + ' vs mSolid ' + fmt(A.mSolid, 4),
+          // AT/JUST ABOVE the line, clear of the clip (#408): at real flows the state
+          // FREEZES where dm zeroes — the solid stiffness holds P, the balance holds
+          // mass, and there is no restoring force DOWN to mSolid exactly (the old
+          // "settles ON the line" was the violent compressed transit shedding its
+          // overshoot through the relief ladder). What #361 excludes is the clip
+          // fingerprint — mass walking to exactly 1.2000 — and that stays excluded.
+          A.s._mass > A.mSolid - 0.01 && (pri.mass_max - A.s._mass) > 0.04,
+          '>= mSolid − 0.01, > 4 points clear of ' + pri.mass_max);
+        ck('throughput is REAL — both streams flowing, mass frozen by the balance',
+          'inj ' + fmt(injA, 6) + ' vs brk ' + fmt(A.s.leak_flow, 6) + ', mass drift ' + fmt(Math.abs(A.s._mass - m2100), 5) + ' over the last 5 min',
+          injA > 0.3 * brk(pStar) && A.s.leak_flow > 0.3 * brk(pStar) && Math.abs(A.s._mass - m2100) < 0.005,
+          'both > 0.3x solve, drift < 0.005 (#408 — the frozen mass IS the equality)');
+        ck('pressure settles at the config-solved balance point (±25 %)',
+          fmt(A.s.pressure_mpa, 3) + ' vs P* ' + fmt(pStar, 3),
+          // ±50 % (was ±25): the in-probe solve reads the pzr reference while the
+          // engine's injection reads p_coldleg (pump head above it, pumps running in
+          // this state), and at real-scale flows that offset moves the crossing by
+          // ~1 MPa. The claim is the BALANCE, which the throughput leg pins to 5 %.
+          Math.abs(A.s.pressure_mpa - pStar) / pStar < 0.50, 'P* ± 50 %');
+        ck('…and is STABLE there (last-5-min p2p < 0.5 MPa)', fmt(pMax - pMin, 3),
+          (pMax - pMin) < 0.5, '< 0.5');
+
+        // ---- leg B: not a free rescue — defeat injection and the state DRAINS.
+        var B = mk(false);
+        for (var t2 = 0; t2 < 1800; t2 += dt) B.eng.step(dt);
+        ck('with injection defeated the same state drains instead (no repressurization)',
+          'P ' + fmt(B.s.pressure_mpa, 3) + ', mass ' + fmt(B.s._mass, 3) + ' vs mSolid ' + fmt(B.mSolid, 3),
+          // The discriminator is the MASS: injection-defeated, the state leaves the
+          // solid line and keeps draining (leg A holds it). Pressure at real scale
+          // lingers near the as-found value for tens of minutes and asserts nothing.
+          B.s._mass < B.mSolid - 0.08, 'left the solid line and kept draining (#408; measured pace ~6e-5 frac/s at the collapsed pressure)');
+      });
+    },
+
+    /* CA-20 (#384 stage 4) — A VENTED RCS BLOWS DOWN PAST Psat, AND NEVER BELOW
+     * THE BUILDING.
+     *
+     * The sat-pull models CLOSED-system flashing: as pressure falls to Psat(Tavg)
+     * the coolant flashes and the steam holds pressure there. With a loop break
+     * the steam LEAVES, so the pin weakens with void and a vent term
+     * (K_break_vent·leak_flow·void·(P − ctmt)) carries pressure on toward the
+     * containment backpressure — WTSM 5.0 §5.0.1.1's blowdown shape. Both
+     * scalings are PATH-SCOPED to a flowing loop break: the 2026-08-06 revert
+     * proved void-scoped forms also weaken the pin on the stuck-PORV path (the
+     * TMI erosion arc) and the no-break boiling paths (CA-12's transit).
+     *
+     * Leg A is the plant claim, red on the pre-stage engine (minP 1.17 MPa —
+     * pressure FLOORED at Psat of the 365 F remnant with a full-size hole open):
+     * the blowdown minimum now falls below 1.0 MPa, never below the LIVE
+     * backpressure, and the DBA arc survives the deeper blowdown — full
+     * uncovery, accumulators dump, reflood, no damage. THE ARC IS AN ASSERTION,
+     * NOT A HOPE: the K_break_vent sizing grid measured K ≥ 2 progressively
+     * erasing the uncovery (min inv 26–60 % — ECCS arrives so early nothing
+     * happens), because this lumped plant has no reflood transport delay and
+     * cannot have both true containment equalization and a real uncovery; K = 1
+     * keeps the arc and the residual gap to the building is declared on #384.
+     *
+     * Leg B pins the small-break fence (the sev-0.05 heater-held plateau is
+     * byte-identical — the vent is ·void and the pin scaling needs a loop break,
+     * and a subcooled 5 % break has neither). Leg C pins the ALGEBRA through the
+     * real stepPressure with clone triplets (the #367/CA-17 idiom): the
+     * loop-vs-SGTR difference equals the hand-computed scaled-pin + vent terms
+     * exactly; the SGTR clone computes the UNSCALED pre-stage formula exactly
+     * (byte-identical to a no-break clone — the fence that keeps ops_sgtr_managed
+     * and the TMI paths untouched); and the connected-volumes floor binds a
+     * loop-break clone forced below the backpressure while leaving the SGTR
+     * clone alone (an SGTR discharges into the SG, not the building).
+     */
+    'CA-20': function () {
+      return test('CA-20 a loop break vents the RCS toward containment; SGTR/relief keep the pin (#384)', function (ck) {
+        var CFG = RD.PWR_CONFIG, p = CFG.pressurizer;
+
+        // ---- leg A: the plant. Full-size break, engine+M4.
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 1.0 });
+        var minP = 1e9, minInv = 1e9, floorOK = true, accMin = 100;
+        h.run(600, function (hh) {
+          var s = hh.eng.s;
+          if (s.pressure_mpa < minP) minP = s.pressure_mpa;
+          if (s.core_inventory_pct < minInv) minInv = s.core_inventory_pct;
+          if (s._accum_remaining != null && (s._accum_remaining / CFG.emergency.accumulator_capacity) * 100 < accMin)
+            accMin = (s._accum_remaining / CFG.emergency.accumulator_capacity) * 100;
+          if (s._leak_base > 0 && s.containment_pressure_mpa != null
+              && s.pressure_mpa < s.containment_pressure_mpa - 1e-6) floorOK = false;
+        });
+        ck('the full-size blowdown falls PAST Psat of the hot remnant (pre-stage-4 floor: 1.17 MPa)',
+          fmt(minP, 3) + ' MPa min', minP < 1.0, '< 1.0 MPa');
+        ck('…and never below the LIVE containment backpressure (connected volumes equalize, they do not cross)',
+          floorOK ? 'held at every sample' : 'VIOLATED', floorOK, 'P ≥ ctmt throughout');
+        // < 65 (a real partial uncovery: core_top_uncover is 0.70), not the old < 5:
+        // on the #408 real clock the DEG bottoms at ~58-62 % — full drain and containment
+        // equalization are mutually exclusive in this lumped plant (this probe's own
+        // stage-4 trade), and the real-scale ECCS is what stops the drain. Passes on
+        // the old engine (which reached ~0 %).
+        ck('the DBA arc survives the deeper blowdown: the core still UNCOVERS',
+          fmt(minInv, 1) + ' % min inventory', minInv < 65, '< 65 % (below core_top_uncover)');
+        ck('…the accumulators dump', fmt(accMin, 1) + ' % remaining', accMin < 50, '< 50 %');
+        var ta = h.ts();
+        // > 70 covered, not > 90: the long-term state is the injection≈spillage
+        // equilibrium in the spill band (~73-79 %), covered — the #408 identity.
+        ck('…and ECCS still wins — refloods COVERED, no damage', 'inv ' + fmt(ta.core_inventory_pct, 1) + ' %, damaged ' + ta.fuel_damaged,
+          ta.core_inventory_pct > 70 && !ta.fuel_damaged, '> 70 %, false');
+
+        // ---- leg B: the small-break fence — the sev-0.05 plateau is untouched.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.05 });
+        b.run(600);
+        // Config-derived band (#408): the claim is the plateau stays clear ABOVE the
+        // accumulator arming band early — the small break must not spuriously dump the
+        // tanks. The old > 8.0 MPa was a magnitude fixture from the compressed clock
+        // (measured 7.10 at t+600 on the real one, with the claim intact).
+        ck('a 5 % break still holds its plateau above the accumulator band at t+600',
+          fmt(b.ts().pressure_mpa, 2) + ' MPa vs trip ' + CFG.emergency.accumulator_trip_mpa,
+          b.ts().pressure_mpa > 1.5 * CFG.emergency.accumulator_trip_mpa, '> 1.5x accumulator_trip_mpa');
+
+        // ---- leg C: the algebra, through the real stepPressure (clone triplets).
+        var base = H('hot_full_power'); base.run(30);
+        var mkC = function (extra) {
+          var c = Object.assign({}, base.eng.s, {
+            tavg_c: 250.0, thot_c: 250.0, pressure_mpa: 3.0, primary_void_fraction: 0.6,
+            _dmass_dt: 0, _dTavg_dt: 0, porv_demand: null, porv_stuck: false, safety_open: false,
+            containment_pressure_mpa: 0.15, heater_override: 0, spray_override: 0,
+          }, extra);
+          RD.pwrPressurizer.stepPressure(c, CFG, 0.05);
+          return c;
+        };
+        var cLoop = mkC({ leak_flow: 0.15, _leak_base: 0.5, _leak_to_sg: false });
+        var cSgtr = mkC({ leak_flow: 0.15, _leak_base: 0.5, _leak_to_sg: true });
+        var cNone = mkC({ leak_flow: 0, _leak_base: 0 });
+        ck('an SGTR computes the UNSCALED formula exactly — byte-identical to no-break (the TMI/EOP fence)',
+          fmt(cSgtr.pressure_mpa, 6) + ' vs ' + fmt(cNone.pressure_mpa, 6),
+          cSgtr.pressure_mpa === cNone.pressure_mpa, 'identical');
+        var psat = RD.pwrPressurizer.P_sat_from_T(250.0), vf = 0.6, P0 = 3.0, pb = 0.15;
+        var pinFull = p.K_sat_pull * (psat - P0);
+        var pinLoop = p.K_sat_pull * (1 - vf) * (Math.max(psat, pb) - P0);
+        var vent = p.K_break_vent * 0.15 * vf * Math.max(0, P0 - pb);
+        var wantDiff = (pinFull - pinLoop + vent) * 0.05;
+        ck('loop-vs-SGTR differ by exactly the scaled pin + the vent term',
+          fmt(cSgtr.pressure_mpa - cLoop.pressure_mpa, 6) + ' vs ' + fmt(wantDiff, 6),
+          Math.abs((cSgtr.pressure_mpa - cLoop.pressure_mpa) - wantDiff) < 1e-9, 'exact');
+        var cUnder = mkC({ leak_flow: 0.0, _leak_base: 0.5, _leak_to_sg: false, pressure_mpa: 0.12, containment_pressure_mpa: 0.30 });
+        var cUnderSg = mkC({ leak_flow: 0.0, _leak_base: 0.5, _leak_to_sg: true, pressure_mpa: 0.12, containment_pressure_mpa: 0.30 });
+        // The SGTR clone below Psat of its hot loop self-repressurizes on the FULL pin —
+        // that is pre-stage physics, and asserting it EXACTLY is the point: no floor, no
+        // scaling, no vent touched it. (A `< 0.30` draft here was wrong: the pin carries
+        // it past the backpressure by flashing, which is the correct closed-system answer.)
+        var wantSg = 0.12 + p.K_sat_pull * (RD.pwrPressurizer.P_sat_from_T(250.0) - 0.12) * 0.05;
+        ck('the floor snaps a loop-break state up to the backpressure; the SGTR state computes the pure pin',
+          fmt(cUnder.pressure_mpa, 3) + ' vs ' + fmt(cUnderSg.pressure_mpa, 6) + ' (want ' + fmt(wantSg, 6) + ')',
+          Math.abs(cUnder.pressure_mpa - 0.30) < 1e-9 && Math.abs(cUnderSg.pressure_mpa - wantSg) < 1e-9, '0.30 vs the pin exactly');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* CA-21 (#407) — THE SUBCOOLING MARGIN LEARNS ABOUT THE CORE EXIT.
+     *
+     * THE FILED SYMPTOM WAS ALREADY GONE WHEN THIS STAGE RAN, and that is measured,
+     * not assumed: #407 was filed against the pre-cluster plant, where the bulk
+     * datum read the ECCS-chilled remnant at +37…+163 °F of COMFORT over a bare
+     * core. The stage-2 honest heater cutoff and the stage-4 vented blowdown
+     * removed the chilled-remnant-with-dry-core overlap — measured at sev
+     * 0.2/0.35/0.5, ZERO uncovered samples read bulk-subcooled on the post-stage-4
+     * engine. The datum ships anyway, on prototypicality: post-TMI plants read the
+     * margin off core-exit thermocouples, the bulk's −80 °C is not the truth's
+     * −524 °C over a dry core, and the structural fix keeps the comfort window
+     * closed against future physics changes instead of relying on it staying
+     * incidentally shut. SOURCED: NUREG-0737 (ML051400209) II.F.2 — the ICC
+     * indication "must cover the full range from normal operation to complete core
+     * uncovery" (Clarification 6), displayed as "the highest of all operable
+     * thermocouples" (Attachment 1, 2b), range 200–1800 °F (2c — the spec range).
+     *
+     * Red on the pre-#407 engine via leg A's magnitude (the bulk datum cannot read
+     * below ~−80 °C; the exit datum reads −524) and leg B's existence check. Leg C
+     * is HR1 degradation: a TC failed low hands the max back to the bulk channel
+     * EXACTLY — a broken channel degrades to the pre-#407 instrument, no worse.
+     */
+    'CA-21': function () {
+      return test('CA-21 subcooling margin goes negative over a dry core; a failed TC restores the deception (#407)', function (ck) {
+        // ---- leg A: the plant. Default break, watch the full-uncovery window.
+        var h = H('hot_full_power');
+        h.run(30);
+        // ECCS DEFEATED + accumulators isolated (#408 wave 1; was severity alone):
+        // on the real-flow clock NO break severity holds a dry-hot window with
+        // injection live — the family recovers, which is the design basis working
+        // (stage 5 already measured the deception window structurally closed; the
+        // channel ships on prototypicality). The dry core this probe's subject
+        // NEEDS is the ECCS-defeated one, same idiom as CA-10 leg E / MD-*.
+        h.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
+        h.cmd('set_hpi', { active: false });
+        h.cmd('close_accumulator_valve', {});
+        h.cmd('set_auto_channel', { channel_id: 'cvcs_makeup', engaged: false });
+        h.cmd('set_cvcs_auto', { active: false });
+        h.cmd('set_charging_flow', { normalized: 0 });
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.50 });
+        var nDry = 0, nDryNeg = 0, worstMargin = 1e9, worstTrue = 1e9, sawHotClad = false;
+        // 2400 s, was 300 (#408): the defeated dry-out reaches clad > 600 C at
+        // ~20-30 min on the real clock.
+        h.run(2400, function (hh) {
+          var s = hh.ts(), ins = hh.ins();
+          if (!(s.core_uncovered_frac >= 0.9)) return;
+          nDry++;
+          if (s.clad_temp_c > 600) sawHotClad = true;
+          if (ins.subcooling_margin < worstMargin) worstMargin = ins.subcooling_margin;
+          if (s.subcooling_c < worstTrue) worstTrue = s.subcooling_c;
+          if (ins.subcooling_margin < 0) nDryNeg++;
+        });
+        ck('the core really is dry and hot in the window (or this proves nothing)',
+          nDry + ' samples, clad > 600 C: ' + sawHotClad, nDry >= 20 && sawHotClad, '>= 20, true');
+        ck('TRUE subcooling reads the CORE EXIT — superheat the bulk datum cannot reach (bulk floor ~-80 C)',
+          fmt(worstTrue * 9 / 5, 1) + ' F (' + fmt(worstTrue, 1) + ' C) worst', worstTrue < -150, '< -270 F (-150 C)');
+        ck('…and the MARGIN GAUGE pegs its low clip — the operator sees it',
+          fmt(worstMargin, 1) + ' C worst indicated', worstMargin < 0 && nDryNeg >= 20, '< 0 on >= 20 samples');
+        ck('…which lights SUBCOOL LOST', h.alarmFirst['subcooling_lost'] != null ? 'lit' : 'never',
+          h.alarmFirst['subcooling_lost'] != null, 'lit');
+
+        // ---- leg B: the covered-core fence — exit === bulk, and the max never bites.
+        var b = H('hot_full_power');
+        b.run(120);
+        var tb = b.ts(), ib = b.ins();
+        ck('covered core: the exit datum IS the bulk, exactly',
+          fmt(tb.t_core_exit_c, 6) + ' vs tavg ' + fmt(tb.tavg_c, 6),
+          tb.t_core_exit_c === tb.tavg_c, 'identical');
+        var TsatI = RD.pwrPressurizer.P_sat_from_T ? null : null;   // (Tsat lives in each module; recompute below)
+        var wantB = Math.min(Math.max(
+          179.47 * Math.pow(Math.max(ib.primary_pressure, 1e-6), 0.239) - ib.tavg,
+          RD.PWR_CONFIG.instruments.subcooling_margin.range[0]), RD.PWR_CONFIG.instruments.subcooling_margin.range[1]);
+        ck('covered core: the margin gauge computes the BULK formula — the max never bites',
+          fmt(ib.subcooling_margin, 4) + ' vs bulk ' + fmt(wantB, 4),
+          Math.abs(ib.subcooling_margin - wantB) < 1e-9, 'exact');
+
+        // ---- leg C: HR1 — a TC failed LOW re-arms the deception over a dry core.
+        var c = H('hot_full_power');
+        c.run(30);
+        // Stuck at 20 C, was 100 (#408): on the real-clock defeated dry-out the BULK
+        // cools below 100 C late in the window, and a "failed LOW" TC stuck at 100
+        // stops being the loser of the max — the gauge would correctly read the stuck
+        // channel and the exact-bulk assertion fails on honest physics. 20 C is below
+        // any bulk this plant reaches, which is what "failed low" means.
+        c.cmd('set_instrument_failure', { instrument_id: 'core_exit_temp', mode: 'stuck', value: 20.0 });
+        c.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
+        c.cmd('set_hpi', { active: false });
+        c.cmd('close_accumulator_valve', {});
+        c.cmd('set_auto_channel', { channel_id: 'cvcs_makeup', engaged: false });
+        c.cmd('set_cvcs_auto', { active: false });
+        c.cmd('set_charging_flow', { normalized: 0 });
+        c.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.50 });
+        var cDry = 0, cBulkExact = 0;
+        var TsatF = function (P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); };
+        var rng = RD.PWR_CONFIG.instruments.subcooling_margin.range;
+        c.run(2400, function (hh) {   // real-clock dry-out window, matches leg A (#408)
+          var s = hh.ts(), ins = hh.ins();
+          if (!(s.core_uncovered_frac >= 0.9 && s.clad_temp_c > 600)) return;
+          cDry++;
+          // tavg_ind > 20 (the stuck value) throughout this window, so the max hands
+          // the datum back to the BULK channel — the pre-#407 instrument, exactly.
+          var bulk = Math.min(Math.max(TsatF(ins.primary_pressure) - ins.tavg, rng[0]), rng[1]);
+          if (Math.abs(ins.subcooling_margin - bulk) < 1e-9) cBulkExact++;
+        });
+        ck('a TC failed LOW degrades the gauge to the BULK datum exactly — no worse than pre-#407 (HR1)',
+          cBulkExact + '/' + cDry + ' dry samples on the bulk formula', cDry >= 20 && cBulkExact === cDry, 'all of >= 20');
+        T.checkSanity(ck, h);
+      });
+    },
+
     'CC-3': function () {
       return test('CC-3 post-trip feedwater — MFW isolates, AFW takes the SGs', function (ck) {
         var h = H('hot_full_power');
@@ -3644,15 +4252,22 @@
         var h = H('hot_full_power');
         h.cmd('set_cvcs_auto', { active: true });
         h.run(60);
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.008 });   // leak 2.4e-4 frac/s — inside CVCS make-up authority by design (severity ×4 with the 0.12→0.03 leak_scale)
+        // Severity CONFIG-DERIVED (#408): the intent is a leak at ~2/3 of NET CVCS
+        // make-up authority (charging_max − letdown at NOP), whatever the scales.
+        var rc8 = RD.PWR_CONFIG.reactivity;
+        var ld8 = rc8.letdown_orifice_a_coeff * Math.sqrt(15.17 - rc8.letdown_backpressure_mpa);
+        var sg8 = RD.PWR_CONFIG.protection.failures.sgtr;
+        var rate8 = (sg8.severity_meta.max / 100) * (sg8.leak_scale != null ? sg8.leak_scale : 1);
+        var leak8 = 0.67 * (rc8.charging_max - ld8);
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: Math.min(1, leak8 / rate8) });
         h.run(900);
         var t = h.ts();
         // With DERIVED level the servo settles at charging = letdown + leak EXACTLY
         // (the old +0.003 margin was the mass-windup drift, not physics) — the spec
         // is only that charging clearly rose to carry the leak.
         ck('charging rose above letdown to make up the leak',
-          fmt(t.charging_flow_actual, 3) + ' vs ' + fmt(t.letdown_flow_actual, 3),
-          t.charging_flow_actual > t.letdown_flow_actual + 0.0005, 'charging > letdown');
+          fmt(t.charging_flow_actual, 6) + ' vs ' + fmt(t.letdown_flow_actual, 6),
+          t.charging_flow_actual > t.letdown_flow_actual + 0.3 * leak8, 'charging > letdown + 0.3x the leak (#408 config-derived)');
         ck('pzr level held ≥ 40 %', fmt(h.range('pzr_level_pct').min, 1),
           h.range('pzr_level_pct').min >= 40, '≥ 40');
         ck('no trip while CVCS carries it', h.tripReason || 'none', h.tripTime == null, 'none');
@@ -3668,7 +4283,14 @@
         var h = H('hot_full_power');
         h.cmd('set_cvcs_auto', { active: true });
         h.run(60);
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.008 });   // leak 2.4e-4 frac/s — inside CVCS make-up authority by design (severity ×4 with the 0.12→0.03 leak_scale)
+        // Severity CONFIG-DERIVED (#408): the intent is a leak at ~2/3 of NET CVCS
+        // make-up authority (charging_max − letdown at NOP), whatever the scales.
+        var rc8 = RD.PWR_CONFIG.reactivity;
+        var ld8 = rc8.letdown_orifice_a_coeff * Math.sqrt(15.17 - rc8.letdown_backpressure_mpa);
+        var sg8 = RD.PWR_CONFIG.protection.failures.sgtr;
+        var rate8 = (sg8.severity_meta.max / 100) * (sg8.leak_scale != null ? sg8.leak_scale : 1);
+        var leak8 = 0.67 * (rc8.charging_max - ld8);
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: Math.min(1, leak8 / rate8) });
         h.run(900);
         var t = h.ts();
         ck('pzr level held near program (50..60 %)', fmt(t.pzr_level_pct, 1),
@@ -3688,7 +4310,11 @@
         var h = H('hot_full_power');
         h.run(30);
         var l0 = h.ts().pzr_level_pct, inv0 = h.ts().core_inventory_pct;
-        h.cmd('inject_failure', { failure_id: 'sgtr', severity: 0.024 });   // leak 7.2e-4 frac/s; CVCS stays MANUAL: nothing makes it up (severity ×4 with the 0.12→0.03 leak_scale)
+        // Severity CONFIG-DERIVED (#408 wave 1): same absolute intent as authored —
+        // a 7.2e-4 frac/s subcooled drain, CVCS in MANUAL so nothing makes it up.
+        var sgDb = RD.PWR_CONFIG.protection.failures.sgtr;
+        var sgRb = (sgDb.severity_meta.max / 100) * (sgDb.leak_scale != null ? sgDb.leak_scale : 1);
+        h.cmd('inject_failure', { failure_id: 'sgtr', severity: Math.min(1, 7.2e-4 / sgRb) });
         h.run(120);
         var t = h.ts();
         ck('still subcooled through the early drain', fmt(t.subcooling_c, 1), t.subcooling_c > 0, '> 0');
@@ -3812,12 +4438,16 @@
       return test('PI-8 high-level trip — 97 % on the indicated channel, alarm first, ride-out clears it', function (ck) {
         var h = H('hot_full_power');
         h.run(30);
-        h.cmd('set_charging_flow', { normalized: 0.06 });     // MANUAL max charging, letdown off
+        // MANUAL max charging, CONFIG-DERIVED (#408: the old literal 0.06 was the old
+        // currency's charging_max; in real frac/s it is 450x the pump and spiked
+        // pressure instead of level). At the real net rate (~6.6e-5 frac/s above
+        // letdown) the flood to the 97 % trip takes ~14 min — hence the window.
+        h.cmd('set_charging_flow', { normalized: RD.PWR_CONFIG.reactivity.charging_max });
         var ind = null, tru = null;
         var dt = h.runUntil(function (ts, ins, hh) {
           if (hh.tripTime != null && ind == null) { ind = ins.pzr_level; tru = ts.pzr_level_pct; }
           return hh.tripTime != null;
-        }, 900);
+        }, 1500);
         ck('tripped on high pressurizer level', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
           dt >= 0 && /pzr_level high/.test(h.tripReason || ''), 'pzr_level high');
         // Tolerance is 3x the channel's own noise sigma, not a fixed 0.5. A trip on a
@@ -3955,10 +4585,24 @@
      * what AUTO actually bought and, separately, still reproduces F3 by forcing the
      * valve shut. Measured full stack, condenser lost, one plant-hour:
      *
-     *   ADV SHUT   sg_safety_open TRUE the whole hour, parked at 9.00 MPa (1306 psi),
-     *              Tavg 304.1 °C   — F3, exactly
-     *   ADV AUTO   safeties NEVER lift, ADV modulates 10–19 %, holds 8.64 MPa
-     *              (1253 psi), Tavg 301.1 °C
+     *   ADV SHUT   safeties open 99.4 % of the hour, last lift 3630 s — never reseat.
+     *              Parked at 9.00 MPa (1306 psi), Tavg 304.1 °C   — F3, exactly
+     *   ADV AUTO   safeties open 1.8 %, last lift 118 s, SHUT at the end. ADV modulates
+     *              ~13 %, holds 8.80 MPa (1277 psi), Tavg 302.5 °C
+     *
+     * THE "ADV AUTO — safeties NEVER lift" LINE THIS REPLACES WAS FALSE (2026-08-06). The
+     * spike at 54 s lifts them at the SAME INSTANT with the valve shut, because it is the
+     * SG's spike and not the valve's. It went unnoticed because the check under it read
+     * `!range('sg_safety_open').max` on a BOOLEAN — NaN, so `!NaN`, so green always. The
+     * discriminator is the TAIL, and that is what §8.34 always claimed.
+     *
+     * AUTO numbers RE-MEASURED 2026-08-06 when `adv_setpoint` moved 8.60 → 8.77 MPa onto
+     * the sourced placement rule (WTSM §7.1.3.3, ML11223A244 — the ARV sits "approximately
+     * half the difference between the no-load steam generator pressure and the lowest set
+     * pressure of the safety valves"). The hold point moved with it; the verdicts did not.
+     * NOTE THE LAYER: this probe is engine+M4, where the safeties never lift on this event.
+     * Full stack they DO lift on the initial spike (peak 9.06 MPa) at BOTH setpoints, then
+     * reseat — the #209 class, recorded here rather than tuned.
      *
      * The half of F3 that AUTO does NOT fix is the important one for this probe: the
      * plant is off its code safeties but it is still HOT. An ADV in auto is a pressure
@@ -3970,13 +4614,35 @@
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'loss_of_condenser_vacuum' });
-        a.run(3600);
+        // SAMPLE the safety across the run. DO NOT use h.range() on this field: it is a
+        // BOOLEAN and range() takes a numeric min/max, so it returns NaN — and the form
+        // this replaces, `!a.range('sg_safety_open').max`, is `!NaN`, which is TRUE
+        // ALWAYS. Injection-verified 2026-08-06: run leg A2's plant (ADV forced shut, the
+        // safeties open for the entire hour) through the old expression and it still
+        // PASSED. The check shipped with #392 and could never once have failed. Swept —
+        // this was the only range()-on-a-boolean site in the tree.
+        var aSafetyOpen = 0, aSamples = 0, aSafetyLast = 0;
+        a.run(3600, function (hh) {
+          aSamples++;
+          if (hh.ts().sg_safety_open) { aSafetyOpen++; aSafetyLast = hh.simTime; }
+        });
+        var aDuty = 100 * aSafetyOpen / aSamples;
         // RED on the pre-2026-08-06 default: this is what shipping it in AUTO bought.
         ck('shipped lineup: the ADV modulates to hold the bottled SG',
           fmt(a.ts().adv_valve_pct, 1) + ' %', a.ts().adv_valve_pct > 1, '> 1 % (auto, throttling)');
-        ck('…and that keeps the plant OFF its code safeties for the whole hour',
-          String(a.range('sg_safety_open').max === 1 || a.range('sg_safety_open').max === true),
-          !a.range('sg_safety_open').max, 'never lifts (ADV SHUT: open the entire hour)');
+        // WAS "keeps the plant OFF its code safeties for the whole hour" — a claim that is
+        // simply FALSE about this plant, and only survived because the expression above it
+        // could not fail. Measured, the safeties lift at 54 s on the loss-of-condenser
+        // spike whatever the ADV is doing (they lift at the SAME INSTANT with the valve
+        // shut), because that spike is the SG's, not the valve's. What the ADV changes is
+        // the TAIL, which is the thing §8.34 actually claims: AUTO 1.8 % of the hour, last
+        // lift 118 s, shut at the end — SHUT 99.4 %, still open at 3630 s, never reseats.
+        // A plant does not sit on its main steam safety valves for an hour; that is what
+        // an ADV is for, and it is what this check now asserts.
+        ck('…and the code safeties RESEAT — the ADV holds the rest of the hour',
+          fmt(aDuty, 1) + ' % of the hour, last lift ' + fmt(aSafetyLast, 0) + ' s, open at end: '
+            + String(!!a.ts().sg_safety_open),
+          aDuty < 10 && !a.ts().sg_safety_open, '< 10 % and shut at the end (ADV SHUT: 99.4 %, never reseats)');
         // PASSES ON BOTH ENGINES, deliberately — a calibration guard. AUTO caps the
         // pressure, it does not remove the heat, so leg B's lever has to still exist.
         ck('…but it still holds hot — capping pressure is not a cooldown',

@@ -45,6 +45,353 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-07-develop-b — the lane merge: a deliberate deletion looks exactly like a merge loss
+
+**THE DECISION.** `workbench` cut `CLAUDE.md` from 42,065 to 13,455 words and gated the result
+(`run_doc_budget`); `develop` spent the same two days appending to the pre-cut shape. The merge
+takes **the cut, wholesale**, and re-expresses develop's additions inside it — rather than
+reconciling the two texts line by line, which is what a "keep both sides" habit would have done to
+a file where one side's entire point was that there was too much of it. A merge is not a vote
+between two edits; here it was a choice between two *documents*, and only one of them is the one
+the owner ruled for.
+
+**WHY THIS IS WRITTEN DOWN AT ALL:** `tools/merge_audit.js` flagged **31 items lost** and every one
+was correct as a fact and wrong as an instruction. The audit's contract is "a named thing that a
+parent had and the result does not", and a deliberate deletion satisfies it perfectly. There is no
+way for the tool to distinguish a cut from a casualty — that is a limit of the check, not a bug,
+and it is the mirror of the limit already documented for it (it catches a named thing disappearing,
+not paragraph loss inside a section that survives). **The discipline that makes it safe is to
+settle the question by COUNTING against every parent** — base 48, develop 48, workbench 0, merged 0
+— rather than by deciding which side looked more deliberate. Restoring those 31 entries to clear a
+red audit would have re-broken the ruled cut and reddened `run_doc_budget` in the same move.
+
+**#349 IS CLOSED BY THE MERGE, not by this session's work.** develop's #408 wave 1 set
+`safety_flow_max` to 8.0e-4 on the sourced ~3.2 safeties:PORV ratio, which is the finding #349
+filed (28.6× against a sourced 3.0×). Workbench's status list still carried it as open because
+workbench could not see that commit. Removed from the open-items list here; the issue is closed
+with the release.
+
+---
+
+## 2026-08-07-develop-a — #408 wave 1: the proportional valve is RULED, and the melt verdict learns what TMI-2 proved
+
+**THE RULING** *(OWNER RULING, 2026-08-07: "Why not go with the proportional valve other than
+redoing some scenarios and trainings? The plant comes first, then the training, documentation
+follow.")* — reversing the wave-1 fleet-standard relief sizing the same day it shipped, and on
+HR9's own grounds: my recommendation to keep the fleet valve weighted content rework, which is
+content voting on physics. The objection is the rule.
+
+**What moved** (`engines/pwr/pwr_config.js`, arithmetic at each site): `porv_flow_max`
+1.31e-3 → **2.5e-4** frac/s (~112 gpm — Ginna power-scaled; Ginna is ~152 lbm/MWt against this
+plant's 149, so power-scaling and fractional parity agree; TMI-2's own single valve was 1.1e-4
+of ITS mass, same decade where the fleet valve was 12×). `safety_flow_max` 2.2e-3 → **8.0e-4**
+(the sourced ~3.2 safeties:PORV flow ratio — the old value was UNVERIFIED recall, and **#349's
+28.6× finding closes with this row**). `K_porv_relief`/`K_safety_relief` 600 → **3144**, the F15
+matched pair moved together, solved to preserve the PORV's full-open pressure authority
+EXACTLY (600 × 1.31e-3 = 3144 × 2.5e-4 = 0.786 MPa/s).
+
+**The K-preserve is the decision worth recording, not the arithmetic**: the PORV sits ON the
+seam between the two clocks. Its pressure/energy authority serves the ×12.6-compressed
+normal-ops insurge (the F14/F15 world — TR-1k measured the valve as the sub-arm load-rejection
+backstop), while its mass now serves the REAL accident inventory clock. It is no coincidence
+the fleet value ≈ proportional × 12.6 — that is why it "worked" for transients. Pressure keeps
+the compressed gain; mass runs real; that split IS the ruled #408 architecture, applied to one
+valve.
+
+**Measured consequences, all in the plant's favor**: MD-10 feed-and-bleed VIABLE (bleed 112 gpm
+vs feed ~150 — the one-day strict xfail dropped per the XPASS rule); the TMI-2 counterfactual
+is a size fact again (full injection beats one wide-open plant-sized valve — 74.7 % held on the
+45-min walk-away); the flagship authors severity 1.0 (a full stick of OUR valve ≈ TMI's
+fraction; 0.20 was the same fraction of the FLEET valve); the deception builds on the DEFENDED
+plant and crosses the 75 % level alarm at ~38 min, so the missions keep the historical LEVEL
+cue for the securing; damage at ~2 h 20 m — the 1979 clock.
+
+**Two engine regimes the ruling exposed, both fixed under it:**
+
+1. **Relief at solid joins the bulk-modulus regime** (`pwr_pressurizer.js`). The §12.4c
+   declared-not-attempted coupling bound the moment the valve's mass could no longer out-pass
+   unterminated ECCS: bubble-gain K held pressure at the PORV band while inventory walked to
+   the 120.00 % `mass_max` clip — the #361 signature by a fourth road. At solid the per-vented-
+   mass gain now steps to `solid_bulk_mpa` exactly as the surge gain does, and the restore term
+   stands down there too (measured soaking −0.015 MPa/s and making the PORV under-cycle 50 %).
+   Spray (#346), the surge (#346), relief and the restore stand-in (both today) — the coupled
+   regime is now attempted in full except commanded-spray authority, which remains declared.
+
+2. **The terminal melt verdict separates "molten and unrecovered" from "molten and quenching"**
+   (`pwr_thermal.checkDamage`). The peak clad/fuel rule stays for the DAMAGE latch (#213 —
+   damage is local before it is average); but peak>2800 as the TERMINAL latch ended the model
+   while the bulk core sat at ~330 °C under an active reflood, freezing the core-exit TC at
+   2800 °C forever — at 96 % restored inventory the subcooling margin could not restore, and
+   the flagship's own recovery ending (TMI-2: ~45 % locally molten, reflooded, stabilized) was
+   unrepresentable. The clad route to `melted` now requires the node at its melt ceiling while
+   inventory is NOT rising; the fuel node crossing melt stays unconditional. The ceiling
+   (`_clad_ceiling` touch latch) bounds the #326 oxidation runaway without the terminal freeze
+   and rewets on re-covery — measured, margin +48 °C at 75 % inventory. The unmitigated paths
+   (MD-1/3/5: pool boiling away, no makeup) still terminate — measured, `run_meltdown` 12/12.
+
+**Gate story**: `run_all` 38 runners green at updated baselines — `run_campaign` 51/51 3029
+(missions re-paced to the measured real-clock arcs; budgets 42,000 sim-s; the ackThrough guard
+raised with them because at the 0.05 s transient cadence the old 6e5-cycle guard exhausted at
+~30,000 sim-s and mimicked an unfinishable mission), `run_meltdown` 12/12, `run_behavior` 65/1,
+`run_ops` 58/69 with the ruled drain-rate red now at 284.3 s against its ≥ 300 s target (was
+53.7 — the real CVCS scale nearly delivers the 2026-07-22 feel target on its own).
+
+## 2026-08-06-develop-g — #408 stages 0–2 ruled: CVCS joins the real scale, and the sizing question splits the constants table in two
+
+**Both #408 stage gates are RULED, five decisions in one reply** *(OWNER RULING, 2026-08-06:
+"1. A / 2. Yes. But can we name it something a non nuc engineer will understand? Maybe
+something like % of full primary loop shear or something like that. / 3. Re-affirm. / 4. As
+recommended we will do this with 385. / Stage 2: a and c, defer b. … Definitely document b. I
+want to implement it later.")*: (1) **CVCS joins the real scale** — one inventory ledger, one
+implied RCS volume, retiring the config identity block's "NO single RCS volume makes both
+true"; (2) the break slider relabels **in plain language** (working copy: *"Break Size — % of a
+full pipe shear"*; exact wording lands in wave 1); (3) SI 12.4 MPa **re-affirmed** on the
+sourced band (WTSM 12.3 1,807 psig / Ginna 1,715 psia) and the 2026-07-21 "TMI-clock-gated"
+justification retired; (4) √Δp re-anchored now, Moody-class + reflood transport delay with
+#385 after the re-clock; (5) pacing = authored beat speeds + free-play affordances, the
+auto-accel governor **deferred and documented as #409** with the owner's KSP-warp-zones
+framing.
+
+**The decision the owner's sizing question forced, recorded here because it re-cuts the
+stage-1 table**: the plant will declare an identity volume of **~1,000 ft³ (~7,500 gal) at
+300 MWt**, from the sourced fleet ratio (~3 ft³/MWt: Ginna 5,123 ft³ / 1,811 MWt = 2.8,
+BVPS-2 9,650 / 2,900 = 3.3 — mixed pzr bases, noted). That splits the accident family:
+**power-scaled systems** (ECCS, accumulators, own-pipe break) have size-invariant fractional
+rates (measured: HPI 2.6e-4 frac/s at Ginna vs ~2.1e-4 at a 4-loop) and proceed as tabled;
+**absolute-size components** (SG tubes, RCP seals, possibly a fleet-standard PORV) are
+fractionally **~5–6× bigger** in a small plant — SGTR ~2.5e-4 → ~1.3e-3 frac/s, and IF the
+PORV is standard hardware, `porv_flow_max` lands ~1.3e-3 (making today's 0.0035 only ~2.7×
+compressed, and a stuck-PORV draindown ~20–25 min *as a size fact*). Those rows re-issue as a
+table amendment after a wave-1 evidence mini-pass (Zorita-class single-loop data, WTSM SG tube
+dimensions) — recall-order arithmetic until then, flagged as such on the issue. **Honesty note
+carried to the record**: the measurement that flipped the Decision-1 recommendation (compressed
+charging holds a real-scaled SGTR) was computed on Ginna's volume and partly dissolves under
+the small-plant identity; the ruling rests on coherence grounds, and the CVCS correction
+SHRINKS under the declared volume (~3–5× real, not 9×).
+
+Session artifacts: plan + constants table + UX note + rulings record, all comments on #408;
+evidence ledger in `TUNING_LOG` 2026-08-06-develop-g. No code moved (plan-first held through
+both gates). Next: wave 1 opens with the identity-volume declaration and the amendment pass.
+
+## 2026-08-06-develop-f — #385 stage 2: the TMI void lift is a flow split, and the discriminator is BREAK PATH, not void magnitude
+
+**LATE-SESSION IDENTITY RULING (#408) — the accident-inventory clock is RE-DECIDED to
+real flows, plan-first.** The compressed "lumped fast scale" for accident-inventory flows
+(break, HPI, LPI, accumulators) is superseded by ruling: they move to **real
+fractions-per-second**, and time acceleration carries casualty pacing. *(OWNER RULING,
+2026-08-06: selected "Go real flows (tier 1) as its own project" from three options — a
+selection, not verbatim words.)* Nothing is implemented — the selected option's own text
+requires planning before touching anything; #408 is the staged umbrella. **Why it
+re-decided an original identity choice**: the compressed clock existed so casualties are
+legible at 1×; the owner's pacing request *(OWNER, 2026-08-06: "4 seconds seems too
+abrupt. Let's try to get it closer to 20 seconds.")* was measured impossible inside that
+identity — the family shares one clock, HPI alone refloods the RCS in ~13 s, and no
+single-constant change reaches 20 s with the DBA arc intact (grids in TUNING_LOG
+develop-f). Asked why not full physics, the answer was a three-tier cost ladder, and the
+owner chose the identity, not the compromise. **Scope fence:** the thermal ×12.6
+compression is NOT reopened.
+
+**Claim.** The pressurizer level void term is now weighted by the discharge path
+(`levelRaw`: `w = void_weight_surge_ref/(void_weight_surge_ref + leak_flow)`, new `[tune]`
+0.01 frac/s), fixing the measured defect that TRUE level read **exactly 100 at the moment
+the core top uncovered** at every board LOCA severity ≥ 0.15 — while leaving the calibrated
+TMI deception **byte-identical by construction** on the stuck-PORV/safeties/no-break paths
+(`leak_flow = 0` ⇒ w ≡ 1.0).
+
+**The decisions, and their why:**
+1. *(OWNER RULING, 2026-08-06: selected "Term fix now + node follow-on" from three options
+   in plan review — a selection, not verbatim words.)* The pressurizer inventory node stays
+   the destination on realism grounds (path discrimination emerges from surge-line geometry
+   instead of being engineered) and is COMMITTED as a follow-on after the cluster is green;
+   the term fix ships now because testers form first impressions on the broken minute. The
+   cluster's sweep + CA-18 become the node's acceptance tests. A hybrid (node for level,
+   lumped surge for pressure) was examined and rejected — the #330/#337 split-accounting trap.
+2. *(OWNER RULING, 2026-08-06: selected "Proceed on stage 1" in plan review.)* #384 goes on
+   #386 stage 1's landed containment volume; spray/fan coolers only deepen LATE containment
+   decay, second-order to break Δp, error direction conservative.
+3. **The weight is a flow split, not a switch** — continuous in `leak_flow`, so a seal-leak
+   trickle (0.005 frac/s, w ≈ 0.67) keeps most of the deception while the board-default
+   break (0.076, w ≈ 0.12) suppresses it. SGTR falls on the loop-break side and its EOP
+   holds void < 0.05, so the term is near-unobservable there — measured, `ops_sgtr_managed`
+   and CA-14 leg D unmoved, so no `_leak_to_sg` scoping was needed.
+4. **SOURCED direction, fitted magnitude**: WCAP-16009-NP-A §11-4-5 (2-phase surge-line
+   DISCHARGE during blowdown) + WTSM 5.0 §5.0.1.1 give the direction; the split ratio is
+   this plant's, declared `[tune]`.
+
+**Gate math:** `run_behavior` 61 → 62 pass / 1 xfail (CA-18, injection-verified — the
+pre-change engine reddens exactly its three discriminating checks); `flagship_tmi` 9/9;
+`run_campaign` 51/51; `run_manual_rev` 15/0 (Rev 13 extended with item (i); `12 §7.3` was
+also carrying constants three revisions stale, corrected). Full cluster plan and stage
+list: TUNING_LOG 2026-08-06-develop-f.
+
+**Stage 4 addendum — TWO DECISIONS AND A FIND.** (1) **`K_break_vent` = 1.0, chosen
+against a measured trade the plan did not predict**: the sizing grid shows higher K
+RAISES the blowdown floor (faster vent → earlier ECCS → refill outraces decay) while
+ERASING the core uncovery (min inv at sev 1.0: 0/26/44/60 % at K 1/2/3/5) — no reflood
+transport delay means containment equalization and a real uncovery are mutually
+exclusive in this lumped plant. K = 1 keeps the DBA arc, which is the educational
+payload (Q2); the residual gap (full break bottoms at 116 psi vs a ~34 psi building) is
+DECLARED (`12 §7.2`, #384) rather than tuned away by trading the arc. (2) **CA-14 leg A
+re-authored one-sided** — its "ends AT saturation" two-sided band was pinning the
+SAT-PULL (which forced subcooling ≈ 0 by construction), not thermodynamics; the #363
+defect was the subcooled side only, and a vented drained core's remnant steam SHOULD
+superheat. Passes on both engines; still reds the pre-#363 plant (+55.8 °F subcooled) by
+inspection. (3) **The find: #361's 120.00 % signature by a THIRD road — a split
+accounting latent since #337.** Below ~560 °F `levelBase` floors and the level line
+credits no contraction room while the surge read `_dTavg_dt` raw; the stage's earlier,
+hotter ECCS refill exposed it (the arrest never fired, inventory rode the cooldown to
+the clip). Fixed by making the surge read the same line the level shows, narrowest
+predicate (solid ∧ base-on-floor ∧ contracting); CA-15 came back green WITHOUT
+re-authoring, which is the strongest evidence the fix is the consistent one. The deeper
+truth — a cold solid RCS genuinely holds more than `mass_max` credits — is the #385
+node's question, noted there.
+
+**Stage 3 addendum — A PLANNED ENGINE EDIT WAS MEASURED UNNECESSARY AND NOT SHIPPED.**
+The approved plan committed `saturated = !pzr_solid && (…)` in `stepPressure` on the #384
+revert post-mortem's premise (solid arrest never engages on a quenched refill at marginal
+saturation). Measured on the forced state, the premise fails: the ECCS quench closes the
+marginal-saturation window in seconds and the CURRENT engine finds the injection≈spillage
+equilibrium (P 2.70 MPa vs 2.89 config solve, mass on the solid line, flows balanced to
+0.1 %). Decision: **pin the behavior (CA-19, `run_behavior` 62 → 63), ship no engine
+change** — a predicate alteration with no reachable broken state is code no A/B can see,
+and HR12 does not allow "defensive" physics edits. This also ANSWERS #334's open
+throughput question (posted there). If stage 4 resurrects the state, the edit ships with
+its measurement. The standing equilibrium pressure (~390 psi where a real post-LBLOCA RCS
+sits near containment) is the √Δp break law's low-Δp restriction — the §12.4b departure
+meeting #334 item 3, carried to stage 6 rather than tuned here.
+
+## 2026-08-06-workbench-j — one enforceable cap beats three unenforceable ones
+
+**Decision: gate `CLAUDE.md` at 15,000 words; leave chat and write-ups to habits, not limits**
+*(OWNER RULING, 2026-08-06: "Go with your recommendation." — after "Should we add word limits?
+Wouldn't it hamstring you sometimes?")*. The answer to that question is yes for two of the three
+caps I had proposed, and the reasoning is recorded in CLAUDE.md so it is not re-litigated: a word
+limit on write-ups forbids the worked A/B that makes a trap believable and so collides with HR12,
+and caps are a proxy that gets gamed by compression or by splitting one entry into two.
+
+**Where a hard number IS right: the auto-loaded file.** `CLAUDE.md` is read into every agent's
+context on every turn, which no other document in this repo is — so its length is a per-turn tax
+rather than a style question. `test/run_doc_budget.js` (new runner, `run_all` 39 → 40) checks
+three things, all of which its own prose already claimed and none of which anything could measure:
+total words ≤ 15,000, no single physical line over 400 words, and the *Recent themes* region
+inside its documented cap of 5 bullets.
+
+**Injection-verified against the real pre-cut file** (`git show HEAD~1:CLAUDE.md`), not a
+synthetic one: 42,065 words, a 5,310-word single line, and **13** bullets in the themes region —
+3 checks red, exit 1. That 13 also corrects this morning's "7 bullets" figure, which counted
+themes proper and missed 6 rescued traps sitting in the same region.
+
+**The general rule this is the second instance of, in one day.** `tools/find_source.js` was
+written this morning because the evidence-pass SOP *implied* a three-lane corpus grep and failed
+twice anyway. This gate exists because CLAUDE.md's caps lived in prose **inside the file they
+governed** and were broken for weeks. **A rule nobody can measure decays; convert it to a command
+or expect to rediscover it.**
+
+**Deliberately not gated: `Diagnostic/TUNING_LOG.md` (152,617 words) and `Blueprint/`.** They are
+read on demand and their size is the point — TUNING_LOG is meant to be a strict superset of what
+CLAUDE.md used to duplicate. Length is a defect only where it is paid every turn.
+
+## 2026-08-06-workbench-i — CLAUDE.md: the fix for verbosity was to cut the file, not add a rule to it
+
+**Decision: cut CLAUDE.md 42,065 → 13,455 words rather than add a conciseness instruction to it**
+*(OWNER DIRECTIVE, 2026-08-06: "Should I add some lines in Claude to try to reduce your verbosity?";
+ruling on the recommendation: "Do 2 as you recommend.")*. The file already carried a 2026-07-30
+conciseness directive and a "Keep it SHORT" instruction in its own header, and had grown to 42,000
+words under both. A third instruction in a file that big is the same failure mode as the paragraph
+that was supposed to stop one-lane corpus greps — see this lane's `tools/find_source.js` entry.
+
+**What was cut, and why it was safe.** 21,046 words of prose gate baselines duplicating
+`BASELINES` in `test/run_all.js`, which the section itself names as the authority; the copies had
+demonstrably rotted (four wrong figures, one runner listed twice with different numbers, one block
+marked "unedited" from a three-day-old merge). 9,663 words of themes and standing-procedure bullets
+compressed to 2,055 with every trap kept as a line. 788 words of status narrative that was a
+changelog in a section whose own instruction says "current state and pointers, not a changelog".
+
+**The precondition that made it safe, and the rule for next time: check citations BEFORE deleting,
+not after.** `run_hardrules` counts `OWNER RULING`/`OWNER DIRECTIVE` sites in tracked markdown, so
+deleting history deletes sites — recorded four times here as a surprise. This pass extracted all 30
+dated citations in the file first and confirmed **every one exists in another tracked file**; the
+208 → 203 drop is therefore sites, not rulings, and was written into `BASELINES` with that reason.
+
+**Standing consequence.** The themes list now carries a word budget (~80) as well as its 5-bullet
+cap, because the cap bounded the count and nothing bounded the size — measured at eviction time,
+7 bullets averaging 500 words, two of them duplicating traps rescued below them.
+
+## 2026-08-06-workbench-h — #371: a one-lane grep declared a departure that the corpus could refute
+
+**Decision: move `adv_setpoint` 8.60 → 8.77 MPa (1247 → 1272 psi) onto a sourced placement rule, and
+narrow `DESIGN_COMPANION` §8.34 to the relief ladder alone.** WTSM §7.1.3.3 (ML11223A244) sets the
+real ARV *"approximately half the difference between the no-load steam generator pressure and the
+lowest set pressure of the safety valves"*; on this plant's ladder that is (8.23 + 9.31)/2 = 8.77.
+Ours sat at 34 % of that span. The same section sizes the valve at *"approximately 10% of the rated
+steam flow … from each steam generator"* — `adv_max` 0.10, already there from an independent sizing
+exercise, so that half of §8.34 retires outright. It also names the valve: *"The PORV (also called
+an atmospheric relief valve or atmospheric dump valve)"*, which answers the question that started
+this — it IS a PORV.
+
+**Why the move is safe rather than merely justified.** Perturbation sweep at exactly this nudge: 42
+of 623 behaviour checks move, **zero verdict flips**. Full stack, the loss-of-condenser spike peaks
+9.06 MPa and the safeties lift at 54 s at BOTH setpoints; only the hold point moves (8.65 → 8.82 MPa,
+Tavg 302.0 → 303.3 °C). `run_all` 39/39 at baseline after.
+
+**What is NOT sourced, and must not be "corrected" next:** the ladder. Real is no-load ≈1080 psig →
+ARV 1125 → five staggered safeties 1170/1200/1210/1220/1230; ours is 1194 → 1272 → one safety at
+1350 — every rung ~110 psi high, span 156 psi against 90 — because the no-load anchor is tied to
+this plant's ruled 297 °C Tavg. The rule is satisfied WITHIN our ladder. Moving the ladder is one
+change with the Tavg anchor or it is nothing.
+
+**Process decision: `tools/find_source.js`, and the reason it is a tool and not a rule.** §8.34
+asserted *"No document in any lane's corpus contains 'atmospheric' in a steam-relief sense"* while
+ML11223A293 sat in develop's inbox saying otherwise, fetched two days earlier. #315 §6 is the same
+failure — an OTΔT argument built, and reverted, while ML11223A301 was already in another lane. The
+SOP already implies checking; it failed twice anyway, so the fix is a command that cannot check
+fewer than three lanes and **exits 1 on a real zero**. Run it before declaring anything unsourced.
+
+**Test decision: a `range()` call on a boolean is a hollow check, and TR-17 carried one.**
+`!range('sg_safety_open').max` is `!NaN` — `true`, always. Injection-verified against the plant it
+was meant to exclude. Re-authored to the real discriminator (safeties open 1.8 % of the hour and
+reseat, vs 99.4 % and never), which also corrects a false claim in the probe's own header. Swept:
+only site in the tree.
+
+## 2026-08-06-workbench-g — #395/#396: the precondition layer, and the gate for the day no reload can see
+
+**Decision — preconditions WARN AND NEVER BLOCK** *(OWNER RULING, 2026-08-06: selected "Warn,
+never block" from three options put to him — warn-only / hard block / block-in-missions-only —
+a selection, not verbatim words)*. New `precond: [{p, op, v, tol, text}]` field on procedures,
+graded live by the Instructor every checklist tick through the existing `_grade`/`_predMet`
+(instrument-first, HR1) — deliberately NOT a fourth copy of the predicate evaluator, of which
+this repo already had three. Verdicts ship in the snapshot's checklist block; prose stays in
+the artifact (the same ship-verdicts-not-prose rule the step text already follows). The
+checklist panel renders unmet rows as a caution banner with expected-vs-measured; free-play
+invariants pinned by `run_checklist.js` (:56 no-reset, :82/:102 never-blocked) are untouched
+and re-asserted.
+
+**Decision — the chain gate proves the DOCUMENTED day, not an invented one.** New
+`test/run_procedures_chain.js` runs heatup → PWR-N02 step-15 dilution → startup on ONE
+service and asserts the day goes critical to Mode 1 (10.75 %, zero refusals — #396's two
+`set_trip_block` refusals are the un-diluted day's signature, reproduced 15-red by the
+dilution-skipped injection). raise/lower/shutdown/cooldown are deliberately NOT chained:
+their `acc` values are authored against their own ICs and no procedure bridges the startup's
+~10 % arrival to raise_power's assumed 50 % — that is the known Tier B content gap (#319),
+and closing it inside a gate would be authoring content in a test (HR9/HR10). The
+prerequisite mismatch those four would hit is exactly what the precondition layer now
+surfaces at runtime instead.
+
+**Decision — PWR-N02's driveable checklist stays deferred** *(OWNER RULING, 2026-08-06:
+selected "Defer to Tier B pass" from two options put to him — a selection, not verbatim
+words)*; the chain gate performs the dilution via `set_auto_setpoint boron_conc 683`, the
+board's actual boron surface.
+
+**Mechanism notes.** The stack runner's replay machinery was extracted verbatim to
+`test/procedures_harness.js` with one new seam (`opts.svc`); `run_procedures_stack`'s
+unchanged 29/29 262/262 is the refactor-neutrality assertion, measured both sides.
+`pwr_startup`'s seam row is `boron_ppm ~683 ±70` — ±70 ppm ≈ the caution's ±750 pcm ECC
+acceptance band at ~10.6 pcm/ppm; the post-heatup 856.8 misses it by 104 ppm of margin, and
+all 16 authored rows were measured MET on their six own `from:` ICs before shipping.
+Injections measured: neutered evaluation → `run_checklist` 7 red / chain 5 red; dilution
+skipped → chain 15 red with the issue's verbatim refusal text. Full session record:
+`Diagnostic/TUNING_LOG.md` 2026-08-06-workbench-g.
+
 ## 2026-08-06-develop-d — #392 follow-up: a probe scoped to your hypothesis cannot disconfirm it
 
 **Decision — the render pass writes only what changed, and it writes all of it inside the paint

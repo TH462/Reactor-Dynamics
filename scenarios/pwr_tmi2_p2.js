@@ -180,7 +180,8 @@
         trigger: ack(),
         chat_button: { style: 'ack', label_learning: 'And the catch?', label_industry: 'Show the termination.' },
         commands: PHYS.isolate.commands,
-        speed: 30,
+        speed: 60,   // 60x, was 30 (#408): the refill from the dry core to the core-exit
+                     // TC re-reading coolant runs at the honest HPI trickle — hours.
         dialogue: [
           { speaker: 'chief',
             learning: '06:20. A fresh pair of eyes walks into the room, does what fresh eyes do — reads the board without last night\'s story in his head — and lands on the tailpipe temperature: 150 degrees downstream of a "closed" valve. Two minutes later the block valve is shut and the leak is over. I\'m replaying that now: block valve closed, injection back on. Watch the plant come back to life.',

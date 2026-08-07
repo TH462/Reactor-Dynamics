@@ -359,7 +359,15 @@
     // higher than the pressure at which it may be opened, so this permissive and the
     // autoclose cannot fight each other across one boundary. Armed via the 'rhr' ESF
     // system so the synoptic's RHR "Auto" button can re-arm it.
-    { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.76,
+    // 2.70, NOT the engine's 2.76 block-open (#408 wave 1): the actuation fires off
+    // the NOISY indicated channel while the engine permissive tests TRUE pressure at
+    // the same number — a zero-deadband pair across one boundary (#288's shape). A
+    // noise-early fire is REFUSED and consumes the one-shot, so RHR never aligns;
+    // invisible on the compressed clock (the fast walk spent one sample at the
+    // boundary), near-certain on the real one (the slow walk lingers there —
+    // measured: a textbook 43 °C/h cooldown ended at 1.97 MPa with RHR shut).
+    // 0.06 MPa under the permissive means an accepted fire by construction.
+    { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.70,
       action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
@@ -538,7 +546,7 @@
     // make-up authority; both together mean make-up has lost it. Both `caution` — find-it-and-
     // fix-it conditions, not casualties. [tune]
     { id: 'pzr_level_dev_low', instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Below Program — make-up is not holding', label_industry: 'PZR LVL DEV LO' },
-    { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 0.036, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },
+    { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 8.0e-5, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },   // #408 real currency: 36 gpm, nominal letdown 30 + a sev-0.2 seal leak — keeps the documented "from about severity 0.2 up" cue; was 0.036, unreachable once max charging became 1.333e-4
   ];
   var PWR_ALARMS_B = [
     { id: 'sg_level_hihi',  instrument: 'sg_level',         direction: 'high',     setpoint: 88.0, priority: 'critical', panel: 'B', category: 'power', label_learning: 'Steam Generator Level High-High (P-14)', label_industry: 'SG LVL HI HI' },
@@ -648,7 +656,9 @@
   // instrument model (§8). severity_meta is the M4 slider metadata; category
   // groups the failure for the UI Failures tab (M4 §10).
   var PWR_FAILURES = {
-    stuck_porv_open:             { type: 'command_override', category: 'coolant', intercepts: ['close_porv'], override: 'open_porv', display: 'PORV Stuck Open' },
+    // #408 (ruled 2026-08-06): severity = the STUCK FRACTION of the disc's travel.
+    stuck_porv_open:             { type: 'command_override', category: 'coolant', intercepts: ['close_porv'], override: 'open_porv',
+                                   severity_meta: { label: 'Stuck Fraction', unit: '% open', min: 0, max: 100, default: 100 }, display: 'PORV Stuck Open' },
     porv_indicator_stuck_closed: { type: 'instrument', category: 'instrument', instrument_id: 'porv_indicator', mode: 'stuck', stuck_value: 'closed', display: 'PORV Indicator Stuck Closed' },
     loss_of_feedwater:           { type: 'command_override', category: 'power', intercepts: ['set_feedwater_flow', 'set_feed_pump_speed', 'feed_pump_nudge'], override_value: 0.0, display: 'Loss of Main Feedwater' },
     turbine_trip:                { type: 'command_override', category: 'power', intercepts: ['set_steam_demand', 'set_load_target', 'connect_grid'], override_value: 0.0, display: 'Turbine Trip' },
@@ -665,7 +675,7 @@
     // a second HPI — 0.06 frac/s of make-up that no longer exists post-retune).
     // leak_to_sg: the engine ΔP-modulates it (primary−SG pressure), so
     // depressurizing to SG pressure STOPS the leak — the single-SG EOP.
-    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.03, leak_to_sg: true,
+    sgtr:                        { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 1.3e-3, leak_to_sg: true,
                                    // Severity semantics, kept transparent: severity is a fraction
                                    // of a FULL double-ended rupture; full = meta.max/100 · leak_scale
                                    // = 0.03 normalized ≈ ½ HPI's high-head rated flow. The label
@@ -714,7 +724,7 @@
     // condition (leakage below the alarm point, found by trending rather than by a horn) and not
     // a gap to close: the load-change peak is 0.0323, so a setpoint low enough to catch 0.15
     // would sit within 5 % of normal load manoeuvring and start crying wolf.
-    rcp_seal_leak:               { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 3.5e-4,
+    rcp_seal_leak:               { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 6.5e-5,
                                    severity_meta: { label: 'Leak Rate', unit: '% of make-up capacity', min: 0, max: 100, default: 40 }, display: 'Reactor Coolant Pump Seal Leak' },
     rcp_trip:                    { type: 'physics_parameter', category: 'coolant', effect: 'stop_pump', display: 'RCP Trip' },
     loss_of_condenser_vacuum:    { type: 'physics_parameter', category: 'power', effect: 'vacuum_decay', display: 'Loss of Condenser Vacuum' },
@@ -736,8 +746,14 @@
     stuck_open_spray:            { type: 'command_override', category: 'coolant', intercepts: ['set_spray'], override_value: true, display: 'Pressurizer Spray Stuck Open' },
     failed_pzr_heaters:          { type: 'command_override', category: 'coolant', intercepts: ['set_heater'], override_value: 0.0, display: 'Pressurizer Heaters Failed' },
     sg_overfeed:                 { type: 'command_override', category: 'power', intercepts: ['set_feedwater_flow', 'set_feed_pump_speed'], override_value: 120, display: 'SG Overfeed / Overcooling' },   // 120 % pump speed (was 1.2 — a pct-units slip)
-    large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate',
-                                   severity_meta: { label: 'Break Size', unit: '% rated flow', min: 0, max: 50, default: 20 }, display: 'Large LOCA (Cold-Leg Break)' },
+    // #408 wave 1: the slider spans the full design-basis break in PLAIN LANGUAGE
+    // *(OWNER RULING, 2026-08-06: "Yes. But can we name it something a non nuc engineer
+    // will understand? Maybe something like % of full primary loop shear or something
+    // like that.")* — 100 % = the complete shear of the primary loop pipe (the DEG).
+    // leak_scale 0.04 is the #408 anchor: sev 1.0 empties the vessel in ~28 s against
+    // the sourced 25-38 s blowdown (WCAP-16009 §12-4-3 / Ginna T15.6-15).
+    large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.04,
+                                   severity_meta: { label: 'Break Size', unit: '% of a full pipe shear', min: 0, max: 100, default: 40 }, display: 'Large LOCA (Cold-Leg Break)' },
     continuous_rod_withdrawal:   { type: 'physics_parameter', category: 'reactivity', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',
                                    severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 24, default: 12 }, display: 'Continuous Rod Withdrawal' },
     stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
@@ -956,8 +972,22 @@
     message_industry: 'MSIV OPEN BLOCKED — steam line isolation sealed in',
   };
   PWR_ACTUATIONS.push(
-    { instrument: 'steam_pressure', direction: 'low', setpoint: 5.20,
-      condition: { instrument: 'sg_steam_flow', direction: 'high', setpoint: 1.25 },
+    // Setpoint 4.14 MPa = the SOURCED 600 psig, was 5.20 (#408 wave 1). WTSM 12.3
+    // §12.3.5.1 / Table 12.3-1: isolation on "high steam flow coincident with
+    // low-low Tavg or low steam pressure", low steam pressure "600 psig". The
+    // 5.20 sat 8 % under rated (5.65) — inside the ordinary maneuvering band —
+    // and a dump-OPEN equipment test on the real-flow plant crossed both signals
+    // and SEALED IN a steam-line isolation during board_check's button sweep.
+    // A protection that fires on an equipment test is reading a maneuver, not a
+    // break; at the sourced 600 psig the test dips to ~5.0 and clears it by
+    // 125 psi while a genuine SLB still collapses far past it.
+    // The flow leg carries `held_within_s: 60` (#408): the real channel is a
+    // LATCHED bistable and the pressure leg is rate-sensitive, so the pair fires
+    // even though a full break's flow spike collapses ~seconds before its
+    // pressure crossing reaches 600 psig. A dump/maneuver still cannot fire it:
+    // its pressure never approaches 4.14.
+    { instrument: 'steam_pressure', direction: 'low', setpoint: 4.14,
+      condition: { instrument: 'sg_steam_flow', direction: 'high', setpoint: 1.25, held_within_s: 60 },
       action: 'close_msiv', reset_below: 7.0, seal_in: MSLI_SEAL_IN }
   );
   // PI-3: reactor trip on safety injection — SI actuating means a real casualty;

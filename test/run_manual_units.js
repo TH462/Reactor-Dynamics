@@ -264,7 +264,8 @@ var gpmBad = [];
   }
   var gpmCharging = grab(wiring, 'GPM_CHARGING (board)', /GPM_CHARGING\s*=\s*(\d+(?:\.\d+)?)/);
   var gpmLetdown  = grab(wiring, 'GPM_LETDOWN (board)',  /GPM_LETDOWN\s*=\s*(\d+(?:\.\d+)?)/);
-  var chgMax      = grab(cfgSrc, 'reactivity.charging_max', /charging_max:\s*(\d+(?:\.\d+)?)/);
+  // Regex accepts scientific notation since #408 (charging_max is 1.33333e-4 now).
+  var chgMax      = grab(cfgSrc, 'reactivity.charging_max', /charging_max:\s*(\d+(?:\.\d+)?(?:e-?\d+)?)/);
   var chgGpm      = grab(cfgSrc, 'identity.charging_max_gpm', /charging_max_gpm:\s*(\d+(?:\.\d+)?)/);
   var ldGpm       = grab(cfgSrc, 'identity.letdown_normal_gpm', /letdown_normal_gpm:\s*(\d+(?:\.\d+)?)/);
   if (gpmCharging == null || gpmLetdown == null || chgMax == null ||
@@ -286,7 +287,12 @@ var gpmBad = [];
   // 0.030 at NOP is the nominal pwr_config's own letdown comment states and the board's
   // 30 gpm readout reflects. If a coefficient retune moves that nominal, update both sides
   // and this number together.
-  var LETDOWN_A_NOMINAL = 0.030;
+  // Derived from the coefficient since #408 (the 0.030 literal was the old
+  // currency): nominal = coeff x sqrt(15.17 - letdown_backpressure).
+  var ldCoeff = grab(cfgSrc, 'reactivity.letdown_orifice_a_coeff', /letdown_orifice_a_coeff:\s*(\d+(?:\.\d+)?(?:e-?\d+)?)/);
+  var ldBack  = grab(cfgSrc, 'reactivity.letdown_backpressure_mpa', /letdown_backpressure_mpa:\s*(\d+(?:\.\d+)?)/);
+  if (ldCoeff == null || ldBack == null) return;
+  var LETDOWN_A_NOMINAL = ldCoeff * Math.sqrt(15.17 - ldBack);
   var wantLd = LETDOWN_A_NOMINAL * gpmLetdown;
   if (Math.abs(ldGpm - wantLd) > 0.5) {
     gpmBad.push('identity.letdown_normal_gpm is ' + ldGpm + ' but orifice A nominal ' +

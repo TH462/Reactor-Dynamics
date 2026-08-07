@@ -460,6 +460,8 @@ When the primary voids, **or** whenever the saturation pressure of Tavg exceeds 
 
 The consequence for the operator is the important part: **in the saturated regime you depressurise by cooling, not by spraying.**
 
+**With a loop break open, the pin weakens and the blowdown carries on toward the building (Rev 13).** The pin models closed-system flashing — steam made by the flash holds pressure at saturation. A hole in the loop lets that steam *leave*, so as void grows the pin loses authority and a vent term carries pressure past Psat toward the **live containment backpressure**: on a full-size break the RCS now bottoms near the building pressure instead of flooring at the saturation pressure of the hot remnant, which is the real blowdown shape — "the pressure has equalized with the pressure inside the containment. At this time the blowdown phase … has ended" (WTSM 5.0 §5.0.1.1). Two boundaries are deliberate: the RCS can never be pulled *below* the building it discharges into (connected volumes equalize, they do not cross), and the weakening is **path-scoped** — a stuck-open relief valve is not a loop hole (its discharge is the valve's own metered flow, so the TMI erosion keeps the full pin), and a tube rupture discharges into the steam generator, not the containment. Steam-space breaks and no-break boiling behave exactly as before. What remains declared rather than modeled: injection has no transport delay, so full equalization with the building and a prolonged core uncovery cannot both occur — the model keeps the uncovery (the accident arc the simulator teaches) and accepts a blowdown floor a little above the building.
+
 ### 7.3 Level is derived, not integrated
 
 Pressurizer level is a **pure function of state**:
@@ -473,11 +475,12 @@ There is **no level integrator**, so level and inventory cannot silently drift a
 | Term | Behaviour |
 |---|---|
 | `base(Tavg)` | Thermal expansion — 1.39 % level per °F (2.5 % per °C), anchored at 55 % for full-power Tavg, floored at 28 % |
-| Mass **deficit** | −100 % per inventory fraction — a deficit draws down the whole loop (shallow) |
-| Mass **surplus** | −300 % per inventory fraction — surplus packs into the steam space, the only compressible volume: the "going solid" regime |
-| **Void** | **+150 % per void fraction** — and it is saturation-gated |
+| **Mass** | ±776 % per inventory fraction, the same slope in both directions — the pressurizer steam space is the only compressible volume in a subcooled loop, so inventory taken out comes out of the pressurizer and surplus packs into it at the same geometric rate |
+| **Void** | **+375 % per void fraction** — saturation-gated, and since Rev 13 weighted by the discharge path (below) |
 
-That last row is **the TMI deception, and it is arithmetic**. Void fraction itself grows at three times the inventory deficit, so in a voided state the void term contributes about **+450 % per inventory fraction lost** against the mass term's **−100 %** — a net **rise** of roughly +350. **Indicated level rises while inventory falls** — and nowhere outside the saturated regime does it do that. The gauge is not lying. It is telling the truth about a quantity that has stopped meaning what you think it means.
+That void row is **the TMI deception, and it is arithmetic**. Void fraction itself grows at three times the inventory deficit, so in a voided state the void term contributes about **+1126 % per inventory fraction lost** against the mass term's **−776 %** — a net **rise** of roughly +350. **Indicated level rises while inventory falls** — and nowhere outside the saturated regime does it do that. The gauge is not lying. It is telling the truth about a quantity that has stopped meaning what you think it means.
+
+**The lift needs the surge line to be the discharge path (Rev 13).** The void term models loop steam displacing liquid *up the surge line* into the pressurizer — which is what happens when the break is at or above the pressurizer steam space (the stuck-open relief valve: TMI), or when there is no break at all and the loop is boiling (loss of heat sink). With a hole in the **loop**, the displaced liquid has a second exit and the pressurizer discharges through the surge line instead — the real large-break behaviour (WCAP-16009-NP-A §11-4-5, the two-phase surge-line discharge during blowdown). The term is therefore scaled by the split between the two paths: at the failure panel's default cold-leg break the lift is cut to about an eighth, so the level gauge **empties in seconds and stays empty while the core uncovers** — where before this revision it read exactly 100 % at the moment the core top uncovered, at every break size above about 15 %. A stuck-open PORV, the code safeties and a boiling no-break loop keep the full calibrated lift: on those paths the deception is the lesson.
 
 ### 7.4 Relief valves and the tailpipe
 
@@ -531,7 +534,7 @@ The fast mode's reference Tavg is **programmed on turbine load** — the same sl
 
 **The ADV ships in AUTO** *(changed 2026-08-06; it shipped SHUT when the valves were built in #371)*, so it modulates on its own to hold steam pressure at its setpoint, the way a real plant's atmospheric dumps do. Three consequences worth knowing.
 
-First, **AUTO caps pressure — it does not cool the plant.** A bottled generator settles at the 1247 psi (8.60 MPa) setpoint instead of parking on its 1350 psi (9.31 MPa) code safeties, but it stays hot: measured with the condenser lost, Tavg holds at 574 °F (301.1 °C) indefinitely. Starting a cooldown still means lowering the ADV setpoint or opening the valve.
+First, **AUTO caps pressure — it does not cool the plant.** A bottled generator settles just above the 1272 psi (8.77 MPa) setpoint — measured 1276 psi (8.80 MPa), the valve holding about 13 % open — instead of parking on its 1350 psi (9.31 MPa) code safeties, but it stays hot: measured with the condenser lost, Tavg holds at 576.5 °F (302.5 °C) indefinitely. Starting a cooldown still means lowering the ADV setpoint or opening the valve.
 
 Second, **the code safeties still lift on a fast transient.** Bottling the generator from full power spikes past the ADV faster than it can open — measured, an MSIV closure at power peaks at 1350 psi (9.31 MPa) with the ADV already wide open, lifts the safeties at 1317 psi (9.08 MPa) about three seconds later than it would with the ADV shut, and they reseat some five minutes later as the ADV takes over. Coming *up* from a blown-down break there is no spike, and the ADV catches it at the setpoint with the safeties never lifting at all.
 
@@ -614,6 +617,8 @@ Noise is **not** simple white noise. It is a correlated random walk with a confi
 ### 10.2 Derived indications inherit their inputs' faults
 
 **Subcooling margin is computed from the instrument pressure and the instrument temperature** — never from truth. It therefore inherits their lag and any failure. This is deliberate and it is the whole TMI lesson: subcooling margin is the most trustworthy single number on the board *and* it is still an instrument.
+
+**The temperature side reads the hotter of two channels (Rev 13): the loop bulk and a core-exit thermocouple.** On a covered core the two are the same number by construction and the margin behaves exactly as it always has. Over an uncovering core the exit channel reads the steam superheating against the exposed cladding, so the margin goes hard negative and **SUBCOOL LOST** lights while the bulk — by then quenched cold by injection — would have read comfort. This is the post-TMI inadequate-core-cooling instrumentation, as required: the indication "must cover the full range from normal operation to complete core uncovery", displayed as "the highest of all operable thermocouples" (NUREG-0737, Item II.F.2 and its Attachment 1; the channel's 200–1800 °F range is that attachment's figure). Being an instrument, the thermocouple can fail like any other — a channel failed low hands the margin back to the bulk datum, which is the pre-Rev-13 gauge exactly.
 
 ### 10.3 The PORV indicator reports the command, not the valve
 

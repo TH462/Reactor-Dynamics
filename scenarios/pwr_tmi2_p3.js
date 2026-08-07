@@ -314,7 +314,7 @@
       { id: 'p3_b15c_crew_does',
         trigger: { type: 'delay', value: 1.5 },
         commands: PHYS.isolate.commands,
-        speed: 10,
+        speed: 60,   // 60x, was 10 (#408): the refill to subcoolRestored runs the real hours
         dialogue: [
           { speaker: 'sup',
             learning: 'Fine — my hands then. Block valve driving shut, injection back on. When I hand somebody the board, I expect them to use it.',
@@ -339,13 +339,35 @@
               { type: 'true_state', field: 'fuel_damaged', direction: 'is_false' },
               { type: 'true_state', field: 'core_inventory_pct', direction: 'above', value: 85.0 },
             ] }, goto: 'p3_end_full' },
+          // PLUGGED routes on the FACTS its card narrates, not on the margin (#407,
+          // 2026-08-06). It used to require `subcoolRestored` — and that trigger was
+          // RIDING THE DECEPTION this scenario teaches: with the block valve shut and
+          // no injection the closed RCS repressurizes, Tsat(P) climbs, and the OLD
+          // bulk margin read "+restored" over a core sitting FULLY UNCOVERED at 41 %
+          // inventory with clad climbing ~19 °C/min (measured on this exact path).
+          // The core-exit datum refuses that reading — margin stays LOST until water
+          // goes in — so the route is now: isolated, undamaged, and injection never
+          // restored. The `hpi_active is_false` leg is load-bearing: without it this
+          // row catches the FULL-SAVE path mid-refill (isolated + re-injecting, inv
+          // still ≤ 85) before the full row's own conditions come true.
           { trigger: { type: 'all', triggers: [
-              TRIG.subcoolRestored,
+              TRIG.isolated,
               { type: 'true_state', field: 'fuel_damaged', direction: 'is_false' },
+              { type: 'true_state', field: 'hpi_active', direction: 'is_false' },
             ] }, goto: 'p3_end_plugged' },
+          // LATE routes on the FACTS its card narrates, the same re-key PLUGGED got
+          // (#407) and for the same reason a second time (2026-08-07, #408 real
+          // flows): post-damage the core-exit TC keeps the margin LOST until the
+          // dry core is re-covered, and at the honest high-pressure HPI trickle
+          // that is HOURS — no branch window can wait for it. The card's facts:
+          // the leak is isolated, injection is back in, and the core was damaged
+          // before the hands moved. `hpi_active is_true` keeps this row off the
+          // PLUGGED path (isolated, undamaged, never re-injected) and the damage
+          // requirement keeps it off the FULL-SAVE path.
           { trigger: { type: 'all', triggers: [
-              TRIG.subcoolRestored,
+              TRIG.isolated,
               TRIG.fuelDamaged,
+              { type: 'true_state', field: 'hpi_active', direction: 'is_true' },
             ] }, goto: 'p3_end_late' },
           { trigger: { type: 'inaction', window: 900.0 }, goto: 'p3_end_bleed_watch' },
         ] },
@@ -376,13 +398,13 @@
         speed: 1,
         dialogue: [
           { speaker: 'supx',
-            learning: 'Pressure\'s back, margin\'s back, and the core stayed covered — that\'s the night saved, and I\'ll shake your hand on it. But look at your inventory: we plugged the leak and never put the water back. If anything else lets go tonight, we\'re starting from a shallow pool. Get injection on and refill the system — a save isn\'t finished until the plant is *full*.',
-            industry: 'Subcooling and pressure restored, core covered throughout — the event is terminated, credit where due. However: RCS inventory remains well below normal. Isolation without make-up leaves no margin for a subsequent challenge. Restore injection and recover inventory — termination is not completion.' },
+            learning: 'You plugged the hole — good. Now look at the subcooling margin: still LOST, and it is not lying to you this time. The water you bled away is *gone*, the core is sitting partly dry, and pressure coming back does not put it back. Isolation was half the job. Get injection on and refill this plant, mister — a save isn\'t finished until the core is under water.',
+            industry: 'Leak isolated — correct. Subcooling margin remains LOST and the core-exit thermocouples are why: inventory is not recovered and the core is partially uncovered. Rising pressure does not restore level. Isolation is half of the terminating pair. Restore injection and recover inventory immediately.' },
         ],
         level_complete: {
           title: 'Second Watch — Plugged, Not Refilled',
-          outcome_learning: 'You stopped the leak in time and the core never suffered — but the water you lost is still gone. Half of the terminating pair is isolation; the other half is injection. History needed both. So do you.',
-          outcome_industry: 'Leak isolated pre-damage but inventory not restored — the terminating action pair (isolate + inject) was applied by half. No damage sustained; recovery margin remains degraded.',
+          outcome_learning: 'You stopped the leak in time — but the water you lost is still gone, and the margin gauge is telling you so. Half of the terminating pair is isolation; the other half is injection. History needed both. So do you.',
+          outcome_industry: 'Leak isolated pre-damage but inventory not restored — the terminating action pair (isolate + inject) was applied by half. Core-exit temperatures confirm degraded cooling; recovery margin remains degraded until injection is restored.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

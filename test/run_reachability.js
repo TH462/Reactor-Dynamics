@@ -115,8 +115,23 @@ ck('the pzr high-level trip setpoint is still where this probe thinks it is',
   hiSp == null ? 'not found' : hiSp + ' %', hiSp != null, 'a pzr_level high trip exists');
 
 var svc1 = stack('hot_full_power');
-var r1 = peakIndicated(svc1, 'pzr_level', 1500, function (s, i) {
-  if (i === 10) s.handleCommand({ action: 'set_hpi', active: true });
+// Driver re-authored for the #408 real flows: HPI alone at operating pressure is
+// DEADHEADED (a real CCP's shutoff head is barely above NOP — correct physics now),
+// so injection-at-pressure cannot flood the gauge. The reachable route to the trip
+// is every make-up source together with letdown isolated — max charging + HPI —
+// which flonods indicated level to the top in ~10 min (PI-8's measured route).
+// 6000 ticks: the real-rate flood climbs ~0.9 %/400 ticks (measured — spray holds
+// pressure on programme the whole way, no PORV, no early scram), crosses the 97 %
+// trip at ~3600 and tops the gauge past the post-scram contraction.
+var r1 = peakIndicated(svc1, 'pzr_level', 6000, function (s, i) {
+  if (i === 10) {
+    // the shipped cvcs_makeup CHANNEL would re-command charging every cycle and
+    // undo the manual max — stand it down first (the CA-9 noMakeup idiom)
+    s.handleCommand({ action: 'set_auto_channel', channel_id: 'cvcs_makeup', engaged: false });
+    s.handleCommand({ action: 'set_letdown_orifices', a: false, b: false });
+    s.handleCommand({ action: 'set_charging_flow', normalized: (RD.PWR_CONFIG.reactivity.charging_max || 60 / 450000) });
+    s.handleCommand({ action: 'set_hpi', active: true });
+  }
 });
 ck('B1 — injection can take the pressurizer SOLID (indicated level reaches 100 %)',
   'peak ' + r1.peak.toFixed(2) + ' %', r1.peak >= 99.5, '>= 99.5 %');

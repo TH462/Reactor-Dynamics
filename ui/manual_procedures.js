@@ -25,6 +25,14 @@
  *           either (ui/app.js renders text + highlights and grades off `acc`), so a
  *           ramp costs the UI nothing. Both procedure gates implement it.
  * guard: { never_melted, never:[{p,op,v}] } checked across the whole run.
+ * precond: [{p, op, v, tol, text}] — ENTRY conditions (#395), the machine-checkable
+ *   layer under the `prereq` prose: graded live, instrument-first, by the Instructor
+ *   while a checklist runs (layers/instructor_layer.js _stepChecklist). Unmet rows
+ *   WARN — a banner in the checklist panel plus one instructor comment — and NEVER
+ *   block *(OWNER RULING, 2026-08-06: selected "Warn, never block" from three
+ *   options put to him — a selection, not verbatim words)*. Distinct from `guard`
+ *   (a whole-run invariant) and from `from:` (a harness/reset input, not a check).
+ *   `text` is the banner's human line; verdicts ship in the snapshot, prose here.
  * op ∈ >,<,>=,<=,~ (~ within tol of v).
  */
 ;(function (RD) {
@@ -46,6 +54,13 @@
       purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the commercial heatup and what mission "The Big Warm-Up" drives.',
       from: 'cold_shutdown',
       prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'RCPs available to start (heat source).'],
+      // #395 — machine-checkable entry conditions, MEASURED on the cold_shutdown
+      // IC (tavg 50.0 °C, 2.50 MPa, power 0): every row reads MET on its own IC.
+      precond: [
+        { p: 'tavg_c', op: '<', v: 95, text: 'Plant cold — Mode 5 (Tavg ≈ 122 °F / 50 °C)' },
+        { p: 'pressure_mpa', op: '<', v: 5, text: 'Depressurized (≈ 363 psi / 2.5 MPa)' },
+        { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down' },
+      ],
       cautions: [
         'Rates are time-compressed for training — a real heatup takes many hours against brittle-fracture and pressurizer limits. The PLANT hours are real: measured full-stack, cold to the no-load anchor is about 11.3 plant-hours at an average ~39 °F/hr (21.7 °C/hr), settling to a steady ~32 °F/hr (17.8 °C/hr) after the first hour.',
         'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull rods or dilute — Hot Standby means hot AND subcritical. The control bank stays at its cold-shutdown position the whole way.',
@@ -120,6 +135,18 @@
       purpose: 'Take the reactor from Mode 3, Hot Standby (subcritical, hot) through criticality (Mode 2, Startup), across the 5 % boundary into Mode 1, At Power, and put the turbine on line — the full startup. You will use the 1/M (inverse-count) plot to predict criticality, hand indication from the Source Range to the Intermediate Range, and watch the Startup Rate (SUR) and reactor period on the way up.',
       from: 'hot_zero_power',
       prereq: ['Plant at Mode 3, Hot Standby: subcritical, hot, at operating temperature/pressure.', 'Reactor Coolant Pumps (RCP) running — forced flow established.', 'Control bank inserted; shutdown bank parked withdrawn; boron high (the plant is held subcritical).'],
+      // #395/#396 — machine-checkable entry conditions, MEASURED on hot_zero_power
+      // (tavg 297.0 °C, 15.41 MPa, power 0, boron 682.9 ppm). The boron row is THE
+      // heatup→startup seam (#396): a pump-heat heatup arrives at ≈ 857 ppm, where
+      // criticality sits ≈ 561 steps instead of the 319 this checklist assumes —
+      // 173.8 ppm outside the ±70 band, so the banner names it before a rod moves.
+      // ±70 ppm ≈ the caution's ±750 pcm ECC acceptance band at ~10.6 pcm/ppm.
+      precond: [
+        { p: 'tavg_c', op: '~', v: 297, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 566.6 °F / 297 °C)' },
+        { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At normal operating pressure (2235 psi / 15.41 MPa)' },
+        { p: 'power_pct', op: '<', v: 1, text: 'Subcritical — the withdrawal starts from a shut-down core' },
+        { p: 'boron_ppm', op: '~', v: 683, tol: 70, text: 'Boron at the estimated critical condition (≈ 683 ppm — PWR-N02 step 15; a pump-heat heatup leaves ≈ 857 ppm and criticality moves ≈ 242 steps out)' },
+      ],
       cautions: ['Withdraw in small bursts, letting the count rate settle between them — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. The SUR HI alarm comes in at 1 DPM and rod withdrawal is blocked at 1.5 DPM (clearing below 0.8); insertion is never blocked. The fine-step drive (912 steps full travel) puts one step at roughly 1 ¢ (6.5 pcm) near the critical band — single-step nudges at Slow for the final approach.', 'Plot ENOUGH 1/M points. The prediction always reads high early and walks down as you add points, so an early estimate is not a target — it is an upper bound. Two points predict ~step 711 against a true ~318; three still say ~484. It takes about six, with the bursts shrinking as you close in, to get within a couple of steps. Never withdraw straight to the predicted position — creep up on it.', 'Work out where criticality should be BEFORE you move a rod — an estimated critical condition, not a guess. The worksheet and the reference curves are in manual 09 §7.5: bank integral worth, differential boron worth at your Tavg, and critical boron by temperature and bank position. THIS CHECKLIST starts Mode 3 at 683 ppm with the bank in, which puts criticality near 319 steps — about 35 % withdrawn, comfortably inside the insertion limit. That is the answer for ONE boron, not a constant of the plant: a unit that came up on the pump-heat heatup is at ~857 ppm and goes critical near 561 steps (measured), outside the acceptance band below. Dilute to the estimated critical boron first — PWR-N02 step 15. The prediction carries a ±750 pcm acceptance band (roughly 159 to 421 steps here); criticality outside it means the estimate was wrong, so stop and re-work it rather than continuing to pull. The 1/M plot is how you close on the prediction, not a substitute for having made one.', 'Secure the Source Range BEFORE its counts reach the amber high-flux caution (the SR high-flux trip at 1e5 cps will scram the ascent). Once the Intermediate Range is on scale, the handoff is safe.', 'Mind the Steam Generator. Below the point of adding heat it barely moves, but from the moment power starts warming the coolant the SG boils down, and on this ascent the turbine is still offline — the steam dump is drawing steam nobody is replacing. Hold level with the three-element Feed AUTO channel (step 3). If you let auxiliary feedwater take it instead, AFW parks the level at about 21 % — inside the amber band, four points above the low-low trip — and holds it there indefinitely.', 'Below the point of adding heat there is no temperature feedback to hold you anywhere — power goes wherever the reactivity you left in takes it, however small. Sustaining even a gentle 1 DPM ramp means carrying ~+200 pcm, and ALL of it has to come back out to level off. Take it out in one decisive drive, not in taps: the plant runs while you tap.'],
       steps: [
         { text: 'Confirm the plant is ready: subcritical — the Source Range count rate is steady, not climbing — hot (Tavg ≈ 566.6 °F / 297 °C, the no-load point), pressurized (≈ 2233 psi / 15.4 MPa), Reactor Coolant Pumps running.',
@@ -283,6 +310,13 @@
       purpose: 'Increase reactor power and electrical output by withdrawing rods a little and letting the turbine take more load. Rods lead, turbine follows — the PWR two-step every crew drills until it is boring.',
       from: '50_percent',
       prereq: ['Reactor critical and stable at partial power.', 'Turbine on line.'],
+      // #395 — measured on 50_percent (power 50.1 %, mwe 52.1). The power row is
+      // what catches the audit's headline case: this evolution "completed" on a
+      // subcritical Mode 3 plant and cooled it 21.8 °F (#344 F5).
+      precond: [
+        { p: 'power_pct', op: '>', v: 10, text: 'Reactor critical and at power (above the P-10 range)' },
+        { p: 'mwe_output', op: '>', v: 5, text: 'Turbine on line, carrying load' },
+      ],
       cautions: ['Keep the power ramp modest; let temperatures and xenon follow.'],
       steps: [
         { text: 'Withdraw the Control Rods a few steps to add reactivity (Rod Control card → set Rod Speed, then Withdraw in short bursts).', control: 'Rod Speed',
@@ -300,6 +334,10 @@
       purpose: 'Reduce reactor power and load by inserting rods and reducing turbine demand. Turbine leads down, rods trim — the two-step in reverse.',
       from: 'hot_full_power',
       prereq: ['Reactor at power, turbine on line.'],
+      precond: [   // #395 — measured on hot_full_power (power 100 %, mwe 100)
+        { p: 'power_pct', op: '>', v: 10, text: 'Reactor critical and at power' },
+        { p: 'mwe_output', op: '>', v: 5, text: 'Turbine on line, carrying load' },
+      ],
       cautions: ['Watch that the Steam Generator (SG) level does not swell excessively as load drops.'],
       steps: [
         { text: 'Reduce the Turbine Load.', control: 'Turbine Load', target: '≈ 60 MWe', cmd: { action: 'set_steam_demand', mwe: 60 }, hold: 10 },
@@ -351,6 +389,9 @@
       purpose: 'Shut the reactor down from Mode 1, At Power to Mode 3, Hot Standby: take the turbine off load, then insert the rods. Decay heat continues and must keep being removed.',
       from: 'hot_full_power',
       prereq: ['Reactor at power.'],
+      precond: [   // #395 — a shutdown of an already-shut-down core is a no-op that "completes"
+        { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power — there is something to shut down' },
+      ],
       cautions: ['Decay heat (~7 % of rated, decaying) persists after shutdown — maintain a heat sink.'],
       steps: [
         { text: 'Reduce Turbine Load toward zero.', control: 'Turbine Load', target: '0 MWe', cmd: { action: 'set_steam_demand', mwe: 0 }, hold: 10 },
@@ -387,6 +428,15 @@
         'Plant at Mode 3, Hot Standby: hot (566.6 °F / 297 °C), at normal operating pressure (2235 psi / 15.41 MPa), subcritical with the control bank in.',
         'Reactor coolant pumps running; steam generator level normal on the three-element feed channel.',
         'Condenser available — the steam dump is the heat sink for the first half of this evolution, and the RHR heat exchanger rejects to the same circulating water.',
+      ],
+      // #395 — measured on hot_zero_power (tavg 297.0 °C, 15.41 MPa, power 0). The
+      // tavg row matters beyond its own IC: the ramp schedule's first leg starts at
+      // 297 °C, so a plant arriving colder (the audit's chain hit this at 244 °C)
+      // rides the first leg as a step, not a ramp.
+      precond: [
+        { p: 'tavg_c', op: '~', v: 297, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 566.6 °F / 297 °C — the ramp schedule starts there)' },
+        { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At normal operating pressure (2235 psi / 15.41 MPa)' },
+        { p: 'power_pct', op: '<', v: 1, text: 'Subcritical with the control bank in' },
       ],
       cautions: [
         'THE COOLDOWN IS A RAMP, NOT A CHASE. Walk the Dump SP down against a schedule and the dump only ever opens as far as it must to keep up. Chase it — retype the setpoint to track whatever Tavg reads right now — and you have built a positive feedback loop: a 55 psi (0.38 MPa) error is wider than the dump\'s 36 psi (0.25 MPa) proportional band, the dump saturates, and the plant free-falls. Measured with the setpoint driven to its 29 psi (0.2 MPa) stop: -2340 °F/hr (-1300 °C/hr), from 566.6 °F (297 °C) to 251.6 °F (122 °C) in eight plant-minutes.',
@@ -660,7 +710,14 @@
           // also exactly what the step teaches — the leak announces itself and then hides again
           // behind the injection that answered it — so the honest form of the claim and the
           // layer-robust one are the same sentence. `saw` takes a list since this change.
-          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 30,
+          // hold 90, was 30 (#408): at the real relief flow the dive crosses 25 °C at
+          // ~50 s after the inject (measured full stack: 41 °C → saturation by 1m21s),
+          // not ~8 s — the compressed clock was inside the old window, the real one is
+          // not. Same claim, wider watch. Also true at real flows and worth knowing:
+          // injection no longer refills past nominal — a full-open PORV (1.31e-3 frac/s)
+          // outruns full HPI (2.0e-4) on this plant, and inventory keeps falling with
+          // injection in, so the deception below rides the void/level term alone.
+          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 90,
           saw: [{ p: 'core_inventory_pct', op: '<', v: 100 },
                 { p: 'subcooling_c', op: '<', v: 25 }] },
         { text: 'Also mask the indicator, as at TMI: Failures tab → inject PORV Indicator Stuck Closed. Trust subcooling, not the PORV light.', control: '(observe PORV light vs subcooling)', target: 'trust subcooling, not the light',
@@ -882,7 +939,7 @@
       ],
       steps: [
         { text: 'The rupture opens. (Failures tab → inject Steam Generator Tube Rupture.) Primary inventory starts leaving through the tube into the secondary — charging comes up to meet it and cannot.', control: '(observe inventory and charging)', target: 'inventory falling',
-          note: 'Measured at half severity: break flow starts near 0.012 inventory-frac/s, well beyond the CVCS make-up authority of ~7.2e-4.',
+          note: 'Measured at this severity (#408 real flows): break flow starts near 145 gpm (3.2e-4 inventory-frac/s), well beyond the 60 gpm (1.33e-4) maximum the charging pump can make up.',
           cmd: { action: 'inject_failure', failure_id: 'sgtr', severity: 0.25 }, hold: 90,
           saw: { p: 'core_inventory_pct', op: '<', v: 100 } },
         { text: 'Trip the reactor. On the real plant the low pressurizer level trip does it for you as make-up loses the race — do not wait for it if pressure and level are already going.', control: 'SCRAM', target: 'power collapsing',
@@ -893,15 +950,21 @@
           note: 'On the shipped plant HPI actuates itself on low pressure. Confirming it is a real step, not a formality — engine-direct, without it, this casualty takes fuel temperature past 2192 °F (1200 °C).',
           cmd: { action: 'set_hpi', active: true }, hold: 60, acc: { p: 'hpi_active', op: '>', v: 0 } },
         { text: 'Confirm the diagnosis on the PRIMARY side — inventory down, pressurizer level low, subcooling shrinking. Do not go looking for it on the steam generator; on this plant the secondary tells you nothing.', control: 'Plant Pressure', target: 'primary-side signature',
-          hold: 60, acc: { p: 'leak_flow', op: '>', v: 0.004 } },
+          // #408 RE-POINTED (was leak_flow > 0.004): engine-direct the post-scram drain takes
+          // the primary THROUGH secondary pressure (P 8.8 vs SG 8.1 with the heater-cut latch
+          // holding the pzr restore off), so a break-flow acceptance there is a coin toss
+          // around dP = 0 — while under the stack it reads 1.56e-4. The step's own text names
+          // the confirmation: the PRIMARY-side signature. Inventory is that signature in both
+          // layers (95.7 engine-direct / 96.9 stack, vs 100 healthy).
+          hold: 60, acc: { p: 'core_inventory_pct', op: '<', v: 98 } },
         { text: 'Secure high-pressure injection. Check your criteria FIRST — subcooling in hand, heat sink established, the core covered — because this is the step that makes the next one possible: injection is holding the primary up at pressure, and while it runs the Pressure SP does nothing at all and the leak does not move.', control: 'HPI/LPI', target: 'HPI secured',
-          note: 'MEASURED, and this is why the step exists (#348). With HPI left in, walking the Pressure SP from 2235 down to 1450 psi (15.41 → 10.0 MPa) cut break flow by 0 % — 0.00585 → 0.00586 — because injection was pressurizing the RCS faster than the setpoint could ask it down; the plant simply drifted toward solid (inventory 106.8 %) at 2053 psi. Securing it first: 0.00585 → 0.00094 in one minute, an 84 % cut, and 0.00076 (87 %) held out to 20 minutes. At the decision point the criteria are genuinely in hand — subcooling 99.3 °F (55.2 °C), inventory 98.6 %, heat sink on AFW. This is the plant\'s version of the SI-termination step every real SGTR procedure carries, and for the same reason: injection and depressurization are working against each other.',
+          note: 'RE-MEASURED at the #408 real flows, and the reason this step exists CHANGED with them. On the compressed plant, injection out-pressurized the setpoint channel and the SP walk-down cut break flow by 0 % until HPI was secured. Real HPI (2.0e-4 frac/s) cannot do that: measured, the walk-down works with injection still in — but the plant then climbs through 101 % inventory at ten minutes and keeps filling toward solid, which challenges the PORV. That overfill is exactly what the SI-termination criteria in every real SGTR procedure exist to prevent, and it is now the measured reason for this step. Check the criteria first: subcooling in hand, heat sink on AFW, core covered.',
           cmd: { action: 'set_hpi', active: false }, hold: 60,
           acc: { p: 'hpi_active', op: '<', v: 1 } },
         { text: 'Now close the pressure difference. Walk the PRESSURE SP down toward secondary pressure — the leak is driven by primary-minus-secondary ΔP, so every psi you come down is break flow you do not lose.', control: 'Pressure SP', target: 'break flow falling',
-          note: 'Measured at this severity with injection secured at the previous step: closing the gap took primary 2124 → 1245 psi (14.65 → 8.58 MPa) and cut break flow 0.00585 → 0.00094, an 84 % reduction, with subcooling still positive at 19.5 °F (10.8 °C). It settles at 0.00076 (87 % down) and holds there, with the core covered at 89–95 % inventory and peak fuel 1279.4 °F (693 °C) against the 2192 °F (1200 °C) guard. The older figures here (0.0062 → 0.0041, "33 %") were measured with HPI still running, on a plant that could not repressurize on injection (#346) — the walk-down appeared to work only because injection could not push back. It does not work with injection in; it works because injection is secured.',
+          note: 'Measured at this severity with injection secured at the previous step (#408 real flows): closing the gap took primary 1774 -> 1452 psi (12.23 -> 10.01 MPa) and cut break flow 1.36e-4 -> 6.2e-5, a 54 % reduction. It holds near 6.1e-5 (27 gpm) with inventory RECOVERING on charging alone - 97 -> 99.6 % over ten minutes - and peak fuel 581 F (305 C) against the 2192 F (1200 C) guard.',
           cmd: { action: 'set_pressure_setpoint', mpa: 10.0 }, hold: 60,
-          acc: { p: 'leak_flow', op: '<', v: 0.005 } },
+          acc: { p: 'leak_flow', op: '<', v: 1.0e-4 } },   // #408 re-band: discriminates — 1.36e-4 before the walk-down, 6.2e-5 after (was < 0.005, which real flows never exceed)
         obs('Confirm the leak is throttled and the core is still covered. The plant is not fixed — it is stabilized, with the leak held down by the pressure you are holding. A real recovery continues into a cooldown on the intact loop.',
           { p: 'melted', op: '<', v: 1 },
           'The break flow will creep back up as the secondary blows down and the ΔP reopens. That is the physics, not a failure of the action — it is why a real SGTR ends in a cooldown rather than a hold.',
@@ -936,11 +999,11 @@
     //
     // THE CHARGING CUE IS M4-DEPENDENT AND THE ACCEPTANCES HAD TO GIVE WAY TO THAT. I assumed
     // `set_cvcs_auto` being an ENGINE command would make the charging number layer-robust. It
-    // does not: measured on the SAME leak, charging settles at 0.042 under the stack and
-    // 0.010 engine-direct — 4x apart — because the `cvcs_makeup` M4 channel is what actually
-    // drives make-up on the shipped plant. What IS layer-robust is the OUTCOME: pzr level
-    // parks at 53.79 % and subcooling holds at 40.99 °C in BOTH layers, identically.
-    // So the charging acceptance is only `> 0.005` (make-up is running at all) and the tight
+    // does not: measured on the SAME leak (#408 real currency), charging settles at 9.4e-5
+    // under the stack and 2.57e-5 engine-direct — apart because the `cvcs_makeup` M4 channel
+    // (and its letdown lineup) is what actually drives make-up on the shipped plant. What IS
+    // layer-robust is the OUTCOME: pzr level parks near 54 % and subcooling holds, in BOTH.
+    // So the charging acceptance is only `> 1.5e-5` (make-up is running at all) and the tight
     // numbers live in the step notes. The #209 class — a gate certifying a lineup that does
     // not ship — is why this is written down rather than tuned until it passed.
     {
@@ -959,9 +1022,9 @@
         { text: 'Confirm the inventory lineup first: CVCS in AUTO, so charging is free to make up whatever is lost. You are about to judge a leak by how hard make-up is working — that only means anything if make-up is actually in control.', control: 'CVCS Inventory Control', target: 'CVCS in AUTO',
           cmd: { action: 'set_cvcs_auto', active: true }, hold: 30 },
         { text: 'The leak starts. (Failures tab → inject Reactor Coolant Pump Seal Leak.) Nothing dramatic happens — watch CHARGING FLOW rise and settle while LETDOWN stays where it was. That imbalance IS the leak.', control: 'CVCS Inventory Control', target: 'charging rises, letdown steady',
-          note: 'Measured: charging settles near 0.042 against letdown 0.030. CHG FLOW HI comes in about three minutes after the leak starts — it is the only alarm you will get.',
+          note: 'Measured (#408 real flows): charging settles near 42 gpm against letdown’s 30 — the 12 gpm difference IS the leak. CHG FLOW HI (36 gpm) comes in a few minutes after the leak starts — it is the only alarm you will get.',
           cmd: { action: 'inject_failure', failure_id: 'rcp_seal_leak', severity: 0.4 }, hold: 300,
-          acc: { p: 'charging_flow_actual', op: '>', v: 0.005 } },
+          acc: { p: 'charging_flow_actual', op: '>', v: 1.5e-5 } },   // #408 re-band: engine-direct settles 2.57e-5, full stack 9.4e-5 (the documented layer split); was > 0.005, which real charging (max 1.33e-4) never reaches
         { text: 'Now confirm the make-up is winning. Pressurizer level should sit a little BELOW program and hold there — stable, not falling. A level that is still descending means make-up is losing and this is no longer this procedure.', control: 'Pressurizer Heaters (PZR)', target: 'level stable just below program',
           hold: 300, acc: { p: 'pzr_level_pct', op: '~', v: 54, tol: 3 } },
         { text: 'Check subcooling. A leak this size costs you none of it — if subcooling is eroding, you have a bigger leak than a seal and you are heading for the loss-of-coolant response instead.', control: 'Plant Pressure', target: 'subcooling unchanged',

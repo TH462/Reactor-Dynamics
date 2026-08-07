@@ -38,6 +38,21 @@ function release() {
   return m ? m[1] : 'Alpha';
 }
 
+// The date the CURRENT release was published, taken from the newest changelog.html
+// entry rather than from the clock. Deliberate: a build-time `new Date()` would
+// re-date the download on every redeploy, so a visitor comparing "the download says
+// today" against a release that shipped a week ago would be told the wrong thing —
+// and the file would differ between two deploys of the same commit. run_release.js
+// already pins that entry's date against CHANGELOG.md, so this inherits a gated
+// number instead of inventing one. Comments are stripped first for the same reason
+// run_release.js strips them: the ADDING AN ENTRY template contains a specimen date.
+function releaseDate() {
+  const src = fs.readFileSync(path.join(ROOT, 'changelog.html'), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const m = /datetime="(\d{4}-\d{2}-\d{2})"/.exec(src);
+  return m ? m[1] : null;
+}
+
 // ---- minimal ZIP writer (single file, DEFLATE) ----------------------------------
 // CRC-32, the one checksum ZIP requires and Node does not expose.
 const CRC_TABLE = (() => {
@@ -146,7 +161,59 @@ fs.writeFileSync(path.join(OUT_DIR, zipName), zip);
 // download.html links a STABLE path so it never needs editing per release.
 fs.writeFileSync(path.join(OUT_DIR, 'latest.zip'), zip);
 
+// WHAT AM I ABOUT TO DOWNLOAD, AND DO I ALREADY HAVE IT? (2026-08-06) The page
+// offered a button labelled "latest.zip" and nothing else — no version, no date,
+// no size — so a returning visitor had no way to tell this build from the one in
+// their downloads folder, and nobody on a metered connection knew what they were
+// agreeing to. The three facts can only be known HERE: the zip does not exist
+// until this script writes it, and download/ is gitignored precisely because a
+// committed copy could only ever be stale.
+//
+// Emitted as a script rather than JSON so the page can read it from file:// too —
+// the site has no fetch() anywhere and this is not the place to introduce one.
+// If it is missing (a local checkout that has never built), download.html simply
+// shows no metadata line: the CSS keeps .dl-meta hidden until it is filled.
+// CHANNEL AND SHA RIDE ALONG (2026-08-07). A tester downloading from the test site
+// gets a file whose NAME is identical to the released one — same product, same
+// version string, different bytes — so "the download is broken" arrives with no way
+// to tell which build it came from. Naming the file differently is the real fix and
+// is deliberately not done here: site/nav.js and this script each spell that filename
+// out and test/run_portable.js pins the two spellings against each other, so it is a
+// three-file change, tracked separately. This is the cheap half — the download page
+// states, on the page, which build it is about to hand you.
+// Both values come from the files stamp_version.js writes, which vercel.json /
+// the Pages build command run FIRST. Read defensively: a local `node
+// site/make_download.js` in a fresh clone has the repo placeholders, not a stamp.
+function stamped(file, re, fallback) {
+  try {
+    const m = re.exec(fs.readFileSync(path.join(ROOT, 'site', file), 'utf8'));
+    return m ? m[1] : fallback;
+  } catch (e) { return fallback; }
+}
+const channel = stamped('channel.js', /RD_CHANNEL\s*=\s*"([^"]+)"/, 'dev');
+const sha = stamped('version.js', /RD_VERSION\s*=\s*"[^"]*?([0-9a-f]{7})"/, '');
+
+const manifest = {
+  version: ver,
+  date: releaseDate(),
+  bytes: zip.length,
+  file: zipName,
+  channel: channel,
+  sha: sha,
+};
+fs.writeFileSync(path.join(OUT_DIR, 'manifest.js'),
+  '/* GENERATED at deploy by site/make_download.js — do not commit or hand-edit. */\n' +
+  'window.RD_DOWNLOAD = ' + JSON.stringify(manifest) + ';\n');
+
 const pct = (100 - (zip.length / html.length) * 100).toFixed(0);
 console.log('download/' + zipName + '  ' + (zip.length / 1048576).toFixed(2) + ' MB'
   + '  (from ' + (html.length / 1048576).toFixed(2) + ' MB, ' + pct + '% smaller)');
 console.log('download/latest.zip  — the stable path download.html links');
+console.log('download/manifest.js  ' + manifest.version + ' · ' + manifest.date +
+  ' · ' + (zip.length / 1048576).toFixed(1) + ' MB');
+if (!manifest.date) {
+  // Not fatal — the page degrades to version + size. But say it, because a silent
+  // null here is how the date quietly disappears from the page for a release.
+  console.warn('  ! no datetime="" found in changelog.html — the download page will'
+    + ' show no date. Check the newest entry.');
+}

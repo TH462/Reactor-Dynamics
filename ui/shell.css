@@ -564,6 +564,19 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .logo .a { color: var(--normal); }
 .brand { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .logo-ver { font-size: 10px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+/* TEST-BUILD marker — shown only off the released channel, keyed off the
+   html[data-channel] attribute shell.html sets from window.RD_CHANNEL. Hidden by
+   DEFAULT and opted into per channel, so a missing or misspelled attribute leaves
+   the released simulator unmarked rather than falsely branded. Sits in the header
+   beside the version, which is the one piece of chrome always on screen. */
+.logo-test { display: none; }
+html[data-channel="preview"] .logo-test,
+html[data-channel="dev"] .logo-test {
+  display: inline-block;
+  background: var(--caution); color: #17120A;
+  border-radius: 999px; padding: 1px 7px;
+  font-size: 9px; font-weight: 700; letter-spacing: 1.2px; white-space: nowrap;
+}
 .clock { font-size: 15px; font-weight: 600; }
 .clock.running { animation: pulse 2s ease-in-out infinite; }
 .clock.accel { color: var(--caution); }
@@ -648,6 +661,22 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .doc-body .log-head h2 {
   margin: 0; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--text);
 }
+/* The packed changelog is changelog.html verbatim (tools/pack_site_docs.js), so it
+   arrives as <details class="log-entry"><summary class="log-head"> — collapsible in
+   the About → Changelog modal exactly as on the site. `display:flex` above kills the
+   default disclosure triangle in every engine, so draw one. */
+.doc-body summary.log-head { cursor: pointer; list-style: none; flex-wrap: nowrap; }
+.doc-body summary.log-head h2 { flex: 1 1 auto; min-width: 0; }
+.doc-body summary.log-head .log-ver,
+.doc-body summary.log-head .log-date { flex: 0 0 auto; }
+.doc-body summary.log-head::-webkit-details-marker { display: none; }
+.doc-body summary.log-head::before {
+  content: '▸'; flex: 0 0 auto; color: var(--muted); font-size: 13px; line-height: 1;
+  transition: transform 0.12s; transform-origin: 50% 45%;
+}
+.doc-body details[open] > summary.log-head::before { transform: rotate(90deg); }
+.doc-body summary.log-head:hover h2 { color: var(--normal); }
+.doc-body .log-note { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
 .doc-body .log-ver {
   font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--normal);
   border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;

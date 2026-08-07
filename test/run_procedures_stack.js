@@ -63,7 +63,17 @@ require('../engines/load_mode.js');
  'layers/control/control_kernel.js', 'layers/instructor_layer.js', 'layers/simulation_service.js'
 ].forEach(function (f) { require('../' + f); });
 require('../ui/manual_procedures.js');
+require('./procedures_harness.js');
 var RD = globalThis.RD;
+// The replay machinery — PLANTS, the casualty/scram/alarm tables, the 10× accel
+// contract (#245), ramp handling (#310), refusal capture and the stack-only
+// assertions — was EXTRACTED VERBATIM to test/procedures_harness.js
+// (2026-08-06, #395) so the continuous-chain gate (run_procedures_chain.js) can
+// replay the same steps on a plant that is NOT reloaded per procedure. This
+// runner's score is the refactor-neutrality assertion: 29/29 262/262 before
+// and after the extraction.
+var PH = RD.ProceduresHarness;
+var ACCEL = PH.ACCEL;
 
 var argv = process.argv.slice(2);
 var ONLY = null, BARE = false;
@@ -72,32 +82,6 @@ argv.forEach(function (a) {
   else if (a === '--lineup=default') BARE = false;
   else if (a.charAt(0) !== '-') ONLY = a;
 });
-
-var PLANTS = {
-  pwr: { plant: 'pwr', version: null },
-  rbmk_pre: { plant: 'rbmk', version: 'pre_chernobyl' },
-  rbmk_post: { plant: 'rbmk', version: 'post_chernobyl' },
-  bwr: { plant: 'bwr', version: null },
-};
-
-// Categories where a scram / standing critical alarm is the intended outcome, not
-// a failure of the procedure.
-var CASUALTY_CATEGORIES = { emergency: true, accident: true };
-
-// Commands that deliberately trip the reactor. A shutdown procedure scrams ON
-// PURPOSE, so a scram at or after one of these is expected and REACTOR TRIP
-// standing afterwards is the correct end state — not a defect.
-var SCRAM_ACTIONS = { scram: true, manual_scram: true, az5: true };
-// Alarms that are the direct, correct consequence of an intended scram.
-var POST_SCRAM_ALARMS = { reactor_trip: true };
-
-// Time acceleration for the holds. The automation channels step at physics rate
-// inside tick() regardless, but the RPS/alarm `evaluate` runs once per broadcast,
-// so acceleration coarsens protection latency (the known #153 effect). 10x gives a
-// 1 s protection granularity — close enough to real-time that a trip this gate
-// reports is a trip a player would see.
-var ACCEL = 10;
-var SEC_PER_TICK = 1.0;   // ACCEL(10) x broadcastMs(100ms) = 1 s of sim per tick
 
 // RAMP steps (#310). A step carrying `ramp` walks a setpoint along an authored
 // polyline across its `hold` instead of stepping it once — the operator holding the
@@ -123,47 +107,8 @@ var SEC_PER_TICK = 1.0;   // ACCEL(10) x broadcastMs(100ms) = 1 s of sim per tic
 // highlights; the instructor grades off `acc` and watches for the player's own
 // command), so this is a REPLAY-side field only — no UI change, and the instructor
 // still recognises the step by its `cmd`.
-var RAMP_EVERY = 10;      // sim-s between re-issues
-// Piecewise-linear along `points` at fraction f of the step (equal time slices).
-function rampValue(points, f) {
-  if (points.length === 1) return points[0];
-  var x = Math.max(0, Math.min(1, f)) * (points.length - 1);
-  var i = Math.min(points.length - 2, Math.floor(x));
-  return points[i] + (points[i + 1] - points[i]) * (x - i);
-}
-
-function cmp(a, op, b, tol) {
-  switch (op) { case '>': return a > b; case '<': return a < b; case '>=': return a >= b; case '<=': return a <= b;
-    case '~': return Math.abs(a - b) <= (tol || 0); } return false;
-}
-function pred(ts, c) { return cmp(ts[c.p], c.op, c.v, c.tol); }
-
-function groupId(svc, which) {
-  var gs = svc.engine.getControlState().rod_groups;
-  for (var i = 0; i < gs.length; i++) { var fn = gs[i].function;
-    if (which === 'control' && (fn === 'control' || fn === 'manual')) return gs[i].id;
-    if (which === 'shutdown' && fn === 'shutdown') return gs[i].id; }
-  return gs[0] && gs[0].id;
-}
-
-// A command result the stack refused. `handleCommand` returns a snapshot or null on
-// success; an unknown action comes back {type:'error'} and an interlock refusal
-// {type:'blocked'} (control_kernel.js) — the instructor's follow-mode gate uses the
-// same blocked shape.
-function refusal(r) {
-  if (!r || typeof r !== 'object') return null;
-  if (r.type === 'error' || r.type === 'blocked') return (r.code || r.type) + (r.message ? ': ' + r.message : '');
-  return null;
-}
-
-function standingCritical(snap, scramWasCommanded) {
-  return (snap.alarms || []).filter(function (a) {
-    if (a.priority !== 'critical') return false;
-    if (!a.state || a.state.indexOf('active') !== 0) return false;
-    if (scramWasCommanded && POST_SCRAM_ALARMS[a.id]) return false;
-    return true;
-  }).map(function (a) { return a.id; });
-}
+// (RAMP_EVERY, rampValue and the rest of the replay machinery live in
+// test/procedures_harness.js since the #395 extraction.)
 
 // RD_SEED re-runs this gate on a different instrument-noise stream
 // (`RD_SEED=7 node test/run_procedures_stack.js pwr_heatup`) without touching the
@@ -177,139 +122,10 @@ function standingCritical(snap, scramWasCommanded) {
 // which is part of why this one survived.
 var SEED = Number(process.env.RD_SEED) || 42;
 
+// Thin wrapper over the extracted machinery (test/procedures_harness.js) —
+// same name, same call sites in the driver loop below.
 function runProcedure(profKey, proc) {
-  var P = PLANTS[profKey];
-  var svc = new RD.SimulationService({ seed: SEED });
-  svc.selectPlant(P.plant, proc.from, P.version, BARE ? { noDefaults: true } : undefined);
-  svc.running = true;                       // gates drive tick() directly
-  svc.timeAcceleration = ACCEL;
-  // …and it has to STAY at ACCEL. `_attentionStop` drops fast-forward to 1× on the
-  // first alarm/scram/failure on a quiet board and nothing puts it back, so this
-  // harness used to declare 10× and then run most procedures at 1× from a few
-  // seconds in — every step downstream judged on a TENTH of the sim time its author
-  // declared. That is what misfiled `bwr_startup` step 2 as a BWR plant defect
-  // (#245; see the removed xfail below). The dropout is a comfort feature for a
-  // HUMAN at the board — a headless gate has no one to protect — and `attentionStops`
-  // is the supported way to say so (it is the Settings → Fast-forward dropout
-  // toggle). `run_autoctl` expresses the same rule differently, by re-asserting the
-  // speed each cycle; both say "a headless probe gets its full sim-time budget".
-  // The mechanism itself is covered by run_m5 (scram/failure/alarm reasons, the
-  // on/off setting, and its survival across a state restore), so turning it off
-  // here costs no coverage.
-  svc.attentionStops = false;
-
-  var checks = [];
-  var casualty = !!CASUALTY_CATEGORIES[proc.category];
-  var gNever = (proc.guard && proc.guard.never || []).map(function (c) { return { c: c, hit: false }; });
-  var meltHit = false, scramStep = null, scramReason = null, scramCmdStep = null;
-  var refusals = [];
-
-  function observe(snap) {
-    var ts = snap.true_state;
-    if (ts.melted) meltHit = true;
-    gNever.forEach(function (g) { if (pred(ts, g.c)) g.hit = true; });
-    if (scramStep === null && snap.rps_state && snap.rps_state.scrammed) {
-      scramStep = curStep; scramReason = snap.rps_state.last_trip_reason || '(no reason given)';
-    }
-  }
-
-  // Ticks that advanced less sim time than SEC_PER_TICK claims. Asserted below, so
-  // #245 cannot come back quietly: the whole defect was that the harness went on
-  // reporting "10× accel" in its header while the runs underneath it did not.
-  var slowTicks = 0, firstSlow = null;
-
-  var curStep = 0, lastSnap = null;
-  (proc.steps || []).forEach(function (st, idx) {
-    curStep = idx + 1;
-    function issue(cmd) {
-      var why = refusal(svc.handleCommand(cmd));
-      if (why) refusals.push('step ' + curStep + ' ' + cmd.action + ' → ' + why);
-    }
-    // A ramp step's `cmd` is the REPRESENTATIVE action (what the instructor watches
-    // for); the ramp entries are what actually drives the plant, so issuing both
-    // would put the leg's end value on the board at t=0 — the step the ramp exists
-    // to avoid.
-    if (st.cmd && !st.ramp) {
-      var cmd = {};
-      for (var k in st.cmd) cmd[k] = st.cmd[k];
-      if (cmd.group_id === 'control' || cmd.group_id === 'shutdown') cmd.group_id = groupId(svc, cmd.group_id);
-      if (SCRAM_ACTIONS[cmd.action] && scramCmdStep === null) scramCmdStep = curStep;
-      issue(cmd);
-    }
-    // `saw` may be ONE predicate or a LIST of them (#348) — see the note in
-    // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
-    // SAME predicates through the stack, so a schema the two disagree on is worse than none.
-    var sawList = st.saw ? (Array.isArray(st.saw) ? st.saw : [st.saw]) : [];
-    var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
-    for (var i = 0; i < ticks; i++) {
-      if (st.ramp && (i % RAMP_EVERY === 0)) {
-        var f = i / Math.max(1, ticks - 1);
-        st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = rampValue(r.points, f); issue(c); });
-      }
-      var s = svc.tick();
-      if (!s) continue;
-      lastSnap = s;
-      if (s.metadata && s.metadata.time_acceleration < ACCEL) {
-        if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
-          ' → ' + s.metadata.time_acceleration + '×' +
-          (s.metadata.speed_snap ? ' (' + s.metadata.speed_snap.reason + ')' : '');
-        slowTicks++;
-      }
-      observe(s);
-      sawList.forEach(function (sw, k) { if (pred(s.true_state, sw)) sawHits[k] = true; });
-    }
-    // Land the ramp exactly on its last point: `f` never quite reaches 1 when
-    // `ticks` is not a multiple of RAMP_EVERY, and a leg that stops a few tenths of
-    // a psi short would leave the next leg's `from` wrong.
-    if (st.ramp) st.ramp.forEach(function (r) { var c = { action: r.action }; c[r.arg] = r.points[r.points.length - 1]; issue(c); });
-    if (!lastSnap) lastSnap = svc._assembleWithInstructor();
-    sawList.forEach(function (sw, k) {
-      checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
-    });
-    if (st.acc) {
-      var ts = lastSnap.true_state;
-      checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(ts, st.acc), obs: ts[st.acc.p] });
-    }
-  });
-  if (!lastSnap) lastSnap = svc._assembleWithInstructor();
-
-  // ---- the stack-only assertions ----
-  checks.push({ d: 'stack: every step command accepted', pass: refusals.length === 0,
-    obs: refusals.length ? refusals.join('; ') : 'all accepted' });
-
-  // The run got the sim time its steps were written against (#245).
-  checks.push({ d: 'stack: ran at the declared ' + ACCEL + '× throughout', pass: slowTicks === 0,
-    obs: slowTicks ? slowTicks + ' slow ticks, first at ' + firstSlow : ACCEL + '× for every tick' });
-
-  if (!casualty) {
-    // "Unexpected" means the plant tripped without the procedure asking it to, or
-    // tripped BEFORE the step that asks. A shutdown that scrams at its scram step
-    // is doing its job.
-    var expectedScram = scramCmdStep !== null && scramStep !== null && scramStep >= scramCmdStep;
-    checks.push({ d: 'stack: no unexpected scram', pass: scramStep === null || expectedScram,
-      obs: scramStep === null ? 'never scrammed'
-        : expectedScram ? 'scrammed at step ' + scramStep + ' as commanded'
-        : 'scrammed at step ' + scramStep + ' — ' + scramReason });
-    var crit = standingCritical(lastSnap, scramCmdStep !== null);
-    checks.push({ d: 'stack: no critical alarm standing at end', pass: crit.length === 0,
-      obs: crit.length ? crit.join(', ') : (scramCmdStep !== null ? 'none beyond the commanded trip' : 'none') });
-  }
-
-  // A procedure that declares an automation lineup must actually be left in it.
-  if (proc.auto_channels && proc.auto_channels.length) {
-    var chans = (lastSnap.automation && lastSnap.automation.channels) || [];
-    var missing = proc.auto_channels.filter(function (id) {
-      for (var i = 0; i < chans.length; i++) if (chans[i].id === id) return !chans[i].engaged;
-      return true;   // declared a channel this plant does not have
-    });
-    checks.push({ d: 'stack: declared auto_channels engaged', pass: missing.length === 0,
-      obs: missing.length ? 'not engaged: ' + missing.join(', ') : proc.auto_channels.join(', ') });
-  }
-
-  if (proc.guard && proc.guard.never_melted) checks.push({ d: 'guard: never melted', pass: !meltHit, obs: meltHit });
-  gNever.forEach(function (g) { checks.push({ d: 'guard: never ' + g.c.p + ' ' + g.c.op + ' ' + g.c.v, pass: !g.hit, obs: g.hit }); });
-
-  return { pass: checks.every(function (c) { return c.pass; }), checks: checks };
+  return PH.runProcedure(profKey, proc, { seed: SEED, bare: BARE });
 }
 
 /* Known-fails: documented defects with a filed issue, whose acceptance test lives
