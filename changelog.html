@@ -168,6 +168,51 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Accidents run on a real clock</h2>
+      <span class="log-ver mono">Alpha 1.3.0</span>
+      <time class="log-date mono" datetime="2026-08-07">7 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>Loss-of-coolant events run at real
+          rates.</strong> Break flow, safety injection, accumulators, relief and charging all move
+          true fractions of reactor coolant inventory per second, so the gallons-per-minute
+          readouts are literal. A stuck-open pressurizer relief valve with injection secured now
+          reaches core damage in about 2 hours 20 minutes — the Three Mile Island timeline, where
+          it used to take minutes.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The relief valves are sized for this
+          plant.</strong> The pressurizer PORV passes about 112 gpm and the code safeties 3.2 times
+          that. Feed-and-bleed cooling is viable, and full safety injection out-runs one wide-open
+          valve — which is why securing injection in 1979 was the decision that mattered.</li>
+      <li><span class="log-tag changed">Changed</span><strong>A large break blows down toward the
+          containment building</strong> instead of stalling at the remnant's boiling pressure:
+          a full-size break bottoms at 116 psi (0.80 MPa) where it floored at 170 psi (1.17 MPa).
+          Smaller breaks are unchanged.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The pressurizer level gauge no longer
+          argues against a large break.</strong> It read 100 % at the moment the core top
+          uncovered; with a hole in the loop the pressurizer now drains, while the Three Mile
+          Island stuck-valve deception keeps its full strength on the paths where it is
+          historical fact.</li>
+      <li><span class="log-tag added">Added</span><strong>Core-exit thermocouple.</strong> The
+          subcooling margin reads the hotter of the loop bulk and a new core-exit channel, so it
+          goes hard negative over an uncovering core instead of reporting comfort from
+          injection-chilled water.</li>
+      <li><span class="log-tag added">Added</span><strong>Checklists check their
+          prerequisites.</strong> A live checklist grades its procedure's preconditions against the
+          plant and shows what the procedure expects against what the plant reads. It warns and
+          never blocks, and clears itself when the plant is brought to where the procedure
+          assumes.</li>
+      <li><span class="log-tag changed">Changed</span><strong>A reflooded core can
+          recover.</strong> Core damage is no longer latched as terminal while water is coming
+          back — a partially melted core that is re-covered stabilises, as Three Mile Island's
+          did. Unmitigated accidents still end the same way.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Atmospheric dump valve setpoint
+          1247 → 1272 psi (8.60 → 8.77 MPa)</strong>, onto the sourced placement rule. A bottled
+          steam generator now holds at 1276 psi (8.80 MPa) / 576.5 °F (302.5 °C).</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>The board stops flickering during transients</h2>
       <span class="log-ver mono">Alpha 1.2.2</span>
       <time class="log-date mono" datetime="2026-08-06">6 August 2026</time>

@@ -455,10 +455,11 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
-should never go up until a release happens.")*. Rev 12 is what the website carries; everything
-since is **one pending Rev 13**, however many changes it contains. **Do not open a new revision row
-for a manual edit; extend Rev 13's.** That is also the resolution for a revision-number collision,
-which is what two lanes editing the manuals produce.
+should never go up until a release happens.")*. **Rev 13 is what the website carries** as of
+Alpha 1.3.0 (2026-08-07); everything after it is **one pending Rev 14**, however many changes it
+contains. **Do not open a new revision row for a manual edit; extend the pending row.** That is
+also the resolution for a revision-number collision, which is what two lanes editing the manuals
+produce — Rev 13 shipped carrying thirteen lettered items from two lanes for exactly that reason.
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.** A
 reading aid, not a record: the full entry is in `Diagnostic/TUNING_LOG.md`, and anything that is

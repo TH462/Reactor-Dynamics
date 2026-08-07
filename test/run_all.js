@@ -778,7 +778,12 @@ var BASELINES = {
   // describes, for the fourth time. MEASURED 218 on the merged tree AFTER the write-ups: the
   // merge carries both lanes' citation sites at once AND adds the merge entries' own, so it is
   // higher than either parent and than any arithmetic on them. 201 HR11 sites, 0 undeclared.
-  'run_hardrules.js':      { code: 0, score: '218checks 0failed' },
+  // 218 -> 220 later the same session, with the Alpha 1.3.0 RELEASE write-ups: two more sites,
+  // both the "changelog is strictly for simulator changes" directive quoted as the REASON the
+  // website work gets no changelog.html entry. An intermediate run taken with the merge written
+  // up and the release not yet written read 218 — recording that would have shipped a 2-check
+  // drift, which is this key's own standing warning arriving twice in one session.
+  'run_hardrules.js':      { code: 0, score: '220checks 0failed' },
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
@@ -1100,7 +1105,10 @@ var BASELINES = {
   // 12 -> 13 on 2026-08-05 with Alpha 1.1.0 — a RELEASE adds a check by design: the CROSS
   // block cross-checks every changelog.html entry down to the oldest version CHANGELOG.md
   // still names individually, so it grows by one row per published release.
-  'run_release.js':        { code: 0, score: '16checks 0failed' },
+  // 16 -> 17 on 2026-08-07 with Alpha 1.3.0 — the same mechanism a fourth time. This key
+  // moves on every RELEASE and on nothing else, so a bump here with no release in the same
+  // change is the signal that something else added a check.
+  'run_release.js':        { code: 0, score: '17checks 0failed' },
   // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
   // `og:image` ("site/hero.png") from launch, and Slack / Discord / iMessage / X do not
   // resolve a relative og:image, so every link ever shared into a chat rendered with no

@@ -76,6 +76,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.3.0] — 2026-08-07
+
+### Released — the lane merge and the version
+
+`workbench` merged into `develop` (2026-08-07-develop-b) and the result shipped as **Alpha
+1.3.0**. **Y**, not Z: the release carries both a major change (#408 wave 1 re-clocks the entire
+accident-inventory family and resizes the relief valves) and a genuinely new capability
+(#395/#396, checklists grading their own preconditions against the live plant) — the operative
+test is whether it would go on the Roadmap as a line item, and both would.
+
+The manual set's **Rev 13 is what the website carries from this release**, thirteen lettered
+items from two lanes under one revision number, per the 2026-08-06 directive that the number
+advances only at a release. The next manual edit extends a pending Rev 14.
+
+**No `changelog.html` entry for the website work** in this release — the social-card metadata,
+the deploy-stamp channel fix and the test-build banner are site changes, and that page is
+strictly for simulator changes *(OWNER DIRECTIVE, 2026-08-06: "Also, don't include website
+changes in the changelog. The changelog is strictly for simulator changes.")*. They are recorded
+below, which is what this file is for.
+
+
 ### Changed — the accident-inventory clock runs REAL flows, and the relief valves are plant-sized (#408 wave 1 + the 2026-08-07 proportional-valve ruling)
 
 The whole LOCA family — break discharge, HPI/LPI, accumulators, relief, CVCS — now moves

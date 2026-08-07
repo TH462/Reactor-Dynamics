@@ -86,9 +86,43 @@ to WTSM §7.1.3.3) while develop re-clocked the primary-side inventory family (`
 relief against primary inventory currency. `test/behavior_pwr.js` likewise (workbench's ADV probe
 against develop's CA-19/20/21). The gate is what settles it, and it did.
 
-**Gates:** `run_all` — see the release entry; `run_hardrules` measured on the merged tree AFTER
-these write-ups, because both lanes had independently taken that key to 210 from different bases
-and neither figure survives a merge (the fourth time this key has needed that treatment).
+**Gates:** `run_all` **42 runners, all at baseline** on the merged tree. `run_hardrules`
+**218 checks / 0 failed, 201 HR11 sites / 0 undeclared** — measured AFTER these write-ups,
+because both lanes had independently taken that key to **210 from different bases** and neither
+figure survives a merge (the fourth time this key has needed that treatment). The merged tree
+carries both lanes' citation sites at once PLUS the merge entries' own, so it is higher than
+either parent and than any arithmetic on the pair. `run_doc_budget` green on the merged file at
+**13,933 words / 164-word longest line / 5 themes bullets** — the budget survived the port,
+which was the thing worth checking.
+
+**RELEASE — Alpha 1.3.0 (2026-08-07).** **Y, not Z**, and the digit was read rather than
+recalled: `site/release.js` and `changelog.html` both said `Alpha 1.2.2`, and the release carries
+a major change (#408 wave 1) *and* a new capability (#395/#396) — either alone justifies Y under
+the "could you add it to the Roadmap as a line item" test. Bump, site entry and the `CHANGELOG.md`
+roll went in as ONE change, because `run_release` is red in one direction or the other otherwise.
+
+`run_release` **16 → 17**, which is the by-design behaviour of that key: the CROSS block
+cross-checks every `changelog.html` entry down to the oldest version `CHANGELOG.md` still names
+individually, so a release adds a row and ordinary work does not. **A bump on this key with no
+release in the same change means something else added a check.**
+
+The site entry is **8 bullets, one line each**, at the cap. **The website work in this release
+gets NO entry there** *(OWNER DIRECTIVE, 2026-08-06: "Also, don't include website changes in the
+changelog. The changelog is strictly for simulator changes.")* — the social-card metadata, the
+deploy-stamp channel fix and the test-build banner are all site changes; they are in
+`CHANGELOG.md`, which is unrestricted. `download.html` was checked against the same rule and its
+diff is metadata and the banner only: **what the download CONTAINS did not change**, so it needed
+no entry and no page edit.
+
+The offline build was run **after** the bump, which is the #258 order — built first it names
+itself for the previous release. `Reactor_Dynamics_Alpha_1.3.0.html` → `download/latest.zip`,
+1.04 MB, `run_portable` 125/125. Neither artifact is committed and that is deliberate: the zip
+the public gets is built at deploy by `vercel.json`, so it cannot disagree with the site serving
+it.
+
+**Manual Rev 13 ships here** — the pending row becomes the released one, thirteen lettered items
+from two lanes under one number. CLAUDE.md's status now says Rev 13 is what the website carries
+and the next edit extends a pending Rev 14.
 
 ---
 
