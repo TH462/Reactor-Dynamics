@@ -252,6 +252,32 @@ close-out comment with THREE owner-review items: the TMI crest under the 75 % al
 re-anchored to >65 high-and-rising), the pwr_msiv ADV-out premise, and the thermal §8.21 cliff.
 `status-work-complete` + `status-owner-review` set; `status-wip-develop` cleared.
 
+**SESSION CLOSE — THE IDENTITY-PREMISE AUDIT, RULED INTO TIER 3 (#419).** The owner's
+"Some of these identity decisions were based on the physics of the old plant" triggered a
+premise re-measurement over the ruled identities, ALL on the post-#418 plant:
+- **F14 (heater 27×) SURVIVES** — the old grid's wall re-measures exactly (0.20: TR-1h
+  no-scram, TR-11 parks 15.19 at 100 % duty; 0.05: scram `primary_pressure low`, floor 8.86;
+  0.02: scram `otdt`, floor 8.67). Re-affirmed on current numbers; config table refresh owed.
+- **F15 (relief K 3144) — BOTH PINS DISSOLVED**: the TR-1k doorstep went thermal at B1, and
+  at K=600 `run_meltdown` 12/12 + `run_scenarios` 3/3 including the flagship. Unanchored.
+- **×12.6 pace** — premise superseded by the owner's own #408 "acceleration carries pacing".
+- **297 anchor** — premise was July feel on the old plant.
+**RULED** *(OWNER RULING, 2026-08-07: selected "Everything incl. 297 anchor" — a selection;
+then verbatim: "Let's add the mode five to one pace to our to-do list.")* — one plan-first
+umbrella, **#419** (`status-work-next`, owner-ordered): pace + F15/E-dividers + ladder, with
+F14 explicitly out (re-affirmed). Stage 0 is done (the audit + corpus); **stage 1 (the
+cascade table for sign-off) is where the NEXT SESSION starts.** The two-plant caution
+matters there: 1092 psig/557 °F is the 4-loop WTSM plant; Ginna (the anchor) is 547 °F ≈
+990 psig.
+
+**TURNOVER (session cleared after this commit).** State: #418 complete and `status-owner-review`
+(three items: the TMI crest at 69.4 % under the 75 % alarm, the pwr_msiv ADV-out premise, the
+thermal §8.21 cliff); #419 is the owner-ordered next work, plan-first, stage 1 next; no WIP
+tags standing; `run_all` 42 at baseline at every commit this session (`dfe1615`..HEAD); CI
+green through B1 (check the last two pushes' runs on arrival); manuals at pending Rev 14.
+Session commits: ruling `dfe1615`, A1 `174009c`, A2 `9414ea0`, A3 `2c7a507`, B1 `ae025fc`,
+B2 `fcf7d66`, then this audit close.
+
 ---
 
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)

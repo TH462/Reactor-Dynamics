@@ -452,9 +452,12 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
   governor. The rest of the LOCA cluster (#384/#407/#334-3) is landed.
 - **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
   secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
-  MSSV capacity, tube node + transported legs. Remaining under the umbrella: the ladder
-  identity (option C — a future owner ruling, not scheduled), WTSM §5.1-class data to firm
-  the declared C_P/split/C_tube bands, and #408 wave 3's quiet-night mission.
+  MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
+- **#419 tier 3 — THE OWNER-ORDERED NEXT WORK** (`status-work-next`, ruled 2026-08-07,
+  plan-first): the identity re-anchor — real Mode 5↔1 pace (acceleration carries pacing, the
+  #408 precedent), the F15 relief-authority re-solve + E-dividers (both pins measured
+  dissolved), and the 297 °C ladder re-anchor (the option-C cascade). F14 re-measured and
+  RE-AFFIRMED — not in scope. **Start at stage 1: the cascade table for sign-off.**
 - **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
   the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
   #418's new ledger, not the old gain**. `status-needs-ruling`.
