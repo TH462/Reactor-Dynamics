@@ -76,6 +76,46 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the secondary loop joins the primary's fidelity (#418 tier 2, waves A1–A3 + B1)
+
+**Ruled 2026-08-07** ("A+B, keep 297 °C") and built the same day, all four waves gated at
+42 runners each. The whole secondary now runs one sourced basis (R.E. Ginna, per-MWt scaled):
+
+- **A1 — the pressure clock is derived.** `K_steam_pressure` 2.0 → 0.30 MPa/s from the
+  steam space's own physics (C_P ≈ 1,025 MJ/MPa — the SG liquid's sensible heat IS the
+  clock; full arithmetic at the constant). A bottled SG rises 43 psi in the first second
+  (was 223), inside the Ginna loss-of-load class. The steam break became its own constant
+  (`STEAM_BREAK_FLOW_FRAC` 0.75 — the old `/K` derivation would have ×6.7'd break mass
+  flow). Final feed temperature sourced at 435.2 °F (224 °C), top of Ginna's 390–435 °F band.
+- **A2 — the SG carries a mass ledger.** `sg_mass_frac` (1.0 = 12,785 kg, Ginna 85,359 lbm
+  scaled) with both level ranges derived through a level-geometry map: the Ginna 35-s
+  loss-of-feed trip event is preserved by construction while full boil-dry honors the
+  sourced ~78 s (was an implied ~162). `K_sg_level` retired into the map's in-window slope.
+- **A3 — SG safety capacity sourced**: 0.84× rated steam flow (the Ginna four-valve bank).
+- **B1 — the SG has a tube-bundle node and the legs are transported.** The single `h_sg`
+  splits into a series pair around `t_sg_c` under an invariance rule (1/h1 + 1/h2 = 1/h_sg,
+  shared flow×dryout factors) that keeps every steady state exactly on the legacy map —
+  measured: SS-1 to the digit, `run_otdt` 46/46, TR-1i's ±5 °F WTSM ramp duty at 4.35 with
+  no lead-lag. The legs lag their algebraic split at tau/flow (1.5/4.0 s at full flow). The
+  headline the owner asked for: an MSIV closure's loop-ΔT collapse now takes ~15–25 s of
+  true physics and ~25–30 s on the board, instead of a 2-s algebraic step; the true cold
+  leg no longer moves 27.5 °F in 2 s. `coolant_heat_capacity` split 20 → 15 + 5 (tube),
+  loop total unchanged — the ruled Mode 5↔1 heatup pace is preserved by construction.
+- **Behavior consequences, re-derived where the plant honestly changed**: the §8.21
+  steam-dump cliff reads on TEMPERATURE now (≈11 °C between caught and uncaught; spray
+  holds the PORV clear — the pressure doorstep was the compressed clock's rendering); an
+  available auto-ADV catches even an MSIV closure 5 psi under the code-safety pop, so the
+  safeties teaching (`pwr_msiv`, TR-16, run_m4) runs on an authored ADV-out-of-service
+  premise; the TMI-2 deception crest measured 69.4 % — under the 75 % alarm — and the
+  missions' securing cue re-anchored to level-high-and-rising (> 65 %); TR-3's dry-SG
+  repressurization-to-PORV survives on the final plant (peak 16.30 MPa, the TMI mechanism).
+- **Manuals Rev 14 (pending)**: `12` §8.1/§8.2/§8.3/§8.4/§8.5, §6.0's transport statement,
+  row §12.16 — all re-measured numbers, both clocks' renderings recorded.
+
+*Save migration:* new `sg_mass_frac` (seeded through the level map's inverse — the wide level
+a pre-ledger save showed is reproduced byte-identically) and `t_sg_c` (seeded on the series
+split between Tavg and Tsec); old saves load unchanged, asserted by `save_migration`.
+
 ## [Alpha 1.3.0] — 2026-08-07
 
 ### Released — the lane merge and the version

@@ -241,6 +241,17 @@ correct; the harness waits like an operator). Migration: `t_sg_c` seeds on the s
 interpolation (save_migration asserts it); §6.3 line (`run_contract` 159); the #315/WTSM-12.2
 comment re-reasoned — the transported ΔT is what the real uncompensated channel reads.
 
+**WAVE B2 CLOSED THE SESSION.** Manuals **Rev 14 (pending)** items (a)–(f): `12` §8.1 (the mass
+ledger), §8.2 (derived clock + tube node + transported legs), §8.3 (the thermal cliff; the
+ADV-catches finding and the mission's ADV-out premise), §8.4 + row §12.16 (sourced 435.2 °F
+feed), §8.5 (the two-minute MSLI correction), §6.0 (the transport statement) — `run_manual_rev`
+15/0, `run_manual_units` 0 failed after three exact-pair fixes. CHANGELOG [Unreleased] carries
+the four-wave entry with the save-migration notes. CLAUDE.md: #418 open-items line → LANDED,
+themes rotated (#348's tolerance-band trap rescued to the standing list). #418 carries the
+close-out comment with THREE owner-review items: the TMI crest under the 75 % alarm (cue
+re-anchored to >65 high-and-rising), the pwr_msiv ADV-out premise, and the thermal §8.21 cliff.
+`status-work-complete` + `status-owner-review` set; `status-wip-develop` cleared.
+
 ---
 
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)

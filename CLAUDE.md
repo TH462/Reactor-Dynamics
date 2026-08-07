@@ -450,9 +450,11 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#385 node / #409 governor** — the pressurizer inventory NODE (ruled as a follow-on in the
   LOCA-cluster plan review, sequenced AFTER the #408 re-clock) and the deferred auto-acceleration
   governor. The rest of the LOCA cluster (#384/#407/#334-3) is landed.
-- **#418 tier 2** — the secondary re-clock + SG tube node/loop transport, RULED 2026-08-07
-  ("A+B, keep 297 °C") and planned: waves A1–A3 (K_steam_pressure 0.30 derived, SG mass
-  ledger + level map, MSSV 0.84×) then B1–B2 (node + transport, measure-first on OTΔT).
+- **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
+  secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
+  MSSV capacity, tube node + transported legs. Remaining under the umbrella: the ladder
+  identity (option C — a future owner ruling, not scheduled), WTSM §5.1-class data to firm
+  the declared C_P/split/C_tube bands, and #408 wave 3's quiet-night mission.
 - **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
   the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
   #418's new ledger, not the old gain**. `status-needs-ruling`.
@@ -494,12 +496,16 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   95.7 % of a loss of heat sink, 87.9 % of a blackout, **0.0 %** of every other IC. The gauge sat
   dead flat at 61.5 % — the number a *healthy* plant reads — while subcooling collapsed. Probe
   CA-13. **Solid is not overfilled**: this plant goes solid at an inventory *deficit*.
-- **A fudge band in a check was hiding a real defect** (2026-08-04, #348). CA-10 excluded a
-  1-point band below the 17 % heater cutoff as "coupling lag". What it hid: the interlock had **no
-  reset differential at all** and chattered, 35 % of below-cutoff samples at full heater power. **A
-  tolerance band is a claim that what it excludes is harmless — measure that.** Same pass, CA-11's
-  sampling assumed a plant that no longer existed, and printing MISSING rather than passing is the
-  only reason it was caught.
+- **The secondary loop runs the primary's fidelity** (2026-08-07, #418 tier 2, four waves in
+  one session). Derived SG pressure clock (bottled +43 psi/s at full generation, was +223), a
+  mass ledger reconciling Ginna's 35-s trip event with its 78-s boil-dry through level
+  GEOMETRY, sourced MSSV capacity, and a tube node + transported legs under an invariance
+  rule (1/h1 + 1/h2 = 1/h_sg, shared factors) that left every steady anchor exact — run_otdt
+  46/46, TR-1i's ±5 °F duty with no lead-lag. Two traps for the next wave: a node's capacity
+  must come OUT of the node it split from (C_tube on top of coolant 20 silently reopened the
+  RULED heatup pace — the chain caught it at 260.7 °C), and a knife-edge claim will OSCILLATE
+  under re-clocking (TR-3's "spray loses" inverted twice in one day; the probe now pins the
+  mechanism half so neither side passes hollow).
 - **The accident clock is real and the relief valves are plant-sized** (2026-08-07, #408 wave 1
   + the proportional-valve ruling). The accident-inventory family now moves real
   fractions-per-second; `porv_flow_max` 2.5e-4 (~112 gpm, Ginna power-scaled) and
@@ -542,6 +548,9 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). And a term that is
   an IDENTITY in the regime you test in is a term nothing tests — 44 green probes agreed with a
   leg-split formula that computed 0.0 °F on a scrammed core.
+- **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
+  from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
+  hid an interlock with no reset differential chattering at 35 % duty.
 - **Know which LAYER owns the effect you are asserting** (table below). A multi-part fix whose
   parts are each sufficient makes a one-sided injection lie — revert BOTH to reproduce (#295).
   Neutering an automation channel: blank the ENGAGE direction ONLY, or the plant sits in the IC's
