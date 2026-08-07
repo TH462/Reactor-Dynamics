@@ -114,6 +114,45 @@ a:hover { text-decoration: underline; }
 /* Disabled links: intentional "not yet" (e.g. gated features), not broken links. */
 a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoration: none; }
 
+/* ========================================================== TEST BUILD marker
+ * dev.reactordynamics.com serves the same pages as the live domain from the
+ * `develop` branch, so a visitor has no way to tell them apart without being told.
+ * Both markers key off html[data-channel], set in each page's <head> from
+ * window.RD_CHANNEL — which site/stamp_version.js stamps at deploy.
+ *
+ * DEFAULT IS HIDDEN, and the shown-state is opt-in per channel rather than
+ * `:not([data-channel="public"])`. That matters: if the attribute is ever missing
+ * or misspelled the markers stay OFF on the released site, which is the direction
+ * to fail in — a spurious "TEST BUILD" banner on the real site is worse than a
+ * missing one on the test site.
+ *
+ * Two of them, because they do different jobs. The BAR states the situation once,
+ * in full, at the top of the page. The PILL rides the sticky header, so the answer
+ * to "which of these two tabs am I in?" is on screen after the bar scrolls away.
+ * Filled amber, not the tinted outline used by the ALPHA badge and .alpha-note —
+ * this has to read as louder than the things around it. (Red stays reserved for
+ * the board.) */
+.dev-bar, .brand-test { display: none; }
+
+html[data-channel="preview"] .dev-bar,
+html[data-channel="dev"] .dev-bar {
+  display: block;
+  background: var(--caution); color: #17120A;
+  text-align: center; padding: 9px 16px;
+  font-size: 13px; font-weight: 600; line-height: 1.45;
+}
+.dev-bar strong { letter-spacing: 1.2px; }
+.dev-bar a { color: #17120A; text-decoration: underline; }
+.dev-bar a:hover { color: #000; }
+
+html[data-channel="preview"] .brand-test,
+html[data-channel="dev"] .brand-test {
+  display: inline-block;
+  background: var(--caution); color: #17120A;
+  border-radius: 999px; padding: 2px 9px;
+  font-size: 11px; font-weight: 700; letter-spacing: 1.4px; white-space: nowrap;
+}
+
 /* ==================================================================== hero */
 .hero { text-align: center; padding: 64px 20px 40px; }
 /* Sits BELOW the CTA, not above it (2026-08-06). It was the first thing on the

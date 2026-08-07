@@ -173,11 +173,33 @@ fs.writeFileSync(path.join(OUT_DIR, 'latest.zip'), zip);
 // the site has no fetch() anywhere and this is not the place to introduce one.
 // If it is missing (a local checkout that has never built), download.html simply
 // shows no metadata line: the CSS keeps .dl-meta hidden until it is filled.
+// CHANNEL AND SHA RIDE ALONG (2026-08-07). A tester downloading from the test site
+// gets a file whose NAME is identical to the released one — same product, same
+// version string, different bytes — so "the download is broken" arrives with no way
+// to tell which build it came from. Naming the file differently is the real fix and
+// is deliberately not done here: site/nav.js and this script each spell that filename
+// out and test/run_portable.js pins the two spellings against each other, so it is a
+// three-file change, tracked separately. This is the cheap half — the download page
+// states, on the page, which build it is about to hand you.
+// Both values come from the files stamp_version.js writes, which vercel.json /
+// the Pages build command run FIRST. Read defensively: a local `node
+// site/make_download.js` in a fresh clone has the repo placeholders, not a stamp.
+function stamped(file, re, fallback) {
+  try {
+    const m = re.exec(fs.readFileSync(path.join(ROOT, 'site', file), 'utf8'));
+    return m ? m[1] : fallback;
+  } catch (e) { return fallback; }
+}
+const channel = stamped('channel.js', /RD_CHANNEL\s*=\s*"([^"]+)"/, 'dev');
+const sha = stamped('version.js', /RD_VERSION\s*=\s*"[^"]*?([0-9a-f]{7})"/, '');
+
 const manifest = {
   version: ver,
   date: releaseDate(),
   bytes: zip.length,
   file: zipName,
+  channel: channel,
+  sha: sha,
 };
 fs.writeFileSync(path.join(OUT_DIR, 'manifest.js'),
   '/* GENERATED at deploy by site/make_download.js — do not commit or hand-edit. */\n' +

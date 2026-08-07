@@ -21,14 +21,30 @@
     <meta name="twitter:image" content="https://reactordynamics.com/site/hero.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
     <link rel="stylesheet" href="site/site.css">
+    <script src="site/channel.js"></script>
+    <!-- TEST-BUILD markers (site.css). Reads the channel site/stamp_version.js stamped
+         at deploy: 'public' on the released site, 'preview' on dev.reactordynamics.com,
+         'dev' on a local checkout. Inline and in <head> so the banner is present in the
+         first paint rather than appearing after it and shoving the page down. -->
+    <script>(function (c) {
+      document.documentElement.setAttribute('data-channel', c);
+      if (c !== 'public') document.title = '[TEST] ' + document.title;
+    }(window.RD_CHANNEL || 'dev'));</script>
     <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
+
+<div class="dev-bar" role="status">
+  <strong>TEST BUILD</strong> &mdash; an unstable work in progress, not the released
+  simulator. Things here are half-finished on purpose. The stable version is at
+  <a href="https://reactordynamics.com/">reactordynamics.com</a>.
+</div>
 
 <header class="site-header">
   <div class="bar">
     <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
     <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
+    <span class="brand-test" title="This is the unstable test build, not the released site.">TEST</span>
     <span class="brand-ver" id="brandVer" title="The release this build ships as — see the Changelog."></span>
     <div class="nav-wrap">
       <button type="button" class="nav-burger" id="navBurger"

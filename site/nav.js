@@ -78,6 +78,14 @@
         parts.push((+d[3]) + ' ' + MONTHS[(+d[2]) - 1] + ' ' + d[1]);
       }
       if (dlInfo.bytes > 0) parts.push((dlInfo.bytes / 1048576).toFixed(1) + ' MB');
+      // Off the released channel, say so and name the commit. The zip arrives under the
+      // same filename as the real release (see the note in site/make_download.js), so
+      // this line is the only thing on the page that distinguishes the two — which is
+      // why the SHA is here and not just the word TEST.
+      if (dlInfo.channel && dlInfo.channel !== 'public') {
+        parts.unshift('TEST BUILD');
+        if (dlInfo.sha) parts.push(dlInfo.sha);
+      }
       if (parts.length) {
         meta.innerHTML = parts.join('<span class="sep">·</span>');
         meta.classList.add('is-filled');

@@ -765,7 +765,12 @@ var BASELINES = {
   // 0 undeclared throughout. MEASURED by pulling that one citation back out (209 -> 208 -> 209),
   // not inferred from the diff — the count is the sum of two independent scans and "it must be my
   // line" is exactly the assumption that would hide a second, undeclared one arriving beside it.
-  'run_hardrules.js':      { code: 0, score: '209checks 0failed' },
+  // 209 -> 210 on 2026-08-07-workbench-a: again ONE new declared citation site, the
+  // changelog-page style directive quoted as the reason the host-migration entry adds no
+  // changelog.html line. MEASURED as the marker count in CHANGELOG.md, 39 -> 40, against a
+  // check delta of 1 — the `(#241: "…")` quote in the same entry is NOT an OWNER marker and
+  // correctly counts for nothing. 0 undeclared throughout.
+  'run_hardrules.js':      { code: 0, score: '210checks 0failed' },
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
@@ -902,7 +907,18 @@ var BASELINES = {
   // 292 -> 295 on 2026-08-03 (#319): the `procedure:pwr_post_trip` registry entry. This gate
   // caught its absence, which is the job — a procedure the player can open with no flag
   // behind it ships ungated (#310 is the worked case).
-  'run_flags.js':          { code: 0, score: '16/16 310/310' },
+  // 310 → 320 on 2026-08-07: A COUNTING ARTIFACT, NOT NEW COVERAGE — recorded because the
+  // number alone reads like the opposite. The "deploy stamp can only produce a known
+  // channel" suite greps site/stamp_version.js for /'(public|preview|dev)'/ and emits one
+  // ck() PER LITERAL FOUND; the host-agnostic rewrite has 18 such literals where the old
+  // file had 8. MEASURED both ways (8 → 18, delta 10 = the exact check delta). Not one of
+  // those ten asserts anything that was not already asserted.
+  // Worth knowing WHY that suite was no defence: it never mentions CF_PAGES. Its one
+  // semantic check is /production'\s*\?\s*'public'/, which only ever inspected the Vercel
+  // branch — so it sat green through the entire period in which a Cloudflare deploy would
+  // have stamped the public site 'dev'. It pins the VOCABULARY (no unknown channel string
+  // can be emitted); run_channel.js pins the DECISION. Neither substitutes for the other.
+  'run_flags.js':          { code: 0, score: '16/16 320/320' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -1092,6 +1108,22 @@ var BASELINES = {
   // stripped of its card 115/13, and a stale og:image:width 115/1. 115 checks is
   // 8 pages × 14 + the discovery row and the hero-file row.
   'run_site_meta.js':      { code: 0, score: '115checks 0failed' },
+  // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
+  // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
+  // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE
+  // channel in site/flags.js, not the safest: `channel() !== 'public'` turns ON every
+  // preview-stage area. MEASURED before the fix: campaign, scenarios, checklists and
+  // walkthroughs all `on`, i.e. the four the owner declared placeholders (#241), live on
+  // reactordynamics.com, with nothing failing and no gate reddening.
+  // The runner asks resolve() a 7-row host matrix AND asks site/flags.js what each answer
+  // actually offers — a channel string is not the thing that matters, what it does to the
+  // flag layer is, and pinning only the string would let the two drift apart.
+  // PURE: resolve(env) does no I/O and the file writes sit behind require.main, so this
+  // runner cannot leave a stamped working tree behind even if it is killed mid-run.
+  // VERIFIED BY INJECTION: resolve() made blind to Cloudflare again scores 25/10, the
+  // unrecognised-CI fallback flipped from 'public' to 'dev' scores 25/2, and renaming
+  // PRODUCTION_BRANCH scores 25/4.
+  'run_channel.js':        { code: 0, score: '25checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane

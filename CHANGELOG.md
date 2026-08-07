@@ -76,6 +76,58 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the deploy stamp was Vercel-only, and 'dev' is its most permissive answer (#413, 2026-08-07)
+
+Website and build tooling. **No `changelog.html` entry**: the site markers below are
+invisible on the released channel by construction, so nothing a player can observe on
+reactordynamics.com changes, and a line that names no verifiable fact is one the page's own
+style rule says to cut *(OWNER DIRECTIVE, 2026-08-04: "Just keep to facts in the changelog
+page. Minimize prose.")*.
+
+- **A host migration would have published four unvetted areas to the live site, silently.**
+  `site/stamp_version.js` read `VERCEL_ENV` and nothing else. Cloudflare Pages does not set
+  it — it sets `CF_PAGES` / `CF_PAGES_BRANCH` / `CF_PAGES_COMMIT_SHA` — so the stamper fell
+  through to its `'dev'` default. **Measured with the Vercel variables absent**: channel
+  `dev`, and `on(campaign)`, `on(scenarios)`, `on(checklists)`, `on(walkthroughs)` all
+  **true**. Those are exactly the four the owner declared placeholders *(#241: "Most of the
+  training campaign and scenarios and even the checklist I haven't checked so I consider
+  them placeholders until I have gone through them")*. `site/flags.js` resolves preview
+  content as `channel() !== 'public'`, which makes **`'dev'` the most permissive value, not
+  the safest** — the failure was in the DEFAULT, not the variable name. `RD_VERSION` also
+  degraded to `alpha · dev`, so every bug report would have lost its build SHA. Nothing
+  would have failed; no gate would have reddened.
+- **`resolve()` is now a pure function of an env object**, host-agnostic across Cloudflare
+  and Vercel, with the file writes behind `require.main`. An unrecognised CI lands on
+  **`'public'`** — the restrictive answer — and says so loudly in the build log: a uselessly
+  conservative test site is recoverable, unvetted content on the public one is not.
+- **`test/run_channel.js`** — new gate, `run_all` 41 → 42, `25checks 0failed`. Seven
+  deployment situations, and for each it asks **what the channel actually offers** rather
+  than trusting the string: a channel called `'public'` that fails to gate is the whole
+  defect. Injection-verified — `resolve()` blinded to Cloudflare again scores **25/10**, the
+  unrecognised-CI fallback flipped to `'dev'` **25/2**, `PRODUCTION_BRANCH` renamed
+  **25/4**.
+- **TEST BUILD markers**, for `dev.reactordynamics.com` off `develop`. A filled amber banner
+  at the top of every page, a `TEST` pill in the sticky header, `TEST BUILD` beside the
+  version in the control room, and `[TEST]` on the tab title. All keyed off
+  `html[data-channel]`, **hidden by default and opted into per channel** — a missing or
+  misspelled attribute leaves the released site unmarked rather than falsely branded.
+  Rendered on all three channels and measured: `public` shows nothing anywhere.
+- **`robots.txt` is generated to follow the channel** — `Allow` on the released site,
+  `Disallow` everywhere else, so the test domain cannot compete with production in search.
+  Gitignored: a committed copy would carry one answer to both hosts.
+- **The download page names the build it is offering.** `download/manifest.js` gained
+  `channel` and `sha`; off the released channel the meta line reads `TEST BUILD · Alpha
+  1.2.2 · … · 9f8e7d6`. The zip's **filename** is still the release's — that is a
+  three-file change pinned by `run_portable`, tracked as **#414**.
+- `run_flags` **310 → 320 is a counting artifact, not new coverage**: its deploy-stamp suite
+  emits one check per `/'(public|preview|dev)'/` literal in the stamper, and the rewrite has
+  18 where the old file had 8 (measured both ways; delta exactly 10). Worth recording why
+  that suite was no defence — **it never mentions `CF_PAGES`**, and its one semantic check
+  only ever inspected the Vercel branch, so it sat green throughout.
+
+Migration checklist for the rest — `.vercelignore`, the `/sim` rewrite, analytics, and the
+Vercel-specific release-verification step that would otherwise pass vacuously — is **#413**.
+
 ### Changed — the public site says who it is for, and its links preview again (2026-08-06)
 
 Website only, so **no `changelog.html` entry** *(OWNER DIRECTIVE, 2026-08-06: "don't include

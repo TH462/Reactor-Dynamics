@@ -564,6 +564,19 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .logo .a { color: var(--normal); }
 .brand { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .logo-ver { font-size: 10px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+/* TEST-BUILD marker — shown only off the released channel, keyed off the
+   html[data-channel] attribute shell.html sets from window.RD_CHANNEL. Hidden by
+   DEFAULT and opted into per channel, so a missing or misspelled attribute leaves
+   the released simulator unmarked rather than falsely branded. Sits in the header
+   beside the version, which is the one piece of chrome always on screen. */
+.logo-test { display: none; }
+html[data-channel="preview"] .logo-test,
+html[data-channel="dev"] .logo-test {
+  display: inline-block;
+  background: var(--caution); color: #17120A;
+  border-radius: 999px; padding: 1px 7px;
+  font-size: 9px; font-weight: 700; letter-spacing: 1.2px; white-space: nowrap;
+}
 .clock { font-size: 15px; font-weight: 600; }
 .clock.running { animation: pulse 2s ease-in-out infinite; }
 .clock.accel { color: var(--caution); }
