@@ -45,6 +45,43 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-06-develop-g — #408 stages 0–2 ruled: CVCS joins the real scale, and the sizing question splits the constants table in two
+
+**Both #408 stage gates are RULED, five decisions in one reply** *(OWNER RULING, 2026-08-06:
+"1. A / 2. Yes. But can we name it something a non nuc engineer will understand? Maybe
+something like % of full primary loop shear or something like that. / 3. Re-affirm. / 4. As
+recommended we will do this with 385. / Stage 2: a and c, defer b. … Definitely document b. I
+want to implement it later.")*: (1) **CVCS joins the real scale** — one inventory ledger, one
+implied RCS volume, retiring the config identity block's "NO single RCS volume makes both
+true"; (2) the break slider relabels **in plain language** (working copy: *"Break Size — % of a
+full pipe shear"*; exact wording lands in wave 1); (3) SI 12.4 MPa **re-affirmed** on the
+sourced band (WTSM 12.3 1,807 psig / Ginna 1,715 psia) and the 2026-07-21 "TMI-clock-gated"
+justification retired; (4) √Δp re-anchored now, Moody-class + reflood transport delay with
+#385 after the re-clock; (5) pacing = authored beat speeds + free-play affordances, the
+auto-accel governor **deferred and documented as #409** with the owner's KSP-warp-zones
+framing.
+
+**The decision the owner's sizing question forced, recorded here because it re-cuts the
+stage-1 table**: the plant will declare an identity volume of **~1,000 ft³ (~7,500 gal) at
+300 MWt**, from the sourced fleet ratio (~3 ft³/MWt: Ginna 5,123 ft³ / 1,811 MWt = 2.8,
+BVPS-2 9,650 / 2,900 = 3.3 — mixed pzr bases, noted). That splits the accident family:
+**power-scaled systems** (ECCS, accumulators, own-pipe break) have size-invariant fractional
+rates (measured: HPI 2.6e-4 frac/s at Ginna vs ~2.1e-4 at a 4-loop) and proceed as tabled;
+**absolute-size components** (SG tubes, RCP seals, possibly a fleet-standard PORV) are
+fractionally **~5–6× bigger** in a small plant — SGTR ~2.5e-4 → ~1.3e-3 frac/s, and IF the
+PORV is standard hardware, `porv_flow_max` lands ~1.3e-3 (making today's 0.0035 only ~2.7×
+compressed, and a stuck-PORV draindown ~20–25 min *as a size fact*). Those rows re-issue as a
+table amendment after a wave-1 evidence mini-pass (Zorita-class single-loop data, WTSM SG tube
+dimensions) — recall-order arithmetic until then, flagged as such on the issue. **Honesty note
+carried to the record**: the measurement that flipped the Decision-1 recommendation (compressed
+charging holds a real-scaled SGTR) was computed on Ginna's volume and partly dissolves under
+the small-plant identity; the ruling rests on coherence grounds, and the CVCS correction
+SHRINKS under the declared volume (~3–5× real, not 9×).
+
+Session artifacts: plan + constants table + UX note + rulings record, all comments on #408;
+evidence ledger in `TUNING_LOG` 2026-08-06-develop-g. No code moved (plan-first held through
+both gates). Next: wave 1 opens with the identity-volume declaration and the amendment pass.
+
 ## 2026-08-06-develop-f — #385 stage 2: the TMI void lift is a flow split, and the discriminator is BREAK PATH, not void magnitude
 
 **LATE-SESSION IDENTITY RULING (#408) — the accident-inventory clock is RE-DECIDED to

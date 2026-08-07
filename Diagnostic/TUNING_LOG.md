@@ -89,6 +89,25 @@ of wall at 3600×; `ui/shell.html:93` still says "No automatic dropout" (stale, 
 **Gates**: no code moved; `run_all --fast` at baseline before commit (see below). Next: the two
 #408 rulings, then wave 1 (LOCA family) per the posted plan.
 
+**LATE SESSION — both gates RULED, all five decisions** (verbatim quote and the full record in
+`BUILD_DECISIONS` 2026-08-06-develop-g): CVCS joins the real scale; slider relabels in plain
+language ("% of a full pipe shear" working copy); SI 12.4 MPa re-affirmed; √Δp now +
+Moody-class with #385; pacing A + C with the auto-accel governor deferred as **#409**
+(KSP-warp-zones framing, owner's own). `status-needs-ruling` cleared on #408.
+
+**And the owner's closing question — "is our plant properly sized for 100 MWe?" — re-cuts the
+stage-1 table before wave 1 solves a single constant.** Today the plant has NO size (the config
+identity block's "NO single RCS volume makes both true" — which ruling 1(a) just retired).
+Sourced fleet ratio ~3 ft³/MWt (Ginna 2.8, BVPS-2 3.3) → declare **~1,000 ft³ (~7,500 gal) at
+300 MWt**. The split that follows: power-scaled systems have size-invariant FRACTIONS (HPI
+2.6e-4 at Ginna vs ~2.1e-4 at a 4-loop — the table's rows stand), but **absolute-size
+components (SG tube, RCP seal, maybe PORV) are ~5–6× fractionally bigger in a small plant** —
+the owner's "a small plant reacts quicker" is RIGHT for exactly those casualties, and SGTR /
+seal-leak / `porv_flow_max` re-issue as a table amendment after a wave-1 evidence mini-pass
+(Zorita-class data, WTSM SG tube dimensions). The Decision-1 inversion measurement partly
+dissolves under this identity (recorded in BUILD_DECISIONS); the CVCS correction shrinks to
+~3–5× real. Wave-1 opening act: declare the volume, run the mini-pass, amend, then solve.
+
 ## Session log — 2026-08-06-develop-f (LOCA cluster stage 2 — the void lift is path-aware; #385 shipped, node committed as follow-on)
 
 **Task:** execute the approved coordinated LOCA-fix plan (#385/#384/#407/#334-3; plan file
