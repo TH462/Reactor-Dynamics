@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page not found — Reactor Dynamics</title>
+    <meta name="description" content="That page does not exist. Links back to the simulator and the rest of the site.">
+    <link rel="canonical" href="https://reactordynamics.com/404.html">
+    <meta property="og:site_name" content="Reactor Dynamics">
+    <meta property="og:url" content="https://reactordynamics.com/404.html">
+    <meta property="og:title" content="Page not found — Reactor Dynamics">
+    <meta property="og:description" content="That page does not exist. Links back to the simulator and the rest of the site.">
+    <meta property="og:image" content="https://reactordynamics.com/site/hero.png">
+    <meta property="og:image:width" content="1915">
+    <meta property="og:image:height" content="1045">
+    <meta property="og:image:alt" content="The Reactor Dynamics PWR control-room board">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Page not found — Reactor Dynamics">
+    <meta name="twitter:description" content="That page does not exist. Links back to the simulator and the rest of the site.">
+    <meta name="twitter:image" content="https://reactordynamics.com/site/hero.png">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
+    <link rel="stylesheet" href="site/site.css">
+    <script src="site/channel.js"></script>
+    <!-- TEST-BUILD markers (site.css). Reads the channel site/stamp_version.js stamped
+         at deploy: 'public' on the released site, 'preview' on dev.reactordynamics.com,
+         'dev' on a local checkout. Inline and in <head> so the banner is present in the
+         first paint rather than appearing after it and shoving the page down. -->
+    <script>(function (c) {
+      document.documentElement.setAttribute('data-channel', c);
+      if (c !== 'public') document.title = '[TEST] ' + document.title;
+    }(window.RD_CHANNEL || 'dev'));</script>
+    <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+
+<div class="dev-bar" role="status">
+  <strong>TEST BUILD</strong> &mdash; an unstable work in progress, not the released
+  simulator. Things here are half-finished on purpose. The stable version is at
+  <a href="https://reactordynamics.com/">reactordynamics.com</a>.
+</div>
+
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
+    <span class="brand-test" title="This is the unstable test build, not the released site.">TEST</span>
+    <span class="brand-ver" id="brandVer" title="The release this build ships as — see the Changelog."></span>
+    <div class="nav-wrap">
+      <button type="button" class="nav-burger" id="navBurger"
+              aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" id="siteNav">
+      <a href="ui/shell.html?engine=pwr">Simulator</a>
+      <a href="about.html">About</a>
+      <a href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="download.html">Download</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <h1>That page does not exist</h1>
+  <p class="lede">The link may be old, or mistyped. Nothing is broken on your end.</p>
+
+  <p>Where you probably wanted to go:</p>
+  <ul>
+    <li><a href="ui/shell.html?engine=pwr">The control room</a> &mdash; run the plant</li>
+    <li><a href="index.html">Home</a>, or <a href="about.html">About</a> for what this is
+      and who it is for</li>
+    <li><a href="changelog.html">Changelog</a> &mdash; what changed, newest first</li>
+    <li><a href="download.html">Download</a> &mdash; the offline single-file build</li>
+  </ul>
+
+  <p>If you followed a link from somewhere on this site, that is a bug worth reporting:
+    <a href="https://github.com/TH462/Reactor-Dynamics/issues" rel="noopener">open a GitHub
+    issue</a> and say which page you came from.</p>
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>Reactor Dynamics is an educational simulation — not engineering
+    software, and no substitute for real operator training.</div>
+    <div style="margin-top: 8px;">Found a bug, or something that does not match
+    plant behavior? <a href="https://github.com/TH462/Reactor-Dynamics/issues"
+    rel="noopener">Open a GitHub issue</a> &mdash; public and tracked, and you can
+    read what is already known before you write. Anything else: <a
+    href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
+    <div class="links">
+      <a href="about.html">About</a>
+      <a href="physics.html">Physics</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="legal.html">Legal</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+      <span id="ver" class="mono"></span>
+    </div>
+  </div>
+</footer>
+
+
+<script src="site/version.js"></script>
+  <script src="site/release.js"></script>
+<script src="site/nav.js"></script>
+</body>
+</html>

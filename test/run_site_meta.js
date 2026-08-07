@@ -66,6 +66,27 @@ check('PAGES', '.vercelignore', 'deployable root pages discovered (' + PAGES.len
   PAGES.join(', '),
   PAGES.length >= 8 ? 'globbed, then filtered by what .vercelignore excludes' : null);
 
+// ------------------------------------------- the two definitions of "the site" must agree
+// This gate globs the root for deployable pages; site/build_site.js copies an explicit
+// PAGES list into the published output. Two answers to the same question, and they can
+// disagree in both directions — add a page and forget build_site.js and its social card
+// is checked here while the deploy never publishes it; drop one and build_site.js throws
+// at deploy time, which is late. Neither is visible from either file alone.
+var buildSrc = read('site/build_site.js');
+var pagesM = /const PAGES = \[([\s\S]*?)\];/.exec(buildSrc);
+check('PAGES', 'site/build_site.js', 'declares a PAGES list', pagesM ? 'parsed' : null);
+if (pagesM) {
+  var published = (pagesM[1].match(/'([^']+\.html)'/g) || []).map(function (s) { return s.replace(/'/g, ''); });
+  PAGES.forEach(function (p) {
+    check('PAGES', p, 'is published by site/build_site.js',
+      published.indexOf(p) !== -1 ? 'in its PAGES list' : null);
+  });
+  published.forEach(function (p) {
+    check('PAGES', p, 'published, and this gate checks it',
+      PAGES.indexOf(p) !== -1 ? 'both agree it is part of the site' : null);
+  });
+}
+
 // ---------------------------------------------------------------- the image they all point at
 // Declared dimensions are checked against the real ones. og:image:width/height is a
 // hint scrapers use to lay the card out before the image arrives, so a wrong pair

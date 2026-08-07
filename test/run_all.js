@@ -987,7 +987,11 @@ var BASELINES = {
   // not present" are different promises and the offline build makes the stronger one.
   // The per-file BUNDLE rows exist because the tally alone is satisfiable by a TYPO: a
   // mis-keyed OMIT entry ships the file and the count still matches scripts.length.
-  'run_portable.js':       { code: 0, score: '129checks 0failed' },
+  // 129 -> 130 on 2026-08-07: site/build_site.js joined vercel.json's buildCommand, and
+  // the DEPLOY check enumerates every script that command runs to confirm .vercelignore
+  // does not withhold it from the build machine — the failure that killed Alpha 1.10.0.
+  // One more build script, one more check, and it is the check doing its job.
+  'run_portable.js':       { code: 0, score: '130checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -1134,7 +1138,15 @@ var BASELINES = {
   // 116/3 (the count moves because the stray-url sweep emits a row naming it), a page
   // stripped of its card 115/13, and a stale og:image:width 115/1. 115 checks is
   // 8 pages × 14 + the discovery row and the hero-file row.
-  'run_site_meta.js':      { code: 0, score: '115checks 0failed' },
+  // 115 -> 148 on 2026-08-07: a 9th page (404.html — Pages serves one for unmatched
+  // paths where Vercel supplied its own) at 14 checks, plus a CROSS-CHECK against
+  // site/build_site.js's PAGES list. Two files each answer "what is the public site" and
+  // they can disagree in both directions: add a page and forget the build list and its
+  // card is checked here while the deploy never publishes it; drop one and the build
+  // throws at deploy time, which is late. It caught 404.html on its first run.
+  // INJECTION-VERIFIED both ways: a page removed from the build list 146/2, a page added
+  // to it that this gate does not glob 148/2.
+  'run_site_meta.js':      { code: 0, score: '148checks 0failed' },
   // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
   // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
   // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE

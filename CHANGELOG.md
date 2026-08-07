@@ -76,6 +76,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — /sim has been broken in production, and the deploy stops publishing the repo (#413, 2026-08-07)
+
+Cloudflare migration prep, items 2-6. Item 4 (analytics) is deliberately NOT here: it is
+the one change that cannot be correct on both hosts at once, so it lands at cutover.
+
+- **`/sim` returns a broken control room on the live site, and has since it was added.**
+  MEASURED against production: `https://reactordynamics.com/sim` answers 200 and paints an
+  empty shell with **62 failed requests and zero gauges**, while `/ui/shell.html` on the
+  same host loads with **six and no failures**. `vercel.json` carried `/sim` as a
+  **rewrite**, which keeps the address at `/sim`, so every relative path in `ui/shell.html`
+  — `shell.css`, `diagram/board/pwr_board.css`, every panel script — resolved against the
+  site root instead of `/ui/`. It is a **302 redirect** now: the browser lands on the real
+  path first and the relative paths resolve. Not 301 — a permanent redirect is cached hard,
+  and reclaiming `/sim` later would mean asking people to clear their cache.
+- **The deploy publishes `dist-site/`, not the repository root.** `site/build_site.js`
+  assembles it from an allowlist: 9 pages and 5 asset directories, **128 files** against
+  the 264 tracked. `test/`, `Blueprint/`, `Manuals/`, `Diagnostic/`, `tools/`, `worker/`
+  and the three dev harness pages are all absent, verified. Publishing the root only ever
+  looked safe because `.vercelignore` was quietly carrying it, and **Cloudflare Pages
+  honours no ignore file at all** — that prop disappears on the host change.
+- **The allowlist checks itself.** A hand-written copy list is precisely the
+  hand-maintained map that ends up testing itself, so after copying, every local `src=`
+  and `href=` in every published page is resolved against the output and one miss fails
+  the build. The allowlist decides what to include; the reference walk decides whether
+  that was enough.
+- **A 404 page**, because Pages serves one for unmatched paths where Vercel supplied its
+  own. **`.node-version` pinned to 24**, matching the Vercel project, so the build does not
+  land on whatever Pages defaults to.
+- **`run_site_meta` 115 -> 148** — the new page at 14 checks, plus a cross-check against
+  `build_site.js`'s PAGES list. Two files each answer "what is the public site" and can
+  disagree both ways. **It caught `404.html` on its first run**, which the build was
+  copying as a special case outside its own list. Injection-verified both directions.
+- `run_portable` 129 -> 130: the new build script joined `vercel.json`'s buildCommand and
+  the DEPLOY check enumerates every script that command runs, confirming `.vercelignore`
+  does not withhold it — the failure that killed Alpha 1.10.0.
+
+Verified by serving `dist-site/` over HTTP with the `_redirects` rule applied: all 9 pages
+200, `/sim` boots the board with six gauges, an unknown path serves the 404, **zero failed
+requests and zero JS errors**.
+
+
 ### Added — the usage-data receiver (#413, 2026-08-07)
 
 Slice 3: the server half, in `worker/`. Deployed separately from the site (Pages is the
