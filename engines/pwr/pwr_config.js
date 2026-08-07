@@ -356,7 +356,17 @@
       h_fc_dnb: 0.004,             // during DNB, s^-1 [tune]
       // Coolant node: dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg)/C_cool *dt.
       h_sg: 0.6,                   // coolant→SG, s^-1 [tune] (balances the energy in/out at rated)
-      coolant_heat_capacity: 20.0, // sets the coolant thermal time constant [tune]
+      // 20.0 → 15.0 (#418 wave B1, 2026-08-07): the SG tube-bundle share moved OUT of
+      // this node and into `sg_tube_capacity` (15 + 5 = the same 20 the loop always
+      // carried). Adding the tube node ON TOP would have — and briefly did, measured —
+      // slowed the pump-heat Mode 5→3 heatup by ~25 % (the chain arrived at 260.7 °C
+      // instead of ~285), silently reopening the RULED Mode 5↔1 pace identity the
+      // #408/#418 fence protects. The SPLIT is the physical statement: this constant is
+      // the loop water OUTSIDE the tube bundle; total loop capacity is unchanged, so
+      // every no-sink heatup/cooldown rate is preserved by construction, while the
+      // coolant node alone answers transients ~25 % faster (re-measured: run_otdt,
+      // TR-1i's ±5 °F duty, SS-1, TR-7b all green on the split).
+      coolant_heat_capacity: 15.0, // loop water outside the SG tubes [tune — see split note]
       // RCP heat: the pumps' shaft work ends up in the coolant (~15–20 MW for a
       // 4-loop plant ≈ 0.55 % of rated core heat), scaled by flow. Matters at
       // no-load (heats the plant with the heat sink isolated) and post-trip. [tune]
@@ -403,6 +413,31 @@
       sg_dryout_deplete_tau: 300.0, // s — dry+unfed bundle's residual film boils off [tune]
       sg_dryout_rewet_tau: 45.0,    // s — feed restores the bundle film [tune]
       sg_dryout_feed_eps: 0.01,     // normalized feed that counts as wetting the bundle
+      // ---- SG TUBE NODE + LOOP TRANSPORT (#418 wave B1, 2026-08-07) ----------------
+      // The single h_sg conductance splits into a SERIES pair around a tube-bundle
+      // node t_sg_c: coolant → tube at h_sg/split, tube → secondary at h_sg/(1−split).
+      // THE INVARIANCE RULE (the design's spine — do not break it): both branches
+      // carry the SAME flow_frac × dryout factors and the conductances satisfy
+      // 1/h1 + 1/h2 = 1/h_sg for ANY split, so at every steady state the crossing
+      // heat is EXACTLY the legacy h_sg·f·dry·(Tavg − Tsec) — the four sites that
+      // spell Tavg = Tsat(P_sec) + Q/h_sg (pwr_control TAVG_FULLPOWER, the dump's
+      // t_fullpower, both engine IC derivations) hold unchanged, every preset is
+      // still a true steady state, and the natural-circ / dryout / reverse-flow
+      // regimes survive by construction. What the node ADDS is dynamics only: the
+      // bundle's thermal mass buffers primary↔secondary transients (τ ≈
+      // C_tube/(2·h_sg·f) ≈ 2.1 s at full flow, ~60 s at natural-circ flows —
+      // the SG goes sluggish at low flow, which is physical).
+      // The LEGS become first-order states lagging their algebraic targets
+      // (tau/flow_frac — transport is faster at higher loop flow): the same-step
+      // leg algebra the compressed plant published moved 27.5 °F of cold leg in
+      // 2 s on an MSIV closure (#418's founding measurement). The DNB datum and
+      // the Tsat cap keep reading the RAW same-step algebra (_subcool_hot_c) —
+      // deliberately untransported, per the #368 record.
+      sg_tube_capacity: 5.0,       // tube-bundle water+metal heat capacity, same units as
+                                   // coolant_heat_capacity (~25 % of it) [tune pending WTSM §5.1-class data]
+      sg_tube_split: 0.5,          // h1 share of the series pair (0.5 → h1 = h2 = 2·h_sg) [tune]
+      tau_hotleg_s: 1.5,           // s at full flow — core exit → SG inlet transport [tune]
+      tau_coldleg_s: 4.0,          // s at full flow — SG outlet → core inlet transport [tune]
       void_flux_gain: 0.02,        // equilibrium core void per °C of exit overshoot [tune]
       void_flux_max: 0.8,          // ceiling on flux-driven void fraction [tune]
       void_flux_tau: 3.0,          // s — flux void grows/recovers with this tau [tune]

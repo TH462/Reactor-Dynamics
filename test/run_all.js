@@ -75,7 +75,7 @@ var BASELINES = {
   // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
   // protection acted on a reading the plant never had. Each half injection-verified and
   // they discriminate independently.
-  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 243passed' },   // 242 -> 243 (#418 A2): save_migration asserts the sg_mass_frac inverse-map seed round-trips the wide level exactly   // 241 -> 242 (#386 stage 1): the five containment fields   // 200 → 201: #247 rcs_flow-follows-truth
+  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 244passed' },   // 243 -> 244 (#418 B1): save_migration asserts the t_sg_c split-interpolation seed   // 242 -> 243 (#418 A2): the sg_mass_frac inverse-map round-trip   // 241 -> 242 (#386 stage 1): the five containment fields
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
   // DELIBERATELY NOT MOVED at #346, and reading 1/3 on the backshop lane. Both red suites are
@@ -836,9 +836,10 @@ var BASELINES = {
   // MEASURED ON THE MERGED TREE (2026-08-06 lane merge): five new fields between the two
   // lanes, and this gate counts each name on BOTH sides of the diff, so it moves by more
   // than the field count. develop read 154, workbench 153 — neither survives.
-  // 157 -> 158 (#418 A2): the sg_mass_frac ledger field's §6.3 line — the contract gate
-  // counts one check per documented true_state field, both directions.
-  'run_contract.js':       { code: 0, score: '158checks 0failed' },
+  // 157 -> 158 (#418 A2) -> 159 (#418 B1): the sg_mass_frac ledger and t_sg_c tube-node
+  // fields' §6.3 lines — the contract gate counts one check per documented true_state
+  // field, both directions.
+  'run_contract.js':       { code: 0, score: '159checks 0failed' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

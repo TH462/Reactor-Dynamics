@@ -687,7 +687,18 @@
       // RODS_NOT_INSERTED with the plant still coasting at 95 % power, which is the interlock
       // doing its job, not a defect.
       for (var rw = 0; rw < 400 && !svc.assembleSnapshot().instruments.rods_fully_in; rw++) ticks(1);
-      var rrsp = svc.handleCommand({ action: 'reset_rps' }); ticks(4);
+      // RETRY until the plant clears its own trip signals (#418 wave B1, 2026-08-07).
+      // A single immediate reset was refused TRIP_SIGNAL_PRESENT on the B1 plant: the
+      // transported legs and tube node hold the post-trip contraction (and its live
+      // lo-press/OTΔT-class conditions) a few hundred ticks longer than the old
+      // same-step plant, and the interlock refusing while a signal stands is CORRECT.
+      // The harness now does what an operator does — wait for conditions to clear and
+      // reset then. The CLAIM is unchanged: the #75 reset path works once the plant
+      // is resettable.
+      var rrsp = null;
+      for (var rr = 0; rr < 240 && svc.assembleSnapshot().instruments.rps_scrammed; rr++) {
+        rrsp = svc.handleCommand({ action: 'reset_rps' }); ticks(5);
+      }
       ck('func: RPS reset clears the turbine-trip scram (#75 reset path)',
         svc.assembleSnapshot().instruments.rps_scrammed === false,
         (rrsp && rrsp.reason) || (rrsp && rrsp.message) || 'no refusal');

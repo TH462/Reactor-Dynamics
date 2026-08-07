@@ -188,6 +188,59 @@ mixing plants: 1092 psig / 557 °F is the 4-LOOP reference plant's no-load; Ginn
 547 °F ≈ 990 psig. `run_all` 42 at baseline. **Wave A complete** — the secondary's inventory,
 pressure, and relief now run one sourced basis; wave B (tube node + transport) is next.
 
+**WAVE B1 BUILT (same session) — the SG has a tube node and the legs are TRANSPORTED.** The
+single `h_sg` conductance split into a SERIES pair around a new tube-bundle state `t_sg_c`
+(`sg_tube_split` 0.5 ⇒ h1 = h2 = 2·h_sg), both branches carrying the shared flow×dryout
+factors so 1/h1 + 1/h2 = 1/h_sg — **the invariance rule delivered exactly what it promised**:
+the four sites spelling `Tavg = Tsat + Q/h_sg` never moved, SS-1 lands on the operating map
+to the digit, `run_otdt` 46/46, and **TR-1i's ±5 °F WTSM duty holds at 4.35 with NO lead-lag**
+— the pre-named remedy stayed in its holster. The legs (`thot_c`/`tcold_c`) became first-order
+states lagging the algebraic split at `tau/flow` (1.5/4.0 s at full flow); the DNB datum and
+Tsat cap keep the RAW same-step algebra (#368). No new engine step — the node steps inside
+`stepCoolant`, so the step-7 pressure/cavitation consumers see this step's legs.
+
+**The headline, measured (the owner's founding observation)**: MSIV closure at 100 % now
+collapses true loop ΔT over **~15–25 s of physics** (59.4 → 30.1 °F at +3 s, 12.5 at +7,
+~5 at +15) and the board ΔT over **~25–30 s** — was a 2-s algebraic step smoothed only by the
+RTD lag. True Tcold rises at the node/transport pace (was +27.5 °F in 2 s).
+
+**The double-count lesson — caught by the chain runner inside the hour.** C_tube went in ON
+TOP of `coolant_heat_capacity` 20, which silently slowed the pump-heat Mode 5→3 heatup ~25 %
+(the continuous-day chain arrived Mode 3 at 260.7 °C instead of ~285 and the whole day
+cascaded — 32/50). That was the RULED ×12.6 pace identity being reopened by accident, exactly
+what the #408/#418 fence forbids. **The fix is the split as a physical statement**:
+`coolant_heat_capacity` 20 → 15 + `sg_tube_capacity` 5 — the loop total is unchanged, every
+no-sink heatup/cooldown rate is preserved by construction, and the lighter coolant node's
+transient behavior re-measured green across the whole battery. Chain 50/50 (13.3 plant-hours).
+
+**The backstop adjudication (owner-visible)**: with the tube node softening the bottling
+burst, an AVAILABLE auto-ADV catches an MSIV closure **5 psi under the code-safety pop**
+(measured full stack: peak 9.27 MPa, ADV 100 %) — the CORRECT relief hierarchy. The safeties
+story (TR-16's #369 self-actuation fence, run_m4's lift check, the `pwr_msiv` mission) now
+runs on an authored **ADV-out-of-service night**, stated in the mission's own card — the
+backstop lesson on the night the backstop is all there is. TR-17 owns the ADV-available
+hierarchy and passes untouched.
+
+**TR-3 RE-DERIVED TWICE IN ONE DAY, and the oscillation is the finding**: the dry-SG
+repressurization-to-PORV claim is knife-edge in the loop's thermal time constant. Compressed:
+lift at ~25 min. A1 (real secondary clock, coolant still 20): spray WON (peak 15.43) and the
+probe briefly asserted that. B1 split (coolant 15): the lift is BACK (peak 16.30, measured) —
+the FINAL plant restores the original TMI mechanism, and the probe now asserts the mechanism
+half (dry SG + climbing Tavg) alongside the lift so neither side of the knife can pass hollow.
+CA-19's forced solid-state ride extended 3600 → 5400 s — the split walks the approach a few
+hundred seconds longer; at the new window the equilibrium is EXACT (inj 0.000168 = brk
+0.000168, drift 0.00000).
+
+**Marginal re-measures, each with its number**: TR-7b's loss-of-flow settle 240 → 600 s
+(τ_cold ≈ 120 s at natural-circ flow — real leg RTDs lag a coastdown; identity then EXACT,
+45.4 vs 45.5); CA-7's PORV/level race window 3600 → 5400 s (cut at +4504 s, now PRINTED);
+TR-1k's excursion band 312 → 310 °C (the node's mass shaves ~4 °C; program is ~305, claim
+intact); `run_pwr`'s SLB depressurization band 5.0 → 5.1 (5.04 at +15 s); board_check's #75
+RPS reset now RETRIES while the plant's own trip conditions clear (the interlock refusing is
+correct; the harness waits like an operator). Migration: `t_sg_c` seeds on the split
+interpolation (save_migration asserts it); §6.3 line (`run_contract` 159); the #315/WTSM-12.2
+comment re-reasoned — the transported ΔT is what the real uncompensated channel reads.
+
 ---
 
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)

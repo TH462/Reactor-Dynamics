@@ -348,6 +348,11 @@ T.push(test('P-11/P-7 trip bypass — cold init blocks, auto-reinstate on repres
 T.push(test('MSIV closure at power (full stack) — bottled SG drains to the level scram', function (ck) {
   var s = new Stack('hot_full_power');
   s.run(2);
+  // ADV out of service (#418 wave B1): with the tube node softening the bottling
+  // burst, an available auto-ADV catches it 5 psi under the pop (correct plant, a
+  // different story — TR-17's). This check pins the SAFETIES lifting, so its night
+  // is the ADV-tagged-out one — same fixture as TR-16 and the pwr_msiv mission.
+  s.cmd({ action: 'set_adv', mode: 'closed' });
   s.cmd({ action: 'close_msiv' });
   ck('MSIV shut + turbine tripped', s.ts().msiv_open, s.ts().msiv_open === false && s.engine.s.turbine_tripped, 'shut + tripped');
   // Sample DURING the run: the old check was `lifted || scrammed`, and the next

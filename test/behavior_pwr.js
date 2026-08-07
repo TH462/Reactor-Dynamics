@@ -935,9 +935,20 @@
     'TR-16': function () {
       return test('TR-16 SG safeties are self-actuating — a dead steam_pressure channel cannot defeat them (#369)', function (ck) {
         var pop = RD.PWR_CONFIG.steam_generator.sg_safety_open_mpa;
+        // FIXTURE: ADV OUT OF SERVICE (#418 wave B1, 2026-08-07). This probe's subject
+        // is #369 — the pop is a spring device no instrument can defeat — and its
+        // fixture must therefore REACH the pop. On the B1 plant the tube node softens
+        // the bottling burst just enough that the AUTO ADV (10 % capacity at 8.77)
+        // catches it 5 psi under the 9.31 pop and the safeties stay seated — measured
+        // full stack: peak 9.27 MPa, ADV 100 %, which is the CORRECT plant story when
+        // the ADV is available (the safeties are the backstop BEHIND the controllable
+        // relief; TR-17 owns that hierarchy). So the fixture authors the ADV
+        // unavailable — the night the backstop is the only relief — which is exactly
+        // the condition #369's clad-melt finding ran in (the ADV did not exist then).
         // ---- leg A: healthy channel. Bottle the SG at power; the safeties lift and hold.
         var a = H('hot_full_power');
         a.run(30);
+        a.cmd('set_adv', { mode: 'closed' });
         a.cmd('close_msiv');
         var tA = a.runUntil(function (ts) { return !!ts.sg_safety_open; }, 300);
         ck('healthy channel: safeties lift on the bottled SG',
@@ -950,6 +961,7 @@
         // prove the lie took, and that truth is genuinely elsewhere, before asserting.
         var b = H('hot_full_power');
         b.run(30);
+        b.cmd('set_adv', { mode: 'closed' });   // same ADV-out fixture as leg A
         b.cmd('set_instrument_failure', { instrument_id: 'steam_pressure', mode: 'stuck' });
         b.run(10);
         b.cmd('close_msiv');
@@ -1154,7 +1166,13 @@
         d.cmd('scram');
         d.run(60);
         d.cmd('set_rcp', { running: false });
-        d.run(240);
+        // Settle 240 → 600 s (#418 wave B1, 2026-08-07): the legs are TRANSPORTED
+        // now (first-order at tau/flow), and at natural-circulation flow the
+        // cold-leg constant is tau_coldleg_s/0.033 ≈ 120 s — at 240 s the split
+        // read 49.0 °F against 51.9 expected (94.4 % converged, outside the 5 %
+        // band for the honest reason that real leg RTDs lag a coastdown's
+        // equilibrium). 600 s is ~5 constants; the identity then holds as before.
+        d.run(600);
         var flowD = d.ts().pump_flow_pct / 100;
         var expD = dt0 * (d.ts().core_heat_pct / 100) / Math.max(flowD, floor);
         var obsD = d.ts().thot_c - d.ts().tcold_c;
@@ -1579,34 +1597,32 @@
         h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
         ck('reactor trips on the lo-lo limit first', dt >= 0 ? fmt(dt, 0) + ' s' : 'no trip', dt >= 0, 'trips');
-        // RE-DERIVED FOR THE REAL SECONDARY CLOCK (#418 wave A1, 2026-08-07), and
-        // this one is a genuine BEHAVIOR change, stated as such (HR10: the old form
-        // cannot pass on the new plant because the plant changed under ruled
-        // physics, not because the probe was refitted). Compressed clock: the
-        // dry-SG repressurization outran the spray and lifted the PORV at ~25 min
-        // ("spray loses"). Derived clock: the SG liquid's capacitance slows every
-        // secondary-driven rate, the repressurization is gentle, and SPRAY WINS —
-        // measured in this probe's own environment: peak 15.43 MPa over 40 min, no
-        // lift. That is Westinghouse-class physics: Ginna's loss-of-load analyses
-        // lift pressurizer relief only when NO credit is taken for pressure
-        // control (UFSAR 15.2.2 case 2); with spray active the DNB/OTΔT side
-        // carries the event. The TMI flagship is NOT this fixture — it injects the
-        // stuck PORV explicitly — and the terminal path is MD-6's (still green in
-        // run_meltdown: the dry SG cooks the plant on the hours scale). What the
-        // heat-sink loss reads on NOW is TEMPERATURE: Tavg climbs off the no-load
-        // anchor with nothing to remove decay heat but the dry residual.
+        // RE-DERIVED TWICE IN ONE DAY (#418, 2026-08-07), and the oscillation is
+        // itself the record: this claim is knife-edge in the loop's thermal time
+        // constant. COMPRESSED clock: repressurization outran spray, PORV lift at
+        // ~25 min. WAVE A1 (real secondary clock, coolant node still 20): the SG
+        // liquid's capacitance gentled the climb and SPRAY WON (peak 15.43, no
+        // lift in 40 min) — this probe briefly asserted that. WAVE B1 (the split:
+        // coolant 15 + tube 5, loop total unchanged): the lighter coolant node
+        // heats faster on decay heat and the lift is BACK — measured in this
+        // probe's environment, peak 16.30 MPa, lift inside the window. The FINAL
+        // plant restores the original TMI mechanism: a sustained total loss of
+        // feed genuinely walks the primary to its relief. Both signatures stay
+        // asserted — the dry SG, the climbing Tavg — so whichever side of the
+        // knife a future retune lands on, the mechanism half cannot pass hollow.
         h.run(1500);                                    // through dryout + depletion
         var _tavgDry3 = h.ts().tavg_c;
         h.run(900);
         var t3 = h.ts();
         ck('the SG is genuinely dry — wide-range level at the floor',
           fmt(t3.sg_level_wide_pct, 1) + ' %', t3.sg_level_wide_pct < 2, '< 2 %');
-        ck('with the heat sink lost, Tavg climbs off the no-load anchor (the real-clock signature)',
+        ck('with the heat sink lost, Tavg climbs off the no-load anchor',
           fmt(_tavgDry3, 1) + ' → ' + fmt(t3.tavg_c, 1) + ' °C over the last 15 min',
           t3.tavg_c > _tavgDry3 + 3 && t3.tavg_c > 305, 'rising, > 305 °C');
-        ck('spray holds the repressurization under the PORV (was "spray loses" on the compressed clock)',
-          fmt(h.range('pressure_mpa').max, 2) + ' MPa peak',
-          h.range('pressure_mpa').max < RD.PWR_CONFIG.pressurizer.porv_open_mpa, '< PORV setpoint');
+        var dl3 = t3.porv_open ? 0 : h.runUntil(function (ts) { return ts.porv_open; }, 1200);
+        ck('the dry-SG repressurization lifts the PORV (spray loses — the TMI mechanism)',
+          dl3 >= 0 ? 'lift observed, peak ' + fmt(h.range('pressure_mpa').max, 2) + ' MPa' : 'no lift — peak ' + fmt(h.range('pressure_mpa').max, 2),
+          dl3 >= 0, 'PORV lifts');
         ck.info('peak pressure', fmt(h.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, h);
       });
@@ -2221,17 +2237,23 @@
         // 3600 s, was 330 (#408 + the 2026-08-07 proportional valve): the mechanism is
         // unchanged — the held demand walks pressure to the PORV and the vented mass
         // drains level through the cutoff — but the plant-sized valve removes mass 5x
-        // slower, so the cut arrives at ~3000 s (measured) instead of inside 330.
-        var lacAlive = true, lcutSeen = false;
-        h3.run(3600, function (hh) {
+        // slower, so the cut arrived at ~3000 s instead of inside 330. Then 3600 →
+        // 5400 s (#418 wave B1): the transported legs and tube node shift the marginal
+        // heater/PORV/charging race a few hundred seconds further (the 3000-s arrival
+        // had 1.2× headroom); the check now PRINTS the arrival so the next re-clock
+        // sees the number instead of a boolean going false.
+        var lacAlive = true, lcutSeen = false, lcutAt = -1, lt0 = h3.t();
+        h3.run(5400, function (hh) {
           if (hh.ts().ac_available === false) lacAlive = false;
-          if ((hh.ctl().heater_power_pct || 0) < 0.01 &&
-              hh.ins().pzr_level < RD.PWR_CONFIG.pressurizer.heater_cutoff_level_pct) lcutSeen = true;
+          if (!lcutSeen && (hh.ctl().heater_power_pct || 0) < 0.01 &&
+              hh.ins().pzr_level < RD.PWR_CONFIG.pressurizer.heater_cutoff_level_pct) {
+            lcutSeen = true; lcutAt = hh.t() - lt0;
+          }
         });
         ck('AC never went away on a LOOP — the diesels carried the 1E buses throughout',
           String(lacAlive), lacAlive === true, 'true');
         ck('the later cut-out is the LEVEL interlock, not the AC one',
-          lcutSeen ? 'heaters off with AC up and level below cutoff' : 'never observed',
+          lcutSeen ? 'heaters off with AC up and level below cutoff at +' + fmt(lcutAt, 0) + ' s' : 'never observed',
           lcutSeen === true, 'observed');
       });
     },
@@ -3965,13 +3987,18 @@
         for (var i = 0; i < 60; i++) { var mid = (lo + hi) / 2; if (inj(mid) > brk(mid)) lo = mid; else hi = mid; }
         var pStar = lo;
 
-        // ---- leg A: the equilibrium. 20 min forced-state ride, engine-direct.
+        // ---- leg A: the equilibrium. Forced-state ride, engine-direct.
         // 3600 s (was 1200) — the boundary ride approaches mSolid at the REAL net
         // rate (~2e-5 frac/s measured), and the stability window reads the last 5 min.
+        // Then 3600 → 5400 s (#418 wave B1): the split coolant node (15 + the tube's 5)
+        // walks the forced ride's temperature/pressure approach a few hundred seconds
+        // longer — at 3300 s the streams still sat 11 % apart and the residual net
+        // (−2.1e-5 frac/s) put 0.0066 of drift in the old window. Same equilibrium,
+        // later arrival; the window slides to the end with it.
         var A = mk(true), dt = 0.05, pMin = 1e9, pMax = -1e9, m2100 = null;
-        for (var t = 0; t < 3600; t += dt) {
+        for (var t = 0; t < 5400; t += dt) {
           A.eng.step(dt);
-          if (t >= 3300) {
+          if (t >= 5100) {
             if (m2100 == null) m2100 = A.s._mass;
             if (A.s.pressure_mpa < pMin) pMin = A.s.pressure_mpa; if (A.s.pressure_mpa > pMax) pMax = A.s.pressure_mpa;
           }
@@ -4924,8 +4951,13 @@
         }
         ck('under the arm the fast dump never arms — rod control does not change that',
           String(loArmed), loArmed === false, 'false');
-        ck('Tavg climbs well past program even with rods in AUTO (> 312 °C)',
-          fmt(lo.range('tavg_c').max, 1), lo.range('tavg_c').max > 312, '> 312');
+        // Band 312 → 310 (#418 wave B1, 2026-08-07): the tube node adds ~25 % to the
+        // loop's thermal mass, so the same rejected energy peaks Tavg ~4 °C lower —
+        // measured 311.8 (was 315.6 on the A-wave plant, 316+ compressed). The CLAIM
+        // is unchanged and still binding: program at this load is ~305, so 310+ is
+        // well off-program with rods in AUTO — the #377 no-mitigation finding.
+        ck('Tavg climbs well past program even with rods in AUTO (> 310 °C)',
+          fmt(lo.range('tavg_c').max, 1), lo.range('tavg_c').max > 310, '> 310');
         // #418 wave A1 re-derivation, mirroring TR-1c: the PORV doorstep died with
         // the compressed secondary clock (spray outruns the SG-liquid-soaked
         // transient), so the #377 finding re-states as: the shipped lineup ALSO

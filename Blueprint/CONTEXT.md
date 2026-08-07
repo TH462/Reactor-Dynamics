@@ -476,6 +476,11 @@ physical-quantity vocabulary.
                                       //   secondary mass (1.0 = 12,785 kg, Ginna 85,359 lbm per-MWt-scaled). THE
                                       //   inventory state; both level ranges derive from it, and it integrates
                                       //   (feed − steam_out)/sg_mass_boil_tau_s on the sourced 77.5-s boil-dry clock.
+    "t_sg_c": number,                 // SG TUBE-BUNDLE node temperature (#418 wave B1) — the thermal buffer in
+                                      //   the series conductance pair between the coolant (Tavg) and the boiling
+                                      //   secondary (Tsat(P_sec)). Invariance rule at the pwr_config constant:
+                                      //   1/h1 + 1/h2 = 1/h_sg with shared flow×dry factors, so steady-state
+                                      //   crossing heat is exactly the legacy h_sg law; the node adds DYNAMICS only.
     "steam_flow_normalized": number, "fw_flow_normalized": number, "mwe_output": number,
     "steam_out_total": number,        // TOTAL steam leaving the SG (turbine + dump + safeties) — the source behind
                                       //   the `sg_steam_flow` main-steam-line instrument, and the flow feed regulation

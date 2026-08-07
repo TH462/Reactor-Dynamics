@@ -110,11 +110,16 @@
     s.fw_flow_normalized = feedwater_flow;
 
     // Secondary temperature already used by the coolant node this step (explicit
-    // coupling). Q_sg = the coolant→SG heat computed in pwr_thermal (§6.2).
+    // coupling). Q_sg = the heat arriving from the TUBE NODE (#418 wave B1 —
+    // `_Q_tube_to_sec`, the second half of the series conductance pair, stepped in
+    // pwr_thermal this step); the pre-node `_Q_coolant_to_sg` and the bare-ΔT form
+    // remain as fallbacks for rigs that load without the thermal module's node.
     s.t_secondary_c = T_sat(s.steam_pressure_mpa);
-    var Q_sg = s._Q_coolant_to_sg != null
-      ? s._Q_coolant_to_sg
-      : cfg.thermal.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c);
+    var Q_sg = s._Q_tube_to_sec != null
+      ? s._Q_tube_to_sec
+      : (s._Q_coolant_to_sg != null
+        ? s._Q_coolant_to_sg
+        : cfg.thermal.h_sg * s.flow_frac * (s.tavg_c - s.t_secondary_c));
     // THE SG BOILS OFF WHATEVER HEAT CROSSES IT — core heat and RCP pump heat alike.
     // Rated steam flow is therefore the flow made by NSSS RATED HEAT (rated core heat
     // PLUS full-flow pump heat), not by core heat alone, which is how a real plant

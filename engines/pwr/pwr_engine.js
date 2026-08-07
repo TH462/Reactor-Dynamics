@@ -706,6 +706,10 @@
       // (1.0 = 12,785 kg, the Ginna 85,359 lbm per-MWt-scaled). THE inventory state both
       // level ranges derive from; integrates (feed − steam_out)/sg_mass_boil_tau_s.
       sg_mass_frac: s.sg_mass_frac,
+      // SG tube-bundle node temperature (#418 wave B1) — the thermal buffer between the
+      // coolant and the boiling secondary (series conductance pair, pwr_thermal). Sits
+      // between Tavg and Tsat(P_sec) in normal operation.
+      t_sg_c: s.t_sg_c,
       // Loop pressure distribution (true state; the single primary_pressure
       // instrument still reads pressure_mpa — no per-node gauges). Cold leg = pump
       // discharge (highest, ECCS/letdown datum); pump suction = between SG and RCP
@@ -1582,6 +1586,11 @@
       fuel_temp_c: Tfuel, tavg_c: Tavg, thot_c: Tavg + delta_T / 2, tcold_c: Tavg - delta_T / 2,
       t_secondary_c: Tsec, subcooling_c: TH.T_sat(cfg.pressurizer.P_equilibrium) - Tavg,
       _subcool_hot_c: TH.T_sat(cfg.pressurizer.P_equilibrium) - (Tavg + delta_T / 2), core_void_fraction: 0,
+      // SG tube node (#418 wave B1) seeded on the series-split interpolation between
+      // Tavg and Tsec — the exact zero-derivative point of the node equation at this
+      // state's own crossing heat, so every derived IC remains a true steady state
+      // (dt_sg/dt = 0 identically at reset; the legs are already ON their targets).
+      t_sg_c: Tavg - (cfg.thermal.sg_tube_split != null ? cfg.thermal.sg_tube_split : 0.5) * (Tavg - Tsec),
       _Q_total: P0, _Q_coolant_to_sg: P0 * cfg.thermal.heat_gen_coeff, _dTavg_dt: 0, _h_fc_eff: cfg.thermal.h_fc,
 
       pressure_mpa: cfg.pressurizer.P_equilibrium,
@@ -1773,6 +1782,7 @@
       s.thot_c = Tnl;
       s.tcold_c = Tnl;
       s.t_secondary_c = Tnl;
+      s.t_sg_c = Tnl;             // tube node isothermal with the loop at no load (#418 B1)
       s.steam_pressure_mpa = cfg.steam_generator.steam_dump_setpoint;
       s.fuel_temp_c = Tnl;       // negligible fission: fuel near coolant (decay preloaded below)
       s.subcooling_c = TH.T_sat(cfg.pressurizer.P_equilibrium) - Tnl;
@@ -1825,6 +1835,11 @@
       // SG up to it in the usual way.
       s.steam_pressure_mpa = 0.1;
       s.t_secondary_c = TH.T_sat(0.1);
+      // Tube node between the cold loop and the vented secondary (#418 B1): the
+      // split interpolation, same seed rule as the derived ICs — flow_frac 0
+      // decouples the conductances so any value is quasi-static; this one is the
+      // no-drift point if flow returns.
+      s.t_sg_c = s.tavg_c - (cfg.thermal.sg_tube_split != null ? cfg.thermal.sg_tube_split : 0.5) * (s.tavg_c - s.t_secondary_c);
       s.steam_dump_setpoint = cfg.steam_generator.steam_dump_setpoint;
       s.msiv_open = true;
       // Pressurizer level at a cold band. With DERIVED level, an IC level implies a
@@ -2002,6 +2017,14 @@
     // same reading the save showed.
     if (s.sg_mass_frac == null && RD.pwrSteamGenerator && RD.pwrSteamGenerator.massFromWide) {
       s.sg_mass_frac = RD.pwrSteamGenerator.massFromWide(s.sg_level_wide_pct, this.cfg.steam_generator);
+    }
+    // SG tube node (#418 wave B1). Pre-node saves carry the loop and secondary temps —
+    // seed the node on the series-split interpolation between them, the zero-derivative
+    // point at the save's own crossing heat (one-step reconvergence at worst, the
+    // t_core_exit_c template).
+    if (s.t_sg_c == null) {
+      var _spM = this.cfg.thermal.sg_tube_split != null ? this.cfg.thermal.sg_tube_split : 0.5;
+      s.t_sg_c = s.tavg_c - _spM * (s.tavg_c - (s.t_secondary_c != null ? s.t_secondary_c : s.tavg_c));
     }
     // Accumulator discharge isolation valve + cold-injection thermal coupling (2026-07).
     // Older saves have no isolation valve — default aligned (open) so behavior is
@@ -2704,7 +2727,11 @@
         var tavg0 = sb.ts().tavg_c;
         sb.cmd({ action: 'inject_failure', failure_id: 'steam_line_break', severity: 0.6 });
         sb.run(15);
-        ck('steam pressure falls', sb.eng.s.steam_pressure_mpa.toFixed(2), sb.eng.s.steam_pressure_mpa < 5.0, '< 5.0');
+        // Band 5.0 → 5.1 (#418 wave B1, 2026-08-07): the tube node feeds the breaking
+        // secondary a touch longer, so 15 s into a 0.6 break the header reads 5.04
+        // (was ~4.9). The claim — the break DEPRESSURIZES the secondary — is
+        // direction, not a race; 5.1 still reddens if the break stops removing steam.
+        ck('steam pressure falls', sb.eng.s.steam_pressure_mpa.toFixed(2), sb.eng.s.steam_pressure_mpa < 5.1, '< 5.1');
         ck('Tavg falls (overcooling)', sb.ts().tavg_c.toFixed(2), sb.ts().tavg_c < tavg0, '< ' + tavg0.toFixed(2));
 
         // Instrument modes: stuck-at-current tavg holds while true Tavg moves.
@@ -3148,6 +3175,7 @@
         // before its rework simply does not have.
         delete legacy.sg_level_wide_pct; delete legacy.accumulator_valve_open;
         delete legacy.sg_mass_frac;   // #418 A2: pre-ledger saves carry only the level
+        delete legacy.t_sg_c;         // #418 B1: pre-node saves carry only the loop temps
         delete legacy.msiv_open; delete legacy.feed_pump_speed_pct;
         delete legacy.condensate_pump_running; delete legacy.condensate_flow_normalized;
         delete legacy.afw_throttle_frac; delete legacy.afw_flow_normalized;
@@ -3196,6 +3224,14 @@
           s.sg_mass_frac.toFixed(4) + ' → ' + _wBack.toFixed(4) + ' vs ' + s.sg_level_wide_pct.toFixed(4),
           typeof s.sg_mass_frac === 'number' && Math.abs(_wBack - s.sg_level_wide_pct) < 1e-9,
           'round-trips exactly');
+        // #418 B1: the tube node seeds BETWEEN the loop and secondary temps (the
+        // series-split interpolation — the zero-derivative point at the save's heat).
+        ck('t_sg_c seeded between Tavg and Tsec (the split interpolation)',
+          s.t_sg_c.toFixed(2) + ' °C (tavg ' + s.tavg_c.toFixed(2) + ', tsec ' + s.t_secondary_c.toFixed(2) + ')',
+          typeof s.t_sg_c === 'number'
+            && s.t_sg_c <= Math.max(s.tavg_c, s.t_secondary_c) + 1e-9
+            && s.t_sg_c >= Math.min(s.tavg_c, s.t_secondary_c) - 1e-9,
+          'inside [Tsec, Tavg]');
         ck('accumulator isolation defaults ALIGNED (old behaviour preserved)',
           String(s.accumulator_valve_open), s.accumulator_valve_open === true, 'true');
         ck('MSIV defaults open', String(s.msiv_open), s.msiv_open === true, 'true');

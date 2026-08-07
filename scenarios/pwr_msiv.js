@@ -38,9 +38,18 @@
       // the closure lands on the cold-feet teaching card, not a softlock.
       { id: 'intro',
         trigger: { type: 'time', value: 2.0 },
+        // THE ADV IS OUT OF SERVICE TONIGHT (#418 wave B1, 2026-08-07) — an authored
+        // premise, not a workaround: on the B1 plant the tube node softens the bottling
+        // burst enough that an AVAILABLE auto-ADV catches it 5 psi under the code
+        // safeties (measured full stack: peak 9.27 MPa, ADV 100 %), which is the
+        // correct plant story but a different lesson (TR-17 owns it). This mission
+        // teaches the BACKSTOP — the spring-loaded valves that need no air, no power
+        // and no instrument — so its night is the one where the controllable relief
+        // is tagged out and the backstop is all there is.
+        commands: [{ action: 'set_adv', mode: 'closed' }],
         commentary: {
-          learning: 'One valve on the Steam & Flow card matters more than all the rest: the MSIV — the main steam isolation valve, the single gate between the boiler and everything that uses its steam. Close it at power and the turbine loses its steam mid-spin, the feed train dies with the turbine, and a steam generator making a full plant’s worth of steam has nowhere to put it. Nobody does this at power on purpose — except in a simulator. Close the MSIV.',
-          industry: 'MSIV — main steam isolation (Steam & Flow card). Closure at load: immediate turbine trip, loss of the coupled feed train, SG bottled against its code safeties. Drill: close_msiv at 100 % power and track the consequence chain.',
+          learning: 'One valve on the Steam & Flow card matters more than all the rest: the MSIV — the main steam isolation valve, the single gate between the boiler and everything that uses its steam. Close it at power and the turbine loses its steam mid-spin, the feed train dies with the turbine, and a steam generator making a full plant’s worth of steam has nowhere to put it. One more thing to know about tonight’s plant: the atmospheric dump valve is tagged out for maintenance, so the spring-loaded code safeties are the only relief on the bottled side. Nobody closes this valve at power on purpose — except in a simulator. Close the MSIV.',
+          industry: 'MSIV — main steam isolation (Steam & Flow card). ADV out of service (tagged out) — the code safeties are the sole upstream relief. Closure at load: immediate turbine trip, loss of the coupled feed train, SG bottled against its code safeties. Drill: close_msiv at 100 % power and track the consequence chain.',
         },
         highlight: { control_label: 'MSIV', instrument_id: 'sg' },
         branches: [
