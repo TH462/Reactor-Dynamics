@@ -1140,6 +1140,24 @@ var BASELINES = {
   // unrecognised-CI fallback flipped from 'public' to 'dev' scores 25/2, and renaming
   // PRODUCTION_BRANCH scores 25/4.
   'run_channel.js':        { code: 0, score: '25checks 0failed' },
+  // NEW 2026-08-07 — the usage-data client's PRIVACY INVARIANTS (site/telemetry.js).
+  // This is the first code in the project that sends anything anywhere; everything else
+  // runs on the player's machine and privacy.html says so. So these are not style rules
+  // to be re-derived: nothing is collected while consent is undecided or denied, nothing
+  // is sent without an endpoint (a clone and the offline build both have none by
+  // construction), event names come from a declared allowlist, property VALUES are
+  // type- and charset-bounded so no free text can ride the automatic path, and the
+  // session id lives in sessionStorage so nothing links two visits.
+  // It DRIVES the module against a fake browser rather than grepping it — every one of
+  // those is a behaviour, and a grep for `localStorage` proves nothing about whether an
+  // undecided visitor is silent. Both transport paths are covered: Node ships
+  // CompressionStream so the gzip path is the default, and the raw fallback is forced.
+  // INJECTION-VERIFIED, all six: consent check removed 49/4, allowlist dropped 49/2,
+  // session id moved to localStorage 49/2, enum charset check removed 49/2, revocation
+  // not clearing the queue 49/1, a real URL committed to the endpoint file 49/1.
+  // NOTHING IS WIRED YET — no caller emits an event, so this gate pins a contract the
+  // sim does not exercise. That is deliberate: the contract lands before the collection.
+  'run_telemetry.js':      { code: 0, score: '49checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane
