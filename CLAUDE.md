@@ -453,11 +453,12 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
   secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
   MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
-- **#419 tier 3 — THE OWNER-ORDERED NEXT WORK** (`status-work-next`, ruled 2026-08-07,
-  plan-first): the identity re-anchor — real Mode 5↔1 pace (acceleration carries pacing, the
-  #408 precedent), the F15 relief-authority re-solve + E-dividers (both pins measured
-  dissolved), and the 297 °C ladder re-anchor (the option-C cascade). F14 re-measured and
-  RE-AFFIRMED — not in scope. **Start at stage 1: the cascade table for sign-off.**
+- **#419 tier 3 — STAGE 1 POSTED, AWAITING SIGN-OFF** (`status-needs-ruling`, 2026-08-07): the
+  identity re-anchor's cascade table is on the issue — proposed Ginna ladder 7.03/7.31/7.58/7.33
+  MPa (retires §8.34), program 286→304.5 °C, slew 1.586e-3, F15 K bracketed [K_phys, 600] —
+  with three decision rows (dump 40 % vs Ginna 28 %; K_surge_level to the real band; boron pair
+  real). F14 re-affirmed, not in scope. Sign-off unblocks stage 2 (sequencing: pace → F15 →
+  ladder), then waves. E-dividers already at #408 values — that ride-along is RE-AFFIRM.
 - **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
   the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
   #418's new ledger, not the old gain**. `status-needs-ruling`.

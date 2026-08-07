@@ -29,6 +29,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-07-develop-d (#419 STAGE 1: the cascade table, posted for sign-off. No code.)
+
+**Task:** #419 tier-3 identity re-anchor, stage 1 (owner: "Plan the work first" — plan-mode pass
+ran three explorer sweeps + a design agent; approved). Deliverable: **the cascade table, posted**
+— https://github.com/TH462/Reactor-Dynamics/issues/419#issuecomment-5221487750 — every constant
+the three re-anchors move, current → proposed → source → touches, with the anchor-plant
+declaration and three decision rows. `status-needs-ruling` set: sign-off blocks stage 2. No
+engine/config/test/manual edits.
+
+**Fresh measurements (HR12):**
+- **Mode 5→3 heatup re-measured** (full stack, `measure_stack`, cold_shutdown + the PWR-N01
+  commands): settle 567.0 °F (297.2 °C) at **~12.3 plant-h** (recorded 11.3 pre-#418), steady
+  **~30 °F/hr (16.6 °C/hr)** (was 32.7), Mode 3 at ~4.6 h. The #418 clock stretched the ride
+  ~8 % — consistent with A1's own 40,000 → 42,000 s hold extension. Confirms the §A scoping:
+  the thermal ramp is already real-class; ×12.6 lives in the pressurizer clock + boron pair.
+- **`K_surge_level` bounded** (perturb_sweep, behavior battery, ×0.675 → 0.27 and ×0.125 →
+  0.05): discriminating power ok (126/667, 144/667 moved); **five flips, the SAME five at both
+  values** — TR-1's PORV-lift claim (peak 16.24 → 15.59/15.42 MPa: the lift stops arriving, the
+  A1 peak-flattening class) and CA-21's dry-core fixture going vacuous (2367 → 0 dry samples).
+  **The old TR-1c/§8.21 wall that refused 0.27 did NOT reappear** — that cliff went thermal at
+  #418. Cost = two probe re-derivations, not a ruled-behavior loss.
+
+**Fetch pass (time-boxed ~1 h):** Ginna **TS Bases Rev 101 (ML20339A221) landed** →
+`inbox/sources/`. Three finds: no-load SG pressure **1005 psig** (B 3.3.2 — closes the "~990
+psig UNVERIFIED" gap; Psat(547 °F) through our own `_tsat` agrees within 1 %); Ginna PORV
+capacity **179,000 lb/hr at 2335 psig** (B 3.4.11 — the #408 comment's "Ginna 210,000 lb/hr" is
+the NUREG-1431/4-loop-class figure; Ginna-based scaling 2.13e-4 vs adopted 2.5e-4, inside the
+ruling's own rounding — provenance fix owed, no reopen); pressurizer high-level **650 ft³ =
+87 %** ⇒ ~747 ft³ total (feeds the B1 K_phys derivation). Still owed: UFSAR ch 5 text
+(**ML20339A035 is the FIGURES volume** — 20 pages of "Figure DELETED" sheets), TS proper
+(OTΔT K-values Table 3.3.1-1 Note 1, P-12 numeric, MSSV SR table), PTLR. **Fetch trap for next
+time:** ML18179A279 titles its first page "Chapter 5 UFSAR Table of Contents" and is **Vogtle
+3&4's** AP1000 UFSAR — a generic TOC cover defeats a first-page ID; read an interior page
+before anything enters the corpus as Ginna.
+
+**Headline proposals in the table** (details on the issue): ladder becomes Ginna's own —
+1020/1060/1099/1063 psi (7.03/7.31/7.58/7.33 MPa; anchor sourced 1005 psig, pop 1085 psig, ADV
+by the sourced rule, reseat derived) — which **retires DESIGN_COMPANION §8.34**; program
+546.9 → 580.2 °F (286.0 → 304.5 °C), span 33.3 °F vs Ginna's real 29 (top runs 4 °F high on
+our fixed Q/h_sg — declared, not chased); slew 0.02 → 1.586e-3 MPa/s (cold→NOP 10.8 min →
+2.26 h); K-pair re-solve at wave inside [K_phys derivation, 600-measured-green]. Three decision
+rows: **D1** dump 0.40 (ruled, WTSM-sourced) vs Ginna's sourced 28 % — recommend keep 40;
+**D2** K_surge_level into the real band 0.021–0.050 — recommend pace wave + the two
+re-derivations; **D3** boron pair goes real — recommend pace wave. Corrections to #419's own
+text recorded (E-dividers already moved at #408: `eccs_cooling_gain` 1.0, `blowdown_gain` 0.25;
+§12.15 is one row, not a register; K_surge_level is the unnamed third ×12.6 figure).
+
+**Gates:** docs-only change; `run_all` 42 runners at baseline — `run_hardrules` 225/0 with NO
+drift (these entries cite rulings without adding formal declaration sites, so the d145caf
+re-baseline pattern was armed but not needed). Stage 2 (sequencing ruling: pace → F15 → ladder)
+follows sign-off.
+
+---
+
 ## Session log — 2026-08-07-develop-c (INVESTIGATION ONLY: the secondary loop's fidelity gap, measured — filed as #418, the tier-2 umbrella. No code.)
 
 **Task:** the owner asked to bring the secondary up to #408-wave-1 fidelity ("proper heat

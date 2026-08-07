@@ -45,6 +45,67 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-07-develop-d — #419 stage 1: the cascade table posted for sign-off (no code)
+
+**The deliverable** is on the issue — the full current → proposed → source → touches table:
+https://github.com/TH462/Reactor-Dynamics/issues/419#issuecomment-5221487750. This entry records
+the decisions inside it and the evidence taken this session.
+
+**The anchor-plant declaration got its missing number.** Ginna's no-load SG pressure is **1005
+psig**, sourced (TS Bases Rev 101, ML20339A221, B 3.3.2: *"steam line breaks occurring from no
+load conditions (1005 psig)"* — fetched this session), and Psat(547 °F) through this sim's own
+`_tsat` correlation lands within 1 % of it. The proposed ladder is therefore **Ginna's own, rung
+for rung** — 1020/1060/1099/1063 psi (7.03/7.31/7.58/7.33 MPa): anchor sourced, pop = the 1085
+psig first-lift MSSV (UFSAR ch 10), ADV by the sourced WTSM §7.1.3.3 placement rule (corroborated
+by Ginna's own 1005–1060 psig ARV band), reseat derived at the current 3.3 % blowdown. **Landing
+it retires `DESIGN_COMPANION` §8.34** ("the ladder itself is not sourced") — the departure
+becomes a citation.
+
+**Program endpoints: sourced ends, declared 4 °F top gap.** 546.9 → 580.2 °F (286.0 → 304.5 °C),
+span 33.3 °F vs Ginna's real 29 (547 → 576 °F): with `h_sg`/`heat_gen_coeff` held fixed (the
+#418 B1 invariance identity), our Q/h_sg = 32.6 °C vs Ginna's implied 29.9, so the top runs
+4 °F high. Declared rather than chased — closing 4 °F by moving `h_sg` would reopen the entire
+thermal identity for a cosmetic end.
+
+**F15's proposed column is a bracket, not a number** — re-solve at wave inside [K_phys
+derivation, 600-measured-green]. A bare number would repeat the original F15 sin (solved against
+the suites, HR10). The K_phys method is the `K_steam_pressure` C_P precedent; the dome-only
+order-of-magnitude is ~300-class but mixes bases (declared ~7,500-gal RCS vs power-scaled
+pressurizer), so the honest derivation is wave-work on ONE basis. New geometry input landed:
+pressurizer high-level 650 ft³ = 87 % ⇒ ~747 ft³ total (TS Bases B 3.4.10 ACTIONS).
+
+**A provenance correction recorded, no reopen proposed**: the ruled `porv_flow_max` comment
+cites "Ginna 210,000 lb/hr"; Ginna's own TS Bases B 3.4.11 says **179,000 lb/hr at 2335 psig**
+— the 210k figure is NUREG-1431/4-loop-class. Ginna-based scaling gives 2.13e-4 vs the adopted
+2.5e-4, inside the ruling's own rounding. Comment provenance fix owed at the wave's docs pass.
+
+**Three decision rows put to the owner** (recommendation-first): **D1** `steam_dump_max` — keep
+the ruled, WTSM-sourced 0.40 (recommended: it is an owner ruling with its own source, and the
+full-load-rejection ride-out is taught at 40) vs adopt Ginna's sourced 28 %; **D2**
+`K_surge_level` 0.4 → the real band 0.021–0.050 — recommended into the pace wave; measured cost
+(perturb sweep, identical at 0.27 and 0.05) is two probe re-derivations (TR-1's PORV-lift claim,
+peak 16.24 → 15.59/15.42 MPa, the A1 peak-flattening class; CA-21's dry-core fixture vacuous,
+2367 → 0 samples) and **the old TR-1c/§8.21 wall did not reappear** — its premise went thermal
+at #418; **D3** the boron pair (`boron_adjust_rate` 2.0 ppm/s, `boron_sample_lab_s` 60 s) goes
+real — recommended into the pace wave, rates re-derived from WTSM §4.1 (on disk, backshop).
+
+**The pace family's honest total, measured**: the thermal ramp is ALREADY real-class — fresh
+full-stack re-measure puts the Mode 5→3 heatup at ~12.3 plant-h / ~30 °F/hr steady (the #418
+clock stretched the recorded 11.3 by ~8 %, consistent with A1's own hold extension). The ×12.6
+lives in the pressurizer clock (`setpoint_pressurize_slew_mpa_s` 0.02 → 1.586e-3: cold→NOP
+10.8 min → 2.26 h) and the boron pair. The issue's "real heatup ≈ 5.8 plant-days" is a real
+plant's procedural total including holds this sim deliberately does not model; the honest
+modeled Mode 5→1 lands ~16–18 plant-h. Also corrected on the issue: the E-group dividers
+already moved at #408 (`eccs_cooling_gain` 1.0 — at physical; `blowdown_gain` 0.25 — re-solved
+on the real clock), so that ride-along is RE-AFFIRM, not work.
+
+**Status**: #419 `status-needs-ruling` (sign-off blocks stage 2 — the sequencing ruling,
+recommended pace → F15 → ladder). Owed fetches named in the table: Ginna UFSAR ch 5 text
+(ML20339A035 is the figures volume), TS proper (OTΔT Ks, P-12, MSSV SR table), PTLR. No code
+this session; `run_all` 42 at baseline, no re-baseline needed (`run_hardrules` 225/0 unchanged).
+
+---
+
 ## 2026-08-07-develop-c — tier 2 RULED: the secondary joins the primary's fidelity (A+B, ladder stays), and content-follows-physics becomes standing law
 
 **THE SCOPE RULING** *(OWNER RULING, 2026-08-07: selected **"A+B, keep 297 °C"** from four
