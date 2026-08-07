@@ -29,6 +29,69 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)
+
+**Task:** full merge and release. This entry is the MERGE half; the release follows in the same
+session. `workbench` carried 6 commits (→ `cdd7c71`), `backshop` carried **none** — it sat 10
+behind at `0ebc601`, which is `origin/main`, i.e. exactly where the last release left it.
+
+**Seven conflicts, all predicted by `git merge-tree` before anything was touched.** Six were the
+routine kind and are not interesting: `.gitignore` (both sides added a line — kept both),
+`CHANGELOG.md` / `TUNING_LOG.md` / `BUILD_DECISIONS.md` (append-at-top, kept both sides, develop
+first), `ui/manual_md.js` (**generated** — took a side and re-ran `pack_manuals.js`, never
+hand-merged), and the `BASELINES` map (a real COMBINE: develop's `run_campaign` 3029 + workbench's
+`run_checklist` 38 + workbench's new `run_doc_budget` entry, with both lanes' `run_hardrules`
+comment histories kept).
+
+**The one that mattered was `CLAUDE.md`, and the two sides were not editing the same document.**
+Workbench's #-bloat pass cut it **42,065 → 13,455 words** (2026-08-06-workbench-i) and added
+`run_doc_budget` to gate that; develop, never having seen the cut, appended 88 lines to the OLD
+shape — status paragraphs, a themes bullet, and updates to the prose gate-baselines monster line
+that the cut had deleted outright. **Resolution: take the cut wholesale, then port develop's
+FACTS into the concise shape.** Re-merging develop's prose would have fought `run_doc_budget` on
+the very first turn after it landed.
+
+What was ported: `_Last updated_` → 2026-08-07; the open-items list gains **#408 remaining waves**
+and **#385 node / #409 governor** and **loses #349**, which #408 wave 1 closed (`safety_flow_max`
+8.0e-4 on the sourced ~3.2 ratio); the themes list evicts the #347 bullet for the #408 wave-1 one,
+with #347's trap rescued to the standing list as one line, per the file's own eviction rule; and
+the tracked `run_ops` red is re-numbered **53.7 → 284.3 s** against its unchanged `>= 300 s`
+target — the CVCS re-clock moved it from 7.76× past the target to just short of it.
+
+**THE MERGE AUDIT REPORTED 31 ITEMS LOST AND WAS RIGHT TO, AND THE RIGHT ACTION WAS TO IGNORE
+IT.** `tools/merge_audit.js` compares the result against BOTH parents and flags anything a parent
+had that the result does not — it cannot know that one parent *deliberately deleted* the thing.
+Every one of the 31 was a prose gate entry (``` `run_behavior` ** ```, ``` `run_contract` ** ```, …)
+from the paragraph workbench removed on purpose. **Verified by counting rather than by reasoning**,
+which is the only reason this is a note and not a reverted cut: base **48**, develop **48**,
+workbench **0**, merged **0** — the merged tree matches the parent that made the decision, exactly.
+The scores did not go anywhere; they live in `BASELINES`, which is where this file has said to read
+them from since #312. **The next lane merge will see this same false positive** — do not "restore"
+the paragraph to clear it.
+
+**`Manuals/00_REVISION_HISTORY.md`: the pending Rev 13 row was extended by BOTH lanes, which is
+the rule working and the conflict it produces.** Items (a)–(h) were common; develop had added
+(i) #385 stage 2, (j) #384 stage 4, (k) #407, and workbench (i) #395/#396, (j) #371-sourced. Merged
+to **(a)–(m)** with workbench's two relabelled (l)/(m) and the id column combined — then
+`stamp_manual_revision.js` + `pack_manuals.js` re-run, because the content digests must be re-sealed
+against the combined row. The revision NUMBER did not move: it does not until a release
+*(OWNER DIRECTIVE, 2026-08-06: "The revision number only matters during a release to the website.
+Revision numbers should never go up until a release happens.")*, and this release is where Rev 13
+becomes what the website carries.
+
+**Two physics-adjacent files auto-merged and were reviewed rather than trusted.**
+`engines/pwr/pwr_config.js`: workbench moved `adv_setpoint` 8.60 → 8.77 (secondary-side, now sourced
+to WTSM §7.1.3.3) while develop re-clocked the primary-side inventory family (`porv_flow_max`,
+`safety_flow_max`, the F15 K-pair, CVCS). Disjoint regions AND disjoint systems — secondary steam
+relief against primary inventory currency. `test/behavior_pwr.js` likewise (workbench's ADV probe
+against develop's CA-19/20/21). The gate is what settles it, and it did.
+
+**Gates:** `run_all` — see the release entry; `run_hardrules` measured on the merged tree AFTER
+these write-ups, because both lanes had independently taken that key to 210 from different bases
+and neither figure survives a merge (the fourth time this key has needed that treatment).
+
+---
+
 ## Session log — 2026-08-07-develop-a (#408 wave 1 BUILT + the PROPORTIONAL-VALVE ruling — the accident clock is real, the plant re-learned TMI, run_all 38 runners green)
 
 **Task:** #408 wave 1 (the LOCA-family re-clock the two 2026-08-06 rulings authorized), then —
@@ -462,6 +525,251 @@ table and traces are on #385 (comment, 2026-08-06) — reproduce from the parame
 **Probe trap worth keeping:** the first sweep sampled every 10 s and would have missed the
 whole excursion (it lives in t+2…15 s); #385's original "cannot drain first" premise was the
 same artifact at 10-s sampling. Sample a blowdown at broadcast resolution or not at all.
+
+## Session log — 2026-08-06-workbench-j (the conciseness rule becomes a gate, and only one of three caps survived the question)
+
+*(OWNER RULING, 2026-08-06: "Go with your recommendation." — given after "Should we add word
+limits? Wouldn't it hamstring you sometimes?", on the recommendation that only ONE of three
+proposed caps should be a hard number.)*
+
+**The owner's question killed two thirds of my own proposal, correctly.** I had proposed three
+word caps — replies 200, write-ups 400, register rows 150. A cap on write-ups would forbid the
+worked A/B that makes a trap believable (#363's lesson is worthless without the 15 °F number that
+disproved the filed symptom), which puts it in direct conflict with HR12. And caps are a proxy an
+honest writer games without noticing, by compressing prose or splitting one entry in two. **The
+gate-baselines blob was not bad because it was 21,000 words; it was bad because it duplicated a
+machine-readable authority.** Length was the symptom.
+
+**What shipped instead: one number where length genuinely is the harm, two habits where it is
+not.**
+
+- **`CLAUDE.md` ≤ 15,000 words, gated** — `test/run_doc_budget.js`, new runner, `run_all` 39 → 40.
+  That file is paid for on every turn by every agent; no other document is.
+- **Chat: a DEFAULT of ~150 words**, expandable when asked or when a table of measurements *is*
+  the answer.
+- **Write-ups: no word limit, a content rule** — don't restate what the diff shows; record the
+  trap and the numbers that prove it.
+
+**The gate exists because the caps were prose inside the file they governed.** Three checks, and
+each one caught something real when run against the pre-cut file at `HEAD~1`:
+
+| check | pre-cut | now |
+|---|---|---|
+| total words | **42,065** | 13,455 |
+| longest single physical line | **5,310** | 164 |
+| bullets in the *Recent themes* region (documented cap: 5) | **13** | 5 |
+
+All three red, exit 1 — injection-verified against the real historical file rather than a
+synthetic one. **The 13 corrects a number I published this morning**: the workbench-i write-ups
+say "7 bullets against a cap of 5", which counted themes proper; the region also held 6 rescued
+traps that belonged in the standing list below it. The gate counts what the rule actually says.
+
+**A deliberate non-target: `Diagnostic/TUNING_LOG.md` is 152,617 words and is NOT gated.** It is
+read on demand and its size is the point — it is deliberately a strict superset of what CLAUDE.md
+used to duplicate. **Length is only a defect where it is paid on every turn.**
+
+**Gate: `run_all` 40/40 at baseline.** `run_hardrules` **205 → 208** — three citation sites for
+the ruling above (CLAUDE.md, this entry, BUILD_DECISIONS). **I wrote 206 into this paragraph from
+prediction and the measurement said 208**, which is the standing "re-run it AFTER the docs" rule
+catching its own write-up for the second time today. Also caught: the first draft cited the ruling
+as `*(OWNER: …)*`, a form the gate counts as neither a site nor a violation — a ruling recorded
+where nothing can guard it. Corrected to `OWNER RULING, <date>: "<verbatim>"` before measuring.
+
+## Session log — 2026-08-06-workbench-i (CLAUDE.md bloat pass — 42,065 words to 13,455)
+
+*(OWNER DIRECTIVE, 2026-08-06: "I've also noticed that you tend to be very verbose. Should I add
+some lines in Claude to try to reduce your verbosity? … I've noticed some of your documents end up
+having massive amounts of text."; then, on the recommendation to cut the file rather than add a
+rule to it: "Do 2 as you recommend.")*
+
+**Measured before touching it: 42,065 words, 1,735 lines, loaded into every agent's context on
+every turn — under a heading that reads "Keep it SHORT."** The longest single physical line was
+**5,310 words**. Three cuts, no rule deleted:
+
+| region | before | after |
+|---|---|---|
+| gate baselines (prose) | 21,046 | 535 |
+| Recent themes + standing procedure | 9,663 | 2,055 |
+| status narrative | 788 | 297 |
+| **file total** | **42,065** | **13,455** |
+
+**The baselines section was the whole problem and it had already been solved.** `BASELINES` in
+`test/run_all.js` has been the authority since 2026-07-25 and the section said so in its own first
+sentence — then carried 21,000 words of per-runner prose underneath. Every copy rotted, and the
+file recorded the rot without acting on it: `run_inspect` written 8/8 against a map saying 9/9,
+`verify_flags_ui` 48/48 against a gate that has always scored 42, `run_otdt` stuck at 39 through
+three commits that took it to 46, and **`run_contract` appearing twice with different numbers**
+(147 and 156) after a merge, plus a `run_hardrules` block labelled "carried from workbench at the
+2026-08-03 merge, unedited". Replaced with a pointer and the four notes that are procedure rather
+than history (symmetric drift, auto-discovery, contention times, CI).
+
+**The themes list was running 7 bullets against its own cap of 5, averaging 500 words**, and two of
+those bullets were full-length duplicates of traps already rescued into the standing list below
+them (`ac_available`, `power_pct`). Compressed to 5 at ~80 words with a stated word budget, since
+"max 5 bullets" bounded the count and nothing bounded the size.
+
+**Safety step, done first: every dated owner citation was checked against the rest of the tracked
+tree before anything was deleted.** 30 citations in the file, **0 of them unique to it**. So the
+`run_hardrules` drop **208 → 203** is 5 fewer citation SITES and zero fewer rulings — the mechanism
+this repo has recorded four times for the themes cap, this time anticipated instead of discovered.
+`BASELINES` updated in the same change with the reason at the entry.
+
+**Gate: `run_all` 39/39 at baseline.** Spot-checked by grep that every load-bearing rule survived:
+never-merge-into-develop, never-push-the-lanes, the lane table, the four questions, the Hard Rule
+pointers, US-customary-first, RBMK/BWR on hold, the issue-label scheme, the manual revision
+workflow, and the three response-shape directives.
+
+**What this does not fix.** `Diagnostic/TUNING_LOG.md` is 152,617 words — but it is the
+session-continuity record, it is read on demand rather than every turn, and its own size is the
+point of it. The bloat rule is about what is *auto-loaded*.
+
+## Session log — 2026-08-06-workbench-h (#371 — the ADV's numbers were sourceable all along, and the probe guarding them could not fail)
+
+**Trigger: an owner question, not a defect.** *"From issue 297 we added a steam dump to atmo. Why
+not put a PORV here?"* — then, when I answered by measuring this plant: *"Instead of testing our
+plant why not just look up the answer? I'm asking a general question."* Correct, and the lookup
+settled more than the question.
+
+**WTSM §7.1.3.3 (ML11223A244), fetched via the Wayback/CDX recipe, answers it in its own words:**
+*"The PORV (also called an atmospheric relief valve or atmospheric dump valve) in each steam line
+is a 6-in. air-operated, spring-opposed globe valve capable of relieving approximately 10% of the
+rated steam flow at no-load pressure from each steam generator (2.5% of the total steam system
+flow)."* It IS a PORV — one valve, three names. Setpoint is given as a RULE: *"approximately half
+the difference between the no-load steam generator pressure and the lowest set pressure of the
+safety valves."* Purpose, verbatim: *"If the main condenser is unavailable or the steam dumps are
+inoperable, the PORVs are manually controlled from the control room to relieve steam to the
+atmosphere and thereby to cool down the plant."*
+
+**Three things came out of it.**
+
+**1. §8.34's central claim was FALSE WHEN WRITTEN, and the cause is structural.** It declared *"No
+document in any lane's corpus contains 'atmospheric' in a steam-relief sense"* and shipped a
+departure on it. ML11223A293 had been in **develop's** `inbox/sources` since 2026-08-04, naming
+*"the steam generator atmospheric relief valve"*. The corpus is three gitignored directories that
+cannot see each other and an agent greps its own. **This is the second time**: #315 §6 built a whole
+OTΔT argument on a secondary source while ML11223A301 sat in another lane's inbox, fetched that
+morning. Fix is a command, not a paragraph — **`tools/find_source.js`** searches all three lanes and
+**exits 1 on a genuine zero**, so "not in the corpus" becomes a verdict instead of a claim.
+
+**2. `adv_max` 0.10 was already right; `adv_setpoint` moved 8.60 → 8.77 MPa (1247 → 1272 psi).**
+The capacity was independently sized here against two duties and lands **exactly** on the sourced
+per-SG figure — the source's 2.5 % parenthetical is a four-loop plant, this one models a single
+generator, so 10 % is the figure that maps. The setpoint had been at **34 %** of the no-load→safety
+span where the rule says half; (8.23 + 9.31)/2 = 8.77. **Measured before moving it**: perturbation
+sweep at exactly that nudge moved 42 of 623 behaviour checks with **zero verdict flips**, and full
+stack the loss-of-condenser spike peaks **9.06 MPa and the safeties lift at 54 s at BOTH values** —
+only the hold point moves, 8.65 → 8.82 MPa, Tavg 302.0 → 303.3 °C. What is still unsourced is the
+**ladder**: real is no-load ≈1080 psig → ARV 1125 → five staggered safeties 1170–1230; ours is
+1194 → 1272 → one safety at 1350, every rung ~110 psi high, because the no-load anchor is tied to
+this plant's ruled 297 °C. §8.34 narrows to that.
+
+**3. THE PROBE GUARDING THIS COULD NEVER FAIL.** TR-17 leg A asserted *"keeps the plant OFF its code
+safeties for the whole hour"* as `!a.range('sg_safety_open').max`. **`sg_safety_open` is a BOOLEAN and
+`range()` takes a numeric min/max, so it returns `NaN` — and `!NaN` is `true`.** Injection-verified:
+run leg A2's own plant through it (ADV forced shut, safeties open the entire hour) and the expression
+still **PASSED**. It shipped with #392 and has never once been able to fail. Swept — the only
+range()-on-a-boolean site in the tree.
+
+**And the claim it was pretending to guard was itself wrong.** Measured, the safeties lift at **54 s
+at the same instant with the valve shut**: that spike is the SG's, not the valve's. What the ADV
+changes is the **tail**, which is what §8.34 always actually claimed — **AUTO: open 1.8 % of the hour,
+last lift 118 s, shut at the end. SHUT: 99.4 %, last lift 3630 s, never reseats.** The check now
+asserts reseat, and goes red on the ADV-shut plant.
+
+**Layer note.** TR-17 is engine+M4, where the safeties never lift on this event; full stack they do,
+at both setpoints. Recorded, not tuned — the #209 class.
+
+**Gate: `run_all` 39/39 at baseline.** `run_behavior` 61 pass / 1 xfail unmoved — the probe count
+cannot see a check being repaired, which is the same blind spot #337 recorded.
+
+## Session log — 2026-08-06-workbench-g (#395/#396 — procedures verify the plant they stand on; the continuous day gets its gate)
+
+**Task:** audit #344's F5/F4. Measured there: the six Tier B evolutions run to completion,
+in order, on ONE plant across 17 plant-hours with the reactor never critical — because the
+three precondition-shaped fields in the procedure schema (`from:`, `prereq`, `guard`) are
+respectively a harness input, display-only `<li>` text, and gate-runner-only. And the
+heatup→startup boron seam (#396) is documented accurately on BOTH sides yet enforced by
+nothing: heatup preserves cold-shutdown boron (~857 ppm), startup is authored at the
+~683 ppm ECC, the bank stops 215 steps short, and the two at-power trip blocks are refused
+below P-10 with nothing reading the refusal.
+
+**Session pick context.** First pick was #386 stage 2 (`status-work-next`) — planned in
+full, then PARKED on an owner call: *(OWNER, 2026-08-06: "There is not enough real estate.
+We are going to have to figure out some tabbed cards or something. I'm going to have to
+play with my diagram building tool to find a spot for it. Save this plan in the issue(s)
+and find something that doesn't need real estate in the diagram.")* The complete stage-2
+plan is preserved on #386 (comment 5208083961) and the #387 rider on #387; both wait on
+diagram space.
+
+**What shipped (all on this lane, gated):**
+- **`precond` schema** (`ui/manual_procedures.js` header): `[{p, op, v, tol, text}]`, the
+  `acc` predicate vocabulary, beside `prereq` (stays human prose) and `guard` (stays the
+  whole-run invariant). Authored for the six Tier B evolutions from their prereq prose +
+  measured IC facts — **all 16 rows measured MET on their six own `from:` ICs through the
+  real mechanism before shipping** (the false-positive guard; scratch rig, this session).
+  `pwr_startup`'s boron row `~683 ±70` is the seam: ±70 ppm ≈ the caution's ±750 pcm ECC
+  band at ~10.6 pcm/ppm, and 857 misses it by 104 ppm of margin.
+- **Live instructor evaluation** (`layers/instructor_layer.js _stepChecklist`): graded
+  every tick via the existing `_grade`/`_predMet` (instrument-first, HR1 — no fourth copy
+  of the predicate evaluator; `_grade` now also returns `value` for display). Verdicts
+  ship in `getSnapshotBlock().checklist.preconditions` as `{met, obs, graded_by}` —
+  verdicts only, prose stays in the artifact. One register-aware `pendingMessage` raised
+  per unmet episode, cleared when all rows recover or the checklist stops. Restore path
+  rebuilds verdicts on the next tick (derived state, nothing saved).
+- **The banner** (`ui/app.js renderChecklist`): NOT MET rows with expected-vs-measured
+  (`OPSYM`, `.m-caution` styling), **warn-never-block** *(OWNER RULING, 2026-08-06:
+  selected "Warn, never block" from three options put to him — a selection, not verbatim
+  words)*. The verdict vector joined the render key with obs keyed ROUNDED — repaints on
+  whole-unit movement, not per-broadcast analog noise (#392's DOM-churn lesson).
+- **`test/procedures_harness.js`** — the stack runner's entire replay machinery, extracted
+  verbatim with one new seam (`opts.svc` = replay on the plant as it sits).
+  **`run_procedures_stack` 29/29 262/262 before and after — the refactor-neutrality
+  assertion, measured both sides.**
+- **`test/run_procedures_chain.js` (NEW, 50/50)** — the continuous day: heatup (arrives
+  Mode 3 at **856.8 ppm**, the seam premise pinned) → seam probe (boron row UNMET, Mode-3
+  rows MET — exactly the seam named; comment raised) → the documented remedy
+  (`set_auto_setpoint boron_conc 683`, the board's actual boron surface; arrives ≤ 690 in
+  **55.6 plant-min** against the manual's ~58) → probe all-MET → startup ON THE CONTINUOUS
+  PLANT: **zero refusals** (both step-14/15 trip blocks ACCEPTED), never scrams, every
+  authored acc, day ends **critical at 10.75 % — Mode 1** (12.7 plant-hours on one plant).
+  raise/lower/shutdown/cooldown deliberately NOT chained — their acc values are authored
+  against their own ICs and no procedure bridges ~10 % → 50 % (the known Tier B gap,
+  #319); chaining them would be authoring content inside a gate.
+- **PWR-N02 dilute checklist stays deferred** *(OWNER RULING, 2026-08-06: selected "Defer
+  to Tier B pass" from two options put to him — a selection, not verbatim words)*; the
+  chain gate scripts the dilution directly.
+
+**Injection verification, all measured this session:**
+- Neutered evaluation (`_stepChecklist`): `run_checklist` **7 red (27/34)** clean, no
+  crash; `run_procedures_chain` **5 red (45/50)** — both probes dark, plant still green.
+- Dilution skipped (`DIL_BUDGET 0`): chain **15 red (35/50)** — #396's EXACT signature:
+  probe B `yyyn`, SR ladder stalls at 195–293 cps vs the 550–3500 acc ladder, power
+  0.000 %, plant_mode 3, and both `set_trip_block` refusals with the issue's verbatim
+  message.
+
+**Traps for the next reader:**
+- `start_checklist` returns a snapshot that has ALREADY run one instructor step
+  (`_assembleWithInstructor`), so verdicts are graded in the very snapshot the command
+  hands back — a "null until first tick" assumption is wrong and was the session's one
+  first-draft red.
+- The banner had to join the checklist render key (`ui/app.js`) or it never repaints —
+  and keying the raw obs would repaint every broadcast; it is keyed rounded.
+- `mwe_output` has no instrument twin in `PARAM_INSTRUMENT`, so its rows grade
+  `true_state` (the banner marks "(true value)"). Do NOT "fix" that by adding a mapping —
+  the map is shared with `acc` grading, and a new entry silently flips how existing acc
+  rows grade (e.g. pwr_heatup's `pump_flow_pct`).
+- `boron_analyzer` is a live 45 s-lag instrument, not sample-gated — a boron precondition
+  tracks a dilution on its own.
+
+**Gates: `run_checklist` 24 → 38, `run_procedures_chain` NEW 50/50, `run_procedures`
+29/29 141/141 and `run_procedures_stack` 29/29 262/262 unmoved (by design), `run_m6`
+18/18 117 unmoved, `run_manual_rev` 15/0 at Rev 13 (row extended, not advanced — the
+2026-08-06 revision directive). Full `run_all` at close of session.**
+
+**Still open from this session:** live-app refusal→checklist-step correlation
+(`ui/app.js cmd()` flashes an INTERLOCK but the checklist step is not told;
+`instructor_layer.handleCommand` sees the command, not the result) — small, unfiled;
+and the Tier B second pass (#319) now has the precondition machinery waiting for it.
 
 ## Session log — 2026-08-06-develop-d (#392 follow-up — the flicker, found by the owner's three clues and not by my instruments)
 

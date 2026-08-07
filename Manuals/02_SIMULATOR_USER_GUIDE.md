@@ -387,6 +387,28 @@ During missions:
 
 **NOTE:** Rewind restores a checkpoint; use it after a failed recovery or softlock.
 
+### 8.3 Live checklists and their prerequisite banner
+
+Any non-narrative procedure can be run as a **live checklist** against the plant as it
+sits — from the Instructor panel's checklist picker or the 📋 button on a procedure card in
+the manual. Steps check themselves off the instruments while you operate; nothing is reset
+and no command is ever blocked.
+
+Procedures also carry **machine-checked prerequisites**. From the moment a checklist starts,
+the Instructor grades each one against the live plant — reading the same indications you
+do — and if any does not match, the checklist shows a caution banner listing each failed
+item with **what the procedure expects and what the plant actually reads** (for example:
+boron at the estimated critical condition, ≈ 683 ppm — reads 857). The Instructor adds one
+comment pointing you at it.
+
+- **The banner warns; it never blocks.** Every control still works and steps still check
+  off. What it tells you is that the plant is not where the procedure assumes, so steps may
+  not verify until you put it there — the classic case is starting the reactor startup
+  after a pump-heat heatup without first diluting to the estimated critical boron
+  (PWR-N02 step 15).
+- **It clears itself.** The grading is live: fix the condition and the row turns met, the
+  banner and the comment come down on their own.
+
 ---
 
 ## 9.0 On-screen Operator’s Manual

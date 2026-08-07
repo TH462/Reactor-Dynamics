@@ -2207,8 +2207,15 @@
     var cur = $('instrCurrent'), card = $('instructorCard');
     var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
     if (!pr) { cur.textContent = 'Checklist: ' + ck.procedure_id; return; }   // mid plant-restore mismatch
+    // Precondition verdicts join the render key (#392's lesson: a banner outside
+    // the key never repaints). Observed values are keyed ROUNDED so the banner
+    // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
+    // every broadcast on analog noise.
+    var pcKey = (ck.preconditions || []).map(function (p) {
+      return (p.met ? 'y' : 'n') + (p.met ? '' : Math.round(p.obs != null ? p.obs : -1));
+    }).join(',');
     var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
-      ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, ui.register].join('|');
+      ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
     cklState.key = key;
@@ -2217,6 +2224,21 @@
     var h = '<div class="ckl-log" id="cklLog">';
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
       '<div class="m-note">Auto-checklist — steps check themselves off the instruments while you operate.</div></div>';
+    // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
+    // measured-vs-expected and everything below still runs. Row text comes from
+    // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
+    var pc = ck.preconditions;
+    if (pc && pr.precond && pc.some(function (p) { return !p.met; })) {
+      h += '<div class="m-caution"><b>Prerequisites not met — nothing is blocked, but steps may not verify:</b>';
+      for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
+        if (pc[pj].met) continue;
+        var pd = pr.precond[pj];
+        h += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(pd.p) + ' ' +
+          (OPSYM[pd.op] || pd.op) + ' ' + mesc(pd.v) + ', reads ' + fmtPcObs(pc[pj].obs) +
+          (pc[pj].graded_by === 'true_state' ? ' (true value)' : '') + '</span></div>';
+      }
+      h += '</div>';
+    }
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
@@ -2264,6 +2286,12 @@
       else if (!firstBuild) { var act = log.querySelector('.ckl-active'); if (act) act.scrollIntoView({ block: 'nearest' }); }
     }
     if (firstBuild) setFocus('instructor');
+  }
+  // Observed value for the precondition banner: whole units above 100 (ppm, °C
+  // near operating point), one decimal below (fractions, small margins).
+  function fmtPcObs(v) {
+    if (v == null || isNaN(v)) return '—';
+    return String(Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
   }
   // Labels a checklist step points at on hover: its explicit `hl` list when
   // authored (controls + indications), else a fallback to the step's own `control`

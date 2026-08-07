@@ -25,6 +25,14 @@
  *           either (ui/app.js renders text + highlights and grades off `acc`), so a
  *           ramp costs the UI nothing. Both procedure gates implement it.
  * guard: { never_melted, never:[{p,op,v}] } checked across the whole run.
+ * precond: [{p, op, v, tol, text}] — ENTRY conditions (#395), the machine-checkable
+ *   layer under the `prereq` prose: graded live, instrument-first, by the Instructor
+ *   while a checklist runs (layers/instructor_layer.js _stepChecklist). Unmet rows
+ *   WARN — a banner in the checklist panel plus one instructor comment — and NEVER
+ *   block *(OWNER RULING, 2026-08-06: selected "Warn, never block" from three
+ *   options put to him — a selection, not verbatim words)*. Distinct from `guard`
+ *   (a whole-run invariant) and from `from:` (a harness/reset input, not a check).
+ *   `text` is the banner's human line; verdicts ship in the snapshot, prose here.
  * op ∈ >,<,>=,<=,~ (~ within tol of v).
  */
 ;(function (RD) {
@@ -46,6 +54,13 @@
       purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the commercial heatup and what mission "The Big Warm-Up" drives.',
       from: 'cold_shutdown',
       prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'RCPs available to start (heat source).'],
+      // #395 — machine-checkable entry conditions, MEASURED on the cold_shutdown
+      // IC (tavg 50.0 °C, 2.50 MPa, power 0): every row reads MET on its own IC.
+      precond: [
+        { p: 'tavg_c', op: '<', v: 95, text: 'Plant cold — Mode 5 (Tavg ≈ 122 °F / 50 °C)' },
+        { p: 'pressure_mpa', op: '<', v: 5, text: 'Depressurized (≈ 363 psi / 2.5 MPa)' },
+        { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down' },
+      ],
       cautions: [
         'Rates are time-compressed for training — a real heatup takes many hours against brittle-fracture and pressurizer limits. The PLANT hours are real: measured full-stack, cold to the no-load anchor is about 11.3 plant-hours at an average ~39 °F/hr (21.7 °C/hr), settling to a steady ~32 °F/hr (17.8 °C/hr) after the first hour.',
         'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull rods or dilute — Hot Standby means hot AND subcritical. The control bank stays at its cold-shutdown position the whole way.',
@@ -120,6 +135,18 @@
       purpose: 'Take the reactor from Mode 3, Hot Standby (subcritical, hot) through criticality (Mode 2, Startup), across the 5 % boundary into Mode 1, At Power, and put the turbine on line — the full startup. You will use the 1/M (inverse-count) plot to predict criticality, hand indication from the Source Range to the Intermediate Range, and watch the Startup Rate (SUR) and reactor period on the way up.',
       from: 'hot_zero_power',
       prereq: ['Plant at Mode 3, Hot Standby: subcritical, hot, at operating temperature/pressure.', 'Reactor Coolant Pumps (RCP) running — forced flow established.', 'Control bank inserted; shutdown bank parked withdrawn; boron high (the plant is held subcritical).'],
+      // #395/#396 — machine-checkable entry conditions, MEASURED on hot_zero_power
+      // (tavg 297.0 °C, 15.41 MPa, power 0, boron 682.9 ppm). The boron row is THE
+      // heatup→startup seam (#396): a pump-heat heatup arrives at ≈ 857 ppm, where
+      // criticality sits ≈ 561 steps instead of the 319 this checklist assumes —
+      // 173.8 ppm outside the ±70 band, so the banner names it before a rod moves.
+      // ±70 ppm ≈ the caution's ±750 pcm ECC acceptance band at ~10.6 pcm/ppm.
+      precond: [
+        { p: 'tavg_c', op: '~', v: 297, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 566.6 °F / 297 °C)' },
+        { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At normal operating pressure (2235 psi / 15.41 MPa)' },
+        { p: 'power_pct', op: '<', v: 1, text: 'Subcritical — the withdrawal starts from a shut-down core' },
+        { p: 'boron_ppm', op: '~', v: 683, tol: 70, text: 'Boron at the estimated critical condition (≈ 683 ppm — PWR-N02 step 15; a pump-heat heatup leaves ≈ 857 ppm and criticality moves ≈ 242 steps out)' },
+      ],
       cautions: ['Withdraw in small bursts, letting the count rate settle between them — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. The SUR HI alarm comes in at 1 DPM and rod withdrawal is blocked at 1.5 DPM (clearing below 0.8); insertion is never blocked. The fine-step drive (912 steps full travel) puts one step at roughly 1 ¢ (6.5 pcm) near the critical band — single-step nudges at Slow for the final approach.', 'Plot ENOUGH 1/M points. The prediction always reads high early and walks down as you add points, so an early estimate is not a target — it is an upper bound. Two points predict ~step 711 against a true ~318; three still say ~484. It takes about six, with the bursts shrinking as you close in, to get within a couple of steps. Never withdraw straight to the predicted position — creep up on it.', 'Work out where criticality should be BEFORE you move a rod — an estimated critical condition, not a guess. The worksheet and the reference curves are in manual 09 §7.5: bank integral worth, differential boron worth at your Tavg, and critical boron by temperature and bank position. THIS CHECKLIST starts Mode 3 at 683 ppm with the bank in, which puts criticality near 319 steps — about 35 % withdrawn, comfortably inside the insertion limit. That is the answer for ONE boron, not a constant of the plant: a unit that came up on the pump-heat heatup is at ~857 ppm and goes critical near 561 steps (measured), outside the acceptance band below. Dilute to the estimated critical boron first — PWR-N02 step 15. The prediction carries a ±750 pcm acceptance band (roughly 159 to 421 steps here); criticality outside it means the estimate was wrong, so stop and re-work it rather than continuing to pull. The 1/M plot is how you close on the prediction, not a substitute for having made one.', 'Secure the Source Range BEFORE its counts reach the amber high-flux caution (the SR high-flux trip at 1e5 cps will scram the ascent). Once the Intermediate Range is on scale, the handoff is safe.', 'Mind the Steam Generator. Below the point of adding heat it barely moves, but from the moment power starts warming the coolant the SG boils down, and on this ascent the turbine is still offline — the steam dump is drawing steam nobody is replacing. Hold level with the three-element Feed AUTO channel (step 3). If you let auxiliary feedwater take it instead, AFW parks the level at about 21 % — inside the amber band, four points above the low-low trip — and holds it there indefinitely.', 'Below the point of adding heat there is no temperature feedback to hold you anywhere — power goes wherever the reactivity you left in takes it, however small. Sustaining even a gentle 1 DPM ramp means carrying ~+200 pcm, and ALL of it has to come back out to level off. Take it out in one decisive drive, not in taps: the plant runs while you tap.'],
       steps: [
         { text: 'Confirm the plant is ready: subcritical — the Source Range count rate is steady, not climbing — hot (Tavg ≈ 566.6 °F / 297 °C, the no-load point), pressurized (≈ 2233 psi / 15.4 MPa), Reactor Coolant Pumps running.',
@@ -283,6 +310,13 @@
       purpose: 'Increase reactor power and electrical output by withdrawing rods a little and letting the turbine take more load. Rods lead, turbine follows — the PWR two-step every crew drills until it is boring.',
       from: '50_percent',
       prereq: ['Reactor critical and stable at partial power.', 'Turbine on line.'],
+      // #395 — measured on 50_percent (power 50.1 %, mwe 52.1). The power row is
+      // what catches the audit's headline case: this evolution "completed" on a
+      // subcritical Mode 3 plant and cooled it 21.8 °F (#344 F5).
+      precond: [
+        { p: 'power_pct', op: '>', v: 10, text: 'Reactor critical and at power (above the P-10 range)' },
+        { p: 'mwe_output', op: '>', v: 5, text: 'Turbine on line, carrying load' },
+      ],
       cautions: ['Keep the power ramp modest; let temperatures and xenon follow.'],
       steps: [
         { text: 'Withdraw the Control Rods a few steps to add reactivity (Rod Control card → set Rod Speed, then Withdraw in short bursts).', control: 'Rod Speed',
@@ -300,6 +334,10 @@
       purpose: 'Reduce reactor power and load by inserting rods and reducing turbine demand. Turbine leads down, rods trim — the two-step in reverse.',
       from: 'hot_full_power',
       prereq: ['Reactor at power, turbine on line.'],
+      precond: [   // #395 — measured on hot_full_power (power 100 %, mwe 100)
+        { p: 'power_pct', op: '>', v: 10, text: 'Reactor critical and at power' },
+        { p: 'mwe_output', op: '>', v: 5, text: 'Turbine on line, carrying load' },
+      ],
       cautions: ['Watch that the Steam Generator (SG) level does not swell excessively as load drops.'],
       steps: [
         { text: 'Reduce the Turbine Load.', control: 'Turbine Load', target: '≈ 60 MWe', cmd: { action: 'set_steam_demand', mwe: 60 }, hold: 10 },
@@ -351,6 +389,9 @@
       purpose: 'Shut the reactor down from Mode 1, At Power to Mode 3, Hot Standby: take the turbine off load, then insert the rods. Decay heat continues and must keep being removed.',
       from: 'hot_full_power',
       prereq: ['Reactor at power.'],
+      precond: [   // #395 — a shutdown of an already-shut-down core is a no-op that "completes"
+        { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power — there is something to shut down' },
+      ],
       cautions: ['Decay heat (~7 % of rated, decaying) persists after shutdown — maintain a heat sink.'],
       steps: [
         { text: 'Reduce Turbine Load toward zero.', control: 'Turbine Load', target: '0 MWe', cmd: { action: 'set_steam_demand', mwe: 0 }, hold: 10 },
@@ -387,6 +428,15 @@
         'Plant at Mode 3, Hot Standby: hot (566.6 °F / 297 °C), at normal operating pressure (2235 psi / 15.41 MPa), subcritical with the control bank in.',
         'Reactor coolant pumps running; steam generator level normal on the three-element feed channel.',
         'Condenser available — the steam dump is the heat sink for the first half of this evolution, and the RHR heat exchanger rejects to the same circulating water.',
+      ],
+      // #395 — measured on hot_zero_power (tavg 297.0 °C, 15.41 MPa, power 0). The
+      // tavg row matters beyond its own IC: the ramp schedule's first leg starts at
+      // 297 °C, so a plant arriving colder (the audit's chain hit this at 244 °C)
+      // rides the first leg as a step, not a ramp.
+      precond: [
+        { p: 'tavg_c', op: '~', v: 297, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 566.6 °F / 297 °C — the ramp schedule starts there)' },
+        { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At normal operating pressure (2235 psi / 15.41 MPa)' },
+        { p: 'power_pct', op: '<', v: 1, text: 'Subcritical with the control bank in' },
       ],
       cautions: [
         'THE COOLDOWN IS A RAMP, NOT A CHASE. Walk the Dump SP down against a schedule and the dump only ever opens as far as it must to keep up. Chase it — retype the setpoint to track whatever Tavg reads right now — and you have built a positive feedback loop: a 55 psi (0.38 MPa) error is wider than the dump\'s 36 psi (0.25 MPa) proportional band, the dump saturates, and the plant free-falls. Measured with the setpoint driven to its 29 psi (0.2 MPa) stop: -2340 °F/hr (-1300 °C/hr), from 566.6 °F (297 °C) to 251.6 °F (122 °C) in eight plant-minutes.',

@@ -1255,30 +1255,59 @@
       // required for the safe shutdown of the reactor"*, i.e. something else
       // does the safety-grade job.
       //
-      // EXISTENCE, PURPOSE, CAPACITY AND SETPOINT ARE ALL UNVERIFIED. **No
-      // document in any lane's corpus contains "atmospheric" in a steam-relief
-      // sense** — §11.2 is dump-to-condenser throughout, §5.7's only hit is the
-      // turbine-driven AFW pump's own exhaust, §19.0 has none. The closest
-      // support is indirect: §5.7.6 defines AFW as maintaining inventory *"for
-      // removal of heat energy from the RCS by secondary side steam release"*
-      // and never names the release path. So this is a stated engineering
-      // choice, not a citation — the `afw_flow_frac` convention.
+      // NOW SOURCED — WTSM §7.1 *Main and Auxiliary Steam Systems* (ML11223A244)
+      // §7.1.3.3, fetched 2026-08-06. This block used to say "EXISTENCE, PURPOSE,
+      // CAPACITY AND SETPOINT ARE ALL UNVERIFIED. **No document in any lane's
+      // corpus contains 'atmospheric' in a steam-relief sense**". That was FALSE
+      // WHEN WRITTEN: ML11223A293 (WTSM §11.1) had been sitting in the develop
+      // lane's inbox since 2026-08-04 naming "the steam generator atmospheric
+      // relief valve", and §7.1 carries a whole subsection on it. The corpus is
+      // three lanes and nobody greps all three — see tools/find_source.js.
       //
-      // adv_max 0.10 IS SIZED, not guessed, against two measurable duties:
-      //   · hold a bottled SG below the 9.31 MPa pop on decay heat (~2 % of
-      //     rated at an hour), which 10 % clears 5× over — so it can COOL, not
-      //     merely hold; and
-      //   · reach the RHR block-open permissive (2.76 MPa, Tavg ≈ 193 °C) on a
-      //     timescale where the ~55 °C/hr technical-specification cooldown limit
-      //     is achievable AND exceedable. That is the point: #375 just gave the
-      //     board a cooldown-rate meter and ±100 °F/hr annunciators, and a valve
-      //     that cannot exceed the limit turns holding it into a formality
-      //     rather than a skill.
-      // Setpoint sits ABOVE the 8.23 dump anchor so the condenser dump does all
-      // normal duty and the ADV never lifts while the condenser is there, and
-      // full-open (8.85) stays below the 9.31 pop so without a condenser it is
-      // the ADV, not the safeties, that holds the generator. [tune]
-      adv_setpoint: 8.60, adv_band: 0.25, adv_max: 0.10,
+      // The document settles the NAME first, and it is the answer to "why is this
+      // not a PORV": *"The PORV (also called an atmospheric relief valve or
+      // atmospheric dump valve) in each steam line is a 6-in. air-operated,
+      // spring-opposed globe valve"*. It IS a PORV — one valve, three names.
+      //
+      // adv_max 0.10 — SOURCED, and it lands exactly where the sizing exercise
+      // put it: *"capable of relieving approximately 10% of the rated steam flow
+      // at no-load pressure from each steam generator (2.5% of the total steam
+      // system flow)"*. The parenthetical is a FOUR-LOOP plant; this plant models
+      // ONE generator, so the per-SG figure — 10 % — is the one that maps, not
+      // the 2.5 %. Independently sized here against two duties and both still
+      // hold: it clears the decay-heat hold 6.9× at an hour (#364 refit), and it
+      // reaches the RHR block-open permissive (2.76 MPa, Tavg ≈ 193 °C) on a
+      // timescale where the ~55 °C/hr technical-specification cooldown limit is
+      // achievable AND exceedable — full open runs −352 °C/hr, 6.4× the limit.
+      // That second half is the point: #375 gave the board a cooldown-rate meter
+      // and ±100 °F/hr annunciators, and a valve that cannot exceed the limit
+      // turns holding it into a formality rather than a skill.
+      //
+      // adv_setpoint 8.77 — the PLACEMENT RULE is sourced, the number is this
+      // plant's arithmetic on it: *"Each PORV has a nominal setpoint of 1125
+      // psig, which is approximately half the difference between the no-load
+      // steam generator pressure and the lowest set pressure of the safety
+      // valves."* Here that is (8.23 no-load anchor + 9.31 pop) / 2 = 8.77 MPa
+      // (1272 psi). WAS 8.60 (1247 psi), which sat at 34 % of that span; moved
+      // 2026-08-06 to sit on the rule. Measured full stack, the move is nearly
+      // inert — the loss-of-condenser spike peaks 9.06 MPa either way and the
+      // safeties lift either way; only the hold point moves, 8.65 → 8.82 MPa
+      // (1255 → 1280 psi), Tavg 302.0 → 303.3 °C. Perturbation sweep at exactly
+      // this nudge: 42 of 623 behaviour checks move, ZERO verdict flips.
+      // Still ABOVE the 8.23 dump anchor, so the condenser dump does all normal
+      // duty and the ADV never lifts while the condenser is there; full-open
+      // (8.77 + 0.25 band = 9.02) still below the 9.31 pop, so without a
+      // condenser it is the ADV, not the safeties, that holds the generator.
+      //
+      // WHAT IS STILL UNSOURCED is the LADDER THIS SITS IN, and it is worth
+      // knowing before anyone "corrects" the setpoint again: the real ladder is
+      // no-load ≈1080 psig → ARV 1125 → five staggered safeties at 1170/1200/
+      // 1210/1220/1230 psig. Ours is 1194 → 1272 → one safety at 1350. Every
+      // rung runs ~110 psi high and our no-load-to-safety span is 156 psi against
+      // the real 90, because the no-load anchor is tied to this plant's declared
+      // 297 °C Tavg anchor (§19.0's 1092 psig header is the departure). The rule
+      // is satisfied WITHIN our ladder; the ladder itself is not sourced. [tune]
+      adv_setpoint: 8.77, adv_band: 0.25, adv_max: 0.10,
       // AFW capacity vs the real plant, worked (#374 evidence pass): the real
       // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
       // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0

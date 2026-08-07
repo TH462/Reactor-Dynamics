@@ -114,14 +114,70 @@ a:hover { text-decoration: underline; }
 /* Disabled links: intentional "not yet" (e.g. gated features), not broken links. */
 a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoration: none; }
 
+/* ========================================================== TEST BUILD marker
+ * dev.reactordynamics.com serves the same pages as the live domain from the
+ * `develop` branch, so a visitor has no way to tell them apart without being told.
+ * Both markers key off html[data-channel], set in each page's <head> from
+ * window.RD_CHANNEL — which site/stamp_version.js stamps at deploy.
+ *
+ * DEFAULT IS HIDDEN, and the shown-state is opt-in per channel rather than
+ * `:not([data-channel="public"])`. That matters: if the attribute is ever missing
+ * or misspelled the markers stay OFF on the released site, which is the direction
+ * to fail in — a spurious "TEST BUILD" banner on the real site is worse than a
+ * missing one on the test site.
+ *
+ * Two of them, because they do different jobs. The BAR states the situation once,
+ * in full, at the top of the page. The PILL rides the sticky header, so the answer
+ * to "which of these two tabs am I in?" is on screen after the bar scrolls away.
+ * Filled amber, not the tinted outline used by the ALPHA badge and .alpha-note —
+ * this has to read as louder than the things around it. (Red stays reserved for
+ * the board.) */
+.dev-bar, .brand-test { display: none; }
+
+html[data-channel="preview"] .dev-bar,
+html[data-channel="dev"] .dev-bar {
+  display: block;
+  background: var(--caution); color: #17120A;
+  text-align: center; padding: 9px 16px;
+  font-size: 13px; font-weight: 600; line-height: 1.45;
+}
+.dev-bar strong { letter-spacing: 1.2px; }
+.dev-bar a { color: #17120A; text-decoration: underline; }
+.dev-bar a:hover { color: #000; }
+
+html[data-channel="preview"] .brand-test,
+html[data-channel="dev"] .brand-test {
+  display: inline-block;
+  background: var(--caution); color: #17120A;
+  border-radius: 999px; padding: 2px 9px;
+  font-size: 11px; font-weight: 700; letter-spacing: 1.4px; white-space: nowrap;
+}
+
 /* ==================================================================== hero */
 .hero { text-align: center; padding: 64px 20px 40px; }
+/* Sits BELOW the CTA, not above it (2026-08-06). It was the first thing on the
+   page for a month: a visitor's opening handshake was a limitation, before they
+   had been told what the thing is or who it is for. It still has to be seen
+   before anyone downloads on a phone, so it keeps the caution border and stays
+   above the fold — it just no longer leads. */
 .alpha-note {
-  display: block; width: fit-content; max-width: 100%; margin: 0 auto 20px;
+  display: block; width: fit-content; max-width: 100%; margin: 22px auto 0;
   background: rgba(217, 164, 65, 0.10); border: 1px solid var(--caution);
   color: var(--caution); border-radius: var(--radius);
   padding: 8px 16px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px;
 }
+/* WHO IT IS FOR — the question the copy never answered (2026-08-06). The site's
+   own vocabulary (boration, hot standby, xenon) reads as a filter to anyone
+   without a nuclear background, and a reader who has to guess whether they are
+   the audience leaves. Highest-read slot on the page: under the subhead, above
+   the CTA. */
+.hero-who {
+  max-width: 660px; margin: 0 auto 26px; padding: 12px 18px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-2); font-size: 15px; line-height: 1.55;
+}
+.hero-who strong { color: var(--text); }
 .hero h1 {
   font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 0 0 14px;
   letter-spacing: -0.5px;
@@ -242,10 +298,36 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
 .notice strong { color: var(--caution); }
 
 /* =============================================================== changelog */
+/* Entries are <details class="log-entry"><summary class="log-head">. Six releases
+   landed in the first three days, so the page was always going to outgrow one
+   screen; collapsing everything but the newest keeps the version list itself
+   scannable. `display:flex` on the summary suppresses the default disclosure
+   triangle in every engine, so the chevron below is drawn by hand — do not
+   remove it and leave the flex, or the rows lose their only affordance. */
 .log-entry { border-top: 1px solid var(--border); padding-top: 24px; margin-top: 32px; }
 .log-entry:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 .log-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .log-head h2 { margin: 0; border: none; padding: 0; font-size: 20px; }
+/* nowrap + a shrinkable h2. The base .log-head wraps, which was invisible while every
+   entry was expanded and its head was one line among twenty; collapsed, a long headline
+   pushed the date onto a line of its own and the version list read as ragged pairs.
+   The headline now wraps INSIDE its own box and the version and date stay on the first
+   line, where a scanner is looking for them. Wrapping comes back on a narrow screen. */
+summary.log-head { cursor: pointer; list-style: none; flex-wrap: nowrap; }
+summary.log-head h2 { flex: 1 1 auto; min-width: 0; }
+summary.log-head .log-ver, summary.log-head .log-date { flex: 0 0 auto; }
+@media (max-width: 620px) { summary.log-head { flex-wrap: wrap; } }
+summary.log-head::-webkit-details-marker { display: none; }
+summary.log-head::before {
+  content: '▸'; flex: 0 0 auto; color: var(--muted); font-size: 15px; line-height: 1;
+  transition: transform 0.12s; transform-origin: 50% 45%;
+}
+details[open] > summary.log-head::before { transform: rotate(90deg); }
+summary.log-head:hover h2 { color: var(--normal); }
+summary.log-head:focus-visible { outline: 2px solid var(--normal); outline-offset: 3px; }
+.log-note {
+  color: var(--muted); font-size: 13px; margin: 0 0 28px;
+}
 .log-ver {
   font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: var(--normal);
   border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; line-height: 1.5;
@@ -290,3 +372,12 @@ a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoratio
 .btn-download:hover { filter: brightness(1.08); text-decoration: none; }
 .btn-download .mono { opacity: .72; font-weight: 400; font-size: 14px; }
 .dl-note { color: var(--text-2); font-size: 14px; margin-top: 4px; }
+/* Version · date · size, filled from download/manifest.js at deploy (2026-08-06).
+   Without it "latest.zip" gave a returning visitor no way to tell whether they
+   already had this build. Stays hidden until the manifest fills it, so a local
+   checkout (download/ is gitignored) shows nothing rather than a row of dashes. */
+.dl-meta {
+  display: none; margin: 10px 0 0; color: var(--text-2); font-size: 14px;
+}
+.dl-meta.is-filled { display: block; }
+.dl-meta .sep { color: var(--muted); margin: 0 8px; }

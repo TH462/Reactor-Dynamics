@@ -743,10 +743,51 @@ var BASELINES = {
   // baseline in this map that CANNOT be reasoned about, only measured, because it counts
   // citation SITES in tracked markdown — so writing a merge up moves it, and deleting history
   // (the manual revision collapse) moves it the other way.
+  // 203 -> 208 on 2026-08-06-workbench-g (#395/#396) — write-up drift, the usual
+  // split: the mechanism/harness/gate code moved this by ZERO, and the entire
+  // delta is tracked markdown carrying the two dated owner rulings (warn-never-
+  // block; defer PWR-N02) across TUNING_LOG, BUILD_DECISIONS, CHANGELOG and the
+  // CLAUDE.md status line. Measured AFTER the docs, per the standing rule.
+  // 208 -> 205 on 2026-08-06-workbench-i: the CLAUDE.md bloat pass cut 42,065 words to 13,455,
+  // and deleting history deletes CITATION SITES — the mechanism this map already records for the
+  // themes cap. Every one of the 30 dated owner citations in that file was checked against the
+  // rest of the tracked tree FIRST: all 30 exist elsewhere, so this is fewer SITES and zero fewer
+  // rulings. NET -3, not -5: the cut removed 5 and the write-ups put 2 back, which is why this is
+  // MEASURED AFTER THE DOCS. An intermediate run with the file cut and the entries unwritten read
+  // 203, and recording that would have shipped a 2-check drift — the standing rule landing on the
+  // very change that shortened the paragraph stating it.
+  // 205 -> 208 on 2026-08-06-workbench-j: three citation sites for the conciseness-shape ruling.
+  // MEASURED after the write-ups; the entry that records it first predicted 206.
+  // 208 -> 209 on 2026-08-06-workbench-k: ONE new citation site — the CHANGELOG.md entry for the
+  // website pass cites the 2026-08-06 "changelog is strictly for simulator changes" directive as
+  // its reason for adding no changelog.html entry. HR11 counts declared citation SITES, so writing
+  // up a change against a ruling moves this score even when the change itself touches no rule;
+  // 0 undeclared throughout. MEASURED by pulling that one citation back out (209 -> 208 -> 209),
+  // not inferred from the diff — the count is the sum of two independent scans and "it must be my
+  // line" is exactly the assumption that would hide a second, undeclared one arriving beside it.
+  // 209 -> 210 on 2026-08-07-workbench-a: again ONE new declared citation site, the
+  // changelog-page style directive quoted as the reason the host-migration entry adds no
+  // changelog.html line. MEASURED as the marker count in CHANGELOG.md, 39 -> 40, against a
+  // check delta of 1 — the `(#241: "…")` quote in the same entry is NOT an OWNER marker and
+  // correctly counts for nothing. 0 undeclared throughout.
   // 208 -> 210 on 2026-08-07: two citation sites for the proportional-valve ruling
   // (BUILD_DECISIONS + the CLAUDE.md status). The engine/config/mission work moved this
   // by ZERO — write-up drift, the usual split; measured AFTER the docs.
-  'run_hardrules.js':      { code: 0, score: '210checks 0failed' },
+  // MERGED 2026-08-07 (workbench -> develop): BOTH lanes independently took this key to 210
+  // from different bases, so neither figure survives — the mechanism the paragraph above
+  // describes, for the fourth time. MEASURED 218 on the merged tree AFTER the write-ups: the
+  // merge carries both lanes' citation sites at once AND adds the merge entries' own, so it is
+  // higher than either parent and than any arithmetic on them. 201 HR11 sites, 0 undeclared.
+  'run_hardrules.js':      { code: 0, score: '218checks 0failed' },
+  // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
+  // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
+  // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
+  // 5,310, and 13 bullets in a themes region documented as "max 5". Injection-verified against
+  // the real pre-cut file at HEAD~1 — all 3 checks red, exit 1. Thresholds carry headroom over
+  // the measured 13,455 / 164 / 5, so ordinary work cannot trip them; if a cut ever has to fight
+  // this gate the answer is a pointer into TUNING_LOG, not a bigger number.
+  'run_doc_budget.js':     { code: 0, score: '3checks 0failed' },
+
   // New 2026-07-28 (#225) — static guard that the §6.3 true_state contract in
   // CONTEXT.md and `getTrueState()` agree EXACTLY, both directions. Nothing compared
   // them, so the gap grew to 41-of-82 undocumented before anyone noticed — and it was
@@ -874,7 +915,18 @@ var BASELINES = {
   // 292 -> 295 on 2026-08-03 (#319): the `procedure:pwr_post_trip` registry entry. This gate
   // caught its absence, which is the job — a procedure the player can open with no flag
   // behind it ships ungated (#310 is the worked case).
-  'run_flags.js':          { code: 0, score: '16/16 310/310' },
+  // 310 → 320 on 2026-08-07: A COUNTING ARTIFACT, NOT NEW COVERAGE — recorded because the
+  // number alone reads like the opposite. The "deploy stamp can only produce a known
+  // channel" suite greps site/stamp_version.js for /'(public|preview|dev)'/ and emits one
+  // ck() PER LITERAL FOUND; the host-agnostic rewrite has 18 such literals where the old
+  // file had 8. MEASURED both ways (8 → 18, delta 10 = the exact check delta). Not one of
+  // those ten asserts anything that was not already asserted.
+  // Worth knowing WHY that suite was no defence: it never mentions CF_PAGES. Its one
+  // semantic check is /production'\s*\?\s*'public'/, which only ever inspected the Vercel
+  // branch — so it sat green through the entire period in which a Cloudflare deploy would
+  // have stamped the public site 'dev'. It pins the VOCABULARY (no unknown channel string
+  // can be emitted); run_channel.js pins the DECISION. Neither substitutes for the other.
+  'run_flags.js':          { code: 0, score: '16/16 320/320' },
   // New 2026-07-28 (#96) — the inspection copy behind the System Scanner block.
   // Every way this rots is silent: an item id changes and its entry describes
   // nothing; a new control inherits its card's summary and READS like a real
@@ -1049,6 +1101,37 @@ var BASELINES = {
   // block cross-checks every changelog.html entry down to the oldest version CHANGELOG.md
   // still names individually, so it grows by one row per published release.
   'run_release.js':        { code: 0, score: '16checks 0failed' },
+  // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
+  // `og:image` ("site/hero.png") from launch, and Slack / Discord / iMessage / X do not
+  // resolve a relative og:image, so every link ever shared into a chat rendered with no
+  // preview picture. Invisible from inside the repo: the pages are correct html, the
+  // image loads fine in a browser, and until this runner nothing here read those tags at
+  // all. Changelog, Privacy and Legal had no card whatsoever — the block only ever
+  // existed in the pages that already had it, so each new page started from zero.
+  // THE PAGE LIST IS GLOBBED AND FILTERED THROUGH .vercelignore, deliberately: a
+  // hand-kept list would have tested the list, passing at full marks on the very page it
+  // had never heard of. VERIFIED BY INJECTION before baselining, which is the only reason
+  // the number below means anything — the original bug reintroduced in one page scores
+  // 116/3 (the count moves because the stray-url sweep emits a row naming it), a page
+  // stripped of its card 115/13, and a stale og:image:width 115/1. 115 checks is
+  // 8 pages × 14 + the discovery row and the hero-file row.
+  'run_site_meta.js':      { code: 0, score: '115checks 0failed' },
+  // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
+  // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
+  // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE
+  // channel in site/flags.js, not the safest: `channel() !== 'public'` turns ON every
+  // preview-stage area. MEASURED before the fix: campaign, scenarios, checklists and
+  // walkthroughs all `on`, i.e. the four the owner declared placeholders (#241), live on
+  // reactordynamics.com, with nothing failing and no gate reddening.
+  // The runner asks resolve() a 7-row host matrix AND asks site/flags.js what each answer
+  // actually offers — a channel string is not the thing that matters, what it does to the
+  // flag layer is, and pinning only the string would let the two drift apart.
+  // PURE: resolve(env) does no I/O and the file writes sit behind require.main, so this
+  // runner cannot leave a stamped working tree behind even if it is killed mid-run.
+  // VERIFIED BY INJECTION: resolve() made blind to Cloudflare again scores 25/10, the
+  // unrecognised-CI fallback flipped from 'public' to 'dev' scores 25/2, and renaming
+  // PRODUCTION_BRANCH scores 25/4.
+  'run_channel.js':        { code: 0, score: '25checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane
@@ -1256,7 +1339,15 @@ var BASELINES = {
   // deception, so the order those variants depend on never arms (the tag+defend
   // quiet-night is a filed design gap, not a reachable ending yet).
   'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3029passed' },
-  'run_checklist.js':      { code: 0, score: '24/24' },
+  // 24 -> 38 on 2026-08-06 (#395): preconditions. Section 7 is the MECHANISM on a
+  // synthetic procedure (graded live instrument-first, warn-never-block, the
+  // comment raised/cleared/re-raised, stop takes it down) — injection-verified:
+  // neutering the evaluation in _stepChecklist reds 7 cleanly (27/34 at the
+  // time). Section 8 is the CONTENT: pwr_startup's #396 boron seam row reads
+  // UNMET at cold_shutdown's own 857 ppm — the same boron a pump-heat heatup
+  // preserves — while all 16 authored Tier B rows were measured MET on their six
+  // from: ICs before shipping (the false-positive guard).
+  'run_checklist.js':      { code: 0, score: '38/38' },
   // Green since 2026-07-25 (#150): both F12 reds were stale expectations, not
   // regressions. 30 -> 35 checks; the replacements are differential, so they
   // discriminate where the originals could not.
@@ -1366,7 +1457,26 @@ var BASELINES = {
   // 261 -> 262 (2026-08-04, #348) — same two edits as run_procedures above. This runner is the
   // one that was RED on pwr_stuck_porv, and it was right to be: it runs the plant the player
   // actually gets.
+  // UNCHANGED at 29/29 262/262 through the 2026-08-06 #395 extraction of its whole
+  // replay machinery to test/procedures_harness.js — that score IS the
+  // refactor-neutrality assertion, measured before and after.
   'run_procedures_stack.js': { code: 0, secs: 70, score: '29/29 262/262' },
+  // NEW 2026-08-06 (#395/#396): the CONTINUOUS operating day, the assertion both
+  // reloading gates are blind to by construction (each reloads proc.from per
+  // procedure). ONE service: pwr_heatup (arrives Mode 3 at 856.8 ppm — the seam's
+  // premise, pinned), the #395 seam probe (startup's boron precondition row UNMET
+  // with the Mode-3 rows MET — exactly the seam named), the documented remedy
+  // (PWR-N02 step 15 dilution via the boron_conc target; arrives in 55.6
+  // plant-min against the manual's ~58), the probe again (all MET, comment down),
+  // then pwr_startup ON THE CONTINUOUS PLANT: zero refusals (the two step-14/15
+  // trip blocks that #396 measured REFUSED are accepted), never scrams, and the
+  // day ends critical at 10.75 % — Mode 1. raise/lower/shutdown/cooldown are
+  // deliberately NOT chained: their acc values are authored against their own ICs
+  // and no procedure bridges ~10 % to 50 % (the known Tier B content gap, #319) —
+  // chaining them would be authoring content inside a gate. Injection-verified:
+  // dilution skipped reproduces #396 (see the runner header for the measured
+  // signature); the precondition-evaluation injection reds the probes.
+  'run_procedures_chain.js': { code: 0, secs: 55, score: '50/50' },
 
   // ---- known reds (each is a tracked issue; do not "fix" by editing the number) ----
   'run_ops.js': {
@@ -1423,7 +1533,11 @@ var BASELINES = {
     // probe stays red by the 2026-08-04 "A" ruling and must not be re-banded).
     code: 1, score: '58/69 351passed 12failed',
     note: 'Ops probes are tuning targets by design. #330 (2026-08-04) added a 12th red ' +
-          'and it is the only PWR one: ops_cvcs_pzr_drain_rate, 53.7 s vs >= 300 s. ' +
+          'and it is the only PWR one: ops_cvcs_pzr_drain_rate, 284.3 s vs >= 300 s ' +
+          '(3.2 %/min, re-measured 2026-08-07 after #408 wave 1 put CVCS on the real scale; ' +
+          'it read 53.7 s from #330 until then, so the probe went from 7.76x PAST its target ' +
+          'to just short of it WITHOUT the threshold moving — which is the whole argument for ' +
+          'not re-banding a feel target when the plant moves under it). ' +
           'RULED (OWNER RULING, 2026-08-04: "A") — the corrected pressurizer geometry ' +
           'ships and the faster drain is accepted; the threshold is NOT to be re-banded. ' +
           'See the probe comment for both costed options. ' +

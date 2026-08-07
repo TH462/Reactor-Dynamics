@@ -60,3 +60,9 @@ terminals/
 # from the commit being deployed, so a committed copy could only ever be stale.
 download/
 pylibs/
+
+# Generated at deploy by site/stamp_version.js, and it MUST NOT be committed: its
+# contents depend on the channel being built (Allow on the released site, Disallow
+# everywhere else). A committed copy would carry one answer to both hosts, and the
+# one it would carry is whichever was generated last on someone's laptop.
+/robots.txt

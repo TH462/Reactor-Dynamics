@@ -534,7 +534,7 @@ The fast mode's reference Tavg is **programmed on turbine load** — the same sl
 
 **The ADV ships in AUTO** *(changed 2026-08-06; it shipped SHUT when the valves were built in #371)*, so it modulates on its own to hold steam pressure at its setpoint, the way a real plant's atmospheric dumps do. Three consequences worth knowing.
 
-First, **AUTO caps pressure — it does not cool the plant.** A bottled generator settles at the 1247 psi (8.60 MPa) setpoint instead of parking on its 1350 psi (9.31 MPa) code safeties, but it stays hot: measured with the condenser lost, Tavg holds at 574 °F (301.1 °C) indefinitely. Starting a cooldown still means lowering the ADV setpoint or opening the valve.
+First, **AUTO caps pressure — it does not cool the plant.** A bottled generator settles just above the 1272 psi (8.77 MPa) setpoint — measured 1276 psi (8.80 MPa), the valve holding about 13 % open — instead of parking on its 1350 psi (9.31 MPa) code safeties, but it stays hot: measured with the condenser lost, Tavg holds at 576.5 °F (302.5 °C) indefinitely. Starting a cooldown still means lowering the ADV setpoint or opening the valve.
 
 Second, **the code safeties still lift on a fast transient.** Bottling the generator from full power spikes past the ADV faster than it can open — measured, an MSIV closure at power peaks at 1350 psi (9.31 MPa) with the ADV already wide open, lifts the safeties at 1317 psi (9.08 MPa) about three seconds later than it would with the ADV shut, and they reseat some five minutes later as the ADV takes over. Coming *up* from a blown-down break there is no spike, and the ADV catches it at the setpoint with the safeties never lifting at all.
 

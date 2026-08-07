@@ -55,6 +55,43 @@
         'Reactor_Dynamics_' + window.RD_RELEASE.replace(/[^A-Za-z0-9.]+/g, '_') + '.zip');
     }
 
+    // "Alpha 1.2.2 · 6 August 2026 · 4.2 MB" under the download button (2026-08-06).
+    // Everything here comes from window.RD_DOWNLOAD, which site/make_download.js writes
+    // at deploy from the zip it just built — the size is not knowable before that, and
+    // hand-maintaining it would be one more number to forget at a release.
+    //
+    // Every field is optional and the row is assembled from whichever ones arrived: on a
+    // local checkout the manifest 404s and the element stays hidden (.dl-meta is
+    // display:none until .is-filled), rather than rendering a line of blanks.
+    var meta = document.getElementById('dlMeta');
+    var dlInfo = window.RD_DOWNLOAD;
+    if (meta && dlInfo && typeof dlInfo === 'object') {
+      var parts = [];
+      if (dlInfo.version) parts.push(dlInfo.version);
+      // The ISO date is what the manifest carries; spell it out for the reader. Parsed
+      // by hand rather than via new Date(iso), which reads the string as UTC and then
+      // prints it in local time — west of Greenwich that shows the day before.
+      var d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dlInfo.date || '');
+      if (d) {
+        var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                      'August', 'September', 'October', 'November', 'December'];
+        parts.push((+d[3]) + ' ' + MONTHS[(+d[2]) - 1] + ' ' + d[1]);
+      }
+      if (dlInfo.bytes > 0) parts.push((dlInfo.bytes / 1048576).toFixed(1) + ' MB');
+      // Off the released channel, say so and name the commit. The zip arrives under the
+      // same filename as the real release (see the note in site/make_download.js), so
+      // this line is the only thing on the page that distinguishes the two — which is
+      // why the SHA is here and not just the word TEST.
+      if (dlInfo.channel && dlInfo.channel !== 'public') {
+        parts.unshift('TEST BUILD');
+        if (dlInfo.sha) parts.push(dlInfo.sha);
+      }
+      if (parts.length) {
+        meta.innerHTML = parts.join('<span class="sep">·</span>');
+        meta.classList.add('is-filled');
+      }
+    }
+
     var btn = document.getElementById('navBurger');
     var nav = document.getElementById('siteNav');
     if (!btn || !nav) return;
