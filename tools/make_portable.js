@@ -153,7 +153,11 @@ if (require.main === module) {
   const kb = n => (n / 1024).toFixed(0) + ' KB';
   console.log('\nPORTABLE BUILD - ' + release());
   console.log('  inlined      ' + b.js.length + ' scripts, ' + b.css.length + ' stylesheets');
-  b.dropped.forEach(s => console.log('  dropped      ' + s + '  (declared: analytics beacon)'));
+  // Print the REASON the file was actually left out, not a hardcoded one. This said
+  // "(declared: analytics beacon)" for everything, so the first OMIT entry —
+  // site/telemetry.js, left out for the opposite reason — was logged as an analytics
+  // tag. A build log that says the wrong thing confidently is worse than a quiet one.
+  b.dropped.forEach(s => console.log('  dropped      ' + s + '  (' + (DROP[s] || OMIT[s] || 'no reason declared') + ')'));
   console.log('  out          ' + path.relative(ROOT, out).replace(/\\/g, '/'));
   console.log('  size         ' + kb(Buffer.byteLength(b.html)));
   console.log('\nOpen it by double-clicking: no server, no network, no install.');
