@@ -18,12 +18,12 @@
 | Reactor power | **100 %** | Mode 1, At Power |
 | Electrical output | **≈ 100 MWe** | Mode 1, At Power |
 | Primary pressure | **2235 psi (15.41 MPa)** | Mode 1, At Power |
-| Tavg | **≈ 579.2 °F (304 °C)** | Mode 1, At Power |
-| Thot / Tcold | **≈ 609.8 / 550.4 °F** (321 / 288 °C) (ΔT ≈ 59.4 °F / 33 °C) | Mode 1, At Power |
+| Tavg | **≈ 580.1 °F (304.5 °C)** | Mode 1, At Power |
+| Thot / Tcold | **≈ 610.5 / 551.3 °F** (321.4 / 288.5 °C) (ΔT ≈ 59.4 °F / 33 °C) | Mode 1, At Power |
 | Pressurizer level | **≈ 55 %** | Mode 1, At Power |
 | Steam Generator level | **≈ 65 %** | Mode 1, At Power |
-| Secondary steam pressure | **≈ 819 psi (5.65 MPa)** | Mode 1, At Power |
-| Subcooling margin | **≈ 73.8 °F** (41 °C) | Mode 1, At Power |
+| Secondary steam pressure | **≈ 825 psi (5.69 MPa)** — Ginna's sourced 810 psig full-load outlet (#419 wave 3) | Mode 1, At Power |
+| Subcooling margin | **≈ 73.1 °F** (40.6 °C) | Mode 1, At Power |
 | Control bank position | **≈ 92 %** withdrawn | Mode 1, At Power |
 | Core inventory | **100 %** | Mode 1, At Power |
 | Decay heat (after long power run) | **≈ 7 %** at scram instant | — |
@@ -71,7 +71,7 @@
 | **P-7** | Power ≥ **10 %** | Arms the **low-flow reactor trip**; below it the trip may be blocked (RCPs are secured in Mode 5, where RHR provides circulation) and it auto-reinstates above |
 | **P-10** | Power ≥ **10 %** | Allows IR/PR low-setpoint trip blocks |
 | **P-11** | Pressure ≥ **1973 psi (13.6 MPa)** | Below it the SI trip may be blocked; auto-reinstates above |
-| **P-12** | Tavg low **552.2 °F (289 °C)** | LO TAVG annunciator (`PWR-A29`) |
+| **P-12** | Tavg low **532.4 °F (278 °C)** | LO TAVG annunciator (`PWR-A29`) — ~14.4 °F (8 °C) below the 546.8 °F (286 °C) no-load anchor (#419 wave 3; Ginna's numeric P-12 is in its TS proper, fetch owed) |
 | SR re-energize block | IR ≥ **1e-6 A** | Protects SR detector |
 
 ### Rod withdrawal interlock
@@ -97,18 +97,18 @@
 | HPI start (SI on PZR level lo-lo) | pzr_level | low | **12 %** | Inventory-protecting SI path — fires with the 12 % low-level trip even if the heaters are holding pressure; re-arms above **20 %**; rides the HPI arm |
 | Letdown isolation | pzr_level | low | **17 %** | Closes both letdown orifices before the 12 % low-level trip; re-arms above **20 %**; restoration is a deliberate operator action (no auto-reopen) |
 | Feedwater isolation (on SI) | primary_pressure | low | **1798 psi (12.4 MPa)** | Rides the HPI arm (PI-5) |
-| **Atmospheric dump (ADV)** | steam_pressure | high | **1272 psi (8.77 MPa)** | **SHIPS IN AUTO.** Vents to atmosphere, upstream of the MSIV and independent of the condenser: this is the cooldown path when the condenser is gone. In AUTO it holds a bottled generator at the setpoint instead of on the 1350 psi (9.31 MPa) code safeties — but capping pressure is not a cooldown; lower the setpoint or open the valve for that. Full open at 1308 psi (9.02 MPa); capacity 10 % of rated steam flow. Both numbers are **sourced** to WTSM §7.1.3.3 (ML11223A244) — the real valve relieves *"approximately 10% of the rated steam flow … from each steam generator"* and is set *"approximately half the difference between the no-load steam generator pressure and the lowest set pressure of the safety valves"*, which on this plant's ladder (1194 → 1350 psi) is 1272. Setpoint box clamps to the same 29–1350 psi band as the Dump SP. Cools well past the 100 °F/hr limit at full open — see `12` §12.18 |
+| **Atmospheric dump (ADV)** | steam_pressure | high | **1060 psi (7.31 MPa)** | **SHIPS IN AUTO.** Vents to atmosphere, upstream of the MSIV and independent of the condenser: this is the cooldown path when the condenser is gone. In AUTO it holds a bottled generator at the setpoint instead of on the 1099 psi (7.58 MPa) code safeties — but capping pressure is not a cooldown; lower the setpoint or open the valve for that. Full open at 1078 psi (7.43 MPa); capacity 10 % of rated steam flow. Sourced twice over (#419 wave 3): the WTSM §7.1.3.3 placement rule — *"approximately half the difference between the no-load steam generator pressure and the lowest set pressure of the safety valves"*, which on the Ginna ladder (1020 → 1099 psi) is 1060 — and Ginna's own ARV solenoid band, 1005–1060 psig (UFSAR ch 10), which brackets it; capacity is the same section's *"approximately 10% of the rated steam flow … from each steam generator"*. Setpoint box clamps to the same 29–1099 psi band as the Dump SP. Cools well past the 100 °F/hr limit at full open — see `12` §12.18 |
 | **Main steam line isolation (MSLI)** | steam_pressure | low | **754 psi (5.20 MPa)** | **COINCIDENCE**: also requires `sg_steam_flow` **> 1.25** of rated. Closes the MSIV automatically on a steam line break — measured, a full-area break isolates in ~1 s. **Seals in**: reopening is refused until steam pressure recovers past **1015 psi (7.0 MPa)**. Cannot be blocked. No containment-pressure path and a fixed rather than load-programmed flow setpoint — see `12` §12.17 / §12.19 |
 | AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
 | AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |
-| MFW isolation + AFW start (P-4) | tavg | low | **572 °F (300 °C)** | Condition: reactor tripped — the post-trip MFW→AFW handoff |
+| MFW isolation + AFW start (P-4) | tavg | low | **552.2 °F (289 °C)** | Condition: reactor tripped — the post-trip MFW→AFW handoff; computed as the no-load anchor + 5.4 °F (3 °C), so it moved with the #419 wave-3 anchor |
 | RHR start | primary_pressure | low | **400 psi (2.76 MPa)** | Condition: scrammed; ties to the RHR suction-valve **block-open** permissive, not the autoclose — see **§ RHR** below |
 | SR re-energize assist | intermediate_range | low | **1e-10 A** | Actuation path as configured |
-| Open SG safety | steam_pressure | high | **1350 psi (9.31 MPa)** | Reseat **1305 psi (9.0 MPa)** |
+| Open SG safety | steam_pressure | high | **1099 psi (7.58 MPa)** | Reseat **1063 psi (7.33 MPa)**. The pop is Ginna's first-lift MSSV, 1085 psig (UFSAR ch 10 §10.3.2.4); the single modeled valve carries the sourced bank capacity (0.84× rated) at that first-lift point (#419 wave 3) |
 | Turbine trip (vacuum) | condenser_vacuum | low | **22 inHg (74.5 kPa)** | Reset region **25 inHg (84.7 kPa)** |
 | Turbine trip (overspeed) | turbine_rpm | high | **1980 RPM** | Reset below ~**1800 RPM**. **CONFIGURED BUT NOT REACHABLE in this simulator** — there is no turbine roll model, so the rotor is either pinned at rated by the grid or coasting down. Measured peak: **1800 RPM** on line in Follow, **1800** in Manual with a 2×-rated MWe demand, **1799** with the MSIVs shut and the breaker closed. Declared at **12** §12.14; pinned by `run_reachability` B3 |
 | Turbine trip (SG hi-hi / P-14) | sg_level | high | **90 %** | Re-arm below **85 %** |
-| Steam dump (pressure mode) | steam_pressure | high | **1194 psi (8.23 MPa)** | = Psat(566.6 °F (297 °C)), the no-load Tavg anchor; capacity **40 %** of rated steam flow (prototypical — sized for a 50 % loss of load with a ~10 % reactor step) |
+| Steam dump (pressure mode) | steam_pressure | high | **1020 psi (7.03 MPa)** | = Ginna's sourced 1005 psig no-load point (TS Bases B 3.3.2) = Psat(546.8 °F (286 °C)), the no-load Tavg anchor; capacity **28 %** of rated steam flow — Ginna's own (UFSAR ch 10; #419 D1, adopted after the full-rejection ride-out measured survivable at it) |
 | Steam dump (trip-open mode) | tavg error | — | opens on the Tavg error above the no-load reference, full demand ~14.4 °F (8 °C) above it | On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut) |
 | Spray flow cap | — | — | **12 %** of full spray flow | Sized for step insurges; cannot suppress a loss-of-heat-sink repressurization |
 | Main feedwater isolation (P-14) | sg_level | high | **90 %** | Latches (manual restore); AFW unaffected. Re-arm below **85 %** |
@@ -250,16 +250,16 @@ withdrawn, no xenon, zero power:
 
 | Tavg | bank IN (0) | 25 % (228) | 50 % (456) | 75 % (684) | ARO (912) |
 |---|---|---|---|---|---|
-| 122 °F (50.0 °C) | 806 | 832 | 909 | 986 | 1011 |
-| 200 °F (93.3 °C) | 792 | 819 | 900 | 980 | 1007 |
-| 250 °F (121.1 °C) | 782 | 809 | 893 | 976 | 1004 |
-| 300 °F (148.9 °C) | 769 | 797 | 885 | 972 | 1001 |
-| 350 °F (176.7 °C) | 753 | 783 | 875 | 967 | 997 |
-| 400 °F (204.4 °C) | 732 | 764 | 863 | 961 | 993 |
-| 450 °F (232.2 °C) | 705 | 740 | 847 | 954 | 989 |
-| 500 °F (260.0 °C) | 668 | 707 | 826 | 945 | 984 |
-| 545 °F (285.0 °C) | 619 | 663 | 799 | 934 | 978 |
-| 566.6 °F (297.0 °C) | 588 | 635 | 781 | 928 | 975 |
+| 122 °F (50.0 °C) | 806 | 831 | 908 | 985 | 1010 |
+| 200 °F (93.3 °C) | 792 | 818 | 899 | 980 | 1006 |
+| 250 °F (121.1 °C) | 781 | 808 | 892 | 976 | 1003 |
+| 300 °F (148.9 °C) | 768 | 797 | 884 | 971 | 999 |
+| 350 °F (176.7 °C) | 752 | 782 | 874 | 966 | 996 |
+| 400 °F (204.4 °C) | 732 | 764 | 862 | 960 | 992 |
+| 450 °F (232.2 °C) | 705 | 740 | 846 | 953 | 988 |
+| 500 °F (260.0 °C) | 667 | 706 | 825 | 944 | 983 |
+| 545 °F (285.0 °C) | 619 | 663 | 798 | 933 | 977 |
+| 546.8 °F (286.0 °C) | 616 | 660 | 796 | 932 | 977 |
 
 **Differential boron worth (pcm/ppm).** It is **larger cold** — denser water carries more
 boron atoms per unit volume — so the same dilution buys more reactivity at 122 °F than at

@@ -19,7 +19,7 @@
  * #419 WAVE 1 (2026-08-07) RE-CLOCKED THE PRESSURIZATION LEG — the table below is the
  * pre-#419 record (kept: the layer-agreement lesson it documents is unchanged). On the
  * real slew the pressurization takes ~1.8 plant-h instead of ~4 min, so measured
- * 2026-08-07: Mode 3 at ~4.6 plant-h, 545 °F at ~11.3, settles 567.0 °F at ~12.3
+ * 2026-08-07: Mode 3 at ~4.6 plant-h, 545 °F at ~11.3, settles 547.2 °F at ~11.4 (wave 3 moved the anchor to Ginna's 286)
  * plant-h, steady ~30.0 °F/hr — arrival state unchanged (−2828 pcm, 856.8 ppm).
  *
  * MEASURED on the as-built plant, cold_shutdown IC, no rod motion at all —
@@ -141,7 +141,7 @@
         trigger: { type: 'true_state', field: 'tavg_c', direction: 'above', value: 150 },
         commentary: {
           learning: 'This is the evolution: you wait, and you watch. Tavg climbs at roughly 30 °F/hr (17 °C/hr) on pump heat, and it takes about twelve plant-hours to reach operating temperature — which is why a real heatup is an all-shift job and why the clock in the corner is running fast. Your work is monitoring, not acting: Tavg and its RATE, steam pressure tracking it, pressurizer level swelling as the water expands, and the reactor staying exactly where you left it. If you ever needed to slow down, you would secure a pump; measured, that takes the rate to essentially zero.',
-          industry: 'Nuclear heatup rate is not applicable — the core is subcritical. Measured on the as-built plant with no rod motion (#419 real rates): ~30 °F/hr (16.7 °C/hr) steady, ~12.3 plant-hours cold to the settled 567.0 °F (297.2 °C) no-load anchor. Monitor Tavg and rate, secondary pressure tracking Psat(Tavg), pressurizer level on thermal expansion. Rate control: secure an RCP (measured, rate → 0.1 °F/hr) — the steam dump is too coarse.',
+          industry: 'Nuclear heatup rate is not applicable — the core is subcritical. Measured on the as-built plant with no rod motion (#419 real rates): ~30 °F/hr (16.7 °C/hr) steady, ~11.4 plant-hours cold to the settled 547.2 °F (286.2 °C) no-load anchor. Monitor Tavg and rate, secondary pressure tracking Psat(Tavg), pressurizer level on thermal expansion. Rate control: secure an RCP (measured, rate → 0.1 °F/hr) — the steam dump is too coarse.',
         },
         highlight: { control_label: null, instrument_id: 'tavg' },
         speed: 300,

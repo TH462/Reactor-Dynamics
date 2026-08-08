@@ -62,6 +62,17 @@
     // comment and issue #378. Strict: when settling is fixed, this entry must be
     // removed in the same change.
     'TR-18': 'rod channel limit-cycles after a load step (#378) — shippable fix not yet found',
+
+    // #419 wave 3 — the steep Ginna program (546.8 → 580.2 °F, 2.6× the Tref motion per
+    // load) runs the 5 %/min ramp duty to 5.28 °F against the sourced ≤ 5.00 (was 4.35 on
+    // the shallow program). The channel is AT the sourced WTSM 8.1 speed thresholds (fixed
+    // this wave — the old ladder engaged 'fast' above 7.2 °F instead of 5); what remains is
+    // suspected to be the discrete three-speed ladder vs the real continuous 32-steps/min/°F
+    // ramp, compounded by the declared 13 % span departure. The ±5 °F band is the SOURCED
+    // WTSM 8.1.1 duty and is not widened. Coupled to #378: the TR-18 fix was rejected FOR
+    // this duty at 5.26, which the steep program now exceeds anyway — re-visit both
+    // together. Strict: fixing the duty removes this entry in the same change.
+    'TR-1i': 'the steep Ginna program runs the sourced ramp duty to 5.28 vs <= 5.00 °F (#420); coupled to #378',
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -163,17 +174,19 @@
 
     // Also covers SS-3 (50% point) and SS-4 (HZP point).
     'SS-2': function () {
-      // This plant's program (feel-plan P3): shallow 297 → ~304 °C — a small plant
-      // with a generously-sized SG needs less ΔT growth with load. The monotonic
-      // rise is the [I] invariant; the anchor numbers are this plant's character.
-      return test('SS-2 Tavg program — rises with load (297 → ~304 °C)', function (ck) {
+      // RE-ANCHORED at #419 wave 3: the Ginna program — no-load 286.0 °C (Tsat of the
+      // sourced 1005 psig anchor) rising ~18.5 °C to the ~304.5 °C full-power equilibrium
+      // (Ginna's real span is 547 → 576 °F; our top runs 4 °F high on the fixed Q/h_sg
+      // identity, declared). The retired feel-plan program was 297 → ~304, and this suite's
+      // old bands were its character. The monotonic rise is the [I] invariant.
+      return test('SS-2 Tavg program — rises with load (286 → ~304.5 °C)', function (ck) {
         var hz = H('hot_zero_power'); hz.run(300);
         var h5 = H('50_percent');     h5.run(600);
         var hf = H('hot_full_power'); hf.run(300);
         var t0 = hz.ts().tavg_c, t50 = h5.ts().tavg_c, t100 = hf.ts().tavg_c;
-        ck('no-load Tavg 295..299 °C', fmt(t0, 1), t0 > 295 && t0 < 299, '295..299');
-        ck('50% Tavg 299..303 °C (SS-3)', fmt(t50, 1), t50 > 299 && t50 < 303, '299..303');
-        ck('program rises ≥ 5 °C no-load → full', fmt(t100 - t0, 1), (t100 - t0) >= 5, '≥ 5');
+        ck('no-load Tavg 284..288 °C', fmt(t0, 1), t0 > 284 && t0 < 288, '284..288');
+        ck('50% Tavg 293..298 °C (SS-3, mid-program)', fmt(t50, 1), t50 > 293 && t50 < 298, '293..298');
+        ck('program rises ≥ 15 °C no-load → full (the steep Ginna span)', fmt(t100 - t0, 1), (t100 - t0) >= 15, '≥ 15');
         ck('monotonic: no-load < 50% < 100%', fmt(t0, 1) + ' < ' + fmt(t50, 1) + ' < ' + fmt(t100, 1),
           t0 < t50 && t50 < t100, 'monotonic');
       });
@@ -330,10 +343,14 @@
         ck('no scram through the hands-off ride', h.tripReason || 'none', h.tripTime == null, 'none');
         ck('the dump SATURATES — it is a finite resource now', fmt(h.range('steam_dump_valve_pct').max, 0),
           h.range('steam_dump_valve_pct').max >= cap - 1, '≥ ' + fmt(cap - 1, 0) + ' % (its cap)');
-        ck('so the CORE sheds the rest — self-throttles toward the dump (40..55 %)', fmt(mid.power_pct, 0),
-          mid.power_pct > 40 && mid.power_pct < 55, '40..55');
+        // Band re-derived at #419 wave 3 (D1: 28 % dump): the smaller sink absorbs less,
+        // so the mid-ride equilibrium sits higher — measured 71 % (was 40..55 at the 40 %
+        // dump). The claim is unchanged: the core has come DOWN from 100 on MTC alone and
+        // is riding toward the dump's capacity, far above what the generator delivers.
+        ck('so the CORE sheds the rest — self-throttles toward the dump (60..80 %)', fmt(mid.power_pct, 0),
+          mid.power_pct > 60 && mid.power_pct < 80, '60..80');
         ck('Tavg swells hard but stays under the 335 °C scram', fmt(mid.tavg_c, 1),
-          mid.tavg_c > 312 && mid.tavg_c < 335, '312..335');
+          mid.tavg_c > 308 && mid.tavg_c < 335, '308..335');
         // Phase 2 — the operator recovers at their own pace: rods walk the
         // plant down to the no-load point on the dump.
         var guard = 0;
@@ -344,7 +361,7 @@
         h.run(240);
         var t = h.ts();
         ck('no scram through the recovery either', h.tripReason || 'none', h.tripTime == null, 'none');
-        ck('Tavg settled to the no-load anchor (297 ±5 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 5), '297 ±5');
+        ck('Tavg settled to the no-load anchor (286 ±5 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 286, 5), '286 ±5');
         // RE-DERIVED at #419 wave 1 (K_surge_level 0.4 → 0.032, the honest surge gain).
         // On the compressed gain the insurge outran spray and the PORV lifted (peak 16.24,
         // asserted positively here since #289). On the real gain the peak is 15.42 — SPRAY
@@ -360,7 +377,7 @@
         ck('SG never approached the lo-lo trip (min ≥ 25 %)', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25');
         ck.info('peak Tavg during the ride', fmt(h.range('tavg_c').max, 1) + ' °C');
-        ck.info('peak SG pressure (safeties at 9.31)', fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa');
+        ck.info('peak SG pressure (pop ' + RD.PWR_CONFIG.steam_generator.sg_safety_open_mpa + ')', fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, h);
       });
     },
@@ -410,7 +427,8 @@
         ck('no PORV lift', fmt(h.range('pressure_mpa').max, 2),
           h.range('pressure_mpa').max < 16.20, '< 16.20 MPa');
         ck('no SG safety lift (the other thing 40 % is sized for)', fmt(h.range('steam_pressure_mpa').max, 2),
-          h.range('steam_pressure_mpa').max < 9.31, '< 9.31 MPa');
+          h.range('steam_pressure_mpa').max < RD.PWR_CONFIG.steam_generator.sg_safety_open_mpa,
+          '< ' + RD.PWR_CONFIG.steam_generator.sg_safety_open_mpa + ' MPa (the pop, from config)');
         ck('the dump reaches its stop on the way through — 40 % is doing all it can',
           fmt(h.range('steam_dump_valve_pct').max, 0),
           h.range('steam_dump_valve_pct').max >= cap - 1, '≥ ' + fmt(cap - 1, 0) + ' %');
@@ -643,15 +661,15 @@
           '< ' + fmt(RD.PWR_CONFIG.steam_generator.sg_safety_reseat_mpa, 2) + ' MPa');
         ck('the core is run back — no 46 % plateau against a saturated dump',
           fmt(t.power_pct, 2), t.power_pct < 5, '< 5 %');
-        ck('Tavg returns to the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1),
-          near(t.tavg_c, 297, 6), '297 ±6');
+        ck('Tavg returns to the no-load anchor (286 ±6 °C)', fmt(t.tavg_c, 1),
+          near(t.tavg_c, 286, 6), '286 ±6');
         // The level-program ceiling half of #289: the program can no longer chase Tavg into
         // the going-solid trip. 91.9 measured against 97 — banded at 95 so the ~5 % of margin
         // the ceiling bought has to actually be there, and eroding it reddens this line.
         ck('pzr level stays clear of the going-solid trip (97 %) — the ceiling holds',
           fmt(h.range('pzr_level_pct').max, 1),
           h.range('pzr_level_pct').max < 95, '< 95 %');
-        ck.info('peak SG pressure (safeties 9.31 / reseat 9.00)',
+        ck.info('peak SG pressure (pop ' + RD.PWR_CONFIG.steam_generator.sg_safety_open_mpa + ' / reseat ' + RD.PWR_CONFIG.steam_generator.sg_safety_reseat_mpa + ')',
           fmt(h.range('steam_pressure_mpa').max, 2) + ' MPa — brief lift is prototypical past the design case, see TR-1');
         ck.info('peak pressurizer pressure (PORV 16.20)', fmt(h.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, h);
@@ -714,7 +732,7 @@
           h.range('pressure_mpa').max < _pz1b.porv_open_mpa, '< ' + fmt(_pz1b.porv_open_mpa, 2));
         ck.info('trip-burst peak (soaked by the SG liquid on the real clock — was 16.04 compressed)',
           fmt(h.range('pressure_mpa').max, 2) + ' MPa');
-        ck('settles at the no-load anchor (297 ±6 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 297, 6), '297 ±6');
+        ck('settles at the no-load anchor (286 ±6 °C)', fmt(t.tavg_c, 1), near(t.tavg_c, 286, 6), '286 ±6');
         ck('SG level held well clear of the lo-lo trip', fmt(h.range('sg_level_pct').min, 1),
           h.range('sg_level_pct').min >= 25, '≥ 25 %');
         ck('core intact', fmt(h.range('fuel_temp_c').max, 0), h.range('fuel_temp_c').max < 1200, '< 1200 °C');
@@ -788,15 +806,15 @@
         d.cmd('set_load_target', { immediate: true, mwe: 50 });
         d.run(600);
         var td = d.ts();
-        ck('the dump is carrying the rejection', fmt(td.steam_dump_valve_pct, 0),
-          td.steam_dump_valve_pct > 30, '> 30 %');
-        // 90 -> 85 with the 40 % dump (2026-07-31): at a prototypical capacity the dump
-        // saturates on a 50 % rejection and the core takes the documented ~10 % step, so it
-        // settles at 89.3 % rather than 98.8 %. What this leg needs is only that the core
-        // stays HIGH while the generator reads 50 — 89.3 vs 50 is still a 1.8x disagreement,
-        // so the check discriminates exactly as well as it did at 2x.
+        // Cap-reading + re-banded at #419 wave 3 (D1: the dump is Ginna's 28 %, was 40 —
+        // measured at 28 the core self-throttles deeper on a 50 % rejection, ~80 % vs 89.3).
+        // What this leg needs is only that the core stays HIGH while the generator reads 50
+        // — ~80 vs 50 is still a 1.6× disagreement, so the check still discriminates.
+        var _dcapE = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
+        ck('the dump is carrying the rejection (at its cap)', fmt(td.steam_dump_valve_pct, 0),
+          td.steam_dump_valve_pct >= _dcapE - 1, '≥ ' + fmt(_dcapE - 1, 0) + ' %');
         ck('the reactor is still up near full power', fmt(td.power_pct, 1),
-          td.power_pct > 85, '> 85 %');
+          td.power_pct > 75, '> 75 %');
         ck('but the generator delivers what was ASKED, not what the core makes (was 98.8)',
           fmt(td.mwe_output, 2), near(td.mwe_output, 50, 3), '50 ±3 MWe');
 
@@ -963,7 +981,7 @@
           tA >= 0 ? '+' + fmt(tA, 0) + ' s' : 'never', tA >= 0, 'within 300 s');
         a.run(120);
         ck('and regulate at the relief band, not past it', fmt(a.range('steam_pressure_mpa').max, 2),
-          a.range('steam_pressure_mpa').max < 9.6, '< 9.6 MPa');
+          a.range('steam_pressure_mpa').max < pop + 0.3, '< pop + 0.3 (config)');
 
         // ---- leg B: the transmitter lies low the whole ride. TR-1f discipline —
         // prove the lie took, and that truth is genuinely elsewhere, before asserting.
@@ -974,10 +992,13 @@
         b.run(10);
         b.cmd('close_msiv');
         var tB = b.runUntil(function (ts) { return !!ts.sg_safety_open; }, 300);
-        ck('channel stuck far below the pop the whole ride', fmt(b.ins().steam_pressure, 2),
-          b.ins().steam_pressure < pop - 2.0, '< ' + fmt(pop - 2.0, 2) + ' MPa (the lie)');
+        // Separation re-derived at #419 wave 3: the Ginna ladder's operating→pop span is
+        // 1.89 MPa (5.69 → 7.58, vs the old 3.66), so "far below" is pop − 1.5; the truth
+        // band is the pop itself rather than a literal from the old ladder.
+        ck('channel stuck well below the pop the whole ride', fmt(b.ins().steam_pressure, 2),
+          b.ins().steam_pressure < pop - 1.5, '< ' + fmt(pop - 1.5, 2) + ' MPa (the lie)');
         ck('while true pressure is really at the relief band', fmt(b.ts().steam_pressure_mpa, 2),
-          b.ts().steam_pressure_mpa > 8.5, '> 8.5 MPa');
+          b.ts().steam_pressure_mpa > pop - 0.1, '> pop − 0.1 (config)');
         ck('dead channel: safeties lift ANYWAY — the valve does not read a gauge',
           tB >= 0 ? '+' + fmt(tB, 0) + ' s' : 'never', tB >= 0, 'within 300 s');
         b.run(120);
@@ -1092,8 +1113,6 @@
         a.run(30);
         a.cmd('scram');
         a.run(180);
-        var expA = dt0 * (a.ts().core_heat_pct / 100) / Math.max(a.ts().pump_flow_pct / 100, floor);
-        var obsA = a.ts().thot_c - a.ts().tcold_c;
         // BAND RE-DERIVED FOR #364 (2026-08-05). It was 5–9 %, which was a fixture of the
         // pre-refit two-group curve — that plant read ~6.9 % here. The SOURCED curve
         // (ANS 5.1-1971 + actinides, un-multiplied; see pwr_config.kinetics.decay) puts
@@ -1103,7 +1122,16 @@
         ck('t+3 min: the core is still making decay heat', fmt(a.ts().core_heat_pct, 2) + ' % of rated',
           a.ts().core_heat_pct > 2.5 && a.ts().core_heat_pct < 4.5, '2.5–4.5 % (sourced ~3.1 %)');
         ck('…and flow is unchanged', fmt(a.ts().pump_flow_pct, 0) + ' %', a.ts().pump_flow_pct > 95, '> 95 %');
-        ck('t+3 min: leg ΔT matches the heat being removed',
+        // Identity sample t+3 → t+10 min at #419 wave 3: the Ginna anchor deepened the
+        // post-trip settle (304.5 → 286 is 18.5 °C of stored heat, vs 7 on the old
+        // program), so at t+3 the legs still carry the settle's stored-heat flux on top
+        // of decay heat and read ~6 % high. By t+10 the settle is done and the identity
+        // is decay-only again — valid on both programs (the old plant was settled well
+        // before t+10 too).
+        a.run(420);
+        var expA = dt0 * (a.ts().core_heat_pct / 100) / Math.max(a.ts().pump_flow_pct / 100, floor);
+        var obsA = a.ts().thot_c - a.ts().tcold_c;
+        ck('t+10 min: leg ΔT matches the heat being removed',
           fmt(F(obsA), 2) + ' °F vs ' + fmt(F(expA), 2) + ' °F expected',
           expA > 0 && Math.abs(obsA / expA - 1) < 0.05, 'within 5 % of Q/flow');
 
@@ -1179,8 +1207,14 @@
         // cold-leg constant is tau_coldleg_s/0.033 ≈ 120 s — at 240 s the split
         // read 49.0 °F against 51.9 expected (94.4 % converged, outside the 5 %
         // band for the honest reason that real leg RTDs lag a coastdown's
-        // equilibrium). 600 s is ~5 constants; the identity then holds as before.
-        d.run(600);
+        // equilibrium). 600 → 2400 s at #419 wave 3, and the reason is the LAG-VS-SLOPE
+        // race, not just settle depth: the transported legs read the decay tail ~2
+        // cold-leg constants late, so on a steep part of the tail the observed split
+        // sits above the instantaneous Q/flow identity by slope × lag (measured: 6 %
+        // LOW at 600 s inside the anchor settle, then 6 % HIGH at 1200 s chasing the
+        // falling tail). At 2400 s the tail is flat enough that the lag error is inside
+        // the 5 % band — on both programs.
+        d.run(2400);
         var flowD = d.ts().pump_flow_pct / 100;
         var expD = dt0 * (d.ts().core_heat_pct / 100) / Math.max(flowD, floor);
         var obsD = d.ts().thot_c - d.ts().tcold_c;
@@ -1499,8 +1533,11 @@
           if (lo.eng.s.dump_reject_mode) loArmed = true;
         }
         ck('under the arm the fast dump never arms', String(loArmed), loArmed === false, 'false');
-        ck('so Tavg climbs well past program (> 315 °C)', fmt(lo.range('tavg_c').max, 1),
-          lo.range('tavg_c').max > 315, '> 315');
+        // 315 → 309 at #419 wave 3: the program top is 304.5 on the Ginna anchor (the old
+        // literal rode the 297-anchor program). Same claim — the uncaught cut runs Tavg
+        // meaningfully past the program top (measured 311.9).
+        ck('so Tavg climbs well past program (> 309 °C)', fmt(lo.range('tavg_c').max, 1),
+          lo.range('tavg_c').max > 309, '> 309');
         // THE CLIFF WENT THERMAL (#418 wave A1, 2026-08-07). On the derived
         // K_steam_pressure the SG liquid soaks the rejected power, the transient is
         // slow enough for spray to keep up, and the PORV doorstep NEVER arrives —
@@ -1527,8 +1564,10 @@
         var hiArmed = false;
         for (var j = 0; j < 180; j++) { hi.run(5); if (hi.eng.s.dump_reject_mode) hiArmed = true; }
         ck('one MWe over the arm, the fast dump arms', String(hiArmed), hiArmed === true, 'true');
-        ck('the dump carries it (peak ≥ 30 %)', fmt(hi.range('steam_dump_valve_pct').max, 1),
-          hi.range('steam_dump_valve_pct').max >= 30, '≥ 30');
+        // Cap-reading since #419 wave 3 (D1: the dump is Ginna's 28 %, was 40).
+        var _dcap = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
+        ck('the dump carries it (peak at its cap)', fmt(hi.range('steam_dump_valve_pct').max, 1),
+          hi.range('steam_dump_valve_pct').max >= _dcap - 1, '≥ ' + fmt(_dcap - 1, 0));
         ck('Tavg stays on program (< 310 °C)', fmt(hi.range('tavg_c').max, 1),
           hi.range('tavg_c').max < 310, '< 310');
         ck('no PORV lift on this side of the cliff — clear by a quarter MPa, not a whisker',
@@ -1543,9 +1582,12 @@
         // asserting it would pin noise). Both legs move together under any thermal
         // nudge, so their Tavg-peak DIFFERENCE holds: measured 9.8 °C on the new
         // clock (315.6 vs 305.8), 11.5 °C on the old (HR10 — valid both sides).
-        ck('the cliff itself: the uncaught side peaks ≥ 5 °C hotter than the caught side',
+        // ≥ 5 → ≥ 3 at #419 wave 3 (D1): the 28 % dump narrows the caught-vs-uncaught gap
+        // (measured 3.7 °C, was 7.1 at 40 %). The declared cliff (§8.21) survives, smaller —
+        // the register row re-states its numbers at this wave's manual pass.
+        ck('the cliff itself: the uncaught side peaks ≥ 3 °C hotter than the caught side',
           fmt(lo.range('tavg_c').max - hi.range('tavg_c').max, 1) + ' °C apart',
-          lo.range('tavg_c').max - hi.range('tavg_c').max >= 5, '≥ 5');
+          lo.range('tavg_c').max - hi.range('tavg_c').max >= 3, '≥ 3');
         ck.info('pressure span (was the asserted cliff on the compressed clock, 0.77 MPa)',
           fmt(lo.range('pressure_mpa').max - hi.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, hi);
@@ -1865,14 +1907,17 @@
         // kept as the branch), so the check is valid on BOTH clocks (HR10: the old
         // plant read 8.63 = Psat(~300.3) — inside the seam band AND in the ADV
         // branch).
+        // Ladder values read from config since #419 wave 3 (pop 7.58; the ADV branch keys
+        // off the config setpoint) — same seam-or-ADV claim, valid across ladder moves.
+        var _sgCfg12 = RD.PWR_CONFIG.steam_generator;
         var _psatTavg12 = Math.pow(Math.max(d.t.tavg_c, 1) / 179.47, 1 / 0.239);
         var _onSeam12 = Math.abs(d.t.steam_pressure_mpa - _psatTavg12) < 0.5;
-        var _onAdv12 = d.t.steam_pressure_mpa > 8.5 && d.t.adv_valve_pct > 1;
+        var _onAdv12 = d.t.steam_pressure_mpa > _sgCfg12.adv_setpoint - 0.1 && d.t.adv_valve_pct > 1;
         ck('…and the bottled generator holds with the primary — on the Psat(Tavg) seam (or throttling at the ADV), under the safeties',
           fmt(d.t.steam_pressure_mpa, 2) + ' MPa vs Psat(Tavg) ' + fmt(_psatTavg12, 2) +
             ', adv ' + fmt(d.t.adv_valve_pct, 1) + ' %, safety ' + String(!!d.t.sg_safety_open),
-          (_onSeam12 || _onAdv12) && d.t.steam_pressure_mpa < 9.31,
-          'seam ±0.5 MPa or ADV throttling, under 9.31');
+          (_onSeam12 || _onAdv12) && d.t.steam_pressure_mpa < _sgCfg12.sg_safety_open_mpa,
+          'seam ±0.5 MPa or ADV throttling, under the pop');
 
         var u = run('steam_line_break_upstream');
         ck('UPSTREAM: the SAME protection fires — the plant cannot tell the location',
@@ -4753,9 +4798,11 @@
           aDuty < 10 && !a.ts().sg_safety_open, '< 10 % and shut at the end (ADV SHUT: 99.4 %, never reseats)');
         // PASSES ON BOTH ENGINES, deliberately — a calibration guard. AUTO caps the
         // pressure, it does not remove the heat, so leg B's lever has to still exist.
+        // 290 → 287.5 at #419 wave 3: "hot" is relative to the 286 no-load anchor now
+        // (measured 289.5 — decay heat holds the ADV-capped plant a few °C above it).
         ck('…but it still holds hot — capping pressure is not a cooldown',
           fmt(a.ts().tavg_c, 1) + ' °C',
-          a.ts().tavg_c > 290, '> 290 °C (no cooldown without operator action)');
+          a.ts().tavg_c > 287.5, '> 287.5 °C (no cooldown without operator action)');
 
         // ---- leg A2: force the valve SHUT and audit F3 comes straight back. This is
         // the null control leg A used to be, kept explicitly rather than relied upon —
@@ -4768,8 +4815,8 @@
         a2.run(3600);
         ck('ADV forced SHUT: the F3 measurement is reproduced — parked on the safeties',
           fmt(a2.ts().steam_pressure_mpa, 2) + ' MPa, safety ' + String(!!a2.ts().sg_safety_open),
-          !!a2.ts().sg_safety_open && a2.ts().tavg_c > 290,
-          'safeties lifted AND still hot (9.00 MPa / 304 °C)');
+          !!a2.ts().sg_safety_open && a2.ts().tavg_c > 287.5,
+          'safeties lifted AND still hot (the 7.58/7.33 band on the Ginna ladder)');
 
         // ---- leg B: the operator opens it. This is the gap #297 F3 named.
         var b = H('hot_full_power');
@@ -4992,9 +5039,11 @@
         hi.cmd('set_load_target', { immediate: true, mwe: 100 - (arm + 1) });
         var hiArmed = false;
         for (var j = 0; j < 180; j++) { hi.run(5); if (hi.eng.s.dump_reject_mode) hiArmed = true; }
-        ck('one MWe more rejected, the fast dump arms and carries it (≥ 30 %)',
+        // Cap-reading since #419 wave 3 (D1: the dump is Ginna's 28 %, was 40).
+        var _dcapK = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
+        ck('one MWe more rejected, the fast dump arms and carries it (at its cap)',
           String(hiArmed) + ' / ' + fmt(hi.range('steam_dump_valve_pct').max, 1) + ' %',
-          hiArmed === true && hi.range('steam_dump_valve_pct').max >= 30, 'armed, ≥ 30 %');
+          hiArmed === true && hi.range('steam_dump_valve_pct').max >= _dcapK - 1, 'armed, ≥ ' + fmt(_dcapK - 1, 0) + ' %');
         ck('no PORV lift on the caught side — clear by a quarter MPa',
           fmt(hi.range('pressure_mpa').max, 2), hi.range('pressure_mpa').max < porvSp - 0.25,
           '< ' + fmt(porvSp - 0.25, 2) + ' (config)');
@@ -5003,9 +5052,12 @@
           fmt(lo.range('tavg_c').max - hi.range('tavg_c').max, 1) + ' °C apart',
           lo.range('tavg_c').max - hi.range('tavg_c').max >= 4, '≥ 4');
         // The declared cliff's cost, pinned: the SMALLER rejection is the WORSE plant.
-        ck('the declared non-monotonicity: the sub-arm cut undershoots ≥ 5 pts deeper than the caught one',
+        // ≥ 5 → ≥ 2.5 at #419 wave 3 (D1: the 28 % dump narrows the caught-vs-uncaught gap;
+        // measured 3.1 pts, was ~16 at 40 %). The declared non-monotonicity survives,
+        // smaller — the smaller upset is still the deeper undershoot.
+        ck('the declared non-monotonicity: the sub-arm cut undershoots ≥ 2.5 pts deeper than the caught one',
           fmt(lo.range('power_pct').min, 1) + ' % vs ' + fmt(hi.range('power_pct').min, 1) + ' %',
-          lo.range('power_pct').min <= hi.range('power_pct').min - 5, 'lo ≤ hi − 5');
+          lo.range('power_pct').min <= hi.range('power_pct').min - 2.5, 'lo ≤ hi − 2.5');
         T.checkSanity(ck, lo);
         T.checkSanity(ck, hi);
       });

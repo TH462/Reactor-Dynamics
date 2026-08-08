@@ -182,11 +182,11 @@
     // engine would silently clamp. This is the secondary-cooldown control: lowering it
     // vents the SG down and cools the primary through it, and it also sets the no-load
     // bottom of the Tavg program (T_sat(steam_dump_setpoint), pwr_engine.js:1147).
-    ims31tq7mgc: [0.2, _SG.sg_safety_open_mpa || 9.31],
+    ims31tq7mgc: [0.2, _SG.sg_safety_open_mpa || 7.58],
     // ADV SP takes the SAME engine clip as the dump setpoint, and for the same
     // reason: set_adv_setpoint clamps to [0.2, sg_safety_open_mpa], so the box
     // refuses what the engine would silently clamp. Read from config, never a literal.
-    bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 9.31],
+    bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 7.58],
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the
     // same band, so the box refuses what the engine would clamp).

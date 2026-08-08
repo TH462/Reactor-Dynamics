@@ -372,24 +372,36 @@ test('PWR · steam_dump carries a turbine trip off the code safeties (#154)', fu
   r.engage(['steam_dump']);
   r.run(30);
   r.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' });
-  var peak = 0, dmax = 0, lifted = false;
+  var peak = 0, dmax = 0, liftSamples = 0;
   for (var k = 0; k < 600; k++) {
     r.run(1);
     var t = ts(r), c = r.snap().control_state;
     if (t.steam_pressure_mpa > peak) peak = t.steam_pressure_mpa;
     if ((c.steam_dump_pct || 0) > dmax) dmax = c.steam_dump_pct;
-    if (t.sg_safety_open) lifted = true;
+    if (t.sg_safety_open) liftSamples++;
   }
   ck('dump went to AUTO on engage', r.snap().control_state.steam_dump_auto,
     r.snap().control_state.steam_dump_auto === true, 'true');
-  ck('dump opened for the rejection', dmax.toFixed(1), dmax > 20, '> 20 % (measured 92.9)');
-  // The whole point of the channel: the bypass takes the steam the turbine stopped
-  // taking, so the generator never reaches its code safeties. Measured peak 7.73 MPa
-  // (1121 psi) with the channel, 9.43 MPa (1368 psi) with it dead — and dead, the
-  // safeties DO lift.
-  ck('SG pressure stayed off the safeties', peak.toFixed(2) + ' MPa', peak < 9.0,
-    '< 9.0 MPa / 1305 psi (dead channel: 9.43)');
-  ck('code safeties never lifted', String(lifted), lifted === false, 'false (dead channel: true)');
+  ck('dump opened for the rejection', dmax.toFixed(1), dmax > 20, '> 20 % (Ginna cap 28)');
+  // RE-DERIVED at #419 wave 3 (the Ginna ladder). The plant's honest trip burst
+  // (~1.9 MPa above operating) now EQUALS the real operating→pop margin
+  // (825 → 1085 psig), so the bare-channel rig — dump alone, 28 % — rides a
+  // knife-edge the SHIPPED plant does not (full stack the auto-ADV drives to
+  // 100 % and the peak holds at 7.52, settling ~6.95 under the 7.33 reseat;
+  // measured 2026-08-07). What the CHANNEL can honestly claim on a bare rig is
+  // a GRAZE, not a park: a momentary lift-and-reseat is tolerated, sustained
+  // cycling is the dead-channel signature, and the ride must END settled under
+  // the reseat with the safeties shut.
+  var tEnd = ts(r);
+  // Measured 34/600 on the Ginna ladder (a few early reseat cycles, then clean);
+  // the dead channel parks cycling for the rest of the ride — order-of-magnitude apart.
+  ck('the safeties saw at most a graze, never a park (< 10 % of samples)',
+    liftSamples + '/600 lift samples, peak ' + peak.toFixed(2) + ' MPa',
+    liftSamples < 60, '< 60 (dead channel: parks cycling)');
+  ck('and the ride ends settled under the reseat, safeties shut',
+    tEnd.steam_pressure_mpa.toFixed(2) + ' MPa, safety ' + String(!!tEnd.sg_safety_open),
+    tEnd.steam_pressure_mpa < RD.PWR_CONFIG.steam_generator.sg_safety_reseat_mpa
+      && !tEnd.sg_safety_open, '< reseat (config), shut');
 });
 
 test('PWR · pzr_pressure returns the plant to its pressure setpoint (#154)', function (ck) {

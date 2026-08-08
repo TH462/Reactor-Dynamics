@@ -453,13 +453,15 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
   secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
   MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
-- **#419 tier 3 — WAVES 1–2 LANDED**: the ×12.6 retirement (slew 1.586e-3, K_surge_level
-  0.032, boron ceiling live-clamped; Manuals Rev 14 (g)) and the F15 re-solve — K 3144 →
-  **2500 [derived-net, F14-coupled]**: physical K≈304 validates against TMI-2's clock but the
-  ruled F14 heater inverts the stuck-PORV race under it, so the shipped value preserves the
-  plant's physical NET under F14 (one pair; re-solve together). **Wave 3 next: the Ginna
-  ladder + program re-anchor** (7.03/7.31/7.58/7.33 MPa, retires §8.34) carrying D1's dump
-  measure-first (28 % vs the ruled 40 %). The cascade table + rulings live on the issue.
+- **#419 tier 3 — ALL THREE WAVES LANDED (2026-08-07)**: the ×12.6 retirement, F15 → 2500
+  [derived-net, F14-coupled: one pair, re-solve together], and the Ginna re-anchor — ladder
+  7.03/7.31/7.58/7.33 (sourced/rule-derived, **§8.34 retired**), program 286.0 → 304.5 °C,
+  dump 28 % (D1 measured: the ride-out survives), reference boron 683 → 705 (`rho_excess`
+  re-solved at the WBN quote temperature — the old solve conflated it with our anchor).
+  **Owner-review on the issue**: the TMI deception crest is ~65 % on the final plant (the
+  75 % annunciator unreachable free-play; qualify re-keyed to a state cue) — a
+  level-constants-set ruling if the cue matters. TR-1i is a second strict xfail (#420,
+  coupled to #378). Remaining #419 scope: none — the umbrella is built.
 - **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
   the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
   #418's new ledger, not the old gain**. `status-needs-ruling`.
@@ -482,14 +484,14 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **The pace compression is retired (wave 1) and F15 is anchored by its F14 coupling (wave 2)**
-  (2026-08-07, #419). Slew 1.586e-3 [derived]: the ride is ~12.3 plant-h at 30 °F/hr,
-  acceleration carries pacing; `boron_adjust_rate` was a GHOST (read by nothing) — now a live
-  clamp at 0.14. **Wave 2's trap: a physically-derived constant can be RIGHT and unshippable**
+- **#419 landed in one session: pace real, F15 F14-coupled, the plant re-anchored to Ginna**
+  (2026-08-07). Wave 2's trap: **a physically-derived constant can be RIGHT and unshippable**
   — K_phys ≈ 304 validates against TMI-2's own clock, but under the ruled 347× F14 heater the
-  stuck-PORV race inverts (level crashes to 0, no deception). Shipped K = 2500 = the plant's
-  physical NET under the ruled heater; **K and K_heater are one pair — if F14 moves, re-solve
-  both** (stated at the constant).
+  stuck-PORV race inverts (level crashes, no deception); shipped K = 2500 = the physical NET
+  under F14 (one pair — re-solve together). Wave 3's trap: **a solve can conflate the
+  measurement's temperature with the plant's** — rho_excess quoted 975 ppm at "the anchor",
+  benign 5 °C apart, wrong at 286; and two latent linearizations surfaced only when the
+  anchor walk lengthened. The ghost-constant lesson stands: check the consumer first.
 - **A constant 142 % wrong survived because nothing checked it against a source** (2026-08-05,
   #364/#365). Decay heat ran on two exponential groups with nothing faster than 33 min, so it was
   flat where a real curve falls fastest. Refit to four groups, within **4.86 %** of the standard

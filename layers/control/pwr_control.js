@@ -458,9 +458,11 @@
     { id: 'high_tavg',         instrument: 'tavg',             direction: 'high',    setpoint: 312.2, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'High Coolant Temperature',        label_industry: 'HI TAVG' },
     // LOW Tavg (#233 playtest): the board had a high alarm and a high scram and NOTHING on
     // the cold side, so the tile's low region ran unbounded to the bottom of the meter and
-    // an overcooling transient annunciated nothing. 289 °C is the P-12 line — the classic
-    // low-Tavg permissive, ~8 °C below the no-load program anchor — so it is clear at hot
-    // standby (Tavg parks at ~297 after a trip) and comes in as soon as you are genuinely
+    // an overcooling transient annunciated nothing. 278 °C is the P-12 line — the classic
+    // low-Tavg permissive, ~8 °C below the no-load program anchor (289 until #419 wave 3
+    // moved the anchor 297 → 286; same offset, re-derived; Ginna's numeric P-12 lives in
+    // its TS proper, fetch owed) — so it is clear at hot standby (Tavg parks at ~286 after
+    // a trip) and comes in as soon as you are genuinely
     // cooling below the hot operating band. It stands IN through a Mode 4/5 cooldown, which
     // is correct: you are deliberately outside the band, and a real board tells you so.
     // Deliberately an alarm and NOT a trip — a PWR does not scram on low Tavg. The real
@@ -469,7 +471,7 @@
     // …and once the plant is DELIBERATELY cold (Modes 4/5) it reads as the status
     // it is rather than a warning — the condition still stands in, exactly as the
     // comment above requires, but a cooldown is not a casualty (#240).
-    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
+    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 278.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Coolant Temperature Low — expected, plant is cold', label_industry: 'LO TAVG (P-12) — EXPECTED' }] },
     // Cooldown / heatup RATE (#375, audit #297 F7): the 100 °F/hr Tech-Spec-class
     // heatup/cooldown limit. Measured before this alarm existed: one Dump SP entry
@@ -646,7 +648,7 @@
     // an imbalance is a cue to act, not a limit being approached.
     { id: 'load_imbalance', instrument: 'sg_imbalance_active', direction: 'is_true', setpoint: null, priority: 'caution', panel: 'B', category: 'power', label_learning: 'Reactor/Turbine Load Imbalance — SG filling or draining', label_industry: 'LOAD IMBAL' },
     { id: 'msiv_closed',    instrument: 'msiv_open',        direction: 'is_false', setpoint: null, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Main Steam Isolated (MSIV Shut)', label_industry: 'MSIV SHUT' },
-    { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 9.0,  priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' },
+    { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 7.33, priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' }, // = the safety reseat, same rung it has always ridden (9.0 on the old ladder; #419 wave 3)
     { id: 'cond_vac_low',   instrument: 'condenser_vacuum', direction: 'low',      setpoint: 84.7, priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Condenser Vacuum Low',           label_industry: 'COND VAC LO' },
     { id: 'cond_vac_trip',  instrument: 'condenser_vacuum', direction: 'low',      setpoint: 74.5, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Condenser Vacuum Trip Level',    label_industry: 'COND VAC TRIP' },
   ];
@@ -839,15 +841,17 @@
 
   // Sliding Tavg program (SS-2, catalog §8.1). The rod controller's reference
   // temperature Tref is a LINEAR function of turbine load (steam flow), NOT a value
-  // captured at engage: no-load Tref = Tsat(steam-dump setpoint) ≈ 292 °C, full-power
-  // Tref = the full-power coolant equilibrium ≈ 304-306 °C. Endpoints derive from the
+  // captured at engage: no-load Tref = Tsat(steam-dump setpoint) ≈ 286 °C (the Ginna
+  // anchor since #419 wave 3; this comment read "≈ 292" through two anchor moves — the
+  // stale-comment find of the stage-1 table), full-power Tref = the full-power coolant
+  // equilibrium ≈ 304-305 °C. Endpoints derive from the
   // SAME config the engine's _buildState program uses, so channel and engine agree.
   // rods_tavg tracks this each step (control_kernel _trackChannel program hook), which
   // is what gives load-follow its real authority: as load falls, Tref falls and the
   // rods walk Tavg down the program (the old capture-and-hold froze Tavg flat — P4).
   function _tsat(P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); }
   var _thm = RD.PWR_CONFIG ? RD.PWR_CONFIG.thermal : {};
-  var TAVG_NOLOAD = _tsat((_sg && _sg.steam_dump_setpoint) || 8.23);
+  var TAVG_NOLOAD = _tsat((_sg && _sg.steam_dump_setpoint) || 7.03);
   var TAVG_FULLPOWER = _tsat((_sg && _sg.steam_p_rated) || 5.65)
     + (_thm.heat_gen_coeff * (1 + (_thm.pump_heat_frac || 0))) / _thm.h_sg;
   function trefProgram(loadFrac) { return TAVG_NOLOAD + (TAVG_FULLPOWER - TAVG_NOLOAD) * clip(loadFrac, 0, 1); }
@@ -1070,8 +1074,12 @@
         c.trimSlow += a * (d - c.trimSlow);
         return 1.25 * (d - c.trimSlow);
       },
-      // ±0.8 °C (±1.5 °F) lockup band; error-proportional speed ladder [tune].
-      speeds: [{ above: 0.8, speed: 'slow' }, { above: 2.0, speed: 'normal' }, { above: 4.0, speed: 'fast' }],
+      // ±0.8 °C (±1.5 °F) lockup band; speed-ladder thresholds SOURCED at #419 wave 3 —
+      // WTSM 8.1 §8.1.4.5: 8 steps/min to ±3 °F (1.67 °C), ramping to full speed by
+      // ±5 °F (2.78 °C). The old [tune] ladder engaged 'fast' only above 7.2 °F — slack
+      // the shallow program never exercised; on the steep Ginna program the 5 %/min ramp
+      // rode the gap and TR-1i's sourced ±5 °F duty read 5.59.
+      speeds: [{ above: 0.8, speed: 'slow' }, { above: 1.67, speed: 'normal' }, { above: 2.78, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
       // 228-step values, so the channel's authority in %-of-travel is unchanged.
       // NO pvTau, AND NO STOP-EXIT TRAVEL CANCEL — both measured against the sourced TR-1i

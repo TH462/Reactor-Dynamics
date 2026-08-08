@@ -288,7 +288,13 @@
       // block, the rod worths or boron_worth_per_ppm move — see the derivation in
       // Diagnostic/TUNING_LOG.md 2026-07-29 and test/run_reactivity.js, which pins
       // the 975 ppm target so this cannot drift silently. [tune]
-      rho_excess: 0.087544,        // [tune]
+      // 0.087544 → 0.087354 at #419 wave 3: the solve's quote temperature DECOUPLED from
+      // the plant's no-load anchor. The 975-ppm ARO measurement is at the WBN HZP
+      // (557 °F = 291.67 °C); the old solve evaluated it at this plant's then-anchor 297 °C
+      // (benign 5 °C conflation), and the Ginna re-anchor to 286 °C forced the honest split.
+      // Solved: bAro(291.67 °C) = 975.00. Downstream, the ICs trim at the plant's own
+      // anchor: HZP now ships ≈ 704.8 ppm with criticality back at ≈ step 319.
+      rho_excess: 0.087354,        // [tune]
       // Chemical & Volume Control System (CVCS). Boron chemistry is decoupled from
       // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
@@ -912,9 +918,16 @@
       // term is the TMI deception, active ONLY when the primary actually voids
       // (saturation-gated in pwr_primary): 3·level_per_void > level_per_mass, so in
       // any voided state indicated level RISES as inventory falls — and nowhere else.
-      level_per_tavg: 2.5,         // % level per °C Tavg — steepened 2.0 → 2.5 with the shallow 297→304
-                                   // program so the level program keeps a visible span (~37.5 % no-load
-                                   // → 55 % full power) [tune]
+      level_per_tavg: 1.62,        // % level per °C Tavg — RE-DERIVED at #419 wave 3 for the steep Ginna
+                                   // program: (55 − 25) / 18.5 °C span puts the no-load program level at
+                                   // the real plant's 25 % (WTSM §10.3, ML11223A290: heatup "assumption
+                                   // that the level in the pressurizer is 25%"). History: 2.0 originally,
+                                   // steepened to 2.5 for the retired shallow 297→304 program (which
+                                   // needed the help to keep a visible span); at 2.5 the steep program
+                                   // would have parked no-load level at 8.7 % — under the 17 % heater
+                                   // cutoff. K_surge_level is per-LEVEL-rate and keeps its own sourced
+                                   // band unchanged; the thermal surge conversion moves with this
+                                   // geometry honestly. [derived — see above]
       // % level per inventory-fraction DEFICIT below nominal.
       //
       // THE SAME NUMBER AS THE SURPLUS BRANCH, and #330 is the record of what it cost to
@@ -1375,7 +1388,7 @@
       // plant's RULED ladder span (3.66 MPa from operating to pop, vs Ginna's 2.28) — the
       // ladder is identity (2026-08-07 ruling) and does not move with the clock.
       K_steam_pressure: 0.30,      // MPa/s per unit net normalized flow [derived — see above]
-      steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
+      steam_p_rated: 5.69,         // MPa = Ginna's 810 psig full-load SG outlet at 576 °F Tavg (UFSAR ch 10 §10.3.2.2) — was 5.65 [tune], moved 0.6 % onto the citation at #419 wave 3 [sourced]
       steam_flow_rated: 1.0,       // rated steam flow, in those normalized units [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
       // Wide-range level window: the whole-vessel wide range is the integrated inventory
@@ -1394,19 +1407,21 @@
       // PROVENANCE (#374 evidence pass, 2026-08-05): the FUNCTION is sourced —
       // the dump is sized so it *"avoids the lifting of steam generator safety
       // valves following a turbine trip and reactor trip from 100% power"*
-      // (WTSM §11.2, ML11223A294), and this plant meets that criterion measured:
-      // trip-from-100 % peak 8.05–8.07 MPa against the 9.31 pop, re-confirmed
-      // through the #373 stop-valve change. The SETPOINT values remain this
-      // plant's ruled ladder: the secondary deliberately runs high relative to
-      // the real class (our 8.23 no-load anchor vs the real 1092 psig no-load
-      // header, WTSM §19.0 ML11223A342 — the declared 297 °C anchor, RE-AFFIRMED
-      // by the 2026-08-07 tier-2 ruling: "A+B, keep 297 °C"). Internally
-      // coherent — anchor < reseat < pop. NOTE the two no-load figures are
-      // different PLANTS: 1092 psig / 557 °F is the 4-loop WTSM reference plant;
-      // Ginna (the anchor plant) is 547 °F ≈ 990 psig — recorded so the ladder
-      // comparison stops mixing them.
-      sg_safety_open_mpa: 9.31,    // pop
-      sg_safety_reseat_mpa: 9.0,   // reseat
+      // (WTSM §11.2, ML11223A294) — re-measured on the Ginna ladder at #419 wave 3.
+      //
+      // THE LADDER IS GINNA'S OWN SINCE #419 WAVE 3 (2026-08-07, the tier-3 stage-1
+      // sign-off — the option-C re-anchor the tier-2 ruling had deferred). Every rung
+      // is sourced or rule-derived, which RETIRES the old "the ladder itself is not
+      // sourced" departure (DESIGN_COMPANION §8.34): pop = **1085 psig (7.58 MPa)**,
+      // Ginna's first-lift MSSV (UFSAR ch 10 §10.3.2.4: "The first valve lifts at 1085
+      // psig and the remaining three valves are set to lift at 1140 psig"); this
+      // single-valve model keeps the sourced BANK capacity (0.84× rated, below) at the
+      // first-lift setpoint — the modeling choice, stated. Reseat = **1048 psig
+      // (7.33 MPa)** [derived — the pre-existing 3.3 % blowdown class retained].
+      // History: the pre-#419 ladder ran 1194/1272/1350 psi, every rung ~110 psi high,
+      // tied to the retired 297 °C feel anchor.
+      sg_safety_open_mpa: 7.58,    // pop = Ginna 1085 psig first-lift [sourced — see above]
+      sg_safety_reseat_mpa: 7.33,  // reseat [derived — 3.3 % blowdown class]
       // CAPACITY SOURCED (#418 wave A3, 2026-08-07), 1.2 → 0.84: Ginna's MSSV
       // bank is 4 valves/SG at 1085 + 3×1140 psig passing 797,700 + 3×837,600
       // lbm/hr = 3.31e6 lbm/hr per SG (UFSAR Table 15.6-12) against ~3.95e6
@@ -1459,31 +1474,23 @@
       // and ±100 °F/hr annunciators, and a valve that cannot exceed the limit
       // turns holding it into a formality rather than a skill.
       //
-      // adv_setpoint 8.77 — the PLACEMENT RULE is sourced, the number is this
-      // plant's arithmetic on it: *"Each PORV has a nominal setpoint of 1125
+      // adv_setpoint 7.31 (#419 wave 3) — the PLACEMENT RULE is sourced, the number is
+      // this plant's arithmetic on it: *"Each PORV has a nominal setpoint of 1125
       // psig, which is approximately half the difference between the no-load
       // steam generator pressure and the lowest set pressure of the safety
-      // valves."* Here that is (8.23 no-load anchor + 9.31 pop) / 2 = 8.77 MPa
-      // (1272 psi). WAS 8.60 (1247 psi), which sat at 34 % of that span; moved
-      // 2026-08-06 to sit on the rule. Measured full stack, the move is nearly
-      // inert — the loss-of-condenser spike peaks 9.06 MPa either way and the
-      // safeties lift either way; only the hold point moves, 8.65 → 8.82 MPa
-      // (1255 → 1280 psi), Tavg 302.0 → 303.3 °C. Perturbation sweep at exactly
-      // this nudge: 42 of 623 behaviour checks move, ZERO verdict flips.
-      // Still ABOVE the 8.23 dump anchor, so the condenser dump does all normal
-      // duty and the ADV never lifts while the condenser is there; full-open
-      // (8.77 + 0.25 band = 9.02) still below the 9.31 pop, so without a
-      // condenser it is the ADV, not the safeties, that holds the generator.
-      //
-      // WHAT IS STILL UNSOURCED is the LADDER THIS SITS IN, and it is worth
-      // knowing before anyone "corrects" the setpoint again: the real ladder is
-      // no-load ≈1080 psig → ARV 1125 → five staggered safeties at 1170/1200/
-      // 1210/1220/1230 psig. Ours is 1194 → 1272 → one safety at 1350. Every
-      // rung runs ~110 psi high and our no-load-to-safety span is 156 psi against
-      // the real 90, because the no-load anchor is tied to this plant's declared
-      // 297 °C Tavg anchor (§19.0's 1092 psig header is the departure). The rule
-      // is satisfied WITHIN our ladder; the ladder itself is not sourced. [tune]
-      adv_setpoint: 8.77, adv_band: 0.25, adv_max: 0.10,
+      // valves."* (WTSM §7.1.3.3 — that section's own 1125 psig is the 4-loop
+      // plant's number; the RULE is what transfers.) On the Ginna ladder that is
+      // (7.03 no-load anchor + 7.58 pop) / 2 = 7.305 ≈ **7.31 MPa (1060 psi ≈
+      // 1045 psig)** — and Ginna's own ARV solenoid band, 1005–1060 psig (UFSAR
+      // ch 10 §10.3.2.5/T10.1-1), brackets it: rule and anchor plant agree.
+      // adv_band 0.25 → **0.12** [derived]: full-open must sit below the pop with
+      // proportional margin on the 2.3×-narrower Ginna span — 7.31 + 0.12 = 7.43,
+      // 0.15 MPa under the 7.58 pop (the old 0.25 band would have put full-open
+      // 0.02 under it). History: 8.60 → 8.77 (2026-08-06, onto the rule) →
+      // 7.31 (the ladder re-anchor). The old "the ladder itself is not sourced"
+      // paragraph that lived here is RETIRED — every rung is now sourced or
+      // rule-derived (see sg_safety_open_mpa). [tune]
+      adv_setpoint: 7.31, adv_band: 0.12, adv_max: 0.10,
       // AFW capacity vs the real plant, worked (#374 evidence pass): the real
       // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
       // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0
@@ -1524,11 +1531,16 @@
       // B2 steam dump / turbine bypass (auto opens above setpoint, to condenser).
       // The setpoint is the NO-LOAD secondary pressure, and it is the BOTTOM ANCHOR
       // of the sliding Tavg program (catalog v3 FG-2): Tsat(setpoint) = the no-load
-      // Tavg. THIS PLANT'S ANCHOR (feel-plan P3, 2026-07-21): Psat(297 °C) ≈ 8.23 MPa
-      // — a shallow ~7 °C program (297 no-load → ~304 full power), consistent with a
-      // small plant whose SG is generously sized (less ΔT growth needed with load),
-      // and it halves the post-trip stored-heat dump into the SG vs. the old 292
-      // Westinghouse anchor (softer shrink — TR-15 tempo). With no steam draw the
+      // Tavg. THE ANCHOR IS GINNA'S OWN SINCE #419 WAVE 3 (2026-08-07): no-load SG
+      // pressure **1005 psig = 7.03 MPa** [sourced — Ginna TS Bases Rev 101 B 3.3.2:
+      // "steam line breaks occurring from no load conditions (1005 psig)"], and
+      // Tsat(7.03) through this plant's own correlation = **546.9 °F (286.0 °C)** —
+      // Ginna's sourced no-load Tavg 547 °F (UFSAR ch 10 §10.3.1) to 0.1 °F: pressure
+      // and temperature anchors agree through the sim's own physics. The program is
+      // now STEEP (286.0 no-load → ~304.5 full power, ~33 °F span vs Ginna's real 29;
+      // the 4 °F top gap is the fixed Q/h_sg identity, declared not chased). History:
+      // Psat(297 °C) ≈ 8.23 was the 2026-07-21 feel-plan anchor, retired by the
+      // tier-3 sign-off; its shallow ~7 °C program went with it. With no steam draw the
       // secondary saturates up to the setpoint and the dump holds it there, so hot
       // standby holds its own temperature. On a turbine trip the pressure rise above
       // the setpoint opens the dump proportionally across the band. The program top
@@ -1569,7 +1581,18 @@
       // Still unavailable when the condenser is lost (vacuum/SBO) — see the C-9 note in
       // pwr_steam_generator.js. The stored-heat burst still swings Tavg visibly before
       // settling (tempo principle), and rather more so now.
-      steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 0.40, // [tune] = Psat(297 °C) anchor; WTSM §11.2 capacity
+      // steam_dump_max 0.40 → 0.28 at #419 wave 3 *(OWNER RULING, 2026-08-07: "D1: measure
+      // first." — adopt Ginna's 28 % if the full-load-rejection ride-out survives at it, else
+      // keep the ruled 40 %)*. MEASURED: the ride-out SURVIVES at 28 % — no scram, the dump
+      // pegs at its cap and the core self-throttles deeper (~80 % vs ~91 at the cap instant).
+      // Sourced: *"eight steam dump valves that are capable of passing up to approximately
+      // 28% rated steam flow"*, and the same 50 % load-rejection claim "in conjunction with
+      // the rod control system" (Ginna UFSAR ch 10 §10.4, ML20339A040). This supersedes the
+      // 2026-07-31 "Let's change it to 40%" ruling by the owner's own D1 decision rule; the
+      // WTSM §11.2 40 % remains the fleet-typical figure, recorded above. Costs measured and
+      // re-derived at this wave: the §8.21-class cliff span narrows (~7 → ~4 °C) and TR-1k's
+      // non-monotonicity margin shrinks — the honest Ginna-class plant, bands re-derived.
+      steam_dump_setpoint: 7.03, steam_dump_band: 0.25, steam_dump_max: 0.28, // 7.03 [sourced] = Ginna 1005 psig no-load; 0.28 [sourced] = Ginna ch 10 (D1 measured)
       // LOAD-REJECTION arm for the fast-open (Tavg-error) dump mode — the C-7 class
       // interlock. The fast mode used to arm on `turbine_tripped` ALONE, even though its
       // own comment said it was for "a turbine trip / load rejection" and that the
@@ -2078,7 +2101,7 @@
       // at the same fraction of span (0.5 %), noise_ref at 3.3 %.
       charging_flow:     { lag: 2.0, noise: 1.3e-6, range: [0, 2.67e-4], noise_ref: 8.9e-6 },   // true CVCS charging (≠ setpoint under AUTO)
       letdown_flow:      { lag: 2.0, noise: 1.3e-6, range: [0, 2.67e-4], noise_ref: 8.9e-6 },   // true CVCS letdown
-      steam_pressure:    { lag: 0.5, noise: 0.0034,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
+      steam_pressure:    { lag: 0.5, noise: 0.0034,  range: [0, 8.5] },   // SG secondary pressure, MPa (top of range = pop 7.58 + margin — narrowed from 10.5 with the #419 wave-3 ladder; run_reachability guards every threshold inside range)
       boron_analyzer:    { lag: 45,  noise: 0.3,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
       governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100], noise_ref: 5 },    // turbine admission valve %
       hpi_flow:          { lag: 1.0, noise: 0.001, range: [0, 1.2], noise_ref: 0.02 },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)

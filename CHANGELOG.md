@@ -76,6 +76,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the plant is re-anchored to Ginna: the ladder, the Tavg program, the dump capacity and the reference boron are the anchor plant's own (#419 wave 3, 2026-08-07)
+
+- **The no-load point is sourced twice over and the sources agree through the sim's own
+  physics**: SG no-load pressure 1020 psi (Ginna's 1005 psig, TS Bases B 3.3.2) with
+  Tsat = 546.8 °F — Ginna's own 547 °F no-load Tavg (UFSAR ch 10) to a tenth of a degree.
+  The full secondary ladder follows, every rung sourced or rule-derived: dump anchor 1020 psi,
+  ADV 1060 psi (the WTSM §7.1.3.3 placement rule, inside Ginna's own 1005–1060 psig ARV band,
+  band re-derived 0.12), SG safety pop 1099 psi (the 1085 psig first-lift MSSV, carrying the
+  sourced 0.84× bank capacity) / reseat 1063 psi. **The "ladder is unsourced" departure
+  (§8.34) is retired** — span 79 psi against the real ~80.
+- **The Tavg program steepens to the real class**: 546.8 → 580.1 °F (~33 °F span vs Ginna's
+  29; the 4 °F top gap is the plant's fixed heat-transfer identity, declared). Full-power SG
+  pressure moves onto its citation (825 psi = Ginna's 810 psig). The pressurizer level
+  program re-derives to the real 25 % no-load (WTSM §10.3's own assumption).
+- **The steam dump is Ginna's 28 %** (was the fleet-typical 40 %) — adopted under the owner's
+  measure-first rule after the full-load-rejection ride-out measured survivable at 28. The
+  turbine-trip burst now exactly equals the real operating→pop margin: the shipped plant
+  holds it with the ADV's help; two declared teachings (the §8.21 cliff, TR-1k's
+  non-monotonicity) survive smaller.
+- **The reactivity anchors were being quoted at the wrong temperature** — the 975-ppm ARO
+  measurement belongs to the WBN 557 °F HZP, not this plant's no-load anchor; decoupled and
+  re-solved (rho_excess 0.087544 → 0.087354). The HZP condition trims to ~705 ppm with
+  criticality back at step 319, so the startup's 1/M story is unchanged; the ECC reference,
+  the §7.5 table (regenerated from the plant) and the startup/chain content re-label
+  683 → 705. Two latent linearizations in the anchor-chain check fixed; it now predicts the
+  engine exactly.
+- **TR-1i ships as a strict xfail (#420)**: the steep program runs the sourced ±5 °F ramp
+  duty to 5.28 °F even after the rod channel's speed thresholds were corrected to the sourced
+  WTSM ladder (done this wave); the sourced band is not widened. Coupled to #378.
+- **Owner-review**: the TMI deception crest measures ~65 % on the final plant — the 75 %
+  level annunciator is unreachable in free play (the qualify exam re-keyed to a state cue).
+  Manuals Rev 14 pending item (h) carries the chapter re-statements (04/05/09/12).
+
 ### Changed — the relief-valve pressure authority is anchored: physical net under the ruled heater (#419 wave 2, 2026-08-07)
 
 - **`K_porv_relief`/`K_safety_relief` 3144 → 2500 [derived-net, F14-coupled]** — the audit's

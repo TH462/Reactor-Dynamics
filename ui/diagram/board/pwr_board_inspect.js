@@ -859,7 +859,7 @@
       'through the steam generator on a controlled cooldown.', CI, '12.3'),
     imrppqg6mcc: e('AUTO (steam dump)',
       'Dump follows Steam Generator (SG) pressure toward the dump setpoint.',
-      'At power the generator sits about 819 psi (5.65 MPa) against a setpoint near 1194 psi (8.23 MPa), which is why the ' +
+      'At power the generator sits about 825 psi (5.69 MPa) against a setpoint near 1020 psi (7.03 MPa), which is why the ' +
       'dump is shut: there is nothing to relieve. Drop the setpoint below actual pressure and it ' +
       'opens.', CI, '12.3'),
     imrppquqg16: e('OPEN (steam dump)',

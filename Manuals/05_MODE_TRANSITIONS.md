@@ -24,7 +24,7 @@ These MODES follow the commercial PWR (Westinghouse-style Tech Spec) structure, 
 |------|-------------|-----------------|------------|---------------|---------------------------------|-----------------|
 | **1** | **Mode 1, At Power** | Power Operation | Critical (keff ≥ 0.99) | **> 5 %** | Hot (≥ ~350 °F / 176.7 °C class) | **[sim]** |
 | **2** | **Mode 2, Startup** | Startup | Critical | **≤ 5 %** | Hot | **[sim]** |
-| **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical (keff < 0.99) | ≈ 0 | Hot (NOP T/P ≈ 566.6 °F / 297 °C no-load, 2235 psi / 15.41 MPa) | **[sim]** |
+| **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical (keff < 0.99) | ≈ 0 | Hot (NOP T/P ≈ 546.8 °F / 286 °C no-load, 2235 psi / 15.41 MPa) | **[sim]** |
 | **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical | ≈ 0 | Intermediate (between cold and hot) | **[sim]** (transit during heatup/cooldown) |
 | **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical | ≈ 0 | Cold (≤ ~200 °F / 93.3 °C class) | **[sim]** — `cold_shutdown` initial condition |
 | **6** | **Mode 6, Refueling** | Refueling | Deep subcritical | ≈ 0 | Cold; vessel head not fully tensioned | **Out of scope** |
@@ -101,8 +101,8 @@ Mode 1, At Power at power (watchstanding)
 | A2 | Fill/vent RCS; establish RCP operation when permitted; heat on **pump heat**, reactor subcritical | Mode 5, Cold Shutdown → **Mode 4, Hot Shutdown** |
 | A3 | Draw and control pressurizer steam bubble; place heaters/spray in automatic | Mode 4, Hot Shutdown |
 | A4 | Heat and pressurize toward normal operating temperature and pressure within commercial heatup limits — **and do A5 on the way up, not after** | Mode 4, Hot Shutdown |
-| A5 | **Re-align the SI accumulators** once RCS pressure is above their **600 psi (4.14 MPa)** cover gas — they must be aligned before **1000 psi (6.895 MPa)** (NUREG-1431 LCO 3.5.1). The cold lineup leaves them isolated; nothing opens them for you. **Measured, the window is only ~100 s wide** (600 psi at +24 s from the Pressure SP command, 1000 psi at +122 s, NOP at +3.5 min) — so this is an action *inside* A4, not a step that follows it | Mode 4, Hot Shutdown |
-| A6 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **2235 psi (15.41 MPa)**, Tavg ≈ **566.6 °F (297 °C)** (no-load program), heat sink available | **Mode 3, Hot Standby** |
+| A5 | **Re-align the SI accumulators** once RCS pressure is above their **600 psi (4.14 MPa)** cover gas — they must be aligned before **1000 psi (6.895 MPa)** (NUREG-1431 LCO 3.5.1). The cold lineup leaves them isolated; nothing opens them for you. **Measured on the real pressurization clock (#419), the window is ~14 plant-minutes wide** (600 psi at ~+9 min from the Pressure SP command, 1000 psi at ~+23 min, NOP at ~1.8 plant-hours) — an action *inside* A4, not a step that follows it | Mode 4, Hot Shutdown |
+| A6 | Reach **Mode 3, Hot Standby**: subcritical, hot, P ≈ **2235 psi (15.41 MPa)**, Tavg ≈ **546.8 °F (286 °C)** (no-load program), heat sink available | **Mode 3, Hot Standby** |
 
 **Simulator:** Phase A is now driveable — load the **`cold_shutdown`** initial condition (**Mode 5, Cold Shutdown**) and perform the heatup: start the RCPs (`set_rcp`), raise the pressurizer setpoint to draw up to NOP pressure (`set_pressure_setpoint`), and keep the turbine off line with the dumps shut so the SG **bottles**. That is the whole evolution — heat crossing the tubes has no steam sink, so it goes into secondary pressure, and the plant rides up on pump heat with **the control bank never leaving its cold-shutdown position**. Re-measured full stack 2026-08-07 with no rod motion (#419 — real rates end to end): **~12.3 plant-hours** cold to **567.0 °F (297.2 °C)** — the no-load anchor — arriving at **ρ = −2828 pcm on 856.8 ppm**, control bank still at 0 of 912 steps. (This paragraph read **−3377 pcm on 907 ppm** until then, a figure that predates the second moderator re-fit; PWR-N01's own acceptance had the right numbers and this one did not.) It ends *less* subcritical than the −6287 pcm recorded before #260 because the old model charged a moderator defect over three times too large on the way up. **The thermal ride barely moved across the re-clocks** — 545 °F (285.0 °C) arrives at ~11.3 plant-hours and the steady rate is **30.0 °F/hr (16.7 °C/hr)** — because pump heat depends on neither the moderator coefficient nor the pressurizer clock. The endpoint reads 567.0 °F rather than the older 548 °F because 567 °F is the no-load anchor where the dump opens and Tavg stops, and this run was carried to that settling point; it is a measurement-window difference, **not** a 19 °F physics gain. Or **skip Phase A** by loading **Hot Standby** (`hot_zero_power`) = **Mode 3, Hot Standby**.
 
@@ -285,7 +285,7 @@ on the board. Measured full stack from `hot_full_power` (scram at t = 60 s): the
 at **t+1 s** with power still at 33 %, and accepted at **t+3 s** once the rods seat; Mode 3 is
 reached inside a minute; main feedwater isolates and AFW auto-starts by about t+3 min, holding SG
 level near **37 %** after it falls from 65 %; the plant settles hot and subcritical at
-**567.3 °F (297.4 °C)** and **2235 psi (15.41 MPa)**. **Step 2 did not exist in this procedure
+**547.2 °F (286.2 °C)** and **2235 psi (15.41 MPa)**. **Step 2 did not exist in this procedure
 until 2026-08-03** — authoring the checklist found it missing, and `reset_rps` had been reachable
 on the board since #75 while being named by no procedure, mission or checklist at all.
 

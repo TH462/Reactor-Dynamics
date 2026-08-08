@@ -155,6 +155,37 @@ walk is the decision record:
    of that grid, same reason class as #407's two) and one guard re-band (PI-3 leg 1, 30 → 14 %,
    the honest ride vents real inventory before the scram).
 
+**WAVE 3 (same session) — THE OPTION-C RE-ANCHOR EXECUTED. Decisions of record:**
+
+1. **The anchor's two sources agree through the sim's own physics** — 1005 psig (TS Bases
+   B 3.3.2) and 547 °F (UFSAR ch 10) meet at Tsat(7.03) = 546.9 °F. The ladder that follows is
+   Ginna's rung for rung, which RETIRES §8.34 (span 79 psi vs the real ~80 — the "~110 psi
+   high" departure is gone). The ADV band shrank 0.25 → 0.12 by proportional-margin derivation
+   on the 2.3×-narrower span.
+2. **D1 executed by the owner's decision rule**: the ride-out survives at 28 % (measured — no
+   scram, deeper self-throttle) → Ginna's sourced 28 % adopted, superseding the 2026-07-31
+   40 % ruling by the owner's own measure-first instruction. The two declared teachings it
+   narrows (the §8.21 cliff 7.1 → 3.7 °C; TR-1k's non-monotonicity → 3.1 pts) survive smaller,
+   bands re-derived.
+3. **The reactivity solve was quietly conflating two temperatures** — the 975-ppm anchor's
+   quote point (WBN 557 °F) and this plant's no-load anchor. Decoupled; `rho_excess`
+   0.087544 → 0.087354; the HZP IC lands 704.8 ppm with criticality at step 319, so the
+   startup's 1/M content survives with new labels. Two latent linearizations in the
+   HFP-follows check fixed on the way — the anchor chain now predicts the engine exactly.
+4. **The turbine-trip burst now equals the real operating→pop margin** (~1.9 MPa both) — the
+   knife-edge is Ginna's own. The shipped plant holds it (ADV at 100 %, settle under reseat);
+   the bare-dump channel rig grazes (34/600 samples), and its check now claims graze-vs-park.
+5. **TR-1i is the second strict xfail (#420)**: 5.28 vs the sourced ≤ 5.00 on the steep
+   program, with the channel's speed thresholds corrected TO the sourced WTSM ladder this
+   wave (the old ladder's 'fast' at 7.2 °F was unexercised slack). Not widened. The #378
+   rejection criterion is superseded by events — re-visit together.
+6. **The TMI deception crest is now an OPEN OWNER-REVIEW question**: 69.4 % (#418 A1) →
+   ~75 at 25 min (wave 2) → **~65 with collapse at 47 min (wave 3)** — the 75 % annunciator
+   is unreachable in free play on the final plant. The qualify exam re-keyed to a state cue;
+   the level-constants set (level_per_void/level_per_mass/level_per_tavg) is where a
+   restoration would be tuned, and that set is ONE object (the #337 rule) — its own change
+   if ruled.
+
 ---
 
 ## 2026-08-07-develop-c — tier 2 RULED: the secondary joins the primary's fidelity (A+B, ladder stays), and content-follows-physics becomes standing law

@@ -94,7 +94,7 @@ head('1. pwr_heatup on the chain (Mode 5 → Mode 3, ~12.3 plant-hours — #419 
 var rHeat = PH.runProcedure('pwr', proc('pwr_heatup'), { svc: svc });
 reportChecks(rHeat);
 var ts = rHeat.lastSnap.true_state;
-ck('chain: arrived Mode 3 hot (Tavg ≈ 297 °C)', Math.abs(ts.tavg_c - 297) < 8, ts.tavg_c.toFixed(1) + ' °C');
+ck('chain: arrived Mode 3 hot (Tavg ≈ 286 °C — the Ginna anchor, #419 wave 3)', Math.abs(ts.tavg_c - 286) < 8, ts.tavg_c.toFixed(1) + ' °C');
 ck('chain: heatup preserves cold-shutdown boron — the #396 premise', ts.boron_ppm > 850 && ts.boron_ppm < 865, ts.boron_ppm.toFixed(1) + ' ppm');
 
 head('2. Seam probe — the startup checklist flags the boron row (#395 machinery)');
@@ -110,17 +110,21 @@ ck('probe A: the Mode-3 rows are MET — exactly the seam is named',
 ck('probe A: instructor comment raised', !!(snap.instructor && snap.instructor.message), 'raised');
 svc.handleCommand({ action: 'stop_checklist' });
 
-head('3. The documented remedy — PWR-N02 step 15, dilute to the ECC (683 ppm)');
-var rem = svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 683 });
+// 683 → 705 at #419 wave 3: the Ginna anchor + decoupled rho_excess put the estimated
+// critical condition at ≈ 705 ppm (criticality back at ~step 319). Diluting to the old
+// 683 on the new anchor overshoots criticality by ~22 ppm and the SR high-flux trip
+// scrams the approach — measured, the first gate run after the re-anchor did exactly that.
+head('3. The documented remedy — PWR-N02 step 15, dilute to the ECC (~705 ppm)');
+var rem = svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 705 });
 ck('remedy command accepted (boron_conc target — the board\'s boron surface)', !PH.refusal(rem), PH.refusal(rem) || 'accepted');
 // ~58 plant-min at ~3 ppm/min measured (Manuals/04 PWR-N02); budget 90 plant-min.
 var dilTicks = 0, DIL_BUDGET = 5400;
 while (dilTicks < DIL_BUDGET) {
   var s = svc.tick(); dilTicks++;
-  if (s && s.true_state.boron_ppm <= 690) break;
+  if (s && s.true_state.boron_ppm <= 712) break;
 }
 ts = svc.engine.getTrueState();
-ck('dilution arrives ≤ 690 ppm inside the 90 plant-min budget', ts.boron_ppm <= 690 && dilTicks < DIL_BUDGET,
+ck('dilution arrives at the ~705 ppm ECC inside the 90 plant-min budget', ts.boron_ppm <= 712 && dilTicks < DIL_BUDGET,
   ts.boron_ppm.toFixed(1) + ' ppm after ' + (dilTicks / 60).toFixed(1) + ' plant-min');
 // Let the batch dose finish settling on the target before the probe re-reads it.
 for (var i = 0; i < 120; i++) svc.tick();

@@ -3,20 +3,20 @@
  *
  * The MSIV, taught by closing it at full power: turbine trip on closure, the
  * SG bottling up to its code safeties (control-layer actuation on the
- * steam_pressure instrument: pop 9.31 / reseat 9.0 MPa), the coupled feed
+ * steam_pressure instrument: pop 7.58 / reseat 7.33 MPa), the coupled feed
  * dying with the turbine, and the race between reopening the valve and the
  * low-SG-level trip.
  *
  * Probed timeline (seed 42, clean scenario board, times from closure):
- * turbine trips instantly; SG PRESS HI at ~5 s (9.0 MPa); safeties lift at
- * ~7 s (9.31); feed collapses with the turbine and the SG drains; AFW
+ * turbine trips instantly; SG PRESS HI at ~5 s (7.33 MPa); safeties lift at
+ * ~7 s (7.58); feed collapses with the turbine and the SG drains; AFW
  * auto-starts at ~48 s (20 %); the 12 % low-level trip scrams at ~50 s.
  * Reopening does NOT beat that trip — at ANY reopen time the level trip still
  * fires (early: the drain gets there at ~50 s anyway; late: the bulk steam
  * draw on reopening shrinks the level through the setpoint immediately). What
  * reopening DOES buy is the aftermath: with the MSIV open the steam dump
- * (~8.2 MPa no-load setpoint) carries decay heat to the condenser and the
- * safeties reseat for good; with it shut the code safeties cycle 9.31/9.0 on
+ * (~7.0 MPa no-load setpoint) carries decay heat to the condenser and the
+ * safeties reseat for good; with it shut the code safeties cycle 7.58/7.33 on
  * decay heat indefinitely. Both endpoints teach; the cards say exactly this.
  * AFW refills either way to its ~24 % hold by ~4 min after closure.
  */
@@ -73,8 +73,8 @@
           { type: 'delay', value: 14.0 },
         ] },
         commentary: {
-          learning: 'SG PRESS HI at 9.0 — and there go the code safeties at 9.31: spring valves that pop off the steam-pressure gauge and reseat at 9.0. The bottle is holding. Understand what you are looking at, though: decay heat has exactly one way out of this plant right now, and it is through those valves. They are the last resort, and they are the only resort.',
-          industry: 'SG code safeties lifted ~2 s post-trip — a control-layer actuation on the steam_pressure instrument (open 9.31 / reseat 9.0 MPa; SG PRESS HI alarm at 9.0). With the MSIV shut the dump path is isolated, so the safeties are the sole decay-heat relief. AFW feeding; main feed lost with the turbine.',
+          learning: 'SG PRESS HI at 7.33 — and there go the code safeties at 7.58: spring valves that pop off the steam-pressure gauge and reseat at 7.33. The bottle is holding. Understand what you are looking at, though: decay heat has exactly one way out of this plant right now, and it is through those valves. They are the last resort, and they are the only resort.',
+          industry: 'SG code safeties lifted ~2 s post-trip — a control-layer actuation on the steam_pressure instrument (open 7.58 / reseat 7.33 MPa; SG PRESS HI alarm at 7.33). With the MSIV shut the dump path is isolated, so the safeties are the sole decay-heat relief. AFW feeding; main feed lost with the turbine.',
         },
         advance: 'wait_for_trigger' },
 
@@ -91,7 +91,7 @@
         trigger: { type: 'delay', value: 10.0 },
         commentary: {
           learning: 'Now the real question, and you have time to think about it — the plant is shut down and it is not going anywhere. Decay heat is leaving through the code safeties, and they will keep popping and reseating all night if you let them. Those valves are meant for the worst day of the plant’s life, not for routine cooling. Reopen the MSIV and the steam dump takes the heat to the condenser instead. Or leave it bottled and watch what that actually costs.',
-          industry: 'Post-trip decision, no time pressure: plant tripped and stable, decay heat relieved solely by the SG code safeties (9.31 / 9.0 cycling). Options: open_msiv restores the dump path to the condenser (pressure falls to the ~8.2 MPa no-load setpoint, safeties reseat), or hold and remain on the safeties indefinitely.',
+          industry: 'Post-trip decision, no time pressure: plant tripped and stable, decay heat relieved solely by the SG code safeties (7.58 / 7.33 cycling). Options: open_msiv restores the dump path to the condenser (pressure falls to the ~7.0 MPa no-load setpoint, safeties reseat), or hold and remain on the safeties indefinitely.',
         },
         highlight: { control_label: 'MSIV', instrument_id: 'sg' },
         branches: [
@@ -104,7 +104,7 @@
         trigger: { type: 'delay', value: 0.5 },
         commentary: {
           learning: 'Open — and the bottle uncorks. Watch two things at once: the steam dump swinging wide to take the decay heat to the condenser, and the code safeties going quiet behind it. You will see the level dip as the pressure falls; that is shrink, and it is expected. Nothing here is a race. You have just moved the plant off its last-resort valves.',
-          industry: 'MSIV reopened post-trip: dump path restored, dump drives to ~100 % on the Tavg error, SG pressure falls from the 9.31/9.0 safety band toward the ~8.2 MPa no-load dump setpoint. Brief level shrink on depressurization; AFW continues feeding. Measured: safeties reseat immediately on reopen and do not lift again.',
+          industry: 'MSIV reopened post-trip: dump path restored, dump drives to ~100 % on the Tavg error, SG pressure falls from the 7.58/7.33 safety band toward the ~7.0 MPa no-load dump setpoint. Brief level shrink on depressurization; AFW continues feeding. Measured: safeties reseat immediately on reopen and do not lift again.',
         },
         advance: 'wait_for_trigger' },
 
@@ -120,7 +120,7 @@
         ] },
         commentary: {
           learning: 'There it is. Pressure has come off the safety band and settled where the steam dump holds it, the safeties are shut, and decay heat is going to the condenser the way it should. AFW is refilling the boiler. Fast clock while she comes back.',
-          industry: 'Steam pressure below the safety band, held at the dump setpoint (~8.2 MPa). SG code safeties reseated. Decay heat via steam dump to the condenser; AFW recovering level to its hold. Time 10× through recovery.',
+          industry: 'Steam pressure below the safety band, held at the dump setpoint (~7.0 MPa). SG code safeties reseated. Decay heat via steam dump to the condenser; AFW recovering level to its hold. Time 10× through recovery.',
         },
         speed: 10,
         advance: 'wait_for_trigger' },
@@ -132,7 +132,7 @@
         ] },
         commentary: {
           learning: 'Real time. Level back at the AFW hold, safeties quiet, temperature at the no-load point, decay heat going where it belongs. You never had a chance of saving the turbine — closing that valve tripped the plant in about a second, and it was supposed to. What you decided was what the plant would rest on afterwards: the condenser, or a pair of spring valves. That is the whole lesson.',
-          industry: 'Time 1×. Terminal state: AFW hold, SG safeties reseated, Tavg at the ~297 °C no-load anchor, decay heat via steam dump to the condenser. The reactor trip was unavoidable and correct (P-9, anticipatory); the reopen determined the post-trip heat-removal path.',
+          industry: 'Time 1×. Terminal state: AFW hold, SG safeties reseated, Tavg at the ~286 °C no-load anchor, decay heat via steam dump to the condenser. The reactor trip was unavoidable and correct (P-9, anticipatory); the reopen determined the post-trip heat-removal path.',
         },
         speed: 1,
         level_complete: {
@@ -147,8 +147,8 @@
       { id: 'rode_down',
         trigger: { type: 'delay', value: 0.5 },
         commentary: {
-          learning: 'You left it bottled — so this is what that looks like. Rods in, power gone, boiler still sealed, and the code safeties popping at 9.31 and reseating at 9.0, over and over. Eleven times in the first ten minutes, and they will keep going all night if nobody opens that valve. Fast clock while AFW refills the hold.',
-          industry: 'Held with the MSIV shut: decay heat relieved ONLY by the SG code safeties, cycling 9.31 / 9.0 indefinitely (measured: 11 lifts in 600 s, no permanent reseat, SG pressure parked at 9.02, Tavg 305.6 °C). AFW recovering level. Time 10× through the refill.',
+          learning: 'You left it bottled — so this is what that looks like. Rods in, power gone, boiler still sealed, and the code safeties popping at 7.58 and reseating at 7.33, over and over. Again and again, and they will keep going all night if nobody opens that valve. Fast clock while AFW refills the hold.',
+          industry: 'Held with the MSIV shut: decay heat relieved ONLY by the SG code safeties, cycling 7.58 / 7.33 indefinitely (the safeties cycle on decay heat with no permanent reseat (re-measured class at #419: parked just under the 7.58 pop, Tavg ~290 °C)). AFW recovering level. Time 10× through the refill.',
         },
         speed: 10,
         advance: 'wait_for_trigger' },
@@ -160,7 +160,7 @@
         ] },
         commentary: {
           learning: 'Real time. Level is back at the AFW hold — safe, stable... and listen: the safeties are still cycling, because the boiler is still a bottle. Nothing broke, and nothing is going to. But compare it with the other ending: reopen and the plant settles at the no-load temperature with the dump holding pressure and the safeties shut. Code safeties are the LAST line, not a service valve. The reopen is still waiting to be done — that is the lesson to carry out of this one.',
-          industry: 'Time 1×. Terminal state: AFW hold with the MSIV shut — SG code safeties cycling 9.31 / 9.0 on decay heat as the only heat path, Tavg ~305 °C. Stable but non-conforming; contrast the reopen ending (dump holding ~8.2 MPa, safeties shut, Tavg at the ~297 °C no-load anchor). Restoring the dump path remains the required recovery action.',
+          industry: 'Time 1×. Terminal state: AFW hold with the MSIV shut — SG code safeties cycling 7.58 / 7.33 on decay heat as the only heat path, Tavg ~290 °C. Stable but non-conforming; contrast the reopen ending (dump holding ~7.0 MPa, safeties shut, Tavg at the ~286 °C no-load anchor). Restoring the dump path remains the required recovery action.',
         },
         speed: 1,
         level_complete: {

@@ -1205,19 +1205,19 @@
           ck('units: SI setpoint box gains decimals', /\./.test(n.v) && !/\./.test(usDump.v || '.'),
             usDump.v + ' -> ' + n.v);
           var it = item('ims31tq7mgc'), b = d.boundsFor(it);
-          ck('units: SI bounds are the engine clip in MPa', b[0] === 0.2 && b[1] === 9.31, JSON.stringify(b));
+          ck('units: SI bounds are the engine clip in MPa', b[0] === 0.2 && b[1] === 7.58, JSON.stringify(b));
           ck('units: SI ▲▼ step is 0.01 MPa, not 1', d.stepFor(it) === 0.01, d.stepFor(it));
           // The hint is DERIVED from the bounds in SI, so it cannot drift from them.
-          ck('units: SI range hint is derived from the bounds', d.numberHint(it) === '0.2-9.31 MPa', d.numberHint(it));
+          ck('units: SI range hint is derived from the bounds', d.numberHint(it) === '0.2-7.58 MPa', d.numberHint(it));
           // The ADV SP box takes the SAME engine clip as the Dump SP, so it must
           // convert identically — a second setpoint box that read psi while its
           // neighbour read MPa would be worse than no unit layer at all (#371).
           var advIt = item('bdAdvSp'), advB = d.boundsFor(advIt);
-          ck('units: ADV SP bounds are the engine clip in MPa', advB[0] === 0.2 && advB[1] === 9.31, JSON.stringify(advB));
+          ck('units: ADV SP bounds are the engine clip in MPa', advB[0] === 0.2 && advB[1] === 7.58, JSON.stringify(advB));
           // The ADV SP tile carries NO inline unit — in 90 px of card the suffix cost
           // the input the width it needed — so the DERIVED RANGE HINT is what names
           // the unit, and that is what must convert.
-          ck('units: ADV SP range hint converts to MPa', d.numberHint(advIt) === '0.2-9.31 MPa', d.numberHint(advIt));
+          ck('units: ADV SP range hint converts to MPa', d.numberHint(advIt) === '0.2-7.58 MPa', d.numberHint(advIt));
           ck('units: SI charging box keeps a usable resolution (0-13.6 m³/h at 0.1)',
             d.numberDigits(item('imrpq48hn3t')) === 1 && d.stepFor(item('imrpq48hn3t')) === 0.1,
             d.numberDigits(item('imrpq48hn3t')) + ' / ' + d.stepFor(item('imrpq48hn3t')));

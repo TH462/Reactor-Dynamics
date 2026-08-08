@@ -2387,7 +2387,8 @@
         var up = _driveHeatup(h, 6000);
         var mid = h.ts();
         ck('reached criticality on the way up', up.critAt, up.critAt >= 0, 'critAt ≥ 0 s');
-        ck('RCS heated to the no-load anchor (≥ 296 °C)', mid.tavg_c.toFixed(1), mid.tavg_c >= 296, '≥ 296 °C');
+        // 296 → 285 at #419 wave 3: the no-load anchor is Ginna's 286.0 °C (was 297).
+        ck('RCS heated to the no-load anchor (≥ 285 °C)', mid.tavg_c.toFixed(1), mid.tavg_c >= 285, '≥ 285 °C');
         ck('mode indicator reached Mode 1', mid.plant_mode + ' ' + mid.plant_mode_name, mid.plant_mode === 1, 'Mode 1');
         ck('Mode 1 reached — critical, > 5 % power', mid.power_pct.toFixed(1), up.mode1At >= 0 && mid.power_pct > 5, '> 5 % at NOP');
         ck('no fuel damage during heatup', up.maxFuel.toFixed(0), up.maxFuel < 1200 && !h.eng.s.fuel_damaged, '< 1200 °C');
@@ -3630,11 +3631,12 @@
       return test('Steam dump — capacity capped at steam_dump_max on manual full-open', function (ck) {
         var h = new Harness('hot_full_power');
         var cap = h.eng.cfg.steam_generator.steam_dump_max;
-        // 40 % of rated steam flow, the prototypical Westinghouse capacity (WTSM §11.2,
-        // ML11223A294) — owner ruling 2026-07-31, was 1.05. The band is deliberately
-        // tight: this number is now SOURCED, not a feel knob, so drifting off it should
-        // require saying so rather than sliding inside a wide band.
-        ck('cap is the prototypical capacity (0.40 of rated)', cap.toFixed(2), cap >= 0.38 && cap <= 0.42, '0.38..0.42');
+        // 28 % of rated steam flow — GINNA'S OWN capacity since #419 wave 3 (UFSAR ch 10
+        // §10.4: "approximately 28% rated steam flow"; D1's measure-first ruling adopted it
+        // after the full-rejection ride-out survived at 28). Was 0.40, the fleet-typical
+        // WTSM §11.2 figure (owner ruling 2026-07-31), before that 1.05. The band stays
+        // deliberately tight: the number is SOURCED — drifting off it must say so.
+        ck('cap is the sourced Ginna capacity (0.28 of rated)', cap.toFixed(2), cap >= 0.26 && cap <= 0.30, '0.26..0.30');
         h.run(5);
         h.cmd({ action: 'set_steam_dump', mode: 'open' });
         var maxFrac = 0;

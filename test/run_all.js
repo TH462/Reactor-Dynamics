@@ -313,7 +313,12 @@ var BASELINES = {
   // knife-edge PORV sample carried as info. Injection-verified: severing the arm reddens
   // 5+4, forcing it always-armed reddens 4+5, and the capacity nudge that flipped the old
   // form leaves all 37 TR-1c/TR-1k checks green.
-  'run_behavior.js':       { code: 0, secs: 80, score: '65pass 1xfail' },
+  // 65/1 -> 64/2 (2026-08-07, #419 wave 3): TR-1i joins TR-18 as a STRICT xfail (#420) —
+  // the steep Ginna program runs the sourced ±5 °F ramp duty to 5.28 with the rod channel
+  // already at the sourced WTSM speed thresholds; the ±5 band is sourced and NOT widened.
+  // Coupled to #378 (whose fix was rejected FOR this duty at 5.26 — the trade-space
+  // changed); fixing the duty must remove the XFAIL entry in the same change.
+  'run_behavior.js':       { code: 0, secs: 80, score: '64pass 2xfail' },
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -1370,7 +1375,12 @@ var BASELINES = {
   // 3034 -> 3037 (2026-08-07, #419 wave 2): the pwr_tmi2_p3 FULL row's new hpi_active leg
   // routes the no-reinjection variant through more of its beat graph before the PLUGGED
   // ending latches — three more checks execute and pass; suites unchanged at 51/51.
-  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3037passed' },
+  // 3037 -> 3039 (2026-08-07, #419 wave 3): the pwr_qualify challenge branches re-keyed
+  // from the pzr_level_high alarm (unreachable — the deception crests ~65 % on the
+  // re-anchored plant) to the level>58-rising state cue, and pwr_return_to_mode1's
+  // arrive gate back onto the anchor−1 convention (296 was the retired 297-anchor's
+  // number) — two more checks on the re-keyed paths; suites 51/51.
+  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3039passed' },
   // 24 -> 38 on 2026-08-06 (#395): preconditions. Section 7 is the MECHANISM on a
   // synthetic procedure (graded live instrument-first, warn-never-block, the
   // comment raised/cleared/re-raised, stop takes it down) — injection-verified:

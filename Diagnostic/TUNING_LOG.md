@@ -123,6 +123,62 @@ had updated the trust table) — retired with attribution. Mission narration re-
 (`pwr_mode5_to_mode3` header + beats, `pwr_return_to_mode1`); `run_campaign`'s 60,000 s heatup
 budget untouched (~12.5 plant-h fits). Wave 2 (F15 re-solve, bracketed [K_phys, 600]) is next.
 
+**WAVE 3 BUILT (same session) — THE PLANT IS GINNA'S: ladder, program, capacity, reference
+boron.** The config rungs: `steam_dump_setpoint` 8.23 → **7.03** [sourced — 1005 psig, TS Bases
+B 3.3.2; Tsat(7.03) = 546.9 °F = Ginna's 547 °F no-load to 0.1 °F], `sg_safety_open/reseat`
+9.31/9.0 → **7.58/7.33** [pop sourced — the 1085 psig first-lift MSSV; single valve carries the
+0.84 bank capacity there], `adv_setpoint/band` 8.77/0.25 → **7.31/0.12** [the §7.1.3.3 rule on
+the new ladder, inside Ginna's own 1005–1060 psig ARV band], `steam_p_rated` 5.65 → **5.69**
+[810 psig sourced], `low_tavg` 289 → 278, steam-pressure instrument range [0,10.5] → [0,8.5],
+`level_per_tavg` 2.5 → **1.62** [derived — puts no-load program level at WTSM §10.3's own 25 %;
+at 2.5 the steep program would have parked it at 8.7 %, under the heater cutoff]. Program:
+286.0 → 304.5 °C measured at both IC anchors to the digit.
+- **D1 EXECUTED**: swept at 0.28, the full-rejection ride-out SURVIVES (no scram; the core
+  self-throttles to ~71 % mid-ride) → **`steam_dump_max` 0.40 → 0.28 [sourced]** per the
+  owner's decision rule. Costs re-derived: the §8.21 cliff span 7.1 → 3.7 °C, TR-1k's
+  non-monotonicity ~16 → 3.1 pts (both bands re-derived, claims intact, smaller).
+- **C11, and two latent algebra findings**: `rho_excess` re-solved 0.087544 → **0.087354**
+  with the quote temperature DECOUPLED from the plant anchor (the 975-ppm ARO measurement is
+  at the WBN 557 °F HZP; the old conflation was benign 5 °C away and wrong at 286). The
+  HZP IC trims to **704.8 ppm with criticality back at step 319** — the 1/M story survives,
+  only the ppm label moves (683 → 705 across startup content, the chain's dilution target,
+  the §7.5 table regenerated). `run_reactivity`'s HFP-follows check had TWO latent
+  linearizations the longer walk exposed (base ppm converted at the destination worth;
+  the moderator leg at the HFP boron instead of the solve's own form) — fixed, and the
+  chain now predicts the engine EXACTLY (616 = 616).
+- **Blast adjudications, each measured**: TR-16's separation re-derived to the compressed
+  Ginna span (lie < pop−1.5, truth ≥ pop); the turbine-trip burst (~1.9 MPa) now EQUALS the
+  real operating→pop margin, so the bare-dump autoctl rig grazes the pop (34/600 lift
+  samples) while the SHIPPED plant holds (ADV 100 %, peak 7.52, settles 6.95) — the channel
+  check re-derived to graze-vs-park + end-state; TR-1's throttle band 40..55 → 60..80 (the
+  28 % sink); TR-1c's "past program" 315 → 309 (the program moved); TR-17's hold-hot 290 →
+  287.5; TR-7b's nat-circ sample moved to the flat decay tail (the lag-vs-slope race:
+  6 % LOW at 600 s in the settle, 6 % HIGH at 1200 chasing the tail, inside 5 % at 2400);
+  PWR-N01 step-8 target 545 → 541.4 °F (the settle is 547.2 at ~11.4 plant-h — re-measured);
+  pwr_atws re-derived (MTC equilibrium ~71 % on the smaller sink; the chemical shutdown
+  arrives ~7 min later on the +22 ppm hot-critical shift — hold added).
+- **TR-1i ships as the second STRICT XFAIL (#420)**: 4.35 (shallow program) → 5.59 (steep) →
+  **5.28** after the rod-channel speed thresholds were corrected to the sourced WTSM 8.1
+  ladder (the old [tune] ladder engaged 'fast' above 7.2 °F instead of 5 — slack the shallow
+  program never exercised). The ±5 °F duty is sourced and NOT widened; suspected residual:
+  the discrete three-speed ladder vs the real continuous 32-steps/min/°F ramp. **The #378
+  trade-space changed** (its fix was rejected FOR this duty at 5.26, now exceeded anyway) —
+  #420 says re-visit both together.
+- **The deception crest on the final plant: ~65 %, collapse at ~47 min — the 75 % annunciator
+  is unreachable in free play** (measured: dip 36, through 58 at ~32 min, crest 65). The
+  `pwr_qualify` graded window was alarm-keyed and could not arm — re-keyed (its third, same
+  reason class each time) to the level>58-rising state cue; TMI missions unaffected (their
+  >65 trigger grazes but their fixtures pass). **Flagged owner-review**: the crest question
+  now spans #418 A1 (69.4 on that plant) → wave 2 (75 at ~25 min) → wave 3 (65) — it is
+  tuning-sensitive through the level-constants set and wants its own ruling if the
+  annunciator cue matters.
+- **§8.34 RETIRED** (the ladder departure closed — span 79 psi vs the real ~80), `12` §12.18
+  closed (both ADV numbers sourced), Manuals 04/05/09 re-stated (Rev 14 item (h)), the §7.5
+  ECC table regenerated from the plant, `pwr_msiv`/mode5/return narration re-laddered,
+  board bounds 9.31 → 7.58 (board_check + wiring fallbacks).
+- Baselines: `run_campaign` 3037 → 3039 (the re-keyed paths), `run_behavior` 65/1 → 64/2
+  (TR-1i strict). `run_hardrules` re-checked standalone after these entries.
+
 **WAVE 2 BUILT (same session) — F15 re-solved 3144 → 2500 [derived-net], and the MEASUREMENT
 WALKED US OUT OF THE STAGE-1 BRACKET. THE FINDING IS THE F14 COUPLING.**
 - **K_phys ≈ 304** (the C_eff method, one basis — the declared currency IS power-scaled Ginna
