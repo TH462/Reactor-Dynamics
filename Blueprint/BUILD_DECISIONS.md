@@ -146,6 +146,63 @@ manuals Rev 14 re-stamped/packed (item n), run_manual_units 528 pairs. Fences un
 run_scenarios 3/3, run_campaign 51/51 3039. Injection verification three ways with
 distinct signatures; perturb h2_gain ×1.03 → 10/711 moved, zero flips.
 
+## 2026-08-08-backshop-a — the #221 audit lane moves to a directory of its own (`C:\grok_build\RD_Audit`)
+
+**Claim.** The audit lane is no longer a work lane wearing a settings file. It is
+`C:\grok_build\RD_Audit`: the auditor's own `CLAUDE.md`, a `findings/` scratch directory, and a
+**detached-HEAD worktree at `tree/`** holding the source under audit. `backshop` is an ordinary lane
+again and has its orientation document back.
+
+*(OWNER RULING, 2026-08-08: "It will audit things 'blind' without preconceived notions or the logic
+behind the choices", and "Ts wont be a new branch." Asked whether backshop should stop being the
+audit lane and get its `CLAUDE.md` back, the owner selected **yes — hand it back**; asked whether
+harness mechanics count as "the logic behind the choices", **mechanics yes, judgments no**.)*
+
+**Why.** The 2026-08-06 arrangement armed `backshop` with a gitignored `settings.local.json`, which
+bought a no-flag launch at a stated cost: **ordinary non-audit work in backshop also ran without
+`CLAUDE.md`** — no lane rules, no merge-conflict list, no gate baselines. A dedicated directory buys
+the same no-flag launch and pays nothing, because nothing else happens there.
+
+**What the shape buys, beyond tidiness.**
+
+| | before | now |
+|---|---|---|
+| RoE 1 "no fixes" | prose in the charter | `deny` on `Edit`/`Write` into `tree/**` and all three work lanes, plus a detached HEAD an edit could not reach a branch through |
+| auditor's orientation | `AUDIT_CHARTER.md`, opened by hand after `CLAUDE.md` was excluded | `RD_Audit/CLAUDE.md`, **auto-loaded** — the one channel that cannot be forgotten |
+| ordinary work in the lane | ran unprimed | there is no ordinary work in the lane |
+
+**THE TRAP THIS INTRODUCED, and the check that closes it.** The exclude list carried
+`**/grok_build/**/CLAUDE.md` as belt-and-braces. That glob **also matches
+`RD_Audit/CLAUDE.md`** — the auditor's own orientation, the one file in the lane that must load. An
+auditor handed no orientation measures protection engine-direct, sees a plant with no ESF arms at
+all, and files false findings; and like every other failure in this programme, the outcome is a
+clean-looking audit rather than a red. So: **the list is now fully explicit with no wildcards**
+(`audit_preflight.js` check 3b), and check 7 asserts the orientation is deployed, current, and *not*
+excluded. Covering a newly-added worktree was always check 3's job, not a glob's.
+
+**Second source of truth, handled rather than accepted.** `RD_Audit/CLAUDE.md` sits outside the
+repo, so it cannot be tracked. It is therefore **generated** from `Blueprint/AUDITOR_ORIENTATION.md`
+by `tools/audit_deploy.js`, never edited in place, and preflight refuses a slice when the two have
+drifted. `.gitignore`'s own note records this repo learning that lesson with `CLAUDE.md` on
+2026-07-29; a verified mirror is the answer, a second copy is not.
+
+**`AUDIT_CHARTER.md` §1–10 MOVED to `AUDITOR_ORIENTATION.md` — moved, not copied.** The charter is
+now purely the primed session's document (the lane, prep, close-out, history). Two documents both
+describing how to audit will disagree eventually, and the loser is the one the auditor is reading.
+
+**Standing trap for whoever prepares the next slice: `tree/` does not follow `develop`.** It is
+pinned, and *the tooling the auditor runs comes from that pinned commit* — including
+`hook_lane_status.js` and `audit_preflight.js`. Measured while building this: the hook run from the
+new lane reported "UNRECOGNISED tree" and omitted the audit row entirely, because `tree/` was still
+at develop's tip and had the old three-lane list. Re-point it in prep step 3 (`AUDIT_CHARTER.md`
+§2a) or the auditor audits stale code with stale tools.
+
+**Gate.** `run_hardrules` 235 → 237: +1 for `AUDITOR_ORIENTATION.md`'s single ruling citation
+(verified by removing the file and re-running: 235), +1 net across the charter rewrite. The
+rewrite's first draft put the dates in the **bullet prefix** rather than inside the citation window
+and HR11 failed both — the format is `(OWNER RULING, <date>: "<verbatim>")` and nothing else counts.
+`run_all --fast` otherwise at baseline.
+
 ## 2026-08-08-develop-b — #380 resolved by premise inversion (single-signal AFW), #355 feed program, #358 NO FLOW
 
 **The decision that mattered was reading the brackets.** #380's premise — lo-lo "sourced real
