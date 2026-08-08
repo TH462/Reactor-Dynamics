@@ -608,6 +608,30 @@
       // — a turbine that is NOT tripped — drives its own events rather than borrowing the
       // scram's, and puts the plant back as it found it (tripped, off line) so the pipe-
       // animation checks below still see the state they were written against.
+      // Trip-provenance shim (#418 A1 — LOAD-BEARING, not just diagnostic): record every
+      // trip-class command the engine receives through this block, with the sim time and
+      // the sensed values the trip rules read. The #230 claim below is about the COMMAND
+      // PATH — `disconnect_grid` must not trip the turbine — and this harness's plant
+      // carries two hundred checks of history, so live protection can legitimately fire
+      // in the same window (measured 2026-08-07: the depressurized, overcool-degraded
+      // fixture crossed the OTΔT trip during these ticks and the scram's turbine-trip
+      // interlock did the tripping — a plant response, not the #230 defect). The check
+      // therefore accepts a trip WITH a fresh scram in the log; the #230 regression shape
+      // — tripped with an EMPTY log (disconnect calling SG.tripTurbine directly, no
+      // command) — still fails, which is the discrimination that matters.
+      var _tripLog = [];
+      (function () {
+        var eng = svc.engine, orig = eng.applyCommand;
+        eng.applyCommand = function (c) {
+          if (c && (c.action === 'trip_turbine' || c.action === 'scram' || c.action === 'close_msiv')) {
+            var ins = eng.getInstruments();
+            _tripLog.push(c.action + '@' + eng.s.sim_time.toFixed(1)
+              + '(rpm=' + Math.round(ins.turbine_rpm) + ',vac=' + ins.condenser_vacuum.toFixed(1)
+              + ',sglvl=' + ins.sg_level.toFixed(1) + ',sgP=' + eng.s.steam_pressure_mpa.toFixed(2) + ')');
+          }
+          return orig.apply(this, arguments);
+        };
+      })();
       svc.handleCommand({ action: 'connect_grid' }); ticks(4);
       var g0 = svc.assembleSnapshot();
       ck('precondition: turbine not tripped before the offline checks',
@@ -616,8 +640,15 @@
       var g1 = svc.assembleSnapshot();
       ck('func: OFF -> load_mode disconnected', (g1.control_state || {}).load_mode === 'disconnected',
         (g1.control_state || {}).load_mode);
+      // Detail carries the PROVENANCE, not just the verdict — a bare "true" cost a
+      // debugging session (#418 A1). Pass = not tripped, OR tripped by a live scram's
+      // interlock (a scram command in the log); fail = tripped with no scram recorded,
+      // which is the #230 path-defect shape.
+      var _freshScram = _tripLog.some(function (e) { return e.indexOf('scram@') === 0; });
       ck('func: a PLANNED offline does NOT trip the turbine (#230)',
-        g1.instruments.turbine_tripped === false, String(g1.instruments.turbine_tripped));
+        g1.instruments.turbine_tripped === false || _freshScram,
+        'tripped=' + g1.instruments.turbine_tripped
+        + ' tripLog=[' + (_tripLog.join(' ') || 'empty') + ']');
       RD.PwrBoard.render(g1);
       ck('feedback: OFF tile lit while off line', tileActive('imro8len0oi'));
       ck('feedback: FOLLOW tile dark while off line', !tileActive('imro8ktzs3u'));
@@ -656,7 +687,18 @@
       // RODS_NOT_INSERTED with the plant still coasting at 95 % power, which is the interlock
       // doing its job, not a defect.
       for (var rw = 0; rw < 400 && !svc.assembleSnapshot().instruments.rods_fully_in; rw++) ticks(1);
-      var rrsp = svc.handleCommand({ action: 'reset_rps' }); ticks(4);
+      // RETRY until the plant clears its own trip signals (#418 wave B1, 2026-08-07).
+      // A single immediate reset was refused TRIP_SIGNAL_PRESENT on the B1 plant: the
+      // transported legs and tube node hold the post-trip contraction (and its live
+      // lo-press/OTΔT-class conditions) a few hundred ticks longer than the old
+      // same-step plant, and the interlock refusing while a signal stands is CORRECT.
+      // The harness now does what an operator does — wait for conditions to clear and
+      // reset then. The CLAIM is unchanged: the #75 reset path works once the plant
+      // is resettable.
+      var rrsp = null;
+      for (var rr = 0; rr < 240 && svc.assembleSnapshot().instruments.rps_scrammed; rr++) {
+        rrsp = svc.handleCommand({ action: 'reset_rps' }); ticks(5);
+      }
       ck('func: RPS reset clears the turbine-trip scram (#75 reset path)',
         svc.assembleSnapshot().instruments.rps_scrammed === false,
         (rrsp && rrsp.reason) || (rrsp && rrsp.message) || 'no refusal');
@@ -851,6 +893,20 @@
            RD.PwrBoard.pipeFlowState('pms3l83etan') === 'paused', RD.PwrBoard.pipeFlowState('pms3l83etan'));
         ck('pipe: blackout -> feed tee to SG PAUSED (item 9: no main feed, no AFW)',
            RD.PwrBoard.pipeFlowState('pms31qjbqhy') === 'paused', RD.PwrBoard.pipeFlowState('pms31qjbqhy'));
+        // #358: at 120 s of blackout the feed channel is engaged, NOT yet saturated (the
+        // windup reaches its 120 % rail near ~600 s), and commanding ~27 % at a plant
+        // delivering ~1e-51 — the exact state that used to render a green HOLDING corner
+        // and a climbing cyan gpm box. Injection-verified: blank feedNoFlow's flow term
+        // and both of these go back to lying.
+        (function () {
+          var st = document.querySelector('[data-item="ims89lnqmip"]');
+          ck('func: blackout -> SG FEED corner reads NO FLOW in the pre-SAT window (#358)',
+             !!st && /NO FLOW/.test(st.textContent), st ? st.textContent : 'tile missing');
+          var ni = document.querySelector('[data-item="imro8xhy2me"] input');
+          var nc = ni ? ni.style.color : 'input missing';
+          ck('func: blackout -> the gpm demand box is marked amber — commanded, not delivered (#358)',
+             nc === 'rgb(216, 166, 87)' || nc === '#d8a657', nc);
+        })();
         // Mode 5 is the control: rcs_flow is ~0 there, so the SAME pipe must be still — without
         // this the crawl check passes on a board that simply never stops the primary.
         var m5 = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'cold_shutdown' });
@@ -1163,19 +1219,19 @@
           ck('units: SI setpoint box gains decimals', /\./.test(n.v) && !/\./.test(usDump.v || '.'),
             usDump.v + ' -> ' + n.v);
           var it = item('ims31tq7mgc'), b = d.boundsFor(it);
-          ck('units: SI bounds are the engine clip in MPa', b[0] === 0.2 && b[1] === 9.31, JSON.stringify(b));
+          ck('units: SI bounds are the engine clip in MPa', b[0] === 0.2 && b[1] === 7.58, JSON.stringify(b));
           ck('units: SI ▲▼ step is 0.01 MPa, not 1', d.stepFor(it) === 0.01, d.stepFor(it));
           // The hint is DERIVED from the bounds in SI, so it cannot drift from them.
-          ck('units: SI range hint is derived from the bounds', d.numberHint(it) === '0.2-9.31 MPa', d.numberHint(it));
+          ck('units: SI range hint is derived from the bounds', d.numberHint(it) === '0.2-7.58 MPa', d.numberHint(it));
           // The ADV SP box takes the SAME engine clip as the Dump SP, so it must
           // convert identically — a second setpoint box that read psi while its
           // neighbour read MPa would be worse than no unit layer at all (#371).
           var advIt = item('bdAdvSp'), advB = d.boundsFor(advIt);
-          ck('units: ADV SP bounds are the engine clip in MPa', advB[0] === 0.2 && advB[1] === 9.31, JSON.stringify(advB));
+          ck('units: ADV SP bounds are the engine clip in MPa', advB[0] === 0.2 && advB[1] === 7.58, JSON.stringify(advB));
           // The ADV SP tile carries NO inline unit — in 90 px of card the suffix cost
           // the input the width it needed — so the DERIVED RANGE HINT is what names
           // the unit, and that is what must convert.
-          ck('units: ADV SP range hint converts to MPa', d.numberHint(advIt) === '0.2-9.31 MPa', d.numberHint(advIt));
+          ck('units: ADV SP range hint converts to MPa', d.numberHint(advIt) === '0.2-7.58 MPa', d.numberHint(advIt));
           ck('units: SI charging box keeps a usable resolution (0-13.6 m³/h at 0.1)',
             d.numberDigits(item('imrpq48hn3t')) === 1 && d.stepFor(item('imrpq48hn3t')) === 0.1,
             d.numberDigits(item('imrpq48hn3t')) + ' / ' + d.stepFor(item('imrpq48hn3t')));

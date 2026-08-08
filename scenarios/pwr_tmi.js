@@ -178,8 +178,8 @@
       { id: 'core_damage',
         trigger: { type: 'true_state', field: 'core_inventory_pct', direction: 'below', value: 70.0 },
         commentary: {
-          learning: 'Back to real time: the core is uncovering and overheating — this is what happened in 1979. Two honest notes: in the real plant a single stuck indicator would be cross-checked against redundant sensors that this simulator deliberately does not model, and this simulation ends at fuel damage — the containment consequences that followed are described, not simulated. Press Rewind — each press steps one checkpoint further back; walk it to the injection decision and change history.',
-          industry: 'Time 1×. Core uncovery in progress — the 1979 outcome. Model notes: single-sensor indication (no redundancy/voting modeled) makes the failure starker than a real voted plant; simulation terminates at fuel damage, containment response not modeled. Rewind steps back one checkpoint per press — return to the injection decision to retry.',
+          learning: 'Back to real time: the core is uncovering and overheating — this is what happened in 1979. Two honest notes: in the real plant a single stuck indicator would be cross-checked against redundant sensors that this simulator deliberately does not model, and this simulation ends at fuel damage — the building\'s response is simulated (watch the Physics tab: pressure, and the hydrogen the burning cladding is making), but the releases that followed are described, not simulated. Press Rewind — each press steps one checkpoint further back; walk it to the injection decision and change history.',
+          industry: 'Time 1×. Core uncovery in progress — the 1979 outcome. Model notes: single-sensor indication (no redundancy/voting modeled) makes the failure starker than a real voted plant; simulation terminates at fuel damage — containment pressure, temperature, hydrogen inventory and the one-time burn are modeled (Physics tab); releases are not. Rewind steps back one checkpoint per press — return to the injection decision to retry.',
         },
         speed: 1,
         level_complete: {

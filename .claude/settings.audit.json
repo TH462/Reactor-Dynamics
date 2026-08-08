@@ -1,18 +1,20 @@
 {
-  "_comment_1": "AUDIT SESSION SETTINGS (#221 RoE 1). Launch with:  claude --settings .claude/settings.audit.json",
-  "_comment_2": "Excludes the two ALWAYS-ON priming sources so an audit slice is not handed prior conclusions about the subsystem it is auditing. Read Blueprint/AUDIT_CHARTER.md instead of CLAUDE.md — it carries the operating rules with the diagnosis removed.",
+  "_comment_1": "AUDIT SESSION SETTINGS (#221 RoE 1) — THE FALLBACK ROUTE. Launch with:  claude --settings .claude/settings.audit.json",
+  "_comment_0": "NOT THE NORMAL ROUTE ANY MORE (ruled 2026-08-08). The audit lane is C:\\grok_build\\RD_Audit, a dedicated directory whose own .claude/settings.local.json layers by default and whose own CLAUDE.md IS the auditor's orientation — no flag, and none of the work lanes give up their CLAUDE.md. This file is what remains for auditing FROM a work lane, and it has one gap the lane does not: it excludes CLAUDE.md without putting anything in its place, so a session launched this way must open Blueprint/AUDITOR_ORIENTATION.md by hand before it reads any source.",
+  "_comment_2": "Excludes the two ALWAYS-ON priming sources so an audit slice is not handed prior conclusions about the subsystem it is auditing.",
   "_comment_3": "This layers ON TOP of .claude/settings.json, so the project permissions and the PostToolUse/SessionStart hooks still apply. Do not copy them here.",
 
-  "_comment_claudeMd": "CLAUDE.md is loaded into every agent's context on every turn and is dense with per-subsystem conclusions, gate-score narratives and standing traps. Globs are matched against ABSOLUTE paths. Both slash directions and an explicit per-tree list are given because the repo lives on Windows (C:\\grok_build\\...) and picomatch is forward-slash oriented — belt and braces beats a silently-unmatched pattern, which would look exactly like a clean audit.",
+  "_comment_claudeMd": "CLAUDE.md is loaded into every agent's context on every turn and is dense with per-subsystem conclusions, gate-score narratives and standing traps. Globs are matched against ABSOLUTE paths. Both slash directions are listed for every entry because the repo lives on Windows (C:\\grok_build\\...) and picomatch is forward-slash oriented, and a silently-unmatched pattern looks exactly like a clean audit.",
+  "_comment_nowildcards": "THE LIST IS EXPLICIT AND CARRIES NO WILDCARDS, and tools/audit_preflight.js check 3b enforces that. Until 2026-08-08 a `**/grok_build/**/CLAUDE.md` catch-all headed it as belt-and-braces. Once the audit lane moved to C:\\grok_build\\RD_Audit that pattern became a defect: it also matches RD_Audit/CLAUDE.md, the AUDITOR'S OWN orientation document and the one file that must load. Covering a newly-added worktree is preflight check 3's job — it enumerates `git worktree list` and demands both slash forms verbatim — not a glob's.",
   "claudeMdExcludes": [
-    "**/grok_build/**/CLAUDE.md",
-    "**\\grok_build\\**\\CLAUDE.md",
     "C:/grok_build/Reactor_Dynamics/CLAUDE.md",
-    "C:/grok_build/RD_workbench/CLAUDE.md",
-    "C:/grok_build/RD_backshop/CLAUDE.md",
     "C:\\grok_build\\Reactor_Dynamics\\CLAUDE.md",
+    "C:/grok_build/RD_workbench/CLAUDE.md",
     "C:\\grok_build\\RD_workbench\\CLAUDE.md",
-    "C:\\grok_build\\RD_backshop\\CLAUDE.md"
+    "C:/grok_build/RD_backshop/CLAUDE.md",
+    "C:\\grok_build\\RD_backshop\\CLAUDE.md",
+    "C:/grok_build/RD_Audit/tree/CLAUDE.md",
+    "C:\\grok_build\\RD_Audit\\tree\\CLAUDE.md"
   ],
 
   "_comment_memory": "The auto-memory index loads alongside CLAUDE.md and is the worked case #221 RoE 1 actually cites: on 2026-08-02 the trip-block-hybrid-model memory described the PWR trip-block model as settled and owner-confirmed — a prior conclusion about the exact mechanism slice 1 was auditing, priming in the 'this is deliberate, do not look' direction. Excluding CLAUDE.md alone leaves this in place, which is why a straight file-swap does not solve the problem.",

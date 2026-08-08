@@ -75,7 +75,7 @@ var BASELINES = {
   // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
   // protection acted on a reading the plant never had. Each half injection-verified and
   // they discriminate independently.
-  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 242passed' },   // 241 -> 242 (#386 stage 1): save_migration asserts the five containment fields restore at ambient   // 200 → 201: #247 added the rcs_flow-follows-truth check to transient_rcp_trip
+  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 246passed' },   // 245 -> 246 (#386 stage 3): save_migration pins the six hydrogen fields restoring empty/unburned   // 244 -> 245 (#421): the legacy-currency letdown-alias snap check   // 243 -> 244 (#418 B1): save_migration asserts the t_sg_c split-interpolation seed   // 242 -> 243 (#418 A2): the sg_mass_frac inverse-map round-trip   // 241 -> 242 (#386 stage 1): the five containment fields
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
   // DELIBERATELY NOT MOVED at #346, and reading 1/3 on the backshop lane. Both red suites are
@@ -313,7 +313,12 @@ var BASELINES = {
   // knife-edge PORV sample carried as info. Injection-verified: severing the arm reddens
   // 5+4, forcing it always-armed reddens 4+5, and the capacity nudge that flipped the old
   // form leaves all 37 TR-1c/TR-1k checks green.
-  'run_behavior.js':       { code: 0, secs: 80, score: '65pass 1xfail' },
+  // 65/1 -> 64/2 (2026-08-07, #419 wave 3): TR-1i joins TR-18 as a STRICT xfail (#420) —
+  // the steep Ginna program runs the sourced ±5 °F ramp duty to 5.28 with the rod channel
+  // already at the sourced WTSM speed thresholds; the ±5 band is sourced and NOT widened.
+  // Coupled to #378 (whose fix was rejected FOR this duty at 5.26 — the trade-space
+  // changed); fixing the duty must remove the XFAIL entry in the same change.
+  'run_behavior.js':       { code: 0, secs: 80, score: '67pass 2xfail' },   // 66 -> 67 (#386 stage 3): CA-24 — hydrogen: mitigated trace, the one-time burn above the hi-hi and under design, recombiner rig, the SGTR transport fence (clone rig). Injection-verified three ways with distinct signatures. 65 -> 66 (#385 node stage 1): CA-23 — the pressurizer inventory node is INERT (identity to the level line across three families + the migration seed). 64 -> 65 (#386 stage 2): CA-22 spray knockdown/auto-secure; CA-16 leg D re-authored on the active sinks, CA-21 window 0.90 -> 0.85 (stage-2 drained equilibrium parks at 0.88), PI-9 re-authored (SI correctly arrives on the sourced containment backup)
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -363,7 +368,7 @@ var BASELINES = {
   // shared by all three plants now, so it stops being a finding — and the known-leak list
   // in run_hr3.js is EMPTY for the first time. Fewer checks means fewer leaks, not less
   // checking; the gate reddened on its own stale entry before anyone edited the list.
-  'run_hr3.js':            { code: 0, score: '28checks 0failed' },
+  'run_hr3.js':            { code: 0, score: '31checks 0failed' },   // 30 -> 31 (#386 stage 3): set_ctmt_recombiners declared. 28 -> 30 (#386 stage 2): set_containment_spray/set_ctmt_fans declared in the valueFieldFor allow-list
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
@@ -783,7 +788,20 @@ var BASELINES = {
   // website work gets no changelog.html entry. An intermediate run taken with the merge written
   // up and the release not yet written read 218 — recording that would have shipped a 2-check
   // drift, which is this key's own standing warning arriving twice in one session.
-  'run_hardrules.js':      { code: 0, score: '220checks 0failed' },
+  // 220 -> 224 (2026-08-07-develop-c, #418 wave A1): four new dated-citation sites from the
+  // tier-2 ruling write-ups — the content-follows-physics directive in CLAUDE.md's HR9 block,
+  // the scope-ruling records in BUILD_DECISIONS/TUNING_LOG, and the K_steam_pressure
+  // derivation's ruling reference in pwr_config. MEASURED after the write-ups, per this key's
+  // standing warning (prose moves this score; run the aggregate after the docs, not before).
+  // 224 -> 225 (2026-08-07-develop-c close): the tier-3 ruling citation in the TUNING_LOG
+  // turnover — the same prose-moves-this-score trap as this morning's CI red, caught
+  // LOCALLY this time by running the gate after the docs, which is what this key's own
+  // comment says to do.
+  // 225 -> 228 (2026-08-07, #419 wave 1): three new dated-citation sites — the pace/D-row
+  // rulings quoted in the Manuals/00 Rev 14 item (g) and this session's TUNING_LOG and
+  // BUILD_DECISIONS entries. Measured standalone on the final tree AFTER all docs were
+  // written (the docs-move-the-score rule above, honored locally again).
+  'run_hardrules.js':      { code: 0, score: '244checks 0failed' },   // MERGED 2026-08-08 (#425 x audit-lane move): both sides added HR11 sites onto the shared 235 base — measured on the merged tree, not summed. | 240 -> 241 (2026-08-08, #425): the "Do next as recommended." ruling citation lands in TUNING_LOG + BUILD_DECISIONS + the Rev 14 row — one new HR11 site. Same forgot-the-docs-bump class as every entry below; caught by the end-of-session run_all as designed. | 235 -> 238 (2026-08-08, audit lane move): three new HR11 citation sites for the SAME 2026-08-08 ruling, one per document that has to state it — Blueprint/AUDITOR_ORIENTATION.md (+1, verified by removing the file and re-running: 235), the AUDIT_CHARTER.md rewrite (+1 net: it added the lane ruling and a §6 history restating two older ones), and the BUILD_DECISIONS 2026-08-08-backshop-a entry (+1). The charter rewrite's first draft put the dates in the BULLET PREFIX rather than inside the citation window and HR11 failed both — the format is `(OWNER RULING, <date>: "<verbatim>")` and nothing else counts. | 235 -> 240 (2026-08-08, #386 stage 3): the burn/spike ruling citations across CONTEXT §6.3, CHANGELOG, BUILD_DECISIONS, TUNING_LOG and the Rev 14 row — five new HR11 sites. Two were first written BARE ("OWNER RULING 2026-08-05: TMI-2-style" with neither verbatim words nor the declared-selection form) and the scan caught both — the ruling IS a selection, so the "a selection, not verbatim words" declaration is load-bearing, not boilerplate. | 230 -> 235 (2026-08-08, #380/#355/#358): the three same-day OWNER RULING citations land in TUNING_LOG, BUILD_DECISIONS and the Rev 14 row — five new HR11 sites. Updated WITH the docs in the same change this time (see the 228 -> 230 note below for the CI-caught version of forgetting that). | 228 -> 230 (2026-08-08): the #385 flash-ruling quotes in BUILD_DECISIONS + TUNING_LOG add two HR11 rows. CAUGHT BY CI, not locally — the docs-only commit ran run_hardrules STANDALONE (which prints its own tally and compares nothing); only run_all compares to this map. The three-comments-up warning arrived on schedule, wearing a new face: "once more AFTER the docs" must mean run_all, not the bare runner.
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
@@ -831,7 +849,10 @@ var BASELINES = {
   // MEASURED ON THE MERGED TREE (2026-08-06 lane merge): five new fields between the two
   // lanes, and this gate counts each name on BOTH sides of the diff, so it moves by more
   // than the field count. develop read 154, workbench 153 — neither survives.
-  'run_contract.js':       { code: 0, score: '157checks 0failed' },
+  // 157 -> 158 (#418 A2) -> 159 (#418 B1): the sg_mass_frac ledger and t_sg_c tube-node
+  // fields' §6.3 lines — the contract gate counts one check per documented true_state
+  // field, both directions.
+  'run_contract.js':       { code: 0, score: '175checks 0failed' },   // 168 -> 175 (#386 stage 3): 4 hydrogen true_state fields + 3 new alarms' category checks. 167 -> 168 (#385 node stage 1): the pzr_mass_frac inventory-node field's §6.3 line. 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -976,7 +997,31 @@ var BASELINES = {
   // `ui/diagram/board/components/comp_atmospheric_dump.js`, the ADV's schematic component,
   // registered on the shell and on board_check. The guard counts shipped scripts, so a new
   // board component is exactly one check. MEASURED after `node tools/make_portable.js`.
-  'run_portable.js':       { code: 0, score: '125checks 0failed' },
+  // 125 -> 129 on 2026-08-07: the bundler gained an OMIT set (local scripts the offline
+  // build must not contain at all, as opposed to DROP's external tags), and the gate was
+  // taught about it — +1 TAGS row per omitted file, +2 BUNDLE rows proving each one
+  // actually left, and the inlined-script tally now subtracts them.
+  // THE GATE FOUND THIS ITSELF, which is the whole reason it exists: wiring telemetry put
+  // a `fetch(` into a script ui/shell.html ships, and the LOADS scan failed on it. The
+  // right answer was to ship neither site/telemetry.js nor its endpoint file in the
+  // portable build rather than to add an exception to the scan — "cannot fire" and "is
+  // not present" are different promises and the offline build makes the stronger one.
+  // The per-file BUNDLE rows exist because the tally alone is satisfiable by a TYPO: a
+  // mis-keyed OMIT entry ships the file and the count still matches scripts.length.
+  // 129 -> 130 on 2026-08-07: site/build_site.js joined vercel.json's buildCommand, and
+  // the DEPLOY check enumerates every script that command runs to confirm .vercelignore
+  // does not withhold it from the build machine — the failure that killed Alpha 1.10.0.
+  // One more build script, one more check, and it is the check doing its job.
+  // 130 -> 128 on 2026-08-08 (#413): the two Vercel analytics beacons were removed from
+  // ui/shell.html, and the TAGS rule emits one check per EXTERNAL tag — so two tags gone is
+  // two checks gone. DROP is now empty and that is correct: Cloudflare Web Analytics
+  // collects at the edge on a proxied zone and ships no script, so the shell has no
+  // external tags at all. The constant is kept, not deleted — an undeclared external tag is
+  // still a hard error and the next one needs somewhere to be declared with a reason.
+  // The DROP entries had to go in the SAME change as the tags: the gate fails on a stale
+  // declaration as well as an undeclared tag, so removing one without the other is red
+  // either way. That symmetry is the check working.
+  'run_portable.js':       { code: 0, score: '128checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -1039,7 +1084,7 @@ var BASELINES = {
   // to filter to death, the #249 class).
   // 68 → 69 (2026-08-05, #370c): the steam line isolation's actuation setpoint
   // (steam_pressure low 5.20) joins Part A's static audit.
-  'run_reachability.js':   { code: 0, score: '69checks 0failed' },
+  'run_reachability.js':   { code: 0, score: '76checks 0failed' },   // 74 -> 76 (#386 stage 3): the 4.1 v/o H2 alarm + the recombiner start join Part A (strictly inside ctmt_h2's [0, 10] — the spec pre-sized the range). 69 -> 74 (#386 stage 2): the containment actuation/alarm setpoints join Part A (all strictly inside containment_pressure's [0, 0.8] — stage 1 pre-sized the range for exactly this)
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
@@ -1105,10 +1150,10 @@ var BASELINES = {
   // 12 -> 13 on 2026-08-05 with Alpha 1.1.0 — a RELEASE adds a check by design: the CROSS
   // block cross-checks every changelog.html entry down to the oldest version CHANGELOG.md
   // still names individually, so it grows by one row per published release.
-  // 16 -> 17 on 2026-08-07 with Alpha 1.3.0 — the same mechanism a fourth time. This key
-  // moves on every RELEASE and on nothing else, so a bump here with no release in the same
-  // change is the signal that something else added a check.
-  'run_release.js':        { code: 0, score: '17checks 0failed' },
+  // 16 -> 17 on 2026-08-07 with Alpha 1.3.0; 17 -> 18 on 2026-08-08 with Alpha 1.4.0 — the
+  // same mechanism each time. This key moves on every RELEASE and on nothing else, so a bump
+  // here with no release in the same change is the signal that something else added a check.
+  'run_release.js':        { code: 0, score: '18checks 0failed' },
   // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
   // `og:image` ("site/hero.png") from launch, and Slack / Discord / iMessage / X do not
   // resolve a relative og:image, so every link ever shared into a chat rendered with no
@@ -1123,7 +1168,15 @@ var BASELINES = {
   // 116/3 (the count moves because the stray-url sweep emits a row naming it), a page
   // stripped of its card 115/13, and a stale og:image:width 115/1. 115 checks is
   // 8 pages × 14 + the discovery row and the hero-file row.
-  'run_site_meta.js':      { code: 0, score: '115checks 0failed' },
+  // 115 -> 148 on 2026-08-07: a 9th page (404.html — Pages serves one for unmatched
+  // paths where Vercel supplied its own) at 14 checks, plus a CROSS-CHECK against
+  // site/build_site.js's PAGES list. Two files each answer "what is the public site" and
+  // they can disagree in both directions: add a page and forget the build list and its
+  // card is checked here while the deploy never publishes it; drop one and the build
+  // throws at deploy time, which is late. It caught 404.html on its first run.
+  // INJECTION-VERIFIED both ways: a page removed from the build list 146/2, a page added
+  // to it that this gate does not glob 148/2.
+  'run_site_meta.js':      { code: 0, score: '148checks 0failed' },
   // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
   // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
   // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE
@@ -1140,6 +1193,39 @@ var BASELINES = {
   // unrecognised-CI fallback flipped from 'public' to 'dev' scores 25/2, and renaming
   // PRODUCTION_BRANCH scores 25/4.
   'run_channel.js':        { code: 0, score: '25checks 0failed' },
+  // NEW 2026-08-07 — the usage-data client's PRIVACY INVARIANTS (site/telemetry.js).
+  // This is the first code in the project that sends anything anywhere; everything else
+  // runs on the player's machine and privacy.html says so. So these are not style rules
+  // to be re-derived: nothing is collected while consent is undecided or denied, nothing
+  // is sent without an endpoint (a clone and the offline build both have none by
+  // construction), event names come from a declared allowlist, property VALUES are
+  // type- and charset-bounded so no free text can ride the automatic path, and the
+  // session id lives in sessionStorage so nothing links two visits.
+  // It DRIVES the module against a fake browser rather than grepping it — every one of
+  // those is a behaviour, and a grep for `localStorage` proves nothing about whether an
+  // undecided visitor is silent. Both transport paths are covered: Node ships
+  // CompressionStream so the gzip path is the default, and the raw fallback is forced.
+  // INJECTION-VERIFIED, all six: consent check removed 49/4, allowlist dropped 49/2,
+  // session id moved to localStorage 49/2, enum charset check removed 49/2, revocation
+  // not clearing the queue 49/1, a real URL committed to the endpoint file 49/1.
+  // NOTHING IS WIRED YET — no caller emits an event, so this gate pins a contract the
+  // sim does not exercise. That is deliberate: the contract lands before the collection.
+  // 49 -> 50 on 2026-08-07 (slice 2, the wiring): one added check, and one CORRECTED.
+  // The registry gained `plant_mode` — the funnel is now the engine's own derived
+  // commercial mode rather than a power threshold picked by eye, which would have been a
+  // plant-dynamics claim wearing a product-metric hat. And `session_end.reached_play` was
+  // CUT after the live board disproved it: play does not route through the command
+  // dispatcher, so the flag read false on a session that had plainly run. `sim_seconds`
+  // already answers it, because the sim clock only advances while running.
+  // 50 -> 78 on 2026-08-07 (slice 3, the Worker): +28 from a CROSS-CHECK between
+  // site/telemetry.js's registry and worker/src/index.js's KEY_OF column map. Two silent
+  // failures live in that seam and neither is visible from either side alone: declare an
+  // event and forget the receiver, and it is collected then thrown away (the Worker drops
+  // unknown names); rename a property, and its column arrives empty for ever.
+  // The map is parsed as TEXT — the Worker is an ES module and these runners are CommonJS.
+  // INJECTION-VERIFIED: an event the Worker never learned about scores 76/1, a renamed
+  // property 78/1, a stale mapping 80/2.
+  'run_telemetry.js':      { code: 0, score: '78checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane
@@ -1222,7 +1308,7 @@ var BASELINES = {
   // term so coincidence logic (high steam flow AND low steam pressure) can be written
   // at all; the new suite pins it at the predicate — both directions, fail-closed on an
   // absent instrument, and the membership form untouched.
-  'run_m4.js':             { code: 0, score: '40/40 262passed' },
+  'run_m4.js':             { code: 0, score: '43/43 285passed' },   // 42/42 278 -> 43/43 285 (#386 stage 3): the recombiner-row suite (auto-start, params-trap seal-in refusal, latched-not-live, auto-secure, re-fire). 41/41 274 -> 42/42 278 (#387): the repo's FIRST noisy-mode leg — adv_valve jitters under an injected noisy failure (was silently inert: noise 0 with no noise_failure), byte-constant baseline, clears clean. Injection-verified: red on the pre-#387 config.   // 40/40 262 -> 41/41 274 (#386 stage 2): the containment ESF row suite — unblockable SI, latched spray seal-in + auto-secure, fan realign, MSLI hi-hi
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -1346,7 +1432,20 @@ var BASELINES = {
   // holding rigs no longer pull the AFW tag — a running heat sink prevents the
   // deception, so the order those variants depend on never arms (the tag+defend
   // quiet-night is a filed design gap, not a reachable ending yet).
-  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3029passed' },
+  // 3029 -> 3034 (2026-08-07-develop-c, #418 wave A1): the TMI-2 securing cue re-anchored
+  // (pzr_level_high alarm -> level > 65 %, measured crest 69.4 % — the shared TRIG in
+  // pwr_tmi2_common.js carries the record), +evidence lines (the no-dev cue telemetry, the
+  // pwr_esf starved-drain duration), and the pwr_esf starved budget 400 -> 900 s at the
+  // honest decay-heat boil-off. MEASURED standalone 51/51 3034.
+  // 3034 -> 3037 (2026-08-07, #419 wave 2): the pwr_tmi2_p3 FULL row's new hpi_active leg
+  // routes the no-reinjection variant through more of its beat graph before the PLUGGED
+  // ending latches — three more checks execute and pass; suites unchanged at 51/51.
+  // 3037 -> 3039 (2026-08-07, #419 wave 3): the pwr_qualify challenge branches re-keyed
+  // from the pzr_level_high alarm (unreachable — the deception crests ~65 % on the
+  // re-anchored plant) to the level>58-rising state cue, and pwr_return_to_mode1's
+  // arrive gate back onto the anchor−1 convention (296 was the retired 297-anchor's
+  // number) — two more checks on the re-keyed paths; suites 51/51.
+  'run_campaign.js':       { code: 0, secs: 383, score: '51/51 3039passed' },
   // 24 -> 38 on 2026-08-06 (#395): preconditions. Section 7 is the MECHANISM on a
   // synthetic procedure (graded live instrument-first, warn-never-block, the
   // comment raised/cleared/re-raised, stop takes it down) — injection-verified:
@@ -1652,7 +1751,7 @@ var BASELINES = {
   // clear-of-the-dump-valve) go with it rather than being kept alive against an item that
   // no longer renders. Net -2. Everything else the re-export moved was re-pinned, not
   // dropped: four pipe ids, five item ids, two re-measured runs and the rod-card spacing.
-  'verify_board_check.js':   { code: 0, score: '215checks' },
+  'verify_board_check.js':   { code: 0, score: '222checks' },   // 215 -> 222 (2026-08-08, #358): +2 functional pins (SBO corner reads NO FLOW pre-SAT, gpm demand box ambers) + 5 selfTest cases for the delivery predicate. Injection-verified: blanking feedNoFlow's flow term reds all of them on the old lying behavior.
   // 84 -> 174 on 2026-07-31 (#224). NOT new assertions — the SAME assertions finally
   // applied to the steps they were always meant to cover. This gate iterates `STEP_UI` in
   // manual_ui_map.js rather than the procedure steps, so that table is its coverage list,
@@ -1683,6 +1782,14 @@ var BASELINES = {
   // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
   // 258 -> 261 (2026-08-04, #348): the SGTR SI-termination step, 3 checks per controlled step.
   'verify_manual_follow.js': { code: 0, secs: 158, score: '261checks', slow: true },
+  // NEW 2026-08-08 (#387): freshness gate for the GENERATED ui/manual_data.js — every
+  // cfg.instruments key has an indications entry and none ships name === id (the I-12
+  // raw-id fallback). Landed against a file that had been stale since 2026-07-31 with
+  // 14 instruments missing from the Failures-tab picker; injection-verified (the gate
+  // reds 14 against that committed file). 148 = 49 instruments × both directions + the
+  // 49 name scans + the non-empty check; the count moves with the instrument set, and
+  // updating it here is the acknowledgement.
+  'verify_manual_data.js':   { code: 0, score: '151checks 0failed' },   // 148 -> 151 (#386 stage 3): the ctmt_h2 analyzer joins the picker — the gate landed hours before the instrument and enforced its display entry, which is the sequencing it exists for
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

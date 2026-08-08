@@ -334,9 +334,15 @@
             industry: 'Recovery assessment. Track pressure and subcooling margin — accelerating while the plant responds.' },
         ],
         branches: [
+          // FULL routes on the FACTS its card narrates — the terminating PAIR (#419 wave 2,
+          // the third re-key of this grid and the same reason as the first two): at the
+          // honest relief clock an EARLY isolation self-recovers past 85 % on normal CVCS
+          // makeup with subcooling restored, so without the `hpi_active` leg this row fired
+          // on a path that never re-injected and stole the PLUGGED variant's ending.
           { trigger: { type: 'all', triggers: [
               TRIG.subcoolRestored,
               { type: 'true_state', field: 'fuel_damaged', direction: 'is_false' },
+              { type: 'true_state', field: 'hpi_active', direction: 'is_true' },
               { type: 'true_state', field: 'core_inventory_pct', direction: 'above', value: 85.0 },
             ] }, goto: 'p3_end_full' },
           // PLUGGED routes on the FACTS its card narrates, not on the margin (#407,
@@ -399,12 +405,12 @@
         dialogue: [
           { speaker: 'supx',
             learning: 'You plugged the hole — good. Now look at the subcooling margin: still LOST, and it is not lying to you this time. The water you bled away is *gone*, the core is sitting partly dry, and pressure coming back does not put it back. Isolation was half the job. Get injection on and refill this plant, mister — a save isn\'t finished until the core is under water.',
-            industry: 'Leak isolated — correct. Subcooling margin remains LOST and the core-exit thermocouples are why: inventory is not recovered and the core is partially uncovered. Rising pressure does not restore level. Isolation is half of the terminating pair. Restore injection and recover inventory immediately.' },
+            industry: 'Leak isolated — correct, and half of the terminating pair. Inventory is still down and only normal charging is putting it back — slow, with margin thin the whole way. Rising pressure does not restore level. Restore injection and recover inventory now rather than riding the makeup rate.' },
         ],
         level_complete: {
           title: 'Second Watch — Plugged, Not Refilled',
-          outcome_learning: 'You stopped the leak in time — but the water you lost is still gone, and the margin gauge is telling you so. Half of the terminating pair is isolation; the other half is injection. History needed both. So do you.',
-          outcome_industry: 'Leak isolated pre-damage but inventory not restored — the terminating action pair (isolate + inject) was applied by half. Core-exit temperatures confirm degraded cooling; recovery margin remains degraded until injection is restored.',
+          outcome_learning: 'You stopped the leak in time — but the water you lost is not back yet, and you are running the recovery on normal charging alone. Half of the terminating pair is isolation; the other half is injection, and it exists because charging is slow and the margin stays thin the whole way. History needed both. So do you.',
+          outcome_industry: 'Leak isolated pre-damage but injection never restored — the terminating action pair (isolate + inject) was applied by half. Inventory recovers only at the normal-makeup rate, so margin restoration is slow and shallow; restoring injection is the designed recovery path.',
           actions: ['continue', 'retry'],
         },
         advance: 'end' },

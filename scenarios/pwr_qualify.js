@@ -66,13 +66,23 @@
       // parameter; the candidate has to notice a solid pressurizer being held solid by
       // injection against an unisolated path, and the hot tailpipe behind a "shut"
       // valve. `pzr_level_high` is the alarm that says so, and it is annunciated.
+      //
+      // RE-KEYED A THIRD TIME at #419 wave 3, same reason class as both priors: the cue
+      // described the previous plant. On the re-anchored plant the deception CRESTS ~65 %
+      // and never reaches the 75 % annunciator (measured: dip to 36, rise through 58 at
+      // ~32 min, crest 65 at ~45 min, collapse ~47) — so the alarm-keyed window never
+      // armed and the exam could not complete. The arming cue is now the deception's own
+      // STATE signature: level back above its 55 % nominal and rising while inventory
+      // falls — unambiguous on the board, and the same lesson. The crest-vs-annunciator
+      // gap itself is flagged owner-review on #418/#419 (the 75 % cue is currently
+      // unreachable in free play).
       { id: 'fault',
         trigger: { type: 'delay', value: 25.0 },
         commands: [{ action: 'open_block_valve' }],
         inject_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
         branches: [
           { trigger: { type: 'true_state', field: 'block_valve_open', direction: 'is_false' }, goto: 'verify_early' },
-          { trigger: { type: 'alarm', alarm_id: 'pzr_level_high' }, goto: 'challenge' },
+          { trigger: { type: 'true_state', field: 'pzr_level_pct', direction: 'above', value: 58 }, goto: 'challenge' },
         ] },
 
       // Isolated before the plant goes solid — verify the recovery holds.
@@ -83,7 +93,7 @@
               { type: 'delay', value: 180.0 },
               { type: 'instrument', instrument: 'subcooling_margin', direction: 'above', value: 11.5 },
             ] }, goto: 'passed' },
-          { trigger: { type: 'alarm', alarm_id: 'pzr_level_high' }, goto: 'challenge' },
+          { trigger: { type: 'true_state', field: 'pzr_level_pct', direction: 'above', value: 58 }, goto: 'challenge' },
         ] },
 
       // The plant is solid on injection against an unisolated relief path — the graded

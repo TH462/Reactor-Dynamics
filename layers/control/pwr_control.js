@@ -32,33 +32,35 @@
     { id: 'lo_press', instrument: 'primary_pressure', direction: 'low', setpoint: 12.41, action: 'scram', // MPa
       blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
-    // SG lo-lo. AFW auto-starts 3 points ABOVE it, at 20 % — a DECLARED DEPARTURE
-    // (§8.19, #220 claim 6). The real plant uses ONE signal at ONE setpoint for both:
+    // SG lo-lo — the loss-of-heat-sink scram, and since #380 ONE SIGNAL with the AFW
+    // auto-start (PWR_ACTUATIONS, same instrument/direction/setpoint), the real design:
     // *"1. Low-low water level in any single steam generator…"* is the first of the five
-    // AFW auto-start conditions (WTSM §5.7, ML11223A229), and it is the same low-low
-    // level function that trips the reactor (NUREG-1431 Tables 3.3.1-1 / 3.3.2-1). The
-    // offset is ours, and it buys the operator a visible "AFW started, level still
-    // falling" window that a single-setpoint plant does not give a lone trainee. Our
-    // other two starts DO match the real list — loss of main feed above P-9 is their
-    // condition 3, and the SI start is their condition 4.
+    // AFW auto-start conditions (WTSM §5.7, ML11223A229), and the trip function *"also
+    // performs the ESFAS function of starting the AFW pumps on low low SG level"* (Ginna
+    // TS Bases ML20339A221; NUREG-1431 Bases ML12100A228, same sentence). The 20 % AFW
+    // offset this plant used to carry (§8.19 declared departure, retired 2026-08-08) is
+    // gone. Our other two starts already matched the real list — loss of main feed above
+    // P-9 is their condition 3, and the SI start is their condition 4.
     //
-    // The VALUE has a sourced real counterpart it departs from (#374 evidence
-    // pass): NUREG-1431 Rev 4 puts the real lo-lo function at ~30–32 % of
-    // narrow-range span (Tables 3.3.1-1 / 3.3.2-1, ML12100A228 — the #220
-    // corpus), against 17 % NR here.
+    // THE VALUE IS SOURCED AT 17 — by this plant's own anchor: *"…will start if one
+    // steam generator level decreases to a low-low level of 17%"* (Ginna UFSAR ch10,
+    // ML20339A040; the #419 anchor plant). The W training plant sits lower still
+    // (11.5 %, ML11223A293). The "~30–32 % real" this comment carried until #380 was a
+    // MISREAD: NUREG-1431 Tables 3.3.1-1 / 3.3.2-1 print [30.4]% / [32.3]% in SQUARE
+    // BRACKETS — the STS template's plant-specific placeholder, not any plant's setting
+    // (and those tables are in Vol 1, ML12100A222; the Bases volume cited here before
+    // #380 carries no numbers at all). Every plant-specific value in the corpus is at
+    // or below the shipped 17.
     //
-    // THE RE-MEASURE HAPPENED (#380, 2026-08-06) and the result is the opposite of the
-    // fear this comment used to carry: at the sourced 30.5 the loss-of-feed drain trips
-    // at 28.5 s — INSIDE TR-14's Ginna band (25–60 s, their measured 35) and nearer its
-    // center than the shipped value's 40.0 s — so `K_sg_level` does NOT block the move.
-    // What blocks it is the SETPOINT LADDER: the 30 % LO warning never precedes a 30.5 %
-    // trip (TR-14's ≥ 7 s board-reading window goes to zero structurally), and the 20 %
-    // AFW auto-start lands 10 points BELOW the trip, inverting the declared §8.19
-    // teaching window (AFW starts, level still falling, THEN the trip). Moving this
-    // number is therefore a decision about the whole ladder — warning, AFW anchor,
-    // §8.19's ruled departure — not a tuning edit. Measured record: TUNING_LOG
-    // 2026-08-06-workbench-d and issue #380.
-    { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
+    // The teaching window survives in its REAL ordering: warning (30 %) → trip is the
+    // ≥ 7 s board-reading window TR-14 pins (#135), and "AFW started, level still
+    // falling" is a POST-trip observation — Ginna's own LOFW analysis has AFW delivering
+    // ~60 s after the trip (UFSAR Table 15.2-4; assumption I, ML20339A101). That 60 s is
+    // a licensing-conservative assumption, not hardware, so no extra start delay is
+    // modeled — the existing pump/delivery lags are the honest model. The 2026-08-06
+    // ladder measurement (TUNING_LOG 2026-08-06-workbench-d) stands as the record of
+    // what a 30.5 % trip would have cost; the premise behind it is retired.
+    { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts on this SAME signal — single-signal design, #380)
     // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
     // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a
     // `__true_flow__` sentinel, so it could not be lagged, fooled or drifted and the
@@ -335,7 +337,12 @@
     // reads HIGH, so this path stays silent there — the deception is untouched.
     { instrument: 'pzr_level', direction: 'low', setpoint: 12.0,
       action: 'set_hpi', active: true, reset_below: 20.0, arm: 'hpi' },
-    { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
+    // AFW auto-start on SG lo-lo — SAME SIGNAL, SAME SETPOINT as the reactor trip
+    // (single-signal design; #380, OWNER RULING 2026-08-08: selected "Single-signal
+    // AFW" — trip stays 17 %, AFW moves onto the same lo-lo signal, §8.19 departure
+    // closed). Sources at the trip's comment block above. Was 20.0 — an invented
+    // 3-point offset above the trip, declared as departure §8.19 until today.
+    { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,
       action: 'set_afw', active: true, arm: 'afw' },
     // High-high SG level (P-14): moisture-carryover protection. Trip the turbine and
     // isolate MAIN feedwater (AFW is unaffected — it is added downstream of the
@@ -458,9 +465,11 @@
     { id: 'high_tavg',         instrument: 'tavg',             direction: 'high',    setpoint: 312.2, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'High Coolant Temperature',        label_industry: 'HI TAVG' },
     // LOW Tavg (#233 playtest): the board had a high alarm and a high scram and NOTHING on
     // the cold side, so the tile's low region ran unbounded to the bottom of the meter and
-    // an overcooling transient annunciated nothing. 289 °C is the P-12 line — the classic
-    // low-Tavg permissive, ~8 °C below the no-load program anchor — so it is clear at hot
-    // standby (Tavg parks at ~297 after a trip) and comes in as soon as you are genuinely
+    // an overcooling transient annunciated nothing. 278 °C is the P-12 line — the classic
+    // low-Tavg permissive, ~8 °C below the no-load program anchor (289 until #419 wave 3
+    // moved the anchor 297 → 286; same offset, re-derived; Ginna's numeric P-12 lives in
+    // its TS proper, fetch owed) — so it is clear at hot standby (Tavg parks at ~286 after
+    // a trip) and comes in as soon as you are genuinely
     // cooling below the hot operating band. It stands IN through a Mode 4/5 cooldown, which
     // is correct: you are deliberately outside the band, and a real board tells you so.
     // Deliberately an alarm and NOT a trip — a PWR does not scram on low Tavg. The real
@@ -469,7 +478,7 @@
     // …and once the plant is DELIBERATELY cold (Modes 4/5) it reads as the status
     // it is rather than a warning — the condition still stands in, exactly as the
     // comment above requires, but a cooldown is not a casualty (#240).
-    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 289.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
+    { id: 'low_tavg',          instrument: 'tavg',             direction: 'low',     setpoint: 278.0, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Coolant Temperature',         label_industry: 'LO TAVG (P-12)',
       reclassify: [{ instrument: 'plant_mode', in: COLD_MODES, priority: 'status', label_learning: 'Coolant Temperature Low — expected, plant is cold', label_industry: 'LO TAVG (P-12) — EXPECTED' }] },
     // Cooldown / heatup RATE (#375, audit #297 F7): the 100 °F/hr Tech-Spec-class
     // heatup/cooldown limit. Measured before this alarm existed: one Dump SP entry
@@ -563,6 +572,21 @@
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    // Containment (#386 stage 2). Pressure pair at the SOURCED actuation points
+    // (3.5 psig SI backup / 30 psig hi-hi — WTSM 12.3), abs on this plant's ambient;
+    // train-status pair on the DELIVERY booleans (AC-gated), not the demands.
+    { id: 'ctmt_press_hi',   instrument: 'containment_pressure', direction: 'high',    setpoint: 0.1254, priority: 'warning',  panel: 'B', category: 'safety_system', label_learning: 'Containment Pressure High (SI signal)',    label_industry: 'CTMT PRESS HI' },
+    { id: 'ctmt_press_hihi', instrument: 'containment_pressure', direction: 'high',    setpoint: 0.3081, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Containment Pressure High-High (spray/MSLI)', label_industry: 'CTMT PRESS HI HI' },
+    { id: 'ctmt_spray_on',   instrument: 'ctmt_spray_active',    direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Containment Spray Running',                label_industry: 'CTMT SPRAY ON' },
+    { id: 'ctmt_fans_si',    instrument: 'ctmt_fan_active',      direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Containment Fan Coolers — Safety Realign', label_industry: 'CTMT FANS SI' },
+    // Hydrogen (#386 stage 3). H2 HI at the SOURCED 4.1 v/o lower flammability limit
+    // (NUREG-1431 Bases, unbracketed — cfg.containment.h2_flammability_pct mirrors it);
+    // the BURN annunciator keys on the latched event, so it comes in with the spike
+    // and NEVER clears — the ruled one-time burn, standing on the panel; recombiner
+    // status on the DELIVERY boolean like the other trains.
+    { id: 'ctmt_h2_hi',      instrument: 'ctmt_h2',              direction: 'high',    setpoint: 4.1,    priority: 'warning',  panel: 'B', category: 'safety_system', label_learning: 'Containment Hydrogen Above Flammability Limit', label_industry: 'CTMT H2 HI' },
+    { id: 'ctmt_h2_burn',    instrument: 'ctmt_h2_burned',       direction: 'is_true', setpoint: null,   priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Containment Hydrogen Burn Occurred',            label_industry: 'CTMT H2 BURN' },
+    { id: 'ctmt_recomb_on',  instrument: 'ctmt_recomb_active',   direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Hydrogen Recombiners In Service',               label_industry: 'H2 RECOMB ON' },
     // SI ACCUMULATORS STILL ALIGNED BELOW 1000 psi (6.895 MPa) — the cooldown cue (#273).
     //
     // Why it exists. A by-the-book cooldown used to walk straight through the tanks'
@@ -646,7 +670,7 @@
     // an imbalance is a cue to act, not a limit being approached.
     { id: 'load_imbalance', instrument: 'sg_imbalance_active', direction: 'is_true', setpoint: null, priority: 'caution', panel: 'B', category: 'power', label_learning: 'Reactor/Turbine Load Imbalance — SG filling or draining', label_industry: 'LOAD IMBAL' },
     { id: 'msiv_closed',    instrument: 'msiv_open',        direction: 'is_false', setpoint: null, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Main Steam Isolated (MSIV Shut)', label_industry: 'MSIV SHUT' },
-    { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 9.0,  priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' },
+    { id: 'sg_press_high',  instrument: 'steam_pressure',   direction: 'high',     setpoint: 7.33, priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Steam Generator Pressure High',   label_industry: 'SG PRESS HI' }, // = the safety reseat, same rung it has always ridden (9.0 on the old ladder; #419 wave 3)
     { id: 'cond_vac_low',   instrument: 'condenser_vacuum', direction: 'low',      setpoint: 84.7, priority: 'caution',  panel: 'B', category: 'power', label_learning: 'Condenser Vacuum Low',           label_industry: 'COND VAC LO' },
     { id: 'cond_vac_trip',  instrument: 'condenser_vacuum', direction: 'low',      setpoint: 74.5, priority: 'warning',  panel: 'B', category: 'power', label_learning: 'Condenser Vacuum Trip Level',    label_industry: 'COND VAC TRIP' },
   ];
@@ -839,15 +863,17 @@
 
   // Sliding Tavg program (SS-2, catalog §8.1). The rod controller's reference
   // temperature Tref is a LINEAR function of turbine load (steam flow), NOT a value
-  // captured at engage: no-load Tref = Tsat(steam-dump setpoint) ≈ 292 °C, full-power
-  // Tref = the full-power coolant equilibrium ≈ 304-306 °C. Endpoints derive from the
+  // captured at engage: no-load Tref = Tsat(steam-dump setpoint) ≈ 286 °C (the Ginna
+  // anchor since #419 wave 3; this comment read "≈ 292" through two anchor moves — the
+  // stale-comment find of the stage-1 table), full-power Tref = the full-power coolant
+  // equilibrium ≈ 304-305 °C. Endpoints derive from the
   // SAME config the engine's _buildState program uses, so channel and engine agree.
   // rods_tavg tracks this each step (control_kernel _trackChannel program hook), which
   // is what gives load-follow its real authority: as load falls, Tref falls and the
   // rods walk Tavg down the program (the old capture-and-hold froze Tavg flat — P4).
   function _tsat(P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); }
   var _thm = RD.PWR_CONFIG ? RD.PWR_CONFIG.thermal : {};
-  var TAVG_NOLOAD = _tsat((_sg && _sg.steam_dump_setpoint) || 8.23);
+  var TAVG_NOLOAD = _tsat((_sg && _sg.steam_dump_setpoint) || 7.03);
   var TAVG_FULLPOWER = _tsat((_sg && _sg.steam_p_rated) || 5.65)
     + (_thm.heat_gen_coeff * (1 + (_thm.pump_heat_frac || 0))) / _thm.h_sg;
   function trefProgram(loadFrac) { return TAVG_NOLOAD + (TAVG_FULLPOWER - TAVG_NOLOAD) * clip(loadFrac, 0, 1); }
@@ -905,10 +931,11 @@
   //
   // WHAT IS BUILT, AND WHAT DELIBERATELY IS NOT — both decided by measurement:
   //
-  //  (1) HIGH-HIGH CONTAINMENT PRESSURE is NOT built. This plant has no
-  //      containment model at all — no pressure, no temperature, no sump. There
-  //      is nothing to sense, and synthesising a signal to actuate protection on
-  //      is the #220 defect class §8.24 already refuses for the RCP-bus trips.
+  //  (1) HIGH-HIGH CONTAINMENT PRESSURE — BUILT at #386 stage 2 (this comment
+  //      said "no containment model at all" from #370 until then, which was true
+  //      when written and false after stage 1 landed — the premise-rot case
+  //      CLAUDE.md names). The leg is the `containment_pressure` hi-hi row in the
+  //      containment push block below, sharing MSLI_SEAL_IN with the pair here.
   //
   //  (2b) LO-LO TAVG is NOT built, and this one had to be MEASURED to know.
   //      The flow and temperature terms are ANTI-CORRELATED here: break flow
@@ -990,6 +1017,84 @@
       condition: { instrument: 'sg_steam_flow', direction: 'high', setpoint: 1.25, held_within_s: 60 },
       action: 'close_msiv', reset_below: 7.0, seal_in: MSLI_SEAL_IN }
   );
+  // ================= Containment ESF (#386 stage 2) — AUTO-ONLY build =================
+  // Owner ruling on the issue (2026-08-08): automated, controls not revealed to the
+  // player yet — no board card; these rows plus the annunciators ARE the system's
+  // whole surface. Setpoints SOURCED (ML11223A310, WTSM 12.3): SI backup 3.5 psig
+  // ("cannot be blocked by the operator"), spray + steam-line isolation hi-hi 30 psig.
+  // Gauge → abs on this plant's ambient: 0.1254 / 0.3081 MPa. Mirrors of the same
+  // numbers live in cfg.containment (si_hi_pressure_mpa / spray_hihi_pressure_mpa)
+  // for the engine-side consumers; both cite the same source lines.
+  var CTMT_SI_MPA = 0.1254, CTMT_HIHI_MPA = 0.3081;
+  // Spray extinguishes its own signal (the MSLI lesson above): a live-signal seal-in
+  // would release the instant the spray works, so it LATCHES on the fired row.
+  // Same-verb undo — the OFF command carries the reversed param, so the kernel's
+  // params scan catches it (the rows use `params: {active:true}`, never the bare
+  // key: `_sealInBlocking` iterates act.params only — measured trap, see the plan).
+  var CTMT_SPRAY_SEAL_IN = {
+    latched: true,
+    message_learning: 'Containment spray started automatically on high-high building pressure and stays in until pressure falls back below the safety-injection signal.',
+    message_industry: 'CTMT SPRAY SECURE BLOCKED — hi-hi actuation sealed in',
+  };
+  PWR_ACTUATIONS.push(
+    // (a) SI backup on high containment pressure. NO `arm` — in this kernel that IS
+    // "cannot be blocked by the operator" (the MSLI/FWI reasoning above): it fires
+    // even with the HPI ESF taken to MANUAL, which is also the discriminator against
+    // the 12.4 MPa primary-pressure row. NO seal-in on set_hpi — deliberate and
+    // load-bearing for TMI-2: securing/restoring SI against a standing containment
+    // signal is the flagship's defining decision (the FWI got #341's seal-in;
+    // set_hpi never had one). reset_below re-fires if pressure cycles back through.
+    { instrument: 'containment_pressure', direction: 'high', setpoint: CTMT_SI_MPA,
+      action: 'set_hpi', active: true, reset_below: 0.118 },
+    // (b) Containment spray on hi-hi, sealed-in (latched), released — and in this
+    // AUTO-ONLY build also SECURED — when the building has fallen back below the
+    // SI signal: a physical release condition (declared inference: WTSM documents
+    // SI reset only, no spray-reset logic), and with no operator surface the
+    // securing has to be automatic or a fired spray runs forever (measured: it
+    // held a 1/240 s sink and a climbing sump on a recovered plant). Re-fires if
+    // pressure climbs back through hi-hi.
+    { instrument: 'containment_pressure', direction: 'high', setpoint: CTMT_HIHI_MPA,
+      action: 'set_containment_spray', params: { active: true }, reset_below: CTMT_SI_MPA,
+      reset_action: 'set_containment_spray', reset_active: false,
+      seal_in: CTMT_SPRAY_SEAL_IN },
+    // (c) CRFC safety realign on any SI (Ginna TS B 3.6.6: fans "designed to start
+    // automatically if not already running" post-SI). Keys on the `hpi_active`
+    // status instrument so all three SI sources and a manual SI all realign them.
+    // One-shot, no reset_action — realigned fans stay realigned until an operator
+    // restores normal mode, which this build does not surface (auto-only).
+    { instrument: 'hpi_active', direction: 'is_true', setpoint: null,
+      action: 'set_ctmt_fans', params: { safety: true } },
+    // (d) Steam-line isolation on hi-hi containment pressure — the third leg the
+    // sourced MSLI pair above was missing (ML11223A310:468: isolation on "(1) a
+    // high-high containment pressure signal or (2) high steam flow coincident
+    // with…"). Shares MSLI_SEAL_IN: one latch, either signal, same refusal.
+    { instrument: 'containment_pressure', direction: 'high', setpoint: CTMT_HIHI_MPA,
+      action: 'close_msiv', reset_below: CTMT_SI_MPA, seal_in: MSLI_SEAL_IN }
+  );
+  // ---- Hydrogen recombiners (#386 stage 3) — the stage-2 spray row's shape, cloned
+  // deliberately: no `arm` (nothing to take to MANUAL in an auto-only build, and an
+  // armed row's own OFF would disarm before the seal-in evaluates), `params` form
+  // (the _sealInBlocking undo scan iterates act.params only), LATCHED seal-in
+  // (recombiners extinguish their own signal — a live-signal seal-in releases the
+  // moment they work), auto-secure on the reset (no operator surface exists to
+  // secure them). The whole auto-start/auto-secure package is a DECLARED INFERENCE:
+  // real recombiners are MANUALLY placed in service post-accident (NUREG-0737
+  // II.E.4.1, ML051400209) — declared in cfg.containment and Manuals/12 §12.4e.
+  // Start setpoint sits BELOW the 4.1 v/o flammability alarm, so H2 HI firing
+  // means the recombiners are already running and LOSING.
+  var CTMT_RECOMB_SEAL_IN = {
+    latched: true,
+    message_learning: 'Hydrogen recombiners started automatically on rising containment hydrogen and stay in service until the concentration falls back to the securing point.',
+    message_industry: 'H2 RECOMBINER SECURE BLOCKED — auto-start sealed in',
+  };
+  PWR_ACTUATIONS.push(
+    { instrument: 'ctmt_h2', direction: 'high',
+      setpoint: (RD.PWR_CONFIG.containment && RD.PWR_CONFIG.containment.h2_recomb_on_pct) || 0.5,
+      action: 'set_ctmt_recombiners', params: { active: true },
+      reset_below: (RD.PWR_CONFIG.containment && RD.PWR_CONFIG.containment.h2_recomb_off_pct) || 0.2,
+      reset_action: 'set_ctmt_recombiners', reset_active: false,
+      seal_in: CTMT_RECOMB_SEAL_IN }
+  );
   // PI-3: reactor trip on safety injection — SI actuating means a real casualty;
   // the reactor does not stay at power through it. Keyed on the same low-pressure
   // signal as the SI ESF; blockable in the cold/shutdown regime via the same P-11
@@ -1070,8 +1175,12 @@
         c.trimSlow += a * (d - c.trimSlow);
         return 1.25 * (d - c.trimSlow);
       },
-      // ±0.8 °C (±1.5 °F) lockup band; error-proportional speed ladder [tune].
-      speeds: [{ above: 0.8, speed: 'slow' }, { above: 2.0, speed: 'normal' }, { above: 4.0, speed: 'fast' }],
+      // ±0.8 °C (±1.5 °F) lockup band; speed-ladder thresholds SOURCED at #419 wave 3 —
+      // WTSM 8.1 §8.1.4.5: 8 steps/min to ±3 °F (1.67 °C), ramping to full speed by
+      // ±5 °F (2.78 °C). The old [tune] ladder engaged 'fast' only above 7.2 °F — slack
+      // the shallow program never exercised; on the steep Ginna program the 5 %/min ramp
+      // rode the gap and TR-1i's sourced ±5 °F duty read 5.59.
+      speeds: [{ above: 0.8, speed: 'slow' }, { above: 1.67, speed: 'normal' }, { above: 2.78, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
       // 228-step values, so the channel's authority in %-of-travel is unchanged.
       // NO pvTau, AND NO STOP-EXIT TRAVEL CANCEL — both measured against the sourced TR-1i
@@ -1193,6 +1302,14 @@
       manual_overrides: ['set_feed_pump_speed', 'feed_pump_nudge', 'set_feedwater_flow'],
       defaultOn: function () { return true; },   // the PWR's normal free-play lineup (replaces coupled feed as the level backbone)
       uMin: 0, uMax: 120, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+      // #355 (OWNER RULING 2026-08-08: selected "Program to 65 %"): the target is the
+      // PROGRAMMED nominal level — 65 % NR (= sg_level_nominal, pwr_config.js) — which
+      // is what a real three-element controller holds, not whatever level the channel
+      // happened to be engaged at. Capture still seeds the working setpoint at the
+      // current reading so engage is bumpless; spEff then slews to the program (the
+      // rods_tavg idiom). A player who wants to hold a different level uses MANUAL.
+      program: function () { return 65; },
+      spSlew: 0.1,   // %/s — engage 25 points off nominal walks in ~4 min; drain pace is 1.371 %/s, so the loop follows easily
       sp: { capture: function (s) { return s.instruments.sg_level; }, min: 30, max: 80, unit: '%', dp: 0, step: 1 } },
 
     { id: 'steam_dump', kind: 'mode', group: 'Secondary',

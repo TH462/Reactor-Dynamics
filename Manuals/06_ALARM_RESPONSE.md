@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 13  
+**Revision:** 14  
 
 ---
 
@@ -102,6 +102,13 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A33 | RHR NOT IN SERVICE | warning | B |
 | PWR-A34 | RCS COOLDOWN RATE HI | warning | A |
 | PWR-A35 | RCS HEATUP RATE HI | warning | A |
+| PWR-A36 | CTMT PRESS HI | warning | B |
+| PWR-A37 | CTMT PRESS HI HI | critical | B |
+| PWR-A38 | CTMT SPRAY ON | status | B |
+| PWR-A39 | CTMT FANS SI | status | B |
+| PWR-A40 | CTMT H2 HI | warning | B |
+| PWR-A41 | CTMT H2 BURN | critical | B |
+| PWR-A42 | H2 RECOMB ON | status | B |
 
 ---
 
@@ -286,7 +293,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | ≤ **30 %** |
 | **Means** | Heat sink degrading. |
-| **Actions** | 1) Raise feed. 2) Check main feed failures. 3) Prepare AFW. 4) Expect AFW AUTO ~**20 %** if armed. |
+| **Actions** | 1) Raise feed. 2) Check main feed failures. 3) Prepare AFW. 4) Expect AFW AUTO at **17 %** lo-lo (same signal as the SCRAM) if armed — a total feed loss starts it earlier, on collapsed feed flow. |
 
 ---
 
@@ -296,7 +303,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | ≤ **17 %** (SCRAM) |
 | **Means** | Heat sink critical. |
-| **Actions** | 1) Verify SCRAM. 2) **AFW Start** immediately. 3) Turbine load off. → **PWR-E01** |
+| **Actions** | 1) Verify SCRAM. 2) Verify **AFW started** — it auto-starts on this same signal if armed; start it manually if not. 3) Turbine load off. → **PWR-E01** |
 
 ---
 
@@ -495,6 +502,77 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Setpoint** | Indicated Tavg rising faster than **100 °F/hr** (55.6 °C/hr) — the same technical-specification-class limit, in the other direction |
 | **Means** | The primary is gaining heat faster than the vessel stress limit allows. Causes run from an overdriven heatup (rods, pumps against a bottled secondary) to a lost heat sink with the core still making power. |
 | **Immediate operator actions** | 1) Check the heat sink first: steam path open, feed available, condenser alive. 2) If this is a planned heatup, slow it to the limit. 3) Cross-check pressurizer pressure and level — an expanding primary swells into the pressurizer. |
+
+---
+
+## PWR-A36 — Containment Pressure High (CTMT PRESS HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Containment pressure above **18.1 psi (0.125 MPa)** absolute — the sourced **3.5 psig** safety-injection backup signal (WTSM 12.3) |
+| **Means** | A high-energy line is discharging **inside the building** — a primary break, an open relief path, or a steam line break upstream of the isolation valve. Safety injection has actuated on this signal, and it **cannot be blocked**. An SGTR does *not* light this alarm: that break discharges into the steam generator — the one leak containment cannot see. |
+| **Immediate operator actions** | 1) Verify SI actuated. 2) Diagnose the discharge path: RCS pressure/inventory falling → LOCA (**E09**); PORV tailpipe hot → stuck relief valve (**E07**); steam pressure collapsing with the MSIV shut → upstream steam break. 3) Watch the sump — rising level with steady pressure is the small-cold-leak signature. |
+
+---
+
+## PWR-A37 — Containment Pressure High-High (CTMT PRESS HI HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Containment pressure above **44.7 psi (0.308 MPa)** absolute — the sourced **30 psig** spray / steam-line-isolation signal (WTSM 12.3: "indicative of a large line break") |
+| **Means** | A large break is pressurizing the building. Containment spray has started and the main steam line has isolated, both automatically. |
+| **Automatic actions** | Containment spray on (secures itself once pressure recovers below the SI signal); MSIV shut (sealed in until pressure recovers); fan coolers already realigned on SI. |
+| **Immediate operator actions** | 1) Verify the automatic actions above. 2) Treat the initiating event (**E09** / **E07**). 3) Expect pressure to fall in minutes under spray — a building that stays up with spray running means the source is still discharging hard. |
+
+---
+
+## PWR-A38 — Containment Spray Running (CTMT SPRAY ON)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_spray_active` — the trains are **delivering** (a blackout stops them with the signal standing) |
+| **Means** | Spray started on the high-high signal (automatic in this build — there is no spray control on the board). It knocks building pressure down by condensing the steam and stops itself once pressure recovers below the SI signal. |
+| **Actions** | Informational. Spray water collects in the sump. |
+
+---
+
+## PWR-A39 — Containment Fan Coolers, Safety Realign (CTMT FANS SI)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_fan_active` — realigned on any safety injection (normal-mode fan cooling is part of the building's passive heat sink) |
+| **Means** | The diverse containment heat-removal train. Slower than spray, runs on any SI whether or not the building is pressurized, and stays realigned. |
+| **Actions** | Informational. |
+
+---
+
+## PWR-A40 — Containment Hydrogen Above Flammability Limit (CTMT H2 HI)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_h2` > **4.1 % by volume** — the lower flammability limit of hydrogen in air (NUREG-1431 Bases) |
+| **Means** | An overheated core has been burning its zirconium cladding in steam, and the hydrogen has reached the building through whatever opening the primary is discharging from. The recombiners started automatically well below this point (A42) — this alarm means they are **losing**: generation is outrunning removal, which only a rapidly oxidizing core can do. The atmosphere is now flammable; at roughly double this concentration it will find an ignition source. |
+| **Actions** | The alarm is a **core** symptom, not a containment one — nothing in the building can be operated on it in this build. Restore core cooling: injection, and close the discharge path if it is closable (block valve). Expect the concentration to keep rising for a time even after the core is recovered — the RCS holds an inventory in transit. |
+
+---
+
+## PWR-A41 — Containment Hydrogen Burn Occurred (CTMT H2 BURN)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_h2_burned` — the burn latch. Comes in with the deflagration and **never clears**. |
+| **Means** | The hydrogen ignited: a one-time deflagration that consumed ~85 % of the inventory in seconds and put a single sharp pressure spike on the containment pressure recorder — at TMI-2 it read ~28 psi (193 kPa) over the building pressure and the operators first took it for electrical noise. The spike crosses the 30 psig high-high — 44.7 psi (0.308 MPa) absolute — so expect A37, spray (A38) and steam-line isolation with it. The containment is designed for 60 psig — 74.7 psi (0.515 MPa) absolute — and holds. |
+| **Actions** | Informational — the event is over before any action exists. The concentration reading collapses at the burn and may climb again; there is no second burn. The standing lamp is the record that it happened. |
+
+---
+
+## PWR-A42 — Hydrogen Recombiners In Service (H2 RECOMB ON)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_recomb_active` — the trains are **delivering** (a blackout stops them with the demand standing) |
+| **Means** | Started automatically on rising containment hydrogen (0.5 % by volume in this build; secures itself at 0.2 %). Removal is slow by design — hours per factor of e — which is the real machine: recombiners manage the slow post-accident tail, not a degraded-core generation rate. |
+| **Actions** | Informational. If CTMT H2 HI (A40) comes in while this lamp is lit, the recombiners are being outrun — the answer is at the core, not in the building. |
 
 ---
 

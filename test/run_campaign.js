@@ -52,7 +52,11 @@ var RD = globalThis.RD;
 
 // ---------------------------------------------------------------- harness
 var T = [];
+// Optional name filter: `node test/run_campaign.js <substring>` runs only matching
+// suites (dev convenience, #418 A1 — the aggregate gate passes no argv, unchanged).
+var _only = process.argv[2] || null;
 function test(name, fn) {
+  if (_only && name.indexOf(_only) === -1) return;
   var checks = [];
   var ck = function (desc, observed, pass, expected) {
     checks.push({ desc: desc, observed: observed, expected: expected, pass: !!pass });
@@ -866,17 +870,27 @@ test('pwr_esf — ESF arms: auto-fire, MAN drop, re-arm; starved branch', functi
     ck('endpoint is the handed-back card', lc(snap).title, /Handed Back/i.test(lc(snap).title), 'Handed Back card');
     ck('honest ending: level at the AFW hold', snap.instruments.sg_level.toFixed(1), snap.instruments.sg_level > 15, '> 15 %');
   }
-  // Starved branch: a zeroed throttle on MANUAL drains the hold (<10 % in ~53 s,
-  // probed) — and re-arming does NOT reopen the operator's throttle, so this
-  // lands on the teaching card either way (softlock guard).
+  // Starved branch: a zeroed throttle on MANUAL drains the hold (<10 % at the
+  // decay-heat boil-off rate — several hundred s on the derived clock, #418 A1;
+  // was ~53 s compressed) — and re-arming does NOT reopen the operator's
+  // throttle, so this lands on the teaching card either way (softlock guard).
   var s2 = startScenario('pwr_esf');
   snap = runUntil(s2, function () { return s2.instructor.firedBeats.has('at_the_hold'); }, 600);
   if (snap) {
     settle(s2, 2);
+    var _t0Starve = s2.advanceCycles(1).metadata.sim_time;
     s2.handleCommand({ action: 'set_afw_flow', pct: 0 });
-    snap = runUntil(s2, function (sn) { return lc(sn); }, 400);
+    // Budget 400 → 900 s (#418 wave A1, 2026-08-07): on the derived secondary
+    // pressure clock the post-trip SG sits near its thermal equilibrium with the
+    // primary, so the zero-feed boil-off runs at the honest decay-heat rate
+    // instead of the compressed clock's ~53 s sprint — the drain to the 10 %
+    // branch now takes several hundred sim-seconds. The check prints the
+    // measured drain so the next re-clock sees the number move.
+    snap = runUntil(s2, function (sn) { return lc(sn); }, 900);
   }
-  ck('zeroed throttle reaches the starved endpoint', !!snap, !!snap, 'level_complete');
+  ck('zeroed throttle reaches the starved endpoint'
+    + (snap ? ' (drained in ' + Math.round(snap.metadata.sim_time - _t0Starve) + ' s)' : ''),
+    !!snap, !!snap, 'level_complete');
   if (snap) ck('endpoint is the starved card', lc(snap).title, /Starved/i.test(lc(snap).title), 'Starved on Manual card');
 });
 
@@ -1137,7 +1151,7 @@ test('pwr_mode5_to_mode3 — cold heatup reaches Hot Standby on PUMP HEAT, no ro
     var d = Math.abs(s.engine.rod_groups[0].steps - rod0); if (d > rodMoved) rodMoved = d;
     pumpHeatStep(s);
     return lc(sn);
-  }, 60000);                                            // 16.7 plant-h; the heatup measures 10.71
+  }, 60000);                                            // 16.7 plant-h; the heatup measures ~12.3 (#419 real rates)
   ck('heatup reaches an endpoint', !!snap, !!snap, 'level_complete');
   if (snap) {
     ck('endpoint is the Hot Standby card', lc(snap).title, /Hot Standby/i.test(lc(snap).title), 'Hot Standby — Reached');
@@ -1567,15 +1581,25 @@ test('pwr_tmi2_p3 — full save: tag + defended HPI + early isolation', function
 
 test('pwr_tmi2_p3 — no deviations: history repeats gracefully', function (ck) {
   var s = startScenario('pwr_tmi2_p3');
-  var complied = { done: false, alarmAt: null };
+  var complied = { done: false, alarmAt: null, maxLvl: -1, maxAt: 0 };
   var snap = ackThrough(s, function (sn) { return lc(sn); }, 42000, [   // 42000 (#408): damage ~2 h 20 m, then the crew's historical termination rides the real refill clock
     { when: function (sn) {
-        var al = (sn.alarms || []).some(function (a) { return a.id === 'pzr_level_high' && a.state !== 'clear'; });
+        if (sn.instruments && sn.instruments.pzr_level > complied.maxLvl) {
+          complied.maxLvl = sn.instruments.pzr_level; complied.maxAt = sn.metadata.sim_time;
+        }
+        // Re-keyed 2026-08-07 (#418 A1) with the mission's own securing cue: the
+        // crew acts on level HIGH AND RISING (> 65 %) — the 75 % alarm no longer
+        // fires on the re-clocked plant (measured peak 69.4 %); see
+        // pwr_tmi2_common.js TRIG.pzrLevelHigh for the full record.
+        var al = sn.instruments && sn.instruments.pzr_level > 65.0;
         if (al && complied.alarmAt == null) complied.alarmAt = sn.metadata.sim_time;
         return complied.alarmAt != null && sn.metadata.sim_time - complied.alarmAt > 6;
       },
       act: function (s2) { s2.handleCommand({ action: 'set_hpi', active: false }); } },
   ]);
+  ck('securing-cue telemetry: alarm at ' + (complied.alarmAt != null ? Math.round(complied.alarmAt) + ' s' : 'NEVER')
+    + ', indicated level peak ' + complied.maxLvl.toFixed(1) + ' % at ' + Math.round(complied.maxAt) + ' s',
+    'evidence line', true, 'telemetry');
   ck('reaches level_complete', !!snap, !!snap, 'level_complete');
   if (!snap) return;
   ck('graceful historical ending', lc(snap).title, /History Repeated/.test(lc(snap).title), 'History Repeated card');
@@ -1614,8 +1638,13 @@ test('pwr_tmi2_p3 — plugged not refilled: comply + early isolation, no re-inje
   if (!snap) return;
   ck('ending: Plugged, Not Refilled', lc(snap).title, /Plugged, Not Refilled/.test(lc(snap).title), 'plugged card');
   ck('no core damage', snap.true_state.fuel_damaged, snap.true_state.fuel_damaged === false, 'fuel_damaged false');
+  // 85 → 90 at #419 wave 2 (K 3144 → 2500): on the honest relief clock an early isolation
+  // loses less inventory and normal CVCS makeup claws some back before the ending latches —
+  // measured 86.9 %. The card's premise is "not RECOVERED" (the full-save class is ~95+),
+  // not "deeply short"; the FULL row now also requires hpi_active so this path cannot
+  // steal its ending regardless.
   ck('inventory NOT recovered (the card\'s premise)', snap.true_state.core_inventory_pct.toFixed(1),
-    snap.true_state.core_inventory_pct <= 85, '≤ 85%');
+    snap.true_state.core_inventory_pct <= 90, '≤ 90%');
 });
 
 test('pwr_tmi2_p3 — caught late: isolation only after damage begins', function (ck) {

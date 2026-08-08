@@ -36,12 +36,14 @@ const HOME_URL = 'https://reactordynamics.com';
 // Absolute-path tags that CANNOT be inlined and are dropped, each with its reason.
 // An external tag that is not on this list is a HARD ERROR — shipping one silently is
 // the exact failure this tool exists to prevent, so it must never be a warning.
-const DROP = {
-  '/_vercel/insights/script.js':
-    'Vercel Web Analytics beacon — a server-side route, already 404s anywhere but Vercel. A portable build has no analytics, by construction.',
-  '/_vercel/speed-insights/script.js':
-    'Vercel Speed Insights beacon — same; real-user load timings only mean anything on the deployed site.',
-};
+// EMPTY, and that is the current correct state (#413). It held the two Vercel analytics
+// beacons until the move to Cloudflare, whose Web Analytics collects at the edge and ships
+// no script — so ui/shell.html now has no external tags at all. Kept rather than deleted
+// because the RULE still applies: an external tag that is not declared here is a HARD
+// ERROR, and the next person to add one needs somewhere to declare it with a reason.
+// test/run_portable.js also fails on a STALE entry, which is why these two had to go in the
+// same change that removed the tags.
+const DROP = {};
 
 // The ⚛️ favicon index.html uses, as a data: URI — an emailed file still gets a labelled
 // browser tab, and a data: URI is not a network load.
@@ -54,6 +56,33 @@ function release() {
   const m = /RD_RELEASE\s*=\s*"([^"]+)"/.exec(src);
   return m ? m[1] : 'Alpha';
 }
+
+/* LOCAL scripts the portable build must not contain AT ALL. Distinct from DROP above,
+ * which is for absolute/external tags that could never be inlined — these are ordinary
+ * repo files that would inline perfectly well and simply have no business in an offline
+ * artifact.
+ *
+ * THE ORDERING TRAP: the deploy runs stamp_version.js BEFORE this script, so by the
+ * time we read site/telemetry_endpoint.js it holds the PRODUCTION endpoint. Inlining it
+ * would put a live URL inside a file whose whole promise is that it never touches the
+ * network — an offline build that phones home, emailed to people who chose it precisely
+ * because it does not.
+ *
+ * Blanking the endpoint would be enough to make it inert, but "cannot fire" and "is not
+ * present" are different promises and this build makes the stronger one. test/run_portable.js
+ * scans every shipped script for loaders and failed on the `fetch(` in telemetry.js the
+ * first time it was wired — that is the guard working, and the right answer to it is to
+ * ship neither file rather than to add an exception to the scan.
+ *
+ * Every caller in ui/app.js already guards on `window.RD && RD.Telemetry`, so absence is
+ * a supported state: the consent prompt never opens and the in-sim report form stays
+ * hidden, which is correct for a build that has nowhere to send anything. */
+const OMIT = {
+  '../site/telemetry.js':
+    'usage-data client — an offline build collects nothing, and does not carry the code that could.',
+  '../site/telemetry_endpoint.js':
+    'the endpoint it reads; nothing to point at once the client is gone.',
+};
 
 function readAsset(href) {
   const abs = path.join(SHELL_DIR, href);
@@ -94,6 +123,7 @@ function build() {
           '\nA portable build cannot fetch it. Either inline it, or add it to DROP in ' +
           'tools/make_portable.js with the reason it is safe to lose offline.');
       }
+      if (OMIT[src]) { dropped.push(src); return ''; }
       js.push(src);
       // `</script` anywhere in a JS body — even in a comment, which is where the one
       // real case lives (ui/diagram/board/std_pipe.js:6) — would close the tag early
@@ -125,7 +155,11 @@ if (require.main === module) {
   const kb = n => (n / 1024).toFixed(0) + ' KB';
   console.log('\nPORTABLE BUILD - ' + release());
   console.log('  inlined      ' + b.js.length + ' scripts, ' + b.css.length + ' stylesheets');
-  b.dropped.forEach(s => console.log('  dropped      ' + s + '  (declared: analytics beacon)'));
+  // Print the REASON the file was actually left out, not a hardcoded one. This said
+  // "(declared: analytics beacon)" for everything, so the first OMIT entry —
+  // site/telemetry.js, left out for the opposite reason — was logged as an analytics
+  // tag. A build log that says the wrong thing confidently is worse than a quiet one.
+  b.dropped.forEach(s => console.log('  dropped      ' + s + '  (' + (DROP[s] || OMIT[s] || 'no reason declared') + ')'));
   console.log('  out          ' + path.relative(ROOT, out).replace(/\\/g, '/'));
   console.log('  size         ' + kb(Buffer.byteLength(b.html)));
   console.log('\nOpen it by double-clicking: no server, no network, no install.');
@@ -133,4 +167,4 @@ if (require.main === module) {
   console.log('quarantine .html attachments, and the recipient sees nothing at all.\n');
 }
 
-module.exports = { build: build, release: release, DROP: DROP, SHELL: SHELL };
+module.exports = { build: build, release: release, DROP: DROP, OMIT: OMIT, SHELL: SHELL };

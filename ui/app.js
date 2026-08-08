@@ -376,8 +376,11 @@
         { id: 'feed_pump',grp: 'Controls', label: 'Feed Pump Speed', c: '#40988a', ctl: function (c) { return c.feed_pump_speed_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         // Charging and letdown are INSTRUMENTED (both have flow indications on the CVCS
         // card), so they keep a `get` — they sit here because the operator sets them.
-        { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * 100; }, tru: function (t) { return t.charging_flow_actual * 100; }, range: [0, 20], fmt: function (v) { return v.toFixed(2) + '%'; } },
-        { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * 100; }, tru: function (t) { return t.letdown_flow_actual * 100; }, range: [0, 20], fmt: function (v) { return v.toFixed(2) + '%'; } },
+        // gpm = frac/s × 450,000 (the declared 7,500 gal RCS, #408 — same constant as
+        // GPM_CHARGING/GPM_LETDOWN in pwr_board_wiring.js; the old ×100 "%" plotted the
+        // real currency as a flat-line at 0.007 %).
+        { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * 450000; }, tru: function (t) { return t.charging_flow_actual * 450000; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
+        { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * 450000; }, tru: function (t) { return t.letdown_flow_actual * 450000; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
         { id: 'load_tgt', grp: 'Controls', label: 'Load Target MW', c: '#8898b8', ctl: function (c) { return c.load_target_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
         { id: 'press_sp', grp: 'Controls', label: 'Pressure Setpoint', c: '#70a070', ctl: function (c) { return c.pressure_setpoint; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'dump_sp',  grp: 'Controls', label: 'Dump Setpoint', c: '#a0a860', ctl: function (c) { return c.steam_dump_setpoint; }, range: [0, 10], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
@@ -555,11 +558,23 @@
             detail: 'The receiving volume for a primary break or an open relief valve. Hot discharge partly flashes to steam and pressurizes the building, so rising containment pressure is the direct evidence of a high-energy line break inside it — a real plant starts safety injection on it at 3.5 pounds per square inch gauge (psig). An intact plant reads exactly 0, and a steam generator tube rupture ALSO reads 0, because that break discharges into the steam generator instead: the one leak containment cannot see.',
             v: function (t) { return physPg(t.containment_pressure_mpa); },
             cls: function (t) {
+              // Thresholds from config (#386 stage 2): caution at the sourced 3.5 psig
+              // SI-backup signal, alarm at the 30 psig spray/hi-hi point.
               var c = (RD.PWR_CONFIG || {}).containment || {};
               var amb = c.ambient_pressure_mpa != null ? c.ambient_pressure_mpa : 0.1013;
+              var hihi = c.spray_hihi_pressure_mpa != null ? c.spray_hihi_pressure_mpa : 0.3081;
+              var hi = c.si_hi_pressure_mpa != null ? c.si_hi_pressure_mpa : 0.1254;
               var p = t.containment_pressure_mpa != null ? t.containment_pressure_mpa : amb;
-              return p > 0.308 ? 'q-alarm' : (p > amb + 0.01 ? 'q-caution' : 'q-ok');
+              return p >= hihi ? 'q-alarm' : (p >= hi ? 'q-caution' : 'q-ok');
             } },
+          { k: 'Heat removal',
+            hint: 'which containment heat-removal trains are running — sprays and safety-realigned fan coolers.',
+            detail: 'Automatic in this build: containment spray starts on the 30 psig high-high signal (two 100 % trains at the reference plant), and the fan coolers realign to their safety mode on any safety injection. Normal-mode fan cooling is part of the passive heat sink. PASSIVE here is the healthy reading; a blackout stops both trains even with the signals standing.',
+            v: function (t) {
+              var s = t.ctmt_spray_active ? 'SPRAY' : null, f = t.ctmt_fan_active ? 'FANS-SI' : null;
+              return s && f ? 'SPRAY + FANS-SI' : (s || f || 'PASSIVE');
+            },
+            cls: function (t) { return t.ctmt_spray_active ? 'q-alarm' : (t.ctmt_fan_active ? 'q-caution' : 'q-ok'); } },
           { k: 'Containment temperature',
             hint: 'atmosphere temperature inside the building.',
             detail: 'Rides the steam content: a steam and air mixture sits at the saturation temperature of its steam fraction, so temperature and pressure rise together during a blowdown and fall together as the passive heat sinks condense steam out onto the structures. Around 100 °F (38 °C) on a healthy plant.',
@@ -570,6 +585,26 @@
             detail: 'Every pound the primary loses to the building ends up here — spilled liquid directly, flashed steam after the structures condense it back out. A climbing sump with steady pressure is the signature of a small cold leak, which is exactly the diagnosis the alarm-response procedures send you here for. Indication only: this plant models no recirculation from the sump.',
             v: function (t) { return (t.containment_sump_pct != null ? t.containment_sump_pct : 0).toFixed(1) + ' %'; },
             cls: nzCls('containment_sump_pct') },
+          // Hydrogen (#386 stage 3). One concentration row + a status row; the burn
+          // annunciator (A41) carries the event, this is the trend the operator watches.
+          { k: 'Containment hydrogen',
+            hint: 'hydrogen concentration in the building atmosphere, volume percent — 0 unless the core has been oxidizing.',
+            detail: 'Hydrogen comes from one place: overheated zirconium cladding burning in steam (the same reaction that accelerates a melting core). It reaches the building through whatever opening the primary is discharging through, so a tube-rupture accident sends its hydrogen into the steam generator instead and this reads 0. The lower flammability limit is 4.1 volume percent; at TMI-2 the building averaged about 7.9 percent when it ignited, 9 hours 50 minutes in — a single sharp pressure spike the operators first read as electrical noise. Recombiners work the concentration back down over many hours; they cannot keep up with a rapidly oxidizing core.',
+            v: function (t) { return (t.ctmt_h2_pct != null ? t.ctmt_h2_pct : 0).toFixed(2) + ' % vol'; },
+            cls: function (t) {
+              var c = (RD.PWR_CONFIG || {}).containment || {};
+              var flam = c.h2_flammability_pct != null ? c.h2_flammability_pct : 4.1;
+              var ign = c.h2_ignition_pct != null ? c.h2_ignition_pct : 8.0;
+              var h = t.ctmt_h2_pct || 0;
+              return h >= ign ? 'q-alarm' : (h >= flam ? 'q-caution' : 'q-ok'); } },
+          { k: 'Hydrogen control',
+            hint: 'recombiner status, and whether a hydrogen burn has occurred.',
+            detail: 'The recombiners start automatically on rising hydrogen in this build and secure themselves once the concentration is back down. BURNED latches forever: a hydrogen deflagration is a one-time event — it consumes most of the inventory in seconds and leaves a pressure spike the containment is designed to survive.',
+            v: function (t) {
+              if (t.ctmt_h2_burned) return t.ctmt_recomb_active ? 'BURNED + RECOMB' : 'BURNED';
+              return t.ctmt_recomb_active ? 'RECOMBINERS' : 'IDLE';
+            },
+            cls: function (t) { return t.ctmt_h2_burned ? 'q-alarm' : (t.ctmt_recomb_active ? 'q-caution' : 'q-ok'); } },
         ] },
         // fw_flow_normalized is TOTAL feed (main + AFW — pwr_steam_generator.js:83),
         // and steam_out_total is everything leaving the SG (turbine + dump + safeties),
@@ -3414,6 +3449,7 @@
       diag.commands.push({ t: latest && latest.metadata ? latest.metadata.sim_time : 0, command: c, blocked: !!(r && r.type === 'blocked'), error: !!(r && r.type === 'error') });
       if (diag.commands.length > 2000) diag.commands.shift();
     }
+    TEL.command(c, !!(r && r.type === 'blocked'));
     // The command was blocked, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
     // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar.
@@ -3582,14 +3618,134 @@
     bwr: ['power_pct', 'fuel_temp_c', 'vessel_pressure_mpa', 'vessel_level_pct', 'core_void_fraction', 'recirc_flow_pct', 'decay_heat_pct']
   };
   var diag = null;
+  // ======================================================== usage data (aggregate)
+  // The adapter for site/telemetry.js. It exists so the emit points scattered through
+  // this file stay one-line calls and all the state — what has already been reported,
+  // when the session started — lives in one place.
+  //
+  // EVERY METHOD IS A NO-OP unless the player granted consent AND a deploy stamped an
+  // endpoint; telemetry.js enforces that, and this layer never second-guesses it. It
+  // also never throws: usage data is the least important thing in this application and
+  // must not be able to interrupt the plant, so every call is wrapped.
+  //
+  // It rides the EXISTING session recorder rather than adding a second set of probes.
+  // diagEvent/diagReset/diagTick already sit at exactly the moments worth reporting,
+  // and a parallel set of hooks would be a second thing to keep in step with the first.
+  var TEL = (function () {
+    var seen = {};            // one-shot milestones, cleared per session
+    var lastMode = null, lastPanel = null;
+    var startedAt = 0, mission = null, ended = false;
+    // session_start fires during BOOT, which on a first visit is before the consent
+    // prompt has been answered — so it would be dropped, and first visits are exactly
+    // the sessions worth having. Hold the facts locally (the app knows them anyway)
+    // and emit once an answer exists. Nothing is queued inside telemetry.js while
+    // consent is undecided, so its invariant is untouched.
+    var pendingStart = null;
+
+    function api() { try { return (window.RD && RD.Telemetry) || null; } catch (e) { return null; } }
+    // Returns whether the event was ACCEPTED, which the held session_start depends on:
+    // clearing it on a refusal would silently lose the row it exists to preserve.
+    function ev(name, props) {
+      var t = api(); if (!t) return false;
+      try { return t.event(name, props) === true; } catch (e) { return false; }   // never break the sim
+    }
+    function since(ms) { return Math.max(0, Math.round((Date.now() - ms) / 1000)); }
+
+    return {
+      sessionStart: function (reason, meta) {
+        seen = {}; lastMode = null; mission = null; ended = false;
+        startedAt = Date.now();
+        pendingStart = {
+          plant: ui.plant,
+          initial_state: (meta && meta.initial_state) || ui.initState || 'unknown',
+          channel: (typeof window.RD_CHANNEL === 'string') ? window.RD_CHANNEL : 'dev',
+        };
+        this.consentAnswered();                   // a no-op until an answer exists
+        if (reason === 'scenario' && meta && meta.scenario_id) {
+          mission = { id: meta.scenario_id, at: Date.now() };
+          ev('mission_start', { id: meta.scenario_id });
+        }
+      },
+
+      // Called by sessionStart and again by the consent prompt when it is answered.
+      // Emitting is idempotent: the held facts are cleared on the first success.
+      consentAnswered: function () {
+        var t = api();
+        if (!pendingStart || !t) return;
+        try { if (!t.granted()) return; } catch (e) { return; }
+        if (ev('session_start', pendingStart)) pendingStart = null;
+      },
+
+      // Action NAME only, never its value: "set_rod_position" is a usage fact,
+      // "set_rod_position 143" is a recording of what someone did.
+      command: function (c, blocked) {
+        if (!c || !c.action) return;
+        ev('command', { action: String(c.action), blocked: !!blocked });
+      },
+
+      panel: function (id) {
+        if (!id || id === lastPanel) return;      // a re-click is not a visit
+        lastPanel = id;
+        ev('panel_open', { panel: String(id) });
+      },
+
+      milestone: function (name, simT) {
+        if (seen[name]) return;                   // latched: first crossing only
+        seen[name] = true;
+        ev('milestone', { name: name, sim_seconds: Math.round(simT || 0) });
+      },
+
+      // Driven from diagTick, so it sees every snapshot the recorder does.
+      tick: function (s) {
+        if (!s || !s.true_state) return;
+        var ts = s.true_state, t = (s.metadata && s.metadata.sim_time) || 0;
+
+        // THE FUNNEL. plant_mode is the engine's own derived commercial mode (1-6),
+        // so "how far did they get" carries no threshold of mine.
+        if (typeof ts.plant_mode === 'number' && ts.plant_mode !== lastMode) {
+          lastMode = ts.plant_mode;
+          ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });
+        }
+        if (typeof ts.mwe_output === 'number' && ts.mwe_output > 0) this.milestone('on_grid', t);
+        if (ts.fuel_damaged) this.milestone('core_damage', t);   // engine-latched, not inferred
+
+        if (mission && s.instructor && s.instructor.level_complete) {
+          ev('mission_complete', { id: mission.id, seconds: since(mission.at) });
+          mission = null;
+        }
+      },
+
+      // Called once, from pagehide. sendBeacon is the only transport that survives
+      // the page going away, and session_end is the most useful row in the set.
+      end: function () {
+        if (ended) return;
+        ended = true;
+        if (mission) ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: 0 });
+        // sim_seconds > 0 IS "they pressed play" — the clock only advances while
+        // running, so no separate flag is needed (and the one that was here read
+        // false on a session that had obviously run: play is not a dispatched command).
+        ev('session_end', {
+          seconds: startedAt ? since(startedAt) : 0,
+          sim_seconds: Math.round((latest && latest.metadata && latest.metadata.sim_time) || 0),
+          last_panel: lastPanel || 'none',
+        });
+        var t = api(); if (t) { try { t.flush(true); } catch (e) {} }
+      },
+    };
+  }());
+
   function diagEvent(t, type, detail) {
     diag.events.push({ t: t, type: type, detail: detail });
     if (diag.events.length > 5000) diag.events.shift();
+    // Every recorded scram passes through here, so hooking the recorder covers each
+    // site that reports one without a second call to keep in step.
+    if (type === 'scram') TEL.milestone('scram', t);
   }
   function diagReset(reason, meta) {
     var t = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag = { reason: reason, meta: meta || null, startSim: t, lastT: t, nextT: Math.floor(t), samples: [], events: [], commands: [], lastAlarms: null, lastScrammed: false };
     diagEvent(t, 'session_start', { reason: reason, meta: meta || null });
+    TEL.sessionStart(reason, meta);
   }
   function diagSample(s, t) {
     var ts = s.true_state || {}, row = { t: t, accel: s.metadata.time_acceleration };
@@ -3599,6 +3755,7 @@
     if (diag.samples.length > 14400) diag.samples.shift();   // ~4 h at 1 Hz
   }
   function diagTick(s) {
+    TEL.tick(s);          // before the early return: usage data does not depend on the recorder
     if (!diag || !s || !s.metadata) return;
     var t = s.metadata.sim_time;
     if (t < diag.lastT - 0.001) {          // rewind / replay — drop the recorded future
@@ -3729,7 +3886,9 @@
     'boron-sample': function () { cmd({ action: 'take_boron_sample' }); },   // RCS grab sample → lab result after turnaround
     'charge-pump-on': function () { cmd({ action: 'set_charging_pump', running: true }); },
     'charge-pump-off': function () { cmd({ action: 'set_charging_pump', running: false }); },
-    'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 1000 }); },
+    // gpm → frac/s on the declared 7,500 gal (#408). The old /1000 was the retired
+    // currency: typing 30 gpm commanded 0.03 frac/s ≈ 13,500 gpm, unclamped (see issue).
+    'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 450000 }); },
     // Letdown: two independent orifices (off / A / B / A+B). Each toggle preserves the
     // other orifice (the engine command only touches the field it's given). Flow is
     // pressure-driven off the cold-leg node, not a commanded setpoint.
@@ -3975,6 +4134,7 @@
       var again = b.classList.contains('on');   // re-click of the active tab = collapse toggle (#237)
       $('tabbar').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
       document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
+      TEL.panel(b.getAttribute('data-tab'));   // which parts of the board get used at all
       focusTools(again);
       // Repaint the pane that just came up. Physics and Automate both skip their work
       // while hidden (see paneVisible), so without this they show whatever was last
@@ -4123,6 +4283,91 @@
     initTour();
     // Contact (email) overlay — status line resets each open. RD_VERSION is stamped
     // at deploy time and may be absent when opened straight off disk.
+    // session_end, and the only chance to send it. `pagehide` fires where
+    // `beforeunload` is unreliable (mobile, bfcache), and TEL.end() is idempotent, so
+    // firing on both costs nothing and missing the row costs the most useful signal
+    // in the set — where people stop.
+    window.addEventListener('pagehide', function () { TEL.end(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') { var t = window.RD && RD.Telemetry; if (t) { try { t.flush(true); } catch (e) {} } }
+    });
+
+    // Assigned by the Settings block below; called by the launch prompt so the two
+    // controls cannot disagree. Answering "yes" at launch and then finding Settings
+    // still showing Off is the kind of small lie that makes a consent control
+    // untrustworthy — and it is exactly what the first version did.
+    var repaintTelemetryToggle = function () {};
+
+    // ---- usage-data consent, first launch only ------------------------------
+    // Only asked when there is something to ask about: a stamped endpoint and no
+    // recorded answer. Everything stays collected-nothing until a button is pressed,
+    // so closing the tab on the prompt is the private outcome, not an ambiguous one.
+    (function () {
+      var T = window.RD && RD.Telemetry;
+      var ov = $('consentOverlay');
+      if (!ov || !T || !T.enabled() || T.consent() !== null) return;
+      ov.hidden = false;
+      function answer(v) {
+        try { T.setConsent(v); } catch (e) { /* storage refused: stays undecided, sends nothing */ }
+        TEL.consentAnswered();     // releases the held session_start, if granted
+        repaintTelemetryToggle();  // keep Settings in step with the answer just given
+        ov.hidden = true;
+      }
+      $('consentYes').addEventListener('click', function () { answer('granted'); });
+      $('consentNo').addEventListener('click', function () { answer('denied'); });
+    }());
+
+    // ---- the Settings toggle the consent prompt promises ---------------------
+    (function () {
+      var T = window.RD && RD.Telemetry;
+      var row = $('telemetryRow'), seg = $('telSeg');
+      if (!row || !seg || !T || !T.enabled()) return;   // no endpoint: no toggle to offer
+      row.hidden = false;
+      function paint() {
+        var on = T.consent() === 'granted';
+        seg.querySelectorAll('button').forEach(function (b) {
+          b.classList.toggle('on', (b.getAttribute('data-tel') === 'on') === on);
+        });
+      }
+      seg.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-tel]'); if (!b) return;
+        var on = b.getAttribute('data-tel') === 'on';
+        try { T.setConsent(on ? 'granted' : 'denied'); } catch (err) {}
+        if (on) TEL.consentAnswered();
+        paint();
+        showToast(on ? 'Usage data on — thank you.' : 'Usage data off. Nothing is sent.');
+      });
+      paint();
+      repaintTelemetryToggle = paint;
+    }());
+
+    // ---- send a bug report, with the session attached ------------------------
+    (function () {
+      var T = window.RD && RD.Telemetry;
+      var block = $('fbSendBlock'), btn = $('fbSend');
+      if (!block || !btn || !T || !T.enabled()) return;   // no endpoint: email route only
+      block.hidden = false;
+      btn.addEventListener('click', function () {
+        var note = ($('fbNote').value || '').trim();
+        var attach = $('fbAttach').checked;
+        if (!note && !attach) { showToast('Add a message, or attach the session.', 'error'); return; }
+        var bundle = attach ? buildDiagBundle() : { kind: 'reactor_dynamics_note_only' };
+        btn.disabled = true;
+        txt($('fbStatus'), 'Sending…');
+        T.sendBundle(bundle, note).then(function (r) {
+          btn.disabled = false;
+          if (r && r.ok) {
+            txt($('fbStatus'), 'Sent — thank you.');
+            $('fbNote').value = '';
+          } else {
+            // Never a dead end: the address above still works, and the download
+            // button beside it produces the same bundle as a file.
+            txt($('fbStatus'), 'Could not send — please email instead.');
+          }
+        });
+      });
+    }());
+
     $('fbBtn').addEventListener('click', function () {
       $('fbStatus').textContent = '';
       $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
@@ -4988,7 +5233,10 @@
   // _pct fields get their % sign, and the reactivity/BOP proxies get their
   // domain units. Dimensioned fields (pressure/temp/vacuum) convert via mval.
   function tsCell(f, x) {
-    if (/_normalized$/.test(f) || /^(leak_flow|charging_flow_actual|letdown_flow_actual|steam_to_turbine)$/.test(f) ||
+    // #408 real currency: these three are inventory-frac/s, not 0–1 normalized — render
+    // gpm on the declared 7,500 gal (× 450,000, the board's GPM_CHARGING scale).
+    if (/^(leak_flow|charging_flow_actual|letdown_flow_actual)$/.test(f)) return Math.round(x * 450000) + ' gpm';
+    if (/_normalized$/.test(f) || f === 'steam_to_turbine' ||
         f === 'void_fraction_avg' || f === 'core_void_fraction') return Math.round(x * 100) + ' %';
     if (/_pct(_eq)?$/.test(f)) return Math.round(x * 10) / 10 + ' %';
     if (/_pcm$/.test(f)) return Math.round(x) + ' pcm';

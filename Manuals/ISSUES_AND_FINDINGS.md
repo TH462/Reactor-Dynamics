@@ -33,7 +33,7 @@
 | I-02 | M | **Single lumped RCS loop** (one RCP/SG representation). No multi-loop isolation procedures. | RCP/SGTR procedures simplified vs commercial multi-loop EOPs. | Noted in manuals |
 | I-03 | M | **Single control bank + shutdown bank** (no overlap unit / multi-bank sequence). | Rod procedures use one operable bank. | Noted in manuals |
 | I-04 | M | **Point kinetics** — spatial xenon, flux tilts, and local DNB not resolved. | Xenon/power procedures are plant-average. | Noted in manuals |
-| I-05 | M | **Containment, hydrogen, offsite dose** not modeled. | TMI/LOCA stop at core damage / recovery of inventory. | Noted in manuals |
+| I-05 | M | **Offsite dose / source term / release** not modeled (containment and hydrogen ARE, since #386 — `12` §12.4d/§12.4e; the narrowing of this row is the record that the first two-thirds of it landed). | TMI/LOCA stop at fuel damage; the building's response and the H₂ burn are simulated, releases are not. | Noted in manuals |
 | I-06 | M | **RCP start/stop** is approximate (maps near trip inject/clear in places). | PWR-N13 labeled **[approx]**. | Noted in manuals |
 | I-07 | H | **Station blackout** may be effectively unsurvivable under current physics for qualification-style exams (campaign design abandoned SBO exam for this reason). | E05 documents severe challenge / honest failure. | Noted in manuals |
 | I-08 | L | **Decay heat** two-term model; ~7 % after power history — not full ANS groups. | Numbers in setpoints are model values. | Open |

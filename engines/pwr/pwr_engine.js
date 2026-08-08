@@ -652,6 +652,15 @@
       boron_sample: s.boron_sample_ppm,
       boron_sample_pending: s._boron_sample_timer > 0,
       boron_sample_seq: s.boron_sample_seq || 0,
+      // #386 stage 2: containment active-train delivery status (AC-gated in
+      // stepContainment; demand survives a blackout, delivery does not). Status
+      // pass-throughs — no lag, no noise, no PRNG draw (appended-instrument rule).
+      ctmt_spray_active: !!s.ctmt_spray_active,
+      ctmt_fan_active: !!s.ctmt_fan_active,
+      // #386 stage 3: the burn latch (one-time, forever) and recombiner delivery.
+      // Status pass-throughs — no lag, no noise, no PRNG draw.
+      ctmt_h2_burned: !!s.ctmt_h2_burned,
+      ctmt_recomb_active: !!s.ctmt_recomb_active,
     };
   };
 
@@ -696,11 +705,29 @@
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
-      // Wide-range SG level (whole-vessel column, tube sheet → separators). This is the
-      // integrated inventory state; the narrow (working) range above is derived as its
-      // sg_wr_lo..sg_wr_hi window (pwr_steam_generator.js). Wide keeps reading when narrow
-      // pegs on an overfill/dryout — feeds the SG vessel water column in the UI.
+      // Pressurizer liquid inventory node (#385): the pressurizer's SHARE of the RCS
+      // mass ledger, in the same fraction units as `core_inventory_pct`/100 (a share,
+      // not a second inventory — loop share = _mass − pzr_mass_frac, implicit). Level
+      // is this node through the geometry map (`level_per_mass` %-per-frac: 55 % ≈
+      // 0.0709, vessel full at 100/776 ≈ 0.1289). UNCLIPPED both ways, like the level
+      // line it carries: above capacity = the overfull/solid bookkeeping, below zero
+      // = the deficit bookkeeping. Carries `pzrNodeLevel` — the reconstructed
+      // base+mass backbone plus the flow-accreted void credit (#385 stage 2).
+      pzr_mass_frac: s.pzr_mass_frac,
+      // Wide-range SG level (whole-vessel column, tube sheet → separators), DERIVED since
+      // #418 wave A2 from the mass ledger below through the sg_mass_map geometry; the
+      // narrow (working) range above is its sg_wr_lo..sg_wr_hi window
+      // (pwr_steam_generator.js). Wide keeps reading when narrow pegs on an
+      // overfill/dryout — feeds the SG vessel water column in the UI.
       sg_level_wide_pct: s.sg_level_wide_pct,
+      // SG secondary mass ledger (#418 wave A2): fraction of the nominal secondary mass
+      // (1.0 = 12,785 kg, the Ginna 85,359 lbm per-MWt-scaled). THE inventory state both
+      // level ranges derive from; integrates (feed − steam_out)/sg_mass_boil_tau_s.
+      sg_mass_frac: s.sg_mass_frac,
+      // SG tube-bundle node temperature (#418 wave B1) — the thermal buffer between the
+      // coolant and the boiling secondary (series conductance pair, pwr_thermal). Sits
+      // between Tavg and Tsat(P_sec) in normal operation.
+      t_sg_c: s.t_sg_c,
       // Loop pressure distribution (true state; the single primary_pressure
       // instrument still reads pressure_mpa — no per-node gauges). Cold leg = pump
       // discharge (highest, ECCS/letdown datum); pump suction = between SG and RCP
@@ -826,6 +853,17 @@
       containment_temp_c: s.containment_temp_c != null
         ? s.containment_temp_c : this.cfg.containment.ambient_temp_c,
       containment_sump_pct: s.containment_sump_pct || 0,
+      // Stage 2 (#386): the active heat-removal trains — demand vs delivery
+      // published separately (#200/#329; a blackout zeroes _active with demand up).
+      ctmt_spray_demand: !!s.ctmt_spray_demand, ctmt_spray_active: !!s.ctmt_spray_active,
+      ctmt_fan_safety: !!s.ctmt_fan_safety, ctmt_fan_active: !!s.ctmt_fan_active,
+      // Stage 3 (#386): hydrogen. Concentration is v/o of containment free volume;
+      // the burn latch is one-time forever (the ruled TMI-2-style event); the
+      // recombiners publish demand vs delivery like the other trains. The RCS-side
+      // ledger (_rcs_h2) stays private — the plant has no instrument for it, and
+      // publishing it would be a truth channel nothing on a real board carries.
+      ctmt_h2_pct: s.ctmt_h2_pct || 0, ctmt_h2_burned: !!s.ctmt_h2_burned,
+      ctmt_recomb_demand: !!s.ctmt_recomb_demand, ctmt_recomb_active: !!s.ctmt_recomb_active,
     };
   };
 
@@ -1191,7 +1229,12 @@
       case 'set_charging_flow':
         // Manual charging: set BOTH the operator setpoint and the true flow, and
         // leave AUTO make-up (which would otherwise modulate the true flow).
-        s.charging_setpoint = cmd.normalized; s.charging_flow = cmd.normalized; s.cvcs_auto = false;
+        // Clipped to the pump's run-out (#421): on the #408 real scale this surface
+        // accepted any frac/s, and callers still speaking the retired 0.05/0.06
+        // currency commanded 375-450x the pump. Clip, never reject — the ops
+        // abuse-spam sanity asserts every command is accepted.
+        var _chg = clip(cmd.normalized || 0, 0, this.cfg.reactivity.charging_max);
+        s.charging_setpoint = _chg; s.charging_flow = _chg; s.cvcs_auto = false;
         break;
       case 'set_letdown_orifices':
         // The real letdown control: each orifice independently in/out (off / A / B /
@@ -1200,17 +1243,41 @@
         if (cmd.b != null) s.letdown_orifice_b = !!cmd.b;
         break;
       case 'set_letdown_flow':
-        // Deprecated alias (pre-two-orifice saves/callers): map a requested
-        // normalized flow to the nearest orifice lineup by NOP-flow. off / A(≈0.03) /
-        // B(≈0.04) / A+B(≈0.07). The true flow is then pressure-driven like any lineup.
+        // Deprecated alias (pre-two-orifice saves/callers): map a requested flow to
+        // the nearest orifice lineup by NOP flow — off / A(≈30 gpm) / B(≈40 gpm) /
+        // A+B(≈70 gpm). Snap points are config-derived on the #408 real scale (#421:
+        // the retired 0.030/0.040/0.070 table snapped every real-scale request to
+        // `off`). A legacy old-currency value lands on A+B — the nearest "letdown
+        // on" lineup — which is the acceptable end of that trade; no live caller
+        // speaks the old currency. The true flow stays pressure-driven per lineup.
+        var _rcL2 = this.cfg.reactivity;
+        var _sqN = Math.sqrt(Math.max(0, 15.71 - _rcL2.letdown_backpressure_mpa));   // NOP cold leg (15.41 + loop_dp_core_rated)
+        var _fA = _rcL2.letdown_orifice_a_coeff * _sqN, _fB = _rcL2.letdown_orifice_b_coeff * _sqN;
         var _n = cmd.normalized || 0;
-        var _opts = [[false, false, 0], [true, false, 0.030], [false, true, 0.040], [true, true, 0.070]];
+        var _opts = [[false, false, 0], [true, false, _fA], [false, true, _fB], [true, true, _fA + _fB]];
         var _best = _opts[0], _bd = Infinity;
         for (var _i = 0; _i < _opts.length; _i++) {
           var _d = Math.abs(_opts[_i][2] - _n);
           if (_d < _bd) { _bd = _d; _best = _opts[_i]; }
         }
         s.letdown_orifice_a = _best[0]; s.letdown_orifice_b = _best[1];
+        break;
+      case 'set_containment_spray':
+        // #386 stage 2, AUTO-ONLY build (owner ruling in the issue thread): no
+        // board control — reached by the 30-psig actuation row, tests and the
+        // instructor. Demand latch only; delivery is AC-gated in stepContainment
+        // (#200/#329 demand-vs-delivery split).
+        s.ctmt_spray_demand = !!cmd.active;
+        break;
+      case 'set_ctmt_fans':
+        // CRFC safety realign — SI-driven, indication-only for the player.
+        s.ctmt_fan_safety = !!cmd.safety;
+        break;
+      case 'set_ctmt_recombiners':
+        // #386 stage 3, same AUTO-ONLY shape as spray: no board control — reached
+        // by the H2-concentration actuation row, tests and the instructor. Demand
+        // latch only; delivery is AC-gated in stepContainment (#200/#329 split).
+        s.ctmt_recomb_demand = !!cmd.active;
         break;
       case 'set_charging_pump':
         s.charging_pump_running = !!cmd.running;
@@ -1269,8 +1336,14 @@
         s.feedwater_isolated = (cmd.active !== false);
         break;
       case 'set_boron_adjust':
-        // ppm/s: + borate, − dilute, 0 hold (needs the charging pump running)
-        s.boron_adjust = cmd.rate || 0;
+        // ppm/s: + borate, − dilute, 0 hold (needs the charging pump running).
+        // Clamped to ±boron_adjust_rate since #419 wave 1 ("D3: go real") — the constant
+        // is the PHYSICAL ceiling of the makeup path (max boric-acid/blend flow on the
+        // declared RCS currency, derivation at the constant). Before the clamp it was a
+        // dead comment: any raw command could firehose (a fixture drove 3.0 ppm/s, 21×
+        // the honest ceiling) while both automation channels meter at 0.05 beneath it.
+        s.boron_adjust = clip(cmd.rate || 0,
+          -this.cfg.reactivity.boron_adjust_rate, this.cfg.reactivity.boron_adjust_rate);
         break;
       case 'take_boron_sample':
         // Draw an RCS grab sample; the result posts after the lab turnaround
@@ -1577,6 +1650,11 @@
       fuel_temp_c: Tfuel, tavg_c: Tavg, thot_c: Tavg + delta_T / 2, tcold_c: Tavg - delta_T / 2,
       t_secondary_c: Tsec, subcooling_c: TH.T_sat(cfg.pressurizer.P_equilibrium) - Tavg,
       _subcool_hot_c: TH.T_sat(cfg.pressurizer.P_equilibrium) - (Tavg + delta_T / 2), core_void_fraction: 0,
+      // SG tube node (#418 wave B1) seeded on the series-split interpolation between
+      // Tavg and Tsec — the exact zero-derivative point of the node equation at this
+      // state's own crossing heat, so every derived IC remains a true steady state
+      // (dt_sg/dt = 0 identically at reset; the legs are already ON their targets).
+      t_sg_c: Tavg - (cfg.thermal.sg_tube_split != null ? cfg.thermal.sg_tube_split : 0.5) * (Tavg - Tsec),
       _Q_total: P0, _Q_coolant_to_sg: P0 * cfg.thermal.heat_gen_coeff, _dTavg_dt: 0, _h_fc_eff: cfg.thermal.h_fc,
 
       pressure_mpa: cfg.pressurizer.P_equilibrium,
@@ -1638,6 +1716,16 @@
       containment_pressure_mpa: cfg.containment.ambient_pressure_mpa,
       containment_temp_c: cfg.containment.ambient_temp_c,
       containment_sump_pct: 0, _ctmt_steam: 0, _ctmt_sump: 0,
+      // #425: the lagged passive-sink enhancement starts unenhanced (factor 1).
+      _ctmt_sink_enh: 1,
+      // Stage 2 (#386): active trains secured/idle at init; the actuation rows
+      // (pwr_control) and stepContainment's AC gate own them from here.
+      ctmt_spray_demand: false, ctmt_spray_active: false,
+      ctmt_fan_safety: false, ctmt_fan_active: false,
+      // Stage 3 (#386): no hydrogen anywhere at init — the ledgers fill only from
+      // the oxidation term; recombiners idle; nothing has ever burned.
+      _rcs_h2: 0, _ctmt_h2: 0, ctmt_h2_pct: 0, ctmt_h2_burned: false,
+      ctmt_recomb_demand: false, ctmt_recomb_active: false,
       // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
       sr_energized: !!init.sr_on,
       sr_counts_cps: init.sr_on ? cfg.nis.k_sr * P0 : 0,
@@ -1768,6 +1856,7 @@
       s.thot_c = Tnl;
       s.tcold_c = Tnl;
       s.t_secondary_c = Tnl;
+      s.t_sg_c = Tnl;             // tube node isothermal with the loop at no load (#418 B1)
       s.steam_pressure_mpa = cfg.steam_generator.steam_dump_setpoint;
       s.fuel_temp_c = Tnl;       // negligible fission: fuel near coolant (decay preloaded below)
       s.subcooling_c = TH.T_sat(cfg.pressurizer.P_equilibrium) - Tnl;
@@ -1820,6 +1909,11 @@
       // SG up to it in the usual way.
       s.steam_pressure_mpa = 0.1;
       s.t_secondary_c = TH.T_sat(0.1);
+      // Tube node between the cold loop and the vented secondary (#418 B1): the
+      // split interpolation, same seed rule as the derived ICs — flow_frac 0
+      // decouples the conductances so any value is quasi-static; this one is the
+      // no-drift point if flow returns.
+      s.t_sg_c = s.tavg_c - (cfg.thermal.sg_tube_split != null ? cfg.thermal.sg_tube_split : 0.5) * (s.tavg_c - s.t_secondary_c);
       s.steam_dump_setpoint = cfg.steam_generator.steam_dump_setpoint;
       s.msiv_open = true;
       // Pressurizer level at a cold band. With DERIVED level, an IC level implies a
@@ -1985,11 +2079,33 @@
     if (s.condensate_pump_running == null) s.condensate_pump_running = true;
     if (s.condensate_flow_normalized == null) s.condensate_flow_normalized = s.fw_flow_normalized || 0;
     if (s.afw_discharge_pressure_mpa == null) s.afw_discharge_pressure_mpa = 0;
-    // Wide-range SG level (integrated inventory state). Older saves have only the narrow
-    // sg_level_pct — seed wide from it via the window so the derived narrow is unchanged.
+    // Wide-range SG level. Older saves have only the narrow sg_level_pct — seed wide
+    // from it via the window so the derived narrow is unchanged.
     if (s.sg_level_wide_pct == null) {
       var sgw = this.cfg.steam_generator;
       s.sg_level_wide_pct = sgw.sg_wr_lo + (sgw.sg_wr_hi - sgw.sg_wr_lo) * (s.sg_level_pct != null ? s.sg_level_pct : sgw.sg_level_nominal) / 100;
+    }
+    // SG secondary mass ledger (#418 wave A2). Saves written before the ledger carry only
+    // the level — seed the mass through the geometry map's INVERSE so the derived wide
+    // (and therefore narrow) is byte-identical on load; behavior reconverges from the
+    // same reading the save showed.
+    if (s.sg_mass_frac == null && RD.pwrSteamGenerator && RD.pwrSteamGenerator.massFromWide) {
+      s.sg_mass_frac = RD.pwrSteamGenerator.massFromWide(s.sg_level_wide_pct, this.cfg.steam_generator);
+    }
+    // SG tube node (#418 wave B1). Pre-node saves carry the loop and secondary temps —
+    // seed the node on the series-split interpolation between them, the zero-derivative
+    // point at the save's own crossing heat (one-step reconvergence at worst, the
+    // t_core_exit_c template).
+    if (s.t_sg_c == null) {
+      var _spM = this.cfg.thermal.sg_tube_split != null ? this.cfg.thermal.sg_tube_split : 0.5;
+      s.t_sg_c = s.tavg_c - _spM * (s.tavg_c - (s.t_secondary_c != null ? s.t_secondary_c : s.tavg_c));
+    }
+    // Pressurizer inventory node (#385 stage 1). Pre-node saves carry only the derived
+    // level — seed the node through the level line's INVERSE (levelRaw/level_per_mass),
+    // which is exactly what the first stepLevel would write, so the published reading
+    // is byte-identical on load (the sg_mass_frac idiom).
+    if (s.pzr_mass_frac == null && RD.pwrPressurizer && RD.pwrPressurizer.levelRaw) {
+      s.pzr_mass_frac = RD.pwrPressurizer.levelRaw(s, this.cfg) / this.cfg.pressurizer.level_per_mass;
     }
     // Accumulator discharge isolation valve + cold-injection thermal coupling (2026-07).
     // Older saves have no isolation valve — default aligned (open) so behavior is
@@ -2013,8 +2129,27 @@
     if (s.containment_pressure_mpa == null) s.containment_pressure_mpa = this.cfg.containment.ambient_pressure_mpa;
     if (s.containment_temp_c == null) s.containment_temp_c = this.cfg.containment.ambient_temp_c;
     if (s.containment_sump_pct == null) s.containment_sump_pct = 0;
+    // Stage 2 (#386): pre-stage-2 saves restore with the active trains secured —
+    // the actuation rows re-demand them within a step if the signal stands.
+    if (s.ctmt_spray_demand == null) s.ctmt_spray_demand = false;
+    if (s.ctmt_spray_active == null) s.ctmt_spray_active = false;
+    if (s.ctmt_fan_safety == null) s.ctmt_fan_safety = false;
+    if (s.ctmt_fan_active == null) s.ctmt_fan_active = false;
     if (s._ctmt_steam == null) s._ctmt_steam = 0;
     if (s._ctmt_sump == null) s._ctmt_sump = 0;
+    // #425: pre-enhancement saves restore unenhanced — no history is invented; a
+    // mid-accident restore re-charges the lag from the live pressure in ~2 min.
+    if (s._ctmt_sink_enh == null) s._ctmt_sink_enh = 1;
+    // Stage 3 (#386): a pre-hydrogen save restores with empty ledgers and nothing
+    // burned — same declaration class as the containment restoring at ambient: a
+    // mid-accident save regenerates its H2 from the still-oxidizing core, but no
+    // history is invented for it.
+    if (s._rcs_h2 == null) s._rcs_h2 = 0;
+    if (s._ctmt_h2 == null) s._ctmt_h2 = 0;
+    if (s.ctmt_h2_pct == null) s.ctmt_h2_pct = 0;
+    if (s.ctmt_h2_burned == null) s.ctmt_h2_burned = false;
+    if (s.ctmt_recomb_demand == null) s.ctmt_recomb_demand = false;
+    if (s.ctmt_recomb_active == null) s.ctmt_recomb_active = false;
     // Feed pump (replaced direct feedwater-flow demand).
     if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;
     // Nuclear instrumentation (SR/IR detectors).
@@ -2147,7 +2282,7 @@
     // Level high → open both letdown orifices (max drain); low → charge and isolate
     // letdown; in band → both off. Letdown flow is pressure-driven from the lineup.
     if (l > 62) { h.cmd({ action: 'set_letdown_orifices', a: true, b: true }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
-    else if (l < 50) { h.cmd({ action: 'set_charging_flow', normalized: 0.06 }); h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); }
+    else if (l < 50) { h.cmd({ action: 'set_charging_flow', normalized: h.eng.cfg.reactivity.charging_max }); h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); }   // #421: real pump max (0.06 was 450x)
     else { h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
   }
   function _feedHold(h) {                        // hold SG level ~65 % on the feed pump
@@ -2346,7 +2481,8 @@
         var up = _driveHeatup(h, 6000);
         var mid = h.ts();
         ck('reached criticality on the way up', up.critAt, up.critAt >= 0, 'critAt ≥ 0 s');
-        ck('RCS heated to the no-load anchor (≥ 296 °C)', mid.tavg_c.toFixed(1), mid.tavg_c >= 296, '≥ 296 °C');
+        // 296 → 285 at #419 wave 3: the no-load anchor is Ginna's 286.0 °C (was 297).
+        ck('RCS heated to the no-load anchor (≥ 285 °C)', mid.tavg_c.toFixed(1), mid.tavg_c >= 285, '≥ 285 °C');
         ck('mode indicator reached Mode 1', mid.plant_mode + ' ' + mid.plant_mode_name, mid.plant_mode === 1, 'Mode 1');
         ck('Mode 1 reached — critical, > 5 % power', mid.power_pct.toFixed(1), up.mode1At >= 0 && mid.power_pct > 5, '> 5 % at NOP');
         ck('no fuel damage during heatup', up.maxFuel.toFixed(0), up.maxFuel < 1200 && !h.eng.s.fuel_damaged, '< 1200 °C');
@@ -2692,7 +2828,11 @@
         var tavg0 = sb.ts().tavg_c;
         sb.cmd({ action: 'inject_failure', failure_id: 'steam_line_break', severity: 0.6 });
         sb.run(15);
-        ck('steam pressure falls', sb.eng.s.steam_pressure_mpa.toFixed(2), sb.eng.s.steam_pressure_mpa < 5.0, '< 5.0');
+        // Band 5.0 → 5.1 (#418 wave B1, 2026-08-07): the tube node feeds the breaking
+        // secondary a touch longer, so 15 s into a 0.6 break the header reads 5.04
+        // (was ~4.9). The claim — the break DEPRESSURIZES the secondary — is
+        // direction, not a race; 5.1 still reddens if the break stops removing steam.
+        ck('steam pressure falls', sb.eng.s.steam_pressure_mpa.toFixed(2), sb.eng.s.steam_pressure_mpa < 5.1, '< 5.1');
         ck('Tavg falls (overcooling)', sb.ts().tavg_c.toFixed(2), sb.ts().tavg_c < tavg0, '< ' + tavg0.toFixed(2));
 
         // Instrument modes: stuck-at-current tavg holds while true Tavg moves.
@@ -3102,11 +3242,16 @@
         h.eng.s.pressure_mpa = 15.41; h.eng.step(0.02); var hi = s.letdown_flow;
         h.eng.s.pressure_mpa = 5.0;   h.eng.step(0.02); var lo = s.letdown_flow;
         ck('letdown tails off as RCS pressure falls', lo.toFixed(4) + ' < ' + hi.toFixed(4), lo < hi && lo > 0, 'lo < hi');
-        // Deprecated alias maps a requested normalized flow to the nearest lineup.
+        // Deprecated alias maps a requested flow to the nearest lineup — snap points
+        // config-derived on the real scale since #421.
         h.cmd({ action: 'set_letdown_flow', normalized: 0.0 });
         ck('alias 0.0 → both orifices shut', !s.letdown_orifice_a && !s.letdown_orifice_b, !s.letdown_orifice_a && !s.letdown_orifice_b, 'off');
+        h.cmd({ action: 'set_letdown_flow', normalized: expA + expB });
+        ck('alias at A+B NOP flow → both orifices open', s.letdown_orifice_a && s.letdown_orifice_b, s.letdown_orifice_a && s.letdown_orifice_b, 'A+B');
+        // A legacy retired-currency request lands on A+B (the documented trade —
+        // nearest "letdown on" lineup; no live caller speaks the old currency).
         h.cmd({ action: 'set_letdown_flow', normalized: 0.07 });
-        ck('alias 0.07 → both orifices open', s.letdown_orifice_a && s.letdown_orifice_b, s.letdown_orifice_a && s.letdown_orifice_b, 'A+B');
+        ck('legacy 0.07 request → A+B (documented legacy snap)', s.letdown_orifice_a && s.letdown_orifice_b, s.letdown_orifice_a && s.letdown_orifice_b, 'A+B');
       });
     },
 
@@ -3135,6 +3280,8 @@
         // of the load-bearing ones too — every field below is one a save written
         // before its rework simply does not have.
         delete legacy.sg_level_wide_pct; delete legacy.accumulator_valve_open;
+        delete legacy.sg_mass_frac;   // #418 A2: pre-ledger saves carry only the level
+        delete legacy.t_sg_c;         // #418 B1: pre-node saves carry only the loop temps
         delete legacy.msiv_open; delete legacy.feed_pump_speed_pct;
         delete legacy.condensate_pump_running; delete legacy.condensate_flow_normalized;
         delete legacy.afw_throttle_frac; delete legacy.afw_flow_normalized;
@@ -3144,6 +3291,10 @@
         // Containment (#386 stage 1): a pre-containment save has none of the five.
         delete legacy.containment_pressure_mpa; delete legacy.containment_temp_c;
         delete legacy.containment_sump_pct; delete legacy._ctmt_steam; delete legacy._ctmt_sump;
+        delete legacy._ctmt_sink_enh;   // #425: nor the sink-enhancement lag state
+        // Hydrogen (#386 stage 3): a pre-hydrogen save has none of the six.
+        delete legacy._rcs_h2; delete legacy._ctmt_h2; delete legacy.ctmt_h2_pct;
+        delete legacy.ctmt_h2_burned; delete legacy.ctmt_recomb_demand; delete legacy.ctmt_recomb_active;
         // rcp_secured (#240) is INFERRED, not defaulted: a pre-#240 save has no
         // record of WHY the pumps are stopped, so the lineup has to say. This one
         // is the judgement call in the whole migration and it was unasserted.
@@ -3176,6 +3327,21 @@
           s.sg_level_wide_pct.toFixed(2) + ' % wide',
           s.sg_level_wide_pct > sgw.sg_wr_lo && s.sg_level_wide_pct < sgw.sg_wr_hi,
           'inside [' + sgw.sg_wr_lo + ',' + sgw.sg_wr_hi + ']');
+        // #418 A2: the mass ledger seeds through the geometry map's INVERSE, so the wide
+        // level a pre-ledger save showed is reproduced byte-identically on load.
+        var _wBack = RD.pwrSteamGenerator.wideFromMass(s.sg_mass_frac, sgw);
+        ck('sg_mass_frac seeded through the inverse map — derived wide is byte-identical',
+          s.sg_mass_frac.toFixed(4) + ' → ' + _wBack.toFixed(4) + ' vs ' + s.sg_level_wide_pct.toFixed(4),
+          typeof s.sg_mass_frac === 'number' && Math.abs(_wBack - s.sg_level_wide_pct) < 1e-9,
+          'round-trips exactly');
+        // #418 B1: the tube node seeds BETWEEN the loop and secondary temps (the
+        // series-split interpolation — the zero-derivative point at the save's heat).
+        ck('t_sg_c seeded between Tavg and Tsec (the split interpolation)',
+          s.t_sg_c.toFixed(2) + ' °C (tavg ' + s.tavg_c.toFixed(2) + ', tsec ' + s.t_secondary_c.toFixed(2) + ')',
+          typeof s.t_sg_c === 'number'
+            && s.t_sg_c <= Math.max(s.tavg_c, s.t_secondary_c) + 1e-9
+            && s.t_sg_c >= Math.min(s.tavg_c, s.t_secondary_c) - 1e-9,
+          'inside [Tsec, Tavg]');
         ck('accumulator isolation defaults ALIGNED (old behaviour preserved)',
           String(s.accumulator_valve_open), s.accumulator_valve_open === true, 'true');
         ck('MSIV defaults open', String(s.msiv_open), s.msiv_open === true, 'true');
@@ -3196,8 +3362,14 @@
           s.containment_pressure_mpa + ' MPa / ' + s.containment_temp_c + ' °C / sump ' + s.containment_sump_pct + ' %',
           s.containment_pressure_mpa === cfg.containment.ambient_pressure_mpa
             && s.containment_temp_c === cfg.containment.ambient_temp_c
-            && s.containment_sump_pct === 0 && s._ctmt_steam === 0 && s._ctmt_sump === 0,
+            && s.containment_sump_pct === 0 && s._ctmt_steam === 0 && s._ctmt_sump === 0
+            && s._ctmt_sink_enh === 1,   // #425: unenhanced — no lag history invented
           'ambient / ambient / 0');
+        ck('hydrogen restores EMPTY and unburned — a pre-stage-3 save invents no H2 history',
+          s._rcs_h2 + ' / ' + s._ctmt_h2 + ' / ' + s.ctmt_h2_pct + ' / burned ' + s.ctmt_h2_burned + ' / recomb ' + s.ctmt_recomb_demand + ',' + s.ctmt_recomb_active,
+          s._rcs_h2 === 0 && s._ctmt_h2 === 0 && s.ctmt_h2_pct === 0 && s.ctmt_h2_burned === false
+            && s.ctmt_recomb_demand === false && s.ctmt_recomb_active === false,
+          '0 / 0 / 0 / false / false,false');
         // rcp_secured is the INFERENCE, and this save has pumps RUNNING — so the
         // benign "planned securing" reading must NOT be invented. The conservative
         // direction matters: mislabelling a real trip as a planned securing is the
@@ -3237,7 +3409,9 @@
         ck('pressure tracks a lowered setpoint', p0.toFixed(2) + ' → ' + p1.toFixed(2),
           p1 < p0 - 1 && near(p1, 13.0, 1.0), '≈ 13.0 (±1)');
         h.cmd({ action: 'set_pressure_setpoint', mpa: 15.41 });
-        h.run(300);
+        // 300 → 900 s at #419 wave 1: a raised setpoint walks up at the REAL slew
+        // (1.586e-3 MPa/s), so +1 MPa of recovery needs ~630 s of honest pressurization.
+        h.run(900);
         ck('pressure recovers to a raised setpoint', p1.toFixed(2) + ' → ' + h.ts().pressure_mpa.toFixed(2),
           h.ts().pressure_mpa > p1 + 1, '> lowered');
 
@@ -3566,11 +3740,12 @@
       return test('Steam dump — capacity capped at steam_dump_max on manual full-open', function (ck) {
         var h = new Harness('hot_full_power');
         var cap = h.eng.cfg.steam_generator.steam_dump_max;
-        // 40 % of rated steam flow, the prototypical Westinghouse capacity (WTSM §11.2,
-        // ML11223A294) — owner ruling 2026-07-31, was 1.05. The band is deliberately
-        // tight: this number is now SOURCED, not a feel knob, so drifting off it should
-        // require saying so rather than sliding inside a wide band.
-        ck('cap is the prototypical capacity (0.40 of rated)', cap.toFixed(2), cap >= 0.38 && cap <= 0.42, '0.38..0.42');
+        // 28 % of rated steam flow — GINNA'S OWN capacity since #419 wave 3 (UFSAR ch 10
+        // §10.4: "approximately 28% rated steam flow"; D1's measure-first ruling adopted it
+        // after the full-rejection ride-out survived at 28). Was 0.40, the fleet-typical
+        // WTSM §11.2 figure (owner ruling 2026-07-31), before that 1.05. The band stays
+        // deliberately tight: the number is SOURCED — drifting off it must say so.
+        ck('cap is the sourced Ginna capacity (0.28 of rated)', cap.toFixed(2), cap >= 0.26 && cap <= 0.30, '0.26..0.30');
         h.run(5);
         h.cmd({ action: 'set_steam_dump', mode: 'open' });
         var maxFrac = 0;

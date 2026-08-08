@@ -963,8 +963,11 @@
         var rec = numberEls[id];
         // Cyan = the operator can type here; grey = the box is AUTO-driven right now, so a
         // manual entry would just be overwritten by the controller (see driver.numberAuto).
+        // Amber (driver.numberWarn, #358) outranks both: the demand in the box is not being
+        // delivered by the plant, which matters more than who is allowed to type it.
         var auto = d.numberAuto ? d.numberAuto(rec.item, s) : false;
-        var col = auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff');
+        var warn = d.numberWarn ? d.numberWarn(rec.item, s) : null;
+        var col = warn || (auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff'));
         if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; }
         // Display unit, resolution and range hint (#238). Driven every frame like the value
         // itself, because a units change is not an event the board is told about — it just

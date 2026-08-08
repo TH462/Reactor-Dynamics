@@ -135,7 +135,7 @@ function runProcedure(profKey, proc) {
  * run_behavior.js and run_meltdown.js. */
 var KNOWN_FAILS = {
   /* #206 (pwr_heatup) — FOUR of the original seven xfails are fixed and removed; the
-   * heatup now actually heats (Tavg 50 → 297 °C, secondary bottled to the 8.20 MPa
+   * heatup now actually heats (Tavg 50 → 286 °C, secondary bottled to the 7.0 MPa
    * no-load anchor, Mode 3 reached). Fixed: the procedure never blocked the startup
    * net it walks straight into (IR HIGH scram at ~20 %); it held a standing 30 %
    * manual feed-pump demand instead of engaging Feed AUTO; and it left the turbine in

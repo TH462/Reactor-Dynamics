@@ -284,7 +284,12 @@
     // NOT changed here: they are already zero in this regime because pressure is above
     // setpoint, so the term is unobservable, and their authority is a ruled declared
     // departure (F14, `Manuals/12` §12.15). Nothing measured moves if they stay.
-    var pzr_solid = !(s.primary_void_fraction > 0) && levelRaw(s, cfg) >= 100;
+    // #385 stage 2: the solid predicate reads the NODE's law (pzrNodeLevel), the same
+    // function stepLevel publishes — the no-hybrid rule. On every void == 0 state the
+    // credit is 0 and this is bitwise the old levelRaw, so the pressure regime map is
+    // unchanged; the two laws differ only on voided leak states, where solid is false
+    // through the void guard regardless.
+    var pzr_solid = !(s.primary_void_fraction > 0) && pzrNodeLevel(s, cfg) >= 100;
     if (pzr_solid) spray_eff = 0;
     // Break blowdown depressurizes the RCS — but ONLY while subcooled. Subcooled blowdown
     // (liquid out, bubble collapse) drives pressure directly down to saturation; once the
@@ -328,7 +333,7 @@
     // deferred terms (relief, spray, heaters), all three of which keep their steam-space
     // gains here as that note requires.
     // `pzr_solid` is the one computed above for the spray gate — reused, not recomputed, so
-    // the two cannot drift apart and `levelRaw` is called once.
+    // the two cannot drift apart and `pzrNodeLevel` is called once.
     var leak_depress = (saturated || pzr_solid) ? 0 : (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
     // SURGE — ONE LAW, TWO DRIVERS (#337). A surge is a VOLUME displacement of the
     // pressurizer, and the pressurizer does not know what caused it. WTSM 3.2
@@ -591,20 +596,18 @@
     return clip(levelBase(s, cfg), p.level_prog_floor, p.level_prog_ceiling);
   }
 
-  // The pressurizer level line, DERIVED from state (CC-10 rework) and UNCLIPPED:
-  //   level = base(Tavg) + level_per_mass·(mass − 1) + level_per_void·void
-  // No integrator: level and inventory cannot silently drift apart. The void term
-  // pushes liquid INTO the pressurizer as the primary voids, raising indicated
-  // level even as total inventory falls — the TMI deception (§6.4) — and it is
-  // active ONLY when the primary actually saturates (primary_void_fraction is
-  // saturation-gated in pwr_primary). Relief/leak/charging flows act on level
-  // through the MASS balance (stepInventory), not through separate level terms.
+  // THE FROZEN LUMPED LINE (#385 stage 2) — the pre-node level law, kept verbatim as
+  // (1) the MIGRATION SEED MAP (pre-node saves seed `pzr_mass_frac` through this
+  // line's inverse, pwr_engine._migrateState) and (2) the never-stepped fallback
+  // inside pzrNodeLevel's credit init. THE LIVE LAW IS `pzrNodeLevel` — do not add
+  // consumers here; on the no-leak families the two are bitwise equal (CA-23 pins
+  // it), and on leak states this state-form w-weighting is exactly the low-Δp
+  // re-lift defect the node's flow-form credit retired.
   //
-  // UNCLIPPED, and it has TWO consumers for that reason (#346). stepLevel clips it to
-  // the 0–100 gauge span for indication; stepPressure needs it raw, because "is there
-  // any steam space left" is exactly the water-solid question and a reading pinned at
-  // 100 cannot answer it. ONE formula, because a copy in the second consumer would not
-  // move when this one did.
+  //   level = base(Tavg) + level_per_mass·(mass − 1) + level_per_void·w·void
+  //
+  // (Historical notes preserved below in the term comments: the piecewise-collapse
+  // deferral (#365), the #385 stage-2 lumped w-weighting and its sources.)
   function levelRaw(s, cfg) {
     var p = cfg.pressurizer;
     var dm = (s._mass != null ? s._mass : 1.0) - 1.0;
@@ -649,9 +652,115 @@
     return levelBase(s, cfg) + mass_term + p.level_per_void * w * (s.primary_void_fraction || 0);
   }
 
-  // Step 8 (pzr part) — indicated pressurizer level: the line above, on span.
+  // THE NODE'S LEVEL LAW (#385 stage 2) — the one function BOTH consumers read
+  // (stepLevel publishes it; stepPressure's solid predicate evaluates it), which is
+  // the no-hybrid rule made structural: level and pressure cannot drift onto
+  // different models because there is one model.
+  //
+  //   level = base(Tavg) + level_per_mass·(mass − 1) + VOID CREDIT
+  //
+  // The base+mass backbone is the incompressible-loop geometry, reconstructed (not
+  // integrated) so it cannot drift — a subcooled loop passes every net mass change
+  // through the surge line, which is why one slope serves both directions (#330).
+  // The VOID CREDIT (`_pzr_void_lvl`, level units) is the displaced-liquid ledger:
+  // stepLevel accretes it as a FLOW — `level_per_void · w · d(void)` per step, the
+  // admittance split applied to the displacement as it happens — instead of the old
+  // state-form `level_per_void · w_now · void`, which re-applied the whole lift at
+  // TODAY'S w. That state-form is the low-Δp re-lift defect the stage-0 freeze
+  // measured (TUNING_LOG 2026-08-08-develop-a): as a blowdown completes, leak_flow
+  // collapses with √Δp, w recovers toward 1, and the term re-lifted TRUE level
+  // 20–65 pts at core-top uncovery (sev 0.10/0.17/0.20). Flow-formulated, the
+  // displacement that left through the HOLE while w was small is GONE — when void
+  // pins at 1.0, d(void) = 0 and nothing can re-apply it. On the no-leak families
+  // the credit stays in state-form (see stepLevel), so this function returns the
+  // frozen `levelRaw` BITWISE there — the stuck-PORV/TMI arc is byte-identical by
+  // construction, term order preserved: ((base + mass) + credit).
+  //
+  // Rig states that have never stepped (`_pzr_void_lvl` null) fall back to the
+  // state-form with w — exactly the frozen line, so forced snapshots and pre-node
+  // saves read what they always read.
+  function pzrNodeLevel(s, cfg) {
+    var p = cfg.pressurizer;
+    var base_mass = levelBase(s, cfg) + p.level_per_mass * ((s._mass != null ? s._mass : 1.0) - 1.0);
+    var credit = s._pzr_void_lvl;
+    if (credit == null) {
+      var wref = p.void_weight_surge_ref;
+      var w = (wref != null) ? wref / (wref + (s.leak_flow || 0)) : 1;
+      credit = p.level_per_void * w * (s.primary_void_fraction || 0);
+    }
+    return base_mass + credit;
+  }
+
+  // Step 8 (pzr part) — the PRESSURIZER INVENTORY NODE (#385 stages 1–2).
+  //
+  // `pzr_mass_frac` is the pressurizer's liquid content in RCS-mass-fraction units —
+  // the same currency as `_mass`, of which it is a SHARE, never a second inventory
+  // (the #418 C_tube rule: a node's capacity comes OUT of what it split from; the
+  // loop's share is the implicit `_mass − pzr_mass_frac`). The geometry map is
+  // `level_per_mass`: 1 RCS-frac = 776 points of level, so nominal 55 % holds
+  // 55/776 ≈ 0.0709 and the vessel is full at 100/776 ≈ 0.1289 — no new constant,
+  // the capacity IS the existing slope. UNCLIPPED both ways, like the level line it
+  // carries: above capacity is the overfull/solid bookkeeping, below zero is the
+  // deficit bookkeeping (how far below on-span a recovery must climb).
+  //
+  // Stage 2: the node carries `pzrNodeLevel` — the base+mass backbone reconstructed
+  // (drift-free) plus the flow-accreted VOID CREDIT updated here. The credit rules:
+  //
+  //   - NEVER-LEAKED plants (`_pzr_dep` false) keep the STATE-FORM
+  //     `level_per_void · w · void`, with w = 1 exactly when leak_flow = 0 — so the
+  //     whole no-leak family (stuck PORV, safeties, loss of heat sink, the TMI arc)
+  //     is BITWISE the frozen levelRaw, not approximately.
+  //   - Once a leak has ever flowed (`_pzr_dep` latches), the credit is a FLOW:
+  //     growth accretes `level_per_void · w · dv` (the admittance split applied to
+  //     the displacement as it happens — the (1−w) share left through the hole and
+  //     is not owed back); collapse returns UNWEIGHTED `level_per_void · dv` (the
+  //     condensing loop pulls its liquid back through the surge line — the hole
+  //     cannot supply it), floored at 0 (the node cannot return liquid it was
+  //     never given). Growth ≤ collapse slope keeps credit ≤ level_per_void·void
+  //     inductively; no cap constant needed.
+  //
+  // THE SMALL-BREAK LIFT THIS PRODUCES IS SOURCED AS A CLASS (#424 evidence pass,
+  // 2026-08-08). At small cold-leg severities (board ~10 %) the credit holds TRUE
+  // level on-scale (~65 %) while the core approaches uncovery — and that is the
+  // post-TMI operator lesson, not a model artifact: IE Bulletin 79-06A (Apr. 14,
+  // 1979) — "the potential exists, under certain accident or transient conditions,
+  // to have a water level in the pressurizer simultaneously with the reactor
+  // vessel not full of water", operators instructed "to not rely upon pressurizer
+  // level indication alone", and SI actuation ordered on pressure "regardless of
+  // the pressurizer level"; IE Bulletins 79-05C/79-06C (July 26, 1979) — with the
+  // RCPs running through a small break the RCS pumps two-phase fluid and mass
+  // depletion "can … prolong or aggravate the uncovering of the reactor core",
+  // which is the pump-on regime these sweeps ride. The 65 % MAGNITUDE is this
+  // plant's own (shape sourced, scale fitted — the house convention). Saved:
+  // inbox/sources/IEB_79-06A.html, IEB_79-06C.html.
+  //
+  // `_pzr_surge_flow` (frac/s, + = insurge) is the realized node flow, stashed for
+  // the stage-3+ pressure consumer. The published gauge is the node on span.
   function stepLevel(s, cfg, dt) {
-    s.pzr_level_pct = clip(levelRaw(s, cfg), 0, 100);
+    var p = cfg.pressurizer;
+    var v = s.primary_void_fraction || 0;
+    var wref = p.void_weight_surge_ref;
+    var w = (wref != null) ? wref / (wref + (s.leak_flow || 0)) : 1;
+    if (!s._pzr_dep && (s.leak_flow || 0) > 0) s._pzr_dep = true;
+    if (!s._pzr_dep) {
+      s._pzr_void_lvl = p.level_per_void * w * v;   // w === 1 here; the product kept in
+      // the leak-0 shape so this branch is bitwise the frozen line's void term
+    } else {
+      var c = (s._pzr_void_lvl != null) ? s._pzr_void_lvl
+            : p.level_per_void * w * v;             // first step after a load mid-leak
+      var pv = (s._pzr_prev_void != null) ? s._pzr_prev_void : v;
+      var dv = v - pv;
+      c += p.level_per_void * (dv > 0 ? w * dv : dv);
+      if (c < 0) c = 0;
+      s._pzr_void_lvl = c;
+    }
+    s._pzr_prev_void = v;
+    var lvl = pzrNodeLevel(s, cfg);
+    var target = lvl / p.level_per_mass;
+    if (s.pzr_mass_frac == null) s.pzr_mass_frac = target;  // lazy init — rig-built states (#418 idiom)
+    s._pzr_surge_flow = dt > 0 ? (target - s.pzr_mass_frac) / dt : 0;
+    s.pzr_mass_frac = target;
+    s.pzr_level_pct = clip(lvl, 0, 100);
   }
 
   RD.pwrPressurizer = {
@@ -663,6 +772,7 @@
     levelBase: levelBase,
     levelProgram: levelProgram,
     levelRaw: levelRaw,
+    pzrNodeLevel: pzrNodeLevel,
     stepLevel: stepLevel,
     stepTailpipe: stepTailpipe,
   };

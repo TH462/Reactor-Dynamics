@@ -662,14 +662,16 @@
       'There is no speed that is safe at every power — matching flow is about 1000 gpm (227 m³/h) at full load ' +
       'and 50 gpm (11 m³/h) at 6 %.', CI, '9.2'),
     ims89lnqmip: e('Steam Generator (SG) FEED status',
-      'What the feedwater controller is doing: HOLDING, SAT HI/LO, ISOLATED, MANUAL or OFF.',
+      'What the feedwater controller is doing: HOLDING, NO FLOW, SAT HI/LO, ISOLATED, MANUAL or OFF.',
       'The AUTO and MAN lamps tell you WHICH mode the controller is in; this tells you whether it is ' +
       'actually regulating. HOLDING (green) is the only state where level is being looked after for ' +
-      'you. ISOLATED means the controller stood itself down because main feedwater shut — auxiliary ' +
-      'feedwater has the generators and nobody is trimming level. SAT HI / SAT LO is the trap: the ' +
-      'lamp still reads AUTO, but the pump is against a stop with no authority left to correct with, ' +
-      'so level keeps going the way it is already going. Hover any feed control for the full ' +
-      'sentence.', CI, '14.1'),
+      'you. NO FLOW means the controller is commanding real pump speed and the plant is delivering ' +
+      'none of it — a dead feed train, not a control problem; the demand number above goes amber on ' +
+      'the same fact. ISOLATED means the controller stood itself down because main feedwater shut — ' +
+      'auxiliary feedwater has the generators and nobody is trimming level. SAT HI / SAT LO is the ' +
+      'trap: the lamp still reads AUTO, but the pump is against a stop with no authority left to ' +
+      'correct with, so level keeps going the way it is already going. Hover any feed control for ' +
+      'the full sentence.', CI, '14.1'),
     // (A `bdRodStatus` entry stood here for the #306 rod status word, removed 2026-08-03 as
     // redundant against the IN-OUT lamps. This file is a THIRD independent copy of the
     // board's meaning — an orphan entry here describes an item nobody can click, which is
@@ -690,8 +692,10 @@
       'can be blocked.', CI, '9.0'),
     imrsgjmrjfg: e('AUTO (feed)',
       'Engages the three-element feedwater controller.',
-      'It captures current level as its setpoint on engage, so engage it at a level you are happy to ' +
-      'hold. This is the free-play default and the plant\'s real level backbone.', CI, '14.1'),
+      'It regulates to the programmed level — 65 %, the plant\'s normal operating point — walking ' +
+      'there gently from wherever level is when you engage it, which is what a real three-element ' +
+      'controller does. To hold a different level on purpose, use MAN and match feed to steam ' +
+      'yourself. This is the free-play default and the plant\'s real level backbone.', CI, '14.1'),
     imrsgjuh7l0: e('MAN (feed)',
       'Feed pump runs at the speed you set — no level feedback.',
       'A fixed-demand device: it does exactly what you asked and nothing else. Set it to match steam ' +
@@ -699,8 +703,10 @@
       'direction the error points.', CI, '9.2'),
     imrsgjwq1q0: e('OFF (feed)',
       'Stops main feedwater.',
-      'Level then falls at whatever rate the generator is boiling. Auxiliary Feedwater (AFW) is the backup path, and it ' +
-      'auto-starts at about 20 % level if it is armed.', CI, '9.2'),
+      'Level then falls at whatever rate the generator is boiling. Auxiliary Feedwater (AFW) is the backup path: at ' +
+      'power its loss-of-feed-flow start brings it in almost at once when the flow collapses, and ' +
+      'the 17 % low-low level backstop is the same signal that scrams the reactor — one signal ' +
+      'for both, as in the real plant. Both need the AFW arm in AUTO.', CI, '9.2'),
     bdMfwRestore: e('RESTORE (main feedwater)',
       'Re-opens main feedwater after an automatic isolation. Lit while feed is isolated.',
       'Three signals isolate main feed automatically: a reactor trip with Tavg low, steam generator ' +
@@ -714,7 +720,9 @@
       'Commanded feed pump speed, shown as 0–1200 gpm (0–273 m³/h). Typing here takes feed to MANUAL.',
       'The scale is pump speed expressed as flow: 1200 gpm (273 m³/h) is 120 % speed. Arrows step by 20 gpm (4.5 m³/h). ' +
       'Compare your setting against the STEAM FLOW indication above — matching them is what stops ' +
-      'level moving.', CI, '9.2'),
+      'level moving. This number is a DEMAND, not a measurement: when it goes amber, the plant is ' +
+      'delivering none of it (dead feed train — the FEED FLOW readout below has the truth), and the ' +
+      'SG FEED corner reads NO FLOW.', CI, '9.2'),
     imrsgkz4lq0: e('Feed Flow',
       'MEASURED feedwater flow — what is actually reaching the generator.',
       'Not pump demand. Through a feed pump trip the demand stays where you left it while this falls ' +
@@ -859,7 +867,7 @@
       'through the steam generator on a controlled cooldown.', CI, '12.3'),
     imrppqg6mcc: e('AUTO (steam dump)',
       'Dump follows Steam Generator (SG) pressure toward the dump setpoint.',
-      'At power the generator sits about 819 psi (5.65 MPa) against a setpoint near 1194 psi (8.23 MPa), which is why the ' +
+      'At power the generator sits about 825 psi (5.69 MPa) against a setpoint near 1020 psi (7.03 MPa), which is why the ' +
       'dump is shut: there is nothing to relieve. Drop the setpoint below actual pressure and it ' +
       'opens.', CI, '12.3'),
     imrppquqg16: e('OPEN (steam dump)',
@@ -1007,9 +1015,10 @@
       'inventory against subcooling before you believe it.', TMI, '4.0'),
     ims2imn1nny: e('Steam Generator Level',
       'Narrow-range SG level — the heat sink, and the fastest way to lose one.',
-      'About 65 % nominal. The ladder above and below matters: Auxiliary Feedwater (AFW) auto-starts at 20 %, the reactor ' +
-      'trips at 17 %, and at 90 % you get a turbine trip and feed isolation. On a fast load change ' +
-      'indicated level briefly moves the WRONG way (shrink and swell) — do not chase it.', CI, '9.1')
+      'About 65 % nominal. The ladder above and below matters: at 17 % low-low the reactor trips ' +
+      'AND Auxiliary Feedwater (AFW) auto-starts — one signal for both, as in the real plant — and at 90 % you get a ' +
+      'turbine trip and feed isolation. On a fast load change indicated level briefly moves the ' +
+      'WRONG way (shrink and swell) — do not chase it.', CI, '9.1')
   };
 
   // ==================================================================== ALIASES

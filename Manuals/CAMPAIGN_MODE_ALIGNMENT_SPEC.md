@@ -45,8 +45,9 @@ Remaining honesty caveats for Mode 4/5 missions (still true):
 
 - Cooldown **rates are time-compressed** (the lumped model is not wall-clock accurate). The
   HEATUP no longer is: since #251 it runs on the real pump-heat ramp with the reactor
-  subcritical throughout — measured, 10.71 plant-hours cold to 548 °F (286.7 °C) at an average
-  39.8 °F/hr (22.1 °C/hr) — so what is compressed there is the wall clock, via time
+  subcritical throughout — measured, ~12.3 plant-hours cold to the settled 567.0 °F (297.2 °C)
+  no-load anchor at a steady ~30 °F/hr (16.7 °C/hr) (#419 real rates end to end, including the
+  ~1.8 plant-hour pressurization leg) — so what is compressed there is the wall clock, via time
   acceleration, not the evolution.
 - Cold Tavg on the `cold_shutdown` board reads ~50 °C (genuinely cold) — but if a mission parks
   at **Mode 3, Hot Standby** (`hot_zero_power`) instead, never claim instruments show cold Tavg

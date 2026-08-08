@@ -768,6 +768,35 @@ html[data-channel="dev"] .logo-test {
 .fb-field { margin-bottom: 12px; }
 .fb-field label { display: block; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); margin-bottom: 4px; }
 .fb-hint { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+/* In-sim bug report (2026-08-07). The send block is `hidden` in the markup and only
+   revealed when a deploy stamped a telemetry endpoint, so a local checkout and the
+   offline build show the email route alone rather than a button that cannot work. */
+.fb-send { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
+.fb-note {
+  width: 100%; resize: vertical; min-height: 68px;
+  background: var(--bg-elevated); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font: inherit; font-size: 13px; line-height: 1.45;
+}
+.fb-note:focus { outline: none; border-color: var(--normal); }
+.fb-attach {
+  display: flex; align-items: center; gap: 7px; margin: 8px 0;
+  font-size: 12px; color: var(--text-2); text-transform: none; letter-spacing: 0;
+}
+.fb-send-btn { border-color: var(--running); }
+.fb-send-btn:disabled { opacity: .5; cursor: default; }
+
+/* First-launch consent. Wider than the help modal it borrows chrome from, because
+   the text has to be readable at a glance — a wall of small print is how a consent
+   prompt gets clicked through without being read, which is the outcome that makes
+   the answer worthless. */
+/* Specificity: .mission-modal.help-modal is two classes and would otherwise win on
+   both width and height, which is why this is qualified rather than a bare class —
+   the first version rendered at the help modal's full width with a screen of empty
+   space under four short paragraphs. */
+.mission-modal.consent-modal { width: min(560px, 96vw); height: auto; }
+.consent-btns { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 10px; }
+.consent-yes { border-color: var(--running); }
 .fb-msg { font-size: 12px; color: var(--running); }
 .fb-msg.err { color: var(--caution); }
 .fb-lead { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--text); }

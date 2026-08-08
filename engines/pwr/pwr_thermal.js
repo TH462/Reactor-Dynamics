@@ -99,7 +99,18 @@
              : Math.max(0, _wide / (t.sg_dryout_wide_pct || 30));
     var _resid = (t.sg_dryout_residual || 0.05) * (1 - (s.sg_dry_deplete || 0));
     var _dry_factor = _resid + (1 - _resid) * _wet;
-    var Q_coolant_to_sg = t.h_sg * s.flow_frac * _dry_factor * (s.tavg_c - s.t_secondary_c);
+    // SG TUBE NODE (#418 wave B1): the coolant no longer talks to Tsat(P_sec)
+    // directly — it talks to the tube-bundle node t_sg_c through the FIRST half
+    // of the series conductance pair (h_sg/split); the node passes heat on to
+    // the secondary through the second half (below, after the Tavg balance).
+    // Invariance rule and constants: pwr_config `sg_tube_capacity` block. The
+    // legacy behavior is the split→0 limit; at steady state the crossing heat
+    // is exactly the old h_sg·f·dry·(Tavg − Tsec) for ANY split.
+    var _split = t.sg_tube_split != null ? t.sg_tube_split : 0.5;
+    if (s.t_sg_c == null) {   // lazy init (new field; old saves + rig states)
+      s.t_sg_c = s.tavg_c - _split * (s.tavg_c - (s.t_secondary_c != null ? s.t_secondary_c : s.tavg_c));
+    }
+    var Q_coolant_to_sg = (t.h_sg / _split) * s.flow_frac * _dry_factor * (s.tavg_c - s.t_sg_c);
     // REVERSE flow (SG hotter than the primary — e.g. a cold RCS with the
     // secondary at atmospheric saturation ~100 °C) transfers poorly: the
     // boiling regime that gives the SG its rated conductance only exists
@@ -107,6 +118,7 @@
     // Without this, starting RCPs on a cold plant let the Tsat-floored
     // secondary back-heat the primary at ~1 °C/s forever (an infinite-
     // reservoir artifact the old fire-hose spray masked as a pressure spike).
+    // Applied PER BRANCH under the tube node — each ΔT gates its own direction.
     if (Q_coolant_to_sg < 0) Q_coolant_to_sg *= (t.sg_reverse_frac || 0.05);
     s._Q_coolant_to_sg = Q_coolant_to_sg;
     // Residual Heat Removal (RHR, §6.9): the low-pressure shutdown-cooling loop.
@@ -214,6 +226,20 @@
     s.tavg_c += dTavg * dt;
     s._dTavg_dt = dTavg; // pressurizer surge uses this (thermal expansion)
 
+    // TUBE-BUNDLE NODE STEP (#418 wave B1): the node absorbs what the coolant gave
+    // it (Q_coolant_to_sg above) and sheds to the secondary through the second half
+    // of the series pair — h_sg/(1−split) — against LAST step's t_secondary_c (the
+    // same explicit coupling the old direct term used). stepSecondary consumes
+    // `_Q_tube_to_sec` as its boiling duty, so the energy chain is
+    // coolant → tube node → steam with nothing created or lost. The reverse gate
+    // applies per branch (see the comment at the first branch).
+    var _sp2 = t.sg_tube_split != null ? t.sg_tube_split : 0.5;
+    var Q_tube_to_sec = (t.h_sg / (1 - _sp2)) * s.flow_frac * _dry_factor
+                      * (s.t_sg_c - s.t_secondary_c);
+    if (Q_tube_to_sec < 0) Q_tube_to_sec *= (t.sg_reverse_frac || 0.05);
+    s.t_sg_c += (Q_coolant_to_sg - Q_tube_to_sec) / (t.sg_tube_capacity || 5.0) * dt;
+    s._Q_tube_to_sec = Q_tube_to_sec;
+
     // Hot/cold leg split. The RAW enthalpy rise (∝ power/flow) can exceed what
     // subcooled liquid can carry — at very low flow it is nonphysically large. The
     // core exit therefore pins at saturation (Tsat): the split is capped at the value
@@ -259,14 +285,42 @@
     //      Pump heat is deposited AT THE PUMP, between the SG outlet and the core inlet —
     //      it lifts both legs equally and creates no rise ACROSS THE CORE. Including it
     //      over-stated ΔT by exactly the pump-heat fraction (+8.9 % at t+3 min).
+    //
+    // #418 WAVE B1 RE-REASONING (2026-08-07): the argument above was written against a
+    // plant whose legs were SAME-STEP algebra, and its premise needed re-stating when
+    // the legs gained transport (first-order lags below). The conclusion SURVIVES —
+    // strengthens, even: the published ΔT is now the TRANSPORTED loop ΔT, which is
+    // precisely what the real uncompensated channel reads (real RTDs sit in real legs
+    // downstream of real transit; WTSM 12.2's "direct measure" is direct AT THE RTD).
+    // The channel still gets no lead-lag; if the TR-1 ride-out family had degraded
+    // under the lag, the sourced WTSM Tavg lead-lag was the pre-named remedy —
+    // measured instead: run_otdt and TR-1i hold at baseline on the transported legs.
     var Tsat = T_sat(s.pressure_mpa);
     var delta_T_raw = t.delta_T_rated * (s._Q_total != null ? s._Q_total : s.power_pct / 100)
                     / Math.max(s.flow_frac, t.flow_floor);
     var thot_raw = s.tavg_c + delta_T_raw / 2.0;
     s._subcool_hot_c = Tsat - thot_raw;                     // exit margin to saturation (may go < 0)
     var delta_T = Math.min(delta_T_raw, Math.max(2 * (Tsat - s.tavg_c), 0));
-    s.thot_c = s.tavg_c + delta_T / 2.0;                    // = min(thot_raw, Tsat)
-    s.tcold_c = s.tavg_c - delta_T / 2.0;
+    // LOOP TRANSPORT (#418 wave B1): the algebraic split is the TARGET; the
+    // published legs are first-order states lagging it at tau/flow (transport is
+    // faster at higher loop flow, and honestly sluggish at natural-circ flows).
+    // Steady state converges to the algebra EXACTLY, at every flow and power —
+    // which is what keeps SS-1, the Tavg program endpoints, and every derived IC
+    // untouched. What changes is transients: the same-step algebra moved the true
+    // cold leg 27.5 °F in 2 s on an MSIV closure (#418's founding measurement);
+    // now the hot leg carries core-exit news at ~tau_hotleg_s and the cold leg
+    // answers on the SG/transport timescale. The DNB datum (_subcool_hot_c
+    // above) deliberately keeps the RAW same-step algebra — the #368 record —
+    // and the Tsat cap inside the target does too.
+    var _thotT = s.tavg_c + delta_T / 2.0;                  // = min(thot_raw, Tsat)
+    var _tcoldT = s.tavg_c - delta_T / 2.0;
+    var _fT = Math.max(s.flow_frac, t.flow_floor);
+    var _tauH = (t.tau_hotleg_s != null ? t.tau_hotleg_s : 1.5) / _fT;
+    var _tauC = (t.tau_coldleg_s != null ? t.tau_coldleg_s : 4.0) / _fT;
+    if (s.thot_c == null) s.thot_c = _thotT;                // lazy init (rig states)
+    if (s.tcold_c == null) s.tcold_c = _tcoldT;
+    s.thot_c += (_thotT - s.thot_c) / (_tauH + dt) * dt;
+    s.tcold_c += (_tcoldT - s.tcold_c) / (_tauC + dt) * dt;
 
     s.subcooling_c = trueSubcooling(s); // true diagnostic value (bulk; mirrors the instrument)
   }
@@ -331,9 +385,10 @@
       //
       // CALIBRATION IS SOURCED, not fitted: "at approximately 2200 °F, the oxidation heat
       // equals the decay heat generated after 8 hours from reactor shutdown". 2200 °F is
-      // also the 10 CFR 50.46(b)(1) limit. On THIS plant's decay curve the 8-hour figure is
-      // 1.1243 % of rated, which is zirc_q_ref — and the algebra below makes Q_ox equal it
-      // exactly at w = 1, T = T_ref, so the anchor holds by construction rather than by fit.
+      // also the 10 CFR 50.46(b)(1) limit. zirc_q_ref IS this plant's own 8-hour decay
+      // figure (re-derived whenever the decay curve moves — #364 did; the value lives in
+      // config only, no copy here) — and the algebra below makes Q_ox equal it exactly at
+      // w = 1, T = T_ref, so the anchor holds by construction rather than by fit.
       var z = t.zirc || {}, q_ox = 0;
       if (z.q_ref) {
         var T_K = s.clad_temp_c + 273.15, Tref_K = (z.ref_temp_c || 1204) + 273.15;
@@ -354,8 +409,25 @@
         var dw_dt = (Math.sqrt(s._zr_ox2) - w_old) / dt;
         q_ox = z.q_ref * 2 * tau * dw_dt;               // = q_ref at w = 1, T = T_ref
       }
-      // % of RATED, like decay_heat_pct — q_ox is a fraction here (q_ref is 0.011243).
+      // % of RATED, like decay_heat_pct — q_ox is a fraction here (q_ref's value lives
+      // in config; a copy here went stale once already when #364 re-derived it).
       s.zirc_heat_pct = q_ox * 100;
+      // HYDROGEN LEDGER (#386 stage 3). The same reaction event as the heat — one mol of
+      // Zr yields 190 kJ AND 2 mol H2 — so the H2 rate is EXACTLY proportional to q_ox,
+      // not a fit of shape; h2_gain is the single calibration constant (fraction-of-rated
+      // heat -> v/o of containment free volume; sizing and sources in pwr_config). Do NOT
+      // multiply by f_unc: q_ox already carries it through the oxide integrator — the
+      // f_unc on `heat` below is thermal-node bookkeeping, not part of q_ox. The ledger
+      // telescopes: total H2 = h2_gain·q_ref·2·tau·(w_end − w_start), proportional to
+      // oxide GROWN and independent of dt. Born in the RCS (_rcs_h2); stepContainment
+      // moves it to the building only while a containment-side path exists, which keeps
+      // an SGTR's hydrogen out of the building. Inherits the melt freeze at the top of
+      // this function and the covered-core zero — both declared, Manuals/12 §12.4e.
+      var ch2 = cfg.containment;
+      if (ch2 && ch2.h2_gain) {
+        if (s._rcs_h2 == null) s._rcs_h2 = 0;           // lazy init (new field; old saves)
+        s._rcs_h2 += ch2.h2_gain * q_ox * dt;
+      }
       var heat = (t.clad_heat_gain || 0) * ((s._Q_total || 0) + q_ox) * f_unc;
       var cool = (t.clad_steam_h || 0) * (s.clad_temp_c - T_sat(s.pressure_mpa));
       s.clad_temp_c += (heat - cool) * dt;

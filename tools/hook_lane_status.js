@@ -33,10 +33,16 @@ var cp = require('child_process');
 var path = require('path');
 var fs = require('fs');
 
+// `tree` is where the SESSION stands; `git` is what gets swept. They differ for the audit lane
+// only: C:/grok_build/RD_Audit is a plain directory (auditor's CLAUDE.md + findings/) with the
+// checkout one level down at tree/, so a sweep of the lane directory itself would report
+// "COULD NOT CHECK" forever. Its checkout is DETACHED — no branch — hence branch: 'HEAD'.
 var LANES = [
   { lane: 'develop',   tree: 'C:/grok_build/Reactor_Dynamics', branch: 'develop' },
   { lane: 'workbench', tree: 'C:/grok_build/RD_workbench',     branch: 'workbench' },
   { lane: 'backshop',  tree: 'C:/grok_build/RD_backshop',      branch: 'backshop' },
+  { lane: 'audit',     tree: 'C:/grok_build/RD_Audit',         branch: 'HEAD',
+    git: 'C:/grok_build/RD_Audit/tree', detached: true },
 ];
 var REPO = 'TH462/Reactor-Dynamics';
 // gh is installed per-user; a shell that predates the PATH edit will not have it (CLAUDE.md).
@@ -77,16 +83,18 @@ lines.push('');
 
 // ---- the file sweep -------------------------------------------------------------
 LANES.forEach(function (L) {
-  var st = run('git -C ' + L.tree + ' status --short', 5000);
+  var gitdir = L.git || L.tree;
+  var st = run('git -C ' + gitdir + ' status --short', 5000);
   // The format string MUST be quoted. Unquoted, a `|` separator is read by the shell as a
   // pipe and the whole command fails — caught by pipe-testing this hook rather than by
   // reading it, which is the only reason it is not silently printing "(log failed)" forever.
-  var lg = run('git -C ' + L.tree + ' log ' + L.branch + ' -1 --format="%h %cr"', 5000);
+  var lg = run('git -C ' + gitdir + ' log ' + L.branch + ' -1 --format="%h %cr"', 5000);
   if (!st.ok) { lines.push('  ' + pad(L.lane) + 'COULD NOT CHECK (git status ' + st.why + ')'); return; }
   var dirty = st.out ? st.out.split('\n').filter(function (s) { return s.trim(); }).length : 0;
   var commit = lg.ok ? lg.out : '(log ' + (lg.why || 'failed') + ')';
   lines.push('  ' + pad(L.lane) + (dirty ? dirty + ' uncommitted file' + (dirty === 1 ? '' : 's') : 'clean') +
-             '  ·  ' + commit + (L === mine ? '   <- you' : ''));
+             '  ·  ' + commit + (L.detached ? ' (detached)' : '') +
+             (L === mine ? '   <- you' : ''));
 });
 function pad(s) { while (s.length < 11) s += ' '; return s; }
 
@@ -120,10 +128,23 @@ function auditModeHere() {
 var audit = auditModeHere();
 
 lines.push('');
-if (audit === 'on') {
-  lines.push('AUDIT LANE — CLAUDE.md exclusion IS in force here (.claude/settings*.json).');
-  lines.push('  Ordinary work in this tree runs WITHOUT the orientation document. Issue titles are');
-  lines.push('  suppressed below so this hook cannot prime a slice. See CLAUDE.md "Audit lanes".');
+if (audit === 'on' && mine && mine.lane === 'audit') {
+  // The DEDICATED lane. The repo's CLAUDE.md is excluded, but this lane is not left with nothing:
+  // its own CLAUDE.md is the auditor's orientation and it auto-loads. Saying "runs WITHOUT the
+  // orientation document" here — true of an armed WORK lane, false of this one — would tell the
+  // auditor its context was broken when it is exactly right, which is the same class of false
+  // signal the rest of this hook is built to avoid.
+  lines.push('AUDIT LANE — the repo CLAUDE.md and the memory index are excluded (#221 RoE 1).');
+  lines.push('  Your orientation is THIS lane\'s own CLAUDE.md; it should have auto-loaded. If it');
+  lines.push('  did not, stop and say so — an unoriented audit reads exactly like a clean one.');
+  lines.push('  Issue titles are suppressed below so this hook cannot prime a slice.');
+  lines.push('  FINDINGS ONLY, NO FIXES: tree/ is detached and denied to Edit/Write.');
+} else if (audit === 'on') {
+  lines.push('AUDIT MODE IS ARMED IN THIS WORK LANE — CLAUDE.md exclusion IS in force');
+  lines.push('  (.claude/settings*.json). Ordinary work here runs WITHOUT the orientation document,');
+  lines.push('  and nothing is loaded in its place — open Blueprint/AUDITOR_ORIENTATION.md by hand');
+  lines.push('  before auditing. The dedicated lane (C:/grok_build/RD_Audit) has neither problem.');
+  lines.push('  Issue titles are suppressed below so this hook cannot prime a slice.');
 } else if (audit === 'unknown') {
   lines.push('AUDIT LANE: COULD NOT CHECK — .claude/settings*.json unreadable. NOT the same as "off".');
 } else {
@@ -146,7 +167,8 @@ if (!gh) {
   // "gh failed", i.e. indistinguishable from being offline. Ask for JSON and parse it in
   // Node, which is shell-independent.
   var r = run(gh + ' issue list --repo ' + REPO +
-              ' --search "label:status-wip-develop,status-wip-workbench,status-wip-backshop"' +
+              ' --search "label:status-wip-develop,status-wip-workbench,status-wip-backshop,' +
+              'status-wip-audit"' +
               ' --json number,title,labels', 15000);
   var rows = null;
   if (r.ok) { try { rows = JSON.parse(r.out || '[]'); } catch (e) { rows = null; } }

@@ -372,24 +372,36 @@ test('PWR · steam_dump carries a turbine trip off the code safeties (#154)', fu
   r.engage(['steam_dump']);
   r.run(30);
   r.cmd({ action: 'inject_failure', failure_id: 'turbine_trip' });
-  var peak = 0, dmax = 0, lifted = false;
+  var peak = 0, dmax = 0, liftSamples = 0;
   for (var k = 0; k < 600; k++) {
     r.run(1);
     var t = ts(r), c = r.snap().control_state;
     if (t.steam_pressure_mpa > peak) peak = t.steam_pressure_mpa;
     if ((c.steam_dump_pct || 0) > dmax) dmax = c.steam_dump_pct;
-    if (t.sg_safety_open) lifted = true;
+    if (t.sg_safety_open) liftSamples++;
   }
   ck('dump went to AUTO on engage', r.snap().control_state.steam_dump_auto,
     r.snap().control_state.steam_dump_auto === true, 'true');
-  ck('dump opened for the rejection', dmax.toFixed(1), dmax > 20, '> 20 % (measured 92.9)');
-  // The whole point of the channel: the bypass takes the steam the turbine stopped
-  // taking, so the generator never reaches its code safeties. Measured peak 7.73 MPa
-  // (1121 psi) with the channel, 9.43 MPa (1368 psi) with it dead — and dead, the
-  // safeties DO lift.
-  ck('SG pressure stayed off the safeties', peak.toFixed(2) + ' MPa', peak < 9.0,
-    '< 9.0 MPa / 1305 psi (dead channel: 9.43)');
-  ck('code safeties never lifted', String(lifted), lifted === false, 'false (dead channel: true)');
+  ck('dump opened for the rejection', dmax.toFixed(1), dmax > 20, '> 20 % (Ginna cap 28)');
+  // RE-DERIVED at #419 wave 3 (the Ginna ladder). The plant's honest trip burst
+  // (~1.9 MPa above operating) now EQUALS the real operating→pop margin
+  // (825 → 1085 psig), so the bare-channel rig — dump alone, 28 % — rides a
+  // knife-edge the SHIPPED plant does not (full stack the auto-ADV drives to
+  // 100 % and the peak holds at 7.52, settling ~6.95 under the 7.33 reseat;
+  // measured 2026-08-07). What the CHANNEL can honestly claim on a bare rig is
+  // a GRAZE, not a park: a momentary lift-and-reseat is tolerated, sustained
+  // cycling is the dead-channel signature, and the ride must END settled under
+  // the reseat with the safeties shut.
+  var tEnd = ts(r);
+  // Measured 34/600 on the Ginna ladder (a few early reseat cycles, then clean);
+  // the dead channel parks cycling for the rest of the ride — order-of-magnitude apart.
+  ck('the safeties saw at most a graze, never a park (< 10 % of samples)',
+    liftSamples + '/600 lift samples, peak ' + peak.toFixed(2) + ' MPa',
+    liftSamples < 60, '< 60 (dead channel: parks cycling)');
+  ck('and the ride ends settled under the reseat, safeties shut',
+    tEnd.steam_pressure_mpa.toFixed(2) + ' MPa, safety ' + String(!!tEnd.sg_safety_open),
+    tEnd.steam_pressure_mpa < RD.PWR_CONFIG.steam_generator.sg_safety_reseat_mpa
+      && !tEnd.sg_safety_open, '< reseat (config), shut');
 });
 
 test('PWR · pzr_pressure returns the plant to its pressure setpoint (#154)', function (ck) {
@@ -711,10 +723,16 @@ test('3600× keeps the PID engaged — no plant-side handoff (feed stays uncoupl
 });
 
 // ============================================================ save / rewind
+// The free-setpoint half of this test lived on feed_sg (setSp 70) until #355 put the
+// channel on the 65 % level program — a player setpoint on a programmed channel is
+// overwritten by design on the next evaluation, so it stopped being free state. The
+// programmed channel now asserts its setpoint RE-DERIVES to the program after load;
+// the round-trip of an operator-chosen setpoint moves to boron_conc, the remaining
+// sp channel without a program.
 test('Automation state survives save/load (engaged + setpoint + dynamics)', function (ck) {
   var r = rig('pwr', 'hot_full_power');
-  r.engage(['feed_sg', 'rods_tavg']);
-  r.setSp('feed_sg', 70);
+  r.engage(['feed_sg', 'rods_tavg', 'boron_conc']);
+  r.setSp('boron_conc', 720);   // ≠ the analyzer capture (~705) — a fresh capture would erase it
   r.run(120);
   var save = r.service.saveState();
   var iSaved = save.control_failure.automation.channels.feed_sg.I;
@@ -728,11 +746,13 @@ test('Automation state survives save/load (engaged + setpoint + dynamics)', func
   r.rehook();   // load rebuilds the layer — re-attach the command counter
   var c = r.chan('feed_sg');
   ck('feed channel re-engaged', c.engaged, c.engaged === true, 'true');
-  ck('setpoint restored', c.setpoint, c.setpoint === 70, '70');
+  ck('programmed setpoint re-derives (65 % level program, #355)', c.setpoint, c.setpoint === 65, '65');
+  ck('operator setpoint restored (boron_conc, no program)', r.chan('boron_conc').setpoint,
+    r.chan('boron_conc').setpoint === 720, '720');
   ck('integrator restored', String(r.service.layer.byId.feed_sg.I), r.service.layer.byId.feed_sg.I === iSaved, String(iSaved));
   ck('rod channel re-engaged', r.chan('rods_tavg').engaged, r.chan('rods_tavg').engaged === true, 'true');
   r.run(120);
-  ck('holds level after restore', inst(r).sg_level.toFixed(1), near(inst(r).sg_level, 70, 4), '70±4');
+  ck('holds level after restore', inst(r).sg_level.toFixed(1), near(inst(r).sg_level, 65, 4), '65±4');
 });
 
 test('Rewind restores controller dynamics exactly (no integrator ghost)', function (ck) {

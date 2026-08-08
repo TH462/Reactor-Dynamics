@@ -26,19 +26,26 @@
  * the auditor's first-turn self-check, on the record in the slice issue before any finding
  * (AUDIT_CHARTER.md header + §11). Both halves are needed; neither substitutes for the other.
  *
- * HOW A SLICE IS ACTUALLY LAUNCHED (ruled 2026-08-05 #383, NARROWED 2026-08-06). `RD_backshop` is
- * THE AUDIT LANE and the only one: it carries `.claude/settings.local.json` with the exclusions,
- * which layers BY DEFAULT and needs no flag, so a plain session started in that tree is already
- * unprimed. In `develop` and `RD_workbench`, which have no such file, use
- * `claude --settings .claude/settings.audit.json`. This script checks either configuration; it
- * never launches anything.
+ * HOW A SLICE IS ACTUALLY LAUNCHED (ruled 2026-08-08, superseding #383/2026-08-06). THE AUDIT LANE
+ * IS `C:\grok_build\RD_Audit`, and it is the only one. It is NOT a checkout: it is a plain
+ * directory holding the auditor's `CLAUDE.md`, its `findings/`, and a detached-HEAD worktree at
+ * `tree/`. The session's cwd is the directory, not the worktree. It carries
+ * `.claude/settings.local.json` with the exclusions, which layers BY DEFAULT and needs no flag, so
+ * a plain session started there is already unprimed and a `/clear` begins a slice.
  *
- * #383 originally armed BOTH overflow lanes. Workbench's copy was removed during ordinary work,
- * and the owner ruled on 2026-08-06 that workbench will not be an audit lane. Note what this
- * script cannot tell you: it only ever checks the tree it is RUN IN, so it can never answer
+ * The three WORK lanes — `develop`, `RD_workbench`, `RD_backshop` — are now all ordinary and all
+ * keep their CLAUDE.md. #383 armed both overflow lanes; 2026-08-06 narrowed that to backshop only,
+ * at the stated cost that ordinary work there ran unprimed too. Moving the lane to its own
+ * directory retires that cost. To audit from a work lane anyway, the flag route still exists:
+ * `claude --settings .claude/settings.audit.json`. This script checks either configuration.
+ *
+ * Note what it cannot tell you: it only ever checks the tree it is RUN IN, so it can never answer
  * "which lanes are currently unprimed?" — run it where you intend to audit, not somewhere else.
+ * The exception is the auditor's orientation document, which is a global fact and is checked
+ * wherever this runs (check 7).
  *
- *   node tools/audit_preflight.js 344              # check, and print how this tree launches
+ *   node tree/tools/audit_preflight.js 344         # from RD_Audit — the normal case
+ *   node tools/audit_preflight.js 344              # from a work lane: checks the FLAG route
  *   node tools/audit_preflight.js --settings=<p>   # check a copy instead (injection-testing)
  *   node tools/audit_preflight.js --no-gh          # skip the slice-issue checks (offline)
  */
@@ -47,15 +54,27 @@ var fs = require('fs');
 var path = require('path');
 var cp = require('child_process');
 
+var deploy = require('./audit_deploy');
+
 var REPO_ROOT = path.resolve(__dirname, '..');
 var AUDIT_SETTINGS = path.join(REPO_ROOT, '.claude', 'settings.audit.json');
 var LOCAL_SETTINGS = path.join(REPO_ROOT, '.claude', 'settings.local.json');
+// The audit lane's settings live one level ABOVE the worktree, because the session's cwd is the
+// lane directory and not the checkout. Resolving this by walking up from REPO_ROOT would give the
+// right answer in the audit lane and a wrong one everywhere else; audit_deploy exports the literal.
+var LANE_SETTINGS = path.join(deploy.AUDIT_ROOT, '.claude', 'settings.local.json');
+var IN_AUDIT_TREE = path.resolve(REPO_ROOT).toLowerCase() ===
+                    path.resolve(deploy.AUDIT_ROOT, 'tree').toLowerCase();
 
-// CHECK THE FILE THAT IS ACTUALLY IN FORCE, not the one named after the job. In an audit lane the
-// operative file is settings.local.json — it layers by default, which is the whole point — and
-// checking settings.audit.json there would validate a file the session never loads. That is the
-// same class of error as the one this script exists to catch.
+// CHECK THE FILE THAT IS ACTUALLY IN FORCE, not the one named after the job. Checking
+// settings.audit.json in a lane that never loads it would validate a file the session ignores —
+// the same class of error this script exists to catch.
+//
+// Run from RD_Audit/tree, the operative file is RD_Audit/.claude/settings.local.json, one level up
+// and outside the repo. Run from a work lane, it is that lane's own settings.local.json if it has
+// excludes (none does now), otherwise the flag route.
 function defaultSettings() {
+  if (IN_AUDIT_TREE) return { path: LANE_SETTINGS, lane: true };
   try {
     var c = JSON.parse(fs.readFileSync(LOCAL_SETTINGS, 'utf8'));
     if ((c.claudeMdExcludes || []).length) return { path: LOCAL_SETTINGS, lane: true };
@@ -172,6 +191,26 @@ if (cfg && excludes.length) {
   }
 }
 
+// ---- 3b. the exclude list is FULLY EXPLICIT — no wildcards ------------------------
+// A catch-all `**/grok_build/**/CLAUDE.md` used to head this list as belt-and-braces. Since the
+// audit lane moved to C:\grok_build\RD_Audit that pattern is a defect rather than a safety net: it
+// also matches RD_Audit/CLAUDE.md, the auditor's own orientation and the ONE file in the lane that
+// must load. An auditor handed no orientation measures at the wrong layer — protection read
+// engine-direct reports a plant with no ESF arms at all — and files false findings. Like every
+// other failure guarded here, nothing about that outcome announces itself.
+//
+// Covering a newly-added worktree is check 3's job; it enumerates `git worktree list` and demands
+// both slash forms verbatim. A wildcard cannot do that job any better and can do this damage, so
+// the rule is: no wildcards. That is checkable without re-implementing glob semantics, which this
+// file refuses to do on principle (check 3).
+excludes.forEach(function (e) {
+  if (/[*?[\]{}!]/.test(e)) {
+    fail('claudeMdExcludes', 'entry "' + e + '" contains glob metacharacters',
+         'the list must be explicit, one absolute path per entry. A wildcard broad enough to ' +
+         'cover the work lanes also swallows RD_Audit/CLAUDE.md, leaving the auditor unoriented');
+  }
+});
+
 // ---- 4. the key names still exist in the installed CLI ----------------------------
 // THE UPGRADE TRAP. settings.audit.json is hand-written and nothing validates it: an unknown key
 // is ignored in silence. If a CLI upgrade renames either key, the audit degrades to a bare launch
@@ -269,6 +308,39 @@ if (slice && useGh) {
   }
 }
 
+// ---- 7. the auditor's orientation is deployed, current, and NOT excluded ----------
+// Checks 1-6 all ask whether the WRONG documents were kept out. This one asks whether the RIGHT
+// one got in, which is the failure the move to a dedicated lane introduced. RD_Audit/CLAUDE.md is
+// generated from Blueprint/AUDITOR_ORIENTATION.md and lives outside the repo, so it has three ways
+// to be wrong that a tracked file does not: never deployed, deployed then left behind by an edit
+// to the master, or deployed and then excluded along with the others.
+//
+// Unlike every other check this is a GLOBAL fact, not a property of the tree this ran in, so it
+// runs wherever this is invoked from.
+(function () {
+  if (!fs.existsSync(deploy.AUDIT_ROOT)) {
+    fail('audit lane', deploy.AUDIT_ROOT + ' does not exist',
+         'rebuild it: git worktree add --detach "' + deploy.AUDIT_ROOT + '/tree" develop, ' +
+         'then node tools/audit_deploy.js — see Blueprint/AUDIT_CHARTER.md §12');
+    return;
+  }
+  if (!fs.existsSync(deploy.DEPLOYED)) {
+    fail('auditor orientation', deploy.DEPLOYED + ' is missing',
+         'the auditor would start with NO orientation document and no way to know it. ' +
+         'Deploy it: node tools/audit_deploy.js');
+  } else if (!deploy.isCurrent()) {
+    fail('auditor orientation', deploy.DEPLOYED + ' has drifted from Blueprint/AUDITOR_ORIENTATION.md',
+         'the auditor is reading a stale copy of its own rules. Re-deploy: node tools/audit_deploy.js');
+  }
+  var fwd = deploy.DEPLOYED.replace(/\\/g, '/');
+  var back = deploy.DEPLOYED.replace(/\//g, '\\');
+  if (excludes.indexOf(fwd) !== -1 || excludes.indexOf(back) !== -1) {
+    fail('auditor orientation', 'RD_Audit/CLAUDE.md is itself in claudeMdExcludes',
+         'that is the auditor\'s orientation, not a priming source — the excludes cover the work ' +
+         'lanes and RD_Audit/tree/CLAUDE.md, never this file. Remove the entry.');
+  }
+})();
+
 // ---- verdict ---------------------------------------------------------------------
 if (failures.length) {
   console.error('');
@@ -284,15 +356,23 @@ if (failures.length) {
 }
 
 var rel = path.relative(REPO_ROOT, settingsPath).replace(/\\/g, '/');
-var lane = settingsPath === LOCAL_SETTINGS;
+var lane = settingsPath === LOCAL_SETTINGS || settingsPath === LANE_SETTINGS;
 console.log('audit preflight OK — settings ' + rel + ', ' + excludes.length + ' exclude entries, ' +
-            'auto-memory off' + (slice ? ', slice #' + slice + ' open with SUBJECTS TO TEST' : ''));
+            'auto-memory off, orientation deployed and current' +
+            (slice ? ', slice #' + slice + ' open with SUBJECTS TO TEST' : ''));
 console.log('');
-if (lane) {
-  console.log('  THIS IS AN AUDIT LANE (#383). settings.local.json layers by default, so a plain');
+if (settingsPath === LANE_SETTINGS) {
+  console.log('  THIS IS THE AUDIT LANE — ' + deploy.AUDIT_ROOT + ' (ruled 2026-08-08).');
+  console.log('  settings.local.json there layers by default, so a plain session started in the');
+  console.log('  LANE DIRECTORY is already unprimed and a /clear begins a slice. Start the session');
+  console.log('  in ' + deploy.AUDIT_ROOT + ', NOT in tree/ — the orientation and the');
+  console.log('  exclusions both hang off that cwd, and starting a level down silently gets you');
+  console.log('  the repo\'s own settings and no auditor CLAUDE.md.');
+} else if (lane) {
+  console.log('  THIS IS AN AUDIT LANE. settings.local.json layers by default, so a plain');
   console.log('  session started in this tree is already unprimed — no flag, and a /clear is');
   console.log('  enough to begin a slice. Ordinary non-audit work here also runs without CLAUDE.md;');
-  console.log('  that is the accepted cost of the ruling, not an accident.');
+  console.log('  that is the accepted cost of arming a work lane, not an accident.');
 } else {
   console.log('  launch:  claude --settings ' + rel);
   console.log('  (no settings.local.json here, so the flag is what arms the exclusion)');

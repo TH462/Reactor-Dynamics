@@ -348,6 +348,11 @@ T.push(test('P-11/P-7 trip bypass — cold init blocks, auto-reinstate on repres
 T.push(test('MSIV closure at power (full stack) — bottled SG drains to the level scram', function (ck) {
   var s = new Stack('hot_full_power');
   s.run(2);
+  // ADV out of service (#418 wave B1): with the tube node softening the bottling
+  // burst, an available auto-ADV catches it 5 psi under the pop (correct plant, a
+  // different story — TR-17's). This check pins the SAFETIES lifting, so its night
+  // is the ADV-tagged-out one — same fixture as TR-16 and the pwr_msiv mission.
+  s.cmd({ action: 'set_adv', mode: 'closed' });
   s.cmd({ action: 'close_msiv' });
   ck('MSIV shut + turbine tripped', s.ts().msiv_open, s.ts().msiv_open === false && s.engine.s.turbine_tripped, 'shut + tripped');
   // Sample DURING the run: the old check was `lifted || scrammed`, and the next
@@ -1403,6 +1408,106 @@ T.push(test('Seal-in — a standing feedwater-isolation signal cannot be undone 
   ck('a RETURNING SI signal re-isolates (the re-arm)', String(ti.mfw_isolated), ti.mfw_isolated === true, 'true');
 }));
 
+T.push(test('Containment ESF rows (#386 stage 2) — unblockable SI, spray seal-in + auto-secure, fan realign, MSLI hi-hi', function (ck) {
+  // (a) THE UNBLOCKABLE ROW. WTSM 12.3 (ML11223A310): "This SI actuation signal
+  // cannot be blocked by the operator." In this kernel, carrying no `arm` IS that
+  // property — so the discriminator is driven exactly: take the HPI ESF to MANUAL
+  // (any listed operator command does it), show the ARMED 12.4 MPa row stays
+  // silent on low primary pressure, then show the containment row fires anyway.
+  var s = new Stack('hot_full_power');
+  driveWith(s, 2);
+  s.cmd({ action: 'set_hpi', active: false });   // ESF 'hpi' → MANUAL (_esfManualScan)
+  var ins = driveWith(s, 2, { primary_pressure: 11.0 });
+  ck('armed SI row is SUPPRESSED with the ESF in MANUAL (primary at 11.0 MPa)',
+    String(ins.hpi_active), ins.hpi_active !== true, 'false');
+  ins = driveWith(s, 2, { primary_pressure: 11.0, containment_pressure: 0.15 });
+  ck('the 3.5 psig containment row fires ANYWAY — no arm = cannot be blocked',
+    String(ins.hpi_active), ins.hpi_active === true, 'true');
+  // (c) fan realign keys on the hpi_active STATUS, so all SI sources reach it.
+  ins = driveWith(s, 2, { primary_pressure: 11.0, containment_pressure: 0.15 });
+  ck('the fan coolers realigned on SI (keyed on hpi_active, not one SI source)',
+    String(ins.ctmt_fan_active), ins.ctmt_fan_active === true, 'true');
+
+  // (b) SPRAY: fires at the 30 psig hi-hi; the seal-in LATCHES (spray extinguishes
+  // its own signal), so OFF is refused even once pressure is back under the hi-hi;
+  // and on recovery below the SI signal the row's reset AUTO-SECURES the spray —
+  // the auto-only build has no operator to do it.
+  var p = new Stack('hot_full_power');
+  driveWith(p, 2);
+  var quiet = p.cmd({ action: 'set_containment_spray', active: false });
+  ck('quiet plant: securing spray is not refused', String(quiet && quiet.code),
+    !(quiet && quiet.code === 'SEAL_IN'), 'not SEAL_IN');
+  var pi = driveWith(p, 2, { containment_pressure: 0.32 });
+  ck('spray actuated at the hi-hi', String(pi.ctmt_spray_active), pi.ctmt_spray_active === true, 'true');
+  // THE PARAMS-FORM TRAP (the recorded plan's risk 4): _sealInBlocking scans
+  // act.params, so a row written with the bare `active` key silently no-ops the
+  // refusal — this check is the tripwire. 0.20 is under the hi-hi and above the
+  // release, where a live-signal seal-in would already have let go.
+  var r = p.cmd({ action: 'set_containment_spray', active: false });
+  ck('OFF refused while sealed in (at the firing signal)', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  pi = driveWith(p, 2, { containment_pressure: 0.20 });
+  r = p.cmd({ action: 'set_containment_spray', active: false });
+  ck('OFF STILL refused at 0.20 — latched, not live-signal', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  var agree = p.cmd({ action: 'set_containment_spray', active: true });
+  ck('the AGREEING command is not refused', String(agree && agree.code),
+    !(agree && agree.code === 'SEAL_IN'), 'not SEAL_IN');
+  pi = driveWith(p, 3, { containment_pressure: 0.11 });
+  ck('below the SI signal the reset AUTO-SECURES spray — no operator command issued',
+    'active ' + String(pi.ctmt_spray_active), pi.ctmt_spray_active === false, 'false');
+
+  // (d) MSLI on hi-hi containment — the sourced third leg (ML11223A310:468),
+  // sharing MSLI_SEAL_IN with the flow/pressure pair: one latch, either signal.
+  var m = new Stack('hot_full_power');
+  driveWith(m, 2);
+  var mi = driveWith(m, 2, { containment_pressure: 0.32 });
+  ck('hi-hi containment pressure closed the MSIV', String(mi.msiv_open), mi.msiv_open === false, 'false');
+  var mr = m.cmd({ action: 'open_msiv' });
+  ck('reopen refused while sealed in', String(mr && mr.code), !!(mr && mr.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  mi = driveWith(m, 2, { containment_pressure: 0.11 });
+  var mo = m.cmd({ action: 'open_msiv' });
+  ck('reopen accepted below the release', String(mo && mo.code), !(mo && mo.code === 'SEAL_IN'), 'not SEAL_IN');
+}));
+
+T.push(test('H2 recombiner row (#386 stage 3) — auto-start, latched seal-in, auto-secure', function (ck) {
+  // The stage-2 spray row's shape, cloned onto the ctmt_h2 channel: no arm (auto-only
+  // build — and an armed row's own OFF would disarm before the seal-in evaluates),
+  // params form (the _sealInBlocking scan — the tripwire checks below), LATCHED
+  // seal-in (recombiners extinguish their own signal), auto-secure on the reset
+  // (declared inference: real recombiners are manually placed in service and this
+  // build has no operator surface — NUREG-0737 II.E.4.1). Setpoints from
+  // cfg.containment: start 0.5 v/o, secure 0.2 v/o — both below the 4.1 alarm.
+  var cc = RD.PWR_CONFIG.containment || {};
+  var on = cc.h2_recomb_on_pct || 0.5, off = cc.h2_recomb_off_pct || 0.2;
+  var s = new Stack('hot_full_power');
+  driveWith(s, 2);
+  var quiet = s.cmd({ action: 'set_ctmt_recombiners', active: false });
+  ck('quiet plant: securing recombiners is not refused', String(quiet && quiet.code),
+    !(quiet && quiet.code === 'SEAL_IN'), 'not SEAL_IN');
+  var si = driveWith(s, 2, { ctmt_h2: on + 0.2 });
+  ck('recombiners AUTO-STARTED above the ' + on + ' v/o start point — no operator command',
+    String(si.ctmt_recomb_active), si.ctmt_recomb_active === true, 'true');
+  // The params-form trap tripwire, mid-band: above the release, below nothing —
+  // a live-signal seal-in OR a bare-key row would let this OFF through.
+  var r = s.cmd({ action: 'set_ctmt_recombiners', active: false });
+  ck('OFF refused while sealed in (at the firing signal)', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  si = driveWith(s, 2, { ctmt_h2: (on + off) / 2 });
+  r = s.cmd({ action: 'set_ctmt_recombiners', active: false });
+  ck('OFF STILL refused between release and start — latched, not live-signal', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  var agree = s.cmd({ action: 'set_ctmt_recombiners', active: true });
+  ck('the AGREEING command is not refused', String(agree && agree.code),
+    !(agree && agree.code === 'SEAL_IN'), 'not SEAL_IN');
+  si = driveWith(s, 3, { ctmt_h2: off - 0.1 });
+  ck('below the ' + off + ' v/o securing point the reset AUTO-SECURES them',
+    'active ' + String(si.ctmt_recomb_active), si.ctmt_recomb_active === false, 'false');
+  si = driveWith(s, 3, { ctmt_h2: on + 0.2 });
+  ck('…and the row RE-FIRES when concentration climbs back through the start point',
+    String(si.ctmt_recomb_active), si.ctmt_recomb_active === true, 'true');
+}));
+
 T.push(test('#370b — a condition can be a NUMERIC threshold on a second instrument (coincidence logic)', function (ck) {
   // A real ESFAS function fires on one signal only while a SECOND analog signal agrees:
   // "high steam flow coincident with low-low Tavg or low steam pressure" (WTSM §12.3.5.1,
@@ -1434,6 +1539,40 @@ T.push(test('#370b — a condition can be a NUMERIC threshold on a second instru
   ck('the { instrument, in: [...] } form still works',
     String(L._evaluateCondition({ instrument: 'plant_mode', in: [4, 5] }, { plant_mode: 5 })),
     L._evaluateCondition({ instrument: 'plant_mode', in: [4, 5] }, { plant_mode: 5 }) === true, 'true');
+}));
+
+T.push(test('noisy failure BITES on an appended noise-0 channel — adv_valve (#387)', function (ck) {
+  // Every appended instrument ships noise: 0 (the cross-step PRNG rule), so the sigma an
+  // injected `noisy` failure scales comes from `noise_failure` — and adv_valve shipped
+  // without one, which made the failure a silent no-op: fSigma resolved to 0 and _gauss
+  // returned the mean without drawing (pwr_instruments.js). This is the repo's FIRST
+  // `noisy`-mode assertion; it is red on the pre-#387 config (byte-identical samples),
+  // which is its injection verification.
+  var s = new Stack('hot_full_power');
+  s.run(5);
+  var sample = function (n) {
+    var out = [];
+    for (var i = 0; i < n; i++) { s.run(s.dt); out.push(s.ins().adv_valve); }
+    return out;
+  };
+  var spread = function (a) { return Math.max.apply(null, a) - Math.min.apply(null, a); };
+  var base = sample(100);
+  ck('baseline is byte-constant — noise 0 means NO draw, not small noise',
+    'spread ' + spread(base), spread(base) === 0, '0');
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'adv_valve', mode: 'noisy', value: 5 });
+  var noisy = sample(100);
+  // fSigma = noise_failure (1.0) × scale (5) = 5.0, drawn about the lagged reading (~0)
+  // and clipped to [0, 100] — a half-normal, so assert the spread is unmistakably alive
+  // and sane rather than a fragile clipped-sigma estimate.
+  ck('injected noisy failure moves the channel (was silently inert before #387)',
+    'spread ' + spread(noisy).toFixed(2), spread(noisy) > 1.0, '> 1 point of jitter');
+  ck('…and stays clipped inside the instrument range',
+    Math.min.apply(null, noisy).toFixed(2) + '…' + Math.max.apply(null, noisy).toFixed(2),
+    Math.min.apply(null, noisy) >= 0 && Math.max.apply(null, noisy) <= 100, 'within [0, 100]');
+  s.cmd({ action: 'clear_instrument_failure', instrument_id: 'adv_valve' });
+  var cleared = sample(100);
+  ck('clearing the failure restores the quiet channel',
+    'spread ' + spread(cleared), spread(cleared) === 0, '0');
 }));
 
 // -------- report --------

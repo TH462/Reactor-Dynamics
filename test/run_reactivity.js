@@ -45,7 +45,12 @@ function ck(desc, ok, obs) {
 function near(a, b, tol) { return Math.abs(a - b) <= tol; }
 function F2C(f) { return (f - 32) * 5 / 9; }
 function F(c) { return c * 9 / 5 + 32; }
-var T_NOLOAD = 297.0;   // the no-load Tavg the HZP anchors are quoted at
+// DECOUPLED at #419 wave 3: this is the MEASUREMENT'S temperature — the WBN/BEAVRS HZP
+// (557 °F = 291.67 °C) the 975-ppm ARO boron and the ITCs were taken at — NOT this
+// plant's no-load anchor. The old 297.0 conflated the two; benign while the anchor sat
+// 5 °C away, wrong once the Ginna re-anchor moved it to 286. rho_excess is solved
+// against THIS temperature; the plant's own ICs trim at their own anchor downstream.
+var T_NOLOAD = 291.67;  // the WBN HZP the anchors are quoted at (name kept for diff hygiene)
 
 var e = new RD.PWREngine();
 e.reset({ initial_state: 'hot_full_power' });
@@ -160,11 +165,20 @@ function rodsAt(st) {
   return e._rodReactivity();
 }
 var hfpEngine = (new RD.PWREngine({ initial_state: 'hot_full_power' })).getTrueState().boron_ppm;
+// RE-DERIVED at #419 wave 3, two fixes exposed by the longer (13 °C) anchor-to-HFP walk:
+// (1) the 975-ppm base must convert through the ANCHOR temperature's boron worth, not the
+// destination's (b = nonB/w — the old `975 + Δpcm/w(TREF)` hid ~30 ppm of linearization);
+// (2) the moderator leg must use the SAME boron-independent `_modCoeff()·dD` form the
+// rho_excess solve and the bAro check above use — the old form evaluated it at the HFP
+// boron, a different point on the crossover, which is a second ~50 ppm of inconsistency.
+// At T = TREF the moderator term is zero by construction, so the walk's mod leg is just
+// −modCoeff·dD(T_NOLOAD→TREF), and the chain from the anchor is exact.
+var dD_walk = e._modDensity(T_NOLOAD) - e._modDensity(TREF);
 var netPcm = (RC.alpha_D * (TFREF - T_NOLOAD)
-   + (e._moderatorReactivity(TREF, hfpEngine) - e._moderatorReactivity(T_NOLOAD, hfpEngine))
+   - e._modCoeff() * dD_walk
    + (rodsAt(HFP_STEPS) - rodsAt(e.rod_groups[0].max_steps))
    - XE_W) * 1e5;
-var predicted = 975 + netPcm / (e._boronWorth(TREF) * 1e5);
+var predicted = (975 * e._boronWorth(T_NOLOAD) + netPcm / 1e5) / e._boronWorth(TREF);
 ck('HFP boron is what the HZP anchor plus the power defect and xenon predict',
    Math.abs(predicted - hfpEngine) < 25,
    'balance predicts ' + predicted.toFixed(0) + ' ppm, engine reports '
@@ -283,7 +297,10 @@ console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s 26-step creep' +
   var crit = null;
   for (var s = 250; s <= 400 && crit == null; s++) if (rhoAt(s) >= 0) crit = s;
   var PLOTTED = 306, CREEP = 26;   // the five authored 1/M bursts: 138+90+44+22+12
-  ck('the startup IC sits at 683 ppm with the bank in', near(ts.boron_ppm, 683, 2),
+  // 683 → 705 at #419 wave 3: the Ginna anchor (286.0 °C) + the decoupled rho_excess
+  // re-solve trim the HZP IC to ≈ 704.8 ppm — with criticality back at step 319 (checked
+  // next), so the 1/M story is unchanged; only the ppm label moved.
+  ck('the startup IC sits at ~705 ppm with the bank in', near(ts.boron_ppm, 705, 2),
      ts.boron_ppm.toFixed(1) + ' ppm');
   ck('criticality is at step 319, 13 past the last plotted 1/M burst', crit === 319,
      'critical at ' + crit + ', bursts end at ' + PLOTTED);

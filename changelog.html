@@ -30,8 +30,6 @@
       document.documentElement.setAttribute('data-channel', c);
       if (c !== 'public') document.title = '[TEST] ' + document.title;
     }(window.RD_CHANNEL || 'dev'));</script>
-    <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
-    <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
 
@@ -167,6 +165,23 @@
        ================================================================== -->
 
   <details class="log-entry" open>
+    <summary class="log-head">
+      <h2>Hydrogen is real, and the containment fights back</h2>
+      <span class="log-ver mono">Alpha 1.4.0</span>
+      <time class="log-date mono" datetime="2026-08-08">8 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>Hydrogen.</strong> Overheated cladding generates it, it collects in containment, recombiners work the tail, and past 8 % it burns once — a TMI-2-style pressure spike. New H₂ gauge and annunciators (H2 HI, H2 BURN, RECOMB ON).</li>
+      <li><span class="log-tag added">Added</span><strong>Containment protection and heat removal.</strong> Spray at 30 psig, fan-cooler realign on safety injection, an unblockable 3.5 psig SI backup, and steam-line isolation — all automatic; board controls come with a later board redesign.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Containment pressure response re-worked.</strong> A station-blackout boil-off now pressurizes the building slowly and stays under the spray point — it used to pass design pressure on relief steam alone.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Pressurizer level is a real inventory node.</strong> The gauge tracks the vessel's own liquid: large breaks empty it honestly, and the small-break level lift is now the documented real-plant class (IE Bulletin 79-06A).</li>
+      <li><span class="log-tag changed">Changed</span><strong>Auxiliary feedwater starts on the sourced single signal</strong> — the 17 % low-low level that also trips the reactor; the invented 3-point offset is retired.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Auto steam-generator feed regulates to the programmed 65 % level</strong>, and the feed demand box reads NO FLOW when commanded feed is not being delivered.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The ADV valve's noisy-instrument failure did nothing;</strong> 14 instruments missing from the in-app manual data are restored.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
     <summary class="log-head">
       <h2>Accidents run on a real clock</h2>
       <span class="log-ver mono">Alpha 1.3.0</span>

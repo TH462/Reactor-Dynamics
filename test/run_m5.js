@@ -556,9 +556,17 @@ T.push(test('Protection cadence — bounded in SIM time, not per broadcast (#153
   ck('3600×: trips at all', fast.reason || 'NO TRIP', fast.scram != null, 'a trip');
   ck('3600×: same trip as 1× (not a slower parameter catching it late)',
     fast.reason || 'NO TRIP', fast.reason === slow.reason, slow.reason);
-  ck('3600×: same sim time as 1× (within 1 s)',
+  // Band 1.0 → 2.0 s (#418 wave A1, 2026-08-07): the derived secondary clock lets
+  // the SG liquid soak more of the excursion, so the flux crossing approaches its
+  // threshold more shallowly and the two cadences' evaluation grids (0.02 s vs the
+  // 0.5 sim-s transient cadence) land 1.10 s apart (10.12 vs 9.02) where the steeper
+  // pre-A1 approach kept them inside 1.0. The defect class this fences — protection
+  // evaluated per WALL broadcast, which trips TENS of sim-seconds late with a
+  // +14-point peak — still reddens at 2.0 by an order of magnitude, and the peak
+  // check below (|Δ| < 3 points) is unchanged and still binding.
+  ck('3600×: same sim time as 1× (within 2 s)',
     fast.scram != null ? fast.scram.toFixed(2) + ' s vs ' + slow.scram.toFixed(2) + ' s' : 'NO TRIP',
-    fast.scram != null && Math.abs(fast.scram - slow.scram) < 1.0, '|Δ| < 1.0 s');
+    fast.scram != null && Math.abs(fast.scram - slow.scram) < 2.0, '|Δ| < 2.0 s');
   // The excursion itself: the pre-fix 3600× peak was 135.9 %, against 121.6 % at 1×.
   ck('3600×: excursion no worse than 1× (within 3 points)',
     fast.peak.toFixed(1) + ' % vs ' + slow.peak.toFixed(1) + ' %',

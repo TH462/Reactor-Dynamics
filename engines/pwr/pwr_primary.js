@@ -317,9 +317,13 @@
       s._cvcs_err_f += (err_raw - s._cvcs_err_f) * (dt / (ftau + dt));
       var level_demand = (rc.cvcs_charge_per_level || 0.001) * s._cvcs_err_f;
       var target = (s.letdown_flow || 0) + level_demand;
-      s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 0.06);
+      s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 1.33333e-4);
     } else {
-      s.charging_flow = s.charging_setpoint;
+      // MANUAL honors the pump's run-out too (#421). This clip covers the two paths
+      // the applyCommand clip cannot reach: a pre-#408 save restoring its retired-
+      // currency setpoint verbatim (no migration default exists), and crafted rig
+      // states that write charging_setpoint directly.
+      s.charging_flow = clip(s.charging_setpoint, 0, rc.charging_max != null ? rc.charging_max : 1.33333e-4);
       s._cvcs_err_f = null;   // stale in MANUAL; reseed on the next AUTO engage
     }
     // Charging requires the charging pump. CVCS flows are normalized to the
@@ -535,11 +539,88 @@
     // discharge is steam already, weight 1.0. No pressurizer relief tank is modeled
     // (declared, Manuals/12 §13.0) — relief lands directly in the atmosphere.
     var q_relief = (s.porv_flow || 0) + (s.safety_flow || 0);
-    var steam_in = q_break * flash + q_relief;
-    // Passive heat sink: condensation on the structures, condensate to the sump.
-    var cond = s._ctmt_steam / (c.passive_sink_tau_s || 1800);
+    // Upstream-SLB source (#386 stage 2): a steam-line break INSIDE containment
+    // blows the SG down into the building — the sourced HELB case behind the
+    // 3.5 psig backup signal (WTSM 12.3). steam_break_flow is secondary currency
+    // (fraction of rated steam flow); slb_ctmt_gain converts. Already steam,
+    // weight 1.0 — no flash gate. Downstream breaks discharge outside: zero here.
+    var q_slb = (s._fail && s._fail.steam_break && s._fail.steam_break.active
+                 && s._fail.steam_break.upstream)
+      ? (s.steam_break_flow || 0) * (c.slb_ctmt_gain || 0) : 0;
+    var steam_in = q_break * flash + q_relief + q_slb;
+    // Heat sinks (#386 stage 2): passive condensation on the structures, plus the
+    // ACTIVE trains as additive rate terms when delivering. Demand vs delivery is
+    // the #200/#329 split — the casualty takes the POWER, never the lineup: a
+    // blackout stops both trains with the demand standing, and they return with
+    // the bus. Normal-mode fan cooling stays folded in passive_sink_tau_s
+    // (declared, config header); ctmt_fan_safety is only the SI realign.
+    s.ctmt_spray_active = !!s.ctmt_spray_demand && acAvailable(s);
+    s.ctmt_fan_active = !!s.ctmt_fan_safety && acAvailable(s);
+    // Passive-sink enhancement (#425): wall condensation grows with the saturation
+    // elevation over the (fixed) structure temperature, and the growth arrives on a
+    // LAG — a blowdown pulse spends 20-40 s above the knee and never charges it; a
+    // boil-off's relief-duty climb spends minutes there and feels it fully. TIME is
+    // the only separator between those families (their pressures overlap), which is
+    // why this is a lagged state and not a static curve — the static form was
+    // measured infeasible (TUNING_LOG 2026-08-08-develop-d). Constants + sizing:
+    // the passive_sink_dt_* comment block in pwr_config. gain 0 (or absent config)
+    // pins enh at exactly 1 and restores the pre-#425 plant bitwise.
+    var dTarget = clip(1 + (c.passive_sink_dt_gain || 0)
+                * Math.max(0, T_sat((c.press_gain || 0) * s._ctmt_steam) - c.ambient_temp_c
+                              - (c.passive_sink_dt_knee_c != null ? c.passive_sink_dt_knee_c : 999)), 1, 25);
+    if (s._ctmt_sink_enh == null) s._ctmt_sink_enh = 1;  // lazy init: old saves, rig states
+    s._ctmt_sink_enh += (dTarget - s._ctmt_sink_enh) * Math.min(1, dt / (c.passive_sink_dt_lag_s || 90));
+    var sink = s._ctmt_sink_enh / (c.passive_sink_tau_s || 1800)
+             + (s.ctmt_spray_active ? 1 / (c.spray_sink_tau_s || 240) : 0)   // active trains NOT enhanced
+             + (s.ctmt_fan_active ? 1 / (c.fan_sink_tau_s || 750) : 0);
+    var cond = s._ctmt_steam * sink;
     s._ctmt_steam = Math.max(0, s._ctmt_steam + (steam_in - cond) * dt);
-    s._ctmt_sump += (q_break * (1 - flash) + cond) * dt;
+    s._ctmt_sump += (q_break * (1 - flash) + cond
+                   + (s.ctmt_spray_active ? (c.spray_sump_rate || 0) : 0)) * dt;
+    // ---- Hydrogen (#386 stage 3). Ledger currency is v/o OF CONTAINMENT FREE VOLUME
+    // (the one sourced denominator: Ginna UFSAR ch15, 1.0e6 ft^3). Generated in
+    // stepCladding (_rcs_h2, exactly proportional to the oxidation heat) and moved here
+    // only while a containment-side path EXISTS — geometry, not flow: a flow-keyed gate
+    // would stall on the burn's own backpressure spike (√Δp clips to zero for a step)
+    // and alias the safety-valve duty cycle. SGTR-only discharge keeps its H2 in the
+    // RCS — what the SG carries away is declared untracked (§12.4e) — so the
+    // SGTR-reads-nothing fence (CA-16 leg B) holds for hydrogen too, and a closed block
+    // valve HOLDS the inventory (the isolation lesson survives).
+    if (s._rcs_h2 == null) s._rcs_h2 = 0;      // lazy init: old saves, rig states
+    if (s._ctmt_h2 == null) s._ctmt_h2 = 0;
+    var h2PathOpen = (s._leak_base > 0 && !s._leak_to_sg)
+                  || (s.porv_open && s.block_valve_open !== false)
+                  || !!s.safety_open;
+    if (h2PathOpen && s._rcs_h2 > 0) {
+      var h2_xfer = s._rcs_h2 * Math.min(1, dt / (c.h2_transport_tau_s || 60));
+      s._rcs_h2 -= h2_xfer; s._ctmt_h2 += h2_xfer;
+    }
+    // Recombiners — auto-only combustible-gas control. Existence is sourced (WTSM 5.0,
+    // NUREG-0737 II.E.4.1); capacity is NOT in any lane's corpus, so recomb_tau_s is
+    // fitted SLOW — they manage the DBA tail and cannot stop a TMI-scale rise, which is
+    // the prototypical shape. Demand vs delivery is the #200/#329 split: a blackout
+    // stops the trains with the demand standing.
+    s.ctmt_recomb_active = !!s.ctmt_recomb_demand && acAvailable(s);
+    if (s.ctmt_recomb_active && s._ctmt_h2 > 0) {
+      s._ctmt_h2 = Math.max(0, s._ctmt_h2 - s._ctmt_h2 / (c.recomb_tau_s || 1800) * dt);
+    }
+    // THE BURN — the ruled shape (OWNER RULING 2026-08-05: TMI-2-style, one-time
+    // deflagration pressure spike + latched event, containment holds; OWNER RULING
+    // 2026-08-08: peak sized ABOVE the 30 psig spray hi-hi, so the ESF answers it).
+    // Physics-side trigger on TRUE concentration — a chemical event, not an instrument
+    // decision (the self-actuating SG-safeties precedent). 2H2 + O2 -> 2H2O: a burn
+    // MAKES steam and heat, so depositing into _ctmt_steam rides the existing
+    // press_gain/T_sat/sink machinery and produces the GEND-061 shape — a single sharp
+    // spike, then sink-rate decay. The latch is one-time FOREVER and stands in for O2
+    // depletion/ignition stochastics (no O2 ledger, declared): H2 may re-accumulate
+    // past the threshold afterward with no second burn — TMI-2 burned once.
+    if (!s.ctmt_h2_burned && s._ctmt_h2 >= (c.h2_ignition_pct || 8.0)) {
+      var h2_burned = s._ctmt_h2 * (c.h2_burn_consumed_frac != null ? c.h2_burn_consumed_frac : 0.85);
+      s._ctmt_h2 -= h2_burned;
+      s._ctmt_steam += (c.h2_burn_gain || 0) * h2_burned;
+      s.ctmt_h2_burned = true;
+    }
+    s.ctmt_h2_pct = clip(s._ctmt_h2, 0, 100);
     var p_steam = (c.press_gain || 0) * s._ctmt_steam;
     s.containment_pressure_mpa = c.ambient_pressure_mpa + p_steam;
     // Atmosphere temperature: a steam/air mixture sits at the steam partial

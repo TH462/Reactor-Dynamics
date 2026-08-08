@@ -158,7 +158,7 @@
   // unit-neutral (%, ppm, MW, rpm, cps, DPM, pcm, A, rod steps) and never convert.
   var VALUE_UNIT = {
     ims3w1cb6jc: 'flow',  ims3w1lj7n6: 'press',  imrmstovyli: 'flow',  imrmsu1bl4r: 'press',
-    imrzp89wdfu: 'flow',  imrzp8qps6u: 'flow',   ims5gq44zgr: 'temp',  imro6qpci2d: 'tempd',
+    imsgti1p0rm: 'flow',  imsgti0gnpf: 'flow',   ims5gq44zgr: 'temp',  imro6qpci2d: 'tempd',
     imrppyp0wfo: 'press', imrqzuhzre3: 'vac',    ims3xp168iy: 'vac',   imrr1gwi93j: 'press',
     imrr1hecwq7: 'temp',  imrr4fnxhlc: 'temp',   imrr4g29a7c: 'temp',  imrsgch20pv: 'temp',
     imrsgkz4lq0: 'flow',  ims31ngjkf8: 'flow',   ims3wm0d0bu: 'flow'
@@ -182,11 +182,11 @@
     // engine would silently clamp. This is the secondary-cooldown control: lowering it
     // vents the SG down and cools the primary through it, and it also sets the no-load
     // bottom of the Tavg program (T_sat(steam_dump_setpoint), pwr_engine.js:1147).
-    ims31tq7mgc: [0.2, _SG.sg_safety_open_mpa || 9.31],
+    ims31tq7mgc: [0.2, _SG.sg_safety_open_mpa || 7.58],
     // ADV SP takes the SAME engine clip as the dump setpoint, and for the same
     // reason: set_adv_setpoint clamps to [0.2, sg_safety_open_mpa], so the box
     // refuses what the engine would silently clamp. Read from config, never a literal.
-    bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 9.31],
+    bdAdvSp:     [0.2, _SG.sg_safety_open_mpa || 7.58],
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the
     // same band, so the box refuses what the engine would clamp).
@@ -344,6 +344,17 @@
   // reads AUTO on the lamp and is the most dangerous of the lot, because the lamp says
   // the controller has it and the controller does not.
   var BD_OK = '#5aad7c', BD_WARN = '#d8a657';
+  // #358: TRUE when the feed DEMAND cannot be delivered — commanded pump speed is real
+  // (> 10 %) while measured MAIN-FEED flow is ~zero. Reads `condensate_flow` (main feed
+  // only, CONTEXT §6.3), NOT `fw_flow`, which is main + AFW — an AFW start would mask a
+  // dead feed train behind its own delivery. The demand itself stays latched (#329: never
+  // write the operator's demand); this only says the plant is not doing that number.
+  // A cold pump start shows a brief honest amber (~8 s, feed_pump_tau) while flow ramps.
+  function feedNoFlow(s) {
+    var pct = CS(s).feed_pump_speed_pct || 0;
+    var cond = IN(s).condensate_flow;
+    return pct > 10 && cond != null && isFinite(cond) && cond < 0.02;
+  }
   function feedStatus(s) {
     var c = chan(s, 'feed_sg');
     if (!c) return { text: '—', color: BD_WARN };
@@ -356,6 +367,11 @@
       return (CS(s).feed_pump_speed_pct || 0) <= 0
         ? { text: 'OFF', color: BD_WARN } : { text: 'MANUAL', color: BD_WARN };
     }
+    // #358, ahead of SAT: a dead train is the sharper fact than a railed controller. In a
+    // blackout the channel spends ~10 minutes engaged, unsaturated and integrating against
+    // a plant it cannot move — corner read HOLDING, box climbed 238 → 794 gpm, delivery
+    // 1e-129. SAT HI still surfaces the #210 case whenever delivery is real.
+    if (feedNoFlow(s)) return { text: 'NO FLOW', color: BD_WARN };
     if (c.saturated === 'hi') return { text: 'SAT HI', color: BD_WARN };
     if (c.saturated === 'lo') return { text: 'SAT LO', color: BD_WARN };
     return { text: 'HOLDING', color: BD_OK };
@@ -883,8 +899,6 @@
       if (IN(s).afw_pump_running) return 'RUNNING';
       return esfAuto(s, 'afw') ? 'STANDBY' : 'SECURED';
     },
-    imrzp89wdfu: function (s) { return dQ((IN(s).letdown_flow || 0) * GPM_LETDOWN); },  // letdown flow (readout)
-    imrzp8qps6u: function (s) { return dQ((IN(s).charging_flow || 0) * GPM_CHARGING); },  // charging flow (readout)
     // PORV position light — the COMMANDED state, not the disc. This is the TMI-2 lie: it
     // reads CLOSED while a stuck valve keeps venting, and the tailpipe temperature below is
     // the only honest tell. The schematic PORV shows true disc position; this does not.
@@ -968,8 +982,11 @@
     imsgupfprkp: function (s) { return r0(IN(s).steam_flow * 100); },   // turbine steam flow, % of rated — at the TCV/turbine inlet
     imsgt98wjjc: function (s) { return r0(satTempC(IN(s).steam_pressure)); },  // SG saturation temperature
     // The two CVCS flows the authored doc replaced (the old readouts were deleted).
-    imsgti1p0rm: function (s) { return r0(IN(s).charging_flow); },
-    imsgti0gnpf: function (s) { return r0(IN(s).letdown_flow); },
+    // gpm via GPM_CHARGING/GPM_LETDOWN like every RCS-side flow: these rendered the raw
+    // frac/s (#408 real currency, ~6.8e-5 at NOP) through r0(), which rounded every CVCS
+    // flow the plant can make to 0 — both boxes read zero always, at full charging too.
+    imsgti1p0rm: function (s) { return dQ((IN(s).charging_flow || 0) * GPM_CHARGING); },
+    imsgti0gnpf: function (s) { return dQ((IN(s).letdown_flow || 0) * GPM_LETDOWN); },
     imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status
@@ -1489,7 +1506,7 @@
       normHi: 70, alarmHi: alarmSp('pzr_level_high', 75), tripHi: 100 },
     // SG narrow-range level, %. Trips both ways: lo-lo scram and the P-14 high-level trip.
     ims2imn1nny: { min: 0, max: 100, digits: 0,
-      tripLo: tripSp('sg_level', 'low', 17), alarmLo: alarmSp('sg_level_low', 20), normLo: 45,
+      tripLo: tripSp('sg_level', 'low', 17), alarmLo: alarmSp('sg_level_low', 30), normLo: 45,
       normHi: 80, alarmHi: 85, tripHi: 90 }
   };
   // How much of a tile's width each TRIP (red) region is allowed to occupy. The authored
@@ -2832,6 +2849,17 @@
         default: return false;
       }
     },
+    // #358: a colour (or null) for a number box whose DEMAND is not being delivered —
+    // it outranks both the grey auto tint and the cyan editable one, because "this
+    // number is not happening" matters more than who is allowed to type. Today exactly
+    // the SG feed rate box: a blackout winds the demand against a dead plant (no cue at
+    // all for the first ~10 minutes), and after a LOOP the latched demand outlives the
+    // isolation — 355 gpm on a plant with no main feed for 28 minutes. The corner word
+    // carries NO FLOW for the engaged case; this marks the NUMBER, which is the thing
+    // designed to look like a flow, in every case including MANUAL.
+    numberWarn: function (item, s) {
+      return item.id === 'imro8xhy2me' && feedNoFlow(s) ? BD_WARN : null;
+    },
     buttonActive: function (item, s) {
       var b = BUTTONS[item.id];
       return b && b.active ? !!b.active(s) : false;
@@ -3002,10 +3030,11 @@
       // the one that matters most: SAT reads AUTO on the lamp while the controller has no
       // authority left, so a green HOLDING there would be the board vouching for a
       // controller that has stopped controlling (#210).
-      function fs(engaged, standDown, saturated, pumpPct) {
+      function fs(engaged, standDown, saturated, pumpPct, condFlow) {
         return feedStatus({ automation: { channels: [ { id: 'feed_sg', engaged: engaged,
                               stand_down: standDown || null, saturated: saturated || null } ] },
-                            control_state: { feed_pump_speed_pct: pumpPct == null ? 100 : pumpPct } });
+                            control_state: { feed_pump_speed_pct: pumpPct == null ? 100 : pumpPct },
+                            instruments: { condensate_flow: condFlow == null ? 1.0 : condFlow } });
       }
       ck('driver: feed status HOLDING when engaged and off the rails', fs(true).text === 'HOLDING', fs(true).text);
       ck('driver: feed status is GREEN only when holding',
@@ -3020,6 +3049,33 @@
         fs(false, 'manual', null, 100).text === 'MANUAL', fs(false, 'manual', null, 100).text);
       ck('driver: feed status OFF, not MANUAL, when the pump is actually stopped',
         fs(false, null, null, 0).text === 'OFF', fs(false, null, null, 0).text);
+      // #358: the delivery predicate. NO FLOW is the engaged case where the channel is
+      // commanding real speed and measured MAIN feed (condensate_flow — not fw_flow,
+      // which AFW would mask) delivers nothing: the ten silent blackout minutes where
+      // the lamp read AUTO, the corner read HOLDING and the gpm box climbed 238 → 794
+      // against delivery of 1e-129.
+      ck('driver: feed status NO FLOW — commanding real speed, main feed delivering nothing (#358)',
+        fs(true, null, null, 100, 0.0).text === 'NO FLOW', fs(true, null, null, 100, 0.0).text);
+      ck('driver: NO FLOW outranks SAT HI — a dead train is sharper than a railed controller',
+        fs(true, null, 'hi', 120, 0.0).text === 'NO FLOW', fs(true, null, 'hi', 120, 0.0).text);
+      ck('driver: healthy delivery under the same command still reads HOLDING',
+        fs(true, null, null, 100, 1.0).text === 'HOLDING', fs(true, null, null, 100, 1.0).text);
+      ck('driver: a commanded-zero pump is not NO FLOW — no demand, nothing undelivered',
+        fs(true, null, null, 0, 0.0).text === 'HOLDING', fs(true, null, null, 0, 0.0).text);
+      // The number-box half: the gpm DEMAND box goes amber on the same predicate, in
+      // every mode including MANUAL (the LOOP case — corner reads ISOLATED while the
+      // box still shows the 355 gpm the operator last had).
+      ck('driver: numberWarn marks the gpm box amber on the predicate, and only then (#358)', (function () {
+        var item = { id: 'imro8xhy2me' };
+        function sn(pct, cond) {
+          return { automation: { channels: [{ id: 'feed_sg', engaged: false, stand_down: 'condition' }] },
+                   control_state: { feed_pump_speed_pct: pct }, instruments: { condensate_flow: cond } };
+        }
+        return RD.PwrBoardDriver.numberWarn(item, sn(35.5, 0.0)) === BD_WARN &&
+               RD.PwrBoardDriver.numberWarn(item, sn(35.5, 0.5)) == null &&
+               RD.PwrBoardDriver.numberWarn({ id: 'imro8rmka2y' }, sn(35.5, 0.0)) == null
+          ? true : 'predicate/scoping mismatch';
+      })() === true);
       // The corner only exists because the card title was shortened. If a re-export or an
       // owner edit restores the long title, the status word overlaps it — silently, since
       // both still render. Pin the patch that makes the room.

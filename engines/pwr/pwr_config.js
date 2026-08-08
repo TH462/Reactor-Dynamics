@@ -63,15 +63,14 @@
       // both places. Corrected to the board's scale; `test/run_manual_units.js` now
       // cross-checks the two files so it cannot drift again.
       //
-      // These are PACING FLAVOUR, not physical mass flow, and must not be compared against
-      // real-plant flows or Tech Spec leakage limits. 60 gpm ≡ charging_max ·
-      // cvcs_inventory_gain = 7.2e-4 inventory-frac/s implies a total RCS of ~1389 gal
-      // (5.3 m³), roughly 6× small for a 300 MWt plant — and accident flows deliberately run
-      // on a separate 1:1 scale, so NO single RCS volume makes both true. See `Manuals/12`
-      // §Fidelity ("Indicative … Illustrative") and the #194 / #261 write-ups.
+      // Since #408 wave 1 the RCS-side gpm figures are LITERAL: one declared volume
+      // (~7,500 gal), one conversion (gpm = frac/s × 450,000), CVCS and accident flows on
+      // the same real currency. The paragraph this replaces disclaimed the opposite —
+      // "pacing flavour … NO single RCS volume makes both true" (#194/#261) — which was
+      // true of the retired two-scale split and is exactly what #408 removed.
       rcs_flow_gpm: 24000,              // rated RCS flow (not displayed — the board shows % of rated)
-      charging_max_gpm: 60,             // = charging_max 0.06 normalized × GPM_CHARGING 1000
-      letdown_normal_gpm: 30,           // = orifice A 0.030 normalized × GPM_LETDOWN 1000
+      charging_max_gpm: 60,             // = charging_max 1.33333e-4 frac/s × 450,000 (#408 — literal)
+      letdown_normal_gpm: 30,           // = orifice A ≈ 6.7e-5 frac/s at NOP × 450,000 (#408 — literal)
       afw_gpm: 100,                     // = afw_flow_frac 0.15 normalized × GPM_AFW 640 ≈ 96
     },
 
@@ -288,17 +287,36 @@
       // block, the rod worths or boron_worth_per_ppm move — see the derivation in
       // Diagnostic/TUNING_LOG.md 2026-07-29 and test/run_reactivity.js, which pins
       // the 975 ppm target so this cannot drift silently. [tune]
-      rho_excess: 0.087544,        // [tune]
+      // 0.087544 → 0.087354 at #419 wave 3: the solve's quote temperature DECOUPLED from
+      // the plant's no-load anchor. The 975-ppm ARO measurement is at the WBN HZP
+      // (557 °F = 291.67 °C); the old solve evaluated it at this plant's then-anchor 297 °C
+      // (benign 5 °C conflation), and the Ginna re-anchor to 286 °C forced the honest split.
+      // Solved: bAro(291.67 °C) = 975.00. Downstream, the ICs trim at the plant's own
+      // anchor: HZP now ships ≈ 704.8 ppm with criticality back at ≈ step 319.
+      rho_excess: 0.087354,        // [tune]
       // Chemical & Volume Control System (CVCS). Boron chemistry is decoupled from
       // net charging−letdown: borate/dilute change concentration at boron_adjust_rate
       // (needs the charging pump). Charging/letdown control primary INVENTORY; auto
       // mode makes up identified leakage by modulating charging up to charging_max.
-      boron_adjust_rate: 2.0,      // ppm/s while borating/diluting [tune]
+      //
+      // REAL-TIME CEILING since #419 wave 1 *(OWNER RULING, 2026-08-07: "D3: go real")* —
+      // was 2.0 and UNENFORCED (no engine read; a dead constant while raw `set_boron_adjust`
+      // commands could drive any rate — one fixture ran 3.0 ppm/s). The engine now CLAMPS
+      // the commanded rate to ±this. Both automation channels (`boron_conc` batch dose,
+      // `boron_trim` bang) meter at 0.05 beneath it and are unaffected. Derived from WTSM
+      // 4.1 (ML11223A214) on this plant's declared RCS currency: boric acid stored at
+      // "approximately 4 weight percent (7000 ppm)" (:595), the blender's boric-acid valve
+      // limited to ~10 gpm (:771) and total blended makeup ~80 gpm (:730); the declared RCS
+      // is ≈ 7,467 gal (the #408 currency: porv_flow_max 2.5e-4 frac/s ≡ 112 gpm). Boration
+      // at max boric-acid flow: 10/(7467·60) × (7000−800) ≈ 0.138 ppm/s; dilution at the
+      // 80 gpm blend from ~800 ppm: 80/(7467·60) × 800 ≈ 0.143 ppm/s — one class, 0.14.
+      boron_adjust_rate: 0.14,     // ppm/s CEILING on set_boron_adjust (engine clamps) [derived — see above]
       // RCS boron grab sample (take_boron_sample): lab turnaround before the
-      // result posts. Real labs run ~30–60 min; compressed for training like the
-      // adjust rate above. The result is the mixed (reactive) concentration
-      // rounded to 1 ppm — authoritative, deterministic (no PRNG draw). [tune]
-      boron_sample_lab_s: 60.0,
+      // result posts. REAL-TIME since #419 wave 1 (same ruling): "real labs run ~30–60
+      // min" (this comment's own admission since it was written) — 1800 s is the bottom
+      // of that class. The result is the mixed (reactive) concentration rounded to 1 ppm
+      // — authoritative, deterministic (no PRNG draw). [tune]
+      boron_sample_lab_s: 1800.0,
       // CVCS↔inventory coupling (P7 drain-rate retune, 2026-07-22). Charging and
       // letdown are TENS of gpm against the whole RCS, so their normalized flows
       // (sized for the gauges/lineup: orifice A ≈ 0.030 ≡ 20 gpm) must NOT enter
@@ -356,7 +374,17 @@
       h_fc_dnb: 0.004,             // during DNB, s^-1 [tune]
       // Coolant node: dTavg = (Q_fuel_to_coolant - Q_coolant_to_sg)/C_cool *dt.
       h_sg: 0.6,                   // coolant→SG, s^-1 [tune] (balances the energy in/out at rated)
-      coolant_heat_capacity: 20.0, // sets the coolant thermal time constant [tune]
+      // 20.0 → 15.0 (#418 wave B1, 2026-08-07): the SG tube-bundle share moved OUT of
+      // this node and into `sg_tube_capacity` (15 + 5 = the same 20 the loop always
+      // carried). Adding the tube node ON TOP would have — and briefly did, measured —
+      // slowed the pump-heat Mode 5→3 heatup by ~25 % (the chain arrived at 260.7 °C
+      // instead of ~285), silently reopening the RULED Mode 5↔1 pace identity the
+      // #408/#418 fence protects. The SPLIT is the physical statement: this constant is
+      // the loop water OUTSIDE the tube bundle; total loop capacity is unchanged, so
+      // every no-sink heatup/cooldown rate is preserved by construction, while the
+      // coolant node alone answers transients ~25 % faster (re-measured: run_otdt,
+      // TR-1i's ±5 °F duty, SS-1, TR-7b all green on the split).
+      coolant_heat_capacity: 15.0, // loop water outside the SG tubes [tune — see split note]
       // RCP heat: the pumps' shaft work ends up in the coolant (~15–20 MW for a
       // 4-loop plant ≈ 0.55 % of rated core heat), scaled by flow. Matters at
       // no-load (heats the plant with the heat sink isolated) and post-trip. [tune]
@@ -403,6 +431,41 @@
       sg_dryout_deplete_tau: 300.0, // s — dry+unfed bundle's residual film boils off [tune]
       sg_dryout_rewet_tau: 45.0,    // s — feed restores the bundle film [tune]
       sg_dryout_feed_eps: 0.01,     // normalized feed that counts as wetting the bundle
+      // ---- SG TUBE NODE + LOOP TRANSPORT (#418 wave B1, 2026-08-07) ----------------
+      // The single h_sg conductance splits into a SERIES pair around a tube-bundle
+      // node t_sg_c: coolant → tube at h_sg/split, tube → secondary at h_sg/(1−split).
+      // THE INVARIANCE RULE (the design's spine — do not break it): both branches
+      // carry the SAME flow_frac × dryout factors and the conductances satisfy
+      // 1/h1 + 1/h2 = 1/h_sg for ANY split, so at every steady state the crossing
+      // heat is EXACTLY the legacy h_sg·f·dry·(Tavg − Tsec) — the four sites that
+      // spell Tavg = Tsat(P_sec) + Q/h_sg (pwr_control TAVG_FULLPOWER, the dump's
+      // t_fullpower, both engine IC derivations) hold unchanged, every preset is
+      // still a true steady state, and the natural-circ / dryout / reverse-flow
+      // regimes survive by construction. What the node ADDS is dynamics only: the
+      // bundle's thermal mass buffers primary↔secondary transients (τ ≈
+      // C_tube/(2·h_sg·f) ≈ 2.1 s at full flow, ~60 s at natural-circ flows —
+      // the SG goes sluggish at low flow, which is physical).
+      // The LEGS become first-order states lagging their algebraic targets
+      // (tau/flow_frac — transport is faster at higher loop flow): the same-step
+      // leg algebra the compressed plant published moved 27.5 °F of cold leg in
+      // 2 s on an MSIV closure (#418's founding measurement). The DNB datum and
+      // the Tsat cap keep reading the RAW same-step algebra (_subcool_hot_c) —
+      // deliberately untransported, per the #368 record.
+      sg_tube_capacity: 5.0,       // tube-bundle water+metal heat capacity, same units as
+                                   // coolant_heat_capacity (~25 % of it) [tune pending WTSM §5.1-class data]
+      sg_tube_split: 0.5,          // h1 share of the series pair (0.5 → h1 = h2 = 2·h_sg) [tune]
+      // Loop transport (#418 B1) — UNVERIFIED-source: no document in any lane's corpus
+      // gives a transit/circulation time (find_source swept 2026-08-08, every phrasing
+      // exits 1). Scale check against the plant's OWN declared geometry: 7,500 gal at
+      // 24,000 gpm rated = one full loop turnover every ~19 s, so seconds-order lags at
+      // full flow are the right family, and ÷flow makes natural circ honestly sluggish.
+      // Post-trip pace verdict (owner-directed investigation, 2026-08-08, #422): trip
+      // from 100 % reaches no-load in ~3 min here vs ~2.5–3 min on the sourced HRTD
+      // 4-loop trace (ML11216A094 Transient 5.11), with our first-minute fall ~3× GENTLER
+      // (14 vs ~40 °F/min; our dump is Ginna's 28 % vs their 40 %). The loop does NOT
+      // cool too fast — do not slow these constants on feel.
+      tau_hotleg_s: 1.5,           // s at full flow — core exit → SG inlet transport [tune]
+      tau_coldleg_s: 4.0,          // s at full flow — SG outlet → core inlet transport [tune]
       void_flux_gain: 0.02,        // equilibrium core void per °C of exit overshoot [tune]
       void_flux_max: 0.8,          // ceiling on flux-driven void fraction [tune]
       void_flux_tau: 3.0,          // s — flux void grows/recovers with this tau [tune]
@@ -578,14 +641,16 @@
       // correlation gives dP/dT = 0.18686 MPa/°C, so 55 °F/hr = 30.56 °C/hr = 8.488e-3 °C/s
       // is 1.586e-3 MPa/s of pressure — the REAL-TIME full-heater authority.
       //
-      // This plant runs its pressurizer on a declared time compression: the Mode 5↔1 path is
-      // "deliberately time-compressed" and `setpoint_pressurize_slew_mpa_s` 0.02 is fitted to
-      // it (cold→NOP in ≈11 min against a real ≈2.7 h at NOP dP/dT). That factor is 12.6, so
-      // the compression-consistent heater authority is 1.586e-3 × 12.6 = 0.020 MPa/s — and it
-      // lands exactly on the slew rate, which is the cross-check: the config states the same
-      // physical quantity twice, and until #337 the two disagreed by 27×.
+      // The ×12.6 Mode 5↔1 compression is RETIRED (#419 wave 1, 2026-08-07 pace ruling), so
+      // `setpoint_pressurize_slew_mpa_s` now IS this real-time 1.586e-3 — the config still
+      // states the same physical quantity twice, and the cross-check now closes at the REAL
+      // value instead of the compressed 0.020. Against the real authority the shipped 0.55 is
+      // ~347× (0.55 / 1.586e-3), where the §12.15 departure used to read 27× against the
+      // compression-consistent figure. The DEPARTURE'S SIZE changed on paper only — the
+      // behavioral wall below (TR-1h / TR-11) is what rules it, and was re-measured
+      // 2026-08-07 (the #419 audit) on the post-#418 plant.
       //
-      // 0.55 WAS 27× ABOVE THAT, and the consequence is #337: the heaters could hold nominal
+      // 0.55 WAS 27× ABOVE THE COMPRESSED FIGURE, and the consequence is #337: the heaters could hold nominal
       // pressure against ANY surge this plant can produce, so an SGTR that took the
       // pressurizer 55.0 → 15.7 % and scrammed the reactor moved pressure 5 psi (0.034 MPa) and
       // subcooling 0.2 °F (0.1 °C). Adding the missing mass-surge driver alone changed that by
@@ -679,7 +744,38 @@
       // shared K (F15: one steam-venting physics, capacities differ), so their authority
       // rises 1.32 -> 2.52 MPa/s — their old capacity was UNVERIFIED recall, and the
       // sourced 3.2 flow ratio is now what sets it.
-      K_porv_relief: 3144.0, K_safety_relief: 3144.0,
+      //
+      // RE-SOLVED 3144 -> 2500 [derived-net, F14-COUPLED] at #419 wave 2 (2026-08-07). Both
+      // of 3144's pins had dissolved (the TR-1k doorstep went thermal at #418 B1; the 0.786
+      // preserve was the ×12.6 pace duty, retired at wave 1), so the constant was re-derived
+      // from physics — and the measurement that followed is the anchor:
+      //
+      // K_phys ≈ 304 (the K_steam_pressure C_eff method, ONE basis — the declared RCS
+      // currency IS power-scaled Ginna to 1.3 %: 38,323 gal × 300/1520 ≈ 7,467 gal):
+      //   pzr = Ginna ~747 ft³ (TS Bases B 3.4.10: 650 ft³ = 87 %) × 300/1520 = 4.13 m³,
+      //   60/40 split; C_eff = dome V_s·dρg/dP (≈16 kg/MPa) + liquid flash m_l·cp·(dTsat/dP)
+      //   /h_fg (≈52) ≈ 68 kg/MPa; full-open 5.13 kg/s → 0.076 MPa/s → K ≈ 304 — within 2 %
+      //   of the pre-F15 original 300. The same C_eff method run on TMI-2's real geometry
+      //   gives ~5.3 min to saturation against the historical ~6 — the method validates.
+      //
+      // MEASURED AT 304: run_meltdown 12/12, run_scenarios 3/3 — but the TMI ARC RE-ORDERS.
+      // The ruled F14 heater (0.55 MPa/s, ~347× real) out-muscles the physical relief
+      // authority (0.076), so a stuck-open PORV cannot depressurize the loop: the heaters
+      // hold pressure while the valve drains the pressurizer to 0 % (measured — level
+      // 55 → 28 → 0 in 8 min, heater cutoff, then an 8.6↔15.4 MPa limit cycle). Level
+      // CRASHES instead of RISING: the TMI deception — Tier-A content and historical fact —
+      // never forms. K=3144 was implicitly the second half of the F14 pair (0.786 > 0.55).
+      //
+      // THE RESOLUTION: preserve this plant's OWN physical NET depressurization under the
+      // ruled heater — K×2.5e-4 − K_heater(0.55) = K_phys−heater_real = 0.0744 MPa/s
+      // → K = 2498 ≈ 2500. Anchored, not fitted: the free parameter is F14, which is RULED
+      // (re-affirmed 2026-08-07). If F14 ever moves, re-solve this with it — they are one
+      // pair through the stuck-PORV race. Measured at 2500: saturation ~5 min (TMI-2: ~6),
+      // the deception level rise crosses the 75 % annunciator at ~25 min and reaches 100 %
+      // by 50 min on a quasi-stable 8.1–8.25 MPa ride; TMI campaign cluster 8/8, qualify
+      // 5/5, meltdown/scenarios green. Safeties inherit the shared K (F15): bank authority
+      // 2500 × 8.0e-4 = 2.0 MPa/s.
+      K_porv_relief: 2500.0, K_safety_relief: 2500.0,
       // CC-5 spray FLOW CAP (catalog v3 FG-6, feel-plan P5): spray is sized for
       // step insurges, NOT for a loss-of-heat-sink repressurization — capped at
       // this fraction of full spray flow (auto demand AND operator override), the
@@ -695,7 +791,8 @@
       // pwr_pressurizer.stepPressure for the law and the WTSM 3.2 quote). 1.0 / level_per_tavg
       // (2.5) = 0.4 would have been the byte-identical thermal response in the new units.
       //
-      // 0.4 IS UNCHANGED, AND IT IS INSIDE THE SOURCED RANGE — which is why it stays.
+      // 0.032 SINCE #419 WAVE 1 — the ×12.6 compression retired *(OWNER RULING, 2026-08-07:
+      // "D2: move it.")*, the value keeps its fitted POSITION in the sourced band.
       // Derived from the same WTSM 3.2 number that bounds K_heater below: 1794 kW ⇒ 55 °F/hr
       // is 8.842e-7 MPa/s per kW at NOP. One %/s of level is 12.44 ft³/s of bubble growth
       // (#249's fit: 45 points of level = the 0.40 × 1,400 ft³ steam space), which at
@@ -703,22 +800,24 @@
       // flashing demand. That lands at 0.0214 MPa/s if the vessel METAL participates (the
       // effective heat capacity the source's own 55 °F/hr implies) and 0.0502 if only the
       // pressurizer liquid does — a real spread, because a fast surge does not reach the
-      // metal. × 12.6 for this plant's declared Mode 5↔1 time compression (see K_heater) puts
-      // the sourced band at 0.27..0.63, and the fitted 0.4 sits in the middle of it.
+      // metal. THAT band (0.0214–0.0502) is now the operative one; the shipped 0.032 =
+      // 0.4 ÷ 12.6, the old fit's mid-band position un-compressed.
       //
-      // So #337 moved this by NOTHING, deliberately. The thermal channel is bit-identical
-      // across the change and the only new physics is the mass driver — which matters,
-      // because 0.27 was tried and it costs TR-1c: a 1.5× weaker insurge peaks the
-      // sub-arm rejection at 2246 psi (15.49 MPa) instead of lifting the PORV, i.e. it
-      // silently retires the §8.21 declared backstop. Not a change to make on a number the
-      // source does not actually pin. [tune]
-      K_surge_level: 0.4,
+      // History: the pre-#419 value was 0.4, mid-band of the ×12.6-multiplied range
+      // 0.27–0.63, and 0.27 was once refused because a 1.5× weaker insurge kept TR-1c's
+      // sub-arm rejection off the PORV (the §8.21 backstop). That objection is SUPERSEDED:
+      // the §8.21 cliff went THERMAL at #418 B1, and the #419 stage-1 sweep measured 0.27
+      // and 0.05 flipping the SAME five checks (TR-1's lift claim, CA-21's dry-core
+      // fixture) — both re-derived in this wave, neither a ruled behavior. [tune]
+      K_surge_level: 0.032,
       // solid_bulk_mpa — the WATER-SOLID surge gain (#346), MPa of primary pressure per
       // unit RCS inventory FRACTION. `K_surge_level` above is the gain of a pressurizer
       // that still has a steam bubble; this is the gain once the bubble is gone.
       // pwr_pressurizer.stepPressure converts it into the shared level currency by
-      // dividing by `level_per_mass_surplus`, so the two are stated in the units their
-      // own derivations come in and neither has to be re-solved when the other moves.
+      // dividing by `level_per_mass` (the comment here named `level_per_mass_surplus`
+      // until 2026-08-08 — that constant was retired at #365; the two slopes were equal
+      // and one name survives), so the two are stated in the units their own
+      // derivations come in and neither has to be re-solved when the other moves.
       //
       // THIS IS A PHYSICAL CONSTANT, NOT A FIT. A water-solid RCS is a fixed volume of
       // liquid: dP = B·dρ/ρ = B·dm/m, so the gain per inventory fraction IS the isothermal
@@ -735,32 +834,38 @@
       // so the RATIO the plant actually feels — solid ≈ 4× stiffer than bubbled — is not an
       // artifact of picking one of the two numbers.
       //
-      // DECLARED SIMPLIFICATION (Manuals/12 §12.4c). Relief stays excluded from the surge
-      // under F15 even when solid, so a relieving solid plant vents through the steam-space
-      // gains (`K_porv_relief` / `K_safety_relief`) rather than at this bulk modulus — and the
-      // same goes for SPRAY, which has nothing to condense, and the HEATERS, which have no
-      // bubble to flash. All three are optimistic in a vessel with no steam space.
+      // THE §12.4c REGIME LEDGER (Manuals/12 §12.4c; comment re-swept 2026-08-08 — it
+      // still declared all three terms deferred two waves after two of them shipped):
+      // SPRAY is zeroed at solid (#347, load-bearing — credited spray pinned pressure
+      // 164 psi under the code safeties); RELIEF steps to this same bulk modulus at
+      // solid (2026-08-07, #408 wave 1 — at real valve mass flows the bubbled gain
+      // could not pass unterminated ECCS and inventory walked to the `mass_max` clip
+      // by a fourth road); the HEATERS alone keep their bubbled gain — unobservable at
+      // solid (pressure sits above their setpoint) and ruled (F14).
       //
-      // THE RELIEF THIRD ALONE WAS BUILT AND IS WORSE THAN LEAVING ALL THREE. Measured on the
-      // #346 rig: folding relief into the surge drops the relieving equilibrium ~145 psi
-      // (1 MPa), which puts the plant further below `hpi_pressure_ref`, injection then
-      // out-runs the PORV, and inventory walks back to the `mass_max` clip — the defect this
-      // constant exists to fix, returning by another road. Correct is a coupled three-term
-      // regime plus a re-solve of `K_porv_relief`/`K_safety_relief`, which were themselves
-      // solved against run_meltdown and run_scenarios (#337 F15). Separate change. [tune]
+      // THE HISTORICAL CAUTION STANDS, ON ITS OWN SCALE. On the pre-#408 valve scale,
+      // folding relief into the SURGE DRIVER (a different edit than the K-step above)
+      // dropped the relieving equilibrium ~145 psi (1 MPa), put the plant further below
+      // `hpi_pressure_ref`, injection out-ran the PORV, and inventory walked back to
+      // the `mass_max` clip — the defect this constant exists to fix, returning by
+      // another road. Relief stays OUT of the surge driver (F15); what changed in #408
+      // is the PER-UNIT-MASS GAIN its own flow term uses when solid. [tune]
       solid_bulk_mpa: 1300.0,
       P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
-      // Operator-setpoint pressurization slew (Mode-5 heatup feel, 2026-07-23). K_heater
-      // (0.55 MPa/s at full power) is the CONTROL authority for holding pressure against
-      // transients (the SGTR plateau needs all of it) — but it made a RAISED operator
-      // setpoint arrive near-instantly: a 350→600 psi step in Mode 5 completed in ~3 s.
+      // Operator-setpoint pressurization slew — REAL-TIME since #419 wave 1 *(OWNER RULING,
+      // 2026-08-07: "D2: move it. D3: go real. Stage 2: go with recommendation." — the pace
+      // ruling; the ×12.6 Mode 5↔1 compression is RETIRED, acceleration carries pacing)*.
+      // K_heater (0.55 MPa/s at full power) is the CONTROL authority for holding pressure
+      // against transients — but it made a RAISED operator setpoint arrive near-instantly.
       // Physically, heating a big subcooled pressurizer to a higher saturation point takes
-      // time regardless of heater margin. So the EFFECTIVE control target walks UP toward
-      // the commanded setpoint at this rate (full cold→NOP pressurization ≈ 11 min sim,
-      // matching the deliberately time-compressed Mode 5↔1 pacing); a LOWERED setpoint
-      // takes effect immediately (depressurization is spray/cooling-limited on its own).
-      // Disturbance response at a FIXED setpoint is untouched. [tune]
-      setpoint_pressurize_slew_mpa_s: 0.02,
+      // time regardless of heater margin, and the honest rate is the sourced full-heater
+      // authority derived in the K_heater block: WTSM 3.2's 1794 kW ⇒ 55 °F/hr ⇒
+      // 1.586e-3 MPa/s along the saturation line. Cold→NOP is now ≈ 2.26 plant-hours
+      // ((15.41 − 2.5)/1.586e-3 ≈ 8,140 s — was ≈ 11 min at the compressed 0.02); ride it
+      // at time acceleration. A LOWERED setpoint still takes effect immediately
+      // (depressurization is spray/cooling-limited on its own), and disturbance response at
+      // a FIXED setpoint is untouched. [derived — see K_heater block]
+      setpoint_pressurize_slew_mpa_s: 1.586e-3,
       // When the primary voids it is two-phase: pressure is pulled to the
       // saturation pressure of Tavg (so subcooling → 0). [tune]
       // Since #384 stage 4 the pull is scaled ·(1−void) WHEN A LOOP BREAK IS FLOWING
@@ -827,9 +932,16 @@
       // term is the TMI deception, active ONLY when the primary actually voids
       // (saturation-gated in pwr_primary): 3·level_per_void > level_per_mass, so in
       // any voided state indicated level RISES as inventory falls — and nowhere else.
-      level_per_tavg: 2.5,         // % level per °C Tavg — steepened 2.0 → 2.5 with the shallow 297→304
-                                   // program so the level program keeps a visible span (~37.5 % no-load
-                                   // → 55 % full power) [tune]
+      level_per_tavg: 1.62,        // % level per °C Tavg — RE-DERIVED at #419 wave 3 for the steep Ginna
+                                   // program: (55 − 25) / 18.5 °C span puts the no-load program level at
+                                   // the real plant's 25 % (WTSM §10.3, ML11223A290: heatup "assumption
+                                   // that the level in the pressurizer is 25%"). History: 2.0 originally,
+                                   // steepened to 2.5 for the retired shallow 297→304 program (which
+                                   // needed the help to keep a visible span); at 2.5 the steep program
+                                   // would have parked no-load level at 8.7 % — under the 17 % heater
+                                   // cutoff. K_surge_level is per-LEVEL-rate and keeps its own sourced
+                                   // band unchanged; the thermal surge conversion moves with this
+                                   // geometry honestly. [derived — see above]
       // % level per inventory-fraction DEFICIT below nominal.
       //
       // THE SAME NUMBER AS THE SURPLUS BRANCH, and #330 is the record of what it cost to
@@ -1166,20 +1278,25 @@
       // keeps 19.45 and its calibration exactly (the use site is algebraically
       // identical at the rated point) and only distributes it:
       //   at 819.5 psi (5.65 MPa), Tsat ≈ 271.5 °C: h_f ≈ 1193 kJ/kg,
-      //   h_fg ≈ 1597 kJ/kg; feed at 227 °C ≈ 977 kJ/kg
-      //   → sensible 216 of 1813 kJ/kg total = 0.119 ≈ 0.12.
+      //   h_fg ≈ 1597 kJ/kg; feed at 224 °C ≈ 963 kJ/kg
+      //   → sensible 230 of 1813 kJ/kg total = 0.127.
       // feedwater_temp_c is the FINAL feed temperature after the (unmodelled)
-      // regenerative heater train — UNVERIFIED [tune]: typical Westinghouse final
-      // feed practice, no primary source in the tree corpus names the number
-      // (evidence pass owed, #374 style). afw_temp_c IS sourced as a band: AFW
+      // regenerative heater train — SOURCED as a band since #418 wave A1
+      // (2026-08-07): Ginna UFSAR Table 15.0-3 gives final feedwater temperature
+      // "390 to 435 °F" (also T15.6-12 and the SG performance cases at :463-481).
+      // 224 °C = 435.2 °F, the top of the band — the prior 227 °C (440.6 °F) sat
+      // ABOVE the sourced ceiling. The old UNVERIFIED flag closes; the split
+      // fraction re-derives with it (0.119 → 0.127) so the rated-point identity
+      // is preserved by the same construction as before (TR-1e leg D pins it).
+      // afw_temp_c IS sourced as a band: AFW
       // design feedwater temperature 40–120 °F (WTSM §5.7, ML11223A229, system
       // design data) — 104 °F (40 °C) chosen inside it, matching the constant the
       // physics already injects ECCS/RWST water at. Cold AFW therefore removes
       // real heat now: at decay-heat power the sensible demand of full AFW flow
       // exceeds the heat crossing the tubes, steam generation clamps at zero, and
       // the SG depressurizes — which is what "AFW is a heat sink" means.
-      feed_sensible_frac: 0.12,    // of latent_heat_secondary, at the rated point [tune]
-      feedwater_temp_c: 227,       // °C final feed (UNVERIFIED — regenerative train unmodelled) [tune]
+      feed_sensible_frac: 0.127,   // of latent_heat_secondary, at the rated point [tune]
+      feedwater_temp_c: 224,       // °C final feed = 435 °F, top of Ginna's sourced 390–435 °F band
       afw_temp_c: 40,              // °C — inside the sourced 40–120 °F design band (WTSM §5.7)
       // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
       //
@@ -1212,8 +1329,80 @@
       // alarm comes in still trips, at 40.6 s. That is correct -- a real loss of normal
       // feedwater DOES trip the reactor on lo-lo level (it is the credited trip in the Ginna
       // analysis above). The window is for reading the board, not for preventing the trip.
-      K_sg_level: 1.37, K_steam_pressure: 2.0, // [tune]
-      steam_p_rated: 5.65,         // MPa secondary operating pressure [tune]
+      // THE LEVEL GAIN RETIRED INTO A MASS LEDGER (#418 wave A2, 2026-08-07).
+      // K_sg_level 1.37 %/s is not a constant any more — it is the middle SEGMENT of the
+      // level-geometry map below, preserved exactly. What forced the ledger: the two Ginna
+      // anchors cannot share one linear gain. The 35-s trip EVENT above fits 48 narrow
+      // points in 35 s (1.371 %/s — the #135 fit), but Ginna's SG carries 85,359 lbm
+      // nominal (UFSAR T15.6-1) against ~3.95e6 lb/hr rated steaming = ~78 s to FULL
+      // boil-dry — and the old single gain implied ~162 s. Both are same-document Ginna;
+      // the reconciliation is GEOMETRY (level per unit mass is not constant over the
+      // vessel — the narrow-range band lives where level moves fastest per pound), which
+      // is what the piecewise map encodes.
+      //
+      // THE LEDGER: sg_mass_frac integrates (feed − steam_out)/sg_mass_boil_tau_s —
+      // 1.0 = the nominal secondary mass (12,785 kg = 85,359 lbm × the 0.3302 per-MWt
+      // scale), and tau 77.5 s [derived] is that mass over rated steam flow (165.3 kg/s).
+      // Level DERIVES from mass through sg_mass_map: [m, wide-%] knots, piecewise linear,
+      // monotone, invertible. THE DESIGN RULE: the calibrated level slope holds across the
+      // ENTIRE narrow window (wide 30–75), not just below nominal — the first cut anchored
+      // only the drain side and the overfill leg (narrow 65→100) ran 1.7× slow, which
+      // parked pwr_sg_flood's 75 % watch (measured, 2026-08-07). Constant in-window slope
+      // 47.83 wide-%/m ÷ 77.5 s ÷ 0.45 window = 1.371 narrow-%/s — the retired K to three
+      // decimals, BOTH directions. Knots:
+      //   (0, 0)          dry vessel
+      //   (0.38845, 30)   narrow-window BOTTOM (narrow 0). From nominal at unit drain the
+      //                   window bottom arrives at (1 − 0.38845)×77.5 = 47.4 s — the same
+      //                   dryout-onset the old gain gave, preserved exactly; the sub-window
+      //                   region below is where the ledger runs FASTER than the old linear
+      //                   gain (total boil-dry 77.5 s vs the old implied ~162)
+      //   (0.5484, 37.65) the lo-lo trip point (narrow 17) — collinear with its neighbors
+      //                   by construction; kept as the documented #135 anchor: the 65→17
+      //                   narrow drain spends 0.4516 of nominal mass in the Ginna 35 s
+      //   (1.0, 59.25)    nominal: narrow 65 at the sg_level_nominal operating point
+      //   (1.32929, 75)   narrow-window TOP (narrow 100) — same slope up: the overfill
+      //                   probes (75 % @ ~63 s, 96 % @ ~132 s) hold
+      //   (2.45, 100)     flood-solid: total shell volume over nominal liquid volume
+      //                   (Ginna 4,512.7 ft³ shell — the same volume the K_steam_pressure
+      //                   derivation uses; one sourced geometry, two clocks)
+      sg_mass_boil_tau_s: 77.5,     // s — nominal mass / rated steam flow [derived — see above]
+      sg_mass_map: [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]],
+      // K_steam_pressure DERIVED FROM THE PLANT'S OWN STEAM-SPACE PHYSICS (#418 wave A1,
+      // 2026-08-07), 2.0 -> 0.30. The old 2.0 was fitted with no mass basis, and it made a
+      // bottled SG at full generation rise 223 psi in the FIRST SECOND (measured, full
+      // stack) — Ginna UFSAR Table 15.2-1's bounding total-loss-of-load lifts the MSSVs at
+      // 7.0–9.4 s over ~755→1085 psia, i.e. 35–47 psi/s at sustained full power. The
+      // secondary's pressure clock was ~5–6× compressed; #408 removed exactly this class of
+      // clock from the primary.
+      //
+      // THE DERIVATION (Ginna anchor, per-MWt scale s = 300/908.5 = 0.3302 — one Ginna SG
+      // carries 1817/2 MWt):
+      //   SG secondary liquid mass  85,359 lbm/SG nominal (UFSAR Table 15.6-1, the Nominal
+      //     column; the 94,000/70,000 columns are declared conservatisms) × s = 12,785 kg.
+      //   Shell volume 4,512.7 ft³ (UFSAR §15.6.3) − liquid ⇒ steam space ~2,700 ft³ × s
+      //     = 25.2 m³.
+      //   Rated steam flow from the energy balance: 301.65 MW / (h_g − h_feed) = 165.3 kg/s
+      //     (cross-checks the per-MWt scaling of Ginna's 3.7–3.95e6 lb/hr per SG).
+      //   Pressurizing a BOTTLED SG forces the whole saturated liquid up the Tsat line, so
+      //   the capacitance is NOT the dome alone. Per MPa at 5.65 MPa (Tsat 271.6 °C,
+      //   dTsat/dP ≈ 11.7 °C/MPa, dρg/dP ≈ 5.47 kg/m³·MPa, h_fg ≈ 1600 kJ/kg):
+      //     liquid sensible   12,785 kg × 5.2 kJ/kg·K × 11.7 K  ≈ 778 MJ
+      //     boil-up (densify) 25.2 m³ × 5.47 kg/m³ × 1600 kJ/kg ≈ 221 MJ
+      //     dome vapor heating                                  ≈  26 MJ
+      //     C_P ≈ 1,025 MJ/MPa  (tube/shell METAL excluded — declared; including a scaled
+      //     ~45 t of steel gives ~1,290 ⇒ K 0.23. Band 0.23–0.33; the WTSM §5.1 fetch
+      //     arbitrates. Dome-only C_P gives K = 1.19, REJECTED: predicts a 3.1-s pop,
+      //     outside the Ginna class — the liquid's thermal inertia IS the pressure clock.)
+      //   K = Q_NSSS,rated / C_P = 301.65 MW / 1,025 MJ/MPa = 0.294 → 0.30.
+      //
+      // PREDICTED AND THEN MEASURED: bottled first second +43 psi (inside 35–47); sustained
+      // full generation reaches the Psat(Tavg) cap (9.08 MPa at rated Tavg — NOTE the cap
+      // binds BELOW the 9.31 pop) at ~11.6 s and rides primary heatup to the pop at ~14 s.
+      // The RATE is the sourced claim; the extra time over Ginna's 7.0–9.4 s is this
+      // plant's RULED ladder span (3.66 MPa from operating to pop, vs Ginna's 2.28) — the
+      // ladder is identity (2026-08-07 ruling) and does not move with the clock.
+      K_steam_pressure: 0.30,      // MPa/s per unit net normalized flow [derived — see above]
+      steam_p_rated: 5.69,         // MPa = Ginna's 810 psig full-load SG outlet at 576 °F Tavg (UFSAR ch 10 §10.3.2.2) — was 5.65 [tune], moved 0.6 % onto the citation at #419 wave 3 [sourced]
       steam_flow_rated: 1.0,       // rated steam flow, in those normalized units [tune]
       sg_level_nominal: 65.0,      // % at hot_full_power
       // Wide-range level window: the whole-vessel wide range is the integrated inventory
@@ -1232,17 +1421,33 @@
       // PROVENANCE (#374 evidence pass, 2026-08-05): the FUNCTION is sourced —
       // the dump is sized so it *"avoids the lifting of steam generator safety
       // valves following a turbine trip and reactor trip from 100% power"*
-      // (WTSM §11.2, ML11223A294), and this plant meets that criterion measured:
-      // trip-from-100 % peak 8.05–8.07 MPa against the 9.31 pop, re-confirmed
-      // through the #373 stop-valve change. The VALUES are UNVERIFIED: no
-      // primary in the corpus names an MSSV setting for this ladder, and the
-      // whole secondary deliberately runs high relative to the real class (our
-      // 8.23 no-load anchor vs the real 1092 psig no-load header, WTSM §19.0
-      // ML11223A342 — the declared 297 °C anchor). Internally coherent — anchor
-      // < reseat < pop — but coherence is not a citation.
-      sg_safety_open_mpa: 9.31,    // pop
-      sg_safety_reseat_mpa: 9.0,   // reseat
-      sg_safety_flow_max: 1.2,     // normalized relief capacity at full lift
+      // (WTSM §11.2, ML11223A294) — re-measured on the Ginna ladder at #419 wave 3.
+      //
+      // THE LADDER IS GINNA'S OWN SINCE #419 WAVE 3 (2026-08-07, the tier-3 stage-1
+      // sign-off — the option-C re-anchor the tier-2 ruling had deferred). Every rung
+      // is sourced or rule-derived, which RETIRES the old "the ladder itself is not
+      // sourced" departure (DESIGN_COMPANION §8.34): pop = **1085 psig (7.58 MPa)**,
+      // Ginna's first-lift MSSV (UFSAR ch 10 §10.3.2.4: "The first valve lifts at 1085
+      // psig and the remaining three valves are set to lift at 1140 psig"); this
+      // single-valve model keeps the sourced BANK capacity (0.84× rated, below) at the
+      // first-lift setpoint — the modeling choice, stated. Reseat = **1048 psig
+      // (7.33 MPa)** [derived — the pre-existing 3.3 % blowdown class retained].
+      // History: the pre-#419 ladder ran 1194/1272/1350 psi, every rung ~110 psi high,
+      // tied to the retired 297 °C feel anchor.
+      sg_safety_open_mpa: 7.58,    // pop = Ginna 1085 psig first-lift [sourced — see above]
+      sg_safety_reseat_mpa: 7.33,  // reseat [derived — 3.3 % blowdown class]
+      // CAPACITY SOURCED (#418 wave A3, 2026-08-07), 1.2 → 0.84: Ginna's MSSV
+      // bank is 4 valves/SG at 1085 + 3×1140 psig passing 797,700 + 3×837,600
+      // lbm/hr = 3.31e6 lbm/hr per SG (UFSAR Table 15.6-12) against ~3.95e6
+      // lb/hr rated steam flow = 0.84× rated — corroborated by ch. 10 §10.3.2.4
+      // ("minimum total relieving capacity 6.58e6 lbm/hr" for both SGs). The
+      // 4-loop WTSM plant runs 1.09× (20 valves, 16.47e6 lbm/hr, "109% of
+      // full-power steam flow", §7.1) — the anchor plant's ratio is the method's
+      // choice. Capacity below full generation is safe HERE because generation
+      // dies at the Psat(Tavg) cap (the bottled SG cannot out-boil the primary
+      // that heats it); what changes is duty shape — fewer, longer lifts on the
+      // slower re-climb (TR-1h/TR-17 re-measured with the A-wave clock).
+      sg_safety_flow_max: 0.84,    // × rated steam flow at full lift [sourced — see above]
       // ---- ATMOSPHERIC DUMP VALVES (ADV) — #371, audit #297 F3 -------------
       // The condenser-independent steam path. Until #371 the ONLY controllable
       // secondary heat sink was dump-to-condenser, so losing the condenser left
@@ -1283,31 +1488,23 @@
       // and ±100 °F/hr annunciators, and a valve that cannot exceed the limit
       // turns holding it into a formality rather than a skill.
       //
-      // adv_setpoint 8.77 — the PLACEMENT RULE is sourced, the number is this
-      // plant's arithmetic on it: *"Each PORV has a nominal setpoint of 1125
+      // adv_setpoint 7.31 (#419 wave 3) — the PLACEMENT RULE is sourced, the number is
+      // this plant's arithmetic on it: *"Each PORV has a nominal setpoint of 1125
       // psig, which is approximately half the difference between the no-load
       // steam generator pressure and the lowest set pressure of the safety
-      // valves."* Here that is (8.23 no-load anchor + 9.31 pop) / 2 = 8.77 MPa
-      // (1272 psi). WAS 8.60 (1247 psi), which sat at 34 % of that span; moved
-      // 2026-08-06 to sit on the rule. Measured full stack, the move is nearly
-      // inert — the loss-of-condenser spike peaks 9.06 MPa either way and the
-      // safeties lift either way; only the hold point moves, 8.65 → 8.82 MPa
-      // (1255 → 1280 psi), Tavg 302.0 → 303.3 °C. Perturbation sweep at exactly
-      // this nudge: 42 of 623 behaviour checks move, ZERO verdict flips.
-      // Still ABOVE the 8.23 dump anchor, so the condenser dump does all normal
-      // duty and the ADV never lifts while the condenser is there; full-open
-      // (8.77 + 0.25 band = 9.02) still below the 9.31 pop, so without a
-      // condenser it is the ADV, not the safeties, that holds the generator.
-      //
-      // WHAT IS STILL UNSOURCED is the LADDER THIS SITS IN, and it is worth
-      // knowing before anyone "corrects" the setpoint again: the real ladder is
-      // no-load ≈1080 psig → ARV 1125 → five staggered safeties at 1170/1200/
-      // 1210/1220/1230 psig. Ours is 1194 → 1272 → one safety at 1350. Every
-      // rung runs ~110 psi high and our no-load-to-safety span is 156 psi against
-      // the real 90, because the no-load anchor is tied to this plant's declared
-      // 297 °C Tavg anchor (§19.0's 1092 psig header is the departure). The rule
-      // is satisfied WITHIN our ladder; the ladder itself is not sourced. [tune]
-      adv_setpoint: 8.77, adv_band: 0.25, adv_max: 0.10,
+      // valves."* (WTSM §7.1.3.3 — that section's own 1125 psig is the 4-loop
+      // plant's number; the RULE is what transfers.) On the Ginna ladder that is
+      // (7.03 no-load anchor + 7.58 pop) / 2 = 7.305 ≈ **7.31 MPa (1060 psi ≈
+      // 1045 psig)** — and Ginna's own ARV solenoid band, 1005–1060 psig (UFSAR
+      // ch 10 §10.3.2.5/T10.1-1), brackets it: rule and anchor plant agree.
+      // adv_band 0.25 → **0.12** [derived]: full-open must sit below the pop with
+      // proportional margin on the 2.3×-narrower Ginna span — 7.31 + 0.12 = 7.43,
+      // 0.15 MPa under the 7.58 pop (the old 0.25 band would have put full-open
+      // 0.02 under it). History: 8.60 → 8.77 (2026-08-06, onto the rule) →
+      // 7.31 (the ladder re-anchor). The old "the ladder itself is not sourced"
+      // paragraph that lived here is RETIRED — every rung is now sourced or
+      // rule-derived (see sg_safety_open_mpa). [tune]
+      adv_setpoint: 7.31, adv_band: 0.12, adv_max: 0.10,
       // AFW capacity vs the real plant, worked (#374 evidence pass): the real
       // system is three pumps — two motor-driven at 440 gpm, one turbine-driven
       // at 880 gpm (WTSM §5.7, ML11223A229, §5.7.3.1–.2) — and §19.0
@@ -1321,10 +1518,11 @@
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
       // Auto-start CONDITION sourced — SG lo-lo level is condition 1 of the real
       // five (WTSM §5.7, ML11223A229; full list quoted at the pwr_control lo-lo
-      // trip). The real plant starts AFW from the SAME signal that trips the
-      // reactor; the 3-point offset above our 17 lo-lo is the declared teaching
-      // departure, DESIGN_COMPANION §8.19 (#220, re-verdicted #374).
-      afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
+      // trip), and since #380 (2026-08-08) the actuation sits on the SAME signal
+      // and setpoint as the reactor trip — the single-signal real design. The
+      // setpoint is control-layer data (pwr_control PWR_ACTUATIONS); a duplicate
+      // `afw_start_level` lived here until #380 with ZERO readers, and a dead
+      // constant that can silently disagree with the live one is worse than none.
       // AFW LATCHES (owner ruling, #207): the pump demand set by the M4 actuation has no
       // reset, so it stands until the operator secures it — as in a real plant, where AFW
       // auto-starts on low level and runs until someone stops it.
@@ -1348,11 +1546,16 @@
       // B2 steam dump / turbine bypass (auto opens above setpoint, to condenser).
       // The setpoint is the NO-LOAD secondary pressure, and it is the BOTTOM ANCHOR
       // of the sliding Tavg program (catalog v3 FG-2): Tsat(setpoint) = the no-load
-      // Tavg. THIS PLANT'S ANCHOR (feel-plan P3, 2026-07-21): Psat(297 °C) ≈ 8.23 MPa
-      // — a shallow ~7 °C program (297 no-load → ~304 full power), consistent with a
-      // small plant whose SG is generously sized (less ΔT growth needed with load),
-      // and it halves the post-trip stored-heat dump into the SG vs. the old 292
-      // Westinghouse anchor (softer shrink — TR-15 tempo). With no steam draw the
+      // Tavg. THE ANCHOR IS GINNA'S OWN SINCE #419 WAVE 3 (2026-08-07): no-load SG
+      // pressure **1005 psig = 7.03 MPa** [sourced — Ginna TS Bases Rev 101 B 3.3.2:
+      // "steam line breaks occurring from no load conditions (1005 psig)"], and
+      // Tsat(7.03) through this plant's own correlation = **546.9 °F (286.0 °C)** —
+      // Ginna's sourced no-load Tavg 547 °F (UFSAR ch 10 §10.3.1) to 0.1 °F: pressure
+      // and temperature anchors agree through the sim's own physics. The program is
+      // now STEEP (286.0 no-load → ~304.5 full power, ~33 °F span vs Ginna's real 29;
+      // the 4 °F top gap is the fixed Q/h_sg identity, declared not chased). History:
+      // Psat(297 °C) ≈ 8.23 was the 2026-07-21 feel-plan anchor, retired by the
+      // tier-3 sign-off; its shallow ~7 °C program went with it. With no steam draw the
       // secondary saturates up to the setpoint and the dump holds it there, so hot
       // standby holds its own temperature. On a turbine trip the pressure rise above
       // the setpoint opens the dump proportionally across the band. The program top
@@ -1393,7 +1596,18 @@
       // Still unavailable when the condenser is lost (vacuum/SBO) — see the C-9 note in
       // pwr_steam_generator.js. The stored-heat burst still swings Tavg visibly before
       // settling (tempo principle), and rather more so now.
-      steam_dump_setpoint: 8.23, steam_dump_band: 0.25, steam_dump_max: 0.40, // [tune] = Psat(297 °C) anchor; WTSM §11.2 capacity
+      // steam_dump_max 0.40 → 0.28 at #419 wave 3 *(OWNER RULING, 2026-08-07: "D1: measure
+      // first." — adopt Ginna's 28 % if the full-load-rejection ride-out survives at it, else
+      // keep the ruled 40 %)*. MEASURED: the ride-out SURVIVES at 28 % — no scram, the dump
+      // pegs at its cap and the core self-throttles deeper (~80 % vs ~91 at the cap instant).
+      // Sourced: *"eight steam dump valves that are capable of passing up to approximately
+      // 28% rated steam flow"*, and the same 50 % load-rejection claim "in conjunction with
+      // the rod control system" (Ginna UFSAR ch 10 §10.4, ML20339A040). This supersedes the
+      // 2026-07-31 "Let's change it to 40%" ruling by the owner's own D1 decision rule; the
+      // WTSM §11.2 40 % remains the fleet-typical figure, recorded above. Costs measured and
+      // re-derived at this wave: the §8.21-class cliff span narrows (~7 → ~4 °C) and TR-1k's
+      // non-monotonicity margin shrinks — the honest Ginna-class plant, bands re-derived.
+      steam_dump_setpoint: 7.03, steam_dump_band: 0.25, steam_dump_max: 0.28, // 7.03 [sourced] = Ginna 1005 psig no-load; 0.28 [sourced] = Ginna ch 10 (D1 measured)
       // LOAD-REJECTION arm for the fast-open (Tavg-error) dump mode — the C-7 class
       // interlock. The fast mode used to arm on `turbine_tripped` ALONE, even though its
       // own comment said it was for "a turbine trip / load rejection" and that the
@@ -1717,11 +1931,149 @@
       // OFF — stage 2 adds the active systems). Sets both the no-spray decay after
       // a blowdown and the equilibrium a sustained hot leak parks at. [tune]
       passive_sink_tau_s: 220.0,   // #408 refit (was 1800): the sink must bite SLOW discharges harder than the blowdown pulse or the family's peaks read flat — this is what grades sev 0.05 (22.9 psig) under the spray point while the DBA pulse keeps its peak [tune]
+      // ---- #425: lagged saturation-ΔT enhancement of the passive sink. FITTED —
+      // it stands in for wall-ΔT condensation growth AND the unmodeled PRT (both
+      // declared, Manuals/12 §12.4d). Before it, the pure-tau equilibrium was
+      // press_gain·tau·inflow at ANY inflow, and an SBO boil-off parked the
+      // building at 83.3 psig — past the 60 psig design pressure on relief steam
+      // alone (GEND-061 Table 4-2: TMI-2 sat near ~1.3 psig preburn after ~10 h of
+      // stuck-PORV discharge; the direction anchor). The enhancement multiplies
+      // ONLY the passive term: enh -> 1 + gain·(T_sat(steam partial) − ambient −
+      // knee), clipped [1, 25] (dt-stability guard, not a tuned value), applied
+      // through a first-order LAG. The lag is the design: blowdown pulses dwell
+      // 20-40 s above the knee (sev 0.25-1.0 peaks 31-37 psig, measured) and never
+      // charge it, so the #408 pulse grading survives; the SBO relief-duty climb
+      // takes ~6.5 min (10 -> 30 psig, measured) and arrives fully braked. A
+      // static curve cannot do both — measured infeasible, TUNING_LOG
+      // 2026-08-08-develop-d. SIZING: the binding target is the BURN margin, not
+      // the spray point — the H2 burn deposits +32.4 psi on whatever base it finds
+      // (press_gain × h2_burn_gain × 6.8 v/o), so the boil-off park must sit low
+      // enough that park + 32.4 psi clears the 60 psig design pressure. Park
+      // ~22 psig -> SBO burn ~54.5 psig (5.5 psi margin); the ruled 30 psig cap
+      // alone would put the burn 2.4 psi OVER design. All three [tune].
+      // GRADING NOTE (measured at these values, 2026-08-08): the sev-0.25 LOCA
+      // peak lands 30.1 psig — 0.12 psi ABOVE the spray hi-hi. The "spray at
+      // sev >= 0.25" boundary was 1.3 psi thin BEFORE this change (#408 grading);
+      // it is now nominal-but-knife-edged, solid from sev ~0.3. That thinness is
+      // the plant's, not this term's — do not retune these constants to buy the
+      // boundary margin back (flagged owner-review on #425).
+      passive_sink_dt_knee_c: 55.0, // °C of T_sat elevation over ambient where the enhancement starts [tune]
+      passive_sink_dt_gain: 0.13,   // per °C above the knee [tune]
+      passive_sink_dt_lag_s: 120.0, // s — the pulse/boil-off separator [tune]
+      // ---- stage 2 (#386): ACTIVE heat removal — AUTO-ONLY by ruling (owner,
+      // 2026-08-08: "Can we make the system automated for now and not reveal the
+      // controls to the player yet?") — no board card, no player-facing spray
+      // control; the command surface exists for the actuation rows, tests and the
+      // future board card.
+      // Actuation setpoints — SOURCED, NOT [tune] (both ML11223A310, WTSM 12.3):
+      // SI backup "The setpoint for this protection signal is 3.5 psig. This SI
+      // actuation signal cannot be blocked by the operator." (:219); spray hi-hi
+      // "The setpoint is 30 psig." (:394), which also isolates main steam (:468).
+      // Gauge → abs on this plant's own ambient (0.1013): 3.5 psig = 0.1254,
+      // 30 psig = 0.3081. Instrument range [0, 0.8] already holds both strictly
+      // inside (stage 1 pre-sized it; run_reachability Part A).
+      si_hi_pressure_mpa: 0.1254,
+      spray_hihi_pressure_mpa: 0.3081,
+      // Active-sink taus: NO document in any lane's corpus carries a spray or fan
+      // heat-removal capacity (find_source 2026-08-08 — every capacity phrasing
+      // exits 1), so both are FITTED like press_gain, sized in the stage-2 Q0
+      // sweep. Spray is the fast knockdown train (Ginna TS B 3.6.6: CS = two
+      // 100 % trains on Hi-Hi, RWST-fed); the CRFC realign is the slower diverse
+      // one (same source: four fans, ~2 running normally, auto-start on SI) — the
+      // NORMAL-mode fans are folded into passive_sink_tau_s by declaration, this
+      // term is only the SI-realign increment. [tune] both.
+      spray_sink_tau_s: 240.0,     // s — condensation tau with spray delivering [tune]
+      fan_sink_tau_s: 750.0,       // s — additional CRFC safety-realign tau [tune]
+      // Spray water reaching the sump while spray runs, normalized RCS-mass
+      // units/s — sump indication only (no RWST inventory node exists; declared,
+      // same family as stage 1's sump). [tune]
+      spray_sump_rate: 0.02,
+      // Upstream-SLB containment source: converts s.steam_break_flow (fraction of
+      // RATED STEAM FLOW, the secondary's currency) into this ledger's normalized
+      // RCS-mass units. FITTED (no sourced conversion exists — the two ledgers
+      // deliberately run their own currencies); Q0-sized so the sourced HELB case
+      // behaves: an upstream break crosses the 3.5 psig backup signal promptly
+      // (WTSM 12.3 names any high-energy line break inside containment), and only
+      // a large one approaches the spray point. Downstream breaks discharge to
+      // the turbine building — no containment term, the isolable/non-isolable
+      // teaching split. [tune]
+      // Q0-sized (2026-08-08): at 0.004 the full-break peak sat 0.7 % under design
+      // pressure — a knife-edge that flips on any retune (#418's TR-3 lesson).
+      // 0.0035 kept MSLB the LIMITING containment case at ~88 % of design.
+      // #425 RE-SOLVE (0.0035 -> 0.0045, same day): the MSLB blowdown runs minutes
+      // above the enhancement knee — the one pulse long enough to charge the lag —
+      // so the new sink braked it 52.0 -> 39.0 psig and thinned the limiting-case
+      // ordering over the DBA (36.1) to 2.9 psi. 0.0045 restores MSLB to 48.2 psig
+      // = 80 % of design: limiting by 12 psi, under design by 12 psi — mid-band on
+      // both sides, which is what TR-3 asks. Full break still crosses SI 3.5 psig
+      // at ~13 s, spray ~40-70 s; sev 0.8 peaks 42.7 psig.
+      slb_ctmt_gain: 0.0045,
       // Normalized discharged-liquid units at 100 % indicated sump level. Sizing:
       // the full-break 30-min ride discharges ~229 units → reads ~76 %; an RCP seal
       // leak creeps. Indication only — no recirculation (no RWST inventory exists
       // to swap from; declared, Manuals/12 §13.0). [tune]
       sump_ref: 3.0,               // #408 refit (was 300, on 229 discharged RCS masses): a real 30-min full-break ride discharges ~2-3 — sump reads 58 % on the DBA, graded to 36 % at sev 0.05 [tune]
+      // ---------------------------------------------------- hydrogen (#386 stage 3)
+      // Currency: v/o of containment free volume — the ONE sourced denominator
+      // (Ginna UFSAR ch15 ML20339A101: "Containment net free volume, ft3 1E6").
+      // The GENERATION RATE law is sourced by construction: H2 is produced by the
+      // same Baker-Just reaction event as the oxidation heat (2 mol H2 and 190 kJ
+      // per mol Zr — 10 CFR 50 App. K para 5 mandates Baker-Just for "hydrogen
+      // generation" BY NAME), so d(H2)/dt ∝ q_ox exactly, and h2_gain is the one
+      // absolute-scale constant. FITTED between two sourced brackets (no core
+      // Zircaloy mass exists to derive it — the ch15 geometry note is declared
+      // RECALLED): an ECCS-mitigated DBA must sit far under the 4.1 v/o
+      // flammability limit (Ginna's own limiting LBLOCA: core-wide oxidation
+      // 0.30 % vs the 50.46(b)(3) 1 % limit, UFSAR ch15), and an unmitigated
+      // TMI-class event must reach ignition pre-melt (GEND-061: TMI-2 averaged
+      // 7.9 % from ~40 % of core zirconium oxidized). Q0-sized. [tune]
+      h2_gain: 3.0,                // v/o per unit of ∫q_ox·dt (fraction-of-rated·s) [tune]
+      // RCS -> containment transport while a containment-side path EXISTS
+      // (geometry-keyed; see stepContainment). Pure model constant — release
+      // mixing at TMI-2 ran tens of minutes (GEND-061 fig 4-9). [tune]
+      h2_transport_tau_s: 60.0,
+      // Flammability alarm at the SOURCED 4.1 v/o lower flammability limit
+      // (NUREG-1431 Rev 4 Bases ML12100A228:38135 — unbracketed: "the
+      // flammability limit of 4.1 volume percent in containment"). NOT [tune].
+      h2_flammability_pct: 4.1,
+      // Ignition + consumed fraction: the STS Bases values are BRACKETED TEMPLATE
+      // numbers from the Hydrogen Igniter System section (ML12100A228:38373 —
+      // "[8.0] volume percent (v/o) and results in [85]% of the hydrogen present
+      // being consumed", an ice-condenser section; Ginna is a large dry). Adopted
+      // ANYWAY because TMI-2's own analysis corroborates both: GEND-061 §4.6.3
+      // estimates a 7.9 % preburn average, of which 6.8 % burned and 1.1 %
+      // remained — 86 % consumed. Template-corroborated, declared §12.4e. NOT
+      // [tune]: moving either re-litigates the ruling, not a fit.
+      h2_ignition_pct: 8.0,
+      h2_burn_consumed_frac: 0.85,
+      // Burn pressure deposit, _ctmt_steam units per v/o burned. ANCHORED on the
+      // TMI-2 measurement, ADIABATIC form: GEND-061 §3.1 measured the burn at
+      // "almost 30 lb/in² gage" from a ~1.3 psig preburn (Table 4-2) ≈ 27.5 psi
+      // for the 6.8 v/o burned — and fig 4-13's analysis adds that "cooling
+      // during the burn caused a reduction in the peak pressure … of 5 lb/in²",
+      // so the instantaneous-burn Δ is ≈ 32.5 psi ≈ 4.8 psi/v/o = 0.0329 MPa/v/o.
+      // THIS model deposits instantaneously and lets the sink terms do the in-burn
+      // cooling afterward, so the adiabatic number is the right anchor for it.
+      // Through the fitted press_gain (2.3 MPa/unit): 0.0329 / 2.3 ≈ 0.0143.
+      // Still [tune] — the anchor is real, the currency conversion is fitted.
+      // Q0 (2026-08-08): drained-base burn (unmitigated LOCA) peaks 32.5 psig,
+      // TMI-class (stuck PORV, base ~9 psig) ~42 psig — every family lands ABOVE
+      // the 30 psig spray hi-hi (OWNER RULING 2026-08-08: the ESF answers the
+      // burn) and far below the 60 psig design ("containment holds", the
+      // 2026-08-05 ruling — probe-pinned).
+      h2_burn_gain: 0.0143,
+      // Recombiner removal tau. Existence sourced (WTSM 5.0 ML11223A218:480 "The
+      // hydrogen recombiners control the concentration of hydrogen gas";
+      // NUREG-0737 II.E.4.1), capacity in NO lane's corpus (find_source
+      // 2026-08-08) -> FITTED SLOW, deliberately: real recombiners work the
+      // post-LOCA tail over days and cannot stop a TMI-scale generation rate.
+      // Auto-start/auto-secure setpoints are a DECLARED INFERENCE (real ones are
+      // manually placed in service; this build has no operator surface — the
+      // stage-2 auto-only ruling). Start below the flammability alarm so H2 HI
+      // firing means the recombiners are LOSING. All three [tune].
+      recomb_tau_s: 1800.0,
+      h2_recomb_on_pct: 0.5,
+      h2_recomb_off_pct: 0.2,
     },
 
     // ------------------------------------------------------------------ rods
@@ -1769,15 +2121,22 @@
     physics_failures: {
       ROD_RUNAWAY_RATE_MAX: 24.0,  // steps/s (fine steps — same fraction-of-travel/s as 6.0 on 228)
       STUCK_ROD_MAX_FRAC: 0.4,     // fraction of rod_worth_total
-      // Break strength, still expressed as its RATED-PRESSURE dP/dt equivalent so the
-      // number means what it always meant — but since #370a the break is a MASS FLOW,
-      // not a pressure sink: pwr_steam_generator divides this by K_steam_pressure to
-      // get the flow that produces exactly this dP/dt through the pressure integral,
-      // then scales it by upstream pressure. Verified byte-identical to the old sink
-      // across {downstream, upstream} × {0.15, 0.30, 0.80} × {MSIV open, shut} when
-      // the flow is fed only to the pressure integral. Change this to change break
-      // strength; do not re-add a separate sink. [tune]
-      STEAM_BREAK_RATE: 1.5,       // MPa/s at full break size, at rated pressure
+      // Break strength AS A MASS FLOW — the break's OWN constant since #418 wave A1
+      // (2026-08-07). History: #370a converted the break from a bare dP/dt sink to a
+      // mass flow, but expressed it as STEAM_BREAK_RATE (1.5 MPa/s) divided by
+      // K_steam_pressure at the use site so the old pressure effect was reproduced
+      // exactly. That division made the break's MASS inversely proportional to the
+      // pressure-clock constant — re-deriving K_steam_pressure 2.0 → 0.30 (see the
+      // steam_generator block) would have silently QUINTUPLED every steam-break mass
+      // flow, pegged the sg_steam_flow instrument (range [0, 2.0]), saturated the
+      // three-element feed channel's ff clip, and trivialized the MSLI flow leg. So
+      // the flow is now stated directly: 0.75 = the exact value the old pair produced
+      // (1.5 / 2.0), byte-identical mass flow at every size and pressure. What CHANGED
+      // is the break's pressure effect, deliberately: 0.75 × K(0.30) = 0.225 MPa/s at
+      // full size, so a full MSLB now blows the header down over ~25 s instead of ~4 —
+      // the depressurization runs on the real steam-space capacitance like every other
+      // flow. [tune] pending a sourced Moody critical-flow number (stage-0 fetch).
+      STEAM_BREAK_FLOW_FRAC: 0.75, // fraction of rated steam flow at full break size, at rated pressure
       DEFAULT_DRIFT_RATE: 0.5,     // instrument drift units/s
       DEFAULT_NOISE_SCALE: 5.0,    // noisy-mode sigma multiplier
     },
@@ -1895,7 +2254,7 @@
       // at the same fraction of span (0.5 %), noise_ref at 3.3 %.
       charging_flow:     { lag: 2.0, noise: 1.3e-6, range: [0, 2.67e-4], noise_ref: 8.9e-6 },   // true CVCS charging (≠ setpoint under AUTO)
       letdown_flow:      { lag: 2.0, noise: 1.3e-6, range: [0, 2.67e-4], noise_ref: 8.9e-6 },   // true CVCS letdown
-      steam_pressure:    { lag: 0.5, noise: 0.0034,  range: [0, 10.5] },   // SG secondary pressure, MPa (top of range = no-load saturation + margin)
+      steam_pressure:    { lag: 0.5, noise: 0.0034,  range: [0, 8.5] },   // SG secondary pressure, MPa (top of range = pop 7.58 + margin — narrowed from 10.5 with the #419 wave-3 ladder; run_reachability guards every threshold inside range)
       boron_analyzer:    { lag: 45,  noise: 0.3,   range: [0, 2500] },   // chemistry sample — slow (Realistic-only boron readout)
       governor_valve:    { lag: 0.3, noise: 0.3,   range: [0, 100], noise_ref: 5 },    // turbine admission valve %
       hpi_flow:          { lag: 1.0, noise: 0.001, range: [0, 1.2], noise_ref: 0.02 },    // merged HPI/LPI injection line, normalized to combined rated (renamed in place from lpi_flow — PRNG order preserved)
@@ -2001,6 +2360,17 @@
       // covered-core fence CA-21 asserts. Appended LAST, noise 0 + noise_failure, the
       // standing PRNG rule (the stream is byte-identical; a `noisy` failure still bites).
       core_exit_temp:          { lag: 4.0,  noise: 0, noise_failure: 0.17,  range: [93, 982] },
+      // Containment H2 analyzer (#386 stage 3). RANGE IS SOURCED: NUREG-0737
+      // (ML051400209) II.F.1 Att. 6 — "A continuous indication of hydrogen
+      // concentration in the containment atmosphere shall be provided in the
+      // control room. Measurement capability shall be provided over the range of
+      // 0 to 10% hydrogen concentration". The LAG is [tune], declared — the
+      // sourced figure is availability ("functioning within 30 minutes" of SI),
+      // not a response time; 30 s stands in for a slow sampling analyzer. Every
+      // threshold (4.1 flammability, 8.0 ignition, 0.5/0.2 recombiner pair) sits
+      // STRICTLY inside the range (run_reachability Part A). Appended LAST after
+      // core_exit_temp, noise 0 + noise_failure, the standing PRNG rule.
+      ctmt_h2:                 { lag: 30.0, noise: 0, noise_failure: 0.1,   range: [0, 10] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED
@@ -2069,8 +2439,10 @@
       // instrument PRNG is one continuous cross-step stream, so a single extra
       // draw shifts every downstream reading from that step on (the sg_steam_flow
       // comment above names three marginal endpoints that moved for exactly one).
-      // Appending keeps the draw order of everything already here.
-      adv_valve:         { lag: 0.3, noise: 0,     range: [0, 100] },
+      // Appending keeps the draw order of everything already here. noise_failure
+      // sized like containment_sump_level's 1.0 on the identical [0, 100] span
+      // (#387 — it shipped without one, so a `noisy` failure was silently inert).
+      adv_valve:         { lag: 0.3, noise: 0, noise_failure: 1.0, range: [0, 100] },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/
@@ -2117,7 +2489,16 @@
                // null before the first sample), lab-pending flag, and a result
                // sequence counter consumers use to spot a fresh result. Passed
                // through as status (no PRNG draw — the noise stream must not shift).
-               'boron_sample', 'boron_sample_pending', 'boron_sample_seq'],
+               'boron_sample', 'boron_sample_pending', 'boron_sample_seq',
+               // #386 stage 2: containment active-train DELIVERY status (demand is
+               // control-surface state, these are what the trains are doing). The
+               // fan-realign actuation keys on hpi_active (already above); these two
+               // feed the annunciators. Status passthroughs — no PRNG draw.
+               'ctmt_spray_active', 'ctmt_fan_active',
+               // #386 stage 3: the one-time burn latch (A41 keys on it and never
+               // clears — the ruled TMI-2-style event) and recombiner DELIVERY.
+               // Status passthroughs — no PRNG draw.
+               'ctmt_h2_burned', 'ctmt_recomb_active'],
     },
 
     // ---------------------------------------------------------- named init states

@@ -82,10 +82,14 @@ while the board carries only the batch `boron_conc` channel.
 > Mode 4. Both found by the #312 review; full account in `Diagnostic/TUNING_LOG.md` 2026-08-03e.
 
 **Q2 is the ONLY legitimate reason to depart from Q1.** The house pattern is the model to copy —
-the AFW auto-start sits 3 points above the SG lo-lo trip rather than on it (declared departure
+the AFW auto-start sat 3 points above the SG lo-lo trip rather than on it (declared departure
 §8.19), because *"it buys the operator a visible 'AFW started, level still falling' window that a
 single-setpoint plant does not give a lone trainee."* Prototypicality lost on purpose, to a stated
-teaching reason, recorded in the departure register.
+teaching reason, recorded in the departure register. **And the pattern's second half, demonstrated
+2026-08-08 (#380): a declared departure RETIRES when the evidence improves** — the sourced record
+showed the real plant delivers the same lesson post-trip (single signal; Ginna's own analysis has
+AFW arriving after the scram), so the offset closed and AFW moved onto the trip signal. Declaring
+it is what kept it reversible.
 
 **The three routes to Q2 credit** — demonstration, procedure step, or declared trainer
 affordance — are defined in `CURRICULUM.md`. A feature needs exactly one.
@@ -233,7 +237,8 @@ lifted from the PWR is **recall with extra steps** — it has this plant's ident
 (single-loop, 100 MWe, ride-out character, and its own declared departures). The PWR's *file
 layout, data shapes, test conventions, gate structure and procedure format* are transferable. Its
 *values* are not, and neither are its departures — §8.19's AFW offset was argued from a PWR
-teaching case and has to be re-argued, not inherited.
+teaching case and had to be re-argued, not inherited (it was in fact retired on this plant when
+the sourced record improved — #380, 2026-08-08 — which is the point).
 
 **The reusable procedure is the real deliverable:** evidence pass → catalog → data-driven control
 tables → board → gates → authored content, each stage gated before the next. That loop is what an

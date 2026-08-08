@@ -1,2 +1,2 @@
-/* Generated at deploy. Repo copy is a placeholder (WEBSITE_SPEC.md §8). */
+/* Generated at deploy by site/stamp_version.js. Repo copy is a placeholder. */
 window.RD_VERSION = "alpha · dev";

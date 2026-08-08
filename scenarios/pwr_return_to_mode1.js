@@ -12,7 +12,7 @@
  * Honesty: the wall clock is compressed (time acceleration). The heat source is NOT
  * fictional — this mission drives the heatup on fission because it is going straight
  * on to power and the criticality is the point, but the plant no longer needs it to:
- * since #251 pump heat alone makes Hot Standby in 10.71 plant-hours with the reactor
+ * since #251 pump heat alone makes Hot Standby in ~11.4 plant-hours (#419 real rates, Ginna anchor) with the reactor
  * subcritical, which is what `pwr_mode5_to_mode3` now teaches.
  */
 ;(function (RD) {
@@ -66,13 +66,12 @@
         advance: 'wait_for_trigger' },
 
       { id: 'arrive_mode1',
-        // Tavg gate 296 (was 298, 2026-07-23): the no-load dump anchor is Tsat(dump
-        // setpoint) ≈ 297 °C, so a ~10 % nuclear-heatup hold rides at ~297.5–298.0 and
-        // only power spikes flickered past 298 — a razor edge that made completion
-        // trajectory-dependent. 296 matches the "hot" criterion used everywhere else
-        // (anchor − 1; pwr_mode5_to_mode3 gates its Hot Standby card at 295).
+        // Tavg gate 285 = anchor − 1 (the convention this comment has always stated;
+        // 296 was the old 297-anchor's value and became unreachable when #419 wave 3
+        // moved the no-load anchor to Ginna's 286 — a ~10 % nuclear-heatup hold rides
+        // just above the anchor, never 10 °C over it).
         trigger: { type: 'all', triggers: [
-          { type: 'true_state', field: 'tavg_c', direction: 'above', value: 296 },
+          { type: 'true_state', field: 'tavg_c', direction: 'above', value: 285 },
           { type: 'true_state', field: 'power_pct', direction: 'above', value: 5.0 },
         ] },
         commentary: {

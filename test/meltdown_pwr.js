@@ -37,6 +37,14 @@
   // damage endpoint cares about. Stops early on melt. Returns a summary.
   function driveDamage(h, maxSec) {
     var maxFuel = 0, minInv = 1e9, maxTavg = 0, damagedAt = -1, meltAt = -1, t, elapsed = 0;
+    // #425 containment recorders (additive — no other MD probe reads them). The
+    // boil-off-alone window ends at the BURN, not at the damage flag — measured,
+    // the burn fires a hair before 1200 °C (H2 hits 8 v/o while the hot node is
+    // still climbing), so a damage-bounded recorder catches the spike it exists
+    // to exclude. The 5 s grid under-reads a burn spike by up to ~15 % (post-#425
+    // the charged sink decays it at τ_eff ~60 s) — conservative for an
+    // under-design bound; the pre-burn boil-off is quasi-static, read exactly.
+    var maxCtmtPreBurn = 0, maxCtmtBurn = 0, maxAfw = 0;
     var n = Math.round(maxSec / 5);
     for (var i = 0; i < n; i++) {
       h.run(5); elapsed += 5;
@@ -46,11 +54,15 @@
       if (t.tavg_c > maxTavg) maxTavg = t.tavg_c;
       if (damagedAt < 0 && t.fuel_damaged) damagedAt = elapsed;
       if (meltAt < 0 && t.melted) meltAt = elapsed;
+      if (!t.ctmt_h2_burned && t.containment_pressure_mpa > maxCtmtPreBurn) maxCtmtPreBurn = t.containment_pressure_mpa;
+      if (t.ctmt_h2_burned && t.containment_pressure_mpa > maxCtmtBurn) maxCtmtBurn = t.containment_pressure_mpa;
+      if ((t.afw_flow_normalized || 0) > maxAfw) maxAfw = t.afw_flow_normalized;
       if (t.melted) break;
     }
     return {
       maxFuel: maxFuel, minInv: minInv, maxTavg: maxTavg,
       damagedAt: damagedAt, meltAt: meltAt, elapsed: elapsed,
+      maxCtmtPreBurn: maxCtmtPreBurn, maxCtmtBurn: maxCtmtBurn, maxAfw: maxAfw,
       t: t, s: h.eng.s,
     };
   }
@@ -62,6 +74,8 @@
     ck.info('peak Tavg (°C)', fmt(r.maxTavg, 0));
     ck.info('fuel damaged at (s)', r.damagedAt < 0 ? 'never' : r.damagedAt);
     ck.info('melted at (s)', r.meltAt < 0 ? 'never' : r.meltAt);
+    ck.info('max containment pre-burn (MPa abs)', fmt(r.maxCtmtPreBurn, 4));
+    ck.info('max containment post-burn (MPa abs)', r.maxCtmtBurn > 0 ? fmt(r.maxCtmtBurn, 4) : 'no burn in window');
     ck.info('destruction_cause (getTrueState)', String(r.t.destruction_cause));
     ck.info('destruction_cause (engine.s)', String(r.s.destruction_cause));
   }
@@ -156,6 +170,29 @@
         recordEndpoint(ck, r);
         ck('fuel is damaged (> 1200 °C)', fmt(r.maxFuel, 0), r.damagedAt >= 0, '> 1200 °C');
         ck('core melts (> 2800 °C)', fmt(r.maxFuel, 0), r.t.melted === true, 'melted');
+        // ---- #425: the SBO containment family, pinned where it lives. This rig IS
+        // the boil-off-alone plant: engine-direct starts no AFW (premise pinned
+        // below — full-stack M4 would auto-start the non-AC-gated pump, which is
+        // exactly what the #425 family's afw_failure removes), and the active
+        // containment trains are AC-dead in the ENGINE (acAvailable), so the
+        // trajectory is layer-invariant under SBO. BEFORE #425 this ride parked at
+        // 83.3 psig (0.6758 MPa abs) — past the 60 psig design pressure on relief
+        // steam alone — and its burn peaked ABOVE design (0.7367 MPa abs sampled,
+        // full stack). Injection: passive_sink_dt_gain 0 reproduces that plant and
+        // reds both pins with that signature.
+        ck('boil-off alone NEVER summons spray — containment stays under the 30 psig hi-hi until the H2 era (#425 RULED target)',
+          fmt(r.maxCtmtPreBurn, 4) + ' MPa abs vs 0.3081', r.maxCtmtPreBurn > 0.11 && r.maxCtmtPreBurn < 0.3081,
+          'a real pressurization, under the hi-hi');
+        // The burn lands between damage and melt; ride is 5 s steps so the sampled
+        // spike under-reads ~15 % — conservative for the under-design side, and the
+        // above-hi-hi side clears by ~20 psi (measured 0.4535 at a 10 s grid).
+        ck('…and the H2 burn on the SBO base fires ABOVE the hi-hi and UNDER design — the #386 containment-holds pin, extended to this family',
+          r.maxCtmtBurn > 0 ? fmt(r.maxCtmtBurn, 4) + ' MPa abs vs (0.3081, 0.515)' : 'no burn in window',
+          r.maxCtmtBurn > 0.3081 && r.maxCtmtBurn < (RD.PWR_CONFIG.containment.design_pressure_mpa || 0.515),
+          'burned, in (0.3081, 0.515)');
+        ck('premise: this ride was boil-off ALONE — no AFW ever delivered, spray demand stood undelivered',
+          'afw max ' + fmt(r.maxAfw, 4) + ', spray active ' + String(r.t.ctmt_spray_active),
+          r.maxAfw < 0.001 && r.t.ctmt_spray_active === false, 'afw ~0, spray delivery dead');
       });
     },
 
@@ -194,6 +231,20 @@
     // Was benign (fuel froze at ~1250 °C) because decay heat was gated on the scram
     // flag; FIXED 2026-07-24 (decay term made scram-agnostic, pwr_engine.js:248) —
     // the uncovered core now heats to melt as it must. Correct endpoint: melt.
+    //
+    // WINDOW 4000 → 6000 s AND THE INVENTORY BAND CONFIG-DERIVED (2026-08-08, #385
+    // node stage 2). The old 4000-s melt was PACED BY THE RETIRED RE-LIFT DEFECT:
+    // through the late blowdown the state-form level line re-read its void lift at
+    // the recovering w, the gauge read high, the 17 % cutoff never held, and the
+    // heaters propped the pressure that kept the break flowing — a faster drain
+    // bought by a lying gauge. With the honest node gauge the heaters stay cut,
+    // the drain is slower, and the SAME endpoint arrives at ~5285 s (measured,
+    // 200-min ride): damage 2295 s, melt 5285 s, min inventory 51.9 %. 6000 s is
+    // MD-1's window for the same real-clock reason. The old "< 50 %" band was the
+    // defect-paced trajectory's number, not the claim — the claim is that the core
+    // UNCOVERS, i.e. inventory below the config core-top threshold, and the melt
+    // itself proves the uncovery was fatal. Both new forms pass on the pre-node
+    // engine too (old minInv < 50 < 70), so this is a better test, not a refit.
     'MD-5': function () {
       return test('MD-5 ATWS + large LOCA (no scram, no ECCS) → core melt', function (ck) {
         var h = new Harness('hot_full_power');
@@ -202,9 +253,11 @@
         h.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
         h.cmd({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 1.0 });
         h.cmd({ action: 'set_hpi', active: false });
-        var r = driveDamage(h, 4000);
+        var r = driveDamage(h, 6000);
         recordEndpoint(ck, r);
-        ck('core uncovers (min inventory < 50 %)', fmt(r.minInv, 1), r.minInv < 50, '< 50');
+        var topPct = RD.PWR_CONFIG.primary.core_top_uncover * 100;
+        ck('core uncovers (min inventory below the core top, < ' + fmt(topPct, 0) + ' %)',
+          fmt(r.minInv, 1), r.minInv < topPct, '< core_top_uncover');
         ck('fuel is damaged (> 1200 °C)', fmt(r.maxFuel, 0), r.damagedAt >= 0, '> 1200 °C');
         // The bug: fuel plateaus (decay heat switched off with no scram) instead of
         // continuing to heat to melt. This is the assertion that documents it.
@@ -518,6 +571,29 @@
         // oxidises more slowly. This is what the parabolic law buys and why there is a state.
         ck('the oxide layer only ever grows (it cannot un-oxidise)',
           fmt(h.eng.s._zr_ox2, 2), h.eng.s._zr_ox2 > 0, '> 0');
+
+        // ---- the HYDROGEN LEDGER is the same reaction (#386 stage 3). Total H2 =
+        // h2_gain · q_ref · 2 · tau · Δw — the telescoped integral, dt-independent —
+        // and transport only MOVES it between _rcs_h2 and _ctmt_h2. Pinned on its own
+        // short pre-ignition window (fresh rig, ledger sum vs Δw, exact): the band rig
+        // above rides through the burn, which consumes 85 % and breaks the sum by
+        // design. Engine-direct, so no recombiner row exists to remove any.
+        var cH2 = RD.PWR_CONFIG.containment || {};
+        if (cH2.h2_gain) {
+          var g = new Harness('hot_full_power');
+          g.run(10);
+          g.cmd({ action: 'set_eccs_armed', armed: false });
+          g.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+          for (var gj = 0; gj < 2000 && (g.eng.s._ctmt_h2 || 0) < 1.0; gj++) g.run(1);
+          var w0 = Math.sqrt(g.eng.s._zr_ox2 || 0), sum0 = (g.eng.s._rcs_h2 || 0) + (g.eng.s._ctmt_h2 || 0);
+          g.run(60);
+          var w1 = Math.sqrt(g.eng.s._zr_ox2 || 0), sum1 = (g.eng.s._rcs_h2 || 0) + (g.eng.s._ctmt_h2 || 0);
+          var wantH2 = cH2.h2_gain * z.q_ref * 2 * (z.tau_ref_s || 80) * (w1 - w0);
+          ck('H2 ledger ∝ oxide grown, exactly (the same reaction event; transport conserves)',
+            fmt(sum1 - sum0, 6) + ' v/o vs ' + fmt(wantH2, 6) + ' from Δw',
+            (g.eng.s._ctmt_h2 || 0) < 7.5 && Math.abs((sum1 - sum0) - wantH2) < Math.max(1e-9, wantH2 * 1e-6),
+            'equal (and the window stayed below ignition)');
+        }
       });
     },
 

@@ -58,7 +58,11 @@ const DEFAULT_NUDGES = [
   'thermal.coolant_heat_capacity*1.03',   // coolant node time constant
   'thermal.h_fc*1.02',                    // fuel→coolant coupling
   'thermal.delta_T_rated*1.02',           // the leg split's calibration
-  'steam_generator.K_sg_level*1.03',      // SG level response
+  // #418 wave A2: K_sg_level retired into the mass ledger — the boil-dry clock is the
+  // level-response knob now. K_steam_pressure added the same change (it was never swept,
+  // which CLAUDE.md flagged when the A1 re-derivation moved it 6.7×).
+  'steam_generator.sg_mass_boil_tau_s*1.03',   // SG inventory clock (level response)
+  'steam_generator.K_steam_pressure*1.05',     // SG pressure clock
 ];
 
 // ------------------------------------------------------------------ args

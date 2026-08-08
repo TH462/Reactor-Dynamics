@@ -29,6 +29,1090 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-08-develop-d (#425 — the containment passive sink learns saturation ΔT, on a lag; the SBO family joins the containment-holds pin)
+
+**Owner: "Do next as recommended."** — Option B from the #425 options put to him: a
+saturation-ΔT-keyed passive-sink enhancement, SBO boil-off parked UNDER the 30 psig spray
+hi-hi, bundling the #386 burn-pin extension and the #384 declaration re-measure. Ruling
+recorded on #425 with the endorsed recommendation quoted (HR11). Decision record:
+`Blueprint/BUILD_DECISIONS.md` 2026-08-08-develop-d.
+
+**The defect** (#425, filed at stage 3): relief steam enters `_ctmt_steam` at weight 1.0 (no
+PRT, declared) against a pure-linear passive sink (`inv/220 s`, fitted to LOCA blowdown
+pulses), so the equilibrium is `press_gain·tau·inflow` at ANY inflow — a clock-independent
+**83.3 psig (0.574 MPa g)** on decay-heat boil-off, past the 60 psig design pressure with no
+hydrogen and no break. MEASURED at plan review, worse: **the SBO family's burn peaked ABOVE
+design** (106.8 psi (0.737 MPa) abs sampled, 10 s grid) — the #386 containment-holds pin was
+scoped to LOCA/stuck-PORV precisely because of this, and the scoping caveat was hiding a
+second instance of the same defect. GEND-061 Table 4-2 is the direction anchor: TMI-2 sat
+near ~1.3 psig preburn after ~10 h of stuck-PORV discharge.
+
+**The fix** (`pwr_primary.stepContainment`): the passive term is multiplied by a **lagged**
+enhancement — target `1 + gain·max(0, T_sat(steam partial) − ambient − knee)`, clip [1, 25]
+(dt-stability guard), first-order lag. Constants (all [tune], FITTED — they also stand in for
+the unmodeled PRT): `passive_sink_dt_knee_c` **55 °C** (the stuck-PORV family's own ΔT, so
+the TMI-class equilibrium moves 9.4 → 9.3 psig only), `passive_sink_dt_gain` **0.13 /°C**,
+`passive_sink_dt_lag_s` **120 s**. One new PRIVATE state field `_ctmt_sink_enh` (seed 1.0,
+migration default 1.0 — no history invented; legacy-save probe extended; NOT a §6.3 field).
+**`gain 0` restores the pre-#425 plant bitwise** (proven: LOCA sev-0.5 ride rows identical,
+SBO spot rows 44.63/98.01/106.8 psia identical) — the injection lever for every pin.
+
+**A STATIC curve was measured infeasible first** — and the plan-review version of that
+argument carried two arithmetic errors worth the record: it claimed a +14.1 psi burn deposit
+(forgot `press_gain` — the deposit is `press_gain·h2_burn_gain·6.8 v/o` = **+32.4 psi**) and
+derived a knee floor at 71 °C from an "18.3 psig drained-base park" that is actually AMBIENT
+by burn time. **Re-derive sizing constraints from the Q0, not from the plan.** The real
+infeasibility: the SBO must park ≤ ~22 psig — **the burn margin, not the ruled 30 psig spray
+point, binds the park** (park + 32.4 must clear design; the ruled cap alone would leave the
+SBO burn 2.4 psi OVER) — while the sev-0.25/0.5 pulse peaks (31.3/34.6 psig) sit ABOVE that
+park with only 1.3/4.6 psi of hi-hi margin. One monotone curve eats the pulse grading to
+brake the park; pulses dwell 20–40 s above the knee, the boil-off climb runs ~6.5 min
+(10 → 30 psig, measured at a 30 s grid) — **TIME is the only separator between families
+whose pressures overlap.**
+
+**Q0, before → after** (full stack, measure_stack, same rides both sides; full tables
+`inbox/q425_q0_before.md`): SBO boil-off **83.3 → 22.2 psig, never crosses the hi-hi** (no
+transit overshoot; BEFORE crossed at ~100 min); SBO burn **above design → 51.1 psig**
+(0.4535 MPa abs, 10 s grid — above hi-hi, ~9 psi under design); LOCA grid 18.6/26.7/31.3/
+34.6/36.7 → **15.4/22.7/30.1/33.8/36.1 psig** (SI crossings 40–50 s unmoved; DBA still ~60 %
+of design); stuck PORV 9.4 → 9.3 psig; drained-base burn unchanged (ambient base + fixed
+deposit). **`slb_ctmt_gain` 0.0035 → 0.0045**: the MSLB blowdown is the ONE pulse long
+enough (minutes at peak) to charge the lag — it braked 52.0 → 39.0 psig and thinned the
+limiting-case ordering over the DBA to 2.9 psi; 0.0045 re-solves it to **48.2 psig = 80 % of
+design**, mid-band on both sides (#418 TR-3 shape). `press_gain` deliberately NOT re-solved.
+
+**Trap, new**: **a "pre-damage" window bounded by the damage FLAG catches the burn it exists
+to exclude** — H₂ reaches 8 v/o while the hot node is still under 1200 °C, so the first MD-3
+pin authored against `fuel_damaged` went red on its own burn spike. The boil-off-alone claim
+ends at the BURN (`!ctmt_h2_burned`-bounded recorder).
+
+**Probes** (per-probe, HR10): run_behavior 67/2xf at baseline UNMOVED by the retune — the
+lag's blast-radius design. CA-16 leg D mechanically updated: its static 1/τ expectation
+understates the enhanced sink, so it now INTEGRATES the engine's own claimed sink (reads
+`_ctmt_sink_enh` live per 0.5 s sample; asserts observed decay ≈ `e^(−∫sink·dt)`); validated
+both ways (gain 0 collapses it to the old 1200/τ_eff = 170 s exactly, green on both plants).
+MD-3 gains three legs at zero added runtime (driveDamage recorders, additive): boil-off max
+**< 0.3081 until the H₂ era** (measured 0.2541 — identical to the full-stack park, the
+layer-invariance check), burn peak **in (0.3081, 0.515)** (measured 0.4572) — **the #386
+containment-holds pin is now family-wide** — and the boil-off-alone premise (afw ≈ 0, spray
+delivery dead). Injection: gain 0 reds both pins (0.5556 / 0.7743 signatures). MD-3's melt
+clock moved 9510/12340 → 10185/12560 s (damage/melt) under the lower backpressure — inside
+the 15000 s horizon, comment currency only.
+
+**perturb_sweep.** BEFORE (the unreproducible map): `passive_sink_tau_s`×1.03 → 52/711
+moved, 0 flips; `press_gain`×1.03 → 65/711, ONE flip (CA-20 leg B, see below); `slb_ctmt_gain`
+×1.03 → 12/711, weak. AFTER on the new constants: gain/knee/lag each move 39–43/711 (5.5–6 %,
+discriminating), slb 12/711. **Two flips, both the SAME pre-existing knife-edge**: CA-20 leg
+B ("sev-0.05 plateau > 1.5× accumulator_trip" = 6.21 MPa) sits at 6.28 baseline — 1.1 % of
+margin — and any containment-side ×1.03 wiggles the plateau ~0.1 MPa through the break-flow
+backpressure coupling (the BEFORE map flips it via press_gain the same way). The 1.5× is the
+probe's own unsourced clearance factor (authored #408, replacing a magnitude fixture); the
+real claim (clear of the 4.14 MPa arming band) has 52 % margin. **Not re-banded in this
+change** — a drive-by re-band to quiet a sweep is the HR10 refit shape; noted on #425 for a
+dedicated adjudication if it recurs.
+
+**Grading note (owner-review on #425)**: the sev-0.25 peak lands 30.1 psig — 0.12 psi above
+the spray hi-hi (was 1.3 psi above). The boundary's thinness is the plant's; declared at the
+constants with a do-not-retune note. Recommendation: leave it; the fat-boundary lever is
+`press_gain`, which perturbs into the CA-20 flip above.
+
+**#384 bundle item — the Rev 13(j) residual had ALREADY closed before this change**:
+measured before AND after the sink work, identical — the full-size break bottoms **14.8 psi
+(0.102 MPa) abs vs a 14.7 psi (0.101 MPa) building** (declared "116 psi vs a ~34 psi
+building" at stage 4, 2026-08-06 — the #385 node / #408 re-clock closed it in passing,
+unnoticed). `12` §7.2 records the closure; the uncovery arc is intact (MD-1, CA-20 green).
+
+**Gates**: `run_all` **44 runners at baseline, zero baseline moves**. Docs: `12` §12.4d
+(enhancement declared, SBO family added, MSLB 80 %), §12.4e (containment-holds family-wide),
+§7.2 (residual closure); Rev 14 pending row item (o); stamp + pack + run_manual_rev /
+run_manual_units / run_doc_budget green. CHANGELOG carries the `_ctmt_sink_enh` migration
+note. CLAUDE.md themes rotated (#418 evicted; its node-capacity trap rescued to standing).
+
+## Session log — 2026-08-08-develop-c (#386 stage 3 — HYDROGEN: inventory, recombiners, the ruled burn; + #387 bundled)
+
+**Owner: "Work: #386 stage 3 (hydrogen) + #387 as a bundle"**, plan approved at review; one
+in-plan ruling taken *(OWNER RULING, 2026-08-08: selected "Above 30 psig" — the burn peak
+sized clearly above the spray hi-hi so the ESF answers it; a selection, not verbatim words)*.
+The 2026-08-05 burn-shape ruling (TMI-2-style one-time deflagration + latch, containment
+holds) binds throughout. Decision record: `Blueprint/BUILD_DECISIONS.md` 2026-08-08-develop-c.
+
+**#387 first, own commit (8f2d2d9)** — adv_valve `noise_failure: 1.0`; `ui/manual_data.js`
+regenerated after 8 stale days (14 of 49 instruments missing from the Failures picker, 13
+with no display entry — all authored first, or the regen would have re-run I-12); the repo's
+first `noisy`-mode leg (run_m4 42/42 278, red on the pre-fix config); NEW gate
+`verify_manual_data.js` (148, injection-verified: reds 14 against the old committed file).
+`run_all` 44 runners at baseline. Closed.
+
+**Evidence mini-pass — GEND-061 fetched into the corpus** (`inbox/sources/
+GEND-061_TMI2_hydrogen_burn.pdf/.txt`, Henrie & Postma 1987, DOE DE87010696, via OSTI —
+nrc.gov not needed). It sources the entire burn: 9 h 50 min clock, **7.9 % (wet) preburn
+average**, **6.8 % burned / 1.1 % left = 86 % consumed**, peak *"almost 30 lb/in² gage"*
+from a ~1.3 psig preburn (**ΔP ≈ 27.5 psi**, +5 psi lost to in-burn cooling per its fig
+4-13 → **adiabatic ≈ 32.5 psi**, the right anchor for an instantaneous deposit), TMI-2
+design 65 psig held, ~460 kg H₂ from ~40 % of core zirconium. Corpus sweep also surfaced:
+**Ginna net free volume 1.0×10⁶ ft³** (UFSAR ch15 :7011/:10143) and Ginna's own 50.46
+results (**CWO 0.30 %** vs the (b)(3) 1 % limit) — the mitigated-case brackets. The STS
+**[8.0]/[85] pair is bracketed ice-condenser TEMPLATE text** (the #380 placeholder class,
+adjudicated in the open) — adopted because GEND-061's own 7.9 %/86 % corroborates both.
+Recombiner capacity: in NO lane's corpus → fitted. Verdict table: `inbox/h2_evidence_verdicts.md`.
+
+**The build** (files in the commit): generation is ONE line beside q_ox
+(`pwr_thermal.js` — d(H₂)/dt ∝ q_ox exactly, same reaction event, NO second f_unc — the
+ledger telescopes to Δw, dt-independent, MD-11-pinned to 1e-6); two-node transport
+(`_rcs_h2 → _ctmt_h2`) gated on path GEOMETRY not flow (a flow key would stall on the
+burn's own backpressure spike and alias the safety duty cycle) — SGTR-flagged leaks hold
+their H₂ (CA-16 leg B extends to hydrogen), a closed block valve holds it; recombiners
+auto-only (spray-row clone: no arm, params form, latched seal-in, auto-secure 0.5/0.2 v/o,
+declared inference); the burn consumes 85 % at 8.0 v/o TRUE concentration, deposits the
+adiabatic GEND-061 ΔP into `_ctmt_steam` (the existing press_gain/T_sat/sink machinery
+makes the spike shape), latches forever (the O₂-depletion stand-in — no O₂ ledger).
+Surface: `ctmt_h2` instrument (0–10 % SOURCED range, NUREG-0737 II.F.1; 30 s lag [tune]
+declared), A40 (4.1 v/o sourced flammability) / A41 (burn, never clears) / A42 (recomb
+status), two Physics-tab rows, 4 true_state fields + §6.3.
+
+**Q0 (full stack, this session).** Mitigated fence: ECCS-live LOCA sev 0.10/0.5/1.0 peak
+**0.014–0.020 v/o** — ~290× under 4.1, the 50.46(b)(3) margin story; recombiners never
+start. TMI-class (stuck PORV, defeated): recomb auto-start 76 min and LOSING, 4.1 at
+~100 min, **burn at ~110 min: 9.3 → 41.5 psig**, spray answers, H₂ re-accumulates past
+10 v/o with no second burn. Unmitigated LOCA (CA-21 rig): burn 41 min, **32.4 psig from a
+drained base** (why the anchor moved to the adiabatic form — at the measured-peak 27.5 the
+drained family landed 27.2, UNDER the ruled side of the hi-hi). Deep SGTR sev 1.0 defeated,
+3 h: **never uncovers — zero H₂ anywhere** (so the transport fence is pinned by clone rig,
+the CA-17 idiom, not by family run). Restore-at-0.8-v/o (clad 894 °C): the excursion
+outruns restored injection and the plant burns anyway — then recombiners walk 23.5 → 1.6
+v/o at exactly their e-fold; **no family exists where recombiners prevent ignition**
+(prototypical, declared §12.4e). Fences: run_scenarios 3/3, run_campaign **51/51 3039**,
+run_behavior 66/2xf, run_meltdown 12 — all unmoved pre-probe.
+
+**FOUND ON THE WAY, filed #425**: SBO+AFW-failure drives containment past design on relief
+steam alone (30 psig at 100 min, ~83 psig equilibrium) — pre-existing stage-2 behavior
+(both H₂ ledgers exactly 0.000 through the crossing), revealed by the longer window; the
+no-PRT declaration reading harshly in its worst family. The burn's containment-holds pin
+is therefore authored on the LOCA/stuck-PORV families; #425 carries the numbers and the
+ruling ask.
+
+**Probes.** CA-24 four legs (mitigated trace / burn arc incl. peak-above-hi-hi + under-
+design + ONE drop + 85 %±3 / recombiner rig: auto-start, e-fold, #200 blackout split /
+transport clone rig ×4 with conservation) — injection-verified three ways with distinct
+signatures (h2_gain 0 → 7 reds; SGTR-exclusion drop → leg d alone; removal disable →
+leg c alone). MD-11 gains the exact ledger-∝-Δw identity leg. run_m4 recombiner suite
+(43/43 285). perturb_sweep: h2_gain ×1.03 → 10/711 moved, **zero verdict flips** (burn_gain
++ recomb_tau sweeps in flight at entry time — recorded in the commit if they finish red,
+otherwise green silence is the record). Two probe-authoring traps re-met: the sampler
+fires per CYCLE not per second (time read from `eng.simTime`), and the pre-burn sample
+sits up to one cycle under the trigger (band allows 0.2 v/o).
+
+**Docs.** Rev 14 pending row item (n); 12 §5.5 inverted + NEW §12.4e (the full declaration
+set) + §13.0 re-scoped; 09 §3.0 three rows; 06 A40–A42; 01 §8.0, 08, README, ISSUES I-05
+narrowed; TMI narrations stop disclaiming the burn they now perform. run_manual_units
+caught 5 in the new prose (the °C-pair and psig-pair classes) — fixed, 528 pairs green.
+
+**Still open on #386:** the board card + manual spray/recombiner surface (board redesign),
+#384 exit (stage 4). Owner-review items on the issue: the [8.0]/[85] template adoption.
+
+## Session log — 2026-08-08-develop-b (#380 SG lo-lo ladder RESOLVED by premise inversion + #355 feed program + #358 NO FLOW)
+
+**Three SG-feed issues closed in one pass, all three ruled the same day** *(OWNER RULINGS,
+2026-08-08, AskUserQuestion selections: #380 "Single-signal AFW"; #355 "Program to 65 %";
+#358 "Option A")*.
+
+### #380 — the evidence pass INVERTED the issue's premise; the ladder decision dissolved
+
+The issue (and `pwr_control.js`'s own comment, and §8.19) held that the real lo-lo function
+sits at "~30–32 % of narrow-range span" against our 17 — sourced to NUREG-1431 Tables
+3.3.1-1/3.3.2-1. **Misread: those tables print `[30.4]%` / `[32.3]%` in SQUARE BRACKETS — the
+Standard Tech Spec TEMPLATE's plant-specific placeholder, not any plant's setting** (and they
+are in Vol 1, ML12100A222; the previously-cited ML12100A228 is the Bases volume, which carries
+no numbers at all). The plant-specific values actually in the corpus: **Ginna — the #419
+anchor plant — specifies exactly 17 %** (*"low-low level of 17%"*, UFSAR ch10 ML20339A040:1655)
+and the W training plant 11.5 % (ML11223A293:271). The shipped value was the sourced one all
+along; no setpoint moved, and the ladder re-anchor the issue was blocked on is moot. The trap
+for the record: **a bracketed STS placeholder cites like a real number, and it survived two
+evidence passes (#220 claim 6, #374) before anyone read the brackets.**
+
+What WAS ours: the 20 % AFW start, 3 points above the trip (declared departure §8.19). Three
+documents confirm one-signal-one-setpoint (WTSM §5.7 condition 1 ML11223A229:185; Ginna TS
+Bases ML20339A221:7360 and NUREG-1431 Bases ML12100A228:7892 — *"also performs the ESFAS
+function of starting the AFW pumps on low low SG level"*), and Ginna's own LOFW analysis
+delivers the §8.19 teaching window POST-trip: Table 15.2-4 has AFW pumping at 115 s against
+the 55 s lo-lo signal (the 60 s is analysis assumption I, ML20339A101:3773 — licensing
+conservatism, not hardware, so no start delay was modeled). **Built: the AFW actuation moved
+20.0 → 17.0 on the same instrument/direction — single signal (`pwr_control.js`
+PWR_ACTUATIONS); §8.19 struck (retirement row in `DESIGN_COMPANION`); the dead
+`afw_start_level: 20.0` deleted from `pwr_config.js` (zero readers — a duplicate that could
+only ever disagree).**
+
+Measured after (engine+M4, TR-14's exact setup, severity-1.0 LOFW from HFP): **AFW at 2.5 s**
+— the PI-4 feed-flow start leads with level still 64.9 %, which the manuals' "AFW at ~37 s"
+line predated — warning 29.0 s, trip 40.0 s on `sg_level low` at 16.3 % indicated, window
+11.0 s, +600 s recovery 40.2 % under AFW. TR-14 40.0 s (band 25–60), TR-2 40.0 s, CC-3 dip
+min 38.7 % ≥ 8: `run_behavior` 66 pass / 2 xfail — at baseline, nothing re-fitted.
+
+### #355 — feed_sg targets the PROGRAMMED 65 %, not the engage capture
+
+`program: 65` + `spSlew: 0.1 %/s` (the rods_tavg idiom; capture still seeds spEff for a
+bumpless engage). Measured: engage at 32.9 % walks to 65 in ~6 min, crest 68.0 (3 points,
+well under the 75 HI alarm), settles 64.5–65.5, no trip. **Casualty caught by the gate, not
+predicted:** `run_autoctl`'s save/load suite used `setSp('feed_sg', 70)` as its free-setpoint
+fixture — a player setpoint on a programmed channel is overwritten by design, so that half
+of the fixture stopped existing. Re-pointed: the programmed channel asserts its setpoint
+RE-DERIVES (65) after load; the operator-setpoint round-trip moved to `boron_conc` (720 vs
+the ~705 capture), the remaining sp channel without a program. 30/30.
+
+### #358 — the delivery predicate (option A as filed)
+
+`feedNoFlow(s)`: commanded `feed_pump_speed_pct` > 10 while `condensate_flow` < 0.02 —
+main-feed-only on purpose (`fw_flow` is main + AFW, so an AFW start would mask a dead train).
+Surfaced twice on the SG FEED card: corner word **NO FLOW** (engaged case, ranked ABOVE SAT
+HI — covers the ~10 silent blackout minutes before the 120 % rail) and a `numberWarn` driver
+hook rendering the gpm DEMAND box amber in every mode including MANUAL (the frozen 355-gpm
+LOOP case, where the corner already says ISOLATED but the number kept lying). Demand stays
+latched per #329. **Injection-verified: predicate blanked → the new board_check pins fail
+showing exactly the old behavior (corner HOLDING, grey box) → restored.** board_check 222
+checks green.
+
+### Records
+
+Manuals Rev 14 items (k)/(l)/(m) — 03 §9.1/§9.2, 04 PWR-N01, 06 A17/A18, 07 PWR-E01 (timeline
+re-measured), 09 §2.0/§3.0, 12 §8.4 — stamped + repacked, `run_manual_rev` 15/15 (33 § refs
+resolve). `pwr_esf.js` prose re-measured wholesale (it still claimed a 12 % trip, an 11.03 MPa
+SI, an AFW start "at level ~19 %", and a ~25 % AFW hold — stale on four axes independent of
+this change); `pwr_sg_flood.js`, `pwr_board_inspect.js` ladder/feed entries, DESIGN_CRITERIA's
+§8.19 example re-stated as the retire-on-better-evidence lesson. perturb_sweep waived: no
+`[tune]` constant moved (setpoints + a program target; the sweep nudges `[tune]` values only).
+
+## Session log — 2026-08-08-develop-a (#385 pressurizer inventory NODE, stages 0–1 — bundle with #415/#337/#334/#354)
+
+**The committed node follow-on begins** (staging RULED on #385: inert node → surge-line
+flashing outsurge → re-solve the deception → adjudicate fallout). Three plan-review rulings
+*(OWNER, 2026-08-08: selections from costed options)*: **stage 3 holds the derived net +350
+and 78.3-at-void-0.2 as the only solve targets** (measure the mission-arc crest, re-key the
+75 % cue only if it comes free); **the low-Δp break law stays out of build scope** (stage 4
+re-measures on node geometry → fresh options memo to #334); **#334 item-3 slider: option (a)**
+— which stage 0 then found ALREADY SHIPPED, see below.
+
+### Stage 0 — the acceptance freeze, and two premise corrections
+
+**The severity sweep re-frozen on the current engine** (method of record: full stack, default
+lineup, `hot_full_power`, seed 4242, accel 10, `large_loca` t+10 s, 40 plant-min; sampled at
+broadcast resolution). This table is the stage-2 diff base — the 2026-08-06 tables are TWO
+re-clocks stale (#408 wave 1, #419):
+
+| sev | true-empty | uncovery | TRUE lvl @unc | IND @unc | IND peak post-break | min P psi (MPa) | peak clad °F (°C) | end |
+|---|---|---|---|---|---|---|---|---|
+| 0.01 | 212.5 s | never | — | — | 54.8 (pre-break) | 910 (6.27) | 1281 (694) | inv 91 %, lvl 0 |
+| 0.02 | 100.5 s | 942.5 s | 0.0 | 11.5 | 54.8 | 857 (5.91) | 1281 (694) | inv 63.6 % |
+| 0.05 | 37.5 s | 236.0 s | 0.0 | 7.9 | 54.6 | 595 (4.11) | 1402 (761) | inv 59 % |
+| 0.10 | 18.5 s | 102.5 s | **65.1** | 13.9 | 54.2 | 19 (0.13) | 1280 (694) | recovers 96.6 % |
+| 0.12 | 15.5 s | 83.5 s | 0.0 | 14.8 | 54.1 | 18 (0.13) | 1280 (694) | recovers |
+| 0.15 | 12.5 s | 66.0 s | 0.0 | 17.4 | 53.9 | 17 (0.12) | 1280 (694) | recovers |
+| 0.17 | 11.0 s | 58.0 s | **33.5** | 19.0 | 53.8 | 17 (0.12) | 1280 (694) | recovers |
+| 0.20 | 9.5 s | 49.5 s | **20.7** | 17.6 | 53.6 | 16 (0.11) | 1280 (694) | recovers |
+| 0.35 | 5.5 s | 29.0 s | 0.0 | 0.0 | 52.6 | 15 (0.11) | 1280 (694) | recovers |
+| 0.50 | 4.0 s | 20.5 s | 0.0 | 0.2 | 51.6 | 15 (0.10) | 1280 (694) | recovers |
+
+- **Drain order is right everywhere and the indicated gauge never re-rises** (peak = the
+  pre-break ~55 % at every severity) — the #385 stage-2 story holds on the re-clocked plant.
+- **NEW: the w-suppression fades at low Δp.** TRUE level re-lifts to 20–65 % at uncovery at
+  sev 0.10/0.17/0.20 — `w = ref/(ref + leak_flow)` and `leak_flow` collapses with √Δp as the
+  plant blows down, so the void term un-suppresses exactly when the break stops flowing hard.
+  The perturb sweep sees the same edge: `level_per_void`·1.02 flips CA-18's drain-order check
+  (21.0 → 25.6 vs < 25). **Stage 2 must fix this by mechanism** (the flash outsurge keeps the
+  node empty; an emptied node has nothing left to lift), not by band.
+- **sev 0.01 now parks the pressurizer EMPTY at inventory ~91 %** — the droop equilibrium
+  sits deeper than the 7.09 %-deficit span (55/776), so the smallest board break reads
+  lvl 0 with the plant otherwise stable at 910 psi. Feel question, noted for stage 4.
+- **Premise correction 1 — the #334 item-3 slider was ALREADY re-scaled by #408 wave 1**
+  (`pwr_control.js:762-765`): `Break Size / % of a full pipe shear / 0–100 / default 40`,
+  `leak_scale 0.04` (sev 1.0 empties the vessel in ~28 s — the real-clock DBA). The stage-6
+  memo's premise (0–50 "% rated flow") was one wave stale when I put the ruling question, so
+  **the option-(a) ruling confirms shipped state**; closeout on #334, no code. Corollary:
+  severities in the table above are the CURRENT board scale (sev·0.04 frac/s), NOT the
+  2026-08-06 tables' scale (~0.38·sev) — do not compare rows across the re-clock by "sev".
+- **Premise correction 2 — #415 does NOT reproduce** post the 2026-08-07 solid gates
+  (relief-K at bulk + P_restore stood down + #361). Full stack: stuck PORV sev 1.0 →
+  isolate at t+300 s → SI latched → SP walked to 4.0 MPa: the plant rides saturation
+  (subcooling −0.0 °F) while SI fills it, goes solid, and **arrests at 109.3–109.4 %** —
+  the geometric solid point, 10.7 pts clear of the clip — with the safeties cycling
+  2350–2470 psi. The filed walk-to-120.00 state is dead. To #415 with the trace at closeout;
+  the node's solid-wins-over-saturated predicate (stage 2) addresses the fragility class.
+- **Perturb-sweep baseline** (level/surge constants vs the battery): all four discriminate
+  (46–56 of ~680 checks move at 2–3 %); verdict flips are the CA-18 pins above plus
+  `level_per_tavg`·1.02 flipping a CA-20 plateau check (6.22 → 6.15 MPa, tight band, a fact
+  about the plant); `void_weight_surge_ref`·1.20 flips nothing (CA-18 leg B derives its
+  expectation from config — tracks by design).
+
+### Stage 1 — the inert node, BUILT (gates: `run_all` 42 at baseline)
+
+`s.pzr_mass_frac` — the pressurizer's liquid content in RCS-fraction units, a SHARE of the
+`_mass` ledger (loop share = `_mass − pzr_mass_frac`, implicit; the #418 C_tube rule). No new
+constant: capacity = 100/`level_per_mass` ≈ 0.1289, nominal 55 % = 0.0709. `stepLevel`
+integrates the derived line's realized per-step delta, **applied as a delta (`node = target`),
+not `flow·dt`** — `(Δ/dt)·dt` re-rounds in floats and stage 1's ruling is that any movement is
+a defect. Publication stays `clip(levelRaw, 0, 100)` for the same reason (`776·(lvl/776)` can
+differ by an ulp). `_pzr_surge_flow` (frac/s, + = insurge) is stashed from day one for the
+stage-2 pressure consumer. `stepPressure` untouched — zero diff. Migration seeds through the
+line's INVERSE (`levelRaw/level_per_mass` — exactly what the first step would write), §6.3
+entry in the same change.
+
+- **CA-23** (8 checks): the identity `level_per_mass·pzr_mass_frac == levelRaw` after EVERY
+  0.1-s step across three families — subcooled trip outsurge (worst 7.1e-15), the relief/void
+  lift at peak void 0.775 (1.4e-14), the w-weighted loop break at the board-default severity
+  (1.4e-14) — each with a precondition that its family actually fired, plus the migration
+  seed (bitwise) and published-level-unchanged-on-load. Leg C's precondition is CONFIG-DERIVED
+  (`meta.max/100 × leak_scale`, the #408 idiom) — the first draft hardcoded `> 0.01` and
+  failed against the re-clocked severity map, which is that trap teaching itself once more.
+- **Injection-verified both ways**: node write stashed → exactly legs A–C red (divergence
+  27/63/234 pts), D green; migration seed stripped → leg D red alone.
+- Gates: `run_behavior` 65 → **66 pass** / 2 xfail (CA-23), `run_contract` 167 → **168**
+  (the §6.3 line), `run_all` **42 runners at baseline** (both counts moved in `BASELINES`
+  in the same change).
+
+### Stage 2 — the node's law, BUILT (the flow-form credit; leak-0 BITWISE)
+
+`pzrNodeLevel` = the reconstructed base+mass backbone (drift-free — the incompressible loop
+passes every net mass change through the surge line, which is what the one ±776 slope always
+meant) **plus a flow-accreted VOID CREDIT** (`_pzr_void_lvl`, level units) replacing the
+state-form `level_per_void·w_now·void`. Credit rules: never-leaked plants keep the state form
+with w ≡ 1 — **the whole no-leak family (stuck PORV, safeties, loss of heat sink, the TMI
+arc) is BITWISE the frozen line**, term order preserved, no float-drift exception needed;
+once a leak has flowed (`_pzr_dep` latches), growth accretes `level_per_void·w·dv` (the
+admittance split applied to each displacement AS IT HAPPENS — the (1−w) share left through
+the hole and is not owed back), collapse returns unweighted (the condensing loop pulls its
+liquid back through the surge line; the hole cannot supply it), floored at 0. One law, two
+consumers: `stepLevel` publishes it; `stepPressure`'s solid predicate evaluates it (fresh
+Tavg + one-step-stale credit — exactly the freshness the old dual `levelRaw` call had).
+`levelRaw` is FROZEN as the migration-seed map. The surge-rate/pressure terms are untouched
+— **pressure is bitwise identical on every family** (the solid predicate can only differ
+where void > 0, where solid is false through the void guard regardless).
+
+- **THE FINDING THAT REFRAMED THE STAGE: `primary_void_fraction` SNAPS.** It is a state
+  function of `_mass` behind a saturation gate, so it goes 0 → 0.889 in ONE step at gate-open
+  (measured, sev 0.10 full stack at ~100 s), and the credit's dv arrives as one increment at
+  the gate-open w. So flow-form ≈ state-form AT GATE-OPEN on current-board trajectories, and
+  the stage-0 re-lift interpretation needed correcting: **the 65.1/33.5/20.7 TRUE-at-uncovery
+  readings are gate-open snap values at the then-prevailing w — the honest small-break lift**
+  (w 0.56–0.78 at board severities; the #408 owner-report finding 3 asked for exactly this),
+  NOT late w-fade. What the flow form retires is the LATE RE-APPLICATION in both directions:
+  w recovering re-reads nothing (CA-18's new retirement pin, red on the state form — credit
+  28.1 → 168.9 under injection), and w dipping re-reads nothing either (the line instantly
+  marked its whole stock DOWN on a leak_flow wiggle; the node held, measured 0.12 pts). The
+  SNAP itself is #407's (out of the cluster's scope by the plan) — the gauge stepping 0 → 65
+  in one broadcast at sev 0.10 is that defect's face, not this stage's.
+- **The flash outsurge term was MEASURED UNNECESSARY at every board severity and NOT BUILT**
+  — flagged for the owner on #385, a deviation from plan component (c). The arithmetic: the
+  backbone already drains the node at the loop-demand rate — TRUE-empty at 4–212 s across
+  the slider, always well before uncovery (the stage-0 table), sev 1.0 ≈ 1.8 s. A flash term
+  would halve the DBA empty-time (~1 s) and change NO story at any reachable severity, for
+  3–4 new `[tune]`s plus a heal rule — the hollow-term trap (a term nothing can test). The
+  plan's sizing target ("empties 1.5–2 s at sev 0.20") was measured on the RETIRED severity
+  map and no longer exists on the board.
+- Severity sweep re-run (same method/seed): rows 0.01–0.05 unchanged; 0.10 unchanged (snap-
+  dominated); 0.12–0.50 late-phase diffs only (IND at uncovery +1–3 pts; end states moved —
+  **sev 0.17 now parks at a throughput equilibrium exactly ON the core-top boundary: inv
+  70.0 %, 189 psi (1.31 MPa), lvl 79.1, clad stable** — a CA-19-class balance point; noted
+  for a stage-4 look, no damage).
+- **MD-5 adjudicated (HR10) — the one gate red, and it was pinning the retired defect's
+  CLOCK.** ATWS + DEG break, no ECCS: still MELTS, at 5285 s instead of < 4000 (measured on
+  a 200-min ride: damage 2295 s, melt 5285 s, min inv 51.9 %). The old timing was bought by
+  the lying-high late-blowdown gauge keeping the heaters propping the pressure that kept the
+  break flowing. Window 4000 → 6000 s (MD-1's real-clock precedent), inventory band
+  re-authored config-derived (< `core_top_uncover`·100; the old "< 50" was the defect-paced
+  trajectory's number — new form passes on the pre-node engine too).
+- CA-18 legs B/C/D re-authored onto the live law through stepped `stepLevel` clones (the
+  state-form legs would have pinned the frozen map): the w·dv accretion exact to 1e-9, the
+  retirement pin (bitwise-unchanged credit under w recovery + the line−node gap = exactly
+  `level_per_void·void·(1−w)`), the relief fence (full lift, hand-computed), the 78.3-at-
+  void-0.2 target through the live law (78.33 ✓), and a flicker leg (saturation-boundary
+  chatter ratchets the credit DOWN, never up — accretion pays the w toll, return is free,
+  floor 0). CA-23 re-authored: frozen-line fence on no-leak (bitwise, worst 1.4e-14),
+  live-law identity everywhere, bounded excursion above the frozen line (< 2 pts; measured
+  0.12 — strict ≤ was wrong because the LINE re-reads down on w wiggles, the mirrored
+  defect).
+
+### Stage 3 — the deception re-solve COLLAPSED TO VERIFICATION (constants never moved)
+
+The leak-0 byte-identity means the calibrated TMI arc could not move, and no level constant
+was touched — "touch one, re-solve the set" satisfied trivially. Both documented targets
+verified on the live law (net +350 via the hand check, 78.33 at void 0.2 via CA-18 leg C).
+**Crest measured on node geometry** (per the 2026-08-08 ruling): free-play stuck-PORV arc
+crests **62.2 % at 37.3 min**, never crosses 65 or 75; the mission-environment crest
+(~69.4 %, #418/#419 record) is unchanged by construction (bitwise fence, `run_campaign`
+51/51 the proof). **No free re-key is available** → the cue stays state-keyed, the
+#418/#419 owner-review item closes with this measurement, ruling applied.
+
+### Stages 4–5 — adjudication clean; the bundle closes on measurements
+
+- The 42-runner gate adjudicated the pre-enumerated list green with ONE mover, MD-5 (above).
+  `ops_cvcs_pzr_drain_rate` did NOT XPASS (leak-0 CVCS drain is bitwise — still 284.3 s, the
+  ruled red stands untouched). The sev-0.17 sweep row's "equilibrium exactly at inv 70.0"
+  was a SAMPLING COINCIDENCE — extended to 120 min it is a slow recovery (inv 96.4, clad
+  215 °F, cooling). One cosmetic artifact recorded: the late-phase gauge flaps 0 ↔ ~78 as
+  the void gate flickers at the saturation boundary — the #407 snap's face, amplitude
+  bounded by the credit's ratchet-down rule (CA-18 leg D pins the direction); the fix is
+  #407's snap rework, not this project's.
+- **#415 closes on measurement**: the filed walk-to-clip state does not reproduce post the
+  2026-08-07 solid gates (arrest 109.3–109.4 %, safeties cycling 2350–2470 psi; the
+  walk-down phase rides subcooling −0.0 °F legitimately and self-arrests). No solid-wins
+  predicate shipped — the CA-19 precedent (no reachable state = code no A/B can see).
+- **#334 closes its two remaining questions on measurements**: the slider was already
+  re-scaled by #408 wave 1 (the 2026-08-08 option-(a) ruling confirms shipped state), and
+  the natural post-reflood equilibria now end at 15–19 psi ≈ the building (the ~390 psi
+  complaint belongs to CA-19's forced-solid injection balance — the config solve, by
+  design). §12.4b's declared departure stands unchanged.
+- **#354 closes on the existing measurement**: the CVCS servo has held `levelProgram` (not
+  current level) since the #34-era rework — `pwr_primary.js:304`, divergence above the
+  ceiling deliberate (#289).
+- Record: Manuals Rev 14 item (j) (12 §7.3 node-form, §6.3 two-scale sweep, §12.4c relief
+  line), BUILD_DECISIONS entry + F14/F15 flag-row currency notes, `pwr_config` §12.4c
+  ledger + `level_per_mass_surplus` name sweep, CLAUDE.md status/themes (the #362 bullet
+  evicted, its incidence trap rescued to the standing list).
+
+**ADDENDUM 2 (2026-08-08) — #424 evidence pass: the small-break lift is SOURCED as a class;
+the deep-SGTR regime gets its probe leg.** The corpus sweep came back empty (a command's
+verdict — Ginna UFSAR ch. 15 documents the drain phase and the loop-seal-limited cold-leg
+break but its level traces are figures), so two primaries were fetched via the archive.org
+workaround and saved (`inbox/sources/IEB_79-06A.html`, `IEB_79-06C.html`): **IE Bulletin
+79-06A** (Apr. 14, 1979) — *"the potential exists, under certain accident or transient
+conditions, to have a water level in the pressurizer simultaneously with the reactor vessel
+not full of water"*; operators *"not [to] rely upon pressurizer level indication alone"*;
+SI ordered actuated on pressure *"regardless of the pressurizer level"* — and **IE Bulletin
+79-05C/79-06C** (July 26, 1979) — running RCPs through a small break pump two-phase fluid
+and *"can increase the mass lost through the break and prolong or aggravate the uncovering
+of the reactor core"*, the pump-on regime the sweeps ride (no LOOP injected). **VERDICT:
+the sev-0.10 on-scale-level-at-uncovery behavior is CONFIRMED as a class; the 65 % magnitude
+is declared this plant's own** (shape sourced, scale fitted). Citations planted at the
+mechanism (`stepLevel`'s credit comment) and in `Manuals/12` §7.3 (Rev 14 item (j)
+extended). **Item 2 built**: CA-23 leg E — a deep unmanaged SGTR (sev 0.9, engine-direct,
+40 min) voids to 0.589 with the leak flowing and the credit riding real dynamics; asserts
+the node-is-its-law identity (1.4e-14) and the structural bounds credit ∈ [0,
+level_per_void·void] that no EOP-path gate exercises. Injection-verified: weighting the
+RETURN (the wrong physics) reddens exactly leg E's bound (over-cap 2.25) and leg C's
+re-lift fence (57.3 pts). Probe count unchanged — no baseline moves.
+
+**ADDENDUM (2026-08-08) — the flash term is RULED out** *(OWNER RULING, 2026-08-08: "Let's
+not do the flash term if you think it won't affect gameplay in a negative way.")*. The
+condition is affirmed on the measurements above: at every board-reachable severity the node
+empties well before uncovery on the backbone alone, so the term's absence changes no story a
+player can reach; the declared direction of error (our pressurizer empties a few seconds
+LATER than a real flashing one during a deep blowdown) is invisible at board severities and
+already covered by `Manuals/12` §12.5's flash-evaporation row. #385 closes with this ruling
+— the node project is complete at the credit form.
+
+## Session log — 2026-08-07-develop-g (#419 waves 1–3 BUILT — RECONSTRUCTED, see marker)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session (the
+2026-08-07-develop-e session's plan WP2, owner-approved) — not the authoring session's own
+record.** The authoring session landed all three #419 waves (17:54–20:16 local, BEFORE the
+`-e` session — this entry sits above `-e` only because `run_session_labels` orders letters
+newest-first) and wrote no entry here or in `BUILD_DECISIONS.md`; this closes the gap the `-e`
+entry flagged. Numbers are quoted from the commit messages and the #419 issue thread (which
+carries the full per-wave write-ups), not re-measured.
+
+- **Wave 1 (`1d11252`)** — the Mode 5↔1 pace compression RETIRED: real heatup/cooldown rates,
+  time acceleration carries the pacing (the #419 stage-1 D3 ruling, "go real").
+- **Wave 2 (`8ba4d84`)** — F15 re-anchored: relief K 3144 → **2500**, the plant's physical net
+  under the RULED F14 heater. The recorded trap: K_phys ≈ 304 is physically derived and
+  validates against TMI-2's own clock, but under the 347× F14 heater the stuck-PORV race
+  inverts (level crashes, no deception) — shipped K is the F14-coupled pair, marked
+  [derived-net, re-solve together].
+- **Wave 3 (`413ae06`)** — the Ginna re-anchor (option C): secondary ladder
+  1020/1060/1099/1063 psi (7.03/7.31/7.58/7.33 MPa, `DESIGN_COMPANION` §8.34 retired), Tavg
+  program 546.9 → 580.2 °F (286.0 → 304.5 °C), steam dump 28 % (D1 — the ride-out survives,
+  measured), reference boron 683 → **705 ppm** (`rho_excess` re-solved at the WBN quote
+  temperature; the old solve conflated it with our anchor).
+- Owner-review items live on #419 (TMI deception crest ~65 % vs the 75 % annunciator; TR-1i
+  second strict xfail → #420, coupled to #378). Gates: `run_all` 42 at baseline at each wave
+  per the commit messages.
+
+## Session log — 2026-08-07-develop-f (#418 tier 2 BUILT, waves A1–B2 — RECONSTRUCTED, see marker)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session (the
+2026-08-07-develop-e session's plan WP2, owner-approved) — not the authoring session's own
+record.** The authoring session landed the whole tier-2 build (13:05–14:35 local, BEFORE both
+`-d` and the `-e` session — letters follow the gate's newest-first rule, not the clock) and
+wrote no entry here or in `BUILD_DECISIONS.md`. Numbers are quoted from the commit messages
+and the #418 issue thread, not re-measured.
+
+- **Wave A1 (`174009c`)** — the SG pressure clock DERIVED (was bottled +223 psi/s at full
+  generation, now +43): the plant re-learned five transients on the real clock.
+- **Wave A2 (`9414ea0`)** — the SG secondary is a MASS LEDGER: `K_sg_level` retires into
+  geometry; the ledger reconciles Ginna's 35-s trip event with its 78-s boil-dry through level
+  geometry rather than a gain.
+- **Wave A3 (`2c7a507`)** — SG safety capacity SOURCED: 0.84× rated, the Ginna MSSV bank.
+- **Wave B1 (`ae025fc`)** — the SG has a TUBE NODE and the legs are TRANSPORTED: series pair
+  under the invariance rule (1/h1 + 1/h2 = 1/h_sg, shared factors) leaving every steady anchor
+  exact — `run_otdt` 46/46, TR-1i's ±5 °F duty with no lead-lag. `tau_hotleg_s` 1.5 /
+  `tau_coldleg_s` 4.0 ÷ flow are the new `[tune]` transport constants (unsourced; see the `-e`
+  cooldown-pace thread).
+- **Wave B2 (`fcf7d66`)** — the re-clock reaches the player: manuals pending-Rev-14 items
+  (a)–(f), CHANGELOG, close-out. Issue #418 carries `status-owner-review` (three items).
+- The two traps from this build are rescued in `CLAUDE.md` themes: a node's capacity must come
+  OUT of the node it split from (C_tube on top of coolant 20 silently reopened the ruled
+  heatup pace — caught at 260.7 °C), and a knife-edge claim (TR-3 "spray loses") will
+  oscillate under re-clocking — the probe now pins the mechanism half.
+
+## Session log — 2026-08-07-develop-e (the owner's zero-flow report: the CVCS boxes rendered the #408 currency raw — display swept, engine healthy, #421 filed for the unclamped command)
+
+**Task (owner):** investigate #385 + what to bundle with it; "charging and letdown always show
+zero flow"; do accumulators/ECCS/CVCS need a physics pass for the new primary loop; is water
+transport time accounted for (the loop "cools very fast" on a scram).
+
+**The zero-flow report — root cause is DISPLAY, not physics.** Measured full stack
+(`hot_full_power`, 3 min): truth `charging_flow_actual` 6.81e-5 frac/s, instrument 6.88e-5,
+level held at 55 % — the #408 real currency working exactly as built (6.8e-5 × 450,000 =
+30.6 gpm ≈ the orifice-A 30 gpm NOP figure). But the two board boxes the player reads
+(`imsgti1p0rm`/`imsgti0gnpf`, authored 2026-08-05 with the builder's copied name "RCP FLOW
+indication") rendered `Math.round(raw frac/s)` = **0 for any flow this pump can produce** —
+they have read zero since they were authored. The correctly-scaled wiring entries
+(`imrzp89wdfu`/`imrzp8qps6u`) pointed at items deleted from the board — dead code holding the
+right formula while the live ids held the wrong one. Fixed: live ids now `dQ(× GPM_CHARGING)`
+(31 gpm at NOP, SI-toggle aware via the `flow` family), dead entries removed, `VALUE_UNIT`
+re-keyed. **The trap: when a diagram re-export replaces item ids, the wiring for the OLD ids
+does not go red — it goes unreachable**, and the new ids get wired fresh, possibly wrong.
+`verify_board_check` cannot see it (both forms are wired); only the rendered number can.
+
+**The rest of the #408 currency sweep** (same class, `ui/app.js`): strip-chart
+Charging/Letdown series plotted ×100 as "%" — flat-line at 0.007 % on a [0,20] axis → now gpm
+on [0,120]; Physics-tab `tsCell` rendered `charging_flow_actual`/`letdown_flow_actual`/
+`leak_flow` (all real frac/s since #408) as `×100 %` → now gpm; the DOM-dead `'charge-set'`
+handler kept the retired `/1000` (30 gpm typed → 0.03 frac/s ≈ 13,500 gpm commanded). Also
+retired the `pwr_config` identity-block paragraph still disclaiming "no single RCS volume
+makes both true" — #408 made exactly that true, and the derivation comments beside
+`charging_max_gpm`/`letdown_normal_gpm` still cited the 0.06 × 1000 arithmetic.
+
+**Found while sweeping, NOT fixed — #421.** `set_charging_flow` and the MANUAL branch of
+`stepInventory` have no clamp; only AUTO clips to `charging_max`. Five callers still speak the
+retired 0.05/0.06 currency (375–450× the pump), including the engine's own §14 `_pzrTrim` rig,
+which only works because nothing clamps. Clamping is a behaviour change for those rigs —
+per-caller adjudication (HR10) is #421's scope.
+
+**Accumulators/ECCS need NO pass** — #408 wave 1 already moved them: `hpi_flow_max` 2.0e-4
+(Ginna HHSI, T15.6-10/17), `lpi_pressure_ref` 1.5 (RHR ~200 psid, WTSM 5.2),
+`accumulator_inventory_gain` 0.012 + `capacity` 0.40 (Ginna 0.435 RCS in ~36 s, T15.6-15),
+instrument spans re-declared (`charging_flow` range [0, 2.67e-4] etc.). The strays were all
+display-side consumers of the old currency, which is what this session closed.
+
+**Water transport time (scram cooldown) — modeled since #418 wave B1, and the pace is the
+plant's own.** Measured full stack, scram from 100 %: legs converge 609.9/550.5 °F →
+582.0/576.9 °F within 16 s, then the whole loop walks to no-load 547 °F in ~2.5 min on the
+dump (steam pressure settles ~1005 psi — the Ginna anchor doing its job). The 16 s is
+consistent with the plant's own geometry: 7,500 gal at 24,000 gpm = a full loop turnover every
+~19 s, and the legs are first-order at `tau_hotleg_s` 1.5 / `tau_coldleg_s` 4.0 ÷ flow_frac
+(sluggish at natural circ by construction). Both taus are `[tune]` and UNSOURCED — a
+loop-transit evidence mini-pass would either confirm or retune them, but the shape and scale
+are defensible today.
+
+**#385 read:** stages 1–2 landed (path-aware void term, CA-18); remaining scope is the
+committed pressurizer inventory NODE, sequenced after the #408 wave-1 re-clock — which landed
+2026-08-07-develop-a, so the node is now UNBLOCKED. Bundle candidates argued in the session
+reply: #415 (solid-regime walk-down — "solid" is re-based by the node), #337 (surge coupling —
+the node changes what a surge is), #334 (heater-deadhead ruling touches the same
+level/heater cutoff algebra), #354 (auto-charging target — the CVCS servo reads the level the
+node redefines). Note for continuity: the #418 tier-2 build and #419 waves 1–3 landed in git
+today with **no session entries in this file or BUILD_DECISIONS** (labels stop at `-d`).
+
+**Gates:** run_all after the batch (result in the commit); no baseline moves expected — the
+board score is data, `run_manual_units` parses the GPM literals untouched.
+
+**ADDENDUM (same session, post-plan): #421 executed.** Engine clip at `applyCommand` +
+`stepInventory` MANUAL (clip, never reject — the ops spam sanity asserts acceptance; the MANUAL
+clip is what covers a pre-#408 save restoring its 0.05 setpoint verbatim, no migration default
+exists). `set_letdown_flow` alias table re-derived config-side (the retired 0.030/0.040/0.070
+snapped every real-scale request to `off`; a legacy old-currency value now lands on A+B — the
+documented trade, pinned by a new self-test check). Adjudications, one at a time: **§14
+roundtrip = the predicted casualty, measured 13/13 GREEN on the clamped engine** — cooldown
+completes at 7,930 s of 12,000, min subcool 47 °C; the bang-bang trim survives because real
+charging (60 gpm) outruns the real-paced cooldown contraction, so the predicted minSub/coldAt
+reds never fired and no rig redesign is owed. e2e charging band → `>= 0.9 × charging_max`
+(mirrors its letdown neighbour); CA-8 bands re-expressed as fractions of `charging_max` at
+byte-identical strictness (1e-4 ≡ 0.75×); ops spam roster → `charging_max` (nothing asserts
+charging there). `gen_manual_reference` wording fixed (dead for PWR — no manual three-step);
+`Manuals/03` checked and NOT edited (no misstatement, no Rev row). Also reconstructed the
+missing `-f`/`-g` session entries (plan WP2), marked as such in both files.
+
+**ADDENDUM 3 (plan WP4): #386 stage 2 BUILT — containment heat removal, AUTO-ONLY variant.**
+The recorded 2026-08-06 stage-2 plan executed with the session's deltas (no board batch, no
+player controls — owner ruling on scope quoted in the Rev 14 row; CA-18→CA-22 probe renumber
+TWICE, both ids taken since the plan was parked; `passive_sink_tau_s` 1800→220 drift noted and
+every window re-derived from fresh Q0). Engine: spray/fan additive sink terms + AC-gated
+delivery (#200 split), upstream-SLB source (`slb_ctmt_gain` 0.0035 — trimmed from 0.004 off a
+0.7 %-under-design knife edge; MSLB is now the limiting case at ~88 % of design), commands +
+4 fields + §6.3 + migration. Control: the 4 rows (unblockable 3.5 psig SI, spray hi-hi with
+latched seal-in + AUTO-SECURE on recovery below the SI signal — added this session when Q0
+showed a fired spray running forever in a build with no operator to secure it — fan realign on
+`hpi_active`, MSLI hi-hi sharing `MSLI_SEAL_IN`) + 4 alarms. Q0 measured: healthy 20-min flat
+ambient; sev 0.5 hi-hi→<SI in ~4 min; stuck PORV equilibrates ~9.4 psig on realigned fans with
+the SI latch standing (no re-fire to fight TMI's scripted securing — and measured so:
+run_campaign 51/51, run_scenarios 3/3, run_meltdown 12, flagship unmoved); SGTR exactly
+ambient. Fallout adjudicated one at a time: CA-16 leg D re-authored (τ_eff from the plant's
+own train state; floor relaxed to allow full decay TO ambient — steam ≥ 0 makes the deleted-
+sink case an upper-bound catch), CA-21 window 0.90→0.85 (measured: the stage-2 drained
+equilibrium parks at unc 0.88, inv 52.3 % — the old threshold pinned the OLD equilibrium;
+passes both engines per HR10), PI-9 re-authored (the #199 absence NARROWS: no steam-pressure
+SI channel still, and SI now correctly arrives on the sourced containment backup — red on
+stage-1, the SLB source's injection verification). CA-22 + CA-8 leg B2 new;
+injection-verified by stash (CA-22 and PI-9 both FAIL on the stage-1 engine, restored clean).
+run_m4 +1 suite (the params-form seal-in trap check included). Leg E from the parked plan
+ADJUDICATED OUT: post-auto-secure its claims are carried by CA-8 B2 (AC gate) + leg D's
+derived τ_eff, and the SBO-at-peak rig has no clean decay window on the real clock (the
+plan's own risk 3). Manuals Rev 14 (i) + two stale rows caught (09 MSLI 754 psi/"~1 s";
+12 §8.5 ladder sentence missed by the #419 sweep). Movers: run_behavior 64→65p/2xf,
+run_m4 41/41 274, run_contract 167, run_reachability 74, run_hr3 30.
+
+**ADDENDUM 2 (plan WP3): the cooldown-pace investigation — verdict NOT-TOO-FAST, filed #422.**
+Owner-directed as a suspected defect ("Investigate slowing it"). Decomposed into the two
+owning mechanisms and measured against a NEW sourced reference fetched this session —
+**ML11216A094 (HRTD Advanced Technology 05, Transient 5.11 Manual Reactor Trip)**, a
+full-scope-simulator trip from 100 % with traces (time axis anchored 1 div ≈ 1 min on the
+narrative's own "~15 sec" elbow; declared inference). Result: the ΔT collapse (legs converge
+≤16 s) is loop-turnover physics — 7,500 gal at 24,000 gpm = ~19 s/turnover, and the HRTD
+narrative describes the identical immediate collapse; the Tavg walk (580.2 → 546.9 °F in
+~2:15–3:00) is **~3× GENTLER in the first minute than the HRTD trace** (14 vs ~40 °F/min —
+consistent with the ruled 28 % dump vs their 40 %), arriving at no-load on the same ~3 min
+clock, same undershoot-then-recover shape. Recommendation delivered on #422: no change; the
+taus keep `[tune]` + UNVERIFIED-source with a derivation comment now in `pwr_config.js`.
+Corpus additions (develop): ML11216A094 (+txt), **Ginna UFSAR ch 15 = ML20339A101** (+txt —
+also archives #418's previously-uncorpused "T15.2-1" citation), ML11223A294 (WTSM 11.2 steam
+dump). Method note: no lane's corpus carries any transit/circulation time (`find_source`
+exits 1 on every phrasing tried).
+
+## Session log — 2026-08-07-develop-d (#419 STAGE 1: the cascade table, posted for sign-off. No code.)
+
+**Task:** #419 tier-3 identity re-anchor, stage 1 (owner: "Plan the work first" — plan-mode pass
+ran three explorer sweeps + a design agent; approved). Deliverable: **the cascade table, posted**
+— https://github.com/TH462/Reactor-Dynamics/issues/419#issuecomment-5221487750 — every constant
+the three re-anchors move, current → proposed → source → touches, with the anchor-plant
+declaration and three decision rows. `status-needs-ruling` set: sign-off blocks stage 2. No
+engine/config/test/manual edits.
+
+**Fresh measurements (HR12):**
+- **Mode 5→3 heatup re-measured** (full stack, `measure_stack`, cold_shutdown + the PWR-N01
+  commands): settle 567.0 °F (297.2 °C) at **~12.3 plant-h** (recorded 11.3 pre-#418), steady
+  **~30 °F/hr (16.6 °C/hr)** (was 32.7), Mode 3 at ~4.6 h. The #418 clock stretched the ride
+  ~8 % — consistent with A1's own 40,000 → 42,000 s hold extension. Confirms the §A scoping:
+  the thermal ramp is already real-class; ×12.6 lives in the pressurizer clock + boron pair.
+- **`K_surge_level` bounded** (perturb_sweep, behavior battery, ×0.675 → 0.27 and ×0.125 →
+  0.05): discriminating power ok (126/667, 144/667 moved); **five flips, the SAME five at both
+  values** — TR-1's PORV-lift claim (peak 16.24 → 15.59/15.42 MPa: the lift stops arriving, the
+  A1 peak-flattening class) and CA-21's dry-core fixture going vacuous (2367 → 0 dry samples).
+  **The old TR-1c/§8.21 wall that refused 0.27 did NOT reappear** — that cliff went thermal at
+  #418. Cost = two probe re-derivations, not a ruled-behavior loss.
+
+**Fetch pass (time-boxed ~1 h):** Ginna **TS Bases Rev 101 (ML20339A221) landed** →
+`inbox/sources/`. Three finds: no-load SG pressure **1005 psig** (B 3.3.2 — closes the "~990
+psig UNVERIFIED" gap; Psat(547 °F) through our own `_tsat` agrees within 1 %); Ginna PORV
+capacity **179,000 lb/hr at 2335 psig** (B 3.4.11 — the #408 comment's "Ginna 210,000 lb/hr" is
+the NUREG-1431/4-loop-class figure; Ginna-based scaling 2.13e-4 vs adopted 2.5e-4, inside the
+ruling's own rounding — provenance fix owed, no reopen); pressurizer high-level **650 ft³ =
+87 %** ⇒ ~747 ft³ total (feeds the B1 K_phys derivation). Still owed: UFSAR ch 5 text
+(**ML20339A035 is the FIGURES volume** — 20 pages of "Figure DELETED" sheets), TS proper
+(OTΔT K-values Table 3.3.1-1 Note 1, P-12 numeric, MSSV SR table), PTLR. **Fetch trap for next
+time:** ML18179A279 titles its first page "Chapter 5 UFSAR Table of Contents" and is **Vogtle
+3&4's** AP1000 UFSAR — a generic TOC cover defeats a first-page ID; read an interior page
+before anything enters the corpus as Ginna.
+
+**Headline proposals in the table** (details on the issue): ladder becomes Ginna's own —
+1020/1060/1099/1063 psi (7.03/7.31/7.58/7.33 MPa; anchor sourced 1005 psig, pop 1085 psig, ADV
+by the sourced rule, reseat derived) — which **retires DESIGN_COMPANION §8.34**; program
+546.9 → 580.2 °F (286.0 → 304.5 °C), span 33.3 °F vs Ginna's real 29 (top runs 4 °F high on
+our fixed Q/h_sg — declared, not chased); slew 0.02 → 1.586e-3 MPa/s (cold→NOP 10.8 min →
+2.26 h); K-pair re-solve at wave inside [K_phys derivation, 600-measured-green]. Three decision
+rows: **D1** dump 0.40 (ruled, WTSM-sourced) vs Ginna's sourced 28 % — recommend keep 40;
+**D2** K_surge_level into the real band 0.021–0.050 — recommend pace wave + the two
+re-derivations; **D3** boron pair goes real — recommend pace wave. Corrections to #419's own
+text recorded (E-dividers already moved at #408: `eccs_cooling_gain` 1.0, `blowdown_gain` 0.25;
+§12.15 is one row, not a register; K_surge_level is the unnamed third ×12.6 figure).
+
+**Gates:** docs-only change; `run_all` 42 runners at baseline — `run_hardrules` 225/0 with NO
+drift (these entries cite rulings without adding formal declaration sites, so the d145caf
+re-baseline pattern was armed but not needed). Stage 2 (sequencing ruling: pace → F15 → ladder)
+follows sign-off.
+
+**RULED (same session, all four)** *(OWNER RULING, 2026-08-07, verbatim: "D1: measure first.
+[…] D2: move it. D3: go real. Stage 2: go with recommendation.")* — D1's dump measurement lands
+in the ladder wave; D2/D3 fold into the pace wave; sequencing pace → F15 → ladder. The owner
+also asked for the dump-sizing rationale (answered: WTSM §11.2's rule — capacity = the 50 %
+step-rejection target minus rod authority; Ginna meets the same target at 28 %; a bespoke
+fitted size rejected on Q2 citability + HR10 circularity).
+
+**WAVE 1 BUILT (same session) — the pace family runs real.** `setpoint_pressurize_slew_mpa_s`
+0.02 → **1.586e-3** [derived — the K_heater block's own sourced arithmetic, WTSM 1794 kW ⇒
+55 °F/hr]: cold→NOP measured **~1.8 plant-h** from the command (early thermal swell rides ahead
+of the pure-slew 2.26 h), the SI-accumulator compliance window ~100 s → **~14 plant-min**
+(opens ~+9, shuts ~+23), full ride **~12.3 plant-h / 30.0 °F/hr steady**. `K_surge_level` 0.4 →
+**0.032** (= 0.4 ÷ 12.6 — the fit keeps its mid-band position in the un-compressed sourced band
+0.0214–0.0502). **The boron "rate" was a GHOST**: `boron_adjust_rate` 2.0 was read by NOTHING —
+the engine applied any commanded rate unclamped (a §14 fixture drives 3.0 ppm/s raw) while both
+automation channels meter at their own 0.05 — so "go real" landed as the constant becoming the
+LIVE physical ceiling (**0.14** [derived: max BA/blend flow on the declared 7,467-gal currency,
+WTSM 4.1], engine clamps ±); `boron_sample_lab_s` 60 → **1800** (the real 30-min class). A
+`[tune]` constant nothing reads is a dead comment wearing a tag — check the consumer before
+proposing a value.
+
+**Adjudication (3 drifting runners, every red one at a time, HR10):** TR-1's "the PORV lifts —
+the designed backstop" **INVERTED on the honest surge gain** (peak 16.24 → 15.42 MPa; spray
+contains the ride — the with-credit Westinghouse-class result, and Ginna's own loss-of-load
+analyses lift pressurizer relief only when pressure-control credit is removed) — re-derived to
+"spray contains, PORV never challenged", with the mechanism half pinned by the existing phase-1
+checks so neither side passes hollow (the TR-3 lesson). PI-3's P-11 reinstate leg budget
+3000 → 8000 s (2.5 → 13.8 MPa takes ~7,100 s honest). The §14 Mode-5-controls recovery window
+300 → 900 s (+1 MPa needs ~630 s at the real slew; valid on both clocks). Two unit-pair typos
+in this session's own new prose (16.6 → 16.7 °C/hr, caught by `run_manual_units`). **CA-21
+survived at 0.032** — the sweep flipped it at 0.27 AND 0.05, and the shipped value between
+them passes; fixture untouched.
+
+**Content that became false, fixed with the physics** (the 2026-08-07 standing directive):
+PWR-N01 step-5 hold 900 → 9000 + step/caution text on measured numbers; Manuals 01/02/04/05/12
+re-stated as Rev 14 pending item (g); `12` §14.0's Compressed trust class emptied to the
+cooldown-depressurisation rate alone — and **§14.1's "ECCS injection pacing is 22–440×" was
+found STALE since #408** (injection has run the real Ginna pump scale since that wave; nobody
+had updated the trust table) — retired with attribution. Mission narration re-measured
+(`pwr_mode5_to_mode3` header + beats, `pwr_return_to_mode1`); `run_campaign`'s 60,000 s heatup
+budget untouched (~12.5 plant-h fits). Wave 2 (F15 re-solve, bracketed [K_phys, 600]) is next.
+
+**WAVE 3 BUILT (same session) — THE PLANT IS GINNA'S: ladder, program, capacity, reference
+boron.** The config rungs: `steam_dump_setpoint` 8.23 → **7.03** [sourced — 1005 psig, TS Bases
+B 3.3.2; Tsat(7.03) = 546.9 °F = Ginna's 547 °F no-load to 0.1 °F], `sg_safety_open/reseat`
+9.31/9.0 → **7.58/7.33** [pop sourced — the 1085 psig first-lift MSSV; single valve carries the
+0.84 bank capacity there], `adv_setpoint/band` 8.77/0.25 → **7.31/0.12** [the §7.1.3.3 rule on
+the new ladder, inside Ginna's own 1005–1060 psig ARV band], `steam_p_rated` 5.65 → **5.69**
+[810 psig sourced], `low_tavg` 289 → 278, steam-pressure instrument range [0,10.5] → [0,8.5],
+`level_per_tavg` 2.5 → **1.62** [derived — puts no-load program level at WTSM §10.3's own 25 %;
+at 2.5 the steep program would have parked it at 8.7 %, under the heater cutoff]. Program:
+286.0 → 304.5 °C measured at both IC anchors to the digit.
+- **D1 EXECUTED**: swept at 0.28, the full-rejection ride-out SURVIVES (no scram; the core
+  self-throttles to ~71 % mid-ride) → **`steam_dump_max` 0.40 → 0.28 [sourced]** per the
+  owner's decision rule. Costs re-derived: the §8.21 cliff span 7.1 → 3.7 °C, TR-1k's
+  non-monotonicity ~16 → 3.1 pts (both bands re-derived, claims intact, smaller).
+- **C11, and two latent algebra findings**: `rho_excess` re-solved 0.087544 → **0.087354**
+  with the quote temperature DECOUPLED from the plant anchor (the 975-ppm ARO measurement is
+  at the WBN 557 °F HZP; the old conflation was benign 5 °C away and wrong at 286). The
+  HZP IC trims to **704.8 ppm with criticality back at step 319** — the 1/M story survives,
+  only the ppm label moves (683 → 705 across startup content, the chain's dilution target,
+  the §7.5 table regenerated). `run_reactivity`'s HFP-follows check had TWO latent
+  linearizations the longer walk exposed (base ppm converted at the destination worth;
+  the moderator leg at the HFP boron instead of the solve's own form) — fixed, and the
+  chain now predicts the engine EXACTLY (616 = 616).
+- **Blast adjudications, each measured**: TR-16's separation re-derived to the compressed
+  Ginna span (lie < pop−1.5, truth ≥ pop); the turbine-trip burst (~1.9 MPa) now EQUALS the
+  real operating→pop margin, so the bare-dump autoctl rig grazes the pop (34/600 lift
+  samples) while the SHIPPED plant holds (ADV 100 %, peak 7.52, settles 6.95) — the channel
+  check re-derived to graze-vs-park + end-state; TR-1's throttle band 40..55 → 60..80 (the
+  28 % sink); TR-1c's "past program" 315 → 309 (the program moved); TR-17's hold-hot 290 →
+  287.5; TR-7b's nat-circ sample moved to the flat decay tail (the lag-vs-slope race:
+  6 % LOW at 600 s in the settle, 6 % HIGH at 1200 chasing the tail, inside 5 % at 2400);
+  PWR-N01 step-8 target 545 → 541.4 °F (the settle is 547.2 at ~11.4 plant-h — re-measured);
+  pwr_atws re-derived (MTC equilibrium ~71 % on the smaller sink; the chemical shutdown
+  arrives ~7 min later on the +22 ppm hot-critical shift — hold added).
+- **TR-1i ships as the second STRICT XFAIL (#420)**: 4.35 (shallow program) → 5.59 (steep) →
+  **5.28** after the rod-channel speed thresholds were corrected to the sourced WTSM 8.1
+  ladder (the old [tune] ladder engaged 'fast' above 7.2 °F instead of 5 — slack the shallow
+  program never exercised). The ±5 °F duty is sourced and NOT widened; suspected residual:
+  the discrete three-speed ladder vs the real continuous 32-steps/min/°F ramp. **The #378
+  trade-space changed** (its fix was rejected FOR this duty at 5.26, now exceeded anyway) —
+  #420 says re-visit both together.
+- **The deception crest on the final plant: ~65 %, collapse at ~47 min — the 75 % annunciator
+  is unreachable in free play** (measured: dip 36, through 58 at ~32 min, crest 65). The
+  `pwr_qualify` graded window was alarm-keyed and could not arm — re-keyed (its third, same
+  reason class each time) to the level>58-rising state cue; TMI missions unaffected (their
+  >65 trigger grazes but their fixtures pass). **Flagged owner-review**: the crest question
+  now spans #418 A1 (69.4 on that plant) → wave 2 (75 at ~25 min) → wave 3 (65) — it is
+  tuning-sensitive through the level-constants set and wants its own ruling if the
+  annunciator cue matters.
+- **§8.34 RETIRED** (the ladder departure closed — span 79 psi vs the real ~80), `12` §12.18
+  closed (both ADV numbers sourced), Manuals 04/05/09 re-stated (Rev 14 item (h)), the §7.5
+  ECC table regenerated from the plant, `pwr_msiv`/mode5/return narration re-laddered,
+  board bounds 9.31 → 7.58 (board_check + wiring fallbacks).
+- Baselines: `run_campaign` 3037 → 3039 (the re-keyed paths), `run_behavior` 65/1 → 64/2
+  (TR-1i strict). `run_hardrules` re-checked standalone after these entries.
+
+**WAVE 2 BUILT (same session) — F15 re-solved 3144 → 2500 [derived-net], and the MEASUREMENT
+WALKED US OUT OF THE STAGE-1 BRACKET. THE FINDING IS THE F14 COUPLING.**
+- **K_phys ≈ 304** (the C_eff method, one basis — the declared currency IS power-scaled Ginna
+  to 1.3 %): dome ≈ 16 + liquid-flash ≈ 52 = 68 kg/MPa; 5.13 kg/s full-open → 0.076 MPa/s →
+  K ≈ 304, within 2 % of the pre-F15 original 300. **Method validated against history**: the
+  same arithmetic on TMI-2's real geometry gives ~5.3 min to saturation vs the historical ~6.
+- **At 304**: `run_meltdown` 12/12, `run_scenarios` 3/3 — the two old discriminators that were
+  red at 300–450 on the compressed plant are GREEN at the physical value now (the 600 solve
+  was compensating clocks since retired). **But the TMI ARC RE-ORDERS**: the ruled F14 heater
+  (0.55 MPa/s, ~347× real) out-muscles the physical relief (0.076), a stuck PORV cannot
+  depressurize the loop — measured, level 55 → 28 → **0 %** in 8 min (heaters holding
+  2231 psi), heater cutoff, then an 8.6↔15.4 MPa limit cycle. **Level CRASHES instead of
+  RISING — the TMI deception never forms.** The campaign's whole TMI cluster + qualify went
+  red (43/51). K=3144 was implicitly the second half of the F14 pair (0.786 > 0.55).
+- **The resolution: preserve the plant's OWN physical net under the ruled heater** —
+  K×2.5e-4 − 0.55 = K_phys − heater_real = 0.0744 MPa/s → **K = 2498 ≈ 2500**. The constant
+  is now ANCHORED (the audit's "unanchored" resolved): its free parameter is F14, which is
+  ruled — **if F14 ever moves, this re-solves with it; they are one pair through the
+  stuck-PORV race** (recorded at the constant).
+- **Measured at 2500**: saturation ~5 min (TMI-2: ~6); the deception level rise crosses the
+  **75 % annunciator at ~25 min** and reaches 100 % by 50 min on a quasi-stable 8.1–8.25 MPa
+  ride — **the A1 owner-review item (crest 69.4 %, alarm never) is plausibly RESTORED**;
+  re-measure in the mission environment noted on #418. TMI cluster 8/8, qualify 5/5.
+- **One content re-key, the grid's third for the same reason**: at the honest clock an EARLY
+  isolation self-recovers past 85 % on normal CVCS makeup with subcooling restored, so
+  `pwr_tmi2_p3`'s FULL-SAVE row fired on a path that never re-injected. FULL now requires
+  `hpi_active` (routes on the pair its card narrates); the plugged card's two "margin LOST"
+  sentences re-stated to what the plant shows (slow charging-alone recovery); the test's
+  premise band 85 → 90 with the measured 86.9 printed.
+- **PI-3's leg-1 guard re-banded 30 → 14 %** (level at the SI scram): the honest ride to the
+  scram vents real inventory (measured 17.0); the discriminating fact is clearance of the
+  12 % level trip, not a high level. Valid on both clocks.
+
+---
+
+## Session log — 2026-08-07-develop-c (INVESTIGATION ONLY: the secondary loop's fidelity gap, measured — filed as #418, the tier-2 umbrella. No code.)
+
+**Task:** the owner asked to bring the secondary up to #408-wave-1 fidelity ("proper heat
+transfer as well"), reporting loop ΔT reaching ~3 °F within 20 s of an MSIV closure at 100 %
+as "seems fast". Measured (full stack, `close_msiv`, accel 1×, 1-s sampling) and filed
+**#418** with the full table. No engine/config/test edits.
+
+**The verdict splits.** The ~3 °F END value is correct by construction (post-scram
+ΔT = 59.4 °F × Q_total/flow ≈ 3.6 °F at decay+pump heat, full flow — the real class). The
+SPEED is the defect and it is structural: **true ΔT collapses 59.4 → 7.4 °F in 2 s** (the
+anticipatory scram lands ~1 s after closure, and ΔT is same-step algebra around Tavg — no
+loop transport, no SG node), the **true cold leg rises 27.5 °F in 2 s**, and the 20-s shape
+the board shows is almost entirely the 4-s RTD lag smoothing a 2-second physics step. The
+RTD lag itself is the right class (Ginna §15.2.2.7: 1–2 s RTD + 3.5–4.5 s filter).
+
+**The SG pressure clock measured ~4–6× compressed** — the #408 stage-1 finding, one loop
+over. Bottled at full generation the SG rose **223 psi in the first second**
+(`K_steam_pressure` 2.0 MPa/s, `[tune]`, no mass basis); Ginna Table 15.2-1
+(`inbox/src135/ginna15.txt` :4235, same-document) lifts MSSVs at **7.0–9.4 s of SUSTAINED
+full power** over ~755→1085 psia ⇒ ~45–55 psi/s. Our pop at ~9.5 s lands in Ginna's window
+only because the scram (which Ginna does not credit) collapsed generation after 1 s. The
+safeties themselves behaved (1.2× rated capacity, pop/reseat 1350/1305, latched weeping
+decay heat); the LADDER runs deliberately high (1194 psi no-load anchor vs the real 1092
+psig header — config's own "coherence is not a citation" note, tied to the 297 °C identity).
+
+**Structural findings** (details and staging in #418): no SG mass/volume constant exists
+anywhere (grep zero); level/pressure/Tsec are three parallel integrals with independent
+gains — the LEVEL clock is ~real (`K_sg_level` event-fitted to Ginna, #135) while the
+PRESSURE clock is ~5× fast, which one shared mass ledger would make impossible; secondary
+flows have no real currency (`steam_flow_rated: 1.0`); `coolant_heat_capacity` 20.0 is
+~2.7× heavy vs the declared ~7,500 gal / 300 MWt (needs an evidence row — some is wetted
+metal). Corpus is nearly bare on the secondary (1 SG-mass hit across 22 docs, 3 lanes) —
+stage 0 must fetch (Ginna ch. 5/10, WTSM §5.1/§7.1).
+
+**The gating ruling**: #408's fence ("the thermal ×12.6 compression is NOT reopened") splits
+this wave — the secondary inventory/pressure re-clock fits inside it; loop transport + an SG
+tube-side node ("proper heat transfer") and the ladder identity sit on or over it. #418
+recommends: tier 2 = inventory clock now, node/transport staged with #385, fence re-affirmed
+or amended by ruling before stage 3.
+
+**LATE SESSION — RULED AND PLANNED.** Scope *(OWNER RULING, 2026-08-07: selected "A+B, keep
+297 °C" — a selection)*: re-clock then node/transport, ladder stays, fence narrowed (pace
+compression stays; transient structure is not the fence). Standing directive *(OWNER
+DIRECTIVE, 2026-08-07: "Documentation and gameplay always follow the model/physics, not the
+other way around.")* — recorded in `BUILD_DECISIONS` 2026-08-07-develop-c and CLAUDE.md HR9.
+Plan-mode pass (owner: "Plan the work first") ran three explorer sweeps + a design agent;
+the approved plan lives on #418 and in `BUILD_DECISIONS` develop-c. Headline design results:
+`K_steam_pressure` 2.0 → **0.30** [derived, C_P ≈ 1,025 MJ/MPa effective capacitance — the
+SG liquid's sensible heat IS the pressure clock; dome-only 1.19 fails the Ginna 35–47 psi/s
+class]; the steam break becomes its own constant (0.75, byte-identical) because the `/K`
+division otherwise ×5's break mass flow; `sg_mass_frac` + piecewise level map reconciles the
+two same-document Ginna anchors (35-s trip event vs 77.5-s boil-dry — impossible in one
+linear gain); wave B's series-conductance invariance rule keeps `Tavg = Tsat + Q/h_sg`
+exact at all four spelling sites. Stage-0 corpus sweep found most numbers already on disk
+across the three lanes (SG mass 85,359 lbm T15.6-1, MSSVs 0.84× rated, feed temp 390–435 °F
+— `feedwater_temp_c` 440.6 °F sits ABOVE the ceiling, closes at 224 °C); still to fetch:
+WTSM §5.1, Ginna ch. 10, the truncated ML11223A246, NUREG-1431. Work proceeds on #418
+(`status-wip-develop` tagged).
+
+
+**WAVE A1 BUILT (late session).** `K_steam_pressure` 2.0 → **0.30** [derived — full arithmetic
+at the constant: C_P ≈ 1,025 MJ/MPa effective capacitance, Ginna basis, band 0.23–0.33 pending
+WTSM §5.1]; the steam break re-expressed as its own **`STEAM_BREAK_FLOW_FRAC: 0.75`** (mass
+byte-identical; the `/K` division would have ×6.7'd break mass flow); `feedwater_temp_c`
+227 → **224** (top of Ginna's sourced 390–435 °F — the old value sat ABOVE the ceiling;
+UNVERIFIED flag closed) with `feed_sensible_frac` re-derived 0.12 → 0.127 (the split telescopes,
+rated identity exact for any feed temp). Perturb sweep at ±5 %: 18/242 moved, zero flips.
+
+**Measured on the new clock (full stack, MSIV closure at 100 %):** first bottled second
+**+43 psi** (inside Ginna T15.2-1's 35–47 psi/s class; was +223); the safety pop arrives at
+**~40–45 s** on the primary's STORED-HEAT burst (the SG keeps eating stored energy through the
+still-open ΔT while its Tsat climbs) — which is why the run_m4/TR-16/campaign lift windows all
+stayed green without widening.
+
+**Adjudication ledger (8 drifting runners, every red adjudicated one at a time, HR10):**
+- **The one mechanism behind five behavior reds**: the SG liquid's thermal inertia soaks
+  transients the compressed clock let spike. TR-1b's trip burst flattened 16.04 → 15.42 — and
+  the #373 leak-plant burst measured **15.416**, 0.006 apart: the pressure-peak fence was DEAD,
+  re-derived as a post-trip **flow-seconds integral** (healthy 0.139, leak 1.035, band 0.45,
+  validated red-by-injection at stop_valve_tau 2.1). TR-1c/TR-1k: the §8.21 cliff went
+  **THERMAL** — PORV doorstep never arrives (peak 15.544 @ 26 s, spray equilibrium after; 3600-s
+  watch), the cliff is 11.1 °C of Tavg (315.6 vs 305.8) — probes re-derived, §8.21 +
+  catalog TR-1c row re-written with both clocks' numbers. TR-3: **"spray loses" inverted** —
+  the dry-SG repressurization can no longer outrun spray (peak 15.43, no lift in 40 min);
+  re-derived to the real-clock signature (SG dry + Tavg climbing 316.5 → 334.8 °C over the
+  last 15 min + spray holds). Ginna's own loss-of-load analyses lift pzr relief only with NO
+  pressure-control credit, so this is Westinghouse-class behavior; the TMI flagship injects
+  `stuck_porv_open` and is unaffected; MD-6 still terminates (run_meltdown stayed green).
+  TR-12b: the bottled generator settles on the **Psat(Tavg) seam** (7.59 vs Psat 7.61) instead
+  of climbing to the ADV inside 1800 s — check re-derived to seam-or-ADV, valid on both clocks.
+- **CC-10b** was pinning a compressed-clock prop: the 120-s sample sat past a pzr-level-low
+  scram (t+104 s) whose post-trip trajectory diverges by clock (old: bottled-SG props the plant
+  hot and subcooled; new: the slow-Tsat SG keeps soaking stored heat, the contraction + drain
+  empty the pzr, saturation at ~145 s, void 0.188). Re-anchored to the MECHANISM (sample at pzr
+  level 25 %, deep in the subcooled drain, pre-trip) — passes byte-identically on both clocks.
+- **The TMI-2 deception crest dropped below the 75 % alarm** (measured in the mission
+  environment: peak **69.4 %** at ~50 min, alarm NEVER) — the deeper post-scram overcool shaved
+  it. Four campaign variants (p2 replay, p3 no-dev/plugged/holding) were parked forever on that
+  cue. Content follows physics: the SHARED trigger (`TMI2.TRIG.pzrLevelHigh`) re-anchored to
+  level > 65 % (the historical cue is level HIGH AND RISING; robust under wave B, which can
+  only raise the crest), plus the no-dev test script. All 8 TMI2 suites green after ONE site.
+  **OWNER-REVIEW flag**: the deception no longer sounds the level-high annunciator on the A1
+  plant — wave B re-measures; if B does not restore the crest, the manuals' deception
+  description needs a row.
+- **board_check #230** ("planned offline does NOT trip") — the harness's 200-check-history
+  plant crossed the OTΔT trip mid-window (depressurized fixture + overcool) and the SCRAM's
+  turbine-trip interlock did the tripping. The check now records trip PROVENANCE (an
+  applyCommand shim) and discriminates the actual #230 defect shape: tripped with an EMPTY
+  log. run_campaign gained a name-filter argv (dev convenience).
+- **Mechanical, measured**: m5 cadence band 1.0 → 2.0 s (shallower flux approach at the soak;
+  the C2 defect class it fences is 10× outside); `pwr_heatup` step-8 hold 40,000 → 42,000 s
+  (545 °F arrived reading 543.2); chain/stack/procedures green after.
+- **run_hardrules** rose on this session's own dated-citation comments — baseline re-measured.
+- **pwr_esf starved branch**: the zero-throttle drain to 10 % runs at the honest decay-heat
+  boil-off now (several hundred s vs the compressed ~53 s sprint) — test budget 400 -> 900 s
+  with the measured drain printed in the check; mission + test comments re-dated.
+
+**Stage-0 fetches landed** (six documents, inbox/sources): Ginna UFSAR ch. 10 (ML20339A040
+— MSSV bank 1085 + 3x1140 psig, min capacity 6.58e6 lbm/hr), NUREG-1431 Rev 4 Vols 1+2
+(ML12100A222/228 — SG lo-lo [30.4]/[32.3] % NR, the #380 source), WTSM 7.2 re-fetched clean
+(the truncated ML11223A246), WTSM 3.2 with Table 3.2-7 SG design parameters. NOTE the WTSM
+chapter map correction: 5.1 is RHR in this edition — the dedicated SG data is 3.2.3.4, and
+NO source in corpus carries SG water mass/metal mass/HT area (the C_P metal question stays
+on the declared 0.23-0.33 band).
+
+**Gates at A1 close**: run_all 42 runners — run_hardrules re-baselined 220 -> 224 (this
+session's dated citations), run_campaign re-baselined (the telemetry/duration evidence
+lines), all else at baseline. Wave A2 (SG mass ledger + level map) is next.
+
+**WAVE A2 BUILT (same session).** The SG secondary is a MASS LEDGER: `sg_mass_frac` (1.0 =
+12,785 kg, Ginna 85,359 lbm per-MWt-scaled) integrates (feed − steam_out)/`sg_mass_boil_tau_s`
+(77.5 s [derived] = nominal mass / rated steam flow), and BOTH level ranges derive through the
+`sg_mass_map` piecewise geometry. `K_sg_level` retired — its 1.371 %/s is now the map's
+in-window SLOPE, preserved to three decimals. **The two same-document Ginna anchors reconcile**:
+the 35-s trip event holds (TR-14 measured 40.0 s, band 25–60) while total inventory honors the
+77.5-s boil-dry (was an implied ~162 s). Dryout onset from nominal lands at 47.4 s — the OLD
+number exactly, by construction. **The knot-placement lesson, caught by a gate the same hour**:
+the first map anchored the calibrated slope only BELOW nominal, so the overfill leg (narrow
+65→100) ran 1.7× slow and `pwr_sg_flood`'s 75 % watch parked — the design rule is that the
+calibrated slope holds across the ENTIRE narrow window (wide 30–75), both directions; the
+fast/slow geometry lives OUTSIDE the window. Migration seeds the ledger through the map's
+INVERSE (derived wide byte-identical on load; `save_migration` asserts the round-trip);
+`sg_mass_frac` documented in §6.3 (`run_contract` 158); perturb-sweep knobs updated
+(`sg_mass_boil_tau_s` replaces the retired K; `K_steam_pressure` added — it was never swept).
+`run_all` 42 at baseline (`run_pwr` 243, `run_campaign` 3034, `run_contract` 158). A1's CI
+green (the earlier docs-only push had failed CI on exactly the run_hardrules prose-drift this
+file's own BASELINES comment warns about — re-baselined in the A1 commit).
+
+**WAVE A3 BUILT (same session).** `sg_safety_flow_max` 1.2 → **0.84** [sourced]: Ginna's MSSV
+bank passes 3.31e6 lbm/hr per SG against ~3.95e6 rated = 0.84× rated flow (UFSAR T15.6-12,
+corroborated by ch. 10 §10.3.2.4's 6.58e6 minimum for both SGs; the 4-loop WTSM plant runs
+1.09× — the anchor plant's ratio is the method's choice). Capacity below full generation is
+safe on this plant because generation dies at the Psat(Tavg) cap. TR-1h and TR-17 fully green
+at the sourced value (duty 1.3 % of the hour, last lift 123 s; forced-shut leg still parks on
+the safeties; ADV cooldown leg 302.5 → 176.5 °C). The ladder-comparison record also stops
+mixing plants: 1092 psig / 557 °F is the 4-LOOP reference plant's no-load; Ginna's is
+547 °F ≈ 990 psig. `run_all` 42 at baseline. **Wave A complete** — the secondary's inventory,
+pressure, and relief now run one sourced basis; wave B (tube node + transport) is next.
+
+**WAVE B1 BUILT (same session) — the SG has a tube node and the legs are TRANSPORTED.** The
+single `h_sg` conductance split into a SERIES pair around a new tube-bundle state `t_sg_c`
+(`sg_tube_split` 0.5 ⇒ h1 = h2 = 2·h_sg), both branches carrying the shared flow×dryout
+factors so 1/h1 + 1/h2 = 1/h_sg — **the invariance rule delivered exactly what it promised**:
+the four sites spelling `Tavg = Tsat + Q/h_sg` never moved, SS-1 lands on the operating map
+to the digit, `run_otdt` 46/46, and **TR-1i's ±5 °F WTSM duty holds at 4.35 with NO lead-lag**
+— the pre-named remedy stayed in its holster. The legs (`thot_c`/`tcold_c`) became first-order
+states lagging the algebraic split at `tau/flow` (1.5/4.0 s at full flow); the DNB datum and
+Tsat cap keep the RAW same-step algebra (#368). No new engine step — the node steps inside
+`stepCoolant`, so the step-7 pressure/cavitation consumers see this step's legs.
+
+**The headline, measured (the owner's founding observation)**: MSIV closure at 100 % now
+collapses true loop ΔT over **~15–25 s of physics** (59.4 → 30.1 °F at +3 s, 12.5 at +7,
+~5 at +15) and the board ΔT over **~25–30 s** — was a 2-s algebraic step smoothed only by the
+RTD lag. True Tcold rises at the node/transport pace (was +27.5 °F in 2 s).
+
+**The double-count lesson — caught by the chain runner inside the hour.** C_tube went in ON
+TOP of `coolant_heat_capacity` 20, which silently slowed the pump-heat Mode 5→3 heatup ~25 %
+(the continuous-day chain arrived Mode 3 at 260.7 °C instead of ~285 and the whole day
+cascaded — 32/50). That was the RULED ×12.6 pace identity being reopened by accident, exactly
+what the #408/#418 fence forbids. **The fix is the split as a physical statement**:
+`coolant_heat_capacity` 20 → 15 + `sg_tube_capacity` 5 — the loop total is unchanged, every
+no-sink heatup/cooldown rate is preserved by construction, and the lighter coolant node's
+transient behavior re-measured green across the whole battery. Chain 50/50 (13.3 plant-hours).
+
+**The backstop adjudication (owner-visible)**: with the tube node softening the bottling
+burst, an AVAILABLE auto-ADV catches an MSIV closure **5 psi under the code-safety pop**
+(measured full stack: peak 9.27 MPa, ADV 100 %) — the CORRECT relief hierarchy. The safeties
+story (TR-16's #369 self-actuation fence, run_m4's lift check, the `pwr_msiv` mission) now
+runs on an authored **ADV-out-of-service night**, stated in the mission's own card — the
+backstop lesson on the night the backstop is all there is. TR-17 owns the ADV-available
+hierarchy and passes untouched.
+
+**TR-3 RE-DERIVED TWICE IN ONE DAY, and the oscillation is the finding**: the dry-SG
+repressurization-to-PORV claim is knife-edge in the loop's thermal time constant. Compressed:
+lift at ~25 min. A1 (real secondary clock, coolant still 20): spray WON (peak 15.43) and the
+probe briefly asserted that. B1 split (coolant 15): the lift is BACK (peak 16.30, measured) —
+the FINAL plant restores the original TMI mechanism, and the probe now asserts the mechanism
+half (dry SG + climbing Tavg) alongside the lift so neither side of the knife can pass hollow.
+CA-19's forced solid-state ride extended 3600 → 5400 s — the split walks the approach a few
+hundred seconds longer; at the new window the equilibrium is EXACT (inj 0.000168 = brk
+0.000168, drift 0.00000).
+
+**Marginal re-measures, each with its number**: TR-7b's loss-of-flow settle 240 → 600 s
+(τ_cold ≈ 120 s at natural-circ flow — real leg RTDs lag a coastdown; identity then EXACT,
+45.4 vs 45.5); CA-7's PORV/level race window 3600 → 5400 s (cut at +4504 s, now PRINTED);
+TR-1k's excursion band 312 → 310 °C (the node's mass shaves ~4 °C; program is ~305, claim
+intact); `run_pwr`'s SLB depressurization band 5.0 → 5.1 (5.04 at +15 s); board_check's #75
+RPS reset now RETRIES while the plant's own trip conditions clear (the interlock refusing is
+correct; the harness waits like an operator). Migration: `t_sg_c` seeds on the split
+interpolation (save_migration asserts it); §6.3 line (`run_contract` 159); the #315/WTSM-12.2
+comment re-reasoned — the transported ΔT is what the real uncompensated channel reads.
+
+**WAVE B2 CLOSED THE SESSION.** Manuals **Rev 14 (pending)** items (a)–(f): `12` §8.1 (the mass
+ledger), §8.2 (derived clock + tube node + transported legs), §8.3 (the thermal cliff; the
+ADV-catches finding and the mission's ADV-out premise), §8.4 + row §12.16 (sourced 435.2 °F
+feed), §8.5 (the two-minute MSLI correction), §6.0 (the transport statement) — `run_manual_rev`
+15/0, `run_manual_units` 0 failed after three exact-pair fixes. CHANGELOG [Unreleased] carries
+the four-wave entry with the save-migration notes. CLAUDE.md: #418 open-items line → LANDED,
+themes rotated (#348's tolerance-band trap rescued to the standing list). #418 carries the
+close-out comment with THREE owner-review items: the TMI crest under the 75 % alarm (cue
+re-anchored to >65 high-and-rising), the pwr_msiv ADV-out premise, and the thermal §8.21 cliff.
+`status-work-complete` + `status-owner-review` set; `status-wip-develop` cleared.
+
+**SESSION CLOSE — THE IDENTITY-PREMISE AUDIT, RULED INTO TIER 3 (#419).** The owner's
+"Some of these identity decisions were based on the physics of the old plant" triggered a
+premise re-measurement over the ruled identities, ALL on the post-#418 plant:
+- **F14 (heater 27×) SURVIVES** — the old grid's wall re-measures exactly (0.20: TR-1h
+  no-scram, TR-11 parks 15.19 at 100 % duty; 0.05: scram `primary_pressure low`, floor 8.86;
+  0.02: scram `otdt`, floor 8.67). Re-affirmed on current numbers; config table refresh owed.
+- **F15 (relief K 3144) — BOTH PINS DISSOLVED**: the TR-1k doorstep went thermal at B1, and
+  at K=600 `run_meltdown` 12/12 + `run_scenarios` 3/3 including the flagship. Unanchored.
+- **×12.6 pace** — premise superseded by the owner's own #408 "acceleration carries pacing".
+- **297 anchor** — premise was July feel on the old plant.
+**RULED** *(OWNER RULING, 2026-08-07: selected "Everything incl. 297 anchor" — a selection;
+then verbatim: "Let's add the mode five to one pace to our to-do list.")* — one plan-first
+umbrella, **#419** (`status-work-next`, owner-ordered): pace + F15/E-dividers + ladder, with
+F14 explicitly out (re-affirmed). Stage 0 is done (the audit + corpus); **stage 1 (the
+cascade table for sign-off) is where the NEXT SESSION starts.** The two-plant caution
+matters there: 1092 psig/557 °F is the 4-loop WTSM plant; Ginna (the anchor) is 547 °F ≈
+990 psig.
+
+**TURNOVER (session cleared after this commit).** State: #418 complete and `status-owner-review`
+(three items: the TMI crest at 69.4 % under the 75 % alarm, the pwr_msiv ADV-out premise, the
+thermal §8.21 cliff); #419 is the owner-ordered next work, plan-first, stage 1 next; no WIP
+tags standing; `run_all` 42 at baseline at every commit this session (`dfe1615`..HEAD); CI
+green through B1 (check the last two pushes' runs on arrival); manuals at pending Rev 14.
+Session commits: ruling `dfe1615`, A1 `174009c`, A2 `9414ea0`, A3 `2c7a507`, B1 `ae025fc`,
+B2 `fcf7d66`, then this audit close.
+
+---
+
 ## Session log — 2026-08-07-develop-b (LANE MERGE: workbench → develop — the CLAUDE.md cut wins the conflict, and the merge audit's 31 "losses" are the cut itself)
 
 **Task:** full merge and release. This entry is the MERGE half; the release follows in the same
@@ -13944,6 +15028,7 @@ real smell worth a look during this effort.
 |---|---|---|---|
 | **S1** | PWR | `abuse_porv_walkaway` end state shows inventory 120 % (clip at `mass_max`) with pzr level 7 % — the overfill/level bookkeeping disagree | **ANSWERED 2026-07-30j (#249): it is the clip, and the clip is load-bearing.** `mass_max` 1.2 is 3.4× the sourced physical headroom (5.8 % of RCS volume — BVPS-2 Table 5.1-1 + WTSM 3.2 Table 3.2-2), and it pins indicated pzr level at exactly 88.00 % on any quench, so the plant **cannot read water-solid on injection**. Injection-verified; see the session entry. **RESOLVED 2026-07-31 (#136 closed).** The retune was ruled and landed *(OWNER RULING, 2026-07-30: "249 - fit it.")* — `level_per_mass_surplus` 300 → **776**, fitted to the pressurizer steam space as 5.8 % of RCS volume. Re-measured on this probe: the end state is now **120.0 % inventory / 100.0 % level** — solid, and the two gauges agree. The clip is still what pins inventory at 120 %, and that remains load-bearing and correct; what changed is that indicated level can now express the surplus instead of pinning at 88.00 %. **Now ASSERTED**, not just observed: `abuse_porv_walkaway` gained a both-gauges-agree check (run_ops 334 → 335 passed), because the two numbers had been printed on an `info` line every run and asserted on none — which is the whole reason this survived. Reddens by injection at 88.0 % on the pre-#249 gain |
 | **S14** (#273) | PWR | **The by-the-book Mode 3 → Mode 5 cooldown dumps all four accumulators.** Measured endpoint: `accum_vol=0.0 %`, `boron=2310 ppm` (SIT charge is 2,500), `inv=120.00 %` clipped. Nothing tells the player to isolate them — **zero** "accumulator" mentions in `ui/campaign_data.js` or `Manuals/05_MODE_TRANSITIONS.md` | Found 2026-07-30j while working #249. The cooldown crosses the 600 psi (4.14 MPa) SIT arming pressure with the discharge valve still open. Invisible until now because the 88 % level pin (S1) kept the overfill below the 97 % high-level trip — the `pwr_mode3_to_mode5` "arrived UNscrammed" check has been passing **for the wrong reason (HR10)**. The engine's own driver isolates correctly (`pwr_engine.js:1833`); the heatup procedure re-opens a lineup the cooldown never establishes (`ui/manual_procedures.js:58`) |
+| **S15** (#418) | PWR | **The secondary runs on the compressed clock #408 removed from the primary.** MSIV closure at 100 %: SG +223 psi in 1 s vs Ginna's implied ~45–55 psi/s (Table 15.2-1, MSSV lift 7.0–9.4 s at sustained full power) — `K_steam_pressure` ~4–6× fast; true loop ΔT 59.4 → 7.4 °F in 2 s and true Tcold +27.5 °F in 2 s (no SG node, no loop transport); the 20-s board shape is the 4-s RTD lag, not physics | Filed 2026-08-07 (develop-c session) as the tier-2 umbrella: SG mass/energy ledger (no SG mass/volume constant exists in the repo), one real flow currency, transport/node staged with #385. Gated on re-affirming or amending #408's "thermal ×12.6 NOT reopened" fence |
 | **S2** | PWR | **RESOLVED (2026-07-31, issue #135)** — and this row was right where the GitHub issue was wrong. The window was **2.9 s**, not ~4, and #135 filed it as "a setpoint/lag question… not a physics change", which was arithmetically impossible: the setpoints are 13 points apart, so at the old drain rate no spacing could buy more than a few seconds. "Slowing SG boil-down" was the correct instinct and "slightly" understated it 3.6×. `K_sg_level` **5.0 → 1.37**, fitted to Ginna UFSAR Table 15.2-4 (ADAMS ML20339A101): 35 s from feed loss to lo-lo trip. Window now **11.6 s**. Pinned by TR-14 | Was: too fast for a player to react — consider slowing SG boil-down slightly |
 | **S3** | PWR | **RESOLVED (2026-07-25, issue #134)** — and the suspicion in this row was wrong. Not a physics/rod-worth problem: the plant parks at 1.8–3.5 % when the excess reactivity is removed in ONE drive, and at 10–20 % when it is tapped out. The real causes were the checklist recipe (+45/−8, target "5–15 %", `acc: power_pct > 5`), a caution that blamed the lumped core for it, and an inert rate protection (alarm 2.0 / block 2.5 DPM against a peak of 1.82). See session entry | Was: startup feel — maybe a stronger low-power Doppler bite or gentler mid-curve differential rod worth |
 | **S4** | PWR | 50 % xenon swing may be a touch small (peak ~106 % vs ~113 % on the daily cycle) | Fine for v1; note if xenon scenarios feel flat |

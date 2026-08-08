@@ -45,7 +45,7 @@
   // ---- PWR -----------------------------------------------------------------
   var PWR = [
     // PWR-N01 — commercial pump-heat heatup. Measured full-stack (cold_shutdown
-    // IC, default lineup): settles 567.0 °F (297.2 °C) at ~11.3 plant-h, ρ ≈ −2828
+    // IC, default lineup): settles 567.0 °F (297.2 °C) at ~12.3 plant-h (#419 real rates), ρ ≈ −2828
     // pcm, zero rod motion. The old nuclear-from-cold heatup path was removed —
     // not a commercial NOP (heatup is subcritical; approach is hot, N03).
     {
@@ -62,11 +62,11 @@
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down' },
       ],
       cautions: [
-        'Rates are time-compressed for training — a real heatup takes many hours against brittle-fracture and pressurizer limits. The PLANT hours are real: measured full-stack, cold to the no-load anchor is about 11.3 plant-hours at an average ~39 °F/hr (21.7 °C/hr), settling to a steady ~32 °F/hr (17.8 °C/hr) after the first hour.',
+        'This heatup runs on REAL rates (#419 wave 1 — the training compression is retired; time acceleration carries the pacing). Measured full-stack, cold to the no-load anchor is about 12.3 plant-hours at a steady ~30 °F/hr (16.7 °C/hr) after the first hour, and normal operating pressure arrives about 1.8 plant-hours after the Pressure SP command (the setpoint walks at the sourced 0.23 psi/s heater class; early thermal swell rides ahead of it).',
         'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull rods or dilute — Hot Standby means hot AND subcritical. The control bank stays at its cold-shutdown position the whole way.',
         'The steam dump is a COARSE lever at these powers: measured, a 5 % manual dump demand is roughly ten times pump-heat generation and reverses the heatup at −263 °F/hr (−146 °C/hr) anywhere above about 302 °F (150 °C); below ~219.2 °F (104 °C) the same demand only ARRESTS the climb. To slow or hold a heatup, secure the RCP — measured, that takes the rate to 0.004 °F/hr.',
         'Keep the turbine OFF LINE and the dumps SHUT so the SG bottles: heat crossing the tubes then has nowhere to go but into secondary pressure, which rides up with Tavg. A turbine left in FOLLOW opens its governor and takes the whole heat source (~6 % open is enough on pump heat alone). The cold_shutdown IC spawns already off line (#251); the Disconnect Grid step confirms rather than changes.',
-        'Step 7 (re-align the SI accumulators) is YOURS, nothing does it for you, and it belongs INSIDE step 6 rather than after it — measured, the compliant 600-to-1000 psi window is ~100 s wide and shuts about 90 s before a full pressurization completes. The cold lineup ships them isolated — correct below their 600 psi (4.14 MPa) cover gas — and re-alignment is deliberately procedural *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. Skip it and you reach Mode 1 with no passive injection; the SI ACCUM ALIGNED annunciator (PWR-A32) is silent on this case because shut tanks are what it clears on.',
+        'Step 7 (re-align the SI accumulators) is YOURS, nothing does it for you, and it belongs INSIDE step 6 rather than after it — on the real pressurization clock the compliant 600-to-1000 psi window is ~14 plant-minutes wide (measured: opens ~+9 min, shuts ~+23 min) and closes about an hour and a half before the full pressurization completes. The cold lineup ships them isolated — correct below their 600 psi (4.14 MPa) cover gas — and re-alignment is deliberately procedural *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. Skip it and you reach Mode 1 with no passive injection; the SI ACCUM ALIGNED annunciator (PWR-A32) is silent on this case because shut tanks are what it clears on.',
         'Engage Feed AUTO at the start (step 4) while level is still at its cold 65 %. A standing manual feed demand fills a generator that is not yet boiling. On pump heat the SG barely boils, so AUTO simply holds the captured setpoint — measured, level stays ~65 % across the whole 12 plant-hour ride.'
       ],
       auto_channels: ['feed_sg'],
@@ -87,27 +87,27 @@
           note: 'On pump heat the SG barely boils, so AUTO simply holds. What it prevents is a standing manual feed demand that keeps filling a generator nobody is boiling.',
           cmd: { action: 'set_auto_channel', channel_id: 'feed_sg', engaged: true }, hold: 5,
           hl: ['Feed Pumps', 'SG Level'] },
-        { text: 'Set the Steam Dump Setpoint to the no-load anchor (1194 psi / 8.23 MPa) so the secondary bottles with the heatup instead of dumping it. Leave the dump shut.',
-          control: 'Dump SP', target: '1194 psi (8.23 MPa)',
-          cmd: { action: 'set_steam_dump_setpoint', mpa: 8.23 }, hold: 5,
+        { text: 'Set the Steam Dump Setpoint to the no-load anchor (1020 psi / 7.03 MPa — Ginna\'s sourced 1005 psig no-load point, #419 wave 3) so the secondary bottles with the heatup instead of dumping it. Leave the dump shut.',
+          control: 'Dump SP', target: '1020 psi (7.03 MPa)',
+          cmd: { action: 'set_steam_dump_setpoint', mpa: 7.03 }, hold: 5,
           hl: ['Dump SP', 'Steam Dump'] },
-        { text: 'Raise the Pressurizer Pressure Setpoint to 2235 psi (15.41 MPa). The heaters pressurize FAST — measured 8.9 psi/s (0.061 MPa/s), so normal operating pressure arrives in about three and a half plant-minutes, not ten to fifteen. Stay on the board: the accumulator window in the next step opens and shuts inside this one. Watch RHR isolate on the way past its 600 psi (4.14 MPa) autoclosure interlock (#288).',
+        { text: 'Raise the Pressurizer Pressure Setpoint to 2235 psi (15.41 MPa). The setpoint walks up at the real full-heater pace — 0.23 psi/s (1.586e-3 MPa/s) — and measured full-stack, normal operating pressure arrives in about 1.8 plant-hours (#419 wave 1: the compressed clock is retired; ride it at time acceleration). The accumulator window in the next step opens and shuts inside this climb. Watch RHR isolate on the way past its 600 psi (4.14 MPa) autoclosure interlock (#288).',
           control: 'Pressure SP', target: '2235 psi (15.41 MPa)',
-          cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 900,
+          cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 9000,
           acc: { p: 'pressure_mpa', op: '>', v: 15.0 },
           hl: ['Pressure SP', 'Plant Pressure'] },
-        { text: 'Re-align the Safety Injection accumulators (isolated for the cold lineup) AS PRESSURE PASSES 600 psi (4.14 MPa) — do not wait for the previous step to finish. They must be aligned before 1000 psi (6.895 MPa), where LCO 3.5.1 requires them OPERABLE, and measured that window is only ~100 s wide: 600 psi at +24 s from the Pressure SP command, 1000 psi at +122 s, normal operating pressure at +3.5 min. Nothing opens them for you.',
+        { text: 'Re-align the Safety Injection accumulators (isolated for the cold lineup) AS PRESSURE PASSES 600 psi (4.14 MPa) — do not wait for the previous step to finish. They must be aligned before 1000 psi (6.895 MPa), where LCO 3.5.1 requires them OPERABLE. On the real pressurization clock (#419 wave 1, measured full-stack) the window is ~14 plant-minutes wide: 600 psi at ~+9 min from the Pressure SP command, 1000 psi at ~+23 min, normal operating pressure at ~1.8 plant-hours — it closes about an hour and a half before the pressurization completes. Nothing opens them for you.',
           control: 'Accumulator valve', target: 'accumulators armed',
           note: 'Owner ruling 2026-07-30: re-alignment is procedural, no automatic open. Skip this and Mode 1 has no passive injection; PWR-A32 will not tell you.',
           cmd: { action: 'open_accumulator_valve' }, hold: 5,
           acc: { p: 'accumulator_valve_open', op: '>', v: 0 },
           hl: ['Accumulator valve', 'ECCS'] },
-        { text: 'Ride the heatup. Tavg climbs at roughly 32 °F/hr (17.8 °C/hr) on pump heat — about eleven plant-hours cold to the no-load anchor. Monitor Tavg and its rate, secondary pressure tracking Psat(Tavg), pressurizer level swelling on thermal expansion, and the reactor staying exactly where you left it. Do not pull rods. Do not dilute. If you need to slow down, secure an RCP.',
-          control: '(observe)', target: 'Tavg ≥ 545 °F (285 °C), still subcritical',
-          note: 'Measured full-stack with no rod motion: Mode 3 entry (~350 °F / 176.7 °C) at ~4.7 plant-h; 546.8 °F (286.0 °C) at 10.67 plant-h; settles 567.0 °F (297.2 °C) at 11.3 plant-h, ρ = −2828 pcm on 856.8 ppm, power 3.5e-5 %. The first hour reads faster because pressurization is quick, not because the pump-heat ramp is. Hold is 40 000 s (~11.1 plant-h) after the pressurization step — total plant time from start ≈ 11.4 h, past the settle point.',
-          hold: 40000,
+        { text: 'Ride the heatup. Tavg climbs at roughly 30 °F/hr (16.7 °C/hr) on pump heat — about twelve plant-hours cold to the no-load anchor. Monitor Tavg and its rate, secondary pressure tracking Psat(Tavg), pressurizer level swelling on thermal expansion, and the reactor staying exactly where you left it. Do not pull rods. Do not dilute. If you need to slow down, secure an RCP.',
+          control: '(observe)', target: 'Tavg ≥ 541.4 °F (283 °C), still subcritical',
+          note: 'Measured full-stack with no rod motion (#419 wave 1, real rates): Mode 3 entry (~350 °F / 176.7 °C) at ~4.6 plant-h; 546.8 °F (286.0 °C) at ~11.3 plant-h; settles 567.0 °F (297.2 °C) at ~12.3 plant-h, ρ = −2828 pcm on 856.8 ppm. The first hour still reads faster because the heater/pressurization leg adds heat early, not because the pump-heat ramp is quick. Hold 42 000 s: the observe step starts after the ~1.8 plant-h pressurization leg, so ~9.7 h of ride remain to the 545 °F acceptance — the hold covers it with margin (#418 A1 set 42 000 on the derived secondary clock; re-checked at #419).',
+          hold: 42000,
           saw: { p: 'tavg_c', op: '>', v: 150 },
-          acc: { p: 'tavg_c', op: '>', v: 285 },
+          acc: { p: 'tavg_c', op: '>', v: 283 },
           hl: ['Tavg', 'Plant Pressure', 'SG Pressure'] },
         obs('Confirm Mode 3, Hot Standby: hot at the no-load band, pressurized, SUBCRITICAL with the control bank never moved. Ready for the approach to criticality (PWR-N03 / startup checklist).',
           { p: 'plant_mode', op: '~', v: 3, tol: 0.1 }),
@@ -142,16 +142,16 @@
       // 173.8 ppm outside the ±70 band, so the banner names it before a rod moves.
       // ±70 ppm ≈ the caution's ±750 pcm ECC acceptance band at ~10.6 pcm/ppm.
       precond: [
-        { p: 'tavg_c', op: '~', v: 297, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 566.6 °F / 297 °C)' },
+        { p: 'tavg_c', op: '~', v: 286, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 546.8 °F / 286 °C)' },
         { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At normal operating pressure (2235 psi / 15.41 MPa)' },
         { p: 'power_pct', op: '<', v: 1, text: 'Subcritical — the withdrawal starts from a shut-down core' },
-        { p: 'boron_ppm', op: '~', v: 683, tol: 70, text: 'Boron at the estimated critical condition (≈ 683 ppm — PWR-N02 step 15; a pump-heat heatup leaves ≈ 857 ppm and criticality moves ≈ 242 steps out)' },
+        { p: 'boron_ppm', op: '~', v: 705, tol: 70, text: 'Boron at the estimated critical condition (≈ 705 ppm — PWR-N02 step 15; a pump-heat heatup leaves ≈ 857 ppm and criticality moves well outside the band)' },
       ],
-      cautions: ['Withdraw in small bursts, letting the count rate settle between them — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. The SUR HI alarm comes in at 1 DPM and rod withdrawal is blocked at 1.5 DPM (clearing below 0.8); insertion is never blocked. The fine-step drive (912 steps full travel) puts one step at roughly 1 ¢ (6.5 pcm) near the critical band — single-step nudges at Slow for the final approach.', 'Plot ENOUGH 1/M points. The prediction always reads high early and walks down as you add points, so an early estimate is not a target — it is an upper bound. Two points predict ~step 711 against a true ~318; three still say ~484. It takes about six, with the bursts shrinking as you close in, to get within a couple of steps. Never withdraw straight to the predicted position — creep up on it.', 'Work out where criticality should be BEFORE you move a rod — an estimated critical condition, not a guess. The worksheet and the reference curves are in manual 09 §7.5: bank integral worth, differential boron worth at your Tavg, and critical boron by temperature and bank position. THIS CHECKLIST starts Mode 3 at 683 ppm with the bank in, which puts criticality near 319 steps — about 35 % withdrawn, comfortably inside the insertion limit. That is the answer for ONE boron, not a constant of the plant: a unit that came up on the pump-heat heatup is at ~857 ppm and goes critical near 561 steps (measured), outside the acceptance band below. Dilute to the estimated critical boron first — PWR-N02 step 15. The prediction carries a ±750 pcm acceptance band (roughly 159 to 421 steps here); criticality outside it means the estimate was wrong, so stop and re-work it rather than continuing to pull. The 1/M plot is how you close on the prediction, not a substitute for having made one.', 'Secure the Source Range BEFORE its counts reach the amber high-flux caution (the SR high-flux trip at 1e5 cps will scram the ascent). Once the Intermediate Range is on scale, the handoff is safe.', 'Mind the Steam Generator. Below the point of adding heat it barely moves, but from the moment power starts warming the coolant the SG boils down, and on this ascent the turbine is still offline — the steam dump is drawing steam nobody is replacing. Hold level with the three-element Feed AUTO channel (step 3). If you let auxiliary feedwater take it instead, AFW parks the level at about 21 % — inside the amber band, four points above the low-low trip — and holds it there indefinitely.', 'Below the point of adding heat there is no temperature feedback to hold you anywhere — power goes wherever the reactivity you left in takes it, however small. Sustaining even a gentle 1 DPM ramp means carrying ~+200 pcm, and ALL of it has to come back out to level off. Take it out in one decisive drive, not in taps: the plant runs while you tap.'],
+      cautions: ['Withdraw in small bursts, letting the count rate settle between them — target SUR ≤ 1 decade per minute (DPM) and reactor period ≥ 30 s. The SUR HI alarm comes in at 1 DPM and rod withdrawal is blocked at 1.5 DPM (clearing below 0.8); insertion is never blocked. The fine-step drive (912 steps full travel) puts one step at roughly 1 ¢ (6.5 pcm) near the critical band — single-step nudges at Slow for the final approach.', 'Plot ENOUGH 1/M points. The prediction always reads high early and walks down as you add points, so an early estimate is not a target — it is an upper bound. Two points predict ~step 711 against a true ~318; three still say ~484. It takes about six, with the bursts shrinking as you close in, to get within a couple of steps. Never withdraw straight to the predicted position — creep up on it.', 'Work out where criticality should be BEFORE you move a rod — an estimated critical condition, not a guess. The worksheet and the reference curves are in manual 09 §7.5: bank integral worth, differential boron worth at your Tavg, and critical boron by temperature and bank position. THIS CHECKLIST starts Mode 3 at ~705 ppm with the bank in (#419 wave 3: the Ginna anchor re-trimmed the reference boron; criticality stays near 319 steps — about 35 % withdrawn, comfortably inside the insertion limit). That is the answer for ONE boron, not a constant of the plant: a unit that came up on the pump-heat heatup is at ~857 ppm — ~150 ppm and roughly 240 steps out, beyond the acceptance band below. Dilute to the estimated critical boron first — PWR-N02 step 15. The prediction carries a ±750 pcm acceptance band (roughly 159 to 421 steps here); criticality outside it means the estimate was wrong, so stop and re-work it rather than continuing to pull. The 1/M plot is how you close on the prediction, not a substitute for having made one.', 'Secure the Source Range BEFORE its counts reach the amber high-flux caution (the SR high-flux trip at 1e5 cps will scram the ascent). Once the Intermediate Range is on scale, the handoff is safe.', 'Mind the Steam Generator. Below the point of adding heat it barely moves, but from the moment power starts warming the coolant the SG boils down, and on this ascent the turbine is still offline — the steam dump is drawing steam nobody is replacing. Hold level with the three-element Feed AUTO channel (step 3). If you let auxiliary feedwater take it instead, AFW parks the level at about 21 % — inside the amber band, four points above the low-low trip — and holds it there indefinitely.', 'Below the point of adding heat there is no temperature feedback to hold you anywhere — power goes wherever the reactivity you left in takes it, however small. Sustaining even a gentle 1 DPM ramp means carrying ~+200 pcm, and ALL of it has to come back out to level off. Take it out in one decisive drive, not in taps: the plant runs while you tap.'],
       steps: [
-        { text: 'Confirm the plant is ready: subcritical — the Source Range count rate is steady, not climbing — hot (Tavg ≈ 566.6 °F / 297 °C, the no-load point), pressurized (≈ 2233 psi / 15.4 MPa), Reactor Coolant Pumps running.',
+        { text: 'Confirm the plant is ready: subcritical — the Source Range count rate is steady, not climbing — hot (Tavg ≈ 546.8 °F / 286 °C, the no-load point), pressurized (≈ 2233 psi / 15.4 MPa), Reactor Coolant Pumps running.',
           control: '(observe)', target: 'subcritical, hot, pumps running', hold: 2,
-          acc: { p: 'tavg_c', op: '~', v: 297, tol: 1.5 },
+          acc: { p: 'tavg_c', op: '~', v: 286, tol: 1.5 },
           hl: ['Source Range', 'Tavg', 'Plant Pressure', 'Reactor Coolant Pumps (RCP)'] },
         { text: 'Check the nuclear instruments (NIS): the Source Range (SR) counter reads a few hundred counts per second — the neutron source keeping the core visible — and the Intermediate Range (IR) is on scale (above the P-6 permissive). These are your eyes for the approach.',
           control: '(observe)', target: 'SR counting, IR on scale', hold: 2,
@@ -425,7 +425,7 @@
       purpose: 'Take a hot, subcritical plant all the way to Mode 5, Cold Shutdown: borate for cold shutdown margin, block the protection that would trip you on the way down, walk the secondary down along the saturation curve so the steam generator draws the primary with it, isolate the accumulators before they can dump, then place Residual Heat Removal and secure the reactor coolant pumps so RHR carries the plant cold. This is PWR-N15 and the second half of master path PWR-T21.',
       from: 'hot_zero_power',
       prereq: [
-        'Plant at Mode 3, Hot Standby: hot (566.6 °F / 297 °C), at normal operating pressure (2235 psi / 15.41 MPa), subcritical with the control bank in.',
+        'Plant at Mode 3, Hot Standby: hot (546.8 °F / 286 °C), at normal operating pressure (2235 psi / 15.41 MPa), subcritical with the control bank in.',
         'Reactor coolant pumps running; steam generator level normal on the three-element feed channel.',
         'Condenser available — the steam dump is the heat sink for the first half of this evolution, and the RHR heat exchanger rejects to the same circulating water.',
       ],
@@ -434,7 +434,7 @@
       // 297 °C, so a plant arriving colder (the audit's chain hit this at 244 °C)
       // rides the first leg as a step, not a ramp.
       precond: [
-        { p: 'tavg_c', op: '~', v: 297, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 566.6 °F / 297 °C — the ramp schedule starts there)' },
+        { p: 'tavg_c', op: '~', v: 286, tol: 8, text: 'Hot Standby at the no-load temperature (≈ 546.8 °F / 286 °C — the ramp schedule starts there)' },
         { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At normal operating pressure (2235 psi / 15.41 MPa)' },
         { p: 'power_pct', op: '<', v: 1, text: 'Subcritical with the control bank in' },
       ],
@@ -448,9 +448,9 @@
       ],
       auto_channels: ['feed_sg', 'cvcs_makeup', 'boron_conc'],
       steps: [
-        obs('Confirm Mode 3, Hot Standby: Tavg at the no-load anchor 566.6 °F (297 °C), pressure 2235 psi (15.41 MPa), reactor subcritical with the control bank in, RCPs running.',
-          { p: 'tavg_c', op: '~', v: 297, tol: 3 }, null, ['Tavg', 'Plant Pressure', 'Reactor Coolant Pumps (RCP)']),
-        { text: 'BORATE FIRST — nothing cools until this is done. Cooling a core makes it MORE reactive (the cold moderator is denser), so the shutdown margin you have at 566.6 °F is not the margin you will have at 199 °F. Set the boron target to 857 ppm on the board (BORON CONTROL): 806 ppm is critical cold with the bank in (09 §7.5) and the rest is margin. The makeup panel meters it as a batch dose at about 3 ppm/min, so 683 → 857 ppm takes roughly an hour of plant time.',
+        obs('Confirm Mode 3, Hot Standby: Tavg at the no-load anchor 546.8 °F (286 °C), pressure 2235 psi (15.41 MPa), reactor subcritical with the control bank in, RCPs running.',
+          { p: 'tavg_c', op: '~', v: 286, tol: 3 }, null, ['Tavg', 'Plant Pressure', 'Reactor Coolant Pumps (RCP)']),
+        { text: 'BORATE FIRST — nothing cools until this is done. Cooling a core makes it MORE reactive (the cold moderator is denser), so the shutdown margin you have at 546.8 °F is not the margin you will have at 199 °F. Set the boron target to 857 ppm on the board (BORON CONTROL): 806 ppm is critical cold with the bank in (09 §7.5) and the rest is margin. The makeup panel meters it as a batch dose at about 3 ppm/min, so 705 → 857 ppm takes roughly 50 plant-minutes.',
           control: 'Boron control', target: '857 ppm',
           note: 'This is the same 857 ppm the cold_shutdown initial condition ships, and it is why a plant that came down this way goes critical near step 561 on the next startup rather than the 319 the startup checklist assumes (#303).',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 857 }, hold: 3600,
@@ -475,11 +475,11 @@
           cmd: { action: 'set_hpi', active: false }, hold: 10,
           acc: { p: 'hpi_active', op: '<', v: 0.5 },
           hl: ['HPI/LPI', 'ECCS'] },
-        { text: 'LEG 1 — start the cooldown. Walk the Dump SP down from 1194 psi to 814 psi (8.23 → 5.61 MPa) and the Pressure SP from 1901 psi to 1352 psi (13.11 → 9.32 MPa) TOGETHER, over the next 31 plant-minutes, tracking the saturation curve. That is about 12 psi/min on the dump. The pair holds 63 °F (35 °C) of subcooling all the way down: the dump sets where the plant is going, the pressurizer keeps the coolant liquid while it gets there.',
+        { text: 'LEG 1 — start the cooldown. Walk the Dump SP down from 1020 psi to 814 psi (7.03 → 5.61 MPa) and the Pressure SP from 1901 psi to 1352 psi (13.11 → 9.32 MPa) TOGETHER, over the next 17 plant-minutes, tracking the saturation curve. That is about 12 psi/min on the dump (the walk is shorter than it used to be — the Ginna anchor starts 174 psi lower, #419 wave 3). The pair holds deep subcooling all the way down: the dump sets where the plant is going, the pressurizer keeps the coolant liquid while it gets there.',
           control: 'Dump SP', target: 'Tavg 519.8 °F (271 °C) at -90 °F/hr (-50 °C/hr)',
           note: 'Measured: -85 to -100 °F/hr (-47 to -56 °C/hr) through this leg, arriving 521.4 °F (271.9 °C). Do not retype the setpoint to match present Tavg — that is the chase the first caution describes.',
-          cmd: { action: 'set_steam_dump_setpoint', mpa: 5.61 }, hold: 1872,
-          ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [8.23, 7.50, 6.82, 6.19, 5.61] },
+          cmd: { action: 'set_steam_dump_setpoint', mpa: 5.61 }, hold: 1200,
+          ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [7.03, 6.67, 6.32, 5.96, 5.61] },
                  { action: 'set_pressure_setpoint',   arg: 'mpa', points: [13.11, 12.07, 11.10, 10.18, 9.32] }],
           acc: { p: 'tavg_c', op: '~', v: 271, tol: 4 },
           hl: ['Dump SP', 'Pressure SP', 'Tavg', 'Steam Dump'] },
@@ -710,14 +710,15 @@
           // also exactly what the step teaches — the leak announces itself and then hides again
           // behind the injection that answered it — so the honest form of the claim and the
           // layer-robust one are the same sentence. `saw` takes a list since this change.
-          // hold 90, was 30 (#408): at the real relief flow the dive crosses 25 °C at
-          // ~50 s after the inject (measured full stack: 41 °C → saturation by 1m21s),
-          // not ~8 s — the compressed clock was inside the old window, the real one is
-          // not. Same claim, wider watch. Also true at real flows and worth knowing:
+          // hold 240, was 90 (#408), was 30 — the third re-clock of the same watch, same
+          // claim each time. #419 wave 2 (K 3144 → 2500): the honest pressure authority
+          // dives 41 → ~34 °C by 40 s, PLATEAUS ~37 °C while the post-scram settle fights
+          // the leak (1m–2m30), then collapses through 25 °C at ~2m50s and saturates
+          // (measured full stack). Also true at real flows and worth knowing:
           // injection no longer refills past nominal — a full-open PORV (1.31e-3 frac/s)
           // outruns full HPI (2.0e-4) on this plant, and inventory keeps falling with
           // injection in, so the deception below rides the void/level term alone.
-          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 90,
+          cmd: { action: 'inject_failure', failure_id: 'stuck_porv_open' }, hold: 240,
           saw: [{ p: 'core_inventory_pct', op: '<', v: 100 },
                 { p: 'subcooling_c', op: '<', v: 25 }] },
         { text: 'Also mask the indicator, as at TMI: Failures tab → inject PORV Indicator Stuck Closed. Trust subcooling, not the PORV light.', control: '(observe PORV light vs subcooling)', target: 'trust subcooling, not the light',
@@ -766,9 +767,9 @@
         { text: 'CONFIRM the reactor tripped. Above P-9 it goes automatically and immediately — you should be verifying a scram that has already happened, not causing one. If power is not collapsing, scram manually now.', control: 'SCRAM', target: 'reactor tripped, power collapsing',
           note: 'On the shipped plant the trip is automatic and arrives with the turbine trip, not after it. The SCRAM command here is the "if it did not" half of the procedure.',
           cmd: { action: 'scram' }, hold: 60, acc: { p: 'power_pct', op: '<', v: 5 },
-          saw: { p: 'steam_dump_valve_pct', op: '>', v: 35 } },
-        { text: 'Watch the steam dump. With the turbine gone it is the only path for the heat still coming out of the core, and it drives open on Tavg error. Measured, it goes to its stop — 40 % of rated steam flow, all of it — and holds there through the worst of the transient.', control: 'Steam Dump', target: 'dump at its stop',
-          note: 'The saturation is EARLY — measured, the dump is at 40.00 % about half a minute after the trip and has backed off to ~9 % by three minutes, so the assertion for it lives on the previous step. What you are watching here is it modulating back down as decay heat falls.',
+          saw: { p: 'steam_dump_valve_pct', op: '>', v: 25 } },
+        { text: 'Watch the steam dump. With the turbine gone it is the only path for the heat still coming out of the core, and it drives open on Tavg error. Measured, it goes to its stop — 28 % of rated steam flow, all of it (Ginna\'s own capacity, #419) — and holds there through the worst of the transient, with the atmospheric dump valve helping over the peak.', control: 'Steam Dump', target: 'dump at its stop',
+          note: 'The saturation is EARLY — measured, the dump is at its 28 % stop about half a minute after the trip and backs off within minutes, so the assertion for it lives on the previous step. What you are watching here is it modulating back down as decay heat falls.',
           hold: 120, acc: { p: 'melted', op: '<', v: 1 } },
         { text: 'Control steam generator level through the swell. Losing steam demand swells the generator before decay heat brings it back down — the level you see first is not the level you will settle at.', control: 'SG Level', target: 'level swells then settles',
           note: 'Measured: SG level swells 65 → 72.1 % in the first half-minute, then falls away to about 36.5 % as the plant settles on decay heat and auxiliary feedwater.',
@@ -828,22 +829,26 @@
           cmd: { action: 'trip_turbine' }, hold: 60 },
         { text: 'Attempt the manual SCRAM again. It will not work — but confirming that is what tells you this is an ATWS and not a slow trip.', control: 'SCRAM', target: 'scram refused, rods stay out',
           cmd: { action: 'scram' }, hold: 240,
-          note: 'Meanwhile the plant is already helping: power falls toward 43 % on the moderator coefficient alone as Tavg rises. Do not mistake that for the trip working.',
-          acc: { p: 'power_pct', op: '<', v: 60 } },
+          note: 'Meanwhile the plant is already helping: power falls toward the low 70s on the moderator coefficient alone as Tavg rises — the MTC throttles the unscrammed core toward what the 28 % dump can carry (#419: the equilibrium sat near 43 % on the old 40 % dump; the smaller honest sink parks it higher). Do not mistake that for the trip working.',
+          acc: { p: 'power_pct', op: '<', v: 78 } },
         { text: 'EMERGENCY BORATION — Boron control ON, target well above current. This is the actual shutdown mechanism: with the rods unavailable, boron is the only reactivity control you have left.', control: 'Boron control', target: 'boron rising toward shutdown',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 1400 }, hold: 1500,
-          note: 'Measured: boron 618 → 744 ppm over about 44 minutes takes the core from 100 % to subcritical. It is slow by design — that is what the temperature coefficient is buying you.',
+          note: 'Measured class (#419 anchor): roughly 130 ppm of boration over about three-quarters of an hour takes the core from full power to subcritical. It is slow by design — that is what the temperature coefficient is buying you.',
           acc: { p: 'boron_ppm', op: '>', v: 660 } },
         { text: 'Hold the heat sink while the boron works — auxiliary feedwater on the steam generator, steam dump carrying what the core is still making. An ATWS with a dry generator is the version that damages fuel.', control: 'AFW', target: 'heat sink maintained',
           cmd: { action: 'set_afw', active: true }, hold: 1200,
           acc: { p: 'power_pct', op: '<', v: 5 } },
-        obs('Confirm the core is subcritical on boron — power collapsing toward zero with the rods still out. The plant is shut down chemically, not mechanically, and it stays that way until the boron comes back out.',
-          { p: 'power_pct', op: '<', v: 1 },
-          'Measured end state: 0.04 % power at 744 ppm, Tavg 567.3 °F (297.4 °C), pressure never left 2235 psi (15.41 MPa) — the code safeties are not part of this event.',
-          ['Boron control', 'SCRAM', 'AFW']),
+        // hold added at #419 wave 3: the anchor re-solve moved hot critical boron up
+        // ~22 ppm, so the same boration timeline arrives ~7 min later at the < 1 % mark
+        // (measured 1.28 % at the old step end, still falling).
+        { text: 'Confirm the core is subcritical on boron — power collapsing toward zero with the rods still out. The plant is shut down chemically, not mechanically, and it stays that way until the boron comes back out.',
+          control: '(observe)', target: 'power < 1 %, rods still out', hold: 600,
+          acc: { p: 'power_pct', op: '<', v: 1 },
+          note: 'Measured end-state class: power well under 1 % with boration continuing toward the target, Tavg near the no-load anchor, pressure never leaving 2235 psi (15.41 MPa) — the code safeties are not part of this event.',
+          hl: ['Boron control', 'SCRAM', 'AFW'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Reactor shut down CHEMICALLY with the rods unavailable: the moderator coefficient held power down while 126 ppm of boron over ~44 minutes took the core subcritical, heat sink maintained throughout and the pressurizer safeties never challenged.',
+      outcome: 'Reactor shut down CHEMICALLY with the rods unavailable: the moderator coefficient held power down while ~130 ppm of boron over about three-quarters of an hour took the core subcritical, heat sink maintained throughout and the pressurizer safeties never challenged.',
     },
     // PWR-E17 — continuous rod withdrawal. Authored 2026-08-03 (#319 item 5). This one is the
     // direct BEFORE/AFTER for the #311 protection work, and it is worth having the pair:

@@ -119,28 +119,29 @@ docs.
 > |---|---|---|
 > | `C:\grok_build\Reactor_Dynamics` | `develop` | **the main working branch — use this unless it is taken** |
 > | `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1, for when a second agent is already on `develop` — a NORMAL lane, loads this file |
-> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2, same rules as workbench (third concurrent agent) — **the AUDIT LANE** |
+> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2, same rules as workbench (third concurrent agent) — a NORMAL lane, loads this file |
+> | `C:\grok_build\RD_Audit` | *(none — detached)* | **the AUDIT LANE.** Not a work lane; see below |
 >
-> **`backshop` IS THE AUDIT LANE. `workbench` IS NOT** *(OWNER RULING, 2026-08-06: "Workbench will
-> not be an audit lane.")*, superseding the #383 arrangement below, which armed both. Backshop
-> carries a gitignored `.claude/settings.local.json` with the #221 exclusions (`claudeMdExcludes`
-> for all three trees, `autoMemoryEnabled: false`); it **layers by default and needs no flag**, so
-> any session started there is unprimed and a `/clear` is enough to begin an audit slice. Workbench
-> and `develop` have no such file and load this document normally; a slice launched in either needs
-> `claude --settings .claude/settings.audit.json`.
+> **ALL THREE WORK LANES ARE NORMAL AND ALL LOAD THIS FILE.** The audit lane is a directory of its
+> own, `C:\grok_build\RD_Audit` *(OWNER RULING, 2026-08-08: "It will audit things 'blind' without
+> preconceived notions or the logic behind the choices", and "Ts wont be a new branch.")*. It holds
+> the auditor's own `CLAUDE.md` — generated from `Blueprint/AUDITOR_ORIENTATION.md` by
+> `node tools/audit_deploy.js` — a `findings/` scratch directory, and a **detached-HEAD worktree at
+> `tree/`** carrying the source under audit. No branch, so nothing done there can reach one, and
+> `.claude/settings.json` there additionally *denies* writes into `tree/**` and into all three work
+> lanes. **Do not work in it and do not commit from it.**
 >
-> The original arrangement *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
-> skills.")* put that file in both overflow lanes. Workbench's was removed during the #370/#371
-> work — ordinary work in an audit lane runs without this file, which is the accepted cost — and
-> the 2026-08-06 ruling makes that permanent rather than incidental.
+> **This supersedes the backshop arrangement** *(OWNER RULING, 2026-08-06: "Workbench will not be an
+> audit lane.")*, which armed backshop by default and cost it this document for ordinary work. That
+> cost is retired: backshop's `.claude/settings.local.json` is gone and it is an ordinary lane
+> again. The flag route survives as a fallback — `claude --settings .claude/settings.audit.json`
+> from any work lane — but it excludes this file **without putting anything in its place**, so a
+> session launched that way must open `Blueprint/AUDITOR_ORIENTATION.md` by hand.
 >
-> **The accepted cost, in `backshop` only: ordinary non-audit work there also runs without this
-> file** — no lane rules, no merge-conflict list, no gate baselines, no standing traps. Recorded
-> here because the only prior record was a comment *inside* a gitignored file. Working in backshop
-> and need this file? **Read it explicitly** — it is on disk, only the auto-load is suppressed. To
-> give the lane its orientation back, delete that tree's `.claude/settings.local.json`; **to make a
-> lane an audit lane, copy backshop's there** — and then run `node tools/audit_preflight.js` in it,
-> because a silently-unmatched exclude pattern looks exactly like a clean audit.
+> **If you are preparing or closing a slice, `Blueprint/AUDIT_CHARTER.md` is your document.** Do not
+> restate the auditor's rules anywhere but `Blueprint/AUDITOR_ORIENTATION.md`, and never hand-arm an
+> exclusion — run `node tools/audit_preflight.js`, because a silently-unmatched exclude pattern
+> looks exactly like a clean audit.
 >
 > **The `SessionStart` hook reports which mode the lane is in** and withholds WIP issue *titles* in
 > an audit lane — measured 2026-08-05, it had been printing a plant defect by name into contexts the
@@ -335,7 +336,10 @@ docs.
 > behaviour change is **"what should this plant actually do?"** — never "what keeps this
 > mission green?" Authority runs one way: physics/prototypicality → this plant's ruled-on
 > identity → the behaviour catalog + physics acceptance suites → control setpoints →
-> authored content → that content's gates. **Content never votes on physics.** When a
+> authored content → that content's gates. **Content never votes on physics** — and content
+> CHURN is never a consideration either *(OWNER DIRECTIVE, 2026-08-07: "Documentation and
+> gameplay always follow the model/physics, not the other way around.")*: the cost of
+> re-authoring manuals, missions or checklists is not an input to a physics decision. When a
 > mission, procedure or checklist breaks after a plant change, presume the *content* is
 > stale. Read the break — it is a canary, not an authority — but settle it against the top
 > three levels, and say which behaviour you are treating as ground truth. Full rule and the
@@ -411,7 +415,7 @@ to read everything.
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
-| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — §11 is the before/after procedure for *your* (primed) session; §1–10 is the auditor's. Verify with `node tools/audit_preflight.js <slice>` (six checks, exit 2 naming the cause; it launches nothing). In **workbench / backshop** the exclusion is already in force, so a fresh session or a `/clear` there *is* the launch; in `develop` it needs `claude --settings .claude/settings.audit.json`. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §11a and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
+| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the whole file is *your* (primed) document: the lane, the prep and the close-out. The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed to `C:\grok_build\RD_Audit\CLAUDE.md` by `node tools/audit_deploy.js`; do not restate them anywhere else. Verify with `node tools/audit_preflight.js <slice>` (eight checks, exit 2 naming the cause; it launches nothing). **The launch is a fresh session started in `C:\grok_build\RD_Audit` itself — not in its `tree/`**, which would silently get the repo's settings and no auditor orientation. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §4 and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
@@ -430,33 +434,50 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-07**._
+_Last updated: **2026-08-08**._
 
-**Where the PWR is.** `run_all` is **42 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **44 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
 
-- **#386 stages 2–3** — containment ESF (spray, fan coolers, the sourced 3.5/30 psig actuations,
-  board readouts), then hydrogen with the ruled TMI-2-style burn. Stage 1 gave the break a
-  receiving volume and nothing more.
+- **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen 2026-08-08: the ruled TMI-2-style
+  one-time burn, recombiners, geometry-gated transport — owner-review: the [8.0]/[85]
+  STS-template adoption). Remaining: the board card + manual spray/recombiner surface
+  (waits on the board redesign). **#425 RESOLVED** (2026-08-08, ruled): the passive sink
+  runs a lagged saturation-ΔT enhancement — SBO boil-off parks at 22.2 psig (was 83.3,
+  past design), the burn pin is family-wide, and the #384 §7.2 residual is recorded
+  CLOSED (measured at the building before AND after) — owner-review: the sev-0.25
+  spray-boundary knife-edge.
 - **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the plant's
   declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
   power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
   beat graph cannot express. Waves 1's re-clock and the relief sizing are **landed**.
-- **#385 node / #409 governor** — the pressurizer inventory NODE (ruled as a follow-on in the
-  LOCA-cluster plan review, sequenced AFTER the #408 re-clock) and the deferred auto-acceleration
-  governor. The rest of the LOCA cluster (#384/#407/#334-3) is landed.
-- **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
-  the sourced setpoint passes on physics, the ladder is the blocker. `status-needs-ruling`.
+- **#385 node — LANDED (stages 0–3, 2026-08-08, `run_all` 42 at baseline)**: `pzr_mass_frac`
+  carries `pzrNodeLevel` (backbone + flow-accreted void credit; no-leak families bitwise the
+  old line). Flash term measured unnecessary and NOT built — flagged owner-review on #385.
+  The bundle closed #415 (non-repro), #334 (slider was already #408's; low-Δp resolved by
+  measurement), #354 (already held the program). **#409 governor** remains deferred.
+- **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
+  secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
+  MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
+- **#419 tier 3 — ALL THREE WAVES LANDED (2026-08-07)**: the ×12.6 retirement, F15 → 2500
+  [derived-net, F14-coupled: one pair, re-solve together], and the Ginna re-anchor — ladder
+  7.03/7.31/7.58/7.33 (sourced/rule-derived, **§8.34 retired**), program 286.0 → 304.5 °C,
+  dump 28 % (D1 measured: the ride-out survives), reference boron 683 → 705 (`rho_excess`
+  re-solved at the WBN quote temperature — the old solve conflated it with our anchor).
+  **Owner-review on the issue**: the TMI deception crest is ~65 % on the final plant (the
+  75 % annunciator unreachable free-play; qualify re-keyed to a state cue) — a
+  level-constants-set ruling if the cue matters. TR-1i is a second strict xfail (#420,
+  coupled to #378). Remaining #419 scope: none — the umbrella is built.
 - **#378** — a post-step rod limit cycle, measured to a REJECT (the fix costs TR-1i's sourced ramp
   duty). `run_behavior` carries **TR-18** as a strict xfail pinning it.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
-should never go up until a release happens.")*. **Rev 13 is what the website carries** as of
-Alpha 1.3.0 (2026-08-07); everything after it is **one pending Rev 14**, however many changes it
+should never go up until a release happens.")*. **Rev 14 is what the website carries** as of
+Alpha 1.4.0 (2026-08-08); everything after it is **one pending Rev 15**, however many changes it
 contains. **Do not open a new revision row for a manual edit; extend the pending row.** That is
 also the resolution for a revision-number collision, which is what two lanes editing the manuals
 produce — Rev 13 shipped carrying thirteen lettered items from two lanes for exactly that reason.
@@ -468,42 +489,60 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **The containment building exists** (2026-08-05, #386 stage 1). A lumped volume in
-  `stepContainment` whose live pressure is the break/relief √Δp backpressure. The **flash gate is
-  the model**: cold ECCS spill rains to the sump and moves pressure not at all, so pressure peaks
-  on hot blowdown and decays. An SGTR reads **nothing** — it discharges into the SG. A stuck-open
-  PORV pressurizes it MORE than a 10 % break (relief is steam at weight 1.0, break liquid is
-  flash-gated). Full break peaks 41 psig = ⅔ design. `press_gain` is fitted and says so. Stages 2
-  (spray/fan coolers/ESF) and 3 (hydrogen, ruled TMI-2-style burn) follow.
-- **A constant 142 % wrong survived because nothing checked it against a source** (2026-08-05,
-  #364/#365). Decay heat ran on two exponential groups with nothing faster than 33 min, so it was
-  flat where a real curve falls fastest. Refit to four groups, within **4.86 %** of the standard
-  from 1 s to 28 h. **The target was the decision, not the fit** — two NRC primaries that
-  cross-check, ÷1.2 because that is a licensing margin and this is a simulator. Adjudicating the
-  11 red probes ONE AT A TIME (HR10) is the only reason two real defects surfaced.
-- **A clip lived where no probe stands, so removing it reddened nothing** (2026-08-05, #362).
-  `levelBase` carried an undocumented upper clip at 100 binding at Tavg 611.6 °F — inside the
-  subcooled range at NOP. **Measure incidence before concluding a green suite means anything**:
-  95.7 % of a loss of heat sink, 87.9 % of a blackout, **0.0 %** of every other IC. The gauge sat
-  dead flat at 61.5 % — the number a *healthy* plant reads — while subcooling collapsed. Probe
-  CA-13. **Solid is not overfilled**: this plant goes solid at an inventory *deficit*.
-- **A fudge band in a check was hiding a real defect** (2026-08-04, #348). CA-10 excluded a
-  1-point band below the 17 % heater cutoff as "coupling lag". What it hid: the interlock had **no
-  reset differential at all** and chattered, 35 % of below-cutoff samples at full heater power. **A
-  tolerance band is a claim that what it excludes is harmless — measure that.** Same pass, CA-11's
-  sampling assumed a plant that no longer existed, and printing MISSING rather than passing is the
-  only reason it was caught.
-- **The accident clock is real and the relief valves are plant-sized** (2026-08-07, #408 wave 1
-  + the proportional-valve ruling). The accident-inventory family now moves real
-  fractions-per-second; `porv_flow_max` 2.5e-4 (~112 gpm, Ginna power-scaled) and
-  `safety_flow_max` 8.0e-4 (the sourced 3.2 ratio) close #349. The valve sits on a **two-clock
-  seam** — its mass runs real while its pressure authority keeps the ×12.6 transient duty, so
-  the F15 K-pair re-solved 600 → 3144 to preserve full-open authority exactly. Measured:
-  feed-and-bleed viable, full injection beats one wide-open valve, damage on the 1979 clock.
-  **The terminal melt verdict now asks whether the water is coming back** — a reflooded
-  TMI-style core rewets and recovers; unmitigated paths still terminate.
-
+- **The containment passive sink learned saturation ΔT — through a LAG, because time is the
+  only separator between families whose pressures overlap** (2026-08-08, #425). SBO boil-off
+  must park ≤ ~22 psig (the H₂ burn deposits +32.4 psi on whatever base it finds, so the
+  BURN margin, not the ruled 30 psig spray point, binds the park — the cap alone would leave
+  the burn 2.4 psi OVER design) while the sev-0.25/0.5 pulse peaks sit ABOVE that park; a
+  static curve eats the pulse grading to brake the park, so the enhancement charges on a
+  120 s lag that pulses never feel. Two traps: a "pre-damage" window bounded by the damage
+  FLAG catches the burn it exists to exclude (H₂ hits 8 v/o before the hot node passes
+  1200 °C — bound on `!ctmt_h2_burned`), and a plan-review constraint can be arithmetic-wrong
+  twice (a burn deposit that forgot `press_gain`; a "drained base" that is actually ambient)
+  — re-derive sizing constraints from the Q0, not the plan.
+- **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
+  #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
+  telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
+  building; flow-keying would stall on the burn's own backpressure spike); the burn deposits
+  GEND-061's ADIABATIC ΔP — the measured 27.5 psi form landed the drained family 27.2 psig,
+  UNDER the ruled side of the 30 psig hi-hi (a sourced anchor can be the wrong FORM of the
+  measurement for your model's discretization). Recombiners measurably prevent no ignition
+  (declared, prototypical). #425 found on the way: the SBO containment base passes design
+  on relief steam alone — pre-existing, put to the owner, not absorbed.
+- **#419 landed in one session: pace real, F15 F14-coupled, the plant re-anchored to Ginna**
+  (2026-08-07). Wave 2's trap: **a physically-derived constant can be RIGHT and unshippable**
+  — K_phys ≈ 304 validates against TMI-2's own clock, but under the ruled 347× F14 heater the
+  stuck-PORV race inverts (level crashes, no deception); shipped K = 2500 = the physical NET
+  under F14 (one pair — re-solve together). Wave 3's trap: **a solve can conflate the
+  measurement's temperature with the plant's** — rho_excess quoted 975 ppm at "the anchor",
+  benign 5 °C apart, wrong at 286; and two latent linearizations surfaced only when the
+  anchor walk lengthened. The ghost-constant lesson stands: check the consumer first.
+- **The #380 ladder decision dissolved when the brackets got read** (2026-08-08). The "sourced
+  real ~30–32 %" SG lo-lo was NUREG-1431's bracketed TEMPLATE placeholder — Ginna, the anchor
+  plant, specifies 17 %, the shipped value. Trap: **a placeholder cites like a number, and it
+  survived two evidence passes because both verdicted the mechanism and inherited the number.**
+  AFW moved onto the trip signal (single-signal, three-document sourced; §8.19 retired), feed_sg
+  targets the programmed 65 % (#355), and the SG FEED demand box admits NO FLOW (#358).
+- **The pressurizer carries its own inventory node, and the level lift became a FLOW**
+  (2026-08-08, #385 stages 0–3). The void credit accretes at the admittance split prevailing
+  WHEN displacement happens — what left through the hole is not owed back in either
+  direction; no-leak families bitwise the old line, pressure bitwise everywhere. Three traps:
+  **`primary_void_fraction` SNAPS** (state fn of `_mass` — flow-form ≈ state-form at
+  gate-open, #407's defect), **an approved plan's sizing target can be measured on a retired
+  scale** (the flash term's "1.5–2 s at sev 0.20" predates the #408 slider re-map — measured
+  unnecessary, not built), and **a meltdown path can pin the defect's CLOCK** (MD-5 melts at
+  5285 s, not <4000 — the old pace was the lying gauge propping the heaters).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+
+- **A new node's capacity must come OUT of the node it split from** (rescued from the #418
+  themes bullet on eviction, 2026-08-08): C_tube added on top of coolant 20 silently reopened
+  the RULED heatup pace — the chain caught it at 260.7 °C. Splitting a lump conserves its total.
+
+- **A component can sit on a TWO-CLOCK seam** (rescued from the #408 themes bullet on
+  eviction, 2026-08-08): the relief valve's mass flow runs the real accident clock while its
+  pressure authority keeps the transient duty — re-clocking either side alone breaks the
+  other, so preserve the product (the F15 K re-solves, twice now). And the terminal melt
+  verdict asks whether the water is COMING BACK — a reflooded TMI-style core rewets.
 
 - **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
   three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped
@@ -535,6 +574,13 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). And a term that is
   an IDENTITY in the regime you test in is a term nothing tests — 44 green probes agreed with a
   leg-split formula that computed 0.0 °F on a scrammed core.
+- **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
+  from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
+  hid an interlock with no reset differential chattering at 35 % duty.
+- **Adjudicate a physics change's red probes ONE AT A TIME** (rescued from the #364/#365
+  themes bullet on eviction, 2026-08-08). Batch-judging 11 reds as "the retune moved things"
+  would have hidden two real defects — each red is the fix working, a stale fixture, or a new
+  defect, and only per-probe adjudication (HR10) tells which.
 - **Know which LAYER owns the effect you are asserting** (table below). A multi-part fix whose
   parts are each sufficient makes a one-sided injection lie — revert BOTH to reproduce (#295).
   Neutering an automation channel: blank the ENGAGE direction ONLY, or the plant sits in the IC's
@@ -555,12 +601,21 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   ride-out the 40 % dump exists to teach. Scaling by a margin factor puts the equivalent gradients
   inside the published real bands — the unscaled ones were 1.5–2× steeper than any real value, and
   **that steepness was the tell, visible before the measurement**.
-- **The pressurizer's three level constants are ONE object** — `level_per_mass` (776),
-  `level_per_mass_surplus` (776), `level_per_void` (375.33), and since #337 the pressure surge
-  reads the same geometry. The TMI deception is a DIFFERENCE between two of them, so moving one
-  inverts it. **Touch one, re-solve the set.** And a SINGLE TERM of a coupled pressure/inventory
-  regime is worse than none — three independent measurements say so (#346, `Manuals/12` §12.4c,
-  the #384 attempt).
+- **The pressurizer's level constants are ONE object** — `level_per_mass` (776), `level_per_void`
+  (375.33), `level_per_tavg` (1.62); the pressure surge reads the same geometry (#337) and since
+  #385 the NODE's credit does too (`level_per_mass_surplus` retired at #365). The TMI deception
+  is a DIFFERENCE between two of them, so moving one inverts it. **Touch one, re-solve the set.**
+  And a SINGLE TERM of a coupled pressure/inventory regime is worse than none — three independent
+  measurements say so (#346, `Manuals/12` §12.4c, the #384 attempt).
+- **Measure a limit's INCIDENCE before trusting a green suite about it** (#362, rescued
+  2026-08-08): the `levelBase` clip bound on 95.7 % of loss-of-heat-sink samples, 0.0 % of every
+  other IC — removing it reddened nothing because no probe stood where it bound. Corollary:
+  **this plant goes solid at an inventory DEFICIT** (thermal expansion), not overfilled.
+- **Containment's flash gate decides what it sees** (#386, rescued 2026-08-07): a stuck-open
+  PORV pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break
+  liquid is flash-gated), and an SGTR reads NOTHING — it discharges into the SG, and since
+  stage 3 that fence extends to hydrogen (geometry-gated transport). `press_gain` is fitted
+  and says so. All three #386 stages are landed; the board card waits on the redesign.
 - **Natural circulation: the SHAPE is sourced (W ∝ Q^⅓), the SCALE is this plant's** and is fitted
   — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
   ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the
@@ -656,7 +711,7 @@ and the trap it taught — lives in `Diagnostic/TUNING_LOG.md` and `Blueprint/BU
 newest first.
 
 ```
-node test/run_all.js            # all 42 runners (~3.5 min, 10-way parallel)
+node test/run_all.js            # all 43 runners (~3.5 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -723,7 +778,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 42 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 43 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
@@ -827,8 +882,12 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   2026-08-04: "Let's fix the gap and release.")*. Alpha 1.0.0 merged, tagged and passed CI while
   the **live site kept serving the previous release** — the only deployment Vercel created for that
   commit was a **Preview**. A green *"Vercel — success"* commit status is satisfied by a preview and
-  is **not** evidence; check
-  `gh api "repos/TH462/Reactor-Dynamics/deployments?sha=<SHA>"` for `environment=Production`.
+  is **not** evidence. **Run `node tools/verify_release_deploy.js`** — exit 0 means a production
+  deployment exists for that commit, and it asks BOTH hosts, so it keeps working across the
+  Cloudflare move (#413). It replaced a pasted `gh api …?sha=<SHA>` line that failed twice for
+  reasons prose cannot fix: the GitHub API needs the **full 40-char sha** and returns zero rows for
+  an abbreviated one — indistinguishable from "production is missing" — and every such deployment
+  is created by `vercel[bot]`, so the query goes permanently empty once the site moves.
   **And do not push `develop` until it exists** — fast-forwarding it to the same commit seconds
   after the merge gives Vercel two events for one SHA, and that is when the production build went
   missing. A missing production deploy is indistinguishable from a slow one from outside, for ever,
@@ -1090,6 +1149,19 @@ curated). **Local-only (kept out of the public GitHub repo):** `terminals/`, `mc
 `inbox/`, `Diagnostic/*.json`, `GO_PUBLIC_CHECKLIST.md`. (**Not** `CLAUDE.md` — it is tracked
 and goes public with the repo, as line 6 says.) The curated
 `Diagnostic/*.md` reports ARE published.
+
+**Running the SITE, as opposed to building it: `C:\grok_build\RD_Ops\`** *(owner, 2026-08-08:
+"Set up the folder as store secrets as you recommend.")*. Outside every repo and sibling to the
+three worktrees, so every lane reads the same copy and nothing in it can be committed. It holds
+`runbook.md` (account/zone/project ids, what is deployed where, how to read the usage data),
+`cutover.md` (the Vercel → Cloudflare migration, #413, with live state), saved Analytics Engine
+queries, and bug-report bundles pulled from R2. **Read it before doing anything to the live
+site** — those identifiers otherwise exist only in one session's conversation.
+**NO SECRETS LIVE THERE**, deliberately: `C:\grok_build\` syncs off-site (`.SynologyWorkingDirectory`),
+and every agent reads the folder, so a plaintext credential there is replicated *and* shared.
+Tokens go in a user env var (`CLOUDFLARE_API_TOKEN`); wrangler, `gh` and the MCP servers keep
+their own OAuth and need no help. A credential found in that folder is a defect — move it and
+revoke the exposed one.
 
 ---
 

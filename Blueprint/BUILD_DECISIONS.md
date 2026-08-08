@@ -39,9 +39,476 @@ where the two differ or where judgment was exercised.
 | F10 | M2/M8 | **RBMK automatic-regulator (AR) rod group** (user-directed): add a third, small-worth (~5–8% of the manual bank, no displacer), fine-step group — the authentic RBMK AR. The Automate rod channel drives IT (fixes the ±4%/step hold granularity); its diagram/control card carries its own AUTO/MAN selector mirroring the Automate channel; disengaging = taking manual control (the pre-Chernobyl condition — scenario beat material). Include AR in ORM; scram drives it in; keep the positive-scram displacer exclusively on the manual bank so the Chernobyl acceptance suite stays green. NO second manual group — the AR under manual override IS the fine manual bank. | planned | **RESOLVED (2026-07-07)** — built as specced (see the dated entry); the Chernobyl AR scenario beat is authored under F11. |
 | F12 | M8/test | **`run_e2e_controls` 28/30 — 2 pre-existing reds** (was 3; (c) *AUTO charging converged to match the leak* turned green with the 2026-07-22 P7 retune/SGTR re-anchor). (a) *PZR spray manual set reaches engine* — expects spray ≥45 % at the engine, gets 12; the spray-demand reach drifted. (b) *CVCS auto make-up holds inventory vs leak* — "auto holds ≥98 %" is not physical for a severity-1.0 SGTR (now 0.03 frac/s ≈ 40× CVCS make-up authority); re-baseline to the current trajectory or assert against a small leak the servo *can* match. | test | **RESOLVED (2026-07-25, #150 — 35/35; then 2026-07-29m, #194 — 39/39)** Both original reds were stale expectations, not regressions (spray has an owner-ruled flow cap; "auto holds ≥98 %" is unphysical at severity 1.0). **But the #150 rebuild introduced a worse check than the one it replaced**: *"CVCS covers a consistent fraction of the leak (droop)"* asserted coverage stayed inside 10–50 % and equal across leak sizes — measured 400 **cycles** in, i.e. 40 s of sim time against an 83 s control loop. It pinned a transient as a steady-state property and is the whole source of #194's false claim that no leak is ever held. Now five checks measured at 4.8 τ against the **config-derived** equilibrium. Negative control: the old check *passes* on a deliberately-broken servo and *fails* on the healthy plant — it was inverted. |
 | F13 | M4 | **`clip()` is defined four times** (`control_kernel.js:47`, `pwr_control.js:360`, `rbmk_control.js:127`, `bwr_control.js:100`) and issue #156 files it as HR3 drift. It is not: HR3 is *plant specifics in shared code*, and this is a one-line pure clamp local to each IIFE. **Deliberately not deduplicated** — `control_kernel.js` loads **after** all three plant control modules in every load list, so a shared `RD.*.clip` resolves only at call time (a real load-order coupling), and the alternative is a new shared-utils file that must be added to every load list. Bought for 60 characters that cannot meaningfully drift. **Measured before deciding: `clip` is the ONLY duplicated helper** — every other module-level function in those four files is genuinely local. **Revisit trigger:** if a *second* shared helper appears, create the utils file then and move `clip` in with it. The **other** half of #156 (a PWR field read inside generic kernel machinery) WAS real and is fixed — and note it had **moved**: `_stepBang` was already clean, but the boron batch-dose work re-created the same leak in `_stepConc`. See `Diagnostic/TUNING_LOG.md` 2026-07-27b. | cleanup | **RESOLVED (2026-07-27b) — won't fix, deliberate. OWNER-APPROVED**: Claude recommended won't-fix with the reasoning above; owner replied *"Do as you suggest"* (2026-07-27), so the decision is the owner's and the reasoning is Claude's. Recording it that way because the first draft of this row said only "ruled won't-fix", which reads as owner authority for what was then an agent's recommendation — the exact laundering `CONTEXT.md` §HR-provenance warns about. #156 closed `status-deliberate`. The recurrence it exposed (the leak was fixed in `_stepBang`, then re-created in `_stepConc` ~40 lines below the comment warning against it) is spun out as **#227** — nothing gates HR3 in the kernel. |
-| F14 | M1 | **Pressurizer heater authority is 27× its own source, which damps the loss-of-inventory cue** (#337, 2026-08-04). WTSM 3.2 (ML11223A213 p. 3.2-9): 1794 kW is *"capable of raising the temperature of the pressurizer and its contents at approximately 55 °F/hr"* = 0.23 psi/s; ×12.6 for this plant's declared Mode 5↔1 time compression = 0.020 MPa/s, and `K_heater` is **0.55**. The #337 surge fix gives inventory a real path to pressure, but the heaters rebalance against it, so a leak that empties the pressurizer to its 17 % cutoff costs ~**1 °F** of subcooling margin against ~**9 °F** at the sourced rating. **Correcting it is measured, not free**: at 0.05 the plant can no longer ride out a full load rejection without an OTΔT trip (TR-1h, ruled identity), and below 0.20 a stuck-open spray valve depressurises it to the containment floor (TR-11). Declared to the player at `Manuals/12` §12.15. | tuning / identity | **RULED — STAYS AT 0.55** *(OWNER RULING, 2026-08-04: "F14 go with the recommendation.")*. The recommendation was: the lesson is direction and ordering, the player now gets all three parameters, and closing the gap would trade the ride-out character the plant is built around. It is a **declared departure** (`Manuals/12` §12.15), not deferred work — do not re-open it as a tuning task. |
-| F15 | M1 | **A relief valve's pressure authority is carried TWICE since #337.** `K_surge_level · level_per_mass` = 310 and `K_porv_relief`/`K_safety_relief` = 300 — the two constants were always this same mass→pressure coupling, fitted per path, and the general surge law now supplies it again. Excluding relief from the surge driver is the physically obvious fix (the valves discharge from the pressurizer steam space, so that mass never crosses the surge line) but was **measured worse**: `run_meltdown` 12 → 11 and `run_scenarios` 3/3 → 1/3, i.e. it breaks physics acceptance where the double count breaks only authored content. All four combinations measured; table in `Diagnostic/TUNING_LOG.md` 2026-08-04g. | tuning | **RESOLVED (2026-08-04g)** *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")* — relief excluded from the surge driver, gains re-solved **300 → 600**. See the 2026-08-04g entry: the sourced criterion did not discriminate, so it was solved against the relief ladder's own suites (`run_meltdown`, `run_scenarios`), which are red at 300–450 and green at 500–600. **Carries one deliberate red**, `run_behavior` TR-15 leg E, now a plant question rather than a calibration one. |
+| F14 | M1 | **Pressurizer heater authority is 27× its own source, which damps the loss-of-inventory cue** (#337, 2026-08-04). WTSM 3.2 (ML11223A213 p. 3.2-9): 1794 kW is *"capable of raising the temperature of the pressurizer and its contents at approximately 55 °F/hr"* = 0.23 psi/s; ×12.6 for this plant's declared Mode 5↔1 time compression = 0.020 MPa/s, and `K_heater` is **0.55**. The #337 surge fix gives inventory a real path to pressure, but the heaters rebalance against it, so a leak that empties the pressurizer to its 17 % cutoff costs ~**1 °F** of subcooling margin against ~**9 °F** at the sourced rating. **Correcting it is measured, not free**: at 0.05 the plant can no longer ride out a full load rejection without an OTΔT trip (TR-1h, ruled identity), and below 0.20 a stuck-open spray valve depressurises it to the containment floor (TR-11). Declared to the player at `Manuals/12` §12.15. | tuning / identity | **RULED — STAYS AT 0.55** *(OWNER RULING, 2026-08-04: "F14 go with the recommendation.")*. The recommendation was: the lesson is direction and ordering, the player now gets all three parameters, and closing the gap would trade the ride-out character the plant is built around. It is a **declared departure** (`Manuals/12` §12.15), not deferred work — do not re-open it as a tuning task. **CURRENCY NOTE (2026-08-08): the "27×" arithmetic in this row is historical** — #419 wave 1 retired the ×12.6 compression it was computed through, and §12.15 re-states the departure at ~347× on current numbers. The RULING is unchanged and was re-affirmed 2026-08-07; only this row's framing had aged. |
+| F15 | M1 | **A relief valve's pressure authority is carried TWICE since #337.** `K_surge_level · level_per_mass` = 310 and `K_porv_relief`/`K_safety_relief` = 300 — the two constants were always this same mass→pressure coupling, fitted per path, and the general surge law now supplies it again. Excluding relief from the surge driver is the physically obvious fix (the valves discharge from the pressurizer steam space, so that mass never crosses the surge line) but was **measured worse**: `run_meltdown` 12 → 11 and `run_scenarios` 3/3 → 1/3, i.e. it breaks physics acceptance where the double count breaks only authored content. All four combinations measured; table in `Diagnostic/TUNING_LOG.md` 2026-08-04g. | tuning | **RESOLVED (2026-08-04g)** *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")* — relief excluded from the surge driver, gains re-solved **300 → 600**. See the 2026-08-04g entry: the sourced criterion did not discriminate, so it was solved against the relief ladder's own suites (`run_meltdown`, `run_scenarios`), which are red at 300–450 and green at 500–600. **Carries one deliberate red**, `run_behavior` TR-15 leg E, now a plant question rather than a calibration one. **CURRENCY NOTE (2026-08-08): the 600 in this row is TWO re-solves stale.** 600 → 3144 (#408 wave 1 — the K-preserve across the valve-mass re-clock) → **2500** (#419 wave 2 — the F14-coupled net: `K·porv_flow_max − K_heater` = 0.0744 MPa/s; **one pair, re-solve together**). The live record is the dated entries (2026-08-07-develop-a, 2026-08-07-develop-g), not this row — citing F15 from this table shipped a wrong number once, which is why this note exists. |
 | F11 | M6 | **Training update for automation**: teach the Automate tab (campaign beats + manual coverage); author `auto_channels` presets on missions/walkthroughs that should focus the player (mechanism landed 2026-07-07, no content uses it yet); revisit strict-gating text where an authored preset runs a system the steps used to have the player run. | planned | **RESOLVED (2026-07-07)** — rbmk_ar + pwr_automation missions, auto_channels presets exercised end-to-end (startScenarioAuto gate harness), Chernobyl AR tie-in. Pre-existing missions deliberately left bare (triggers tuned against bare-plant trajectories). |
+
+---
+
+## 2026-08-08-develop-d — #425: the containment passive sink learns saturation ΔT, on a lag
+
+**Ruling.** *(OWNER RULING, 2026-08-08: "Do next as recommended.")* — Option B of the #425
+options (saturation-ΔT-keyed passive-sink enhancement), SBO boil-off parked **under the
+30 psig spray hi-hi**, bundling the #386 burn-pin extension and the #384 declaration
+re-measure. The endorsed recommendation is quoted verbatim on #425 (HR11).
+
+**Decisions this entry records:**
+- **The enhancement is a LAGGED state, not a static curve** — `_ctmt_sink_enh`, target
+  `1 + gain·max(0, T_sat(steam partial) − ambient − knee)` clip [1,25], first-order lag.
+  Static was measured infeasible: the SBO must park ≤ ~22 psig (see next bullet) while the
+  sev-0.25/0.5 pulse peaks sit ABOVE that park with 1.3/4.6 psi of hi-hi margin — one
+  monotone curve eats the pulse grading to brake the park. Pulses dwell 20–40 s above the
+  knee; the SBO climb runs ~6.5 min. TIME separates the families; pressure does not.
+- **The burn margin, not the spray point, binds the park.** The H₂ burn deposits
+  `press_gain·h2_burn_gain·6.8 v/o` = **+32.4 psi** on whatever base it finds, so park +
+  32.4 must clear the 60 psig design pressure — park ~22 psig gives the SBO burn ~9 psi of
+  margin; the ruled 30 psig cap alone would put it 2.4 psi OVER design. (The plan-review
+  analysis had this wrong twice — a +14.1 psi deposit that forgot `press_gain`, and an
+  18.3 psig drained-base park that is actually ambient — recorded in TUNING_LOG.)
+- **Constants**: knee 55 °C (the stuck-PORV family's ΔT — TMI-class equilibrium moves
+  9.4 → 9.3 psig only), gain 0.13 /°C, lag 120 s; `slb_ctmt_gain` 0.0035 → **0.0045** (the
+  MSLB is the ONE pulse long enough to charge the lag — it braked 52.0 → 39.0 psig and
+  thinned the limiting-case ordering to 2.9 psi; 0.0045 re-solves to 48.2 psig = 80 % of
+  design, mid-band both sides, the TR-3 shape). `press_gain` NOT re-solved (perturb: ×1.03
+  flips CA-20 — it is knife-edged elsewhere).
+- **Grading note, owner-review**: the sev-0.25 peak lands 30.1 psig — 0.12 psi above the
+  hi-hi (was 1.3 psi). The boundary's thinness is the plant's; declared at the constants.
+- **New pins live in MD-3** (engine-direct is layer-invariant under SBO — `acAvailable` is
+  the engine's): boil-off max < hi-hi until the H₂ era (a damage-flag-bounded window
+  catches the burn it exists to exclude — the burn fires a hair before 1200 °C), burn peak
+  in (hi-hi, design) — **the #386 containment-holds pin is now family-wide** — and the
+  boil-off-alone premise. CA-16 leg D integrates the engine's own live sink (`e^(−∫sink·dt)`,
+  reads `_ctmt_sink_enh` per sample; gain 0 collapses it to the old 1200/τ_eff exactly).
+- **#384 Rev 13(j) residual measured CLOSED before this change** (full break bottoms
+  14.8 psi (0.102 MPa) abs vs a 14.7 psi (0.101 MPa) building, before AND after — the
+  #385/#408 work closed it in passing); `Manuals/12` §7.2 records the closure.
+- One new private state field (`_ctmt_sink_enh`, seed/migrate 1.0, legacy-save probe
+  extended, NOT §6.3). Injection lever: `passive_sink_dt_gain: 0` restores the pre-#425
+  plant **bitwise** (proven against the BEFORE record; reds both MD-3 pins 0.5556/0.7743).
+
+**Gates**: run_all 44 at baseline (zero baseline moves — run_behavior 67/2xf unmoved on the
+retune). Full Q0 before/after: `Diagnostic/TUNING_LOG.md` 2026-08-08-develop-d.
+
+## 2026-08-08-develop-c — #386 stage 3: hydrogen (the ruled burn) + #387 bundled
+
+**Rulings.** The 2026-08-05 burn ruling binds (TMI-2-style one-time deflagration + latch,
+containment holds — indication-only and end-state rejected); one new ruling at plan review
+*(OWNER RULING, 2026-08-08: selected "Above 30 psig" — burn peak clearly above the spray
+hi-hi so the ESF answers it; a selection, not verbatim words)*.
+
+**Decisions this entry records (the why lives with each):**
+- **H₂ rate = q_ox, one constant.** d(H₂)/dt is exactly proportional to the oxidation heat
+  (same Baker-Just event, 2 mol H₂ + 190 kJ per mol Zr; App. K mandates Baker-Just for
+  "hydrogen generation" by name), so the rate law is sourced-by-construction and `h2_gain`
+  is the single fitted scale — bracketed by Ginna's 0.30 % CWO (mitigated ≪ 4.1 v/o) and
+  TMI-2's 7.9 % (unmitigated ignites). NO second f_unc (the oxide integrator carries it);
+  the ledger telescopes to Δw — MD-11 pins the identity exactly.
+- **Currency = v/o of Ginna's SOURCED 1.0×10⁶ ft³ free volume** (UFSAR ch15) — no
+  separate conc_gain; only the product would be observable.
+- **Two-node transport, GEOMETRY-gated** (`_rcs_h2 → _ctmt_h2` while a containment-side
+  path *exists*): flow-keying would stall on the burn's own backpressure spike and alias
+  the safety duty cycle; one-node either drops mass or stalls it on valve phase (the SBO
+  boil-off family decides it). SGTR-flagged leaks hold their H₂ — the CA-16 leg B fence
+  extends to hydrogen; a closed block valve holds it (the isolation lesson survives).
+- **[8.0]/[85] adopted as TEMPLATE-CORROBORATED** — bracketed NUREG-1431 ice-condenser
+  igniter text (the #380 placeholder class, adjudicated in the open) that TMI-2's own
+  analysis happens to corroborate (GEND-061 §4.6.3: 7.9 % preburn, 86 % consumed). NOT
+  [tune] — moving either re-litigates the ruling. `status-owner-review` on #386.
+- **Burn ΔP anchored ADIABATIC**: GEND-061 measured ≈27.5 psi and attributes 5 psi to
+  in-burn cooling (fig 4-13); this model deposits instantaneously and lets the sink terms
+  cool afterward, so the ~32.5 psi adiabatic form is the correct anchor — and it is what
+  puts the drained-base family (32.4 psig) on the ruled side of the 30 psig hi-hi, where
+  the measured-peak form landed 27.2 (under). Q0 table in TUNING_LOG.
+- **The one-time latch stands in for O₂ depletion** (no O₂ ledger, declared): H₂ may
+  re-accumulate past ignition with no second burn — TMI-2 burned once. Post-melt the
+  ledger integrates a term already past its validity; the published value clips at 100
+  (the #326 declaration class).
+- **Recombiners: spray-row clone, auto-only, fitted SLOW** (no capacity in any lane's
+  corpus; existence sourced WTSM 5.0 + NUREG-0737 II.E.4.1; auto-start/auto-secure a
+  declared inference — real ones are manual). Measured: **no family exists where they
+  prevent ignition** (restore-at-0.8-v/o still burns — the excursion outruns restored
+  injection above ~1652 °F (900 °C) clad); they win the post-recovery tail at exactly
+  their e-fold. That is the prototypical shape and is declared, §12.4e.
+- **The containment-holds pin is family-scoped** to LOCA/stuck-PORV: the SBO boil-off
+  base passes design pressure on relief steam alone BEFORE any H₂ exists — pre-existing
+  stage-2 behavior (ledgers 0.000 through the crossing), filed **#425** with the numbers
+  rather than absorbed into this change.
+- **#387 sequenced first, own commit** — its freshness gate (`verify_manual_data.js`)
+  then enforced the `ctmt_h2` picker entry the moment the instrument landed. The 14
+  missing instruments' display entries were authored BEFORE regeneration (I-12's fallback
+  prints raw ids); the derived OTΔT/OPΔT channels are deliberately offerable failure
+  targets (a computed protection channel failing independently is a real rack's
+  summing-amp failure — my call, stated).
+
+**Gates:** run_pwr 246, run_m4 43/43 285, run_contract 175, run_hr3 31, run_reachability
+76, run_behavior 67p/2xf (CA-24), run_meltdown 12 (MD-11 +1 leg), verify_manual_data 151,
+manuals Rev 14 re-stamped/packed (item n), run_manual_units 528 pairs. Fences unmoved:
+run_scenarios 3/3, run_campaign 51/51 3039. Injection verification three ways with
+distinct signatures; perturb h2_gain ×1.03 → 10/711 moved, zero flips.
+
+## 2026-08-08-backshop-a — the #221 audit lane moves to a directory of its own (`C:\grok_build\RD_Audit`)
+
+**Claim.** The audit lane is no longer a work lane wearing a settings file. It is
+`C:\grok_build\RD_Audit`: the auditor's own `CLAUDE.md`, a `findings/` scratch directory, and a
+**detached-HEAD worktree at `tree/`** holding the source under audit. `backshop` is an ordinary lane
+again and has its orientation document back.
+
+*(OWNER RULING, 2026-08-08: "It will audit things 'blind' without preconceived notions or the logic
+behind the choices", and "Ts wont be a new branch." Asked whether backshop should stop being the
+audit lane and get its `CLAUDE.md` back, the owner selected **yes — hand it back**; asked whether
+harness mechanics count as "the logic behind the choices", **mechanics yes, judgments no**.)*
+
+**Why.** The 2026-08-06 arrangement armed `backshop` with a gitignored `settings.local.json`, which
+bought a no-flag launch at a stated cost: **ordinary non-audit work in backshop also ran without
+`CLAUDE.md`** — no lane rules, no merge-conflict list, no gate baselines. A dedicated directory buys
+the same no-flag launch and pays nothing, because nothing else happens there.
+
+**What the shape buys, beyond tidiness.**
+
+| | before | now |
+|---|---|---|
+| RoE 1 "no fixes" | prose in the charter | `deny` on `Edit`/`Write` into `tree/**` and all three work lanes, plus a detached HEAD an edit could not reach a branch through |
+| auditor's orientation | `AUDIT_CHARTER.md`, opened by hand after `CLAUDE.md` was excluded | `RD_Audit/CLAUDE.md`, **auto-loaded** — the one channel that cannot be forgotten |
+| ordinary work in the lane | ran unprimed | there is no ordinary work in the lane |
+
+**THE TRAP THIS INTRODUCED, and the check that closes it.** The exclude list carried
+`**/grok_build/**/CLAUDE.md` as belt-and-braces. That glob **also matches
+`RD_Audit/CLAUDE.md`** — the auditor's own orientation, the one file in the lane that must load. An
+auditor handed no orientation measures protection engine-direct, sees a plant with no ESF arms at
+all, and files false findings; and like every other failure in this programme, the outcome is a
+clean-looking audit rather than a red. So: **the list is now fully explicit with no wildcards**
+(`audit_preflight.js` check 3b), and check 7 asserts the orientation is deployed, current, and *not*
+excluded. Covering a newly-added worktree was always check 3's job, not a glob's.
+
+**Second source of truth, handled rather than accepted.** `RD_Audit/CLAUDE.md` sits outside the
+repo, so it cannot be tracked. It is therefore **generated** from `Blueprint/AUDITOR_ORIENTATION.md`
+by `tools/audit_deploy.js`, never edited in place, and preflight refuses a slice when the two have
+drifted. `.gitignore`'s own note records this repo learning that lesson with `CLAUDE.md` on
+2026-07-29; a verified mirror is the answer, a second copy is not.
+
+**`AUDIT_CHARTER.md` §1–10 MOVED to `AUDITOR_ORIENTATION.md` — moved, not copied.** The charter is
+now purely the primed session's document (the lane, prep, close-out, history). Two documents both
+describing how to audit will disagree eventually, and the loser is the one the auditor is reading.
+
+**Standing trap for whoever prepares the next slice: `tree/` does not follow `develop`.** It is
+pinned, and *the tooling the auditor runs comes from that pinned commit* — including
+`hook_lane_status.js` and `audit_preflight.js`. Measured while building this: the hook run from the
+new lane reported "UNRECOGNISED tree" and omitted the audit row entirely, because `tree/` was still
+at develop's tip and had the old three-lane list. Re-point it in prep step 3 (`AUDIT_CHARTER.md`
+§2a) or the auditor audits stale code with stale tools.
+
+**Gate.** `run_hardrules` 235 → 237: +1 for `AUDITOR_ORIENTATION.md`'s single ruling citation
+(verified by removing the file and re-running: 235), +1 net across the charter rewrite. The
+rewrite's first draft put the dates in the **bullet prefix** rather than inside the citation window
+and HR11 failed both — the format is `(OWNER RULING, <date>: "<verbatim>")` and nothing else counts.
+`run_all --fast` otherwise at baseline.
+
+## 2026-08-08-develop-b — #380 resolved by premise inversion (single-signal AFW), #355 feed program, #358 NO FLOW
+
+**The decision that mattered was reading the brackets.** #380's premise — lo-lo "sourced real
+~30–32 % NR" against our 17 — cited NUREG-1431 Tables 3.3.1-1/3.3.2-1, and those tables print
+`[30.4]%`/`[32.3]%` **in square brackets: the STS template's plant-specific placeholder**, not a
+plant's setting (they are also in Vol 1 ML12100A222; the previously-cited ML12100A228 is the
+Bases volume and carries no setpoint numbers). The plant-specific corpus values: **Ginna 17 %
+exactly** (UFSAR ch10 ML20339A040:1655), W training plant 11.5 % (ML11223A293:271). Since #419
+anchored this plant to Ginna, the shipped 17 was the sourced value — the claim survived #220
+claim 6 and the #374 evidence pass because both verdicted the *mechanism* (single signal) and
+inherited the *number*. The trip did not move; TR-14 (40.0 s, 25–60 band, 11.0 s window) and
+the #135 anchor are untouched.
+
+**What moved is the invented half** *(OWNER RULING, 2026-08-08: selected "Single-signal AFW")*:
+the AFW ESF actuation 20.0 → 17.0, same instrument/direction as the trip — the sourced design
+(WTSM §5.7 cond. 1; Ginna TS Bases + NUREG-1431 Bases: the trip function *"also performs the
+ESFAS function of starting the AFW pumps"*). §8.19 struck in the register. **No 60-s start
+delay modeled**: Ginna's Table 15.2-4 AFW-at-115-s is analysis assumption I (licensing
+conservatism), not hardware — the pump/delivery lags are the honest model. The teaching window
+survives in the real ordering: warning→trip 11.0 s pre-trip, AFW fighting the drain post-trip
+— and on a TOTAL feed loss PI-4 (fw_flow < 0.10 above P-9, the real condition-3 analog) has
+AFW running at 2.5 s with level still 64.9 %, which the manuals' "AFW at ~37 s" timeline had
+silently predated. `afw_start_level` deleted from `pwr_config` (zero readers). CC-3 dip
+38.7 % ≥ 8; run_behavior 66/2 xfail at baseline.
+
+**#355** *(OWNER RULING, 2026-08-08: selected "Program to 65 %")*: `feed_sg` gains
+`program: 65` + `spSlew: 0.1` — capture still seeds spEff so engage is bumpless, then the
+working setpoint slews to the program (the rods_tavg mechanics, `control_kernel._trackChannel`).
+Measured: engage at 32.9 % → 65 in ~6 min, crest 68.0, settles 64.5–65.5. The save/load suite's
+free-setpoint fixture (`setSp('feed_sg', 70)`) stopped being free state by design; re-pointed —
+programmed channel asserts sp RE-DERIVES to 65, operator-sp round-trip moves to `boron_conc`
+(720 vs ~705 capture). run_autoctl 30/30.
+
+**#358 option A** *(OWNER RULING, 2026-08-08: selected "Option A")*: `feedNoFlow` = commanded speed > 10 % ∧
+`condensate_flow` < 0.02 — **main-feed-only deliberately**; `fw_flow` is main+AFW, so the AFW
+start would mask exactly the dead train being reported. Corner word NO FLOW ranked ABOVE SAT HI
+(the blackout spends ~10 min engaged-unsaturated while winding 100 → 120 %; SAT HI only arrives
+at the rail) and a `numberWarn` hook ambers the gpm demand box in every mode (the LOOP case
+freezes 355 gpm mid-range — no rail, corner ISOLATED, and only the number kept lying). Demand
+never written (#329). Injection: predicate blanked → both new board_check pins + 3 selfTest
+cases red on the old behavior; restored → 222 checks green.
+
+Docs: Rev 14 items (k)/(l)/(m) stamped+packed (run_manual_rev 15/15); `pwr_esf.js` re-measured
+wholesale — it still taught a 12 % trip, an 11.03 MPa SI, AFW-at-level-19 and a ~25 % AFW hold,
+all four stale before this pass; DESIGN_CRITERIA's §8.19 house-pattern example now carries the
+second half of the lesson (a declared departure retires when the evidence improves).
+
+## 2026-08-08-develop-a — #385 pressurizer inventory NODE, stages 0–3 (bundle: #415/#337/#334/#354)
+
+The RULED follow-on executed (staging on #385; plan-review rulings 2026-08-08: hold the
+derived +350 net, low-Δp law out of build scope, slider option (a)). Decisions of record —
+full narrative in `TUNING_LOG` 2026-08-08-develop-a:
+
+- **The node ships in the credit form, not the flow-ledger-with-flash form the plan drew.**
+  `pzr_mass_frac` carries `pzrNodeLevel` = reconstructed base+mass backbone + a flow-accreted
+  void CREDIT (admittance split applied per-displacement; unweighted return; floor 0);
+  no-leak families are BITWISE the frozen line, pressure bitwise everywhere. **The flash
+  outsurge term was measured unnecessary at every board severity and NOT built** — the
+  backbone empties the node at loop-demand rate (TRUE-empty 4–212 s, always well before
+  uncovery; sev 1.0 ≈ 1.8 s); a flash term would halve the DBA empty-time, change no story,
+  and cost 3–4 `[tune]`s plus a heal rule. Deviation from the approved plan's component (c),
+  flagged to the owner on #385 with the arithmetic — the plan's sizing target was measured
+  on the severity map #408 retired. **RULED (OWNER RULING, 2026-08-08: "Let's not do the
+  flash term if you think it won't affect gameplay in a negative way.")** — condition
+  affirmed on the measurements; the term stays out, `Manuals/12` §12.5's flash-evaporation
+  row already declares the class. The node project is complete at the credit form.
+- **No level constant moved** — "touch one, re-solve the set" satisfied trivially; both
+  documented deception targets verified on the live law (net +350; 78.33 at void 0.2).
+  Mission crest unchanged by construction (free-play 62.2 % measured); **the 2026-08-08
+  crest ruling applied**: no free re-key exists, the >65 % state cue stands, the #418/#419
+  crest review item closes measured.
+- **MD-5 adjudicated (HR10)**: the ATWS+DEG melt endpoint stands at 5285 s — the old
+  <4000 s clock was paced by the retired re-lift (lying-high gauge propping the heaters).
+  Window 4000 → 6000 (MD-1's precedent), inventory band config-derived; both forms pass on
+  the pre-node engine.
+- **#415 measured NOT reproducing** post the 2026-08-07 solid gates (arrest at 109.3–109.4 %,
+  safeties cycling; the walk-down rides saturation legitimately). **No solid-wins predicate
+  shipped** — the CA-19 precedent binds (a predicate change with no reachable state behind
+  it is code no A/B can see).
+- **#334 item 3 found ALREADY SHIPPED by #408 wave 1** (`Break Size / % of a full pipe
+  shear / 0–100 / default 40`, leak_scale 0.04) — the 2026-08-08 option-(a) ruling confirms
+  shipped state; the stage-6 memo's premise was one wave stale when the question was put.
+  **The low-Δp complaint also resolved by measurement**: natural post-reflood states end at
+  15–19 psi ≈ the building (the #384 vent + #408 re-clock moved it); the ~390 psi figure
+  belongs to CA-19's forced-solid injection balance, which is the config solve by design.
+- Record hygiene: F14/F15 flag rows currency-noted (above); `Manuals/12` §6.3 swept for the
+  #408 two-scale retirement, §7.3 rewritten node-form, §12.4c relief line corrected;
+  `pwr_config` §12.4c ledger comment and the retired `level_per_mass_surplus` name swept.
+
+## 2026-08-07-develop-g — #419 waves 1–3 BUILT (RECONSTRUCTED — not the authoring session's record)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session** (the
+2026-08-07-develop-e session's plan WP2, owner-approved); the authoring session wrote no entry
+here or in `TUNING_LOG.md`. Decisions of record, quoted not re-measured — full write-ups on #419:
+
+- **Wave 1 (`1d11252`)**: pace compression retired, real Mode 5↔1 rates (stage-1 D3 ruling).
+- **Wave 2 (`8ba4d84`)**: F15 relief K 3144 → **2500** = the physical net under the RULED F14
+  heater. K_phys ≈ 304 is right in isolation and unshippable under F14 (the stuck-PORV race
+  inverts) — the pair is marked [derived-net, F14-coupled: re-solve together].
+- **Wave 3 (`413ae06`)**: the Ginna re-anchor — ladder 7.03/7.31/7.58/7.33 MPa (§8.34 retired),
+  program 286.0 → 304.5 °C, dump 28 % (D1, ride-out measured surviving), reference boron 683 →
+  705 (`rho_excess` re-solved at the WBN quote temperature — the old solve conflated
+  measurement and anchor temperatures).
+- Open on the issue: TMI deception crest ~65 % vs the 75 % annunciator (level-constants-set
+  ruling if the cue matters); TR-1i strict xfail #420 (coupled #378). Gates: 42 runners at
+  baseline per wave.
+
+---
+
+## 2026-08-07-develop-f — #418 tier 2 BUILT, waves A1–B2 (RECONSTRUCTED — not the authoring session's record)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session** (the
+2026-08-07-develop-e session's plan WP2, owner-approved); the authoring session wrote no entry
+here or in `TUNING_LOG.md`. It ran 13:05–14:35 local — before both `-d` and `-e`; the letter
+follows `run_session_labels`' newest-first rule, not the clock. Decisions of record, quoted not
+re-measured — full write-ups on #418:
+
+- **A1 (`174009c`)** derived SG pressure clock (+223 → +43 psi/s at full generation; five
+  transients re-learned). **A2 (`9414ea0`)** SG mass ledger — `K_sg_level` retires into
+  geometry (Ginna 35-s trip vs 78-s boil-dry reconciled). **A3 (`2c7a507`)** sourced MSSV
+  capacity 0.84× rated (Ginna bank). **B1 (`ae025fc`)** tube node + transported legs under the
+  invariance rule (1/h1 + 1/h2 = 1/h_sg) — steady anchors exact, `run_otdt` 46/46; new `[tune]`
+  transport constants `tau_hotleg_s` 1.5 / `tau_coldleg_s` 4.0 ÷ flow (unsourced). **B2
+  (`fcf7d66`)** manuals pending-Rev-14 items (a)–(f) + close-out; #418 carries
+  `status-owner-review`.
+- Traps rescued to `CLAUDE.md` themes: split-node capacity must come OUT of the parent node
+  (C_tube silently reopened the ruled heatup pace, caught at 260.7 °C); knife-edge claims
+  oscillate under re-clocking (TR-3 re-pinned on mechanism).
+
+---
+
+## 2026-08-07-develop-d — #419 stage 1: the cascade table posted for sign-off (no code)
+
+**The deliverable** is on the issue — the full current → proposed → source → touches table:
+https://github.com/TH462/Reactor-Dynamics/issues/419#issuecomment-5221487750. This entry records
+the decisions inside it and the evidence taken this session.
+
+**The anchor-plant declaration got its missing number.** Ginna's no-load SG pressure is **1005
+psig**, sourced (TS Bases Rev 101, ML20339A221, B 3.3.2: *"steam line breaks occurring from no
+load conditions (1005 psig)"* — fetched this session), and Psat(547 °F) through this sim's own
+`_tsat` correlation lands within 1 % of it. The proposed ladder is therefore **Ginna's own, rung
+for rung** — 1020/1060/1099/1063 psi (7.03/7.31/7.58/7.33 MPa): anchor sourced, pop = the 1085
+psig first-lift MSSV (UFSAR ch 10), ADV by the sourced WTSM §7.1.3.3 placement rule (corroborated
+by Ginna's own 1005–1060 psig ARV band), reseat derived at the current 3.3 % blowdown. **Landing
+it retires `DESIGN_COMPANION` §8.34** ("the ladder itself is not sourced") — the departure
+becomes a citation.
+
+**Program endpoints: sourced ends, declared 4 °F top gap.** 546.9 → 580.2 °F (286.0 → 304.5 °C),
+span 33.3 °F vs Ginna's real 29 (547 → 576 °F): with `h_sg`/`heat_gen_coeff` held fixed (the
+#418 B1 invariance identity), our Q/h_sg = 32.6 °C vs Ginna's implied 29.9, so the top runs
+4 °F high. Declared rather than chased — closing 4 °F by moving `h_sg` would reopen the entire
+thermal identity for a cosmetic end.
+
+**F15's proposed column is a bracket, not a number** — re-solve at wave inside [K_phys
+derivation, 600-measured-green]. A bare number would repeat the original F15 sin (solved against
+the suites, HR10). The K_phys method is the `K_steam_pressure` C_P precedent; the dome-only
+order-of-magnitude is ~300-class but mixes bases (declared ~7,500-gal RCS vs power-scaled
+pressurizer), so the honest derivation is wave-work on ONE basis. New geometry input landed:
+pressurizer high-level 650 ft³ = 87 % ⇒ ~747 ft³ total (TS Bases B 3.4.10 ACTIONS).
+
+**A provenance correction recorded, no reopen proposed**: the ruled `porv_flow_max` comment
+cites "Ginna 210,000 lb/hr"; Ginna's own TS Bases B 3.4.11 says **179,000 lb/hr at 2335 psig**
+— the 210k figure is NUREG-1431/4-loop-class. Ginna-based scaling gives 2.13e-4 vs the adopted
+2.5e-4, inside the ruling's own rounding. Comment provenance fix owed at the wave's docs pass.
+
+**Three decision rows put to the owner** (recommendation-first): **D1** `steam_dump_max` — keep
+the ruled, WTSM-sourced 0.40 (recommended: it is an owner ruling with its own source, and the
+full-load-rejection ride-out is taught at 40) vs adopt Ginna's sourced 28 %; **D2**
+`K_surge_level` 0.4 → the real band 0.021–0.050 — recommended into the pace wave; measured cost
+(perturb sweep, identical at 0.27 and 0.05) is two probe re-derivations (TR-1's PORV-lift claim,
+peak 16.24 → 15.59/15.42 MPa, the A1 peak-flattening class; CA-21's dry-core fixture vacuous,
+2367 → 0 samples) and **the old TR-1c/§8.21 wall did not reappear** — its premise went thermal
+at #418; **D3** the boron pair (`boron_adjust_rate` 2.0 ppm/s, `boron_sample_lab_s` 60 s) goes
+real — recommended into the pace wave, rates re-derived from WTSM §4.1 (on disk, backshop).
+
+**The pace family's honest total, measured**: the thermal ramp is ALREADY real-class — fresh
+full-stack re-measure puts the Mode 5→3 heatup at ~12.3 plant-h / ~30 °F/hr steady (the #418
+clock stretched the recorded 11.3 by ~8 %, consistent with A1's own hold extension). The ×12.6
+lives in the pressurizer clock (`setpoint_pressurize_slew_mpa_s` 0.02 → 1.586e-3: cold→NOP
+10.8 min → 2.26 h) and the boron pair. The issue's "real heatup ≈ 5.8 plant-days" is a real
+plant's procedural total including holds this sim deliberately does not model; the honest
+modeled Mode 5→1 lands ~16–18 plant-h. Also corrected on the issue: the E-group dividers
+already moved at #408 (`eccs_cooling_gain` 1.0 — at physical; `blowdown_gain` 0.25 — re-solved
+on the real clock), so that ride-along is RE-AFFIRM, not work.
+
+**Status**: #419 `status-needs-ruling` (sign-off blocks stage 2 — the sequencing ruling,
+recommended pace → F15 → ladder). Owed fetches named in the table: Ginna UFSAR ch 5 text
+(ML20339A035 is the figures volume), TS proper (OTΔT Ks, P-12, MSSV SR table), PTLR. No code
+this session; `run_all` 42 at baseline, no re-baseline needed (`run_hardrules` 225/0 unchanged).
+
+**SIGNED OFF AND WAVE 1 BUILT (same session)** *(OWNER RULING, 2026-08-07, verbatim: "D1:
+measure first. […] D2: move it. D3: go real. Stage 2: go with recommendation.")*. Decisions of
+record from the build:
+
+- **The boron pair's "go real" changed shape on contact with the code, and the finding is the
+  record**: `boron_adjust_rate` 2.0 was a GHOST — no engine read, no clamp, while raw
+  `set_boron_adjust` commands ran any rate (a §14 fixture drives 3.0 ppm/s) and both automation
+  channels meter at their own 0.05. The ruling landed as the constant becoming the LIVE ceiling
+  (0.14, derived from WTSM 4.1's 10-gpm BA valve / 80-gpm blend / 4 wt % (7000 ppm) storage on
+  the declared 7,467-gal currency; engine clamps ±). The channels sit beneath it untouched. A
+  `[tune]` value nothing consumes is documentation wearing a tag.
+- **TR-1's PORV-lift assertion was the compressed surge gain's rendering, and the honest gain
+  inverts it**: peak 16.24 → 15.42 MPa, spray contains the full-rejection ride. Adjudicated as
+  the plant being RIGHT (Ginna's loss-of-load analyses lift pressurizer relief only with no
+  pressure-control credit), probe re-derived with the mechanism half pinned (dump saturated +
+  self-throttle + Tavg 312..335) so the inverted claim cannot pass hollow.
+- **`K_surge_level` moved position-preserving** (0.4 ÷ 12.6 = 0.032, mid-band of the
+  un-compressed sourced 0.0214–0.0502) rather than re-fitted — the compression retires, the
+  fit's information survives.
+- **§14.1's ECCS trust-class row was stale since #408** — injection went to the real Ginna
+  pump scale that wave and the trust table never heard. Retired with attribution; the
+  Compressed class now holds ONE member (cooldown depressurisation).
+- Re-measures with numbers: NOP at ~1.8 plant-h from the command (thermal swell rides ahead of
+  the 2.26-h pure slew), accumulator window ~14 plant-min (~+9 → ~+23), full ride ~12.3
+  plant-h / 30.0 °F/hr steady; PI-3 leg budget 3000 → 8000 s; §14 recovery window 300 → 900 s.
+  Manuals Rev 14 pending item (g); CHANGELOG carries the wave.
+
+**WAVE 2 (same session) — F15 IS ANCHORED, AND THE ANCHOR IS THE F14 COUPLING.** The stage-1
+bracket was [K_phys derivation, 600-measured-green]; the measurement walked out of it and the
+walk is the decision record:
+
+1. **K_phys ≈ 304 is real physics** — the C_eff derivation (dome + liquid-flash, one
+   power-scaled-Ginna basis) lands within 2 % of the pre-F15 original 300, and the same method
+   on TMI-2's actual geometry reproduces its ~6-minute saturation. The old suites that forced
+   the 600 solve (`run_meltdown`, `run_scenarios`, red at 300–450 then) are GREEN at 304 on
+   the current plant — the compensation target was the compressed clocks, all since retired.
+2. **But F14 forbids shipping it**: at relief 0.076 vs the ruled heater 0.55 MPa/s the
+   stuck-PORV race INVERTS — the heaters hold pressure while the valve drains the pressurizer
+   to 0 % (measured), so the TMI deception (level RISING on a voiding loop — Tier-A content,
+   historical fact) never forms, and the campaign's TMI cluster went 43/51. K=3144 had been
+   the silent second half of the F14 pair.
+3. **Shipped: K = 2500 [derived-net, F14-coupled]** — K×2.5e-4 − K_heater = the plant's own
+   physical net (0.0744 MPa/s). Not a fit: the only free parameter is F14, which is RULED and
+   re-affirmed; the constant re-solves with F14 if that identity ever moves (stated at the
+   constant). Measured at 2500: saturation ~5 min, deception crest through the 75 % annunciator
+   at ~25 min (the #418 A1 owner-review crest plausibly restored), TMI 8/8 + qualify 5/5 +
+   meltdown/scenarios green.
+4. One content re-key on facts (`pwr_tmi2_p3` FULL row gains `hpi_active` — the third re-key
+   of that grid, same reason class as #407's two) and one guard re-band (PI-3 leg 1, 30 → 14 %,
+   the honest ride vents real inventory before the scram).
+
+**WAVE 3 (same session) — THE OPTION-C RE-ANCHOR EXECUTED. Decisions of record:**
+
+1. **The anchor's two sources agree through the sim's own physics** — 1005 psig (TS Bases
+   B 3.3.2) and 547 °F (UFSAR ch 10) meet at Tsat(7.03) = 546.9 °F. The ladder that follows is
+   Ginna's rung for rung, which RETIRES §8.34 (span 79 psi vs the real ~80 — the "~110 psi
+   high" departure is gone). The ADV band shrank 0.25 → 0.12 by proportional-margin derivation
+   on the 2.3×-narrower span.
+2. **D1 executed by the owner's decision rule**: the ride-out survives at 28 % (measured — no
+   scram, deeper self-throttle) → Ginna's sourced 28 % adopted, superseding the 2026-07-31
+   40 % ruling by the owner's own measure-first instruction. The two declared teachings it
+   narrows (the §8.21 cliff 7.1 → 3.7 °C; TR-1k's non-monotonicity → 3.1 pts) survive smaller,
+   bands re-derived.
+3. **The reactivity solve was quietly conflating two temperatures** — the 975-ppm anchor's
+   quote point (WBN 557 °F) and this plant's no-load anchor. Decoupled; `rho_excess`
+   0.087544 → 0.087354; the HZP IC lands 704.8 ppm with criticality at step 319, so the
+   startup's 1/M content survives with new labels. Two latent linearizations in the
+   HFP-follows check fixed on the way — the anchor chain now predicts the engine exactly.
+4. **The turbine-trip burst now equals the real operating→pop margin** (~1.9 MPa both) — the
+   knife-edge is Ginna's own. The shipped plant holds it (ADV at 100 %, settle under reseat);
+   the bare-dump channel rig grazes (34/600 samples), and its check now claims graze-vs-park.
+5. **TR-1i is the second strict xfail (#420)**: 5.28 vs the sourced ≤ 5.00 on the steep
+   program, with the channel's speed thresholds corrected TO the sourced WTSM ladder this
+   wave (the old ladder's 'fast' at 7.2 °F was unexercised slack). Not widened. The #378
+   rejection criterion is superseded by events — re-visit together.
+6. **The TMI deception crest is now an OPEN OWNER-REVIEW question**: 69.4 % (#418 A1) →
+   ~75 at 25 min (wave 2) → **~65 with collapse at 47 min (wave 3)** — the 75 % annunciator
+   is unreachable in free play on the final plant. The qualify exam re-keyed to a state cue;
+   the level-constants set (level_per_void/level_per_mass/level_per_tavg) is where a
+   restoration would be tuned, and that set is ONE object (the #337 rule) — its own change
+   if ruled.
+
+---
+
+## 2026-08-07-develop-c — tier 2 RULED: the secondary joins the primary's fidelity (A+B, ladder stays), and content-follows-physics becomes standing law
+
+**THE SCOPE RULING** *(OWNER RULING, 2026-08-07: selected **"A+B, keep 297 °C"** from four
+options — a selection, not verbatim words, the #408 convention)*: the secondary gets (A) the
+inventory/pressure re-clock from one sourced basis (Ginna anchor, per-MWt scale), THEN (B) an
+SG tube-side node + hot/cold-leg transport delays — sequenced so the node is fitted on real
+currency, the #408→#385 precedent. **The pressure ladder (8.23 / 8.77 / 9.31 / 9.0) is ruled
+identity and does not move**; option C (re-anchor to a real-class ladder) is out of tier 2 and
+survives only as a possible future identity ruling. **The #408 thermal fence is NARROWED by
+the selection**: the ×12.6 Mode 5↔1 *pace* compression stays; transient loop *structure* is
+declared not part of that fence (option text agent-authored, owner-selected).
+
+**THE STANDING DIRECTIVE** *(OWNER DIRECTIVE, 2026-08-07: "changing the manual or training or
+scenarios should never be a consideration for weather to change the physics … Documentation
+and gameplay always follow the model/physics, not the other way around.")* — content-churn
+cost is never an input to a physics decision; content re-authors to follow. Given while
+probing whether the option-C rejection rested on content churn (it half did; the surviving
+grounds are that the 297 °C anchor is a ruled identity and the ladder's *ordering* is what
+teaches). Recorded in CLAUDE.md's HR9 block the same session.
+
+**The plan** (approved same-session, plan-mode file + #418): three explorer sweeps + a design
+pass produced wave A (K_steam_pressure 2.0 → 0.30 derived from an effective capacitance
+C_P ≈ 1,025 MJ/MPa — the liquid's sensible heat dominates, dome-only measured-rejected; the
+steam break re-expressed as its own mass-flow constant 0.75 because the `/K` division
+otherwise quintuples break mass flow; `sg_mass_frac` state + piecewise level map whose
+in-window slope reproduces K_sg_level 1.371 %/s EXACTLY so TR-14's Ginna event holds while
+total inventory honors the 77.5-s boil-dry; MSSV capacity → 0.84× Ginna) and wave B (series
+conductances with 1/h1 + 1/h2 = 1/h_sg and shared flow×dry factors, which makes the four-site
+steady-state identity `Tavg = Tsat + Q/h_sg` INVARIANT — no formula moves, ICs get seeds;
+first-order leg lags, no delay lines; raw thot keeps the DNB datum; OTΔT measure-first with
+the sourced WTSM Tavg lead-lag as the pre-named remedy). Gate reds are pre-inventoried as
+mechanical widenings vs re-derivations — nothing absorbed silently. Full plan on #418.
 
 ---
 

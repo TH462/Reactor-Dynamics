@@ -30,7 +30,6 @@
       document.documentElement.setAttribute('data-channel', c);
       if (c !== 'public') document.title = '[TEST] ' + document.title;
     }(window.RD_CHANNEL || 'dev'));</script>
-    <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
 
@@ -69,23 +68,63 @@
   <p class="lede">Short version: no accounts, no ads, no cross-site tracking.
   The simulator runs in your browser.</p>
 
-  <h2>What is collected</h2>
-  <p>Your plant state and training progress stay on your machine (browser local
-  storage) and are never uploaded by the simulator.</p>
-  <p>The only automatic collection is an anonymous <strong>page-view
-  count</strong> from Vercel Web Analytics (the host for this site): page
-  address, referring link, and coarse device info (country, device type,
-  browser, OS). It sets <strong>no cookies</strong>, stores no persistent
-  identifier, and cannot follow you to other sites. Nothing you do
-  <em>inside</em> the simulator is recorded that way.</p>
+  <h2>What stays on your machine</h2>
+  <p>Your saved plant states and training progress live in your browser's local
+  storage and are never uploaded.</p>
 
-  <h2>Email you send</h2>
+  <h2>Page views</h2>
+  <p>An anonymous <strong>page-view count</strong> from Cloudflare Web Analytics
+  (Cloudflare hosts this site): page address, referring link, and coarse device
+  info (country, device type, browser, OS). It sets <strong>no cookies</strong>,
+  stores no client-side identifier, and does not fingerprint you by IP address or
+  browser to build a profile.</p>
+  <p><strong>There is no analytics script on these pages.</strong> The count is
+  taken by the server as it answers each request, so there is nothing running in
+  your browser to do it &mdash; and nothing an ad blocker needs to block.</p>
+
+  <h2>Usage data in the simulator — only if you say yes</h2>
+  <p>The first time you open the control room it asks whether to share anonymous
+  usage data. <strong>If you have not answered, or you answered no, nothing is
+  sent.</strong> You can change the answer any time under
+  <em>Settings → Share usage data</em>.</p>
+  <p>Almost nobody sends feedback, so this is the only way to find out which parts
+  of the plant are confusing. If you say yes, the simulator sends counts:</p>
+  <ul>
+    <li>which plant and starting condition you chose, and how long the session ran</li>
+    <li>the <em>names</em> of the controls you use — never the values you set them to</li>
+    <li>which panels you open</li>
+    <li>how far through a startup you get (the plant mode the engine reports), and
+    whether the plant went on the grid, scrammed, or was damaged</li>
+    <li>which training missions you start, finish, or leave</li>
+  </ul>
+  <p>It does <strong>not</strong> send any text you type, any plant recording, or
+  anything about your machine beyond what a web request unavoidably reveals. It
+  carries an identifier that lasts for one visit and is discarded when you close the
+  tab, so <strong>two visits cannot be linked together</strong>. There is no account,
+  no profile, and no advertising of any kind.</p>
+  <p>The exact list of what can be sent is <code>site/telemetry.js</code> in the
+  <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">source code</a>,
+  which is published under the AGPL — you do not have to take this page's word for it.</p>
+
+  <h2>Bug reports you send</h2>
+  <p>The Contact panel in the simulator can send a report with a
+  <strong>recording of that session</strong> attached: plant readings, alarms, and
+  the commands you issued, so what you saw can be replayed. It also carries whatever
+  you type in the message box.</p>
+  <p>This is sent <strong>only when you press send</strong>, and it is separate from
+  the usage-data setting above — refusing usage data does not stop you reporting a
+  bug, and agreeing to usage data never sends a recording on its own. You can untick
+  the attachment to send only your message, or download the recording and inspect it
+  before mailing it yourself.</p>
   <p>If you write to
-  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>,
-  you choose what to include. Optionally attach a session diagnostics file from
-  the simulator (plant state and command history from that session — not a
-  profile of your device). Mail is used only to reply; it is not sold or shared
+  <a href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a> instead,
+  you choose what to include. Mail is used only to reply; it is not sold or shared
   for advertising.</p>
+
+  <h2>The offline download</h2>
+  <p>The <a href="download.html">single-file download</a> contains none of this. The
+  usage-data code is not merely switched off in it — it is not in the file at all, so
+  an offline copy has nothing to send and nothing to send it with.</p>
 
   <h2>Contact</h2>
   <p>Privacy questions:

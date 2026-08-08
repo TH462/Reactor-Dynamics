@@ -6,11 +6,10 @@
   <title>Reactor⚛️Dynamics — Control Room</title>
   <link rel="stylesheet" href="shell.css">
   <link rel="stylesheet" href="diagram/board/pwr_board.css">
-  <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
-  <script defer src="/_vercel/insights/script.js"></script>
-  <!-- Vercel Speed Insights — real-user load timings for the control room, which
-       pulls in far more JS than the site pages. Control room only. -->
-  <script defer src="/_vercel/speed-insights/script.js"></script>
+  <!-- No analytics tag here, deliberately. The Vercel beacons were removed when the site
+       moved to Cloudflare (#413): Cloudflare Web Analytics collects at the edge on a
+       proxied zone, so it needs no script at all. That is also why this is a deletion
+       rather than a swap — and why the control room now loads nothing it does not use. -->
 </head>
 <body>
   <div class="app">
@@ -208,6 +207,12 @@
             <div class="g-section-title" style="margin-top:12px">Simulation</div>
             <div class="set-row" data-scanner-hint="Fast-forward dropout — On drops the clock back to real time when something needs you: a scram, a new failure, or the first alarm on a quiet board. Later alarms in a casualty do not stop it. Off keeps fast-forward running through everything."
               data-scanner-detail="Only the FIRST alarm on an otherwise quiet board drops the clock — once a casualty is under way, the following alarms would drop you out every few seconds and the option would be useless. Off is the right setting when you are deliberately fast-forwarding through a long transient such as a xenon burn-off."><span class="k">Fast-forward dropout</span><div class="seg" id="attnSeg"><button class="on" data-attn="on">On</button><button data-attn="off">Off</button></div></div>
+            <!-- The consent prompt promises this row exists, so it has to. The whole
+                 block hides itself when no endpoint was stamped: a toggle for something
+                 that cannot happen is worse than no toggle, because it implies it can. -->
+            <div class="set-row" id="telemetryRow" hidden
+              data-scanner-hint="Usage data — anonymous counts of which controls and panels you use and how far through a startup you get, so the confusing parts can be found without waiting for feedback. Never any text you type, never a plant recording, and nothing linking one visit to another."
+              data-scanner-detail="Off sends nothing at all. Bug reports you send from Contact are separate and always a deliberate choice. The full list of events is in site/telemetry.js, which ships with the source."><span class="k">Share usage data</span><div class="seg" id="telSeg"><button data-tel="on">On</button><button data-tel="off">Off</button></div></div>
             <div class="g-section-title" style="margin-top:12px">About</div>
             <div class="set-row" data-scanner-hint="About — the alpha disclaimer, the software licence, and what changed in each release. Works offline in the portable build too."
               data-scanner-detail="These open in-app popups packed from the site pages (legal.html, changelog.html). A single-file download has no sibling site pages, so the text ships inside the control room (#259).">
@@ -398,6 +403,22 @@
             <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
               expected, and what the board actually showed. If it is a physics or procedure
               question, the plant mode and the readings you were reading it from.</div>
+            <!-- SEND IT FROM HERE. The whole point (owner, 2026-08-07: "If it's that easy
+                 to send people might actually do it") — a report that needs an email client,
+                 a file attachment and a paragraph of context is a report nobody writes. The
+                 block hides itself when no endpoint was stamped (a local checkout or the
+                 offline build), leaving the email route above, which still works. -->
+            <div class="fb-field fb-send" id="fbSendBlock" hidden>
+              <label class="fb-hint" for="fbNote">What went wrong, and what you expected:</label>
+              <textarea id="fbNote" class="fb-note" rows="4"
+                placeholder="The rods would not withdraw even though the plant was at hot standby…"></textarea>
+              <label class="fb-attach"><input type="checkbox" id="fbAttach" checked>
+                Attach this session's recording</label>
+              <button class="btn fb-send-btn" id="fbSend">Send report</button>
+              <div class="fb-hint">The recording is plant readings, alarms and the commands you
+                issued this session, so what you saw can be replayed. Nothing about you or your
+                device. Untick it to send just your message.</div>
+            </div>
             <div class="fb-field fb-diag">
               <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>
               <div class="fb-hint">Optional, for a bug report — plant readings, alarms, and the
@@ -405,6 +426,35 @@
                 you or your device. Attach the file to your email.</div>
             </div>
             <div class="fb-hint fb-ver" id="fbVer"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Usage-data consent, first launch only. Shown ONLY when a deploy stamped an
+           endpoint AND no answer has been recorded — there is nothing to ask permission
+           for on a local checkout or in the offline build, and asking anyway would be
+           theatre. Undecided collects nothing, so dismissing it is a valid answer that
+           happens to be the private one. -->
+      <div class="mission-overlay" id="consentOverlay" hidden>
+        <div class="mission-modal help-modal consent-modal">
+          <div class="mission-head">
+            <div class="mission-title">Help improve the simulator?</div>
+          </div>
+          <div class="help-body">
+            <p>Almost nobody sends feedback, so the only way to find out which parts of the
+              plant are confusing is to see where people actually get stuck.</p>
+            <p><strong>If you say yes,</strong> the simulator sends anonymous counts: which
+              controls you use, which panels you open, how far through a startup you get, and
+              where you stop. No plant recordings, no text you type, and nothing that links
+              one visit to another.</p>
+            <p><strong>If you say no,</strong> nothing is sent. The simulator is identical
+              either way — this changes nothing about how it runs.</p>
+            <div class="consent-btns">
+              <button class="btn consent-yes" id="consentYes">Yes, share anonymous usage data</button>
+              <button class="btn" id="consentNo">No thanks</button>
+            </div>
+            <div class="fb-hint">Change your mind any time in Settings. Bug reports you send
+              from the Contact panel are separate, and always a deliberate choice.</div>
           </div>
         </div>
       </div>
@@ -432,6 +482,12 @@
   <script src="../site/release.js"></script>  <!-- player-facing Alpha X.Y.Z, shown by the logo -->
   <script src="../site/channel.js"></script>  <!-- release channel: public | preview | dev -->
   <script src="../site/flags.js"></script>    <!-- feature flags: what this channel OFFERS (#241) -->
+  <!-- Usage data. The endpoint file is GENERATED at deploy and is empty in the repo, so a
+       clone, a file:// run and the offline build all collect nothing without anyone having
+       to switch them off. tools/make_portable.js blanks it again in the bundle, because it
+       runs after the deploy stamp. Order matters: telemetry.js reads the endpoint. -->
+  <script src="../site/telemetry_endpoint.js"></script>
+  <script src="../site/telemetry.js"></script>
   <!-- TEST-BUILD marker, same contract as the site pages: html[data-channel] drives
        .logo-test in shell.css. The control room is where a tester actually spends the
        session, so the site's banner alone would leave the distinction behind at the
