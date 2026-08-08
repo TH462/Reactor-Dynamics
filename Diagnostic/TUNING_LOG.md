@@ -161,6 +161,23 @@ charging there). `gen_manual_reference` wording fixed (dead for PWR — no manua
 `Manuals/03` checked and NOT edited (no misstatement, no Rev row). Also reconstructed the
 missing `-f`/`-g` session entries (plan WP2), marked as such in both files.
 
+**ADDENDUM 2 (plan WP3): the cooldown-pace investigation — verdict NOT-TOO-FAST, filed #422.**
+Owner-directed as a suspected defect ("Investigate slowing it"). Decomposed into the two
+owning mechanisms and measured against a NEW sourced reference fetched this session —
+**ML11216A094 (HRTD Advanced Technology 05, Transient 5.11 Manual Reactor Trip)**, a
+full-scope-simulator trip from 100 % with traces (time axis anchored 1 div ≈ 1 min on the
+narrative's own "~15 sec" elbow; declared inference). Result: the ΔT collapse (legs converge
+≤16 s) is loop-turnover physics — 7,500 gal at 24,000 gpm = ~19 s/turnover, and the HRTD
+narrative describes the identical immediate collapse; the Tavg walk (580.2 → 546.9 °F in
+~2:15–3:00) is **~3× GENTLER in the first minute than the HRTD trace** (14 vs ~40 °F/min —
+consistent with the ruled 28 % dump vs their 40 %), arriving at no-load on the same ~3 min
+clock, same undershoot-then-recover shape. Recommendation delivered on #422: no change; the
+taus keep `[tune]` + UNVERIFIED-source with a derivation comment now in `pwr_config.js`.
+Corpus additions (develop): ML11216A094 (+txt), **Ginna UFSAR ch 15 = ML20339A101** (+txt —
+also archives #418's previously-uncorpused "T15.2-1" citation), ML11223A294 (WTSM 11.2 steam
+dump). Method note: no lane's corpus carries any transit/circulation time (`find_source`
+exits 1 on every phrasing tried).
+
 ## Session log — 2026-08-07-develop-d (#419 STAGE 1: the cascade table, posted for sign-off. No code.)
 
 **Task:** #419 tier-3 identity re-anchor, stage 1 (owner: "Plan the work first" — plan-mode pass

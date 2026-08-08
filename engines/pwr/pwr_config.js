@@ -454,6 +454,16 @@
       sg_tube_capacity: 5.0,       // tube-bundle water+metal heat capacity, same units as
                                    // coolant_heat_capacity (~25 % of it) [tune pending WTSM §5.1-class data]
       sg_tube_split: 0.5,          // h1 share of the series pair (0.5 → h1 = h2 = 2·h_sg) [tune]
+      // Loop transport (#418 B1) — UNVERIFIED-source: no document in any lane's corpus
+      // gives a transit/circulation time (find_source swept 2026-08-08, every phrasing
+      // exits 1). Scale check against the plant's OWN declared geometry: 7,500 gal at
+      // 24,000 gpm rated = one full loop turnover every ~19 s, so seconds-order lags at
+      // full flow are the right family, and ÷flow makes natural circ honestly sluggish.
+      // Post-trip pace verdict (owner-directed investigation, 2026-08-08, #422): trip
+      // from 100 % reaches no-load in ~3 min here vs ~2.5–3 min on the sourced HRTD
+      // 4-loop trace (ML11216A094 Transient 5.11), with our first-minute fall ~3× GENTLER
+      // (14 vs ~40 °F/min; our dump is Ginna's 28 % vs their 40 %). The loop does NOT
+      // cool too fast — do not slow these constants on feel.
       tau_hotleg_s: 1.5,           // s at full flow — core exit → SG inlet transport [tune]
       tau_coldleg_s: 4.0,          // s at full flow — SG outlet → core inlet transport [tune]
       void_flux_gain: 0.02,        // equilibrium core void per °C of exit overshoot [tune]
