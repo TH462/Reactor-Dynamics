@@ -801,7 +801,7 @@ var BASELINES = {
   // rulings quoted in the Manuals/00 Rev 14 item (g) and this session's TUNING_LOG and
   // BUILD_DECISIONS entries. Measured standalone on the final tree AFTER all docs were
   // written (the docs-move-the-score rule above, honored locally again).
-  'run_hardrules.js':      { code: 0, score: '228checks 0failed' },
+  'run_hardrules.js':      { code: 0, score: '230checks 0failed' },   // 228 -> 230 (2026-08-08): the #385 flash-ruling quotes in BUILD_DECISIONS + TUNING_LOG add two HR11 rows. CAUGHT BY CI, not locally — the docs-only commit ran run_hardrules STANDALONE (which prints its own tally and compares nothing); only run_all compares to this map. The three-comments-up warning arrived on schedule, wearing a new face: "once more AFTER the docs" must mean run_all, not the bare runner.
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
