@@ -76,6 +76,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the #221 audit lane is now a directory of its own, `C:\grok_build\RD_Audit` (2026-08-08)
+
+- **New audit lane.** `C:\grok_build\RD_Audit` holds the auditor's own auto-loading `CLAUDE.md`, a
+  `findings/` scratch directory, and a **detached-HEAD worktree at `tree/`** carrying the source
+  under audit. No branch. Sessions start in the lane directory, not in `tree/`.
+- **`backshop` is an ordinary lane again** and has its `CLAUDE.md` back. The 2026-08-06 arrangement
+  armed it by default, at the stated cost that ordinary non-audit work there ran unprimed; a
+  dedicated directory retires that cost.
+- **"Findings only, no fixes" is now structural**, not just prose: the lane denies `Edit`/`Write`
+  into `tree/**` and into all three work lanes, and the detached HEAD means an edit could not reach
+  a branch anyway.
+- **`Blueprint/AUDITOR_ORIENTATION.md`** (new) is the auditor's rules, deployed to
+  `RD_Audit/CLAUDE.md` by **`tools/audit_deploy.js`** (new) and drift-checked by preflight.
+  `Blueprint/AUDIT_CHARTER.md` §1–10 *moved* there; the charter is now purely the primed session's
+  document.
+- **`tools/audit_preflight.js` — six checks to eight.** New: the exclude list must be fully explicit
+  with **no wildcards**, and the auditor's orientation must be deployed, current and *not* excluded.
+  Both close a trap the move introduced: `**/grok_build/**/CLAUDE.md` also matches the auditor's own
+  orientation, and an unoriented auditor produces a clean-looking audit rather than a red.
+- `tools/hook_lane_status.js` sweeps the audit lane (reporting its checkout, marked detached) and
+  recognises `status-wip-audit`. Note `tree/` does **not** follow `develop` — the auditor's tooling
+  comes from the pinned commit, so re-point it when preparing a slice.
+- Gate: `run_hardrules` 235 → 237 (two new HR11 ruling-citation sites). Everything else at baseline.
+
 ### Changed — the SG feed trio: single-signal AFW (the "30 % real" premise inverted), a programmed level target, and a demand box that admits it (#380 / #355 / #358, 2026-08-08)
 
 - **AFW auto-starts on the same 17 % lo-lo signal that scrams the reactor** (#380, owner-ruled).

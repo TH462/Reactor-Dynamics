@@ -1,312 +1,153 @@
-# AUDIT_CHARTER.md — orientation for an INDEPENDENT audit session
+# AUDIT_CHARTER.md — running the #221 audit programme
 
-**Read this instead of `CLAUDE.md`.** An audit session runs with the repo's `CLAUDE.md` and the
-auto-memory index **excluded from loading** — by `.claude/settings.local.json` in an audit lane, or
-by `.claude/settings.audit.json` behind a flag elsewhere (see below) — because both are dense with
-conclusions about the very subsystems under audit: the priming problem **GitHub #221** RoE 1
-describes. The audit programme, its rules of engagement and the per-slice tracking issues live
-in **GitHub #221 and #295–#301**; there is no Blueprint document for it.
+**This file is for the PRIMED session** — the ordinary agent that prepares a slice, closes one out,
+or maintains the lane. **If you are the auditor, this is not your document**; yours is
+`C:\grok_build\RD_Audit\CLAUDE.md`, which auto-loads, and you should not be reading this one.
 
-**How you got here — the AUDIT LANE** *(OWNER RULING, 2026-08-06: "Workbench will not be an audit
-lane.")*. **`C:\grok_build\RD_backshop` is the audit lane, and it is the only one.** It carries
-`.claude/settings.local.json` with the `CLAUDE.md` exclusions and `autoMemoryEnabled: false`. That
-file **layers by default and needs no flag**, so any session started in that tree is already
-unprimed, and a `/clear` is enough to begin a slice. `develop` and `RD_workbench` have no such
-file: a slice launched in either needs `claude --settings .claude/settings.audit.json`.
+The audit programme, its rules of engagement and the per-slice tracking issues live in **GitHub
+#221 and #295–#301**.
 
-The earlier arrangement *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
-skills.")* armed both overflow lanes. Workbench's copy was removed during ordinary work and the
-2026-08-06 ruling makes that permanent.
+---
 
-The accepted cost, stated so it is not rediscovered as a bug: **ordinary non-audit work in
-`backshop` also runs without `CLAUDE.md`.** That is the ruling, not an accident.
+## 1. Where the auditor's rules live — and why not here
 
-**Whichever tree you are in, prove the configuration before you audit** — `node
-tools/audit_preflight.js`. A settings key that silently fails to match looks exactly like a clean
-audit, and the preflight only ever checks the tree it is run in.
+The auditor's standing orientation is **`Blueprint/AUDITOR_ORIENTATION.md`** (tracked, authored
+here), deployed by `node tools/audit_deploy.js` to **`C:\grok_build\RD_Audit\CLAUDE.md`** (the only
+path the harness auto-loads). `tools/audit_preflight.js` check 7 refuses a slice when the deployed
+copy has drifted from the master.
+
+**Do not restate the auditor's rules in this file.** They lived here as §1–10 until 2026-08-08 and
+were moved wholesale, not copied. Two documents that both describe how to audit will disagree
+eventually, and the one that loses the argument is the one the auditor is actually reading. Edit the
+master, deploy, done.
+
+What goes in the master is bounded *(OWNER RULING, 2026-08-08: the auditor is to audit "'blind'
+without preconceived notions or the logic behind the choices" — asked whether harness mechanics
+count as "the logic behind the choices", the owner selected **mechanics yes, judgments no**)*.
+Mechanics — how to run a gate, which layer a runner measures at, unit conventions, rules of
+engagement — stay, because an auditor measuring protection engine-direct sees a plant with no ESF
+arms at all and files false findings. Conclusions about the plant — tuning history, gate scores,
+standing traps, why a constant holds its value — do not.
+
+> The rule the whole programme rests on, restated so it is not lost in the move:
+> **everything in this repo's prose is a CLAIM UNDER TEST, not a background fact** — source
+> comments, `Diagnostic/`, `Blueprint/`, `Manuals/`, commit messages, issue threads. They record
+> what was *intended*, by the same process that wrote the code.
+
+---
+
+## 2. The audit lane — `C:\grok_build\RD_Audit`
+
+*(OWNER RULING, 2026-08-08: asked whether backshop should stop being the audit lane and get its
+`CLAUDE.md` back, the owner selected **yes — hand it back**. The audit lane is a directory of its
+own, and "Ts wont be a new branch.")*
+
+```
+C:\grok_build\RD_Audit\
+├── CLAUDE.md                      generated — the auditor's orientation. LOADS.
+├── .claude\
+│   ├── settings.json              permissions (tree/-prefixed) + the lane-status hook
+│   └── settings.local.json        claudeMdExcludes + autoMemoryEnabled:false. Layers by default.
+├── findings\                      the auditor's scratch. Outside the repo; git cannot see it.
+└── tree\                          detached-HEAD worktree — the source under audit. NO BRANCH.
+```
+
+**The session's cwd is the lane directory, not `tree\`.** Everything depends on that: the auditor's
+`CLAUDE.md` is at the cwd, `.claude/settings*.json` are read from the cwd, and the runners resolve
+their own paths from `__dirname` so `node tree/test/run_all.js` works from a level up. **A session
+started inside `tree\` instead gets the repo's own settings and no auditor orientation** — and, as
+ever, nothing about that announces itself.
+
+**Why a detached worktree.** RoE 1 is *findings only, no fixes*, and a detached HEAD means an edit
+there cannot reach a branch even if one is made. `.claude/settings.json` in the lane adds `deny`
+rules on `Edit`/`Write` into `tree/**` and into all three work lanes, so the rule is structural
+rather than prose. The three work lanes — `develop`, `RD_workbench`, `RD_backshop` — are now all
+ordinary and all keep their `CLAUDE.md`; the 2026-08-06 arrangement's accepted cost (ordinary work
+in backshop running unprimed) is retired.
+
+**No exclude entry may contain a wildcard**, and `audit_preflight.js` check 3b enforces it. A
+catch-all broad enough to cover the work lanes — `**/grok_build/**/CLAUDE.md`, which is what was
+there until 2026-08-08 — also matches `RD_Audit/CLAUDE.md`, the auditor's own orientation and the
+one file in the lane that must load. Coverage of a newly-added worktree is check 3's job.
+
+### 2a. Refreshing the tree for a slice
+
+`tree/` is pinned to a commit. **It does not follow `develop`**, and the tooling the auditor runs —
+including `hook_lane_status.js` and `audit_preflight.js` — comes from that pinned commit, so a stale
+tree audits stale code with stale tools. Re-point it when you prepare a slice, then record the SHA
+on the slice issue:
+
+```
+git -C C:/grok_build/RD_Audit/tree checkout --detach <sha>     # stays detached; no branch
+node tools/audit_deploy.js                                     # re-deploy if the master moved
+node tools/audit_preflight.js <slice>
+```
+
+### 2b. Rebuilding the lane from nothing
+
+`.claude/` and `findings/` are outside the repo and are not backed up by it. If the lane is lost:
+
+```
+git worktree add --detach "C:/grok_build/RD_Audit/tree" develop
+node tools/audit_deploy.js
+mkdir C:\grok_build\RD_Audit\findings
+```
+
+…then recreate `.claude/settings.local.json` (the exclude list is `.claude/settings.audit.json`'s,
+plus `C:/grok_build/RD_Audit/tree/CLAUDE.md` in both slash forms) and `.claude/settings.json` (the
+`deny` rules, the `tree/`-prefixed permission allowlist, and the `SessionStart` hook). Then
+**`node tools/audit_preflight.js`** — it is the only thing that will tell you whether you got it
+right, and a lane assembled wrong looks exactly like a clean audit.
+
+### 2c. The fallback: auditing from a work lane
+
+`.claude/settings.audit.json` still exists for `claude --settings .claude/settings.audit.json` from
+any work lane. It has one gap the lane does not: it excludes `CLAUDE.md` **without putting anything
+in its place**, so such a session must open `Blueprint/AUDITOR_ORIENTATION.md` by hand before it
+reads any source. Prefer the lane.
+
+---
+
+## 3. Preflight — prove the configuration, never the session
 
 ```
 node tools/audit_preflight.js <slice>      # verifies the config; launches nothing
 ```
 
-Six checks, **exit 2 naming the cause** — settings unparseable, auto-memory on, a worktree whose
-`CLAUDE.md` is missing from the exclude list, a settings key a CLI upgrade has renamed, no charter,
-or a slice issue with no `SUBJECTS TO TEST` section. Every one of those is a failure whose signature
-is *a clean-looking audit* rather than a red, which is why it refuses instead of warning.
+Eight checks, **exit 2 naming the cause** — settings unparseable, auto-memory on, a worktree whose
+`CLAUDE.md` is missing from the exclude list, a wildcard in that list, a settings key a CLI upgrade
+has renamed, no charter, a slice issue with no `SUBJECTS TO TEST` section, or an auditor orientation
+that is missing, stale or excluded. Every one is a failure whose signature is *a clean-looking
+audit* rather than a red, which is why it refuses instead of warning.
 
-**Preflight proves the CONFIGURATION, never the SESSION.** It runs outside the session it is
-protecting, so on your **first turn**, before any source file, state on the slice issue whether
-`CLAUDE.md` was **auto-loaded into your context without you reading it** and whether you see a
-memory index. Ask it that way round: the Read tool can open `CLAUDE.md` at any time, so *"can I see
-it"* answers a different question with a misleading yes. **A glob that failed to match looks exactly
-like a clean audit** — this self-report is the only evidence that it did not, and it has already
-caught two primed sessions before either filed a finding (#296, #297).
+**It runs outside the session it protects**, and it only ever checks the tree it is run in (check 7
+excepted — the orientation is a global fact). The other half is the auditor's **first-turn
+self-check**, on the slice issue before any finding: whether `CLAUDE.md` was *auto-loaded into its
+context without it reading the file*, and whether it sees a memory index. Asked the other way round
+— *"can you see it"* — the Read tool answers a different question with a misleading yes.
 
-**It has also caught an agent reasoning about its own priming from the inside** (2026-08-05): a
-session concluded it was primed because `CLAUDE.md` was in its context, when it had simply *read the
-file itself* and the exclusion was in force the whole time. **A session cannot establish its own
-priming state by introspection.** The check asks what the *harness* did.
+That self-check has already caught two primed sessions before either filed a finding (#296, #297).
+It has also caught an agent **reasoning about its own priming from the inside** (2026-08-05): a
+session concluded it was primed because `CLAUDE.md` was in its context, when it had simply read the
+file itself and the exclusion had held throughout. **A session cannot establish its own priming
+state by introspection.** The check asks what the *harness* did.
 
-**The `SessionStart` hook now tells you which mode the lane is in**, and withholds WIP issue
-*titles* in an audit lane. That was a measured leak: on 2026-08-05 it printed a plant defect by name
-into a context the exclusion had just cleaned (#383). Hooks fire regardless of `claudeMdExcludes`,
-so it is the one priming channel no settings file can close.
-
-This file is the **operating half** of that document with the **diagnosis removed**: how the repo is
-wired, how to run it, how to measure it, and which rules bind you. It deliberately contains **no
-findings, no tuning history, no gate scores, and no claims about whether any mechanism is correct**.
+**The `SessionStart` hook withholds WIP issue titles in an audit lane.** That was a measured leak:
+on 2026-08-05 it printed a plant defect by name into a context the exclusion had just cleaned
+(#383). Hooks fire regardless of `claudeMdExcludes`, so it is the one priming channel no settings
+file can close.
 
 *(OWNER, 2026-08-04: "what if i save claude.md to a safe place and you rewrite it specifically for
-this test and after the test i restore claude.md?" — then, on the recommendation to use the harness's
-own exclude switches plus this charter rather than swapping a tracked file: "implement your
-recommendation.")*
-
-> **Everything you read in this repo's prose is a CLAIM UNDER TEST, not a background fact.** That
-> includes source comments, `Diagnostic/`, `Blueprint/`, `Manuals/`, commit messages and issue
-> threads. Nearly every constant here carries its rationale in a comment; those comments were
-> written by the same process that wrote the code, which is the entire reason this audit exists.
-> Read them to find out what was *intended*. Do not read them to find out what is *true*.
+this test and after the test i restore claude.md?" — then, on the recommendation to use the
+harness's own exclude switches plus a separate charter rather than swapping a tracked file:
+"implement your recommendation." The 2026-08-08 lane move keeps that shape: nothing tracked is
+swapped, and the auditor's document is generated rather than substituted.)*
 
 ---
 
-## 1. What binds you
+## 4. Preparing a slice (primed session)
 
-**The Hard Rules in `Blueprint/CONTEXT.md` §3, and this file. Nothing else.** Ten rules, short by
-design. `Blueprint/SOP.md` §1–4 is technique, not authority.
-
-The five you will actually trip over — stated as rules, with no worked cases, because the worked
-cases are findings:
-
-- **HR1** — automatic protection, alarms and gauges read the **instrument** layer, never true state.
-  True state is a diagnostic overlay only.
-- **HR5** — commands only flow down through the simulation service.
-- **HR9** — the plant is the ground truth. Authority runs physics → this plant's ruled identity →
-  behaviour catalog → setpoints → authored content → that content's gates. **Content never votes on
-  physics.** When content breaks after a plant change, presume the content is stale.
-- **HR10** — a passing test is not evidence the mechanism is right. A test written from observed
-  behaviour can only confirm that behaviour, including the wrong parts.
-- **HR12** — **an assertion about plant dynamics must be MEASURED.** Step the plant, quote the
-  number. This binds your findings.
-
-**HR11** — a ruling is authority only with a **date and the owner's verbatim words**. Anything else
-is advisory. Check what a ruling actually decided, not what it is being used to justify.
-
-**A directive with no date + verbatim owner quote is advisory.** Weigh it, say you did, move on.
-
----
-
-## 2. Which LAYER you are measuring at — read this before you measure anything
-
-This is structural, not a finding, and getting it wrong invalidates a measurement silently.
-
-`ControlLayer.stepAutomation()` and `engageDefaults()` have **exactly one production caller each,
-both in `layers/simulation_service.js`**, as does `engine.getStartupLineup()`. So anything that stops
-below M5 runs with **no automation channel ticking, no channel ever engaged, and no free-play
-lineup** — a plant no player can produce.
-
-| layer | runners |
-|---|---|
-| **engine-direct** | `run_pwr`, `run_rbmk`, `run_bwr`, `run_meltdown`, `run_procedures` |
-| **engine + M4** (looks full-stack, isn't) | `run_ops`, `run_behavior`, `run_m4` |
-| **full stack** (M4+M5+M6) | `run_procedures_stack`, `run_m5`, `run_m6`/`run_m6ph`, `run_m7`, `run_autoctl`, `run_campaign`, `run_checklist`, `run_scenarios`, `run_e2e_controls` |
-| **browser** | `verify_e2e_ui`, `verify_manual_follow` |
-| **static** (the plant is never stepped) | `run_hr3`, `run_hardrules`, `run_contract`, `run_inspect`, `run_flags`, `run_session_labels` |
-
-Protection, actuations and interlocks live at **M4**. Measuring them engine-direct reports a plant
-with no ESF arms at all.
-
-**To take a number, use `node test/measure_stack.js`** — full stack, any IC/duration/scheduled
-commands, US-first units, and it stamps the LAYER into its own output.
-
-```
-node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
-node test/measure_stack.js --list                 # field names, by source
-```
-
-**Never drive a measurement with `svc.start()`** — it arms `setTimeout(broadcastMs)` and advances in
-WALL time. Drive `tick()` / `advanceCycles(n)` directly. Two more that cost a run each:
-`svc.tick()` no-ops unless `this.running`; and `advanceCycles(n)` counts **broadcast cycles**
-(0.1 s each, 0.05 s in a transient), not seconds — drive durations off `simTime`.
-
-**`engine.reset()` takes an OBJECT (`{initial_state}`) and silently ignores a string**, defaulting to
-`hot_full_power`. Assert your IC — log `s.pressure_mpa` right after `reset`.
-
----
-
-## 3. Running it
-
-No build step, no `package.json`, no module system.
-
-- Open `index.html`, or `ui/shell.html` directly, or serve the folder statically.
-- **Every file in `engines/`, `layers/`, `scenarios/`, `ui/` is a plain global-namespace script that
-  attaches to `globalThis.RD`.** Do not add `import`/`export`/`require` to a source file — it breaks
-  both the browser and the Node load paths. The test runners `require()` only to *execute* each file
-  into a shared global.
-- **Load order matters** — `pwr_config.js` and the control modules load before the engine files that
-  consume them. See the ordered list at the top of any `test/run_*.js`.
-- Plant-specific files are prefixed `pwr_` / `rbmk_` / `bwr_`.
-
-## 4. The gates
-
-```
-node test/run_all.js            # THE AGGREGATE GATE — every runner vs recorded baselines
-node test/run_all.js --fast     #   …skipping the slow Playwright gates
-node test/run_all.js --only run_pwr,run_ops
-node test/run_all.js --jobs=1   # sequential, if a runner is suspected of not being isolated
-```
-
-**Establish the pre-existing state by RUNNING it, not by reading about it.** The baselines are data
-in the `BASELINES` map at the top of `test/run_all.js`; this charter deliberately quotes no scores,
-because a score with its history attached is a finding. Run `run_all` **before** you start so you can
-tell a red you found from a red you caused.
-
-**Drift is symmetric** — a runner scoring *better* than baseline also fails. That is deliberate.
-
-Per-runner times in a parallel run are **contention** times, not costs.
-
----
-
-## 5. Scope
-
-**PWR only.** RBMK and BWR are on hold — do not audit, implement, tune or "fix while you're here"
-their engines, controls, scenarios, UI or tests. Known RBMK/BWR reds are out of scope. Shared code is
-in scope where a PWR question reaches it.
-
-**This is an educational lumped-parameter plant, not a full-scope replica.** Where a simplification
-understates reality, say so plainly — that is a finding, not a complaint.
-
----
-
-## 6. Conventions you must follow in your output
-
-- **US customary FIRST, SI in parentheses** — `2235 psi (15.41 MPa)`, `565 °F (296 °C)`. Temperature
-  **differences and rates** convert ×9/5 with **no offset**: 41 °C of subcooling is 73.8 °F, not
-  105.8. This applies to everything you hand the owner — chat, issue bodies, comments, commit
-  messages. Engine internals stay SI.
-- **Plant MODES** use commercial numbering, written *Mode N, Name* (e.g. *Mode 1, At Power*). Do not
-  confuse with turbine load modes (Follow / Manual / Disconnected).
-- **Two registers** — every label/instructional string exists in a **Learning** (plain language) and
-  an **Industry** (real plant terminology) form.
-- **Be brief. Facts, numbers, decisions.** Lead with what you found and the number that shows it.
-- **Close any response that leaves work unfinished** with a `— STILL OUTSTANDING —` block naming what
-  is not done, why, and the ONE thing you recommend next.
-- **When you ask the owner something, bring your recommendation with it.**
-
----
-
-## 7. Where you may and may not write
-
-**You are in a shared repo with up to three concurrent agents in three working trees.**
-
-| Working tree | Branch |
-|---|---|
-| `C:\grok_build\Reactor_Dynamics` | `develop` — the main lane |
-| `C:\grok_build\RD_workbench` | `workbench` — overflow lane 1 |
-| `C:\grok_build\RD_backshop` | `backshop` — overflow lane 2 |
-
-**A branch isolates nothing; only a separate working directory does.**
-
-- **First thing, check ALL trees.** A `SessionStart` hook (`tools/hook_lane_status.js`) prints the
-  sweep and the lane-tagged issues. If it did not fire, run it: `node tools/hook_lane_status.js`.
-- **Uncommitted files in a lane, or a commit inside the last hour, mean a live session.**
-  **When a lane tag and the file sweep disagree, the TAG wins** — the tag is a statement, the sweep
-  is an inference, and the sweep cannot see an agent between commits.
-- **On a positive, WARN AND ASK.** Do not move lanes on your own.
-- **Tag your issue `status-wip-<lane>` when you START and clear it when you STOP** — not when you
-  finish.
-- **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO.** Commit on your lane, gate it, say it is
-  ready, stop there.
-- **NEVER push `workbench` or `backshop`.** The remote carries only `main` and `develop`.
-- Commit ongoing work to `develop` (or your lane), never straight to `main`.
-
-**Guaranteed merge conflicts**, all newest-at-top: `CHANGELOG.md`, `Diagnostic/TUNING_LOG.md`,
-`Blueprint/BUILD_DECISIONS.md`, `CLAUDE.md`, and the `BASELINES` map in `test/run_all.js`. Keep both
-sides, then **re-run `run_all`**. `Manuals/` is on this list too and is the dangerous one — it is
-edited in the MIDDLE by both lanes, so a merge can resolve it in one lane's favour **silently**.
-After any merge touching `Manuals/`, grep the chapter for the thing you wrote.
-
-**Session-log headings are `YYYY-MM-DD-<lane>-<letter>`** (e.g. `2026-08-05-develop-a`); the letter
-is the next unused for that date **in your own lane**. Gated by `test/run_session_labels.js`.
-
-**Any `Manuals/*.md` content change** needs, in order: a row at the top of
-`Manuals/00_REVISION_HISTORY.md`, then `node tools/stamp_manual_revision.js`, then
-`node tools/pack_manuals.js`. `test/run_manual_rev.js` reddens if any step is skipped.
-
----
-
-## 8. The audit's own rules
-
-These come from GitHub **#221** and bind every slice. Restated here because the issue body is the
-place findings accumulate, and you should have the rules before you read any of them.
-
-1. **Findings only. No fixes.** Mixing them is how an audit becomes a refactor and stops auditing.
-2. **Measure, don't infer.** Tag every finding **`MEASURED`** or **`INFERRED`**, and every `MEASURED`
-   one must name the **layer** it was measured at and how.
-3. **A claim of realism must carry a source** — accession number, section, enough verbatim quote to
-   check. Recall is not evidence, and neither is another agent's summary. **Check the other lanes'
-   `inbox/sources/` before starting an evidence pass.**
-4. **Say "could not establish"** rather than reasoning to a confident answer.
-5. **Where a slice boundary cuts a coupling, read across it — do not audit across it.** File findings
-   only inside your scope; hand the rest to the owning slice by name.
-
-**The six standing questions**, asked of any mechanism that *acts* — a trip, an actuation, an
-interlock, a permissive, an automation channel, a controller, a mission gate:
-
-1. **Completeness** — what does a plant of this type have that this one does not? A gap is invisible
-   to every gate by construction.
-2. **Adequacy** — does it act **IN TIME**? `MEASURED`, with both numbers: time-to-actuation against
-   time-to-consequence. A setpoint with no measured margin is a finding even when it is sourced.
-3. **Spurious actuation** — does it act when it should **not**? Sweep against normal evolutions and
-   designed ride-outs, not only casualties.
-4. **Defeatability** — can it be blocked, by whom, under what permissive, and does the block survive
-   a regime change?
-5. **Redundancy** — a three-way sort, not a defect test. **Defect**: one interlock with two
-   independent copies of its condition that can drift apart. **Virtue**: diverse sensing of the same
-   event — do not file it. **Finding, but a different one**: nominal diversity, two named functions
-   on one signal so close they can never disagree; ask what the second buys.
-6. **Provenance** — scoped to setpoints that gate an **action** (a scram, an ESF actuation, a
-   permissive). Rank by consequence, never by absence of a comment.
-
-**Conditions that can never arm** applies throughout: a declared instrument with no live source reads
-`undefined` forever and its mechanism silently never fires.
-
----
-
-## 9. Issue tracking
-
-Repo **`TH462/Reactor-Dynamics`**; `gh` is on PATH (Git Bash form:
-`"/c/Users/Tim H/AppData/Local/Programs/gh/bin/gh.exe"`). Draft long bodies to a file in `inbox/`
-(gitignored) and use `--body-file`; inline `--body` mangles markdown.
-
-**Always add the `Claude` label to any issue you touch.** Four required axes on every issue:
-`priority-*` (by consequence), `type-*`, `system-*`, `plant-*`. The canonical definition is issue
-**#61**.
-
----
-
-## 10. What this file deliberately omits
-
-The repo's `CLAUDE.md` additionally carries a *Project status* section, a *Recent themes* list, a
-standing-traps list and a per-gate baseline narrative — **hundreds of specific conclusions about how
-each subsystem behaves and why**. All of it is excluded from an audit session on purpose.
-
-If you find yourself needing one of those facts, that is the signal to **measure it**, not to go
-read it. If you genuinely cannot proceed without it, say so in the slice issue and name the fact —
-that is itself a finding about how much of this plant is only knowable from its own prose.
-
----
-
-## 11. Before and after a slice — NOT FOR THE AUDIT SESSION
-
-**If you are the auditor, stop reading here.** §11 is for the ordinary, *primed* session that
-prepares a slice or closes one out. It lives in this file so there is one document rather than
-several that can drift apart *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
-skills.")* — the earlier version of this procedure was three skills, and a skill's description
-loads into every session's prompt including an auditor's, which is a priming surface for no gain.
-
-### 11a. Preparing a slice (primed session)
-
-Everything here is work an audit session must not do, and two steps can *only* be done by a session
+Everything here is work an audit session must not do, and step 2 can *only* be done by a session
 that can see `CLAUDE.md` and the memory index.
 
 1. **Pick the slice and check the lane.** Running order is **1 · 2 · 3 · 9 · 8 · 4 · 5 · 6 · 7** —
@@ -319,17 +160,20 @@ that can see `CLAUDE.md` and the memory index.
    carrying its number is testable, "the coupling was fixed" is not. Do not delete an entry because
    it now looks settled; settled is the property under test. Preflight refuses a slice without this
    section.
-3. **Record the tree the findings will be measured against** — the commit SHA and a `run_all`
-   result, posted to the slice issue. **Name any runner that is already red**, or the auditor may
-   file a pre-existing red as a finding and the fix side will chase it.
-4. **Tag** the slice `status-wip-<lane>` — the lane the audit will *run* in.
+3. **Refresh the audit tree** (§2a) and **record the tree the findings will be measured against** —
+   the commit SHA and a `run_all` result, posted to the slice issue. **Name any runner that is
+   already red**, or the auditor may file a pre-existing red as a finding and the fix side will
+   chase it.
+4. **Tag** the slice `status-wip-audit`.
 5. **Preflight**: `node tools/audit_preflight.js <slice>`. If it refuses, fix the cause; never
    hand-arm the exclusion to get past it.
 6. **Stop.** Do not read the slice's source files "to help while you're here" — anything you
    conclude becomes a conclusion the auditor inherits. Fix-side issues from *previous* slices,
    scope/rubric edits and programme tooling are all still fair game.
 
-### 11b. Closing a slice (primed session)
+---
+
+## 5. Closing a slice (primed session)
 
 **Triage is not re-auditing.** Do not re-derive, soften, or drop a finding because you can think of
 a reason the code is that way. Disagree on the issue, as a separate comment, with a measurement.
@@ -357,3 +201,19 @@ a reason the code is that way. Disagree on the issue, as a separate comment, wit
    is a real result** — record it as one rather than manufacturing findings to justify the run.
 6. **Name what runs next** in the order above, and whether fix-side work blocks it. Fixes are
    separate work; do not start them in the same session without saying so.
+
+---
+
+## 6. History of the arrangement
+
+Kept short, and kept out of the auditor's document on purpose.
+
+- **2026-08-04** — the exclusion approach chosen over swapping a tracked `CLAUDE.md` (quoted in §3).
+- **2026-08-05, #383** *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
+  skills.")* — armed both overflow lanes with `settings.local.json` rather than driving the
+  programme from skills, whose descriptions load into every session's prompt including an
+  auditor's.
+- **2026-08-06** *(OWNER RULING, 2026-08-06: "Workbench will not be an audit lane.")* — narrowed to
+  backshop alone, at the stated cost that ordinary work there ran unprimed.
+- **2026-08-08** — the lane moved to its own directory (§2), retiring that cost. `AUDIT_CHARTER.md`
+  §1–10 became `Blueprint/AUDITOR_ORIENTATION.md`; this file kept the prep/close procedure.

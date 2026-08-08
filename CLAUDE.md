@@ -119,28 +119,29 @@ docs.
 > |---|---|---|
 > | `C:\grok_build\Reactor_Dynamics` | `develop` | **the main working branch — use this unless it is taken** |
 > | `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1, for when a second agent is already on `develop` — a NORMAL lane, loads this file |
-> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2, same rules as workbench (third concurrent agent) — **the AUDIT LANE** |
+> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2, same rules as workbench (third concurrent agent) — a NORMAL lane, loads this file |
+> | `C:\grok_build\RD_Audit` | *(none — detached)* | **the AUDIT LANE.** Not a work lane; see below |
 >
-> **`backshop` IS THE AUDIT LANE. `workbench` IS NOT** *(OWNER RULING, 2026-08-06: "Workbench will
-> not be an audit lane.")*, superseding the #383 arrangement below, which armed both. Backshop
-> carries a gitignored `.claude/settings.local.json` with the #221 exclusions (`claudeMdExcludes`
-> for all three trees, `autoMemoryEnabled: false`); it **layers by default and needs no flag**, so
-> any session started there is unprimed and a `/clear` is enough to begin an audit slice. Workbench
-> and `develop` have no such file and load this document normally; a slice launched in either needs
-> `claude --settings .claude/settings.audit.json`.
+> **ALL THREE WORK LANES ARE NORMAL AND ALL LOAD THIS FILE.** The audit lane is a directory of its
+> own, `C:\grok_build\RD_Audit` *(OWNER RULING, 2026-08-08: "It will audit things 'blind' without
+> preconceived notions or the logic behind the choices", and "Ts wont be a new branch.")*. It holds
+> the auditor's own `CLAUDE.md` — generated from `Blueprint/AUDITOR_ORIENTATION.md` by
+> `node tools/audit_deploy.js` — a `findings/` scratch directory, and a **detached-HEAD worktree at
+> `tree/`** carrying the source under audit. No branch, so nothing done there can reach one, and
+> `.claude/settings.json` there additionally *denies* writes into `tree/**` and into all three work
+> lanes. **Do not work in it and do not commit from it.**
 >
-> The original arrangement *(OWNER RULING, 2026-08-05, #383: "Let's do it with the files not the
-> skills.")* put that file in both overflow lanes. Workbench's was removed during the #370/#371
-> work — ordinary work in an audit lane runs without this file, which is the accepted cost — and
-> the 2026-08-06 ruling makes that permanent rather than incidental.
+> **This supersedes the backshop arrangement** *(OWNER RULING, 2026-08-06: "Workbench will not be an
+> audit lane.")*, which armed backshop by default and cost it this document for ordinary work. That
+> cost is retired: backshop's `.claude/settings.local.json` is gone and it is an ordinary lane
+> again. The flag route survives as a fallback — `claude --settings .claude/settings.audit.json`
+> from any work lane — but it excludes this file **without putting anything in its place**, so a
+> session launched that way must open `Blueprint/AUDITOR_ORIENTATION.md` by hand.
 >
-> **The accepted cost, in `backshop` only: ordinary non-audit work there also runs without this
-> file** — no lane rules, no merge-conflict list, no gate baselines, no standing traps. Recorded
-> here because the only prior record was a comment *inside* a gitignored file. Working in backshop
-> and need this file? **Read it explicitly** — it is on disk, only the auto-load is suppressed. To
-> give the lane its orientation back, delete that tree's `.claude/settings.local.json`; **to make a
-> lane an audit lane, copy backshop's there** — and then run `node tools/audit_preflight.js` in it,
-> because a silently-unmatched exclude pattern looks exactly like a clean audit.
+> **If you are preparing or closing a slice, `Blueprint/AUDIT_CHARTER.md` is your document.** Do not
+> restate the auditor's rules anywhere but `Blueprint/AUDITOR_ORIENTATION.md`, and never hand-arm an
+> exclusion — run `node tools/audit_preflight.js`, because a silently-unmatched exclude pattern
+> looks exactly like a clean audit.
 >
 > **The `SessionStart` hook reports which mode the lane is in** and withholds WIP issue *titles* in
 > an audit lane — measured 2026-08-05, it had been printing a plant defect by name into contexts the
@@ -414,7 +415,7 @@ to read everything.
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
-| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — §11 is the before/after procedure for *your* (primed) session; §1–10 is the auditor's. Verify with `node tools/audit_preflight.js <slice>` (six checks, exit 2 naming the cause; it launches nothing). In **workbench / backshop** the exclusion is already in force, so a fresh session or a `/clear` there *is* the launch; in `develop` it needs `claude --settings .claude/settings.audit.json`. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §11a and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
+| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the whole file is *your* (primed) document: the lane, the prep and the close-out. The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed to `C:\grok_build\RD_Audit\CLAUDE.md` by `node tools/audit_deploy.js`; do not restate them anywhere else. Verify with `node tools/audit_preflight.js <slice>` (eight checks, exit 2 naming the cause; it launches nothing). **The launch is a fresh session started in `C:\grok_build\RD_Audit` itself — not in its `tree/`**, which would silently get the repo's settings and no auditor orientation. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §4 and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
