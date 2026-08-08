@@ -95,8 +95,24 @@ const found = [];
 // an environment variable. A deployment counts only if it is BOTH environment=production
 // AND finished successfully; a queued or failed build is not a live site.
 (function cloudflare() {
+  // `wrangler pages deployment list --json` DOES NOT return the API shape. It returns the
+  // TABLE it would have printed, with capitalised keys:
+  //     { Id, Environment: "Production", Branch: "main", Source: "5df6315",
+  //       Deployment: "https://…", Status: "8 minutes ago" | "Failure", Build: "https://…" }
+  // The first version of this function read `d.environment` and
+  // `d.deployment_trigger.metadata.commit_hash` — API field names that do not exist here —
+  // so it found nothing, always, and reported "not live" for a deployment that was live.
+  // A check that can never pass is worse than no check, because it looks like coverage.
+  // Caught only because Vercel and Cloudflare disagreed on a release known to be good.
+  //
+  // Two consequences of the real shape, both counter-intuitive:
+  //   * `Source` is the SHORT sha, so the full sha this script insists on must be
+  //     truncated to compare. (Insisting on the full one is still right — it is what the
+  //     GitHub half needs, and it makes the input unambiguous.)
+  //   * `Status` is a RELATIVE TIME on success ("8 minutes ago") and the literal string
+  //     "Failure" on failure. So success is "not Failure", not a status match.
   const r = run('npx', ['--yes', 'wrangler', 'pages', 'deployment', 'list',
-    '--project-name', PROJECT, '--json']);
+    '--project-name', PROJECT, '--environment', 'production', '--json']);
   if (!r.ok) {
     console.log(Y + '  cloudflare ' + X + D + 'could not query Pages (' +
       (r.err.split('\n').filter((l) => /error|Error/.test(l))[0] || 'wrangler not authenticated?') + ')' + X);
@@ -109,21 +125,17 @@ const found = [];
     console.log(Y + '  cloudflare ' + X + D + 'could not parse wrangler output' + X);
     return;
   }
-  const hit = (list || []).filter((d) => {
-    const meta = (d.deployment_trigger && d.deployment_trigger.metadata) || {};
-    const stage = d.latest_stage || {};
-    return d.environment === 'production' && meta.commit_hash === sha &&
-      stage.name === 'deploy' && stage.status === 'success';
-  });
-  if (hit.length) {
+  const short = sha.slice(0, 7);
+  const forSha = (list || []).filter((d) => String(d.Source || '').slice(0, 7) === short);
+  const good = forSha.filter((d) => !/^failure$/i.test(String(d.Status || '')));
+  if (good.length) {
     found.push('cloudflare');
-    console.log(G + '  cloudflare PRODUCTION' + X + D + '  ' + (hit[0].url || '') +
-      '  ' + (hit[0].created_on || '') + X);
+    console.log(G + '  cloudflare PRODUCTION' + X + D + '  ' + (good[0].Deployment || '') +
+      '  ' + (good[0].Status || '') + X);
   } else {
-    const anySha = (list || []).filter((d) =>
-      ((d.deployment_trigger && d.deployment_trigger.metadata) || {}).commit_hash === sha);
-    console.log(D + '  cloudflare no successful production deployment (' + anySha.length +
-      ' deployment(s) for this sha, ' + (list || []).length + ' total)' + X);
+    console.log(D + '  cloudflare no successful production deployment (' + forSha.length +
+      ' for this sha' + (forSha.length ? ', all Failure' : '') +
+      ', ' + (list || []).length + ' production deployment(s) total)' + X);
   }
 }());
 
