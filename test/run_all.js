@@ -1299,7 +1299,7 @@ var BASELINES = {
   // term so coincidence logic (high steam flow AND low steam pressure) can be written
   // at all; the new suite pins it at the predicate — both directions, fail-closed on an
   // absent instrument, and the membership form untouched.
-  'run_m4.js':             { code: 0, score: '41/41 274passed' },   // 40/40 262 -> 41/41 274 (#386 stage 2): the containment ESF row suite — unblockable SI, latched spray seal-in + auto-secure, fan realign, MSLI hi-hi
+  'run_m4.js':             { code: 0, score: '42/42 278passed' },   // 41/41 274 -> 42/42 278 (#387): the repo's FIRST noisy-mode leg — adv_valve jitters under an injected noisy failure (was silently inert: noise 0 with no noise_failure), byte-constant baseline, clears clean. Injection-verified: red on the pre-#387 config.   // 40/40 262 -> 41/41 274 (#386 stage 2): the containment ESF row suite — unblockable SI, latched spray seal-in + auto-secure, fan realign, MSLI hi-hi
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -1773,6 +1773,14 @@ var BASELINES = {
   // together — the #224 trap is a step that lands WITHOUT its map entry and reads as covered.
   // 258 -> 261 (2026-08-04, #348): the SGTR SI-termination step, 3 checks per controlled step.
   'verify_manual_follow.js': { code: 0, secs: 158, score: '261checks', slow: true },
+  // NEW 2026-08-08 (#387): freshness gate for the GENERATED ui/manual_data.js — every
+  // cfg.instruments key has an indications entry and none ships name === id (the I-12
+  // raw-id fallback). Landed against a file that had been stale since 2026-07-31 with
+  // 14 instruments missing from the Failures-tab picker; injection-verified (the gate
+  // reds 14 against that committed file). 148 = 49 instruments × both directions + the
+  // 49 name scans + the non-empty check; the count moves with the instrument set, and
+  // updating it here is the acknowledgement.
+  'verify_manual_data.js':   { code: 0, score: '148checks 0failed' },
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

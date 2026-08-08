@@ -1503,6 +1503,40 @@ T.push(test('#370b — a condition can be a NUMERIC threshold on a second instru
     L._evaluateCondition({ instrument: 'plant_mode', in: [4, 5] }, { plant_mode: 5 }) === true, 'true');
 }));
 
+T.push(test('noisy failure BITES on an appended noise-0 channel — adv_valve (#387)', function (ck) {
+  // Every appended instrument ships noise: 0 (the cross-step PRNG rule), so the sigma an
+  // injected `noisy` failure scales comes from `noise_failure` — and adv_valve shipped
+  // without one, which made the failure a silent no-op: fSigma resolved to 0 and _gauss
+  // returned the mean without drawing (pwr_instruments.js). This is the repo's FIRST
+  // `noisy`-mode assertion; it is red on the pre-#387 config (byte-identical samples),
+  // which is its injection verification.
+  var s = new Stack('hot_full_power');
+  s.run(5);
+  var sample = function (n) {
+    var out = [];
+    for (var i = 0; i < n; i++) { s.run(s.dt); out.push(s.ins().adv_valve); }
+    return out;
+  };
+  var spread = function (a) { return Math.max.apply(null, a) - Math.min.apply(null, a); };
+  var base = sample(100);
+  ck('baseline is byte-constant — noise 0 means NO draw, not small noise',
+    'spread ' + spread(base), spread(base) === 0, '0');
+  s.cmd({ action: 'set_instrument_failure', instrument_id: 'adv_valve', mode: 'noisy', value: 5 });
+  var noisy = sample(100);
+  // fSigma = noise_failure (1.0) × scale (5) = 5.0, drawn about the lagged reading (~0)
+  // and clipped to [0, 100] — a half-normal, so assert the spread is unmistakably alive
+  // and sane rather than a fragile clipped-sigma estimate.
+  ck('injected noisy failure moves the channel (was silently inert before #387)',
+    'spread ' + spread(noisy).toFixed(2), spread(noisy) > 1.0, '> 1 point of jitter');
+  ck('…and stays clipped inside the instrument range',
+    Math.min.apply(null, noisy).toFixed(2) + '…' + Math.max.apply(null, noisy).toFixed(2),
+    Math.min.apply(null, noisy) >= 0 && Math.max.apply(null, noisy) <= 100, 'within [0, 100]');
+  s.cmd({ action: 'clear_instrument_failure', instrument_id: 'adv_valve' });
+  var cleared = sample(100);
+  ck('clearing the failure restores the quiet channel',
+    'spread ' + spread(cleared), spread(cleared) === 0, '0');
+}));
+
 // -------- report --------
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var pass = 0, fail = 0;

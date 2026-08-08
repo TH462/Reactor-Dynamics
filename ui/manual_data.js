@@ -85,7 +85,8 @@
           "alarms": [
             "pzr_pressure_high",
             "pzr_pressure_low",
-            "pzr_pressure_lolo"
+            "pzr_pressure_lolo",
+            "accum_aligned"
           ]
         },
         {
@@ -205,12 +206,14 @@
           "unit": "×rated",
           "range": [
             0,
-            0.12
+            0.000267
           ],
           "lag_s": 2,
           "derived": false,
           "boolean": false,
-          "alarms": []
+          "alarms": [
+            "charging_high"
+          ]
         },
         {
           "id": "letdown_flow",
@@ -219,7 +222,7 @@
           "unit": "×rated",
           "range": [
             0,
-            0.12
+            0.000267
           ],
           "lag_s": 2,
           "derived": false,
@@ -233,7 +236,7 @@
           "unit": "MPa",
           "range": [
             0,
-            10.5
+            8.5
           ],
           "lag_s": 0.5,
           "derived": false,
@@ -245,7 +248,7 @@
         {
           "id": "boron_analyzer",
           "name": "Boron Concentration (lab sample)",
-          "measures": "Boron concentration in the primary coolant, from a chemistry sample — NOT a live board indication. Real plants determine boron by chemistry grab sample and titration, and their tech specs require periodic verification of the concentration, not a live instrument. Some plants do have an online boronometer; nothing relies on one. Take a sample to refresh it.",
+          "measures": "Boron concentration in the primary coolant, from a chemistry sample — NOT a live board indication. Real plants sample; they do not trust an online boronometer. Take a sample to refresh it.",
           "unit": "ppm",
           "range": [
             0,
@@ -319,7 +322,7 @@
           "unit": "×rated",
           "range": [
             0,
-            1
+            0.06
           ],
           "lag_s": 0.2,
           "derived": false,
@@ -463,7 +466,7 @@
           "unit": "×rated",
           "range": [
             0,
-            1.2
+            2
           ],
           "lag_s": 1,
           "derived": false,
@@ -499,6 +502,79 @@
           "alarms": []
         },
         {
+          "id": "pzr_spray_flow",
+          "name": "Pressurizer Spray Flow",
+          "measures": "Flow through the pressurizer spray line, percent of the line's maximum — cold-leg water sprayed into the steam space to condense steam and lower pressure. Zero with the valve shut; pinned at zero when the RCPs that drive it are off.",
+          "unit": "%",
+          "range": [
+            0,
+            110
+          ],
+          "lag_s": 1,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "containment_pressure",
+          "name": "Containment Pressure",
+          "measures": "Containment building pressure. Sits at atmospheric on a healthy plant; rises when a break or open relief valve discharges into the building — the direct evidence that primary inventory is leaving through a containment-side hole (a tube rupture bypasses it into the steam generator instead).",
+          "unit": "MPa",
+          "range": [
+            0,
+            0.8
+          ],
+          "lag_s": 1,
+          "derived": false,
+          "boolean": false,
+          "alarms": [
+            "ctmt_press_hi",
+            "ctmt_press_hihi"
+          ]
+        },
+        {
+          "id": "containment_temp",
+          "name": "Containment Temperature",
+          "measures": "Containment atmosphere temperature. A steam release drives it with pressure (the atmosphere runs at the steam's saturation temperature); the channel is slow — a building RTD, not a pipe probe.",
+          "unit": "°C",
+          "range": [
+            0,
+            200
+          ],
+          "lag_s": 10,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "containment_sump_level",
+          "name": "Containment Sump Level",
+          "measures": "Water level in the containment sump, from a float gauge. Break liquid and condensed spray drain here, so a rising sump with falling pressurizer level is the inventory-balance confirmation of a containment-side leak.",
+          "unit": "%",
+          "range": [
+            0,
+            100
+          ],
+          "lag_s": 5,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "core_exit_temp",
+          "name": "Core-Exit Temperature",
+          "measures": "Core-exit thermocouple reading — the post-TMI inadequate-core-cooling channel. Equals the bulk hot-leg reading on a covered core; climbs above it when the core uncovers and the exit reads superheated steam instead of water.",
+          "unit": "°C",
+          "range": [
+            93,
+            982
+          ],
+          "lag_s": 4,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
           "id": "subcooling_margin",
           "name": "Subcooling Margin",
           "measures": "How far the coolant is from boiling (from indicated pressure & temperature). The truth-teller at TMI.",
@@ -514,6 +590,143 @@
             "subcooling_low",
             "subcooling_lost"
           ]
+        },
+        {
+          "id": "pzr_level_dev",
+          "name": "Pressurizer Level Deviation",
+          "measures": "Indicated pressurizer level MINUS the programmed level for the current Tavg. Load changes move level and program together, so this stays near zero through them — a sustained deviation is an inventory signal (leak or unmatched charging/letdown), which an absolute level alarm cannot separate from a load swing.",
+          "unit": "%",
+          "range": [
+            -40,
+            40
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": [
+            "pzr_level_dev_low"
+          ]
+        },
+        {
+          "id": "rod_limit_margin",
+          "name": "Rod Insertion Limit Margin",
+          "measures": "Control-bank steps remaining above the rod insertion limit — the shutdown-authority-remaining signal the ROD LIMIT LO annunciator reads. Reads full scale when the limit does not apply.",
+          "unit": "steps",
+          "range": [
+            0,
+            912
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": [
+            "rod_limit_approach"
+          ]
+        },
+        {
+          "id": "tavg_rate",
+          "name": "Heatup/Cooldown Rate",
+          "measures": "Rate of change of indicated Tavg, damped to the hourly scale the Tech-Spec-class 100 °F/hr limit is written in. Quiet through a normal post-trip settle; a genuine overcooling transient crosses the alarm within a minute.",
+          "unit": "°C/hr",
+          "range": [
+            -300,
+            300
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": [
+            "cooldown_rate_high",
+            "heatup_rate_high"
+          ]
+        },
+        {
+          "id": "loop_delta_t",
+          "name": "Loop ΔT",
+          "measures": "Indicated hot-leg minus cold-leg temperature, percent of rated ΔT — the power-as-the-coolant-sees-it signal the OTΔT/OPΔT protection compares against its computed setpoints.",
+          "unit": "%",
+          "range": [
+            -20,
+            250
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "otdt_setpoint",
+          "name": "OTΔT Setpoint",
+          "measures": "The overtemperature-ΔT trip line, computed live from indicated Tavg and pressure — it moves as the plant moves, which is the point: it protects the DNB limit wherever the plant currently sits.",
+          "unit": "%",
+          "range": [
+            -400,
+            1500
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "opdt_setpoint",
+          "name": "OPΔT Setpoint",
+          "measures": "The overpower-ΔT trip line, computed live from indicated Tavg — the linear-power (fuel melt) companion to OTΔT.",
+          "unit": "%",
+          "range": [
+            -400,
+            1500
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "otdt_margin",
+          "name": "OTΔT Margin",
+          "measures": "OTΔT setpoint minus loop ΔT, percent of rated ΔT. Trips at zero; rod stop at the 3 % offset. Because both sides are computed from indicated channels, a failed transmitter moves this exactly as it would in a real protection rack.",
+          "unit": "%",
+          "range": [
+            -500,
+            1500
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": [
+            "otdt_approach"
+          ]
+        },
+        {
+          "id": "opdt_margin",
+          "name": "OPΔT Margin",
+          "measures": "OPΔT setpoint minus loop ΔT, percent of rated ΔT. Trips at zero; rod stop at the 3 % offset.",
+          "unit": "%",
+          "range": [
+            -500,
+            1500
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": [
+            "opdt_approach"
+          ]
+        },
+        {
+          "id": "adv_valve",
+          "name": "Atmospheric Dump Valve Position",
+          "measures": "Position of the atmospheric dump valve (ADV) — the steam path to atmosphere that carries decay heat when the condenser is unavailable. The board's indication of where the secondary heat sink actually is.",
+          "unit": "%",
+          "range": [
+            0,
+            100
+          ],
+          "lag_s": 0.3,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
         },
         {
           "id": "porv_indicator",

@@ -2334,8 +2334,10 @@
       // instrument PRNG is one continuous cross-step stream, so a single extra
       // draw shifts every downstream reading from that step on (the sg_steam_flow
       // comment above names three marginal endpoints that moved for exactly one).
-      // Appending keeps the draw order of everything already here.
-      adv_valve:         { lag: 0.3, noise: 0,     range: [0, 100] },
+      // Appending keeps the draw order of everything already here. noise_failure
+      // sized like containment_sump_level's 1.0 on the identical [0, 100] span
+      // (#387 — it shipped without one, so a `noisy` failure was silently inert).
+      adv_valve:         { lag: 0.3, noise: 0, noise_failure: 1.0, range: [0, 100] },
       porv_indicator:    { boolean: true },
       status: ['rps_scrammed', 'rcp_running',
                // RCPs stopped by an operator lineup decision, not by a trip/

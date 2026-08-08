@@ -76,6 +76,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the `noisy` failure on `adv_valve` was a silent no-op, and the Failures-tab picker was missing 14 instruments (#387, 2026-08-08)
+
+- **`adv_valve` gains `noise_failure: 1.0`** — it shipped `noise: 0` (the appended-instrument
+  PRNG rule) with no failure sigma, so injecting its `noisy` failure changed nothing:
+  `fSigma` resolved to 0 and `_gauss` returned the mean without drawing. Sized like
+  `containment_sump_level`'s 1.0 on the identical [0, 100] span. PRNG-neutral by
+  construction (draws only while a failure is active). `run_m4` gains the repo's **first
+  `noisy`-mode leg** — byte-constant baseline, jitter under injection, quiet after clearing —
+  red on the pre-fix config (42/42, 278 checks).
+- **`ui/manual_data.js` regenerated after 8 stale days** — the Failures-tab instrument picker
+  is built from it, and the shipped copy predated `pzr_spray_flow`, the three containment
+  channels, `core_exit_temp`, `pzr_level_dev`, `rod_limit_margin`, `tavg_rate`, and the five
+  OTΔT/OPΔT channels as well as `adv_valve`: **14 of 49 instruments could not be failed from
+  the UI at all**. All 14 got authored display entries first (a bare regeneration would have
+  shipped raw ids as names — the resolved I-12 defect re-run). The derived OTΔT/OPΔT and
+  rod-limit channels are deliberately offerable: a computed protection channel failing
+  independently of its inputs is what a summing-amp failure looks like in a real rack.
+- **New gate `test/verify_manual_data.js`** (148 checks) — every instrument in the live config
+  must have a picker entry with an authored name, both directions, so the generated file can
+  never silently stale again (nothing re-runs the generator automatically; this drift had
+  already shipped one raw-id defect and these 14 absences). `run_all` 43 → 44 runners.
+
 ### Changed — the SG feed trio: single-signal AFW (the "30 % real" premise inverted), a programmed level target, and a demand box that admits it (#380 / #355 / #358, 2026-08-08)
 
 - **AFW auto-starts on the same 17 % lo-lo signal that scrams the reactor** (#380, owner-ruled).
