@@ -163,7 +163,7 @@ The live simulator also has an on-screen **Operator’s Manual** (`M` key / 📖
 |----------|-------------------------------|
 | Hot Standby and at-power operations | Cold shutdown heatup/cooldown *rates* |
 | Reactivity, pressure, level, feed, turbine | Multi-loop individual RCS loops (lumped model) |
-| All modeled failures and TMI | Full containment / hydrogen / offsite dose models |
+| All modeled failures and TMI, containment response and the hydrogen burn | Offsite dose / source-term / release models |
 | ESF auto arms, RPS trips | Real-plant Tech Specs / licensing |
 
 This is an **educational lumped-parameter plant**, not a full-scope replica of a licensed US PWR.

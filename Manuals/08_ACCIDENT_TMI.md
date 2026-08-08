@@ -45,7 +45,7 @@ This is an **accident of information**, not primarily of equipment unavailabilit
 | Wrong path | Throttle HPI on high PZR level → uncovery / fuel damage branch |
 | Right path | Isolate + keep HPI → core stays covered |
 
-**Simplifications (honest):** point kinetics; single loop; no full containment/hydrogen model; peak damage may be understated vs history; scenario pacing may be compressed.
+**Simplifications (honest):** point kinetics; single loop; containment and hydrogen are lumped models (the building, its ESF, the H₂ inventory and the one-time burn exist — `12` §12.4d/§12.4e — but no relief tank, no releases); peak damage may be understated vs history; scenario pacing may be compressed.
 
 ---
 

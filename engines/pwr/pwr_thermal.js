@@ -385,9 +385,10 @@
       //
       // CALIBRATION IS SOURCED, not fitted: "at approximately 2200 °F, the oxidation heat
       // equals the decay heat generated after 8 hours from reactor shutdown". 2200 °F is
-      // also the 10 CFR 50.46(b)(1) limit. On THIS plant's decay curve the 8-hour figure is
-      // 1.1243 % of rated, which is zirc_q_ref — and the algebra below makes Q_ox equal it
-      // exactly at w = 1, T = T_ref, so the anchor holds by construction rather than by fit.
+      // also the 10 CFR 50.46(b)(1) limit. zirc_q_ref IS this plant's own 8-hour decay
+      // figure (re-derived whenever the decay curve moves — #364 did; the value lives in
+      // config only, no copy here) — and the algebra below makes Q_ox equal it exactly at
+      // w = 1, T = T_ref, so the anchor holds by construction rather than by fit.
       var z = t.zirc || {}, q_ox = 0;
       if (z.q_ref) {
         var T_K = s.clad_temp_c + 273.15, Tref_K = (z.ref_temp_c || 1204) + 273.15;
@@ -408,8 +409,25 @@
         var dw_dt = (Math.sqrt(s._zr_ox2) - w_old) / dt;
         q_ox = z.q_ref * 2 * tau * dw_dt;               // = q_ref at w = 1, T = T_ref
       }
-      // % of RATED, like decay_heat_pct — q_ox is a fraction here (q_ref is 0.011243).
+      // % of RATED, like decay_heat_pct — q_ox is a fraction here (q_ref's value lives
+      // in config; a copy here went stale once already when #364 re-derived it).
       s.zirc_heat_pct = q_ox * 100;
+      // HYDROGEN LEDGER (#386 stage 3). The same reaction event as the heat — one mol of
+      // Zr yields 190 kJ AND 2 mol H2 — so the H2 rate is EXACTLY proportional to q_ox,
+      // not a fit of shape; h2_gain is the single calibration constant (fraction-of-rated
+      // heat -> v/o of containment free volume; sizing and sources in pwr_config). Do NOT
+      // multiply by f_unc: q_ox already carries it through the oxide integrator — the
+      // f_unc on `heat` below is thermal-node bookkeeping, not part of q_ox. The ledger
+      // telescopes: total H2 = h2_gain·q_ref·2·tau·(w_end − w_start), proportional to
+      // oxide GROWN and independent of dt. Born in the RCS (_rcs_h2); stepContainment
+      // moves it to the building only while a containment-side path exists, which keeps
+      // an SGTR's hydrogen out of the building. Inherits the melt freeze at the top of
+      // this function and the covered-core zero — both declared, Manuals/12 §12.4e.
+      var ch2 = cfg.containment;
+      if (ch2 && ch2.h2_gain) {
+        if (s._rcs_h2 == null) s._rcs_h2 = 0;           // lazy init (new field; old saves)
+        s._rcs_h2 += ch2.h2_gain * q_ox * dt;
+      }
       var heat = (t.clad_heat_gain || 0) * ((s._Q_total || 0) + q_ox) * f_unc;
       var cool = (t.clad_steam_h || 0) * (s.clad_temp_c - T_sat(s.pressure_mpa));
       s.clad_temp_c += (heat - cool) * dt;

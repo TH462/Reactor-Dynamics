@@ -534,6 +534,29 @@
         // oxidises more slowly. This is what the parabolic law buys and why there is a state.
         ck('the oxide layer only ever grows (it cannot un-oxidise)',
           fmt(h.eng.s._zr_ox2, 2), h.eng.s._zr_ox2 > 0, '> 0');
+
+        // ---- the HYDROGEN LEDGER is the same reaction (#386 stage 3). Total H2 =
+        // h2_gain · q_ref · 2 · tau · Δw — the telescoped integral, dt-independent —
+        // and transport only MOVES it between _rcs_h2 and _ctmt_h2. Pinned on its own
+        // short pre-ignition window (fresh rig, ledger sum vs Δw, exact): the band rig
+        // above rides through the burn, which consumes 85 % and breaks the sum by
+        // design. Engine-direct, so no recombiner row exists to remove any.
+        var cH2 = RD.PWR_CONFIG.containment || {};
+        if (cH2.h2_gain) {
+          var g = new Harness('hot_full_power');
+          g.run(10);
+          g.cmd({ action: 'set_eccs_armed', armed: false });
+          g.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+          for (var gj = 0; gj < 2000 && (g.eng.s._ctmt_h2 || 0) < 1.0; gj++) g.run(1);
+          var w0 = Math.sqrt(g.eng.s._zr_ox2 || 0), sum0 = (g.eng.s._rcs_h2 || 0) + (g.eng.s._ctmt_h2 || 0);
+          g.run(60);
+          var w1 = Math.sqrt(g.eng.s._zr_ox2 || 0), sum1 = (g.eng.s._rcs_h2 || 0) + (g.eng.s._ctmt_h2 || 0);
+          var wantH2 = cH2.h2_gain * z.q_ref * 2 * (z.tau_ref_s || 80) * (w1 - w0);
+          ck('H2 ledger ∝ oxide grown, exactly (the same reaction event; transport conserves)',
+            fmt(sum1 - sum0, 6) + ' v/o vs ' + fmt(wantH2, 6) + ' from Δw',
+            (g.eng.s._ctmt_h2 || 0) < 7.5 && Math.abs((sum1 - sum0) - wantH2) < Math.max(1e-9, wantH2 * 1e-6),
+            'equal (and the window stayed below ignition)');
+        }
       });
     },
 

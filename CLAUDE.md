@@ -435,14 +435,16 @@ to read everything.
 
 _Last updated: **2026-08-08**._
 
-**Where the PWR is.** `run_all` is **43 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **44 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
 
-- **#386 stages 2–3** — containment ESF (spray, fan coolers, the sourced 3.5/30 psig actuations,
-  board readouts), then hydrogen with the ruled TMI-2-style burn. Stage 1 gave the break a
-  receiving volume and nothing more.
+- **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen 2026-08-08: the ruled TMI-2-style
+  one-time burn, recombiners, geometry-gated transport — owner-review: the [8.0]/[85]
+  STS-template adoption). Remaining: the board card + manual spray/recombiner surface
+  (waits on the board redesign) and the #384 exit. **#425** (new): SBO boil-off passes
+  containment design pressure on relief steam alone — pre-existing stage-2 base, needs-ruling.
 - **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the plant's
   declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
   power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
@@ -483,6 +485,15 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
+  #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
+  telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
+  building; flow-keying would stall on the burn's own backpressure spike); the burn deposits
+  GEND-061's ADIABATIC ΔP — the measured 27.5 psi form landed the drained family 27.2 psig,
+  UNDER the ruled side of the 30 psig hi-hi (a sourced anchor can be the wrong FORM of the
+  measurement for your model's discretization). Recombiners measurably prevent no ignition
+  (declared, prototypical). #425 found on the way: the SBO containment base passes design
+  on relief steam alone — pre-existing, put to the owner, not absorbed.
 - **#419 landed in one session: pace real, F15 F14-coupled, the plant re-anchored to Ginna**
   (2026-08-07). Wave 2's trap: **a physically-derived constant can be RIGHT and unshippable**
   — K_phys ≈ 304 validates against TMI-2's own clock, but under the ruled 347× F14 heater the
@@ -516,17 +527,13 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   RULED heatup pace — the chain caught it at 260.7 °C), and a knife-edge claim will OSCILLATE
   under re-clocking (TR-3's "spray loses" inverted twice in one day; the probe now pins the
   mechanism half so neither side passes hollow).
-- **The accident clock is real and the relief valves are plant-sized** (2026-08-07, #408 wave 1
-  + the proportional-valve ruling). The accident-inventory family now moves real
-  fractions-per-second; `porv_flow_max` 2.5e-4 (~112 gpm, Ginna power-scaled) and
-  `safety_flow_max` 8.0e-4 (the sourced 3.2 ratio) close #349. The valve sits on a **two-clock
-  seam** — its mass runs real while its pressure authority keeps the ×12.6 transient duty, so
-  the F15 K-pair re-solved 600 → 3144 to preserve full-open authority exactly. Measured:
-  feed-and-bleed viable, full injection beats one wide-open valve, damage on the 1979 clock.
-  **The terminal melt verdict now asks whether the water is coming back** — a reflooded
-  TMI-style core rewets and recovers; unmitigated paths still terminate.
-
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+
+- **A component can sit on a TWO-CLOCK seam** (rescued from the #408 themes bullet on
+  eviction, 2026-08-08): the relief valve's mass flow runs the real accident clock while its
+  pressure authority keeps the transient duty — re-clocking either side alone breaks the
+  other, so preserve the product (the F15 K re-solves, twice now). And the terminal melt
+  verdict asks whether the water is COMING BACK — a reflooded TMI-style core rewets.
 
 - **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
   three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped
@@ -597,8 +604,9 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   **this plant goes solid at an inventory DEFICIT** (thermal expansion), not overfilled.
 - **Containment's flash gate decides what it sees** (#386, rescued 2026-08-07): a stuck-open
   PORV pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break
-  liquid is flash-gated), and an SGTR reads NOTHING — it discharges into the SG. `press_gain`
-  is fitted and says so. Stages 2 (spray/fan coolers/ESF) and 3 (hydrogen) are #386's.
+  liquid is flash-gated), and an SGTR reads NOTHING — it discharges into the SG, and since
+  stage 3 that fence extends to hydrogen (geometry-gated transport). `press_gain` is fitted
+  and says so. All three #386 stages are landed; the board card waits on the redesign.
 - **Natural circulation: the SHAPE is sourced (W ∝ Q^⅓), the SCALE is this plant's** and is fitted
   — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
   ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the

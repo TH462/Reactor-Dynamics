@@ -563,6 +563,50 @@
     s._ctmt_steam = Math.max(0, s._ctmt_steam + (steam_in - cond) * dt);
     s._ctmt_sump += (q_break * (1 - flash) + cond
                    + (s.ctmt_spray_active ? (c.spray_sump_rate || 0) : 0)) * dt;
+    // ---- Hydrogen (#386 stage 3). Ledger currency is v/o OF CONTAINMENT FREE VOLUME
+    // (the one sourced denominator: Ginna UFSAR ch15, 1.0e6 ft^3). Generated in
+    // stepCladding (_rcs_h2, exactly proportional to the oxidation heat) and moved here
+    // only while a containment-side path EXISTS — geometry, not flow: a flow-keyed gate
+    // would stall on the burn's own backpressure spike (√Δp clips to zero for a step)
+    // and alias the safety-valve duty cycle. SGTR-only discharge keeps its H2 in the
+    // RCS — what the SG carries away is declared untracked (§12.4e) — so the
+    // SGTR-reads-nothing fence (CA-16 leg B) holds for hydrogen too, and a closed block
+    // valve HOLDS the inventory (the isolation lesson survives).
+    if (s._rcs_h2 == null) s._rcs_h2 = 0;      // lazy init: old saves, rig states
+    if (s._ctmt_h2 == null) s._ctmt_h2 = 0;
+    var h2PathOpen = (s._leak_base > 0 && !s._leak_to_sg)
+                  || (s.porv_open && s.block_valve_open !== false)
+                  || !!s.safety_open;
+    if (h2PathOpen && s._rcs_h2 > 0) {
+      var h2_xfer = s._rcs_h2 * Math.min(1, dt / (c.h2_transport_tau_s || 60));
+      s._rcs_h2 -= h2_xfer; s._ctmt_h2 += h2_xfer;
+    }
+    // Recombiners — auto-only combustible-gas control. Existence is sourced (WTSM 5.0,
+    // NUREG-0737 II.E.4.1); capacity is NOT in any lane's corpus, so recomb_tau_s is
+    // fitted SLOW — they manage the DBA tail and cannot stop a TMI-scale rise, which is
+    // the prototypical shape. Demand vs delivery is the #200/#329 split: a blackout
+    // stops the trains with the demand standing.
+    s.ctmt_recomb_active = !!s.ctmt_recomb_demand && acAvailable(s);
+    if (s.ctmt_recomb_active && s._ctmt_h2 > 0) {
+      s._ctmt_h2 = Math.max(0, s._ctmt_h2 - s._ctmt_h2 / (c.recomb_tau_s || 1800) * dt);
+    }
+    // THE BURN — the ruled shape (OWNER RULING 2026-08-05: TMI-2-style, one-time
+    // deflagration pressure spike + latched event, containment holds; OWNER RULING
+    // 2026-08-08: peak sized ABOVE the 30 psig spray hi-hi, so the ESF answers it).
+    // Physics-side trigger on TRUE concentration — a chemical event, not an instrument
+    // decision (the self-actuating SG-safeties precedent). 2H2 + O2 -> 2H2O: a burn
+    // MAKES steam and heat, so depositing into _ctmt_steam rides the existing
+    // press_gain/T_sat/sink machinery and produces the GEND-061 shape — a single sharp
+    // spike, then sink-rate decay. The latch is one-time FOREVER and stands in for O2
+    // depletion/ignition stochastics (no O2 ledger, declared): H2 may re-accumulate
+    // past the threshold afterward with no second burn — TMI-2 burned once.
+    if (!s.ctmt_h2_burned && s._ctmt_h2 >= (c.h2_ignition_pct || 8.0)) {
+      var h2_burned = s._ctmt_h2 * (c.h2_burn_consumed_frac != null ? c.h2_burn_consumed_frac : 0.85);
+      s._ctmt_h2 -= h2_burned;
+      s._ctmt_steam += (c.h2_burn_gain || 0) * h2_burned;
+      s.ctmt_h2_burned = true;
+    }
+    s.ctmt_h2_pct = clip(s._ctmt_h2, 0, 100);
     var p_steam = (c.press_gain || 0) * s._ctmt_steam;
     s.containment_pressure_mpa = c.ambient_pressure_mpa + p_steam;
     // Atmosphere temperature: a steam/air mixture sits at the steam partial

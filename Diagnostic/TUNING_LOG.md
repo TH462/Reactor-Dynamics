@@ -29,6 +29,88 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-08-develop-c (#386 stage 3 — HYDROGEN: inventory, recombiners, the ruled burn; + #387 bundled)
+
+**Owner: "Work: #386 stage 3 (hydrogen) + #387 as a bundle"**, plan approved at review; one
+in-plan ruling taken *(OWNER RULING, 2026-08-08: selected "Above 30 psig" — the burn peak
+sized clearly above the spray hi-hi so the ESF answers it; a selection, not verbatim words)*.
+The 2026-08-05 burn-shape ruling (TMI-2-style one-time deflagration + latch, containment
+holds) binds throughout. Decision record: `Blueprint/BUILD_DECISIONS.md` 2026-08-08-develop-c.
+
+**#387 first, own commit (8f2d2d9)** — adv_valve `noise_failure: 1.0`; `ui/manual_data.js`
+regenerated after 8 stale days (14 of 49 instruments missing from the Failures picker, 13
+with no display entry — all authored first, or the regen would have re-run I-12); the repo's
+first `noisy`-mode leg (run_m4 42/42 278, red on the pre-fix config); NEW gate
+`verify_manual_data.js` (148, injection-verified: reds 14 against the old committed file).
+`run_all` 44 runners at baseline. Closed.
+
+**Evidence mini-pass — GEND-061 fetched into the corpus** (`inbox/sources/
+GEND-061_TMI2_hydrogen_burn.pdf/.txt`, Henrie & Postma 1987, DOE DE87010696, via OSTI —
+nrc.gov not needed). It sources the entire burn: 9 h 50 min clock, **7.9 % (wet) preburn
+average**, **6.8 % burned / 1.1 % left = 86 % consumed**, peak *"almost 30 lb/in² gage"*
+from a ~1.3 psig preburn (**ΔP ≈ 27.5 psi**, +5 psi lost to in-burn cooling per its fig
+4-13 → **adiabatic ≈ 32.5 psi**, the right anchor for an instantaneous deposit), TMI-2
+design 65 psig held, ~460 kg H₂ from ~40 % of core zirconium. Corpus sweep also surfaced:
+**Ginna net free volume 1.0×10⁶ ft³** (UFSAR ch15 :7011/:10143) and Ginna's own 50.46
+results (**CWO 0.30 %** vs the (b)(3) 1 % limit) — the mitigated-case brackets. The STS
+**[8.0]/[85] pair is bracketed ice-condenser TEMPLATE text** (the #380 placeholder class,
+adjudicated in the open) — adopted because GEND-061's own 7.9 %/86 % corroborates both.
+Recombiner capacity: in NO lane's corpus → fitted. Verdict table: `inbox/h2_evidence_verdicts.md`.
+
+**The build** (files in the commit): generation is ONE line beside q_ox
+(`pwr_thermal.js` — d(H₂)/dt ∝ q_ox exactly, same reaction event, NO second f_unc — the
+ledger telescopes to Δw, dt-independent, MD-11-pinned to 1e-6); two-node transport
+(`_rcs_h2 → _ctmt_h2`) gated on path GEOMETRY not flow (a flow key would stall on the
+burn's own backpressure spike and alias the safety duty cycle) — SGTR-flagged leaks hold
+their H₂ (CA-16 leg B extends to hydrogen), a closed block valve holds it; recombiners
+auto-only (spray-row clone: no arm, params form, latched seal-in, auto-secure 0.5/0.2 v/o,
+declared inference); the burn consumes 85 % at 8.0 v/o TRUE concentration, deposits the
+adiabatic GEND-061 ΔP into `_ctmt_steam` (the existing press_gain/T_sat/sink machinery
+makes the spike shape), latches forever (the O₂-depletion stand-in — no O₂ ledger).
+Surface: `ctmt_h2` instrument (0–10 % SOURCED range, NUREG-0737 II.F.1; 30 s lag [tune]
+declared), A40 (4.1 v/o sourced flammability) / A41 (burn, never clears) / A42 (recomb
+status), two Physics-tab rows, 4 true_state fields + §6.3.
+
+**Q0 (full stack, this session).** Mitigated fence: ECCS-live LOCA sev 0.10/0.5/1.0 peak
+**0.014–0.020 v/o** — ~290× under 4.1, the 50.46(b)(3) margin story; recombiners never
+start. TMI-class (stuck PORV, defeated): recomb auto-start 76 min and LOSING, 4.1 at
+~100 min, **burn at ~110 min: 9.3 → 41.5 psig**, spray answers, H₂ re-accumulates past
+10 v/o with no second burn. Unmitigated LOCA (CA-21 rig): burn 41 min, **32.4 psig from a
+drained base** (why the anchor moved to the adiabatic form — at the measured-peak 27.5 the
+drained family landed 27.2, UNDER the ruled side of the hi-hi). Deep SGTR sev 1.0 defeated,
+3 h: **never uncovers — zero H₂ anywhere** (so the transport fence is pinned by clone rig,
+the CA-17 idiom, not by family run). Restore-at-0.8-v/o (clad 894 °C): the excursion
+outruns restored injection and the plant burns anyway — then recombiners walk 23.5 → 1.6
+v/o at exactly their e-fold; **no family exists where recombiners prevent ignition**
+(prototypical, declared §12.4e). Fences: run_scenarios 3/3, run_campaign **51/51 3039**,
+run_behavior 66/2xf, run_meltdown 12 — all unmoved pre-probe.
+
+**FOUND ON THE WAY, filed #425**: SBO+AFW-failure drives containment past design on relief
+steam alone (30 psig at 100 min, ~83 psig equilibrium) — pre-existing stage-2 behavior
+(both H₂ ledgers exactly 0.000 through the crossing), revealed by the longer window; the
+no-PRT declaration reading harshly in its worst family. The burn's containment-holds pin
+is therefore authored on the LOCA/stuck-PORV families; #425 carries the numbers and the
+ruling ask.
+
+**Probes.** CA-24 four legs (mitigated trace / burn arc incl. peak-above-hi-hi + under-
+design + ONE drop + 85 %±3 / recombiner rig: auto-start, e-fold, #200 blackout split /
+transport clone rig ×4 with conservation) — injection-verified three ways with distinct
+signatures (h2_gain 0 → 7 reds; SGTR-exclusion drop → leg d alone; removal disable →
+leg c alone). MD-11 gains the exact ledger-∝-Δw identity leg. run_m4 recombiner suite
+(43/43 285). perturb_sweep: h2_gain ×1.03 → 10/711 moved, **zero verdict flips** (burn_gain
++ recomb_tau sweeps in flight at entry time — recorded in the commit if they finish red,
+otherwise green silence is the record). Two probe-authoring traps re-met: the sampler
+fires per CYCLE not per second (time read from `eng.simTime`), and the pre-burn sample
+sits up to one cycle under the trigger (band allows 0.2 v/o).
+
+**Docs.** Rev 14 pending row item (n); 12 §5.5 inverted + NEW §12.4e (the full declaration
+set) + §13.0 re-scoped; 09 §3.0 three rows; 06 A40–A42; 01 §8.0, 08, README, ISSUES I-05
+narrowed; TMI narrations stop disclaiming the burn they now perform. run_manual_units
+caught 5 in the new prose (the °C-pair and psig-pair classes) — fixed, 528 pairs green.
+
+**Still open on #386:** the board card + manual spray/recombiner surface (board redesign),
+#384 exit (stage 4). Owner-review items on the issue: the [8.0]/[85] template adoption.
+
 ## Session log — 2026-08-08-develop-b (#380 SG lo-lo ladder RESOLVED by premise inversion + #355 feed program + #358 NO FLOW)
 
 **Three SG-feed issues closed in one pass, all three ruled the same day** *(OWNER RULINGS,

@@ -78,6 +78,7 @@
       case 'set_hpi': case 'set_afw': case 'set_rcic': case 'set_hpci':
       case 'set_dhr': case 'set_rhr': case 'set_eps_bypass':
       case 'set_containment_spray': return 'active';   // #386 stage 2
+      case 'set_ctmt_recombiners': return 'active';    // #386 stage 3
       case 'set_ctmt_fans': return 'safety';           // #386 stage 2 (CRFC realign)
       case 'set_charging_flow': case 'set_letdown_flow': return 'normalized';
       case 'set_steam_demand': case 'set_turbine_load': case 'set_load_target': return 'mwe';

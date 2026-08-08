@@ -76,6 +76,45 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the hydrogen is real: inventory, recombiners, and the one-time TMI-2-style burn (#386 stage 3, 2026-08-08)
+
+- **Generation is the oxidation term itself** — the zirconium-steam reaction that heats the
+  hot node now also books its hydrogen, in exact proportion (same reaction event: 2 mol H₂
+  and 190 kJ per mol Zr; Appendix K mandates Baker-Just for "hydrogen generation" by name).
+  One fitted scale constant, bracketed by two sourced anchors: an ECCS-mitigated DBA peaks
+  at **0.014 v/o** — ~290× under the flammability limit, the 10 CFR 50.46(b)(3) margin
+  story (Ginna's own limiting LBLOCA: 0.30 % core-wide oxidation) — while unmitigated
+  families ignite at 41–110 min. Generation stops at melt and on a covered core (inherited,
+  declared). MD-11 pins the ledger ∝ oxide-grown identity exactly.
+- **Transport is geometry-gated, two-node** — H₂ born in the RCS moves to the building only
+  while a containment-side path exists. A tube rupture's hydrogen goes into the steam
+  generator (the building reads nothing — the SGTR bypass fence extends to H₂); a closed
+  block valve holds the inventory. Concentration runs in v/o of Ginna's sourced 1.0×10⁶ ft³
+  net free volume, on a new 0–10 % analyzer (NUREG-0737 II.F.1 sourced range, A40 at the
+  sourced 4.1 v/o flammability limit).
+- **The burn** *(OWNER RULING, 2026-08-05: selected "TMI-2-style burn" — one-time
+  deflagration spike + latched event, containment holds; and OWNER RULING, 2026-08-08:
+  selected "Above 30 psig" — the ESF answers it; both selections, not verbatim words)*:
+  at 8.0 v/o (STS template, corroborated by TMI-2's estimated
+  7.9 %) the atmosphere consumes 85 % of its hydrogen (TMI-2: 86 %) and spikes the building
+  by TMI-2's measured ΔP in adiabatic form (~32 psi — GEND-061, fetched into the corpus
+  this session). Measured peaks 32–42 psig: above the hi-hi, far under the 60 psig design.
+  A41 latches forever; H₂ can re-accumulate past ignition with no second burn (the
+  O₂-depletion stand-in, declared). Spray and steam-line isolation answer the spike.
+- **Recombiners, auto-only** — start at 0.5 v/o, secure at 0.2 (declared inference; real
+  ones are manually placed in service), capacity fitted slow because that is the real
+  machine: they own the mitigated tail (measured: exact e-fold cleanup post-recovery) and
+  are measurably outrun by a degraded core — H2 HI firing means they are losing. A42
+  status; delivery dies in a blackout with demand standing.
+- Player surface (auto-only per the stage-2 ruling): annunciators **A40–A42**, two new
+  Physics-tab rows, and the plant acting on its own. Manuals: new `12` §12.4e declaration
+  row, §5.5/§13.0 re-scoped, `09` three rows, `06` three cards, `01`/`08`/README/I-05
+  narrowed; the TMI scenario narrations stop disclaiming a burn the simulator now performs.
+  Probes: CA-24 (four legs, injection-verified three ways), run_m4 recombiner suite.
+- **Found on the way, filed #425**: an SBO boil-off passes containment design pressure on
+  relief steam alone — pre-existing stage-2 behavior (no PRT, passive-only sink in a
+  blackout), measured and put to the owner rather than absorbed here.
+
 ### Fixed — the `noisy` failure on `adv_valve` was a silent no-op, and the Failures-tab picker was missing 14 instruments (#387, 2026-08-08)
 
 - **`adv_valve` gains `noise_failure: 1.0`** — it shipped `noise: 0` (the appended-instrument

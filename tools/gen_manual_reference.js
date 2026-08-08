@@ -183,6 +183,7 @@ var IND = {
   otdt_margin:      { n: 'OTΔT Margin', m: 'OTΔT setpoint minus loop ΔT, percent of rated ΔT. Trips at zero; rod stop at the 3 % offset. Because both sides are computed from indicated channels, a failed transmitter moves this exactly as it would in a real protection rack.', u: '%' },
   opdt_margin:      { n: 'OPΔT Margin', m: 'OPΔT setpoint minus loop ΔT, percent of rated ΔT. Trips at zero; rod stop at the 3 % offset.', u: '%' },
   adv_valve:        { n: 'Atmospheric Dump Valve Position', m: 'Position of the atmospheric dump valve (ADV) — the steam path to atmosphere that carries decay heat when the condenser is unavailable. The board\'s indication of where the secondary heat sink actually is.', u: '%' },
+  ctmt_h2:          { n: 'Containment Hydrogen Concentration', m: 'Hydrogen concentration in the containment atmosphere, volume percent, from a slow sampling analyzer. Nonzero only when an overheated core has been oxidizing AND the primary is discharging into the building. The lower flammability limit is 4.1 volume percent.', u: '% vol' },
 };
 
 // Safety limits (authored).

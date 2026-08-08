@@ -45,6 +45,63 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-08-develop-c — #386 stage 3: hydrogen (the ruled burn) + #387 bundled
+
+**Rulings.** The 2026-08-05 burn ruling binds (TMI-2-style one-time deflagration + latch,
+containment holds — indication-only and end-state rejected); one new ruling at plan review
+*(OWNER RULING, 2026-08-08: selected "Above 30 psig" — burn peak clearly above the spray
+hi-hi so the ESF answers it; a selection, not verbatim words)*.
+
+**Decisions this entry records (the why lives with each):**
+- **H₂ rate = q_ox, one constant.** d(H₂)/dt is exactly proportional to the oxidation heat
+  (same Baker-Just event, 2 mol H₂ + 190 kJ per mol Zr; App. K mandates Baker-Just for
+  "hydrogen generation" by name), so the rate law is sourced-by-construction and `h2_gain`
+  is the single fitted scale — bracketed by Ginna's 0.30 % CWO (mitigated ≪ 4.1 v/o) and
+  TMI-2's 7.9 % (unmitigated ignites). NO second f_unc (the oxide integrator carries it);
+  the ledger telescopes to Δw — MD-11 pins the identity exactly.
+- **Currency = v/o of Ginna's SOURCED 1.0×10⁶ ft³ free volume** (UFSAR ch15) — no
+  separate conc_gain; only the product would be observable.
+- **Two-node transport, GEOMETRY-gated** (`_rcs_h2 → _ctmt_h2` while a containment-side
+  path *exists*): flow-keying would stall on the burn's own backpressure spike and alias
+  the safety duty cycle; one-node either drops mass or stalls it on valve phase (the SBO
+  boil-off family decides it). SGTR-flagged leaks hold their H₂ — the CA-16 leg B fence
+  extends to hydrogen; a closed block valve holds it (the isolation lesson survives).
+- **[8.0]/[85] adopted as TEMPLATE-CORROBORATED** — bracketed NUREG-1431 ice-condenser
+  igniter text (the #380 placeholder class, adjudicated in the open) that TMI-2's own
+  analysis happens to corroborate (GEND-061 §4.6.3: 7.9 % preburn, 86 % consumed). NOT
+  [tune] — moving either re-litigates the ruling. `status-owner-review` on #386.
+- **Burn ΔP anchored ADIABATIC**: GEND-061 measured ≈27.5 psi and attributes 5 psi to
+  in-burn cooling (fig 4-13); this model deposits instantaneously and lets the sink terms
+  cool afterward, so the ~32.5 psi adiabatic form is the correct anchor — and it is what
+  puts the drained-base family (32.4 psig) on the ruled side of the 30 psig hi-hi, where
+  the measured-peak form landed 27.2 (under). Q0 table in TUNING_LOG.
+- **The one-time latch stands in for O₂ depletion** (no O₂ ledger, declared): H₂ may
+  re-accumulate past ignition with no second burn — TMI-2 burned once. Post-melt the
+  ledger integrates a term already past its validity; the published value clips at 100
+  (the #326 declaration class).
+- **Recombiners: spray-row clone, auto-only, fitted SLOW** (no capacity in any lane's
+  corpus; existence sourced WTSM 5.0 + NUREG-0737 II.E.4.1; auto-start/auto-secure a
+  declared inference — real ones are manual). Measured: **no family exists where they
+  prevent ignition** (restore-at-0.8-v/o still burns — the excursion outruns restored
+  injection above ~1652 °F (900 °C) clad); they win the post-recovery tail at exactly
+  their e-fold. That is the prototypical shape and is declared, §12.4e.
+- **The containment-holds pin is family-scoped** to LOCA/stuck-PORV: the SBO boil-off
+  base passes design pressure on relief steam alone BEFORE any H₂ exists — pre-existing
+  stage-2 behavior (ledgers 0.000 through the crossing), filed **#425** with the numbers
+  rather than absorbed into this change.
+- **#387 sequenced first, own commit** — its freshness gate (`verify_manual_data.js`)
+  then enforced the `ctmt_h2` picker entry the moment the instrument landed. The 14
+  missing instruments' display entries were authored BEFORE regeneration (I-12's fallback
+  prints raw ids); the derived OTΔT/OPΔT channels are deliberately offerable failure
+  targets (a computed protection channel failing independently is a real rack's
+  summing-amp failure — my call, stated).
+
+**Gates:** run_pwr 246, run_m4 43/43 285, run_contract 175, run_hr3 31, run_reachability
+76, run_behavior 67p/2xf (CA-24), run_meltdown 12 (MD-11 +1 leg), verify_manual_data 151,
+manuals Rev 14 re-stamped/packed (item n), run_manual_units 528 pairs. Fences unmoved:
+run_scenarios 3/3, run_campaign 51/51 3039. Injection verification three ways with
+distinct signatures; perturb h2_gain ×1.03 → 10/711 moved, zero flips.
+
 ## 2026-08-08-develop-b — #380 resolved by premise inversion (single-signal AFW), #355 feed program, #358 NO FLOW
 
 **The decision that mattered was reading the brackets.** #380's premise — lo-lo "sourced real

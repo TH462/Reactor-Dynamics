@@ -75,7 +75,7 @@ var BASELINES = {
   // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
   // protection acted on a reading the plant never had. Each half injection-verified and
   // they discriminate independently.
-  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 245passed' },   // 244 -> 245 (#421): the legacy-currency letdown-alias snap check   // 243 -> 244 (#418 B1): save_migration asserts the t_sg_c split-interpolation seed   // 242 -> 243 (#418 A2): the sg_mass_frac inverse-map round-trip   // 241 -> 242 (#386 stage 1): the five containment fields
+  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 246passed' },   // 245 -> 246 (#386 stage 3): save_migration pins the six hydrogen fields restoring empty/unburned   // 244 -> 245 (#421): the legacy-currency letdown-alias snap check   // 243 -> 244 (#418 B1): save_migration asserts the t_sg_c split-interpolation seed   // 242 -> 243 (#418 A2): the sg_mass_frac inverse-map round-trip   // 241 -> 242 (#386 stage 1): the five containment fields
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
   // DELIBERATELY NOT MOVED at #346, and reading 1/3 on the backshop lane. Both red suites are
@@ -318,7 +318,7 @@ var BASELINES = {
   // already at the sourced WTSM speed thresholds; the ±5 band is sourced and NOT widened.
   // Coupled to #378 (whose fix was rejected FOR this duty at 5.26 — the trade-space
   // changed); fixing the duty must remove the XFAIL entry in the same change.
-  'run_behavior.js':       { code: 0, secs: 80, score: '66pass 2xfail' },   // 65 -> 66 (#385 node stage 1): CA-23 — the pressurizer inventory node is INERT (identity to the level line across three families + the migration seed). 64 -> 65 (#386 stage 2): CA-22 spray knockdown/auto-secure; CA-16 leg D re-authored on the active sinks, CA-21 window 0.90 -> 0.85 (stage-2 drained equilibrium parks at 0.88), PI-9 re-authored (SI correctly arrives on the sourced containment backup)
+  'run_behavior.js':       { code: 0, secs: 80, score: '67pass 2xfail' },   // 66 -> 67 (#386 stage 3): CA-24 — hydrogen: mitigated trace, the one-time burn above the hi-hi and under design, recombiner rig, the SGTR transport fence (clone rig). Injection-verified three ways with distinct signatures. 65 -> 66 (#385 node stage 1): CA-23 — the pressurizer inventory node is INERT (identity to the level line across three families + the migration seed). 64 -> 65 (#386 stage 2): CA-22 spray knockdown/auto-secure; CA-16 leg D re-authored on the active sinks, CA-21 window 0.90 -> 0.85 (stage-2 drained equilibrium parks at 0.88), PI-9 re-authored (SI correctly arrives on the sourced containment backup)
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -368,7 +368,7 @@ var BASELINES = {
   // shared by all three plants now, so it stops being a finding — and the known-leak list
   // in run_hr3.js is EMPTY for the first time. Fewer checks means fewer leaks, not less
   // checking; the gate reddened on its own stale entry before anyone edited the list.
-  'run_hr3.js':            { code: 0, score: '30checks 0failed' },   // 28 -> 30 (#386 stage 2): set_containment_spray/set_ctmt_fans declared in the valueFieldFor allow-list
+  'run_hr3.js':            { code: 0, score: '31checks 0failed' },   // 30 -> 31 (#386 stage 3): set_ctmt_recombiners declared. 28 -> 30 (#386 stage 2): set_containment_spray/set_ctmt_fans declared in the valueFieldFor allow-list
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
@@ -801,7 +801,7 @@ var BASELINES = {
   // rulings quoted in the Manuals/00 Rev 14 item (g) and this session's TUNING_LOG and
   // BUILD_DECISIONS entries. Measured standalone on the final tree AFTER all docs were
   // written (the docs-move-the-score rule above, honored locally again).
-  'run_hardrules.js':      { code: 0, score: '235checks 0failed' },   // 230 -> 235 (2026-08-08, #380/#355/#358): the three same-day OWNER RULING citations land in TUNING_LOG, BUILD_DECISIONS and the Rev 14 row — five new HR11 sites. Updated WITH the docs in the same change this time (see the 228 -> 230 note below for the CI-caught version of forgetting that). | 228 -> 230 (2026-08-08): the #385 flash-ruling quotes in BUILD_DECISIONS + TUNING_LOG add two HR11 rows. CAUGHT BY CI, not locally — the docs-only commit ran run_hardrules STANDALONE (which prints its own tally and compares nothing); only run_all compares to this map. The three-comments-up warning arrived on schedule, wearing a new face: "once more AFTER the docs" must mean run_all, not the bare runner.
+  'run_hardrules.js':      { code: 0, score: '240checks 0failed' },   // 235 -> 240 (2026-08-08, #386 stage 3): the burn/spike ruling citations across CONTEXT §6.3, CHANGELOG, BUILD_DECISIONS, TUNING_LOG and the Rev 14 row — five new HR11 sites. Two were first written BARE ("OWNER RULING 2026-08-05: TMI-2-style" with neither verbatim words nor the declared-selection form) and the scan caught both — the ruling IS a selection, so the "a selection, not verbatim words" declaration is load-bearing, not boilerplate. | 230 -> 235 (2026-08-08, #380/#355/#358): the three same-day OWNER RULING citations land in TUNING_LOG, BUILD_DECISIONS and the Rev 14 row — five new HR11 sites. Updated WITH the docs in the same change this time (see the 228 -> 230 note below for the CI-caught version of forgetting that). | 228 -> 230 (2026-08-08): the #385 flash-ruling quotes in BUILD_DECISIONS + TUNING_LOG add two HR11 rows. CAUGHT BY CI, not locally — the docs-only commit ran run_hardrules STANDALONE (which prints its own tally and compares nothing); only run_all compares to this map. The three-comments-up warning arrived on schedule, wearing a new face: "once more AFTER the docs" must mean run_all, not the bare runner.
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
@@ -852,7 +852,7 @@ var BASELINES = {
   // 157 -> 158 (#418 A2) -> 159 (#418 B1): the sg_mass_frac ledger and t_sg_c tube-node
   // fields' §6.3 lines — the contract gate counts one check per documented true_state
   // field, both directions.
-  'run_contract.js':       { code: 0, score: '168checks 0failed' },   // 167 -> 168 (#385 node stage 1): the pzr_mass_frac inventory-node field's §6.3 line. 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
+  'run_contract.js':       { code: 0, score: '175checks 0failed' },   // 168 -> 175 (#386 stage 3): 4 hydrogen true_state fields + 3 new alarms' category checks. 167 -> 168 (#385 node stage 1): the pzr_mass_frac inventory-node field's §6.3 line. 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -1075,7 +1075,7 @@ var BASELINES = {
   // to filter to death, the #249 class).
   // 68 → 69 (2026-08-05, #370c): the steam line isolation's actuation setpoint
   // (steam_pressure low 5.20) joins Part A's static audit.
-  'run_reachability.js':   { code: 0, score: '74checks 0failed' },   // 69 -> 74 (#386 stage 2): the containment actuation/alarm setpoints join Part A (all strictly inside containment_pressure's [0, 0.8] — stage 1 pre-sized the range for exactly this)
+  'run_reachability.js':   { code: 0, score: '76checks 0failed' },   // 74 -> 76 (#386 stage 3): the 4.1 v/o H2 alarm + the recombiner start join Part A (strictly inside ctmt_h2's [0, 10] — the spec pre-sized the range). 69 -> 74 (#386 stage 2): the containment actuation/alarm setpoints join Part A (all strictly inside containment_pressure's [0, 0.8] — stage 1 pre-sized the range for exactly this)
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
@@ -1299,7 +1299,7 @@ var BASELINES = {
   // term so coincidence logic (high steam flow AND low steam pressure) can be written
   // at all; the new suite pins it at the predicate — both directions, fail-closed on an
   // absent instrument, and the membership form untouched.
-  'run_m4.js':             { code: 0, score: '42/42 278passed' },   // 41/41 274 -> 42/42 278 (#387): the repo's FIRST noisy-mode leg — adv_valve jitters under an injected noisy failure (was silently inert: noise 0 with no noise_failure), byte-constant baseline, clears clean. Injection-verified: red on the pre-#387 config.   // 40/40 262 -> 41/41 274 (#386 stage 2): the containment ESF row suite — unblockable SI, latched spray seal-in + auto-secure, fan realign, MSLI hi-hi
+  'run_m4.js':             { code: 0, score: '43/43 285passed' },   // 42/42 278 -> 43/43 285 (#386 stage 3): the recombiner-row suite (auto-start, params-trap seal-in refusal, latched-not-live, auto-secure, re-fire). 41/41 274 -> 42/42 278 (#387): the repo's FIRST noisy-mode leg — adv_valve jitters under an injected noisy failure (was silently inert: noise 0 with no noise_failure), byte-constant baseline, clears clean. Injection-verified: red on the pre-#387 config.   // 40/40 262 -> 41/41 274 (#386 stage 2): the containment ESF row suite — unblockable SI, latched spray seal-in + auto-secure, fan realign, MSLI hi-hi
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
@@ -1780,7 +1780,7 @@ var BASELINES = {
   // reds 14 against that committed file). 148 = 49 instruments × both directions + the
   // 49 name scans + the non-empty check; the count moves with the instrument set, and
   // updating it here is the acknowledgement.
-  'verify_manual_data.js':   { code: 0, score: '148checks 0failed' },
+  'verify_manual_data.js':   { code: 0, score: '151checks 0failed' },   // 148 -> 151 (#386 stage 3): the ctmt_h2 analyzer joins the picker — the gate landed hours before the instrument and enforced its display entry, which is the sequencing it exists for
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

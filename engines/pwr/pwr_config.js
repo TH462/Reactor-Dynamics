@@ -1980,6 +1980,67 @@
       // leak creeps. Indication only — no recirculation (no RWST inventory exists
       // to swap from; declared, Manuals/12 §13.0). [tune]
       sump_ref: 3.0,               // #408 refit (was 300, on 229 discharged RCS masses): a real 30-min full-break ride discharges ~2-3 — sump reads 58 % on the DBA, graded to 36 % at sev 0.05 [tune]
+      // ---------------------------------------------------- hydrogen (#386 stage 3)
+      // Currency: v/o of containment free volume — the ONE sourced denominator
+      // (Ginna UFSAR ch15 ML20339A101: "Containment net free volume, ft3 1E6").
+      // The GENERATION RATE law is sourced by construction: H2 is produced by the
+      // same Baker-Just reaction event as the oxidation heat (2 mol H2 and 190 kJ
+      // per mol Zr — 10 CFR 50 App. K para 5 mandates Baker-Just for "hydrogen
+      // generation" BY NAME), so d(H2)/dt ∝ q_ox exactly, and h2_gain is the one
+      // absolute-scale constant. FITTED between two sourced brackets (no core
+      // Zircaloy mass exists to derive it — the ch15 geometry note is declared
+      // RECALLED): an ECCS-mitigated DBA must sit far under the 4.1 v/o
+      // flammability limit (Ginna's own limiting LBLOCA: core-wide oxidation
+      // 0.30 % vs the 50.46(b)(3) 1 % limit, UFSAR ch15), and an unmitigated
+      // TMI-class event must reach ignition pre-melt (GEND-061: TMI-2 averaged
+      // 7.9 % from ~40 % of core zirconium oxidized). Q0-sized. [tune]
+      h2_gain: 3.0,                // v/o per unit of ∫q_ox·dt (fraction-of-rated·s) [tune]
+      // RCS -> containment transport while a containment-side path EXISTS
+      // (geometry-keyed; see stepContainment). Pure model constant — release
+      // mixing at TMI-2 ran tens of minutes (GEND-061 fig 4-9). [tune]
+      h2_transport_tau_s: 60.0,
+      // Flammability alarm at the SOURCED 4.1 v/o lower flammability limit
+      // (NUREG-1431 Rev 4 Bases ML12100A228:38135 — unbracketed: "the
+      // flammability limit of 4.1 volume percent in containment"). NOT [tune].
+      h2_flammability_pct: 4.1,
+      // Ignition + consumed fraction: the STS Bases values are BRACKETED TEMPLATE
+      // numbers from the Hydrogen Igniter System section (ML12100A228:38373 —
+      // "[8.0] volume percent (v/o) and results in [85]% of the hydrogen present
+      // being consumed", an ice-condenser section; Ginna is a large dry). Adopted
+      // ANYWAY because TMI-2's own analysis corroborates both: GEND-061 §4.6.3
+      // estimates a 7.9 % preburn average, of which 6.8 % burned and 1.1 %
+      // remained — 86 % consumed. Template-corroborated, declared §12.4e. NOT
+      // [tune]: moving either re-litigates the ruling, not a fit.
+      h2_ignition_pct: 8.0,
+      h2_burn_consumed_frac: 0.85,
+      // Burn pressure deposit, _ctmt_steam units per v/o burned. ANCHORED on the
+      // TMI-2 measurement, ADIABATIC form: GEND-061 §3.1 measured the burn at
+      // "almost 30 lb/in² gage" from a ~1.3 psig preburn (Table 4-2) ≈ 27.5 psi
+      // for the 6.8 v/o burned — and fig 4-13's analysis adds that "cooling
+      // during the burn caused a reduction in the peak pressure … of 5 lb/in²",
+      // so the instantaneous-burn Δ is ≈ 32.5 psi ≈ 4.8 psi/v/o = 0.0329 MPa/v/o.
+      // THIS model deposits instantaneously and lets the sink terms do the in-burn
+      // cooling afterward, so the adiabatic number is the right anchor for it.
+      // Through the fitted press_gain (2.3 MPa/unit): 0.0329 / 2.3 ≈ 0.0143.
+      // Still [tune] — the anchor is real, the currency conversion is fitted.
+      // Q0 (2026-08-08): drained-base burn (unmitigated LOCA) peaks 32.5 psig,
+      // TMI-class (stuck PORV, base ~9 psig) ~42 psig — every family lands ABOVE
+      // the 30 psig spray hi-hi (OWNER RULING 2026-08-08: the ESF answers the
+      // burn) and far below the 60 psig design ("containment holds", the
+      // 2026-08-05 ruling — probe-pinned).
+      h2_burn_gain: 0.0143,
+      // Recombiner removal tau. Existence sourced (WTSM 5.0 ML11223A218:480 "The
+      // hydrogen recombiners control the concentration of hydrogen gas";
+      // NUREG-0737 II.E.4.1), capacity in NO lane's corpus (find_source
+      // 2026-08-08) -> FITTED SLOW, deliberately: real recombiners work the
+      // post-LOCA tail over days and cannot stop a TMI-scale generation rate.
+      // Auto-start/auto-secure setpoints are a DECLARED INFERENCE (real ones are
+      // manually placed in service; this build has no operator surface — the
+      // stage-2 auto-only ruling). Start below the flammability alarm so H2 HI
+      // firing means the recombiners are LOSING. All three [tune].
+      recomb_tau_s: 1800.0,
+      h2_recomb_on_pct: 0.5,
+      h2_recomb_off_pct: 0.2,
     },
 
     // ------------------------------------------------------------------ rods
@@ -2266,6 +2327,17 @@
       // covered-core fence CA-21 asserts. Appended LAST, noise 0 + noise_failure, the
       // standing PRNG rule (the stream is byte-identical; a `noisy` failure still bites).
       core_exit_temp:          { lag: 4.0,  noise: 0, noise_failure: 0.17,  range: [93, 982] },
+      // Containment H2 analyzer (#386 stage 3). RANGE IS SOURCED: NUREG-0737
+      // (ML051400209) II.F.1 Att. 6 — "A continuous indication of hydrogen
+      // concentration in the containment atmosphere shall be provided in the
+      // control room. Measurement capability shall be provided over the range of
+      // 0 to 10% hydrogen concentration". The LAG is [tune], declared — the
+      // sourced figure is availability ("functioning within 30 minutes" of SI),
+      // not a response time; 30 s stands in for a slow sampling analyzer. Every
+      // threshold (4.1 flammability, 8.0 ignition, 0.5/0.2 recombiner pair) sits
+      // STRICTLY inside the range (run_reachability Part A). Appended LAST after
+      // core_exit_temp, noise 0 + noise_failure, the standing PRNG rule.
+      ctmt_h2:                 { lag: 30.0, noise: 0, noise_failure: 0.1,   range: [0, 10] },
       // porv_indicator (boolean) and subcooling_margin (derived) handled specially.
       subcooling_margin: { lag: 0,   noise: 0,     range: [-28, 83], derived: true },
       // Pressurizer level DEVIATION from its program, % (#262). Derived from the INDICATED
@@ -2389,7 +2461,11 @@
                // control-surface state, these are what the trains are doing). The
                // fan-realign actuation keys on hpi_active (already above); these two
                // feed the annunciators. Status passthroughs — no PRNG draw.
-               'ctmt_spray_active', 'ctmt_fan_active'],
+               'ctmt_spray_active', 'ctmt_fan_active',
+               // #386 stage 3: the one-time burn latch (A41 keys on it and never
+               // clears — the ruled TMI-2-style event) and recombiner DELIVERY.
+               // Status passthroughs — no PRNG draw.
+               'ctmt_h2_burned', 'ctmt_recomb_active'],
     },
 
     // ---------------------------------------------------------- named init states

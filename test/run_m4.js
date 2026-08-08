@@ -1470,6 +1470,44 @@ T.push(test('Containment ESF rows (#386 stage 2) — unblockable SI, spray seal-
   ck('reopen accepted below the release', String(mo && mo.code), !(mo && mo.code === 'SEAL_IN'), 'not SEAL_IN');
 }));
 
+T.push(test('H2 recombiner row (#386 stage 3) — auto-start, latched seal-in, auto-secure', function (ck) {
+  // The stage-2 spray row's shape, cloned onto the ctmt_h2 channel: no arm (auto-only
+  // build — and an armed row's own OFF would disarm before the seal-in evaluates),
+  // params form (the _sealInBlocking scan — the tripwire checks below), LATCHED
+  // seal-in (recombiners extinguish their own signal), auto-secure on the reset
+  // (declared inference: real recombiners are manually placed in service and this
+  // build has no operator surface — NUREG-0737 II.E.4.1). Setpoints from
+  // cfg.containment: start 0.5 v/o, secure 0.2 v/o — both below the 4.1 alarm.
+  var cc = RD.PWR_CONFIG.containment || {};
+  var on = cc.h2_recomb_on_pct || 0.5, off = cc.h2_recomb_off_pct || 0.2;
+  var s = new Stack('hot_full_power');
+  driveWith(s, 2);
+  var quiet = s.cmd({ action: 'set_ctmt_recombiners', active: false });
+  ck('quiet plant: securing recombiners is not refused', String(quiet && quiet.code),
+    !(quiet && quiet.code === 'SEAL_IN'), 'not SEAL_IN');
+  var si = driveWith(s, 2, { ctmt_h2: on + 0.2 });
+  ck('recombiners AUTO-STARTED above the ' + on + ' v/o start point — no operator command',
+    String(si.ctmt_recomb_active), si.ctmt_recomb_active === true, 'true');
+  // The params-form trap tripwire, mid-band: above the release, below nothing —
+  // a live-signal seal-in OR a bare-key row would let this OFF through.
+  var r = s.cmd({ action: 'set_ctmt_recombiners', active: false });
+  ck('OFF refused while sealed in (at the firing signal)', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  si = driveWith(s, 2, { ctmt_h2: (on + off) / 2 });
+  r = s.cmd({ action: 'set_ctmt_recombiners', active: false });
+  ck('OFF STILL refused between release and start — latched, not live-signal', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  var agree = s.cmd({ action: 'set_ctmt_recombiners', active: true });
+  ck('the AGREEING command is not refused', String(agree && agree.code),
+    !(agree && agree.code === 'SEAL_IN'), 'not SEAL_IN');
+  si = driveWith(s, 3, { ctmt_h2: off - 0.1 });
+  ck('below the ' + off + ' v/o securing point the reset AUTO-SECURES them',
+    'active ' + String(si.ctmt_recomb_active), si.ctmt_recomb_active === false, 'false');
+  si = driveWith(s, 3, { ctmt_h2: on + 0.2 });
+  ck('…and the row RE-FIRES when concentration climbs back through the start point',
+    String(si.ctmt_recomb_active), si.ctmt_recomb_active === true, 'true');
+}));
+
 T.push(test('#370b — a condition can be a NUMERIC threshold on a second instrument (coincidence logic)', function (ck) {
   // A real ESFAS function fires on one signal only while a SECOND analog signal agrees:
   // "high steam flow coincident with low-low Tavg or low steam pressure" (WTSM §12.3.5.1,

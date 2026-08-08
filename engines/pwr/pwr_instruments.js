@@ -96,6 +96,10 @@
     // LAST, noise 0 (see the spec comment): PRNG order of everything above is
     // byte-identical, and the subcooling margin below takes max(tavg, this).
     core_exit_temp: 't_core_exit_c',
+    // Containment H2 concentration, v/o (#386 stage 3) — the NUREG-0737 II.F.1
+    // monitor. Appended LAST, noise 0 + noise_failure, same rule as everything
+    // in this tail: no PRNG draw, stream byte-identical.
+    ctmt_h2: 'ctmt_h2_pct',
   };
 
   function PWRInstruments(config, seed) {

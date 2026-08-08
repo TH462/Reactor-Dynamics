@@ -579,6 +579,14 @@
     { id: 'ctmt_press_hihi', instrument: 'containment_pressure', direction: 'high',    setpoint: 0.3081, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Containment Pressure High-High (spray/MSLI)', label_industry: 'CTMT PRESS HI HI' },
     { id: 'ctmt_spray_on',   instrument: 'ctmt_spray_active',    direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Containment Spray Running',                label_industry: 'CTMT SPRAY ON' },
     { id: 'ctmt_fans_si',    instrument: 'ctmt_fan_active',      direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Containment Fan Coolers — Safety Realign', label_industry: 'CTMT FANS SI' },
+    // Hydrogen (#386 stage 3). H2 HI at the SOURCED 4.1 v/o lower flammability limit
+    // (NUREG-1431 Bases, unbracketed — cfg.containment.h2_flammability_pct mirrors it);
+    // the BURN annunciator keys on the latched event, so it comes in with the spike
+    // and NEVER clears — the ruled one-time burn, standing on the panel; recombiner
+    // status on the DELIVERY boolean like the other trains.
+    { id: 'ctmt_h2_hi',      instrument: 'ctmt_h2',              direction: 'high',    setpoint: 4.1,    priority: 'warning',  panel: 'B', category: 'safety_system', label_learning: 'Containment Hydrogen Above Flammability Limit', label_industry: 'CTMT H2 HI' },
+    { id: 'ctmt_h2_burn',    instrument: 'ctmt_h2_burned',       direction: 'is_true', setpoint: null,   priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Containment Hydrogen Burn Occurred',            label_industry: 'CTMT H2 BURN' },
+    { id: 'ctmt_recomb_on',  instrument: 'ctmt_recomb_active',   direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Hydrogen Recombiners In Service',               label_industry: 'H2 RECOMB ON' },
     // SI ACCUMULATORS STILL ALIGNED BELOW 1000 psi (6.895 MPa) — the cooldown cue (#273).
     //
     // Why it exists. A by-the-book cooldown used to walk straight through the tanks'
@@ -1062,6 +1070,30 @@
     // with…"). Shares MSLI_SEAL_IN: one latch, either signal, same refusal.
     { instrument: 'containment_pressure', direction: 'high', setpoint: CTMT_HIHI_MPA,
       action: 'close_msiv', reset_below: CTMT_SI_MPA, seal_in: MSLI_SEAL_IN }
+  );
+  // ---- Hydrogen recombiners (#386 stage 3) — the stage-2 spray row's shape, cloned
+  // deliberately: no `arm` (nothing to take to MANUAL in an auto-only build, and an
+  // armed row's own OFF would disarm before the seal-in evaluates), `params` form
+  // (the _sealInBlocking undo scan iterates act.params only), LATCHED seal-in
+  // (recombiners extinguish their own signal — a live-signal seal-in releases the
+  // moment they work), auto-secure on the reset (no operator surface exists to
+  // secure them). The whole auto-start/auto-secure package is a DECLARED INFERENCE:
+  // real recombiners are MANUALLY placed in service post-accident (NUREG-0737
+  // II.E.4.1, ML051400209) — declared in cfg.containment and Manuals/12 §12.4e.
+  // Start setpoint sits BELOW the 4.1 v/o flammability alarm, so H2 HI firing
+  // means the recombiners are already running and LOSING.
+  var CTMT_RECOMB_SEAL_IN = {
+    latched: true,
+    message_learning: 'Hydrogen recombiners started automatically on rising containment hydrogen and stay in service until the concentration falls back to the securing point.',
+    message_industry: 'H2 RECOMBINER SECURE BLOCKED — auto-start sealed in',
+  };
+  PWR_ACTUATIONS.push(
+    { instrument: 'ctmt_h2', direction: 'high',
+      setpoint: (RD.PWR_CONFIG.containment && RD.PWR_CONFIG.containment.h2_recomb_on_pct) || 0.5,
+      action: 'set_ctmt_recombiners', params: { active: true },
+      reset_below: (RD.PWR_CONFIG.containment && RD.PWR_CONFIG.containment.h2_recomb_off_pct) || 0.2,
+      reset_action: 'set_ctmt_recombiners', reset_active: false,
+      seal_in: CTMT_RECOMB_SEAL_IN }
   );
   // PI-3: reactor trip on safety injection — SI actuating means a real casualty;
   // the reactor does not stay at power through it. Keyed on the same low-pressure

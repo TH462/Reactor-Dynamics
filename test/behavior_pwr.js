@@ -136,6 +136,7 @@
     'CA-20': 'probe (a vented RCS blows down PAST Psat toward the building and never below it — path-scoped vent + weakened pin, the SGTR/relief fence, and the DBA arc preserved; WTSM 5.0 §5.0.1.1; #384 stage 4)',
     'CA-21': 'probe (the subcooling margin reads the CORE EXIT over a dry core — negative with the clad hot, byte-equal to the bulk when covered, and a failed TC restores the deception; NUREG-0737 II.F.2; #407)',
     'CA-23': 'probe (the pressurizer inventory NODE is INERT — level_per_mass·pzr_mass_frac reproduces levelRaw to 1e-9 across the subcooled/relief-void/loop-break families, and a pre-node save seeds through the inverse; #385 stage 1)',
+    'CA-24': 'probe (hydrogen: mitigated LOCA sits far under the 4.1 v/o flammability limit, an unmitigated one crosses ignition and BURNS ONCE — spike above the spray hi-hi, under design, latch stands; recombiners auto-start/decay/AC-gate; the transport gate holds an SGTR\'s H2 out of the building; GEND-061 + NUREG-1431 + 50.46(b)(3); #386 stage 3)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -4450,6 +4451,147 @@
           ' at ctmt ' + fmt(t.containment_pressure_mpa, 3),
           t.ctmt_spray_active === false && t.containment_pressure_mpa < SIP, 'false, below the SI signal');
         T.checkSanity(ck, h);
+      });
+    },
+
+    /* CA-24 (#386 stage 3) — HYDROGEN: generation, transport, recombiners, THE BURN.
+     *
+     * The ruled shape (OWNER RULING 2026-08-05: TMI-2-style one-time deflagration —
+     * pressure spike + latched event, containment holds; indication-only and
+     * end-state rejected. OWNER RULING 2026-08-08: the peak lands ABOVE the 30 psig
+     * spray hi-hi, so the ESF answers the burn). Numbers from the 2026-08-08 Q0
+     * (TUNING_LOG 2026-08-08-develop-c):
+     *
+     *  - mitigated sev 0.5 LOCA peaks 0.014 v/o — ~290x under the 4.1 v/o sourced
+     *    flammability limit (NUREG-1431 Bases ML12100A228:38135), the 50.46(b)(3)
+     *    story (Ginna's own limiting LBLOCA: core-wide oxidation 0.30 %).
+     *  - the CA-21 rig (ECCS defeated, sev 0.5) crosses 4.1 at ~32 min, ignites at
+     *    8.0 v/o at ~41 min, burns 85 % (GEND-061 §4.6.3: TMI-2 burned 6.8 of
+     *    7.9 %, leaving 1.1 — 86 %), spikes the building to ~32.4 psig (above the
+     *    30 psig hi-hi, far under the 60 psig design), and NEVER burns again —
+     *    the latch stands in for O2 depletion while H2 re-accumulates past 10 v/o.
+     *  - recombiners: auto-start via the M4 row, first-order removal at
+     *    recomb_tau_s, delivery dies in a blackout with demand standing (#200).
+     *  - transport is GEOMETRY-gated: an SGTR-flagged leak holds H2 in the RCS
+     *    (no SGTR family on this plant ever uncovers — measured 3 h at sev 1.0
+     *    ECCS-defeated — so the fence is pinned by clone rig, the CA-17 idiom).
+     *
+     * Injection-verified: h2_gain: 0 zeroes legs a/b; dropping `!_leak_to_sg` from
+     * the stepContainment gate reds leg d's held clone; disabling the recombiner
+     * removal term flattens leg c's decay.
+     */
+    'CA-24': function () {
+      return test('CA-24 hydrogen — mitigated stays cold, unmitigated burns ONCE above the hi-hi, recombiners work the tail, SGTR H2 never reaches the building (#386 stage 3)', function (ck) {
+        var cc = RD.PWR_CONFIG.containment || {};
+        var IGN = cc.h2_ignition_pct || 8.0, FLAM = cc.h2_flammability_pct || 4.1;
+        var HIHI = 0.3081, DESIGN = cc.design_pressure_mpa || 0.515;
+
+        // ---- (a) the mitigated fence: ECCS-live sev 0.5 makes a TRACE and no more.
+        var a = H('hot_full_power');
+        a.run(30);
+        a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.5 });
+        var aPeak = 0;
+        a.run(900, function (hh) { aPeak = Math.max(aPeak, hh.eng.s._ctmt_h2 || 0); });
+        ck('mitigated LOCA: a real but TRACE inventory — the ECCS quench is the 50.46(b)(3) story',
+          fmt(aPeak, 4) + ' v/o peak vs ' + FLAM + ' flammability',
+          aPeak > 0 && aPeak < 0.5, '> 0 and < 0.5 (never even starts the recombiners)');
+
+        // ---- (b) the unmitigated burn: the CA-21 rig, ridden through ignition.
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'degraded_hpi', severity: 1.0 });
+        b.cmd('set_hpi', { active: false });
+        b.cmd('close_accumulator_valve', {});
+        b.cmd('set_auto_channel', { channel_id: 'cvcs_makeup', engaged: false });
+        b.cmd('set_cvcs_auto', { active: false });
+        b.cmd('set_charging_flow', { normalized: 0 });
+        b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.50 });
+        var prev = 0, drops = 0, preBurn = 0, postBurn = null, sawFlam = false, pkCtmt = 0, burnT = null;
+        b.run(3300, function (hh) {
+          var s = hh.eng.s, t = hh.ts();
+          var h2 = s._ctmt_h2 || 0;
+          if (!t.ctmt_h2_burned && h2 >= FLAM) sawFlam = true;
+          // The sampler fires per broadcast CYCLE, not per second (the advanceCycles
+          // lesson) — time is read from the engine clock, never counted here.
+          if (h2 < prev - 2) { drops++; preBurn = prev; postBurn = h2; burnT = Math.round(hh.eng.simTime || 0); }
+          prev = h2;
+          if (t.ctmt_h2_burned) pkCtmt = Math.max(pkCtmt, t.containment_pressure_mpa);
+        });
+        var bs = b.ts();
+        ck('crossed the 4.1 v/o flammability limit BEFORE ignition (A40 has time to mean something)',
+          String(sawFlam), sawFlam, 'true');
+        ck('the burn happened and LATCHED', String(bs.ctmt_h2_burned), bs.ctmt_h2_burned === true, 'true');
+        ck('ONE burn — a single sharp drop, the GEND-061 stripchart shape',
+          drops + ' drop(s), at t+' + burnT + ' s', drops === 1, 'exactly 1');
+        ck('the burn consumed ~85 % of the inventory (GEND-061: TMI-2 consumed 86 %)',
+          fmt(preBurn, 2) + ' → ' + fmt(postBurn, 2) + ' v/o (' + fmt(100 * (1 - postBurn / Math.max(preBurn, 1e-9)), 1) + ' %)',
+          // preBurn is the last SAMPLE before the trigger, up to one cycle of
+          // generation under the 8.0 crossing — hence the 0.2 v/o allowance.
+          preBurn >= IGN - 0.2 && Math.abs((1 - postBurn / preBurn) - (cc.h2_burn_consumed_frac || 0.85)) < 0.03,
+          '85 % ± 3');
+        ck('the spike landed ABOVE the 30 psig spray hi-hi (OWNER RULING 2026-08-08: the ESF answers it)',
+          fmt(pkCtmt, 3) + ' MPa abs vs ' + fmt(HIHI, 4), pkCtmt > HIHI, '> 0.3081');
+        ck('…and CONTAINMENT HOLDS — under the 60 psig design pressure (the 2026-08-05 ruling, pinned)',
+          fmt(pkCtmt, 3) + ' MPa abs vs ' + fmt(DESIGN, 3), pkCtmt < DESIGN, '< 0.515');
+        ck('H2 re-accumulated past ignition with NO second burn — the latch stands in for O2 depletion',
+          fmt(bs.ctmt_h2_pct, 1) + ' v/o (published, clipped at 100), burned ' + String(bs.ctmt_h2_burned),
+          (b.eng.s._ctmt_h2 || 0) > IGN && drops === 1, 'above 8.0, still 1 drop');
+
+        // ---- (c) recombiners: auto-start on the seeded inventory, first-order decay
+        // at recomb_tau_s, and the #200/#329 split under a blackout.
+        var c = H('hot_full_power');
+        c.run(30);
+        c.eng.s._ctmt_h2 = 3.0;   // hand-seeded inventory on a healthy plant (rig, not a family)
+        c.run(90);                 // instrument lag (30 s) + the M4 row's scan
+        var c0 = c.ts();
+        ck('recombiners AUTO-STARTED on the seeded inventory — no command was issued',
+          String(c0.ctmt_recomb_active) + ' at ' + fmt(c0.ctmt_h2_pct, 2) + ' v/o',
+          c0.ctmt_recomb_active === true, 'true');
+        var v0 = c.eng.s._ctmt_h2;
+        c.run(600);
+        var v1 = c.eng.s._ctmt_h2;
+        var wantRatio = Math.exp(-600 / (cc.recomb_tau_s || 1800));
+        ck('first-order removal at recomb_tau_s — and NOTHING else removes H2',
+          fmt(v1 / v0, 4) + ' over 600 s vs e^(−600/τ) = ' + fmt(wantRatio, 4),
+          Math.abs(v1 / v0 - wantRatio) < 0.02, 'within 0.02');
+        c.cmd('inject_failure', { failure_id: 'station_blackout', severity: 1.0 });
+        var v2 = c.eng.s._ctmt_h2;
+        c.run(300);
+        var c1 = c.ts();
+        ck('blackout: demand STANDS, delivery dies, and the decay STOPS (#200/#329 split)',
+          'demand ' + String(c1.ctmt_recomb_demand) + ', active ' + String(c1.ctmt_recomb_active) +
+          ', h2 ' + fmt(c.eng.s._ctmt_h2 / v2, 4) + ' of pre-blackout',
+          c1.ctmt_recomb_demand === true && c1.ctmt_recomb_active === false
+            && c.eng.s._ctmt_h2 / v2 > 0.995, 'true / false / flat');
+
+        // ---- (d) the transport gate, pinned by clone rig (the CA-17 idiom): no SGTR
+        // family on this plant ever uncovers, so the fence cannot be shown by family
+        // run — the gate itself is the testable object. Same state, four path lineups.
+        var d = H('hot_full_power');
+        d.run(30);
+        var mkT = function (mut) {
+          var s2 = Object.assign({}, d.eng.s);
+          s2._rcs_h2 = 2.0; s2._ctmt_h2 = 0; s2.ctmt_h2_burned = false; s2.ctmt_recomb_demand = false;
+          s2._leak_base = 0; s2._leak_to_sg = false; s2.porv_open = false; s2.safety_open = false;
+          Object.assign(s2, mut);
+          for (var i = 0; i < 60; i++) RD.pwrPrimary.stepContainment(s2, RD.PWR_CONFIG, 1.0);
+          return s2;
+        };
+        var dSgtr = mkT({ _leak_base: 0.01, _leak_to_sg: true });
+        ck('an SGTR-flagged leak moves NOTHING to the building — its H2 goes where the discharge goes',
+          'ctmt ' + fmt(dSgtr._ctmt_h2, 6) + ', rcs ' + fmt(dSgtr._rcs_h2, 6),
+          dSgtr._ctmt_h2 === 0 && dSgtr._rcs_h2 === 2.0, '0 and 2.0 exactly');
+        var dLoca = mkT({ _leak_base: 0.01, _leak_to_sg: false });
+        ck('the same leak on the containment side TRANSPORTS — and the ledger pair conserves',
+          'ctmt ' + fmt(dLoca._ctmt_h2, 3) + ', sum ' + fmt(dLoca._ctmt_h2 + dLoca._rcs_h2, 9),
+          dLoca._ctmt_h2 > 1.0 && Math.abs(dLoca._ctmt_h2 + dLoca._rcs_h2 - 2.0) < 1e-9, '> 1.0, sum 2.0');
+        var dBlocked = mkT({ porv_open: true, block_valve_open: false });
+        ck('a CLOSED block valve holds the inventory — the isolation lesson survives for H2',
+          'ctmt ' + fmt(dBlocked._ctmt_h2, 6), dBlocked._ctmt_h2 === 0, '0 exactly');
+        var dRelief = mkT({ porv_open: true, block_valve_open: true });
+        ck('the open relief lineup is a path (the TMI-2 route)',
+          'ctmt ' + fmt(dRelief._ctmt_h2, 3), dRelief._ctmt_h2 > 1.0, '> 1.0');
+        T.checkSanity(ck, a);
       });
     },
 

@@ -585,6 +585,26 @@
             detail: 'Every pound the primary loses to the building ends up here — spilled liquid directly, flashed steam after the structures condense it back out. A climbing sump with steady pressure is the signature of a small cold leak, which is exactly the diagnosis the alarm-response procedures send you here for. Indication only: this plant models no recirculation from the sump.',
             v: function (t) { return (t.containment_sump_pct != null ? t.containment_sump_pct : 0).toFixed(1) + ' %'; },
             cls: nzCls('containment_sump_pct') },
+          // Hydrogen (#386 stage 3). One concentration row + a status row; the burn
+          // annunciator (A41) carries the event, this is the trend the operator watches.
+          { k: 'Containment hydrogen',
+            hint: 'hydrogen concentration in the building atmosphere, volume percent — 0 unless the core has been oxidizing.',
+            detail: 'Hydrogen comes from one place: overheated zirconium cladding burning in steam (the same reaction that accelerates a melting core). It reaches the building through whatever opening the primary is discharging through, so a tube-rupture accident sends its hydrogen into the steam generator instead and this reads 0. The lower flammability limit is 4.1 volume percent; at TMI-2 the building averaged about 7.9 percent when it ignited, 9 hours 50 minutes in — a single sharp pressure spike the operators first read as electrical noise. Recombiners work the concentration back down over many hours; they cannot keep up with a rapidly oxidizing core.',
+            v: function (t) { return (t.ctmt_h2_pct != null ? t.ctmt_h2_pct : 0).toFixed(2) + ' % vol'; },
+            cls: function (t) {
+              var c = (RD.PWR_CONFIG || {}).containment || {};
+              var flam = c.h2_flammability_pct != null ? c.h2_flammability_pct : 4.1;
+              var ign = c.h2_ignition_pct != null ? c.h2_ignition_pct : 8.0;
+              var h = t.ctmt_h2_pct || 0;
+              return h >= ign ? 'q-alarm' : (h >= flam ? 'q-caution' : 'q-ok'); } },
+          { k: 'Hydrogen control',
+            hint: 'recombiner status, and whether a hydrogen burn has occurred.',
+            detail: 'The recombiners start automatically on rising hydrogen in this build and secure themselves once the concentration is back down. BURNED latches forever: a hydrogen deflagration is a one-time event — it consumes most of the inventory in seconds and leaves a pressure spike the containment is designed to survive.',
+            v: function (t) {
+              if (t.ctmt_h2_burned) return t.ctmt_recomb_active ? 'BURNED + RECOMB' : 'BURNED';
+              return t.ctmt_recomb_active ? 'RECOMBINERS' : 'IDLE';
+            },
+            cls: function (t) { return t.ctmt_h2_burned ? 'q-alarm' : (t.ctmt_recomb_active ? 'q-caution' : 'q-ok'); } },
         ] },
         // fw_flow_normalized is TOTAL feed (main + AFW — pwr_steam_generator.js:83),
         // and steam_out_total is everything leaving the SG (turbine + dump + safeties),

@@ -106,6 +106,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A37 | CTMT PRESS HI HI | critical | B |
 | PWR-A38 | CTMT SPRAY ON | status | B |
 | PWR-A39 | CTMT FANS SI | status | B |
+| PWR-A40 | CTMT H2 HI | warning | B |
+| PWR-A41 | CTMT H2 BURN | critical | B |
+| PWR-A42 | H2 RECOMB ON | status | B |
 
 ---
 
@@ -540,6 +543,36 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Logic** | `ctmt_fan_active` — realigned on any safety injection (normal-mode fan cooling is part of the building's passive heat sink) |
 | **Means** | The diverse containment heat-removal train. Slower than spray, runs on any SI whether or not the building is pressurized, and stays realigned. |
 | **Actions** | Informational. |
+
+---
+
+## PWR-A40 — Containment Hydrogen Above Flammability Limit (CTMT H2 HI)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_h2` > **4.1 % by volume** — the lower flammability limit of hydrogen in air (NUREG-1431 Bases) |
+| **Means** | An overheated core has been burning its zirconium cladding in steam, and the hydrogen has reached the building through whatever opening the primary is discharging from. The recombiners started automatically well below this point (A42) — this alarm means they are **losing**: generation is outrunning removal, which only a rapidly oxidizing core can do. The atmosphere is now flammable; at roughly double this concentration it will find an ignition source. |
+| **Actions** | The alarm is a **core** symptom, not a containment one — nothing in the building can be operated on it in this build. Restore core cooling: injection, and close the discharge path if it is closable (block valve). Expect the concentration to keep rising for a time even after the core is recovered — the RCS holds an inventory in transit. |
+
+---
+
+## PWR-A41 — Containment Hydrogen Burn Occurred (CTMT H2 BURN)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_h2_burned` — the burn latch. Comes in with the deflagration and **never clears**. |
+| **Means** | The hydrogen ignited: a one-time deflagration that consumed ~85 % of the inventory in seconds and put a single sharp pressure spike on the containment pressure recorder — at TMI-2 it read ~28 psi (193 kPa) over the building pressure and the operators first took it for electrical noise. The spike crosses the 30 psig high-high — 44.7 psi (0.308 MPa) absolute — so expect A37, spray (A38) and steam-line isolation with it. The containment is designed for 60 psig — 74.7 psi (0.515 MPa) absolute — and holds. |
+| **Actions** | Informational — the event is over before any action exists. The concentration reading collapses at the burn and may climb again; there is no second burn. The standing lamp is the record that it happened. |
+
+---
+
+## PWR-A42 — Hydrogen Recombiners In Service (H2 RECOMB ON)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_recomb_active` — the trains are **delivering** (a blackout stops them with the demand standing) |
+| **Means** | Started automatically on rising containment hydrogen (0.5 % by volume in this build; secures itself at 0.2 %). Removal is slow by design — hours per factor of e — which is the real machine: recombiners manage the slow post-accident tail, not a degraded-core generation rate. |
+| **Actions** | Informational. If CTMT H2 HI (A40) comes in while this lamp is lit, the recombiners are being outrun — the answer is at the core, not in the building. |
 
 ---
 

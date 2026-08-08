@@ -657,6 +657,10 @@
       // pass-throughs — no lag, no noise, no PRNG draw (appended-instrument rule).
       ctmt_spray_active: !!s.ctmt_spray_active,
       ctmt_fan_active: !!s.ctmt_fan_active,
+      // #386 stage 3: the burn latch (one-time, forever) and recombiner delivery.
+      // Status pass-throughs — no lag, no noise, no PRNG draw.
+      ctmt_h2_burned: !!s.ctmt_h2_burned,
+      ctmt_recomb_active: !!s.ctmt_recomb_active,
     };
   };
 
@@ -853,6 +857,13 @@
       // published separately (#200/#329; a blackout zeroes _active with demand up).
       ctmt_spray_demand: !!s.ctmt_spray_demand, ctmt_spray_active: !!s.ctmt_spray_active,
       ctmt_fan_safety: !!s.ctmt_fan_safety, ctmt_fan_active: !!s.ctmt_fan_active,
+      // Stage 3 (#386): hydrogen. Concentration is v/o of containment free volume;
+      // the burn latch is one-time forever (the ruled TMI-2-style event); the
+      // recombiners publish demand vs delivery like the other trains. The RCS-side
+      // ledger (_rcs_h2) stays private — the plant has no instrument for it, and
+      // publishing it would be a truth channel nothing on a real board carries.
+      ctmt_h2_pct: s.ctmt_h2_pct || 0, ctmt_h2_burned: !!s.ctmt_h2_burned,
+      ctmt_recomb_demand: !!s.ctmt_recomb_demand, ctmt_recomb_active: !!s.ctmt_recomb_active,
     };
   };
 
@@ -1261,6 +1272,12 @@
       case 'set_ctmt_fans':
         // CRFC safety realign — SI-driven, indication-only for the player.
         s.ctmt_fan_safety = !!cmd.safety;
+        break;
+      case 'set_ctmt_recombiners':
+        // #386 stage 3, same AUTO-ONLY shape as spray: no board control — reached
+        // by the H2-concentration actuation row, tests and the instructor. Demand
+        // latch only; delivery is AC-gated in stepContainment (#200/#329 split).
+        s.ctmt_recomb_demand = !!cmd.active;
         break;
       case 'set_charging_pump':
         s.charging_pump_running = !!cmd.running;
@@ -1703,6 +1720,10 @@
       // (pwr_control) and stepContainment's AC gate own them from here.
       ctmt_spray_demand: false, ctmt_spray_active: false,
       ctmt_fan_safety: false, ctmt_fan_active: false,
+      // Stage 3 (#386): no hydrogen anywhere at init — the ledgers fill only from
+      // the oxidation term; recombiners idle; nothing has ever burned.
+      _rcs_h2: 0, _ctmt_h2: 0, ctmt_h2_pct: 0, ctmt_h2_burned: false,
+      ctmt_recomb_demand: false, ctmt_recomb_active: false,
       // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
       sr_energized: !!init.sr_on,
       sr_counts_cps: init.sr_on ? cfg.nis.k_sr * P0 : 0,
@@ -2114,6 +2135,16 @@
     if (s.ctmt_fan_active == null) s.ctmt_fan_active = false;
     if (s._ctmt_steam == null) s._ctmt_steam = 0;
     if (s._ctmt_sump == null) s._ctmt_sump = 0;
+    // Stage 3 (#386): a pre-hydrogen save restores with empty ledgers and nothing
+    // burned — same declaration class as the containment restoring at ambient: a
+    // mid-accident save regenerates its H2 from the still-oxidizing core, but no
+    // history is invented for it.
+    if (s._rcs_h2 == null) s._rcs_h2 = 0;
+    if (s._ctmt_h2 == null) s._ctmt_h2 = 0;
+    if (s.ctmt_h2_pct == null) s.ctmt_h2_pct = 0;
+    if (s.ctmt_h2_burned == null) s.ctmt_h2_burned = false;
+    if (s.ctmt_recomb_demand == null) s.ctmt_recomb_demand = false;
+    if (s.ctmt_recomb_active == null) s.ctmt_recomb_active = false;
     // Feed pump (replaced direct feedwater-flow demand).
     if (s.feed_pump_speed_pct == null) s.feed_pump_speed_pct = (s.feedwater_demand_frac || 0) * 100;
     // Nuclear instrumentation (SR/IR detectors).
@@ -3255,6 +3286,9 @@
         // Containment (#386 stage 1): a pre-containment save has none of the five.
         delete legacy.containment_pressure_mpa; delete legacy.containment_temp_c;
         delete legacy.containment_sump_pct; delete legacy._ctmt_steam; delete legacy._ctmt_sump;
+        // Hydrogen (#386 stage 3): a pre-hydrogen save has none of the six.
+        delete legacy._rcs_h2; delete legacy._ctmt_h2; delete legacy.ctmt_h2_pct;
+        delete legacy.ctmt_h2_burned; delete legacy.ctmt_recomb_demand; delete legacy.ctmt_recomb_active;
         // rcp_secured (#240) is INFERRED, not defaulted: a pre-#240 save has no
         // record of WHY the pumps are stopped, so the lineup has to say. This one
         // is the judgement call in the whole migration and it was unasserted.
@@ -3324,6 +3358,11 @@
             && s.containment_temp_c === cfg.containment.ambient_temp_c
             && s.containment_sump_pct === 0 && s._ctmt_steam === 0 && s._ctmt_sump === 0,
           'ambient / ambient / 0');
+        ck('hydrogen restores EMPTY and unburned — a pre-stage-3 save invents no H2 history',
+          s._rcs_h2 + ' / ' + s._ctmt_h2 + ' / ' + s.ctmt_h2_pct + ' / burned ' + s.ctmt_h2_burned + ' / recomb ' + s.ctmt_recomb_demand + ',' + s.ctmt_recomb_active,
+          s._rcs_h2 === 0 && s._ctmt_h2 === 0 && s.ctmt_h2_pct === 0 && s.ctmt_h2_burned === false
+            && s.ctmt_recomb_demand === false && s.ctmt_recomb_active === false,
+          '0 / 0 / 0 / false / false,false');
         // rcp_secured is the INFERENCE, and this save has pumps RUNNING — so the
         // benign "planned securing" reading must NOT be invented. The conservative
         // direction matters: mislabelling a real trip as a planned securing is the

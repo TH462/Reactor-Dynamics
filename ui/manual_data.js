@@ -575,6 +575,22 @@
           "alarms": []
         },
         {
+          "id": "ctmt_h2",
+          "name": "Containment Hydrogen Concentration",
+          "measures": "Hydrogen concentration in the containment atmosphere, volume percent, from a slow sampling analyzer. Nonzero only when an overheated core has been oxidizing AND the primary is discharging into the building. The lower flammability limit is 4.1 volume percent.",
+          "unit": "% vol",
+          "range": [
+            0,
+            10
+          ],
+          "lag_s": 30,
+          "derived": false,
+          "boolean": false,
+          "alarms": [
+            "ctmt_h2_hi"
+          ]
+        },
+        {
           "id": "subcooling_margin",
           "name": "Subcooling Margin",
           "measures": "How far the coolant is from boiling (from indicated pressure & temperature). The truth-teller at TMI.",
