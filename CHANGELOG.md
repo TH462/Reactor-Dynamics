@@ -106,6 +106,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - CA-18 legs re-authored onto the live law (stepped clones; the retirement pin is red on the
   state form — injection-verified, credit 28.1 → 168.9); CA-23 becomes the frozen-line
   fence + live-law identity + bounded-excursion probe.
+- **The small-break partial lift is SOURCED as a class** (#424 evidence pass, 2026-08-08):
+  IE Bulletin 79-06A — *"a water level in the pressurizer simultaneously with the reactor
+  vessel not full of water"*, SI ordered actuated on pressure *"regardless of the
+  pressurizer level"* — and 79-06C's running-pump small-break regime (two-phase pumping
+  that can *"prolong or aggravate the uncovering of the reactor core"*), which is the
+  regime the sweeps ride. Magnitude declared this plant's own. New CA-23 leg E rides a
+  deep unmanaged SGTR (void 0.589 with the leak flowing) pinning the node identity and the
+  credit's structural bounds in the one regime every EOP-path gate avoids;
+  injection-verified (a weighted return reds exactly the bound + the re-lift fence).
 
 ### Added — the pressurizer gets its own inventory node, stage 1 of 4: INERT (#385 follow-on, 2026-08-08)
 

@@ -216,6 +216,28 @@ crests **62.2 % at 37.3 min**, never crosses 65 or 75; the mission-environment c
   ledger + `level_per_mass_surplus` name sweep, CLAUDE.md status/themes (the #362 bullet
   evicted, its incidence trap rescued to the standing list).
 
+**ADDENDUM 2 (2026-08-08) — #424 evidence pass: the small-break lift is SOURCED as a class;
+the deep-SGTR regime gets its probe leg.** The corpus sweep came back empty (a command's
+verdict — Ginna UFSAR ch. 15 documents the drain phase and the loop-seal-limited cold-leg
+break but its level traces are figures), so two primaries were fetched via the archive.org
+workaround and saved (`inbox/sources/IEB_79-06A.html`, `IEB_79-06C.html`): **IE Bulletin
+79-06A** (Apr. 14, 1979) — *"the potential exists, under certain accident or transient
+conditions, to have a water level in the pressurizer simultaneously with the reactor vessel
+not full of water"*; operators *"not [to] rely upon pressurizer level indication alone"*;
+SI ordered actuated on pressure *"regardless of the pressurizer level"* — and **IE Bulletin
+79-05C/79-06C** (July 26, 1979) — running RCPs through a small break pump two-phase fluid
+and *"can increase the mass lost through the break and prolong or aggravate the uncovering
+of the reactor core"*, the pump-on regime the sweeps ride (no LOOP injected). **VERDICT:
+the sev-0.10 on-scale-level-at-uncovery behavior is CONFIRMED as a class; the 65 % magnitude
+is declared this plant's own** (shape sourced, scale fitted). Citations planted at the
+mechanism (`stepLevel`'s credit comment) and in `Manuals/12` §7.3 (Rev 14 item (j)
+extended). **Item 2 built**: CA-23 leg E — a deep unmanaged SGTR (sev 0.9, engine-direct,
+40 min) voids to 0.589 with the leak flowing and the credit riding real dynamics; asserts
+the node-is-its-law identity (1.4e-14) and the structural bounds credit ∈ [0,
+level_per_void·void] that no EOP-path gate exercises. Injection-verified: weighting the
+RETURN (the wrong physics) reddens exactly leg E's bound (over-cap 2.25) and leg C's
+re-lift fence (57.3 pts). Probe count unchanged — no baseline moves.
+
 **ADDENDUM (2026-08-08) — the flash term is RULED out** *(OWNER RULING, 2026-08-08: "Let's
 not do the flash term if you think it won't affect gameplay in a negative way.")*. The
 condition is affirmed on the measurements above: at every board-reachable severity the node

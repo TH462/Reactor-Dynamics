@@ -494,8 +494,15 @@ With a hole in the **loop**, each displacement divides between the surge line an
 failure panel's default cold-leg break roughly a third reaches the pressurizer — and **level
 history is real**: liquid that left through the break while it flowed hard is not owed back
 to the gauge when the break's flow later dies down. On a large break the gauge **empties in
-seconds and stays empty while the core uncovers**; on a small one it lifts partway — the
-small-break deception a real plant shows.
+seconds and stays empty while the core uncovers**; on a small one it lifts partway — and
+that partial lift is the documented post-TMI reality, not a model artifact: *"the potential
+exists, under certain accident or transient conditions, to have a water level in the
+pressurizer simultaneously with the reactor vessel not full of water"* (IE Bulletin 79-06A,
+April 1979 — the same bulletin that ordered safety injection actuated on pressure
+*"regardless of the pressurizer level"*, and whose July supplement, 79-06C, describes the
+running-pump small-break regime this simulator's sweeps ride). The lift's magnitude is this
+plant's own; the direction and the lesson — do not read pressurizer level alone as
+inventory — are the sourced ones.
 
 ### 7.4 Relief valves and the tailpipe
 

@@ -4659,6 +4659,43 @@
         ck('C: the node never re-lifts materially past the frozen line on the blowdown',
           'max(node − line) ' + fmt(C.aboveFrozen, 4), C.aboveFrozen < 2, '< 2 pts');
 
+        // ---- leg E: the DEEP-SGTR family (#424 item 2 — the void-cycling regime
+        // every SGTR gate avoids by holding void < 0.05 on the EOP path). A deep
+        // unmanaged tube rupture voids the loop with the leak flowing at SGTR-class
+        // w (~0.9, the hole is small), and the credit rides real engine dynamics
+        // through whatever grow/collapse history the trajectory produces. Asserts
+        // the structural bounds no other gate exercises in this regime: the node
+        // stays ON its law, and the credit never leaves [0, level_per_void·void]
+        // (growth pays the w toll ≤ 1, return is unweighted, floor 0 — so the
+        // stock can never exceed the full-lift line nor go phantom-negative).
+        var E = (function () {
+          var eng = new RD.PWREngine({ initial_state: 'hot_full_power', seed: 17 });
+          eng.applyCommand({ action: 'scram' });
+          eng.applyCommand({ action: 'inject_failure', failure_id: 'sgtr', severity: 0.9 });
+          var r = { worstLive: 0, boundLo: 0, boundHi: -Infinity, sawVoid: 0, sawLeak: 0 };
+          for (var t = 0; t < 2400; t += 0.1) {
+            eng.step(0.1);
+            var s = eng.s;
+            var dl = Math.abs(pz.level_per_mass * s.pzr_mass_frac - RD.pwrPressurizer.pzrNodeLevel(s, CFG));
+            if (dl > r.worstLive) r.worstLive = dl;
+            var credit = s._pzr_void_lvl != null ? s._pzr_void_lvl : 0;
+            var cap = pz.level_per_void * (s.primary_void_fraction || 0);
+            if (credit < r.boundLo) r.boundLo = credit;
+            if (credit - cap > r.boundHi) r.boundHi = credit - cap;
+            if (s.primary_void_fraction > r.sawVoid) r.sawVoid = s.primary_void_fraction;
+            if (s.leak_flow > r.sawLeak) r.sawLeak = s.leak_flow;
+          }
+          return r;
+        })();
+        ck('E: the deep SGTR actually voided WITH the leak flowing (precondition)',
+          'peak void ' + fmt(E.sawVoid, 3) + ', peak leak ' + E.sawLeak.toExponential(2),
+          E.sawVoid > 0.05 && E.sawLeak > 1e-4, 'void > 0.05 and leak > 1e-4');
+        ck('E: the node IS its law through the SGTR void cycle', 'worst ' + E.worstLive.toExponential(2),
+          E.worstLive < 1e-9, '< 1e-9');
+        ck('E: the credit never leaves [0, level_per_void·void] — no phantom, no over-stock',
+          'min ' + fmt(E.boundLo, 4) + ', max(credit − cap) ' + fmt(E.boundHi, 4),
+          E.boundLo >= -1e-9 && E.boundHi <= 1e-9, 'within bounds');
+
         // ---- leg D: the migration seed — a pre-node save loads byte-identical.
         var snap = B.eng.saveState();
         delete snap.s.pzr_mass_frac;                    // simulate a pre-#385 save

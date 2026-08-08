@@ -719,6 +719,21 @@
   //     never given). Growth ≤ collapse slope keeps credit ≤ level_per_void·void
   //     inductively; no cap constant needed.
   //
+  // THE SMALL-BREAK LIFT THIS PRODUCES IS SOURCED AS A CLASS (#424 evidence pass,
+  // 2026-08-08). At small cold-leg severities (board ~10 %) the credit holds TRUE
+  // level on-scale (~65 %) while the core approaches uncovery — and that is the
+  // post-TMI operator lesson, not a model artifact: IE Bulletin 79-06A (Apr. 14,
+  // 1979) — "the potential exists, under certain accident or transient conditions,
+  // to have a water level in the pressurizer simultaneously with the reactor
+  // vessel not full of water", operators instructed "to not rely upon pressurizer
+  // level indication alone", and SI actuation ordered on pressure "regardless of
+  // the pressurizer level"; IE Bulletins 79-05C/79-06C (July 26, 1979) — with the
+  // RCPs running through a small break the RCS pumps two-phase fluid and mass
+  // depletion "can … prolong or aggravate the uncovering of the reactor core",
+  // which is the pump-on regime these sweeps ride. The 65 % MAGNITUDE is this
+  // plant's own (shape sourced, scale fitted — the house convention). Saved:
+  // inbox/sources/IEB_79-06A.html, IEB_79-06C.html.
+  //
   // `_pzr_surge_flow` (frac/s, + = insurge) is the realized node flow, stashed for
   // the stage-3+ pressure consumer. The published gauge is the node on span.
   function stepLevel(s, cfg, dt) {
