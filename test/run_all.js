@@ -1150,10 +1150,10 @@ var BASELINES = {
   // 12 -> 13 on 2026-08-05 with Alpha 1.1.0 — a RELEASE adds a check by design: the CROSS
   // block cross-checks every changelog.html entry down to the oldest version CHANGELOG.md
   // still names individually, so it grows by one row per published release.
-  // 16 -> 17 on 2026-08-07 with Alpha 1.3.0 — the same mechanism a fourth time. This key
-  // moves on every RELEASE and on nothing else, so a bump here with no release in the same
-  // change is the signal that something else added a check.
-  'run_release.js':        { code: 0, score: '17checks 0failed' },
+  // 16 -> 17 on 2026-08-07 with Alpha 1.3.0; 17 -> 18 on 2026-08-08 with Alpha 1.4.0 — the
+  // same mechanism each time. This key moves on every RELEASE and on nothing else, so a bump
+  // here with no release in the same change is the signal that something else added a check.
+  'run_release.js':        { code: 0, score: '18checks 0failed' },
   // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
   // `og:image` ("site/hero.png") from launch, and Slack / Discord / iMessage / X do not
   // resolve a relative og:image, so every link ever shared into a chat rendered with no

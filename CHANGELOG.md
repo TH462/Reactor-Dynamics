@@ -92,6 +92,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.4.0] — 2026-08-08
 ### Added — the hydrogen is real: inventory, recombiners, and the one-time TMI-2-style burn (#386 stage 3, 2026-08-08)
 
 - **Generation is the oxidation term itself** — the zirconium-steam reaction that heats the
