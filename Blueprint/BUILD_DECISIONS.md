@@ -60,7 +60,10 @@ full narrative in `TUNING_LOG` 2026-08-08-develop-a:
   uncovery; sev 1.0 ≈ 1.8 s); a flash term would halve the DBA empty-time, change no story,
   and cost 3–4 `[tune]`s plus a heal rule. Deviation from the approved plan's component (c),
   flagged to the owner on #385 with the arithmetic — the plan's sizing target was measured
-  on the severity map #408 retired.
+  on the severity map #408 retired. **RULED (OWNER RULING, 2026-08-08: "Let's not do the
+  flash term if you think it won't affect gameplay in a negative way.")** — condition
+  affirmed on the measurements; the term stays out, `Manuals/12` §12.5's flash-evaporation
+  row already declares the class. The node project is complete at the credit form.
 - **No level constant moved** — "touch one, re-solve the set" satisfied trivially; both
   documented deception targets verified on the live law (net +350; 78.33 at void 0.2).
   Mission crest unchanged by construction (free-play 62.2 % measured); **the 2026-08-08

@@ -216,6 +216,15 @@ crests **62.2 % at 37.3 min**, never crosses 65 or 75; the mission-environment c
   ledger + `level_per_mass_surplus` name sweep, CLAUDE.md status/themes (the #362 bullet
   evicted, its incidence trap rescued to the standing list).
 
+**ADDENDUM (2026-08-08) — the flash term is RULED out** *(OWNER RULING, 2026-08-08: "Let's
+not do the flash term if you think it won't affect gameplay in a negative way.")*. The
+condition is affirmed on the measurements above: at every board-reachable severity the node
+empties well before uncovery on the backbone alone, so the term's absence changes no story a
+player can reach; the declared direction of error (our pressurizer empties a few seconds
+LATER than a real flashing one during a deep blowdown) is invisible at board severities and
+already covered by `Manuals/12` §12.5's flash-evaporation row. #385 closes with this ruling
+— the node project is complete at the credit form.
+
 ## Session log — 2026-08-07-develop-g (#419 waves 1–3 BUILT — RECONSTRUCTED, see marker)
 
 **RECONSTRUCTED post-hoc from commits + issue comments by a different session (the
