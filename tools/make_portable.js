@@ -36,12 +36,14 @@ const HOME_URL = 'https://reactordynamics.com';
 // Absolute-path tags that CANNOT be inlined and are dropped, each with its reason.
 // An external tag that is not on this list is a HARD ERROR — shipping one silently is
 // the exact failure this tool exists to prevent, so it must never be a warning.
-const DROP = {
-  '/_vercel/insights/script.js':
-    'Vercel Web Analytics beacon — a server-side route, already 404s anywhere but Vercel. A portable build has no analytics, by construction.',
-  '/_vercel/speed-insights/script.js':
-    'Vercel Speed Insights beacon — same; real-user load timings only mean anything on the deployed site.',
-};
+// EMPTY, and that is the current correct state (#413). It held the two Vercel analytics
+// beacons until the move to Cloudflare, whose Web Analytics collects at the edge and ships
+// no script — so ui/shell.html now has no external tags at all. Kept rather than deleted
+// because the RULE still applies: an external tag that is not declared here is a HARD
+// ERROR, and the next person to add one needs somewhere to declare it with a reason.
+// test/run_portable.js also fails on a STALE entry, which is why these two had to go in the
+// same change that removed the tags.
+const DROP = {};
 
 // The ⚛️ favicon index.html uses, as a data: URI — an emailed file still gets a labelled
 // browser tab, and a data: URI is not a network load.

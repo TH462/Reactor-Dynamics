@@ -1012,7 +1012,16 @@ var BASELINES = {
   // the DEPLOY check enumerates every script that command runs to confirm .vercelignore
   // does not withhold it from the build machine — the failure that killed Alpha 1.10.0.
   // One more build script, one more check, and it is the check doing its job.
-  'run_portable.js':       { code: 0, score: '130checks 0failed' },
+  // 130 -> 128 on 2026-08-08 (#413): the two Vercel analytics beacons were removed from
+  // ui/shell.html, and the TAGS rule emits one check per EXTERNAL tag — so two tags gone is
+  // two checks gone. DROP is now empty and that is correct: Cloudflare Web Analytics
+  // collects at the edge on a proxied zone and ships no script, so the shell has no
+  // external tags at all. The constant is kept, not deleted — an undeclared external tag is
+  // still a hard error and the next one needs somewhere to be declared with a reason.
+  // The DROP entries had to go in the SAME change as the tags: the gate fails on a stale
+  // declaration as well as an undeclared tag, so removing one without the other is red
+  // either way. That symmetry is the check working.
+  'run_portable.js':       { code: 0, score: '128checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with

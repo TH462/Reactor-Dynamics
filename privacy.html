@@ -30,7 +30,6 @@
       document.documentElement.setAttribute('data-channel', c);
       if (c !== 'public') document.title = '[TEST] ' + document.title;
     }(window.RD_CHANNEL || 'dev'));</script>
-    <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
 
@@ -74,10 +73,14 @@
   storage and are never uploaded.</p>
 
   <h2>Page views</h2>
-  <p>An anonymous <strong>page-view count</strong> from Vercel Web Analytics (the
-  host for this site): page address, referring link, and coarse device info
-  (country, device type, browser, OS). It sets <strong>no cookies</strong>, stores
-  no persistent identifier, and cannot follow you to other sites.</p>
+  <p>An anonymous <strong>page-view count</strong> from Cloudflare Web Analytics
+  (Cloudflare hosts this site): page address, referring link, and coarse device
+  info (country, device type, browser, OS). It sets <strong>no cookies</strong>,
+  stores no client-side identifier, and does not fingerprint you by IP address or
+  browser to build a profile.</p>
+  <p><strong>There is no analytics script on these pages.</strong> The count is
+  taken by the server as it answers each request, so there is nothing running in
+  your browser to do it &mdash; and nothing an ad blocker needs to block.</p>
 
   <h2>Usage data in the simulator — only if you say yes</h2>
   <p>The first time you open the control room it asks whether to share anonymous

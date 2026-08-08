@@ -260,12 +260,24 @@ production domain went on serving the *previous* release for half an hour, and n
 said so.
 
 ```bash
-REL=$(git rev-parse HEAD)                    # the released merge commit on main
-gh api "repos/TH462/Reactor-Dynamics/deployments?sha=$REL" \
-  --jq '.[] | "\(.environment)  \(.created_at)"'          # MUST list Production
-gh api "repos/TH462/Reactor-Dynamics/deployments?environment=Production&per_page=1" \
-  --jq '.[0].sha'                                          # MUST equal $REL
+node tools/verify_release_deploy.js          # exit 0 = live, exit 1 = not. Defaults to HEAD.
 ```
+
+**It is a script rather than a command to paste because the pasted version failed twice**,
+both times in ways a careful reader would not catch:
+
+- It wrote the sha as `?sha=<SHA>`. The GitHub API needs the **full 40 characters** —
+  `?sha=c918667` returns **zero** deployments for a commit that has two, and an empty result
+  reads exactly like "production is missing", whose documented remedy is to go promote a
+  deployment by hand. A false alarm that invites an unnecessary intervention.
+- It only knew Vercel. Every GitHub deployment on this repo is created by `vercel[bot]`, so
+  after the Cloudflare move (#413) the query returns nothing on **every** release, for ever.
+
+The script asks both hosts (GitHub deployments for Vercel, `wrangler pages deployment list`
+for Cloudflare), demands a full sha, and requires a Cloudflare deployment to be BOTH
+`environment=production` AND `deploy:success` — a queued or failed build is not a live site.
+A yellow "could not query" line means a host was unreachable, which is **not** the same as
+"no deployment"; the script says so in its own failure text.
 
 **A "Vercel — success" commit status is NOT evidence of a production deploy.** It is satisfied by
 a preview build. Only `environment=Production` for the released SHA is.
