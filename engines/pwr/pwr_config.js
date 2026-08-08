@@ -63,15 +63,14 @@
       // both places. Corrected to the board's scale; `test/run_manual_units.js` now
       // cross-checks the two files so it cannot drift again.
       //
-      // These are PACING FLAVOUR, not physical mass flow, and must not be compared against
-      // real-plant flows or Tech Spec leakage limits. 60 gpm ≡ charging_max ·
-      // cvcs_inventory_gain = 7.2e-4 inventory-frac/s implies a total RCS of ~1389 gal
-      // (5.3 m³), roughly 6× small for a 300 MWt plant — and accident flows deliberately run
-      // on a separate 1:1 scale, so NO single RCS volume makes both true. See `Manuals/12`
-      // §Fidelity ("Indicative … Illustrative") and the #194 / #261 write-ups.
+      // Since #408 wave 1 the RCS-side gpm figures are LITERAL: one declared volume
+      // (~7,500 gal), one conversion (gpm = frac/s × 450,000), CVCS and accident flows on
+      // the same real currency. The paragraph this replaces disclaimed the opposite —
+      // "pacing flavour … NO single RCS volume makes both true" (#194/#261) — which was
+      // true of the retired two-scale split and is exactly what #408 removed.
       rcs_flow_gpm: 24000,              // rated RCS flow (not displayed — the board shows % of rated)
-      charging_max_gpm: 60,             // = charging_max 0.06 normalized × GPM_CHARGING 1000
-      letdown_normal_gpm: 30,           // = orifice A 0.030 normalized × GPM_LETDOWN 1000
+      charging_max_gpm: 60,             // = charging_max 1.33333e-4 frac/s × 450,000 (#408 — literal)
+      letdown_normal_gpm: 30,           // = orifice A ≈ 6.7e-5 frac/s at NOP × 450,000 (#408 — literal)
       afw_gpm: 100,                     // = afw_flow_frac 0.15 normalized × GPM_AFW 640 ≈ 96
     },
 

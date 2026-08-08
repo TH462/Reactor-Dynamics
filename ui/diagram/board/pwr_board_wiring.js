@@ -158,7 +158,7 @@
   // unit-neutral (%, ppm, MW, rpm, cps, DPM, pcm, A, rod steps) and never convert.
   var VALUE_UNIT = {
     ims3w1cb6jc: 'flow',  ims3w1lj7n6: 'press',  imrmstovyli: 'flow',  imrmsu1bl4r: 'press',
-    imrzp89wdfu: 'flow',  imrzp8qps6u: 'flow',   ims5gq44zgr: 'temp',  imro6qpci2d: 'tempd',
+    imsgti1p0rm: 'flow',  imsgti0gnpf: 'flow',   ims5gq44zgr: 'temp',  imro6qpci2d: 'tempd',
     imrppyp0wfo: 'press', imrqzuhzre3: 'vac',    ims3xp168iy: 'vac',   imrr1gwi93j: 'press',
     imrr1hecwq7: 'temp',  imrr4fnxhlc: 'temp',   imrr4g29a7c: 'temp',  imrsgch20pv: 'temp',
     imrsgkz4lq0: 'flow',  ims31ngjkf8: 'flow',   ims3wm0d0bu: 'flow'
@@ -883,8 +883,6 @@
       if (IN(s).afw_pump_running) return 'RUNNING';
       return esfAuto(s, 'afw') ? 'STANDBY' : 'SECURED';
     },
-    imrzp89wdfu: function (s) { return dQ((IN(s).letdown_flow || 0) * GPM_LETDOWN); },  // letdown flow (readout)
-    imrzp8qps6u: function (s) { return dQ((IN(s).charging_flow || 0) * GPM_CHARGING); },  // charging flow (readout)
     // PORV position light — the COMMANDED state, not the disc. This is the TMI-2 lie: it
     // reads CLOSED while a stuck valve keeps venting, and the tailpipe temperature below is
     // the only honest tell. The schematic PORV shows true disc position; this does not.
@@ -968,8 +966,11 @@
     imsgupfprkp: function (s) { return r0(IN(s).steam_flow * 100); },   // turbine steam flow, % of rated — at the TCV/turbine inlet
     imsgt98wjjc: function (s) { return r0(satTempC(IN(s).steam_pressure)); },  // SG saturation temperature
     // The two CVCS flows the authored doc replaced (the old readouts were deleted).
-    imsgti1p0rm: function (s) { return r0(IN(s).charging_flow); },
-    imsgti0gnpf: function (s) { return r0(IN(s).letdown_flow); },
+    // gpm via GPM_CHARGING/GPM_LETDOWN like every RCS-side flow: these rendered the raw
+    // frac/s (#408 real currency, ~6.8e-5 at NOP) through r0(), which rounded every CVCS
+    // flow the plant can make to 0 — both boxes read zero always, at full charging too.
+    imsgti1p0rm: function (s) { return dQ((IN(s).charging_flow || 0) * GPM_CHARGING); },
+    imsgti0gnpf: function (s) { return dQ((IN(s).letdown_flow || 0) * GPM_LETDOWN); },
     imrppeh5hkb: function (s) { return r0(IN(s).mwe_output); },                                         // generator MW
     imrppej8ulo: function (s) { return r0(IN(s).governor_valve); },                                     // governor %
     imrppq5r7kw: function (s) { return CS(s).steam_dump_auto ? 'NORMAL' : ((CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL'); }, // steam dump status

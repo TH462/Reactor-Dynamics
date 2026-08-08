@@ -29,6 +29,69 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-07-develop-e (the owner's zero-flow report: the CVCS boxes rendered the #408 currency raw — display swept, engine healthy, #421 filed for the unclamped command)
+
+**Task (owner):** investigate #385 + what to bundle with it; "charging and letdown always show
+zero flow"; do accumulators/ECCS/CVCS need a physics pass for the new primary loop; is water
+transport time accounted for (the loop "cools very fast" on a scram).
+
+**The zero-flow report — root cause is DISPLAY, not physics.** Measured full stack
+(`hot_full_power`, 3 min): truth `charging_flow_actual` 6.81e-5 frac/s, instrument 6.88e-5,
+level held at 55 % — the #408 real currency working exactly as built (6.8e-5 × 450,000 =
+30.6 gpm ≈ the orifice-A 30 gpm NOP figure). But the two board boxes the player reads
+(`imsgti1p0rm`/`imsgti0gnpf`, authored 2026-08-05 with the builder's copied name "RCP FLOW
+indication") rendered `Math.round(raw frac/s)` = **0 for any flow this pump can produce** —
+they have read zero since they were authored. The correctly-scaled wiring entries
+(`imrzp89wdfu`/`imrzp8qps6u`) pointed at items deleted from the board — dead code holding the
+right formula while the live ids held the wrong one. Fixed: live ids now `dQ(× GPM_CHARGING)`
+(31 gpm at NOP, SI-toggle aware via the `flow` family), dead entries removed, `VALUE_UNIT`
+re-keyed. **The trap: when a diagram re-export replaces item ids, the wiring for the OLD ids
+does not go red — it goes unreachable**, and the new ids get wired fresh, possibly wrong.
+`verify_board_check` cannot see it (both forms are wired); only the rendered number can.
+
+**The rest of the #408 currency sweep** (same class, `ui/app.js`): strip-chart
+Charging/Letdown series plotted ×100 as "%" — flat-line at 0.007 % on a [0,20] axis → now gpm
+on [0,120]; Physics-tab `tsCell` rendered `charging_flow_actual`/`letdown_flow_actual`/
+`leak_flow` (all real frac/s since #408) as `×100 %` → now gpm; the DOM-dead `'charge-set'`
+handler kept the retired `/1000` (30 gpm typed → 0.03 frac/s ≈ 13,500 gpm commanded). Also
+retired the `pwr_config` identity-block paragraph still disclaiming "no single RCS volume
+makes both true" — #408 made exactly that true, and the derivation comments beside
+`charging_max_gpm`/`letdown_normal_gpm` still cited the 0.06 × 1000 arithmetic.
+
+**Found while sweeping, NOT fixed — #421.** `set_charging_flow` and the MANUAL branch of
+`stepInventory` have no clamp; only AUTO clips to `charging_max`. Five callers still speak the
+retired 0.05/0.06 currency (375–450× the pump), including the engine's own §14 `_pzrTrim` rig,
+which only works because nothing clamps. Clamping is a behaviour change for those rigs —
+per-caller adjudication (HR10) is #421's scope.
+
+**Accumulators/ECCS need NO pass** — #408 wave 1 already moved them: `hpi_flow_max` 2.0e-4
+(Ginna HHSI, T15.6-10/17), `lpi_pressure_ref` 1.5 (RHR ~200 psid, WTSM 5.2),
+`accumulator_inventory_gain` 0.012 + `capacity` 0.40 (Ginna 0.435 RCS in ~36 s, T15.6-15),
+instrument spans re-declared (`charging_flow` range [0, 2.67e-4] etc.). The strays were all
+display-side consumers of the old currency, which is what this session closed.
+
+**Water transport time (scram cooldown) — modeled since #418 wave B1, and the pace is the
+plant's own.** Measured full stack, scram from 100 %: legs converge 609.9/550.5 °F →
+582.0/576.9 °F within 16 s, then the whole loop walks to no-load 547 °F in ~2.5 min on the
+dump (steam pressure settles ~1005 psi — the Ginna anchor doing its job). The 16 s is
+consistent with the plant's own geometry: 7,500 gal at 24,000 gpm = a full loop turnover every
+~19 s, and the legs are first-order at `tau_hotleg_s` 1.5 / `tau_coldleg_s` 4.0 ÷ flow_frac
+(sluggish at natural circ by construction). Both taus are `[tune]` and UNSOURCED — a
+loop-transit evidence mini-pass would either confirm or retune them, but the shape and scale
+are defensible today.
+
+**#385 read:** stages 1–2 landed (path-aware void term, CA-18); remaining scope is the
+committed pressurizer inventory NODE, sequenced after the #408 wave-1 re-clock — which landed
+2026-08-07-develop-a, so the node is now UNBLOCKED. Bundle candidates argued in the session
+reply: #415 (solid-regime walk-down — "solid" is re-based by the node), #337 (surge coupling —
+the node changes what a surge is), #334 (heater-deadhead ruling touches the same
+level/heater cutoff algebra), #354 (auto-charging target — the CVCS servo reads the level the
+node redefines). Note for continuity: the #418 tier-2 build and #419 waves 1–3 landed in git
+today with **no session entries in this file or BUILD_DECISIONS** (labels stop at `-d`).
+
+**Gates:** run_all after the batch (result in the commit); no baseline moves expected — the
+board score is data, `run_manual_units` parses the GPM literals untouched.
+
 ## Session log — 2026-08-07-develop-d (#419 STAGE 1: the cascade table, posted for sign-off. No code.)
 
 **Task:** #419 tier-3 identity re-anchor, stage 1 (owner: "Plan the work first" — plan-mode pass

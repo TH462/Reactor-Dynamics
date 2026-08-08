@@ -76,6 +76,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the board's CVCS flow boxes read 0 gpm always; every #408-currency display stray swept (2026-08-07)
+
+- **Charging and letdown flow on the board read zero at every plant state** — the two readouts
+  (authored 2026-08-05, builder-named "RCP FLOW indication") rendered the raw #408 real
+  currency (~6.8e-5 frac/s at NOP) through `Math.round()`, which is 0 for any flow this pump
+  can make. Now scaled `× GPM_CHARGING` (450,000 gpm per frac/s on the declared 7,500 gal RCS):
+  ~31 gpm at NOP, 0–60 gpm range, live under the SI toggle via the `flow` family. Measured full
+  stack before the fix: truth 6.81e-5, instrument 6.88e-5 — the physics was healthy; only the
+  display was dead. Two wiring entries for the deleted pre-#371 readouts removed.
+- **Same currency, same fix** in the shell: strip-chart Charging/Letdown series (flat-lined at
+  0.007 % on a 0–20 % axis) now plot gpm on 0–120; Physics-tab `charging_flow_actual` /
+  `letdown_flow_actual` / `leak_flow` cells (read "0 %") now render gpm; the dormant
+  `charge-set` handler's `/1000` → `/450000` (it commanded 0.03 frac/s ≈ 13,500 gpm from a
+  30 gpm input — unclamped, see #421).
+- **Filed #421**: `set_charging_flow` has no clamp at the engine on the real scale, and four
+  test/rig callers still command the retired 0.05/0.06 currency (375–450× the pump). Clamp +
+  per-caller adjudication (HR10) is that issue's scope, not this change's.
+
 ### Changed — the plant is re-anchored to Ginna: the ladder, the Tavg program, the dump capacity and the reference boron are the anchor plant's own (#419 wave 3, 2026-08-07)
 
 - **The no-load point is sourced twice over and the sources agree through the sim's own

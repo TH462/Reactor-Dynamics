@@ -376,8 +376,11 @@
         { id: 'feed_pump',grp: 'Controls', label: 'Feed Pump Speed', c: '#40988a', ctl: function (c) { return c.feed_pump_speed_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
         // Charging and letdown are INSTRUMENTED (both have flow indications on the CVCS
         // card), so they keep a `get` — they sit here because the operator sets them.
-        { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * 100; }, tru: function (t) { return t.charging_flow_actual * 100; }, range: [0, 20], fmt: function (v) { return v.toFixed(2) + '%'; } },
-        { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * 100; }, tru: function (t) { return t.letdown_flow_actual * 100; }, range: [0, 20], fmt: function (v) { return v.toFixed(2) + '%'; } },
+        // gpm = frac/s × 450,000 (the declared 7,500 gal RCS, #408 — same constant as
+        // GPM_CHARGING/GPM_LETDOWN in pwr_board_wiring.js; the old ×100 "%" plotted the
+        // real currency as a flat-line at 0.007 %).
+        { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * 450000; }, tru: function (t) { return t.charging_flow_actual * 450000; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
+        { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * 450000; }, tru: function (t) { return t.letdown_flow_actual * 450000; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
         { id: 'load_tgt', grp: 'Controls', label: 'Load Target MW', c: '#8898b8', ctl: function (c) { return c.load_target_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
         { id: 'press_sp', grp: 'Controls', label: 'Pressure Setpoint', c: '#70a070', ctl: function (c) { return c.pressure_setpoint; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'dump_sp',  grp: 'Controls', label: 'Dump Setpoint', c: '#a0a860', ctl: function (c) { return c.steam_dump_setpoint; }, range: [0, 10], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
@@ -3729,7 +3732,9 @@
     'boron-sample': function () { cmd({ action: 'take_boron_sample' }); },   // RCS grab sample → lab result after turnaround
     'charge-pump-on': function () { cmd({ action: 'set_charging_pump', running: true }); },
     'charge-pump-off': function () { cmd({ action: 'set_charging_pump', running: false }); },
-    'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 1000 }); },
+    // gpm → frac/s on the declared 7,500 gal (#408). The old /1000 was the retired
+    // currency: typing 30 gpm commanded 0.03 frac/s ≈ 13,500 gpm, unclamped (see issue).
+    'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 450000 }); },
     // Letdown: two independent orifices (off / A / B / A+B). Each toggle preserves the
     // other orifice (the engine command only touches the field it's given). Flow is
     // pressure-driven off the cold-leg node, not a commanded setpoint.
@@ -4988,7 +4993,10 @@
   // _pct fields get their % sign, and the reactivity/BOP proxies get their
   // domain units. Dimensioned fields (pressure/temp/vacuum) convert via mval.
   function tsCell(f, x) {
-    if (/_normalized$/.test(f) || /^(leak_flow|charging_flow_actual|letdown_flow_actual|steam_to_turbine)$/.test(f) ||
+    // #408 real currency: these three are inventory-frac/s, not 0–1 normalized — render
+    // gpm on the declared 7,500 gal (× 450,000, the board's GPM_CHARGING scale).
+    if (/^(leak_flow|charging_flow_actual|letdown_flow_actual)$/.test(f)) return Math.round(x * 450000) + ' gpm';
+    if (/_normalized$/.test(f) || f === 'steam_to_turbine' ||
         f === 'void_fraction_avg' || f === 'core_void_fraction') return Math.round(x * 100) + ' %';
     if (/_pct(_eq)?$/.test(f)) return Math.round(x * 10) / 10 + ' %';
     if (/_pcm$/.test(f)) return Math.round(x) + ' pcm';
