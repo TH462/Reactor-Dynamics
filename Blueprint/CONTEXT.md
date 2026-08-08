@@ -472,8 +472,10 @@ physical-quantity vocabulary.
                                       //   (a share, never a second inventory: loop share = _mass − pzr_mass_frac,
                                       //   implicit). `pzr_level_pct` above is this node through the geometry map
                                       //   (`level_per_mass` %-per-frac; nominal 55 % ≈ 0.0709, vessel full at
-                                      //   100/776 ≈ 0.1289). Stage 1: integrates the derived line (inert);
-                                      //   stage 2 replaces the integrator with the physical surge law.
+                                      //   100/776 ≈ 0.1289); UNCLIPPED both ways (overfull/deficit bookkeeping).
+                                      //   Carries pzrNodeLevel: the reconstructed base+mass backbone + the
+                                      //   flow-accreted void credit — bitwise the pre-node line on no-leak
+                                      //   families, flow-split under a leak (#385 stage 2).
     "sg_level_wide_pct": number,      // WIDE-range SG level — the whole vessel column (tube sheet → separators).
                                       //   DERIVED since #418 wave A2 from `sg_mass_frac` below through the
                                       //   sg_mass_map geometry. `sg_level_pct` above is the narrow (working) range

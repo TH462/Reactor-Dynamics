@@ -705,8 +705,10 @@
       // mass ledger, in the same fraction units as `core_inventory_pct`/100 (a share,
       // not a second inventory — loop share = _mass − pzr_mass_frac, implicit). Level
       // is this node through the geometry map (`level_per_mass` %-per-frac: 55 % ≈
-      // 0.0709, vessel full at 100/776 ≈ 0.1289). Stage 1 integrates the derived
-      // level line exactly (inert); the physical surge law is stage 2 (#385).
+      // 0.0709, vessel full at 100/776 ≈ 0.1289). UNCLIPPED both ways, like the level
+      // line it carries: above capacity = the overfull/solid bookkeeping, below zero
+      // = the deficit bookkeeping. Carries `pzrNodeLevel` — the reconstructed
+      // base+mass backbone plus the flow-accreted void credit (#385 stage 2).
       pzr_mass_frac: s.pzr_mass_frac,
       // Wide-range SG level (whole-vessel column, tube sheet → separators), DERIVED since
       // #418 wave A2 from the mass ledger below through the sg_mass_map geometry; the

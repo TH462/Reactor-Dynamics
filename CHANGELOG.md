@@ -76,6 +76,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the pressurizer node carries its own law: the void lift becomes a FLOW, and the retired re-lift stays retired (#385 stages 2–3, 2026-08-08)
+
+- **`pzrNodeLevel`** — one law, two consumers (level publishes it, the pressure regime's solid
+  predicate evaluates it): the drift-free base+mass backbone plus a **flow-accreted void
+  credit** replacing the state-form `level_per_void·w·void`. Displacement is credited at the
+  admittance split prevailing WHEN it happens; the share that left through the hole is not
+  owed back, in either direction — w recovering re-lifts nothing (the retired stage-0
+  defect), and w dipping re-marks nothing down (its mirror, measured 0.12 pts vs the line's
+  instant full re-read). Never-leaked plants keep the state form with w ≡ 1, so **the whole
+  no-leak family — the calibrated TMI arc included — is BITWISE the pre-node line** (CA-23
+  pins it at 1.4e-14), and pressure is bitwise unchanged on every family. The frozen
+  `levelRaw` survives only as the migration-seed map.
+- **The flash-outsurge term was measured unnecessary and NOT built** (flagged on #385): the
+  backbone already empties the node at the loop-demand rate — TRUE-empty 4–212 s across the
+  slider, always well before uncovery; sev 1.0 ≈ 1.8 s. A flash term would halve the DBA
+  empty-time and change no story, for 3–4 new `[tune]`s — the plan's sizing target was
+  measured on the retired severity map.
+- **MD-5 re-authored (HR10): the endpoint stands, the clock was the defect's.** ATWS + DEG
+  break with no ECCS still melts — at 5285 s instead of < 4000, because the honest gauge
+  cuts the heaters instead of letting the lying-high late-blowdown reading prop the pressure
+  that kept the break flowing. Window 4000 → 6000 s (MD-1's real-clock precedent), the
+  inventory band config-derived; both new forms pass on the pre-node engine.
+- **Stage 3 collapsed to verification**: no level constant moved, both documented deception
+  targets hold on the live law (net +350; 78.33 at void 0.2), and the mission crest is
+  unchanged by construction — free-play crest measured 62.2 % at 37.3 min, never crossing
+  65/75, so per the 2026-08-08 ruling the TMI cue stays state-keyed (no free re-key exists)
+  and the #418/#419 crest review item closes measured.
+- CA-18 legs re-authored onto the live law (stepped clones; the retirement pin is red on the
+  state form — injection-verified, credit 28.1 → 168.9); CA-23 becomes the frozen-line
+  fence + live-law identity + bounded-excursion probe.
+
 ### Added — the pressurizer gets its own inventory node, stage 1 of 4: INERT (#385 follow-on, 2026-08-08)
 
 - New engine state **`pzr_mass_frac`** — the pressurizer's liquid content as a SHARE of the

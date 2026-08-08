@@ -194,6 +194,20 @@
     // Was benign (fuel froze at ~1250 °C) because decay heat was gated on the scram
     // flag; FIXED 2026-07-24 (decay term made scram-agnostic, pwr_engine.js:248) —
     // the uncovered core now heats to melt as it must. Correct endpoint: melt.
+    //
+    // WINDOW 4000 → 6000 s AND THE INVENTORY BAND CONFIG-DERIVED (2026-08-08, #385
+    // node stage 2). The old 4000-s melt was PACED BY THE RETIRED RE-LIFT DEFECT:
+    // through the late blowdown the state-form level line re-read its void lift at
+    // the recovering w, the gauge read high, the 17 % cutoff never held, and the
+    // heaters propped the pressure that kept the break flowing — a faster drain
+    // bought by a lying gauge. With the honest node gauge the heaters stay cut,
+    // the drain is slower, and the SAME endpoint arrives at ~5285 s (measured,
+    // 200-min ride): damage 2295 s, melt 5285 s, min inventory 51.9 %. 6000 s is
+    // MD-1's window for the same real-clock reason. The old "< 50 %" band was the
+    // defect-paced trajectory's number, not the claim — the claim is that the core
+    // UNCOVERS, i.e. inventory below the config core-top threshold, and the melt
+    // itself proves the uncovery was fatal. Both new forms pass on the pre-node
+    // engine too (old minInv < 50 < 70), so this is a better test, not a refit.
     'MD-5': function () {
       return test('MD-5 ATWS + large LOCA (no scram, no ECCS) → core melt', function (ck) {
         var h = new Harness('hot_full_power');
@@ -202,9 +216,11 @@
         h.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
         h.cmd({ action: 'inject_failure', failure_id: 'degraded_hpi', severity: 1.0 });
         h.cmd({ action: 'set_hpi', active: false });
-        var r = driveDamage(h, 4000);
+        var r = driveDamage(h, 6000);
         recordEndpoint(ck, r);
-        ck('core uncovers (min inventory < 50 %)', fmt(r.minInv, 1), r.minInv < 50, '< 50');
+        var topPct = RD.PWR_CONFIG.primary.core_top_uncover * 100;
+        ck('core uncovers (min inventory below the core top, < ' + fmt(topPct, 0) + ' %)',
+          fmt(r.minInv, 1), r.minInv < topPct, '< core_top_uncover');
         ck('fuel is damaged (> 1200 °C)', fmt(r.maxFuel, 0), r.damagedAt >= 0, '> 1200 °C');
         // The bug: fuel plateaus (decay heat switched off with no scram) instead of
         // continuing to heat to melt. This is the assertion that documents it.

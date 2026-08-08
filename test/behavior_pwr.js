@@ -3941,34 +3941,77 @@
         ck('the indicated gauge never re-rises past the 75 % high alarm on a cold-leg break',
           fmt(maxInd, 1), maxInd < 75, '< 75 (pre-#385 peak: 93.5)');
 
-        // ---- leg B: the algebra, through the real levelRaw (a copy would test
-        // the copy — #367). Clones differ ONLY in what is discharging.
-        var lvl = function (extra) {
-          return RD.pwrPressurizer.levelRaw(Object.assign(
-            { tavg_c: 304.0, _tavg_fp: 304.0, _mass: 0.85, primary_void_fraction: 0.45 },
-            extra), CFG);
+        // ---- leg B: the algebra, through the LIVE law — stepped stepLevel clones
+        // (#385 node stage 2; a copy would test the copy, #367). The claim moved
+        // from a state-form term to a FLOW: a void increment dv arriving under a
+        // leak accretes exactly level_per_void·w·dv of credit — the admittance
+        // split applied to the displacement AS IT HAPPENS.
+        var mkClone = function (leak) {
+          var s = { tavg_c: 304.0, _tavg_fp: 304.0, _mass: 0.85,
+                    primary_void_fraction: 0, leak_flow: leak };
+          RD.pwrPressurizer.stepLevel(s, CFG, 0.1);   // latch _pzr_dep, prev_void = 0
+          return s;
         };
-        var lv0 = lvl({ leak_flow: 0 }), lvLeak = lvl({ leak_flow: 0.05 });
-        var w = p.void_weight_surge_ref / (p.void_weight_surge_ref + 0.05);
-        var wantDiff = p.level_per_void * 0.45 * (1 - w);
-        ck('a loop leak moves the line by exactly level_per_void·void·(1−w)',
-          fmt(lv0 - lvLeak, 4) + ' vs ' + fmt(wantDiff, 4),
-          Math.abs((lv0 - lvLeak) - wantDiff) < 1e-9, 'exact');
-        var lvRelief = lvl({ leak_flow: 0, porv_flow: 0.30, safety_flow: 0.10 });
-        ck('RELIEF discharge moves it by NOTHING — the TMI fence',
-          fmt(lv0, 4) + ' vs ' + fmt(lvRelief, 4), lv0 === lvRelief, 'identical');
+        var wB = p.void_weight_surge_ref / (p.void_weight_surge_ref + 0.05);
+        var sL = mkClone(0.05);
+        sL.primary_void_fraction = 0.45;
+        RD.pwrPressurizer.stepLevel(sL, CFG, 0.1);
+        ck('a void increment under a loop leak accretes exactly level_per_void·w·dv',
+          fmt(sL._pzr_void_lvl, 4) + ' vs ' + fmt(p.level_per_void * wB * 0.45, 4),
+          Math.abs(sL._pzr_void_lvl - p.level_per_void * wB * 0.45) < 1e-9, 'exact');
+
+        // THE RETIREMENT PIN — red on the state-form line. The leak collapses
+        // (w recovers toward 1) with NO new displacement: the credit must not
+        // move, while the frozen state-form line re-reads the whole stock at
+        // today's w and re-lifts by exactly level_per_void·void·(1−w).
+        var creditHeld = sL._pzr_void_lvl;
+        sL.leak_flow = 0;
+        RD.pwrPressurizer.stepLevel(sL, CFG, 0.1);
+        ck('w recovering re-lifts NOTHING — displacement that left the hole is not owed back',
+          fmt(sL._pzr_void_lvl, 4) + ' vs held ' + fmt(creditHeld, 4),
+          sL._pzr_void_lvl === creditHeld, 'bitwise unchanged');
+        var frozenHere = RD.pwrPressurizer.levelRaw(sL, CFG);
+        var nodeHere = RD.pwrPressurizer.pzrNodeLevel(sL, CFG);
+        ck('…while the frozen line would have re-applied the (1−w) share — the retired defect',
+          'line − node = ' + fmt(frozenHere - nodeHere, 4),
+          Math.abs((frozenHere - nodeHere) - p.level_per_void * 0.45 * (1 - wB)) < 1e-9,
+          'exactly level_per_void·void·(1−w)');
+
+        // Relief fence: PORV/safety discharge is not a leak — a never-leaked clone
+        // keeps the FULL lift and relief flows move the law by NOTHING.
+        var sR = { tavg_c: 304.0, _tavg_fp: 304.0, _mass: 0.85,
+                   primary_void_fraction: 0.45, leak_flow: 0, porv_flow: 0.30, safety_flow: 0.10 };
+        RD.pwrPressurizer.stepLevel(sR, CFG, 0.1);
+        var hand = p.pzr_level_nominal + p.level_per_mass * (0.85 - 1) + p.level_per_void * 0.45;
+        ck('RELIEF discharge under the live law keeps the FULL lift — the TMI fence',
+          fmt(RD.pwrPressurizer.pzrNodeLevel(sR, CFG), 4) + ' vs hand ' + fmt(hand, 4),
+          Math.abs(RD.pwrPressurizer.pzrNodeLevel(sR, CFG) - hand) < 1e-9, 'exact');
 
         // ---- leg C: the documented calibration target, on the deception line
-        // (void = void_gain·(1−m)), asserted for the first time.
+        // (void = void_gain·(1−m)) through the LIVE law — the relief path is
+        // never-leaked, so the state-form branch carries it bitwise.
         var mC = 1 - 0.2 / CFG.primary.void_gain;
-        var lvC = lvl({ _mass: mC, primary_void_fraction: 0.2, leak_flow: 0 });
+        var sC = { tavg_c: 304.0, _tavg_fp: 304.0, _mass: mC,
+                   primary_void_fraction: 0.2, leak_flow: 0 };
+        RD.pwrPressurizer.stepLevel(sC, CFG, 0.1);
         ck('the config target holds: void 0.2 on the deception line reads 78.3 %',
-          fmt(lvC, 2), Math.abs(lvC - 78.3) < 0.2, '78.3 ± 0.2');
+          fmt(RD.pwrPressurizer.pzrNodeLevel(sC, CFG), 2),
+          Math.abs(RD.pwrPressurizer.pzrNodeLevel(sC, CFG) - 78.3) < 0.2, '78.3 ± 0.2');
 
-        // ---- leg D: the no-break scope fence — full calibrated lift, by hand.
-        var hand = p.pzr_level_nominal + p.level_per_mass * (0.85 - 1) + p.level_per_void * 0.45;
-        ck('a NO-BREAK voided state keeps the FULL lift (loss of heat sink still deceives)',
-          fmt(lv0, 4) + ' vs hand ' + fmt(hand, 4), Math.abs(lv0 - hand) < 1e-9, 'exact');
+        // ---- leg D: void FLICKER at the saturation gate ratchets the credit DOWN,
+        // never up — accretion pays the w toll, the return is unweighted, the floor
+        // is 0. Two full flicker cycles on a leaked clone.
+        var sF = mkClone(0.05);
+        var peak = null;
+        for (var fi = 0; fi < 2; fi++) {
+          sF.primary_void_fraction = 0.45; RD.pwrPressurizer.stepLevel(sF, CFG, 0.1);
+          if (peak == null) peak = sF._pzr_void_lvl;
+          sF.primary_void_fraction = 0;    RD.pwrPressurizer.stepLevel(sF, CFG, 0.1);
+        }
+        sF.primary_void_fraction = 0.45; RD.pwrPressurizer.stepLevel(sF, CFG, 0.1);
+        ck('saturation-boundary flicker cannot ratchet the credit UP (floor 0, toll on growth)',
+          fmt(sF._pzr_void_lvl, 4) + ' vs first accretion ' + fmt(peak, 4),
+          sF._pzr_void_lvl >= 0 && sF._pzr_void_lvl <= peak + 1e-9, '0 ≤ credit ≤ first accretion');
         T.checkSanity(ck, h);
       });
     },
@@ -4519,43 +4562,56 @@
       });
     },
 
-    /* CA-23 (#385 follow-on, stage 1) — THE PRESSURIZER INVENTORY NODE IS INERT.
+    /* CA-23 (#385 follow-on, stages 1–2) — THE NODE, ITS LAW, AND THE FROZEN-LINE FENCE.
      *
-     * Stage 1's ruling ("inert node reproducing the level line; if anything moves,
-     * it is a defect in the node, not a design change") is an IDENTITY CLAIM, and
-     * an identity nobody asserts is the #365 fork waiting to happen — the line and
-     * the node would drift apart silently the first time someone edits one of them.
-     * `level_per_mass · pzr_mass_frac` must equal `levelRaw` after EVERY step,
-     * across all three input families the line has: the subcooled base+mass terms,
-     * the unweighted void lift on the relief path (w = 1), and the w-weighted void
-     * term on a flowing loop break.
+     * Three identity claims, each the anti-#365 fork guard for one seam:
+     *   (1) NO-LEAK FAMILIES ARE BITWISE THE FROZEN LINE. On leak_flow ≡ 0 rides
+     *       (trip outsurge, the stuck-PORV/TMI void lift) `level_per_mass ·
+     *       pzr_mass_frac` must equal the FROZEN `levelRaw` exactly — the stage-2
+     *       byte-identity ruling: the calibrated TMI arc must not move at all.
+     *   (2) THE NODE IS ITS LAW everywhere: node == pzrNodeLevel/level_per_mass and
+     *       the published gauge is that law on span, on the break family too.
+     *   (3) On a monotone blowdown the node sits AT OR BELOW the frozen line —
+     *       the state-form re-read at today's w is the retired re-lift defect,
+     *       and the flow-form credit can only be under it while w is rising.
      *
      * Engine-direct on purpose: the claim is internal algebra (the CA-18 leg B/C/D
      * layer), not plant behaviour. Legs A–C each carry a PRECONDITION check that
      * their family was actually exercised — a sweep that finds nothing has proved
-     * nothing (the perturb_sweep rule) — and the identity is checked at every
+     * nothing (the perturb_sweep rule) — and the identities are checked at every
      * 0.1-s step with the worst deviation kept. Leg D is the migration seed: a
      * pre-node save (pzr_mass_frac stripped) must seed through the line's inverse
      * exactly, and the published level must survive the load untouched.
      *
-     * Injection-verified 2026-08-08: stashing the stepLevel node write reddens
-     * legs A–C (node parked at its lazy init while the line moves) and nothing
-     * else in the battery; stripping the _migrateState seed reddens leg D alone.
+     * Injection-verified 2026-08-08 (stage 1 form): stashing the stepLevel node
+     * write reddens legs A–C and nothing else; stripping the _migrateState seed
+     * reddens leg D alone. Stage-2 form re-verified: restoring the state-form
+     * credit (w re-read every step) reddens exactly CA-18's two retirement pins
+     * (the held credit re-lifts 28.1 → 168.9 — the (1−w) share re-applied); this
+     * probe's leg C stays green there by design (state-form ≡ the frozen line, so
+     * the excursion check reads 0 — the mechanism pin is CA-18's, the fence here
+     * is against credit RATCHETING past the line).
      */
     'CA-23': function () {
-      return test('CA-23 the pressurizer node reproduces the level line exactly — inert (#385 stage 1)', function (ck) {
+      return test('CA-23 the pressurizer node: frozen-line fence on no-leak, live law everywhere (#385)', function (ck) {
         var CFG = RD.PWR_CONFIG, pz = CFG.pressurizer;
         var ride = function (secs, seed, setup) {
           var eng = new RD.PWREngine({ initial_state: 'hot_full_power', seed: seed });
-          var r = { worst: 0, lvlMin: Infinity, lvlMax: -Infinity, sawVoid: 0, sawLeak: 0, eng: eng };
+          var r = { worst: 0, worstLive: 0, aboveFrozen: -Infinity,
+                    lvlMin: Infinity, lvlMax: -Infinity, sawVoid: 0, sawLeak: 0, eng: eng };
           if (setup) setup(eng);
           for (var t = 0; t < secs; t += 0.1) {
             eng.step(0.1);
-            var lvl = RD.pwrPressurizer.levelRaw(eng.s, CFG);
-            var d = Math.abs(pz.level_per_mass * eng.s.pzr_mass_frac - lvl);
+            var frozen = RD.pwrPressurizer.levelRaw(eng.s, CFG);
+            var live = RD.pwrPressurizer.pzrNodeLevel(eng.s, CFG);
+            var node = pz.level_per_mass * eng.s.pzr_mass_frac;
+            var d = Math.abs(node - frozen);
             if (d > r.worst) r.worst = d;
-            if (lvl < r.lvlMin) r.lvlMin = lvl;
-            if (lvl > r.lvlMax) r.lvlMax = lvl;
+            var dl = Math.abs(node - live);
+            if (dl > r.worstLive) r.worstLive = dl;
+            if (node - frozen > r.aboveFrozen) r.aboveFrozen = node - frozen;
+            if (frozen < r.lvlMin) r.lvlMin = frozen;
+            if (frozen > r.lvlMax) r.lvlMax = frozen;
             if (eng.s.primary_void_fraction > r.sawVoid) r.sawVoid = eng.s.primary_void_fraction;
             if (eng.s.leak_flow > r.sawLeak) r.sawLeak = eng.s.leak_flow;
           }
@@ -4566,7 +4622,7 @@
         var A = ride(300, 11, function (eng) { eng.applyCommand({ action: 'scram' }); });
         ck('A: the line MOVED under the probe (trip outsurge — precondition)',
           fmt(A.lvlMax - A.lvlMin, 1) + ' pts', (A.lvlMax - A.lvlMin) > 5, '> 5 pts');
-        ck('A: identity holds on the subcooled family', 'worst ' + A.worst.toExponential(2),
+        ck('A: no-leak byte-identity to the frozen line (subcooled)', 'worst ' + A.worst.toExponential(2),
           A.worst < 1e-9, '< 1e-9');
 
         // ---- leg B: the relief/void family (the unweighted TMI lift; w = 1 exactly).
@@ -4576,10 +4632,11 @@
         });
         ck('B: the relief drain actually voided the loop (precondition)',
           'peak void ' + fmt(B.sawVoid, 3), B.sawVoid > 0.05, '> 0.05');
-        ck('B: identity holds through the void lift', 'worst ' + B.worst.toExponential(2),
+        ck('B: no-leak byte-identity through the void lift — the TMI fence', 'worst ' + B.worst.toExponential(2),
           B.worst < 1e-9, '< 1e-9');
 
-        // ---- leg C: the loop-break family (the w-weighted term; leak_flow > 0).
+        // ---- leg C: the loop-break family — the LIVE law, and at-or-below the
+        // frozen line on a monotone blowdown (the retired re-lift direction).
         // Severity = the board default; the precondition band is CONFIG-DERIVED
         // (meta.max/100 × leak_scale, the #408 idiom) — a hardcoded flow number
         // here pinned the pre-#408 severity map and failed on the real clock.
@@ -4592,8 +4649,15 @@
         ck('C: the break actually flowed (precondition — near its full-Δp rating)',
           'peak leak_flow ' + C.sawLeak.toExponential(2) + ' vs rating ' + (llSev * llRate).toExponential(2),
           C.sawLeak > 0.5 * llSev * llRate, '> 0.5× severity·rate');
-        ck('C: identity holds under the w-weighted break term', 'worst ' + C.worst.toExponential(2),
-          C.worst < 1e-9, '< 1e-9');
+        ck('C: the node IS its law on the break family', 'worst ' + C.worstLive.toExponential(2),
+          C.worstLive < 1e-9, '< 1e-9');
+        // Not a strict ≤: when leak_flow wiggles UP the frozen line instantly
+        // re-reads its whole stock at the lower w (the retired defect mirrored
+        // downward) and the held credit sits briefly above it — measured 0.12 pts
+        // on this ride. The defect class this fences is 20–65 pts (the stage-0
+        // re-lift rows); the exact no-re-read mechanism is CA-18's bitwise pin.
+        ck('C: the node never re-lifts materially past the frozen line on the blowdown',
+          'max(node − line) ' + fmt(C.aboveFrozen, 4), C.aboveFrozen < 2, '< 2 pts');
 
         // ---- leg D: the migration seed — a pre-node save loads byte-identical.
         var snap = B.eng.saveState();

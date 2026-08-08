@@ -116,10 +116,78 @@ entry in the same change.
   (the §6.3 line), `run_all` **42 runners at baseline** (both counts moved in `BASELINES`
   in the same change).
 
-**Next: stage 2** — `pzrSurgeFlows()` (loop displacement + bounded void insurge with the
-admittance split + loop-break flashing outsurge), level publishes from the node, the pressure
-surge rewired to the shared law, `pzr_solid` re-based on the node. Acceptance = the stage-0
-table above + CA-18 + the leak-0 family byte-identical.
+### Stage 2 — the node's law, BUILT (the flow-form credit; leak-0 BITWISE)
+
+`pzrNodeLevel` = the reconstructed base+mass backbone (drift-free — the incompressible loop
+passes every net mass change through the surge line, which is what the one ±776 slope always
+meant) **plus a flow-accreted VOID CREDIT** (`_pzr_void_lvl`, level units) replacing the
+state-form `level_per_void·w_now·void`. Credit rules: never-leaked plants keep the state form
+with w ≡ 1 — **the whole no-leak family (stuck PORV, safeties, loss of heat sink, the TMI
+arc) is BITWISE the frozen line**, term order preserved, no float-drift exception needed;
+once a leak has flowed (`_pzr_dep` latches), growth accretes `level_per_void·w·dv` (the
+admittance split applied to each displacement AS IT HAPPENS — the (1−w) share left through
+the hole and is not owed back), collapse returns unweighted (the condensing loop pulls its
+liquid back through the surge line; the hole cannot supply it), floored at 0. One law, two
+consumers: `stepLevel` publishes it; `stepPressure`'s solid predicate evaluates it (fresh
+Tavg + one-step-stale credit — exactly the freshness the old dual `levelRaw` call had).
+`levelRaw` is FROZEN as the migration-seed map. The surge-rate/pressure terms are untouched
+— **pressure is bitwise identical on every family** (the solid predicate can only differ
+where void > 0, where solid is false through the void guard regardless).
+
+- **THE FINDING THAT REFRAMED THE STAGE: `primary_void_fraction` SNAPS.** It is a state
+  function of `_mass` behind a saturation gate, so it goes 0 → 0.889 in ONE step at gate-open
+  (measured, sev 0.10 full stack at ~100 s), and the credit's dv arrives as one increment at
+  the gate-open w. So flow-form ≈ state-form AT GATE-OPEN on current-board trajectories, and
+  the stage-0 re-lift interpretation needed correcting: **the 65.1/33.5/20.7 TRUE-at-uncovery
+  readings are gate-open snap values at the then-prevailing w — the honest small-break lift**
+  (w 0.56–0.78 at board severities; the #408 owner-report finding 3 asked for exactly this),
+  NOT late w-fade. What the flow form retires is the LATE RE-APPLICATION in both directions:
+  w recovering re-reads nothing (CA-18's new retirement pin, red on the state form — credit
+  28.1 → 168.9 under injection), and w dipping re-reads nothing either (the line instantly
+  marked its whole stock DOWN on a leak_flow wiggle; the node held, measured 0.12 pts). The
+  SNAP itself is #407's (out of the cluster's scope by the plan) — the gauge stepping 0 → 65
+  in one broadcast at sev 0.10 is that defect's face, not this stage's.
+- **The flash outsurge term was MEASURED UNNECESSARY at every board severity and NOT BUILT**
+  — flagged for the owner on #385, a deviation from plan component (c). The arithmetic: the
+  backbone already drains the node at the loop-demand rate — TRUE-empty at 4–212 s across
+  the slider, always well before uncovery (the stage-0 table), sev 1.0 ≈ 1.8 s. A flash term
+  would halve the DBA empty-time (~1 s) and change NO story at any reachable severity, for
+  3–4 new `[tune]`s plus a heal rule — the hollow-term trap (a term nothing can test). The
+  plan's sizing target ("empties 1.5–2 s at sev 0.20") was measured on the RETIRED severity
+  map and no longer exists on the board.
+- Severity sweep re-run (same method/seed): rows 0.01–0.05 unchanged; 0.10 unchanged (snap-
+  dominated); 0.12–0.50 late-phase diffs only (IND at uncovery +1–3 pts; end states moved —
+  **sev 0.17 now parks at a throughput equilibrium exactly ON the core-top boundary: inv
+  70.0 %, 189 psi (1.31 MPa), lvl 79.1, clad stable** — a CA-19-class balance point; noted
+  for a stage-4 look, no damage).
+- **MD-5 adjudicated (HR10) — the one gate red, and it was pinning the retired defect's
+  CLOCK.** ATWS + DEG break, no ECCS: still MELTS, at 5285 s instead of < 4000 (measured on
+  a 200-min ride: damage 2295 s, melt 5285 s, min inv 51.9 %). The old timing was bought by
+  the lying-high late-blowdown gauge keeping the heaters propping the pressure that kept the
+  break flowing. Window 4000 → 6000 s (MD-1's real-clock precedent), inventory band
+  re-authored config-derived (< `core_top_uncover`·100; the old "< 50" was the defect-paced
+  trajectory's number — new form passes on the pre-node engine too).
+- CA-18 legs B/C/D re-authored onto the live law through stepped `stepLevel` clones (the
+  state-form legs would have pinned the frozen map): the w·dv accretion exact to 1e-9, the
+  retirement pin (bitwise-unchanged credit under w recovery + the line−node gap = exactly
+  `level_per_void·void·(1−w)`), the relief fence (full lift, hand-computed), the 78.3-at-
+  void-0.2 target through the live law (78.33 ✓), and a flicker leg (saturation-boundary
+  chatter ratchets the credit DOWN, never up — accretion pays the w toll, return is free,
+  floor 0). CA-23 re-authored: frozen-line fence on no-leak (bitwise, worst 1.4e-14),
+  live-law identity everywhere, bounded excursion above the frozen line (< 2 pts; measured
+  0.12 — strict ≤ was wrong because the LINE re-reads down on w wiggles, the mirrored
+  defect).
+
+### Stage 3 — the deception re-solve COLLAPSED TO VERIFICATION (constants never moved)
+
+The leak-0 byte-identity means the calibrated TMI arc could not move, and no level constant
+was touched — "touch one, re-solve the set" satisfied trivially. Both documented targets
+verified on the live law (net +350 via the hand check, 78.33 at void 0.2 via CA-18 leg C).
+**Crest measured on node geometry** (per the 2026-08-08 ruling): free-play stuck-PORV arc
+crests **62.2 % at 37.3 min**, never crosses 65 or 75; the mission-environment crest
+(~69.4 %, #418/#419 record) is unchanged by construction (bitwise fence, `run_campaign`
+51/51 the proof). **No free re-key is available** → the cue stays state-keyed, the
+#418/#419 owner-review item closes with this measurement, ruling applied.
 
 ## Session log — 2026-08-07-develop-g (#419 waves 1–3 BUILT — RECONSTRUCTED, see marker)
 
