@@ -701,6 +701,13 @@
     return {
       power_pct: s.power_pct, tavg_c: s.tavg_c, thot_c: s.thot_c, tcold_c: s.tcold_c,
       pressure_mpa: s.pressure_mpa, pzr_level_pct: s.pzr_level_pct, sg_level_pct: s.sg_level_pct,
+      // Pressurizer liquid inventory node (#385): the pressurizer's SHARE of the RCS
+      // mass ledger, in the same fraction units as `core_inventory_pct`/100 (a share,
+      // not a second inventory — loop share = _mass − pzr_mass_frac, implicit). Level
+      // is this node through the geometry map (`level_per_mass` %-per-frac: 55 % ≈
+      // 0.0709, vessel full at 100/776 ≈ 0.1289). Stage 1 integrates the derived
+      // level line exactly (inert); the physical surge law is stage 2 (#385).
+      pzr_mass_frac: s.pzr_mass_frac,
       // Wide-range SG level (whole-vessel column, tube sheet → separators), DERIVED since
       // #418 wave A2 from the mass ledger below through the sg_mass_map geometry; the
       // narrow (working) range above is its sg_wr_lo..sg_wr_hi window
@@ -2067,6 +2074,13 @@
     if (s.t_sg_c == null) {
       var _spM = this.cfg.thermal.sg_tube_split != null ? this.cfg.thermal.sg_tube_split : 0.5;
       s.t_sg_c = s.tavg_c - _spM * (s.tavg_c - (s.t_secondary_c != null ? s.t_secondary_c : s.tavg_c));
+    }
+    // Pressurizer inventory node (#385 stage 1). Pre-node saves carry only the derived
+    // level — seed the node through the level line's INVERSE (levelRaw/level_per_mass),
+    // which is exactly what the first stepLevel would write, so the published reading
+    // is byte-identical on load (the sg_mass_frac idiom).
+    if (s.pzr_mass_frac == null && RD.pwrPressurizer && RD.pwrPressurizer.levelRaw) {
+      s.pzr_mass_frac = RD.pwrPressurizer.levelRaw(s, this.cfg) / this.cfg.pressurizer.level_per_mass;
     }
     // Accumulator discharge isolation valve + cold-injection thermal coupling (2026-07).
     // Older saves have no isolation valve — default aligned (open) so behavior is

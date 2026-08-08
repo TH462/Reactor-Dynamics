@@ -29,6 +29,98 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-08-develop-a (#385 pressurizer inventory NODE, stages 0–1 — bundle with #415/#337/#334/#354)
+
+**The committed node follow-on begins** (staging RULED on #385: inert node → surge-line
+flashing outsurge → re-solve the deception → adjudicate fallout). Three plan-review rulings
+*(OWNER, 2026-08-08: selections from costed options)*: **stage 3 holds the derived net +350
+and 78.3-at-void-0.2 as the only solve targets** (measure the mission-arc crest, re-key the
+75 % cue only if it comes free); **the low-Δp break law stays out of build scope** (stage 4
+re-measures on node geometry → fresh options memo to #334); **#334 item-3 slider: option (a)**
+— which stage 0 then found ALREADY SHIPPED, see below.
+
+### Stage 0 — the acceptance freeze, and two premise corrections
+
+**The severity sweep re-frozen on the current engine** (method of record: full stack, default
+lineup, `hot_full_power`, seed 4242, accel 10, `large_loca` t+10 s, 40 plant-min; sampled at
+broadcast resolution). This table is the stage-2 diff base — the 2026-08-06 tables are TWO
+re-clocks stale (#408 wave 1, #419):
+
+| sev | true-empty | uncovery | TRUE lvl @unc | IND @unc | IND peak post-break | min P psi (MPa) | peak clad °F (°C) | end |
+|---|---|---|---|---|---|---|---|---|
+| 0.01 | 212.5 s | never | — | — | 54.8 (pre-break) | 910 (6.27) | 1281 (694) | inv 91 %, lvl 0 |
+| 0.02 | 100.5 s | 942.5 s | 0.0 | 11.5 | 54.8 | 857 (5.91) | 1281 (694) | inv 63.6 % |
+| 0.05 | 37.5 s | 236.0 s | 0.0 | 7.9 | 54.6 | 595 (4.11) | 1402 (761) | inv 59 % |
+| 0.10 | 18.5 s | 102.5 s | **65.1** | 13.9 | 54.2 | 19 (0.13) | 1280 (694) | recovers 96.6 % |
+| 0.12 | 15.5 s | 83.5 s | 0.0 | 14.8 | 54.1 | 18 (0.13) | 1280 (694) | recovers |
+| 0.15 | 12.5 s | 66.0 s | 0.0 | 17.4 | 53.9 | 17 (0.12) | 1280 (694) | recovers |
+| 0.17 | 11.0 s | 58.0 s | **33.5** | 19.0 | 53.8 | 17 (0.12) | 1280 (694) | recovers |
+| 0.20 | 9.5 s | 49.5 s | **20.7** | 17.6 | 53.6 | 16 (0.11) | 1280 (694) | recovers |
+| 0.35 | 5.5 s | 29.0 s | 0.0 | 0.0 | 52.6 | 15 (0.11) | 1280 (694) | recovers |
+| 0.50 | 4.0 s | 20.5 s | 0.0 | 0.2 | 51.6 | 15 (0.10) | 1280 (694) | recovers |
+
+- **Drain order is right everywhere and the indicated gauge never re-rises** (peak = the
+  pre-break ~55 % at every severity) — the #385 stage-2 story holds on the re-clocked plant.
+- **NEW: the w-suppression fades at low Δp.** TRUE level re-lifts to 20–65 % at uncovery at
+  sev 0.10/0.17/0.20 — `w = ref/(ref + leak_flow)` and `leak_flow` collapses with √Δp as the
+  plant blows down, so the void term un-suppresses exactly when the break stops flowing hard.
+  The perturb sweep sees the same edge: `level_per_void`·1.02 flips CA-18's drain-order check
+  (21.0 → 25.6 vs < 25). **Stage 2 must fix this by mechanism** (the flash outsurge keeps the
+  node empty; an emptied node has nothing left to lift), not by band.
+- **sev 0.01 now parks the pressurizer EMPTY at inventory ~91 %** — the droop equilibrium
+  sits deeper than the 7.09 %-deficit span (55/776), so the smallest board break reads
+  lvl 0 with the plant otherwise stable at 910 psi. Feel question, noted for stage 4.
+- **Premise correction 1 — the #334 item-3 slider was ALREADY re-scaled by #408 wave 1**
+  (`pwr_control.js:762-765`): `Break Size / % of a full pipe shear / 0–100 / default 40`,
+  `leak_scale 0.04` (sev 1.0 empties the vessel in ~28 s — the real-clock DBA). The stage-6
+  memo's premise (0–50 "% rated flow") was one wave stale when I put the ruling question, so
+  **the option-(a) ruling confirms shipped state**; closeout on #334, no code. Corollary:
+  severities in the table above are the CURRENT board scale (sev·0.04 frac/s), NOT the
+  2026-08-06 tables' scale (~0.38·sev) — do not compare rows across the re-clock by "sev".
+- **Premise correction 2 — #415 does NOT reproduce** post the 2026-08-07 solid gates
+  (relief-K at bulk + P_restore stood down + #361). Full stack: stuck PORV sev 1.0 →
+  isolate at t+300 s → SI latched → SP walked to 4.0 MPa: the plant rides saturation
+  (subcooling −0.0 °F) while SI fills it, goes solid, and **arrests at 109.3–109.4 %** —
+  the geometric solid point, 10.7 pts clear of the clip — with the safeties cycling
+  2350–2470 psi. The filed walk-to-120.00 state is dead. To #415 with the trace at closeout;
+  the node's solid-wins-over-saturated predicate (stage 2) addresses the fragility class.
+- **Perturb-sweep baseline** (level/surge constants vs the battery): all four discriminate
+  (46–56 of ~680 checks move at 2–3 %); verdict flips are the CA-18 pins above plus
+  `level_per_tavg`·1.02 flipping a CA-20 plateau check (6.22 → 6.15 MPa, tight band, a fact
+  about the plant); `void_weight_surge_ref`·1.20 flips nothing (CA-18 leg B derives its
+  expectation from config — tracks by design).
+
+### Stage 1 — the inert node, BUILT (gates: `run_all` 42 at baseline)
+
+`s.pzr_mass_frac` — the pressurizer's liquid content in RCS-fraction units, a SHARE of the
+`_mass` ledger (loop share = `_mass − pzr_mass_frac`, implicit; the #418 C_tube rule). No new
+constant: capacity = 100/`level_per_mass` ≈ 0.1289, nominal 55 % = 0.0709. `stepLevel`
+integrates the derived line's realized per-step delta, **applied as a delta (`node = target`),
+not `flow·dt`** — `(Δ/dt)·dt` re-rounds in floats and stage 1's ruling is that any movement is
+a defect. Publication stays `clip(levelRaw, 0, 100)` for the same reason (`776·(lvl/776)` can
+differ by an ulp). `_pzr_surge_flow` (frac/s, + = insurge) is stashed from day one for the
+stage-2 pressure consumer. `stepPressure` untouched — zero diff. Migration seeds through the
+line's INVERSE (`levelRaw/level_per_mass` — exactly what the first step would write), §6.3
+entry in the same change.
+
+- **CA-23** (8 checks): the identity `level_per_mass·pzr_mass_frac == levelRaw` after EVERY
+  0.1-s step across three families — subcooled trip outsurge (worst 7.1e-15), the relief/void
+  lift at peak void 0.775 (1.4e-14), the w-weighted loop break at the board-default severity
+  (1.4e-14) — each with a precondition that its family actually fired, plus the migration
+  seed (bitwise) and published-level-unchanged-on-load. Leg C's precondition is CONFIG-DERIVED
+  (`meta.max/100 × leak_scale`, the #408 idiom) — the first draft hardcoded `> 0.01` and
+  failed against the re-clocked severity map, which is that trap teaching itself once more.
+- **Injection-verified both ways**: node write stashed → exactly legs A–C red (divergence
+  27/63/234 pts), D green; migration seed stripped → leg D red alone.
+- Gates: `run_behavior` 65 → **66 pass** / 2 xfail (CA-23), `run_contract` 167 → **168**
+  (the §6.3 line), `run_all` **42 runners at baseline** (both counts moved in `BASELINES`
+  in the same change).
+
+**Next: stage 2** — `pzrSurgeFlows()` (loop displacement + bounded void insurge with the
+admittance split + loop-break flashing outsurge), level publishes from the node, the pressure
+surge rewired to the shared law, `pzr_solid` re-based on the node. Acceptance = the stage-0
+table above + CA-18 + the leak-0 family byte-identical.
+
 ## Session log — 2026-08-07-develop-g (#419 waves 1–3 BUILT — RECONSTRUCTED, see marker)
 
 **RECONSTRUCTED post-hoc from commits + issue comments by a different session (the

@@ -6,7 +6,7 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 65 pass, 2 known gaps (xfail).
+Battery result: 66 pass, 2 known gaps (xfail).
 
 ## TR-1i — TR-1i load-follow tracking — the WTSM ±5 °F duty on a 10 % step and a 5 %/min ramp
 *Known gap:* the steep Ginna program runs the sourced ramp duty to 5.28 vs <= 5.00 °F (#420); coupled to #378

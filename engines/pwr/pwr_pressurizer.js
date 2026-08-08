@@ -650,8 +650,32 @@
   }
 
   // Step 8 (pzr part) — indicated pressurizer level: the line above, on span.
+  //
+  // THE PRESSURIZER INVENTORY NODE (#385 follow-on, stage 1 — INERT). `pzr_mass_frac`
+  // is the pressurizer's liquid content in RCS-mass-fraction units — the same currency
+  // as `_mass`, of which it is a SHARE, never a second inventory (the #418 C_tube rule:
+  // a node's capacity comes OUT of what it split from; the loop's share is the implicit
+  // `_mass − pzr_mass_frac`). The geometry map is `level_per_mass`: 1 RCS-frac = 776
+  // points of level, so nominal 55 % holds 55/776 ≈ 0.0709 and the vessel is full at
+  // 100/776 ≈ 0.1289 — no new constant, the capacity IS the existing slope.
+  //
+  // STAGE 1 IS AN IDENTITY BY CONSTRUCTION: the node integrates the realized per-step
+  // delta of the derived line, applied as a DELTA (`node = target`), not `flow·dt` —
+  // `(Δ/dt)·dt` re-rounds in floats, and "reproduces today's level line" is the ruled
+  // gate, not a goal. Indication still publishes from `levelRaw` directly, because
+  // `level_per_mass·(lvl/level_per_mass)` can differ by an ulp and any movement in
+  // stage 1 is a defect. Stage 2 replaces this integrator with the physical surge law
+  // (pzrSurgeFlows) and flips publication to the node; the surge flow it realizes is
+  // stashed on `_pzr_surge_flow` (frac/s, + = insurge) from day one so the pressure
+  // consumer has the same quantity available when the rewire comes.
   function stepLevel(s, cfg, dt) {
-    s.pzr_level_pct = clip(levelRaw(s, cfg), 0, 100);
+    var p = cfg.pressurizer;
+    var lvl = levelRaw(s, cfg);
+    if (s.pzr_mass_frac == null) s.pzr_mass_frac = lvl / p.level_per_mass;  // lazy init — rig-built states (#418 idiom)
+    var target = lvl / p.level_per_mass;
+    s._pzr_surge_flow = dt > 0 ? (target - s.pzr_mass_frac) / dt : 0;
+    s.pzr_mass_frac = target;
+    s.pzr_level_pct = clip(lvl, 0, 100);
   }
 
   RD.pwrPressurizer = {

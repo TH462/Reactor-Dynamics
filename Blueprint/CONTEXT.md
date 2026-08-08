@@ -467,6 +467,13 @@ physical-quantity vocabulary.
 "true_state": {
     "power_pct": number, "tavg_c": number, "thot_c": number, "tcold_c": number,
     "pressure_mpa": number, "pzr_level_pct": number, "sg_level_pct": number,
+    "pzr_mass_frac": number,          // Pressurizer liquid INVENTORY NODE (#385) — the pressurizer's SHARE of
+                                      //   the RCS mass ledger, same fraction units as core_inventory_pct/100
+                                      //   (a share, never a second inventory: loop share = _mass − pzr_mass_frac,
+                                      //   implicit). `pzr_level_pct` above is this node through the geometry map
+                                      //   (`level_per_mass` %-per-frac; nominal 55 % ≈ 0.0709, vessel full at
+                                      //   100/776 ≈ 0.1289). Stage 1: integrates the derived line (inert);
+                                      //   stage 2 replaces the integrator with the physical surge law.
     "sg_level_wide_pct": number,      // WIDE-range SG level — the whole vessel column (tube sheet → separators).
                                       //   DERIVED since #418 wave A2 from `sg_mass_frac` below through the
                                       //   sg_mass_map geometry. `sg_level_pct` above is the narrow (working) range

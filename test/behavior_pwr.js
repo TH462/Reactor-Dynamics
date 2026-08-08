@@ -135,6 +135,7 @@
     'CA-19': 'probe (the THROUGHPUT equilibrium — a refilled solid RCS with a break open settles where injection = break discharge, and it is not a free rescue; #384 stage 3 / the #334 throughput question)',
     'CA-20': 'probe (a vented RCS blows down PAST Psat toward the building and never below it — path-scoped vent + weakened pin, the SGTR/relief fence, and the DBA arc preserved; WTSM 5.0 §5.0.1.1; #384 stage 4)',
     'CA-21': 'probe (the subcooling margin reads the CORE EXIT over a dry core — negative with the clad hot, byte-equal to the bulk when covered, and a failed TC restores the deception; NUREG-0737 II.F.2; #407)',
+    'CA-23': 'probe (the pressurizer inventory NODE is INERT — level_per_mass·pzr_mass_frac reproduces levelRaw to 1e-9 across the subcooled/relief-void/loop-break families, and a pre-node save seeds through the inverse; #385 stage 1)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -4515,6 +4516,97 @@
         ck('true inventory conserved 97..103 % (no silent windup)',
           fmt(h.range('core_inventory_pct').min, 1) + '..' + fmt(h.range('core_inventory_pct').max, 1),
           h.range('core_inventory_pct').min >= 97 && h.range('core_inventory_pct').max <= 103, '97..103');
+      });
+    },
+
+    /* CA-23 (#385 follow-on, stage 1) — THE PRESSURIZER INVENTORY NODE IS INERT.
+     *
+     * Stage 1's ruling ("inert node reproducing the level line; if anything moves,
+     * it is a defect in the node, not a design change") is an IDENTITY CLAIM, and
+     * an identity nobody asserts is the #365 fork waiting to happen — the line and
+     * the node would drift apart silently the first time someone edits one of them.
+     * `level_per_mass · pzr_mass_frac` must equal `levelRaw` after EVERY step,
+     * across all three input families the line has: the subcooled base+mass terms,
+     * the unweighted void lift on the relief path (w = 1), and the w-weighted void
+     * term on a flowing loop break.
+     *
+     * Engine-direct on purpose: the claim is internal algebra (the CA-18 leg B/C/D
+     * layer), not plant behaviour. Legs A–C each carry a PRECONDITION check that
+     * their family was actually exercised — a sweep that finds nothing has proved
+     * nothing (the perturb_sweep rule) — and the identity is checked at every
+     * 0.1-s step with the worst deviation kept. Leg D is the migration seed: a
+     * pre-node save (pzr_mass_frac stripped) must seed through the line's inverse
+     * exactly, and the published level must survive the load untouched.
+     *
+     * Injection-verified 2026-08-08: stashing the stepLevel node write reddens
+     * legs A–C (node parked at its lazy init while the line moves) and nothing
+     * else in the battery; stripping the _migrateState seed reddens leg D alone.
+     */
+    'CA-23': function () {
+      return test('CA-23 the pressurizer node reproduces the level line exactly — inert (#385 stage 1)', function (ck) {
+        var CFG = RD.PWR_CONFIG, pz = CFG.pressurizer;
+        var ride = function (secs, seed, setup) {
+          var eng = new RD.PWREngine({ initial_state: 'hot_full_power', seed: seed });
+          var r = { worst: 0, lvlMin: Infinity, lvlMax: -Infinity, sawVoid: 0, sawLeak: 0, eng: eng };
+          if (setup) setup(eng);
+          for (var t = 0; t < secs; t += 0.1) {
+            eng.step(0.1);
+            var lvl = RD.pwrPressurizer.levelRaw(eng.s, CFG);
+            var d = Math.abs(pz.level_per_mass * eng.s.pzr_mass_frac - lvl);
+            if (d > r.worst) r.worst = d;
+            if (lvl < r.lvlMin) r.lvlMin = lvl;
+            if (lvl > r.lvlMax) r.lvlMax = lvl;
+            if (eng.s.primary_void_fraction > r.sawVoid) r.sawVoid = eng.s.primary_void_fraction;
+            if (eng.s.leak_flow > r.sawLeak) r.sawLeak = eng.s.leak_flow;
+          }
+          return r;
+        };
+
+        // ---- leg A: the subcooled family (base + mass terms) — a trip outsurge.
+        var A = ride(300, 11, function (eng) { eng.applyCommand({ action: 'scram' }); });
+        ck('A: the line MOVED under the probe (trip outsurge — precondition)',
+          fmt(A.lvlMax - A.lvlMin, 1) + ' pts', (A.lvlMax - A.lvlMin) > 5, '> 5 pts');
+        ck('A: identity holds on the subcooled family', 'worst ' + A.worst.toExponential(2),
+          A.worst < 1e-9, '< 1e-9');
+
+        // ---- leg B: the relief/void family (the unweighted TMI lift; w = 1 exactly).
+        var B = ride(1500, 12, function (eng) {
+          eng.applyCommand({ action: 'scram' });
+          eng.applyCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open', severity: 1.0 });
+        });
+        ck('B: the relief drain actually voided the loop (precondition)',
+          'peak void ' + fmt(B.sawVoid, 3), B.sawVoid > 0.05, '> 0.05');
+        ck('B: identity holds through the void lift', 'worst ' + B.worst.toExponential(2),
+          B.worst < 1e-9, '< 1e-9');
+
+        // ---- leg C: the loop-break family (the w-weighted term; leak_flow > 0).
+        // Severity = the board default; the precondition band is CONFIG-DERIVED
+        // (meta.max/100 × leak_scale, the #408 idiom) — a hardcoded flow number
+        // here pinned the pre-#408 severity map and failed on the real clock.
+        var llD = CFG.protection.failures.large_loca;
+        var llSev = llD.severity_meta.default / 100;
+        var llRate = (llD.severity_meta.max / 100) * (llD.leak_scale != null ? llD.leak_scale : 1);
+        var C = ride(180, 13, function (eng) {
+          eng.applyCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: llSev });
+        });
+        ck('C: the break actually flowed (precondition — near its full-Δp rating)',
+          'peak leak_flow ' + C.sawLeak.toExponential(2) + ' vs rating ' + (llSev * llRate).toExponential(2),
+          C.sawLeak > 0.5 * llSev * llRate, '> 0.5× severity·rate');
+        ck('C: identity holds under the w-weighted break term', 'worst ' + C.worst.toExponential(2),
+          C.worst < 1e-9, '< 1e-9');
+
+        // ---- leg D: the migration seed — a pre-node save loads byte-identical.
+        var snap = B.eng.saveState();
+        delete snap.s.pzr_mass_frac;                    // simulate a pre-#385 save
+        var eng2 = new RD.PWREngine({ initial_state: 'hot_full_power', seed: 14 });
+        eng2.loadState(snap);
+        var lvl2 = RD.pwrPressurizer.levelRaw(eng2.s, CFG);
+        ck('D: a pre-node save seeds the node through the line\'s inverse, exactly',
+          fmt(eng2.s.pzr_mass_frac, 6) + ' vs ' + fmt(lvl2 / pz.level_per_mass, 6),
+          eng2.s.pzr_mass_frac != null && eng2.s.pzr_mass_frac === lvl2 / pz.level_per_mass, 'bitwise');
+        ck('D: the published level survives the load untouched',
+          fmt(eng2.s.pzr_level_pct, 4) + ' vs saved ' + fmt(snap.s.pzr_level_pct, 4),
+          eng2.s.pzr_level_pct === snap.s.pzr_level_pct, 'byte-identical');
       });
     },
 

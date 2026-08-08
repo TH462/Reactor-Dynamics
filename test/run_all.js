@@ -318,7 +318,7 @@ var BASELINES = {
   // already at the sourced WTSM speed thresholds; the ±5 band is sourced and NOT widened.
   // Coupled to #378 (whose fix was rejected FOR this duty at 5.26 — the trade-space
   // changed); fixing the duty must remove the XFAIL entry in the same change.
-  'run_behavior.js':       { code: 0, secs: 80, score: '65pass 2xfail' },   // 64 -> 65 (#386 stage 2): CA-22 spray knockdown/auto-secure; CA-16 leg D re-authored on the active sinks, CA-21 window 0.90 -> 0.85 (stage-2 drained equilibrium parks at 0.88), PI-9 re-authored (SI correctly arrives on the sourced containment backup)
+  'run_behavior.js':       { code: 0, secs: 80, score: '66pass 2xfail' },   // 65 -> 66 (#385 node stage 1): CA-23 — the pressurizer inventory node is INERT (identity to the level line across three families + the migration seed). 64 -> 65 (#386 stage 2): CA-22 spray knockdown/auto-secure; CA-16 leg D re-authored on the active sinks, CA-21 window 0.90 -> 0.85 (stage-2 drained equilibrium parks at 0.88), PI-9 re-authored (SI correctly arrives on the sourced containment backup)
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -852,7 +852,7 @@ var BASELINES = {
   // 157 -> 158 (#418 A2) -> 159 (#418 B1): the sg_mass_frac ledger and t_sg_c tube-node
   // fields' §6.3 lines — the contract gate counts one check per documented true_state
   // field, both directions.
-  'run_contract.js':       { code: 0, score: '167checks 0failed' },   // 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
+  'run_contract.js':       { code: 0, score: '168checks 0failed' },   // 167 -> 168 (#385 node stage 1): the pzr_mass_frac inventory-node field's §6.3 line. 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

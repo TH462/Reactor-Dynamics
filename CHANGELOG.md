@@ -76,6 +76,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the pressurizer gets its own inventory node, stage 1 of 4: INERT (#385 follow-on, 2026-08-08)
+
+- New engine state **`pzr_mass_frac`** — the pressurizer's liquid content as a SHARE of the
+  RCS mass ledger (loop share = `_mass − pzr_mass_frac`, implicit — the #418 rule that a
+  node's capacity comes OUT of what it split from). No new constant: the geometry map IS
+  `level_per_mass` (nominal 55 % = 0.0709 RCS-frac, vessel full at 100/776 ≈ 0.1289).
+  Stage 1 is an identity by construction: the node integrates the derived level line's
+  realized per-step delta and indication still publishes from the line, so **every runner is
+  at its exact baseline** — the ruled gate for this stage ("if anything moves it is a defect
+  in the node, not a design change"). `stepPressure` untouched. Migration seeds pre-node
+  saves through the line's inverse (byte-identical reading on load); §6.3 documented in the
+  same change (`run_contract` 167 → 168).
+- **CA-23** pins the inertness: `level_per_mass·pzr_mass_frac == levelRaw` after every 0.1-s
+  step across the subcooled, relief-void and loop-break families (worst 1.4e-14), each leg
+  with a precondition that its family actually fired, plus the bitwise migration seed.
+  Injection-verified both ways (node write stashed → exactly the three identity legs red;
+  seed stripped → the migration leg alone). `run_behavior` 65 → 66 pass.
+- Stage-0 record (the acceptance freeze, `Diagnostic/TUNING_LOG.md` 2026-08-08-develop-a):
+  the severity sweep re-frozen on the re-clocked plant — drain order right everywhere, no
+  indicated re-rise, and one new stage-2 target: **the w-suppression fades at low Δp** (TRUE
+  level re-lifts 20–65 pts at uncovery at sev 0.10–0.20 as `leak_flow` collapses with √Δp).
+  **#415 no longer reproduces** post the 2026-08-07 solid gates (the SP walk-down now arrests
+  at 109.3–109.4 %, safeties cycling — the designed #346/#361 arrest). **#334 item 3 found
+  already shipped by #408 wave 1** (`Break Size / % of a full pipe shear / 0–100`); the
+  2026-08-08 option-(a) ruling confirms shipped state.
+
 ### Added — the containment fights back: active heat removal and containment-pressure protection, all automatic (#386 stage 2, 2026-08-08)
 
 - **Containment spray** starts on the sourced 30 psig high-high signal (WTSM 12.3; two 100 %
