@@ -29,6 +29,59 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-07-develop-g (#419 waves 1–3 BUILT — RECONSTRUCTED, see marker)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session (the
+2026-08-07-develop-e session's plan WP2, owner-approved) — not the authoring session's own
+record.** The authoring session landed all three #419 waves (17:54–20:16 local, BEFORE the
+`-e` session — this entry sits above `-e` only because `run_session_labels` orders letters
+newest-first) and wrote no entry here or in `BUILD_DECISIONS.md`; this closes the gap the `-e`
+entry flagged. Numbers are quoted from the commit messages and the #419 issue thread (which
+carries the full per-wave write-ups), not re-measured.
+
+- **Wave 1 (`1d11252`)** — the Mode 5↔1 pace compression RETIRED: real heatup/cooldown rates,
+  time acceleration carries the pacing (the #419 stage-1 D3 ruling, "go real").
+- **Wave 2 (`8ba4d84`)** — F15 re-anchored: relief K 3144 → **2500**, the plant's physical net
+  under the RULED F14 heater. The recorded trap: K_phys ≈ 304 is physically derived and
+  validates against TMI-2's own clock, but under the 347× F14 heater the stuck-PORV race
+  inverts (level crashes, no deception) — shipped K is the F14-coupled pair, marked
+  [derived-net, re-solve together].
+- **Wave 3 (`413ae06`)** — the Ginna re-anchor (option C): secondary ladder
+  1020/1060/1099/1063 psi (7.03/7.31/7.58/7.33 MPa, `DESIGN_COMPANION` §8.34 retired), Tavg
+  program 546.9 → 580.2 °F (286.0 → 304.5 °C), steam dump 28 % (D1 — the ride-out survives,
+  measured), reference boron 683 → **705 ppm** (`rho_excess` re-solved at the WBN quote
+  temperature; the old solve conflated it with our anchor).
+- Owner-review items live on #419 (TMI deception crest ~65 % vs the 75 % annunciator; TR-1i
+  second strict xfail → #420, coupled to #378). Gates: `run_all` 42 at baseline at each wave
+  per the commit messages.
+
+## Session log — 2026-08-07-develop-f (#418 tier 2 BUILT, waves A1–B2 — RECONSTRUCTED, see marker)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session (the
+2026-08-07-develop-e session's plan WP2, owner-approved) — not the authoring session's own
+record.** The authoring session landed the whole tier-2 build (13:05–14:35 local, BEFORE both
+`-d` and the `-e` session — letters follow the gate's newest-first rule, not the clock) and
+wrote no entry here or in `BUILD_DECISIONS.md`. Numbers are quoted from the commit messages
+and the #418 issue thread, not re-measured.
+
+- **Wave A1 (`174009c`)** — the SG pressure clock DERIVED (was bottled +223 psi/s at full
+  generation, now +43): the plant re-learned five transients on the real clock.
+- **Wave A2 (`9414ea0`)** — the SG secondary is a MASS LEDGER: `K_sg_level` retires into
+  geometry; the ledger reconciles Ginna's 35-s trip event with its 78-s boil-dry through level
+  geometry rather than a gain.
+- **Wave A3 (`2c7a507`)** — SG safety capacity SOURCED: 0.84× rated, the Ginna MSSV bank.
+- **Wave B1 (`ae025fc`)** — the SG has a TUBE NODE and the legs are TRANSPORTED: series pair
+  under the invariance rule (1/h1 + 1/h2 = 1/h_sg, shared factors) leaving every steady anchor
+  exact — `run_otdt` 46/46, TR-1i's ±5 °F duty with no lead-lag. `tau_hotleg_s` 1.5 /
+  `tau_coldleg_s` 4.0 ÷ flow are the new `[tune]` transport constants (unsourced; see the `-e`
+  cooldown-pace thread).
+- **Wave B2 (`fcf7d66`)** — the re-clock reaches the player: manuals pending-Rev-14 items
+  (a)–(f), CHANGELOG, close-out. Issue #418 carries `status-owner-review` (three items).
+- The two traps from this build are rescued in `CLAUDE.md` themes: a node's capacity must come
+  OUT of the node it split from (C_tube on top of coolant 20 silently reopened the ruled
+  heatup pace — caught at 260.7 °C), and a knife-edge claim (TR-3 "spray loses") will
+  oscillate under re-clocking — the probe now pins the mechanism half.
+
 ## Session log — 2026-08-07-develop-e (the owner's zero-flow report: the CVCS boxes rendered the #408 currency raw — display swept, engine healthy, #421 filed for the unclamped command)
 
 **Task (owner):** investigate #385 + what to bundle with it; "charging and letdown always show
@@ -91,6 +144,22 @@ today with **no session entries in this file or BUILD_DECISIONS** (labels stop a
 
 **Gates:** run_all after the batch (result in the commit); no baseline moves expected — the
 board score is data, `run_manual_units` parses the GPM literals untouched.
+
+**ADDENDUM (same session, post-plan): #421 executed.** Engine clip at `applyCommand` +
+`stepInventory` MANUAL (clip, never reject — the ops spam sanity asserts acceptance; the MANUAL
+clip is what covers a pre-#408 save restoring its 0.05 setpoint verbatim, no migration default
+exists). `set_letdown_flow` alias table re-derived config-side (the retired 0.030/0.040/0.070
+snapped every real-scale request to `off`; a legacy old-currency value now lands on A+B — the
+documented trade, pinned by a new self-test check). Adjudications, one at a time: **§14
+roundtrip = the predicted casualty, measured 13/13 GREEN on the clamped engine** — cooldown
+completes at 7,930 s of 12,000, min subcool 47 °C; the bang-bang trim survives because real
+charging (60 gpm) outruns the real-paced cooldown contraction, so the predicted minSub/coldAt
+reds never fired and no rig redesign is owed. e2e charging band → `>= 0.9 × charging_max`
+(mirrors its letdown neighbour); CA-8 bands re-expressed as fractions of `charging_max` at
+byte-identical strictness (1e-4 ≡ 0.75×); ops spam roster → `charging_max` (nothing asserts
+charging there). `gen_manual_reference` wording fixed (dead for PWR — no manual three-step);
+`Manuals/03` checked and NOT edited (no misstatement, no Rev row). Also reconstructed the
+missing `-f`/`-g` session entries (plan WP2), marked as such in both files.
 
 ## Session log — 2026-08-07-develop-d (#419 STAGE 1: the cascade table, posted for sign-off. No code.)
 

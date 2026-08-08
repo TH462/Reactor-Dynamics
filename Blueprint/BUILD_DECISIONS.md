@@ -45,6 +45,48 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-07-develop-g — #419 waves 1–3 BUILT (RECONSTRUCTED — not the authoring session's record)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session** (the
+2026-08-07-develop-e session's plan WP2, owner-approved); the authoring session wrote no entry
+here or in `TUNING_LOG.md`. Decisions of record, quoted not re-measured — full write-ups on #419:
+
+- **Wave 1 (`1d11252`)**: pace compression retired, real Mode 5↔1 rates (stage-1 D3 ruling).
+- **Wave 2 (`8ba4d84`)**: F15 relief K 3144 → **2500** = the physical net under the RULED F14
+  heater. K_phys ≈ 304 is right in isolation and unshippable under F14 (the stuck-PORV race
+  inverts) — the pair is marked [derived-net, F14-coupled: re-solve together].
+- **Wave 3 (`413ae06`)**: the Ginna re-anchor — ladder 7.03/7.31/7.58/7.33 MPa (§8.34 retired),
+  program 286.0 → 304.5 °C, dump 28 % (D1, ride-out measured surviving), reference boron 683 →
+  705 (`rho_excess` re-solved at the WBN quote temperature — the old solve conflated
+  measurement and anchor temperatures).
+- Open on the issue: TMI deception crest ~65 % vs the 75 % annunciator (level-constants-set
+  ruling if the cue matters); TR-1i strict xfail #420 (coupled #378). Gates: 42 runners at
+  baseline per wave.
+
+---
+
+## 2026-08-07-develop-f — #418 tier 2 BUILT, waves A1–B2 (RECONSTRUCTED — not the authoring session's record)
+
+**RECONSTRUCTED post-hoc from commits + issue comments by a different session** (the
+2026-08-07-develop-e session's plan WP2, owner-approved); the authoring session wrote no entry
+here or in `TUNING_LOG.md`. It ran 13:05–14:35 local — before both `-d` and `-e`; the letter
+follows `run_session_labels`' newest-first rule, not the clock. Decisions of record, quoted not
+re-measured — full write-ups on #418:
+
+- **A1 (`174009c`)** derived SG pressure clock (+223 → +43 psi/s at full generation; five
+  transients re-learned). **A2 (`9414ea0`)** SG mass ledger — `K_sg_level` retires into
+  geometry (Ginna 35-s trip vs 78-s boil-dry reconciled). **A3 (`2c7a507`)** sourced MSSV
+  capacity 0.84× rated (Ginna bank). **B1 (`ae025fc`)** tube node + transported legs under the
+  invariance rule (1/h1 + 1/h2 = 1/h_sg) — steady anchors exact, `run_otdt` 46/46; new `[tune]`
+  transport constants `tau_hotleg_s` 1.5 / `tau_coldleg_s` 4.0 ÷ flow (unsourced). **B2
+  (`fcf7d66`)** manuals pending-Rev-14 items (a)–(f) + close-out; #418 carries
+  `status-owner-review`.
+- Traps rescued to `CLAUDE.md` themes: split-node capacity must come OUT of the parent node
+  (C_tube silently reopened the ruled heatup pace, caught at 260.7 °C); knife-edge claims
+  oscillate under re-clocking (TR-3 re-pinned on mechanism).
+
+---
+
 ## 2026-08-07-develop-d — #419 stage 1: the cascade table posted for sign-off (no code)
 
 **The deliverable** is on the issue — the full current → proposed → source → touches table:
