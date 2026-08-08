@@ -76,6 +76,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the containment fights back: active heat removal and containment-pressure protection, all automatic (#386 stage 2, 2026-08-08)
+
+- **Containment spray** starts on the sourced 30 psig high-high signal (WTSM 12.3; two 100 %
+  trains at the reference plant, Ginna TS B 3.6.6), knocks the building back below the 3.5 psig
+  SI signal in minutes, and **secures itself** on recovery — AUTO-ONLY by owner ruling
+  ("automated for now… I plan to redesign the control board at some point but not right now"):
+  no board card, no player-facing spray control; annunciators **A36–A39** and the Physics tab
+  are the window. **Fan coolers** realign on any SI (normal-mode fan cooling stays folded in
+  the passive sink, declared). Spray/fan capacities are fitted like `press_gain` — no corpus
+  document carries either (measured zero by `find_source`).
+- **Safety injection gains the sourced 3.5 psig containment backup** — *"cannot be blocked by
+  the operator"*, modeled as a row with no ESF arm: it fires with the HPI ESF in MANUAL, the
+  discriminator the run_m4 suite drives directly. The fired latch stands through a ride, so the
+  TMI arc's scripted securing is never fought (`run_campaign` 51/51, `run_scenarios` 3/3,
+  `flagship_tmi` and `run_meltdown` all UNCHANGED — measured, the stage's highest-risk check).
+- **The steam lines isolate on high-high containment pressure** — the sourced third leg
+  (ML11223A310:468), sharing the MSLI seal-in; closes `Manuals/12` §12.17. And an **upstream
+  steam-line break now pressurizes the building it breaks into** (fitted secondary→containment
+  conversion, sized so MSLB is the limiting containment case at ~88 % of design pressure —
+  trimmed off a 0.7 %-margin knife edge). PI-9 re-authored: SI now correctly arrives on the
+  containment backup for the upstream break, with every primary-side channel silent.
+- Q0 sweep (all full stack): healthy plant 20 min flat-ambient with nothing firing; sev-0.5
+  LOCA hi-hi→spray→below-SI in ~4 min; stuck PORV equilibrates ~9.4 psig under realigned fans
+  (spray correctly never fires); SGTR stays exactly ambient. Adjudicated fallout: CA-16 leg D
+  re-authored as the active-sinks decay pin (τ_eff from the plant's own train state), CA-21's
+  dry-core window 0.90 → 0.85 (the stage-2 drained equilibrium parks at 0.88 — the old
+  threshold pinned the old equilibrium, not the claim; passes on both engines). New CA-22
+  (spray knockdown + auto-secure) and a CA-8 spray-is-an-AC-load leg, both injection-verified
+  (stage-1 engine reddens them). Manuals Rev 14 item (i) — including two stale rows caught on
+  the way (09's MSLI row still quoted the retired 754 psi / "~1 s"; 12 §8.5's ladder sentence
+  had escaped the #419 sweep).
+
 ### Fixed — the board's CVCS flow boxes read 0 gpm always; every #408-currency display stray swept (2026-08-07)
 
 - **Charging and letdown flow on the board read zero at every plant state** — the two readouts

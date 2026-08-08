@@ -75,6 +75,8 @@ var ALLOWED = {
   set_hpci: 'valueFieldFor lookup table',
   set_hpi: 'valueFieldFor lookup table',
   set_letdown_flow: 'valueFieldFor lookup table',
+  set_containment_spray: 'valueFieldFor lookup table',   // #386 stage 2
+  set_ctmt_fans: 'valueFieldFor lookup table',           // #386 stage 2
   set_rcic: 'valueFieldFor lookup table',
   set_recirc_flow: 'valueFieldFor lookup table',
   set_rhr: 'valueFieldFor lookup table',

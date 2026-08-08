@@ -131,6 +131,7 @@
     'CA-16': 'probe (containment is the receiving volume — a LOCA pressurizes it, an SGTR bypasses it, relief lands in it, and it decays on the passive sink; #386 stage 1)',
     'CA-17': 'probe (break/relief backpressure is the LIVE containment pressure — clone-rig mechanism pin, red on the pre-#386 engine; #386 stage 1)',
     'CA-18': 'probe (the void-displacement level lift is PATH-AWARE — a loop break drains the pressurizer, the relief path keeps the TMI deception; WCAP-16009 §11-4-5; #385 stage 2)',
+    'CA-22': 'probe (containment spray auto-actuates at the sourced 30 psig hi-hi, knocks the building below the SI signal, and auto-secures on recovery; fans realign on SI — AUTO-ONLY by ruling; #386 stage 2)',
     'CA-19': 'probe (the THROUGHPUT equilibrium — a refilled solid RCS with a break open settles where injection = break discharge, and it is not a free rescue; #384 stage 3 / the #334 throughput question)',
     'CA-20': 'probe (a vented RCS blows down PAST Psat toward the building and never below it — path-scoped vent + weakened pin, the SGTR/relief fence, and the DBA arc preserved; WTSM 5.0 §5.0.1.1; #384 stage 4)',
     'CA-21': 'probe (the subcooling margin reads the CORE EXIT over a dry core — negative with the clad hot, byte-equal to the bulk when covered, and a failed TC restores the deception; NUREG-0737 II.F.2; #407)',
@@ -144,7 +145,7 @@
     'PI-4': 'probe:TR-8 (AFW on MFW loss at power)', 'PI-5': 'probe:CC-3', 'PI-6': 'RETIRED (single-loop plant)',
     'PI-7': 'probe', 'PI-7-reset': 'existing:run_ops abuse scram-then-withdraw (reset leg added P4)',
     'PI-8': 'probe (setpoint + ordering) + probe:CA-4 (both behaviour legs)',
-    'PI-9': 'probe — RETIRED 2026-07-25 by owner ruling (#199); the probe fences the absence, catalog §10',
+    'PI-9': 'probe — the #199 absence narrowed at #386 stage 2: no steam-pressure SI channel exists, and the sourced 3.5 psig containment backup now answers the upstream break, catalog §10',
   };
 
   var PROBES = {
@@ -2437,6 +2438,16 @@
         ck('so the RCS is not pumped solid by a pump with no electricity',
           fmt(h2.range('core_inventory_pct').max, 2) + ' % max', h2.range('core_inventory_pct').max < 101, '< 101 %');
 
+        // --- leg B2 (#386 stage 2): the containment spray pumps are AC loads too.
+        // Same #200 split, third system: the demand latches, delivery stays dead,
+        // and the trains come back with the bus — never on their own.
+        h2.cmd('set_containment_spray', { active: true });
+        h2.run(60);
+        var t2b = h2.ts();
+        ck('demanded containment spray delivers NOTHING bus-dead — demand latched, delivery dead (#386)',
+          'demand ' + String(t2b.ctmt_spray_demand) + ', active ' + String(t2b.ctmt_spray_active),
+          t2b.ctmt_spray_demand === true && t2b.ctmt_spray_active === false, 'true / false');
+
         // --- leg C: THE GRID IS UP. Secure the charging pump and letdown must isolate
         // on the sourced interlock alone (WTSM 4.1.3.1 #2). This is what distinguishes
         // the pump interlock from a blackout-shaped guard.
@@ -3759,24 +3770,35 @@
           fmt(ta.containment_sump_pct, 1) + ' %', ta.containment_sump_pct > 2, '> 2 %');
 
         // ---- leg D rides leg A's plant onward: by 10 min the ECCS quench has taken the
-        // source below flashing (Tavg ~83 °C against a >100 °C containment saturation),
-        // so the input is ~0 and what remains is the passive-sink decay. Measured:
-        // (P−amb) falls to 0.51× over the next 20 min — e^(−1200/1800) = 0.513 on the
-        // 1800 s τ. The band is wide because the tail of the quench still feeds a little.
-        // Band CONFIG-DERIVED from the sink τ (#408: the refit took τ 1800 → 220 s, so
-        // a fixed 0.30..0.70 band was pinning the OLD constant, not the mechanism).
-        // Expected remaining ≈ e^(−Δt/τ), floored so the check still requires genuine
-        // decay and still fails if the sink is deleted (ratio would hold near 1).
+        // source below flashing, so the input is ~0 and what remains is the SINK decay.
+        // RE-AUTHORED at #386 stage 2 (declared: this leg now pins NEW behavior): leg
+        // A's SI realigned the FAN COOLERS (the 3.5 psig backup row + Ginna's CRFC
+        // auto-start), so the decay runs the COMBINED tau — passive ∥ fan — not the
+        // passive one alone (spray stays out: leg A pins its peak BELOW the hi-hi).
+        // The expectation derives from the plant's OWN train state, so the leg still
+        // fails if a sink is deleted (ratio holds near 1) and the floor still demands
+        // genuine decay. On the stage-1 engine the fan check below is red — the
+        // stage's injection verification for this leg.
         var pPk = a.ts().containment_pressure_mpa;
+        ck('the fans REALIGNED on SI — the diverse heat-removal train is running (stage 2)',
+          String(a.ts().ctmt_fan_active), a.ts().ctmt_fan_active === true, 'true');
         a.run(1200);
         var pLate = a.ts().containment_pressure_mpa;
         var frac = (pLate - AMB) / Math.max(pPk - AMB, 1e-9);
-        var tauC = RD.PWR_CONFIG.containment.passive_sink_tau_s;
+        var cc2 = RD.PWR_CONFIG.containment;
+        var tauC = 1 / (1 / cc2.passive_sink_tau_s
+                      + (a.ts().ctmt_fan_active ? 1 / (cc2.fan_sink_tau_s || 750) : 0)
+                      + (a.ts().ctmt_spray_active ? 1 / (cc2.spray_sink_tau_s || 240) : 0));
         var expRem = Math.exp(-1200 / tauC);
-        ck('with the source quenched below flashing, pressure DECAYS on the passive sink',
-          fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 20 min (ratio ' + fmt(frac, 2) +
-          ' vs e^(−Δt/τ) ' + fmt(expRem, 3) + ')',
-          frac < Math.max(3 * expRem, 0.5) && frac > 0.005, 'decayed toward the τ-derived remainder, not held');
+        // Floor at ~0, not above it: with the fans running, full decay TO AMBIENT
+        // inside the window is the correct outcome (τ_eff ≈ 170 s, e^-1200/170 ≈
+        // 9e-4), and steam ≥ 0 means the ratio cannot go meaningfully negative —
+        // the deleted-sink failure mode is caught by the UPPER bound (ratio ≈ 1).
+        ck('with the source quenched below flashing, pressure DECAYS on the running sinks',
+          fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 20 min (ratio ' + fmt(frac, 4) +
+          ' vs e^(−Δt/τ_eff) ' + fmt(expRem, 4) + ', τ_eff ' + fmt(tauC, 0) + ' s)',
+          frac < Math.max(3 * expRem, 0.35) && frac > -0.001 && (pPk - AMB) > 0.01,
+          'decayed toward the τ_eff remainder from a genuine peak, not held');
 
         // ---- leg B: SGTR full severity — containment reads NOTHING. The tube rupture
         // discharges into the steam generator, so the building the operator checks for
@@ -4262,9 +4284,15 @@
         var nDry = 0, nDryNeg = 0, worstMargin = 1e9, worstTrue = 1e9, sawHotClad = false;
         // 2400 s, was 300 (#408): the defeated dry-out reaches clad > 600 C at
         // ~20-30 min on the real clock.
+        // Window 0.85, was 0.90 (#386 stage 2): the drained equilibrium now parks at
+        // unc = 0.88 (measured — spray moves the containment-backpressure trajectory,
+        // and the spill-band equilibrium shifted ~2 points with it), so 0.90 pinned
+        // the OLD equilibrium, not the claim; a 0.85-bare core at clad 1300 °C is
+        // every bit the dry hot core this probe is about. Passes on BOTH engines
+        // (old equilibrium ≥ 0.90 > 0.85 — validated per HR10).
         h.run(2400, function (hh) {
           var s = hh.ts(), ins = hh.ins();
-          if (!(s.core_uncovered_frac >= 0.9)) return;
+          if (!(s.core_uncovered_frac >= 0.85)) return;
           nDry++;
           if (s.clad_temp_c > 600) sawHotClad = true;
           if (ins.subcooling_margin < worstMargin) worstMargin = ins.subcooling_margin;
@@ -4314,9 +4342,9 @@
         var cDry = 0, cBulkExact = 0;
         var TsatF = function (P) { return 179.47 * Math.pow(Math.max(P, 1e-6), 0.239); };
         var rng = RD.PWR_CONFIG.instruments.subcooling_margin.range;
-        c.run(2400, function (hh) {   // real-clock dry-out window, matches leg A (#408)
+        c.run(2400, function (hh) {   // real-clock dry-out window, matches leg A (#408; 0.85 at #386 stage 2 — see leg A)
           var s = hh.ts(), ins = hh.ins();
-          if (!(s.core_uncovered_frac >= 0.9 && s.clad_temp_c > 600)) return;
+          if (!(s.core_uncovered_frac >= 0.85 && s.clad_temp_c > 600)) return;
           cDry++;
           // tavg_ind > 20 (the stuck value) throughout this window, so the max hands
           // the datum back to the BULK channel — the pre-#407 instrument, exactly.
@@ -4325,6 +4353,58 @@
         });
         ck('a TC failed LOW degrades the gauge to the BULK datum exactly — no worse than pre-#407 (HR1)',
           cBulkExact + '/' + cDry + ' dry samples on the bulk formula', cDry >= 20 && cBulkExact === cDry, 'all of >= 20');
+        T.checkSanity(ck, h);
+      });
+    },
+
+    /* CA-22 (#386 stage 2) — ACTIVE CONTAINMENT HEAT REMOVAL, AUTO-ONLY.
+     *
+     * Owner ruling (2026-08-08, on the issue): automated for now, controls not
+     * revealed to the player. So the whole player-facing story is: the sourced
+     * 30 psig hi-hi starts spray with no operator action (WTSM 12.3, ML11223A310:
+     * "The setpoint is 30 psig"), the building comes back down through the hi-hi
+     * and then the 3.5 psig SI signal, and spray SECURES ITSELF on recovery below
+     * the SI signal (release condition a declared inference — WTSM documents SI
+     * reset only; with no operator surface the securing must be automatic). Fans
+     * realign on any SI (Ginna TS B 3.6.6: CRFC "designed to start automatically
+     * if not already running" post-SI).
+     *
+     * Q0 (TUNING_LOG 2026-08-07-develop-e WP4): sev 0.5 crosses the hi-hi and
+     * spray is on by the 2-min sample; back under the hi-hi ~4 min post-break,
+     * under the SI signal ~6 min, ambient ~15 min, spray secured by ~10 min.
+     *
+     * Injection-verified: on the stage-1 engine every stage-2 check is red — the
+     * train fields never go true and no actuation row exists.
+     */
+    'CA-22': function () {
+      return test('CA-22 spray knocks the building down and secures itself — fans realign on SI (#386 stage 2)', function (ck) {
+        var HIHI = 0.3081, SIP = 0.1254;   // the sourced actuation points, abs
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.5 });
+        var sawSpray = false, sawFan = false;
+        h.run(180, function (hh) {
+          var s = hh.ts();
+          sawSpray = sawSpray || !!s.ctmt_spray_active;
+          sawFan = sawFan || !!s.ctmt_fan_active;
+        });
+        ck('spray AUTO-ACTUATED inside 3 min — this run issued no operator command',
+          String(sawSpray) + ' / peak so far ' + fmt(h.range('containment_pressure_mpa').max, 3) + ' MPa abs',
+          sawSpray, 'true');
+        ck('the peak crossed the 30 psig hi-hi that fired it',
+          fmt(h.range('containment_pressure_mpa').max, 3) + ' MPa abs vs ' + fmt(HIHI, 4),
+          h.range('containment_pressure_mpa').max > HIHI, '> 0.3081');
+        ck('fans realigned on SI — the diverse train', String(sawFan), sawFan, 'true');
+        h.run(420);   // to ~10 min post-break
+        var mid = h.ts();
+        ck('the building is back below the 3.5 psig SI signal under the active sinks',
+          fmt(mid.containment_pressure_mpa, 3) + ' MPa abs', mid.containment_pressure_mpa < SIP, '< 0.1254');
+        h.run(300);   // to ~15 min
+        var t = h.ts();
+        ck('spray SECURED ITSELF on recovery — the auto-only build has no operator to do it',
+          'active ' + String(t.ctmt_spray_active) + ', demand ' + String(t.ctmt_spray_demand) +
+          ' at ctmt ' + fmt(t.containment_pressure_mpa, 3),
+          t.ctmt_spray_active === false && t.containment_pressure_mpa < SIP, 'false, below the SI signal');
         T.checkSanity(ck, h);
       });
     },
@@ -4847,7 +4927,7 @@
     },
 
     'PI-9': function () {
-      return test('PI-9 SLB gate — RETIRED: no low-steam-line-pressure SI, and none needed (#199)', function (ck) {
+      return test('PI-9 SLB — no steam-pressure SI channel; the sourced containment backup answers the upstream break (#199/#386)', function (ck) {
         // SPLIT INTO TWO LEGS 2026-08-05 (#370c). This probe fences the #199 ruling —
         // that no low-steam-line-pressure SI is needed, evidenced by a deep blowdown
         // that never calls for injection. Automatic isolation (#370c) arrests a
@@ -4863,24 +4943,38 @@
         // question the ruling answered never arises, because the plant isolates.
         // Strictly more coverage than before, and the ruling keeps its evidence.
 
-        // ---- leg A: UPSTREAM — the #199 evidence, unchanged and still measured.
+        // ---- leg A: UPSTREAM — RE-AUTHORED at #386 stage 2 (declared: it now pins
+        // NEW sourced behavior). The #199 ruling's evidence stands in its narrow
+        // form — there is still NO low-steam-line-pressure SI channel, and the
+        // PRIMARY never crosses its own 12.4 MPa SI setpoint — but an upstream
+        // break is a high-energy line break INSIDE containment, and the sourced
+        // 3.5 psig backup signal exists precisely for it (WTSM 12.3, ML11223A310:
+        // "any high energy line break … inside the containment"; "cannot be
+        // blocked by the operator"). So SI now ARRIVES, on the containment
+        // channel, with every primary-side channel silent and inventory intact —
+        // protection reading the one signal that actually sees this break. On the
+        // stage-1 engine the SI checks are red (no SLB containment source) — the
+        // source term's injection verification.
         var h = H('hot_full_power');
         h.run(30);
         h.cmd('inject_failure', { failure_id: 'steam_line_break_upstream', severity: 0.8 });
         var dt = h.runUntil(function (ts, ins, hh) { return hh.tripTime != null; }, 300);
-        var siEver = false;
-        h.run(900, function (hh) { if (hh.ts().hpi_active) siEver = true; });
+        var siEver = false, ctmtAtSi = null;
+        h.run(900, function (hh) {
+          var s = hh.ts();
+          if (s.hpi_active && !siEver) { siEver = true; ctmtAtSi = s.containment_pressure_mpa; }
+        });
         var t = h.ts();
         ck('protection ends the event', dt >= 0 ? fmt(dt, 0) + ' s — ' + (h.tripReason || '?') : 'no trip',
           dt >= 0, 'trips');
         ck('the secondary blows down far below the classic 4.1 MPa SI setpoint',
           fmt(h.range('steam_pressure_mpa').min, 2), h.range('steam_pressure_mpa').min < 1.0, '< 1.0');
-        ck('NO safety injection anywhere in the event (the verified gap)',
-          String(siEver) + ' / hpi_flow max ' + fmt(h.range('hpi_flow_normalized').max, 4),
-          !siEver && h.range('hpi_flow_normalized').max < 0.001, 'never');
-        ck('the primary never reached the 12.4 MPa SI actuation either',
+        ck('SI ARRIVES — on the sourced 3.5 psig containment backup, the channel built for this break',
+          String(siEver) + ' at ctmt ' + fmt(ctmtAtSi, 3) + ' MPa abs',
+          siEver && ctmtAtSi != null && ctmtAtSi >= 0.1254 - 0.005, 'true, at/above the setpoint');
+        ck('…while the primary never reached its own 12.4 MPa SI channel — the discriminator',
           fmt(h.range('pressure_mpa').min, 2), h.range('pressure_mpa').min > 12.4, '> 12.4');
-        ck('nothing to inject: inventory intact and deeply subcooled',
+        ck('and there was nothing to inject: inventory intact and deeply subcooled — the injection is signal-driven',
           fmt(t.core_inventory_pct, 1) + ' % / ' + fmt(t.subcooling_c, 0) + ' °C sub',
           t.core_inventory_pct > 98 && t.subcooling_c > 50, '> 98 %, subcooled');
         ck.info('end state — a cold primary held at pressure (PTS, unmodelled)',

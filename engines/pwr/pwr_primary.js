@@ -539,11 +539,30 @@
     // discharge is steam already, weight 1.0. No pressurizer relief tank is modeled
     // (declared, Manuals/12 §13.0) — relief lands directly in the atmosphere.
     var q_relief = (s.porv_flow || 0) + (s.safety_flow || 0);
-    var steam_in = q_break * flash + q_relief;
-    // Passive heat sink: condensation on the structures, condensate to the sump.
-    var cond = s._ctmt_steam / (c.passive_sink_tau_s || 1800);
+    // Upstream-SLB source (#386 stage 2): a steam-line break INSIDE containment
+    // blows the SG down into the building — the sourced HELB case behind the
+    // 3.5 psig backup signal (WTSM 12.3). steam_break_flow is secondary currency
+    // (fraction of rated steam flow); slb_ctmt_gain converts. Already steam,
+    // weight 1.0 — no flash gate. Downstream breaks discharge outside: zero here.
+    var q_slb = (s._fail && s._fail.steam_break && s._fail.steam_break.active
+                 && s._fail.steam_break.upstream)
+      ? (s.steam_break_flow || 0) * (c.slb_ctmt_gain || 0) : 0;
+    var steam_in = q_break * flash + q_relief + q_slb;
+    // Heat sinks (#386 stage 2): passive condensation on the structures, plus the
+    // ACTIVE trains as additive rate terms when delivering. Demand vs delivery is
+    // the #200/#329 split — the casualty takes the POWER, never the lineup: a
+    // blackout stops both trains with the demand standing, and they return with
+    // the bus. Normal-mode fan cooling stays folded in passive_sink_tau_s
+    // (declared, config header); ctmt_fan_safety is only the SI realign.
+    s.ctmt_spray_active = !!s.ctmt_spray_demand && acAvailable(s);
+    s.ctmt_fan_active = !!s.ctmt_fan_safety && acAvailable(s);
+    var sink = 1 / (c.passive_sink_tau_s || 1800)
+             + (s.ctmt_spray_active ? 1 / (c.spray_sink_tau_s || 240) : 0)
+             + (s.ctmt_fan_active ? 1 / (c.fan_sink_tau_s || 750) : 0);
+    var cond = s._ctmt_steam * sink;
     s._ctmt_steam = Math.max(0, s._ctmt_steam + (steam_in - cond) * dt);
-    s._ctmt_sump += (q_break * (1 - flash) + cond) * dt;
+    s._ctmt_sump += (q_break * (1 - flash) + cond
+                   + (s.ctmt_spray_active ? (c.spray_sump_rate || 0) : 0)) * dt;
     var p_steam = (c.press_gain || 0) * s._ctmt_steam;
     s.containment_pressure_mpa = c.ambient_pressure_mpa + p_steam;
     // Atmosphere temperature: a steam/air mixture sits at the steam partial

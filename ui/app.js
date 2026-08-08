@@ -558,11 +558,23 @@
             detail: 'The receiving volume for a primary break or an open relief valve. Hot discharge partly flashes to steam and pressurizes the building, so rising containment pressure is the direct evidence of a high-energy line break inside it — a real plant starts safety injection on it at 3.5 pounds per square inch gauge (psig). An intact plant reads exactly 0, and a steam generator tube rupture ALSO reads 0, because that break discharges into the steam generator instead: the one leak containment cannot see.',
             v: function (t) { return physPg(t.containment_pressure_mpa); },
             cls: function (t) {
+              // Thresholds from config (#386 stage 2): caution at the sourced 3.5 psig
+              // SI-backup signal, alarm at the 30 psig spray/hi-hi point.
               var c = (RD.PWR_CONFIG || {}).containment || {};
               var amb = c.ambient_pressure_mpa != null ? c.ambient_pressure_mpa : 0.1013;
+              var hihi = c.spray_hihi_pressure_mpa != null ? c.spray_hihi_pressure_mpa : 0.3081;
+              var hi = c.si_hi_pressure_mpa != null ? c.si_hi_pressure_mpa : 0.1254;
               var p = t.containment_pressure_mpa != null ? t.containment_pressure_mpa : amb;
-              return p > 0.308 ? 'q-alarm' : (p > amb + 0.01 ? 'q-caution' : 'q-ok');
+              return p >= hihi ? 'q-alarm' : (p >= hi ? 'q-caution' : 'q-ok');
             } },
+          { k: 'Heat removal',
+            hint: 'which containment heat-removal trains are running — sprays and safety-realigned fan coolers.',
+            detail: 'Automatic in this build: containment spray starts on the 30 psig high-high signal (two 100 % trains at the reference plant), and the fan coolers realign to their safety mode on any safety injection. Normal-mode fan cooling is part of the passive heat sink. PASSIVE here is the healthy reading; a blackout stops both trains even with the signals standing.',
+            v: function (t) {
+              var s = t.ctmt_spray_active ? 'SPRAY' : null, f = t.ctmt_fan_active ? 'FANS-SI' : null;
+              return s && f ? 'SPRAY + FANS-SI' : (s || f || 'PASSIVE');
+            },
+            cls: function (t) { return t.ctmt_spray_active ? 'q-alarm' : (t.ctmt_fan_active ? 'q-caution' : 'q-ok'); } },
           { k: 'Containment temperature',
             hint: 'atmosphere temperature inside the building.',
             detail: 'Rides the steam content: a steam and air mixture sits at the saturation temperature of its steam fraction, so temperature and pressure rise together during a blowdown and fall together as the passive heat sinks condense steam out onto the structures. Around 100 °F (38 °C) on a healthy plant.',

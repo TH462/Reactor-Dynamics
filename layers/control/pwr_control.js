@@ -565,6 +565,13 @@
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    // Containment (#386 stage 2). Pressure pair at the SOURCED actuation points
+    // (3.5 psig SI backup / 30 psig hi-hi — WTSM 12.3), abs on this plant's ambient;
+    // train-status pair on the DELIVERY booleans (AC-gated), not the demands.
+    { id: 'ctmt_press_hi',   instrument: 'containment_pressure', direction: 'high',    setpoint: 0.1254, priority: 'warning',  panel: 'B', category: 'safety_system', label_learning: 'Containment Pressure High (SI signal)',    label_industry: 'CTMT PRESS HI' },
+    { id: 'ctmt_press_hihi', instrument: 'containment_pressure', direction: 'high',    setpoint: 0.3081, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Containment Pressure High-High (spray/MSLI)', label_industry: 'CTMT PRESS HI HI' },
+    { id: 'ctmt_spray_on',   instrument: 'ctmt_spray_active',    direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Containment Spray Running',                label_industry: 'CTMT SPRAY ON' },
+    { id: 'ctmt_fans_si',    instrument: 'ctmt_fan_active',      direction: 'is_true', setpoint: null,   priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Containment Fan Coolers — Safety Realign', label_industry: 'CTMT FANS SI' },
     // SI ACCUMULATORS STILL ALIGNED BELOW 1000 psi (6.895 MPa) — the cooldown cue (#273).
     //
     // Why it exists. A by-the-book cooldown used to walk straight through the tanks'
@@ -909,10 +916,11 @@
   //
   // WHAT IS BUILT, AND WHAT DELIBERATELY IS NOT — both decided by measurement:
   //
-  //  (1) HIGH-HIGH CONTAINMENT PRESSURE is NOT built. This plant has no
-  //      containment model at all — no pressure, no temperature, no sump. There
-  //      is nothing to sense, and synthesising a signal to actuate protection on
-  //      is the #220 defect class §8.24 already refuses for the RCP-bus trips.
+  //  (1) HIGH-HIGH CONTAINMENT PRESSURE — BUILT at #386 stage 2 (this comment
+  //      said "no containment model at all" from #370 until then, which was true
+  //      when written and false after stage 1 landed — the premise-rot case
+  //      CLAUDE.md names). The leg is the `containment_pressure` hi-hi row in the
+  //      containment push block below, sharing MSLI_SEAL_IN with the pair here.
   //
   //  (2b) LO-LO TAVG is NOT built, and this one had to be MEASURED to know.
   //      The flow and temperature terms are ANTI-CORRELATED here: break flow
@@ -993,6 +1001,60 @@
     { instrument: 'steam_pressure', direction: 'low', setpoint: 4.14,
       condition: { instrument: 'sg_steam_flow', direction: 'high', setpoint: 1.25, held_within_s: 60 },
       action: 'close_msiv', reset_below: 7.0, seal_in: MSLI_SEAL_IN }
+  );
+  // ================= Containment ESF (#386 stage 2) — AUTO-ONLY build =================
+  // Owner ruling on the issue (2026-08-08): automated, controls not revealed to the
+  // player yet — no board card; these rows plus the annunciators ARE the system's
+  // whole surface. Setpoints SOURCED (ML11223A310, WTSM 12.3): SI backup 3.5 psig
+  // ("cannot be blocked by the operator"), spray + steam-line isolation hi-hi 30 psig.
+  // Gauge → abs on this plant's ambient: 0.1254 / 0.3081 MPa. Mirrors of the same
+  // numbers live in cfg.containment (si_hi_pressure_mpa / spray_hihi_pressure_mpa)
+  // for the engine-side consumers; both cite the same source lines.
+  var CTMT_SI_MPA = 0.1254, CTMT_HIHI_MPA = 0.3081;
+  // Spray extinguishes its own signal (the MSLI lesson above): a live-signal seal-in
+  // would release the instant the spray works, so it LATCHES on the fired row.
+  // Same-verb undo — the OFF command carries the reversed param, so the kernel's
+  // params scan catches it (the rows use `params: {active:true}`, never the bare
+  // key: `_sealInBlocking` iterates act.params only — measured trap, see the plan).
+  var CTMT_SPRAY_SEAL_IN = {
+    latched: true,
+    message_learning: 'Containment spray started automatically on high-high building pressure and stays in until pressure falls back below the safety-injection signal.',
+    message_industry: 'CTMT SPRAY SECURE BLOCKED — hi-hi actuation sealed in',
+  };
+  PWR_ACTUATIONS.push(
+    // (a) SI backup on high containment pressure. NO `arm` — in this kernel that IS
+    // "cannot be blocked by the operator" (the MSLI/FWI reasoning above): it fires
+    // even with the HPI ESF taken to MANUAL, which is also the discriminator against
+    // the 12.4 MPa primary-pressure row. NO seal-in on set_hpi — deliberate and
+    // load-bearing for TMI-2: securing/restoring SI against a standing containment
+    // signal is the flagship's defining decision (the FWI got #341's seal-in;
+    // set_hpi never had one). reset_below re-fires if pressure cycles back through.
+    { instrument: 'containment_pressure', direction: 'high', setpoint: CTMT_SI_MPA,
+      action: 'set_hpi', active: true, reset_below: 0.118 },
+    // (b) Containment spray on hi-hi, sealed-in (latched), released — and in this
+    // AUTO-ONLY build also SECURED — when the building has fallen back below the
+    // SI signal: a physical release condition (declared inference: WTSM documents
+    // SI reset only, no spray-reset logic), and with no operator surface the
+    // securing has to be automatic or a fired spray runs forever (measured: it
+    // held a 1/240 s sink and a climbing sump on a recovered plant). Re-fires if
+    // pressure climbs back through hi-hi.
+    { instrument: 'containment_pressure', direction: 'high', setpoint: CTMT_HIHI_MPA,
+      action: 'set_containment_spray', params: { active: true }, reset_below: CTMT_SI_MPA,
+      reset_action: 'set_containment_spray', reset_active: false,
+      seal_in: CTMT_SPRAY_SEAL_IN },
+    // (c) CRFC safety realign on any SI (Ginna TS B 3.6.6: fans "designed to start
+    // automatically if not already running" post-SI). Keys on the `hpi_active`
+    // status instrument so all three SI sources and a manual SI all realign them.
+    // One-shot, no reset_action — realigned fans stay realigned until an operator
+    // restores normal mode, which this build does not surface (auto-only).
+    { instrument: 'hpi_active', direction: 'is_true', setpoint: null,
+      action: 'set_ctmt_fans', params: { safety: true } },
+    // (d) Steam-line isolation on hi-hi containment pressure — the third leg the
+    // sourced MSLI pair above was missing (ML11223A310:468: isolation on "(1) a
+    // high-high containment pressure signal or (2) high steam flow coincident
+    // with…"). Shares MSLI_SEAL_IN: one latch, either signal, same refusal.
+    { instrument: 'containment_pressure', direction: 'high', setpoint: CTMT_HIHI_MPA,
+      action: 'close_msiv', reset_below: CTMT_SI_MPA, seal_in: MSLI_SEAL_IN }
   );
   // PI-3: reactor trip on safety injection — SI actuating means a real casualty;
   // the reactor does not stay at power through it. Keyed on the same low-pressure

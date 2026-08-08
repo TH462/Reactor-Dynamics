@@ -652,6 +652,11 @@
       boron_sample: s.boron_sample_ppm,
       boron_sample_pending: s._boron_sample_timer > 0,
       boron_sample_seq: s.boron_sample_seq || 0,
+      // #386 stage 2: containment active-train delivery status (AC-gated in
+      // stepContainment; demand survives a blackout, delivery does not). Status
+      // pass-throughs — no lag, no noise, no PRNG draw (appended-instrument rule).
+      ctmt_spray_active: !!s.ctmt_spray_active,
+      ctmt_fan_active: !!s.ctmt_fan_active,
     };
   };
 
@@ -835,6 +840,10 @@
       containment_temp_c: s.containment_temp_c != null
         ? s.containment_temp_c : this.cfg.containment.ambient_temp_c,
       containment_sump_pct: s.containment_sump_pct || 0,
+      // Stage 2 (#386): the active heat-removal trains — demand vs delivery
+      // published separately (#200/#329; a blackout zeroes _active with demand up).
+      ctmt_spray_demand: !!s.ctmt_spray_demand, ctmt_spray_active: !!s.ctmt_spray_active,
+      ctmt_fan_safety: !!s.ctmt_fan_safety, ctmt_fan_active: !!s.ctmt_fan_active,
     };
   };
 
@@ -1232,6 +1241,17 @@
           if (_d < _bd) { _bd = _d; _best = _opts[_i]; }
         }
         s.letdown_orifice_a = _best[0]; s.letdown_orifice_b = _best[1];
+        break;
+      case 'set_containment_spray':
+        // #386 stage 2, AUTO-ONLY build (owner ruling in the issue thread): no
+        // board control — reached by the 30-psig actuation row, tests and the
+        // instructor. Demand latch only; delivery is AC-gated in stepContainment
+        // (#200/#329 demand-vs-delivery split).
+        s.ctmt_spray_demand = !!cmd.active;
+        break;
+      case 'set_ctmt_fans':
+        // CRFC safety realign — SI-driven, indication-only for the player.
+        s.ctmt_fan_safety = !!cmd.safety;
         break;
       case 'set_charging_pump':
         s.charging_pump_running = !!cmd.running;
@@ -1670,6 +1690,10 @@
       containment_pressure_mpa: cfg.containment.ambient_pressure_mpa,
       containment_temp_c: cfg.containment.ambient_temp_c,
       containment_sump_pct: 0, _ctmt_steam: 0, _ctmt_sump: 0,
+      // Stage 2 (#386): active trains secured/idle at init; the actuation rows
+      // (pwr_control) and stepContainment's AC gate own them from here.
+      ctmt_spray_demand: false, ctmt_spray_active: false,
+      ctmt_fan_safety: false, ctmt_fan_active: false,
       // Nuclear instrumentation: SR energized only where the state says so (startup lineup).
       sr_energized: !!init.sr_on,
       sr_counts_cps: init.sr_on ? cfg.nis.k_sr * P0 : 0,
@@ -2066,6 +2090,12 @@
     if (s.containment_pressure_mpa == null) s.containment_pressure_mpa = this.cfg.containment.ambient_pressure_mpa;
     if (s.containment_temp_c == null) s.containment_temp_c = this.cfg.containment.ambient_temp_c;
     if (s.containment_sump_pct == null) s.containment_sump_pct = 0;
+    // Stage 2 (#386): pre-stage-2 saves restore with the active trains secured —
+    // the actuation rows re-demand them within a step if the signal stands.
+    if (s.ctmt_spray_demand == null) s.ctmt_spray_demand = false;
+    if (s.ctmt_spray_active == null) s.ctmt_spray_active = false;
+    if (s.ctmt_fan_safety == null) s.ctmt_fan_safety = false;
+    if (s.ctmt_fan_active == null) s.ctmt_fan_active = false;
     if (s._ctmt_steam == null) s._ctmt_steam = 0;
     if (s._ctmt_sump == null) s._ctmt_sump = 0;
     // Feed pump (replaced direct feedwater-flow demand).

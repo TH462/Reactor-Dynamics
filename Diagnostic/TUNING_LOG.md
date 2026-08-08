@@ -161,6 +161,35 @@ charging there). `gen_manual_reference` wording fixed (dead for PWR — no manua
 `Manuals/03` checked and NOT edited (no misstatement, no Rev row). Also reconstructed the
 missing `-f`/`-g` session entries (plan WP2), marked as such in both files.
 
+**ADDENDUM 3 (plan WP4): #386 stage 2 BUILT — containment heat removal, AUTO-ONLY variant.**
+The recorded 2026-08-06 stage-2 plan executed with the session's deltas (no board batch, no
+player controls — owner ruling on scope quoted in the Rev 14 row; CA-18→CA-22 probe renumber
+TWICE, both ids taken since the plan was parked; `passive_sink_tau_s` 1800→220 drift noted and
+every window re-derived from fresh Q0). Engine: spray/fan additive sink terms + AC-gated
+delivery (#200 split), upstream-SLB source (`slb_ctmt_gain` 0.0035 — trimmed from 0.004 off a
+0.7 %-under-design knife edge; MSLB is now the limiting case at ~88 % of design), commands +
+4 fields + §6.3 + migration. Control: the 4 rows (unblockable 3.5 psig SI, spray hi-hi with
+latched seal-in + AUTO-SECURE on recovery below the SI signal — added this session when Q0
+showed a fired spray running forever in a build with no operator to secure it — fan realign on
+`hpi_active`, MSLI hi-hi sharing `MSLI_SEAL_IN`) + 4 alarms. Q0 measured: healthy 20-min flat
+ambient; sev 0.5 hi-hi→<SI in ~4 min; stuck PORV equilibrates ~9.4 psig on realigned fans with
+the SI latch standing (no re-fire to fight TMI's scripted securing — and measured so:
+run_campaign 51/51, run_scenarios 3/3, run_meltdown 12, flagship unmoved); SGTR exactly
+ambient. Fallout adjudicated one at a time: CA-16 leg D re-authored (τ_eff from the plant's
+own train state; floor relaxed to allow full decay TO ambient — steam ≥ 0 makes the deleted-
+sink case an upper-bound catch), CA-21 window 0.90→0.85 (measured: the stage-2 drained
+equilibrium parks at unc 0.88, inv 52.3 % — the old threshold pinned the OLD equilibrium;
+passes both engines per HR10), PI-9 re-authored (the #199 absence NARROWS: no steam-pressure
+SI channel still, and SI now correctly arrives on the sourced containment backup — red on
+stage-1, the SLB source's injection verification). CA-22 + CA-8 leg B2 new;
+injection-verified by stash (CA-22 and PI-9 both FAIL on the stage-1 engine, restored clean).
+run_m4 +1 suite (the params-form seal-in trap check included). Leg E from the parked plan
+ADJUDICATED OUT: post-auto-secure its claims are carried by CA-8 B2 (AC gate) + leg D's
+derived τ_eff, and the SBO-at-peak rig has no clean decay window on the real clock (the
+plan's own risk 3). Manuals Rev 14 (i) + two stale rows caught (09 MSLI 754 psi/"~1 s";
+12 §8.5 ladder sentence missed by the #419 sweep). Movers: run_behavior 64→65p/2xf,
+run_m4 41/41 274, run_contract 167, run_reachability 74, run_hr3 30.
+
 **ADDENDUM 2 (plan WP3): the cooldown-pace investigation — verdict NOT-TOO-FAST, filed #422.**
 Owner-directed as a suspected defect ("Investigate slowing it"). Decomposed into the two
 owning mechanisms and measured against a NEW sourced reference fetched this session —

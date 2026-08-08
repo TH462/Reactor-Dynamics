@@ -1925,6 +1925,50 @@
       // OFF — stage 2 adds the active systems). Sets both the no-spray decay after
       // a blowdown and the equilibrium a sustained hot leak parks at. [tune]
       passive_sink_tau_s: 220.0,   // #408 refit (was 1800): the sink must bite SLOW discharges harder than the blowdown pulse or the family's peaks read flat — this is what grades sev 0.05 (22.9 psig) under the spray point while the DBA pulse keeps its peak [tune]
+      // ---- stage 2 (#386): ACTIVE heat removal — AUTO-ONLY by ruling (owner,
+      // 2026-08-08: "Can we make the system automated for now and not reveal the
+      // controls to the player yet?") — no board card, no player-facing spray
+      // control; the command surface exists for the actuation rows, tests and the
+      // future board card.
+      // Actuation setpoints — SOURCED, NOT [tune] (both ML11223A310, WTSM 12.3):
+      // SI backup "The setpoint for this protection signal is 3.5 psig. This SI
+      // actuation signal cannot be blocked by the operator." (:219); spray hi-hi
+      // "The setpoint is 30 psig." (:394), which also isolates main steam (:468).
+      // Gauge → abs on this plant's own ambient (0.1013): 3.5 psig = 0.1254,
+      // 30 psig = 0.3081. Instrument range [0, 0.8] already holds both strictly
+      // inside (stage 1 pre-sized it; run_reachability Part A).
+      si_hi_pressure_mpa: 0.1254,
+      spray_hihi_pressure_mpa: 0.3081,
+      // Active-sink taus: NO document in any lane's corpus carries a spray or fan
+      // heat-removal capacity (find_source 2026-08-08 — every capacity phrasing
+      // exits 1), so both are FITTED like press_gain, sized in the stage-2 Q0
+      // sweep. Spray is the fast knockdown train (Ginna TS B 3.6.6: CS = two
+      // 100 % trains on Hi-Hi, RWST-fed); the CRFC realign is the slower diverse
+      // one (same source: four fans, ~2 running normally, auto-start on SI) — the
+      // NORMAL-mode fans are folded into passive_sink_tau_s by declaration, this
+      // term is only the SI-realign increment. [tune] both.
+      spray_sink_tau_s: 240.0,     // s — condensation tau with spray delivering [tune]
+      fan_sink_tau_s: 750.0,       // s — additional CRFC safety-realign tau [tune]
+      // Spray water reaching the sump while spray runs, normalized RCS-mass
+      // units/s — sump indication only (no RWST inventory node exists; declared,
+      // same family as stage 1's sump). [tune]
+      spray_sump_rate: 0.02,
+      // Upstream-SLB containment source: converts s.steam_break_flow (fraction of
+      // RATED STEAM FLOW, the secondary's currency) into this ledger's normalized
+      // RCS-mass units. FITTED (no sourced conversion exists — the two ledgers
+      // deliberately run their own currencies); Q0-sized so the sourced HELB case
+      // behaves: an upstream break crosses the 3.5 psig backup signal promptly
+      // (WTSM 12.3 names any high-energy line break inside containment), and only
+      // a large one approaches the spray point. Downstream breaks discharge to
+      // the turbine building — no containment term, the isolable/non-isolable
+      // teaching split. [tune]
+      // Q0-sized (2026-08-08): at 0.004 the full-break peak sat 0.7 % under design
+      // pressure — a knife-edge that flips on any retune (#418's TR-3 lesson).
+      // 0.0035 keeps MSLB the LIMITING containment case (real-plant ordering: it
+      // bounds the DBA LOCA's 38 psig) at ~88 % of design. Full break: crosses SI
+      // 3.5 psig ≈ 13 s, spray 30 psig ≈ 46-60 s, peak ~2.5 min, spray knockdown
+      // from there.
+      slb_ctmt_gain: 0.0035,
       // Normalized discharged-liquid units at 100 % indicated sump level. Sizing:
       // the full-break 30-min ride discharges ~229 units → reads ~76 %; an RCP seal
       // leak creeps. Indication only — no recirculation (no RWST inventory exists
@@ -2332,7 +2376,12 @@
                // null before the first sample), lab-pending flag, and a result
                // sequence counter consumers use to spot a fresh result. Passed
                // through as status (no PRNG draw — the noise stream must not shift).
-               'boron_sample', 'boron_sample_pending', 'boron_sample_seq'],
+               'boron_sample', 'boron_sample_pending', 'boron_sample_seq',
+               // #386 stage 2: containment active-train DELIVERY status (demand is
+               // control-surface state, these are what the trains are doing). The
+               // fan-realign actuation keys on hpi_active (already above); these two
+               // feed the annunciators. Status passthroughs — no PRNG draw.
+               'ctmt_spray_active', 'ctmt_fan_active'],
     },
 
     // ---------------------------------------------------------- named init states

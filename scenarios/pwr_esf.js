@@ -38,7 +38,7 @@
         trigger: { type: 'time', value: 2.0 },
         commentary: {
           learning: 'Open the Emergency Cooling card: HPI, AFW, RHR — and beside each, a small arm that reads AUTO. Those arms mean the plant holds some of its own switches. Each system is ARMED: a watchdog in the control layer stares at one gauge, and the moment the reading crosses its setpoint, the system fires itself — no permission asked. Armed is not fired: right now every arm is quiet, because every reading is healthy. I am about to give the auxiliary feedwater arm a reason to act.',
-          industry: 'ESF orientation: HPI / AFW / RHR each carry an AUTO/MAN arm (Emergency Cooling card). ARMED = the control-layer actuation evaluates its instrument (AFW: sg_level < 20 %; HPI: primary pressure < 11.03 MPa; RHR: 2.76 MPa (400 psi) + trip permissive). Armed ≠ actuated. A feedwater upset follows to demonstrate the AFW actuation.',
+          industry: 'ESF orientation: HPI / AFW / RHR each carry an AUTO/MAN arm (Emergency Cooling card). ARMED = the control-layer actuation evaluates its instrument (AFW: sg_level < 20 %; HPI: primary pressure < 12.4 MPa, plus an unblockable containment-pressure backup at 3.5 psig that no arm can gate; RHR: 2.76 MPa (400 psi) + trip permissive). Armed ≠ actuated. A feedwater upset follows to demonstrate the AFW actuation.',
         },
         highlight: { control_label: 'AFW', instrument_id: 'sg' },
         advance: 'wait_for_trigger' },

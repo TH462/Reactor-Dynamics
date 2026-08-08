@@ -199,7 +199,7 @@
             industry: 'Isolation restores pressure and subcooling within minutes — the terminating pair (isolate + inject) was available from T+5 min. Precedent: Davis-Besse, Sept 1977 — same PORV failure mode, same misleading indication; tailpipe temperature identified in ~20 min, block valve shut, no damage. TMI-2 ran ~80 min to identification. Identical trap; the variable was indication interpretation, not equipment.' },
           { speaker: 'chief',
             learning: 'Two things this simulator does not show you, said plainly: the containment side of the accident — the hydrogen burn, the releases — is not modeled here; the story ends at fuel damage. And the melted fuel itself is a lump in this model — the real core damage was messier. What IS faithful is the physics of the trap. Which brings us to Part 3: same shift, same board, same lying light — and this time, YOUR hands. The goal isn\'t to spot the tricks. You know the tricks. The goal is to stabilize the plant. Go change history.',
-            industry: 'Model boundaries, stated: containment phenomena (hydrogen combustion, releases) are not modeled — simulation terminates at fuel damage; the damage model is lumped. The trap physics are faithful. Part 3: identical scenario, full control authority. Objective: plant stabilization. Proceed.' },
+            industry: 'Model boundaries, stated: containment pressure/temperature and its ESF are modeled; hydrogen combustion and releases are not — simulation terminates at fuel damage; the damage model is lumped. The trap physics are faithful. Part 3: identical scenario, full control authority. Objective: plant stabilization. Proceed.' },
         ],
         level_complete: {
           title: 'Part 2 — Under a Microscope',

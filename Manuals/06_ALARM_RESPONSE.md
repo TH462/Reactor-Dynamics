@@ -102,6 +102,10 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A33 | RHR NOT IN SERVICE | warning | B |
 | PWR-A34 | RCS COOLDOWN RATE HI | warning | A |
 | PWR-A35 | RCS HEATUP RATE HI | warning | A |
+| PWR-A36 | CTMT PRESS HI | warning | B |
+| PWR-A37 | CTMT PRESS HI HI | critical | B |
+| PWR-A38 | CTMT SPRAY ON | status | B |
+| PWR-A39 | CTMT FANS SI | status | B |
 
 ---
 
@@ -495,6 +499,47 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Setpoint** | Indicated Tavg rising faster than **100 °F/hr** (55.6 °C/hr) — the same technical-specification-class limit, in the other direction |
 | **Means** | The primary is gaining heat faster than the vessel stress limit allows. Causes run from an overdriven heatup (rods, pumps against a bottled secondary) to a lost heat sink with the core still making power. |
 | **Immediate operator actions** | 1) Check the heat sink first: steam path open, feed available, condenser alive. 2) If this is a planned heatup, slow it to the limit. 3) Cross-check pressurizer pressure and level — an expanding primary swells into the pressurizer. |
+
+---
+
+## PWR-A36 — Containment Pressure High (CTMT PRESS HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Containment pressure above **18.1 psi (0.125 MPa)** absolute — the sourced **3.5 psig** safety-injection backup signal (WTSM 12.3) |
+| **Means** | A high-energy line is discharging **inside the building** — a primary break, an open relief path, or a steam line break upstream of the isolation valve. Safety injection has actuated on this signal, and it **cannot be blocked**. An SGTR does *not* light this alarm: that break discharges into the steam generator — the one leak containment cannot see. |
+| **Immediate operator actions** | 1) Verify SI actuated. 2) Diagnose the discharge path: RCS pressure/inventory falling → LOCA (**E09**); PORV tailpipe hot → stuck relief valve (**E07**); steam pressure collapsing with the MSIV shut → upstream steam break. 3) Watch the sump — rising level with steady pressure is the small-cold-leak signature. |
+
+---
+
+## PWR-A37 — Containment Pressure High-High (CTMT PRESS HI HI)
+
+| Field | Content |
+|-------|---------|
+| **Setpoint** | Containment pressure above **44.7 psi (0.308 MPa)** absolute — the sourced **30 psig** spray / steam-line-isolation signal (WTSM 12.3: "indicative of a large line break") |
+| **Means** | A large break is pressurizing the building. Containment spray has started and the main steam line has isolated, both automatically. |
+| **Automatic actions** | Containment spray on (secures itself once pressure recovers below the SI signal); MSIV shut (sealed in until pressure recovers); fan coolers already realigned on SI. |
+| **Immediate operator actions** | 1) Verify the automatic actions above. 2) Treat the initiating event (**E09** / **E07**). 3) Expect pressure to fall in minutes under spray — a building that stays up with spray running means the source is still discharging hard. |
+
+---
+
+## PWR-A38 — Containment Spray Running (CTMT SPRAY ON)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_spray_active` — the trains are **delivering** (a blackout stops them with the signal standing) |
+| **Means** | Spray started on the high-high signal (automatic in this build — there is no spray control on the board). It knocks building pressure down by condensing the steam and stops itself once pressure recovers below the SI signal. |
+| **Actions** | Informational. Spray water collects in the sump. |
+
+---
+
+## PWR-A39 — Containment Fan Coolers, Safety Realign (CTMT FANS SI)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `ctmt_fan_active` — realigned on any safety injection (normal-mode fan cooling is part of the building's passive heat sink) |
+| **Means** | The diverse containment heat-removal train. Slower than spray, runs on any SI whether or not the building is pressurized, and stays realigned. |
+| **Actions** | Informational. |
 
 ---
 

@@ -609,6 +609,14 @@ physical-quantity vocabulary.
                                       //   INDICATION ONLY: no recirculation (no RWST inventory exists to swap
                                       //   from — declared, Manuals/12 §13.0). The leak-diagnosis indication
                                       //   Manuals/06 §PWR-A12 and 07 already told the operator to check.
+    "ctmt_spray_demand": bool,        // containment spray DEMANDED (#386 stage 2 — the 30 psig hi-hi actuation
+                                      //   or a command; AUTO-ONLY build, no board control yet). Demand persists
+                                      //   through a blackout (#200/#329 split).
+    "ctmt_spray_active": bool,        // …and DELIVERING (demand AND the 1E bus alive) — what the sink term and
+                                      //   the annunciator read
+    "ctmt_fan_safety": bool,          // CRFC safety realign demanded (SI-driven; normal-mode fan cooling is
+                                      //   folded into passive_sink_tau_s by declaration)
+    "ctmt_fan_active": bool,          // …and delivering (AC-gated, as above)
 }
 ```
 

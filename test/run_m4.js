@@ -1408,6 +1408,68 @@ T.push(test('Seal-in — a standing feedwater-isolation signal cannot be undone 
   ck('a RETURNING SI signal re-isolates (the re-arm)', String(ti.mfw_isolated), ti.mfw_isolated === true, 'true');
 }));
 
+T.push(test('Containment ESF rows (#386 stage 2) — unblockable SI, spray seal-in + auto-secure, fan realign, MSLI hi-hi', function (ck) {
+  // (a) THE UNBLOCKABLE ROW. WTSM 12.3 (ML11223A310): "This SI actuation signal
+  // cannot be blocked by the operator." In this kernel, carrying no `arm` IS that
+  // property — so the discriminator is driven exactly: take the HPI ESF to MANUAL
+  // (any listed operator command does it), show the ARMED 12.4 MPa row stays
+  // silent on low primary pressure, then show the containment row fires anyway.
+  var s = new Stack('hot_full_power');
+  driveWith(s, 2);
+  s.cmd({ action: 'set_hpi', active: false });   // ESF 'hpi' → MANUAL (_esfManualScan)
+  var ins = driveWith(s, 2, { primary_pressure: 11.0 });
+  ck('armed SI row is SUPPRESSED with the ESF in MANUAL (primary at 11.0 MPa)',
+    String(ins.hpi_active), ins.hpi_active !== true, 'false');
+  ins = driveWith(s, 2, { primary_pressure: 11.0, containment_pressure: 0.15 });
+  ck('the 3.5 psig containment row fires ANYWAY — no arm = cannot be blocked',
+    String(ins.hpi_active), ins.hpi_active === true, 'true');
+  // (c) fan realign keys on the hpi_active STATUS, so all SI sources reach it.
+  ins = driveWith(s, 2, { primary_pressure: 11.0, containment_pressure: 0.15 });
+  ck('the fan coolers realigned on SI (keyed on hpi_active, not one SI source)',
+    String(ins.ctmt_fan_active), ins.ctmt_fan_active === true, 'true');
+
+  // (b) SPRAY: fires at the 30 psig hi-hi; the seal-in LATCHES (spray extinguishes
+  // its own signal), so OFF is refused even once pressure is back under the hi-hi;
+  // and on recovery below the SI signal the row's reset AUTO-SECURES the spray —
+  // the auto-only build has no operator to do it.
+  var p = new Stack('hot_full_power');
+  driveWith(p, 2);
+  var quiet = p.cmd({ action: 'set_containment_spray', active: false });
+  ck('quiet plant: securing spray is not refused', String(quiet && quiet.code),
+    !(quiet && quiet.code === 'SEAL_IN'), 'not SEAL_IN');
+  var pi = driveWith(p, 2, { containment_pressure: 0.32 });
+  ck('spray actuated at the hi-hi', String(pi.ctmt_spray_active), pi.ctmt_spray_active === true, 'true');
+  // THE PARAMS-FORM TRAP (the recorded plan's risk 4): _sealInBlocking scans
+  // act.params, so a row written with the bare `active` key silently no-ops the
+  // refusal — this check is the tripwire. 0.20 is under the hi-hi and above the
+  // release, where a live-signal seal-in would already have let go.
+  var r = p.cmd({ action: 'set_containment_spray', active: false });
+  ck('OFF refused while sealed in (at the firing signal)', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  pi = driveWith(p, 2, { containment_pressure: 0.20 });
+  r = p.cmd({ action: 'set_containment_spray', active: false });
+  ck('OFF STILL refused at 0.20 — latched, not live-signal', String(r && r.code),
+    !!(r && r.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  var agree = p.cmd({ action: 'set_containment_spray', active: true });
+  ck('the AGREEING command is not refused', String(agree && agree.code),
+    !(agree && agree.code === 'SEAL_IN'), 'not SEAL_IN');
+  pi = driveWith(p, 3, { containment_pressure: 0.11 });
+  ck('below the SI signal the reset AUTO-SECURES spray — no operator command issued',
+    'active ' + String(pi.ctmt_spray_active), pi.ctmt_spray_active === false, 'false');
+
+  // (d) MSLI on hi-hi containment — the sourced third leg (ML11223A310:468),
+  // sharing MSLI_SEAL_IN with the flow/pressure pair: one latch, either signal.
+  var m = new Stack('hot_full_power');
+  driveWith(m, 2);
+  var mi = driveWith(m, 2, { containment_pressure: 0.32 });
+  ck('hi-hi containment pressure closed the MSIV', String(mi.msiv_open), mi.msiv_open === false, 'false');
+  var mr = m.cmd({ action: 'open_msiv' });
+  ck('reopen refused while sealed in', String(mr && mr.code), !!(mr && mr.code === 'SEAL_IN'), 'blocked/SEAL_IN');
+  mi = driveWith(m, 2, { containment_pressure: 0.11 });
+  var mo = m.cmd({ action: 'open_msiv' });
+  ck('reopen accepted below the release', String(mo && mo.code), !(mo && mo.code === 'SEAL_IN'), 'not SEAL_IN');
+}));
+
 T.push(test('#370b — a condition can be a NUMERIC threshold on a second instrument (coincidence logic)', function (ck) {
   // A real ESFAS function fires on one signal only while a SECOND analog signal agrees:
   // "high steam flow coincident with low-low Tavg or low steam pressure" (WTSM §12.3.5.1,

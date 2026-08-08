@@ -318,7 +318,7 @@ var BASELINES = {
   // already at the sourced WTSM speed thresholds; the ±5 band is sourced and NOT widened.
   // Coupled to #378 (whose fix was rejected FOR this duty at 5.26 — the trade-space
   // changed); fixing the duty must remove the XFAIL entry in the same change.
-  'run_behavior.js':       { code: 0, secs: 80, score: '64pass 2xfail' },
+  'run_behavior.js':       { code: 0, secs: 80, score: '65pass 2xfail' },   // 64 -> 65 (#386 stage 2): CA-22 spray knockdown/auto-secure; CA-16 leg D re-authored on the active sinks, CA-21 window 0.90 -> 0.85 (stage-2 drained equilibrium parks at 0.88), PI-9 re-authored (SI correctly arrives on the sourced containment backup)
   // 9 since 2026-07-28 (#213): +MD-9 — partial uncovery HELD (inventory 50-70 %)
   // must damage the core on a TMI timescale; prompt reflood must not. Backed by the
   // new exposed-clad hot node (pwr_thermal.stepCladding).
@@ -368,7 +368,7 @@ var BASELINES = {
   // shared by all three plants now, so it stops being a finding — and the known-leak list
   // in run_hr3.js is EMPTY for the first time. Fewer checks means fewer leaks, not less
   // checking; the gate reddened on its own stale entry before anyone edited the list.
-  'run_hr3.js':            { code: 0, score: '28checks 0failed' },
+  'run_hr3.js':            { code: 0, score: '30checks 0failed' },   // 28 -> 30 (#386 stage 2): set_containment_spray/set_ctmt_fans declared in the valueFieldFor allow-list
   // New 2026-07-29 — the guards for the OTHER hard rules. CONTEXT.md §3 now requires
   // every rule to name its guard, and three had none: HR1 (protection reads
   // instruments), HR5 (commands descend; the UI never touches the engine) and HR11 (a
@@ -852,7 +852,7 @@ var BASELINES = {
   // 157 -> 158 (#418 A2) -> 159 (#418 B1): the sg_mass_frac ledger and t_sg_c tube-node
   // fields' §6.3 lines — the contract gate counts one check per documented true_state
   // field, both directions.
-  'run_contract.js':       { code: 0, score: '159checks 0failed' },
+  'run_contract.js':       { code: 0, score: '167checks 0failed' },   // 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can
@@ -1060,7 +1060,7 @@ var BASELINES = {
   // to filter to death, the #249 class).
   // 68 → 69 (2026-08-05, #370c): the steam line isolation's actuation setpoint
   // (steam_pressure low 5.20) joins Part A's static audit.
-  'run_reachability.js':   { code: 0, score: '69checks 0failed' },
+  'run_reachability.js':   { code: 0, score: '74checks 0failed' },   // 69 -> 74 (#386 stage 2): the containment actuation/alarm setpoints join Part A (all strictly inside containment_pressure's [0, 0.8] — stage 1 pre-sized the range for exactly this)
   // NEW 2026-08-03 (#311) — Overtemperature ΔT / Overpower ΔT, the two Westinghouse
   // reactor trips this plant did not have. It needs its own runner because the trips ship
   // DEFAULT OFF and `pwr_control.js` reads that flag at LOAD time: Node caches requires, so
@@ -1243,7 +1243,7 @@ var BASELINES = {
   // term so coincidence logic (high steam flow AND low steam pressure) can be written
   // at all; the new suite pins it at the predicate — both directions, fail-closed on an
   // absent instrument, and the membership form untouched.
-  'run_m4.js':             { code: 0, score: '40/40 262passed' },
+  'run_m4.js':             { code: 0, score: '41/41 274passed' },   // 40/40 262 -> 41/41 274 (#386 stage 2): the containment ESF row suite — unblockable SI, latched spray seal-in + auto-secure, fan realign, MSLI hi-hi
   // Green since 2026-07-25 (#151): the rewind red was lastInstruments not being
   // rebuilt on restore, so every blockable trip reported asserted=false.
   // 79 -> 83 checks 2026-07-31 (#137): the sandbox checkpoint cadence became REAL
