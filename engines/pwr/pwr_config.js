@@ -814,8 +814,10 @@
       // unit RCS inventory FRACTION. `K_surge_level` above is the gain of a pressurizer
       // that still has a steam bubble; this is the gain once the bubble is gone.
       // pwr_pressurizer.stepPressure converts it into the shared level currency by
-      // dividing by `level_per_mass_surplus`, so the two are stated in the units their
-      // own derivations come in and neither has to be re-solved when the other moves.
+      // dividing by `level_per_mass` (the comment here named `level_per_mass_surplus`
+      // until 2026-08-08 — that constant was retired at #365; the two slopes were equal
+      // and one name survives), so the two are stated in the units their own
+      // derivations come in and neither has to be re-solved when the other moves.
       //
       // THIS IS A PHYSICAL CONSTANT, NOT A FIT. A water-solid RCS is a fixed volume of
       // liquid: dP = B·dρ/ρ = B·dm/m, so the gain per inventory fraction IS the isothermal
@@ -832,19 +834,22 @@
       // so the RATIO the plant actually feels — solid ≈ 4× stiffer than bubbled — is not an
       // artifact of picking one of the two numbers.
       //
-      // DECLARED SIMPLIFICATION (Manuals/12 §12.4c). Relief stays excluded from the surge
-      // under F15 even when solid, so a relieving solid plant vents through the steam-space
-      // gains (`K_porv_relief` / `K_safety_relief`) rather than at this bulk modulus — and the
-      // same goes for SPRAY, which has nothing to condense, and the HEATERS, which have no
-      // bubble to flash. All three are optimistic in a vessel with no steam space.
+      // THE §12.4c REGIME LEDGER (Manuals/12 §12.4c; comment re-swept 2026-08-08 — it
+      // still declared all three terms deferred two waves after two of them shipped):
+      // SPRAY is zeroed at solid (#347, load-bearing — credited spray pinned pressure
+      // 164 psi under the code safeties); RELIEF steps to this same bulk modulus at
+      // solid (2026-08-07, #408 wave 1 — at real valve mass flows the bubbled gain
+      // could not pass unterminated ECCS and inventory walked to the `mass_max` clip
+      // by a fourth road); the HEATERS alone keep their bubbled gain — unobservable at
+      // solid (pressure sits above their setpoint) and ruled (F14).
       //
-      // THE RELIEF THIRD ALONE WAS BUILT AND IS WORSE THAN LEAVING ALL THREE. Measured on the
-      // #346 rig: folding relief into the surge drops the relieving equilibrium ~145 psi
-      // (1 MPa), which puts the plant further below `hpi_pressure_ref`, injection then
-      // out-runs the PORV, and inventory walks back to the `mass_max` clip — the defect this
-      // constant exists to fix, returning by another road. Correct is a coupled three-term
-      // regime plus a re-solve of `K_porv_relief`/`K_safety_relief`, which were themselves
-      // solved against run_meltdown and run_scenarios (#337 F15). Separate change. [tune]
+      // THE HISTORICAL CAUTION STANDS, ON ITS OWN SCALE. On the pre-#408 valve scale,
+      // folding relief into the SURGE DRIVER (a different edit than the K-step above)
+      // dropped the relieving equilibrium ~145 psi (1 MPa), put the plant further below
+      // `hpi_pressure_ref`, injection out-ran the PORV, and inventory walked back to
+      // the `mass_max` clip — the defect this constant exists to fix, returning by
+      // another road. Relief stays OUT of the surge driver (F15); what changed in #408
+      // is the PER-UNIT-MASS GAIN its own flow term uses when solid. [tune]
       solid_bulk_mpa: 1300.0,
       P_restore_rate_gain: 0.02, // gentle stabilization only (heater regulates)
       // Operator-setpoint pressurization slew — REAL-TIME since #419 wave 1 *(OWNER RULING,

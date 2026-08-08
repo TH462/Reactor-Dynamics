@@ -189,6 +189,33 @@ crests **62.2 % at 37.3 min**, never crosses 65 or 75; the mission-environment c
 51/51 the proof). **No free re-key is available** → the cue stays state-keyed, the
 #418/#419 owner-review item closes with this measurement, ruling applied.
 
+### Stages 4–5 — adjudication clean; the bundle closes on measurements
+
+- The 42-runner gate adjudicated the pre-enumerated list green with ONE mover, MD-5 (above).
+  `ops_cvcs_pzr_drain_rate` did NOT XPASS (leak-0 CVCS drain is bitwise — still 284.3 s, the
+  ruled red stands untouched). The sev-0.17 sweep row's "equilibrium exactly at inv 70.0"
+  was a SAMPLING COINCIDENCE — extended to 120 min it is a slow recovery (inv 96.4, clad
+  215 °F, cooling). One cosmetic artifact recorded: the late-phase gauge flaps 0 ↔ ~78 as
+  the void gate flickers at the saturation boundary — the #407 snap's face, amplitude
+  bounded by the credit's ratchet-down rule (CA-18 leg D pins the direction); the fix is
+  #407's snap rework, not this project's.
+- **#415 closes on measurement**: the filed walk-to-clip state does not reproduce post the
+  2026-08-07 solid gates (arrest 109.3–109.4 %, safeties cycling 2350–2470 psi; the
+  walk-down phase rides subcooling −0.0 °F legitimately and self-arrests). No solid-wins
+  predicate shipped — the CA-19 precedent (no reachable state = code no A/B can see).
+- **#334 closes its two remaining questions on measurements**: the slider was already
+  re-scaled by #408 wave 1 (the 2026-08-08 option-(a) ruling confirms shipped state), and
+  the natural post-reflood equilibria now end at 15–19 psi ≈ the building (the ~390 psi
+  complaint belongs to CA-19's forced-solid injection balance — the config solve, by
+  design). §12.4b's declared departure stands unchanged.
+- **#354 closes on the existing measurement**: the CVCS servo has held `levelProgram` (not
+  current level) since the #34-era rework — `pwr_primary.js:304`, divergence above the
+  ceiling deliberate (#289).
+- Record: Manuals Rev 14 item (j) (12 §7.3 node-form, §6.3 two-scale sweep, §12.4c relief
+  line), BUILD_DECISIONS entry + F14/F15 flag-row currency notes, `pwr_config` §12.4c
+  ledger + `level_per_mass_surplus` name sweep, CLAUDE.md status/themes (the #362 bullet
+  evicted, its incidence trap rescued to the standing list).
+
 ## Session log — 2026-08-07-develop-g (#419 waves 1–3 BUILT — RECONSTRUCTED, see marker)
 
 **RECONSTRUCTED post-hoc from commits + issue comments by a different session (the

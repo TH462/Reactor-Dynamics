@@ -433,7 +433,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-07**._
+_Last updated: **2026-08-08**._
 
 **Where the PWR is.** `run_all` is **42 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
@@ -447,9 +447,11 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
   declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
   power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
   beat graph cannot express. Waves 1's re-clock and the relief sizing are **landed**.
-- **#385 node / #409 governor** — the pressurizer inventory NODE (ruled as a follow-on in the
-  LOCA-cluster plan review, sequenced AFTER the #408 re-clock) and the deferred auto-acceleration
-  governor. The rest of the LOCA cluster (#384/#407/#334-3) is landed.
+- **#385 node — LANDED (stages 0–3, 2026-08-08, `run_all` 42 at baseline)**: `pzr_mass_frac`
+  carries `pzrNodeLevel` (backbone + flow-accreted void credit; no-leak families bitwise the
+  old line). Flash term measured unnecessary and NOT built — flagged owner-review on #385.
+  The bundle closed #415 (non-repro), #334 (slider was already #408's; low-Δp resolved by
+  measurement), #354 (already held the program). **#409 governor** remains deferred.
 - **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
   secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
   MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
@@ -498,12 +500,15 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   from 1 s to 28 h. **The target was the decision, not the fit** — two NRC primaries that
   cross-check, ÷1.2 because that is a licensing margin and this is a simulator. Adjudicating the
   11 red probes ONE AT A TIME (HR10) is the only reason two real defects surfaced.
-- **A clip lived where no probe stands, so removing it reddened nothing** (2026-08-05, #362).
-  `levelBase` carried an undocumented upper clip at 100 binding at Tavg 611.6 °F — inside the
-  subcooled range at NOP. **Measure incidence before concluding a green suite means anything**:
-  95.7 % of a loss of heat sink, 87.9 % of a blackout, **0.0 %** of every other IC. The gauge sat
-  dead flat at 61.5 % — the number a *healthy* plant reads — while subcooling collapsed. Probe
-  CA-13. **Solid is not overfilled**: this plant goes solid at an inventory *deficit*.
+- **The pressurizer carries its own inventory node, and the level lift became a FLOW**
+  (2026-08-08, #385 stages 0–3). The void credit accretes at the admittance split prevailing
+  WHEN displacement happens — what left through the hole is not owed back in either
+  direction; no-leak families bitwise the old line, pressure bitwise everywhere. Three traps:
+  **`primary_void_fraction` SNAPS** (state fn of `_mass` — flow-form ≈ state-form at
+  gate-open, #407's defect), **an approved plan's sizing target can be measured on a retired
+  scale** (the flash term's "1.5–2 s at sev 0.20" predates the #408 slider re-map — measured
+  unnecessary, not built), and **a meltdown path can pin the defect's CLOCK** (MD-5 melts at
+  5285 s, not <4000 — the old pace was the lying gauge propping the heaters).
 - **The secondary loop runs the primary's fidelity** (2026-08-07, #418 tier 2, four waves in
   one session). Derived SG pressure clock (bottled +43 psi/s at full generation, was +223), a
   mass ledger reconciling Ginna's 35-s trip event with its 78-s boil-dry through level
@@ -579,12 +584,16 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   ride-out the 40 % dump exists to teach. Scaling by a margin factor puts the equivalent gradients
   inside the published real bands — the unscaled ones were 1.5–2× steeper than any real value, and
   **that steepness was the tell, visible before the measurement**.
-- **The pressurizer's three level constants are ONE object** — `level_per_mass` (776),
-  `level_per_mass_surplus` (776), `level_per_void` (375.33), and since #337 the pressure surge
-  reads the same geometry. The TMI deception is a DIFFERENCE between two of them, so moving one
-  inverts it. **Touch one, re-solve the set.** And a SINGLE TERM of a coupled pressure/inventory
-  regime is worse than none — three independent measurements say so (#346, `Manuals/12` §12.4c,
-  the #384 attempt).
+- **The pressurizer's level constants are ONE object** — `level_per_mass` (776), `level_per_void`
+  (375.33), `level_per_tavg` (1.62); the pressure surge reads the same geometry (#337) and since
+  #385 the NODE's credit does too (`level_per_mass_surplus` retired at #365). The TMI deception
+  is a DIFFERENCE between two of them, so moving one inverts it. **Touch one, re-solve the set.**
+  And a SINGLE TERM of a coupled pressure/inventory regime is worse than none — three independent
+  measurements say so (#346, `Manuals/12` §12.4c, the #384 attempt).
+- **Measure a limit's INCIDENCE before trusting a green suite about it** (#362, rescued
+  2026-08-08): the `levelBase` clip bound on 95.7 % of loss-of-heat-sink samples, 0.0 % of every
+  other IC — removing it reddened nothing because no probe stood where it bound. Corollary:
+  **this plant goes solid at an inventory DEFICIT** (thermal expansion), not overfilled.
 - **Containment's flash gate decides what it sees** (#386, rescued 2026-08-07): a stuck-open
   PORV pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break
   liquid is flash-gated), and an SGTR reads NOTHING — it discharges into the SG. `press_gain`
