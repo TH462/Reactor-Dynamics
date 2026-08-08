@@ -317,9 +317,13 @@
       s._cvcs_err_f += (err_raw - s._cvcs_err_f) * (dt / (ftau + dt));
       var level_demand = (rc.cvcs_charge_per_level || 0.001) * s._cvcs_err_f;
       var target = (s.letdown_flow || 0) + level_demand;
-      s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 0.06);
+      s.charging_flow = clip(target, 0, rc.charging_max != null ? rc.charging_max : 1.33333e-4);
     } else {
-      s.charging_flow = s.charging_setpoint;
+      // MANUAL honors the pump's run-out too (#421). This clip covers the two paths
+      // the applyCommand clip cannot reach: a pre-#408 save restoring its retired-
+      // currency setpoint verbatim (no migration default exists), and crafted rig
+      // states that write charging_setpoint directly.
+      s.charging_flow = clip(s.charging_setpoint, 0, rc.charging_max != null ? rc.charging_max : 1.33333e-4);
       s._cvcs_err_f = null;   // stale in MANUAL; reseed on the next AUTO engage
     }
     // Charging requires the charging pump. CVCS flows are normalized to the

@@ -1200,7 +1200,12 @@
       case 'set_charging_flow':
         // Manual charging: set BOTH the operator setpoint and the true flow, and
         // leave AUTO make-up (which would otherwise modulate the true flow).
-        s.charging_setpoint = cmd.normalized; s.charging_flow = cmd.normalized; s.cvcs_auto = false;
+        // Clipped to the pump's run-out (#421): on the #408 real scale this surface
+        // accepted any frac/s, and callers still speaking the retired 0.05/0.06
+        // currency commanded 375-450x the pump. Clip, never reject — the ops
+        // abuse-spam sanity asserts every command is accepted.
+        var _chg = clip(cmd.normalized || 0, 0, this.cfg.reactivity.charging_max);
+        s.charging_setpoint = _chg; s.charging_flow = _chg; s.cvcs_auto = false;
         break;
       case 'set_letdown_orifices':
         // The real letdown control: each orifice independently in/out (off / A / B /
@@ -1209,11 +1214,18 @@
         if (cmd.b != null) s.letdown_orifice_b = !!cmd.b;
         break;
       case 'set_letdown_flow':
-        // Deprecated alias (pre-two-orifice saves/callers): map a requested
-        // normalized flow to the nearest orifice lineup by NOP-flow. off / A(≈0.03) /
-        // B(≈0.04) / A+B(≈0.07). The true flow is then pressure-driven like any lineup.
+        // Deprecated alias (pre-two-orifice saves/callers): map a requested flow to
+        // the nearest orifice lineup by NOP flow — off / A(≈30 gpm) / B(≈40 gpm) /
+        // A+B(≈70 gpm). Snap points are config-derived on the #408 real scale (#421:
+        // the retired 0.030/0.040/0.070 table snapped every real-scale request to
+        // `off`). A legacy old-currency value lands on A+B — the nearest "letdown
+        // on" lineup — which is the acceptable end of that trade; no live caller
+        // speaks the old currency. The true flow stays pressure-driven per lineup.
+        var _rcL2 = this.cfg.reactivity;
+        var _sqN = Math.sqrt(Math.max(0, 15.71 - _rcL2.letdown_backpressure_mpa));   // NOP cold leg (15.41 + loop_dp_core_rated)
+        var _fA = _rcL2.letdown_orifice_a_coeff * _sqN, _fB = _rcL2.letdown_orifice_b_coeff * _sqN;
         var _n = cmd.normalized || 0;
-        var _opts = [[false, false, 0], [true, false, 0.030], [false, true, 0.040], [true, true, 0.070]];
+        var _opts = [[false, false, 0], [true, false, _fA], [false, true, _fB], [true, true, _fA + _fB]];
         var _best = _opts[0], _bd = Infinity;
         for (var _i = 0; _i < _opts.length; _i++) {
           var _d = Math.abs(_opts[_i][2] - _n);
@@ -2188,7 +2200,7 @@
     // Level high → open both letdown orifices (max drain); low → charge and isolate
     // letdown; in band → both off. Letdown flow is pressure-driven from the lineup.
     if (l > 62) { h.cmd({ action: 'set_letdown_orifices', a: true, b: true }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
-    else if (l < 50) { h.cmd({ action: 'set_charging_flow', normalized: 0.06 }); h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); }
+    else if (l < 50) { h.cmd({ action: 'set_charging_flow', normalized: h.eng.cfg.reactivity.charging_max }); h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); }   // #421: real pump max (0.06 was 450x)
     else { h.cmd({ action: 'set_letdown_orifices', a: false, b: false }); h.cmd({ action: 'set_charging_flow', normalized: 0 }); }
   }
   function _feedHold(h) {                        // hold SG level ~65 % on the feed pump
@@ -3148,11 +3160,16 @@
         h.eng.s.pressure_mpa = 15.41; h.eng.step(0.02); var hi = s.letdown_flow;
         h.eng.s.pressure_mpa = 5.0;   h.eng.step(0.02); var lo = s.letdown_flow;
         ck('letdown tails off as RCS pressure falls', lo.toFixed(4) + ' < ' + hi.toFixed(4), lo < hi && lo > 0, 'lo < hi');
-        // Deprecated alias maps a requested normalized flow to the nearest lineup.
+        // Deprecated alias maps a requested flow to the nearest lineup — snap points
+        // config-derived on the real scale since #421.
         h.cmd({ action: 'set_letdown_flow', normalized: 0.0 });
         ck('alias 0.0 → both orifices shut', !s.letdown_orifice_a && !s.letdown_orifice_b, !s.letdown_orifice_a && !s.letdown_orifice_b, 'off');
+        h.cmd({ action: 'set_letdown_flow', normalized: expA + expB });
+        ck('alias at A+B NOP flow → both orifices open', s.letdown_orifice_a && s.letdown_orifice_b, s.letdown_orifice_a && s.letdown_orifice_b, 'A+B');
+        // A legacy retired-currency request lands on A+B (the documented trade —
+        // nearest "letdown on" lineup; no live caller speaks the old currency).
         h.cmd({ action: 'set_letdown_flow', normalized: 0.07 });
-        ck('alias 0.07 → both orifices open', s.letdown_orifice_a && s.letdown_orifice_b, s.letdown_orifice_a && s.letdown_orifice_b, 'A+B');
+        ck('legacy 0.07 request → A+B (documented legacy snap)', s.letdown_orifice_a && s.letdown_orifice_b, s.letdown_orifice_a && s.letdown_orifice_b, 'A+B');
       });
     },
 

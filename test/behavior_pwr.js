@@ -2383,7 +2383,11 @@
         var h = H('hot_zero_power');
         h.run(60);
         h.cmd('inject_failure', { failure_id: 'station_blackout' });
-        h.cmd('set_charging_flow', { normalized: 0.05 });   // operator calls for charging, no AC to answer
+        // #421: the demand is the pump's own max — the surface clips there now, and the
+        // old 0.05 literal was retired currency (375x the pump). Bands below are
+        // fractions of CHG_MAX so the probe keeps its exact pre-#421 strictness.
+        var CHG_MAX = RD.PWR_CONFIG.reactivity.charging_max;
+        h.cmd('set_charging_flow', { normalized: CHG_MAX });   // operator calls for charging, no AC to answer
         var wLet = peakAfter('letdown_flow_actual'), wChg = peakAfter('charging_flow_actual');
         h.run(3600, function (hh, ts) { wLet(hh, ts); wChg(hh, ts); });
         var t = h.ts(), c = h.ctl();
@@ -2392,7 +2396,7 @@
         ck('letdown ISOLATES — no orifice bleed with the charging pump de-energized',
           'peak ' + fmt(wLet.peak(), 4), wLet.peak() < 1e-4, '0');
         ck('the charging pump delivers NOTHING (Class 1E ac load, WTSM 4.1.3.4)',
-          'peak ' + fmt(wChg.peak(), 4), wChg.peak() < 1e-4, '0');
+          'peak ' + fmt(wChg.peak(), 4), wChg.peak() < 0.75 * CHG_MAX, '0');   // 0.75x = the old 1e-4 band exactly
         // The pre-fix plant reached 76.55 % over three hours; one hour of it is ~92 %.
         // Banded well inside that, so this fails loudly on the old engine rather than
         // squeaking past on a slow leak.
@@ -2401,19 +2405,19 @@
         // BOTH DIRECTIONS, because there are TWO guards and one check only sees one of
         // them. The indication guard (`charging_flow_actual`) is what the check above
         // reads; the MASS-BALANCE guard is a different line, and with the demand latched
-        // at 0.05 a dead pump that still moved water would push inventory UP. Measured by
+        // at max a dead pump that still moved water would push inventory UP. Measured by
         // injection: without this check, reverting the mass-balance guard left all 47
         // probes green — the defect was real, unobserved, and one assertion away.
-        ck('nor is it pumped UP by a dead pump answering a latched 0.05 demand',
+        ck('nor is it pumped UP by a dead pump answering a latched max demand',
           fmt(h.range('core_inventory_pct').max, 2) + ' % max', h.range('core_inventory_pct').max < 100.5, '< 100.5 %');
         // The SELECTOR is untouched — same #200 guard as CA-7 leg A. What went to zero
         // is delivered flow, not the operator's lineup, so restoring AC gives the CVCS
         // back with nothing to re-select.
         ck('the operator\'s charging-pump switch is still in RUN (selector not rewritten)',
           'charging_pump_running ' + String(c.charging_pump_running), c.charging_pump_running !== false, 'true');
-        ck('and their manual charging demand is still latched at 0.05 — only DELIVERY died',
-          'charging_flow_normalized ' + fmt(c.charging_flow_normalized, 3),
-          c.charging_flow_normalized > 0.04, '0.05');
+        ck('and their manual charging demand is still latched at the pump max — only DELIVERY died',
+          'charging_flow_normalized ' + fmt(c.charging_flow_normalized, 6),
+          c.charging_flow_normalized > 0.9 * CHG_MAX, 'charging_max');
 
         // --- leg B: the operator presses SI with every bus dead. A dead pump makes no
         // flow AND no head, so the discharge gauge must read the RCS, not a pump curve.

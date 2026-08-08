@@ -75,7 +75,7 @@ var BASELINES = {
   // tried) plus a POSITIVE assertion of the HR1 half it was accidentally covering:
   // protection acted on a reading the plant never had. Each half injection-verified and
   // they discriminate independently.
-  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 244passed' },   // 243 -> 244 (#418 B1): save_migration asserts the t_sg_c split-interpolation seed   // 242 -> 243 (#418 A2): the sg_mass_frac inverse-map round-trip   // 241 -> 242 (#386 stage 1): the five containment fields
+  'run_pwr.js':            { code: 0, secs: 22, score: '36/36 245passed' },   // 244 -> 245 (#421): the legacy-currency letdown-alias snap check   // 243 -> 244 (#418 B1): save_migration asserts the t_sg_c split-interpolation seed   // 242 -> 243 (#418 A2): the sg_mass_frac inverse-map round-trip   // 241 -> 242 (#386 stage 1): the five containment fields
   'run_rbmk.js':           { code: 0, score: '23/23 150passed' },
   'run_bwr.js':            { code: 0, secs: 29, score: '15/15 92passed' },
   // DELIBERATELY NOT MOVED at #346, and reading 1/3 on the backshop lane. Both red suites are

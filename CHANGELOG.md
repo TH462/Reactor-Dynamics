@@ -90,9 +90,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `letdown_flow_actual` / `leak_flow` cells (read "0 %") now render gpm; the dormant
   `charge-set` handler's `/1000` → `/450000` (it commanded 0.03 frac/s ≈ 13,500 gpm from a
   30 gpm input — unclamped, see #421).
-- **Filed #421**: `set_charging_flow` has no clamp at the engine on the real scale, and four
-  test/rig callers still command the retired 0.05/0.06 currency (375–450× the pump). Clamp +
-  per-caller adjudication (HR10) is that issue's scope, not this change's.
+- **#421 closed the loop: `set_charging_flow` is clamped to the pump's run-out.** The engine
+  accepted any frac/s (only AUTO clipped); now both the command and the MANUAL branch clip to
+  `charging_max` — clip, never reject — which also covers pre-#408 saves restoring
+  retired-currency setpoints verbatim. The `set_letdown_flow` alias snap table (0.030/0.040/
+  0.070 — every real-scale request snapped to `off`) is re-derived from the orifice
+  coefficients. Four rigs moved off the retired currency, each adjudicated: the §14 Mode 5↔1
+  roundtrip was the predicted casualty and measured **13/13 green** on the clamped engine
+  (cooldown completes at 7,930 s — real-scale charging keeps up with the real-paced
+  contraction), e2e band re-derived config-side, CA-8's bands re-expressed as fractions of
+  `charging_max` at identical strictness, ops spam roster swapped.
 
 ### Changed — the plant is re-anchored to Ginna: the ladder, the Tavg program, the dump capacity and the reference boron are the anchor plant's own (#419 wave 3, 2026-08-07)
 

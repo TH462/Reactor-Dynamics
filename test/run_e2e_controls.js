@@ -136,8 +136,11 @@ console.log(B + 'PWR — recently-added controls' + X);
   ck('borate inert with charging pump off', s.engine.s.boron_ppm === boronOff, s.engine.s.boron_ppm.toFixed(0), boronOff.toFixed(0));
 
   s = svc('pwr', 'hot_full_power');
-  s.handleCommand({ action: 'set_charging_flow', normalized: 0.05 });
-  ck('charging flow set', s.engine.s.charging_flow >= 0.04, s.engine.s.charging_flow.toFixed(3), '>=0.04');
+  // Band config-derived (#421 — the surface clips to the pump's run-out; the old
+  // 0.05-commanded ">= 0.04" band was retired currency, 375x the real pump).
+  var _rcvC = RD.PWR_CONFIG.reactivity;
+  s.handleCommand({ action: 'set_charging_flow', normalized: _rcvC.charging_max });
+  ck('charging flow set', s.engine.s.charging_flow >= 0.9 * _rcvC.charging_max, s.engine.s.charging_flow.toExponential(2), '>= 0.9x charging_max');
 
   s = svc('pwr', 'hot_full_power');
   s.handleCommand({ action: 'set_letdown_orifices', a: true, b: false });
