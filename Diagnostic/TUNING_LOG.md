@@ -29,6 +29,105 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-08-develop-d (#425 — the containment passive sink learns saturation ΔT, on a lag; the SBO family joins the containment-holds pin)
+
+**Owner: "Do next as recommended."** — Option B from the #425 options put to him: a
+saturation-ΔT-keyed passive-sink enhancement, SBO boil-off parked UNDER the 30 psig spray
+hi-hi, bundling the #386 burn-pin extension and the #384 declaration re-measure. Ruling
+recorded on #425 with the endorsed recommendation quoted (HR11). Decision record:
+`Blueprint/BUILD_DECISIONS.md` 2026-08-08-develop-d.
+
+**The defect** (#425, filed at stage 3): relief steam enters `_ctmt_steam` at weight 1.0 (no
+PRT, declared) against a pure-linear passive sink (`inv/220 s`, fitted to LOCA blowdown
+pulses), so the equilibrium is `press_gain·tau·inflow` at ANY inflow — a clock-independent
+**83.3 psig (0.574 MPa g)** on decay-heat boil-off, past the 60 psig design pressure with no
+hydrogen and no break. MEASURED at plan review, worse: **the SBO family's burn peaked ABOVE
+design** (106.8 psi (0.737 MPa) abs sampled, 10 s grid) — the #386 containment-holds pin was
+scoped to LOCA/stuck-PORV precisely because of this, and the scoping caveat was hiding a
+second instance of the same defect. GEND-061 Table 4-2 is the direction anchor: TMI-2 sat
+near ~1.3 psig preburn after ~10 h of stuck-PORV discharge.
+
+**The fix** (`pwr_primary.stepContainment`): the passive term is multiplied by a **lagged**
+enhancement — target `1 + gain·max(0, T_sat(steam partial) − ambient − knee)`, clip [1, 25]
+(dt-stability guard), first-order lag. Constants (all [tune], FITTED — they also stand in for
+the unmodeled PRT): `passive_sink_dt_knee_c` **55 °C** (the stuck-PORV family's own ΔT, so
+the TMI-class equilibrium moves 9.4 → 9.3 psig only), `passive_sink_dt_gain` **0.13 /°C**,
+`passive_sink_dt_lag_s` **120 s**. One new PRIVATE state field `_ctmt_sink_enh` (seed 1.0,
+migration default 1.0 — no history invented; legacy-save probe extended; NOT a §6.3 field).
+**`gain 0` restores the pre-#425 plant bitwise** (proven: LOCA sev-0.5 ride rows identical,
+SBO spot rows 44.63/98.01/106.8 psia identical) — the injection lever for every pin.
+
+**A STATIC curve was measured infeasible first** — and the plan-review version of that
+argument carried two arithmetic errors worth the record: it claimed a +14.1 psi burn deposit
+(forgot `press_gain` — the deposit is `press_gain·h2_burn_gain·6.8 v/o` = **+32.4 psi**) and
+derived a knee floor at 71 °C from an "18.3 psig drained-base park" that is actually AMBIENT
+by burn time. **Re-derive sizing constraints from the Q0, not from the plan.** The real
+infeasibility: the SBO must park ≤ ~22 psig — **the burn margin, not the ruled 30 psig spray
+point, binds the park** (park + 32.4 must clear design; the ruled cap alone would leave the
+SBO burn 2.4 psi OVER) — while the sev-0.25/0.5 pulse peaks (31.3/34.6 psig) sit ABOVE that
+park with only 1.3/4.6 psi of hi-hi margin. One monotone curve eats the pulse grading to
+brake the park; pulses dwell 20–40 s above the knee, the boil-off climb runs ~6.5 min
+(10 → 30 psig, measured at a 30 s grid) — **TIME is the only separator between families
+whose pressures overlap.**
+
+**Q0, before → after** (full stack, measure_stack, same rides both sides; full tables
+`inbox/q425_q0_before.md`): SBO boil-off **83.3 → 22.2 psig, never crosses the hi-hi** (no
+transit overshoot; BEFORE crossed at ~100 min); SBO burn **above design → 51.1 psig**
+(0.4535 MPa abs, 10 s grid — above hi-hi, ~9 psi under design); LOCA grid 18.6/26.7/31.3/
+34.6/36.7 → **15.4/22.7/30.1/33.8/36.1 psig** (SI crossings 40–50 s unmoved; DBA still ~60 %
+of design); stuck PORV 9.4 → 9.3 psig; drained-base burn unchanged (ambient base + fixed
+deposit). **`slb_ctmt_gain` 0.0035 → 0.0045**: the MSLB blowdown is the ONE pulse long
+enough (minutes at peak) to charge the lag — it braked 52.0 → 39.0 psig and thinned the
+limiting-case ordering over the DBA to 2.9 psi; 0.0045 re-solves it to **48.2 psig = 80 % of
+design**, mid-band on both sides (#418 TR-3 shape). `press_gain` deliberately NOT re-solved.
+
+**Trap, new**: **a "pre-damage" window bounded by the damage FLAG catches the burn it exists
+to exclude** — H₂ reaches 8 v/o while the hot node is still under 1200 °C, so the first MD-3
+pin authored against `fuel_damaged` went red on its own burn spike. The boil-off-alone claim
+ends at the BURN (`!ctmt_h2_burned`-bounded recorder).
+
+**Probes** (per-probe, HR10): run_behavior 67/2xf at baseline UNMOVED by the retune — the
+lag's blast-radius design. CA-16 leg D mechanically updated: its static 1/τ expectation
+understates the enhanced sink, so it now INTEGRATES the engine's own claimed sink (reads
+`_ctmt_sink_enh` live per 0.5 s sample; asserts observed decay ≈ `e^(−∫sink·dt)`); validated
+both ways (gain 0 collapses it to the old 1200/τ_eff = 170 s exactly, green on both plants).
+MD-3 gains three legs at zero added runtime (driveDamage recorders, additive): boil-off max
+**< 0.3081 until the H₂ era** (measured 0.2541 — identical to the full-stack park, the
+layer-invariance check), burn peak **in (0.3081, 0.515)** (measured 0.4572) — **the #386
+containment-holds pin is now family-wide** — and the boil-off-alone premise (afw ≈ 0, spray
+delivery dead). Injection: gain 0 reds both pins (0.5556 / 0.7743 signatures). MD-3's melt
+clock moved 9510/12340 → 10185/12560 s (damage/melt) under the lower backpressure — inside
+the 15000 s horizon, comment currency only.
+
+**perturb_sweep.** BEFORE (the unreproducible map): `passive_sink_tau_s`×1.03 → 52/711
+moved, 0 flips; `press_gain`×1.03 → 65/711, ONE flip (CA-20 leg B, see below); `slb_ctmt_gain`
+×1.03 → 12/711, weak. AFTER on the new constants: gain/knee/lag each move 39–43/711 (5.5–6 %,
+discriminating), slb 12/711. **Two flips, both the SAME pre-existing knife-edge**: CA-20 leg
+B ("sev-0.05 plateau > 1.5× accumulator_trip" = 6.21 MPa) sits at 6.28 baseline — 1.1 % of
+margin — and any containment-side ×1.03 wiggles the plateau ~0.1 MPa through the break-flow
+backpressure coupling (the BEFORE map flips it via press_gain the same way). The 1.5× is the
+probe's own unsourced clearance factor (authored #408, replacing a magnitude fixture); the
+real claim (clear of the 4.14 MPa arming band) has 52 % margin. **Not re-banded in this
+change** — a drive-by re-band to quiet a sweep is the HR10 refit shape; noted on #425 for a
+dedicated adjudication if it recurs.
+
+**Grading note (owner-review on #425)**: the sev-0.25 peak lands 30.1 psig — 0.12 psi above
+the spray hi-hi (was 1.3 psi above). The boundary's thinness is the plant's; declared at the
+constants with a do-not-retune note. Recommendation: leave it; the fat-boundary lever is
+`press_gain`, which perturbs into the CA-20 flip above.
+
+**#384 bundle item — the Rev 13(j) residual had ALREADY closed before this change**:
+measured before AND after the sink work, identical — the full-size break bottoms **14.8 psi
+(0.102 MPa) abs vs a 14.7 psi (0.101 MPa) building** (declared "116 psi vs a ~34 psi
+building" at stage 4, 2026-08-06 — the #385 node / #408 re-clock closed it in passing,
+unnoticed). `12` §7.2 records the closure; the uncovery arc is intact (MD-1, CA-20 green).
+
+**Gates**: `run_all` **44 runners at baseline, zero baseline moves**. Docs: `12` §12.4d
+(enhancement declared, SBO family added, MSLB 80 %), §12.4e (containment-holds family-wide),
+§7.2 (residual closure); Rev 14 pending row item (o); stamp + pack + run_manual_rev /
+run_manual_units / run_doc_budget green. CHANGELOG carries the `_ctmt_sink_enh` migration
+note. CLAUDE.md themes rotated (#418 evicted; its node-capacity trap rescued to standing).
+
 ## Session log — 2026-08-08-develop-c (#386 stage 3 — HYDROGEN: inventory, recombiners, the ruled burn; + #387 bundled)
 
 **Owner: "Work: #386 stage 3 (hydrogen) + #387 as a bundle"**, plan approved at review; one

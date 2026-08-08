@@ -556,8 +556,22 @@
     // (declared, config header); ctmt_fan_safety is only the SI realign.
     s.ctmt_spray_active = !!s.ctmt_spray_demand && acAvailable(s);
     s.ctmt_fan_active = !!s.ctmt_fan_safety && acAvailable(s);
-    var sink = 1 / (c.passive_sink_tau_s || 1800)
-             + (s.ctmt_spray_active ? 1 / (c.spray_sink_tau_s || 240) : 0)
+    // Passive-sink enhancement (#425): wall condensation grows with the saturation
+    // elevation over the (fixed) structure temperature, and the growth arrives on a
+    // LAG — a blowdown pulse spends 20-40 s above the knee and never charges it; a
+    // boil-off's relief-duty climb spends minutes there and feels it fully. TIME is
+    // the only separator between those families (their pressures overlap), which is
+    // why this is a lagged state and not a static curve — the static form was
+    // measured infeasible (TUNING_LOG 2026-08-08-develop-d). Constants + sizing:
+    // the passive_sink_dt_* comment block in pwr_config. gain 0 (or absent config)
+    // pins enh at exactly 1 and restores the pre-#425 plant bitwise.
+    var dTarget = clip(1 + (c.passive_sink_dt_gain || 0)
+                * Math.max(0, T_sat((c.press_gain || 0) * s._ctmt_steam) - c.ambient_temp_c
+                              - (c.passive_sink_dt_knee_c != null ? c.passive_sink_dt_knee_c : 999)), 1, 25);
+    if (s._ctmt_sink_enh == null) s._ctmt_sink_enh = 1;  // lazy init: old saves, rig states
+    s._ctmt_sink_enh += (dTarget - s._ctmt_sink_enh) * Math.min(1, dt / (c.passive_sink_dt_lag_s || 90));
+    var sink = s._ctmt_sink_enh / (c.passive_sink_tau_s || 1800)
+             + (s.ctmt_spray_active ? 1 / (c.spray_sink_tau_s || 240) : 0)   // active trains NOT enhanced
              + (s.ctmt_fan_active ? 1 / (c.fan_sink_tau_s || 750) : 0);
     var cond = s._ctmt_steam * sink;
     s._ctmt_steam = Math.max(0, s._ctmt_steam + (steam_in - cond) * dt);

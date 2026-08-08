@@ -45,6 +45,50 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-08-develop-d — #425: the containment passive sink learns saturation ΔT, on a lag
+
+**Ruling.** *(OWNER RULING, 2026-08-08: "Do next as recommended.")* — Option B of the #425
+options (saturation-ΔT-keyed passive-sink enhancement), SBO boil-off parked **under the
+30 psig spray hi-hi**, bundling the #386 burn-pin extension and the #384 declaration
+re-measure. The endorsed recommendation is quoted verbatim on #425 (HR11).
+
+**Decisions this entry records:**
+- **The enhancement is a LAGGED state, not a static curve** — `_ctmt_sink_enh`, target
+  `1 + gain·max(0, T_sat(steam partial) − ambient − knee)` clip [1,25], first-order lag.
+  Static was measured infeasible: the SBO must park ≤ ~22 psig (see next bullet) while the
+  sev-0.25/0.5 pulse peaks sit ABOVE that park with 1.3/4.6 psi of hi-hi margin — one
+  monotone curve eats the pulse grading to brake the park. Pulses dwell 20–40 s above the
+  knee; the SBO climb runs ~6.5 min. TIME separates the families; pressure does not.
+- **The burn margin, not the spray point, binds the park.** The H₂ burn deposits
+  `press_gain·h2_burn_gain·6.8 v/o` = **+32.4 psi** on whatever base it finds, so park +
+  32.4 must clear the 60 psig design pressure — park ~22 psig gives the SBO burn ~9 psi of
+  margin; the ruled 30 psig cap alone would put it 2.4 psi OVER design. (The plan-review
+  analysis had this wrong twice — a +14.1 psi deposit that forgot `press_gain`, and an
+  18.3 psig drained-base park that is actually ambient — recorded in TUNING_LOG.)
+- **Constants**: knee 55 °C (the stuck-PORV family's ΔT — TMI-class equilibrium moves
+  9.4 → 9.3 psig only), gain 0.13 /°C, lag 120 s; `slb_ctmt_gain` 0.0035 → **0.0045** (the
+  MSLB is the ONE pulse long enough to charge the lag — it braked 52.0 → 39.0 psig and
+  thinned the limiting-case ordering to 2.9 psi; 0.0045 re-solves to 48.2 psig = 80 % of
+  design, mid-band both sides, the TR-3 shape). `press_gain` NOT re-solved (perturb: ×1.03
+  flips CA-20 — it is knife-edged elsewhere).
+- **Grading note, owner-review**: the sev-0.25 peak lands 30.1 psig — 0.12 psi above the
+  hi-hi (was 1.3 psi). The boundary's thinness is the plant's; declared at the constants.
+- **New pins live in MD-3** (engine-direct is layer-invariant under SBO — `acAvailable` is
+  the engine's): boil-off max < hi-hi until the H₂ era (a damage-flag-bounded window
+  catches the burn it exists to exclude — the burn fires a hair before 1200 °C), burn peak
+  in (hi-hi, design) — **the #386 containment-holds pin is now family-wide** — and the
+  boil-off-alone premise. CA-16 leg D integrates the engine's own live sink (`e^(−∫sink·dt)`,
+  reads `_ctmt_sink_enh` per sample; gain 0 collapses it to the old 1200/τ_eff exactly).
+- **#384 Rev 13(j) residual measured CLOSED before this change** (full break bottoms
+  14.8 psi (0.102 MPa) abs vs a 14.7 psi (0.101 MPa) building, before AND after — the
+  #385/#408 work closed it in passing); `Manuals/12` §7.2 records the closure.
+- One new private state field (`_ctmt_sink_enh`, seed/migrate 1.0, legacy-save probe
+  extended, NOT §6.3). Injection lever: `passive_sink_dt_gain: 0` restores the pre-#425
+  plant **bitwise** (proven against the BEFORE record; reds both MD-3 pins 0.5556/0.7743).
+
+**Gates**: run_all 44 at baseline (zero baseline moves — run_behavior 67/2xf unmoved on the
+retune). Full Q0 before/after: `Diagnostic/TUNING_LOG.md` 2026-08-08-develop-d.
+
 ## 2026-08-08-develop-c — #386 stage 3: hydrogen (the ruled burn) + #387 bundled
 
 **Rulings.** The 2026-08-05 burn ruling binds (TMI-2-style one-time deflagration + latch,

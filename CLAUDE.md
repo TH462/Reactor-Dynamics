@@ -443,8 +443,11 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen 2026-08-08: the ruled TMI-2-style
   one-time burn, recombiners, geometry-gated transport — owner-review: the [8.0]/[85]
   STS-template adoption). Remaining: the board card + manual spray/recombiner surface
-  (waits on the board redesign) and the #384 exit. **#425** (new): SBO boil-off passes
-  containment design pressure on relief steam alone — pre-existing stage-2 base, needs-ruling.
+  (waits on the board redesign). **#425 RESOLVED** (2026-08-08, ruled): the passive sink
+  runs a lagged saturation-ΔT enhancement — SBO boil-off parks at 22.2 psig (was 83.3,
+  past design), the burn pin is family-wide, and the #384 §7.2 residual is recorded
+  CLOSED (measured at the building before AND after) — owner-review: the sev-0.25
+  spray-boundary knife-edge.
 - **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the plant's
   declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
   power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
@@ -485,6 +488,17 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **The containment passive sink learned saturation ΔT — through a LAG, because time is the
+  only separator between families whose pressures overlap** (2026-08-08, #425). SBO boil-off
+  must park ≤ ~22 psig (the H₂ burn deposits +32.4 psi on whatever base it finds, so the
+  BURN margin, not the ruled 30 psig spray point, binds the park — the cap alone would leave
+  the burn 2.4 psi OVER design) while the sev-0.25/0.5 pulse peaks sit ABOVE that park; a
+  static curve eats the pulse grading to brake the park, so the enhancement charges on a
+  120 s lag that pulses never feel. Two traps: a "pre-damage" window bounded by the damage
+  FLAG catches the burn it exists to exclude (H₂ hits 8 v/o before the hot node passes
+  1200 °C — bound on `!ctmt_h2_burned`), and a plan-review constraint can be arithmetic-wrong
+  twice (a burn deposit that forgot `press_gain`; a "drained base" that is actually ambient)
+  — re-derive sizing constraints from the Q0, not the plan.
 - **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
   #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
   telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
@@ -517,17 +531,11 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   scale** (the flash term's "1.5–2 s at sev 0.20" predates the #408 slider re-map — measured
   unnecessary, not built), and **a meltdown path can pin the defect's CLOCK** (MD-5 melts at
   5285 s, not <4000 — the old pace was the lying gauge propping the heaters).
-- **The secondary loop runs the primary's fidelity** (2026-08-07, #418 tier 2, four waves in
-  one session). Derived SG pressure clock (bottled +43 psi/s at full generation, was +223), a
-  mass ledger reconciling Ginna's 35-s trip event with its 78-s boil-dry through level
-  GEOMETRY, sourced MSSV capacity, and a tube node + transported legs under an invariance
-  rule (1/h1 + 1/h2 = 1/h_sg, shared factors) that left every steady anchor exact — run_otdt
-  46/46, TR-1i's ±5 °F duty with no lead-lag. Two traps for the next wave: a node's capacity
-  must come OUT of the node it split from (C_tube on top of coolant 20 silently reopened the
-  RULED heatup pace — the chain caught it at 260.7 °C), and a knife-edge claim will OSCILLATE
-  under re-clocking (TR-3's "spray loses" inverted twice in one day; the probe now pins the
-  mechanism half so neither side passes hollow).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+
+- **A new node's capacity must come OUT of the node it split from** (rescued from the #418
+  themes bullet on eviction, 2026-08-08): C_tube added on top of coolant 20 silently reopened
+  the RULED heatup pace — the chain caught it at 260.7 °C. Splitting a lump conserves its total.
 
 - **A component can sit on a TWO-CLOCK seam** (rescued from the #408 themes bullet on
   eviction, 2026-08-08): the relief valve's mass flow runs the real accident clock while its

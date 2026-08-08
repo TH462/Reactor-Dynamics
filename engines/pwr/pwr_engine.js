@@ -1716,6 +1716,8 @@
       containment_pressure_mpa: cfg.containment.ambient_pressure_mpa,
       containment_temp_c: cfg.containment.ambient_temp_c,
       containment_sump_pct: 0, _ctmt_steam: 0, _ctmt_sump: 0,
+      // #425: the lagged passive-sink enhancement starts unenhanced (factor 1).
+      _ctmt_sink_enh: 1,
       // Stage 2 (#386): active trains secured/idle at init; the actuation rows
       // (pwr_control) and stepContainment's AC gate own them from here.
       ctmt_spray_demand: false, ctmt_spray_active: false,
@@ -2135,6 +2137,9 @@
     if (s.ctmt_fan_active == null) s.ctmt_fan_active = false;
     if (s._ctmt_steam == null) s._ctmt_steam = 0;
     if (s._ctmt_sump == null) s._ctmt_sump = 0;
+    // #425: pre-enhancement saves restore unenhanced — no history is invented; a
+    // mid-accident restore re-charges the lag from the live pressure in ~2 min.
+    if (s._ctmt_sink_enh == null) s._ctmt_sink_enh = 1;
     // Stage 3 (#386): a pre-hydrogen save restores with empty ledgers and nothing
     // burned — same declaration class as the containment restoring at ambient: a
     // mid-accident save regenerates its H2 from the still-oxidizing core, but no
@@ -3286,6 +3291,7 @@
         // Containment (#386 stage 1): a pre-containment save has none of the five.
         delete legacy.containment_pressure_mpa; delete legacy.containment_temp_c;
         delete legacy.containment_sump_pct; delete legacy._ctmt_steam; delete legacy._ctmt_sump;
+        delete legacy._ctmt_sink_enh;   // #425: nor the sink-enhancement lag state
         // Hydrogen (#386 stage 3): a pre-hydrogen save has none of the six.
         delete legacy._rcs_h2; delete legacy._ctmt_h2; delete legacy.ctmt_h2_pct;
         delete legacy.ctmt_h2_burned; delete legacy.ctmt_recomb_demand; delete legacy.ctmt_recomb_active;
@@ -3356,7 +3362,8 @@
           s.containment_pressure_mpa + ' MPa / ' + s.containment_temp_c + ' °C / sump ' + s.containment_sump_pct + ' %',
           s.containment_pressure_mpa === cfg.containment.ambient_pressure_mpa
             && s.containment_temp_c === cfg.containment.ambient_temp_c
-            && s.containment_sump_pct === 0 && s._ctmt_steam === 0 && s._ctmt_sump === 0,
+            && s.containment_sump_pct === 0 && s._ctmt_steam === 0 && s._ctmt_sump === 0
+            && s._ctmt_sink_enh === 1,   // #425: unenhanced — no lag history invented
           'ambient / ambient / 0');
         ck('hydrogen restores EMPTY and unburned — a pre-stage-3 save invents no H2 history',
           s._rcs_h2 + ' / ' + s._ctmt_h2 + ' / ' + s.ctmt_h2_pct + ' / burned ' + s.ctmt_h2_burned + ' / recomb ' + s.ctmt_recomb_demand + ',' + s.ctmt_recomb_active,

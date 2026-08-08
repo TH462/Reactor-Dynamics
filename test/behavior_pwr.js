@@ -3782,16 +3782,26 @@
         // genuine decay. On the stage-1 engine the fan check below is red — the
         // stage's injection verification for this leg.
         var pPk = a.ts().containment_pressure_mpa;
-        ck('the fans REALIGNED on SI — the diverse heat-removal train is running (stage 2)',
+        ck('the fans REALIGNED on SI — the diverse heat-realign train is running (stage 2)',
           String(a.ts().ctmt_fan_active), a.ts().ctmt_fan_active === true, 'true');
-        a.run(1200);
+        // #425: the passive term now runs the LAGGED ΔT enhancement, so a static
+        // 1/τ sum understates the sink whenever the window starts above the knee.
+        // The expectation integrates the engine's OWN claimed sink — enh is read
+        // live per sample — so the leg asserts observed decay ≈ the sink the
+        // engine says it is applying (and with gain 0 the integral collapses to
+        // the old 1200/τ_eff form exactly — validated both ways at the change).
+        var cc2 = RD.PWR_CONFIG.containment;
+        var sinkInt = 0;
+        a.run(1200, function (hh) {
+          var es = hh.eng.s;
+          sinkInt += ((es._ctmt_sink_enh || 1) / cc2.passive_sink_tau_s
+                    + (es.ctmt_fan_active ? 1 / (cc2.fan_sink_tau_s || 750) : 0)
+                    + (es.ctmt_spray_active ? 1 / (cc2.spray_sink_tau_s || 240) : 0)) * 0.5;
+        });
         var pLate = a.ts().containment_pressure_mpa;
         var frac = (pLate - AMB) / Math.max(pPk - AMB, 1e-9);
-        var cc2 = RD.PWR_CONFIG.containment;
-        var tauC = 1 / (1 / cc2.passive_sink_tau_s
-                      + (a.ts().ctmt_fan_active ? 1 / (cc2.fan_sink_tau_s || 750) : 0)
-                      + (a.ts().ctmt_spray_active ? 1 / (cc2.spray_sink_tau_s || 240) : 0));
-        var expRem = Math.exp(-1200 / tauC);
+        var tauC = 1200 / Math.max(sinkInt, 1e-9);   // effective τ over the window, for the report
+        var expRem = Math.exp(-sinkInt);
         // Floor at ~0, not above it: with the fans running, full decay TO AMBIENT
         // inside the window is the correct outcome (τ_eff ≈ 170 s, e^-1200/170 ≈
         // 9e-4), and steam ≥ 0 means the ratio cannot go meaningfully negative —

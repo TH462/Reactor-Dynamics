@@ -1931,6 +1931,35 @@
       // OFF — stage 2 adds the active systems). Sets both the no-spray decay after
       // a blowdown and the equilibrium a sustained hot leak parks at. [tune]
       passive_sink_tau_s: 220.0,   // #408 refit (was 1800): the sink must bite SLOW discharges harder than the blowdown pulse or the family's peaks read flat — this is what grades sev 0.05 (22.9 psig) under the spray point while the DBA pulse keeps its peak [tune]
+      // ---- #425: lagged saturation-ΔT enhancement of the passive sink. FITTED —
+      // it stands in for wall-ΔT condensation growth AND the unmodeled PRT (both
+      // declared, Manuals/12 §12.4d). Before it, the pure-tau equilibrium was
+      // press_gain·tau·inflow at ANY inflow, and an SBO boil-off parked the
+      // building at 83.3 psig — past the 60 psig design pressure on relief steam
+      // alone (GEND-061 Table 4-2: TMI-2 sat near ~1.3 psig preburn after ~10 h of
+      // stuck-PORV discharge; the direction anchor). The enhancement multiplies
+      // ONLY the passive term: enh -> 1 + gain·(T_sat(steam partial) − ambient −
+      // knee), clipped [1, 25] (dt-stability guard, not a tuned value), applied
+      // through a first-order LAG. The lag is the design: blowdown pulses dwell
+      // 20-40 s above the knee (sev 0.25-1.0 peaks 31-37 psig, measured) and never
+      // charge it, so the #408 pulse grading survives; the SBO relief-duty climb
+      // takes ~6.5 min (10 -> 30 psig, measured) and arrives fully braked. A
+      // static curve cannot do both — measured infeasible, TUNING_LOG
+      // 2026-08-08-develop-d. SIZING: the binding target is the BURN margin, not
+      // the spray point — the H2 burn deposits +32.4 psi on whatever base it finds
+      // (press_gain × h2_burn_gain × 6.8 v/o), so the boil-off park must sit low
+      // enough that park + 32.4 psi clears the 60 psig design pressure. Park
+      // ~22 psig -> SBO burn ~54.5 psig (5.5 psi margin); the ruled 30 psig cap
+      // alone would put the burn 2.4 psi OVER design. All three [tune].
+      // GRADING NOTE (measured at these values, 2026-08-08): the sev-0.25 LOCA
+      // peak lands 30.1 psig — 0.12 psi ABOVE the spray hi-hi. The "spray at
+      // sev >= 0.25" boundary was 1.3 psi thin BEFORE this change (#408 grading);
+      // it is now nominal-but-knife-edged, solid from sev ~0.3. That thinness is
+      // the plant's, not this term's — do not retune these constants to buy the
+      // boundary margin back (flagged owner-review on #425).
+      passive_sink_dt_knee_c: 55.0, // °C of T_sat elevation over ambient where the enhancement starts [tune]
+      passive_sink_dt_gain: 0.13,   // per °C above the knee [tune]
+      passive_sink_dt_lag_s: 120.0, // s — the pulse/boil-off separator [tune]
       // ---- stage 2 (#386): ACTIVE heat removal — AUTO-ONLY by ruling (owner,
       // 2026-08-08: "Can we make the system automated for now and not reveal the
       // controls to the player yet?") — no board card, no player-facing spray
@@ -1970,11 +1999,15 @@
       // teaching split. [tune]
       // Q0-sized (2026-08-08): at 0.004 the full-break peak sat 0.7 % under design
       // pressure — a knife-edge that flips on any retune (#418's TR-3 lesson).
-      // 0.0035 keeps MSLB the LIMITING containment case (real-plant ordering: it
-      // bounds the DBA LOCA's 38 psig) at ~88 % of design. Full break: crosses SI
-      // 3.5 psig ≈ 13 s, spray 30 psig ≈ 46-60 s, peak ~2.5 min, spray knockdown
-      // from there.
-      slb_ctmt_gain: 0.0035,
+      // 0.0035 kept MSLB the LIMITING containment case at ~88 % of design.
+      // #425 RE-SOLVE (0.0035 -> 0.0045, same day): the MSLB blowdown runs minutes
+      // above the enhancement knee — the one pulse long enough to charge the lag —
+      // so the new sink braked it 52.0 -> 39.0 psig and thinned the limiting-case
+      // ordering over the DBA (36.1) to 2.9 psi. 0.0045 restores MSLB to 48.2 psig
+      // = 80 % of design: limiting by 12 psi, under design by 12 psi — mid-band on
+      // both sides, which is what TR-3 asks. Full break still crosses SI 3.5 psig
+      // at ~13 s, spray ~40-70 s; sev 0.8 peaks 42.7 psig.
+      slb_ctmt_gain: 0.0045,
       // Normalized discharged-liquid units at 100 % indicated sump level. Sizing:
       // the full-break 30-min ride discharges ~229 units → reads ~76 %; an RCP seal
       // leak creeps. Indication only — no recirculation (no RWST inventory exists

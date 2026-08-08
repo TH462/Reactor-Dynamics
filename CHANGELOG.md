@@ -18,6 +18,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   it is read on demand, and length is only a defect where it is paid on every turn.
 
 ### Changed
+- **PWR containment: the passive sink strengthens with saturation elevation, on a lag — an SBO
+  boil-off no longer beats the building on relief steam alone** (#425, OWNER-RULED 2026-08-08).
+  Before: a station blackout with all feed lost parked containment at 83.3 psig (0.574 MPa g) —
+  past the 60 psig design pressure with no hydrogen and no break — and its H₂ burn peaked ABOVE
+  design; TMI-2 sat near 1.3 psig after ~10 h of the same source class (GEND-061). After: the
+  boil-off parks at **22.2 psig and never summons spray**, and the SBO burn lands above the
+  30 psig hi-hi and ~9 psi under design — the #386 "containment holds" pin now covers every
+  family that reaches ignition (new MD-3 legs). The lag is the design: blowdown pulses dwell
+  seconds above the knee and keep their #408 grading (severity grid moved ≤ 3 psi, SI crossings
+  unmoved, stuck-PORV 9.4 → 9.3 psig), while the boil-off's minutes-long climb arrives fully
+  braked. `slb_ctmt_gain` re-solved 0.0035 → 0.0045 (MSLB stays the limiting case, 80 % of
+  design). **Migration note**: one new private state field `_ctmt_sink_enh` (the lag);
+  pre-#425 saves restore it at 1.0 — no enhancement history invented — and re-charge from the
+  live pressure in ~2 min. In passing, re-measured the #384 Rev 13(j) residual and recorded it
+  CLOSED (full break bottoms at the building, 14.8 vs 14.7 psi absolute — `Manuals/12` §7.2).
+  Manuals Rev 14 pending item (o).
 - **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
   loaded into every agent's context on every turn and had grown to 1,735 lines under its own
   "Keep it SHORT" heading, with a single physical line of 5,310 words. Removed: 21,046 words of

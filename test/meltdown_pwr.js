@@ -37,6 +37,14 @@
   // damage endpoint cares about. Stops early on melt. Returns a summary.
   function driveDamage(h, maxSec) {
     var maxFuel = 0, minInv = 1e9, maxTavg = 0, damagedAt = -1, meltAt = -1, t, elapsed = 0;
+    // #425 containment recorders (additive — no other MD probe reads them). The
+    // boil-off-alone window ends at the BURN, not at the damage flag — measured,
+    // the burn fires a hair before 1200 °C (H2 hits 8 v/o while the hot node is
+    // still climbing), so a damage-bounded recorder catches the spike it exists
+    // to exclude. The 5 s grid under-reads a burn spike by up to ~15 % (post-#425
+    // the charged sink decays it at τ_eff ~60 s) — conservative for an
+    // under-design bound; the pre-burn boil-off is quasi-static, read exactly.
+    var maxCtmtPreBurn = 0, maxCtmtBurn = 0, maxAfw = 0;
     var n = Math.round(maxSec / 5);
     for (var i = 0; i < n; i++) {
       h.run(5); elapsed += 5;
@@ -46,11 +54,15 @@
       if (t.tavg_c > maxTavg) maxTavg = t.tavg_c;
       if (damagedAt < 0 && t.fuel_damaged) damagedAt = elapsed;
       if (meltAt < 0 && t.melted) meltAt = elapsed;
+      if (!t.ctmt_h2_burned && t.containment_pressure_mpa > maxCtmtPreBurn) maxCtmtPreBurn = t.containment_pressure_mpa;
+      if (t.ctmt_h2_burned && t.containment_pressure_mpa > maxCtmtBurn) maxCtmtBurn = t.containment_pressure_mpa;
+      if ((t.afw_flow_normalized || 0) > maxAfw) maxAfw = t.afw_flow_normalized;
       if (t.melted) break;
     }
     return {
       maxFuel: maxFuel, minInv: minInv, maxTavg: maxTavg,
       damagedAt: damagedAt, meltAt: meltAt, elapsed: elapsed,
+      maxCtmtPreBurn: maxCtmtPreBurn, maxCtmtBurn: maxCtmtBurn, maxAfw: maxAfw,
       t: t, s: h.eng.s,
     };
   }
@@ -62,6 +74,8 @@
     ck.info('peak Tavg (°C)', fmt(r.maxTavg, 0));
     ck.info('fuel damaged at (s)', r.damagedAt < 0 ? 'never' : r.damagedAt);
     ck.info('melted at (s)', r.meltAt < 0 ? 'never' : r.meltAt);
+    ck.info('max containment pre-burn (MPa abs)', fmt(r.maxCtmtPreBurn, 4));
+    ck.info('max containment post-burn (MPa abs)', r.maxCtmtBurn > 0 ? fmt(r.maxCtmtBurn, 4) : 'no burn in window');
     ck.info('destruction_cause (getTrueState)', String(r.t.destruction_cause));
     ck.info('destruction_cause (engine.s)', String(r.s.destruction_cause));
   }
@@ -156,6 +170,29 @@
         recordEndpoint(ck, r);
         ck('fuel is damaged (> 1200 °C)', fmt(r.maxFuel, 0), r.damagedAt >= 0, '> 1200 °C');
         ck('core melts (> 2800 °C)', fmt(r.maxFuel, 0), r.t.melted === true, 'melted');
+        // ---- #425: the SBO containment family, pinned where it lives. This rig IS
+        // the boil-off-alone plant: engine-direct starts no AFW (premise pinned
+        // below — full-stack M4 would auto-start the non-AC-gated pump, which is
+        // exactly what the #425 family's afw_failure removes), and the active
+        // containment trains are AC-dead in the ENGINE (acAvailable), so the
+        // trajectory is layer-invariant under SBO. BEFORE #425 this ride parked at
+        // 83.3 psig (0.6758 MPa abs) — past the 60 psig design pressure on relief
+        // steam alone — and its burn peaked ABOVE design (0.7367 MPa abs sampled,
+        // full stack). Injection: passive_sink_dt_gain 0 reproduces that plant and
+        // reds both pins with that signature.
+        ck('boil-off alone NEVER summons spray — containment stays under the 30 psig hi-hi until the H2 era (#425 RULED target)',
+          fmt(r.maxCtmtPreBurn, 4) + ' MPa abs vs 0.3081', r.maxCtmtPreBurn > 0.11 && r.maxCtmtPreBurn < 0.3081,
+          'a real pressurization, under the hi-hi');
+        // The burn lands between damage and melt; ride is 5 s steps so the sampled
+        // spike under-reads ~15 % — conservative for the under-design side, and the
+        // above-hi-hi side clears by ~20 psi (measured 0.4535 at a 10 s grid).
+        ck('…and the H2 burn on the SBO base fires ABOVE the hi-hi and UNDER design — the #386 containment-holds pin, extended to this family',
+          r.maxCtmtBurn > 0 ? fmt(r.maxCtmtBurn, 4) + ' MPa abs vs (0.3081, 0.515)' : 'no burn in window',
+          r.maxCtmtBurn > 0.3081 && r.maxCtmtBurn < (RD.PWR_CONFIG.containment.design_pressure_mpa || 0.515),
+          'burned, in (0.3081, 0.515)');
+        ck('premise: this ride was boil-off ALONE — no AFW ever delivered, spray demand stood undelivered',
+          'afw max ' + fmt(r.maxAfw, 4) + ', spray active ' + String(r.t.ctmt_spray_active),
+          r.maxAfw < 0.001 && r.t.ctmt_spray_active === false, 'afw ~0, spray delivery dead');
       });
     },
 
