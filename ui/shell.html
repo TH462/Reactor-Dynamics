@@ -6,11 +6,10 @@
   <title>Reactor⚛️Dynamics — Control Room</title>
   <link rel="stylesheet" href="shell.css">
   <link rel="stylesheet" href="diagram/board/pwr_board.css">
-  <!-- Vercel Web Analytics (cookieless page-view beacon; 404s harmlessly off-Vercel) -->
-  <script defer src="/_vercel/insights/script.js"></script>
-  <!-- Vercel Speed Insights — real-user load timings for the control room, which
-       pulls in far more JS than the site pages. Control room only. -->
-  <script defer src="/_vercel/speed-insights/script.js"></script>
+  <!-- No analytics tag here, deliberately. The Vercel beacons were removed when the site
+       moved to Cloudflare (#413): Cloudflare Web Analytics collects at the edge on a
+       proxied zone, so it needs no script at all. That is also why this is a deletion
+       rather than a swap — and why the control room now loads nothing it does not use. -->
 </head>
 <body>
   <div class="app">
