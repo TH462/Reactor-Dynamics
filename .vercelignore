@@ -27,6 +27,7 @@ tools/hook_repack_manuals.js
 tools/make_portable.cmd
 tools/pack_manuals.js
 tools/stamp_manual_revision.js
+tools/verify_release_deploy.js
 Blueprint
 terminals
 Manuals
