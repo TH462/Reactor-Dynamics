@@ -76,6 +76,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the SG feed trio: single-signal AFW (the "30 % real" premise inverted), a programmed level target, and a demand box that admits it (#380 / #355 / #358, 2026-08-08)
+
+- **AFW auto-starts on the same 17 % lo-lo signal that scrams the reactor** (#380, owner-ruled).
+  The evidence pass inverted the issue: the "sourced real ~30–32 %" lo-lo was the NUREG-1431
+  *template's* bracketed placeholder (Vol 1, ML12100A222 — the previously-cited Bases volume has
+  no numbers), while **Ginna, the anchor plant, specifies exactly 17 %** (UFSAR ch10,
+  ML20339A040) — the shipped trip was the sourced value all along and did not move. What moved
+  is ours: the invented 20 % AFW offset retired (departure §8.19 struck; one signal for both is
+  three-document sourced, and Ginna's own LOFW analysis delivers "AFW started, level still
+  falling" ~60 s *after* the trip). Measured: warning 29 s → trip 40.0 s (11.0 s window,
+  TR-14 at baseline); on a total feed loss the PI-4 feed-flow start has AFW running at ~3 s.
+  Dead `afw_start_level` config duplicate deleted. Manuals 03/06/07/09/12 + `pwr_esf.js`
+  (which still claimed a 12 % trip and an 11.03 MPa SI) re-stated; Rev 14 item (k).
+- **Auto SG feed regulates to the programmed 65 % level** (#355, owner-ruled) — not whatever
+  level it was engaged at. `program: 65` + 0.1 %/s setpoint slew (the rods_tavg idiom);
+  measured: engage at 33 % walks to 65 in ~6 min, 3-point crest, no isolation approach. A
+  different hold level is a MANUAL evolution. `run_autoctl`'s save/load free-setpoint fixture
+  moved to `boron_conc` (a player setpoint on a programmed channel is overwritten by design);
+  30/30. Manuals 03/04; Rev 14 item (l).
+- **The SG FEED demand box goes amber — and the corner reads NO FLOW — when the plant delivers
+  none of it** (#358 option A, owner-ruled). Predicate: commanded speed > 10 % while measured
+  main-feed flow (`condensate_flow` — main-only, so AFW can't mask a dead train) ≈ 0. Covers
+  the ~10 silent blackout minutes before SAT HI (corner ranked NO FLOW > SAT) and the frozen
+  post-isolation demand (355 gpm, 28 minutes, no main feed). The demand stays latched (#329).
+  Injection-verified: predicate blanked → the new board_check pins fail on the old lie
+  (HOLDING / grey box). board_check 222 checks; Rev 14 item (m).
+
 ### Changed — the pressurizer node carries its own law: the void lift becomes a FLOW, and the retired re-lift stays retired (#385 stages 2–3, 2026-08-08)
 
 - **`pzrNodeLevel`** — one law, two consumers (level publishes it, the pressure regime's solid

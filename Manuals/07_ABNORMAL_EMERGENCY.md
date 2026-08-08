@@ -85,14 +85,17 @@ is the failure's physical size — the response procedures below apply at any se
 - Tavg / pressure rising if power remains  
 
 ### Automatic
-- Low SG level → SCRAM (~17 %, lo-lo)  
-- AFW AUTO start ~20 % if armed (established just above the trip)  
+- Low SG level → SCRAM (17 %, lo-lo) — the **same signal auto-starts AFW** if armed (one
+  signal for both, as in the real plant)  
+- AFW AUTO also starts on collapsed feed flow at power (feed flow < 10 % above P-9) — on a
+  total feed loss this start leads, long before any level signal  
 
 ### Timing — what to expect
 
-From a total loss of main feedwater at full power, measured: **SG LVL LO** (30 %) at about
-**29 s**, AFW auto-start at about **37 s**, **SG LVL LO LO** and the reactor trip at about
-**40 s**. That leaves roughly **11 s** between the first warning and the trip.
+From a total loss of main feedwater at full power, measured: AFW auto-start at about **3 s**
+(the feed-flow start — level is still ~65 %), **SG LVL LO** (30 %) at about **29 s**,
+**SG LVL LO LO** and the reactor trip at about **40 s**. That leaves roughly **11 s** between
+the first warning and the trip, with AFW already feeding the whole way down.
 
 **Expect the trip. You are not going to prevent it.** Even restoring feed the instant the
 warning comes in still trips the plant — the feed pump takes time to come back up while the

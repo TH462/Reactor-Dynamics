@@ -45,6 +45,53 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-08-develop-b — #380 resolved by premise inversion (single-signal AFW), #355 feed program, #358 NO FLOW
+
+**The decision that mattered was reading the brackets.** #380's premise — lo-lo "sourced real
+~30–32 % NR" against our 17 — cited NUREG-1431 Tables 3.3.1-1/3.3.2-1, and those tables print
+`[30.4]%`/`[32.3]%` **in square brackets: the STS template's plant-specific placeholder**, not a
+plant's setting (they are also in Vol 1 ML12100A222; the previously-cited ML12100A228 is the
+Bases volume and carries no setpoint numbers). The plant-specific corpus values: **Ginna 17 %
+exactly** (UFSAR ch10 ML20339A040:1655), W training plant 11.5 % (ML11223A293:271). Since #419
+anchored this plant to Ginna, the shipped 17 was the sourced value — the claim survived #220
+claim 6 and the #374 evidence pass because both verdicted the *mechanism* (single signal) and
+inherited the *number*. The trip did not move; TR-14 (40.0 s, 25–60 band, 11.0 s window) and
+the #135 anchor are untouched.
+
+**What moved is the invented half** *(OWNER RULING, 2026-08-08: selected "Single-signal AFW")*:
+the AFW ESF actuation 20.0 → 17.0, same instrument/direction as the trip — the sourced design
+(WTSM §5.7 cond. 1; Ginna TS Bases + NUREG-1431 Bases: the trip function *"also performs the
+ESFAS function of starting the AFW pumps"*). §8.19 struck in the register. **No 60-s start
+delay modeled**: Ginna's Table 15.2-4 AFW-at-115-s is analysis assumption I (licensing
+conservatism), not hardware — the pump/delivery lags are the honest model. The teaching window
+survives in the real ordering: warning→trip 11.0 s pre-trip, AFW fighting the drain post-trip
+— and on a TOTAL feed loss PI-4 (fw_flow < 0.10 above P-9, the real condition-3 analog) has
+AFW running at 2.5 s with level still 64.9 %, which the manuals' "AFW at ~37 s" timeline had
+silently predated. `afw_start_level` deleted from `pwr_config` (zero readers). CC-3 dip
+38.7 % ≥ 8; run_behavior 66/2 xfail at baseline.
+
+**#355** *(OWNER RULING, 2026-08-08: selected "Program to 65 %")*: `feed_sg` gains
+`program: 65` + `spSlew: 0.1` — capture still seeds spEff so engage is bumpless, then the
+working setpoint slews to the program (the rods_tavg mechanics, `control_kernel._trackChannel`).
+Measured: engage at 32.9 % → 65 in ~6 min, crest 68.0, settles 64.5–65.5. The save/load suite's
+free-setpoint fixture (`setSp('feed_sg', 70)`) stopped being free state by design; re-pointed —
+programmed channel asserts sp RE-DERIVES to 65, operator-sp round-trip moves to `boron_conc`
+(720 vs ~705 capture). run_autoctl 30/30.
+
+**#358 option A** *(OWNER RULING, 2026-08-08: selected "Option A")*: `feedNoFlow` = commanded speed > 10 % ∧
+`condensate_flow` < 0.02 — **main-feed-only deliberately**; `fw_flow` is main+AFW, so the AFW
+start would mask exactly the dead train being reported. Corner word NO FLOW ranked ABOVE SAT HI
+(the blackout spends ~10 min engaged-unsaturated while winding 100 → 120 %; SAT HI only arrives
+at the rail) and a `numberWarn` hook ambers the gpm demand box in every mode (the LOOP case
+freezes 355 gpm mid-range — no rail, corner ISOLATED, and only the number kept lying). Demand
+never written (#329). Injection: predicate blanked → both new board_check pins + 3 selfTest
+cases red on the old behavior; restored → 222 checks green.
+
+Docs: Rev 14 items (k)/(l)/(m) stamped+packed (run_manual_rev 15/15); `pwr_esf.js` re-measured
+wholesale — it still taught a 12 % trip, an 11.03 MPa SI, AFW-at-level-19 and a ~25 % AFW hold,
+all four stale before this pass; DESIGN_CRITERIA's §8.19 house-pattern example now carries the
+second half of the lesson (a declared departure retires when the evidence improves).
+
 ## 2026-08-08-develop-a — #385 pressurizer inventory NODE, stages 0–3 (bundle: #415/#337/#334/#354)
 
 The RULED follow-on executed (staging on #385; plan-review rulings 2026-08-08: hold the

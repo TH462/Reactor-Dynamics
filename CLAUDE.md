@@ -464,9 +464,6 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
   75 % annunciator unreachable free-play; qualify re-keyed to a state cue) — a
   level-constants-set ruling if the cue matters. TR-1i is a second strict xfail (#420,
   coupled to #378). Remaining #419 scope: none — the umbrella is built.
-- **#380** — the SG lo-lo trip / warning / AFW-start ladder wants re-anchoring as ONE decision;
-  the sourced setpoint passes on physics, the ladder is the blocker — **re-measure against
-  #418's new ledger, not the old gain**. `status-needs-ruling`.
 - **#378** — a post-step rod limit cycle, measured to a REJECT (the fix costs TR-1i's sourced ramp
   duty). `run_behavior` carries **TR-18** as a strict xfail pinning it.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
@@ -494,12 +491,12 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   measurement's temperature with the plant's** — rho_excess quoted 975 ppm at "the anchor",
   benign 5 °C apart, wrong at 286; and two latent linearizations surfaced only when the
   anchor walk lengthened. The ghost-constant lesson stands: check the consumer first.
-- **A constant 142 % wrong survived because nothing checked it against a source** (2026-08-05,
-  #364/#365). Decay heat ran on two exponential groups with nothing faster than 33 min, so it was
-  flat where a real curve falls fastest. Refit to four groups, within **4.86 %** of the standard
-  from 1 s to 28 h. **The target was the decision, not the fit** — two NRC primaries that
-  cross-check, ÷1.2 because that is a licensing margin and this is a simulator. Adjudicating the
-  11 red probes ONE AT A TIME (HR10) is the only reason two real defects surfaced.
+- **The #380 ladder decision dissolved when the brackets got read** (2026-08-08). The "sourced
+  real ~30–32 %" SG lo-lo was NUREG-1431's bracketed TEMPLATE placeholder — Ginna, the anchor
+  plant, specifies 17 %, the shipped value. Trap: **a placeholder cites like a number, and it
+  survived two evidence passes because both verdicted the mechanism and inherited the number.**
+  AFW moved onto the trip signal (single-signal, three-document sourced; §8.19 retired), feed_sg
+  targets the programmed 65 % (#355), and the SG FEED demand box admits NO FLOW (#358).
 - **The pressurizer carries its own inventory node, and the level lift became a FLOW**
   (2026-08-08, #385 stages 0–3). The void credit accretes at the admittance split prevailing
   WHEN displacement happens — what left through the hole is not owed back in either
@@ -564,6 +561,10 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
   hid an interlock with no reset differential chattering at 35 % duty.
+- **Adjudicate a physics change's red probes ONE AT A TIME** (rescued from the #364/#365
+  themes bullet on eviction, 2026-08-08). Batch-judging 11 reds as "the retune moved things"
+  would have hidden two real defects — each red is the fix working, a stale fixture, or a new
+  defect, and only per-probe adjudication (HR10) tells which.
 - **Know which LAYER owns the effect you are asserting** (table below). A multi-part fix whose
   parts are each sufficient makes a one-sided injection lie — revert BOTH to reproduce (#295).
   Neutering an automation channel: blank the ENGAGE direction ONLY, or the plant sits in the IC's

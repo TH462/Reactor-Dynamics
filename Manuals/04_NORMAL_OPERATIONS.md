@@ -93,7 +93,7 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 | 1 | Mode 5 | Confirm cold plant: Tavg ~122 °F (50 °C), P ~363 psi (2.5 MPa), subcritical, RHR in service, RCPs secured | (observe) | Tavg < 203 °F (95 °C); Mode 5 |
 | 2 | 5 → 4 | **Start RCPs** (RCP → Run). Forced flow is the heat source and couples the SG | RCP Run/Stop | Pump flow ~100 % |
 | 3 | 5 / 4 | Confirm generator **disconnected** (Disconnect Grid if needed). Do not reconnect | Turbine Load | Load mode disconnected; 0 MWe |
-| 4 | 5 / 4 | Engage **Feed AUTO** at cold SG level (~65 %) so three-element captures the right setpoint | Feed Pumps | Feed AUTO engaged |
+| 4 | 5 / 4 | Engage **Feed AUTO** — three-element regulates to the programmed 65 % level (it walks there from wherever level stands) | Feed Pumps | Feed AUTO engaged |
 | 5 | 5 / 4 | Set **Dump SP** to no-load anchor **1020 psi (7.03 MPa)** — Ginna's sourced 1005 psig no-load point (#419); leave dump **shut** | Dump SP | SP set; dump demand ~0 |
 | 6 | 5 → 4 | Raise **Pressure SP** to **2235 psi (15.41 MPa)** — the setpoint walks up at the real **0.23 psi/s** heater pace and the plant reaches NOP in about **1.8 plant-hours** (ride it at acceleration). RHR isolates on the way past its 600 psi (4.14 MPa) autoclosure interlock. **As pressure passes 600 psi, do step 7 without leaving this step** | Pressure SP | P > 2176 psi (15.0 MPa) |
 | 7 | Mode 4 | **Open SI accumulator discharge isolation** (re-align) *while pressure is between 600 psi (4.14 MPa) and 1000 psi (6.895 MPa)* — see the WARNING. Verify SIT fill on ECCS side | Accumulator valve | Valve open; opened below 1000 psi (6.895 MPa) |

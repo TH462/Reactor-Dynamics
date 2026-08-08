@@ -723,10 +723,16 @@ test('3600× keeps the PID engaged — no plant-side handoff (feed stays uncoupl
 });
 
 // ============================================================ save / rewind
+// The free-setpoint half of this test lived on feed_sg (setSp 70) until #355 put the
+// channel on the 65 % level program — a player setpoint on a programmed channel is
+// overwritten by design on the next evaluation, so it stopped being free state. The
+// programmed channel now asserts its setpoint RE-DERIVES to the program after load;
+// the round-trip of an operator-chosen setpoint moves to boron_conc, the remaining
+// sp channel without a program.
 test('Automation state survives save/load (engaged + setpoint + dynamics)', function (ck) {
   var r = rig('pwr', 'hot_full_power');
-  r.engage(['feed_sg', 'rods_tavg']);
-  r.setSp('feed_sg', 70);
+  r.engage(['feed_sg', 'rods_tavg', 'boron_conc']);
+  r.setSp('boron_conc', 720);   // ≠ the analyzer capture (~705) — a fresh capture would erase it
   r.run(120);
   var save = r.service.saveState();
   var iSaved = save.control_failure.automation.channels.feed_sg.I;
@@ -740,11 +746,13 @@ test('Automation state survives save/load (engaged + setpoint + dynamics)', func
   r.rehook();   // load rebuilds the layer — re-attach the command counter
   var c = r.chan('feed_sg');
   ck('feed channel re-engaged', c.engaged, c.engaged === true, 'true');
-  ck('setpoint restored', c.setpoint, c.setpoint === 70, '70');
+  ck('programmed setpoint re-derives (65 % level program, #355)', c.setpoint, c.setpoint === 65, '65');
+  ck('operator setpoint restored (boron_conc, no program)', r.chan('boron_conc').setpoint,
+    r.chan('boron_conc').setpoint === 720, '720');
   ck('integrator restored', String(r.service.layer.byId.feed_sg.I), r.service.layer.byId.feed_sg.I === iSaved, String(iSaved));
   ck('rod channel re-engaged', r.chan('rods_tavg').engaged, r.chan('rods_tavg').engaged === true, 'true');
   r.run(120);
-  ck('holds level after restore', inst(r).sg_level.toFixed(1), near(inst(r).sg_level, 70, 4), '70±4');
+  ck('holds level after restore', inst(r).sg_level.toFixed(1), near(inst(r).sg_level, 65, 4), '65±4');
 });
 
 test('Rewind restores controller dynamics exactly (no integrator ghost)', function (ck) {

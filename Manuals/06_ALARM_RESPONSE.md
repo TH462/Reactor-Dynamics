@@ -290,7 +290,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | ≤ **30 %** |
 | **Means** | Heat sink degrading. |
-| **Actions** | 1) Raise feed. 2) Check main feed failures. 3) Prepare AFW. 4) Expect AFW AUTO ~**20 %** if armed. |
+| **Actions** | 1) Raise feed. 2) Check main feed failures. 3) Prepare AFW. 4) Expect AFW AUTO at **17 %** lo-lo (same signal as the SCRAM) if armed — a total feed loss starts it earlier, on collapsed feed flow. |
 
 ---
 
@@ -300,7 +300,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | ≤ **17 %** (SCRAM) |
 | **Means** | Heat sink critical. |
-| **Actions** | 1) Verify SCRAM. 2) **AFW Start** immediately. 3) Turbine load off. → **PWR-E01** |
+| **Actions** | 1) Verify SCRAM. 2) Verify **AFW started** — it auto-starts on this same signal if armed; start it manually if not. 3) Turbine load off. → **PWR-E01** |
 
 ---
 

@@ -1518,10 +1518,11 @@
       afw_flow_frac: 0.15,         // AFW capacity, normalized to rated feed [tune]
       // Auto-start CONDITION sourced — SG lo-lo level is condition 1 of the real
       // five (WTSM §5.7, ML11223A229; full list quoted at the pwr_control lo-lo
-      // trip). The real plant starts AFW from the SAME signal that trips the
-      // reactor; the 3-point offset above our 17 lo-lo is the declared teaching
-      // departure, DESIGN_COMPANION §8.19 (#220, re-verdicted #374).
-      afw_start_level: 20.0,       // % — M4 auto-start setpoint (pwr_control actuation reads the instrument)
+      // trip), and since #380 (2026-08-08) the actuation sits on the SAME signal
+      // and setpoint as the reactor trip — the single-signal real design. The
+      // setpoint is control-layer data (pwr_control PWR_ACTUATIONS); a duplicate
+      // `afw_start_level` lived here until #380 with ZERO readers, and a dead
+      // constant that can silently disagree with the live one is worse than none.
       // AFW LATCHES (owner ruling, #207): the pump demand set by the M4 actuation has no
       // reset, so it stands until the operator secures it — as in a real plant, where AFW
       // auto-starts on low level and runs until someone stops it.

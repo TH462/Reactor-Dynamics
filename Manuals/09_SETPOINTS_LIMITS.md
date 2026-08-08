@@ -51,7 +51,7 @@
 | Primary pressure | high | **2384 psi (16.44 MPa)** | |
 | Primary pressure | low | **1800 psi (12.41 MPa)** | |
 | PZR level | low | **12 %** | |
-| SG level | low | **17 %** | Lo-lo; AFW auto-starts just above (20 %) |
+| SG level | low | **17 %** | Lo-lo; the same signal auto-starts AFW (single-signal, as in the real plant) |
 | SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
 | **Turbine trip (P-9)** | turbine tripped | — | **Reactor trip on turbine trip**, condition **≥50 % power** (P-9). Above P-9 a turbine trip scrams the reactor *immediately* — it is not a ride-out. Below P-9 there is no reactor trip and the steam dump carries the transient. A **planned offline** (generator OFF / `disconnect_grid`) is **not** a turbine trip and never arms this — see `03` §12.1 |
 | RCS loop flow | low | **90 % of rated** | Low-flow trip; reads the `rcs_flow` elbow-tap channel. Blockable below **P-7 (10 % power)**, auto-reinstates above. Real Westinghouse setpoint. **One channel, not 2-of-3** — see `12` §10.7 for that departure and what it costs |
@@ -103,7 +103,7 @@
 | **SI backup (containment)** | containment_pressure | high | **18.1 psi (0.125 MPa)** abs — the sourced **3.5 psig** | Starts safety injection on building pressure — the high-energy-line-break backup. **Cannot be blocked** (no ESF arm gates it; WTSM 12.3: "cannot be blocked by the operator"). Re-fires if pressure cycles back through; securing SI remains a deliberate operator action |
 | **Containment spray** | containment_pressure | high | **44.7 psi (0.308 MPa)** abs — the sourced **30 psig** hi-hi | AUTO-ONLY in this build (no board control): starts on hi-hi, sealed in while above the release, and **secures itself** once pressure recovers below the SI signal. Spray water runs to the sump |
 | **Fan coolers, safety realign** | hpi_active | is_true | on any SI | Ginna TS B 3.6.6: the CRFC fans auto-start on SI; normal-mode fan cooling is folded into the building's passive heat sink. Indication only (PWR-A39) |
-| AFW start | sg_level | low | **20 %** | ESF arm must be AUTO |
+| AFW start | sg_level | low | **17 %** | Same signal as the lo-lo reactor trip (single-signal); ESF arm must be AUTO |
 | AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |
 | MFW isolation + AFW start (P-4) | tavg | low | **552.2 °F (289 °C)** | Condition: reactor tripped — the post-trip MFW→AFW handoff; computed as the no-load anchor + 5.4 °F (3 °C), so it moved with the #419 wave-3 anchor |
 | RHR start | primary_pressure | low | **400 psi (2.76 MPa)** | Condition: scrammed; ties to the RHR suction-valve **block-open** permissive, not the autoclose — see **§ RHR** below |

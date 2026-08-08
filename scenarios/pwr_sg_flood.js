@@ -10,9 +10,10 @@
  * both accepted. Probed fill (rod_nudge −10, pump 100 %): level 75 % at
  * ~63 s, 85 % at ~96 s, 96 % at ~132 s; no automatic trip ever comes (level
  * just parks at 100 %), so the failure endpoint is the 96 % threshold.
- * Channel re-engage at high level captures the setpoint clipped to 80 %,
- * crests ~+9 % on pump inertia, then recovers; a pump cut turns level
- * immediately (AFW would catch a runaway fall at 20 %).
+ * Channel re-engage at high level starts from the 80 % setpoint clip and the
+ * #355 program then walks it back toward 65 %; crests ~+9 % on pump inertia,
+ * then recovers; a pump cut turns level immediately (a runaway fall ends at
+ * the 17 % low-low — AFW start and reactor trip on the same signal, #380).
  */
 ;(function (RD) {
   'use strict';
@@ -82,8 +83,8 @@
       { id: 'recovering',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'Action taken — now watch it bite. The pump has seconds of inertia, so the level crests before it turns. If you engaged the channel, it pulls level back toward its band. If you cut the pump by hand, you now OWN that level: bring feed back up to match steam once the flood is off, or you will ride it down into the AFW at 20%.',
-          industry: 'Feed correction in progress (pump inertia τ≈8 s — expect crest, then turnaround). Channel fix: level returns to the setpoint band. Manual fix: re-establish steam–feed match after recovery or expect AFW actuation at 20 %.',
+          learning: 'Action taken — now watch it bite. The pump has seconds of inertia, so the level crests before it turns. If you engaged the channel, it pulls level back toward its band. If you cut the pump by hand, you now OWN that level: bring feed back up to match steam once the flood is off, or you will ride it down into the 17 % low-low — which starts AFW and scrams the reactor on the same signal.',
+          industry: 'Feed correction in progress (pump inertia τ≈8 s — expect crest, then turnaround). Channel fix: level returns to the setpoint band. Manual fix: re-establish steam–feed match after recovery or expect the 17 % low-low — AFW start and reactor trip together (single-signal).',
         },
         branches: [
           { trigger: { type: 'all', triggers: [

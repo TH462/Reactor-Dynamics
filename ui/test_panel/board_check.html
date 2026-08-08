@@ -893,6 +893,20 @@
            RD.PwrBoard.pipeFlowState('pms3l83etan') === 'paused', RD.PwrBoard.pipeFlowState('pms3l83etan'));
         ck('pipe: blackout -> feed tee to SG PAUSED (item 9: no main feed, no AFW)',
            RD.PwrBoard.pipeFlowState('pms31qjbqhy') === 'paused', RD.PwrBoard.pipeFlowState('pms31qjbqhy'));
+        // #358: at 120 s of blackout the feed channel is engaged, NOT yet saturated (the
+        // windup reaches its 120 % rail near ~600 s), and commanding ~27 % at a plant
+        // delivering ~1e-51 — the exact state that used to render a green HOLDING corner
+        // and a climbing cyan gpm box. Injection-verified: blank feedNoFlow's flow term
+        // and both of these go back to lying.
+        (function () {
+          var st = document.querySelector('[data-item="ims89lnqmip"]');
+          ck('func: blackout -> SG FEED corner reads NO FLOW in the pre-SAT window (#358)',
+             !!st && /NO FLOW/.test(st.textContent), st ? st.textContent : 'tile missing');
+          var ni = document.querySelector('[data-item="imro8xhy2me"] input');
+          var nc = ni ? ni.style.color : 'input missing';
+          ck('func: blackout -> the gpm demand box is marked amber — commanded, not delivered (#358)',
+             nc === 'rgb(216, 166, 87)' || nc === '#d8a657', nc);
+        })();
         // Mode 5 is the control: rcs_flow is ~0 there, so the SAME pipe must be still — without
         // this the crawl check passes on a board that simply never stops the primary.
         var m5 = new RD.SimulationService({ plant_id: 'pwr', initial_state: 'cold_shutdown' });

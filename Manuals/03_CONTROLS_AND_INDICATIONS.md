@@ -402,10 +402,9 @@ displayed target snap to the lab number, so the next dose is computed from reali
 | ≥ 75 % | SG LVL HI alarm |
 | **65 %** | nominal |
 | ≤ 30 % | SG LVL LO alarm |
-| ≤ 20 % | AFW auto-start |
-| **≤ 17 %** | SG LVL LO LO → reactor SCRAM |
+| **≤ 17 %** | SG LVL LO LO → reactor SCRAM **and** AFW auto-start (one signal for both, as in the real plant) |
 
-On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the alarm/AFW bands, **green** through the normal ~30–75 % operating range. See §09 for the authoritative setpoint table.
+On a gauge, **red** at the two trip bands (≥90 %, ≤17 %), **amber** at the alarm bands, **green** through the normal ~30–75 % operating range. See §09 for the authoritative setpoint table. AFW also auto-starts on collapsed feed flow at power and on the post-trip handoff — see §12.
 
 ### 9.2 Steam & Flow card
 
@@ -444,6 +443,7 @@ Level tells you what already happened; the flow mismatch tells you what is about
 | **Manual effect** | Takes the three-element controller to **MANUAL** |
 | **▲▼ step** | ±20 gpm |
 | **Character** | A **fixed-demand** device. It holds the speed you set — it has no level feedback of its own |
+| **NO FLOW marking** | The commanded gpm turns **amber** — and the SG FEED corner reads **NO FLOW** — when the plant is delivering none of it (dead feed train: blackout, isolation). The demand stays where you left it; the colour says the plant is not doing that number. FEED FLOW below has the truth |
 
 **WARNING:** in MANUAL the pump does exactly what you asked and nothing else. Set it to match
 steam flow and level holds indefinitely; set it wrong and level ramps to a trip in *whichever*
@@ -458,8 +458,9 @@ power is ~1000 gpm, at 6 % power it is ~50 gpm.
 3. Only then trim: a little above steam flow to raise level, a little below to lower it.  
 4. Return to the matched value as level approaches where you want it — level lags, so trim
    back **before** you arrive, not after.  
-5. Re-engage **AUTO** (SG FEED RATE panel) when done; the channel captures current level as
-   its setpoint, so engage it at a level you are happy to hold.  
+5. Re-engage **AUTO** (SG FEED RATE panel) when done; the channel regulates to the
+   programmed **65 %** level, walking there gently from wherever level stands at engage.
+   To hold a different level on purpose, stay in MANUAL.  
 
 #### RESTORE — main feedwater isolation
 

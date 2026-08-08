@@ -29,6 +29,77 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-08-develop-b (#380 SG lo-lo ladder RESOLVED by premise inversion + #355 feed program + #358 NO FLOW)
+
+**Three SG-feed issues closed in one pass, all three ruled the same day** *(OWNER RULINGS,
+2026-08-08, AskUserQuestion selections: #380 "Single-signal AFW"; #355 "Program to 65 %";
+#358 "Option A")*.
+
+### #380 — the evidence pass INVERTED the issue's premise; the ladder decision dissolved
+
+The issue (and `pwr_control.js`'s own comment, and §8.19) held that the real lo-lo function
+sits at "~30–32 % of narrow-range span" against our 17 — sourced to NUREG-1431 Tables
+3.3.1-1/3.3.2-1. **Misread: those tables print `[30.4]%` / `[32.3]%` in SQUARE BRACKETS — the
+Standard Tech Spec TEMPLATE's plant-specific placeholder, not any plant's setting** (and they
+are in Vol 1, ML12100A222; the previously-cited ML12100A228 is the Bases volume, which carries
+no numbers at all). The plant-specific values actually in the corpus: **Ginna — the #419
+anchor plant — specifies exactly 17 %** (*"low-low level of 17%"*, UFSAR ch10 ML20339A040:1655)
+and the W training plant 11.5 % (ML11223A293:271). The shipped value was the sourced one all
+along; no setpoint moved, and the ladder re-anchor the issue was blocked on is moot. The trap
+for the record: **a bracketed STS placeholder cites like a real number, and it survived two
+evidence passes (#220 claim 6, #374) before anyone read the brackets.**
+
+What WAS ours: the 20 % AFW start, 3 points above the trip (declared departure §8.19). Three
+documents confirm one-signal-one-setpoint (WTSM §5.7 condition 1 ML11223A229:185; Ginna TS
+Bases ML20339A221:7360 and NUREG-1431 Bases ML12100A228:7892 — *"also performs the ESFAS
+function of starting the AFW pumps on low low SG level"*), and Ginna's own LOFW analysis
+delivers the §8.19 teaching window POST-trip: Table 15.2-4 has AFW pumping at 115 s against
+the 55 s lo-lo signal (the 60 s is analysis assumption I, ML20339A101:3773 — licensing
+conservatism, not hardware, so no start delay was modeled). **Built: the AFW actuation moved
+20.0 → 17.0 on the same instrument/direction — single signal (`pwr_control.js`
+PWR_ACTUATIONS); §8.19 struck (retirement row in `DESIGN_COMPANION`); the dead
+`afw_start_level: 20.0` deleted from `pwr_config.js` (zero readers — a duplicate that could
+only ever disagree).**
+
+Measured after (engine+M4, TR-14's exact setup, severity-1.0 LOFW from HFP): **AFW at 2.5 s**
+— the PI-4 feed-flow start leads with level still 64.9 %, which the manuals' "AFW at ~37 s"
+line predated — warning 29.0 s, trip 40.0 s on `sg_level low` at 16.3 % indicated, window
+11.0 s, +600 s recovery 40.2 % under AFW. TR-14 40.0 s (band 25–60), TR-2 40.0 s, CC-3 dip
+min 38.7 % ≥ 8: `run_behavior` 66 pass / 2 xfail — at baseline, nothing re-fitted.
+
+### #355 — feed_sg targets the PROGRAMMED 65 %, not the engage capture
+
+`program: 65` + `spSlew: 0.1 %/s` (the rods_tavg idiom; capture still seeds spEff for a
+bumpless engage). Measured: engage at 32.9 % walks to 65 in ~6 min, crest 68.0 (3 points,
+well under the 75 HI alarm), settles 64.5–65.5, no trip. **Casualty caught by the gate, not
+predicted:** `run_autoctl`'s save/load suite used `setSp('feed_sg', 70)` as its free-setpoint
+fixture — a player setpoint on a programmed channel is overwritten by design, so that half
+of the fixture stopped existing. Re-pointed: the programmed channel asserts its setpoint
+RE-DERIVES (65) after load; the operator-setpoint round-trip moved to `boron_conc` (720 vs
+the ~705 capture), the remaining sp channel without a program. 30/30.
+
+### #358 — the delivery predicate (option A as filed)
+
+`feedNoFlow(s)`: commanded `feed_pump_speed_pct` > 10 while `condensate_flow` < 0.02 —
+main-feed-only on purpose (`fw_flow` is main + AFW, so an AFW start would mask a dead train).
+Surfaced twice on the SG FEED card: corner word **NO FLOW** (engaged case, ranked ABOVE SAT
+HI — covers the ~10 silent blackout minutes before the 120 % rail) and a `numberWarn` driver
+hook rendering the gpm DEMAND box amber in every mode including MANUAL (the frozen 355-gpm
+LOOP case, where the corner already says ISOLATED but the number kept lying). Demand stays
+latched per #329. **Injection-verified: predicate blanked → the new board_check pins fail
+showing exactly the old behavior (corner HOLDING, grey box) → restored.** board_check 222
+checks green.
+
+### Records
+
+Manuals Rev 14 items (k)/(l)/(m) — 03 §9.1/§9.2, 04 PWR-N01, 06 A17/A18, 07 PWR-E01 (timeline
+re-measured), 09 §2.0/§3.0, 12 §8.4 — stamped + repacked, `run_manual_rev` 15/15 (33 § refs
+resolve). `pwr_esf.js` prose re-measured wholesale (it still claimed a 12 % trip, an 11.03 MPa
+SI, an AFW start "at level ~19 %", and a ~25 % AFW hold — stale on four axes independent of
+this change); `pwr_sg_flood.js`, `pwr_board_inspect.js` ladder/feed entries, DESIGN_CRITERIA's
+§8.19 example re-stated as the retire-on-better-evidence lesson. perturb_sweep waived: no
+`[tune]` constant moved (setpoints + a program target; the sweep nudges `[tune]` values only).
+
 ## Session log — 2026-08-08-develop-a (#385 pressurizer inventory NODE, stages 0–1 — bundle with #415/#337/#334/#354)
 
 **The committed node follow-on begins** (staging RULED on #385: inert node → surge-line

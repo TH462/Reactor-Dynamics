@@ -32,33 +32,35 @@
     { id: 'lo_press', instrument: 'primary_pressure', direction: 'low', setpoint: 12.41, action: 'scram', // MPa
       blockable: true, block_permissive: { instrument: 'primary_pressure', direction: 'low', setpoint: 13.6 } },
     { instrument: 'pzr_level',        direction: 'low',  setpoint: 12.0,   action: 'scram' }, // %
-    // SG lo-lo. AFW auto-starts 3 points ABOVE it, at 20 % — a DECLARED DEPARTURE
-    // (§8.19, #220 claim 6). The real plant uses ONE signal at ONE setpoint for both:
+    // SG lo-lo — the loss-of-heat-sink scram, and since #380 ONE SIGNAL with the AFW
+    // auto-start (PWR_ACTUATIONS, same instrument/direction/setpoint), the real design:
     // *"1. Low-low water level in any single steam generator…"* is the first of the five
-    // AFW auto-start conditions (WTSM §5.7, ML11223A229), and it is the same low-low
-    // level function that trips the reactor (NUREG-1431 Tables 3.3.1-1 / 3.3.2-1). The
-    // offset is ours, and it buys the operator a visible "AFW started, level still
-    // falling" window that a single-setpoint plant does not give a lone trainee. Our
-    // other two starts DO match the real list — loss of main feed above P-9 is their
-    // condition 3, and the SI start is their condition 4.
+    // AFW auto-start conditions (WTSM §5.7, ML11223A229), and the trip function *"also
+    // performs the ESFAS function of starting the AFW pumps on low low SG level"* (Ginna
+    // TS Bases ML20339A221; NUREG-1431 Bases ML12100A228, same sentence). The 20 % AFW
+    // offset this plant used to carry (§8.19 declared departure, retired 2026-08-08) is
+    // gone. Our other two starts already matched the real list — loss of main feed above
+    // P-9 is their condition 3, and the SI start is their condition 4.
     //
-    // The VALUE has a sourced real counterpart it departs from (#374 evidence
-    // pass): NUREG-1431 Rev 4 puts the real lo-lo function at ~30–32 % of
-    // narrow-range span (Tables 3.3.1-1 / 3.3.2-1, ML12100A228 — the #220
-    // corpus), against 17 % NR here.
+    // THE VALUE IS SOURCED AT 17 — by this plant's own anchor: *"…will start if one
+    // steam generator level decreases to a low-low level of 17%"* (Ginna UFSAR ch10,
+    // ML20339A040; the #419 anchor plant). The W training plant sits lower still
+    // (11.5 %, ML11223A293). The "~30–32 % real" this comment carried until #380 was a
+    // MISREAD: NUREG-1431 Tables 3.3.1-1 / 3.3.2-1 print [30.4]% / [32.3]% in SQUARE
+    // BRACKETS — the STS template's plant-specific placeholder, not any plant's setting
+    // (and those tables are in Vol 1, ML12100A222; the Bases volume cited here before
+    // #380 carries no numbers at all). Every plant-specific value in the corpus is at
+    // or below the shipped 17.
     //
-    // THE RE-MEASURE HAPPENED (#380, 2026-08-06) and the result is the opposite of the
-    // fear this comment used to carry: at the sourced 30.5 the loss-of-feed drain trips
-    // at 28.5 s — INSIDE TR-14's Ginna band (25–60 s, their measured 35) and nearer its
-    // center than the shipped value's 40.0 s — so `K_sg_level` does NOT block the move.
-    // What blocks it is the SETPOINT LADDER: the 30 % LO warning never precedes a 30.5 %
-    // trip (TR-14's ≥ 7 s board-reading window goes to zero structurally), and the 20 %
-    // AFW auto-start lands 10 points BELOW the trip, inverting the declared §8.19
-    // teaching window (AFW starts, level still falling, THEN the trip). Moving this
-    // number is therefore a decision about the whole ladder — warning, AFW anchor,
-    // §8.19's ruled departure — not a tuning edit. Measured record: TUNING_LOG
-    // 2026-08-06-workbench-d and issue #380.
-    { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts just above, 20 %)
+    // The teaching window survives in its REAL ordering: warning (30 %) → trip is the
+    // ≥ 7 s board-reading window TR-14 pins (#135), and "AFW started, level still
+    // falling" is a POST-trip observation — Ginna's own LOFW analysis has AFW delivering
+    // ~60 s after the trip (UFSAR Table 15.2-4; assumption I, ML20339A101). That 60 s is
+    // a licensing-conservative assumption, not hardware, so no extra start delay is
+    // modeled — the existing pump/delivery lags are the honest model. The 2026-08-06
+    // ladder measurement (TUNING_LOG 2026-08-06-workbench-d) stands as the record of
+    // what a 30.5 % trip would have cost; the premise behind it is retired.
+    { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,   action: 'scram' }, // % lo-lo (AFW auto-starts on this SAME signal — single-signal design, #380)
     // Low-flow reactor trip. Reads the `rcs_flow` ELBOW-TAP CHANNEL (% of rated) as of
     // 2026-07-29 (#247); until then it read true `pump_flow_pct` through a
     // `__true_flow__` sentinel, so it could not be lagged, fooled or drifted and the
@@ -335,7 +337,12 @@
     // reads HIGH, so this path stays silent there — the deception is untouched.
     { instrument: 'pzr_level', direction: 'low', setpoint: 12.0,
       action: 'set_hpi', active: true, reset_below: 20.0, arm: 'hpi' },
-    { instrument: 'sg_level',         direction: 'low',  setpoint: 20.0,
+    // AFW auto-start on SG lo-lo — SAME SIGNAL, SAME SETPOINT as the reactor trip
+    // (single-signal design; #380, OWNER RULING 2026-08-08: selected "Single-signal
+    // AFW" — trip stays 17 %, AFW moves onto the same lo-lo signal, §8.19 departure
+    // closed). Sources at the trip's comment block above. Was 20.0 — an invented
+    // 3-point offset above the trip, declared as departure §8.19 until today.
+    { instrument: 'sg_level',         direction: 'low',  setpoint: 17.0,
       action: 'set_afw', active: true, arm: 'afw' },
     // High-high SG level (P-14): moisture-carryover protection. Trip the turbine and
     // isolate MAIN feedwater (AFW is unaffected — it is added downstream of the
@@ -1263,6 +1270,14 @@
       manual_overrides: ['set_feed_pump_speed', 'feed_pump_nudge', 'set_feedwater_flow'],
       defaultOn: function () { return true; },   // the PWR's normal free-play lineup (replaces coupled feed as the level backbone)
       uMin: 0, uMax: 120, kp: 1.5, ki: 0.03, db: 0.3, minDelta: 1.0, period: 3.0, pvTau: 1.5,
+      // #355 (OWNER RULING 2026-08-08: selected "Program to 65 %"): the target is the
+      // PROGRAMMED nominal level — 65 % NR (= sg_level_nominal, pwr_config.js) — which
+      // is what a real three-element controller holds, not whatever level the channel
+      // happened to be engaged at. Capture still seeds the working setpoint at the
+      // current reading so engage is bumpless; spEff then slews to the program (the
+      // rods_tavg idiom). A player who wants to hold a different level uses MANUAL.
+      program: function () { return 65; },
+      spSlew: 0.1,   // %/s — engage 25 points off nominal walks in ~4 min; drain pace is 1.371 %/s, so the loop follows easily
       sp: { capture: function (s) { return s.instruments.sg_level; }, min: 30, max: 80, unit: '%', dp: 0, step: 1 } },
 
     { id: 'steam_dump', kind: 'mode', group: 'Secondary',
