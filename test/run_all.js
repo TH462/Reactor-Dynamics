@@ -997,7 +997,22 @@ var BASELINES = {
   // `ui/diagram/board/components/comp_atmospheric_dump.js`, the ADV's schematic component,
   // registered on the shell and on board_check. The guard counts shipped scripts, so a new
   // board component is exactly one check. MEASURED after `node tools/make_portable.js`.
-  'run_portable.js':       { code: 0, score: '125checks 0failed' },
+  // 125 -> 129 on 2026-08-07: the bundler gained an OMIT set (local scripts the offline
+  // build must not contain at all, as opposed to DROP's external tags), and the gate was
+  // taught about it — +1 TAGS row per omitted file, +2 BUNDLE rows proving each one
+  // actually left, and the inlined-script tally now subtracts them.
+  // THE GATE FOUND THIS ITSELF, which is the whole reason it exists: wiring telemetry put
+  // a `fetch(` into a script ui/shell.html ships, and the LOADS scan failed on it. The
+  // right answer was to ship neither site/telemetry.js nor its endpoint file in the
+  // portable build rather than to add an exception to the scan — "cannot fire" and "is
+  // not present" are different promises and the offline build makes the stronger one.
+  // The per-file BUNDLE rows exist because the tally alone is satisfiable by a TYPO: a
+  // mis-keyed OMIT entry ships the file and the count still matches scripts.length.
+  // 129 -> 130 on 2026-08-07: site/build_site.js joined vercel.json's buildCommand, and
+  // the DEPLOY check enumerates every script that command runs to confirm .vercelignore
+  // does not withhold it from the build machine — the failure that killed Alpha 1.10.0.
+  // One more build script, one more check, and it is the check doing its job.
+  'run_portable.js':       { code: 0, score: '130checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -1144,7 +1159,15 @@ var BASELINES = {
   // 116/3 (the count moves because the stray-url sweep emits a row naming it), a page
   // stripped of its card 115/13, and a stale og:image:width 115/1. 115 checks is
   // 8 pages × 14 + the discovery row and the hero-file row.
-  'run_site_meta.js':      { code: 0, score: '115checks 0failed' },
+  // 115 -> 148 on 2026-08-07: a 9th page (404.html — Pages serves one for unmatched
+  // paths where Vercel supplied its own) at 14 checks, plus a CROSS-CHECK against
+  // site/build_site.js's PAGES list. Two files each answer "what is the public site" and
+  // they can disagree in both directions: add a page and forget the build list and its
+  // card is checked here while the deploy never publishes it; drop one and the build
+  // throws at deploy time, which is late. It caught 404.html on its first run.
+  // INJECTION-VERIFIED both ways: a page removed from the build list 146/2, a page added
+  // to it that this gate does not glob 148/2.
+  'run_site_meta.js':      { code: 0, score: '148checks 0failed' },
   // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
   // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
   // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE
@@ -1161,6 +1184,39 @@ var BASELINES = {
   // unrecognised-CI fallback flipped from 'public' to 'dev' scores 25/2, and renaming
   // PRODUCTION_BRANCH scores 25/4.
   'run_channel.js':        { code: 0, score: '25checks 0failed' },
+  // NEW 2026-08-07 — the usage-data client's PRIVACY INVARIANTS (site/telemetry.js).
+  // This is the first code in the project that sends anything anywhere; everything else
+  // runs on the player's machine and privacy.html says so. So these are not style rules
+  // to be re-derived: nothing is collected while consent is undecided or denied, nothing
+  // is sent without an endpoint (a clone and the offline build both have none by
+  // construction), event names come from a declared allowlist, property VALUES are
+  // type- and charset-bounded so no free text can ride the automatic path, and the
+  // session id lives in sessionStorage so nothing links two visits.
+  // It DRIVES the module against a fake browser rather than grepping it — every one of
+  // those is a behaviour, and a grep for `localStorage` proves nothing about whether an
+  // undecided visitor is silent. Both transport paths are covered: Node ships
+  // CompressionStream so the gzip path is the default, and the raw fallback is forced.
+  // INJECTION-VERIFIED, all six: consent check removed 49/4, allowlist dropped 49/2,
+  // session id moved to localStorage 49/2, enum charset check removed 49/2, revocation
+  // not clearing the queue 49/1, a real URL committed to the endpoint file 49/1.
+  // NOTHING IS WIRED YET — no caller emits an event, so this gate pins a contract the
+  // sim does not exercise. That is deliberate: the contract lands before the collection.
+  // 49 -> 50 on 2026-08-07 (slice 2, the wiring): one added check, and one CORRECTED.
+  // The registry gained `plant_mode` — the funnel is now the engine's own derived
+  // commercial mode rather than a power threshold picked by eye, which would have been a
+  // plant-dynamics claim wearing a product-metric hat. And `session_end.reached_play` was
+  // CUT after the live board disproved it: play does not route through the command
+  // dispatcher, so the flag read false on a session that had plainly run. `sim_seconds`
+  // already answers it, because the sim clock only advances while running.
+  // 50 -> 78 on 2026-08-07 (slice 3, the Worker): +28 from a CROSS-CHECK between
+  // site/telemetry.js's registry and worker/src/index.js's KEY_OF column map. Two silent
+  // failures live in that seam and neither is visible from either side alone: declare an
+  // event and forget the receiver, and it is collected then thrown away (the Worker drops
+  // unknown names); rename a property, and its column arrives empty for ever.
+  // The map is parsed as TEXT — the Worker is an ES module and these runners are CommonJS.
+  // INJECTION-VERIFIED: an event the Worker never learned about scores 76/1, a renamed
+  // property 78/1, a stale mapping 80/2.
+  'run_telemetry.js':      { code: 0, score: '78checks 0failed' },
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane

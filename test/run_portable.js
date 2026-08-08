@@ -84,6 +84,14 @@ var LOAD_DECLARED = {};
 // tools/make_portable.js — duplicating the list here is how the two drift apart.
 var DROP = bundler.DROP;
 
+// LOCAL scripts the bundler deliberately leaves out (site/telemetry.js and the endpoint
+// it reads). Same single-source rule as DROP: read it from the bundler, never restate it.
+// It matters to TWO checks below and for opposite reasons — an omitted file is not
+// scanned for loaders, because it is not shipped and its `fetch(` cannot run; and it is
+// subtracted from the inlined-script tally, because the shell lists a tag the bundle
+// correctly does not carry. Missing either turns a deliberate omission into a red gate.
+var OMIT = bundler.OMIT || {};
+
 var findings = [], violations = [];
 function check(rule, where, text, why) {
   var f = { rule: rule, where: where, text: text, why: why };
@@ -117,7 +125,7 @@ var staleDrop = Object.keys(DROP).filter(function (k) { return externals.indexOf
 
 // ---- B. no runtime loads in anything the shell ships ---------------------------
 var loadUsed = {};
-scripts.forEach(function (href) {
+scripts.filter(function (href) { return !OMIT[href]; }).forEach(function (href) {
   var src = stripComments(fs.readFileSync(path.join(SHELL_DIR, href), 'utf8'));
   LOADERS.forEach(function (pair) {
     if (!pair[0].test(src)) return;
@@ -150,8 +158,18 @@ try { built = bundler.build(); } catch (e) { buildErr = e.message; }
 if (buildErr) {
   check('BUNDLE', 'tools/make_portable.js', 'build() threw: ' + buildErr, null);
 } else {
-  check('BUNDLE', 'dist', 'inlined ' + built.js.length + ' scripts (shell lists ' + scripts.length + ')',
-    built.js.length === scripts.length ? 'all of them' : null);
+  var omitted = scripts.filter(function (h) { return !!OMIT[h]; });
+  var wantJs = scripts.length - omitted.length;
+  check('BUNDLE', 'dist', 'inlined ' + built.js.length + ' scripts (shell lists ' + scripts.length +
+    ', ' + omitted.length + ' deliberately omitted)',
+    built.js.length === wantJs ? 'all of them but the omissions' : null);
+  // An omission has to be a DECISION, so prove each one actually left — a typo in an
+  // OMIT key would silently ship the file and still satisfy the tally above, since the
+  // count would then match `scripts.length` and not this.
+  omitted.forEach(function (href) {
+    check('BUNDLE', 'dist', 'omitted ' + href,
+      built.js.indexOf(href) < 0 ? OMIT[href] : null);
+  });
   check('BUNDLE', 'dist', 'inlined ' + built.css.length + ' stylesheets (shell lists ' + sheets.length + ')',
     built.css.length === sheets.length ? 'all of them' : null);
 

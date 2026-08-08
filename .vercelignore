@@ -1,4 +1,15 @@
-# Ship only what the public site + simulator need (WEBSITE_SPEC.md §8).
+# What reaches the BUILD MACHINE — no longer what gets published.
+#
+# Since 2026-08-07 the deploy publishes dist-site/, assembled by site/build_site.js from
+# an allowlist, so this file no longer decides what visitors can reach. It only trims the
+# upload. That change was made because Cloudflare Pages honours no ignore file at all:
+# relying on this one to hold back test/, Blueprint/, Manuals/ and the dev harness pages
+# stops working the moment the host changes, and publishing the repo root was always the
+# fragile choice.
+#
+# It still matters for one thing: a build script that vercel.json runs must not be
+# excluded here, or the deploy fails with a bare exit 1 (Alpha 1.10.0). test/run_portable.js
+# checks exactly that.
 node_modules
 test
 Diagnostic
@@ -23,3 +34,7 @@ Manuals
 test_pwr.html
 test_bwr.html
 test_rbmk.html
+# The usage-data receiver is a separate Cloudflare Worker with its own deploy
+# (worker/README.md). It is not part of the site and must not be published with it —
+# it would serve wrangler.toml, including the bucket and dataset names, as static files.
+worker

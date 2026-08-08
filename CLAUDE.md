@@ -435,7 +435,7 @@ to read everything.
 
 _Last updated: **2026-08-08**._
 
-**Where the PWR is.** `run_all` is **42 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **43 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -694,7 +694,7 @@ and the trap it taught — lives in `Diagnostic/TUNING_LOG.md` and `Blueprint/BU
 newest first.
 
 ```
-node test/run_all.js            # all 42 runners (~3.5 min, 10-way parallel)
+node test/run_all.js            # all 43 runners (~3.5 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -761,7 +761,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 42 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 43 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
@@ -1128,6 +1128,19 @@ curated). **Local-only (kept out of the public GitHub repo):** `terminals/`, `mc
 `inbox/`, `Diagnostic/*.json`, `GO_PUBLIC_CHECKLIST.md`. (**Not** `CLAUDE.md` — it is tracked
 and goes public with the repo, as line 6 says.) The curated
 `Diagnostic/*.md` reports ARE published.
+
+**Running the SITE, as opposed to building it: `C:\grok_build\RD_Ops\`** *(owner, 2026-08-08:
+"Set up the folder as store secrets as you recommend.")*. Outside every repo and sibling to the
+three worktrees, so every lane reads the same copy and nothing in it can be committed. It holds
+`runbook.md` (account/zone/project ids, what is deployed where, how to read the usage data),
+`cutover.md` (the Vercel → Cloudflare migration, #413, with live state), saved Analytics Engine
+queries, and bug-report bundles pulled from R2. **Read it before doing anything to the live
+site** — those identifiers otherwise exist only in one session's conversation.
+**NO SECRETS LIVE THERE**, deliberately: `C:\grok_build\` syncs off-site (`.SynologyWorkingDirectory`),
+and every agent reads the folder, so a plaintext credential there is replicated *and* shared.
+Tokens go in a user env var (`CLOUDFLARE_API_TOKEN`); wrangler, `gh` and the MCP servers keep
+their own OAuth and need no help. A credential found in that folder is a defect — move it and
+revoke the exposed one.
 
 ---
 

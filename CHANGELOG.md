@@ -347,6 +347,137 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 a pre-ledger save showed is reproduced byte-identically) and `t_sg_c` (seeded on the series
 split between Tavg and Tsec); old saves load unchanged, asserted by `save_migration`.
 
+### Fixed — /sim has been broken in production, and the deploy stops publishing the repo (#413, 2026-08-07)
+
+Cloudflare migration prep, items 2-6. Item 4 (analytics) is deliberately NOT here: it is
+the one change that cannot be correct on both hosts at once, so it lands at cutover.
+
+- **`/sim` returns a broken control room on the live site, and has since it was added.**
+  MEASURED against production: `https://reactordynamics.com/sim` answers 200 and paints an
+  empty shell with **62 failed requests and zero gauges**, while `/ui/shell.html` on the
+  same host loads with **six and no failures**. `vercel.json` carried `/sim` as a
+  **rewrite**, which keeps the address at `/sim`, so every relative path in `ui/shell.html`
+  — `shell.css`, `diagram/board/pwr_board.css`, every panel script — resolved against the
+  site root instead of `/ui/`. It is a **302 redirect** now: the browser lands on the real
+  path first and the relative paths resolve. Not 301 — a permanent redirect is cached hard,
+  and reclaiming `/sim` later would mean asking people to clear their cache.
+- **The deploy publishes `dist-site/`, not the repository root.** `site/build_site.js`
+  assembles it from an allowlist: 9 pages and 5 asset directories, **128 files** against
+  the 264 tracked. `test/`, `Blueprint/`, `Manuals/`, `Diagnostic/`, `tools/`, `worker/`
+  and the three dev harness pages are all absent, verified. Publishing the root only ever
+  looked safe because `.vercelignore` was quietly carrying it, and **Cloudflare Pages
+  honours no ignore file at all** — that prop disappears on the host change.
+- **The allowlist checks itself.** A hand-written copy list is precisely the
+  hand-maintained map that ends up testing itself, so after copying, every local `src=`
+  and `href=` in every published page is resolved against the output and one miss fails
+  the build. The allowlist decides what to include; the reference walk decides whether
+  that was enough.
+- **A 404 page**, because Pages serves one for unmatched paths where Vercel supplied its
+  own. **`.node-version` pinned to 24**, matching the Vercel project, so the build does not
+  land on whatever Pages defaults to.
+- **`run_site_meta` 115 -> 148** — the new page at 14 checks, plus a cross-check against
+  `build_site.js`'s PAGES list. Two files each answer "what is the public site" and can
+  disagree both ways. **It caught `404.html` on its first run**, which the build was
+  copying as a special case outside its own list. Injection-verified both directions.
+- `run_portable` 129 -> 130: the new build script joined `vercel.json`'s buildCommand and
+  the DEPLOY check enumerates every script that command runs, confirming `.vercelignore`
+  does not withhold it — the failure that killed Alpha 1.10.0.
+
+Verified by serving `dist-site/` over HTTP with the `_redirects` rule applied: all 9 pages
+200, `/sim` boots the board with six gauges, an unknown path serves the 404, **zero failed
+requests and zero JS errors**.
+
+
+### Added — the usage-data receiver (#413, 2026-08-07)
+
+Slice 3: the server half, in `worker/`. Deployed separately from the site (Pages is the
+site; this is a Worker) and excluded from the site deploy — publishing it would serve
+`wrangler.toml`, bucket and dataset names included, as static files.
+
+- **Two routes, matching the client's two paths.** `POST /` writes an event batch to
+  Analytics Engine; `POST /?kind=bundle` writes a gzipped session recording to R2. They
+  stay apart for the same reason they do in the client, and because they physically must:
+  a 30-minute bundle is **44x over** Analytics Engine's 16 KB blob cap.
+- **What the receiver must not ADD.** The client is careful about what it sends; a Worker
+  sees far more than a page does. The IP is used as the rate-limit key and never written,
+  logged or passed on; the User-Agent is not read at all; nothing is logged, because
+  `console.log` in a Worker goes to a stream that is a place data lives.
+- **`Content-Encoding` is not a CORS-safelisted request header**, so the bundle POST
+  triggers a preflight that fails without it in `Access-Control-Allow-Headers` — and it
+  fails *only* for bug reports while the event path keeps working, which is a confusing
+  way to find out.
+- **The gzip header is SNIFFED, not trusted.** An edge or proxy may decompress before the
+  Worker sees the body; storing that object with `contentEncoding: gzip` would break every
+  later read of a file that is actually plain JSON. The magic number settles it.
+- **POSITION IS THE SCHEMA.** Analytics Engine has none, and Cloudflare's docs require
+  values "in consistent order across all writes". The column map is append-only: reorder
+  or reuse a slot and every query already written silently mixes old rows with new — no
+  migration, no error, numbers that quietly stop meaning what they say. Written down in
+  both the Worker and its README.
+- **`run_telemetry` 50 -> 78: a cross-check between the client's event registry and the
+  Worker's column map.** Two silent failures live in that seam, neither visible from
+  either side alone — declare an event and forget the receiver and it is collected then
+  discarded; rename a property and its column arrives empty for ever.
+  INJECTION-VERIFIED: unknown event 76/1, renamed property 78/1, stale mapping 80/2.
+- **`worker/README.md`** carries the four setup commands, an R2 lifecycle rule (90 days,
+  matching Analytics Engine's fixed three months so both halves age out together), the
+  curl checks including the 413, and the SQL for the questions this was built to answer —
+  where people stop, how far through a startup they get, which controls nobody touches,
+  and whether missions get finished.
+
+Nothing in this repo can test the server. The first deploy is a test, not a launch.
+
+
+### Added — usage data and an in-sim bug report, both wired (2026-08-07)
+
+Slice 2 of #413's telemetry work, completing the client landed in slice 1 *(OWNER,
+2026-08-07: "I want automatic collection of data and a feedback form within the sim that
+sends full session logs")*. **No `changelog.html` entry until an endpoint exists** — with
+none stamped, the consent prompt never opens and the report form stays hidden, so nothing a
+player can observe has changed yet.
+
+- **The emit points ride the EXISTING session recorder.** `diagEvent` / `diagReset` /
+  `diagTick` already sit at exactly the moments worth reporting, so a `TEL` adapter hooks
+  those rather than adding a parallel set of probes to keep in step. Hooking `diagEvent`
+  covers every recorded scram wherever it is raised.
+- **The funnel is the engine's own answer.** `plant_mode` — the derived commercial mode
+  1-6 (`CONTEXT.md` §6.3) — replaced the `critical` / `full_power` thresholds proposed in
+  slice 1. Those would have been plant-dynamics claims wearing a product-metric hat, and a
+  wrong threshold makes a wrong funnel. `on_grid` comes from `mwe_output`, `core_damage`
+  from the engine-latched `fuel_damaged`.
+- **`session_end.reached_play` was CUT, not fixed.** Driving the live board showed it
+  reading `false` on a session that had plainly run: **play does not route through the
+  command dispatcher**, so the flag could never be true. `sim_seconds` already answers it —
+  the sim clock only advances while running.
+- **`session_start` is HELD until consent is answered.** It fires during boot, which on a
+  first visit is before the prompt — so it was being dropped, and first visits are exactly
+  the sessions worth having. A second defect went with it: the held row was cleared even
+  when the emit was *refused*, so `ev()` now returns whether the event was accepted.
+- **Consent, and a Settings toggle that agrees with it.** First-launch prompt, shown only
+  when an endpoint was stamped and no answer is recorded. Measured on the live board:
+  prompt shown, **0 requests before the answer**, `session_start` released intact on grant,
+  a returning refuser silent and unprompted. The toggle initially still read *Off* after
+  answering *yes* at launch — the two controls did not talk, which is the small lie that
+  makes a consent control untrustworthy.
+- **The report form sends from inside the sim** — message, optional session recording, one
+  button. It never dead-ends: the email address and the diagnostics download stay beside
+  it, and a failed send says so.
+- **`run_portable` CAUGHT THE OFFLINE LEAK ITSELF** — wiring telemetry put a `fetch(` into
+  a script `ui/shell.html` ships, and the LOADS scan failed. The answer was to ship
+  **neither** `site/telemetry.js` nor its endpoint file in the portable build rather than
+  add an exception to the scan: *cannot fire* and *is not present* are different promises,
+  and the offline build makes the stronger one. New `OMIT` set in the bundler, and the gate
+  taught about it (125 -> 129, including a per-file row because the tally alone is
+  satisfiable by a mis-keyed entry).
+- **`privacy.html` rewritten** to match what the code does — what is collected, what never
+  is, that two visits cannot be linked, that bug reports are a separate deliberate act, and
+  that the offline download contains none of it. It points at `site/telemetry.js` so nobody
+  has to take the page's word for it.
+
+`run_telemetry` 49 -> 50, `run_portable` 125 -> 129. Still no endpoint: **#413** covers the
+Worker, R2 (bundles are 63 KB-504 KB gzipped, far over Analytics Engine's 16 KB blob cap)
+and the Analytics Engine dataset.
+
 ## [Alpha 1.3.0] — 2026-08-07
 
 ### Released — the lane merge and the version

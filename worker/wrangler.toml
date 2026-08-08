@@ -1,0 +1,40 @@
+# Reactor Dynamics — usage-data receiver.
+#
+# Deployed SEPARATELY from the site (the site is Cloudflare Pages; this is a Worker).
+# Nothing in the repo build touches it, and the site does not know its address at
+# build time — the URL is supplied to the Pages build as RD_TELEMETRY_ENDPOINT and
+# stamped into site/telemetry_endpoint.js. With that variable unset, the site is
+# silent and this Worker simply receives nothing.
+
+name = "reactor-dynamics-telemetry"
+main = "src/index.js"
+compatibility_date = "2026-08-07"
+
+# Session recordings from the in-sim bug report. A 30-minute session is ~63 KB
+# gzipped and a 4-hour one ~504 KB (measured), so the free 10 GB holds tens of
+# thousands of reports. SET A LIFECYCLE RULE ON THIS BUCKET — see the README. An
+# analytics store with no expiry is a promise nobody made.
+[[r2_buckets]]
+binding = "BUNDLES"
+bucket_name = "reactor-dynamics-bundles"
+
+# Aggregate events. Retention is fixed at three months by Cloudflare and is not
+# configurable, which is a feature here: the data ages out on its own.
+[[analytics_engine_datasets]]
+binding = "EVENTS"
+dataset = "reactor_dynamics_usage"
+
+# The endpoint is public and unauthenticated by design — the alternative is a secret
+# shipped inside a page whose source is published under the AGPL, which is not a
+# secret. So the protections are a size cap (in the Worker) and this.
+#
+# 60 requests/minute per IP is far above any real session: the client batches events
+# every 15 s and a bug report is a single POST. It is well below what makes an open
+# endpoint worth abusing.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60

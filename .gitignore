@@ -66,3 +66,9 @@ pylibs/
 # everywhere else). A committed copy would carry one answer to both hosts, and the
 # one it would carry is whichever was generated last on someone's laptop.
 /robots.txt
+
+# Assembled at deploy by site/build_site.js: the publishable subset of the repo. The
+# deploy publishes THIS, not the repo root — Cloudflare Pages honours no ignore file,
+# so relying on .vercelignore to hold back test/, Blueprint/, Manuals/ and the dev
+# harness pages stops working the moment the host changes.
+dist-site/
