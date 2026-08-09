@@ -85,34 +85,62 @@ function load(opts) {
   return { T: g.RD.Telemetry, sent: sent };
 }
 
-// =============================================================== (a) consent gates
+// =============================================================== (a) the opt-out gate
+//
+// REWRITTEN 2026-08-09 with the default flip (opt-in -> on-unless-opted-out). Two things
+// changed here beyond the polarity:
+//
+//   - Every assertion is a DELTA across one flush, not an absolute `a.sent.length === 0`.
+//     `a.sent` accumulates for the lifetime of the harness, so once the default sends
+//     anything the old absolutes fail everywhere downstream — which is exactly what they
+//     did, and the misleading part was WHERE: "denied: flush sends nothing" went red
+//     carrying a body from the *undecided* phase, reading like an opt-out leak when the
+//     opt-out was fine. A delta cannot inherit another phase's traffic.
+//   - The opt-out is asserted on a FRESH client too. Proving "denied is silent" only after
+//     a granted phase leaves open that some first-send latch, not the check, is doing the
+//     work — the failure mode HR10 is about.
+function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.sent.length - n; }
+
 (function () {
   var a = load();
-  ck('undecided consent reads null', a.T.consent() === null, String(a.T.consent()));
-  ck('undecided: granted() is false', a.T.granted() === false);
-  ck('undecided: event() refuses', a.T.event('session_start', { plant: 'pwr' }) === false);
-  ck('undecided: nothing is queued', a.T._queue().length === 0, 'queue=' + a.T._queue().length);
+  // DEFAULT: no answer recorded, and collection is on. `consent()` still reads null —
+  // untouched storage is the common case and must stay indistinguishable from a fresh visit.
+  ck('default consent reads null', a.T.consent() === null, String(a.T.consent()));
+  ck('default: granted() is true', a.T.granted() === true);
+  ck('default: event() accepts', a.T.event('session_start', { plant: 'pwr' }) === true);
+  ck('default: it queued', a.T._queue().length === 1, 'queue=' + a.T._queue().length);
   a.T.flush();
-  ck('undecided: flush sends nothing', a.sent.length === 0, JSON.stringify(a.sent));
+  ck('default: flush sends', a.sent.length === 1, JSON.stringify(a.sent.length));
 
   a.T.setConsent('denied');
-  ck('denied: event() refuses', a.T.event('session_start', { plant: 'pwr' }) === false);
-  a.T.flush();
-  ck('denied: flush sends nothing', a.sent.length === 0, JSON.stringify(a.sent));
+  ck('opted out: granted() is false', a.T.granted() === false);
+  ck('opted out: event() refuses', a.T.event('session_start', { plant: 'pwr' }) === false);
+  ck('opted out: flush sends nothing',
+    sentDelta(a, function () { a.T.event('command', { action: 'set_rods' }); }) === 0);
 
   a.T.setConsent('granted');
-  ck('granted: event() accepts', a.T.event('session_start', { plant: 'pwr' }) === true);
-  ck('granted: it queued', a.T._queue().length === 1);
-  a.T.flush();
-  ck('granted: flush sends', a.sent.length === 1, JSON.stringify(a.sent.length));
+  ck('opted back in: event() accepts', a.T.event('session_start', { plant: 'pwr' }) === true);
+  ck('opted back in: flush sends again', sentDelta(a, function () {}) === 1);
 
-  // Revocation must drop what is already pending, not merely stop adding.
+  // Opting out must drop what is already pending, not merely stop adding.
   a.T.event('command', { action: 'set_rods' });
+  var pending = a.T._queue().length;
   a.T.setConsent('denied');
-  ck('revoking consent empties the pending queue', a.T._queue().length === 0,
-    'queue=' + a.T._queue().length);
-  a.T.flush();
-  ck('revoking: the pending events are never sent', a.sent.length === 1, 'sent=' + a.sent.length);
+  ck('opting out empties the pending queue', pending > 0 && a.T._queue().length === 0,
+    'was=' + pending + ' now=' + a.T._queue().length);
+  ck('opting out: the pending events are never sent', sentDelta(a, function () {}) === 0);
+}());
+
+// (a2) The opt-out on a FRESH client — no prior granted phase to lean on.
+(function () {
+  var a = load();
+  a.T.setConsent('denied');
+  ck('fresh client, opted out: granted() is false', a.T.granted() === false);
+  ck('fresh client, opted out: sends nothing at all',
+    sentDelta(a, function () {
+      a.T.event('session_start', { plant: 'pwr' });
+      a.T.event('command', { action: 'set_rods' });
+    }) === 0, 'sent=' + a.sent.length);
 }());
 
 // ============================================================== (b) no endpoint
@@ -284,10 +312,23 @@ function load(opts) {
 }())
   .then(function () {
     // ------------------------------------------------- storage refused entirely
+    // A browser that refuses localStorage cannot RECORD an opt-out, so under the
+    // on-by-default model (2026-08-09) it collects — the inverse of the old opt-in
+    // behaviour, where no storage meant no consent meant silence. This is pinned rather
+    // than left implicit because it is the one place the flip made the privacy outcome
+    // WORSE, and it should fail loudly if anyone changes it without meaning to.
+    // RD.diagnose() reports it in words for the same reason.
     var a = load({ noStorage: true });
     ck('no storage: consent reads null', a.T.consent() === null);
-    ck('no storage: nothing is collected', a.T.event('session_start', {}) === false);
-    ck('no storage: nothing throws', true);
+    ck('no storage: collects (an opt-out cannot be persisted)',
+      a.T.event('session_start', {}) === true);
+    ck('no storage: an opt-out attempt does not throw', (function () {
+      try { a.T.setConsent('denied'); return true; } catch (e) { return false; }
+    }()));
+    // ...and having failed to persist, it is still collecting. Better that than a silent
+    // false promise that the setting stuck.
+    ck('no storage: opt-out could not persist, so consent still reads null',
+      a.T.consent() === null, String(a.T.consent()));
 
     // ---------------------------------------------------------------- report
     console.log('\n' + B + (fail ? R + 'FAIL' : G + 'PASS') + X + '  ' + B + 'TELEMETRY' + X +

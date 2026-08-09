@@ -463,34 +463,15 @@
         </div>
       </div>
 
-      <!-- Usage-data consent, first launch only. Shown ONLY when a deploy stamped an
-           endpoint AND no answer has been recorded — there is nothing to ask permission
-           for on a local checkout or in the offline build, and asking anyway would be
-           theatre. Undecided collects nothing, so dismissing it is a valid answer that
-           happens to be the private one. -->
-      <div class="mission-overlay" id="consentOverlay" hidden>
-        <div class="mission-modal help-modal consent-modal">
-          <div class="mission-head">
-            <div class="mission-title">Help improve the simulator?</div>
-          </div>
-          <div class="help-body">
-            <p>Almost nobody sends feedback, so the only way to find out which parts of the
-              plant are confusing is to see where people actually get stuck.</p>
-            <p><strong>If you say yes,</strong> the simulator sends anonymous counts: which
-              controls you use, which panels you open, how far through a startup you get, and
-              where you stop. No plant recordings, no text you type, and nothing that links
-              one visit to another.</p>
-            <p><strong>If you say no,</strong> nothing is sent. The simulator is identical
-              either way — this changes nothing about how it runs.</p>
-            <div class="consent-btns">
-              <button class="btn consent-yes" id="consentYes">Yes, share anonymous usage data</button>
-              <button class="btn" id="consentNo">No thanks</button>
-            </div>
-            <div class="fb-hint">Change your mind any time in Settings. Bug reports you send
-              from the Contact panel are separate, and always a deliberate choice.</div>
-          </div>
-        </div>
-      </div>
+      <!-- The usage-data consent overlay stood here and was REMOVED 2026-08-09 *(OWNER,
+           2026-08-09: "Can we get rid of the convent popup and just divulge that we collect
+           telemetry in the privacy tab?")*. It was `id="consentOverlay"`, which ad-blocker
+           cosmetic filter lists target by name: the reported symptom was that it "pops up for
+           about half a second then disappears", and the diagnostic read `hidden:false,
+           display:none` — our code never hid it, an extension did. Collection is now on by
+           default, disclosed on privacy.html, with the Settings toggle as the opt-out.
+           DO NOT reintroduce a modal named anything a filter list would recognise; see the
+           header of site/telemetry.js for the full reasoning and the ePrivacy caveat. -->
 
       <!-- System Scanner / inspection block (§11, #96). Collapsed it carries a
            one-line summary of whatever the cursor is over; clicking it expands

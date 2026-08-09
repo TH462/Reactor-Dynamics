@@ -2,25 +2,52 @@
  *
  * Two SEPARATE paths, and keeping them separate is the whole design:
  *
- *   1. AGGREGATE EVENTS  — small, named, declared below, sent automatically, and
- *      ONLY with consent. Counts and durations. No free text, ever.
+ *   1. AGGREGATE EVENTS  — small, named, declared below, sent automatically unless
+ *      the visitor opts out. Counts and durations. No free text, ever.
  *   2. SESSION BUNDLE    — the full diagnostic recording (ui/app.js buildDiagBundle),
  *      sent ONLY when a human presses a button in the feedback form. It carries a
  *      note they typed, so it is the one path that may contain their words.
  *
- * They are separate because they answer to different rules. Path 1 is passive and
- * therefore needs consent and must be boring: a visitor who never notices it must
- * not be able to be identified by it. Path 2 is an act — the user is deliberately
- * sending a bug report — so it may carry much more, and it does not need path 1's
- * consent, because pressing "send" IS the consent. Merging them would drag path 2's
- * richness into path 1's silence, which is how analytics turns into surveillance.
+ * They are separate because they answer to different rules. Path 1 is passive, so it
+ * must be boring: a visitor who never notices it must not be able to be identified by
+ * it, which is what invariants c/d/e are for. Path 2 is an act — the user is
+ * deliberately sending a bug report — so it may carry much more. Merging them would
+ * drag path 2's richness into path 1's silence, which is how analytics turns into
+ * surveillance.
+ *
+ * ------------------------------------------------- why there is no consent prompt
+ * There was one, at first launch, and it was REMOVED 2026-08-09 *(OWNER, 2026-08-09:
+ * "Can we get rid of the convent popup and just divulge that we collect telemetry in
+ * the privacy tab?")*. Two reasons, and the second is the one that settles it:
+ *
+ *   - It did not work. Ad-blocker cosmetic filter lists target consent dialogs by
+ *     element name, and the overlay was `id="consentOverlay"` — about as obvious a
+ *     target as exists. Reported symptom: it "pops up for about half a second then
+ *     disappears", and the diagnostic read `hidden:false, display:none` — our code
+ *     never hid it; an extension did. A prompt a filter list can silently delete is
+ *     not a consent mechanism, it is a way to collect nothing from blocked users and
+ *     believe you asked them.
+ *   - It was incoherent. The site already serves Cloudflare Web Analytics with no
+ *     prompt at all, and that beacon carries MORE identifying signal than this does.
+ *
+ * So path 1 is now on by default and DISCLOSED on privacy.html, which is the posture
+ * every cookieless analytics product takes. What makes that defensible is not the
+ * disclosure but invariants c/d/e below: no persistent id, no free text, no cookies,
+ * and an IP used only as a rate-limit key and never stored. The Settings toggle is
+ * the opt-out, and it is the only thing that ever writes to localStorage.
+ *
+ * NOTE the limit honestly: EU/UK ePrivacy asks for consent before ANY non-essential
+ * storage on the device, sessionStorage included. The consent-free reading rests on
+ * the data being anonymous and session-scoped. It is the mainstream position, not a
+ * settled one — if that call is ever revisited, restore a prompt that a filter list
+ * cannot delete (inline in the page body, neutrally named), not the overlay.
  *
  * -------------------------------------------------------------------- invariants
  * These are gated by test/run_telemetry.js. Do not relax one without moving it:
  *
- *   a. Nothing is sent while consent is undecided or denied. Undeclared events are
- *      DROPPED, not queued — a queue that survives an undecided visitor is a record
- *      of someone who never agreed to one.
+ *   a. Nothing is sent once the visitor has opted OUT, and opting out DROPS what was
+ *      queued rather than flushing it — a queue that survives an opt-out is a record
+ *      of someone who just asked you not to keep one.
  *   b. Nothing is sent when there is no endpoint. A local checkout and the offline
  *      single-file build both have none, by construction (see the note below).
  *   c. Event names come from the EVENTS allowlist. An undeclared name is dropped.
@@ -119,11 +146,16 @@
       if (v === 'granted' || v === 'denied') s.setItem(CONSENT_KEY, v);
       else s.removeItem(CONSENT_KEY);
     } catch (e) { /* nothing persists; treated as undecided, which sends nothing */ }
-    if (v !== 'granted') queue.length = 0;   // revoking drops what was pending
+    // Only an OPT-OUT drops the queue (invariant a). Under the old tri-state this read
+    // `!== 'granted'`, which also fired for the back-to-default case — now that default
+    // means "collecting", clearing there would silently bin events we are allowed to send.
+    if (v === 'denied') queue.length = 0;
   }
-  // Undecided is NOT consent. The launch prompt exists to turn null into an answer;
-  // until it does, this returns false and nothing is collected.
-  function granted() { return consent() === 'granted'; }
+  // ON BY DEFAULT, off only on an explicit opt-out (see the header for why the launch
+  // prompt was removed). `null` means the visitor never touched the Settings toggle, so
+  // nothing was ever written to localStorage for them — which is the common case, and
+  // the reason this reads `!== 'denied'` rather than `=== 'granted'`.
+  function granted() { return consent() !== 'denied'; }
 
   function sessionId() {
     var s = store('sessionStorage');
