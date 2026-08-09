@@ -81,6 +81,20 @@ content ABOVE the first section heading parses as preamble, and nothing asserts 
 prose.** The next merge that touches CHANGELOG.md should eyeball lines 1–40, not just the entry
 seam.
 
+**And the repair scripted the same splice back in, which earns its own line.** The commit-split
+helper anchored on `indexOf('## [Unreleased]')` — which matches the BLOCKQUOTE'S OWN PROSE about
+that heading (line 9: *"rename the `## [Unreleased]` heading"*) before it matches the heading,
+because the preamble discusses the file's structure in the file's own syntax. It deleted the
+real heading and the blockquote tail; both landed committed (654a51c, ae035e3) because
+`run_release` was run before the split, not after it. **CI caught it** ("exactly one
+## [Unreleased] (0)") — this damage removed the heading outright, which the gate does assert;
+the original splice left an empty one standing, which it does not. Rebuilt verbatim, re-gated
+after the LAST file write this time. Trap: **an anchor string that also appears in prose about
+the structure is not an anchor** — match `^## \[Unreleased\]$` at line start, or don't script
+it. Second lesson, same session, same rule: the gate run that counts is the one after the final
+write — `run_hardrules` drifted 244 → 246 on the same push because the session-log entries (two
+new HR11 citation sites) were written after the local `run_all`.
+
 ---
 
 ## Session log — 2026-08-08-develop-d (#425 — the containment passive sink learns saturation ΔT, on a lag; the SBO family joins the containment-holds pin)

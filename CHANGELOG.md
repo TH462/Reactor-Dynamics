@@ -6,7 +6,29 @@ follows [Keep a Changelog](https://keepachangelog.com/); newest entries on top.
 For the dense engineering rationale behind each change (spec deviations, tuning, gate
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
-> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
+> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
+> below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
+> empty `## [Unreleased]` above it. The version must match the top entry of
+> `changelog.html` and the string in `site/release.js`.
+>
+> **`node test/run_release.js` enforces that** (2026-07-31). This paragraph on its own did not:
+> the roll was skipped for **Alpha 1.10.0 and again for 1.11.0**, and 434 lines covering two
+> shipped releases sat below as unreleased while the newest version heading here read 1.9.0.
+> It survives being skipped because nothing downstream reads these headings — the file renders
+> and reads plausibly either way — and it compounds, because once two releases are merged into
+> one block the boundaries can only be recovered by diffing this file at each tag. Which is
+> what it took.
+>
+> **`## [Pre-launch 1.x.y]` headings are DEVELOPMENT versions, not releases** (2026-08-04). The
+> project versioned itself `Alpha 1.2.0` → `1.11.0` before it was ever public, then dropped the
+> number entirely for `Pre Alpha`, and the first *real* release is **`Alpha 1.0.0`** below. Those
+> older sections keep their content and dates and are simply relabelled, because `1.0.0` sorting
+> above `1.11.0` fails the gate's newest-first check — measured, **10 checks / 1 failed** before
+> the relabel and **11 / 0** after. They are relabelled INDIVIDUALLY rather than merged into one
+> catch-all, for the reason the paragraph above gives: merged boundaries cost a tag diff to
+> recover. Nothing below `Alpha 1.0.0` was ever downloadable.
+
+## [Unreleased]
 
 ### Changed
 - **PWR turbine load RAISES are rate-limited again — 30 %/min of rated, raises only** *(OWNER
