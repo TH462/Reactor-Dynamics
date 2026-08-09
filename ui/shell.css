@@ -979,6 +979,56 @@ html[data-channel="dev"] .logo-test {
 .phys-grp .nv.q-caution { color: var(--caution); }
 .phys-grp .nv.q-alarm   { color: var(--critical); }
 
+/* PLOT COLUMN *(OWNER, 2026-08-08: "I would like a column to the left of the lables with a
+   checkbox for the strip chart. when you check this box it puts this value on the chart.")*.
+   A fixed-width leading column shared by the Physics and Indications lists, so both read as
+   one table and the labels line up whether or not a given row can be plotted.
+     .plot-cell   the column itself — FIXED width, never shrinks, so a row with no
+                  checkbox (a composite verdict like "intact - 507 F to damage", which is
+                  text and cannot be a trace) still indents its label to the same place.
+     .ser-swatch  the trace colour, shown only once the row is actually plotted. Off, the
+                  slot is empty rather than grey: a colour chip on an unplotted row reads
+                  as "this is the colour it has", which is a promise the chart has not made
+                  and cannot keep while six other traces are competing for the palette. */
+.plot-cell { flex: 0 0 30px; display: flex; align-items: center; gap: 4px; }
+.plot-cell input { accent-color: var(--normal); margin: 0; cursor: pointer; }
+.plot-cell .ser-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.num-line .nk { flex: 1 1 auto; }
+
+/* Indications tab — every plant channel, grouped on the Physics tab's energy-path spine and
+   sharing its row styling on purpose: the two panes are the two halves of one split (what the
+   instruments read / what the plant is doing) and they should read as one table with two
+   pages. Values stay QUIET here rather than taking the Physics tab's green/amber/red: these
+   are raw channel readings with no health criterion attached, and the board's own gauges and
+   the alarm panel are where a reading gets judged. Colouring them would make green mean
+   "listed" instead of "checked and fine", which is the distinction .phys-grp is built on. */
+.ind-grp .num-line { font-size: 12px; }
+.ind-grp .nk { padding-right: 8px; }
+.ind-grp .nv { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Headers stay named while the list scrolls — it is ~100 rows on the PWR. */
+.ind-grp h4 { margin: 0 0 4px; font-size: 9px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase;
+  position: sticky; top: 0; z-index: 1; background: var(--bg-panel, #12181f); padding: 3px 0 2px; }
+/* TWO COLUMNS WHEN THERE IS ROOM *(OWNER DIRECTIVE, 2026-08-04: "add a second column to the
+   graph menu when space allows.")*, #350 item 23 — carried over from the Graph tab this
+   replaced, and it matters more here: that list was 51 checkboxes, this one is every channel
+   the plant publishes with its reading beside it. `auto-fill` + a minmax track is the "when
+   space allows" part with no breakpoint to guess and no JS: the panel is operator-resizable
+   between 360 px and 900 px (pwr_board.js SIMCOL_*), so any fixed media query would be wrong
+   at some width the operator can choose. GRID, NOT CSS `columns`, and the reason is the
+   sticky headers: `position: sticky` does not work inside a multicol container, and a group
+   split down a column break would leave half its rows under someone else's heading. Each
+   group is one grid item, so it stays whole and its header still sticks. The track is wider
+   than the Graph tab's 168 px because these rows carry a value as well as a label. */
+#indicationsList {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  column-gap: 14px; align-items: start;
+}
+/* In a grid the first item of the SECOND column is not a first-child, so a sibling rule
+   would leave it with a top border and the one beside it without. Uniform reads as a
+   per-group rule instead of a mistake. */
+#indicationsList > .ind-grp { border-top: 1px solid var(--border); padding-top: 5px; margin: 0 0 6px; }
+#indicationsList > .ind-grp:first-child { border-top: none; padding-top: 0; }
+
 /* settings tab rows */
 .set-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #23272d; }
 /* display:flex above beats the `hidden` ATTRIBUTE, so a row hidden from script
@@ -1073,39 +1123,7 @@ select.num-input { width: auto; }
 .auto-sp:disabled { opacity: .35; }
 .auto-spunit { font-size: 10px; color: var(--muted); min-width: 18px; }
 
-/* Graph-tab parameter checklist */
 .g-section-title { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); margin: 0 0 6px; }
-.param-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); padding: 4px 0; cursor: pointer; }
-/* Grouped plot checklist (2026-08-03). The list went from 16 entries to 48 when the
-   physics quantities and the control positions were added, which is past the point a flat
-   run of checkboxes is readable. Headers are sticky so the group a row belongs to stays
-   named while the list scrolls. */
-.param-grp { margin: 0 0 6px; }
-.param-grp + .param-grp { border-top: 1px solid var(--border); padding-top: 5px; }
-/* TWO COLUMNS WHEN THERE IS ROOM *(OWNER DIRECTIVE, 2026-08-04: "add a second column to
-   the graph menu when space allows.")*, #350 item 23. The list is 51 entries on the PWR,
-   so on a dragged-wide simulator column it was one long ribbon down a mostly empty panel.
-   `auto-fill` + a minmax track is the "when space allows" part with no breakpoint to guess
-   and no JS: the panel is operator-resizable between 360 px and 900 px (pwr_board.js
-   SIMCOL_*), so any fixed media query would be wrong at some width the operator can choose.
-   GRID, NOT CSS `columns`, and the reason is the sticky headers: `position: sticky` does
-   not work inside a multicol container, and a group split down a column break would leave
-   half its rows under someone else's heading. Each group is one grid item, so it stays
-   whole and its header still sticks. */
-#graphParams {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  column-gap: 14px; align-items: start;
-}
-/* In a grid the first item of the SECOND column is not a first-child, so the sibling rule
-   above would leave it with a top border and the one beside it without. Uniform reads as a
-   per-group rule instead of a mistake. */
-#graphParams > .param-grp { border-top: 1px solid var(--border); padding-top: 5px; }
-#graphParams > .param-grp:first-child { border-top: none; padding-top: 0; }
-.param-grp-h { position: sticky; top: 0; z-index: 1; background: var(--bg-panel, #12181f);
-  font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
-  padding: 3px 0 2px; }
-.param-row i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
-.param-row input { accent-color: var(--normal); }
 
 /* numeric placeholder — overlay/true tags + boolean states */
 .true-tag { color: var(--caution); font-size: 11px; font-weight: 600; margin-left: 4px; }

@@ -105,13 +105,38 @@
   // on that side) stay out of the extremes entirely rather than poisoning them with nulls.
   function foldExtremes(acc, one) {
     if (!one) return acc;
-    if (!acc) { acc = { t: 0, v: {}, tv: {}, lo: {}, hi: {}, tlo: {}, thi: {} }; }
+    if (!acc) {
+      acc = { t: 0, v: like(one.v), tv: like(one.tv), lo: like(one.v), hi: like(one.v),
+              tlo: like(one.tv), thi: like(one.tv) };
+    }
     foldSide(one.v, acc.v, acc.lo, acc.hi);
     foldSide(one.tv, acc.tv, acc.tlo, acc.thi);
     return acc;
   }
+  // An empty accumulator of the same SHAPE as the reading — a NaN-filled typed array of the
+  // same width for a packed side, a plain dict for a keyed one. The genericity above is what
+  // is being preserved: the service still never learns what a series is, it only matches the
+  // container the sampler handed it. (The UI packs its rows into Float64Arrays; see chartBuf
+  // in ui/app.js for why.)
+  function like(src) {
+    if (!src) return {};
+    if (ArrayBuffer.isView(src)) { var a = new Float64Array(src.length); a.fill(NaN); return a; }
+    return {};
+  }
   function foldSide(src, last, lo, hi) {
     if (!src) return;
+    if (ArrayBuffer.isView(src)) {
+      for (var i = 0; i < src.length; i++) {
+        var y = src[i];
+        if (!isFinite(y)) continue;              // NaN = this series has no reading on this side
+        last[i] = y;
+        // Written as NEGATED comparisons on purpose: `lo[i]` starts as NaN and every
+        // comparison against NaN is false, so `y < lo[i]` would never seed the first value.
+        if (!(y >= lo[i])) lo[i] = y;
+        if (!(y <= hi[i])) hi[i] = y;
+      }
+      return;
+    }
     for (var k in src) {
       if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
       var x = src[k];

@@ -151,6 +151,147 @@ the structure is not an anchor** — match `^## \[Unreleased\]$` at line start, 
 it. Second lesson, same session, same rule: the gate run that counts is the one after the final
 write — `run_hardrules` drifted 244 → 246 on the same push because the session-log entries (two
 new HR11 citation sites) were written after the local `run_all`.
+## Session log — 2026-08-08-backshop-a (HMI: the Indications tab, the Physics plot column, 50 % default; the chart buffer packed to make it affordable)
+
+**Owner, five asks in one message** — "the plant should start with the 50% power preset" ·
+"We should revisit the physcis tab and add anything you think is missing" · "I would like a
+column to the left of the lables with a checkbox for the strip chart. when you check this box
+it puts this value on the chart" · "Lets change the graph tab to 'Indications' and this tells
+us all the indications in the plant, categorized like the physcs tab. it should also have a
+checkbox column to add it to the graph. Move the strip chart settings to the settings tab" ·
+"in the physcs tab it shows primary leak flow as a percentage, it should also show the real
+flow rate in an appropriate unit". Plus a mid-build challenge — *"Should we not list the
+indications. I think some computers are already taxed… That might push them over the edge"* —
+answered with the measurements below and ruled **"lets do it. go"**.
+
+### The capacity question came first, and it inverted
+
+Listing every channel roughly triples the series registry. `chartBuf` rows stored one NAMED
+PROPERTY per series per side, whose cost is per property. **Measured** at the shipped
+`CHART_ROW_BUDGET` of 9000 rows, both sides populated, heap + external:
+
+| series | id-keyed objects | `Float64Array` |
+|---|---|---|
+| 40 — what shipped that morning | **39.5 MB** | 9.6 MB |
+| 51 | 68.9 MB | 11.1 MB |
+| 110 — every channel | **137.8 MB** | 19.2 MB |
+
+So the answer to "can the machine take it" was **the change makes the sim lighter**: rows are
+now fixed-width typed arrays indexed by series order, NaN meaning "no reading on this side",
+and the registry grew 40 → 96 while the buffer fell to about a quarter of what it was. Every
+reader already guarded on `isFinite`, which is why NaN could replace an absent key without
+touching a single consumer's logic.
+
+**CPU, measured separately because memory is not the thing that stutters.** One sampler call:
+7.5 µs at 40 series, 21.8 µs at 110. The service caps the fine loop at `CHART_SUB_MAX` = 240
+calls per broadcast, so the worst case (fast-forward) is ~3.4 ms inside a 100 ms budget; at 1×
+the sampler runs ONCE. Through a whole `SimulationService.tick()` the difference between 0 and
+110 series sat inside run-to-run noise at 1×/10×/60×/600×. **What was NOT measured and is
+stated as a bound rather than a number**: the DOM cost of ~95 rows repainting per broadcast
+while the tab is open. It is bounded by `paneVisible` (a hidden pane does no work at all) and
+the Physics tab already does 46 rows the same way.
+
+### Traps
+
+- **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim (HR12).** The first
+  "Pressurizer inventory" row asserted that `pzr_mass_frac × level_per_mass` was a MASS-ONLY
+  backbone which would diverge from the gauge when the void credit lifted level — the TMI
+  deception, in a row. It does not. `pzr_level_pct` is `clip(that, 0, 100)` of the same number
+  (`pwr_pressurizer.js` stepLevel), so the difference is **0.0 at all four presets and 0.0
+  right through a stuck-PORV excursion** (indicated 35.0 → 46.6 % over 20 min). Reframed to
+  what the field actually is — the OFF-SCALE reading — and re-measured to earn the row:
+  **+0.4 past the peg** on an overfill (and the pressure steps 15.41 → 16.15 MPa at that
+  instant), **−105 at 100 s and −172 at 400 s** on a large LOCA while the gauge rests on 0.0 %.
+  A gauge resting on zero says nothing about how far below span a recovery must climb; that is
+  the row's whole job, and the first draft would have taught something false instead.
+- **A new list-driven surface under-covers silently — gate it in the same change.** The tab is
+  generated from `PROFILES.pwr.series`, so "all the indications" holds only while that
+  hand-maintained array keeps up with 84 engine channels: the #224 shape. `run_inspect` grew a
+  suite for it, **injection-verified four ways** (a new instrument with no series; a series
+  naming a renamed channel; two series sharing an id — they would share a packed chart column;
+  an accessor reading a key no instrument publishes).
+- **That last check caught a live defect the day it was written.** `xenon` declared
+  `get: i.xenon_pct_eq` for a quantity with NO instrument, and `chartSample` cloned the whole
+  instruments dict every sample to graft the true value in so the accessor would find
+  something. It was invisible while the only consumer was the chart — `seriesTruth` already
+  traces truth for any series with `tru` and no `get`, so the two paths agreed. The Indications
+  tab is what exposed it: the row listed itself as something the plant reads and rendered a
+  permanent em-dash. Both the `get` and the per-sample clone are gone.
+- **A static gate that reads source must strip COMMENTS first, and the dangerous direction is
+  the quiet one.** The first cut flagged an instrument called `e` (from the prose "i.e.") and
+  kept the xenon ghost alive by reading the comment that explained its removal. The reverse
+  matters more: a channel merely MENTIONED in a comment would have counted as covered, and
+  that failure is green. Injection-verified in that direction too.
+- **A gate's sample point can belong to an initial condition.** Changing the default preset
+  reddened `verify_e2e_ui`'s steam/feed pairing check — feed 0 gpm against steam 22 gpm at
+  600 s. Not a defect: that sample point measures when AFW's proportional band opens
+  (`afw_level_target` 32 % + `afw_level_band` 8 % ⇒ no delivery until SG level < 40 %), and how
+  long that takes is set by decay heat, i.e. by the power the plant tripped from. Measured,
+  turbine trip at t=60 s: from `hot_full_power` the SG reaches 40 % at ~9m20s so feed is up at
+  600 s; from `50_percent` it arrives at ~16m, reads exactly 0 at 600 s, then **parks at 39.5 %
+  and holds** — the plant is correct throughout. Fixed by PINNING the check to the IC its
+  240/420/600 s timings were derived at, not by re-banding a threshold (HR10). The assertion is
+  untouched and 0 gpm against a live steam draw still fails it.
+- **`instruments.status` is an ARRAY, not a map.** `Object.keys` on it returns `"0".."33"`, so
+  the coverage gate's first run reported 34 uncovered channels named after integers.
+- **Re-clicking an already-active tab COLLAPSES the tools card** (#237), which made two
+  screenshot probes photograph a shut panel. `?tab=` already selects the tab; clicking it again
+  is a toggle.
+- **`?tab=physics` and `?tab=operate` did nothing** — two of five panes were missing from the
+  deep-link allowlist. Worth more than it sounds: a pane that is not on screen does not render
+  at all, so the link opened a tab that stayed blank and read as a broken panel.
+
+### What landed
+
+`ui/app.js` · `ui/shell.html` · `ui/shell.css` · `layers/simulation_service.js` ·
+`ui/diagram/board/pwr_board_wiring.js` · `test/run_inspect.js` · `test/verify_e2e_ui.js`.
+Series registry 40 → 96, every one of the plant's 84 channels reachable. Physics tab 34 → 46
+rows with two new groups (**Pressure boundary** — the relief path, and the tab's biggest
+omission, because everything else on it reads a quantity with no instrument while these read
+quantities whose instrument DISAGREES with them; and **Support systems**). The PORV is now a
+genuine HR1 pair — `get` reads the demand light, `tru` reads the valve — so under
+`stuck_porv_open` the Indications tab reads **shut** and the Physics tab reads **OPEN · STUCK**,
+which is TMI-2 on two tabs. `run_all` 44 at baseline (`run_inspect` 9/9 47/47 → 10/10 53/53).
+
+### Follow-on: the Indications scanner copy (same session, owner: "Do the indications scanner copy")
+
+**Do not hand-author what the plant already documents.** 50 of the 94 rows are analog channels
+and `RD.MANUAL` already carries `measures`, `range`, `lag_s` and driven `alarms` for every one —
+the same data `gaugeDetail` has always used. Extracted that into `indicationFacts()` and shared
+it, so a channel cannot be described two different ways on two surfaces and 50 range/lag figures
+are not a second copy of numbers that move on the next retune. Only the **34 status channels**
+and the **9 commanded positions** were authored, because a reference that documents instruments
+has nothing to say about an indicator light or a demand.
+
+Three traps, one of them a real find:
+
+- **A shared table keyed by INSTRUMENT ID describes the wrong plant's component.** The generated
+  reference called the PWR's `steam_pressure` **"Steam-Drum Pressure"** — an RBMK term for a
+  component a PWR does not have, and a word that appears nowhere in the PWR manual set. `IND` in
+  `tools/gen_manual_reference.js` is keyed by id alone and both plants use that id, so the
+  RBMK's wording won. **It was latent for as long as the text only fed the Failures tab's
+  instrument picker**, and became player-facing the instant the Indications tab started showing
+  `measures`. Fixed with a per-plant override (`IND_PLANT`), regenerated, `verify_manual_data`
+  green. Worth noting the shape: a NEW SURFACE over old data is an audit of that data, and this
+  one failed on its first read.
+- **The summary tier must be ONE sentence, and "first sentence" is not "the whole field".**
+  Several `measures` entries run to a paragraph — the OTΔT margin one explains the entire
+  protection rack — which is right for the detail tier and useless as a hover summary. Trimmed
+  with a split on a full stop followed by a capital, so "4.1 volume percent" and "0.1 s" do not
+  read as sentence ends; the full text still leads the expanded tier, so nothing is lost.
+- **…but trimming can amputate the point.** `porv_indicator` opens "Relief-valve indicator." and
+  only says the load-bearing part — that the light shows the COMMANDED position — in its second
+  sentence. On every other row losing the tail is fine; on the one channel the whole Three Mile
+  Island lesson hangs off, it is not. Authored hint, overriding the generated one.
+
+**And three series were reachable from no checkbox at all** — `block_valve`, `porv_stuck`,
+`spray_stuck`, all true-state-only, so the Indications filter excluded them and no Physics row
+named them. A column in every packed chart row for something nobody could plot. Deleted; their
+state was already printed in the Physics rows that own them. `run_inspect` now fails on an
+unreachable series, on a physics row binding a `ser:` that does not exist, and on an Indications
+row that resolves to no copy — all injection-verified. 53 → 56 checks.
+
+**Left open**: the board card / manual surface for the new physics rows.
 
 ---
 

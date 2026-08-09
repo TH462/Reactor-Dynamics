@@ -41,8 +41,8 @@
 
       <!-- Bottom row: strip chart + alarm panel -->
       <div class="bottom-row">
-        <div class="strip-chart" data-scanner-hint="Strip Chart — multi-parameter trend. Choose parameters in the Graph tab; scrub to replay."
-              data-scanner-detail="Up to six parameters on one time base, so you can see cause and effect rather than one number at a time. The window (1m–30m) is a Graph-tab setting; the plot keeps 30 minutes of history whatever it displays. In Teaching mode the traces come from physics; in Realistic they come from the instruments, so a failed sensor lies on the chart exactly as it lies on the board.">
+        <div class="strip-chart" data-scanner-hint="Strip Chart — multi-parameter trend. Tick a parameter on the Indications or Physics tab to plot it; scrub to replay."
+              data-scanner-detail="Several parameters on one time base, so you can see cause and effect rather than one number at a time. Anything the plant indicates can go on it, and so can the true-state quantities on the Physics tab — the checkbox beside each value is what puts it there, which means you can plot a channel against the quantity it is supposed to be measuring. The window is a Settings-tab control; the plot keeps more history than it displays, so widening it reveals trend already recorded. In Teaching mode the traces come from physics; in Realistic they come from the instruments, so a failed sensor lies on the chart exactly as it lies on the board.">
           <div class="chart-legend" id="chartLegend"></div>
           <div class="chart-plot">
             <svg class="chart-canvas" id="chartCanvas" viewBox="0 0 400 120" preserveAspectRatio="none"></svg>
@@ -141,7 +141,7 @@
         <div class="tabbar" id="tabbar">
           <button class="on" data-tab="operate">Operate</button>
           <button data-tab="failures">Inject Failure</button>
-          <button data-tab="graph">Graph</button>
+          <button data-tab="indications">Indications</button>
           <button data-tab="physics">Physics</button>
           <button data-tab="settings">Settings</button>
         </div>
@@ -153,14 +153,24 @@
               data-scanner-detail="The plant keeps behaving correctly; only the reading changes. Use it to test how well you know the couplings: pressure and temperature move together, pressurizer level tracks Tavg, the steam generator is the only heat sink. Those relationships keep holding when one channel stops, which is how you find the bad channel.">▸ Advanced instrument failure (instrument × mode × value)</div>
             <div class="adv-fail" id="advFailPanel" hidden></div>
           </div>
-          <!-- Graph tab — parameter toggles for the strip chart -->
-          <div class="tabpane" data-pane="graph">
-            <div class="g-section-title">Plot parameters</div>
-            <div id="graphParams"></div>
-            <div class="set-row"><span class="k">Window</span>
-              <div class="seg" id="graphWindow"><button data-win="60">1m</button><button class="on" data-win="300">5m</button><button data-win="600">10m</button><button data-win="1800">30m</button></div>
-            </div>
-            <div class="set-row"><span class="k">Export</span><button class="btn" data-act="export-csv">CSV ⭳</button></div>
+          <!-- Indications — EVERY channel the plant publishes, grouped on the same
+               energy-path spine as the Physics tab, each with its live reading and a
+               checkbox that plots it *(OWNER, 2026-08-08: "Lets change the graph tab to
+               'Indications' and this tells us all the indications in the plant, categorized
+               like the physcs tab. it should also have a checkbox column to add it to the
+               graph.")*. This was the Graph tab, which listed only the ~40 quantities
+               somebody had thought to make plottable and showed none of their values.
+               `run_inspect` fails if an instrument exists with no row here.
+               The WINDOW and CSV EXPORT rows moved to Settings in the same change: this pane
+               is a list of what the plant reads, and two controls that configure the chart
+               itself sat below a scrolling checklist where they were easy to miss. -->
+          <div class="tabpane" data-pane="indications"
+            data-scanner-hint="Indications — every reading the plant produces, grouped by system, with a checkbox to put any of them on the strip chart."
+            data-scanner-detail="These are INSTRUMENT readings: they lag, they carry noise, and they can be failed from the Inject Failure tab, so what you see here is what the control room sees rather than what the plant is doing. The Physics tab is the other half — the true state behind these channels — and its rows carry the same checkbox, so you can plot a channel against the quantity it is supposed to be measuring and watch them part company.">
+            <div class="phys-note">What the plant <b>indicates</b> — instrument readings, with
+              lag, noise and any injected sensor failure. The true state behind them is on the
+              <b>Physics</b> tab. Tick a box to trend it on the strip chart.</div>
+            <div id="indicationsList"></div>
           </div>
           <!-- Physics — the TRUE plant state behind the instruments. This is HR1's
                sanctioned explicit diagnostic overlay, not a second set of gauges:
@@ -204,6 +214,17 @@
           <div class="tabpane" data-pane="settings">
             <div class="g-section-title">Display</div>
             <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
+            <!-- Strip chart — the chart's own configuration. WHAT to plot stays on the
+                 Indications and Physics tabs, beside the values themselves; how the chart is
+                 SET UP lives here. The window buttons are relabelled by app.js as the ladder
+                 follows time acceleration, so do not hard-code their text. -->
+            <div class="g-section-title" style="margin-top:12px">Strip chart</div>
+            <div class="set-row" data-scanner-hint="Strip chart window — how much plant history the chart shows at once. The ladder follows the time-acceleration setting, so the widest rung is always worth about the same in wall-clock time."
+              data-scanner-detail="The plot keeps more history than it displays, so widening the window shows trend that was already recorded rather than starting a new trace. At fast time acceleration the rungs stretch: a 30-minute window empties in half a second of real time at 3600x, which is why the choices change with the speed control."><span class="k">Window</span>
+              <div class="seg" id="graphWindow"><button data-win="60">1m</button><button class="on" data-win="300">5m</button><button data-win="600">10m</button><button data-win="1800">30m</button></div>
+            </div>
+            <div class="set-row" data-scanner-hint="Export CSV — writes the strip chart's recorded history to a file, one column per plotted parameter."
+              data-scanner-detail="Exports what the buffer holds, not just the visible window, and only the parameters currently selected for the plot. Use it to take a transient away and look at it in a spreadsheet."><span class="k">Export</span><button class="btn" data-act="export-csv">CSV ⭳</button></div>
             <div class="g-section-title" style="margin-top:12px">Simulation</div>
             <div class="set-row" data-scanner-hint="Fast-forward dropout — On drops the clock back to real time when something needs you: a scram, a new failure, or the first alarm on a quiet board. Later alarms in a casualty do not stop it. Off keeps fast-forward running through everything."
               data-scanner-detail="Only the FIRST alarm on an otherwise quiet board drops the clock — once a casualty is under way, the following alarms would drop you out every few seconds and the option would be useless. Off is the right setting when you are deliberately fast-forwarding through a long transient such as a xenon burn-off."><span class="k">Fast-forward dropout</span><div class="seg" id="attnSeg"><button class="on" data-attn="on">On</button><button data-attn="off">Off</button></div></div>

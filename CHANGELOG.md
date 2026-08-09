@@ -66,6 +66,99 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   charges the runback dwell at all (re-measured; the accounting lives at `persist_s`).
   `run_all` 44 runners at baseline.
 
+### Changed
+- **The Graph tab is now INDICATIONS: every reading the plant produces, with its live value and
+  a checkbox that trends it** *(OWNER, 2026-08-08: "Lets change the graph tab to 'Indications'
+  and this tells us all the indications in the plant, categorized like the physcs tab. it should
+  also have a checkbox column to add it to the graph.")*. It was a list of the ~40 quantities
+  somebody had thought to make plottable, showing none of their values; it is now all **84
+  channels** — nuclear instrumentation, the OTΔT/OPΔT limit lines and margins, wide-range steam
+  generator level, containment, ECCS flows and discharge pressures, and 34 status indications —
+  grouped on the same energy-path spine as the Physics tab. Status channels plot as 0/1 step
+  traces, which is what answers "when did that happen" on a strip chart. Two columns when the
+  panel is wide enough, as the plot list had. **`run_inspect` now fails if an instrument exists
+  with no row**, injection-verified four ways — that guard immediately caught a live defect:
+  `xenon` declared an accessor for an instrument that does not exist, propped up by
+  `chartSample` cloning the instruments dict on every sample. Both are gone.
+- **Every Indications row carries System Scanner copy.** Hover any of the 94 rows for what the
+  reading is; expand for its indicating range, its lag, the alarms it drives, and a closing line
+  saying it is the channel rather than the plant. The instrument tier is **generated** from the
+  manual reference — the same source the vital gauges use, extracted so one channel cannot be
+  described two different ways on two surfaces, and so 50 range and lag figures are not a second
+  copy of numbers that go stale on the next retune. The 34 status channels and the commanded
+  positions are authored, because a reference that documents instruments has nothing to say
+  about an indicator light. Summaries are trimmed to one sentence, with the full text leading
+  the expanded tier. `run_inspect` fails on a row that resolves to no copy at all.
+- **The PORV is a genuine instrument-vs-truth pair on the chart.** Its reading comes from
+  `porv_indicator`, which reports the DEMAND signal rather than the valve — so under a
+  stuck-open relief valve the Indications tab reads *shut* and the Physics tab reads
+  *OPEN · STUCK*. That is the Three Mile Island control room, on two tabs.
+- **Free play now starts at the 50 % power preset** *(OWNER, 2026-08-08: "the plant should start
+  with the 50% power preset")*, not Hot Full Power — there is somewhere to go in both directions
+  from it. One gate moved with it: `verify_e2e_ui`'s steam/feed pairing check is now PINNED to
+  `hot_full_power`, the IC every timing in it was derived at. Its 600 s sample point is really
+  measuring when AFW's proportional band opens (`afw_level_target` 32 % + `afw_level_band` 8 %
+  ⇒ no AFW delivery until SG level falls below 40 %), and how long that takes is set by decay
+  heat. Measured full-stack, turbine trip at t=60 s: from full power the SG reaches 40 % at
+  ~9m20s so feed is up at 600 s; from 50 % it gets there at ~16m, reads exactly 0 gpm at 600 s,
+  then parks at 39.5 % and holds. The plant is correct; the sample point belonged to an IC.
+- **The Physics tab gained 12 rows, two groups and a PLOT COLUMN** *(OWNER, 2026-08-08: "We
+  should revisit the physcis tab and add anything you think is missing" · "I would like a column
+  to the left of the lables with a checkbox for the strip chart")*. New **Pressure boundary**
+  group — the relief path, and the tab's biggest omission: everything else on the panel reads a
+  quantity with no instrument, while these read quantities whose instrument DISAGREES with them.
+  `porv_indicator` reports the demand signal, not the valve, which is the Three Mile Island
+  accident in one channel. Also new: **Support systems** (AC power, emergency injection with its
+  real gpm, condenser heat sink), core exit temperature with its separation from Tavg, the
+  steam generator's mass ledger and the primary→secondary ΔT that drives heat removal, and the
+  circulation MODE folded into the loop-flow row. Every row now carries a checkbox that puts it
+  on the strip chart, synced with the Graph tab's list so one series cannot end up half-ticked.
+- **Primary leak flow reads a real flow rate** *(OWNER, 2026-08-08: "it should also show the
+  real flow rate in an appropriate unit")* — gpm beside the fraction, on the declared 7,500 gal
+  RCS (× 450,000, the same constant the board uses; now named `GPM_PER_FRAC` rather than written
+  out four times as a literal). The chart's Leak Flow trace moved to gpm with it, so the two
+  surfaces agree; its alarm threshold is 1 gpm, the Technical Specification unidentified-leakage
+  limit, where the old 0.01 % meant 45 gpm. `conv()` gained a `flow` family — the one family
+  whose base unit is US, gpm being the identity side and m³/h the converted one.
+- **Strip chart window and CSV export moved to the Settings tab** *(OWNER, 2026-08-08: "Move the
+  strip chart settings to the settings tab")*. The Graph tab is a list of what to plot; two
+  controls that configure the chart itself sat below a scrolling checklist where they were easy
+  to miss.
+
+- **The PWR's steam pressure indication was described as a "Steam-Drum Pressure" — a boiling-water
+  reactor term for a component a PWR does not have.** The generated reference keys its instrument
+  descriptions by id ALONE, and `steam_pressure` is a key the RBMK and the PWR share: the RBMK's
+  wording won, and the word "drum" appears nowhere else in the PWR manual set. Latent for as long
+  as that text only fed the Failures tab's picker; it surfaced the moment the Indications tab
+  began showing descriptions to the player. Per-plant entries now override the shared table, so
+  the PWR reads "Steam Generator Pressure" and the RBMK keeps its drum.
+- **The chart buffer stored one named property per series per row, and it did not scale.**
+  MEASURED at the shipped `CHART_ROW_BUDGET` of 9000 rows, both sides populated: 40 series cost
+  **39.5 MB**, 51 cost 68.9, 110 would cost **137.8**. Rows are now fixed-width `Float64Array`s
+  indexed by series order, with NaN for "no reading on this side" — **9.6 MB at 40 series, 19.2
+  at 110.** So the registry grew by 16 series in this change and the buffer still costs a
+  quarter of what it did. CPU is unaffected: one sampler call is 7.5 µs at 40 series and 21.8 µs
+  at 110, and the service caps the fine loop at 240 calls per broadcast, so the worst case
+  (fast-forward) is ~3.4 ms per 100 ms broadcast and at 1× the sampler runs once. The service's
+  `foldExtremes` matches the container the sampler hands it rather than learning what a series
+  is, so it still works for either shape; the board's vital tiles read the packed rows through a
+  published `RD.ChartCols` id→column map.
+- **`?tab=physics` and `?tab=operate` did nothing** — two of the five tabs were missing from the
+  deep-link allowlist. Not cosmetic: a pane that is not on screen does not render at all, so the
+  link opened a tab that stayed blank and read as a broken panel rather than a broken link.
+- **The strip chart's x-axis jumped sideways for the first `window` seconds of every run.** The
+  right-hand tick tested `rel === 0` on a float that is only zero in exact arithmetic. `t0 + span`
+  reconstructs `t1` bit-exactly whenever the two are within a factor of two (Sterbenz) — which is
+  why it looked fine on a long run and was broken at the start of every one: while sim time is under
+  the window, `t0` is negative, `span` carries a ~1e-13 residue and the test misses. Both signs then
+  printed **"−0s"**, a wider label than "0", so the whole flex row of six ticks slid as it flipped.
+  Measured on the default 300 s window over a fresh run: **749 of the first 3200 frames read "−0s"
+  and the label flipped 424 times**; on the 1800 s window, 4790 of 18200 and 1552 flips; at the
+  43200 s rung, 61824 flips. Now rounds first and tests the rounded value — the number the label
+  actually shows. The same rounding replaces `hms()`'s floor on the long-span rungs, where the same
+  residue printed a 360 s tick as `00:05:59`. A/B over all seven windows: **0 flips, 0 zero-width
+  ticks in 624,600 frames.** `run_all` 44 at baseline.
+
 ## [Alpha 1.4.0] — 2026-08-08
 
 ### Changed — the containment passive sink learns saturation ΔT, on a lag (#425, 2026-08-08)

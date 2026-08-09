@@ -263,8 +263,19 @@ async function testUnitsAndInstructor(page) {
  * the indication is a driver EXTRA_ITEM, so a board re-export must not drop it. */
 async function testSteamFeedPair(page) {
   var log = [];
+  // PINNED TO hot_full_power, NOT the shipped default. Every timing in this check was
+  // derived at full power (see the 240/420/600 s table below), and the 600 s sample point is
+  // really measuring when AFW's proportional band opens: `afw_level_target` 32 % +
+  // `afw_level_band` 8 % means AFW delivers NOTHING until SG level falls below 40 %, and how
+  // long that takes is set by decay heat, i.e. by the power the plant tripped from. MEASURED
+  // full-stack, turbine trip at t=60 s: from hot_full_power the SG reaches 40 % at ~9m20s so
+  // feed is up at 600 s; from 50_percent it gets there at ~16m and reads exactly 0 gpm at
+  // 600 s, then parks at 39.5 % and holds — the plant is correct, the sample point is not.
+  // The shipped default became 50_percent on 2026-08-08, so this pins the IC the numbers
+  // belong to rather than re-banding a threshold to whatever the default happens to be
+  // (HR10 — the assertion is unchanged, and 0 gpm against a live steam draw still fails it).
   var read = async function (qs) {
-    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&run=1' + qs,
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&init=hot_full_power&run=1' + qs,
       { waitUntil: 'networkidle', timeout: 90000 });
     await page.waitForTimeout(1200);
     return page.evaluate(function () {
