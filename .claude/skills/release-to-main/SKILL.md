@@ -178,6 +178,14 @@ node site/make_download.js           # -> download/<name>.zip + download/latest.
 from `site/release.js`. Building first produces a file named for the *previous* release —
 which is the whole of #258.
 
+**A LOCAL run is named `…_dev.zip`, and that is correct, not a bug to chase** (#414,
+2026-08-09). Off the released channel the name carries the build — `site/stamp_version.js`
+stamps `preview` on the test site and the local placeholder says `dev` — so only a real
+production deploy produces the bare `Reactor_Dynamics_Alpha_X.Y.Z.zip`. That is the whole
+point: a tester's download can no longer be confused with the release. `downloadName()` in
+`site/make_download.js` is the one derivation; `site/nav.js` takes the name from
+`download/manifest.js` rather than rebuilding it.
+
 **Neither artifact is committed, and you must not "fix" that.** `dist/` and `download/` are
 both gitignored. The zip the public gets is built **at deploy**: `vercel.json` chains
 `site/make_download.js` after `site/stamp_version.js`, so the download always comes from the

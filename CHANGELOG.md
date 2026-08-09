@@ -31,6 +31,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The test site's offline download arrived under the release's filename** (#414). A tester
+  pulling the zip from `dev.reactordynamics.com` got `Reactor_Dynamics_Alpha_1.5.1.zip` —
+  byte-different from the release of that name and indistinguishable from it once it is in a
+  downloads folder, so "the download is broken" arrived with nothing to say which build
+  produced it. That is #275's defect (`latest.zip` names nothing) re-created one level up; the
+  *page* was made honest on 2026-08-07, the *file* was not. Off the released channel the name
+  now carries the commit — `Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.zip`, containing
+  `Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.html`, because the collision otherwise survives one
+  unzip. A production deploy still produces the bare release name; a local build says `_dev`.
+  Measured in headless Edge from `file://`: `download="Reactor_Dynamics_Alpha_1.5.1_dev.zip"`,
+  identical to the file on disk and to the zip's own entry name.
+
+  **The fix was deferred for a year of releases because the filename was spelled out twice** —
+  in `site/make_download.js` and in `site/nav.js`, with `test/run_portable.js` pinning three
+  static literals of each against the other. Adding a suffix to one side leaves those literals
+  identical, so that gate would have stayed green while the offered name stopped being the
+  built name. There is now **one** derivation, `downloadName()`, and `nav.js` takes the result
+  from `download/manifest.js` — the same object the build writes beside the zip — so the
+  offered name *is* the built name by construction rather than by comparison. `run_portable`
+  129 → 137 checks: the literal-agreement check is gone, replaced by a behaviour matrix over
+  the rule and a ban on the prefix literal reappearing in `nav.js`. All three ways of breaking
+  it were injected and confirmed red.
 - **The version stamps were cached for four hours, which is why the site kept reporting an old
   release after a new one shipped.** Cloudflare Pages defaults static assets to `max-age=14400`
   — right for engine code (immutable per deploy, loaded by a page that *is* revalidated),

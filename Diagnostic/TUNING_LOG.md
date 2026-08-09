@@ -29,6 +29,89 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-backshop-a (#414 — the test download stops wearing the release's name; and the gate that could not have seen it)
+
+**#414 CLOSED.** Off the released channel the offline download is now
+`Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.zip`, carrying
+`Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.html`. `run_portable` 129 → 137. Measured end to end
+in headless Edge from `file://`: `download="Reactor_Dynamics_Alpha_1.5.1_dev.zip"`, byte-equal
+to the file on disk and to the zip's own entry name.
+
+**THE TRAP, AND IT IS THE REASON THIS SAT DEFERRED.** The filename was spelled out twice —
+`site/make_download.js` built it, `site/nav.js` stamped it onto the button's `download=`
+attribute — and `test/run_portable.js` pinned them against each other by extracting **three
+static literals** from each source: the prefix `'Reactor_Dynamics_'`, the sanitising regex,
+and `'.zip'`. That check is worthless against the change it was guarding. Append a SHA in
+`make_download.js` alone and all three literals are still identical in both files, so the gate
+passes **while the offered name and the built name genuinely disagree**. The issue said so when
+it was filed, which is why the cheap half (the page's TEST BUILD line) shipped on 2026-08-07
+and the file half did not. A check that cannot see the change you are about to make is not a
+check — same family as the `!range(x).max` hollow probe and the hand-maintained map.
+
+**The fix was to delete a side, not to gate it harder** *(OWNER RULING, 2026-08-09, choosing
+"Transport it" over the issue's own prescription of two matched derivations — the option
+wording is MINE and the decision is the owner's; recorded that way because a label I wrote and
+they picked is not the same artifact as words they typed, and this repo has been bitten by
+agent-authored text citing itself as a ruling)*.
+`download/manifest.js` — which `make_download.js` writes beside the zip in
+the same run, and which `download.html` already loaded before `nav.js` for the meta line —
+already carried `file`. So `nav.js` now stamps `dlInfo.file` and derives nothing. One
+derivation, `downloadName(release, channel, sha, ext)`, exported from `make_download.js` under
+the `require.main` guard `stamp_version.js` uses for the same reason. The offered name IS the
+built name by construction; there is no second spelling left to drift.
+
+**A dependency this inherited by luck, worth naming**: `2026-08-09-develop-a` had just given
+`download/manifest.js` `Cache-Control: no-cache` in `site/build_site.js`, for the version
+stamps. The transport route needs exactly that — a manifest cached four hours would hand out
+the *previous* deploy's filename for the current deploy's zip, which is this defect wearing a
+third hat. Recorded in `make_download.js` so a future edit to that `_headers` list knows it is
+load-bearing twice over.
+
+**The archive ENTRY is suffixed too** *(OWNER RULING, 2026-08-09, choosing "suffix both" over
+the zip alone; same provenance caveat as above)* —
+otherwise the collision survives one unzip and the tester's actual runnable file is ambiguous
+again. Free, because the entry name is chosen in `make_download.js` and is independent of the
+`dist/` file `tools/make_portable.js` builds, which keeps the plain release name and was not
+touched.
+
+**Sizing detail that is not arbitrary**: the tag is `sha || channel`. A local checkout's
+`site/version.js` reads `"alpha · dev"` and the sha regex needs 7 hex characters, so it yields
+`''` — without the fallback a developer's build would silently produce the *released* name on a
+machine that is not the release. It is `…_dev.zip` instead. Verified the regex against a real
+deploy stamp (`"alpha · 9f8e7d6"` → `9f8e7d6`), not just the local placeholder.
+
+**The new §G, and the injections that prove it** (HR10 — the checks were made to go red):
+
+| injected defect | result |
+|---|---|
+| `channel === 'public'` → `!==` in `downloadName` | **6 red** — every matrix row, both extensions |
+| a `Reactor_Dynamics_` name rebuilt in `nav.js` (as a harmless-looking no-manifest fallback) | **1 red** — "does not re-derive the filename" |
+| `manifest.js` tag moved after `nav.js` in `download.html` | **1 red** — the load-order check |
+
+The middle one is the one worth keeping: the injected code was a *fallback*, reachable only
+when the manifest is absent, and it still failed. That is deliberate — the ban is on the
+literal, not on the behaviour, because a second spelling that is "only for the fallback" is how
+the first one got there.
+
+**The generalisable trap, recorded HERE because `CLAUDE.md` has no room for it**: an
+AGREEMENT check on static literals cannot see the change that makes the two sides disagree.
+It belongs in that file's "a passing check can be HOLLOW" list, and I wrote it there — 64
+words — which put the file at **15,054 against its 15,000 hard cap**. The rule is "when it
+binds, CUT — do not raise the number", and the marginal line was mine: that entry already
+carries five instances of the same lesson. Reverted. **`CLAUDE.md` measured 14,994 words
+before that edit — six words of headroom**, so the next agent with a one-line addition will
+hit this too, and the answer is not to shave a word off somewhere.
+
+**Not done, deliberately**: no `changelog.html` entry. Website plumbing is not a simulator
+change *(OWNER DIRECTIVE, 2026-08-06: "Also, don't include website changes in the changelog.
+The changelog is strictly for simulator changes.")*. `run_hardrules` caught the first draft of
+this line, which named that directive by date and did not quote it — HR11 red, 249 → 252
+checks / 1 failed, and correctly so: a bare date reads as authority while carrying none of the
+evidence. Worth recording because the same pass added three citations of rulings taken as
+menu selections, which the gate accepts and a reader should not read as owner prose.
+
+---
+
 ## Session log — 2026-08-09-develop-a (the consent prompt was unblockable-by-design and blockable in fact; removed)
 
 **The overlay bug is solved by deletion, and its cause is now named.** Reported 2026-08-08 as

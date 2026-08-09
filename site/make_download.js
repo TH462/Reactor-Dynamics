@@ -53,6 +53,51 @@ function releaseDate() {
   return m ? m[1] : null;
 }
 
+// Both values come from the files stamp_version.js writes, which vercel.json /
+// the Pages build command run FIRST. Read defensively: a local `node
+// site/make_download.js` in a fresh clone has the repo placeholders, not a stamp.
+function stamped(file, re, fallback) {
+  try {
+    const m = re.exec(fs.readFileSync(path.join(ROOT, 'site', file), 'utf8'));
+    return m ? m[1] : fallback;
+  } catch (e) { return fallback; }
+}
+
+// ---- THE ONE PLACE THE DOWNLOAD IS NAMED (#414) ---------------------------------
+// OFF THE RELEASED CHANNEL THE NAME CARRIES THE COMMIT. Until 2026-08-09 a tester
+// downloading from dev.reactordynamics.com got `Reactor_Dynamics_Alpha_1.5.1.zip` —
+// same product, same version string, DIFFERENT BYTES from the release of that name,
+// and indistinguishable from it once it is sitting in a downloads folder. "The
+// download is broken" then arrives with nothing to say which build produced it. That
+// is #275's defect (`latest.zip` identifies nothing) re-created one level up.
+//
+// THIS FUNCTION IS THE ONLY DERIVATION, and that is the point. It used to be spelled
+// out twice — here and in site/nav.js, which stamps the button's `download=`
+// attribute — with test/run_portable.js pinning three static literals against each
+// other. Those literals would have stayed identical while a suffix was added to one
+// side, so the gate could not have seen the very drift it existed to catch. nav.js
+// now takes the name from `download/manifest.js` below, which this script writes in
+// the same run as the zip: the offered name IS the built name, by construction rather
+// than by comparison *(OWNER RULING, 2026-08-09, choosing "Transport it" over deriving
+// the name twice — the wording of the option is mine, the decision is the owner's)*.
+// run_portable.js requires this function and pins the rule as behaviour.
+//
+// The .html INSIDE the zip is named the same way *(OWNER RULING, 2026-08-09, choosing
+// "suffix both" over the zip alone — again my wording, their call)* — otherwise the
+// collision simply survives one unzip.
+// Note that is the ARCHIVE ENTRY name, chosen here; the file on disk that
+// tools/make_portable.js builds into dist/ keeps the plain release name.
+//
+// `sha || channel` so a local checkout still says something: site/version.js reads
+// "alpha · dev" there and carries no commit, so the tag becomes `_dev` rather than
+// silently producing the released name on a machine that is not the release.
+function downloadName(release, channel, sha, ext) {
+  const safe = String(release).replace(/[^A-Za-z0-9.]+/g, '_');
+  const tag = channel === 'public' ? ''
+    : '_' + String(sha || channel).replace(/[^A-Za-z0-9]+/g, '_');
+  return 'Reactor_Dynamics_' + safe + tag + ext;
+}
+
 // ---- minimal ZIP writer (single file, DEFLATE) ----------------------------------
 // CRC-32, the one checksum ZIP requires and Node does not expose.
 const CRC_TABLE = (() => {
@@ -127,14 +172,25 @@ function zipOne(name, data) {
 }
 
 // ---- build ----------------------------------------------------------------------
+// The body is left at its original indentation on purpose (#414): it used to run at
+// module scope and was wrapped, unchanged, so that requiring this file has no side
+// effects. Re-indenting it would have turned a four-line semantic diff into a
+// hundred-line whitespace one, which is not a trade worth making to a reviewer.
+function main() {
 const ver = release();
-const safe = ver.replace(/[^A-Za-z0-9.]+/g, '_');
-const htmlName = 'Reactor_Dynamics_' + safe + '.html';
-const htmlPath = path.join(ROOT, 'dist', htmlName);
+// The channel and the commit decide the NAME, so they are read before it — not, as
+// they were until #414, after the zip had already been written for the manifest.
+const channel = stamped('channel.js', /RD_CHANNEL\s*=\s*"([^"]+)"/, 'dev');
+const sha = stamped('version.js', /RD_VERSION\s*=\s*"[^"]*?([0-9a-f]{7})"/, '');
+
+// The file tools/make_portable.js builds into dist/ is named from the release alone,
+// and stays that way — this script reads it, it does not write it.
+const distName = 'Reactor_Dynamics_' + ver.replace(/[^A-Za-z0-9.]+/g, '_') + '.html';
+const distPath = path.join(ROOT, 'dist', distName);
 
 // The portable build is gitignored, so on a fresh deploy checkout it will not exist.
 // Build it rather than failing: that is the entire point of doing this at deploy.
-if (!fs.existsSync(htmlPath)) {
+if (!fs.existsSync(distPath)) {
   const bundler = path.join(ROOT, 'tools', 'make_portable.js');
   if (!fs.existsSync(bundler)) {
     // This is what a deploy failure looks like when .vercelignore excludes the bundler:
@@ -145,17 +201,19 @@ if (!fs.existsSync(htmlPath)) {
   }
   cp.execFileSync(process.execPath, [bundler], { cwd: ROOT, stdio: 'inherit' });
 }
-const html = fs.readFileSync(htmlPath);
+const html = fs.readFileSync(distPath);
+
+const zipName = downloadName(ver, channel, sha, '.zip');
+const entryName = downloadName(ver, channel, sha, '.html');
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 // Sweep older versions so the directory never offers two downloads at once.
 for (const f of fs.readdirSync(OUT_DIR)) {
-  if (/^Reactor_Dynamics_.*\.zip$/.test(f) && f !== 'Reactor_Dynamics_' + safe + '.zip') {
+  if (/^Reactor_Dynamics_.*\.zip$/.test(f) && f !== zipName) {
     fs.unlinkSync(path.join(OUT_DIR, f));
   }
 }
-const zipName = 'Reactor_Dynamics_' + safe + '.zip';
-const zip = zipOne(htmlName, html);
+const zip = zipOne(entryName, html);
 fs.writeFileSync(path.join(OUT_DIR, zipName), zip);
 
 // download.html links a STABLE path so it never needs editing per release.
@@ -173,26 +231,16 @@ fs.writeFileSync(path.join(OUT_DIR, 'latest.zip'), zip);
 // the site has no fetch() anywhere and this is not the place to introduce one.
 // If it is missing (a local checkout that has never built), download.html simply
 // shows no metadata line: the CSS keeps .dl-meta hidden until it is filled.
-// CHANNEL AND SHA RIDE ALONG (2026-08-07). A tester downloading from the test site
-// gets a file whose NAME is identical to the released one — same product, same
-// version string, different bytes — so "the download is broken" arrives with no way
-// to tell which build it came from. Naming the file differently is the real fix and
-// is deliberately not done here: site/nav.js and this script each spell that filename
-// out and test/run_portable.js pins the two spellings against each other, so it is a
-// three-file change, tracked separately. This is the cheap half — the download page
-// states, on the page, which build it is about to hand you.
-// Both values come from the files stamp_version.js writes, which vercel.json /
-// the Pages build command run FIRST. Read defensively: a local `node
-// site/make_download.js` in a fresh clone has the repo placeholders, not a stamp.
-function stamped(file, re, fallback) {
-  try {
-    const m = re.exec(fs.readFileSync(path.join(ROOT, 'site', file), 'utf8'));
-    return m ? m[1] : fallback;
-  } catch (e) { return fallback; }
-}
-const channel = stamped('channel.js', /RD_CHANNEL\s*=\s*"([^"]+)"/, 'dev');
-const sha = stamped('version.js', /RD_VERSION\s*=\s*"[^"]*?([0-9a-f]{7})"/, '');
-
+// CHANNEL AND SHA RIDE ALONG (2026-08-07), so the page can say TEST BUILD and name
+// the commit. Since #414 (2026-08-09) `file` is load-bearing rather than
+// informational: site/nav.js stamps it straight onto the download button's
+// `download=` attribute, so this object is how the built name reaches the visitor.
+// Nothing re-derives it — see downloadName() above.
+//
+// site/build_site.js serves this file `Cache-Control: no-cache` (2026-08-09), which
+// that change made for the version stamps and this one now depends on: a manifest
+// cached for four hours would offer the PREVIOUS deploy's filename for the current
+// deploy's zip, which is the defect wearing yet another hat.
 const manifest = {
   version: ver,
   date: releaseDate(),
@@ -217,3 +265,11 @@ if (!manifest.date) {
   console.warn('  ! no datetime="" found in changelog.html — the download page will'
     + ' show no date. Check the newest entry.');
 }
+}
+
+module.exports = { downloadName: downloadName };
+
+/* Side effects only when run as a command, so test/run_portable.js can require this
+ * file and ask downloadName() anything without building a 2.5 MB bundle or writing
+ * into download/. Same idiom, and the same reason, as site/stamp_version.js. */
+if (require.main === module) main();

@@ -45,6 +45,42 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-09-backshop-a — #414: the download is named for the build, and named ONCE
+
+**Decision.** Off the released channel the offline download's filename carries the commit:
+`Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.zip`, containing a `.html` entry of the same stem. A
+production deploy is unchanged (`…_Alpha_1.5.1.zip`); a local build is `…_dev`. Two owner
+rulings, both taken at plan time (2026-08-09) as selections from options I put to the owner —
+so the phrasing below is mine and only the choice is theirs, which is the distinction
+`agent-authored-rulings` exists to keep visible. **"Transport it"**: `site/nav.js` takes the
+name out of `download/manifest.js` rather than re-deriving it. **"Suffix both"**: the archive
+entry follows the same rule as the zip.
+
+**Why the structural half matters more than the suffix.** The filename had two spellings
+(`site/make_download.js`, `site/nav.js`) and `test/run_portable.js` guarded them by comparing
+three static literals pulled from each: the prefix, the sanitising regex, `'.zip'`. Adding a
+suffix to one side leaves all three identical in both files — the gate stays green while the
+offered name is no longer the built name. So the guard could not have caught the very defect
+it was written for, and #414 was filed as a three-file change for that reason. The fix removes
+a side instead of hardening the comparison: `downloadName(release, channel, sha, ext)` is the
+single derivation, exported from `make_download.js` behind the `require.main === module` guard
+that `stamp_version.js` established, and the manifest that script already writes beside the zip
+transports the result to the browser. Agreement is now structural, not asserted.
+
+**Gate.** `run_portable` **129 → 137**: −1 literal-agreement check, +1 load-order check
+(`manifest.js` before `nav.js`), +6 behaviour-matrix rows over `downloadName`, +2 on `nav.js`
+(takes the manifest value; contains no `Reactor_Dynamics_` literal). Three injections
+confirmed red — inverted channel test (6), a name rebuilt in `nav.js` (1), reordered script
+tags (1). Measured in headless Edge from `file://`:
+`download="Reactor_Dynamics_Alpha_1.5.1_dev.zip"`.
+
+**Coupling to record**: this depends on `download/manifest.js` being served `no-cache`, which
+`2026-08-09-develop-a` had just added to `site/build_site.js`'s `_headers` for the version
+stamps. A four-hour-cached manifest would offer the previous deploy's filename for the current
+deploy's zip. Noted in `make_download.js` at the manifest write.
+
+---
+
 ## 2026-08-08-develop-g — the winter uprate stays MONOTONIC: no LP low-backpressure knee (ruled, declared §8.35)
 
 **Ruling** *(OWNER, 2026-08-08: "is it worth the extra computer when running the sim to do the
