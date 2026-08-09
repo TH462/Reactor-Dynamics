@@ -177,6 +177,24 @@ if (deadLinks.length) {
 // /sim must land on the FINAL url, not one that redirects again.
 fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell?engine=pwr  302\n');
 
+// THE VERSION STAMPS MUST NOT BE CACHED FOR FOUR HOURS. Cloudflare Pages defaults static
+// assets to `max-age=14400`, which is fine for engine code — it is immutable per deploy and
+// the page that loads it is revalidated — but self-defeating for the three files whose ENTIRE
+// JOB is to say which build you are looking at. Measured 2026-08-09, right after Alpha 1.5.1:
+// the origin served 1.5.1 to every uncached fetch while the owner's browser showed 1.4.0 —
+// TWO releases behind, because it had cached release.js hours earlier and `must-revalidate`
+// does nothing until max-age expires. The same policy is why version.js appeared to serve a
+// stale commit after 1.5.0; that was written off as a self-healing edge blip, and it was not,
+// it was this, and it hits every visitor for four hours after every release.
+//
+// `no-cache` here means "store it, but revalidate every time" — not "do not store". With the
+// ETag already present each check is a ~100-byte 304, so the cost is one conditional request
+// per page load against a version display that is otherwise wrong for a quarter of a day.
+fs.writeFileSync(path.join(OUT, '_headers'),
+  ['/site/version.js',      '  Cache-Control: no-cache',
+   '/site/release.js',      '  Cache-Control: no-cache',
+   '/download/manifest.js', '  Cache-Control: no-cache', ''].join('\n'));
+
 if (problems.length) {
   console.error('\ndist-site is INCOMPLETE — these references do not resolve inside it:');
   problems.forEach((p) => console.error('  ' + p));

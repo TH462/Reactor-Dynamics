@@ -82,6 +82,34 @@ Verified end-to-end in a real browser, not just by gate: overlay absent, `collec
 3 events queued, toggle visible and lit **On**, and clicking Off yields `consent: "denied"`,
 `granted: false`, verdict *"opted out — nothing is collected, as asked"*. `run_all` 44 at baseline.
 
+**THE VERSION STAMPS WERE CACHED FOR FOUR HOURS, AND that is what "the site still shows 1.4.0"
+was.** Reported minutes after Alpha 1.5.1 went live. The origin was correct — plain,
+cache-busted and `Cache-Control: no-cache` fetches all returned 1.5.1 — so it was the browser,
+and Ctrl+Shift+R confirmed it. The cause is that **Cloudflare Pages defaults static assets to
+`max-age=14400`**, which is right for engine code (immutable per deploy, loaded by a page that
+IS revalidated) and self-defeating for the three files whose entire job is to say which build
+you are looking at. `must-revalidate` does nothing until the max-age expires.
+
+**This also retires a wrong call I made one release earlier.** After 1.5.0, `version.js` served
+the previous commit while `release.js` served the new version; I wrote that off as a
+self-healing edge blip. It was not — it was this, and it hits **every** visitor for four hours
+after **every** release, not just the one who noticed. A stale read that "heals on its own" is
+worth one more question: healed for whom, and after how long?
+
+Fixed in `site/build_site.js`, which already writes `_redirects` — it now also emits a
+`_headers` giving `site/version.js`, `site/release.js` and `download/manifest.js`
+`Cache-Control: no-cache`. That means "store, but revalidate every time", not "do not store";
+with the ETag already present each check is a ~100-byte 304.
+
+**A documented rule turned out to be UNSATISFIABLE, and the gate is the one telling the truth.**
+CLAUDE.md said a website-only release "gets a version bump and no `changelog.html` entry".
+Measured: bumping to 1.5.2 with no entry is `run_release` **20 checks / 2 failed**; leaving the
+version alone is **green**. A bump and an entry move together or not at all, so "bump, no entry"
+was never reachable — a website-only change ships on the CURRENT version. CLAUDE.md corrected,
+and the correction was written net-NEGATIVE on words: the file sits at its 15,000 cap
+(14,992 before, 14,989 after), so the first draft of the fix reddened `run_doc_budget` at
+15,047. The cap is doing exactly what it was built to do.
+
 ---
 
 ## Session log — 2026-08-09-workbench-a (the flicker is COMPUTE-bound, measured; and a release check that could never have passed)

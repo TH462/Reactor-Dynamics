@@ -30,6 +30,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The version stamps were cached for four hours, which is why the site kept reporting an old
+  release after a new one shipped.** Cloudflare Pages defaults static assets to `max-age=14400`
+  — right for engine code (immutable per deploy, loaded by a page that *is* revalidated),
+  self-defeating for the three files whose entire job is to say which build you are looking at,
+  and `must-revalidate` does nothing until the max-age expires. The origin was always correct;
+  every visitor's browser was up to four hours behind. `site/build_site.js` now emits a
+  `_headers` alongside its `_redirects`, giving `site/version.js`, `site/release.js` and
+  `download/manifest.js` `Cache-Control: no-cache` — store but revalidate, which is a ~100-byte
+  304 against the ETag already present. **This also retires a wrong call from one release
+  earlier**: `version.js` serving a stale commit after Alpha 1.5.0 was written off as a
+  self-healing edge blip. It was this, and it affected everyone, not just whoever noticed.
+- **A documented release rule was unsatisfiable.** CLAUDE.md said a website-only release gets
+  "a version bump and no `changelog.html` entry" — measured, that is `run_release` 20 checks /
+  2 failed, while leaving the version alone is green. A bump and an entry move together or not
+  at all, so a website-only change ships on the **current** version. Corrected in the change
+  that makes it true, and written net-negative on words: CLAUDE.md sits at its 15,000-word cap,
+  and the first draft of the correction reddened `run_doc_budget` at 15,047.
+
+
 ## [Alpha 1.5.1] — 2026-08-09
 
 ### Changed

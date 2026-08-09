@@ -1096,8 +1096,8 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   ship inside the sim. A change to the surrounding site (a page, its styling, navigation, the
   download plumbing, the changelog page itself) is not a simulator change and gets no entry,
   however visible it is. It still belongs in `CHANGELOG.md`, which is the engineering record
-  and unrestricted. If a release contains nothing but website work, it gets a version bump and
-  no `changelog.html` entry.
+  and unrestricted. **A website-only change ships with NO version bump** — `run_release` forbids
+  "bump, no entry" (measured; `TUNING_LOG` 2026-08-09-develop-a).
 - **BE CONCISE, and that is a CAP** *(OWNER DIRECTIVE, 2026-08-04: "Update tracking
   summaries/lists should be concise.")*. **At most 8 bullets per entry, one line each**
   *(the number is my operational reading, not the owner's — the directive is the brevity)*.
