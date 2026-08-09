@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.5.0] — 2026-08-09
+
 ### Added
 - **Simulator performance readout on the Physics tab, and in every bug report.** Stutter
   reports were unactionable because compute-bound, render-bound and dropped frames look
