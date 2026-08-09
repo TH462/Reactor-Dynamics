@@ -45,6 +45,21 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-08-develop-e — turbine load raises rate-limited at 30 %/min (ruled); decreases stay instant (structural)
+
+**Ruling.** *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* — `turbine.load_rate_pct_per_min`
+0 → 30.0, raises only, superseding the 2026-08-03 off-ruling. The measured basis: a 70 → 100 MWe
+raise delivers output at +240–260 s at every rate INCLUDING instant (the reactor is the pace),
+so the limiter costs no responsiveness; instant's borrowed-SG-steam spike grazed the C-4 runback
+(min OPΔT margin 2.71 vs 3.49 at 30 %/min, silent). The owner also asked whether decreases
+should take the same limit — recommended NO and the recommendation stood: the rejection
+detector's standing gap under a ramp is rate × refTau(60 s) = 30 MWe, under the 40 MWe dump
+arm, so a symmetric limit un-arms the FG-4 ride-out for any size cut (arithmetic recorded at
+`load_mode.js`). #379 pair re-measured with the limit on: the one-box step charges zero runback
+dwell; `persist_s` 8.5 untouched, both pair comments updated. Gate: `run_all` 44 at baseline.
+Full worklog: `Diagnostic/TUNING_LOG.md` 2026-08-08-develop-e (includes the CHANGELOG
+blockquote-splice repair, its own commit).
+
 ## 2026-08-08-develop-d — #425: the containment passive sink learns saturation ΔT, on a lag
 
 **Ruling.** *(OWNER RULING, 2026-08-08: "Do next as recommended.")* — Option B of the #425

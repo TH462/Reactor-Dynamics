@@ -8,6 +8,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
 
+### Changed
+- **PWR turbine load RAISES are rate-limited again — 30 %/min of rated, raises only** *(OWNER
+  RULING, 2026-08-08: "Do the 30% increase.", superseding the 2026-08-03 "turn it off" that had
+  retired the #318 10 %/min value)*. Measured full-stack before the ruling: the knob costs the
+  player nothing — a 70 → 100 MWe raise reaches target at +240–260 s at EVERY rate *including*
+  instant, because the reactor sets the pace; all the instant step added was a spike of borrowed
+  SG steam (output 96.6 MWe at +15 s, sagging to ~91) that grazed the C-4 runback (min OPΔT
+  margin 2.71, ~5 s below the 3.0 line, power peak 106.7 %). At 30 %/min the margin bottoms at
+  3.49, the runback stays silent, and the output meter shows a clean monotonic climb (~94 % in
+  the first minute). Decreases stay instant, and that is structural, not taste: the rejection
+  detector reads (ref − target) through a 60 s lag against the dump's 40 MWe arm, so a ramped
+  decrease caps the standing gap at rate × 60 s = 30 MWe — a symmetric limit could never arm
+  the ride-out, and the load box is free play's only route to it (a turbine trip at power
+  scrams via P-9). The #379 pair obligation is met: with the limit on, the one-box step never
+  charges the runback dwell at all (re-measured; the accounting lives at `persist_s`).
+  `run_all` 44 runners at baseline.
+
 ## [Alpha 1.4.0] — 2026-08-08
 
 ### Changed — the containment passive sink learns saturation ΔT, on a lag (#425, 2026-08-08)

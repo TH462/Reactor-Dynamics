@@ -29,6 +29,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-08-develop-e (turbine load raises rate-limited at 30 %/min, ruled; + the CHANGELOG blockquote splice repaired)
+
+**Ruling.** *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* — `turbine.load_rate_pct_per_min`
+0 → 30.0, **raises only**, superseding the 2026-08-03 "I dont like the new load increase rate
+limite; turn it off." Decreases stay instant (unchanged code; the owner asked and the
+recommendation against was adopted with the raise ruling). `run_all` 44 runners at baseline.
+
+**The question was "does the plant move too slowly", and the measurements answered a different
+one.** Actuators all sit at or above the reference plant: rod speeds 8/48/72 steps/min are
+WTSM 8.1's own numbers, scram 2.5 s vs Ginna's 1.8-to-dashpot, and the load box (limiter off)
+was *faster* than any real EHC. What reads as slow is the thermal plant, which is the point.
+
+**The sweep that priced the knob** (full stack, settled 70 MWe → 100 raise; scratch files
+`rate2_*.txt`, method reproducible from the entry): output reaches target at **+240–260 s at
+every rate including instant** — the reactor sets the pace, so the limiter costs zero
+responsiveness. Instant's only product is a borrowed-SG-steam spike (96.6 MWe at +15 s, sag to
+~91) that **grazes the C-4 runback**: min OPΔT margin 2.71, one 5 s-resolution sample below the
+3.0 accumulate line, power peak 106.7 %. At 15/30/50 %/min: margins 3.63/3.49/3.86 (differences
+are instrument noise), no sample below 3.0, peaks ~105. The pre-#419 "within 0.51 of the OPΔT
+trip" figure in the old config comment did NOT reproduce on the re-anchored plant — the
+excursion is now a runback graze, not a near-trip; comment updated so the next agent prices the
+real plant, not the 2026-08-03 one.
+
+**Why decreases can never take the same limit (structural, recorded at `load_mode.js`):** the
+rejection detector is (ref − target) through `refTau` 60 s against `dump_load_reject_mwe` 40;
+a ramp caps the standing gap at rate × 60 s = **30 MWe at 30 %/min — under the arm threshold
+for ANY size cut**, so a symmetric limit deletes the FG-4 ride-out from free play (turbine trip
+at power scrams via P-9; the load box is the only graded route). This is arithmetic on as-built
+constants, not a tuning outcome.
+
+**The #379 pair obligation** (whoever moves `load_rate_pct_per_min` re-measures the `persist_s`
+gap): with the limit ON at 30 the one-box step never reaches the dwell's 3.0 accumulate line
+(floor 3.49 at 5 s sampling) and a 35-min ride ends with the load target uncut — zero engages by
+the kernel's own accounting. The 15 % SLB side is a failure path no operator ramp touches.
+Separation is now wider than rate-0's 2.8×; both comments updated (`pwr_config.js`,
+`pwr_control.js`).
+
+**Found on the way, repaired in its own commit: the CHANGELOG file-header blockquote had been
+SPLICED** by the 2026-08-07 workbench merge (3f78ec6, "the CLAUDE.md cut wins the conflict") —
+the intro blockquote's first line was cut mid-token ("rename the `## [Unreleased]" / stray
+"` heading" 70 lines later) and six entries sat INSIDE the blockquote, above every release
+heading, where the 1.3.0 and 1.4.0 rolls could not see them. `run_release` stayed green the
+whole time — it checks heading order and the html/js agreement, not whether content sits under
+a heading at all. Attribution by commit ancestry (`git merge-base --is-ancestor` against each
+release commit): five entries (run_doc_budget, the CLAUDE.md cut, #371 ADV, TR-17, find_source)
+shipped in **1.3.0**, one (#425) in **1.4.0**; each re-homed under its release with a
+provenance note. **The trap for the standing list: a guaranteed-conflict file's damage can be
+INVISIBLE to its own gate — the conflict files conflict loudly, but a resolution that splices
+content ABOVE the first section heading parses as preamble, and nothing asserts the preamble is
+prose.** The next merge that touches CHANGELOG.md should eyeball lines 1–40, not just the entry
+seam.
+
+---
+
 ## Session log — 2026-08-08-develop-d (#425 — the containment passive sink learns saturation ΔT, on a lag; the SBO family joins the containment-holds pin)
 
 **Owner: "Do next as recommended."** — Option B from the #425 options put to him: a
