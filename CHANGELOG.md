@@ -8,16 +8,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
 
-### Added
-- **`test/run_doc_budget.js`** — gates the one document that is auto-loaded into every agent's
-  context on every turn: `CLAUDE.md` <= 15,000 words, no single physical line over 400 words, and
-  the *Recent themes* region inside its own documented 5-bullet cap. `run_all` 39 -> 40 runners.
-  It exists because all three limits were already written in that file's prose and all three were
-  being broken -- injection-verified against the pre-cut file, which fails every check (42,065
-  words, a 5,310-word line, 13 bullets). `Diagnostic/TUNING_LOG.md` is deliberately NOT gated:
-  it is read on demand, and length is only a defect where it is paid on every turn.
+## [Alpha 1.4.0] — 2026-08-08
 
-### Changed
+### Changed — the containment passive sink learns saturation ΔT, on a lag (#425, 2026-08-08)
+
+_Re-homed 2026-08-08: a 2026-08-07 merge-conflict resolution had spliced this entry (and five 1.3.0 ones) into the middle of the file-header blockquote, above every release heading, where the release rolls could not see it. Attribution by commit ancestry; see TUNING_LOG 2026-08-08-develop-e._
+
 - **PWR containment: the passive sink strengthens with saturation elevation, on a lag — an SBO
   boil-off no longer beats the building on relief steam alone** (#425, OWNER-RULED 2026-08-08).
   Before: a station blackout with all feed lost parked containment at 83.3 psig (0.574 MPa g) —
@@ -34,65 +30,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   live pressure in ~2 min. In passing, re-measured the #384 Rev 13(j) residual and recorded it
   CLOSED (full break bottoms at the building, 14.8 vs 14.7 psi absolute — `Manuals/12` §7.2).
   Manuals Rev 14 pending item (o).
-- **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
-  loaded into every agent's context on every turn and had grown to 1,735 lines under its own
-  "Keep it SHORT" heading, with a single physical line of 5,310 words. Removed: 21,046 words of
-  prose gate baselines duplicating the `BASELINES` map that the same section names as the
-  authority -- and which had rotted into four wrong figures, a runner listed twice with different
-  numbers, and a block marked "unedited" from an old merge. Themes and standing-procedure bullets
-  compressed 9,663 -> 2,055 with every trap kept; the themes list gains a word budget, having run
-  7 bullets against its own cap of 5. All 30 dated owner citations were verified to exist in other
-  tracked files before anything was deleted, so `run_hardrules` 208 -> 205 is fewer citation sites
-  and zero fewer rulings (`BASELINES` updated in the same change).
-- **PWR atmospheric dump valve — setpoint sourced, 1247 → 1272 psi (8.60 → 8.77 MPa)** (#371).
-  WTSM §7.1.3.3 (ADAMS ML11223A244) sets the real valve *"approximately half the difference between
-  the no-load steam generator pressure and the lowest set pressure of the safety valves"*; ours sat
-  at 34 % of that span. Capacity `adv_max` 0.10 needs no change — it already matches the sourced
-  *"approximately 10% of the rated steam flow … from each steam generator"*. Nearly inert in play:
-  the loss-of-condenser spike and the code-safety lift are identical at both values; only the hold
-  point moves. Perturbation sweep at this exact nudge: 42/623 checks move, zero verdict flips.
-  `DESIGN_COMPANION` §8.34 narrows from "capacity and setpoint unsourced" to the relief ladder,
-  which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
-
-### Fixed
-- **A behaviour check that could never fail** (TR-17, shipped with #392). `sg_safety_open` is a
-  boolean and `range()` returns `NaN` on it, so `!range(...).max` was `!NaN` — true, always.
-  Injection-verified: the plant it exists to exclude passed it. The claim it guarded was also
-  wrong — the code safeties lift at 54 s whether the ADV is in AUTO or shut, because that spike is
-  the steam generator's. The check now asserts what actually differs, the tail: safeties open 1.8 %
-  of the hour and reseat, against 99.4 % and never reseating with the valve shut.
-
-### Added
-- **`tools/find_source.js`** — searches the source corpus across all three worktree lanes and exits
-  non-zero on a genuine miss. The corpus is three gitignored directories that cannot see each other,
-  and one-lane greps have now cost two evidence passes: #315 §6 (an OTΔT argument built and
-  reverted while the primary sat in another lane) and §8.34 (a departure declared on
-  *"no document in any lane's corpus"* that another lane could refute).
-` heading
-> below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
-> empty `## [Unreleased]` above it. The version must match the top entry of
-> `changelog.html` and the string in `site/release.js`.
->
-> **`node test/run_release.js` enforces that** (2026-07-31). This paragraph on its own did not:
-> the roll was skipped for **Alpha 1.10.0 and again for 1.11.0**, and 434 lines covering two
-> shipped releases sat below as unreleased while the newest version heading here read 1.9.0.
-> It survives being skipped because nothing downstream reads these headings — the file renders
-> and reads plausibly either way — and it compounds, because once two releases are merged into
-> one block the boundaries can only be recovered by diffing this file at each tag. Which is
-> what it took.
->
-> **`## [Pre-launch 1.x.y]` headings are DEVELOPMENT versions, not releases** (2026-08-04). The
-> project versioned itself `Alpha 1.2.0` → `1.11.0` before it was ever public, then dropped the
-> number entirely for `Pre Alpha`, and the first *real* release is **`Alpha 1.0.0`** below. Those
-> older sections keep their content and dates and are simply relabelled, because `1.0.0` sorting
-> above `1.11.0` fails the gate's newest-first check — measured, **10 checks / 1 failed** before
-> the relabel and **11 / 0** after. They are relabelled INDIVIDUALLY rather than merged into one
-> catch-all, for the reason the paragraph above gives: merged boundaries cost a tag diff to
-> recover. Nothing below `Alpha 1.0.0` was ever downloadable.
-
-## [Unreleased]
-
-## [Alpha 1.4.0] — 2026-08-08
 ### Added — the hydrogen is real: inventory, recombiners, and the one-time TMI-2-style burn (#386 stage 3, 2026-08-08)
 
 - **Generation is the oxidation term itself** — the zirconium-steam reaction that heats the
@@ -600,6 +537,55 @@ strictly for simulator changes *(OWNER DIRECTIVE, 2026-08-06: "Also, don't inclu
 changes in the changelog. The changelog is strictly for simulator changes.")*. They are recorded
 below, which is what this file is for.
 
+
+### Restored — five workbench-merge entries a conflict resolution displaced (shipped in this release, re-homed 2026-08-08)
+
+_The 2026-08-07 workbench merge spliced these into the middle of the file-header blockquote, above every release heading; they shipped with 1.3.0 (verified by commit ancestry) but no roll could file them. See TUNING_LOG 2026-08-08-develop-e._
+
+**Added:**
+- **`test/run_doc_budget.js`** — gates the one document that is auto-loaded into every agent's
+  context on every turn: `CLAUDE.md` <= 15,000 words, no single physical line over 400 words, and
+  the *Recent themes* region inside its own documented 5-bullet cap. `run_all` 39 -> 40 runners.
+  It exists because all three limits were already written in that file's prose and all three were
+  being broken -- injection-verified against the pre-cut file, which fails every check (42,065
+  words, a 5,310-word line, 13 bullets). `Diagnostic/TUNING_LOG.md` is deliberately NOT gated:
+  it is read on demand, and length is only a defect where it is paid on every turn.
+
+**Changed:**
+- **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
+  loaded into every agent's context on every turn and had grown to 1,735 lines under its own
+  "Keep it SHORT" heading, with a single physical line of 5,310 words. Removed: 21,046 words of
+  prose gate baselines duplicating the `BASELINES` map that the same section names as the
+  authority -- and which had rotted into four wrong figures, a runner listed twice with different
+  numbers, and a block marked "unedited" from an old merge. Themes and standing-procedure bullets
+  compressed 9,663 -> 2,055 with every trap kept; the themes list gains a word budget, having run
+  7 bullets against its own cap of 5. All 30 dated owner citations were verified to exist in other
+  tracked files before anything was deleted, so `run_hardrules` 208 -> 205 is fewer citation sites
+  and zero fewer rulings (`BASELINES` updated in the same change).
+- **PWR atmospheric dump valve — setpoint sourced, 1247 → 1272 psi (8.60 → 8.77 MPa)** (#371).
+  WTSM §7.1.3.3 (ADAMS ML11223A244) sets the real valve *"approximately half the difference between
+  the no-load steam generator pressure and the lowest set pressure of the safety valves"*; ours sat
+  at 34 % of that span. Capacity `adv_max` 0.10 needs no change — it already matches the sourced
+  *"approximately 10% of the rated steam flow … from each steam generator"*. Nearly inert in play:
+  the loss-of-condenser spike and the code-safety lift are identical at both values; only the hold
+  point moves. Perturbation sweep at this exact nudge: 42/623 checks move, zero verdict flips.
+  `DESIGN_COMPANION` §8.34 narrows from "capacity and setpoint unsourced" to the relief ladder,
+  which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
+
+**Fixed:**
+- **A behaviour check that could never fail** (TR-17, shipped with #392). `sg_safety_open` is a
+  boolean and `range()` returns `NaN` on it, so `!range(...).max` was `!NaN` — true, always.
+  Injection-verified: the plant it exists to exclude passed it. The claim it guarded was also
+  wrong — the code safeties lift at 54 s whether the ADV is in AUTO or shut, because that spike is
+  the steam generator's. The check now asserts what actually differs, the tail: safeties open 1.8 %
+  of the hour and reseat, against 99.4 % and never reseating with the valve shut.
+
+**Added:**
+- **`tools/find_source.js`** — searches the source corpus across all three worktree lanes and exits
+  non-zero on a genuine miss. The corpus is three gitignored directories that cannot see each other,
+  and one-lane greps have now cost two evidence passes: #315 §6 (an OTΔT argument built and
+  reverted while the primary sat in another lane) and §8.34 (a departure declared on
+  *"no document in any lane's corpus"* that another lane could refute).
 
 ### Changed — the accident-inventory clock runs REAL flows, and the relief valves are plant-sized (#408 wave 1 + the 2026-08-07 proportional-valve ruling)
 
