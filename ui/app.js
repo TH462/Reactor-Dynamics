@@ -1059,8 +1059,46 @@
     return !!(pane && pane.classList.contains('on') && card && !card.classList.contains('collapsed'));
   }
   function physicsVisible() { return paneVisible('physics'); }
+  /* The performance readout, throttled to 1 Hz and only while the tab is open. It reads
+   * ring buffers that are always filling, so the numbers are live whether or not anyone is
+   * looking — but computing percentiles on every frame would put the profiler into its own
+   * measurement, which is the one thing it must not do. */
+  var _perfPaintedAt = 0;
+  function renderPerf() {
+    var box = $('perfRows'); if (!box || !RD.Perf) return;
+    var now = Date.now();
+    if (now - _perfPaintedAt < 1000) return;
+    _perfPaintedAt = now;
+
+    var p = RD.Perf.summary();
+    var ms = function (st) { return st ? st.p50.toFixed(1) + ' / ' + st.p95.toFixed(1) + ' / ' + st.max.toFixed(1) : '—'; };
+    var rows = [
+      ['Physics', ms(p.step_ms) + ' ms', 'one broadcast of engine stepping (median / p95 / worst)'],
+      ['Rendering', ms(p.render_ms) + ' ms', 'one DOM pass (median / p95 / worst)'],
+      ['Budget used', p.budget_pct === null ? '—' : Math.round(p.budget_pct) + ' %', 'of the ' + p.nominal_ms + ' ms broadcast interval'],
+      ['Broadcast gap', ms(p.interval_ms) + ' ms', 'actual spacing; well over nominal means the loop is slipping'],
+      ['Frames', (p.fps === null ? '—' : p.fps.toFixed(0) + ' fps'), p.paints + ' painted, ' + p.coalesced + ' broadcasts merged into another frame'],
+    ];
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      html += '<div class="set-row"><span class="k" title="' + rows[i][2] + '">' + rows[i][0] +
+        '</span><span class="mono">' + rows[i][1] + '</span></div>';
+    }
+    box.innerHTML = html;
+    var v = $('perfVerdict');
+    if (v) {
+      txt(v, p.verdict);
+      v.className = 'perf-verdict' +
+        (/COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
+         /RENDER-BOUND|SLIPPING|DROPPED/.test(p.verdict) ? ' bad' :
+         /healthy/.test(p.verdict) ? ' ok' : '');
+    }
+  }
+
   function renderPhysics(s) {
-    if (!physRows.length || !physicsVisible()) return;
+    if (!physicsVisible()) return;
+    renderPerf();                       // independent of the plant rows — it has its own data
+    if (!physRows.length) return;
     var t = s.true_state; if (!t) return;
     physRows.forEach(function (p) {
       var txt, cls = '';
@@ -1266,11 +1304,29 @@
   function render(s) {
     latest = s;
     _renderSnap = s;
-    if (_renderRaf) return;                 // a paint is already queued — it will use the latest snap
+    // Perf sampling (ui/perf.js). The service measured its own physics loop and left it on
+    // the instance; pair it here with the render cost so the two stages can be told apart —
+    // which is the only way to answer "is the flicker compute or something else".
+    if (RD.Perf) {
+      try {
+        RD.Perf.broadcast(service._perfStepMs,
+          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs);
+      } catch (e) { /* a profiler must never break the sim */ }
+    }
+    if (_renderRaf) {
+      // A paint is already queued and will use the newer snapshot — so this broadcast
+      // never gets a frame of its own. Worth counting: it means the screen is showing
+      // fewer plant states than the plant produced, which is what "flicker" often is.
+      if (RD.Perf) { try { RD.Perf.dropped(); } catch (e) {} }
+      return;
+    }
     _renderRaf = _raf(function () {
       _renderRaf = 0;
       var snap = _renderSnap; _renderSnap = null;
-      if (snap) renderNow(snap);
+      if (!snap) return;
+      if (!RD.Perf) { renderNow(snap); return; }
+      var t0 = RD.Perf.renderStart();
+      try { renderNow(snap); } finally { RD.Perf.renderEnd(t0); }
     });
   }
   function renderNow(s) {
@@ -3803,6 +3859,11 @@
         seed: service.seed, sample_hz: 1
       },
       timeseries: diag.samples, events: diag.events, commands: diag.commands,
+      // PERFORMANCE RIDES ALONG (2026-08-08). "It flickers on some PCs" is unanswerable
+      // without it — compute-bound, render-bound and neither-of-those look identical to the
+      // person reporting, and the machine it happened on is the only place the numbers
+      // exist. Cheap to carry: one object of percentiles, not a trace.
+      performance: (function () { try { return RD.Perf ? RD.Perf.summary() : null; } catch (e) { return null; } }()),
       snapshot_end: service.saveState()
     };
     var notesEl = $('diagNotes'), notes = notesEl && notesEl.value.trim();

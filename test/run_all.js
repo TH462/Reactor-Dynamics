@@ -1021,7 +1021,10 @@ var BASELINES = {
   // The DROP entries had to go in the SAME change as the tags: the gate fails on a stale
   // declaration as well as an undeclared tag, so removing one without the other is red
   // either way. That symmetry is the check working.
-  'run_portable.js':       { code: 0, score: '128checks 0failed' },
+  // 128 -> 129 on 2026-08-08: ui/perf.js joined the shell, and the LOADS rule scans one
+  // check per shipped script. It contains no loader (only performance.now and arithmetic),
+  // so the count moves and nothing else does.
+  'run_portable.js':       { code: 0, score: '129checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with

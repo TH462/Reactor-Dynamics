@@ -258,6 +258,13 @@
   // One broadcast cycle: inner physics steps (fixed dt), evaluate, assemble, emit.
   SimulationService.prototype.tick = function () {
     if (!this.running || !this.engine) return null;
+    // PHYSICS COST, measured here because only this function knows where the step loop
+    // begins and ends. Recorded on the SERVICE INSTANCE, deliberately not on the snapshot:
+    // the snapshot is a contract (CONTEXT.md §6.3, gated by run_contract) and a profiling
+    // number has no business in it. The UI reads `_perfStepMs` if it cares; nothing breaks
+    // if it does not. Two clock reads per broadcast — see ui/perf.js on why this has to be
+    // cheap enough not to appear in its own measurement.
+    var _perfT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
     var steps = this._stepsPerBroadcast();
     var sinceEval = 0;
     // Fine chart sampling. The interval is the LARGER of the fixed sim-time grid and what
@@ -320,6 +327,15 @@
     // PROTECTION_DT, which would over-count at 1x where the loop above never fires.
     this.layer.evaluate(this.engine.getInstruments(), sinceEval);   // trips/actuations/alarms on the new readings (HR1)
     this.simTime += steps * PHYSICS_DT;
+
+    // Stop the clock BEFORE broadcasting: subscribers run synchronously inside _broadcast,
+    // so timing past this point would fold the UI's render into the physics figure and
+    // make every transient look compute-bound. Separating the two stages is the whole
+    // reason the measurement exists.
+    if (_perfT0) {
+      this._perfStepMs = performance.now() - _perfT0;
+      this._perfSteps = steps;
+    }
 
     var snap = this._assembleWithInstructor();
     this._broadcast(snap);
