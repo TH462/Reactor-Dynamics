@@ -55,6 +55,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
 
 ### Fixed
+- **The strip chart's x-axis jumped sideways for the first `window` seconds of every run.** The
+  right-hand tick tested `rel === 0` on a float that is only zero in exact arithmetic. `t0 + span`
+  reconstructs `t1` bit-exactly whenever the two are within a factor of two (Sterbenz) — which is
+  why it looked fine on a long run and was broken at the start of every one: while sim time is under
+  the window, `t0` is negative, `span` carries a ~1e-13 residue and the test misses. Both signs then
+  printed **"−0s"**, a wider label than "0", so the whole flex row of six ticks slid as it flipped.
+  Measured on the default 300 s window over a fresh run: **749 of the first 3200 frames read "−0s"
+  and the label flipped 424 times**; on the 1800 s window, 4790 of 18200 and 1552 flips; at the
+  43200 s rung, 61824 flips. Now rounds first and tests the rounded value — the number the label
+  actually shows. The same rounding replaces `hms()`'s floor on the long-span rungs, where the same
+  residue printed a 360 s tick as `00:05:59`. A/B over all seven windows: **0 flips, 0 zero-width
+  ticks in 624,600 frames.** `run_all` 44 at baseline.
 - **A behaviour check that could never fail** (TR-17, shipped with #392). `sg_safety_open` is a
   boolean and `range()` returns `NaN` on it, so `!range(...).max` was `!NaN` — true, always.
   Injection-verified: the plant it exists to exclude passed it. The claim it guarded was also

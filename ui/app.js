@@ -3388,10 +3388,22 @@
     // Built as a STRING behind the changed-only guard: this used to clear and re-append
     // six <span>s EVERY frame, for labels that only change when the window scrolls past
     // a tick.
+    // ROUND FIRST, THEN TEST FOR ZERO — the right-hand tick used to read `rel === 0` on a
+    // float that is only zero in exact arithmetic. `t0 + span` reconstructs `t1` bit-exactly
+    // whenever `t0` and `t1` are within a factor of two (Sterbenz), which is why this looks
+    // fine on a long run and is broken for the first `window` seconds of every one: while
+    // sim time is under the window `t0` is NEGATIVE, `span` carries a ~1e-13 residue, and the
+    // test misses. Both signs then print "−0s" — a WIDER label than "0" — so the whole flex
+    // row of ticks slid sideways as it flipped. MEASURED on the default 300 s window over a
+    // fresh run: 749 of the first 3200 frames read "−0s" and the label flipped 424 times;
+    // on the 1800 s window, 4790 of 18200 and 1552 flips. The rounded value is what the
+    // label SHOWS, so it is what the zero test has to read. Round rather than let hms()
+    // floor, too, or the same residue prints a 360 s tick as 00:05:59.
     var axLong = span > 600, axHtml = '';
     for (var i = 0; i <= 5; i++) {
-      var rel = (t0 + span * i / 5) - t1;
-      axHtml += '<span>' + (rel === 0 ? '0' : '−' + (axLong ? hms(-rel) : Math.round(-rel) + 's')) + '</span>';
+      var rel = Math.max(0, t1 - (t0 + span * i / 5));   // seconds BEFORE now, never negative
+      var relR = Math.round(rel);   // ROUND, not hms()'s floor — 359.99999999999994 is a 6:00 tick
+      axHtml += '<span>' + (relR === 0 ? '0' : '−' + (axLong ? hms(relR) : relR + 's')) + '</span>';
     }
     setHTML($('chartXAxis'), axHtml);
     txt($('chartWindowLbl'), '−' + (span > 3600 ? hms(span) : hms(span).slice(3)));
