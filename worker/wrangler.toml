@@ -24,6 +24,25 @@ bucket_name = "reactor-dynamics-bundles"
 binding = "EVENTS"
 dataset = "reactor_dynamics_usage"
 
+# OBSERVABILITY IS DELIBERATELY OFF. Do not turn it on to "see what the Worker is doing".
+#
+# Cloudflare's docs (workers/observability/logs/workers-logs, and the 2025-04-07 changelog):
+# "All console.log() statements, exceptions, REQUEST METADATA, AND HEADERS are automatically
+# captured during the Worker invocation." Headers includes CF-Connecting-IP, so invocation
+# logs would store visitor IP addresses for 7 days — which contradicts src/index.js ("the IP
+# ... is NEVER written anywhere") and the promise privacy.html makes on its behalf.
+#
+# `[observability.logs] invocation_logs = false` avoids that, and is pointless here: it leaves
+# only console.log capture, and this Worker logs nothing on purpose.
+#
+# You do not need it anyway. Request counts, errors and timings come from the GraphQL
+# `workersInvocationsAdaptive` dataset with no observability and no logging — that is how the
+# 2026-08-09 "did the telemetry actually receive anything?" question was answered. What
+# observability would add is the request contents, which is exactly the thing not to keep.
+#
+# If you ever DO need it, enable it for a bounded debugging window, and change privacy.html in
+# the same commit — then turn it off and change the page back.
+
 # The endpoint is public and unauthenticated by design — the alternative is a secret
 # shipped inside a page whose source is published under the AGPL, which is not a
 # secret. So the protections are a size cap (in the Worker) and this.
