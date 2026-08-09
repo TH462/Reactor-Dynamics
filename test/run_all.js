@@ -980,7 +980,13 @@ var BASELINES = {
   // reading a key no instrument publishes. That last one CAUGHT A LIVE DEFECT the day it was
   // written — `xenon` declared `get: i.xenon_pct_eq` for a quantity with no instrument, and
   // chartSample cloned the instruments dict every sample to feed it.
-  'run_inspect.js':        { code: 0, score: '10/10 53/53' },
+  //
+  // 2026-08-09: 53 -> 56. The Indications tab gained per-row scanner copy, so three more
+  // things can rot silently and are now checked: a row that resolves to NO copy (neither an
+  // authored hint nor an instrument the manual reference describes), a series NO checkbox can
+  // reach (dead weight — it costs a column in every packed chart row; three shipped that way
+  // for a day), and a physics row binding a `ser:` that does not exist. Injection-verified.
+  'run_inspect.js':        { code: 0, score: '10/10 56/56' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no

@@ -42,6 +42,10 @@ global.window = global;                       // board scripts attach to window.
   'ui/diagram/board/pwr_board_data.js',
   'ui/diagram/board/pwr_board_inspect.js',
   'ui/manual_md.js',
+  // The GENERATED instrument reference (RD.MANUAL) — the source of the Indications tab's
+  // copy for every analog channel, so the coverage check below needs it to tell a described
+  // channel from an undescribed one.
+  'ui/manual_data.js',
 ].forEach(load);
 
 var RD = globalThis.RD;
@@ -491,6 +495,46 @@ test('every plant indication has a chart series', function (ck) {
   ck('no two series share an id', dup.length === 0, dup.join(', '));
   ck('every series is grouped', (block.match(/\bid: '/g) || []).length === (block.match(/grp: '/g) || []).length,
      ids.length + ' series, ' + (block.match(/grp: '/g) || []).length + ' grouped');
+
+  // A series NO CHECKBOX CAN REACH is dead weight — it costs a column in every packed chart
+  // row and nothing can plot it. Reachable means: listed on the Indications tab (it has `get`,
+  // `ins:` or `ctl`), or bound to a Physics row by `ser:`. Three of these shipped briefly
+  // (block_valve, porv_stuck, spray_stuck — all true-state-only, so the Indications filter
+  // excluded them and no physics row named them).
+  var chunks = block.split(/(?=\n        (?:\{ id:|stat\(|logSer\())/);
+  var listed = {};
+  chunks.forEach(function (c) {
+    var im = c.match(/\bid: '([a-z0-9_]+)'/);
+    if (im && /\bget:|ins: '|\bctl:/.test(c)) listed[im[1]] = true;
+  });
+  var physBlock = app.slice(app.indexOf('      physics: ['), app.indexOf('failGroups: ['));
+  var bound = {}, b, rb = /ser: '([a-z0-9_]+)'/g;
+  while ((b = rb.exec(physBlock)) !== null) bound[b[1]] = true;
+  var orphan = ids.filter(function (i) { return !listed[i] && !bound[i]; });
+  ck('every series is reachable from a checkbox', orphan.length === 0, orphan.join(', '));
+
+  // A Physics row's `ser:` must name a series that exists, or its checkbox toggles nothing.
+  var ghostSer = Object.keys(bound).filter(function (i) { return ids.indexOf(i) < 0; });
+  ck('every physics row binds a series that exists', ghostSer.length === 0, ghostSer.join(', '));
+
+  // Every Indications row resolves to scanner copy. Two sources: the generated manual
+  // reference (analog channels) or an authored `hint` (status channels and commanded
+  // positions, which the manual reference does not describe — it documents instruments).
+  // Without this a new status series ships with a bare label and no way to find out what it
+  // means, which is the state the whole tab was in before 2026-08-09.
+  var inds = ((RD.MANUAL || {}).pwr || {}).indications || [];
+  var described = {}; inds.forEach(function (i) { if (i.measures) described[i.id] = true; });
+  var noCopy = [];
+  chunks.forEach(function (c) {
+    var im = c.match(/\bid: '([a-z0-9_]+)'/);
+    if (!im || !listed[im[1]]) return;                       // only rows the tab actually shows
+    if (/\bhint: '/.test(c)) return;                         // authored
+    var instr = c.match(/(?:instr|ins): '([a-z0-9_]+)'/);
+    if (instr && described[instr[1]]) return;                // generated from the manual
+    noCopy.push(im[1]);
+  });
+  ck('every indication row resolves to scanner copy', noCopy.length === 0,
+     noCopy.length + ' with neither an authored hint nor a described instrument: ' + noCopy.join(', '));
 });
 
 // ==================================================================== report

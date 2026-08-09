@@ -231,8 +231,8 @@
         },
         {
           "id": "steam_pressure",
-          "name": "Steam-Drum Pressure",
-          "measures": "Steam-drum pressure.",
+          "name": "Steam Generator Pressure",
+          "measures": "Secondary steam pressure at the steam generator. It sets the temperature the primary is rejecting its heat into, so it is what average coolant temperature ultimately rides on — open the turbine valves, this falls, the gradient across the tubes widens, and the reactor follows without a rod moving.",
           "unit": "MPa",
           "range": [
             0,

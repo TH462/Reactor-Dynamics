@@ -353,11 +353,25 @@ function buildControls(plant) {
     return { control: c.c, group: c.g, uses: c.u, command: c.cmd, params: c.p };
   });
 }
-function buildIndications(cfg, prot) {
-  var out = [], specs = cfg.instruments;
+// PER-PLANT OVERRIDES, because instrument ids COLLIDE ACROSS PLANTS and `IND` is keyed by id
+// alone — so one plant's wording silently describes another plant's component. `steam_pressure`
+// is a steam DRUM on the RBMK and a steam GENERATOR on the PWR, and the RBMK's entry won: the
+// PWR reference read "Steam-Drum Pressure" for a plant that has no drum, a word that appears
+// nowhere in the PWR manual set. Latent for as long as the text was only used by the Failures
+// tab's picker; surfaced 2026-08-09 when the Indications tab began showing `measures` to the
+// player. A per-plant entry wins over the shared table.
+var IND_PLANT = {
+  pwr: {
+    steam_pressure: { n: 'Steam Generator Pressure',
+      m: 'Secondary steam pressure at the steam generator. It sets the temperature the primary is rejecting its heat into, so it is what average coolant temperature ultimately rides on — open the turbine valves, this falls, the gradient across the tubes widens, and the reactor follows without a rod moving.',
+      u: 'MPa' },
+  },
+};
+function buildIndications(cfg, prot, plant) {
+  var out = [], specs = cfg.instruments, per = (plant && IND_PLANT[plant]) || {};
   for (var id in specs) {
     if (id === 'status') continue; var s = specs[id]; if (!s || typeof s !== 'object') continue;
-    var d = IND[id] || { n: id, m: id, u: '' };
+    var d = per[id] || IND[id] || { n: id, m: id, u: '' };
     out.push({ id: id, name: d.n, measures: d.m, unit: d.u, range: s.range || null, lag_s: s.lag != null ? s.lag : null,
       derived: !!s.computed, boolean: !!s.boolean, alarms: prot.alarms.filter(function (a) { return a.instrument === id; }).map(function (a) { return a.id; }) });
   }
@@ -396,7 +410,7 @@ function buildProfile(plant, Ctor, dv) {
     id: dv ? plant + '_' + dv.replace('_chernobyl', '') : plant, plant: plant, design_version: dv || null,
     name: ov.name + (dv ? (dv === 'pre_chernobyl' ? ' — pre-1986' : ' — post-1986') : ''),
     one_liner: ov.one_liner, overview: ov.overview, authentic_units: ov.authentic_units,
-    controls: buildControls(plant), indications: buildIndications(cfg, prot), setpoints: buildSetpoints(prot),
+    controls: buildControls(plant), indications: buildIndications(cfg, prot, plant), setpoints: buildSetpoints(prot),
     safety_limits: SAFETY[plant] || [], alarm_response: buildAlarmResponse(plant, prot), failures: buildFailures(prot),
     glossary: GLOSSARY_BASE.concat(GLOSSARY[plant] || []).map(function (g) { return { acronym: g[0], term: g[1] }; }),
     normal_values: captureNormals(function () { return new Ctor(dv ? { design_version: dv } : {}); }, cfg, plant, dv),
@@ -415,7 +429,7 @@ function buildPwrStub() {
     id: 'pwr', plant: 'pwr', design_version: null,
     name: 'Pressurized Water Reactor (PWR)',
     reference_only: true,
-    indications: buildIndications(e.cfg, e.getProtectionConfig()),
+    indications: buildIndications(e.cfg, e.getProtectionConfig(), 'pwr'),
   };
 }
 

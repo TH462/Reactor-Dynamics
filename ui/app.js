@@ -327,6 +327,7 @@
   //         status trace is bold has no emphasis at all.
   function stat(o) {
     var s = { id: o.id, grp: o.grp, label: o.label, c: o.c, range: [0, 1],
+              instr: o.ins, hint: o.hint, detail: o.detail,
               fmt: function (v) { return v > 0.5 ? o.on : o.off; } };
     if (o.ins) s.get = function (i) { return i[o.ins] ? 1 : 0; };
     if (o.tru) s.tru = function (t) { return t[o.tru] ? 1 : 0; };
@@ -342,6 +343,7 @@
   // number back on the chip, so nothing on screen is in log units the label does not admit.
   function logSer(o) {
     return { id: o.id, grp: o.grp, label: o.label, c: o.c, range: o.range,
+             instr: o.ins, hint: o.hint, detail: o.detail,
              get: function (i) { var x = i[o.ins]; return (x > 0) ? Math.log10(x) : o.range[0]; },
              tru: o.tru ? function (t) { var x = t[o.tru]; return (x > 0) ? Math.log10(x) : o.range[0]; } : undefined,
              fmt: function (v) { return Math.pow(10, v).toExponential(1) + ' ' + o.u; } };
@@ -405,8 +407,8 @@
       // feed → turbine and output → and finally the controls that drive all of it.
       series: [
         // ---------------------------------------------------------------- reactor core
-        { id: 'power',    grp: 'Reactor core', label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, tru: function (t) { return t.power_pct; }, range: [0, 120], dHi: 118, fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'sur',      grp: 'Reactor core', label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, tru: function (t) { return t.startup_rate_dpm; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
+        { id: 'power',    instr: 'power_range', grp: 'Reactor core', label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, tru: function (t) { return t.power_pct; }, range: [0, 120], dHi: 118, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'sur',      instr: 'startup_rate', grp: 'Reactor core', label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, tru: function (t) { return t.startup_rate_dpm; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
         // Net reactivity has no instrument — the board shows it as a true-state teaching
         // quantity beside the period, and this is the same number over time.
         { id: 'rho',      grp: 'Reactor core', label: 'Reactivity', c: '#d08fc0', tru: function (t) { return t.reactivity_pcm; }, range: [-500, 500], fmt: function (v) { return v.toFixed(0) + ' pcm'; } },
@@ -421,7 +423,7 @@
         // Boron trend (RCS boron reading). Re-added as a plottable graph option
         // 2026-07-24 (owner request); the board itself still shows boron via the
         // chemistry SAMPLE mechanic, not a live boronometer.
-        { id: 'boron',    grp: 'Reactor core', label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, tru: function (t) { return t.boron_ppm; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
+        { id: 'boron',    instr: 'boron_analyzer', grp: 'Reactor core', label: 'Boron',    c: '#9a7ab8', get: function (i) { return i.boron_analyzer; }, tru: function (t) { return t.boron_ppm; }, range: [0, 1400], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
         { id: 'fuel_temp',grp: 'Reactor core', label: 'Fuel Temp (Doppler)', c: '#c07850', tru: function (t) { return t.fuel_temp_c; }, range: [200, 1300], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'decay',    grp: 'Reactor core', label: 'Decay Heat', c: '#a08850', tru: function (t) { return t.decay_heat_pct; }, range: [0, 8], fmt: function (v) { return v.toFixed(2) + '%'; } },
         // TOTAL core heat, not fission — the two are equal by construction at steady
@@ -434,42 +436,42 @@
         // core; that is the point of having the status beside the count).
         logSer({ id: 'sr_cps', grp: 'Reactor core', label: 'Source Range', c: '#7ac0a8', ins: 'source_range', tru: 'sr_counts_cps', range: [0, 6], u: 'cps' }),
         logSer({ id: 'ir_amps',grp: 'Reactor core', label: 'Intermediate Range', c: '#60a890', ins: 'intermediate_range', tru: 'ir_amps', range: [-11, -2.7], u: 'A' }),
-        stat({ id: 'sr_on',   grp: 'Reactor core', label: 'SR Detector Energized', c: '#4a9078', ins: 'sr_energized', tru: 'sr_energized', on: 'on', off: 'OFF' }),
+        stat({ id: 'sr_on',   grp: 'Reactor core', label: 'SR Detector Energized', c: '#4a9078', ins: 'sr_energized', tru: 'sr_energized', on: 'on', off: 'OFF', hint: 'whether the source-range detector is powered up.', detail: 'The startup counter is only energized at low power — it is withdrawn or blocked above the intermediate range so the detector is not destroyed by flux it was never built for. That means a de-energized detector reads the bottom of its range, which looks exactly like a shut-down core. Check this before believing a very low count rate.' }),
         // Chemistry. `boron` above is the analyzer trend; this is the discrete SAMPLE the
         // board's chemistry mechanic returns, which is what an operator actually acts on.
-        { id: 'boron_smp',grp: 'Reactor core', label: 'Boron Sample', c: '#8868a8', get: function (i) { return i.boron_sample; }, range: [0, 2500], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
-        stat({ id: 'boron_pend', grp: 'Reactor core', label: 'Boron Sample Pending', c: '#6a5490', ins: 'boron_sample_pending', on: 'PENDING', off: 'idle' }),
-        { id: 'boron_seq',grp: 'Reactor core', label: 'Boron Sample Count', c: '#584878', get: function (i) { return i.boron_sample_seq; }, range: [0, 50], fmt: function (v) { return v.toFixed(0); } },
+        { id: 'boron_smp',instr: 'boron_sample', grp: 'Reactor core', label: 'Boron Sample', c: '#8868a8', get: function (i) { return i.boron_sample; }, range: [0, 2500], fmt: function (v) { return v.toFixed(0) + ' ppm'; }, hint: 'the boron concentration returned by the last chemistry sample, in parts per million.', detail: 'The number the operator actually acts on. Boron is the slow, plant-wide reactivity control: it holds down the excess reactivity of fresh fuel so the rods can stay nearly withdrawn and available. Adding boron is negative reactivity, adding pure water is positive, and both take minutes to hours to work through the volume control system.' },
+        stat({ id: 'boron_pend', grp: 'Reactor core', label: 'Boron Sample Pending', c: '#6a5490', ins: 'boron_sample_pending', on: 'PENDING', off: 'idle', hint: 'whether a boron sample has been drawn and is still being analysed.', detail: 'Boron concentration is not a live instrument on this plant, it is a chemistry sample: you request one, it takes time in the lab, and the number you get is how the plant was when the sample was drawn. PENDING means the figure beside it is the PREVIOUS result. Boration and dilution are slow, so a stale sample is usually close — but not during an active dilution.' }),
+        { id: 'boron_seq',instr: 'boron_sample_seq', grp: 'Reactor core', label: 'Boron Sample Count', c: '#584878', get: function (i) { return i.boron_sample_seq; }, range: [0, 50], fmt: function (v) { return v.toFixed(0); }, hint: 'how many chemistry samples have been drawn this run.', detail: 'A counter, not a plant quantity — it exists so a new result can be told from a repeat of the old one. Useful mainly as a trace: a flat count during a boration means you are reading a number the plant has moved past.' },
         // Reactor state.
-        stat({ id: 'scrammed', grp: 'Reactor core', label: 'Reactor Scrammed', c: '#d04a4a', ins: 'rps_scrammed', tru: 'scrammed', on: 'SCRAM', off: 'no', alarm: 'on' }),
-        stat({ id: 'rods_in',  grp: 'Reactor core', label: 'Rods Fully Inserted', c: '#a05858', ins: 'rods_fully_in', on: 'IN', off: 'no' }),
-        stat({ id: 'above_p9', grp: 'Reactor core', label: 'Above P-9', c: '#909858', ins: 'above_p9', on: 'above', off: 'below' }),
-        { id: 'plant_mode',grp: 'Reactor core', label: 'Plant Mode', c: '#788ca0', get: function (i) { return i.plant_mode; }, tru: function (t) { return t.plant_mode; }, range: [1, 6], fmt: function (v) { return 'Mode ' + v.toFixed(0); } },
+        stat({ id: 'scrammed', grp: 'Reactor core', label: 'Reactor Scrammed', c: '#d04a4a', ins: 'rps_scrammed', tru: 'scrammed', on: 'SCRAM', off: 'no', alarm: 'on', hint: 'whether the reactor protection system has tripped the rods in.', detail: 'The trip breakers are open and every control rod has been released to gravity. Fission power collapses in seconds; decay heat does not, which is why the plant still needs a heat sink afterwards and why "scrammed" is the beginning of a transient rather than the end of one. It latches until the operator resets it.' }),
+        stat({ id: 'rods_in',  grp: 'Reactor core', label: 'Rods Fully Inserted', c: '#a05858', ins: 'rods_fully_in', on: 'IN', off: 'no', hint: 'whether every rod bank has reached the bottom of its travel.', detail: 'Distinct from the scram signal beside it: the signal says the rods were RELEASED, this says they arrived. A rod that hangs up on its way in leaves reactivity in the core that the trip was counting on removing, so the two disagreeing is a serious condition rather than a timing artefact.' }),
+        stat({ id: 'above_p9', grp: 'Reactor core', label: 'Above P-9', c: '#909858', ins: 'above_p9', on: 'above', off: 'below', hint: 'whether reactor power is above the P-9 permissive.', detail: 'P-9 is the power level above which a turbine trip also trips the reactor. Below it the plant is expected to ride out the loss of load on the steam dump; above it there is too much heat for the dump to carry and the reactor is tripped with the turbine. It is the one permissive that decides whether losing the turbine is an event or an accident.' }),
+        { id: 'plant_mode',instr: 'plant_mode', grp: 'Reactor core', label: 'Plant Mode', c: '#788ca0', get: function (i) { return i.plant_mode; }, tru: function (t) { return t.plant_mode; }, range: [1, 6], fmt: function (v) { return 'Mode ' + v.toFixed(0); }, hint: 'the commercial operating mode the plant is currently in, 1 through 5.', detail: 'Mode 1 is at power, Mode 2 startup, Mode 3 hot standby, Mode 4 hot shutdown and Mode 5 cold shutdown. The mode sets which Technical Specifications apply, which equipment must be available and which procedures are legal — it is the plant\'s legal state as much as its physical one, and most procedures are written to move it deliberately from one to the next.' },
 
         // ---------------------------------------------------------------- core damage
         // Core exit before the cladding, matching the Physics tab: it is first in the damage
         // chain and the only one of these with an instrument (the post-TMI channel).
-        { id: 'core_exit',grp: 'Core damage', label: 'Core Exit Temp', c: '#e09060', get: function (i) { return i.core_exit_temp; }, tru: function (t) { return t.t_core_exit_c; }, range: [93, 982], dHi: 371, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'core_exit',instr: 'core_exit_temp', grp: 'Core damage', label: 'Core Exit Temp', c: '#e09060', get: function (i) { return i.core_exit_temp; }, tru: function (t) { return t.t_core_exit_c; }, range: [93, 982], dHi: 371, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'clad_temp',grp: 'Core damage', label: 'Peak Clad Temp', c: '#d05a3e', tru: function (t) { return t.clad_temp_c; }, range: [200, 1400], dHi: 1200, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'core_void',grp: 'Core damage', label: 'Core Void', c: '#8fb0d0', tru: function (t) { return t.core_void_fraction * 100; }, range: [0, 100], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'uncovered',grp: 'Core damage', label: 'Core Uncovered', c: '#c04a6a', tru: function (t) { return t.core_uncovered_frac * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'zirc',     grp: 'Core damage', label: 'Zr Oxidation Heat', c: '#e07030', tru: function (t) { return t.zirc_heat_pct; }, range: [0, 5], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
 
         // ---------------------------------------------------------------- primary coolant
-        { id: 'tavg',     grp: 'Primary coolant', label: 'Tavg',     c: '#b07830', get: function (i) { return i.tavg; }, tru: function (t) { return t.tavg_c; }, range: [270, 330], dHi: 335, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
-        { id: 'thot',     grp: 'Primary coolant', label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, tru: function (t) { return t.thot_c; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
-        { id: 'tcold',    grp: 'Primary coolant', label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, tru: function (t) { return t.tcold_c; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'tavg',     instr: 'tavg', grp: 'Primary coolant', label: 'Tavg',     c: '#b07830', get: function (i) { return i.tavg; }, tru: function (t) { return t.tavg_c; }, range: [270, 330], dHi: 335, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'thot',     instr: 'thot', grp: 'Primary coolant', label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, tru: function (t) { return t.thot_c; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'tcold',    instr: 'tcold', grp: 'Primary coolant', label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, tru: function (t) { return t.tcold_c; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         // Loop ΔT. INSTRUMENTED (both legs are), so it keeps a `get` — and #315 is
         // exactly why it is worth plotting: the indicated split put the cold leg above
         // the hot leg in 48.3 % of post-trip samples before that fix.
-        { id: 'loop_dt',  grp: 'Primary coolant', label: 'Loop ΔT',  c: '#9a6ab0', get: function (i) { return i.thot - i.tcold; }, tru: function (t) { return t.thot_c - t.tcold_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'tempdiff').toFixed(1) + unit('tempdiff'); } },
-        { id: 'pressure', grp: 'Primary coolant', label: 'Pressure', c: '#507048', get: function (i) { return i.primary_pressure; }, tru: function (t) { return t.pressure_mpa; }, range: [10, 17], dHi: 16.44, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
-        { id: 'subcool',  grp: 'Primary coolant', label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, tru: function (t) { return t.subcooling_c; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff'); } },
-        { id: 'pzr_level',grp: 'Primary coolant', label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, tru: function (t) { return t.pzr_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'loop_dt',  grp: 'Primary coolant', label: 'Loop ΔT',  c: '#9a6ab0', get: function (i) { return i.thot - i.tcold; }, tru: function (t) { return t.thot_c - t.tcold_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'tempdiff').toFixed(1) + unit('tempdiff'); }, hint: 'the temperature the coolant picks up crossing the core, hot leg minus cold leg.', detail: 'For a fixed flow this is directly proportional to core power, which is why it is the input to the Overtemperature and Overpower Delta-T trips. It runs about 59 degrees Fahrenheit (33 Celsius) at full power and near zero on a shut-down plant with the pumps running. Lose flow and it OPENS even though power has not changed, which is the whole reason those trips watch it.' },
+        { id: 'pressure', instr: 'primary_pressure', grp: 'Primary coolant', label: 'Pressure', c: '#507048', get: function (i) { return i.primary_pressure; }, tru: function (t) { return t.pressure_mpa; }, range: [10, 17], dHi: 16.44, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'subcool',  instr: 'subcooling_margin', grp: 'Primary coolant', label: 'Subcool',  c: '#707060', get: function (i) { return i.subcooling_margin; }, tru: function (t) { return t.subcooling_c; }, range: [-10, 60], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff'); } },
+        { id: 'pzr_level',instr: 'pzr_level', grp: 'Primary coolant', label: 'PZR Level',c: '#507878', get: function (i) { return i.pzr_level; }, tru: function (t) { return t.pzr_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         // RCS loop flow (#247). The PWR was the only plant with no flow trend at all —
         // RBMK has Channel Flow and BWR has Recirc Flow — which is what an unbuilt
         // instrument looks like from the UI side. dLo marks the low-flow trip setpoint.
-        { id: 'rcs_flow', grp: 'Primary coolant', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 90, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'rcs_flow', instr: 'rcs_flow', grp: 'Primary coolant', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 90, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'inventory',grp: 'Primary coolant', label: 'RCS Inventory', c: '#4a9a70', tru: function (t) { return t.core_inventory_pct; }, range: [0, 105], dLo: 90, fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'loop_void',grp: 'Primary coolant', label: 'Loop Void', c: '#7090b8', tru: function (t) { return t.primary_void_fraction * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(1) + '%'; } },
         // Leak flow traces GPM, not the fraction-per-second the engine carries. The physics
@@ -480,18 +482,18 @@
         // leakage limit, i.e. "any leak worth the name", where 0.01 % meant 45 gpm.
         // Leak flow is an INSTRUMENT PAIR — `primary_leak_flow` is a real channel and can be
         // failed, so the chart must be able to trace the reading as well as the truth.
-        { id: 'leak',     grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', get: function (i) { return i.primary_leak_flow * GPM_PER_FRAC; }, tru: function (t) { return t.leak_flow * GPM_PER_FRAC; }, range: [0, 2000], dHi: 1, fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
-        { id: 'pzr_dev',  grp: 'Primary coolant', label: 'PZR Level Deviation', c: '#68a0a0', get: function (i) { return i.pzr_level_dev; }, range: [-40, 40], dLo: -10, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
-        stat({ id: 'rcp_run',   grp: 'Primary coolant', label: 'RCPs Running', c: '#5a9ab8', ins: 'rcp_running', tru: 'pump_running', on: 'RUN', off: 'stopped', alarm: 'off' }),
-        stat({ id: 'rcp_secured',grp: 'Primary coolant', label: 'RCPs Secured', c: '#487890', ins: 'rcp_secured', on: 'SECURED', off: 'no' }),
-        stat({ id: 'rcp_cav',   grp: 'Primary coolant', label: 'RCP Cavitating', c: '#d0704a', ins: 'rcp_cavitating', tru: 'rcp_cavitating', on: 'CAVITATING', off: 'no', alarm: 'on' }),
+        { id: 'leak',     instr: 'primary_leak_flow', grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', get: function (i) { return i.primary_leak_flow * GPM_PER_FRAC; }, tru: function (t) { return t.leak_flow * GPM_PER_FRAC; }, range: [0, 2000], dHi: 1, fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
+        { id: 'pzr_dev',  instr: 'pzr_level_dev', grp: 'Primary coolant', label: 'PZR Level Deviation', c: '#68a0a0', get: function (i) { return i.pzr_level_dev; }, range: [-40, 40], dLo: -10, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
+        stat({ id: 'rcp_run',   grp: 'Primary coolant', label: 'RCPs Running', c: '#5a9ab8', ins: 'rcp_running', tru: 'pump_running', on: 'RUN', off: 'stopped', alarm: 'off', hint: 'whether the reactor coolant pumps are turning.', detail: 'The pumps are what make full power possible: they push rated flow through the core so the coolant only picks up about 59 degrees Fahrenheit (33 Celsius) crossing it. Stop them and flow does not go to zero — buoyancy keeps a few percent circulating, enough for decay heat and nothing like enough for power. They also need alternating-current power, so a blackout takes them whether or not anyone asked.' }),
+        stat({ id: 'rcp_secured',grp: 'Primary coolant', label: 'RCPs Secured', c: '#487890', ins: 'rcp_secured', on: 'SECURED', off: 'no', hint: 'whether the pumps have been deliberately secured rather than merely stopped.', detail: 'Securing is an operator action with a reason behind it — cavitation, a loss of subcooling, or a procedure step that wants natural circulation established before something else happens. The distinction from simply stopped matters because a secured pump is not coming back without a decision.' }),
+        stat({ id: 'rcp_cav',   grp: 'Primary coolant', label: 'RCP Cavitating', c: '#d0704a', ins: 'rcp_cavitating', tru: 'rcp_cavitating', on: 'CAVITATING', off: 'no', alarm: 'on', hint: 'whether the pumps are passing steam bubbles instead of solid water.', detail: 'Pump suction is the lowest pressure anywhere in the primary, so it is the first place the coolant can flash. Bubbles collapsing against the impeller destroy it, flow falls off, and procedures call for tripping the pumps and going to natural circulation rather than running them to destruction. It is the earliest mechanical consequence of losing subcooling.' }),
         { id: 'pzr_node', grp: 'Primary coolant', label: 'PZR Level (off-scale)', c: '#3f9a94', tru: function (t) { return pzrNodePct(t); }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'accum_vol',grp: 'Primary coolant', label: 'Accumulator Inventory', c: '#9ab060', tru: function (t) { return t.accumulator_volume_pct; }, range: [0, 105], dLo: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
         // Heatup / cooldown rate — the number the Mode 5↔1 procedures are written around
         // (the 100 °F/hr technical-specification class limit, and #310's ramped cooldown).
         // #375: the channel has an INSTRUMENT now (derived from indicated tavg, damped) —
         // `get` reads it; `tru` keeps the true-state trace for the divergence view.
-        { id: 'tavg_rate',grp: 'Primary coolant', label: 'Heatup Rate', c: '#c8a050', get: function (i) { return i.tavg_rate; }, tru: function (t) { return t.tavg_rate_c_per_hr; }, range: [-60, 60], dHi: 55.6, dLo: -55.6, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff') + '/hr'; } },
+        { id: 'tavg_rate',instr: 'tavg_rate', grp: 'Primary coolant', label: 'Heatup Rate', c: '#c8a050', get: function (i) { return i.tavg_rate; }, tru: function (t) { return t.tavg_rate_c_per_hr; }, range: [-60, 60], dHi: 55.6, dLo: -55.6, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff') + '/hr'; } },
 
         // ---------------------------------------------------------------- loop pressure
         // There is ONE pressure instrument and it reads the hot-leg/pressurizer datum, so
@@ -509,13 +511,13 @@
         // the plant (they are computed from Tavg and pressure, so the limit comes down to meet
         // you). Plotting a margin beside the ΔT that is eating it is the clearest thing the
         // chart can say about an overpower event, and none of these has a board readout.
-        { id: 'loop_dt_pct',grp: 'Protection & limits', label: 'Loop ΔT (% ref)', c: '#9a6ab0', get: function (i) { return i.loop_delta_t; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'otdt_sp',  grp: 'Protection & limits', label: 'OTΔT Setpoint', c: '#c86868', get: function (i) { return i.otdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'otdt_mar', grp: 'Protection & limits', label: 'OTΔT Margin', c: '#e08888', get: function (i) { return i.otdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
-        { id: 'opdt_sp',  grp: 'Protection & limits', label: 'OPΔT Setpoint', c: '#c89868', get: function (i) { return i.opdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'opdt_mar', grp: 'Protection & limits', label: 'OPΔT Margin', c: '#e0b088', get: function (i) { return i.opdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
-        { id: 'rod_margin',grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: [0, 912], dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
-        stat({ id: 'rod_limit', grp: 'Protection & limits', label: 'Rods At Limit', c: '#c0a050', ins: 'rod_at_limit', on: 'AT LIMIT', off: 'no', alarm: 'on' }),
+        { id: 'loop_dt_pct',instr: 'loop_delta_t', grp: 'Protection & limits', label: 'Loop ΔT (% ref)', c: '#9a6ab0', get: function (i) { return i.loop_delta_t; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'otdt_sp',  instr: 'otdt_setpoint', grp: 'Protection & limits', label: 'OTΔT Setpoint', c: '#c86868', get: function (i) { return i.otdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'otdt_mar', instr: 'otdt_margin', grp: 'Protection & limits', label: 'OTΔT Margin', c: '#e08888', get: function (i) { return i.otdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
+        { id: 'opdt_sp',  instr: 'opdt_setpoint', grp: 'Protection & limits', label: 'OPΔT Setpoint', c: '#c89868', get: function (i) { return i.opdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'opdt_mar', instr: 'opdt_margin', grp: 'Protection & limits', label: 'OPΔT Margin', c: '#e0b088', get: function (i) { return i.opdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
+        { id: 'rod_margin',instr: 'rod_limit_margin', grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: [0, 912], dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
+        stat({ id: 'rod_limit', grp: 'Protection & limits', label: 'Rods At Limit', c: '#c0a050', ins: 'rod_at_limit', on: 'AT LIMIT', off: 'no', alarm: 'on', hint: 'whether the control bank has reached its insertion limit.', detail: 'The rod insertion limit preserves enough rod worth above the bank to shut the reactor down from any condition. Driving into it does not stop the plant working, it removes the margin that makes a trip effective — so the correct response is to borate, which brings the bank back out, rather than to keep inserting.' }),
 
         // ---------------------------------------------------------------- pressure boundary
         // The relief path. Two of these are BOOLEAN traces and that is deliberate: a step
@@ -530,38 +532,47 @@
         // and because the chart picks its side by mode (physics in Teaching, instruments in
         // Realistic), plotting this in Realistic shows the operator exactly the lie TMI-2's
         // control room was shown for two hours and twenty minutes.
-        { id: 'porv',     grp: 'Pressure boundary', label: 'PORV Open', c: '#e08050', get: function (i) { return i.porv_indicator === 'open' ? 1 : 0; }, tru: function (t) { return t.porv_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'OPEN' : 'shut'; } },
-        stat({ id: 'block_valve', grp: 'Pressure boundary', label: 'PORV Block Valve', c: '#b07850', tru: 'block_valve_open', on: 'OPEN', off: 'SHUT' }),
-        stat({ id: 'porv_stuck',  grp: 'Pressure boundary', label: 'PORV Stuck', c: '#e05050', tru: 'porv_stuck', on: 'STUCK', off: 'no', alarm: 'on' }),
-        stat({ id: 'relief_act',  grp: 'Pressure boundary', label: 'Safety/Relief Active', c: '#d09060', ins: 'safety_relief_active', on: 'ACTIVE', off: 'no', alarm: 'on' }),
-        stat({ id: 'spray_stuck', grp: 'Pressure boundary', label: 'PZR Spray Stuck', c: '#5090b0', tru: 'spray_stuck', on: 'STUCK', off: 'no', alarm: 'on' }),
-        { id: 'tailpipe', grp: 'Pressure boundary', label: 'PORV Tailpipe Temp', c: '#c86a4a', get: function (i) { return i.porv_tailpipe_temp; }, tru: function (t) { return t.porv_tailpipe_temp_c; }, range: [0, 250], dHi: 150, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
-        { id: 'spray_flow',grp: 'Pressure boundary', label: 'PZR Spray Flow', c: '#68b8e0', get: function (i) { return i.pzr_spray_flow; }, tru: function (t) { return t.spray_flow_pct; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'sg_safety',grp: 'Pressure boundary', label: 'SG Safeties Lifting', c: '#d8a040', get: function (i) { return i.sg_safety_open ? 1 : 0; }, tru: function (t) { return t.sg_safety_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'LIFT' : 'seated'; } },
+        // AUTHORED hint, overriding the manual's own first sentence. `measures` opens with
+        // "Relief-valve indicator." and only says the load-bearing part — that the light shows
+        // the COMMANDED position — in its second sentence, which the summary tier drops. On
+        // every other row losing the tail is fine; on this one the tail is the whole lesson.
+        { id: 'porv',     instr: 'porv_indicator', grp: 'Pressure boundary', label: 'PORV Open', c: '#e08050',
+          hint: 'the relief-valve position LIGHT, which shows the commanded position and not the valve.',
+          get: function (i) { return i.porv_indicator === 'open' ? 1 : 0; }, tru: function (t) { return t.porv_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'OPEN' : 'shut'; } },
+        // NO SERIES for `block_valve_open`, `porv_stuck` or `spray_stuck`, deliberately. All
+        // three are true-state-only, so they are absent from the Indications list by its own
+        // rule (channels and commands), and the Physics rows that own them already print
+        // their state in the row text rather than binding a separate trace. Series existed
+        // for them briefly and nothing could tick any of them — a packed column each, dead.
+        // `run_inspect` now fails on an unreachable series so that cannot come back quietly.
+        stat({ id: 'relief_act',  grp: 'Pressure boundary', label: 'Safety/Relief Active', c: '#d09060', ins: 'safety_relief_active', on: 'ACTIVE', off: 'no', alarm: 'on', hint: 'whether any pressurizer relief or safety valve is currently passing.', detail: 'Covers the power-operated relief valve and the spring-loaded code safeties together — anything venting the primary to the quench tank. Brief lifts during a pressure transient are the system working. A reading that stays active is a leak path out of the reactor coolant system that no break was injected to create.' }),
+        { id: 'tailpipe', instr: 'porv_tailpipe_temp', grp: 'Pressure boundary', label: 'PORV Tailpipe Temp', c: '#c86a4a', get: function (i) { return i.porv_tailpipe_temp; }, tru: function (t) { return t.porv_tailpipe_temp_c; }, range: [0, 250], dHi: 150, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'spray_flow',instr: 'pzr_spray_flow', grp: 'Pressure boundary', label: 'PZR Spray Flow', c: '#68b8e0', get: function (i) { return i.pzr_spray_flow; }, tru: function (t) { return t.spray_flow_pct; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'sg_safety',instr: 'sg_safety_open', grp: 'Pressure boundary', label: 'SG Safeties Lifting', c: '#d8a040', get: function (i) { return i.sg_safety_open ? 1 : 0; }, tru: function (t) { return t.sg_safety_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'LIFT' : 'seated'; }, hint: 'whether the secondary code safety valves are lifting.', detail: 'Pure spring-loaded mechanics: no signal, no power, no operator. They lift on steam pressure alone and reseat when it falls back. Lifting is not itself a fault — it means the steam generator has nowhere else to send its heat, which is normal on a loss of heat sink and is what keeps the secondary below its design pressure. The steam goes to atmosphere, so it is an inventory loss the condenser never sees.' },
         // The two steam reliefs that are OPERATED rather than sprung: the turbine bypass to the
         // condenser, and the atmospheric dump that is the only cooldown path once the condenser
         // is gone. Instrument pairs — the `dump`/`adv` entries under Controls are the DEMAND.
-        { id: 'dump_valve',grp: 'Pressure boundary', label: 'Steam Dump Valve', c: '#a8c060', get: function (i) { return i.steam_dump_valve; }, tru: function (t) { return t.steam_dump_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'adv_valve', grp: 'Pressure boundary', label: 'Atmospheric Dump (ADV)', c: '#c0b070', get: function (i) { return i.adv_valve; }, tru: function (t) { return t.adv_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'dump_valve',instr: 'steam_dump_valve', grp: 'Pressure boundary', label: 'Steam Dump Valve', c: '#a8c060', get: function (i) { return i.steam_dump_valve; }, tru: function (t) { return t.steam_dump_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'adv_valve', instr: 'adv_valve', grp: 'Pressure boundary', label: 'Atmospheric Dump (ADV)', c: '#c0b070', get: function (i) { return i.adv_valve; }, tru: function (t) { return t.adv_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
 
         // ---------------------------------------------------------------- containment
         // #386. Building pressure traces in GAUGE units, like the physics row and the board —
         // the sourced setpoints are psig and an intact building must read 0, not 14.7.
-        { id: 'ctmt_p',   grp: 'Containment', label: 'Containment Press', c: '#a878c0', get: function (i) { return i.containment_pressure; }, tru: function (t) { return t.containment_pressure_mpa; }, range: [0.1, 0.55], dHi: 0.3081, fmt: function (v) { return physPg(v); } },
-        { id: 'ctmt_t',   grp: 'Containment', label: 'Containment Temp', c: '#c08890', get: function (i) { return i.containment_temp; }, tru: function (t) { return t.containment_temp_c; }, range: [20, 200], dHi: 100, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
-        { id: 'ctmt_sump',grp: 'Containment', label: 'Containment Sump', c: '#7898c0', get: function (i) { return i.containment_sump_level; }, tru: function (t) { return t.containment_sump_pct; }, range: [0, 100], dHi: 0.1, fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'ctmt_h2',  grp: 'Containment', label: 'Containment H₂', c: '#d05070', get: function (i) { return i.ctmt_h2; }, tru: function (t) { return t.ctmt_h2_pct; }, range: [0, 10], dHi: 4.1, fmt: function (v) { return v.toFixed(2) + '% vol'; } },
-        stat({ id: 'ctmt_spray', grp: 'Containment', label: 'Containment Spray', c: '#88a8d0', ins: 'ctmt_spray_active', tru: 'ctmt_spray_active', on: 'SPRAY', off: 'off', alarm: 'on' }),
-        stat({ id: 'ctmt_fans',  grp: 'Containment', label: 'Fan Coolers (safety)', c: '#7898b0', ins: 'ctmt_fan_active', tru: 'ctmt_fan_active', on: 'SI MODE', off: 'normal' }),
-        stat({ id: 'ctmt_recomb',grp: 'Containment', label: 'H₂ Recombiners', c: '#b06888', ins: 'ctmt_recomb_active', tru: 'ctmt_recomb_active', on: 'RUN', off: 'idle' }),
-        stat({ id: 'ctmt_burn',  grp: 'Containment', label: 'H₂ Burn Occurred', c: '#e04060', ins: 'ctmt_h2_burned', tru: 'ctmt_h2_burned', on: 'BURNED', off: 'no', alarm: 'on' }),
+        { id: 'ctmt_p',   instr: 'containment_pressure', grp: 'Containment', label: 'Containment Press', c: '#a878c0', get: function (i) { return i.containment_pressure; }, tru: function (t) { return t.containment_pressure_mpa; }, range: [0.1, 0.55], dHi: 0.3081, fmt: function (v) { return physPg(v); } },
+        { id: 'ctmt_t',   instr: 'containment_temp', grp: 'Containment', label: 'Containment Temp', c: '#c08890', get: function (i) { return i.containment_temp; }, tru: function (t) { return t.containment_temp_c; }, range: [20, 200], dHi: 100, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'ctmt_sump',instr: 'containment_sump_level', grp: 'Containment', label: 'Containment Sump', c: '#7898c0', get: function (i) { return i.containment_sump_level; }, tru: function (t) { return t.containment_sump_pct; }, range: [0, 100], dHi: 0.1, fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'ctmt_h2',  instr: 'ctmt_h2', grp: 'Containment', label: 'Containment H₂', c: '#d05070', get: function (i) { return i.ctmt_h2; }, tru: function (t) { return t.ctmt_h2_pct; }, range: [0, 10], dHi: 4.1, fmt: function (v) { return v.toFixed(2) + '% vol'; } },
+        stat({ id: 'ctmt_spray', grp: 'Containment', label: 'Containment Spray', c: '#88a8d0', ins: 'ctmt_spray_active', tru: 'ctmt_spray_active', on: 'SPRAY', off: 'off', alarm: 'on', hint: 'whether containment spray is running.', detail: 'Sprays water into the building atmosphere to condense steam and knock pressure down, starting automatically on the high-high containment pressure signal. It is a big hammer: it works, and it floods the building floor. Running spray is unambiguous evidence that containment pressure reached the actuation point.' }),
+        stat({ id: 'ctmt_fans',  grp: 'Containment', label: 'Fan Coolers (safety)', c: '#7898b0', ins: 'ctmt_fan_active', tru: 'ctmt_fan_active', on: 'SI MODE', off: 'normal', hint: 'whether the fan coolers have realigned to their safety mode.', detail: 'The fan coolers run all the time for ordinary building heat, and realign to a slower, higher-capacity safety lineup on any safety injection signal. Unlike spray they need no water and leave nothing behind, so they carry the long tail of containment heat removal after the initial pressure spike is over.' }),
+        stat({ id: 'ctmt_recomb',grp: 'Containment', label: 'H₂ Recombiners', c: '#b06888', ins: 'ctmt_recomb_active', tru: 'ctmt_recomb_active', on: 'RUN', off: 'idle', hint: 'whether the hydrogen recombiners are running.', detail: 'Recombiners burn hydrogen back to water catalytically and slowly, over hours. They start automatically on rising concentration and secure themselves once it is back down. They are sized for the slow accumulation a small leak produces, not for a rapidly oxidizing core — against a real core-damage hydrogen source they cannot keep up.' }),
+        stat({ id: 'ctmt_burn',  grp: 'Containment', label: 'H₂ Burn Occurred', c: '#e04060', ins: 'ctmt_h2_burned', tru: 'ctmt_h2_burned', on: 'BURNED', off: 'no', alarm: 'on', hint: 'whether a hydrogen deflagration has already happened in the building.', detail: 'Latches forever, because a burn is a one-time event: it consumes most of the hydrogen inventory in seconds and leaves a sharp pressure spike the containment is designed to survive. At Three Mile Island the spike was recorded at 9 hours 50 minutes and the operators first read it as electrical noise.' }),
 
         // ---------------------------------------------------------------- steam & feed
-        { id: 'steam_p',  grp: 'Steam & feed', label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
-        { id: 'sg_level', grp: 'Steam & feed', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, tru: function (t) { return t.sg_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'steam_flow',grp: 'Steam & feed', label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, tru: function (t) { return t.steam_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'fw_flow',  grp: 'Steam & feed', label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, tru: function (t) { return t.fw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 40], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'steam_p',  instr: 'steam_pressure', grp: 'Steam & feed', label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'sg_level', instr: 'sg_level', grp: 'Steam & feed', label: 'SG Level', c: '#806890', get: function (i) { return i.sg_level; }, tru: function (t) { return t.sg_level_pct; }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'steam_flow',instr: 'steam_flow', grp: 'Steam & feed', label: 'Steam Flow',c: '#8a9a5a', get: function (i) { return i.steam_flow * 100; }, tru: function (t) { return t.steam_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'fw_flow',  instr: 'fw_flow', grp: 'Steam & feed', label: 'Feed Flow',c: '#4a8a86', get: function (i) { return i.fw_flow * 100; }, tru: function (t) { return t.fw_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'afw_flow', instr: 'afw_flow', grp: 'Steam & feed', label: 'AFW Flow', c: '#5aa8a0', get: function (i) { return i.afw_flow * 100; }, tru: function (t) { return t.afw_flow_normalized * 100; }, range: [0, 40], fmt: function (v) { return v.toFixed(1) + '%'; } },
         // The SG's own mass balance: steam out (turbine + dump + safeties) minus TOTAL
         // feed (main + AFW). Positive means the level is on its way down, which is the
         // thing a level trace only tells you after it has already happened.
@@ -577,71 +588,71 @@
         // "level is off the bottom of the gauge" and knowing where it actually is. `sg_steam_flow`
         // is the transmitter that sees the dump as well as the turbine, which is why it stays up
         // when `steam_flow` reads zero on an offline turbine (#206).
-        { id: 'sg_wide',  grp: 'Steam & feed', label: 'SG Level (wide range)', c: '#9080a8', get: function (i) { return i.sg_level_wide; }, tru: function (t) { return t.sg_level_wide_pct; }, range: [0, 100], dLo: 20, fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'sg_draw',  grp: 'Steam & feed', label: 'Total SG Steam Draw', c: '#a0b070', get: function (i) { return i.sg_steam_flow * 100; }, tru: function (t) { return t.steam_out_total * 100; }, range: [0, 200], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'cond_flow',grp: 'Steam & feed', label: 'Condensate Flow', c: '#68a898', get: function (i) { return i.condensate_flow * 100; }, tru: function (t) { return t.condensate_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        stat({ id: 'msiv',      grp: 'Steam & feed', label: 'MSIV Open', c: '#8090a8', ins: 'msiv_open', tru: 'msiv_open', on: 'OPEN', off: 'SHUT', alarm: 'off' }),
-        stat({ id: 'mfw_iso',   grp: 'Steam & feed', label: 'Main Feed Isolated', c: '#a06868', ins: 'mfw_isolated', on: 'ISOLATED', off: 'no', alarm: 'on' }),
-        stat({ id: 'cond_pump', grp: 'Steam & feed', label: 'Condensate Pump', c: '#588880', ins: 'condensate_pump_running', tru: 'condensate_pump_running', on: 'RUN', off: 'stopped' }),
-        stat({ id: 'afw_act',   grp: 'Steam & feed', label: 'AFW Actuated', c: '#5ab0a8', ins: 'afw_active', tru: 'afw_active', on: 'ACTUATED', off: 'no' }),
-        stat({ id: 'afw_pump',  grp: 'Steam & feed', label: 'AFW Pump Running', c: '#48908a', ins: 'afw_pump_running', tru: 'afw_pump_running', on: 'RUN', off: 'stopped' }),
-        stat({ id: 'afw_block', grp: 'Steam & feed', label: 'AFW Block Valve', c: '#3a7870', ins: 'afw_block_open', on: 'OPEN', off: 'SHUT' }),
-        stat({ id: 'sg_imbal',  grp: 'Steam & feed', label: 'SG Level Imbalance', c: '#b09068', ins: 'sg_imbalance_active', tru: 'sg_imbalance_active', on: 'ACTIVE', off: 'no', alarm: 'on' }),
+        { id: 'sg_wide',  instr: 'sg_level_wide', grp: 'Steam & feed', label: 'SG Level (wide range)', c: '#9080a8', get: function (i) { return i.sg_level_wide; }, tru: function (t) { return t.sg_level_wide_pct; }, range: [0, 100], dLo: 20, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'sg_draw',  instr: 'sg_steam_flow', grp: 'Steam & feed', label: 'Total SG Steam Draw', c: '#a0b070', get: function (i) { return i.sg_steam_flow * 100; }, tru: function (t) { return t.steam_out_total * 100; }, range: [0, 200], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'cond_flow',instr: 'condensate_flow', grp: 'Steam & feed', label: 'Condensate Flow', c: '#68a898', get: function (i) { return i.condensate_flow * 100; }, tru: function (t) { return t.condensate_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        stat({ id: 'msiv',      grp: 'Steam & feed', label: 'MSIV Open', c: '#8090a8', ins: 'msiv_open', tru: 'msiv_open', on: 'OPEN', off: 'SHUT', alarm: 'off', hint: 'whether the main steam isolation valve is open.', detail: 'The boundary between the steam generator and everything downstream of it. Shutting it isolates a steam line break outside containment and stops the generator being blown down through it — at the cost of the turbine, the dump valves and the condenser all at once, leaving the atmospheric dump and the code safeties as the only heat removal path.' }),
+        stat({ id: 'mfw_iso',   grp: 'Steam & feed', label: 'Main Feed Isolated', c: '#a06868', ins: 'mfw_isolated', on: 'ISOLATED', off: 'no', alarm: 'on', hint: 'whether main feedwater has been isolated from the steam generator.', detail: 'Main feed is isolated automatically on a safety injection and on high steam generator level. It is the right action — cold feed into a depressurizing generator makes things worse — but it means the only water going in is auxiliary feedwater, at a small fraction of the flow, so level will fall for a while and that is expected.' }),
+        stat({ id: 'cond_pump', grp: 'Steam & feed', label: 'Condensate Pump', c: '#588880', ins: 'condensate_pump_running', tru: 'condensate_pump_running', on: 'RUN', off: 'stopped', hint: 'whether the condensate pump is running.', detail: 'Condensate is the first stage of the feed path: it takes water out of the condenser hotwell and sends it toward the feed pumps. No condensate means no main feedwater however the feed pumps are lined up, which is why this reading and the feed flow beside it should be read together.' }),
+        stat({ id: 'afw_act',   grp: 'Steam & feed', label: 'AFW Actuated', c: '#5ab0a8', ins: 'afw_active', tru: 'afw_active', on: 'ACTUATED', off: 'no', hint: 'whether the auxiliary feedwater system has been actuated.', detail: 'The signal, not the flow. Auxiliary feedwater is the backup water supply to the steam generators for when main feed is gone, and it actuates automatically on a reactor trip. Actuated with no flow beside it is normal: this plant\'s auxiliary feed is level-controlled and delivers nothing until generator level falls into its band.' }),
+        stat({ id: 'afw_pump',  grp: 'Steam & feed', label: 'AFW Pump Running', c: '#48908a', ins: 'afw_pump_running', tru: 'afw_pump_running', on: 'RUN', off: 'stopped', hint: 'whether an auxiliary feedwater pump is turning.', detail: 'Distinct from the actuation signal above: this says a pump is actually running. It matters most in a blackout, where the electric pumps are gone and only steam-driven capability remains — the demand can stand while nothing is delivering.' }),
+        stat({ id: 'afw_block', grp: 'Steam & feed', label: 'AFW Block Valve', c: '#3a7870', ins: 'afw_block_open', on: 'OPEN', off: 'SHUT', hint: 'whether the auxiliary feedwater block valve is open.', detail: 'The flow path downstream of the pump. A running pump against a shut block valve delivers nothing, and the two readings are separate here precisely so that combination is visible rather than hidden inside one "auxiliary feedwater OK" light.' }),
+        stat({ id: 'sg_imbal',  grp: 'Steam & feed', label: 'SG Level Imbalance', c: '#b09068', ins: 'sg_imbalance_active', tru: 'sg_imbalance_active', on: 'ACTIVE', off: 'no', alarm: 'on', hint: 'whether the steam generator level control has gone out of balance.', detail: 'Flags the feed controller failing to hold level against the steam being drawn — the mismatch that precedes both an overfill and a boil-down. Read it against the steam-minus-feed row on the Physics tab, which is the number it is computed from.' }),
 
         // ---------------------------------------------------------------- turbine & output
-        { id: 'mwe',      grp: 'Turbine & output', label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, tru: function (t) { return t.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
+        { id: 'mwe',      instr: 'mwe_output', grp: 'Turbine & output', label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, tru: function (t) { return t.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
         { id: 'demand',   grp: 'Turbine & output', label: 'Steam Demand MW', c: '#7a90a8', tru: function (t) { return t.steam_demand_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
-        { id: 'gov',      grp: 'Turbine & output', label: 'Governor Valve', c: '#90a860', get: function (i) { return i.governor_valve; }, tru: function (t) { return t.governor_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'rpm',      grp: 'Turbine & output', label: 'Turbine RPM', c: '#a09070', get: function (i) { return i.turbine_rpm; }, tru: function (t) { return t.turbine_rpm; }, range: [0, 2000], fmt: function (v) { return v.toFixed(0) + ' rpm'; } },
-        stat({ id: 'turb_trip', grp: 'Turbine & output', label: 'Turbine Tripped', c: '#c06850', ins: 'turbine_tripped', tru: 'turbine_tripped', on: 'TRIPPED', off: 'no', alarm: 'on' }),
-        stat({ id: 'demand_lo', grp: 'Turbine & output', label: 'Steam Demand Low', c: '#a08860', ins: 'steam_demand_low', on: 'LOW', off: 'no' }),
+        { id: 'gov',      instr: 'governor_valve', grp: 'Turbine & output', label: 'Governor Valve', c: '#90a860', get: function (i) { return i.governor_valve; }, tru: function (t) { return t.governor_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'rpm',      instr: 'turbine_rpm', grp: 'Turbine & output', label: 'Turbine RPM', c: '#a09070', get: function (i) { return i.turbine_rpm; }, tru: function (t) { return t.turbine_rpm; }, range: [0, 2000], fmt: function (v) { return v.toFixed(0) + ' rpm'; } },
+        stat({ id: 'turb_trip', grp: 'Turbine & output', label: 'Turbine Tripped', c: '#c06850', ins: 'turbine_tripped', tru: 'turbine_tripped', on: 'TRIPPED', off: 'no', alarm: 'on', hint: 'whether the turbine has tripped.', detail: 'The stop valves have shut and steam to the turbine is gone. Above the P-9 permissive this also trips the reactor; below it the steam dump is expected to carry the plant and the reactor rides through. A turbine trip is the most common way a real plant ends up in an unplanned shutdown.' }),
+        stat({ id: 'demand_lo', grp: 'Turbine & output', label: 'Steam Demand Low', c: '#a08860', ins: 'steam_demand_low', on: 'LOW', off: 'no', hint: 'whether steam demand has fallen below the level the plant is making heat for.', detail: 'The mismatch signal behind the load-rejection response: the turbine wants less steam than the reactor is producing, so the surplus has to go somewhere — the dump valves, then the atmospheric dump, then the code safeties. It is the cue that primary temperature is about to rise unless something takes the load.' }),
         // Gross electrical over TOTAL core heat — the honest denominator (#315), not
         // fission power, or the number goes to infinity after a scram.
         { id: 'eff',      grp: 'Turbine & output', label: 'Cycle Efficiency', c: '#8a8a5a', tru: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? t.mwe_output / q * 100 : null; }, range: [0, 45], fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'vacuum',   grp: 'Turbine & output', label: 'Condenser Vacuum', c: '#6080a0', get: function (i) { return i.condenser_vacuum; }, tru: function (t) { return t.condenser_vacuum_kpa; }, range: [0, 100], dLo: 74.5, fmt: function (v) { return v.toFixed(1) + ' kPa'; } },
+        { id: 'vacuum',   instr: 'condenser_vacuum', grp: 'Turbine & output', label: 'Condenser Vacuum', c: '#6080a0', get: function (i) { return i.condenser_vacuum; }, tru: function (t) { return t.condenser_vacuum_kpa; }, range: [0, 100], dLo: 74.5, fmt: function (v) { return v.toFixed(1) + ' kPa'; } },
 
         // ---------------------------------------------------------------- support systems
         // Why the pumps stopped, and what is putting water back. `ac_avail` is a boolean
         // trace for the same reason the PORV one is: the moment power goes is the moment
         // every motor load's behaviour changes, and a step line marks it exactly.
         { id: 'ac_avail', grp: 'Support systems', label: 'AC Available', c: '#e0c060', tru: function (t) { return t.ac_available ? 1 : 0; }, range: [0, 1], dLo: 0, fmt: function (v) { return v > 0.5 ? 'available' : 'LOST'; } },
-        stat({ id: 'sbo',       grp: 'Support systems', label: 'Station Blackout', c: '#e08040', ins: 'station_blackout', tru: 'station_blackout', on: 'SBO', off: 'no', alarm: 'on' }),
+        stat({ id: 'sbo',       grp: 'Support systems', label: 'Station Blackout', c: '#e08040', ins: 'station_blackout', tru: 'station_blackout', on: 'SBO', off: 'no', alarm: 'on', hint: 'whether the plant has lost both offsite power and its emergency diesels.', detail: 'A station blackout takes every motor at once: reactor coolant pumps, main feed pumps, charging, and emergency injection. What is left is whatever runs on steam, gravity or stored pressure. It is what happened at Fukushima Daiichi, and it is the condition every passive system on the plant exists for.' }),
         { id: 'eccs_flow',grp: 'Support systems', label: 'ECCS Injection', c: '#50c090', tru: function (t) { return ((t.hpi_flow_normalized || 0) + (t.accumulator_flow_normalized || 0)) * eccsRatedGpm(); }, range: [0, 400], fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
         // The individual injection paths and the heads behind them. The merged HPI/LPI line and
         // the passive accumulators arrive at very different pressures, so the discharge-pressure
         // traces are what say WHY a path is or is not delivering.
-        { id: 'hpi_flow', grp: 'Support systems', label: 'HPI/LPI Flow', c: '#48b088', get: function (i) { return i.hpi_flow * 100; }, tru: function (t) { return t.hpi_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'accum_flow',grp: 'Support systems', label: 'Accumulator Flow', c: '#88c070', get: function (i) { return i.accumulator_flow * 100; }, tru: function (t) { return t.accumulator_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'hpi_dp',   grp: 'Support systems', label: 'HPI Discharge Press', c: '#409878', get: function (i) { return i.hpi_discharge_pressure; }, tru: function (t) { return t.hpi_discharge_pressure_mpa; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
-        { id: 'afw_dp',   grp: 'Support systems', label: 'AFW Discharge Press', c: '#38887e', get: function (i) { return i.afw_discharge_pressure; }, tru: function (t) { return t.afw_discharge_pressure_mpa; }, range: [0, 12], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
-        stat({ id: 'hpi_on',    grp: 'Support systems', label: 'HPI Actuated', c: '#50c0a0', ins: 'hpi_active', tru: 'hpi_active', on: 'ACTUATED', off: 'no' }),
-        stat({ id: 'accum_disch',grp: 'Support systems', label: 'Accumulators Discharging', c: '#98c860', ins: 'accumulators_discharging', tru: 'accumulators_discharging', on: 'DISCHARGING', off: 'no' }),
-        stat({ id: 'accum_valve',grp: 'Support systems', label: 'Accumulator Valve', c: '#78a850', ins: 'accum_valve_open', tru: 'accumulator_valve_open', on: 'OPEN', off: 'SHUT' }),
-        stat({ id: 'rhr_on',    grp: 'Support systems', label: 'RHR Active', c: '#60a8c0', ins: 'rhr_active', tru: 'rhr_active', on: 'ACTIVE', off: 'no' }),
-        stat({ id: 'rhr_valve', grp: 'Support systems', label: 'RHR Suction Valve', c: '#4888a0', ins: 'rhr_valve_open', tru: 'rhr_valve_open', on: 'OPEN', off: 'SHUT' }),
-        { id: 'cw_temp',  grp: 'Support systems', label: 'CW Inlet Temp', c: '#7ab0b8', get: function (i) { return i.cw_inlet_temp; }, tru: function (t) { return t.cw_inlet_temp_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
-        stat({ id: 'cond_avail',grp: 'Support systems', label: 'Condenser Available', c: '#6890a8', ins: 'condenser_cooling_available', tru: 'condenser_cooling_available', on: 'available', off: 'LOST', alarm: 'off' }),
+        { id: 'hpi_flow', instr: 'hpi_flow', grp: 'Support systems', label: 'HPI/LPI Flow', c: '#48b088', get: function (i) { return i.hpi_flow * 100; }, tru: function (t) { return t.hpi_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'accum_flow',instr: 'accumulator_flow', grp: 'Support systems', label: 'Accumulator Flow', c: '#88c070', get: function (i) { return i.accumulator_flow * 100; }, tru: function (t) { return t.accumulator_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'hpi_dp',   instr: 'hpi_discharge_pressure', grp: 'Support systems', label: 'HPI Discharge Press', c: '#409878', get: function (i) { return i.hpi_discharge_pressure; }, tru: function (t) { return t.hpi_discharge_pressure_mpa; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'afw_dp',   instr: 'afw_discharge_pressure', grp: 'Support systems', label: 'AFW Discharge Press', c: '#38887e', get: function (i) { return i.afw_discharge_pressure; }, tru: function (t) { return t.afw_discharge_pressure_mpa; }, range: [0, 12], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        stat({ id: 'hpi_on',    grp: 'Support systems', label: 'HPI Actuated', c: '#50c0a0', ins: 'hpi_active', tru: 'hpi_active', on: 'ACTUATED', off: 'no', hint: 'whether high-pressure injection has been actuated.', detail: 'The pumped emergency injection path, and the only one that works against a nearly intact primary. It actuates automatically on low pressure or on high containment pressure. Actuated does not mean delivering — at normal operating pressure the pumps can barely overcome the system, which is why the flow row beside it is the one to read.' }),
+        stat({ id: 'accum_disch',grp: 'Support systems', label: 'Accumulators Discharging', c: '#98c860', ins: 'accumulators_discharging', tru: 'accumulators_discharging', on: 'DISCHARGING', off: 'no', hint: 'whether the passive accumulators are dumping into the cold leg.', detail: 'The accumulators are nitrogen-pressurized tanks behind check valves: no power, no signal, no operator. They fire on their own the moment primary pressure falls below them and they empty in minutes. They fire once, so a discharging accumulator is a clock running down.' }),
+        stat({ id: 'accum_valve',grp: 'Support systems', label: 'Accumulator Valve', c: '#78a850', ins: 'accum_valve_open', tru: 'accumulator_valve_open', on: 'OPEN', off: 'SHUT', hint: 'whether the accumulator isolation valve is open.', detail: 'Shut, the passive injection cannot happen at all whatever the pressure does. The valves are deliberately shut during a controlled cooldown so the tanks do not dump into a depressurizing plant that does not need them — and leaving them shut afterwards is the way that protection gets quietly lost.' }),
+        stat({ id: 'rhr_on',    grp: 'Support systems', label: 'RHR Active', c: '#60a8c0', ins: 'rhr_active', tru: 'rhr_active', on: 'ACTIVE', off: 'no', hint: 'whether residual heat removal is in service.', detail: 'The low-pressure, long-term cooling path: it takes suction from the hot leg and rejects core heat through its own heat exchangers, which is what carries a shut-down plant for days. It is interlocked to pressure and cannot be placed in service until the primary is well down, so getting to it is the object of most of a cooldown.' }),
+        stat({ id: 'rhr_valve', grp: 'Support systems', label: 'RHR Suction Valve', c: '#4888a0', ins: 'rhr_valve_open', tru: 'rhr_valve_open', on: 'OPEN', off: 'SHUT', hint: 'whether the residual heat removal suction valve is open.', detail: 'The interlocked valve that admits hot leg water to the low-pressure system. The interlock exists because the residual heat removal piping is not rated for full primary pressure — opening it too early is one of the ways a plant is destroyed from the control room.' }),
+        { id: 'cw_temp',  instr: 'cw_inlet_temp', grp: 'Support systems', label: 'CW Inlet Temp', c: '#7ab0b8', get: function (i) { return i.cw_inlet_temp; }, tru: function (t) { return t.cw_inlet_temp_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        stat({ id: 'cond_avail',grp: 'Support systems', label: 'Condenser Available', c: '#6890a8', ins: 'condenser_cooling_available', tru: 'condenser_cooling_available', on: 'available', off: 'LOST', alarm: 'off', hint: 'whether the condenser can still take steam.', detail: 'The steam dump only works while the condenser can condense, which needs circulating water and vacuum. Lose either and the dump valves are useless: the secondary\'s heat has to go to atmosphere through the relief valves instead, which wastes treated water and is an inventory loss with no return.' }),
 
         // ---------------------------------------------------------------- controls
         // COMMANDED positions, not readings. Plotted against everything above them, these
         // are what turn a trend into a cause: rod steps beside Tavg, spray and heater
         // beside pressure, dump beside steam flow.
-        { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; } },
-        { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; } },
-        { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'dump',     grp: 'Controls', label: 'Steam Dump', c: '#a0b850', ctl: function (c) { return c.steam_dump_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'feed_pump',grp: 'Controls', label: 'Feed Pump Speed', c: '#40988a', ctl: function (c) { return c.feed_pump_speed_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
+        { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
+        { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how hard the pressurizer heaters are being driven, as a percentage.', detail: 'Heaters are the slow way UP in pressure: they boil water in the pressurizer steam space over minutes, where spray drops pressure in seconds. They also need alternating-current power, so pressure control is asymmetric in a blackout — you can still spray, but you cannot heat.' },
+        { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so it needs a running pump to work at all — losing the pumps costs the pressure control you are most likely to want.' },
+        { id: 'dump',     grp: 'Controls', label: 'Steam Dump', c: '#a0b850', ctl: function (c) { return c.steam_dump_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the steam dump valves have been commanded open.', detail: 'The turbine bypass: steam routed straight to the condenser instead of the turbine. It is what lets the plant survive a load rejection without tripping, and it only works while the condenser is available. Plot it against steam pressure to see the pressure control loop working.' },
+        { id: 'feed_pump',grp: 'Controls', label: 'Feed Pump Speed', c: '#40988a', ctl: function (c) { return c.feed_pump_speed_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'the commanded feed pump speed, as a percentage.', detail: 'The demand behind main feedwater flow. The three-element controller sets it from level, steam flow and feed flow together, which is what lets it anticipate a load change instead of chasing level after the fact. Commanded speed and delivered flow part company whenever the suction side cannot supply it.' },
         // Charging and letdown are INSTRUMENTED (both have flow indications on the CVCS
         // card), so they keep a `get` — they sit here because the operator sets them.
         // gpm = frac/s × 450,000 (the declared 7,500 gal RCS, #408 — same constant as
         // GPM_CHARGING/GPM_LETDOWN in pwr_board_wiring.js; the old ×100 "%" plotted the
         // real currency as a flat-line at 0.007 %).
-        { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * GPM_PER_FRAC; }, tru: function (t) { return t.charging_flow_actual * GPM_PER_FRAC; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
-        { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * GPM_PER_FRAC; }, tru: function (t) { return t.letdown_flow_actual * GPM_PER_FRAC; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
-        { id: 'load_tgt', grp: 'Controls', label: 'Load Target MW', c: '#8898b8', ctl: function (c) { return c.load_target_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
-        { id: 'press_sp', grp: 'Controls', label: 'Pressure Setpoint', c: '#70a070', ctl: function (c) { return c.pressure_setpoint; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
-        { id: 'dump_sp',  grp: 'Controls', label: 'Dump Setpoint', c: '#a0a860', ctl: function (c) { return c.steam_dump_setpoint; }, range: [0, 10], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'charging', instr: 'charging_flow', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * GPM_PER_FRAC; }, tru: function (t) { return t.charging_flow_actual * GPM_PER_FRAC; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
+        { id: 'letdown',  instr: 'letdown_flow', grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * GPM_PER_FRAC; }, tru: function (t) { return t.letdown_flow_actual * GPM_PER_FRAC; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
+        { id: 'load_tgt', grp: 'Controls', label: 'Load Target MW', c: '#8898b8', ctl: function (c) { return c.load_target_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; }, hint: 'the electrical output the turbine has been asked to make.', detail: 'The secondary side sets the pace on a pressurized water reactor: raise this and the extra steam draw cools the primary, average temperature falls, and the negative moderator coefficient raises reactor power on its own. The reactor follows the turbine, not the other way round.' },
+        { id: 'press_sp', grp: 'Controls', label: 'Pressure Setpoint', c: '#70a070', ctl: function (c) { return c.pressure_setpoint; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); }, hint: 'the pressure the pressurizer control system is holding to.', detail: 'Moving this setpoint is how a cooldown is driven: the heaters and spray chase it, so lowering it walks the plant down in a controlled way instead of letting pressure fall wherever the temperature takes it. The relief and safety valve setpoints do NOT move with it.' },
+        { id: 'dump_sp',  grp: 'Controls', label: 'Dump Setpoint', c: '#a0a860', ctl: function (c) { return c.steam_dump_setpoint; }, range: [0, 10], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); }, hint: 'the steam pressure the dump valves are controlling to.', detail: 'Lowering it opens the dump and cools the secondary, which cools the primary through the tubes — this is the steam-side half of a cooldown, and the rate limit on it is what keeps the vessel inside its 100 degree Fahrenheit per hour (55.6 Celsius per hour) heatup and cooldown limit.' },
       ],
       // ------------------------------------------------------------ Physics tab
       // TRUE plant state — HR1's sanctioned explicit diagnostic overlay, NOT a
@@ -1292,24 +1303,66 @@
     if (dim) return conv(v, dim).toFixed(dim === 'pressure' ? 0 : 1) + ' ' + unit(dim);
     return String(v) + (u ? ' ' + u : '');
   }
-  function gaugeDetail(g) {
-    var ind = g.instr ? manualIndication(g.instr) : null, bits = [];
-    if (ind) {
-      if (ind.measures) bits.push(ind.measures);
-      if (ind.range) bits.push('Indicating range ' + fmtInstrValue(ind.range[0], ind.unit, g.instr) +
-                               ' to ' + fmtInstrValue(ind.range[1], ind.unit, g.instr) + '.');
-      if (ind.lag_s) bits.push('About ' + ind.lag_s + ' s of instrument lag — it trails the plant.');
-      if (ind.alarms && ind.alarms.length) {
-        bits.push('Drives ' + ind.alarms.map(function (id) {
-          var sp = alarmSpec(id);
-          return sp ? (sp.label_industry || sp.label_learning || id) : id;
-        }).join(', ') + '.');
-      }
+  // The GENERATED instrument tier — what a channel measures, its indicating range, its lag and
+  // the alarms it drives, straight out of RD.MANUAL and the plant's own protection table.
+  // Extracted from gaugeDetail 2026-08-09 so the Indications tab shares it: one channel
+  // described two different ways on two surfaces is the drift this whole pattern exists to
+  // prevent, and hand-authoring 50 range/lag figures would be a second copy of numbers that
+  // already exist and go stale on the next retune.
+  function indicationFacts(instr) {
+    var ind = instr ? manualIndication(instr) : null, bits = [];
+    if (!ind) return bits;
+    if (ind.measures) bits.push(ind.measures);
+    if (ind.range) bits.push('Indicating range ' + fmtInstrValue(ind.range[0], ind.unit, instr) +
+                             ' to ' + fmtInstrValue(ind.range[1], ind.unit, instr) + '.');
+    if (ind.lag_s) bits.push('About ' + ind.lag_s + ' s of instrument lag — it trails the plant.');
+    if (ind.alarms && ind.alarms.length) {
+      bits.push('Drives ' + ind.alarms.map(function (id) {
+        var sp = alarmSpec(id);
+        return sp ? (sp.label_industry || sp.label_learning || id) : id;
+      }).join(', ') + '.');
     }
+    return bits;
+  }
+  function gaugeDetail(g) {
+    var bits = indicationFacts(g.instr);
     bits.push('The coloured bands are the alarm and trip setpoints. The needle reads the ' +
               'instrument, which can be stuck, drifting or dead while the plant behind it is ' +
               'fine — and the reverse (HR1).');
     return bits.join(' ');
+  }
+  // One Indications row's copy. THREE SOURCES, in this order, and the order is the point:
+  //   1. `s.detail`  — authored context, where nothing can generate it. That is the 34 status
+  //      channels (the manual reference describes analog instruments, not indicator lights)
+  //      and the commanded positions, which are not measurements at all.
+  //   2. the generated facts above, for the 50 analog channels the manual covers.
+  //   3. a closing line naming what KIND of number the row is. Every indication row ends by
+  //      saying it is the channel rather than the plant, because that is the tab's whole
+  //      premise and the reason the Physics tab exists beside it (HR1).
+  // `hint` prefers authored copy, then the manual's own one-line `measures`.
+  function indicationCopy(s) {
+    var ind = s.instr ? manualIndication(s.instr) : null;
+    var bits = [];
+    if (s.detail) bits.push(s.detail);
+    bits = bits.concat(indicationFacts(s.instr));
+    bits.push(s.ctl
+      ? 'This is a COMMANDED position, not a measurement — what the operator or an automation ' +
+        'channel asked for. What the plant did about it is a different row.'
+      : 'This is the CHANNEL, not the plant: it lags, it can carry noise, and it can be failed ' +
+        'from the Inject Failure tab. The quantity behind it is on the Physics tab.');
+    return { hint: s.hint || firstSentence(ind && ind.measures) || null, detail: bits.join(' ') };
+  }
+  // The SUMMARY tier is one sentence by definition — it is what shows before the player asks
+  // for more. Several `measures` entries in the manual reference run to a paragraph (the OTΔT
+  // margin one is three sentences and explains the whole protection rack), which is right for
+  // the detail tier and wrong for a one-line summary. The rest is not lost: `indicationCopy`
+  // puts the FULL text at the head of the detail, so expanding the row continues the sentence
+  // the summary started. Splits only on a full stop followed by a capital, so "4.1 volume
+  // percent" and "0.1 s" do not read as sentence ends.
+  function firstSentence(t) {
+    if (!t) return t;
+    var m = /^(.*?[.!?])\s+[A-Z(]/.exec(t);
+    return m ? m[1] : t;
   }
   // Fuller account of an active alarm (M8 §11): what condition brought it in,
   // sourced per-alarm from the plant's own protection table.
@@ -1466,7 +1519,14 @@
         grp = s.grp;
         html += '<div class="ind-grp">' + (grp ? '<h4>' + grp + '</h4>' : '');
       }
-      html += '<div class="num-line">' + plotCell(s.id) +
+      // Same two-tier scanner copy the Physics rows carry (#350 item 3), and needed here for
+      // the same reason: this is the densest list in the shell and rows like "OPΔT Margin" or
+      // "Above P-9" are unreadable from the label alone. The block splits the summary on
+      // ' — ', so the row label becomes its title.
+      var cp = indicationCopy(s);
+      var attrs = (cp.hint ? ' data-scanner-hint="' + esc(s.label + ' — ' + cp.hint) + '"' : '') +
+                  (cp.hint && cp.detail ? ' data-scanner-detail="' + esc(cp.detail) + '"' : '');
+      html += '<div class="num-line"' + attrs + '>' + plotCell(s.id) +
               '<span class="nk">' + s.label + '</span><span class="nv">—</span></div>';
     });
     if (grp !== null) html += '</div>';

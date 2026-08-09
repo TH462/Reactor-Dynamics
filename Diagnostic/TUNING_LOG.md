@@ -131,9 +131,45 @@ genuine HR1 pair — `get` reads the demand light, `tru` reads the valve — so 
 `stuck_porv_open` the Indications tab reads **shut** and the Physics tab reads **OPEN · STUCK**,
 which is TMI-2 on two tabs. `run_all` 44 at baseline (`run_inspect` 9/9 47/47 → 10/10 53/53).
 
-**Left open**: the board card / manual surface for the new physics rows, and per-row scanner
-copy on the Indications tab (the pane carries one hint; 95 rows of authored copy was not in
-scope and `run_inspect` does not require it there).
+### Follow-on: the Indications scanner copy (same session, owner: "Do the indications scanner copy")
+
+**Do not hand-author what the plant already documents.** 50 of the 94 rows are analog channels
+and `RD.MANUAL` already carries `measures`, `range`, `lag_s` and driven `alarms` for every one —
+the same data `gaugeDetail` has always used. Extracted that into `indicationFacts()` and shared
+it, so a channel cannot be described two different ways on two surfaces and 50 range/lag figures
+are not a second copy of numbers that move on the next retune. Only the **34 status channels**
+and the **9 commanded positions** were authored, because a reference that documents instruments
+has nothing to say about an indicator light or a demand.
+
+Three traps, one of them a real find:
+
+- **A shared table keyed by INSTRUMENT ID describes the wrong plant's component.** The generated
+  reference called the PWR's `steam_pressure` **"Steam-Drum Pressure"** — an RBMK term for a
+  component a PWR does not have, and a word that appears nowhere in the PWR manual set. `IND` in
+  `tools/gen_manual_reference.js` is keyed by id alone and both plants use that id, so the
+  RBMK's wording won. **It was latent for as long as the text only fed the Failures tab's
+  instrument picker**, and became player-facing the instant the Indications tab started showing
+  `measures`. Fixed with a per-plant override (`IND_PLANT`), regenerated, `verify_manual_data`
+  green. Worth noting the shape: a NEW SURFACE over old data is an audit of that data, and this
+  one failed on its first read.
+- **The summary tier must be ONE sentence, and "first sentence" is not "the whole field".**
+  Several `measures` entries run to a paragraph — the OTΔT margin one explains the entire
+  protection rack — which is right for the detail tier and useless as a hover summary. Trimmed
+  with a split on a full stop followed by a capital, so "4.1 volume percent" and "0.1 s" do not
+  read as sentence ends; the full text still leads the expanded tier, so nothing is lost.
+- **…but trimming can amputate the point.** `porv_indicator` opens "Relief-valve indicator." and
+  only says the load-bearing part — that the light shows the COMMANDED position — in its second
+  sentence. On every other row losing the tail is fine; on the one channel the whole Three Mile
+  Island lesson hangs off, it is not. Authored hint, overriding the generated one.
+
+**And three series were reachable from no checkbox at all** — `block_valve`, `porv_stuck`,
+`spray_stuck`, all true-state-only, so the Indications filter excluded them and no Physics row
+named them. A column in every packed chart row for something nobody could plot. Deleted; their
+state was already printed in the Physics rows that own them. `run_inspect` now fails on an
+unreachable series, on a physics row binding a `ser:` that does not exist, and on an Indications
+row that resolves to no copy — all injection-verified. 53 → 56 checks.
+
+**Left open**: the board card / manual surface for the new physics rows.
 
 ---
 

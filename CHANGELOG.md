@@ -68,6 +68,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with no row**, injection-verified four ways — that guard immediately caught a live defect:
   `xenon` declared an accessor for an instrument that does not exist, propped up by
   `chartSample` cloning the instruments dict on every sample. Both are gone.
+- **Every Indications row carries System Scanner copy.** Hover any of the 94 rows for what the
+  reading is; expand for its indicating range, its lag, the alarms it drives, and a closing line
+  saying it is the channel rather than the plant. The instrument tier is **generated** from the
+  manual reference — the same source the vital gauges use, extracted so one channel cannot be
+  described two different ways on two surfaces, and so 50 range and lag figures are not a second
+  copy of numbers that go stale on the next retune. The 34 status channels and the commanded
+  positions are authored, because a reference that documents instruments has nothing to say
+  about an indicator light. Summaries are trimmed to one sentence, with the full text leading
+  the expanded tier. `run_inspect` fails on a row that resolves to no copy at all.
 - **The PORV is a genuine instrument-vs-truth pair on the chart.** Its reading comes from
   `porv_indicator`, which reports the DEMAND signal rather than the valve — so under a
   stuck-open relief valve the Indications tab reads *shut* and the Physics tab reads
@@ -105,6 +114,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   to miss.
 
 ### Fixed
+- **The PWR's steam pressure indication was described as a "Steam-Drum Pressure" — a boiling-water
+  reactor term for a component a PWR does not have.** The generated reference keys its instrument
+  descriptions by id ALONE, and `steam_pressure` is a key the RBMK and the PWR share: the RBMK's
+  wording won, and the word "drum" appears nowhere else in the PWR manual set. Latent for as long
+  as that text only fed the Failures tab's picker; it surfaced the moment the Indications tab
+  began showing descriptions to the player. Per-plant entries now override the shared table, so
+  the PWR reads "Steam Generator Pressure" and the RBMK keeps its drum.
 - **The chart buffer stored one named property per series per row, and it did not scale.**
   MEASURED at the shipped `CHART_ROW_BUDGET` of 9000 rows, both sides populated: 40 series cost
   **39.5 MB**, 51 cost 68.9, 110 would cost **137.8**. Rows are now fixed-width `Float64Array`s
