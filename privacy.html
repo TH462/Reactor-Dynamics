@@ -78,9 +78,12 @@
   info (country, device type, browser, OS). It sets <strong>no cookies</strong>,
   stores no client-side identifier, and does not fingerprint you by IP address or
   browser to build a profile.</p>
-  <p><strong>There is no analytics script on these pages.</strong> The count is
-  taken by the server as it answers each request, so there is nothing running in
-  your browser to do it &mdash; and nothing an ad blocker needs to block.</p>
+  <p>It works by a small script (<code>static.cloudflareinsights.com/beacon.min.js</code>)
+  that Cloudflare adds to each page as it serves it. You will not find it in this
+  site&rsquo;s source, because it is not put there by us &mdash; but it does run in
+  your browser, and <strong>a content blocker will stop it</strong>. If yours does,
+  the page works exactly the same; the visit simply is not counted, which is a
+  choice we are content for you to make.</p>
 
   <h2>Usage data in the simulator — only if you say yes</h2>
   <p>The first time you open the control room it asks whether to share anonymous
