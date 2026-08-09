@@ -1679,12 +1679,35 @@
       // cw_inlet_ref_c the target is EXACTLY vacuum_rated, bit-identical to the two-point
       // model it replaces. Only departures from the reference move anything, so every
       // existing scenario, IC and save behaves as before.
-      // Reference circ-water inlet = 80 °F, which is the board box's default, so typing the
-      // default back in reproduces the reference condition instead of nudging it.
-      cw_inlet_ref_c: 26.6667,
+      // Reference = the DEFAULT DAY = 60 °F *(OWNER RULING, 2026-08-08: "can we tune this
+      // sim to run a default value of 60F?")*, moved from the original 80 °F. Reference and
+      // default move TOGETHER by construction (the engine initializes cw_inlet_temp_c to
+      // this value), so the rated-at-default identity is preserved: a default day still
+      // makes exactly vacuum_rated and 100 MWe. 60 sits between Ginna's 50 °F condenser
+      // design point (UFSAR ch 10.4.3) and the old 80; the warm-side authority of the box
+      // grows accordingly — the 85 °F TS ceiling is now 25 °F above reference, not 5.
+      cw_inlet_ref_c: 15.5556,
       cw_range_c: 10.0,            // CW temperature rise across the condenser at full load [tune]
       cw_ttd_c: 3.0,               // terminal difference: condensing steam above CW outlet [tune]
-      cw_inlet_min_c: 4.4, cw_inlet_max_c: 37.8,   // operator range, 40–100 °F
+      // Operator range 30–85 °F — THE ANCHOR PLANT'S ANALYZED COOLING-WATER BAND, both ends
+      // verbatim-sourced *(OWNER DIRECTIVE, 2026-08-08: "what is the acceptable condenser
+      // cooling temperature range? We should set our condenser cooling range to this.")*.
+      // Ginna TS Bases B 3.7.8 (ML20339A221 Rev 101): SW OPERABILITY requires screenhouse bay
+      // "Temperature ≤ 85ºF", and the accident analyses bound the same lake water both ways —
+      // "The bounding minimum cooling water temperature assumed in the accident analysis is
+      // 30ºF, which is lower than the freezing point of the cooling water supply. The bounding
+      // maximum SW water temperature assumed for the long-term containment response and SLB
+      // analysis is 85ºF." The FLOOR walked twice on same-day owner follow-ups: the
+      // analysis's 30 °F is deliberately sub-freezing ("wouldnt 30F be freezing?" — it is),
+      // and the box floor is 35 °F rather than the 32 °F freezing point *(OWNER RULING,
+      // 2026-08-08: "lets make the floor 35F since its probably warmed some by the time
+      // tit gets to the condenser.")* — a judgment call, declared: the transit warm-up
+      // through the 3100-ft intake tunnel and screenhouse is plausible but UNVERIFIED, no
+      // document quantifies it. Condenser design point: 50 °F CW, 24.5 °F rise (Ginna
+      // UFSAR ch 10.4.3, ML20339A040). Replaces 40–100 °F, which was unsourced at both
+      // ends. MEASURED at the edges from the 60 °F reference (full stack): see the manual
+      // §13.1 figures stamped in the same change; the cold end still rides vacuum_max_kpa.
+      cw_inlet_min_c: 1.6667, cw_inlet_max_c: 29.4444,
       // Cold circ water buys vacuum ABOVE the rated value — the winter uprate is real, and
       // capping the gain at vacuum_rated would leave the whole cold half of the operator's
       // range doing nothing, which reads as a broken control. Ceiling is the practical

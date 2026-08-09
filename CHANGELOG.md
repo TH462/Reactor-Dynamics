@@ -31,6 +31,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The CW INLET TEMP box takes the anchor plant's envelope on a 60 °F default day: range
+  35–85 °F (1.7–29.4 °C) and reference/default 60 °F (15.6 °C) — was 40–100 °F on an 80 °F
+  default** *(OWNER DIRECTIVES, 2026-08-08, in sequence: "We should set our condenser cooling
+  range to this [the acceptable range]"; "wouldnt 30F be freezing?"; "can we tune this sim to
+  run a default value of 60F? lets make the floor 35F since its probably warmed some by the
+  time tit gets to the condenser.")*. The 85 °F ceiling is verbatim-sourced from Ginna TS
+  Bases B 3.7.8 (ML20339A221 Rev 101, re-fetched to the corpus): SW OPERABILITY requires the
+  screenhouse bay at *"Temperature ≤ 85ºF"*, and the accident analyses bound the same lake
+  water at a deliberately sub-freezing 30 °F. The 35 °F floor's lake-to-condenser warm-up is
+  the owner's call, declared UNVERIFIED. Condenser design point 50 °F CW, 24.5 °F rise
+  (UFSAR ch 10.4.3) — the 60 °F default sits between the design lake and the old 80. The
+  reference and default move together by construction, so a default day still makes exactly
+  rated vacuum and 100.0 MWe (measured, bit-identical). From the new reference the box has
+  real authority both ways (measured, full stack): 85 °F costs 4.6 MWe at 27.2 inHg
+  (92.0 kPa); a 50 °F design day buys +1.1 MWe; the 35 °F floor +2.3, just under the vacuum
+  ceiling. Lake temperature alone still cannot reach COND VAC LO (~2 inHg margin at the
+  ceiling), so `Manuals/03` §13.1's CAUTION is replaced — the alarm walk is equipment
+  trouble, not weather. Board box, engine clamp, RHR-floor and SG-backpressure references
+  and all fallbacks move together. Manuals Rev 15 pending item (a).
 - **PWR turbine load RAISES are rate-limited again — 30 %/min of rated, raises only** *(OWNER
   RULING, 2026-08-08: "Do the 30% increase.", superseding the 2026-08-03 "turn it off" that had
   retired the #318 10 %/min value)*. Measured full-stack before the ruling: the knob costs the

@@ -29,6 +29,63 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-08-develop-f (CW inlet: 35–85 °F on a 60 °F default day — the envelope sourced, the floor and default ruled)
+
+**Three rulings in sequence, same day** *(OWNER, 2026-08-08)*: **(1)** *"what is the
+acceptable condenser cooling temperature range? We should set our condenser cooling range to
+this. currently its 40F to 100F."* — the range came from the evidence pass below; shipped
+first as 30–85 °F (the analysis band verbatim). **(2)** *"wouldnt 30F be freezing?"* — it is,
+deliberately (the analysis bound is sub-freezing so no real day can undercut it); floor moved
+to the 32 °F freezing point. **(3)** *"can we tune this sim to run a default value of 60F?
+lets make the floor 35F since its probably warmed some by the time tit gets to the
+condenser."* — final state: `cw_inlet_min_c`/`max_c` **1.6667/29.4444 °C (35/85 °F)**,
+`cw_inlet_ref_c` 26.6667 → **15.5556 °C (60 °F)**. The 35 °F transit warm-up is the owner's
+judgment, declared UNVERIFIED (no document quantifies the intake-tunnel rise). Reference and
+default move TOGETHER (the engine initializes the box to the reference), so the
+rated-at-default identity survives re-anchoring: a default day measures **exactly 100.0 MWe
+at 28.50 inHg (96.50 kPa)**, bit-identical. All five ref/min fallback sites moved with the
+config (engine init ×2, engine clamp, SG backpressure delta, RHR-floor delta, board box).
+
+**Re-anchoring the reference is what gave the box its authority back** (measured, full
+stack, from the 60 °F reference): 85 °F ceiling → **95.4 MWe at 27.2 inHg (92.0 kPa)**
+(−4.6 MWe, was −1.2 from the 80 ref); old 80 °F default is now a warm day at 96.6 MWe;
+Ginna's 50 °F design day +1.1 MWe; 35 °F floor +2.3 MWe at 29.16 inHg (98.73 kPa) — under
+the 99.5 kPa cap, which no longer binds inside the range. Lake temperature alone still
+cannot reach COND VAC LO (92.0 vs 84.7 kPa at the ceiling, ~2 inHg margin), so `Manuals/03`
+§13.1's rewritten NOTE (alarm walk = equipment causes) survives the re-anchor with its
+margin figure updated.
+
+**The evidence** (all on disk in `inbox/sources`, develop): **Ginna TS Bases B 3.7.8**
+(ML20339A221 Rev 101 — re-fetched this session, see below): SW OPERABILITY requires the
+screenhouse bay *"Temperature ≤ 85ºF"*, and the analyses bound the supply verbatim —
+*"The bounding minimum cooling water temperature assumed in the accident analysis is 30ºF,
+which is lower than the freezing point of the cooling water supply. The bounding maximum SW
+water temperature assumed for the long-term containment response and SLB analysis is 85ºF."*
+**Ginna UFSAR ch 10.4.3** (ML20339A040): *"condensers are designed for a circulating water
+temperature of 50F with an approximate 24.5F temperature rise"*. The NUREG-1431 UHS number is
+a bracketed **[90] °F template** (B 3.7.9) — rejected as a source, the #380 bracket lesson;
+Ginna's own Bases carry **no UHS spec at all** (lake-cooled, no 3.7.9), the SW section holds
+the limit. The 30 °F floor is the analysis's deliberately-sub-freezing bound, adopted as-is
+rather than inventing an unsourced 32 °F "physical" floor — the pair comes from one sentence.
+
+**Measured at the new edges** (full stack): 85 °F → 98.8 MWe, vacuum 28.2 inHg (95.4 kPa);
+old 100 °F ceiling → 94.2 MWe, 26.85 inHg (90.9 kPa); 30 °F floor → 103.1 MWe pinned on the
+`vacuum_max_kpa` 99.5 cap. Consequence a probe never asserted: **lake temperature alone now
+cannot reach COND VAC LO** (84.7 kPa — the 85 °F ceiling leaves ~10 kPa (~3 inHg) of margin),
+so `Manuals/03` §13.1's CAUTION promised a walk to the trip the box can no longer deliver —
+replaced with the measured margins and the alarm walk re-attributed to equipment causes.
+**Manuals Rev 15 opened** (pending row item (a), chapter-qualified `**03 §13.1**` for the
+canary); stamped + repacked; `run_manual_units` caught one split US/SI pair across a line
+wrap (the checker is line-scoped — keep a pair on one line).
+
+**Corpus repair on the way in:** the `pwr-prototypicality-sources` memory said ML20339A221 was
+*"fetched 2026-08-07, on disk develop"* — `find_source` said no lane has it. Re-fetched via the
+CDX recipe (timestamp 20250210171625, `%PDF-1.7`, 623 pages extracted with pypdf). A memory's
+"on disk" claim is a claim like any other: the fetch may have lived in a session whose inbox
+was cleaned, and only `find_source` is a verdict.
+
+---
+
 ## Session log — 2026-08-08-develop-e (turbine load raises rate-limited at 30 %/min, ruled; + the CHANGELOG blockquote splice repaired)
 
 **Ruling.** *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* — `turbine.load_rate_pct_per_min`

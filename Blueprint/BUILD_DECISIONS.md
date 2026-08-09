@@ -45,6 +45,23 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-08-develop-f — CW inlet 40–100 °F → 35–85 °F on a 60 °F default: ceiling sourced, floor and default ruled
+
+**Rulings** *(OWNER, 2026-08-08, three in sequence)*: the range question ("We should set our
+condenser cooling range to this"), the freezing catch ("wouldnt 30F be freezing?"), and the
+final numbers ("can we tune this sim to run a default value of 60F? lets make the floor 35F
+since its probably warmed some by the time tit gets to the condenser."). Evidence: Ginna TS
+Bases B 3.7.8 (ML20339A221 Rev 101, re-fetched — the 2026-08-07 copy was in no lane) requires
+the screenhouse bay ≤ 85 °F for SW OPERABILITY; the analyses bound the supply 30–85 °F with
+the 30 deliberately sub-freezing; condenser design point 50 °F + 24.5 °F rise (UFSAR ch
+10.4.3). The STS [90] °F UHS number is a bracketed template (the #380 lesson) and Ginna's
+Bases carry no UHS spec at all. The 35 °F floor's transit warm-up is owner judgment, declared
+UNVERIFIED. **The reference moved with the default** (60 °F), which is the decision with
+teeth: rated-at-default is preserved bit-identical (100.0 MWe measured), and the box regains
+authority — 85 °F now costs 4.6 MWe (was 1.2 from the 80 ref), 35 °F buys +2.3, and the
+99.5 kPa vacuum cap no longer binds inside the range. `Manuals/03` §13.1 rewritten (Rev 15
+pending, item (a)). Worklog: `Diagnostic/TUNING_LOG.md` 2026-08-08-develop-f.
+
 ## 2026-08-08-develop-e — turbine load raises rate-limited at 30 %/min (ruled); decreases stay instant (structural)
 
 **Ruling.** *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* — `turbine.load_rate_pct_per_min`

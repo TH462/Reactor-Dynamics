@@ -190,8 +190,8 @@
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the
     // same band, so the box refuses what the engine would clamp).
-    ims3v42jghn: [_TB.cw_inlet_min_c != null ? _TB.cw_inlet_min_c : 4.4,
-                  _TB.cw_inlet_max_c != null ? _TB.cw_inlet_max_c : 37.8]
+    ims3v42jghn: [_TB.cw_inlet_min_c != null ? _TB.cw_inlet_min_c : 1.6667,
+                  _TB.cw_inlet_max_c != null ? _TB.cw_inlet_max_c : 29.4444]
   };
   // Family per editable box, with optional per-mode overrides where the converted range
   // needs a different resolution than the family default. Charging is the one that does:

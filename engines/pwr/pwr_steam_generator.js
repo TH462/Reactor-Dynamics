@@ -465,7 +465,7 @@
     // reproduces vacuum_rated exactly.
     var target;
     if (s.condenser_cooling_available) {
-      var cwRef = tb.cw_inlet_ref_c != null ? tb.cw_inlet_ref_c : 26.7;
+      var cwRef = tb.cw_inlet_ref_c != null ? tb.cw_inlet_ref_c : 15.5556;
       var cw = s.cw_inlet_temp_c != null ? s.cw_inlet_temp_c : cwRef;
       // Condensing temperature rises with CW inlet AND with load (more heat rejected =
       // bigger rise across the tubes), so the derate bites hardest at full power.

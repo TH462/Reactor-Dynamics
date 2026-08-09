@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 14  
+**Revision:** 15  
 
 ---
 
@@ -663,21 +663,31 @@ penalty grows with load, because more heat is rejected across the tubes at high 
 | Property | Value |
 |----------|-------|
 | Command | `set_condenser_cw_temp` |
-| Range | **40 – 100 °F** (4.4 – 37.8 °C) |
-| Reference | **80 °F** (26.7 °C) — the default; at the reference the plant makes exactly rated vacuum |
+| Range | **35 – 85 °F** (1.7 – 29.4 °C) — near-freezing lake water to the analyzed ceiling |
+| Reference | **60 °F** (15.6 °C) — the default; at the reference the plant makes exactly rated vacuum |
+
+The ceiling is the real plant's own limit for this lake water: Technical Specifications
+require the intake bay at or below **85 °F** for the service-water system to be OPERABLE (the
+accident analyses bound the supply at a deliberately sub-freezing 30 °F). The floor allows
+for the slight warm-up between a lake that can sit at freezing and the condenser inlet. The
+condenser itself is designed around a **50 °F** lake, so the 60 °F default is an ordinary day.
 
 **What it does:**
 
-- **Warm circ water** → less vacuum → **less MWe at the same steam flow**, and a shorter walk
-  to the **22 inHg (74.5 kPa)** turbine trip. This is the summer derate, and it is real here.
-- **Cold circ water** → vacuum **above** the rated value, and a couple of percent above
-  nameplate output. The winter uprate is real too.
+- **Warm circ water** → less vacuum → **less MWe at the same steam flow**. At the 85 °F
+  ceiling the full-power cost measures about **5 MWe**, with vacuum at
+  **27.2 inHg (92.0 kPa)** — a real summer derate.
+- **Cold circ water** → vacuum **above** the rated value: about **101 MWe** on a 50 °F
+  design day, and about **102 MWe** at the 35 °F floor, just under the condenser's
+  practical vacuum ceiling. The winter uprate is real too.
 - It also raises the floor an **RHR cooldown** can reach: the RHR heat exchanger rejects to
   the same circulating water, so warm circ water both raises the achievable temperature and
   slows the approach to it (§11.2, and `05` PWR-T21).
 
-**CAUTION:** raising CW temperature at full power walks vacuum down toward the trip. Watch
-**COND VAC LO** (25 inHg (84.7 kPa)) — it is the warning before **COND VAC TRIP** (22 inHg (74.5 kPa)).
+**NOTE:** lake temperature alone cannot walk vacuum to the **COND VAC LO** alarm
+(25 inHg (84.7 kPa)) — even the 85 °F ceiling leaves ~2 inHg of margin at full power.
+Falling vacuum with normal circ-water temperature means equipment trouble (circulating-water
+pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 inHg (74.5 kPa)).
 
 ---
 
