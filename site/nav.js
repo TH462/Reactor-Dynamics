@@ -36,25 +36,6 @@
       brandVer.textContent = m ? 'V' + m[1] : '';
     }
 
-    // The offline download links a stable path (download/latest.zip) so download.html
-    // never needs a per-release edit — but that is also the name the browser saves it
-    // under, and "latest.zip" identifies nothing once it is sitting in a downloads
-    // folder next to five other zips (#275). Name the SAVED file from the release
-    // string instead. This must produce EXACTLY the name site/make_download.js gives
-    // the versioned copy it writes beside latest.zip; test/run_portable.js compares the
-    // two literals, because two spellings of the same filename is the whole defect
-    // wearing a different hat.
-    //
-    // Null/undefined-guarded on both sides: nav.js loads on every page and only
-    // download.html has the button or loads release.js. With JS off, the bare
-    // `download` attribute in the markup still saves — as latest.zip, i.e. today's
-    // behaviour, which is the right way for this to fail.
-    var dl = document.getElementById('dlZip');
-    if (dl && typeof window.RD_RELEASE === 'string' && window.RD_RELEASE) {
-      dl.setAttribute('download',
-        'Reactor_Dynamics_' + window.RD_RELEASE.replace(/[^A-Za-z0-9.]+/g, '_') + '.zip');
-    }
-
     // "Alpha 1.2.2 · 6 August 2026 · 4.2 MB" under the download button (2026-08-06).
     // Everything here comes from window.RD_DOWNLOAD, which site/make_download.js writes
     // at deploy from the zip it just built — the size is not knowable before that, and
@@ -65,6 +46,32 @@
     // display:none until .is-filled), rather than rendering a line of blanks.
     var meta = document.getElementById('dlMeta');
     var dlInfo = window.RD_DOWNLOAD;
+
+    // THE SAVED FILENAME, TAKEN FROM THE BUILD RATHER THAN RE-DERIVED (#414).
+    // download.html links the stable download/latest.zip so it needs no per-release
+    // edit, and that href's basename is what the browser would save the file under —
+    // "latest.zip" identifies nothing in a downloads folder (#275). So the name comes
+    // from the `download=` attribute stamped here.
+    //
+    // It used to be BUILT here, from RD_RELEASE, as a second spelling of the string
+    // site/make_download.js gives the zip; test/run_portable.js compared the two
+    // spellings' literals. That could not survive #414 — off the released channel the
+    // name has to carry the commit, and adding a suffix to one side leaves those
+    // literals identical, so the gate would have stayed green while the offered name
+    // stopped being the built name. There is now ONE derivation, downloadName() in
+    // site/make_download.js, and it reaches the browser through the manifest that
+    // script writes beside the zip in the same run *(OWNER RULING, 2026-08-09, choosing
+    // "Transport it" from the options put to them — the phrasing is mine, the decision
+    // theirs)*. Nothing here may reconstruct it — run_portable.js fails if the
+    // literal 'Reactor_Dynamics_' reappears in this file.
+    //
+    // NO FALLBACK, deliberately. The only case with no manifest is a local checkout,
+    // where download/ is gitignored and latest.zip 404s too — there is no file to
+    // name. The bare `download` attribute in the markup then still saves it as
+    // latest.zip if JS is off, which is the right way for this to fail.
+    var dl = document.getElementById('dlZip');
+    if (dl && dlInfo && dlInfo.file) dl.setAttribute('download', dlInfo.file);
+
     if (meta && dlInfo && typeof dlInfo === 'object') {
       var parts = [];
       if (dlInfo.version) parts.push(dlInfo.version);
@@ -78,10 +85,10 @@
         parts.push((+d[3]) + ' ' + MONTHS[(+d[2]) - 1] + ' ' + d[1]);
       }
       if (dlInfo.bytes > 0) parts.push((dlInfo.bytes / 1048576).toFixed(1) + ' MB');
-      // Off the released channel, say so and name the commit. The zip arrives under the
-      // same filename as the real release (see the note in site/make_download.js), so
-      // this line is the only thing on the page that distinguishes the two — which is
-      // why the SHA is here and not just the word TEST.
+      // Off the released channel, say so and name the commit. Since #414 the SHA is
+      // also in the filename, so this line is no longer the ONLY thing distinguishing a
+      // test build from the release — it is the thing that says so before the download
+      // starts, on the page, where a visitor deciding whether to click can read it.
       if (dlInfo.channel && dlInfo.channel !== 'public') {
         parts.unshift('TEST BUILD');
         if (dlInfo.sha) parts.push(dlInfo.sha);

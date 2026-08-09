@@ -70,9 +70,11 @@
   you would rather not depend on this site being up.</p>
 
   <!-- The href is the STABLE path site/make_download.js writes, so this page never needs
-       editing per release. The SAVED filename is stamped from site/release.js by
-       site/nav.js (#275) — a file called "latest.zip" on someone's desktop says nothing
-       about what it is or how old it is. The bare `download` here is the no-JS fallback. -->
+       editing per release. The SAVED filename is stamped by site/nav.js from
+       download/manifest.js (#275, #414) — a file called "latest.zip" on someone's desktop
+       says nothing about what it is or how old it is, and off the released channel the
+       name carries the commit so a test build cannot be mistaken for the release. The
+       bare `download` here is the no-JS fallback. -->
   <p><a class="btn-download" id="dlZip" href="download/latest.zip" download>Download Reactor Dynamics
   <span class="mono">(.zip)</span></a></p>
 
