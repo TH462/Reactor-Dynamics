@@ -45,6 +45,63 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-08-develop-g — the winter uprate stays MONOTONIC: no LP low-backpressure knee (ruled, declared §8.35)
+
+**Ruling** *(OWNER, 2026-08-08: "is it worth the extra computer when running the sim to do the
+knee? probably not worth it i just want to show the relationship between this temperature and
+the plant.")* — asked whether a turbine low-backpressure saturation knee was worth the runtime
+cost. **It isn't, but the compute premise was wrong and the answer survives it**: the clip is
+already evaluated every step (`clip(vacuum_rated − dP, vacuum_lost, vacuum_max_kpa)`), so a knee
+is a constant, not new math. It is declined on Q3/Q4 instead — a knee flattens the 35–50 °F half
+of the operator's range, so the player moves the knob and MWe stops responding, which reads as a
+broken control rather than a turbine limit. Same argument `pwr_config.js` already makes one level
+out for not capping the gain at `vacuum_rated`.
+
+**Measured** (full stack, `hot_full_power`, 30 min, reactor 99.94 % throughout — the gain is
+secondary-cycle efficiency on unchanged MWt): 85 °F → 2.74 inHgA / 95.4 MWe · 60 °F ref →
+1.42 inHgA / 100.0 · 50 °F → 101.1 · **35 °F → 0.76 inHgA / 102.3**. The cold end therefore sits
+**deeper than the anchor plant's own condenser design backpressure** (≈1.03 inHgA, derived from
+Ginna UFSAR ch 10 §10.4.3's sourced 50 °F CW + 24.5 °F rise plus this model's 5.4 °F TTD) and
+still scales linearly. Declared at `DESIGN_COMPANION.md` **§8.35**, which also records the trap
+that prompted the question: **102 % MWe is prototypical, 102 % `power_pct` would be a Tech Spec
+violation** — 102 % of RTP is the Appendix K calorimetric-uncertainty margin the Chapter 15
+analyses are *performed at* (Ginna UFSAR ch 15, ML20339A101), not an operating allowance. The
+~1.0–1.5 inHgA knee value and the ~0.1–0.2 %/°F sensitivity band are both **recall, UNVERIFIED**
+— nothing in any lane's corpus carries a turbine exhaust-pressure limit. Docs only; no code, no
+gate movement.
+
+## 2026-08-08-develop-f — CW inlet 40–100 °F → 35–85 °F on a 60 °F default: ceiling sourced, floor and default ruled
+
+**Rulings** *(OWNER, 2026-08-08, three in sequence)*: the range question ("We should set our
+condenser cooling range to this"), the freezing catch ("wouldnt 30F be freezing?"), and the
+final numbers ("can we tune this sim to run a default value of 60F? lets make the floor 35F
+since its probably warmed some by the time tit gets to the condenser."). Evidence: Ginna TS
+Bases B 3.7.8 (ML20339A221 Rev 101, re-fetched — the 2026-08-07 copy was in no lane) requires
+the screenhouse bay ≤ 85 °F for SW OPERABILITY; the analyses bound the supply 30–85 °F with
+the 30 deliberately sub-freezing; condenser design point 50 °F + 24.5 °F rise (UFSAR ch
+10.4.3). The STS [90] °F UHS number is a bracketed template (the #380 lesson) and Ginna's
+Bases carry no UHS spec at all. The 35 °F floor's transit warm-up is owner judgment, declared
+UNVERIFIED. **The reference moved with the default** (60 °F), which is the decision with
+teeth: rated-at-default is preserved bit-identical (100.0 MWe measured), and the box regains
+authority — 85 °F now costs 4.6 MWe (was 1.2 from the 80 ref), 35 °F buys +2.3, and the
+99.5 kPa vacuum cap no longer binds inside the range. `Manuals/03` §13.1 rewritten (Rev 15
+pending, item (a)). Worklog: `Diagnostic/TUNING_LOG.md` 2026-08-08-develop-f.
+
+## 2026-08-08-develop-e — turbine load raises rate-limited at 30 %/min (ruled); decreases stay instant (structural)
+
+**Ruling.** *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* — `turbine.load_rate_pct_per_min`
+0 → 30.0, raises only, superseding the 2026-08-03 off-ruling. The measured basis: a 70 → 100 MWe
+raise delivers output at +240–260 s at every rate INCLUDING instant (the reactor is the pace),
+so the limiter costs no responsiveness; instant's borrowed-SG-steam spike grazed the C-4 runback
+(min OPΔT margin 2.71 vs 3.49 at 30 %/min, silent). The owner also asked whether decreases
+should take the same limit — recommended NO and the recommendation stood: the rejection
+detector's standing gap under a ramp is rate × refTau(60 s) = 30 MWe, under the 40 MWe dump
+arm, so a symmetric limit un-arms the FG-4 ride-out for any size cut (arithmetic recorded at
+`load_mode.js`). #379 pair re-measured with the limit on: the one-box step charges zero runback
+dwell; `persist_s` 8.5 untouched, both pair comments updated. Gate: `run_all` 44 at baseline.
+Full worklog: `Diagnostic/TUNING_LOG.md` 2026-08-08-develop-e (includes the CHANGELOG
+blockquote-splice repair, its own commit).
+
 ## 2026-08-08-develop-d — #425: the containment passive sink learns saturation ΔT, on a lag
 
 **Ruling.** *(OWNER RULING, 2026-08-08: "Do next as recommended.")* — Option B of the #425

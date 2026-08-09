@@ -42,6 +42,10 @@ global.window = global;                       // board scripts attach to window.
   'ui/diagram/board/pwr_board_data.js',
   'ui/diagram/board/pwr_board_inspect.js',
   'ui/manual_md.js',
+  // The GENERATED instrument reference (RD.MANUAL) — the source of the Indications tab's
+  // copy for every analog channel, so the coverage check below needs it to tell a described
+  // channel from an undescribed one.
+  'ui/manual_data.js',
 ].forEach(load);
 
 var RD = globalThis.RD;
@@ -420,6 +424,117 @@ test('every failure is placed in a group', function (ck) {
   var idsInOrder = (block.match(/'([a-z0-9_]+)'/g) || []).map(function (s) { return s.replace(/'/g, ''); });
   idsInOrder.forEach(function (id) { if (seen[id]) dupes.push(id); seen[id] = true; });
   ck('no failure appears in two groups', dupes.length === 0, dupes.join(', '));
+});
+
+// ======================================= Indications tab covers every channel (2026-08-08)
+// *(OWNER, 2026-08-08: "Lets change the graph tab to 'Indications' and this tells us all the
+// indications in the plant".)* The tab is generated from `PROFILES.pwr.series`, so "all the
+// indications" is only true while that hand-maintained array keeps up with the engine's
+// instrument set. This is the #224 shape exactly — a list-driven view that silently
+// under-covers the artifact it presents — and it is the same failure the failGroups check
+// above exists for: a new instrument does not produce an error, it produces a tab that
+// quietly stops being complete while still calling itself complete.
+//
+// Static, on the source, like the physics-row check: loading ui/app.js needs a DOM. A channel
+// counts as covered if the series block reads it as `i.<key>` or declares it as `ins: '<key>'`
+// (the `stat()` builder's form). Both directions are checked — a series reading a channel the
+// config no longer declares is a rename that lost its trace.
+test('every plant indication has a chart series', function (ck) {
+  var cfg = (RD.PWR_CONFIG && RD.PWR_CONFIG.instruments) || {};
+  var analog = Object.keys(cfg).filter(function (k) { return k !== 'status'; });
+  // `instruments.status` is an ARRAY of channel names, not a map of specs — status booleans
+  // carry no lag/noise/range, so there is nothing to key. Object.keys on it returns "0".."33".
+  var status = Array.isArray(cfg.status) ? cfg.status.slice() : Object.keys(cfg.status || {});
+  var channels = analog.concat(status);
+  ck('instrument set loaded from config', channels.length > 50,
+     analog.length + ' analog + ' + status.length + ' status');
+
+  var app = read('ui/app.js');
+  var from = app.indexOf('      series: [');
+  var to = app.indexOf('------ Physics tab', from);
+  ck('the series block is findable', from > 0 && to > from);
+  if (from < 0 || to < from) return;
+  // COMMENTS STRIPPED FIRST, and it matters in both directions. The block is heavily
+  // commented and the prose contains accessor-shaped text: "i.e." parses as a read of an
+  // instrument called `e`, and a comment explaining why a ghost accessor was REMOVED
+  // ("it used to read `i.xenon_pct_eq`") keeps the ghost alive for the scanner. The same cut
+  // stops a channel counting as covered because someone merely mentioned it in prose, which
+  // is the more dangerous direction — that one fails green. No line in this block carries a
+  // URL or a `//` inside a string, so cutting at the first `//` per line is exact here.
+  var block = app.slice(from, to).split('\n').map(function (ln) {
+    var i = ln.indexOf('//');
+    return i < 0 ? ln : ln.slice(0, i);
+  }).join('\n');
+
+  function covered(k) { return block.indexOf('i.' + k) >= 0 || block.indexOf("ins: '" + k + "'") >= 0; }
+  var missing = channels.filter(function (k) { return !covered(k); });
+  ck('no plant indication is missing from the series registry', missing.length === 0,
+     missing.length + ' uncovered: ' + missing.join(', '));
+
+  // Reverse: an accessor naming a channel the config does not declare is a GHOST — it reads
+  // undefined, so the Indications row renders a permanent em-dash while still claiming to be
+  // something the plant indicates. Caught in the wild the day this check was written: the
+  // `xenon` series declared `get: i.xenon_pct_eq` for a quantity with no instrument, and
+  // chartSample cloned the instruments dict every sample to graft the true value in so the
+  // accessor would find something. Both directions of the accessor are scanned — `ins: 'k'`
+  // (the stat() builder) and a bare `i.k` read — because that defect used the second form.
+  var declared = {}; channels.forEach(function (k) { declared[k] = true; });
+  var ghosts = {}, m;
+  var re = /ins: '([a-z0-9_]+)'/g;
+  while ((m = re.exec(block)) !== null) if (!declared[m[1]]) ghosts[m[1]] = true;
+  var re2 = /\bi\.([a-z0-9_]+)\b/g;
+  while ((m = re2.exec(block)) !== null) if (!declared[m[1]]) ghosts[m[1]] = true;
+  var ghostList = Object.keys(ghosts);
+  ck('no series reads an instrument the plant does not have', ghostList.length === 0, ghostList.join(', '));
+
+  // Ids must be unique: `serCol` is built by walking the array, so a duplicate id silently
+  // gives two series the same packed column and the second one overwrites the first.
+  var ids = (block.match(/\bid: '([a-z0-9_]+)'/g) || []).map(function (s) { return s.slice(5, -1); });
+  var dup = [], seen = {};
+  ids.forEach(function (i) { if (seen[i]) dup.push(i); seen[i] = true; });
+  ck('no two series share an id', dup.length === 0, dup.join(', '));
+  ck('every series is grouped', (block.match(/\bid: '/g) || []).length === (block.match(/grp: '/g) || []).length,
+     ids.length + ' series, ' + (block.match(/grp: '/g) || []).length + ' grouped');
+
+  // A series NO CHECKBOX CAN REACH is dead weight — it costs a column in every packed chart
+  // row and nothing can plot it. Reachable means: listed on the Indications tab (it has `get`,
+  // `ins:` or `ctl`), or bound to a Physics row by `ser:`. Three of these shipped briefly
+  // (block_valve, porv_stuck, spray_stuck — all true-state-only, so the Indications filter
+  // excluded them and no physics row named them).
+  var chunks = block.split(/(?=\n        (?:\{ id:|stat\(|logSer\())/);
+  var listed = {};
+  chunks.forEach(function (c) {
+    var im = c.match(/\bid: '([a-z0-9_]+)'/);
+    if (im && /\bget:|ins: '|\bctl:/.test(c)) listed[im[1]] = true;
+  });
+  var physBlock = app.slice(app.indexOf('      physics: ['), app.indexOf('failGroups: ['));
+  var bound = {}, b, rb = /ser: '([a-z0-9_]+)'/g;
+  while ((b = rb.exec(physBlock)) !== null) bound[b[1]] = true;
+  var orphan = ids.filter(function (i) { return !listed[i] && !bound[i]; });
+  ck('every series is reachable from a checkbox', orphan.length === 0, orphan.join(', '));
+
+  // A Physics row's `ser:` must name a series that exists, or its checkbox toggles nothing.
+  var ghostSer = Object.keys(bound).filter(function (i) { return ids.indexOf(i) < 0; });
+  ck('every physics row binds a series that exists', ghostSer.length === 0, ghostSer.join(', '));
+
+  // Every Indications row resolves to scanner copy. Two sources: the generated manual
+  // reference (analog channels) or an authored `hint` (status channels and commanded
+  // positions, which the manual reference does not describe — it documents instruments).
+  // Without this a new status series ships with a bare label and no way to find out what it
+  // means, which is the state the whole tab was in before 2026-08-09.
+  var inds = ((RD.MANUAL || {}).pwr || {}).indications || [];
+  var described = {}; inds.forEach(function (i) { if (i.measures) described[i.id] = true; });
+  var noCopy = [];
+  chunks.forEach(function (c) {
+    var im = c.match(/\bid: '([a-z0-9_]+)'/);
+    if (!im || !listed[im[1]]) return;                       // only rows the tab actually shows
+    if (/\bhint: '/.test(c)) return;                         // authored
+    var instr = c.match(/(?:instr|ins): '([a-z0-9_]+)'/);
+    if (instr && described[instr[1]]) return;                // generated from the manual
+    noCopy.push(im[1]);
+  });
+  ck('every indication row resolves to scanner copy', noCopy.length === 0,
+     noCopy.length + ' with neither an authored hint nor a described instrument: ' + noCopy.join(', '));
 });
 
 // ==================================================================== report

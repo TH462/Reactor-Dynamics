@@ -29,6 +29,331 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-workbench-a (the flicker is COMPUTE-bound, measured; and a release check that could never have passed)
+
+**The flicker reports are compute-bound, and now the bug report says so.** Players on some PCs
+reported stutter during large transients, which is unactionable on its own: compute-bound,
+render-bound and dropped frames look identical from outside and need different fixes.
+`ui/perf.js` plus a *Simulator performance* block on the Physics tab measure it. **At 3600× the
+physics costs 501 ms per broadcast against a 100 ms budget — 515 %, 2 fps — while rendering
+stays 6–14 ms and `coalesced` is 0.** Nothing is being merged away or dropped by the
+compositor; the step loop simply does not finish in time. At 1× it is healthy. The numbers ride
+along in every session bundle, so the next report arrives pre-diagnosed.
+
+- **The clock must STOP BEFORE `_broadcast`.** Subscribers run synchronously inside it, so
+  timing past that point folds the UI render into the physics figure and makes every transient
+  read compute-bound — including the ones that are not. Two stages, two measurements, or the
+  instrument confirms whatever you already believed.
+- **The profiling value lives on the service INSTANCE (`_perfStepMs`), never the snapshot.** The
+  snapshot is a contract (`CONTEXT.md` §6.3, gated by `run_contract`); a profiling number has no
+  business in it and would then have to be documented and migrated for ever.
+- **The packed chart buffer merged from backshop is NOT the fix for this.** It is a *memory* fix
+  — 68.9 MB → 11.1 MB — and its own commit says CPU is unaffected. Measured here: the sampler is
+  ~0.4 % of the 501 ms. Two true statements about performance that solve different problems;
+  adopting the nearby one as the answer would have closed this without moving the number.
+
+**`tools/verify_release_deploy.js` had a Cloudflare half that could never have passed.** It read
+API field names — `d.environment`, `d.deployment_trigger.metadata.commit_hash` — but wrangler
+prints a TABLE: `Id, Environment, Branch, Source, Deployment, Status`, where `Source` is the
+**short** sha and `Status` is a relative time on success and the literal `Failure` on failure.
+Every field it looked for was `undefined`, so the check was structurally incapable of passing.
+**It surfaced only because the two hosts disagreed about a release already known to be good** —
+the Vercel half said deployed, the Cloudflare half said no, and only the contradiction made
+anyone read the parser. A verifier with no true-positive on record is not a verifier.
+
+**A false privacy claim, taken from a docs summary rather than an observation.** `privacy.html`
+said the site ships no analytics script. Cloudflare Web Analytics **auto-install injects a
+beacon** (`cloudflareinsights.com/beacon.min.js`) — visible in the console the moment an ad
+blocker refuses it, which is exactly how it was caught, by the owner, on the live site.
+Corrected; then the mechanism paragraph was removed outright *(OWNER, 2026-08-08: "why say how
+the analytics are collected in the privacy page at all?")*. The page now states commitments —
+what is collected, what is not, that Cloudflare processes it — and describes no mechanism, so it
+cannot go stale against an implementation detail again.
+
+**Two of three new `run_site_meta` checks shipped HOLLOW, caught by injection.** One compared an
+`indexOf` result without testing for `-1`, so `-1 < n` was true for every input including the
+absent case; the other was a regex sitting inside `if (false && …)`. Both printed PASS against a
+deliberately broken page. Written beside their own fix, neither had ever been made to go red —
+the standing rule, again: a check is not green until you have seen it red. `run_site_meta`
+148 → 151, `run_portable` 128 → 129.
+
+**Build.** Cloudflare Pages strips `.html` and it is not configurable, so `site/build_site.js`
+rewrites links, canonicals and `og:url` **in the output only** — the repo keeps `.html` so
+`file://` browsing still works — and the rewrite runs AFTER the reference walk, or the walk
+would be validating paths that do not exist yet.
+
+`RD.diagnose()` was added for the consent-overlay report; `storageWritable()` probes an actual
+write rather than the presence of the API, because the failing browsers have the object and
+throw on use.
+
+---
+
+## Session log — 2026-08-08-develop-f (CW inlet: 35–85 °F on a 60 °F default day — the envelope sourced, the floor and default ruled)
+
+**Three rulings in sequence, same day** *(OWNER, 2026-08-08)*: **(1)** *"what is the
+acceptable condenser cooling temperature range? We should set our condenser cooling range to
+this. currently its 40F to 100F."* — the range came from the evidence pass below; shipped
+first as 30–85 °F (the analysis band verbatim). **(2)** *"wouldnt 30F be freezing?"* — it is,
+deliberately (the analysis bound is sub-freezing so no real day can undercut it); floor moved
+to the 32 °F freezing point. **(3)** *"can we tune this sim to run a default value of 60F?
+lets make the floor 35F since its probably warmed some by the time tit gets to the
+condenser."* — final state: `cw_inlet_min_c`/`max_c` **1.6667/29.4444 °C (35/85 °F)**,
+`cw_inlet_ref_c` 26.6667 → **15.5556 °C (60 °F)**. The 35 °F transit warm-up is the owner's
+judgment, declared UNVERIFIED (no document quantifies the intake-tunnel rise). Reference and
+default move TOGETHER (the engine initializes the box to the reference), so the
+rated-at-default identity survives re-anchoring: a default day measures **exactly 100.0 MWe
+at 28.50 inHg (96.50 kPa)**, bit-identical. All five ref/min fallback sites moved with the
+config (engine init ×2, engine clamp, SG backpressure delta, RHR-floor delta, board box).
+
+**Re-anchoring the reference is what gave the box its authority back** (measured, full
+stack, from the 60 °F reference): 85 °F ceiling → **95.4 MWe at 27.2 inHg (92.0 kPa)**
+(−4.6 MWe, was −1.2 from the 80 ref); old 80 °F default is now a warm day at 96.6 MWe;
+Ginna's 50 °F design day +1.1 MWe; 35 °F floor +2.3 MWe at 29.16 inHg (98.73 kPa) — under
+the 99.5 kPa cap, which no longer binds inside the range. Lake temperature alone still
+cannot reach COND VAC LO (92.0 vs 84.7 kPa at the ceiling, ~2 inHg margin), so `Manuals/03`
+§13.1's rewritten NOTE (alarm walk = equipment causes) survives the re-anchor with its
+margin figure updated.
+
+**The evidence** (all on disk in `inbox/sources`, develop): **Ginna TS Bases B 3.7.8**
+(ML20339A221 Rev 101 — re-fetched this session, see below): SW OPERABILITY requires the
+screenhouse bay *"Temperature ≤ 85ºF"*, and the analyses bound the supply verbatim —
+*"The bounding minimum cooling water temperature assumed in the accident analysis is 30ºF,
+which is lower than the freezing point of the cooling water supply. The bounding maximum SW
+water temperature assumed for the long-term containment response and SLB analysis is 85ºF."*
+**Ginna UFSAR ch 10.4.3** (ML20339A040): *"condensers are designed for a circulating water
+temperature of 50F with an approximate 24.5F temperature rise"*. The NUREG-1431 UHS number is
+a bracketed **[90] °F template** (B 3.7.9) — rejected as a source, the #380 bracket lesson;
+Ginna's own Bases carry **no UHS spec at all** (lake-cooled, no 3.7.9), the SW section holds
+the limit. The 30 °F floor is the analysis's deliberately-sub-freezing bound, adopted as-is
+rather than inventing an unsourced 32 °F "physical" floor — the pair comes from one sentence.
+
+**Measured at the new edges** (full stack): 85 °F → 98.8 MWe, vacuum 28.2 inHg (95.4 kPa);
+old 100 °F ceiling → 94.2 MWe, 26.85 inHg (90.9 kPa); 30 °F floor → 103.1 MWe pinned on the
+`vacuum_max_kpa` 99.5 cap. Consequence a probe never asserted: **lake temperature alone now
+cannot reach COND VAC LO** (84.7 kPa — the 85 °F ceiling leaves ~10 kPa (~3 inHg) of margin),
+so `Manuals/03` §13.1's CAUTION promised a walk to the trip the box can no longer deliver —
+replaced with the measured margins and the alarm walk re-attributed to equipment causes.
+**Manuals Rev 15 opened** (pending row item (a), chapter-qualified `**03 §13.1**` for the
+canary); stamped + repacked; `run_manual_units` caught one split US/SI pair across a line
+wrap (the checker is line-scoped — keep a pair on one line).
+
+**Corpus repair on the way in:** the `pwr-prototypicality-sources` memory said ML20339A221 was
+*"fetched 2026-08-07, on disk develop"* — `find_source` said no lane has it. Re-fetched via the
+CDX recipe (timestamp 20250210171625, `%PDF-1.7`, 623 pages extracted with pypdf). A memory's
+"on disk" claim is a claim like any other: the fetch may have lived in a session whose inbox
+was cleaned, and only `find_source` is a verdict.
+
+---
+
+## Session log — 2026-08-08-develop-e (turbine load raises rate-limited at 30 %/min, ruled; + the CHANGELOG blockquote splice repaired)
+
+**Ruling.** *(OWNER RULING, 2026-08-08: "Do the 30% increase.")* — `turbine.load_rate_pct_per_min`
+0 → 30.0, **raises only**, superseding the 2026-08-03 "I dont like the new load increase rate
+limite; turn it off." Decreases stay instant (unchanged code; the owner asked and the
+recommendation against was adopted with the raise ruling). `run_all` 44 runners at baseline.
+
+**The question was "does the plant move too slowly", and the measurements answered a different
+one.** Actuators all sit at or above the reference plant: rod speeds 8/48/72 steps/min are
+WTSM 8.1's own numbers, scram 2.5 s vs Ginna's 1.8-to-dashpot, and the load box (limiter off)
+was *faster* than any real EHC. What reads as slow is the thermal plant, which is the point.
+
+**The sweep that priced the knob** (full stack, settled 70 MWe → 100 raise; scratch files
+`rate2_*.txt`, method reproducible from the entry): output reaches target at **+240–260 s at
+every rate including instant** — the reactor sets the pace, so the limiter costs zero
+responsiveness. Instant's only product is a borrowed-SG-steam spike (96.6 MWe at +15 s, sag to
+~91) that **grazes the C-4 runback**: min OPΔT margin 2.71, one 5 s-resolution sample below the
+3.0 accumulate line, power peak 106.7 %. At 15/30/50 %/min: margins 3.63/3.49/3.86 (differences
+are instrument noise), no sample below 3.0, peaks ~105. The pre-#419 "within 0.51 of the OPΔT
+trip" figure in the old config comment did NOT reproduce on the re-anchored plant — the
+excursion is now a runback graze, not a near-trip; comment updated so the next agent prices the
+real plant, not the 2026-08-03 one.
+
+**Why decreases can never take the same limit (structural, recorded at `load_mode.js`):** the
+rejection detector is (ref − target) through `refTau` 60 s against `dump_load_reject_mwe` 40;
+a ramp caps the standing gap at rate × 60 s = **30 MWe at 30 %/min — under the arm threshold
+for ANY size cut**, so a symmetric limit deletes the FG-4 ride-out from free play (turbine trip
+at power scrams via P-9; the load box is the only graded route). This is arithmetic on as-built
+constants, not a tuning outcome.
+
+**The #379 pair obligation** (whoever moves `load_rate_pct_per_min` re-measures the `persist_s`
+gap): with the limit ON at 30 the one-box step never reaches the dwell's 3.0 accumulate line
+(floor 3.49 at 5 s sampling) and a 35-min ride ends with the load target uncut — zero engages by
+the kernel's own accounting. The 15 % SLB side is a failure path no operator ramp touches.
+Separation is now wider than rate-0's 2.8×; both comments updated (`pwr_config.js`,
+`pwr_control.js`).
+
+**Found on the way, repaired in its own commit: the CHANGELOG file-header blockquote had been
+SPLICED** by the 2026-08-07 workbench merge (3f78ec6, "the CLAUDE.md cut wins the conflict") —
+the intro blockquote's first line was cut mid-token ("rename the `## [Unreleased]" / stray
+"` heading" 70 lines later) and six entries sat INSIDE the blockquote, above every release
+heading, where the 1.3.0 and 1.4.0 rolls could not see them. `run_release` stayed green the
+whole time — it checks heading order and the html/js agreement, not whether content sits under
+a heading at all. Attribution by commit ancestry (`git merge-base --is-ancestor` against each
+release commit): five entries (run_doc_budget, the CLAUDE.md cut, #371 ADV, TR-17, find_source)
+shipped in **1.3.0**, one (#425) in **1.4.0**; each re-homed under its release with a
+provenance note. **The trap for the standing list: a guaranteed-conflict file's damage can be
+INVISIBLE to its own gate — the conflict files conflict loudly, but a resolution that splices
+content ABOVE the first section heading parses as preamble, and nothing asserts the preamble is
+prose.** The next merge that touches CHANGELOG.md should eyeball lines 1–40, not just the entry
+seam.
+
+**And the repair scripted the same splice back in, which earns its own line.** The commit-split
+helper anchored on `indexOf('## [Unreleased]')` — which matches the BLOCKQUOTE'S OWN PROSE about
+that heading (line 9: *"rename the `## [Unreleased]` heading"*) before it matches the heading,
+because the preamble discusses the file's structure in the file's own syntax. It deleted the
+real heading and the blockquote tail; both landed committed (654a51c, ae035e3) because
+`run_release` was run before the split, not after it. **CI caught it** ("exactly one
+## [Unreleased] (0)") — this damage removed the heading outright, which the gate does assert;
+the original splice left an empty one standing, which it does not. Rebuilt verbatim, re-gated
+after the LAST file write this time. Trap: **an anchor string that also appears in prose about
+the structure is not an anchor** — match `^## \[Unreleased\]$` at line start, or don't script
+it. Second lesson, same session, same rule: the gate run that counts is the one after the final
+write — `run_hardrules` drifted 244 → 246 on the same push because the session-log entries (two
+new HR11 citation sites) were written after the local `run_all`.
+## Session log — 2026-08-08-backshop-a (HMI: the Indications tab, the Physics plot column, 50 % default; the chart buffer packed to make it affordable)
+
+**Owner, five asks in one message** — "the plant should start with the 50% power preset" ·
+"We should revisit the physcis tab and add anything you think is missing" · "I would like a
+column to the left of the lables with a checkbox for the strip chart. when you check this box
+it puts this value on the chart" · "Lets change the graph tab to 'Indications' and this tells
+us all the indications in the plant, categorized like the physcs tab. it should also have a
+checkbox column to add it to the graph. Move the strip chart settings to the settings tab" ·
+"in the physcs tab it shows primary leak flow as a percentage, it should also show the real
+flow rate in an appropriate unit". Plus a mid-build challenge — *"Should we not list the
+indications. I think some computers are already taxed… That might push them over the edge"* —
+answered with the measurements below and ruled **"lets do it. go"**.
+
+### The capacity question came first, and it inverted
+
+Listing every channel roughly triples the series registry. `chartBuf` rows stored one NAMED
+PROPERTY per series per side, whose cost is per property. **Measured** at the shipped
+`CHART_ROW_BUDGET` of 9000 rows, both sides populated, heap + external:
+
+| series | id-keyed objects | `Float64Array` |
+|---|---|---|
+| 40 — what shipped that morning | **39.5 MB** | 9.6 MB |
+| 51 | 68.9 MB | 11.1 MB |
+| 110 — every channel | **137.8 MB** | 19.2 MB |
+
+So the answer to "can the machine take it" was **the change makes the sim lighter**: rows are
+now fixed-width typed arrays indexed by series order, NaN meaning "no reading on this side",
+and the registry grew 40 → 96 while the buffer fell to about a quarter of what it was. Every
+reader already guarded on `isFinite`, which is why NaN could replace an absent key without
+touching a single consumer's logic.
+
+**CPU, measured separately because memory is not the thing that stutters.** One sampler call:
+7.5 µs at 40 series, 21.8 µs at 110. The service caps the fine loop at `CHART_SUB_MAX` = 240
+calls per broadcast, so the worst case (fast-forward) is ~3.4 ms inside a 100 ms budget; at 1×
+the sampler runs ONCE. Through a whole `SimulationService.tick()` the difference between 0 and
+110 series sat inside run-to-run noise at 1×/10×/60×/600×. **What was NOT measured and is
+stated as a bound rather than a number**: the DOM cost of ~95 rows repainting per broadcast
+while the tab is open. It is bounded by `paneVisible` (a hidden pane does no work at all) and
+the Physics tab already does 46 rows the same way.
+
+### Traps
+
+- **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim (HR12).** The first
+  "Pressurizer inventory" row asserted that `pzr_mass_frac × level_per_mass` was a MASS-ONLY
+  backbone which would diverge from the gauge when the void credit lifted level — the TMI
+  deception, in a row. It does not. `pzr_level_pct` is `clip(that, 0, 100)` of the same number
+  (`pwr_pressurizer.js` stepLevel), so the difference is **0.0 at all four presets and 0.0
+  right through a stuck-PORV excursion** (indicated 35.0 → 46.6 % over 20 min). Reframed to
+  what the field actually is — the OFF-SCALE reading — and re-measured to earn the row:
+  **+0.4 past the peg** on an overfill (and the pressure steps 15.41 → 16.15 MPa at that
+  instant), **−105 at 100 s and −172 at 400 s** on a large LOCA while the gauge rests on 0.0 %.
+  A gauge resting on zero says nothing about how far below span a recovery must climb; that is
+  the row's whole job, and the first draft would have taught something false instead.
+- **A new list-driven surface under-covers silently — gate it in the same change.** The tab is
+  generated from `PROFILES.pwr.series`, so "all the indications" holds only while that
+  hand-maintained array keeps up with 84 engine channels: the #224 shape. `run_inspect` grew a
+  suite for it, **injection-verified four ways** (a new instrument with no series; a series
+  naming a renamed channel; two series sharing an id — they would share a packed chart column;
+  an accessor reading a key no instrument publishes).
+- **That last check caught a live defect the day it was written.** `xenon` declared
+  `get: i.xenon_pct_eq` for a quantity with NO instrument, and `chartSample` cloned the whole
+  instruments dict every sample to graft the true value in so the accessor would find
+  something. It was invisible while the only consumer was the chart — `seriesTruth` already
+  traces truth for any series with `tru` and no `get`, so the two paths agreed. The Indications
+  tab is what exposed it: the row listed itself as something the plant reads and rendered a
+  permanent em-dash. Both the `get` and the per-sample clone are gone.
+- **A static gate that reads source must strip COMMENTS first, and the dangerous direction is
+  the quiet one.** The first cut flagged an instrument called `e` (from the prose "i.e.") and
+  kept the xenon ghost alive by reading the comment that explained its removal. The reverse
+  matters more: a channel merely MENTIONED in a comment would have counted as covered, and
+  that failure is green. Injection-verified in that direction too.
+- **A gate's sample point can belong to an initial condition.** Changing the default preset
+  reddened `verify_e2e_ui`'s steam/feed pairing check — feed 0 gpm against steam 22 gpm at
+  600 s. Not a defect: that sample point measures when AFW's proportional band opens
+  (`afw_level_target` 32 % + `afw_level_band` 8 % ⇒ no delivery until SG level < 40 %), and how
+  long that takes is set by decay heat, i.e. by the power the plant tripped from. Measured,
+  turbine trip at t=60 s: from `hot_full_power` the SG reaches 40 % at ~9m20s so feed is up at
+  600 s; from `50_percent` it arrives at ~16m, reads exactly 0 at 600 s, then **parks at 39.5 %
+  and holds** — the plant is correct throughout. Fixed by PINNING the check to the IC its
+  240/420/600 s timings were derived at, not by re-banding a threshold (HR10). The assertion is
+  untouched and 0 gpm against a live steam draw still fails it.
+- **`instruments.status` is an ARRAY, not a map.** `Object.keys` on it returns `"0".."33"`, so
+  the coverage gate's first run reported 34 uncovered channels named after integers.
+- **Re-clicking an already-active tab COLLAPSES the tools card** (#237), which made two
+  screenshot probes photograph a shut panel. `?tab=` already selects the tab; clicking it again
+  is a toggle.
+- **`?tab=physics` and `?tab=operate` did nothing** — two of five panes were missing from the
+  deep-link allowlist. Worth more than it sounds: a pane that is not on screen does not render
+  at all, so the link opened a tab that stayed blank and read as a broken panel.
+
+### What landed
+
+`ui/app.js` · `ui/shell.html` · `ui/shell.css` · `layers/simulation_service.js` ·
+`ui/diagram/board/pwr_board_wiring.js` · `test/run_inspect.js` · `test/verify_e2e_ui.js`.
+Series registry 40 → 96, every one of the plant's 84 channels reachable. Physics tab 34 → 46
+rows with two new groups (**Pressure boundary** — the relief path, and the tab's biggest
+omission, because everything else on it reads a quantity with no instrument while these read
+quantities whose instrument DISAGREES with them; and **Support systems**). The PORV is now a
+genuine HR1 pair — `get` reads the demand light, `tru` reads the valve — so under
+`stuck_porv_open` the Indications tab reads **shut** and the Physics tab reads **OPEN · STUCK**,
+which is TMI-2 on two tabs. `run_all` 44 at baseline (`run_inspect` 9/9 47/47 → 10/10 53/53).
+
+### Follow-on: the Indications scanner copy (same session, owner: "Do the indications scanner copy")
+
+**Do not hand-author what the plant already documents.** 50 of the 94 rows are analog channels
+and `RD.MANUAL` already carries `measures`, `range`, `lag_s` and driven `alarms` for every one —
+the same data `gaugeDetail` has always used. Extracted that into `indicationFacts()` and shared
+it, so a channel cannot be described two different ways on two surfaces and 50 range/lag figures
+are not a second copy of numbers that move on the next retune. Only the **34 status channels**
+and the **9 commanded positions** were authored, because a reference that documents instruments
+has nothing to say about an indicator light or a demand.
+
+Three traps, one of them a real find:
+
+- **A shared table keyed by INSTRUMENT ID describes the wrong plant's component.** The generated
+  reference called the PWR's `steam_pressure` **"Steam-Drum Pressure"** — an RBMK term for a
+  component a PWR does not have, and a word that appears nowhere in the PWR manual set. `IND` in
+  `tools/gen_manual_reference.js` is keyed by id alone and both plants use that id, so the
+  RBMK's wording won. **It was latent for as long as the text only fed the Failures tab's
+  instrument picker**, and became player-facing the instant the Indications tab started showing
+  `measures`. Fixed with a per-plant override (`IND_PLANT`), regenerated, `verify_manual_data`
+  green. Worth noting the shape: a NEW SURFACE over old data is an audit of that data, and this
+  one failed on its first read.
+- **The summary tier must be ONE sentence, and "first sentence" is not "the whole field".**
+  Several `measures` entries run to a paragraph — the OTΔT margin one explains the entire
+  protection rack — which is right for the detail tier and useless as a hover summary. Trimmed
+  with a split on a full stop followed by a capital, so "4.1 volume percent" and "0.1 s" do not
+  read as sentence ends; the full text still leads the expanded tier, so nothing is lost.
+- **…but trimming can amputate the point.** `porv_indicator` opens "Relief-valve indicator." and
+  only says the load-bearing part — that the light shows the COMMANDED position — in its second
+  sentence. On every other row losing the tail is fine; on the one channel the whole Three Mile
+  Island lesson hangs off, it is not. Authored hint, overriding the generated one.
+
+**And three series were reachable from no checkbox at all** — `block_valve`, `porv_stuck`,
+`spray_stuck`, all true-state-only, so the Indications filter excluded them and no Physics row
+named them. A column in every packed chart row for something nobody could plot. Deleted; their
+state was already printed in the Physics rows that own them. `run_inspect` now fails on an
+unreachable series, on a physics row binding a `ser:` that does not exist, and on an Indications
+row that resolves to no copy — all injection-verified. 53 → 56 checks.
+
+**Left open**: the board card / manual surface for the new physics rows.
+
+---
+
 ## Session log — 2026-08-08-develop-d (#425 — the containment passive sink learns saturation ΔT, on a lag; the SBO family joins the containment-holds pin)
 
 **Owner: "Do next as recommended."** — Option B from the #425 options put to him: a

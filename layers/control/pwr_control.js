@@ -1512,22 +1512,23 @@
         // MWe) and of run_ops SGTR's 53.7 % inventory (the runback engaged twice, not once).
         //
         // THE PARAGRAPH ABOVE IS HISTORY, NOT THE SHIPPED PLANT (#379, audit #297 F10 —
-        // re-measured 2026-08-06). Its closing argument sized this constant into a gap the
-        // rate limit created — and `turbine.load_rate_pct_per_min` is now OFF (0, owner
-        // directive 2026-08-03), so that "two orders of magnitude" gap does not exist on
-        // the shipped tree. What the gap actually is, measured on the merged plant with the
-        // kernel's own accounting (accumulate below 3.0, HOLD between 3.0 and 6.0, reset
-        // only above 6.0 — the naive contiguous-time reading under-counts): an instantaneous
-        // 70 -> 100 MWe step peaks the dwell accumulator at 3.0 s (min OPdT margin 2.35, no
-        // engage, no trip — the one-box excursion the config note prices is real but stays
-        // 5.5 s short of this trigger); a 15 % steam line break reaches 8.5 s of dwell 40 s
-        // after the break and takes its 5 % cut (min margin 1.55, no trip). The mechanism
-        // still separates the two cases — by 2.8x, not by orders of magnitude — and 8.5 is
-        // load-bearing from BOTH sides now: below ~3 s the one-box step engages a permanent
-        // 5 % cut (the #318 defect returns), and the only noise immunity this signal has is
-        // the dwell itself, since the 2/4 coincidence above cannot be built. If either
-        // constant of the pair moves, re-measure this gap — the other half of the pair is
-        // annotated at `load_rate_pct_per_min` in pwr_config.js.
+        // re-measured 2026-08-06 at rate 0, re-measured again 2026-08-08 with the limit
+        // back ON at 30 %/min, raises only, owner-ruled). At rate 0 the gap was real but
+        // narrow: an instantaneous 70 -> 100 MWe step peaked the dwell accumulator
+        // (accumulate below 3.0, HOLD between 3.0 and 6.0, reset only above 6.0 — the
+        // naive contiguous-time reading under-counts) at 3.0 s vs the 8.5 s trigger, min
+        // OPdT margin 2.35 — 2.8x of separation, not orders of magnitude. With the 30
+        // %/min raise limit the one-box step never reaches the accumulate line at all
+        // (margin floor 3.49 at 5 s sampling; a 35-min full-stack ride ends with the load
+        // target uncut, i.e. zero engages by the kernel's own accounting), while the 15 %
+        // steam line break — a failure path no operator ramp touches — still reaches 8.5 s
+        // of dwell 40 s after the break and takes its 5 % cut (min margin 1.55, no trip).
+        // 8.5 is still load-bearing from BOTH sides: below ~3 s the RATE-0 step would
+        // engage a permanent 5 % cut (the #318 defect returns if the limit is ever turned
+        // off again), and the only noise immunity this signal has is the dwell itself,
+        // since the 2/4 coincidence above cannot be built. If either constant of the pair
+        // moves, re-measure this gap — the other half of the pair is annotated at
+        // `load_rate_pct_per_min` in pwr_config.js.
         persist_s: 8.5,
         rated: RD.PWR_CONFIG.turbine.mwe_rated,
         floor: 0,

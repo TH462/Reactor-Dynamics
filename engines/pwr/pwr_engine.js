@@ -1309,8 +1309,8 @@
       case 'set_condenser_cw_temp':
         if (cmd.c == null || !isFinite(cmd.c)) break;
         s.cw_inlet_temp_c = clip(cmd.c,
-          this.cfg.turbine.cw_inlet_min_c != null ? this.cfg.turbine.cw_inlet_min_c : 4.4,
-          this.cfg.turbine.cw_inlet_max_c != null ? this.cfg.turbine.cw_inlet_max_c : 37.8);
+          this.cfg.turbine.cw_inlet_min_c != null ? this.cfg.turbine.cw_inlet_min_c : 1.6667,
+          this.cfg.turbine.cw_inlet_max_c != null ? this.cfg.turbine.cw_inlet_max_c : 29.4444);
         break;
       case 'set_steam_dump_setpoint':
         // Operator no-load steam-dump target (MPa). Lowered during a cooldown so the
@@ -1801,7 +1801,7 @@
       // Circulating-water inlet temperature. Defaults to the reference the vacuum model is
       // calibrated at, so an untouched plant behaves exactly as it did before CW temperature
       // was modelled (see turbine.cw_inlet_ref_c).
-      cw_inlet_temp_c: cfg.turbine.cw_inlet_ref_c != null ? cfg.turbine.cw_inlet_ref_c : 26.7,
+      cw_inlet_temp_c: cfg.turbine.cw_inlet_ref_c != null ? cfg.turbine.cw_inlet_ref_c : 15.5556,
       generator_load: onLine ? P0 : 0, turbine_demand_frac: onLine ? P0 : 0, turbine_tripped: false,
       // Turbine governor valve tracks load demand (% open); starts matched to P0 so
       // steam_flow = (gov/100)·(P/Prated) reproduces the P0 steady state at reset.
@@ -2195,7 +2195,7 @@
     // Saves that predate the CW-temperature model restore at the reference temperature, so
     // they replay with exactly the vacuum behaviour they were recorded under.
     if (s.cw_inlet_temp_c == null) {
-      s.cw_inlet_temp_c = this.cfg.turbine.cw_inlet_ref_c != null ? this.cfg.turbine.cw_inlet_ref_c : 26.7;
+      s.cw_inlet_temp_c = this.cfg.turbine.cw_inlet_ref_c != null ? this.cfg.turbine.cw_inlet_ref_c : 15.5556;
     }
     // Loop pressure nodes (loop-pressure rework 2026-07). Recomputed each step from
     // pressure_mpa/flow_frac, but seed them so getTrueState is valid pre-first-step.

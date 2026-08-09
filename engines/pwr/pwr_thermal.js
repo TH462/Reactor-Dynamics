@@ -135,7 +135,7 @@
       // cooldown can reach and slows the approach to it. Referenced to cw_inlet_ref_c so the
       // default is the calibrated rhr_sink_c exactly.
       var tbc = (cfg.turbine || {});
-      var cwRef = tbc.cw_inlet_ref_c != null ? tbc.cw_inlet_ref_c : 26.7;
+      var cwRef = tbc.cw_inlet_ref_c != null ? tbc.cw_inlet_ref_c : 15.5556;
       var cwNow = s.cw_inlet_temp_c != null ? s.cw_inlet_temp_c : cwRef;
       var sink = e.rhr_sink_c + (cwNow - cwRef);
       Q_rhr = e.rhr_gain * hxFrac * Math.max(0, s.tavg_c - sink);

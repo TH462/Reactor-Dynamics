@@ -333,7 +333,9 @@
         // Full load rejection: demand to zero with the turbine still on line.
         // `immediate` — a load REJECTION is an EVENT: the grid or the machine throwing load off.
         // It is NOT the operator walking the EHC reference down at the unit's load rate, which is
-        // what turbine.load_rate_pct_per_min (10 %/min) governs. A rejection has to arrive at once
+        // what turbine.load_rate_pct_per_min governs (raises only since 2026-08-08 — but this
+        // flag predates the direction test and stays: an event outranks any ramp, either way).
+        // A rejection has to arrive at once
         // or it is not a rejection. Without the flag these probes measured a leisurely ramp and
         // this plant's defining ride-out disappeared — 5 red, caught by the gate, not the author.
         h.cmd('set_load_target', { immediate: true, mwe: 0 });

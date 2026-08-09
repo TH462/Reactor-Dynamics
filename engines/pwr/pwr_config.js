@@ -1679,12 +1679,35 @@
       // cw_inlet_ref_c the target is EXACTLY vacuum_rated, bit-identical to the two-point
       // model it replaces. Only departures from the reference move anything, so every
       // existing scenario, IC and save behaves as before.
-      // Reference circ-water inlet = 80 °F, which is the board box's default, so typing the
-      // default back in reproduces the reference condition instead of nudging it.
-      cw_inlet_ref_c: 26.6667,
+      // Reference = the DEFAULT DAY = 60 °F *(OWNER RULING, 2026-08-08: "can we tune this
+      // sim to run a default value of 60F?")*, moved from the original 80 °F. Reference and
+      // default move TOGETHER by construction (the engine initializes cw_inlet_temp_c to
+      // this value), so the rated-at-default identity is preserved: a default day still
+      // makes exactly vacuum_rated and 100 MWe. 60 sits between Ginna's 50 °F condenser
+      // design point (UFSAR ch 10.4.3) and the old 80; the warm-side authority of the box
+      // grows accordingly — the 85 °F TS ceiling is now 25 °F above reference, not 5.
+      cw_inlet_ref_c: 15.5556,
       cw_range_c: 10.0,            // CW temperature rise across the condenser at full load [tune]
       cw_ttd_c: 3.0,               // terminal difference: condensing steam above CW outlet [tune]
-      cw_inlet_min_c: 4.4, cw_inlet_max_c: 37.8,   // operator range, 40–100 °F
+      // Operator range 30–85 °F — THE ANCHOR PLANT'S ANALYZED COOLING-WATER BAND, both ends
+      // verbatim-sourced *(OWNER DIRECTIVE, 2026-08-08: "what is the acceptable condenser
+      // cooling temperature range? We should set our condenser cooling range to this.")*.
+      // Ginna TS Bases B 3.7.8 (ML20339A221 Rev 101): SW OPERABILITY requires screenhouse bay
+      // "Temperature ≤ 85ºF", and the accident analyses bound the same lake water both ways —
+      // "The bounding minimum cooling water temperature assumed in the accident analysis is
+      // 30ºF, which is lower than the freezing point of the cooling water supply. The bounding
+      // maximum SW water temperature assumed for the long-term containment response and SLB
+      // analysis is 85ºF." The FLOOR walked twice on same-day owner follow-ups: the
+      // analysis's 30 °F is deliberately sub-freezing ("wouldnt 30F be freezing?" — it is),
+      // and the box floor is 35 °F rather than the 32 °F freezing point *(OWNER RULING,
+      // 2026-08-08: "lets make the floor 35F since its probably warmed some by the time
+      // tit gets to the condenser.")* — a judgment call, declared: the transit warm-up
+      // through the 3100-ft intake tunnel and screenhouse is plausible but UNVERIFIED, no
+      // document quantifies it. Condenser design point: 50 °F CW, 24.5 °F rise (Ginna
+      // UFSAR ch 10.4.3, ML20339A040). Replaces 40–100 °F, which was unsourced at both
+      // ends. MEASURED at the edges from the 60 °F reference (full stack): see the manual
+      // §13.1 figures stamped in the same change; the cold end still rides vacuum_max_kpa.
+      cw_inlet_min_c: 1.6667, cw_inlet_max_c: 29.4444,
       // Cold circ water buys vacuum ABOVE the rated value — the winter uprate is real, and
       // capping the gain at vacuum_rated would leave the whole cold half of the operator's
       // range doing nothing, which reads as a broken control. Ceiling is the practical
@@ -1714,27 +1737,32 @@
       // stays silent; 5 %/min buys only 4.72 for double the wait. The source's own 1 %/min is
       // an EXAMPLE of a selectable rate, not a maximum, so it is not a candidate.
       //
-      // OFF *(OWNER DIRECTIVE, 2026-08-03: "I dont like the new load increase rate limite;
-      // turn it off.")*. 0 disables it: `load_mode.js` gates the ramp on `rate > 0` and
-      // otherwise assigns the commanded load straight through, which is the pre-#318 path
-      // and the one RBMK/BWR have always taken (the option is absent there). The machinery
-      // stays because the sourcing is good and re-enabling it is this one number.
+      // 30 IS A RULED VALUE *(OWNER RULING, 2026-08-08: "Do the 30% increase.")*,
+      // superseding the 2026-08-03 "I dont like the new load increase rate limite; turn it
+      // off" that retired the #318 10 %/min. RAISES ONLY — the direction test in
+      // load_mode.js keeps decreases instant, and the same-date arithmetic there says why a
+      // symmetric limit can never ship: it un-arms the dump ride-out.
       //
-      // WHAT TURNING IT OFF COSTS, measured rather than assumed — the excursion above is
-      // real and comes back: an instantaneous 70 -> 100 MW step is again available to the
-      // player, and it again takes loop dT to within ~0.5 of the OPdT trip. That is a trip
-      // the player can walk into with one box entry. It is the owner's call and it is not a
-      // defect; note it here so the next agent does not "fix" the excursion by restoring
-      // the limit.
+      // MEASURED (full stack, settled at 70 MWe then raised to 100, 2026-08-08): the knob
+      // costs the player NOTHING — physical output reaches target at +240-260 s at EVERY
+      // rate INCLUDING instant, because the reactor sets the pace. All the instant step
+      // adds is a spike of borrowed SG steam (output 96.6 MWe at +15 s, sagging back to
+      // ~91) that grazes the C-4 runback: min OPdT margin 2.71, ~5 s below the 3.0 line.
+      // At 15/30/50 %/min the margin bottoms at 3.5-3.9 and the runback stays silent —
+      // differences within instrument noise, so the rate choice inside that family is
+      // feel: 10 read as sluggish (the 2026-08-03 complaint), 30 walks the reference over
+      // 60 s for a full 30 % raise and the output meter shows a clean monotonic climb.
+      // The pre-#419 "within 0.51 of the OPdT trip" figure did NOT reproduce on the
+      // re-anchored plant; the one-box excursion is now a runback graze, not a near-trip.
       //
-      // AND IT RE-OPENED A SQUEEZE IN ANOTHER FILE'S CONSTANT (#379): the runback dwell
-      // `persist_s` in pwr_control.js was sized citing this limit as its complement ("a gap
-      // two orders of magnitude wide"), and with the limit off that argument is void — the
-      // real gap, re-measured 2026-08-06, is 2.8x (normal-step peak dwell 3.0 s vs the 8.5 s
-      // requirement; a 15 % steam line break engages at 40 s). The two constants are a PAIR:
-      // whoever moves this one re-measures that one's gap, and vice versa. The full
-      // accounting lives at the `persist_s` comment.
-      load_rate_pct_per_min: 0,      // [tune] — 0 = no limit; 10.0 was the #318 value
+      // THE #379 PAIR NOTE STANDS: the runback dwell `persist_s` in pwr_control.js and
+      // this constant size each other. Re-measured with the limit ON at 30 (2026-08-08):
+      // the one-box raise never dips below the 3.0 accumulate line (floor 3.49 at 5 s
+      // sampling) and a 35-min ride ends with the load target uncut — the dwell simply
+      // never charges, so the step-vs-SLB separation is wider than the 2.8x measured at
+      // rate 0. The SLB side is a failure path no operator ramp touches. Whoever moves
+      // either constant re-measures the gap; the full accounting lives at `persist_s`.
+      load_rate_pct_per_min: 30.0,   // [tune] — raises only; 0 = no limit; 10.0 was the #318 value
       // Turbine governor / control valve: EHC load-control mode — the valve
       // TARGET is pressure-compensated (demand ÷ P/P_rated, clamped fully open)
       // so steady-state delivered steam equals the load demand at any secondary

@@ -105,13 +105,38 @@
   // on that side) stay out of the extremes entirely rather than poisoning them with nulls.
   function foldExtremes(acc, one) {
     if (!one) return acc;
-    if (!acc) { acc = { t: 0, v: {}, tv: {}, lo: {}, hi: {}, tlo: {}, thi: {} }; }
+    if (!acc) {
+      acc = { t: 0, v: like(one.v), tv: like(one.tv), lo: like(one.v), hi: like(one.v),
+              tlo: like(one.tv), thi: like(one.tv) };
+    }
     foldSide(one.v, acc.v, acc.lo, acc.hi);
     foldSide(one.tv, acc.tv, acc.tlo, acc.thi);
     return acc;
   }
+  // An empty accumulator of the same SHAPE as the reading — a NaN-filled typed array of the
+  // same width for a packed side, a plain dict for a keyed one. The genericity above is what
+  // is being preserved: the service still never learns what a series is, it only matches the
+  // container the sampler handed it. (The UI packs its rows into Float64Arrays; see chartBuf
+  // in ui/app.js for why.)
+  function like(src) {
+    if (!src) return {};
+    if (ArrayBuffer.isView(src)) { var a = new Float64Array(src.length); a.fill(NaN); return a; }
+    return {};
+  }
   function foldSide(src, last, lo, hi) {
     if (!src) return;
+    if (ArrayBuffer.isView(src)) {
+      for (var i = 0; i < src.length; i++) {
+        var y = src[i];
+        if (!isFinite(y)) continue;              // NaN = this series has no reading on this side
+        last[i] = y;
+        // Written as NEGATED comparisons on purpose: `lo[i]` starts as NaN and every
+        // comparison against NaN is false, so `y < lo[i]` would never seed the first value.
+        if (!(y >= lo[i])) lo[i] = y;
+        if (!(y <= hi[i])) hi[i] = y;
+      }
+      return;
+    }
     for (var k in src) {
       if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
       var x = src[k];
@@ -258,6 +283,13 @@
   // One broadcast cycle: inner physics steps (fixed dt), evaluate, assemble, emit.
   SimulationService.prototype.tick = function () {
     if (!this.running || !this.engine) return null;
+    // PHYSICS COST, measured here because only this function knows where the step loop
+    // begins and ends. Recorded on the SERVICE INSTANCE, deliberately not on the snapshot:
+    // the snapshot is a contract (CONTEXT.md §6.3, gated by run_contract) and a profiling
+    // number has no business in it. The UI reads `_perfStepMs` if it cares; nothing breaks
+    // if it does not. Two clock reads per broadcast — see ui/perf.js on why this has to be
+    // cheap enough not to appear in its own measurement.
+    var _perfT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
     var steps = this._stepsPerBroadcast();
     var sinceEval = 0;
     // Fine chart sampling. The interval is the LARGER of the fixed sim-time grid and what
@@ -320,6 +352,15 @@
     // PROTECTION_DT, which would over-count at 1x where the loop above never fires.
     this.layer.evaluate(this.engine.getInstruments(), sinceEval);   // trips/actuations/alarms on the new readings (HR1)
     this.simTime += steps * PHYSICS_DT;
+
+    // Stop the clock BEFORE broadcasting: subscribers run synchronously inside _broadcast,
+    // so timing past this point would fold the UI's render into the physics figure and
+    // make every transient look compute-bound. Separating the two stages is the whole
+    // reason the measurement exists.
+    if (_perfT0) {
+      this._perfStepMs = performance.now() - _perfT0;
+      this._perfSteps = steps;
+    }
 
     var snap = this._assembleWithInstructor();
     this._broadcast(snap);

@@ -6,69 +6,7 @@ follows [Keep a Changelog](https://keepachangelog.com/); newest entries on top.
 For the dense engineering rationale behind each change (spec deviations, tuning, gate
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
-> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]
-
-### Added
-- **`test/run_doc_budget.js`** — gates the one document that is auto-loaded into every agent's
-  context on every turn: `CLAUDE.md` <= 15,000 words, no single physical line over 400 words, and
-  the *Recent themes* region inside its own documented 5-bullet cap. `run_all` 39 -> 40 runners.
-  It exists because all three limits were already written in that file's prose and all three were
-  being broken -- injection-verified against the pre-cut file, which fails every check (42,065
-  words, a 5,310-word line, 13 bullets). `Diagnostic/TUNING_LOG.md` is deliberately NOT gated:
-  it is read on demand, and length is only a defect where it is paid on every turn.
-
-### Changed
-- **PWR containment: the passive sink strengthens with saturation elevation, on a lag — an SBO
-  boil-off no longer beats the building on relief steam alone** (#425, OWNER-RULED 2026-08-08).
-  Before: a station blackout with all feed lost parked containment at 83.3 psig (0.574 MPa g) —
-  past the 60 psig design pressure with no hydrogen and no break — and its H₂ burn peaked ABOVE
-  design; TMI-2 sat near 1.3 psig after ~10 h of the same source class (GEND-061). After: the
-  boil-off parks at **22.2 psig and never summons spray**, and the SBO burn lands above the
-  30 psig hi-hi and ~9 psi under design — the #386 "containment holds" pin now covers every
-  family that reaches ignition (new MD-3 legs). The lag is the design: blowdown pulses dwell
-  seconds above the knee and keep their #408 grading (severity grid moved ≤ 3 psi, SI crossings
-  unmoved, stuck-PORV 9.4 → 9.3 psig), while the boil-off's minutes-long climb arrives fully
-  braked. `slb_ctmt_gain` re-solved 0.0035 → 0.0045 (MSLB stays the limiting case, 80 % of
-  design). **Migration note**: one new private state field `_ctmt_sink_enh` (the lag);
-  pre-#425 saves restore it at 1.0 — no enhancement history invented — and re-charge from the
-  live pressure in ~2 min. In passing, re-measured the #384 Rev 13(j) residual and recorded it
-  CLOSED (full break bottoms at the building, 14.8 vs 14.7 psi absolute — `Manuals/12` §7.2).
-  Manuals Rev 14 pending item (o).
-- **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
-  loaded into every agent's context on every turn and had grown to 1,735 lines under its own
-  "Keep it SHORT" heading, with a single physical line of 5,310 words. Removed: 21,046 words of
-  prose gate baselines duplicating the `BASELINES` map that the same section names as the
-  authority -- and which had rotted into four wrong figures, a runner listed twice with different
-  numbers, and a block marked "unedited" from an old merge. Themes and standing-procedure bullets
-  compressed 9,663 -> 2,055 with every trap kept; the themes list gains a word budget, having run
-  7 bullets against its own cap of 5. All 30 dated owner citations were verified to exist in other
-  tracked files before anything was deleted, so `run_hardrules` 208 -> 205 is fewer citation sites
-  and zero fewer rulings (`BASELINES` updated in the same change).
-- **PWR atmospheric dump valve — setpoint sourced, 1247 → 1272 psi (8.60 → 8.77 MPa)** (#371).
-  WTSM §7.1.3.3 (ADAMS ML11223A244) sets the real valve *"approximately half the difference between
-  the no-load steam generator pressure and the lowest set pressure of the safety valves"*; ours sat
-  at 34 % of that span. Capacity `adv_max` 0.10 needs no change — it already matches the sourced
-  *"approximately 10% of the rated steam flow … from each steam generator"*. Nearly inert in play:
-  the loss-of-condenser spike and the code-safety lift are identical at both values; only the hold
-  point moves. Perturbation sweep at this exact nudge: 42/623 checks move, zero verdict flips.
-  `DESIGN_COMPANION` §8.34 narrows from "capacity and setpoint unsourced" to the relief ladder,
-  which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
-
-### Fixed
-- **A behaviour check that could never fail** (TR-17, shipped with #392). `sg_safety_open` is a
-  boolean and `range()` returns `NaN` on it, so `!range(...).max` was `!NaN` — true, always.
-  Injection-verified: the plant it exists to exclude passed it. The claim it guarded was also
-  wrong — the code safeties lift at 54 s whether the ADV is in AUTO or shut, because that spike is
-  the steam generator's. The check now asserts what actually differs, the tail: safeties open 1.8 %
-  of the hour and reseat, against 99.4 % and never reseating with the valve shut.
-
-### Added
-- **`tools/find_source.js`** — searches the source corpus across all three worktree lanes and exits
-  non-zero on a genuine miss. The corpus is three gitignored directories that cannot see each other,
-  and one-lane greps have now cost two evidence passes: #315 §6 (an OTΔT argument built and
-  reverted while the primary sat in another lane) and §8.34 (a departure declared on
-  *"no document in any lane's corpus"* that another lane could refute).
-` heading
+> **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
 > empty `## [Unreleased]` above it. The version must match the top entry of
 > `changelog.html` and the string in `site/release.js`.
@@ -92,7 +30,195 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.5.0] — 2026-08-09
+
+### Added
+- **Simulator performance readout on the Physics tab, and in every bug report.** Stutter
+  reports were unactionable because compute-bound, render-bound and dropped frames look
+  identical from the outside. `ui/perf.js` measures the physics step, the render, the broadcast
+  interval and the frame rate, and names the cause. Measured on the reported case: **at 3600×
+  the physics costs 501 ms per broadcast against a 100 ms budget — 515 %, 2 fps — while
+  rendering stays 6–14 ms** and nothing is being coalesced or dropped. The step loop is the
+  cost. The figures ride along in the session bundle a report attaches, so the next one arrives
+  already diagnosed. The service times its own step loop and **stops the clock before
+  broadcasting** — subscribers run synchronously inside it, so timing past that point folds the
+  render into the physics number and makes everything look compute-bound. The value is held on
+  the service instance, deliberately not on the snapshot, which is a gated contract.
+- **`RD.diagnose()`** for the consent-overlay report, and a `storageWritable()` probe that
+  attempts a real write rather than checking that the storage API exists — the browsers that
+  fail here have the object and throw on use.
+
+### Fixed
+- **The release check's Cloudflare half could never have passed.** It read API field names
+  while wrangler prints a table (`Source` is the short sha; `Status` is a relative time on
+  success and the literal `Failure` on failure), so every field it looked for was `undefined`.
+  It surfaced only because the two hosts disagreed about a release already known good.
+- **The privacy page claimed the site ships no analytics script; it does.** Cloudflare Web
+  Analytics auto-install injects a beacon. The claim came from a docs summary rather than an
+  observation, and an ad blocker on the live site exposed it. The page now states commitments —
+  what is collected, what is not, and that Cloudflare processes it — and describes no mechanism
+  *(OWNER, 2026-08-08: "why say how the analytics are collected in the privacy page at all?")*.
+- **The site build stops fighting Cloudflare Pages' `.html` stripping.** Links, canonicals and
+  `og:url` are rewritten extensionless **in the output only**, so the repo keeps `.html` and
+  `file://` browsing still works. The rewrite runs after the reference walk, which would
+  otherwise validate paths that do not exist yet.
+- **Two of three new `run_site_meta` checks were hollow and are now real** — an `indexOf`
+  comparison with no `-1` test (true for every input, including absent) and a regex inside
+  `if (false && …)`. Both printed PASS against a deliberately broken page. `run_site_meta`
+  148 → 151, `run_portable` 128 → 129.
+
+
+### Changed
+- **The CW INLET TEMP box takes the anchor plant's envelope on a 60 °F default day: range
+  35–85 °F (1.7–29.4 °C) and reference/default 60 °F (15.6 °C) — was 40–100 °F on an 80 °F
+  default** *(OWNER DIRECTIVES, 2026-08-08, in sequence: "We should set our condenser cooling
+  range to this [the acceptable range]"; "wouldnt 30F be freezing?"; "can we tune this sim to
+  run a default value of 60F? lets make the floor 35F since its probably warmed some by the
+  time tit gets to the condenser.")*. The 85 °F ceiling is verbatim-sourced from Ginna TS
+  Bases B 3.7.8 (ML20339A221 Rev 101, re-fetched to the corpus): SW OPERABILITY requires the
+  screenhouse bay at *"Temperature ≤ 85ºF"*, and the accident analyses bound the same lake
+  water at a deliberately sub-freezing 30 °F. The 35 °F floor's lake-to-condenser warm-up is
+  the owner's call, declared UNVERIFIED. Condenser design point 50 °F CW, 24.5 °F rise
+  (UFSAR ch 10.4.3) — the 60 °F default sits between the design lake and the old 80. The
+  reference and default move together by construction, so a default day still makes exactly
+  rated vacuum and 100.0 MWe (measured, bit-identical). From the new reference the box has
+  real authority both ways (measured, full stack): 85 °F costs 4.6 MWe at 27.2 inHg
+  (92.0 kPa); a 50 °F design day buys +1.1 MWe; the 35 °F floor +2.3, just under the vacuum
+  ceiling. Lake temperature alone still cannot reach COND VAC LO (~2 inHg margin at the
+  ceiling), so `Manuals/03` §13.1's CAUTION is replaced — the alarm walk is equipment
+  trouble, not weather. Board box, engine clamp, RHR-floor and SG-backpressure references
+  and all fallbacks move together. Manuals Rev 15 pending item (a).
+- **PWR turbine load RAISES are rate-limited again — 30 %/min of rated, raises only** *(OWNER
+  RULING, 2026-08-08: "Do the 30% increase.", superseding the 2026-08-03 "turn it off" that had
+  retired the #318 10 %/min value)*. Measured full-stack before the ruling: the knob costs the
+  player nothing — a 70 → 100 MWe raise reaches target at +240–260 s at EVERY rate *including*
+  instant, because the reactor sets the pace; all the instant step added was a spike of borrowed
+  SG steam (output 96.6 MWe at +15 s, sagging to ~91) that grazed the C-4 runback (min OPΔT
+  margin 2.71, ~5 s below the 3.0 line, power peak 106.7 %). At 30 %/min the margin bottoms at
+  3.49, the runback stays silent, and the output meter shows a clean monotonic climb (~94 % in
+  the first minute). Decreases stay instant, and that is structural, not taste: the rejection
+  detector reads (ref − target) through a 60 s lag against the dump's 40 MWe arm, so a ramped
+  decrease caps the standing gap at rate × 60 s = 30 MWe — a symmetric limit could never arm
+  the ride-out, and the load box is free play's only route to it (a turbine trip at power
+  scrams via P-9). The #379 pair obligation is met: with the limit on, the one-box step never
+  charges the runback dwell at all (re-measured; the accounting lives at `persist_s`).
+  `run_all` 44 runners at baseline.
+
+### Changed
+- **The Graph tab is now INDICATIONS: every reading the plant produces, with its live value and
+  a checkbox that trends it** *(OWNER, 2026-08-08: "Lets change the graph tab to 'Indications'
+  and this tells us all the indications in the plant, categorized like the physcs tab. it should
+  also have a checkbox column to add it to the graph.")*. It was a list of the ~40 quantities
+  somebody had thought to make plottable, showing none of their values; it is now all **84
+  channels** — nuclear instrumentation, the OTΔT/OPΔT limit lines and margins, wide-range steam
+  generator level, containment, ECCS flows and discharge pressures, and 34 status indications —
+  grouped on the same energy-path spine as the Physics tab. Status channels plot as 0/1 step
+  traces, which is what answers "when did that happen" on a strip chart. Two columns when the
+  panel is wide enough, as the plot list had. **`run_inspect` now fails if an instrument exists
+  with no row**, injection-verified four ways — that guard immediately caught a live defect:
+  `xenon` declared an accessor for an instrument that does not exist, propped up by
+  `chartSample` cloning the instruments dict on every sample. Both are gone.
+- **Every Indications row carries System Scanner copy.** Hover any of the 94 rows for what the
+  reading is; expand for its indicating range, its lag, the alarms it drives, and a closing line
+  saying it is the channel rather than the plant. The instrument tier is **generated** from the
+  manual reference — the same source the vital gauges use, extracted so one channel cannot be
+  described two different ways on two surfaces, and so 50 range and lag figures are not a second
+  copy of numbers that go stale on the next retune. The 34 status channels and the commanded
+  positions are authored, because a reference that documents instruments has nothing to say
+  about an indicator light. Summaries are trimmed to one sentence, with the full text leading
+  the expanded tier. `run_inspect` fails on a row that resolves to no copy at all.
+- **The PORV is a genuine instrument-vs-truth pair on the chart.** Its reading comes from
+  `porv_indicator`, which reports the DEMAND signal rather than the valve — so under a
+  stuck-open relief valve the Indications tab reads *shut* and the Physics tab reads
+  *OPEN · STUCK*. That is the Three Mile Island control room, on two tabs.
+- **Free play now starts at the 50 % power preset** *(OWNER, 2026-08-08: "the plant should start
+  with the 50% power preset")*, not Hot Full Power — there is somewhere to go in both directions
+  from it. One gate moved with it: `verify_e2e_ui`'s steam/feed pairing check is now PINNED to
+  `hot_full_power`, the IC every timing in it was derived at. Its 600 s sample point is really
+  measuring when AFW's proportional band opens (`afw_level_target` 32 % + `afw_level_band` 8 %
+  ⇒ no AFW delivery until SG level falls below 40 %), and how long that takes is set by decay
+  heat. Measured full-stack, turbine trip at t=60 s: from full power the SG reaches 40 % at
+  ~9m20s so feed is up at 600 s; from 50 % it gets there at ~16m, reads exactly 0 gpm at 600 s,
+  then parks at 39.5 % and holds. The plant is correct; the sample point belonged to an IC.
+- **The Physics tab gained 12 rows, two groups and a PLOT COLUMN** *(OWNER, 2026-08-08: "We
+  should revisit the physcis tab and add anything you think is missing" · "I would like a column
+  to the left of the lables with a checkbox for the strip chart")*. New **Pressure boundary**
+  group — the relief path, and the tab's biggest omission: everything else on the panel reads a
+  quantity with no instrument, while these read quantities whose instrument DISAGREES with them.
+  `porv_indicator` reports the demand signal, not the valve, which is the Three Mile Island
+  accident in one channel. Also new: **Support systems** (AC power, emergency injection with its
+  real gpm, condenser heat sink), core exit temperature with its separation from Tavg, the
+  steam generator's mass ledger and the primary→secondary ΔT that drives heat removal, and the
+  circulation MODE folded into the loop-flow row. Every row now carries a checkbox that puts it
+  on the strip chart, synced with the Graph tab's list so one series cannot end up half-ticked.
+- **Primary leak flow reads a real flow rate** *(OWNER, 2026-08-08: "it should also show the
+  real flow rate in an appropriate unit")* — gpm beside the fraction, on the declared 7,500 gal
+  RCS (× 450,000, the same constant the board uses; now named `GPM_PER_FRAC` rather than written
+  out four times as a literal). The chart's Leak Flow trace moved to gpm with it, so the two
+  surfaces agree; its alarm threshold is 1 gpm, the Technical Specification unidentified-leakage
+  limit, where the old 0.01 % meant 45 gpm. `conv()` gained a `flow` family — the one family
+  whose base unit is US, gpm being the identity side and m³/h the converted one.
+- **Strip chart window and CSV export moved to the Settings tab** *(OWNER, 2026-08-08: "Move the
+  strip chart settings to the settings tab")*. The Graph tab is a list of what to plot; two
+  controls that configure the chart itself sat below a scrolling checklist where they were easy
+  to miss.
+
+- **The PWR's steam pressure indication was described as a "Steam-Drum Pressure" — a boiling-water
+  reactor term for a component a PWR does not have.** The generated reference keys its instrument
+  descriptions by id ALONE, and `steam_pressure` is a key the RBMK and the PWR share: the RBMK's
+  wording won, and the word "drum" appears nowhere else in the PWR manual set. Latent for as long
+  as that text only fed the Failures tab's picker; it surfaced the moment the Indications tab
+  began showing descriptions to the player. Per-plant entries now override the shared table, so
+  the PWR reads "Steam Generator Pressure" and the RBMK keeps its drum.
+- **The chart buffer stored one named property per series per row, and it did not scale.**
+  MEASURED at the shipped `CHART_ROW_BUDGET` of 9000 rows, both sides populated: 40 series cost
+  **39.5 MB**, 51 cost 68.9, 110 would cost **137.8**. Rows are now fixed-width `Float64Array`s
+  indexed by series order, with NaN for "no reading on this side" — **9.6 MB at 40 series, 19.2
+  at 110.** So the registry grew by 16 series in this change and the buffer still costs a
+  quarter of what it did. CPU is unaffected: one sampler call is 7.5 µs at 40 series and 21.8 µs
+  at 110, and the service caps the fine loop at 240 calls per broadcast, so the worst case
+  (fast-forward) is ~3.4 ms per 100 ms broadcast and at 1× the sampler runs once. The service's
+  `foldExtremes` matches the container the sampler hands it rather than learning what a series
+  is, so it still works for either shape; the board's vital tiles read the packed rows through a
+  published `RD.ChartCols` id→column map.
+- **`?tab=physics` and `?tab=operate` did nothing** — two of the five tabs were missing from the
+  deep-link allowlist. Not cosmetic: a pane that is not on screen does not render at all, so the
+  link opened a tab that stayed blank and read as a broken panel rather than a broken link.
+- **The strip chart's x-axis jumped sideways for the first `window` seconds of every run.** The
+  right-hand tick tested `rel === 0` on a float that is only zero in exact arithmetic. `t0 + span`
+  reconstructs `t1` bit-exactly whenever the two are within a factor of two (Sterbenz) — which is
+  why it looked fine on a long run and was broken at the start of every one: while sim time is under
+  the window, `t0` is negative, `span` carries a ~1e-13 residue and the test misses. Both signs then
+  printed **"−0s"**, a wider label than "0", so the whole flex row of six ticks slid as it flipped.
+  Measured on the default 300 s window over a fresh run: **749 of the first 3200 frames read "−0s"
+  and the label flipped 424 times**; on the 1800 s window, 4790 of 18200 and 1552 flips; at the
+  43200 s rung, 61824 flips. Now rounds first and tests the rounded value — the number the label
+  actually shows. The same rounding replaces `hms()`'s floor on the long-span rungs, where the same
+  residue printed a 360 s tick as `00:05:59`. A/B over all seven windows: **0 flips, 0 zero-width
+  ticks in 624,600 frames.** `run_all` 44 at baseline.
+
 ## [Alpha 1.4.0] — 2026-08-08
+
+### Changed — the containment passive sink learns saturation ΔT, on a lag (#425, 2026-08-08)
+
+_Re-homed 2026-08-08: a 2026-08-07 merge-conflict resolution had spliced this entry (and five 1.3.0 ones) into the middle of the file-header blockquote, above every release heading, where the release rolls could not see it. Attribution by commit ancestry; see TUNING_LOG 2026-08-08-develop-e._
+
+- **PWR containment: the passive sink strengthens with saturation elevation, on a lag — an SBO
+  boil-off no longer beats the building on relief steam alone** (#425, OWNER-RULED 2026-08-08).
+  Before: a station blackout with all feed lost parked containment at 83.3 psig (0.574 MPa g) —
+  past the 60 psig design pressure with no hydrogen and no break — and its H₂ burn peaked ABOVE
+  design; TMI-2 sat near 1.3 psig after ~10 h of the same source class (GEND-061). After: the
+  boil-off parks at **22.2 psig and never summons spray**, and the SBO burn lands above the
+  30 psig hi-hi and ~9 psi under design — the #386 "containment holds" pin now covers every
+  family that reaches ignition (new MD-3 legs). The lag is the design: blowdown pulses dwell
+  seconds above the knee and keep their #408 grading (severity grid moved ≤ 3 psi, SI crossings
+  unmoved, stuck-PORV 9.4 → 9.3 psig), while the boil-off's minutes-long climb arrives fully
+  braked. `slb_ctmt_gain` re-solved 0.0035 → 0.0045 (MSLB stays the limiting case, 80 % of
+  design). **Migration note**: one new private state field `_ctmt_sink_enh` (the lag);
+  pre-#425 saves restore it at 1.0 — no enhancement history invented — and re-charge from the
+  live pressure in ~2 min. In passing, re-measured the #384 Rev 13(j) residual and recorded it
+  CLOSED (full break bottoms at the building, 14.8 vs 14.7 psi absolute — `Manuals/12` §7.2).
+  Manuals Rev 14 pending item (o).
 ### Added — the hydrogen is real: inventory, recombiners, and the one-time TMI-2-style burn (#386 stage 3, 2026-08-08)
 
 - **Generation is the oxidation term itself** — the zirconium-steam reaction that heats the
@@ -600,6 +726,55 @@ strictly for simulator changes *(OWNER DIRECTIVE, 2026-08-06: "Also, don't inclu
 changes in the changelog. The changelog is strictly for simulator changes.")*. They are recorded
 below, which is what this file is for.
 
+
+### Restored — five workbench-merge entries a conflict resolution displaced (shipped in this release, re-homed 2026-08-08)
+
+_The 2026-08-07 workbench merge spliced these into the middle of the file-header blockquote, above every release heading; they shipped with 1.3.0 (verified by commit ancestry) but no roll could file them. See TUNING_LOG 2026-08-08-develop-e._
+
+**Added:**
+- **`test/run_doc_budget.js`** — gates the one document that is auto-loaded into every agent's
+  context on every turn: `CLAUDE.md` <= 15,000 words, no single physical line over 400 words, and
+  the *Recent themes* region inside its own documented 5-bullet cap. `run_all` 39 -> 40 runners.
+  It exists because all three limits were already written in that file's prose and all three were
+  being broken -- injection-verified against the pre-cut file, which fails every check (42,065
+  words, a 5,310-word line, 13 bullets). `Diagnostic/TUNING_LOG.md` is deliberately NOT gated:
+  it is read on demand, and length is only a defect where it is paid on every turn.
+
+**Changed:**
+- **CLAUDE.md cut 42,065 -> 13,455 words** (~68 %), no rule removed. The agent-orientation file is
+  loaded into every agent's context on every turn and had grown to 1,735 lines under its own
+  "Keep it SHORT" heading, with a single physical line of 5,310 words. Removed: 21,046 words of
+  prose gate baselines duplicating the `BASELINES` map that the same section names as the
+  authority -- and which had rotted into four wrong figures, a runner listed twice with different
+  numbers, and a block marked "unedited" from an old merge. Themes and standing-procedure bullets
+  compressed 9,663 -> 2,055 with every trap kept; the themes list gains a word budget, having run
+  7 bullets against its own cap of 5. All 30 dated owner citations were verified to exist in other
+  tracked files before anything was deleted, so `run_hardrules` 208 -> 205 is fewer citation sites
+  and zero fewer rulings (`BASELINES` updated in the same change).
+- **PWR atmospheric dump valve — setpoint sourced, 1247 → 1272 psi (8.60 → 8.77 MPa)** (#371).
+  WTSM §7.1.3.3 (ADAMS ML11223A244) sets the real valve *"approximately half the difference between
+  the no-load steam generator pressure and the lowest set pressure of the safety valves"*; ours sat
+  at 34 % of that span. Capacity `adv_max` 0.10 needs no change — it already matches the sourced
+  *"approximately 10% of the rated steam flow … from each steam generator"*. Nearly inert in play:
+  the loss-of-condenser spike and the code-safety lift are identical at both values; only the hold
+  point moves. Perturbation sweep at this exact nudge: 42/623 checks move, zero verdict flips.
+  `DESIGN_COMPANION` §8.34 narrows from "capacity and setpoint unsourced" to the relief ladder,
+  which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
+
+**Fixed:**
+- **A behaviour check that could never fail** (TR-17, shipped with #392). `sg_safety_open` is a
+  boolean and `range()` returns `NaN` on it, so `!range(...).max` was `!NaN` — true, always.
+  Injection-verified: the plant it exists to exclude passed it. The claim it guarded was also
+  wrong — the code safeties lift at 54 s whether the ADV is in AUTO or shut, because that spike is
+  the steam generator's. The check now asserts what actually differs, the tail: safeties open 1.8 %
+  of the hour and reseat, against 99.4 % and never reseating with the valve shut.
+
+**Added:**
+- **`tools/find_source.js`** — searches the source corpus across all three worktree lanes and exits
+  non-zero on a genuine miss. The corpus is three gitignored directories that cannot see each other,
+  and one-lane greps have now cost two evidence passes: #315 §6 (an OTΔT argument built and
+  reverted while the primary sat in another lane) and §8.34 (a departure declared on
+  *"no document in any lane's corpus"* that another lane could refute).
 
 ### Changed — the accident-inventory clock runs REAL flows, and the relief valves are plant-sized (#408 wave 1 + the 2026-08-07 proportional-valve ruling)
 

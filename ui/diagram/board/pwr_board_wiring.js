@@ -190,8 +190,8 @@
     ims3xu86zm5: [0, 100],                                           // RHR HX flow split, %
     // Circulating-water inlet temperature — the modelled range (the engine clips to the
     // same band, so the box refuses what the engine would clamp).
-    ims3v42jghn: [_TB.cw_inlet_min_c != null ? _TB.cw_inlet_min_c : 4.4,
-                  _TB.cw_inlet_max_c != null ? _TB.cw_inlet_max_c : 37.8]
+    ims3v42jghn: [_TB.cw_inlet_min_c != null ? _TB.cw_inlet_min_c : 1.6667,
+                  _TB.cw_inlet_max_c != null ? _TB.cw_inlet_max_c : 29.4444]
   };
   // Family per editable box, with optional per-mode overrides where the converted range
   // needs a different resolution than the family default. Charging is the one that does:
@@ -1753,15 +1753,22 @@
       // safety property here: convert them anywhere else and a fine sample could land in a
       // different unit from the band it is plotted against, which is invisible until
       // someone flips to SI.
+      // A fine row is PACKED — one Float64Array column per series, not an id-keyed dict
+      // (see chartBuf in ui/app.js for the memory measurement that forced it). `RD.ChartCols`
+      // is the id → column map app.js publishes alongside the rows; without a column this
+      // tile simply falls back to broadcast-rate sampling, as it does when no sampler is set.
+      // EVERY read is `isFinite`-guarded rather than `!= null`: an absent reading in a packed
+      // row is NaN, and `NaN != null` is TRUE, so a null test would let it through.
       var fine = null, serId = TILE_SERIES[id], rows = RD.ChartFine;
-      if (serId && rows && rows.length) {
+      var col = (serId && RD.ChartCols) ? RD.ChartCols[serId] : null;
+      if (col != null && rows && rows.length) {
         fine = [];
         for (var fi = 0; fi < rows.length; fi++) {
           var r = rows[fi];
-          var fv = r.v ? r.v[serId] : null;
+          var fv = r.v ? r.v[col] : null;
           if (fv == null || !isFinite(fv)) continue;
-          var flo = (r.lo && r.lo[serId] != null) ? r.lo[serId] : fv;
-          var fhi = (r.hi && r.hi[serId] != null) ? r.hi[serId] : fv;
+          var flo = (r.lo && isFinite(r.lo[col])) ? r.lo[col] : fv;
+          var fhi = (r.hi && isFinite(r.hi[col])) ? r.hi[col] : fv;
           fine.push(m ? { t: r.t, v: m.to(fv), lo: m.to(flo), hi: m.to(fhi) }
                       : { t: r.t, v: fv, lo: flo, hi: fhi });
         }

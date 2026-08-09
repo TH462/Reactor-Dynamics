@@ -166,6 +166,24 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Every reading the plant produces, on one tab</h2>
+      <span class="log-ver mono">Alpha 1.5.0</span>
+      <time class="log-date mono" datetime="2026-08-09">9 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>Indications tab,</strong> replacing Graph. All 84 of the plant's channels with their live values and a checkbox to trend any of them, grouped like the Physics tab. Status channels plot as on/off traces, and every row explains what it is on hover.</li>
+      <li><span class="log-tag added">Added</span><strong>Simulator performance readout</strong> on the Physics tab — where each update's time goes, physics against rendering, and whether the sim is keeping up. It is included automatically in bug reports.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Free play starts at the 50 % power preset,</strong> not Hot Full Power — there is somewhere to go in both directions.</li>
+      <li><span class="log-tag added">Added</span><strong>Physics tab gained a plot column and 12 more rows;</strong> leak flow now reads in gpm.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The PORV reads its demand signal, not the valve.</strong> Under a stuck-open relief valve, Indications shows it shut while Physics shows OPEN · STUCK — the Three Mile Island control room, on two tabs.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Condenser cooling water inlet: 35–85 °F (1.7–29.4 °C), default 60 °F (15.6 °C)</strong> — was 40–100 °F on an 80 °F day. A default day still makes rated vacuum and 100 MWe.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Turbine load raises are rate-limited to 30 %/min.</strong></li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The strip chart's x-axis no longer jumps</strong> as it scrolls.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>Hydrogen is real, and the containment fights back</h2>
       <span class="log-ver mono">Alpha 1.4.0</span>
       <time class="log-date mono" datetime="2026-08-08">8 August 2026</time>

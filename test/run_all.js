@@ -801,7 +801,7 @@ var BASELINES = {
   // rulings quoted in the Manuals/00 Rev 14 item (g) and this session's TUNING_LOG and
   // BUILD_DECISIONS entries. Measured standalone on the final tree AFTER all docs were
   // written (the docs-move-the-score rule above, honored locally again).
-  'run_hardrules.js':      { code: 0, score: '244checks 0failed' },   // MERGED 2026-08-08 (#425 x audit-lane move): both sides added HR11 sites onto the shared 235 base — measured on the merged tree, not summed. | 240 -> 241 (2026-08-08, #425): the "Do next as recommended." ruling citation lands in TUNING_LOG + BUILD_DECISIONS + the Rev 14 row — one new HR11 site. Same forgot-the-docs-bump class as every entry below; caught by the end-of-session run_all as designed. | 235 -> 238 (2026-08-08, audit lane move): three new HR11 citation sites for the SAME 2026-08-08 ruling, one per document that has to state it — Blueprint/AUDITOR_ORIENTATION.md (+1, verified by removing the file and re-running: 235), the AUDIT_CHARTER.md rewrite (+1 net: it added the lane ruling and a §6 history restating two older ones), and the BUILD_DECISIONS 2026-08-08-backshop-a entry (+1). The charter rewrite's first draft put the dates in the BULLET PREFIX rather than inside the citation window and HR11 failed both — the format is `(OWNER RULING, <date>: "<verbatim>")` and nothing else counts. | 235 -> 240 (2026-08-08, #386 stage 3): the burn/spike ruling citations across CONTEXT §6.3, CHANGELOG, BUILD_DECISIONS, TUNING_LOG and the Rev 14 row — five new HR11 sites. Two were first written BARE ("OWNER RULING 2026-08-05: TMI-2-style" with neither verbatim words nor the declared-selection form) and the scan caught both — the ruling IS a selection, so the "a selection, not verbatim words" declaration is load-bearing, not boilerplate. | 230 -> 235 (2026-08-08, #380/#355/#358): the three same-day OWNER RULING citations land in TUNING_LOG, BUILD_DECISIONS and the Rev 14 row — five new HR11 sites. Updated WITH the docs in the same change this time (see the 228 -> 230 note below for the CI-caught version of forgetting that). | 228 -> 230 (2026-08-08): the #385 flash-ruling quotes in BUILD_DECISIONS + TUNING_LOG add two HR11 rows. CAUGHT BY CI, not locally — the docs-only commit ran run_hardrules STANDALONE (which prints its own tally and compares nothing); only run_all compares to this map. The three-comments-up warning arrived on schedule, wearing a new face: "once more AFTER the docs" must mean run_all, not the bare runner.
+  'run_hardrules.js':      { code: 0, score: '249checks 0failed' },   // 248 -> 249 (2026-08-09, backshop merge): NOT the merge. develop's tip measures 249 STANDALONE — verified in a detached worktree at HEAD before merging, HR1 17 / HR5 0 / HR11 232, byte-identical to the merged tree. The 248 above was recorded mid-drafting and a later text edit added the site, which is precisely the trap the next clause warns about ("count the standalone runner AFTER the last text edit"). backshop contributed ZERO net sites: its own tree measures 244, the base value. | 246 -> 248 (2026-08-08, CW range + 60F default): the condenser-range ruling citations land in pwr_config (ref + floor), CHANGELOG, TUNING_LOG, BUILD_DECISIONS and the Rev 15 row — two net new HR11 sites in the FINAL text (an intermediate draft counted 250; the three-ruling consolidation into sequence-quotes brought it to 248 — count the standalone runner AFTER the last text edit, not mid-drafting). | 244 -> 246 (2026-08-08, load-rate ruling): the "Do the 30% increase." citation lands in TUNING_LOG + BUILD_DECISIONS — two new HR11 sites. CAUGHT BY CI again (the 228 -> 230 note's exact shape): local run_all ran after the code edits but BEFORE the session-log entries were written. | MERGED 2026-08-08 (#425 x audit-lane move): both sides added HR11 sites onto the shared 235 base — measured on the merged tree, not summed. | 240 -> 241 (2026-08-08, #425): the "Do next as recommended." ruling citation lands in TUNING_LOG + BUILD_DECISIONS + the Rev 14 row — one new HR11 site. Same forgot-the-docs-bump class as every entry below; caught by the end-of-session run_all as designed. | 235 -> 238 (2026-08-08, audit lane move): three new HR11 citation sites for the SAME 2026-08-08 ruling, one per document that has to state it — Blueprint/AUDITOR_ORIENTATION.md (+1, verified by removing the file and re-running: 235), the AUDIT_CHARTER.md rewrite (+1 net: it added the lane ruling and a §6 history restating two older ones), and the BUILD_DECISIONS 2026-08-08-backshop-a entry (+1). The charter rewrite's first draft put the dates in the BULLET PREFIX rather than inside the citation window and HR11 failed both — the format is `(OWNER RULING, <date>: "<verbatim>")` and nothing else counts. | 235 -> 240 (2026-08-08, #386 stage 3): the burn/spike ruling citations across CONTEXT §6.3, CHANGELOG, BUILD_DECISIONS, TUNING_LOG and the Rev 14 row — five new HR11 sites. Two were first written BARE ("OWNER RULING 2026-08-05: TMI-2-style" with neither verbatim words nor the declared-selection form) and the scan caught both — the ruling IS a selection, so the "a selection, not verbatim words" declaration is load-bearing, not boilerplate. | 230 -> 235 (2026-08-08, #380/#355/#358): the three same-day OWNER RULING citations land in TUNING_LOG, BUILD_DECISIONS and the Rev 14 row — five new HR11 sites. Updated WITH the docs in the same change this time (see the 228 -> 230 note below for the CI-caught version of forgetting that). | 228 -> 230 (2026-08-08): the #385 flash-ruling quotes in BUILD_DECISIONS + TUNING_LOG add two HR11 rows. CAUGHT BY CI, not locally — the docs-only commit ran run_hardrules STANDALONE (which prints its own tally and compares nothing); only run_all compares to this map. The three-comments-up warning arrived on schedule, wearing a new face: "once more AFTER the docs" must mean run_all, not the bare runner.
   // NEW 2026-08-06-workbench-i. Budgets the ONE document that is auto-loaded into every
   // agent's context on every turn. Its caps were prose INSIDE the file they governed, and both
   // were being broken: 42,065 words under a "Keep it SHORT" heading, a single physical line of
@@ -971,7 +971,22 @@ var BASELINES = {
   // INJECTION-VERIFIED three ways: removing `sgtr` from its group, listing a failure that
   // does not exist (`pzr_heaters_failed`), and naming one in two groups each take it to
   // 8/9 41/42.
-  'run_inspect.js':        { code: 0, score: '9/9 47/47' },
+  //
+  // 2026-08-08: +1 suite, +6 checks — the same #224 guard for the INDICATIONS tab, which is
+  // generated from `PROFILES.pwr.series` and so is only "all the indications in the plant"
+  // while that hand-maintained array keeps up with the engine's 84 channels. INJECTION-
+  // VERIFIED four ways: a new instrument with no series, a series naming a renamed channel,
+  // two series sharing an id (they would share a packed chart column), and an accessor
+  // reading a key no instrument publishes. That last one CAUGHT A LIVE DEFECT the day it was
+  // written — `xenon` declared `get: i.xenon_pct_eq` for a quantity with no instrument, and
+  // chartSample cloned the instruments dict every sample to feed it.
+  //
+  // 2026-08-09: 53 -> 56. The Indications tab gained per-row scanner copy, so three more
+  // things can rot silently and are now checked: a row that resolves to NO copy (neither an
+  // authored hint nor an instrument the manual reference describes), a series NO checkbox can
+  // reach (dead weight — it costs a column in every packed chart row; three shipped that way
+  // for a day), and a physics row binding a `ser:` that does not exist. Injection-verified.
+  'run_inspect.js':        { code: 0, score: '10/10 56/56' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no
@@ -1021,7 +1036,10 @@ var BASELINES = {
   // The DROP entries had to go in the SAME change as the tags: the gate fails on a stale
   // declaration as well as an undeclared tag, so removing one without the other is red
   // either way. That symmetry is the check working.
-  'run_portable.js':       { code: 0, score: '128checks 0failed' },
+  // 128 -> 129 on 2026-08-08: ui/perf.js joined the shell, and the LOADS rule scans one
+  // check per shipped script. It contains no loader (only performance.now and arithmetic),
+  // so the count moves and nothing else does.
+  'run_portable.js':       { code: 0, score: '129checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -1153,7 +1171,7 @@ var BASELINES = {
   // 16 -> 17 on 2026-08-07 with Alpha 1.3.0; 17 -> 18 on 2026-08-08 with Alpha 1.4.0 — the
   // same mechanism each time. This key moves on every RELEASE and on nothing else, so a bump
   // here with no release in the same change is the signal that something else added a check.
-  'run_release.js':        { code: 0, score: '18checks 0failed' },
+  'run_release.js':        { code: 0, score: '19checks 0failed' },   // 18 -> 19 (2026-08-09, Alpha 1.5.0): one more CROSS row — the check pairs each changelog.html entry with its CHANGELOG.md heading, so it grows by one per release. 9 published entries, 9 version headings.
   // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
   // `og:image` ("site/hero.png") from launch, and Slack / Discord / iMessage / X do not
   // resolve a relative og:image, so every link ever shared into a chat rendered with no
@@ -1176,7 +1194,19 @@ var BASELINES = {
   // throws at deploy time, which is late. It caught 404.html on its first run.
   // INJECTION-VERIFIED both ways: a page removed from the build list 146/2, a page added
   // to it that this gate does not glob 148/2.
-  'run_site_meta.js':      { code: 0, score: '148checks 0failed' },
+  // 148 -> 151 on 2026-08-08: three checks pinning the extensionless-URL rewrite in
+  // site/build_site.js. Cloudflare Pages redirects /about.html -> /about and it CANNOT be
+  // disabled, so every canonical naming the .html form pointed at a url that redirects away
+  // from the one served — measured live after the cutover. The build now rewrites links and
+  // canonicals in the OUTPUT only; the repo keeps .html so the site still browses from
+  // file:// with no server.
+  // TWO OF THESE THREE SHIPPED HOLLOW AND WERE CAUGHT BY INJECTION. The ordering check
+  // compared indexOf results directly, and indexOf returns -1 when absent — so DELETING the
+  // reference walk made it `-1 < n`, true, and the check passed on a build that verified
+  // nothing (the TR-17 shape: an expression that cannot be false). The dead-link check
+  // regexed for `deadLinks.length`, which survives `if (false && deadLinks.length)`.
+  // Both hardened; all four mutations now score 151/1.
+  'run_site_meta.js':      { code: 0, score: '151checks 0failed' },
   // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
   // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
   // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE

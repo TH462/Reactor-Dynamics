@@ -127,6 +127,14 @@
       // plant's defining ride-out into a leisurely ramp. It took out 5 behaviour probes, the
       // `pwr_tour` greedy-ask branch and the SGTR EOP before the direction test was added.
       // Rejections still arrive instantly, as they must.
+      //
+      // AND THE ARITHMETIC MAKES IT STRUCTURAL, not a tuning choice (2026-08-08, the ruling
+      // that set the PWR raise rate to 30): the rejection detector below reads
+      // (ref - target) through refTau = 60 s, and the PWR dump's ride-out arms at 40 MWe of
+      // gap. A ramped decrease caps that standing gap at rate x 60 s — 30 MWe at 30 %/min —
+      // so at any rate in the useful family the dump can NEVER fast-open on an operator cut,
+      // however large, and the board's load box is the only free-play route to the graded
+      // ride-out (a turbine trip at power scrams via P-9). Symmetrize this and FG-4 dies.
       var rate = opts.loadRatePctPerMin;
       var gap0 = (s.load_cmd_mwe != null) ? s.load_cmd_mwe - s.load_target_mwe : 0;
       if (rate > 0 && s.load_cmd_mwe != null && gap0 > 0) {
