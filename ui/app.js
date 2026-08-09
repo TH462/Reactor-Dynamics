@@ -1606,8 +1606,46 @@
     return !!(pane && pane.classList.contains('on') && card && !card.classList.contains('collapsed'));
   }
   function physicsVisible() { return paneVisible('physics'); }
+  /* The performance readout, throttled to 1 Hz and only while the tab is open. It reads
+   * ring buffers that are always filling, so the numbers are live whether or not anyone is
+   * looking — but computing percentiles on every frame would put the profiler into its own
+   * measurement, which is the one thing it must not do. */
+  var _perfPaintedAt = 0;
+  function renderPerf() {
+    var box = $('perfRows'); if (!box || !RD.Perf) return;
+    var now = Date.now();
+    if (now - _perfPaintedAt < 1000) return;
+    _perfPaintedAt = now;
+
+    var p = RD.Perf.summary();
+    var ms = function (st) { return st ? st.p50.toFixed(1) + ' / ' + st.p95.toFixed(1) + ' / ' + st.max.toFixed(1) : '—'; };
+    var rows = [
+      ['Physics', ms(p.step_ms) + ' ms', 'one broadcast of engine stepping (median / p95 / worst)'],
+      ['Rendering', ms(p.render_ms) + ' ms', 'one DOM pass (median / p95 / worst)'],
+      ['Budget used', p.budget_pct === null ? '—' : Math.round(p.budget_pct) + ' %', 'of the ' + p.nominal_ms + ' ms broadcast interval'],
+      ['Broadcast gap', ms(p.interval_ms) + ' ms', 'actual spacing; well over nominal means the loop is slipping'],
+      ['Frames', (p.fps === null ? '—' : p.fps.toFixed(0) + ' fps'), p.paints + ' painted, ' + p.coalesced + ' broadcasts merged into another frame'],
+    ];
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      html += '<div class="set-row"><span class="k" title="' + rows[i][2] + '">' + rows[i][0] +
+        '</span><span class="mono">' + rows[i][1] + '</span></div>';
+    }
+    box.innerHTML = html;
+    var v = $('perfVerdict');
+    if (v) {
+      txt(v, p.verdict);
+      v.className = 'perf-verdict' +
+        (/COMPUTE-BOUND/.test(p.verdict) ? ' warn' :
+         /RENDER-BOUND|SLIPPING|DROPPED/.test(p.verdict) ? ' bad' :
+         /healthy/.test(p.verdict) ? ' ok' : '');
+    }
+  }
+
   function renderPhysics(s) {
-    if (!physRows.length || !physicsVisible()) return;
+    if (!physicsVisible()) return;
+    renderPerf();                       // independent of the plant rows — it has its own data
+    if (!physRows.length) return;
     var t = s.true_state; if (!t) return;
     physRows.forEach(function (p) {
       var txt, cls = '';
@@ -1813,11 +1851,29 @@
   function render(s) {
     latest = s;
     _renderSnap = s;
-    if (_renderRaf) return;                 // a paint is already queued — it will use the latest snap
+    // Perf sampling (ui/perf.js). The service measured its own physics loop and left it on
+    // the instance; pair it here with the render cost so the two stages can be told apart —
+    // which is the only way to answer "is the flicker compute or something else".
+    if (RD.Perf) {
+      try {
+        RD.Perf.broadcast(service._perfStepMs,
+          (s.metadata && s.metadata.broadcast_ms) || service.broadcastMs);
+      } catch (e) { /* a profiler must never break the sim */ }
+    }
+    if (_renderRaf) {
+      // A paint is already queued and will use the newer snapshot — so this broadcast
+      // never gets a frame of its own. Worth counting: it means the screen is showing
+      // fewer plant states than the plant produced, which is what "flicker" often is.
+      if (RD.Perf) { try { RD.Perf.dropped(); } catch (e) {} }
+      return;
+    }
     _renderRaf = _raf(function () {
       _renderRaf = 0;
       var snap = _renderSnap; _renderSnap = null;
-      if (snap) renderNow(snap);
+      if (!snap) return;
+      if (!RD.Perf) { renderNow(snap); return; }
+      var t0 = RD.Perf.renderStart();
+      try { renderNow(snap); } finally { RD.Perf.renderEnd(t0); }
     });
   }
   function renderNow(s) {
@@ -4370,6 +4426,11 @@
         seed: service.seed, sample_hz: 1
       },
       timeseries: diag.samples, events: diag.events, commands: diag.commands,
+      // PERFORMANCE RIDES ALONG (2026-08-08). "It flickers on some PCs" is unanswerable
+      // without it — compute-bound, render-bound and neither-of-those look identical to the
+      // person reporting, and the machine it happened on is the only place the numbers
+      // exist. Cheap to carry: one object of percentiles, not a trace.
+      performance: (function () { try { return RD.Perf ? RD.Perf.summary() : null; } catch (e) { return null; } }()),
       snapshot_end: service.saveState()
     };
     var notesEl = $('diagNotes'), notes = notesEl && notesEl.value.trim();
@@ -4898,7 +4959,86 @@
       }
       $('consentYes').addEventListener('click', function () { answer('granted'); });
       $('consentNo').addEventListener('click', function () { answer('denied'); });
+
+      /* WATCHDOG: did the prompt we just showed actually become visible?
+       *
+       * Reported 2026-08-08 as "it pops up for half a second then disappears", with the
+       * stored answer still null — so nothing had been clicked. Measured in the reporter's
+       * browser: `hidden` was FALSE while computed `display` was `none`. Nothing in this
+       * codebase does that, and it stays visible indefinitely in a clean browser, so the
+       * rule is coming from outside — almost certainly a content blocker's cookie-banner
+       * filter, for which an element named `consentOverlay` is an obvious target.
+       *
+       * WE DO NOT FIGHT IT. Someone running such a blocker has told their browser not to
+       * show them consent dialogs, and renaming things to slip past that would defeat a
+       * choice they made deliberately. The behaviour is already correct — no answer means
+       * undecided, and undecided collects nothing. What was missing was any way to TELL:
+       * a hidden prompt and a declined one produce identical silence.
+       *
+       * So: say so once, in the console, with the one route that still works. */
+      if (window.setTimeout && window.getComputedStyle) window.setTimeout(function () {
+        if (ov.hidden) return;                       // answered in the meantime — fine
+        var cs = window.getComputedStyle(ov), r = ov.getBoundingClientRect();
+        var invisible = cs.display === 'none' || cs.visibility === 'hidden' ||
+                        parseFloat(cs.opacity) === 0 || r.width < 2 || r.height < 2;
+        if (!invisible) return;
+
+        // Name the rule if we can reach it. Extension stylesheets are usually readable;
+        // cross-origin ones throw on .cssRules and are reported as such rather than skipped.
+        var culprits = [];
+        try {
+          for (var i = 0; i < document.styleSheets.length; i++) {
+            var ss = document.styleSheets[i], rules = null;
+            try { rules = ss.cssRules; } catch (e) { culprits.push('(unreadable sheet) ' + (ss.href || '')); continue; }
+            for (var j = 0; rules && j < rules.length; j++) {
+              var rule = rules[j];
+              if (!rule.selectorText || !rule.style || !/display\s*:\s*none/i.test(rule.style.cssText)) continue;
+              try { if (ov.matches(rule.selectorText)) culprits.push(rule.selectorText + '  [' + (ss.href || 'injected <style>') + ']'); } catch (e) { /* bad selector */ }
+            }
+          }
+        } catch (e) { /* never let a diagnostic break the page */ }
+
+        try {
+          console.warn('[Reactor Dynamics] The usage-data prompt was shown but something is ' +
+            'hiding it (display:' + cs.display + ', ' + Math.round(r.width) + '×' + Math.round(r.height) + ').\n' +
+            'This is usually a content blocker treating it as a cookie banner. It is not one — ' +
+            'it sets no cookies.\nNothing is being collected, which is the safe outcome. You can ' +
+            'still choose under Settings → Share usage data.\n' +
+            (culprits.length ? 'Matching rules:\n  ' + culprits.join('\n  ') : 'No readable stylesheet rule matches — check for inline styles or an extension.'));
+          if (window.RD && RD.Telemetry && RD.Telemetry.diagnose) {
+            console.warn('[Reactor Dynamics] telemetry state:', RD.Telemetry.diagnose());
+          }
+        } catch (e) { /* console unavailable */ }
+      }, 900);
     }());
+
+    /* One call that answers "is any of this working?" — RD.diagnose() in the console.
+     * Every failure mode here is silent by design, so without this the only way to tell a
+     * declined prompt from a broken one is to read the source. */
+    window.RD = window.RD || {};
+    window.RD.diagnose = function () {
+      var ov = $('consentOverlay');
+      var T = window.RD && RD.Telemetry;
+      var cs = ov && window.getComputedStyle ? window.getComputedStyle(ov) : null;
+      var out = {
+        telemetry_client_loaded: !!T,
+        prompt_in_dom: !!ov,
+        prompt_marked_hidden: ov ? ov.hidden : null,
+        prompt_actually_visible: !!(cs && cs.display !== 'none' && cs.visibility !== 'hidden' &&
+                                    parseFloat(cs.opacity) !== 0),
+        prompt_computed_display: cs ? cs.display : null,
+      };
+      if (T && T.diagnose) { var d = T.diagnose(); for (var k in d) out[k] = d[k]; }
+      out.verdict =
+        !out.telemetry_client_loaded ? 'client did not load — check site/telemetry.js is served' :
+        !out.endpoint_set ? 'no endpoint stamped — RD_TELEMETRY_ENDPOINT is unset in the build' :
+        !out.storage_writable ? 'localStorage is NOT writable — an answer can never persist' :
+        out.consent === 'granted' ? 'collecting' :
+        out.consent === 'denied' ? 'declined — nothing is collected, as asked' :
+        out.prompt_in_dom && !out.prompt_actually_visible ? 'prompt is being hidden by something outside this app — nothing collected' :
+        'awaiting an answer — nothing collected yet';
+      return out;
+    };
 
     // ---- the Settings toggle the consent prompt promises ---------------------
     (function () {

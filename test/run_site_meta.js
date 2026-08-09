@@ -87,6 +87,36 @@ if (pagesM) {
   });
 }
 
+// ------------------------------------------- the repo says .html, the DEPLOY must not
+// Cloudflare Pages redirects `/about.html` to `/about` and it cannot be switched off, so a
+// canonical naming the `.html` form points at a URL that redirects away from the one
+// actually served — the same defect as a relative og:image, arriving by a different route.
+// site/build_site.js rewrites links and canonicals to the extensionless form IN THE OUTPUT
+// ONLY, because the repo has to keep `.html` for the site to browse from file:// with no
+// server. So the SOURCE is expected to say `.html` (checked below) and the BUILD is
+// expected not to — this pins the rewrite that reconciles them, since without it the two
+// halves could drift apart silently and only a live 308 would show it.
+var buildSrc2 = read('site/build_site.js');
+check('PAGES', 'site/build_site.js', 'rewrites links and canonicals to extensionless urls',
+  /function toExtensionless/.test(buildSrc2) ? 'Pages strips .html; the build matches it' : null);
+// BOTH INDEXES MUST EXIST BEFORE THEY CAN BE ORDERED. The first version compared them
+// directly, and `indexOf` returns -1 for a missing string — so deleting the reference walk
+// made the comparison `-1 < n`, which is TRUE, and the check passed on a build that no
+// longer verified anything. Same shape as TR-17's `!range(bool).max` → `!NaN` → true.
+// Caught by injection, which is the only reason it is not still sitting here green.
+var iWalk = buildSrc2.indexOf('PAGES.forEach(checkHtml)');
+var iRewrite = buildSrc2.indexOf('PAGES.forEach(rewriteHtml)');
+check('PAGES', 'site/build_site.js', 'the reference walk and the rewrite both exist, in that order' +
+  '  (walk@' + iWalk + ', rewrite@' + iRewrite + ')',
+  iWalk >= 0 && iRewrite >= 0 && iWalk < iRewrite
+    ? 'the walk resolves hrefs against real files, which needs the .html still on them' : null);
+
+// A regex for `deadLinks.length` alone survived `if (false && deadLinks.length)` — the
+// text was still there. Require the guard to reach a THROW, which the neutered form cannot.
+check('PAGES', 'site/build_site.js', 'a rewrite whose target is missing THROWS',
+  /if \(deadLinks\.length\) \{[\s\S]{0,600}?throw new Error/.test(buildSrc2)
+    ? 'a rewrite cannot invent a url and still ship' : null);
+
 // ---------------------------------------------------------------- the image they all point at
 // Declared dimensions are checked against the real ones. og:image:width/height is a
 // hint scrapers use to lay the card out before the image arrives, so a wrong pair

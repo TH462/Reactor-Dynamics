@@ -693,6 +693,19 @@ html[data-channel="dev"] .logo-test {
 .doc-body .log-tag.added { color: var(--running, #79d297); }
 .doc-body .log-tag.changed { color: var(--normal); }
 .doc-body .log-tag.fixed { color: var(--caution); }
+/* Simulator performance readout (Physics tab). Deliberately plain: it is a diagnostic,
+   not a dashboard, and colour here competes with the board where colour means something. */
+.perf-panel { margin-top: 4px; }
+.perf-verdict {
+  font-size: 12px; line-height: 1.45; padding: 7px 9px; margin-bottom: 6px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-elevated); color: var(--text-2);
+}
+.perf-verdict.ok   { border-color: var(--running); }
+.perf-verdict.warn { border-color: var(--caution); }
+.perf-verdict.bad  { border-color: var(--caution); color: var(--text); }
+.perf-rows .set-row .k { text-transform: none; letter-spacing: 0; cursor: help; }
+
 .set-about-btns { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .help-sec { margin-bottom: 14px; }
 .help-sec h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }

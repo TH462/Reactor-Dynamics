@@ -30,6 +30,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Simulator performance readout on the Physics tab, and in every bug report.** Stutter
+  reports were unactionable because compute-bound, render-bound and dropped frames look
+  identical from the outside. `ui/perf.js` measures the physics step, the render, the broadcast
+  interval and the frame rate, and names the cause. Measured on the reported case: **at 3600×
+  the physics costs 501 ms per broadcast against a 100 ms budget — 515 %, 2 fps — while
+  rendering stays 6–14 ms** and nothing is being coalesced or dropped. The step loop is the
+  cost. The figures ride along in the session bundle a report attaches, so the next one arrives
+  already diagnosed. The service times its own step loop and **stops the clock before
+  broadcasting** — subscribers run synchronously inside it, so timing past that point folds the
+  render into the physics number and makes everything look compute-bound. The value is held on
+  the service instance, deliberately not on the snapshot, which is a gated contract.
+- **`RD.diagnose()`** for the consent-overlay report, and a `storageWritable()` probe that
+  attempts a real write rather than checking that the storage API exists — the browsers that
+  fail here have the object and throw on use.
+
+### Fixed
+- **The release check's Cloudflare half could never have passed.** It read API field names
+  while wrangler prints a table (`Source` is the short sha; `Status` is a relative time on
+  success and the literal `Failure` on failure), so every field it looked for was `undefined`.
+  It surfaced only because the two hosts disagreed about a release already known good.
+- **The privacy page claimed the site ships no analytics script; it does.** Cloudflare Web
+  Analytics auto-install injects a beacon. The claim came from a docs summary rather than an
+  observation, and an ad blocker on the live site exposed it. The page now states commitments —
+  what is collected, what is not, and that Cloudflare processes it — and describes no mechanism
+  *(OWNER, 2026-08-08: "why say how the analytics are collected in the privacy page at all?")*.
+- **The site build stops fighting Cloudflare Pages' `.html` stripping.** Links, canonicals and
+  `og:url` are rewritten extensionless **in the output only**, so the repo keeps `.html` and
+  `file://` browsing still works. The rewrite runs after the reference walk, which would
+  otherwise validate paths that do not exist yet.
+- **Two of three new `run_site_meta` checks were hollow and are now real** — an `indexOf`
+  comparison with no `-1` test (true for every input, including absent) and a regex inside
+  `if (false && …)`. Both printed PASS against a deliberately broken page. `run_site_meta`
+  148 → 151, `run_portable` 128 → 129.
+
+
 ### Changed
 - **The CW INLET TEMP box takes the anchor plant's envelope on a 60 °F default day: range
   35–85 °F (1.7–29.4 °C) and reference/default 60 °F (15.6 °C) — was 40–100 °F on an 80 °F

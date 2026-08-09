@@ -237,8 +237,45 @@
     }
   }
 
+  /* WHY THERE IS A DIAGNOSTIC AT ALL. Every way this feature can fail looks identical
+   * from outside: nothing is sent. Consent undecided, endpoint unset, storage refused, the
+   * prompt hidden by a content blocker — all four produce silence, and silence is also what
+   * correct operation looks like for a visitor who said no. Without a way to tell them
+   * apart, "the prompt vanished" is unanswerable, which is exactly where this started.
+   *
+   * IS STORAGE WRITABLE, not just present. `localStorage` can exist and still throw on
+   * write — Safari private mode, a quota, a locked-down profile. When that happens the
+   * consent answer is accepted, never stored, and reads back as null for ever: the prompt
+   * returns every visit and nothing is ever collected, with no error anywhere. Presence is
+   * not the question; writability is. */
+  function storageWritable() {
+    var s = store('localStorage');
+    if (!s) return false;
+    try {
+      s.setItem('rd_storage_probe', '1');
+      var ok = s.getItem('rd_storage_probe') === '1';
+      s.removeItem('rd_storage_probe');
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  function diagnose() {
+    return {
+      channel: (typeof G.RD_CHANNEL === 'string') ? G.RD_CHANNEL : null,
+      release: (typeof G.RD_RELEASE === 'string') ? G.RD_RELEASE : null,
+      endpoint_set: !!endpoint(),
+      consent: consent(),                 // 'granted' | 'denied' | null (never answered)
+      collecting: granted() && !!endpoint(),
+      storage_writable: storageWritable(),
+      declared_events: Object.keys(EVENTS).length,
+      queued: queue.length,
+    };
+  }
+
   RD.Telemetry = {
     EVENTS: EVENTS,
+    diagnose: diagnose,
+    storageWritable: storageWritable,
     consent: consent,
     setConsent: setConsent,
     granted: granted,

@@ -29,6 +29,65 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-workbench-a (the flicker is COMPUTE-bound, measured; and a release check that could never have passed)
+
+**The flicker reports are compute-bound, and now the bug report says so.** Players on some PCs
+reported stutter during large transients, which is unactionable on its own: compute-bound,
+render-bound and dropped frames look identical from outside and need different fixes.
+`ui/perf.js` plus a *Simulator performance* block on the Physics tab measure it. **At 3600× the
+physics costs 501 ms per broadcast against a 100 ms budget — 515 %, 2 fps — while rendering
+stays 6–14 ms and `coalesced` is 0.** Nothing is being merged away or dropped by the
+compositor; the step loop simply does not finish in time. At 1× it is healthy. The numbers ride
+along in every session bundle, so the next report arrives pre-diagnosed.
+
+- **The clock must STOP BEFORE `_broadcast`.** Subscribers run synchronously inside it, so
+  timing past that point folds the UI render into the physics figure and makes every transient
+  read compute-bound — including the ones that are not. Two stages, two measurements, or the
+  instrument confirms whatever you already believed.
+- **The profiling value lives on the service INSTANCE (`_perfStepMs`), never the snapshot.** The
+  snapshot is a contract (`CONTEXT.md` §6.3, gated by `run_contract`); a profiling number has no
+  business in it and would then have to be documented and migrated for ever.
+- **The packed chart buffer merged from backshop is NOT the fix for this.** It is a *memory* fix
+  — 68.9 MB → 11.1 MB — and its own commit says CPU is unaffected. Measured here: the sampler is
+  ~0.4 % of the 501 ms. Two true statements about performance that solve different problems;
+  adopting the nearby one as the answer would have closed this without moving the number.
+
+**`tools/verify_release_deploy.js` had a Cloudflare half that could never have passed.** It read
+API field names — `d.environment`, `d.deployment_trigger.metadata.commit_hash` — but wrangler
+prints a TABLE: `Id, Environment, Branch, Source, Deployment, Status`, where `Source` is the
+**short** sha and `Status` is a relative time on success and the literal `Failure` on failure.
+Every field it looked for was `undefined`, so the check was structurally incapable of passing.
+**It surfaced only because the two hosts disagreed about a release already known to be good** —
+the Vercel half said deployed, the Cloudflare half said no, and only the contradiction made
+anyone read the parser. A verifier with no true-positive on record is not a verifier.
+
+**A false privacy claim, taken from a docs summary rather than an observation.** `privacy.html`
+said the site ships no analytics script. Cloudflare Web Analytics **auto-install injects a
+beacon** (`cloudflareinsights.com/beacon.min.js`) — visible in the console the moment an ad
+blocker refuses it, which is exactly how it was caught, by the owner, on the live site.
+Corrected; then the mechanism paragraph was removed outright *(OWNER, 2026-08-08: "why say how
+the analytics are collected in the privacy page at all?")*. The page now states commitments —
+what is collected, what is not, that Cloudflare processes it — and describes no mechanism, so it
+cannot go stale against an implementation detail again.
+
+**Two of three new `run_site_meta` checks shipped HOLLOW, caught by injection.** One compared an
+`indexOf` result without testing for `-1`, so `-1 < n` was true for every input including the
+absent case; the other was a regex sitting inside `if (false && …)`. Both printed PASS against a
+deliberately broken page. Written beside their own fix, neither had ever been made to go red —
+the standing rule, again: a check is not green until you have seen it red. `run_site_meta`
+148 → 151, `run_portable` 128 → 129.
+
+**Build.** Cloudflare Pages strips `.html` and it is not configurable, so `site/build_site.js`
+rewrites links, canonicals and `og:url` **in the output only** — the repo keeps `.html` so
+`file://` browsing still works — and the rewrite runs AFTER the reference walk, or the walk
+would be validating paths that do not exist yet.
+
+`RD.diagnose()` was added for the consent-overlay report; `storageWritable()` probes an actual
+write rather than the presence of the API, because the failing browsers have the object and
+throw on use.
+
+---
+
 ## Session log — 2026-08-08-develop-f (CW inlet: 35–85 °F on a 60 °F default day — the envelope sourced, the floor and default ruled)
 
 **Three rulings in sequence, same day** *(OWNER, 2026-08-08)*: **(1)** *"what is the

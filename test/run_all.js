@@ -1036,7 +1036,10 @@ var BASELINES = {
   // The DROP entries had to go in the SAME change as the tags: the gate fails on a stale
   // declaration as well as an undeclared tag, so removing one without the other is red
   // either way. That symmetry is the check working.
-  'run_portable.js':       { code: 0, score: '128checks 0failed' },
+  // 128 -> 129 on 2026-08-08: ui/perf.js joined the shell, and the LOADS rule scans one
+  // check per shipped script. It contains no loader (only performance.now and arithmetic),
+  // so the count moves and nothing else does.
+  'run_portable.js':       { code: 0, score: '129checks 0failed' },
   // #260: every number in the PWR reactivity block is either SOURCED to a real-plant
   // document or SOLVED from one, and this pins the sourced anchors — the WTSM 2.1
   // -17 pcm/°F point, the 1400 ppm MTC crossover, monotonic steepening with
@@ -1191,7 +1194,19 @@ var BASELINES = {
   // throws at deploy time, which is late. It caught 404.html on its first run.
   // INJECTION-VERIFIED both ways: a page removed from the build list 146/2, a page added
   // to it that this gate does not glob 148/2.
-  'run_site_meta.js':      { code: 0, score: '148checks 0failed' },
+  // 148 -> 151 on 2026-08-08: three checks pinning the extensionless-URL rewrite in
+  // site/build_site.js. Cloudflare Pages redirects /about.html -> /about and it CANNOT be
+  // disabled, so every canonical naming the .html form pointed at a url that redirects away
+  // from the one served — measured live after the cutover. The build now rewrites links and
+  // canonicals in the OUTPUT only; the repo keeps .html so the site still browses from
+  // file:// with no server.
+  // TWO OF THESE THREE SHIPPED HOLLOW AND WERE CAUGHT BY INJECTION. The ordering check
+  // compared indexOf results directly, and indexOf returns -1 when absent — so DELETING the
+  // reference walk made it `-1 < n`, true, and the check passed on a build that verified
+  // nothing (the TR-17 shape: an expression that cannot be false). The dead-link check
+  // regexed for `deadLinks.length`, which survives `if (false && deadLinks.length)`.
+  // Both hardened; all four mutations now score 151/1.
+  'run_site_meta.js':      { code: 0, score: '151checks 0failed' },
   // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
   // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
   // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE
