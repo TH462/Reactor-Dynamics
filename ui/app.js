@@ -49,7 +49,11 @@
     series: {},             // per-plant; defaults set on plant load
     plant: 'pwr',           // active plant_id
     engineKey: 'pwr',       // active engine selector key
-    initState: 'hot_full_power',
+    // The SHIPPED starting point *(OWNER, 2026-08-08: "the plant should start with the 50%
+    // power preset")*. Kept in step with ENGINES.pwr.init below — this one seeds the very
+    // first render, that one is what a plant switch and Reset go back to, and a mismatch
+    // shows up as a board that changes under you one broadcast in.
+    initState: '50_percent',
     view: 'diagram',        // plant-display active view
     pdAck: {},              // operator-acknowledged auto-actuations (ECCS/AFW → green)
     pdOp: {},               // operator-initiated systems (start green directly)
@@ -62,7 +66,26 @@
   // Operator automation now lives IN-STACK (layers/control/control_kernel.js);
   // the Automate tab is a pure face over snapshot.automation, issuing
   // set_auto_channel / set_auto_setpoint commands like any operator action.
-  var chartBuf = [];        // { t, v:{serId:instrumentVal}, tv:{serId:trueVal} } — one value per plotted series
+  // { t, v:Float64Array, tv:Float64Array } — one COLUMN per series in the profile, indexed
+  // by `serCol` below. Values that do not exist on a side (a `ctl` series has no truth, a
+  // truth-only series has no channel) are NaN, which every consumer already rejects through
+  // its `isFinite` guard.
+  //
+  // PACKED, NOT id-KEYED, AND THAT IS A CAPACITY DECISION, not tidiness. The rows used to be
+  // `{ v: { serId: num } }`, whose cost is per stored PROPERTY. MEASURED at the shipped
+  // CHART_ROW_BUDGET of 9000 rows, both sides populated:
+  //     series     id-keyed objects     Float64Array
+  //         40           39.5 MB            9.6 MB
+  //         51           68.9 MB           11.1 MB
+  //        110          137.8 MB           19.2 MB
+  // The Indications tab (2026-08-08) makes every plant channel plottable, which takes the
+  // PWR registry past 100 — unaffordable in the old shape and cheaper in this one than 40
+  // series used to be. The earlier fix for the same growth was the CHART_SAMPLE_SEC decimation
+  // below; this is the other half, and it is why the row budget can stay where it is.
+  var chartBuf = [];
+  // series id → its column in a packed row. Rebuilt whenever the plant changes, because the
+  // column order IS the profile's series order — see buildSeriesIndex.
+  var serCol = {}, serCols = 0;
   // Sub-broadcast rows drained from the service but not yet folded into chartBuf. They are
   // held rather than consumed on the spot because the drain now happens EARLY in renderNow
   // (the board's vital tiles need them before it) while the chart's own sample-grid gate may
@@ -111,8 +134,20 @@
   var smoothed = {};        // id -> display-damped instrument value
 
   // ----------------------------------------------------------- unit conversion
+  // ONE RCS flow scale for the whole shell: gpm = frac/s × 7,500 gal × 60 s/min (#408
+  // wave 1). Same number as `GPM_RCS_PER_FRAC`/`GPM_CHARGING` in pwr_board_wiring.js —
+  // named here because it had already been written out four times as a bare 450000 in
+  // this file alone, and a display currency spelled as a literal is the drift `run_manual_units`
+  // exists to catch on the board side.
+  var GPM_PER_FRAC = 450000;
   function conv(v, dim) {
     if (v == null) return v;
+    // FLOW IS THE EXCEPTION AND IT IS DELIBERATE: its base unit is US, not SI. The gpm
+    // figures are an authored display scale over normalized engine internals, so gpm is
+    // the identity side and m³/h is the converted one — backwards from every other family
+    // here (CLAUDE.md, and the same convention the board's `flow` family uses). It
+    // therefore converts on the SI branch, where the others pass through.
+    if (dim === 'flow') return ui.units === 'SI' ? v * 0.2271247 : v;   // gpm → m³/h
     if (ui.units === 'SI') return v;
     switch (dim) {
       case 'pressure': return v * 145.038;     // MPa → psia
@@ -123,8 +158,8 @@
     }
   }
   function unit(dim) {
-    var si = { pressure: 'MPa', temp: '°C', tempdiff: '°C', vacuum: 'kPa' };
-    var us = { pressure: 'psi', temp: '°F', tempdiff: '°F', vacuum: 'inHg' };
+    var si = { pressure: 'MPa', temp: '°C', tempdiff: '°C', vacuum: 'kPa', flow: 'm³/h' };
+    var us = { pressure: 'psi', temp: '°F', tempdiff: '°F', vacuum: 'inHg', flow: 'gpm' };
     return (ui.units === 'SI' ? si : us)[dim] || '';
   }
   function dispP(mpa) { return mpa == null ? '—' : conv(mpa, 'pressure').toFixed(0) + ' ' + unit('pressure'); }
@@ -178,11 +213,52 @@
     var v = conv(c, 'tempdiff');
     return (Math.abs(v) < 0.5 ? 0 : v).toFixed(0) + ' ' + unit('tempdiff');
   }
+  // An RCS flow the engine carries as frac/s, in the unit an operator actually reads
+  // *(OWNER, 2026-08-08: "in the physcs tab it shows primary leak flow as a percentage, it
+  // should also show the real flow rate in an appropriate unit.")*. A fraction-per-second
+  // is a modelling currency, not a rate anyone can size a leak against: 0.02 frac/s is
+  // 9,000 gpm, and nothing on the row said so.
+  function physFlow(fracPerSec) {
+    if (fracPerSec == null || !isFinite(fracPerSec)) return '—';
+    var f = conv(fracPerSec * GPM_PER_FRAC, 'flow');
+    // Sub-gpm leaks are the interesting small end (a 1 gpm identified leak is a Tech Spec
+    // limit), so keep a decimal until the number is big enough not to need one.
+    return (Math.abs(f) < 10 ? f.toFixed(1) : f.toFixed(0)) + ' ' + unit('flow');
+  }
   // % of rated thermal → MW. The rating lives in ONE place (identity.mwt_rated);
   // read it rather than restating it, or this is the next number to drift.
   function mwtOf(pctRated) {
     var id = RD.PWR_CONFIG && RD.PWR_CONFIG.identity;
     return ((pctRated || 0) / 100) * ((id && id.mwt_rated) || 0);
+  }
+  // The pressurizer node's level BEFORE the gauge clips it. `pzr_mass_frac` is the node's
+  // content in RCS-mass-fraction units and `level_per_mass` is the geometry slope that maps
+  // it back to level points (pwr_pressurizer.js: `pzr_mass_frac = pzrNodeLevel / level_per_mass`,
+  // and `pzr_level_pct = clip(that, 0, 100)`) — so the two are the SAME NUMBER on span and
+  // part company only past the ends.
+  //
+  // MEASURED, and the first version of this row was WRONG because it was not: it claimed a
+  // mass-only backbone that would diverge from the gauge whenever the void credit lifted
+  // level. It does not — the credit is already inside `pzr_mass_frac`. Full stack, difference
+  // between node and gauge:
+  //   all four presets                                     0.0
+  //   stuck-open PORV, indicated 35.0 → 46.6 % over 20 min  0.0 throughout
+  //   overfill to solid (max charging, letdown isolated)   +0.4 at the peg, and the pressure
+  //                                                         steps 15.41 → 16.15 MPa there
+  //   large LOCA sev 0.6, gauge resting on 0.0 %          −105 at 100 s, −172 at 400 s
+  // So the off-scale reading is the whole of what this row knows that the gauge does not —
+  // and at 1.7 spans below zero it is a lot.
+  function pzrNodePct(t) {
+    if (!t || t.pzr_mass_frac == null) return null;
+    var pz = (RD.PWR_CONFIG && RD.PWR_CONFIG.pressurizer) || {};
+    return t.pzr_mass_frac * (pz.level_per_mass || 776);
+  }
+  // Combined ECCS rated injection in gpm — the SAME derivation as the board's GPM_HPI
+  // (pwr_board_wiring.js), read from config so a retune moves both.
+  function eccsRatedGpm() {
+    var em = (RD.PWR_CONFIG && RD.PWR_CONFIG.emergency) || {};
+    return ((em.hpi_flow_max || 2.0e-4) +
+            (em.lpi_flow_max || 1.0) * (em.lpi_inventory_gain || 5.2e-4)) * GPM_PER_FRAC;
   }
   function fuelDamageC() {
     var th = RD.PWR_CONFIG && RD.PWR_CONFIG.thermal;
@@ -214,7 +290,10 @@
   // surface is not extended to it yet, so the card is shown greyed and is not
   // selectable. The ?engine= dev override still reaches them deliberately.
   var ENGINES = {
-    pwr:       { plant: 'pwr',  dv: null,              init: 'hot_full_power',
+    // 50 % power, not full *(OWNER, 2026-08-08: "the plant should start with the 50% power
+    // preset")* — there is somewhere to go in both directions from it. `ui.initState` above
+    // carries the same value for the first render.
+    pwr:       { plant: 'pwr',  dv: null,              init: '50_percent',
                  label: 'PWR', sub: 'Pressurized Water Reactor',
                  desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
@@ -305,6 +384,9 @@
         { id: 'core_heat',grp: 'Reactor core', label: 'Total Core Heat', c: '#8a7040', tru: function (t) { return t.core_heat_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
 
         // ---------------------------------------------------------------- core damage
+        // Core exit before the cladding, matching the Physics tab: it is first in the damage
+        // chain and the only one of these with an instrument (the post-TMI channel).
+        { id: 'core_exit',grp: 'Core damage', label: 'Core Exit Temp', c: '#e09060', get: function (i) { return i.core_exit_temp; }, tru: function (t) { return t.t_core_exit_c; }, range: [93, 982], dHi: 371, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'clad_temp',grp: 'Core damage', label: 'Peak Clad Temp', c: '#d05a3e', tru: function (t) { return t.clad_temp_c; }, range: [200, 1400], dHi: 1200, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'core_void',grp: 'Core damage', label: 'Core Void', c: '#8fb0d0', tru: function (t) { return t.core_void_fraction * 100; }, range: [0, 100], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'uncovered',grp: 'Core damage', label: 'Core Uncovered', c: '#c04a6a', tru: function (t) { return t.core_uncovered_frac * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
@@ -327,7 +409,15 @@
         { id: 'rcs_flow', grp: 'Primary coolant', label: 'RCS Flow', c: '#5a8a9a', get: function (i) { return i.rcs_flow; }, tru: function (t) { return t.pump_flow_pct; }, range: [0, 120], dLo: 90, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'inventory',grp: 'Primary coolant', label: 'RCS Inventory', c: '#4a9a70', tru: function (t) { return t.core_inventory_pct; }, range: [0, 105], dLo: 90, fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'loop_void',grp: 'Primary coolant', label: 'Loop Void', c: '#7090b8', tru: function (t) { return t.primary_void_fraction * 100; }, range: [0, 100], dHi: 1, fmt: function (v) { return v.toFixed(1) + '%'; } },
-        { id: 'leak',     grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', tru: function (t) { return t.leak_flow * 100; }, range: [0, 30], dHi: 0.01, fmt: function (v) { return v.toFixed(2) + '%'; } },
+        // Leak flow traces GPM, not the fraction-per-second the engine carries. The physics
+        // row prints both and the chart has to agree with it *(OWNER, 2026-08-08: "it should
+        // also show the real flow rate in an appropriate unit")* — a "%" axis for a break was
+        // the same currency problem #408 fixed on the CVCS boxes, which plotted the real flow
+        // as a flat line at 0.007 %. `dHi` is 1 gpm: the Technical Specification unidentified-
+        // leakage limit, i.e. "any leak worth the name", where 0.01 % meant 45 gpm.
+        { id: 'leak',     grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', tru: function (t) { return t.leak_flow * GPM_PER_FRAC; }, range: [0, 2000], dHi: 1, fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
+        { id: 'pzr_node', grp: 'Primary coolant', label: 'PZR Level (off-scale)', c: '#3f9a94', tru: function (t) { return pzrNodePct(t); }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'accum_vol',grp: 'Primary coolant', label: 'Accumulator Inventory', c: '#9ab060', tru: function (t) { return t.accumulator_volume_pct; }, range: [0, 105], dLo: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
         // Heatup / cooldown rate — the number the Mode 5↔1 procedures are written around
         // (the 100 °F/hr technical-specification class limit, and #310's ramped cooldown).
         // #375: the channel has an INSTRUMENT now (derived from indicated tavg, damped) —
@@ -338,10 +428,31 @@
         // There is ONE pressure instrument and it reads the hot-leg/pressurizer datum, so
         // the whole three-node split is true-state only. It is why the cold leg reaches an
         // ECCS setpoint before the gauge does, and why the pump suction cavitates first.
+        { id: 'p_hot',    grp: 'Loop pressure', label: 'Hot Leg Press', c: '#88b8d8', tru: function (t) { return t.p_hotleg; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'p_cold',   grp: 'Loop pressure', label: 'Cold Leg Press', c: '#6aa0c8', tru: function (t) { return t.p_coldleg; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'p_suct',   grp: 'Loop pressure', label: 'Pump Suction Press', c: '#4a7090', tru: function (t) { return t.p_pumpsuction; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'suct_sub', grp: 'Loop pressure', label: 'Suction Subcool', c: '#8a9070', tru: function (t) { return t.suction_subcool_c; }, range: [-10, 80], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff'); } },
         { id: 'cavit',    grp: 'Loop pressure', label: 'RCP Cavitation', c: '#d0704a', tru: function (t) { return t.rcp_cavitation_frac * 100; }, range: [0, 100], dHi: 0.01, fmt: function (v) { return v.toFixed(0) + '%'; } },
+
+        // ---------------------------------------------------------------- pressure boundary
+        // The relief path. Two of these are BOOLEAN traces and that is deliberate: a step
+        // line for "the valve was open from here to here", laid under the pressure trace, is
+        // the single most useful thing a strip chart can say about a TMI-shaped event, and it
+        // is information no gauge on the board carries. A boolean lands in the packed row as
+        // 1 or 0 (Float64Array coercion), and the per-series auto-range draws it as a clean
+        // step between the top and bottom of its own band.
+        { id: 'porv',     grp: 'Pressure boundary', label: 'PORV Open', c: '#e08050', tru: function (t) { return t.porv_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'OPEN' : 'shut'; } },
+        { id: 'tailpipe', grp: 'Pressure boundary', label: 'PORV Tailpipe Temp', c: '#c86a4a', get: function (i) { return i.porv_tailpipe_temp; }, tru: function (t) { return t.porv_tailpipe_temp_c; }, range: [0, 250], dHi: 150, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'spray_flow',grp: 'Pressure boundary', label: 'PZR Spray Flow', c: '#68b8e0', get: function (i) { return i.pzr_spray_flow; }, tru: function (t) { return t.spray_flow_pct; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'sg_safety',grp: 'Pressure boundary', label: 'SG Safeties Lifting', c: '#d8a040', tru: function (t) { return t.sg_safety_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'LIFT' : 'seated'; } },
+
+        // ---------------------------------------------------------------- containment
+        // #386. Building pressure traces in GAUGE units, like the physics row and the board —
+        // the sourced setpoints are psig and an intact building must read 0, not 14.7.
+        { id: 'ctmt_p',   grp: 'Containment', label: 'Containment Press', c: '#a878c0', get: function (i) { return i.containment_pressure; }, tru: function (t) { return t.containment_pressure_mpa; }, range: [0.1, 0.55], dHi: 0.3081, fmt: function (v) { return physPg(v); } },
+        { id: 'ctmt_t',   grp: 'Containment', label: 'Containment Temp', c: '#c08890', get: function (i) { return i.containment_temp; }, tru: function (t) { return t.containment_temp_c; }, range: [20, 200], dHi: 100, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'ctmt_sump',grp: 'Containment', label: 'Containment Sump', c: '#7898c0', get: function (i) { return i.containment_sump_level; }, tru: function (t) { return t.containment_sump_pct; }, range: [0, 100], dHi: 0.1, fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'ctmt_h2',  grp: 'Containment', label: 'Containment H₂', c: '#d05070', get: function (i) { return i.ctmt_h2; }, tru: function (t) { return t.ctmt_h2_pct; }, range: [0, 10], dHi: 4.1, fmt: function (v) { return v.toFixed(2) + '% vol'; } },
 
         // ---------------------------------------------------------------- steam & feed
         { id: 'steam_p',  grp: 'Steam & feed', label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
@@ -353,6 +464,12 @@
         // feed (main + AFW). Positive means the level is on its way down, which is the
         // thing a level trace only tells you after it has already happened.
         { id: 'sg_bal',   grp: 'Steam & feed', label: 'Steam − Feed', c: '#b09050', tru: function (t) { return (t.steam_out_total - t.fw_flow_normalized) * 100; }, range: [-30, 30], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        // The heat sink's own two state variables — the whole-vessel mass ledger (#418) and
+        // the saturation temperature the primary is dumping into. Neither has an instrument:
+        // the level gauge is a NARROW-RANGE tap that pegs outside its band, which is why a
+        // flat-lined level trace and a still-falling mass trace are both true at once.
+        { id: 'sg_mass',  grp: 'Steam & feed', label: 'SG Inventory', c: '#9a78a8', tru: function (t) { return t.sg_mass_frac * 100; }, range: [0, 105], dLo: 20, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'psg_dt',   grp: 'Steam & feed', label: 'Primary → SG ΔT', c: '#c07068', tru: function (t) { return t.t_sg_c == null ? null : t.tavg_c - t.t_sg_c; }, range: [0, 45], dLo: 3, fmt: function (v) { return conv(v, 'tempdiff').toFixed(1) + unit('tempdiff'); } },
 
         // ---------------------------------------------------------------- turbine & output
         { id: 'mwe',      grp: 'Turbine & output', label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, tru: function (t) { return t.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
@@ -363,6 +480,14 @@
         // fission power, or the number goes to infinity after a scram.
         { id: 'eff',      grp: 'Turbine & output', label: 'Cycle Efficiency', c: '#8a8a5a', tru: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? t.mwe_output / q * 100 : null; }, range: [0, 45], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'vacuum',   grp: 'Turbine & output', label: 'Condenser Vacuum', c: '#6080a0', get: function (i) { return i.condenser_vacuum; }, tru: function (t) { return t.condenser_vacuum_kpa; }, range: [0, 100], dLo: 74.5, fmt: function (v) { return v.toFixed(1) + ' kPa'; } },
+
+        // ---------------------------------------------------------------- support systems
+        // Why the pumps stopped, and what is putting water back. `ac_avail` is a boolean
+        // trace for the same reason the PORV one is: the moment power goes is the moment
+        // every motor load's behaviour changes, and a step line marks it exactly.
+        { id: 'ac_avail', grp: 'Support systems', label: 'AC Available', c: '#e0c060', tru: function (t) { return t.ac_available ? 1 : 0; }, range: [0, 1], dLo: 0, fmt: function (v) { return v > 0.5 ? 'available' : 'LOST'; } },
+        { id: 'eccs_flow',grp: 'Support systems', label: 'ECCS Injection', c: '#50c090', tru: function (t) { return ((t.hpi_flow_normalized || 0) + (t.accumulator_flow_normalized || 0)) * eccsRatedGpm(); }, range: [0, 400], fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
+        { id: 'cw_temp',  grp: 'Support systems', label: 'CW Inlet Temp', c: '#7ab0b8', get: function (i) { return i.cw_inlet_temp; }, tru: function (t) { return t.cw_inlet_temp_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
 
         // ---------------------------------------------------------------- controls
         // COMMANDED positions, not readings. Plotted against everything above them, these
@@ -379,8 +504,8 @@
         // gpm = frac/s × 450,000 (the declared 7,500 gal RCS, #408 — same constant as
         // GPM_CHARGING/GPM_LETDOWN in pwr_board_wiring.js; the old ×100 "%" plotted the
         // real currency as a flat-line at 0.007 %).
-        { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * 450000; }, tru: function (t) { return t.charging_flow_actual * 450000; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
-        { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * 450000; }, tru: function (t) { return t.letdown_flow_actual * 450000; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
+        { id: 'charging', grp: 'Controls', label: 'Charging Flow', c: '#7ab0d8', get: function (i) { return i.charging_flow * GPM_PER_FRAC; }, tru: function (t) { return t.charging_flow_actual * GPM_PER_FRAC; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
+        { id: 'letdown',  grp: 'Controls', label: 'Letdown Flow', c: '#b87a90', get: function (i) { return i.letdown_flow * GPM_PER_FRAC; }, tru: function (t) { return t.letdown_flow_actual * GPM_PER_FRAC; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + ' gpm'; } },
         { id: 'load_tgt', grp: 'Controls', label: 'Load Target MW', c: '#8898b8', ctl: function (c) { return c.load_target_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
         { id: 'press_sp', grp: 'Controls', label: 'Pressure Setpoint', c: '#70a070', ctl: function (c) { return c.pressure_setpoint; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'dump_sp',  grp: 'Controls', label: 'Dump Setpoint', c: '#a0a860', ctl: function (c) { return c.steam_dump_setpoint; }, range: [0, 10], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
@@ -409,16 +534,16 @@
       // It is not a second alarm system — the alarm panel is the alarm panel.
       physics: [
         { title: 'Reactivity', rows: [
-          { k: 'Net reactivity',
+          { k: 'Net reactivity', ser: 'rho',
             hint: 'the net excess reactivity of the core, in per cent mille (pcm) — hundred-thousandths of a reactivity unit.',
             detail: 'Zero is critical: power is steady. Positive and power is climbing, negative and it is falling, and how FAST depends on how far from zero — which is what the PERIOD readout on the board turns into seconds. This is a computed diagnostic, not a plant instrument; a real plant infers reactivity from rate meters and rod worth curves.',      v: function (t) { return sgnFix(t.reactivity_pcm, 0) + ' pcm'; } },
-          { k: 'Fuel temp (Doppler)',
+          { k: 'Fuel temp (Doppler)', ser: 'fuel_temp',
             hint: 'average fuel pellet temperature, the input to the Doppler reactivity feedback.',
             detail: 'Fuel runs far hotter than the coolant around it because the heat has to cross the pellet, the gap and the cladding to get out. As it heats, resonance absorption in uranium-238 broadens and swallows more neutrons — the Doppler effect — which is prompt negative feedback and the first thing that arrests a power excursion, acting in milliseconds, long before the moderator or the operator can.', v: function (t) { return dispT(t.fuel_temp_c); } },
-          { k: 'Xenon',
+          { k: 'Xenon', ser: 'xenon',
             hint: 'xenon-135 poisoning, as a percentage of its equilibrium worth at the current power.',
             detail: 'Xenon-135 is the strongest neutron absorber the core makes. It builds from iodine-135 decay and burns out under flux, so it lags power by hours: after a power reduction it PEAKS several hours later, and if it out-runs your available rod and boron worth the reactor cannot be restarted until it decays — the xenon precluded window. 100 % means it has settled at the value that power sustains.',               v: function (t) { return t.xenon_pct_eq.toFixed(0) + ' % eq'; } },
-          { k: 'RCS boron',
+          { k: 'RCS boron', ser: 'boron',
             hint: 'boron concentration in the Reactor Coolant System (RCS), in parts per million (ppm).',
             detail: 'Boron is the slow, plant-wide reactivity control: it holds down the excess reactivity of fresh fuel so the control rods can stay nearly withdrawn and available. Adding boron (borating) is negative reactivity, adding pure water (diluting) is positive. It moves over minutes to hours through the Chemical and Volume Control System (CVCS), which is why rods, not boron, answer a transient.',           v: function (t) { return t.boron_ppm.toFixed(0) + ' ppm'; } },
         ] },
@@ -429,16 +554,16 @@
         // paths actually burn (31.2 MWt in that same sample), and it is the honest
         // denominator for efficiency.
         { title: 'Core heat', rows: [
-          { k: 'Fission power',
+          { k: 'Fission power', ser: 'power',
             hint: 'heat from fission alone, in megawatts thermal (MWt).',
             detail: 'This is what the nuclear instruments read and what the reactor trip acts on — and it is NOT the total heat the core is making. The moment the rods drop, fission collapses in seconds while the decay tail keeps going, so immediately after a scram this number reads far BELOW the decay heat row underneath it. Anything treating reactor power as core thermal power is wrong from the instant of the trip.',      v: function (t) { return mwtOf(t.power_pct).toFixed(1) + ' MWt'; } },
-          { k: 'Decay heat',
+          { k: 'Decay heat', ser: 'decay',
             hint: 'heat from the decay of fission products, as a percentage of rated and in megawatts thermal (MWt).',
             detail: 'The heat you cannot switch off. Immediately after a trip from full power it is about 6–7 % of rated, falls to a few per cent within minutes and to around 1 % after a day — but it never reaches zero, which is why a shut-down core still needs a heat sink and why losing one is a real accident rather than an inconvenience.',         v: function (t) { return t.decay_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.decay_heat_pct).toFixed(1) + ' MWt'; } },
-          { k: 'Total core heat',
+          { k: 'Total core heat', ser: 'core_heat',
             hint: 'fission plus decay heat — the heat the coolant actually has to carry away, in megawatts thermal (MWt).',
             detail: 'This is the honest denominator for cycle efficiency and the number the loop temperature split is computed from. At steady power it is equal to fission power by construction, which is exactly why the difference is invisible in normal operation and matters enormously after a trip.',    v: function (t) { return mwtOf(t.core_heat_pct).toFixed(1) + ' MWt'; } },
-          { k: 'Core void (boiling)',
+          { k: 'Core void (boiling)', ser: 'core_void',
             hint: 'the fraction of the core coolant channel that is steam rather than water.',
             detail: 'Zero on a healthy Pressurized Water Reactor (PWR) — the whole point of holding the primary at about 2235 pounds per square inch (psi) is to keep the coolant liquid all the way through the core. Anything above zero means the coolant is boiling where it should not, heat transfer off the fuel is degrading, and the subcooling margin has already gone.', v: function (t) { return pctOf(t.core_void_fraction, 1); }, cls: nzCls('core_void_fraction') },
         ] },
@@ -458,20 +583,38 @@
         // 400 s while the decay tail is FALLING, which is the whole #238 point and was
         // invisible.
         { title: 'Core damage', rows: [
+          // FIRST in the group because it is first in the CHAIN: the core exit is where
+          // inadequate core cooling becomes visible, before the cladding node has moved.
+          // On a covered core it equals the bulk exactly (the instrument's lag is matched
+          // to `tavg` for that reason — see core_exit_temp in pwr_config), so the number
+          // worth reading is the SEPARATION from Tavg, which is what this row prints.
+          { k: 'Core exit temp', ser: 'core_exit',
+            hint: 'coolant temperature leaving the top of the core, and how far it has separated from the loop average.',
+            detail: 'The post-Three-Mile-Island inadequate-core-cooling channel — real plants were required to add it after TMI-2 precisely because the operators had no direct way to see that the core was uncovering. On a covered core it is the bulk average and the separation reads zero. Once the water level falls below the top of the fuel the steam leaving the core superheats, so this climbs away from average coolant temperature while the loop instruments still look ordinary. The separation, not the absolute number, is the cue.',
+            v: function (t) {
+              if (t.t_core_exit_c == null) return '—';
+              var d = t.t_core_exit_c - t.tavg_c;
+              return dispT(t.t_core_exit_c) + ' · ' + sgnFix(conv(d, 'tempdiff'), 0) + ' ' + unit('tempdiff') + ' vs Tavg';
+            },
+            cls: function (t) {
+              if (t.t_core_exit_c == null) return '';
+              var d = t.t_core_exit_c - t.tavg_c;
+              return d > 50 ? 'q-alarm' : d > 5 ? 'q-caution' : 'q-ok';
+            } },
           // MEASURED: on a covered core `stepCladding` floors the hot node at the
           // fuel temperature, so clad == fuel at power (both 693 °C / 1280 °F at
           // HFP) and sits far above the hot leg — a "clad above coolant" rule
           // cautions the whole time. The node only SEPARATES from the fuel once
           // uncovery starts (#213), which is the state worth marking; the alarm
           // step is checkDamage's own criterion, fuel_damage_c.
-          { k: 'Peak clad temp',
+          { k: 'Peak clad temp', ser: 'clad_temp',
             hint: 'the hottest fuel cladding temperature in the core, at the top of the hot channel.',
             detail: 'While the core is covered the cladding sits at the fuel temperature and this tracks it. Once the water level falls below the top of the core the uncovered part is cooled by steam instead of water, the cladding separates from the fuel node and runs away upward. This is the number core damage is judged on, because damage is local before it is average.',     v: function (t) { return dispT(t.clad_temp_c); },
             cls: function (t) { return t.clad_temp_c >= fuelDamageC() ? 'q-alarm' : t.clad_temp_c > t.fuel_temp_c + 1 ? 'q-caution' : 'q-ok'; } },
-          { k: 'Core uncovered',
+          { k: 'Core uncovered', ser: 'uncovered',
             hint: 'the fraction of the core the model treats as steam-cooled rather than water-cooled.',
             detail: 'Zero while the Reactor Coolant System (RCS) inventory keeps the core covered. It ramps up as inventory falls past the top of the active fuel and reaches 100 % at significant uncovery. It is the first link in the damage chain: uncovery, then zirconium oxidation heat, then a cladding temperature excursion.',     v: function (t) { return pctOf(t.core_uncovered_frac, 1); }, cls: nzCls('core_uncovered_frac') },
-          { k: 'Zr oxidation heat',
+          { k: 'Zr oxidation heat', ser: 'zirc',
             hint: 'heat released by zirconium–steam oxidation of the cladding, as a percentage of rated and in megawatts thermal (MWt).',
             detail: 'Above roughly 2200 °F (1200 °C) the zirconium cladding reacts with steam, producing zirconium dioxide, hydrogen and a great deal of heat. It is the reason a damaged core ACCELERATES: the reaction rate rises with temperature while the decay tail is falling, so the core heats itself faster and faster once it starts. The hydrogen is the other product, and it is what exploded at Three Mile Island Unit 2 and at Fukushima.',  v: function (t) { return t.zirc_heat_pct.toFixed(2) + ' % · ' + mwtOf(t.zirc_heat_pct).toFixed(2) + ' MWt'; },
             cls: nzCls('zirc_heat_pct') },
@@ -496,30 +639,58 @@
             } },
         ] },
         { title: 'Primary coolant', rows: [
-          { k: 'Core ΔT (hot − cold)',
+          { k: 'Core ΔT (hot − cold)', ser: 'loop_dt',
             hint: 'the temperature rise the coolant picks up crossing the core — hot leg minus cold leg.',
             detail: 'For a fixed flow this is directly proportional to the heat the core is making, which is why it is the input to the Overtemperature and Overpower Delta-T reactor trips. It runs about 59 °F (33 °C) at full power and near zero on a shut-down plant with the pumps running. Lose flow and it OPENS even though power has not changed.',   v: function (t) { return physTd(t.thot_c - t.tcold_c); } },
-          { k: 'Subcooling margin',
+          { k: 'Subcooling margin', ser: 'subcool',
             hint: 'how far the coolant is below its own boiling point at the current pressure.',
             detail: 'The single most important number on a Pressurized Water Reactor (PWR) during an accident, and the one that tells you whether you still have a solid water loop. Positive means liquid; zero means the coolant is at saturation and will flash to steam anywhere pressure dips. Emergency procedures are written around keeping it, and losing it is what turns a leak into a loss-of-coolant accident.',      v: function (t) { return physTd(t.subcooling_c) + (t.subcooling_c <= 0 ? ' · SATURATED' : ''); },
             cls: function (t) { return t.subcooling_c < 11.1 ? 'q-alarm' : t.subcooling_c < 22.2 ? 'q-caution' : 'q-ok'; } },
-          { k: 'Heatup / cooldown rate',
+          { k: 'Heatup / cooldown rate', ser: 'tavg_rate',
             hint: 'the rate average coolant temperature is moving, per hour.',
             detail: 'Limited by the Reactor Pressure Vessel (RPV) itself: the thick steel wall heats and cools from the inside first, so a fast change puts the inner surface in tension against the outer. Technical Specifications cap it at 100 °F/hr (55.6 °C/hr) in each direction, and a controlled cooldown is spent holding that number, not chasing it.', v: function (t) { return sgnFix(conv(t.tavg_rate_c_per_hr, 'tempdiff'), 0) + ' ' + unit('tempdiff') + '/hr'; } },
-          { k: 'RCS inventory',
+          { k: 'RCS inventory', ser: 'inventory',
             hint: 'how much water is in the Reactor Coolant System (RCS), as a percentage of the normal full mass.',
             detail: 'The mass balance behind everything else. Above 100 % the plant is being over-filled and heads toward going solid; below it the pressurizer level and then the subcooling margin follow it down. It is TRUE mass, not a gauge — there is no plant instrument that reads it, which is exactly why pressurizer level has to be inferred from and cross-checked against everything else.',          v: function (t) { return t.core_inventory_pct.toFixed(1) + ' %'; },
             cls: function (t) { return t.core_inventory_pct < 90 ? 'q-alarm' : t.core_inventory_pct < 99 ? 'q-caution' : 'q-ok'; } },
-          { k: 'Loop void (inventory)',
+          { k: 'Loop void (inventory)', ser: 'loop_void',
             hint: 'the steam fraction in the loop as a whole, outside the core channel.',
             detail: 'Zero on an intact plant. Steam in the loop breaks natural circulation, defeats the Reactor Coolant Pumps (RCPs) and makes pressurizer level lie — a voiding primary pushes water UP into the pressurizer, so level rises while the plant is losing inventory. That is the deception at the heart of the Three Mile Island accident.',  v: function (t) { return pctOf(t.primary_void_fraction, 1); }, cls: nzCls('primary_void_fraction') },
-          { k: 'RCS loop flow',
-            hint: 'coolant flow through the loop, as a percentage of rated flow.',
-            detail: '100 % with the Reactor Coolant Pumps (RCPs) running. Stop them and it does not fall to zero: buoyancy between the hot and cold legs keeps a few per cent circulating — natural circulation — which is enough to carry decay heat to the steam generator but nothing like enough for power operation.',          v: function (t) { return t.pump_flow_pct.toFixed(0) + ' %'; } },
+          // The flow NUMBER and the flow MODE on one line. They are the same fact and reading
+          // them apart is what makes a blackout confusing: 3 % is either a dying pump or a
+          // healthy natural-circulation loop, and only the mode says which.
+          { k: 'RCS loop flow', ser: 'rcs_flow',
+            hint: 'coolant flow through the loop as a percentage of rated, and whether it is pumped or buoyancy-driven.',
+            detail: '100 % with the Reactor Coolant Pumps (RCPs) running. Stop them and it does not fall to zero: buoyancy between the hot and cold legs keeps a few per cent circulating — natural circulation — which is enough to carry decay heat to the steam generator but nothing like enough for power operation. It only works while the loop is full of liquid, so it is the first thing voiding takes away, and the mode word here is the difference between a loop that is coasting down and one that has established a standing circuit.',
+            v: function (t) {
+              var mode = t.pump_running ? 'FORCED' : (t.natural_circulation ? 'NATURAL CIRC' : 'STAGNANT');
+              return t.pump_flow_pct.toFixed(0) + ' % · ' + mode;
+            },
+            cls: function (t) { return t.pump_running ? 'q-ok' : (t.natural_circulation ? 'q-caution' : 'q-alarm'); } },
+          // The pressurizer's OWN water mass (#385). Level is what the board shows and it is
+          // a geometry function of three separate terms (mass, void credit, Tavg); this is
+          // the mass term alone, which is the one an inventory loss actually moves.
+          { k: 'Pressurizer level (off-scale)', ser: 'pzr_node',
+            hint: 'what the pressurizer level model reads before the gauge clips it to its 0–100 % span.',
+            detail: 'A level gauge stops at the ends of its span, and the plant does not. Once the pressurizer goes solid the indication sits at 100 % and stays there however far past full the loop is being pushed — so the operator loses the one signal that says how hard the relief valves are about to be worked. At the other end an indication resting on 0 % says nothing about how much water a recovery has to put back before level even reappears on the gauge. On span this reads exactly what the gauge reads; the number only becomes news when the gauge has run out of scale.',
+            v: function (t) {
+              var p = pzrNodePct(t);
+              if (p == null) return '—';
+              if (p > 100) return p.toFixed(0) + ' % · SOLID, ' + (p - 100).toFixed(0) + ' pts past full';
+              if (p < 0) return p.toFixed(0) + ' % · ' + (-p).toFixed(0) + ' pts below span';
+              return p.toFixed(0) + ' % · on span';
+            },
+            cls: function (t) {
+              var p = pzrNodePct(t);
+              // Same low bands as the pzr_level gauge (caution_lo 25 / danger_lo 12); off
+              // either end of the span is an alarm in its own right, because that is the
+              // state the gauge beside it can no longer report.
+              return p == null ? '' : ((p > 100 || p < 12) ? 'q-alarm' : p < 25 ? 'q-caution' : 'q-ok');
+            } },
           // The passive shot, and how much of it is left. The ECCS card shows HPI flow,
           // discharge pressure and alignment; nothing anywhere shows accumulator
           // inventory, so a player who has dumped the tanks has no way to know it.
-          { k: 'Accumulator inventory',
+          { k: 'Accumulator inventory', ser: 'accum_vol',
             hint: 'water remaining in the passive accumulator tanks, and their nitrogen pressure.',
             detail: 'The accumulators are the passive shot: nitrogen-pressurized tanks that dump into the cold leg on their own the moment Reactor Coolant System (RCS) pressure falls below their check valves, with no power, no signal and no operator. They fire once. Once they are empty the core is on pumped Emergency Core Cooling System (ECCS) injection alone, and nothing else on the board says how much is left.',  v: function (t) { return t.accumulator_volume_pct.toFixed(0) + ' % · ' + physP(t.accumulator_pressure_mpa); },
             cls: function (t) { return t.accumulator_volume_pct < 1 ? 'q-alarm' : t.accumulator_volume_pct < 99 ? 'q-caution' : 'q-ok'; } },
@@ -529,31 +700,74 @@
         // split is why the cold leg reaches an ECCS setpoint before the gauge does
         // and why the pump suction cavitates first.
         { title: 'Loop pressure', rows: [
-          { k: 'Hot leg (pzr datum)',
+          { k: 'Hot leg (pzr datum)', ser: 'p_hot',
             hint: 'pressure at the hot leg, where the pressurizer connects — the datum the one pressure gauge reads.',
             detail: 'The plant has a single primary pressure instrument and it reads here. Every other pressure below is computed from this one plus the pump head and the loop losses, and none of them has a gauge.',     v: function (t) { return physP(t.p_hotleg); } },
-          { k: 'Cold leg (pump disch)',
+          { k: 'Cold leg (pump disch)', ser: 'p_cold',
             hint: 'pressure at the Reactor Coolant Pump (RCP) discharge, the high point of the loop.',
             detail: 'The pump adds head, so the cold leg sits above the pressurizer datum by roughly the pump differential. It matters because Emergency Core Cooling System (ECCS) injection and the accumulator check valves see THIS pressure, not the one on the gauge — so injection can start or stop at a pressure the board never displays.',   v: function (t) { return physP(t.p_coldleg); } },
-          { k: 'Pump suction',
+          { k: 'Pump suction', ser: 'p_suct',
             hint: 'pressure at the Reactor Coolant Pump (RCP) suction, the low point of the loop.',
             detail: 'The lowest pressure anywhere in the primary, which makes it the first place the coolant can flash. If pressure falls here to the saturation pressure of the water arriving, the pump cavitates.',            v: function (t) { return physP(t.p_pumpsuction); } },
-          { k: 'Suction subcooling',
+          { k: 'Suction subcooling', ser: 'suct_sub',
             hint: 'how far the water arriving at the Reactor Coolant Pump (RCP) is below boiling, at the suction pressure.',
             detail: 'The margin that actually protects the pumps, and it is always smaller than the loop subcooling margin above, because the suction is the lowest pressure in the system. It reaches zero before the bulk coolant does — the pumps are the first thing a depressurization threatens.',      v: function (t) { return physTd(t.suction_subcool_c); },
             cls: function (t) { return t.suction_subcool_c <= 0 ? 'q-alarm' : t.suction_subcool_c < 11.1 ? 'q-caution' : 'q-ok'; } },
-          { k: 'RCP cavitation',
+          { k: 'RCP cavitation', ser: 'cavit',
             hint: 'how badly the Reactor Coolant Pumps (RCPs) are cavitating, as a fraction.',
             detail: 'Zero on a healthy plant. Above zero the pumps are passing steam bubbles that collapse violently against the impeller: flow falls off, the pumps are being damaged, and procedures call for tripping them and going to natural circulation rather than running them to destruction.',          v: function (t) { return pctOf(t.rcp_cavitation_frac, 0); }, cls: nzCls('rcp_cavitation_frac') },
-          { k: 'Primary leak flow',
-            hint: 'coolant leaving the Reactor Coolant System (RCS) through a break or a leak, as a fraction of rated flow.',
-            detail: 'Zero on an intact plant. Discharge is not fixed — a break is an AREA, so flow falls as the system depressurizes, which is why a large break is violent early and slows as it empties.',       v: function (t) { return pctOf(t.leak_flow, 2); }, cls: nzCls('leak_flow') },
+          { k: 'Primary leak flow', ser: 'leak',
+            hint: 'coolant leaving the Reactor Coolant System (RCS) through a break or a leak, as a fraction of inventory per second and as a real flow rate.',
+            detail: 'Zero on an intact plant. The percentage is the fraction of the whole Reactor Coolant System (RCS) inventory leaving every second, which is the modelling currency; the gallons per minute beside it is what an operator sizes a leak against — a Technical Specification unidentified-leakage limit is 1 gpm, makeup can hold tens of gpm, and a large break is thousands. Discharge is not fixed: a break is an AREA, so flow falls as the system depressurizes, which is why a large break is violent early and slows as it empties.',
+            v: function (t) { return pctOf(t.leak_flow, 2) + ' · ' + physFlow(t.leak_flow); }, cls: nzCls('leak_flow') },
+        ] },
+        // ------------------------------------------------ pressure boundary (2026-08-08)
+        // The relief path, which is literally between Loop pressure and Containment on the
+        // energy-path spine: this is the route the primary's mass takes to get there.
+        //
+        // It is also the tab's single biggest omission, and the reason is worth stating.
+        // Everything above reads a quantity with no instrument; these rows read quantities
+        // whose INSTRUMENT DISAGREES WITH THEM. `porv_indicator` reports the DEMAND signal,
+        // not the valve — which is the Three Mile Island accident in one channel, and the
+        // Physics tab is the sanctioned place to show what the demand light cannot (HR1).
+        { title: 'Pressure boundary', rows: [
+          { k: 'Pressurizer relief (PORV)', ser: 'porv',
+            hint: 'what the power-operated relief valve is actually doing, as opposed to what it has been told to do.',
+            detail: 'At Three Mile Island Unit 2 the relief valve stuck open and the control room indication showed it shut — because the light was wired to the SIGNAL sent to the valve, not to the valve stem. The plant drained through an open relief path for two hours and twenty minutes with the board reporting a closed valve. This row reads the valve. The block valve beside it is the operator remedy: shutting it isolates a stuck relief valve, which is what finally stopped the TMI-2 leak.',
+            v: function (t) {
+              var s = t.porv_open ? 'OPEN' : 'shut';
+              if (t.porv_stuck) s += ' · STUCK';
+              if (t.block_valve_open === false) s += ' · block valve SHUT';
+              return s;
+            },
+            cls: function (t) { return t.porv_stuck ? 'q-alarm' : (t.porv_open ? 'q-caution' : 'q-ok'); } },
+          { k: 'PORV tailpipe temp', ser: 'tailpipe',
+            hint: 'temperature of the discharge line downstream of the relief valve.',
+            detail: 'The unalarmed indication that reveals a stuck-open relief valve. Steam passing the seat heats the pipe on the way to the quench tank, so a hot tailpipe with the valve indicating shut means the valve is not shut. At Three Mile Island the reading was available and elevated, and it was discounted — the shift believed a leaking valve could explain it. It sits near the containment temperature on an intact plant and climbs toward the primary saturation temperature when relief is passing.',
+            v: function (t) { return dispT(t.porv_tailpipe_temp_c); },
+            cls: function (t) {
+              if (t.porv_tailpipe_temp_c == null) return '';
+              return t.porv_tailpipe_temp_c > 150 ? 'q-alarm' : t.porv_tailpipe_temp_c > 100 ? 'q-caution' : 'q-ok';
+            } },
+          { k: 'Pressurizer spray', ser: 'spray_flow',
+            hint: 'spray valve flow, and whether the valve is stuck.',
+            detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds, where the heaters take minutes to raise it. It is drawn from the reactor coolant pump discharge, so it needs a running pump to work at all — losing the pumps costs you the pressure control you are most likely to want. A stuck-open spray valve depressurizes the plant toward saturation with no leak anywhere.',
+            v: function (t) {
+              var f = t.spray_flow_pct == null ? 0 : t.spray_flow_pct;
+              return (f < 0.05 ? '0' : f.toFixed(0)) + ' %' + (t.spray_stuck ? ' · STUCK' : '');
+            },
+            cls: function (t) { return t.spray_stuck ? 'q-alarm' : ((t.spray_flow_pct || 0) > 0.05 ? 'q-caution' : 'q-ok'); } },
+          { k: 'Steam generator safeties', ser: 'sg_safety',
+            hint: 'whether the secondary code safety valves are lifting.',
+            detail: 'The last line on the steam side, and unlike the relief valve they are pure spring-loaded mechanics — no signal, no power, no operator. They lift on steam pressure alone and reseat when it falls back. Lifting is not itself a fault: it means the steam generator has nowhere else to send its heat, which is normal on a loss of heat sink and is what keeps the secondary below its design pressure. Steam leaving here goes to atmosphere, so it is an inventory loss the condenser never sees.',
+            v: function (t) { return t.sg_safety_open ? 'LIFTING' : 'seated'; },
+            cls: function (t) { return t.sg_safety_open ? 'q-caution' : 'q-ok'; } },
         ] },
         // Containment (#386 stage 1) — the receiving volume the break and relief
         // discharge into. Sits after Loop pressure on the energy-path spine: it is
         // where the primary's mass and energy END UP when the boundary is open.
         { title: 'Containment', rows: [
-          { k: 'Containment pressure',
+          { k: 'Containment pressure', ser: 'ctmt_p',
             hint: 'building pressure above atmospheric, in gauge units — 0 on a healthy plant.',
             detail: 'The receiving volume for a primary break or an open relief valve. Hot discharge partly flashes to steam and pressurizes the building, so rising containment pressure is the direct evidence of a high-energy line break inside it — a real plant starts safety injection on it at 3.5 pounds per square inch gauge (psig). An intact plant reads exactly 0, and a steam generator tube rupture ALSO reads 0, because that break discharges into the steam generator instead: the one leak containment cannot see.',
             v: function (t) { return physPg(t.containment_pressure_mpa); },
@@ -575,19 +789,19 @@
               return s && f ? 'SPRAY + FANS-SI' : (s || f || 'PASSIVE');
             },
             cls: function (t) { return t.ctmt_spray_active ? 'q-alarm' : (t.ctmt_fan_active ? 'q-caution' : 'q-ok'); } },
-          { k: 'Containment temperature',
+          { k: 'Containment temperature', ser: 'ctmt_t',
             hint: 'atmosphere temperature inside the building.',
             detail: 'Rides the steam content: a steam and air mixture sits at the saturation temperature of its steam fraction, so temperature and pressure rise together during a blowdown and fall together as the passive heat sinks condense steam out onto the structures. Around 100 °F (38 °C) on a healthy plant.',
             v: function (t) { return conv(t.containment_temp_c, 'temp').toFixed(0) + ' ' + unit('temp'); },
             cls: function (t) { return t.containment_temp_c > 100 ? 'q-alarm' : t.containment_temp_c > 45 ? 'q-caution' : 'q-ok'; } },
-          { k: 'Containment sump level',
+          { k: 'Containment sump level', ser: 'ctmt_sump',
             hint: 'water collected on the building floor, as a percentage of the sump reference volume.',
             detail: 'Every pound the primary loses to the building ends up here — spilled liquid directly, flashed steam after the structures condense it back out. A climbing sump with steady pressure is the signature of a small cold leak, which is exactly the diagnosis the alarm-response procedures send you here for. Indication only: this plant models no recirculation from the sump.',
             v: function (t) { return (t.containment_sump_pct != null ? t.containment_sump_pct : 0).toFixed(1) + ' %'; },
             cls: nzCls('containment_sump_pct') },
           // Hydrogen (#386 stage 3). One concentration row + a status row; the burn
           // annunciator (A41) carries the event, this is the trend the operator watches.
-          { k: 'Containment hydrogen',
+          { k: 'Containment hydrogen', ser: 'ctmt_h2',
             hint: 'hydrogen concentration in the building atmosphere, volume percent — 0 unless the core has been oxidizing.',
             detail: 'Hydrogen comes from one place: overheated zirconium cladding burning in steam (the same reaction that accelerates a melting core). It reaches the building through whatever opening the primary is discharging through, so a tube-rupture accident sends its hydrogen into the steam generator instead and this reads 0. The lower flammability limit is 4.1 volume percent; at TMI-2 the building averaged about 7.9 percent when it ignited, 9 hours 50 minutes in — a single sharp pressure spike the operators first read as electrical noise. Recombiners work the concentration back down over many hours; they cannot keep up with a rapidly oxidizing core.',
             v: function (t) { return (t.ctmt_h2_pct != null ? t.ctmt_h2_pct : 0).toFixed(2) + ' % vol'; },
@@ -611,18 +825,76 @@
         // so the difference is the SG's mass balance: positive = boiling off faster
         // than it is being fed, i.e. the level is going down.
         { title: 'Heat sink & output', rows: [
-          { k: 'Steam − feed mismatch',
+          // The heat sink's own two state variables, neither of which has an instrument.
+          // `sg_level` is a NARROW-RANGE tap on one part of the vessel; this is the mass
+          // ledger the level is computed from (#418), and the saturation temperature is the
+          // temperature the primary is actually dumping into.
+          { k: 'Steam generator inventory', ser: 'sg_mass',
+            hint: 'water mass in the steam generator, as a percentage of its normal contents.',
+            detail: 'The narrow-range level gauge on the board watches a band around the normal operating level and pegs outside it; this is the whole vessel. During a transient the two part company badly — a level indication that has bottomed out says nothing about whether there is a thousand pounds of water left or none, which is the difference between a heat sink and a dry steam generator. Boiling one dry is what removes the primary\'s only way to reject heat with the reactor coolant pumps running.',
+            v: function (t) { return t.sg_mass_frac == null ? '—' : (t.sg_mass_frac * 100).toFixed(0) + ' %'; },
+            cls: function (t) {
+              if (t.sg_mass_frac == null) return '';
+              var m = t.sg_mass_frac * 100;
+              return m < 20 ? 'q-alarm' : m < 60 ? 'q-caution' : 'q-ok';
+            } },
+          { k: 'Primary → secondary ΔT', ser: 'psg_dt',
+            hint: 'how much hotter the primary coolant is than the boiling water in the steam generator — the gradient that moves the heat.',
+            detail: 'Heat only crosses the tubes because of this difference, and the transfer is roughly proportional to it. That is the whole coupling behind Pressurizer Water Reactor behaviour: open the turbine valves, steam pressure falls, the secondary boils colder, the gradient widens, more heat leaves the primary, average coolant temperature drops and the negative moderator coefficient raises reactor power — with nobody touching a rod. Watch this rather than power to understand why the reactor follows the turbine. It collapses toward zero when the steam generator loses its ability to take heat.',
+            v: function (t) {
+              if (t.t_sg_c == null) return '—';
+              return physTd(t.tavg_c - t.t_sg_c) + ' · SG sat ' + dispT(t.t_sg_c);
+            },
+            cls: function (t) {
+              if (t.t_sg_c == null) return '';
+              return (t.tavg_c - t.t_sg_c) < 3 ? 'q-alarm' : (t.tavg_c - t.t_sg_c) < 8 ? 'q-caution' : 'q-ok';
+            } },
+          { k: 'Steam − feed mismatch', ser: 'sg_bal',
             hint: 'steam leaving the steam generator minus feedwater going in, as a percentage of rated.',
             detail: 'The steam generator mass balance in one number. Positive means it is boiling off faster than it is being fed and level is falling; negative means it is filling. It is element 2 and 3 of the three-element feedwater controller and the reason that controller can anticipate a load change instead of chasing level after the fact.', v: function (t) { return sgnFix((t.steam_out_total - t.fw_flow_normalized) * 100, 1) + ' %'; } },
-          { k: 'Turbine steam demand',
+          { k: 'Turbine steam demand', ser: 'demand',
             hint: 'what the turbine is asking the steam generator for, in megawatts electric (MWe).',
             detail: 'The secondary side sets the pace on a Pressurized Water Reactor (PWR): open the turbine valves and the extra steam draw cools the primary, average temperature falls, and the negative moderator coefficient raises reactor power on its own. The reactor follows the turbine, not the other way round.',  v: function (t) { return t.steam_demand_mwe.toFixed(1) + ' MWe'; } },
-          { k: 'Gross electrical',
+          { k: 'Gross electrical', ser: 'mwe',
             hint: 'generator output in megawatts electric (MWe), before station loads.',
             detail: 'What the machine is actually putting on the grid. It reads the TURBINE, not the core — the two diverge whenever the generator breaker is open or steam is going to the dump valves instead of the turbine.',      v: function (t) { return t.mwe_output.toFixed(1) + ' MWe'; } },
-          { k: 'Cycle efficiency',
+          { k: 'Cycle efficiency', ser: 'eff',
             hint: 'electrical output divided by total core heat.',
             detail: 'About a third on a Pressurized Water Reactor (PWR) — saturated steam at roughly 1000 pounds per square inch (psi) simply cannot do better, which is why a plant making around 100 megawatts electric (MWe) is burning three times that in the core. It collapses after a trip because the core keeps making decay heat with nothing taking load off it.',      v: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? (t.mwe_output / q * 100).toFixed(1) + ' %' : '—'; } },
+        ] },
+        // ------------------------------------------------- support systems (2026-08-08)
+        // LAST, because everything above depends on these and none of them is a reactor
+        // quantity. They are the answers to "why did that stop working": AC power is the
+        // question every motor load asks, the emergency injection is the only thing that
+        // adds inventory back, and the condenser is where the secondary's heat goes when
+        // it is not going to atmosphere.
+        { title: 'Support systems', rows: [
+          { k: 'AC power', ser: 'ac_avail',
+            hint: 'whether alternating-current power is available to the plant\'s motor loads.',
+            detail: 'Every pump on the plant is a motor, and a motor with no power is a closed valve however its control switch is set. This is the question each of them asks. A station blackout is the loss of both offsite power and the emergency diesels at once — it is what happened at Fukushima Daiichi, and it takes the reactor coolant pumps, the main feed pumps, the charging pumps and the emergency injection together, leaving only what runs on steam, gravity or stored pressure.',
+            v: function (t) { return t.station_blackout ? 'STATION BLACKOUT' : (t.ac_available ? 'available' : 'LOST'); },
+            cls: function (t) { return (t.station_blackout || !t.ac_available) ? 'q-alarm' : 'q-ok'; } },
+          { k: 'Emergency injection', ser: 'eccs_flow',
+            hint: 'which emergency core cooling path is delivering, and how much water it is putting in.',
+            detail: 'The only thing on the plant that ADDS inventory during a loss-of-coolant accident. High-pressure injection works against a nearly intact primary and delivers little; the passive accumulators fire on their own when pressure falls below their check valves and empty in minutes; residual heat removal takes over at low pressure and can carry the plant indefinitely. The mode word says which regime you are in, and the flow says whether it is keeping up with the leak — compare it against the primary leak flow row.',
+            v: function (t) {
+              var g = ((t.hpi_flow_normalized || 0) + (t.accumulator_flow_normalized || 0)) * eccsRatedGpm();
+              var m = String(t.eccs_mode || 'off').toUpperCase();
+              if (t.rhr_active) m += ' + RHR';
+              return m + ' · ' + conv(g, 'flow').toFixed(0) + ' ' + unit('flow');
+            },
+            cls: function (t) {
+              if (t.eccs_mode && t.eccs_mode !== 'off') return 'q-caution';
+              return t.rhr_active ? 'q-caution' : 'q-ok';
+            } },
+          { k: 'Condenser heat sink', ser: 'vacuum',
+            hint: 'whether the condenser can take steam, and the cooling water temperature it is rejecting heat to.',
+            detail: 'The steam dump can only carry the plant while the condenser can condense, and that needs circulating water and vacuum. Lose either and the dump valves are useless — the secondary\'s heat has to go to atmosphere through the relief valves instead, which is noisy, wastes treated water and is an inventory loss with no return. Cooling water inlet temperature is the ultimate heat sink the whole cycle rejects into: a hot river in summer costs real megawatts, which is why plants de-rate in a heatwave.',
+            v: function (t) {
+              return (t.condenser_cooling_available ? 'available' : 'LOST') +
+                     ' · vac ' + dispV(t.condenser_vacuum_kpa) + ' · CW ' + dispT(t.cw_inlet_temp_c);
+            },
+            cls: function (t) { return t.condenser_cooling_available ? 'q-ok' : 'q-alarm'; } },
         ] },
       ],
       // ------------------------------------------------------- Inject Failure grouping
@@ -982,6 +1254,57 @@
   }
   function esc(s) { return String(s).replace(/"/g, '&quot;'); }
 
+  // The packed chart row's column map: series id → its index, which IS its position in
+  // `prof().series`. Rebuilt on every plant change, next to the buffer clear that goes with
+  // it — a stale index does not read as missing data, it reads as somebody else's trace.
+  // `RD.ChartCols` publishes it for the board's vital tiles, which pull fine sub-samples out
+  // of the same rows through the RD side channel (see TILE_SERIES in pwr_board_wiring.js).
+  function buildSeriesIndex() {
+    serCol = {}; serCols = 0;
+    prof().series.forEach(function (s) { serCol[s.id] = serCols++; });
+    RD.ChartCols = serCol;
+  }
+
+  // ---- the PLOT COLUMN, shared by the Physics and Indications lists ---------------------
+  // *(OWNER, 2026-08-08: "I would like a column to the left of the lables with a checkbox for
+  // the strip chart. when you check this box it puts this value on the chart.")*
+  //
+  // One cell renderer for both lists, so a quantity that appears on both (Tavg is an
+  // indication AND a physics row) toggles the SAME series and cannot end up half-ticked. A
+  // row with no series id renders an EMPTY cell of the same width rather than no cell: the
+  // composite rows — "intact · 507 °F to damage", "SPRAY + FANS-SI", "BURNED" — are text, not
+  // traces, and losing the column on those rows would step every label in the group sideways.
+  function plotCell(serId) {
+    if (!serId) return '<span class="plot-cell"></span>';
+    var s = seriesById(serId), on = !!ui.series[serId];
+    return '<span class="plot-cell"><input type="checkbox" data-series="' + serId + '"' +
+           (on ? ' checked' : '') + ' title="Plot on the strip chart">' +
+           (on && s ? '<i class="ser-swatch" style="background:' + s.c + '"></i>' : '') + '</span>';
+  }
+  function seriesById(id) {
+    var a = prof().series;
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  // A series toggled anywhere has to show as toggled EVERYWHERE — the Graph/Indications list
+  // and the Physics list are two views of one `ui.series` map, and the swatch appears or
+  // disappears with the tick. Re-rendered rather than diffed because the cells are cheap and
+  // this runs on a click, not on a broadcast.
+  function syncPlotCells() {
+    document.querySelectorAll('.plot-cell input[data-series]').forEach(function (cb) {
+      var id = cb.getAttribute('data-series'), on = !!ui.series[id];
+      cb.checked = on;
+      var cell = cb.parentNode, sw = cell.querySelector('.ser-swatch');
+      if (on && !sw) {
+        var s = seriesById(id);
+        if (s) { sw = document.createElement('i'); sw.className = 'ser-swatch'; sw.style.background = s.c; cell.appendChild(sw); }
+      } else if (!on && sw) { cell.removeChild(sw); }
+    });
+    document.querySelectorAll('#graphParams input[data-series]').forEach(function (cb) {
+      cb.checked = !!ui.series[cb.getAttribute('data-series')];
+    });
+  }
+
   // The plot checklist, GROUPED by `series[].grp` *(OWNER, 2026-08-03: "organize the graph
   // list in an intelligent order and group them in groups")*. Group order is first-seen
   // order in the profile, so the array IS the display order and there is no second list to
@@ -1040,8 +1363,8 @@
         // The block splits the summary on ' — ', so the row key becomes the title.
         var hint = r.hint ? ' data-scanner-hint="' + esc(r.k + ' — ' + r.hint) + '"' : '';
         var det = r.detail ? ' data-scanner-detail="' + esc(r.detail) + '"' : '';
-        html += '<div class="num-line"' + hint + det + '><span class="nk">' + r.k +
-                '</span><span class="nv">—</span></div>';
+        html += '<div class="num-line"' + hint + det + '>' + plotCell(r.ser) +
+                '<span class="nk">' + r.k + '</span><span class="nv">—</span></div>';
       });
       html += '</div>';
     });
@@ -1462,28 +1785,28 @@
   // A series supplies `get` (instrument), `tru` (true state), `ctl` (commanded position),
   // or some combination — see the PROFILES comment.
   //
-  // ONLY THE SIDES THAT EXIST ARE STORED, which is half of the 2026-08-03 memory fix: a
-  // row's cost is per stored property, and writing `null` into `v` for the 19 series that
-  // have no instrument at all cost exactly as much as a real number. A `ctl` series lands
-  // in `v` alone — a demanded valve position has no instrument-vs-truth split to preserve,
-  // and `seriesTruth` returns false for it because it declares no `tru`. Absent keys read
-  // back as undefined, which `seriesVal` already treats as "no sample".
+  // A SIDE THAT DOES NOT EXIST IS NaN, not an absent key — that is what the packing changed.
+  // In the id-keyed shape, leaving a key out was the saving (a stored `null` cost exactly as
+  // much as a real number); in a fixed-width row every column exists and NaN is the "no
+  // sample" marker. Every reader already rejects it, because they all guard on `isFinite`
+  // rather than on `!= null`. A `ctl` series lands in `v` alone — a demanded valve position
+  // has no instrument-vs-truth split to preserve, and `seriesTruth` returns false for it
+  // because it declares no `tru`.
   function chartSample(rawIns, trueState, ctlState) {
     var chartIns = rawIns;   // RAW instruments — no display smoothing on the chart
     if (trueState && trueState.xenon_pct_eq != null) {
       // xenon has no instrument; carry the true value so the series can plot in both modes
       chartIns = Object.assign({}, rawIns); chartIns.xenon_pct_eq = trueState.xenon_pct_eq;
     }
-    var v = {}, tv = {};
-    function num(x) { return (x == null || !isFinite(x)) ? null : x; }
-    prof().series.forEach(function (ser) {
+    var v = new Float64Array(serCols), tv = new Float64Array(serCols);
+    v.fill(NaN); tv.fill(NaN);
+    prof().series.forEach(function (ser, i) {
       if (ser.ctl) {
-        var c = null; if (ctlState) { try { c = ser.ctl(ctlState); } catch (e0) { c = null; } }
-        v[ser.id] = num(c);
+        if (ctlState) { try { var c = ser.ctl(ctlState); if (c != null) v[i] = c; } catch (e0) { /* NaN */ } }
         return;
       }
-      if (ser.get) { var a; try { a = ser.get(chartIns); } catch (e) { a = null; } v[ser.id] = num(a); }
-      if (ser.tru && trueState) { var b; try { b = ser.tru(trueState); } catch (e2) { b = null; } tv[ser.id] = num(b); }
+      if (ser.get) { try { var a = ser.get(chartIns); if (a != null) v[i] = a; } catch (e) { /* NaN */ } }
+      if (ser.tru && trueState) { try { var b = ser.tru(trueState); if (b != null) tv[i] = b; } catch (e2) { /* NaN */ } }
     });
     return { v: v, tv: tv };
   }
@@ -3075,9 +3398,14 @@
   // Realistic. That is not a softening of HR1: it is the same explicit diagnostic overlay
   // the Physics tab is, and it is visible as such because those series carry no channel.
   function seriesTruth(ser) { return !!ser.tru && (chartTruth() || !ser.get); }
+  // Rows are PACKED (see chartBuf): a column index, not a key, and an absent reading is NaN
+  // rather than undefined. `isFinite` rejects both, so the guard is unchanged — but a series
+  // whose id is not in the current index must return null rather than read column
+  // `undefined`, which on a Float64Array is undefined and would slip past a `!= null` test.
   function seriesVal(ser, sample) {
+    var i = serCol[ser.id]; if (i == null) return null;
     var src = seriesTruth(ser) ? sample.tv : sample.v;
-    var v = src ? src[ser.id] : null;
+    var v = src ? src[i] : null;
     return (v == null || !isFinite(v)) ? null : v;
   }
   // The EXTREMES this sample covers, on whichever side is being plotted. Fine rows carry
@@ -3085,9 +3413,10 @@
   // broadcast rows and the preseed carry none, and collapse to the point value — which is
   // correct, they represent one instant rather than a span.
   function seriesExt(ser, sample, val) {
+    var i = serCol[ser.id]; if (i == null) return [val, val];
     var t = seriesTruth(ser);
     var l = t ? sample.tlo : sample.lo, h = t ? sample.thi : sample.hi;
-    var a = l ? l[ser.id] : null, b = h ? h[ser.id] : null;
+    var a = l ? l[i] : null, b = h ? h[i] : null;
     return [(a == null || !isFinite(a)) ? val : a, (b == null || !isFinite(b)) ? val : b];
   }
   // Alarm emphasis on a trace. Latching with a release deadband (5 % of the distance
@@ -3900,7 +4229,7 @@
     'charge-pump-off': function () { cmd({ action: 'set_charging_pump', running: false }); },
     // gpm → frac/s on the declared 7,500 gal (#408). The old /1000 was the retired
     // currency: typing 30 gpm commanded 0.03 frac/s ≈ 13,500 gpm, unclamped (see issue).
-    'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / 450000 }); },
+    'charge-set': function () { cmd({ action: 'set_charging_flow', normalized: inputVal('chargeSet') / GPM_PER_FRAC }); },
     // Letdown: two independent orifices (off / A / B / A+B). Each toggle preserves the
     // other orifice (the engine command only touches the field it's given). Flow is
     // pressure-driven off the cold-leg node, not a commanded setpoint.
@@ -4205,7 +4534,23 @@
       attnStops = b.getAttribute('data-attn') === 'on';
       cmd({ action: 'set_attention_stops', value: attnStops });
     });
-    $('graphParams').addEventListener('change', function (e) { var cb = e.target.closest('input[data-series]'); if (!cb) return; ui.series[cb.getAttribute('data-series')] = cb.checked; drawChart(); });
+    // ONE delegated handler for every plot checkbox in the Tools block, wherever it lives —
+    // the plot list, the Physics tab's column, the Indications tab's column. Bound on the
+    // tab body rather than on each pane because those panes are rebuilt on a plant change
+    // and a per-pane listener would be re-attached (or silently lost) each time.
+    var tabBody = document.querySelector('.tab-body');
+    if (tabBody) tabBody.addEventListener('change', function (e) {
+      var cb = e.target.closest('input[data-series]'); if (!cb) return;
+      ui.series[cb.getAttribute('data-series')] = cb.checked;
+      syncPlotCells();     // the same series may be listed on more than one tab
+      drawChart();
+    });
+    // The row carries the System Scanner hint, and the checkbox sits inside the row — so a
+    // click meant for the tickbox would also open the inspector over the panel you are
+    // ticking. Stop it at the cell.
+    if (tabBody) tabBody.addEventListener('click', function (e) {
+      if (e.target.closest('.plot-cell')) e.stopPropagation();
+    }, true);
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
@@ -5247,7 +5592,7 @@
   function tsCell(f, x) {
     // #408 real currency: these three are inventory-frac/s, not 0–1 normalized — render
     // gpm on the declared 7,500 gal (× 450,000, the board's GPM_CHARGING scale).
-    if (/^(leak_flow|charging_flow_actual|letdown_flow_actual)$/.test(f)) return Math.round(x * 450000) + ' gpm';
+    if (/^(leak_flow|charging_flow_actual|letdown_flow_actual)$/.test(f)) return Math.round(x * GPM_PER_FRAC) + ' gpm';
     if (/_normalized$/.test(f) || f === 'steam_to_turbine' ||
         f === 'void_fraction_avg' || f === 'core_void_fraction') return Math.round(x * 100) + ' %';
     if (/_pct(_eq)?$/.test(f)) return Math.round(x * 10) / 10 + ' %';
@@ -5322,6 +5667,10 @@
   }
 
   function rebuildPlantUI() {
+    // BEFORE chartBuf can take a row: the packed row width and the column of every series
+    // come from the incoming plant's profile, and a sample taken against the old index
+    // would be silently misfiled rather than empty.
+    buildSeriesIndex();
     chartBuf = []; smoothed = {}; seriesHot = {};
     syncUnitsScope();
     buildGauges(); buildGraphParams(); buildPhysics(); updateSimSummary(); buildFailures();
@@ -5798,6 +6147,7 @@
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
     if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
+    buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
     buildGauges(); buildGraphParams(); buildPhysics(); updateSimSummary();
     buildPlantDisplay();
@@ -5828,7 +6178,12 @@
     if (im || ffm) { latest = service.assembleSnapshot(); render(latest); }
     // optional ?tab= deep-link — opens a Tools-Block tab (dev/screenshot convenience).
     // ?tab=training (the retired tab) opens the Plant & Mission window instead.
-    var tbm = /[?&]tab=(failures|graph|sim|settings|training)/.exec(location.search || '');
+    // `physics` and `operate` were MISSING from this list — the deep link silently did
+    // nothing for two of the five tabs, which matters because a pane that is not on screen
+    // does not render at all (paneVisible), so `?tab=physics` opened a tab that stayed
+    // blank and looked like a broken panel rather than a broken link. `sim` stays as the
+    // legacy alias for `operate`.
+    var tbm = /[?&]tab=(failures|graph|indications|physics|operate|sim|settings|training)/.exec(location.search || '');
     if (tbm) {
       if (tbm[1] === 'training') openMissionSelect();
       else {

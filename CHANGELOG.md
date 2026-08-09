@@ -54,7 +54,54 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `DESIGN_COMPANION` §8.34 narrows from "capacity and setpoint unsourced" to the relief ladder,
   which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
 
+### Changed
+- **Free play now starts at the 50 % power preset** *(OWNER, 2026-08-08: "the plant should start
+  with the 50% power preset")*, not Hot Full Power — there is somewhere to go in both directions
+  from it. One gate moved with it: `verify_e2e_ui`'s steam/feed pairing check is now PINNED to
+  `hot_full_power`, the IC every timing in it was derived at. Its 600 s sample point is really
+  measuring when AFW's proportional band opens (`afw_level_target` 32 % + `afw_level_band` 8 %
+  ⇒ no AFW delivery until SG level falls below 40 %), and how long that takes is set by decay
+  heat. Measured full-stack, turbine trip at t=60 s: from full power the SG reaches 40 % at
+  ~9m20s so feed is up at 600 s; from 50 % it gets there at ~16m, reads exactly 0 gpm at 600 s,
+  then parks at 39.5 % and holds. The plant is correct; the sample point belonged to an IC.
+- **The Physics tab gained 12 rows, two groups and a PLOT COLUMN** *(OWNER, 2026-08-08: "We
+  should revisit the physcis tab and add anything you think is missing" · "I would like a column
+  to the left of the lables with a checkbox for the strip chart")*. New **Pressure boundary**
+  group — the relief path, and the tab's biggest omission: everything else on the panel reads a
+  quantity with no instrument, while these read quantities whose instrument DISAGREES with them.
+  `porv_indicator` reports the demand signal, not the valve, which is the Three Mile Island
+  accident in one channel. Also new: **Support systems** (AC power, emergency injection with its
+  real gpm, condenser heat sink), core exit temperature with its separation from Tavg, the
+  steam generator's mass ledger and the primary→secondary ΔT that drives heat removal, and the
+  circulation MODE folded into the loop-flow row. Every row now carries a checkbox that puts it
+  on the strip chart, synced with the Graph tab's list so one series cannot end up half-ticked.
+- **Primary leak flow reads a real flow rate** *(OWNER, 2026-08-08: "it should also show the
+  real flow rate in an appropriate unit")* — gpm beside the fraction, on the declared 7,500 gal
+  RCS (× 450,000, the same constant the board uses; now named `GPM_PER_FRAC` rather than written
+  out four times as a literal). The chart's Leak Flow trace moved to gpm with it, so the two
+  surfaces agree; its alarm threshold is 1 gpm, the Technical Specification unidentified-leakage
+  limit, where the old 0.01 % meant 45 gpm. `conv()` gained a `flow` family — the one family
+  whose base unit is US, gpm being the identity side and m³/h the converted one.
+- **Strip chart window and CSV export moved to the Settings tab** *(OWNER, 2026-08-08: "Move the
+  strip chart settings to the settings tab")*. The Graph tab is a list of what to plot; two
+  controls that configure the chart itself sat below a scrolling checklist where they were easy
+  to miss.
+
 ### Fixed
+- **The chart buffer stored one named property per series per row, and it did not scale.**
+  MEASURED at the shipped `CHART_ROW_BUDGET` of 9000 rows, both sides populated: 40 series cost
+  **39.5 MB**, 51 cost 68.9, 110 would cost **137.8**. Rows are now fixed-width `Float64Array`s
+  indexed by series order, with NaN for "no reading on this side" — **9.6 MB at 40 series, 19.2
+  at 110.** So the registry grew by 16 series in this change and the buffer still costs a
+  quarter of what it did. CPU is unaffected: one sampler call is 7.5 µs at 40 series and 21.8 µs
+  at 110, and the service caps the fine loop at 240 calls per broadcast, so the worst case
+  (fast-forward) is ~3.4 ms per 100 ms broadcast and at 1× the sampler runs once. The service's
+  `foldExtremes` matches the container the sampler hands it rather than learning what a series
+  is, so it still works for either shape; the board's vital tiles read the packed rows through a
+  published `RD.ChartCols` id→column map.
+- **`?tab=physics` and `?tab=operate` did nothing** — two of the five tabs were missing from the
+  deep-link allowlist. Not cosmetic: a pane that is not on screen does not render at all, so the
+  link opened a tab that stayed blank and read as a broken panel rather than a broken link.
 - **The strip chart's x-axis jumped sideways for the first `window` seconds of every run.** The
   right-hand tick tested `rel === 0` on a float that is only zero in exact arithmetic. `t0 + span`
   reconstructs `t1` bit-exactly whenever the two are within a factor of two (Sterbenz) — which is
