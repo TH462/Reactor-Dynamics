@@ -87,21 +87,6 @@ for (const d of OPTIONAL_DIRS) {
   if (fs.existsSync(path.join(ROOT, d))) copyDir(path.join(ROOT, d), path.join(OUT, d));
 }
 
-/* /sim IS A REDIRECT, NOT A REWRITE, AND THAT IS THE WHOLE POINT.
- *
- * vercel.json carried it as a rewrite (`/sim` -> `/ui/shell.html`, URL unchanged) and
- * IT HAS BEEN BROKEN IN PRODUCTION EVER SINCE. Measured against the live site on
- * 2026-08-07: https://reactordynamics.com/sim returns 200 and paints an empty shell
- * with 62 FAILED REQUESTS and zero gauges, while /ui/shell.html on the same host
- * loads with none. A rewrite keeps the address at /sim, so every relative path in
- * ui/shell.html — `shell.css`, `diagram/board/pwr_board.css`, every panel script —
- * resolves against the site ROOT instead of /ui/.
- *
- * A redirect moves the browser to the real path first, so the relative paths resolve.
- * The short link still works for sharing; the address bar just tells the truth.
- * 302, not 301: a permanent redirect is cached hard by browsers, and reclaiming /sim
- * later for a real page would then mean asking people to clear their cache. */
-fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell.html?engine=pwr  302\n');
 
 
 // ---------------------------------------------------------------- verify
@@ -128,6 +113,69 @@ function checkHtml(rel) {
 }
 PAGES.forEach(checkHtml);
 checkHtml('ui/shell.html');
+
+/* ------------------------------------------------ EXTENSIONLESS URLS, OUTPUT ONLY
+ * Cloudflare Pages redirects `/about.html` to `/about` and there is NO WAY TO TURN THAT
+ * OFF. Measured on the live site: every page 308s. So links written as `about.html` cost
+ * an extra round trip on every internal click, and — worse — every `rel=canonical` named
+ * a URL that redirects away from the one actually served. That is the same defect as the
+ * relative `og:image`, reintroduced by the host change.
+ *
+ * The rewrite happens HERE, in the built output, and NOT in the repo. The repo keeps
+ * `about.html` so the site still browses correctly from `file://` with no server, which
+ * is a property this project deliberately has — extensionless hrefs would break it, since
+ * a local filesystem has no server to resolve `/about` to a file.
+ *
+ * Deliberately AFTER the reference walk above: that check resolves every href against a
+ * real file, which only works while the hrefs still carry `.html`. Verify first, rewrite
+ * second. Each rewrite below asserts its target existed, so a typo cannot silently produce
+ * a dead link. */
+function toExtensionless(href) {
+  // Only local .html targets. External, data:, mailto:, anchors and assets are untouched.
+  if (/^(https?:|data:|mailto:|#|\/\/)/.test(href)) return null;
+  const m = /^(.*?)([^/]+)\.html($|[?#].*$)/.exec(href);
+  if (!m) return null;
+  const [, dir, base, tail] = m;
+  // index.html is the directory itself — `/about/index.html` is served as `/about/`.
+  const path = base === 'index' ? (dir || '') : (dir || '') + base;
+  return (path === '' ? '/' : path) + tail;
+}
+
+let rewrites = 0;
+const deadLinks = [];
+function rewriteHtml(rel) {
+  const abs = path.join(OUT, rel);
+  const base = path.posix.dirname(rel.replace(/\\/g, '/'));
+  let src = fs.readFileSync(abs, 'utf8');
+
+  src = src.replace(/(\s(?:href|content)=")([^"]+)(")/g, (whole, pre, href, post) => {
+    // Canonical and og:url are absolute site URLs; links are relative. Handle both.
+    const abs_ = /^https:\/\/reactordynamics\.com\//.test(href);
+    const target = abs_ ? href.replace('https://reactordynamics.com', '') : href;
+    const next = toExtensionless(target);
+    if (next === null) return whole;
+
+    // Prove the file this link USED to point at is actually in the output. A rewrite that
+    // invents a URL is worse than the redirect it replaces.
+    const resolved = path.posix.normalize(path.posix.join(abs_ ? '' : base, target.split(/[?#]/)[0].replace(/^\//, '')));
+    if (!fs.existsSync(path.join(OUT, resolved))) { deadLinks.push(rel + ' -> ' + href); return whole; }
+
+    rewrites++;
+    return pre + (abs_ ? 'https://reactordynamics.com' + (next === '/' ? '/' : '/' + next.replace(/^\//, '')) : next) + post;
+  });
+
+  fs.writeFileSync(abs, src);
+}
+PAGES.forEach(rewriteHtml);
+rewriteHtml('ui/shell.html');
+if (deadLinks.length) {
+  console.error('\nRewrite skipped these — the target is not in the output:');
+  deadLinks.forEach((d) => console.error('  ' + d));
+  throw new Error(deadLinks.length + ' link(s) point at files dist-site does not contain.');
+}
+
+// /sim must land on the FINAL url, not one that redirects again.
+fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell?engine=pwr  302\n');
 
 if (problems.length) {
   console.error('\ndist-site is INCOMPLETE — these references do not resolve inside it:');
