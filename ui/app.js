@@ -4936,118 +4936,52 @@
       if (document.visibilityState === 'hidden') { var t = window.RD && RD.Telemetry; if (t) { try { t.flush(true); } catch (e) {} } }
     });
 
-    // Assigned by the Settings block below; called by the launch prompt so the two
-    // controls cannot disagree. Answering "yes" at launch and then finding Settings
-    // still showing Off is the kind of small lie that makes a consent control
-    // untrustworthy — and it is exactly what the first version did.
-    var repaintTelemetryToggle = function () {};
-
-    // ---- usage-data consent, first launch only ------------------------------
-    // Only asked when there is something to ask about: a stamped endpoint and no
-    // recorded answer. Everything stays collected-nothing until a button is pressed,
-    // so closing the tab on the prompt is the private outcome, not an ambiguous one.
-    (function () {
-      var T = window.RD && RD.Telemetry;
-      var ov = $('consentOverlay');
-      if (!ov || !T || !T.enabled() || T.consent() !== null) return;
-      ov.hidden = false;
-      function answer(v) {
-        try { T.setConsent(v); } catch (e) { /* storage refused: stays undecided, sends nothing */ }
-        TEL.consentAnswered();     // releases the held session_start, if granted
-        repaintTelemetryToggle();  // keep Settings in step with the answer just given
-        ov.hidden = true;
-      }
-      $('consentYes').addEventListener('click', function () { answer('granted'); });
-      $('consentNo').addEventListener('click', function () { answer('denied'); });
-
-      /* WATCHDOG: did the prompt we just showed actually become visible?
-       *
-       * Reported 2026-08-08 as "it pops up for half a second then disappears", with the
-       * stored answer still null — so nothing had been clicked. Measured in the reporter's
-       * browser: `hidden` was FALSE while computed `display` was `none`. Nothing in this
-       * codebase does that, and it stays visible indefinitely in a clean browser, so the
-       * rule is coming from outside — almost certainly a content blocker's cookie-banner
-       * filter, for which an element named `consentOverlay` is an obvious target.
-       *
-       * WE DO NOT FIGHT IT. Someone running such a blocker has told their browser not to
-       * show them consent dialogs, and renaming things to slip past that would defeat a
-       * choice they made deliberately. The behaviour is already correct — no answer means
-       * undecided, and undecided collects nothing. What was missing was any way to TELL:
-       * a hidden prompt and a declined one produce identical silence.
-       *
-       * So: say so once, in the console, with the one route that still works. */
-      if (window.setTimeout && window.getComputedStyle) window.setTimeout(function () {
-        if (ov.hidden) return;                       // answered in the meantime — fine
-        var cs = window.getComputedStyle(ov), r = ov.getBoundingClientRect();
-        var invisible = cs.display === 'none' || cs.visibility === 'hidden' ||
-                        parseFloat(cs.opacity) === 0 || r.width < 2 || r.height < 2;
-        if (!invisible) return;
-
-        // Name the rule if we can reach it. Extension stylesheets are usually readable;
-        // cross-origin ones throw on .cssRules and are reported as such rather than skipped.
-        var culprits = [];
-        try {
-          for (var i = 0; i < document.styleSheets.length; i++) {
-            var ss = document.styleSheets[i], rules = null;
-            try { rules = ss.cssRules; } catch (e) { culprits.push('(unreadable sheet) ' + (ss.href || '')); continue; }
-            for (var j = 0; rules && j < rules.length; j++) {
-              var rule = rules[j];
-              if (!rule.selectorText || !rule.style || !/display\s*:\s*none/i.test(rule.style.cssText)) continue;
-              try { if (ov.matches(rule.selectorText)) culprits.push(rule.selectorText + '  [' + (ss.href || 'injected <style>') + ']'); } catch (e) { /* bad selector */ }
-            }
-          }
-        } catch (e) { /* never let a diagnostic break the page */ }
-
-        try {
-          console.warn('[Reactor Dynamics] The usage-data prompt was shown but something is ' +
-            'hiding it (display:' + cs.display + ', ' + Math.round(r.width) + '×' + Math.round(r.height) + ').\n' +
-            'This is usually a content blocker treating it as a cookie banner. It is not one — ' +
-            'it sets no cookies.\nNothing is being collected, which is the safe outcome. You can ' +
-            'still choose under Settings → Share usage data.\n' +
-            (culprits.length ? 'Matching rules:\n  ' + culprits.join('\n  ') : 'No readable stylesheet rule matches — check for inline styles or an extension.'));
-          if (window.RD && RD.Telemetry && RD.Telemetry.diagnose) {
-            console.warn('[Reactor Dynamics] telemetry state:', RD.Telemetry.diagnose());
-          }
-        } catch (e) { /* console unavailable */ }
-      }, 900);
-    }());
+    // ---- the launch consent prompt lived here; REMOVED 2026-08-09 ----------------
+    // *(OWNER, 2026-08-09: "Can we get rid of the convent popup and just divulge that we
+    // collect telemetry in the privacy tab?")*. With it goes its watchdog, which existed
+    // only to report that the prompt had been hidden by a content blocker — the overlay was
+    // `id="consentOverlay"`, which cosmetic filter lists target by name, and the measured
+    // symptom was `hidden:false` with computed `display:none`. Collection is now on by
+    // default and disclosed on privacy.html; Settings below is the opt-out. `RD.diagnose()`
+    // survives and still reports the live state. See site/telemetry.js for the reasoning.
 
     /* One call that answers "is any of this working?" — RD.diagnose() in the console.
-     * Every failure mode here is silent by design, so without this the only way to tell a
-     * declined prompt from a broken one is to read the source. */
+     * Every failure mode here is silent by design, so without this the only way to tell an
+     * opted-out visitor from a broken build is to read the source.
+     *
+     * The prompt_* fields are GONE with the prompt (2026-08-09). They existed to catch a
+     * content blocker hiding the overlay, which is the failure this removal retires; keeping
+     * them would report `prompt_in_dom: false` for ever and read like a defect. */
     window.RD = window.RD || {};
     window.RD.diagnose = function () {
-      var ov = $('consentOverlay');
       var T = window.RD && RD.Telemetry;
-      var cs = ov && window.getComputedStyle ? window.getComputedStyle(ov) : null;
-      var out = {
-        telemetry_client_loaded: !!T,
-        prompt_in_dom: !!ov,
-        prompt_marked_hidden: ov ? ov.hidden : null,
-        prompt_actually_visible: !!(cs && cs.display !== 'none' && cs.visibility !== 'hidden' &&
-                                    parseFloat(cs.opacity) !== 0),
-        prompt_computed_display: cs ? cs.display : null,
-      };
+      var out = { telemetry_client_loaded: !!T };
       if (T && T.diagnose) { var d = T.diagnose(); for (var k in d) out[k] = d[k]; }
+      // storage_writable is NOT fatal any more: the default is "collecting", so a browser
+      // that refuses localStorage simply cannot record an opt-OUT. That is worth saying
+      // plainly rather than reporting as healthy.
       out.verdict =
         !out.telemetry_client_loaded ? 'client did not load — check site/telemetry.js is served' :
         !out.endpoint_set ? 'no endpoint stamped — RD_TELEMETRY_ENDPOINT is unset in the build' :
-        !out.storage_writable ? 'localStorage is NOT writable — an answer can never persist' :
-        out.consent === 'granted' ? 'collecting' :
-        out.consent === 'denied' ? 'declined — nothing is collected, as asked' :
-        out.prompt_in_dom && !out.prompt_actually_visible ? 'prompt is being hidden by something outside this app — nothing collected' :
-        'awaiting an answer — nothing collected yet';
+        out.consent === 'denied' ? 'opted out — nothing is collected, as asked' :
+        !out.storage_writable ? 'collecting, but localStorage is NOT writable — an opt-out could not persist' :
+        'collecting (default; opt out under Settings → Share usage data)';
       return out;
     };
 
-    // ---- the Settings toggle the consent prompt promises ---------------------
+    // ---- the Settings toggle: now the ONLY consent control, and the opt-out --------
+    // It used to be the prompt's echo; since the prompt was removed (2026-08-09) it is the
+    // whole mechanism, so it has to show the DEFAULT truthfully. `=== 'granted'` would paint
+    // Off for every visitor who has never touched it — i.e. almost everyone — while the sim
+    // was in fact collecting, and a toggle that misreports the state it controls is worse
+    // than no toggle at all. Mirrors granted() in site/telemetry.js; move the two together.
     (function () {
       var T = window.RD && RD.Telemetry;
       var row = $('telemetryRow'), seg = $('telSeg');
       if (!row || !seg || !T || !T.enabled()) return;   // no endpoint: no toggle to offer
       row.hidden = false;
       function paint() {
-        var on = T.consent() === 'granted';
+        var on = T.consent() !== 'denied';
         seg.querySelectorAll('button').forEach(function (b) {
           b.classList.toggle('on', (b.getAttribute('data-tel') === 'on') === on);
         });
@@ -5061,7 +4995,9 @@
         showToast(on ? 'Usage data on — thank you.' : 'Usage data off. Nothing is sent.');
       });
       paint();
-      repaintTelemetryToggle = paint;
+      // (`repaintTelemetryToggle = paint` stood here to keep this in step with the launch
+      //  prompt. The prompt is gone, so there is no second control to synchronise with —
+      //  and its declaration went with it, which would have made this a dangling assign.)
     }());
 
     // ---- send a bug report, with the session attached ------------------------

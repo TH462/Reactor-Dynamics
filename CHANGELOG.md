@@ -30,6 +30,40 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The first-launch usage-data prompt is gone; collection is on by default and disclosed on
+  the privacy page** *(OWNER, 2026-08-09: "Can we get rid of the convent popup and just divulge
+  that we collect telemetry in the privacy tab?")*. Two reasons, and the second settles it.
+  **It did not work:** the overlay was `id="consentOverlay"`, which ad-blocker cosmetic filter
+  lists target by name — the reported symptom was that it "pops up for about half a second then
+  disappears", and the diagnostic read `hidden:false` with computed `display:none`. Our code
+  never hid it; an extension did. A prompt a filter list can delete is not a consent mechanism,
+  it is a way to collect nothing from blocked users and believe you asked them. **And it was
+  incoherent:** the site already serves Cloudflare Web Analytics with no prompt at all, carrying
+  more identifying signal than this does. What makes the new posture defensible is not the
+  disclosure but the invariants that were always there — no persistent id (the session id is
+  `sessionStorage`, regenerated per visit), no free text, no cookies, and an IP used only as a
+  rate-limit key and never stored. Settings → Share usage data is the opt-out and the only thing
+  that ever writes to `localStorage`. The ePrivacy caveat is recorded honestly in the header of
+  `site/telemetry.js`: if the call is revisited, restore a prompt a filter list cannot delete —
+  inline and neutrally named — not the overlay.
+- **The Settings toggle now reports the default truthfully.** It painted from
+  `consent() === 'granted'`, which under the flip would have read **Off for every visitor who
+  never touched it** — i.e. almost everyone — while the sim was in fact collecting. A toggle
+  that misreports the state it controls is worse than no toggle. It mirrors `granted()`; move
+  the two together.
+- **`RD.diagnose()` lost its `prompt_*` fields** with the prompt they described, and gained an
+  honest line for the case the flip made *worse*: a browser refusing `localStorage` cannot
+  record an opt-out, so it collects. That outcome is now pinned by a test rather than left to
+  be discovered.
+- **`run_telemetry` 78 → 81, and its consent assertions are now DELTAS.** `a.sent` accumulates
+  for the harness lifetime, so the old absolute `a.sent.length === 0` checks all went red
+  downstream the moment the default started sending — and misleadingly: *"denied: flush sends
+  nothing"* failed carrying a body from the **undecided** phase, which reads exactly like an
+  opt-out leak and was not one. Added a fresh-client opt-out case, because proving silence only
+  after a granted phase leaves a first-send latch as the possible cause. Injection-verified
+  twice: forcing `granted()` true reddens 5 checks, dropping the queue-clear reddens 1.
+
 ## [Alpha 1.5.0] — 2026-08-09
 
 ### Added

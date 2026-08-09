@@ -29,6 +29,61 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-develop-a (the consent prompt was unblockable-by-design and blockable in fact; removed)
+
+**The overlay bug is solved by deletion, and its cause is now named.** Reported 2026-08-08 as
+"pops up for about half a second then disappears"; two theories died on the data (an accidental
+click — refuted, the stored answer was `null`; a race in our own show/hide — refuted, it stays up
+indefinitely in a clean browser). The measurement that settled it was `hidden:false` with computed
+`display:none`: **nothing in this codebase produces that combination.** The element was
+`id="consentOverlay"`, and ad-blocker cosmetic filter lists target consent dialogs by element name.
+An extension was deleting it. The code in `ui/app.js` had *already written this down* as a
+watchdog comment — "an element named `consentOverlay` is an obvious target" — which is worth
+noting: the diagnosis existed in the source before anyone read it.
+
+**Ruled out as the fix: renaming to evade the filter** *(that was the pre-existing comment's own
+position — "WE DO NOT FIGHT IT")*. Someone running such a blocker has told their browser not to
+show them consent dialogs, and slipping past that defeats a deliberate choice.
+
+**So the prompt went** *(OWNER, 2026-08-09: "Can we get rid of the convent popup and just divulge
+that we collect telemetry in the privacy tab?")*. Collection is on by default, disclosed on
+`privacy.html`. **The disclosure is not what makes this defensible** — the invariants are, and they
+predate the change: no persistent id (session id is `sessionStorage`, regenerated per visit), no
+free text on the automatic path, no cookies, IP as a rate-limit key only. The clinching argument is
+consistency: the site already serves Cloudflare Web Analytics with **no prompt at all**, carrying
+more identifying signal than this does. The ePrivacy caveat is recorded in the `site/telemetry.js`
+header rather than buried — sessionStorage is still device storage, and the consent-free reading is
+mainstream but not settled.
+
+**Three traps in the removal.**
+
+- **A toggle that misreports the state it controls is worse than no toggle.** Settings painted
+  from `consent() === 'granted'`. Under the flip that reads **Off for everyone who never touched
+  it** — almost everyone — while the sim collects. Caught by driving the real UI, not by a gate:
+  `run_all` was green with the toggle lying. It mirrors `granted()`; the two move together.
+- **`repaintTelemetryToggle` became a dangling assignment.** Its declaration lived inside the
+  removed block while its assignment lived in Settings — a `ReferenceError` under strict mode,
+  and invisible to `node --check`. Deleting a block means grepping for what it *declared*, not
+  just what it did.
+- **The gate's failures pointed at the wrong thing.** `run_telemetry` uses one accumulating
+  `a.sent`, so the absolute `a.sent.length === 0` assertions all failed downstream once the
+  default started sending — and **"denied: flush sends nothing" went red carrying a body from the
+  UNDECIDED phase**, which reads exactly like an opt-out leak. It was not one. Rewritten as
+  DELTAS across a single flush, plus a fresh-client opt-out case (proving silence only after a
+  granted phase leaves a first-send latch as the alternative explanation, HR10). 78 → 81.
+  Injection-verified: `granted()`→true reddens 5, dropping the queue-clear reddens 1. One of the
+  replacements was itself written hollow first — `=== 0 || true` — and caught before it landed.
+
+**The one place the flip makes privacy WORSE, pinned rather than left implicit:** a browser that
+refuses `localStorage` cannot record an opt-out, so it collects. Under opt-in, no storage meant
+silence. `RD.diagnose()` now says so in words, and a test fails if anyone changes it unmeaningly.
+
+Verified end-to-end in a real browser, not just by gate: overlay absent, `collecting: true` with
+3 events queued, toggle visible and lit **On**, and clicking Off yields `consent: "denied"`,
+`granted: false`, verdict *"opted out — nothing is collected, as asked"*. `run_all` 44 at baseline.
+
+---
+
 ## Session log — 2026-08-09-workbench-a (the flicker is COMPUTE-bound, measured; and a release check that could never have passed)
 
 **The flicker reports are compute-bound, and now the bug report says so.** Players on some PCs

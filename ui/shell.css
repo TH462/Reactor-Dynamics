@@ -799,17 +799,10 @@ html[data-channel="dev"] .logo-test {
 .fb-send-btn { border-color: var(--running); }
 .fb-send-btn:disabled { opacity: .5; cursor: default; }
 
-/* First-launch consent. Wider than the help modal it borrows chrome from, because
-   the text has to be readable at a glance — a wall of small print is how a consent
-   prompt gets clicked through without being read, which is the outcome that makes
-   the answer worthless. */
-/* Specificity: .mission-modal.help-modal is two classes and would otherwise win on
-   both width and height, which is why this is qualified rather than a bare class —
-   the first version rendered at the help modal's full width with a screen of empty
-   space under four short paragraphs. */
-.mission-modal.consent-modal { width: min(560px, 96vw); height: auto; }
-.consent-btns { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 10px; }
-.consent-yes { border-color: var(--running); }
+/* The first-launch consent modal's rules (.consent-modal / .consent-btns / .consent-yes)
+   were removed with the prompt itself, 2026-08-09 — see the note in ui/shell.html where the
+   overlay stood. Nothing else used them; the Settings toggle uses the ordinary segment
+   control. */
 .fb-msg { font-size: 12px; color: var(--running); }
 .fb-msg.err { color: var(--caution); }
 .fb-lead { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--text); }

@@ -1255,7 +1255,7 @@ var BASELINES = {
   // The map is parsed as TEXT — the Worker is an ES module and these runners are CommonJS.
   // INJECTION-VERIFIED: an event the Worker never learned about scores 76/1, a renamed
   // property 78/1, a stale mapping 80/2.
-  'run_telemetry.js':      { code: 0, score: '78checks 0failed' },
+  'run_telemetry.js':      { code: 0, score: '81checks 0failed' },   // 78 -> 81 (2026-08-09): the consent gate became an OPT-OUT gate. The polarity flip is the small part; the assertions are now DELTAS across one flush rather than absolute a.sent.length checks, because a.sent accumulates for the harness lifetime and the old absolutes went red downstream the moment the default started sending — "denied: flush sends nothing" failed carrying a body from the UNDECIDED phase, which reads exactly like an opt-out leak and is not one. Plus a fresh-client opt-out case (proving silence only after a granted phase leaves a first-send latch as the possible cause, HR10) and the no-storage outcome, which the flip made WORSE and is now pinned deliberately. Injection-verified twice: granted()->true reddens 5, dropping the queue-clear reddens 1.
   // NEW 2026-08-04 (#339) — the session-heading label gate. `TUNING_LOG.md` and
   // `BUILD_DECISIONS.md` are cited by their dated headings, and three lanes each allocating a
   // per-day sequence letter independently collided: measured at the 2026-08-04 three-lane
