@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.5.1] — 2026-08-09
+
 ### Changed
 - **The first-launch usage-data prompt is gone; collection is on by default and disclosed on
   the privacy page** *(OWNER, 2026-08-09: "Can we get rid of the convent popup and just divulge
