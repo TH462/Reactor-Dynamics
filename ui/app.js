@@ -307,6 +307,46 @@
                  desc: 'Boils water right in the core, steam straight to the turbine. Steam-driven safety systems — home of the Fukushima story.' },
   };
 
+  // ---- series builders for the two repetitive channel classes ---------------------------
+  // Both exist because the Indications tab lists EVERY channel the plant publishes (2026-08-08),
+  // and 34 of the PWR's are status booleans whose entries would otherwise be 34 lines of the
+  // same shape — the kind of block where a typo in one accessor hides for months.
+  //
+  // A STATUS series plots the boolean as a 0/1 STEP. That is not a novelty: laid under a
+  // continuous trace it answers "when did that happen" exactly, which is the question a
+  // post-transient review is actually asking, and no gauge on the board records it. The value
+  // lands in the packed row through Float64Array coercion (true → 1, false → 0), and the
+  // per-series auto-range draws it as a clean step between the ends of its own band.
+  //   ins   the instrument key (what the board reads — an HR1 channel, so it can fail)
+  //   tru   the true_state key, when the plant publishes one. Where both exist this is a
+  //         genuine instrument-vs-truth pair and the chart traces whichever the mode selects,
+  //         so a failed status channel separates from the plant on the plot.
+  //   alarm 'on'  → emphasise while the state is TRUE  (scrammed, blackout, cavitating)
+  //         'off' → emphasise while it is FALSE        (cooling available, AC available)
+  //         omitted → no emphasis, which is right for most of them; a chart where every
+  //         status trace is bold has no emphasis at all.
+  function stat(o) {
+    var s = { id: o.id, grp: o.grp, label: o.label, c: o.c, range: [0, 1],
+              fmt: function (v) { return v > 0.5 ? o.on : o.off; } };
+    if (o.ins) s.get = function (i) { return i[o.ins] ? 1 : 0; };
+    if (o.tru) s.tru = function (t) { return t[o.tru] ? 1 : 0; };
+    if (o.alarm === 'on') s.dHi = 1;
+    if (o.alarm === 'off') s.dLo = 0;
+    return s;
+  }
+  // A LOG-SCALE nuclear channel, plotted as its EXPONENT. Source range spans 1 to 10^6 counts
+  // per second and the intermediate range spans 10^-11 to 10^-3 amps; on the chart's linear
+  // axis the raw value is a flat line on the floor for all but the top decade, which is the
+  // whole reason a startup is read on a log meter in the first place. Storing log10 makes one
+  // decade one division — the shape an operator is trained to read — and `fmt` puts the real
+  // number back on the chip, so nothing on screen is in log units the label does not admit.
+  function logSer(o) {
+    return { id: o.id, grp: o.grp, label: o.label, c: o.c, range: o.range,
+             get: function (i) { var x = i[o.ins]; return (x > 0) ? Math.log10(x) : o.range[0]; },
+             tru: o.tru ? function (t) { var x = t[o.tru]; return (x > 0) ? Math.log10(x) : o.range[0]; } : undefined,
+             fmt: function (v) { return Math.pow(10, v).toExponential(1) + ' ' + o.u; } };
+  }
+
   // ====================================================================== profiles
   // Each plant supplies: gauges (vital strip), numeric (diagram grid), series
   // (strip-chart), controls (tabbed control strip), initStates, and a scram label.
@@ -370,8 +410,14 @@
         // Net reactivity has no instrument — the board shows it as a true-state teaching
         // quantity beside the period, and this is the same number over time.
         { id: 'rho',      grp: 'Reactor core', label: 'Reactivity', c: '#d08fc0', tru: function (t) { return t.reactivity_pcm; }, range: [-500, 500], fmt: function (v) { return v.toFixed(0) + ' pcm'; } },
-        // xenon has no instrument at all — it is true state in both modes
-        { id: 'xenon',    grp: 'Reactor core', label: 'Xenon',    c: '#b05a8a', get: function (i) { return i.xenon_pct_eq; }, tru: function (t) { return t.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
+        // Xenon has no instrument at all — true state in both modes, which `seriesTruth`
+        // already delivers for any series with `tru` and no `get`. It used to declare a `get`
+        // reading `i.xenon_pct_eq`, a key no instrument publishes, with `chartSample` copying
+        // the true value into the instruments dict per sample to feed it. That was a
+        // no-instrument series wearing a channel's clothes, and the Indications tab is what
+        // exposed it: the row listed itself as something the plant reads and rendered an
+        // em-dash, because outside chartSample's private copy the key does not exist.
+        { id: 'xenon',    grp: 'Reactor core', label: 'Xenon',    c: '#b05a8a', tru: function (t) { return t.xenon_pct_eq; }, range: [0, 250], fmt: function (v) { return v.toFixed(0) + '% eq'; } },
         // Boron trend (RCS boron reading). Re-added as a plottable graph option
         // 2026-07-24 (owner request); the board itself still shows boron via the
         // chemistry SAMPLE mechanic, not a live boronometer.
@@ -382,6 +428,23 @@
         // power and diverge completely after a scram (#315). Plotting it against `power`
         // is the clearest way to see that.
         { id: 'core_heat',grp: 'Reactor core', label: 'Total Core Heat', c: '#8a7040', tru: function (t) { return t.core_heat_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        // Startup nuclear instrumentation — the two log channels that cover the nine decades
+        // below the power range, plus the detector's own energization state (a de-energized
+        // source-range detector reads the range floor, which looks exactly like a shut-down
+        // core; that is the point of having the status beside the count).
+        logSer({ id: 'sr_cps', grp: 'Reactor core', label: 'Source Range', c: '#7ac0a8', ins: 'source_range', tru: 'sr_counts_cps', range: [0, 6], u: 'cps' }),
+        logSer({ id: 'ir_amps',grp: 'Reactor core', label: 'Intermediate Range', c: '#60a890', ins: 'intermediate_range', tru: 'ir_amps', range: [-11, -2.7], u: 'A' }),
+        stat({ id: 'sr_on',   grp: 'Reactor core', label: 'SR Detector Energized', c: '#4a9078', ins: 'sr_energized', tru: 'sr_energized', on: 'on', off: 'OFF' }),
+        // Chemistry. `boron` above is the analyzer trend; this is the discrete SAMPLE the
+        // board's chemistry mechanic returns, which is what an operator actually acts on.
+        { id: 'boron_smp',grp: 'Reactor core', label: 'Boron Sample', c: '#8868a8', get: function (i) { return i.boron_sample; }, range: [0, 2500], fmt: function (v) { return v.toFixed(0) + ' ppm'; } },
+        stat({ id: 'boron_pend', grp: 'Reactor core', label: 'Boron Sample Pending', c: '#6a5490', ins: 'boron_sample_pending', on: 'PENDING', off: 'idle' }),
+        { id: 'boron_seq',grp: 'Reactor core', label: 'Boron Sample Count', c: '#584878', get: function (i) { return i.boron_sample_seq; }, range: [0, 50], fmt: function (v) { return v.toFixed(0); } },
+        // Reactor state.
+        stat({ id: 'scrammed', grp: 'Reactor core', label: 'Reactor Scrammed', c: '#d04a4a', ins: 'rps_scrammed', tru: 'scrammed', on: 'SCRAM', off: 'no', alarm: 'on' }),
+        stat({ id: 'rods_in',  grp: 'Reactor core', label: 'Rods Fully Inserted', c: '#a05858', ins: 'rods_fully_in', on: 'IN', off: 'no' }),
+        stat({ id: 'above_p9', grp: 'Reactor core', label: 'Above P-9', c: '#909858', ins: 'above_p9', on: 'above', off: 'below' }),
+        { id: 'plant_mode',grp: 'Reactor core', label: 'Plant Mode', c: '#788ca0', get: function (i) { return i.plant_mode; }, tru: function (t) { return t.plant_mode; }, range: [1, 6], fmt: function (v) { return 'Mode ' + v.toFixed(0); } },
 
         // ---------------------------------------------------------------- core damage
         // Core exit before the cladding, matching the Physics tab: it is first in the damage
@@ -415,7 +478,13 @@
         // the same currency problem #408 fixed on the CVCS boxes, which plotted the real flow
         // as a flat line at 0.007 %. `dHi` is 1 gpm: the Technical Specification unidentified-
         // leakage limit, i.e. "any leak worth the name", where 0.01 % meant 45 gpm.
-        { id: 'leak',     grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', tru: function (t) { return t.leak_flow * GPM_PER_FRAC; }, range: [0, 2000], dHi: 1, fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
+        // Leak flow is an INSTRUMENT PAIR — `primary_leak_flow` is a real channel and can be
+        // failed, so the chart must be able to trace the reading as well as the truth.
+        { id: 'leak',     grp: 'Primary coolant', label: 'Leak Flow', c: '#b8604a', get: function (i) { return i.primary_leak_flow * GPM_PER_FRAC; }, tru: function (t) { return t.leak_flow * GPM_PER_FRAC; }, range: [0, 2000], dHi: 1, fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
+        { id: 'pzr_dev',  grp: 'Primary coolant', label: 'PZR Level Deviation', c: '#68a0a0', get: function (i) { return i.pzr_level_dev; }, range: [-40, 40], dLo: -10, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
+        stat({ id: 'rcp_run',   grp: 'Primary coolant', label: 'RCPs Running', c: '#5a9ab8', ins: 'rcp_running', tru: 'pump_running', on: 'RUN', off: 'stopped', alarm: 'off' }),
+        stat({ id: 'rcp_secured',grp: 'Primary coolant', label: 'RCPs Secured', c: '#487890', ins: 'rcp_secured', on: 'SECURED', off: 'no' }),
+        stat({ id: 'rcp_cav',   grp: 'Primary coolant', label: 'RCP Cavitating', c: '#d0704a', ins: 'rcp_cavitating', tru: 'rcp_cavitating', on: 'CAVITATING', off: 'no', alarm: 'on' }),
         { id: 'pzr_node', grp: 'Primary coolant', label: 'PZR Level (off-scale)', c: '#3f9a94', tru: function (t) { return pzrNodePct(t); }, range: [0, 100], dLo: 12, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'accum_vol',grp: 'Primary coolant', label: 'Accumulator Inventory', c: '#9ab060', tru: function (t) { return t.accumulator_volume_pct; }, range: [0, 105], dLo: 1, fmt: function (v) { return v.toFixed(0) + '%'; } },
         // Heatup / cooldown rate — the number the Mode 5↔1 procedures are written around
@@ -434,6 +503,20 @@
         { id: 'suct_sub', grp: 'Loop pressure', label: 'Suction Subcool', c: '#8a9070', tru: function (t) { return t.suction_subcool_c; }, range: [-10, 80], dLo: 0, fmt: function (v) { return conv(v, 'tempdiff').toFixed(0) + unit('tempdiff'); } },
         { id: 'cavit',    grp: 'Loop pressure', label: 'RCP Cavitation', c: '#d0704a', tru: function (t) { return t.rcp_cavitation_frac * 100; }, range: [0, 100], dHi: 0.01, fmt: function (v) { return v.toFixed(0) + '%'; } },
 
+        // ---------------------------------------------------------------- protection & limits
+        // The Overtemperature/Overpower ΔT limit lines and the margin to each — the trips that
+        // decide whether a transient is survivable, and the only ones whose SETPOINT MOVES with
+        // the plant (they are computed from Tavg and pressure, so the limit comes down to meet
+        // you). Plotting a margin beside the ΔT that is eating it is the clearest thing the
+        // chart can say about an overpower event, and none of these has a board readout.
+        { id: 'loop_dt_pct',grp: 'Protection & limits', label: 'Loop ΔT (% ref)', c: '#9a6ab0', get: function (i) { return i.loop_delta_t; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'otdt_sp',  grp: 'Protection & limits', label: 'OTΔT Setpoint', c: '#c86868', get: function (i) { return i.otdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'otdt_mar', grp: 'Protection & limits', label: 'OTΔT Margin', c: '#e08888', get: function (i) { return i.otdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
+        { id: 'opdt_sp',  grp: 'Protection & limits', label: 'OPΔT Setpoint', c: '#c89868', get: function (i) { return i.opdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'opdt_mar', grp: 'Protection & limits', label: 'OPΔT Margin', c: '#e0b088', get: function (i) { return i.opdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
+        { id: 'rod_margin',grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: [0, 912], dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
+        stat({ id: 'rod_limit', grp: 'Protection & limits', label: 'Rods At Limit', c: '#c0a050', ins: 'rod_at_limit', on: 'AT LIMIT', off: 'no', alarm: 'on' }),
+
         // ---------------------------------------------------------------- pressure boundary
         // The relief path. Two of these are BOOLEAN traces and that is deliberate: a step
         // line for "the valve was open from here to here", laid under the pressure trace, is
@@ -441,10 +524,25 @@
         // is information no gauge on the board carries. A boolean lands in the packed row as
         // 1 or 0 (Float64Array coercion), and the per-series auto-range draws it as a clean
         // step between the top and bottom of its own band.
-        { id: 'porv',     grp: 'Pressure boundary', label: 'PORV Open', c: '#e08050', tru: function (t) { return t.porv_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'OPEN' : 'shut'; } },
+        // THE Three Mile Island CHANNEL, and the reason it carries both sides. `get` reads
+        // `porv_indicator`, which reports the DEMAND signal sent to the valve; `tru` reads the
+        // valve. On an intact plant they are the same trace. With the valve stuck they are not,
+        // and because the chart picks its side by mode (physics in Teaching, instruments in
+        // Realistic), plotting this in Realistic shows the operator exactly the lie TMI-2's
+        // control room was shown for two hours and twenty minutes.
+        { id: 'porv',     grp: 'Pressure boundary', label: 'PORV Open', c: '#e08050', get: function (i) { return i.porv_indicator === 'open' ? 1 : 0; }, tru: function (t) { return t.porv_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'OPEN' : 'shut'; } },
+        stat({ id: 'block_valve', grp: 'Pressure boundary', label: 'PORV Block Valve', c: '#b07850', tru: 'block_valve_open', on: 'OPEN', off: 'SHUT' }),
+        stat({ id: 'porv_stuck',  grp: 'Pressure boundary', label: 'PORV Stuck', c: '#e05050', tru: 'porv_stuck', on: 'STUCK', off: 'no', alarm: 'on' }),
+        stat({ id: 'relief_act',  grp: 'Pressure boundary', label: 'Safety/Relief Active', c: '#d09060', ins: 'safety_relief_active', on: 'ACTIVE', off: 'no', alarm: 'on' }),
+        stat({ id: 'spray_stuck', grp: 'Pressure boundary', label: 'PZR Spray Stuck', c: '#5090b0', tru: 'spray_stuck', on: 'STUCK', off: 'no', alarm: 'on' }),
         { id: 'tailpipe', grp: 'Pressure boundary', label: 'PORV Tailpipe Temp', c: '#c86a4a', get: function (i) { return i.porv_tailpipe_temp; }, tru: function (t) { return t.porv_tailpipe_temp_c; }, range: [0, 250], dHi: 150, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'spray_flow',grp: 'Pressure boundary', label: 'PZR Spray Flow', c: '#68b8e0', get: function (i) { return i.pzr_spray_flow; }, tru: function (t) { return t.spray_flow_pct; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + '%'; } },
-        { id: 'sg_safety',grp: 'Pressure boundary', label: 'SG Safeties Lifting', c: '#d8a040', tru: function (t) { return t.sg_safety_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'LIFT' : 'seated'; } },
+        { id: 'sg_safety',grp: 'Pressure boundary', label: 'SG Safeties Lifting', c: '#d8a040', get: function (i) { return i.sg_safety_open ? 1 : 0; }, tru: function (t) { return t.sg_safety_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'LIFT' : 'seated'; } },
+        // The two steam reliefs that are OPERATED rather than sprung: the turbine bypass to the
+        // condenser, and the atmospheric dump that is the only cooldown path once the condenser
+        // is gone. Instrument pairs — the `dump`/`adv` entries under Controls are the DEMAND.
+        { id: 'dump_valve',grp: 'Pressure boundary', label: 'Steam Dump Valve', c: '#a8c060', get: function (i) { return i.steam_dump_valve; }, tru: function (t) { return t.steam_dump_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'adv_valve', grp: 'Pressure boundary', label: 'Atmospheric Dump (ADV)', c: '#c0b070', get: function (i) { return i.adv_valve; }, tru: function (t) { return t.adv_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
 
         // ---------------------------------------------------------------- containment
         // #386. Building pressure traces in GAUGE units, like the physics row and the board —
@@ -453,6 +551,10 @@
         { id: 'ctmt_t',   grp: 'Containment', label: 'Containment Temp', c: '#c08890', get: function (i) { return i.containment_temp; }, tru: function (t) { return t.containment_temp_c; }, range: [20, 200], dHi: 100, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'ctmt_sump',grp: 'Containment', label: 'Containment Sump', c: '#7898c0', get: function (i) { return i.containment_sump_level; }, tru: function (t) { return t.containment_sump_pct; }, range: [0, 100], dHi: 0.1, fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'ctmt_h2',  grp: 'Containment', label: 'Containment H₂', c: '#d05070', get: function (i) { return i.ctmt_h2; }, tru: function (t) { return t.ctmt_h2_pct; }, range: [0, 10], dHi: 4.1, fmt: function (v) { return v.toFixed(2) + '% vol'; } },
+        stat({ id: 'ctmt_spray', grp: 'Containment', label: 'Containment Spray', c: '#88a8d0', ins: 'ctmt_spray_active', tru: 'ctmt_spray_active', on: 'SPRAY', off: 'off', alarm: 'on' }),
+        stat({ id: 'ctmt_fans',  grp: 'Containment', label: 'Fan Coolers (safety)', c: '#7898b0', ins: 'ctmt_fan_active', tru: 'ctmt_fan_active', on: 'SI MODE', off: 'normal' }),
+        stat({ id: 'ctmt_recomb',grp: 'Containment', label: 'H₂ Recombiners', c: '#b06888', ins: 'ctmt_recomb_active', tru: 'ctmt_recomb_active', on: 'RUN', off: 'idle' }),
+        stat({ id: 'ctmt_burn',  grp: 'Containment', label: 'H₂ Burn Occurred', c: '#e04060', ins: 'ctmt_h2_burned', tru: 'ctmt_h2_burned', on: 'BURNED', off: 'no', alarm: 'on' }),
 
         // ---------------------------------------------------------------- steam & feed
         { id: 'steam_p',  grp: 'Steam & feed', label: 'Steam P',  c: '#60789a', get: function (i) { return i.steam_pressure; }, tru: function (t) { return t.steam_pressure_mpa; }, range: [0, 10], dHi: 8.0, fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
@@ -470,12 +572,29 @@
         // flat-lined level trace and a still-falling mass trace are both true at once.
         { id: 'sg_mass',  grp: 'Steam & feed', label: 'SG Inventory', c: '#9a78a8', tru: function (t) { return t.sg_mass_frac * 100; }, range: [0, 105], dLo: 20, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'psg_dt',   grp: 'Steam & feed', label: 'Primary → SG ΔT', c: '#c07068', tru: function (t) { return t.t_sg_c == null ? null : t.tavg_c - t.t_sg_c; }, range: [0, 45], dLo: 3, fmt: function (v) { return conv(v, 'tempdiff').toFixed(1) + unit('tempdiff'); } },
+        // WIDE-RANGE level and TOTAL SG draw. `sg_level` above is the narrow-range tap, which
+        // pegs outside its band — during a transient the two traces are the difference between
+        // "level is off the bottom of the gauge" and knowing where it actually is. `sg_steam_flow`
+        // is the transmitter that sees the dump as well as the turbine, which is why it stays up
+        // when `steam_flow` reads zero on an offline turbine (#206).
+        { id: 'sg_wide',  grp: 'Steam & feed', label: 'SG Level (wide range)', c: '#9080a8', get: function (i) { return i.sg_level_wide; }, tru: function (t) { return t.sg_level_wide_pct; }, range: [0, 100], dLo: 20, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'sg_draw',  grp: 'Steam & feed', label: 'Total SG Steam Draw', c: '#a0b070', get: function (i) { return i.sg_steam_flow * 100; }, tru: function (t) { return t.steam_out_total * 100; }, range: [0, 200], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'cond_flow',grp: 'Steam & feed', label: 'Condensate Flow', c: '#68a898', get: function (i) { return i.condensate_flow * 100; }, tru: function (t) { return t.condensate_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; } },
+        stat({ id: 'msiv',      grp: 'Steam & feed', label: 'MSIV Open', c: '#8090a8', ins: 'msiv_open', tru: 'msiv_open', on: 'OPEN', off: 'SHUT', alarm: 'off' }),
+        stat({ id: 'mfw_iso',   grp: 'Steam & feed', label: 'Main Feed Isolated', c: '#a06868', ins: 'mfw_isolated', on: 'ISOLATED', off: 'no', alarm: 'on' }),
+        stat({ id: 'cond_pump', grp: 'Steam & feed', label: 'Condensate Pump', c: '#588880', ins: 'condensate_pump_running', tru: 'condensate_pump_running', on: 'RUN', off: 'stopped' }),
+        stat({ id: 'afw_act',   grp: 'Steam & feed', label: 'AFW Actuated', c: '#5ab0a8', ins: 'afw_active', tru: 'afw_active', on: 'ACTUATED', off: 'no' }),
+        stat({ id: 'afw_pump',  grp: 'Steam & feed', label: 'AFW Pump Running', c: '#48908a', ins: 'afw_pump_running', tru: 'afw_pump_running', on: 'RUN', off: 'stopped' }),
+        stat({ id: 'afw_block', grp: 'Steam & feed', label: 'AFW Block Valve', c: '#3a7870', ins: 'afw_block_open', on: 'OPEN', off: 'SHUT' }),
+        stat({ id: 'sg_imbal',  grp: 'Steam & feed', label: 'SG Level Imbalance', c: '#b09068', ins: 'sg_imbalance_active', tru: 'sg_imbalance_active', on: 'ACTIVE', off: 'no', alarm: 'on' }),
 
         // ---------------------------------------------------------------- turbine & output
         { id: 'mwe',      grp: 'Turbine & output', label: 'Output MW',c: '#506880', get: function (i) { return i.mwe_output; }, tru: function (t) { return t.mwe_output; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
         { id: 'demand',   grp: 'Turbine & output', label: 'Steam Demand MW', c: '#7a90a8', tru: function (t) { return t.steam_demand_mwe; }, range: [0, 110], fmt: function (v) { return v.toFixed(0) + ' MWe'; } },
         { id: 'gov',      grp: 'Turbine & output', label: 'Governor Valve', c: '#90a860', get: function (i) { return i.governor_valve; }, tru: function (t) { return t.governor_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'rpm',      grp: 'Turbine & output', label: 'Turbine RPM', c: '#a09070', get: function (i) { return i.turbine_rpm; }, tru: function (t) { return t.turbine_rpm; }, range: [0, 2000], fmt: function (v) { return v.toFixed(0) + ' rpm'; } },
+        stat({ id: 'turb_trip', grp: 'Turbine & output', label: 'Turbine Tripped', c: '#c06850', ins: 'turbine_tripped', tru: 'turbine_tripped', on: 'TRIPPED', off: 'no', alarm: 'on' }),
+        stat({ id: 'demand_lo', grp: 'Turbine & output', label: 'Steam Demand Low', c: '#a08860', ins: 'steam_demand_low', on: 'LOW', off: 'no' }),
         // Gross electrical over TOTAL core heat — the honest denominator (#315), not
         // fission power, or the number goes to infinity after a scram.
         { id: 'eff',      grp: 'Turbine & output', label: 'Cycle Efficiency', c: '#8a8a5a', tru: function (t) { var q = mwtOf(t.core_heat_pct); return q > 1 ? t.mwe_output / q * 100 : null; }, range: [0, 45], fmt: function (v) { return v.toFixed(1) + '%'; } },
@@ -486,8 +605,22 @@
         // trace for the same reason the PORV one is: the moment power goes is the moment
         // every motor load's behaviour changes, and a step line marks it exactly.
         { id: 'ac_avail', grp: 'Support systems', label: 'AC Available', c: '#e0c060', tru: function (t) { return t.ac_available ? 1 : 0; }, range: [0, 1], dLo: 0, fmt: function (v) { return v > 0.5 ? 'available' : 'LOST'; } },
+        stat({ id: 'sbo',       grp: 'Support systems', label: 'Station Blackout', c: '#e08040', ins: 'station_blackout', tru: 'station_blackout', on: 'SBO', off: 'no', alarm: 'on' }),
         { id: 'eccs_flow',grp: 'Support systems', label: 'ECCS Injection', c: '#50c090', tru: function (t) { return ((t.hpi_flow_normalized || 0) + (t.accumulator_flow_normalized || 0)) * eccsRatedGpm(); }, range: [0, 400], fmt: function (v) { return conv(v, 'flow').toFixed(0) + ' ' + unit('flow'); } },
+        // The individual injection paths and the heads behind them. The merged HPI/LPI line and
+        // the passive accumulators arrive at very different pressures, so the discharge-pressure
+        // traces are what say WHY a path is or is not delivering.
+        { id: 'hpi_flow', grp: 'Support systems', label: 'HPI/LPI Flow', c: '#48b088', get: function (i) { return i.hpi_flow * 100; }, tru: function (t) { return t.hpi_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'accum_flow',grp: 'Support systems', label: 'Accumulator Flow', c: '#88c070', get: function (i) { return i.accumulator_flow * 100; }, tru: function (t) { return t.accumulator_flow_normalized * 100; }, range: [0, 120], fmt: function (v) { return v.toFixed(1) + '%'; } },
+        { id: 'hpi_dp',   grp: 'Support systems', label: 'HPI Discharge Press', c: '#409878', get: function (i) { return i.hpi_discharge_pressure; }, tru: function (t) { return t.hpi_discharge_pressure_mpa; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        { id: 'afw_dp',   grp: 'Support systems', label: 'AFW Discharge Press', c: '#38887e', get: function (i) { return i.afw_discharge_pressure; }, tru: function (t) { return t.afw_discharge_pressure_mpa; }, range: [0, 12], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
+        stat({ id: 'hpi_on',    grp: 'Support systems', label: 'HPI Actuated', c: '#50c0a0', ins: 'hpi_active', tru: 'hpi_active', on: 'ACTUATED', off: 'no' }),
+        stat({ id: 'accum_disch',grp: 'Support systems', label: 'Accumulators Discharging', c: '#98c860', ins: 'accumulators_discharging', tru: 'accumulators_discharging', on: 'DISCHARGING', off: 'no' }),
+        stat({ id: 'accum_valve',grp: 'Support systems', label: 'Accumulator Valve', c: '#78a850', ins: 'accum_valve_open', tru: 'accumulator_valve_open', on: 'OPEN', off: 'SHUT' }),
+        stat({ id: 'rhr_on',    grp: 'Support systems', label: 'RHR Active', c: '#60a8c0', ins: 'rhr_active', tru: 'rhr_active', on: 'ACTIVE', off: 'no' }),
+        stat({ id: 'rhr_valve', grp: 'Support systems', label: 'RHR Suction Valve', c: '#4888a0', ins: 'rhr_valve_open', tru: 'rhr_valve_open', on: 'OPEN', off: 'SHUT' }),
         { id: 'cw_temp',  grp: 'Support systems', label: 'CW Inlet Temp', c: '#7ab0b8', get: function (i) { return i.cw_inlet_temp; }, tru: function (t) { return t.cw_inlet_temp_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        stat({ id: 'cond_avail',grp: 'Support systems', label: 'Condenser Available', c: '#6890a8', ins: 'condenser_cooling_available', tru: 'condenser_cooling_available', on: 'available', off: 'LOST', alarm: 'off' }),
 
         // ---------------------------------------------------------------- controls
         // COMMANDED positions, not readings. Plotted against everything above them, these
@@ -1300,34 +1433,65 @@
         if (s) { sw = document.createElement('i'); sw.className = 'ser-swatch'; sw.style.background = s.c; cell.appendChild(sw); }
       } else if (!on && sw) { cell.removeChild(sw); }
     });
-    document.querySelectorAll('#graphParams input[data-series]').forEach(function (cb) {
-      cb.checked = !!ui.series[cb.getAttribute('data-series')];
-    });
   }
 
-  // The plot checklist, GROUPED by `series[].grp` *(OWNER, 2026-08-03: "organize the graph
-  // list in an intelligent order and group them in groups")*. Group order is first-seen
-  // order in the profile, so the array IS the display order and there is no second list to
-  // keep in step — add a series in the right place and it lands in the right group.
-  // A profile with no `grp` (RBMK/BWR) renders exactly as it did: one ungrouped run.
-  function buildGraphParams() {
-    var box = $('graphParams'); box.innerHTML = '';
-    var groups = {};                       // group name -> its container element
-    prof().series.forEach(function (s) {
-      var host = box;
-      if (s.grp) {
-        if (!groups[s.grp]) {
-          var g = document.createElement('div'); g.className = 'param-grp';
-          var hd = document.createElement('div'); hd.className = 'param-grp-h'; hd.textContent = s.grp;
-          g.appendChild(hd); box.appendChild(g);
-          groups[s.grp] = g;
-        }
-        host = groups[s.grp];
+  // ---- the INDICATIONS tab -------------------------------------------------------------
+  // *(OWNER, 2026-08-08: "Lets change the graph tab to 'Indications' and this tells us all
+  // the indications in the plant, categorized like the physcs tab. it should also have a
+  // checkbox column to add it to the graph.")*
+  //
+  // Every channel the plant publishes, grouped by `series[].grp` — the same energy-path
+  // spine the Physics tab and the Inject Failure list use, so all three read alike. Group
+  // order is first-seen order in the profile, so the array IS the display order and there is
+  // no second list to keep in step; `run_inspect` fails if an instrument exists with no
+  // series, so the array cannot fall behind the engine either.
+  //
+  // WHAT IS LISTED HERE vs on Physics — the split is HR1's, not an arbitrary one. A series
+  // with `get` is a CHANNEL (lag, noise, failable) and belongs here; a series with `ctl` is a
+  // COMMANDED position, which the board displays and the operator reads, so it belongs here
+  // too under its own group. A series with only `tru` has no channel at all — decay heat,
+  // voiding, the loop pressure split — and its home is the Physics tab, where every one of
+  // them has a row. A plant with NO physics panel (RBMK/BWR, on hold) lists everything, so
+  // nothing becomes unreachable on those.
+  var indRows = [];   // [{ el, ser }] in profile order — element refs cached at build time
+  function buildIndications() {
+    var box = $('indicationsList'); if (!box) return;
+    indRows = [];
+    var listAll = !prof().physics;
+    var rows = prof().series.filter(function (s) { return listAll || s.get || s.ctl; });
+    var html = '', grp = null;
+    rows.forEach(function (s) {
+      if (s.grp !== grp) {
+        if (grp !== null) html += '</div>';
+        grp = s.grp;
+        html += '<div class="ind-grp">' + (grp ? '<h4>' + grp + '</h4>' : '');
       }
-      var row = document.createElement('label'); row.className = 'param-row';
-      row.innerHTML = '<input type="checkbox" data-series="' + s.id + '"' + (ui.series[s.id] ? ' checked' : '') + '>' +
-        '<i style="background:' + s.c + '"></i>' + s.label;
-      host.appendChild(row);
+      html += '<div class="num-line">' + plotCell(s.id) +
+              '<span class="nk">' + s.label + '</span><span class="nv">—</span></div>';
+    });
+    if (grp !== null) html += '</div>';
+    box.innerHTML = html;
+    var cells = box.querySelectorAll('.nv'), n = 0;
+    rows.forEach(function (s) { indRows.push({ el: cells[n++], ser: s }); });
+  }
+  // One row's live reading, in the same words the chart chip uses — `fmt` is the series' own
+  // formatter, so a value can never disagree with its trace. Reads the side the row IS: the
+  // channel for an instrument, the demand for a commanded position, truth only when the
+  // series has nothing else (the RBMK/BWR list-everything case).
+  function seriesLive(s, snap) {
+    try {
+      if (s.get && snap.instruments) return s.fmt(s.get(snap.instruments));
+      if (s.ctl && snap.control_state) return s.fmt(s.ctl(snap.control_state));
+      if (s.tru && snap.true_state) return s.fmt(s.tru(snap.true_state));
+    } catch (e) { /* a channel this plant does not publish */ }
+    return null;
+  }
+  function renderIndications(s) {
+    if (!indRows.length || !paneVisible('indications')) return;
+    indRows.forEach(function (r) {
+      var txt = seriesLive(r.ser, s);
+      var missing = (txt == null || txt === '—' || /NaN|Infinity/.test(txt));
+      r.el.textContent = missing ? '—' : txt;
     });
   }
 
@@ -1649,6 +1813,7 @@
     if (ui.plant !== 'pwr' && scramInd && !lastScrammed && ui.view !== 'diagram') setView('diagram');
     renderPlantDisplay(s);
     renderPhysics(s);
+    renderIndications(s);   // both panes no-op unless they are actually on screen
     // INSIDE the rAF, not as their own subscribers (2026-08-06). The rationale above says
     // a DOM write off the paint cycle "let the compositor present a frame mid-rebuild on
     // real GPUs ... dispersing and reappearing ... while software-rendered headless looked
@@ -1793,11 +1958,12 @@
   // has no instrument-vs-truth split to preserve, and `seriesTruth` returns false for it
   // because it declares no `tru`.
   function chartSample(rawIns, trueState, ctlState) {
-    var chartIns = rawIns;   // RAW instruments — no display smoothing on the chart
-    if (trueState && trueState.xenon_pct_eq != null) {
-      // xenon has no instrument; carry the true value so the series can plot in both modes
-      chartIns = Object.assign({}, rawIns); chartIns.xenon_pct_eq = trueState.xenon_pct_eq;
-    }
+    // RAW instruments — no display smoothing on the chart. This used to clone the dict per
+    // sample to graft `xenon_pct_eq` in, which was propping up a `get` on a series that has
+    // no instrument; the series dropped its `get` (see there) and `seriesTruth` already
+    // traces truth in both modes for any channel-less series, so the clone is gone with it —
+    // one fewer object allocation in the sampler, which runs up to 240 times a broadcast.
+    var chartIns = rawIns;
     var v = new Float64Array(serCols), tv = new Float64Array(serCols);
     v.fill(NaN); tv.fill(NaN);
     prof().series.forEach(function (ser, i) {
@@ -3296,7 +3462,7 @@
     // point every reveal goes through (tab click, card expand, accordion). Without
     // it, opening Physics on a PAUSED plant shows em-dashes until a broadcast that
     // never comes.
-    if (tExp && latest) renderPhysics(latest);
+    if (tExp && latest) { renderPhysics(latest); renderIndications(latest); }
   }
   function setFocus(which) {
     applyFocus(which === 'instructor', which !== 'instructor');
@@ -4482,7 +4648,7 @@
       // painted until the next broadcast — and on a PAUSED sim no broadcast is coming,
       // so the tab would open stale and stay that way. Cheap: both are no-ops for the
       // pane that is not on screen.
-      if (latest) { renderPhysics(latest); renderAutomate(latest); }
+      if (latest) { renderPhysics(latest); renderIndications(latest); renderAutomate(latest); }
     });
     // Persona header (now visible in every mode, chat included): collapse/expand
     // via the header or the explicit minimize button (top-right). stopPropagation
@@ -5673,7 +5839,7 @@
     buildSeriesIndex();
     chartBuf = []; smoothed = {}; seriesHot = {};
     syncUnitsScope();
-    buildGauges(); buildGraphParams(); buildPhysics(); updateSimSummary(); buildFailures();
+    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
     buildAutomate();
@@ -6149,7 +6315,7 @@
     ui.series = Object.assign({}, prof().defaultSeries);
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
-    buildGauges(); buildGraphParams(); buildPhysics(); updateSimSummary();
+    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
     buildPlantDisplay();
     service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
@@ -6187,7 +6353,9 @@
     if (tbm) {
       if (tbm[1] === 'training') openMissionSelect();
       else {
-        var tabId = tbm[1] === 'sim' ? 'operate' : tbm[1];
+        // `sim` and `graph` are legacy aliases kept because they are pasted into issues and
+        // screenshots: the panes are `operate` and `indications` now.
+        var tabId = tbm[1] === 'sim' ? 'operate' : (tbm[1] === 'graph' ? 'indications' : tbm[1]);
         var tbtn = document.querySelector('#tabbar [data-tab="' + tabId + '"]');
         if (tbtn) tbtn.click();
       }

@@ -422,6 +422,77 @@ test('every failure is placed in a group', function (ck) {
   ck('no failure appears in two groups', dupes.length === 0, dupes.join(', '));
 });
 
+// ======================================= Indications tab covers every channel (2026-08-08)
+// *(OWNER, 2026-08-08: "Lets change the graph tab to 'Indications' and this tells us all the
+// indications in the plant".)* The tab is generated from `PROFILES.pwr.series`, so "all the
+// indications" is only true while that hand-maintained array keeps up with the engine's
+// instrument set. This is the #224 shape exactly — a list-driven view that silently
+// under-covers the artifact it presents — and it is the same failure the failGroups check
+// above exists for: a new instrument does not produce an error, it produces a tab that
+// quietly stops being complete while still calling itself complete.
+//
+// Static, on the source, like the physics-row check: loading ui/app.js needs a DOM. A channel
+// counts as covered if the series block reads it as `i.<key>` or declares it as `ins: '<key>'`
+// (the `stat()` builder's form). Both directions are checked — a series reading a channel the
+// config no longer declares is a rename that lost its trace.
+test('every plant indication has a chart series', function (ck) {
+  var cfg = (RD.PWR_CONFIG && RD.PWR_CONFIG.instruments) || {};
+  var analog = Object.keys(cfg).filter(function (k) { return k !== 'status'; });
+  // `instruments.status` is an ARRAY of channel names, not a map of specs — status booleans
+  // carry no lag/noise/range, so there is nothing to key. Object.keys on it returns "0".."33".
+  var status = Array.isArray(cfg.status) ? cfg.status.slice() : Object.keys(cfg.status || {});
+  var channels = analog.concat(status);
+  ck('instrument set loaded from config', channels.length > 50,
+     analog.length + ' analog + ' + status.length + ' status');
+
+  var app = read('ui/app.js');
+  var from = app.indexOf('      series: [');
+  var to = app.indexOf('------ Physics tab', from);
+  ck('the series block is findable', from > 0 && to > from);
+  if (from < 0 || to < from) return;
+  // COMMENTS STRIPPED FIRST, and it matters in both directions. The block is heavily
+  // commented and the prose contains accessor-shaped text: "i.e." parses as a read of an
+  // instrument called `e`, and a comment explaining why a ghost accessor was REMOVED
+  // ("it used to read `i.xenon_pct_eq`") keeps the ghost alive for the scanner. The same cut
+  // stops a channel counting as covered because someone merely mentioned it in prose, which
+  // is the more dangerous direction — that one fails green. No line in this block carries a
+  // URL or a `//` inside a string, so cutting at the first `//` per line is exact here.
+  var block = app.slice(from, to).split('\n').map(function (ln) {
+    var i = ln.indexOf('//');
+    return i < 0 ? ln : ln.slice(0, i);
+  }).join('\n');
+
+  function covered(k) { return block.indexOf('i.' + k) >= 0 || block.indexOf("ins: '" + k + "'") >= 0; }
+  var missing = channels.filter(function (k) { return !covered(k); });
+  ck('no plant indication is missing from the series registry', missing.length === 0,
+     missing.length + ' uncovered: ' + missing.join(', '));
+
+  // Reverse: an accessor naming a channel the config does not declare is a GHOST — it reads
+  // undefined, so the Indications row renders a permanent em-dash while still claiming to be
+  // something the plant indicates. Caught in the wild the day this check was written: the
+  // `xenon` series declared `get: i.xenon_pct_eq` for a quantity with no instrument, and
+  // chartSample cloned the instruments dict every sample to graft the true value in so the
+  // accessor would find something. Both directions of the accessor are scanned — `ins: 'k'`
+  // (the stat() builder) and a bare `i.k` read — because that defect used the second form.
+  var declared = {}; channels.forEach(function (k) { declared[k] = true; });
+  var ghosts = {}, m;
+  var re = /ins: '([a-z0-9_]+)'/g;
+  while ((m = re.exec(block)) !== null) if (!declared[m[1]]) ghosts[m[1]] = true;
+  var re2 = /\bi\.([a-z0-9_]+)\b/g;
+  while ((m = re2.exec(block)) !== null) if (!declared[m[1]]) ghosts[m[1]] = true;
+  var ghostList = Object.keys(ghosts);
+  ck('no series reads an instrument the plant does not have', ghostList.length === 0, ghostList.join(', '));
+
+  // Ids must be unique: `serCol` is built by walking the array, so a duplicate id silently
+  // gives two series the same packed column and the second one overwrites the first.
+  var ids = (block.match(/\bid: '([a-z0-9_]+)'/g) || []).map(function (s) { return s.slice(5, -1); });
+  var dup = [], seen = {};
+  ids.forEach(function (i) { if (seen[i]) dup.push(i); seen[i] = true; });
+  ck('no two series share an id', dup.length === 0, dup.join(', '));
+  ck('every series is grouped', (block.match(/\bid: '/g) || []).length === (block.match(/grp: '/g) || []).length,
+     ids.length + ' series, ' + (block.match(/grp: '/g) || []).length + ' grouped');
+});
+
 // ==================================================================== report
 var C = { red: '\x1b[31m', green: '\x1b[32m', dim: '\x1b[2m', bold: '\x1b[1m', off: '\x1b[0m' };
 var passS = 0, failS = 0, passC = 0, failC = 0;

@@ -55,6 +55,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   which still runs ~110 psi above the real one. Manuals `09` and `12` §8.3 updated (Rev 13).
 
 ### Changed
+- **The Graph tab is now INDICATIONS: every reading the plant produces, with its live value and
+  a checkbox that trends it** *(OWNER, 2026-08-08: "Lets change the graph tab to 'Indications'
+  and this tells us all the indications in the plant, categorized like the physcs tab. it should
+  also have a checkbox column to add it to the graph.")*. It was a list of the ~40 quantities
+  somebody had thought to make plottable, showing none of their values; it is now all **84
+  channels** — nuclear instrumentation, the OTΔT/OPΔT limit lines and margins, wide-range steam
+  generator level, containment, ECCS flows and discharge pressures, and 34 status indications —
+  grouped on the same energy-path spine as the Physics tab. Status channels plot as 0/1 step
+  traces, which is what answers "when did that happen" on a strip chart. Two columns when the
+  panel is wide enough, as the plot list had. **`run_inspect` now fails if an instrument exists
+  with no row**, injection-verified four ways — that guard immediately caught a live defect:
+  `xenon` declared an accessor for an instrument that does not exist, propped up by
+  `chartSample` cloning the instruments dict on every sample. Both are gone.
+- **The PORV is a genuine instrument-vs-truth pair on the chart.** Its reading comes from
+  `porv_indicator`, which reports the DEMAND signal rather than the valve — so under a
+  stuck-open relief valve the Indications tab reads *shut* and the Physics tab reads
+  *OPEN · STUCK*. That is the Three Mile Island control room, on two tabs.
 - **Free play now starts at the 50 % power preset** *(OWNER, 2026-08-08: "the plant should start
   with the 50% power preset")*, not Hot Full Power — there is somewhere to go in both directions
   from it. One gate moved with it: `verify_e2e_ui`'s steam/feed pairing check is now PINNED to

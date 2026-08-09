@@ -971,7 +971,16 @@ var BASELINES = {
   // INJECTION-VERIFIED three ways: removing `sgtr` from its group, listing a failure that
   // does not exist (`pzr_heaters_failed`), and naming one in two groups each take it to
   // 8/9 41/42.
-  'run_inspect.js':        { code: 0, score: '9/9 47/47' },
+  //
+  // 2026-08-08: +1 suite, +6 checks — the same #224 guard for the INDICATIONS tab, which is
+  // generated from `PROFILES.pwr.series` and so is only "all the indications in the plant"
+  // while that hand-maintained array keeps up with the engine's 84 channels. INJECTION-
+  // VERIFIED four ways: a new instrument with no series, a series naming a renamed channel,
+  // two series sharing an id (they would share a packed chart column), and an accessor
+  // reading a key no instrument publishes. That last one CAUGHT A LIVE DEFECT the day it was
+  // written — `xenon` declared `get: i.xenon_pct_eq` for a quantity with no instrument, and
+  // chartSample cloned the instruments dict every sample to feed it.
+  'run_inspect.js':        { code: 0, score: '10/10 53/53' },
   // New 2026-07-29 — guards the OFFLINE / single-file build (tools/make_portable.js).
   // The sim runs from file:// with no server only because nothing in the runtime loads
   // anything at runtime: no fetch, no ES module, no worker, no web font, no CDN tag, no

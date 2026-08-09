@@ -461,15 +461,10 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 - **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
   secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
   MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
-- **#419 tier 3 — ALL THREE WAVES LANDED (2026-08-07)**: the ×12.6 retirement, F15 → 2500
-  [derived-net, F14-coupled: one pair, re-solve together], and the Ginna re-anchor — ladder
-  7.03/7.31/7.58/7.33 (sourced/rule-derived, **§8.34 retired**), program 286.0 → 304.5 °C,
-  dump 28 % (D1 measured: the ride-out survives), reference boron 683 → 705 (`rho_excess`
-  re-solved at the WBN quote temperature — the old solve conflated it with our anchor).
-  **Owner-review on the issue**: the TMI deception crest is ~65 % on the final plant (the
-  75 % annunciator unreachable free-play; qualify re-keyed to a state cue) — a
-  level-constants-set ruling if the cue matters. TR-1i is a second strict xfail (#420,
-  coupled to #378). Remaining #419 scope: none — the umbrella is built.
+- **#419 tier 3 — BUILT, no scope left** (2026-08-07; the ×12.6 retirement, F15 → 2500, the
+  Ginna re-anchor). Still open on the issue: **owner-review** on the TMI deception crest
+  (~65 % on the final plant — a level-constants ruling if the cue matters), and TR-1i as a
+  second strict xfail (#420, coupled to #378). Detail: `Diagnostic/TUNING_LOG.md`.
 - **#378** — a post-step rod limit cycle, measured to a REJECT (the fix costs TR-1i's sourced ramp
   duty). `run_behavior` carries **TR-18** as a strict xfail pinning it.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
@@ -509,14 +504,16 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   measurement for your model's discretization). Recombiners measurably prevent no ignition
   (declared, prototypical). #425 found on the way: the SBO containment base passes design
   on relief steam alone — pre-existing, put to the owner, not absorbed.
-- **#419 landed in one session: pace real, F15 F14-coupled, the plant re-anchored to Ginna**
-  (2026-08-07). Wave 2's trap: **a physically-derived constant can be RIGHT and unshippable**
-  — K_phys ≈ 304 validates against TMI-2's own clock, but under the ruled 347× F14 heater the
-  stuck-PORV race inverts (level crashes, no deception); shipped K = 2500 = the physical NET
-  under F14 (one pair — re-solve together). Wave 3's trap: **a solve can conflate the
-  measurement's temperature with the plant's** — rho_excess quoted 975 ppm at "the anchor",
-  benign 5 °C apart, wrong at 286; and two latent linearizations surfaced only when the
-  anchor walk lengthened. The ghost-constant lesson stands: check the consumer first.
+- **The board can list every channel and get CHEAPER — the row shape was the cost** (2026-08-08,
+  the Indications tab). `chartBuf` stored one NAMED PROPERTY per series per side, and property
+  cost is what scaled: at 9000 rows, 40 series = **39.5 MB**, 110 = **137.8**. Packed into
+  fixed-width `Float64Array`s (NaN = no reading; every reader already guarded `isFinite`) the
+  registry went 40 → 96 and the buffer fell to ~9.6 MB. Two traps: **an unmeasured claim in
+  PLAYER-FACING COPY is still an unmeasured claim** — a "pressurizer mass-only level" row
+  promised a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is
+  `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
+  COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
+  MENTIONED counting as covered — fails green.
 - **The #380 ladder decision dissolved when the brackets got read** (2026-08-08). The "sourced
   real ~30–32 %" SG lo-lo was NUREG-1431's bracketed TEMPLATE placeholder — Ginna, the anchor
   plant, specifies 17 %, the shipped value. Trap: **a placeholder cites like a number, and it
@@ -534,6 +531,12 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   5285 s, not <4000 — the old pace was the lying gauge propping the heaters).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 
+- **A physically-derived constant can be RIGHT and unshippable, and a solve can conflate the
+  MEASUREMENT's temperature with the PLANT's** (rescued from the #419 themes bullet on
+  eviction, 2026-08-08): K_phys ≈ 304 validates against TMI-2's own clock but inverts the
+  stuck-PORV race under the ruled 347× F14 heater, so the shipped K = 2500 is the physical NET
+  under F14 — one pair, re-solve together. And `rho_excess` quoted 975 ppm at "the anchor" was
+  benign 5 °C away and wrong at 286. Ghost constants: check the CONSUMER first.
 - **A new node's capacity must come OUT of the node it split from** (rescued from the #418
   themes bullet on eviction, 2026-08-08): C_tube added on top of coolant 20 silently reopened
   the RULED heatup pace — the chain caught it at 260.7 °C. Splitting a lump conserves its total.
