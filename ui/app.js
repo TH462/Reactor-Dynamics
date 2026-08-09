@@ -4255,8 +4255,26 @@
   // diagEvent/diagReset/diagTick already sit at exactly the moments worth reporting,
   // and a parallel set of hooks would be a second thing to keep in step with the first.
   var TEL = (function () {
-    var seen = {};            // one-shot milestones, cleared per session
-    var lastMode = null, lastPanel = null;
+    // A ONE-SHOT LATCH MUST LIVE IN THE SAME STORAGE AS THE IDENTITY IT IS ONE-SHOT FOR.
+    // These were plain variables — scoped to a page LOAD — while the session id they are
+    // reported against lives in sessionStorage and is scoped to the TAB. A reload therefore
+    // re-armed every milestone and re-emitted it under an UNCHANGED session id. Measured
+    // 2026-08-09 in a browser: reloading re-fires plant_mode(1) and on_grid, session id
+    // identical; the live data carried on_grid twice for one real session. That makes
+    // "how many sessions reached the grid" uncountable, which is the only thing the
+    // milestone is for. Same storage, same lifetime, and the duplicate cannot recur.
+    //
+    // sessionStorage refusal is not an error here: the catch falls back to in-memory, which
+    // is exactly the old behaviour, and a browser that refuses storage has no stable session
+    // id to double-count against anyway.
+    var SEEN_KEY = 'rd_telemetry_seen', MODE_KEY = 'rd_telemetry_lastmode';
+    function ssGet(k) { try { return window.sessionStorage.getItem(k); } catch (e) { return null; } }
+    function ssSet(k, v) { try { window.sessionStorage.setItem(k, v); } catch (e) { /* memory only */ } }
+    function loadSeen() { try { return JSON.parse(ssGet(SEEN_KEY) || '{}') || {}; } catch (e) { return {}; } }
+
+    var seen = loadSeen();    // one-shot milestones, latched for the life of the SESSION ID
+    var lastMode = (function () { var v = ssGet(MODE_KEY); return v === null ? null : Number(v); }());
+    var lastPanel = null;
     var startedAt = 0, mission = null, ended = false;
     // session_start fires during BOOT, which on a first visit is before the consent
     // prompt has been answered — so it would be dropped, and first visits are exactly
@@ -4276,7 +4294,13 @@
 
     return {
       sessionStart: function (reason, meta) {
-        seen = {}; lastMode = null; mission = null; ended = false;
+        // `seen` and `lastMode` are DELIBERATELY NOT reset here. They latch against the
+        // session ID, and this function does not change it — a reload calls sessionStart
+        // while the id in sessionStorage stays put, so clearing them here is exactly what
+        // emitted on_grid a second time under one session. A plant reset inside one tab is
+        // not a new visitor either: "sessions that reached the grid" has to count each
+        // session once, or the number means nothing.
+        mission = null; ended = false;
         startedAt = Date.now();
         pendingStart = {
           plant: ui.plant,
@@ -4296,7 +4320,19 @@
         var t = api();
         if (!pendingStart || !t) return;
         try { if (!t.granted()) return; } catch (e) { return; }
-        if (ev('session_start', pendingStart)) pendingStart = null;
+        // Latched on the INITIAL STATE, not merely on the session. A reload re-runs
+        // sessionStart and would file a second identical row under the same session id;
+        // deliberately switching to a different starting condition is a fact worth keeping,
+        // and still records. Same sessionStorage lifetime as the milestone latch, same
+        // reason. NOTE for queries: count sessions with count(DISTINCT blob4), never
+        // count(session_start) — one session can legitimately carry several.
+        var k = 'start:' + pendingStart.initial_state;
+        if (seen[k]) { pendingStart = null; return; }
+        if (ev('session_start', pendingStart)) {
+          seen[k] = true;
+          ssSet(SEEN_KEY, JSON.stringify(seen));
+          pendingStart = null;
+        }
       },
 
       // Action NAME only, never its value: "set_rod_position" is a usage fact,
@@ -4315,6 +4351,7 @@
       milestone: function (name, simT) {
         if (seen[name]) return;                   // latched: first crossing only
         seen[name] = true;
+        ssSet(SEEN_KEY, JSON.stringify(seen));    // survives a reload; see SEEN_KEY above
         ev('milestone', { name: name, sim_seconds: Math.round(simT || 0) });
       },
 
@@ -4327,6 +4364,7 @@
         // so "how far did they get" carries no threshold of mine.
         if (typeof ts.plant_mode === 'number' && ts.plant_mode !== lastMode) {
           lastMode = ts.plant_mode;
+          ssSet(MODE_KEY, String(lastMode));      // same reason as SEEN_KEY: survive a reload
           ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });
         }
         if (typeof ts.mwe_output === 'number' && ts.mwe_output > 0) this.milestone('on_grid', t);

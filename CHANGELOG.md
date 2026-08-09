@@ -31,6 +31,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A milestone could be recorded twice for one session, because the latch and the identity it
+  latched against lived in different storage.** `seen` was a plain object — scoped to a page
+  **load** — while the session id it is reported under lives in `sessionStorage`, scoped to the
+  **tab**. Reloading therefore re-armed every milestone and re-emitted it under an unchanged
+  session id. Reproduced in a browser 2026-08-09: a reload re-fires `session_start`,
+  `plant_mode` and `on_grid` with the session id identical, and the live data already carried
+  `on_grid` twice for one real session. That makes "how many sessions reached the grid"
+  uncountable, which is the only question the milestone exists to answer. The latch now lives
+  in `sessionStorage` beside the id, and `sessionStart` no longer clears it — a plant reset
+  inside one tab is not a new visitor. `session_start` latches on the **initial state** rather
+  than the session, so a reload is suppressed while genuinely switching starting condition
+  still records; verified both ways, including that switching to Cold Shutdown in the same tab
+  emits `session_start(cold_shutdown)` and `plant_mode(5)` while `on_grid` stays latched.
+
+### Added
+- **`tools/usage_report.js`** — reads the usage dataset and prints where people start, how far
+  they get, which panels and controls they use, and how long they stay. Needs an
+  *Account Analytics → Read* token in `CLOUDFLARE_API_TOKEN`; with none it exits 2 and says how
+  to make one, rather than printing an empty report that reads like "nobody visited". It is a
+  script and not an MCP call for a measured reason: `cloudflare.request()` demands the standard
+  `{success, result}` envelope and the Analytics Engine SQL endpoint answers `{meta, data,
+  rows}`, so a perfectly good query surfaces as `Cloudflare API error: 200`. Three query traps
+  are pinned in its header — `uniq()` and `round()` are 422, `ORDER BY` on a raw `double`
+  column is 422 while the same column SELECTs fine (order by the alias), and sessions must be
+  counted with `count(DISTINCT blob4)` because one session can legitimately carry several
+  starts.
+
+
+### Fixed
 - **The plant no longer hunts at part power — every steady state below full load was
   oscillating forever, hands-off, on the preset the sim opens with** (#394 + #378 + #420).
   Measured before: the authored 50 % initial condition swung **11.0 points of power and 3.8 °F

@@ -209,6 +209,37 @@ Verified end-to-end in a real browser, not just by gate: overlay absent, `collec
 3 events queued, toggle visible and lit **On**, and clicking Off yields `consent: "denied"`,
 `granted: false`, verdict *"opted out — nothing is collected, as asked"*. `run_all` 44 at baseline.
 
+**THE FIRST REAL USAGE DATA ARRIVED, AND IT IMMEDIATELY EXPOSED A COUNTING BUG.** 35 events,
+3 sessions. Two real ones on Alpha 1.5.1: a 46-second visit (start, on grid, gone) and one
+running 14:02–17:54 that injected a failure, scrammed, and then **switched between Indications
+and Physics six times in 37 seconds** — a diagnostic hunt across two tabs, which is the sort of
+thing no bug report would ever have said.
+
+**The counting bug: a one-shot latch must live in the same storage as the identity it is
+one-shot FOR.** `seen` was a plain object (per page LOAD); the session id is `sessionStorage`
+(per TAB). A reload re-armed every milestone and re-emitted it under an unchanged id.
+Reproduced in a browser: reload re-fires `session_start`, `plant_mode` and `on_grid`, session id
+identical. Fixed by moving the latch into `sessionStorage` beside the id and having
+`sessionStart` stop clearing it. `session_start` latches on the INITIAL STATE instead, so a
+reload is suppressed but switching condition still records — verified both directions, because
+a suppression that eats a real row is worse than the duplicate it replaces.
+
+**A defect I reported that was NOT one.** I called the empty `blob5` on `plant_mode` a bug. It
+is deliberate: the worker's `KEY_OF` maps `plant_mode: null` because the mode is a NUMBER and
+lives in `doubles[2]`, documented in the column map. Reading `blob5` there is the error, not
+writing it. Corrected before anything changed — the "fix" would have written a redundant second
+copy of a value already present, into an append-only positional schema.
+
+**Three Analytics Engine query traps, all measured.** `uniq()` and `round()` return 422.
+**`ORDER BY` a raw double column is a 422** — *"unable to find type of column: double1"* — while
+SELECTing that same column is fine; order by the alias. And the Cloudflare MCP **cannot read
+this dataset at all**: `cloudflare.request()` demands `{success, result}` and the SQL endpoint
+answers `{meta, data, rows}`, so a successful query surfaces as *"Cloudflare API error: 200"*.
+Hence `tools/usage_report.js` is a script with a token rather than an MCP call. It exits 2
+without a token instead of printing an empty report, because "no rows" and "no credentials"
+must not look alike.
+
+
 **THE VERSION STAMPS WERE CACHED FOR FOUR HOURS, AND that is what "the site still shows 1.4.0"
 was.** Reported minutes after Alpha 1.5.1 went live. The origin was correct — plain,
 cache-busted and `Cache-Control: no-cache` fetches all returned 1.5.1 — so it was the browser,
