@@ -29,6 +29,133 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-develop-b (#394 + #378 + #420 — the limit cycle was LOOP GAIN, and two sessions rejected fixes for the wrong mechanism)
+
+**Outcome: both strict xfails retire. `run_behavior` 67pass/2xfail → 69pass/0xfail, `run_all` 44
+runners at baseline.** #394 and #378 are one defect and it is fixed; #420 is resolved by ruling,
+not by the rod channel, and the measurement says why no rod-channel change could ever have fixed it.
+
+### The cause is not what the file said it was
+
+Two prior sessions (2026-08-05-workbench-a, 2026-08-06-workbench-a) diagnosed the cycle as the
+kernel's **stop-exit travel**: `_stepRods` returns `'holding'` at the deadband without cancelling
+the in-flight `rod_nudge`, so travel lands after the decision to stop. They built the cancel,
+measured it working (13.78 → 2.03 pts), and rejected it because it cost TR-1i's sourced ramp duty
+4.34 → 5.26 °F. That story is written into `pwr_control.js`, the TR-18 probe comment,
+`BUILD_DECISIONS.md` and both issues. **It is a real effect and it is not the cause.**
+
+**Q0-C, the measurement nobody had taken** (scratch probe wrapping `_stepRods`, reading the
+ENGINE group — `nudge_target`/`velocity`/`step_accumulator` are not in `getControlState()`, so
+`ctx` cannot see them). 2 h hands-off at the authored `50_percent` IC, full stack, seed 4242:
+
+| | count | mean | max |
+|---|---|---|---|
+| nudges issued | 644 (322/h) | | |
+| **abandoned at the deadband exit** | **571 (89 % of nudges)** | **1.59 steps / 6.00 pcm** | 5 steps / 18.64 pcm |
+| per half-cycle | | **75.4 pcm** | |
+
+So the effect is real and large — and the exits behave exactly as the prior sessions measured,
+for a reason worth writing down: **`AUTO_DT` is 0.1 s and the deadband exit sits BEFORE the period
+gate**, so it is the only exit reached at sub-period cadence. The zero-step and damping exits sit
+behind the 5.0 s gate, which is why cancelling there changed *zero digits* on any seed. That was
+recorded as an observation; it is a consequence.
+
+### What the incidence curve says
+
+The cycle is a **part-power** phenomenon (#394: absent at 100 %). Nobody had asked *where* the
+boundary is. Sweeping load and reading the last 10 min of a 2 h ride:
+
+| load MWe | bank % withdrawn | pcm/fine step | power p2p | Tavg p2p |
+|---|---|---|---|---|
+| 40 | 74.8 | **4.657** | **15.05 pts** | 6.66 °F |
+| 50 | 78.1 | 4.068 | 10.97 | 3.79 |
+| 60 | 82.1 | 2.960 | 5.91 | 1.71 |
+| 70 | 87.8 | 1.920 | 2.35 | 0.70 |
+| HFP | 91.7 | 1.395 | 1.31 | 0.35 |
+| 80 | 98.0 | 0.929 | 0.78 | 0.35 |
+
+**Monotone in bank position over six points, with no exceptions.** This plant lumps the entire
+4068 pcm control worth into ONE bank on the S-curve (`rod_worth_curve_flatten` 0.8), so one fine
+step is worth **5.2×** more mid-bank than at either stop — against a controller `gain` that is a
+**constant**. The loop gain therefore swings 5.2× across the operating band and the equilibrium is
+locally unstable at the high end. Every authored IC starts *exactly* on program (`e = 0.000 °C`
+measured at all four), so nothing excites it: **it grows out of instrument noise**, which is what
+#394's "envelope grows over 15 min then holds" is, and what `--lineup=bare` at 0.008 pts is the
+noise floor of.
+
+Causal test, flat multiplier on `gain` at the 50 % point: **1.0 → 10.97 pts, 0.7 → 2.11,
+0.5 → 1.86, 0.343 → 1.42**, where 0.343 is the ratio that gives the 50 % plant the same loop gain
+the quiet 100 % plant runs. The 100 % plant itself reads **1.305**. The part-power phenomenon is
+explained, essentially exactly, by plant gain.
+
+### The fix, and why it needed a gate
+
+`gainScale` on the `rods_tavg` def schedules the controller gain on differential rod worth,
+normalised to 1.0 at the 92 % full-power operating position and clipped there (it only ever
+de-gains; the floor 0.15 never binds, the raw ratio bottoms at 0.166 mid-bank). `RD.pwrScruveSlope`
+is exported from `pwr_engine.js` beside the curve it differentiates so the two cannot drift apart.
+
+**Ungated it collided with TR-1i exactly as the cancel did** — ramp duty 5.28 → 6.52 °F. Sweeping
+the floor proved no constant does both:
+
+| floor | TR-1i ramp | TR-18 settles | TR-18 window p2p |
+|---|---|---|---|
+| 0.15 | 6.52 | 12.2 min | 0.88 |
+| 0.30 | 6.19 | 14.7 min | 0.87 |
+| 0.45 | 6.19 | 11.5 min | 3.37 |
+| 0.60 | 6.19 | 24.9 min | 2.72 |
+| 0.75 | 5.97 | **never** | **10.01** |
+
+The duty cost comes from having *any* schedule, not from its depth. **The two are separable in
+TIME, not in magnitude**: the instability is a steady-state property, the duty is a transient one.
+Measured separator — `d(spEff)/dt` is **1.54e-2 °C/s** through TR-1i's 5 %/min ramp and
+**1.07e-4 °C/s** through the limit cycle, a **144×** gap. `progStill { rate: 0.002, tau: 20 }`
+sits 7.7× under the ramp and 19× over the cycle, and the schedule blends out linearly on it.
+
+**Gated result**: TR-18 settles 15.8 min / 1.76 pts (was never / 13.4), TR-1i's ramp reads
+**5.28 to the digit** — the pre-#394 value — the 2 h soak *improves* 0.71 → 0.49 °F, and TR-1g's
+Tavg return improves to −1.73 °F. Abandoned-travel events collapse 571 → 4: the travel was the
+amplitude-setting nonlinearity riding on an already-unstable loop, which is why fixing either one
+looks like a fix and only one of them is the cause (#295's "each part is sufficient" trap).
+
+### #420 — no rod-channel change could have fixed it
+
+**Q0-D re-confirms #306 on today's plant**: `maxStep` 8 / 16 / 32 → ramp duty **5.28 / 5.28 /
+5.28**, unchanged to the digit. Quadrupling rod authority buys nothing; the residual is the plant's
+thermal lag. The relationship is one-sided and worth stating: *extra* authority is free and does
+nothing, *reduced* authority costs (the ungated schedule's 6.52). So the band was never reachable
+from the controller. Resolved by ruling — the sourced ±5 °F is scaled by this plant's **declared**
+program-span departure, 5.00 × (33.295/29) = **5.74 °F** *(OWNER RULING, 2026-08-09: selected
+"Scale on the departure")*, the #311 precedent as written. 5.28 against 5.74 is 8.0 % headroom.
+
+### Traps
+
+- **A mechanism repeated in four documents is still unmeasured.** "Up to 8 fine steps ≈ 72 pcm"
+  appeared in the TUNING_LOG, BUILD_DECISIONS, the TR-18 probe comment and the channel def. The
+  per-half-cycle figure is right (75.4 measured) but the shape is wrong — it is ~12 slow-band
+  abandonments of ~6 pcm, not one 8-step fast nudge — and the *number of copies* was doing the
+  work of evidence. Nothing had multiplied step count by step rate.
+- **A pre-declared reject criterion can outlive its measurement.** #378's cancel was rejected for
+  taking the duty to 5.26 vs ≤ 5.00; #419 wave 3 took it to 5.28 *without* the cancel a day later
+  and nothing re-opened the decision. Re-read the criterion before inheriting the verdict.
+- **A coincidence that survives is a fact nobody tested.** #378's ~185 s period equals the `spEff`
+  slew rail time (9.249 °C / 0.05 °C·s⁻¹ = 185 s) to the digit. Falsified: at spSlew 0.025 / 0.05 /
+  0.10 the rail is 370 / 185 / 92 s and the measured period is **180.8 / 182.0 / 164.3 s**. It is
+  the loop's own natural mode.
+- **`g.worth` is a Δk/k FRACTION** (`rod_worth_total: 0.04068`), not pcm. A worth calculation that
+  forgets ×1e5 prints `0.000 pcm/step` and looks like a null result rather than a unit error.
+- **The channel `hint` is player-facing board copy and it was three revisions stale** ("~297 °C
+  no-load → ~304 °C"), as was `Manuals/03` §14.3 — which additionally claimed the channel
+  *"Captures T-ref from indicated Tavg at engage"*. It never has in this build: `program:
+  trefFromLoad` re-derives T-ref from indicated steam flow every evaluation. The `pwr_rod_auto`
+  mission taught the false version **as its lesson**, with a CAUTION built on it.
+- **SS-3 was green for the whole life of the defect** because `probe:SS-2` samples one instant at
+  t = 600 s — 299.357 °C inside a 299–303 band, comfortable by 0.36 °C, while Tavg swung 2.94 °C.
+  New **SS-11** asserts FG-2's actual headline invariant (a part-power steady state is steady,
+  hands-off, over an explicit 60–90 min window, with a 100 % calibration control). Injection-
+  verified: **13.31 pts / 5.52 °F** with the schedule disabled, **1.47 / 0.71** with it, and the
+  100 % control green at 0.16 on both — so the 50 % leg is measuring instability, not arithmetic.
+
 ## Session log — 2026-08-09-develop-a (the consent prompt was unblockable-by-design and blockable in fact; removed)
 
 **The overlay bug is solved by deletion, and its cause is now named.** Reported 2026-08-08 as

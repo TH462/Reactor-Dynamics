@@ -42,6 +42,19 @@
     return pos_norm - K * Math.sin(2 * Math.PI * pos_norm) / (2 * Math.PI);
   }
 
+  // d(scruve)/d(pos_norm) — the DIFFERENTIAL worth shape, i.e. how much reactivity one
+  // step is worth at a given bank position. Exported because the rod-control channel
+  // schedules its gain on it (#394): this plant lumps the whole 4068 pcm into ONE bank,
+  // so differential worth swings 0.892 -> 4.657 pcm/step across the operating band
+  // (measured) where a real four-bank overlap is far flatter. A controller with a
+  // constant gain therefore runs a 5.2x range of LOOP gain and is unstable at the
+  // high end. Kept here, beside the curve it differentiates, so the two cannot drift
+  // apart — the control layer calls it lazily (it loads before this file).
+  function scruveSlope(pos_norm, K) {
+    if (K == null) K = 1;
+    return 1 - K * Math.cos(2 * Math.PI * pos_norm);
+  }
+
   // ====================================================================== engine
   function PWREngine(opts) {
     opts = opts || {};
@@ -2218,6 +2231,7 @@
 
   RD.PWREngine = PWREngine;
   RD.pwrScruve = scruve;
+  RD.pwrScruveSlope = scruveSlope;
 
   // ========================================================================
   // §14 — PWR Scenario Test Suite (the acceptance gate). Calls the engine

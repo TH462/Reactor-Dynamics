@@ -893,6 +893,16 @@
   // At 5 s the 5 %/min ramp holds **4.77 °F**, inside the WTSM 8.1.1 ±5 °F duty, which the
   // proportional form missed by 2.5×. [tune]
   var TRIM_TAU_S = 5;
+  // Rod-control gain schedule (#394). The reference is the full-power operating position:
+  // at 92 % withdrawn the loop is the one every scenario was tuned against, so the schedule
+  // is normalised to 1.0 there and the at-power plant is unchanged by construction.
+  var _rods = RD.PWR_CONFIG ? RD.PWR_CONFIG.rods : {};
+  var GAIN_REF_POS = (_rods.control_op_position_pct != null ? _rods.control_op_position_pct : 92) / 100;
+  // Floor is a GUARD, not a tuning: the raw ratio bottoms at 0.166 mid-bank, so 0.15 never
+  // binds on this curve. It exists so a future rod_worth_curve_flatten cannot hand the
+  // controller an arbitrarily small gain without someone changing this line on purpose.
+  var GAIN_SCALE_MIN = 0.15;
+  var GAIN_SCALE_MAX = 1.0;    // never BOOST past the reference: see the def's comment
   function trefFromLoad(s) { return trefProgram(clip(s.instruments.steam_flow, 0, 1)); }
 
   // ---- Post-trip feedwater handoff + heat-sink protections (feel-plan P4) ----
@@ -1115,7 +1125,7 @@
   var PWR_CHANNELS = [
     { id: 'rods_tavg', kind: 'rods', group: 'Reactor',
       label: 'Rod control → Tavg (AUTO)',
-      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding ~297 °C no-load → ~304 °C full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±0.8 °C (±1.5 °F) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN.',
+      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding 546.8 °F (286.0 °C) no-load → 580.1 °F (304.5 °C) full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±1.5 °F (±0.8 °C) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN.',
       group_id: 'control_rods', offOnScram: true,
       // Free-play preset starts come up with rod control in AUTO *(OWNER RULING, 2026-08-01:
       // "Let's start the rods in auto. Might as well, everything else starts in auto.")*, which
@@ -1175,11 +1185,73 @@
         c.trimSlow += a * (d - c.trimSlow);
         return 1.25 * (d - c.trimSlow);
       },
-      // ±0.8 °C (±1.5 °F) lockup band; speed-ladder thresholds SOURCED at #419 wave 3 —
-      // WTSM 8.1 §8.1.4.5: 8 steps/min to ±3 °F (1.67 °C), ramping to full speed by
-      // ±5 °F (2.78 °C). The old [tune] ladder engaged 'fast' only above 7.2 °F — slack
-      // the shallow program never exercised; on the steep Ginna program the 5 %/min ramp
-      // rode the gap and TR-1i's sourced ±5 °F duty read 5.59.
+      // GAIN SCHEDULED ON DIFFERENTIAL ROD WORTH (#394, 2026-08-09). MEASURED cause of the
+      // part-power limit cycle: this plant lumps all 4068 pcm into ONE control bank on the
+      // S-curve, so one fine step is worth 4.657 pcm at 74.8 % withdrawn and 0.892 at the
+      // rails — a 5.2x range — while `gain` below is a CONSTANT. The loop gain therefore
+      // swings 5.2x across the operating band and the equilibrium is locally unstable at
+      // the high end, where noise grows into a limit cycle. The incidence curve is monotone
+      // in bank position over six measured points (p2p 15.05 / 10.97 / 5.91 / 2.35 / 1.31 /
+      // 0.78 pts at 74.8 / 78.1 / 82.1 / 87.8 / 91.7 / 98.0 % withdrawn), and scaling `gain`
+      // by the same ratio kills it (10.97 -> 1.42 pts at the 50 % point). A real plant does
+      // not need this: four overlapping banks give a far flatter differential worth, so the
+      // schedule is compensating a DECLARED simplification, not modelling a real circuit.
+      //
+      // CLIPPED AT 1.0 — the schedule only ever de-gains. Above the reference the raw ratio
+      // rises again (rods are weak near the rail too, 1.495 at 100 %), but boosting gain past
+      // the point every scenario was tuned at is a change to at-power behaviour with no
+      // defect asking for it. The floor is a [tune] guard against the mid-bank 0.166.
+      //
+      // AND ONLY WHILE THE PROGRAM IS PARKED. Measured: the schedule costs the sourced
+      // TR-1i ramp duty 5.28 -> 5.97..6.52 °F at EVERY floor from 0.75 down to 0.15, while
+      // TR-18 needs a floor at or below 0.60 to settle at all — so no single constant does
+      // both, exactly the collision that rejected the travel-cancel in 2026-08-06. The two
+      // are separable in TIME, not in magnitude: the instability is a STEADY-STATE property
+      // (it grows from instrument noise at equilibrium) and the duty is a TRANSIENT one.
+      // The separator is measured — d(spEff)/dt is 1.54e-2 °C/s through TR-1i's 5 %/min ramp
+      // and 1.07e-4 °C/s through the limit cycle, a 144x gap — so `progStill.rate` at 2e-3
+      // sits 7.7x under the ramp and 19x over the cycle, near the geometric mean. Blended
+      // linearly rather than switched, so there is no discontinuity in the loop gain.
+      //
+      // Reads the rod group the kernel already fetched for its limit checks — the same class
+      // of read, and a real rod controller does know bank demand position.
+      progStill: { rate: 0.002, tau: 20 },   // °C/s, s — both [tune]; the 144x is measured
+      gainScale: function (ctx, g, c) {
+        if (!g || !g.max_steps || !RD.pwrScruveSlope) return 1;
+        var K = (RD.PWR_CONFIG.reactivity || {}).rod_worth_curve_flatten;
+        var w = RD.pwrScruveSlope(1 - g.steps / g.max_steps, K);
+        if (!(w > 1e-6)) return 1;
+        var r = RD.pwrScruveSlope(1 - GAIN_REF_POS, K) / w;
+        if (r < GAIN_SCALE_MIN) r = GAIN_SCALE_MIN;
+        if (r > GAIN_SCALE_MAX) r = GAIN_SCALE_MAX;
+        // stillness 1 = program parked (schedule fully applied), 0 = sliding (shipped gain)
+        var still = 1 - Math.abs((c && c.spRate) || 0) / this.progStill.rate;
+        if (!(still > 0)) return 1;
+        if (still > 1) still = 1;
+        return 1 + (r - 1) * still;
+      },
+      // ±0.8 °C (±1.5 °F) lockup band; speed-ladder thresholds SOURCED at #419 wave 3 and
+      // the document is now IN THE CORPUS (#394 evidence pass, 2026-08-09 — WTSM 8.1
+      // ML11223A252 was quoted from an unarchived session fetch until then, so `find_source`
+      // returned zero on every phrasing). §8.1.4.5 verbatim: *"A deadband of ±1.5°F, which
+      // includes a 0.5°F lock-up"*; *"For small error signals, ±1.5°F to ±3°F … a minimum
+      // speed of eight steps per minute"*; *"As the temperature error signal increases from
+      // ±3°F to ±5°F, the rod speed program enters a proportional speed region. This region
+      // calls for 32 steps/min/°F"*; *"With an error of 5°F or greater … a maximum rod speed
+      // of 72 steps/min"*. Every recalled number checked out. The old [tune] ladder engaged
+      // 'fast' only above 7.2 °F — slack the shallow program never exercised.
+      //
+      // DECLARED DEPARTURE, now positively sourced rather than suspected (#420): the real
+      // middle rung is a PROPORTIONAL ramp (32 steps/min/°F), ours is a discrete third
+      // speed. Measured not to matter for the duty — `maxStep` 8/16/32 leaves TR-1i at 5.28
+      // to the digit, so rod authority is not what that band is limited by (#306, re-confirmed
+      // 2026-08-09). Building it needs an engine change: `pwr_engine.js` looks the speed up in
+      // a three-key map and a numeric speed SILENTLY falls back to 'normal'.
+      //
+      // Also sourced and NOT matched: *"Automatic rod control below 15% turbine power is not
+      // provided."* `defaultOn` below engages above 10 % power range. Left alone deliberately —
+      // it is a different signal (NIS power range, the HR1-correct read) and the gap is 5
+      // points at a power nobody load-follows at; filed rather than changed on a whim.
       speeds: [{ above: 0.8, speed: 'slow' }, { above: 1.67, speed: 'normal' }, { above: 2.78, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
       // 228-step values, so the channel's authority in %-of-travel is unchanged.

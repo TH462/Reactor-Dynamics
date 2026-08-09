@@ -1526,6 +1526,18 @@
         var d = c.sp - c.spEff;
         c.spEff += clip(d, -def.spSlew * dt, def.spSlew * dt);
       } else c.spEff = c.sp;
+      // Damped rate of the WORKING setpoint, for defs that need to tell "the program is
+      // sliding" from "the program is parked" (PWR #394: the rod gain schedule runs only
+      // when it is parked). Same lag idiom and same reason as the PV rate below — a raw
+      // difference quotient scales its noise with 1/dt, so an unfiltered form would make
+      // the discrimination cadence-dependent. Seeded null so a restore cannot manufacture
+      // a phantom program rate on the first step after load (the trimSlow precedent).
+      if (def.progStill && dt > 0 && c.spPrev != null) {
+        var pr = (c.spEff - c.spPrev) / dt;
+        var ap = dt / (def.progStill.tau + dt);
+        c.spRate = c.spRate == null ? pr : c.spRate + ap * (pr - c.spRate);
+      }
+      c.spPrev = c.spEff;
     }
     if (def.pv) {
       var pv = def.pv(ctx);
@@ -1623,7 +1635,14 @@
     if (Math.abs(e) <= def.db) { c.note = 'holding'; return; }
     if (c.lastAct != null && t - c.lastAct < def.period) return;
     var g = rodGroupById(ctx, def.group_id) || rodGroup(ctx, 'control');
-    var steps = clip(Math.round(def.gain * eEff), -def.maxStep, def.maxStep);
+    // Optional gain SCHEDULE (PWR #394): a plant whose differential rod worth varies with
+    // bank position runs a varying LOOP gain against a constant controller gain, and is
+    // unstable wherever the product is high. The def owns the shape; the kernel only
+    // applies it, and a def without one is unchanged (scale 1). Deliberately NOT applied
+    // to the speed ladder below — those thresholds are sourced against the TEMPERATURE
+    // error, which is a physical quantity and does not care what a step is worth.
+    var gScale = def.gainScale ? def.gainScale(ctx, g, c) : 1;
+    var steps = clip(Math.round(def.gain * gScale * eEff), -def.maxStep, def.maxStep);
     if (!steps) return;
     if (steps > 0 !== e > 0) { c.note = 'damping'; return; }   // never step against the raw error
     if (g) {
@@ -1844,6 +1863,7 @@
     for (var i = 0; i < this.channels.length; i++) {
       var c = this.channels[i];
       ch[c.def.id] = { engaged: c.engaged, sp: c.sp, spEff: c.spEff, I: c.I, lastAct: c.lastAct, trimSlow: c.trimSlow,
+                       spPrev: c.spPrev, spRate: c.spRate,
                        lastSent: c.lastSent, note: c.note, standDown: c.standDown, sat: c.sat, bangMode: c.bangMode, pvF: c.pvF, rate: c.rate,
                        concMode: c.concMode, concBasis: c.concBasis, concLastSp: c.concLastSp,
                        concSampleSeq: c.concSampleSeq };
@@ -1878,6 +1898,13 @@
         // which outputs ZERO that step — the same thing engaging the channel does, and the
         // safe migration: a restored plant must not be handed a phantom rate signal.
         c.trimSlow = sv.trimSlow != null ? sv.trimSlow : null;
+        // Absent in a pre-#394 save. Same shape and same reason as trimSlow above, with one
+        // extra consequence worth naming: `spRate` null reads as "program parked", so a save
+        // restored MID-RAMP would run the PWR rod gain schedule for ~one tau before the
+        // follower rebuilds — de-gaining exactly where the ramp duty wants full gain.
+        // Persisting it keeps a restored ramp indistinguishable from an uninterrupted one.
+        c.spPrev = sv.spPrev != null ? sv.spPrev : null;
+        c.spRate = sv.spRate != null ? sv.spRate : null;
         // conc batch state: an old save (pre-batch) has none — open the books at
         // the saved target so no phantom dose starts on load.
         c.concMode = sv.concMode || 'hold';

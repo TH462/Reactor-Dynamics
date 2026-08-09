@@ -62,7 +62,7 @@ Feel is set by capacity *ratios*, not absolute numbers. These are the levers the
 | Spray ÷ normal step insurge | wins | still wins | Step insurges stay arrested | P5 |
 | Full-SGTR leak ÷ charging_max | **0.12 ÷ 0.06 — SET (P5)**, ΔP-scaled to zero at SG pressure | leak wins 2×; depressurization kills it | Full SGTR *forces* trip + SI; the EOP works (FG-6) | done |
 | AFW cap ÷ post-trip decay heat | 0.15 (recovers ~5 min) | keep | Post-trip SG recovery tempo (FG-5) | P4 |
-| No-load Tavg anchor | **297 °C — SET (P3, 2026-07-21)** | dump setpoint 8.23 MPa = Psat(297); shallow 7 °C program | Post-trip shrink bite; program span (FG-5/FG-2) | done |
+| No-load Tavg anchor | **286.0 °C (546.9 °F) — RE-ANCHORED at #419 wave 3** (was 297, the retired P3 feel-plan value) | dump setpoint 7.03 MPa (1020 psi) = Psat(286.0), Ginna's sourced 1005 psig no-load point; program spans 18.5 °C (33.3 °F) | Post-trip shrink bite; program span (FG-5/FG-2) | done |
 | `K_sg_level` / dump rate | 5.0 | tune with anchor | Shrink depth/speed (FG-5) | P4 |
 | Heater capacity ÷ outsurge | recovers ≤ ~5 min | keep | Post-trip pressure recovery tempo | P4 |
 
@@ -88,9 +88,10 @@ its consequences instead of hiding them.*
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| SS-2 | Tavg **monotonically rises** no-load → full power along this plant's program — **anchors SET: 297 → ~304 °C** (P3, 2026-07-21); level program rides the same line at 2.5 %/°C (~37.5 → 55 %) | I | probe | **PASS — anchors set** |
+| SS-2 | Tavg **monotonically rises** no-load → full power along this plant's program — **anchors RE-SET at #419 wave 3: 286.0 → 304.5 °C** (546.9 → 580.2 °F; the 297 → ~304 pair was the retired P3 feel-plan program); level program rides the same line at 1.62 %/°C (`level_per_tavg`, was 2.5) | I | probe | **PASS — anchors set** |
 | SS-1 | 100 % snapshot self-consistent (steam≈feed, charging≈letdown, ΔT per power) | C | probe | PASS — band minted at freeze |
-| SS-3 | 50 % point sits *on* the program (no sag) | I | probe:SS-2 | PASS |
+| SS-3 | 50 % point sits *on* the program (no sag) — **"sits on" is a claim about a STEADY STATE**, so it needs the steadiness half too (#394: SS-2's single instant read comfortable by 0.36 °C through an 11-point limit cycle) | I | probe:SS-11 + probe:SS-2 | PASS |
+| **SS-11** | **A part-power steady state is truly steady** — hands-off from the authored 50 % IC with no command at all, power holds inside 4 pts over an explicit 60–90 min window; the 100 % leg is the calibration control. **This is FG-2's headline invariant, and it was unasserted until #394.** | I | probe | **PASS** (1.47 pts; 13.31 pre-fix) |
 | SS-6 | 5 % steady holds indefinitely (xenon at own-power equilibrium) | I | probe | PASS |
 | SS-8 | Heat-balance closure ±2 % at any steady state | I | probe | PASS? — pin explicitly |
 | EV-4 | All-auto load-follow 100→50→100 hands-off; Tavg tracks program | C | ops load follow | re-band → P3 |
@@ -202,7 +203,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | AFW start | 20 % + on loss of both MFW (PI-4, P4) | |
 | P-14 SG hi-hi | 90 % → TT + FWI, reset 85 % | |
 | SG safeties | 9.31 / 9.0 MPa | |
-| Steam dump setpoint | 8.23 MPa = Psat(297 °C) | this plant's anchor, set in P3; consumers derive from config |
+| Steam dump setpoint | 7.03 MPa (1020 psi) = Psat(286.0 °C) | Ginna's sourced 1005 psig no-load point (#419 wave 3; was 8.23 = Psat(297), the retired P3 anchor); consumers derive from config |
 | Accumulators | 4.14 MPa | |
 | RHR interlock | 2.76 MPa | |
 | High Tavg trip | 335 °C | ⚑ keep as harmless legible backstop (owner confirm) |

@@ -45,6 +45,52 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-09-develop-b — #394/#378/#420: the rod limit cycle is LOOP GAIN, and the mechanism of record was wrong
+
+**Decision.** The part-power limit cycle is fixed by **scheduling the rod-control gain on
+differential rod worth** (`gainScale` on the `rods_tavg` def, `RD.pwrScruveSlope` exported from
+`pwr_engine.js`), **gated on the load program being parked** so a sliding program keeps the shipped
+gain. Both strict xfails retire in the same change: `run_behavior` 67pass/2xfail → **69pass/0xfail**,
+`run_all` 44 runners at baseline.
+
+**What this supersedes, and why it matters more than the fix.** `BUILD_DECISIONS.md:1160`
+(2026-08-06-workbench-a) records a fix that "measures perfectly and is rejected anyway" — the
+stop-exit travel cancel, rejected for costing TR-1i's sourced duty 4.34 → 5.26 °F. That entry, the
+channel def, the TR-18 probe comment and both issues all name **stop-exit travel** as the
+mechanism. Measured this session: the abandoned travel is real and large (571 events in 2 h, mean
+1.59 steps, **75.4 pcm per half-cycle**) but it is the amplitude-setting nonlinearity, not the
+cause. The cause is that this plant lumps all 4068 pcm into ONE control bank on the S-curve, so a
+fine step is worth **4.657 pcm at 74.8 % withdrawn against 0.892 near the stops — 5.2×** — while
+the controller's `gain` is a constant. The incidence curve is **monotone in bank position over six
+points** (15.05 / 10.97 / 5.91 / 2.35 / 1.31 / 0.78 pts p2p), every authored IC starts exactly on
+program, and the cycle grows out of instrument noise. Scaling `gain` by that ratio kills it.
+
+**The gate is the whole trick, and it was forced by measurement.** Ungated, the schedule collided
+with TR-1i exactly as the cancel had (5.28 → 6.52 °F), and a floor sweep proved no constant does
+both: the duty cost comes from having *any* schedule (5.97 even at floor 0.75) while TR-18 needs
+floor ≤ 0.60 to settle. The two are separable in **time**, not magnitude — instability is a
+steady-state property, the duty is a transient one — and the separator is measured: `d(spEff)/dt` is
+1.54e-2 °C/s through the ramp and 1.07e-4 through the cycle, **144×**. `progStill { rate: 0.002,
+tau: 20 }` sits near the geometric mean. Gated, TR-1i reads **5.28 to the digit**, the pre-#394
+value, and TR-18 settles at 15.8 min / 1.76 pts.
+
+**#420 is resolved by ruling because the controller could never have reached it.** `maxStep`
+8/16/32 → duty 5.28/5.28/5.28, unchanged to the digit — #306's finding reproduces on today's plant.
+The band is now the sourced ±5 °F **scaled by this plant's declared program-span departure**,
+5.00 × (33.295/29) = **5.74 °F** *(OWNER RULING, 2026-08-09: selected "Scale on the departure" from
+four options)*. The #311 precedent as written: scale a closed-form limit line by a declared
+geometric departure, never re-anchor it onto a fitted intercept. 8.0 % headroom.
+
+**Also landed**: **SS-11**, the probe FG-2's headline invariant never had (SS-3 was carried by a
+single instant at t = 600 s and was green through the whole life of the defect); the retired
+297 °C / 8.23 MPa / 2.5 %/°C anchors struck from three catalog rows; and `Manuals/03` §14.3 +
+`pwr_rod_auto`'s narration corrected — both claimed the channel *captures T-ref from indicated Tavg
+at engage*, which has never been true of this build (`program: trefFromLoad`), and the mission
+taught the false version as its lesson. Manual Rev 15 item (b). Full measurement record:
+`Diagnostic/TUNING_LOG.md` 2026-08-09-develop-b.
+
+---
+
 ## 2026-08-08-develop-g — the winter uprate stays MONOTONIC: no LP low-backpressure knee (ruled, declared §8.35)
 
 **Ruling** *(OWNER, 2026-08-08: "is it worth the extra computer when running the sim to do the

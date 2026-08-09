@@ -453,20 +453,19 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
   declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
   power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
   beat graph cannot express. Waves 1's re-clock and the relief sizing are **landed**.
-- **#385 node — LANDED (stages 0–3, 2026-08-08, `run_all` 42 at baseline)**: `pzr_mass_frac`
-  carries `pzrNodeLevel` (backbone + flow-accreted void credit; no-leak families bitwise the
-  old line). Flash term measured unnecessary and NOT built — flagged owner-review on #385.
-  The bundle closed #415 (non-repro), #334 (slider was already #408's; low-Δp resolved by
-  measurement), #354 (already held the program). **#409 governor** remains deferred.
-- **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
-  secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
-  MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
+- **#385 node — LANDED** (stages 0–3, 2026-08-08): `pzr_mass_frac` carries `pzrNodeLevel`.
+  Flash term measured unnecessary, NOT built — owner-review. Closed #415, #334, #354 on the
+  way. **#409 governor** deferred.
+- **#418 tier 2 — LANDED** (2026-08-07): the secondary runs one sourced Ginna basis.
+  `status-owner-review`, three items.
 - **#419 tier 3 — BUILT, no scope left** (2026-08-07; the ×12.6 retirement, F15 → 2500, the
   Ginna re-anchor). Still open on the issue: **owner-review** on the TMI deception crest
-  (~65 % on the final plant — a level-constants ruling if the cue matters), and TR-1i as a
-  second strict xfail (#420, coupled to #378). Detail: `Diagnostic/TUNING_LOG.md`.
-- **#378** — a post-step rod limit cycle, measured to a REJECT (the fix costs TR-1i's sourced ramp
-  duty). `run_behavior` carries **TR-18** as a strict xfail pinning it.
+  (~65 % on the final plant — a level-constants ruling if the cue matters). Detail:
+  `Diagnostic/TUNING_LOG.md`.
+- **#394 + #378 + #420 — LANDED; `run_behavior` carries NO strict xfails** (2026-08-09,
+  67pass/2xfail → 70pass/0xfail). #420 resolved by ruling: the band is the sourced ±5 °F
+  scaled by the declared 33.3/29 span departure = 5.74 °F. WTSM 8.1 (ML11223A252) is now in
+  the corpus. See the themes bullet.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -520,16 +519,20 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   survived two evidence passes because both verdicted the mechanism and inherited the number.**
   AFW moved onto the trip signal (single-signal, three-document sourced; §8.19 retired), feed_sg
   targets the programmed 65 % (#355), and the SG FEED demand box admits NO FLOW (#358).
-- **The pressurizer carries its own inventory node, and the level lift became a FLOW**
-  (2026-08-08, #385 stages 0–3). The void credit accretes at the admittance split prevailing
-  WHEN displacement happens — what left through the hole is not owed back in either
-  direction; no-leak families bitwise the old line, pressure bitwise everywhere. Three traps:
-  **`primary_void_fraction` SNAPS** (state fn of `_mass` — flow-form ≈ state-form at
-  gate-open, #407's defect), **an approved plan's sizing target can be measured on a retired
-  scale** (the flash term's "1.5–2 s at sev 0.20" predates the #408 slider re-map — measured
-  unnecessary, not built), and **a meltdown path can pin the defect's CLOCK** (MD-5 melts at
-  5285 s, not <4000 — the old pace was the lying gauge propping the heaters).
+- **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
+  rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
+  xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892
+  at the stops — 5.2× against a CONSTANT gain — and the incidence curve is monotone in bank
+  position over six points. `gainScale` is **gated on the program being parked**, because the
+  de-gain that stabilises the loop also slows ramp tracking and no floor did both; the two
+  separate in TIME (d(spEff)/dt is 144× larger through a ramp). Traps: **a mechanism repeated
+  in four documents is still unmeasured** (nobody had multiplied step count by step rate), and
+  **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+
+- **An approved plan's sizing target can be measured on a RETIRED scale** (rescued from the
+  #385 bullet on eviction, 2026-08-09): its flash term predated the #408 slider re-map, so it
+  measured unnecessary and was never built. Re-derive sizing from the Q0, not the plan.
 
 - **A physically-derived constant can be RIGHT and unshippable, and a solve can conflate the
   MEASUREMENT's temperature with the PLANT's** (rescued from the #419 themes bullet on

@@ -31,6 +31,72 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The plant no longer hunts at part power — every steady state below full load was
+  oscillating forever, hands-off, on the preset the sim opens with** (#394 + #378 + #420).
+  Measured before: the authored 50 % initial condition swung **11.0 points of power and 3.8 °F
+  of Tavg with a ~190 s period, indefinitely**, with nobody touching a control; a 100→50 MWe
+  manual load step never settled at all (13.4 points, still running an hour later); and the
+  worst case was 40 MWe at **15.1 points**. Two earlier sessions diagnosed this as the rod
+  kernel abandoning in-flight rod travel at its deadband, built the fix, and rejected it
+  because it cost the sourced ±5 °F ramp duty. **That was the wrong mechanism.** This plant
+  lumps the entire control-rod worth into a single bank on an S-curve, so one fine step is
+  worth **4.657 pcm mid-bank against 0.892 near either stop — 5.2×** — while the controller's
+  gain was a constant; the loop gain therefore swings 5.2× across the operating band and the
+  equilibrium is unstable at the high end, where instrument noise grows into a limit cycle.
+  The incidence curve is monotone in bank position over six measured points, and every
+  authored initial condition starts exactly on program, so nothing excites it but noise.
+  Rod gain is now **scheduled on differential rod worth** (`gainScale` on the `rods_tavg`
+  channel; `RD.pwrScruveSlope` exported from the engine beside the curve it differentiates),
+  normalised to 1.0 at the full-power bank position so at-power behaviour is unchanged.
+  Measured after: 50 % holds **1.47 points**, 40 MWe holds 0.50, the manual step settles in
+  15.8 minutes. The abandoned rod travel is real (571 events in two hours, 75 pcm per half
+  cycle) but it is the amplitude-setting nonlinearity riding on an already-unstable loop —
+  fixing the gain collapses it to 4 events.
+  - **The schedule is gated on the load program being parked**, and that gate is the whole
+    trick. Ungated it collided with the sourced ramp duty exactly as the rejected fix had
+    (5.28 → 6.52 °F), and a floor sweep proved no single constant does both jobs: the duty
+    cost comes from having *any* schedule (5.97 °F even at a 0.75 floor) while settling needs
+    a floor at or below 0.60. The two are separable in **time**, not magnitude — instability
+    is a steady-state property, the duty is a transient one — and the separator is measured:
+    the programmed setpoint slides at 1.54e-2 °C/s through a 5 %/min ramp against 1.07e-4 °C/s
+    through the limit cycle, a **144× gap**. Gated, the ramp duty reads 5.28 °F to the digit,
+    the pre-change value; the two-hour soak *improves* 0.71 → 0.49 °F.
+- **`run_behavior` carries no strict xfails for the first time since 2026-08-06** — 67 pass /
+  2 xfail → **70 pass / 0 xfail**. TR-18 (settling) is fixed; TR-1i (#420) is resolved by
+  ruling rather than by the controller. Measured: `maxStep` 8 / 16 / 32 leaves the ramp duty
+  at **5.28 / 5.28 / 5.28** — quadrupling rod authority moves it not at all, reproducing
+  #306 on today's plant — so no rod-channel change could ever have reached that band. The
+  band is now the sourced ±5 °F **scaled by this plant's declared program-span departure**,
+  5.00 × (33.295/29) = **5.74 °F** *(OWNER RULING, 2026-08-09: selected "Scale on the
+  departure")*. That is the #311 precedent applied as written — a closed-form limit line is
+  scaled by a declared geometric departure, never re-anchored onto a fitted intercept.
+- **Rod AUTO never captured T-ref from Tavg, and three places said it did.** `Manuals/03`
+  §14.3 stated *"Captures T-ref from indicated Tavg at engage"* with a CAUTION built on it,
+  and the `pwr_rod_auto` mission taught the false version **as its lesson**. The channel's
+  `program: trefFromLoad` re-derives T-ref from indicated steam flow every evaluation — the
+  rods drive toward the *program*, not toward wherever the operator left the temperature. All
+  three corrected, along with the channel's own board hint, which still described the
+  pre-#419 297 → 304 °C program. Manual Rev 15 item (b).
+
+### Added
+- **`SS-11` — the probe FG-2's headline invariant never had.** The catalog has always said
+  *"any steady state is truly steady"*; the row that was supposed to carry it (SS-3) was
+  pinned by a probe sampling **one instant at t = 600 s**, which read comfortable by 0.36 °C
+  while Tavg swung 2.94 °C — green for the entire life of the defect. SS-11 rides 90 minutes
+  hands-off from the authored 50 % IC with no command at all and asserts the power span over
+  an **explicit 60–90 min window**, with a full-power leg as the calibration control.
+  Injection-verified both directions: **13.31 points** with the fix disabled, **1.47** with
+  it, and the control leg green at 0.16 on both.
+- **`--seed` on `test/measure_stack.js`.** It was hard-coded to 4242 while `OpsHarness` probes
+  default to `0xC0FFEE` — different plants, and every number in this work is seed-sensitive.
+  The seed is now printed in the header beside the layer and lineup.
+- **WTSM 8.1 (ML11223A252) is in the source corpus.** The rod controller's ±5 °F duty, its
+  ±1.5 °F deadband with 0.5 °F lock-up, and the 8 / 32-per-°F / 72 steps-per-minute speed
+  program had all been quoted from a session fetch that was never archived, so
+  `tools/find_source.js` returned zero on every phrasing — sourced-looking recall. Fetched via
+  the Wayback CDX recipe and verified: **every recalled number checked out**, including the
+  proportional 32 steps/min/°F middle rung that #420 suspected, which our discrete third speed
+  does not implement (now a positively-sourced declared departure rather than a suspicion).
 - **The version stamps were cached for four hours, which is why the site kept reporting an old
   release after a new one shipped.** Cloudflare Pages defaults static assets to `max-age=14400`
   — right for engine code (immutable per deploy, loaded by a page that *is* revalidated),
