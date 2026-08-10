@@ -83,8 +83,8 @@
       { id: 'engage_auto',
         trigger: { type: 'delay', value: 3.0 },
         commentary: {
-          learning: 'On target — you just did, in minutes, what the machine does all day. Now hand it over, but hear the trap first: the moment you press AUTO, the controller captures T-ref — its target — from whatever T-avg reads RIGHT THEN. Engage while the temperature sits where you want it, and it holds that number forever. Engage while it is still diving from your last correction, and it will faithfully hold your mistake. It is close to program right now — a fine moment. Press ROD AUTO on the rod-control card.',
-          industry: 'Tavg restored. Engage rods_tavg (ROD AUTO on the rod-control card). T-ref captures the CURRENT indicated Tavg at engage — verify Tavg is on the desired value first; setpoint remains editable afterwards (set_auto_setpoint). Mismatch-dominant two-term controller, ±0.8 °C deadband, error-proportional speed ladder.',
+          learning: 'On target — you just did, in minutes, what the machine does all day. Now hand it over, and hear what it will actually do: the controller does NOT take its target from wherever you left T-avg. It reads the turbine load and looks the target up on a program — a sliding line from 547 °F at no load to 580 °F at full power. So it drives toward where the plant SHOULD be, not where you left it, and when the load moves the target moves with it. That is the whole point of it: you are handing over the tracking, not freezing a number. Press ROD AUTO on the rod-control card.',
+          industry: 'Tavg restored. Engage rods_tavg (ROD AUTO on the rod-control card). T-ref is PROGRAMMED on indicated steam flow (546.8 → 580.1 °F, re-derived every evaluation), NOT captured from indicated Tavg — engaging off-program commands rod motion toward the program. Mismatch-dominant two-term controller with a rate comparator, ±1.5 °F (±0.8 °C) deadband, error-proportional speed ladder, gain scheduled on bank position.',
         },
         highlight: { control_label: 'Control Bank', instrument_id: null },
         branches: [
@@ -126,7 +126,7 @@
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
           learning: 'Settled — and the rods found it without you. Last lesson, and it is the most important one: YOU always outrank the machine. Tap one rod nudge, either direction, one step. Watch the Mode lamp snap to MAN the instant your command lands — any manual motion on the bank means the operator wants it, and the channel steps aside without argument. No fighting over the controls, ever. Now put it back: press AUTO again, and this time leave it alone.',
-          industry: 'Manual-override check: any operator rod command on the control group drops rods_tavg to MAN immediately (channel stands down — no contention). Nudge one step, observe MAN, re-engage AUTO. Note: re-engaging recaptures T-ref at the current Tavg.',
+          industry: 'Manual-override check: any operator rod command on the control group drops rods_tavg to MAN immediately (channel stands down — no contention). Nudge one step, observe MAN, re-engage AUTO. Note: re-engaging resumes the LOAD PROGRAM — there is no captured setpoint to get wrong.',
         },
         highlight: { control_label: 'Nudge', instrument_id: null },
         branches: [

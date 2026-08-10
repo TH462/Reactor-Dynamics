@@ -2,7 +2,8 @@
  * (site/channel.js), plus a robots.txt that keeps non-production hosts out of search.
  *
  * Runs on Vercel and on Cloudflare Pages, and is correct off both. Kept under site/
- * (not tools/) so .vercelignore still ships it at build time. See vercel.json.
+ * (not tools/) because it is deploy BUILD tooling; site/build_site.js declares it
+ * build-only (BUILD_ONLY) and prunes it from the published output.
  *
  * ---------------------------------------------------------------------------
  * WHY THIS IS HOST-AGNOSTIC, AND WHY THAT IS NOT COSMETIC (2026-08-07)
@@ -123,7 +124,7 @@ function main() {
     ' * This build: ' + r.host + ' — ' + r.why + '\n' +
     ' *\n' +
     ' *   \'public\'  — the released website (the `main` branch, on whichever host)\n' +
-    ' *   \'preview\' — a test deployment: any other branch, e.g. dev.reactordynamics.com\n' +
+    ' *   \'preview\' — a test deployment: any other branch, e.g. the `develop` test site\n' +
     ' *   \'dev\'     — no CI at all: a clone, file://, a local static server\n' +
     ' *\n' +
     ' * site/flags.js resolves unvetted content as `channel() !== \'public\'`, so \'dev\' is\n' +
@@ -133,9 +134,13 @@ function main() {
     ' */\n' +
     'window.RD_CHANNEL = ' + JSON.stringify(r.channel) + ';\n');
 
-  /* KEEP THE TEST SITE OUT OF SEARCH. dev.reactordynamics.com serves the same pages
-   * as the live domain, so without this it competes with production in results and
-   * can surface half-finished copy under the project's name. The rel=canonical tags
+  /* KEEP THE TEST SITE OUT OF SEARCH. The test site — `develop.reactor-dynamics.pages.dev`
+   * *(OWNER RULING, 2026-08-09: "instead of dev.reactordynamics.com im going to use the
+   * currently functioning https://develop.reactor-dynamics.pages.dev/. This works just as
+   * well.")* — serves the same pages as the live domain, so without this it competes with
+   * production in results and can surface half-finished copy under the project's name.
+   * That it is a `pages.dev` host rather than a subdomain changes nothing here: it is
+   * publicly reachable and indexable. The rel=canonical tags
    * on every page already point at the live domain, which discourages indexing; this
    * is the belt to that pair of braces. Generated rather than committed so it cannot
    * disagree with the channel it is supposed to follow — and gitignored for the same

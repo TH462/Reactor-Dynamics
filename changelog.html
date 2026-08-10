@@ -23,7 +23,7 @@
     <link rel="stylesheet" href="site/site.css">
     <script src="site/channel.js"></script>
     <!-- TEST-BUILD markers (site.css). Reads the channel site/stamp_version.js stamped
-         at deploy: 'public' on the released site, 'preview' on dev.reactordynamics.com,
+         at deploy: 'public' on the released site, 'preview' on the test site,
          'dev' on a local checkout. Inline and in <head> so the banner is present in the
          first paint rather than appearing after it and shoving the page down. -->
     <script>(function (c) {
@@ -165,6 +165,19 @@
        ================================================================== -->
 
   <details class="log-entry" open>
+    <summary class="log-head">
+      <h2>A protection function that never fired</h2>
+      <span class="log-ver mono">Alpha 1.5.2</span>
+      <time class="log-date mono" datetime="2026-08-10">10 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>Automatic steam line isolation never fired.</strong> On a steam line break the valves stayed open and you had to isolate by hand. It now closes on the rate of pressure drop, as the setpoint specifies, within a few seconds of the break.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Bug reports recorded almost nothing during fast transients.</strong> A report sent from an accident at high time acceleration captured a handful of readings instead of the event; it now records the peaks and troughs of every channel.</li>
+      <li><span class="log-tag added">Added</span><strong>Contact offers GitHub issues</strong> alongside email. It opens in a new tab and the plant keeps running.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
     <summary class="log-head">
       <h2>Minor fixes</h2>
       <span class="log-ver mono">Alpha 1.5.1</span>

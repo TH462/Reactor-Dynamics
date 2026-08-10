@@ -228,14 +228,13 @@ check('DIST', '.gitignore', 'dist/ ignored', /^\s*dist\/?\s*$/m.test(ignore)
 // releases ago.
 //
 // The href stays the stable path on purpose (make_download.js writes it so this page
-// needs no per-release edit), so the NAME comes from an `download=` attribute stamped by
-// site/nav.js out of window.RD_RELEASE. That is three files that must agree, none of
-// which fails visibly when one of them stops: drop the release.js tag and the stamp
-// silently no-ops, rename the anchor's id and it no-ops, change the prefix in one place
-// and the site hands out a name the build never produced. Nothing else here would notice.
+// needs no per-release edit), so the NAME comes from a `download=` attribute stamped by
+// site/nav.js. That is three files that must agree, none of which fails visibly when one
+// of them stops: drop a script tag and the stamp silently no-ops, rename the anchor's id
+// and it no-ops, get the name wrong and the site hands out one the build never produced.
+// Nothing else here would notice.
 var dlHtml = fs.readFileSync(path.join(ROOT, 'download.html'), 'utf8');
 var navSrc = fs.readFileSync(path.join(ROOT, 'site', 'nav.js'), 'utf8');
-var mkDlSrc = fs.readFileSync(path.join(ROOT, 'site', 'make_download.js'), 'utf8');
 
 var anchor = /<a\b[^>]*\bid="dlZip"[^>]*>/.exec(dlHtml);
 check('DOWNLOAD', 'download.html', 'download button carries id="dlZip"',
@@ -256,25 +255,69 @@ check('DOWNLOAD', 'download.html', 'loads site/release.js before site/nav.js',
     : null);
 check('DOWNLOAD', 'site/nav.js', 'stamps the dlZip button',
   /getElementById\('dlZip'\)/.test(navSrc) && /setAttribute\('download'/.test(navSrc)
-    ? 'sets the saved filename from RD_RELEASE' : null);
+    ? 'sets the saved filename the browser will use' : null);
 
-// The two spellings of the same filename must be one filename. Pull the three literals
-// out of each source rather than re-implementing the name here — a copy in this file
-// would be a fourth place to drift.
-function zipNameParts(src) {
-  var pre = /'(Reactor_Dynamics_)'/.exec(src);
-  var san = /replace\((\/\[\^[^/]*\]\+\/g)\s*,\s*'_'\)/.exec(src);
-  var ext = /'(\.zip)'/.exec(src);
-  return [pre && pre[1], san && san[1], ext && ext[1]].join(' | ');
-}
-var navName = zipNameParts(navSrc), buildName = zipNameParts(mkDlSrc);
-check('DOWNLOAD', 'site/nav.js vs site/make_download.js',
-  'same zip name: ' + navName,
-  navName === buildName && navName.indexOf('null') < 0
-    ? 'the offered name is the name that was built'
+// The manifest is what CARRIES the name, so its tag must precede nav.js for the same
+// reason release.js does — a tag after it is a silent no-op on a slow parse, and the
+// download quietly reverts to being called latest.zip.
+var iMan = dlHtml.indexOf('src="download/manifest.js"');
+check('DOWNLOAD', 'download.html', 'loads download/manifest.js before site/nav.js',
+  iMan >= 0 && iNav >= 0 && iMan < iNav
+    ? 'RD_DOWNLOAD.file is defined by the time nav.js stamps the button'
     : null);
 
-// RD_RELEASE is the one source of truth for all of it, and it is hand-edited.
+// ---- G. the download is NAMED FOR THE BUILD, and named ONCE (#414) --------------
+// Until 2026-08-09 a test-site download arrived as `Reactor_Dynamics_Alpha_1.5.1.zip` —
+// byte-different from the release of that name and indistinguishable from it in a
+// downloads folder. Off the released channel the name now carries the commit.
+//
+// WHY THIS CHECK CHANGED SHAPE, which is the whole reason the fix was deferred rather
+// than done. It used to pull three literals — the prefix, the sanitising regex and
+// '.zip' — out of nav.js and make_download.js and compare them, because the filename
+// was spelled out in both. Add a suffix to ONE side and all three literals stay
+// identical: the gate would have passed while the offered name stopped being the built
+// name, which is precisely the defect it was written to catch. A check that cannot see
+// the change you are about to make is not a check.
+//
+// So there is now one derivation and this asserts it two ways: what the rule PRODUCES
+// (the matrix), and that nav.js does not reconstruct it (the literal ban below).
+var mkDl = require(path.join(ROOT, 'site', 'make_download.js'));
+
+// Rows are real deployment situations. `sha` is empty on a local checkout, where
+// site/version.js reads "alpha · dev" and carries no commit.
+var NAME_CASES = [
+  ['Alpha 1.5.1', 'public',  '9f8e7d6', '.zip',  'Reactor_Dynamics_Alpha_1.5.1.zip'],
+  ['Alpha 1.5.1', 'preview', '9f8e7d6', '.zip',  'Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.zip'],
+  ['Alpha 1.5.1', 'dev',     '',        '.zip',  'Reactor_Dynamics_Alpha_1.5.1_dev.zip'],
+  ['Pre Alpha',   'preview', 'abc1234', '.zip',  'Reactor_Dynamics_Pre_Alpha_abc1234.zip'],
+  // The archive ENTRY follows the same rule, or the collision survives one unzip.
+  ['Alpha 1.5.1', 'preview', '9f8e7d6', '.html', 'Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.html'],
+  ['Alpha 1.5.1', 'public',  '9f8e7d6', '.html', 'Reactor_Dynamics_Alpha_1.5.1.html'],
+];
+NAME_CASES.forEach(function (c) {
+  var got = mkDl.downloadName(c[0], c[1], c[2], c[3]);
+  var ok = got === c[4];
+  check('DOWNLOAD', 'site/make_download.js downloadName()',
+    c[0] + ' on ' + c[1] + (c[2] ? ' @' + c[2] : '') + '  ->  ' + got +
+      (ok ? '' : '   EXPECTED ' + c[4]),
+    ok ? (c[1] === 'public' ? 'the release names itself'
+                            : 'off the released channel the name carries the build')
+       : null);
+});
+
+// The negative half, and the one that stops the two-spellings defect coming back:
+// nav.js must TAKE the name, not rebuild it. Any reappearance of the prefix literal
+// here is a second derivation by definition.
+check('DOWNLOAD', 'site/nav.js', 'takes the built name from the manifest',
+  /RD_DOWNLOAD/.test(navSrc) && /dlInfo\.file/.test(navSrc)
+    ? 'download/manifest.js carries the name make_download.js gave the zip' : null);
+check('DOWNLOAD', 'site/nav.js', 'does not re-derive the filename',
+  stripComments(navSrc).indexOf('Reactor_Dynamics_') < 0
+    ? 'one derivation, in site/make_download.js — nothing to drift against' : null);
+
+// RD_RELEASE is the version everything downstream is built from — the header badge, the
+// footer, and the release half of the download's name (site/make_download.js reads it
+// out of this same file) — and it is hand-edited.
 //
 // PRE-RELEASE MODE (2026-07-31), matching run_release.js. Before the public launch there is
 // no version at all: RD_RELEASE reads "Pre Alpha" and the build is identified by its SHA.
@@ -286,7 +329,7 @@ var relSrc = fs.readFileSync(path.join(ROOT, 'site', 'release.js'), 'utf8');
 var relStr = (/RD_RELEASE\s*=\s*"([^"]*)"/.exec(relSrc) || [])[1];
 check('DOWNLOAD', 'site/release.js', 'RD_RELEASE = ' + JSON.stringify(relStr),
   /^Alpha \d+\.\d+\.\d+$/.test(relStr || '')
-    ? 'names the product AND the version, which is what the file is called'
+    ? 'names the product AND the version, which is what the file is called after'
     : (relStr && relStr.trim()
         ? 'PRE-RELEASE: no version yet — the download carries this name and the SHA identifies the build'
         : null));
@@ -317,25 +360,49 @@ findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f);
 // ---------------------------------------------------------------------------
 // THE DEPLOY BUILD MUST BE ABLE TO RUN.
 //
-// vercel.json's buildCommand runs scripts that require other files; .vercelignore
-// decides what the build machine actually receives. Those two are edited
-// independently and nothing compared them — so Alpha 1.10.0 deployed with `tools`
-// ignored while the buildCommand shelled out to tools/make_portable.js. The deploy
-// failed with "Command ... exited with 1" and the release never went live, while
-// every local build worked, because locally nothing is ignored.
+// Alpha 1.10.0 deployed with `tools` excluded while the build command shelled out to
+// tools/make_portable.js. The deploy failed with a bare "Command ... exited with 1",
+// the release never went live, and every local build worked — because locally nothing
+// was missing. That is the invariant: THE BUILD COMMAND CANNOT RUN A FILE THAT IS NOT
+// THERE, and the failure is reported far from its cause.
 //
-// Ignore-file semantics are the trap: a file inside an excluded DIRECTORY cannot be
-// re-included, so excluding `tools` excludes the bundler whatever follows it.
-var vercelCfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
-var ignoreLines = fs.readFileSync(path.join(ROOT, '.vercelignore'), 'utf8')
-  .split('\n').map(function (l) { return l.trim(); })
-  .filter(function (l) { return l && l.charAt(0) !== '#'; });
+// The QUESTION changed hosts (#413, 2026-08-10). It used to be "is .vercelignore hiding
+// this from the build machine?", read out of vercel.json's buildCommand plus the ignore
+// file. Both files are gone — Cloudflare Pages honours no ignore file, so nothing is
+// excluded and that question can only ever answer "no". Asking it anyway would be a
+// check that cannot fail, which is this project's most repeated defect. The surviving
+// question is plain existence, and it is now the stronger of the two:
+//
+//   THE OLD CHECK SKIPPED MISSING FILES ENTIRELY (`if (!existsSync) return;` before the
+//   exclusion test), so a needed script that had been DELETED or renamed scored nothing
+//   at all — the one failure it was written to prevent was outside its reach the whole
+//   time.
+//
+// VERIFIED BY INJECTION, and the injection corrected the claim. Moving site/stamp_version.js
+// aside takes this runner to 138 checks / 1 failed, which is the check working. But TWO of
+// the four chain members — tools/make_portable.js (:46) and site/make_download.js (:284) —
+// are `require`d by this runner itself, so removing either CRASHES it (MODULE_NOT_FOUND)
+// before the check is reached. Those are still red to run_all, which compares exit code as
+// well as score, but they are red by a stack trace rather than by a named violation. So the
+// honest coverage is: build_site.js and stamp_version.js are covered by the check; the other
+// two are covered by the crash. Do not "fix" that by moving the requires — a loud crash is
+// an acceptable detector, and pretending the check owns all four would be the mistake.
+//
+// The chain is read from site/build_site.js's BUILD_ONLY set — the single declaration of
+// what the deploy runs, now that vercel.json is not there to hold it.
+var buildSiteSrc = fs.readFileSync(path.join(ROOT, 'site', 'build_site.js'), 'utf8');
+var chainM = /const BUILD_ONLY = new Set\(\[([\s\S]*?)\]\)/.exec(buildSiteSrc);
+var buildScripts = chainM
+  ? (chainM[1].match(/'([^']+\.js)'/g) || []).map(function (s) { return 'site/' + s.replace(/'/g, ''); })
+  : [];
+findings.push({ ok: buildScripts.length >= 3, id: 'deploy:chain-declared' });
+if (buildScripts.length < 3) violations.push('DEPLOY: could not read the build chain from ' +
+  'site/build_site.js BUILD_ONLY — that set is the only declaration of what the deploy runs');
 
-var buildScripts = (vercelCfg.buildCommand || '').match(/[\w.\/-]+\.js/g) || [];
 var needed = buildScripts.slice();
 buildScripts.forEach(function (rel) {
   var abs = path.join(ROOT, rel);
-  if (!fs.existsSync(abs)) return;
+  if (!fs.existsSync(abs)) return;          // reported below as a violation, not skipped
   var src = fs.readFileSync(abs, 'utf8'), m;
   // path.join(ROOT, 'tools', 'make_portable.js')  — how a build script names a sibling
   var re = /path\.join\(\s*ROOT\s*,\s*'([\w.-]+)'\s*,\s*'([\w.-]+\.js)'\s*\)/g;
@@ -343,24 +410,11 @@ buildScripts.forEach(function (rel) {
 });
 needed = needed.filter(function (v, i, a) { return a.indexOf(v) === i; });
 
-function vercelIgnored(rel) {
-  var parts = rel.split('/');
-  for (var i = 0; i < ignoreLines.length; i++) {
-    var pat = ignoreLines[i].replace(/\/$/, '');
-    if (pat === rel) return pat;
-    for (var d = 1; d < parts.length; d++) {
-      if (pat === parts.slice(0, d).join('/')) return pat;
-    }
-  }
-  return null;
-}
-
 needed.forEach(function (rel) {
-  if (!fs.existsSync(path.join(ROOT, rel))) return;
-  var pat = vercelIgnored(rel);
-  findings.push({ ok: !pat, id: 'deploy:' + rel });
-  if (pat) violations.push('DEPLOY: ' + rel + ' is needed by vercel.json buildCommand but ' +
-    '.vercelignore excludes it via "' + pat + '"');
+  var there = fs.existsSync(path.join(ROOT, rel));
+  findings.push({ ok: there, id: 'deploy:' + rel });
+  if (!there) violations.push('DEPLOY: ' + rel + ' is run by the deploy build chain and is ' +
+    'NOT IN THE REPO — the deploy fails with a bare "exited with 1". See #258.');
 });
 
 var stale = staleDrop.concat(staleLoad);

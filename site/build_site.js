@@ -3,7 +3,7 @@
  *   node site/build_site.js        (after stamp_version.js and make_download.js)
  *
  * WHY THIS EXISTS. The deploy used to publish the repository root and rely on
- * `.vercelignore` to hold back everything that is not the website. Cloudflare Pages
+ * an ignore file to hold back everything that is not the website. Cloudflare Pages
  * has no equivalent and no ignore file at all, so on that host the same arrangement
  * publishes `test/`, `Blueprint/`, `Manuals/`, `Diagnostic/` and the three dev
  * harness pages. Nothing there is secret — the repository is public — but
@@ -41,13 +41,32 @@ const PAGES = ['index.html', 'about.html', 'physics.html', 'roadmap.html',
                '404.html'];
 const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios'];
 
+/* Root pages that deliberately DO NOT ship. Declared here rather than inferred, because
+ * this file is now the only statement of what the site is: `.vercelignore` used to name
+ * them and was deleted with `vercel.json` when the Vercel Git integration went (#413), and
+ * Cloudflare Pages honours no ignore file at all. These are dev harnesses — they load an
+ * engine directly, with no shell, no control layer and no flag gating — so reaching one on
+ * the live domain is a bug, not a feature.
+ *
+ * PAGES + NOT_PUBLISHED must TOTAL the root `*.html` glob: `test/run_site_meta.js` proves
+ * the partition, so a new root page cannot exist without some file saying whether it ships.
+ * That is the property `.vercelignore` used to provide, kept rather than dropped. */
+const NOT_PUBLISHED = ['test_pwr.html', 'test_bwr.html', 'test_rbmk.html'];
+
 /* Generated earlier in the build. `download/` may be absent on a bare local run and
  * that is not an error — the page degrades to no metadata line. */
 const OPTIONAL = ['robots.txt'];
 const OPTIONAL_DIRS = ['download'];
 
-/* Build tooling that lives under site/ so .vercelignore would still ship it at build
- * time (see the note in stamp_version.js). It has no business in the published tree. */
+/* THE DEPLOY BUILD CHAIN, and the one declaration of it in the repo. These three run in
+ * this order as the Pages build command and must not reach the published tree.
+ *
+ * `test/run_portable.js` reads this set and proves every script here — and every sibling
+ * each one shells out to, e.g. tools/make_portable.js — actually EXISTS. That check used
+ * to ask a different question ("is .vercelignore hiding it from the build machine?"),
+ * which is meaningless on Pages, where nothing is excluded. The underlying invariant is
+ * the same one #258 cost a release: the build command cannot run a file that is not there,
+ * and a deploy failure reports it as a bare `exited with 1` long after the fact. */
 const BUILD_ONLY = new Set(['stamp_version.js', 'make_download.js', 'build_site.js']);
 
 // ---------------------------------------------------------------- copy
@@ -176,6 +195,24 @@ if (deadLinks.length) {
 
 // /sim must land on the FINAL url, not one that redirects again.
 fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell?engine=pwr  302\n');
+
+// THE VERSION STAMPS MUST NOT BE CACHED FOR FOUR HOURS. Cloudflare Pages defaults static
+// assets to `max-age=14400`, which is fine for engine code — it is immutable per deploy and
+// the page that loads it is revalidated — but self-defeating for the three files whose ENTIRE
+// JOB is to say which build you are looking at. Measured 2026-08-09, right after Alpha 1.5.1:
+// the origin served 1.5.1 to every uncached fetch while the owner's browser showed 1.4.0 —
+// TWO releases behind, because it had cached release.js hours earlier and `must-revalidate`
+// does nothing until max-age expires. The same policy is why version.js appeared to serve a
+// stale commit after 1.5.0; that was written off as a self-healing edge blip, and it was not,
+// it was this, and it hits every visitor for four hours after every release.
+//
+// `no-cache` here means "store it, but revalidate every time" — not "do not store". With the
+// ETag already present each check is a ~100-byte 304, so the cost is one conditional request
+// per page load against a version display that is otherwise wrong for a quarter of a day.
+fs.writeFileSync(path.join(OUT, '_headers'),
+  ['/site/version.js',      '  Cache-Control: no-cache',
+   '/site/release.js',      '  Cache-Control: no-cache',
+   '/download/manifest.js', '  Cache-Control: no-cache', ''].join('\n'));
 
 if (problems.length) {
   console.error('\ndist-site is INCOMPLETE — these references do not resolve inside it:');

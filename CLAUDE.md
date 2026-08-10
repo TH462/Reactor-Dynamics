@@ -110,46 +110,22 @@ docs.
 > fidelity alone, #251), and a doubt about your own work you would otherwise bury. Not gateable.
 
 > **You may not be the only agent in this repo. Check all lanes before you edit.** Two sessions
-> in one working directory will overwrite each other's files and sweep each other's
-> work into the wrong commit — this is not hypothetical, it happened on 2026-07-29 and
-> cost a set of manual edits their attribution. A **branch does not isolate anything**;
-> only a separate working directory does.
+> in one working directory overwrite each other's files and sweep each other's work into the
+> wrong commit — it happened on 2026-07-29 and cost a set of manual edits their attribution. A
+> **branch isolates nothing**; only a separate working directory does. **`Blueprint/LANES.md` is
+> the full protocol** — the detection's two blind spots, the merge procedure, the audit lane, and
+> the worked failure behind each rule below. What follows is only what binds.
 >
 > | Working tree | Branch | |
 > |---|---|---|
-> | `C:\grok_build\Reactor_Dynamics` | `develop` | **the main working branch — use this unless it is taken** |
-> | `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1, for when a second agent is already on `develop` — a NORMAL lane, loads this file |
-> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2, same rules as workbench (third concurrent agent) — a NORMAL lane, loads this file |
-> | `C:\grok_build\RD_Audit` | *(none — detached)* | **the AUDIT LANE.** Not a work lane; see below |
+> | `C:\grok_build\Reactor_Dynamics` | `develop` | the main working branch — use this unless it is taken |
+> | `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1 — a NORMAL lane, loads this file |
+> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2 — a NORMAL lane, loads this file |
+> | `C:\grok_build\RD_Audit` | *(none — detached)* | **the AUDIT LANE.** Not a work lane, do not commit from it — `LANES.md` §8, `Blueprint/AUDIT_CHARTER.md` |
 >
-> **ALL THREE WORK LANES ARE NORMAL AND ALL LOAD THIS FILE.** The audit lane is a directory of its
-> own, `C:\grok_build\RD_Audit` *(OWNER RULING, 2026-08-08: "It will audit things 'blind' without
-> preconceived notions or the logic behind the choices", and "Ts wont be a new branch.")*. It holds
-> the auditor's own `CLAUDE.md` — generated from `Blueprint/AUDITOR_ORIENTATION.md` by
-> `node tools/audit_deploy.js` — a `findings/` scratch directory, and a **detached-HEAD worktree at
-> `tree/`** carrying the source under audit. No branch, so nothing done there can reach one, and
-> `.claude/settings.json` there additionally *denies* writes into `tree/**` and into all three work
-> lanes. **Do not work in it and do not commit from it.**
->
-> **This supersedes the backshop arrangement** *(OWNER RULING, 2026-08-06: "Workbench will not be an
-> audit lane.")*, which armed backshop by default and cost it this document for ordinary work. That
-> cost is retired: backshop's `.claude/settings.local.json` is gone and it is an ordinary lane
-> again. The flag route survives as a fallback — `claude --settings .claude/settings.audit.json`
-> from any work lane — but it excludes this file **without putting anything in its place**, so a
-> session launched that way must open `Blueprint/AUDITOR_ORIENTATION.md` by hand.
->
-> **If you are preparing or closing a slice, `Blueprint/AUDIT_CHARTER.md` is your document.** Do not
-> restate the auditor's rules anywhere but `Blueprint/AUDITOR_ORIENTATION.md`, and never hand-arm an
-> exclusion — run `node tools/audit_preflight.js`, because a silently-unmatched exclude pattern
-> looks exactly like a clean audit.
->
-> **The `SessionStart` hook reports which mode the lane is in** and withholds WIP issue *titles* in
-> an audit lane — measured 2026-08-05, it had been printing a plant defect by name into contexts the
-> exclusion had just cleaned (#383). Hooks fire regardless of `claudeMdExcludes`, so that was the one
-> priming channel no settings file could close.
->
-> - **First thing in a session, check ALL trees.** Occupancy is uncommitted modified files
->   *plus* a **recent** commit — run all four lines, do not stop at the tree you are standing in:
+> - **First thing in a session, check ALL trees** — a `SessionStart` hook does it for you
+>   (`tools/hook_lane_status.js`, #343) and **reports without deciding**; run it by hand if it
+>   did not fire. **"COULD NOT CHECK" is not "clear."**
 >   ```
 >   git worktree list
 >   git -C C:/grok_build/Reactor_Dynamics status --short && git log develop   -1 --format='%h %cr'
@@ -157,142 +133,41 @@ docs.
 >   git -C C:/grok_build/RD_backshop    status --short && git log backshop  -1 --format='%h %cr'
 >   gh issue list --repo TH462/Reactor-Dynamics --search 'label:status-wip-develop,status-wip-workbench,status-wip-backshop'
 >   ```
->   **The last line is the only one that is not a guess** *(OWNER DIRECTIVE, 2026-08-04:
->   "Since that's done add an in process tag that shows which worktree it's being worked
->   on.")*. The three `status-wip-<lane>` labels are an agent SAYING which tree it is in, so
->   they name the issue as well as the lane — where the file sweep can only see that *someone*
->   wrote *something*. **Tag your issue when you start and clear it when you stop**, or the
->   next agent stands down for a session that ended hours ago. Full rule under *Issue tracking*.
->   It does not replace the sweep: an agent can work without touching an issue, so run both.
->
->   **A `SessionStart` HOOK now runs this whole check for you** *(OWNER, 2026-08-04: "I want
->   tasks to get labeled with an in work label that also tells which worktree it's being worked
->   in.")*, #343 — `tools/hook_lane_status.js`, wired in `.claude/settings.json`. It prints your
->   lane, the sweep of all three trees and every lane-tagged issue into the opening context, and
->   reminds you to tag. **It reports; it never blocks and never decides** — the warn-and-ask rule
->   below is unchanged. Run the lines by hand if it did not fire.
->   **"COULD NOT CHECK" is not "clear"** — the hook prints them differently on purpose, because a
->   `gh` failure and an empty result are the same output otherwise, and that ambiguity is what
->   hid the broken sweep for days.
->
->   **THE FILE SWEEP CANNOT SEE AN AGENT BETWEEN COMMITS, and that is not a tuning problem**
->   (measured 2026-08-04). At one session's t=0 all three trees were clean and all three branch
->   tips were the same commit — so the sweep read *three free lanes* — while agents were live in
->   **both** overflow trees; they committed within the hour (#337 on workbench, #334 on
->   backshop). **#337 was correctly tagged `status-wip-workbench` the whole time, and I called
->   that tag stale on the sweep's evidence and got it cleared.** A clean tree with an
->   un-advanced tip is exactly what an active agent looks like between commits. **When the tag
->   and the sweep disagree, the TAG wins** — it is a statement, the sweep is an inference.
->
->   **It must be `--search 'label:a,b,c'`, NOT three `--label` flags** (fixed 2026-08-04). `gh`
->   **ANDs** repeated `--label`, so the original form asked for issues carrying all three lane
->   tags at once — which the convention forbids one line below ("One only; the lane is the
->   tree"). **It returned 0 for every issue, always**, from the day it was written. Measured: the
->   AND form returns `0` while #337 is sitting there tagged `status-wip-workbench`. The comma
->   form inside `--search` is the OR. This is the failure mode the tag was introduced to fix,
->   arriving in the tool meant to read it — **a green-looking sweep that has never once been able
->   to see anything.** Run it and expect output; a blank result means the lanes are free, and it
->   should be rare enough to notice.
->
->   A commit inside the last hour or so means a live session; hours old means history.
->   **Unmerged commits on `workbench` / `backshop` are NOT occupancy** — carrying work that has
->   not reached `develop` yet is what those lanes are *for*. On 2026-07-29 workbench held five
->   such commits and was completely free. **The check is not one-shot: re-check before your
->   first commit.** `develop` was quiet in one session's t=0 snapshot and picked up another
->   session an hour in.
-> - **On a positive, WARN AND ASK — do not move on your own** *(OWNER RULING, 2026-07-29:
->   "Maybe it shouldn't be automatic. The agent should warn the user and ask if they should use
->   workbench." — and, refining it: "it should also check if there's an agent working in the
->   workbench before moving.")*. Say what you found in each lane (which files, which commit, how
->   recent), recommend, ask; SOP §5 shape. The detection misfires both ways — another live
->   session, the owner's own uncommitted edits, and your own leftovers read identically, and only
->   the owner can tell them apart cheaply. **Investigating in place while you wait is fine;
->   editing, writing probe files and committing are not** — collisions come from writes.
->   Normally recommend *yes, switch* when `develop` is busy and an overflow lane is clear: the
->   risk is asymmetric, a needless move costs one merge. Prefer **workbench** first, then
->   **backshop**. **If ALL overflow lanes look occupied, do not pick one** — say so and offer a
->   further tree; that is the owner's call, not a default.
-> - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** *(OWNER DIRECTIVE, 2026-07-31:
->   "We need a rule to never merge unless I say so. Develop was being worked")*. Commit on
->   your lane, gate it, say it is ready — and **stop there**. The merge is the owner's call,
->   every time, not a step you finish the task with.
->
->   **This exists because an agent talked itself into it.** On 2026-07-31 I correctly held a
->   merge when `develop` had 24 uncommitted files, then merged twenty minutes later on my own
->   reasoning that "my merge does not touch their file". That reasoning is not wrong so much
->   as **not mine to apply**: it moves a shared branch under someone who is mid-change, and
->   the only person who knows whether that is survivable is the owner. A clean `git status`
->   is NOT permission either — the other session may simply be between commits.
->
->   Applies to `git merge`, fast-forwards, and anything that moves `develop`. Pushing a lane
->   is already forbidden below, so "committed on the lane, gated, waiting" is the correct
->   end state for a finished task.
->
+>   **The last line is the only one that is not a guess** *(OWNER DIRECTIVE, 2026-08-04: "Since
+>   that's done add an in process tag that shows which worktree it's being worked on.")* — a lane
+>   tag is an agent SAYING where it is. **Tag your issue when you start, clear it when you stop**
+>   (full rule under *Issue tracking*). Run both: an agent can work without touching an issue.
+>   **When the tag and the sweep disagree, the TAG wins.** The sweep cannot see an agent between
+>   commits, and unmerged commits on an overflow lane are not occupancy — `LANES.md` §2, which
+>   also has the `--search`-not-`--label` trap that made this query return 0 for months.
+>   **Re-check before your first commit.**
+> - **On a positive, WARN AND ASK — do not move on your own** *(OWNER RULING, 2026-07-29: "Maybe
+>   it shouldn't be automatic. The agent should warn the user and ask if they should use
+>   workbench.")*. The detection misfires both ways and only the owner can tell the cases apart.
+>   Investigating in place is fine; **editing, probe files and commits are not**. Absent a reply,
+>   stay read-only and say what you are waiting on — the heuristic never gets an action.
+> - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** *(OWNER DIRECTIVE, 2026-07-31: "We
+>   need a rule to never merge unless I say so. Develop was being worked")*. Applies to
+>   fast-forwards and anything else that moves `develop`. A clean `git status` is not permission.
+>   "Committed on the lane, gated, waiting" is the correct end state.
 > - **The lanes are LOCAL. Never `git push origin workbench` / `backshop`** *(OWNER DIRECTIVE,
 >   2026-07-31: "I don't want the workbench or backshop trees pushed to gh. Gh should only have
->   main and develop.")*. Commit on the lane, merge to `develop`, push `develop`. The repo is
->   PUBLIC, so a pushed lane puts work-in-progress on display, and the machine is backed up
->   off-site so the remote buys no safety. This is written down because an agent pushed both
->   lanes on 2026-07-31 to get CI on them — which also created a **Vercel preview site per
->   push**, which is how the owner found out. `vercel.json` now refuses to build those branch
->   names, and `gates.yml` no longer lists them.
->   **Absent a reply: stay read-only and say what you are waiting on** *(OWNER RULING,
->   2026-07-29: "lets go with your recommendation.", on the recommendation to cut the earlier
->   draft's no-reply default)* — **the heuristic never gets an action.** The first draft moved to
->   the workbench on its own whenever it looked clear; that was an agent proposal marked "for the
->   owner to rule on" and never ruled on. It also fires on the *common* false positive — your own
->   leftovers in the tree you just started in — while the case where guessing wrong is genuinely
->   expensive is the case where the owner is present to answer in seconds.
-> - **Starting on `workbench` or `backshop`: `git merge --ff-only develop` — and when it refuses,
->   do a real `git merge develop`.** Neither is a feature branch; each exists only so another
->   agent has somewhere to work, but `--ff-only` fails whenever the lane still carries unmerged
->   work, which is the normal case (`fatal: Not possible to fast-forward, aborting.`). Expect the
->   conflict files below, keep both sides, re-run `run_all`.
-> - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules`
->   junctioned from the primary tree (it is gitignored, and the Playwright gates need it)
->   plus an `inbox/` directory. `CLAUDE.md` now arrives with the checkout.
-> - Commit to **your own branch**; merge to `develop` only with gates green.
-> - **Your session-log heading names your LANE: `YYYY-MM-DD-<lane>-<letter>`** *(OWNER RULING,
->   2026-08-04: "Work issue 339 in develop. Go with option 2.")* — `2026-08-05-develop-a` in
->   `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`. Letter = the next one unused for
->   that date **in your own lane**, `-a` first, never bare. A per-day letter needed three trees to
->   agree on who got `b` and they cannot see each other, so **17 labels named two or three entries
->   each** by the 2026-08-04 merge. Old labels are NOT renamed, so a bare `2026-08-04b` citation is
->   ambiguous — #339 says why. `test/run_session_labels.js` gates it from 2026-08-05.
-> - Guaranteed merge conflicts, all newest-at-top: `CHANGELOG.md`,
->   `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, and the `BASELINES` map
->   in `test/run_all.js`. Keep both sides, then **re-run `run_all`** — a mechanical
->   BASELINES resolution can silently take the wrong number, and that one will not
->   announce itself.
-> - **`Manuals/` IS ON THIS LIST TOO, and it is the DANGEROUS one** *(added 2026-08-03,
->   after it happened)*. The four files above conflict LOUDLY — they are append-at-top logs,
->   so git stops and makes you choose. A manual chapter is edited in the MIDDLE by both
->   lanes, so a merge can resolve it in one lane's favour and **say nothing**. Measured: the
->   2026-08-03 backshop merge silently dropped an entire `Manuals/12` §5.5 section — the
->   documentation of a physics change whose ENGINE half merged fine. The manual then said
->   the clad node "heats at the local decay-heat rate" and "No hydrogen generation" while
->   the engine did neither.
->   Nothing caught it. `run_manual_rev` checked the revision TABLE, the set-wide stamp
->   and the content digests — and the digests were re-sealed by the merge, so they agreed
->   with the surviving text. The revision-history row still claimed the change, which is
->   worse than silence: **the record said it was documented and it was not.**
->   **`run_manual_rev` now carries a CONTENT CANARY for exactly this** (2026-08-04, #345):
->   every chapter-qualified section a revision row names — `**12 §5.5**`, `**09 §2.0**` — must
->   still resolve to a heading or a register row in that chapter. The 2026-08-03 signature is
->   reproduced and caught: digests **green** (re-sealed), canary **red** naming the row.
->   **It only sees what a row NAMES.** Bare `§5.5` with no chapter number is not resolved (44
->   in the pre-zeroing table, pointing variously at Blueprint docs), and prose accuracy is
->   still out of scope by design. So **after any merge that touches `Manuals/`, still grep the
->   chapter for the thing you wrote** — one `grep -c` per claim — and **WRITE REVISION ROWS
->   CHAPTER-QUALIFIED WITH A `§` SECTION**, because a row without one cannot be guarded.
->   **That obligation is not theoretical — the first real three-lane merge broke it the same
->   day** (2026-08-04, the Rev 1/2/3 merge). Of its three content rows the gate could guard
->   **one**: backshop's `**12 §12.4b**` parsed; workbench's `**12** §7.1` was missed by a
->   parser that only tolerated emphasis around the *whole* ref (fixed — emphasis between the
->   chapter and the `§` is now allowed); and develop's row named `` `03` ``, `` `05` `` and
->   `06 step 4` with **no `§` anchor at all**, which no parser can resolve. That merge
->   hand-verified all four claims and called it *"the check no gate performs"* — half right:
->   the gate performs it, for rows written so it can.
+>   main and develop.")*. The repo is public and a pushed lane also builds a Vercel preview site.
+> - **Starting on an overflow lane: `git merge --ff-only develop`, and when it refuses do a real
+>   `git merge develop`.** Guaranteed conflicts, all newest-at-top: `CHANGELOG.md`,
+>   `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, and the `BASELINES` map in
+>   `test/run_all.js` — keep both sides, then **re-run `run_all`**, because a mechanical BASELINES
+>   resolution can take the wrong number silently.
+> - **`Manuals/` is on that list and is the DANGEROUS one**: those four conflict LOUDLY, a manual
+>   chapter is edited in the MIDDLE by both lanes and resolves in one lane's favour **saying
+>   nothing** — a 2026-08-03 merge dropped a whole `§5.5` while the digests re-sealed around it.
+>   `run_manual_rev` now has a content canary, but **it only sees what a revision row NAMES**, so
+>   write rows chapter-qualified with a `§`, and after any `Manuals/` merge grep the chapter for
+>   the thing you wrote. `LANES.md` §6.
+> - **Your session-log heading names your LANE: `YYYY-MM-DD-<lane>-<letter>`**, `-a` first, never
+>   bare — `test/run_session_labels.js` gates it; `LANES.md` §7 for why.
+> - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules` junctioned
+>   from the primary tree plus an `inbox/` directory. Commit to **your own branch**.
 
 > **Four questions decide whether a feature or change goes in — `Blueprint/DESIGN_CRITERIA.md`
 > is BINDING** *(OWNER DIRECTIVE, 2026-08-02: "I think there are a few important criteria on
@@ -415,6 +290,8 @@ to read everything.
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
+| **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
+| **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
 | **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the whole file is *your* (primed) document: the lane, the prep and the close-out. The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed to `C:\grok_build\RD_Audit\CLAUDE.md` by `node tools/audit_deploy.js`; do not restate them anywhere else. Verify with `node tools/audit_preflight.js <slice>` (eight checks, exit 2 naming the cause; it launches nothing). **The launch is a fresh session started in `C:\grok_build\RD_Audit` itself — not in its `tree/`**, which would silently get the repo's settings and no auditor orientation. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §4 and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
@@ -434,39 +311,27 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-08**._
+_Last updated: **2026-08-10**._
 
-**Where the PWR is.** `run_all` is **44 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **45 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
 
-- **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen 2026-08-08: the ruled TMI-2-style
-  one-time burn, recombiners, geometry-gated transport — owner-review: the [8.0]/[85]
-  STS-template adoption). Remaining: the board card + manual spray/recombiner surface
-  (waits on the board redesign). **#425 RESOLVED** (2026-08-08, ruled): the passive sink
-  runs a lagged saturation-ΔT enhancement — SBO boil-off parks at 22.2 psig (was 83.3,
-  past design), the burn pin is family-wide, and the #384 §7.2 residual is recorded
-  CLOSED (measured at the building before AND after) — owner-review: the sev-0.25
-  spray-boundary knife-edge.
-- **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the plant's
-  declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
-  power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
-  beat graph cannot express. Waves 1's re-clock and the relief sizing are **landed**.
-- **#385 node — LANDED (stages 0–3, 2026-08-08, `run_all` 42 at baseline)**: `pzr_mass_frac`
-  carries `pzrNodeLevel` (backbone + flow-accreted void credit; no-leak families bitwise the
-  old line). Flash term measured unnecessary and NOT built — flagged owner-review on #385.
-  The bundle closed #415 (non-repro), #334 (slider was already #408's; low-Δp resolved by
-  measurement), #354 (already held the program). **#409 governor** remains deferred.
-- **#418 tier 2 — LANDED** (all four waves, 2026-08-07, each gated at 42 runners): the
-  secondary runs one sourced Ginna basis — derived pressure clock, SG mass ledger, sourced
-  MSSV capacity, tube node + transported legs. Carries `status-owner-review` (three items).
-- **#419 tier 3 — BUILT, no scope left** (2026-08-07; the ×12.6 retirement, F15 → 2500, the
-  Ginna re-anchor). Still open on the issue: **owner-review** on the TMI deception crest
-  (~65 % on the final plant — a level-constants ruling if the cue matters), and TR-1i as a
-  second strict xfail (#420, coupled to #378). Detail: `Diagnostic/TUNING_LOG.md`.
-- **#378** — a post-step rod limit cycle, measured to a REJECT (the fix costs TR-1i's sourced ramp
-  duty). `run_behavior` carries **TR-18** as a strict xfail pinning it.
+**Do not read the list below as the issue tracker** — `gh issue list --state open` is the
+authority and this is a summary that ages. Measured 2026-08-10: five entries here described
+#386, #425, #385, #418 and #419 as open-on-owner-review when all five were **closed**, and two
+of them had been rewritten from the stale text hours earlier by an agent who compressed without
+re-querying. Run the query.
+
+- **#408** — the accident-inventory clock umbrella. Open: the SGTR/seal amendment rows (evidence
+  mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
+  than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
+  the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
+- **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
+  themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
+  merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
+  two owner actions remain (delete the Vercel project, revoke a token).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -484,17 +349,6 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **The containment passive sink learned saturation ΔT — through a LAG, because time is the
-  only separator between families whose pressures overlap** (2026-08-08, #425). SBO boil-off
-  must park ≤ ~22 psig (the H₂ burn deposits +32.4 psi on whatever base it finds, so the
-  BURN margin, not the ruled 30 psig spray point, binds the park — the cap alone would leave
-  the burn 2.4 psi OVER design) while the sev-0.25/0.5 pulse peaks sit ABOVE that park; a
-  static curve eats the pulse grading to brake the park, so the enhancement charges on a
-  120 s lag that pulses never feel. Two traps: a "pre-damage" window bounded by the damage
-  FLAG catches the burn it exists to exclude (H₂ hits 8 v/o before the hot node passes
-  1200 °C — bound on `!ctmt_h2_burned`), and a plan-review constraint can be arithmetic-wrong
-  twice (a burn deposit that forgot `press_gain`; a "drained base" that is actually ambient)
-  — re-derive sizing constraints from the Q0, not the plan.
 - **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
   #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
   telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
@@ -502,8 +356,14 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   GEND-061's ADIABATIC ΔP — the measured 27.5 psi form landed the drained family 27.2 psig,
   UNDER the ruled side of the 30 psig hi-hi (a sourced anchor can be the wrong FORM of the
   measurement for your model's discretization). Recombiners measurably prevent no ignition
-  (declared, prototypical). #425 found on the way: the SBO containment base passes design
-  on relief steam alone — pre-existing, put to the owner, not absorbed.
+  (declared, prototypical). **#425, folded in here on eviction** (2026-08-10 merge — its own
+  bullet went to keep the list at 5, and its trap is the same subject): the SBO base passed
+  design on relief steam alone, and the fix is a saturation-ΔT sink enhancement charged on a
+  **120 s LAG, because time is the only separator between families whose pressures overlap** —
+  a static curve brakes the SBO park but eats the pulse grading. Two traps worth keeping: a
+  "pre-damage" window bounded by the damage FLAG catches the very burn it exists to exclude
+  (H₂ reaches 8 v/o before the hot node passes 1200 °C — bind on `!ctmt_h2_burned`), and the
+  BURN margin rather than the ruled 30 psig spray point is what binds the park.
 - **The board can list every channel and get CHEAPER — the row shape was the cost** (2026-08-08,
   the Indications tab). `chartBuf` stored one NAMED PROPERTY per series per side, and property
   cost is what scaled: at 9000 rows, 40 series = **39.5 MB**, 110 = **137.8**. Packed into
@@ -514,38 +374,45 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
   COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
   MENTIONED counting as covered — fails green.
-- **The #380 ladder decision dissolved when the brackets got read** (2026-08-08). The "sourced
-  real ~30–32 %" SG lo-lo was NUREG-1431's bracketed TEMPLATE placeholder — Ginna, the anchor
-  plant, specifies 17 %, the shipped value. Trap: **a placeholder cites like a number, and it
-  survived two evidence passes because both verdicted the mechanism and inherited the number.**
-  AFW moved onto the trip signal (single-signal, three-document sourced; §8.19 retired), feed_sg
-  targets the programmed 65 % (#355), and the SG FEED demand box admits NO FLOW (#358).
-- **The pressurizer carries its own inventory node, and the level lift became a FLOW**
-  (2026-08-08, #385 stages 0–3). The void credit accretes at the admittance split prevailing
-  WHEN displacement happens — what left through the hole is not owed back in either
-  direction; no-leak families bitwise the old line, pressure bitwise everywhere. Three traps:
-  **`primary_void_fraction` SNAPS** (state fn of `_mass` — flow-form ≈ state-form at
-  gate-open, #407's defect), **an approved plan's sizing target can be measured on a retired
-  scale** (the flash term's "1.5–2 s at sev 0.20" predates the #408 slider re-map — measured
-  unnecessary, not built), and **a meltdown path can pin the defect's CLOCK** (MD-5 melts at
-  5285 s, not <4000 — the old pace was the lying gauge propping the heaters).
+- **The dead MSLI was a TIMING MISS wearing a wrong root cause — fixed by the rate
+  sensitivity the setpoint's own source cell carried** (2026-08-09/10, #403 → #433). A no-dt
+  harness made the flow leg's `held_within_s` latch PERMANENT (age `0 <= 60` for ever), so
+  three green probes certified an isolation that never fired: #408 adopted "600 psig" and
+  dropped "(Rate sensitive)", leaving the raw crossing ~+103 s against a 60 s latch. Now
+  `lead_lag` 20/2 (Ginna's 12/2 shape, scale fitted) — isolates +2..3 s. Traps: **a
+  degenerate latch reads exactly like a working feature**; **a filed root cause repeated in
+  four documents was never re-measured** — "flow reads 0" came from watching the
+  turbine-only variable; **a sourced number is not the whole source**.
+- **The bug report's RECORDING was the broken instrument, and the fix passed 31 of its own
+  checks while recording nothing** (2026-08-09, #432/#431). Sampling ran once per BROADCAST, so
+  a 3600× LOCA is two rows under a manifest hardcoded to `sample_hz: 1`; it now rides the
+  chart's fine seam with min/max per bucket. The trap is the fix's own first version: the fine
+  drain sat inside the rAF paint, one frame late, so the recorder — a separate synchronous
+  subscriber — saw every row AFTER recording a later timestamp. **1475 rows in, 35 recorded.**
+  Invisible to a source scan (call sites all correct) and to the new Node gate (it hands the
+  recorder its rows); only a browser sees it.
+- **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
+  rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
+  xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892
+  at the stops — 5.2× against a CONSTANT gain — and the incidence curve is monotone in bank
+  position over six points. `gainScale` is **gated on the program being parked**, because the
+  de-gain that stabilises the loop also slows ramp tracking and no floor did both; the two
+  separate in TIME (d(spEff)/dt is 144× larger through a ramp). Traps: **a mechanism repeated
+  in four documents is still unmeasured** (nobody had multiplied step count by step rate), and
+  **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+**MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
+options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
+one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written there: **move
+what a GATE already catches**, keep what nothing can tell you. This list was the only unbounded
+thing left in the file and it grew about a bullet a session.
 
-- **A physically-derived constant can be RIGHT and unshippable, and a solve can conflate the
-  MEASUREMENT's temperature with the PLANT's** (rescued from the #419 themes bullet on
-  eviction, 2026-08-08): K_phys ≈ 304 validates against TMI-2's own clock but inverts the
-  stuck-PORV race under the ruled 347× F14 heater, so the shipped K = 2500 is the physical NET
-  under F14 — one pair, re-solve together. And `rho_excess` quoted 975 ppm at "the anchor" was
-  benign 5 °C away and wrong at 286. Ghost constants: check the CONSUMER first.
-- **A new node's capacity must come OUT of the node it split from** (rescued from the #418
-  themes bullet on eviction, 2026-08-08): C_tube added on top of coolant 20 silently reopened
-  the RULED heatup pace — the chain caught it at 260.7 °C. Splitting a lump conserves its total.
-
-- **A component can sit on a TWO-CLOCK seam** (rescued from the #408 themes bullet on
-  eviction, 2026-08-08): the relief valve's mass flow runs the real accident clock while its
-  pressure authority keeps the transient duty — re-clocking either side alone breaks the
-  other, so preserve the product (the F15 K re-solves, twice now). And the terminal melt
-  verdict asks whether the water is COMING BACK — a reflooded TMI-style core rewets.
+- **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
+  eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
+  both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
+- **An approved plan's sizing target can be measured on a RETIRED scale** (rescued from the
+  #385 bullet on eviction, 2026-08-09): its flash term predated the #408 slider re-map, so it
+  measured unnecessary and was never built. Re-derive sizing from the Q0, not the plan.
 
 - **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
   three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped
@@ -599,11 +466,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   11.0 MWt against 21.0 MWt of decay heat. Anything reading `power_pct` as core heat is wrong from
   the moment the rods drop. **Decimals belong to the UNIT**: `toFixed(0)` on MPa printed three
   different pressures as "15 MPa" and collapsed the loop split that panel exists to show.
-- **A closed-form limit line must be SCALED, never RE-ANCHORED** (#311). Pairing this plant's own
-  DNB slope with a fitted intercept ROTATES the line and scrammed the plant at 55.0 s, killing the
-  ride-out the 40 % dump exists to teach. Scaling by a margin factor puts the equivalent gradients
-  inside the published real bands — the unscaled ones were 1.5–2× steeper than any real value, and
-  **that steepness was the tell, visible before the measurement**.
 - **The pressurizer's level constants are ONE object** — `level_per_mass` (776), `level_per_void`
   (375.33), `level_per_tavg` (1.62); the pressure surge reads the same geometry (#337) and since
   #385 the NODE's credit does too (`level_per_mass_surplus` retired at #365). The TMI deception
@@ -614,11 +476,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   2026-08-08): the `levelBase` clip bound on 95.7 % of loss-of-heat-sink samples, 0.0 % of every
   other IC — removing it reddened nothing because no probe stood where it bound. Corollary:
   **this plant goes solid at an inventory DEFICIT** (thermal expansion), not overfilled.
-- **Containment's flash gate decides what it sees** (#386, rescued 2026-08-07): a stuck-open
-  PORV pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break
-  liquid is flash-gated), and an SGTR reads NOTHING — it discharges into the SG, and since
-  stage 3 that fence extends to hydrogen (geometry-gated transport). `press_gain` is fitted
-  and says so. All three #386 stages are landed; the board card waits on the redesign.
 - **Natural circulation: the SHAPE is sourced (W ∝ Q^⅓), the SCALE is this plant's** and is fitted
   — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
   ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the
@@ -641,18 +498,16 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   so the Pressure SP comes down first. **The live checklist NEVER issues `cmd`** — it draws text
   and the instructor grades off `acc`, so `cmd`/`hold`/`ramp` are replay-side only. **Only a rate
   guard can tell a ramp from a staircase.**
-- **The board is the V2 diagram and `pwr_board_data.js` is GENERATED** — edit in the Claude Design
-  "PWR Reactor" builder, re-export to `inbox/Diagram V2.json`, run `node tools/gen_board_data.js`,
-  re-point ids in `pwr_board_wiring.js`. The builder's live state is in browser localStorage, so
-  **ask the owner to export**. **A re-export changes PIPE ids**, silently orphaning `PIPE_TEMP` and
-  undoing board geometry fixes — **run `node test/verify_board_check.js` after any board change**
-  (it is in `run_all`; the score is DATA in `BASELINES`, and this file twice claimed a green tally
-  while the harness sat at 1 FAILURE). Editing traps: a card TITLE is not an item;
-  `DOC_PATCHES.items` is an object literal so a repeated id silently replaces the first;
-  `Pump`/`Valve`/`Tee` ports quantise to the 5 px grid; exclude `kind: 'component'` tiles from a
-  free-slot scan or the instrument column reads as full. **Measure the board, don't eyeball it** —
-  `RD.PwrBoard.ports()` makes an alignment claim a subtraction. **Screenshot it** — art overlap is
-  invisible to an item-vs-item scan.
+- **`pwr_board_data.js` is GENERATED** — never hand-edit it; the round trip is in
+  `tools/gen_board_data.js`'s header, and the builder's live state is in browser localStorage, so
+  **ask the owner to export**. **A re-export changes PIPE ids**, silently orphaning `PIPE_TEMP`
+  and undoing geometry fixes — **run `node test/verify_board_check.js` after any board change**
+  (this file twice claimed a green tally while the harness sat at 1 FAILURE). Editing traps: a
+  card TITLE is not an item; `DOC_PATCHES.items` is an object literal so a repeated id silently
+  replaces the first; `Pump`/`Valve`/`Tee` ports quantise to the 5 px grid; exclude
+  `kind: 'component'` tiles from a free-slot scan or the instrument column reads as full.
+  **Measure the board, don't eyeball it** — `RD.PwrBoard.ports()` makes an alignment claim a
+  subtraction. **Screenshot it** — art overlap is invisible to an item-vs-item scan.
 - **The board's FLOW family is the one where US is the base unit** — gpm is the identity side and
   m³/h the converted one, backwards from every other family. The units key is an ACCESSOR
   (`ctx.units()`); a frozen value pins the board in whichever mode it mounted in.
@@ -660,10 +515,9 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   FAIL the channel (#220). A trip's `condition:` key is a status word the ENGINE computes, so the
   `run_hardrules` scan cannot see it; hence HR1(b), every permissive key declared. **A comment
   carrying the real plant's premise rots when this plant departs from it.**
-- **A new `true_state` field must be documented in the same change** — `run_contract` diffs the
-  live keys against `CONTEXT.md` §6.3 and fails BOTH ways (#225). New PWR instruments ship
-  `noise: 0` (the PRNG is one cross-step stream) and must declare `noise_failure`, or their
-  `noisy` failure is silently dead.
+- **New PWR instruments ship `noise: 0`** (the PRNG is one cross-step stream) and must declare
+  `noise_failure`, or their `noisy` failure is silently dead. (The `true_state` §6.3 obligation
+  beside it is under *Definition of done*, where `run_contract` is listed.)
 - **Provenance matters more than it looks.** Many "owner rulings" here were written by agents, and
   all agent work commits under the owner's name, so git blame proves nothing. A ruling without a
   date and a verbatim owner quote is advisory — `CONTEXT.md` §3. **`test/run_hr3.js` guards HR3;
@@ -694,27 +548,20 @@ not a changelog.**
 `BUILD_DECISIONS.md` Open Flags)
 - Chernobyl / Fukushima **flagship scenarios** and the campaign wrapper for RBMK/BWR.
 - Extend the **M8 UI / M4 control surface to RBMK + BWR**.
-- **Campaign ↔ Mode-5 alignment: done** — strings use *Mode N, Name*, and three
-  missions (`pwr_mode5_to_mode3`, `pwr_mode3_to_mode5`, `pwr_return_to_mode1`) drive
-  the full Mode 5 ↔ 1 loop on the board (`Manuals/CAMPAIGN_MODE_ALIGNMENT_SPEC.md`
-  §2–3). `11_CAMPAIGN_CROSSWALK.md` verified current (Rev 1, 34 missions + bonus).
-- **Mode-5 controls exposed in the UI**: RCP **Run/Stop** (`set_rcp`), **Pressure SP**
-  and **Dump SP** setpoint boxes. Remaining polish: a `plant_mode` text indicator and
-  an explicit `eccs_mode` readout (nice-to-have).
-- **ECCS card UI layout** open (contract in `Blueprint/pwr_synoptic_prerequisites.md`).
+- **ECCS card UI layout** (contract in `Blueprint/pwr_synoptic_prerequisites.md`), and two
+  Mode-5 nice-to-haves: a `plant_mode` text indicator and an explicit `eccs_mode` readout.
+  (Campaign ↔ Mode-5 alignment and the Mode-5 controls themselves are **done** — they sat in
+  this list marked "done" for a week, which is what a list nobody prunes looks like.)
 
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
-numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06; every
-figure in it was a second copy of a machine-readable map, and the copies rotted exactly as this
-file's own warnings predicted — `run_inspect` was recorded as 8/8 while `BASELINES` said 9/9,
-`verify_flags_ui` said 48/48 against a gate that has always scored 42, `run_otdt` sat at 39
-through three commits that took it to 46, and `run_contract` appeared **twice with different
-numbers** after a merge. Run the gate; read the map. The per-change rationale — what moved, why,
-and the trap it taught — lives in `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`,
-newest first.
+numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06 and every
+figure in it had rotted: `verify_flags_ui` said 48/48 against a gate that has always scored 42,
+`run_otdt` sat at 39 through three commits that took it to 46, `run_contract` appeared **twice
+with different numbers**. Run the gate; read the map. The per-change rationale lives in
+`Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
-node test/run_all.js            # all 43 runners (~3.5 min, 10-way parallel)
+node test/run_all.js            # all 45 runners (~3.5 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -742,13 +589,11 @@ Four things about it that are procedure, not history:
 
 **One tracked red, carrying its `note` in `BASELINES`: `run_ops` 58/69** — ops probes are tuning
 targets by design. Of the 11 reds, 10 are RBMK/BWR (on hold). The single PWR one is
-`ops_cvcs_pzr_drain_rate` (**284.3 s** against `>= 300 s` — was 53.7 before #408 wave 1 put CVCS
-on the real scale, so it is now just short of its target rather than 7.76× past it) and it is a
-**RULED, ACCEPTED state, not a regression** *(OWNER RULING, 2026-08-04: "A")*: #330 corrected
-`level_per_mass` 100 → 776 and the acceptance is a direct product of that constant. **It must NOT be re-banded** — the probe exists
-because of a 2026-07-22 owner request for a drain-rate feel target, and re-banding a target
-whenever the plant moves retires it instead of reporting against it. Both options are costed in
-the probe's own comment (`test/ops_pwr.js`).
+`ops_cvcs_pzr_drain_rate` (**284.3 s** against `>= 300 s`), a **RULED, ACCEPTED state, not a
+regression** *(OWNER RULING, 2026-08-04: "A")*. **It must NOT be re-banded** — the probe exists
+for a 2026-07-22 owner request for a drain-rate feel target, and re-banding a target whenever the
+plant moves retires it instead of reporting against it. Both options are costed in the probe's
+own comment (`test/ops_pwr.js`).
 
 `verify_e2e_ui` carries **1 strict xfail** pinning the manual's missing unit conversion (#111) —
 it errors if the manual ever starts converting.
@@ -781,7 +626,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 43 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 45 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
@@ -807,9 +652,9 @@ node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
                                 # TAKE A NUMBER from a long FULL-STACK evolution (see below)
 ```
 
-`test/ops_*.js`, `test/*_harness.js`, and `test/verify_*.js` are supporting
-harnesses. Ops-probe FAILs are tuning targets, tracked in
-`Diagnostic/OPS_TUNING_REPORT.md`. `run_e2e_controls.js` and `run_procedures.js`
+`test/ops_*.js` and `test/*_harness.js` are supporting harnesses. Ops-probe FAILs
+are tuning targets, tracked in `Diagnostic/OPS_TUNING_REPORT.md`.
+`run_e2e_controls.js` and `run_procedures.js`
 are PART OF THE GATE LIST — both drifted red unnoticed once because they weren't
 listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
 `test/verify_*.js` automatically and fails on any runner it has no baseline for**, so
@@ -883,18 +728,15 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   concise.")*; the next release is an ordinary Platform.Feature.Refinement bump.
 - **A RELEASE IS NOT DONE UNTIL A `Production` DEPLOYMENT EXISTS FOR THE RELEASED SHA** *(OWNER,
   2026-08-04: "Let's fix the gap and release.")*. Alpha 1.0.0 merged, tagged and passed CI while
-  the **live site kept serving the previous release** — the only deployment Vercel created for that
-  commit was a **Preview**. A green *"Vercel — success"* commit status is satisfied by a preview and
-  is **not** evidence. **Run `node tools/verify_release_deploy.js`** — exit 0 means a production
-  deployment exists for that commit, and it asks BOTH hosts, so it keeps working across the
-  Cloudflare move (#413). It replaced a pasted `gh api …?sha=<SHA>` line that failed twice for
-  reasons prose cannot fix: the GitHub API needs the **full 40-char sha** and returns zero rows for
-  an abbreviated one — indistinguishable from "production is missing" — and every such deployment
-  is created by `vercel[bot]`, so the query goes permanently empty once the site moves.
-  **And do not push `develop` until it exists** — fast-forwarding it to the same commit seconds
-  after the merge gives Vercel two events for one SHA, and that is when the production build went
-  missing. A missing production deploy is indistinguishable from a slow one from outside, for ever,
-  so waiting is never the answer. Full step: `release-to-main` skill §5b.
+  the live site kept serving the previous release — the only deployment for that commit was a
+  **Preview**, and a green *"Vercel — success"* status is satisfied by one. **Run
+  `node tools/verify_release_deploy.js`** — Cloudflare-only since 2026-08-10; its header says why
+  a hand-written `gh api` query cannot do this, and records the two mirrored failures it has had
+  (a half that could never pass, a half that could never fail). **Do not push `develop` until it
+  exists** — fast-forwarding it seconds after
+  the merge gives two events for one SHA, which is how the production build went missing. From
+  outside, a missing deploy and a slow one are indistinguishable for ever, so waiting is never the
+  answer. Full step: `release-to-main` skill §5b.
 
 ---
 
@@ -903,18 +745,9 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 **Open items belong in GitHub issues**, not only in `Diagnostic/` prose. When you find a defect,
 a gap, or a deferred decision that outlives the session, file it.
 
-Repo: **`TH462/Reactor-Dynamics`**. The `gh` CLI is installed **per-user** (the MSI needs admin
-and fails with 1603 from a non-elevated session, so it was installed from the portable zip):
-
-```
-C:\Users\Tim H\AppData\Local\Programs\gh\bin\gh.exe     # on the user PATH
-"/c/Users/Tim H/AppData/Local/Programs/gh/bin/gh.exe"   # Git Bash form (quote it — space in the path)
-```
-
-If `gh: command not found` in a shell that predates the PATH edit, prepend it:
-`export PATH="$PATH:/c/Users/Tim H/AppData/Local/Programs/gh/bin"`.
-
-Auth is already done (`gh auth status` → logged in as `TH462`). **`gh auth login` is
+Repo: **`TH462/Reactor-Dynamics`**. `gh` is installed per-user and on the PATH, authed as
+`TH462`. On `gh: command not found`, prepend it (mind the space in the path):
+`export PATH="$PATH:/c/Users/Tim H/AppData/Local/Programs/gh/bin"`. **`gh auth login` is
 interactive — you cannot run it**; ask the owner to run it with the `!` prefix if the token
 ever expires.
 
@@ -986,10 +819,8 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
   tree and on what*, which the file sweep never could. **A tagged issue in your lane that you
   did not tag is a positive — warn and ask, same as the file check.**
 
-  **ONE `--label` is fine; THREE are not.** `gh` ANDs repeated `--label`, so a single-lane query
-  like the one above works, and the all-lanes sweep must be `--search 'label:a,b,c'`. The version
-  shipped with this directive used three flags and therefore returned 0 for every issue, always —
-  see the block at the top of this file, where it is fixed.
+  **ONE `--label` is fine; THREE are not** — `gh` ANDs repeated `--label`, so the all-lanes
+  sweep must be `--search 'label:a,b,c'`. `Blueprint/LANES.md` §2 for what that cost.
 
   **`status-deliberate` must name who decided it, and when** *(added 2026-07-27)*. The label
   turns any past call into standing law, so a comment on the issue has to say either
@@ -1037,19 +868,12 @@ integration branch; `main` is stable/release. Do not commit straight to `main`.
 
 ### Website changelog & version numbers
 
-> **LIVE AGAIN, and the launch release is ALREADY PREPARED on `develop`** *(OWNER DIRECTIVE,
-> 2026-08-04: "The next release will take the program out of pre-Alpha and into Alpha and bring
-> back the update tracking page. Update tracking summaries/lists should be concise.")*,
-> superseding the 2026-07-31 suspension of this subsection. **`Alpha 1.0.0` is committed and
-> waiting for the merge — do not bump it again for that merge.** The digit rules below choose
-> every version *after* it.
->
-> **Two things that release established, which the next one inherits.** `changelog.html`'s
-> **first** entry is deliberately one line *(OWNER DIRECTIVE, 2026-08-04: "The first release
-> should not have change log entries other than saying it's the initial Alpha release.")* —
-> later entries are diffs and get the normal treatment. And `CHANGELOG.md`'s pre-public sections
-> are **`## [Pre-launch 1.x.y]`**, not `Alpha`: they were dev versions, and if they parse as
-> released ones then `1.0.0` sorts under `1.11.0` and the gate reddens on newest-first.
+> **The page is LIVE** *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program
+> out of pre-Alpha and into Alpha and bring back the update tracking page. Update tracking
+> summaries/lists should be concise.")*. `Alpha 1.0.0` shipped 2026-08-04; every release since
+> is an ordinary bump by the digit rules below. `CHANGELOG.md`'s pre-public sections are
+> **`## [Pre-launch 1.x.y]`**, not `Alpha` — they were dev versions, and parsed as released ones
+> `1.0.0` sorts under `1.11.0` and `run_release` reddens on newest-first.
 
 The public site has a **player-facing** changelog at **`changelog.html`** — separate
 from the developer `CHANGELOG.md`. **Every release gets a version number and a
@@ -1067,13 +891,11 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   **Y IS FOR NEW THINGS, NOT FOR VISIBLE THINGS** *(OWNER DIRECTIVE, 2026-07-31: "I think we
   should have the y part of the change number be for major changes or feature additions in
   order to reduce the change number blowup. Z is for smaller changes and fixes even if they
-  are player facing.")*. This rule used to read "**Y** — a new player-facing feature", which
-  caught nearly every release, because almost everything here is player-facing eventually.
-  Measured: the version went **1.2.0 → 1.11.0 in eight days**, and the owner then asked
-  whether to roll it back (recommended against — the runaway was the *rule*, not the number;
-  see `CHANGELOG.md` 2026-07-31). **The operative test: could you add it to the Roadmap as a
-  line item?** New system, new scenario, new mode, new page → **Y**. Better/clearer/fixed
-  version of something already there → **Z**, however visible it is.
+  are player facing.")*. The old wording, "a new player-facing feature", caught nearly every
+  release and took the version **1.2.0 → 1.11.0 in eight days** (`CHANGELOG.md` 2026-07-31).
+  **The operative test: could you add it to the Roadmap as a line item?** New system, scenario,
+  mode or page → **Y**. Better/clearer/fixed version of something already there → **Z**, however
+  visible it is.
 
   **Do not trust a version written here** — read the top entry of `changelog.html` and
   `site/release.js`, which must always agree with each other. (This line said `1.6.1` while
@@ -1096,8 +918,8 @@ from the developer `CHANGELOG.md`. **Every release gets a version number and a
   ship inside the sim. A change to the surrounding site (a page, its styling, navigation, the
   download plumbing, the changelog page itself) is not a simulator change and gets no entry,
   however visible it is. It still belongs in `CHANGELOG.md`, which is the engineering record
-  and unrestricted. If a release contains nothing but website work, it gets a version bump and
-  no `changelog.html` entry.
+  and unrestricted. **A website-only change ships with NO version bump** — `run_release` forbids
+  "bump, no entry" (measured; `TUNING_LOG` 2026-08-09-develop-a).
 - **BE CONCISE, and that is a CAP** *(OWNER DIRECTIVE, 2026-08-04: "Update tracking
   summaries/lists should be concise.")*. **At most 8 bullets per entry, one line each**
   *(the number is my operational reading, not the owner's — the directive is the brevity)*.
@@ -1158,13 +980,13 @@ and goes public with the repo, as line 6 says.) The curated
 three worktrees, so every lane reads the same copy and nothing in it can be committed. It holds
 `runbook.md` (account/zone/project ids, what is deployed where, how to read the usage data),
 `cutover.md` (the Vercel → Cloudflare migration, #413, with live state), saved Analytics Engine
-queries, and bug-report bundles pulled from R2. **Read it before doing anything to the live
-site** — those identifiers otherwise exist only in one session's conversation.
+queries, and bug-report bundles pulled from R2 by `node tools/fetch_bug_reports.js` (or the
+`read-bug-reports` skill). **Read it before touching the live site** — those identifiers
+otherwise exist only in one session's conversation.
 **NO SECRETS LIVE THERE**, deliberately: `C:\grok_build\` syncs off-site (`.SynologyWorkingDirectory`),
 and every agent reads the folder, so a plaintext credential there is replicated *and* shared.
 Tokens go in a user env var (`CLOUDFLARE_API_TOKEN`); wrangler, `gh` and the MCP servers keep
-their own OAuth and need no help. A credential found in that folder is a defect — move it and
-revoke the exposed one.
+their own OAuth. A credential found there is a defect — move it and revoke the exposed one.
 
 ---
 

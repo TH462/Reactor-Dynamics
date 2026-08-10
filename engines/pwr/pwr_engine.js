@@ -42,6 +42,19 @@
     return pos_norm - K * Math.sin(2 * Math.PI * pos_norm) / (2 * Math.PI);
   }
 
+  // d(scruve)/d(pos_norm) — the DIFFERENTIAL worth shape, i.e. how much reactivity one
+  // step is worth at a given bank position. Exported because the rod-control channel
+  // schedules its gain on it (#394): this plant lumps the whole 4068 pcm into ONE bank,
+  // so differential worth swings 0.892 -> 4.657 pcm/step across the operating band
+  // (measured) where a real four-bank overlap is far flatter. A controller with a
+  // constant gain therefore runs a 5.2x range of LOOP gain and is unstable at the
+  // high end. Kept here, beside the curve it differentiates, so the two cannot drift
+  // apart — the control layer calls it lazily (it loads before this file).
+  function scruveSlope(pos_norm, K) {
+    if (K == null) K = 1;
+    return 1 - K * Math.cos(2 * Math.PI * pos_norm);
+  }
+
   // ====================================================================== engine
   function PWREngine(opts) {
     opts = opts || {};
@@ -943,6 +956,32 @@
         // Move `steps` at the selected rod speed (drives to a target), not instantly.
         g = this._group(cmd.group_id);
         if (g && !(g.id === 'control_rods' && s._fail.rod_runaway.active)) {
+          // A nudge that CANNOT MOVE THE BANK is a no-op and must not touch it — not
+          // the speed, not the accumulator, not a coast in flight (#429). Two ways to
+          // get one: a zero-step command, and a command clipped away at a rail (+5 at
+          // the 912 stop). Both leave target === steps, which the old `>=` turned into a
+          // POSITIVE velocity while `_stepRods` tests the target only AFTER incrementing.
+          //
+          // ONLY THE ZERO-STEP FORM WAS ACTUALLY BROKEN, and the difference is worth
+          // keeping because it is not obvious: measured, `steps: 0` at hot_full_power
+          // drove the bank 839 -> 912 (the target sits mid-travel, so the incremented
+          // position never matches it again and only the rail stops it), while the
+          // rail-clip form self-healed — the first increment clips straight back onto
+          // the target and the loop exits. The guard covers both anyway, because the
+          // rail case survived on a coincidence of the clip, not on intent.
+          //
+          // The sign below is `>` and not `>=` only because the guard now makes the
+          // equal case unreachable. The two are a PAIR: strict sign without the guard is
+          // worse than the original defect, not better — measured, it walks the bank the
+          // wrong way (912 -> 816, and 839 -> 647 on a zero-step command).
+          //
+          // `control_kernel.js:1627` (`if (!steps) return`) guards the zero case for the
+          // one production caller that could compute it; the defect is in THIS layer, so
+          // any future caller — a beat, a procedure step, a new channel — inherits it.
+          // RBMK (`rbmk_engine.js:307`) and BWR (`bwr_engine.js:310`) carry the identical
+          // `>=`; both plants are ON HOLD, so they are left alone and noted on #429.
+          var tgt = clip(g.steps + cmd.steps, 0, g.max_steps);
+          if (tgt === g.steps) break;
           g.speed = cmd.speed || g.speed || 'normal';
           // A command to a bank at rest starts its travel from a clean fraction —
           // otherwise the leftover accumulator from the previous move (up to ~1 full
@@ -950,10 +989,10 @@
           // ignored. A bank still in motion keeps its fraction (it is mid-step).
           if (!g.velocity) g.step_accumulator = 0;
           g.coast_remaining_s = 0;   // a fresh nudge cancels any coast-to-stop in flight
-          g.nudge_target = clip(g.steps + cmd.steps, 0, g.max_steps);
+          g.nudge_target = tgt;
           var nv = this.cfg.rods.speeds[g.speed] || this.cfg.rods.speeds.normal;
-          g.velocity = (g.nudge_target >= g.steps ? 1 : -1) * nv;
-          g.moving = g.nudge_target !== g.steps;
+          g.velocity = (g.nudge_target > g.steps ? 1 : -1) * nv;
+          g.moving = true;
         }
         break;
       case 'rod_start':
@@ -2218,6 +2257,7 @@
 
   RD.PWREngine = PWREngine;
   RD.pwrScruve = scruve;
+  RD.pwrScruveSlope = scruveSlope;
 
   // ========================================================================
   // §14 — PWR Scenario Test Suite (the acceptance gate). Calls the engine
@@ -2293,7 +2333,13 @@
   // (RCPs on, RHR auto-closes above the interlock), turbine offline so the SG bottles
   // to no-load, then a gentle SUR-limited control-bank withdrawal takes the core
   // critical and holds ~10 % fission power, heating the RCS to NOP and on past 5 %.
-  function _driveHeatup(h, maxSec) {
+  // opts.paceCHr — hold the heatup to this rate (°C/hr) by trimming the power target
+  // against the measured rate, instead of running the bank up to a fixed 10–12 % and
+  // heating as fast as the physics allows (#398). Omitted, the driver is UNPACED and
+  // that is deliberate: the round-trip gate's question is whether the transition is
+  // physically achievable end to end, not whether a particular operator paced it.
+  function _driveHeatup(h, maxSec, opts) {
+    opts = opts || {};
     maxSec = maxSec || 6000;
     var minSub = 1e9, maxFuel = 0, critAt = -1, hotAt = -1, mode1At = -1, t;
     h.cmd({ action: 'set_rcp', running: true });
@@ -2310,19 +2356,72 @@
     h.cmd({ action: 'open_accumulator_valve' });
     h.cmd({ action: 'set_feed_pump_speed', pct: 20 });
     var elapsed = 0, dt = 5;
+    // EV-1's rate half (#398). `maxRate` is the peak over the WHOLE drive; `maxRateAfterCrit`
+    // starts at criticality, which is where a NUCLEAR heatup's rate actually lives.
+    //
+    // Both are reported and neither was ever asserted. Measured on the unpaced driver:
+    // peak 435.8 °C/hr (784 °F/hr) at 975 s — NOT the RCP-start transient, which is over
+    // by then, but the 10–12 % power target below driving a bottled SG. That is the
+    // physics behaving correctly (10 % of core thermal into this plant's small RCS mass
+    // is ~500 °C/hr); it is the FIXTURE that does not pace. `paceCHr` is the paced form.
+    var maxRate = 0, maxRateAfterCrit = 0, maxRateAt = -1;
+    // ROLLING-HOUR rate, which is what a heatup-rate limit actually means. A Technical
+    // Specification "100 °F/hr" is a rate over a period, not a bound on an instantaneous
+    // derivative — a plant that gains 30 °C in an hour has heated at 30 °C/hr however
+    // lumpy the minute-to-minute trace was. Asserting the instantaneous peak instead
+    // would be asserting the DAMPING of `tavg_rate_c_per_hr`, not the evolution.
+    // Samples are a fixed `dt` apart, so the sample one hour back is a fixed index back.
+    var trace = [], WIN = Math.round(3600 / dt), maxHourly = 0, maxHourlyAt = -1, paceP = null;
     while (elapsed < maxSec) {
       t = h.ts();
       minSub = Math.min(minSub, t.subcooling_c); maxFuel = Math.max(maxFuel, t.fuel_temp_c);
+      var rt = t.tavg_rate_c_per_hr || 0;
+      if (rt > maxRate) { maxRate = rt; maxRateAt = elapsed; }
+      if (critAt >= 0 && rt > maxRateAfterCrit) maxRateAfterCrit = rt;
+      // The window opens at CRITICALITY. Before it, the only heat source is the RCP, and
+      // pump heat is not something rod control can pace — measured, starting the pump into
+      // a cold RCS carries Tavg 50 -> ~78 °C asymptotically in about 20 minutes and then
+      // plateaus, which is ~28 °C of an hourly budget of 55.6 spent before a rod moves.
+      // Including it made the FIRST hour the worst hour every time (63.1 °C/hr at 3605 s)
+      // and measured the pump, not the heatup. That pump-heat share is a real question
+      // about this plant's heat-to-mass ratio and is filed separately — it is not
+      // something to resolve by choosing a kinder window here.
+      if (critAt >= 0) {
+        trace.push(t.tavg_c);
+        if (trace.length > WIN) {
+          var hourly = t.tavg_c - trace[trace.length - 1 - WIN];   // °C gained in the last hour
+          if (hourly > maxHourly) { maxHourly = hourly; maxHourlyAt = elapsed; }
+        }
+      }
       if (critAt < 0 && t.reactivity_pcm > -30 && t.power_pct > 0.5) critAt = elapsed;
       if (hotAt < 0 && t.tavg_c >= T_hot) hotAt = elapsed;
       var Pt = (t.tavg_c < T_hot - 3) ? 10 : 12;
-      if (t.power_pct > Pt * 1.3 || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -8, speed: 'normal' });
-      else if (t.power_pct < Pt * 0.8 && t.startup_rate_dpm < 1.0) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 4, speed: 'slow' });
+      // PACED (#398): hold the ruled rate instead of running the bank up to a fixed
+      // 10–12 %. The target is INTEGRATED, not recomputed from the unpaced target each
+      // pass — a proportional trim off `Pt` overshot to 80.8 °C/hr against a 50 target,
+      // because the thing being controlled (a lagged temperature derivative) responds to
+      // the power target's HISTORY, not its instantaneous value. The floor keeps the
+      // reactor critical: a heatup paced to 55.6 °C/hr needs on the order of 1 % power,
+      // and without it the trim walks the bank subcritical and the heatup stalls.
+      if (opts.paceCHr) {
+        if (paceP == null) paceP = 2.0;
+        paceP = clip(paceP + 0.02 * (opts.paceCHr - rt) / opts.paceCHr, 0.35, 12);
+        Pt = paceP;
+      }
+      // Pacing needs a finer hand than the unpaced drive: ±8/+4 steps against a ±30 %
+      // deadband is a bang-bang loop, and around a ~1 % target it is most of the range.
+      var upStep = opts.paceCHr ? 2 : 4, dnStep = opts.paceCHr ? -2 : -8;
+      var hiBand = opts.paceCHr ? 1.05 : 1.3, loBand = opts.paceCHr ? 0.95 : 0.8;
+      if (t.power_pct > Pt * hiBand || t.startup_rate_dpm > 1.5 || t.fuel_temp_c > 500) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: dnStep, speed: opts.paceCHr ? 'slow' : 'normal' });
+      else if (t.power_pct < Pt * loBand && t.startup_rate_dpm < 1.0) h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: upStep, speed: 'slow' });
       _feedHold(h);
       h.run(dt); elapsed += dt;
       if (t.tavg_c >= T_hot && t.power_pct > 5 && hotAt >= 0 && elapsed > hotAt + 200) { mode1At = elapsed; break; }
     }
-    return { critAt: critAt, hotAt: hotAt, mode1At: mode1At, maxFuel: maxFuel, minSub: minSub };
+    return { critAt: critAt, hotAt: hotAt, mode1At: mode1At, maxFuel: maxFuel, minSub: minSub,
+      maxRate: maxRate, maxRateAfterCrit: maxRateAfterCrit, maxRateAt: maxRateAt,
+      maxHourly: maxHourly, maxHourlyAt: maxHourlyAt,
+      endTavg: h.ts().tavg_c, elapsed: elapsed };
   }
   // Cooldown: (Mode 1 →) Mode 3 → Mode 5, Cold Shutdown. Trip, borate for cold
   // shutdown margin (cooling adds +reactivity via MTC), ramp the secondary down so
@@ -2331,11 +2430,20 @@
   function _driveCooldown(h, maxSec) {
     maxSec = maxSec || 12000;
     var minSub = 1e9, coldAt = -1, t, below276 = false, elapsed = 0, dt = 10, k = 0;
+    // EV-2's rate half (#398) — the cooldown mirror of _driveHeatup's tracking. The
+    // scram below IS a step change in heat removal, so the same settling logic applies:
+    // `minRate` is the peak (most negative) over the whole drive, `minRateSettled` skips
+    // the post-trip shrink so it describes the PACED cooldown the limit is written for.
+    var minRate = 0, minRateSettled = 0, minRateAt = -1;
+    var SETTLE_S = 900;
     h.cmd({ action: 'scram' });
     h.cmd({ action: 'set_afw', active: true });
     while (elapsed < maxSec) {
       t = h.ts();
       minSub = Math.min(minSub, t.subcooling_c);
+      var rt = t.tavg_rate_c_per_hr || 0;
+      if (rt < minRate) { minRate = rt; minRateAt = elapsed; }
+      if (elapsed >= SETTLE_S && rt < minRateSettled) minRateSettled = rt;
       h.cmd({ action: 'set_steam_dump_setpoint', mpa: Math.max(0.3, h.eng.cfg.steam_generator.steam_dump_setpoint - k * 0.03) });
       var satGuard = Math.pow(Math.max(t.tavg_c + 25, 1) / 179.47, 1 / 0.239);
       var psp = Math.max(satGuard, 15.41 - k * 0.02);
@@ -2354,7 +2462,8 @@
       h.run(dt); elapsed += dt; k++;
       if (t.tavg_c <= 55 && t.pressure_mpa < 2.76 && t.rhr_valve_open) { coldAt = elapsed; break; }
     }
-    return { coldAt: coldAt, minSub: minSub };
+    return { coldAt: coldAt, minSub: minSub,
+      minRate: minRate, minRateSettled: minRateSettled, minRateAt: minRateAt, settleS: SETTLE_S };
   }
 
   function test(name, fn) {
@@ -2474,6 +2583,54 @@
       });
     },
 
+    // EV-1's RATE half, which nothing asserted until #398. The claim is not "this plant
+    // cannot heat up fast" — it plainly can, and the round-trip driver above does — it is
+    // that the heatup CAN BE PACED inside the limit the plant is licensed to.
+    //
+    // The limit is the sourced Technical Specification one: 100 °F/hr (55.6 °C/hr).
+    // OWNER RULING 2026-08-09, on "#398 — what is this plant's heatup/cooldown rate
+    // limit?": "100 F/hr TS + 50 admin" — "Adopt the sourced Tech Spec limit as the hard
+    // number … Keep ~50 F/hr as a separate soft administrative target". Sourced:
+    // `inbox/sources/ML11223A342.txt:648` and `ML11223A213.txt:1801-1802`, both "Do not
+    // exceed a heatup rate of 100°F/hr in the pressurizer or 100°F/hr in the RCS"; the
+    // board's Heatup Rate tile has annunciated at dHi/dLo ±55.6 °C/hr since #375.
+    //
+    // The catalog's previous "≤ 28 °C/hr" appeared exactly once in the whole repo, in
+    // its own row, with no source, date or owner quote — advisory under HR11, and
+    // contradicted by both the corpus and the shipped board.
+    mode5_heatup_paced: function () {
+      return test('Mode 5 → 3 heatup PACED to the TS limit (100 °F/hr) — EV-1 rate half', function (ck) {
+        var h = new Harness('cold_shutdown');
+        var TS_C_HR = 55.6;                       // 100 °F/hr
+        var t0 = h.ts().tavg_c;
+        var up = _driveHeatup(h, 20000, { paceCHr: 50.0 });   // pace target under the limit
+        var rise = up.endTavg - t0;
+        ck('the heatup actually happened (not stalled by the pacing trim)',
+          t0.toFixed(1) + ' -> ' + up.endTavg.toFixed(1) + ' °C (' + rise.toFixed(1) + ' °C rise)',
+          rise > 100, '> 100 °C of rise');
+        ck('reached criticality', up.critAt, up.critAt >= 0, 'critAt ≥ 0 s');
+        // THE assertion: the worst rolling hour of the NUCLEAR heatup, measured from
+        // criticality. An instantaneous spike that does not move an hour's worth of
+        // temperature is not a heatup-rate violation — which is why the limit is written
+        // as a rate over a period, and why this is the number that means anything.
+        ck('worst rolling hour of the nuclear heatup holds the 100 °F/hr TS limit',
+          up.maxHourly.toFixed(1) + ' °C/hr (' + (up.maxHourly * 1.8).toFixed(0) + ' °F/hr) @ ' + up.maxHourlyAt + ' s',
+          up.maxHourly <= TS_C_HR, '≤ ' + TS_C_HR + ' °C/hr (100 °F/hr)');
+        // Reported, not asserted against the TS number: these are instantaneous
+        // derivatives and the limit does not govern them. They are printed because a
+        // 10x change in either is a real signal about the plant even though neither is
+        // a compliance figure.
+        ck('instantaneous peak after criticality (reported)',
+          up.maxRateAfterCrit.toFixed(1) + ' °C/hr (' + (up.maxRateAfterCrit * 1.8).toFixed(0) + ' °F/hr)',
+          true, 'report only');
+        ck('RCP-start transient stays bounded and is indicated',
+          up.maxRate.toFixed(0) + ' °C/hr (' + (up.maxRate * 1.8).toFixed(0) + ' °F/hr) @ ' + up.maxRateAt + ' s',
+          up.maxRate < 600, '< 600 °C/hr');
+        ck('no fuel damage', up.maxFuel.toFixed(0), up.maxFuel < 1200, '< 1200 °C');
+        ck('stayed subcooled', up.minSub.toFixed(0), up.minSub > 0, '> 0 °C');
+      });
+    },
+
     mode5_to_mode1_roundtrip: function () {
       return test('Mode 5 ↔ Mode 1 round trip — cold→hot→cold on integrated physics', function (ck) {
         var h = new Harness('cold_shutdown');
@@ -2497,6 +2654,17 @@
         ck('mode indicator returned to Mode 5', end.plant_mode + ' ' + end.plant_mode_name, end.plant_mode === 5, 'Mode 5');
         ck('stayed subcooled during cooldown', down.minSub.toFixed(0), down.minSub > 0, '> 0 °C');
         ck('returned to cold shutdown', down.coldAt, down.coldAt >= 0, 'coldAt ≥ 0 s');
+        // Rates are REPORTED here and asserted in `mode5_heatup_paced` (#398). This
+        // driver is deliberately unpaced — its question is whether the transition is
+        // physically achievable end to end — so a limit assertion here would be a
+        // fixture pinning a fixture. Measured: heatup peaks 435.8 °C/hr, cooldown
+        // -604.2 °C/hr, both ~8-11x the 55.6 °C/hr (100 °F/hr) TS limit. Before #398
+        // these numbers were not printed at all and EV-1/EV-2 read PASS on their rate
+        // half against a driver that never measured one.
+        ck('unpaced heatup peak rate (reported — see mode5_heatup_paced)',
+          up.maxRate.toFixed(1) + ' °C/hr, ' + (up.maxRate * 1.8).toFixed(0) + ' °F/hr @ ' + up.maxRateAt + ' s', true, 'report only');
+        ck('unpaced cooldown peak rate (reported)',
+          down.minRate.toFixed(1) + ' °C/hr, ' + (down.minRate * 1.8).toFixed(0) + ' °F/hr @ ' + down.minRateAt + ' s', true, 'report only');
       });
     },
 
@@ -2533,6 +2701,37 @@
         h.run(120);
         var p_back = h.ts().power_pct;
         ck('power falls on insert', p_back.toFixed(2), p_back < p_mid - 0.5, '< ' + p_mid.toFixed(2));
+
+        // #429 — a nudge that cannot move the bank must be a NO-OP. Both forms leave
+        // `nudge_target === steps`, which the pre-fix `>=` turned into a positive
+        // velocity `_stepRods` could not cancel (it tests the target only AFTER
+        // incrementing).
+        //
+        // INJECTION-VERIFIED, and the two checks fail against DIFFERENT regressions —
+        // stated because it is the opposite of what the fix's author (me) assumed:
+        //   - restore `>=` and drop the guard (the shipped defect): check 1 red at
+        //     839 -> 912, check 2 GREEN. The rail form self-heals — the first increment
+        //     clips back onto the target and the loop exits — so it was never broken.
+        //   - drop the guard but keep the strict `>`: BOTH red, and walking the wrong
+        //     way (839 -> 647, 912 -> 816). Check 2's live purpose is this variant, i.e.
+        //     a later edit that removes the guard believing the sign covers it.
+        // Both assert a POSITION, not `moving`: `moving` is false at the rail as well, so
+        // a motion-flag assertion would have passed against the defect.
+        var g429 = h.eng._group('control_rods'), s429 = g429.steps;
+        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 0 });
+        h.run(60);
+        ck('zero-step nudge moves the bank not at all (#429)',
+          s429 + ' -> ' + g429.steps, g429.steps === s429, 'unchanged at ' + s429);
+        // The same defect by the other route: at the stop, a withdrawal clips to the
+        // current position. Drive to the rail first, then ask for more.
+        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: g429.max_steps - g429.steps });
+        h.runUntil(function () { return g429.steps >= g429.max_steps; }, 600);
+        var atStop = g429.steps;
+        h.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: 5 });   // clipped away
+        h.run(30);
+        ck('withdrawal clipped at the full-out stop is a no-op (#429)',
+          atStop + ' -> ' + g429.steps + '/' + g429.max_steps,
+          g429.steps === atStop && g429.velocity === 0, 'held at ' + atStop + ', velocity 0');
       });
     },
 
@@ -3804,7 +4003,7 @@
 
   PWRScenarioTests.runAll = function () {
     var order = ['steady_full_power', 'hot_zero_power_standby', 'steady_50_percent', 'steady_five_percent',
-      'cold_shutdown_hold', 'mode5_to_mode1_roundtrip', 'control_response', 'shutdown_scram',
+      'cold_shutdown_hold', 'mode5_to_mode1_roundtrip', 'mode5_heatup_paced', 'control_response', 'shutdown_scram',
       'load_mode_follow', 'load_above_rated_hold',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
       'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',

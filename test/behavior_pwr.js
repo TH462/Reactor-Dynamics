@@ -55,31 +55,43 @@
     // trip-open dump + TR-3 re-spec; TR-1/CC-3 left with the P4 ride-out and
     // P-4 handoff; SS-5/CC-10 left with the P2 derived-level rework.
 
-    // #378 — the rod channel never settles after a manual load step (limit cycle,
-    // ~13 pts p2p indefinitely). The fix that kills it (stop-exit travel cancel in
-    // the kernel) was measured to take TR-1i's SOURCED ramp duty 4.34 → 5.26 °F vs
-    // ≤ 5.00 and was rejected per the pre-declared criterion — see the TR-18 probe
-    // comment and issue #378. Strict: when settling is fixed, this entry must be
-    // removed in the same change.
-    'TR-18': 'rod channel limit-cycles after a load step (#378) — shippable fix not yet found',
+    // EMPTIED AGAIN 2026-08-09 (#394 + #378 + #420, one bundle). TR-18 left because the
+    // rod channel now settles: the cycle's cause was measured to be the LOOP GAIN, not the
+    // stop-exit travel two sessions spent rejecting fixes for — this plant lumps all
+    // 4068 pcm into one bank, so differential worth runs 0.892 → 4.657 pcm/step across the
+    // band against a constant controller gain, and the incidence curve is monotone in bank
+    // position over six points. `gainScale` (pwr_control.js) schedules the gain on that
+    // worth, gated on the program being parked so the sourced ramp duty is untouched.
+    // TR-1i left because #420's band is now the sourced duty SCALED by the declared
+    // program-span departure (5.74 °F) per the 2026-08-09 owner ruling — see the probe.
+    // Nothing is expected to fail here. Do not add an entry without a filed issue.
 
-    // #419 wave 3 — the steep Ginna program (546.8 → 580.2 °F, 2.6× the Tref motion per
-    // load) runs the 5 %/min ramp duty to 5.28 °F against the sourced ≤ 5.00 (was 4.35 on
-    // the shallow program). The channel is AT the sourced WTSM 8.1 speed thresholds (fixed
-    // this wave — the old ladder engaged 'fast' above 7.2 °F instead of 5); what remains is
-    // suspected to be the discrete three-speed ladder vs the real continuous 32-steps/min/°F
-    // ramp, compounded by the declared 13 % span departure. The ±5 °F band is the SOURCED
-    // WTSM 8.1.1 duty and is not widened. Coupled to #378: the TR-18 fix was rejected FOR
-    // this duty at 5.26, which the steep program now exceeds anyway — re-visit both
-    // together. Strict: fixing the duty removes this entry in the same change.
-    'TR-1i': 'the steep Ginna program runs the sourced ramp duty to 5.28 vs <= 5.00 °F (#420); coupled to #378',
+    // EMPTIED 2026-08-10 (#433 fixed). TR-12b/TR-12c/PI-9 had been green against a
+    // harness artifact — the MSLI flow leg's `held_within_s` latch was PERMANENT in any
+    // no-dt harness (age 0 <= 60 for ever), so the coincidence was satisfied at t=0 —
+    // and went strict-xfail when #403 gave the harness a real dt. The plant defect
+    // underneath was a TIMING MISS, not the "flow reads 0" the issue first recorded
+    // (`sg_steam_flow` reads steam_out_total, which contains the break term — it peaks
+    // 1.58 on a full-area break): #408's sourced 600 psig setpoint put the raw pressure
+    // crossing ~103 s after the break, ~43 s after the 60 s flow latch expired. Fixed by
+    // rate-compensating the pressure leg (`lead_lag`, the sourced "(Rate sensitive)"
+    // annotation) — isolation now lands +2..3 s after a sev-0.8 or 1.0 break, and the
+    // cooldown / bottle-reopen discriminator legs still hold. Kernel checks: run_m4
+    // "#433 — the pressure leg is RATE-COMPENSATED".
+    // Nothing is expected to fail here. Do not add an entry without a filed issue.
   };
 
   // -------------------------------------------------------------- COVERAGE map
   var COVERAGE = {
-    'SS-1': 'probe', 'SS-2': 'probe', 'SS-3': 'probe:SS-2', 'SS-4': 'probe:SS-2',
+    'SS-1': 'probe', 'SS-2': 'probe', 'SS-4': 'probe:SS-2',
+    // SS-3 is "the 50 % point SITS ON the program (no sag)" — a claim about a STEADY STATE,
+    // which SS-2's single instant at t = 600 s cannot make (#394: it read comfortable by
+    // 0.36 °C through an 11-point limit cycle). SS-11 carries the steadiness half; SS-2 still
+    // carries the position half. Both, or the row is only half asserted.
+    'SS-3': 'probe:SS-11 + probe:SS-2',
     'SS-5': 'probe', 'SS-6': 'probe', 'SS-7': 'existing:run_pwr cold_shutdown_hold',
     'SS-8': 'probe',
+    'SS-11': 'probe (part-power steady state is steady, hands-off — the FG-2 invariant, #394)',
     'EV-1': 'existing:run_pwr mode5_to_mode1_roundtrip', 'EV-2': 'existing:run_ops cooldown + run_pwr rhr_valve_and_mode',
     'EV-3': 'probe', 'EV-11': 'probe', 'EV-4': 'existing:run_ops load follow (re-band after SS-2)',
     'EV-5': 'existing:run_campaign pwr_boron', 'EV-6': 'probe', 'EV-7': 'probe:EV-6',
@@ -195,6 +207,65 @@
       });
     },
 
+    /* SS-11 (#394, audit #344 F1) — A PART-POWER STEADY STATE IS TRULY STEADY. Catalog FG-2
+     * says "any steady state is truly steady" and nothing asserted it. SS-3 ("50 % point sits
+     * ON the program") was carried by SS-2, which samples ONE INSTANT at t = 600 s: it read
+     * 299.357 °C inside a 299..303 band, comfortable by 0.36 °C, while Tavg was swinging
+     * 2.94 °C and power 11 points around it. A single sample through a limit cycle cannot
+     * fail — HR10, and the reason SS-3 showed PASS for the whole life of the defect.
+     *
+     * HANDS-OFF FROM THE AUTHORED IC WITH NO COMMAND AT ALL. That is what makes this #394's
+     * probe rather than #378's: TR-18 asserts that a load STEP ends, which is a transient
+     * question. This one asserts the plant is stable sitting still — the defect ran forever
+     * on the shipped default preset (`ui/app.js` initState) with nobody touching anything.
+     *
+     * THE 100 % LEG IS THE CALIBRATION CONTROL, not padding. It passed all along (0.04-1.31
+     * pts measured), so it is what proves the 50 % leg is measuring instability and not the
+     * probe's own arithmetic: a bug that inflates p2p would redden BOTH.
+     *
+     * The window is sampled EXPLICITLY (60-90 min) and never via h.range(): the run contains
+     * the IC's own settling approach, so a run-wide range asserts nothing. Standing CA-9/#332
+     * trap, the same one TR-18's comment names.
+     *
+     * BANDS ARE A HOUSE CALL, declared as such. No source gives a residual-hunting bound for
+     * a plant sitting at part power; a real four-bank Westinghouse plant simply does not have
+     * this mode, because its differential worth is far flatter than this plant's single lumped
+     * bank (which is what #394 turned out to be). So the band is the fixed plant's measured
+     * envelope with margin — and it is deliberately LOOSE (≤ 4 pts against 1.4 measured, 11.0
+     * pre-fix) so it pins the DEFECT's return rather than the current tuning: this must not
+     * become a check that reddens every time the rod channel is legitimately retuned. */
+    'SS-11': function () {
+      return test('SS-11 part-power steady state is STEADY — hands-off, no command (#394)', function (ck) {
+        var W0 = 3600, W1 = 5400;   // sample the 60-90 min window, explicitly
+        function ride(ic) {
+          var h = H(ic), pLo = 1e9, pHi = -1e9, tLo = 1e9, tHi = -1e9;
+          h.run(W1, function (hh) {
+            if (hh.t() < W0) return;
+            var s = hh.ts();
+            if (s.power_pct < pLo) pLo = s.power_pct;
+            if (s.power_pct > pHi) pHi = s.power_pct;
+            if (s.tavg_c < tLo) tLo = s.tavg_c;
+            if (s.tavg_c > tHi) tHi = s.tavg_c;
+          });
+          return { h: h, p2p: pHi - pLo, tavg: tHi - tLo, mean: (pHi + pLo) / 2 };
+        }
+        var r50 = ride('50_percent');
+        ck('50 % hands-off: power p2p over 60-90 min (pre-fix: 11.0, forever)',
+          fmt(r50.p2p, 2), r50.p2p <= 4.0, '≤ 4.00 pts');
+        ck('…and Tavg with it (pre-fix: 3.79 °F sustained)',
+          fmt(r50.tavg * 9 / 5, 2), r50.tavg * 9 / 5 <= 2.0, '≤ 2.00 °F');
+        ck('…still AT 50 %, not merely quiet somewhere else (false-positive guard)',
+          fmt(r50.mean, 1), Math.abs(r50.mean - 50) <= 3, '50 ±3 %');
+        ck('…and nothing tripped sitting still', r50.h.tripReason || 'none', r50.h.tripTime == null, 'none');
+        // CONTROL: the 100 % point was never unstable. If this leg ever reddens with the
+        // 50 % one, suspect the probe before the plant.
+        var r100 = ride('hot_full_power');
+        ck('100 % hands-off holds the same band — the calibration control (always passed)',
+          fmt(r100.p2p, 2), r100.p2p <= 4.0, '≤ 4.00 pts');
+        T.checkSanity(ck, r50.h);
+      });
+    },
+
     'SS-5': function () {
       return test('SS-5 pzr level program — level rises with Tavg', function (ck) {
         var hz = H('hot_zero_power'); hz.run(300);
@@ -222,17 +293,70 @@
       });
     },
 
+    /* SS-8 — HEAT-BALANCE CLOSURE. Re-authored 2026-08-09 (#397 / #344 F2).
+     *
+     * What it was: `charging ≈ letdown`, `steam ≈ feed`, `mwe ≈ 100`, all at
+     * hot_full_power. Two MASS balances and a rating check — no energy term anywhere —
+     * under a row claiming "heat-balance closure ±2 % at ANY steady state", asserted at
+     * the one steady state that holds still. It had carried `PASS?` since the freeze,
+     * which is the row honestly asking for the pin it never got.
+     *
+     * The energy term is `core_heat_pct` (TOTAL core thermal — fission + decay + pump,
+     * NOT `power_pct`, which is fission only) against `steam_flow_normalized × 100`, the
+     * secondary's removal. At a true steady state the RCS stores nothing, so the two are
+     * the same number and their difference is the closure residual.
+     *
+     * "At any steady state" is now taken literally: three of them, including 5 %, where
+     * decay heat is a large fraction of the total and a closure that only works at power
+     * would show it. The mass checks are kept — they were never wrong, only mislabelled.
+     *
+     * THE BAND IS THE ROW'S ORIGINAL ±2 %, and it holds with room to spare. #397 measured
+     * 6.44 pp worst / 3.26 pp mean at 50 % and could not say whether that was a real
+     * energy-conservation violation or the stored-energy term of the #394 limit cycle —
+     * it named that as explicitly not established. #394 has since been fixed, and on the
+     * fixed plant the residual is 0.04 pp mean at 100 %, 0.63 at 50 %, 0.29 at 5 %
+     * (worst single sample anywhere: 0.69). So it was the limit cycle, and the answer is
+     * recorded here because the question was asked here.
+     *
+     * The band is therefore NOT re-derived from the measurement — 3x margin on a claim the
+     * catalog already made is the right amount of slack, and pinning ±0.7 would make this a
+     * check that reddens on any legitimate secondary retune. */
     'SS-8': function () {
-      return test('SS-8 heat-balance closure at 100%', function (ck) {
-        var h = H('hot_full_power');
-        h.run(600);
-        var t = h.ts();
-        ck('charging ≈ letdown (±0.01)', fmt(t.charging_flow_actual, 3) + ' vs ' + fmt(t.letdown_flow_actual, 3),
-          Math.abs(t.charging_flow_actual - t.letdown_flow_actual) < 0.01, 'match');
-        ck('steam ≈ feed (±3%)', fmt(t.steam_flow_normalized, 3) + ' vs ' + fmt(t.fw_flow_normalized, 3),
-          Math.abs(t.steam_flow_normalized - t.fw_flow_normalized) < 0.03, 'match');
-        ck('electrical ≈ rated (100 ±5 MWe)', fmt(t.mwe_output, 0), near(t.mwe_output, 100, 5), '100 ±5');
-        T.checkSanity(ck, h);
+      return test('SS-8 heat-balance closure — energy, at three steady states', function (ck) {
+        var CASES = [
+          { ic: 'hot_full_power', label: '100 %', settle: 600 },
+          { ic: '50_percent', label: '50 %', settle: 900 },
+          { ic: '5_percent', label: '5 %', settle: 900 },
+        ];
+        for (var i = 0; i < CASES.length; i++) {
+          var c = CASES[i], h = H(c.ic);
+          h.run(c.settle);
+          // Average the residual over a window rather than sampling one instant: a
+          // single sample through any residual oscillation cannot fail, which is the
+          // SS-3 trap #394 documented one row above.
+          var n = 0, sum = 0, worst = 0, t;
+          for (var k = 0; k < 30; k++) {
+            h.run(10);
+            t = h.ts();
+            var resid = t.core_heat_pct - t.steam_flow_normalized * 100;
+            sum += Math.abs(resid); n++;
+            if (Math.abs(resid) > Math.abs(worst)) worst = resid;
+          }
+          var mean = sum / n;
+          ck('[' + c.label + '] core thermal ≈ secondary removal (mean |residual| ≤ 2 pp)',
+            fmt(mean, 2) + ' pp mean, ' + fmt(worst, 2) + ' pp worst', mean <= 2.0, '≤ 2.00 pp');
+          t = h.ts();
+          ck('[' + c.label + '] charging ≈ letdown (±0.01)',
+            fmt(t.charging_flow_actual, 3) + ' vs ' + fmt(t.letdown_flow_actual, 3),
+            Math.abs(t.charging_flow_actual - t.letdown_flow_actual) < 0.01, 'match');
+          ck('[' + c.label + '] steam ≈ feed (±3 %)',
+            fmt(t.steam_flow_normalized, 3) + ' vs ' + fmt(t.fw_flow_normalized, 3),
+            Math.abs(t.steam_flow_normalized - t.fw_flow_normalized) < 0.03, 'match');
+          if (c.ic === 'hot_full_power') {
+            ck('[100 %] electrical ≈ rated (100 ±5 MWe)', fmt(t.mwe_output, 0), near(t.mwe_output, 100, 5), '100 ±5');
+          }
+          T.checkSanity(ck, h);
+        }
       });
     },
 
@@ -573,15 +697,45 @@
           if (el <= 600) hh.cmd('set_load_target', { mwe: Math.max(50, 100 - 5 * (el / 60)) });
         });
         ck('5 %/min ramp down — no reactor trip', c.tripReason || 'none', c.tripTime == null, 'none');
-        // MARGIN, MEASURED (2026-08-03, #321 sweep): this band is TIGHT and it is the
-        // most likely source of a puzzling red. A 3 % nudge to `thermal.h_sg` or
-        // `thermal.coolant_heat_capacity` — neither of which this check names — takes it
-        // 4.77 → 5.02 / 5.12 °F against the ±5 °F limit, i.e. 0.23 °F of headroom (4.6 %).
-        // If this reddens, ask what you changed that touches SG heat transfer or coolant
-        // heat capacity BEFORE hunting the rod channel. Do NOT widen it: ±5 °F is the
-        // SOURCED WTSM 8.1.1 duty, and a thin margin is a fact about the plant.
-        ck('Tavg holds within the ±5 °F DUTY through the ramp (was 12.55 °F proportional)',
-          fmt(pc, 2), pc <= 5.0, '≤ 5.00 °F');
+        // THE SOURCE IS NOW IN THE CORPUS (#394 evidence pass, 2026-08-09): ML11223A252 was
+        // quoted from an unarchived session fetch, so `find_source` returned zero on it and on
+        // §8.1.4.5 and on every phrasing of this band — the duty this check grades against was
+        // RECALL wearing a citation. Fetched via the Wayback CDX recipe and verified verbatim:
+        // *"a 10% step load increase or decrease, a 5% per minute ramp load increase or
+        // decrease, or a 50% step load decrease with the aid of the steam dump system … without
+        // actuating the pressurizer relief valves or generating a reactor trip"*, during which
+        // *"the average temperature of the reactor coolant remains within ±5°F of the
+        // [temperature program]"*. The number was right; it just could not be checked.
+        //
+        // THE BAND IS THE SOURCED DUTY, SCALED BY THIS PLANT'S DECLARED PROGRAM-SPAN
+        // DEPARTURE — 5.00 × (33.295/29) = 5.74 °F *(OWNER RULING, 2026-08-09: selected
+        // "Scale on the departure" from four options, on the recommendation that the #311
+        // precedent applies as written)*. NOT a widening, and the distinction is the whole
+        // argument: WTSM 8.1.1's ±5 °F is stated for a plant whose Tavg program spans ~29 °F,
+        // and this plant's spans 33.295 °F (measured from the shipped config, `trefProgram`),
+        // a departure DECLARED at #419 wave 3 and recorded in `Manuals/00` Rev 14(h) as the
+        // fixed Q/h_sg heat-transfer identity. A 5 %/min LOAD ramp therefore slides Tref
+        // 14.81 % faster in °F/min here than the same duty does on the anchor plant, so the
+        // literal number grades this plant against a manoeuvre it is not performing. #311 is
+        // the precedent and the fence: a closed-form limit line must be SCALED by a declared
+        // geometric departure, never RE-ANCHORED onto a fitted intercept — the forbidden move
+        // is pairing our slope with someone else's origin, which this does not do.
+        //
+        // MARGIN, MEASURED (2026-08-03, #321 sweep; re-stated on the scaled band 2026-08-09):
+        // this band is TIGHT and it is the most likely source of a puzzling red. A 3 % nudge
+        // to `thermal.h_sg` or `thermal.coolant_heat_capacity` — neither of which this check
+        // names — moved the old form 4.77 → 5.02 / 5.12 °F. Today it reads 5.28 against 5.74,
+        // i.e. 0.46 °F of headroom (8.0 %). If this reddens, ask what you changed that touches
+        // SG heat transfer or coolant heat capacity BEFORE hunting the rod channel.
+        //
+        // The rod gain schedule (#394) does NOT touch this number: it is gated on the program
+        // being parked and a 5 %/min ramp slides Tref at 1.54e-2 °C/s, 7.7× the `progStill`
+        // threshold, so the schedule is fully OFF here. Measured both ways — ungated the
+        // schedule cost this check 5.28 → 6.52 °F; gated it reads 5.28 to the digit, the
+        // pre-#394 value. If this check ever moves when only rod-channel gains change, the
+        // gate has stopped discriminating and THAT is the defect.
+        ck('Tavg holds within the ±5 °F duty, scaled by the declared 33.3/29 span departure',
+          fmt(pc, 2), pc <= 5.74, '≤ 5.74 °F');
         ck('…and the dump stays shut throughout', fmt(c.range('steam_dump_valve_pct').max, 1),
           c.range('steam_dump_valve_pct').max < 1.0, '< 1 %');
         ck('…rods did the work — the bank walked well in', fmt(c._rodMin, 1),
@@ -1884,11 +2038,11 @@
         }
         var d = run('steam_line_break');
         ck('DOWNSTREAM: the plant isolates ITSELF — no operator action in this probe',
-          // < 180 s, was < 10 (#408): the SOURCED 600 psig leg (WTSM 12.3) sits far
-          // deeper than the retired 5.20, so a full break's crossing — and the
-          // isolation — honestly arrives ~2 min in (measured +115.5 s). The real
-          // channel's rate sensitivity would fire earlier; the held-flow latch
-          // form declares that residual.
+          // < 180 s. Was < 10, re-banded at #408 when the sourced-deep 600 psig leg
+          // put the RAW crossing at +115.5 s — which #433 then measured as NEVER
+          // FIRING (the 60 s flow latch expired first). Since #433 the leg carries
+          // the channel's sourced rate sensitivity (`lead_lag`) and the isolation
+          // lands +2..3 s; the 180 s band is kept as the outer envelope.
           d.isoAt != null ? '+' + fmt(d.isoAt, 1) + ' s' : 'never', d.isoAt != null && d.isoAt < 180,
           'within 180 s of the break (sourced deep setpoint)');
         ck('MSIV shut', String(d.t.msiv_open), d.t.msiv_open === false, 'false');
@@ -5107,9 +5261,11 @@
           tIso >= 0 ? '+' + fmt(tIso, 1) + ' s' : 'never', tIso >= 0, 'within 120 s');
 
         // ---- leg B: a full operator cooldown takes steam pressure FAR below the
-        // isolation's pressure term (to ~1.3 MPa against a 5.20 setpoint) and must
-        // not isolate — the flow term is what keeps it out, which is exactly why the
-        // real function is a coincidence and not a bare low-pressure trip.
+        // isolation's pressure term (to ~1.3 MPa against the sourced 4.14 MPa
+        // setpoint — and since #433 a rate-compensated one) and must not isolate —
+        // the flow term is what keeps it out, which is exactly why the real
+        // function is a coincidence and not a bare low-pressure trip. The staircase
+        // steps are also slow enough that the lead/lag advance stays small.
         var b = H('hot_full_power');
         b.run(30);
         b.cmd('inject_failure', { failure_id: 'turbine_trip' });

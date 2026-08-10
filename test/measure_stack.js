@@ -77,6 +77,12 @@
  *                             `tavg_c` (truth) and `tavg` (the instrument) are not the same
  *                             number and HR1 is the whole reason they differ.
  *   --cmd='<t>:<json>'        schedule a command at a plant time. Repeatable.
+ *   --seed=<int>              instrument PRNG seed. default 4242 — every number ever taken
+ *                             with this harness. NOT the probe default: OpsHarness seeds
+ *                             0xC0FFEE, so a measure_stack figure and a behavior/ops figure
+ *                             are different plants. Sweep it whenever the thing you are
+ *                             measuring is noise-excited (#394: the part-power limit cycle
+ *                             reads 1.83-4.89 pts across seeds).
  *   --attention-stops         keep the attention-stop dropout ON (default OFF: a headless
  *                             measurement has no operator to protect, and leaving it on is
  *                             what silently ran 11 of 22 procedures at a tenth of their
@@ -162,7 +168,7 @@ function die(msg) { console.error(R + 'measure_stack: ' + msg + X); process.exit
 // accepted as an unknown key would have run the default field set and printed a table that
 // looks entirely correct — the quiet-wrong-answer class this harness exists to stop.
 var KNOWN = { plant: 1, version: 1, ic: 1, for: 1, every: 1, accel: 1, lineup: 1, watch: 1,
-              cmd: 1, 'attention-stops': 1, csv: 1, quiet: 1, list: 1, help: 1 };
+              cmd: 1, seed: 1, 'attention-stops': 1, csv: 1, quiet: 1, list: 1, help: 1 };
 var argv = process.argv.slice(2), OPT = { cmds: [] };
 argv.forEach(function (a) {
   var m = /^--([a-z-]+)(?:=(.*))?$/.exec(a);
@@ -182,6 +188,15 @@ var BARE = OPT.lineup === 'bare';
 var FOR = dur(OPT.for, 3600);
 var EVERY = OPT.every != null ? dur(OPT.every) : Math.max(1, FOR / 12);
 var WATCH = (OPT.watch || 'power_pct,tavg_c,pressure_mpa,sg_level_pct').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+// The instrument PRNG seed. Default 4242 — the value this harness has always used, so an
+// un-seeded command reproduces every number ever taken with it. It is NOT the probe default:
+// `OpsHarness` seeds 0xC0FFEE (test/ops_harness.js), so a measure_stack number and a
+// behavior/ops probe number are different plants and comparing them silently is a mistake
+// (#394/#378: the limit cycle's amplitude reads 1.83-4.89 pts across seeds — a one-seed
+// verdict on a noise-excited instability is one PRNG's opinion). Printed in the header for
+// the same reason the layer is: a wrong-seed figure must be visible in the artifact.
+var SEED = OPT.seed != null ? parseInt(OPT.seed, 10) : 4242;
+if (!isFinite(SEED)) die('--seed needs an integer, got "' + OPT.seed + '"');
 
 if (OPT.list) {
   var e0 = new RD.SimulationService({ seed: 1 });
@@ -196,7 +211,7 @@ if (OPT.list) {
 }
 
 // ------------------------------------------------------------------------ build the stack
-var svc = new RD.SimulationService({ seed: 4242 });
+var svc = new RD.SimulationService({ seed: SEED });
 svc.selectPlant(PLANT, IC, VERSION, BARE ? { noDefaults: true } : undefined);
 // Drive tick() directly. NEVER svc.start() — see the header table: start() is timer-driven
 // and advances in wall time, which is what made #266 believe this was impossible.
@@ -237,6 +252,8 @@ if (!OPT.quiet) {
     '\n  This is the plant a player gets — NOT an engine-direct probe.' + X);
   console.log('  plant          ' + PLANT + (VERSION ? ' / ' + VERSION : '') + '   initial condition ' + C + IC + X);
   console.log('  lineup         ' + (BARE ? 'bare (noDefaults — campaign / Path-2)' : 'default (free play)'));
+  console.log('  seed           ' + SEED + (OPT.seed == null ? D + ' (default)' + X : C + ' (--seed)' + X) +
+    '   ' + D + 'OpsHarness probes use 0xC0FFEE — a different plant' + X);
   console.log('  acceleration   ' + ACCEL + 'x   ' + D + '(' + stepsPerTick + ' physics steps per broadcast; protection ' +
     'evaluated every ' + (protMs / 1000).toFixed(2) + ' sim-s — #153)' + X);
   console.log('  attention stop ' + (svc.attentionStops ? Y + 'ON — a trip will drop acceleration mid-run (#245)' + X : 'off'));

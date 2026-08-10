@@ -45,6 +45,267 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-10-develop-a — #433: the MSLI fires again, on the channel's own sourced rate sensitivity
+
+**Decision — the low-steam-pressure leg is rate-compensated (`lead_lag`), not re-windowed**
+*(OWNER RULING, 2026-08-10, choosing between "Rate-compensated leg (Recommended)", "Widen the
+60 s window" and "Re-measure, then I rule": "Rate-compensated leg")*. WTSM Table 12.3-1
+writes the MSLI's 600 psig setpoint as **"(Rate sensitive)"** (ML11223A310:647), and the
+anchor plant's own SLB analysis models its low-steam-pressure channel with
+**"lead/lag=12/2"** (Ginna UFSAR ch15, ML20339A101, Table 15.0-6, event 15.1.5). Our #408
+adoption took the number and dropped the rate sensitivity — and the timing miss that
+produced is exactly the #433 defect.
+
+**The filed root cause was wrong, and Phase 0 re-measured it before any code moved.** The
+issue said the flow leg cannot latch because `sg_steam_flow` "reads 0 on the break." It
+reads `steam_out_total`, which contains the break term: measured full-stack, it jumps
+1.00 → **1.58** two samples after a sev-1.0 downstream break and holds above the 1.25
+setpoint until the turbine trip (~+17 s). The 2026-08-09 measurement had watched
+`steam_flow_normalized` (turbine-only). The real mechanism: the raw 600 psig crossing
+arrives ~**+103 s** (the SG re-pressurizes briefly after the trip, then resumes falling),
+~43 s after the 60 s flow latch expired. At the pre-#408 5.20 MPa setpoint the same design
+isolated at 31.2 s — #408 moved the setpoint onto the sourced number without the sourced
+channel dynamics, and its own `held_within_s` validation ran in a harness where the window
+could not expire (#403), so nothing caught it.
+
+**Build.** Kernel: actuation rows accept `lead_lag: { lead_s, lag_s }` — a discrete
+backward-Euler lead/lag with unity DC gain, advanced on the `_simT` clock; the row FIRES on
+the compensated signal, `reset_below` and the seal-in release stay on the RAW value (a
+rate-compensated "has it recovered" overshoots). A clockless caller reads raw.
+`held_within_s` gained the same degradation floor (`_dtSeen`): a caller that never supplies
+`dt` now gets strict same-sample coincidence — the un-guarded degradation was a PERMANENT
+latch, the opposite of what the kernel comment claimed. Both latch stamps and filter states
+are serialized (`protectionTiming` in saveState) — they were retentive protection state that
+did not survive a restore, the #151 rewind class.
+
+**Constants: sourced SHAPE, fitted SCALE — the natural-circulation idiom.** Ginna's 12/2
+misses on this plant: the compensated dip bottoms at **4.207 MPa**, 0.067 MPa (~10 psi)
+short of the 4.14 setpoint, because our lumped SG decelerates its blowdown far faster than
+a real multi-SG plant (break flow ∝ P with a single small inventory). Swept lead 12/14/16/
+20/25/30/40 at lag 2: 14 catches sev-1.0 (+3 s) but not sev-0.8; **20/2 ships** — sev-1.0
+isolates **+2 s**, sev-0.8 **+3 s**. Do not quote 20/2 as a real-plant figure.
+
+**Discriminators, each measured.** TR-12c leg B (staircase cooldown to 1.34 MPa): no
+isolation — the flow term keeps it out and slow steps gain almost no advance. Leg C
+(bottle 600 s with safeties pegging the flow transmitter, reopen): no re-isolation. Leg D:
+seal-in refuses reopen. Dump-step probe (turbine trip + SP 4.0): compensated bottoms
+~5.6 MPa, 1.5 MPa clear. `run_behavior` 67pass/3xfail → **70pass** with TR-12b/TR-12c/PI-9
+passing as written (the XFAIL entries deleted per their own instruction); `run_m4` 43/43 →
+**44/44** (the rate-compensation suite, injection-verified: the ramp check fails with the
+compensation removed). Manuals: `12` §8.5 (seconds, not "two minutes in"), `09` §3.0,
+`03` §16.0 span corrections — pending Rev 15 row item (c).
+
+---
+
+## 2026-08-09-develop-c — the #344 gate-integrity batch, and the safety function a missing argument was hiding
+
+**Decision 1 — `ops_harness.js` passes `evaluate()`'s `dt` (#403), and the three probes it
+reddens ship as XFAIL rather than being weakened (#433).** The argument is optional in the
+kernel and feeds two things: the alarm dropout hold and `held_within_s` condition latches.
+The harness omitted it at both stepping call sites from the day it was written.
+
+The alarm half was the filed defect and behaved as filed — an alarm whose condition clears
+cleared at **0.1 s** without the `dt` and **2.0 s** with it, exactly `alarm_min_on_s` — and
+moved no run_ops verdict, because nothing asserted a clear time. **The latch half is the
+real finding.** `_condHeld[key]` is stamped with `_simT`, and with `dt` absent both are
+permanently `0`, so the age is `0 - 0 = 0 <= 60` **for ever**: the latch is *permanent*, not
+instantaneous. The kernel comment saying its absence *"degrades to instantaneous
+coincidence"* has the sign backwards, and that sentence is why the omission looked safe.
+
+Consequence: the MSLI's flow leg (`sg_steam_flow high 1.25 held_within_s 60`) latched the
+first time flow crossed 1.25 — at `hot_full_power`, **t=0** — so the coincidence was
+satisfied before any break was injected. Measured in production, full stack, full-area
+downstream break: **the MSIV stays open from 825 psi (5.69 MPa) to 212 psi (1.46 MPa) over
+six minutes** while Tavg falls 580 → 417 °F. The automatic isolation has never worked for a
+player. Filed **#433**; TR-12b, TR-12c and PI-9 become strict XFAILs pinned to it, because
+they assert the right behaviour and the plant is what is wrong (HR10, textbook).
+
+Also noted for whoever fixes #433: the flow leg watches an instrument that reads **0** after
+this break — it is flow to a turbine that has just tripped, and the break discharge does not
+pass through it. Which instrument *should* carry the leg is a design question with a sourced
+answer (WTSM 12.3), and it was deliberately not guessed here.
+
+**CORRECTION (2026-08-10-develop-a): the paragraph above is wrong, and the fix measured it.**
+`sg_steam_flow` is not `steam_flow` — it reads `steam_out_total`
+(`pwr_instruments.js:66`), which **contains the break term**
+(`pwr_steam_generator.js:361`), and on a full-area break it peaks **1.58** and holds
+above the 1.25 setpoint until the turbine trip (~+17 s). The 2026-08-09 measurement
+watched `steam_flow_normalized` — the turbine-only variable — and inferred the
+instrument from it. The actual defect was a **timing miss**: #408's sourced-deep
+600 psig setpoint put the raw crossing at ~+103 s, ~43 s after the 60 s flow latch
+expired. See the 2026-08-10-develop-a entry for the fix.
+
+**Decision 2 — EV-1's rate limit is the sourced TS number, read as a rolling hour (#398).**
+*(OWNER RULING, 2026-08-09, choosing "100 F/hr TS + 50 admin": "Adopt the sourced Tech Spec
+limit as the hard number … Keep ~50 F/hr as a separate soft administrative target, which is
+normal practice under a 100 F/hr TS".)* The catalog's `≤ 28 °C/hr` appeared once in the whole
+repo, in its own row, unsourced — advisory under HR11 and contradicted by ML11223A342:648,
+ML11223A213:1801 and the shipped board's own ±55.6 °C/hr annunciation.
+
+Three things had to be got right in order, and the first two were wrong first:
+1. The §14 round-trip driver asserts **no rate at all** (12 checks, none of them one), and
+   when instrumented runs the evolution at **435.8 °C/hr up / −604.2 °C/hr down** — 8–11×
+   the limit. It is a fixture that proves *achievability*, and was never written to pace.
+2. **A settling window does not rescue it.** The peak is at 975 s, after any plausible
+   settle point: it is the 10–12 % power target driving a bottled SG, and 10 % of core
+   thermal into this plant's RCS mass genuinely is ~500 °C/hr. Physics right, fixture wrong.
+3. **The instantaneous derivative is the wrong yardstick.** A TS heatup limit is a rate over
+   a period; asserting the peak sample asserts the *damping* of `tavg_rate_c_per_hr`.
+
+New `mode5_heatup_paced` drives a paced heatup and asserts the worst **rolling hour** of the
+nuclear heatup: **49.8 °C/hr (90 °F/hr)**. The pace target is *integrated* — a proportional
+trim off the unpaced target overshot to 80.8 against a 50 target, because a lagged derivative
+responds to the target's history, not its current value. Injection-verified: pace 90 measures
+88.0 and reddens.
+
+**Left open, deliberately:** the rolling window opens at criticality, because pump heat is
+not pace-able by rod control and starting the RCP into a cold RCS carries Tavg **50 → ~78 °C
+in ~20 min** — about **28 °C of a 55.6 °C hourly budget before a rod moves**. That is a
+question about this plant's heat-to-mass ratio, not a windowing preference, and it is stated
+rather than tuned away.
+
+**Decision 3 — the catalog tier means what the PROBE ASSERTS (#399).** `[I]` was the only
+provenance mechanism and #344 F6 measured zero of seven rows meeting its definition. The rule
+now follows the assertion, not the sentence; SS-2/SS-3/SS-5/SS-6/SS-11 re-tier `[C]`, and
+EV-5/EV-8 get a third state, **NOT ASSERTED**, because their probes check instructor cards
+and an `info` line. SS-11 was re-tiered despite calling itself an invariant in its own text —
+exempting it would have made the rule decorative on the day it was written. The FG-1 table
+had **no Tier column at all**, which is how EV-1's rate half held `PASS` for months.
+
+**Decision 4 — SS-8 gets an energy term, and the band stays where the row put it (#397).**
+Core thermal against secondary removal at three ICs: residual **0.04 / 0.63 / 0.29 pp**,
+worst single sample 0.69. This answers the question #397 explicitly left open — its 6.44 pp
+at 50 % **was** the #394 limit cycle's stored-energy term, not an energy-conservation
+violation, and #394 has since been fixed. The band is the row's original ±2 %, not the
+measurement: 3× margin is the right slack, and pinning ±0.7 would redden on any legitimate
+secondary retune.
+
+**Decision 5 — a zero-step rod nudge is a no-op in the ENGINE (#429).** The guard goes where
+the defect is, not where the one production caller happens to sit. Injection corrected my own
+assumption: the rail-clip form was **never** broken (its first increment clips back onto the
+target and the loop exits), so the two new checks fail against different regressions and the
+second one guards a *future* edit that drops the guard trusting the strict sign.
+## 2026-08-09-backshop-c — #432/#431: the bug report's recording rides the fine seam, and the schema stops asserting a rate it cannot know
+
+**Decision.** The session recorder moves out of `ui/app.js` into **`ui/diag_recorder.js`**
+(`RD.DiagRecorder`, a plain global script), samples on the service's fine sampler with MIN/MAX
+extremes per bucket, and the bundle goes to **schema 1.1** with a columnar `timeseries`.
+`manifest.sample_hz` is **deleted and not replaced by a scalar** — `sampling` declares the floor
+and the source, and the row timestamps carry the actual rate. Scope and the extraction were both
+the owner's *(OWNER RULING, 2026-08-09: selected "#432 + #431 + tool + gate" and "Extract
+ui/diag_recorder.js" from options I wrote — a selection, not verbatim words)*.
+
+**Why the extraction is the load-bearing part.** Nothing in `test/` had ever touched the
+recorder, and that is not a coverage observation — it is the cause. The code was inside
+`ui/app.js`, which no Node runner can reach, so it shipped sampling once per broadcast (one row
+per 180 s at 3600×) under a manifest hardcoded to 1 Hz, and the first person to find out was the
+owner. `run_diag_bundle.js` now drives the recorder full-stack; the `ui/manual_procedures.js`
+pattern, which seven runners already use.
+
+**Three decisions inside it worth not re-litigating.**
+
+1. **A third side-dict (`dv`) on the fine sampler, not the chart's `tv`.** `steam_flow` and
+   `fw_flow` are `tru: t.<field> * 100` for display. Reading those columns would have silently
+   changed the bundle's units, so a tool comparing an old report with a new one would compare
+   0.069 against 6.9. `foldExtremes` iterates a `SIDES` table now — its comment already claimed
+   genericity the body did not have.
+2. **The grid is an emit rule, not a constant.** Emit when 1 s of sim has passed, folding
+   everything between. Spacing falls out as `max(1 s, the service's fine grid)` with the
+   recorder knowing neither `CHART_FINE_MAX` nor the acceleration. **1× is unchanged.**
+3. **Columnar, measured not assumed.** At the 14,400-row ring: 720 KB gzipped columnar against
+   1218 KB as row objects, on a 2 MB Worker cap that also has to carry `events` and
+   `snapshot_end`.
+
+**The trap this session is worth remembering for.** The first working version passed all 31 of
+its own checks and recorded **35 rows out of 1475 handed to it** in a real browser, because the
+fine drain sat inside the rAF paint — one frame after the broadcast — and the recorder, a
+separate synchronous subscriber, saw every row *after* it had already recorded a later
+timestamp. A source scan cannot see that (every call site is present and correct) and a Node
+gate cannot see it (it hands the recorder its rows itself). `verify_e2e_ui` now presses the
+app's own download button and asserts the SPACING — not the `source` field, which read `mixed`
+on the broken page.
+
+---
+
+## 2026-08-09-develop-b — #394/#378/#420: the rod limit cycle is LOOP GAIN, and the mechanism of record was wrong
+
+**Decision.** The part-power limit cycle is fixed by **scheduling the rod-control gain on
+differential rod worth** (`gainScale` on the `rods_tavg` def, `RD.pwrScruveSlope` exported from
+`pwr_engine.js`), **gated on the load program being parked** so a sliding program keeps the shipped
+gain. Both strict xfails retire in the same change: `run_behavior` 67pass/2xfail → **69pass/0xfail**,
+`run_all` 44 runners at baseline.
+
+**What this supersedes, and why it matters more than the fix.** `BUILD_DECISIONS.md:1160`
+(2026-08-06-workbench-a) records a fix that "measures perfectly and is rejected anyway" — the
+stop-exit travel cancel, rejected for costing TR-1i's sourced duty 4.34 → 5.26 °F. That entry, the
+channel def, the TR-18 probe comment and both issues all name **stop-exit travel** as the
+mechanism. Measured this session: the abandoned travel is real and large (571 events in 2 h, mean
+1.59 steps, **75.4 pcm per half-cycle**) but it is the amplitude-setting nonlinearity, not the
+cause. The cause is that this plant lumps all 4068 pcm into ONE control bank on the S-curve, so a
+fine step is worth **4.657 pcm at 74.8 % withdrawn against 0.892 near the stops — 5.2×** — while
+the controller's `gain` is a constant. The incidence curve is **monotone in bank position over six
+points** (15.05 / 10.97 / 5.91 / 2.35 / 1.31 / 0.78 pts p2p), every authored IC starts exactly on
+program, and the cycle grows out of instrument noise. Scaling `gain` by that ratio kills it.
+
+**The gate is the whole trick, and it was forced by measurement.** Ungated, the schedule collided
+with TR-1i exactly as the cancel had (5.28 → 6.52 °F), and a floor sweep proved no constant does
+both: the duty cost comes from having *any* schedule (5.97 even at floor 0.75) while TR-18 needs
+floor ≤ 0.60 to settle. The two are separable in **time**, not magnitude — instability is a
+steady-state property, the duty is a transient one — and the separator is measured: `d(spEff)/dt` is
+1.54e-2 °C/s through the ramp and 1.07e-4 through the cycle, **144×**. `progStill { rate: 0.002,
+tau: 20 }` sits near the geometric mean. Gated, TR-1i reads **5.28 to the digit**, the pre-#394
+value, and TR-18 settles at 15.8 min / 1.76 pts.
+
+**#420 is resolved by ruling because the controller could never have reached it.** `maxStep`
+8/16/32 → duty 5.28/5.28/5.28, unchanged to the digit — #306's finding reproduces on today's plant.
+The band is now the sourced ±5 °F **scaled by this plant's declared program-span departure**,
+5.00 × (33.295/29) = **5.74 °F** *(OWNER RULING, 2026-08-09: selected "Scale on the departure" from
+four options)*. The #311 precedent as written: scale a closed-form limit line by a declared
+geometric departure, never re-anchor it onto a fitted intercept. 8.0 % headroom.
+
+**Also landed**: **SS-11**, the probe FG-2's headline invariant never had (SS-3 was carried by a
+single instant at t = 600 s and was green through the whole life of the defect); the retired
+297 °C / 8.23 MPa / 2.5 %/°C anchors struck from three catalog rows; and `Manuals/03` §14.3 +
+`pwr_rod_auto`'s narration corrected — both claimed the channel *captures T-ref from indicated Tavg
+at engage*, which has never been true of this build (`program: trefFromLoad`), and the mission
+taught the false version as its lesson. Manual Rev 15 item (b). Full measurement record:
+`Diagnostic/TUNING_LOG.md` 2026-08-09-develop-b.
+## 2026-08-09-backshop-a — #414: the download is named for the build, and named ONCE
+
+**Decision.** Off the released channel the offline download's filename carries the commit:
+`Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.zip`, containing a `.html` entry of the same stem. A
+production deploy is unchanged (`…_Alpha_1.5.1.zip`); a local build is `…_dev`. Two owner
+rulings, both taken at plan time (2026-08-09) as selections from options I put to the owner —
+so the phrasing below is mine and only the choice is theirs, which is the distinction
+`agent-authored-rulings` exists to keep visible. **"Transport it"**: `site/nav.js` takes the
+name out of `download/manifest.js` rather than re-deriving it. **"Suffix both"**: the archive
+entry follows the same rule as the zip.
+
+**Why the structural half matters more than the suffix.** The filename had two spellings
+(`site/make_download.js`, `site/nav.js`) and `test/run_portable.js` guarded them by comparing
+three static literals pulled from each: the prefix, the sanitising regex, `'.zip'`. Adding a
+suffix to one side leaves all three identical in both files — the gate stays green while the
+offered name is no longer the built name. So the guard could not have caught the very defect
+it was written for, and #414 was filed as a three-file change for that reason. The fix removes
+a side instead of hardening the comparison: `downloadName(release, channel, sha, ext)` is the
+single derivation, exported from `make_download.js` behind the `require.main === module` guard
+that `stamp_version.js` established, and the manifest that script already writes beside the zip
+transports the result to the browser. Agreement is now structural, not asserted.
+
+**Gate.** `run_portable` **129 → 137**: −1 literal-agreement check, +1 load-order check
+(`manifest.js` before `nav.js`), +6 behaviour-matrix rows over `downloadName`, +2 on `nav.js`
+(takes the manifest value; contains no `Reactor_Dynamics_` literal). Three injections
+confirmed red — inverted channel test (6), a name rebuilt in `nav.js` (1), reordered script
+tags (1). Measured in headless Edge from `file://`:
+`download="Reactor_Dynamics_Alpha_1.5.1_dev.zip"`.
+
+**Coupling to record**: this depends on `download/manifest.js` being served `no-cache`, which
+`2026-08-09-develop-a` had just added to `site/build_site.js`'s `_headers` for the version
+stamps. A four-hour-cached manifest would offer the previous deploy's filename for the current
+deploy's zip. Noted in `make_download.js` at the manifest write.
+
+---
+
 ## 2026-08-08-develop-g — the winter uprate stays MONOTONIC: no LP low-backpressure knee (ruled, declared §8.35)
 
 **Ruling** *(OWNER, 2026-08-08: "is it worth the extra computer when running the sim to do the

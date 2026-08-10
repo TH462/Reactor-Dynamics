@@ -30,6 +30,392 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.5.2] — 2026-08-10
+
+### Added
+- **`tools/site_report.js`** — every number the live site knows about itself, in one command:
+  Web Analytics traffic (visitors, top pages, referrers, countries, devices), telemetry Worker
+  health, and in-sim usage (starting IC, mode funnel, milestones, panels, controls, missions,
+  session-length distribution). `--days=N`, `--only=traffic|usage|health`, `--json`, and
+  `--sql=` / `--gql=` escape hatches. One `CLOUDFLARE_API_TOKEN` (Account Analytics → Read)
+  reaches all three sources — measured; Web Analytics and Worker invocations do not need a
+  second credential. Paired with a `site-stats` skill so the queries are never re-derived.
+  Everything printed by default is an aggregate with a LIMIT, so output size does not grow
+  with traffic; `--sessions` is the only row-lister and caps at 200.
+
+### Removed
+- **`tools/usage_report.js`** — subsumed by `site_report.js`, which covers its dataset plus
+  two more and counts the sampling correctly.
+
+### Fixed
+- **Both usage datasets were being counted wrong, in opposite directions.** Analytics Engine
+  SAMPLES — `sum(_sample_interval)` reads **149** against `count()`'s **120** over the whole
+  dataset, and the gap is per-event (`command`: 64 vs 42, **+52 %**), so the retired
+  `usage_report.js` did not merely undercount, it distorted which control looked most used.
+  Session counts via `count(DISTINCT blob4)` cannot be weight-corrected at all and are now
+  labelled a FLOOR. The RUM dataset is the reverse: its `count`/`visits` are already
+  sample-adjusted, and `sampleInterval` is the granularity the answer was rounded to — past a
+  ~7-day window Cloudflare answers from a coarser tier, so the same two days read 7 + 13
+  pageloads at 7 days and 20 + 10 at 14. Rows now carry `exact: yes` / `±10` and the report
+  says when to narrow the window.
+- **The automatic steam line isolation actuates — it never had, for a player** (#433). A
+  full-area downstream steam line break blew the SG down 825 → 212 psi (5.69 → 1.46 MPa)
+  with the MSIV open the whole way: #408 adopted the sourced 600 psig low-steam-pressure
+  setpoint but dropped the "(Rate sensitive)" annotation from the same source table cell, so
+  the raw crossing arrived ~+103 s — ~43 s after the flow-coincidence latch had expired —
+  and the pair could never complete. The leg now carries the real channel's rate
+  compensation (kernel `lead_lag`, lead 20 / lag 2 — shape per Ginna's analyzed 12/2, scale
+  fitted to this plant's faster lumped blowdown): a sev-0.8 or 1.0 break isolates **+2 to
+  +3 s**, while the cooldown / bottled-reopen / dump-step discriminators still hold, each
+  measured. The filed root cause ("`sg_steam_flow` reads 0 on the break") was refuted by
+  measurement — the instrument sees the break (peaks 1.58); the 2026-08-09 evidence watched
+  the turbine-only variable. Kernel hardening in the same change: `held_within_s` without an
+  `evaluate()` `dt` now degrades to genuine same-sample coincidence (it was a PERMANENT
+  latch — the mechanism that hid this defect behind three green probes), and latch stamps +
+  filter states survive save/restore. `run_behavior` 70pass/0xfail (TR-12b, TR-12c, PI-9
+  pass as written), `run_m4` 44/44. Manuals `12` §8.5 / `09` §3.0 / `03` §16.0 updated
+  (pending Rev 15 (c)).
+- **A zero-step rod nudge drove the control bank to its full-out stop** (#429). `rod_nudge`
+  with `steps: 0` clips to a target equal to the current position, and the `>=` sign then
+  handed the group a *positive* velocity while the stepping loop only tests the target after
+  incrementing — so it never matched again and only the mechanical stop ended the travel.
+  Measured at `hot_full_power`: **839 → 912 steps**, the whole remaining travel. Latent in
+  the shipped app (the control kernel guards the zero case for the one production caller
+  that could compute one), but the guard lived in a different layer from the defect, so any
+  future caller inherited it. RBMK and BWR carry the identical comparator and are on hold.
+
+### Changed
+- **The heatup/cooldown rate limit is now the sourced Technical Specification one — 100 °F/hr
+  (55.6 °C/hr), read as a rolling hour** (#398). The behavior catalog had carried `≤ 28 °C/hr`,
+  a number that appeared exactly once in the repo, in its own row, with no source — while both
+  the source corpus and the shipped board already said 100 °F/hr. A new `mode5_heatup_paced`
+  gate asserts it (worst rolling hour **49.8 °C/hr / 90 °F/hr**); nothing asserted a rate
+  before, so the round-trip gate's `PASS` on that half had never been earned.
+- **Heat-balance closure is now measured with an energy term** (#397). The check had been two
+  mass balances and a rating check at a single steady state, under a row claiming closure
+  "at any steady state". It now compares core thermal output against secondary heat removal at
+  100 %, 50 % and 5 %: residual **0.04 / 0.63 / 0.29 percentage points**, inside the ±2 % the
+  row always claimed.
+
+### Known issues
+- **Automatic steam line isolation does not actuate** (#433, found this change). A full-area
+  downstream steam line break blows the steam generator down from **825 psi (5.69 MPa) to
+  212 psi (1.46 MPa)** with the isolation valve open throughout. Three gates had reported this
+  function working; they were passing against a test-harness artifact, and now ship as declared
+  known-fails pinned to the issue. The reactor still trips on overtemperature ΔT at 1m21s.
+- **The usage/bug-report Worker rejected the test site, silently** (#413). `ALLOWED_ORIGINS`
+  listed `https://dev.reactordynamics.com` — a custom subdomain planned during the Cloudflare
+  migration and never created — and omitted `https://develop.reactor-dynamics.pages.dev`, which
+  is what testers actually use *(OWNER RULING, 2026-08-09: "instead of dev.reactordynamics.com
+  im going to use the currently functioning https://develop.reactor-dynamics.pages.dev/. This
+  works just as well.")*. `RD_TELEMETRY_ENDPOINT` is stamped on preview builds, so the test site
+  was posting the whole time. Measured against the live Worker: the test-site origin gets
+  `403 origin not allowed` where the live origin gets `204`, and the preflight returns
+  `Access-Control-Allow-Origin: https://reactordynamics.com` to the test site so a browser blocks
+  the response regardless of status. Every bug report and event from the test site was discarded
+  with no symptom anywhere. **Needs a Worker redeploy to take effect.** The dead subdomain is also
+  retired from the nine root pages, `site/site.css`, `site/make_download.js`,
+  `site/stamp_version.js` and `test/run_channel.js`.
+- **`vercel.json` and `.vercelignore` are deleted** *(OWNER DIRECTIVE, 2026-08-10: "Do the
+  retirement.")* — the last Vercel-shaped things in the repo (#413). Neither governed the deploy
+  any more, but two gates still read them as authority, so this was a gate change rather than a
+  `git rm`:
+  - **`run_site_meta`** used `.vercelignore` to decide which root pages are public. The authority
+    moved to `site/build_site.js`, which assembles what actually ships and now declares **both**
+    halves — `PAGES` and a new `NOT_PUBLISHED` (the three dev harnesses). **The partition is the
+    check**: the two lists must total the root `*.html` glob, so a new page is a red until some
+    file says whether it ships. That is the property `.vercelignore` was quietly providing, kept
+    rather than dropped with it. 151 → 163.
+  - **`run_portable`'s DEPLOY check** asked "is the ignore file hiding this from the build
+    machine?" — meaningless on Pages, where nothing is excluded, i.e. a check that could only
+    ever answer no. It now asks plain **existence** of every script in the deploy chain (read
+    from `build_site.js`'s `BUILD_ONLY`, the one remaining declaration of what the deploy runs)
+    and the siblings they shell out to. That is strictly stronger: the old form put
+    `if (!existsSync) return;` *before* the exclusion test, so a needed script that had been
+    deleted scored nothing at all — the single failure it existed to prevent (#258) was outside
+    its reach the whole time. 137 → 138.
+
+  Both verified by injection, and the injection corrected a claim: a stray root `.html` reddens
+  the partition check, and moving `site/stamp_version.js` aside reddens the deploy check — but
+  `tools/make_portable.js` and `site/make_download.js` are `require`d by the runner itself, so
+  losing either crashes it before the check runs. Still red to `run_all`, which compares exit
+  codes too, but by stack trace rather than named violation. Recorded rather than glossed.
+- **`tools/verify_release_deploy.js` is Cloudflare-only** (#413). The owner disconnected Vercel's
+  GitHub integration on 2026-08-10, so no `vercel[bot]` deployment record is created for any new
+  commit — verified before the code came out: `develop`'s tip had **zero** deployment records
+  where every earlier tip had one, and Vercel's `latestDeployment` had stopped moving. Keeping a
+  branch that can only ever report "nothing here" would have re-created the exact defect the
+  dual-host version was written to fix, pointed at the other host. Both directions re-checked on
+  the single-host script against real releases. The file's four failure modes are now recorded in
+  its header, because the pair that mattered are mirrors: the Cloudflare half could never *pass*
+  and the Vercel half could never *fail* — **exercise a verifier in both directions against real
+  data, or it is not a verifier.**
+- **The release check could certify a release LIVE on a build that never ran** (#413).
+  `tools/verify_release_deploy.js` filtered GitHub deployments on `environment === Production`
+  and never read `/deployments/{id}/statuses` — but a deployment record is created when the
+  build is *requested* and keeps that environment whatever happens next. Vercel's Git
+  integration is still connected after the Cloudflare cutover while its builds now block, so
+  it mints exactly that record per push: measured on Alpha 1.5.1, the script printed
+  `vercel PRODUCTION` for a deployment whose only status is `failure — "Deployment was
+  blocked"`. The verdict is any-host, so a Cloudflare failure plus that record would have read
+  `LIVE`. Now requires the newest non-`inactive` status to be `success` (`inactive` is
+  superseding bookkeeping, not an outcome, and treating it as one would fail every release the
+  moment the next shipped). Verified in three directions against real releases: `af48703`
+  (blocked → now rejected, was green), `5df6315` (success → green), `3b7166a` (never released
+  → `NOT LIVE`, exit 1). This is the second defect in this file and the mirror of the first —
+  the Cloudflare half could never pass, this half could never fail.
+- **A bug report taken at speed recorded almost nothing, and its manifest said otherwise.** The
+  session recorder sampled once per BROADCAST, so its resolution in sim time was
+  `timeAcceleration × broadcastMs` — 1 Hz at 1×, one row per 180 s at 3600× — while
+  `manifest.sample_hz` was the literal `1` in every bundle ever written. Found on the owner's
+  own report (`msmjyei2-yav89rpu`, *"Testing speed acceleration during large transients"*): a
+  `large_loca` sev 0.4 at 3600× is **two rows**, 100.01 % / 2235 psi (15.41 MPa) followed by
+  0.00 % / 56 psi (0.39 MPa), with the blowdown, the scram, the SI and the pressurizer emptying
+  all inside the gap. The plant was never wrong — protection has been on a 0.1 s sim-time
+  cadence at every speed since #153 — only the record of it was, and the strip chart had
+  already been fixed for the identical aliasing on 2026-08-05 while the recorder was left on
+  the old seam.
+
+  The recorder now rides that seam: the service's fine sampler carries a third side-dict
+  (`dv`, packed over the recorder's own fields in RAW true-state units, because two chart
+  series scale by 100 for display and riding `tv` would have made an old bundle and a new one
+  disagree by 100× on steam flow), and the recorder emits on its own 1 s floor with MIN/MAX
+  folded across each bucket. Spacing is now `max(1 s, the service's fine grid)` — **1 s at 1×
+  (unchanged), 1 s at 600×, 6 s at 3600×** — derived rather than configured, so there is no
+  second constant to keep in step. `sample_hz` is deleted and NOT replaced by another scalar:
+  the grid moves with acceleration inside one session, so `manifest.sampling` declares only the
+  floor and the source and the row timestamps carry the truth. Bundle schema **1.1**, with
+  `timeseries` columnar (`{fields, t, accel, v[], lo[], hi[]}`) — measured on real report data,
+  at the 14,400-row ring that is 720 KB gzipped against 1218 KB as row objects, and the
+  Worker's cap is 2 MB before `events` and `snapshot_end`.
+
+  Two things found on the way, both of which would have shipped silently. **The drain was in
+  the wrong place**: the fine rows were taken inside the rAF paint, one animation frame after
+  the broadcast, so the recorder — a separate synchronous subscriber — saw them only after it
+  had recorded a sample at a later timestamp, and every one of them was too old to emit.
+  Measured in a browser: 1475 rows handed in, 35 recorded. Moving the drain into the broadcast
+  itself gives 2100 rows over 2100 s at 600×. And **undrained sub-samples survived a plant
+  change** — pre-existing, and newly dangerous, since the recorder's row is packed over the old
+  plant's field list; all three shares are now cleared in `afterPlantChange`. (#432)
+- **The reporter never learned their report id.** `worker/src/index.js` answers `{ok, id}` and
+  names the stored object after it precisely so a report can be quoted, and
+  `site/telemetry.js` returned `{ok, status}` and dropped it — so the id existed nowhere a
+  human could see, and two reports sent the same evening were told apart by upload time alone.
+  The form now shows it: *"Sent — thank you. Reference msmjyei2-yav89rpu"*. Reading the body
+  cannot reject and does not assume there is one, because an edge answering HTML on an error
+  would otherwise turn a report that ARRIVED into "could not send". (#431)
+
+### Changed
+- **The standing-procedure trap list in `CLAUDE.md` is capped at 25 bullets, evicting to
+  `Blueprint/TRAPS.md`** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md"
+  from options I wrote — a selection, not verbatim words)*. It was the only unbounded list left
+  in a file sitting exactly on its 15,000-word limit: 30 bullets, ~2,000 words, growing about
+  one a session, while *Recent themes* directly above it had a cap and an eviction ritual and
+  had held since it was written. `run_doc_budget` gates it (3 → 4 checks, injection-verified:
+  a 26th bullet reddens it) rather than leaving it as prose, for that gate's own founding
+  reason — measured 2026-08-06, every cap that lived inside the document it governed had been
+  broken for weeks. **The eviction criterion: move what a GATE already catches**, keep what
+  nothing can tell you; the first five out are all plant-specific and all pinned by a suite
+  that reddens if the number moves. End state 12,548 words, 2,452 of headroom, and all four
+  caps machine-checked.
+
+- **`CLAUDE.md` cut 15,000 → 12,903 words, and `Blueprint/LANES.md` split out of it.** The file
+  had reached its own 15,000-word cap exactly, leaving the next agent no room. Measured over the
+  file's 251 commits, the cap is working — growth was **+4,568 words/day before it** (8,144 →
+  40,124 in seven days) and **+314/day after**, a 14× reduction — but four days of that rate had
+  consumed all 1,545 words of margin the 2026-08-06 cut left. The lane-occupancy block was
+  **2,510 words, 17 % of the file**, and almost all of it was worked history; it is now
+  `Blueprint/LANES.md`, with only the binding rules left inline. Also removed: a block saying
+  `Alpha 1.0.0` "is committed and waiting for the merge" six days and five versions after it
+  shipped, two *Known open work* items marked **done**, and a runner count that read 43 in two
+  places and 44 in a third against a real 45 — **the cap constrains size, not accuracy, and
+  nothing measures the second.** Nothing was lost in the move, and that is checkable rather than
+  asserted: `Blueprint/**` is on the HR11 scan surface, so citation sites went **238 → 242** —
+  up, because four quotes are now deliberately in both files — where a lossy move would have
+  shown as a drop. Every quoted string was also diffed old-against-new: 19 strings, 18 exact,
+  the 19th differing by one capital letter. `run_doc_budget` now prints the heaviest three
+  sections and the remaining headroom, so the next agent who hits the cap cuts the fat instead
+  of the nearest thing — a report, not a fourth check, because a per-section number would be a
+  cap nobody ruled on.
+
+### Added
+- **`test/run_diag_bundle.js`** — the first gate that has ever touched the session recorder.
+  Not a coverage gap so much as its cause: the recorder lived inside `ui/app.js`, which no Node
+  runner can reach, so nothing watched it and #432 shipped. It is now `ui/diag_recorder.js`, a
+  plain global script on the `ui/manual_procedures.js` pattern, and the gate drives it
+  full-stack at 1× and 3600×. 31 checks; injection-verified against the pre-fix data path,
+  where 4 go red — the 3600× spacing at 360 s against a ≤6 s band, and all three transient
+  checks, with `hi − lo` identically 0.0000 across the blowdown and 3 rows where there are now
+  131. `verify_e2e_ui.js` carries the other half, which no Node gate can: it presses the app's
+  own download button after a run at 600× and reads the file, because everything the Node gate
+  asserts would stay green if `ui/app.js` stopped feeding the recorder — which is exactly what
+  the drain-placement bug above was.
+
+### Fixed
+- **A milestone could be recorded twice for one session, because the latch and the identity it
+  latched against lived in different storage.** `seen` was a plain object — scoped to a page
+  **load** — while the session id it is reported under lives in `sessionStorage`, scoped to the
+  **tab**. Reloading therefore re-armed every milestone and re-emitted it under an unchanged
+  session id. Reproduced in a browser 2026-08-09: a reload re-fires `session_start`,
+  `plant_mode` and `on_grid` with the session id identical, and the live data already carried
+  `on_grid` twice for one real session. That makes "how many sessions reached the grid"
+  uncountable, which is the only question the milestone exists to answer. The latch now lives
+  in `sessionStorage` beside the id, and `sessionStart` no longer clears it — a plant reset
+  inside one tab is not a new visitor. `session_start` latches on the **initial state** rather
+  than the session, so a reload is suppressed while genuinely switching starting condition
+  still records; verified both ways, including that switching to Cold Shutdown in the same tab
+  emits `session_start(cold_shutdown)` and `plant_mode(5)` while `on_grid` stays latched.
+
+### Added
+- **The in-sim Contact overlay now offers GitHub issues as a second route** *(OWNER DIRECTIVE,
+  2026-08-09: "In the contact form page in the sim it should also direct people to the github
+  issues if they want to use that.")*, worded the same as the site footer so the two read as one
+  offer. It opens in a **new tab**, which is load-bearing rather than stylistic: this is the first
+  outbound link in the control room — the only other anchor there is a `mailto`, which does not
+  navigate — and there is no autosave and no `beforeunload` guard (`rd_progress` stores campaign
+  progress, never plant state). A same-tab click would destroy the running plant, i.e. on a
+  bug-report link it would take the very session the player came to report.
+- **`tools/fetch_bug_reports.js` + the `read-bug-reports` skill** — the in-sim bug reports were
+  arriving in R2 and could not be read. Both `RD_Ops/runbook.md` and `worker/README.md`
+  documented `wrangler r2 object list …`, **which has never existed in any version**
+  (`wrangler r2 object` is get/put/delete, and nothing under `r2 bucket` lists objects); it was
+  written from recall, never run, and the first person to need it was the owner, on the first
+  real report. Every fallback was shut too: `object get` needs an exact key and a key is
+  `<base36 ms>-<8 random chars>`, `CLOUDFLARE_API_TOKEN` is Analytics-read and answers 403 on
+  R2, wrangler's OAuth token carries no `r2` scope, and the reporter cannot supply an id
+  because `site/telemetry.js` discards the one the Worker returns (#431). The tool takes the
+  one route needing **no new credential**: a throwaway reader Worker in a temp directory, run
+  under `wrangler dev --remote` so the real bucket is bound into a locally-driven Worker, then
+  `.list()`/`.get()` through it and torn down. Lists, downloads to `RD_Ops/bug-reports/`
+  (outside every worktree — a report carries a player's typed words), and summarises US-first:
+  note, manifest, commands with their `blocked`/`error` flags, alarms that went active, the
+  scram and its trip reason, the client performance verdict, the end state. Both docs corrected
+  to say *why* the old command could not work, so it is not rewritten from recall a second
+  time. Second thing both had wrong: the stored object is the wire envelope
+  `{v, kind, note, bundle}`, so everything but `note` sits under `.bundle` — `jq .manifest`
+  against the documented flat shape reads `null`, which looks exactly like an empty report.
+  (#430)
+- **`tools/usage_report.js`** — reads the usage dataset and prints where people start, how far
+  they get, which panels and controls they use, and how long they stay. Needs an
+  *Account Analytics → Read* token in `CLOUDFLARE_API_TOKEN`; with none it exits 2 and says how
+  to make one, rather than printing an empty report that reads like "nobody visited". It is a
+  script and not an MCP call for a measured reason: `cloudflare.request()` demands the standard
+  `{success, result}` envelope and the Analytics Engine SQL endpoint answers `{meta, data,
+  rows}`, so a perfectly good query surfaces as `Cloudflare API error: 200`. Three query traps
+  are pinned in its header — `uniq()` and `round()` are 422, `ORDER BY` on a raw `double`
+  column is 422 while the same column SELECTs fine (order by the alias), and sessions must be
+  counted with `count(DISTINCT blob4)` because one session can legitimately carry several
+  starts.
+
+
+### Fixed
+- **The plant no longer hunts at part power — every steady state below full load was
+  oscillating forever, hands-off, on the preset the sim opens with** (#394 + #378 + #420).
+  Measured before: the authored 50 % initial condition swung **11.0 points of power and 3.8 °F
+  of Tavg with a ~190 s period, indefinitely**, with nobody touching a control; a 100→50 MWe
+  manual load step never settled at all (13.4 points, still running an hour later); and the
+  worst case was 40 MWe at **15.1 points**. Two earlier sessions diagnosed this as the rod
+  kernel abandoning in-flight rod travel at its deadband, built the fix, and rejected it
+  because it cost the sourced ±5 °F ramp duty. **That was the wrong mechanism.** This plant
+  lumps the entire control-rod worth into a single bank on an S-curve, so one fine step is
+  worth **4.657 pcm mid-bank against 0.892 near either stop — 5.2×** — while the controller's
+  gain was a constant; the loop gain therefore swings 5.2× across the operating band and the
+  equilibrium is unstable at the high end, where instrument noise grows into a limit cycle.
+  The incidence curve is monotone in bank position over six measured points, and every
+  authored initial condition starts exactly on program, so nothing excites it but noise.
+  Rod gain is now **scheduled on differential rod worth** (`gainScale` on the `rods_tavg`
+  channel; `RD.pwrScruveSlope` exported from the engine beside the curve it differentiates),
+  normalised to 1.0 at the full-power bank position so at-power behaviour is unchanged.
+  Measured after: 50 % holds **1.47 points**, 40 MWe holds 0.50, the manual step settles in
+  15.8 minutes. The abandoned rod travel is real (571 events in two hours, 75 pcm per half
+  cycle) but it is the amplitude-setting nonlinearity riding on an already-unstable loop —
+  fixing the gain collapses it to 4 events.
+  - **The schedule is gated on the load program being parked**, and that gate is the whole
+    trick. Ungated it collided with the sourced ramp duty exactly as the rejected fix had
+    (5.28 → 6.52 °F), and a floor sweep proved no single constant does both jobs: the duty
+    cost comes from having *any* schedule (5.97 °F even at a 0.75 floor) while settling needs
+    a floor at or below 0.60. The two are separable in **time**, not magnitude — instability
+    is a steady-state property, the duty is a transient one — and the separator is measured:
+    the programmed setpoint slides at 1.54e-2 °C/s through a 5 %/min ramp against 1.07e-4 °C/s
+    through the limit cycle, a **144× gap**. Gated, the ramp duty reads 5.28 °F to the digit,
+    the pre-change value; the two-hour soak *improves* 0.71 → 0.49 °F.
+- **`run_behavior` carries no strict xfails for the first time since 2026-08-06** — 67 pass /
+  2 xfail → **70 pass / 0 xfail**. TR-18 (settling) is fixed; TR-1i (#420) is resolved by
+  ruling rather than by the controller. Measured: `maxStep` 8 / 16 / 32 leaves the ramp duty
+  at **5.28 / 5.28 / 5.28** — quadrupling rod authority moves it not at all, reproducing
+  #306 on today's plant — so no rod-channel change could ever have reached that band. The
+  band is now the sourced ±5 °F **scaled by this plant's declared program-span departure**,
+  5.00 × (33.295/29) = **5.74 °F** *(OWNER RULING, 2026-08-09: selected "Scale on the
+  departure")*. That is the #311 precedent applied as written — a closed-form limit line is
+  scaled by a declared geometric departure, never re-anchored onto a fitted intercept.
+- **Rod AUTO never captured T-ref from Tavg, and three places said it did.** `Manuals/03`
+  §14.3 stated *"Captures T-ref from indicated Tavg at engage"* with a CAUTION built on it,
+  and the `pwr_rod_auto` mission taught the false version **as its lesson**. The channel's
+  `program: trefFromLoad` re-derives T-ref from indicated steam flow every evaluation — the
+  rods drive toward the *program*, not toward wherever the operator left the temperature. All
+  three corrected, along with the channel's own board hint, which still described the
+  pre-#419 297 → 304 °C program. Manual Rev 15 item (b).
+
+### Added
+- **`SS-11` — the probe FG-2's headline invariant never had.** The catalog has always said
+  *"any steady state is truly steady"*; the row that was supposed to carry it (SS-3) was
+  pinned by a probe sampling **one instant at t = 600 s**, which read comfortable by 0.36 °C
+  while Tavg swung 2.94 °C — green for the entire life of the defect. SS-11 rides 90 minutes
+  hands-off from the authored 50 % IC with no command at all and asserts the power span over
+  an **explicit 60–90 min window**, with a full-power leg as the calibration control.
+  Injection-verified both directions: **13.31 points** with the fix disabled, **1.47** with
+  it, and the control leg green at 0.16 on both.
+- **`--seed` on `test/measure_stack.js`.** It was hard-coded to 4242 while `OpsHarness` probes
+  default to `0xC0FFEE` — different plants, and every number in this work is seed-sensitive.
+  The seed is now printed in the header beside the layer and lineup.
+- **WTSM 8.1 (ML11223A252) is in the source corpus.** The rod controller's ±5 °F duty, its
+  ±1.5 °F deadband with 0.5 °F lock-up, and the 8 / 32-per-°F / 72 steps-per-minute speed
+  program had all been quoted from a session fetch that was never archived, so
+  `tools/find_source.js` returned zero on every phrasing — sourced-looking recall. Fetched via
+  the Wayback CDX recipe and verified: **every recalled number checked out**, including the
+  proportional 32 steps/min/°F middle rung that #420 suspected, which our discrete third speed
+  does not implement (now a positively-sourced declared departure rather than a suspicion).
+- **The test site's offline download arrived under the release's filename** (#414). A tester
+  pulling the zip from `dev.reactordynamics.com` got `Reactor_Dynamics_Alpha_1.5.1.zip` —
+  byte-different from the release of that name and indistinguishable from it once it is in a
+  downloads folder, so "the download is broken" arrived with nothing to say which build
+  produced it. That is #275's defect (`latest.zip` names nothing) re-created one level up; the
+  *page* was made honest on 2026-08-07, the *file* was not. Off the released channel the name
+  now carries the commit — `Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.zip`, containing
+  `Reactor_Dynamics_Alpha_1.5.1_9f8e7d6.html`, because the collision otherwise survives one
+  unzip. A production deploy still produces the bare release name; a local build says `_dev`.
+  Measured in headless Edge from `file://`: `download="Reactor_Dynamics_Alpha_1.5.1_dev.zip"`,
+  identical to the file on disk and to the zip's own entry name.
+
+  **The fix was deferred for a year of releases because the filename was spelled out twice** —
+  in `site/make_download.js` and in `site/nav.js`, with `test/run_portable.js` pinning three
+  static literals of each against the other. Adding a suffix to one side leaves those literals
+  identical, so that gate would have stayed green while the offered name stopped being the
+  built name. There is now **one** derivation, `downloadName()`, and `nav.js` takes the result
+  from `download/manifest.js` — the same object the build writes beside the zip — so the
+  offered name *is* the built name by construction rather than by comparison. `run_portable`
+  129 → 137 checks: the literal-agreement check is gone, replaced by a behaviour matrix over
+  the rule and a ban on the prefix literal reappearing in `nav.js`. All three ways of breaking
+  it were injected and confirmed red.
+- **The version stamps were cached for four hours, which is why the site kept reporting an old
+  release after a new one shipped.** Cloudflare Pages defaults static assets to `max-age=14400`
+  — right for engine code (immutable per deploy, loaded by a page that *is* revalidated),
+  self-defeating for the three files whose entire job is to say which build you are looking at,
+  and `must-revalidate` does nothing until the max-age expires. The origin was always correct;
+  every visitor's browser was up to four hours behind. `site/build_site.js` now emits a
+  `_headers` alongside its `_redirects`, giving `site/version.js`, `site/release.js` and
+  `download/manifest.js` `Cache-Control: no-cache` — store but revalidate, which is a ~100-byte
+  304 against the ETag already present. **This also retires a wrong call from one release
+  earlier**: `version.js` serving a stale commit after Alpha 1.5.0 was written off as a
+  self-healing edge blip. It was this, and it affected everyone, not just whoever noticed.
+- **A documented release rule was unsatisfiable.** CLAUDE.md said a website-only release gets
+  "a version bump and no `changelog.html` entry" — measured, that is `run_release` 20 checks /
+  2 failed, while leaving the version alone is green. A bump and an entry move together or not
+  at all, so a website-only change ships on the **current** version. Corrected in the change
+  that makes it true, and written net-negative on words: CLAUDE.md sits at its 15,000-word cap,
+  and the first draft of the correction reddened `run_doc_budget` at 15,047.
+
+
 ## [Alpha 1.5.1] — 2026-08-09
 
 ### Changed

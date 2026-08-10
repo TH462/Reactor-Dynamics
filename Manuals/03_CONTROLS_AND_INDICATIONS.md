@@ -706,12 +706,13 @@ pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 i
 
 ### 14.3 Rod AUTO (Tavg)
 
-- Captures **T-ref** from indicated Tavg at engage.  
-- Holds Tavg with variable rod speed and deadband (~±1.4 °F / ±0.8 °C).  
+- **T-ref is PROGRAMMED on turbine load, not captured from Tavg** — a sliding line from 546.8 °F (286.0 °C) at no load to 580.1 °F (304.5 °C) at full power, re-derived from indicated steam flow every evaluation. Engaging does not freeze a target; as load moves, T-ref moves with it.  
+- Holds Tavg with variable rod speed and deadband (±1.5 °F / ±0.8 °C).  
+- **Rod gain is scheduled on bank position.** One rod step is worth several times more reactivity mid-bank than near either stop, so the controller de-rates itself as the bank comes in and returns to full gain while the load program is sliding. The operator sees nothing of this; it is what keeps the plant steady at part power.  
 - Manual rod motion → MAN.  
 - Drops out on scram.  
 
-**CAUTION:** If you engage **ROD AUTO** after a large Tavg error, rods will drive hard. Capture near the temperature you want — if the capture was wrong, take it back to MAN, trim Tavg, and re-engage.
+**CAUTION:** If you engage **ROD AUTO** with Tavg well off program, rods will drive hard — toward the *program*, not toward where Tavg happens to sit. Check the Tavg/T-ref deviation before engaging, and if the plant is far off, trim in MAN first.
 
 ---
 
@@ -749,10 +750,10 @@ meter can still cross the 120 % trip.
 | sg_level | % | 0 – 100 | 3 s | Heat sink (narrow range) | SG LVL HI HI / HI / LO / LO LO |
 | sg_level_wide | % | 0 – 100 | 4 s | Heat sink below the narrow taps (dryout diagnosis) | — |
 | steam_flow / fw_flow | ×rated | 0 – 1.2 | 1 s | Mass match — **`steam_flow` is TURBINE flow only** | — |
-| sg_steam_flow | ×rated | 0 – 1.2 | 1 s | **Total** steam leaving the SG (turbine + dump + safeties) — the main-steam-line transmitter, and what feed regulation must match | — |
+| sg_steam_flow | ×rated | 0 – 2.0 | 1 s | **Total** steam leaving the SG (turbine + dump + safeties + break discharge) — the main-steam-line transmitter, and what feed regulation must match. Span covers a full-area break's ~1.75 total draw | — |
 | cw_inlet_temp | °F (°C) | 32 – 113 (0 – 45) | 20 s | Circulating-water inlet — sets achievable vacuum and the RHR cooldown floor (§13.1) | — |
 | condensate_flow | ×rated | 0 – 1.2 | 1 s | Hotwell → feed train | — |
-| steam_pressure | psi (MPa) | 0 – 1523 (0 – 10.5) | 0.5 s | SG / dump | SG PRESS HI |
+| steam_pressure | psi (MPa) | 0 – 1233 (0 – 8.5) | 0.5 s | SG / dump | SG PRESS HI |
 
 > **Trap — `steam_flow` vs `sg_steam_flow`.** With the turbine off line or tripped, the steam
 > dump carries the plant and **`steam_flow` reads ~0 while the generator is still boiling**.

@@ -823,6 +823,52 @@
       });
     },
 
+    // HARNESS PARITY — the alarm dropout hold (#403). Not a plant behaviour: it
+    // asserts that the plant THIS SUITE CERTIFIES is the plant the player gets, which
+    // is the same concern as abuse_accel_latency above and #153 before it.
+    //
+    // `evaluate(instruments, dt)` takes the sim seconds since the previous evaluation
+    // and feeds exactly one thing — `alarm_min_on_s` (PWR 2.0 s), the hold that stops
+    // alarm chatter. The accumulator is guarded by `dt > 0`, so a caller that omits the
+    // argument gets NO HOLD AT ALL and never knows. `ops_harness.js` omitted it at both
+    // call sites from the day it was written until #403.
+    //
+    // Measured, msiv_closed lit then its condition cleared: dt omitted -> clears at
+    // 0.1 s (the evaluation cadence, i.e. immediately); dt passed -> clears at 2.0 s,
+    // exactly alarm_min_on_s. Nothing in the suite moved when this was fixed — 58/69
+    // before and after — because no probe was asserting a clear time. That is the
+    // reason this probe exists: the divergence was real, silent, and invisible to
+    // every other check here.
+    ops_alarm_dropout_hold: function () {
+      return test('OPS harness parity — the 2.0 s alarm dropout hold is in force', function (ck) {
+        var h = H('hot_full_power');
+        function lit() {
+          var a = h.alarms();
+          for (var i = 0; i < a.length; i++) if (a[i].id === 'msiv_closed' && a[i].state !== 'clear') return true;
+          return false;
+        }
+        // The cadence and the dt must agree — two independent copies of a cadence is
+        // exactly what #153 was, so this pins the derivation, not a second constant.
+        ck('harness passes a positive evaluate() dt', fmt(h.evalDt, 3) + ' s', h.evalDt > 0, '> 0');
+        ck('…and it equals the evaluation cadence', fmt(h.evalDt, 3) + ' s',
+          near(h.evalDt, h.evalEvery * 0.02, 1e-9), fmt(h.evalEvery * 0.02, 3) + ' s');
+
+        h.cmd('close_msiv');
+        h.run(5);
+        ck('MSIV SHUT annunciates', lit(), lit() === true, 'lit');
+        h.cmd('open_msiv');
+        var held = 0;
+        for (var i = 0; i < 60 && lit(); i++) { h.run(0.1); held += 0.1; }
+        // Band, not equality: the hold is sampled on the evaluation cadence, so the
+        // observed clear lands within one evalDt of alarm_min_on_s.
+        ck('alarm holds ~2.0 s after its condition clears (alarm_min_on_s)',
+          fmt(held, 1) + ' s', held >= 1.9 && held <= 2.0 + h.evalDt + 1e-9,
+          '1.9…' + fmt(2.0 + h.evalDt, 1) + ' s');
+        ck.info('evaluation cadence (steps)', h.evalEvery);
+        T.checkSanity(ck, h);
+      });
+    },
+
     // Scram, then try to "un-scram" by withdrawing — the latch holds until a
     // deliberate RPS reset (PI-7/C3, feel-plan P4): withdrawal stays blocked
     // while latched; reset_rps (refused while a trip signal stands, rods must

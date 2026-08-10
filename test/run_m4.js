@@ -1541,6 +1541,98 @@ T.push(test('#370b — a condition can be a NUMERIC threshold on a second instru
     L._evaluateCondition({ instrument: 'plant_mode', in: [4, 5] }, { plant_mode: 5 }) === true, 'true');
 }));
 
+T.push(test('#433 — the pressure leg is RATE-COMPENSATED (lead_lag), and held_within_s has a degradation floor', function (ck) {
+  // The real 600 psig low-steam-pressure MSLI leg is "(Rate sensitive)" (WTSM Table
+  // 12.3-1, ML11223A310:647) — a lead/lag unit ahead of the bistable. Without it this
+  // plant's raw crossing arrives ~103 s after a full-area break, 43 s after the 60 s
+  // flow latch has expired, and the isolation NEVER fires (#433). Tested at the KERNEL
+  // on a synthetic ramp, because the full-transient story is TR-12b/c's subject.
+  //
+  // (a) A fast falling ramp whose RAW value never crosses the 4.14 setpoint (floor
+  // 4.30) must fire the row anyway on the compensated signal: at -0.14 MPa/s the
+  // lead/lag advance is (20-2) x 0.14 ≈ 2.5 MPa, far past the 0.16 raw shortfall.
+  function rampRun(s, hasLL) {
+    var p = 5.69, fired = false;
+    for (var i = 0; i < 600 && !fired; i++) {   // 12 s at dt 0.02
+      s.engine.step(s.dt);
+      var ins = s.engine.getInstruments();
+      p = Math.max(4.30, p - 0.14 * s.dt);
+      ins.steam_pressure = p;
+      ins.sg_steam_flow = 1.5;                  // coincidence partner held past 1.25
+      s.layer.evaluate(ins, s.dt);
+      if (s.ts().msiv_open === false) fired = true;
+    }
+    return fired;
+  }
+  var s1 = new Stack('hot_full_power');
+  var row = (s1.layer.config.actuations || []).filter(function (a) { return a.lead_lag; })[0];
+  ck('the MSLI row declares lead_lag', row ? 'lead ' + row.lead_lag.lead_s + ' / lag ' + row.lead_lag.lag_s : 'MISSING',
+    !!row, 'the sourced rate-sensitive channel');
+  ck('(a) fires on the COMPENSATED crossing — raw floor 4.30 never reaches the 4.14 setpoint',
+    String(rampRun(s1)), rampRun === rampRun && s1.ts().msiv_open === false, 'isolated');
+
+  // (b) INJECTION: the same ramp with the compensation removed must NOT fire — this is
+  // what proves (a) measured the lead/lag and not some other path. Config is module-
+  // shared, so restore before any assertion can throw.
+  var s2 = new Stack('hot_full_power');
+  var row2 = (s2.layer.config.actuations || []).filter(function (a) { return a.lead_lag; })[0];
+  var savedLL = row2.lead_lag;
+  delete row2.lead_lag;
+  var firedRaw = rampRun(s2);
+  row2.lead_lag = savedLL;
+  ck('(b) with lead_lag REMOVED the raw leg never crosses — the check sees the compensation',
+    String(firedRaw), firedRaw === false, 'no isolation');
+
+  // (c) Unity DC gain: on a CONSTANT signal the compensated value IS the raw value, so
+  // declaring lead_lag changes nothing until the signal moves. Pinned, not "steady"
+  // HFP — the live plant drifts ~0.001 MPa/s early on and the lead multiplies drift
+  // by (lead_s - lag_s), which is a property of the plant, not of the filter.
+  var s3 = new Stack('hot_full_power');
+  for (var m = 0; m < 250; m++) {
+    s3.engine.step(s3.dt);
+    var insC = s3.engine.getInstruments();
+    insC.steam_pressure = 5.69;
+    s3.layer.evaluate(insC, s3.dt);
+  }
+  var ix = null;
+  (s3.layer.config.actuations || []).forEach(function (a, i) { if (a.lead_lag) ix = i; });
+  var fst = s3.layer._leadLagState && s3.layer._leadLagState[ix];
+  ck('(c) constant signal: compensated equals raw (unity DC gain)',
+    fst ? fst.y.toFixed(4) + ' vs 5.6900' : 'no state',
+    !!fst && Math.abs(fst.y - 5.69) < 1e-3, 'equal within 0.001 MPa');
+
+  // (d) The held_within_s DEGRADATION FLOOR. A caller that never supplies a dt used to
+  // get a PERMANENT latch (_simT and the stamp both 0, age 0 <= 60 for ever) — the
+  // #433 mechanism, which certified a dead MSLI behind three green probes. The floor
+  // is strict same-sample coincidence: it can miss a real pair, never invent one.
+  var cond = { instrument: 'sg_steam_flow', direction: 'high', setpoint: 1.25, held_within_s: 60 };
+  var noDt = new Stack('hot_full_power').layer;
+  noDt._evaluateCondition(cond, { sg_steam_flow: 1.5 });   // latches under the old kernel
+  ck('(d) no-dt caller: latched-then-cleared reads FALSE — same-sample AND, not a permanent latch',
+    String(noDt._evaluateCondition(cond, { sg_steam_flow: 0.5 })),
+    noDt._evaluateCondition(cond, { sg_steam_flow: 0.5 }) === false, 'false');
+
+  // (e) With a real dt the latch ages honestly: alive inside the window, dead past it —
+  // and it SURVIVES a save/restore mid-window (the latch stamps and filter states are
+  // retentive protection state, serialized with the fired latches since #433).
+  var s5 = new Stack('hot_full_power');
+  s5.layer.evaluate(s5.ins(), 0.1);                        // dt seen, clock at 0.1
+  s5.layer._evaluateCondition(cond, { sg_steam_flow: 1.5 });  // stamp at 0.1
+  var snap = s5.layer.saveState();
+  ck('(e) dt-seen: cleared condition still TRUE inside the 60 s window',
+    String(s5.layer._evaluateCondition(cond, { sg_steam_flow: 0.5 })),
+    s5.layer._evaluateCondition(cond, { sg_steam_flow: 0.5 }) === true, 'true');
+  for (var j = 0; j < 61; j++) s5.layer.evaluate(s5.ins(), 1.0);
+  ck('…and FALSE beyond it',
+    String(s5.layer._evaluateCondition(cond, { sg_steam_flow: 0.5 })),
+    s5.layer._evaluateCondition(cond, { sg_steam_flow: 0.5 }) === false, 'false');
+  var s6 = new Stack('hot_full_power');
+  s6.layer.loadState(snap);
+  ck('…and the mid-window stamp SURVIVES a save/restore',
+    String(s6.layer._evaluateCondition(cond, { sg_steam_flow: 0.5 })),
+    s6.layer._evaluateCondition(cond, { sg_steam_flow: 0.5 }) === true, 'true');
+}));
+
 T.push(test('noisy failure BITES on an appended noise-0 channel — adv_valve (#387)', function (ck) {
   // Every appended instrument ships noise: 0 (the cross-step PRNG rule), so the sigma an
   // injected `noisy` failure scales comes from `noise_failure` — and adv_valve shipped

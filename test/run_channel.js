@@ -69,7 +69,7 @@ var CASES = [
     env: { CF_PAGES: '1', CF_PAGES_BRANCH: 'main', CF_PAGES_COMMIT_SHA: 'abcdef1234567890' },
     expect: 'public', offers: false, host: 'cloudflare' },
 
-  { name: 'Cloudflare Pages, develop  (dev.reactordynamics.com)',
+  { name: 'Cloudflare Pages, develop  (develop.reactor-dynamics.pages.dev)',
     env: { CF_PAGES: '1', CF_PAGES_BRANCH: 'develop', CF_PAGES_COMMIT_SHA: 'feed0123456789ab' },
     expect: 'preview', offers: true, host: 'cloudflare' },
 

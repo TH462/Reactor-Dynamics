@@ -44,6 +44,23 @@ specific causal chain is the product.
 - **Two probe tiers** in `test/run_behavior.js` (strict xfail throughout):
   **[I] invariants** — plant-agnostic physics truths, written early, never move;
   **[C] character** — this plant's numbers, pinned only after the owner approves the feel.
+
+  **The tier describes what the PROBE ASSERTS, not what the row's sentence sounds like**
+  *(corrected 2026-08-09, #399)*. A row is `[I]` only if you could carry its assertion to a
+  different PWR and expect it to hold. If the check is a numeric band minted from this
+  plant's golden runs, the row is `[C]` however universal the English above it reads —
+  "Tavg rises monotonically with load" is an invariant, `299…303 °C` is not.
+
+  This was not a labelling nicety. The audit (#344 F6) measured **zero of the seven `[I]`
+  rows meeting the definition**: five asserted minted numbers and two asserted nothing
+  resembling their claim. `[I]` rows are by construction the ones nobody re-bands after a
+  plant change, so a mislabelled one carries an extra layer of protection from exactly the
+  review that would catch it — **HR10 with a lock on it**. Rows re-tiered on that basis
+  carry `re-tiered #399` in their status.
+
+  **A row whose probe does not assert its claim at all gets neither tier** — it gets
+  `NOT ASSERTED`, because picking either one would be answering a question the probe has
+  never been asked.
 - **Conflicts: physics wins; TMI canon wins over setpoint preferences.** Training beats,
   manuals, and campaign gates get updated to match tuned behavior (all 51 gates re-run at
   freeze).
@@ -62,7 +79,7 @@ Feel is set by capacity *ratios*, not absolute numbers. These are the levers the
 | Spray ÷ normal step insurge | wins | still wins | Step insurges stay arrested | P5 |
 | Full-SGTR leak ÷ charging_max | **0.12 ÷ 0.06 — SET (P5)**, ΔP-scaled to zero at SG pressure | leak wins 2×; depressurization kills it | Full SGTR *forces* trip + SI; the EOP works (FG-6) | done |
 | AFW cap ÷ post-trip decay heat | 0.15 (recovers ~5 min) | keep | Post-trip SG recovery tempo (FG-5) | P4 |
-| No-load Tavg anchor | **297 °C — SET (P3, 2026-07-21)** | dump setpoint 8.23 MPa = Psat(297); shallow 7 °C program | Post-trip shrink bite; program span (FG-5/FG-2) | done |
+| No-load Tavg anchor | **286.0 °C (546.9 °F) — RE-ANCHORED at #419 wave 3** (was 297, the retired P3 feel-plan value) | dump setpoint 7.03 MPa (1020 psi) = Psat(286.0), Ginna's sourced 1005 psig no-load point; program spans 18.5 °C (33.3 °F) | Post-trip shrink bite; program span (FG-5/FG-2) | done |
 | `K_sg_level` / dump rate | 5.0 | tune with anchor | Shrink depth/speed (FG-5) | P4 |
 | Heater capacity ÷ outsurge | recovers ≤ ~5 min | keep | Post-trip pressure recovery tempo | P4 |
 
@@ -71,14 +88,18 @@ Feel is set by capacity *ratios*, not absolute numbers. These are the levers the
 *Feel: deliberate and procedural. Hours-scale evolutions, the instrument ladder respected,
 nothing jumps the queue. Already the sim's strength — carried forward unchanged.*
 
-| ID | Behavior | Probe | Status |
-|----|----------|-------|--------|
-| EV-9 | 1/M approach: doubling behavior, SR→IR→PR overlap, P-6/P-10 ladder, IR/PR backstops | campaign startup ×2, NIS suite | PASS |
-| EV-10 | Turbine roll & sync: vacuum required, overspeed 1980 rpm, sync at rated rpm | run_pwr loss_vacuum, overspeed | PASS |
-| EV-1 | Mode 5→1 heatup ≤ 28 °C/hr; bubble drawn before Mode 4→3; no spurious ESF (P-11) | run_pwr roundtrip, m5 suite | PASS |
-| EV-2 | Cooldown ≤ 55 °C/hr; RHR interlock < 2.76 MPa; borate on cooldown | run_pwr rhr_valve, ops cooldown | PASS |
-| SS-7 | Cold shutdown hold: RHR carries decay heat, shutdown boron | run_pwr cold_shutdown_hold | PASS |
-| SS-4 | HZP/Mode 3 standby: Tavg = no-load anchor, dump holds SG at Psat(anchor) | probe:SS-2 | PASS (program) |
+**The Tier column was added 2026-08-09 (#399).** This table shipped without one, so its six
+rows could not carry provenance *even in principle* — which is how EV-1's rate half sat at
+`PASS` for months against a driver that measured no rate (#398).
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| EV-9 | 1/M approach: doubling behavior, SR→IR→PR overlap, P-6/P-10 ladder, IR/PR backstops | I | campaign startup ×2, NIS suite | PASS |
+| EV-10 | Turbine roll & sync: vacuum required, overspeed 1980 rpm, sync at rated rpm | C | run_pwr loss_vacuum, overspeed | PASS — 1980 rpm is this plant's |
+| EV-1 | Mode 5→1 heatup **≤ 55.6 °C/hr (100 °F/hr)** — the sourced Technical Specification limit, evaluated as a **rolling hour**, not an instantaneous derivative (*OWNER RULING, 2026-08-09*, choosing "100 F/hr TS + 50 admin" — "Adopt the sourced Tech Spec limit as the hard number … Keep ~50 F/hr as a separate soft administrative target, which is normal practice under a 100 F/hr TS"; sourced ML11223A342:648, ML11223A213:1801). A ~50 °F/hr administrative target is the soft goal and is **not** gated. Bubble drawn before Mode 4→3; no spurious ESF (P-11) | I | **run_pwr `mode5_heatup_paced`** (rate half) + roundtrip, m5 suite | **PASS — rate half asserted 2026-08-09** (49.8 °C/hr worst hour) |
+| EV-2 | Cooldown **≤ 55.6 °C/hr (100 °F/hr)**, same limit and same rolling-hour reading; RHR interlock < 2.76 MPa; borate on cooldown | I | ops `cooldown_to_rhr` (paces to 50 °C/hr) + run_pwr rhr_valve | PASS |
+| SS-7 | Cold shutdown hold: RHR carries decay heat, shutdown boron | I | run_pwr cold_shutdown_hold | PASS |
+| SS-4 | HZP/Mode 3 standby: Tavg = no-load anchor, dump holds SG at Psat(anchor) | C | probe:SS-2 | PASS (program) — anchor is this plant's 286.0 °C |
 
 ## 4. FG-2 — Steady state & maneuvering
 
@@ -88,16 +109,17 @@ its consequences instead of hiding them.*
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
-| SS-2 | Tavg **monotonically rises** no-load → full power along this plant's program — **anchors SET: 297 → ~304 °C** (P3, 2026-07-21); level program rides the same line at 2.5 %/°C (~37.5 → 55 %) | I | probe | **PASS — anchors set** |
+| SS-2 | Tavg **monotonically rises** no-load → full power along this plant's program — **anchors RE-SET at #419 wave 3: 286.0 → 304.5 °C** (546.9 → 580.2 °F; the 297 → ~304 pair was the retired P3 feel-plan program); level program rides the same line at 1.62 %/°C (`level_per_tavg`, was 2.5) | **C** | probe | **PASS — anchors set** · re-tiered #399: the probe asserts `295…299` / `299…303 °C` and its own comment says *"the anchor numbers are this plant's character"* |
 | SS-1 | 100 % snapshot self-consistent (steam≈feed, charging≈letdown, ΔT per power) | C | probe | PASS — band minted at freeze |
-| SS-3 | 50 % point sits *on* the program (no sag) | I | probe:SS-2 | PASS |
-| SS-6 | 5 % steady holds indefinitely (xenon at own-power equilibrium) | I | probe | PASS |
-| SS-8 | Heat-balance closure ±2 % at any steady state | I | probe | PASS? — pin explicitly |
+| SS-3 | 50 % point sits *on* the program (no sag) — **"sits on" is a claim about a STEADY STATE**, so it needs the steadiness half too (#394: SS-2's single instant read comfortable by 0.36 °C through an 11-point limit cycle) | **C** | probe:SS-11 + probe:SS-2 | PASS · re-tiered #399: it delegates to SS-2's minted `299…303 °C`, so it inherits SS-2's tier and cannot be stronger than it |
+| **SS-11** | **A part-power steady state is truly steady** — hands-off from the authored 50 % IC with no command at all, power holds inside 4 pts over an explicit 60–90 min window; the 100 % leg is the calibration control. **This is FG-2's headline invariant, and it was unasserted until #394.** | **C** | probe | **PASS** (1.47 pts; 13.31 pre-fix) · re-tiered #399: *"a steady state is steady"* is an invariant but `4 pts` is this plant's, and the rule is that the tier follows what the probe asserts — including here, where the row calls itself an invariant in its own sentence |
+| SS-6 | 5 % steady holds indefinitely (xenon at own-power equilibrium) | **C** | probe | PASS · re-tiered #399: asserts `3…7 %` and flat to `±0.5`, both minted |
+| SS-8 | Heat-balance closure **±2 %** between core thermal output and secondary heat removal, at **more than one** steady state | **I** | probe | **PASS — energy term written 2026-08-09 (#397)**; was `PASS?` against two mass balances and a rating check |
 | EV-4 | All-auto load-follow 100→50→100 hands-off; Tavg tracks program | C | ops load follow | re-band → P3 |
 | EV-3 | ±5 %/min ramps: no trip, power follows; rod-less Tavg carries the mismatch (engine pin), program-tracking version in run_autoctl | C | probe + autoctl | **PASS** (P3) |
-| EV-5 | Boration/dilution: ~10 ppm step → clear response, −8..−12 pcm/ppm worth | I | campaign pwr_boron | PASS |
+| EV-5 | Boration/dilution: ~10 ppm step → clear response, −8..−12 pcm/ppm worth | **NOT ASSERTED** | campaign pwr_boron | **#399: the probe checks INSTRUCTOR CARDS** — *"dilution beat arms"*, *"borate prompt"*, *"Long Game — Played"*. The −8..−12 pcm/ppm worth is asserted nowhere; the row's PASS was the campaign's, not the claim's |
 | EV-7 | Single rod step at 100 %: flux dip, auto recovery ~2 min, no trip | C | probe:EV-6 | PASS? |
-| EV-8 | Xenon transient: peak hours after downpower, needs compensation | I | ops xenon 8h | PASS |
+| EV-8 | Xenon transient: peak hours after downpower, needs compensation | **NOT ASSERTED** | ops xenon 8h | **#399: the probe asserts `'no trip'`** and the peak is an `info` line — logged, never checked. #402's measurement (peak 104.50 % eq at 4.5 h, hands-off OTΔT scram at 13.77 h with 48 min of warning) is the one that could carry this row |
 | EV-6 | Slow manual rod insertion, all-auto: walks down smoothly, no scram | C | probe | PASS (regression insurance) |
 | **EV-11** | **Manual dispatch shows its costs** (owner-ruled character): a slider-only load drop settles above the ask with Tavg parked high of program (un-trimmed mismatch); the M5 fallback feed parks SG level low until minded (shift-exam gates) | C | probe + shift-exam gates | **PASS** (P3) |
 
@@ -118,7 +140,7 @@ class is structurally dead, and the `_mass<=1.0` floor is deleted.
 |----|----------|------|-------|--------|
 | CC-10 | Level = f(RCS inventory, thermal expansion) + void term **gated on saturation**. Independent level integrator and `_mass<=1.0` charging floor deleted. Level↔inventory track closely outside void regimes (no silent windup) | I | probe | **PASS** (P2, 2026-07-21) |
 | CC-10b | Deception boundary: a subcooled loss LOWERS true level; only voiding raises it | I | probe | **PASS** (new fence) |
-| SS-5 | Level rises with load — **emergent** from thermal expansion (+ CVCS setpoint curve on the same line) | I | probe | **PASS** (P2) |
+| SS-5 | Level rises with load — **emergent** from thermal expansion (+ CVCS setpoint curve on the same line) | **C** | probe | **PASS** (P2) · re-tiered #399: asserts `<= 40 %`, `50…62 %`, `>= 15 %` — three minted numbers |
 | CC-8 | CVCS auto make-up holds the level curve; a leak reads as level-trend + charging-trend divergence (no leak telepathy). Servo settles at charging = letdown + leak *exactly* (the old margin was windup drift) | C | cvcs_level_control + probe | PASS — re-band P3 |
 | CA-3 | Level sensor fails HIGH → auto charging backs off, real inventory falls physically deep; caught via trends/subcooling | C | probe | PASS — depth now unbounded (honest) |
 | CA-4 | Level sensor fails LOW → charging drives level up; PI-8 high-level trip backstops | C | todo | todo → P4 (needs PI-8) |
@@ -202,7 +224,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
 | AFW start | 20 % + on loss of both MFW (PI-4, P4) | |
 | P-14 SG hi-hi | 90 % → TT + FWI, reset 85 % | |
 | SG safeties | 9.31 / 9.0 MPa | |
-| Steam dump setpoint | 8.23 MPa = Psat(297 °C) | this plant's anchor, set in P3; consumers derive from config |
+| Steam dump setpoint | 7.03 MPa (1020 psi) = Psat(286.0 °C) | Ginna's sourced 1005 psig no-load point (#419 wave 3; was 8.23 = Psat(297), the retired P3 anchor); consumers derive from config |
 | Accumulators | 4.14 MPa | |
 | RHR interlock | 2.76 MPa | |
 | High Tavg trip | 335 °C | ⚑ keep as harmless legible backstop (owner confirm) |

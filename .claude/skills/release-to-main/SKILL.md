@@ -178,6 +178,14 @@ node site/make_download.js           # -> download/<name>.zip + download/latest.
 from `site/release.js`. Building first produces a file named for the *previous* release —
 which is the whole of #258.
 
+**A LOCAL run is named `…_dev.zip`, and that is correct, not a bug to chase** (#414,
+2026-08-09). Off the released channel the name carries the build — `site/stamp_version.js`
+stamps `preview` on the test site and the local placeholder says `dev` — so only a real
+production deploy produces the bare `Reactor_Dynamics_Alpha_X.Y.Z.zip`. That is the whole
+point: a tester's download can no longer be confused with the release. `downloadName()` in
+`site/make_download.js` is the one derivation; `site/nav.js` takes the name from
+`download/manifest.js` rather than rebuilding it.
+
 **Neither artifact is committed, and you must not "fix" that.** `dist/` and `download/` are
 both gitignored. The zip the public gets is built **at deploy**: `vercel.json` chains
 `site/make_download.js` after `site/stamp_version.js`, so the download always comes from the
@@ -272,15 +280,26 @@ both times in ways a careful reader would not catch:
   deployment by hand. A false alarm that invites an unnecessary intervention.
 - It only knew Vercel. Every GitHub deployment on this repo is created by `vercel[bot]`, so
   after the Cloudflare move (#413) the query returns nothing on **every** release, for ever.
+- **Its Vercel half read the deployment RECORD and never the build OUTCOME**, so it could not
+  fail (2026-08-09). Measured on Alpha 1.5.1: it printed `vercel PRODUCTION` for a deployment
+  whose only status is `failure — "Deployment was blocked"`. See below.
 
-The script asks both hosts (GitHub deployments for Vercel, `wrangler pages deployment list`
-for Cloudflare), demands a full sha, and requires a Cloudflare deployment to be BOTH
-`environment=production` AND `deploy:success` — a queued or failed build is not a live site.
-A yellow "could not query" line means a host was unreachable, which is **not** the same as
-"no deployment"; the script says so in its own failure text.
+The script queries `wrangler pages deployment list`, demands a full sha, and requires the
+deployment to be BOTH `environment=production` AND finished successfully — a queued, blocked or
+failed build is not a live site. A yellow "could not query" line means Cloudflare was
+unreachable, which is **not** the same as "no deployment"; the script says so in its own failure
+text.
 
-**A "Vercel — success" commit status is NOT evidence of a production deploy.** It is satisfied by
-a preview build. Only `environment=Production` for the released SHA is.
+**It is Cloudflare-only from 2026-08-10.** The owner disconnected Vercel's GitHub integration, so
+no `vercel[bot]` record is created for any new commit — verified before the code was removed:
+`develop`'s tip had **zero** deployment records where every earlier tip had one. A branch that
+can only ever say "nothing here" is failure (2) above wearing the other host's name. The Vercel
+project survives a while as the two-DNS-record rollback, which this check does not need: a
+rollback serves the last good build, not the one being released.
+
+**A green commit status is NOT evidence of a production deploy** — a preview satisfies it. Nor is
+`environment=Production` on its own, which is the trap that produced failure (4): **a deployment
+record is created when the build is REQUESTED and keeps that environment whatever happens next.**
 
 **The ordering above is the fix, and it is the suspected cause.** Pushing `develop` to the *same
 commit* seconds after the merge gives Vercel two events for one SHA; measured on Alpha 1.0.0, only

@@ -51,41 +51,53 @@ function check(rule, where, text, why) {
 function read(rel) { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); }
 
 // ---------------------------------------------------------------- which pages are public
-// .vercelignore lists the dev harness pages (test_pwr.html and friends) individually.
-// Anything it names is not deployed, so it has no social card to get wrong.
-var ignored = read('.vercelignore').split(/\r?\n/)
-  .map(function (l) { return l.trim(); })
-  .filter(function (l) { return l && l[0] !== '#'; });
-
-var PAGES = fs.readdirSync(ROOT)
-  .filter(function (f) { return /\.html$/.test(f); })
-  .filter(function (f) { return ignored.indexOf(f) < 0; })
-  .sort();
-
-check('PAGES', '.vercelignore', 'deployable root pages discovered (' + PAGES.length + '): ' +
-  PAGES.join(', '),
-  PAGES.length >= 8 ? 'globbed, then filtered by what .vercelignore excludes' : null);
-
-// ------------------------------------------- the two definitions of "the site" must agree
-// This gate globs the root for deployable pages; site/build_site.js copies an explicit
-// PAGES list into the published output. Two answers to the same question, and they can
-// disagree in both directions — add a page and forget build_site.js and its social card
-// is checked here while the deploy never publishes it; drop one and build_site.js throws
-// at deploy time, which is late. Neither is visible from either file alone.
+// STILL DISCOVERED, NOT DECLARED — the glob is the input, and the authority moved rather
+// than disappeared. It used to be `.vercelignore`, which named the dev harness pages
+// individually; that file was deleted with `vercel.json` when the Vercel Git integration
+// went (#413), and Cloudflare Pages honours no ignore file at all. `site/build_site.js`
+// assembles what actually ships, so it is now the only file that can answer this, and it
+// declares BOTH halves: PAGES (published) and NOT_PUBLISHED (dev harnesses).
+//
+// THE PARTITION IS THE CHECK. Every root `*.html` must appear in exactly one of the two
+// lists. A gate that iterated a hand-kept list of pages would be testing the list — the
+// next page added would be missing from it AND from its own tags, and this would pass at
+// full marks. Requiring the two declarations to TOTAL the glob keeps that impossible: a
+// new page is a red until some file says whether it ships.
 var buildSrc = read('site/build_site.js');
-var pagesM = /const PAGES = \[([\s\S]*?)\];/.exec(buildSrc);
-check('PAGES', 'site/build_site.js', 'declares a PAGES list', pagesM ? 'parsed' : null);
-if (pagesM) {
-  var published = (pagesM[1].match(/'([^']+\.html)'/g) || []).map(function (s) { return s.replace(/'/g, ''); });
-  PAGES.forEach(function (p) {
-    check('PAGES', p, 'is published by site/build_site.js',
-      published.indexOf(p) !== -1 ? 'in its PAGES list' : null);
-  });
-  published.forEach(function (p) {
-    check('PAGES', p, 'published, and this gate checks it',
-      PAGES.indexOf(p) !== -1 ? 'both agree it is part of the site' : null);
-  });
+function declaredList(name) {
+  var m = new RegExp('const ' + name + ' = \\[([\\s\\S]*?)\\];').exec(buildSrc);
+  return m ? (m[1].match(/'([^']+\.html)'/g) || []).map(function (s) { return s.replace(/'/g, ''); }) : null;
 }
+var published = declaredList('PAGES');
+var withheld = declaredList('NOT_PUBLISHED');
+check('PAGES', 'site/build_site.js', 'declares PAGES and NOT_PUBLISHED',
+  published && withheld ? 'both parsed' : null);
+published = published || [];
+withheld = withheld || [];
+
+var ROOT_HTML = fs.readdirSync(ROOT).filter(function (f) { return /\.html$/.test(f); }).sort();
+var PAGES = ROOT_HTML.filter(function (f) { return withheld.indexOf(f) < 0; });
+
+check('PAGES', 'site/build_site.js', 'deployable root pages discovered (' + PAGES.length + '): ' +
+  PAGES.join(', '),
+  PAGES.length >= 8 ? 'globbed, minus what build_site.js withholds' : null);
+
+// Both directions, as before — a page in one list and not the other is a real defect
+// either way: published-but-unchecked, or checked-but-never-deployed.
+PAGES.forEach(function (p) {
+  check('PAGES', p, 'is published by site/build_site.js',
+    published.indexOf(p) !== -1 ? 'in its PAGES list' : null);
+});
+published.forEach(function (p) {
+  check('PAGES', p, 'published, and this gate checks it',
+    PAGES.indexOf(p) !== -1 ? 'both agree it is part of the site' : null);
+});
+// …and the partition is total: nothing at the root is unaccounted for.
+ROOT_HTML.forEach(function (f) {
+  check('PAGES', f, 'is declared either published or withheld',
+    (published.indexOf(f) !== -1) !== (withheld.indexOf(f) !== -1)
+      ? (published.indexOf(f) !== -1 ? 'PAGES' : 'NOT_PUBLISHED') : null);
+});
 
 // ------------------------------------------- the repo says .html, the DEPLOY must not
 // Cloudflare Pages redirects `/about.html` to `/about` and it cannot be switched off, so a

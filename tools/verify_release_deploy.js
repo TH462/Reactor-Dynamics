@@ -3,8 +3,9 @@
  *   node tools/verify_release_deploy.js            # checks HEAD
  *   node tools/verify_release_deploy.js <sha>
  *
- * Exit 0 = a PRODUCTION deployment exists for that commit, on whichever host serves the
- * site. Exit 1 = it does not, or could not be established. Never guesses.
+ * Exit 0 = a successful PRODUCTION deployment of that commit exists on Cloudflare Pages,
+ * the host that serves the site. Exit 1 = it does not, or could not be established.
+ * Never guesses.
  *
  * ---------------------------------------------------------------- why this is a script
  * The rule ("a release is not done until a Production deployment exists") has existed
@@ -12,8 +13,8 @@
  * CI was green, and the only deployment Vercel made for that commit was a Preview. The
  * production domain served the previous release for half an hour and nothing said so.
  *
- * The rule was written as prose plus a command to paste. It has since failed TWICE in
- * ways prose cannot prevent:
+ * The rule was written as prose plus a command to paste, and it has now failed FOUR ways.
+ * Three of them were in this file; all four are recorded because the shapes recur:
  *
  *   1. CLAUDE.md wrote the command as `?sha=<SHA>`. The GitHub API needs the FULL
  *      40-character sha — `?sha=c918667` returns ZERO deployments for a commit that has
@@ -21,11 +22,33 @@
  *      documented remedy for that is to go promote a deployment by hand. A false alarm
  *      whose fix is an unnecessary intervention.
  *
- *   2. It only ever knew about Vercel. Every GitHub deployment on this repo is created by
- *      `vercel[bot]`, so after the move to Cloudflare Pages the query returns nothing —
- *      and the procedure reads nothing as failure, for ever, on every release.
+ *   2. It only knew Vercel, so after the move to Cloudflare Pages it returned nothing on
+ *      every release — and the procedure read nothing as failure, for ever.
  *
- * A script cannot be pasted wrong, and it can ask both hosts. That is the whole argument.
+ *   3. The Cloudflare half, added to fix (2), read API field names (`d.environment`,
+ *      `d.deployment_trigger.metadata.commit_hash`) against wrangler's TABLE output. Every
+ *      lookup was `undefined`, so it could never PASS. It surfaced only because the two
+ *      hosts disagreed about a release known to be good.
+ *
+ *   4. The Vercel half could never FAIL: it filtered on `environment` and never read the
+ *      build OUTCOME. A deployment resource is created when the build is REQUESTED and
+ *      keeps `environment: "Production"` whatever happens next. Measured on Alpha 1.5.1,
+ *      it reported PRODUCTION for a deployment whose only status was
+ *      `failure — "Deployment was blocked"`.
+ *
+ * (3) and (4) are the same bug mirrored, and the pair is the lesson: a verifier with no
+ * true-positive on record is not a verifier, and neither is one with no true-negative.
+ * Exercise BOTH directions against real data before believing either.
+ *
+ * -------------------------------------------------------- one host, deliberately (2026-08-10)
+ * The Vercel half is GONE. The owner disconnected Vercel's GitHub integration once the
+ * Cloudflare cutover settled, so no `vercel[bot]` deployment record is created for any new
+ * commit — verified before removing the code: `develop`'s tip had ZERO deployment records
+ * where every earlier tip had one, and Vercel's own `latestDeployment` had stopped moving.
+ * Keeping a branch that can only ever say "nothing here" would be the (2) failure again,
+ * pointed at the other host. The Vercel project itself survives a while as the two-DNS-record
+ * rollback; that does not need this check, because a rollback serves the LAST GOOD build
+ * rather than the one being released.
  *
  * ------------------------------------------------------------------- what it does NOT do
  * It does not check that the deployed bytes are correct, that the site renders, or that
@@ -38,7 +61,6 @@ const cp = require('child_process');
 const G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', B = '\x1b[1m', D = '\x1b[2m', X = '\x1b[0m';
 
 const PROJECT = 'reactor-dynamics';          // Cloudflare Pages project
-const REPO = 'TH462/Reactor-Dynamics';
 
 function run(cmd, args) {
   const r = cp.spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' });
@@ -58,39 +80,7 @@ console.log(B + '\nRelease deploy check' + X + D + '  ' + sha.slice(0, 12) + '�
 
 const found = [];
 
-// ---------------------------------------------------------------- host A: Vercel
-// Vercel's GitHub integration records deployments against the commit. `environment` is
-// "Production" only for the real thing; a Preview satisfies the green commit status and
-// is NOT evidence.
-(function vercel() {
-  // NO QUERY STRING AND NO --jq, both deliberately. These run through a shell on Windows,
-  // where `&` in `?sha=..&per_page=..` is a command separator (cmd tried to execute
-  // `per_page` as a program) and a --jq filter's `|` is a pipe. Pass parameters as -f
-  // fields and do the filtering in Node, where neither character means anything.
-  const r = run('gh', ['api', `repos/${REPO}/deployments`, '-X', 'GET',
-    '-f', `sha=${sha}`, '-f', 'per_page=100']);
-  if (!r.ok) {
-    console.log(Y + '  vercel     ' + X + D + 'could not query GitHub deployments (' +
-      (r.err.split('\n')[0] || 'unknown') + ')' + X);
-    return;
-  }
-  let rows;
-  try { rows = JSON.parse(r.out); } catch (e) {
-    console.log(Y + '  vercel     ' + X + D + 'could not parse gh output' + X);
-    return;
-  }
-  const prod = (rows || []).filter((d) => /^production$/i.test(d.environment || ''));
-  if (prod.length) {
-    found.push('vercel');
-    console.log(G + '  vercel     PRODUCTION' + X + D + '  ' +
-      (prod[0].creator && prod[0].creator.login) + '  ' + prod[0].created_at + X);
-  } else {
-    console.log(D + '  vercel     no production deployment (' + (rows || []).length +
-      ' deployment(s) for this sha)' + X);
-  }
-}());
-
-// ---------------------------------------------------------------- host B: Cloudflare Pages
+// ---------------------------------------------------------------- Cloudflare Pages
 // Uses wrangler, which carries its own OAuth — no API token needed, and nothing to put in
 // an environment variable. A deployment counts only if it is BOTH environment=production
 // AND finished successfully; a queued or failed build is not a live site.
@@ -142,18 +132,18 @@ const found = [];
 // ---------------------------------------------------------------- verdict
 console.log('');
 if (found.length) {
-  console.log(B + G + 'LIVE' + X + '  a production deployment exists for this commit — ' +
+  console.log(B + G + 'LIVE' + X + '  a successful production deployment exists for this commit — ' +
     found.join(' and ') + '\n');
   process.exit(0);
 }
-console.log(B + R + 'NOT LIVE' + X + '  no production deployment found for this commit on any host.\n');
+console.log(B + R + 'NOT LIVE' + X + '  no successful production deployment found for this commit.\n');
 console.log(D +
   'Before assuming the deploy failed, rule out the two things that look identical to it:\n' +
   '  1. It may still be building. A missing production deploy and a slow one are the same\n' +
   '     from outside, so WAIT and re-run rather than re-pushing.\n' +
-  '  2. Neither host may have been reachable — a `gh` or `wrangler` auth failure prints a\n' +
-  '     yellow line above and is NOT the same as "no deployment".\n' +
-  'If it is genuinely missing: promoting the preview in the host dashboard is one click.\n' +
+  '  2. Cloudflare may not have been reachable — a `wrangler` auth failure prints a YELLOW\n' +
+  '     line above and is NOT the same as "no deployment". Read which one you got.\n' +
+  'If it is genuinely missing: promoting a deployment in the Pages dashboard is one click.\n' +
   'Do NOT push develop to the same commit to retrigger it — that is the suspected CAUSE of\n' +
   'the original Alpha 1.0.0 failure, not a remedy.' + X);
 process.exit(1);
