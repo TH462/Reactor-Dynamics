@@ -117,14 +117,32 @@ about it, inside the hour. Corrected: the section now names the query as the aut
 what the prose got wrong, because "read the tracker" is advice everyone already ignores and the
 measured cost is not. A duplicated RBMK/BWR line went with it. 12,903 -> 12,838 words.
 
-### The structural residual — put to the owner, not decided
+### The structural residual — RULED the same session
 
-The **standing-procedure trap list is 30 bullets, ~2,000 words, and has no cap and no eviction
-rule**, while *Recent themes* right above it has both (5 bullets, "rescue the trap first") and
-has held since it was written. The standing list grows by roughly one bullet per session and is
-now the only unbounded thing left in the file — it will eat the 2,138 words of headroom on its
-own. It is also, per word, the most valuable content in the file, which is exactly why the
-decision is not mine.
+The **standing-procedure trap list was 30 bullets, ~2,000 words, with no cap and no eviction
+rule**, while *Recent themes* directly above it had both and had held since it was written. It
+grew about a bullet a session and was the only unbounded thing left in the file.
+
+**Capped at 25** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
+options I wrote — a selection, not verbatim words)*, gated by `run_doc_budget` (3 → 4 checks,
+injection-verified: a 26th bullet reddens it). Five bullets moved to `Blueprint/TRAPS.md`.
+
+**The eviction criterion is the part worth keeping: move what a GATE already catches.** The
+standing list exists to warn about things nothing can tell you, so when the cap binds the
+entries to move are the ones where getting it wrong turns a runner red — the trap announces
+itself and the full story is a TUNING_LOG search away. What stays is the class no gate can
+reach: process traps, prose claims, silent-wrongness idioms, the hollow-check family. The first
+five evicted (K_phys/F14, node capacity, the two-clock seam, the DNB limit line, the flash gate)
+are all plant-specific and all pinned by a suite that reddens if the number moves. The criterion
+is deliberately NOT gated — it is judgement, and a trap whose gate only fires in a regime nobody
+probes belongs back in the file.
+
+End state: **12,548 words, 2,452 of headroom, 25 standing bullets, 5 themes** — all four caps
+now machine-checked, where on 2026-08-06 every one of them lived as prose inside the document it
+governed and had been broken for weeks.
+
+**Also ruled, and NOT acted on:** #410 stays held (the site keeps no provenance paragraph for
+now), and the three backshop commits stay on the lane rather than merging.
 
 ---
 

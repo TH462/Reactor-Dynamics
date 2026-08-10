@@ -73,6 +73,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   would otherwise turn a report that ARRIVED into "could not send". (#431)
 
 ### Changed
+- **The standing-procedure trap list in `CLAUDE.md` is capped at 25 bullets, evicting to
+  `Blueprint/TRAPS.md`** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md"
+  from options I wrote — a selection, not verbatim words)*. It was the only unbounded list left
+  in a file sitting exactly on its 15,000-word limit: 30 bullets, ~2,000 words, growing about
+  one a session, while *Recent themes* directly above it had a cap and an eviction ritual and
+  had held since it was written. `run_doc_budget` gates it (3 → 4 checks, injection-verified:
+  a 26th bullet reddens it) rather than leaving it as prose, for that gate's own founding
+  reason — measured 2026-08-06, every cap that lived inside the document it governed had been
+  broken for weeks. **The eviction criterion: move what a GATE already catches**, keep what
+  nothing can tell you; the first five out are all plant-specific and all pinned by a suite
+  that reddens if the number moves. End state 12,548 words, 2,452 of headroom, and all four
+  caps machine-checked.
+
 - **`CLAUDE.md` cut 15,000 → 12,903 words, and `Blueprint/LANES.md` split out of it.** The file
   had reached its own 15,000-word cap exactly, leaving the next agent no room. Measured over the
   file's 251 commits, the cap is working — growth was **+4,568 words/day before it** (8,144 →

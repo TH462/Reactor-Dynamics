@@ -38,6 +38,18 @@ var FILE = path.join(__dirname, '..', 'CLAUDE.md');
 var MAX_WORDS = 15000;   // measured 13,455 on 2026-08-06 (was 42,065 before the cut)
 var MAX_LINE  = 400;     // measured 164 (was 5,310 — the prose gate-baselines paragraph)
 var MAX_THEMES = 5;      // the file's own documented cap; it was running 7
+/* MAX_STANDING — the standing-procedure trap list *(OWNER RULING, 2026-08-10: selected "Cap at
+ * 25, evict to TRAPS.md" from options I wrote — a selection, not verbatim words)*.
+ *
+ * It was the ONLY unbounded list left in a file sitting exactly on its word limit: 30 bullets,
+ * ~2,000 words, 16 % of CLAUDE.md, growing about one a session with no cap and no eviction
+ * ritual while *Recent themes* directly above it had both and had held since it was written.
+ *
+ * Gated rather than written in prose for the reason this whole file exists: measured 2026-08-06,
+ * every cap that lived as prose inside the document it governed had been broken for weeks. The
+ * eviction criterion — move what a GATE already catches, keep what nothing can tell you — is in
+ * `Blueprint/TRAPS.md` and is deliberately NOT gated, because it is judgement. */
+var MAX_STANDING = 25;
 
 var src = fs.readFileSync(FILE, 'utf8');
 var lines = src.split(/\r?\n/);
@@ -77,6 +89,20 @@ if (a < 0 || b < 0) {
   for (var i = a; i < b; i++) if (lines[i].indexOf('- ') === 0) n++;
   ck('Recent themes obeys its own documented cap', n + ' bullets', n <= MAX_THEMES,
     '<= ' + MAX_THEMES + ' (evict the oldest, rescuing its trap to the standing list)');
+}
+
+// 4 — the standing-procedure list, capped 2026-08-10. Counted the same way and from the same
+// marker the themes check ends on, so the two cannot disagree about where the boundary is.
+var c = lines.findIndex(function (l) { return l.indexOf('**Standing procedure') === 0; });
+var d = lines.findIndex(function (l, i) { return i > c && l.indexOf('**The full history lives in') === 0; });
+if (c < 0 || d < 0) {
+  ck('the standing-list markers are present', 'standing@' + c + ' end@' + d, false,
+    'both markers found — this gate cannot count without them');
+} else {
+  var m = 0;
+  for (var j = c; j < d; j++) if (lines[j].indexOf('- ') === 0) m++;
+  ck('the standing-procedure list obeys its cap', m + ' bullets', m <= MAX_STANDING,
+    '<= ' + MAX_STANDING + ' (evict to Blueprint/TRAPS.md — move what a gate already catches)');
 }
 
 /* WHERE THE WEIGHT IS — reported, never gated (2026-08-10).

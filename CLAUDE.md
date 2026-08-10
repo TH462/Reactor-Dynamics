@@ -291,6 +291,7 @@ to read everything.
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
+| **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
 | **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the whole file is *your* (primed) document: the lane, the prep and the close-out. The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed to `C:\grok_build\RD_Audit\CLAUDE.md` by `node tools/audit_deploy.js`; do not restate them anywhere else. Verify with `node tools/audit_preflight.js <slice>` (eight checks, exit 2 naming the cause; it launches nothing). **The launch is a fresh session started in `C:\grok_build\RD_Audit` itself — not in its `tree/`**, which would silently get the repo's settings and no auditor orientation. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §4 and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
@@ -395,6 +396,11 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   in four documents is still unmeasured** (nobody had multiplied step count by step rate), and
   **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+**MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
+options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
+one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written there: **move
+what a GATE already catches**, keep what nothing can tell you. This list was the only unbounded
+thing left in the file and it grew about a bullet a session.
 
 - **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
   eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
@@ -402,22 +408,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
 - **An approved plan's sizing target can be measured on a RETIRED scale** (rescued from the
   #385 bullet on eviction, 2026-08-09): its flash term predated the #408 slider re-map, so it
   measured unnecessary and was never built. Re-derive sizing from the Q0, not the plan.
-
-- **A physically-derived constant can be RIGHT and unshippable, and a solve can conflate the
-  MEASUREMENT's temperature with the PLANT's** (rescued from the #419 themes bullet on
-  eviction, 2026-08-08): K_phys ≈ 304 validates against TMI-2's own clock but inverts the
-  stuck-PORV race under the ruled 347× F14 heater, so the shipped K = 2500 is the physical NET
-  under F14 — one pair, re-solve together. And `rho_excess` quoted 975 ppm at "the anchor" was
-  benign 5 °C away and wrong at 286. Ghost constants: check the CONSUMER first.
-- **A new node's capacity must come OUT of the node it split from** (rescued from the #418
-  themes bullet on eviction, 2026-08-08): C_tube added on top of coolant 20 silently reopened
-  the RULED heatup pace — the chain caught it at 260.7 °C. Splitting a lump conserves its total.
-
-- **A component can sit on a TWO-CLOCK seam** (rescued from the #408 themes bullet on
-  eviction, 2026-08-08): the relief valve's mass flow runs the real accident clock while its
-  pressure authority keeps the transient duty — re-clocking either side alone breaks the
-  other, so preserve the product (the F15 K re-solves, twice now). And the terminal melt
-  verdict asks whether the water is COMING BACK — a reflooded TMI-style core rewets.
 
 - **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
   three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped
@@ -471,11 +461,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   11.0 MWt against 21.0 MWt of decay heat. Anything reading `power_pct` as core heat is wrong from
   the moment the rods drop. **Decimals belong to the UNIT**: `toFixed(0)` on MPa printed three
   different pressures as "15 MPa" and collapsed the loop split that panel exists to show.
-- **A closed-form limit line must be SCALED, never RE-ANCHORED** (#311). Pairing this plant's own
-  DNB slope with a fitted intercept ROTATES the line and scrammed the plant at 55.0 s, killing the
-  ride-out the 40 % dump exists to teach. Scaling by a margin factor puts the equivalent gradients
-  inside the published real bands — the unscaled ones were 1.5–2× steeper than any real value, and
-  **that steepness was the tell, visible before the measurement**.
 - **The pressurizer's level constants are ONE object** — `level_per_mass` (776), `level_per_void`
   (375.33), `level_per_tavg` (1.62); the pressure surge reads the same geometry (#337) and since
   #385 the NODE's credit does too (`level_per_mass_surplus` retired at #365). The TMI deception
@@ -486,11 +471,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   2026-08-08): the `levelBase` clip bound on 95.7 % of loss-of-heat-sink samples, 0.0 % of every
   other IC — removing it reddened nothing because no probe stood where it bound. Corollary:
   **this plant goes solid at an inventory DEFICIT** (thermal expansion), not overfilled.
-- **Containment's flash gate decides what it sees** (#386, rescued 2026-08-07): a stuck-open
-  PORV pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break
-  liquid is flash-gated), and an SGTR reads NOTHING — it discharges into the SG, and since
-  stage 3 that fence extends to hydrogen (geometry-gated transport). `press_gain` is fitted
-  and says so. All three #386 stages are landed; the board card waits on the redesign.
 - **Natural circulation: the SHAPE is sourced (W ∝ Q^⅓), the SCALE is this plant's** and is fitted
   — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
   ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the
