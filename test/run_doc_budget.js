@@ -79,6 +79,30 @@ if (a < 0 || b < 0) {
     '<= ' + MAX_THEMES + ' (evict the oldest, rescuing its trap to the standing list)');
 }
 
+/* WHERE THE WEIGHT IS — reported, never gated (2026-08-10).
+ *
+ * A total is not actionable. When this gate binds, the next agent shaves whatever is cheapest
+ * to reach, which is how a worked example and a factual list item were lost on 2026-08-09 while
+ * the two sections that actually grow went untouched. Measured that day: the preamble and
+ * *Project status* were **63 % of the file** between them.
+ *
+ * It is a REPORT and not a fourth check on purpose. Any per-section number here would be a cap
+ * I invented, and the file's own rule is that a cap needs an owner behind it. This only tells
+ * you where to look.
+ */
+var secs = [], cur = { name: '(preamble — the directive blocks)', n: 0 };
+lines.forEach(function (l) {
+  var m = /^##\s+(.*)$/.exec(l);
+  if (m) { secs.push(cur); cur = { name: m[1], n: 0 }; }
+  cur.n += l.split(/\s+/).filter(Boolean).length;
+});
+secs.push(cur);
+secs.sort(function (x, y) { return y.n - x.n; });
+console.log(DIM + '  heaviest sections: ' + secs.slice(0, 3).map(function (s) {
+  return s.name.slice(0, 28) + ' ' + s.n + ' (' + Math.round((s.n / words) * 100) + '%)';
+}).join(' · ') + RST);
+console.log(DIM + '  headroom: ' + (MAX_WORDS - words) + ' words' + RST);
+
 console.log('\n' + BOLD + '─'.repeat(42) + RST);
 if (fail) {
   console.log(BOLD + RED + 'DOC BUDGET: FAIL' + RST + '  ' + (pass + fail) + ' checks, ' + fail + ' failed');

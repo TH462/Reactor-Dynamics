@@ -72,6 +72,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   cannot reject and does not assume there is one, because an edge answering HTML on an error
   would otherwise turn a report that ARRIVED into "could not send". (#431)
 
+### Changed
+- **`CLAUDE.md` cut 15,000 → 12,903 words, and `Blueprint/LANES.md` split out of it.** The file
+  had reached its own 15,000-word cap exactly, leaving the next agent no room. Measured over the
+  file's 251 commits, the cap is working — growth was **+4,568 words/day before it** (8,144 →
+  40,124 in seven days) and **+314/day after**, a 14× reduction — but four days of that rate had
+  consumed all 1,545 words of margin the 2026-08-06 cut left. The lane-occupancy block was
+  **2,510 words, 17 % of the file**, and almost all of it was worked history; it is now
+  `Blueprint/LANES.md`, with only the binding rules left inline. Also removed: a block saying
+  `Alpha 1.0.0` "is committed and waiting for the merge" six days and five versions after it
+  shipped, two *Known open work* items marked **done**, and a runner count that read 43 in two
+  places and 44 in a third against a real 45 — **the cap constrains size, not accuracy, and
+  nothing measures the second.** Nothing was lost in the move, and that is checkable rather than
+  asserted: `Blueprint/**` is on the HR11 scan surface, so citation sites went **238 → 242** —
+  up, because four quotes are now deliberately in both files — where a lossy move would have
+  shown as a drop. Every quoted string was also diffed old-against-new: 19 strings, 18 exact,
+  the 19th differing by one capital letter. `run_doc_budget` now prints the heaviest three
+  sections and the remaining headroom, so the next agent who hits the cap cuts the fat instead
+  of the nearest thing — a report, not a fourth check, because a per-section number would be a
+  cap nobody ruled on.
+
 ### Added
 - **`test/run_diag_bundle.js`** — the first gate that has ever touched the session recorder.
   Not a coverage gap so much as its cause: the recorder lived inside `ui/app.js`, which no Node

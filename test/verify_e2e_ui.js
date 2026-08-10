@@ -578,11 +578,16 @@ async function testDiagBundle(page) {
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
   await page.waitForTimeout(1500);
-  await page.click('#playBtn');
+  // SPEED FIRST, THEN PLAY. Ticks taken at 1x produce no fine rows at all — a 1x broadcast
+  // carries 0.1 s of sim against the service's 0.2 s fine grid — so a single tick between
+  // pressing play and the speed landing latches `sampling.source` to "mixed" for the rest of
+  // the session. Ordering it this way makes the run deterministic instead of a race the
+  // parallel gate loses on a loaded box.
   await page.evaluate(function () {
     var b = document.querySelector('#speedSeg [data-speed="600"], [data-speed="600"]');
     if (b) b.click();
   });
+  await page.click('#playBtn');
   await page.waitForTimeout(6000);
 
   await page.click('#tabbar button[data-tab="settings"]');
@@ -609,8 +614,14 @@ async function testDiagBundle(page) {
   var span = ts.t.length ? ts.t[ts.t.length - 1] - ts.t[0] : 0;
   log.push('rows=' + ts.t.length + ' span=' + span.toFixed(0) + 's worst dt=' + worst.toFixed(1) +
     's source=' + (b.manifest.sampling || {}).source);
-  if (b.manifest.sampling.source !== 'fine') {
-    throw new Error('the recorder is not riding the fine seam: source=' + b.manifest.sampling.source);
+  // `source` must show the fine seam was reached at all — but "mixed" is a LEGITIMATE answer
+  // and asserting "fine" was wrong. It latches on a single tick taken below ~20x, which every
+  // real session has, and this check duly passed twice and failed on the third parallel run
+  // before the ordering above fixed the cause. THE SPACING IS THE REAL TEST: the broadcast-only
+  // fallback gives ~1 row a minute at 600x where the fine seam gives one a second, so a page
+  // feeding the recorder two rows an hour fails below whatever `source` happens to say.
+  if (b.manifest.sampling.source === 'broadcast') {
+    throw new Error('the recorder never reached the fine seam: source=broadcast');
   }
   if (worst > 2) throw new Error('rows are ' + worst.toFixed(1) + ' s apart at 600x — expected ~1 s');
   if (ts.t.length < span / 2) throw new Error('only ' + ts.t.length + ' rows for ' + span.toFixed(0) + ' s of plant');

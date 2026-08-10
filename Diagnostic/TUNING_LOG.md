@@ -29,6 +29,96 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-10-backshop-a (the CLAUDE.md cut pass, and what the word cap is actually doing)
+
+**Outcome: 15,000 → 12,862 words, 2,138 of headroom. `Blueprint/LANES.md` created. `run_all` 45
+runners at baseline.** Asked for by the owner, who also asked whether the cap is working and
+whether it is costing us information. Both are measurable, so both were measured.
+
+### Is the cap effective? Yes, by 14×, and the number is not close
+
+Word count of `CLAUDE.md` at the last commit of each day (251 commits touch it):
+
+| date | words | | date | words |
+|---|---|---|---|---|
+| 2026-07-29 | 8,144 | | 2026-08-04 | 37,718 |
+| 2026-07-30 | 9,726 | | 2026-08-05 | 40,124 |
+| 2026-07-31 | 12,603 | | **2026-08-06** | **13,746** ← cap lands |
+| 2026-08-01 | 14,505 | | 2026-08-07 | 14,336 |
+| 2026-08-02 | 16,472 | | 2026-08-08 | 14,989 |
+| 2026-08-03 | 21,723 | | 2026-08-09 | 15,000 |
+
+**Pre-cap growth was +4,568 words/day** (×4.9 in seven days). **Post-cap it is +314/day** — a
+14× reduction, and the file would be past 70,000 words by now on the old trajectory. The single
+biggest commit in the file's history is still the 2026-08-06 cut, −29,102.
+
+### Three things the cap does NOT do, each measured here
+
+1. **It does not stop growth, it converts it into a shaving obligation.** The 2026-08-06 cut
+   left 1,545 words of margin and four days consumed all of it. On 2026-08-09 I hit the cap and
+   cut four passages to fit one pointer line — a worked example out of the gate-baselines
+   paragraph and `test/verify_*.js` out of a factual list among them. **Neither was mine,
+   neither was why the file was full, and the two sections that actually grow were untouched.**
+   That is the marginal incentive the cap creates: when it binds, the cheapest thing to reach is
+   someone else's granular content, and granular content is where the facts are.
+2. **It constrains SIZE, not ACCURACY.** Found this pass, all inside a green gate: a block
+   announcing that `Alpha 1.0.0` "is committed and waiting for the merge — do not bump it again"
+   (it shipped six days and five versions ago); two items in *Known open work* labelled **done**,
+   one of them for a week; and the runner count reading 43 in two places and 44 in a third while
+   the real number was 45. **Staleness is the larger risk and nothing measures it.**
+3. **A total is not actionable.** `run_doc_budget` said "you are over" and nothing else. It now
+   also prints the heaviest three sections and the headroom — a REPORT, not a fourth check,
+   because any per-section number would be a cap I invented and this file's own rule is that a
+   cap needs the owner behind it.
+
+### Are we losing information? At the cap yes, in this pass no — and that is checkable
+
+The distinction is **cutting** versus **moving**. The lane block (2,510 words, 17 % of the file,
+almost all of it worked history) went to `Blueprint/LANES.md`, which is **on the HR11 scan
+surface** (`test/run_hardrules.js` walks `Blueprint`, `Diagnostic`, `Manuals`, plus `CLAUDE.md`,
+`CHANGELOG.md`, `README.md`, `.claude`). Two independent checks that the move was lossless:
+
+- **HR11 sites 238 → 242.** UP, not down. Four owner quotes are deliberately in both files now —
+  `LANES.md` holds the worked case, `CLAUDE.md` keeps the quote beside the rule that binds. A
+  lossy move would have shown as a DROP, which makes this gate a usable loss detector for any
+  future doc split.
+- **Diffed every quoted string in the old block against the two new files** (whitespace and `> `
+  prefixes normalised): 19 strings, **18 exact matches**, and the 19th is my own phrase differing
+  by one capital letter.
+
+Where words actually are, after the pass: *Project status* 4,040 (31 %), the preamble directive
+blocks 3,601 (28 %), everything else 5,221. **Two sections are 59 % of the file.**
+
+### And the check I added yesterday was flaky — caught by the gate, before the commit
+
+`verify_e2e_ui`'s new diag-bundle check asserted `sampling.source === 'fine'`. It passed twice
+and went red on the third parallel run: **`source=mixed`**. The code was correct; the assertion
+was wrong. `mixed` latches on a single tick taken below ~20×, where a broadcast carries less sim
+time than the service's 0.2 s fine grid and no fine row is produced at all — and the probe
+pressed play *before* clicking 600×, so on a loaded box one tick slipped through the gap.
+
+Fixed at the cause (set the speed, then press play — deterministic) **and** at the assertion
+(`source` must not be `broadcast`; `mixed` is a legitimate answer that every real session will
+produce). **The spacing was always the real test** — the broadcast fallback gives ~1 row a
+minute at 600× where the fine seam gives one a second — so nothing was lost by relaxing it.
+Three consecutive standalone runs and one full parallel `run_all`: 1440–1800 rows, worst dt
+**1.0 s** every time.
+
+The lesson is the mirror of the one two entries up: that one was a check that could not fail,
+this is a check that could fail without a defect. Both cost the same thing — the gate stops
+meaning what it says.
+
+### The structural residual — put to the owner, not decided
+
+The **standing-procedure trap list is 30 bullets, ~2,000 words, and has no cap and no eviction
+rule**, while *Recent themes* right above it has both (5 bullets, "rescue the trap first") and
+has held since it was written. The standing list grows by roughly one bullet per session and is
+now the only unbounded thing left in the file — it will eat the 2,138 words of headroom on its
+own. It is also, per word, the most valuable content in the file, which is exactly why the
+decision is not mine.
+
+---
+
 ## Session log — 2026-08-09-backshop-c (#432 + #431 — the recording was the broken instrument, and the fix's own first version recorded 35 rows out of 1475)
 
 **Outcome: bundle schema 1.1 on the fine seam with extremes; `ui/diag_recorder.js` extracted;
