@@ -65,7 +65,7 @@ function stamped(file, re, fallback) {
 
 // ---- THE ONE PLACE THE DOWNLOAD IS NAMED (#414) ---------------------------------
 // OFF THE RELEASED CHANNEL THE NAME CARRIES THE COMMIT. Until 2026-08-09 a tester
-// downloading from dev.reactordynamics.com got `Reactor_Dynamics_Alpha_1.5.1.zip` —
+// downloading from the test site got `Reactor_Dynamics_Alpha_1.5.1.zip` —
 // same product, same version string, DIFFERENT BYTES from the release of that name,
 // and indistinguishable from it once it is sitting in a downloads folder. "The
 // download is broken" then arrives with nothing to say which build produced it. That

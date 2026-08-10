@@ -433,6 +433,21 @@
               <button class="btn" id="fbCopy">Copy address</button>
               <span class="fb-msg" id="fbStatus"></span>
             </div>
+            <!-- GITHUB, FOR PEOPLE WHO WOULD RATHER USE IT (owner, 2026-08-09: "In the contact
+                 form page in the sim it should also direct people to the github issues if they
+                 want to use that"). Same wording as the site footer, so the two routes read as
+                 one offer rather than two policies.
+
+                 target="_blank" IS LOAD-BEARING, not house style. This is the FIRST outbound
+                 link in the control room — the only other anchor here is a mailto, which does
+                 not navigate — and there is no autosave and no beforeunload guard: `rd_progress`
+                 stores campaign progress, never plant state. A same-tab click therefore destroys
+                 the running plant, which on a BUG-REPORT link would take the session the player
+                 came here to report. Keep the attribute if this block is ever restyled. -->
+            <div class="fb-hint fb-gh">Would rather use GitHub? <a
+              href="https://github.com/TH462/Reactor-Dynamics/issues" target="_blank"
+              rel="noopener">Open an issue</a> — public and tracked, and you can read what is
+              already known before you write. It opens in a new tab; your plant keeps running.</div>
             <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
               expected, and what the board actually showed. If it is a physics or procedure
               question, the plant mode and the readings you were reading it from.</div>

@@ -29,6 +29,104 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-workbench-b (#413 — the release check's other half could never FAIL; the migration is otherwise done)
+
+**Both halves of `tools/verify_release_deploy.js` have now been wrong in opposite directions,
+and the second one was live.** `2026-08-09-workbench-a` found a Cloudflare half that could
+never *pass* (it read API field names against wrangler's table output). This session found a
+Vercel half that could never *fail*: it filtered GitHub deployments on `environment` alone and
+never read `/deployments/{id}/statuses`.
+
+**A deployment RECORD is created when the build is REQUESTED**, and it keeps
+`environment: "Production"` whatever happens next. Measured on the released sha
+`af487035…` (Alpha 1.5.1):
+
+```
+verify_release_deploy.js  →  vercel PRODUCTION  vercel[bot]  2026-08-09T13:56:51Z
+gh api …/deployments/5819358981/statuses
+                          →  failure  "Deployment was blocked"
+```
+
+Vercel's Git integration is **still connected** after the 2026-08-08 cutover — the owner action
+"disconnect Git" in `RD_Ops/cutover.md` is outstanding — and **every Vercel deployment since
+~2026-08-09 00:34 UTC is `state: BLOCKED`** (last `READY`: `dpl_DbEtNWf3`; nine blocked after
+it). So it mints one of those records per push, for ever.
+
+**The verdict is ANY-host, which is what made it dangerous.** Alpha 1.5.1 read `LIVE` and was
+live — Cloudflare genuinely deployed — so the defect was invisible in the pass. Had Cloudflare's
+build failed, the same run would still have printed `LIVE`, certified by a blocked build to a
+host that no longer serves the domain. That is the Alpha 1.0.0 failure this script exists to
+prevent, wearing the migration's clothes: **#413 predicted the check would "silently become
+meaningless" by returning nothing; it returns something, and the something is a failure read as
+a success.**
+
+The fix reads the statuses and requires the newest non-`inactive` one to be `success`.
+`inactive` is skipped deliberately — GitHub adds it when a later deployment supersedes this one,
+which says nothing about whether this one built, and treating it as an outcome would fail every
+release the moment the next one shipped.
+
+**What is measured and what is assumed, because they are not the same here.** Sampled eight
+deployments across the last week: **every one carries exactly ONE status.** Vercel posts a single
+terminal `success`/`failure` and never a `pending` → `success` sequence, and no `inactive` row
+appeared at all. So `real[0]` is, on today's data, the only status there is — the
+newest-first ordering and the skip-`inactive` filter are **defensive and untested against real
+multi-status data**, resting on GitHub's documented reverse-chronological order. Both fail in the
+loud direction: get either wrong and a good release reports `NOT LIVE`, rather than a failed one
+reporting `LIVE`, which is the defect being fixed. Recorded rather than left implied — the file's
+own history is two parsers written against assumed response shapes.
+
+**Verified in three directions against real releases, not fixtures** (the standing rule — a
+check written beside its own fix is not green until seen red):
+
+| sha | Vercel record | new verdict |
+|---|---|---|
+| `af48703` (1.5.1) | Production, `failure`/blocked | **rejected** — was green before this change |
+| `5df6315` (1.4.0) | Production, `success` | accepted, green |
+| `3b7166a` (never released) | none | `NOT LIVE`, exit 1 |
+
+`wrangler pages deployment list` failed once with "could not query" and succeeded on the retry —
+transient, and the yellow path handled it as designed (unreachable ≠ absent).
+
+**The custom dev subdomain is retired, and retiring it found a dead reporting channel.**
+*(OWNER RULING, 2026-08-09: "instead of dev.reactordynamics.com im going to use the currently
+functioning https://develop.reactor-dynamics.pages.dev/. This works just as well. We can retire
+the issues calling for the creation of a page for the develop worktree.")* — `dev.reactordynamics.com`
+was planned in #413 and never created, so nine months of comments named a host that does not exist.
+
+The one that was not cosmetic: **`worker/src/index.js`'s `ALLOWED_ORIGINS` listed the subdomain
+that was never built and omitted the `pages.dev` host that testers actually use**, while
+`RD_TELEMETRY_ENDPOINT` is stamped on preview builds — so the test site has been sending all
+along. Measured against the live Worker:
+
+```
+POST  Origin: https://develop.reactor-dynamics.pages.dev  ->  403 origin not allowed
+POST  Origin: https://reactordynamics.com                 ->  204   (control)
+```
+
+and the preflight answers `Access-Control-Allow-Origin: https://reactordynamics.com` to the test
+site, so a browser blocks the response independently of the status. **Every bug report and every
+event from the test site was discarded silently** — the failure mode with no symptom: the tester
+sees a normal page, and the dataset has no rows to be missing from. A reporting channel that
+cannot be observed failing needs a live probe, not a code read; the 403 above took one `curl`
+and the empty-`events` payload writes nothing.
+
+The rest was naming: nine root pages, `site/site.css`, `site/make_download.js`,
+`site/stamp_version.js` (twice — including the prose it *emits* into `site/channel.js`, so the
+placeholder was regenerated rather than hand-edited) and one `run_channel` case name.
+`CHANGELOG.md`/`TUNING_LOG.md` history is left alone — record, not policy.
+
+**The rest of #413 is DONE; the issue body was stale.** Live site measured `Server: cloudflare`,
+stamped `af48703`. Analytics, `privacy.html`, branch control and the build/output settings all
+landed. Two corrections to the record: **`dev.reactordynamics.com` was decided AGAINST**, not
+deferred (`develop.reactor-dynamics.pages.dev` serves testers), yet it is still named as *the*
+test site in an HTML comment on all eight pages plus `404.html`; and **`vercel.json` /
+`.vercelignore` are not free to delete** even though nothing deploys from them — `run_portable`
+parses the `buildCommand` and both it and `run_site_meta` read `.vercelignore` as the authority
+on what is published. The real authority moved to `site/build_site.js`'s allowlist on
+2026-08-07. Retiring the Vercel files means repointing two gates first, not a `git rm`.
+
+---
+
 ## Session log — 2026-08-09-develop-b (#394 + #378 + #420 — the limit cycle was LOOP GAIN, and two sessions rejected fixes for the wrong mechanism)
 
 **Outcome: both strict xfails retire. `run_behavior` 67pass/2xfail → 69pass/0xfail, `run_all` 44

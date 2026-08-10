@@ -280,15 +280,22 @@ both times in ways a careful reader would not catch:
   deployment by hand. A false alarm that invites an unnecessary intervention.
 - It only knew Vercel. Every GitHub deployment on this repo is created by `vercel[bot]`, so
   after the Cloudflare move (#413) the query returns nothing on **every** release, for ever.
+- **Its Vercel half read the deployment RECORD and never the build OUTCOME**, so it could not
+  fail (2026-08-09). Measured on Alpha 1.5.1: it printed `vercel PRODUCTION` for a deployment
+  whose only status is `failure — "Deployment was blocked"`. See below.
 
 The script asks both hosts (GitHub deployments for Vercel, `wrangler pages deployment list`
-for Cloudflare), demands a full sha, and requires a Cloudflare deployment to be BOTH
-`environment=production` AND `deploy:success` — a queued or failed build is not a live site.
-A yellow "could not query" line means a host was unreachable, which is **not** the same as
-"no deployment"; the script says so in its own failure text.
+for Cloudflare), demands a full sha, and requires a deployment on **either** host to be BOTH
+`environment=production` AND finished successfully — a queued, blocked or failed build is not
+a live site. A yellow "could not query" line means a host was unreachable, which is **not** the
+same as "no deployment"; the script says so in its own failure text.
 
 **A "Vercel — success" commit status is NOT evidence of a production deploy.** It is satisfied by
-a preview build. Only `environment=Production` for the released SHA is.
+a preview build. Neither is `environment=Production` on its own: **a deployment record is created
+when the build is REQUESTED and keeps that environment whatever happens next.** The outcome lives
+in `/deployments/{id}/statuses`, a second request, and the script now makes it. Vercel's Git
+integration is still connected after the cutover while its builds block, so on every release
+since it mints exactly that record — a Production deployment of a build that never ran.
 
 **The ordering above is the fix, and it is the suspected cause.** Pushing `develop` to the *same
 commit* seconds after the merge gives Vercel two events for one SHA; measured on Alpha 1.0.0, only

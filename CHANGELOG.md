@@ -31,6 +31,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The usage/bug-report Worker rejected the test site, silently** (#413). `ALLOWED_ORIGINS`
+  listed `https://dev.reactordynamics.com` — a custom subdomain planned during the Cloudflare
+  migration and never created — and omitted `https://develop.reactor-dynamics.pages.dev`, which
+  is what testers actually use *(OWNER RULING, 2026-08-09: "instead of dev.reactordynamics.com
+  im going to use the currently functioning https://develop.reactor-dynamics.pages.dev/. This
+  works just as well.")*. `RD_TELEMETRY_ENDPOINT` is stamped on preview builds, so the test site
+  was posting the whole time. Measured against the live Worker: the test-site origin gets
+  `403 origin not allowed` where the live origin gets `204`, and the preflight returns
+  `Access-Control-Allow-Origin: https://reactordynamics.com` to the test site so a browser blocks
+  the response regardless of status. Every bug report and event from the test site was discarded
+  with no symptom anywhere. **Needs a Worker redeploy to take effect.** The dead subdomain is also
+  retired from the nine root pages, `site/site.css`, `site/make_download.js`,
+  `site/stamp_version.js` and `test/run_channel.js`.
+- **The release check could certify a release LIVE on a build that never ran** (#413).
+  `tools/verify_release_deploy.js` filtered GitHub deployments on `environment === Production`
+  and never read `/deployments/{id}/statuses` — but a deployment record is created when the
+  build is *requested* and keeps that environment whatever happens next. Vercel's Git
+  integration is still connected after the Cloudflare cutover while its builds now block, so
+  it mints exactly that record per push: measured on Alpha 1.5.1, the script printed
+  `vercel PRODUCTION` for a deployment whose only status is `failure — "Deployment was
+  blocked"`. The verdict is any-host, so a Cloudflare failure plus that record would have read
+  `LIVE`. Now requires the newest non-`inactive` status to be `success` (`inactive` is
+  superseding bookkeeping, not an outcome, and treating it as one would fail every release the
+  moment the next shipped). Verified in three directions against real releases: `af48703`
+  (blocked → now rejected, was green), `5df6315` (success → green), `3b7166a` (never released
+  → `NOT LIVE`, exit 1). This is the second defect in this file and the mirror of the first —
+  the Cloudflare half could never pass, this half could never fail.
 - **A milestone could be recorded twice for one session, because the latch and the identity it
   latched against lived in different storage.** `seen` was a plain object — scoped to a page
   **load** — while the session id it is reported under lives in `sessionStorage`, scoped to the
@@ -46,6 +73,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   emits `session_start(cold_shutdown)` and `plant_mode(5)` while `on_grid` stays latched.
 
 ### Added
+- **The in-sim Contact overlay now offers GitHub issues as a second route** *(OWNER DIRECTIVE,
+  2026-08-09: "In the contact form page in the sim it should also direct people to the github
+  issues if they want to use that.")*, worded the same as the site footer so the two read as one
+  offer. It opens in a **new tab**, which is load-bearing rather than stylistic: this is the first
+  outbound link in the control room — the only other anchor there is a `mailto`, which does not
+  navigate — and there is no autosave and no `beforeunload` guard (`rd_progress` stores campaign
+  progress, never plant state). A same-tab click would destroy the running plant, i.e. on a
+  bug-report link it would take the very session the player came to report.
 - **`tools/usage_report.js`** — reads the usage dataset and prints where people start, how far
   they get, which panels and controls they use, and how long they stay. Needs an
   *Account Analytics → Read* token in `CLOUDFLARE_API_TOKEN`; with none it exits 2 and says how
