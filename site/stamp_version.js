@@ -2,7 +2,8 @@
  * (site/channel.js), plus a robots.txt that keeps non-production hosts out of search.
  *
  * Runs on Vercel and on Cloudflare Pages, and is correct off both. Kept under site/
- * (not tools/) so .vercelignore still ships it at build time. See vercel.json.
+ * (not tools/) because it is deploy BUILD tooling; site/build_site.js declares it
+ * build-only (BUILD_ONLY) and prunes it from the published output.
  *
  * ---------------------------------------------------------------------------
  * WHY THIS IS HOST-AGNOSTIC, AND WHY THAT IS NOT COSMETIC (2026-08-07)

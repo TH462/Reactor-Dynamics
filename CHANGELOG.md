@@ -44,6 +44,30 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with no symptom anywhere. **Needs a Worker redeploy to take effect.** The dead subdomain is also
   retired from the nine root pages, `site/site.css`, `site/make_download.js`,
   `site/stamp_version.js` and `test/run_channel.js`.
+- **`vercel.json` and `.vercelignore` are deleted** *(OWNER DIRECTIVE, 2026-08-10: "Do the
+  retirement.")* — the last Vercel-shaped things in the repo (#413). Neither governed the deploy
+  any more, but two gates still read them as authority, so this was a gate change rather than a
+  `git rm`:
+  - **`run_site_meta`** used `.vercelignore` to decide which root pages are public. The authority
+    moved to `site/build_site.js`, which assembles what actually ships and now declares **both**
+    halves — `PAGES` and a new `NOT_PUBLISHED` (the three dev harnesses). **The partition is the
+    check**: the two lists must total the root `*.html` glob, so a new page is a red until some
+    file says whether it ships. That is the property `.vercelignore` was quietly providing, kept
+    rather than dropped with it. 151 → 163.
+  - **`run_portable`'s DEPLOY check** asked "is the ignore file hiding this from the build
+    machine?" — meaningless on Pages, where nothing is excluded, i.e. a check that could only
+    ever answer no. It now asks plain **existence** of every script in the deploy chain (read
+    from `build_site.js`'s `BUILD_ONLY`, the one remaining declaration of what the deploy runs)
+    and the siblings they shell out to. That is strictly stronger: the old form put
+    `if (!existsSync) return;` *before* the exclusion test, so a needed script that had been
+    deleted scored nothing at all — the single failure it existed to prevent (#258) was outside
+    its reach the whole time. 137 → 138.
+
+  Both verified by injection, and the injection corrected a claim: a stray root `.html` reddens
+  the partition check, and moving `site/stamp_version.js` aside reddens the deploy check — but
+  `tools/make_portable.js` and `site/make_download.js` are `require`d by the runner itself, so
+  losing either crashes it before the check runs. Still red to `run_all`, which compares exit
+  codes too, but by stack trace rather than named violation. Recorded rather than glossed.
 - **`tools/verify_release_deploy.js` is Cloudflare-only** (#413). The owner disconnected Vercel's
   GitHub integration on 2026-08-10, so no `vercel[bot]` deployment record is created for any new
   commit — verified before the code came out: `develop`'s tip had **zero** deployment records

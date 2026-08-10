@@ -87,6 +87,36 @@ check written beside its own fix is not green until seen red):
 `wrangler pages deployment list` failed once with "could not query" and succeeded on the retry —
 transient, and the yellow path handled it as designed (unreachable ≠ absent).
 
+**`vercel.json` and `.vercelignore` are deleted, and the interesting part is what the ignore
+file was silently DOING** *(OWNER DIRECTIVE, 2026-08-10: "Do the retirement.")*. Neither had
+governed the deploy since 2026-08-07 — `site/build_site.js` assembles an allowlist into
+`dist-site/` — so both looked like dead weight. They were not. **Two gates read them as
+authority**, and one of those readings was carrying a real property nobody had written down.
+
+- **`run_site_meta` used `.vercelignore` to decide which root pages are public.** Its own header
+  argues the point well: a gate that iterates a hand-kept list of pages is testing the list, and
+  would pass at full marks on the one page it had never heard of. So the glob had to keep an
+  external answer to "is this page public?". The authority moved to `build_site.js`, which now
+  declares BOTH halves — `PAGES` and a new `NOT_PUBLISHED` — and **the partition is the check**:
+  the two must total the glob. A new root page is a red until some file says whether it ships.
+  151 → 163.
+- **`run_portable`'s DEPLOY check was asking a question that could only answer "no".** "Is the
+  ignore file hiding this from the build machine?" is meaningless on Pages, where nothing is
+  excluded — the session's recurring shape, one more time. Replaced with plain EXISTENCE of the
+  chain (read from `BUILD_ONLY`) and its shelled-out siblings. **Strictly stronger, because the
+  old one had a hole**: `if (!existsSync) return;` sat BEFORE the exclusion test, so a needed
+  script that had been deleted or renamed scored nothing at all. The one failure it was written
+  for (#258, Alpha 1.10.0's dead deploy) was outside its reach the entire time. 137 → 138.
+
+**The injection corrected me, which is the point of doing it.** A stray root `.html` reddens the
+partition check; moving `site/stamp_version.js` aside reddens the deploy check. But my first
+attempt injected `tools/make_portable.js` and got **no output at all** — the runner `require`s it
+at :46 and died with MODULE_NOT_FOUND before reaching the check. Same for `site/make_download.js`
+(:284). So "verified by injection" was true for two of the four chain members and false for the
+other two, which are covered by a crash instead. Both are red to `run_all` (it compares exit
+codes as well as scores), but only one is red by a named violation. Had I not run the injection I
+would have written the stronger claim and it would have been wrong.
+
 **The Vercel half is GONE, and the check that it was safe to remove is the same class as the
 bug** (2026-08-10). The owner disconnected Vercel's GitHub integration; before deleting the code
 I measured rather than took it: **`develop`'s tip carried ZERO deployment records where every
