@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.5.2] — 2026-08-10
+
 ### Added
 - **`tools/site_report.js`** — every number the live site knows about itself, in one command:
   Web Analytics traffic (visitors, top pages, referrers, countries, devices), telemetry Worker
