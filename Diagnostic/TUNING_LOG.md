@@ -124,6 +124,64 @@ test site in an HTML comment on all eight pages plus `404.html`; and **`vercel.j
 parses the `buildCommand` and both it and `run_site_meta` read `.vercelignore` as the authority
 on what is published. The real authority moved to `site/build_site.js`'s allowlist on
 2026-08-07. Retiring the Vercel files means repointing two gates first, not a `git rm`.
+## Session log — 2026-08-09-backshop-b (#430/#431 — the first real bug report arrived and the documented way to read it had never existed)
+
+**Outcome: `tools/fetch_bug_reports.js` + the `read-bug-reports` skill; two docs corrected; the
+owner's report read.** `run_all` 44 runners at baseline (docs and a `tools/` script — `run_all`
+discovers `test/(run|verify)_*.js` only, so the tool needs no baseline).
+
+### The trap: a command that was written from recall, never run, and only failed years later
+
+The owner sent the first in-sim bug report — `bundles/2026-08-10/msmiercb-46iji16v.json.gz`,
+34,127 bytes gz, note `TESTING!!! HELLO WORLD`, a 1227 s PWR session from the `50_percent` IC
+ending in `inject_failure loss_of_condenser_vacuum sev 1.0` at t=1126.5 s → vacuum-low 1135.9 →
+vacuum trip 1140.6 → turbine trip → scram on `turbine_tripped is_true` 1140.7 → SG press high
+1150.2. End state 2235 psi (15.41 MPa), Tavg 557.3 °F (291.8 °C), subcooling 95.8 °F (53.2 °C),
+0.14 % power on 1.81 % decay heat. Client perf 9.7 fps, render p95 16.8 ms, budget 12.8 %,
+verdict *healthy*. Nothing anomalous — the plant did what a loss of condenser vacuum should do.
+
+**Reading it took a tool that did not exist.** `RD_Ops/runbook.md` and `worker/README.md` both
+said `wrangler r2 object list reactor-dynamics-bundles --prefix bundles/`. That subcommand has
+never existed in any wrangler — `r2 object` is get/put/delete and nothing under `r2 bucket`
+lists objects (4.120.0). It is the failure mode HR12 names, in ops clothing: **a command in a
+runbook is an unmeasured claim until someone runs it**, and a runbook's commands are the ones
+least likely to be exercised before the day they matter.
+
+Every fallback was shut, which is the part worth keeping:
+
+| route | why not |
+|---|---|
+| `wrangler r2 object get` | needs an exact key; a key is `<base36 ms>-<8 random chars>` |
+| ask the reporter for the id | `site/telemetry.js:257` reads only `{ok, status}` and drops the `{ok, id}` the Worker deliberately returns (`worker/src/index.js:212`) — filed #431 |
+| Cloudflare REST API | `CLOUDFLARE_API_TOKEN` is Analytics-read; R2 endpoints answer **403 Authentication error** |
+| wrangler's OAuth token | `whoami` scope list carries no `r2` |
+| S3 API | needs R2 access keys that do not exist and could not be stored — `C:\grok_build\` syncs off-site |
+
+### The route that needs no new credential
+
+`wrangler dev --remote` binds the **real** bucket into a locally-driven Worker. So the tool
+writes a throwaway reader to a temp directory, runs it, calls `.list()`/`.get()` through it and
+tears it down. Nothing is deployed. Three implementation traps, all measured:
+
+- **Kill the whole TREE.** npx → wrangler → workerd; a bare `child.kill()` leaves the preview
+  session live and the port held. `taskkill /PID <pid> /T /F` on Windows.
+- **Poll the port, do not parse the banner.** A 200 is the only thing that proves the *binding*
+  resolved; the banner wording moves between versions.
+- **`shell:true` with an args array is DEP0190.** One command string instead. `shell:true` is
+  not optional — `npx` is `npx.cmd` and Node will not exec a `.cmd` directly.
+
+### Second thing both docs had wrong
+
+The stored object is the **wire envelope** `{v, kind, note, bundle}` (`site/telemetry.js:248`),
+not the flat Dev-tab download. `manifest`, `timeseries`, `events`, `commands`, `performance`,
+`snapshot_end` are all one level under `.bundle`; only `note` is at the top. `jq .manifest`
+against the documented flat shape reads `null` — **indistinguishable from an empty report**,
+which is the same shape of failure as the command that could not run: it fails silently and
+looks like an absence of data rather than a broken reader.
+
+Both docs now carry the *why*, not just the corrected command, so the recalled form does not
+come back. Downloads land in `RD_Ops/bug-reports/` — outside every worktree, because a report
+carries a player's typed words and must not be committable.
 
 ---
 

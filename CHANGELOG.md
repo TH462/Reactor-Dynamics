@@ -81,6 +81,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   navigate — and there is no autosave and no `beforeunload` guard (`rd_progress` stores campaign
   progress, never plant state). A same-tab click would destroy the running plant, i.e. on a
   bug-report link it would take the very session the player came to report.
+- **`tools/fetch_bug_reports.js` + the `read-bug-reports` skill** — the in-sim bug reports were
+  arriving in R2 and could not be read. Both `RD_Ops/runbook.md` and `worker/README.md`
+  documented `wrangler r2 object list …`, **which has never existed in any version**
+  (`wrangler r2 object` is get/put/delete, and nothing under `r2 bucket` lists objects); it was
+  written from recall, never run, and the first person to need it was the owner, on the first
+  real report. Every fallback was shut too: `object get` needs an exact key and a key is
+  `<base36 ms>-<8 random chars>`, `CLOUDFLARE_API_TOKEN` is Analytics-read and answers 403 on
+  R2, wrangler's OAuth token carries no `r2` scope, and the reporter cannot supply an id
+  because `site/telemetry.js` discards the one the Worker returns (#431). The tool takes the
+  one route needing **no new credential**: a throwaway reader Worker in a temp directory, run
+  under `wrangler dev --remote` so the real bucket is bound into a locally-driven Worker, then
+  `.list()`/`.get()` through it and torn down. Lists, downloads to `RD_Ops/bug-reports/`
+  (outside every worktree — a report carries a player's typed words), and summarises US-first:
+  note, manifest, commands with their `blocked`/`error` flags, alarms that went active, the
+  scram and its trip reason, the client performance verdict, the end state. Both docs corrected
+  to say *why* the old command could not work, so it is not rewritten from recall a second
+  time. Second thing both had wrong: the stored object is the wire envelope
+  `{v, kind, note, bundle}`, so everything but `note` sits under `.bundle` — `jq .manifest`
+  against the documented flat shape reads `null`, which looks exactly like an empty report.
+  (#430)
 - **`tools/usage_report.js`** — reads the usage dataset and prints where people start, how far
   they get, which panels and controls they use, and how long they stay. Needs an
   *Account Analytics → Read* token in `CLOUDFLARE_API_TOKEN`; with none it exits 2 and says how
