@@ -115,8 +115,9 @@ a:hover { text-decoration: underline; }
 a.disabled { pointer-events: none; cursor: default; opacity: 0.4; text-decoration: none; }
 
 /* ========================================================== TEST BUILD marker
- * dev.reactordynamics.com serves the same pages as the live domain from the
- * `develop` branch, so a visitor has no way to tell them apart without being told.
+ * The test site (`develop.reactor-dynamics.pages.dev`) serves the same pages as the
+ * live domain from the `develop` branch, so a visitor has no way to tell them apart
+ * without being told.
  * Both markers key off html[data-channel], set in each page's <head> from
  * window.RD_CHANNEL — which site/stamp_version.js stamps at deploy.
  *

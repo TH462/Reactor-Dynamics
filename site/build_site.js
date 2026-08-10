@@ -3,7 +3,7 @@
  *   node site/build_site.js        (after stamp_version.js and make_download.js)
  *
  * WHY THIS EXISTS. The deploy used to publish the repository root and rely on
- * `.vercelignore` to hold back everything that is not the website. Cloudflare Pages
+ * an ignore file to hold back everything that is not the website. Cloudflare Pages
  * has no equivalent and no ignore file at all, so on that host the same arrangement
  * publishes `test/`, `Blueprint/`, `Manuals/`, `Diagnostic/` and the three dev
  * harness pages. Nothing there is secret — the repository is public — but
@@ -41,13 +41,32 @@ const PAGES = ['index.html', 'about.html', 'physics.html', 'roadmap.html',
                '404.html'];
 const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios'];
 
+/* Root pages that deliberately DO NOT ship. Declared here rather than inferred, because
+ * this file is now the only statement of what the site is: `.vercelignore` used to name
+ * them and was deleted with `vercel.json` when the Vercel Git integration went (#413), and
+ * Cloudflare Pages honours no ignore file at all. These are dev harnesses — they load an
+ * engine directly, with no shell, no control layer and no flag gating — so reaching one on
+ * the live domain is a bug, not a feature.
+ *
+ * PAGES + NOT_PUBLISHED must TOTAL the root `*.html` glob: `test/run_site_meta.js` proves
+ * the partition, so a new root page cannot exist without some file saying whether it ships.
+ * That is the property `.vercelignore` used to provide, kept rather than dropped. */
+const NOT_PUBLISHED = ['test_pwr.html', 'test_bwr.html', 'test_rbmk.html'];
+
 /* Generated earlier in the build. `download/` may be absent on a bare local run and
  * that is not an error — the page degrades to no metadata line. */
 const OPTIONAL = ['robots.txt'];
 const OPTIONAL_DIRS = ['download'];
 
-/* Build tooling that lives under site/ so .vercelignore would still ship it at build
- * time (see the note in stamp_version.js). It has no business in the published tree. */
+/* THE DEPLOY BUILD CHAIN, and the one declaration of it in the repo. These three run in
+ * this order as the Pages build command and must not reach the published tree.
+ *
+ * `test/run_portable.js` reads this set and proves every script here — and every sibling
+ * each one shells out to, e.g. tools/make_portable.js — actually EXISTS. That check used
+ * to ask a different question ("is .vercelignore hiding it from the build machine?"),
+ * which is meaningless on Pages, where nothing is excluded. The underlying invariant is
+ * the same one #258 cost a release: the build command cannot run a file that is not there,
+ * and a deploy failure reports it as a bare `exited with 1` long after the fact. */
 const BUILD_ONLY = new Set(['stamp_version.js', 'make_download.js', 'build_site.js']);
 
 // ---------------------------------------------------------------- copy

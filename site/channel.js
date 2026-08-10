@@ -2,7 +2,7 @@
  * This build: local — no CI environment — a local checkout
  *
  *   'public'  — the released website (the `main` branch, on whichever host)
- *   'preview' — a test deployment: any other branch, e.g. dev.reactordynamics.com
+ *   'preview' — a test deployment: any other branch, e.g. the `develop` test site
  *   'dev'     — no CI at all: a clone, file://, a local static server
  *
  * site/flags.js resolves unvetted content as `channel() !== 'public'`, so 'dev' is

@@ -887,12 +887,12 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   2026-08-04: "Let's fix the gap and release.")*. Alpha 1.0.0 merged, tagged and passed CI while
   the **live site kept serving the previous release** — the only deployment Vercel created for that
   commit was a **Preview**. A green *"Vercel — success"* commit status is satisfied by a preview and
-  is **not** evidence. **Run `node tools/verify_release_deploy.js`** — exit 0 means a production
-  deployment exists for that commit, and it asks BOTH hosts, so it keeps working across the
-  Cloudflare move (#413). It replaced a pasted `gh api …?sha=<SHA>` line that failed twice for
-  reasons prose cannot fix: the GitHub API needs the **full 40-char sha** and returns zero rows for
-  an abbreviated one — indistinguishable from "production is missing" — and every such deployment
-  is created by `vercel[bot]`, so the query goes permanently empty once the site moves.
+  is **not** evidence. **Run `node tools/verify_release_deploy.js`** — exit 0 means a **successful**
+  production deployment of that commit exists on Cloudflare Pages (the only host, since the Vercel
+  Git integration was disconnected 2026-08-10). It has failed **four** ways, all recorded in its
+  header; two of them are mirrors — a half that could never *pass*, a half that could never *fail*
+  — and that pair is the rule: **exercise a verifier in BOTH directions against real data, or it
+  is not a verifier** (#413).
   **And do not push `develop` until it exists** — fast-forwarding it to the same commit seconds
   after the merge gives Vercel two events for one SHA, and that is when the production build went
   missing. A missing production deploy is indistinguishable from a slow one from outside, for ever,
@@ -1160,13 +1160,13 @@ and goes public with the repo, as line 6 says.) The curated
 three worktrees, so every lane reads the same copy and nothing in it can be committed. It holds
 `runbook.md` (account/zone/project ids, what is deployed where, how to read the usage data),
 `cutover.md` (the Vercel → Cloudflare migration, #413, with live state), saved Analytics Engine
-queries, and bug-report bundles pulled from R2. **Read it before doing anything to the live
-site** — those identifiers otherwise exist only in one session's conversation.
+queries, and bug-report bundles pulled from R2 by `node tools/fetch_bug_reports.js` (or the
+`read-bug-reports` skill). **Read it before touching the live site** — those identifiers
+otherwise exist only in one session's conversation.
 **NO SECRETS LIVE THERE**, deliberately: `C:\grok_build\` syncs off-site (`.SynologyWorkingDirectory`),
 and every agent reads the folder, so a plaintext credential there is replicated *and* shared.
 Tokens go in a user env var (`CLOUDFLARE_API_TOKEN`); wrangler, `gh` and the MCP servers keep
-their own OAuth and need no help. A credential found in that folder is a defect — move it and
-revoke the exposed one.
+their own OAuth. A credential found there is a defect — move it and revoke the exposed one.
 
 ---
 

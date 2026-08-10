@@ -38,8 +38,10 @@ on:
     # to THIS FILE can now only be proven by landing it on develop, which is exactly how
     # the --fast version shipped broken and stayed red for 32 runs. If you need to prove a
     # CI change again, push the lane temporarily, add it here, and delete both afterwards —
-    # vercel.json already refuses to build those branch names, so a temporary push cannot
-    # spring a preview site on the owner the way it did the first time.
+    # the Pages project excludes those branch names, so a temporary push cannot spring a
+    # preview site on the owner the way it did the first time. (That guard used to live in
+    # vercel.json, deleted with the Vercel integration — #413. It is now a project setting,
+    # i.e. NOT visible in the repo: check the Pages dashboard before relying on it.)
     branches: [main, develop]
   pull_request:
     branches: [main, develop]

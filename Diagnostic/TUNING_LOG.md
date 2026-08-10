@@ -257,6 +257,205 @@ never broken** — its first increment clips back onto the target and the loop e
 two new checks fail against *different* regressions, and the second one's live purpose is a
 later edit that drops the guard trusting the strict sign. RBMK and BWR carry the identical
 `>=` and are ON HOLD; noted on the issue, not touched.
+## Session log — 2026-08-09-workbench-b (#413 — the release check's other half could never FAIL; the migration is otherwise done)
+
+**Both halves of `tools/verify_release_deploy.js` have now been wrong in opposite directions,
+and the second one was live.** `2026-08-09-workbench-a` found a Cloudflare half that could
+never *pass* (it read API field names against wrangler's table output). This session found a
+Vercel half that could never *fail*: it filtered GitHub deployments on `environment` alone and
+never read `/deployments/{id}/statuses`.
+
+**A deployment RECORD is created when the build is REQUESTED**, and it keeps
+`environment: "Production"` whatever happens next. Measured on the released sha
+`af487035…` (Alpha 1.5.1):
+
+```
+verify_release_deploy.js  →  vercel PRODUCTION  vercel[bot]  2026-08-09T13:56:51Z
+gh api …/deployments/5819358981/statuses
+                          →  failure  "Deployment was blocked"
+```
+
+Vercel's Git integration is **still connected** after the 2026-08-08 cutover — the owner action
+"disconnect Git" in `RD_Ops/cutover.md` is outstanding — and **every Vercel deployment since
+~2026-08-09 00:34 UTC is `state: BLOCKED`** (last `READY`: `dpl_DbEtNWf3`; nine blocked after
+it). So it mints one of those records per push, for ever.
+
+**The verdict is ANY-host, which is what made it dangerous.** Alpha 1.5.1 read `LIVE` and was
+live — Cloudflare genuinely deployed — so the defect was invisible in the pass. Had Cloudflare's
+build failed, the same run would still have printed `LIVE`, certified by a blocked build to a
+host that no longer serves the domain. That is the Alpha 1.0.0 failure this script exists to
+prevent, wearing the migration's clothes: **#413 predicted the check would "silently become
+meaningless" by returning nothing; it returns something, and the something is a failure read as
+a success.**
+
+The fix reads the statuses and requires the newest non-`inactive` one to be `success`.
+`inactive` is skipped deliberately — GitHub adds it when a later deployment supersedes this one,
+which says nothing about whether this one built, and treating it as an outcome would fail every
+release the moment the next one shipped.
+
+**What is measured and what is assumed, because they are not the same here.** Sampled eight
+deployments across the last week: **every one carries exactly ONE status.** Vercel posts a single
+terminal `success`/`failure` and never a `pending` → `success` sequence, and no `inactive` row
+appeared at all. So `real[0]` is, on today's data, the only status there is — the
+newest-first ordering and the skip-`inactive` filter are **defensive and untested against real
+multi-status data**, resting on GitHub's documented reverse-chronological order. Both fail in the
+loud direction: get either wrong and a good release reports `NOT LIVE`, rather than a failed one
+reporting `LIVE`, which is the defect being fixed. Recorded rather than left implied — the file's
+own history is two parsers written against assumed response shapes.
+
+**Verified in three directions against real releases, not fixtures** (the standing rule — a
+check written beside its own fix is not green until seen red):
+
+| sha | Vercel record | new verdict |
+|---|---|---|
+| `af48703` (1.5.1) | Production, `failure`/blocked | **rejected** — was green before this change |
+| `5df6315` (1.4.0) | Production, `success` | accepted, green |
+| `3b7166a` (never released) | none | `NOT LIVE`, exit 1 |
+
+`wrangler pages deployment list` failed once with "could not query" and succeeded on the retry —
+transient, and the yellow path handled it as designed (unreachable ≠ absent).
+
+**`vercel.json` and `.vercelignore` are deleted, and the interesting part is what the ignore
+file was silently DOING** *(OWNER DIRECTIVE, 2026-08-10: "Do the retirement.")*. Neither had
+governed the deploy since 2026-08-07 — `site/build_site.js` assembles an allowlist into
+`dist-site/` — so both looked like dead weight. They were not. **Two gates read them as
+authority**, and one of those readings was carrying a real property nobody had written down.
+
+- **`run_site_meta` used `.vercelignore` to decide which root pages are public.** Its own header
+  argues the point well: a gate that iterates a hand-kept list of pages is testing the list, and
+  would pass at full marks on the one page it had never heard of. So the glob had to keep an
+  external answer to "is this page public?". The authority moved to `build_site.js`, which now
+  declares BOTH halves — `PAGES` and a new `NOT_PUBLISHED` — and **the partition is the check**:
+  the two must total the glob. A new root page is a red until some file says whether it ships.
+  151 → 163.
+- **`run_portable`'s DEPLOY check was asking a question that could only answer "no".** "Is the
+  ignore file hiding this from the build machine?" is meaningless on Pages, where nothing is
+  excluded — the session's recurring shape, one more time. Replaced with plain EXISTENCE of the
+  chain (read from `BUILD_ONLY`) and its shelled-out siblings. **Strictly stronger, because the
+  old one had a hole**: `if (!existsSync) return;` sat BEFORE the exclusion test, so a needed
+  script that had been deleted or renamed scored nothing at all. The one failure it was written
+  for (#258, Alpha 1.10.0's dead deploy) was outside its reach the entire time. 137 → 138.
+
+**The injection corrected me, which is the point of doing it.** A stray root `.html` reddens the
+partition check; moving `site/stamp_version.js` aside reddens the deploy check. But my first
+attempt injected `tools/make_portable.js` and got **no output at all** — the runner `require`s it
+at :46 and died with MODULE_NOT_FOUND before reaching the check. Same for `site/make_download.js`
+(:284). So "verified by injection" was true for two of the four chain members and false for the
+other two, which are covered by a crash instead. Both are red to `run_all` (it compares exit
+codes as well as scores), but only one is red by a named violation. Had I not run the injection I
+would have written the stronger claim and it would have been wrong.
+
+**The Vercel half is GONE, and the check that it was safe to remove is the same class as the
+bug** (2026-08-10). The owner disconnected Vercel's GitHub integration; before deleting the code
+I measured rather than took it: **`develop`'s tip carried ZERO deployment records where every
+earlier tip carried one**, and Vercel's `latestDeployment` had stopped moving. Had I skipped
+that and the integration were still live, the deletion would have removed a working half — and
+had I kept the branch on a disconnected host, it could only ever report "nothing here", which is
+failure (2) in the file's own list wearing the other host's name. Either way the answer comes
+from a measurement, not from the sentence "it's disconnected".
+
+The header now records all four failure modes, because **two of them are mirrors**: the
+Cloudflare half could never PASS (API field names against wrangler's table output,
+`2026-08-09-workbench-a`) and the Vercel half could never FAIL (the record, never the outcome).
+A verifier with no true-positive on record is not a verifier; neither is one with no
+true-negative. Both directions re-run on the single-host script: `af48703` LIVE/0,
+`3b7166a` NOT LIVE/1.
+
+**The custom dev subdomain is retired, and retiring it found a dead reporting channel.**
+*(OWNER RULING, 2026-08-09: "instead of dev.reactordynamics.com im going to use the currently
+functioning https://develop.reactor-dynamics.pages.dev/. This works just as well. We can retire
+the issues calling for the creation of a page for the develop worktree.")* — `dev.reactordynamics.com`
+was planned in #413 and never created, so nine months of comments named a host that does not exist.
+
+The one that was not cosmetic: **`worker/src/index.js`'s `ALLOWED_ORIGINS` listed the subdomain
+that was never built and omitted the `pages.dev` host that testers actually use**, while
+`RD_TELEMETRY_ENDPOINT` is stamped on preview builds — so the test site has been sending all
+along. Measured against the live Worker:
+
+```
+POST  Origin: https://develop.reactor-dynamics.pages.dev  ->  403 origin not allowed
+POST  Origin: https://reactordynamics.com                 ->  204   (control)
+```
+
+and the preflight answers `Access-Control-Allow-Origin: https://reactordynamics.com` to the test
+site, so a browser blocks the response independently of the status. **Every bug report and every
+event from the test site was discarded silently** — the failure mode with no symptom: the tester
+sees a normal page, and the dataset has no rows to be missing from. A reporting channel that
+cannot be observed failing needs a live probe, not a code read; the 403 above took one `curl`
+and the empty-`events` payload writes nothing.
+
+The rest was naming: nine root pages, `site/site.css`, `site/make_download.js`,
+`site/stamp_version.js` (twice — including the prose it *emits* into `site/channel.js`, so the
+placeholder was regenerated rather than hand-edited) and one `run_channel` case name.
+`CHANGELOG.md`/`TUNING_LOG.md` history is left alone — record, not policy.
+
+**The rest of #413 is DONE; the issue body was stale.** Live site measured `Server: cloudflare`,
+stamped `af48703`. Analytics, `privacy.html`, branch control and the build/output settings all
+landed. Two corrections to the record: **`dev.reactordynamics.com` was decided AGAINST**, not
+deferred (`develop.reactor-dynamics.pages.dev` serves testers), yet it is still named as *the*
+test site in an HTML comment on all eight pages plus `404.html`; and **`vercel.json` /
+`.vercelignore` are not free to delete** even though nothing deploys from them — `run_portable`
+parses the `buildCommand` and both it and `run_site_meta` read `.vercelignore` as the authority
+on what is published. The real authority moved to `site/build_site.js`'s allowlist on
+2026-08-07. Retiring the Vercel files means repointing two gates first, not a `git rm`.
+## Session log — 2026-08-09-backshop-b (#430/#431 — the first real bug report arrived and the documented way to read it had never existed)
+
+**Outcome: `tools/fetch_bug_reports.js` + the `read-bug-reports` skill; two docs corrected; the
+owner's report read.** `run_all` 44 runners at baseline (docs and a `tools/` script — `run_all`
+discovers `test/(run|verify)_*.js` only, so the tool needs no baseline).
+
+### The trap: a command that was written from recall, never run, and only failed years later
+
+The owner sent the first in-sim bug report — `bundles/2026-08-10/msmiercb-46iji16v.json.gz`,
+34,127 bytes gz, note `TESTING!!! HELLO WORLD`, a 1227 s PWR session from the `50_percent` IC
+ending in `inject_failure loss_of_condenser_vacuum sev 1.0` at t=1126.5 s → vacuum-low 1135.9 →
+vacuum trip 1140.6 → turbine trip → scram on `turbine_tripped is_true` 1140.7 → SG press high
+1150.2. End state 2235 psi (15.41 MPa), Tavg 557.3 °F (291.8 °C), subcooling 95.8 °F (53.2 °C),
+0.14 % power on 1.81 % decay heat. Client perf 9.7 fps, render p95 16.8 ms, budget 12.8 %,
+verdict *healthy*. Nothing anomalous — the plant did what a loss of condenser vacuum should do.
+
+**Reading it took a tool that did not exist.** `RD_Ops/runbook.md` and `worker/README.md` both
+said `wrangler r2 object list reactor-dynamics-bundles --prefix bundles/`. That subcommand has
+never existed in any wrangler — `r2 object` is get/put/delete and nothing under `r2 bucket`
+lists objects (4.120.0). It is the failure mode HR12 names, in ops clothing: **a command in a
+runbook is an unmeasured claim until someone runs it**, and a runbook's commands are the ones
+least likely to be exercised before the day they matter.
+
+Every fallback was shut, which is the part worth keeping:
+
+| route | why not |
+|---|---|
+| `wrangler r2 object get` | needs an exact key; a key is `<base36 ms>-<8 random chars>` |
+| ask the reporter for the id | `site/telemetry.js:257` reads only `{ok, status}` and drops the `{ok, id}` the Worker deliberately returns (`worker/src/index.js:212`) — filed #431 |
+| Cloudflare REST API | `CLOUDFLARE_API_TOKEN` is Analytics-read; R2 endpoints answer **403 Authentication error** |
+| wrangler's OAuth token | `whoami` scope list carries no `r2` |
+| S3 API | needs R2 access keys that do not exist and could not be stored — `C:\grok_build\` syncs off-site |
+
+### The route that needs no new credential
+
+`wrangler dev --remote` binds the **real** bucket into a locally-driven Worker. So the tool
+writes a throwaway reader to a temp directory, runs it, calls `.list()`/`.get()` through it and
+tears it down. Nothing is deployed. Three implementation traps, all measured:
+
+- **Kill the whole TREE.** npx → wrangler → workerd; a bare `child.kill()` leaves the preview
+  session live and the port held. `taskkill /PID <pid> /T /F` on Windows.
+- **Poll the port, do not parse the banner.** A 200 is the only thing that proves the *binding*
+  resolved; the banner wording moves between versions.
+- **`shell:true` with an args array is DEP0190.** One command string instead. `shell:true` is
+  not optional — `npx` is `npx.cmd` and Node will not exec a `.cmd` directly.
+
+### Second thing both docs had wrong
+
+The stored object is the **wire envelope** `{v, kind, note, bundle}` (`site/telemetry.js:248`),
+not the flat Dev-tab download. `manifest`, `timeseries`, `events`, `commands`, `performance`,
+`snapshot_end` are all one level under `.bundle`; only `note` is at the top. `jq .manifest`
+against the documented flat shape reads `null` — **indistinguishable from an empty report**,
+which is the same shape of failure as the command that could not run: it fails silently and
+looks like an absence of data rather than a broken reader.
+
+Both docs now carry the *why*, not just the corrected command, so the recalled form does not
+come back. Downloads land in `RD_Ops/bug-reports/` — outside every worktree, because a report
+carries a player's typed words and must not be committable.
 
 ---
 

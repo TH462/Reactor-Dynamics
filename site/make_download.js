@@ -20,8 +20,12 @@
  * zlib does DEFLATE, which is the compression ZIP actually uses, so the container is
  * ~60 lines of header writing. The HTML is mostly source text and compresses about 5x.
  *
- * Kept under site/ (not tools/) for the same reason as stamp_version.js: .vercelignore
- * still ships it at build time.
+ * Kept under site/ (not tools/) for the same reason as stamp_version.js: it is deploy
+ * BUILD tooling, and site/build_site.js declares it build-only (BUILD_ONLY) and prunes it
+ * from the published output. That relationship INVERTED when Vercel went (#413): the
+ * deploy used to publish the repo root minus an ignore file, so the question was "is it
+ * excluded?"; it now publishes an assembled allowlist, so the question is "is it declared
+ * build-only?".
  */
 'use strict';
 const fs = require('fs');
@@ -53,8 +57,8 @@ function releaseDate() {
   return m ? m[1] : null;
 }
 
-// Both values come from the files stamp_version.js writes, which vercel.json /
-// the Pages build command run FIRST. Read defensively: a local `node
+// Both values come from the files stamp_version.js writes, which the Pages build
+// command runs FIRST. Read defensively: a local `node
 // site/make_download.js` in a fresh clone has the repo placeholders, not a stamp.
 function stamped(file, re, fallback) {
   try {
@@ -65,7 +69,7 @@ function stamped(file, re, fallback) {
 
 // ---- THE ONE PLACE THE DOWNLOAD IS NAMED (#414) ---------------------------------
 // OFF THE RELEASED CHANNEL THE NAME CARRIES THE COMMIT. Until 2026-08-09 a tester
-// downloading from dev.reactordynamics.com got `Reactor_Dynamics_Alpha_1.5.1.zip` —
+// downloading from the test site got `Reactor_Dynamics_Alpha_1.5.1.zip` —
 // same product, same version string, DIFFERENT BYTES from the release of that name,
 // and indistinguishable from it once it is sitting in a downloads folder. "The
 // download is broken" then arrives with nothing to say which build produced it. That
@@ -193,11 +197,11 @@ const distPath = path.join(ROOT, 'dist', distName);
 if (!fs.existsSync(distPath)) {
   const bundler = path.join(ROOT, 'tools', 'make_portable.js');
   if (!fs.existsSync(bundler)) {
-    // This is what a deploy failure looks like when .vercelignore excludes the bundler:
-    // a bare ENOENT from execFileSync that says nothing about WHY. Alpha 1.10.0 failed
-    // exactly here. Say the actual cause.
-    throw new Error('tools/make_portable.js is missing. If this is a Vercel build, it is'
-      + ' being excluded by .vercelignore — the buildCommand needs it. See #258.');
+    // Without this, a deploy failure here is a bare ENOENT from execFileSync that says
+    // nothing about WHY. Alpha 1.10.0 failed exactly here. Say the actual cause.
+    // test/run_portable.js now gates the same invariant so it cannot reach a deploy at all.
+    throw new Error('tools/make_portable.js is missing, and the deploy build command needs'
+      + ' it. See #258.');
   }
   cp.execFileSync(process.execPath, [bundler], { cwd: ROOT, stdio: 'inherit' });
 }

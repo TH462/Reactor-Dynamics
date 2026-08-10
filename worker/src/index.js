@@ -34,10 +34,31 @@
  */
 
 // ---------------------------------------------------------------- configuration
+/* THE TEST SITE MUST BE IN HERE, AND IT WAS NOT — measured 2026-08-09. This list
+ * carried `https://dev.reactordynamics.com`, a custom subdomain that was planned in
+ * #413 and then never created *(OWNER RULING, 2026-08-09: "instead of
+ * dev.reactordynamics.com im going to use the currently functioning
+ * https://develop.reactor-dynamics.pages.dev/. This works just as well. We can retire
+ * the issues calling for the creation of a page for the develop worktree.")*. So the
+ * allowlist named a host that does not exist and omitted the one that does, while
+ * `RD_TELEMETRY_ENDPOINT` is stamped on preview builds too — the test site has been
+ * sending all along. Measured against the live Worker:
+ *
+ *   POST, Origin: https://develop.reactor-dynamics.pages.dev  ->  403 origin not allowed
+ *   POST, Origin: https://reactordynamics.com                 ->  204
+ *
+ * and the preflight answers `Access-Control-Allow-Origin: https://reactordynamics.com`
+ * to the test site, so the browser blocks the response even when the status would not.
+ * Every bug report and every event from the test site was discarded silently, which is
+ * the worst way for a reporting channel to fail: the tester sees a normal page and the
+ * dataset simply has no rows to be missing from.
+ *
+ * A `pages.dev` host is now load-bearing rather than incidental — do not drop it from
+ * this list when the Pages project is tidied up. */
 const ALLOWED_ORIGINS = [
   'https://reactordynamics.com',
   'https://www.reactordynamics.com',
-  'https://dev.reactordynamics.com',
+  'https://develop.reactor-dynamics.pages.dev',
 ];
 
 // A 4-hour session is ~504 KB gzipped (measured), so 2 MB is generous headroom and
