@@ -60,7 +60,14 @@ function load(opts) {
   g.clearTimeout = function () {};
   g.fetch = function (url, init) {
     sent.push({ via: 'fetch', url: url, body: init && init.body, headers: (init && init.headers) || {} });
-    return Promise.resolve({ ok: true });
+    // The real Worker answers the bundle route with `{ok:true, id}` and 204-with-no-body on
+    // the event route. `bodyless` drops `json` entirely, which is what an opaque response
+    // looks like — sendBundle must survive that rather than reject (#431).
+    if (opts.bodyless) return Promise.resolve({ ok: true, status: 200 });
+    return Promise.resolve({
+      ok: true, status: 200,
+      json: function () { return Promise.resolve({ ok: true, id: 'msmiercb-46iji16v' }); }
+    });
   };
   // Node ships CompressionStream, so the gzip path is the DEFAULT here — which is
   // what a modern browser does too. `noCompression` exercises the fallback an older
@@ -277,7 +284,12 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
 (function () {
   var a = load({ noCompression: true });
   return a.T.sendBundle({ kind: 'reactor_dynamics_diagnosis' }, 'the rods did nothing')
-    .then(function () {
+    .then(function (res) {
+      // #431: the Worker names the stored object after this id and hands it back so the
+      // reporter can quote it. sendBundle used to return only {ok, status} and drop it,
+      // which left the id existing nowhere a human could reach.
+      ck('sendBundle hands the report id back to the caller',
+        res && res.id === 'msmiercb-46iji16v', JSON.stringify(res));
       ck('sendBundle posts without consent being granted', a.sent.length === 1,
         'sent=' + a.sent.length);
       ck('the bundle goes to its own ?kind=bundle route',
@@ -308,6 +320,15 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
               Buffer.from(ab).length + ' vs ' + raw.length);
           });
         });
+    })
+    .then(function () {
+      // A response with no readable body — an opaque one, or an edge answering HTML on an
+      // error. Reading the id must not be able to turn a report that ARRIVED into a failure.
+      var d = load({ bodyless: true });
+      return d.T.sendBundle({ kind: 'reactor_dynamics_diagnosis' }, 'no body').then(function (res) {
+        ck('a response with no readable body still resolves ok', !!(res && res.ok === true), JSON.stringify(res));
+        ck('…and simply carries no id', !(res && res.id), JSON.stringify(res));
+      });
     });
 }())
   .then(function () {

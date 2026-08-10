@@ -98,19 +98,35 @@
   // 3600× as at 60× and simply gives coarser extremes where there is more sim time to cover.
   var CHART_SUB_MAX = 240;         // sampler calls per broadcast, total, across all buckets
 
-  // Fold one sampler reading into a bucket accumulator. GENERIC over the reading's shape —
-  // it walks whatever side-dicts the sampler returned ({v, tv} today) and tracks the last
-  // value plus the extremes per key, so the service never learns what a "series" is and a
-  // new plotted quantity needs no change here. Keys that are null (a series with no reading
-  // on that side) stay out of the extremes entirely rather than poisoning them with nulls.
+  // The SIDES a sampler reading may carry: [value key, lo key, hi key]. Adding one is a row
+  // in this table and nothing else.
+  //
+  // It is a table because the paragraph below used to claim the fold was "GENERIC over the
+  // reading's shape" while the function named `v` and `tv` in its body — so the first code
+  // that needed a third side (#432, the bug-report recorder, which cannot ride `tv` because
+  // two chart series scale by 100 for display) would have had to add a fourth special case
+  // to a function advertising that it had none. The claim is now true.
+  var SIDES = [['v', 'lo', 'hi'], ['tv', 'tlo', 'thi'], ['dv', 'dlo', 'dhi']];
+
+  // Fold one sampler reading into a bucket accumulator. Generic over the reading's shape —
+  // it walks the side-dicts the sampler returned and tracks the last value plus the extremes
+  // per key, so the service never learns what a "series" is and a new plotted quantity needs
+  // no change here. A side the sampler omits costs nothing. Keys that are null (a series with
+  // no reading on that side) stay out of the extremes entirely rather than poisoning them.
   function foldExtremes(acc, one) {
     if (!one) return acc;
+    var i, s;
     if (!acc) {
-      acc = { t: 0, v: like(one.v), tv: like(one.tv), lo: like(one.v), hi: like(one.v),
-              tlo: like(one.tv), thi: like(one.tv) };
+      acc = { t: 0 };
+      for (i = 0; i < SIDES.length; i++) {
+        s = SIDES[i];
+        acc[s[0]] = like(one[s[0]]); acc[s[1]] = like(one[s[0]]); acc[s[2]] = like(one[s[0]]);
+      }
     }
-    foldSide(one.v, acc.v, acc.lo, acc.hi);
-    foldSide(one.tv, acc.tv, acc.tlo, acc.thi);
+    for (i = 0; i < SIDES.length; i++) {
+      s = SIDES[i];
+      foldSide(one[s[0]], acc[s[0]], acc[s[1]], acc[s[2]]);
+    }
     return acc;
   }
   // An empty accumulator of the same SHAPE as the reading — a NaN-filled typed array of the
@@ -804,11 +820,18 @@
   };
 
   // ----------------------------------------------------------- broadcast (§10)
-  // Register the strip chart's sampler. `fn(instruments, true_state, control_state)` is
-  // called on a fixed SIM-time interval inside tick() and should return a small plain object
-  // — the service stores it verbatim and hands it over with the next broadcast. Pass null to
-  // stop sampling; with no sampler registered the loop does no extra work at all, which is
-  // what keeps every headless runner and every test harness on the old cost.
+  // Register the fine sampler. `fn(instruments, true_state, control_state)` is called on a
+  // fixed SIM-time interval inside tick() and should return a small plain object carrying
+  // one or more of the SIDES above — the service folds the extremes and hands the buckets
+  // over with the next broadcast. Pass null to stop sampling; with no sampler registered the
+  // loop does no extra work at all, which is what keeps every headless runner and every test
+  // harness on the old cost.
+  //
+  // There is ONE sampler and it has two consumers with different needs — the strip chart
+  // (`v`/`tv`, packed over its series) and the bug-report recorder (`dv`, packed over
+  // RD.DiagRecorder.FIELDS in raw true-state units). They ride one call rather than two
+  // because the cost here is the CALL, not the packing: it runs up to CHART_SUB_MAX times
+  // per broadcast.
   SimulationService.prototype.setFineSampler = function (fn) {
     this._fineSampler = (typeof fn === 'function') ? fn : null;
     if (!this._fineSampler) this._fineBuf = [];

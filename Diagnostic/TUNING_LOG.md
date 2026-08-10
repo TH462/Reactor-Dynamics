@@ -398,6 +398,214 @@ test site in an HTML comment on all eight pages plus `404.html`; and **`vercel.j
 parses the `buildCommand` and both it and `run_site_meta` read `.vercelignore` as the authority
 on what is published. The real authority moved to `site/build_site.js`'s allowlist on
 2026-08-07. Retiring the Vercel files means repointing two gates first, not a `git rm`.
+## Session log — 2026-08-10-backshop-a (the CLAUDE.md cut pass, and what the word cap is actually doing)
+
+**Outcome: 15,000 → 12,862 words, 2,138 of headroom. `Blueprint/LANES.md` created. `run_all` 45
+runners at baseline.** Asked for by the owner, who also asked whether the cap is working and
+whether it is costing us information. Both are measurable, so both were measured.
+
+### Is the cap effective? Yes, by 14×, and the number is not close
+
+Word count of `CLAUDE.md` at the last commit of each day (251 commits touch it):
+
+| date | words | | date | words |
+|---|---|---|---|---|
+| 2026-07-29 | 8,144 | | 2026-08-04 | 37,718 |
+| 2026-07-30 | 9,726 | | 2026-08-05 | 40,124 |
+| 2026-07-31 | 12,603 | | **2026-08-06** | **13,746** ← cap lands |
+| 2026-08-01 | 14,505 | | 2026-08-07 | 14,336 |
+| 2026-08-02 | 16,472 | | 2026-08-08 | 14,989 |
+| 2026-08-03 | 21,723 | | 2026-08-09 | 15,000 |
+
+**Pre-cap growth was +4,568 words/day** (×4.9 in seven days). **Post-cap it is +314/day** — a
+14× reduction, and the file would be past 70,000 words by now on the old trajectory. The single
+biggest commit in the file's history is still the 2026-08-06 cut, −29,102.
+
+### Three things the cap does NOT do, each measured here
+
+1. **It does not stop growth, it converts it into a shaving obligation.** The 2026-08-06 cut
+   left 1,545 words of margin and four days consumed all of it. On 2026-08-09 I hit the cap and
+   cut four passages to fit one pointer line — a worked example out of the gate-baselines
+   paragraph and `test/verify_*.js` out of a factual list among them. **Neither was mine,
+   neither was why the file was full, and the two sections that actually grow were untouched.**
+   That is the marginal incentive the cap creates: when it binds, the cheapest thing to reach is
+   someone else's granular content, and granular content is where the facts are.
+2. **It constrains SIZE, not ACCURACY.** Found this pass, all inside a green gate: a block
+   announcing that `Alpha 1.0.0` "is committed and waiting for the merge — do not bump it again"
+   (it shipped six days and five versions ago); two items in *Known open work* labelled **done**,
+   one of them for a week; and the runner count reading 43 in two places and 44 in a third while
+   the real number was 45. **Staleness is the larger risk and nothing measures it.**
+3. **A total is not actionable.** `run_doc_budget` said "you are over" and nothing else. It now
+   also prints the heaviest three sections and the headroom — a REPORT, not a fourth check,
+   because any per-section number would be a cap I invented and this file's own rule is that a
+   cap needs the owner behind it.
+
+### Are we losing information? At the cap yes, in this pass no — and that is checkable
+
+The distinction is **cutting** versus **moving**. The lane block (2,510 words, 17 % of the file,
+almost all of it worked history) went to `Blueprint/LANES.md`, which is **on the HR11 scan
+surface** (`test/run_hardrules.js` walks `Blueprint`, `Diagnostic`, `Manuals`, plus `CLAUDE.md`,
+`CHANGELOG.md`, `README.md`, `.claude`). Two independent checks that the move was lossless:
+
+- **HR11 sites 238 → 242.** UP, not down. Four owner quotes are deliberately in both files now —
+  `LANES.md` holds the worked case, `CLAUDE.md` keeps the quote beside the rule that binds. A
+  lossy move would have shown as a DROP, which makes this gate a usable loss detector for any
+  future doc split.
+- **Diffed every quoted string in the old block against the two new files** (whitespace and `> `
+  prefixes normalised): 19 strings, **18 exact matches**, and the 19th is my own phrase differing
+  by one capital letter.
+
+Where words actually are, after the pass: *Project status* 4,040 (31 %), the preamble directive
+blocks 3,601 (28 %), everything else 5,221. **Two sections are 59 % of the file.**
+
+### And the check I added yesterday was flaky — caught by the gate, before the commit
+
+`verify_e2e_ui`'s new diag-bundle check asserted `sampling.source === 'fine'`. It passed twice
+and went red on the third parallel run: **`source=mixed`**. The code was correct; the assertion
+was wrong. `mixed` latches on a single tick taken below ~20×, where a broadcast carries less sim
+time than the service's 0.2 s fine grid and no fine row is produced at all — and the probe
+pressed play *before* clicking 600×, so on a loaded box one tick slipped through the gap.
+
+Fixed at the cause (set the speed, then press play — deterministic) **and** at the assertion
+(`source` must not be `broadcast`; `mixed` is a legitimate answer that every real session will
+produce). **The spacing was always the real test** — the broadcast fallback gives ~1 row a
+minute at 600× where the fine seam gives one a second — so nothing was lost by relaxing it.
+Three consecutive standalone runs and one full parallel `run_all`: 1440–1800 rows, worst dt
+**1.0 s** every time.
+
+The lesson is the mirror of the one two entries up: that one was a check that could not fail,
+this is a check that could fail without a defect. Both cost the same thing — the gate stops
+meaning what it says.
+
+### A fifth staleness instance, made BY the cut pass
+
+The compressed status bullet I wrote this session listed #386, #425, #385, #418 and #419 as
+"LANDED, open only on owner-review". **All five were CLOSED.** I rewrote the stale text without
+re-querying — the exact failure the same entry above is about, committed by the person writing
+about it, inside the hour. Corrected: the section now names the query as the authority and says
+what the prose got wrong, because "read the tracker" is advice everyone already ignores and the
+measured cost is not. A duplicated RBMK/BWR line went with it. 12,903 -> 12,838 words.
+
+### The structural residual — RULED the same session
+
+The **standing-procedure trap list was 30 bullets, ~2,000 words, with no cap and no eviction
+rule**, while *Recent themes* directly above it had both and had held since it was written. It
+grew about a bullet a session and was the only unbounded thing left in the file.
+
+**Capped at 25** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
+options I wrote — a selection, not verbatim words)*, gated by `run_doc_budget` (3 → 4 checks,
+injection-verified: a 26th bullet reddens it). Five bullets moved to `Blueprint/TRAPS.md`.
+
+**The eviction criterion is the part worth keeping: move what a GATE already catches.** The
+standing list exists to warn about things nothing can tell you, so when the cap binds the
+entries to move are the ones where getting it wrong turns a runner red — the trap announces
+itself and the full story is a TUNING_LOG search away. What stays is the class no gate can
+reach: process traps, prose claims, silent-wrongness idioms, the hollow-check family. The first
+five evicted (K_phys/F14, node capacity, the two-clock seam, the DNB limit line, the flash gate)
+are all plant-specific and all pinned by a suite that reddens if the number moves. The criterion
+is deliberately NOT gated — it is judgement, and a trap whose gate only fires in a regime nobody
+probes belongs back in the file.
+
+End state: **12,548 words, 2,452 of headroom, 25 standing bullets, 5 themes** — all four caps
+now machine-checked, where on 2026-08-06 every one of them lived as prose inside the document it
+governed and had been broken for weeks.
+
+**Also ruled, and NOT acted on:** #410 stays held (the site keeps no provenance paragraph for
+now), and the three backshop commits stay on the lane rather than merging.
+
+---
+
+## Session log — 2026-08-09-backshop-c (#432 + #431 — the recording was the broken instrument, and the fix's own first version recorded 35 rows out of 1475)
+
+**Outcome: bundle schema 1.1 on the fine seam with extremes; `ui/diag_recorder.js` extracted;
+`test/run_diag_bundle.js` (31 checks) and a browser half in `verify_e2e_ui`; the report id
+reaches the reporter.** Scope and the extraction were both the owner's *(OWNER RULING,
+2026-08-09: selected "#432 + #431 + tool + gate" and "Extract ui/diag_recorder.js" from
+options I wrote — a selection, not verbatim words)*.
+
+### What the owner's test found, and what it did not
+
+`msmjyei2-yav89rpu`, note *"Testing speed acceleration during large transients."* — 3600×,
+`large_loca` sev 0.4 at t=13685.5 from `hot_full_power`. **The accident is two rows:** 100.01 %
+/ 2235 psi (15.41 MPa) at 13685.5, then 0.00 % / 56 psi (0.39 MPa) at 14045.5.
+
+**The plant is not the defect.** Protection has run on a 0.1 s sim-time cadence at every speed
+since #153, and the trips fired where they should. The RECORDING was the defect, in two ways
+that reinforced each other: `diagSample` was reachable only from a broadcast subscriber, so
+resolution was `accel × broadcastMs`; and `manifest.sample_hz` was the literal `1`, so the
+bundle asserted 180× the resolution it had. **A manifest that cannot disagree with its own
+data is the whole complaint** — and the strip chart had already been fixed for the identical
+aliasing on 2026-08-05 (`CHART_FINE_SEC` + MIN/MAX banding) while the recorder was left behind.
+
+### The trap: the fix passed 31 of its own checks and recorded nothing
+
+The Node gate drives `RD.DiagRecorder` directly and green-lit the whole design. The browser
+did not:
+
+| | rows | worst dt | source |
+|---|---|---|---|
+| drain inside the rAF paint (first version) | **35** | 30–60 s | mixed |
+| drain in the broadcast (shipped) | **2100** | 1.0 s | fine |
+
+Both at 600× for ~2100 s of plant. The fine rows were arriving — instrumented in-page,
+`diagTick` received **1475 of them** — and every one was discarded. The drain sat at the top of
+`renderNow`, which runs one animation frame after the broadcast that produced the rows. The
+recorder is a separate synchronous subscriber, so it saw broadcast N's rows during broadcast
+N+1, *after* it had already recorded a sample at N's later timestamp; all 1475 were older than
+the grid position and none could emit.
+
+**Rows in, nothing recorded — the shape of the bug being fixed, one layer up, inside the fix.**
+A source scan cannot see it (the call sites are all present and correct) and the Node gate
+cannot see it (it hands the recorder rows itself). Only a browser can, which is why
+`verify_e2e_ui` now presses the app's own download button and reads the file. Its assertion is
+the SPACING, not the `source` field: `source` read `mixed` on the broken page.
+
+### The design, and why each piece is where it is
+
+- **A third side-dict `dv` on the fine sampler**, not the chart's `tv`: `steam_flow` and
+  `fw_flow` are `tru: t.<field> * 100` for display, so riding those columns would have made an
+  old bundle and a new one disagree by 100× on the same quantity. `foldExtremes` now iterates a
+  `SIDES` table — the comment there already claimed it was "GENERIC over the reading's shape"
+  while the body named two sides, so the third made an existing claim true rather than adding a
+  special case to a function advertising that it had none.
+- **The grid is an EMIT RULE, not a constant.** Emit when `GRID_SEC` (1 s) of sim has passed
+  since the last row, folding everything between into the extremes. Spacing therefore comes out
+  as `max(1 s, the service's fine grid)` — 1 s at 1×, 1 s at 600×, 6 s at 3600× — with the
+  recorder knowing neither `CHART_FINE_MAX` nor the acceleration. Nothing to desynchronise.
+  **1× is unchanged**, the property `PROTECTION_DT` was chosen for.
+- **Columnar `timeseries`.** Measured on the real report's data, jittered so columns do not
+  repeat: at the 14,400-row ring, **720 KB gzipped against 1218 KB as row objects**, and the
+  Worker cap is 2 MB before `events` and `snapshot_end`. The first measurement said 16× rather
+  than 1.7× — because the synthetic rows repeated the same 211 values cyclically and gzip ate
+  the repetition. Jitter your synthetic data before believing a compression ratio.
+- **No scalar replaces `sample_hz`.** The grid moves with acceleration *inside* one session, so
+  no single number can be honest; `manifest.sampling` declares the floor and the source, and
+  the row timestamps are the rate. `tools/fetch_bug_reports.js` now prints that derived rate on
+  every summary — graded on the WORST gap, not the median, because a run that sat at 1× for
+  most of its rows and at 3600× through the interesting part has a reassuring median and a
+  360 s hole exactly where the answer was.
+
+### Two more, both found by the work rather than looked for
+
+- **Undrained sub-samples survived a plant change.** Pre-existing for the chart (the comment in
+  `afterPlantChange` already warned that a sample taken against the old series index would be
+  "silently misfiled rather than empty") and newly dangerous for the recorder, whose row is
+  packed over the OLD plant's field list. All three shares are cleared there now.
+- **`diagSessionInfo` does not exist.** `diagReadout()` writes to an element no longer in
+  `ui/shell.html` — the Dev tab it belonged to is gone. Harmless (`txt()` tolerates null) and
+  left alone, but it is dead code and worth knowing before someone debugs it.
+
+### Injection verification
+
+Ran the pre-fix data path (broadcast-only, no extremes) at 3600× with the same LOCA: **7 rows
+for the whole 1800 s run, 3 across the blowdown, `hi − lo` identically 0.0000.** Against the
+new gate that is 4 red — the spacing check (360 s against ≤6 s) and all three TR-4 transient
+checks. TR-8 is a deliberate source scan, and its `sample_hz` check went red on this file's own
+prose the first time: **a static gate reading source must strip comments**, which is the
+standing trap in `CLAUDE.md` arriving in the session that added a gate.
+
+---
+
 ## Session log — 2026-08-09-backshop-b (#430/#431 — the first real bug report arrived and the documented way to read it had never existed)
 
 **Outcome: `tools/fetch_bug_reports.js` + the `read-bug-reports` skill; two docs corrected; the

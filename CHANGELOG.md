@@ -162,6 +162,94 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (blocked → now rejected, was green), `5df6315` (success → green), `3b7166a` (never released
   → `NOT LIVE`, exit 1). This is the second defect in this file and the mirror of the first —
   the Cloudflare half could never pass, this half could never fail.
+- **A bug report taken at speed recorded almost nothing, and its manifest said otherwise.** The
+  session recorder sampled once per BROADCAST, so its resolution in sim time was
+  `timeAcceleration × broadcastMs` — 1 Hz at 1×, one row per 180 s at 3600× — while
+  `manifest.sample_hz` was the literal `1` in every bundle ever written. Found on the owner's
+  own report (`msmjyei2-yav89rpu`, *"Testing speed acceleration during large transients"*): a
+  `large_loca` sev 0.4 at 3600× is **two rows**, 100.01 % / 2235 psi (15.41 MPa) followed by
+  0.00 % / 56 psi (0.39 MPa), with the blowdown, the scram, the SI and the pressurizer emptying
+  all inside the gap. The plant was never wrong — protection has been on a 0.1 s sim-time
+  cadence at every speed since #153 — only the record of it was, and the strip chart had
+  already been fixed for the identical aliasing on 2026-08-05 while the recorder was left on
+  the old seam.
+
+  The recorder now rides that seam: the service's fine sampler carries a third side-dict
+  (`dv`, packed over the recorder's own fields in RAW true-state units, because two chart
+  series scale by 100 for display and riding `tv` would have made an old bundle and a new one
+  disagree by 100× on steam flow), and the recorder emits on its own 1 s floor with MIN/MAX
+  folded across each bucket. Spacing is now `max(1 s, the service's fine grid)` — **1 s at 1×
+  (unchanged), 1 s at 600×, 6 s at 3600×** — derived rather than configured, so there is no
+  second constant to keep in step. `sample_hz` is deleted and NOT replaced by another scalar:
+  the grid moves with acceleration inside one session, so `manifest.sampling` declares only the
+  floor and the source and the row timestamps carry the truth. Bundle schema **1.1**, with
+  `timeseries` columnar (`{fields, t, accel, v[], lo[], hi[]}`) — measured on real report data,
+  at the 14,400-row ring that is 720 KB gzipped against 1218 KB as row objects, and the
+  Worker's cap is 2 MB before `events` and `snapshot_end`.
+
+  Two things found on the way, both of which would have shipped silently. **The drain was in
+  the wrong place**: the fine rows were taken inside the rAF paint, one animation frame after
+  the broadcast, so the recorder — a separate synchronous subscriber — saw them only after it
+  had recorded a sample at a later timestamp, and every one of them was too old to emit.
+  Measured in a browser: 1475 rows handed in, 35 recorded. Moving the drain into the broadcast
+  itself gives 2100 rows over 2100 s at 600×. And **undrained sub-samples survived a plant
+  change** — pre-existing, and newly dangerous, since the recorder's row is packed over the old
+  plant's field list; all three shares are now cleared in `afterPlantChange`. (#432)
+- **The reporter never learned their report id.** `worker/src/index.js` answers `{ok, id}` and
+  names the stored object after it precisely so a report can be quoted, and
+  `site/telemetry.js` returned `{ok, status}` and dropped it — so the id existed nowhere a
+  human could see, and two reports sent the same evening were told apart by upload time alone.
+  The form now shows it: *"Sent — thank you. Reference msmjyei2-yav89rpu"*. Reading the body
+  cannot reject and does not assume there is one, because an edge answering HTML on an error
+  would otherwise turn a report that ARRIVED into "could not send". (#431)
+
+### Changed
+- **The standing-procedure trap list in `CLAUDE.md` is capped at 25 bullets, evicting to
+  `Blueprint/TRAPS.md`** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md"
+  from options I wrote — a selection, not verbatim words)*. It was the only unbounded list left
+  in a file sitting exactly on its 15,000-word limit: 30 bullets, ~2,000 words, growing about
+  one a session, while *Recent themes* directly above it had a cap and an eviction ritual and
+  had held since it was written. `run_doc_budget` gates it (3 → 4 checks, injection-verified:
+  a 26th bullet reddens it) rather than leaving it as prose, for that gate's own founding
+  reason — measured 2026-08-06, every cap that lived inside the document it governed had been
+  broken for weeks. **The eviction criterion: move what a GATE already catches**, keep what
+  nothing can tell you; the first five out are all plant-specific and all pinned by a suite
+  that reddens if the number moves. End state 12,548 words, 2,452 of headroom, and all four
+  caps machine-checked.
+
+- **`CLAUDE.md` cut 15,000 → 12,903 words, and `Blueprint/LANES.md` split out of it.** The file
+  had reached its own 15,000-word cap exactly, leaving the next agent no room. Measured over the
+  file's 251 commits, the cap is working — growth was **+4,568 words/day before it** (8,144 →
+  40,124 in seven days) and **+314/day after**, a 14× reduction — but four days of that rate had
+  consumed all 1,545 words of margin the 2026-08-06 cut left. The lane-occupancy block was
+  **2,510 words, 17 % of the file**, and almost all of it was worked history; it is now
+  `Blueprint/LANES.md`, with only the binding rules left inline. Also removed: a block saying
+  `Alpha 1.0.0` "is committed and waiting for the merge" six days and five versions after it
+  shipped, two *Known open work* items marked **done**, and a runner count that read 43 in two
+  places and 44 in a third against a real 45 — **the cap constrains size, not accuracy, and
+  nothing measures the second.** Nothing was lost in the move, and that is checkable rather than
+  asserted: `Blueprint/**` is on the HR11 scan surface, so citation sites went **238 → 242** —
+  up, because four quotes are now deliberately in both files — where a lossy move would have
+  shown as a drop. Every quoted string was also diffed old-against-new: 19 strings, 18 exact,
+  the 19th differing by one capital letter. `run_doc_budget` now prints the heaviest three
+  sections and the remaining headroom, so the next agent who hits the cap cuts the fat instead
+  of the nearest thing — a report, not a fourth check, because a per-section number would be a
+  cap nobody ruled on.
+
+### Added
+- **`test/run_diag_bundle.js`** — the first gate that has ever touched the session recorder.
+  Not a coverage gap so much as its cause: the recorder lived inside `ui/app.js`, which no Node
+  runner can reach, so nothing watched it and #432 shipped. It is now `ui/diag_recorder.js`, a
+  plain global script on the `ui/manual_procedures.js` pattern, and the gate drives it
+  full-stack at 1× and 3600×. 31 checks; injection-verified against the pre-fix data path,
+  where 4 go red — the 3600× spacing at 360 s against a ≤6 s band, and all three transient
+  checks, with `hi − lo` identically 0.0000 across the blowdown and 3 rows where there are now
+  131. `verify_e2e_ui.js` carries the other half, which no Node gate can: it presses the app's
+  own download button after a run at 600× and reads the file, because everything the Node gate
+  asserts would stay green if `ui/app.js` stopped feeding the recorder — which is exactly what
+  the drain-placement bug above was.
+
+### Fixed
 - **A milestone could be recorded twice for one session, because the latch and the identity it
   latched against lived in different storage.** `seen` was a plain object — scoped to a page
   **load** — while the session id it is reported under lives in `sessionStorage`, scoped to the

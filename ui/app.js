@@ -91,6 +91,12 @@
   // (the board's vital tiles need them before it) while the chart's own sample-grid gate may
   // skip the frame. See the drain site in renderNow.
   var pendingFine = null;
+  // The other two shares of the same drain. `pendingTiles` is the board's, held until a paint
+  // actually happens; `pendingDiagFine` is the bug-report recorder's, consumed on its own
+  // subscriber tick. Separate variables because the three have different lifetimes — see
+  // drainFine().
+  var pendingTiles = null;
+  var pendingDiagFine = null;
   var chartRange = {};      // id -> { lo, hi } — peak-hold auto-range (expands fast, re-tightens slow)
   var gaugeHist = {};       // id -> [{ t, v }]
   var gaugeTrend = {};      // id -> -1|0|1 — latched trend-arrow state (#237 hysteresis)
@@ -1848,9 +1854,44 @@
   var _renderRaf = 0, _renderSnap = null;
   var _raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window)
                                           : function (f) { return setTimeout(f, 16); };
+
+  /* DRAIN THE FINE SUB-SAMPLES — and split them THREE ways.
+   *
+   * `takeFine()` CLEARS the service's buffer and has exactly ONE caller, which is this
+   * function. Do not add a second: whoever calls it again gets the rows and the strip chart
+   * silently loses them, and nothing would go red.
+   *
+   * IT RUNS SYNCHRONOUSLY WITH THE BROADCAST, not inside the rAF paint, and that is
+   * load-bearing (#432). It used to sit at the top of renderNow, one animation frame later
+   * than the broadcast that produced the rows — which is fine for the chart, whose rows carry
+   * their own timestamps and are simply drawn late. It is NOT fine for the recorder, which is
+   * a separate subscriber running in the same synchronous pass: it saw broadcast N's fine rows
+   * during broadcast N+1, i.e. AFTER it had already recorded a sample at N's later timestamp,
+   * so every one of them was older than the grid position and none could emit. Measured
+   * before the move: `diagTick` received 1475 fine rows and the bundle came out with 35
+   * samples, all from the broadcast fallback. Rows in, nothing recorded — the exact shape of
+   * the bug being fixed, one layer up.
+   *
+   * The three consumers have different lifetimes, which is why this is a split and not a
+   * shared variable. The strip chart may skip a frame (its own sample-grid gate) and must KEEP
+   * the rows until it draws, so they accumulate in `pendingFine`. The board's vital tiles are
+   * driven from a snapshot they cannot reach `service` from, so they get it through an RD side
+   * channel — the house pattern for cross-file reach (RD.PWR_CONTROL, RD.PwrBoardInspect) —
+   * and it accumulates in `pendingTiles` until a paint actually happens, since a coalesced
+   * broadcast would otherwise overwrite a batch no frame had shown yet. The recorder consumes
+   * and clears its own share on its own tick.
+   */
+  function drainFine() {
+    var f = (service && service.takeFine) ? service.takeFine() : null;
+    if (!f || !f.length) return;
+    pendingFine = pendingFine ? pendingFine.concat(f) : f;
+    pendingTiles = pendingTiles ? pendingTiles.concat(f) : f.slice();
+    pendingDiagFine = pendingDiagFine ? pendingDiagFine.concat(f) : f.slice();
+  }
   function render(s) {
     latest = s;
     _renderSnap = s;
+    drainFine();
     // Perf sampling (ui/perf.js). The service measured its own physics loop and left it on
     // the instance; pair it here with the render cost so the two stages can be told apart —
     // which is the only way to answer "is the flicker compute or something else".
@@ -1892,29 +1933,17 @@
     // up the UI instead of rendering the mismatch.
     var snapPlant = s.metadata.plant_id;
     if (snapPlant && ui.plant && snapPlant !== ui.plant) {
-      RD.ChartFine = null;              // an old plant's sub-samples must not reach a new one
+      // An old plant's sub-samples must not reach a new one — and since #432 that means all
+      // three shares, not just the tiles'. The recorder's row is packed over the OLD plant's
+      // field list, so a leaked row would write one plant's numbers into another's columns.
+      RD.ChartFine = null; pendingTiles = null; pendingDiagFine = null;
       afterPlantChange(); return;
     }
 
-    // DRAIN THE FINE SUB-SAMPLES HERE, above the board render — and split them two ways.
-    //
-    // `takeFine()` CLEARS the service's buffer and has exactly ONE caller, which is this
-    // line. Do not add a second: whoever calls it again gets the rows and the strip chart
-    // silently loses them, and nothing would go red.
-    //
-    // The two consumers have different lifetimes, which is why this is a split and not a
-    // shared variable. The strip chart may skip a frame (its own sample-grid gate below)
-    // and must KEEP the rows until it draws, so they accumulate in `pendingFine`. The
-    // board's vital tiles want only this frame's batch and are driven from a snapshot they
-    // cannot reach `service` from, so they get it through an RD side channel — the house
-    // pattern for cross-file reach (RD.PWR_CONTROL, RD.PwrBoardInspect).
-    var _f = (service && service.takeFine) ? service.takeFine() : null;
-    if (_f && _f.length) {
-      pendingFine = pendingFine ? pendingFine.concat(_f) : _f;
-      RD.ChartFine = _f;
-    } else {
-      RD.ChartFine = null;
-    }
+    // The fine sub-samples were drained in `render`, synchronously with the broadcast — see
+    // drainFine(). The board's vital tiles read this frame's share here.
+    RD.ChartFine = pendingTiles;
+    pendingTiles = null;
 
     applyUiPolicy(s);
     renderGauges(s);
@@ -2090,7 +2119,12 @@
       if (ser.get) { try { var a = ser.get(chartIns); if (a != null) v[i] = a; } catch (e) { /* NaN */ } }
       if (ser.tru && trueState) { try { var b = ser.tru(trueState); if (b != null) tv[i] = b; } catch (e2) { /* NaN */ } }
     });
-    return { v: v, tv: tv };
+    // THIRD SIDE: the bug-report recorder's fields, in RAW true-state units (#432). It cannot
+    // read `tv` instead — two series here scale for DISPLAY (`steam_flow`/`fw_flow` are
+    // `* 100`), so riding those columns would silently change the bundle's units and make an
+    // old report and a new one disagree by 100× on the same quantity. Ten doubles beside two
+    // 96-wide arrays; the cost in this function is the call, not the packing.
+    return { v: v, tv: tv, dv: RD.DiagRecorder.pack(ui.plant, trueState) };
   }
 
   // ---- REAL 30-minute trend preseed (owner, 2026-08-01) -------------------------------
@@ -4068,10 +4102,8 @@
     // release the transcript's reading dwell so the exchange answers promptly.
     if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
     var r = service.handleCommand(c);
-    if (diag) {
-      diag.commands.push({ t: latest && latest.metadata ? latest.metadata.sim_time : 0, command: c, blocked: !!(r && r.type === 'blocked'), error: !!(r && r.type === 'error') });
-      if (diag.commands.length > 2000) diag.commands.shift();
-    }
+    diag.command(latest && latest.metadata ? latest.metadata.sim_time : 0, c,
+      !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     TEL.command(c, !!(r && r.type === 'blocked'));
     // The command was blocked, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
@@ -4231,16 +4263,23 @@
   }
 
   // ============================================================ session diagnosis (Dev tab)
-  // Records the session at 1 Hz (true-state samples), plus alarm transitions,
-  // scram edges, and every issued command; "Diagnosis JSON" bundles it all with
-  // a full service.saveState() so an AI (or a human) can replay what happened.
-  // Schema matches the Diagnostic/rd_diag_*.json exports (schema_version 1.0).
-  var DIAG_FIELDS = {
-    pwr: ['power_pct', 'tavg_c', 'thot_c', 'tcold_c', 'pressure_mpa', 'pzr_level_pct', 'sg_level_pct', 'steam_flow_normalized', 'fw_flow_normalized', 'steam_pressure_mpa'],
-    rbmk: ['power_pct', 'fuel_temp_c', 'graphite_temp_avg_c', 'void_fraction_avg', 'reactivity_pcm', 'xenon_pct_eq', 'steam_pressure_mpa', 'drum_level_pct', 'channel_flow_pct'],
-    bwr: ['power_pct', 'fuel_temp_c', 'vessel_pressure_mpa', 'vessel_level_pct', 'core_void_fraction', 'recirc_flow_pct', 'decay_heat_pct']
-  };
-  var diag = null;
+  // Records the session — sampled true state, alarm transitions, scram edges and every
+  // issued command; "Diagnosis JSON" bundles it with a full service.saveState() so an AI
+  // (or a human) can replay what happened, and the in-sim bug report posts the same thing.
+  //
+  // THE RECORDER ITSELF LIVES IN ui/diag_recorder.js (RD.DiagRecorder), not here. This file
+  // is browser-only, so while the recorder was in it nothing in test/ could reach the code
+  // — which is how #432 shipped: sampling once per BROADCAST, i.e. one row per 180 s at
+  // 3600×, under a manifest hardcoded to `sample_hz: 1`. What stays here is the wiring:
+  // subscribing it, the Dev-tab readout, and gathering the ids and objects only the UI can
+  // reach. `test/run_diag_bundle.js` drives the other file directly.
+  var diag = RD.DiagRecorder.create({
+    onEvent: function (t, type) {
+      // Every recorded scram passes through the recorder, so hooking it here covers each
+      // site that reports one without a second call to keep in step.
+      if (type === 'scram') TEL.milestone('scram', t);
+    }
+  });
   // ======================================================== usage data (aggregate)
   // The adapter for site/telemetry.js. It exists so the emit points scattered through
   // this file stay one-line calls and all the state — what has already been reported,
@@ -4395,85 +4434,49 @@
     };
   }());
 
-  function diagEvent(t, type, detail) {
-    diag.events.push({ t: t, type: type, detail: detail });
-    if (diag.events.length > 5000) diag.events.shift();
-    // Every recorded scram passes through here, so hooking the recorder covers each
-    // site that reports one without a second call to keep in step.
-    if (type === 'scram') TEL.milestone('scram', t);
-  }
   function diagReset(reason, meta) {
     var t = latest && latest.metadata ? latest.metadata.sim_time : 0;
-    diag = { reason: reason, meta: meta || null, startSim: t, lastT: t, nextT: Math.floor(t), samples: [], events: [], commands: [], lastAlarms: null, lastScrammed: false };
-    diagEvent(t, 'session_start', { reason: reason, meta: meta || null });
+    diag.reset(reason, meta, t, ui.plant);
     TEL.sessionStart(reason, meta);
-  }
-  function diagSample(s, t) {
-    var ts = s.true_state || {}, row = { t: t, accel: s.metadata.time_acceleration };
-    var F = DIAG_FIELDS[ui.plant] || DIAG_FIELDS.pwr;
-    for (var i = 0; i < F.length; i++) if (typeof ts[F[i]] === 'number') row['true_' + F[i]] = ts[F[i]];
-    diag.samples.push(row);
-    if (diag.samples.length > 14400) diag.samples.shift();   // ~4 h at 1 Hz
   }
   function diagTick(s) {
     TEL.tick(s);          // before the early return: usage data does not depend on the recorder
-    if (!diag || !s || !s.metadata) return;
-    var t = s.metadata.sim_time;
-    if (t < diag.lastT - 0.001) {          // rewind / replay — drop the recorded future
-      var keep = function (e) { return e.t <= t + 0.001; };
-      diag.samples = diag.samples.filter(keep); diag.events = diag.events.filter(keep); diag.commands = diag.commands.filter(keep);
-      diag.nextT = Math.floor(t);
-      diagEvent(t, 'time_rewind', { to: t });
-    }
-    diag.lastT = t;
-    var byId = {};
-    for (var i = 0; i < s.alarms.length; i++) {
-      var a = s.alarms[i]; byId[a.id] = a.state;
-      var was = diag.lastAlarms ? diag.lastAlarms[a.id] : a.state;
-      if (diag.lastAlarms === null || was !== a.state) diagEvent(t, 'alarm', { id: a.id, state: a.state, was: was });
-    }
-    diag.lastAlarms = byId;
-    var sc = !!(s.rps_state && s.rps_state.scrammed);
-    if (sc && !diag.lastScrammed) {
-      var reason = (s.rps_state.last_trip_reason || 'unknown');
-      diagEvent(t, 'scram', { trip_reason: reason }); diagEvent(t, 'trip_reason', { reason: reason });
-    }
-    diag.lastScrammed = sc;
-    if (t >= diag.nextT || !diag.samples.length) { diagSample(s, t); diag.nextT = Math.floor(t) + 1; }
+    // `pendingDiagFine` is this broadcast's share of the fine sub-samples, set in the
+    // three-way split in renderNow. Consumed here and cleared, so a broadcast that never
+    // reached the render path cannot hand the same rows over twice.
+    var fine = pendingDiagFine; pendingDiagFine = null;
+    diag.tick(s, fine);
   }
   // The readout half of diagTick, called from renderNow so it lands inside the paint
   // cycle with every other DOM write.
   function diagReadout() {
-    if (!diag) return;
-    txt($('diagSessionInfo'), ui.plant + ' · ' + diag.reason + ' · ' +
-      (diag.lastT || 0).toFixed(0) + ' s · ' + diag.samples.length + ' samples');
+    var r = diag.readout();
+    if (!r) return;
+    txt($('diagSessionInfo'), r.plant + ' · ' + r.reason + ' · ' +
+      r.t.toFixed(0) + ' s · ' + r.samples + ' samples');
   }
+  // Everything the recorder cannot reach on its own: the ids the UI holds, the seed, the
+  // perf summary and the save state. The SCHEMA is in ui/diag_recorder.js, where a Node
+  // gate can see it; this is the reaching-around.
   function buildDiagBundle() {
-    if (!diag) return null;
-    var s = latest || service.assembleSnapshot(); var t = s.metadata.sim_time;
-    diagSample(s, t);                                        // final partial-second sample
-    var bundle = {
-      schema_version: '1.0', kind: 'reactor_dynamics_diagnosis', exported_at: new Date().toISOString(),
-      manifest: {
-        plant_id: ui.plant, design_version: s.metadata.design_version || null, engine_key: ui.engineKey,
-        initial_state: ui.initState,
-        scenario_id: (s.instructor && s.instructor.scenario_id) || null,
-        follow_procedure_id: (s.instructor && s.instructor.follow && s.instructor.follow.procedure_id) || null,
-        session_start_reason: diag.reason, session_start_meta: diag.meta,
-        session_start_sim_time: diag.startSim, exported_sim_time: t,
-        seed: service.seed, sample_hz: 1
-      },
-      timeseries: diag.samples, events: diag.events, commands: diag.commands,
+    if (!diag.active()) return null;
+    var s = latest || service.assembleSnapshot();
+    var notesEl = $('diagNotes'), notes = notesEl && notesEl.value.trim();
+    return diag.build({
+      snapshot: s,
+      design_version: s.metadata.design_version || null,
+      engine_key: ui.engineKey, initial_state: ui.initState,
+      scenario_id: (s.instructor && s.instructor.scenario_id) || null,
+      follow_procedure_id: (s.instructor && s.instructor.follow && s.instructor.follow.procedure_id) || null,
+      seed: service.seed,
       // PERFORMANCE RIDES ALONG (2026-08-08). "It flickers on some PCs" is unanswerable
       // without it — compute-bound, render-bound and neither-of-those look identical to the
       // person reporting, and the machine it happened on is the only place the numbers
       // exist. Cheap to carry: one object of percentiles, not a trace.
       performance: (function () { try { return RD.Perf ? RD.Perf.summary() : null; } catch (e) { return null; } }()),
-      snapshot_end: service.saveState()
-    };
-    var notesEl = $('diagNotes'), notes = notesEl && notesEl.value.trim();
-    if (notes) bundle.notes = notes;
-    return bundle;
+      snapshot_end: service.saveState(),
+      notes: notes || null
+    });
   }
   function downloadJSON(obj, name) {
     var a = document.createElement('a');
@@ -5054,7 +5057,11 @@
         T.sendBundle(bundle, note).then(function (r) {
           btn.disabled = false;
           if (r && r.ok) {
-            txt($('fbStatus'), 'Sent — thank you.');
+            // THE REFERENCE IS THE ONLY HANDLE ON THE REPORT (#431). The Worker names the
+            // stored object and hands the id back for exactly this; the id is also the only
+            // way a follow-up conversation can say WHICH report, since two sent the same
+            // evening are otherwise told apart by upload time alone.
+            txt($('fbStatus'), r.id ? ('Sent — thank you. Reference ' + r.id) : 'Sent — thank you.');
             $('fbNote').value = '';
           } else {
             // Never a dead end: the address above still works, and the download
@@ -6012,6 +6019,12 @@
     // would be silently misfiled rather than empty.
     buildSeriesIndex();
     chartBuf = []; smoothed = {}; seriesHot = {};
+    // …and the UNDRAINED sub-samples, all three shares. The comment above says a sample taken
+    // against the old index would be "silently misfiled rather than empty" — that is exactly
+    // what a pending row from the previous plant is, and until #432 none of these were
+    // cleared here. The recorder's share matters most: its columns are the old plant's field
+    // list, so a leaked row writes one plant's numbers under another's names.
+    pendingFine = null; pendingTiles = null; pendingDiagFine = null; RD.ChartFine = null;
     syncUnitsScope();
     buildGauges(); buildIndications(); buildPhysics(); updateSimSummary(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
