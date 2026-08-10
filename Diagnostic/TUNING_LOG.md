@@ -87,6 +87,22 @@ check written beside its own fix is not green until seen red):
 `wrangler pages deployment list` failed once with "could not query" and succeeded on the retry —
 transient, and the yellow path handled it as designed (unreachable ≠ absent).
 
+**The Vercel half is GONE, and the check that it was safe to remove is the same class as the
+bug** (2026-08-10). The owner disconnected Vercel's GitHub integration; before deleting the code
+I measured rather than took it: **`develop`'s tip carried ZERO deployment records where every
+earlier tip carried one**, and Vercel's `latestDeployment` had stopped moving. Had I skipped
+that and the integration were still live, the deletion would have removed a working half — and
+had I kept the branch on a disconnected host, it could only ever report "nothing here", which is
+failure (2) in the file's own list wearing the other host's name. Either way the answer comes
+from a measurement, not from the sentence "it's disconnected".
+
+The header now records all four failure modes, because **two of them are mirrors**: the
+Cloudflare half could never PASS (API field names against wrangler's table output,
+`2026-08-09-workbench-a`) and the Vercel half could never FAIL (the record, never the outcome).
+A verifier with no true-positive on record is not a verifier; neither is one with no
+true-negative. Both directions re-run on the single-host script: `af48703` LIVE/0,
+`3b7166a` NOT LIVE/1.
+
 **The custom dev subdomain is retired, and retiring it found a dead reporting channel.**
 *(OWNER RULING, 2026-08-09: "instead of dev.reactordynamics.com im going to use the currently
 functioning https://develop.reactor-dynamics.pages.dev/. This works just as well. We can retire

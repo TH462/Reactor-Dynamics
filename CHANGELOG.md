@@ -44,6 +44,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with no symptom anywhere. **Needs a Worker redeploy to take effect.** The dead subdomain is also
   retired from the nine root pages, `site/site.css`, `site/make_download.js`,
   `site/stamp_version.js` and `test/run_channel.js`.
+- **`tools/verify_release_deploy.js` is Cloudflare-only** (#413). The owner disconnected Vercel's
+  GitHub integration on 2026-08-10, so no `vercel[bot]` deployment record is created for any new
+  commit — verified before the code came out: `develop`'s tip had **zero** deployment records
+  where every earlier tip had one, and Vercel's `latestDeployment` had stopped moving. Keeping a
+  branch that can only ever report "nothing here" would have re-created the exact defect the
+  dual-host version was written to fix, pointed at the other host. Both directions re-checked on
+  the single-host script against real releases. The file's four failure modes are now recorded in
+  its header, because the pair that mattered are mirrors: the Cloudflare half could never *pass*
+  and the Vercel half could never *fail* — **exercise a verifier in both directions against real
+  data, or it is not a verifier.**
 - **The release check could certify a release LIVE on a build that never ran** (#413).
   `tools/verify_release_deploy.js` filtered GitHub deployments on `environment === Production`
   and never read `/deployments/{id}/statuses` — but a deployment record is created when the

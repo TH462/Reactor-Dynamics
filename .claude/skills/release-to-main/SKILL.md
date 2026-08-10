@@ -284,18 +284,22 @@ both times in ways a careful reader would not catch:
   fail (2026-08-09). Measured on Alpha 1.5.1: it printed `vercel PRODUCTION` for a deployment
   whose only status is `failure — "Deployment was blocked"`. See below.
 
-The script asks both hosts (GitHub deployments for Vercel, `wrangler pages deployment list`
-for Cloudflare), demands a full sha, and requires a deployment on **either** host to be BOTH
-`environment=production` AND finished successfully — a queued, blocked or failed build is not
-a live site. A yellow "could not query" line means a host was unreachable, which is **not** the
-same as "no deployment"; the script says so in its own failure text.
+The script queries `wrangler pages deployment list`, demands a full sha, and requires the
+deployment to be BOTH `environment=production` AND finished successfully — a queued, blocked or
+failed build is not a live site. A yellow "could not query" line means Cloudflare was
+unreachable, which is **not** the same as "no deployment"; the script says so in its own failure
+text.
 
-**A "Vercel — success" commit status is NOT evidence of a production deploy.** It is satisfied by
-a preview build. Neither is `environment=Production` on its own: **a deployment record is created
-when the build is REQUESTED and keeps that environment whatever happens next.** The outcome lives
-in `/deployments/{id}/statuses`, a second request, and the script now makes it. Vercel's Git
-integration is still connected after the cutover while its builds block, so on every release
-since it mints exactly that record — a Production deployment of a build that never ran.
+**It is Cloudflare-only from 2026-08-10.** The owner disconnected Vercel's GitHub integration, so
+no `vercel[bot]` record is created for any new commit — verified before the code was removed:
+`develop`'s tip had **zero** deployment records where every earlier tip had one. A branch that
+can only ever say "nothing here" is failure (2) above wearing the other host's name. The Vercel
+project survives a while as the two-DNS-record rollback, which this check does not need: a
+rollback serves the last good build, not the one being released.
+
+**A green commit status is NOT evidence of a production deploy** — a preview satisfies it. Nor is
+`environment=Production` on its own, which is the trap that produced failure (4): **a deployment
+record is created when the build is REQUESTED and keeps that environment whatever happens next.**
 
 **The ordering above is the fix, and it is the suspected cause.** Pushing `develop` to the *same
 commit* seconds after the merge gives Vercel two events for one SHA; measured on Alpha 1.0.0, only
