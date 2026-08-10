@@ -45,6 +45,87 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-09-develop-c — the #344 gate-integrity batch, and the safety function a missing argument was hiding
+
+**Decision 1 — `ops_harness.js` passes `evaluate()`'s `dt` (#403), and the three probes it
+reddens ship as XFAIL rather than being weakened (#433).** The argument is optional in the
+kernel and feeds two things: the alarm dropout hold and `held_within_s` condition latches.
+The harness omitted it at both stepping call sites from the day it was written.
+
+The alarm half was the filed defect and behaved as filed — an alarm whose condition clears
+cleared at **0.1 s** without the `dt` and **2.0 s** with it, exactly `alarm_min_on_s` — and
+moved no run_ops verdict, because nothing asserted a clear time. **The latch half is the
+real finding.** `_condHeld[key]` is stamped with `_simT`, and with `dt` absent both are
+permanently `0`, so the age is `0 - 0 = 0 <= 60` **for ever**: the latch is *permanent*, not
+instantaneous. The kernel comment saying its absence *"degrades to instantaneous
+coincidence"* has the sign backwards, and that sentence is why the omission looked safe.
+
+Consequence: the MSLI's flow leg (`sg_steam_flow high 1.25 held_within_s 60`) latched the
+first time flow crossed 1.25 — at `hot_full_power`, **t=0** — so the coincidence was
+satisfied before any break was injected. Measured in production, full stack, full-area
+downstream break: **the MSIV stays open from 825 psi (5.69 MPa) to 212 psi (1.46 MPa) over
+six minutes** while Tavg falls 580 → 417 °F. The automatic isolation has never worked for a
+player. Filed **#433**; TR-12b, TR-12c and PI-9 become strict XFAILs pinned to it, because
+they assert the right behaviour and the plant is what is wrong (HR10, textbook).
+
+Also noted for whoever fixes #433: the flow leg watches an instrument that reads **0** after
+this break — it is flow to a turbine that has just tripped, and the break discharge does not
+pass through it. Which instrument *should* carry the leg is a design question with a sourced
+answer (WTSM 12.3), and it was deliberately not guessed here.
+
+**Decision 2 — EV-1's rate limit is the sourced TS number, read as a rolling hour (#398).**
+*(OWNER RULING, 2026-08-09, choosing "100 F/hr TS + 50 admin": "Adopt the sourced Tech Spec
+limit as the hard number … Keep ~50 F/hr as a separate soft administrative target, which is
+normal practice under a 100 F/hr TS".)* The catalog's `≤ 28 °C/hr` appeared once in the whole
+repo, in its own row, unsourced — advisory under HR11 and contradicted by ML11223A342:648,
+ML11223A213:1801 and the shipped board's own ±55.6 °C/hr annunciation.
+
+Three things had to be got right in order, and the first two were wrong first:
+1. The §14 round-trip driver asserts **no rate at all** (12 checks, none of them one), and
+   when instrumented runs the evolution at **435.8 °C/hr up / −604.2 °C/hr down** — 8–11×
+   the limit. It is a fixture that proves *achievability*, and was never written to pace.
+2. **A settling window does not rescue it.** The peak is at 975 s, after any plausible
+   settle point: it is the 10–12 % power target driving a bottled SG, and 10 % of core
+   thermal into this plant's RCS mass genuinely is ~500 °C/hr. Physics right, fixture wrong.
+3. **The instantaneous derivative is the wrong yardstick.** A TS heatup limit is a rate over
+   a period; asserting the peak sample asserts the *damping* of `tavg_rate_c_per_hr`.
+
+New `mode5_heatup_paced` drives a paced heatup and asserts the worst **rolling hour** of the
+nuclear heatup: **49.8 °C/hr (90 °F/hr)**. The pace target is *integrated* — a proportional
+trim off the unpaced target overshot to 80.8 against a 50 target, because a lagged derivative
+responds to the target's history, not its current value. Injection-verified: pace 90 measures
+88.0 and reddens.
+
+**Left open, deliberately:** the rolling window opens at criticality, because pump heat is
+not pace-able by rod control and starting the RCP into a cold RCS carries Tavg **50 → ~78 °C
+in ~20 min** — about **28 °C of a 55.6 °C hourly budget before a rod moves**. That is a
+question about this plant's heat-to-mass ratio, not a windowing preference, and it is stated
+rather than tuned away.
+
+**Decision 3 — the catalog tier means what the PROBE ASSERTS (#399).** `[I]` was the only
+provenance mechanism and #344 F6 measured zero of seven rows meeting its definition. The rule
+now follows the assertion, not the sentence; SS-2/SS-3/SS-5/SS-6/SS-11 re-tier `[C]`, and
+EV-5/EV-8 get a third state, **NOT ASSERTED**, because their probes check instructor cards
+and an `info` line. SS-11 was re-tiered despite calling itself an invariant in its own text —
+exempting it would have made the rule decorative on the day it was written. The FG-1 table
+had **no Tier column at all**, which is how EV-1's rate half held `PASS` for months.
+
+**Decision 4 — SS-8 gets an energy term, and the band stays where the row put it (#397).**
+Core thermal against secondary removal at three ICs: residual **0.04 / 0.63 / 0.29 pp**,
+worst single sample 0.69. This answers the question #397 explicitly left open — its 6.44 pp
+at 50 % **was** the #394 limit cycle's stored-energy term, not an energy-conservation
+violation, and #394 has since been fixed. The band is the row's original ±2 %, not the
+measurement: 3× margin is the right slack, and pinning ±0.7 would redden on any legitimate
+secondary retune.
+
+**Decision 5 — a zero-step rod nudge is a no-op in the ENGINE (#429).** The guard goes where
+the defect is, not where the one production caller happens to sit. Injection corrected my own
+assumption: the rail-clip form was **never** broken (its first increment clips back onto the
+target and the loop exits), so the two new checks fail against different regressions and the
+second one guards a *future* edit that drops the guard trusting the strict sign.
+
+---
+
 ## 2026-08-09-develop-b — #394/#378/#420: the rod limit cycle is LOOP GAIN, and the mechanism of record was wrong
 
 **Decision.** The part-power limit cycle is fixed by **scheduling the rod-control gain on

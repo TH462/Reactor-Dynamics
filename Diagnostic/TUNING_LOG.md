@@ -29,6 +29,111 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-develop-c (the #344 gate-integrity batch — and a one-line harness omission that was hiding a broken safety function)
+
+**Outcome: five issues closed (#429, #403, #397, #398, #399), one filed (#433), three
+rulings recorded (#398, #324/#401, #402). `run_behavior` 70pass/0xfail →
+67pass/3xfail — and the three new xfails are the point of the session, not a cost.**
+
+**The headline: passing `evaluate()` its `dt` in the ops harness exposed that automatic
+steam line isolation has never worked for a player (#433).** #403 filed a narrow defect —
+`test/ops_harness.js` omitted the argument at both stepping call sites, so every PWR ops
+probe certified alarms with no 2.0 s dropout hold. That reproduced exactly (an alarm whose
+condition clears cleared at **0.1 s** without the `dt`, **2.0 s** with it — precisely
+`alarm_min_on_s`), and moved **no** run_ops verdict, because no probe was asserting a clear
+time. The second consumer of that argument is what mattered.
+
+`held_within_s` (#408) ages its latch off `this._simT`, which only advances when `evaluate`
+is given a `dt`. **With the `dt` omitted, `_simT` and `_condHeld[key]` are both 0, so the age
+is `0 - 0 = 0`, which is `<= 60` for ever — the latch is PERMANENT, not instantaneous.** The
+kernel's own comment says the absence *"degrades to instantaneous coincidence"*, and that is
+backwards; the wrong belief is why the omission looked harmless. The MSLI's flow leg
+(`sg_steam_flow high 1.25 held_within_s 60`) therefore latched the first time flow crossed
+1.25 — at `hot_full_power` that is **t=0**, so the coincidence was satisfied before the break
+was injected. Three probes (TR-12b, TR-12c, PI-9) were green on it.
+
+**Measured in production, full stack, full-area downstream break: the MSIV stays OPEN from
+825 psi (5.69 MPa) to 212 psi (1.46 MPa) over six minutes while Tavg falls 580 → 417 °F.**
+Reactor trips at 1m21s on OPΔT; nothing isolates. And the flow leg cannot latch on this
+event in any case — `sg_steam_flow` reads **0** from the first sample after the break,
+because it is the flow to a turbine that has just tripped and the break discharge does not
+pass through that instrument. Filed as **#433** (priority-high); the three probes ship strict
+XFAIL pinned to it rather than weakened, because they assert the right thing and the plant is
+what is wrong. #408's 60 s window has also never been exercised — it was accepted in a
+harness where it could not expire.
+
+**Two traps worth keeping.**
+- **A degenerate latch reads as a working feature, and the "safe default" comment can have
+  the sign backwards.** An optional argument whose absence is documented as a graceful
+  degradation deserves the measurement anyway: here the degradation was to *permanently on*.
+- **The gate that catches you is the one you did not aim at.** `run_hardrules` HR11 failed
+  this session's own catalog edit — an `OWNER RULING 2026-08-09` citation with a date and no
+  verbatim quote. Correct behaviour, on a rule written for exactly this.
+
+**#398 — EV-1's rate half, asserted for the first time.** The catalog's `≤ 28 °C/hr` appeared
+exactly once in the repo (its own row), unsourced, contradicted by both the corpus and the
+shipped board. *(OWNER RULING, 2026-08-09, choosing "100 F/hr TS + 50 admin": "Adopt the
+sourced Tech Spec limit as the hard number … Keep ~50 F/hr as a separate soft administrative
+target".)* Sourced: ML11223A342:648 and ML11223A213:1801, both *"Do not exceed a heatup rate
+of 100°F/hr in the pressurizer or 100°F/hr in the RCS"*.
+
+The probe half took three attempts and each failure taught the next:
+1. The §14 round-trip driver measures **no rate at all** — 12 checks, none of them one. Added
+   tracking: heatup peaks **435.8 °C/hr (784 °F/hr)**, cooldown **−604.2 °C/hr**, i.e. the
+   driver certifying EV-1's `PASS` runs the evolution at **8–11× the limit**, sustained.
+2. **A settling window does not save it.** I assumed the excursion was the RCP-start
+   transient; the peak is at **975 s**, after any plausible settle point. It is the 10–12 %
+   power target driving a bottled SG, and 10 % of core thermal into this plant's small RCS
+   mass *is* ~500 °C/hr. The physics is right and the FIXTURE does not pace.
+3. **An instantaneous derivative is the wrong yardstick.** A TS heatup limit is a rate over a
+   period. Asserting the peak sample asserts the DAMPING of `tavg_rate_c_per_hr`, not the
+   evolution. The assertion is now the worst **rolling hour**.
+
+New `mode5_heatup_paced` drives a paced heatup (`paceCHr`, an *integrated* power target — a
+proportional trim off the unpaced target overshot to 80.8 °C/hr against a 50 target, because
+a lagged temperature derivative responds to the target's history) and asserts the worst
+rolling hour of the **nuclear** heatup: **49.8 °C/hr (90 °F/hr)** against the 55.6 limit.
+Injection-verified — pace target 90 measures 88.0 and reddens, so it tracks the plant rather
+than agreeing with itself.
+
+**Left unresolved and worth someone's attention:** the window opens at criticality because
+pump heat is not pace-able by rod control, and starting the RCP into a cold RCS carries Tavg
+**50 → ~78 °C in about 20 minutes** — roughly **28 °C of a 55.6 °C hourly budget spent before
+a rod moves**. Including it made the first hour the worst hour every time. That is a real
+question about this plant's heat-to-mass ratio, not a windowing preference.
+
+**#397 — SS-8 got its energy term, and the audit's open question is answered.** The row
+claimed *"heat-balance closure ±2 % at any steady state"* against two mass balances and a
+rating check at the one steady state that holds still. It now asserts `core_heat_pct` against
+`steam_flow_normalized × 100` at three ICs, averaged over a window rather than sampled once.
+#397 measured 6.44 pp worst at 50 % and explicitly could not say whether that was an
+energy-conservation violation or the #394 limit cycle's stored-energy term. **It was the
+limit cycle.** On the fixed plant: **0.04 pp mean at 100 %, 0.63 at 50 %, 0.29 at 5 %**, worst
+single sample anywhere **0.69**. The band stays at the row's original ±2 % — 3× margin — and
+is deliberately not re-derived down to the measurement.
+
+**#399 — the tier means what the probe asserts.** `[I]` was the catalog's only provenance
+mechanism and the audit measured **zero of seven** rows meeting its definition. The rule now
+says the tier follows the ASSERTION, not the sentence: SS-2, SS-3, SS-5, SS-6 and SS-11
+re-tiered `[C]` (all assert minted numbers — SS-11 included, despite calling itself an
+invariant in its own text, because exempting it would have made the rule decorative); EV-5
+and EV-8 get **NOT ASSERTED**, a third state, because their probes check instructor cards and
+an `info` line respectively and choosing either tier would answer a question never asked. The
+FG-1 table had **no Tier column at all** — six rows that could not carry provenance in
+principle, which is how EV-1's rate half held `PASS` for months. Added.
+
+**#429 — a zero-step rod nudge drove the bank to its full-out stop.** `clip(steps + 0)`
+equals the current position, `>=` handed the group a positive velocity, and `_stepRods` tests
+the target only AFTER incrementing — so it never matched again and only the rail stopped it.
+Measured: **839 → 912**. Latent (the kernel's `if (!steps) return` is one caller's guard, in
+the wrong layer). Injection told me something I had assumed wrong: the **rail-clip form was
+never broken** — its first increment clips back onto the target and the loop exits — so the
+two new checks fail against *different* regressions, and the second one's live purpose is a
+later edit that drops the guard trusting the strict sign. RBMK and BWR carry the identical
+`>=` and are ON HOLD; noted on the issue, not touched.
+
+---
+
 ## Session log — 2026-08-09-develop-b (#394 + #378 + #420 — the limit cycle was LOOP GAIN, and two sessions rejected fixes for the wrong mechanism)
 
 **Outcome: both strict xfails retire. `run_behavior` 67pass/2xfail → 69pass/0xfail, `run_all` 44

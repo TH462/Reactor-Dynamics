@@ -65,6 +65,27 @@
     // TR-1i left because #420's band is now the sourced duty SCALED by the declared
     // program-span departure (5.74 °F) per the 2026-08-09 owner ruling — see the probe.
     // Nothing is expected to fail here. Do not add an entry without a filed issue.
+
+    // REFILLED 2026-08-09 by #433, which #403 exposed. These three were GREEN against a
+    // harness artifact, not against the plant: `held_within_s` (control_kernel.js:843)
+    // ages its latch off `this._simT`, which only advances when `evaluate()` is given its
+    // `dt` — and `ops_harness.js` omitted it at both stepping call sites until #403. With
+    // `dt` absent, `_simT` and `_condHeld[key]` are both 0, so the age is 0 <= 60 FOR EVER
+    // and the MSLI's flow leg latched permanently the first time `sg_steam_flow` crossed
+    // 1.25, which at hot_full_power is t=0 — the coincidence was satisfied before the
+    // break was injected. The kernel comment claiming the argument's absence "degrades to
+    // instantaneous coincidence" has it exactly backwards, and that is why it looked safe.
+    //
+    // MEASURED IN PRODUCTION (full stack, real dt), full-area downstream break: the MSIV
+    // stays OPEN from 825 psi (5.69 MPa) to 212 psi (1.46 MPa) over six minutes while Tavg
+    // falls 580 -> 417 °F. The automatic isolation has never worked for a player.
+    //
+    // They ship XFAIL rather than weakened: each asserts the RIGHT behaviour and the plant
+    // is what is wrong. Delete these three entries in the same change that fixes #433, or
+    // the gate goes XPASS-red.
+    'TR-12b': '#433 — MSLI never actuates; was green on a permanent held_within_s latch',
+    'TR-12c': '#433 — MSLI never actuates; was green on a permanent held_within_s latch',
+    'PI-9': '#433 — MSLI never actuates; was green on a permanent held_within_s latch',
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -279,17 +300,70 @@
       });
     },
 
+    /* SS-8 — HEAT-BALANCE CLOSURE. Re-authored 2026-08-09 (#397 / #344 F2).
+     *
+     * What it was: `charging ≈ letdown`, `steam ≈ feed`, `mwe ≈ 100`, all at
+     * hot_full_power. Two MASS balances and a rating check — no energy term anywhere —
+     * under a row claiming "heat-balance closure ±2 % at ANY steady state", asserted at
+     * the one steady state that holds still. It had carried `PASS?` since the freeze,
+     * which is the row honestly asking for the pin it never got.
+     *
+     * The energy term is `core_heat_pct` (TOTAL core thermal — fission + decay + pump,
+     * NOT `power_pct`, which is fission only) against `steam_flow_normalized × 100`, the
+     * secondary's removal. At a true steady state the RCS stores nothing, so the two are
+     * the same number and their difference is the closure residual.
+     *
+     * "At any steady state" is now taken literally: three of them, including 5 %, where
+     * decay heat is a large fraction of the total and a closure that only works at power
+     * would show it. The mass checks are kept — they were never wrong, only mislabelled.
+     *
+     * THE BAND IS THE ROW'S ORIGINAL ±2 %, and it holds with room to spare. #397 measured
+     * 6.44 pp worst / 3.26 pp mean at 50 % and could not say whether that was a real
+     * energy-conservation violation or the stored-energy term of the #394 limit cycle —
+     * it named that as explicitly not established. #394 has since been fixed, and on the
+     * fixed plant the residual is 0.04 pp mean at 100 %, 0.63 at 50 %, 0.29 at 5 %
+     * (worst single sample anywhere: 0.69). So it was the limit cycle, and the answer is
+     * recorded here because the question was asked here.
+     *
+     * The band is therefore NOT re-derived from the measurement — 3x margin on a claim the
+     * catalog already made is the right amount of slack, and pinning ±0.7 would make this a
+     * check that reddens on any legitimate secondary retune. */
     'SS-8': function () {
-      return test('SS-8 heat-balance closure at 100%', function (ck) {
-        var h = H('hot_full_power');
-        h.run(600);
-        var t = h.ts();
-        ck('charging ≈ letdown (±0.01)', fmt(t.charging_flow_actual, 3) + ' vs ' + fmt(t.letdown_flow_actual, 3),
-          Math.abs(t.charging_flow_actual - t.letdown_flow_actual) < 0.01, 'match');
-        ck('steam ≈ feed (±3%)', fmt(t.steam_flow_normalized, 3) + ' vs ' + fmt(t.fw_flow_normalized, 3),
-          Math.abs(t.steam_flow_normalized - t.fw_flow_normalized) < 0.03, 'match');
-        ck('electrical ≈ rated (100 ±5 MWe)', fmt(t.mwe_output, 0), near(t.mwe_output, 100, 5), '100 ±5');
-        T.checkSanity(ck, h);
+      return test('SS-8 heat-balance closure — energy, at three steady states', function (ck) {
+        var CASES = [
+          { ic: 'hot_full_power', label: '100 %', settle: 600 },
+          { ic: '50_percent', label: '50 %', settle: 900 },
+          { ic: '5_percent', label: '5 %', settle: 900 },
+        ];
+        for (var i = 0; i < CASES.length; i++) {
+          var c = CASES[i], h = H(c.ic);
+          h.run(c.settle);
+          // Average the residual over a window rather than sampling one instant: a
+          // single sample through any residual oscillation cannot fail, which is the
+          // SS-3 trap #394 documented one row above.
+          var n = 0, sum = 0, worst = 0, t;
+          for (var k = 0; k < 30; k++) {
+            h.run(10);
+            t = h.ts();
+            var resid = t.core_heat_pct - t.steam_flow_normalized * 100;
+            sum += Math.abs(resid); n++;
+            if (Math.abs(resid) > Math.abs(worst)) worst = resid;
+          }
+          var mean = sum / n;
+          ck('[' + c.label + '] core thermal ≈ secondary removal (mean |residual| ≤ 2 pp)',
+            fmt(mean, 2) + ' pp mean, ' + fmt(worst, 2) + ' pp worst', mean <= 2.0, '≤ 2.00 pp');
+          t = h.ts();
+          ck('[' + c.label + '] charging ≈ letdown (±0.01)',
+            fmt(t.charging_flow_actual, 3) + ' vs ' + fmt(t.letdown_flow_actual, 3),
+            Math.abs(t.charging_flow_actual - t.letdown_flow_actual) < 0.01, 'match');
+          ck('[' + c.label + '] steam ≈ feed (±3 %)',
+            fmt(t.steam_flow_normalized, 3) + ' vs ' + fmt(t.fw_flow_normalized, 3),
+            Math.abs(t.steam_flow_normalized - t.fw_flow_normalized) < 0.03, 'match');
+          if (c.ic === 'hot_full_power') {
+            ck('[100 %] electrical ≈ rated (100 ±5 MWe)', fmt(t.mwe_output, 0), near(t.mwe_output, 100, 5), '100 ±5');
+          }
+          T.checkSanity(ck, h);
+        }
       });
     },
 

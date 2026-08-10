@@ -31,6 +31,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **A zero-step rod nudge drove the control bank to its full-out stop** (#429). `rod_nudge`
+  with `steps: 0` clips to a target equal to the current position, and the `>=` sign then
+  handed the group a *positive* velocity while the stepping loop only tests the target after
+  incrementing — so it never matched again and only the mechanical stop ended the travel.
+  Measured at `hot_full_power`: **839 → 912 steps**, the whole remaining travel. Latent in
+  the shipped app (the control kernel guards the zero case for the one production caller
+  that could compute one), but the guard lived in a different layer from the defect, so any
+  future caller inherited it. RBMK and BWR carry the identical comparator and are on hold.
+
+### Changed
+- **The heatup/cooldown rate limit is now the sourced Technical Specification one — 100 °F/hr
+  (55.6 °C/hr), read as a rolling hour** (#398). The behavior catalog had carried `≤ 28 °C/hr`,
+  a number that appeared exactly once in the repo, in its own row, with no source — while both
+  the source corpus and the shipped board already said 100 °F/hr. A new `mode5_heatup_paced`
+  gate asserts it (worst rolling hour **49.8 °C/hr / 90 °F/hr**); nothing asserted a rate
+  before, so the round-trip gate's `PASS` on that half had never been earned.
+- **Heat-balance closure is now measured with an energy term** (#397). The check had been two
+  mass balances and a rating check at a single steady state, under a row claiming closure
+  "at any steady state". It now compares core thermal output against secondary heat removal at
+  100 %, 50 % and 5 %: residual **0.04 / 0.63 / 0.29 percentage points**, inside the ±2 % the
+  row always claimed.
+
+### Known issues
+- **Automatic steam line isolation does not actuate** (#433, found this change). A full-area
+  downstream steam line break blows the steam generator down from **825 psi (5.69 MPa) to
+  212 psi (1.46 MPa)** with the isolation valve open throughout. Three gates had reported this
+  function working; they were passing against a test-harness artifact, and now ship as declared
+  known-fails pinned to the issue. The reactor still trips on overtemperature ΔT at 1m21s.
 - **A milestone could be recorded twice for one session, because the latch and the identity it
   latched against lived in different storage.** `seen` was a plain object — scoped to a page
   **load** — while the session id it is reported under lives in `sessionStorage`, scoped to the

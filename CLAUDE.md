@@ -442,30 +442,21 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
 
 - **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen 2026-08-08: the ruled TMI-2-style
-  one-time burn, recombiners, geometry-gated transport — owner-review: the [8.0]/[85]
-  STS-template adoption). Remaining: the board card + manual spray/recombiner surface
-  (waits on the board redesign). **#425 RESOLVED** (2026-08-08, ruled): the passive sink
-  runs a lagged saturation-ΔT enhancement — SBO boil-off parks at 22.2 psig (was 83.3,
-  past design), the burn pin is family-wide, and the #384 §7.2 residual is recorded
-  CLOSED (measured at the building before AND after) — owner-review: the sev-0.25
-  spray-boundary knife-edge.
-- **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the plant's
-  declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
-  power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
-  beat graph cannot express. Waves 1's re-clock and the relief sizing are **landed**.
-- **#385 node — LANDED** (stages 0–3, 2026-08-08): `pzr_mass_frac` carries `pzrNodeLevel`.
-  Flash term measured unnecessary, NOT built — owner-review. Closed #415, #334, #354 on the
-  way. **#409 governor** deferred.
-- **#418 tier 2 — LANDED** (2026-08-07): the secondary runs one sourced Ginna basis.
-  `status-owner-review`, three items.
-- **#419 tier 3 — BUILT, no scope left** (2026-08-07; the ×12.6 retirement, F15 → 2500, the
-  Ginna re-anchor). Still open on the issue: **owner-review** on the TMI deception crest
-  (~65 % on the final plant — a level-constants ruling if the cue matters). Detail:
-  `Diagnostic/TUNING_LOG.md`.
-- **#394 + #378 + #420 — LANDED; `run_behavior` carries NO strict xfails** (2026-08-09,
-  67pass/2xfail → 70pass/0xfail). #420 resolved by ruling: the band is the sourced ±5 °F
-  scaled by the declared 33.3/29 span departure = 5.74 °F. WTSM 8.1 (ML11223A252) is now in
-  the corpus. See the themes bullet.
+  one-time burn, recombiners, geometry-gated transport). Remaining: the board card + manual
+  spray/recombiner surface (waits on the board redesign). **#425 RESOLVED** (2026-08-08,
+  ruled): the passive sink runs a lagged saturation-ΔT enhancement, SBO boil-off parks at
+  22.2 psig (was 83.3, past design), and the #384 §7.2 residual is recorded CLOSED. Both
+  carry owner-review items.
+- **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the declared
+  ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the power-scaled
+  rows), and the wave-3 mission items. Wave 1's re-clock and the relief sizing are **landed**.
+- **#385 node, #418 tier 2, #419 tier 3, #394+#378+#420 — ALL LANDED**; each carries
+  `status-owner-review` items on its issue. Open leftovers: #385's flash term measured
+  unnecessary and NOT built; #419's TMI deception crest (~65 %, a level-constants ruling if
+  the cue matters); **#409 governor** deferred. Detail: `Diagnostic/TUNING_LOG.md`.
+- **#433 — the automatic steam line isolation does not actuate** (2026-08-09, found via
+  #403). `run_behavior` carries **3 strict xfails** again (TR-12b, TR-12c, PI-9): they were
+  green on a permanent `held_within_s` latch. See the themes bullet.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -513,12 +504,15 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
   COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
   MENTIONED counting as covered — fails green.
-- **The #380 ladder decision dissolved when the brackets got read** (2026-08-08). The "sourced
-  real ~30–32 %" SG lo-lo was NUREG-1431's bracketed TEMPLATE placeholder — Ginna, the anchor
-  plant, specifies 17 %, the shipped value. Trap: **a placeholder cites like a number, and it
-  survived two evidence passes because both verdicted the mechanism and inherited the number.**
-  AFW moved onto the trip signal (single-signal, three-document sourced; §8.19 retired), feed_sg
-  targets the programmed 65 % (#355), and the SG FEED demand box admits NO FLOW (#358).
+- **An optional argument's absence was documented as graceful degradation and was a PERMANENT
+  LATCH — hiding a dead safety function** (2026-08-09, #403 → #433). `evaluate(instruments,
+  dt)` feeds the alarm hold and `held_within_s`; `ops_harness.js` omitted it forever. The
+  kernel comment says that "degrades to instantaneous coincidence" — in fact `_simT` and
+  `_condHeld[key]` are both 0, so the age is `0 <= 60` FOR EVER. The MSLI's flow leg latched at
+  **t=0**, before any break, and three probes were green on it. Measured in production: a
+  full-area steam line break **never isolates** — 825 → 212 psi, MSIV open. Traps: **a
+  degenerate latch reads exactly like a working feature**, and **a "safe default" comment can
+  have the sign backwards** — measure the degraded path, don't read about it.
 - **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
   rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
   xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892
@@ -529,6 +523,11 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   in four documents is still unmeasured** (nobody had multiplied step count by step rate), and
   **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
+
+- **A bracketed TEMPLATE placeholder cites like a real number** (rescued from #380 on
+  eviction, 2026-08-09): the "sourced real ~30–32 %" SG lo-lo was NUREG-1431's placeholder;
+  Ginna specifies the shipped 17 %. Two evidence passes missed it — both verdicted the
+  MECHANISM and inherited the number.
 
 - **An approved plan's sizing target can be measured on a RETIRED scale** (rescued from the
   #385 bullet on eviction, 2026-08-09): its flash term predated the #408 slider re-map, so it

@@ -20,6 +20,15 @@
  * while the excursion was happening. `accel` still varies command timing and the
  * automation/evaluation interleave, so it is not a no-op parameter.
  *
+ * M4 parity (#403): `evaluate(instruments, dt)` is called WITH its dt. That argument is
+ * optional in the kernel and feeds one thing — `alarm_min_on_s`, the dropout hold that
+ * stops alarm chatter — and its accumulator is guarded by `dt > 0`, so a caller that
+ * omits it silently certifies a plant with no hold at all. This harness omitted it at
+ * both stepping call sites until 2026-08-09. Measured: an alarm whose condition clears
+ * cleared at 0.1 s without the dt and at 2.0 s with it. Same class as #153 above — the
+ * suite certifying a plant no player produces — and `ops_alarm_dropout_hold` in
+ * ops_pwr.js is the probe that now keeps it honest.
+ *
  * Recorder: every sample interval (0.5 sim-s default) the harness updates
  * min/max for every numeric true_state field, captures first-activation times
  * for every alarm id, the first RPS trip, engine scram/melt, and the first
@@ -59,6 +68,11 @@
     // the old `accel × broadcast` form here would leave the ops suites certifying a
     // plant no player can produce — the inverse of #209, and the same class of error.
     this.evalEvery = Math.max(1, Math.round(Math.min(this.accel * BROADCAST_WALL_S, PROTECTION_DT) / DT));
+    // SIM SECONDS between evaluations — what `evaluate(instruments, dt)` wants (#403).
+    // Derived from evalEvery rather than written as a second constant, so #153's own
+    // lesson (two independent copies of the cadence certify a plant no player gets)
+    // cannot recur one line below the cadence it must agree with.
+    this.evalDt = this.evalEvery * DT;
     this.sampleEvery = opts.sampleEvery != null ? opts.sampleEvery : 0.5;   // sim-s
     this._stepCount = 0;
     this._nextSample = 0;
@@ -98,6 +112,9 @@
       }
     }
 
+    // The FIRST evaluation has no preceding interval, so it takes no dt (#403 changed
+    // the two stepping call sites, not this one). Production is the same shape: M5
+    // seeds `sinceEval` from the first tick, not from construction.
     this.cfl.evaluate(this.eng.getInstruments());
     this._sample();
   }
@@ -140,7 +157,7 @@
       this.eng.step(DT);
       this.simTime += DT;
       this._stepCount++;
-      if (this._stepCount % this.evalEvery === 0) this.cfl.evaluate(this.eng.getInstruments());
+      if (this._stepCount % this.evalEvery === 0) this.cfl.evaluate(this.eng.getInstruments(), this.evalDt);
       if (this.simTime >= this._nextSample - 1e-9) {
         this._sample();
         if (onSample) onSample(this, this.simTime);
@@ -158,7 +175,7 @@
       this.eng.step(DT);
       this.simTime += DT;
       this._stepCount++;
-      if (this._stepCount % this.evalEvery === 0) this.cfl.evaluate(this.eng.getInstruments());
+      if (this._stepCount % this.evalEvery === 0) this.cfl.evaluate(this.eng.getInstruments(), this.evalDt);
       if (this.simTime >= this._nextSample - 1e-9) {
         this._sample();
         if (onSample) onSample(this, this.simTime);
