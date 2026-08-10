@@ -89,10 +89,20 @@ report arrived with no way to read it (2026-08-10). `tools/fetch_bug_reports.js`
 throwaway reader Worker under `wrangler dev --remote` instead; its header explains why that
 is the only route that needs no new credential.
 
-The bundle is the same structure the Dev tab downloads — `manifest`, `timeseries` (1 Hz),
-`events`, `commands`, `performance`, `snapshot_end` — but WRAPPED for the wire: the stored
-object is `{v, kind, note, bundle}`, so all of that sits under `.bundle` and the reporter's
-typed `note` is at the top (`site/telemetry.js:248`).
+The bundle is the same structure the Dev tab downloads — `manifest`, `timeseries`, `events`,
+`commands`, `performance`, `snapshot_end` — but WRAPPED for the wire: the stored object is
+`{v, kind, note, bundle}`, so all of that sits under `.bundle` and the reporter's typed
+`note` is at the top (`site/telemetry.js:248`).
+
+**`timeseries` is COLUMNAR from schema 1.1** — `{fields, t, accel, v[], lo[], hi[]}`, one
+inner array per field, with `lo`/`hi` the min/max over each sample's interval. Schema 1.0 was
+an array of row objects with `true_<field>` keys, ONE POINT SAMPLE PER BROADCAST and no
+extremes, under a manifest that always claimed `sample_hz: 1` — so a bundle from a
+fast-forwarded session had 180 s between rows and a whole LOCA could fall between two of them
+(#432). There is no `sample_hz` any more and no scalar replaced it: the grid moves with
+acceleration inside one session, so the row timestamps are the only honest answer, and
+`manifest.sampling` declares just the floor and the source. `tools/fetch_bug_reports.js`
+reads both versions and prints the derived rate.
 
 ### The questions this was built to answer
 

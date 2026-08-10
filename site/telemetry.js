@@ -254,7 +254,24 @@
       var h = { 'Content-Type': 'application/json' };
       if (encoded) h['Content-Encoding'] = 'gzip';
       return G.fetch(url + '?kind=bundle', { method: 'POST', headers: h, body: body })
-        .then(function (r) { return { ok: r.ok, status: r.status }; });
+        .then(function (r) {
+          // READ THE ID BACK (#431). The Worker answers `{ok:true, id}` and names the stored
+          // object after it, precisely so a reporter can quote it — and this line used to
+          // return `{ok, status}` and drop it on the floor, which left the id existing
+          // nowhere a human could see. Not personal data: a base-36 timestamp plus eight
+          // random characters, generated server-side, and already the R2 object key.
+          //
+          // The body read must not be able to REJECT, and must not assume there is one to
+          // read. An error response is not necessarily JSON (an edge can answer HTML), an
+          // opaque response has no readable body at all, and a rejected promise here would
+          // turn a report that ARRIVED into "could not send" in the form.
+          var base = { ok: r.ok, status: r.status };
+          if (typeof r.json !== 'function') return base;
+          return r.json().then(
+            function (j) { return { ok: r.ok, status: r.status, id: (j && j.id) || undefined }; },
+            function () { return base; }
+          );
+        });
     }
     try {
       if (G.CompressionStream && G.Response) {

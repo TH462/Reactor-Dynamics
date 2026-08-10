@@ -562,6 +562,61 @@ async function testRewindPicker(page) {
   return log.join('\n');
 }
 
+/* THE BUG REPORT'S RECORDING, THROUGH THE REAL WIRING (#432).
+ *
+ * `test/run_diag_bundle.js` drives ui/diag_recorder.js directly and cannot execute ui/app.js,
+ * so it cannot see whether the app actually FEEDS it. That gap is not hypothetical: the first
+ * working version of the fix passed all 31 of those checks while the shipped page recorded 35
+ * samples where it should have had 2040, because the fine sub-samples were drained inside the
+ * rAF paint — one animation frame after the broadcast — and reached the recorder only after it
+ * had already advanced past their timestamps. Rows in, nothing recorded. Only a browser can
+ * catch that, so it is asserted here: run the plant at 600x, press the app's own download
+ * button, and read the file it produces.
+ */
+async function testDiagBundle(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForTimeout(1500);
+  await page.click('#playBtn');
+  await page.evaluate(function () {
+    var b = document.querySelector('#speedSeg [data-speed="600"], [data-speed="600"]');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(6000);
+
+  await page.click('#tabbar button[data-tab="settings"]');
+  await page.waitForTimeout(200);
+  await page.click('#fbBtn');
+  await page.waitForTimeout(200);
+  var dl = (await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click('#fbDiag')]))[0];
+  var out = path.join(SCRATCH, 'diag-bundle.json');
+  await dl.saveAs(out);
+
+  var b = JSON.parse(fs.readFileSync(out, 'utf8'));
+  var ts = b.timeseries || {};
+  if (b.schema_version !== '1.1') throw new Error('diag bundle schema is ' + b.schema_version + ', expected 1.1');
+  if ('sample_hz' in (b.manifest || {})) throw new Error('diag manifest still carries sample_hz');
+  if (!ts.fields || !ts.t || !ts.lo || !ts.hi) throw new Error('diag timeseries is not columnar with extremes');
+
+  // THE ONE THAT CATCHES THE DRAIN BEING IN THE WRONG PLACE. At 600x a broadcast carries 60 s
+  // of plant, so the broadcast-only fallback yields ~1 row a minute; the fine seam yields one
+  // a second. Asserting the SOURCE alone is not enough — that reads 'mixed' on a page feeding
+  // the recorder two rows an hour.
+  var dts = [];
+  for (var i = 1; i < ts.t.length; i++) dts.push(ts.t[i] - ts.t[i - 1]);
+  var worst = dts.length ? Math.max.apply(null, dts) : Infinity;
+  var span = ts.t.length ? ts.t[ts.t.length - 1] - ts.t[0] : 0;
+  log.push('rows=' + ts.t.length + ' span=' + span.toFixed(0) + 's worst dt=' + worst.toFixed(1) +
+    's source=' + (b.manifest.sampling || {}).source);
+  if (b.manifest.sampling.source !== 'fine') {
+    throw new Error('the recorder is not riding the fine seam: source=' + b.manifest.sampling.source);
+  }
+  if (worst > 2) throw new Error('rows are ' + worst.toFixed(1) + ' s apart at 600x — expected ~1 s');
+  if (ts.t.length < span / 2) throw new Error('only ' + ts.t.length + ' rows for ' + span.toFixed(0) + ' s of plant');
+  return log.join('\n');
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -570,7 +625,10 @@ async function main() {
   var playwright = require('playwright');
   var srv = await startServer();
   var browser = await playwright.chromium.launch({ headless: true });
-  var page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  // acceptDownloads: testDiagBundle presses the app's own "Download session diagnostics"
+  // button and reads the file, which is the only way to see the recorder through the real
+  // wiring — see the comment on that function.
+  var page = await browser.newPage({ viewport: { width: 1500, height: 950 }, acceptDownloads: true });
   var summary = [];
 
   try {
@@ -590,6 +648,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     var tpLog = await testTrendPreseed(page);
     fs.writeFileSync(path.join(SCRATCH, 'trend-preseed.log'), tpLog);
+    var dbLog = await testDiagBundle(page);
+    fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {

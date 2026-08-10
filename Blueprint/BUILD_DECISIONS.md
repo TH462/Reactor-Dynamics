@@ -45,6 +45,48 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-09-backshop-c — #432/#431: the bug report's recording rides the fine seam, and the schema stops asserting a rate it cannot know
+
+**Decision.** The session recorder moves out of `ui/app.js` into **`ui/diag_recorder.js`**
+(`RD.DiagRecorder`, a plain global script), samples on the service's fine sampler with MIN/MAX
+extremes per bucket, and the bundle goes to **schema 1.1** with a columnar `timeseries`.
+`manifest.sample_hz` is **deleted and not replaced by a scalar** — `sampling` declares the floor
+and the source, and the row timestamps carry the actual rate. Scope and the extraction were both
+the owner's *(OWNER RULING, 2026-08-09: selected "#432 + #431 + tool + gate" and "Extract
+ui/diag_recorder.js" from options I wrote — a selection, not verbatim words)*.
+
+**Why the extraction is the load-bearing part.** Nothing in `test/` had ever touched the
+recorder, and that is not a coverage observation — it is the cause. The code was inside
+`ui/app.js`, which no Node runner can reach, so it shipped sampling once per broadcast (one row
+per 180 s at 3600×) under a manifest hardcoded to 1 Hz, and the first person to find out was the
+owner. `run_diag_bundle.js` now drives the recorder full-stack; the `ui/manual_procedures.js`
+pattern, which seven runners already use.
+
+**Three decisions inside it worth not re-litigating.**
+
+1. **A third side-dict (`dv`) on the fine sampler, not the chart's `tv`.** `steam_flow` and
+   `fw_flow` are `tru: t.<field> * 100` for display. Reading those columns would have silently
+   changed the bundle's units, so a tool comparing an old report with a new one would compare
+   0.069 against 6.9. `foldExtremes` iterates a `SIDES` table now — its comment already claimed
+   genericity the body did not have.
+2. **The grid is an emit rule, not a constant.** Emit when 1 s of sim has passed, folding
+   everything between. Spacing falls out as `max(1 s, the service's fine grid)` with the
+   recorder knowing neither `CHART_FINE_MAX` nor the acceleration. **1× is unchanged.**
+3. **Columnar, measured not assumed.** At the 14,400-row ring: 720 KB gzipped columnar against
+   1218 KB as row objects, on a 2 MB Worker cap that also has to carry `events` and
+   `snapshot_end`.
+
+**The trap this session is worth remembering for.** The first working version passed all 31 of
+its own checks and recorded **35 rows out of 1475 handed to it** in a real browser, because the
+fine drain sat inside the rAF paint — one frame after the broadcast — and the recorder, a
+separate synchronous subscriber, saw every row *after* it had already recorded a later
+timestamp. A source scan cannot see that (every call site is present and correct) and a Node
+gate cannot see it (it hands the recorder its rows itself). `verify_e2e_ui` now presses the
+app's own download button and asserts the SPACING — not the `source` field, which read `mixed`
+on the broken page.
+
+---
+
 ## 2026-08-09-develop-b — #394/#378/#420: the rod limit cycle is LOOP GAIN, and the mechanism of record was wrong
 
 **Decision.** The part-power limit cycle is fixed by **scheduling the rod-control gain on

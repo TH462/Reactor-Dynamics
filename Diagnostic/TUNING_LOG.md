@@ -29,6 +29,97 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-09-backshop-c (#432 + #431 — the recording was the broken instrument, and the fix's own first version recorded 35 rows out of 1475)
+
+**Outcome: bundle schema 1.1 on the fine seam with extremes; `ui/diag_recorder.js` extracted;
+`test/run_diag_bundle.js` (31 checks) and a browser half in `verify_e2e_ui`; the report id
+reaches the reporter.** Scope and the extraction were both the owner's *(OWNER RULING,
+2026-08-09: selected "#432 + #431 + tool + gate" and "Extract ui/diag_recorder.js" from
+options I wrote — a selection, not verbatim words)*.
+
+### What the owner's test found, and what it did not
+
+`msmjyei2-yav89rpu`, note *"Testing speed acceleration during large transients."* — 3600×,
+`large_loca` sev 0.4 at t=13685.5 from `hot_full_power`. **The accident is two rows:** 100.01 %
+/ 2235 psi (15.41 MPa) at 13685.5, then 0.00 % / 56 psi (0.39 MPa) at 14045.5.
+
+**The plant is not the defect.** Protection has run on a 0.1 s sim-time cadence at every speed
+since #153, and the trips fired where they should. The RECORDING was the defect, in two ways
+that reinforced each other: `diagSample` was reachable only from a broadcast subscriber, so
+resolution was `accel × broadcastMs`; and `manifest.sample_hz` was the literal `1`, so the
+bundle asserted 180× the resolution it had. **A manifest that cannot disagree with its own
+data is the whole complaint** — and the strip chart had already been fixed for the identical
+aliasing on 2026-08-05 (`CHART_FINE_SEC` + MIN/MAX banding) while the recorder was left behind.
+
+### The trap: the fix passed 31 of its own checks and recorded nothing
+
+The Node gate drives `RD.DiagRecorder` directly and green-lit the whole design. The browser
+did not:
+
+| | rows | worst dt | source |
+|---|---|---|---|
+| drain inside the rAF paint (first version) | **35** | 30–60 s | mixed |
+| drain in the broadcast (shipped) | **2100** | 1.0 s | fine |
+
+Both at 600× for ~2100 s of plant. The fine rows were arriving — instrumented in-page,
+`diagTick` received **1475 of them** — and every one was discarded. The drain sat at the top of
+`renderNow`, which runs one animation frame after the broadcast that produced the rows. The
+recorder is a separate synchronous subscriber, so it saw broadcast N's rows during broadcast
+N+1, *after* it had already recorded a sample at N's later timestamp; all 1475 were older than
+the grid position and none could emit.
+
+**Rows in, nothing recorded — the shape of the bug being fixed, one layer up, inside the fix.**
+A source scan cannot see it (the call sites are all present and correct) and the Node gate
+cannot see it (it hands the recorder rows itself). Only a browser can, which is why
+`verify_e2e_ui` now presses the app's own download button and reads the file. Its assertion is
+the SPACING, not the `source` field: `source` read `mixed` on the broken page.
+
+### The design, and why each piece is where it is
+
+- **A third side-dict `dv` on the fine sampler**, not the chart's `tv`: `steam_flow` and
+  `fw_flow` are `tru: t.<field> * 100` for display, so riding those columns would have made an
+  old bundle and a new one disagree by 100× on the same quantity. `foldExtremes` now iterates a
+  `SIDES` table — the comment there already claimed it was "GENERIC over the reading's shape"
+  while the body named two sides, so the third made an existing claim true rather than adding a
+  special case to a function advertising that it had none.
+- **The grid is an EMIT RULE, not a constant.** Emit when `GRID_SEC` (1 s) of sim has passed
+  since the last row, folding everything between into the extremes. Spacing therefore comes out
+  as `max(1 s, the service's fine grid)` — 1 s at 1×, 1 s at 600×, 6 s at 3600× — with the
+  recorder knowing neither `CHART_FINE_MAX` nor the acceleration. Nothing to desynchronise.
+  **1× is unchanged**, the property `PROTECTION_DT` was chosen for.
+- **Columnar `timeseries`.** Measured on the real report's data, jittered so columns do not
+  repeat: at the 14,400-row ring, **720 KB gzipped against 1218 KB as row objects**, and the
+  Worker cap is 2 MB before `events` and `snapshot_end`. The first measurement said 16× rather
+  than 1.7× — because the synthetic rows repeated the same 211 values cyclically and gzip ate
+  the repetition. Jitter your synthetic data before believing a compression ratio.
+- **No scalar replaces `sample_hz`.** The grid moves with acceleration *inside* one session, so
+  no single number can be honest; `manifest.sampling` declares the floor and the source, and
+  the row timestamps are the rate. `tools/fetch_bug_reports.js` now prints that derived rate on
+  every summary — graded on the WORST gap, not the median, because a run that sat at 1× for
+  most of its rows and at 3600× through the interesting part has a reassuring median and a
+  360 s hole exactly where the answer was.
+
+### Two more, both found by the work rather than looked for
+
+- **Undrained sub-samples survived a plant change.** Pre-existing for the chart (the comment in
+  `afterPlantChange` already warned that a sample taken against the old series index would be
+  "silently misfiled rather than empty") and newly dangerous for the recorder, whose row is
+  packed over the OLD plant's field list. All three shares are cleared there now.
+- **`diagSessionInfo` does not exist.** `diagReadout()` writes to an element no longer in
+  `ui/shell.html` — the Dev tab it belonged to is gone. Harmless (`txt()` tolerates null) and
+  left alone, but it is dead code and worth knowing before someone debugs it.
+
+### Injection verification
+
+Ran the pre-fix data path (broadcast-only, no extremes) at 3600× with the same LOCA: **7 rows
+for the whole 1800 s run, 3 across the blowdown, `hi − lo` identically 0.0000.** Against the
+new gate that is 4 red — the spacing check (360 s against ≤6 s) and all three TR-4 transient
+checks. TR-8 is a deliberate source scan, and its `sample_hz` check went red on this file's own
+prose the first time: **a static gate reading source must strip comments**, which is the
+standing trap in `CLAUDE.md` arriving in the session that added a gate.
+
+---
+
 ## Session log — 2026-08-09-backshop-b (#430/#431 — the first real bug report arrived and the documented way to read it had never existed)
 
 **Outcome: `tools/fetch_bug_reports.js` + the `read-bug-reports` skill; two docs corrected; the

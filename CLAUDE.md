@@ -434,38 +434,31 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-08**._
+_Last updated: **2026-08-09**._
 
-**Where the PWR is.** `run_all` is **44 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **45 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
 
-- **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen 2026-08-08: the ruled TMI-2-style
-  one-time burn, recombiners, geometry-gated transport — owner-review: the [8.0]/[85]
-  STS-template adoption). Remaining: the board card + manual spray/recombiner surface
-  (waits on the board redesign). **#425 RESOLVED** (2026-08-08, ruled): the passive sink
-  runs a lagged saturation-ΔT enhancement — SBO boil-off parks at 22.2 psig (was 83.3,
-  past design), the burn pin is family-wide, and the #384 §7.2 residual is recorded
-  CLOSED (measured at the building before AND after) — owner-review: the sev-0.25
-  spray-boundary knife-edge.
-- **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the plant's
-  declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the
-  power-scaled rows), and the wave-3 mission items — the tag+defend "quiet night" story the
-  beat graph cannot express. Waves 1's re-clock and the relief sizing are **landed**.
-- **#385 node — LANDED** (stages 0–3, 2026-08-08): `pzr_mass_frac` carries `pzrNodeLevel`.
-  Flash term measured unnecessary, NOT built — owner-review. Closed #415, #334, #354 on the
-  way. **#409 governor** deferred.
-- **#418 tier 2 — LANDED** (2026-08-07): the secondary runs one sourced Ginna basis.
-  `status-owner-review`, three items.
-- **#419 tier 3 — BUILT, no scope left** (2026-08-07; the ×12.6 retirement, F15 → 2500, the
-  Ginna re-anchor). Still open on the issue: **owner-review** on the TMI deception crest
-  (~65 % on the final plant — a level-constants ruling if the cue matters). Detail:
-  `Diagnostic/TUNING_LOG.md`.
-- **#394 + #378 + #420 — LANDED; `run_behavior` carries NO strict xfails** (2026-08-09,
-  67pass/2xfail → 70pass/0xfail). #420 resolved by ruling: the band is the sourced ±5 °F
-  scaled by the declared 33.3/29 span departure = 5.74 °F. WTSM 8.1 (ML11223A252) is now in
-  the corpus. See the themes bullet.
+- **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen: the ruled TMI-2-style one-time burn,
+  recombiners, geometry-gated transport — owner-review: the [8.0]/[85] STS-template adoption).
+  Remaining: the board card + manual spray/recombiner surface, waiting on the board redesign.
+  **#425 RESOLVED** (ruled): the passive sink runs a lagged saturation-ΔT enhancement, SBO
+  boil-off parks at 22.2 psig (was 83.3, past design), the burn pin is family-wide, the #384
+  §7.2 residual is CLOSED — owner-review: the sev-0.25 spray-boundary knife-edge.
+- **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the declared
+  ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the power-scaled
+  rows), and the wave-3 mission items — the tag+defend "quiet night" story the beat graph
+  cannot express. Wave 1's re-clock and the relief sizing are **landed**.
+- **LANDED, open only on owner-review** — **#385** node (stages 0–3; flash term measured
+  unnecessary, NOT built; closed #415/#334/#354; **#409 governor** deferred) · **#418** tier 2
+  (one sourced Ginna basis, three items) · **#419** tier 3 (×12.6 retirement, F15 → 2500,
+  Ginna re-anchor; the TMI deception crest at ~65 % is a level-constants ruling if the cue
+  matters) · **#394 + #378 + #420** (`run_behavior` carries NO strict xfails; WTSM 8.1
+  ML11223A252 now in the corpus).
+- **#432 + #431 — LANDED** (2026-08-09): bundle schema **1.1**, `ui/diag_recorder.js`,
+  `run_diag_bundle`. See themes.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -513,12 +506,14 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
   COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
   MENTIONED counting as covered — fails green.
-- **The #380 ladder decision dissolved when the brackets got read** (2026-08-08). The "sourced
-  real ~30–32 %" SG lo-lo was NUREG-1431's bracketed TEMPLATE placeholder — Ginna, the anchor
-  plant, specifies 17 %, the shipped value. Trap: **a placeholder cites like a number, and it
-  survived two evidence passes because both verdicted the mechanism and inherited the number.**
-  AFW moved onto the trip signal (single-signal, three-document sourced; §8.19 retired), feed_sg
-  targets the programmed 65 % (#355), and the SG FEED demand box admits NO FLOW (#358).
+- **The bug report's RECORDING was the broken instrument, and the fix passed 31 of its own
+  checks while recording nothing** (2026-08-09, #432/#431). Sampling ran once per BROADCAST, so
+  a 3600× LOCA is two rows under a manifest hardcoded to `sample_hz: 1`; it now rides the
+  chart's fine seam with min/max per bucket. The trap is the fix's own first version: the fine
+  drain sat inside the rAF paint, one frame late, so the recorder — a separate synchronous
+  subscriber — saw every row AFTER recording a later timestamp. **1475 rows in, 35 recorded.**
+  Invisible to a source scan (call sites all correct) and to the new Node gate (it hands the
+  recorder its rows); only a browser sees it.
 - **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
   rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
   xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892
@@ -530,6 +525,9 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 
+- **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
+  eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
+  both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
 - **An approved plan's sizing target can be measured on a RETIRED scale** (rescued from the
   #385 bullet on eviction, 2026-08-09): its flash term predated the #408 slider re-map, so it
   measured unnecessary and was never built. Re-derive sizing from the Q0, not the plan.
@@ -709,15 +707,14 @@ not a changelog.**
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
 numbers here.** This section carried ~24,000 words of per-runner prose until 2026-08-06; every
 figure in it was a second copy of a machine-readable map, and the copies rotted exactly as this
-file's own warnings predicted — `run_inspect` was recorded as 8/8 while `BASELINES` said 9/9,
-`verify_flags_ui` said 48/48 against a gate that has always scored 42, `run_otdt` sat at 39
-through three commits that took it to 46, and `run_contract` appeared **twice with different
-numbers** after a merge. Run the gate; read the map. The per-change rationale — what moved, why,
+file's own warnings predicted — `verify_flags_ui` said 48/48 against a gate that has always
+scored 42, `run_otdt` sat at 39 through three commits that took it to 46, and `run_contract`
+appeared **twice with different numbers** after a merge. Run the gate; read the map. The per-change rationale — what moved, why,
 and the trap it taught — lives in `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`,
 newest first.
 
 ```
-node test/run_all.js            # all 43 runners (~3.5 min, 10-way parallel)
+node test/run_all.js            # all 45 runners (~3.5 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -784,7 +781,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 43 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 45 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
@@ -810,9 +807,9 @@ node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
                                 # TAKE A NUMBER from a long FULL-STACK evolution (see below)
 ```
 
-`test/ops_*.js`, `test/*_harness.js`, and `test/verify_*.js` are supporting
-harnesses. Ops-probe FAILs are tuning targets, tracked in
-`Diagnostic/OPS_TUNING_REPORT.md`. `run_e2e_controls.js` and `run_procedures.js`
+`test/ops_*.js` and `test/*_harness.js` are supporting harnesses. Ops-probe FAILs
+are tuning targets, tracked in `Diagnostic/OPS_TUNING_REPORT.md`.
+`run_e2e_controls.js` and `run_procedures.js`
 are PART OF THE GATE LIST — both drifted red unnoticed once because they weren't
 listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
 `test/verify_*.js` automatically and fails on any runner it has no baseline for**, so

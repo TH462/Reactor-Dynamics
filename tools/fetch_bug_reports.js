@@ -199,12 +199,56 @@ function unwrap(doc) {
   return { note: (doc && (doc.notes || doc.note)) || '', bundle: doc };
 }
 
+/* Normalise the timeseries across both schema versions.
+ *
+ *   1.0  an array of row objects, `{ t, accel, true_<field>: … }`, ONE POINT SAMPLE PER
+ *        BROADCAST and no extremes — so at 3600× a row is 180 s of plant and a whole LOCA
+ *        can fall between two of them (#432, and the reason 1.1 exists).
+ *   1.1  columnar, `{ fields, t, accel, v[], lo[], hi[] }`, sampled on the service's fine
+ *        seam with MIN/MAX folded over each bucket.
+ *
+ * Returns `{ rows, fields, t, accel, at(field) -> {v, lo, hi} }` with lo/hi null on 1.0 —
+ * null rather than a copy of `v`, because "no extremes were recorded" and "the value never
+ * moved" are different facts and only one of them is true here.
+ */
+function series(bundle) {
+  const raw = bundle && bundle.timeseries;
+  if (!raw) return { rows: 0, fields: [], t: [], accel: [], extremes: false, at: () => null };
+
+  if (Array.isArray(raw)) {                               // schema 1.0
+    const fields = [];
+    for (const r of raw) for (const k of Object.keys(r)) {
+      if (k.startsWith('true_') && fields.indexOf(k.slice(5)) === -1) fields.push(k.slice(5));
+    }
+    return {
+      rows: raw.length, fields, extremes: false,
+      t: raw.map((r) => r.t), accel: raw.map((r) => r.accel),
+      at: (f) => (fields.indexOf(f) === -1 ? null
+        : { v: raw.map((r) => (r['true_' + f] == null ? null : r['true_' + f])), lo: null, hi: null }),
+    };
+  }
+
+  const i = (f) => raw.fields.indexOf(f);                  // schema 1.1
+  return {
+    rows: raw.t.length, fields: raw.fields.slice(), extremes: !!(raw.lo && raw.hi),
+    t: raw.t, accel: raw.accel,
+    at: (f) => (i(f) === -1 ? null
+      : { v: raw.v[i(f)], lo: raw.lo ? raw.lo[i(f)] : null, hi: raw.hi ? raw.hi[i(f)] : null }),
+  };
+}
+
+function median(a) {
+  if (!a.length) return null;
+  const s = a.slice().sort((x, y) => x - y);
+  return s[s.length >> 1];
+}
+
 function summarise(doc, label) {
   const { note, bundle } = unwrap(doc);
   const m = (bundle && bundle.manifest) || {};
   const ev = (bundle && bundle.events) || [];
   const cmds = (bundle && bundle.commands) || [];
-  const ts = (bundle && bundle.timeseries) || [];
+  const ts = series(bundle);
   const perf = bundle && bundle.performance;
   const full = has('--full');
 
@@ -224,7 +268,31 @@ function summarise(doc, label) {
   if (m.scenario_id) console.log(`  scenario ${m.scenario_id}`);
   if (m.follow_procedure_id) console.log(`  following procedure ${m.follow_procedure_id}`);
   console.log(`  sim time ${clock(m.exported_sim_time)} (${(m.exported_sim_time || 0).toFixed(0)} s), exported ${bundle.exported_at || '?'}`);
-  console.log(`  ${ts.length} samples · ${ev.length} events · ${cmds.length} commands`);
+  console.log(`  ${ts.rows} samples · ${ev.length} events · ${cmds.length} commands`);
+
+  // SAMPLING, PRINTED EVERY TIME. The absence of exactly this line is what let #432 hide:
+  // 211 rows over 6 h 21 m reads as a recording until you divide, and the manifest said
+  // 1 Hz. The rate is DERIVED from the row timestamps here — never read out of the
+  // manifest, which is the thing that was lying.
+  {
+    const d = [];
+    for (let i = 1; i < ts.t.length; i++) d.push(ts.t[i] - ts.t[i - 1]);
+    const med = median(d), lo = d.length ? Math.min(...d) : null, hi = d.length ? Math.max(...d) : null;
+    // Graded on the WORST gap, not the median. Acceleration moves inside one session, so a
+    // run that sat at 1× for most of its rows and at 3600× through the interesting part has
+    // a reassuring median and a 360 s hole exactly where the answer was.
+    const coarse = hi != null && hi > 10;
+    const line = med == null ? 'one sample' : `every ${med.toFixed(1)} s typical` +
+      (lo != null && (hi - lo) > 0.05 ? `, worst gap ${hi.toFixed(1)} s` : '');
+    console.log(`\n${C.b}Sampling${C.x}`);
+    console.log(`  ${coarse ? C.y : C.g}${line}${C.x} · ` +
+      (ts.extremes ? `${C.g}min/max per bucket${C.x}` : `${C.y}point samples, NO extremes${C.x}`) +
+      (m.sampling && m.sampling.source ? ` · source ${m.sampling.source}` : '') +
+      ` · schema ${bundle.schema_version || '?'}`);
+    if (!ts.extremes) {
+      console.log(`  ${C.y}Pre-1.1 recording (#432): a transient shorter than the spacing above left NO mark.${C.x}`);
+    }
+  }
 
   if (perf) {
     const p = (o) => (o && typeof o.p95 === 'number') ? `${o.p95.toFixed(1)} ms p95` : '—';
@@ -268,16 +336,44 @@ function summarise(doc, label) {
   }
   if (notable.length > (full ? 400 : 80)) console.log(`  ${C.d}… ${notable.length - (full ? 400 : 80)} more${C.x}`);
 
-  const last = ts[ts.length - 1];
-  if (last) {
+  // WHERE THE PLANT ACTUALLY WENT. On a 1.1 recording the extremes are the interesting part
+  // — the widest bucket is where something happened fast, and on a fast-forwarded session
+  // that is the only trace of it. Fields whose span never exceeds a percent of their own
+  // range are steady and say nothing, so they stay out.
+  if (ts.extremes && ts.rows > 1) {
+    const spans = [];
+    for (const f of ts.fields) {
+      const c = ts.at(f); if (!c || !c.lo || !c.hi) continue;
+      let wide = 0, at = null, lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < ts.rows; i++) {
+        if (c.lo[i] == null || c.hi[i] == null) continue;
+        if (c.lo[i] < lo) lo = c.lo[i];
+        if (c.hi[i] > hi) hi = c.hi[i];
+        if (c.hi[i] - c.lo[i] > wide) { wide = c.hi[i] - c.lo[i]; at = ts.t[i]; }
+      }
+      const range = hi - lo;
+      if (range > 0 && wide > range * 0.02) spans.push({ f, wide, at, range });
+    }
+    spans.sort((a, b) => (b.wide / b.range) - (a.wide / a.range));
+    if (spans.length) {
+      console.log(`\n${C.b}Fastest movement${C.x}${C.d}  (widest single bucket — where a transient hid)${C.x}`);
+      for (const s of spans.slice(0, 6)) {
+        console.log(`  ${s.f.padEnd(24)} ${fmtField(s.f, s.wide, true).padStart(22)} within one bucket ${C.d}at t=${s.at.toFixed(0)} s${C.x}`);
+      }
+    }
+  }
+
+  if (ts.rows) {
+    const lastOf = (f) => { const c = ts.at(f); return c ? c.v[c.v.length - 1] : null; };
     console.log(`\n${C.b}Where it ended${C.x}`);
     const row = (k, v) => console.log(`  ${k.padEnd(18)} ${v}`);
-    row('power', last.true_power_pct != null ? `${last.true_power_pct.toFixed(2)} %` : '—');
-    row('Tavg', tempF(last.true_tavg_c));
-    row('Thot / Tcold', `${tempF(last.true_thot_c)} / ${tempF(last.true_tcold_c)}`);
-    row('RCS pressure', pressPsi(last.true_pressure_mpa));
-    row('steam pressure', pressPsi(last.true_steam_pressure_mpa));
-    row('pzr / SG level', `${(last.true_pzr_level_pct || 0).toFixed(1)} % / ${(last.true_sg_level_pct || 0).toFixed(1)} %`);
+    const pw = lastOf('power_pct');
+    row('power', pw != null ? `${pw.toFixed(2)} %` : '—');
+    row('Tavg', tempF(lastOf('tavg_c')));
+    row('Thot / Tcold', `${tempF(lastOf('thot_c'))} / ${tempF(lastOf('tcold_c'))}`);
+    row('RCS pressure', pressPsi(lastOf('pressure_mpa')));
+    row('steam pressure', pressPsi(lastOf('steam_pressure_mpa')));
+    row('pzr / SG level', `${(lastOf('pzr_level_pct') || 0).toFixed(1)} % / ${(lastOf('sg_level_pct') || 0).toFixed(1)} %`);
     const s = bundle.snapshot_end && bundle.snapshot_end.engine && bundle.snapshot_end.engine.s;
     if (s) {
       if (typeof s.subcooling_c === 'number') row('subcooling', spanF(s.subcooling_c));
@@ -286,6 +382,16 @@ function summarise(doc, label) {
     }
   }
   console.log('');
+}
+
+// US customary first, per the standing directive. `isSpan` marks a DIFFERENCE — those convert
+// ×9/5 with NO offset, which is the conversion that gets written wrong.
+function fmtField(f, x, isSpan) {
+  if (x == null) return '—';
+  if (/_mpa$/.test(f)) return `${psi(x).toFixed(0)} psi (${x.toFixed(2)} MPa)`;
+  if (/_c$/.test(f)) return isSpan ? `${dF(x).toFixed(1)} °F (${x.toFixed(1)} °C)` : `${F(x).toFixed(1)} °F (${x.toFixed(1)} °C)`;
+  if (/_pct$/.test(f)) return `${x.toFixed(1)} %`;
+  return x.toFixed(3);
 }
 
 // ---------------------------------------------------------------- commands
