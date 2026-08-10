@@ -77,13 +77,22 @@ A browser exercises the CORS preflight that curl above does not.
 ### Bug reports
 
 ```bash
-wrangler r2 object list reactor-dynamics-bundles --prefix bundles/2026-08-07/
-wrangler r2 object get reactor-dynamics-bundles bundles/2026-08-07/<id>.json.gz \
-  --file report.json.gz && gunzip -c report.json.gz | jq .note
+node tools/fetch_bug_reports.js            # list every report, newest first
+node tools/fetch_bug_reports.js --latest   # download the newest and summarise it
 ```
 
-The bundle is the same structure the Dev tab downloads: `manifest`, `timeseries`
-(1 Hz), `events`, `commands`, `snapshot_end`, plus the reporter's `note`.
+**Do not reach for `wrangler r2 object …` here.** There is no CLI way to LIST an R2
+bucket — `r2 object` has only `get`/`put`/`delete`, and a key is `<base36 ms>-<8 random
+chars>`, so `get` has nothing to be pointed at. This file and `RD_Ops/runbook.md` both
+documented a `wrangler r2 object list` that has never existed, which is how the first real
+report arrived with no way to read it (2026-08-10). `tools/fetch_bug_reports.js` runs a
+throwaway reader Worker under `wrangler dev --remote` instead; its header explains why that
+is the only route that needs no new credential.
+
+The bundle is the same structure the Dev tab downloads — `manifest`, `timeseries` (1 Hz),
+`events`, `commands`, `performance`, `snapshot_end` — but WRAPPED for the wire: the stored
+object is `{v, kind, note, bundle}`, so all of that sits under `.bundle` and the reporter's
+typed `note` is at the top (`site/telemetry.js:248`).
 
 ### The questions this was built to answer
 

@@ -1161,13 +1161,13 @@ and goes public with the repo, as line 6 says.) The curated
 three worktrees, so every lane reads the same copy and nothing in it can be committed. It holds
 `runbook.md` (account/zone/project ids, what is deployed where, how to read the usage data),
 `cutover.md` (the Vercel → Cloudflare migration, #413, with live state), saved Analytics Engine
-queries, and bug-report bundles pulled from R2. **Read it before doing anything to the live
-site** — those identifiers otherwise exist only in one session's conversation.
+queries, and bug-report bundles pulled from R2 by `node tools/fetch_bug_reports.js` (or the
+`read-bug-reports` skill). **Read it before touching the live site** — those identifiers
+otherwise exist only in one session's conversation.
 **NO SECRETS LIVE THERE**, deliberately: `C:\grok_build\` syncs off-site (`.SynologyWorkingDirectory`),
 and every agent reads the folder, so a plaintext credential there is replicated *and* shared.
 Tokens go in a user env var (`CLOUDFLARE_API_TOKEN`); wrangler, `gh` and the MCP servers keep
-their own OAuth and need no help. A credential found in that folder is a defect — move it and
-revoke the exposed one.
+their own OAuth. A credential found there is a defect — move it and revoke the exposed one.
 
 ---
 
