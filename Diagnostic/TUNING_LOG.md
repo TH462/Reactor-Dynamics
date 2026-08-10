@@ -29,6 +29,73 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-10-develop-b (site stats in one command — and BOTH datasets were being counted wrong, in opposite directions)
+
+**Outcome: `tools/site_report.js` + a `site-stats` skill; `tools/usage_report.js` deleted,
+subsumed. Three sources, one command, one token — Web Analytics RUM, Worker invocations,
+and the Analytics Engine dataset. The owner's ask was speed ("how can you more quickly pull
+stats"); what the build actually bought was correctness, twice.**
+
+**The existing tool under-reported by 24 %, today, at 120 rows.** Analytics Engine SAMPLES,
+and `usage_report.js` reported `count()`. Measured over the whole dataset 2026-08-10:
+`sum(_sample_interval)` = **149** against `count()` = **120**, and per-event the gap is not
+uniform — `blob1 = 'command'` reads **64 est / 42 raw (+52 %)** while `plant_mode`,
+`milestone`, `session_start` and `session_end` are all 1:1. So the error is not a scale
+factor you could correct after the fact; it is per-event and it distorts *which control looks
+most used*. `sum(_sample_interval)` is the headline number everywhere now, with `raw` printed
+beside it so the sampling is visible rather than folded in.
+
+`count(DISTINCT blob4)` **cannot be corrected this way and is now labelled a FLOOR** —
+sampling drops whole rows, so a session whose rows were all dropped is invisible and no
+weighting recovers it.
+
+**The RUM dataset is the OPPOSITE, and the first draft shipped a 15× error into the traffic
+table before it was caught.** Its `count` and `sum { visits }` are ALREADY sample-adjusted;
+`sampleInterval` there is the *granularity the answer was rounded to*, not a multiplier. The
+draft multiplied, and printed **300 pageloads against a true 20**. Isolated by holding the
+data fixed and varying only the window span:
+
+| span | 2026-08-09 | 2026-08-10 | sampleInterval |
+|---|---|---|---|
+| 2, 3, 7 days | count 7, visits 7 | count 13, visits 12 | **1** — exact |
+| 14, 30 days | count 20, visits 20 | count 10, visits 10 | **10** — quantized |
+
+The adaptive dataset switches to a coarser pre-aggregated tier between 7 and 14 days. Both
+tiers are "right"; the coarse one rounds to multiples of 10, which at this volume is a bigger
+distortion than the sampling it represents. The tool now prints `exact: yes` or `±10` per row
+and warns to re-run with `--days=7` when the window crossed the seam.
+
+**Two datasets, opposite conventions, same word.** `sampleInterval` in RUM and
+`_sample_interval` in Analytics Engine mean different things — one is already applied, one
+must be applied. Nothing in either API's response distinguishes them, and both look correct
+in isolation at low volume. This is the trap the entry exists for.
+
+**What one token reaches.** The `CLOUDFLARE_API_TOKEN` already in the user env (Account
+Analytics → Read) answers the GraphQL endpoint for **both** Web Analytics RUM and
+`workersInvocationsAdaptive`, not just the AE SQL endpoint it was made for — measured, HTTP
+200 with data on all three. No second credential is needed, and the runbook's claim that
+traffic numbers require the dashboard is retired.
+
+**Also isolated:** `quantile()` is a 422 but `quantileWeighted(q)(col, _sample_interval)`
+works (p50 = 42 s), so session length is a weighted distribution rather than a row per
+session — the one section that would otherwise grow without bound at promotion volume. Every
+default section is now an aggregate with a LIMIT; `--sessions` is the only row-lister and it
+caps at 200.
+
+**Volume framing, on the owner's steer.** Traffic today is ~20 pageloads over two days and
+nobody has been told the site exists; the tool was built for what promotion brings rather
+than for that. That is why the shape is aggregates-with-limits and distributions, not
+listings — the listings were what `usage_report.js` did, and they are the part that would
+have broken first.
+
+**Not done here:** `tools/fetch_bug_reports.js` exists on `workbench` and `backshop` (commit
+`d087da7`) and **not** on `develop`, so `RD_Ops/runbook.md`'s "from any worktree" is false in
+this lane. Deliberately not cherry-picked — that commit also carries `CLAUDE.md`,
+`CHANGELOG.md` and `TUNING_LOG.md` edits, all three guaranteed-conflict files, and importing
+another lane's work into `develop` is the owner's call. It arrives with the ordinary merge.
+
+---
+
 ## Session log — 2026-08-10-develop-a (#433 fixed: the MSLI fires on its sourced rate sensitivity — and the filed root cause was wrong)
 
 **Outcome: #433 closed-pending-review. `run_behavior` 67pass/3xfail → 70pass/0xfail (TR-12b,

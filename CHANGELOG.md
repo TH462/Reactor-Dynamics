@@ -30,7 +30,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **`tools/site_report.js`** — every number the live site knows about itself, in one command:
+  Web Analytics traffic (visitors, top pages, referrers, countries, devices), telemetry Worker
+  health, and in-sim usage (starting IC, mode funnel, milestones, panels, controls, missions,
+  session-length distribution). `--days=N`, `--only=traffic|usage|health`, `--json`, and
+  `--sql=` / `--gql=` escape hatches. One `CLOUDFLARE_API_TOKEN` (Account Analytics → Read)
+  reaches all three sources — measured; Web Analytics and Worker invocations do not need a
+  second credential. Paired with a `site-stats` skill so the queries are never re-derived.
+  Everything printed by default is an aggregate with a LIMIT, so output size does not grow
+  with traffic; `--sessions` is the only row-lister and caps at 200.
+
+### Removed
+- **`tools/usage_report.js`** — subsumed by `site_report.js`, which covers its dataset plus
+  two more and counts the sampling correctly.
+
 ### Fixed
+- **Both usage datasets were being counted wrong, in opposite directions.** Analytics Engine
+  SAMPLES — `sum(_sample_interval)` reads **149** against `count()`'s **120** over the whole
+  dataset, and the gap is per-event (`command`: 64 vs 42, **+52 %**), so the retired
+  `usage_report.js` did not merely undercount, it distorted which control looked most used.
+  Session counts via `count(DISTINCT blob4)` cannot be weight-corrected at all and are now
+  labelled a FLOOR. The RUM dataset is the reverse: its `count`/`visits` are already
+  sample-adjusted, and `sampleInterval` is the granularity the answer was rounded to — past a
+  ~7-day window Cloudflare answers from a coarser tier, so the same two days read 7 + 13
+  pageloads at 7 days and 20 + 10 at 14. Rows now carry `exact: yes` / `±10` and the report
+  says when to narrow the window.
 - **The automatic steam line isolation actuates — it never had, for a player** (#433). A
   full-area downstream steam line break blew the SG down 825 → 212 psi (5.69 → 1.46 MPa)
   with the MSIV open the whole way: #408 adopted the sourced 600 psig low-steam-pressure
