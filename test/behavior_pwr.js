@@ -66,26 +66,19 @@
     // program-span departure (5.74 °F) per the 2026-08-09 owner ruling — see the probe.
     // Nothing is expected to fail here. Do not add an entry without a filed issue.
 
-    // REFILLED 2026-08-09 by #433, which #403 exposed. These three were GREEN against a
-    // harness artifact, not against the plant: `held_within_s` (control_kernel.js:843)
-    // ages its latch off `this._simT`, which only advances when `evaluate()` is given its
-    // `dt` — and `ops_harness.js` omitted it at both stepping call sites until #403. With
-    // `dt` absent, `_simT` and `_condHeld[key]` are both 0, so the age is 0 <= 60 FOR EVER
-    // and the MSLI's flow leg latched permanently the first time `sg_steam_flow` crossed
-    // 1.25, which at hot_full_power is t=0 — the coincidence was satisfied before the
-    // break was injected. The kernel comment claiming the argument's absence "degrades to
-    // instantaneous coincidence" has it exactly backwards, and that is why it looked safe.
-    //
-    // MEASURED IN PRODUCTION (full stack, real dt), full-area downstream break: the MSIV
-    // stays OPEN from 825 psi (5.69 MPa) to 212 psi (1.46 MPa) over six minutes while Tavg
-    // falls 580 -> 417 °F. The automatic isolation has never worked for a player.
-    //
-    // They ship XFAIL rather than weakened: each asserts the RIGHT behaviour and the plant
-    // is what is wrong. Delete these three entries in the same change that fixes #433, or
-    // the gate goes XPASS-red.
-    'TR-12b': '#433 — MSLI never actuates; was green on a permanent held_within_s latch',
-    'TR-12c': '#433 — MSLI never actuates; was green on a permanent held_within_s latch',
-    'PI-9': '#433 — MSLI never actuates; was green on a permanent held_within_s latch',
+    // EMPTIED 2026-08-10 (#433 fixed). TR-12b/TR-12c/PI-9 had been green against a
+    // harness artifact — the MSLI flow leg's `held_within_s` latch was PERMANENT in any
+    // no-dt harness (age 0 <= 60 for ever), so the coincidence was satisfied at t=0 —
+    // and went strict-xfail when #403 gave the harness a real dt. The plant defect
+    // underneath was a TIMING MISS, not the "flow reads 0" the issue first recorded
+    // (`sg_steam_flow` reads steam_out_total, which contains the break term — it peaks
+    // 1.58 on a full-area break): #408's sourced 600 psig setpoint put the raw pressure
+    // crossing ~103 s after the break, ~43 s after the 60 s flow latch expired. Fixed by
+    // rate-compensating the pressure leg (`lead_lag`, the sourced "(Rate sensitive)"
+    // annotation) — isolation now lands +2..3 s after a sev-0.8 or 1.0 break, and the
+    // cooldown / bottle-reopen discriminator legs still hold. Kernel checks: run_m4
+    // "#433 — the pressure leg is RATE-COMPENSATED".
+    // Nothing is expected to fail here. Do not add an entry without a filed issue.
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -2045,11 +2038,11 @@
         }
         var d = run('steam_line_break');
         ck('DOWNSTREAM: the plant isolates ITSELF — no operator action in this probe',
-          // < 180 s, was < 10 (#408): the SOURCED 600 psig leg (WTSM 12.3) sits far
-          // deeper than the retired 5.20, so a full break's crossing — and the
-          // isolation — honestly arrives ~2 min in (measured +115.5 s). The real
-          // channel's rate sensitivity would fire earlier; the held-flow latch
-          // form declares that residual.
+          // < 180 s. Was < 10, re-banded at #408 when the sourced-deep 600 psig leg
+          // put the RAW crossing at +115.5 s — which #433 then measured as NEVER
+          // FIRING (the 60 s flow latch expired first). Since #433 the leg carries
+          // the channel's sourced rate sensitivity (`lead_lag`) and the isolation
+          // lands +2..3 s; the 180 s band is kept as the outer envelope.
           d.isoAt != null ? '+' + fmt(d.isoAt, 1) + ' s' : 'never', d.isoAt != null && d.isoAt < 180,
           'within 180 s of the break (sourced deep setpoint)');
         ck('MSIV shut', String(d.t.msiv_open), d.t.msiv_open === false, 'false');
@@ -5268,9 +5261,11 @@
           tIso >= 0 ? '+' + fmt(tIso, 1) + ' s' : 'never', tIso >= 0, 'within 120 s');
 
         // ---- leg B: a full operator cooldown takes steam pressure FAR below the
-        // isolation's pressure term (to ~1.3 MPa against a 5.20 setpoint) and must
-        // not isolate — the flow term is what keeps it out, which is exactly why the
-        // real function is a coincidence and not a bare low-pressure trip.
+        // isolation's pressure term (to ~1.3 MPa against the sourced 4.14 MPa
+        // setpoint — and since #433 a rate-compensated one) and must not isolate —
+        // the flow term is what keeps it out, which is exactly why the real
+        // function is a coincidence and not a bare low-pressure trip. The staircase
+        // steps are also slow enough that the lead/lag advance stays small.
         var b = H('hot_full_power');
         b.run(30);
         b.cmd('inject_failure', { failure_id: 'turbine_trip' });

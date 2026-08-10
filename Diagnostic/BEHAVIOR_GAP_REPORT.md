@@ -6,26 +6,6 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 67 pass, 3 known gaps (xfail).
+Battery result: 70 pass, 0 known gaps (xfail).
 
-## TR-12b — TR-12b steam line break — the MSIV ends a downstream break, and cannot touch an upstream one
-*Known gap:* #433 — MSLI never actuates; was green on a permanent held_within_s latch
-
-- **DOWNSTREAM: the plant isolates ITSELF — no operator action in this probe** — required `within 180 s of the break (sourced deep setpoint)`, observed `never`
-- **MSIV shut** — required `false`, observed `true`
-- **…and isolating ends the blowdown — the bottled SG re-pressurizes** — required `rises ≥ 1 MPa from the isolation instant`, observed `null → 0.28 MPa`
-- **and the overcooling is arrested (Tavg back near the no-load anchor)** — required `> 280 °C`, observed `133.0`
-- **so the plant overcools regardless of the operator (vs the isolated leg)** — required `> 100 °C colder than the isolated break`, observed `134.2 vs 133.0 °C isolated`
-
-## TR-12c — TR-12c steam line isolation — fires on the break, not on the plant (#370c)
-*Known gap:* #433 — MSLI never actuates; was green on a permanent held_within_s latch
-
-- **a full-area downstream break isolates automatically** — required `within 120 s`, observed `never`
-- **the operator cannot reopen while the isolation is sealed in** — required `blocked`, observed `ACCEPTED`
-- **…and the valve really stayed shut** — required `false`, observed `true`
-
-## PI-9 — PI-9 SLB — no steam-pressure SI channel; the sourced containment backup answers the upstream break (#199/#386)
-*Known gap:* #433 — MSLI never actuates; was green on a permanent held_within_s latch
-
-- **DOWNSTREAM: the isolation arrests it, so the deep blowdown never happens** — required `> 1.0 (was < 1.0 unisolated)`, observed `0.55 MPa min`
-- measurement: end state — a cold primary held at pressure (PTS, unmodelled) = `157.3 °C at 15.41 MPa`
+**No gaps — the battery is fully green. The tuning pass is complete.**

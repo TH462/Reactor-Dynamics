@@ -1018,12 +1018,22 @@
     // A protection that fires on an equipment test is reading a maneuver, not a
     // break; at the sourced 600 psig the test dips to ~5.0 and clears it by
     // 125 psi while a genuine SLB still collapses far past it.
-    // The flow leg carries `held_within_s: 60` (#408): the real channel is a
-    // LATCHED bistable and the pressure leg is rate-sensitive, so the pair fires
-    // even though a full break's flow spike collapses ~seconds before its
-    // pressure crossing reaches 600 psig. A dump/maneuver still cannot fire it:
-    // its pressure never approaches 4.14.
+    // The pressure leg is RATE-COMPENSATED (#433): WTSM Table 12.3-1 writes the
+    // 600 psig setpoint as "(Rate sensitive)" (ML11223A310:647), and the anchor
+    // plant's own SLB analysis models its low-steam-pressure channel with
+    // "lead/lag=12/2" (Ginna UFSAR ch15, ML20339A101, Table 15.0-6, 15.1.5).
+    // Those are the constants below. On a full-area break falling at
+    // ~-0.065 MPa/s the compensated signal crosses 4.14 within seconds of the
+    // break while the flow leg still reads ~1.5; without compensation the raw
+    // crossing arrives ~103 s after the break — 43 s after the 60 s flow latch
+    // has expired — and the isolation NEVER fires (#433, measured full-stack:
+    // 825 → 212 psi, MSIV open the whole way). A dump/maneuver still cannot
+    // fire it: its dip is slow (little rate advance) and bottoms ~5.0 MPa.
+    // The flow leg keeps `held_within_s: 60` (#408): the real channel is a
+    // LATCHED bistable, and the latch buys margin for slower breaks whose
+    // compensated crossing lands after the flow spike has collapsed.
     { instrument: 'steam_pressure', direction: 'low', setpoint: 4.14,
+      lead_lag: { lead_s: 20, lag_s: 2 },
       condition: { instrument: 'sg_steam_flow', direction: 'high', setpoint: 1.25, held_within_s: 60 },
       action: 'close_msiv', reset_below: 7.0, seal_in: MSLI_SEAL_IN }
   );

@@ -31,6 +31,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The automatic steam line isolation actuates — it never had, for a player** (#433). A
+  full-area downstream steam line break blew the SG down 825 → 212 psi (5.69 → 1.46 MPa)
+  with the MSIV open the whole way: #408 adopted the sourced 600 psig low-steam-pressure
+  setpoint but dropped the "(Rate sensitive)" annotation from the same source table cell, so
+  the raw crossing arrived ~+103 s — ~43 s after the flow-coincidence latch had expired —
+  and the pair could never complete. The leg now carries the real channel's rate
+  compensation (kernel `lead_lag`, lead 20 / lag 2 — shape per Ginna's analyzed 12/2, scale
+  fitted to this plant's faster lumped blowdown): a sev-0.8 or 1.0 break isolates **+2 to
+  +3 s**, while the cooldown / bottled-reopen / dump-step discriminators still hold, each
+  measured. The filed root cause ("`sg_steam_flow` reads 0 on the break") was refuted by
+  measurement — the instrument sees the break (peaks 1.58); the 2026-08-09 evidence watched
+  the turbine-only variable. Kernel hardening in the same change: `held_within_s` without an
+  `evaluate()` `dt` now degrades to genuine same-sample coincidence (it was a PERMANENT
+  latch — the mechanism that hid this defect behind three green probes), and latch stamps +
+  filter states survive save/restore. `run_behavior` 70pass/0xfail (TR-12b, TR-12c, PI-9
+  pass as written), `run_m4` 44/44. Manuals `12` §8.5 / `09` §3.0 / `03` §16.0 updated
+  (pending Rev 15 (c)).
 - **A zero-step rod nudge drove the control bank to its full-out stop** (#429). `rod_nudge`
   with `steps: 0` clips to a target equal to the current position, and the `>=` sign then
   handed the group a *positive* velocity while the stepping loop only tests the target after

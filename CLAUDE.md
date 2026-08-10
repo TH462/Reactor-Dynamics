@@ -434,7 +434,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-08-08**._
+_Last updated: **2026-08-10**._
 
 **Where the PWR is.** `run_all` is **44 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
@@ -454,9 +454,9 @@ Mode 1 on integrated physics: engines, control, service, instructor and the boar
   `status-owner-review` items on its issue. Open leftovers: #385's flash term measured
   unnecessary and NOT built; #419's TMI deception crest (~65 %, a level-constants ruling if
   the cue matters); **#409 governor** deferred. Detail: `Diagnostic/TUNING_LOG.md`.
-- **#433 — the automatic steam line isolation does not actuate** (2026-08-09, found via
-  #403). `run_behavior` carries **3 strict xfails** again (TR-12b, TR-12c, PI-9): they were
-  green on a permanent `held_within_s` latch. See the themes bullet.
+- **#433 — RESOLVED (2026-08-10, ruled): the MSLI fires on its sourced rate sensitivity.**
+  `run_behavior` back to 70pass/0xfail; carries `status-owner-review` (the τ choice and a
+  corrected root cause). See the themes bullet.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -504,15 +504,15 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
   COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
   MENTIONED counting as covered — fails green.
-- **An optional argument's absence was documented as graceful degradation and was a PERMANENT
-  LATCH — hiding a dead safety function** (2026-08-09, #403 → #433). `evaluate(instruments,
-  dt)` feeds the alarm hold and `held_within_s`; `ops_harness.js` omitted it forever. The
-  kernel comment says that "degrades to instantaneous coincidence" — in fact `_simT` and
-  `_condHeld[key]` are both 0, so the age is `0 <= 60` FOR EVER. The MSLI's flow leg latched at
-  **t=0**, before any break, and three probes were green on it. Measured in production: a
-  full-area steam line break **never isolates** — 825 → 212 psi, MSIV open. Traps: **a
-  degenerate latch reads exactly like a working feature**, and **a "safe default" comment can
-  have the sign backwards** — measure the degraded path, don't read about it.
+- **The dead MSLI was a TIMING MISS wearing a wrong root cause — fixed by the rate
+  sensitivity the setpoint's own source cell carried** (2026-08-09/10, #403 → #433). A no-dt
+  harness made the flow leg's `held_within_s` latch PERMANENT (age `0 <= 60` for ever), so
+  three green probes certified an isolation that never fired: #408 adopted "600 psig" and
+  dropped "(Rate sensitive)", leaving the raw crossing ~+103 s against a 60 s latch. Now
+  `lead_lag` 20/2 (Ginna's 12/2 shape, scale fitted) — isolates +2..3 s. Traps: **a
+  degenerate latch reads exactly like a working feature**; **a filed root cause repeated in
+  four documents was never re-measured** — "flow reads 0" came from watching the
+  turbine-only variable; **a sourced number is not the whole source**.
 - **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
   rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
   xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892

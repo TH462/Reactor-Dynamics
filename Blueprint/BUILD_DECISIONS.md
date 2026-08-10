@@ -45,6 +45,58 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-10-develop-a — #433: the MSLI fires again, on the channel's own sourced rate sensitivity
+
+**Decision — the low-steam-pressure leg is rate-compensated (`lead_lag`), not re-windowed**
+*(OWNER RULING, 2026-08-10, choosing between "Rate-compensated leg (Recommended)", "Widen the
+60 s window" and "Re-measure, then I rule": "Rate-compensated leg")*. WTSM Table 12.3-1
+writes the MSLI's 600 psig setpoint as **"(Rate sensitive)"** (ML11223A310:647), and the
+anchor plant's own SLB analysis models its low-steam-pressure channel with
+**"lead/lag=12/2"** (Ginna UFSAR ch15, ML20339A101, Table 15.0-6, event 15.1.5). Our #408
+adoption took the number and dropped the rate sensitivity — and the timing miss that
+produced is exactly the #433 defect.
+
+**The filed root cause was wrong, and Phase 0 re-measured it before any code moved.** The
+issue said the flow leg cannot latch because `sg_steam_flow` "reads 0 on the break." It
+reads `steam_out_total`, which contains the break term: measured full-stack, it jumps
+1.00 → **1.58** two samples after a sev-1.0 downstream break and holds above the 1.25
+setpoint until the turbine trip (~+17 s). The 2026-08-09 measurement had watched
+`steam_flow_normalized` (turbine-only). The real mechanism: the raw 600 psig crossing
+arrives ~**+103 s** (the SG re-pressurizes briefly after the trip, then resumes falling),
+~43 s after the 60 s flow latch expired. At the pre-#408 5.20 MPa setpoint the same design
+isolated at 31.2 s — #408 moved the setpoint onto the sourced number without the sourced
+channel dynamics, and its own `held_within_s` validation ran in a harness where the window
+could not expire (#403), so nothing caught it.
+
+**Build.** Kernel: actuation rows accept `lead_lag: { lead_s, lag_s }` — a discrete
+backward-Euler lead/lag with unity DC gain, advanced on the `_simT` clock; the row FIRES on
+the compensated signal, `reset_below` and the seal-in release stay on the RAW value (a
+rate-compensated "has it recovered" overshoots). A clockless caller reads raw.
+`held_within_s` gained the same degradation floor (`_dtSeen`): a caller that never supplies
+`dt` now gets strict same-sample coincidence — the un-guarded degradation was a PERMANENT
+latch, the opposite of what the kernel comment claimed. Both latch stamps and filter states
+are serialized (`protectionTiming` in saveState) — they were retentive protection state that
+did not survive a restore, the #151 rewind class.
+
+**Constants: sourced SHAPE, fitted SCALE — the natural-circulation idiom.** Ginna's 12/2
+misses on this plant: the compensated dip bottoms at **4.207 MPa**, 0.067 MPa (~10 psi)
+short of the 4.14 setpoint, because our lumped SG decelerates its blowdown far faster than
+a real multi-SG plant (break flow ∝ P with a single small inventory). Swept lead 12/14/16/
+20/25/30/40 at lag 2: 14 catches sev-1.0 (+3 s) but not sev-0.8; **20/2 ships** — sev-1.0
+isolates **+2 s**, sev-0.8 **+3 s**. Do not quote 20/2 as a real-plant figure.
+
+**Discriminators, each measured.** TR-12c leg B (staircase cooldown to 1.34 MPa): no
+isolation — the flow term keeps it out and slow steps gain almost no advance. Leg C
+(bottle 600 s with safeties pegging the flow transmitter, reopen): no re-isolation. Leg D:
+seal-in refuses reopen. Dump-step probe (turbine trip + SP 4.0): compensated bottoms
+~5.6 MPa, 1.5 MPa clear. `run_behavior` 67pass/3xfail → **70pass** with TR-12b/TR-12c/PI-9
+passing as written (the XFAIL entries deleted per their own instruction); `run_m4` 43/43 →
+**44/44** (the rate-compensation suite, injection-verified: the ramp check fails with the
+compensation removed). Manuals: `12` §8.5 (seconds, not "two minutes in"), `09` §3.0,
+`03` §16.0 span corrections — pending Rev 15 row item (c).
+
+---
+
 ## 2026-08-09-develop-c — the #344 gate-integrity batch, and the safety function a missing argument was hiding
 
 **Decision 1 — `ops_harness.js` passes `evaluate()`'s `dt` (#403), and the three probes it
@@ -72,6 +124,16 @@ Also noted for whoever fixes #433: the flow leg watches an instrument that reads
 this break — it is flow to a turbine that has just tripped, and the break discharge does not
 pass through it. Which instrument *should* carry the leg is a design question with a sourced
 answer (WTSM 12.3), and it was deliberately not guessed here.
+
+**CORRECTION (2026-08-10-develop-a): the paragraph above is wrong, and the fix measured it.**
+`sg_steam_flow` is not `steam_flow` — it reads `steam_out_total`
+(`pwr_instruments.js:66`), which **contains the break term**
+(`pwr_steam_generator.js:361`), and on a full-area break it peaks **1.58** and holds
+above the 1.25 setpoint until the turbine trip (~+17 s). The 2026-08-09 measurement
+watched `steam_flow_normalized` — the turbine-only variable — and inferred the
+instrument from it. The actual defect was a **timing miss**: #408's sourced-deep
+600 psig setpoint put the raw crossing at ~+103 s, ~43 s after the 60 s flow latch
+expired. See the 2026-08-10-develop-a entry for the fix.
 
 **Decision 2 — EV-1's rate limit is the sourced TS number, read as a rolling hour (#398).**
 *(OWNER RULING, 2026-08-09, choosing "100 F/hr TS + 50 admin": "Adopt the sourced Tech Spec

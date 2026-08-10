@@ -29,6 +29,62 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-10-develop-a (#433 fixed: the MSLI fires on its sourced rate sensitivity — and the filed root cause was wrong)
+
+**Outcome: #433 closed-pending-review. `run_behavior` 67pass/3xfail → 70pass/0xfail (TR-12b,
+TR-12c, PI-9 pass as written), `run_m4` 43/43 → 44/44. The automatic steam line isolation
+now actuates +2 s (sev-1.0) / +3 s (sev-0.8) after a downstream break; before the fix it
+NEVER actuated for a player.**
+
+**Phase 0 refuted the filed mechanism before any code moved (HR12).** #433 said the flow leg
+cannot latch because `sg_steam_flow` "reads 0 on the break — the break discharge does not
+pass through that instrument." Measured full-stack (`measure_stack`, watching the actual
+instrument): `sg_steam_flow` jumps 1.00 → **1.58** two samples after a sev-1.0 downstream
+break and holds above the 1.25 setpoint until the turbine trip (~+17 s) — it reads
+`steam_out_total` (`pwr_instruments.js:66`), which contains the break term
+(`pwr_steam_generator.js:361`); the span was widened to [0, 2.0] for exactly this at #370c.
+The 2026-08-09 measurement had watched **`steam_flow_normalized`** — the turbine-only
+variable. The real defect was a **timing miss**: the raw 600 psig crossing arrives ~**+103 s**
+(the SG briefly re-pressurizes after the trip, 4.72 → 5.18 MPa, then resumes falling), ~43 s
+after the 60 s flow latch expired. At the pre-#408 5.20 MPa setpoint the same design isolated
+at 31.2 s.
+
+**The fix is the channel's own sourced dynamics** *(OWNER RULING, 2026-08-10:
+"Rate-compensated leg")*: WTSM Table 12.3-1 writes the setpoint "600 psig **(Rate
+sensitive)**" (ML11223A310:647); Ginna's SLB analysis models the channel with
+"**lead/lag=12/2**" (ML20339A101, Table 15.0-6). Kernel: `lead_lag: { lead_s, lag_s }` on
+actuation rows — fires on the compensated signal, resets and releases the seal-in on RAW;
+`held_within_s` gained a `_dtSeen` degradation floor (a clockless caller now gets genuine
+same-sample coincidence, not the permanent latch that hid this defect); both stamps and
+filter states now survive save/restore (`protectionTiming`). Plant: the MSLI row carries
+**lead 20 / lag 2** — Ginna's 12/2 bottoms at 4.207 MPa, 0.067 short of the setpoint,
+because this plant's lumped single-SG blowdown decelerates far faster than a real plant's;
+**sourced SHAPE, fitted SCALE** (the natural-circulation idiom — do not quote 20/2 as a
+real-plant figure). Swept 12/14/16/20/25/30/40: 14 catches sev-1.0 only; 20 catches both.
+
+**Discriminators measured, not assumed:** staircase cooldown to 1.34 MPa — no isolation
+(flow term out, slow steps ≈ no advance); bottle-600 s-and-reopen — no re-isolation; seal-in
+refuses reopen; turbine-trip + dump-step-to-4.0 — compensated bottoms ~5.6 MPa, 1.5 MPa
+clear. Injection: the run_m4 ramp check (raw floor 4.30 vs setpoint 4.14) fails with
+`lead_lag` removed.
+
+**Traps worth keeping.**
+- **A refuted mechanism can sit in four documents by morning.** The "reads 0" claim was
+  inferred from a wrong watch key and repeated in the issue, TUNING_LOG, BUILD_DECISIONS
+  and a probe comment within hours. Watch the INSTRUMENT the control layer reads, not the
+  state variable that shares its name — `steam_flow` vs `sg_steam_flow` is exactly the trap
+  the `03` §16.0 table warns about, and the measurement that filed a control defect fell
+  into it.
+- **Adopting a sourced setpoint without the channel dynamics that came with it can KILL the
+  function.** #408 took "600 psig" and dropped "(Rate sensitive)" from the same table cell;
+  the deep setpoint plus an undamped 60 s latch was unreachable on every break. A sourced
+  number is not the whole source.
+- **"Steady state" in a live plant is not steady.** The unity-DC-gain check compared the
+  filter against drifting HFP and failed by 0.023 MPa — the lead multiplies a 0.001 MPa/s
+  drift by 18. Pin the input when the claim is about the filter.
+
+---
+
 ## Session log — 2026-08-09-develop-c (the #344 gate-integrity batch — and a one-line harness omission that was hiding a broken safety function)
 
 **Outcome: five issues closed (#429, #403, #397, #398, #399), one filed (#433), three
@@ -57,7 +113,10 @@ was injected. Three probes (TR-12b, TR-12c, PI-9) were green on it.
 Reactor trips at 1m21s on OPΔT; nothing isolates. And the flow leg cannot latch on this
 event in any case — `sg_steam_flow` reads **0** from the first sample after the break,
 because it is the flow to a turbine that has just tripped and the break discharge does not
-pass through that instrument. Filed as **#433** (priority-high); the three probes ship strict
+pass through that instrument. *(CORRECTION, 2026-08-10-develop-a: this sentence is wrong —
+it was measured on `steam_flow_normalized`, the turbine-only variable. `sg_steam_flow`
+reads `steam_out_total`, sees the break, and peaks 1.58; the real defect was a timing
+miss. See the 2026-08-10-develop-a entry.)* Filed as **#433** (priority-high); the three probes ship strict
 XFAIL pinned to it rather than weakened, because they assert the right thing and the plant is
 what is wrong. #408's 60 s window has also never been exercised — it was accepted in a
 harness where it could not expire.

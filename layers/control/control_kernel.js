@@ -395,21 +395,29 @@
   };
 
   // ============================================================== evaluate (§9)
-  // `dt` — SIM SECONDS since the previous evaluate, and OPTIONAL. It feeds exactly one
-  // thing: the alarm minimum on-time. Optional rather than required because `evaluate` has
-  // 43 call sites, most of them harnesses, and several drive plants that are ON HOLD; a
-  // caller that omits it gets `dt = 0`, the hold never accrues, and the alarm clears the
-  // instant its condition does — which is the pre-2026-08-03 behaviour exactly. So RBMK and
+  // `dt` — SIM SECONDS since the previous evaluate, and OPTIONAL. It feeds the kernel's
+  // PROTECTION-TIMING state: the alarm minimum on-time, the `_simT` clock that ages
+  // `held_within_s` condition latches (#408), and the `lead_lag` rate compensation on
+  // actuation rows (#433). Optional rather than required because `evaluate` has ~43 call
+  // sites, most of them harnesses, and several drive plants that are ON HOLD; a caller
+  // that omits it gets `dt = 0`: no alarm hold (the alarm clears the instant its
+  // condition does — the pre-2026-08-03 behaviour), uncompensated lead/lag, and STRICT
+  // same-sample coincidence for `held_within_s` (the `_dtSeen` guard below). So RBMK and
   // BWR are byte-identical whether or not their harnesses are ever updated.
+  //
+  // The `_dtSeen` guard exists because the un-guarded degradation was the OPPOSITE of
+  // what this comment used to claim: with no dt, `_simT` and a latch's stamp are both 0,
+  // so the latch's age read 0 for ever — PERMANENT, not instantaneous. That inversion is
+  // how a dead steam line isolation shipped behind three green probes (#433): the
+  // harness's coincidence was satisfied at t=0, before any break existed.
   //
   // It is NOT defaulted to PROTECTION_DT. The cadence is the CALLER'S property and this repo
   // has already been bitten by a second copy of it (#153: the service's PROTECTION_DT and
   // ops_harness's `evalEvery` are independent, so a plant can be certified on a cadence no
   // player produces). A kernel-side default would be a third.
   ControlLayer.prototype.evaluate = function (instruments, dt) {
-    // Sim-time accumulator for `held_within_s` condition latches (#408). dt is the
-    // OPTIONAL evaluate cadence arg (see the alarm dropout notes); without it the
-    // latch degrades to instantaneous coincidence — the pre-#408 behaviour.
+    if (dt > 0) this._dtSeen = true;   // gates held_within_s aging — see the block comment
+    // Sim-time accumulator for `held_within_s` latches and `lead_lag` filters (#408, #433).
     this._simT = (this._simT || 0) + (dt || 0);
     this.lastInstruments = instruments || this.engine.getInstruments();
     this._evalTrips(this.lastInstruments);
@@ -651,8 +659,18 @@
       var act = acts[i];
       if (act.arm && this.esfAuto[act.arm] === false) continue;
       var value = ins[act.instrument];
+      // `lead_lag: { lead_s, lag_s }` (#433): the row FIRES on a rate-compensated
+      // copy of its own signal — the kernel model of a real rate-sensitive channel
+      // (a lead/lag unit ahead of the bistable, e.g. WTSM 12.3's 600 psig low
+      // steam pressure "(Rate sensitive)", ML11223A310:647). On a fast excursion
+      // the compensated signal crosses the setpoint early, in proportion to the
+      // rate; at steady state it equals the raw signal exactly (unity DC gain).
+      // The plant supplies the time constants (HR3). RESET stays on the RAW value
+      // below: `reset_below` asks "has the plant genuinely recovered", and a
+      // rate-compensated answer to that question overshoots on the recovery.
+      var eff = act.lead_lag ? this._leadLag(i, act, value) : value;
       var gateOk = !act.condition || this._evaluateCondition(act.condition, ins);
-      if (gateOk && crossed(value, act.direction, act.setpoint) && !this.actuationFired[i]) {
+      if (gateOk && crossed(eff, act.direction, act.setpoint) && !this.actuationFired[i]) {
         this.actuationFired[i] = true;
         this._sendInternal(this._actuationCommand(act, false));
       }
@@ -680,10 +698,35 @@
       // existing hysteresis band. The PWR's P-14 feedwater isolation has both, and re-arms
       // at its 85 % reset_below, not at the 90 % setpoint.
       else if (act.seal_in && this.actuationFired[i] &&
-               !(gateOk && crossed(value, act.direction, act.setpoint))) {
+               !(gateOk && crossed(eff, act.direction, act.setpoint))) {
+        // `eff`, not `value`: the re-arm asks whether the FIRING signal has
+        // cleared, and the firing signal is the compensated one when the row
+        // carries `lead_lag` (they are the same reference otherwise).
         this.actuationFired[i] = false;
       }
     }
+  };
+
+  // Discrete first-order lead/lag, G(s) = (1 + lead_s*s) / (1 + lag_s*s), backward
+  // Euler, advanced on the `_simT` clock (so it only moves when evaluate() gets a
+  // dt — a clockless caller reads the raw signal, the same honest degradation as
+  // `held_within_s`). Unity DC gain: at steady state the output IS the input, so
+  // declaring `lead_lag` changes nothing at all until the signal moves. State is
+  // POSITIONAL by actuation index, like `actuationFired`, and hardened the same
+  // way on restore (shape mismatch → reseed from the next sample; the filter
+  // re-converges within ~lag_s seconds, G(0) = 1).
+  ControlLayer.prototype._leadLag = function (i, act, x) {
+    if (x == null || !isFinite(x)) return x;
+    this._leadLagState = this._leadLagState || {};
+    var st = this._leadLagState[i];
+    var now = this._simT || 0;
+    if (!st) { this._leadLagState[i] = { x: x, y: x, t: now }; return x; }
+    var dt = now - st.t;
+    if (dt <= 0) return x;   // no clock this pass — uncompensated, never stale
+    var t1 = act.lead_lag.lead_s || 0, t2 = act.lead_lag.lag_s || 0;
+    var y = (dt * x + t1 * (x - st.x) + t2 * st.y) / (dt + t2);
+    st.x = x; st.y = y; st.t = now;
+    return y;
   };
 
   // Responsibility 2b — interlocks (M4 §4b). Condition-latched (with hysteresis)
@@ -839,8 +882,13 @@
         // whose signals peak at different times — measured on the MSLI at the
         // sourced 600 psig: a full downstream break's flow collapses before its
         // pressure crossing arrives, and the isolation never fired at all.
-        // Degrades to instantaneous coincidence when evaluate() gets no dt.
         if (cond.held_within_s != null) {
+          // A caller that has NEVER supplied a dt gets the strict same-sample AND.
+          // Without this guard the "degradation" was a PERMANENT latch — `_simT`
+          // and the stamp both 0, age 0 <= N for ever — which certified a dead
+          // MSLI behind three green probes (#433). Instantaneous coincidence is
+          // the honest floor: it can miss a real pair, never invent one.
+          if (!this._dtSeen) return rawC;
           this._condHeld = this._condHeld || {};
           var keyC = cond.instrument + '|' + cond.direction + '|' + cond.setpoint;
           if (rawC) this._condHeld[keyC] = this._simT || 0;
@@ -1943,6 +1991,21 @@
       alarmAutoAcked: Object.assign({}, this.alarmAutoAcked),
       actuationFired: this.actuationFired.slice(),
       interlockActive: this.interlockActive.slice(),
+      // Protection-timing state (#408, #433): the `held_within_s` latch stamps and
+      // the `lead_lag` filter states are RETENTIVE across a save exactly like the
+      // fired latches above — a restore mid-transient that dropped them would
+      // silently un-latch a coincidence partner (and made rewind non-bit-exact
+      // across an isolation transient, the #151 class). lead_lag is positional by
+      // actuation index, same hardening as actuationFired.
+      protectionTiming: {
+        sim_t: this._simT || 0,
+        dt_seen: !!this._dtSeen,
+        cond_held: Object.assign({}, this._condHeld || {}),
+        lead_lag: (this.config.actuations || []).map(function (a, i) {
+          var st = this._leadLagState && this._leadLagState[i];
+          return st ? { x: st.x, y: st.y, t: st.t } : null;
+        }, this),
+      },
       // NOTE: trip blocks ride inside `automation` (_saveAutomation → trip_blocks /
       // manual_trip_blocks, restored by _loadAutomation). Do not add a second
       // top-level copy — they round-trip correctly today and two sources of truth
@@ -1978,6 +2041,22 @@
     this.interlockActive = (st.interlockActive && st.interlockActive.length === nIls)
       ? st.interlockActive.slice()
       : (this.config.interlocks || []).map(function () { return false; });
+    // Protection-timing state — absent in pre-#433 saves, which restores the
+    // conservative floor: clock at 0, no dt seen (same-sample coincidence until
+    // the next real evaluate), no held stamps, filters reseeding from their next
+    // sample. A coincidence that was mid-window at save time is lost, which can
+    // only DELAY an actuation, never invent one.
+    var pt = st.protectionTiming || {};
+    this._simT = pt.sim_t || 0;
+    this._dtSeen = !!pt.dt_seen;
+    this._condHeld = Object.assign({}, pt.cond_held || {});
+    this._leadLagState = {};
+    if (pt.lead_lag && pt.lead_lag.length === nActs) {
+      for (var li = 0; li < pt.lead_lag.length; li++) {
+        var ls = pt.lead_lag[li];
+        if (ls) this._leadLagState[li] = { x: ls.x, y: ls.y, t: ls.t };
+      }
+    }
     this._loadAutomation(st.automation);   // absent in old saves → all channels MAN
                                            // (also restores tripBlocks/manualTripBlocks)
     // lastInstruments is the previous step's readings. It is DERIVED, so it is not

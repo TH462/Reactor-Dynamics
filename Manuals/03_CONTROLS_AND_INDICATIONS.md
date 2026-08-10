@@ -750,10 +750,10 @@ meter can still cross the 120 % trip.
 | sg_level | % | 0 – 100 | 3 s | Heat sink (narrow range) | SG LVL HI HI / HI / LO / LO LO |
 | sg_level_wide | % | 0 – 100 | 4 s | Heat sink below the narrow taps (dryout diagnosis) | — |
 | steam_flow / fw_flow | ×rated | 0 – 1.2 | 1 s | Mass match — **`steam_flow` is TURBINE flow only** | — |
-| sg_steam_flow | ×rated | 0 – 1.2 | 1 s | **Total** steam leaving the SG (turbine + dump + safeties) — the main-steam-line transmitter, and what feed regulation must match | — |
+| sg_steam_flow | ×rated | 0 – 2.0 | 1 s | **Total** steam leaving the SG (turbine + dump + safeties + break discharge) — the main-steam-line transmitter, and what feed regulation must match. Span covers a full-area break's ~1.75 total draw | — |
 | cw_inlet_temp | °F (°C) | 32 – 113 (0 – 45) | 20 s | Circulating-water inlet — sets achievable vacuum and the RHR cooldown floor (§13.1) | — |
 | condensate_flow | ×rated | 0 – 1.2 | 1 s | Hotwell → feed train | — |
-| steam_pressure | psi (MPa) | 0 – 1523 (0 – 10.5) | 0.5 s | SG / dump | SG PRESS HI |
+| steam_pressure | psi (MPa) | 0 – 1233 (0 – 8.5) | 0.5 s | SG / dump | SG PRESS HI |
 
 > **Trap — `steam_flow` vs `sg_steam_flow`.** With the turbine off line or tripped, the steam
 > dump carries the plant and **`steam_flow` reads ~0 while the generator is still boiling**.
