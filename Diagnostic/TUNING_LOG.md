@@ -108,6 +108,15 @@ The lesson is the mirror of the one two entries up: that one was a check that co
 this is a check that could fail without a defect. Both cost the same thing — the gate stops
 meaning what it says.
 
+### A fifth staleness instance, made BY the cut pass
+
+The compressed status bullet I wrote this session listed #386, #425, #385, #418 and #419 as
+"LANDED, open only on owner-review". **All five were CLOSED.** I rewrote the stale text without
+re-querying — the exact failure the same entry above is about, committed by the person writing
+about it, inside the hour. Corrected: the section now names the query as the authority and says
+what the prose got wrong, because "read the tracker" is advice everyone already ignores and the
+measured cost is not. A duplicated RBMK/BWR line went with it. 12,903 -> 12,838 words.
+
 ### The structural residual — put to the owner, not decided
 
 The **standing-procedure trap list is 30 bullets, ~2,000 words, and has no cap and no eviction

@@ -317,24 +317,19 @@ number written here. The PWR is the only active plant and is feature-complete th
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
 
-- **#386 — stages 1–3 ALL LANDED** (stage 3 hydrogen: the ruled TMI-2-style one-time burn,
-  recombiners, geometry-gated transport — owner-review: the [8.0]/[85] STS-template adoption).
-  Remaining: the board card + manual spray/recombiner surface, waiting on the board redesign.
-  **#425 RESOLVED** (ruled): the passive sink runs a lagged saturation-ΔT enhancement, SBO
-  boil-off parks at 22.2 psig (was 83.3, past design), the burn pin is family-wide, the #384
-  §7.2 residual is CLOSED — owner-review: the sev-0.25 spray-boundary knife-edge.
-- **#408 remaining waves** — the SGTR/seal amendment rows (evidence mini-pass; the declared
-  ~7,500 gal makes absolute-size components ~5–6× fractionally bigger than the power-scaled
-  rows), and the wave-3 mission items — the tag+defend "quiet night" story the beat graph
-  cannot express. Wave 1's re-clock and the relief sizing are **landed**.
-- **LANDED, open only on owner-review** — **#385** node (stages 0–3; flash term measured
-  unnecessary, NOT built; closed #415/#334/#354; **#409 governor** deferred) · **#418** tier 2
-  (one sourced Ginna basis, three items) · **#419** tier 3 (×12.6 retirement, F15 → 2500,
-  Ginna re-anchor; the TMI deception crest at ~65 % is a level-constants ruling if the cue
-  matters) · **#394 + #378 + #420** (`run_behavior` carries NO strict xfails; WTSM 8.1
-  ML11223A252 now in the corpus).
-- **#432 + #431 — LANDED** (2026-08-09): bundle schema **1.1**, `ui/diag_recorder.js`,
-  `run_diag_bundle`. See themes.
+**Do not read the list below as the issue tracker** — `gh issue list --state open` is the
+authority and this is a summary that ages. Measured 2026-08-10: five entries here described
+#386, #425, #385, #418 and #419 as open-on-owner-review when all five were **closed**, and two
+of them had been rewritten from the stale text hours earlier by an agent who compressed without
+re-querying. Run the query.
+
+- **#408** — the accident-inventory clock umbrella. Open: the SGTR/seal amendment rows (evidence
+  mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
+  than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
+  the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
+- **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
+  themes), #433, #429, #403, #399, #398, #397. **#413** Cloudflare migration is live on
+  workbench.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
