@@ -56,7 +56,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   session trace that marks page reloads. `privacy.html` now discloses the refusal flag, which
   it never had, and its "counts" framing is corrected.
 
+- **Feature flags are set from the dashboard and applied at build.** A Features tab shows
+  what the live sim gates — read from the deployed `flags.js`, not the repo — and sets the
+  stage for all 6 areas and all 64 content items. The dashboard writes to KV;
+  `site/stamp_version.js` reads it at build and freezes it into the generated
+  `site/channel.js`, so the sim still loads nothing at runtime and the offline single-file
+  build keeps working. Changes are therefore **queued until the next deploy**, and the tab
+  shows live and queued stages side by side. `free_play` and `manual` cannot be set below
+  public, refused at both ends. Inactive until `RD_FLAGS_ENDPOINT` is set in the Pages
+  build environment; unset behaves exactly as before.
+
 ### Changed
+- **`test/run_flags.js` 16/320 → 19/342 checks** for the build-stamped layer: a stamped
+  stage beats the source literal, cannot lower the floor, and falls back when malformed.
+  Three of those were hollow when first written — asserted against a `preview` literal,
+  where a rejected value and an accepted-but-meaningless one resolve identically — and now
+  run against a `public` probe where the outcomes differ.
 - **`test/run_telemetry.js` 84 → 103 checks.** The client and the Worker agreed about NAMES
   while the numbers went missing: `KEY_OF` gates each event's principal string and nothing
   gated the `'num'`/`'bool'` props, so a field could be declared, validated, transmitted and

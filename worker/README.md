@@ -101,6 +101,7 @@ the CORS origin check the ingestion routes use. Two views:
 | `?token=T` | **Bug reports** — the R2 bundles, newest first, with a detail view per report and `&raw=1` for the JSON. `src/dashboard.js` |
 | `?token=T&view=analytics` | **Analytics** — Web Analytics traffic + in-sim usage, `&days=7\|14\|30`. `src/analytics.js` |
 | `?token=T&view=sessions` | **Sessions** — one row per session; click through to its ordered event trace. `src/sessions.js` |
+| `?token=T&view=features` | **Features** — what the live sim gates, and the control that changes it. `src/features.js` |
 
 Set the token once, as a Worker secret (never a repo file, never RD_Ops — that directory
 syncs off-site and is deliberately secret-free):
@@ -155,6 +156,32 @@ message from different causes:
   called `t_sess`. Same message for `ORDER BY timestamp` the moment `timestamp` leaves
   the SELECT list, which is what pinned the rule down.
 - **`timestamp >= '<string>'`** is a 422; the `toDateTime()` cast is required.
+
+### Feature flags: the dashboard sets them, the BUILD applies them
+
+`GET /flags-stages` (open, unauthenticated) returns the queued stages;
+`site/stamp_version.js` fetches it at build and freezes the result into the generated
+`site/channel.js` as `RD_FLAG_STAGES`, which `site/flags.js` reads in place of its own
+literals. Writes are a form POST to the dashboard behind `DASHBOARD_TOKEN`.
+
+**A change is queued, not live — it ships on the next deploy of `main`.** That is a
+consequence of the offline promise, not an oversight: the sim must load nothing at
+runtime (`test/run_portable.js`), which is the only reason the emailable single-file
+build works, and the offline download could not honour a runtime value anyway.
+
+The read is open because a stage is **not a secret** — every one ships inside `flags.js`
+to every visitor — so gating it would protect nothing while forcing a token into the
+Pages build environment.
+
+**`free_play` and `manual` cannot be set below `public`**, refused by the dashboard *and*
+ignored by `flags.js`. `run_flags.js` already forbids it in source; a remote control able
+to do what the gate forbids would make that gate decorative.
+
+**Not active until `RD_FLAGS_ENDPOINT` is set in the Pages build environment.** Unset,
+the stamper writes an empty map and records `RD_FLAG_SOURCE = "none"` — today's exact
+behaviour. A failed fetch is the same fallback but records `"fallback"` and warns in the
+build log, because a deploy that silently discarded a queued change would be worse than
+one that says it did.
 
 ### A row older than a column reads back as 0, not -1
 
