@@ -109,6 +109,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A40 | CTMT H2 HI | warning | B |
 | PWR-A41 | CTMT H2 BURN | critical | B |
 | PWR-A42 | H2 RECOMB ON | status | B |
+| PWR-A43 | PZR HTRS SHED | status | B |
 
 ---
 
@@ -162,7 +163,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | ≤ **2149 psi (14.82 MPa)** |
 | **Means** | Primary pressure low — subcooling at risk. |
-| **Actions** | 1) Energize heaters. 2) Secure excessive spray. 3) Check PORV/safety path and block valve. 4) Check leak / HPI need. 5) Watch subcooling. |
+| **Actions** | 1) Energize heaters — **and check PZR HTRS SHED (A43) first**: after a safety injection or a loss of offsite power they are off the bus and must be reloaded before they will answer. 2) Secure excessive spray. 3) Check PORV/safety path and block valve. 4) Check leak / HPI need. 5) Watch subcooling. |
 
 ---
 
@@ -212,7 +213,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | Subcooling ≤ **20 °F** (11.1 °C) |
 | **Means** | Approaching boiling in primary. |
-| **Actions** | 1) Raise pressure (heaters) and/or lower temperature (power/load). 2) Check for leak / open relief. 3) Prepare HPI. 4) **Trust this over a single PORV light.** |
+| **Actions** | 1) Raise pressure (heaters) and/or lower temperature (power/load) — if injection has already actuated, the heaters are **shed** (A43) and reloading them is step one. 2) Check for leak / open relief. 3) Prepare HPI, knowing that actuating it sheds the heaters and gives that pressure tool away until you take it back. 4) **Trust this over a single PORV light.** |
 
 ---
 
@@ -573,6 +574,16 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Logic** | `ctmt_recomb_active` — the trains are **delivering** (a blackout stops them with the demand standing) |
 | **Means** | Started automatically on rising containment hydrogen (0.5 % by volume in this build; secures itself at 0.2 %). Removal is slow by design — hours per factor of e — which is the real machine: recombiners manage the slow post-accident tail, not a degraded-core generation rate. |
 | **Actions** | Informational. If CTMT H2 HI (A40) comes in while this lamp is lit, the recombiners are being outrun — the answer is at the core, not in the building. |
+
+---
+
+## PWR-A43 — Pressurizer Heaters Shed (PZR HTRS SHED)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `pzr_heaters_shed` — latched by a **safety injection** signal or a **loss of offsite power** |
+| **Means** | The heaters are a large non-safety load, so they are automatically dropped off the emergency buses to leave capacity for equipment that matters more. They are **not** faulted and the bus is **not** dead — they have simply been taken off it. This lamp is the only thing that separates a shed from the three other reasons heater power can read zero (a blackout, the 17 % low-level cutoff, and a heater failure). |
+| **Actions** | 1) Expect heater power **0 %** and the pressurizer to stop holding pressure — pressure now follows the plant, not the controller. 2) They do **not** come back on their own, and **securing safety injection does not restore them**. 3) When you want pressure control back, put them back deliberately: any heater action (AUTO, MANUAL, OFF, or typing a %) reloads them. 4) Before you do, know what you are asking for — on a depressurized plant the heaters answer at full demand, so expect a pressure rise, and with a relief path or a break still open that rise also increases what leaves through it. 5) Restoring pressure control matters most for **natural circulation**, where subcooling has to be maintained without the pumps. |
 
 ---
 

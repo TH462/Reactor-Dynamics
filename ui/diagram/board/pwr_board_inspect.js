@@ -333,7 +333,10 @@
       'Live heater output as a percentage — what the heaters are actually doing.',
       'This is the indication half of the heater panel: under AUTO it shows the controller\'s demand, ' +
       'under MANUAL it shows your setting. Read it against pressure trend to see whether the heaters ' +
-      'are winning.', CI, '5.2'),
+      'are winning. FOUR things can put this at zero while the selector stays where you left it — ' +
+      'you chose OFF, the heaters were SHED by a safety injection or a loss of offsite power ' +
+      '(PZR HTRS SHED), level fell below the 17 % cutoff, or a blackout took the bus. Only the ' +
+      'shed is undone with one button, and securing injection does not undo it.', CI, '5.2'),
 
     // ------------------------------------------------------------ relief valves
     porv: e('PORV',
