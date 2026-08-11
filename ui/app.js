@@ -1653,21 +1653,72 @@
    * this went wrong the first time: the PORV row displays `shut` against the curated prose
    * `OPEN · STUCK` — the spec's own headline example of a divergence — and a rule that
    * exempted every row with curated prose flagged nothing on it. Prose is for READING; the
-   * comparison belongs on the values. */
+   * comparison belongs on the values.
+   *
+   * AVERAGED OVER A SHORT WINDOW, NOT SAMPLED (#449). An instantaneous comparison flags a
+   * noisy channel for ever. Measured over 300 s at hot full power: charging flow indicates
+   * 30.45 ± 1.81 gpm against a true 30.64 ± 0.13 — a MEAN gap of 0.6 %, but individual
+   * samples land 7 gpm out, which is 23 % and four times the threshold. Both charging and
+   * letdown were flagged permanently on a healthy plant for exactly that reason.
+   *
+   * The window comes from `chartBuf`, which already carries both sides per sample, so this
+   * reconstructs nothing: rebuilding the engine's signal-tapered noise model in the UI to
+   * derive a per-channel sigma would be a second copy of a truth that already exists, which
+   * is the shape #432 was. "Is it still off?" is also what an operator asks. */
+  /* HOW FAR APART IS "FURTHER APART THAN THIS GAUGE WANDERS"? (#449.)
+   *
+   * A fixed relative band cannot answer that, and the first two attempts both failed on the
+   * same channel. Measured, 300 s at hot full power, full stack:
+   *
+   *     charging flow   indicated 30.45 ± 1.81 gpm   true 30.64 ± 0.13   mean gap 0.6 %
+   *
+   * The MEAN gap is 0.6 % — the instrument is fine — but single samples land 7 gpm out,
+   * which is 23 % and four times a 0.5 % threshold, so charging and letdown were flagged
+   * permanently on a healthy plant. Averaging over 6 s did not help either: the noise is an
+   * OU process with `noise_tau` = 8 s, so a window shorter than its own correlation time
+   * averages almost nothing.
+   *
+   * Reading the declared sigma out of the config was the next idea and is worse: it comes to
+   * 0.58 gpm against a measured 1.81, so the UI would encode a number that disagrees with
+   * the instrument it describes — a second, wrong copy of a truth the data already carries.
+   *
+   * So the spread is MEASURED FROM THE DATA. `sd(indicated − true)` over the window IS the
+   * channel's noise, because the true side is smooth; it self-calibrates to whatever the
+   * instrument actually does, needs no config, and stays right if the noise model is ever
+   * retuned. A row is diverged when the mean gap exceeds twice that spread — which is the
+   * question an operator asks: "is it further off than this gauge normally wanders?"
+   *
+   * A STUCK instrument still flags fast: its reading stops moving while the plant does not,
+   * so the gap grows while the spread does not. A saturated one (the intermediate range at
+   * power, pegged at its 2e-3 A over-range ceiling) has sd = 0 and flags on any gap at all,
+   * which is correct — it IS disagreeing, prototypically, and the row saying so is the
+   * lesson. And a STATUS channel never reaches this code: a word against a word is compared
+   * directly, so the PORV reading `shut` over an open valve flags on the instant.
+   */
+  var IND_AVG_SEC = 60;                  // 7.5 x the 8 s noise correlation time
+  var IND_SPREAD_K = 2;                  // gap must exceed this many spreads
   function seriesRawPair(r, snap) {
     var s = r.ser, i = null, t = null;
     try { if (s.get && snap.instruments) i = s.get(snap.instruments); } catch (e) { /* not on this plant */ }
     try { if (s.tru && snap.true_state) t = s.tru(snap.true_state); } catch (e) { /* not on this plant */ }
-    return (typeof i === 'number' && typeof t === 'number' && isFinite(i) && isFinite(t)) ? { i: i, t: t } : null;
+    if (!(typeof i === 'number' && typeof t === 'number' && isFinite(i) && isFinite(t))) return null;
+    var col = RD.ChartCols ? RD.ChartCols[s.id] : null;
+    if (col != null && chartBuf.length > 4) {
+      var t1 = chartBuf[chartBuf.length - 1].t, si = 0, st = 0, n = 0, d = [];
+      for (var k = chartBuf.length - 1; k >= 0 && chartBuf[k].t >= t1 - IND_AVG_SEC; k--) {
+        var row = chartBuf[k];
+        var a = row.v ? row.v[col] : NaN, b = row.tv ? row.tv[col] : NaN;
+        if (!isFinite(a) || !isFinite(b)) continue;
+        si += a; st += b; d.push(a - b); n++;
+      }
+      if (n >= 5) {
+        var md = d.reduce(function (x, y) { return x + y; }, 0) / n;
+        var sd = Math.sqrt(d.reduce(function (x, y) { return x + (y - md) * (y - md); }, 0) / n);
+        return { i: si / n, t: st / n, sd: sd, n: n };
+      }
+    }
+    return { i: i, t: t, sd: 0, n: 1 };
   }
-  /* One unit in the last digit the player can actually see.
-   *
-   * THE EXPONENT IS PART OF THE PRECISION. Read as decimals alone, "2.0e-3 A" looks
-   * precise to 0.1 — and the nuclear-instrument channels are the ones printed that way, so
-   * the floor swallowed a source-range/intermediate-range divergence of 6.3e-3 A whole
-   * (measured: 2.0e-3 indicated against 8.3e-3 true, 75.9 % apart, silently not flagged).
-   * Those are exactly the channels where the divergence matters most — an instrument
-   * failure at the bottom of a startup is the one an operator cannot cross-check. */
   function indLastDigit(str) {
     var s = String(str);
     var dec = s.match(/\.(\d+)/);
@@ -1686,6 +1737,9 @@
     // instead of a number IS the definition of a status row here.
     if (indNum(shownInd) == null) return true;
     if (d <= indLastDigit(shownInd)) return false;       // invisible at the shown precision
+    // Further apart than this gauge wanders — see seriesRawPair for the measurements.
+    if (raw.sd > 0) return d > IND_SPREAD_K * raw.sd;
+    // No history yet (or a dead-steady channel): fall back to the relative band.
     return d > IND_DIV_REL * Math.max(Math.abs(raw.i), Math.abs(raw.t));
   }
   function renderIndications(s) {

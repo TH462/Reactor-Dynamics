@@ -52,6 +52,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   t=0** (a steady 20 s at power now produces 0), and a watched channel that was an instrument
   with no `true_state` field behind it.
 
+### Fixed
+- **The merged list's divergence flag was flagging healthy channels (#449, #439).** Measured at
+  the full stack, 300 s at hot full power: charging flow indicates **30.45 ± 1.81 gpm** against a
+  true **30.64 ± 0.13** — a mean gap of 0.6 %, but single samples land 7 gpm out, so an
+  instantaneous comparison against a fixed band lit charging, letdown and heatup rate
+  permanently. Averaging over 6 s did not help (the noise has an 8 s correlation time), and
+  reading the declared sigma out of the config was worse (0.58 gpm against a measured 1.81 — a
+  second, wrong copy of a number the data already carries). **The spread is now measured from
+  the data**: `sd(indicated − true)` over 60 s *is* the channel's noise, and a row flags when the
+  mean gap exceeds twice it — "is it further off than this gauge normally wanders?". **92
+  comparable rows, 1 flagged**, down from 4. The one that remains is correct: the intermediate
+  range is pegged at its 2e-3 A over-range ceiling at power, which is prototypical, and a row
+  saying so is the lesson. A stuck PORV indicator still flags on the instant; a frozen analog
+  instrument flags within ~40 s, which is the honest cost of a threshold that is not noise.
+
 ### Added
 - **The splitters give the lane stack more rows, not taller ones (#445, spec §8).** Dragging the
   trend strip taller **promotes demoted channels back to full traces** rather than inflating the
