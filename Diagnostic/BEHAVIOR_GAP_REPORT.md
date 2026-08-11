@@ -6,6 +6,11 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 70 pass, 0 known gaps (xfail).
+Battery result: 71 pass, 1 known gaps (xfail).
 
-**No gaps — the battery is fully green. The tuning pass is complete.**
+## CA-20b — CA-20b a small break holds its plateau above the accumulator band — it must not dump the tanks (#451)
+*Known gap:* the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else in this model holds the plateau — every severity now collapses to the same cold solid state. Measured 1.39 MPa at t+600 against the 6.21 MPa band. See #451.
+
+- **a 5 % break still holds its plateau above the accumulator band at t+600** — required `> 1.5x accumulator_trip_mpa`, observed `1.39 MPa vs trip 4.14`
+- measurement: accumulator level at t+600 (full = the fence held) = `0.0 %`
+- measurement: inventory / Tavg at t+600 (the #451 collapse signature: solid and cold) = `92.3 % / 381.6 °F`

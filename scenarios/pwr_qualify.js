@@ -82,7 +82,25 @@
         inject_failures: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
         branches: [
           { trigger: { type: 'true_state', field: 'block_valve_open', direction: 'is_false' }, goto: 'verify_early' },
-          { trigger: { type: 'true_state', field: 'pzr_level_pct', direction: 'above', value: 58 }, goto: 'challenge' },
+          // RE-KEYED A FOURTH TIME (#447, 2026-08-11) — and this time onto the SIGNATURE
+          // the comment above already describes, instead of another bare level number.
+          // A safety injection now sheds the pressurizer heaters (NUREG-0737 II.E.3.1
+          // (7)), so less energy goes into the coolant, less void forms, and the
+          // deception's level lift is smaller: measured on THIS lineup, the crest falls
+          // 78.5 % -> 54.9 %, so a `> 58` cue can never arm and the exam could not be
+          // completed. That is the third time a bare threshold has chased the plant.
+          //
+          // The cue is now the two-parameter lie itself — level recovered toward its
+          // 55 % nominal WHILE inventory is measurably gone — which is what the board
+          // actually shows the candidate and what the beat text already says. Validated
+          // on THREE plants rather than the one it was written against (HR10): fires at
+          // 1322 s with the shed, at 791 s on the pre-#447 plant (so it would have been
+          // the better cue all along), and NEVER on an uninjected plant, which is the
+          // negative control a bare threshold never had.
+          { trigger: { type: 'all', triggers: [
+              { type: 'true_state', field: 'pzr_level_pct', direction: 'above', value: 45 },
+              { type: 'true_state', field: 'core_inventory_pct', direction: 'below', value: 96 },
+            ] }, goto: 'challenge' },
         ] },
 
       // Isolated before the plant goes solid — verify the recovery holds.
@@ -93,7 +111,25 @@
               { type: 'delay', value: 180.0 },
               { type: 'instrument', instrument: 'subcooling_margin', direction: 'above', value: 11.5 },
             ] }, goto: 'passed' },
-          { trigger: { type: 'true_state', field: 'pzr_level_pct', direction: 'above', value: 58 }, goto: 'challenge' },
+          // RE-KEYED A FOURTH TIME (#447, 2026-08-11) — and this time onto the SIGNATURE
+          // the comment above already describes, instead of another bare level number.
+          // A safety injection now sheds the pressurizer heaters (NUREG-0737 II.E.3.1
+          // (7)), so less energy goes into the coolant, less void forms, and the
+          // deception's level lift is smaller: measured on THIS lineup, the crest falls
+          // 78.5 % -> 54.9 %, so a `> 58` cue can never arm and the exam could not be
+          // completed. That is the third time a bare threshold has chased the plant.
+          //
+          // The cue is now the two-parameter lie itself — level recovered toward its
+          // 55 % nominal WHILE inventory is measurably gone — which is what the board
+          // actually shows the candidate and what the beat text already says. Validated
+          // on THREE plants rather than the one it was written against (HR10): fires at
+          // 1322 s with the shed, at 791 s on the pre-#447 plant (so it would have been
+          // the better cue all along), and NEVER on an uninjected plant, which is the
+          // negative control a bare threshold never had.
+          { trigger: { type: 'all', triggers: [
+              { type: 'true_state', field: 'pzr_level_pct', direction: 'above', value: 45 },
+              { type: 'true_state', field: 'core_inventory_pct', direction: 'below', value: 96 },
+            ] }, goto: 'challenge' },
         ] },
 
       // The plant is solid on injection against an unisolated relief path — the graded

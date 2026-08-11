@@ -351,6 +351,20 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **A ~40 s limit cycle after EVERY LOCA, and the loop gain was a heater bank that should
+  have been off the bus** (2026-08-11, #447). Below 17 % level the heaters cut and pressure
+  floors at containment; ECCS refills past the 20 % restore point; the heaters return at FULL
+  demand and 0.29 MPa/s net takes pressure 15 → 163 psia in 3 s, spiking leak ~20× and
+  back-pressuring HPI 0.90 → 0.34. 134 cycles at sev 0.05 (839 psia excursion) up to 936 at
+  1.00; MDS-2/3 ride 2500 s of it and pass, because nothing asserted STABILITY, only endpoints.
+  Fixed by the shed NUREG-0737 II.E.3.1 (7) requires on an SI signal — the document was in
+  our own corpus, uncited. **#334 did not finish**: its cutoff converted a stable wrong
+  equilibrium into an oscillation. Traps: **an equilibrium a 347× term participates in is not
+  evidence about geometry** (CA-15 re-authored around this artifact TWICE, #408 reasoning
+  explicitly from the defect); **a red can be VACUOUS rather than red** (CA-10 leg B's break
+  actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
+  threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
+  two-parameter signature validated on three plants including a negative control.
 - **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
   #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
   telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
@@ -393,15 +407,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   subscriber — saw every row AFTER recording a later timestamp. **1475 rows in, 35 recorded.**
   Invisible to a source scan (call sites all correct) and to the new Node gate (it hands the
   recorder its rows); only a browser sees it.
-- **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
-  rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
-  xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892
-  at the stops — 5.2× against a CONSTANT gain — and the incidence curve is monotone in bank
-  position over six points. `gainScale` is **gated on the program being parked**, because the
-  de-gain that stabilises the loop also slows ramp tracking and no floor did both; the two
-  separate in TIME (d(spEff)/dt is 144× larger through a ramp). Traps: **a mechanism repeated
-  in four documents is still unmeasured** (nobody had multiplied step count by step rate), and
-  **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding

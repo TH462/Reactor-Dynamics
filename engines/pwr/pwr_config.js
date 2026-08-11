@@ -2501,6 +2501,11 @@
                // `accumulators_discharging` goes true the tanks are already emptying.
                'accum_valve_open',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
+               // PRESSURIZER HEATER BREAKER POSITION (#447) — the ESF load shed on a
+               // safety injection or a loss of offsite power. A status passthrough, so
+               // it draws no PRNG number and the instrument stream is unchanged; a
+               // breaker position is a direct digital indication, not a measurement.
+               'pzr_heaters_shed',
                // condensate pump run status (operator-controlled; gates main feedwater)
                'condensate_pump_running',
                // MAIN FEEDWATER ISOLATION VALVE POSITION (#247) — shut/open. A real

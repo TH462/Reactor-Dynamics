@@ -45,6 +45,56 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-11-backshop-a — #447: safety injection sheds the pressurizer heaters, and the LOOP decision was a misread of its own source
+
+**The change.** A rising edge of safety injection (`hpi_active`) or a loss of offsite power
+latches `_heater_shed`, which zeroes DELIVERED heater power (`heater_power_frac`,
+`_heater_dp_frac`) and is cleared only by an operator `set_heater`. Derived in
+`pwr_engine.step` as step 0b, consumed in `pwr_pressurizer.autoControl` beside the existing
+AC guard and 17 % cutoff. New `true_state`/instrument field `pzr_heaters_shed`, a
+`PZR HTRS SHED` status row, and a new engine state `_offsite_power` — offsite power had only
+ever been a one-shot coastdown effect, which is why nothing could ask whether it was there.
+
+**Why the shed and not a gain change.** `K_heater` 0.55 MPa/s is a ruled departure
+(2026-08-04, `Manuals/12` §12.15) and stays. The defect was that the term had no gate for a
+regime with nothing physical behind it — its own sibling `P_restore_rate_gain` has carried
+one since #408. Sourced: NUREG-0737 II.E.3.1 Clarification (7) requires the automatic shed on
+an SI signal; (5)(b) and (4) make the restore an SI reset plus a manual control-room
+changeover. This plant collapses those to one `set_heater`, the same collapse `pwr_control.js`
+already declares for SI reset because there is no SI-reset control on the board.
+
+**Decisions, with what would change them.**
+- **Edge-triggered, not level.** A level trigger cannot be cleared while the accident lasts,
+  which contradicts "can be manually loaded … if required" and makes CA-10 leg D unrepairable.
+  One LOCA is one shed; securing and re-initiating SI is a second edge and a second shed.
+- **Keyed on `hpi_active`, the handswitch** — no latched SI-actuation state exists here, and
+  `set_hpi` is both the three ESFAS rows and a manual SI. Defensible (a real manual SI sheds
+  too) but it means starting HPI by hand at power also sheds. Stated, not inherited.
+- **LOOP folded in.** `pwr_pressurizer.js:79-84` argued heaters survive a LOOP *because* of
+  NUREG-0578/0737. They require manual connectability, not ride-through; Ginna TS Bases B 3.4.9
+  sheds on LOOP with reload "within one hour". CA-7 leg C pinned the wrong reading and now
+  pins the right one — the reload is what proves the bus, which a blackout cannot do.
+- **`P_restore_rate_gain` at `:511` deliberately NOT gated.** Already dead on every LOCA path
+  (`loopBreak` true), so it cannot affect the oscillation, while it is the sole route to the
+  SGTR/cooldown/stuck-PORV blast radius. Landed without it: `run_ops` moved zero. Deferred
+  with the numbers, the `Manuals/12` §12.4c idiom.
+- **Accepted wart:** the `pzr_pressure` channel's bumpless disengage sends the DELIVERED
+  value, which while shed is 0 — so taking that channel to MANUAL clears the shed with nothing
+  changing physically. The alternatives break bumpless transfer or the reload path.
+
+**Gate movement** (all reconciled by hand): `run_pwr` 257→260 (migration pins, including a
+guard that a mid-SI save fires no phantom shed on load), `run_contract` 175→177,
+`run_behavior` 70pass/0xfail→71pass/1xfail (+CA-25, CA-20b split out as a strict xfail),
+`run_campaign` 3039→3049 (the re-keyed `pwr_qualify` cue reaches `challenge` earlier).
+`run_ops`, `run_meltdown_stack`, `run_procedures*`, `run_scenarios`, `run_checklist`, `run_m4`,
+`run_autoctl`, `run_e2e_controls`, `run_hardrules` all unmoved. **45/45 at baseline.**
+
+**Filed, not absorbed: #451.** The small-break pressure plateau was heater-held — recorded in
+`pwr_config.js`'s own #363 note — and the state it propped was #334's deadheaded-ECCS
+pathology (900 psia, inventory pinned at 59 %). With the prop gone nothing holds it and every
+severity collapses to the same cold solid state. CA-20 leg B split to CA-20b, strict xfail,
+band untouched.
+
 ## 2026-08-10-develop-a — #433: the MSLI fires again, on the channel's own sourced rate sensitivity
 
 **Decision — the low-steam-pressure leg is rate-compensated (`lead_lag`), not re-windowed**

@@ -78,7 +78,11 @@
     // annotation) — isolation now lands +2..3 s after a sev-0.8 or 1.0 break, and the
     // cooldown / bottle-reopen discriminator legs still hold. Kernel checks: run_m4
     // "#433 — the pressure leg is RATE-COMPENSATED".
-    // Nothing is expected to fail here. Do not add an entry without a filed issue.
+    // #451 (2026-08-11) — the small-break pressure plateau has no mechanism left once the
+    // #447 heater shed removes the prop it was standing on. Split out of CA-20 leg B so
+    // that probe's blowdown / containment-floor / vent-algebra legs keep their coverage.
+    // DO NOT re-band it green: the claim is prototypical and the band is config-derived.
+    'CA-20b': 'the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else in this model holds the plateau — every severity now collapses to the same cold solid state. Measured 1.39 MPa at t+600 against the 6.21 MPa band. See #451.',
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -149,6 +153,8 @@
     'CA-21': 'probe (the subcooling margin reads the CORE EXIT over a dry core — negative with the clad hot, byte-equal to the bulk when covered, and a failed TC restores the deception; NUREG-0737 II.F.2; #407)',
     'CA-23': 'probe (the pressurizer inventory NODE is INERT — level_per_mass·pzr_mass_frac reproduces levelRaw to 1e-9 across the subcooled/relief-void/loop-break families, and a pre-node save seeds through the inverse; #385 stage 1)',
     'CA-24': 'probe (hydrogen: mitigated LOCA sits far under the 4.1 v/o flammability limit, an unmitigated one crosses ignition and BURNS ONCE — spike above the spray hi-hi, under design, latch stands; recombiners auto-start/decay/AC-gate; the transport gate holds an SGTR\'s H2 out of the building; GEND-061 + NUREG-1431 + 50.46(b)(3); #386 stage 3)',
+    'CA-20b': 'probe (STRICT XFAIL — the small-break plateau fence, split from CA-20 leg B; #451)',
+    'CA-25': 'probe (the ESF LOAD SHED — safety injection and a loss of offsite power take the pressurizer heaters off the bus and only an operator puts them back; the post-LOCA plant settles instead of limit-cycling; NUREG-0737 II.E.3.1 (7) + Ginna TS Bases B 3.4.9; #447)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
     'CC-2': 'existing:run_autoctl PID stays engaged', 'CC-3': 'probe', 'CC-4': 'existing:run_autoctl',
@@ -2351,7 +2357,7 @@
     // no AC, and the spurious level trip arrives), leg C passes on BOTH, which is what
     // makes it the discriminator rather than a second copy of leg A.
     'CA-7': function () {
-      return test('CA-7 station blackout — no AC, no pressurizer heaters (LOOP keeps them)', function (ck) {
+      return test('CA-7 station blackout — no AC, no pressurizer heaters (a LOOP SHEDS them, and a reload proves the bus is alive)', function (ck) {
         // --- leg A: the operator calls for heat with every AC bus dead.
         // Driven through set_heater DELIBERATELY. The obvious fix — writing
         // heater_override = 0 when the blackout is injected — is defeated by the very
@@ -2425,7 +2431,32 @@
         ck('the pressurizer is still covered, so this leg is asking the AC question',
           fmt(h3.ins().pzr_level, 1) + ' % indicated',
           h3.ins().pzr_level > RD.PWR_CONFIG.pressurizer.heater_cutoff_level_pct + 3, '> 20 %');
-        ck('and the diesel-backed heaters answer at FULL power (II.E.3.1)',
+        // RE-AUTHORED 2026-08-11 (#447), and the claim it used to make was WRONG on its
+        // own source. This check read "and the diesel-backed heaters answer at FULL power
+        // (II.E.3.1)" — i.e. a LOOP left the heaters running untouched. NUREG-0737
+        // II.E.3.1 does not say that. It requires the heaters to be CONNECTABLE to
+        // emergency power, item (4) makes the changeover "accomplished manually in the
+        // control room", and Ginna TS Bases B 3.4.9 states the plant behaviour directly:
+        // "the heaters are shed following a loss of offsite power or safety injection
+        // signal. The heaters can be manually loaded onto the diesel generators if
+        // required." So the LOOP SHEDS them, and the operator puts them back.
+        //
+        // The probe's actual subject is unchanged and is still the thing being pinned:
+        // this is an AC question, and on a LOOP the answer is that ac is THERE. That is
+        // now proved better than before — the heaters are off for a reason that is NOT
+        // the bus, and the reload proves the bus by making them answer.
+        ck('the LOOP SHEDS the heaters (B 3.4.9) — full demand standing, nothing delivered',
+          fmt(h3.ctl().heater_power_pct, 1) + ' % with ' + String(h3.ts().pzr_heaters_shed) + ' shed',
+          h3.ctl().heater_power_pct < 0.01 && h3.ts().pzr_heaters_shed === true, '0 %, shed');
+        ck('…and it is a SHED, not a dead bus — ac is available throughout',
+          String(h3.ts().ac_available), h3.ts().ac_available === true, 'true');
+        // THE ORIGINAL CLAIM, now reached the way the source reaches it: manually load
+        // them onto the diesels and they answer at full power. A blackout could not do
+        // this — CA-7 leg A holds the same demand and gets nothing, which is the
+        // discrimination this whole probe exists for.
+        h3.cmd('set_heater', { power_pct: 100 });        // the manual reload
+        h3.run(10);
+        ck('reloaded onto the diesels, they answer at FULL power (II.E.3.1 item 4)',
           fmt(h3.ctl().heater_power_pct, 1) + ' %', h3.ctl().heater_power_pct > 99, '100 %');
         // …and when they DO stop later in this same run, say which interlock did it — the
         // two are separately sourced and must not be allowed to blur into each other.
@@ -2855,7 +2886,25 @@
         d.run(60);
         d.cmd('inject_failure', { failure_id: 'pzr_level_sensor_low' });   // stuck at 20 %
         d.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.10 });
-        d.cmd('set_heater', { power_pct: 100 });
+        // THE HEATERS MUST BE RELOADED FIRST, and this is not a workaround — it is the
+        // only way the leg can ask its question at all (#447). This break actuates SI
+        // within ~15 s, and safety injection SHEDS the heaters off the ESF buses
+        // (NUREG-0737 II.E.3.1 (7)). A shed bank delivers zero whatever the level
+        // transmitter says, so without the reload this leg measures the load shed and
+        // reports it as the level interlock — a check that passes for the wrong reason
+        // is what CLAUDE.md's standing list calls a hollow gate, and here it would have
+        // gone the other way and reddened for the wrong reason instead.
+        //
+        // Putting the heaters back is an ordinary operator action (one button), and it
+        // is available ONLY because the shed latches on the RISING EDGE of SI rather
+        // than on the level of the signal — a level-triggered shed could never be
+        // cleared while the accident lasts, and this leg would be unrepairable. So this
+        // is also the probe that pins the edge semantics from the outside.
+        d.run(60);
+        ck('SI actuated and shed the heaters before the interlock question is asked',
+          String(d.ts().hpi_active) + ' / shed ' + String(d.ts().pzr_heaters_shed),
+          d.ts().hpi_active === true && d.ts().pzr_heaters_shed === true, 'true / true');
+        d.cmd('set_heater', { power_pct: 100 });   // the reload AND the full manual demand
         // SUSTAINED, not "ever" — and this is the trap worth keeping. The first draft set a
         // boolean on any single sample with true level below the cutoff and heaters lit,
         // and it PASSED against the truth-reading injection: because autoControl (step 7)
@@ -3764,20 +3813,34 @@
      * measured through different holes, and only one of them was ever tested.
      */
     'CA-15': function () {
-      return test('CA-15 a LIQUID break settles at injection ≈ spillage — clear of solid and of the ceiling', function (ck) {
+      return test('CA-15 a LIQUID break fills to SOLID and arrests there — the ceiling is never what stops it', function (ck) {
         var pz = RD.PWR_CONFIG.pressurizer, pr = RD.PWR_CONFIG.primary;
 
-        // RE-SCOPED FOR #408 (was: "a liquid break goes SOLID and arrests clear of
-        // the ceiling"). At real flows a liquid break CANNOT drive the plant solid:
-        // the discharge-composition model spills everything above the cold-leg
-        // nozzle band, and during any refill attempt the heaters throttle the
-        // pressure-driven injection (the CA-10 deadlock shape, now correct physics).
-        // Break-solid was a compressed-scale artifact — the reachable solid states
-        // are CA-12's unterminated-SI flood (no break) and CA-19's forced boundary
-        // ride. What a LIQUID break does now: settles at the injection≈spillage
-        // equilibrium INSIDE the spill band, clear of solid on one side and of
-        // mass_max on the other — which is still exactly #361's claim that the
-        // ceiling is never the thing that stops the fill.
+        // RE-SCOPED TWICE, AND THE SECOND ONE UNDOES THE FIRST — worth reading before
+        // touching this leg, because the round trip is the lesson.
+        //
+        // #361's claim was "a liquid break goes SOLID and arrests clear of the ceiling".
+        // #408 REPLACED it with "settles inside the spill band, clear of solid", on this
+        // reasoning, quoted from the comment this replaces: "At real flows a liquid break
+        // CANNOT drive the plant solid ... during any refill attempt THE HEATERS THROTTLE
+        // THE PRESSURE-DRIVEN INJECTION (the CA-10 deadlock shape, now correct physics)."
+        //
+        // That mechanism was the #447 defect. The heaters were throttling injection
+        // because they still had 347x-rated authority on a plant whose safety injection
+        // had actuated — and NUREG-0737 II.E.3.1 (7) requires SI to shed them. With the
+        // shed in, injection is not throttled, the RCS fills, and #361's original claim
+        // is what the plant does again.
+        //
+        // MEASURED BEFORE/AFTER, same probe, sev 0.5, 3300 s:
+        //   before the shed   settles 98.7 %  — inside the spill band, heater-throttled
+        //   after  the shed   settles 109.28 % — ON the solid line (109.3), drift 0.00
+        // Peak inventory stays clear of the 120.00 % mass_max clip in both, which is the
+        // half of #361 that never depended on the heaters and is unchanged below.
+        //
+        // The general lesson, since this is the second time this probe has been rewritten
+        // around a heater artifact: an equilibrium that a 347x term participates in is not
+        // evidence about geometry. Both re-scopes were honest readings of a measured plant;
+        // only one of the two plants was right.
         var a = H('hot_full_power');
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.5 });
@@ -3800,19 +3863,18 @@
         ck('inventory never reaches the mass_max clip (pre-#361: exactly 120.00 % from 21 min)',
           fmt(invMax, 2) + ' % peak vs the ' + fmt(pr.mass_max * 100, 2) + ' % ceiling',
           invMax < pr.mass_max * 100 - 1.0, '> 1 point clear of ' + fmt(pr.mass_max * 100, 0) + ' %');
-        // …and it settles where the COMPOSITION geometry says: inside the spill band
-        // (the cold-leg nozzle elevation), computed from config rather than transcribed.
-        // MEASURED equilibrium (2026-08-07): inv ~98.7 %, P 0.117 vs building 0.102,
-        // leak = inflow = 6.4e-4, flat for 15 000+ s. Mass is history-parked between
-        // the band top and the solid line (spill = 1 either way there), so the
-        // config-anchored claim is the FENCES plus stability, not a point.
+        // …and it arrests ON THE SOLID LINE and stays there. The solid line is computed
+        // from config (levelBase at the settled temperature + the level_per_mass slope),
+        // never transcribed — it moves with the pressurizer geometry, and a probe that
+        // hard-coded 109.3 would go quietly wrong the next time that set is re-solved.
+        // Measured 2026-08-11: 109.28 % against a solid line of 109.3, drift 0.00 over
+        // 10 min, break still flowing — an arrest, not a clip and not a slow walk.
         var mSolidA = 1 + (100 - RD.pwrPressurizer.levelBase(a.eng.s, RD.PWR_CONFIG)) / pz.level_per_mass;
-        ck('…and settles COVERED and STABLE, clear of solid on one side and the clip on the other',
+        ck('…and ARRESTS on the solid line — with the break still open and ECCS still injecting',
           fmt(ta.core_inventory_pct, 2) + ' % (drift ' + fmt(Math.abs(ta.core_inventory_pct - invA), 2) +
-          ' over 10 min) vs band-lo ' + fmt(pr.break_spill_lo * 100, 0) + ' / mSolid ' + fmt(mSolidA * 100, 1),
-          ta.core_inventory_pct > pr.break_spill_lo * 100 - 3 &&
-          ta.core_inventory_pct < mSolidA * 100 - 5 &&
-          Math.abs(ta.core_inventory_pct - invA) < 1.5, 'covered, below solid, drift < 1.5');
+          ' over 10 min) vs mSolid ' + fmt(mSolidA * 100, 1) + ' / clip ' + fmt(pr.mass_max * 100, 0),
+          Math.abs(ta.core_inventory_pct - mSolidA * 100) < 1.0 &&
+          Math.abs(ta.core_inventory_pct - invA) < 1.5, 'on solid ±1.0, drift < 1.5');
 
         // Forced SOLID snapshot for the mechanism legs below (the CA-19 idiom): the
         // state is built, not reached — these legs are FUNCTION-LEVEL algebra on
@@ -4400,18 +4462,10 @@
         ck('…and ECCS still wins — refloods COVERED, no damage', 'inv ' + fmt(ta.core_inventory_pct, 1) + ' %, damaged ' + ta.fuel_damaged,
           ta.core_inventory_pct > 70 && !ta.fuel_damaged, '> 70 %, false');
 
-        // ---- leg B: the small-break fence — the sev-0.05 plateau is untouched.
-        var b = H('hot_full_power');
-        b.run(30);
-        b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.05 });
-        b.run(600);
-        // Config-derived band (#408): the claim is the plateau stays clear ABOVE the
-        // accumulator arming band early — the small break must not spuriously dump the
-        // tanks. The old > 8.0 MPa was a magnitude fixture from the compressed clock
-        // (measured 7.10 at t+600 on the real one, with the claim intact).
-        ck('a 5 % break still holds its plateau above the accumulator band at t+600',
-          fmt(b.ts().pressure_mpa, 2) + ' MPa vs trip ' + CFG.emergency.accumulator_trip_mpa,
-          b.ts().pressure_mpa > 1.5 * CFG.emergency.accumulator_trip_mpa, '> 1.5x accumulator_trip_mpa');
+        // ---- leg B MOVED OUT to its own probe, CA-20b (#451, 2026-08-11). It is a
+        // STRICT XFAIL now, and XFAIL is keyed per PROBE — leaving it here would have
+        // suppressed this probe's blowdown, containment-floor and vent-algebra legs
+        // along with it, which is a lot of live coverage to lose to one known gap.
 
         // ---- leg C: the algebra, through the real stepPressure (clone triplets).
         var base = H('hot_full_power'); base.run(30);
@@ -5661,6 +5715,205 @@
           lo.range('power_pct').min <= hi.range('power_pct').min - 2.5, 'lo ≤ hi − 2.5');
         T.checkSanity(ck, lo);
         T.checkSanity(ck, hi);
+      });
+    },
+
+    /* CA-20b — THE SMALL-BREAK FENCE, split out of CA-20 leg B (#451, 2026-08-11).
+     *
+     * STRICT XFAIL. The claim is prototypical and stays asserted exactly as it was: a
+     * small break must hold a pressure plateau ABOVE the accumulator arming band, so it
+     * does not spuriously dump the tanks — that plateau is the defining feature of the
+     * SBLOCA family and the reason its EOPs are about depressurizing to let ECCS in.
+     *
+     * WHY IT FAILS TODAY, and why the band must NOT be moved to make it green. The
+     * plateau was HELD BY THE PRESSURIZER HEATERS, which this plant's own config already
+     * recorded (`pwr_config.js`, the #363 note: "it pins NOTHING. Pressure is above
+     * 600 psi because the PRESSURIZER HEATERS are winning against the break … Right
+     * behaviour, wrong mechanism"). #447 sheds the heaters on safety injection, as
+     * NUREG-0737 II.E.3.1 (7) requires, and the prop went with them.
+     *
+     * The state it was propping was not a good one: measured, the pre-#447 sev-0.05 break
+     * parks at 900 psia with inventory pinned at 59 % — the DEADHEADED-ECCS pathology
+     * #334 was filed for, with the core partially drained indefinitely because the
+     * pressure-driven HPI curve delivers 0.18 instead of 0.53. So removing the prop is
+     * right; what it exposes is that nothing else in this model holds a small-break
+     * plateau. Every severity now collapses to the same cold solid state (109.3 %
+     * inventory, 176 °F, SG secondary down to 14.5 psia), so severity stops
+     * discriminating. That is #451, and the candidates are listed there.
+     *
+     * Measured at t+600 with the shed: 1.39 MPa against the 6.21 MPa band.
+     */
+    'CA-20b': function () {
+      return test('CA-20b a small break holds its plateau above the accumulator band — it must not dump the tanks (#451)', function (ck) {
+        var CFG = RD.PWR_CONFIG;
+        var b = H('hot_full_power');
+        b.run(30);
+        b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.05 });
+        b.run(600);
+        // Config-derived band (#408): the old > 8.0 MPa was a magnitude fixture from the
+        // compressed clock (measured 7.10 at t+600 on the real one, claim intact).
+        ck('a 5 % break still holds its plateau above the accumulator band at t+600',
+          fmt(b.ts().pressure_mpa, 2) + ' MPa vs trip ' + CFG.emergency.accumulator_trip_mpa,
+          b.ts().pressure_mpa > 1.5 * CFG.emergency.accumulator_trip_mpa, '> 1.5x accumulator_trip_mpa');
+        // The guard that says WHY it failed, so a future reader does not re-derive it:
+        // if the tanks stay full the plateau held; if they dumped, the break went through
+        // the arming band.
+        ck.info('accumulator level at t+600 (full = the fence held)',
+          fmt(b.ts().accumulator_volume_pct, 1) + ' %');
+        ck.info('inventory / Tavg at t+600 (the #451 collapse signature: solid and cold)',
+          fmt(b.ts().core_inventory_pct, 1) + ' % / ' + fmt(b.ts().tavg_c * 9 / 5 + 32, 1) + ' °F');
+      });
+    },
+
+    /* CA-25 — THE ESF LOAD SHED (#447, 2026-08-11). Safety injection, and a loss of
+     * offsite power, take the pressurizer heaters OFF THE BUS; only an operator puts
+     * them back.
+     *
+     * WHAT IT IS PINNING, and why nothing caught it for so long. The heaters are a
+     * non-Class-1E load with `K_heater` authority 347x their sourced rating (a declared,
+     * owner-ruled departure, `Manuals/12` §12.15) and NO gate for the regime where there
+     * is nothing physical behind them. #334 found the stable half of that — heaters
+     * holding a drained RCS at 2207 psi (15.22 MPa) with the coolant 240 °C subcooled —
+     * and answered it with the 17 % low-level cutoff. The cutoff removed the stable wrong
+     * equilibrium but not the AUTHORITY, so it bounded it into a LIMIT CYCLE: ECCS refills
+     * past the 20 % restore point, the heaters return at FULL demand (auto control sees
+     * pressure 2220 psi below setpoint), 0.29 MPa/s net takes pressure 15 -> 163 psia in
+     * ~3 s, that spikes leak_flow ~20x on the sqrt(dP) law and back-pressures HPI
+     * 0.90 -> 0.34, level falls back through 17 %, and it repeats. MEASURED full stack,
+     * `_heater_cut` transitions over 3000-16000 s: 134 at sev 0.05 (peak excursion
+     * 839 psia), 248 / 410 / 620 / 761 / 936 at 0.10 / 0.20 / 0.40 / 0.60 / 1.00 —
+     * monotone in severity, starting within 4-28 s of the break at every one, and running
+     * for the full 6 h 21 m of the bug report that filed it.
+     *
+     * SOURCED, and it is a requirement rather than a preference. NUREG-0737 II.E.3.1
+     * Clarification (7) (ML051400209): "Being non-Class IE loads, the pressurizer heaters
+     * must be automatically shed from the emergency power sources upon the occurrence of a
+     * safety injection actuation signal"; (5)(b) makes the restore need an SI reset and (4)
+     * makes the changeover "accomplished manually in the control room". Ginna TS Bases
+     * Rev 101 (ML20339A221) B 3.4.9 states the plant behaviour: "the heaters are shed
+     * following a loss of offsite power or safety injection signal. The heaters can be
+     * manually loaded onto the diesel generators if required."
+     *
+     * FULL STACK IS MANDATORY HERE and the reason is the #209 lesson twice over. Engine
+     * -direct never sets `hpi_active` — nothing actuates SI, so the latch never arms and
+     * the probe would pass against a plant that has no shed at all. Bare M4 has neither
+     * `feed_sg` nor `cvcs_makeup` (both `defaultOn`), which shape the inventory tail the
+     * oscillation rides on. So: H() with the shipped lineup, no `noDefaults`.
+     *
+     * THE CLAIM IS A BAND, NOT A TRANSITION COUNT. A count pins the number of ECCS refill
+     * cycles, which is a tuning; CA-10's own bMaxStreak note is the worked case. The tail
+     * window opens at 3000 s because the shed plant is fully settled by ~2000 s at both
+     * severities (measured, per-1000 s buckets: P band 0.00 psi from 2000 s on).
+     *
+     * Injection-verified 2026-08-11: RED on the pre-change engine, 14 of 34 checks, and
+     * the numbers are this probe's own window (3000-5000 s), not the issue's. sev 0.05:
+     * P band 787.6 psi, level band 36.3 pts, 215 of 4000 samples carrying heater power.
+     * sev 0.40: 156.6 psi, 15.5 pts, 323 of 4000. The SMALL break is the worse one — it
+     * lets the heaters win more of each cycle. Goes red again if the `_heater_shed`
+     * consumer in pwr_pressurizer.autoControl is deleted, and leg C fails if the latch is
+     * made level-triggered instead of edge-triggered.
+     */
+    'CA-25': function () {
+      return test('CA-25 safety injection SHEDS the pressurizer heaters — the post-LOCA plant settles instead of limit-cycling (#447)', function (ck) {
+        // ---- legs A/B: tail stability at two break sizes, smallest first (it has the
+        // WORST pre-fix excursion — 839 psia — because a small break lets the heaters win).
+        [0.05, 0.40].forEach(function (sev) {
+          var tag = 'sev ' + fmt(sev, 2) + ': ';
+          var h = H('hot_full_power');
+          h.run(60);
+          h.cmd('inject_failure', { failure_id: 'large_loca', severity: sev });
+          h.run(2940);                                  // reach the settled tail
+          var pMin = 1e9, pMax = -1e9, lMin = 1e9, lMax = -1e9, hot = 0, n = 0;
+          h.run(2000, function (hh) {
+            var ts = hh.ts();
+            n++;
+            if (ts.pressure_mpa < pMin) pMin = ts.pressure_mpa;
+            if (ts.pressure_mpa > pMax) pMax = ts.pressure_mpa;
+            if (ts.pzr_level_pct < lMin) lMin = ts.pzr_level_pct;
+            if (ts.pzr_level_pct > lMax) lMax = ts.pzr_level_pct;
+            if ((hh.ctl().heater_power_pct || 0) > 0.01) hot++;
+          });
+          var ts = h.ts();
+          // OBSERVABILITY GUARDS FIRST — without all three this probe proves nothing.
+          // A plant that never actuated SI, or whose break stopped flowing, is quiet for
+          // reasons that have nothing to do with the shed.
+          ck(tag + 'SI actually actuated (or the rest of this leg is vacuous)',
+            String(ts.hpi_active), ts.hpi_active === true, 'true');
+          ck(tag + 'the break is still flowing at the end of the tail',
+            fmt(ts.leak_flow, 6), ts.leak_flow > 0, '> 0');
+          ck(tag + 'the shed is STANDING — securing SI does not clear it, only an operator does',
+            String(ts.pzr_heaters_shed), ts.pzr_heaters_shed === true, 'true');
+          // THE DISCRIMINANT.
+          ck(tag + 'no heater power anywhere in the tail (pre-fix: 215 of 4000 at 0.05, 323 of 4000 at 0.40)',
+            hot + ' of ' + n + ' samples', hot === 0, '0 samples');
+          ck(tag + 'pressure is STABLE across the tail (pre-fix: 787.6 psi at 0.05, 156.6 psi at 0.40)',
+            fmt((pMax - pMin) * 145.038, 2) + ' psi band', (pMax - pMin) * 145.038 < 25, '< 25 psi');
+          ck(tag + 'pressurizer level is STABLE across the tail (pre-fix: 36.3 pts at 0.05, 15.5 pts at 0.40)',
+            fmt(lMax - lMin, 2) + ' pts band', (lMax - lMin) < 3, '< 3 pts');
+          T.checkSanity(ck, h);
+        });
+
+        // ---- leg C: THE RELOAD WORKS. Without this the shed is indistinguishable from
+        // "the heaters were deleted", and the source is explicit that they can be put back
+        // ("manually loaded onto the diesel generators if required"). This is also what
+        // pins the latch as EDGE-triggered: a level-triggered shed could never clear here.
+        var c = H('hot_full_power');
+        c.run(60);
+        c.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.40 });
+        c.run(2940);
+        ck('reload: shed is standing before the operator acts',
+          String(c.ts().pzr_heaters_shed), c.ts().pzr_heaters_shed === true, 'true');
+        c.cmd('set_heater', { auto: true });            // the manual reload — one button
+        c.run(60);
+        var cPow = 0;
+        c.run(120, function (hh) { cPow = Math.max(cPow, hh.ctl().heater_power_pct || 0); });
+        ck('reload: HEATER AUTO clears the shed', String(c.ts().pzr_heaters_shed),
+          c.ts().pzr_heaters_shed === false, 'false');
+        ck('reload: and the heaters answer again (the excursion that follows is the player\'s to own)',
+          fmt(cPow, 1) + ' %', cPow > 0, '> 0 %');
+
+        // ---- leg D: THE OPERATOR'S DEMAND WAS NEVER WRITTEN (#200/#329). A shed that
+        // parks 0 in `heater_override` would heal itself on the next button press and
+        // would silently move the selector the player set. Full manual 100 % standing
+        // BEFORE the break must survive the shed untouched, with delivered power at zero.
+        var d = H('hot_full_power');
+        d.run(30);
+        d.cmd('set_heater', { power_pct: 100 });
+        d.run(30);
+        d.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.40 });
+        var dHot = 0, dN = 0;
+        d.run(2940);
+        d.run(600, function (hh) { dN++; if ((hh.ctl().heater_power_pct || 0) > 0.01) dHot++; });
+        ck('demand survives: the selector is still where the operator put it (MANUAL, not AUTO)',
+          String(d.ctl().heater_auto), d.ctl().heater_auto === false, 'false');
+        ck('…while DELIVERED power is zero throughout — de-energization, not a written demand',
+          dHot + ' of ' + dN + ' samples', dHot === 0, '0 samples');
+
+        // ---- leg E: THE LOOP HALF. Same sentence in the source, and this leg is what
+        // stops a future reader narrowing the scope back to SI. A plain loss of offsite
+        // power is NOT a blackout — `ac_available` stays true — so the heaters die here
+        // because they were SHED, not because the bus is dead, and the reload proves it.
+        var e = H('hot_full_power');
+        e.run(60);
+        e.cmd('inject_failure', { failure_id: 'loss_of_offsite_power' });
+        e.run(300);
+        var eTs = e.ts();
+        ck('LOOP: no safety injection on this path (or the leg is testing the SI half again)',
+          String(eTs.hpi_active), eTs.hpi_active === false, 'false');
+        ck('LOOP: ac is still available — the diesels have the 1E buses, this is not a blackout',
+          String(eTs.ac_available), eTs.ac_available === true, 'true');
+        ck('LOOP: the heaters are SHED (Ginna TS Bases B 3.4.9 — "shed following a loss of offsite power")',
+          String(eTs.pzr_heaters_shed), eTs.pzr_heaters_shed === true, 'true');
+        var ePow = 0;
+        e.run(120, function (hh) { ePow = Math.max(ePow, hh.ctl().heater_power_pct || 0); });
+        ck('LOOP: …and deliver nothing while shed', fmt(ePow, 2) + ' %', ePow === 0, '0 %');
+        e.cmd('set_heater', { auto: true });
+        e.run(120);
+        var ePow2 = 0;
+        e.run(120, function (hh) { ePow2 = Math.max(ePow2, hh.ctl().heater_power_pct || 0); });
+        ck('LOOP: a manual reload puts them back on the bus ("within one hour", B 3.4.9)',
+          fmt(ePow2, 1) + ' %', e.ts().pzr_heaters_shed === false && ePow2 > 0, 'cleared, > 0 %');
+        T.checkSanity(ck, e);
       });
     },
   };

@@ -30,6 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Safety injection now sheds the pressurizer heaters, and so does a loss of offsite power
+  (#447).** They stay off until you deliberately put them back — HEATER AUTO, MANUAL, OFF or
+  the % box all count as the reload, and a new **PZR HTRS SHED** indication says why heater
+  power is reading zero. Sourced: NUREG-0737 II.E.3.1 Clarification (7) requires the shed on
+  an SI signal; Ginna TS Bases B 3.4.9 adds the LOOP half and the manual reload onto the
+  diesels. Fixes a ~40 s pressure/level limit cycle that ran for hours after **every** LOCA
+  severity (measured: 134 heater cycles at severity 0.05 with an 839 psia excursion, up to
+  936 at 1.00) and flooded the alarm log — the heaters were returning to full power every
+  time ECCS refilled the pressurizer past 20 %. The plant now settles into long-term cooling
+  instead. The previous behaviour, where a loss of offsite power left the heaters running,
+  was a misreading of that same NUREG requirement.
+
 ### Added
 - **Feedback in one action (#438, first child of the #436 UI rework).** A `Feedback` button in
   the sim-controls row beside Manual/Help opens the contact form directly — it was three levels
