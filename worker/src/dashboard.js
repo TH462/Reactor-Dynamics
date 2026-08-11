@@ -22,6 +22,7 @@
 import { esc, html, PAGE_HEAD, nav, withDow } from './render.js';
 import { analyticsPage } from './analytics.js';
 import { sessionList, sessionDetail } from './sessions.js';
+import { featuresPage } from './features.js';
 
 function safeEqual(a, b) {
   if (a.length !== b.length) return false;
@@ -133,6 +134,7 @@ export async function handleDashboard(env, url) {
   const view = url.searchParams.get('view');
   if (view === 'analytics') return analyticsPage(env, url, token);
   if (view === 'sessions') return sessionList(env, url, token);
+  if (view === 'features') return featuresPage(env, url, token);
   if (view === 'session') return sessionDetail(env, url, token, url.searchParams.get('sid') || '');
 
   const key = url.searchParams.get('key');

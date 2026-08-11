@@ -85,7 +85,7 @@ export function nav(token, current) {
     return '<a class="' + (current === view ? 'on' : '') + '" href="' + href + '">' + label + '</a>';
   };
   return '<nav>' + link('', 'Bug reports') + link('analytics', 'Analytics')
-    + link('sessions', 'Sessions') + '</nav>';
+    + link('sessions', 'Sessions') + link('features', 'Features') + '</nav>';
 }
 
 // A table that does not lie about an empty result — "(none)" rather than a blank frame.
