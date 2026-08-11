@@ -145,13 +145,15 @@
   // They live on .app (not inside the diagram) because they straddle two grid tracks.
   function ensureSplitters(app) {
     if (!splitV) {
-      splitV = h('div', { className: 'bd-split bd-split-v', title: 'Drag to resize the simulator panel' });
+      splitV = h('div', { className: 'bd-split bd-split-v', title: 'Drag to resize the simulator panel — double-click to reset' });
       splitV.addEventListener('pointerdown', function (e) { beginDrag(e, app, 'v'); });
+      splitV.addEventListener('dblclick', function () { resetSplit(app, 'v'); });
       app.appendChild(splitV);
     }
     if (!splitH) {
-      splitH = h('div', { className: 'bd-split bd-split-h', title: 'Drag to resize the trend / alarm strip' });
+      splitH = h('div', { className: 'bd-split bd-split-h', title: 'Drag to resize the trend / alarm strip — double-click to reset' });
       splitH.addEventListener('pointerdown', function (e) { beginDrag(e, app, 'h'); });
+      splitH.addEventListener('dblclick', function () { resetSplit(app, 'h'); });
       app.appendChild(splitH);
     }
   }
@@ -212,9 +214,33 @@
     el.addEventListener('pointercancel', up);
   }
 
+  /* CLAMP ON LOAD, not just on drag (#445). A persisted split is a number written by an
+   * older layout: the right column lost the Scanner panel in #439 and the bottom row gained
+   * the lane stack and the SOE ribbon in #440/#442, so a value saved before those is a
+   * geometry that no longer exists. Re-clamping to the current bounds costs nothing and
+   * turns "the board opened wrong after an update" into "the board opened at the nearest
+   * legal size". */
   function applyManual(app) {
-    if (manual.simW != null) app.style.setProperty('--simcol-w', manual.simW + 'px');
-    if (manual.bottomH != null) app.style.setProperty('--bottomrow-h', manual.bottomH + 'px');
+    if (manual.simW != null) {
+      var w = Math.max(320, Math.min(SIMCOL_DRAG_MAX, manual.simW));
+      if (w !== manual.simW) { manual.simW = w; saveManual(); }
+      app.style.setProperty('--simcol-w', w + 'px');
+    }
+    if (manual.bottomH != null) {
+      var hgt = Math.max(BOTTOM_MIN, Math.min(BOTTOM_MAX, manual.bottomH));
+      if (hgt !== manual.bottomH) { manual.bottomH = hgt; saveManual(); }
+      app.style.setProperty('--bottomrow-h', hgt + 'px');
+    }
+  }
+  /* DOUBLE-CLICK RESETS THE AXIS (#445). Users will drag themselves into a corner — a
+   * 900 px sim column, or a bottom strip taller than the board — and the way back has to be
+   * obvious. Clearing the manual value also hands the axis back to fitColumns, which is the
+   * state the board shipped in, not merely a remembered size. */
+  function resetSplit(app, axis) {
+    if (axis === 'v') { delete manual.simW; app.style.removeProperty('--simcol-w'); }
+    else { delete manual.bottomH; app.style.removeProperty('--bottomrow-h'); }
+    saveManual();
+    layout();
   }
 
   function layout() {

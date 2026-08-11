@@ -4222,6 +4222,7 @@
    * Read from the LIVE element, not from a constant: the splitters (#445) make the region's
    * height the operator's to choose, so the lane count has to follow it. */
   var NUM_ROW_PX = 18;                  // a demoted channel's numeric row, per the reference
+  var LANE_TARGET_PX = 56;              // the top of the spec's 44-56 band
   /* The split is JOINTLY constrained and has to be solved as one: every channel demoted to a
    * numeric row TAKES 18 px from the lanes above it, so "how many lanes fit" depends on how
    * many were demoted, which depends on how many fit. Computing the lane count first and
@@ -4236,7 +4237,15 @@
     for (var d = 0; d < n; d++) {
       var lanes = n - d;
       var avail = px - d * NUM_ROW_PX;
-      if (avail / lanes >= LANE_FLOOR_PX) return { lanes: lanes, rows: d, px: avail };
+      if (avail / lanes >= LANE_FLOOR_PX) {
+        /* EXTRA SPACE ADDS ROWS, IT DOES NOT INFLATE THEM (#445, spec §8). Dragging the
+         * strip taller with three channels pinned must not give three enormous traces —
+         * "which is nobody's intent". Lanes stop growing at the target height and the
+         * surplus is simply not used by the stack; it becomes room for the next channel
+         * the operator pins, which is the point of having dragged. */
+        var used = Math.min(avail, lanes * LANE_TARGET_PX);
+        return { lanes: lanes, rows: d, px: used };
+      }
     }
     return { lanes: 1, rows: n - 1, px: Math.max(LANE_FLOOR_PX, px - (n - 1) * NUM_ROW_PX) };
   }

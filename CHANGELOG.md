@@ -53,6 +53,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with no `true_state` field behind it.
 
 ### Added
+- **The splitters give the lane stack more rows, not taller ones (#445, spec §8).** Dragging the
+  trend strip taller **promotes demoted channels back to full traces** rather than inflating the
+  ones already there — measured: 230 px → 375 px took the stack from 3 lanes + 3 numeric rows to
+  **6 lanes at 51 px**, inside the 44–56 target and above the 36 px floor. **Double-click resets
+  an axis** and hands it back to auto-fit, because users will drag themselves into a corner and
+  the way back has to be obvious. A **persisted split is re-clamped on load**: the right column
+  lost the Scanner and the bottom row gained the lane stack, so a value saved by an older layout
+  describes a geometry that no longer exists — an absurd stored size now opens at the nearest
+  legal one instead of a broken board.
 - **Checklists are ordered by relevance to the plant (#443, spec §9).** At power the normal
   operations rank first; **after a scram, post-trip response goes to the top**, the way emergency
   procedures supersede normal ones in a real control room. **Sort, do not filter:** inapplicable
