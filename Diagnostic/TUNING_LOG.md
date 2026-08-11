@@ -29,6 +29,94 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-10-develop-c (the #436 control-room rework: plan, five phases, and three defects that were all the observer, not the plant)
+
+**Issues:** #436 (planned, now the tracking issue; filed **#437–#446**) · #438 · #437 · #439 ·
+#443 part 1 · #393 · **#449 filed**.
+**Commits:** `2a31361` (#438), `496375b` (P2–P6), `b540b72` (#393 + the #440 reference lane).
+**Gates:** `run_all` **47 runners at baseline** at each landing; CI green on 2a31361 and 496375b.
+Two runners added (`run_events` 40 checks, `run_chart_math` 8), `run_portable` 139 → **141** as
+two new `<script src>` tags raised its own tally by design.
+
+### What was built
+
+The owner's Control Room Layout Spec v3 (the comment on #436) was planned into ten children and
+five phases were executed overnight against pre-issued rulings. Detail is on each issue; this
+entry records what is not obvious from the diff.
+
+- **#437 `ui/event_stream.js`** — one SOE stream, tier/componentRef/actor stamped at emission.
+  Edge detection sits at the service/UI seam by ruling; the bug-report recorder stays the ONLY
+  detector of alarm and scram transitions and feeds the stream through its existing `onEvent`
+  hook.
+- **#439** — the pause primitive (`pauseSim(reason)`, four copied idioms folded, modals pause and
+  closing never resumes), the strip reduced to Checklists/Indications/Inject Failure with Operate
+  dissolved, Settings a pausing header modal with the chart's window and CSV moved onto the chart,
+  the Scanner reduced to a 26 px line under the board, and Indications/Physics merged into one
+  paired list with computed divergence.
+- **#443 part 1** — a selection screen on cold load, Reset into the session-bar window as a
+  two-press arm, three persistent coach marks.
+- **#393** — `ui/chart_math.js`, the held-axis policy shared by the chart and the vital tiles.
+
+### The trap: three of the four defects were the OBSERVER, not the plant
+
+None was visible in a source read; every one needed something to be driven.
+
+1. **The recorder's first pass looks exactly like plant activity.** `_alarms` emits a transition
+   for every alarm when `lastAlarms === null` — correct for a bug report, which wants the
+   starting state of the panel. Fed to a timeline it arrived as **46 `alarm_clear` events at
+   t = 0**. `run_events` TR-1 measured a steady 20 s at hot full power producing 46 events; the
+   guard (only emit a clear for an alarm this stream saw annunciate) takes it to **0**.
+2. **A merged indicated-vs-true list comparing FORMATTED STRINGS flags a healthy plant.** Five
+   rows lit permanently, `-0.0 DPM` against `0.0 DPM` among them — the same number. Measured
+   spread at hot full power over 92 comparable rows: ordinary lag is **0.18 %** (Cold Leg 551 °F
+   indicated / 550 °F true) and **0.12 %** (Steam P 826 / 825 psi). The rule is now **0.5 %
+   relative with a floor at the displayed precision**, which sits above lag and below the spec's
+   own worked example (core exit 618 / 623 °F, 0.8 %).
+3. **…and the first version of that rule swallowed the case it was built for.** Exempting rows
+   whose true side is curated physics prose was meant for "3.12 % · 9.4 MWt" against "3 %" — a
+   different rendering of one value. It also exempted the PORV row, which is the spec's headline
+   example: `shut` against `OPEN · STUCK`, flagged by nothing. Fixed by comparing the RAW pair
+   (`get(instruments)` vs `tru(true_state)`) and using the rendered text only to derive the
+   precision floor. Prose is for reading; the comparison belongs on the values.
+
+The fourth was mine and the same family: the exponent is part of the displayed precision, so
+`2.0e-3 A` read as precise to 0.1 and the floor swallowed a **75.9 %** divergence on the
+intermediate-range channel — the nuclear instruments, where a failure is least cross-checkable.
+
+**Corollary that paid twice: a refactor's only claim is "nothing changed", so pin the OLD
+implementation and replay it.** `test/run_chart_math.js` keeps both original copies verbatim as
+dead code and replays 770 `niceStep` inputs and a 235-frame transient with 50 re-fits,
+frame-for-frame. A check that only drove the new function would agree with whatever the new
+function does.
+
+### Gates moved, and why none was weakened
+
+Three browser gates drove paths that no longer exist. Each moved to the **shipped** path rather
+than to a test-only door: `verify_e2e_ui` reaches Feedback by the one-click header button (#438),
+and `verify_flags_ui` presses through the selection screen the way a player does and opens
+Settings before probing the Features row. That last one **restored** a check that had silently
+become "is the modal open?" rather than "is the flag on?" — the vacuous-guard failure that file's
+own comments already record twice.
+
+`verify_flags_ui` also caught a real error: the session footer had been put inside `#mpContent`,
+where "public: campaign offers nothing to start" counts buttons as things you can start. The
+check was right; moving the footer out made it pass **unmodified**.
+
+### Left open deliberately
+
+**#449** — the merged list, at hot full power with nothing injected, flags Intermediate Range
+(**75.9 %**), Charging Flow and Letdown Flow (**~23 %** each) against a 0.18 % lag baseline. Not
+investigated: building the panel that found them and chasing a possible instrument-scale defect
+are different work. The fourth flagged row (Heatup Rate, −4 °F/hr against 0) is a derived rate
+hovering at zero where a relative test is meaningless; left flagged rather than tuned silent,
+because tuning a band quiet in the dark is how it comes to exclude something that mattered.
+
+**#440's reference lane** (`ui/test_panel/lane_reference.html`) is built and awaiting review
+before the lane stack generalises. It measures itself: four 48 px lanes plus a 12 px shared axis
+and a 10 px event ribbon come to **216 px** against the spec's ~220 px budget.
+
+---
+
 ## Session log — 2026-08-10-develop-b (site stats in one command — and BOTH datasets were being counted wrong, in opposite directions)
 
 **Outcome: `tools/site_report.js` + a `site-stats` skill; `tools/usage_report.js` deleted,

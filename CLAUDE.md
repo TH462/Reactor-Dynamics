@@ -313,7 +313,7 @@ to read everything.
 
 _Last updated: **2026-08-10**._
 
-**Where the PWR is.** `run_all` is **45 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **47 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -328,10 +328,17 @@ re-querying. Run the query.
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
   than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
   the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
-- **Built, waiting on review or a close** — #438 (feedback form: header button, restricted-info
-  warning, diagnostics disclosure — first child of the #436 UI rework, whose plan filed
-  #437–#446), #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399,
-  #398, #397. **#413** the Cloudflare migration is DONE and
+- **#436 — the control-room rework, planned and part-built.** Its plan filed **#437–#446**;
+  #436 itself is now the tracking issue. Landed 2026-08-10: **#438** (feedback form),
+  **#437** (`RD.Events`, one SOE stream), **#439** (right column — Operate dissolved,
+  Settings a pausing modal, Scanner a status line, Indications/Physics merged with computed
+  divergence), **#443 part 1** (selection screen, session bar, coach marks), **#393**
+  (`ui/chart_math.js`). **#440's reference lane is built and awaiting review**
+  (`ui/test_panel/lane_reference.html`, self-measuring) before the lane stack generalises.
+  Open: #440–#442, #444, #445, #443 part 2, #446 (deferred). New issue **#449** — three
+  steady-state indicated-vs-true disagreements the merged list surfaced.
+- **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
+  themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
   two owner actions remain (delete the Vercel project, revoke a token).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
@@ -351,6 +358,18 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **An OBSERVER's own first pass is indistinguishable from the plant doing something**
+  (2026-08-10, #437 + #439 + #393). Three of one night's four defects were this shape and
+  none was visible in a source read. The recorder emits a transition for EVERY alarm on its
+  first tick — right for a bug report, and as a timeline it arrived as **46 `alarm_clear`
+  events at t=0** (a steady 20 s at power now emits 0). A merged indicated-vs-true list
+  comparing FORMATTED strings flagged five rows permanently on a healthy plant, `-0.0`
+  against `0.0` among them; comparing RAW values with a 0.5 % band and a displayed-precision
+  floor sits above lag (0.18 %) and below the spec's own example (0.8 %) — and the first
+  version's "exempt rows with curated prose" swallowed the very case it was built for, the
+  PORV reading `shut` against `OPEN · STUCK`. Corollary that paid twice: **a refactor's claim
+  is "nothing changed", so pin the OLD implementation and replay it** — 235 frames, 50
+  re-fits, frame-for-frame (`run_chart_math`).
 - **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
   #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
   telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
@@ -393,15 +412,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   subscriber — saw every row AFTER recording a later timestamp. **1475 rows in, 35 recorded.**
   Invisible to a source scan (call sites all correct) and to the new Node gate (it hands the
   recorder its rows); only a browser sees it.
-- **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
-  rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
-  xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892
-  at the stops — 5.2× against a CONSTANT gain — and the incidence curve is monotone in bank
-  position over six points. `gainScale` is **gated on the program being parked**, because the
-  de-gain that stabilises the loop also slows ramp tracking and no floor did both; the two
-  separate in TIME (d(spEff)/dt is 144× larger through a ramp). Traps: **a mechanism repeated
-  in four documents is still unmeasured** (nobody had multiplied step count by step rate), and
-  **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -409,6 +419,9 @@ one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written
 what a GATE already catches**, keep what nothing can tell you. This list was the only unbounded
 thing left in the file and it grew about a bullet a session.
 
+- **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
+  limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
+  criterion, not just the result, before you let it reject anything.
 - **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
   eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
   both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
@@ -482,12 +495,6 @@ thing left in the file and it grew about a bullet a session.
   — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
   ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the
   floor once already.
-- **The two Hot Standby starting points are DIFFERENT PLANTS for a startup** (#303).
-  `cold_shutdown` arrives at Mode 3 at **857 ppm**, `hot_zero_power` ships **683**: ~561 critical
-  rod steps against 319, and the manual is written for the latter. Only `run_procedures_chain`
-  crosses that seam. **`boron_ppm` ending at 2500 is the fingerprint of an unintended ECCS
-  injection.** The moderator model was re-done twice — a **1400 ppm crossover** or **−20 pcm/°C**
-  in any document is stale (#260/#263).
 - **Protection cadence is written down TWICE** — `PROTECTION_DT` 0.1 s and an independent copy in
   `test/ops_harness.js`. Move one and not the other and the ops suites certify a plant no player
   can produce. 1× is byte-identical by construction, which is why a divergence hides at the speed
@@ -563,7 +570,7 @@ with different numbers**. Run the gate; read the map. The per-change rationale l
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
-node test/run_all.js            # all 45 runners (~3.5 min, 10-way parallel)
+node test/run_all.js            # all 47 runners (~8 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -589,8 +596,8 @@ Four things about it that are procedure, not history:
   three days, including a release to `main`, because `--fast` still ran a Playwright gate that was
   not marked `slow`. Nobody noticed, which is the argument for a required status check (#191).
 
-**One tracked red, carrying its `note` in `BASELINES`: `run_ops` 58/69** — ops probes are tuning
-targets by design. Of the 11 reds, 10 are RBMK/BWR (on hold). The single PWR one is
+**One tracked red, carrying its `note` in `BASELINES`: `run_ops` 59/70** — ops probes are tuning
+targets by design. Of the reds, all but one are RBMK/BWR (on hold). The single PWR one is
 `ops_cvcs_pzr_drain_rate` (**284.3 s** against `>= 300 s`), a **RULED, ACCEPTED state, not a
 regression** *(OWNER RULING, 2026-08-04: "A")*. **It must NOT be re-banded** — the probe exists
 for a 2026-07-22 owner request for a drain-rate feel target, and re-banding a target whenever the
@@ -628,7 +635,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 45 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 47 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi

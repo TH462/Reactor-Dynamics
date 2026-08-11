@@ -53,3 +53,17 @@ All five are PLANT-SPECIFIC and all five are pinned by a suite that reddens if t
   pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break liquid
   is flash-gated), and an SGTR reads NOTHING — it discharges into the SG, and since stage 3 that
   fence extends to hydrogen (geometry-gated transport). `press_gain` is fitted and says so.
+
+## Evicted 2026-08-10b (the cap bound again at 26, adding #437/#439/#393's trap)
+
+- **The two Hot Standby starting points are DIFFERENT PLANTS for a startup** (from the standing
+  list, #303): `cold_shutdown` arrives at Mode 3 at **857 ppm**, `hot_zero_power` ships **683** —
+  ~561 critical rod steps against 319, and the manual is written for the latter. Only
+  `run_procedures_chain` crosses that seam, which is what makes this evictable under the
+  criterion above: every number in it is pinned by a suite that reddens if it moves, and the
+  seam has a named gate standing on it. **`boron_ppm` ending at 2500 is the fingerprint of an
+  unintended ECCS injection.** The moderator model was re-done twice — a **1400 ppm crossover**
+  or **−20 pcm/°C** in any document is stale (#260/#263).
+
+  *If a startup goes wrong in a way this would have warned about, that is the evidence to put it
+  back — say so in the session log rather than quietly re-adding it.*
