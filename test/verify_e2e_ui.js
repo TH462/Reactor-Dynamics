@@ -13,6 +13,24 @@ var PORT = 9750 + Math.floor(Math.random() * 50);
 var ENGINES = ['pwr', 'rbmk_pre', 'rbmk_post', 'bwr'];
 var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
 
+/* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD since 2026-08-11 *(OWNER DIRECTIVE: "It
+ * should always the the first thing someone sees when loading the sim.")*, so every gate
+ * navigation has to dismiss it exactly as a player does.
+ *
+ * It is deliberately NOT exempted by a URL parameter. A bypass list is what hid the window
+ * from every real visitor: it contained `engine=`, and the site links `?engine=pwr` from
+ * both entry points, so the one path nobody took — a bare shell.html — was the only path
+ * that showed it, and that was the path my own check had used. A gate that skipped the
+ * window would be testing a front door no player has. */
+async function dismissMission(page) {
+  try {
+    if (await page.isVisible('#missionOverlay')) {
+      await page.click('#missionClose');
+      await page.waitForTimeout(250);
+    }
+  } catch (e) { /* not mounted yet on some early navigations */ }
+}
+
 /* Recently-added controls that must render on the shipped UI (data-act wiring).
  * PWR has NO entries here on purpose: data-act buttons are emitted only by
  * populateControlBar() into #pdCtlRow (ui/app.js:374,379,384), and the PWR returns
@@ -79,6 +97,7 @@ async function screenshot(page, engine, view) {
   page.removeAllListeners('pageerror');
   page.on('pageerror', function (e) { errors.push(String(e)); });
   await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(800);
   var file = path.join(SCRATCH, 'ui-' + engine + '-' + view + '.png');
   await page.screenshot({ path: file, fullPage: true });
@@ -127,6 +146,7 @@ async function screenshot(page, engine, view) {
 async function testUnitsAndInstructor(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&view=primary', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(500);
 
   var usUnit = await page.locator('#gauge-press [data-val]').textContent();
@@ -225,6 +245,7 @@ async function testUnitsAndInstructor(page) {
   await page.waitForTimeout(200);
 
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&follow=pwr_loss_of_feedwater', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForFunction(function () {
     var el = document.getElementById('instrCurrent');
     if (!el || /Standing by/.test(el.textContent)) return false;
@@ -277,6 +298,7 @@ async function testSteamFeedPair(page) {
   var read = async function (qs) {
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&init=hot_full_power&run=1' + qs,
       { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
     await page.waitForTimeout(1200);
     return page.evaluate(function () {
       var t = function (id) {
@@ -428,6 +450,7 @@ async function testTrendPreseed(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   // The run is sliced; give it room on a loaded CI box. It is ~1.9 s of work.
   await page.waitForTimeout(12000);
   var st = await page.evaluate(function () {
@@ -462,6 +485,7 @@ async function testRewindPicker(page) {
   var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&run=1',
     { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(800);
 
   // Drive M5's wall clock instead of waiting on it. The cadence is 20 REAL seconds
@@ -577,6 +601,7 @@ async function testDiagBundle(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(1500);
   // SPEED FIRST, THEN PLAY. Ticks taken at 1x produce no fine rows at all — a 1x broadcast
   // carries 0.1 s of sim against the service's 0.2 s fine grid — so a single tick between

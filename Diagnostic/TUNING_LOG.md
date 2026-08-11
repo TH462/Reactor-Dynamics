@@ -150,6 +150,55 @@ nothing in the suite would have said so.
 `run_hardrules` baseline note describes happening four times before. It reads as authority while
 carrying none of the evidence. 274 checks, 1 failed, and it was mine.
 
+### Ten more adjustments — and the two that were only ever visible from outside
+
+**The window that had never opened for anyone.** "The plant selection menu should start at page
+load but it does not." I had built that the same night and *measured it passing*. Both were true:
+the open-on-load carried a deep-link bypass list, that list contained `engine=`, and `index.html`
+links the simulator as `ui/shell.html?engine=pwr` from **both** entry points. So the window opened
+on exactly one URL — a bare `ui/shell.html` — and that is the URL my check had used. **A test that
+reaches a feature by a path no user takes cannot see a defect that lives on the path they all
+take.** There is now no bypass; automated gates dismiss the window as a player does.
+
+**The freeze that was never applied.** "All animations should stop when the sim is paused." The
+`.bd-frozen` rule was correct and had been for months; the class was set from `render()`, off the
+snapshot's `running` flag. **Pausing stops the broadcast**, so the render that would have applied
+the freeze never happens. Measured while paused: **106 of 112 animations still running**, 105 of
+them inside the very stage the rule covers. Fixed by pushing the state on the play/pause event —
+and then by re-stamping `metadata.running` at render, because a stale snapshot re-rendered on a
+tab switch called `setRunning(true)` and un-froze it a second later.
+
+**Three of my own checks were hollow or wrong-vehicled, and each failed differently:**
+
+| check | why it lied |
+|---|---|
+| `log.scrollHeight > log.clientHeight` | passed **because `clientHeight` was 0** — the transcript had no height and every message overflowed an invisible box. A ratio between two numbers is not a claim about either. |
+| transcript keyed on the first line | right for a walkthrough, meaningless for a **checklist**, which renders its whole list at once under a title that never changes. Eight samples, same key. |
+| transcript exercised with a checklist | the directive named *walkthroughs*. The vehicle decides what the check can see. |
+
+**And the fold-in ran on the one branch that never fires.** `renderInstructor` dispatches to
+`renderFollow` / `renderChat` / `renderChecklist` / `renderLevelComplete` and **returns from each**
+— five early returns — so appending the transcript call to the end of its body reached only the
+idle path. Wrapped instead. **When a function has more than one exit, "at the end" is not a place.**
+
+**The load spinner, proved both ways.** The engine has always separated `load_cmd_mwe` (what the
+operator asked for) from `load_target_mwe` (the EHC reference ramping toward it at
+`load_rate_pct_per_min`) — but only the reference was published, so the ▲ button stepped from a
+number the ramp was moving underneath it. Measured: **10 presses moved the demand 50 → 50** on the
+old wiring and **50 → 60** on the new. The rate limit is untouched; what changed is what the
+control reads.
+
+**The scanner's pin is measured, and its old comment was aspirational.** The rule claimed "a fixed
+generous height" in its own text while being `height: auto; max-height: 190px`. Across all 133
+`data-scanner-hint` elements the tallest description renders **127 px** (p95 109, median 92), so
+the pin is 140 and the old cap was 50 % taller than anything that exists.
+
+**One consequence worth recording:** closing a modal now resumes the plant, which is correct for a
+player and wrong for `verify_manual_follow` — that gate checks control-surface reachability and
+never plays the sim. On a running plant its steps graded themselves and advanced, and every reading
+came out one step late (**34 failures, all off-by-one**). It now pauses in the same turn as the
+close; a 200 ms gap was enough for two ticks and left 24 of them.
+
 ---
 
 ## Session log — 2026-08-10-develop-c (the #436 control-room rework: plan, five phases, and three defects that were all the observer, not the plant)

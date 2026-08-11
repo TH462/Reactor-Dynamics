@@ -53,11 +53,54 @@
           <div class="chart-head">
             <div class="chart-legend" id="chartLegend"></div>
             <div class="chart-ctl">
+              <!-- Rewind sits LEFT of the window buttons *(OWNER DIRECTIVE, 2026-08-11:
+                   "Put the strip chart rewind button to the left of the x axis time
+                   selection. Get rid of the slider bar at the bottom of the chart.")*.
+                   It used to live in the scrubber strip under the plot, which is gone. -->
+              <button class="btn ghost" id="chartRewindBtn" disabled
+                data-scanner-hint="Rewind — jump back to an earlier moment. Press it, then click the moment you want on the graph."
+                data-scanner-detail="You always choose the moment; there is no one-step rewind. In free play the marks are laid every 20 seconds of real time, so a fast-forward still leaves you somewhere to land — each mark just covers more of the plant's life. Inside a scenario or walkthrough the marks are the authored checkpoints, one per beat or step. While you are picking, the graph widens to show every mark you can reach and the clock is paused. The button is disabled until at least one checkpoint exists.">⏪ Rewind</button>
               <div class="seg" id="graphWindow" data-scanner-hint="Strip chart window — how much plant history the chart shows at once. The ladder follows the time-acceleration setting, so the widest rung is always worth about the same in wall-clock time."
                 data-scanner-detail="The plot keeps more history than it displays, so widening the window shows trend that was already recorded rather than starting a new trace. At fast time acceleration the rungs stretch: a 30-minute window empties in half a second of real time at 3600x, which is why the choices change with the speed control."><button data-win="60">1m</button><button class="on" data-win="300">5m</button><button data-win="600">10m</button><button data-win="1800">30m</button></div>
               <button class="btn ghost" data-act="export-csv" title="Export the chart's history as CSV"
                 data-scanner-hint="Export CSV — writes the strip chart's recorded history to a file, one column per plotted parameter."
                 data-scanner-detail="Exports what the buffer holds, not just the visible window, and only the parameters currently selected for the plot — plus the sequence of events as a second file, which is the artifact a classroom worksheet is built from. Use it to take a transient away and look at it in a spreadsheet.">CSV ⭳</button>
+              <!-- CHART SETTINGS *(OWNER DIRECTIVE, 2026-08-11: "The strip chart needs a
+                   chart settings button that brings up a dedicated strip chart options
+                   menu. This should have a list of chartsable indications and all chart
+                   options.")*. Deliberately NOT a pausing modal: every other overlay in
+                   the shell pauses the plant, and pausing to change how you are WATCHING a
+                   transient is backwards — the transient is the thing being watched. Same
+                   reasoning that moved the window and CSV controls onto the chart in the
+                   first place (#439, spec §8). -->
+              <button class="btn ghost" id="chartOptsBtn" title="Chart settings — series and options"
+                data-scanner-hint="Chart settings — choose which indications are plotted, and set the chart's options, without pausing the plant."
+                data-scanner-detail="Every channel the plant publishes can be trended, including the true-state quantities the operator cannot normally see. The panel does not pause the simulation: changing how you watch a transient should never stop the transient.">⚙</button>
+            </div>
+          </div>
+          <!-- The settings panel. Anchored inside the chart so it appears over the thing it
+               configures, and dismissed by the same button, Esc, or a click outside. -->
+          <div class="chart-opts" id="chartOpts" hidden>
+            <div class="co-head">
+              <span class="co-title">Chart settings</span>
+              <button class="btn ghost" id="chartOptsClose" aria-label="Close">✕</button>
+            </div>
+            <div class="co-body">
+              <div class="co-sec">Window</div>
+              <div class="seg" id="chartOptsWin"></div>
+              <!-- OPTIONS THE CHART ACTUALLY HAS. The menu consolidates existing controls;
+                   it is not a place to invent new ones. A "numeric rows when lanes overflow"
+                   toggle was drafted here and dropped: lane count and row count are solved
+                   together against a measured 36 px floor (laneSplit), and a switch that
+                   overrode half of that solve would let the player produce a layout the
+                   geometry says does not fit. -->
+              <div class="co-sec">Options</div>
+              <label class="co-opt"><input type="checkbox" id="coSoe" checked> Event ribbon (sequence of events)</label>
+              <div class="co-sec">Export</div>
+              <button class="btn ghost" data-act="export-csv">CSV ⭳ — trace and events</button>
+              <div class="co-sec">Plotted indications <span class="co-count" id="coCount"></span></div>
+              <input type="search" id="coFilter" class="co-filter" placeholder="Filter channels…" autocomplete="off">
+              <div class="co-list" id="coList"></div>
             </div>
           </div>
           <div class="chart-plot">
@@ -78,15 +121,14 @@
                the ribbon exists: the PORV cycled repeatedly at TMI, and a full-height line
                per open/close makes the chart unreadable inside a minute. -->
           <div class="soe-ribbon" id="soeRibbon"></div>
-          <div class="scrubber">
-            <span class="lbl mono" id="chartWindowLbl">−5:00</span>
-            <div class="track" id="scrubTrack" data-scanner-hint="Timeline — you are at LIVE. Click the track (or the Rewind button) to pick an earlier moment to rewind to."
-              data-scanner-detail="The plant keeps a checkpoint every 20 seconds of REAL time — on a wall clock, not the plant's — so the marks always cover roughly the last ten minutes of your session however fast you are running. Picking a moment restores the whole simulation to it — plant state, alarms and instructor progress — so you can try a different action from the same starting point. It is a teaching tool, not an undo: everything after the chosen moment is discarded."><div class="head"></div></div>
-            <span class="lbl mono">LIVE</span>
-            <button class="btn ghost" id="chartRewindBtn" disabled
-              data-scanner-hint="Rewind — jump back to an earlier moment. Press it, then click the moment you want on the graph."
-              data-scanner-detail="You always choose the moment; there is no one-step rewind. In free play the marks are laid every 20 seconds of real time, so a fast-forward still leaves you somewhere to land — each mark just covers more of the plant's life. Inside a scenario or walkthrough the marks are the authored checkpoints, one per beat or step. While you are picking, the graph widens to show every mark you can reach and the clock is paused. The button is disabled until at least one checkpoint exists.">⏪ Rewind</button>
-          </div>
+          <!-- THE SCRUBBER STRIP WAS REMOVED 2026-08-11 (owner, quoted above). It held a
+               "-5:00 [====track====] LIVE" bar plus the Rewind button, and the track LOOKED
+               draggable while being a single click target — clicking anywhere on it opened
+               the same pick-a-moment mode that clicking the plot already opens. Two controls
+               for one action, one of them miming an affordance it did not have. Rewind moved
+               up beside the window buttons; picking a moment is still a click on the graph,
+               which is where the moments actually are. The -5:00 label was a second, less
+               precise copy of the x-axis, which is directly above it. -->
         </div>
 
         <div class="alarm-panel">
@@ -164,41 +206,6 @@
         <div class="ss-tip" id="simStatusTip" hidden>▲ Reopen it here any time</div>
       </div>
 
-      <!-- Multi-use right panel: Instructor (default free-play coach), scenario voices,
-           checklists, walkthroughs — title is set dynamically by app.js. -->
-      <div class="panel instructor collapsed" id="instructorCard">
-        <div class="persona">
-          <div class="icon" id="instrIcon" aria-hidden="true"></div>
-          <div class="role" id="instrRole">Instructor</div>
-          <span class="instr-badge" id="instrBadge" hidden></span>
-          <button type="button" class="instr-min" id="instrMinBtn" title="Minimize instructor panel"
-            aria-label="Minimize instructor panel"
-            data-scanner-hint="Minimize — collapse the instructor panel so Operate and the other tools use the column.">−</button>
-        </div>
-        <div class="instr-body">
-          <div class="instr-prev" id="instrPrev">— no prior messages —</div>
-          <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
-          <!-- Open, but scrolled away from the newest line: a quiet marker INSIDE the
-               panel rather than a flash on the header (#439, spec §4). The message is
-               already on screen; flashing for it would spend the signal on nothing. -->
-          <button class="instr-newbelow" id="instrNewBelow" hidden>▾ New message below</button>
-        </div>
-        <!-- Walkthrough (follow) nav — shown only while following a procedure -->
-        <div class="instr-nav" id="instrNav" hidden>
-          <button class="btn" data-fnav="prev" data-scanner-hint="Previous step — go back one procedure step.">◀ Prev</button>
-          <button class="btn" data-fnav="next" data-scanner-hint="Next step — advance to the next procedure step.">Next ▶</button>
-          <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph to restore. The marks are the checkpoints taken at the start of each step." disabled>⏪ Rewind</button>
-          <button class="btn" data-fnav="restart" title="Restart procedure" data-scanner-hint="Restart — start this procedure over from its initial state.">↺</button>
-          <button class="btn" data-fnav="stop" title="Stop following" data-scanner-hint="Stop — leave the walkthrough and return to free play.">✕</button>
-        </div>
-        <!-- Scenario continue — shown only when a scenario's commentary is on screen -->
-        <div class="instr-ack" id="instrAckRow" hidden>
-          <button class="ack-btn" id="instrAck" data-scanner-hint="Acknowledge — tell the Instructor you've read this and are ready to continue.">Acknowledge</button>
-          <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph and try a different path from there." disabled>⏪ Rewind</button>
-        </div>
-      </div>
-
-      <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
       <div class="panel tools expanded" id="toolsCard">
         <!-- THE STRIP IS PULL, THE INSTRUCTOR BELOW IT IS PUSH (#439, spec §2/§3).
              Everything here is something the player goes and gets. What used to be the
@@ -209,11 +216,56 @@
              session bar (#443), Settings became a header modal, and Checklists — a live
              operating aid, used while running — was promoted to a tab of its own. -->
         <div class="tabbar" id="tabbar">
-          <button class="on" data-tab="checklists">Checklists</button>
+          <!-- Instructor is a TAB, and the leftmost one *(OWNER DIRECTIVE, 2026-08-11:
+               "Make the instructor block a tab. Make it the leftmost tab.")*. It was a
+               separate card above this strip, in a two-card accordion where expanding one
+               collapsed the other. One strip, one visible pane, no accordion. -->
+          <button class="on" data-tab="instructor">Instructor</button
+          ><button data-tab="checklists">Checklists</button>
           <button data-tab="indications">Indications</button>
           <button data-tab="failures">Inject Failure</button>
         </div>
         <div class="tab-body">
+          <div class="tabpane instructor on" data-pane="instructor" id="instructorCard">
+          <div class="persona">
+            <div class="icon" id="instrIcon" aria-hidden="true"></div>
+            <div class="role" id="instrRole">Instructor</div>
+            <span class="instr-badge" id="instrBadge" hidden></span>
+          </div>
+          <div class="instr-body">
+            <div class="instr-prev" id="instrPrev" hidden></div>
+            <!-- THE TRANSCRIPT *(OWNER DIRECTIVE, 2026-08-11: "Instructor and other messages
+                 like walkthroughs should be like teams messages. They should be persistent and
+                 scrollable only cleared when the user changes what that instructor block is
+                 showing with a different walkthroughs, training, etc.")*.
+                 #instrCurrent is the LIVE bubble and stays the last child: every existing
+                 writer sets its innerHTML and none of them had to change. When the message
+                 IDENTITY changes, the live bubble is frozen into a .instr-msg above it and a
+                 new live bubble starts. Cleared only on a TOPIC change — see instrLogTick. -->
+            <div class="instr-log" id="instrLog">
+              <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
+            </div>
+            <!-- Open, but scrolled away from the newest line: a quiet marker INSIDE the
+                 panel rather than a flash on the header (#439, spec §4). The message is
+                 already on screen; flashing for it would spend the signal on nothing. -->
+            <button class="instr-newbelow" id="instrNewBelow" hidden>▾ New message below</button>
+          </div>
+          <!-- Walkthrough (follow) nav — shown only while following a procedure -->
+          <div class="instr-nav" id="instrNav" hidden>
+            <button class="btn" data-fnav="prev" data-scanner-hint="Previous step — go back one procedure step.">◀ Prev</button>
+            <button class="btn" data-fnav="next" data-scanner-hint="Next step — advance to the next procedure step.">Next ▶</button>
+            <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph to restore. The marks are the checkpoints taken at the start of each step." disabled>⏪ Rewind</button>
+            <button class="btn" data-fnav="restart" title="Restart procedure" data-scanner-hint="Restart — start this procedure over from its initial state.">↺</button>
+            <button class="btn" data-fnav="stop" title="Stop following" data-scanner-hint="Stop — leave the walkthrough and return to free play.">✕</button>
+          </div>
+          <!-- Scenario continue — shown only when a scenario's commentary is on screen -->
+          <div class="instr-ack" id="instrAckRow" hidden>
+            <button class="ack-btn" id="instrAck" data-scanner-hint="Acknowledge — tell the Instructor you've read this and are ready to continue.">Acknowledge</button>
+            <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph and try a different path from there." disabled>⏪ Rewind</button>
+          </div>
+        </div>
+
+        <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
           <!-- Inject Failure — built by app.js from M4's catalog -->
           <div class="tabpane" data-pane="failures">
             <div id="failList"></div>
@@ -248,7 +300,20 @@
                 ><button data-indfilter="ind" title="Derived or commanded channels with no true counterpart">Indication only</button
                 ><button data-indfilter="phys" title="True state with no instrument — what the operator can never see">Physics only</button>
               </div>
-              <button class="btn ghost ind-truth" id="indTruthToggle">True values: shown</button>
+            </div>
+            <!-- DEDICATED, HEADED COLUMNS *(OWNER DIRECTIVE, 2026-08-11: "In indications tab,
+                 Make dedicated columns for the plant indications and physics indications so
+                 they are easier to read. Remove the true values button.")*. The two value
+                 tracks already existed as fixed grid columns; what they lacked was a name,
+                 so the reader had to infer which number was which from a sentence above the
+                 list. This row shares the row grid exactly, so the headings sit over the
+                 columns they head and stay there as the list scrolls. -->
+            <div class="ind-colhead" id="indColHead">
+              <span class="ch-plot" aria-hidden="true"></span>
+              <span class="ch-k">Channel</span>
+              <span class="ch-v" title="What the plant indicates — the instrument reading">Plant</span>
+              <span class="ch-t" title="The true state behind that channel — physics, no lag or noise">Physics</span>
+              <span class="ch-w" aria-hidden="true"></span>
             </div>
             <div id="indicationsList"></div>
             <!-- Simulator performance came across with the Physics tab (#439). It belongs
@@ -275,7 +340,7 @@
                as you operate, so it must never pause. Ranked above the Manual on purpose
                — the manual serves depth-seekers, the average player wants a procedure to
                follow (spec §9). -->
-          <div class="tabpane on" data-pane="checklists">
+          <div class="tabpane" data-pane="checklists">
             <div class="ckl-picker" id="instrCklRow">
               <div class="phys-note">Follow a real procedure step by step. Each step checks
                 <b>itself</b> off the instruments while you operate, and hovering a step glows

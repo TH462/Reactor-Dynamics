@@ -878,35 +878,22 @@
       stage.appendChild(el);
     });
 
-    // Clicking the paused veil resumes (#237, owner) — the box is the most obvious
-    // thing on a paused screen, so it is also the resume control. ctx.resume is
-    // supplied by the shell (it owns the play button state); without it the veil
-    // stays a passive notice. Tour is a separate button so it does not resume.
-    var pauseKids = [
-      h('div', { className: 'pwr-paused-main' }, 'SIMULATION PAUSED'),
-      h('div', { className: 'pwr-paused-sub' }, ctx && ctx.resume
-        ? 'Click here or press ▶ Play to start'
-        : 'Press ▶ Play to start')
-    ];
-    if (ctx && ctx.openTour) {
-      pauseKids.push(h('button', {
-        type: 'button',
-        className: 'pwr-paused-tour',
-        'data-tour': '1',
-        onClick: function (e) {
-          if (e && e.stopPropagation) e.stopPropagation();
-          ctx.openTour();
-        }
-      }, 'Take a quick tour'));
-    }
-    pausedEl = h('div', { className: 'pwr-board-paused' },
-      h('div', { className: 'pwr-paused-box' + (ctx && ctx.resume ? ' pwr-paused-click' : ''),
-        onClick: function (e) {
-          if (e && e.target && e.target.closest && e.target.closest('[data-tour]')) return;
-          if (ctx && ctx.resume) ctx.resume();
-        } }, pauseKids));
+    /* THE "SIMULATION PAUSED" VEIL WAS REMOVED 2026-08-11 *(OWNER DIRECTIVE: "Remove the
+     * sim paused popup at the start. Sim should start running not paused. The plant
+     * selection menu has replaced its function.")*.
+     *
+     * It was a full-board curtain that existed because the plant used to load stopped and
+     * needed to say so. The plant now loads RUNNING, and the Plant & Mission window is
+     * what a cold load opens on, so the veil's whole job is done by something else. Its
+     * two affordances survive elsewhere and are NOT lost: click-to-resume is the ▶ button
+     * (which now flashes while paused, so the cue moved rather than vanished), and the
+     * quick tour is on the Help menu, which is where it was always also offered.
+     *
+     * `pausedEl` stays declared and null. Every reference to it is guarded, and a null is
+     * a smaller change than deleting a variable five call sites read. */
+    pausedEl = null;
     wrap.appendChild(stage);
-    wrap.appendChild(pausedEl);
+    // (the paused veil used to be appended here — removed 2026-08-11, see above)
     host.appendChild(wrap);
 
     var d = driver();
@@ -961,15 +948,26 @@
     ports = {}; nudge = {}; pipeFlow = []; pipeTempEls = []; lastSnap = null;
   }
 
+  /* Freeze/unfreeze the board. Split out of render() 2026-08-11 because the thing that
+   * needs it most — a pause — is precisely when render() stops being called. `.bd-frozen`
+   * carries `animation-play-state: paused !important` across the whole stage subtree, so
+   * one class settles every animation including the SVG pipe dashes, which set their own
+   * inline play state and would otherwise win. */
+  function setRunning(running) {
+    if (!stage) return;
+    if (pausedEl) pausedEl.className = 'pwr-board-paused' + (running ? '' : ' on');
+    if (running) stage.classList.remove('bd-frozen'); else stage.classList.add('bd-frozen');
+  }
+
   function render(s) {
     if (!stage || !s) return;
     lastSnap = s;
     var d = driver();
 
-    // pause freeze
-    var running = !(s.metadata && s.metadata.running === false);
-    pausedEl.className = 'pwr-board-paused' + (running ? '' : ' on');
-    if (running) stage.classList.remove('bd-frozen'); else stage.classList.add('bd-frozen');
+    // Pause freeze. Snapshot-driven, and NOT the only driver: a pause stops the
+    // broadcast, so this path never runs at the moment it matters most. The shell
+    // pushes setRunning() directly on every play/pause. See setRunning below.
+    setRunning(!(s.metadata && s.metadata.running === false));
 
     if (d) {
       // values
@@ -1071,6 +1069,8 @@
     unmount: unmount,
     render: render,
     isMounted: function () { return !!stage; },
+    // The shell pushes play/pause here — see setRunning's header for why render() cannot.
+    setRunning: setRunning,
     // Programmatic momentary rod drive (keyboard ↑/↓) — delegates to the plant driver's
     // tap-or-hold machine so speed (S/M/F), tap-vs-hold and the pressed cue all match a click.
     driveRod: function (group, direction, down) { var d = driver(); return !!(d && d.driveRod && d.driveRod(group, direction, down)); },

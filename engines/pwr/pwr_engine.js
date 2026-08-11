@@ -975,6 +975,12 @@
       steam_demand_mwe: s.steam_demand_mwe,
       load_mode: s.load_mode,
       load_target_mwe: s.load_target_mwe,
+      /* WHAT THE OPERATOR ASKED FOR, as distinct from the reference ramping toward it.
+       * The two have always been separate in the engine (see engines/load_mode.js: a real
+       * EHC takes a target and a rate, WTSM 11.3) but only the ramping one was published,
+       * so the board's load spinner had nothing to step FROM except a number that was
+       * moving underneath it. Null until the operator sets a load. */
+      load_cmd_mwe: s.load_cmd_mwe,
       sg_imbalance: s.sg_imbalance_active
         ? (s.load_imbalance_mwe > 0 ? 'filling' : 'draining') : 'balanced',
       cw_inlet_temp_c: s.cw_inlet_temp_c,   // circ-water inlet setting (set_condenser_cw_temp)

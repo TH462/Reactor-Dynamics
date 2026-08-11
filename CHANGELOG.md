@@ -31,6 +31,46 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Control room: ten further adjustments** *(OWNER DIRECTIVE, 2026-08-11: "Put the strip chart
+  rewind button to the left of the x axis time selection. Get rid of the slider bar at the bottom
+  of the chart."; "Remove the sim paused popup at the start. Sim should start running not paused…
+  When the sim is paused flash the play button. All animations should stop when the sim is
+  paused."; "The plant selection menu should start at page load but it does not."; "It should show
+  up every time the sim is loaded… It should always the the first thing someone sees when loading
+  the sim."; "Make the instructor block a tab. Make it the leftmost tab."; "Find a max height for
+  the expanded scanner and pin it to that height when maximized."; "In indications tab, Make
+  dedicated columns for the plant indications and physics indications so they are easier to read.
+  Remove the true values button."; "Instructor and other messages like walkthroughs should be like
+  teams messages. They should be persistent and scrollable only cleared when the user changes what
+  that instructor block is showing with a different walkthroughs, training, etc."; "The generator
+  load increase button doesn’t let the user go up more than one press due to the rate increase
+  limit. Let the user raise to the desired level before starting the climb/rate limit."; "In the
+  plant and mission menu show mode next to the two free play options without mode."; "The strip
+  chart needs a chart settings button that brings up a dedicated strip chart options menu.")*.
+
+  **The plant now loads RUNNING and the SIMULATION PAUSED curtain is gone** — the Plant &
+  Mission window is what a cold load opens on, so the veil’s job was already done elsewhere.
+  Its two affordances survive: click-to-resume became the ▶ button, which now flashes while
+  paused, and the quick tour is on Help. **Pausing now actually stops the board**: the freeze rode
+  on the snapshot’s `running` flag, and pausing is precisely when snapshots stop arriving, so
+  105 of 112 animations kept running behind a stopped clock. **The Plant & Mission window opens on
+  every load, with no deep-link exemption** — the old bypass list contained `engine=` and the
+  site links `?engine=pwr`, so no visitor arriving normally had ever seen it.
+
+  **The Instructor is now the leftmost tab** rather than a card in a two-card accordion, and its
+  messages are a **persistent, scrollable transcript**: walkthrough steps and instructor guidance
+  accumulate instead of overwriting one another, and the log clears only when you change what the
+  panel is showing. **The strip chart** loses its slider bar (a track that looked draggable and
+  was a single click target duplicating click-to-pick on the plot), moves Rewind beside the window
+  buttons, and gains a **chart settings panel** listing all 120 plottable channels with a filter,
+  the window ladder, the event ribbon and CSV — and it does not pause the plant, because
+  changing how you watch a transient should not stop it. **Indications** gain headed Plant and
+  Physics columns and lose the true-values button. **The expanded System Scanner is pinned to one
+  height** (140 px, measured: the tallest of 133 descriptions renders 127 px) instead of resizing
+  under every hover. **The generator load spinner reads your demand, not the ramping reference**,
+  so you can dial a target and let the machine walk there — ten presses now move it 50 →
+  60 MW where they previously moved it 50 → 50. The rate limit itself is unchanged. **Free-play
+  starting conditions all name their Mode.**
 - **Safety injection now sheds the pressurizer heaters, and so does a loss of offsite power
   (#447).** They stay off until you deliberately put them back — HEATER AUTO, MANUAL, OFF or
   the % box all count as the reload, and a new **PZR HTRS SHED** indication says why heater

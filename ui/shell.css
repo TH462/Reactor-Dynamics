@@ -440,11 +440,41 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
    paired list unreadable, and the whole claim of the merge is that a disagreement is
    visible without hunting. Fixed columns also mean the true side can be hidden by
    collapsing one track (HR1), with no reflow of the other two. */
+/* FIXED TRACK WIDTHS, shared with the column header via custom properties. They used to
+   be `auto`, which sizes to content — fine when only values were in the column, wrong the
+   moment a HEADING joined it: "Plant indication" is far wider than "50 %", so the header's
+   auto track came out 25px wider than the row's and every number sat left of its label.
+   Two grids can only agree on `auto` if they contain the same text, which these never do. */
+:root { --ind-plot: 30px; --ind-v: 64px; --ind-t: 64px; }
 .num-line {
-  display: grid; grid-template-columns: auto 1fr auto 0 0; align-items: baseline;
-  gap: 0 8px;
+  display: grid; align-items: baseline; gap: 0 8px;
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) 0 0;
 }
-#indicationsList.show-true .num-line { grid-template-columns: auto 1fr auto auto 12px; }
+#indicationsList.show-true .num-line {
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) var(--ind-t) 12px;
+}
+/* The column headings. SAME GRID TEMPLATE AS .num-line, deliberately duplicated rather
+   than shared through a wrapper: the rows are grouped inside .ind-grp blocks with their
+   own <h4>, so a heading row and a value row are never siblings in one grid and cannot be
+   aligned by a common parent. Two identical templates that must move together is the
+   honest cost of that; KEEP THEM IN SYNC — if a track is added below, add it here. */
+.ind-colhead {
+  display: grid; gap: 0 8px;
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) 0 0;
+  align-items: baseline; position: sticky; top: 0; z-index: 2;
+  background: var(--bg-panel, var(--bg-elevated)); border-bottom: 1px solid var(--border);
+  padding: 2px 0 3px; margin-bottom: 2px;
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+.ind-colhead.show-true {
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) var(--ind-t) 12px;
+}
+/* The heading's first cell must be EXACTLY as wide as a row's .plot-cell, or every
+   column below drifts left of its label: both tracks are `auto`, and an empty span
+   measures 0 while a checkbox does not. Mirrors .plot-cell — keep them in step. */
+.ind-colhead .ch-plot { display: inline-block; }   /* the track sizes it now */
+.ind-colhead .ch-v, .ind-colhead .ch-t { text-align: right; white-space: nowrap; }
+.ind-colhead:not(.show-true) .ch-t, .ind-colhead:not(.show-true) .ch-w { display: none; }
 .num-line .nk { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .num-line .nv { text-align: right; white-space: nowrap; }
 /* The true side is deliberately quieter than the instrument beside it: the instrument
@@ -1295,19 +1325,29 @@ html[data-channel="dev"] .logo-test {
   flex: 1 1 auto; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* EXPANDED: the line grows to show the whole description, in place — no second box
-   *(OWNER DIRECTIVE, 2026-08-11)*. A fixed generous height rather than content-sized,
-   because a panel that resizes on every hover pushes the board around, which is the
-   complaint the original fixed geometry existed for. It only changes size when the
-   player presses the button. */
+/* EXPANDED: the line grows in place to show the whole description — no second box
+   *(OWNER DIRECTIVE, 2026-08-11)* — and while expanded it is PINNED TO ONE HEIGHT
+   *(OWNER DIRECTIVE, 2026-08-11: "Find a max height for the expanded scanner and pin it
+   to that height when maximized. The height jumps around shifting everything when the
+   player mouses over things.")*.
+   
+   The previous rule CLAIMED to be a fixed height in its own comment and was
+   `height: auto; max-height: 190px` — content-sized, so every hover re-laid the board
+   below it. 140px IS MEASURED, not chosen: across all 133 `data-scanner-hint` elements
+   the tallest description renders 127px of content (p95 109, median 92, min 17), and
+   140 = 127 + 10 padding + 2 border. So every description in the app fits with nothing
+   clipped and nothing scrolling, and the height never changes while expanded.
+   
+   The 190 it replaces was 50% taller than the tallest thing that exists. The body keeps
+   `overflow-y: auto` purely as a safety net for copy written later — if that scrollbar
+   ever appears, the right fix is to re-run the measurement, not to raise this number. */
 .scanline.expanded {
-  height: auto; min-height: 26px; max-height: 190px;
-  align-items: flex-start; padding: 5px 8px; line-height: 1.45;
+  height: 140px; align-items: flex-start; padding: 5px 8px; line-height: 1.45;
 }
 .scanline.expanded .scanline-tag { padding-top: 1px; }
 .scanline.expanded .scanline-body {
   white-space: normal; overflow-y: auto; text-overflow: clip;
-  max-height: 178px; overscroll-behavior: contain;
+  max-height: 128px; overscroll-behavior: contain;
 }
 .scanline.expanded .scan-exp { position: sticky; top: 0; }
 .scan-detail { display: block; margin-top: 5px; color: var(--text-2); }
@@ -2221,3 +2261,108 @@ select.num-input { width: auto; }
    .mission-modal's fixed height — that rule comes later in the file — so the
    compound selector here outranks it.) */
 .mission-modal.fb-modal { height: auto; max-height: min(84vh, 760px); }
+
+/* ===================================================================================
+   THE INSTRUCTOR AS A TAB, AND ITS TRANSCRIPT (2026-08-11, owner items 4 and 7)
+   =================================================================================== */
+
+/* The pane fills the tab body and scrolls INSIDE the log, not as a whole — the persona
+   header and the walkthrough nav have to stay put while the messages move under them. */
+/* THE INSTRUCTOR PANE OWNS ITS HEIGHT, and the LOG is what scrolls — not .tab-body.
+   
+   .tab-body is `overflow-y: auto` and .tabpane.on is `display: block`, so every other pane
+   is content-sized and the tab body scrolls it. That is right for a list of failures and
+   wrong for a transcript: a `flex: 1 1 0` log inside a content-sized parent resolves to
+   ZERO height and every message overflows an invisible box. Measured: log clientHeight 0
+   against scrollHeight 1270, four messages in the DOM and one visible.
+   
+   `.instr-mode` is set on .tab-body by selectTab so this does not depend on :has(). */
+.tab-body.instr-mode { overflow: hidden; display: flex; flex-direction: column; }
+.tabpane.instructor { display: none; flex-direction: column; min-height: 0; }
+.tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
+.tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* THE LOG. `flex: 1 1 0` with `min-height: 0` is what makes it the scrolling element
+   rather than growing the pane — without the min-height a flex child refuses to shrink
+   below its content and the scrollbar silently moves to an ancestor. */
+.instr-log {
+  flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 6px; padding-right: 2px;
+}
+/* A frozen message. Quieter than the live one: it is history, and the eye should land on
+   the newest bubble. Left rule instead of a full bubble outline — at 350px wide a boxed
+   chat bubble spends most of its width on the box. */
+.instr-msg {
+  border-left: 2px solid var(--border); padding: 2px 0 2px 8px;
+  color: var(--text-2); font-size: 12px; opacity: .85;
+}
+.instr-msg .m-note { font-size: 11px; }
+/* The live bubble is the last child and keeps its existing look; it just stops being the
+   only thing in the panel. */
+.instr-log .instr-current { flex: 0 0 auto; }
+
+/* THE TAB'S ATTENTION CUE. The pane is off screen when this fires, so the count goes on
+   the button. Same grammar as the board's TRIP BLOCKS badge: a count plus a brief pulse,
+   never a colour that could read as a plant condition. */
+#tabbar button[data-unseen]::after {
+  content: attr(data-unseen);
+  margin-left: 5px; padding: 0 4px; border-radius: 7px;
+  background: var(--accent, #2f81f7); color: #fff; font-size: 9px; font-weight: 700;
+}
+@keyframes tabAttn { 0%, 100% { box-shadow: none; } 50% { box-shadow: 0 0 0 2px var(--accent, #2f81f7) inset; } }
+#tabbar button.tab-attn { animation: tabAttn .7s ease-in-out 2; }
+
+/* THE PLAY BUTTON FLASHES WHILE PAUSED *(OWNER DIRECTIVE, 2026-08-11: "When the sim is
+   paused flash the play button.")*. It carries the cue the removed SIMULATION PAUSED veil
+   used to carry, which is why the veil could go: the state is still announced, by the
+   control that changes it. Steady pulse rather than a few blinks — this is a standing
+   condition, not an event, and it stops the moment the plant runs. */
+@keyframes playPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(90, 173, 124, .55); }
+  50%      { box-shadow: 0 0 0 5px rgba(90, 173, 124, 0); }
+}
+#playBtn.paused { animation: playPulse 1.5s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  #playBtn.paused { animation: none; outline: 2px solid var(--running, #5aad7c); }
+  #tabbar button.tab-attn { animation: none; }
+}
+
+/* ======================================= CHART SETTINGS PANEL (2026-08-11, owner item 3) */
+.strip-chart { position: relative; }
+.chart-opts {
+  position: absolute; top: 34px; right: 6px; z-index: 30; width: 300px;
+  max-height: calc(100% - 44px); display: flex; flex-direction: column;
+  background: var(--bg-panel, #121821); border: 1px solid var(--border);
+  border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+.chart-opts[hidden] { display: none; }
+.chart-opts .co-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px; border-bottom: 1px solid var(--border); flex: 0 0 auto;
+}
+.chart-opts .co-title { font-size: 12px; font-weight: 600; }
+/* The body scrolls, not the panel: the head keeps its close button reachable however long
+   the channel list gets (96 series on the PWR). */
+.chart-opts .co-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px; }
+.chart-opts .co-sec {
+  font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  margin: 10px 0 4px;
+}
+.chart-opts .co-sec:first-child { margin-top: 0; }
+.chart-opts .co-count { text-transform: none; letter-spacing: 0; float: right; }
+.chart-opts .co-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+.chart-opts .co-filter {
+  width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; font-size: 12px;
+  background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; margin-bottom: 6px;
+}
+.chart-opts .co-grp h5 {
+  margin: 8px 0 2px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-2); font-weight: 600;
+}
+.chart-opts .co-row {
+  display: grid; grid-template-columns: 16px 1fr; gap: 6px; align-items: center;
+  font-size: 12px; padding: 2px 0; cursor: pointer;
+}
+.chart-opts .co-row:hover { background: rgba(255,255,255,.04); }
+#chartOptsBtn.on { background: var(--bg-elevated); border-color: var(--accent, #2f81f7); }

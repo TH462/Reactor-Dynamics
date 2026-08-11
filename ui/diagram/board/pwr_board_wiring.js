@@ -843,7 +843,21 @@
   // happens once, in the driver's onNumber/numberFor, so a formatter here never has to
   // know which unit the operator is looking at.
   var NUMBERS = {
-    imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); }, get: function (s) { return CS(s).load_target_mwe; } },              // Generator Load MW
+    /* GENERATOR LOAD — the spinner reads the operator's DEMAND, not the ramping reference
+     * *(OWNER DIRECTIVE, 2026-08-11: "The generator load increase button doesn't let the
+     * user go up more than one press due to the rate increase limit. Let the user raise to
+     * the desired level before starting the climb/rate limit.")*.
+     *
+     * It used to read `load_target_mwe`, the EHC reference that climbs at
+     * load_rate_pct_per_min. So each press computed "current + 1" from a number the ramp
+     * was still moving, and a second press a moment later started from almost the same
+     * place — the demand could never get ahead of the ramp, which is exactly what dialling
+     * a target IS. Reading `load_cmd_mwe` lets the operator set 100 MW in ten presses and
+     * then watch the machine walk there at its own rate, which is how a real EHC thumbwheel
+     * behaves. The RATE LIMIT IS UNTOUCHED — this changes what the control reads, not how
+     * fast the plant may move. Falls back to the reference before any load is set. */
+    imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); },
+      get: function (s) { var c = CS(s); return c.load_cmd_mwe != null ? c.load_cmd_mwe : c.load_target_mwe; } },   // Generator Load MW
     imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { return (CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
     imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
     imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %

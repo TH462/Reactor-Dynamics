@@ -107,6 +107,10 @@ function pinChannel(ch) {
   await openSettings(b.page);
   ck('dev: Features row is offered', await b.page.isVisible('#featureRow'));
   await closeSettings(b.page);
+  // The picker lives on the CHECKLISTS tab, and the Instructor became the leftmost and
+  // default tab on 2026-08-11 — so this has to select the tab a player would select. It
+  // checked a pane that simply was not the one on screen.
+  await b.page.click('#tabbar [data-tab="checklists"]');
   ck('dev: the checklist picker is offered', await b.page.isVisible('#instrCklRow'));
   var camp = await openMission(b.page, 'campaign');
   ck('dev: campaign lists its missions', /Act I/.test(camp) && !/COMING SOON/.test(camp), camp.slice(0, 60));
