@@ -212,6 +212,8 @@
 |-----------|-------|
 | Pressure setpoint | **2235 psi (15.41 MPa)** |
 | Heater proportional band | **30 psi (0.207 MPa)** |
+| Heater low-level cutoff / restore | **17 % / 20 %** indicated PZR level |
+| Heater ESF load shed | **safety injection** signal or **loss of offsite power** — latched; cleared only by an operator heater action, not by securing injection |
 | Spray proportional band | **50 psi (0.345 MPa)** |
 
 ---

@@ -178,6 +178,20 @@
       else if (lvlInd >= restoreAt) s._heater_cut = false;
     }
     if (s._heater_cut) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
+    // THE ESF LOAD SHED (#447). Kept as its own line rather than folded into the
+    // condition above, because the two latches are ORTHOGONAL and must stay
+    // independently deletable for injection testing: `_heater_cut` is a level bistable
+    // that restores itself at 20 %, this is an electrical load shed that only an
+    // operator clears. Derived in pwr_engine step 0b — read that comment for the
+    // sources (NUREG-0737 II.E.3.1 (7), Ginna TS Bases B 3.4.9) and for why the edge
+    // detector cannot live in this function.
+    //
+    // Same de-energization shape as the two guards above it: DELIVERED power goes to
+    // zero, `heater_override` is never touched, so the selector and the operator's %
+    // stay where they were put and the next button press does not heal it (#200/#329).
+    // The difference is that here the next button press is MEANT to clear it — that is
+    // the manual reload, and it happens at the command, not here.
+    if (s._heater_shed) { s.heater_power_frac = 0; s._heater_dp_frac = 0; }
     // A spray valve stuck open is mechanical: it beats BOTH the auto controller and
     // any operator demand, the way porv_stuck beats porv_demand in relief() (#200).
     if (s.spray_stuck) { s.spray_flow_frac = 1; }

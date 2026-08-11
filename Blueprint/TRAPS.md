@@ -67,3 +67,22 @@ All five are PLANT-SPECIFIC and all five are pinned by a suite that reddens if t
 
   *If a startup goes wrong in a way this would have warned about, that is the evidence to put it
   back — say so in the session log rather than quietly re-adding it.*
+
+## Evicted 2026-08-11 (the develop x backshop merge put both lists over their caps)
+
+Two lanes each added a themes bullet the same night, so the rotation went to 6 against its 5,
+and rescuing the evicted one's trap took the standing list to 26 against its 25. Both caps
+bound at once; this is what came out.
+
+- **New PWR instruments ship `noise: 0`, and that silently kills their `noisy` failure**
+  (from the standing list): the instrument PRNG is one cross-step stream, so an appended
+  instrument must declare `noise_failure` or the injected failure has nothing to scale.
+  Evictable under the criterion above because **`test/run_m4.js` covers it** — an
+  undeclared `noise_failure` shows up there as a `noisy` injection that changes nothing.
+
+- **The bug report's RECORDING was the broken instrument** (the whole #432/#431 themes
+  bullet, 2026-08-09). Sampling ran once per BROADCAST, so a 3600x LOCA was two rows under
+  a manifest hardcoded to `sample_hz: 1`. Its trap — the fine drain sitting inside the rAF
+  paint, one frame late, 1475 rows in and 35 recorded — is **rescued to the standing list**
+  rather than retired, because no gate reaches it. The rest is `run_diag_bundle`'s subject
+  and is pinned by its 31 checks.

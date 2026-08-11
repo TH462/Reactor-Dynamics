@@ -572,6 +572,15 @@
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    // WHY THIS TILE EXISTS AT ALL (#447). Delivered heater power reads a flat 0 % for
+    // FOUR different reasons now — a blackout, the 17 % low-level cutoff, the
+    // `failed_pzr_heaters` casualty, and this load shed — and until this row the board
+    // could not tell them apart: the AUTO/MANUAL lamp stays wherever the operator left
+    // it by design (#200), so all four look identical. The shed is the one the player is
+    // expected to ACT on (the heaters come back with one button), so an invisible one
+    // would be an orphan action — the DESIGN_CRITERIA Q4 observability test. The other
+    // three still have no indication; that is filed, not fixed here.
+    { id: 'pzr_heaters_shed', instrument: 'pzr_heaters_shed', direction: 'is_true', setpoint: null, priority: 'status', panel: 'B', category: 'coolant', label_learning: 'Pressurizer Heaters Shed (Safety Injection)', label_industry: 'PZR HTRS SHED' },
     // Containment (#386 stage 2). Pressure pair at the SOURCED actuation points
     // (3.5 psig SI backup / 30 psig hi-hi — WTSM 12.3), abs on this plant's ambient;
     // train-status pair on the DELIVERY booleans (AC-gated), not the demands.

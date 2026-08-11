@@ -206,6 +206,21 @@ Blocks **auto-reinstate** when power falls below P-10.
 
 **Use to RAISE pressure** (restore subcooling, recover after spray/overcooling).
 
+**Four different things put heater power at 0 %, and only one of them is a mode above.**
+The selector stays exactly where you left it in all four, so the panel alone cannot tell
+them apart — read the annunciators:
+
+| Zero because | Tell | Can you undo it? |
+|---|---|---|
+| You selected OFF | OFF lamp lit | Yes — select AUTO or a % |
+| **Shed on safety injection or loss of offsite power** | **PZR HTRS SHED** (PWR-A43) | Yes — **any** heater action reloads them |
+| Pressurizer level below **17 %** | PZR LVL LO / LO LO, level on the gauge | Not directly — recover level |
+| Station blackout | SBO | No — there is no ac to deliver |
+
+The shed is the one that needs a deliberate decision: the heaters are healthy and the bus
+is alive, they have just been dropped off it to make room for safety loads, and **securing
+injection does not put them back**.
+
 ### 5.3 PZR Spray
 
 | Mode | Effect |

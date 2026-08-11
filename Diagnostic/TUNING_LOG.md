@@ -198,6 +198,91 @@ before the lane stack generalises. It measures itself: four 48 px lanes plus a 1
 and a 10 px event ribbon come to **216 px** against the spec's ~220 px budget.
 
 ---
+## Session log — 2026-08-11-backshop-a (a ~40 s limit cycle after every LOCA, and the loop gain was a heater bank that should have been off the bus)
+
+**Outcome: safety injection — and a loss of offsite power — now SHED the pressurizer
+heaters (#447). `run_all` 45/45 at baseline. One new probe (CA-25), one new strict xfail
+(CA-20b) against a defect this uncovered (#451), and one calibrated exam cue re-keyed.**
+
+**The filed root cause was wrong twice over.** #447 was opened against a missing hysteresis
+on `rcp_cavitating` after a player's bug report showed alarms re-firing for 6 h 21 m.
+`rcp_cavitating` has no physics consumer (`pwr_primary` reads the continuous
+`rcp_cavitation_frac`), and the driver is not a bistable deadband at all. Measured full
+stack, reading engine internals per broadcast: below 17 % indicated level `_heater_cut`
+latches and pressure floors at containment backpressure, 15.1 psia (0.1043 MPa); HPI at 0.90
+refills; level crosses the 20 % restore point; **the heaters return at FULL demand** — auto
+control sees pressure 2220 psi below setpoint — and `K_heater` adds a measured **0.29 MPa/s
+net**, taking pressure 15 → 163 psia in ~3 s; that spikes `leak_flow` ~20× on the √Δp law
+and back-pressures HPI 0.90 → 0.34; level falls back through 17 %; repeat. Period ~40 s.
+
+**It is the whole LOCA family, not the board default the issue named.** `_heater_cut`
+transitions over 3000–16000 s: **134** at sev 0.05 (peak excursion **839 psia**), 248 / 410 /
+620 / 761 / 936 at 0.10 / 0.20 / 0.40 / 0.60 / 1.00 — monotone in severity, starting within
+4–28 s of the break at every one. `run_meltdown_stack` MDS-2/MDS-3 ride 2500 s straight
+through it and pass: nothing in the suite asserted pressure or level *stability*, only
+endpoints, and this defect has a respectable endpoint.
+
+**Injection-confirmed before any fix.** `K_heater = 0`, or heaters that never restore, both
+give **0 transitions** and the plant settles at injection ≈ break discharge (solid, 109.3 %
+inventory, 69.9 °F subcooled), clad peak and `fuel_damaged` unchanged. Widening the 17/20
+differential is measurably WORSE — restore at 80 % gives 99 transitions but a **352 psia**
+peak against 172 at 20 %. The differential was sized against ~0.7 pt of transmitter dither
+(#348); this swings 15 points.
+
+**#334 did not finish. It converted a stable wrong equilibrium into an oscillation.** Its
+cutoff removed the heaters holding a drained RCS at 2207 psi, but not the authority — once
+ECCS refills past 20 % the same 347×-rated term reappears at full strength.
+
+**The fix is a REQUIREMENT, and the document was in this worktree's own corpus.**
+NUREG-0737 II.E.3.1 Clarification (7) (`ML051400209.txt:4574`): *"Being non-Class IE loads,
+the pressurizer heaters must be automatically shed from the emergency power sources upon the
+occurrence of a safety injection actuation signal."* (5)(b) makes the restore need an SI
+reset; (4) makes the changeover *"accomplished manually in the control room."* Ginna TS Bases
+B 3.4.9 adds the LOOP half and the manual reload onto the diesels.
+
+**The LOOP half was a MISREAD of that same document, standing in the code.**
+`pwr_pressurizer.js:79-84` argued heaters must survive a LOOP *because* NUREG-0578/0737 put
+them on diesel-backed buses. II.E.3.1 requires them to be *manually connectable*, not to ride
+through — item (4) says so, and Ginna sheds them on LOOP with reload *"within one hour."*
+Scoped out at first on the strength of that comment, then folded back in once the evidence
+pass read the source. CA-7 leg C was the probe pinning the wrong reading; it now pins the
+right one and is a better probe for it — the reload is what proves the bus is alive, which a
+blackout cannot do.
+
+**Traps worth keeping.**
+- **An equilibrium a 347× term participates in is not evidence about geometry.** CA-15 has
+  now been re-authored around a heater artifact TWICE. #408 replaced #361's "goes solid" with
+  "settles in the spill band", reasoning explicitly that *"the heaters throttle the
+  pressure-driven injection"* — the defect itself. With the shed: 109.28 % against a solid
+  line of 109.3, drift 0.00. Both re-scopes were honest readings of a measured plant; only
+  one of the two plants was right.
+- **A red can be VACUOUS rather than red.** CA-10 leg B asserts no heater power below the
+  17 % cutoff on a sev-0.10 break — which actuates SI, so the shed zeroes power and the leg
+  would pass while testing nothing. Repaired by reloading the heaters after SI, which is only
+  possible because the latch is EDGE-triggered; a level-triggered shed would make leg D (the
+  HR1 stuck-transmitter pin) unrepairable. The probe now pins the edge semantics from outside.
+- **A bare threshold chases the plant; a signature does not.** `pwr_qualify`'s `challenge`
+  cue had been re-keyed three times, each time onto another level number, and the scenario's
+  own comment already described the intent as a two-parameter signature. Less heater energy →
+  less void → the deception crests 54.9 % instead of 78.5 %, so `> 58` could never arm. Now
+  keyed on level > 45 % WHILE inventory < 96 %, validated on THREE plants (1322 s shed, 791 s
+  pre-#447, never uninjected) — the negative control a bare threshold never had.
+- **Deriving in `step`, consuming in `autoControl`, is load-bearing.** Five probe rigs call
+  `autoControl` with hand-built state; an edge detector there reads `undefined → true` and
+  fires a spurious shed in every one.
+
+**What it uncovered — #451, filed not absorbed.** The small-break pressure plateau was
+heater-held, which `pwr_config.js:587` already recorded (*"it pins NOTHING … the heaters are
+winning against the break. Right behaviour, wrong mechanism"*). The state it propped was the
+deadheaded-ECCS pathology #334 was filed for — 900 psia with inventory pinned at 59 %,
+core partially drained, indefinitely. Removing the prop is right; nothing else holds the
+plateau, so every severity now collapses to the same cold solid state and the SG secondary
+falls to 14.5 psia. CA-20 leg B split out as **CA-20b**, strict xfail, band untouched.
+
+**Deliberately deferred, measured.** The `P_restore_rate_gain` gate at
+`pwr_pressurizer.js:511` was NOT taken. It is already dead on every LOCA path (`loopBreak`
+true), so it contributes nothing to killing the oscillation, while it is the sole route to
+the SGTR / cooldown / stuck-PORV blast radius. Landed without it: `run_ops` moved **zero**.
 
 ## Session log — 2026-08-10-develop-b (site stats in one command — and BOTH datasets were being counted wrong, in opposite directions)
 

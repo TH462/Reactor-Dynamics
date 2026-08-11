@@ -373,6 +373,20 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   height as `plot ÷ lanes` — 56 px reported, 38 px true, which is how a floor gets certified
   while being violated. Corollary that paid twice: **a refactor's claim is "nothing
   changed", so pin the OLD implementation and replay it** (`run_chart_math`, 235 frames).
+- **A ~40 s limit cycle after EVERY LOCA, and the loop gain was a heater bank that should
+  have been off the bus** (2026-08-11, #447). Below 17 % level the heaters cut and pressure
+  floors at containment; ECCS refills past the 20 % restore point; the heaters return at FULL
+  demand and 0.29 MPa/s net takes pressure 15 → 163 psia in 3 s, spiking leak ~20× and
+  back-pressuring HPI 0.90 → 0.34. 134 cycles at sev 0.05 (839 psia excursion) up to 936 at
+  1.00; MDS-2/3 ride 2500 s of it and pass, because nothing asserted STABILITY, only endpoints.
+  Fixed by the shed NUREG-0737 II.E.3.1 (7) requires on an SI signal — the document was in
+  our own corpus, uncited. **#334 did not finish**: its cutoff converted a stable wrong
+  equilibrium into an oscillation. Traps: **an equilibrium a 347× term participates in is not
+  evidence about geometry** (CA-15 re-authored around this artifact TWICE, #408 reasoning
+  explicitly from the defect); **a red can be VACUOUS rather than red** (CA-10 leg B's break
+  actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
+  threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
+  two-parameter signature validated on three plants including a negative control.
 - **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
   #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
   telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
@@ -407,14 +421,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   degenerate latch reads exactly like a working feature**; **a filed root cause repeated in
   four documents was never re-measured** — "flow reads 0" came from watching the
   turbine-only variable; **a sourced number is not the whole source**.
-- **The bug report's RECORDING was the broken instrument, and the fix passed 31 of its own
-  checks while recording nothing** (2026-08-09, #432/#431). Sampling ran once per BROADCAST, so
-  a 3600× LOCA is two rows under a manifest hardcoded to `sample_hz: 1`; it now rides the
-  chart's fine seam with min/max per bucket. The trap is the fix's own first version: the fine
-  drain sat inside the rAF paint, one frame late, so the recorder — a separate synchronous
-  subscriber — saw every row AFTER recording a later timestamp. **1475 rows in, 35 recorded.**
-  Invisible to a source scan (call sites all correct) and to the new Node gate (it hands the
-  recorder its rows); only a browser sees it.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -527,9 +533,12 @@ thing left in the file and it grew about a bullet a session.
   FAIL the channel (#220). A trip's `condition:` key is a status word the ENGINE computes, so the
   `run_hardrules` scan cannot see it; hence HR1(b), every permissive key declared. **A comment
   carrying the real plant's premise rots when this plant departs from it.**
-- **New PWR instruments ship `noise: 0`** (the PRNG is one cross-step stream) and must declare
-  `noise_failure`, or their `noisy` failure is silently dead. (The `true_state` §6.3 obligation
-  beside it is under *Definition of done*, where `run_contract` is listed.)
+- **A subscriber that reads inside the rAF paint is ONE FRAME LATE, and only a browser
+  can see it** (rescued from the #432 themes bullet on eviction, 2026-08-11): the
+  recorder's drain sat in the paint and logged **1475 rows in, 35 recorded** — call sites
+  all correct to a source scan, and green to a Node gate that hands it the rows itself.
+  `drainFine()` is the single `takeFine()` caller and is called synchronously from
+  `render()`; keep it there.
 - **Provenance matters more than it looks.** Many "owner rulings" here were written by agents, and
   all agent work commits under the owner's name, so git blame proves nothing. A ruling without a
   date and a verbatim owner quote is advisory — `CONTEXT.md` §3. **`test/run_hr3.js` guards HR3;

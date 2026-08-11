@@ -70,6 +70,10 @@
     sr: ['Source Range'], ir: ['Intermediate Range'], period: ['Reactor Period'],
     sur: ['Startup Rate'], sr_on: ['SR detector'],
     spray_flow: ['Pressurizer Spray (PZR)'], htr_pwr: ['Pressurizer Heaters (PZR)'],
+    // #447's shed indication, added at the develop x backshop merge: a new channel with a
+    // board presence and no entry here simply fails to light, which is a gap rather than
+    // an error — but it is the gap a merge exists to close.
+    htr_shed: ['Pressurizer Heaters (PZR)'], heater: ['Pressurizer Heaters (PZR)'],
     charging: ['Charging Pump (CVCS)'], letdown: ['Letdown Orifices (CVCS)']
   };
 

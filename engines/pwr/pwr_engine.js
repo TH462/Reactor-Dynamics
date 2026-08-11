@@ -427,6 +427,55 @@
     //     itself on the next button press.
     s.ac_available = !s.station_blackout;
 
+    // 0b. THE ESF LOAD SHED — safety injection, or a loss of offsite power, takes the
+    //     PRESSURIZER HEATERS off the bus, and only an operator puts them back (#447).
+    //
+    //     SOURCED, and it is a requirement rather than a design preference.
+    //     NUREG-0737 II.E.3.1, Clarification (7) (ML051400209): "Being non-Class IE
+    //     loads, the pressurizer heaters must be automatically shed from the emergency
+    //     power sources upon the occurrence of a safety injection actuation signal."
+    //     Item (5)(b) makes the restore need an SI reset, and item (4) requires that
+    //     "any changeover of the heaters from normal offsite power to emergency onsite
+    //     power is to be accomplished manually in the control room." Ginna TS Bases
+    //     Rev 101 (ML20339A221) B 3.4.9 states the plant-level behaviour in one
+    //     sentence: "the heaters are shed following a loss of offsite power or safety
+    //     injection signal. The heaters can be manually loaded onto the diesel
+    //     generators if required."
+    //
+    //     WHY IT IS HERE AND NOT IN `pwr_pressurizer.autoControl`, where the other two
+    //     heater de-energizations live. `autoControl` is called DIRECTLY with hand-built
+    //     state objects by the behavior battery's pressurizer rigs (CA-9, CA-15's and
+    //     CA-20's stepPressure clones) and by this engine's own selfTest. An edge
+    //     detector there would read `undefined -> true` on the first call and fire a
+    //     spurious shed in every one of those rigs. Derived in `step`, consumed in
+    //     `autoControl` — the same split `ac_available` uses eight lines up, for the
+    //     same reason.
+    //
+    //     RISING EDGE, NOT LEVEL, and that is what makes the reload possible. A
+    //     level-triggered shed could never be cleared while the accident lasts, which
+    //     contradicts the source's "can be manually loaded ... if required" and would
+    //     leave the player holding a control that does nothing. `hpi_active` is a
+    //     handswitch that nothing clears on its own — not pressure recovery, not the
+    //     ECCS shutoff head, not RWST depletion (there is no RWST node) — so one LOCA
+    //     is one shed. Securing SI and re-initiating it produces a SECOND edge and a
+    //     second shed, which is correct plant behaviour, not a bug.
+    //
+    //     `hpi_active` IS the SI signal on this plant, and that is a ruling rather than
+    //     a derivation: no latched SI-actuation state exists here, and `set_hpi` is
+    //     simultaneously the three ESFAS actuation rows (low pressure 12.4 MPa, pzr
+    //     level lo-lo 12 %, containment 3.5 psig) and the operator's own manual SI. On
+    //     a real board a manual SI initiation sheds the heaters too, so keying on the
+    //     handswitch is defensible — but it means an operator starting HPI by hand at
+    //     power also sheds them.
+    //
+    //     `station_blackout` is read alongside `_offsite_power` deliberately: several
+    //     probe rigs set the blackout flag directly on state rather than through the
+    //     failure path, and a blackout that did not go through `full_blackout` would
+    //     otherwise leave offsite power reading "available".
+    var shedSig = !!s.hpi_active || s._offsite_power === false || !!s.station_blackout;
+    if (shedSig && !s._shed_sig_prev) s._heater_shed = true;
+    s._shed_sig_prev = shedSig;
+
     // 0. Rod motion (incl. runaway) before reactivity reads positions.
     this._stepRods(dt);
     // 1. Total reactivity from current (previous-step) state — explicit coupling.
@@ -572,6 +621,11 @@
       // decide whether an alarm exists, so HR1 is untouched (#240).
       plant_mode: plantModeOf(s.power_pct, (s._rho || 0) * 1e5, s.tavg_c).mode,
       hpi_active: s.hpi_active,
+      // The heater load shed, as an INSTRUMENT: the annunciator that tells the player
+      // why heater power reads zero must read a channel, not true state (HR1). A
+      // breaker position is a direct digital indication, so it takes no lag or noise —
+      // same shape as hpi_active and msiv_open beside it (#447).
+      pzr_heaters_shed: !!s._heater_shed,
       station_blackout: s.station_blackout,
       steam_demand_low: s.turbine_tripped || s.turbine_demand_frac < 0.05,
       // P-9 permissive, ~50 % power. Gates THREE protection decisions: the SG hi-hi
@@ -799,6 +853,7 @@
       porv_tailpipe_temp_c: s.tailpipe_temp_c,   // PORV discharge-line temperature (feeds instruments.porv_tailpipe_temp)
       fuel_damaged: s.fuel_damaged,              // latched at fuel_damage_c — scenario outcome-grading hook
       hpi_active: s.hpi_active, hpi_flow_normalized: s.hpi_flow_normalized, afw_active: s.afw_active,
+      pzr_heaters_shed: !!s._heater_shed,        // ESF load shed on SI / LOOP — see CONTEXT §6.3 (#447)
       afw_pump_running: !!s.afw_pump_demand,   // pump demand (run lights) — distinct from delivered flow (TMI-2)
       afw_blocked: !!s.afw_blocked,            // AFW block/discharge valve shut (operator or TMI-2 tag-out)
       afw_flow_normalized: s.afw_flow_normalized || 0,   // TRUE delivered AFW flow (throttle × level hold; 0 when blocked)
@@ -1095,6 +1150,26 @@
       case 'set_heater':
         // {auto:true} returns to the proportional auto-control; {power_pct} is a manual override.
         s.heater_override = cmd.auto ? null : clip(cmd.power_pct / 100, 0, 1);
+        // ANY set_heater IS THE MANUAL RELOAD (#447) *(OWNER RULING, 2026-08-11: selected
+        // "Any set_heater clears it" from three options in plan review — a selection, not
+        // verbatim words)*. The source's restore is two steps — reset the SI signal
+        // (NUREG-0737 II.E.3.1 item 5.b), then load the heaters onto the bus by hand
+        // (item 4) — and this plant collapses it to one, for exactly the reason
+        // `pwr_control.js` already gives for collapsing the SI reset itself: there is no
+        // SI-reset control on this board. The AUTO / MANUAL / OFF buttons and the % box
+        // ARE the reload, so no new control is added to a panel that has four already.
+        //
+        // UNCONDITIONAL, and deliberately not the FWI_SEAL_IN shape: the source
+        // explicitly contemplates loading the heaters while the SI signal still stands.
+        //
+        // ACCEPTED WART, stated so it is not rediscovered as a bug: the `pzr_pressure`
+        // channel's BUMPLESS disengage sends {power_pct: <delivered>} (pwr_control.js),
+        // and delivered power while shed is 0 — so taking that channel to MANUAL clears
+        // the shed with nothing changing physically, and the annunciator drops. The two
+        // alternatives are worse (making disengage send the demand changes bumpless
+        // transfer for the blackout and 17 %-cutoff cases too; exempting internal
+        // commands would also stop the channel's ENGAGE from being a valid reload).
+        s._heater_shed = false;
         break;
       case 'set_spray':
         // {auto:true} → auto; {pct} → manual valve %; {open} → back-compat boolean.
@@ -1478,11 +1553,19 @@
         // (#240). A pump lost to a fault while the plant sat secured must go back
         // to reading RCP TRIP, hence the clear on all three, not just the running
         // case.
-        case 'coast_down_pumps': s.pump_running = false; s.rcp_secured = false; break;
+        // OFFSITE POWER IS NOW A STATE, not just a one-shot coastdown (#447). It was
+        // only ever an effect, so nothing downstream could ask "is offsite power
+        // there?" — which is why the heater load shed had nothing to key on. Only
+        // `loss_of_offsite_power` carries this effect, so the mapping is exact.
+        case 'coast_down_pumps': s.pump_running = false; s.rcp_secured = false; s._offsite_power = false; break;
         case 'stop_pump': s.pump_running = false; s.rcp_secured = false; break;
         case 'full_blackout':
+          // A blackout is a LOOP the diesels did not answer (10 CFR 50.2), so it
+          // takes offsite power with it — the heaters are shed here as well as
+          // de-energized by the dead bus, and the shed is what survives ac recovery.
           s.station_blackout = true; s.pump_running = false; s.rcp_secured = false;
           s.condenser_cooling_available = false; s.main_feedwater_available = false;
+          s._offsite_power = false;
           break;
         case 'vacuum_decay': s.condenser_cooling_available = false; break;
         case 'degrade_hpi': s.hpi_flow_multiplier = clip(1 - severity, 0, 1); break;
@@ -1552,8 +1635,13 @@
     }
     if (def.type === 'physics_parameter') {
       switch (def.effect) {
-        case 'coast_down_pumps': case 'stop_pump': break; // pumps stay off until restarted
-        case 'full_blackout': s.station_blackout = false; s.condenser_cooling_available = true; s.main_feedwater_available = true; break;
+        // Pumps stay off until restarted; offsite power itself DOES come back — but the
+        // heater shed it caused does not clear with it (#447). Restoring the grid does
+        // not re-close the heater breakers; an operator does, in the control room
+        // (NUREG-0737 II.E.3.1 item 4).
+        case 'coast_down_pumps': s._offsite_power = true; break;
+        case 'stop_pump': break;
+        case 'full_blackout': s.station_blackout = false; s._offsite_power = true; s.condenser_cooling_available = true; s.main_feedwater_available = true; break;
         case 'vacuum_decay': s.condenser_cooling_available = true; break;
         case 'degrade_hpi': s.hpi_flow_multiplier = 1.0; break;
         case 'block_afw': s.afw_blocked = false; s.afw_active = !!s.afw_pump_demand; break;   // valves reopened: flow resumes if the pumps are demanded
@@ -1708,6 +1796,9 @@
       pressure_setpoint: cfg.pressurizer.P_setpoint,
       _pressure_sp_eff: cfg.pressurizer.P_setpoint,   // slewed effective target (seeded = commanded, see pwr_pressurizer.effectiveSetpoint)
       heater_power_frac: 0, spray_flow_frac: 0, heater_override: null, spray_override: null, spray_stuck: false,
+      // The ESF heater load shed and its edge memory (#447). `_offsite_power` is the
+      // grid, which every initial condition has.
+      _heater_shed: false, _shed_sig_prev: false, _offsite_power: true,
       porv_demand: 'closed', porv_open: false, porv_stuck: false, safety_open: false,
       block_valve_open: true,                 // PORV isolation/block valve (B1; default open)
       porv_flow: 0, safety_flow: 0,
@@ -2099,6 +2190,22 @@
     if (s.spray_stuck == null) {
       s.spray_stuck = (s.spray_override === true);
       if (s.spray_override === true) s.spray_override = null;
+    }
+    // THE ESF HEATER LOAD SHED (#447) — a pre-shed save comes back NOT SHED, and its
+    // edge memory is SEEDED FROM THE LIVE SIGNAL rather than defaulted.
+    //
+    // Both halves are deliberate. A save taken with SI standing was taken on a plant
+    // whose heaters were running, so restoring it shed would change the plant under the
+    // player with no event to explain it — the save's own behaviour is what must be
+    // preserved. And seeding `_shed_sig_prev` false on a save whose SI is already in
+    // would read as a rising edge on the very first step after load and fire a phantom
+    // shed, which is the same "recompute, do not default" discipline as `ac_available`
+    // below. `_offsite_power` is recomputed from the blackout flag for the same reason:
+    // a blacked-out save really has lost the grid.
+    if (s._offsite_power == null) s._offsite_power = !s.station_blackout;
+    if (s._heater_shed == null) s._heater_shed = false;
+    if (s._shed_sig_prev == null) {
+      s._shed_sig_prev = !!s.hpi_active || s._offsite_power === false || !!s.station_blackout;
     }
     // Total SG draw, added with the `sg_steam_flow` main-steam-line instrument
     // (2026-07-26). Recomputed on the first SG step, but it must be a NUMBER before
@@ -3491,6 +3598,9 @@
         delete legacy.containment_pressure_mpa; delete legacy.containment_temp_c;
         delete legacy.containment_sump_pct; delete legacy._ctmt_steam; delete legacy._ctmt_sump;
         delete legacy._ctmt_sink_enh;   // #425: nor the sink-enhancement lag state
+        // #447: a pre-shed save has no heater-load-shed latch, no edge memory and no
+        // notion of offsite power.
+        delete legacy._heater_shed; delete legacy._shed_sig_prev; delete legacy._offsite_power;
         // Hydrogen (#386 stage 3): a pre-hydrogen save has none of the six.
         delete legacy._rcs_h2; delete legacy._ctmt_h2; delete legacy.ctmt_h2_pct;
         delete legacy.ctmt_h2_burned; delete legacy.ctmt_recomb_demand; delete legacy.ctmt_recomb_active;
@@ -3569,6 +3679,26 @@
           s._rcs_h2 === 0 && s._ctmt_h2 === 0 && s.ctmt_h2_pct === 0 && s.ctmt_h2_burned === false
             && s.ctmt_recomb_demand === false && s.ctmt_recomb_active === false,
           '0 / 0 / 0 / false / false,false');
+        // #447 THE HEATER LOAD SHED restores NOT SHED, with the grid available. A save
+        // taken before the shed existed was taken on a plant whose heaters were running;
+        // coming back shed would change the plant under the player with no event to
+        // explain it, so the save's own behaviour is what is preserved.
+        ck('heater load shed defaults CLEAR, offsite power available (old behaviour preserved)',
+          String(s._heater_shed) + ' / offsite ' + String(s._offsite_power),
+          s._heater_shed === false && s._offsite_power === true, 'false / true');
+        // …AND THE EDGE MEMORY IS SEEDED FROM THE LIVE SIGNAL, which is the half that is
+        // easy to get wrong: this save has SI standing (hpi_active restored true from the
+        // legacy lpi_active flag above), so a `_shed_sig_prev` defaulted to false would
+        // read as a RISING EDGE on the first step after load and fire a phantom shed on a
+        // plant nobody injected. Same "recompute, do not default" discipline as
+        // ac_available. Asserted through a STEP, not by reading the field — the claim is
+        // that no shed fires, not that a variable holds a value.
+        ck('a mid-SI save does not fire a PHANTOM shed on its first step',
+          'prev ' + String(s._shed_sig_prev) + ', hpi ' + String(s.hpi_active),
+          s._shed_sig_prev === true && s.hpi_active === true, 'true / true');
+        h2.eng.step(0.02);
+        ck('…confirmed by stepping it — still unshed with SI in',
+          String(h2.eng.s._heater_shed), h2.eng.s._heater_shed === false, 'false');
         // rcp_secured is the INFERENCE, and this save has pumps RUNNING — so the
         // benign "planned securing" reading must NOT be invented. The conservative
         // direction matters: mislabelling a real trip as a planned securing is the

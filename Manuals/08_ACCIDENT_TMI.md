@@ -143,7 +143,7 @@ Recover a stuck-open PORV LOCA with possible lying indicator without core damage
 | 4 | Attempt PORV Close | PORV Close | May not work |
 | 5 | **Isolate PORV Block Valve** | Block Valve Isolate | Inventory loss stops |
 | 6 | Verify HPI running; leave on until subcooling/inventory healthy | HPI On / AUTO | Injection active as needed |
-| 7 | Stabilize pressure with heaters when leak isolated | PZR Heaters | P recovering toward 2235 psi (15.41 MPa) class |
+| 7 | Stabilize pressure with heaters when leak isolated — injection actuated early here, so they are **shed**; reload them first | PZR Heaters | P recovering toward 2235 psi (15.41 MPa) class |
 | 8 | Restore normal CVCS carefully | CVCS | Level control without losing subcooling |
 | 9 | Clear drill failures when complete | Failures tab | Clean board |
 
