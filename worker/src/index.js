@@ -238,7 +238,12 @@ async function handleEvents(request, env, origin) {
         session,
         keyField ? String(p[keyField] == null ? '' : p[keyField]) : '',
         String(p.plant || ''),
-        String(p.block_code || ''),
+        // block_code: SLOT RESERVED, nothing populates it yet. Written as a literal
+        // rather than read from `p` so that the schema, this receiver and privacy.html
+        // all describe exactly what is collected TODAY — a column reading a prop no
+        // event declares is the same drift `blocked` already demonstrated. The slot is
+        // claimed here because claiming it later is what risks a collision.
+        '',
       ],
       doubles: [
         Number(p.seconds || 0),
@@ -253,7 +258,7 @@ async function handleEvents(request, env, origin) {
         num(e.st),
         // `blocked` has likewise been collected and dropped since it was added.
         bool(p.blocked),
-        bool(p.errored),
+        -1,                 // errored: SLOT RESERVED — see block_code above
       ],
     });
     written++;

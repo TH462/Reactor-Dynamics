@@ -22,7 +22,7 @@
  */
 
 import { esc, html, PAGE_HEAD, nav, table, errBlock } from './render.js';
-import { sql, gql, ACCOUNT, SITE_TAG, DATASET } from './cfapi.js';
+import { sql, gql, ACCOUNT, SITE_TAG, DATASET, COLUMNS_SINCE } from './cfapi.js';
 
 // ---------------------------------------------------------------- RUM helpers
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -161,6 +161,50 @@ export async function analyticsPage(env, url, token) {
         .map((r) => ({ action: r.action || '(none)', uses: num(r.uses), sessions: num(r.sessions) })),
       [{ key: 'action', label: 'Action' }, { key: 'uses', label: 'Uses', num: true },
        { key: 'sessions', label: 'Sessions', num: true }])),
+    /* Controls the plant REFUSED. TWO guards, and neither is optional: `double7 >= 0`
+     * drops clients that had no opinion, and `timestamp >= COLUMNS_SINCE` drops rows
+     * written before the column existed — those read back as 0, not -1, so the sentinel
+     * cannot see them and they would be counted as "allowed" (see cfapi.js). The rate
+     * matters more than the count — 40 refusals out of 41 presses is a control nobody
+     * can use, 40 out of 4000 is an interlock doing its job — so the denominator comes
+     * from the same query rather than by eye, and both guards apply to it too.
+     *
+     * DENOMINATOR CAVEAT, stated on the page: this counts presses that went through the
+     * command dispatcher. `play`, `reset`, `start_scenario` and the URL-bootstrap paths
+     * call service.handleCommand directly and emit nothing (ui/app.js:3458,3466,6011,
+     * 6055,6523-6561), so they are in neither column. */
+    section('Controls people try but cannot use', async () => {
+      /* `blob2 <> 'dev'` excludes hand-made probes. The dev channel never reaches this
+       * dataset from a real visitor — a local checkout has no endpoint and sends
+       * nothing — so a dev row is always someone testing the pipeline by hand. It is
+       * filtered HERE and not in the sections above because this view reports a RATE:
+       * one synthetic row among hundreds cannot move a ranking, but it can and did read
+       * as "rod_nudge, 100 % refused, a control nobody can use". */
+      const rows = await sql(apiToken, `SELECT blob5 AS action, blob7 AS code,
+              sum(_sample_interval) AS presses,
+              sumIf(_sample_interval, double7 = 1) AS refused,
+              count(DISTINCT blob4) AS sessions
+         FROM ${DATASET} WHERE blob1 = 'command' AND double7 >= 0
+              AND blob2 <> 'dev'
+              AND timestamp >= ${COLUMNS_SINCE} AND ${since}
+         GROUP BY action, code ORDER BY refused DESC LIMIT 25`);
+      const shown = rows.filter((r) => num(r.refused) > 0).map((r) => ({
+        action: r.action || '(none)',
+        code: r.code || '—',
+        refused: num(r.refused),
+        presses: num(r.presses),
+        rate: num(r.presses) ? Math.round((num(r.refused) / num(r.presses)) * 100) + '%' : '—',
+        sessions: num(r.sessions),
+      }));
+      return table(shown, [
+        { key: 'action', label: 'Action' }, { key: 'code', label: 'Why' },
+        { key: 'refused', label: 'Refused', num: true }, { key: 'presses', label: 'Presses', num: true },
+        { key: 'rate', label: 'Rate', num: true }, { key: 'sessions', label: 'Sessions', num: true }])
+        + '<p class="muted">Of presses that went through the command dispatcher — '
+        + '<span class="mono">play</span>, <span class="mono">reset</span> and scenario '
+        + 'starts bypass it and are in neither column. Rows from clients older than the '
+        + 'column are excluded rather than counted as “not refused”.</p>';
+    }),
     section('Panels opened', async () => table(
       (await sql(apiToken, `SELECT blob5 AS panel, sum(_sample_interval) AS opens,
               count(DISTINCT blob4) AS sessions
