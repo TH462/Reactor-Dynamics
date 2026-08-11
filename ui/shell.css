@@ -2329,9 +2329,19 @@ select.num-input { width: auto; }
 
 /* ======================================= CHART SETTINGS PANEL (2026-08-11, owner item 3) */
 .strip-chart { position: relative; }
+/* HEIGHT COMES FROM THE VIEWPORT, NOT FROM THE CHART. Capped to the chart's own height,
+   the panel got ~200 px and the channel list — the headline of the request — fell below the
+   fold behind three short sections. The chart is one of the shorter regions on the screen;
+   a panel that lists 120 channels cannot be bounded by it. It overflows the chart box
+   deliberately, which is what an anchored popover is for. */
 .chart-opts {
-  position: absolute; top: 34px; right: 6px; z-index: 30; width: 300px;
-  max-height: calc(100% - 44px); display: flex; flex-direction: column;
+  /* OPENS UPWARD. The strip chart lives near the bottom of the window, so a panel
+     dropped from the button ran off the viewport and the channel list was
+     unreachable — measured at 1280x800: top edge 544 px, wanted height 496, bottom
+     1040 against an 800 px window. Anchored to the chart's bottom it grows into the
+     board area, which is what an anchored popover is allowed to do. */
+  position: absolute; bottom: 6px; top: auto; right: 6px; z-index: 30; width: 300px;
+  max-height: min(62vh, 480px); display: flex; flex-direction: column;
   background: var(--bg-panel, #121821); border: 1px solid var(--border);
   border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
 }
