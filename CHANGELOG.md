@@ -31,17 +31,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
-- **Shutdown cooling no longer puts itself in service (#453).** The RHR hot-leg suction valve
-  used to open by itself whenever the reactor was tripped and pressure fell below 400 psi — so
-  every depressurization after a scram aligned shutdown cooling, including a LOCA, where it
-  became the largest heat sink in the plant while the break was still open. No real plant has
-  that function: every RHR interlock is a *permissive* that blocks opening above pressure
-  (WTSM 5.1 §5.1.3.3; NUREG-1431 SR 3.4.14.2/.3 test "prevents from being opened" and "causes
-  to close" as separate things). **Placing RHR in service is now yours to do** — the ALIGN
-  button, below the 400 psi interlock, after throttling the heat-exchanger split as the
-  cooldown procedure already tells you. The 400 psi block-open and 600 psi autoclose
-  interlocks are unchanged. The RHR **AUTO** button is gone with the automatic function it
-  armed; ALIGN and ISOLATE remain.
 - **Control room: ten further adjustments** *(OWNER DIRECTIVE, 2026-08-11: "Put the strip chart
   rewind button to the left of the x axis time selection. Get rid of the slider bar at the bottom
   of the chart."; "Remove the sim paused popup at the start. Sim should start running not paused…

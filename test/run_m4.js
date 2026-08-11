@@ -615,17 +615,11 @@ T.push(test('acknowledge_all_alarms clears every standing alarm at once (#154)',
 }));
 
 T.push(test('#287 — losing shutdown cooling annunciates; the permissive stays one-shot', function (ck) {
-  // OWNER RULING, 2026-07-31: "Keep it and enunciate" — and the ruling SURVIVES #453, which
-  // is worth stating because the sentence it was written about does not. The ruling is about
-  // the INDICATION: losing shutdown cooling must annunciate rather than pass silently, and
-  // every check below still asserts exactly that.
-  //
-  // What changed underneath it (#453, 2026-08-11): there is no longer an RHR auto-entry
-  // permissive to be one-shot. The comment here used to say "a real plant re-opens that
-  // valve on purpose, not automatically" — correct, and the plant then went on to open it
-  // automatically anyway. The auto-entry actuation is gone; the engine's block-open (2.76)
-  // and autoclose (4.14) interlocks are untouched, and the absence of any automatic open is
-  // pinned by the "#453" test above.
+  // OWNER RULING, 2026-07-31: "Keep it and enunciate". The RHR auto-entry permissive
+  // fires once below the 400 psi (2.76 MPa) interlock and never re-arms, while the
+  // engine AUTO-CLOSES the suction valve on any repressurization above it. That pairing
+  // is deliberate — a real plant re-opens that valve on purpose, not automatically — so
+  // what was added is the INDICATION, not a re-arm.
   //
   // Gated on the MODE, not on the RPS latch. The first cut of this alarm asked for
   // `rps_scrammed`, and measured, a Mode 5 plant reads `rps_scrammed = false` — it was
@@ -659,78 +653,18 @@ T.push(test('#287 — losing shutdown cooling annunciates; the permissive stays 
   ck('at power, RHR unaligned is NORMAL and stays quiet',
     'mode ' + hot.ins().plant_mode + ', rhr_active=' + hot.ts().rhr_active + ', ' + st(hot),
     hot.ts().rhr_active === false && st(hot) === 'clear', 'clear');
-  // THE STRUCTURAL CLAIM, strengthened at #453. This used to read the auto-entry row out of
-  // config and pin the ABSENCE OF A RESET on it, so it could not quietly re-arm. There is now
-  // no row at all, and "no actuation targets set_rhr" is both the stronger claim and one that
-  // cannot pass vacuously — a reinstated auto-open of any shape reddens it, including a
-  // conditioned one, which the old form would have waved through.
+  // The permissive is one-shot BY CONSTRUCTION, and that is now a ruled-on property:
+  // pin the absence of a reset so a later edit cannot quietly make it re-arm. (The
+  // engine's auto-close half is pinned engine-direct in run_pwr rhr_valve_and_mode.)
   var acts = (RD.PWR_PROTECTION || RD.PWRControl || {}).actuations ||
              (hot.layer.config && hot.layer.config.actuations) || [];
-  var rhrActs = acts.filter(function (a) { return a.action === 'set_rhr' || a.action === 'set_dhr'; });
-  ck('NO actuation opens RHR — placing shutdown cooling in service is an operator evolution (#453)',
-    rhrActs.length + ' actuation(s) targeting set_rhr/set_dhr', rhrActs.length === 0, '0');
-  // …and no ESF arm survives it either: an arm with no actuation to arm is a control that
-  // does nothing (the Q4 orphan-control case). Board-side, RHR keeps ALIGN and ISOLATE.
-  var esf = (hot.layer.config && hot.layer.config.esf_systems) || [];
-  ck('…and the orphaned RHR ESF arm went with it',
-    '[' + esf.map(function (e) { return e.id; }).join(', ') + ']',
-    esf.filter(function (e) { return e.id === 'rhr'; }).length === 0, 'no rhr arm');
-}));
-
-T.push(test('#453 — shutdown cooling never aligns ITSELF, least of all into a break', function (ck) {
-  // WHY THIS EXISTS, and why the two probes below it were not enough. #287 and #294 both
-  // assert "nothing re-aligns RHR by itself" — but they ask it in Mode 4/5, where the
-  // actuation's `rps_scrammed` condition is FALSE anyway. They passed for a reason that had
-  // nothing to do with the claim, which is the hollow-check shape CLAUDE.md's standing list
-  // names. The regime that actually discriminates is the one the actuation was live in:
-  // SCRAMMED, DEPRESSURIZED, AND STILL LEAKING.
-  //
-  // THE CLAIM IS SOURCED, and it is that no such automatic function exists at all. Every RHR
-  // suction interlock in the corpus is an INHIBIT, never a command — WTSM 5.1 §5.1.3.3
-  // (ML11223A219): "These interlocks PREVENT THE VALVES FROM BEING OPENED UNLESS the reactor
-  // coolant system pressure is less than 425 psig … After the valves are open, another set of
-  // interlocks will cause the valves to automatically close when the reactor coolant system
-  // pressure increases to approximately 585 psig." NUREG-1431 Rev 4 tests the two directions
-  // as SEPARATE surveillances: SR 3.4.14.2 "prevents the valves from being opened", SR
-  // 3.4.14.3 "causes the valves to close automatically". Neither says "opens".
-  //
-  // The likely origin of the defect is a coincidence of numbers: WTSM 5.1 gives RHR entry as
-  // "approximately 350°F and 425 psig" and the open-permissive as "less than 425 psig" — the
-  // same figure. Read as a trigger rather than a gate it produces a pressure-only auto-open
-  // that looks right and is wrong in kind. That is what this probe stops coming back.
-  var b = new Stack('hot_full_power');
-  b.run(30);
-  b.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 0.05 });
-  var alignedAt = -1;
-  for (var t = 0; t < 700 && alignedAt < 0; t += 5) { b.run(5); if (b.ts().rhr_active) alignedAt = t; }
-  // Preconditions — without all three this leg is quiet for the wrong reasons.
-  ck('the plant scrammed itself on the break', String(b.layer.getRpsState().scrammed),
-    b.layer.getRpsState().scrammed === true, 'true');
-  ck('…and went below the RHR entry permissive (or nothing was being asked)',
-    b.ins().primary_pressure.toFixed(2) + ' MPa indicated',
-    b.ins().primary_pressure < 2.70, '< 2.70 MPa');
-  ck('…with the break still open', b.ts().leak_flow.toExponential(2), b.ts().leak_flow > 0, '> 0');
-  // THE CLAIM.
-  ck('RHR did NOT align itself into a depressurized, leaking, scrammed plant',
-    alignedAt < 0 ? 'stayed shut for 700 s' : 'ALIGNED at t+' + alignedAt + ' s',
-    alignedAt < 0 && b.ts().rhr_active === false, 'never aligns');
-  ck('…and eccs_mode never reads RHR', String(b.ts().eccs_mode),
-    b.ts().eccs_mode !== 'RHR', 'not RHR');
-  // …but the operator can still put it in service, which is the whole point: what was
-  // removed is an automatic action, not the system.
-  b.cmd({ action: 'set_rhr', active: true });
-  b.run(3);
-  ck('the OPERATOR can still align it below the permissive (the evolution survives)',
-    'rhr_active=' + b.ts().rhr_active + ', mode=' + b.ts().eccs_mode,
-    b.ts().rhr_active === true && b.ts().eccs_mode === 'RHR', 'true / RHR');
-  // And the engine's real interlock still refuses an open above the block-open pressure —
-  // the sourced half that STAYS. Fresh at-power plant, no break.
-  var hp = new Stack('hot_full_power');
-  hp.run(3);
-  hp.cmd({ action: 'set_rhr', active: true });
-  hp.run(3);
-  ck('at operating pressure the block-open permissive still refuses (2.76 MPa, unchanged)',
-    'rhr_active=' + hp.ts().rhr_active, hp.ts().rhr_active === false, 'false');
+  var rhrAct = acts.filter(function (a) { return a.action === 'set_rhr' && a.active === true; })[0];
+  ck('the RHR entry actuation exists', !!rhrAct, !!rhrAct, 'found');
+  if (rhrAct) {
+    ck('…and carries NO reset — it is one-shot by construction (#287 ruling)',
+      'reset_below=' + rhrAct.reset_below + ' reset_action=' + rhrAct.reset_action,
+      rhrAct.reset_below === undefined && rhrAct.reset_action === undefined, 'neither set');
+  }
 }));
 
 T.push(test('#294 — MODE 4 is a cold mode too: the whole COLD_MODES half was untested', function (ck) {

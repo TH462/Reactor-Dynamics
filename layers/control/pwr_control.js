@@ -357,41 +357,25 @@
     // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
     // armed by the 12.4 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
-    // THERE IS NO RHR AUTO-ENTRY ACTUATION, AND THAT IS THE POINT (#453, 2026-08-11).
-    // A row used to live here that opened the RHR hot-leg suction valve by itself once the
-    // reactor was tripped and indicated pressure fell below 2.70 MPa. No plant does that,
-    // and the evidence is one-sided: every RHR suction interlock in the corpus is an
-    // INHIBIT, never a command.
-    //
-    //   WTSM 5.1 §5.1.3.3 (ML11223A219): "These interlocks PREVENT THE VALVES FROM BEING
-    //   OPENED UNLESS the reactor coolant system pressure is less than 425 psig … After the
-    //   valves are open, another set of interlocks will cause the valves to automatically
-    //   close when the reactor coolant system pressure increases to approximately 585 psig."
-    //
-    //   NUREG-1431 Rev 4 tests the two directions as SEPARATE surveillances — SR 3.4.14.2
-    //   "prevents the valves from being opened" (425 psig) and SR 3.4.14.3 "causes the
-    //   valves to close automatically" (600 psig). Neither says "opens".
-    //
-    // Placing RHR in service is a hand-throttled evolution, not a threshold event: WTSM 5.1
-    // §5.1.4.1 gives it a warmup period with flow limited "to minimize thermal shock" and
-    // the rate "manually controlled", and WTSM 19.0 writes it as numbered operator steps
-    // under a 350 °F CAUTION. Ginna TS Bases B 3.4.6 defines an isolated RHR loop as
-    // OPERABLE precisely when it "can be placed into service from the control room".
-    //
-    // WHERE THE DEFECT CAME FROM, so it is not re-derived: WTSM 5.1 gives RHR entry as
-    // "approximately 350°F and 425 psig" and the open-permissive as "less than 425 psig" —
-    // the SAME NUMBER. Read as a trigger rather than a gate, it yields a pressure-only
-    // auto-open that looks right and is wrong in kind. It also had no temperature term and
-    // no subcooling term, so every depressurization after a scram aligned shutdown cooling,
-    // INCLUDING the ones where the depressurization was the casualty: measured on a
-    // `large_loca` sev 0.05 it aligned at t+540 s into a saturated, still-leaking RCS and
-    // became the largest heat sink in the plant.
-    //
-    // THE TWO REAL INTERLOCKS ARE UNCHANGED and both live in the engine, where they belong:
-    // the block-open permissive `emergency.rhr_valve_interlock_mpa` (2.76 MPa) refuses an
-    // open above it, and `emergency.rhr_autoclose_mpa` (4.14 MPa) shuts a standing-open
-    // valve on repressurization. `test/run_m4.js` "#453" pins the absence of any automatic
-    // open; `run_pwr`'s `rhr_valve_and_mode` pins both interlocks engine-direct.
+    // Residual Heat Removal permissive — auto-opens the RHR hot-leg suction valve
+    // for cooldown once the reactor is tripped and depressurized below the 400 psi
+    // (2.76 MPa) valve interlock. Setpoint matches emergency.rhr_valve_interlock_mpa,
+    // the BLOCK-OPEN permissive — the engine refuses the open above it. It does NOT
+    // match the autoclosure interlock, which is the separate 600 psig (4.14 MPa)
+    // emergency.rhr_autoclose_mpa (#288): the valve shuts on repressurization ~175 psi
+    // higher than the pressure at which it may be opened, so this permissive and the
+    // autoclose cannot fight each other across one boundary. Armed via the 'rhr' ESF
+    // system so the synoptic's RHR "Auto" button can re-arm it.
+    // 2.70, NOT the engine's 2.76 block-open (#408 wave 1): the actuation fires off
+    // the NOISY indicated channel while the engine permissive tests TRUE pressure at
+    // the same number — a zero-deadband pair across one boundary (#288's shape). A
+    // noise-early fire is REFUSED and consumes the one-shot, so RHR never aligns;
+    // invisible on the compressed clock (the fast walk spent one sample at the
+    // boundary), near-certain on the real one (the slow walk lingers there —
+    // measured: a textbook 43 °C/h cooldown ended at 1.97 MPa with RHR shut).
+    // 0.06 MPa under the permissive means an accepted fire by construction.
+    { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.70,
+      action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
     { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
@@ -1460,12 +1444,7 @@
     { id: 'afw', label: 'Auxiliary feedwater',         commands: ['set_afw', 'set_afw_flow'] },
     // set_rhr_hx (HX flow split) is a cooldown-rate adjustment, NOT an alignment
     // command — it deliberately does not disarm the RHR valve auto-open.
-    // NO 'rhr' ESF SYSTEM (#453). An ESF arm exists to let the operator take an AUTOMATIC
-    // actuation to MANUAL. With the RHR auto-entry actuation gone there is nothing to arm,
-    // so an arm — and the board AUTO button that set it — would be a control that does
-    // nothing: the orphan-control case DESIGN_CRITERIA Q4 vetoes. RHR is now ALIGN/ISOLATE
-    // only, which is what the sources describe. `set_rhr`/`set_dhr` still descend through
-    // M4 interception like any other command.
+    { id: 'rhr', label: 'Residual heat removal',       commands: ['set_rhr', 'set_dhr'] },
   ];
 
   // ---- Overtemperature ΔT and Overpower ΔT (#311) — the two missing Westinghouse trips ----

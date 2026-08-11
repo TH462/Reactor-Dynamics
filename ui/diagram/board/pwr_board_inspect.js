@@ -621,13 +621,15 @@
       'Opens the RHR hot-leg suction valve — puts the plant on shutdown cooling.',
       'Refused above the 400 psi (2.76 MPa) interlock; the button visibly fails to latch rather than lying about ' +
       'the lineup. Below it, aligning RHR is the step that carries the plant from Mode 4 to Cold ' +
-      'Shutdown and holds it there. NOTHING ALIGNS RHR FOR YOU — placing shutdown cooling in service ' +
-      'is an operator evolution, and on a real plant a deliberate, throttled one: set the heat-exchanger ' +
-      'flow split low BEFORE you open this, or you shock the plant with a cooldown rate far past the limit.', MT, 'PWR-T21'),
+      'Shutdown and holds it there.', MT, 'PWR-T21'),
     ims3xfeye1q: e('ISOLATE (Residual Heat Removal (RHR))',
       'Shuts the RHR suction valve — takes the train off shutdown cooling.',
       'Necessary before repressurizing: the interlock will force the valve shut anyway once you pass ' +
       '600 psi (4.14 MPa), but doing it deliberately is how a heatup starts.', MT, 'PWR-T20'),
+    ims3xfl3xn6: e('AUTO (Residual Heat Removal (RHR))',
+      'Arms the RHR valve to open itself when scrammed and pressure is below the interlock.',
+      'Trimming the cooldown rate does NOT drop this arm — the rate knob is deliberately excluded from ' +
+      'the commands that disarm it, so you can throttle the heat exchanger while RHR stays automatic.', CI, '11.2'),
     ims3xu86zm5: e('Residual Heat Removal (RHR) HX Flow',
       'How much RHR flow goes through the heat exchanger rather than the bypass — the cooldown RATE knob.',
       'This sets cooling rate without disturbing inventory. Walk it up slowly: full heat-exchanger flow ' +
