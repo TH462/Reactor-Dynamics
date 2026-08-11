@@ -328,15 +328,15 @@ re-querying. Run the query.
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
   than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
   the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
-- **#436 — the control-room rework, planned and part-built.** Its plan filed **#437–#446**;
-  #436 itself is now the tracking issue. Landed 2026-08-10: **#438** (feedback form),
-  **#437** (`RD.Events`, one SOE stream), **#439** (right column — Operate dissolved,
-  Settings a pausing modal, Scanner a status line, Indications/Physics merged with computed
-  divergence), **#443 part 1** (selection screen, session bar, coach marks), **#393**
-  (`ui/chart_math.js`). **#440's reference lane is built and awaiting review**
-  (`ui/test_panel/lane_reference.html`, self-measuring) before the lane stack generalises.
-  Open: #440–#442, #444, #445, #443 part 2, #446 (deferred). New issue **#449** — three
-  steady-state indicated-vs-true disagreements the merged list surfaced.
+- **#436 — the control-room rework, BUILT to its content gates** (2026-08-10/11). Its plan filed
+  **#437–#446**; #436 is the tracking issue. Landed: **#438** feedback · **#437** `RD.Events` ·
+  **#439** right column + merged list · **#443** navigation, relevance ordering, manual anchors ·
+  **#393** `ui/chart_math.js` · **#440** the lane stack · **#442** the SOE layer · **#444** the
+  highlight bus · **#445** splitters. The chart is now one lane per indication with a shared
+  cursor and an event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and
+  measures itself — **change it first, re-measure, then port**. Open by design: **#441** (needs
+  the rung authoring pass), **#446** (deferred by ruling). Filed: **#449** — three steady-state
+  indicated-vs-true disagreements the merged list surfaced, 20–400× larger than instrument lag.
 - **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
   themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
@@ -358,18 +358,21 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **An OBSERVER's own first pass is indistinguishable from the plant doing something**
-  (2026-08-10, #437 + #439 + #393). Three of one night's four defects were this shape and
-  none was visible in a source read. The recorder emits a transition for EVERY alarm on its
-  first tick — right for a bug report, and as a timeline it arrived as **46 `alarm_clear`
-  events at t=0** (a steady 20 s at power now emits 0). A merged indicated-vs-true list
-  comparing FORMATTED strings flagged five rows permanently on a healthy plant, `-0.0`
-  against `0.0` among them; comparing RAW values with a 0.5 % band and a displayed-precision
-  floor sits above lag (0.18 %) and below the spec's own example (0.8 %) — and the first
-  version's "exempt rows with curated prose" swallowed the very case it was built for, the
-  PORV reading `shut` against `OPEN · STUCK`. Corollary that paid twice: **a refactor's claim
-  is "nothing changed", so pin the OLD implementation and replay it** — 235 frames, 50
-  re-fits, frame-for-frame (`run_chart_math`).
+- **The OBSERVER is where the defect is, and no source read finds it** (2026-08-10/11, the
+  #436 rework — #437/#439/#440/#442/#443/#393). Six of the night's defects were in the thing
+  doing the watching. A recorder's first pass emits a transition per alarm — right for a bug
+  report, and on a timeline **46 `alarm_clear` events at t=0** (now 0). A paired list
+  comparing FORMATTED strings lights five rows on a healthy plant (`-0.0` vs `0.0` among
+  them); lag measures **0.18 %**, so the band is 0.5 % with a floor at the displayed
+  precision — and the first fix, exempting rows with curated prose, swallowed the PORV
+  reading `shut` against `OPEN · STUCK`, the case it was built for. **An exponent is part of
+  that precision**: `2.0e-3 A` read as precise to 0.1 and hid a 75.9 % divergence on the
+  nuclear instruments. A cluster taking its ref from `evs[0]` points at nothing, because a
+  cascade LEADS WITH ALARMS. Two more the SCREENSHOT caught and no check did: numeric rows
+  drawn over the bottom lane (element counts all passed), and my own drive measuring lane
+  height as `plot ÷ lanes` — 56 px reported, 38 px true, which is how a floor gets certified
+  while being violated. Corollary that paid twice: **a refactor's claim is "nothing
+  changed", so pin the OLD implementation and replay it** (`run_chart_math`, 235 frames).
 - **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
   #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
   telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the

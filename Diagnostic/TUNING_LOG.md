@@ -29,6 +29,88 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-11-develop-a (#436 finished to its content gates — and the night's defects were nearly all the observer, not the plant)
+
+**Issues:** #436 planned into #437–#446. **Landed:** #438, #437, #439, #443, #393, #440, #442,
+#444, #445. **Filed:** #449. **Open by design:** #441 (content-gated), #446 (deferred by ruling).
+**Commits:** `2a31361`, `496375b`, `b540b72`, `91e8c65`, `5573f42`, `4f7026a`, `cf7e4c4`,
+`41ea828`. **Gates:** `run_all` **47 runners at baseline** at every landing; CI green on each
+push. Runners added: `run_events` (40), `run_chart_math` (8). `run_portable` 139 → **142** as
+three new `<script src>` tags raised its own tally by design.
+
+Per-issue detail is on each issue. This entry is for what the diffs do not say.
+
+### The pattern: the observer, not the plant
+
+Of the night's defects, most were in the thing doing the WATCHING, and none was visible in a
+source read. They are worth naming together because they are one family.
+
+1. **A recorder's first pass looks exactly like plant activity.** `_alarms` emits a transition
+   per alarm when it has no previous state — right for a bug report, and on a timeline it
+   arrived as **46 `alarm_clear` events at t = 0**. `run_events` TR-1 measured a steady 20 s at
+   power producing 46 events; it now produces **0**.
+2. **A merged indicated-vs-true list comparing FORMATTED STRINGS flags a healthy plant.** Five
+   rows lit permanently, `-0.0` against `0.0` among them. Ordinary lag measures **0.18 %** (Cold
+   Leg 551/550 °F); the rule is now 0.5 % relative with a floor at the displayed precision.
+3. **…and the first fix for that swallowed the case it was built for.** Exempting rows whose
+   true side is curated prose also exempted the PORV — `shut` against `OPEN · STUCK`, the spec's
+   headline example. Prose is for READING; the comparison belongs on the values.
+4. **The exponent is part of the displayed precision.** `2.0e-3 A` read as precise to 0.1, and
+   the floor swallowed a **75.9 %** divergence on the intermediate-range channel — the nuclear
+   instruments, where a failure is least cross-checkable.
+5. **A cluster took its ref from `evs[0]`**, and a trip cascade LEADS WITH ALARMS, which carry
+   none. Every SOE marker after a scram pointed at nothing.
+6. **A relevance guard was inverted** — it recomputed only while the list was open, precisely
+   the case the spec forbids. Deleted rather than fixed: the menu already rebuilds on open.
+
+**Corollary that paid twice: a refactor's only claim is "nothing changed", so pin the OLD
+implementation and replay it.** `run_chart_math` keeps both original copies verbatim as dead
+code — 770 `niceStep` inputs and a 235-frame transient with 50 re-fits, frame-for-frame.
+
+### Two things a screenshot caught that no check did
+
+- **The numeric rows drew over the bottom lane.** Every element-counting check passed. The lane
+  count and the row count are JOINTLY constrained — each demoted channel takes 18 px from the
+  lanes above it — so it is one solve, not two steps.
+- **My own drive measured lane height as `plot ÷ lanes`**, ignoring the space the rows take:
+  56 px reported where the truth was 38. An optimistic measurement is how a floor gets certified
+  while being violated.
+
+### Gates moved, none weakened
+
+Five browser gates drove paths that no longer exist; each moved to the SHIPPED path. Two were
+improvements rather than repairs: `verify_e2e_ui` now reaches Feedback by the one-click header
+button, and `verify_flags_ui`'s Features probes open Settings first — which **restored** a check
+that had silently become "is the modal open?" rather than "is the flag on?". That same gate
+caught a real error of mine (the session footer belonged outside `#mpContent`) and passed
+**unmodified** once it was fixed.
+
+**Three gate runs were invalidated by editing during them.** The lesson is cheap and was learned
+three times: a source-scanning gate reads the tree as it is, not as it was when the run started.
+
+### Where a spec was wrong, and what was built instead
+
+**#444's premise.** §7 says the synoptic carries `data-highlight-id` hooks. It does not — that
+attribute exists only in two Blueprint documents describing a `pwr_synoptic.js` that was never
+built, and `pwr_board_data.js` is generated so retrofitting was never an option. The bus runs on
+`CONTROL_LABEL_MAP` + `revealControl`, which is already gate-validated.
+
+### Left open deliberately, and why
+
+- **#449** — Intermediate Range **75.9 %**, Charging and Letdown Flow **~23 %** apart at steady
+  state with nothing injected, against a 0.18 % lag baseline. Surfaced by the merged list on its
+  first run. Building the panel that found them and chasing an instrument-scale defect are
+  different work.
+- **#441** — the rung ladders need the authoring pass (3–4 rungs + axis type per channel).
+- **Two content gaps named rather than faked:** per-step `why:` fields (the anchors they target
+  now exist), and an authored `responds_to` per procedure — without it, relevance can only
+  promote conditions the plant reports unambiguously, and guessing from a title would be a
+  heuristic pretending to be knowledge.
+- **§7's sensing-location highlight** (SG level from its reference leg) is bounded by what the
+  board distinguishes, which is the card, not the tap.
+
+---
+
 ## Session log — 2026-08-10-develop-c (the #436 control-room rework: plan, five phases, and three defects that were all the observer, not the plant)
 
 **Issues:** #436 (planned, now the tracking issue; filed **#437–#446**) · #438 · #437 · #439 ·
