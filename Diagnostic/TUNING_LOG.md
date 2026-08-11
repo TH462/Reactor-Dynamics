@@ -318,6 +318,70 @@ before the lane stack generalises. It measures itself: four 48 px lanes plus a 1
 and a 10 px event ribbon come to **216 px** against the spec's ~220 px budget.
 
 ---
+## Session log — 2026-08-11-backshop-b (shutdown cooling was letting itself into a LOCA, and no plant has that function at all)
+
+**Outcome: the RHR auto-entry actuation is DELETED (#453). Placing shutdown cooling in
+service is now the operator evolution every source describes. `run_all` 47/47 at baseline.**
+
+**The filed fix was to CONDITION the actuation; the evidence said to remove it.** #453 named
+the defect exactly — the row carried only "indicated pressure < 2.70 MPa" and "scrammed", so
+every depressurization after a scram aligned shutdown cooling, including the ones where the
+depressurization *was* the casualty — and proposed adding a Tavg term and a subcooling term.
+An evidence pass over all three lanes found no auto-open anywhere:
+
+- WTSM 5.1 §5.1.3.3 (ML11223A219): *"These interlocks **prevent the valves from being opened
+  unless** the reactor coolant system pressure is less than 425 psig … After the valves are
+  open, another set of interlocks will cause the valves to automatically close when the
+  reactor coolant system pressure increases to approximately 585 psig."*
+- NUREG-1431 Rev 4 tests the two directions as **separate surveillances** — SR 3.4.14.2
+  *"prevents the valves from being opened"*, SR 3.4.14.3 *"causes the valves to close
+  automatically"*. Neither says "opens".
+- `find_source` for RHR auto-opening: **0 hits across 34 documents in 3 lanes.**
+- The interlock is *deliberately defeated* in the modes where RHR runs — STS Bases B 3.4.12,
+  *"Autoclosure interlocks are not permitted to cause the RHR suction isolation valves to
+  close"*, valve **locked open with operator power removed** (SR 3.4.12.7).
+
+**Where the defect came from, and it is worth knowing because it will recur.** WTSM 5.1 gives
+RHR entry as *"approximately 350 °F and 425 psig"* and the open-permissive as *"less than
+425 psig"* — **the same number**. Read as a trigger rather than a gate it yields a
+pressure-only auto-open that looks right and is wrong in kind. **A permissive and a setpoint
+that share a value are not the same fact.**
+
+**Removal was cheap, and the reason is a fact nobody had checked.** `hot_zero_power` ships
+`scrammed: false`, so `condition: 'rps_scrammed'` is false for the whole of a NORMAL cooldown
+— the auto-align could never fire there. The campaign's `place_rhr` beat and procedure PWR-N15
+both already have the **player** open it, after throttling the HX split to 7 %. Exactly one
+probe depended on the automatic behaviour.
+
+**Traps worth keeping.**
+- **Two probes asserted the right claim in the wrong regime.** `run_m4`'s #287 and #294 both
+  say "nothing re-aligns RHR by itself" — in Modes 4/5, where `rps_scrammed` is false anyway.
+  They passed for a reason unrelated to the claim. The new `#453` suite asks it where the
+  actuation was live: scrammed, depressurized, **still leaking**. Red before the fix (aligned
+  at t+540 s), green after.
+- **A structural check can pin the wrong structure.** #287 read the row out of config and
+  pinned *the absence of a reset on it*. Re-authored to **"no actuation targets `set_rhr`"** —
+  the stronger form, which a reinstated auto-open of any shape reddens, including a
+  conditioned one that the old form would have waved through.
+- **Deleting an actuation can orphan a CONTROL.** The `rhr` ESF arm existed only to gate that
+  row, so the board's RHR AUTO button would have armed nothing — the Q4 orphan-control case.
+  Arm and button both retired; `pwr_board_data.js` is generated, so the button goes via
+  `DOC_REMOVE` and ALIGN/ISOLATE move up one 30 px slot via `DOC_PATCHES` rather than leaving
+  a hole under the card title.
+- **Three probes moved for one reason: the settle got SLOWER.** Taking the largest heat sink
+  out of an unisolated LOCA means the same end state arrives later. CA-15's arrest, CA-25's
+  stable tail and CA-16's containment decay were all windowed on a plant where RHR accelerated
+  the cooldown. Windows moved with the measurement printed (CA-25 3000→5000 s: flat from
+  4000 s on, 0.2/0.1/0.1/0.0 psi per 2000 s bucket out to 16 000 s, 0 heater samples), and
+  **CA-16's acceptance bound was left exactly where it was** — what changed is how long the
+  plant is watched, not how much decay counts as decay.
+
+**What this does NOT buy, measured, so nobody hunts for a second defect.** #453 is the
+dominant LATE-TIME cooling term in #451 — sev 0.05 at t+2400 reads 324 °F against 176 °F with
+RHR, 84 % inventory against solid at 109 % — but it is **not** the plateau. At t+600 the two
+plants read 345.8 and 324.5 psia against the > 901 psia CA-20b needs, and the accumulators
+have dumped in both. **CA-20b stays xfail and #451 stays open.**
+
 ## Session log — 2026-08-11-backshop-a (a ~40 s limit cycle after every LOCA, and the loop gain was a heater bank that should have been off the bus)
 
 **Outcome: safety injection — and a loss of offsite power — now SHED the pressurizer
