@@ -81,8 +81,11 @@
     // #451 (2026-08-11) — the small-break pressure plateau has no mechanism left once the
     // #447 heater shed removes the prop it was standing on. Split out of CA-20 leg B so
     // that probe's blowdown / containment-floor / vent-algebra legs keep their coverage.
-    // DO NOT re-band it green: the claim is prototypical and the band is config-derived.
-    'CA-20b': 'the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else in this model holds the plateau — every severity now collapses to the same cold solid state. Measured 1.39 MPa at t+600 against the 6.21 MPa band. See #451.',
+    // DO NOT re-band it green. The probe was RE-KEYED from a magnitude proxy to the
+    // mechanism on 2026-08-11 (owner ruling, see the probe's own comment) — that is not a
+    // re-band: the old form failed on the pre-#447 plant too, and the new one is validated
+    // to PASS there and FAIL here.
+    'CA-20b': 'the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else holds the primary at its heat sink. MEASURED (Phase 1, #451): the dominant term is the cold-ECCS quench, NOT the SG and not the break flash term — `eccs_cooling_gain` 1.0 is ~2x true enthalpy mixing INTO THIS NODE (231 MJ/°C carries the metal; one RCS mass of water is ~113, so the physical gain is 0.489). The primary is driven 266 psi below its own heat sink and then drains the secondary through the 5 % reverse path to 202 psi. See #451.',
   };
 
   // -------------------------------------------------------------- COVERAGE map
@@ -153,7 +156,7 @@
     'CA-21': 'probe (the subcooling margin reads the CORE EXIT over a dry core — negative with the clad hot, byte-equal to the bulk when covered, and a failed TC restores the deception; NUREG-0737 II.F.2; #407)',
     'CA-23': 'probe (the pressurizer inventory NODE is INERT — level_per_mass·pzr_mass_frac reproduces levelRaw to 1e-9 across the subcooled/relief-void/loop-break families, and a pre-node save seeds through the inverse; #385 stage 1)',
     'CA-24': 'probe (hydrogen: mitigated LOCA sits far under the 4.1 v/o flammability limit, an unmitigated one crosses ignition and BURNS ONCE — spike above the spray hi-hi, under design, latch stands; recombiners auto-start/decay/AC-gate; the transport gate holds an SGTR\'s H2 out of the building; GEND-061 + NUREG-1431 + 50.46(b)(3); #386 stage 3)',
-    'CA-20b': 'probe (STRICT XFAIL — the small-break plateau fence, split from CA-20 leg B; #451)',
+    'CA-20b': 'probe (STRICT XFAIL — the small-break plateau fence, split from CA-20 leg B; re-keyed to the SG-holds-the-primary mechanism 2026-08-11; #451)',
     'CA-25': 'probe (the ESF LOAD SHED — safety injection and a loss of offsite power take the pressurizer heaters off the bus and only an operator puts them back; the post-LOCA plant settles instead of limit-cycling; NUREG-0737 II.E.3.1 (7) + Ginna TS Bases B 3.4.9; #447)',
     'CA-5': 'existing:run_autoctl HR1 probes', 'CA-6': 'existing:run_pwr NIS suite',
     'CC-1': 'existing:run_autoctl rod auto probes (re-work with SS-2)',
@@ -3852,6 +3855,14 @@
         });
         // second short segment for the stability read (measured: the equilibrium is
         // flat from ~3000 s for at least 15 000 s — inv ~98.7, dP-to-building 0.015 MPa)
+        //
+        // +600 s (2026-08-11, #453): the arrest now lands ~600 s later, because RHR no
+        // longer aligns into a saturated leaking RCS and rush the plant to its terminal
+        // state. Measured at successive 600 s windows from t+3300: drift 7.07 at t+3300,
+        // then EXACTLY 0.00 at t+3900 and at every window out to t+6900, inventory
+        // 109.28 % against a solid line of 109.3 (|inv−solid| 0.00) with the break still
+        // flowing. Arrest intact, arrival later.
+        a.run(600);
         var invA = a.ts().core_inventory_pct;
         a.run(600);
         var ta = a.ts();
@@ -3999,6 +4010,33 @@
         // fails if a sink is deleted (ratio holds near 1) and the floor still demands
         // genuine decay. On the stage-1 engine the fan check below is red — the
         // stage's injection verification for this leg.
+        // THE PREMISE IS NOW ASSERTED, NOT ASSUMED (2026-08-11, #453). The paragraph above
+        // states "by 10 min the ECCS quench has taken the source below flashing" and the leg
+        // then measured SINK DECAY on that basis — without ever checking it. #453 falsified
+        // it: with RHR no longer aligning itself into a saturated leaking RCS at t+10 min,
+        // the source is STILL FLASHING through the whole original window. Measured on this
+        // exact plant, subcooling by 600 s step: −0.4, −0.1, −0.0, −0.0 °C (flashing) out to
+        // t+3030, crossing to +44.2 °C at t+3630 when RHR finally aligns; containment then
+        // decays 0.1024 → 0.1013 MPa, i.e. EXACTLY ambient, by t+4230.
+        //
+        // So the leg was measuring decay on a system still being FED, and read it as a sink
+        // failure. An unasserted precondition does not make a probe wrong once — it makes it
+        // silently measure a different regime whenever the plant moves. The window advances
+        // to where the premise holds, and the premise becomes a check, so the next time this
+        // shifts the probe SAYS SO instead of blaming the sinks.
+        // …AND THE SOURCE IS REMOVED, NOT WAITED OUT. Advancing the window until the ECCS
+        // quench does it is not available on this plant: measured, the source is still
+        // flashing at t+3030 and only crosses at ~t+3630, by which time containment has bled
+        // to 0.006 MPa above ambient and the `(pPk − AMB) > 0.01` genuine-peak guard below
+        // correctly refuses the measurement as vacuous. There is NO window where "quenched"
+        // and "a real peak remains" both hold, so the leg cannot get its premise by waiting.
+        // `clear_failure` gives it structurally — `_leak_base = 0`, the hole is gone — and
+        // what remains is exactly what this leg has always meant to measure: the SINKS.
+        a.cmd('clear_failure', { failure_id: 'large_loca' });
+        a.run(30);
+        ck('PREMISE — the source is actually gone before sink decay is measured',
+          'leak ' + fmt(a.ts().leak_flow, 6),
+          !(a.ts().leak_flow > 0), 'no break flow');
         var pPk = a.ts().containment_pressure_mpa;
         ck('the fans REALIGNED on SI — the diverse heat-realign train is running (stage 2)',
           String(a.ts().ctmt_fan_active), a.ts().ctmt_fan_active === true, 'true');
@@ -4027,8 +4065,20 @@
         ck('with the source quenched below flashing, pressure DECAYS on the running sinks',
           fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 20 min (ratio ' + fmt(frac, 4) +
           ' vs e^(−Δt/τ_eff) ' + fmt(expRem, 4) + ', τ_eff ' + fmt(tauC, 0) + ' s)',
-          frac < Math.max(3 * expRem, 0.35) && frac > -0.001 && (pPk - AMB) > 0.01,
+          frac < Math.min(Math.max(3 * expRem, 0.35), 0.9) && frac > -0.001 && (pPk - AMB) > 0.01,
           'decayed toward the τ_eff remainder from a genuine peak, not held');
+        // THE 0.9 CAP, added 2026-08-11 after injection-testing this leg (#453). The comment
+        // above says it "still fails if a sink is deleted (ratio holds near 1)". MEASURED, it
+        // did not: with all three sink taus x1e6 the leg PASSED, because the expectation
+        // integrates the engine's OWN live sink and collapses with it — sinkInt → 0, so
+        // expRem → 1 and the bound became 3, which a ratio can never exceed. The thing that
+        // actually caught the deleted sink was the PEAK leg one row up (containment ran to
+        // 0.494 MPa, past the spray setpoint).
+        //
+        // Self-referencing expectations are the right tool for "is the sink APPLIED as
+        // computed" and they cannot answer "is there a sink at all" — the bound has to carry
+        // an absolute floor for that. A leg whose sentence is "pressure DECAYS" must fail when
+        // pressure does not decay, whatever its model of the expected remainder says.
 
         // ---- leg B: SGTR full severity — containment reads NOTHING. The tube rupture
         // discharges into the steam generator, so the building the operator checks for
@@ -5741,27 +5791,82 @@
      * inventory, 176 °F, SG secondary down to 14.5 psia), so severity stops
      * discriminating. That is #451, and the candidates are listed there.
      *
-     * Measured at t+600 with the shed: 1.39 MPa against the 6.21 MPa band.
+     * RE-KEYED 2026-08-11 FROM A PROXY TO THE MECHANISM *(OWNER RULING, 2026-08-11: selected
+     * "Re-key it to the physical claim: the primary tracks SG saturation" from three options
+     * — a selection, not verbatim words)*. The claim is unchanged and is NOT relaxed; what
+     * changed is that it is now asserted directly instead of through a magnitude.
+     *
+     * WHY THE OLD BAND HAD TO GO, and it is not the reason anyone expected. It read
+     * `pressure_mpa > 1.5 * accumulator_trip_mpa` = 6.21 MPa (901 psi) at t+600. The plateau
+     * physically forms where the primary equilibrates with its heat sink — SG saturation,
+     * measured 880 psi — so the threshold sat ~20 psi ABOVE the answer. Measured on THIS
+     * harness, the old form fails on BOTH plants: the pre-#447 heater-held plant, the one the
+     * probe was written to describe, reads 894 psi against its own 901 psi band. Full stack it
+     * read 900.6 and squeaked through by 0.6 psi. A probe whose verdict flips on which LAYER
+     * you measure at is not measuring the plant (CLAUDE.md, "know which layer a gate runs at").
+     *
+     * WHAT IT ASSERTS NOW — the steam generators hold the primary up, in two legs, and it
+     * needs BOTH:
+     *
+     *   leg A  the primary never falls a control band below its own heat sink;
+     *   leg B  the heat sink is still a heat sink — the secondary has not been drained
+     *          through the tubes below the accumulator arming pressure.
+     *
+     * ONE LEG WOULD BE HOLLOW, and this is the trap that nearly shipped. A bare
+     * "primary tracks secondary" check PASSES on today's broken plant: at t+600 it reads
+     * primary 202 psi against secondary 202 psi. They track perfectly — on the way to the
+     * floor, because the primary DRAGGED the secondary down with it through the 5 %
+     * `sg_reverse_frac` back-path. Leg B is what refuses that. Symmetrically, a bare
+     * "secondary stays up" check cannot see an inverted heat sink with a healthy secondary.
+     *
+     * HR10 — VALIDATED AGAINST THE OLD BEHAVIOUR, which is what makes this a re-key and not a
+     * re-band. Measured on both plants, same harness, sev 0.05 to t+600:
+     *
+     *              worst primary BELOW secondary   min secondary   verdict
+     *   as built            266 psi                   202 psi      both legs FAIL
+     *   pre-#447 (reloaded)   5 psi                   764 psi      both legs PASS
+     *
+     * The new form passes on the plant that held the plateau and fails on the one that does
+     * not — separation 53x on leg A. If it ever passes on both, it has been refitted.
+     *
+     * THE BANDS. Leg B is config-derived and physical: below `accumulator_trip_mpa` the heat
+     * sink can no longer hold the primary above the arming pressure, which IS the original
+     * claim. Leg A's 0.35 MPa (51 psi) is scale-fitted — an order of magnitude above the
+     * 5 psi saturation-curve lag the healthy plant carries — and its exact value is not
+     * load-bearing at a 53x separation. Both measured numbers are recorded above so the next
+     * reader checks rather than re-derives.
      */
     'CA-20b': function () {
-      return test('CA-20b a small break holds its plateau above the accumulator band — it must not dump the tanks (#451)', function (ck) {
+      return test('CA-20b a small break holds its plateau — the STEAM GENERATORS hold the primary up (#451)', function (ck) {
         var CFG = RD.PWR_CONFIG;
         var b = H('hot_full_power');
         b.run(30);
         b.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.05 });
-        b.run(600);
-        // Config-derived band (#408): the old > 8.0 MPa was a magnitude fixture from the
-        // compressed clock (measured 7.10 at t+600 on the real one, claim intact).
-        ck('a 5 % break still holds its plateau above the accumulator band at t+600',
-          fmt(b.ts().pressure_mpa, 2) + ' MPa vs trip ' + CFG.emergency.accumulator_trip_mpa,
-          b.ts().pressure_mpa > 1.5 * CFG.emergency.accumulator_trip_mpa, '> 1.5x accumulator_trip_mpa');
-        // The guard that says WHY it failed, so a future reader does not re-derive it:
-        // if the tanks stay full the plateau held; if they dumped, the break went through
-        // the arming band.
+        // SPANS, not endpoints. The inversion is a transient the endpoint cannot see — at
+        // t+600 the broken plant's two pressures are equal, having fallen together.
+        var worstBelow = -1e9, minSec = 1e9;
+        b.run(600, function (hh) {
+          var s = hh.eng.s;
+          var below = s.steam_pressure_mpa - s.pressure_mpa;   // + = primary BELOW its heat sink
+          if (below > worstBelow) worstBelow = below;
+          if (s.steam_pressure_mpa < minSec) minSec = s.steam_pressure_mpa;
+        });
+        var INVERSION_BAND = 0.35;   // MPa (51 psi) — see THE BANDS above
+        ck('leg A — the primary never falls a control band below its own heat sink',
+          fmt(worstBelow * 145.038, 0) + ' psi worst (' + fmt(worstBelow, 3) + ' MPa); healthy plant 5 psi',
+          worstBelow < INVERSION_BAND, '< ' + (INVERSION_BAND * 145.038).toFixed(0) + ' psi below SG');
+        ck('leg B — the heat sink is still a heat sink: the secondary was not drained through the tubes',
+          fmt(minSec * 145.038, 0) + ' psi min (' + fmt(minSec, 2) + ' MPa)',
+          minSec > CFG.emergency.accumulator_trip_mpa,
+          '> accumulator_trip_mpa (' + (CFG.emergency.accumulator_trip_mpa * 145.038).toFixed(0) + ' psi)');
+        // Corroboration, not assertion: legs A and B together are the condition under which
+        // the tanks CANNOT arm, so the accumulator level is the independent read on both.
         ck.info('accumulator level at t+600 (full = the fence held)',
           fmt(b.ts().accumulator_volume_pct, 1) + ' %');
         ck.info('inventory / Tavg at t+600 (the #451 collapse signature: solid and cold)',
           fmt(b.ts().core_inventory_pct, 1) + ' % / ' + fmt(b.ts().tavg_c * 9 / 5 + 32, 1) + ' °F');
+        ck.info('primary / secondary at t+600 (equal is NOT healthy — they fell together)',
+          fmt(b.ts().pressure_mpa * 145.038, 0) + ' / ' + fmt(b.eng.s.steam_pressure_mpa * 145.038, 0) + ' psi');
       });
     },
 
@@ -5822,8 +5927,16 @@
           var h = H('hot_full_power');
           h.run(60);
           h.cmd('inject_failure', { failure_id: 'large_loca', severity: sev });
-          h.run(2940);                                  // reach the settled tail
+          // 2940 -> 5000 (2026-08-11, #453). The terminal state now arrives LATER, because
+          // RHR no longer aligns itself into a saturated leaking RCS at t+10 min and drag
+          // the plant to cold-solid on shutdown cooling. Measured at sev 0.05 in successive
+          // 2000 s windows: t+3000..5000 still in transit (93.2 psi band), then
+          // t+5000..7000 and every window out to t+15000 read EXACTLY 0.00 psi / 0.00 pts /
+          // 0 reversals / 0 hot samples. The claim did not change; the window was calibrated
+          // on a plant that got there sooner.
+          h.run(5000);                                  // reach the settled tail
           var pMin = 1e9, pMax = -1e9, lMin = 1e9, lMax = -1e9, hot = 0, n = 0;
+          var pSeq = [], rev = 0, dir = 0;
           h.run(2000, function (hh) {
             var ts = hh.ts();
             n++;
@@ -5832,7 +5945,20 @@
             if (ts.pzr_level_pct < lMin) lMin = ts.pzr_level_pct;
             if (ts.pzr_level_pct > lMax) lMax = ts.pzr_level_pct;
             if ((hh.ctl().heater_power_pct || 0) > 0.01) hot++;
+            if (n % 100 === 0) pSeq.push(ts.pressure_mpa);
           });
+          // A BAND CANNOT TELL A SETTLE FROM A CYCLE, and this probe exists to tell them
+          // apart. Both read as a wide band; only one reverses direction repeatedly. Added
+          // 2026-08-11 while adjudicating the #453 window shift — the two band legs had gone
+          // red on a plant that was settling MONOTONICALLY through the window (2 reversals in
+          // 40 samples), and nothing in the probe could say so. #447's actual limit cycle ran
+          // 134-936 transitions over hours, so this leg catches it far more directly than a
+          // band does, and keeps catching it if the window ever drifts again.
+          for (var q = 1; q < pSeq.length; q++) {
+            var d = Math.sign(pSeq[q] - pSeq[q - 1]);
+            if (d !== 0 && dir !== 0 && d !== dir) rev++;
+            if (d !== 0) dir = d;
+          }
           var ts = h.ts();
           // OBSERVABILITY GUARDS FIRST — without all three this probe proves nothing.
           // A plant that never actuated SI, or whose break stopped flowing, is quiet for
@@ -5850,6 +5976,8 @@
             fmt((pMax - pMin) * 145.038, 2) + ' psi band', (pMax - pMin) * 145.038 < 25, '< 25 psi');
           ck(tag + 'pressurizer level is STABLE across the tail (pre-fix: 36.3 pts at 0.05, 15.5 pts at 0.40)',
             fmt(lMax - lMin, 2) + ' pts band', (lMax - lMin) < 3, '< 3 pts');
+          ck(tag + 'and it is SETTLED, not cycling — pressure does not reverse direction (#447 ran 134-936 cycles)',
+            rev + ' reversals in ' + pSeq.length + ' samples', rev <= 2, '<= 2 reversals');
           T.checkSanity(ck, h);
         });
 

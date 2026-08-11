@@ -231,20 +231,59 @@ walk('layers/control', /_control\.js$/).forEach(function (rel) {
   // protection it never looked at. That is the "a scan that reached nothing passes for
   // the wrong reason" shape this file exists to prevent, so the object form gets its own
   // check: the named instrument must exist in the plant's instrument specs.
-  src.forEach(function (line, i) {
-    var mo = /condition:\s*\{\s*instrument:\s*'([a-z_0-9]+)'\s*,\s*direction:/.exec(line);
-    if (mo) {
-      var specsOk = plantInstrumentSpecs(plant);
-      check('HR1', rel, i + 1, "condition: { instrument: '" + mo[1] + "', … } — numeric coincidence term",
-        specsOk && specsOk[mo[1]] ? 'reads a declared instrument (HR1-clean by construction)' : null);
-      if (!(specsOk && specsOk[mo[1]])) {
-        violations[violations.length - 1].text = "condition names '" + mo[1] + "', which is not a declared "
-          + plant.toUpperCase() + " instrument";
-      }
-      return;
+  // OBJECT term — { instrument: 'x', direction: … }. Named so the ARRAY pre-pass below can
+  // reuse it instead of carrying a second copy of the rule.
+  function checkObjectTerm(lineNo, name) {
+    var specsOk = plantInstrumentSpecs(plant);
+    check('HR1', rel, lineNo, "condition: { instrument: '" + name + "', … } — numeric coincidence term",
+      specsOk && specsOk[name] ? 'reads a declared instrument (HR1-clean by construction)' : null);
+    if (!(specsOk && specsOk[name])) {
+      violations[violations.length - 1].text = "condition names '" + name + "', which is not a declared "
+        + plant.toUpperCase() + " instrument";
     }
-    var m = /condition:\s*'([a-z_0-9]+)'/.exec(line);
-    if (!m) return;
+  }
+
+  /* ARRAY-FORM conditions — `condition: ['a', {…}, {…}]` — 2026-08-11, #453.
+   *
+   * The kernel has evaluated arrays as an AND since #287 (control_kernel.js
+   * `_evaluateCondition`), and THIS SCAN NEVER LEARNED THE FORM. Both regexes below anchor on
+   * `condition:` immediately followed by a quote or a brace, so `condition: [` matches neither
+   * and every term inside is invisible — including terms on continuation lines, which do not
+   * carry the word `condition` at all.
+   *
+   * HOW IT SURFACED, and it is the reason this gate counts sites rather than only failures:
+   * #453 added the first array-form condition in the codebase (RHR entry: scrammed AND
+   * Tavg < 350 °F AND subcooled). Three permissive keys went unscanned and the ONLY symptom
+   * was the site count dropping 273 → 272 — the old single `condition: 'rps_scrammed'` site
+   * disappearing. No failure, no warning. A guard that silently stops looking at protection is
+   * the exact shape this file's own header calls "a scan that reached nothing passing for the
+   * wrong reason", and it would have applied to every future array condition too.
+   *
+   * Terms are reported at the line where each appears, so a violation still points at the
+   * right row. Bracket-balanced accumulation, capped, so an unclosed literal cannot run away.
+   */
+  var consumed = {};
+  src.forEach(function (line, i) {
+    if (!/condition:\s*\[/.test(line)) return;
+    var depth = 0, j = i;
+    for (; j < src.length && j - i < 16; j++) {
+      var seg = j === i ? src[j].slice(src[j].indexOf('condition:')) : src[j];
+      // Each term is checked against the line it actually sits on.
+      var mo, reObj = /\{\s*instrument:\s*'([a-z_0-9]+)'\s*,\s*direction:/g;
+      while ((mo = reObj.exec(seg))) checkObjectTerm(j + 1, mo[1]);
+      // Bare string terms: after the opening `[` or a comma, or alone on a continuation line.
+      var ms, reStr = /(?:\[|,)\s*'(!?[a-z_0-9]+)'|^\s*'(!?[a-z_0-9]+)'/g;
+      while ((ms = reStr.exec(seg))) checkStringTerm(j + 1, (ms[1] || ms[2]).replace(/^!/, ''));
+      if (j > i) consumed[j] = true;
+      depth += (seg.match(/\[/g) || []).length - (seg.match(/\]/g) || []).length;
+      if (depth <= 0) break;
+    }
+    consumed[i] = true;
+  });
+
+  // STRING term — `condition: 'key'`. Extracted so the array pre-pass shares one rule.
+  function checkStringTerm(lineNo, name) {
+    var i = lineNo - 1, m = [null, name];
     var key = plant + ':' + m[1];
     condUsed[key] = true;
     var decl = HR1_CONDITION[key];
@@ -264,6 +303,17 @@ walk('layers/control', /_control\.js$/).forEach(function (rel) {
       violations[violations.length - 1].text = "condition: '" + m[1] + "' is declared instrument-derived, but "
         + (def ? (ex.rel + ' computes it from true state: ' + def[2].trim().slice(0, 60)) : 'no definition found in _instrExtras()');
     }
+  }
+
+  // SINGLE-TERM conditions — the original scan. Array lines are already handled above and
+  // are skipped here so their terms are not counted twice.
+  src.forEach(function (line, i) {
+    if (consumed[i]) return;
+    var mo = /condition:\s*\{\s*instrument:\s*'([a-z_0-9]+)'\s*,\s*direction:/.exec(line);
+    if (mo) { checkObjectTerm(i + 1, mo[1]); return; }
+    var m = /condition:\s*'([a-z_0-9]+)'/.exec(line);
+    if (!m) return;
+    checkStringTerm(i + 1, m[1]);
   });
 });
 // A declaration that matches nothing has stopped describing the code (same rule as

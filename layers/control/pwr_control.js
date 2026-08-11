@@ -374,8 +374,47 @@
     // boundary), near-certain on the real one (the slow walk lingers there —
     // measured: a textbook 43 °C/h cooldown ended at 1.97 MPa with RHR shut).
     // 0.06 MPa under the permissive means an accepted fire by construction.
+    //
+    // …AND PRESSURE ALONE IS NOT THE ENTRY CONDITION (#453, 2026-08-11). Until this change the
+    // only gates were "indicated pressure below 2.70 MPa" and "the reactor is scrammed", so
+    // shutdown cooling ALIGNED ITSELF DURING AN UNISOLATED LOCA. Measured full stack on
+    // `large_loca` sev 0.05: `eccs_mode` goes HPI → RHR at t+10 min with no operator action, at
+    // Tavg 381 °F (194 °C), AT SATURATION, with the break still discharging — and from there RHR
+    // is the largest sink in the plant (−0.288 → −0.064 °C/s, more than every other term
+    // combined, including the accumulator dump it follows). It is a named cause in #451.
+    //
+    // THE SOURCED ENTRY CONDITION IS A TEMPERATURE, and it was in our own corpus uncited —
+    // Ginna TS Bases Rev 101 (ML20339A221): "can also cool the plant from residual heat removal
+    // (RHR) entry conditions (Tavg < 350ºF) to MODE 5 (Tavg < 200ºF) during normal operations."
+    // Both halves of that sentence bind. The TEMPERATURE is the first leg. "During NORMAL
+    // OPERATIONS" is the second, and it is what excludes a LOCA — a real EOP does not put
+    // shutdown cooling in service on a break, because the RHR pumps would take suction from a
+    // voiding hot leg. Nothing in a pressure reading can express that; subcooling can.
+    //
+    // SUBCOOLING IS THIS PLANT'S OWN NUMBER, DECLARED. `find_source.js` finds no RHR subcooling
+    // requirement in any lane's corpus, so 11.1 °C (20 °F) is not sourced and is not presented
+    // as such. It is chosen to sit far from BOTH regimes rather than near either: measured, the
+    // LOCA path is at or below zero subcooling from t+150 s onward, while a controlled cooldown
+    // carries 90–150 °C. Anything in that gap behaves identically, which is the point — the
+    // exact value is not load-bearing.
+    //
+    // IT CAN ONLY EVER REFUSE, which is the right failure direction for a new gate on an
+    // existing automation: an actuation that does not fire leaves the operator exactly where
+    // they were, and `set_rhr` is on the board. HR1: it reads the INDICATED subcooling margin,
+    // so a failed transmitter fools this interlock exactly as it fools the operator — the same
+    // convention as the 17 % heater cutoff.
+    //
+    // THE ONE-SHOT TRAP THIS DOES *NOT* RE-OPEN. The 2.70-vs-2.76 note above records that a
+    // refused fire consumes the latch and RHR then never aligns. A `condition` cannot do that:
+    // control_kernel.js:673 evaluates `gateOk` BEFORE `actuationFired[i]` is set, so an
+    // unsatisfied condition suppresses the fire without spending it, and RHR aligns on the
+    // first evaluation where all three legs hold. The refusal in that note is the ENGINE
+    // permissive rejecting a command that was already sent — a different mechanism.
     { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.70,
-      action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
+      action: 'set_rhr', active: true, arm: 'rhr',
+      condition: ['rps_scrammed',
+                  { instrument: 'tavg', direction: 'low', setpoint: 176.667 },        // 350 °F — SOURCED
+                  { instrument: 'subcooling_margin', direction: 'high', setpoint: 11.1 }] },  // 20 °F — declared
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
     { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
