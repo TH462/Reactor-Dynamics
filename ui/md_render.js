@@ -75,7 +75,22 @@
       if (m) {
         flushPara(); closeLists();
         var lvl = m[1].length;
-        out.push('<h' + lvl + '>' + inline(m[2].replace(/\s*#+\s*$/, '')) + '</h' + lvl + '>');
+        var htxt = m[2].replace(/\s*#+\s*$/, '');
+        /* REAL ANCHOR IDS (#443, spec §11). The manual's sections were addressed by
+         * matching heading TEXT — `openManualAt` scanned every h1..h5 for one starting with
+         * the section number, whole-segment matched so §9.1 could not land on §9.10. That
+         * works and is fragile in the specific way prose is: it breaks the moment a heading
+         * is reworded, silently, by scrolling nowhere.
+         *
+         * The id is derived from the section NUMBER where a heading carries one ("7.3
+         * Letdown Orifices" -> `s7-3`), because the number is the stable part — it is what
+         * the manual's own cross-references, the Scanner's deep links and the checklist
+         * "why" links all cite. Headings with no number get a slug, which is better than
+         * nothing for linking but is not what step links target. */
+        var num = /^(\d+(?:\.\d+)*)\s/.exec(htxt);
+        var hid = num ? ('s' + num[1].replace(/\./g, '-'))
+                      : htxt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
+        out.push('<h' + lvl + (hid ? ' id="' + hid + '"' : '') + '>' + inline(htxt) + '</h' + lvl + '>');
         i++; continue;
       }
 

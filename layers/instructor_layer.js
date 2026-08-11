@@ -1014,6 +1014,85 @@
     }
   };
 
+  /* ---------------------------------------------- procedure relevance ordering (#443)
+   * "SORT, DO NOT FILTER." A Mode 5 heatup is not wanted while at power in Mode 1 — but
+   * hiding it breaks the mental model (a player who saw a checklist yesterday and cannot
+   * find it today assumes a bug), and someone at power may legitimately want to read ahead
+   * about an evolution they will do later. So inapplicable procedures are DEMOTED and
+   * LABELLED WITH THEIR GATING CONDITION, which turns the demotion into instruction: a
+   * beginner learns which mode gates which evolution just by scanning the list.
+   *
+   * IT LIVES HERE, NOT IN THE UI, because the preconditions it reads are already graded
+   * here — instrument-first via PARAM_INSTRUMENT, per HR1 — and a second evaluator in
+   * ui/app.js would be the two-samplers-of-one-truth shape that #432 was. It is a method
+   * on the layer for the same reason: `_grade` is.
+   *
+   * "WARN, NEVER BLOCK" (OWNER RULING, 2026-08-06) is untouched. This orders a list; it
+   * refuses nothing. Every procedure remains startable at any time, exactly as before.
+   *
+   * The priority order is the spec's, and the reason it is that order: an in-progress
+   * checklist is what you are DOING, an abnormal plant is what the plant is ASKING FOR
+   * (after a scram, post-trip actions outrank normal operations the way emergency
+   * procedures supersede normal ones in a real control room), and only then does what is
+   * merely possible come into it.
+   */
+  var COND_WORDS = { tavg_c: 'RCS temperature', pressure_mpa: 'RCS pressure',
+                     power_pct: 'reactor power', boron_ppm: 'boron', mwe_output: 'generator output' };
+  InstructorLayer.prototype.rankProcedures = function (snapshot, procs, activeId) {
+    var self = this;
+    var ts = (snapshot && snapshot.true_state) || {};
+    var scrammed = !!(snapshot && snapshot.rps_state && snapshot.rps_state.scrammed);
+    // "Abnormal" is the plant asking for something, not a severity score: a trip, a
+    // blackout, or a live core-damage condition. Alarms alone are NOT abnormal enough —
+    // a single caution on a healthy board would promote every emergency procedure.
+    var abnormal = scrammed || !!ts.station_blackout || !!ts.core_damage || !!ts.hpi_active;
+    /* WHICH abnormal procedure, not just "an abnormal one". Measured before this existed:
+     * a plain reactor trip ranked ATWS, a seal leak and a rod withdrawal equal-first with
+     * the post-trip actions — every emergency procedure at once, which is a list that has
+     * stopped discriminating. The spec is specific: "after a scram, post-trip actions go
+     * to the top".
+     *
+     * The map is deliberately SMALL and covers only conditions the plant reports
+     * unambiguously in `true_state`. Guessing which procedure answers a condition from its
+     * title would be a heuristic pretending to be knowledge; an authored `responds_to` on
+     * each procedure is the real fix and is content work. What is here is the subset that
+     * is certain, and anything unlisted keeps the ordinary abnormal rank. */
+    var CALLED_FOR = {};
+    if (scrammed) CALLED_FOR.pwr_post_trip = true;
+    if (ts.station_blackout) CALLED_FOR.pwr_sbo = true;
+    if (ts.hpi_active) CALLED_FOR.pwr_loca = true;
+    return (procs || []).map(function (p) {
+      var unmet = [];
+      (p.precond || []).forEach(function (c) {
+        var g = self._grade(snapshot, c);
+        if (!g.met) unmet.push(c);
+      });
+      var emergency = p.category === 'emergency' || p.category === 'accident';
+      var score = 0;
+      if (activeId && p.id === activeId) score = 1000;                 // in progress pins to top
+      else if (CALLED_FOR[p.id]) score = 700;                          // this condition, by name
+      else if (abnormal && emergency) score = 500;                     // the plant is abnormal
+      else if (!abnormal && emergency) score = 100;                    // available, not called for
+      else if (!unmet.length) score = 300;                             // ready to run now
+      else score = 50;                                                 // read-ahead
+      return {
+        id: p.id, category: p.category, title: p.title,
+        score: score, ready: !unmet.length, emergency: emergency,
+        // The gating condition, in the words a player can act on. This is the whole value
+        // of demoting rather than hiding — it says WHY, and what would change it.
+        gate: unmet.length ? unmet.map(function (c) {
+          var w = COND_WORDS[c.p] || c.p;
+          var op = c.op === '<' ? 'below' : c.op === '>' ? 'above' : c.op === '~' ? 'near' :
+                   c.op === '<=' ? 'at or below' : c.op === '>=' ? 'at or above' : c.op;
+          return 'Requires ' + w + ' ' + op + ' ' + c.v;
+        }).join(' · ') : null
+      };
+    }).sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.title || '').localeCompare(b.title || '');   // stable, and alphabetical within a tier
+    });
+  };
+
   RD.InstructorLayer = InstructorLayer;
 
 })(globalThis.RD || (globalThis.RD = {}));

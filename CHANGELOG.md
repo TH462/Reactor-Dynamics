@@ -53,6 +53,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with no `true_state` field behind it.
 
 ### Added
+- **Checklists are ordered by relevance to the plant (#443, spec §9).** At power the normal
+  operations rank first; **after a scram, post-trip response goes to the top**, the way emergency
+  procedures supersede normal ones in a real control room. **Sort, do not filter:** inapplicable
+  procedures collapse into a labelled group and each states *why* — "Requires RCS temperature
+  near 286" — which turns the demotion into instruction rather than hiding a checklist a player
+  saw yesterday. An open list never reorders under the cursor. The scoring lives in the
+  instructor layer, where the preconditions are already graded instrument-first; "warn, never
+  block" is untouched, since this orders a list and refuses nothing. **In free play the
+  Instructor now hosts the launcher** instead of static quick-tour text. The manual gains **real
+  section anchors** (`## 7.3 …` → `id="s7-3"`, so §9.1 and §9.10 are distinct) and a search over
+  the packed markdown — the anchors the checklist "why" links will target.
 - **One shared highlight bus (#444, spec §7, `ui/highlight_bus.js`).** Point at a channel in the
   merged list, a lane on the chart, or an event marker, and **its component lights on the
   board** — as a soft cyan halo, an outer glow that never recolors the element, so a haloed

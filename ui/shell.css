@@ -1988,6 +1988,33 @@ select.num-input { width: auto; }
 .ckl-picker[hidden] { display: none; }
 .ckl-busy { color: var(--muted); font-style: italic; }
 
+/* ---- relevance ordering (#443, spec §9): SORT, DO NOT FILTER -----------------
+   A demoted procedure keeps its place in the list and states its gating condition.
+   That is the whole value of demoting rather than hiding: the demotion becomes
+   instruction, and a player who saw a checklist yesterday can still find it. */
+.ckl-gate {
+  display: block; font-size: 10px; color: var(--muted); font-style: italic;
+  margin-top: 1px;
+}
+.ckl-gated { opacity: .72; }
+.ckl-later { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 4px; }
+.ckl-later > summary {
+  font-size: 11px; color: var(--muted); cursor: pointer; padding: 2px 0;
+  list-style: none;
+}
+.ckl-later > summary::before { content: '▸ '; }
+.ckl-later[open] > summary::before { content: '▾ '; }
+
+/* The free-play Instructor's launcher — it had static help copy in the shell's most
+   valuable slot; this gives it a job (#443, spec §9). */
+.instr-launch { margin-bottom: 10px; }
+.instr-launch-t {
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-2); margin-bottom: 4px;
+}
+.instr-launch .btn { display: block; width: 100%; text-align: left; margin-bottom: 3px; font-size: 12px; }
+.instr-launch-more { margin-top: 4px; }
+
 .start-overlay { z-index: 215; }
 .start-modal { height: auto; max-height: min(84vh, 620px); width: min(720px, 96vw); }
 .start-head { padding: 18px 18px 6px; }

@@ -2726,12 +2726,30 @@
     '<button type="button" class="btn linkish" data-open-tour="1">Quick tour</button> · ' +
     'advanced failures under <b>Inject Failure</b>.</p>' +
     '</div>';
+  /* IN FREE PLAY THE INSTRUCTOR HOSTS THE CHECKLIST LAUNCHER (#443, spec §9).
+   *
+   * It is the default open panel and it had nothing to say when no module is running, so it
+   * showed static quick-tour text — help copy occupying the most valuable real estate in the
+   * shell. Giving it a real job solves checklist discoverability without adding a surface,
+   * and it matches the stated priority: the manual serves users who want depth, the average
+   * user wants a checklist to follow. */
+  function idleLauncherHtml() {
+    if (!flagOn('checklists')) return '';
+    var ranked = rankedProcedures().filter(function (r) { return r.score >= 100; }).slice(0, 4);
+    if (!ranked.length) return '';
+    return '<div class="instr-launch"><div class="instr-launch-t">Pick a procedure to follow</div>' +
+      ranked.map(function (r) {
+        return '<button class="btn" data-ckl-start="' + mesc(r.id) + '">' +
+               '<span class="ckl-cat">' + mesc(r.category || '') + '</span>' + mesc(r.title) + '</button>';
+      }).join('') +
+      '<div class="instr-launch-more"><button type="button" class="btn linkish" data-open-ckl="1">All checklists…</button></div></div>';
+  }
   function showIdleInstructor() {
     setInstrRole('Instructor');
     var cur = $('instrCurrent');
     if (!cur) return;
     cur.classList.add('instr-standby');
-    cur.innerHTML = IDLE_INSTR_HTML;
+    cur.innerHTML = (idleLauncherHtml() + IDLE_INSTR_HTML);
   }
   function renderInstructor(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
@@ -3131,19 +3149,68 @@
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.
+  /* THE LAUNCHER, ORDERED BY RELEVANCE (#443, spec §9).
+   *
+   * SORT, DO NOT FILTER. Inapplicable procedures are demoted into a collapsed group and
+   * LABELLED WITH THEIR GATING CONDITION — "Requires RCS temperature below 95" — which
+   * turns the demotion into instruction: a beginner learns which mode gates which
+   * evolution just by scanning. Hiding them would break the mental model, because a player
+   * who saw a checklist yesterday and cannot find it today assumes a bug, and someone at
+   * power may legitimately want to read ahead about an evolution they will do later.
+   *
+   * The scoring is `RD.InstructorLayer.prototype.rankProcedures`, NOT a copy here: the
+   * preconditions it reads are already graded in that layer, instrument-first per HR1, and
+   * a second evaluator in this file would be the two-samplers-of-one-truth shape #432 was.
+   *
+   * RECOMPUTED ON EVENTS, NOT CONTINUOUSLY (see cklRelevanceKey). During a heatup the plant
+   * crosses mode boundaries; a live-recomputing sort would reshuffle the list under the
+   * cursor at exactly the busiest moments.
+   */
+  function rankedProcedures() {
+    var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) {
+      return !x.narrative && flagOn('procedure:' + x.id);
+    });
+    if (!procs.length || !latest || !RD.InstructorLayer) return procs.map(function (p) {
+      return { id: p.id, category: p.category, title: p.title, score: 0, ready: true, gate: null };
+    });
+    var active = latest.instructor && latest.instructor.checklist
+      ? latest.instructor.checklist.procedure_id : null;
+    return RD.InstructorLayer.prototype.rankProcedures.call(
+      { _grade: RD.InstructorLayer.prototype._grade, _predMet: RD.InstructorLayer.prototype._predMet },
+      latest, procs, active);
+  }
   function toggleCklMenu(force) {
     var menu = $('cklMenu'); if (!menu) return;
     var show = force != null ? !!force : menu.hidden;
-    if (show) {
-      var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) {
-        return !x.narrative && flagOn('procedure:' + x.id);
-      });
-      menu.innerHTML = procs.length ? procs.map(function (p) {
-        return '<button data-ckl-start="' + mesc(p.id) + '"><span class="ckl-cat">' + mesc(p.category) + '</span>' + mesc(p.title) + '</button>';
-      }).join('') : '<div class="m-note">No procedures for this plant.</div>';
-    }
+    if (show) menu.innerHTML = cklMenuHtml();
     menu.hidden = !show;
   }
+  function cklMenuHtml() {
+    var ranked = rankedProcedures();
+    if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
+    var ready = ranked.filter(function (r) { return r.score >= 100; });
+    var later = ranked.filter(function (r) { return r.score < 100; });
+    function row(r) {
+      return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') + '>' +
+             '<span class="ckl-cat">' + mesc(r.category || '') + '</span>' + mesc(r.title) +
+             (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
+    }
+    var h = ready.map(row).join('');
+    if (later.length) {
+      // COLLAPSED, not hidden. The <details> keeps them one gesture away and states why
+      // they are down here, which is the instruction the demotion is carrying.
+      h += '<details class="ckl-later"><summary>' + later.length +
+           ' not applicable to the plant right now</summary>' + later.map(row).join('') + '</details>';
+    }
+    return h;
+  }
+  /* NEVER REORDER AN OPEN LIST (spec §9), and the way to guarantee that is to have no
+   * refresh path at all: the menu is rebuilt when it OPENS and not again. A first version
+   * of this had a `refreshCklRelevance` that recomputed on every event — with the guard
+   * inverted, so it fired only while the menu was open, which is exactly the case the spec
+   * forbids. The list reshuffling under the cursor during a heatup is the failure; a list
+   * that is stale-but-stable until the next time you open it is the specified behaviour,
+   * and it needs no state to achieve. */
   function startChecklist(id) {
     cmd({ action: 'start_checklist', procedure_id: id });
     setFocus('instructor', true);
@@ -5535,12 +5602,18 @@
       }
       var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc'));
     });
-    // Auto-checklists: picker in Operate (free play) + bubble-list buttons on the card.
+    // Auto-checklists. `data-ckl-start` is now delegated at the BODY, because the launcher
+    // appears in two places since #443 — the Checklists tab and the free-play Instructor
+    // slot — and binding per host is how the second one would silently do nothing.
     var cklPicker = $('instrCklRow');
     if (cklPicker) cklPicker.addEventListener('click', function (e) {
-      var st = e.target.closest('[data-ckl-start]');
-      if (st) { toggleCklMenu(false); startChecklist(st.getAttribute('data-ckl-start')); return; }
       if (e.target.closest('#cklOpenBtn')) toggleCklMenu();
+    });
+    document.body.addEventListener('click', function (e) {
+      var st = e.target.closest('[data-ckl-start]');
+      if (!st) return;
+      toggleCklMenu(false);
+      startChecklist(st.getAttribute('data-ckl-start'));
     });
     $('instructorCard').addEventListener('click', function (e) {
       var mk = e.target.closest('[data-ckl-check]');
@@ -5723,6 +5796,14 @@
     })();
     // Instructor idle links (Help / Tour) — delegated so re-rendered HTML works.
     $('instructorCard').addEventListener('click', function (e) {
+      if (e.target.closest('[data-open-ckl]')) {
+        e.preventDefault();
+        var t = document.querySelector('#tabbar [data-tab="checklists"]');
+        if (t) t.click();
+        toggleCklMenu(true);
+        markSeen('checklists');
+        return;
+      }
       if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
       if (e.target.closest('[data-open-tour]')) { e.preventDefault(); openTour(0); return; }
     });
@@ -6099,13 +6180,48 @@
     openManual();
     if (!sec) return;
     var content = $('manualContent'); if (!content) return;
+    // ANCHOR FIRST (#443): md_render now emits `id="s7-3"` from the section number, which
+    // is the stable part — the number is what the manual's own cross-references, the
+    // Scanner's deep links and the checklist "why" links all cite.
+    var byId = content.querySelector('#s' + String(sec).replace(/\./g, '-'));
+    if (byId) { byId.scrollIntoView({ block: 'start' }); return; }
+    // The heading-TEXT scan stays as the fallback, for content that predates the ids or
+    // carries an unnumbered heading. Whole-segment matched: "9.1" must not land on "9.10".
     var hs = content.querySelectorAll('h1,h2,h3,h4,h5');
     for (var i = 0; i < hs.length; i++) {
       var txt = hs[i].textContent.trim();
       if (txt.indexOf(sec) !== 0) continue;
-      // whole-segment match: "9.1" must not land on "9.10 …"
       if (/^\s*$/.test(txt.charAt(sec.length))) { hs[i].scrollIntoView({ block: 'start' }); return; }
     }
+  }
+  /* Manual SEARCH (#443, spec §11). The manual is large and a wall of it intimidates
+   * exactly the users checklists exist to serve, so it is the depth layer: reached in small
+   * pieces, by anchor, from a step's "why". Search is the other way in for someone who does
+   * know what they are looking for.
+   *
+   * Over the PACKED markdown rather than the rendered DOM: the DOM only holds the document
+   * currently open, so a DOM search would silently only ever find what you were already
+   * reading — which looks like a working search returning nothing. */
+  function manualSearch(q) {
+    q = String(q || '').trim().toLowerCase();
+    if (q.length < 3) return [];
+    var docs = mdManual() || {};
+    var hits = [];
+    Object.keys(docs).forEach(function (docId) {
+      var lines = String(docs[docId] || '').split('\n');
+      var sec = null;
+      for (var i = 0; i < lines.length && hits.length < 40; i++) {
+        var hm = /^#{1,6}\s+(.*)$/.exec(lines[i]);
+        if (hm) { sec = hm[1].replace(/\s*#+\s*$/, ''); continue; }
+        var low = lines[i].toLowerCase();
+        if (low.indexOf(q) === -1) continue;
+        var at = low.indexOf(q);
+        hits.push({ doc: docId, sec: sec,
+                    num: (sec && /^(\d+(?:\.\d+)*)\s/.exec(sec) || [])[1] || null,
+                    snippet: lines[i].slice(Math.max(0, at - 40), at + 80).trim() });
+      }
+    });
+    return hits;
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
 
