@@ -193,6 +193,36 @@ generous height" in its own text while being `height: auto; max-height: 190px`. 
 `data-scanner-hint` elements the tallest description renders **127 px** (p95 109, median 92), so
 the pin is 140 and the old cap was 50 % taller than anything that exists.
 
+### The usage-data opt-out, removed in two steps — and what had to go with it
+
+Ruled in two parts on 2026-08-11. First: out of the options menu. I moved the control onto
+`privacy.html` rather than deleting it, because that page states **in bold** that collection can
+be turned off, and collection has been on by default since the launch consent prompt was removed
+(2026-08-09) — so the opt-out was not a convenience, it *was* the consent mechanism. Then the
+ruling completed: **no opt-out anywhere, and say nothing on the privacy page about it being
+unavailable.**
+
+**The promise had to go with the mechanism.** Removing the control while leaving "you can turn
+this off" on a live public page is not a wording choice, it is a false statement to a visitor.
+So that sentence was deleted and **nothing was asserted in its place** — the instruction was to
+assert nothing, and silence is not a claim. The explanation for the removal is deliberately not
+in the page's source either: an HTML comment is visible in view-source, which is still the
+privacy page. It lives here and in the commit instead.
+
+`RD.Telemetry.setConsent` is **left in place and still honoured**, with no UI calling it. It
+enforces the invariant that an opt-out DROPS the queued events rather than holding them; deleting
+the API would take that guarantee out with the button. `RD.diagnose()` now reports a bare
+`collecting` — a diagnostic naming a control that does not exist sends the next reader hunting
+for a menu item.
+
+**The gate check was re-pointed twice in one day, and the direction matters.** It began as "the
+in-sim Settings row points at the schema", became "privacy.html carries a working opt-out", and
+is now **"privacy.html makes no opt-out promise it cannot keep"**. The subject moved from the
+mechanism to the CLAIM, because the mechanism is gone by decision and the claim is what a future
+edit could reintroduce for free by restoring one sentence of old copy. It deliberately passes on
+silence and fails only on an unbacked promise — proven by injection: restoring "You can turn this
+off at any time" with no control behind it reddens it.
+
 **One consequence worth recording:** closing a modal now resumes the plant, which is correct for a
 player and wrong for `verify_manual_follow` — that gate checks control-surface reachability and
 never plays the sim. On a running plant its steps graded themselves and advanced, and every reading

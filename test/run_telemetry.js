@@ -397,25 +397,26 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
   ck('privacy.html discloses nothing the schema does not collect', stale.length === 0,
     'disclosed but not collected: ' + stale.join(', '));
 
-  // THE CONTROL MUST EXIST SOMEWHERE, and this is the only check that says so.
-  //
-  // It used to pin the in-sim Settings row (`telemetryRow` in ui/shell.html). That row was
-  // removed 2026-08-11 by owner instruction and the control moved ONTO privacy.html — the
-  // page above, which states in bold that collection can be turned off. So the assertion
-  // moved with it rather than being deleted: deleting it would have left nothing at all
-  // checking that the promise this page makes is backed by a mechanism, which is exactly
-  // the failure the move exists to prevent (HR10 — a check written beside its own fix, and
-  // re-pointed rather than dropped, is still checking the claim).
-  //
-  // Pin the MECHANISM, never the prose: the control's id, the consent call it must make,
-  // and the client it needs loaded. Wording is free to change; those three are not.
-  ck('privacy.html carries a working opt-out control',
-    /id="telOptOut"/.test(html) && /setConsent\(/.test(html)
-      && /site\/telemetry\.js/.test(html),
-    'the page promises collection can be turned off and no longer ships the control');
+  /* THE PAGE MUST NOT PROMISE A CONTROL IT DOES NOT HAVE.
+   *
+   * This check has been re-pointed twice in one day and the direction of travel matters.
+   * It began as "the in-sim Settings row points at the schema"; when the control moved to
+   * privacy.html it became "privacy.html carries a working opt-out"; the owner then ruled
+   * that there is to be no opt-out anywhere. So the thing worth guarding is no longer the
+   * mechanism — it is the CLAIM. A page that says "you can turn this off" with nothing
+   * behind it is a false statement to the public, and that is the failure mode a future
+   * edit could reintroduce for free by restoring one sentence of old copy.
+   *
+   * It deliberately does NOT require the page to say collection cannot be switched off:
+   * the ruling was to remove the control and assert nothing in its place. Silence passes;
+   * only an unbacked promise fails. */
+  var promises = /(turn|switch|shut)\s+(this|it|usage data)\s+off|opt[- ]out|opt out of/i.test(html);
+  var hasControl = /id="telOptOut"/.test(html) && /setConsent\(/.test(html);
+  ck('privacy.html makes no opt-out promise it cannot keep', !promises || hasControl,
+    promises ? 'the page offers an opt-out in prose with no control behind it' : '');
 
-  // And the retired location must stay retired: a second control would be two sources of
-  // truth for one setting, which is how they drift apart.
+  // And the retired in-sim location must stay retired: a second control would be two
+  // sources of truth for one setting, which is how they drift apart.
   var shell;
   try { shell = fs.readFileSync(path.join(ROOT, 'ui', 'shell.html'), 'utf8'); }
   catch (e) { shell = ''; }

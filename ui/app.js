@@ -5986,24 +5986,23 @@
         !out.endpoint_set ? 'no endpoint stamped — RD_TELEMETRY_ENDPOINT is unset in the build' :
         out.consent === 'denied' ? 'opted out — nothing is collected, as asked' :
         !out.storage_writable ? 'collecting, but localStorage is NOT writable — an opt-out could not persist' :
-        'collecting (default; opt out on privacy.html — moved off the Settings menu 2026-08-11)';
+        'collecting';
       return out;
     };
 
-    // ---- the Settings toggle: REMOVED from the options menu 2026-08-11 -------------
-    // Owner instruction. The wiring went with the row (`#telemetryRow` / `#telSeg` no
-    // longer exist in shell.html), so what stood here would have been a no-op reaching
-    // for two missing ids on every boot.
+    // ---- the consent toggle: REMOVED 2026-08-11 -----------------------------------
+    // Owner instruction, in two steps: first out of the options menu, then removed
+    // altogether. There is no user-facing opt-out control anywhere in the app or on the
+    // site. The wiring went with the row (`#telemetryRow` / `#telSeg` no longer exist),
+    // so what stood here would have been a no-op reaching for two missing ids on boot.
     //
-    // THE OPT-OUT STILL EXISTS — it is on privacy.html now. That is not me softening an
-    // instruction: privacy.html states, in bold, that you can turn collection off, and
-    // removing the only control while leaving that sentence on a live public site makes
-    // the site say something untrue. The disclosure and the control now sit on the same
-    // page, which is arguably where they always belonged.
+    // `RD.Telemetry.setConsent` IS DELIBERATELY LEFT IN PLACE and still honoured. It is
+    // what enforces invariant (a) — an opt-out drops the queue rather than holding it —
+    // and removing the API would take that guarantee with it. Nothing in the shipped UI
+    // calls it; it remains reachable from the console for support and for RD.diagnose().
     //
-    // RD.diagnose()'s verdict string was pointing at "Settings -> Share usage data" and
-    // is updated below for the same reason: a diagnostic that names a control that does
-    // not exist sends the next reader looking for a menu item.
+    // RD.diagnose()'s verdict is now a bare 'collecting': a diagnostic that names a
+    // control which does not exist sends the next reader hunting for a menu item.
 
     // ---- send a bug report, with the session attached ------------------------
     (function () {
