@@ -29,6 +29,67 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-11-develop-b (#454 — the chart's per-series side, and two defects only a screenshot and a replay could find)
+
+**Issue:** #454. **Gates:** `run_all` **47 runners at baseline**. `verify_e2e_ui` gains
+`testChartSettings` (six checks); its recorded score is `16screenshots` and does not move,
+which is the point of a throw-based test.
+
+**What shipped.** The anchored ⚙ popover is deleted and replaced by `#chartOverlay`, a
+`.mission-overlay` modal that takes the `modal` pause hold. Every one of the 120 channels is
+listed with its live reading on **both** sides and one selector per value. A channel set to
+`both` is **one lane, one union-fitted scale, two traces** — the physics a lighter dashed twin.
+
+**Three rulings, 2026-08-11, all as recommended.** (1) Replace the popover. (2) `both` is one
+lane with a dashed twin — this settles a contradiction *inside the issue*, whose technical
+section specified `{ser, side}` entries flowing through `pinOrder`/the lane stack while its own
+Q3 recommended one lane. (3) The row control is a toggle beside each value, not a four-state
+radio group.
+
+**Ruling 2 is why this was a small change.** Taking the issue's own technical section would have
+re-keyed `active`, `pinOrder`, the demotion walk, `chartRange`, the CSV and the highlight bus's
+`.lane-chrome[data-ser]` selector from `ser.id` to `ser.id+side`, and put two lanes per paired
+channel against a 36 px floor. One lane per series left `laneSplit`, `pinOrder`, the demotion
+walk and `drawLanes` **untouched**. A filed technical shape is a proposal, not a specification —
+and when it disagrees with its own open questions, that disagreement is the thing to resolve
+first.
+
+### The traps
+
+- **A refactor's claim is "nothing changed", and a screenshot A/B cannot check it here.** The
+  live sample count depends on tick timing, so two page loads never hold the same `chartBuf`
+  and only the seeded preseed portion would ever match. Pinning at FUNCTION level instead —
+  keeping `seriesValOld` alongside and replaying both over the real buffer — is exact and free:
+  **50,160 comparisons per diagMode, 0 mismatches**, and the pin was proved non-vacuous by
+  inverting the fallback (**33,422 mismatches**). Scaffold deleted with the measurement.
+- **The default has to be the OLD RULE VERBATIM, not the convenient equivalent.** `sideOf`
+  falls back to `(chartTruth() || !ser.get)` rather than to "whichever side exists". The two
+  differ for a `ctl` series that also carries `tru`, which in Realistic mode would have silently
+  changed side. **There is no such series on any plant today** — which is exactly why it had to
+  be checked rather than assumed, since the first one added would have inherited the bug.
+- **PAINTING COLOUR X OVER COLOUR X CHANGES NOTHING.** The dashed twin was drawn in the series'
+  own hue, per the "same hue" ruling. On a healthy plant the two sides agree, so the twin's
+  polyline lands on the *same pixels* — Tavg set to `both` drew exactly one visible line, and
+  the feature looked switched off at the moment it was most switched on. The DOM check was
+  perfectly happy (`polylines 4, dashed 1`); only the screenshot showed it. Fixed by lightening
+  the twin's stroke, which keeps it one hue rather than a second palette slot.
+- **`flex-grow` beats `height`, so the first attempt to prove a check could fail, failed.**
+  Injecting `height: 40px !important` on the channel list did NOT go red: the list is
+  `flex: 1 1 auto` in a column, so grow re-expanded it and the check read 633 px. `flex: 0 0 40px`
+  reddened it properly. **An injection that does not reproduce the defect has not verified the
+  check** — it has only verified that the injection missed.
+- **The lane floor is measured from the DRAWN lanes.** Consecutive `.lane-chrome` tops in real
+  px, with the last lane bounded by the numeric strip. Verified by dropping `LANE_FLOOR_PX` to 8
+  and pinning eight channels: **19.6 px**, caught. `plot ÷ lanes` would not have caught it.
+- **Unticking anywhere clears the side.** The Indications tab's plain tickbox and the window's
+  two selectors are one setting reached two ways, so they must leave the same state behind, or
+  re-ticking silently restores a choice made in the other surface an hour ago.
+
+**Observed, not fixed, out of scope:** a long lane value (`50 MWe` on Output MW) overlaps the
+right-hand gutter marker. Pre-existing, single-side, untouched by this change.
+
+---
+
 ## Session log — 2026-08-11-develop-a (#436 finished to its content gates — and the night's defects were nearly all the observer, not the plant)
 
 **Issues:** #436 planned into #437–#446. **Landed:** #438, #437, #439, #443, #393, #440, #442,

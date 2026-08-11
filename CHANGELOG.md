@@ -31,6 +31,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The strip chart's settings are a full window now, and every channel can trace its
+  instrument, its physics, or both (#454)** *(OWNER DIRECTIVE, 2026-08-11: "The strip chart option
+  menu should be like the plant selection menu. It should be large and pause the sim. It should
+  have options to customize the strip chart. It should list all the indications you can put on the
+  chart with their current values. You should be able to choose the indication or the physics
+  value for each. Put a radial next to each value to let the user choose so they could even choose
+  both the indication and physics if they want.")*.
+
+  Replaces the anchored ⚙ popover shipped hours earlier, reversing three of its properties by
+  name: it is **large**, it is **modal**, and it **pauses**. The pause is the deliberate part —
+  the popover argued that changing how you watch a transient should not stop the transient, and
+  that argument does not survive the change of size, because a full-screen window covers the
+  board. Closing it starts the plant again *unless you had paused it yourself*, which the named
+  pause holds make expressible.
+
+  Every one of the 120 channels is listed with **its current reading on both sides**, taken from
+  the same functions the Indications tab uses, and carries **one selector per value**: neither is
+  "not plotted", one is that side, both is both. A channel set to both draws **two traces in one
+  lane on one shared scale** — the physics as a lighter dashed twin — and prints both figures in
+  the lane's value column. One scale, not two: independently fitted axes would put an indicated
+  549 °F (287 °C) and a true 551 °F (288 °C) on the same pixel and draw a disagreement as
+  agreement. The CSV export follows, emitting `id_ind` and `id_phys` for a paired channel and the
+  bare `id` for every other.
+
+  A channel with only one side — decay heat, reactivity and the other physics-only quantities —
+  shows a disabled selector and a dash rather than a missing cell, so the columns stay readable
+  down the list and "this quantity has no instrument" is itself visible.
 - **Control room: ten further adjustments** *(OWNER DIRECTIVE, 2026-08-11: "Put the strip chart
   rewind button to the left of the x axis time selection. Get rid of the slider bar at the bottom
   of the chart."; "Remove the sim paused popup at the start. Sim should start running not paused…
@@ -63,8 +90,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   panel is showing. **The strip chart** loses its slider bar (a track that looked draggable and
   was a single click target duplicating click-to-pick on the plot), moves Rewind beside the window
   buttons, and gains a **chart settings panel** listing all 120 plottable channels with a filter,
-  the window ladder, the event ribbon and CSV — and it does not pause the plant, because
-  changing how you watch a transient should not stop it. **Indications** gain headed Plant and
+  the window ladder, the event ribbon and CSV. *(That panel was an anchored popover that
+  deliberately did not pause; the owner's follow-up reversed its size, its modality and its pause
+  behaviour, and it is superseded by the window described under #454 below.)* **Indications** gain headed Plant and
   Physics columns and lose the true-values button. **The expanded System Scanner is pinned to one
   height** (140 px, measured: the tallest of 133 descriptions renders 127 px) instead of resizing
   under every hover. **The generator load spinner reads your demand, not the ramping reference**,

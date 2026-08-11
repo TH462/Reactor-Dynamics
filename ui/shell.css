@@ -579,6 +579,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 /* Reading AT THE CURSOR rather than live — coloured so the two can never be confused.
    Cyan, because it is a property of the view and not of the plant. */
 .lane-value.at-cursor { color: var(--normal); }
+/* THE SECOND FIGURE, for a channel set to trace BOTH sides (#454). It goes on its own line
+   under the instrument reading rather than beside it: the value column is deliberately
+   fixed-width to stop the stack jittering, and widening it to fit a pair would undo that for
+   every lane including the ones showing one number. Dotted underline, matching the dashed
+   trace it names — the lane holds two lines in one hue and this is what says which is which.
+   The lane is 44-56 px and two 11 px lines with a 9 px second are ~24 px, so the pair still
+   sits inside the band it belongs to. */
+.lane-value-phys {
+  display: block; font-size: 9px; line-height: 1.1; color: var(--text-2);
+  border-bottom: 1px dashed currentColor; padding-bottom: 1px;
+}
+.lane-value.paired { line-height: 1.05; }
+.lane-numv .lane-value-phys { display: inline; border-bottom: 1px dashed currentColor; margin-left: 4px; }
 
 /* NUMERIC ROWS — the pinned channels that did not fit as traces (#440, §14-7a ruling).
    ~18 px each against a 44–56 px lane, so a stack that cannot hold another trace still
@@ -2327,52 +2340,82 @@ select.num-input { width: auto; }
   #tabbar button.tab-attn { animation: none; }
 }
 
-/* ======================================= CHART SETTINGS PANEL (2026-08-11, owner item 3) */
+/* ================================= CHART SETTINGS WINDOW (#454, 2026-08-11) ==============
+   The anchored .chart-opts popover that stood here is GONE. It was 300 px, opened upward out
+   of the chart, and deliberately did not pause; the owner's follow-up reversed all three
+   ("like the plant selection menu … large and pause the sim"). The window now reuses
+   .mission-overlay / .mission-modal / .mission-body wholesale, so only the two columns'
+   contents need rules of their own.
+
+   Twice in one day the popover shipped with its channel list unreachable — first clipped by
+   the chart, then below the fold — and both times a check that counted elements passed. That
+   is why verify_e2e_ui now measures the list's RECT rather than its row count. */
 .strip-chart { position: relative; }
-/* HEIGHT COMES FROM THE VIEWPORT, NOT FROM THE CHART. Capped to the chart's own height,
-   the panel got ~200 px and the channel list — the headline of the request — fell below the
-   fold behind three short sections. The chart is one of the shorter regions on the screen;
-   a panel that lists 120 channels cannot be bounded by it. It overflows the chart box
-   deliberately, which is what an anchored popover is for. */
-.chart-opts {
-  /* OPENS UPWARD. The strip chart lives near the bottom of the window, so a panel
-     dropped from the button ran off the viewport and the channel list was
-     unreachable — measured at 1280x800: top edge 544 px, wanted height 496, bottom
-     1040 against an 800 px window. Anchored to the chart's bottom it grows into the
-     board area, which is what an anchored popover is allowed to do. */
-  position: absolute; bottom: 6px; top: auto; right: 6px; z-index: 30; width: 300px;
-  max-height: min(62vh, 480px); display: flex; flex-direction: column;
-  background: var(--bg-panel, #121821); border: 1px solid var(--border);
-  border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+#chartOptsBtn.on { background: var(--bg-elevated); border-color: var(--accent, #2f81f7); }
+
+/* left column — the chart's own options, in .mission-body's 260 px track */
+.cs-opts {
+  border-right: 1px solid var(--border); overflow-y: auto;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
 }
-.chart-opts[hidden] { display: none; }
-.chart-opts .co-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 8px; border-bottom: 1px solid var(--border); flex: 0 0 auto;
-}
-.chart-opts .co-title { font-size: 12px; font-weight: 600; }
-/* The body scrolls, not the panel: the head keeps its close button reachable however long
-   the channel list gets (96 series on the PWR). */
-.chart-opts .co-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px; }
-.chart-opts .co-sec {
-  font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
-  margin: 10px 0 4px;
-}
-.chart-opts .co-sec:first-child { margin-top: 0; }
-.chart-opts .co-count { text-transform: none; letter-spacing: 0; float: right; }
-.chart-opts .co-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
-.chart-opts .co-filter {
-  width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; font-size: 12px;
+.cs-opts .seg { flex: 0 0 auto; }
+.cs-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+.cs-count { font-size: 12px; color: var(--text-2); }
+.cs-note { font-size: 11px; color: var(--muted); line-height: 1.45; margin: 8px 0 0; }
+.cs-note b { color: var(--text-2); font-weight: 600; }
+
+/* right column — the channel list. The FILTER and the column heads are pinned and the list
+   scrolls under them: with 120 rows, a head that scrolls away leaves two unlabelled columns
+   of selectors, which is the one thing this layout cannot afford to be ambiguous about. */
+.cs-right { display: flex; flex-direction: column; min-height: 0; padding: 10px 12px; gap: 6px; }
+.cs-filter {
+  flex: 0 0 auto; box-sizing: border-box; padding: 5px 8px; font: inherit; font-size: 12px;
   background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
-  border-radius: 4px; margin-bottom: 6px;
+  border-radius: 4px;
 }
-.chart-opts .co-grp h5 {
-  margin: 8px 0 2px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+/* ONE GRID, DECLARED ONCE, shared by the head and every row — otherwise the head's columns
+   and the rows' columns are two independent claims that drift apart the first time a label
+   gets long. */
+/* The physics column is WIDER than the indication column because its readings are longer:
+   it carries the curated physics prose where one exists, and "3.12 % · 9.4 MWt" or
+   "563 °F · 0 °F vs Tavg" is two facts, not one number. At equal widths the second fact
+   ellipsised away on every such row — which are exactly the rows worth reading. */
+.cs-head, .cs-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 116px 178px; gap: 8px; align-items: center;
+}
+.cs-head {
+  flex: 0 0 auto; font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); padding: 0 6px 4px; border-bottom: 1px solid var(--border);
+}
+.cs-head span + span, .cs-row .cs-pick { justify-self: start; }
+.cs-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.cs-grp h5 {
+  margin: 10px 0 2px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--text-2); font-weight: 600;
 }
-.chart-opts .co-row {
-  display: grid; grid-template-columns: 16px 1fr; gap: 6px; align-items: center;
-  font-size: 12px; padding: 2px 0; cursor: pointer;
+.cs-row { font-size: 12px; padding: 3px 6px; border-radius: 3px; }
+.cs-row:hover { background: rgba(255,255,255,.04); }
+.cs-row.on { background: rgba(122, 176, 255, 0.07); }
+.cs-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* THE SELECTOR SITS NEXT TO ITS VALUE *(OWNER DIRECTIVE: "Put a radial next to each value to
+   let the user choose")* — one per side, so "both" is simply both lit. They are checkboxes
+   styled as radios on purpose: the owner's word was "radial", but the required behaviour is
+   two independent choices, and a real radio group cannot express both-at-once. */
+.cs-pick { display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 0; }
+.cs-pick input {
+  flex: 0 0 auto; appearance: none; -webkit-appearance: none;
+  width: 13px; height: 13px; border-radius: 50%; margin: 0;
+  border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer;
 }
-.chart-opts .co-row:hover { background: rgba(255,255,255,.04); }
-#chartOptsBtn.on { background: var(--bg-elevated); border-color: var(--accent, #2f81f7); }
+.cs-pick input:checked { border-color: var(--accent, #7ab0ff); background: var(--accent, #7ab0ff); box-shadow: inset 0 0 0 2.5px var(--bg-panel, #121821); }
+.cs-pick input:disabled { opacity: .3; cursor: default; }
+.cs-pick.na { cursor: default; }
+/* Tabular figures: the value beside a selector changes every broadcast, and a proportional
+   font makes the whole column twitch sideways as digits change. Same rule as the lane values. */
+.cs-val {
+  font-family: var(--mono, ui-monospace, monospace); font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; min-width: 0;
+}
+.cs-pick input:checked + .cs-val { color: var(--text); }
+.cs-row.diverged .cs-val { color: var(--caution, #D9A441); }

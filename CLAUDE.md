@@ -337,6 +337,13 @@ re-querying. Run the query.
   measures itself — **change it first, re-measure, then port**. Open by design: **#441** (needs
   the rung authoring pass), **#446** (deferred by ruling). Filed: **#449** — three steady-state
   indicated-vs-true disagreements the merged list surfaced, 20–400× larger than instrument lag.
+- **#454 — the chart settings WINDOW, built and gated** (2026-08-11). Supersedes the anchored
+  popover #436 shipped hours earlier: large, modal, pausing, 120 channels each with both live
+  readings and one selector per value. A channel set to `both` is **one lane, one union-fitted
+  scale, two traces** (physics = lighter dashed twin) — an owner ruling that settles a
+  contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
+  untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
+  verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
 - **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
   themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;

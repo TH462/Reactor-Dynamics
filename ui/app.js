@@ -46,7 +46,16 @@
     physOverlay: false,     // synoptic: Physics Overlay toggle (Learning only)
     rodSpeed: 'normal',
     window: 300,            // strip-chart seconds
-    series: {},             // per-plant; defaults set on plant load
+    series: {},             // per-plant; defaults set on plant load — "is it plotted at all"
+    /* WHICH SIDE(S) each plotted channel traces (#454): id -> 'ind' | 'phys' | 'both'.
+     * ABSENT MEANS "follow the global Learning/Realistic rule", which is why this starts
+     * empty and is never pre-filled — a pre-filled map would freeze every channel against
+     * the diagMode that happened to be set when the plant loaded, and the Settings switch
+     * would then appear to do nothing. See sideOf().
+     *
+     * Deliberately NOT persisted, unlike the panel state: it would save the SIDES of channel
+     * selections that are themselves forgotten on reload. Reset wherever `series` is. */
+    seriesSide: {},
     plant: 'pwr',           // active plant_id
     engineKey: 'pwr',       // active engine selector key
     // The SHIPPED starting point *(OWNER, 2026-08-08: "the plant should start with the 50%
@@ -2171,6 +2180,11 @@
     renderPlantDisplay(s);
     renderPhysics(s);
     renderIndications(s);   // both panes no-op unless they are actually on screen
+    // The chart-settings window's live values (#454). Same no-op-unless-visible rule, and
+    // the same reason it is here rather than on a timer: it must move when the plant moves.
+    // The window pauses the plant, so in practice it shows the reading the plant was at
+    // when it opened — which IS the current value, and the point of pausing.
+    renderChartSettings(s);
     // INSIDE the rAF, not as their own subscribers (2026-08-06). The rationale above says
     // a DOM write off the paint cycle "let the compositor present a frame mid-rebuild on
     // real GPUs ... dispersing and reappearing ... while software-rendered headless looked
@@ -4306,14 +4320,55 @@
   // split, core damage) has nothing else to trace, and the alternative is a blank line in
   // Realistic. That is not a softening of HR1: it is the same explicit diagnostic overlay
   // the Physics tab is, and it is visible as such because those series carry no channel.
-  function seriesTruth(ser) { return !!ser.tru && (chartTruth() || !ser.get); }
+  // Since #454 that rule is the DEFAULT rather than the whole story — see sideOf below.
+  /* WHICH SIDE(S) A CHANNEL TRACES — PER SERIES SINCE #454 *(OWNER DIRECTIVE, 2026-08-11:
+   * "You should be able to choose the indication or the physics value for each. Put a radial
+   * next to each value to let the user choose so they could even choose both the indication
+   * and physics if they want.")*.
+   *
+   * TWO MAPS, NOT ONE, and the split is load-bearing. `ui.series[id]` still means exactly
+   * what it meant before — "is this channel plotted at all" — because it is shared with the
+   * Indications tab and the board's plot cells through syncPlotCells(). `ui.seriesSide[id]`
+   * is the NEW question and only ever refines an already-plotted channel.
+   *
+   * THE FALLBACK IS THE OLD GLOBAL RULE, VERBATIM. A series nobody has overridden traces
+   * whatever `chartTruth()` says, so an untouched plant charts identically to before and the
+   * Settings Learning/Realistic switch keeps moving every series it used to move. Writing the
+   * default as `(chartTruth() || !ser.get)` rather than as "whichever side exists" is
+   * deliberate: they differ for a `ctl` series that also carries `tru`, and taking the
+   * convenient form would have silently changed such a channel in Realistic mode. There is no
+   * such series on any plant today — which is exactly why it had to be checked rather than
+   * assumed, since the first one added would have inherited the bug. */
+  function sideAvail(ser) {
+    return { ind: !!(ser.get || ser.ctl), phys: !!ser.tru };
+  }
+  function sideOf(ser, ignorePlotted) {
+    if (!ignorePlotted && !ui.series[ser.id]) return null;
+    var av = sideAvail(ser), want = ui.seriesSide[ser.id];
+    // An override is honoured only for a side this series HAS. A physics-only quantity
+    // (decay heat, void, reactivity) cannot be forced to 'ind' and a demand cannot be
+    // forced to 'phys' — the toggle for the missing side is disabled in the overlay, and
+    // this is the second half of that so a stale map entry cannot produce a blank lane.
+    if (want === 'both' && av.ind && av.phys) return 'both';
+    if (want === 'ind' && av.ind) return 'ind';
+    if (want === 'phys' && av.phys) return 'phys';
+    return (!!ser.tru && (chartTruth() || !ser.get)) ? 'phys' : 'ind';
+  }
+  // The SOLID trace's side, and the DASHED twin's — 'both' is one lane with two traces, so
+  // every drawing site asks these two rather than branching on the string three times.
+  function sideSolid(side) { return side === 'phys' ? 'phys' : 'ind'; }
+  function sideDashed(side) { return side === 'both' ? 'phys' : null; }
   // Rows are PACKED (see chartBuf): a column index, not a key, and an absent reading is NaN
   // rather than undefined. `isFinite` rejects both, so the guard is unchanged — but a series
   // whose id is not in the current index must return null rather than read column
   // `undefined`, which on a Float64Array is undefined and would slip past a `!= null` test.
-  function seriesVal(ser, sample) {
+  // `side` is 'ind' or 'phys' — ONE side, resolved by the caller. 'both' never reaches here:
+  // it is two traces, so the caller asks twice. Defaulting it keeps the handful of callers
+  // that only ever want the primary reading (the value chip, the numeric row) short.
+  function seriesVal(ser, sample, side) {
     var i = serCol[ser.id]; if (i == null) return null;
-    var src = seriesTruth(ser) ? sample.tv : sample.v;
+    if (side == null) side = sideSolid(sideOf(ser, true));
+    var src = (side === 'phys') ? sample.tv : sample.v;
     var v = src ? src[i] : null;
     return (v == null || !isFinite(v)) ? null : v;
   }
@@ -4321,9 +4376,9 @@
   // the min/max the service folded over their sub-interval (see setFineSampler there);
   // broadcast rows and the preseed carry none, and collapse to the point value — which is
   // correct, they represent one instant rather than a span.
-  function seriesExt(ser, sample, val) {
+  function seriesExt(ser, sample, val, side) {
     var i = serCol[ser.id]; if (i == null) return [val, val];
-    var t = seriesTruth(ser);
+    var t = (side == null ? sideSolid(sideOf(ser, true)) : side) === 'phys';
     var l = t ? sample.tlo : sample.lo, h = t ? sample.thi : sample.hi;
     var a = l ? l[i] : null, b = h ? h[i] : null;
     return [(a == null || !isFinite(a)) ? val : a, (b == null || !isFinite(b)) ? val : b];
@@ -4336,8 +4391,12 @@
     if (!latest) return false;
     var v = null;
     try {
+      // Follows the SOLID trace's side — the emphasis belongs to the line the eye is on.
+      // For a 'both' lane that is the instrument, which is also the prototypical answer:
+      // alarms read instruments (HR1), so a channel showing both sides lights on the one
+      // the protection system is actually watching.
       if (ser.ctl) v = ser.ctl(latest.control_state || {});
-      else if (seriesTruth(ser) && latest.true_state) v = ser.tru(latest.true_state);
+      else if (sideSolid(sideOf(ser, true)) === 'phys' && latest.true_state) v = ser.tru(latest.true_state);
       else if (ser.get) v = ser.get(latest.instruments);
     } catch (e) { v = null; }
     if (v == null || !isFinite(v)) return !!seriesHot[ser.id];
@@ -4538,7 +4597,7 @@
     var startI = 0;
     while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
     var NB = Math.max(2, Math.round(PW));   // one bucket per plot pixel
-    var ranges = {}, seriesMeans = {};
+    var ranges = {}, seriesMeans = {}, seriesDash = {};
     // Realistic traces the raw instrument, so it still carries sensor noise. Bucket
     // averaging alone thins out at short windows (fewer samples per bucket), so smooth
     // over a FIXED TIME width instead — the trace reads the same at 1 min and 30 min.
@@ -4546,17 +4605,27 @@
     var secPerBucket = span / NB;
     var bOrigin = Math.floor(t0 / secPerBucket);   // absolute grid index of the left edge
     var SMOOTH_SEC = 3;
-    var kSmooth = chartTruth() ? 0 : Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
-    active.forEach(function (ser, si) {
+    /* SMOOTHING IS PER SIDE, NOT PER CHART (#454). It used to key on `chartTruth()`, which
+     * was right while every trace on the chart came from the same side; a 'both' lane draws
+     * an instrument and the physics TOGETHER, and running the 3-second centred average over
+     * the true side would smooth a signal that has no noise in it — inventing a difference
+     * between the two traces at exactly the moment the player put them side by side to
+     * compare them. The comment above ("Truth needs none of this") was already the rule; it
+     * simply had nowhere per-trace to live. */
+    var kInd = Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
+    function smoothFor(side) { return side === 'phys' ? 0 : kInd; }
+    /* ONE SIDE'S BUCKETED MEANS. Extracted from the loop below so a lane can ask for two of
+     * them; the arithmetic is unchanged, including that the BAND is never smoothed. */
+    function bucketSide(ser, side) {
       var sum = {}, cnt = {}, blo = {}, bhi = {};   // sparse per-bucket accumulators
       for (var j = startI; j < chartBuf.length; j++) {
-        var val = seriesVal(ser, chartBuf[j]);
+        var val = seriesVal(ser, chartBuf[j], side);
         if (val == null || !isFinite(val)) continue;
         var bk = Math.floor(chartBuf[j].t / secPerBucket) - bOrigin;
         if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
         if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; blo[bk] = Infinity; bhi[bk] = -Infinity; }
         sum[bk] += val; cnt[bk] += 1;
-        var ex = seriesExt(ser, chartBuf[j], val);
+        var ex = seriesExt(ser, chartBuf[j], val, side);
         if (ex[0] < blo[bk]) blo[bk] = ex[0];
         if (ex[1] > bhi[bk]) bhi[bk] = ex[1];
       }
@@ -4569,6 +4638,7 @@
       }
       // centred moving average — zero net lag, unlike an EWMA (a drifting or stuck
       // sensor survives it untouched; only the per-sample jitter goes)
+      var kSmooth = smoothFor(side);
       if (kSmooth > 0 && means.length > 2 * kSmooth) {
         var sm = new Array(means.length);
         for (var m = 0; m < means.length; m++) {
@@ -4580,15 +4650,31 @@
         }
         means = sm;
       }
+      return means;
+    }
+    active.forEach(function (ser, si) {
+      var side = sideOf(ser);
+      var means = bucketSide(ser, sideSolid(side));
+      var dashSide = sideDashed(side);
+      var dashMeans = dashSide ? bucketSide(ser, dashSide) : null;
       var vmin = Infinity, vmax = -Infinity;
       // the BAND sets the range, not the line — otherwise a transient the band exists to
       // reveal would be drawn outside the axis and clipped away
-      means.forEach(function (p) {
-        var a2 = (p.lo != null && isFinite(p.lo)) ? p.lo : p.v;
-        var b2 = (p.hi != null && isFinite(p.hi)) ? p.hi : p.v;
-        if (a2 < vmin) vmin = a2; if (b2 > vmax) vmax = b2;
-      });
+      /* ONE SCALE FOR BOTH TRACES *(OWNER RULING, 2026-08-11, selecting "One lane, dashed
+       * twin" from the options presented)*. The fit spans the UNION of the two sides, which
+       * is the whole point: two independently-fitted axes would put an indicated 549 °F and
+       * a true 551 °F on the same pixel and draw the disagreement as agreement. */
+      function grow(list) {
+        list.forEach(function (p) {
+          var a2 = (p.lo != null && isFinite(p.lo)) ? p.lo : p.v;
+          var b2 = (p.hi != null && isFinite(p.hi)) ? p.hi : p.v;
+          if (a2 < vmin) vmin = a2; if (b2 > vmax) vmax = b2;
+        });
+      }
+      grow(means);
+      if (dashMeans) grow(dashMeans);
       seriesMeans[ser.id] = means;
+      seriesDash[ser.id] = dashMeans;
       // STABLE auto-range. The old model eased lo/hi toward the data every frame, which
       // re-projected the WHOLE trace every frame — history that had already been drawn
       // kept sliding and changing shape. The axis now sits on a 1-2-5 ladder and is HELD:
@@ -4699,11 +4785,39 @@
       }).join(' ');
       html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) +
               '" stroke-width="' + (hot ? 2.2 : 1.4) + '" vector-effect="non-scaling-stroke"/>';
+      /* THE DASHED TWIN — the physics side of a channel set to 'both' (#454). SAME HUE,
+       * deliberately *(OWNER RULING, 2026-08-11, from the options presented)*: a second
+       * colour would read as two unrelated channels sharing a box, where the dash reads as
+       * "the same quantity, the other side" — which is the comparison the feature exists to
+       * make. It also spends no second slot from a palette that already has 120 claimants.
+       *
+       * SAME HUE, LIGHTENED — and the lightening is not decoration, it is the whole reason
+       * the twin is visible. MEASURED, or rather reasoned from the geometry and then seen in
+       * a screenshot: on a healthy plant the two sides agree, so the twin's polyline lands on
+       * the SAME PIXELS as the solid one. Painting colour X over colour X changes nothing —
+       * a dash pattern is invisible when the thing showing through the gaps is the identical
+       * colour. Tavg set to 'both' at hot full power drew exactly one visible line, so the
+       * feature looked switched off at the moment it was most switched on. Lightening the
+       * stroke makes the dashes read against the solid line where they coincide, and the two
+       * still read as one quantity rather than as two unrelated channels.
+       *
+       * Drawn AFTER the solid line so the dashes sit on top. Only the solid trace gets the
+       * min/max band: two overlapping 0.22-opacity polygons in one hue is mud, and the
+       * physics side has no noise envelope worth the second draw. */
+      var dashB = seriesDash[ser.id];
+      if (dashB && dashB.length > 1) {
+        html += '<polyline class="trace-phys" points="' + dashB.map(function (m) {
+          return ((m.t - t0) / span * PW).toFixed(1) + ',' + yOf(m.v).toFixed(1);
+        }).join(' ') + '" fill="none" stroke="' + lighten(ser.c) +
+                '" stroke-width="1.1" stroke-dasharray="3,2.5"' +
+                ' vector-effect="non-scaling-stroke"/>';
+      }
       // Cursor value, not live value, while the pointer is over the plot. Nearest bucket
       // rather than an interpolation: a bucket IS a pixel, so the nearest one is what is
       // under the cursor, and inventing a value between two samples would be a reading the
       // plant never produced.
-      var val = mmB.length ? mmB[mmB.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1]);
+      var val = mmB.length ? mmB[mmB.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1], sideSolid(sideOf(ser)));
+      var dval = dashB && dashB.length ? dashB[dashB.length - 1].v : null;
       var atCursor = false;
       if (chartCursor.frac != null && mmB.length) {
         var tc = t0 + chartCursor.frac * span;
@@ -4713,19 +4827,33 @@
           if (d < bd) { bd = d; best = mmB[ci]; }
         }
         if (best) { val = best.v; atCursor = true; }
+        // The twin follows the SAME cursor — a shared cursor that moved one of two traces
+        // in one lane would be worse than none.
+        if (dashB && dashB.length) {
+          var db = null, dd = Infinity;
+          for (var di = 0; di < dashB.length; di++) {
+            var d2 = Math.abs(dashB[di].t - tc);
+            if (d2 < dd) { dd = d2; db = dashB[di]; }
+          }
+          if (db) dval = db.v;
+        }
       }
       lastY.push({ ser: ser, y: ly, hot: hot, val: val });
       // In-lane chrome: NAME top-left, RANGE top-right, VALUE in the fixed column. Each
       // lane prints its current range, so no lane's amplitude is ambiguous — which is what
       // makes per-lane autoscale honest. Emitted as HTML, not SVG: see laneBand.
       laneChrome.push({ ser: ser, top: bnd.top / H * 100, mid: (bnd.top + bnd.bot) / 2 / H * 100,
-                        lo: lo, hi: hi, val: val, hot: hot, cursor: atCursor });
+                        lo: lo, hi: hi, val: val, dval: dval, hot: hot, cursor: atCursor });
     });
     // The demoted channels, as numeric rows under the lanes. ~18 px each against a 44-56 px
     // lane, so a stack that cannot hold another trace can still hold several more numbers.
     numeric.forEach(function (ser) {
-      var last = chartBuf[chartBuf.length - 1];
-      numRows.push({ ser: ser, val: seriesVal(ser, last), hot: seriesAlarmed(ser) });
+      var last = chartBuf[chartBuf.length - 1], sd = sideOf(ser), dsd = sideDashed(sd);
+      // A demoted 'both' channel keeps BOTH figures. It is the same pinned channel in a
+      // different rendering, so dropping the second side here would silently answer the
+      // player's comparison with one number the moment the stack ran out of lanes.
+      numRows.push({ ser: ser, val: seriesVal(ser, last, sideSolid(sd)),
+                     dval: dsd ? seriesVal(ser, last, dsd) : null, hot: seriesAlarmed(ser) });
     });
     // Rewind-pick mode: mark every checkpoint inside the window as a jump target. FULL
     // HEIGHT across every lane, which is also the tier-1 event style #442 will use — a
@@ -4880,14 +5008,21 @@
     if (!lanes.length && !numRows.length) { setHTML(host, ''); return; }
     var h = lanes.map(function (L) {
       var s = L.ser;
+      /* A 'both' lane prints BOTH readings in the one value column — the instrument first
+       * and the physics under it, styled to match its dashed trace. The pair is the point
+       * of the setting: overlapping traces tell you the two agree, but only the two numbers
+       * tell you BY HOW MUCH, which is the question #449 raised (three steady-state
+       * disagreements 20-400x larger than instrument lag). */
       return '<div class="lane-chrome' + (L.hot ? ' hot' : '') + '" data-ser="' + esc(s.id) +
                '" style="top:' + L.top.toFixed(2) + '%">' +
                '<span class="lane-name" style="color:' + s.c + '">' + mesc(s.label) + '</span>' +
                '<span class="lane-rng">' + mesc(s.fmt(L.lo)) + ' – ' + mesc(s.fmt(L.hi)) + '</span>' +
              '</div>' +
              '<div class="lane-value' + (L.hot ? ' hot' : '') + (L.cursor ? ' at-cursor' : '') +
-               '" style="top:' + L.mid.toFixed(2) +
-               '%;--cf:' + s.c + '">' + mesc(L.val == null ? '—' : s.fmt(L.val)) + '</div>';
+               (L.dval == null ? '' : ' paired') + '" style="top:' + L.mid.toFixed(2) +
+               '%;--cf:' + s.c + '">' + mesc(L.val == null ? '—' : s.fmt(L.val)) +
+               (L.dval == null ? '' : '<span class="lane-value-phys">' + mesc(s.fmt(L.dval)) + '</span>') +
+             '</div>';
     }).join('');
     // The numeric rows sit under the lanes in their own strip. They are the SAME pinned
     // list rendered differently, not a second feature — which is why they share this host
@@ -4896,12 +5031,136 @@
       h += '<div class="lane-nums">' + numRows.map(function (R) {
         return '<div class="lane-num' + (R.hot ? ' hot' : '') + '" style="--cf:' + R.ser.c + '">' +
                  '<span class="lane-name" style="color:' + R.ser.c + '">' + mesc(R.ser.label) + '</span>' +
-                 '<span class="lane-numv">' + mesc(R.val == null ? '—' : R.ser.fmt(R.val)) + '</span>' +
+                 '<span class="lane-numv">' + mesc(R.val == null ? '—' : R.ser.fmt(R.val)) +
+                   (R.dval == null ? '' : ' <span class="lane-value-phys">' + mesc(R.ser.fmt(R.dval)) + '</span>') +
+                 '</span>' +
                '</div>';
       }).join('') + '</div>';
     }
     setHTML(host, h);
   }
+
+  /* ==================================== CHART SETTINGS WINDOW (#454, 2026-08-11) ========
+   * *(OWNER DIRECTIVE: "The strip chart option menu should be like the plant selection
+   * menu. It should be large and pause the sim. … It should list all the indications you
+   * can put on the chart with their current values. You should be able to choose the
+   * indication or the physics value for each. Put a radial next to each value to let the
+   * user choose so they could even choose both the indication and physics if they want.")*
+   *
+   * IT PAUSES, reversing the anchored popover this replaces. That panel argued you change
+   * how you are watching a transient WHILE it runs; the argument does not survive the
+   * change of size, because a full-screen overlay covers the board and that is precisely
+   * the case openModal's hold exists for. Routing through openModal/closeModal also means
+   * the resume is correct for free: closing releases only the `modal` hold, so a plant the
+   * player had already stopped with ⏸ stays stopped.
+   *
+   * ONE SOURCE OF TRUTH, still. `ui.series` is written here exactly as the Indications tab
+   * writes it, and syncPlotCells() carries the change back — the side is the only NEW
+   * state, and it lives in `ui.seriesSide` where sideOf() reads it.
+   *
+   * Module level, not inside bindUI(): render() has to reach renderChartSettings the same
+   * way it reaches renderIndications. Only the listeners live in bindUI. */
+  var csRows = [];                 // { ser, row, iv, pv, ib, pb } — node refs, built once
+  function csOpen() { return !$('chartOverlay').hidden; }
+  function buildChartSettings() {
+    var list = $('coList'); if (!list) return;
+    csRows = [];
+    // Mirror the live window ladder rather than hard-coding rungs: the labels change with
+    // time acceleration (syncChartWindows rewrites them), so a static copy would go stale.
+    var src = $('graphWindow'), dst = $('chartOptsWin');
+    if (src && dst) dst.innerHTML = src.innerHTML;
+    var soe = $('coSoe'); if (soe) soe.checked = !ui.soeOff;
+    var grp = null, html = '';
+    prof().series.forEach(function (ser) {
+      if (ser.grp !== grp) {
+        if (grp !== null) html += '</div>';
+        grp = ser.grp;
+        html += '<div class="cs-grp"><h5>' + esc(grp || '') + '</h5>';
+      }
+      var av = sideAvail(ser);
+      // A side this series does not have gets a DISABLED selector and a dash, not a
+      // missing cell: the column has to stay readable down the list, and "this channel
+      // has no instrument" is itself worth seeing — it is how the physics-only quantities
+      // (decay heat, void, reactivity) announce themselves.
+      html += '<div class="cs-row" data-cs="' + esc(ser.id) +
+              '" data-cs-label="' + esc((ser.label || '').toLowerCase()) + '">' +
+              '<span class="cs-name">' + esc(ser.label) + '</span>' +
+              csPick(ser, 'ind', av.ind) + csPick(ser, 'phys', av.phys) +
+              '</div>';
+    });
+    if (grp !== null) html += '</div>';
+    setHTML(list, html);
+    list.querySelectorAll('.cs-row').forEach(function (row) {
+      var id = row.getAttribute('data-cs'), ser = seriesById(id);
+      if (!ser) return;
+      csRows.push({ ser: ser, row: row,
+        ib: row.querySelector('[data-cs-side="ind"]'), pb: row.querySelector('[data-cs-side="phys"]'),
+        iv: row.querySelector('[data-cs-val="ind"]'), pv: row.querySelector('[data-cs-val="phys"]') });
+    });
+    syncChartSettings();
+    applyCsFilter();
+    if (latest) renderChartSettings(latest);
+  }
+  function csPick(ser, side, avail) {
+    return '<label class="cs-pick' + (avail ? '' : ' na') + '">' +
+           '<input type="checkbox" data-cs-side="' + side + '"' + (avail ? '' : ' disabled') + '>' +
+           '<span class="cs-val" data-cs-val="' + side + '">—</span></label>';
+  }
+  /* The selectors are DERIVED from (ui.series, ui.seriesSide) through sideOf, never held
+   * separately. That is what keeps this window agreeing with the Indications tab's plain
+   * tickbox: ticking a channel there gives it its default side, and this reads that back
+   * rather than remembering something of its own. */
+  function syncChartSettings() {
+    csRows.forEach(function (r) {
+      var side = sideOf(r.ser);
+      var on = { ind: side === 'ind' || side === 'both', phys: side === 'phys' || side === 'both' };
+      if (r.ib) r.ib.checked = !!on.ind;
+      if (r.pb) r.pb.checked = !!on.phys;
+      r.row.classList.toggle('on', !!side);
+    });
+    var n = Object.keys(ui.series).filter(function (k) { return ui.series[k]; }).length;
+    txt($('coCount'), n + (n === 1 ? ' channel plotted' : ' channels plotted'));
+  }
+  /* THE VALUES, LIVE — requirement 3. They come from the Indications tab's OWN functions
+   * rather than from anything written here, because "matches the Indications tab" is the
+   * requirement and a second formatter is how two surfaces start disagreeing about the
+   * same channel. seriesLive() reads the instrument (or the demand, or truth where a
+   * series has nothing else); seriesTrue() prefers the curated physics prose. */
+  function renderChartSettings(s) {
+    if (!csRows.length || !csOpen()) return;
+    csRows.forEach(function (r) {
+      var av = sideAvail(r.ser);
+      // `title` as well as text: a curated physics reading can be two facts long and the
+      // column ellipsises the tail, so hovering has to be able to give it back.
+      if (r.iv && av.ind) {
+        var iv = seriesLive(r.ser, s);
+        var ishown = (iv == null || /NaN|Infinity/.test(iv)) ? '—' : iv;
+        if (r.iv.textContent !== ishown) { r.iv.textContent = ishown; r.iv.title = ishown; }
+      }
+      if (r.pv && av.phys) {
+        var pv = seriesTrue({ ser: r.ser, phys: indPhysIdx[r.ser.id] || null }, s);
+        var pshown = (pv == null || /NaN|Infinity/.test(pv)) ? '—' : pv;
+        if (r.pv.textContent !== pshown) { r.pv.textContent = pshown; r.pv.title = pshown; }
+      }
+    });
+  }
+  function applyCsFilter() {
+    var q = (($('coFilter') || {}).value || '').trim().toLowerCase();
+    var list = $('coList'); if (!list) return;
+    var rows = list.querySelectorAll('[data-cs-label]');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].style.display = (!q || rows[i].getAttribute('data-cs-label').indexOf(q) !== -1) ? '' : 'none';
+    }
+    // A group whose every row is filtered out should not leave its heading behind.
+    var grps = list.querySelectorAll('.cs-grp');
+    for (var g = 0; g < grps.length; g++) {
+      var any = grps[g].querySelectorAll('[data-cs-label]'), vis = 0;
+      for (var k = 0; k < any.length; k++) if (any[k].style.display !== 'none') vis++;
+      grps[g].style.display = vis ? '' : 'none';
+    }
+  }
+  function openChartSettings() { buildChartSettings(); openModal('chartOverlay'); }
+  function closeChartSettings() { closeModal('chartOverlay'); }
 
   // ============================================================ pause / resume
   /* ONE way to stop the plant, and it remembers WHY (#439, spec §1).
@@ -5700,7 +5959,14 @@
     var tabBody = document.querySelector('.tab-body');
     if (tabBody) tabBody.addEventListener('change', function (e) {
       var cb = e.target.closest('input[data-series]'); if (!cb) return;
-      ui.series[cb.getAttribute('data-series')] = cb.checked;
+      var sid = cb.getAttribute('data-series');
+      ui.series[sid] = cb.checked;
+      // UNTICKING ANYWHERE CLEARS THE SIDE (#454). The plain tickbox here and the two
+      // selectors in the chart-settings window are two ways to reach one setting, so they
+      // must leave the same state behind: "not plotted" means no side, and re-ticking gives
+      // the channel its default rather than silently restoring a choice made in the other
+      // surface an hour ago. Ticking sets nothing — an absent side IS the default.
+      if (!cb.checked) delete ui.seriesSide[sid];
       syncPlotCells();     // the same series may be listed on more than one tab
       drawChart();
     });
@@ -5712,72 +5978,12 @@
     }, true);
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
 
-    /* ============================================ CHART SETTINGS (2026-08-11, owner item 3)
-     * One place for the chart's own controls plus the full list of plottable channels.
-     *
-     * IT DOES NOT PAUSE. Every other overlay in this shell routes through openModal and
-     * stops the plant; this one deliberately does not, for the reason the window and CSV
-     * buttons were moved onto the chart in the first place — you change how you are watching
-     * a transient WHILE it runs, and a settings panel that freezes the plant makes the
-     * setting useless at the only moment it matters.
-     *
-     * The series checkboxes reuse `data-series`, so they are the same control as the ones on
-     * the Indications tab and share `ui.series` and syncPlotCells() — one setting, three
-     * places to reach it, no second source of truth. */
-    function chartOptsOpen() { return !$('chartOpts').hidden; }
-    function buildChartOpts() {
-      var list = $('coList'); if (!list) return;
-      // Mirror the live window ladder rather than hard-coding rungs: the labels change with
-      // time acceleration (syncChartWindows rewrites them), so a static copy would go stale.
-      var src = $('graphWindow'), dst = $('chartOptsWin');
-      if (src && dst) dst.innerHTML = src.innerHTML;
-      var rows = prof().series.slice(), grp = null, html = '';
-      rows.forEach(function (ser) {
-        if (ser.grp !== grp) {
-          if (grp !== null) html += '</div>';
-          grp = ser.grp;
-          html += '<div class="co-grp"><h5>' + esc(grp || '') + '</h5>';
-        }
-        html += '<label class="co-row" data-co-label="' + esc((ser.label || '').toLowerCase()) + '">' +
-                '<input type="checkbox" data-series="' + esc(ser.id) + '"' + (ui.series[ser.id] ? ' checked' : '') + '>' +
-                '<span>' + esc(ser.label) + '</span></label>';
-      });
-      if (grp !== null) html += '</div>';
-      setHTML(list, html);
-      syncChartOptsCount();
-      applyCoFilter();
-    }
-    function syncChartOptsCount() {
-      var n = Object.keys(ui.series).filter(function (k) { return ui.series[k]; }).length;
-      txt($('coCount'), n + ' plotted');
-    }
-    function applyCoFilter() {
-      var q = (($('coFilter') || {}).value || '').trim().toLowerCase();
-      var rows = $('coList').querySelectorAll('[data-co-label]');
-      for (var i = 0; i < rows.length; i++) {
-        rows[i].style.display = (!q || rows[i].getAttribute('data-co-label').indexOf(q) !== -1) ? '' : 'none';
-      }
-      // A group whose every row is filtered out should not leave its heading behind.
-      var grps = $('coList').querySelectorAll('.co-grp');
-      for (var g = 0; g < grps.length; g++) {
-        var any = grps[g].querySelectorAll('[data-co-label]');
-        var vis = 0;
-        for (var k = 0; k < any.length; k++) if (any[k].style.display !== 'none') vis++;
-        grps[g].style.display = vis ? '' : 'none';
-      }
-    }
-    function toggleChartOpts(force) {
-      var panel = $('chartOpts'); if (!panel) return;
-      var open = (force == null) ? panel.hidden : force;
-      if (open) buildChartOpts();
-      panel.hidden = !open;
-      var b = $('chartOptsBtn'); if (b) b.classList.toggle('on', open);
-    }
-    $('chartOptsBtn').addEventListener('click', function (e) { e.stopPropagation(); toggleChartOpts(); });
-    $('chartOptsClose').addEventListener('click', function () { toggleChartOpts(false); });
-    $('chartOpts').addEventListener('click', function (e) { e.stopPropagation(); });
-    document.addEventListener('click', function () { if (chartOptsOpen()) toggleChartOpts(false); });
-    $('coFilter').addEventListener('input', applyCoFilter);
+    $('chartOptsBtn').addEventListener('click', function () { openChartSettings(); });
+    $('chartOptsClose').addEventListener('click', closeChartSettings);
+    $('chartOverlay').addEventListener('click', function (e) {
+      if (e.target === $('chartOverlay')) closeChartSettings();
+    });
+    $('coFilter').addEventListener('input', applyCsFilter);
     $('chartOptsWin').addEventListener('click', function (e) {
       var b = e.target.closest('[data-win]'); if (!b) return;
       ui.window = +b.getAttribute('data-win');
@@ -5789,12 +5995,27 @@
       for (var j = 0; j < dst.length; j++) dst[j].classList.toggle('on', dst[j].getAttribute('data-win') === b.getAttribute('data-win'));
       drawChart();
     });
-    $('chartOpts').addEventListener('change', function (e) {
-      var cb = e.target.closest('input[data-series]');
-      if (cb) {
-        ui.series[cb.getAttribute('data-series')] = cb.checked;
+    $('chartOverlay').addEventListener('change', function (e) {
+      var box = e.target.closest('input[data-cs-side]');
+      if (box) {
+        var row = box.closest('.cs-row'), ser = seriesById(row.getAttribute('data-cs'));
+        if (!ser) return;
+        /* READ BOTH BOXES AND DERIVE — do not try to mutate the side by name from the one
+         * that changed. Neither ticked is "not plotted", which has to clear `ui.series` as
+         * well as the side, and only looking at the pair can tell that from "the other one
+         * is still on". */
+        var wantInd = !!(row.querySelector('[data-cs-side="ind"]') || {}).checked;
+        var wantPhys = !!(row.querySelector('[data-cs-side="phys"]') || {}).checked;
+        if (!wantInd && !wantPhys) {
+          ui.series[ser.id] = false;
+          delete ui.seriesSide[ser.id];
+        } else {
+          ui.series[ser.id] = true;
+          ui.seriesSide[ser.id] = (wantInd && wantPhys) ? 'both' : wantInd ? 'ind' : 'phys';
+        }
         syncPlotCells();
-        syncChartOptsCount();
+        syncChartSettings();
+        chartRange = {};    // the union fit changes when a side is added or dropped
         drawChart();
         return;
       }
@@ -6198,6 +6419,7 @@
       if (e.key === 'Escape') {
         if (!$('manualOverlay').hidden) closeManual();
         if (!$('missionOverlay').hidden) closeMissionSelect();
+        if (!$('chartOverlay').hidden) closeChartSettings();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
         if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
@@ -7103,6 +7325,7 @@
     ui.engineKey = key; ui.plant = e.plant; ui.initState = init || e.init;
     ui.scenario = null; ui.follow = null;   // a manual plant switch ends instructed content
     ui.series = Object.assign({}, prof().defaultSeries);
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     pauseSim('plant_change');
     service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: ui.initState, design_version: e.dv });
     rebuildPlantUI();
@@ -7141,6 +7364,7 @@
     var dv = snap.metadata.design_version;
     ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
     ui.series = Object.assign({}, prof().defaultSeries);
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     rebuildPlantUI();
   }
 
@@ -7162,10 +7386,22 @@
     showToast('State saved — reactor_save.json');
   }
   function exportCsv() {
-    var cols = prof().series.filter(function (s) { return ui.series[s.id]; });
-    var head = ['sim_time'].concat(cols.map(function (c) { return c.id; })).join(',');
+    /* ONE COLUMN PER TRACE, not per channel (#454). A channel set to 'both' is two traces,
+     * so it exports two columns — `id_ind` and `id_phys` — because the export's whole
+     * contract is that it carries what the chart is showing. A single-side channel keeps
+     * the BARE id it has always had, so an existing worksheet built on `tavg` does not
+     * break; the suffix appears only where there is genuinely a pair to tell apart. */
+    var cols = [];
+    prof().series.forEach(function (s) {
+      var side = sideOf(s); if (!side) return;
+      if (side === 'both') {
+        cols.push({ ser: s, side: 'ind', name: s.id + '_ind' });
+        cols.push({ ser: s, side: 'phys', name: s.id + '_phys' });
+      } else cols.push({ ser: s, side: side, name: s.id });
+    });
+    var head = ['sim_time'].concat(cols.map(function (c) { return c.name; })).join(',');
     // export what the chart is actually showing (seriesVal), so the CSV and the trace agree
-    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c, b); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
+    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c.ser, b, c.side); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
     var url = URL.createObjectURL(new Blob([head + '\n' + rows.join('\n')], { type: 'text/csv' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_trend.csv'; a.click();
   }
@@ -7593,6 +7829,7 @@
     // missing rather than printing a placeholder that could go stale unnoticed.
     if ($('logoVer')) $('logoVer').textContent = window.RD_RELEASE || '';
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     service = new RD.SimulationService({ seed: 0x1234 });
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
     // its step loop, so the chart sees the plant between broadcasts and its resolution stops
@@ -7619,6 +7856,7 @@
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
     if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
     buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
