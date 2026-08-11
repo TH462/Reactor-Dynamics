@@ -31,6 +31,69 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **A selection screen on start, and the session bar as the front door (#443, spec §9).**
+  A cold load now opens on a plant × activity picker (PWR / Free Play preselected, so pressing
+  straight through costs one click); a returning visitor gets **Resume — PWR · Free Play** with
+  the pickers folded behind *Change*. Campaign and Scenarios hand off to the existing Plant &
+  Mission window rather than duplicating it. **Reset moved into that window's session footer**
+  as a two-press arm — "reset is restart what the session bar describes" — replacing a browser
+  `confirm()`. Three persistent **coach marks** (session bar, Checklists, Feedback) wait as cyan
+  dots until first use, then retire; they are not a timed tour. Deep links (`?engine=`, `?run=1`,
+  `?follow=` …) bypass the screen: the URL already made the choice.
+- **`RD.Events` — one sequence-of-events stream (#437, `ui/event_stream.js`).** Discrete plant
+  occurrences (scram, turbine trip, safety injection, mode change, PORV/MSIV position, pump
+  starts and stops) plus operator commands, each stamped at emission with a **priority tier**
+  (1 plant-defining / 2 component / 3 minor), a **component reference** resolvable through the
+  board's highlight vocabulary, and an **actor** — operator action vs plant response. Edges are
+  detected at the service/UI seam and the bug-report recorder is the *only* detector of alarm
+  and scram transitions, feeding the stream through its existing hook, so the two cannot
+  disagree. New gate `test/run_events.js` (40 checks) — it caught two observer artefacts before
+  the file landed: the recorder's first-pass alarm sweep arriving as **46 `alarm_clear` events at
+  t=0** (a steady 20 s at power now produces 0), and a watched channel that was an instrument
+  with no `true_state` field behind it.
+
+### Changed
+- **Indications and Physics merged into one paired list (#439, spec §3).** Every channel the
+  plant publishes now shows the **indicated value and the true state on the same row**, and a
+  row where they disagree is **flagged** — a stuck valve announces itself instead of waiting to
+  be noticed by comparing the right pair of rows across two panels. Three filter chips (paired /
+  indication-only / physics-only); the physics-only set is itself a teaching artifact, being the
+  list of things the operator can never see. **HR1 guard:** the true column can be switched off
+  and is off by default in missions and campaigns. The 46 curated physics rows are not lost —
+  their authored prose now renders the true column of the series they were already bound to.
+  The divergence rule was **measured, not assumed**: a plain string comparison lit five rows
+  permanently on a healthy plant (including `-0.0` against `0.0`, the same number), so it is now
+  a 0.5 % relative test with a floor at the displayed precision — above instrument lag (Cold Leg
+  reads 551 °F against 550 °F, 0.18 %) and below the spec's own worked example (core exit 618 °F
+  against 623 °F, 0.8 %). Four rows still flag at hot full power with nothing injected, and all
+  four are genuinely large disagreements rather than lag; they are recorded on the issue for
+  investigation.
+- **The right column restructured (#439, spec §1–§4/§6).** The tab strip is now
+  **Checklists · Indications · Physics · Inject Failure** — everything in it is *pull*, and the
+  Instructor below it is *push*. The **Operate tab is dissolved**: it held no operating controls
+  (those are on the board), only session management, which is why nobody hunting for a course
+  ever clicked it and the quick tour had to say "Checklists (Operate tab)". Session setup went to
+  the session bar, Save/Load and Features to Settings, and **Checklists was promoted to its own
+  tab** and made the default — it ranks above the Manual by design. **Settings became a header
+  modal** that pauses; the chart's **window ladder and CSV export moved onto the chart itself**
+  in the same change and do *not* pause, because stopping the plant to change how you are
+  watching a transient is backwards. **The System Scanner is a 26 px status line under the
+  board** instead of a panel in the far corner from the board it describes; its full description
+  opens as a pausing modal, and the 74 px/28 vh two-height variant is retired. The Instructor's
+  new-message cue is **cyan, not amber** — amber on a plant board reads as a plant condition —
+  bounded to two cycles, legible with no motion at all under `prefers-reduced-motion`, and it
+  now shows a quiet "new below" marker inside the panel when the block is open but scrolled
+  away. **A gating instructor step auto-opens the block once per beat**, and a dismissal stands
+  for that beat. Active tab and Instructor fold state persist across sessions. ~110 lines of
+  dead "Automate tab" code removed — it drove a pane `shell.html` never had.
+- **One way to pause the plant, and it remembers why (#439, spec §1).** `pauseSim(reason)` /
+  `resumeSim()` replace four copied `service.stop()` idioms; the Plant & Mission, Features,
+  Feedback and About-document overlays are now **modal class: opening one pauses the sim, and
+  closing it does not resume** — the play button is the only thing that starts the plant, so
+  coming back from a dialog can never leave a transient running unwatched. The board's own
+  PAUSED veil now paints when a modal takes the plant down, which is the cue that it is waiting.
+  Rewind review records its own pause reason, which #441 needs to stop the lanes rescaling
+  mid-review.
 - **Feedback in one action (#438, first child of the #436 UI rework).** A `Feedback` button in
   the sim-controls row beside Manual/Help opens the contact form directly — it was three levels
   down (Settings → About → Contact), and feedback volume is known to be very low. The form now

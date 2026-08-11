@@ -48,9 +48,27 @@ function pinChannel(ch) {
 
   // The first-run hook is a modal that eats clicks. Hide it (rather than pressing
   // Skip, which would persist hook_done) once its own assertion is made.
+  /* Settings is a MODAL since #439, and the Features row lives inside it. Everything
+   * below that asks "is Features offered on this channel?" must therefore open Settings
+   * first — otherwise `isVisible('#featureRow')` is false because the modal is shut, and
+   * the check passes its public half for the wrong reason while its dev half fails. That
+   * is the vacuous-guard failure this very file's comments record twice already; a
+   * visibility probe that cannot tell "gated off" from "not on screen" is not measuring
+   * the flag any more. */
+  async function openSettings(page) {
+    if (await page.isVisible('#settingsOverlay')) return;
+    await page.click('#settingsBtn');
+    await page.waitForSelector('#settingsOverlay', { state: 'visible' });
+  }
+  async function closeSettings(page) {
+    if (await page.isVisible('#settingsOverlay')) await page.click('#settingsClose');
+  }
+  // #missionBtn is gone with the Operate tab (#439). The session bar in the header is the
+  // shipped entry point to this window now — and was already one before, so this is the
+  // path a player takes, not a test-only door.
   async function openMission(page, tab) {
     var open = await page.evaluate(function () { return !document.getElementById('missionOverlay').hidden; });
-    if (!open) await page.click('#missionBtn');
+    if (!open) await page.click('#simStatus');
     await page.click('[data-mmode="' + tab + '"]');
     return (await page.textContent('#mpContent')) || '';
   }
@@ -59,7 +77,17 @@ function pinChannel(ch) {
     if (channel) await ctx.addInitScript(pinChannel(channel));
     var page = await ctx.newPage();
     await page.goto(url || SHELL);
-    await page.waitForSelector('#missionBtn');
+    await page.waitForSelector('#simStatus');
+    // PRESS THROUGH THE SELECTION SCREEN (#443). Every context here is fresh, so every
+    // load is a first-time visit and gets the plant × activity picker — which covers the
+    // board and intercepts every click this file then makes.
+    //
+    // Dismissed the way a PLAYER dismisses it (press the primary on its defaults) rather
+    // than by adding a deep-link param to the URL. A deep link would also have worked and
+    // would have been one character shorter, but it would mean this file tests a boot path
+    // no visitor takes, which is the shape HR10 warns about: the gate passing on a plant
+    // the player never gets.
+    if (await page.isVisible('#startOverlay')) await page.click('#startGo');
     return { ctx: ctx, page: page };
   }
 
@@ -78,7 +106,9 @@ function pinChannel(ch) {
   // guards, not bad luck. Retired rather than re-pointed at #tourOverlay, because the tour
   // carries NO data-flag — it shows on BOTH channels, so the channel distinction these
   // guarded no longer exists. Re-point them only if the tour is deliberately gated later.
+  await openSettings(b.page);
   ck('dev: Features row is offered', await b.page.isVisible('#featureRow'));
+  await closeSettings(b.page);
   ck('dev: the checklist picker is offered', await b.page.isVisible('#instrCklRow'));
   var camp = await openMission(b.page, 'campaign');
   ck('dev: campaign lists its missions', /Act I/.test(camp) && !/COMING SOON/.test(camp), camp.slice(0, 60));
@@ -93,7 +123,9 @@ function pinChannel(ch) {
   // ------------------------------------ the public build (what `main` deploys)
   b = await build('public');
   ck('public: build reports the public channel', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'public');
+  await openSettings(b.page);
   ck('public: Features row is not on screen', !(await b.page.isVisible('#featureRow')));
+  await closeSettings(b.page);
   ck('public: the checklist picker is not on screen', !(await b.page.isVisible('#instrCklRow')));
   var help = await b.page.textContent('#helpOverlay');
   ck('public: free play is still offered', /Start Free Play/.test(await openMission(b.page, 'free')));
@@ -116,7 +148,9 @@ function pinChannel(ch) {
 
   // ------------------------------- the routes back in on a public build
   b = await build('public', SHELL + '?flags=1');
+  await openSettings(b.page);
   ck('public + ?flags=1: the Features panel is reachable', await b.page.isVisible('#featureRow'));
+  await closeSettings(b.page);
   await b.ctx.close();
 
   b = await build('public', SHELL + '?flags=%2Bcampaign');
@@ -163,25 +197,32 @@ function pinChannel(ch) {
 
   // ---------------------------------------------- the panel drives the app
   b = await build(null);
+  await openSettings(b.page);
   await b.page.click('#featureBtn');
   ck('panel: lists every registered flag',
     (await b.page.$$('.fl-row')).length === await b.page.evaluate(function () { return RD.Flags.ids().length; }));
   await b.page.click('[data-flid="campaign"]');
   ck('panel: a toggle writes an override', await b.page.evaluate(function () { return RD.Flags.on('campaign'); }) === false);
   await b.page.click('#featureClose');
+  await closeSettings(b.page);      // Features opens from inside Settings, which is still up
   ck('panel: the mission window follows it', /COMING SOON/.test(await openMission(b.page, 'campaign')));
   await b.page.click('#missionClose');
+  await openSettings(b.page);
   await b.page.click('#featureBtn');
   await b.page.click('[data-flreset="1"]');
   ck('panel: clearing restores the shipped answer', await b.page.evaluate(function () { return RD.Flags.on('campaign'); }) === true);
   await b.page.click('[data-flch="public"]');
   await b.page.click('#featureClose');
+  await closeSettings(b.page);
   ck('panel: view-as public gates the campaign', /COMING SOON/.test(await openMission(b.page, 'campaign')));
   await b.page.reload();
-  await b.page.waitForSelector('#missionBtn');
+  await b.page.waitForSelector('#simStatus');
+  if (await b.page.isVisible('#startOverlay')) await b.page.click('#startGo');
   ck('panel: view-as survives a reload', await b.page.evaluate(function () { return RD.Flags.channel(); }) === 'public');
   ck('panel: the build still knows what it is', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'dev');
+  await openSettings(b.page);
   ck('panel: the way back is still on screen', await b.page.isVisible('#featureRow'));
+  await closeSettings(b.page);
   await b.ctx.close();
 
   // ----------------------------------------------------- the landing page

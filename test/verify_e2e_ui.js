@@ -590,9 +590,13 @@ async function testDiagBundle(page) {
   await page.click('#playBtn');
   await page.waitForTimeout(6000);
 
-  await page.click('#tabbar button[data-tab="settings"]');
-  await page.waitForTimeout(200);
-  await page.click('#fbBtn');
+  // ONE CLICK, from the header (#438/#439). This used to be `Settings tab -> #fbBtn`,
+  // which is the path that no longer exists: Settings is a modal off the header now, and
+  // Feedback got its own header button precisely because three levels down was a plausible
+  // cause of the near-zero report volume. Using the shorter path is not a refit — it is the
+  // route a player actually takes, and the old one was two clicks through a surface that
+  // now pauses the plant, which would change what this test is measuring.
+  await page.click('#fbHeaderBtn');
   await page.waitForTimeout(200);
   var dl = (await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click('#fbDiag')]))[0];
   var out = path.join(SCRATCH, 'diag-bundle.json');

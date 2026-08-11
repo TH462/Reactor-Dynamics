@@ -801,6 +801,13 @@
       message_register: base.message_register,
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
+      // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its
+      // interrupt on this: a routine message cues the collapsed card's badge, a step
+      // that blocks the player has to reach them even with another panel open, or the
+      // instruction is lost silently and the mission looks broken rather than gated.
+      // A boolean, not the gate list: which actions are blocked is the layer's business
+      // and is already enforced here — the UI only needs to know that it matters.
+      gated: this.activeGates.length > 0,
       ui_policy: this.uiPolicy,
       highlight: this.mode === 'follow'
         ? (st && st.control ? { view: null, control_label: st.control, instrument_id: null } : null)
