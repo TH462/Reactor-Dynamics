@@ -77,6 +77,10 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
 
 /* THE COLUMN MAP — append-only. See the warning above.
  *
+ * SQL is 1-INDEXED: blobs[0] is `blob1`, doubles[0] is `double1`. So doubles[4]
+ * below is `double5` in a query, and blobs[6] is `blob7`. Getting this wrong reads
+ * a neighbouring column that is also populated, so it returns plausible numbers.
+ *
  *   indexes[0]  event name          (the sampling key)
  *   blobs[0]    event name          (repeated so queries need no join to filter)
  *   blobs[1]    channel             public | preview | dev
@@ -85,10 +89,29 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *                                   and cannot link two visits (it is regenerated)
  *   blobs[4]    key                 the event's principal string, per KEY_OF below
  *   blobs[5]    plant               pwr | rbmk | bwr, when the event carries it
+ *   blobs[6]    block_code          why a command was refused: INTERLOCK | SEAL_IN |
+ *                                   GATED_BY_INSTRUCTOR | COMMAND_ERROR. '' = none.
  *   doubles[0]  seconds
  *   doubles[1]  sim_seconds
  *   doubles[2]  mode                plant_mode only
  *   doubles[3]  beat                mission_abandon only
+ *   doubles[4]  t_page              seconds since PAGE LOAD (envelope `e.t`)
+ *   doubles[5]  t_session           seconds since the session id was minted (`e.st`)
+ *   doubles[6]  blocked             1 the plant refused it, 0 it went through
+ *   doubles[7]  errored             1 the command errored, 0 it did not
+ *
+ * ALL FOUR NEW DOUBLES AND THE NEW BLOB ARE WRITTEN ON EVERY ROW FROM THE COMMIT
+ * THAT ADDED THEM, even where nothing produces the value yet. A short row reads
+ * back as 0 downstream, so a version that wrote five doubles and one that wrote
+ * eight would make every older row say `blocked = 0` — "not blocked" — when the
+ * truth is "this client could not tell you". Constant row shape plus the -1
+ * sentinel below is the only version of this that stays honest.
+ *
+ * -1 MEANS "NOT REPORTED", AND IT APPLIES TO NEW COLUMNS ONLY. doubles[0..3] keep
+ * `Number(p.x || 0)` and must not be retrofitted: analytics.js and sessions.js
+ * already SUM those columns, and a -1 in them would quietly subtract. Append-only
+ * governs meaning, not just position. Every query over a new column must exclude
+ * the sentinel explicitly (`AND double7 >= 0`) or old rows count as a real 0.
  */
 const KEY_OF = {
   session_start: 'initial_state',
@@ -140,6 +163,19 @@ async function readCapped(request, max) {
   const buf = await request.arrayBuffer();
   return buf.byteLength > max ? null : buf;         // and again, since it can lie
 }
+
+/* -1 = NOT REPORTED, for the columns added 2026-08-10 only. The older columns use
+ * `Number(x || 0)` and stay that way — see the column map.
+ *
+ * The distinction these preserve is between "the client told us 0" and "this client
+ * is too old to have an opinion". `|| 0` collapses them, and the collapse is not
+ * visible downstream: a query would read a release that predates the column as a
+ * plant that never refused a command, rather than as no data. During the window
+ * between deploying this and the client release that populates it, EVERY row is
+ * -1 — which is exactly when a query that treats -1 as 0 tells its worst lie.
+ */
+function num(v) { return typeof v === 'number' && isFinite(v) ? v : -1; }
+function bool(v) { return v === true ? 1 : v === false ? 0 : -1; }
 
 // ---------------------------------------------------------------- the Worker
 export default {
@@ -202,12 +238,22 @@ async function handleEvents(request, env, origin) {
         session,
         keyField ? String(p[keyField] == null ? '' : p[keyField]) : '',
         String(p.plant || ''),
+        String(p.block_code || ''),
       ],
       doubles: [
         Number(p.seconds || 0),
         Number(p.sim_seconds || 0),
         Number(p.mode || 0),
         Number(p.beat || 0),
+        // ENVELOPE fields, not props: the client stamps these on the queued event
+        // itself (site/telemetry.js), so they are read off `e`, not off `p`. `t` has
+        // been on the wire since the first release and was discarded here until
+        // 2026-08-10 — the ordering it gives is what the sessions view is built on.
+        num(e.t),
+        num(e.st),
+        // `blocked` has likewise been collected and dropped since it was added.
+        bool(p.blocked),
+        bool(p.errored),
       ],
     });
     written++;
