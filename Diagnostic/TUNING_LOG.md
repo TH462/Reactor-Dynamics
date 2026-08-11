@@ -85,6 +85,18 @@ first.
   two selectors are one setting reached two ways, so they must leave the same state behind, or
   re-ticking silently restores a choice made in the other surface an hour ago.
 
+- **A GREEN AGGREGATE IS ONLY EVIDENCE ABOUT THE TREE IT RAN ON — and the write-up changes the
+  tree.** `run_all` said *47 runners at baseline*, I wrote CHANGELOG/TUNING_LOG/CLAUDE.md, pushed,
+  and **CI went red on `run_hardrules` 276 against a baseline of 275**. The extra check is the one
+  new HR11 citation site in the CHANGELOG entry — well-formed, 0 failed, purely a count moving.
+  The local run was not wrong; it was *stale*, and it was stale because I invalidated it myself,
+  after it passed. Drift is symmetric, so a count going UP reddens exactly like a count going
+  down. **`run_hardrules`'s own `BASELINES` key already carries the standing warning — "prose
+  moves this score; run the aggregate after the docs, not before" — and records the same trap
+  costing a CI red on 2026-08-07.** Reading the note did not prevent it; only the gate did, which
+  is what that note already says about itself. The rule has a sharper form worth keeping: **the
+  last thing you change must be the last thing you gate.**
+
 **Observed, not fixed, out of scope:** a long lane value (`50 MWe` on Output MW) overlaps the
 right-hand gutter marker. Pre-existing, single-side, untouched by this change.
 
