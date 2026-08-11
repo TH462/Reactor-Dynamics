@@ -201,6 +201,33 @@ export async function featuresPage(env, url, token) {
       live: visibleOn('preview', chan) ? 'all' : groups[k].public_n,
     }));
 
+    /* Per-item control, which is the half of the ask the group summary cannot serve:
+     * "which scenarios" means one switch per scenario, not per plant. Inside <details>
+     * because 64 dropdowns unfolded would bury the six that gate whole features — and
+     * <details> is native, so this page still needs no JavaScript.
+     */
+    const byGroup = {};
+    items.forEach((i) => {
+      const k = i.plant + ' ' + i.kind;
+      (byGroup[k] || (byGroup[k] = [])).push(i);
+    });
+    const itemDetail = Object.keys(byGroup).sort().map((k) => {
+      const list = byGroup[k].slice().sort((a, b) => (a.id < b.id ? -1 : 1));
+      const queued = list.filter((i) => pending[i.kind + ':' + i.id]).length;
+      const rows = list.map((i) => {
+        const key = i.kind + ':' + i.id;
+        const next = pending[key] || i.stage;
+        return '<tr><td class="mono">' + esc(i.id) + '</td>'
+          + '<td class="mono">' + esc(i.stage) + '</td>'
+          + '<td class="mono">' + esc(next === i.stage ? '—' : next) + '</td>'
+          + '<td>' + stageControl(key, next, token, false) + '</td></tr>';
+      }).join('');
+      return '<details><summary>' + esc(k) + ' — ' + list.length + ' entries'
+        + (queued ? ', <b>' + queued + ' queued</b>' : '') + '</summary>'
+        + '<table><tr><th>Id</th><th>Live stage</th><th>Queued</th><th>Set</th></tr>'
+        + rows + '</table></details>';
+    }).join('');
+
     const publicCount = items.filter((i) => i.stage === 'public').length;
 
     body = '<div class="tiles">'
@@ -230,7 +257,12 @@ export async function featuresPage(env, url, token) {
       + '<p class="muted">Every entry has been <span class="mono">preview</span> since '
       + '2026-07-28 by owner decision (#241) — they are placeholders until played '
       + 'through. Flipping one to <span class="mono">public</span> IS the vetting '
-      + 'record, which is why the count above is the useful number.</p></section>';
+      + 'record, which is why the count above is the useful number.</p>'
+      + itemDetail
+      + '<p class="muted">A content item is offered only when BOTH it and the area '
+      + 'listing it are on — setting a scenario to <span class="mono">public</span> '
+      + 'while <span class="mono">scenarios</span> stays <span class="mono">preview</span> '
+      + 'shows nobody anything.</p></section>';
   } catch (e) {
     body = errBlock(e.message);
   }
