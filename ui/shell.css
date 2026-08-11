@@ -488,7 +488,82 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .chart-ctl { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: 0 0 auto; }
 .chart-ctl .seg button { font-size: 10px; padding: 1px 5px; min-height: 18px; }
 .chart-ctl .btn { font-size: 10px; padding: 1px 6px; }
-.chart-legend { flex: 1 1 auto; min-width: 0; min-height: 14px; font-size: 10px; color: var(--muted); letter-spacing: .02em; }
+.chart-legend { flex: 1 1 auto; min-width: 0; font-size: 10px; color: var(--muted); letter-spacing: .02em; }
+
+/* ---------------- the lane stack (#440, spec §8) ----------------------------
+   PORTED FROM ui/test_panel/lane_reference.html, which is the golden artifact and
+   measures itself against the budget: four 48 px lanes plus the 12 px shared axis
+   and a 10 px event ribbon come to 216 px against ~220 px. Change the reference
+   first, re-measure, then port — prose is poor at density because density is a
+   hundred small decisions and a document can only name a few of them.
+
+   PROHIBITED IN THIS REGION, stated as a rule because it otherwise returns every
+   time the file is regenerated: card wrappers, drop shadows, nested borders, and
+   default utility spacing scales. Spacing values here are explicit.
+
+   Labels and values are HTML over the SVG. The canvas is preserveAspectRatio="none"
+   over a fixed 400x120 box, so <text> inside it would be squashed non-uniformly at
+   exactly the widths this budget is fighting for. */
+.lane-chrome {
+  position: absolute; left: 0; right: 0;
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 0 2px 0 4px;                 /* 4 px horizontal, per the reference */
+  font-size: 10px; line-height: 1.1;
+  pointer-events: none;
+}
+.lane-name {
+  font-weight: 600; letter-spacing: .02em;
+  text-shadow: 0 0 3px var(--bg-strip), 0 0 3px var(--bg-strip);   /* readable over its own trace */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* EACH LANE PRINTS ITS CURRENT RANGE, so no lane's amplitude is ambiguous — which is
+   what makes per-lane autoscale honest now that traces are not overlaid. */
+.lane-rng {
+  margin-left: auto; margin-right: 14.5%;   /* clears the value column (1 - CHART_PLOT_FRAC) */
+  font-size: 9px; color: var(--muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 3px var(--bg-strip);
+}
+/* The value column: fixed width, tabular, right-aligned. Without all three, values
+   shift horizontally as digit counts change and the whole stack jitters. */
+.lane-value {
+  position: absolute; right: 2px; transform: translateY(-50%);
+  min-width: 13%; text-align: right;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px; line-height: 1.15; color: var(--text);
+  border-left: 2px solid var(--cf, var(--text-2)); padding-left: 4px;
+  white-space: nowrap; pointer-events: none;
+}
+.lane-chrome.hot .lane-name, .lane-value.hot { color: var(--caution); }
+/* Reading AT THE CURSOR rather than live — coloured so the two can never be confused.
+   Cyan, because it is a property of the view and not of the plant. */
+.lane-value.at-cursor { color: var(--normal); }
+
+/* NUMERIC ROWS — the pinned channels that did not fit as traces (#440, §14-7a ruling).
+   ~18 px each against a 44–56 px lane, so a stack that cannot hold another trace still
+   holds several more numbers. Same pinned list, a second rendering — not a second
+   feature, which is why they share the lane host and the value column's alignment. */
+.lane-nums {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  pointer-events: none;
+}
+.lane-num {
+  display: flex; align-items: baseline; gap: 6px;
+  height: 18px; padding: 0 2px 0 4px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; line-height: 18px;
+  background: var(--bg-strip);
+}
+.lane-numv {
+  margin-left: auto; min-width: 13%; text-align: right;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text);
+  border-left: 2px solid var(--cf, var(--text-2)); padding-left: 4px;
+}
+.lane-num.hot .lane-name, .lane-num.hot .lane-numv { color: var(--caution); }
 .chart-legend .chart-meta.muted { font-style: italic; }
 /* plot wrapper holds the stretched SVG + the floating value-label overlay */
 .chart-plot { position: relative; flex: 1 1 auto; min-height: 0; overflow: visible; }

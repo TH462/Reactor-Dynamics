@@ -53,6 +53,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with no `true_state` field behind it.
 
 ### Changed
+- **The strip chart is a lane stack — one lane per indication (#440, spec §8).** Traces are no
+  longer overlaid, which is what makes per-lane autoscale honest: the false-correlation problem
+  existed only because two traces shared one vertical space. Each lane prints its **own current
+  range** and carries its name over its own trace; the **time axis is drawn once for the stack**;
+  the value column is fixed-width and tabular so numbers cannot jitter as digit counts change;
+  and the **legend block is gone**, its swatch/name/range now inside the lane that owns them.
+  **New default set: Turbine Load, Reactor Power, Tavg** — the old four showed independent state
+  variables, demonstrated no coupling, and duplicated the gauge row; these teach that the reactor
+  follows the turbine. **Pinning past what fits demotes to numeric rows rather than squeezing
+  lanes** — measured: six channels in the 168 px plot gave 28 px lanes, under the 36 px floor, and
+  now give 3 lanes at 38 px plus 3 numeric rows. A **shared time cursor** crosses every lane with
+  each lane's value at that instant, coloured so a cursor reading cannot be mistaken for a live
+  one. The chart's fitter now calls `RD.ChartMath.holdRange`, so it and the vital tiles cannot
+  drift. Built against `ui/test_panel/lane_reference.html`, which stays in the tree as the golden
+  artifact and measures itself against the density budget.
 - **The held-axis policy extracted to `ui/chart_math.js` (#393).** The 1-2-5 ladder and the
   held-band dwell existed twice — in the strip chart and in the vital tiles, the second behind a
   "KEEP IN SYNC WITH ui/app.js" comment, on two surfaces 12 px apart showing the same six

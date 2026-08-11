@@ -102,7 +102,7 @@
   var gaugeHist = {};       // id -> [{ t, v }]
   var gaugeTrend = {};      // id -> -1|0|1 — latched trend-arrow state (#237 hysteresis)
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
-  // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
+  // gutter holds the per-lane value column (see drawChart / drawLanes / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
   // WINDOWS SCALE WITH TIME ACCELERATION *(OWNER: "Can you also extend the time window
   // automatically when choosing faster time warps? At 3600 it's going to zoom past 30 minutes
@@ -365,7 +365,19 @@
     pwr: {
       scram: 'REACTOR SCRAM', scramShort: 'SCRAM',
       initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
-      defaultSeries: { power: true, tavg: true, pressure: true, sg_level: true },
+      /* THE DEFAULT SET TEACHES A COUPLING (#440, spec §8). It was Power / Tavg / Pressure /
+       * SG Level — four independent state variables that demonstrate nothing between them
+       * and duplicate the vital gauge row above the board.
+       *
+       * Turbine Load, Reactor Power, Tavg teaches the plant's most counterintuitive
+       * behaviour: THE REACTOR FOLLOWS THE TURBINE. Newcomers assume the reverse. Load
+       * steps, power climbs after it, and Tavg dips in between as moderator feedback does
+       * the work. Turbine load is not on the gauge row, so nothing is duplicated, and
+       * changing load is among the most likely first actions in free play at 50 %.
+       *
+       * `mwe` IS the turbine-load channel here — there is no separate series for it
+       * (OWNER SELECTION 2026-08-10, from the options presented: "mwe = Turbine Load"). */
+      defaultSeries: { mwe: true, power: true, tavg: true },
       // `instr` names the snapshot instrument the gauge reads — the key into the
       // generated manual reference (RD.MANUAL indications) that the inspection
       // block quotes range, lag and driven alarms from (#96).
@@ -4097,8 +4109,77 @@
      That clamp is also why no flatness test is needed: a trace already filling its band
      has no slack and simply stays where it is (it needs the room to show its shape),
      a flat one has half a band either way and slides the whole distance. */
-  var LANE_LO = 0.14, LANE_HI = 0.86;   // lane centres span this much of the plot
-  function laneOf(i, n) { return n < 2 ? 0.5 : LANE_HI - i * (LANE_HI - LANE_LO) / (n - 1); }
+  /* ONE LANE PER INDICATION (#440, spec §8) — real stacked bands, not offsets inside one
+   * plot. `laneOf` used to slide each series' held band up or down a shared vertical space
+   * so the traces did not sit on top of each other; that is what the spec calls the
+   * false-correlation problem, and it is why per-lane autoscale used to mislead. Traces are
+   * no longer overlaid, so each lane owns its own vertical extent outright.
+   *
+   * The geometry is in the SVG's own viewBox units (H below), and the pixel numbers the
+   * spec fixes — 44-56 px lane, 36 px floor, 2/4 px padding, 1 px hairline — live in
+   * ui/shell.css and in the hand-built reference at ui/test_panel/lane_reference.html,
+   * which measures itself against the ~220 px budget. Do not re-derive them here.
+   *
+   * TEXT NEVER GOES IN THE SVG. The canvas is `preserveAspectRatio="none"` over a fixed
+   * 400x120 box, so it stretches non-uniformly with the panel — a <text> in it would be
+   * squashed at exactly the widths the density budget is fighting for. Names, ranges and
+   * values are HTML in the overlay layer, which is what `#chartFloats` already was. */
+  /* THE SHARED TIME CURSOR (#440, spec §8) — what turns a stack of lanes into a
+   * RELATIONSHIP display. Hovering places one vertical line across EVERY lane and each
+   * lane's value column shows its reading at that instant: "at this moment, load was here,
+   * power was here, Tavg was here." Without it the viewer is eyeballing vertical alignment
+   * between traces and the teaching claim goes soft — which is the whole reason the stack
+   * replaced an overlaid plot.
+   *
+   * `frac` is the pointer's position along the PLOT, 0..1, or null for live. Stored as a
+   * fraction rather than a time so it survives the window scrolling under it: the cursor
+   * belongs to the chart, not to a moment that slides off the left edge while the pointer
+   * sits still. */
+  var chartCursor = { frac: null };
+  var LANE_GAP = 1.5;                   // viewBox units between lanes — the hairline
+  var LANE_FLOOR_PX = 36;               // the spec's HARD floor; below it a trace is not a trace
+  function laneBand(i, n, H) {
+    var h = H / Math.max(1, n);
+    return { top: i * h + LANE_GAP, bot: (i + 1) * h - LANE_GAP, h: h };
+  }
+  /* HOW MANY TRACE LANES FIT, and what happens to the rest (#440, §14-7a).
+   *
+   * OWNER SELECTION 2026-08-10, from the options presented: "max trace lanes = what fits at
+   * the 36 px floor; when a lesson or the user pins more than fit, the excess renders as
+   * numeric rows (never squeezed lanes), newest-pinned demoted first."
+   *
+   * Measured before this existed: six pinned channels in the shipped 168 px plot gave 28 px
+   * lanes — under the floor, and a 28 px trace is a smear that says less than the number
+   * beside it would. Dividing the space further is the one thing the stack must not do.
+   *
+   * Read from the LIVE element, not from a constant: the splitters (#445) make the region's
+   * height the operator's to choose, so the lane count has to follow it. */
+  var NUM_ROW_PX = 18;                  // a demoted channel's numeric row, per the reference
+  /* The split is JOINTLY constrained and has to be solved as one: every channel demoted to a
+   * numeric row TAKES 18 px from the lanes above it, so "how many lanes fit" depends on how
+   * many were demoted, which depends on how many fit. Computing the lane count first and
+   * dropping the rows underneath is what the first version did, and it drew the numeric rows
+   * straight over the bottom lane — visible in the screenshot, invisible to every check
+   * that only counted elements.
+   *
+   * Walk d upward until the remaining lanes clear the floor. Bounded by n, and the last
+   * iteration (one lane, everything else a number) always terminates. */
+  function laneSplit(n, px) {
+    if (!px) return { lanes: Math.min(n, 4), rows: Math.max(0, n - 4), px: 0 };
+    for (var d = 0; d < n; d++) {
+      var lanes = n - d;
+      var avail = px - d * NUM_ROW_PX;
+      if (avail / lanes >= LANE_FLOOR_PX) return { lanes: lanes, rows: d, px: avail };
+    }
+    return { lanes: 1, rows: n - 1, px: Math.max(LANE_FLOOR_PX, px - (n - 1) * NUM_ROW_PX) };
+  }
+  /* Pin order, oldest first. `ui.series` is an object and JS preserves string-key insertion
+   * order, so a newly ticked channel lands at the end — which is exactly "newest pinned".
+   * Demotion takes from that end, so the channels someone has been watching all along keep
+   * their traces and the one just added is the one that arrives as a number. */
+  function pinOrder() {
+    return Object.keys(ui.series).filter(function (k) { return ui.series[k]; });
+  }
 
   // The plot's x extent — ONE definition, because drawChart and the rewind picker
   // must agree on it. Normally the strip-chart window: the axis always spans the
@@ -4136,10 +4217,16 @@
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
       chartRange = {};   // no data → forget held ranges so the next fit starts clean
-      setHTML($('chartLegend'), active.map(function (s) {
-        return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
-      }).join(''));
-      svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
+      // Nothing plotted yet: name the pinned channels in their lanes so the stack reads as
+      // "waiting" rather than as empty. Their declared range stands in for the fitted one.
+      setHTML($('chartLegend'), '');
+      svg.innerHTML = '';
+      drawLanes(active.map(function (s, i) {
+        var b = laneBand(i, active.length, H);
+        return { ser: s, top: b.top / H * 100, mid: (b.top + b.bot) / 2 / H * 100,
+                 lo: s.range[0], hi: s.range[1], val: null, hot: false };
+      }));
+      return;
     }
     var ext = chartExtent(), t1 = ext.t1, t0 = ext.t0, span = ext.span;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
@@ -4235,100 +4322,137 @@
       // of full scale, and a fortieth for the slow-moving boron trend.
       var minSpan = full * ((ser.id === 'boron') ? 0.025 : 0.1);
       var h = chartRange[ser.id];
-      var fits = h && isFinite(vmin) && vmin >= h.lo && vmax <= h.hi;
-      var band = h ? (h.hi - h.lo) : 0;
-      var need = Math.max(vmax - vmin, minSpan) * 1.3;   // 30 % headroom so a drifting line doesn't re-fit every few seconds
-      var lane = laneOf(si, active.length);
-      // Zoom back in only once the band is MUCH wider than a fresh fit would be (after a
-      // transient has scrolled away), and only after a dwell. Comparing against `need` —
-      // rather than against the minimum span — matters: a band that already equals its
-      // fresh fit must not keep re-fitting to the identical numbers forever.
-      var tooSmall = fits && band > need * 1.6;
-      if (h) h.small = tooSmall ? (h.small || 0) + 1 : 0;
       if (!isFinite(vmin) || !isFinite(vmax)) {
         ranges[ser.id] = h ? [h.lo, h.hi] : [ser.range[0], ser.range[1]];
         return;
       }
-      // The lane belongs to the series' slot in the list, so it is the same on every
-      // fit for the life of the selection — re-fitting can change a trace's ZOOM but
-      // never which lane it lives in.
-      if (!h || !fits || h.small > CHART_SHRINK_FRAMES || h.lane !== si + '/' + active.length) {
-        var step = niceStep(need / 4);
-        var c = (vmin + vmax) / 2;
-        h = { lo: Math.floor((c - need / 2) / step) * step, hi: Math.ceil((c + need / 2) / step) * step,
-              small: 0, lane: si + '/' + active.length };
-        if (h.hi - h.lo < step) h.hi = h.lo + step;
-        // Don't spend plot height on values the quantity can't take — a level axis
-        // running to −50 % reads as broken. Only clamps where the data allows it.
-        var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
-        var inRange = h.lo >= rLo - 1e-9 && h.hi <= rHi + 1e-9;
-        if (h.lo < rLo && vmin >= rLo) { h.lo = rLo; inRange = true; }
-        if (h.hi > rHi && vmax <= rHi) { h.hi = rHi; inRange = true; }
-        // Slide onto this series' lane. Measure from where the trace ACTUALLY sits —
-        // rounding the limits onto the ladder leaves it off centre, so assuming 0.5 here
-        // put traces in the wrong lane entirely. Shifting the band UP in value moves the
-        // trace DOWN the plot. Clamped so the data never leaves the band, which is what
-        // lets this work with no flatness test: a trace already filling its band has no
-        // slack, clamps to zero and stays put; a flat one slides the whole way.
-        var wide = h.hi - h.lo;
-        var shift = (c - h.lo) - lane * wide;
-        var up = vmin - h.lo, dn = vmax - h.hi;               // dn ≤ 0 ≤ up
-        if (inRange) { up = Math.min(up, rHi - h.hi); dn = Math.max(dn, rLo - h.lo); }
-        shift = Math.max(dn, Math.min(up, shift));
-        h.lo += shift; h.hi += shift;
-        chartRange[ser.id] = h;
-      }
+      /* THE POLICY IS RD.ChartMath.holdRange (#393) — the same call the vital tiles make,
+       * so the two cannot drift; it was duplicated here behind a KEEP-IN-SYNC comment.
+       *
+       * AND THE LANE SLIDE IS GONE (#440). This block used to shift each fitted band up or
+       * down in VALUE so the trace would land at its allotted height inside one shared
+       * plot — the reason `laneOf` existed. With one lane per indication there is nothing
+       * to dodge: each trace owns its own vertical band outright, so the fit is just a fit
+       * and the geometry is the lane's. That also retires the subtlety the old comment
+       * here had to warn about (measure the shift from where the trace ACTUALLY sits, not
+       * from the band centre, or traces land in the wrong lane).
+       *
+       * The clamp preference — don't spend height on values the quantity cannot take, a
+       * level axis running to -50 % reads as broken — moves into holdRange's clampLo/Hi,
+       * which is careful never to let it beat the data. */
+      var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
+      var hr = RD.ChartMath.holdRange(h && { lo: h.lo, hi: h.hi }, vmin, vmax, {
+        minSpan: minSpan, shrinkFrames: CHART_SHRINK_FRAMES, shrinkFor: h ? (h.small || 0) : 0,
+        clampLo: rLo, clampHi: rHi
+      });
+      h = { lo: hr.lo, hi: hr.hi, small: hr.shrinkFor };
+      chartRange[ser.id] = h;
       ranges[ser.id] = [h.lo, h.hi];
     });
-    // legend reflects the current (dynamic) range each line is scaled to.
-    // Bounds render through the series' own fmt — the same conversion + unit suffix
-    // the float chips use — so the legend agrees with the chips in either display
-    // unit (it used to print raw internal SI beside imperial chips, #235).
-    setHTML($('chartLegend'), active.map(function (s) {
-      var r = ranges[s.id];
-      return '<span class="leg" style="color:' + s.c + ';margin-right:10px"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.fmt(r[0]) + '–' + s.fmt(r[1]) + '</b></span>';
-    }).join(''));
-    // horizontal gridlines — barely visible, thin; recede behind the traces
-    [20, 40, 60, 80, 100].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1e2831" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
-    var lastY = [];
-    active.forEach(function (ser) {
-      var r = ranges[ser.id], lo = r[0], hi = r[1], rng = (hi - lo) || 1, ly = 0;
-      var pts = seriesMeans[ser.id].map(function (m) {
-        var x = (m.t - t0) / span * PW;
-        var f = Math.max(0, Math.min(1, (m.v - lo) / rng));
-        var y = H - 8 - f * (H - 16); ly = y;
-        return x.toFixed(1) + ',' + y.toFixed(1);
-      }).join(' ');
-      var hot = seriesAlarmed(ser);
-      // MIN/MAX BAND, drawn UNDER the line. Each bucket knows the extremes the plant reached
-      // over the sim time it covers, so a transient shorter than the sample interval still
-      // shows — at 3600× a bucket spans several seconds of plant and the line alone would
-      // step straight over a relief lift inside it. Emitted only where the band is wider
-      // than the stroke: at 1× it collapses onto the line (one instant per sample, nothing
-      // to span) and drawing a degenerate polygon there would just thicken the trace.
+    // NO LEGEND BLOCK (#440, spec §8). It carried a swatch, a name and the fitted range
+    // for every trace — exactly the three things that now sit INSIDE each lane, where they
+    // name the trace they belong to instead of asking the eye to match a colour. Removing
+    // it is one of the structural savings the ~220 px budget is made of; trimming padding
+    // alone does not get there. The strip keeps its own header for the window ladder.
+    setHTML($('chartLegend'), '');
+    // ---- ONE LANE PER INDICATION (#440, spec §8) --------------------------------
+    // Each series gets its own vertical band. Traces are no longer overlaid, so per-lane
+    // autoscale stops misleading — the false-correlation problem existed only because two
+    // traces shared one vertical space. A 1 px hairline separates lanes; there is no gap,
+    // no card, no shadow (the spec states that as a prohibition because it otherwise
+    // returns every time this file is regenerated).
+    // Split the pinned set into what gets a TRACE and what arrives as a NUMBER. Same list,
+    // two renderings — pin once, and the stack decides which form fits rather than
+    // shrinking every lane until none of them reads.
+    var canvasEl = $('chartCanvas');
+    var plotPx = (canvasEl && canvasEl.clientHeight) || 0;
+    var split = laneSplit(active.length, plotPx);
+    // The lanes get the space the numeric rows do NOT take. In viewBox units, since that is
+    // what the trace geometry is in.
+    var laneH = plotPx ? (H * split.px / plotPx) : H;
+    var order = pinOrder();
+    var demoted = {};
+    if (split.rows > 0) {
+      var over = split.rows;
+      for (var oi = order.length - 1; oi >= 0 && over > 0; oi--) {
+        if (!ui.series[order[oi]]) continue;
+        demoted[order[oi]] = true; over--;
+      }
+    }
+    var traced = active.filter(function (s) { return !demoted[s.id]; });
+    var numeric = active.filter(function (s) { return demoted[s.id]; });
+    var N = traced.length;
+    var lastY = [], laneChrome = [], numRows = [];
+    traced.forEach(function (ser, si) {
+      var bnd = laneBand(si, N, laneH);
+      var r = ranges[ser.id], lo = r[0], hi = r[1], rng = (hi - lo) || 1;
       var yOf = function (v) {
-        var f2 = Math.max(0, Math.min(1, (v - lo) / rng));
-        return H - 8 - f2 * (H - 16);
+        var f = Math.max(0, Math.min(1, (v - lo) / rng));
+        return bnd.bot - f * (bnd.bot - bnd.top);
       };
-      var mmB = seriesMeans[ser.id], wide = false, up = [], dn = [];
+      // Hairline between lanes, under everything.
+      if (si > 0) html += '<line x1="0" y1="' + (bnd.top - LANE_GAP).toFixed(1) + '" x2="' + W +
+        '" y2="' + (bnd.top - LANE_GAP).toFixed(1) + '" stroke="#1e2831" stroke-width="0.6" vector-effect="non-scaling-stroke"/>';
+      var mmB = seriesMeans[ser.id];
+      // MIN/MAX BAND, drawn UNDER the line. Each bucket knows the extremes the plant
+      // reached over the sim time it covers, so a transient shorter than the sample
+      // interval still shows — at 3600x a bucket spans several seconds of plant and the
+      // line alone would step straight over a relief lift inside it. Emitted only where
+      // the band is wider than the stroke: at 1x it collapses onto the line.
+      var wide = false, up = [], dn = [];
       for (var bi = 0; bi < mmB.length; bi++) {
         var m2 = mmB[bi];
         if (m2.lo == null || !isFinite(m2.lo) || m2.hi == null || !isFinite(m2.hi)) continue;
         var xb = ((m2.t - t0) / span * PW).toFixed(1);
         var yh = yOf(m2.hi), yl = yOf(m2.lo);
-        if (yl - yh > 1.2) wide = true;
+        if (yl - yh > 1.0) wide = true;
         up.push(xb + ',' + yh.toFixed(1));
         dn.push(xb + ',' + yl.toFixed(1));
       }
+      var hot = seriesAlarmed(ser);
       if (wide && up.length > 1) {
         html += '<polygon points="' + up.concat(dn.reverse()).join(' ') + '" fill="' + ser.c +
           '" fill-opacity="0.22" stroke="none"/>';
       }
-      html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
-      var mm = seriesMeans[ser.id];
-      lastY.push({ ser: ser, y: ly, hot: hot, val: mm.length ? mm[mm.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1]) });
+      var ly = bnd.bot;
+      var pts = mmB.map(function (m) {
+        var x = (m.t - t0) / span * PW;
+        var y = yOf(m.v); ly = y;
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+      html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) +
+              '" stroke-width="' + (hot ? 2.2 : 1.4) + '" vector-effect="non-scaling-stroke"/>';
+      // Cursor value, not live value, while the pointer is over the plot. Nearest bucket
+      // rather than an interpolation: a bucket IS a pixel, so the nearest one is what is
+      // under the cursor, and inventing a value between two samples would be a reading the
+      // plant never produced.
+      var val = mmB.length ? mmB[mmB.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1]);
+      var atCursor = false;
+      if (chartCursor.frac != null && mmB.length) {
+        var tc = t0 + chartCursor.frac * span;
+        var best = null, bd = Infinity;
+        for (var ci = 0; ci < mmB.length; ci++) {
+          var d = Math.abs(mmB[ci].t - tc);
+          if (d < bd) { bd = d; best = mmB[ci]; }
+        }
+        if (best) { val = best.v; atCursor = true; }
+      }
+      lastY.push({ ser: ser, y: ly, hot: hot, val: val });
+      // In-lane chrome: NAME top-left, RANGE top-right, VALUE in the fixed column. Each
+      // lane prints its current range, so no lane's amplitude is ambiguous — which is what
+      // makes per-lane autoscale honest. Emitted as HTML, not SVG: see laneBand.
+      laneChrome.push({ ser: ser, top: bnd.top / H * 100, mid: (bnd.top + bnd.bot) / 2 / H * 100,
+                        lo: lo, hi: hi, val: val, hot: hot, cursor: atCursor });
     });
-    // Rewind-pick mode: mark every checkpoint inside the window as a jump target.
+    // The demoted channels, as numeric rows under the lanes. ~18 px each against a 44-56 px
+    // lane, so a stack that cannot hold another trace can still hold several more numbers.
+    numeric.forEach(function (ser) {
+      var last = chartBuf[chartBuf.length - 1];
+      numRows.push({ ser: ser, val: seriesVal(ser, last), hot: seriesAlarmed(ser) });
+    });
+    // Rewind-pick mode: mark every checkpoint inside the window as a jump target. FULL
+    // HEIGHT across every lane, which is also the tier-1 event style #442 will use — a
+    // plant-defining moment crosses the whole stack by construction.
     if (ui.rewindPick && service && service.checkpoints) {
       service.checkpoints.forEach(function (cp) {
         var t = cp.metadata.sim_time;
@@ -4338,8 +4462,15 @@
                 '<circle cx="' + x + '" cy="6" r="2.5" fill="#7ab0ff"/>';
       });
     }
+    // ONE line across every lane. Lanes are pixel-aligned on x by construction — they share
+    // this viewBox and the same t0/span — so a single full-height line IS the shared cursor.
+    if (chartCursor.frac != null) {
+      var cx = (chartCursor.frac * PW).toFixed(1);
+      html += '<line class="cursor-line" x1="' + cx + '" y1="0" x2="' + cx + '" y2="' + H +
+              '" stroke="rgba(255,255,255,.30)" stroke-width="1" vector-effect="non-scaling-stroke"/>';
+    }
     setHTML(svg, html);
-    drawFloats(lastY, H);
+    drawLanes(laneChrome, numRows);
     // low-profile x-axis
     // Seconds read fine over a 30-min window; a rewind-pick span can be many hours
     // of sim, where "−72000s" is unreadable. Switch to h:mm:ss past ten minutes.
@@ -4367,46 +4498,50 @@
     txt($('chartWindowLbl'), '−' + (span > 3600 ? hms(span) : hms(span).slice(3)));
   }
 
-  // Live floating value labels at the right edge, one per trace, color-coded and
-  // spread vertically so they never overlap (move with each line).
-  var _cfloatH = 0;   // measured chip height in px, cached after the first paint
-  function drawFloats(items, H) {
-    var floats = $('chartFloats'); if (!floats) return;
-    if (!items.length) { floats.innerHTML = ''; return; }
-    // The minimum separation has to come from the chip's REAL height. It was a fixed 11 %,
-    // which on the shipped 174 px gutter is 19.1 px against a 21 px chip — so any time two
-    // traces came close enough for the spread rule to fire, the chips it had just
-    // "separated" still overlapped by a couple of pixels and the numbers were unreadable.
-    // Measured once from the DOM and cached; the fallback matches the current styling.
-    var hostH = floats.clientHeight || H || 1;
-    var chipH = _cfloatH || 21;
-    var GAP = Math.min(45, ((chipH + 3) / hostH) * 100);   // percent, always > one chip
-    // `top` positions the chip's TOP edge, so the last slot has to leave room for its height
-    // or the bottom chip hangs out of the gutter.
-    var MIN = 0, MAX = Math.max(MIN, 100 - (chipH / hostH) * 100);
-    items.forEach(function (it) { it.pct = Math.max(MIN, Math.min(MAX, it.y / H * 100)); });
-    items.sort(function (a, b) { return a.pct - b.pct; });
-    for (var i = 1; i < items.length; i++) if (items[i].pct < items[i - 1].pct + GAP) items[i].pct = items[i - 1].pct + GAP;
-    // Shift the WHOLE column by ONE offset. The old version clamped each item with
-    // Math.max(2, …) while pushing up, which could collapse the gap between the top two
-    // items — i.e. the overflow fix could itself create the overlap it was preventing.
-    var overflow = items[items.length - 1].pct - MAX;
-    if (overflow > 0) for (var j = 0; j < items.length; j++) items[j].pct -= overflow;
-    // If that pushed the top out, the column genuinely does not fit — distribute evenly so
-    // the chips stay stacked and legible rather than piling up against the top edge.
-    if (items[0].pct < MIN) {
-      var step = (MAX - MIN) / Math.max(1, items.length - 1);
-      for (var k = 0; k < items.length; k++) items[k].pct = MIN + k * step;
-    }
-    var floatHtml = items.map(function (it) {
-      var col = it.hot ? lighten(it.ser.c) : it.ser.c;
-      return '<span class="cfloat" style="top:' + it.pct.toFixed(1) + '%;color:' + col + '">' + it.ser.fmt(it.val) + '</span>';
+  /* LANE CHROME — name, range and value, as HTML over the SVG (#440, spec §8).
+   *
+   * This replaces the floating value chips and their collision-spread. With traces
+   * overlaid in one plot, chips had to be pushed apart so two lines close together did not
+   * stack their numbers; there was a whole spreading algorithm for it, including a
+   * measured chip height because a fixed percentage separated chips that still overlapped.
+   * With one lane per indication the value belongs at the LANE's centre and two values can
+   * never collide, so the algorithm is not simplified — it is unnecessary.
+   *
+   * FIXED-WIDTH NUMERIC COLUMN, TABULAR FIGURES (in shell.css). Otherwise values shift
+   * horizontally as digit counts change and the whole stack jitters; on a display watched
+   * for an hour that is worse than it sounds.
+   *
+   * Labels and values live INSIDE the lane, and the time axis is drawn once for the stack
+   * — no title row, no per-lane axis, no legend block with swatches. Those are the
+   * STRUCTURAL savings the ~220 px budget is made of; trimming padding alone does not get
+   * there. The measured geometry is ui/test_panel/lane_reference.html.
+   */
+  function drawLanes(lanes, numRows) {
+    var host = $('chartFloats'); if (!host) return;
+    numRows = numRows || [];
+    if (!lanes.length && !numRows.length) { setHTML(host, ''); return; }
+    var h = lanes.map(function (L) {
+      var s = L.ser;
+      return '<div class="lane-chrome' + (L.hot ? ' hot' : '') + '" style="top:' + L.top.toFixed(2) + '%">' +
+               '<span class="lane-name" style="color:' + s.c + '">' + mesc(s.label) + '</span>' +
+               '<span class="lane-rng">' + mesc(s.fmt(L.lo)) + ' – ' + mesc(s.fmt(L.hi)) + '</span>' +
+             '</div>' +
+             '<div class="lane-value' + (L.hot ? ' hot' : '') + (L.cursor ? ' at-cursor' : '') +
+               '" style="top:' + L.mid.toFixed(2) +
+               '%;--cf:' + s.c + '">' + mesc(L.val == null ? '—' : s.fmt(L.val)) + '</div>';
     }).join('');
-    setHTML(floats, floatHtml);
-    if (!_cfloatH) {
-      var first = floats.firstChild;
-      if (first && first.offsetHeight) _cfloatH = first.offsetHeight;
+    // The numeric rows sit under the lanes in their own strip. They are the SAME pinned
+    // list rendered differently, not a second feature — which is why they share this host
+    // and the value column's alignment.
+    if (numRows.length) {
+      h += '<div class="lane-nums">' + numRows.map(function (R) {
+        return '<div class="lane-num' + (R.hot ? ' hot' : '') + '" style="--cf:' + R.ser.c + '">' +
+                 '<span class="lane-name" style="color:' + R.ser.c + '">' + mesc(R.ser.label) + '</span>' +
+                 '<span class="lane-numv">' + mesc(R.val == null ? '—' : R.ser.fmt(R.val)) + '</span>' +
+               '</div>';
+      }).join('') + '</div>';
     }
+    setHTML(host, h);
   }
 
   // ============================================================ pause / resume
@@ -5619,6 +5754,27 @@
       if (service && service.checkpoints && service.checkpoints.length) toggleRewindPick();
     });
     document.querySelector('.chart-plot').addEventListener('click', rewindPickClick);
+    // The shared cursor (#440). Redraw on a frame rather than per mousemove: a pointer can
+    // fire far faster than the chart's own cadence, and drawChart rebuilds the whole SVG.
+    (function () {
+      var plot = document.querySelector('.chart-plot'); if (!plot) return;
+      var pending = false;
+      function schedule() {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(function () { pending = false; if (chartBuf.length > 1) drawChart(); });
+      }
+      plot.addEventListener('mousemove', function (e) {
+        var r = plot.getBoundingClientRect();
+        var f = (e.clientX - r.left) / (r.width * CHART_PLOT_FRAC);
+        chartCursor.frac = (f < 0 || f > 1) ? null : f;
+        schedule();
+      });
+      plot.addEventListener('mouseleave', function () {
+        if (chartCursor.frac == null) return;
+        chartCursor.frac = null; schedule();
+      });
+    }());
     // System Scanner / inspection block — hover OR tap (touch devices have no
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
