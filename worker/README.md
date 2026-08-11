@@ -48,7 +48,8 @@ the safe state is the one that needs no action.
 
 ## Checking it works
 
-The client is gated (`test/run_telemetry.js`, 50 checks) but **nothing in this repo can
+The client is gated (`test/run_telemetry.js`, 103 checks — read the count off the runner,
+not off this line, which said 50 for a gate that had reached 84) but **nothing in this repo can
 test the server**. Treat the first deploy as a test:
 
 ```bash
@@ -90,7 +91,122 @@ A browser exercises the CORS preflight that curl above does not.
 
 ---
 
-## Reading it
+## The ops dashboard
+
+`GET /dashboard?token=T` — a read-only viewer, gated by a shared-secret token instead of
+the CORS origin check the ingestion routes use. Two views:
+
+| | |
+|---|---|
+| `?token=T` | **Bug reports** — the R2 bundles, newest first, with a detail view per report and `&raw=1` for the JSON. `src/dashboard.js` |
+| `?token=T&view=analytics` | **Analytics** — Web Analytics traffic + in-sim usage, `&days=7\|14\|30`. `src/analytics.js` |
+| `?token=T&view=sessions` | **Sessions** — one row per session; click through to its ordered event trace. `src/sessions.js` |
+| `?token=T&view=features` | **Features** — what the live sim gates, and the control that changes it. `src/features.js` |
+
+Set the token once, as a Worker secret (never a repo file, never RD_Ops — that directory
+syncs off-site and is deliberately secret-free):
+
+```bash
+cd worker
+wrangler secret put DASHBOARD_TOKEN   # paste a random value when prompted
+```
+
+The analytics view needs a **second** secret, because the `EVENTS` binding is write-only —
+**a Worker cannot read its own Analytics Engine dataset through the binding.** Both the SQL
+API and the RUM GraphQL API are read over HTTPS with an account token (Account Analytics /
+Read — the same one `tools/site_report.js` uses):
+
+```bash
+wrangler secret put CF_ANALYTICS_TOKEN
+```
+
+Without it the analytics view still loads and says which secret is missing, rather than
+rendering an empty page that looks like zero traffic. The bug-report view does not need it.
+
+**The session view still cannot answer "they never pressed X."** Its limits are in the
+header of `src/sessions.js`: the rows are **sampled** (measured 2026-08-10: `command`
+stored 42 raw against 64 estimated — a third of the presses are not there), a session is
+a **tab** rather than a sitting (one live session spans 14:02 to 00:36 the next day;
+`session_end` is missing for half of them), and **-1 is "not reported", never a zero**.
+The complete record of one session exists only where somebody filed a bug report — that
+bundle carries every command with its own timestamp.
+
+**Ordering within a batch is solved** as of 2026-08-10. Each event carries `t_page`, and
+the view sorts by the batch write time first and the client stamp within it. Verified in
+a real browser against the preview site: six events sharing one write time of 03:11:51,
+ordered 0:01 / 0:01 / 0:01 / 0:05 / 0:06 / 0:06. `t_page` resets on reload while the
+session id survives one, so a **drop** in it is a positive detection of a page reload and
+the view draws a band there rather than letting a backwards clock read as noise.
+
+### Analytics Engine SQL, the parts that bite
+
+All of these fail at **422** rather than degrading, and two of them produce the *same*
+message from different causes:
+
+- **No subqueries** (`unsupported expression type`).
+- **`max()` refuses a String column** (`cannot use the String type as argument 1`), and
+  there is no `any()`/`argMax()`. String columns come from a second query keyed on the
+  event that carries them, never from an aggregate.
+- **Columns are typed PER RESULT SET.** If no row matching the WHERE clause carries
+  `double6`, naming it at all is `unable to find type of column` — so a session made
+  entirely of pre-column rows cannot mention the new columns. Ask first whether any
+  qualifying row exists; a try/catch would swallow every other 422 with it.
+- **`ORDER BY` resolves against the SELECT PROJECTION**, not the table. `ORDER BY double6`
+  is a 422 on the same query whose SELECT reads `double6 AS t_sess` — the projection is
+  called `t_sess`. Same message for `ORDER BY timestamp` the moment `timestamp` leaves
+  the SELECT list, which is what pinned the rule down.
+- **`timestamp >= '<string>'`** is a 422; the `toDateTime()` cast is required.
+
+### Feature flags: the dashboard sets them, the BUILD applies them
+
+`GET /flags-stages` (open, unauthenticated) returns the queued stages;
+`site/stamp_version.js` fetches it at build and freezes the result into the generated
+`site/channel.js` as `RD_FLAG_STAGES`, which `site/flags.js` reads in place of its own
+literals. Writes are a form POST to the dashboard behind `DASHBOARD_TOKEN`.
+
+**A change is queued, not live — it ships on the next deploy of `main`.** That is a
+consequence of the offline promise, not an oversight: the sim must load nothing at
+runtime (`test/run_portable.js`), which is the only reason the emailable single-file
+build works, and the offline download could not honour a runtime value anyway.
+
+The read is open because a stage is **not a secret** — every one ships inside `flags.js`
+to every visitor — so gating it would protect nothing while forcing a token into the
+Pages build environment.
+
+**`free_play` and `manual` cannot be set below `public`**, refused by the dashboard *and*
+ignored by `flags.js`. `run_flags.js` already forbids it in source; a remote control able
+to do what the gate forbids would make that gate decorative.
+
+**Not active until `RD_FLAGS_ENDPOINT` is set in the Pages build environment.** Unset,
+the stamper writes an empty map and records `RD_FLAG_SOURCE = "none"` — today's exact
+behaviour. A failed fetch is the same fallback but records `"fallback"` and warns in the
+build log, because a deploy that silently discarded a queued change would be worse than
+one that says it did.
+
+### A row older than a column reads back as 0, not -1
+
+The receiver writes `-1` for "this client had no opinion". That cannot help with a row
+written *before* the column existed: a short `doubles` array reads back as **0**, exactly
+like a genuine "not blocked". Measured — Alpha 1.5.1 rows report `min(double7) = 0` and
+`max(double5) = 0`. So every query over a new column needs **both** `>= 0` **and**
+`timestamp >= COLUMNS_SINCE` (`src/cfapi.js`), and that constant has a real expiry:
+three-month retention means it can be deleted once nothing older than 2026-11-11 survives.
+
+**The two sampling conventions are opposite** and the header of `src/analytics.js` is the
+long version: Analytics Engine `count()` undercounts (use `sum(_sample_interval)`), RUM
+`count` is already sample-adjusted (never multiply it), and a window over 7 days is answered
+from a coarser tier — measured on the live account, 7d reads an exact 29 pageloads where 30d
+reads 40, rounded to the nearest 10. Every RUM row carries the interval it was answered at
+and the page warns when the window crossed the seam.
+
+If wrangler auths via a scoped `CLOUDFLARE_API_TOKEN` in the environment (Analytics-read
+only, per `RD_Ops/runbook.md`), that token lacks permission to write Worker secrets —
+unset it for this one command so wrangler falls back to its own OAuth login:
+`env -u CLOUDFLARE_API_TOKEN wrangler secret put DASHBOARD_TOKEN`.
+
+Bookmark `https://reactor-dynamics-telemetry.<subdomain>.workers.dev/dashboard?token=<T>`
+— that URL is the credential. Rotating it is just `secret put` again followed by
+`wrangler deploy`.
 
 ### Bug reports
 

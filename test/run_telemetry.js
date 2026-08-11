@@ -276,6 +276,137 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
   });
 }());
 
+// ================================================ every declared prop type is a KIND
+// clean() dispatches on the type string and has no else. A prop declared 'number'
+// instead of 'num' therefore falls through every branch, is dropped at runtime for
+// ever, and — worse — is invisible to the column check below, which filters on the
+// same spelling. So that check would pass green over a prop that never arrives. This
+// one closes the hole it stands on, and must run first.
+(function () {
+  var EVENTS = globalThis.RD.Telemetry.EVENTS;
+  var bad = [];
+  Object.keys(EVENTS).forEach(function (n) {
+    var props = EVENTS[n].props || {};
+    Object.keys(props).forEach(function (k) {
+      var want = props[k];
+      var ok = want === 'num' || want === 'bool' || want === 'enum'
+        || Object.prototype.toString.call(want) === '[object Array]';
+      if (!ok) bad.push(n + '.' + k + ' = ' + JSON.stringify(want));
+    });
+  });
+  ck('every declared prop type is a kind clean() understands', bad.length === 0, bad.join('; '));
+}());
+
+// =========================================== every scalar prop reaches a real column
+// The KEY_OF cross-check above covers each event's principal STRING. It says nothing
+// about the numbers and booleans, which reach Analytics Engine through the fixed
+// `doubles`/`blobs` arrays instead — so a 'num' or 'bool' prop can be declared,
+// validated, transmitted, and silently discarded by the receiver with every gate
+// green. That is not hypothetical: `command.blocked` shipped, was collected, and was
+// thrown away on arrival until 2026-08-10, and nothing here could see it.
+//
+// Enum props are deliberately NOT checked: they arrive via `p[keyField]`, which the
+// KEY_OF block already gates. And `session_start.channel` is read off the payload
+// ENVELOPE rather than off `p`, so an all-props version of this check would redden on
+// it for ever. Both exclusions are why this filters on 'num'/'bool' — do not widen it
+// without re-reading handleEvents.
+(function () {
+  var fs = require('fs');
+  var wsrc;
+  try { wsrc = fs.readFileSync(path.join(ROOT, 'worker', 'src', 'index.js'), 'utf8'); }
+  catch (e) { ck('the Worker source is present (columns)', false, String(e)); return; }
+
+  var m = /writeDataPoint\(\{([\s\S]*?)\n    \}\);/.exec(wsrc);
+  ck('the Worker writeDataPoint call parsed', !!m);
+  if (!m) return;
+  var body = m[1];
+
+  // Which props the receiver actually reads. `p[keyField]` is computed and invisible
+  // here, which is correct — that path is KEY_OF's to gate.
+  var cols = {};
+  (body.match(/\bp\.([A-Za-z_][A-Za-z0-9_]*)/g) || []).forEach(function (s) { cols[s.slice(2)] = true; });
+
+  var EVENTS = globalThis.RD.Telemetry.EVENTS;
+  var scalars = {};
+  Object.keys(EVENTS).forEach(function (n) {
+    var props = EVENTS[n].props || {};
+    Object.keys(props).forEach(function (k) {
+      if (props[k] === 'num' || props[k] === 'bool') scalars[k] = true;
+    });
+  });
+
+  Object.keys(scalars).sort().forEach(function (k) {
+    ck('the Worker stores the scalar prop "' + k + '"', cols[k] === true,
+      'declared num/bool in telemetry.js, but handleEvents never reads p.' + k);
+  });
+  Object.keys(cols).sort().forEach(function (k) {
+    ck('the Worker reads no undeclared prop "' + k + '"',
+      Object.prototype.hasOwnProperty.call(scalars, k) || declaredAnywhere(k, EVENTS),
+      'handleEvents reads p.' + k + ' but no event declares it — a typo here is a column of zeroes');
+  });
+
+  // The two ENVELOPE fields are not props and no prop loop can see them, so they get
+  // their own assertions or the per-event timing ships ungated.
+  ck('the Worker stores the envelope timestamp e.t', /\be\.t\b/.test(body),
+    'the client has always sent it; without this line it is discarded on arrival');
+  ck('the Worker stores the envelope session-elapsed e.st', /\be\.st\b/.test(body));
+
+  function declaredAnywhere(name, evs) {
+    return Object.keys(evs).some(function (n) {
+      return Object.prototype.hasOwnProperty.call(evs[n].props || {}, name);
+    });
+  }
+}());
+
+// ====================================== privacy.html discloses what the schema takes
+// The rule "change privacy.html in the same commit" is written in three source files
+// and was enforced by nothing, which is how `command.blocked` came to be collected
+// without ever appearing on the page. This gate closes that, and it reads MARKUP, not
+// prose: the page carries data-collects="event.prop …" on each bullet, so the wording
+// can be rewritten freely and only a change to WHAT IS COLLECTED reddens it.
+//
+// Deliberately four checks rather than one per token: run_all's baseline is an exact
+// string, and a count that moved on every schema edit would train the next author to
+// rewrite the number without reading why it changed.
+(function () {
+  var fs = require('fs');
+  var html;
+  try { html = fs.readFileSync(path.join(ROOT, 'privacy.html'), 'utf8'); }
+  catch (e) { ck('privacy.html is present', false, String(e)); return; }
+
+  var disclosed = {};
+  (html.match(/data-collects="([^"]*)"/g) || []).forEach(function (attr) {
+    attr.replace(/^data-collects="|"$/g, '').split(/\s+/).forEach(function (tok) {
+      if (tok) disclosed[tok] = true;
+    });
+  });
+  ck('privacy.html carries data-collects markers', Object.keys(disclosed).length > 0,
+    'the disclosure gate has no anchor — was the attribute dropped in an edit?');
+
+  var EVENTS = globalThis.RD.Telemetry.EVENTS;
+  var all = [];
+  Object.keys(EVENTS).forEach(function (n) {
+    Object.keys(EVENTS[n].props || {}).forEach(function (k) { all.push(n + '.' + k); });
+  });
+
+  var missing = all.filter(function (t) { return !disclosed[t]; });
+  ck('privacy.html discloses every declared event.prop', missing.length === 0,
+    'collected but not disclosed: ' + missing.join(', '));
+
+  var stale = Object.keys(disclosed).filter(function (t) { return all.indexOf(t) === -1; });
+  ck('privacy.html discloses nothing the schema does not collect', stale.length === 0,
+    'disclosed but not collected: ' + stale.join(', '));
+
+  // The in-sim Settings row makes the same promise in a second place, and points at
+  // the source as the authority. Pin the POINTER, never the prose.
+  var shell;
+  try { shell = fs.readFileSync(path.join(ROOT, 'ui', 'shell.html'), 'utf8'); }
+  catch (e) { shell = ''; }
+  ck('the in-sim Settings row still points at site/telemetry.js',
+    /telemetryRow/.test(shell) && /site\/telemetry\.js/.test(shell),
+    'the second disclosure lost its reference to the schema');
+}());
+
 // ======================================================= path 2 is a separate path
 // Run WITHOUT compression first: the body is plain JSON and can be read directly.
 // Consent is deliberately left UNDECIDED throughout — pressing send in the feedback

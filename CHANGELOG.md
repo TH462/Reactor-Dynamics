@@ -31,6 +31,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Ops dashboard on the telemetry Worker** — `GET /dashboard?token=T`, token-gated and
+  read-only, in two views. **Bug reports** (`worker/src/dashboard.js`): list + detail + raw
+  JSON over the R2 bundles, so reading player feedback no longer needs the throwaway
+  `wrangler dev --remote` reader (`tools/fetch_bug_reports.js` still works and is unchanged).
+  **Analytics** (`worker/src/analytics.js`): Web Analytics traffic and in-sim usage over
+  7/14/30-day windows — the same numbers `tools/site_report.js` prints, cross-checked against
+  it row for row, with the coarse-tier rounding shown per row instead of quoted as exact.
+  **Sessions** (`worker/src/sessions.js`): one row per session, click through to the ordered
+  trace of what was pressed and opened. It states its own limits on the page rather than
+  implying a replay — the rows are sampled (`command` stored 42 raw against 64 estimated),
+  the timestamp is the batch flush and not the press, and a session is a browser tab rather
+  than a sitting. Needs a `CF_ANALYTICS_TOKEN` secret because the `EVENTS` binding is
+  write-only: a Worker cannot read its own Analytics Engine dataset. Ops-only, not part of
+  the sim — see `worker/README.md` → "The ops dashboard".
+- **Per-event timing and refused commands are kept instead of discarded.** `site/telemetry.js`
+  has always stamped each event with `t` (seconds since page load) and put it on the wire;
+  `command.blocked` has been declared and emitted since it was added. The Worker read neither,
+  so a session's order was unrecoverable and every refused command was recorded as though it
+  succeeded. Both now have columns and both produce data from the deploy, with no release
+  needed — the clients already in the wild were already sending them. Verified in a real
+  browser: six events sharing one batch write time, ordered 0:01/0:01/0:01/0:05/0:06/0:06.
+  Adds a "controls people try but cannot use" view (with the rate beside the count) and a
+  session trace that marks page reloads. `privacy.html` now discloses the refusal flag, which
+  it never had, and its "counts" framing is corrected.
+
+- **Feature flags are set from the dashboard and applied at build.** A Features tab shows
+  what the live sim gates — read from the deployed `flags.js`, not the repo — and sets the
+  stage for all 6 areas and all 64 content items. The dashboard writes to KV;
+  `site/stamp_version.js` reads it at build and freezes it into the generated
+  `site/channel.js`, so the sim still loads nothing at runtime and the offline single-file
+  build keeps working. Changes are therefore **queued until the next deploy**, and the tab
+  shows live and queued stages side by side. `free_play` and `manual` cannot be set below
+  public, refused at both ends. Inactive until `RD_FLAGS_ENDPOINT` is set in the Pages
+  build environment; unset behaves exactly as before.
+
 - **A selection screen on start, and the session bar as the front door (#443, spec §9).**
   A cold load now opens on a plant × activity picker (PWR / Free Play preselected, so pressing
   straight through costs one click); a returning visitor gets **Resume — PWR · Free Play** with
@@ -52,22 +87,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   t=0** (a steady 20 s at power now produces 0), and a watched channel that was an instrument
   with no `true_state` field behind it.
 
-### Fixed
-- **The merged list's divergence flag was flagging healthy channels (#449, #439).** Measured at
-  the full stack, 300 s at hot full power: charging flow indicates **30.45 ± 1.81 gpm** against a
-  true **30.64 ± 0.13** — a mean gap of 0.6 %, but single samples land 7 gpm out, so an
-  instantaneous comparison against a fixed band lit charging, letdown and heatup rate
-  permanently. Averaging over 6 s did not help (the noise has an 8 s correlation time), and
-  reading the declared sigma out of the config was worse (0.58 gpm against a measured 1.81 — a
-  second, wrong copy of a number the data already carries). **The spread is now measured from
-  the data**: `sd(indicated − true)` over 60 s *is* the channel's noise, and a row flags when the
-  mean gap exceeds twice it — "is it further off than this gauge normally wanders?". **92
-  comparable rows, 1 flagged**, down from 4. The one that remains is correct: the intermediate
-  range is pegged at its 2e-3 A over-range ceiling at power, which is prototypical, and a row
-  saying so is the lesson. A stuck PORV indicator still flags on the instant; a frozen analog
-  instrument flags within ~40 s, which is the honest cost of a threshold that is not noise.
-
-### Added
 - **The splitters give the lane stack more rows, not taller ones (#445, spec §8).** Dragging the
   trend strip taller **promotes demoted channels back to full traces** rather than inflating the
   ones already there — measured: 230 px → 375 px took the stack from 3 lanes + 3 numeric rows to
@@ -113,7 +132,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   Rewind to that instant** — measured, T+9 back to T+1 — landing on the nearest checkpoint, which
   the copy says. The SOE exports as a second CSV alongside the trace.
 
+### Fixed
+- **The merged list's divergence flag was flagging healthy channels (#449, #439).** Measured at
+  the full stack, 300 s at hot full power: charging flow indicates **30.45 ± 1.81 gpm** against a
+  true **30.64 ± 0.13** — a mean gap of 0.6 %, but single samples land 7 gpm out, so an
+  instantaneous comparison against a fixed band lit charging, letdown and heatup rate
+  permanently. Averaging over 6 s did not help (the noise has an 8 s correlation time), and
+  reading the declared sigma out of the config was worse (0.58 gpm against a measured 1.81 — a
+  second, wrong copy of a number the data already carries). **The spread is now measured from
+  the data**: `sd(indicated − true)` over 60 s *is* the channel's noise, and a row flags when the
+  mean gap exceeds twice it — "is it further off than this gauge normally wanders?". **92
+  comparable rows, 1 flagged**, down from 4. The one that remains is correct: the intermediate
+  range is pegged at its 2e-3 A over-range ceiling at power, which is prototypical, and a row
+  saying so is the lesson. A stuck PORV indicator still flags on the instant; a frozen analog
+  instrument flags within ~40 s, which is the honest cost of a threshold that is not noise.
+
 ### Changed
+- **`test/run_flags.js` 16/320 → 19/342 checks** for the build-stamped layer: a stamped
+  stage beats the source literal, cannot lower the floor, and falls back when malformed.
+  Three of those were hollow when first written — asserted against a `preview` literal,
+  where a rejected value and an accepted-but-meaningless one resolve identically — and now
+  run against a `public` probe where the outcomes differ.
+- **`test/run_telemetry.js` 84 → 103 checks.** The client and the Worker agreed about NAMES
+  while the numbers went missing: `KEY_OF` gates each event's principal string and nothing
+  gated the `'num'`/`'bool'` props, so a field could be declared, validated, transmitted and
+  silently dropped on arrival with every gate green. Adds: every scalar prop reaches a real
+  column (both directions, plus the two envelope fields no prop loop can see); every declared
+  prop type is a kind `clean()` understands (a `'number'` typo is dropped for ever *and* is
+  invisible to the column check, which filters on the same spelling); and `privacy.html`
+  discloses what the schema collects, read off `data-collects` markup so prose can be reworded
+  freely and only a change to what is COLLECTED reddens it. Injection-verified six ways.
 - **The strip chart is a lane stack — one lane per indication (#440, spec §8).** Traces are no
   longer overlaid, which is what makes per-lane autoscale honest: the false-correlation problem
   existed only because two traces shared one vertical space. Each lane prints its **own current

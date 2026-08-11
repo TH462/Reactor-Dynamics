@@ -203,12 +203,37 @@
   var queue = [];
   var timer = null;
 
+  /* Seconds since THE SESSION ID WAS MINTED, derived from the id itself — its first
+   * segment is `Date.now().toString(36)` (see sessionId above). Nothing new is
+   * stored, so invariant (e) is untouched, and it is correct even for an id minted
+   * by an older client still alive in a tab.
+   *
+   * This exists because `t` below is relative to PAGE LOAD while the session id
+   * lives in sessionStorage and survives a reload — so within one session id, `t`
+   * goes backwards at every reload. Both are kept rather than one being redefined:
+   * a drop in `t` across two rows is a positive detection of a reload, which is
+   * what lets the dashboard show the discontinuity instead of smoothing over it.
+   *
+   * Date.now() is wall-clock, so a clock step can make this non-monotonic. The
+   * clamp handles the common direction; the rest is not worth machinery.
+   */
+  function sessionElapsed() {
+    var id = sessionId();
+    if (!id) return null;
+    var minted = parseInt(String(id).split('-')[0], 36);
+    if (!isFinite(minted)) return null;
+    return Math.max(0, Math.round((Date.now() - minted) / 1000));
+  }
+
   function event(name, props) {
     if (!granted() || !endpoint()) return false;              // invariants (a) and (b)
     var p = clean(name, props);
     if (!p) return false;
     if (queue.length >= MAX_QUEUE) return false;              // never grow without bound
-    queue.push({ e: name, t: Math.round((G.performance && G.performance.now ? G.performance.now() : 0) / 1000), p: p });
+    var row = { e: name, t: Math.round((G.performance && G.performance.now ? G.performance.now() : 0) / 1000), p: p };
+    var st = sessionElapsed();
+    if (st !== null) row.st = st;                             // omitted rather than faked
+    queue.push(row);
     if (!timer && G.setTimeout) timer = G.setTimeout(flush, BATCH_MS);
     return true;
   }

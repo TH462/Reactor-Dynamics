@@ -9,5 +9,14 @@
  * the most PERMISSIVE value here, not the safest — which is why resolve() never
  * falls back to it on a machine that looks like CI. test/run_channel.js pins the
  * whole host matrix, including that one.
+ *
+ * RD_FLAG_STAGES below is the dashboard's answer, fetched from the Worker at BUILD
+ * time and frozen here as a literal — the sim never asks anything at runtime, which
+ * is what test/run_portable.js exists to keep true. It OVERRIDES the matching stage
+ * in site/flags.js; an empty object means "use the literals", which is also what a
+ * failed fetch produces. RD_FLAG_SOURCE says which of those happened, because the
+ * two are indistinguishable from the values alone.
  */
 window.RD_CHANNEL = "dev";
+window.RD_FLAG_STAGES = {};
+window.RD_FLAG_SOURCE = "none";
