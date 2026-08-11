@@ -53,6 +53,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with no `true_state` field behind it.
 
 ### Changed
+- **The held-axis policy extracted to `ui/chart_math.js` (#393).** The 1-2-5 ladder and the
+  held-band dwell existed twice — in the strip chart and in the vital tiles, the second behind a
+  "KEEP IN SYNC WITH ui/app.js" comment, on two surfaces 12 px apart showing the same six
+  quantities where a divergence reads as "the tile jumped and the chart didn't". `RD.ChartMath`
+  owns the **policy**; each caller keeps its own **placement**. New gate `test/run_chart_math.js`
+  pins both original implementations verbatim and replays them against the shared one — 770
+  `niceStep` inputs and a 235-frame transient with 50 re-fits, matching frame for frame,
+  including the two behaviours the old comments record as having cost real bugs (the clamp
+  beating the data, and the dwell snapping on a single quiet frame).
 - **Indications and Physics merged into one paired list (#439, spec §3).** Every channel the
   plant publishes now shows the **indicated value and the true state on the same row**, and a
   row where they disagree is **flagged** — a stuck valve announces itself instead of waiting to

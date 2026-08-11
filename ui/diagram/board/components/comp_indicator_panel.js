@@ -83,13 +83,11 @@
   function txt(el, v) { if (el && el.textContent !== v) el.textContent = v; }
   function sty(el, k, v) { if (el && el.style[k] !== v) el.style[k] = v; }
 
-  // 1-2-5 ladder step, so a held axis lands on a round number rather than wherever the
-  // data happened to be when it re-fitted. KEEP IN SYNC WITH ui/app.js niceStep().
-  function niceStep(raw) {
-    if (!(raw > 0) || !isFinite(raw)) return 1;
-    var e = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), f = raw / e;
-    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e;
-  }
+  // The 1-2-5 ladder and the held-axis policy now live in ui/chart_math.js (#393). They
+  // were duplicated here behind a "KEEP IN SYNC WITH ui/app.js" marker — a comment doing
+  // a function's job, on two surfaces 12 px apart showing the same six quantities, where
+  // a divergence reads directly as "the tile jumped and the chart did not".
+  function chartMath() { return (typeof RD !== 'undefined' && RD.ChartMath) || null; }
 
   function build(cfg, env) {
     var h = env.h;
@@ -362,9 +360,9 @@
         if (pts[w].lo < lo) lo = pts[w].lo;
         if (pts[w].hi > hi) hi = pts[w].hi;
       }
-      // Keep the real data extremes: whatever the axis preferences below decide, the
-      // axis must still CONTAIN the trace (see the clamp).
-      var dLo = lo, dHi = hi;
+      // The real data extremes used to be kept here so the clamp below could not exclude
+      // the trace. holdRange owns that guarantee now (#393) — it re-expands to contain the
+      // data after applying the clamp preference — so there is nothing left to carry.
       var floorSpan = (st.max - st.min) * MIN_WINDOW;
       if ((hi - lo) < floorSpan) {
         var mid = (hi + lo) / 2;
@@ -374,38 +372,20 @@
       // Re-fitting each frame re-projects the WHOLE trace each frame: history that had
       // already been drawn kept sliding and changing shape, which reads as the tile
       // breathing and contributed to the transient flicker reported 2026-08-06. Between
-      // re-fits every drawn point is frozen. Same policy as ui/app.js drawChart —
-      // KEEP IN SYNC WITH ui/app.js drawChart().
-      var fits = held && lo >= held.lo && hi <= held.hi;
-      if (fits) {
-        // zoom back in only after the data has been SMALL inside the band for a dwell,
-        // so a single quiet moment cannot snap the axis
-        var small = (hi - lo) * 1.6 < (held.hi - held.lo);
-        shrinkFor = small ? shrinkFor + 1 : 0;
-        if (shrinkFor < SHRINK_FRAMES) { lo = held.lo; hi = held.hi; }
-        else { held = null; shrinkFor = 0; }
-      } else { held = null; shrinkFor = 0; }
-      if (!held) {
-        var need = Math.max(hi - lo, floorSpan) * 1.3;    // 30 % headroom
-        var step = niceStep(need / 4);
-        var c = (hi + lo) / 2;
-        lo = Math.floor((c - need / 2) / step) * step;
-        hi = Math.ceil((c + need / 2) / step) * step;
-        // Prefer not to show a range the instrument cannot reach — a level axis running to
-        // −50 % reads as a broken gauge.
-        if (lo < st.min) { hi += (st.min - lo); lo = st.min; }
-        if (hi > st.max) { lo -= (hi - st.max); hi = st.max; if (lo < st.min) lo = st.min; }
-        // …but that is only a PREFERENCE, and it must never win over showing the trace.
-        // Re-expand to contain the data. Without this the clamp silently excluded any
-        // reading outside the tile's declared scale, ys() returned coordinates outside the
-        // plot box, and — the sparkline svg being overflow:visible — the trace DREW OUTSIDE
-        // THE CARD, down across the gauge band and the board beneath it (owner screenshot,
-        // 2026-08-06: a cold-shutdown plant at 355 °F against an at-power Tavg band). The
-        // pre-2026-08-06 code fit purely to the data and so could not do this; the clamp
-        // arrived with the held axis and brought the bug with it.
-        if (dLo < lo) lo = dLo;
-        if (dHi > hi) hi = dHi;
-        held = { lo: lo, hi: hi };
+      // re-fits every drawn point is frozen.
+      //
+      // The policy is RD.ChartMath.holdRange (#393) — the same call the strip chart makes,
+      // so the two cannot drift. What stays here is PLACEMENT: this tile applies none, the
+      // chart slides the band onto a lane. `st.min`/`st.max` go in as a clamp PREFERENCE,
+      // which holdRange is careful never to let beat the data — see the 2026-08-06
+      // trace-drew-outside-the-card note there, which is this tile's own bug.
+      var cm = chartMath();
+      if (cm) {
+        var hr = cm.holdRange(held, lo, hi, {
+          minSpan: floorSpan, shrinkFrames: SHRINK_FRAMES, shrinkFor: shrinkFor,
+          clampLo: st.min, clampHi: st.max
+        });
+        lo = hr.lo; hi = hr.hi; held = hr.held; shrinkFor = hr.shrinkFor;
       }
       if (hi - lo < 1e-9) hi = lo + 1;
       function xs(i) {

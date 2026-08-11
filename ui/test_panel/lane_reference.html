@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Reference lane — #440 / spec §8</title>
+<link rel="stylesheet" href="../shell.css">
+<style>
+  /* ==========================================================================
+     THE REFERENCE LANE (#440, spec §8).
+     "For dense visual work, a reference artifact beats a specification. Build a
+     single lane by hand at the exact intended pixel values, then instruct the
+     agent to replicate it for every other row form."
+
+     This page IS that artifact. Every number below is the spec's, not a guess,
+     and the page measures itself against the density budget at the bottom so the
+     claim "four lanes plus the axis and ribbon fit ~220 px" is checkable rather
+     than asserted.
+
+     The values here are the SOURCE for ui/shell.css when the stack is
+     generalised — change them here first, re-measure, then port.
+     ========================================================================== */
+  body { background: var(--bg, #0b0e11); margin: 0; padding: 24px; font-family: system-ui, sans-serif; }
+  .frame { width: 560px; }
+  h1 { color: var(--text, #dfe6ee); font-size: 15px; margin: 0 0 4px; }
+  .sub { color: var(--muted, #69757F); font-size: 12px; margin: 0 0 18px; line-height: 1.5; }
+
+  /* ---- the stack ---------------------------------------------------------
+     No gap and no card: lanes are separated by a 1 px hairline and nothing
+     else. The spec states this as a PROHIBITION because it otherwise returns
+     every time the file is regenerated — card wrappers, drop shadows, nested
+     borders and default utility spacing scales are all forbidden here. */
+  .lane-stack {
+    background: var(--bg-strip, #0d1116);
+    border: 1px solid var(--border, #232a31);
+    border-radius: 2px;              /* <= 2px */
+    overflow: hidden;
+  }
+  .lane {
+    position: relative;
+    height: 48px;                    /* 44-56 target; 36 hard floor */
+    padding: 2px 4px;                /* 2 vertical, 4 horizontal */
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: 1fr 62px; /* trace | fixed-width numeric column */
+    align-items: stretch;
+    border-bottom: 1px solid var(--border, #232a31);   /* 1px hairline, zero gap */
+  }
+  .lane:last-of-type { border-bottom: none; }
+
+  /* Label and value live INSIDE the lane. No title row, no separate axis
+     column, no legend block with swatches — the trace colour plus the inline
+     label do that work, and each of those costs ~18px per lane it saves. */
+  .lane-plot { position: relative; min-width: 0; }
+  .lane-name {
+    position: absolute; left: 0; top: 0; z-index: 2;
+    font-size: 10px; line-height: 1.1; letter-spacing: .02em;
+    color: var(--text-2, #9fb0c0);
+    text-shadow: 0 0 3px var(--bg-strip, #0d1116);  /* readable over the trace */
+    pointer-events: none;
+  }
+  .lane-rng {
+    position: absolute; right: 2px; top: 0; z-index: 2;
+    font-size: 9px; line-height: 1.1; color: var(--muted, #69757F);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  .lane-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* THE NUMERIC COLUMN IS FIXED WIDTH AND TABULAR. Without both, values shift
+     horizontally as digit counts change and the whole stack jitters — on a
+     display watched for an hour that is worse than it sounds. */
+  .lane-val {
+    display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
+    padding-left: 4px;
+    border-left: 1px solid var(--border, #232a31);
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  .lane-val .v { font-size: 11px; color: var(--text, #dfe6ee); line-height: 1.15; }
+  .lane-val .u { font-size: 9px; color: var(--muted, #69757F); line-height: 1.1; }
+  .lane-val.cursor .v { color: var(--normal, #5BB3C4); }
+
+  /* ---- the two lighter row forms, same pinned list -------------------- */
+  .lane.form-spark { height: 24px; }
+  .lane.form-spark .lane-name { position: static; }
+  .lane.form-spark .lane-plot { display: flex; align-items: center; gap: 6px; }
+  .lane.form-spark .lane-svg { position: relative; inset: auto; width: 90px; height: 16px; flex: 0 0 auto; }
+  .lane.form-num { height: 18px; }
+  .lane.form-num .lane-plot { display: flex; align-items: center; }
+  .lane.form-num .lane-name { position: static; }
+
+  /* ---- shared time axis, drawn ONCE for the stack --------------------- */
+  .lane-axis {
+    display: flex; justify-content: space-between;
+    padding: 1px 66px 0 4px;         /* right pad = the numeric column */
+    font-size: 9px; line-height: 1.1; height: 12px; box-sizing: border-box;
+    color: var(--muted, #69757F);
+    font-variant-numeric: tabular-nums;
+  }
+  /* ---- event ribbon (#442 lands the content; the budget reserves it) --- */
+  .lane-ribbon {
+    height: 10px; position: relative;
+    border-top: 1px solid var(--border, #232a31);
+    background: rgba(255,255,255,.015);
+  }
+  .ev { position: absolute; top: 1px; width: 1px; height: 8px; }
+  .ev.t1 { background: var(--caution, #D9A441); }
+  .ev.t2 { background: var(--muted, #69757F); }
+  .ev.op { background: var(--normal, #5BB3C4); }
+
+  /* ---- shared cursor: one line across EVERY lane ---------------------- */
+  .cursor-line {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    background: rgba(255,255,255,.28); pointer-events: none; z-index: 3;
+  }
+  .stack-wrap { position: relative; }
+
+  /* Density applies to DISPLAY, not controls: keep the visual small and expand
+     the hit region beyond it. */
+  .lane-pin {
+    position: absolute; right: 64px; top: 2px; z-index: 4;
+    width: 10px; height: 10px; padding: 7px;   /* 24px hit area around a 10px mark */
+    margin: -7px; box-sizing: content-box;
+    background: none; border: none; cursor: pointer;
+  }
+
+  .measure { margin-top: 18px; color: var(--text-2, #9fb0c0); font-size: 12px; line-height: 1.6; }
+  .measure b { color: var(--text, #dfe6ee); }
+  .measure .ok { color: var(--running, #46A35E); }
+  .measure .bad { color: var(--critical, #E5484B); }
+  table.spec { border-collapse: collapse; margin-top: 10px; font-size: 11px; color: var(--text-2, #9fb0c0); }
+  table.spec td { padding: 1px 12px 1px 0; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <h1>Reference lane — the golden artifact for #440</h1>
+  <p class="sub">Built by hand at the spec's exact pixel values (§8). The stack below is
+    four trace lanes plus the shared axis and the event ribbon; the measurement underneath
+    is taken from the live DOM, so the density claim is checkable rather than asserted.</p>
+
+  <div class="stack-wrap" id="stack">
+    <div class="lane-stack" id="laneStack">
+
+      <!-- LANE 1 — the reference. Every other form is a reduction of this one. -->
+      <div class="lane" id="refLane">
+        <div class="lane-plot">
+          <span class="lane-name">Turbine Load</span>
+          <span class="lane-rng">40 – 110 MWe</span>
+          <svg class="lane-svg" viewBox="0 0 300 44" preserveAspectRatio="none">
+            <polyline fill="none" stroke="#c8a45c" stroke-width="1.2" vector-effect="non-scaling-stroke"
+              points="0,30 20,30 40,29.6 60,29.4 80,24 100,18 120,14 140,12.4 160,12 180,11.8 200,11.6 220,11.5 240,11.4 260,11.4 280,11.3 300,11.3"/>
+          </svg>
+        </div>
+        <div class="lane-val"><span class="v">100.0</span><span class="u">MWe</span></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-plot">
+          <span class="lane-name">Reactor Power</span>
+          <span class="lane-rng">40 – 110 %</span>
+          <svg class="lane-svg" viewBox="0 0 300 44" preserveAspectRatio="none">
+            <polyline fill="none" stroke="#5fa8d3" stroke-width="1.2" vector-effect="non-scaling-stroke"
+              points="0,30 20,30 40,30 60,29.8 80,28 100,23 120,17.5 140,14 160,12.6 180,12 200,11.8 220,11.6 240,11.5 260,11.4 280,11.4 300,11.3"/>
+          </svg>
+        </div>
+        <div class="lane-val"><span class="v">99.9</span><span class="u">%</span></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-plot">
+          <span class="lane-name">Tavg</span>
+          <span class="lane-rng">570 – 590 °F</span>
+          <svg class="lane-svg" viewBox="0 0 300 44" preserveAspectRatio="none">
+            <polyline fill="none" stroke="#e08050" stroke-width="1.2" vector-effect="non-scaling-stroke"
+              points="0,22 20,22 40,22.1 60,22.3 80,26 100,30 120,31 140,29 160,26 180,23.5 200,22 220,21.4 240,21.2 260,21.1 280,21 300,21"/>
+          </svg>
+        </div>
+        <div class="lane-val"><span class="v">580.4</span><span class="u">°F</span></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-plot">
+          <span class="lane-name">Primary Pressure</span>
+          <span class="lane-rng">2150 – 2300 psi</span>
+          <svg class="lane-svg" viewBox="0 0 300 44" preserveAspectRatio="none">
+            <polyline fill="none" stroke="#9a86c8" stroke-width="1.2" vector-effect="non-scaling-stroke"
+              points="0,20 20,20 40,20.2 60,20.6 80,23 100,26 120,27 140,25 160,23 180,21.5 200,20.6 220,20.2 240,20 260,20 280,19.9 300,19.9"/>
+          </svg>
+        </div>
+        <div class="lane-val"><span class="v">2235</span><span class="u">psi</span></div>
+      </div>
+
+      <!-- The two lighter forms, from the same pinned list. Pin once, then choose
+           how each pinned channel renders — two renderings of one list, not two
+           features. -->
+      <div class="lane form-spark">
+        <div class="lane-plot">
+          <span class="lane-name">SG Level</span>
+          <svg class="lane-svg" viewBox="0 0 90 16" preserveAspectRatio="none">
+            <polyline fill="none" stroke="#6fb08a" stroke-width="1" vector-effect="non-scaling-stroke"
+              points="0,9 10,9 20,8.6 30,7 40,5.5 50,6 60,7.5 70,8.2 80,8.6 90,8.7"/>
+          </svg>
+        </div>
+        <div class="lane-val"><span class="v">65.2</span><span class="u">%</span></div>
+      </div>
+
+      <div class="lane form-num">
+        <div class="lane-plot"><span class="lane-name">Boron</span></div>
+        <div class="lane-val"><span class="v">616</span><span class="u">ppm</span></div>
+      </div>
+    </div>
+
+    <!-- THE TIME AXIS IS DRAWN ONCE FOR THE STACK, not per lane. Per-lane axis
+         labels cost ~18px each; four lanes is ~72px duplicating one axis the
+         lanes already share. -->
+    <div class="lane-axis" id="laneAxis">
+      <span>−5:00</span><span>−4:00</span><span>−3:00</span><span>−2:00</span><span>−1:00</span><span>0</span>
+    </div>
+
+    <!-- Event ribbon: tier-2 ticks live here so a cycling PORV does not draw a
+         picket fence across every lane (#442). Tier 1 draws full height instead. -->
+    <div class="lane-ribbon" id="laneRibbon">
+      <i class="ev t2" style="left:31%"></i>
+      <i class="ev t2" style="left:33%"></i>
+      <i class="ev op" style="left:38%"></i>
+      <i class="ev t2" style="left:52%"></i>
+    </div>
+
+    <div class="cursor-line" id="cursor" style="left:38%"></div>
+  </div>
+
+  <div class="measure" id="measure">measuring…</div>
+
+  <table class="spec">
+    <tr><td>Lane height</td><td>48 px (44–56 target, <b>36 hard floor</b>)</td></tr>
+    <tr><td>Internal padding</td><td>2 px vertical, 4 px horizontal</td></tr>
+    <tr><td>Lane separation</td><td>1 px hairline, zero gap</td></tr>
+    <tr><td>Label / value type</td><td>10–11 px, tabular figures</td></tr>
+    <tr><td>Corner radius</td><td>2 px</td></tr>
+    <tr><td>Numeric column</td><td>62 px fixed</td></tr>
+    <tr><td>Prohibited</td><td>card wrappers · drop shadows · nested borders · utility spacing scales</td></tr>
+  </table>
+</div>
+
+<script>
+/* Measure the artifact against the budget, from the live DOM. The claim in the spec is
+ * "at 1280x800 the chart region is ~220 px and must fit four lanes plus the shared axis
+ * and event ribbon at default sizing" — so measure exactly that, not the whole page. */
+(function () {
+  var lanes = document.querySelectorAll('#laneStack .lane:not(.form-spark):not(.form-num)');
+  var laneH = lanes[0].getBoundingClientRect().height;
+  var axisH = document.getElementById('laneAxis').getBoundingClientRect().height;
+  var ribH = document.getElementById('laneRibbon').getBoundingClientRect().height;
+  var four = laneH * 4 + axisH + ribH + 2;    // +2 for the stack's own border
+  var ok = four <= 220;
+  var floorOk = laneH >= 36;
+  document.getElementById('measure').innerHTML =
+    'Lane height <b>' + laneH.toFixed(0) + ' px</b> · shared axis <b>' + axisH.toFixed(0) +
+    ' px</b> · event ribbon <b>' + ribH.toFixed(0) + ' px</b><br>' +
+    'Four lanes + axis + ribbon = <b>' + four.toFixed(0) + ' px</b> against a ~220 px budget — ' +
+    '<span class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? 'FITS, with ' + (220 - four).toFixed(0) + ' px spare' : 'OVER by ' + (four - 220).toFixed(0) + ' px') + '</span><br>' +
+    'Lane floor: ' + '<span class="' + (floorOk ? 'ok' : 'bad') + '">' + (floorOk ? 'above the 36 px floor' : 'BELOW the 36 px floor') + '</span>' +
+    ' · at 220 px the stack holds <b>' + Math.floor((220 - axisH - ribH - 2) / laneH) + '</b> trace lanes, ' +
+    'or <b>' + Math.floor((220 - axisH - ribH - 2) / 18) + '</b> numeric rows, or any mix.';
+  document.title = ok && floorOk ? 'LANE-REF-OK' : 'LANE-REF-OVER';
+}());
+</script>
+</body>
+</html>
