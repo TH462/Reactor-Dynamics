@@ -78,16 +78,14 @@ function pinChannel(ch) {
     var page = await ctx.newPage();
     await page.goto(url || SHELL);
     await page.waitForSelector('#simStatus');
-    // PRESS THROUGH THE SELECTION SCREEN (#443). Every context here is fresh, so every
-    // load is a first-time visit and gets the plant × activity picker — which covers the
-    // board and intercepts every click this file then makes.
+    // CLOSE THE PLANT & MISSION WINDOW, which is up on load since 2026-08-11. It covers the
+    // board and intercepts every click this file then makes. (It replaced the selection
+    // screen that used to be dismissed here; that overlay no longer exists.)
     //
-    // Dismissed the way a PLAYER dismisses it (press the primary on its defaults) rather
-    // than by adding a deep-link param to the URL. A deep link would also have worked and
-    // would have been one character shorter, but it would mean this file tests a boot path
-    // no visitor takes, which is the shape HR10 warns about: the gate passing on a plant
-    // the player never gets.
-    if (await page.isVisible('#startOverlay')) await page.click('#startGo');
+    // Dismissed the way a PLAYER dismisses it rather than by adding a deep-link param to
+    // the URL — a deep link would work and would mean this file tests a boot path no
+    // visitor takes, which is the shape HR10 warns about.
+    if (await page.isVisible('#missionOverlay')) await page.click('#missionClose');
     return { ctx: ctx, page: page };
   }
 
@@ -217,7 +215,7 @@ function pinChannel(ch) {
   ck('panel: view-as public gates the campaign', /COMING SOON/.test(await openMission(b.page, 'campaign')));
   await b.page.reload();
   await b.page.waitForSelector('#simStatus');
-  if (await b.page.isVisible('#startOverlay')) await b.page.click('#startGo');
+  if (await b.page.isVisible('#missionOverlay')) await b.page.click('#missionClose');
   ck('panel: view-as survives a reload', await b.page.evaluate(function () { return RD.Flags.channel(); }) === 'public');
   ck('panel: the build still knows what it is', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'dev');
   await openSettings(b.page);

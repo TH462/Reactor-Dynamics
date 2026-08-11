@@ -150,10 +150,18 @@
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
-        <button class="sim-status" id="simStatus" data-scanner-hint="Current plant &amp; mission — click to switch reactors or change what you are running."
+        <button class="sim-status" id="simStatus" data-scanner-hint="Plant &amp; Mission — click to switch reactors or change what you are running."
               data-scanner-detail="One window covers both choices: which reactor, and whether you are in free play (with a starting plant condition) or running guided content. Switching either one restarts the simulation from a fresh initial condition.">
+          <span class="ss-lbl">Plant &amp; Mission</span>
           <span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
         </button>
+        <!-- Points at the button that reopens the Plant &amp; Mission window, for a few
+             seconds after it is closed *(OWNER DIRECTIVE, 2026-08-11)*. It supersedes the
+             persistent unvisited dot the spec asked for on this one control: the window is
+             now UP on load, so the first close is the moment the player needs to be told
+             where it went, and a marker that waits for curiosity is answering a question
+             they are no longer asking. -->
+        <div class="ss-tip" id="simStatusTip" hidden>▲ Reopen it here any time</div>
       </div>
 
       <!-- Multi-use right panel: Instructor (default free-play coach), scenario voices,
@@ -272,9 +280,8 @@
               <div class="phys-note">Follow a real procedure step by step. Each step checks
                 <b>itself</b> off the instruments while you operate, and hovering a step glows
                 the controls it names on the board.</div>
-              <button class="btn" id="cklOpenBtn" data-scanner-hint="Checklists — call up a procedure as a checklist in the chat; each step checks itself off the instruments while you operate."
-                  data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before.">Checklists…</button>
-              <div class="ckl-menu" id="cklMenu" hidden></div>
+              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Checklists — pick a procedure and it runs as a checklist in the Instructor; each step checks itself off the instruments while you operate."
+                  data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always here and always in the same order, so a procedure is where you last saw it."></div>
             </div>
             <div class="phys-note ckl-busy" id="cklBusyNote" hidden>The Instructor is running
               content below. Stop it to pick a checklist.</div>
@@ -350,38 +357,6 @@
                which means "the selected mode's content". -->
           <div class="mp-session"><div class="g-section-title">This session</div>
             <div id="mpSession"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Selection screen (#443, spec §9). Replaces the board's pause veil as the
-           FIRST thing on a cold load: choose a plant and an activity, or press
-           straight through on the defaults (PWR / Free Play). A returning visitor
-           gets Resume as the primary action and the pickers stay folded.
-
-           It does NOT appear when the URL already expressed a choice (?engine,
-           ?run, ?follow, ?scenario, ?missions, ?ff, ?inject…) — the deep link IS
-           the selection, and the browser gates boot that way. -->
-      <div class="mission-overlay start-overlay" id="startOverlay" hidden>
-        <div class="mission-modal start-modal">
-          <div class="start-head">
-            <div class="start-title">Reactor<span class="a">⚛️</span>Dynamics</div>
-            <div class="start-sub" id="startSub">Choose a plant and what you want to do.</div>
-          </div>
-          <div class="start-body" id="startBody">
-            <div class="start-col">
-              <div class="g-section-title">Plant</div>
-              <div class="start-plants" id="startPlants"></div>
-            </div>
-            <div class="start-col">
-              <div class="g-section-title">Activity</div>
-              <div class="start-acts" id="startActs"></div>
-            </div>
-          </div>
-          <div class="start-foot">
-            <button class="btn start-go" id="startGo">▶ Start</button>
-            <button class="btn" id="startChange" hidden>Change</button>
-            <button class="btn" id="startTour">Take a quick tour</button>
           </div>
         </div>
       </div>
@@ -611,18 +586,6 @@
       <!-- No data-scanner-hint on this panel: the block deliberately does not
            describe itself (see inspectResolve) — hovering it would wipe the text
            you are reading and steal the click on its own manual link. -->
-    </div>
-  </div>
-
-  <!-- The Scanner's long form. Reading a paragraph is not operating, so it pauses
-       (spec §1/§6) — the one place the Scanner is allowed to cover anything. -->
-  <div class="mission-overlay" id="scanOverlay" hidden>
-    <div class="mission-modal set-modal">
-      <div class="mission-head">
-        <div class="mission-title" id="scanTitle">System Scanner</div>
-        <button class="btn" id="scanClose" aria-label="Close">✕ Close</button>
-      </div>
-      <div class="set-body" id="scanFull"></div>
     </div>
   </div>
 

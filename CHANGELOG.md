@@ -145,6 +145,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   Rewind to that instant** — measured, T+9 back to T+1 — landing on the nearest checkpoint, which
   the copy says. The SOE exports as a second CSV alongside the trace.
 
+### Changed
+- **Seven control-room adjustments** *(OWNER DIRECTIVE, 2026-08-11: "The top edge of the boarder around the diagram takes up too much space."; "The plant and mission menu should be up when the sim page is loaded… a tooltip should point to the button that opens it again… The button should be clearly labeled."; "The scanner full description should make the scanner larger so the full description is visible. It should not open another box or window."; "The instructor block should start full size when free play is started."; "Put indications in the indications tab into one column."; "The checklist tab should always show the list of checklists. They should stay in a standard order."; "Checklists are supposed to be automatically checked off by the sim when complete. Remove the user clickable step complete button.")*.
+  **The diagram's top and left borders are gone** — the board scales to its own height, so every
+  pixel the top edge took came out of the diagram. **The Plant & Mission window is up on load**,
+  replacing the selection screen entirely; closing it raises a brief tooltip pointing at the
+  button that reopens it, and that button now says **Plant & Mission** rather than only its own
+  state. **The Scanner's full description grows the line in place** instead of opening a modal —
+  the description belongs beside the thing it describes, which was the point of moving it under
+  the board. **The Instructor starts full size**, including on a first visit, where the previous
+  code returned early and left the markup's collapsed default. **Indications render in one
+  column**, superseding the 2026-08-04 two-column directive: those rows were checkboxes then and
+  now carry a label, an indicated value, a true value and a divergence flag. **The Checklists tab
+  always shows the list, in a standard order** — category then title — and stays visible while a
+  checklist runs; the relevance *scoring* is kept for the gating labels, only the reordering is
+  retired. **The manual step-complete button is gone**: every step now completes on evidence, and
+  a step with no `acc`/`saw`/`cmd` — 2 of the PWR's 106, both "Read the…" observations — completes
+  on a 12 s dwell, so omitting a predicate can never soft-lock a procedure.
+
 ### Fixed
 - **The merged list's divergence flag was flagging healthy channels (#449, #439).** Measured at
   the full stack, 300 s at hot full power: charging flow indicates **30.45 ± 1.81 gpm** against a

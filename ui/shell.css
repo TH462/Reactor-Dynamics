@@ -156,7 +156,17 @@ body {
 .app.pwr-synoptic .view-switcher,
 .app.pwr-synoptic .status-bar,
 .app.pwr-synoptic .pd-controlbar { display: none; }
-.app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
+/* NO TOP OR LEFT BORDER ON THE DIAGRAM *(OWNER DIRECTIVE, 2026-08-11: "The top edge of
+   the boarder around the diagram takes up too much space. Remove the top and left sides
+   of the boarder around the diagram.")*. The board scales to fit its own HEIGHT, so every
+   pixel the top edge takes comes straight out of the diagram — and the corner radius has
+   to go with the two edges or it draws an arc against nothing. The right and bottom edges
+   stay: they separate the diagram from the sim column and the trend strip. */
+.app.pwr-synoptic .view-area {
+  padding: 0; overflow: hidden;
+  border-top: none; border-left: none;
+  border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-left-radius: 0;
+}
 
 /* The V2 board carries its own vital-parameter tile strip (six Indicator Panel
    components across the top), which is what the shell's .gauge-strip used to provide.
@@ -780,6 +790,23 @@ html[data-channel="dev"] .logo-test {
 .sim-status:hover { color: var(--text); border-color: var(--normal); }
 .sim-status .ss-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sim-status .ss-chev { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
+/* THE BUTTON SAYS WHAT IT OPENS *(OWNER DIRECTIVE, 2026-08-11: "The button should be
+   clearly labeled.")*. It used to read only its own state — "PWR · Free Play — 50 % Power"
+   — which says where you are and not that pressing it takes you somewhere. */
+.sim-status .ss-lbl {
+  flex: 0 0 auto; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--normal); border-right: 1px solid var(--border); padding-right: 6px;
+}
+/* The pointer back to that button, for a few seconds after the window is closed. */
+.ss-tip {
+  position: relative; margin-top: 4px; padding: 4px 8px;
+  background: rgba(91, 179, 196, .12); border: 1px solid var(--normal); border-radius: 5px;
+  color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
+  animation: ssTipIn .18s ease-out;
+}
+.ss-tip[hidden] { display: none; }
+@keyframes ssTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ss-tip { animation: none; } }
 
 /* Help / tour — reuses the mission-modal chrome, narrower and content-sized */
 .help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }
@@ -1065,6 +1092,14 @@ html[data-channel="dev"] .logo-test {
 .instructor.collapsed .instr-current {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* COLLAPSED MEANS ONE LINE, and the free-play content is not one line. `.collapsed` is
+   `flex: 0 0 auto` — size to content — and it relied on the body being a text node that
+   `white-space: nowrap` could ellipsize. The idle block is BLOCK content (the checklist
+   launcher and the numbered orientation list), which nowrap does not touch, so a collapsed
+   card still stood 374 px tall and squeezed the tab it had just handed the column to.
+   Measured: tools 205 px against an instructor 374 px, on a card marked collapsed. */
+.instructor.collapsed .instr-launch,
+.instructor.collapsed .instr-idle { display: none; }
 .tools.collapsed .tab-body { display: none; }
 /* #237: a scenario that declares ui_policy.failures:'locked' owns the Failures
    tab — visible but inert, with the note explaining why. */
@@ -1208,20 +1243,19 @@ html[data-channel="dev"] .logo-test {
 /* Headers stay named while the list scrolls — it is ~100 rows on the PWR. */
 .ind-grp h4 { margin: 0 0 4px; font-size: 9px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase;
   position: sticky; top: 0; z-index: 1; background: var(--bg-panel, #12181f); padding: 3px 0 2px; }
-/* TWO COLUMNS WHEN THERE IS ROOM *(OWNER DIRECTIVE, 2026-08-04: "add a second column to the
-   graph menu when space allows.")*, #350 item 23 — carried over from the Graph tab this
-   replaced, and it matters more here: that list was 51 checkboxes, this one is every channel
-   the plant publishes with its reading beside it. `auto-fill` + a minmax track is the "when
-   space allows" part with no breakpoint to guess and no JS: the panel is operator-resizable
-   between 360 px and 900 px (pwr_board.js SIMCOL_*), so any fixed media query would be wrong
-   at some width the operator can choose. GRID, NOT CSS `columns`, and the reason is the
-   sticky headers: `position: sticky` does not work inside a multicol container, and a group
-   split down a column break would leave half its rows under someone else's heading. Each
-   group is one grid item, so it stays whole and its header still sticks. The track is wider
-   than the Graph tab's 168 px because these rows carry a value as well as a label. */
+/* ONE COLUMN *(OWNER DIRECTIVE, 2026-08-11: "Put indications in the indications tab into
+   one column.")*. This SUPERSEDES the 2026-08-04 directive that asked for a second column
+   when space allowed — and the reason that one has expired is that the rows changed under
+   it. When that was written this was a list of 51 checkboxes with a label; since #439 every
+   row carries a label, an indicated value, a true value and a divergence flag, so a 240 px
+   track splits a row that needs the width. Two columns of truncated readings read worse
+   than one column of complete ones.
+
+   The sticky group headers stay, which is why this remains a grid rather than reverting to
+   CSS `columns`: `position: sticky` does not work inside a multicol container. */
 #indicationsList {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  column-gap: 14px; align-items: start;
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 /* In a grid the first item of the SECOND column is not a first-child, so a sibling rule
    would leave it with a top border and the one beside it without. Uniform reads as a
@@ -1260,6 +1294,26 @@ html[data-channel="dev"] .logo-test {
 .scanline-body {
   flex: 1 1 auto; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* EXPANDED: the line grows to show the whole description, in place — no second box
+   *(OWNER DIRECTIVE, 2026-08-11)*. A fixed generous height rather than content-sized,
+   because a panel that resizes on every hover pushes the board around, which is the
+   complaint the original fixed geometry existed for. It only changes size when the
+   player presses the button. */
+.scanline.expanded {
+  height: auto; min-height: 26px; max-height: 190px;
+  align-items: flex-start; padding: 5px 8px; line-height: 1.45;
+}
+.scanline.expanded .scanline-tag { padding-top: 1px; }
+.scanline.expanded .scanline-body {
+  white-space: normal; overflow-y: auto; text-overflow: clip;
+  max-height: 178px; overscroll-behavior: contain;
+}
+.scanline.expanded .scan-exp { position: sticky; top: 0; }
+.scan-detail { display: block; margin-top: 5px; color: var(--text-2); }
+.scan-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center;
+  margin-top: 5px; font-size: 11px; color: var(--muted);
 }
 .scanline-body strong { color: var(--text); }
 .scanline .idle { color: var(--muted); font-style: italic; }

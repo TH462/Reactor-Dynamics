@@ -60,6 +60,7 @@
     ctlVals: {},            // last value typed into each control-bar number input (id → value), so the shared bar doesn't revert on view switch
     manualSection: 'overview', // active section in the Operator's Manual overlay
     follow: null,           // { id, idx } — a procedure being followed in the Instructor block
+    inspectExpanded: false, // Scanner grown to show the full description (owner, 2026-08-11)
     indFilter: 'all',       // merged list row-type chip: all | paired | ind | phys (#439)
     indTruth: null,         // HR1 truth column: null = follow the mode default (off in missions)
   };
@@ -2820,16 +2821,22 @@
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
     // Checklist picker row: free play only — anything instructed owns the card.
+    /* THE TAB ALWAYS SHOWS THE LIST *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
+     * should always show the list of checklists... Currently when a checklist is running
+     * this tab is empty.")*. It used to hide the whole picker whenever the Instructor was
+     * busy — which is exactly when a player most wants to see what else there is, or to
+     * switch. Nothing about showing the list starts anything; picking one does, and that
+     * was always allowed. */
     var cklRow = $('instrCklRow');
     if (cklRow) {
-      var cklBusy = !!(ui.scenario || (s.instructor && (s.instructor.follow || s.instructor.chat ||
-        s.instructor.checklist || s.instructor.level_complete)));
-      cklRow.hidden = cklBusy || !flagOn('checklists');
-      // The tab is a TAB now (#439), so it is always there — but a tab whose body is
-      // empty because the Instructor is busy reads as broken. Say which it is.
+      cklRow.hidden = !flagOn('checklists');
+      var running = !!(s.instructor && s.instructor.checklist);
       var cklNote = $('cklBusyNote');
-      if (cklNote) cklNote.hidden = !(cklBusy && flagOn('checklists'));
-      if (cklBusy) { var cm = $('cklMenu'); if (cm) cm.hidden = true; }
+      if (cklNote) {
+        cklNote.hidden = !running;
+        if (running) txt(cklNote, 'A checklist is running in the Instructor below. Pick another to switch.');
+      }
+      if (!cklRow.hidden) toggleCklMenu();      // keeps the list current; no-op when unchanged
     }
     var fb = s.instructor && s.instructor.follow;
     if (fb) {
@@ -3146,7 +3153,13 @@
             (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
         }
         if (st.note) h += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
-        h += '<button class="btn ckl-mark" data-ckl-check="' + i + '">✓ Mark done</button>';
+        // NO MANUAL TICK *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be
+        // automatically checked off by the sim when complete. Remove the user clickable
+        // step complete button.")*. Every step now completes on evidence: an `acc`
+        // predicate, a `saw` latch, the step's own command, or — for a pure observation
+        // with none of those — a dwell, added in instructor_layer so omitting a predicate
+        // can never soft-lock a procedure. The `checklist_check` COMMAND survives; only
+        // its button is gone.
       }
       h += '</div></div>';
     }
@@ -3171,7 +3184,11 @@
       if (ck.complete) log.scrollTop = log.scrollHeight;
       else if (!firstBuild) { var act = log.querySelector('.ckl-active'); if (act) act.scrollIntoView({ block: 'nearest' }); }
     }
-    if (firstBuild) setFocus('instructor');
+    // SPLIT, not take-the-column: the Checklists tab has to stay visible while a checklist
+    // runs (owner, 2026-08-11), and setFocus('instructor') collapses the tools card. This
+    // is the second of the two places that did it — startChecklist was the obvious one and
+    // this render-path call is the one that put it back a frame later.
+    if (firstBuild) applyFocus(true, true);
   }
   // Observed value for the precondition banner: whole units above 100 (ppm, °C
   // near operating point), one decimal below (fractions, small margins).
@@ -3234,30 +3251,48 @@
       { _grade: RD.InstructorLayer.prototype._grade, _predMet: RD.InstructorLayer.prototype._predMet },
       latest, procs, active);
   }
+  /* The list is ALWAYS on screen in its tab (owner, 2026-08-11) — there is no open/close
+   * any more, so `toggleCklMenu` only means "make sure it is current". Kept under its old
+   * name because three call sites reach it (the idle launcher's "All checklists…", the
+   * mission window, and the tour) and renaming it would be churn for nothing.
+   *
+   * Rebuilt on a KEY, not every broadcast: the order is stable now, so a per-frame
+   * innerHTML would be pure cost on the densest list in the shell. */
+  var cklMenuKey = null;
   function toggleCklMenu(force) {
     var menu = $('cklMenu'); if (!menu) return;
-    var show = force != null ? !!force : menu.hidden;
-    if (show) menu.innerHTML = cklMenuHtml();
-    menu.hidden = !show;
+    menu.hidden = false;
+    var key = ui.engineKey + '|' + (latest && latest.instructor && latest.instructor.checklist
+      ? latest.instructor.checklist.procedure_id : '');
+    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(); }
   }
+  /* A STANDARD ORDER *(OWNER DIRECTIVE, 2026-08-11: "They should stay in a standard
+   * order.")*. This supersedes the relevance SORT: the list is now always in the same
+   * order — category first, on the sequence an operator would name them (startup, power,
+   * control, shutdown, emergency, accident), then title. A list that rearranges itself is
+   * a list you have to re-read every time, and muscle memory is worth more here than
+   * putting the most likely item on top.
+   *
+   * The relevance SCORING is kept and still earns its place, because it is what produces
+   * the gating labels ("Requires reactor power above 10") and what the free-play
+   * Instructor's short launcher picks its four from. What is retired is the reordering,
+   * not the knowledge. */
+  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident'];
   function cklMenuHtml() {
     var ranked = rankedProcedures();
     if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
-    var ready = ranked.filter(function (r) { return r.score >= 100; });
-    var later = ranked.filter(function (r) { return r.score < 100; });
-    function row(r) {
+    var stable = ranked.slice().sort(function (a, b) {
+      var ai = CKL_CAT_ORDER.indexOf(a.category || ''), bi = CKL_CAT_ORDER.indexOf(b.category || '');
+      if (ai < 0) ai = CKL_CAT_ORDER.length;
+      if (bi < 0) bi = CKL_CAT_ORDER.length;
+      if (ai !== bi) return ai - bi;
+      return (a.title || '').localeCompare(b.title || '');
+    });
+    return stable.map(function (r) {
       return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') + '>' +
              '<span class="ckl-cat">' + mesc(r.category || '') + '</span>' + mesc(r.title) +
              (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
-    }
-    var h = ready.map(row).join('');
-    if (later.length) {
-      // COLLAPSED, not hidden. The <details> keeps them one gesture away and states why
-      // they are down here, which is the instruction the demotion is carrying.
-      h += '<details class="ckl-later"><summary>' + later.length +
-           ' not applicable to the plant right now</summary>' + later.map(row).join('') + '</details>';
-    }
-    return h;
+    }).join('');
   }
   /* NEVER REORDER AN OPEN LIST (spec §9), and the way to guarantee that is to have no
    * refresh path at all: the menu is rebuilt when it OPENS and not again. A first version
@@ -3268,7 +3303,12 @@
    * and it needs no state to achieve. */
   function startChecklist(id) {
     cmd({ action: 'start_checklist', procedure_id: id });
-    setFocus('instructor', true);
+    /* SPLIT, do not take the column *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
+     * should always show the list of checklists.")*. `setFocus('instructor')` collapses the
+     * tools card, which left the list present in the DOM and invisible on screen — the
+     * directive is about what the player can SEE, so rendering it is not enough. Both cards
+     * stay open: the running checklist in the Instructor, the list still above it. */
+    applyFocus(true, true);
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -3502,7 +3542,21 @@
     renderMissionSelect();
     openModal('missionOverlay');
   }
-  function closeMissionSelect() { closeModal('missionOverlay'); }
+  /* A FEW SECONDS, then gone *(OWNER DIRECTIVE, 2026-08-11: "a tooltip should point to the
+   * button that opens it again. The tooltip should only show up for a few seconds.")*.
+   * Armed only by the on-load open, so it fires once per session and never interrupts a
+   * player who opened the window deliberately and knows where it is. */
+  var missionTipArmed = false, missionTipT = null;
+  function closeMissionSelect() {
+    closeModal('missionOverlay');
+    if (!missionTipArmed) return;
+    missionTipArmed = false;
+    var tip = $('simStatusTip'); if (!tip) return;
+    tip.hidden = false;
+    clearTimeout(missionTipT);
+    missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
+    markSeen('session');
+  }
   // Called whenever something that the mission window displays has changed
   // (completion marks, the active-scenario card): re-render it if it is open.
   // Was `buildTraining`, a leftover from the retired Training tab — renamed
@@ -3621,79 +3675,13 @@
     }).join('') || '<div class="m-note">No procedures for this plant.</div>');
   }
 
-  // ============================================== selection screen (#443, spec §9)
-  /* The front door. Before this, a cold load landed on the board's own pause veil,
-   * which says PAUSED but not WHAT you are about to operate — and every way to pick
-   * something else was behind a tab labelled "Operate", which is where nobody looks
-   * for a course. This asks the two questions that matter and takes a default answer
-   * for both, so pressing straight through costs one click.
-   *
-   * It does NOT duplicate the Plant & Mission window: picking Campaign or Scenarios
-   * hands off to that window at the right tab. Free play is the only activity this
-   * screen completes on its own, because it is the one with nothing to choose.
-   */
-  var START_KEY = 'rd_start_choice';
-  var startSel = { engine: 'pwr', act: 'free' };
-  var startOpen = false;
-  function readStartChoice() {
-    try { return JSON.parse(localStorage.getItem(START_KEY) || 'null'); } catch (e) { return null; }
-  }
-  function saveStartChoice() {
-    try { localStorage.setItem(START_KEY, JSON.stringify(startSel)); } catch (e) { /* private mode */ }
-  }
-  var START_ACTS = [
-    ['free', 'Free Play', 'The plant is yours — no script, no grading, every control live.'],
-    ['campaign', 'Campaign', 'The guided path: zero to operator, in order.'],
-    ['scenarios', 'Scenarios', 'Instructor-led situations, one lesson each.']
-  ];
-  function startActLabel(a) {
-    for (var i = 0; i < START_ACTS.length; i++) if (START_ACTS[i][0] === a) return START_ACTS[i][1];
-    return 'Free Play';
-  }
-  function renderStartScreen() {
-    $('startPlants').innerHTML = Object.keys(ENGINES).map(function (k) {
-      var e = ENGINES[k];
-      return '<div class="mplant-card' + (k === startSel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
-        ' data-splant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
-        '<div class="mplant-name">' + mesc(e.label) + '</div>' +
-        '<div class="mplant-sub">' + mesc(e.sub) + '</div>' +
-        (e.soon ? '<div class="mplant-soon">COMING SOON</div>' : '') + '</div>';
-    }).join('');
-    $('startActs').innerHTML = START_ACTS.map(function (a) {
-      return '<div class="start-act' + (a[0] === startSel.act ? ' on' : '') + '" data-sact="' + a[0] + '">' +
-        '<span class="init-dot">' + (a[0] === startSel.act ? '◉' : '○') + '</span>' +
-        '<span><span class="sa-name">' + mesc(a[1]) + '</span>' +
-        '<span class="sa-desc">' + mesc(a[2]) + '</span></span></div>';
-    }).join('');
-    var prior = readStartChoice();
-    var folded = !!prior && !startOpen;
-    $('startBody').hidden = folded;
-    $('startChange').hidden = !folded;
-    txt($('startSub'), folded
-      ? 'Picking up where you left off.'
-      : 'Choose a plant and what you want to do.');
-    txt($('startGo'), (folded ? '▶ Resume — ' : '▶ Start — ') +
-      ENGINES[startSel.engine].label + ' · ' + startActLabel(startSel.act));
-  }
-  function openStartScreen() {
-    var prior = readStartChoice();
-    if (prior && ENGINES[prior.engine] && !ENGINES[prior.engine].soon) startSel.engine = prior.engine;
-    if (prior && prior.act) startSel.act = prior.act;
-    startOpen = false;
-    renderStartScreen();
-    $('startOverlay').hidden = false;
-  }
-  function startScreenGo() {
-    saveStartChoice();
-    $('startOverlay').hidden = true;
-    markSeen('session');                 // they have now made a session choice
-    if (startSel.engine !== ui.engineKey) switchEngine(startSel.engine, null);
-    if (startSel.act === 'free') { resumeSim(); return; }
-    // Campaign / Scenarios: the choosing is not finished, so hand off to the window
-    // that owns it rather than growing a second copy of that content here.
-    msel.mode = startSel.act;
-    openMissionSelect();
-  }
+  // THE SELECTION SCREEN IS GONE *(OWNER DIRECTIVE, 2026-08-11: "The plant and mission menu
+  // should be up when the sim page is loaded.")*. It asked which plant and which activity,
+  // then handed off to the Plant & Mission window for everything except free play — so the
+  // window now does the whole job and the extra surface is removed rather than left
+  // unreachable. Its one genuinely new idea, Resume-for-a-returning-visitor, is not lost:
+  // the window opens on the plant and mode the player last used, because `msel` is seeded
+  // from `ui` in openMissionSelect().
 
   /* Coach marks — PERSISTENT unvisited dots, not a timed tour (#443, spec §9).
    * A tooltip that fades gets dismissed by the click the user was already making
@@ -3720,6 +3708,11 @@
     } catch (e) { /* private mode */ }
   }
   function restorePanelState() {
+    /* THE STARTING STATE IS APPLIED FIRST AND UNCONDITIONALLY. It used to sit after an
+     * `if (!st) return`, so a visitor with nothing saved — a first visit, a cleared
+     * browser — never reached it and got the markup's default, which is `collapsed`. The
+     * one case the directive is about was the one case that skipped it. */
+    applyFocus(true, true);
     var st;
     try { st = JSON.parse(localStorage.getItem(PANEL_KEY) || 'null'); } catch (e) { return; }
     if (!st) return;
@@ -3729,12 +3722,18 @@
       // #439 and a saved 'operate' or 'settings' must fall back, not throw.
       if (b && !b.classList.contains('on')) b.click();
     }
-    if (st.instr === 'collapsed') applyFocus(false, true);
-    else if (st.instr === 'mini') { applyFocus(false, true); minimizeInstructor(); }
+    /* THE INSTRUCTOR STARTS FULL SIZE *(OWNER DIRECTIVE, 2026-08-11: "The instructor block
+     * should start full size when free play is started.")*. A remembered fold is not
+     * restored on a fresh start: the block is where free play's coaching and the checklist
+     * launcher live, and opening folded hides the one surface that tells a new player what
+     * to do next. The tab choice is still restored — that is a preference; this is a
+     * starting state. */
   }
 
   var SEEN_KEY = 'rd_seen_';
-  var COACH = { session: 'simStatus', checklists: 'cklOpenBtn', feedback: 'fbHeaderBtn' };
+  // The Checklists mark points at the LIST now — its open button is gone, because the
+  // list is always on screen (owner, 2026-08-11).
+  var COACH = { session: 'simStatus', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
   function seenCoach(k) {
     try { return localStorage.getItem(SEEN_KEY + k) === '1'; } catch (e) { return true; }
   }
@@ -5669,10 +5668,6 @@
     // Auto-checklists. `data-ckl-start` is now delegated at the BODY, because the launcher
     // appears in two places since #443 — the Checklists tab and the free-play Instructor
     // slot — and binding per host is how the second one would silently do nothing.
-    var cklPicker = $('instrCklRow');
-    if (cklPicker) cklPicker.addEventListener('click', function (e) {
-      if (e.target.closest('#cklOpenBtn')) toggleCklMenu();
-    });
     document.body.addEventListener('click', function (e) {
       var st = e.target.closest('[data-ckl-start]');
       if (!st) return;
@@ -5695,13 +5690,6 @@
     $('settingsClose').addEventListener('click', function () { closeModal('settingsOverlay'); });
     $('settingsOverlay').addEventListener('click', function (e) {
       if (e.target === $('settingsOverlay')) closeModal('settingsOverlay');
-    });
-    // Scanner full description — also a pausing modal (spec §6).
-    $('scanClose').addEventListener('click', function () { closeModal('scanOverlay'); });
-    $('scanOverlay').addEventListener('click', function (e) {
-      if (e.target === $('scanOverlay')) closeModal('scanOverlay');
-      var m = e.target.closest && e.target.closest('[data-scan-doc]');
-      if (m) { closeModal('scanOverlay'); openManualAt(m.getAttribute('data-scan-doc'), m.getAttribute('data-scan-sec')); }
     });
     initFeaturePanel();          // Features — development toggles (#241)
     // Help + quick tour (also offered from SIMULATION PAUSED on the board).
@@ -5896,25 +5884,10 @@
         }
       });
     })();
-    // Selection screen (#443) — plant/activity picks, Change, Start, tour.
-    $('startOverlay').addEventListener('click', function (e) {
-      var pc = e.target.closest('[data-splant]');
-      if (pc) {
-        if (ENGINES[pc.getAttribute('data-splant')].soon) return;   // shown, not selectable
-        startSel.engine = pc.getAttribute('data-splant'); renderStartScreen(); return;
-      }
-      var ac = e.target.closest('[data-sact]');
-      if (ac) { startSel.act = ac.getAttribute('data-sact'); renderStartScreen(); return; }
-    });
-    $('startChange').addEventListener('click', function () { startOpen = true; renderStartScreen(); });
-    $('startGo').addEventListener('click', startScreenGo);
-    $('startTour').addEventListener('click', function () {
-      saveStartChoice(); $('startOverlay').hidden = true; markSeen('session'); openTour(0);
-    });
     // Coach marks retire on first use of the thing they point at (#443).
     $('simStatus').addEventListener('click', function () { markSeen('session'); });
     $('fbHeaderBtn').addEventListener('click', function () { markSeen('feedback'); });
-    $('cklOpenBtn').addEventListener('click', function () { markSeen('checklists'); });
+    $('cklMenu').addEventListener('click', function () { markSeen('checklists'); });
 
     $('missionOverlay').addEventListener('click', function (e) {
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
@@ -6084,10 +6057,13 @@
     document.body.addEventListener('click', function (e) { inspectAt(e); });
     var sp = $('scannerPanel');
     if (sp) sp.addEventListener('click', function (e) {
-      // Only the button opens the long form now — the line is 26 px and sits under the
-      // board, so a click anywhere on it would fire while reaching for the diagram.
+      var m = e.target.closest && e.target.closest('[data-scan-doc]');
+      if (m) { openManualAt(m.getAttribute('data-scan-doc'), m.getAttribute('data-scan-sec')); return; }
+      // Only the button toggles — the line sits under the board, so a click anywhere on it
+      // would fire while reaching for the diagram.
       if (e.target.closest('#scannerToggle')) inspectExpand();
     });
+    inspectExpand(loadInspectExpanded());        // restore the operator's last choice
   }
 
   // ============================================ System Scanner / inspection (#96)
@@ -6184,6 +6160,19 @@
     if (live) {
       h += '<span class="scan-live' + (live.engaged ? ' on' : '') + '">' + mesc(live.text) + '</span>';
     }
+    // Expanded: the full description, the card note, and the manual link, all IN THE LINE.
+    if (ui.inspectExpanded) {
+      if (it.detail) h += '<span class="scan-detail">' + mesc(it.detail) + '</span>';
+      var meta = [];
+      // An inherited entry describes the CARD, not the part under the cursor. Say so — a
+      // group summary read as a per-item one is a quiet lie about coverage.
+      if (it.inherited) meta.push('<span class="scan-hint">Describes this card as a whole.</span>');
+      if (it.doc) {
+        meta.push('<button class="scan-manual" data-scan-doc="' + esc(it.doc) + '" data-scan-sec="' +
+                  esc(it.sec || '') + '">Manual' + (it.sec ? ' §' + mesc(it.sec) : '') + '</button>');
+      }
+      if (meta.length) h += '<span class="scan-meta">' + meta.join('') + '</span>';
+    }
     box.innerHTML = h;
     // The Full-description button only means anything when there IS one; a dead control
     // on a 26 px line is worse than no control (#439).
@@ -6209,32 +6198,36 @@
     inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false };
     inspectRender();
   }
-  /* FULL DESCRIPTION — a modal now, not a second height (#439, spec §6).
+  /* FULL DESCRIPTION GROWS THE LINE IN PLACE *(OWNER DIRECTIVE, 2026-08-11: "The scanner
+   * full description should make the scanner larger so the full description is visible. It
+   * should not open another box or window.")*.
    *
-   * The block used to have two tiers in place: 74 px collapsed, 28vh expanded, with the
-   * choice persisted in `rd_inspect_expanded`. Both are gone with the panel. A ~26 px
-   * line has no room for a paragraph, and it should not grow into one — the geometry was
-   * fixed rather than content-sized precisely because a growing panel made the card above
-   * it jump (the note that used to sit in shell.css beside `.scanner .body`).
+   * It was a pausing modal, on the reasoning that reading a paragraph is not operating. The
+   * directive is the stronger argument: a modal covers the board you are asking about, and
+   * the whole reason the Scanner moved under the diagram was to put the description next to
+   * the thing it describes. A window undoes that.
    *
-   * Reading a long description is not operating, so this pauses (spec §1). That is the
-   * ONE case where the Scanner is allowed to cover anything.
-   */
-  function inspectExpand() {
-    var it = inspectCur;
-    if (!it) return;
-    txt($('scanTitle'), it.title || 'System Scanner');
-    var h = '<p class="scan-brief">' + mesc(it.brief || '') + '</p>';
-    if (it.detail) h += '<p>' + mesc(it.detail) + '</p>';
-    if (it.inherited) h += '<p class="scan-hint">Describes this card as a whole, not the part under the cursor.</p>';
-    if (it.doc) {
-      h += '<p><button class="btn scan-manual" data-scan-doc="' + esc(it.doc) + '" data-scan-sec="' +
-           esc(it.sec || '') + '">Open the manual' + (it.sec ? ' §' + mesc(it.sec) : '') + '</button></p>';
+   * The height is CONTENT-DRIVEN but capped, and the cap is not decoration — a growing
+   * panel that pushes its neighbours around on every hover is the exact complaint the fixed
+   * 74 px geometry was introduced for (owner, 2026-07-28: "the jumping up and down when
+   * moving the mouse over things is annoying"). Expanded it takes a fixed, generous box and
+   * scrolls anything longer; collapsed it is the 26 px line. It only changes size when the
+   * player asks, never on hover. */
+  function inspectExpand(force) {
+    ui.inspectExpanded = force != null ? !!force : !ui.inspectExpanded;
+    var p = $('scannerPanel'); if (p) p.classList.toggle('expanded', ui.inspectExpanded);
+    var b = $('scannerToggle');
+    if (b) {
+      b.textContent = ui.inspectExpanded ? 'Summary only' : 'Full description';
+      b.setAttribute('aria-expanded', String(ui.inspectExpanded));
     }
-    if (!it.detail && !it.doc) h += '<p class="scan-hint">No further description is authored for this item.</p>';
-    setHTML($('scanFull'), h);
-    openModal('scanOverlay');
+    try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) { /* private mode */ }
+    inspectRender();
   }
+  function loadInspectExpanded() {
+    try { return localStorage.getItem('rd_inspect_expanded') === '1'; } catch (e) { return false; }
+  }
+
   // Open the Operator's Manual on the document an inspection entry cites, and
   // scroll to its numbered section. Headings render as "7.3 Letdown Orifices…",
   // so the section number is the anchor — matched on a whole number segment so
@@ -6346,16 +6339,18 @@
       }
     },
     {
-      sel: '#cklOpenBtn',
+      sel: '#cklMenu',
       place: 'left',
       title: 'Checklists',
       body: '<p>Interactive procedures that check themselves off the instruments. ' +
         'Best next step after this tour — hover a step to glow the controls it names.</p>',
       prep: function () {
-        // Checklists is its own tab since #439 — no picker to un-hide.
+        // Checklists is its own tab since #439, and the list is always on screen since
+        // 2026-08-11 — there is nothing to un-hide, only a tab to select.
         applyFocus(false, true);
         var t = document.querySelector('#tabbar [data-tab="checklists"]');
-        if (t) t.click();
+        if (t && !t.classList.contains('on')) t.click();
+        toggleCklMenu('force');
       },
       // If checklists are gated off on this channel, point at the strip instead.
       fallback: '#toolsCard'
@@ -7463,7 +7458,18 @@
     // Every dev deep-link and both browser gates arrive with one of these, and a
     // screen asking "which plant?" over a link that named the plant is a wall, not
     // a front door.
-    if (!/[?&](engine|init|run|follow|scenario|missions|mmode|ff|inject|tab|auto|manual|help|mode|phys)=/.test(location.search || '')) openStartScreen();
+    /* THE PLANT & MISSION WINDOW IS UP ON LOAD *(OWNER DIRECTIVE, 2026-08-11: "The plant
+     * and mission menu should be up when the sim page is loaded.")*. It replaces the
+     * selection screen as the thing a cold load opens on: the same two questions — which
+     * plant, and what are you running — asked by the window that already owns them, rather
+     * than by a second surface that handed off to it for everything except free play.
+     * Closing it raises a brief tooltip pointing at the button that reopens it.
+     *
+     * Deep links still bypass, for the same reason as before: the URL already chose. */
+    if (!/[?&](engine|init|run|follow|scenario|missions|mmode|ff|inject|tab|auto|manual|help|mode|phys)=/.test(location.search || '')) {
+      openMissionSelect();
+      missionTipArmed = true;          // the NEXT close is the one that needs the pointer
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

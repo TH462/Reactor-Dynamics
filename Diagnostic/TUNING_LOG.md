@@ -109,6 +109,47 @@ built, and `pwr_board_data.js` is generated so retrofitting was never an option.
 - **§7's sensing-location highlight** (SG level from its reference leg) is bounded by what the
   board distinguishes, which is the card, not the tap.
 
+### Seven owner adjustments after the review — and three defects of the same shape
+
+Seven direct requests, all shipped, all live-driven (19/19 in the drive script). The
+engineering interest is not the features; it is that **three separate defects had one shape: a
+state that was set correctly and did not take effect**, and in all three the DOM said the right
+thing while the pixels did not.
+
+| # | The state was right | The pixels were not |
+|---|---|---|
+| 6 | The checklist list was built and in the DOM | Its container was collapsed — 17 nodes nobody could see |
+| 4 | `applyFocus(true, true)` was written and correct | It sat after `if (!st) return`, so a first visit never reached it |
+| 5 | The Instructor card carried `collapsed` | `collapsed` is `flex: 0 0 auto` and ellipsizes ONE TEXT LINE; the free-play launcher I had added that night is BLOCK content, so a "collapsed" card stood **374 px** and left the tab it had just handed the column to **205 px** |
+
+**The lesson is about the check, not the code.** My first #6 check counted
+`querySelectorAll('[data-ckl-start]').length` and passed — against a list that was invisible,
+which is verbatim the complaint the request was filed about. A node count cannot answer a
+question about visibility. It now asks `offsetParent !== null`, which is null inside any hidden
+ancestor. The #5 defect was found by **looking at a screenshot**, after every element-counting
+check in the drive had passed; this is the third time this week that the artifact caught what
+the assertion could not (cf. the numeric-row overdraw in the -c entry below).
+
+**Two supersessions, recorded because both overrode a previous instruction:**
+
+- **Indications go to one column**, superseding the 2026-08-04 two-column layout. That directive
+  was given when the rows were checkboxes; #439 made them paired indicated/true rows, and two
+  columns of a two-column row is four columns of numbers in a 350 px panel.
+- **A standard checklist order** supersedes the relevance sort from #443 pt 2. The relevance
+  *scoring* is kept and still labels what the plant is asking for — what is retired is letting it
+  reorder the list under the player's hand. An order that moves is an order you cannot learn.
+
+**#7 removed the step-complete button, which required the steps to actually self-complete.**
+Measured first: **2 of 106 authored steps declare no `acc`, `saw` or `cmd`** — pure observation
+steps, which had no completion path other than the button. They now complete on a 12 s dwell.
+Deleting the button without that measurement would have hung two checklists for ever, and
+nothing in the suite would have said so.
+
+**HR11 caught this session's own citation.** The CHANGELOG entry went in as
+`*(OWNER DIRECTIVE, 2026-08-11)*` — a date with no verbatim words, which is the exact failure the
+`run_hardrules` baseline note describes happening four times before. It reads as authority while
+carrying none of the evidence. 274 checks, 1 failed, and it was mine.
+
 ---
 
 ## Session log — 2026-08-10-develop-c (the #436 control-room rework: plan, five phases, and three defects that were all the observer, not the plant)

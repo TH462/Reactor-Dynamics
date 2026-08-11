@@ -63,6 +63,9 @@
   // consecutive broadcast evaluations before the step completes, so a parameter
   // sweeping through its target band doesn't advance the procedure in passing.
   var ACC_STABLE_N = 5;
+  // Seconds of SIM time an observation step stands before it checks itself off. Long
+  // enough to read a line and look at the board, short enough not to feel stuck.
+  var OBSERVE_DWELL_S = 12;
 
   // ================================================================ constructor
   // Signature and connect() must match the placeholder — M5 constructs with null
@@ -550,6 +553,7 @@
   // acc, its saw latching; or, with neither, its command family being observed.
   // Pure observation steps only check by hand (checklistCheck).
   InstructorLayer.prototype._stepChecklist = function (snapshot) {
+    var simTime = (snapshot && snapshot.metadata && snapshot.metadata.sim_time) || 0;
     var c = this.checklist;
     if (c.complete) return;
 
@@ -585,6 +589,7 @@
 
     var st = c.proc.steps[c.idx];
     if (!st) { c.complete = true; return; }
+    if (c.stepAt == null) c.stepAt = simTime;   // when this step came up — the dwell's clock
 
     if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
 
@@ -598,11 +603,25 @@
       c.accMetNow = false;
     }
 
+    /* A step with NOTHING GRADABLE is an OBSERVATION, and it completes on time spent.
+     *
+     * *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be automatically checked
+     * off by the sim when complete. Remove the user clickable step complete button.")* —
+     * with that button gone, `: false` here would be a soft lock. Measured across the PWR
+     * set: 2 steps of 106 declare no `acc`, `saw` or `cmd`, and both are the opening "Read
+     * the primary pressure…" / "Read SG level…" of their procedure. There is no instrument
+     * evidence that someone has READ something; the honest completion criterion is that
+     * they were given time to.
+     *
+     * Generalised rather than authored onto those two steps on purpose: a new observation
+     * step should not be able to soft-lock a checklist just by omitting a predicate.
+     * `checklist_check` survives as a command — save/restore and the tests still use it —
+     * it simply has no button any more. */
     var met = st.acc ? (c.accMetNow && (!st.saw || c.sawSeen))
             : st.saw ? c.sawSeen
             : st.cmd ? c.cmdSeen
-            : false;
-    if (met) this._checklistCheckOff('auto');
+            : (simTime - (c.stepAt == null ? simTime : c.stepAt)) >= OBSERVE_DWELL_S;
+    if (met) this._checklistCheckOff(st.acc || st.saw || st.cmd ? 'auto' : 'observed');
   };
 
   InstructorLayer.prototype._checklistCheckOff = function (by) {
@@ -611,6 +630,7 @@
     c.doneBy[c.idx] = by;
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     if (c.idx >= c.proc.steps.length) c.complete = true;
   };
 
