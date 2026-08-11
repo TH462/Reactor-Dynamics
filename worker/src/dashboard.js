@@ -19,7 +19,7 @@
  * safe to display.
  */
 
-import { esc, html, PAGE_HEAD, nav } from './render.js';
+import { esc, html, PAGE_HEAD, nav, withDow } from './render.js';
 import { analyticsPage } from './analytics.js';
 import { sessionList, sessionDetail } from './sessions.js';
 
@@ -36,7 +36,9 @@ function parseKey(key) {
   const day = parts[1] || '';
   const id = (parts[2] || '').replace(/\.json(\.gz)?$/, '');
   const ms = parseInt(id.split('-')[0], 36);
-  const when = Number.isFinite(ms) ? new Date(ms).toISOString() : day;
+  // Match the Analytics Engine format the other two views print ("YYYY-MM-DD HH:MM:SS")
+  // rather than raw ISO — milliseconds and a T are noise in a column someone scans.
+  const when = Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 19).replace('T', ' ') : day;
   return { day, id, when };
 }
 
@@ -71,7 +73,7 @@ async function reportList(env, token) {
     }
     const preview = note.length > 140 ? note.slice(0, 140) + '…' : note;
     const href = '?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key);
-    return '<tr><td class="mono muted">' + esc(when) + '</td>'
+    return '<tr><td class="mono muted">' + esc(withDow(when)) + '</td>'
       + '<td class="mono">' + esc(plant) + '</td>'
       + '<td class="note">' + esc(preview) + '</td>'
       + '<td><a href="' + href + '">view</a></td></tr>';
@@ -113,7 +115,7 @@ async function reportDetail(env, key, token) {
   return html('<!doctype html><html><head>' + PAGE_HEAD
     + '<title>Report ' + esc(id) + '</title></head><body>' + nav(token, '')
     + '<a class="backlink" href="' + backHref + '">&larr; all reports</a>'
-    + '<h1>' + esc(when) + ' — <span class="mono">' + esc(id) + '</span></h1>'
+    + '<h1>' + esc(withDow(when)) + ' — <span class="mono">' + esc(id) + '</span></h1>'
     + '<section><h2>Note</h2><pre>' + esc(bundle.note || '(no note)') + '</pre></section>'
     + '<section><h2>Manifest</h2><pre>' + esc(JSON.stringify(manifest, null, 2)) + '</pre></section>'
     + '<section><h2>Events (' + events.length + ')</h2><table><tr><th>t</th><th>type</th><th>raw</th></tr>' + eventRows + '</table></section>'

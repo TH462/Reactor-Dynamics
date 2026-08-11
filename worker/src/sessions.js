@@ -39,7 +39,7 @@
  *    `>= 0` reads a whole release as a plant that never refused anything.
  */
 
-import { esc, html, PAGE_HEAD, nav, table, errBlock } from './render.js';
+import { esc, html, PAGE_HEAD, nav, table, errBlock, withDow, dur } from './render.js';
 import { sql, DATASET, COLUMNS_SINCE, COLUMNS_SINCE_TS } from './cfapi.js';
 
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -57,6 +57,15 @@ const reported = (v) => Number(v) >= 0;
  * substitute for the other. See cfapi.js for the measurement and the expiry date.
  */
 const hasColumns = (r) => String(r.timestamp || '') >= COLUMNS_SINCE_TS;
+
+// Seconds between two Analytics Engine timestamps ("YYYY-MM-DD HH:MM:SS", always UTC).
+// Normalised to explicit ISO-Z rather than trusted to Date's space-separator handling,
+// which is implementation-defined and treats the string as LOCAL time in V8.
+function spanSecs(a, b) {
+  const t = (s) => Date.parse(String(s || '').trim().replace(' ', 'T') + 'Z');
+  const d = (t(b) - t(a)) / 1000;
+  return isFinite(d) && d > 0 ? d : 0;
+}
 const mmss = (s) => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
 
 // What each event's payload MEANS — the column map is positional (see index.js), so
@@ -92,7 +101,7 @@ export async function sessionList(env, url, token) {
   try {
     // Three queries rather than one: Analytics Engine SQL has no subqueries, and the
     // fields wanted here live on different event rows. Merged by session id below.
-    const [counts, starts, ends] = await Promise.all([
+    const [counts, starts, elapsed, ends] = await Promise.all([
       // GROUP BY the session ALONE, and select NOTHING else non-aggregate. Two traps,
       // both measured 2026-08-10:
       //   - grouping by release/plant too splits one session across several rows,
@@ -111,16 +120,34 @@ export async function sessionList(env, url, token) {
               blob3 AS release, blob6 AS plant
          FROM ${DATASET} WHERE blob1 = 'session_start' AND ${since}
          GROUP BY session, initial_state, release, plant`),
+      /* The client's own elapsed clock, needed because the WRITE-TIME span is 0 for any
+       * session whose events all landed in one batch — measured: two real browser
+       * sessions of 6 and 4 events each span 00:00, while the player was demonstrably
+       * present for at least 6 s. So the two numbers are combined below.
+       *
+       * Guarded by its own probe: naming double5 when no row in range carries it is a
+       * 422, not an empty column (see the detail view). Resolves to [] when there are
+       * no post-column rows, and the duration silently falls back to the write span.
+       */
+      (async () => {
+        const p = await sql(apiToken, `SELECT count() AS n FROM ${DATASET}
+            WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}`);
+        if (!(num(p[0] && p[0].n) > 0)) return [];
+        return sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last
+           FROM ${DATASET} WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}
+           GROUP BY session`);
+      })(),
       sql(apiToken, `SELECT blob4 AS session, blob5 AS last_panel, max(double1) AS secs
          FROM ${DATASET} WHERE blob1 = 'session_end' AND ${since}
          GROUP BY session, last_panel`),
     ]);
 
-    const startBy = {}, endBy = {};
+    const startBy = {}, endBy = {}, lastBy = {};
     // A session can carry more than one session_start row (a reload re-fires it under
     // the same sessionStorage id). First one wins — that is the session's real origin.
     starts.forEach((r) => { if (!startBy[r.session]) startBy[r.session] = r; });
     ends.forEach((r) => { endBy[r.session] = r; });
+    (elapsed || []).forEach((r) => { lastBy[r.session] = num(r.t_last); });
 
     const rows = counts.map((r) => {
       const end = endBy[r.session];
@@ -129,10 +156,15 @@ export async function sessionList(env, url, token) {
       return {
         session: r.session,
         link: '<a href="' + href + '">' + esc(r.session) + '</a>',
-        started: r.first_seen,
+        started: withDow(r.first_seen),
         started_from: start.initial_state || '—',
         plant: start.plant || '—',
         release: start.release || '—',
+        // A FLOOR, and the larger of two independent floors. The write span misses
+        // everything inside one batch; the client's last stamp misses everything after
+        // a reload (it restarts at 0). Neither can overstate, so the max of the two is
+        // the best lower bound available — never a claim about how long they PLAYED.
+        span: dur(Math.max(spanSecs(r.first_seen, r.last_seen), lastBy[r.session] || 0)),
         rows_raw: num(r.raw),
         rows_est: num(r.est),
         // Absent is not zero: no session_end row means the tab never closed cleanly.
@@ -142,10 +174,12 @@ export async function sessionList(env, url, token) {
 
     // `link` is pre-built HTML, so it must bypass table()'s escaping — the session id
     // inside it is escaped above.
-    const head_ = '<tr><th>Session</th><th>First seen (UTC)</th><th>Started from</th>'
-      + '<th>Plant</th><th>Release</th><th class="num">Rows</th><th class="num">Est</th><th>Ended</th></tr>';
+    const head_ = '<tr><th>Session</th><th>First seen (UTC)</th><th class="num">Lasted ≥</th>'
+      + '<th>Started from</th><th>Plant</th><th>Release</th>'
+      + '<th class="num">Rows</th><th class="num">Est</th><th>Since reset</th></tr>';
     const trs = rows.map((r) => '<tr><td class="mono">' + r.link + '</td>'
       + '<td class="mono muted">' + esc(r.started) + '</td>'
+      + '<td class="num">' + esc(r.span) + '</td>'
       + '<td>' + esc(r.started_from) + '</td>'
       + '<td class="mono">' + esc(r.plant) + '</td>'
       + '<td class="mono muted">' + esc(r.release) + '</td>'
@@ -163,7 +197,13 @@ export async function sessionList(env, url, token) {
   return html(head
     + '<h1>Sessions <span class="muted">— last ' + days + ' days</span></h1>'
     + '<p class="muted">A session is a browser TAB, not a sitting: the id lives in '
-    + 'sessionStorage, so a tab left open spans hours. <b>Rows</b> is what was stored, '
+    + 'sessionStorage, so a tab left open spans hours — the longest here is 11h 34m and '
+    + 'nobody played for 11 hours. <b>Lasted ≥</b> is a FLOOR, the better of two lower '
+    + 'bounds (the span of write times, and the client\'s own clock at its last event); '
+    + 'it is time the tab was <i>open</i>, never time spent playing. <b>Since reset</b> '
+    + 'is the client\'s own figure at <span class="mono">session_end</span> — measured '
+    + 'from the last plant reset rather than from the start of the session, and absent '
+    + 'entirely when a tab did not close cleanly. <b>Rows</b> is what was stored, '
     + '<b>Est</b> what was sampled away — where they differ, presses are missing.</p>'
     + body + '</body></html>');
 }
@@ -248,7 +288,7 @@ export async function sessionDetail(env, url, token, sid) {
         : reported(r.t_page) ? mmss(tp) + '*'
         : '—';
       return band + '<tr><td class="mono">' + esc(at) + '</td>'
-        + '<td class="mono muted">' + esc(r.timestamp) + '</td>'
+        + '<td class="mono muted">' + esc(withDow(r.timestamp)) + '</td>'
         + '<td class="mono">' + esc(r.event) + '</td>'
         + '<td>' + esc(detailOf(r)) + '</td>'
         + '<td class="num muted">' + (num(r.si) > 1 ? '×' + num(r.si) : '') + '</td></tr>';

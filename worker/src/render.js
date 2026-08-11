@@ -10,6 +10,40 @@ export function esc(s) {
   })[c]);
 }
 
+/* Day-of-week initial, appended to every date the dashboard prints. Th/Sa/Su are two
+ * letters on purpose — T and S alone are ambiguous, which defeats the point.
+ *
+ * Everything in this dataset is UTC: Analytics Engine returns "YYYY-MM-DD HH:MM:SS"
+ * with a space, which `new Date()` is NOT required to parse and which V8 treats as
+ * LOCAL time when it does. Both would silently shift the day near midnight, so the
+ * string is normalised to explicit ISO-Z first rather than trusted.
+ */
+const DOW = ['Su', 'M', 'T', 'W', 'Th', 'F', 'Sa'];
+
+export function dow(s) {
+  if (!s) return '';
+  let iso = String(s).trim().replace(' ', 'T');
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(iso)) iso += 'Z';
+  const d = new Date(iso);
+  return isFinite(d.getTime()) ? DOW[d.getUTCDay()] : '';
+}
+
+// A date with its weekday: "2026-08-09 Su". Suffixed rather than prefixed so the dates
+// stay left-aligned in a column.
+export function withDow(s) {
+  const w = dow(s);
+  return w ? String(s) + ' ' + w : String(s == null ? '' : s);
+}
+
+// Whole seconds -> "45s" / "3m 12s" / "11h 34m". Never a bare decimal: these are read
+// at a glance and "0.05 h" is not a glance.
+export function dur(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  return Math.floor(s / 3600) + 'h ' + Math.round((s % 3600) / 60) + 'm';
+}
+
 export function html(body, status) {
   return new Response(body, {
     status: status || 200,

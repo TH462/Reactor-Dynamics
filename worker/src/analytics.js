@@ -21,7 +21,7 @@
  * figure says so on the page instead of being quoted as exact.
  */
 
-import { esc, html, PAGE_HEAD, nav, table, errBlock } from './render.js';
+import { esc, html, PAGE_HEAD, nav, table, errBlock, withDow, dur } from './render.js';
 import { sql, gql, ACCOUNT, SITE_TAG, DATASET, COLUMNS_SINCE } from './cfapi.js';
 
 // ---------------------------------------------------------------- RUM helpers
@@ -100,7 +100,8 @@ export async function analyticsPage(env, url, token) {
   let tiles = '', coarseNote = '';
   let byDay = '<p class="muted">(none)</p>';
   try {
-    const g = rumRows(await gql(apiToken, rumGroup('date', 'date_ASC', 90, from, to)), (d) => ({ date: d.date }));
+    const g = rumRows(await gql(apiToken, rumGroup('date', 'date_ASC', 90, from, to)),
+      (d) => ({ date: withDow(d.date) }));
     const pageloads = g.rows.reduce((a, r) => a + r.pageloads, 0);
     const visits = g.rows.reduce((a, r) => a + r.visits, 0);
     tiles = '<div class="tiles">'
@@ -140,6 +141,57 @@ export async function analyticsPage(env, url, token) {
 
   // ---- in-sim usage. sum(_sample_interval), never count() — see the header.
   const usage = await Promise.all([
+    /* TIME PER SESSION. Reported as a MEDIAN first and a mean second, because the mean
+     * here is close to meaningless: the live data contains a tab left open 11h 34m, and
+     * one of those drags an average across a handful of real sessions into nonsense.
+     *
+     * Every figure is a FLOOR built from two independent lower bounds per session — the
+     * span of write times, and the client's own clock at its last event. Neither can
+     * overstate: the write span misses everything inside a single batch (measured: two
+     * real sessions of 6 and 4 events span 00:00 while the player was there at least
+     * 6 s), and the client clock restarts at 0 on a reload. The larger of the two is
+     * the best available lower bound, and it measures a tab being OPEN, not play.
+     */
+    section('Time per session', async () => {
+      const spans = await sql(apiToken, `SELECT blob4 AS session,
+              min(timestamp) AS first_seen, max(timestamp) AS last_seen
+         FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since} GROUP BY session`);
+      if (!spans.length) return '<p class="muted">(none)</p>';
+
+      // The client clock is a separate query and only exists post-column; absent, the
+      // write span stands alone. Naming double5 with no qualifying row is a 422.
+      let lastBy = {};
+      try {
+        const probe = await sql(apiToken, `SELECT count() AS n FROM ${DATASET}
+            WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}`);
+        if (num(probe[0] && probe[0].n) > 0) {
+          (await sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last
+              FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}
+                AND timestamp >= ${COLUMNS_SINCE} GROUP BY session`))
+            .forEach((r) => { lastBy[r.session] = num(r.t_last); });
+        }
+      } catch (e) { lastBy = {}; }
+
+      const secs = spans.map((r) => {
+        const t = (s) => Date.parse(String(s || '').trim().replace(' ', 'T') + 'Z');
+        const write = (t(r.last_seen) - t(r.first_seen)) / 1000;
+        return Math.max(isFinite(write) && write > 0 ? write : 0, lastBy[r.session] || 0);
+      }).sort((a, b) => a - b);
+
+      const mid = Math.floor(secs.length / 2);
+      const median = secs.length % 2 ? secs[mid] : (secs[mid - 1] + secs[mid]) / 2;
+      const mean = secs.reduce((a, b) => a + b, 0) / secs.length;
+
+      return '<div class="tiles">'
+        + '<div class="tile"><div class="v">' + esc(dur(median)) + '</div><div class="k">Median</div></div>'
+        + '<div class="tile"><div class="v">' + esc(dur(mean)) + '</div><div class="k">Mean</div></div>'
+        + '<div class="tile"><div class="v">' + esc(dur(secs[secs.length - 1])) + '</div><div class="k">Longest</div></div>'
+        + '<div class="tile"><div class="v">' + secs.length + '</div><div class="k">Sessions</div></div>'
+        + '</div>'
+        + '<p class="muted">A FLOOR, and time a TAB WAS OPEN rather than time spent '
+        + 'playing — the longest figure here is usually a tab someone left. Trust the '
+        + 'median; the mean follows whichever tab was abandoned longest.</p>';
+    }),
     section('Sessions by starting condition', async () => table(
       (await sql(apiToken, `SELECT blob5 AS initial_state, count(DISTINCT blob4) AS sessions
          FROM ${DATASET} WHERE blob1 = 'session_start' AND ${since}
