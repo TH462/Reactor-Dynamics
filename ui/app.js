@@ -2794,9 +2794,15 @@
     '<div class="instr-idle">' +
     '<p class="instr-idle-lead">Free play — operate the plant on the left. This panel is your coach and checklist host.</p>' +
     '<ol class="instr-idle-list">' +
-    '<li><b>Play</b> starts the clock (or click SIMULATION PAUSED on the board).</li>' +
+    /* F11 IS THE FIRST LINE *(OWNER DIRECTIVE, 2026-08-11: "I would like the helpful hints
+     * list that shows in the instructor during free play to mention F11 makes the screen
+     * fullscreen and it plays better that way.")*. It goes first because it changes how
+     * everything else on this list is read: the board is the one panel that grows with the
+     * window, so the hint is worth most before the player has arranged anything. */
+    '<li><b>F11</b> goes fullscreen — the plant diagram gets the extra room, and it plays better that way.</li>' +
+    '<li><b>Play</b> starts the clock (the ▶ button flashes whenever the plant is stopped).</li>' +
     '<li><b>System Scanner</b> (the line under the board) — hover anything for what it is.</li>' +
-    '<li><b>Checklists</b> (first tab above) — interactive procedures that check themselves off the instruments.</li>' +
+    '<li><b>Checklists</b> (second tab above) — interactive procedures that check themselves off the instruments.</li>' +
     '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
     '<li><b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.</li>' +
     '</ol>' +
@@ -3568,6 +3574,13 @@
   // running sim until a start button is pressed.
   var msel = { engine: 'pwr', mode: 'free', init: null };
   var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
+  /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
+   * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
+   *
+   * I briefly made it run behind the window, reading "the sim should not start paused" as
+   * being about the load moment. That was wrong and the owner corrected it: freeze while
+   * the menu is up, unfreeze on close. openModal/closeModal already express exactly that —
+   * closeModal releases this hold and restarts the plant when no other hold is standing. */
   function openMissionSelect() {
     msel.engine = ui.engineKey;
     msel.init = ui.initState;
@@ -5938,7 +5951,8 @@
       if (e.target === $('settingsOverlay')) closeModal('settingsOverlay');
     });
     initFeaturePanel();          // Features — development toggles (#241)
-    // Help + quick tour (also offered from SIMULATION PAUSED on the board).
+    // Help + quick tour. (The paused veil used to offer the tour too; it was removed
+    // 2026-08-11 and Help is now the only route to it.)
     $('helpBtn').addEventListener('click', function () { $('helpOverlay').hidden = false; });
     $('helpClose').addEventListener('click', function () { $('helpOverlay').hidden = true; });
     $('helpOverlay').addEventListener('click', function (e) { if (e.target === $('helpOverlay')) $('helpOverlay').hidden = true; });
@@ -7561,7 +7575,8 @@
         units: function () { return ui.units; },
         mode: function () { return ui.diagMode; },
         overlay: function () { return ui.physOverlay; },
-        // #237 (owner): the SIMULATION PAUSED veil is clickable to resume. Route
+        // #237 (owner): the paused veil was clickable to resume. The veil was removed
+        // 2026-08-11; this hook is kept because the board API still declares it. Route
         // through the play button so its ▶/⏸ state stays the single source of truth.
         resume: function () { if (!service.running) $('playBtn').click(); },
         // Quick tour from the pause overlay (newcomer path).
