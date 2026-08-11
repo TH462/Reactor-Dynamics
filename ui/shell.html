@@ -57,7 +57,7 @@
                 data-scanner-detail="The plot keeps more history than it displays, so widening the window shows trend that was already recorded rather than starting a new trace. At fast time acceleration the rungs stretch: a 30-minute window empties in half a second of real time at 3600x, which is why the choices change with the speed control."><button data-win="60">1m</button><button class="on" data-win="300">5m</button><button data-win="600">10m</button><button data-win="1800">30m</button></div>
               <button class="btn ghost" data-act="export-csv" title="Export the chart's history as CSV"
                 data-scanner-hint="Export CSV — writes the strip chart's recorded history to a file, one column per plotted parameter."
-                data-scanner-detail="Exports what the buffer holds, not just the visible window, and only the parameters currently selected for the plot. Use it to take a transient away and look at it in a spreadsheet.">CSV ⭳</button>
+                data-scanner-detail="Exports what the buffer holds, not just the visible window, and only the parameters currently selected for the plot — plus the sequence of events as a second file, which is the artifact a classroom worksheet is built from. Use it to take a transient away and look at it in a spreadsheet.">CSV ⭳</button>
             </div>
           </div>
           <div class="chart-plot">
@@ -68,6 +68,16 @@
             <div class="rewind-hint" id="rewindHint" hidden>⏪ Click a moment on the graph to rewind to it &nbsp;·&nbsp; Esc cancels</div>
           </div>
           <div class="chart-xaxis mono" id="chartXAxis"></div>
+          <!-- SEQUENCE OF EVENTS (#442, spec §8). Real plants have SOE recorders and
+               post-trip review is conducted with them, which is what this is — naming it
+               that tells an operator-minded player what they are looking at, and makes the
+               chart an accident-analysis instrument rather than a trend display.
+
+               Tier 2 (component state) ticks live in this ribbon; tier 1 (plant-defining)
+               draws full height across the lanes instead. That split is the whole reason
+               the ribbon exists: the PORV cycled repeatedly at TMI, and a full-height line
+               per open/close makes the chart unreadable inside a minute. -->
+          <div class="soe-ribbon" id="soeRibbon"></div>
           <div class="scrubber">
             <span class="lbl mono" id="chartWindowLbl">−5:00</span>
             <div class="track" id="scrubTrack" data-scanner-hint="Timeline — you are at LIVE. Click the track (or the Rewind button) to pick an earlier moment to rewind to."
@@ -713,7 +723,8 @@
   <script src="md_render.js"></script>
   <script src="manual_md.js"></script>
   <!-- PWR learning board — data-driven synoptic (Claude Design import); mounted by app.js when plant_id === 'pwr' -->
-  <script src="chart_math.js"></script>   <!-- RD.ChartMath: the held-axis policy, shared by the chart and the vital tiles (#393) -->
+  <script src="chart_math.js"></script>      <!-- RD.ChartMath: the held-axis policy, shared by the chart and the vital tiles (#393) -->
+  <script src="highlight_bus.js"></script>   <!-- RD.Highlight: the one highlight bus (#444) -->
   <script src="diagram/board/board_h.js"></script>
   <script src="diagram/board/std_pipe.js"></script>
   <script src="diagram/board/pwr_board_data.js"></script>

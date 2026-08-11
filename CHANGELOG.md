@@ -52,6 +52,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   t=0** (a steady 20 s at power now produces 0), and a watched channel that was an instrument
   with no `true_state` field behind it.
 
+### Added
+- **One shared highlight bus (#444, spec §7, `ui/highlight_bus.js`).** Point at a channel in the
+  merged list, a lane on the chart, or an event marker, and **its component lights on the
+  board** — as a soft cyan halo, an outer glow that never recolors the element, so a haloed
+  component in alarm still reads as in alarm. **It never lights the thing under the pointer**,
+  only its relations: that is the 2026-07-28 hover-halo directive read as "no self-halo on
+  non-interactive elements", and it preserves the property that nothing lighting under the
+  cursor means *readout* while something lighting means *control*. Relations are **sets** —
+  subcooling margin lights both the loop bulk and the core-exit thermocouple. Hover is
+  transient, click pins, Escape clears, and pinned differs by **weight, not hue**. The halo
+  appears rather than pulses, which is the reduced-motion answer. Built on the board's real,
+  gate-validated label vocabulary — the `data-highlight-id` hooks the spec assumed exist only
+  in blueprint documents for a renderer that was never built.
+- **A Sequence of Events record on the chart (#442, spec §8).** Real plants have SOE recorders
+  and post-trip review is conducted with them — naming it that tells an operator-minded player
+  what they are looking at, and makes the chart an accident-analysis instrument rather than a
+  trend display. **Tier 1** (scram, turbine trip, safety injection, mode change) draws full
+  height across every lane, because a plant-defining event is context for all of them at once;
+  **tier 2** (PORV, MSIV, pump starts and stops) goes in a 10 px ribbon under the axis; tier 3 is
+  off. **A cascade collapses into a counted badge** — measured on a real trip: 11 events became
+  one badge reading "5", where drawing them individually is one illegible pixel in a 30-minute
+  window. **Operator actions are visually distinct from plant responses** (cyan against amber,
+  from the actor stamped at emission, never inferred from proximity). **Clicking a marker jumps
+  Rewind to that instant** — measured, T+9 back to T+1 — landing on the nearest checkpoint, which
+  the copy says. The SOE exports as a second CSV alongside the trace.
+
 ### Changed
 - **The strip chart is a lane stack — one lane per indication (#440, spec §8).** Traces are no
   longer overlaid, which is what makes per-lane autoscale honest: the false-correlation problem

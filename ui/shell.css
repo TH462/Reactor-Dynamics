@@ -564,6 +564,40 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   border-left: 2px solid var(--cf, var(--text-2)); padding-left: 4px;
 }
 .lane-num.hot .lane-name, .lane-num.hot .lane-numv { color: var(--caution); }
+
+/* ---------------- the SOE ribbon (#442, spec §8) ----------------------------
+   10 px, reserved in the density budget by the reference lane. Tier-2 ticks live
+   here; tier 1 draws full height across the lanes instead, because a
+   plant-defining event is context for every lane at once.
+
+   OPERATOR ACTIONS ARE VISUALLY DISTINCT FROM PLANT RESPONSES — cyan for what you
+   did, amber for what the plant did. The spec calls this the most valuable
+   teaching distinction the timeline can carry: a student reads their own hand in
+   the record and sees cause and effect directly. */
+.soe-ribbon {
+  position: relative; height: 10px; flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, .015);
+}
+.soe-mark {
+  position: absolute; top: 1px; height: 8px; min-width: 2px;
+  background: var(--caution); border-radius: 1px;
+  font-size: 7px; line-height: 8px; color: #17120A; text-align: center;
+  cursor: pointer;
+  /* Density applies to DISPLAY, not controls: keep the visual small and expand the
+     hit region beyond it, or a 2 px mark is unclickable. */
+  padding: 0 1px;
+  box-shadow: 0 0 0 6px transparent;
+}
+.soe-mark.op { background: var(--normal); color: #04121a; }
+/* A CLUSTER carries its count. A trip cascade fires a dozen events inside two
+   seconds — one pixel in a 30-minute window — and drawn individually they overlap
+   into a mark that says "something happened" and nothing else. */
+.soe-mark.many { min-width: 9px; font-weight: 700; }
+.soe-mark:hover { outline: 1px solid var(--text-2); }
+/* Tier-1 lines are drawn in the SVG, so they scale with the plot rather than
+   needing their own layer. */
+#chartCanvas .soe-t1 { pointer-events: none; }
 .chart-legend .chart-meta.muted { font-style: italic; }
 /* plot wrapper holds the stretched SVG + the floating value-label overlay */
 .chart-plot { position: relative; flex: 1 1 auto; min-height: 0; overflow: visible; }
@@ -1699,6 +1733,40 @@ select.num-input { width: auto; }
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
 }
+/* ============================================ the highlight bus (#444, spec §7)
+   A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
+   board colour that is not a plant state: green, amber and red all carry condition
+   meaning, so a halo in any of them could be misread as a state change. The
+   element's own colours stay untouched underneath, which is what lets a haloed
+   component in alarm still read as in alarm.
+
+   It survives colour-vision deficiency because it is GEOMETRY, not hue: cyan and
+   green can converge under deuteranopia, but a glow around an outline still reads
+   as a glow.
+
+   PINNED DIFFERS BY WEIGHT, NOT HUE. A second colour would be a second meaning, and
+   the two states are the same relation — one of them is just holding still.
+
+   IT DOES NOT PULSE. The instructor and checklist glows animate because they are
+   telling you to look at something you did not choose; this one answers a question
+   you asked by pointing, so it appears and stays. That also satisfies §7's
+   reduced-motion requirement without a media query. */
+.hl-glow {
+  border-radius: 6px; position: relative; z-index: 5;
+  box-shadow: 0 0 0 1px rgba(91, 179, 196, .70), 0 0 12px 3px rgba(91, 179, 196, .30);
+}
+.hl-pin {
+  border-radius: 6px; position: relative; z-index: 5;
+  box-shadow: 0 0 0 2px rgba(91, 179, 196, .95), 0 0 18px 5px rgba(91, 179, 196, .45);
+}
+/* The UI relation (spec §7): a control lighting the INTERFACE element it changes.
+   Applied only where the target is not already obvious — a control sitting beside
+   what it changes gains nothing from a halo but flicker. */
+.hl-lane {
+  box-shadow: inset 0 0 0 1px rgba(91, 179, 196, .55);
+  border-radius: 3px;
+}
+
 .lc-msg { margin-bottom: 8px; }   /* endpoint beat commentary shown above the level-complete panel */
 .lc-panel { display: flex; flex-direction: column; gap: 6px; }
 .lc-title { font-weight: 700; font-size: 13px; color: var(--text); }

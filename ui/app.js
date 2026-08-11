@@ -4462,6 +4462,19 @@
                 '<circle cx="' + x + '" cy="6" r="2.5" fill="#7ab0ff"/>';
       });
     }
+    // TIER-1 EVENTS: full height across every lane (#442, spec §8). A scram, a turbine trip,
+    // a safety injection or a mode change is plant-defining — it is context for every lane
+    // at once, so it crosses all of them. Tier 2 goes in the ribbon below; tier 3 is off.
+    var soe = (RD.Events && RD.Events.inWindow(t0, t1)) || [];
+    soe.forEach(function (ev) {
+      if (ev.tier !== 1) return;
+      var x = ((ev.t - t0) / span * PW).toFixed(1);
+      var col = ev.actor === 'operator' ? '#5BB3C4' : '#D9A441';
+      html += '<line class="soe-t1" x1="' + x + '" y1="0" x2="' + x + '" y2="' + H +
+              '" stroke="' + col + '" stroke-width="1" stroke-opacity="0.55"' +
+              (ev.actor === 'operator' ? ' stroke-dasharray="2,2"' : '') +
+              ' vector-effect="non-scaling-stroke"/>';
+    });
     // ONE line across every lane. Lanes are pixel-aligned on x by construction — they share
     // this viewBox and the same t0/span — so a single full-height line IS the shared cursor.
     if (chartCursor.frac != null) {
@@ -4496,6 +4509,73 @@
     }
     setHTML($('chartXAxis'), axHtml);
     txt($('chartWindowLbl'), '−' + (span > 3600 ? hms(span) : hms(span).slice(3)));
+    drawSoe(soe, t0, span);
+  }
+
+  /* THE SOE RIBBON (#442, spec §8) — tier-2 component events on the shared time axis.
+   *
+   * CLUSTERING IS THE FEATURE, not a refinement. A trip cascade fires a dozen events inside
+   * two seconds — turbine trip, reactor trip, MSIV shut, AFW start — and in a 30-minute
+   * window that is one pixel. Drawn individually they overlap into a single illegible mark
+   * that says "something happened" and nothing else. Collapsed into a counted badge they say
+   * "twelve things happened here", which is the readable form of the same truth, and they
+   * separate on their own as the window narrows. This is the detail that decides whether the
+   * feature survives a real transient.
+   *
+   * OPERATOR ACTIONS ARE VISUALLY DISTINCT FROM PLANT RESPONSES. The spec calls this the most
+   * valuable teaching distinction the timeline can carry: a student reads their own hand in
+   * the record and sees cause and effect directly rather than being told about it afterwards.
+   * Cyan for what you did, amber for what the plant did — and the actor is stamped at
+   * emission (#437), never inferred here from proximity.
+   */
+  var CLUSTER_PX = 6;                    // marks closer than this collapse into one badge
+  function drawSoe(events, t0, span) {
+    var host = $('soeRibbon'); if (!host) return;
+    var t2 = events.filter(function (e) { return e.tier === 2; });
+    if (!t2.length) { setHTML(host, ''); return; }
+    var w = host.clientWidth || 400;
+    var plotW = w * CHART_PLOT_FRAC;
+    var clusters = [], cur = null;
+    t2.forEach(function (ev) {
+      var x = (ev.t - t0) / span * plotW;
+      if (cur && x - cur.x <= CLUSTER_PX) { cur.n++; cur.evs.push(ev); if (ev.actor === 'operator') cur.op = true; }
+      else { cur = { x: x, n: 1, evs: [ev], op: ev.actor === 'operator' }; clusters.push(cur); }
+    });
+    setHTML(host, clusters.map(function (c) {
+      var label = c.evs.slice(0, 6).map(function (e) { return soeLabel(e); }).join(', ') +
+                  (c.evs.length > 6 ? ' +' + (c.evs.length - 6) + ' more' : '');
+      var pct = (c.x / w * 100).toFixed(2);
+      // The cluster's component ref is the first one IN IT that has a ref, not the first
+      // event's. A trip cascade leads with alarms, which carry none — taking evs[0].ref
+      // blindly meant a badge containing a PORV open and an MSIV shut pointed at nothing,
+      // and the highlight bus had nothing to light. Measured: every marker after a scram
+      // came back with ref=null.
+      var ref = null;
+      for (var ri = 0; ri < c.evs.length && !ref; ri++) ref = c.evs[ri].ref || null;
+      return '<span class="soe-mark' + (c.op ? ' op' : '') + (c.n > 1 ? ' many' : '') +
+             '" style="left:' + pct + '%" title="' + esc(label) + '"' +
+             ' data-soe-t="' + c.evs[0].t + '"' +
+             (ref ? ' data-soe-ref="' + esc(ref) + '"' : '') +
+             '>' + (c.n > 1 ? c.n : '') + '</span>';
+    }).join(''));
+  }
+  // Event type -> the words an operator would use. Falls back to the raw type rather than
+  // hiding an event nobody has named yet — an unlabelled mark still says WHEN.
+  var SOE_WORDS = {
+    scram: 'Reactor trip', turbine_trip: 'Turbine trip', safety_injection: 'Safety injection',
+    station_blackout: 'Station blackout', ac_restored: 'AC restored', mode_change: 'Mode change',
+    accumulator_discharge: 'Accumulators discharging', hydrogen_burn: 'Hydrogen burn',
+    porv_open: 'PORV open', porv_shut: 'PORV shut', msiv_shut: 'MSIV shut',
+    rcp_start: 'RCP start', rcp_stop: 'RCP stop', afw_start: 'AFW start', afw_stop: 'AFW stop',
+    rhr_in_service: 'RHR in service', rhr_secured: 'RHR secured',
+    ctmt_spray_start: 'Containment spray', ctmt_spray_stop: 'Containment spray off',
+    condenser_lost: 'Condenser lost', alarm: 'Alarm', alarm_clear: 'Alarm clear'
+  };
+  function soeLabel(ev) {
+    var w = SOE_WORDS[ev.type] || (ev.type.indexOf('cmd_') === 0 ? ev.type.slice(4).replace(/_/g, ' ') : ev.type);
+    if (ev.type === 'alarm' && ev.detail && ev.detail.id) w = 'Alarm: ' + ev.detail.id;
+    if (ev.type === 'mode_change' && ev.detail) w = 'Mode ' + ev.detail.from + ' → ' + ev.detail.to;
+    return hms(Math.max(0, ev.t)) + '  ' + w + (ev.actor === 'operator' ? '  (you)' : '');
   }
 
   /* LANE CHROME — name, range and value, as HTML over the SVG (#440, spec §8).
@@ -4522,7 +4602,8 @@
     if (!lanes.length && !numRows.length) { setHTML(host, ''); return; }
     var h = lanes.map(function (L) {
       var s = L.ser;
-      return '<div class="lane-chrome' + (L.hot ? ' hot' : '') + '" style="top:' + L.top.toFixed(2) + '%">' +
+      return '<div class="lane-chrome' + (L.hot ? ' hot' : '') + '" data-ser="' + esc(s.id) +
+               '" style="top:' + L.top.toFixed(2) + '%">' +
                '<span class="lane-name" style="color:' + s.c + '">' + mesc(s.label) + '</span>' +
                '<span class="lane-rng">' + mesc(s.fmt(L.lo)) + ' – ' + mesc(s.fmt(L.hi)) + '</span>' +
              '</div>' +
@@ -5085,7 +5166,7 @@
     'bwr-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('bwrMwe') }); },
     'bwr-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('bwrFeed') }); },
     // lifecycle
-    'save': function () { downloadSave(); }, 'load': function () { $('loadFile').click(); }, 'reset': function () { doReset(); }, 'export-csv': function () { exportCsv(); },
+    'save': function () { downloadSave(); }, 'load': function () { $('loadFile').click(); }, 'reset': function () { doReset(); }, 'export-csv': function () { exportCsv(); exportSoe(); },
   };
 
   // Press-and-hold controls (rod drive): pointerdown starts motion at the selected
@@ -5328,6 +5409,59 @@
       if (e.target.closest('.plot-cell')) e.stopPropagation();
     }, true);
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
+    /* THE HIGHLIGHT BUS's consumers (#444, spec §7). Each surface says what it is pointing
+     * at; the bus decides what lights. NONE of them lights the element under the pointer —
+     * that is the ruling, and it is also what makes hover teach the control/indication
+     * distinction for free: nothing lights under the cursor means "this is a readout".  */
+    var indList = $('indicationsList');
+    if (indList) {
+      indList.addEventListener('mouseover', function (e) {
+        var row = e.target.closest('.num-line'); if (!row) return;
+        var cb = row.querySelector('input[data-series]'); if (!cb) return;
+        RD.Highlight.enter(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+      });
+      indList.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
+      indList.addEventListener('click', function (e) {
+        var row = e.target.closest('.num-line'); if (!row) return;
+        if (e.target.closest('.plot-cell')) return;        // the checkbox is its own gesture
+        var cb = row.querySelector('input[data-series]'); if (!cb) return;
+        RD.Highlight.pin(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+      });
+      /* THE UI RELATION (spec §7): hovering a trend checkbox highlights what it CHANGES —
+       * the chart. And when the channel is already plotted it highlights THAT LANE rather
+       * than the whole chart, because once several are up "which line is this one" is the
+       * more useful answer. */
+      indList.addEventListener('mouseover', function (e) {
+        var cell = e.target.closest('.plot-cell'); if (!cell) return;
+        var cb = cell.querySelector('input[data-series]'); if (!cb) return;
+        var id = cb.getAttribute('data-series');
+        var lane = ui.series[id] ? document.querySelector('.lane-chrome[data-ser="' + id + '"]') : null;
+        var chart = document.querySelector('.strip-chart');
+        if (lane) lane.classList.add('hl-lane');
+        else if (chart) chart.classList.add('hl-lane');
+      });
+      indList.addEventListener('mouseout', function (e) {
+        if (!e.target.closest('.plot-cell')) return;
+        document.querySelectorAll('.hl-lane').forEach(function (x) { x.classList.remove('hl-lane'); });
+      });
+    }
+    // The chart's own lanes, and the SOE markers, point back at the board.
+    var floatsEl = $('chartFloats');
+    if (floatsEl) {
+      floatsEl.addEventListener('mouseover', function (e) {
+        var l = e.target.closest('[data-ser]'); if (!l) return;
+        RD.Highlight.enter(RD.Highlight.forSeries(l.getAttribute('data-ser')));
+      });
+      floatsEl.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
+    }
+    var ribbonEl = $('soeRibbon');
+    if (ribbonEl) {
+      ribbonEl.addEventListener('mouseover', function (e) {
+        var m = e.target.closest('[data-soe-ref]'); if (!m) return;
+        RD.Highlight.enter([m.getAttribute('data-soe-ref')]);
+      });
+      ribbonEl.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
+    }
     // Merged-list chips + the HR1 truth switch (#439).
     var indF = $('indFilters');
     if (indF) indF.addEventListener('click', function (e) {
@@ -5708,6 +5842,7 @@
         if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) closeModal('feedbackOverlay');
         if ($('docOverlay') && !$('docOverlay').hidden) closeModal('docOverlay');
+        if (RD.Highlight && RD.Highlight.hasPin()) RD.Highlight.clearPin();
         if (ui.rewindPick) toggleRewindPick(false);
         return;
       }
@@ -5754,6 +5889,28 @@
       if (service && service.checkpoints && service.checkpoints.length) toggleRewindPick();
     });
     document.querySelector('.chart-plot').addEventListener('click', rewindPickClick);
+    /* CLICKING A MARKER JUMPS REWIND TO THAT INSTANT (#442) — the event record becomes
+     * navigation, and a debrief becomes clicking through the sequence. Zero extra cost:
+     * rewind already exists.
+     *
+     * IT LANDS ON THE NEAREST CHECKPOINT, NOT THE EXACT INSTANT, and the copy says so.
+     * The service rewinds to checkpoints (~20 s of real time apart in free play, one per
+     * beat in a scenario), so an event between two of them cannot be reached exactly. A
+     * marker that silently landed somewhere else would be worse than one that says where
+     * it can go. */
+    var ribbon = $('soeRibbon');
+    if (ribbon) ribbon.addEventListener('click', function (e) {
+      var m = e.target.closest('[data-soe-t]'); if (!m) return;
+      var t = +m.getAttribute('data-soe-t');
+      var cps = (service && service.checkpoints) || [];
+      if (!cps.length) { showToast('No checkpoint to rewind to yet.', 'error'); return; }
+      var best = 0, bd = Infinity;
+      for (var i = 0; i < cps.length; i++) {
+        var d = Math.abs(cps[i].metadata.sim_time - t);
+        if (d < bd) { bd = d; best = i; }
+      }
+      cmd({ action: 'rewind', steps: cps.length - 1 - best, exact: true });
+    });
     // The shared cursor (#440). Redraw on a frame rather than per mousemove: a pointer can
     // fire far faster than the chart's own cadence, and drawChart rebuilds the whole SVG.
     (function () {
@@ -6596,6 +6753,26 @@
     var url = URL.createObjectURL(new Blob([head + '\n' + rows.join('\n')], { type: 'text/csv' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_trend.csv'; a.click();
   }
+  /* The SOE exports ALONGSIDE the trace CSV (#442) — it is the artifact a classroom
+   * worksheet is built from, and a trace without its events is a shape with no story. A
+   * separate file rather than extra columns: one row per event against one row per sample
+   * are different tables, and jamming them together makes both awkward to read. */
+  function exportSoe() {
+    var evs = (RD.Events && RD.Events.all()) || [];
+    if (!evs.length) { showToast('No events recorded yet.', 'error'); return; }
+    var rows = ['sim_time_s,clock,tier,actor,type,detail'];
+    evs.forEach(function (e) {
+      var det = '';
+      try { det = e.detail ? JSON.stringify(e.detail).replace(/"/g, "'") : ''; } catch (x) { det = ''; }
+      rows.push([e.t.toFixed(2), hms(Math.max(0, e.t)), e.tier, e.actor, e.type, '"' + det + '"'].join(','));
+    });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv' }));
+    a.download = 'reactor_soe.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+
   function hms(sec) {
     sec = Math.max(0, Math.floor(sec));
     var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
