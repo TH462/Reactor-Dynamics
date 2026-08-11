@@ -30,6 +30,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Ops dashboard on the telemetry Worker** — `GET /dashboard?token=T`, token-gated and
+  read-only, in two views. **Bug reports** (`worker/src/dashboard.js`): list + detail + raw
+  JSON over the R2 bundles, so reading player feedback no longer needs the throwaway
+  `wrangler dev --remote` reader (`tools/fetch_bug_reports.js` still works and is unchanged).
+  **Analytics** (`worker/src/analytics.js`): Web Analytics traffic and in-sim usage over
+  7/14/30-day windows — the same numbers `tools/site_report.js` prints, cross-checked against
+  it row for row, with the coarse-tier rounding shown per row instead of quoted as exact.
+  **Sessions** (`worker/src/sessions.js`): one row per session, click through to the ordered
+  trace of what was pressed and opened. It states its own limits on the page rather than
+  implying a replay — the rows are sampled (`command` stored 42 raw against 64 estimated),
+  the timestamp is the batch flush and not the press, and a session is a browser tab rather
+  than a sitting. Needs a `CF_ANALYTICS_TOKEN` secret because the `EVENTS` binding is
+  write-only: a Worker cannot read its own Analytics Engine dataset. Ops-only, not part of
+  the sim — see `worker/README.md` → "The ops dashboard".
+
 ## [Alpha 1.5.2] — 2026-08-10
 
 ### Added

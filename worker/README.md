@@ -90,7 +90,66 @@ A browser exercises the CORS preflight that curl above does not.
 
 ---
 
-## Reading it
+## The ops dashboard
+
+`GET /dashboard?token=T` — a read-only viewer, gated by a shared-secret token instead of
+the CORS origin check the ingestion routes use. Two views:
+
+| | |
+|---|---|
+| `?token=T` | **Bug reports** — the R2 bundles, newest first, with a detail view per report and `&raw=1` for the JSON. `src/dashboard.js` |
+| `?token=T&view=analytics` | **Analytics** — Web Analytics traffic + in-sim usage, `&days=7\|14\|30`. `src/analytics.js` |
+| `?token=T&view=sessions` | **Sessions** — one row per session; click through to its ordered event trace. `src/sessions.js` |
+
+Set the token once, as a Worker secret (never a repo file, never RD_Ops — that directory
+syncs off-site and is deliberately secret-free):
+
+```bash
+cd worker
+wrangler secret put DASHBOARD_TOKEN   # paste a random value when prompted
+```
+
+The analytics view needs a **second** secret, because the `EVENTS` binding is write-only —
+**a Worker cannot read its own Analytics Engine dataset through the binding.** Both the SQL
+API and the RUM GraphQL API are read over HTTPS with an account token (Account Analytics /
+Read — the same one `tools/site_report.js` uses):
+
+```bash
+wrangler secret put CF_ANALYTICS_TOKEN
+```
+
+Without it the analytics view still loads and says which secret is missing, rather than
+rendering an empty page that looks like zero traffic. The bug-report view does not need it.
+
+**The session view cannot answer "they never pressed X."** Its three limits are in the
+header of `src/sessions.js` and all three are properties of the data: the rows are
+**sampled** (measured 2026-08-10: `command` stored 42 raw against 64 estimated — a third
+of the presses are not there), the timestamp is the **batch flush** rather than the press
+so ordering within a batch is not the player's order, and a session is a **tab** rather
+than a sitting (one live session spans 14:02 to 00:36 the next day; `session_end` is
+missing for half of them). The complete record of one session exists only where somebody
+filed a bug report — that bundle carries every command with its own timestamp.
+
+Two Analytics Engine SQL limits found building it, both 422s: **no subqueries**, and
+**`max()` refuses a String column** (`cannot use the String type as argument 1`), with no
+`any()`/`argMax()` to fall back on. String columns therefore come from a second query
+keyed on the event that carries them, never from an aggregate.
+
+**The two sampling conventions are opposite** and the header of `src/analytics.js` is the
+long version: Analytics Engine `count()` undercounts (use `sum(_sample_interval)`), RUM
+`count` is already sample-adjusted (never multiply it), and a window over 7 days is answered
+from a coarser tier — measured on the live account, 7d reads an exact 29 pageloads where 30d
+reads 40, rounded to the nearest 10. Every RUM row carries the interval it was answered at
+and the page warns when the window crossed the seam.
+
+If wrangler auths via a scoped `CLOUDFLARE_API_TOKEN` in the environment (Analytics-read
+only, per `RD_Ops/runbook.md`), that token lacks permission to write Worker secrets —
+unset it for this one command so wrangler falls back to its own OAuth login:
+`env -u CLOUDFLARE_API_TOKEN wrangler secret put DASHBOARD_TOKEN`.
+
+Bookmark `https://reactor-dynamics-telemetry.<subdomain>.workers.dev/dashboard?token=<T>`
+— that URL is the credential. Rotating it is just `secret put` again followed by
+`wrangler deploy`.
 
 ### Bug reports
 

@@ -1,6 +1,6 @@
 /* Reactor Dynamics — usage-data receiver.
  *
- * Two routes, matching the two paths in site/telemetry.js:
+ * Two ingestion routes, matching the two paths in site/telemetry.js:
  *
  *   POST /            a JSON batch of aggregate events  -> Analytics Engine
  *   POST /?kind=bundle  a gzipped session recording     -> R2
@@ -8,6 +8,13 @@
  * They are kept apart here for the same reason they are kept apart in the client:
  * the first is passive and must stay boring; the second is a deliberate act by
  * someone reporting a bug and may carry their words. Nothing merges them.
+ *
+ * A third route reads back what the second one stored:
+ *
+ *   GET /dashboard?token=T   a token-gated feedback viewer — see dashboard.js
+ *
+ * It is GET, token-gated instead of origin-gated, and not part of the
+ * CORS-fronted API below — it is meant to be opened directly in a browser.
  *
  * ---------------------------------------------------------------- what is NOT stored
  * The client is careful about what it sends. This end has to be equally careful
@@ -95,6 +102,8 @@ const KEY_OF = {
   milestone: 'name',
 };
 
+import { handleDashboard } from './dashboard.js';
+
 // ---------------------------------------------------------------- helpers
 function cors(origin) {
   const ok = ALLOWED_ORIGINS.indexOf(origin) !== -1;
@@ -135,9 +144,13 @@ async function readCapped(request, max) {
 // ---------------------------------------------------------------- the Worker
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get('Origin') || '';
     const url = new URL(request.url);
 
+    if (request.method === 'GET' && url.pathname === '/dashboard') {
+      return handleDashboard(env, url);
+    }
+
+    const origin = request.headers.get('Origin') || '';
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405, origin);
     if (!allowed(origin)) return json({ error: 'origin not allowed' }, 403, origin);
