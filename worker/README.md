@@ -48,7 +48,8 @@ the safe state is the one that needs no action.
 
 ## Checking it works
 
-The client is gated (`test/run_telemetry.js`, 50 checks) but **nothing in this repo can
+The client is gated (`test/run_telemetry.js`, 103 checks — read the count off the runner,
+not off this line, which said 50 for a gate that had reached 84) but **nothing in this repo can
 test the server**. Treat the first deploy as a test:
 
 ```bash
@@ -121,19 +122,48 @@ wrangler secret put CF_ANALYTICS_TOKEN
 Without it the analytics view still loads and says which secret is missing, rather than
 rendering an empty page that looks like zero traffic. The bug-report view does not need it.
 
-**The session view cannot answer "they never pressed X."** Its three limits are in the
-header of `src/sessions.js` and all three are properties of the data: the rows are
-**sampled** (measured 2026-08-10: `command` stored 42 raw against 64 estimated — a third
-of the presses are not there), the timestamp is the **batch flush** rather than the press
-so ordering within a batch is not the player's order, and a session is a **tab** rather
-than a sitting (one live session spans 14:02 to 00:36 the next day; `session_end` is
-missing for half of them). The complete record of one session exists only where somebody
-filed a bug report — that bundle carries every command with its own timestamp.
+**The session view still cannot answer "they never pressed X."** Its limits are in the
+header of `src/sessions.js`: the rows are **sampled** (measured 2026-08-10: `command`
+stored 42 raw against 64 estimated — a third of the presses are not there), a session is
+a **tab** rather than a sitting (one live session spans 14:02 to 00:36 the next day;
+`session_end` is missing for half of them), and **-1 is "not reported", never a zero**.
+The complete record of one session exists only where somebody filed a bug report — that
+bundle carries every command with its own timestamp.
 
-Two Analytics Engine SQL limits found building it, both 422s: **no subqueries**, and
-**`max()` refuses a String column** (`cannot use the String type as argument 1`), with no
-`any()`/`argMax()` to fall back on. String columns therefore come from a second query
-keyed on the event that carries them, never from an aggregate.
+**Ordering within a batch is solved** as of 2026-08-10. Each event carries `t_page`, and
+the view sorts by the batch write time first and the client stamp within it. Verified in
+a real browser against the preview site: six events sharing one write time of 03:11:51,
+ordered 0:01 / 0:01 / 0:01 / 0:05 / 0:06 / 0:06. `t_page` resets on reload while the
+session id survives one, so a **drop** in it is a positive detection of a page reload and
+the view draws a band there rather than letting a backwards clock read as noise.
+
+### Analytics Engine SQL, the parts that bite
+
+All of these fail at **422** rather than degrading, and two of them produce the *same*
+message from different causes:
+
+- **No subqueries** (`unsupported expression type`).
+- **`max()` refuses a String column** (`cannot use the String type as argument 1`), and
+  there is no `any()`/`argMax()`. String columns come from a second query keyed on the
+  event that carries them, never from an aggregate.
+- **Columns are typed PER RESULT SET.** If no row matching the WHERE clause carries
+  `double6`, naming it at all is `unable to find type of column` — so a session made
+  entirely of pre-column rows cannot mention the new columns. Ask first whether any
+  qualifying row exists; a try/catch would swallow every other 422 with it.
+- **`ORDER BY` resolves against the SELECT PROJECTION**, not the table. `ORDER BY double6`
+  is a 422 on the same query whose SELECT reads `double6 AS t_sess` — the projection is
+  called `t_sess`. Same message for `ORDER BY timestamp` the moment `timestamp` leaves
+  the SELECT list, which is what pinned the rule down.
+- **`timestamp >= '<string>'`** is a 422; the `toDateTime()` cast is required.
+
+### A row older than a column reads back as 0, not -1
+
+The receiver writes `-1` for "this client had no opinion". That cannot help with a row
+written *before* the column existed: a short `doubles` array reads back as **0**, exactly
+like a genuine "not blocked". Measured — Alpha 1.5.1 rows report `min(double7) = 0` and
+`max(double5) = 0`. So every query over a new column needs **both** `>= 0` **and**
+`timestamp >= COLUMNS_SINCE` (`src/cfapi.js`), and that constant has a real expiry:
+three-month retention means it can be deleted once nothing older than 2026-11-11 survives.
 
 **The two sampling conventions are opposite** and the header of `src/analytics.js` is the
 long version: Analytics Engine `count()` undercounts (use `sum(_sample_interval)`), RUM

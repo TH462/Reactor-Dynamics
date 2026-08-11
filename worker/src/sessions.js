@@ -203,10 +203,15 @@ export async function sessionDetail(env, url, token, sid) {
      * and the client stamps break the tie WITHIN one, which is the whole point of
      * storing them. t_session first, because it survives a reload; t_page second.
      *
-     * ORDER BY names the ALIASES, not the columns. `ORDER BY double6` is a 422 —
-     * "unable to find type of column" — on the very same query whose SELECT list reads
-     * double6 happily. Measured 2026-08-11 against a row that demonstrably carries it,
-     * so this is a resolver limitation and not the sparse-column case above.
+     * ORDER BY RESOLVES AGAINST THE SELECT PROJECTION, not against the table. It can
+     * only name something the SELECT list actually outputs — so `ORDER BY double6` is a
+     * 422 ("unable to find type of column") on the very same query whose SELECT reads
+     * `double6 AS t_sess`, because the projection is called t_sess. The same error
+     * appears for `ORDER BY timestamp` the moment timestamp is dropped from the SELECT
+     * list, which is what pinned the rule down. Both measured 2026-08-11 against rows
+     * that demonstrably carry the columns, so this is the resolver and not the
+     * sparse-result-set case above — which produces an identical message from a
+     * completely different cause.
      */
     const rows = await sql(apiToken, timed
       ? `SELECT timestamp, blob1 AS event, blob5 AS key,

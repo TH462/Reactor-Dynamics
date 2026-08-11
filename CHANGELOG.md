@@ -45,6 +45,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   than a sitting. Needs a `CF_ANALYTICS_TOKEN` secret because the `EVENTS` binding is
   write-only: a Worker cannot read its own Analytics Engine dataset. Ops-only, not part of
   the sim — see `worker/README.md` → "The ops dashboard".
+- **Per-event timing and refused commands are kept instead of discarded.** `site/telemetry.js`
+  has always stamped each event with `t` (seconds since page load) and put it on the wire;
+  `command.blocked` has been declared and emitted since it was added. The Worker read neither,
+  so a session's order was unrecoverable and every refused command was recorded as though it
+  succeeded. Both now have columns and both produce data from the deploy, with no release
+  needed — the clients already in the wild were already sending them. Verified in a real
+  browser: six events sharing one batch write time, ordered 0:01/0:01/0:01/0:05/0:06/0:06.
+  Adds a "controls people try but cannot use" view (with the rate beside the count) and a
+  session trace that marks page reloads. `privacy.html` now discloses the refusal flag, which
+  it never had, and its "counts" framing is corrected.
+
+### Changed
+- **`test/run_telemetry.js` 84 → 103 checks.** The client and the Worker agreed about NAMES
+  while the numbers went missing: `KEY_OF` gates each event's principal string and nothing
+  gated the `'num'`/`'bool'` props, so a field could be declared, validated, transmitted and
+  silently dropped on arrival with every gate green. Adds: every scalar prop reaches a real
+  column (both directions, plus the two envelope fields no prop loop can see); every declared
+  prop type is a kind `clean()` understands (a `'number'` typo is dropped for ever *and* is
+  invisible to the column check, which filters on the same spelling); and `privacy.html`
+  discloses what the schema collects, read off `data-collects` markup so prose can be reworded
+  freely and only a change to what is COLLECTED reddens it. Injection-verified six ways.
 
 ## [Alpha 1.5.2] — 2026-08-10
 
