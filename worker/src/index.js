@@ -126,6 +126,7 @@ const KEY_OF = {
 };
 
 import { handleDashboard } from './dashboard.js';
+import { stagesEndpoint } from './features.js';
 
 // ---------------------------------------------------------------- helpers
 function cors(origin) {
@@ -182,8 +183,19 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (request.method === 'GET' && url.pathname === '/dashboard') {
-      return handleDashboard(env, url);
+    // The dashboard, and the one write it owns. Both token-gated inside; neither is
+    // part of the CORS-fronted ingest below, and the POST here is a form submit from
+    // the dashboard page rather than anything the sim can reach.
+    if (url.pathname === '/dashboard' && (request.method === 'GET' || request.method === 'POST')) {
+      return handleDashboard(env, url, request);
+    }
+
+    /* The site BUILD reads this to stamp flag stages. Open and unauthenticated on
+     * purpose: a stage is not a secret — every one of them ships inside site/flags.js
+     * to every visitor — so gating it would protect nothing while forcing a token into
+     * the Pages build environment. Writing stays behind DASHBOARD_TOKEN. */
+    if (request.method === 'GET' && url.pathname === '/flags-stages') {
+      return stagesEndpoint(env);
     }
 
     const origin = request.headers.get('Origin') || '';

@@ -106,8 +106,62 @@ function resolve(env) {
   };
 }
 
-function main() {
+/* The dashboard's queued flag stages, fetched at BUILD time.
+ *
+ * Why the build and not the browser: site/flags.js must not load anything at runtime.
+ * test/run_portable.js asserts that for every file the shell ships, and it is the only
+ * reason the single-file offline build works — it already caught the same pattern in
+ * telemetry.js, and the answer then was to ship neither file rather than add an
+ * exception. So the value becomes a literal here, exactly like the channel.
+ *
+ * FAILURE IS NOT SILENT AND IS NOT FATAL. A Worker outage must not block a site deploy,
+ * so a failed fetch falls back to the stage literals already in flags.js — which is the
+ * behaviour that existed before any of this. But falling back silently would let a
+ * deploy quietly discard a change the owner made and believed was shipping, so the
+ * source is recorded in the generated file and printed in the build log. The dashboard
+ * reads that marker back and can say the last build did not pick the settings up.
+ */
+async function fetchStages() {
+  const url = process.env.RD_FLAGS_ENDPOINT;
+  if (!url) return { stages: {}, source: 'none', note: 'RD_FLAGS_ENDPOINT not set' };
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);   // a hung fetch must not hang a deploy
+    const res = await fetch(url, { signal: ctl.signal, headers: { 'Cache-Control': 'no-store' } });
+    clearTimeout(t);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    const stages = (j && j.stages) || {};
+    // Validate rather than trust: this value is about to become executable source.
+    // Built by split() rather than as bare quoted literals ON PURPOSE. These are
+    // STAGES, not channels, and test/run_flags.js enumerates the channels this file can
+    // emit by scanning it for quoted channel names — which the two vocabularies share
+    // two of. A literal array here is counted as two more channel emissions and checked
+    // against the wrong vocabulary. The scan does not strip comments either, so naming
+    // those values in quotes ANYWHERE in this file, prose included, inflates it further.
+    const OK_STAGES = 'public preview off'.split(' ');
+    const clean = {};
+    Object.keys(stages).forEach((k) => {
+      if (/^[a-z][a-z0-9_]*(:[a-z0-9_]+)?$/.test(k) && OK_STAGES.indexOf(stages[k]) !== -1) {
+        clean[k] = stages[k];
+      }
+    });
+    return { stages: clean, source: 'kv', updated: (j && j.updated) || null };
+  } catch (e) {
+    return { stages: {}, source: 'fallback', note: String(e.message || e) };
+  }
+}
+
+async function main() {
   const r = resolve(process.env);
+  const f = await fetchStages();
+  if (f.source === 'fallback') {
+    console.warn('[stamp] FLAG STAGES: could not reach ' + process.env.RD_FLAGS_ENDPOINT +
+      ' (' + f.note + ') — falling back to the literals in site/flags.js. ' +
+      'Any change queued in the dashboard is NOT in this build.');
+  } else if (f.source === 'kv') {
+    console.log('[stamp] flag stages: ' + Object.keys(f.stages).length + ' override(s) from KV');
+  }
 
   fs.writeFileSync(path.join(__dirname, 'version.js'),
     '/* Generated at deploy by site/stamp_version.js. Repo copy is a placeholder. */\n' +
@@ -131,8 +185,17 @@ function main() {
     ' * the most PERMISSIVE value here, not the safest — which is why resolve() never\n' +
     ' * falls back to it on a machine that looks like CI. test/run_channel.js pins the\n' +
     ' * whole host matrix, including that one.\n' +
+    ' *\n' +
+    ' * RD_FLAG_STAGES below is the dashboard\'s answer, fetched from the Worker at BUILD\n' +
+    ' * time and frozen here as a literal — the sim never asks anything at runtime, which\n' +
+    ' * is what test/run_portable.js exists to keep true. It OVERRIDES the matching stage\n' +
+    ' * in site/flags.js; an empty object means "use the literals", which is also what a\n' +
+    ' * failed fetch produces. RD_FLAG_SOURCE says which of those happened, because the\n' +
+    ' * two are indistinguishable from the values alone.\n' +
     ' */\n' +
-    'window.RD_CHANNEL = ' + JSON.stringify(r.channel) + ';\n');
+    'window.RD_CHANNEL = ' + JSON.stringify(r.channel) + ';\n' +
+    'window.RD_FLAG_STAGES = ' + JSON.stringify(f.stages) + ';\n' +
+    'window.RD_FLAG_SOURCE = ' + JSON.stringify(f.source + (f.updated ? ' ' + f.updated : '')) + ';\n');
 
   /* KEEP THE TEST SITE OUT OF SEARCH. The test site — `develop.reactor-dynamics.pages.dev`
    * *(OWNER RULING, 2026-08-09: "instead of dev.reactordynamics.com im going to use the
@@ -190,4 +253,10 @@ module.exports = { resolve: resolve, PRODUCTION_BRANCH: PRODUCTION_BRANCH };
 
 /* Side effects only when run as a command, so test/run_channel.js can require this
  * file without stamping the working tree. */
-if (require.main === module) main();
+// main() is async since the flag-stage fetch. An unhandled rejection would exit 0 and
+// ship a half-written stamp, so the failure is made explicit and non-zero. (The fetch
+// itself never rejects — it degrades to the literals — so reaching this means a real
+// bug in the stamping, which SHOULD stop a deploy.)
+if (require.main === module) {
+  main().catch((e) => { console.error('[stamp] FAILED:', e && e.stack || e); process.exit(1); });
+}

@@ -22,7 +22,7 @@
 import { esc, html, PAGE_HEAD, nav, withDow } from './render.js';
 import { analyticsPage } from './analytics.js';
 import { sessionList, sessionDetail } from './sessions.js';
-import { featuresPage } from './features.js';
+import { featuresPage, featuresAction } from './features.js';
 
 function safeEqual(a, b) {
   if (a.length !== b.length) return false;
@@ -126,10 +126,17 @@ async function reportDetail(env, key, token) {
     + '</body></html>');
 }
 
-export async function handleDashboard(env, url) {
+export async function handleDashboard(env, url, request) {
   if (!env.DASHBOARD_TOKEN) return html('dashboard not configured', 503);
   const token = url.searchParams.get('token') || '';
   if (!safeEqual(token, env.DASHBOARD_TOKEN)) return html('unauthorized', 401);
+
+  // The only write in the whole dashboard, and it is the same token gate as the reads.
+  // Answered with a 303 so a refresh cannot resubmit the change.
+  if (request && request.method === 'POST') {
+    if (url.searchParams.get('view') !== 'features') return html('no such action', 404);
+    return featuresAction(env, url, token, await request.formData());
+  }
 
   const view = url.searchParams.get('view');
   if (view === 'analytics') return analyticsPage(env, url, token);

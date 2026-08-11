@@ -209,6 +209,109 @@ test('overrides beat the stage, in both directions, and clear cleanly', function
   });
 });
 
+/* The BUILD-STAMPED layer (#448). The ops dashboard queues a stage, the Worker keeps it
+ * in KV, site/stamp_version.js fetches it at BUILD time and writes it into the generated
+ * site/channel.js as RD_FLAG_STAGES. By the time a browser sees it, it is a literal —
+ * which is the whole point, because test/run_portable.js forbids the sim loading
+ * anything at runtime and that is what lets the offline single-file build exist.
+ *
+ * Two things need pinning that nothing else covers: that a stamped value actually beats
+ * the source literal (or the pipe is decorative), and that it CANNOT lower the floor
+ * (or remote control can do what this gate forbids in source, and the gate is theatre).
+ */
+function withStamped(map, fn) {
+  var had = Object.prototype.hasOwnProperty.call(globalThis, 'RD_FLAG_STAGES');
+  var prev = globalThis.RD_FLAG_STAGES;
+  globalThis.RD_FLAG_STAGES = map;
+  try { fn(); } finally {
+    if (had) globalThis.RD_FLAG_STAGES = prev; else delete globalThis.RD_FLAG_STAGES;
+  }
+}
+
+test('a build-stamped stage overrides the source literal', function (ck) {
+  asChannel('public', function () {
+    ck('baseline: campaign is gated on public', F.on('campaign') === false);
+    withStamped({ campaign: 'public' }, function () {
+      ck('stamped public opens it', F.on('campaign') === true);
+      ck('…and the stage reads back stamped', F.stage('campaign') === 'public');
+    });
+    ck('removing the stamp restores the literal', F.on('campaign') === false);
+
+    withStamped({ 'scenario:pwr_tour': 'public' }, function () {
+      ck('a content item can be stamped too', F.onItem('scenario', 'pwr_tour') === true);
+    });
+    withStamped({ scenarios: 'off' }, function () {
+      asChannel('dev', function () {
+        ck('stamped off is dark even on dev', F.on('scenarios') === false);
+      });
+    });
+  });
+});
+
+test('a stamped stage cannot lower the floor, or arrive malformed', function (ck) {
+  asChannel('public', function () {
+    withStamped({ free_play: 'off', manual: 'preview' }, function () {
+      ck('free_play cannot be stamped off', F.on('free_play') === true);
+      ck('manual cannot be stamped below public', F.on('manual') === true);
+    });
+    /* Generated source is still input: a value flags.js does not understand must fall
+     * back to the literal rather than resolve to whatever it happens to be.
+     *
+     * Tested against a stage-'public' entry, and that is the whole point. Asserting it
+     * on `campaign` proves NOTHING — its literal is 'preview', so a rejected value and
+     * an accepted-but-meaningless one both fall through to `channel() !== 'public'` and
+     * give the identical answer. Measured: deleting the validation left all three of
+     * those checks green. Against a 'public' literal the two outcomes finally differ —
+     * kept means true, garbage-through means false.
+     */
+    var reg = F.registry();
+    reg.__test_pub = { id: '__test_pub', kind: 'area', stage: 'public' };
+    try {
+      ck('precondition: the probe resolves on from its literal', F.on('__test_pub') === true);
+      withStamped({ __test_pub: 'PUBLIC' }, function () {
+        ck('a wrong-cased stage is ignored', F.on('__test_pub') === true);
+      });
+      withStamped({ __test_pub: 'sometimes' }, function () {
+        ck('an unknown stage is ignored', F.on('__test_pub') === true);
+      });
+      withStamped({ __test_pub: true }, function () {
+        ck('a non-string stage is ignored', F.on('__test_pub') === true);
+      });
+      withStamped({ __test_pub: 'off' }, function () {
+        ck('…while a VALID stamp is still honoured', F.on('__test_pub') === false);
+      });
+    } finally { delete reg.__test_pub; }
+    withStamped(null, function () {
+      ck('no stamp at all resolves normally', F.on('campaign') === false && F.on('free_play') === true);
+    });
+    withStamped('not-an-object', function () {
+      ck('a non-object stamp is ignored', F.on('free_play') === true);
+    });
+  });
+  withStorage(function () {
+    asChannel('public', function () {
+      withStamped({ campaign: 'public' }, function () {
+        F.setOverride('campaign', false);
+        ck('a local override still beats the stamp', F.on('campaign') === false);
+        F.clearOverrides();
+      });
+    });
+  });
+});
+
+test('the stamper writes the flag map, and degrades loudly', function (ck) {
+  var stamp = read('site/stamp_version.js');
+  ck('it writes RD_FLAG_STAGES', /RD_FLAG_STAGES/.test(stamp));
+  ck('it records which source it used', /RD_FLAG_SOURCE/.test(stamp));
+  ck('a failed fetch falls back rather than throwing', /source: 'fallback'/.test(stamp));
+  ck('the fetch is bounded by a timeout', /AbortController/.test(stamp) && /setTimeout/.test(stamp));
+  ck('the fetched value is validated before it becomes source', /OK_STAGES\.indexOf/.test(stamp));
+  // The generated repo copy must not carry someone's local KV state into the tree.
+  ck('the repo copy of channel.js stamps an empty map',
+    /RD_FLAG_STAGES\s*=\s*\{\}/.test(read('site/channel.js'))
+    || !/RD_FLAG_STAGES/.test(read('site/channel.js')));
+});
+
 test('view-as re-resolves the app against another channel', function (ck) {
   withStorage(function () {
     asChannel('dev', function () {
