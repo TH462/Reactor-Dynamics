@@ -145,7 +145,7 @@
                the moment the board does something unexpected — they will not go hunting
                through Settings, which is where the only entry point used to be. -->
           <button class="btn text-btn" id="fbHeaderBtn" title="Report a problem or send feedback" data-scanner-hint="Feedback — report a bug or send a suggestion. A recording of this session can be attached so what you saw can be replayed.">Feedback</button>
-          <button class="btn text-btn" id="settingsBtn" title="Settings — units, fast-forward dropout, save/load" data-scanner-hint="Settings — units, fast-forward dropout, usage data, save and load. It pauses the plant while it is open, because none of it is operating."
+          <button class="btn text-btn" id="settingsBtn" title="Settings — units, fast-forward dropout, save/load" data-scanner-hint="Settings — units, fast-forward dropout, save and load. It pauses the plant while it is open, because none of it is operating."
               data-scanner-detail="The chart's own controls are NOT here: the window and CSV export sit on the chart itself, so changing how you are watching a transient never stops the transient.">Settings</button>
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
@@ -307,12 +307,13 @@
             <div class="g-section-title" style="margin-top:12px">Simulation</div>
             <div class="set-row" data-scanner-hint="Fast-forward dropout — On drops the clock back to real time when something needs you: a scram, a new failure, or the first alarm on a quiet board. Later alarms in a casualty do not stop it. Off keeps fast-forward running through everything."
               data-scanner-detail="Only the FIRST alarm on an otherwise quiet board drops the clock — once a casualty is under way, the following alarms would drop you out every few seconds and the option would be useless. Off is the right setting when you are deliberately fast-forwarding through a long transient such as a xenon burn-off."><span class="k">Fast-forward dropout</span><div class="seg" id="attnSeg"><button class="on" data-attn="on">On</button><button data-attn="off">Off</button></div></div>
-            <!-- The consent prompt promises this row exists, so it has to. The whole
-                 block hides itself when no endpoint was stamped: a toggle for something
-                 that cannot happen is worse than no toggle, because it implies it can. -->
-            <div class="set-row" id="telemetryRow" hidden
-              data-scanner-hint="Usage data — anonymous counts of which controls and panels you use and how far through a startup you get, so the confusing parts can be found without waiting for feedback. Never any text you type, never a plant recording, and nothing linking one visit to another."
-              data-scanner-detail="Off sends nothing at all. Bug reports you send from Contact are separate and always a deliberate choice. The full list of events is in site/telemetry.js, which ships with the source."><span class="k">Share usage data</span><div class="seg" id="telSeg"><button data-tel="on">On</button><button data-tel="off">Off</button></div></div>
+            <!-- The "Share usage data" row was REMOVED from Settings 2026-08-11 by owner
+                 instruction. The OPT-OUT ITSELF IS NOT GONE — it moved to privacy.html, the
+                 page that discloses the collection and, at line 85, promises the control
+                 exists. Deleting the row without moving it would have left the live public
+                 site telling visitors to use a Settings control that is not there, which is
+                 a false statement to a visitor rather than an untidy menu. RD.Telemetry's
+                 consent API is untouched; see privacy.html and site/telemetry.js. -->
             <!-- Session management, out of the dissolved Operate tab (#439). It sits with
                  the other things you do while NOT operating, which is exactly why this
                  window pausing costs nothing. Reset is not here: it belongs with the

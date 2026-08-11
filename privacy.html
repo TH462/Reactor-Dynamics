@@ -82,8 +82,19 @@
 
   <h2>Usage data in the simulator</h2>
   <p>The simulator sends anonymous usage data while you use it. <strong>You can turn
-  this off at any time under <em>Settings → Share usage data</em>, and nothing further
-  is sent from the moment you do.</strong></p>
+  this off right here, at any time, and nothing further is sent from the moment you
+  do.</strong></p>
+  <!-- The control lives on this page as of 2026-08-11, moved off the simulator's Settings
+       menu by owner instruction. It is deliberately ON THE PAGE THAT MAKES THE PROMISE:
+       the sentence above is a statement to the public, and a promise whose mechanism is
+       one navigation away in a menu is a promise that rots the moment the menu changes —
+       which is exactly what happened. Same origin, same localStorage key, so this and the
+       simulator are the one setting. -->
+  <div id="telOptOut" class="tel-optout" hidden>
+    <span class="tel-k">Usage data</span>
+    <span class="seg" id="telSeg"><button type="button" data-tel="on">On</button><button type="button" data-tel="off">Off</button></span>
+    <span class="tel-note" id="telNote"></span>
+  </div>
   <p>Almost nobody sends feedback, so this is the only way to find out which parts
   of the plant are confusing. What it sends is counts, and how long things took:</p>
   <ul>
@@ -161,8 +172,59 @@
 </footer>
 
 
+<!-- Usage-data client, for the opt-out control above. The endpoint file is GENERATED
+     at deploy and empty in the repo, so a clone collects nothing. Order matters:
+     telemetry.js reads the endpoint. -->
+<script src="site/telemetry_endpoint.js"></script>
+<script src="site/telemetry.js"></script>
 <script src="site/version.js"></script>
   <script src="site/release.js"></script>
 <script src="site/nav.js"></script>
+<style>
+  .tel-optout { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 14px 0 18px; padding: 12px 14px; border: 1px solid rgba(127,127,127,.35);
+    border-radius: 8px; }
+  .tel-optout .tel-k { font-weight: 600; }
+  .tel-optout .seg { display: inline-flex; border: 1px solid rgba(127,127,127,.45);
+    border-radius: 6px; overflow: hidden; }
+  .tel-optout .seg button { padding: 4px 14px; border: 0; cursor: pointer;
+    background: transparent; color: inherit; font: inherit; }
+  .tel-optout .seg button.on { background: #2f81f7; color: #fff; }
+  .tel-optout .tel-note { opacity: .75; font-size: .9em; }
+</style>
+<script>
+/* The opt-out control. Hidden unless the build actually has an endpoint stamped: a
+ * switch for something that cannot happen is worse than no switch, because it implies
+ * it can. (Same rule the Settings row used to follow.) */
+(function () {
+  var T = window.RD && window.RD.Telemetry;
+  var row = document.getElementById('telOptOut');
+  var seg = document.getElementById('telSeg');
+  var note = document.getElementById('telNote');
+  if (!row || !seg || !T || !T.enabled()) return;
+  row.hidden = false;
+  function paint() {
+    /* consent() !== 'denied', NOT === 'granted': collection is ON BY DEFAULT since the
+     * launch prompt was removed, so a strict-granted test would paint "Off" for every
+     * visitor who has never touched it while the sim was in fact collecting. A control
+     * that misreports the state it controls is worse than no control at all. */
+    var on = T.consent() !== 'denied';
+    var bs = seg.querySelectorAll('button[data-tel]');
+    for (var i = 0; i < bs.length; i++) {
+      var isOn = bs[i].getAttribute('data-tel') === 'on';
+      if (isOn === on) bs[i].classList.add('on'); else bs[i].classList.remove('on');
+    }
+    note.textContent = on ? 'On — anonymous counts, as described below.'
+                          : 'Off — nothing is sent.';
+  }
+  seg.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('button[data-tel]');
+    if (!b) return;
+    try { T.setConsent(b.getAttribute('data-tel') === 'on' ? 'granted' : 'denied'); } catch (err) {}
+    paint();
+  });
+  paint();
+}());
+</script>
 </body>
 </html>

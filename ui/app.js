@@ -5740,40 +5740,24 @@
         !out.endpoint_set ? 'no endpoint stamped — RD_TELEMETRY_ENDPOINT is unset in the build' :
         out.consent === 'denied' ? 'opted out — nothing is collected, as asked' :
         !out.storage_writable ? 'collecting, but localStorage is NOT writable — an opt-out could not persist' :
-        'collecting (default; opt out under Settings → Share usage data)';
+        'collecting (default; opt out on privacy.html — moved off the Settings menu 2026-08-11)';
       return out;
     };
 
-    // ---- the Settings toggle: now the ONLY consent control, and the opt-out --------
-    // It used to be the prompt's echo; since the prompt was removed (2026-08-09) it is the
-    // whole mechanism, so it has to show the DEFAULT truthfully. `=== 'granted'` would paint
-    // Off for every visitor who has never touched it — i.e. almost everyone — while the sim
-    // was in fact collecting, and a toggle that misreports the state it controls is worse
-    // than no toggle at all. Mirrors granted() in site/telemetry.js; move the two together.
-    (function () {
-      var T = window.RD && RD.Telemetry;
-      var row = $('telemetryRow'), seg = $('telSeg');
-      if (!row || !seg || !T || !T.enabled()) return;   // no endpoint: no toggle to offer
-      row.hidden = false;
-      function paint() {
-        var on = T.consent() !== 'denied';
-        seg.querySelectorAll('button').forEach(function (b) {
-          b.classList.toggle('on', (b.getAttribute('data-tel') === 'on') === on);
-        });
-      }
-      seg.addEventListener('click', function (e) {
-        var b = e.target.closest('button[data-tel]'); if (!b) return;
-        var on = b.getAttribute('data-tel') === 'on';
-        try { T.setConsent(on ? 'granted' : 'denied'); } catch (err) {}
-        if (on) TEL.consentAnswered();
-        paint();
-        showToast(on ? 'Usage data on — thank you.' : 'Usage data off. Nothing is sent.');
-      });
-      paint();
-      // (`repaintTelemetryToggle = paint` stood here to keep this in step with the launch
-      //  prompt. The prompt is gone, so there is no second control to synchronise with —
-      //  and its declaration went with it, which would have made this a dangling assign.)
-    }());
+    // ---- the Settings toggle: REMOVED from the options menu 2026-08-11 -------------
+    // Owner instruction. The wiring went with the row (`#telemetryRow` / `#telSeg` no
+    // longer exist in shell.html), so what stood here would have been a no-op reaching
+    // for two missing ids on every boot.
+    //
+    // THE OPT-OUT STILL EXISTS — it is on privacy.html now. That is not me softening an
+    // instruction: privacy.html states, in bold, that you can turn collection off, and
+    // removing the only control while leaving that sentence on a live public site makes
+    // the site say something untrue. The disclosure and the control now sit on the same
+    // page, which is arguably where they always belonged.
+    //
+    // RD.diagnose()'s verdict string was pointing at "Settings -> Share usage data" and
+    // is updated below for the same reason: a diagnostic that names a control that does
+    // not exist sends the next reader looking for a menu item.
 
     // ---- send a bug report, with the session attached ------------------------
     (function () {

@@ -397,14 +397,31 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
   ck('privacy.html discloses nothing the schema does not collect', stale.length === 0,
     'disclosed but not collected: ' + stale.join(', '));
 
-  // The in-sim Settings row makes the same promise in a second place, and points at
-  // the source as the authority. Pin the POINTER, never the prose.
+  // THE CONTROL MUST EXIST SOMEWHERE, and this is the only check that says so.
+  //
+  // It used to pin the in-sim Settings row (`telemetryRow` in ui/shell.html). That row was
+  // removed 2026-08-11 by owner instruction and the control moved ONTO privacy.html — the
+  // page above, which states in bold that collection can be turned off. So the assertion
+  // moved with it rather than being deleted: deleting it would have left nothing at all
+  // checking that the promise this page makes is backed by a mechanism, which is exactly
+  // the failure the move exists to prevent (HR10 — a check written beside its own fix, and
+  // re-pointed rather than dropped, is still checking the claim).
+  //
+  // Pin the MECHANISM, never the prose: the control's id, the consent call it must make,
+  // and the client it needs loaded. Wording is free to change; those three are not.
+  ck('privacy.html carries a working opt-out control',
+    /id="telOptOut"/.test(html) && /setConsent\(/.test(html)
+      && /site\/telemetry\.js/.test(html),
+    'the page promises collection can be turned off and no longer ships the control');
+
+  // And the retired location must stay retired: a second control would be two sources of
+  // truth for one setting, which is how they drift apart.
   var shell;
   try { shell = fs.readFileSync(path.join(ROOT, 'ui', 'shell.html'), 'utf8'); }
   catch (e) { shell = ''; }
-  ck('the in-sim Settings row still points at site/telemetry.js',
-    /telemetryRow/.test(shell) && /site\/telemetry\.js/.test(shell),
-    'the second disclosure lost its reference to the schema');
+  ck('the removed Settings row has not come back',
+    !/telemetryRow|telSeg/.test(shell),
+    'the in-sim consent row is back — one setting, two controls');
 }());
 
 // ======================================================= path 2 is a separate path
