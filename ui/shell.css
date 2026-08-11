@@ -784,6 +784,16 @@ html[data-channel="dev"] .logo-test {
 /* In-sim bug report (2026-08-07). The send block is `hidden` in the markup and only
    revealed when a deploy stamped a telemetry endpoint, so a local checkout and the
    offline build show the email route alone rather than a button that cannot work. */
+/* Restricted-info warning (#438) — sits ABOVE the input. Caution accent, but muted:
+   this is a modal notice, not a plant condition, so no alarm-tile styling. */
+.fb-warn {
+  margin-top: 12px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
+  color: var(--text); border: 1px solid var(--border);
+  border-left: 3px solid var(--caution); background: rgba(217, 164, 65, .08);
+  border-radius: 3px;
+}
+.fb-warn strong { color: var(--caution); }
+.lc-fb { margin-top: 10px; }
 .fb-send { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
 .fb-note {
   width: 100%; resize: vertical; min-height: 68px;

@@ -3070,10 +3070,17 @@
     cur.innerHTML = (msg ? '<div class="lc-msg">' + mesc(msg) + '</div>' : '') +
       '<div class="lc-panel"><div class="lc-title">🏁 ' + mesc(lc.title) + '</div>' +
       (lc.outcome ? '<div class="m-note">' + mesc(lc.outcome) + '</div>' : '') +
-      '<div class="lc-actions">' + btns + '</div></div>';
+      '<div class="lc-actions">' + btns + '</div>' +
+      // Ask at endpoints, not only from a button (#438, spec §10): a completion point is
+      // when the user has an opinion and no task in flight. A quiet offer, not a modal.
+      '<div class="fb-hint lc-fb">Something read wrong, or an idea? ' +
+      '<button class="btn" data-lc="feedback">Send feedback</button></div></div>';
     setFocus('instructor');
   }
   function levelCompleteAction(a) {
+    // Feedback offer on the completion card (#438) — opens the form and leaves the
+    // card standing, so Continue/Retry are still there when the form closes.
+    if (a === 'feedback') { openFeedback(); return; }
     // Rewind from a failure card opens the picker like every other ⏪ (#137), so
     // escaping back to the decision point is one click on it rather than repeated
     // presses walking backwards. The commentary queue is dropped at the pick.
@@ -4497,6 +4504,25 @@
   // the address (owner, 2026-07-29); the diagnostics bundle is still offered
   // separately, to attach by hand.
   var FEEDBACK_EMAIL = 'reactordynamics@gmail.com';
+  // Open the feedback form (#438) — callable from the header button, the Settings entry,
+  // and the level-complete prompt. Fills the build stamp and the attachment DISCLOSURE:
+  // the concrete contents of what "Attach this session's recording" would send, read from
+  // the recorder at open time so the numbers describe the session being reported.
+  function openFeedback() {
+    $('fbStatus').textContent = '';
+    $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
+      ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
+      : '';
+    var ro = diag && diag.readout && diag.readout();
+    if (ro && ro.samples) {
+      txt($('fbAttachSum'),
+        'Attached: ' + String(ro.plant || '').toUpperCase() + ' session — T+' + hms(ro.t) +
+        ' of plant readings (' + ro.samples + ' samples), ' + ro.events + ' alarm/plant events, ' +
+        ro.commands + ' commands you issued, and an end-of-session snapshot. Nothing about you ' +
+        'or your device. Untick it to send just your message.');
+    }
+    $('feedbackOverlay').hidden = false;
+  }
   function copyFeedbackEmail() {
     var status = $('fbStatus');
     function ok() { status.className = 'fb-msg'; status.textContent = 'Address copied.'; }
@@ -5072,13 +5098,8 @@
       });
     }());
 
-    $('fbBtn').addEventListener('click', function () {
-      $('fbStatus').textContent = '';
-      $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
-        ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
-        : '';
-      $('feedbackOverlay').hidden = false;
-    });
+    $('fbBtn').addEventListener('click', openFeedback);
+    $('fbHeaderBtn').addEventListener('click', openFeedback);
     $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
     $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
     $('fbCopy').addEventListener('click', copyFeedbackEmail);

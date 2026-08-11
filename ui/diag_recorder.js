@@ -223,7 +223,8 @@
   // ---- export ---------------------------------------------------------------------
   Recorder.prototype.readout = function () {
     var r = this.rec;
-    return r ? { plant: r.plant, reason: r.reason, t: r.lastT || 0, samples: r.t.length } : null;
+    return r ? { plant: r.plant, reason: r.reason, t: r.lastT || 0, samples: r.t.length,
+                 events: r.events.length, commands: r.commands.length } : null;
   };
 
   /* Assemble the bundle. `ctx` carries everything that lives outside this file — the

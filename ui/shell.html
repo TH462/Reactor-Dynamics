@@ -97,6 +97,10 @@
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
               data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
           <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
+          <!-- Feedback in one action (#438, spec §10). The moment someone wants to report is
+               the moment the board does something unexpected — they will not go hunting
+               through Settings, which is where the only entry point used to be. -->
+          <button class="btn text-btn" id="fbHeaderBtn" title="Report a problem or send feedback" data-scanner-hint="Feedback — report a bug or send a suggestion. A recording of this session can be attached so what you saw can be replayed.">Feedback</button>
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
@@ -451,6 +455,13 @@
             <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
               expected, and what the board actually showed. If it is a physics or procedure
               question, the plant mode and the readings you were reading it from.</div>
+            <!-- ABOVE the input, deliberately (#438, spec §10): a warning under a text box is
+                 read after typing. The audience includes working nuclear professionals — name
+                 the categories; a generic "no confidential information" gets skimmed past. -->
+            <div class="fb-warn" id="fbWarn"><strong>Do not include restricted information.</strong>
+              No proprietary plant data, no safeguards or security information, no
+              export-controlled technical data, no personal information. Describe the simulator,
+              not a real facility.</div>
             <!-- SEND IT FROM HERE. The whole point (owner, 2026-08-07: "If it's that easy
                  to send people might actually do it") — a report that needs an email client,
                  a file attachment and a paragraph of context is a report nobody writes. The
@@ -462,10 +473,13 @@
                 placeholder="The rods would not withdraw even though the plant was at hot standby…"></textarea>
               <label class="fb-attach"><input type="checkbox" id="fbAttach" checked>
                 Attach this session's recording</label>
+              <!-- Disclose what is attached (#438, spec §10): the concrete contents, filled in
+                   from the recorder when the form opens. Silently attaching session data is the
+                   wrong default for this audience; disclosure + the untick box is the fix. -->
+              <div class="fb-hint" id="fbAttachSum">The recording is plant readings, alarms and
+                the commands you issued this session, so what you saw can be replayed. Nothing
+                about you or your device. Untick it to send just your message.</div>
               <button class="btn fb-send-btn" id="fbSend">Send report</button>
-              <div class="fb-hint">The recording is plant readings, alarms and the commands you
-                issued this session, so what you saw can be replayed. Nothing about you or your
-                device. Untick it to send just your message.</div>
             </div>
             <div class="fb-field fb-diag">
               <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>

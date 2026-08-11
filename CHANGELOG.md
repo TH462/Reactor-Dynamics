@@ -30,6 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Feedback in one action (#438, first child of the #436 UI rework).** A `Feedback` button in
+  the sim-controls row beside Manual/Help opens the contact form directly — it was three levels
+  down (Settings → About → Contact), and feedback volume is known to be very low. The form now
+  carries a **restricted-information warning above the input** naming the four categories (no
+  proprietary plant data, no safeguards/security information, no export-controlled technical
+  data, no personal information — the audience includes working nuclear professionals), and the
+  attach checkbox **discloses exactly what a bundle contains** for the session being reported
+  (T+ length, sample/event/command counts, end snapshot), filled from the recorder at open time.
+  Mission completion cards offer a quiet "Send feedback" chip — asking at endpoints, not only
+  from a passive button. `DiagRecorder.readout()` gains `events`/`commands` counts. Planning for
+  the rework filed children #437–#446 from the #436 spec.
+
 ## [Alpha 1.5.2] — 2026-08-10
 
 ### Added

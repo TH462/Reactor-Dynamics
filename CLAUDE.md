@@ -328,8 +328,10 @@ re-querying. Run the query.
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
   than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
   the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
-- **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
-  themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
+- **Built, waiting on review or a close** — #438 (feedback form: header button, restricted-info
+  warning, diagnostics disclosure — first child of the #436 UI rework, whose plan filed
+  #437–#446), #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399,
+  #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
   two owner actions remain (delete the Vercel project, revoke a token).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
