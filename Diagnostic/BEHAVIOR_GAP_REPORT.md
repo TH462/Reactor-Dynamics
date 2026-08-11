@@ -8,9 +8,11 @@ covers the fix.
 
 Battery result: 71 pass, 1 known gaps (xfail).
 
-## CA-20b — CA-20b a small break holds its plateau above the accumulator band — it must not dump the tanks (#451)
-*Known gap:* the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else in this model holds the plateau — every severity now collapses to the same cold solid state. Measured 1.39 MPa at t+600 against the 6.21 MPa band. See #451.
+## CA-20b — CA-20b a small break holds its plateau — the STEAM GENERATORS hold the primary up (#451)
+*Known gap:* the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else holds the primary at its heat sink. MEASURED (Phase 1, #451): the dominant term is the cold-ECCS quench, NOT the SG and not the break flash term — `eccs_cooling_gain` 1.0 is ~2x true enthalpy mixing INTO THIS NODE (231 MJ/°C carries the metal; one RCS mass of water is ~113, so the physical gain is 0.489). The primary is driven 266 psi below its own heat sink and then drains the secondary through the 5 % reverse path to 202 psi. See #451.
 
-- **a 5 % break still holds its plateau above the accumulator band at t+600** — required `> 1.5x accumulator_trip_mpa`, observed `1.39 MPa vs trip 4.14`
+- **leg A — the primary never falls a control band below its own heat sink** — required `< 51 psi below SG`, observed `266 psi worst (1.834 MPa); healthy plant 5 psi`
+- **leg B — the heat sink is still a heat sink: the secondary was not drained through the tubes** — required `> accumulator_trip_mpa (600 psi)`, observed `258 psi min (1.78 MPa)`
 - measurement: accumulator level at t+600 (full = the fence held) = `0.0 %`
-- measurement: inventory / Tavg at t+600 (the #451 collapse signature: solid and cold) = `92.3 % / 381.6 °F`
+- measurement: inventory / Tavg at t+600 (the #451 collapse signature: solid and cold) = `92.1 % / 402.8 °F`
+- measurement: primary / secondary at t+600 (equal is NOT healthy — they fell together) = `258 / 258 psi`

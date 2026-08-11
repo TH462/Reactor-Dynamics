@@ -30,6 +30,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Residual heat removal no longer puts itself in service during an unisolated LOCA**
+  (#453). The auto-align actuation gated on RCS pressure and a reactor trip and nothing
+  else, so on a small break `eccs_mode` went HPI → RHR at **t+10 min, at 381 °F (194 °C),
+  at saturation, with the break still discharging** — and shutdown cooling then became the
+  largest heat sink in the plant, more than every other term combined. It now also requires
+  the sourced entry temperature (Tavg < 350 °F — Ginna TS Bases Rev 101, ML20339A221) and
+  20 °F of subcooling, which is what expresses that source's other half, "during normal
+  operations". The plant now answers a small break with **low-head injection (LPI)** as it
+  should; core inventory holds **77–92 %** instead of walking to a 109 % cold-solid state.
+
+### Changed
+- **`K_spray` carries its derivation** (#450) — sourced flow (Ginna UFSAR ch.15,
+  ML20339A101: "the total spray capacity was 52.2 lbm/sec"), ~8× the physical authority,
+  and the measured finding that this plant's heater/spray pair is **inverted**: sourced,
+  spray beats the heaters 4.7:1; modelled, the heaters beat spray 2.7:1. No behaviour change.
+- **`K_heater` was swept and NOT moved** (#450). The F14 departure stands: restoring the
+  sourced 25 psi spray-crack band needs `K_heater` ≈ 0.0061, about **8× below** where this
+  plant's ruled ride-out character breaks, and the gain buys nothing on #447 or #451.
+
 ### Changed
 - **The strip chart's settings are a full window now, and every channel can trace its
   instrument, its physics, or both (#454)** *(OWNER DIRECTIVE, 2026-08-11: "The strip chart option

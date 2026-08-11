@@ -91,9 +91,12 @@ const C = '\x1b[36m', G = '\x1b[32m', Y = '\x1b[33m', R = '\x1b[31m', B = '\x1b[
 // ------------------------------------------------------------------ child runner
 // Each run is a fresh process: the engine modules are global-namespace scripts executed by
 // require() into a shared global, so a config nudge cannot be undone in-process.
-function runOnce(suite, nudge, seed, injectFragile) {
+// `anchor` is the self-test's baseline value, forwarded so the injected fragile check can be
+// measured against what THIS build produces instead of a literal that rots (see the child).
+function runOnce(suite, nudge, seed, injectFragile, anchor) {
   const args = [path.join(__dirname, '_perturb_child.js'), suite, nudge || 'none',
-    seed == null ? 'none' : String(seed), injectFragile ? 'inject' : 'no'];
+    seed == null ? 'none' : String(seed), injectFragile ? 'inject' : 'no',
+    anchor == null ? 'none' : String(anchor)];
   const out = cp.execFileSync(process.execPath, args, { cwd: ROOT, maxBuffer: 1 << 28, encoding: 'utf8' });
   return JSON.parse(out);
 }
@@ -156,9 +159,13 @@ if (OPT.self_test) {
   const base = runOnce('pwr', null, null, true);
   const b = base.filter((c) => /PERTURB-SELFTEST/.test(c.k))[0];
   if (!b) die('self-test check did not appear — the injection hook is broken');
+  // The baseline must PASS, or nothing below can flip — a check stuck at FAIL never changes
+  // state. This assertion is the thing that was missing when the literal anchor rotted.
+  if (!b.pass) die('self-test baseline does not pass its own anchor — the injected check is broken, ' +
+    'not the pipeline (observed ' + b.observed + ')');
   let detected = false;
   for (const n of NUDGES) {
-    const r = runOnce('pwr', n, null, true);
+    const r = runOnce('pwr', n, null, true, b.observed);
     const c = r.filter((x) => /PERTURB-SELFTEST/.test(x.k))[0];
     const flip = c && c.pass !== b.pass;
     console.log(`  ${n.padEnd(38)} ${flip ? G + 'FLIPPED' + X : D + 'no change' + X}   ${D}${b.observed} → ${c ? c.observed : '?'}${X}`);

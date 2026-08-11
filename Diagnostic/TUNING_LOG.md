@@ -99,6 +99,106 @@ first.
 
 **Observed, not fixed, out of scope:** a long lane value (`50 MWe` on Output MW) overlaps the
 right-hand gutter marker. Pre-existing, single-side, untouched by this change.
+## Session log — 2026-08-11-workbench-a (RHR was putting ITSELF in service during a LOCA; the heater gain turned out to be the wrong lever, and three "reds" were three stale windows)
+
+**Issues:** #450 (owner stub, no body), #451, #453 (filed this session). **Commits:** `1a334a7`,
+`25bfc11`. **Gates:** `run_all` **47 runners at baseline**; `run_hardrules` 273 → 275 (baseline
+updated). **Rulings taken** *(OWNER RULING, 2026-08-11: answered "1:A 2:A 3:A" to three options
+tables I wrote — a selection, not verbatim words)* — sweep `K_heater` then rule on F14; re-key
+CA-20b to the physical claim; investigate before building. Later, on sweep scope
+*(OWNER RULING, 2026-08-11: selected "K_heater alone first" from three options I wrote — a
+selection, not verbatim words)*.
+
+Per-issue detail is on each issue. This entry is for what the diffs do not say.
+
+### The plant put itself on shutdown cooling with a hole in it
+
+`set_rhr` auto-aligned on **indicated pressure < 2.70 MPa AND `rps_scrammed`, and nothing else**.
+Measured full stack, `large_loca` sev 0.05: `eccs_mode` HPI → **RHR at t+10 min, Tavg 381 °F,
+at saturation, break still discharging**, after which RHR removes −0.288 → −0.064 °C/s — more
+than every other sink combined, including the accumulator dump it follows. The RHR pumps would
+be taking suction from a voiding hot leg.
+
+The sourced entry condition was **in our own corpus, uncited**: Ginna TS Bases Rev 101
+(ML20339A221) — *"residual heat removal (RHR) entry conditions (Tavg < 350 ºF) … during normal
+operations."* **Both halves bind, and the second is the one that mattered**: "during normal
+operations" is what excludes a LOCA, and no pressure reading can express it. Subcooling can.
+
+### The three traps worth keeping
+
+1. **A CONSTANT'S STATED PHYSICAL BASIS CAN BE RIGHT ABOUT THE PHYSICS AND WRONG ABOUT THE
+   NODE.** `eccs_cooling_gain: 1.0` says *"at REAL rates the physical value of this mixing form
+   IS 1.0 (true enthalpy mixing)"*. True enthalpy mixing gives gain 1.0 **only if the node's
+   heat capacity is one RCS mass of water.** This model's is not: measured from the plant's own
+   t=0 energy balance (fuel→coolant 1.30 °C/s at `mwt_rated` 300), the coolant node carries
+   **231 MJ/°C**, while one RCS mass of water is **~113** — the difference is the metal, which
+   the node is right to carry. So the *mixing* terms (ECCS quench, blowdown flash) run on a
+   water-only capacity while every *power* term (decay heat, SG, RHR) runs on the
+   metal-inclusive one. **The two halves of `stepCoolant` use effective heat capacities that
+   differ by ~2.1×**, which is exactly why decay heat loses to the quench. True gain 0.489, and
+   the conclusion survives ρ 690–720 / cp 5.0–6.0 (0.44–0.51) — only the third decimal moves.
+2. **A "RED" AFTER A BEHAVIOUR CHANGE CAN BE A STALE *WINDOW* RATHER THAN A STALE CLAIM.** All
+   three probes the RHR fix reddened (CA-15, CA-16, CA-25) were measuring at times calibrated on
+   a plant that rode shutdown cooling to its terminal state at t+10 min. Every claim was intact
+   **600–2000 s later**: CA-25 reads *exactly* 0.00 psi / 0.00 pts / 0 reversals in every window
+   from t+5000 to t+15000; CA-15 arrests at 109.28 % against a solid line of 109.3 with drift
+   *exactly* 0.00. Adjudicating them as a batch ("the fix moved things") would have been right
+   by accident; adjudicating them one at a time is what turned up trap 3.
+3. **AN UNASSERTED PREMISE DOES NOT FAIL — IT SILENTLY MEASURES A DIFFERENT REGIME.** CA-16
+   leg D said *"by 10 min the ECCS quench has taken the source below flashing"* and never checked
+   it. Measured, the source is **still flashing at t+3030** and crosses at ~t+3630 — by which
+   time containment has bled to 0.006 MPa over ambient and the leg's own genuine-peak guard
+   correctly refuses the measurement as vacuous. **There is no window where both hold**, so
+   waiting cannot fix it: the leg now REMOVES the source (`clear_failure`) and asserts it is gone.
+
+### The lever I expected was the wrong lever
+
+I predicted `K_heater` 0.10 would restore the sourced spray band. **Measured, it does not, and
+neither does anything down to the physically correct value.** Excursion on a 50 % load rejection:
+0.73 / 1.64 / 3.01 / 5.59 psi at K = 0.55 / 0.20 / 0.10 / 0.05, against a band that cracks the
+spray at +25 psi. The mechanism is explicit in a `stepPressure` term budget — at t+300,
+heater **+8.89e-3** against K×surge **−8.91e-3**, cancelling to three significant figures — and
+because the loop is proportional, a 347× gain needs 1/347 of its band to do it. **The flat gauge
+IS the gain.**
+
+**And the extrapolation would have been wrong.** I expected 1/K scaling; it SATURATES. Measured
+12.13 / 18.84 / 26.82 / 45.54 psi at K = 0.020 / 0.011 / 0.0061 / 0.00158, against a naive 1/K
+prediction of 20.1 / 36.5 / 65.8 / 253.5. The 25 psi crack point lands at **K ≈ 0.0061**, ~8×
+below where TR-1h breaks, and the 75 psi full-open point is unreachable at **any** `K_heater`
+including the physical one — so the flat-pressure symptom is not solely a heater-gain problem
+and #450 stays open on the residual. Negative result worth the same weight: `P_restore_rate_gain`
+looked like an obvious second regulator and zeroing it moves the excursion **0.01 psi**.
+
+### Two guards were not guarding, and injection is what found both
+
+- **`run_hardrules` could not see ARRAY-FORM conditions.** `condition: ['a', {…}, {…}]` has been
+  valid kernel syntax since #287; both regexes anchor on `condition:` followed by a quote or a
+  brace, and continuation lines do not contain the word at all. #453 added the first array
+  condition in the codebase and **three permissive keys went unscanned — the only symptom was
+  the site count dropping 273 → 272**, as the old single site vanished. No failure, no warning.
+- **`perturb_sweep --self-test` was STUCK AT FAIL**, and CLAUDE.md tells every agent to run that
+  tool before touching a `[tune]` constant. Its deliberately-fragile check asserted
+  `|tavg − 304.07| < 0.05` against a build producing **304.5291**, so it failed on the
+  unperturbed run *and* every nudge — **and a check stuck at FAIL never FLIPS**. The tool whose
+  whole job is to certify that a null result means something was reporting *"do not trust a
+  negative result"* on a pipeline that works (`h_sg*1.03` moves that value 19× the band).
+  **A literal baseline inside a deliberately-fragile check is a contradiction in terms** — it is
+  built to move when the plant moves, so it rots at the first retune. Anchored on the baseline
+  run's own value; the parent now asserts the baseline passes before looking for flips.
+- **CA-16's decay leg could not catch a deleted sink**, though its comment claimed it could: with
+  all three sink taus ×1e6 it PASSED, because the expectation integrates the engine's own live
+  sink and collapses with it (`expRem` → 1, bound → 3). A self-referencing expectation answers
+  "is the sink APPLIED as computed" and cannot answer "is there a sink at all". Capped at 0.9.
+
+### Tooling
+
+`tools/term_budget.js` — per-term `dTavg` budget that **proves closure** instead of attributing
+by difference. Its first version read post-step state and did not close (1.2e-2 °C/s), because
+`fuel_temp_c` is written at step 5 and read at step 6 and a tick is 50 physics steps, so any
+mid-tick regime flip is read in the wrong regime. Evaluating `stepCoolant`'s own pre-step inputs
+closes it to **1.4e-17**. `tools/_config_nudge.js` — the override applier extracted from
+`_perturb_child.js` so `measure_stack --nudge=` and `perturb_sweep` share one path, because a
+nudge applied two ways is two different plants.
 
 ---
 

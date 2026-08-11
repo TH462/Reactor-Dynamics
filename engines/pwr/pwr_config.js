@@ -680,6 +680,42 @@
       // valve depressurizes the plant to the containment floor instead of parking. Both are
       // real plant behaviours, and the ruling above chose the present ones.
       K_heater: 0.55,
+      // K_spray — SOURCED FLOW, FITTED GAIN, AND THE PAIR IS INVERTED (#450, 2026-08-11).
+      //
+      // It carried NO derivation at all until this note — the only gain in this block with no
+      // argument behind it, against 48 lines for K_heater directly above.
+      //
+      // THE PHYSICAL FIGURE. Ginna UFSAR ch.15 (ML20339A101) gives the capacity directly:
+      // "the total spray capacity was 52.2 lbm/sec" = 23.68 kg/s (and the full-open spray valve
+      // flow area, 0.0376 ft², for anyone re-deriving it). Power-scaled to this plant
+      // (300/1520) that is 4.67 kg/s. Spray controls pressure by CONDENSING the bubble, so the
+      // authority is the condensing rate over the pressurizer's effective capacitance: an
+      // enthalpy rise of ~358 kJ/kg from cold-leg temperature to saturated liquid at 2235 psia
+      // condenses 1.80 kg/s of steam, and against the C_eff ≈ 68 kg/MPa the K_porv_relief block
+      // derives for this vessel that is 0.0265 MPa/s — 230 psi/min.
+      //
+      // THE SHIPPED CEILING IS 0.204 MPa/s (1,775 psi/min): K_spray 1.7 × the `spray_flow_max`
+      // 0.12 cap below, which binds auto demand and operator override alike. So spray runs ~8×
+      // its physical authority — a far smaller departure than the heaters' 347×, and that
+      // asymmetry is the point:
+      //
+      //   SOURCED   spray 8.48 MW condensing duty vs the heater bank's 1.794 MW  →  4.7 : 1
+      //   MODEL     spray 0.204 MPa/s vs heaters 0.550 MPa/s                     →  0.37 : 1
+      //
+      // The pair is INVERTED — this plant's heaters out-muscle its spray 2.7:1 where the real
+      // ones lose 4.7:1. Measured consequence: heaters forced to 100 % at NOP lift the PORV in
+      // 3 s against FULL spray and then limit-cycle 2284–2373 psi indefinitely. On a real plant
+      // 1,794 kW cannot lift a PORV. Same family as #447 (a heater bank as the loop gain of a
+      // limit cycle), and the K_porv_relief block met it from the other side: "the ruled F14
+      // heater … out-muscles the physical relief authority".
+      //
+      // ρ AND cp ARE RECALLED STEAM-TABLE VALUES, NOT SOURCED — the flow is sourced, the
+      // thermodynamics are not, and the evidence-pass rule says mark it. The ratio is robust to
+      // them: across ρ 690–720 and cp 5.0–6.0 the duty comparison stays 4–5 : 1.
+      //
+      // NOT RETUNED HERE. Moving it is a coupled three-term re-solve (spray, heaters, relief —
+      // `Manuals/12` §12.4c) and the F14 sweep measured that the heater side cannot move without
+      // costing TR-1h. Recorded so the next reader inherits the number instead of the silence.
       K_spray: 1.7,
       // K_porv_relief / K_safety_relief — RE-SOLVED 300 → 600 with #337 F15, ruled
       // *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*. ONE constant applied twice:

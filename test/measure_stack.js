@@ -77,6 +77,11 @@
  *                             `tavg_c` (truth) and `tavg` (the instrument) are not the same
  *                             number and HR1 is the whole reason they differ.
  *   --cmd='<t>:<json>'        schedule a command at a plant time. Repeatable.
+ *   --nudge=<path*factor>     override ONE PWR config constant before anything reads it, e.g.
+ *                             `--nudge=pressurizer.K_heater*0.1818`. Shares the applier with
+ *                             tools/perturb_sweep.js, and the realised from→to is printed in
+ *                             the header — a perturbed measurement must be visible in its own
+ *                             artifact. A bad path is a HARD ERROR, never a silent no-op.
  *   --seed=<int>              instrument PRNG seed. default 4242 — every number ever taken
  *                             with this harness. NOT the probe default: OpsHarness seeds
  *                             0xC0FFEE, so a measure_stack figure and a behavior/ops figure
@@ -94,7 +99,23 @@
 var C = '\x1b[36m', G = '\x1b[32m', Y = '\x1b[33m', R = '\x1b[31m', B = '\x1b[1m', D = '\x1b[2m', X = '\x1b[0m';
 
 require('../engines/load_mode.js');
-['engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js',
+// --nudge=path.to.const*factor — CONFIG FIRST, then the override, then everything that
+// reads it. Scanned out of argv here rather than in the parser below because that parser
+// runs long after these require()s, and a nudge applied after the engine files have loaded
+// is a nudge that may or may not be seen. The same applier serves tools/_perturb_child.js
+// (#450/#451): one override path, so a sweep number and a measure_stack number cannot come
+// from two different plants. Realised from/to values are printed in the header.
+require('../engines/pwr/pwr_config.js');
+var NUDGE = null, NUDGED = null;
+process.argv.slice(2).forEach(function (a) {
+  var m = /^--nudge=(.*)$/.exec(a);
+  if (m) NUDGE = m[1];
+});
+if (NUDGE) {
+  try { NUDGED = require('../tools/_config_nudge.js').applyNudge(globalThis.RD.PWR_CONFIG, NUDGE); }
+  catch (e) { console.error('\x1b[31mmeasure_stack: ' + e.message + '\x1b[0m'); process.exit(2); }
+}
+['layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js',
  'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js', 'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
  'engines/rbmk/rbmk_config.js', 'layers/control/rbmk_control.js', 'engines/rbmk/rbmk_kinetics.js', 'engines/rbmk/rbmk_thermal.js',
  'engines/rbmk/rbmk_rods.js', 'engines/rbmk/rbmk_instruments.js', 'engines/rbmk/rbmk_engine.js',
@@ -168,7 +189,7 @@ function die(msg) { console.error(R + 'measure_stack: ' + msg + X); process.exit
 // accepted as an unknown key would have run the default field set and printed a table that
 // looks entirely correct — the quiet-wrong-answer class this harness exists to stop.
 var KNOWN = { plant: 1, version: 1, ic: 1, for: 1, every: 1, accel: 1, lineup: 1, watch: 1,
-              cmd: 1, seed: 1, 'attention-stops': 1, csv: 1, quiet: 1, list: 1, help: 1 };
+              cmd: 1, seed: 1, 'attention-stops': 1, csv: 1, quiet: 1, list: 1, help: 1, nudge: 1 };
 var argv = process.argv.slice(2), OPT = { cmds: [] };
 argv.forEach(function (a) {
   var m = /^--([a-z-]+)(?:=(.*))?$/.exec(a);
@@ -257,6 +278,11 @@ if (!OPT.quiet) {
   console.log('  acceleration   ' + ACCEL + 'x   ' + D + '(' + stepsPerTick + ' physics steps per broadcast; protection ' +
     'evaluated every ' + (protMs / 1000).toFixed(2) + ' sim-s — #153)' + X);
   console.log('  attention stop ' + (svc.attentionStops ? Y + 'ON — a trip will drop acceleration mid-run (#245)' + X : 'off'));
+  // A PERTURBED PLANT MUST BE VISIBLE IN ITS OWN ARTIFACT, same rule as the layer stamp
+  // (#266). Prints the REALISED from→to, not just the spec: "K_heater*0.18" does not tell a
+  // later reader what the constant actually was when the number was taken.
+  if (NUDGED) console.log('  ' + Y + 'nudge          ' + NUDGED.path + ' ×' + NUDGED.factor +
+    '  (' + NUDGED.from + ' → ' + NUDGED.to + ')  — NOT THE SHIPPED PLANT' + X);
   console.log('  covering       ' + (FOR / 3600).toFixed(2) + ' plant-hours, sampled every ' + (EVERY >= 60 ? (EVERY / 60).toFixed(1) + ' min' : EVERY + ' s'));
   if (SCHED.length) SCHED.forEach(function (c) { console.log('  command @' + c.at + 's  ' + JSON.stringify(c.body)); });
   console.log('  units          ' + D + 'US customary first, SI in parentheses' + X);
