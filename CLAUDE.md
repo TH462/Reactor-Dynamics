@@ -697,6 +697,29 @@ listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
 `test/verify_*.js` automatically and fails on any runner it has no baseline for**, so
 a new gate cannot go unlisted again — add it to `BASELINES` when you add the runner.
 
+### MANUAL FIRST, THEN AUTO — the order in which a system gets tested
+
+> *(OWNER DIRECTIVE, 2026-08-12: "Testing of systems should happen without automatic mode first.
+> Once proper manual behavior is established we test auto mode. This goes for all systems with an
+> auto mode.")*
+
+**Establish that a system behaves correctly with its automatic control OFF before you test it
+with the control ON.** Applies to every system with an auto mode — pressure control, feed,
+rods, boron, steam dump, ADV, turbine load.
+
+**Why it binds rather than being style.** An automatic controller holds the plant on setpoint,
+which is exactly the condition under which a *wrong* mechanism and a *right* one produce the
+same board. Measured 2026-08-12: `P_restore_rate_gain` drags pressurizer pressure to the
+operator's setpoint whether or not the heaters and spray are in AUTO, so a 30 MWe load change
+moved pressure **0 psi** — while the real coupling underneath it moves **+31 psi and −10.7 °F of
+subcooling**, which is what the plant does once the term is neutered. Every gate we had asserted
+endpoints with the controllers on, so 47 runners and a frozen behaviour catalog all agreed with a
+plant whose central pressure coupling was invisible. The owner found it in free play.
+
+**In practice:** a behaviour row that can only be demonstrated with the automation engaged is
+testing the automation, not the plant. Write the manual-mode acceptance first; the auto-mode row
+then asserts that the controller *holds* what manual proved, which is a different claim.
+
 ### Know which LAYER a gate runs at (this has bitten us three times)
 
 A runner that holds a `ControlFailureLayer` still is **not** full-stack.
