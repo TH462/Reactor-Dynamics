@@ -689,6 +689,65 @@ async function testChartSettings(page) {
   return log.join('\n') + '\n';
 }
 
+/* CLOSING PLANT & MISSION LEAVES THE PLANT RUNNING *(OWNER, 2026-08-11: "When i close the
+ * plant menu after starting the sim the sim should start playing. it currently starts
+ * paused. it should start running after closing the plant & mission menu.")*.
+ *
+ * THE FREE-PLAY PATH IS THE ONE THAT WAS BROKEN, and the plain ✕ was not — which is why this
+ * checks BOTH. `closeMissionSelect(); switchEngine(...)` released the `modal` hold and started
+ * the plant, then took `plant_change` for the rebuild and never released it. A check that only
+ * pressed ✕ would have passed on the defect, because ✕ alone never calls switchEngine.
+ *
+ * The third case is the one that keeps the fix honest: a plant the PLAYER stopped must stay
+ * stopped through a plant change. `releaseHold` drops one named hold, so `user` survives —
+ * and if someone ever "simplifies" it back to clearing the map, this is what catches it. */
+async function testMissionCloseResumes(page) {
+  var log = [];
+  var running = function () {
+    return page.evaluate(function () { return !document.getElementById('playBtn').classList.contains('paused'); });
+  };
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForTimeout(1200);
+
+  // The window opens on every load, so this is the very first thing a player does.
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('Plant & Mission did not open on load');
+  await page.click('#missionClose');
+  await page.waitForTimeout(700);
+  if (!(await running())) throw new Error('closing Plant & Mission with ✕ left the plant PAUSED');
+  log.push('✕ Close: plant runs');
+
+  // The reported path: pick a starting condition and press Free Play.
+  await page.click('#simStatus');
+  await page.waitForTimeout(400);
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
+  await page.click('[data-mfree]');
+  await page.waitForTimeout(1200);
+  if (await page.isVisible('#missionOverlay')) throw new Error('Free Play did not close the window');
+  if (!(await running())) {
+    throw new Error('starting Free Play left the plant PAUSED — switchEngine took the ' +
+      '`plant_change` hold for its rebuild and never released it. This is the reported bug; ' +
+      'note that pressing ✕ alone passes on it, because ✕ never calls switchEngine.');
+  }
+  log.push('Free Play: plant runs after the window closes');
+
+  // …but a plant the PLAYER paused stays paused through the same path.
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  if (await running()) throw new Error('⏸ did not stop the plant');
+  await page.click('#simStatus');
+  await page.waitForTimeout(400);
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission (2nd)');
+  await page.click('[data-mfree]');
+  await page.waitForTimeout(1200);
+  if (await running()) {
+    throw new Error('a plant the PLAYER paused started itself on a plant change — the `user` ' +
+      'hold was dropped. releaseHold() must clear ONE named reason, not the map.');
+  }
+  log.push('a player-paused plant stays paused through a plant change');
+  return log.join('\n') + '\n';
+}
+
 async function testRewindPicker(page) {
   var log = [];
   var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
@@ -895,6 +954,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'steam-feed-pair.log'), sfLog);
     var csLog = await testChartSettings(page);
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
+    var mcLog = await testMissionCloseResumes(page);
+    fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
     var rpLog = await testRewindPicker(page);
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     var tpLog = await testTrendPreseed(page);
@@ -917,7 +978,7 @@ async function main() {
  * re-running all 16 screenshots. Running the file directly is unaffected. */
 if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
-                     testChartSettings: testChartSettings, port: function () { return PORT; } };
+                     testChartSettings: testChartSettings, testMissionCloseResumes: testMissionCloseResumes, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

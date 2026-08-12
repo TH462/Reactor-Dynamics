@@ -5239,7 +5239,32 @@
    * reason map is what makes this rule expressible at all. */
   function closeModal(id) {
     $(id).hidden = true;
-    clearPause('modal');
+    releaseHold('modal');
+  }
+  /* RELEASE A HOLD AND START IF NOTHING ELSE IS STANDING — closeModal's tail, extracted
+   * *(OWNER, 2026-08-11: "When i close the plant menu after starting the sim the sim should
+   * start playing. it currently starts paused.")*.
+   *
+   * THE HOLDS SPLIT IN TWO AND ONLY ONE KIND WAS EVER RELEASED. `modal`, `plant_change` and
+   * `reset` are TRANSIENT and mechanical — they cover a window being up or a rebuild being
+   * half done, and they should end when that does. `user` and `content` are DELIBERATE:
+   * someone (the player, or a scenario) decided the plant should be stopped, and only they
+   * may lift it. Only `modal` was ever released; the other two were taken with pauseSim()
+   * and then cleared by nothing except the ▶ button, which wipes the whole map.
+   * (`rewind` is left on plain clearPause deliberately — cancelling the picker returning you
+   * to a running plant is a separate behaviour question nobody has asked for.)
+   *
+   * That is the reported bug, and it is an ORDERING one. Free Play runs
+   * `closeMissionSelect(); switchEngine(...)`: the close correctly releases `modal` and
+   * starts the plant, and the switch immediately takes `plant_change` for the rebuild and
+   * keeps it for ever. The plant ran for a few milliseconds and then stopped for good, so
+   * the modal logic looked broken when it was working perfectly.
+   *
+   * Extracted rather than copied to the three call sites: a hold whose release is spelled
+   * out at each site is a hold that will be taken somewhere new and not released, which is
+   * exactly how this one got here. */
+  function releaseHold(reason) {
+    clearPause(reason);
     if (!Object.keys(pauseWhy).length && !service.running) { service.start(); syncPlayBtn(); }
   }
 
@@ -7330,6 +7355,9 @@
     service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: ui.initState, design_version: e.dv });
     rebuildPlantUI();
     diagReset('plant_change', { engine_key: key, initial_state: ui.initState });
+    // The hold covered the swap; the swap is done. It does NOT resume a plant the player
+    // had stopped themselves — `user` is a separate hold and releaseHold leaves it standing.
+    releaseHold('plant_change');
   }
 
   function rebuildPlantUI() {
@@ -7377,6 +7405,10 @@
     pauseSim('reset');
     service.handleCommand({ action: 'reset', plant_id: ui.plant, initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
     rebuildPlantUI();
+    // Same transient hold, same release *(OWNER SELECTION, 2026-08-11, from the options
+    // presented: "Fix both")*. A reset lands you on a running plant at the chosen initial
+    // condition, rather than on a stopped one that needs ▶ before anything happens.
+    releaseHold('reset');
   }
   function downloadSave() {
     var data = JSON.stringify(service.saveState(), null, 2);

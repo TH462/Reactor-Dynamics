@@ -31,6 +31,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Closing Plant & Mission leaves the plant running** *(OWNER, 2026-08-11: "When i close the
+  plant menu after starting the sim the sim should start playing. it currently starts paused. it
+  should start running after closing the plant & mission menu.")*. Starting Free Play closed the
+  window and started the clock, and the engine swap that followed stopped it again for good — a
+  pause taken to cover the rebuild that nothing ever released. A **Reset** now also lands you on
+  a running plant rather than one waiting for ▶. A plant you stopped yourself with ⏸ still stays
+  stopped through both.
 - **Residual heat removal no longer puts itself in service during an unisolated LOCA**
   (#453). The auto-align actuation gated on RCS pressure and a reactor trip and nothing
   else, so on a small break `eccs_mode` went HPI → RHR at **t+10 min, at 381 °F (194 °C),

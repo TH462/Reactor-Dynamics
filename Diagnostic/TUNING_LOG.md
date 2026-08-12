@@ -73,6 +73,11 @@ first.
   the feature looked switched off at the moment it was most switched on. The DOM check was
   perfectly happy (`polylines 4, dashed 1`); only the screenshot showed it. Fixed by lightening
   the twin's stroke, which keeps it one hue rather than a second palette slot.
+  **CONFIRMED ON THE LIVE BOARD** *(OWNER RULING, 2026-08-11: "im looking at it and it looks
+  fine the way it is now.")* — given after the departure was flagged for review, so the
+  lightening is the ruled form and **is not to be reverted to the plain hue**. The earlier
+  "same hue" selection stands as written; what it could not anticipate is that an identical
+  hue makes the twin invisible in precisely the case the feature exists for.
 - **`flex-grow` beats `height`, so the first attempt to prove a check could fail, failed.**
   Injecting `height: 40px !important` on the channel list did NOT go red: the list is
   `flex: 1 1 auto` in a column, so grow re-expanded it and the check read 633 px. `flex: 0 0 40px`
@@ -99,6 +104,49 @@ first.
 
 **Observed, not fixed, out of scope:** a long lane value (`50 MWe` on Output MW) overlaps the
 right-hand gutter marker. Pre-existing, single-side, untouched by this change.
+
+### Closing Plant & Mission left the plant paused — an ORDERING bug, not a modal bug
+
+*(OWNER, 2026-08-11: "When i close the plant menu after starting the sim the sim should start
+playing. it currently starts paused. it should start running after closing the plant & mission
+menu.")*
+
+**The modal logic was working perfectly.** Free Play runs, at `ui/app.js:6388`:
+
+```js
+closeMissionSelect(); switchEngine(msel.engine, msel.init);
+```
+
+`closeMissionSelect` releases the `modal` hold and **starts** the plant — correct. Then
+`switchEngine` takes `pauseSim('plant_change')` to cover the engine swap and the UI rebuild,
+and **nothing ever released it**. The plant ran for a few milliseconds and then stopped for
+good. Only ▶ could recover it, because `resumeSim()` wipes the whole map rather than clearing
+a reason.
+
+**The holds had split into two kinds and only one kind was ever released.** `modal`,
+`plant_change` and `reset` are TRANSIENT — they cover a window being up or a rebuild being
+half done. `user` and `content` are DELIBERATE. `closeModal`'s tail was the only release path
+in the file, so it is now extracted as `releaseHold(reason)` and called at all three transient
+sites. Extracted rather than copied: a hold whose release is spelled out per-site is a hold
+that gets taken somewhere new and not released, which is exactly how this one arrived.
+
+`reset` fixed too *(OWNER SELECTION, 2026-08-11, from the options presented: "Fix both")* —
+a reset now lands you on a running plant rather than one that needs ▶ before anything happens.
+`rewind` deliberately left on plain `clearPause`; whether cancelling the picker should resume
+is a separate question nobody has asked.
+
+**The trap: the ✕ button passes on this defect.** `#missionClose` alone never calls
+`switchEngine`, so a check that opened the window and pressed ✕ would be green while the
+reported path was broken — and ✕ is the obvious thing to test. `testMissionCloseResumes`
+exercises **both** doors plus the player-paused case, and all three were driven red by
+injection (restore the missing release → the reported failure; make `releaseHold` wipe the map
+→ the `user` hold is dropped).
+
+**Also swept:** the Settings button's scanner detail still promised "the window and CSV export
+sit on the chart itself, so changing how you are watching a transient never stops the
+transient" — player-facing copy describing the pre-#454 world. Rewritten. Two surfaces had that
+sentence and the ⚙'s own copy was fixed with the feature; this one was not, because nothing
+links them.
 ## Session log — 2026-08-11-workbench-a (RHR was putting ITSELF in service during a LOCA; the heater gain turned out to be the wrong lever, and three "reds" were three stale windows)
 
 **Issues:** #450 (owner stub, no body), #451, #453 (filed this session). **Commits:** `1a334a7`,
