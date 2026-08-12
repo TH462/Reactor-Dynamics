@@ -30,6 +30,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Free play starts with rod control in MANUAL** (#460) *(OWNER DIRECTIVE, 2026-08-11: "lets
+  start with rods in manual.")*. `rods_tavg` loses its `defaultOn`, reversing the 2026-08-01
+  auto default (#289). The channel is otherwise untouched — same controller, same board
+  control (**ROD AUTO**), same manuals, still engageable at any time; only the free-play preset
+  moved. Instructed content never read `defaultOn` and is unaffected.
+
+  The 2026-08-01 ruling's stated premise — *"everything else starts in auto"* — had expired:
+  the Mode 1 free-play lineup puts generator load in MANUAL (`getStartupLineup`), so the two
+  halves of the load/reactivity pair now agree.
+
+  **Measured** (`measure_stack`, full stack, `hot_full_power`, 100 → 80 MWe):
+  - The plant load-follows **without** the rods. Moderator feedback alone takes power to
+    **81.8 %** and parks it, monotone, settled at **3 min 30 s**. Rods in AUTO ring the same
+    step — Tavg 586.8 → 567.2 °F (308.2 → 297.3 °C), power 62 → 88 % — and are still ±1.5 pts
+    at ten minutes. Manual is the better-behaved plant on this transient, not the harder one.
+  - What the plant does **not** do by itself is put Tavg back on program: it settles
+    **17.3 °F (9.6 °C) high**. That trim is now the operator's, and the board already draws
+    the sliding Tref band, so it is visible without a new indication. HI TAVG sits 3.6 °F
+    (2.0 °C) above where it parks — a cue, not a nag.
+  - Manual rod control is linear and forgiving: −20 fine steps → −1.8 °F (−1.0 °C), −60 →
+    −6.2 °F (−3.4 °C), ~0.1 °F (0.06 °C) per step, no overshoot at either size.
+  - Inserting 60 steps moved generator load **0.8 points**. Rods set temperature; the turbine
+    sets power — the Tier A coupling the AUTO channel was absorbing.
+
+  Side effect: **#400**'s measured all-auto oscillation (12.93–13.65 points p2p at the 50 %
+  plateau, never settling) leaves the shipped free-play plant. It is not fixed — the channel
+  still rings when engaged, and #400 stands.
+
+  Five behaviour probes moved with it — TR-1g, TR-1h, TR-1i, TR-1k, TR-18 — none by changing
+  an assertion. All five are *about* the rod controller and were inheriting it from the preset;
+  they now call a `rodsAuto()` helper, the mirror of the existing `rodsManual()`, so both
+  halves of the lineup question are stated out loud and the next preset change moves neither.
+  `board_check`'s three ROD AUTO checks invert (default, then both directions from it — the
+  structure that made this a one-line edit per check rather than a re-diagnosis).
+
 ### Fixed
 - **Residual heat removal no longer puts itself in service during an unisolated LOCA**
   (#453). The auto-align actuation gated on RCS pressure and a reactor trip and nothing

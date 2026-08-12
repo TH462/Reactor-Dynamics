@@ -48,6 +48,27 @@
     return h;
   }
 
+  // Take ROD CONTROL to AUTO — the mirror of `rodsManual`, and now the one that has to be
+  // said out loud.
+  //
+  // WHY THIS EXISTS (2026-08-11, #460). The lineup moved back: free play comes up with the
+  // rods in MANUAL *(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in manual.")*,
+  // reversing the 2026-08-01 ruling above. Five probes — TR-1g, TR-1h, TR-1i, TR-1k, TR-18 —
+  // are ABOUT the rod controller: the sourced WTSM duty, the rejection it is supposed to
+  // absorb, whether its step settles. Their subject never changed; they were reading the
+  // preset instead of stating their own precondition, which is the exact failure the
+  // `rodsManual` comment above describes in the other direction.
+  //
+  // NOT an assertion change: every `ck` in those five is byte-identical across this edit, and
+  // the plant they run on is the same plant they ran on before — `engageDefaults()` engaged
+  // this channel at t=0, and so does this. What changed is that they no longer INHERIT it.
+  // Both halves of the lineup question are now explicit, so the next preset change moves
+  // neither.
+  function rodsAuto(h) {
+    h.cmd('set_auto_channel', { channel_id: 'rods_tavg', engaged: true });
+    return h;
+  }
+
   // ------------------------------------------------------------- XFAIL (strict)
   // id → why it is expected to fail today (catalog §8 decision that will fix it).
   var XFAIL = {
@@ -106,7 +127,7 @@
     'EV-10': 'existing:run_pwr transient_loss_vacuum',
     'TR-1': 'probe (FULL load rejection — the ride-out, past the dump\'s stop)',
     'TR-1g': 'probe (50 % loss of load — the real Westinghouse design case, 40 % dump)',
-    'TR-1h': 'probe (full rejection on the SHIPPED lineup — rods AUTO + clamped level program, #289)',
+    'TR-1h': 'probe (full rejection with rods in AUTO — rods AUTO + clamped level program, #289)',
     'TR-1i': 'probe (load-follow tracking vs the WTSM ±5 °F duty — the rate comparator, #306)',
     'TR-1b': 'probe (turbine trip → P-9 scram, #216)',
     'TR-1c': 'probe (sub-threshold rejection — the arm cliff, declared §8.21, #219)',
@@ -130,7 +151,7 @@
     'TR-12c': 'probe (automatic steam line isolation — the coincidence, and that it stays out of normal evolutions, #370c)',
     'TR-17': 'probe (atmospheric dump — a condenser-independent cooldown path exists, #371)',
     'TR-18': 'probe (load-change settling — the manual step ends instead of hunting forever, #378)',
-    'TR-1k': 'probe (the arm cliff on the SHIPPED lineup — both lineups end at the backstop, #377)',
+    'TR-1k': 'probe (the arm cliff with rods in AUTO — both lineups end at the backstop, #377)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
@@ -554,7 +575,7 @@
      * rod-less; TR-1h is the full rejection on this same shipped lineup. */
     'TR-1g': function () {
       return test('TR-1g 50% loss of load — the real design case: dump carries it, then rods take it', function (ck) {
-        var h = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO (#289)
+        var h = rodsAuto(H('hot_full_power'));            // rods in AUTO — this probe's SUBJECT, stated not inherited (#289, #460)
         h.run(30);
         // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
         h.cmd('set_load_target', { immediate: true, mwe: 50 });
@@ -685,7 +706,7 @@
 
         // --- 10 % step DOWN, 100 → 90 MWe. The dump must stay shut: WTSM is explicit that
         // "As long as Tavg is within its program the steam dump system will not actuate."
-        var a = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO
+        var a = rodsAuto(H('hot_full_power'));            // rods in AUTO — this probe's SUBJECT, stated not inherited (#460)
         a.run(60);
         ck('IC assert — the rig is on the hot plant', fmt(a.ts().pressure_mpa, 2),
           a.ts().pressure_mpa > 15.0 && a.ts().power_pct > 95, '> 15.0 MPa, > 95 %');
@@ -698,7 +719,7 @@
 
         // --- 5 %/min ramp DOWN, 100 → 50 MWe over 600 s, then a soak. THE duty case, and the
         // one the proportional trim failed by 2.5×.
-        var c = H('hot_full_power');
+        var c = rodsAuto(H('hot_full_power'));
         c.run(60);
         var t0 = c.t();
         var pc = peak(c, 1500, function (hh, t) {
@@ -761,7 +782,7 @@
         // intermittent, and the channel still nudges whenever the residual clears the gain.
         // Reading trimSlow inverts cleanly instead — on the proportional form it is never even
         // populated.
-        var d = H('hot_full_power');
+        var d = rodsAuto(H('hot_full_power'));
         d.run(60);
         function rodChan(h) {
           var a = h.cfl.channels || [];
@@ -794,7 +815,7 @@
 
         // --- Steady state must still land on program. A rate comparator that leaked a bias
         // would show here, and the real deadband is ±1.5 °F.
-        var e = H('hot_full_power');
+        var e = rodsAuto(H('hot_full_power'));
         e.cmd('set_load_target', { mwe: 75 });
         e.run(7200);
         ck('2 h soak at 75 % load settles ON program, inside the real ±1.5 °F deadband',
@@ -804,8 +825,8 @@
     },
 
     'TR-1h': function () {
-      return test('TR-1h full rejection on the SHIPPED lineup — rods take it back, relief RESEATS', function (ck) {
-        var h = H('hot_full_power');            // rods AUTO + the clamped level program
+      return test('TR-1h full rejection with rods in AUTO — rods take it back, relief RESEATS', function (ck) {
+        var h = rodsAuto(H('hot_full_power'));            // rods AUTO + the clamped level program
         h.run(30);
         // `immediate`: a load REJECTION is an event, not an operator ramp — see TR-1.
         h.cmd('set_load_target', { immediate: true, mwe: 0 });
@@ -5639,7 +5660,7 @@
      * CA-9/#332 trap. */
     'TR-18': function () {
       return test('TR-18 load-change settling — a manual step ENDS, the plant does not hunt forever (#378)', function (ck) {
-        var h = H('hot_full_power');            // SHIPPED lineup — rod control in AUTO
+        var h = rodsAuto(H('hot_full_power'));            // rods in AUTO — this probe's SUBJECT, stated not inherited (#460)
         h.run(30);
         var ask = 50;
         h.cmd('set_load_target', { immediate: true, mwe: ask });
@@ -5699,12 +5720,12 @@
      * gap. If a rod-channel fix ever narrows the inversion below that, this check should
      * redden and §8.21's cost paragraph should be revisited — that is the pin working. */
     'TR-1k': function () {
-      return test('TR-1k sub-threshold rejection, SHIPPED lineup — both lineups end at the backstop (#377)', function (ck) {
+      return test('TR-1k sub-threshold rejection, rods in AUTO — both lineups end at the backstop (#377)', function (ck) {
         var arm = RD.PWR_CONFIG.steam_generator.dump_load_reject_mwe;
         var porvSp = RD.PWR_CONFIG.pressurizer.porv_open_mpa;
 
-        // --- arm − 1, rods in AUTO (the plant a player gets)
-        var lo = H('hot_full_power');
+        // --- arm − 1, rods in AUTO (engaged explicitly since #460 — no longer the shipped preset)
+        var lo = rodsAuto(H('hot_full_power'));
         lo.run(30);
         lo.cmd('set_load_target', { immediate: true, mwe: 100 - (arm - 1) });
         var loArmed = false, loPorv = false, loSafety = false;
@@ -5739,7 +5760,7 @@
           fmt(lo.range('pressure_mpa').max, 3) + ' MPa / ' + String(loPorv));
 
         // --- arm + 1, rods in AUTO: caught, clear of the relief neighborhood
-        var hi = H('hot_full_power');
+        var hi = rodsAuto(H('hot_full_power'));
         hi.run(30);
         hi.cmd('set_load_target', { immediate: true, mwe: 100 - (arm + 1) });
         var hiArmed = false;
