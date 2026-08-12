@@ -23,7 +23,7 @@
 
   // The catalog version this battery is written against. CAT-1 fails if the catalog
   // header disagrees — bump BOTH together, in the same change as the ruling.
-  var CATALOG_VERSION = 'v4.0-DRAFT';
+  var CATALOG_VERSION = 'v4.0';
 
   function H(initial, opts) {
     opts = opts || {};

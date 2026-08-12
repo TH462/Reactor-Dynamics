@@ -1,7 +1,11 @@
-# SLS-100 Behavior Catalog — v4.0-DRAFT (feel-first; unfrozen 2026-08-12 for #472)
+# SLS-100 Behavior Catalog — v4.0 (feel-first; RULED 2026-08-12, open until #472 lands)
 
-**Status: v4.0-DRAFT — UNFROZEN 2026-08-12 for the #472 pressurizer rebuild; owner ruling
-on the amended set pending.** The plant is the **SLS-100** (Single Loop Simulated, 100 MWe
+**Status: v4.0 — the amended set is RULED** *(OWNER RULING, 2026-08-12: "1: accept as
+drafted 2: keep both 3: out of scope, but measured.")* **and the catalog stays OPEN until
+the #472 pressurizer rebuild completes** — §13.2's rows carry `[NEW-UNMEASURED]` until
+Phase-1 characterisation supplies their numbers, and a catalog cannot be frozen around
+rows that have none. It re-freezes at the #472 cutover, this time behind the `CAT-1` gate.
+The plant is the **SLS-100** (Single Loop Simulated, 100 MWe
 — owner-named; SLX-100 until 2026-08-04, #328). v3.1 was declared FROZEN-FINAL 2026-07-21,
 but the freeze had no mechanical lock: nine in-place amendments landed after it, the
 battery's own stamps still read v2.0, this header's tally claim ("26 pass / 0 xfail") had
@@ -307,7 +311,27 @@ safety 17.13 MPa, with reseats ordered below lifts):
   −3.3e-5 → −2.0e-4 (real-PWR range). Un-trimmed mismatch +18 → ~+7 °C; slider asks now
   delivered almost exactly; PI-8 implemented at 97 %; EV-11 re-worded to the honest
   character. All 51 campaign gates re-validated green on the new coefficient.
-- **2026-08-12 (Fable, DRAFT — awaiting owner ruling; #472):** v3.1 unfrozen → **v4.0-DRAFT**
+- **2026-08-12 (owner): the v4.0 amendment RULED, three answers** *(OWNER RULING,
+  2026-08-12: "1: accept as drafted  2: keep both  3: out of scope, but measured.", given
+  as numbered answers to the three decisions below)*.
+  1. **The amended set is ACCEPTED as drafted** — §13 (FG-8), §14 and the `CAT-1` lock
+     stand as written. The absorbed rows are ruled, not provisional; the catalog does not
+     split into two authority levels.
+  2. **Heater elevation keeps BOTH mechanisms** — progressive wetted-fraction authority
+     loss is the physics, and the sourced 17 %/20 % bistable (S1, WTSM 10.3 §10.3.4.1)
+     survives on top of it as PROTECTION. This settles the reading of the 2026-08-12
+     decision-3 ruling ("physical elevation with progressive authority loss **replacing**
+     the 17 % cliff"): what the cliff loses is its role as the *physics*, not the
+     interlock's existence. Rows `HE-1`/`HE-2`/`HE-3` are written to this reading, and
+     `HE-3` is why it matters — a stuck transmitter fools the latch, and the physics is
+     then the only thing bounding #334's 2207-psi deadhead.
+  3. **`CA-20b` is OUT OF SCOPE for #472, but MEASURED through it** — its measured
+     dominant term is the cold-ECCS quench gain (1.0 against a physical 0.489), which is
+     the ECCS and not the pressurizer, so fixing it would pull a second subsystem into the
+     rebuild's blast radius. It stays a strict xfail with its own issue, and is
+     re-measured in Phase-1 characterisation and again in the Phase-3d A/B so the rebuild
+     cannot move it silently in either direction.
+- **2026-08-12 (Fable; #472):** v3.1 unfrozen → **v4.0**
   per the approved #472 pressurizer-rebuild plan (method step 2). Findings that forced it:
   the freeze had no mechanical lock (nine in-place amendments since FROZEN-FINAL; the
   battery stamps read v2.0; the header tally claimed 26 pass against a live 72 pass /
@@ -317,7 +341,7 @@ safety 17.13 MPa, with reseats ordered below lifts):
   acceptance rows marked `[NEW-UNMEASURED]`), **§14** (26 absorbed non-pressurizer rows),
   and the **CAT-1 parity probe** locking catalog IDs ↔ battery `COVERAGE` keys. Absorbed
   rows document what the probes already assert (status unchanged); nothing was re-banded.
-  **The owner rules this amended set before Phase-1 characterisation begins.**
+  **Ruled by the owner the same day — see the entry above.**
 
 ## 13. FG-8 — The pressurizer as a machine (v4.0, #472)
 
@@ -347,7 +371,7 @@ rows then assert the controller holds what manual proved.
 | CA-18 | A loop break DRAINS the pressurizer (TRUE level < 25 at core-top uncovery; indicated never re-rises past 75); the RELIEF path keeps the FULL lift (the TMI fence, exact); void 0.2 on the deception line reads 78.3 ± 0.2 %; boundary flicker can only ratchet the credit DOWN | C | probe | PASS — absorbed v4.0 |
 | CA-19 | A refilled solid RCS with a break settles at injection = discharge (mass frozen on the solid line, both streams flowing, pressure at the config-solved balance); injection defeated, the same state DRAINS | I | probe | PASS — absorbed v4.0 |
 | CA-20 | A loop break vents the RCS toward containment — falls past Psat of the hot remnant and never below the LIVE backpressure; SGTR and relief keep the saturation pin (clone-triplet algebra) | I | probe | PASS — absorbed v4.0 |
-| CA-20b | A small break holds its plateau — the STEAM GENERATORS hold the primary up: never > 51 psi below its own heat sink AND the secondary not drained through the tubes | I | probe | **XFAIL** (#451; the plateau was HEATER-HELD, #447 shed removed the prop — **do NOT re-band green**) — absorbed v4.0 |
+| CA-20b | A small break holds its plateau — the STEAM GENERATORS hold the primary up: never > 51 psi below its own heat sink AND the secondary not drained through the tubes | I | probe | **XFAIL** (#451; the plateau was HEATER-HELD, #447 shed removed the prop — **do NOT re-band green**) — absorbed v4.0 · **OUT OF SCOPE for #472, MEASURED through it** *(owner ruling 2026-08-12)*: the dominant term is the ECCS quench gain, not the pressurizer; re-measured in Phase 1 and the Phase-3d A/B so the rebuild cannot move it silently |
 | CA-23 | The pressurizer node: no-leak families BITWISE the frozen levelRaw line (< 1e-9); the node IS its law; credit ∈ [0, level_per_void·void]; pre-node saves seed bitwise | C | probe | PASS — absorbed v4.0 · **dies with v1 at #472 cutover → CV-1…4** |
 | CA-25 | Safety injection SHEDS the heaters (NUREG-0737 II.E.3.1 (7)); the post-LOCA plant SETTLES instead of limit-cycling (0 heater samples in the settled tail, ≤ 2 reversals); HEATER AUTO clears the shed and answers; the operator's manual demand is never overwritten | I | probe | PASS — absorbed v4.0 |
 
@@ -376,8 +400,9 @@ B's highest-risk preserved behaviour):
 | TD-5 | Relief is NOT surge: PORV/safety flow moves the level law by exactly NOTHING (w = 1 on the relief path); a LOOP break suppresses the lift | I | CA-18 today · todo→#472-P3 | [NEW-UNMEASURED] |
 | TD-6 | No-ratchet: the void credit stays in [0, calibration·void]; saturation-boundary flicker can only ratchet DOWN | I | CA-18/CA-23 today · todo→#472-P3 | [NEW-UNMEASURED] |
 
-**HE — heater elevation** (ruled decision 3: physical elevation with progressive
-authority loss replaces the 17 % cliff; the S1 bistable survives ON TOP as protection):
+**HE — heater elevation** (ruled decision 3: physical elevation with progressive authority
+loss replaces the 17 % cliff **as the physics**; the S1 bistable survives ON TOP as
+protection — *OWNER RULING, 2026-08-12: "keep both"*):
 
 | ID | Behavior | Tier | Probe | Status |
 |----|----------|------|-------|--------|
