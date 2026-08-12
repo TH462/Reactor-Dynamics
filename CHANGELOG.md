@@ -30,6 +30,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The Indications tab's checkboxes are a MONITOR LIST, not a plot selector** *(OWNER,
+  2026-08-12: "the check boxes select what you see in the [strip chart] which is redundant
+  because now the strip chart has its own menu… they are going to be used for indications
+  that I want to monitor… they place a duplicate at the top of the indications panel above
+  all the other indications")*, #477. Ticking a row copies it into a **Monitoring** block
+  rendered above every system group — the plant indication, the physics indication and the
+  same divergence flag, an ordinary row in every respect. Unticking from either copy clears
+  both. The selection is **saved per plant** and survives a reload, unlike `ui.series` /
+  `ui.seriesSide`, which are a view setting on a chart the plant rebuilds from its own
+  defaults; this is a list the player curated by hand.
+  - The tick used to write `ui.series` and redraw the chart. It was the only surface that
+    did until **#454** built the chart its own settings window — 120 channels, a search box
+    and a separate selector per side — after which this column was a strictly weaker
+    duplicate of it. That window is now the **only** writer of `ui.series`.
+  - What the row keeps is a **passive dot** in the tick column when the channel is trending,
+    so "what is on the chart" is still answerable from the list. It is a readout, not a
+    control (`pointer-events: none`).
+  - Order is **profile order**, not tick order, and the block flattens the grouping. A
+    row-type chip (Paired / Indication only / Physics only) cannot hide a monitored row: the
+    list is an explicit selection and outranks a filter. Nothing at all renders — no
+    heading — while nothing is ticked.
+  - The duplicate is painted from the same per-frame values as the row it copies
+    (`paintIndRow`'s memo), so it can never print a different number, and `indDiverged`'s
+    60 s `chartBuf` walk is paid once per channel rather than once per copy. Measured with
+    8 channels monitored: render p50/p95 **6.4 / 10.0 ms** against **6.4 / 10.1 ms** with
+    none.
+  - Gate: `verify_e2e_ui` gains `testMonitorList` — five checks, one of which asserts the
+    **chart is unchanged across a tick**, since a leftover plot write is invisible from the
+    list itself.
+
 ## [Alpha 1.6.0] — 2026-08-12
 
 ### Changed

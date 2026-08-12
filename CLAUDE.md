@@ -344,6 +344,13 @@ re-querying. Run the query.
   contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
   untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
   verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
+- **#477 — the Indications tick is a MONITOR LIST, built and gated** (2026-08-12). Ticking a row
+  copies it into a `Monitoring` block above every group (both values, same divergence flag);
+  the tick no longer writes `ui.series`, so **#454's chart-settings window is the only writer**
+  and the row keeps a passive "trending" dot. Saved per plant in `rd_monitor`. Trap worth the
+  line: the check that carries the change — *a tick must not touch the chart* — was **vacuous**
+  written on `tavg`, which is in `defaultSeries` and so already plotted; the old handler
+  re-injected passed it green. On `thot` the same injection reads 3 → 4 traces.
 - **Built, waiting on review or a close** — #460 (rods ship in MANUAL — one owner call open: it
   brushes #331's "Leave automatic systems in place", and it was built to the NARROW reading),
   #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and

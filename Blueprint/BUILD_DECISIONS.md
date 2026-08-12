@@ -45,6 +45,49 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-12-backshop-a — #477: the Indications tick becomes a monitor list, and one surface owns the chart
+
+*(OWNER, 2026-08-12: "the check boxes select what you see in the [strip chart] which is
+redundant because now the strip chart has its own menu… they are going to be used for
+indications that I want to monitor… they place a duplicate at the top of the indications panel
+above all the other indications… it should give both the plant indication and physics
+indication.")*
+
+### The decision
+
+**`ui.series` has ONE writer now: the chart-settings window.** The Indications tick was the
+older of the two and, since #454 gave the chart a searchable window with a per-side selector,
+strictly the weaker — same state, fewer questions, no filter. What the row tick had that the
+window does not is *being on the row you are already reading*, so it keeps that and points at
+a list the reader curates. The row keeps a **passive dot** for "trending", because dropping it
+would have made "what is on the chart?" unanswerable from the list, which the tick used to
+answer for free.
+
+Three sub-decisions, all mine, none owner-ruled:
+
+- **Profile order, not tick order.** Matches the spine the panel is already in, and avoids
+  `pinOrder()`'s documented trap where a selection's order rides on object key insertion order
+  and a re-tick silently restores an old slot.
+- **A monitored row is exempt from the row-type chips.** The chips narrow a list you are
+  reading; the block is a list already narrowed by hand. A chip that emptied it would hide a
+  channel the operator explicitly asked to watch.
+- **Persisted, per plant** (`rd_monitor`) — unlike `ui.series`/`ui.seriesSide`, which are
+  deliberately not, and correctly so: those are a view setting on a chart rebuilt from the
+  plant's defaults every load. This is hand-curated, and ids are filtered against the live
+  profile on the way in so a renamed channel drops out instead of becoming a permanent "—".
+
+### What it cost to verify
+
+The assertion carrying the change is *"a tick does not touch the chart"* — nothing in the list
+can show a leftover plot write. Written on `tavg` it was **vacuous**: `tavg` is in
+`defaultSeries`, so it was already plotted and the trace count could not move. The old handler
+re-injected verbatim passed it. On `thot` the same injection reads **3 → 4 traces**. The check
+now measures its own precondition and asserts two independent facts (trace count *and* the
+row's swatch). Full account, plus the `.ind-grp` shared-class selector widening that made the
+first run red against correct CSS: `Diagnostic/TUNING_LOG.md` 2026-08-12-backshop-a.
+
+---
+
 ## 2026-08-11-backshop-c — #460: the rods ship in MANUAL, and the AUTO channel was absorbing the lesson
 
 *(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in manual.")* — reversing the 2026-08-01

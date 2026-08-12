@@ -29,6 +29,55 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-backshop-a (#477 — the monitor list, and a red that could not go red)
+
+**Issue:** #477. **Gates:** `run_all` 47 runners at baseline; `verify_e2e_ui` gains
+`testMonitorList` (5 checks) with its score unchanged — the baseline is `16screenshots`, which
+counts screenshots, not checks, so a new test function in that gate needs no `BASELINES` edit.
+
+**What landed.** The Indications tab's tick no longer plots — it copies the row into a
+**Monitoring** block above every system group. `plotCell` → `monCell`, `syncPlotCells` →
+`syncIndCells`, a new `ui.monitor` map persisted per plant in `rd_monitor`, `rebuildMonitor()`
+rewriting only `#indMonitor`, and `paintIndRow()` carrying a per-frame memo so a duplicate row
+costs no divergence math and cannot disagree with the row it duplicates. The tick column keeps
+a passive dot for "trending". #454's chart-settings window is now the sole writer of
+`ui.series`.
+
+**THE CHECK THAT COULD NOT GO RED.** The assertion that carries the whole change is *"ticking a
+row does not touch the chart"* — a leftover `drawChart()` in the handler is invisible from the
+list, so nothing else can see it. It was written on **`tavg`**, and `tavg` is in
+`PROFILES.pwr.defaultSeries`: already plotted. Re-injecting the old handler verbatim
+(`ui.series[sid] = cb.checked; drawChart()`) and running the gate gave **PASS** — 3 traces
+before, 3 after, because the channel could not be added to a chart it was already on. Retargeted
+onto `thot` (outside the defaults) the same injection gives **3 → 4 traces, swatch=true**.
+
+Two things came out of that and are in the check now: the **precondition is measured**, not
+assumed — it throws if the subject channel is already plotted, naming why — and the assertion is
+**two facts, not one**, since the swatch catches a `ui.series` write in a state where the trace
+count happens not to move. The general shape is the standing "a passing check can be HOLLOW"
+bullet, but the mechanism is new: **a fixture that satisfies the assertion for a reason
+unrelated to the code under test**. Nothing about the check looked wrong; only injection found
+it. (`verify-checks-by-injection`, HR10.)
+
+**A SHARED CLASS WIDENS EVERY SELECTOR THAT NAMES IT.** The block is `.ind-grp .ind-monitor` —
+it takes `.ind-grp` deliberately, for the row metrics. That silently widened three separate
+things to include it: the filter CSS (`#indicationsList[data-filter=…] .ind-grp .num-line`),
+`buildIndications`'s element-cache query (`.ind-grp .num-line`, which would have spliced the
+duplicates into `indRows` and paired each cached ref with the wrong series — it survives only
+because the block is empty at that instant, one reorder from a silent mismatch), and every
+`querySelector` in the new gate, where `#indicationsList .ind-grp .num-line[data-ser="x"]`
+returns the **copy** rather than the source because the copy comes first in document order.
+That last one is how the check first ran red against CSS that was correct. All three now carry
+`:not(.ind-monitor)`.
+
+Also caught by re-rendering rather than by reading: `#indMonitor` taking the first-child slot
+broke `#indicationsList > .ind-grp:first-child { border-top: none }`, putting a rule above
+"Reactor core" on a board with nothing ticked. Fixed with `#indMonitor:empty + .ind-grp`, and
+the block's own separator dropped — the next group's border-top already draws it, and two lines
+2 px apart read as a defect.
+
+---
+
 ## Session log — 2026-08-12-develop-a (#464 — the SG was discarding energy, and the manual had been right about it for a week)
 
 **Issue:** #464. **Gates:** `run_all` 47 runners at baseline; `run_behavior` 71 → **72** for the

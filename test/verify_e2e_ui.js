@@ -689,6 +689,174 @@ async function testChartSettings(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE MONITOR LIST (#477) — the Indications tab's tick, repurposed.
+ *
+ * *(OWNER, 2026-08-12: "the check boxes select what you see in the [strip chart] which is
+ * redundant because now the strip chart has its own menu… they are going to be used for
+ * indications that I want to monitor… they place a duplicate at the top of the indications
+ * panel above all the other indications.")*
+ *
+ * WRITTEN TO FAIL ON THE OLD BEHAVIOUR TOO (HR10). The easy version of this check — "a
+ * duplicate row appears" — would pass on a build that ALSO still plotted the channel, and the
+ * plot side is the half nothing in the list can show you. So the trace count is recorded
+ * across the tick: a leftover `drawChart()`/`ui.series` write in the row handler moves it, and
+ * that assertion is the one that says the repurpose actually happened. Conversely a build with
+ * the OLD handler and no block fails on the first assertion. Neither half passes alone.
+ *
+ * The other four are the cases the feature is only useful if it holds: the copy carries BOTH
+ * values and they equal the source's (a watch list printing a different number from the row it
+ * copies is worse than no watch list); the copy is the FIRST row in the panel; a row-type chip
+ * cannot hide it; and the selection survives a reload, which is the only reason to curate one.
+ *
+ * It cleans up after itself — `rd_monitor` is real localStorage and the rest of this gate
+ * shares the browser context. */
+async function testMonitorList(page) {
+  var log = [];
+  var URL = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr';
+  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.evaluate(function () { try { localStorage.removeItem('rd_monitor'); } catch (e) {} });
+  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(900);
+
+  /* THE SUBJECT MUST BE AN UNPLOTTED CHANNEL, and this asserts it rather than assuming it.
+   * The first version of this check ticked `tavg` — which is in `PROFILES.pwr.defaultSeries`
+   * and therefore ALREADY on the chart, so "the trace count did not move" was true no matter
+   * what the handler did. Re-injecting the old `ui.series[id] = checked; drawChart()` passed
+   * it green. A red that cannot go red is worse than no check, so the precondition is
+   * measured: `thot` carries no trace and no swatch before the tick. */
+  var start = await page.evaluate(function () {
+    var src = document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"]');
+    return { polys: document.querySelectorAll('#chartCanvas polyline').length,
+             mon: document.querySelectorAll('#indMonitor .num-line').length,
+             head: !!document.querySelector('#indMonitor .ind-monitor'),
+             plotted: !!(src && src.querySelector('.ser-swatch')) };
+  });
+  if (start.mon !== 0 || start.head) {
+    throw new Error('the Monitoring block must render NOTHING when nothing is ticked — got ' +
+      start.mon + ' rows, heading=' + start.head);
+  }
+  if (start.plotted) {
+    throw new Error('Hot Leg is already plotted, so "the tick did not touch the chart" cannot ' +
+      'fail — pick a channel outside PROFILES.pwr.defaultSeries. This precondition exists ' +
+      'because the check was once written on `tavg`, which IS in the defaults, and it passed ' +
+      'with the old plot-on-tick handler injected straight back in.');
+  }
+
+  /* ---- 1. a tick copies the row to the top, and does NOT touch the chart --------------
+   *
+   * EVERY SOURCE-ROW SELECTOR BELOW CARRIES `:not(.ind-monitor)`, and it is load-bearing.
+   * The block keeps `.ind-grp` for its row metrics, so `.ind-grp .num-line[data-ser=x]`
+   * matches the COPY first (it is earlier in the document) and every "did the source row
+   * do Y?" check would silently be asking about the duplicate instead. That is how this
+   * check first ran red on a build where the CSS was correct. */
+  await page.click('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"] input[data-monitor]');
+  await page.waitForTimeout(700);
+  var one = await page.evaluate(function () {
+    var list = document.getElementById('indicationsList');
+    var dup = document.querySelector('#indMonitor .num-line[data-ser="thot"]');
+    var src = document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"]');
+    return {
+      dup: !!dup,
+      first: list.querySelector('.num-line') === dup,
+      polys: document.querySelectorAll('#chartCanvas polyline').length,
+      plotted: !!src.querySelector('.ser-swatch'),
+      dupInd: dup ? dup.querySelector('.nv').textContent : null,
+      srcInd: src ? src.querySelector('.nv').textContent : null,
+      dupPhys: dup ? dup.querySelector('.nv-true').textContent : null,
+      srcPhys: src ? src.querySelector('.nv-true').textContent : null,
+      srcChecked: !!src.querySelector('input[data-monitor]').checked,
+      count: (document.querySelector('.ind-mon-n') || {}).textContent,
+    };
+  });
+  if (!one.dup) throw new Error('ticking a row did not copy it into #indMonitor');
+  if (!one.first) throw new Error('the monitored copy is not the FIRST row in the panel');
+  if (one.polys !== start.polys || one.plotted) {
+    throw new Error('ticking an Indications row CHANGED THE CHART: ' + start.polys + ' -> ' +
+      one.polys + ' traces, swatch=' + one.plotted + '. Since #477 the tick curates the ' +
+      'monitor list and nothing else; the chart is chosen in its own settings window. (Two ' +
+      'assertions, not one: the swatch catches a `ui.series` write even in a state where the ' +
+      'trace count happens not to move.)');
+  }
+  if (!one.srcChecked) throw new Error('the source row\'s own box did not end up ticked');
+  if (one.dupInd !== one.srcInd || one.dupPhys !== one.srcPhys) {
+    throw new Error('the monitored copy disagrees with the row it copies: ind "' + one.dupInd +
+      '" vs "' + one.srcInd + '", phys "' + one.dupPhys + '" vs "' + one.srcPhys + '"');
+  }
+  if (one.dupInd === '—' || one.dupPhys === '—') {
+    throw new Error('the monitored copy is not being painted (ind "' + one.dupInd + '", phys "' +
+      one.dupPhys + '") — a new row must not wait for the next broadcast to read');
+  }
+  if (one.count !== '1') throw new Error('the block heading counts wrong: "' + one.count + '"');
+  log.push('tick: Hot Leg copied to the top reading ' + one.dupInd + ' / ' + one.dupPhys +
+    ', chart unchanged at ' + one.polys + ' traces');
+
+  // ---- 2. profile order, not tick order ---------------------------------------------
+  // `core_exit` precedes `thot` in PROFILES.pwr.series and sits in a different group, so
+  // ticking it SECOND must place it FIRST — and the block must flatten the grouping.
+  await page.click('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="core_exit"] input[data-monitor]');
+  await page.waitForTimeout(500);
+  var order = await page.evaluate(function () {
+    return Array.prototype.slice.call(document.querySelectorAll('#indMonitor .num-line'))
+      .map(function (l) { return l.getAttribute('data-ser'); });
+  });
+  if (order.join(',') !== 'core_exit,thot') {
+    throw new Error('the block is in tick order, not profile order: [' + order.join(', ') + ']');
+  }
+  log.push('order: [' + order.join(', ') + '] — profile order, not the order they were ticked');
+
+  // ---- 3. a row-type chip cannot hide a monitored row --------------------------------
+  await page.click('#indFilters [data-indfilter="phys"]');
+  await page.waitForTimeout(400);
+  var filtered = await page.evaluate(function () {
+    var vis = function (el) { return !!(el && el.getBoundingClientRect().height); };
+    return { src: vis(document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"]')),
+             dup: vis(document.querySelector('#indMonitor .num-line[data-ser="thot"]')) };
+  });
+  if (filtered.src) throw new Error('the "Physics only" chip did not hide the paired Hot Leg row');
+  if (!filtered.dup) throw new Error('a row-type chip hid a MONITORED row — the block is an explicit selection and outranks the filter');
+  await page.click('#indFilters [data-indfilter="all"]');
+  await page.waitForTimeout(300);
+  log.push('filter: "Physics only" hides the source row and leaves the monitored copy standing');
+
+  // ---- 4. it survives a reload -------------------------------------------------------
+  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(900);
+  var kept = await page.evaluate(function () {
+    return { rows: Array.prototype.slice.call(document.querySelectorAll('#indMonitor .num-line'))
+               .map(function (l) { return l.getAttribute('data-ser'); }),
+             box: !!(document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"] input[data-monitor]') || {}).checked };
+  });
+  if (kept.rows.join(',') !== 'core_exit,thot' || !kept.box) {
+    throw new Error('the monitor list did not survive a reload: [' + kept.rows.join(', ') +
+      '], source box checked=' + kept.box);
+  }
+  log.push('persistence: both channels came back after a reload with their boxes ticked');
+
+  // ---- 5. unticking FROM THE COPY clears both ----------------------------------------
+  await page.click('#indMonitor .num-line[data-ser="thot"] input[data-monitor]');
+  await page.waitForTimeout(500);
+  var gone = await page.evaluate(function () {
+    return { dup: !!document.querySelector('#indMonitor .num-line[data-ser="thot"]'),
+             box: !!(document.querySelector('#indicationsList .ind-grp:not(.ind-monitor) .num-line[data-ser="thot"] input[data-monitor]') || {}).checked,
+             left: document.querySelectorAll('#indMonitor .num-line').length };
+  });
+  if (gone.dup) throw new Error('unticking from the copy left the copy in place');
+  if (gone.box) throw new Error('unticking from the copy left the SOURCE row still ticked');
+  if (gone.left !== 1) throw new Error('unticking one row took ' + (2 - gone.left) + ' rows with it');
+  log.push('untick: clearing the copy clears the source row too, and leaves the other alone');
+
+  // Leave the browser context as we found it — this is real localStorage.
+  await page.click('#indMonitor .num-line[data-ser="core_exit"] input[data-monitor]');
+  await page.waitForTimeout(300);
+  await page.evaluate(function () { try { localStorage.removeItem('rd_monitor'); } catch (e) {} });
+  return log.join('\n') + '\n';
+}
+
 /* CLOSING PLANT & MISSION LEAVES THE PLANT RUNNING *(OWNER, 2026-08-11: "When i close the
  * plant menu after starting the sim the sim should start playing. it currently starts
  * paused. it should start running after closing the plant & mission menu.")*.
@@ -1034,6 +1202,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'steam-feed-pair.log'), sfLog);
     var csLog = await testChartSettings(page);
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
+    var mlLog = await testMonitorList(page);
+    fs.writeFileSync(path.join(SCRATCH, 'monitor-list.log'), mlLog);
     var mcLog = await testMissionCloseResumes(page);
     fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
     var rsLog = await testRunStartMark(page);
@@ -1060,7 +1230,8 @@ async function main() {
  * re-running all 16 screenshots. Running the file directly is unaffected. */
 if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
-                     testChartSettings: testChartSettings, testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark, port: function () { return PORT; } };
+                     testChartSettings: testChartSettings, testMonitorList: testMonitorList,
+                     testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

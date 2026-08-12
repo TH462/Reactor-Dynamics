@@ -268,11 +268,13 @@
                FLAGGED rather than left to be noticed by comparing the right pair of rows
                across two panels. -->
           <div class="tabpane" data-pane="indications"
-            data-scanner-hint="Indications — every reading the plant produces, grouped by system, with the true state beside it and a checkbox to put either on the strip chart."
-            data-scanner-detail="The left value is the INSTRUMENT: it lags, it carries noise, and it can be failed from the Inject Failure tab. The right value is the true state behind that channel — no lag, no noise, unaffected by a failed sensor. When they disagree the row is flagged, which is how a stuck valve announces itself instead of waiting to be spotted. The true column is a debug view: it can be switched off, and it is off by default inside a mission or a campaign, because instrument deception only teaches while you are genuinely fooled.">
+            data-scanner-hint="Indications — every reading the plant produces, grouped by system, with the true state beside it and a checkbox to copy it into a monitor list at the top."
+            data-scanner-detail="The left value is the INSTRUMENT: it lags, it carries noise, and it can be failed from the Inject Failure tab. The right value is the true state behind that channel — no lag, no noise, unaffected by a failed sensor. When they disagree the row is flagged, which is how a stuck valve announces itself instead of waiting to be spotted. Ticking a row copies it into the Monitoring block above every group, so the seven or eight readings you are watching stay together instead of being hunted down the list; the copy carries both values and the same flag, and the row-type chips never hide it. What goes on the strip chart is chosen separately, in the chart's own settings window. The true column is a debug view: it can be switched off, and it is off by default inside a mission or a campaign, because instrument deception only teaches while you are genuinely fooled.">
             <div class="phys-note">Every channel the plant publishes — <b>indicated</b> on the
               left, <b>true state</b> on the right. A flagged row is an instrument that
-              disagrees with the plant. Tick a box to trend it on the strip chart.</div>
+              disagrees with the plant. Tick a box to copy that row into the
+              <b>Monitoring</b> list at the top; a coloured dot means the channel is
+              trending on the strip chart, which is chosen in the chart's own settings.</div>
             <div class="ind-tools">
               <div class="ind-filters" id="indFilters">
                 <button class="on" data-indfilter="all">All</button
