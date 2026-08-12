@@ -29,7 +29,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const OUT = path.join(ROOT, 'dist-site');
+/* RD_SITE_OUT exists so test/run_site_build.js can build somewhere harmless and assert on the
+ * REAL output. Without it the only way to check this file was to read it, and a source read is
+ * what let the #470 cache-bust ship unguarded — see that runner's header. Default unchanged. */
+const OUT = process.env.RD_SITE_OUT || path.join(ROOT, 'dist-site');
 
 /* The public site: eight pages plus the directories they and the control room pull
  * from. Derived from a reference scan of the shipped HTML, not from memory. */
@@ -52,6 +55,26 @@ const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios'];
  * the partition, so a new root page cannot exist without some file saying whether it ships.
  * That is the property `.vercelignore` used to provide, kept rather than dropped. */
 const NOT_PUBLISHED = ['test_pwr.html', 'test_bwr.html', 'test_rbmk.html'];
+
+/* THE SAME RULE, ONE DIRECTORY DOWN — and it was missing, which is not hypothetical (#476).
+ * NOT_PUBLISHED partitions the root `*.html` glob and nothing else, while the DIRS loop below
+ * copies each directory WHOLESALE. So `ui/test_panel/` shipped, and on 2026-08-12 both of its
+ * pages answered 200 on the live domain:
+ *
+ *     https://reactordynamics.com/ui/test_panel/board_check      200, 90,568 bytes
+ *     https://reactordynamics.com/ui/test_panel/lane_reference   200, 13,755 bytes
+ *
+ * They are dev harnesses — the same category the paragraph above calls "a bug, not a feature"
+ * — and being one directory deeper was the whole of their exemption. Nothing links to them, so
+ * the reference walk never had an opinion either way.
+ *
+ * Keyed by the DIRS entry rather than a flat name set, because `copyDir`'s prune is checked at
+ * the TOP LEVEL of the directory it is given (the recursive call passes no prune), which is
+ * exactly where `test_panel` sits. A bare name would silently do nothing one level deeper.
+ * test/run_site_build.js proves the result rather than the intent: it requires every `*.html`
+ * in the built output to be a declared page, so a new dev page anywhere under a published
+ * directory is a red rather than a live url. */
+const WITHHELD_DIRS = { ui: new Set(['test_panel']) };
 
 /* Generated earlier in the build. `download/` may be absent on a bare local run and
  * that is not an error — the page degrades to no metadata line. */
@@ -97,7 +120,7 @@ for (const p of PAGES) {
   fs.copyFileSync(path.join(ROOT, p), path.join(OUT, p));
 }
 for (const d of DIRS) {
-  copyDir(path.join(ROOT, d), path.join(OUT, d), d === 'site' ? BUILD_ONLY : null);
+  copyDir(path.join(ROOT, d), path.join(OUT, d), d === 'site' ? BUILD_ONLY : WITHHELD_DIRS[d]);
 }
 for (const f of OPTIONAL) {
   if (fs.existsSync(path.join(ROOT, f))) fs.copyFileSync(path.join(ROOT, f), path.join(OUT, f));

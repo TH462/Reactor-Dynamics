@@ -29,6 +29,59 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-develop-b (#470 — the browser was running the new control room on the old stylesheet, and no gate could see it)
+
+**Issue:** #470, plus a second defect it exposed — **#476**. **Gates:** `run_all` 47 →
+**48 runners** for the new `run_site_build`; `run_site_meta` 163, `run_release` 22,
+`run_channel` 25, `run_portable` 142, all at baseline. **Landed:** the `?v=` cache-bust
+(b06dcd8, earlier session), `WITHHELD_DIRS`, `RD_SITE_OUT`, `test/run_site_build.js`.
+
+**The report.** *(OWNER, 2026-08-12, on the live Alpha 1.6.0: "the text for the strip chart is now crammed
+on the left edge of the chart. Same issue in the strip chart menu")* — and it "didn't show in
+testing". The in-sim recording submitted with it (`msq6jwdc-zungldef`) shows a **healthy
+plant**: PWR at 50 %, 13 s, **0 commands**, 2235 psi (15.41 MPa), Tavg 563.4 °F (295.2 °C), no
+event but `session_start`. Nothing moved, so nothing plant-side could explain it.
+
+**The defect is a pair of cache headers.** `ui/shell.html` is served `max-age=0,
+must-revalidate`; `ui/shell.css` is `max-age=14400` and was referenced as a bare
+`href="shell.css"`. **`must-revalidate` does nothing until `max-age` expires** — revalidating
+the PAGE does not help, because the page then asks for `shell.css` and the cache answers
+locally. Anyone who had loaded the sim within four hours of the release got that release's HTML
+against the *previous* release's CSS. Reproduced by serving the release HTML with 1.5.2's
+stylesheet: `.lane-chrome` computes `position: static` instead of `absolute`, `.lane-value`
+spans l=26→r=561 instead of sitting in the l=489→r=559 gutter, `.cs-row` matches **no rule at
+all**. Every crammed element was one whose CSS was new in 1.6.0 — the signature of this and of
+nothing else. Fixed by putting the build in the url; measured on the develop preview,
+`shell.css?v=b06dcd8`.
+
+### The traps
+
+- **THE SAME DEFECT HAD ALREADY BEEN DIAGNOSED HERE AND ITS SCOPE UNDER-CALLED.** The
+  `_headers` note written 2026-08-09 after Alpha 1.5.1 set `no-cache` on the three version
+  stamps and reasoned the rest was *"fine for engine code — it is immutable per deploy and the
+  page that loads it is revalidated"*. **Immutable per deploy is not the property that
+  matters**: the URL is identical ACROSS deploys, so the cache serves the old file against the
+  new page and never asks. A correct fix for the symptom in front of you, with a stated premise
+  that was false for everything else, and nothing re-checked the premise.
+- **A DEFECT THAT ONLY EXISTS ON THE SECOND VISIT CANNOT BE TESTED BY ANYTHING THAT LOADS
+  COLD** — which is every gate here, every headless run, and every hard refresh. The state that
+  breaks it is *the previous release still being in the browser*, and it is unreachable before
+  the release exists. That is why it shipped, and why the guard had to move to the build's
+  output rather than the running app.
+- **A FIX NOTHING CAN FAIL IS A FIX WAITING TO BE REFACTORED AWAY.** The cache-bust landed
+  guarded by nothing: `run_site_meta` reads source and scored **163/163 unchanged** across it,
+  and deleting the block was green in every gate in the directory. `test/run_site_build.js` now
+  runs the real build into a scratch dir and reads the FILES. Injection-verified three ways;
+  the one that matters is excluding a single url from busting — **42 checks / 2 failed**,
+  naming `ui/shell.html -> shell.css`, while the source still looks perfectly healthy.
+- **THE SECOND DEFECT WAS FOUND BY ASKING WHAT IS IN THE OUTPUT, WHICH NO SOURCE READ ASKS.**
+  `build_site.js` partitions the root `*.html` glob into PAGES / NOT_PUBLISHED, but the DIRS
+  loop copies each asset directory **wholesale** — so `ui/test_panel/` shipped, and both of its
+  dev harnesses answered **200 on the live domain** (`board_check` 90,568 bytes,
+  `lane_reference` 13,755). Being one directory deeper was their whole exemption. The check
+  that keeps them out is a *declared-set* rule — every html in the output must be a declared
+  page — because a deny-list cannot name the page nobody has written yet.
+
 ## Session log — 2026-08-12-develop-a (#464 — the SG was discarding energy, and the manual had been right about it for a week)
 
 **Issue:** #464. **Gates:** `run_all` 47 runners at baseline; `run_behavior` 71 → **72** for the

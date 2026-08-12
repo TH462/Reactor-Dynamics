@@ -1260,6 +1260,22 @@ var BASELINES = {
   // regexed for `deadLinks.length`, which survives `if (false && deadLinks.length)`.
   // Both hardened; all four mutations now score 151/1.
   'run_site_meta.js':      { code: 0, score: '163checks 0failed' },   // 151 -> 163 (2026-08-10, #413): .vercelignore is DELETED, and it was this gate's authority on which root pages are public. The authority moved to site/build_site.js, which assembles what actually ships and now declares BOTH halves — PAGES and a new NOT_PUBLISHED (the three dev harnesses). +12: nine `is declared either published or withheld` checks (one per root *.html) plus the parse check and the re-shaped pair. THE PARTITION IS THE POINT — PAGES + NOT_PUBLISHED must TOTAL the glob, so a new root page is a RED until some file says whether it ships. That is exactly the property .vercelignore was providing, kept rather than dropped with it; a gate iterating a hand-kept page list would pass at full marks on the one page it had never heard of. Injection-verified: a stray root .html reddens `is declared either published or withheld`.
+  // NEW 2026-08-12 (#470) — THE FIRST GATE THAT RUNS THE DEPLOY BUILD AND READS ITS OUTPUT.
+  // Everything else about the site is static: run_site_meta reads source, and it scored
+  // 163/163 unchanged across the fix for #470, which means deleting that fix was green in
+  // every gate in the directory. The defect it now guards shipped to production: shell.css
+  // is cached four hours and was referenced bare, so Alpha 1.6.0 served new HTML against
+  // 1.5.2's stylesheet and the control room drew unstyled for anyone who had visited that
+  // day. It builds into RD_SITE_OUT (a scratch dir — dist-site/ is never touched) and asks
+  // the files two questions: is every html in the output a DECLARED page, and does every
+  // local css/js url carry ?v=<stamp>. The first found the second defect on its first run (#476) —
+  // ui/test_panel's two dev harnesses were live on the public domain, because PAGES/
+  // NOT_PUBLISHED partitions the root glob while the DIRS loop copies wholesale.
+  // INJECTION-VERIFIED three ways, each reverted: bust call disabled 41/133 (BUILD's own
+  // tally AND every bare url), WITHHELD_DIRS emptied 43/2 (both harnesses named), and one
+  // single url excluded from busting 42/2 — that last is #470 itself, and it is the one that
+  // proves the walk reads the OUTPUT, since the source still looks healthy.
+  'run_site_build.js':     { code: 0, score: '41checks 0failed' },
   // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
   // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
   // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE
