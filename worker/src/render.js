@@ -140,6 +140,47 @@ export function dur(sec) {
   return Math.floor(s / 3600) + 'h ' + Math.round((s % 3600) / 60) + 'm';
 }
 
+/* CARDS — for RECORD lists, where `table()` is for comparisons (owner request, 2026-08-12:
+ * "put the data on cards instead of infinitely expandable rows … when the screen is
+ * stretched the rows become very long left to right with the data far from each other.
+ * lots of wasted space").
+ *
+ * THE PROBLEM IS HORIZONTAL, not vertical. A wide table spends its extra width pushing
+ * cells APART, so a session's id and its row count end up a screen apart and the eye has to
+ * track across empty space to keep them associated — while the page shows only nine rows.
+ * Extra width should buy MORE RECORDS, not more gap.
+ *
+ * That is what the grid does: `repeat(auto-fill, minmax(320px, 1fr))` turns a wider screen
+ * into more cards per row, each one a fixed, scannable width with its fields stacked close
+ * together. One column on a phone, four on a monitor, no breakpoint to maintain. The page
+ * max-width in PAGE_HEAD is the other half of the same fix.
+ *
+ * Aggregate tables (top pages, actions, refusals, by-day) stay TABLES on purpose: those are
+ * columns of numbers meant to be compared down the column, and cards would destroy exactly
+ * the alignment that makes them readable. They get `width:auto` instead, so they size to
+ * their content rather than to the window.
+ *
+ * `item` shape — every field optional except title:
+ *   { title, titleHtml, href, hrefLabel, meta: [{k, v, mono}], body }
+ * `titleHtml` bypasses escaping for a pre-built link; everything else is escaped here.
+ */
+export function cards(items) {
+  if (!items || !items.length) return '<p class="muted">(none)</p>';
+  return '<div class="cards">' + items.map((it) => {
+    const title = it.titleHtml || esc(it.title == null ? '' : it.title);
+    const meta = (it.meta || []).filter((m) => m && m.v !== '' && m.v != null).map((m) =>
+      '<div class="k">' + esc(m.k) + '</div>'
+      + '<div class="v' + (m.mono ? ' mono' : '') + '">' + esc(m.v) + '</div>').join('');
+    return '<div class="card">'
+      + '<div class="card-h">' + title + '</div>'
+      + (meta ? '<div class="kv">' + meta + '</div>' : '')
+      + (it.body ? '<div class="card-note">' + esc(it.body) + '</div>' : '')
+      + (it.href ? '<div class="card-f"><a href="' + esc(it.href) + '">'
+          + esc(it.hrefLabel || 'view') + '</a></div>' : '')
+      + '</div>';
+  }).join('') + '</div>';
+}
+
 export function html(body, status) {
   return new Response(body, {
     status: status || 200,
@@ -149,11 +190,20 @@ export function html(body, status) {
 
 export const PAGE_HEAD = `<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  body { background:#0b0f14; color:#d7e0e8; font:14px/1.5 -apple-system,Segoe UI,sans-serif; margin:0; padding:24px; }
+  /* WIDTH IS CAPPED AND THE PAGE IS CENTRED (2026-08-12, owner: "when the screen is
+     stretched the rows become very long left to right with the data far from each other").
+     Everything here used to be full-bleed — body had no max-width and every table was
+     width:100% — so on a wide monitor a four-column table put its first and last cell a
+     screen apart and the eye lost the row. Reading distance, not screen width, is what a
+     line length should be set by. */
+  body { background:#0b0f14; color:#d7e0e8; font:14px/1.5 -apple-system,Segoe UI,sans-serif;
+         margin:0 auto; padding:24px 32px; max-width:1680px; }
   a { color:#5fb3d9; }
   h1 { font-size:18px; margin:0 0 16px; }
   h2 { font-size:14px; color:#8fa2b3; text-transform:uppercase; margin:0 0 8px; }
-  table { border-collapse:collapse; width:100%; }
+  /* width:auto, so a table is as wide as its CONTENT and no wider. The cap stops a long
+     free-text cell from re-introducing the stretch on its own. */
+  table { border-collapse:collapse; width:auto; max-width:100%; }
   td, th { text-align:left; padding:6px 10px; border-bottom:1px solid #1c2531; vertical-align:top; }
   th { color:#8fa2b3; font-weight:600; font-size:12px; text-transform:uppercase; }
   tr:hover td { background:#111823; }
@@ -173,6 +223,27 @@ export const PAGE_HEAD = `<meta name="viewport" content="width=device-width,init
   .tile .k { font-size:11px; color:#8fa2b3; text-transform:uppercase; }
   .warn { color:#d9a85f; }
   .err { color:#d97a7a; }
+  /* Record cards. auto-fill/minmax means one column on a phone and as many as fit on a
+     desktop, with no breakpoint to maintain. */
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; }
+  .card { background:#111823; border:1px solid #1c2531; border-radius:8px; padding:14px 16px;
+          display:flex; flex-direction:column; gap:10px; }
+  .card:hover { border-color:#2a3646; }
+  .card-h { font-family:ui-monospace,Consolas,monospace; font-size:13px; color:#d7e0e8;
+            display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
+  .card .kv { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; font-size:12px; }
+  .card .kv .k { color:#8fa2b3; text-transform:uppercase; font-size:11px; white-space:nowrap; }
+  .card .kv .v { color:#d7e0e8; }
+  /* THE CLAMP IS THE POINT — a long note must not make its card taller than the screen.
+     line-clamp degrades to plain overflow hiding where it is unsupported, which is still
+     bounded; the full text lives on the detail page. */
+  /* 7.5em is 5 lines x the 1.5 line-height, and the two MUST agree: at 6.5em the height cap
+     cut into line five and sliced the glyphs in half horizontally — visible only in a
+     screenshot, invisible in the markup. max-height is the fallback for engines without
+     line-clamp; where line-clamp works it ends the text on a whole line with an ellipsis. */
+  .card-note { white-space:pre-wrap; color:#c3cedb; font-size:13px; max-height:7.5em;
+               overflow:hidden; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; }
+  .card-f { margin-top:auto; font-size:12px; }
 </style>`;
 
 export function nav(token, current) {

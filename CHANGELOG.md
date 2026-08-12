@@ -31,6 +31,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The ops dashboard lays records out as cards, and stops stretching across wide screens**
+  *(OWNER, 2026-08-12: "put the data on cards instead of infinitely expandable rows"; and,
+  on what that meant: "when the screen is stretched the rows become very long left to right
+  with the data far from eachother. lots of wasted space")*. Bug reports and sessions render
+  as cards on an auto-filling grid, so a wider screen shows **more records** rather than the
+  same few with bigger gaps — five reports abreast at 1920 px, against one stretched row
+  before. Long player notes clamp to five lines with the full text a click away. The page is
+  width-capped and centred, and tables size to their content instead of to the window.
+  Comparison tables (top pages, actions, by-day) stay tables: they are columns of numbers
+  meant to be read down the column, and cards would break that alignment.
 - **The ops dashboard reads Eastern time** (`worker/src/`). Bug-report times, session
   "first seen", per-event "written at" and the feature-flag "last changed" stamp all render
   in `America/New_York`, so EST/EDT switch themselves rather than being a fixed offset that

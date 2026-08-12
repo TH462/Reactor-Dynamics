@@ -39,7 +39,7 @@
  *    `>= 0` reads a whole release as a plant that never refused anything.
  */
 
-import { esc, html, PAGE_HEAD, nav, table, errBlock, etWithDow, dur } from './render.js';
+import { esc, html, PAGE_HEAD, nav, table, cards, errBlock, etWithDow, dur } from './render.js';
 import { sql, DATASET, COLUMNS_SINCE, COLUMNS_SINCE_TS } from './cfapi.js';
 
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -174,22 +174,25 @@ export async function sessionList(env, url, token) {
 
     // `link` is pre-built HTML, so it must bypass table()'s escaping — the session id
     // inside it is escaped above.
-    const head_ = '<tr><th>Session</th><th>First seen (ET)</th><th class="num">Lasted ≥</th>'
-      + '<th>Started from</th><th>Plant</th><th>Release</th>'
-      + '<th class="num">Rows</th><th class="num">Est</th><th>Since reset</th></tr>';
-    const trs = rows.map((r) => '<tr><td class="mono">' + r.link + '</td>'
-      + '<td class="mono muted">' + esc(r.started) + '</td>'
-      + '<td class="num">' + esc(r.span) + '</td>'
-      + '<td>' + esc(r.started_from) + '</td>'
-      + '<td class="mono">' + esc(r.plant) + '</td>'
-      + '<td class="mono muted">' + esc(r.release) + '</td>'
-      + '<td class="num">' + r.rows_raw + '</td>'
-      + '<td class="num">' + r.rows_est + '</td>'
-      + '<td class="muted">' + esc(r.ended) + '</td></tr>').join('');
-
-    body = rows.length
-      ? '<table>' + head_ + trs + '</table>'
-      : '<p class="muted">(none)</p>';
+    //
+    // CARDS, not a nine-column table (owner request, 2026-08-12). Nine columns was the worst
+    // offender for the stretch problem: on a wide monitor the session id sat at the far left
+    // and "Since reset" at the far right with a screen of whitespace between them, and the
+    // page still showed only a handful of sessions. Stacked in a card the same nine facts
+    // occupy ~320 px and a wide screen shows four sessions abreast instead of one.
+    // `link` is pre-built HTML with the session id already escaped, so it goes in as
+    // `titleHtml`; every other field is escaped by cards().
+    body = cards(rows.map((r) => ({
+      titleHtml: r.link + '<span class="muted">' + esc(r.span) + '</span>',
+      meta: [
+        { k: 'First seen', v: r.started, mono: true },
+        { k: 'Started from', v: r.started_from },
+        { k: 'Plant', v: r.plant, mono: true },
+        { k: 'Release', v: r.release, mono: true },
+        { k: 'Rows', v: r.rows_raw + ' raw / ' + r.rows_est + ' est', mono: true },
+        { k: 'Since reset', v: r.ended },
+      ],
+    })));
   } catch (e) {
     body = errBlock(e.message);
   }

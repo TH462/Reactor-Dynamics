@@ -19,7 +19,7 @@
  * safe to display.
  */
 
-import { esc, html, PAGE_HEAD, nav, etWithDow, etFull } from './render.js';
+import { esc, html, PAGE_HEAD, nav, cards, etWithDow, etFull } from './render.js';
 import { analyticsPage } from './analytics.js';
 import { sessionList, sessionDetail } from './sessions.js';
 import { featuresPage, featuresAction } from './features.js';
@@ -75,18 +75,24 @@ async function reportList(env, token) {
     } catch (e) {
       note = '(failed to read: ' + e.message + ')';
     }
-    const preview = note.length > 140 ? note.slice(0, 140) + '…' : note;
-    const href = '?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key);
-    return '<tr><td class="mono muted">' + esc(etWithDow(when)) + '</td>'
-      + '<td class="mono">' + esc(plant) + '</td>'
-      + '<td class="note">' + esc(preview) + '</td>'
-      + '<td><a href="' + href + '">view</a></td></tr>';
+    // The card CLAMPS the note in CSS, so the preview no longer has to be truncated to a
+    // single line's worth here — 400 chars is a card's worth of reading, and anything past
+    // it is a click away. The old 140 was sized for a table cell.
+    const preview = note.length > 400 ? note.slice(0, 400) + '…' : note;
+    return {
+      title: etWithDow(when),
+      meta: [{ k: 'Plant', v: plant || '—', mono: true }],
+      body: preview || '(no note)',
+      href: '?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key),
+      hrefLabel: 'view report →',
+    };
   }));
 
   return html('<!doctype html><html><head>' + PAGE_HEAD
     + '<title>Feedback — Reactor Dynamics</title></head><body>' + nav(token, '')
     + '<h1>Bug reports — ' + rows.length + ' of ' + listed.objects.length + ', newest first</h1>'
-    + '<table><tr><th>When (ET)</th><th>Plant</th><th>Note</th><th></th></tr>' + rows.join('') + '</table>'
+    + '<p class="muted">Times are Eastern.</p>'
+    + cards(rows)
     + (listed.objects.length > rows.length ? '<p class="muted">Showing the most recent ' + rows.length + '.</p>' : '')
     + '</body></html>');
 }
