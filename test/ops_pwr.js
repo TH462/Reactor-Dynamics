@@ -271,14 +271,24 @@
           hh.cmd('set_steam_dump', { pct: ins.tavg > tavgTarget ? 12 : 0 });
           if (ins.subcooling_margin > 40) hh.cmd('set_spray', { pct: 60 });   // walk pressure down with the temp
           else hh.cmd('set_spray', { pct: 0 });
-          // Below the 400 psi (2.76 MPa) interlock the ESF actuation aligns RHR on
-          // its own (pwr_control PWR_ACTUATIONS, gated on rps_scrammed) — the probe
-          // never commands it. Once on RHR the heat exchanger IS the cooldown-rate
-          // control, and this driver used to leave it wide open: measured, the
-          // dump-paced phase tracked its ramp to 201 °C (394 °F) by the time RHR
-          // came in at 99 min, and the last 21 minutes then fell to 90.7 °C
-          // (195 °F) — 315 °C/h (567 °F/hr), about 6× the admin limit being paced
-          // to. Throttle the HX the way an operator holds a rate.
+          // THE OPERATOR PLACES RHR IN SERVICE — re-authored at #453, and the order of
+          // the two commands is the point. This driver used to align nothing: an ESF
+          // actuation opened the suction valve by itself below the 2.76 MPa interlock.
+          // No plant does that (WTSM 5.1 §5.1.3.3 — the interlocks "prevent the valves
+          // from being opened unless…"), so the actuation is gone and the probe now
+          // does what PWR-N15 steps 13-14 tell the player to do.
+          //
+          // THROTTLE THE HX FIRST, THEN OPEN THE SUCTION. Opening at the shipped 100 %
+          // split onto a ~193 °C plant is the −843 °C/h shock PWR-N15 step 13 exists to
+          // prevent, and this probe's own two-sided rate check would catch it — which is
+          // the useful thing about repairing it this way rather than by widening a band.
+          // Once on RHR the heat exchanger IS the rate control: measured before that was
+          // understood, the last 21 minutes of this run fell at 315 °C/h, ~6× the admin
+          // limit the driver was pacing to.
+          if (!ts.rhr_active && ins.primary_pressure < 2.70) {
+            hh.cmd('set_rhr_hx', { fraction: 0.07 });     // PWR-N15 step 13's 7 %
+            hh.cmd('set_rhr', { active: true });          // step 14 — refused above 2.76
+          }
           if (ts.rhr_active) hh.cmd('set_rhr_hx', { fraction: ins.tavg > tavgTarget ? 0.25 : 0.02 });
           if (rhrAt === null && ts.rhr_active) rhrAt = t - t0;
           // Isolate the accumulators at 1000 psig (6.89 MPa), per 04/05 since #273.
@@ -305,7 +315,7 @@
         var interlock = h.eng.cfg.emergency.rhr_valve_interlock_mpa;
         ck('reached RHR entry — below the 400 psi (2.76 MPa) interlock', fmt(t.pressure_mpa, 2) + ' MPa',
           t.pressure_mpa < interlock, '< ' + fmt(interlock, 2) + ' MPa');
-        ck('RHR aligned itself on the ESF permissive (never commanded here)', String(t.rhr_active),
+        ck('the OPERATOR placed RHR in service at the permissive (#453 — nothing aligns it now)', String(t.rhr_active),
           t.rhr_active === true, 'true');
         ck('…and it STAYED aligned to the end of the cooldown', String(h.eng.s.rhr_valve_open),
           h.eng.s.rhr_valve_open === true, 'true');
