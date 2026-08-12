@@ -109,7 +109,13 @@ export async function analyticsPage(env, url, token) {
       + '<div class="tile"><div class="v">' + visits + '</div><div class="k">Visits</div></div>'
       + '<div class="tile"><div class="v">' + days + 'd</div><div class="k">Window</div></div>'
       + '</div>';
-    byDay = table(g.rows, [{ key: 'date', label: 'Date' }, ...RUM_COLS]);
+    // "Date (UTC)", and it STAYS UTC while the rest of the dashboard reads Eastern
+    // (2026-08-12). These rows are bucketed by Cloudflare on UTC calendar days. Relabelling
+    // them ET without re-grouping the query would move every count four or five hours into
+    // the neighbouring day while looking entirely correct — the row marked 2026-08-11 holds
+    // UTC 00:00–24:00, i.e. 20:00 on the 10th to 20:00 on the 11th Eastern. The header is
+    // the honest fix; re-grouping is an upstream-API question, not a formatting one.
+    byDay = table(g.rows, [{ key: 'date', label: 'Date (UTC)' }, ...RUM_COLS]);
     if (g.coarse > 1) {
       coarseNote = '<p class="warn">Window &gt; 7 days: Cloudflare answered from a coarser '
         + 'pre-aggregated tier, so these counts are rounded to the nearest ' + g.coarse

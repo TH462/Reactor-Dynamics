@@ -39,7 +39,7 @@
  *    `>= 0` reads a whole release as a plant that never refused anything.
  */
 
-import { esc, html, PAGE_HEAD, nav, table, errBlock, withDow, dur } from './render.js';
+import { esc, html, PAGE_HEAD, nav, table, cards, errBlock, etWithDow, dur } from './render.js';
 import { sql, DATASET, COLUMNS_SINCE, COLUMNS_SINCE_TS } from './cfapi.js';
 
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -156,7 +156,7 @@ export async function sessionList(env, url, token) {
       return {
         session: r.session,
         link: '<a href="' + href + '">' + esc(r.session) + '</a>',
-        started: withDow(r.first_seen),
+        started: etWithDow(r.first_seen),
         started_from: start.initial_state || '—',
         plant: start.plant || '—',
         release: start.release || '—',
@@ -174,22 +174,25 @@ export async function sessionList(env, url, token) {
 
     // `link` is pre-built HTML, so it must bypass table()'s escaping — the session id
     // inside it is escaped above.
-    const head_ = '<tr><th>Session</th><th>First seen (UTC)</th><th class="num">Lasted ≥</th>'
-      + '<th>Started from</th><th>Plant</th><th>Release</th>'
-      + '<th class="num">Rows</th><th class="num">Est</th><th>Since reset</th></tr>';
-    const trs = rows.map((r) => '<tr><td class="mono">' + r.link + '</td>'
-      + '<td class="mono muted">' + esc(r.started) + '</td>'
-      + '<td class="num">' + esc(r.span) + '</td>'
-      + '<td>' + esc(r.started_from) + '</td>'
-      + '<td class="mono">' + esc(r.plant) + '</td>'
-      + '<td class="mono muted">' + esc(r.release) + '</td>'
-      + '<td class="num">' + r.rows_raw + '</td>'
-      + '<td class="num">' + r.rows_est + '</td>'
-      + '<td class="muted">' + esc(r.ended) + '</td></tr>').join('');
-
-    body = rows.length
-      ? '<table>' + head_ + trs + '</table>'
-      : '<p class="muted">(none)</p>';
+    //
+    // CARDS, not a nine-column table (owner request, 2026-08-12). Nine columns was the worst
+    // offender for the stretch problem: on a wide monitor the session id sat at the far left
+    // and "Since reset" at the far right with a screen of whitespace between them, and the
+    // page still showed only a handful of sessions. Stacked in a card the same nine facts
+    // occupy ~320 px and a wide screen shows four sessions abreast instead of one.
+    // `link` is pre-built HTML with the session id already escaped, so it goes in as
+    // `titleHtml`; every other field is escaped by cards().
+    body = cards(rows.map((r) => ({
+      titleHtml: r.link + '<span class="muted">' + esc(r.span) + '</span>',
+      meta: [
+        { k: 'First seen', v: r.started, mono: true },
+        { k: 'Started from', v: r.started_from },
+        { k: 'Plant', v: r.plant, mono: true },
+        { k: 'Release', v: r.release, mono: true },
+        { k: 'Rows', v: r.rows_raw + ' raw / ' + r.rows_est + ' est', mono: true },
+        { k: 'Since reset', v: r.ended },
+      ],
+    })));
   } catch (e) {
     body = errBlock(e.message);
   }
@@ -288,7 +291,7 @@ export async function sessionDetail(env, url, token, sid) {
         : reported(r.t_page) ? mmss(tp) + '*'
         : '—';
       return band + '<tr><td class="mono">' + esc(at) + '</td>'
-        + '<td class="mono muted">' + esc(withDow(r.timestamp)) + '</td>'
+        + '<td class="mono muted">' + esc(etWithDow(r.timestamp)) + '</td>'
         + '<td class="mono">' + esc(r.event) + '</td>'
         + '<td>' + esc(detailOf(r)) + '</td>'
         + '<td class="num muted">' + (num(r.si) > 1 ? '×' + num(r.si) : '') + '</td></tr>';
@@ -301,7 +304,7 @@ export async function sessionDetail(env, url, token, sid) {
     ).join('') + '</div>';
 
     body = rows.length
-      ? tiles + '<table><tr><th>At</th><th>Written (UTC)</th><th>Event</th><th>Detail</th>'
+      ? tiles + '<table><tr><th>At</th><th>Written (ET)</th><th>Event</th><th>Detail</th>'
         + '<th class="num">Weight</th></tr>' + trs + '</table>'
       : '<p class="muted">(no rows — the session may have aged out of the 3-month retention)</p>';
   } catch (e) {

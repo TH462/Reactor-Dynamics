@@ -30,6 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The ops dashboard lays records out as cards, and stops stretching across wide screens**
+  *(OWNER, 2026-08-12: "put the data on cards instead of infinitely expandable rows"; and,
+  on what that meant: "when the screen is stretched the rows become very long left to right
+  with the data far from eachother. lots of wasted space")*. Bug reports and sessions render
+  as cards on an auto-filling grid, so a wider screen shows **more records** rather than the
+  same few with bigger gaps — five reports abreast at 1920 px, against one stretched row
+  before. Long player notes clamp to five lines with the full text a click away. The page is
+  width-capped and centred, and tables size to their content instead of to the window.
+  Comparison tables (top pages, actions, by-day) stay tables: they are columns of numbers
+  meant to be read down the column, and cards would break that alignment.
+- **The ops dashboard reads Eastern time** (`worker/src/`). Bug-report times, session
+  "first seen", per-event "written at" and the feature-flag "last changed" stamp all render
+  in `America/New_York`, so EST/EDT switch themselves rather than being a fixed offset that
+  drifts an hour every March. Headers say **(ET)**. Storage and queries are untouched and
+  stay UTC. **The daily traffic table deliberately stays UTC and now says so** — those rows
+  are bucketed upstream on UTC calendar days, so relabelling them ET without re-grouping the
+  query would shift every count four or five hours into the neighbouring day while looking
+  entirely correct. *(Website change — no simulator behaviour, so no `changelog.html` entry
+  and no version bump.)*
+
 ### Added
 - **The strip chart marks where the run began** *(OWNER, 2026-08-11: "The strip chart should
   have a line to show the start of the sim at time=0.")*. A dashed slate line, tagged `T+0`,
