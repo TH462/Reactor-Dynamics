@@ -57,7 +57,8 @@ engaged, so all of them agree with this plant.
 | **MO-1** normal-ops surge→pressure, manual | Load 100→70 MWe: level **55.00 → 65.38** peak → 61.49 settled; Tavg **304.5 → 311.7 °C** (+13.0 °F); subcooling **72.9 → 60.2 °F** (−12.7); pressure **+27 psi peak, 0 psi settled**. Return to 100 MWe: −18 psi transient, settles 2235 | **SPLIT.** Transient response *correct, must survive*. Settled offset of zero is **vestigial, must die** — the neutered run says physics wants **+30 psi** |
 | **MO-2** trip outsurge, manual | Trip from 100 %: Tavg **304.5 → 286.2 °C** (−32.9 °F), level **55.0 → 28.0** (the program floor), pressure **trough 2181 psi at t+2 min (−54)**, back to **2235 by t+8 min** with 0 % heaters and 0 % spray | **SPLIT**, same shape. The −140 psi held response (neutered) is the physical one; recovery-to-setpoint-on-nothing is vestigial |
 | **MO-2b** trip outsurge, auto | **2235 psi at every sample — no dip at all.** Heaters peak **1.77 %**, spray 0.05 % | **VESTIGIAL.** A real PWR drops several hundred psi on a trip before the heaters recover it. The row's acceptance must become *recovers on the CC-6 tempo*, never *never dips* |
-| **MO-3 / MO-4** manual heater / spray step authority | not yet measured — deferred to the same pass that bands them against the §6.4 heater ruling | pending |
+| **MO-3** manual heater step | **There is no step response to measure — the plant reaches relief first.** 0→100 % at power: pressure **2235 → 2341 psi in 5 s** (0.55 MPa/s = 80 psi/s, the declared §12.15 departure). PORV lifts at t+5 s and **cycles ~9 times in 50 s**; pressurizer mass **0.0709 → 0.0613**, level **55.0 → 47.6**. At t+55 s the discharge has pressurized containment past the sourced 3.5 psig SI backup — **HPI actuates, heaters shed** (#447). **Button press to safety injection: 115 s** | **VESTIGIAL, MUST DIE.** At the sourced 1.586e-3 MPa/s the same 0.79 MPa rise takes **500 s (8.3 min)**, ~100× longer, with spray and the operator inside the loop the whole time |
+| **MO-4** manual spray step | 0→100 % demand delivers at the **`spray_flow_max` 12 % cap** (indicated flow ~60 %): pressure **2235 → 1266 psi in 4 min** (−969 psi), Tavg 304.5 → 282.7 °C, level dips 55.0 → 33.6 then recovers | **Cap CORRECT (CC-5 rests on it); magnitude UNMEASURED against a source.** −969 psi from one valve is the spray-side twin of MO-3 |
 
 **Band for MO-1 stays deferred** *(as ruled)*: +30 psi is what the current model gives once
 the mask is removed, and that model is the one being replaced. It is a floor for
@@ -111,6 +112,21 @@ saying so. Its cause is the ECCS quench gain, not the pressurizer.
    **10 minutes** to recover, against CC-6's ~5-minute band. **That collision is what the
    §6.4 heater ruling has to settle**, and it is now a number rather than a worry.
 
-**Still to measure before Phase 2 closes:** MO-3/MO-4 manual step authority, and the
-pressurizer `perturb_sweep` set (`DEFAULT_NUDGES` has zero pressurizer constants) — the
-load-bearing map of which existing checks feel which constant.
+4. **The §6.4 heater question is now answered by consequence, not by preference.** MO-3
+   says the 347× authority converts a single operator button press into a PORV cycle, a
+   1 %-of-RCS inventory loss and an automatic safety injection **inside two minutes** —
+   with no failure injected and nothing broken. That is not a plant teaching pressure
+   control; it is a plant where the pressure control is a trap. Meanwhile MO-2b says the
+   *sourced* authority cannot recover a −140 psi trip excursion inside CC-6's ~5-minute
+   band (it needs ~10 min). **Both ends of the departure are now measured, and they point
+   in opposite directions** — which is exactly the trade the spec has to state and the
+   owner has to rule, rather than inheriting 0.55 because it was there.
+
+**MANUAL-FIRST paid for itself here.** Every one of these numbers is invisible with the
+automatic channel engaged: MO-1 and MO-2 read flat 2235, and MO-3's excursion never
+happens because the controller never asks for full heaters. The directive is three days
+old and it has already produced the rebuild's central measurement.
+
+**Still to measure before Phase 2 closes:** the pressurizer `perturb_sweep` set
+(`DEFAULT_NUDGES` has zero pressurizer constants) — the load-bearing map of which existing
+checks feel which constant, and therefore which of Phase 3d's reds will be real.
