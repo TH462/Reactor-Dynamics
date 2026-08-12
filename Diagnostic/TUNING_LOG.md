@@ -90,6 +90,13 @@ nothing else. Fixed by putting the build in the url; measured on the develop pre
   deploy host, where the directory always exists. **A gate that runs a build in a second
   environment is how a one-environment assumption becomes visible**, and it cost this change a
   red CI run to learn.
+- **VERIFY A REMOVAL WITH A CACHE-BUSTING QUERY — THE EDGE WILL SERVE A FILE THE DEPLOY NO
+  LONGER CONTAINS.** Confirming the withhold on the develop preview: `board_check` answered
+  **404** and `lane_reference` answered **200** off the same deploy. Not a partial fix —
+  `cf-cache-status=HIT, age=2626` (43 minutes, i.e. the *previous* build), and the same url with
+  `?cachebust=1` is 404. The defect this whole session is about, appearing inside its own
+  verification: a cached copy makes a deleted file look present exactly as it makes an old
+  stylesheet look current. **A bare-url check after a deploy is not a measurement.**
 - **THE SECOND DEFECT WAS FOUND BY ASKING WHAT IS IN THE OUTPUT, WHICH NO SOURCE READ ASKS.**
   `build_site.js` partitions the root `*.html` glob into PAGES / NOT_PUBLISHED, but the DIRS
   loop copies each asset directory **wholesale** — so `ui/test_panel/` shipped, and both of its
