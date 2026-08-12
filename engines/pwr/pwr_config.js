@@ -2848,8 +2848,30 @@
       // cold sink, RCPs secured (RHR provides forced circulation), pressurizer
       // bubble at the cold setpoint, SR energized, ~0 decay heat (long-shut core).
       // The Mode 5↔1 heatup/cooldown path is driven from here (see _buildState).
+      //
+      // SHUTDOWN BANK FULLY INSERTED (`sd_bank_pct: 0`) — the only IC that declares it.
+      // Until 2026-08-12 every state got the bank parked at 912/912 from the engine
+      // CONSTRUCTOR (`_makeRodGroups`), so Mode 5 was the one place it was wrong, and it
+      // was wrong against this plant's own shutdown path: measured, a scram puts the bank
+      // at 0/912 and nothing ever re-withdraws it, so a player who DRIVES to cold shutdown
+      // through PWR-N14/N15 ended on the bottom while a player who LOADED this preset got
+      // it fully out. Same mode, two plants.
+      //   Prototypical basis: *"The shutdown banks are always in the fully withdrawn
+      // position during power operations and are moved into this position at a fixed speed
+      // in manual bank control PRIOR TO CRITICALITY."* — WTSM 8.1.1, ML11223A252. Withdrawal
+      // is verified on the Mode 5 → 4 leg (App 19-1 A.12, ML11223A342) and is a discrete
+      // step gated on an SDM calculation if the bank is found in at Mode 3 (App 19-1 C.7/C.8).
+      // So the bank being OUT is the product of an operator evolution, never an IC.
+      //
+      // IT IS PLACED AFTER `_trimToCritical` (see `reset`), AND THAT ORDER IS THE WHOLE
+      // POINT. The trim solves boron for a fixed −1000 pcm net and takes rod reactivity as
+      // an input, so inserting the bank BEFORE it makes the solver pay for the bank's 3676
+      // pcm by REMOVING boron: measured, 856.1 → 671.3 ppm — less boron on a cold plant than
+      // the 704.8 ppm the HOT standby preset carries, i.e. withdrawing the bank alone would
+      // take it critical. Trimmed first, the bank's worth is what it should be — margin
+      // sitting in the core on top of the cold-shutdown boron, ρ = −4676 pcm at 856.1 ppm.
       cold_shutdown:  { power: 1e-6, scrammed: false, subcritical: true, cold: true,
-        rod_op_pct: 0.0, sr_on: true, rcp_off: true,
+        rod_op_pct: 0.0, sd_bank_pct: 0.0, sr_on: true, rcp_off: true,
         // cold_pzr_level 60 → 30 with the derived-level rework: an IC level implies a
         // mass surplus (level = floor 28 + 100·(mass−1)); 30 % ⇒ mass 1.02, inside both
         // the 1.2 tank cap and the m5 suite's ≤105 % cold-init sanity bound.

@@ -415,15 +415,20 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
   COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
   MENTIONED counting as covered — fails green.
-- **The dead MSLI was a TIMING MISS wearing a wrong root cause — fixed by the rate
-  sensitivity the setpoint's own source cell carried** (2026-08-09/10, #403 → #433). A no-dt
-  harness made the flow leg's `held_within_s` latch PERMANENT (age `0 <= 60` for ever), so
-  three green probes certified an isolation that never fired: #408 adopted "600 psig" and
-  dropped "(Rate sensitive)", leaving the raw crossing ~+103 s against a 60 s latch. Now
-  `lead_lag` 20/2 (Ginna's 12/2 shape, scale fitted) — isolates +2..3 s. Traps: **a
-  degenerate latch reads exactly like a working feature**; **a filed root cause repeated in
-  four documents was never re-measured** — "flow reads 0" came from watching the
-  turbine-only variable; **a sourced number is not the whole source**.
+- **The Mode 5 PRESET and the Mode 5 the plant PRODUCES were different plants, and nothing
+  compared them** (2026-08-12, #468). The shutdown bank was parked withdrawn by the engine
+  CONSTRUCTOR, so it was never a statement about Mode 5 at all: measured, a scram leaves it
+  at 0/912 and nothing re-withdraws it, so *driving* to cold shutdown gave trip rods in and
+  *loading* it gave them out — green on both for years. Real practice makes withdrawal an
+  evolution, never an IC (WTSM 8.1.1). Inserting it is TWO changes, because `_trimToCritical`
+  takes rod reactivity as an INPUT: trim after the bank and the solver pays for its 3676 pcm
+  in BORON — 671 ppm, below the HOT standby figure on a COLD plant. Placed after the trim,
+  ρ = −4676 pcm on unchanged 857 ppm, and the margin buys a measurable 79 min against an
+  unattended dilution. Found by a sourced pass over all 15 NOPs whose best source
+  (**WTSM §19.0 Plant Operations, ML11223A342**) was already in the corpus, uncited — the
+  same pass found §5.0 calling the 100 °F/hr rate limit UNSOURCED **four months after it was
+  ruled and shipped to the board**. Nothing gates manual prose against the rulings the engine
+  already implements.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -456,7 +461,11 @@ thing left in the file and it grew about a bullet a session.
 - **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were stale
   or mis-framed. An issue's own investigation comment is a claim like any other, and this repo
   merges faster than one ages well (#326 — both comments were correct when written and wrong hours
-  later). Re-measure on the tree you are standing in, including your own lane's.
+  later). Re-measure on the tree you are standing in, including your own lane's. **A filed root
+  cause repeated in four documents was still never re-measured** (rescued from the #403/#433
+  bullet on eviction, 2026-08-12): "MSLI flow reads 0" came from watching the turbine-only
+  variable, and repetition is not corroboration — neither is a sourced number being the WHOLE
+  source ("600 psig" was adopted and "(Rate sensitive)" dropped from the same cell).
 - **Declare a simplification only after you have MEASURED the regime it lives in** (rescued from
   the #347 themes bullet on eviction, 2026-08-07). "Optimistic" and "defeats the relief ladder"
   look identical from outside: spray-at-solid was declared harmless and held pressure 164 psi
@@ -470,7 +479,10 @@ thing left in the file and it grew about a bullet a session.
   recovers — take the ends and assert the SPAN. A gate that iterates a hand-maintained MAP tests
   the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). And a term that is
   an IDENTITY in the regime you test in is a term nothing tests — 44 green probes agreed with a
-  leg-split formula that computed 0.0 °F on a scrammed core.
+  leg-split formula that computed 0.0 °F on a scrammed core. **A DEGENERATE LATCH reads exactly
+  like a working feature** (rescued from the #403/#433 bullet on eviction, 2026-08-12): a no-dt
+  harness left `held_within_s` permanently satisfied (age `0 <= 60` for ever) and three green
+  probes certified an isolation that never once fired.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
   hid an interlock with no reset differential chattering at 35 % duty.

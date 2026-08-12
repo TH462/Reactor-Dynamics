@@ -29,6 +29,91 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-workbench-a (#468 — the Mode 5 preset handed the player a plant its own cooldown cannot produce)
+
+Started as a prototypicality pass over all **15 normal operating procedures** in `Manuals/04`
+against real plant documentation. The pass found its own best source **already in the corpus and
+uncited**: **WTSM §19.0 Plant Operations (ML11223A342)** — a step-by-step Westinghouse
+startup/shutdown narrative plus Appendix 19-1, a 29-step abbreviated startup procedure with its
+own CAUTIONs. Eight findings; the owner picked one to build and asked to revisit the Mode 5
+initial state.
+
+### The defect, and why nothing caught it
+
+```
+PRESET the player loads      SD bank 912/912 (OUT)   856.1 ppm   rho = -1000 pcm
+AFTER A SCRAM (PWR-N14 §2)   SD bank   0/912 (IN)
+```
+
+The shutdown bank was parked withdrawn by `_makeRodGroups` — the engine **constructor** — for
+every IC. So it was not a statement about Mode 5 at all, and no IC ever said otherwise. PWR-N14
+scrams, both banks drop, PWR-N15 cools down, nothing re-withdraws them: **drive** to cold
+shutdown and the trip rods are on the bottom; **load** cold shutdown and they are out. Two
+plants, one mode, and every gate green on both for years because no probe ever compared them.
+
+Real practice is unambiguous and makes it an evolution, never an IC: *"The shutdown banks are
+always in the fully withdrawn position during power operations and are moved into this position
+at a fixed speed in manual bank control **prior to criticality**"* (WTSM §8.1.1, ML11223A252);
+verified on the Mode 5 → 4 leg (App 19-1 A.12) and required complete *"within 15 minutes of
+withdrawing control banks"* (C.7).
+
+### The traps
+
+- **The IC boron solver takes rod reactivity as an INPUT, so "insert the bank" is a two-part
+  change.** `_trimToCritical` pins subcritical ICs to a fixed −1000 pcm net. Insert the bank
+  before it and the solver pays for the rods' 3676 pcm by **removing boron** — measured
+  **671.3 ppm**, *below* the 704.8 ppm the HOT standby preset carries, on a COLD plant, where
+  withdrawing the bank alone would then take it critical. Placing the bank **after** the trim
+  keeps 856.1 ppm and makes the worth margin: **ρ = −4676 pcm**. Rod position and `margin` are
+  one object; same shape as the pressurizer level constants.
+- **Our "1000 pcm cold shutdown margin" was never the Tech Spec quantity.** Real SDM is computed
+  *assuming all rods inserted* except the worst stuck rod. Ours was net reactivity as the rods
+  happened to sit — the two coincided only because the rods were out. The manual now states both
+  numbers rather than one under the wrong name; the rename is still owed a ruling.
+- **Four reds, four different causes — batch-judging them would have hidden a real one.**
+  `run_pwr` (2 scenarios) and `run_campaign` (`pwr_return_to_mode1`) both failed on `critAt = -1`
+  / no endpoint: the plant **declining to go critical with the trip rods in**, which is the
+  correct decline, from drivers that scripted a startup without the one step a real startup
+  requires. `run_ops` lost `ops_shutdown_dilution`. But `run_manual_controls` was a genuine
+  **6-failure red** of a completely different kind, and "the preset moved things" would have
+  swallowed it.
+- **A six-mismatch cascade in a hand-maintained map is ONE insertion.** Adding a step at index 2
+  shifted every `pwr_heatup` entry in `test/manual_ui_map.js`, so the gate printed six
+  consecutive `pill X != STEP_UI Y` plus one unmapped tail step. Renumber, do not re-derive.
+  **Third time** that table has broken this exact way — its own header records the first two.
+- **A "better than baseline" score still has to be explained, not absorbed.** `run_hardrules`
+  281 → 283: HR11 scans `Manuals/*.md` and I added exactly two `OWNER RULING` citations, both
+  well-formed. `verify_manual_follow` 261 → 264: **three** checks per controlled step (manual
+  pill, board bar, instructor-follow) — read off the gate's own `manual-follow-ui.log`, not
+  inferred from the delta. That log is also the only thing that proves the new step points at a
+  control reachable in a real browser.
+- **The margin is worth a measurable number, so it is now asserted.** Unattended dilution at the
+  plant make-up rate: bank IN → ρ = −1126 pcm at 3600 s, **critical at 4733 s**, source-range
+  trip at 4944 s. Bank OUT → trip inside the hour. `ops_shutdown_dilution` runs two hours,
+  keeps its original source-range assertion (passes on **both** presets — which is what makes
+  the extension legitimate rather than a refit, HR10) and adds one check pinning the change.
+- **`Manuals/04` §5.0 said the RCS heatup/cooldown rate limit was UNVERIFIED for four months
+  after it was settled.** 100 °F/hr is sourced twice in our own corpus (ML11223A342 App 19-1,
+  ML11223A213 Table 3.2-10), was ruled 2026-08-09 (#398, *"100 F/hr TS + 50 admin"*), and has
+  annunciated on the board since #375. **Nothing gates manual prose against rulings the engine
+  already implements** — that is the general lesson, and the reason the whole NOP pass was worth
+  running.
+
+### Still open from the pass
+
+Seven findings await an owner decision, ranked in the issue thread: the **P-12 low-low-Tavg dump
+interlock** (below 553 °F a real cooldown needs a deliberate bypass and gives only 3 cooldown
+valves of 12), the **1–2 %/min** real power-ramp rate against N06's stated ~10 %/min, the SG
+level program's **low-power 33 → 44 % NR ramp**, **manual bypass-valve feedwater below ~20 %**,
+turbine roll at 10–15 % (the *checklist* is right, the manual chapter is not), and a psig/psia
+inconsistency in the pressurizer setpoints. Separately, a **solid / no-bubble Mode 5** is blocked
+on whether to add a pressurizer temperature node — there is none today, so a thermodynamic bubble
+draw cannot be modelled.
+
+`run_all`: **47 runners at baseline.** Four baselines moved, each with its reasoning at the entry.
+
+---
+
 ## Session log — 2026-08-12-develop-a (#464 — the SG was discarding energy, and the manual had been right about it for a week)
 
 **Issue:** #464. **Gates:** `run_all` 47 runners at baseline; `run_behavior` 71 → **72** for the

@@ -1696,6 +1696,24 @@
     this.T_fuel_ref = this._hfp_refs.Tf;
     this.T_coolant_ref = this._hfp_refs.Tavg;
     this._trimToCritical(name);
+    // SHUTDOWN BANK, per-state — AND IT MUST STAY AFTER THE TRIM (2026-08-12).
+    // `_trimToCritical` solves boron for a fixed −1000 pcm net with rod reactivity as an
+    // INPUT, so a bank inserted before it is paid for in boron rather than added to it:
+    // measured on `cold_shutdown`, trimming with the bank in gives 671.3 ppm against the
+    // 856.1 ppm it carries here — under the 704.8 ppm of the HOT standby preset, on a cold
+    // plant, which means withdrawing the bank alone would take it critical. Trimmed first,
+    // the bank's 3676 pcm is margin ON TOP of the cold-shutdown boron (ρ = −4676 pcm).
+    // Default stays fully withdrawn: `_makeRodGroups` parks it at max_steps and every
+    // at-power/hot state relies on that, which is also correct — the bank is out for all
+    // power operation (WTSM 8.1.1). Only Mode 5 declares otherwise. See `pwr_config.js`
+    // `initial_states.cold_shutdown` for the sourcing and the two-plants defect it fixes.
+    var initSd = (this.cfg.initial_states[name] || {}).sd_bank_pct;
+    if (initSd != null) {
+      var sg_rods = this.rod_groups[1];
+      sg_rods.steps = Math.round(initSd / 100 * sg_rods.max_steps);
+      this._updateRodDerived(sg_rods);
+      this.s._rho = this._totalReactivity();   // the trim's ρ predates the bank move
+    }
     // Post an initial RCS chemistry grab-sample result. A real plant always has a
     // last lab boron number standing on the board; opening free-play startups with
     // "—" (never sampled) is the unrealistic state. The lab number IS the settled
@@ -2467,6 +2485,21 @@
     // RCS is now above the accumulator cover-gas pressure — re-align the SI accumulators
     // (isolated in the cold-shutdown lineup) so they are operable for the at-power Modes.
     h.cmd({ action: 'open_accumulator_valve' });
+    // WITHDRAW THE SHUTDOWN BANK (2026-08-12). Mode 5 now ships with the bank fully
+    // INSERTED (`pwr_config.js initial_states.cold_shutdown`), so this is no longer a
+    // no-op the driver could skip: with 3676 pcm of shutdown worth in the core the
+    // control bank cannot reach criticality on its own, and before this line both the
+    // round-trip and the paced-heatup gates failed on `critAt = -1` — the plant refusing
+    // to go critical with the trip rods in, which is the correct refusal.
+    //   It is an OPERATOR EVOLUTION and it belongs here, ahead of any control-bank
+    // motion: *"The shutdown banks … are moved into [the fully withdrawn] position at a
+    // fixed speed in manual bank control prior to criticality"* (WTSM 8.1.1, ML11223A252);
+    // App 19-1 A.12 verifies it on the Mode 5 → 4 leg and C.7 requires all shutdown banks
+    // withdrawn *"within 15 minutes of withdrawing control banks"* (ML11223A342). At the
+    // fast drive rate (4.8 steps/s) the full 912-step travel takes ~190 s, inside that.
+    var sdb = h.eng.rod_groups[1];
+    h.cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: sdb.max_steps, speed: 'fast' });
+    for (var sdw = 0; sdw < 60 && sdb.steps < sdb.max_steps; sdw++) h.run(10);
     h.cmd({ action: 'set_feed_pump_speed', pct: 20 });
     var elapsed = 0, dt = 5;
     // EV-1's rate half (#398). `maxRate` is the peak over the WHOLE drive; `maxRateAfterCrit`

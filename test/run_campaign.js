@@ -1116,6 +1116,22 @@ function heatupStep(s, shutdown) {
   s.handleCommand({ action: 'set_feed_pump_speed', pct: clampC(40 + 3 * (65 - t.sg_level_pct), 0, 100) });
   if (t.sr_energized && t.pressure_mpa > 5) s.handleCommand({ action: 'set_sr_detector', on: false }); // SR→IR handoff
   if (t.pressure_mpa < 13.5) return;                    // pressurize before pulling rods
+  // WITHDRAW THE SHUTDOWN BANK BEFORE ANY CONTROL-BANK MOTION (2026-08-12, #468). Mode 5
+  // now ships with it INSERTED, so this is not a no-op: with 3676 pcm of trip worth in the
+  // core the control bank cannot reach criticality, and `pwr_return_to_mode1` failed on
+  // `startup reaches an endpoint` — the plant declining to go critical with the trip rods
+  // in, which is the correct decline. Real order is the same and for the same reason: the
+  // shutdown banks are withdrawn *"prior to criticality"* (WTSM 8.1.1, ML11223A252) and
+  // within 15 minutes of control-bank withdrawal (App 19-1 C.7, ML11223A342).
+  //   It sits below the pressurize-first return so it happens once the plant is at NOP,
+  // and it is issued unconditionally-but-idempotently: `rod_nudge` to a bank already out
+  // is a no-op, which keeps the SHUTDOWN branch below honest — that branch never wanted
+  // criticality and does not care either way.
+  var sdb = s.engine.rod_groups[1];
+  if (sdb.steps < sdb.max_steps) {
+    s.handleCommand({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: sdb.max_steps, speed: 'fast' });
+    return;                                             // let it travel before touching the control bank
+  }
   if (shutdown) {                                       // settle subcritical-but-hot (Mode 3)
     s.handleCommand({ action: 'set_boron_adjust', rate: 3.0 });
     s.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: -16, speed: 'normal' });

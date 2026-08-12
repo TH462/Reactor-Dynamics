@@ -30,6 +30,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Mode 5 starts with the shutdown bank IN, and withdrawing it is now a step** (#468). The
+  `Cold Shutdown (Mode 5)` preset shipped with the shutdown rods already parked fully out —
+  not as a property of Mode 5 but of the engine *constructor*, which placed every rod group
+  at its withdrawn position for every initial condition. It did not match this plant's own
+  shutdown path: measured, a scram leaves the bank at **0/912** and nothing ever re-withdraws
+  it, so a player who **drove** to cold shutdown through PWR-N14/N15 ended with the trip rods
+  on the bottom while a player who **loaded** cold shutdown got them out. Same mode, two
+  plants. Real practice makes withdrawal an operator evolution and never an initial
+  condition — the shutdown banks are *"moved into [the fully withdrawn] position at a fixed
+  speed in manual bank control **prior to criticality**"* (WTSM §8.1.1, ML11223A252), verified
+  on the Mode 5 → 4 leg and required complete within 15 minutes of control-bank withdrawal
+  (App 19-1 A.12 / C.7, ML11223A342).
+  - Mode 5 is now **ρ = −4676 pcm on 857 ppm** with both banks inserted, and **PWR-N01 gains
+    step 2a** — withdraw the bank, 912 steps, ~3 plant-minutes at Fast. N02 step 7 covers
+    arriving by trip; N15 step 1 separates the boron's ~1000 pcm from the bank's 3676 pcm.
+  - **Boron is unchanged at 856.1 ppm, and that took an ordering fix.** `_trimToCritical`
+    solves IC boron for a fixed −1000 pcm net with rod reactivity as an *input*, so inserting
+    the bank before the trim makes the solver pay for 3676 pcm of rods by removing boron —
+    measured **671.3 ppm**, less than the 704.8 ppm the *hot* standby preset carries, on a
+    *cold* plant, where withdrawing the bank alone would then take it critical. The bank is
+    placed after the trim; the ordering is commented at both ends.
+  - The margin is worth something measurable: an unattended dilution at the plant make-up
+    rate reaches criticality in **79 minutes** with the bank in, against a source-range trip
+    inside the hour with it out. `ops_shutdown_dilution` now runs two hours, keeps its
+    original source-range assertion (which passes on **both** presets) and asserts the first
+    hour does *not* reach criticality.
+- **`Manuals/04` §5.0 no longer claims the RCS heatup/cooldown rate limit is unsourced.**
+  100 °F/hr is sourced twice in the corpus (ML11223A342 App 19-1; ML11223A213 Table 3.2-10),
+  was ruled on 2026-08-09 (#398, *"100 F/hr TS + 50 admin"*), and has annunciated on the board
+  since #375 — only the manual's reference table still said "UNVERIFIED — no source found".
+  The 90 °F/hr used in PWR-N15 is a *programme* and sits inside the limit; that was always true.
+
 ### Changed
 - **The ops dashboard lays records out as cards, and stops stretching across wide screens**
   *(OWNER, 2026-08-12: "put the data on cards instead of infinitely expandable rows"; and,
