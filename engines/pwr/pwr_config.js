@@ -1331,9 +1331,30 @@
       // real heat now: at decay-heat power the sensible demand of full AFW flow
       // exceeds the heat crossing the tubes, steam generation clamps at zero, and
       // the SG depressurizes — which is what "AFW is a heat sink" means.
+      // ALL THREE CLAUSES ARE TRUE ONLY SINCE #464. The first two always were; the
+      // third could not happen, because the SG clamped generation at zero and
+      // pressure integrates (generation − out), so dP/dt was exactly zero and the
+      // heat was silently discarded. Measured: 947.1 psi flat for six hours at full
+      // AFW. This paragraph was right and the code was the outlier — as was
+      // `Manuals/12` §8.4, which has said "the plant is pulled below the no-load
+      // anchor" since Rev 9. Nothing could tell, because nothing exercised it; the
+      // probe that does now is TR-19.
       feed_sensible_frac: 0.127,   // of latent_heat_secondary, at the rated point [tune]
       feedwater_temp_c: 224,       // °C final feed = 435 °F, top of Ginna's sourced 390–435 °F band
       afw_temp_c: 40,              // °C — inside the sourced 40–120 °F design band (WTSM §5.7)
+      /* THE TWO FLOW SCALES THE SENSIBLE TERM MUST WEIGH AFW AGAINST MAIN FEED ON (#464).
+       * `main_feed` and `afw_flow` are each normalized 0–1 on their OWN full-scale, and
+       * those differ — the board renders them with `GPM_FEED` = 1000 and `GPM_AFW` = 640
+       * (ui/diagram/board/pwr_board_wiring.js). Adding them under one coefficient counted
+       * full AFW as 15 % of rated feed in the heat balance while the board showed the same
+       * water as 96 gpm = 9.6 %: the same flow, 1.56× heavier where it mattered than where
+       * it was read. Declared here so the ratio is a config fact rather than a number
+       * buried in the SG; they MUST track the board's constants, like `units` above.
+       * Outside check: Ginna is 170 gpm per SG on 1520 MWt (UFSAR ch15, stated
+       * "conservatively low"), ~67 gpm power-scaled to our 300 MWt — so 96 gpm indicated
+       * is defensible and the 15 % weight was not. */
+      feed_flow_gpm_full: 1000,    // = GPM_FEED — main feed normalized 1.0
+      afw_flow_gpm_full: 640,      // = GPM_AFW  — AFW normalized 1.0 (so afw_flow_frac 0.15 = 96 gpm)
       // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
       //
       // The level integrates the feed/steam imbalance: d(level)/dt = K_sg_level x

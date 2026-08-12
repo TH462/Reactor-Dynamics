@@ -130,6 +130,7 @@
     'TR-12c': 'probe (automatic steam line isolation — the coincidence, and that it stays out of normal evolutions, #370c)',
     'TR-17': 'probe (atmospheric dump — a condenser-independent cooldown path exists, #371)',
     'TR-18': 'probe (load-change settling — the manual step ends instead of hunting forever, #378)',
+    'TR-19': 'probe (UNTHROTTLED AFW OVERCOOLS — the SG depressurizes instead of discarding heat, #464)',
     'TR-1k': 'probe (the arm cliff on the SHIPPED lineup — both lineups end at the backstop, #377)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
@@ -1801,6 +1802,78 @@
     },
 
     // TR-3 / the CC-5 canon pin: loss of feed WITH AFW blocked (the actual TMI-2
+    /* TR-19 — UNTHROTTLED AFW OVERCOOLS THE PLANT (#464).
+     *
+     * WHAT THIS EXISTS TO CATCH, stated as the defect it was written against: the SG used
+     * to CLAMP steam generation at zero when cold feed's sensible demand exceeded the heat
+     * crossing the tubes, and pressure integrates (generation − out), so dP/dt was exactly
+     * zero and the SG could not depressurize. Measured before the fix, six plant-hours at
+     * full AFW: **947.1 psi flat to the psi** while decay heat fell 6.25 % → 0.94 %, with
+     * the primary-secondary ΔT collapsed to 0.4 °F — the SG absorbing essentially all the
+     * decay heat and discarding it. An infinite heat sink at fixed temperature.
+     *
+     * IT ASSERTS THE THERMAL CONSEQUENCE, NOT THE FLOW, and that distinction is the whole
+     * reason a false claim could stand in pwr_config for days with every gate green:
+     * run_m4 already drives AFW to full capacity by this same stuck-instrument route and
+     * checks `afw_flow_normalized` against `afw_flow_frac` — the flow was never the
+     * problem. An unasserted mechanism is one nobody can tell is missing.
+     *
+     * FULL FLOW NEEDS THE STUCK INSTRUMENT. On a healthy level channel the AFW controller
+     * throttles to ~1-2 % to hold level and the plant sits in a stable hot standby (547 °F,
+     * 1012 psi, measured) — correct, and NOT what this probe is about. The overcooling case
+     * is unthrottled AFW, which is exactly why real operators are told to throttle it:
+     * "excessive feedwater flows" causing "excessive cooldown of the primary system"
+     * (Ginna TS Bases, ML20339A221).
+     *
+     * THE BAND IS A SPAN, NOT AN ENDPOINT. The cooldown is self-limiting — as pressure
+     * falls, t_sec falls, ΔT grows, Q_sg grows and the deficit closes — so the plant decays
+     * toward the AFW temperature and the RATE decays with it (measured 170.6 → 94.0 → 48.7
+     * → 25.6 → 14.4 → 7.7 °F/hr over six hours). Pinning an endpoint would pin the
+     * asymptote; pinning the span is what says "it moved, and it kept moving".
+     *
+     * The 100 °F/hr Tech Spec cooldown limit (ML11223A342) is deliberately NOT asserted as
+     * a ceiling here. It is an OPERATOR limit, and a plant that physically cannot exceed it
+     * with AFW wide open would have nothing to teach about throttling. The first hour
+     * measures 170.6 °F/hr, and that is the lesson, not a defect. */
+    'TR-19': function () {
+      return test('TR-19 unthrottled AFW overcools — the SG depressurizes, it does not bank the heat', function (ck) {
+        var h = H('hot_full_power');
+        h.run(30);
+        h.cmd('inject_failure', { failure_id: 'loss_of_feedwater' });
+        h.run(30);
+        // Hold the sensed level below the AFW band so the controller calls for FULL
+        // capacity — the same route run_m4 uses to reach full flow (HR1: drive the
+        // INSTRUMENT, not the true state).
+        h.cmd('set_instrument_failure', { instrument_id: 'sg_level', mode: 'stuck', value: 10 });
+        h.run(120);
+        var afw = h.ts().afw_flow_normalized || 0;
+        var full = RD.PWR_CONFIG.steam_generator.afw_flow_frac;
+        ck('AFW is at full capacity (precondition — without it the rest is vacuous)',
+          fmt(afw, 4), Math.abs(afw - full) < 1e-6, fmt(full, 4));
+        var p0 = h.ts().steam_pressure_mpa, t0 = h.ts().tavg_c;
+        h.run(3600);
+        var p1 = h.ts().steam_pressure_mpa, t1 = h.ts().tavg_c;
+        // THE defect check: the clamp made this span exactly zero.
+        ck('SG pressure FALLS over the hour (the clamp froze it at 6.53 MPa)',
+          fmt(p0, 2) + ' → ' + fmt(p1, 2) + ' MPa', p1 < p0 - 0.5, 'a drop > 0.5 MPa');
+        ck('…and the primary cools with it', fmt(t0 * 9 / 5 + 32, 1) + ' → ' + fmt(t1 * 9 / 5 + 32, 1) + ' °F',
+          t1 < t0 - 20, 'a drop > 36 °F');
+        // The secondary must not overtake the primary — t_sec is saturation at the
+        // pressure this term drives, so a runaway would show up as an inverted ΔT.
+        ck('the SG stays COLDER than the primary (ΔT never inverts)',
+          fmt((t1 - h.ts().t_sg_c) * 9 / 5, 2) + ' °F', h.ts().t_sg_c <= t1 + 0.5, '≥ 0');
+        // Self-limiting: the second hour must be slower than the first, or the term is
+        // running away rather than closing its own deficit.
+        var r1 = (t0 - t1);
+        h.run(3600);
+        var r2 = (t1 - h.ts().tavg_c);
+        ck('the cooldown DECELERATES — the deficit closes itself',
+          fmt(r1 * 9 / 5, 1) + ' → ' + fmt(r2 * 9 / 5, 1) + ' °F in hours 1 and 2',
+          r2 < r1 && r2 >= 0, 'hour 2 slower than hour 1, still cooling');
+        T.checkSanity(ck, h);
+      });
+    },
+
     // lineup) — the SG dries out, decay heat has nowhere to go, the primary heats
     // to saturation and repressurizes over ~10-20 min, and the capped spray CANNOT
     // stop it: the PORV lifts. This is the sim-honest home of the SUSTAINED canon

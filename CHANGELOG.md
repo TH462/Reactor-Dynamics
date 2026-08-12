@@ -39,6 +39,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   off once the run is older than the window, like any other moment on the chart.
 
 ### Fixed
+- **Auxiliary feedwater actually overcools the plant now — the steam generator was throwing
+  heat away (#464).** Cold AFW is supposed to be a heat sink: at decay-heat power, full flow
+  absorbs more heat than crosses the tubes, boiling stops, and the plant cools below the
+  no-load point until you throttle it back. The first two happened; the third could not. The
+  generator clamped steam production at zero and then simply *held* — measured, **947.1 psi
+  flat for six hours** while decay heat fell to a sixth of its starting value, with the
+  primary's heat still crossing into a generator that neither boiled it nor warmed on it.
+  Now the excess condenses and the plant cools: **171 °F in the first hour**, slowing as it
+  approaches the temperature of the feedwater itself. Nothing changes at power, and nothing
+  changes while the level controller is throttling AFW normally — this is the unthrottled
+  case, which is exactly the one the procedures tell you to catch. The same fix corrects AFW
+  being weighed **1.56× heavier** in the heat balance than the 96 gpm the board shows for it.
 - **Closing Plant & Mission leaves the plant running** *(OWNER, 2026-08-11: "When i close the
   plant menu after starting the sim the sim should start playing. it currently starts paused. it
   should start running after closing the plant & mission menu.")*. Starting Free Play closed the

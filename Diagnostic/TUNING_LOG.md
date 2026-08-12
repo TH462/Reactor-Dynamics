@@ -29,6 +29,76 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-develop-a (#464 — the SG was discarding energy, and the manual had been right about it for a week)
+
+**Issue:** #464. **Gates:** `run_all` 47 runners at baseline; `run_behavior` 71 → **72** for the
+new probe. **Landed:** the condensation term, the AFW flow-scale correction, TR-19.
+
+**The defect.** `steam_generation_rate = max(0, Q_sg/(1+pump) − _sensible)/_latent_eff`, and
+pressure integrates `(generation − steam_out)`. When cold feed's sensible demand exceeded the
+crossing heat the clamp took generation to zero, and with nothing drawing steam `dP/dt` was
+**exactly zero** — the SG could not depressurize. Meanwhile `Q_sg = h_sg·flow·ΔT` kept
+delivering the primary's heat into a node that neither boiled it, stored it (mass clipped at
+max, level pegged 100 %) nor warmed on it (`t_sec ≡ T_sat(P)`, P frozen). **An infinite heat
+sink at fixed temperature.** Measured, full AFW after a loss of feedwater, six plant-hours:
+**947.1 psi flat to the psi** while decay heat fell 6.25 % → 0.94 %, primary–secondary ΔT
+collapsed **29.4 °F → 0.4 °F** (a ratio of 1.36 % against 1.16 % decay heat — the SG still
+absorbing essentially all of it).
+
+**The fix** is the same balance with the sign gate removed: the deficit flows through as
+condensation, no new constant, `K_steam_pressure` calibrating both directions. Self-limiting
+by construction — P falls, `t_sec` falls, ΔT grows, `Q_sg` grows, the deficit closes. Measured
+cooldown **170.6 → 94.0 → 48.7 → 25.6 → 14.4 → 7.7 °F/hr** over six hours, asymptoting to the
+104 °F AFW temperature. Undisturbed full power is unchanged (825.3 → 825.6 psi, 100 %) and the
+level-controlled case is unchanged (hot standby at 547 °F / 1012 psi) — the overcooling
+appears only with AFW unthrottled, which is the case operators are trained to throttle.
+
+### The traps
+
+- **A PREDICTION IS NOT A MEASUREMENT, and mine was 4.2× out.** Sizing the fix from the shipped
+  constants predicted a **722 °F/hr** cooldown — 7.2× the sourced 100 °F/hr limit — which
+  nearly bought a magnitude retune the plant did not need. The prediction held `t_sec` at
+  280 °C; the real `t_sec` falls as the plant cools and takes the demand down with it. Actual
+  peak **170.6 °F/hr**. The owner's call to build-and-measure rather than pre-correct is what
+  caught it.
+- **THE SAME WATER, WEIGHED TWICE, DIFFERENTLY.** `_sensible` added `afw_flow` and `main_feed`
+  under one coefficient calibrated on main feed — but the two normalize on different
+  full-scales (`GPM_FEED` 1000, `GPM_AFW` 640). Full AFW was weighted as **15 % of rated feed**
+  in the heat balance while the board displayed the same water as **96 gpm = 9.6 %**: 1.56×
+  heavier where it mattered than where it was read. Two normalized quantities are not
+  addable just because both run 0–1. Both scales are now declared config facts.
+- **THE CONTENT WAS RIGHT AND THE PLANT WAS WRONG** — the reverse of the usual presumption.
+  `Manuals/12` §8.4 has said *"full AFW flow absorbs more heat than crosses the tubes, steam
+  generation stops, and the plant is pulled below the no-load anchor"* since **Rev 9
+  (2026-08-05)**, and `07`'s PWR-E01 step 5 tells the operator to *"throttle AFW to hold level
+  without severe overcooling"* — a procedure step for a behaviour the plant could not produce.
+  HR9's presumption (content follows the plant; when content breaks, suspect the content) is a
+  rule about content that BREAKS. **Content nobody exercises never breaks, so it never tells
+  you it disagrees.** No manual change was needed here; the code was the outlier.
+- **THE CHANGE REDDENED NOTHING, AND THAT IS THE FINDING.** The SG energy balance was rewritten
+  and all 47 runners held — `run_pwr` 37/37, `run_behavior` 71+1, `run_meltdown` 12/12 — because
+  the regime it fixes is the regime nothing exercised. `run_m4` already drove AFW to full
+  capacity by the stuck-instrument route and only ever checked `afw_flow_normalized`. **An
+  unasserted mechanism is one nobody can tell is missing**; the only reason this surfaced at
+  all is that someone asked what temperature the charging water was.
+- **My filed diagnosis was wrong in BOTH directions.** #464 said the sensible term was too
+  *weak*. It is not weak — when allowed to act it is strong enough to overcool, and the
+  defect was that the balance discarded the energy instead of spending it. An issue's own
+  investigation comment is a claim like any other.
+
+**Deliberately not asserted:** TR-19 does not cap the cooldown at the sourced 100 °F/hr
+(ML11223A342). That is an OPERATOR limit; a plant that physically could not exceed it with AFW
+wide open would have nothing to teach about throttling, and Ginna's TS Bases names *"excessive
+cooldown of the primary system"* from *"excessive feedwater flows"* as a real concern.
+
+**Evidence pass, AFW sizing:** Ginna is **170 gpm per SG** on 1520 MWt (UFSAR ch15, stated
+"conservatively low") — ~67 gpm power-scaled to our 300 MWt, so the model's 96 gpm indication
+is defensible and the 15 % weighting was the defect. The linear sensible form was checked too:
+extrapolating a 47.9 °C calibration to a 232 °C one lands within **8 %** of a proper enthalpy
+ratio, so the shape is sound and only the flow weighting moved.
+
+---
+
 ## Session log — 2026-08-11-develop-b (#454 — the chart's per-series side, and two defects only a screenshot and a replay could find)
 
 **Issue:** #454. **Gates:** `run_all` **47 runners at baseline**. `verify_e2e_ui` gains
