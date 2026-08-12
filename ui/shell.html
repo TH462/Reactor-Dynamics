@@ -43,7 +43,46 @@
       <div class="bottom-row">
         <div class="strip-chart" data-scanner-hint="Strip Chart — multi-parameter trend. Tick a parameter on the Indications or Physics tab to plot it; scrub to replay."
               data-scanner-detail="Several parameters on one time base, so you can see cause and effect rather than one number at a time. Anything the plant indicates can go on it, and so can the true-state quantities on the Physics tab — the checkbox beside each value is what puts it there, which means you can plot a channel against the quantity it is supposed to be measuring. The window is a Settings-tab control; the plot keeps more history than it displays, so widening it reveals trend already recorded. In Teaching mode the traces come from physics; in Realistic they come from the instruments, so a failed sensor lies on the chart exactly as it lies on the board.">
-          <div class="chart-legend" id="chartLegend"></div>
+          <!-- THE CHART'S OWN CONTROLS (#439, spec §8). Window and export lived in the
+               Settings tab; Settings is now a modal and modals pause, and pausing the
+               plant to change how you are watching a transient is backwards — the
+               transient is the thing being watched. So they live on the chart, where the
+               relationship between the control and what it changes is visible, and they
+               do NOT pause. The window buttons are relabelled at runtime as the ladder
+               follows time acceleration, so do not hard-code their text. -->
+          <div class="chart-head">
+            <div class="chart-legend" id="chartLegend"></div>
+            <div class="chart-ctl">
+              <!-- Rewind sits LEFT of the window buttons *(OWNER DIRECTIVE, 2026-08-11:
+                   "Put the strip chart rewind button to the left of the x axis time
+                   selection. Get rid of the slider bar at the bottom of the chart.")*.
+                   It used to live in the scrubber strip under the plot, which is gone. -->
+              <button class="btn ghost" id="chartRewindBtn" disabled
+                data-scanner-hint="Rewind — jump back to an earlier moment. Press it, then click the moment you want on the graph."
+                data-scanner-detail="You always choose the moment; there is no one-step rewind. In free play the marks are laid every 20 seconds of real time, so a fast-forward still leaves you somewhere to land — each mark just covers more of the plant's life. Inside a scenario or walkthrough the marks are the authored checkpoints, one per beat or step. While you are picking, the graph widens to show every mark you can reach and the clock is paused. The button is disabled until at least one checkpoint exists.">⏪ Rewind</button>
+              <div class="seg" id="graphWindow" data-scanner-hint="Strip chart window — how much plant history the chart shows at once. The ladder follows the time-acceleration setting, so the widest rung is always worth about the same in wall-clock time."
+                data-scanner-detail="The plot keeps more history than it displays, so widening the window shows trend that was already recorded rather than starting a new trace. At fast time acceleration the rungs stretch: a 30-minute window empties in half a second of real time at 3600x, which is why the choices change with the speed control."><button data-win="60">1m</button><button class="on" data-win="300">5m</button><button data-win="600">10m</button><button data-win="1800">30m</button></div>
+              <button class="btn ghost" data-act="export-csv" title="Export the chart's history as CSV"
+                data-scanner-hint="Export CSV — writes the strip chart's recorded history to a file, one column per plotted parameter."
+                data-scanner-detail="Exports what the buffer holds, not just the visible window, and only the parameters currently selected for the plot — plus the sequence of events as a second file, which is the artifact a classroom worksheet is built from. Use it to take a transient away and look at it in a spreadsheet.">CSV ⭳</button>
+              <!-- CHART SETTINGS *(OWNER DIRECTIVE, 2026-08-11: "The strip chart option menu
+                   should be like the plant selection menu. It should be large and pause the
+                   sim. … It should list all the indications you can put on the chart with
+                   their current values. You should be able to choose the indication or the
+                   physics value for each.")*, superseding the anchored popover this button
+                   used to open (#454). It opens #chartOverlay through openModal, so it takes
+                   the `modal` pause hold like Plant & Mission and Settings do.
+
+                   The popover's own copy here PROMISED that it would not pause, on the
+                   reasoning that changing how you watch a transient should not stop the
+                   transient. That reasoning does not survive the change of size: a
+                   full-screen overlay covers the board, which is the case openModal's pause
+                   exists for. -->
+              <button class="btn ghost" id="chartOptsBtn" title="Chart settings — channels, sides and options"
+                data-scanner-hint="Chart settings — choose which indications are plotted and whether each one traces the instrument, the physics, or both. Opening it pauses the plant."
+                data-scanner-detail="Every channel the plant publishes can be trended, listed with its current reading so you can see what a channel is doing before deciding to plot it. Each row offers the instrument reading and the true physics value separately: pick either, or both, and a channel showing both draws its physics as a dashed line in the same lane — which is how you see how far a gauge is from the plant behind it. The window, the event ribbon and the CSV export live here too. It covers the board, so it pauses the simulation; closing it starts the plant again unless you had already paused it yourself.">⚙</button>
+            </div>
+          </div>
           <div class="chart-plot">
             <svg class="chart-canvas" id="chartCanvas" viewBox="0 0 400 120" preserveAspectRatio="none"></svg>
             <!-- live floating per-line value labels, color-coded, placed at the
@@ -52,15 +91,24 @@
             <div class="rewind-hint" id="rewindHint" hidden>⏪ Click a moment on the graph to rewind to it &nbsp;·&nbsp; Esc cancels</div>
           </div>
           <div class="chart-xaxis mono" id="chartXAxis"></div>
-          <div class="scrubber">
-            <span class="lbl mono" id="chartWindowLbl">−5:00</span>
-            <div class="track" id="scrubTrack" data-scanner-hint="Timeline — you are at LIVE. Click the track (or the Rewind button) to pick an earlier moment to rewind to."
-              data-scanner-detail="The plant keeps a checkpoint every 20 seconds of REAL time — on a wall clock, not the plant's — so the marks always cover roughly the last ten minutes of your session however fast you are running. Picking a moment restores the whole simulation to it — plant state, alarms and instructor progress — so you can try a different action from the same starting point. It is a teaching tool, not an undo: everything after the chosen moment is discarded."><div class="head"></div></div>
-            <span class="lbl mono">LIVE</span>
-            <button class="btn ghost" id="chartRewindBtn" disabled
-              data-scanner-hint="Rewind — jump back to an earlier moment. Press it, then click the moment you want on the graph."
-              data-scanner-detail="You always choose the moment; there is no one-step rewind. In free play the marks are laid every 20 seconds of real time, so a fast-forward still leaves you somewhere to land — each mark just covers more of the plant's life. Inside a scenario or walkthrough the marks are the authored checkpoints, one per beat or step. While you are picking, the graph widens to show every mark you can reach and the clock is paused. The button is disabled until at least one checkpoint exists.">⏪ Rewind</button>
-          </div>
+          <!-- SEQUENCE OF EVENTS (#442, spec §8). Real plants have SOE recorders and
+               post-trip review is conducted with them, which is what this is — naming it
+               that tells an operator-minded player what they are looking at, and makes the
+               chart an accident-analysis instrument rather than a trend display.
+
+               Tier 2 (component state) ticks live in this ribbon; tier 1 (plant-defining)
+               draws full height across the lanes instead. That split is the whole reason
+               the ribbon exists: the PORV cycled repeatedly at TMI, and a full-height line
+               per open/close makes the chart unreadable inside a minute. -->
+          <div class="soe-ribbon" id="soeRibbon"></div>
+          <!-- THE SCRUBBER STRIP WAS REMOVED 2026-08-11 (owner, quoted above). It held a
+               "-5:00 [====track====] LIVE" bar plus the Rewind button, and the track LOOKED
+               draggable while being a single click target — clicking anywhere on it opened
+               the same pick-a-moment mode that clicking the plot already opens. Two controls
+               for one action, one of them miming an affordance it did not have. Rewind moved
+               up beside the window buttons; picking a moment is still a click on the graph,
+               which is where the moments actually are. The -5:00 label was a second, less
+               precise copy of the x-axis, which is directly above it. -->
         </div>
 
         <div class="alarm-panel">
@@ -71,6 +119,24 @@
           </div>
           <div class="alarm-stack" id="alarmStack"></div>
         </div>
+      </div>
+
+      <!-- SYSTEM SCANNER — a status LINE under the board, not a panel (#439, spec §6).
+           It sat bottom-right in the SIM column because vertical space ran out on the
+           left, which put the only "what is this?" affordance at the maximum possible eye
+           distance from the board it describes — and there are no tooltips over the
+           synoptic by design (spec §1), so this is it. Its content was always one sentence
+           plus a Full Description affordance: a line, not a block. Sitting here it is
+           directly under everything it describes, and it retires the 74px/28vh two-height
+           variant and its persisted expand state, because nothing relocates any more.
+
+           It stays the interlock-refusal channel — a blocked command flashes its reason
+           here (`inspectFlash` in ui/app.js) — so the element must exist before the board
+           can refuse anything. -->
+      <div class="scanline" id="scannerPanel">
+        <span class="scanline-tag">SCANNER</span>
+        <span class="scanline-body" id="scanner"><span class="idle">Hover or tap anything on the board to see what it does.</span></span>
+        <button class="scan-exp" id="scannerToggle" title="Read the full description">Full description</button>
       </div>
     </div>
 
@@ -97,55 +163,89 @@
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
               data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
           <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
+          <!-- Feedback in one action (#438, spec §10). The moment someone wants to report is
+               the moment the board does something unexpected — they will not go hunting
+               through Settings, which is where the only entry point used to be. -->
+          <button class="btn text-btn" id="fbHeaderBtn" title="Report a problem or send feedback" data-scanner-hint="Feedback — report a bug or send a suggestion. A recording of this session can be attached so what you saw can be replayed.">Feedback</button>
+          <button class="btn text-btn" id="settingsBtn" title="Settings — units, fast-forward dropout, save/load" data-scanner-hint="Settings — units, fast-forward dropout, save and load. It pauses the plant while it is open, because none of it is operating."
+              data-scanner-detail="The chart's own controls are NOT here — they have a window of their own, behind the ⚙ on the strip chart, which lists every channel you can plot with its current reading. This one covers the things that are true of the whole simulator: units, the fast-forward dropout, and saving or loading a run.">Settings</button>
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- What's running now — the always-visible mission entry point -->
-        <button class="sim-status" id="simStatus" data-scanner-hint="Current plant &amp; mission — click to switch reactors or change what you are running."
+        <button class="sim-status" id="simStatus" data-scanner-hint="Plant &amp; Mission — click to switch reactors or change what you are running."
               data-scanner-detail="One window covers both choices: which reactor, and whether you are in free play (with a starting plant condition) or running guided content. Switching either one restarts the simulation from a fresh initial condition.">
+          <span class="ss-lbl">Plant &amp; Mission</span>
           <span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
         </button>
+        <!-- Points at the button that reopens the Plant &amp; Mission window, for a few
+             seconds after it is closed *(OWNER DIRECTIVE, 2026-08-11)*. It supersedes the
+             persistent unvisited dot the spec asked for on this one control: the window is
+             now UP on load, so the first close is the moment the player needs to be told
+             where it went, and a marker that waits for curiosity is answering a question
+             they are no longer asking. -->
+        <div class="ss-tip" id="simStatusTip" hidden>▲ Reopen it here any time</div>
       </div>
 
-      <!-- Multi-use right panel: Instructor (default free-play coach), scenario voices,
-           checklists, walkthroughs — title is set dynamically by app.js. -->
-      <div class="panel instructor collapsed" id="instructorCard">
-        <div class="persona">
-          <div class="icon" id="instrIcon" aria-hidden="true"></div>
-          <div class="role" id="instrRole">Instructor</div>
-          <span class="instr-badge" id="instrBadge" hidden></span>
-          <button type="button" class="instr-min" id="instrMinBtn" title="Minimize instructor panel"
-            aria-label="Minimize instructor panel"
-            data-scanner-hint="Minimize — collapse the instructor panel so Operate and the other tools use the column.">−</button>
-        </div>
-        <div class="instr-body">
-          <div class="instr-prev" id="instrPrev">— no prior messages —</div>
-          <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
-        </div>
-        <!-- Walkthrough (follow) nav — shown only while following a procedure -->
-        <div class="instr-nav" id="instrNav" hidden>
-          <button class="btn" data-fnav="prev" data-scanner-hint="Previous step — go back one procedure step.">◀ Prev</button>
-          <button class="btn" data-fnav="next" data-scanner-hint="Next step — advance to the next procedure step.">Next ▶</button>
-          <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph to restore. The marks are the checkpoints taken at the start of each step." disabled>⏪ Rewind</button>
-          <button class="btn" data-fnav="restart" title="Restart procedure" data-scanner-hint="Restart — start this procedure over from its initial state.">↺</button>
-          <button class="btn" data-fnav="stop" title="Stop following" data-scanner-hint="Stop — leave the walkthrough and return to free play.">✕</button>
-        </div>
-        <!-- Scenario continue — shown only when a scenario's commentary is on screen -->
-        <div class="instr-ack" id="instrAckRow" hidden>
-          <button class="ack-btn" id="instrAck" data-scanner-hint="Acknowledge — tell the Instructor you've read this and are ready to continue.">Acknowledge</button>
-          <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph and try a different path from there." disabled>⏪ Rewind</button>
-        </div>
-      </div>
-
-      <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
       <div class="panel tools expanded" id="toolsCard">
+        <!-- THE STRIP IS PULL, THE INSTRUCTOR BELOW IT IS PUSH (#439, spec §2/§3).
+             Everything here is something the player goes and gets. What used to be the
+             default tab, "Operate", held no operating controls at all — the plant's
+             controls are on the board — only session management, which is why nobody
+             hunting for a course ever clicked it and the quick tour had to say
+             "Checklists (Operate tab)". It is dissolved: session setup went to the
+             session bar (#443), Settings became a header modal, and Checklists — a live
+             operating aid, used while running — was promoted to a tab of its own. -->
         <div class="tabbar" id="tabbar">
-          <button class="on" data-tab="operate">Operate</button>
-          <button data-tab="failures">Inject Failure</button>
+          <!-- Instructor is a TAB, and the leftmost one *(OWNER DIRECTIVE, 2026-08-11:
+               "Make the instructor block a tab. Make it the leftmost tab.")*. It was a
+               separate card above this strip, in a two-card accordion where expanding one
+               collapsed the other. One strip, one visible pane, no accordion. -->
+          <button class="on" data-tab="instructor">Instructor</button
+          ><button data-tab="checklists">Checklists</button>
           <button data-tab="indications">Indications</button>
-          <button data-tab="physics">Physics</button>
-          <button data-tab="settings">Settings</button>
+          <button data-tab="failures">Inject Failure</button>
         </div>
         <div class="tab-body">
+          <div class="tabpane instructor on" data-pane="instructor" id="instructorCard">
+          <div class="persona">
+            <div class="icon" id="instrIcon" aria-hidden="true"></div>
+            <div class="role" id="instrRole">Instructor</div>
+            <span class="instr-badge" id="instrBadge" hidden></span>
+          </div>
+          <div class="instr-body">
+            <div class="instr-prev" id="instrPrev" hidden></div>
+            <!-- THE TRANSCRIPT *(OWNER DIRECTIVE, 2026-08-11: "Instructor and other messages
+                 like walkthroughs should be like teams messages. They should be persistent and
+                 scrollable only cleared when the user changes what that instructor block is
+                 showing with a different walkthroughs, training, etc.")*.
+                 #instrCurrent is the LIVE bubble and stays the last child: every existing
+                 writer sets its innerHTML and none of them had to change. When the message
+                 IDENTITY changes, the live bubble is frozen into a .instr-msg above it and a
+                 new live bubble starts. Cleared only on a TOPIC change — see instrLogTick. -->
+            <div class="instr-log" id="instrLog">
+              <div class="instr-current instr-standby" id="instrCurrent">Standing by…</div>
+            </div>
+            <!-- Open, but scrolled away from the newest line: a quiet marker INSIDE the
+                 panel rather than a flash on the header (#439, spec §4). The message is
+                 already on screen; flashing for it would spend the signal on nothing. -->
+            <button class="instr-newbelow" id="instrNewBelow" hidden>▾ New message below</button>
+          </div>
+          <!-- Walkthrough (follow) nav — shown only while following a procedure -->
+          <div class="instr-nav" id="instrNav" hidden>
+            <button class="btn" data-fnav="prev" data-scanner-hint="Previous step — go back one procedure step.">◀ Prev</button>
+            <button class="btn" data-fnav="next" data-scanner-hint="Next step — advance to the next procedure step.">Next ▶</button>
+            <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph to restore. The marks are the checkpoints taken at the start of each step." disabled>⏪ Rewind</button>
+            <button class="btn" data-fnav="restart" title="Restart procedure" data-scanner-hint="Restart — start this procedure over from its initial state.">↺</button>
+            <button class="btn" data-fnav="stop" title="Stop following" data-scanner-hint="Stop — leave the walkthrough and return to free play.">✕</button>
+          </div>
+          <!-- Scenario continue — shown only when a scenario's commentary is on screen -->
+          <div class="instr-ack" id="instrAckRow" hidden>
+            <button class="ack-btn" id="instrAck" data-scanner-hint="Acknowledge — tell the Instructor you've read this and are ready to continue.">Acknowledge</button>
+            <button class="btn" data-fnav="rewind" title="Rewind — pick a moment on the graph" data-scanner-hint="Rewind — pick a moment on the graph and try a different path from there." disabled>⏪ Rewind</button>
+          </div>
+        </div>
+
+        <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
           <!-- Inject Failure — built by app.js from M4's catalog -->
           <div class="tabpane" data-pane="failures">
             <div id="failList"></div>
@@ -153,40 +253,53 @@
               data-scanner-detail="The plant keeps behaving correctly; only the reading changes. Use it to test how well you know the couplings: pressure and temperature move together, pressurizer level tracks Tavg, the steam generator is the only heat sink. Those relationships keep holding when one channel stops, which is how you find the bad channel.">▸ Advanced instrument failure (instrument × mode × value)</div>
             <div class="adv-fail" id="advFailPanel" hidden></div>
           </div>
-          <!-- Indications — EVERY channel the plant publishes, grouped on the same
-               energy-path spine as the Physics tab, each with its live reading and a
-               checkbox that plots it *(OWNER, 2026-08-08: "Lets change the graph tab to
-               'Indications' and this tells us all the indications in the plant, categorized
-               like the physcs tab. it should also have a checkbox column to add it to the
-               graph.")*. This was the Graph tab, which listed only the ~40 quantities
-               somebody had thought to make plottable and showed none of their values.
-               `run_inspect` fails if an instrument exists with no row here.
-               The WINDOW and CSV EXPORT rows moved to Settings in the same change: this pane
-               is a list of what the plant reads, and two controls that configure the chart
-               itself sat below a scrolling checklist where they were easy to miss. -->
+          <!-- Indications — EVERY channel the plant publishes, grouped on the energy-path
+               spine, each with its live reading and a checkbox that plots it *(OWNER,
+               2026-08-08: "Lets change the graph tab to 'Indications' and this tells us all
+               the indications in the plant, categorized like the physcs tab. it should also
+               have a checkbox column to add it to the graph.")*. This was the Graph tab,
+               which listed only the ~40 quantities somebody had thought to make plottable
+               and showed none of their values. `run_inspect` fails if an instrument exists
+               with no row here.
+
+               SINCE #439 IT CARRIES THE TRUE VALUE TOO, on the same row — the Physics tab
+               is merged into it (spec §3). Two tables in a 360 px column is ~170 px each,
+               which is unreadable, but the deciding argument is that DISAGREEMENT IS NOW
+               FLAGGED rather than left to be noticed by comparing the right pair of rows
+               across two panels. -->
           <div class="tabpane" data-pane="indications"
-            data-scanner-hint="Indications — every reading the plant produces, grouped by system, with a checkbox to put any of them on the strip chart."
-            data-scanner-detail="These are INSTRUMENT readings: they lag, they carry noise, and they can be failed from the Inject Failure tab, so what you see here is what the control room sees rather than what the plant is doing. The Physics tab is the other half — the true state behind these channels — and its rows carry the same checkbox, so you can plot a channel against the quantity it is supposed to be measuring and watch them part company.">
-            <div class="phys-note">What the plant <b>indicates</b> — instrument readings, with
-              lag, noise and any injected sensor failure. The true state behind them is on the
-              <b>Physics</b> tab. Tick a box to trend it on the strip chart.</div>
+            data-scanner-hint="Indications — every reading the plant produces, grouped by system, with the true state beside it and a checkbox to put either on the strip chart."
+            data-scanner-detail="The left value is the INSTRUMENT: it lags, it carries noise, and it can be failed from the Inject Failure tab. The right value is the true state behind that channel — no lag, no noise, unaffected by a failed sensor. When they disagree the row is flagged, which is how a stuck valve announces itself instead of waiting to be spotted. The true column is a debug view: it can be switched off, and it is off by default inside a mission or a campaign, because instrument deception only teaches while you are genuinely fooled.">
+            <div class="phys-note">Every channel the plant publishes — <b>indicated</b> on the
+              left, <b>true state</b> on the right. A flagged row is an instrument that
+              disagrees with the plant. Tick a box to trend it on the strip chart.</div>
+            <div class="ind-tools">
+              <div class="ind-filters" id="indFilters">
+                <button class="on" data-indfilter="all">All</button
+                ><button data-indfilter="paired" title="An instrument and a true value both exist — these can disagree">Paired</button
+                ><button data-indfilter="ind" title="Derived or commanded channels with no true counterpart">Indication only</button
+                ><button data-indfilter="phys" title="True state with no instrument — what the operator can never see">Physics only</button>
+              </div>
+            </div>
+            <!-- DEDICATED, HEADED COLUMNS *(OWNER DIRECTIVE, 2026-08-11: "In indications tab,
+                 Make dedicated columns for the plant indications and physics indications so
+                 they are easier to read. Remove the true values button.")*. The two value
+                 tracks already existed as fixed grid columns; what they lacked was a name,
+                 so the reader had to infer which number was which from a sentence above the
+                 list. This row shares the row grid exactly, so the headings sit over the
+                 columns they head and stay there as the list scrolls. -->
+            <div class="ind-colhead" id="indColHead">
+              <span class="ch-plot" aria-hidden="true"></span>
+              <span class="ch-k">Channel</span>
+              <span class="ch-v" title="What the plant indicates — the instrument reading">Plant</span>
+              <span class="ch-t" title="The true state behind that channel — physics, no lag or noise">Physics</span>
+              <span class="ch-w" aria-hidden="true"></span>
+            </div>
             <div id="indicationsList"></div>
-          </div>
-          <!-- Physics — the TRUE plant state behind the instruments. This is HR1's
-               sanctioned explicit diagnostic overlay, not a second set of gauges:
-               every row reads true_state and nothing here drives anything. Built by
-               app.js from the active plant's profile (PROFILES[plant].physics). -->
-          <div class="tabpane" data-pane="physics"
-            data-scanner-hint="Physics — the true plant state behind the gauges: reactivity, decay heat, clad temperature, voiding, the loop pressure split. Engineering values, not instrument readings."
-            data-scanner-detail="A real control room has none of this — the operator has instruments, and instruments lag, drift and fail. These numbers are what the simulator is actually computing, so use them to understand a transient after the fact rather than to check a gauge during one.">
-            <div class="phys-note">True plant state — what the physics is actually doing.
-              These are <b>not</b> instrument readings: no lag, no noise, and a failed
-              sensor does not change them.</div>
-            <div id="physicsPane"></div>
-            <!-- Simulator performance. Lives here because this tab is already the
-                 under-the-hood one, and because a flicker report is worth nothing without
-                 it: compute-bound, render-bound and neither need different fixes and look
-                 identical from the outside. Populated by ui/perf.js at 1 Hz; the same
+            <!-- Simulator performance came across with the Physics tab (#439). It belongs
+                 wherever the under-the-hood numbers are, and a flicker report is worth
+                 nothing without it: compute-bound and render-bound need different fixes and
+                 look identical from outside. Populated by ui/perf.js at 1 Hz; the same
                  numbers ride along in a bug report's session bundle. -->
             <div class="g-section-title" style="margin-top:14px">Simulator performance</div>
             <div class="perf-panel" id="perfPanel"
@@ -196,56 +309,65 @@
               <div class="perf-rows" id="perfRows"></div>
             </div>
           </div>
-          <!-- Operate — session controls (default tab) -->
-          <div class="tabpane on" data-pane="operate">
-            <div class="set-row"><span class="k">Plant</span><span class="mono" id="simPlantLbl">—</span></div>
-            <div class="set-row"><span class="k">Mode</span><span class="mono" id="simModeLbl">Free Play</span></div>
-            <div class="set-row" data-scanner-hint="Plant &amp; Mission — choose the reactor, then free play (with a starting condition) or any guided content this build offers.">
-              <span class="k">Change</span><button class="btn" id="missionBtn">Plant &amp; Mission…</button></div>
-            <!-- Auto-checklist picker (Path 3) — free play only; procedure runs in the
-                 instructor card with steps that check themselves off the instruments -->
-            <div class="ckl-picker" id="instrCklRow" hidden>
-              <div class="set-row">
-                <span class="k">Checklists</span>
-                <button class="btn" id="cklOpenBtn" data-scanner-hint="Checklists — call up a procedure as a checklist in the chat; each step checks itself off the instruments while you operate."
-                    data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before.">Checklists…</button>
-              </div>
-              <div class="ckl-menu" id="cklMenu" hidden></div>
+          <!-- The PHYSICS TAB IS MERGED INTO INDICATIONS (#439, spec §3). Its curated rows
+               are not lost: `PROFILES[plant].physics` is untouched and each row's authored
+               `v()` prose now renders the TRUE column of the series it is bound to by `ser:`.
+               That is deliberate — "3.12 % · 9.4 MWt" is a better true value than the raw
+               series formatter's "3 %", and the rows are already gated by run_inspect.
+               #physicsPane is gone; buildPhysics/renderPhysics are no-ops kept so the three
+               call sites do not need hunting down. -->
+          <!-- Checklists (default tab, #439). REFERENCE class: it grades the live plant
+               as you operate, so it must never pause. Ranked above the Manual on purpose
+               — the manual serves depth-seekers, the average player wants a procedure to
+               follow (spec §9). -->
+          <div class="tabpane" data-pane="checklists">
+            <div class="ckl-picker" id="instrCklRow">
+              <div class="phys-note">Follow a real procedure step by step. Each step checks
+                <b>itself</b> off the instruments while you operate, and hovering a step glows
+                the controls it names on the board.</div>
+              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Checklists — pick a procedure and it runs as a checklist in the Instructor; each step checks itself off the instruments while you operate."
+                  data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always here and always in the same order, so a procedure is where you last saw it."></div>
             </div>
-            <div class="set-row"><span class="k">Reset</span><button class="btn" data-act="reset">Reset to initial state</button></div>
-            <div class="set-row" id="featureRow" hidden data-scanner-hint="Features — which parts of the simulator this build offers. Preview features are playable here but hidden from the public website until they are vetted."
-              data-scanner-detail="The same bundle ships everywhere; a release channel decides what it offers. Preview content is finished in the build but not yet played end to end by the author, so the public site shows a coming-soon panel in its place.">
-              <span class="k">Features</span><button class="btn" id="featureBtn">Features…</button></div>
-            <div class="set-row"><span class="k">Save / Load</span><span><button class="btn" data-act="save">Save</button> <button class="btn" data-act="load">Load</button></span></div>
-            <input type="file" id="loadFile" accept="application/json" style="display:none">
+            <div class="phys-note ckl-busy" id="cklBusyNote" hidden>The Instructor is running
+              content below. Stop it to pick a checklist.</div>
           </div>
-          <!-- Settings — Values / Terminology / Physics Overlay removed (#277):
-               unused on the shipping PWR board (Values only drove the legacy
-               RBMK/BWR All view; Terminology and Physics Overlay had no useful
-               player path on the current board). Units + FF dropout + About stay. -->
-          <div class="tabpane" data-pane="settings">
+          <input type="file" id="loadFile" accept="application/json" style="display:none">
+        </div>
+      </div>
+      <!-- Settings — MODAL class (#439, spec §1): it covers the board, so it pauses.
+           Was a tab in the strip, which put global preferences in the same lane as the
+           live reference panels and, worse, put the CHART's window and export behind a
+           surface that now stops the plant. Those two moved onto the chart itself in the
+           same change: adjusting how you are watching a transient must never pause the
+           transient. Values / Terminology / Physics Overlay were removed in #277. -->
+      <div class="mission-overlay" id="settingsOverlay" hidden>
+        <div class="mission-modal set-modal">
+          <div class="mission-head">
+            <div class="mission-title">Settings</div>
+            <button class="btn" id="settingsClose" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="set-body">
             <div class="g-section-title">Display</div>
             <div class="set-row"><span class="k">Units</span><div class="seg" id="unitsSeg"><button class="on" data-units="US">US</button><button data-units="SI">SI</button></div></div>
-            <!-- Strip chart — the chart's own configuration. WHAT to plot stays on the
-                 Indications and Physics tabs, beside the values themselves; how the chart is
-                 SET UP lives here. The window buttons are relabelled by app.js as the ladder
-                 follows time acceleration, so do not hard-code their text. -->
-            <div class="g-section-title" style="margin-top:12px">Strip chart</div>
-            <div class="set-row" data-scanner-hint="Strip chart window — how much plant history the chart shows at once. The ladder follows the time-acceleration setting, so the widest rung is always worth about the same in wall-clock time."
-              data-scanner-detail="The plot keeps more history than it displays, so widening the window shows trend that was already recorded rather than starting a new trace. At fast time acceleration the rungs stretch: a 30-minute window empties in half a second of real time at 3600x, which is why the choices change with the speed control."><span class="k">Window</span>
-              <div class="seg" id="graphWindow"><button data-win="60">1m</button><button class="on" data-win="300">5m</button><button data-win="600">10m</button><button data-win="1800">30m</button></div>
-            </div>
-            <div class="set-row" data-scanner-hint="Export CSV — writes the strip chart's recorded history to a file, one column per plotted parameter."
-              data-scanner-detail="Exports what the buffer holds, not just the visible window, and only the parameters currently selected for the plot. Use it to take a transient away and look at it in a spreadsheet."><span class="k">Export</span><button class="btn" data-act="export-csv">CSV ⭳</button></div>
             <div class="g-section-title" style="margin-top:12px">Simulation</div>
             <div class="set-row" data-scanner-hint="Fast-forward dropout — On drops the clock back to real time when something needs you: a scram, a new failure, or the first alarm on a quiet board. Later alarms in a casualty do not stop it. Off keeps fast-forward running through everything."
               data-scanner-detail="Only the FIRST alarm on an otherwise quiet board drops the clock — once a casualty is under way, the following alarms would drop you out every few seconds and the option would be useless. Off is the right setting when you are deliberately fast-forwarding through a long transient such as a xenon burn-off."><span class="k">Fast-forward dropout</span><div class="seg" id="attnSeg"><button class="on" data-attn="on">On</button><button data-attn="off">Off</button></div></div>
-            <!-- The consent prompt promises this row exists, so it has to. The whole
-                 block hides itself when no endpoint was stamped: a toggle for something
-                 that cannot happen is worse than no toggle, because it implies it can. -->
-            <div class="set-row" id="telemetryRow" hidden
-              data-scanner-hint="Usage data — anonymous counts of which controls and panels you use and how far through a startup you get, so the confusing parts can be found without waiting for feedback. Never any text you type, never a plant recording, and nothing linking one visit to another."
-              data-scanner-detail="Off sends nothing at all. Bug reports you send from Contact are separate and always a deliberate choice. The full list of events is in site/telemetry.js, which ships with the source."><span class="k">Share usage data</span><div class="seg" id="telSeg"><button data-tel="on">On</button><button data-tel="off">Off</button></div></div>
+            <!-- The "Share usage data" row was REMOVED from Settings 2026-08-11 by owner
+                 instruction. The OPT-OUT ITSELF IS NOT GONE — it moved to privacy.html, the
+                 page that discloses the collection and, at line 85, promises the control
+                 exists. Deleting the row without moving it would have left the live public
+                 site telling visitors to use a Settings control that is not there, which is
+                 a false statement to a visitor rather than an untidy menu. RD.Telemetry's
+                 consent API is untouched; see privacy.html and site/telemetry.js. -->
+            <!-- Session management, out of the dissolved Operate tab (#439). It sits with
+                 the other things you do while NOT operating, which is exactly why this
+                 window pausing costs nothing. Reset is not here: it belongs with the
+                 session bar that describes what would be reset (#443, spec §9). -->
+            <div class="g-section-title" style="margin-top:12px">Session</div>
+            <div class="set-row"><span class="k">Save / Load</span><span><button class="btn" data-act="save">Save</button> <button class="btn" data-act="load">Load</button></span></div>
+            <div class="set-row" id="featureRow" hidden data-scanner-hint="Features — which parts of the simulator this build offers. Preview features are playable here but hidden from the public website until they are vetted."
+              data-scanner-detail="The same bundle ships everywhere; a release channel decides what it offers. Preview content is finished in the build but not yet played end to end by the author, so the public site shows a coming-soon panel in its place.">
+              <span class="k">Features</span><button class="btn" id="featureBtn">Features…</button></div>
             <div class="g-section-title" style="margin-top:12px">About</div>
             <div class="set-row" data-scanner-hint="About — the alpha disclaimer, the software licence, and what changed in each release. Works offline in the portable build too."
               data-scanner-detail="These open in-app popups packed from the site pages (legal.html, changelog.html). A single-file download has no sibling site pages, so the text ships inside the control room (#259).">
@@ -263,6 +385,50 @@
       <!-- Plant & Mission window — plant selection + free play / campaign /
            scenarios / walkthroughs, nested in that order. Content built by
            app.js; opened from the Sim tab (⚛️ Plant & Mission…). -->
+      <!-- CHART SETTINGS WINDOW (#454) — "like the plant selection menu", so it is literally
+           the same chrome: .mission-overlay / .mission-modal / .mission-head, and
+           .mission-body's existing 260px + 1fr grid puts the chart's own options in the left
+           column and the channel list in the right.
+
+           THE CHANNEL LIST IS THE REASON IT HAD TO GET BIG. 120 channels each carrying two
+           live readings and two selectors do not fit a 300 px anchored popover — the version
+           that tried shipped twice with its list unreachable, once clipped by the chart and
+           once below the fold. Content built by app.js. -->
+      <div class="mission-overlay" id="chartOverlay" hidden>
+        <div class="mission-modal">
+          <div class="mission-head">
+            <div class="mission-title">Chart settings</div>
+            <button class="btn" id="chartOptsClose" aria-label="Close">✕ Close</button>
+          </div>
+          <div class="mission-body">
+            <div class="cs-opts">
+              <div class="g-section-title">Window</div>
+              <div class="seg" id="chartOptsWin"></div>
+              <!-- OPTIONS THE CHART ACTUALLY HAS. The window consolidates existing controls;
+                   it is not a place to invent new ones. A "numeric rows when lanes overflow"
+                   toggle was drafted here and dropped: lane count and row count are solved
+                   together against a measured 36 px floor (laneSplit), and a switch that
+                   overrode half of that solve would let the player produce a layout the
+                   geometry says does not fit. -->
+              <div class="g-section-title">Options</div>
+              <label class="cs-opt"><input type="checkbox" id="coSoe" checked> Event ribbon (sequence of events)</label>
+              <div class="g-section-title">Export</div>
+              <button class="btn ghost" data-act="export-csv">CSV ⭳ — trace and events</button>
+              <div class="g-section-title">Plotted</div>
+              <div class="cs-count" id="coCount"></div>
+              <p class="cs-note">Pick a side for each channel: <b>Indication</b> is what the
+                gauge reads, <b>Physics</b> is what the plant is actually doing. A channel set
+                to both draws its physics as a dashed line in the same lane.</p>
+            </div>
+            <div class="cs-right">
+              <input type="search" id="coFilter" class="cs-filter" placeholder="Filter channels…" autocomplete="off">
+              <div class="cs-head"><span>Channel</span><span>Indication</span><span>Physics</span></div>
+              <div class="cs-list" id="coList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="mission-overlay" id="missionOverlay" hidden>
         <div class="mission-modal">
           <div class="mission-head">
@@ -275,6 +441,12 @@
               <div class="mp-modes" id="mpModes"></div>
               <div class="mp-content" id="mpContent"></div>
             </div>
+          </div>
+          <!-- Session footer (#443): reset is "restart what the session bar describes",
+               so it lives with the window that describes it — but OUTSIDE #mpContent,
+               which means "the selected mode's content". -->
+          <div class="mp-session"><div class="g-section-title">This session</div>
+            <div id="mpSession"></div>
           </div>
         </div>
       </div>
@@ -326,18 +498,18 @@
             <div class="help-sec">
               <h4>Learn on a real plant model</h4>
               <p>The left side is the plant — operate rods, pumps, valves, feed, and the turbine
-              there. The right column is the simulator: time, session, Instructor / checklists,
-              tools, and the System Scanner. Same high-fidelity physics whether you are learning
-              the basics or practicing failures.</p>
+              there. The right column is the simulator: time, the session bar, the reference
+              tabs and the Instructor. The System Scanner is the line under the board. Same
+              high-fidelity physics whether you are learning the basics or practicing failures.</p>
             </div>
             <div class="help-sec">
               <h4>Where to start</h4>
-              <p><b>Play</b> starts the clock (the board shows SIMULATION PAUSED until you do).<br>
+              <p><b>Play</b> starts the clock — the ▶ button flashes whenever the plant is stopped. <b>F11</b> goes fullscreen, which suits the board.<br>
               <b>Instructor</b> (right column) — free-play coaching and, later, guided voices. Use <b>−</b> to minimize it.<br>
-              <b>Checklists</b> (Operate tab) — interactive procedures that check themselves off the instruments.<br>
+              <b>Checklists</b> (first tab) — interactive procedures that check themselves off the instruments.<br>
               <b>Manual</b> — full operator reference and written procedures.<br>
-              <b>Plant &amp; Mission</b> (under the clock) — starting condition and guided content.<br>
-              <b>System Scanner</b> — hover anything on the board for what it is and how to use it.</p>
+              <b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.<br>
+              <b>System Scanner</b> (the line under the board) — hover anything for what it is and how to use it.</p>
             </div>
             <div class="help-sec">
               <h4>Colors on this Physics Diagram</h4>
@@ -380,7 +552,8 @@
       </div>
 
       <!-- Quick tour — coach-marks: highlight a control and tip next to it.
-           Offered from SIMULATION PAUSED and Help. Not a centered modal. -->
+           Offered from Help (the SIMULATION PAUSED veil that also offered it was
+           removed 2026-08-11). Not a centered modal. -->
       <div class="tour-root" id="tourRoot" hidden>
         <div class="tour-scrim" id="tourScrim" aria-hidden="true"></div>
         <div class="tour-spot" id="tourSpot" aria-hidden="true"></div>
@@ -451,6 +624,13 @@
             <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
               expected, and what the board actually showed. If it is a physics or procedure
               question, the plant mode and the readings you were reading it from.</div>
+            <!-- ABOVE the input, deliberately (#438, spec §10): a warning under a text box is
+                 read after typing. The audience includes working nuclear professionals — name
+                 the categories; a generic "no confidential information" gets skimmed past. -->
+            <div class="fb-warn" id="fbWarn"><strong>Do not include restricted information.</strong>
+              No proprietary plant data, no safeguards or security information, no
+              export-controlled technical data, no personal information. Describe the simulator,
+              not a real facility.</div>
             <!-- SEND IT FROM HERE. The whole point (owner, 2026-08-07: "If it's that easy
                  to send people might actually do it") — a report that needs an email client,
                  a file attachment and a paragraph of context is a report nobody writes. The
@@ -462,10 +642,13 @@
                 placeholder="The rods would not withdraw even though the plant was at hot standby…"></textarea>
               <label class="fb-attach"><input type="checkbox" id="fbAttach" checked>
                 Attach this session's recording</label>
+              <!-- Disclose what is attached (#438, spec §10): the concrete contents, filled in
+                   from the recorder when the form opens. Silently attaching session data is the
+                   wrong default for this audience; disclosure + the untick box is the fix. -->
+              <div class="fb-hint" id="fbAttachSum">The recording is plant readings, alarms and
+                the commands you issued this session, so what you saw can be replayed. Nothing
+                about you or your device. Untick it to send just your message.</div>
               <button class="btn fb-send-btn" id="fbSend">Send report</button>
-              <div class="fb-hint">The recording is plant readings, alarms and the commands you
-                issued this session, so what you saw can be replayed. Nothing about you or your
-                device. Untick it to send just your message.</div>
             </div>
             <div class="fb-field fb-diag">
               <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>
@@ -494,14 +677,6 @@
       <!-- No data-scanner-hint on this panel: the block deliberately does not
            describe itself (see inspectResolve) — hovering it would wipe the text
            you are reading and steal the click on its own manual link. -->
-      <div class="panel scanner" id="scannerPanel">
-        <div class="panel-title">
-          <span>System Scanner</span>
-          <button class="scan-exp" id="scannerToggle" aria-expanded="false"
-                  title="Show the full description when you hover">Full description</button>
-        </div>
-        <div class="body" id="scanner"><span class="idle">Hover or tap anything to see what it does.</span></div>
-      </div>
     </div>
   </div>
 
@@ -602,6 +777,8 @@
   <script src="md_render.js"></script>
   <script src="manual_md.js"></script>
   <!-- PWR learning board — data-driven synoptic (Claude Design import); mounted by app.js when plant_id === 'pwr' -->
+  <script src="chart_math.js"></script>      <!-- RD.ChartMath: the held-axis policy, shared by the chart and the vital tiles (#393) -->
+  <script src="highlight_bus.js"></script>   <!-- RD.Highlight: the one highlight bus (#444) -->
   <script src="diagram/board/board_h.js"></script>
   <script src="diagram/board/std_pipe.js"></script>
   <script src="diagram/board/pwr_board_data.js"></script>
@@ -625,6 +802,7 @@
   <script src="diagram/board/pwr_board.js"></script>
   <script src="site_docs.js"></script>  <!-- packed disclaimer / license / changelog (#259) -->
   <script src="diag_recorder.js"></script>  <!-- session recorder behind the bug report; app.js constructs one at load -->
+  <script src="event_stream.js"></script>   <!-- RD.Events: the sequence-of-events stream (#437) -->
   <script src="app.js"></script>
 </body>
 </html>

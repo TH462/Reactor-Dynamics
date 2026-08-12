@@ -145,13 +145,15 @@
   // They live on .app (not inside the diagram) because they straddle two grid tracks.
   function ensureSplitters(app) {
     if (!splitV) {
-      splitV = h('div', { className: 'bd-split bd-split-v', title: 'Drag to resize the simulator panel' });
+      splitV = h('div', { className: 'bd-split bd-split-v', title: 'Drag to resize the simulator panel — double-click to reset' });
       splitV.addEventListener('pointerdown', function (e) { beginDrag(e, app, 'v'); });
+      splitV.addEventListener('dblclick', function () { resetSplit(app, 'v'); });
       app.appendChild(splitV);
     }
     if (!splitH) {
-      splitH = h('div', { className: 'bd-split bd-split-h', title: 'Drag to resize the trend / alarm strip' });
+      splitH = h('div', { className: 'bd-split bd-split-h', title: 'Drag to resize the trend / alarm strip — double-click to reset' });
       splitH.addEventListener('pointerdown', function (e) { beginDrag(e, app, 'h'); });
+      splitH.addEventListener('dblclick', function () { resetSplit(app, 'h'); });
       app.appendChild(splitH);
     }
   }
@@ -212,9 +214,33 @@
     el.addEventListener('pointercancel', up);
   }
 
+  /* CLAMP ON LOAD, not just on drag (#445). A persisted split is a number written by an
+   * older layout: the right column lost the Scanner panel in #439 and the bottom row gained
+   * the lane stack and the SOE ribbon in #440/#442, so a value saved before those is a
+   * geometry that no longer exists. Re-clamping to the current bounds costs nothing and
+   * turns "the board opened wrong after an update" into "the board opened at the nearest
+   * legal size". */
   function applyManual(app) {
-    if (manual.simW != null) app.style.setProperty('--simcol-w', manual.simW + 'px');
-    if (manual.bottomH != null) app.style.setProperty('--bottomrow-h', manual.bottomH + 'px');
+    if (manual.simW != null) {
+      var w = Math.max(320, Math.min(SIMCOL_DRAG_MAX, manual.simW));
+      if (w !== manual.simW) { manual.simW = w; saveManual(); }
+      app.style.setProperty('--simcol-w', w + 'px');
+    }
+    if (manual.bottomH != null) {
+      var hgt = Math.max(BOTTOM_MIN, Math.min(BOTTOM_MAX, manual.bottomH));
+      if (hgt !== manual.bottomH) { manual.bottomH = hgt; saveManual(); }
+      app.style.setProperty('--bottomrow-h', hgt + 'px');
+    }
+  }
+  /* DOUBLE-CLICK RESETS THE AXIS (#445). Users will drag themselves into a corner — a
+   * 900 px sim column, or a bottom strip taller than the board — and the way back has to be
+   * obvious. Clearing the manual value also hands the axis back to fitColumns, which is the
+   * state the board shipped in, not merely a remembered size. */
+  function resetSplit(app, axis) {
+    if (axis === 'v') { delete manual.simW; app.style.removeProperty('--simcol-w'); }
+    else { delete manual.bottomH; app.style.removeProperty('--bottomrow-h'); }
+    saveManual();
+    layout();
   }
 
   function layout() {
@@ -852,35 +878,22 @@
       stage.appendChild(el);
     });
 
-    // Clicking the paused veil resumes (#237, owner) — the box is the most obvious
-    // thing on a paused screen, so it is also the resume control. ctx.resume is
-    // supplied by the shell (it owns the play button state); without it the veil
-    // stays a passive notice. Tour is a separate button so it does not resume.
-    var pauseKids = [
-      h('div', { className: 'pwr-paused-main' }, 'SIMULATION PAUSED'),
-      h('div', { className: 'pwr-paused-sub' }, ctx && ctx.resume
-        ? 'Click here or press ▶ Play to start'
-        : 'Press ▶ Play to start')
-    ];
-    if (ctx && ctx.openTour) {
-      pauseKids.push(h('button', {
-        type: 'button',
-        className: 'pwr-paused-tour',
-        'data-tour': '1',
-        onClick: function (e) {
-          if (e && e.stopPropagation) e.stopPropagation();
-          ctx.openTour();
-        }
-      }, 'Take a quick tour'));
-    }
-    pausedEl = h('div', { className: 'pwr-board-paused' },
-      h('div', { className: 'pwr-paused-box' + (ctx && ctx.resume ? ' pwr-paused-click' : ''),
-        onClick: function (e) {
-          if (e && e.target && e.target.closest && e.target.closest('[data-tour]')) return;
-          if (ctx && ctx.resume) ctx.resume();
-        } }, pauseKids));
+    /* THE "SIMULATION PAUSED" VEIL WAS REMOVED 2026-08-11 *(OWNER DIRECTIVE: "Remove the
+     * sim paused popup at the start. Sim should start running not paused. The plant
+     * selection menu has replaced its function.")*.
+     *
+     * It was a full-board curtain that existed because the plant used to load stopped and
+     * needed to say so. The plant now loads RUNNING, and the Plant & Mission window is
+     * what a cold load opens on, so the veil's whole job is done by something else. Its
+     * two affordances survive elsewhere and are NOT lost: click-to-resume is the ▶ button
+     * (which now flashes while paused, so the cue moved rather than vanished), and the
+     * quick tour is on the Help menu, which is where it was always also offered.
+     *
+     * `pausedEl` stays declared and null. Every reference to it is guarded, and a null is
+     * a smaller change than deleting a variable five call sites read. */
+    pausedEl = null;
     wrap.appendChild(stage);
-    wrap.appendChild(pausedEl);
+    // (the paused veil used to be appended here — removed 2026-08-11, see above)
     host.appendChild(wrap);
 
     var d = driver();
@@ -935,15 +948,26 @@
     ports = {}; nudge = {}; pipeFlow = []; pipeTempEls = []; lastSnap = null;
   }
 
+  /* Freeze/unfreeze the board. Split out of render() 2026-08-11 because the thing that
+   * needs it most — a pause — is precisely when render() stops being called. `.bd-frozen`
+   * carries `animation-play-state: paused !important` across the whole stage subtree, so
+   * one class settles every animation including the SVG pipe dashes, which set their own
+   * inline play state and would otherwise win. */
+  function setRunning(running) {
+    if (!stage) return;
+    if (pausedEl) pausedEl.className = 'pwr-board-paused' + (running ? '' : ' on');
+    if (running) stage.classList.remove('bd-frozen'); else stage.classList.add('bd-frozen');
+  }
+
   function render(s) {
     if (!stage || !s) return;
     lastSnap = s;
     var d = driver();
 
-    // pause freeze
-    var running = !(s.metadata && s.metadata.running === false);
-    pausedEl.className = 'pwr-board-paused' + (running ? '' : ' on');
-    if (running) stage.classList.remove('bd-frozen'); else stage.classList.add('bd-frozen');
+    // Pause freeze. Snapshot-driven, and NOT the only driver: a pause stops the
+    // broadcast, so this path never runs at the moment it matters most. The shell
+    // pushes setRunning() directly on every play/pause. See setRunning below.
+    setRunning(!(s.metadata && s.metadata.running === false));
 
     if (d) {
       // values
@@ -1045,6 +1069,8 @@
     unmount: unmount,
     render: render,
     isMounted: function () { return !!stage; },
+    // The shell pushes play/pause here — see setRunning's header for why render() cannot.
+    setRunning: setRunning,
     // Programmatic momentary rod drive (keyboard ↑/↓) — delegates to the plant driver's
     // tap-or-hold machine so speed (S/M/F), tap-vs-hold and the pressed cue all match a click.
     driveRod: function (group, direction, down) { var d = driver(); return !!(d && d.driveRod && d.driveRod(group, direction, down)); },

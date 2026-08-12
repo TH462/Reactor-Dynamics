@@ -22,6 +22,17 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-08-11 (#460 — one out for the hydrogen bullet's rescued trap)
+
+Plant-specific and loud: calling the wrong one produces a level that is tens of percent wrong
+with the controller sitting exactly on setpoint, which the level probes redden on.
+
+- **The pzr level PROGRAM and the level PHYSICS are two different lines** (#289): every consumer
+  of "the program" must call `levelProgram`, not `levelBase` — the latter read −38.5 % with the
+  controller exactly on setpoint. A program maximum is a limit, not part of the control law.
+
+---
+
 ## Evicted 2026-08-10 (the first application of the cap: 30 → 25)
 
 All five are PLANT-SPECIFIC and all five are pinned by a suite that reddens if the number moves.
@@ -53,3 +64,36 @@ All five are PLANT-SPECIFIC and all five are pinned by a suite that reddens if t
   pressurizes the building MORE than a 10 % break (relief is steam at weight 1.0; break liquid
   is flash-gated), and an SGTR reads NOTHING — it discharges into the SG, and since stage 3 that
   fence extends to hydrogen (geometry-gated transport). `press_gain` is fitted and says so.
+
+## Evicted 2026-08-10b (the cap bound again at 26, adding #437/#439/#393's trap)
+
+- **The two Hot Standby starting points are DIFFERENT PLANTS for a startup** (from the standing
+  list, #303): `cold_shutdown` arrives at Mode 3 at **857 ppm**, `hot_zero_power` ships **683** —
+  ~561 critical rod steps against 319, and the manual is written for the latter. Only
+  `run_procedures_chain` crosses that seam, which is what makes this evictable under the
+  criterion above: every number in it is pinned by a suite that reddens if it moves, and the
+  seam has a named gate standing on it. **`boron_ppm` ending at 2500 is the fingerprint of an
+  unintended ECCS injection.** The moderator model was re-done twice — a **1400 ppm crossover**
+  or **−20 pcm/°C** in any document is stale (#260/#263).
+
+  *If a startup goes wrong in a way this would have warned about, that is the evidence to put it
+  back — say so in the session log rather than quietly re-adding it.*
+
+## Evicted 2026-08-11 (the develop x backshop merge put both lists over their caps)
+
+Two lanes each added a themes bullet the same night, so the rotation went to 6 against its 5,
+and rescuing the evicted one's trap took the standing list to 26 against its 25. Both caps
+bound at once; this is what came out.
+
+- **New PWR instruments ship `noise: 0`, and that silently kills their `noisy` failure**
+  (from the standing list): the instrument PRNG is one cross-step stream, so an appended
+  instrument must declare `noise_failure` or the injected failure has nothing to scale.
+  Evictable under the criterion above because **`test/run_m4.js` covers it** — an
+  undeclared `noise_failure` shows up there as a `noisy` injection that changes nothing.
+
+- **The bug report's RECORDING was the broken instrument** (the whole #432/#431 themes
+  bullet, 2026-08-09). Sampling ran once per BROADCAST, so a 3600x LOCA was two rows under
+  a manifest hardcoded to `sample_hz: 1`. Its trap — the fine drain sitting inside the rAF
+  paint, one frame late, 1475 rows in and 35 recorded — is **rescued to the standing list**
+  rather than retired, because no gate reaches it. The rest is `run_diag_bundle`'s subject
+  and is pinned by its 31 checks.

@@ -13,6 +13,24 @@ var PORT = 9750 + Math.floor(Math.random() * 50);
 var ENGINES = ['pwr', 'rbmk_pre', 'rbmk_post', 'bwr'];
 var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
 
+/* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD since 2026-08-11 *(OWNER DIRECTIVE: "It
+ * should always the the first thing someone sees when loading the sim.")*, so every gate
+ * navigation has to dismiss it exactly as a player does.
+ *
+ * It is deliberately NOT exempted by a URL parameter. A bypass list is what hid the window
+ * from every real visitor: it contained `engine=`, and the site links `?engine=pwr` from
+ * both entry points, so the one path nobody took — a bare shell.html — was the only path
+ * that showed it, and that was the path my own check had used. A gate that skipped the
+ * window would be testing a front door no player has. */
+async function dismissMission(page) {
+  try {
+    if (await page.isVisible('#missionOverlay')) {
+      await page.click('#missionClose');
+      await page.waitForTimeout(250);
+    }
+  } catch (e) { /* not mounted yet on some early navigations */ }
+}
+
 /* Recently-added controls that must render on the shipped UI (data-act wiring).
  * PWR has NO entries here on purpose: data-act buttons are emitted only by
  * populateControlBar() into #pdCtlRow (ui/app.js:374,379,384), and the PWR returns
@@ -79,6 +97,7 @@ async function screenshot(page, engine, view) {
   page.removeAllListeners('pageerror');
   page.on('pageerror', function (e) { errors.push(String(e)); });
   await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(800);
   var file = path.join(SCRATCH, 'ui-' + engine + '-' + view + '.png');
   await page.screenshot({ path: file, fullPage: true });
@@ -127,6 +146,7 @@ async function screenshot(page, engine, view) {
 async function testUnitsAndInstructor(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&view=primary', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(500);
 
   var usUnit = await page.locator('#gauge-press [data-val]').textContent();
@@ -225,6 +245,7 @@ async function testUnitsAndInstructor(page) {
   await page.waitForTimeout(200);
 
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&follow=pwr_loss_of_feedwater', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForFunction(function () {
     var el = document.getElementById('instrCurrent');
     if (!el || /Standing by/.test(el.textContent)) return false;
@@ -277,6 +298,7 @@ async function testSteamFeedPair(page) {
   var read = async function (qs) {
     await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&init=hot_full_power&run=1' + qs,
       { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
     await page.waitForTimeout(1200);
     return page.evaluate(function () {
       var t = function (id) {
@@ -428,6 +450,7 @@ async function testTrendPreseed(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   // The run is sliced; give it room on a loaded CI box. It is ~1.9 s of work.
   await page.waitForTimeout(12000);
   var st = await page.evaluate(function () {
@@ -457,11 +480,360 @@ async function testTrendPreseed(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE CHART SETTINGS WINDOW (#454) — large, pausing, every channel with its live value, and
+ * a per-row indication / physics / both choice.
+ *
+ * EVERY CHECK HERE IS A DEFECT THAT ALREADY SHIPPED, in this feature, in one day:
+ *
+ *   1. REACHABILITY. The anchored popover this replaces shipped TWICE with its channel list
+ *      unreachable — first clipped by the chart, then below the fold — and both times a
+ *      check that counted rows passed, because 120 rows existed and none could be seen. So
+ *      this measures the modal's RECT against the viewport and the list's own height.
+ *   2. PAUSE, ALL THREE CASES. Open must stop the plant; close must start it; and close must
+ *      NOT start a plant the player had already stopped themselves. Only the third case
+ *      tests the `pauseWhy` reason map, which is the thing that makes the rule expressible
+ *      at all — a single boolean passes the first two and fails the third silently.
+ *   3. 'BOTH' DRAWS TWO TRACES, and the lane floor still holds — MEASURED FROM THE DRAWN
+ *      LANES. `plot / lanes` is not the lane height: that computation once reported 56 px
+ *      where the truth was 38, which is how a floor gets certified while being violated.
+ *   4. THE VALUES MATCH THE INDICATIONS TAB. They are supposed to come from the same
+ *      functions; comparing the rendered text is what proves they still do.
+ *   5. sideOf's TRUTH TABLE, in-page. ui/app.js is a browser IIFE and cannot be require()d,
+ *      so the resolver's edge cases ride here rather than in a Node runner. */
+async function testChartSettings(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.waitForTimeout(1500);
+
+  // ---- 1. it opens, and the list is actually on screen -------------------------------
+  await page.click('#chartOptsBtn');
+  await page.waitForTimeout(400);
+  var geo = await page.evaluate(function () {
+    var ov = document.getElementById('chartOverlay');
+    var modal = ov ? ov.querySelector('.mission-modal') : null;
+    var list = document.getElementById('coList');
+    if (!ov || !modal || !list) return { missing: true };
+    var m = modal.getBoundingClientRect(), l = list.getBoundingClientRect();
+    return {
+      hidden: ov.hidden,
+      m: { l: m.left, t: m.top, r: m.right, b: m.bottom },
+      vw: window.innerWidth, vh: window.innerHeight,
+      listH: l.height, listScroll: list.scrollHeight,
+      rows: list.querySelectorAll('.cs-row').length,
+      picks: list.querySelectorAll('.cs-pick input').length,
+    };
+  });
+  if (geo.missing) throw new Error('#chartOverlay / .mission-modal / #coList did not render');
+  if (geo.hidden) throw new Error('⚙ did not open the chart settings window (#chartOverlay still hidden)');
+  if (geo.m.l < 0 || geo.m.t < 0 || geo.m.r > geo.vw + 1 || geo.m.b > geo.vh + 1) {
+    throw new Error('the chart settings window is OUTSIDE the viewport: modal ' +
+      JSON.stringify(geo.m) + ' against ' + geo.vw + 'x' + geo.vh + '. This is the defect the ' +
+      'anchored popover shipped with twice — see #454.');
+  }
+  if (!(geo.listH > 100)) {
+    throw new Error('the channel list has no usable height (' + Math.round(geo.listH) + ' px) — ' +
+      'it rendered ' + geo.rows + ' rows nobody can see. Counting rows is what missed this before.');
+  }
+  if (!(geo.rows > 50) || geo.picks !== geo.rows * 2) {
+    throw new Error('expected every channel listed with TWO selectors: ' + geo.rows + ' rows, ' +
+      geo.picks + ' selectors (want ' + (geo.rows * 2) + ').');
+  }
+  log.push('window: modal ' + Math.round(geo.m.r - geo.m.l) + 'x' + Math.round(geo.m.b - geo.m.t) +
+    ' inside ' + geo.vw + 'x' + geo.vh + '; list ' + Math.round(geo.listH) + ' px tall, ' +
+    Math.round(geo.listScroll) + ' px of content, ' + geo.rows + ' rows, ' + geo.picks + ' selectors');
+
+  // ---- 2a. opening PAUSED the plant, closing starts it again ------------------------
+  var paused = await page.evaluate(function () { return document.getElementById('playBtn').classList.contains('paused'); });
+  if (!paused) throw new Error('opening the chart settings window did NOT pause the plant (#454 requirement 2)');
+  await page.click('#chartOptsClose');
+  await page.waitForTimeout(500);
+  var after = await page.evaluate(function () {
+    return { hidden: document.getElementById('chartOverlay').hidden,
+             paused: document.getElementById('playBtn').classList.contains('paused') };
+  });
+  if (!after.hidden) throw new Error('✕ Close did not close the chart settings window');
+  if (after.paused) throw new Error('closing the chart settings window did not resume the plant');
+  log.push('pause: open stops the plant, close starts it');
+
+  // ---- 2b. …but NOT a plant the player had already stopped --------------------------
+  // The case a single boolean cannot express. `user` and `modal` are separate holds, so
+  // closing releases only the modal's and finds `user` still standing.
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  await page.click('#chartOptsBtn');
+  await page.waitForTimeout(300);
+  await page.click('#chartOptsClose');
+  await page.waitForTimeout(500);
+  var stillPaused = await page.evaluate(function () { return document.getElementById('playBtn').classList.contains('paused'); });
+  if (!stillPaused) {
+    throw new Error('closing the chart settings window RESUMED a plant the player had paused ' +
+      'themselves — the `user` hold was dropped. See the pauseWhy reason map in ui/app.js.');
+  }
+  await page.click('#playBtn');                    // hand the plant back running
+  await page.waitForTimeout(300);
+  log.push('pause: a player-paused plant stays paused through open/close');
+
+  // ---- 3. a row set to BOTH draws two traces, and the lane floor still holds --------
+  var before = await page.evaluate(function () { return document.querySelectorAll('#chartCanvas polyline').length; });
+  await page.click('#chartOptsBtn');
+  await page.waitForTimeout(300);
+  await page.evaluate(function () {
+    var row = document.querySelector('.cs-row[data-cs="tavg"]');
+    if (!row) throw new Error('no Tavg row in the channel list');
+    ['ind', 'phys'].forEach(function (s) {
+      var b = row.querySelector('[data-cs-side="' + s + '"]');
+      if (!b.checked) b.click();
+    });
+  });
+  await page.click('#chartOptsClose');
+  await page.waitForTimeout(900);
+  var both = await page.evaluate(function () {
+    var polys = Array.prototype.slice.call(document.querySelectorAll('#chartCanvas polyline'));
+    var canvas = document.getElementById('chartCanvas');
+    var chrome = Array.prototype.slice.call(document.querySelectorAll('#chartFloats .lane-chrome'));
+    /* LANE HEIGHT FROM THE DRAWN LANES. Consecutive lane-chrome tops in real px, plus the
+     * last lane's extent taken from the canvas bottom (or from the numeric strip, which is
+     * what eats into the lanes). NOT plot/lanes — see the header. */
+    var tops = chrome.map(function (c) { return c.getBoundingClientRect().top; })
+                     .sort(function (a, b) { return a - b; });
+    var nums = document.querySelector('#chartFloats .lane-nums');
+    var floor = nums ? nums.getBoundingClientRect().top : canvas.getBoundingClientRect().bottom;
+    var heights = [];
+    for (var i = 1; i < tops.length; i++) heights.push(tops[i] - tops[i - 1]);
+    if (tops.length) heights.push(floor - tops[tops.length - 1]);
+    return {
+      polys: polys.length,
+      dashed: polys.filter(function (p) { return p.getAttribute('stroke-dasharray'); }).length,
+      lanes: chrome.length,
+      minLane: heights.length ? Math.min.apply(null, heights) : 0,
+      paired: document.querySelectorAll('#chartFloats .lane-value.paired').length,
+      physFig: document.querySelectorAll('#chartFloats .lane-value-phys').length,
+    };
+  });
+  if (both.polys !== before + 1 || both.dashed !== 1) {
+    throw new Error('setting Tavg to BOTH should add exactly one dashed trace: polylines ' +
+      before + ' -> ' + both.polys + ', dashed=' + both.dashed);
+  }
+  if (both.paired !== 1 || both.physFig !== 1) {
+    throw new Error('a BOTH lane must print both readings in its value column (paired=' +
+      both.paired + ' physFigures=' + both.physFig + ')');
+  }
+  if (!(both.minLane >= 36)) {
+    throw new Error('lane height fell below the 36 px floor: ' + both.minLane.toFixed(1) +
+      ' px, MEASURED from the drawn lanes. (#440 §14-7a — and note this is measured, not ' +
+      'computed as plot/lanes, which once reported 56 where the truth was 38.)');
+  }
+  log.push('both: ' + both.lanes + ' lanes, ' + both.polys + ' traces (1 dashed), smallest lane ' +
+    both.minLane.toFixed(1) + ' px against a 36 px floor');
+
+  // ---- 4. the values are the Indications tab's values -------------------------------
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(600);
+  await page.click('#chartOptsBtn');
+  await page.waitForTimeout(500);
+  var match = await page.evaluate(function () {
+    var out = [], want = ['tavg', 'thot', 'pressure'];
+    var lines = Array.prototype.slice.call(document.querySelectorAll('#indicationsList .num-line'));
+    want.forEach(function (id) {
+      var row = document.querySelector('.cs-row[data-cs="' + id + '"]');
+      if (!row) { out.push({ id: id, err: 'no settings row' }); return; }
+      // The Indications list is in profile order and carries no id, so find it by label.
+      var label = row.querySelector('.cs-name').textContent;
+      var line = null;
+      lines.forEach(function (l) { if (!line && l.querySelector('.nk').textContent === label) line = l; });
+      if (!line) { out.push({ id: id, err: 'no indications row for "' + label + '"' }); return; }
+      out.push({ id: id, label: label,
+        csInd: (row.querySelector('[data-cs-val="ind"]') || {}).textContent,
+        tabInd: (line.querySelector('.nv') || {}).textContent,
+        csPhys: (row.querySelector('[data-cs-val="phys"]') || {}).textContent,
+        tabPhys: (line.querySelector('.nv-true') || {}).textContent });
+    });
+    return out;
+  });
+  match.forEach(function (m) {
+    if (m.err) throw new Error('value cross-check: ' + m.id + ' — ' + m.err);
+    if (m.csInd !== m.tabInd || m.csPhys !== m.tabPhys) {
+      throw new Error('the chart settings window disagrees with the Indications tab for "' +
+        m.label + '": ind "' + m.csInd + '" vs "' + m.tabInd + '", phys "' + m.csPhys +
+        '" vs "' + m.tabPhys + '". They are supposed to share seriesLive()/seriesTrue().');
+    }
+  });
+  log.push('values match the Indications tab: ' + match.map(function (m) {
+    return m.label + ' ' + m.csInd + '/' + m.csPhys;
+  }).join(', '));
+
+  // ---- 5. sideOf's truth table -------------------------------------------------------
+  // A physics-only quantity has no instrument selector to tick; a demand has no physics one.
+  // Both are DISABLED rather than absent, so the columns stay readable down a 120-row list.
+  var avail = await page.evaluate(function () {
+    function row(id) {
+      var r = document.querySelector('.cs-row[data-cs="' + id + '"]');
+      if (!r) return null;
+      return { ind: !r.querySelector('[data-cs-side="ind"]').disabled,
+               phys: !r.querySelector('[data-cs-side="phys"]').disabled,
+               indVal: r.querySelector('[data-cs-val="ind"]').textContent };
+    }
+    return { decay: row('decay'), rho: row('rho'), tavg: row('tavg') };
+  });
+  if (!avail.decay || avail.decay.ind || !avail.decay.phys || avail.decay.indVal !== '—') {
+    throw new Error('Decay Heat is physics-only: its indication selector must be disabled and ' +
+      'its indication value a dash — got ' + JSON.stringify(avail.decay));
+  }
+  if (!avail.rho || avail.rho.ind) throw new Error('Reactivity has no instrument; its indication selector must be disabled');
+  if (!avail.tavg || !avail.tavg.ind || !avail.tavg.phys) throw new Error('Tavg is a paired channel; both selectors must be live');
+  log.push('sideOf: physics-only channels offer no instrument side (decay, rho); paired channels offer both (tavg)');
+
+  await page.click('#chartOptsClose');
+  return log.join('\n') + '\n';
+}
+
+/* CLOSING PLANT & MISSION LEAVES THE PLANT RUNNING *(OWNER, 2026-08-11: "When i close the
+ * plant menu after starting the sim the sim should start playing. it currently starts
+ * paused. it should start running after closing the plant & mission menu.")*.
+ *
+ * THE FREE-PLAY PATH IS THE ONE THAT WAS BROKEN, and the plain ✕ was not — which is why this
+ * checks BOTH. `closeMissionSelect(); switchEngine(...)` released the `modal` hold and started
+ * the plant, then took `plant_change` for the rebuild and never released it. A check that only
+ * pressed ✕ would have passed on the defect, because ✕ alone never calls switchEngine.
+ *
+ * The third case is the one that keeps the fix honest: a plant the PLAYER stopped must stay
+ * stopped through a plant change. `releaseHold` drops one named hold, so `user` survives —
+ * and if someone ever "simplifies" it back to clearing the map, this is what catches it. */
+async function testMissionCloseResumes(page) {
+  var log = [];
+  var running = function () {
+    return page.evaluate(function () { return !document.getElementById('playBtn').classList.contains('paused'); });
+  };
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForTimeout(1200);
+
+  // The window opens on every load, so this is the very first thing a player does.
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('Plant & Mission did not open on load');
+  await page.click('#missionClose');
+  await page.waitForTimeout(700);
+  if (!(await running())) throw new Error('closing Plant & Mission with ✕ left the plant PAUSED');
+  log.push('✕ Close: plant runs');
+
+  // The reported path: pick a starting condition and press Free Play.
+  await page.click('#simStatus');
+  await page.waitForTimeout(400);
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
+  await page.click('[data-mfree]');
+  await page.waitForTimeout(1200);
+  if (await page.isVisible('#missionOverlay')) throw new Error('Free Play did not close the window');
+  if (!(await running())) {
+    throw new Error('starting Free Play left the plant PAUSED — switchEngine took the ' +
+      '`plant_change` hold for its rebuild and never released it. This is the reported bug; ' +
+      'note that pressing ✕ alone passes on it, because ✕ never calls switchEngine.');
+  }
+  log.push('Free Play: plant runs after the window closes');
+
+  // …but a plant the PLAYER paused stays paused through the same path.
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  if (await running()) throw new Error('⏸ did not stop the plant');
+  await page.click('#simStatus');
+  await page.waitForTimeout(400);
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission (2nd)');
+  await page.click('[data-mfree]');
+  await page.waitForTimeout(1200);
+  if (await running()) {
+    throw new Error('a plant the PLAYER paused started itself on a plant change — the `user` ' +
+      'hold was dropped. releaseHold() must clear ONE named reason, not the map.');
+  }
+  log.push('a player-paused plant stays paused through a plant change');
+  return log.join('\n') + '\n';
+}
+
+/* THE RUN-START MARK — sim time zero *(OWNER, 2026-08-11: "The strip chart should have a
+ * line to show the start of the sim at time=0.")*.
+ *
+ * IT MARKS A REAL JOIN, which is why it is worth gating rather than eyeballing. A preset
+ * start preseeds 30 minutes of genuinely-run trend at NEGATIVE sim time, so at T+10 s on the
+ * default 5-minute window 290 s of the plot is history and 10 s is the run you are driving.
+ *
+ * THE OVERLAP CHECK IS THE ONE THAT EARNED ITS PLACE. The tag first rendered at the TOP of
+ * the plot and landed inside the first lane's range label — "40% T+0 %" on screen. Every
+ * element existed, every count was right, and only the screenshot showed it. Comparing the
+ * tag's RECT against the lane chrome turns that into something a gate can hold. */
+async function testRunStartMark(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.waitForTimeout(2500);
+
+  var st = await page.evaluate(function () {
+    var line = document.querySelector('#chartCanvas .run-start');
+    var tag = document.querySelector('.run-start-tag');
+    var svg = document.getElementById('chartCanvas');
+    if (!line || !tag) return { line: !!line, tag: !!tag };
+    var tr = tag.getBoundingClientRect(), pr = svg.getBoundingClientRect();
+    // Every piece of lane chrome the tag could land on top of.
+    var hits = [];
+    Array.prototype.forEach.call(document.querySelectorAll('#chartFloats .lane-rng, #chartFloats .lane-name, #chartFloats .lane-value'), function (el) {
+      var r = el.getBoundingClientRect();
+      if (tr.left < r.right && tr.right > r.left && tr.top < r.bottom && tr.bottom > r.top) {
+        hits.push((el.className || '') + ' "' + el.textContent.trim().slice(0, 24) + '"');
+      }
+    });
+    return {
+      line: true, tag: true, text: tag.textContent,
+      x1: parseFloat(line.getAttribute('x1')),
+      inside: tr.left >= pr.left - 1 && tr.right <= pr.right + 1 && tr.top >= pr.top - 1 && tr.bottom <= pr.bottom + 1,
+      overlaps: hits,
+    };
+  });
+  if (!st.line) throw new Error('no run-start line on the chart at T+0 (#chartCanvas .run-start)');
+  if (!st.tag) throw new Error('the run-start line has no label (.run-start-tag)');
+  if (!st.inside) throw new Error('the run-start tag is drawn outside the plot');
+  if (st.overlaps.length) {
+    throw new Error('the run-start tag overlaps lane chrome: ' + st.overlaps.join(' | ') +
+      '. It rendered over the first lane\'s range label ("40% T+0 %") before it was moved to ' +
+      'the bottom strip — element counts all passed on that.');
+  }
+  // The mark is at t=0, not merely somewhere: with the window entirely ahead of the run
+  // start, x must land in the right-hand part of the plot and short of the gutter.
+  if (!(st.x1 > 0 && st.x1 < 400 * 0.86)) {
+    throw new Error('the run-start line is off the plot area: x1=' + st.x1);
+  }
+  log.push('run start: line at x=' + st.x1.toFixed(1) + ', tag "' + st.text + '" clear of lane chrome');
+
+  /* NEGATIVE CONTROL — it must SCROLL OFF. An "always drawn" line would pass everything
+   * above, and a mark that never leaves is not marking a moment. Drive sim time forward at
+   * 600x, then drop to 1x (whose ladder offers a 60 s rung) so the run is far older than the
+   * window. */
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(6000);
+  await page.click('#speed [data-speed="1"]');
+  await page.waitForTimeout(600);
+  await page.click('#graphWindow [data-win="60"]');
+  await page.waitForTimeout(700);
+  var gone = await page.evaluate(function () {
+    return {
+      clock: (document.getElementById('clock') || {}).textContent,
+      line: !!document.querySelector('#chartCanvas .run-start'),
+      tag: !!document.querySelector('.run-start-tag'),
+    };
+  });
+  if (gone.line || gone.tag) {
+    throw new Error('the run-start mark is still drawn at ' + gone.clock + ' on a 60 s window — ' +
+      'it is being drawn unconditionally rather than only when t=0 is in frame ' +
+      '(line=' + gone.line + ' tag=' + gone.tag + ')');
+  }
+  log.push('run start: gone at ' + gone.clock + ' on a 60 s window — it marks a moment, not an axis');
+  return log.join('\n') + '\n';
+}
+
 async function testRewindPicker(page) {
   var log = [];
   var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr&run=1',
     { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(800);
 
   // Drive M5's wall clock instead of waiting on it. The cadence is 20 REAL seconds
@@ -577,6 +949,7 @@ async function testDiagBundle(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
     { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(1500);
   // SPEED FIRST, THEN PLAY. Ticks taken at 1x produce no fine rows at all — a 1x broadcast
   // carries 0.1 s of sim against the service's 0.2 s fine grid — so a single tick between
@@ -590,9 +963,13 @@ async function testDiagBundle(page) {
   await page.click('#playBtn');
   await page.waitForTimeout(6000);
 
-  await page.click('#tabbar button[data-tab="settings"]');
-  await page.waitForTimeout(200);
-  await page.click('#fbBtn');
+  // ONE CLICK, from the header (#438/#439). This used to be `Settings tab -> #fbBtn`,
+  // which is the path that no longer exists: Settings is a modal off the header now, and
+  // Feedback got its own header button precisely because three levels down was a plausible
+  // cause of the near-zero report volume. Using the shorter path is not a refit — it is the
+  // route a player actually takes, and the old one was two clicks through a surface that
+  // now pauses the plant, which would change what this test is measuring.
+  await page.click('#fbHeaderBtn');
   await page.waitForTimeout(200);
   var dl = (await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click('#fbDiag')]))[0];
   var out = path.join(SCRATCH, 'diag-bundle.json');
@@ -655,6 +1032,12 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'instructor-units.log'), iuLog);
     var sfLog = await testSteamFeedPair(page);
     fs.writeFileSync(path.join(SCRATCH, 'steam-feed-pair.log'), sfLog);
+    var csLog = await testChartSettings(page);
+    fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
+    var mcLog = await testMissionCloseResumes(page);
+    fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
+    var rsLog = await testRunStartMark(page);
+    fs.writeFileSync(path.join(SCRATCH, 'run-start-mark.log'), rsLog);
     var rpLog = await testRewindPicker(page);
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     var tpLog = await testTrendPreseed(page);
@@ -669,9 +1052,20 @@ async function main() {
   }
 }
 
-main().catch(function (e) {
-  fs.mkdirSync(SCRATCH, { recursive: true });
-  fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-fallback.log'), String(e.stack || e));
-  console.error('E2E UI verification FAILED:', e.message);
-  process.exit(1);
-});
+/* THE GATE ALWAYS RUNS EVERYTHING. There is deliberately NO --only flag: a gate that can be
+ * told to skip a test is the shape that let CI run red for 32 consecutive runs (--fast still
+ * ran a Playwright gate that was not marked `slow`, and nobody noticed). What IS exported —
+ * only when this file is require()d rather than run — is the individual test functions plus
+ * the server, so a fault can be INJECTED and one check driven to red in seconds instead of
+ * re-running all 16 screenshots. Running the file directly is unaffected. */
+if (require.main !== module) {
+  module.exports = { startServer: startServer, dismissMission: dismissMission,
+                     testChartSettings: testChartSettings, testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark, port: function () { return PORT; } };
+} else {
+  main().catch(function (e) {
+    fs.mkdirSync(SCRATCH, { recursive: true });
+    fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-fallback.log'), String(e.stack || e));
+    console.error('E2E UI verification FAILED:', e.message);
+    process.exit(1);
+  });
+}

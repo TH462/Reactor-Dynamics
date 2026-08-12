@@ -357,25 +357,41 @@
     // (The old 2.76 MPa set_lpi actuation is gone: HPI/LPI is one merged system
     // armed by the 12.4 MPa set_hpi actuation above — the low-head/high-flow
     // regime follows physically from the two-segment pump curve.)
-    // Residual Heat Removal permissive — auto-opens the RHR hot-leg suction valve
-    // for cooldown once the reactor is tripped and depressurized below the 400 psi
-    // (2.76 MPa) valve interlock. Setpoint matches emergency.rhr_valve_interlock_mpa,
-    // the BLOCK-OPEN permissive — the engine refuses the open above it. It does NOT
-    // match the autoclosure interlock, which is the separate 600 psig (4.14 MPa)
-    // emergency.rhr_autoclose_mpa (#288): the valve shuts on repressurization ~175 psi
-    // higher than the pressure at which it may be opened, so this permissive and the
-    // autoclose cannot fight each other across one boundary. Armed via the 'rhr' ESF
-    // system so the synoptic's RHR "Auto" button can re-arm it.
-    // 2.70, NOT the engine's 2.76 block-open (#408 wave 1): the actuation fires off
-    // the NOISY indicated channel while the engine permissive tests TRUE pressure at
-    // the same number — a zero-deadband pair across one boundary (#288's shape). A
-    // noise-early fire is REFUSED and consumes the one-shot, so RHR never aligns;
-    // invisible on the compressed clock (the fast walk spent one sample at the
-    // boundary), near-certain on the real one (the slow walk lingers there —
-    // measured: a textbook 43 °C/h cooldown ended at 1.97 MPa with RHR shut).
-    // 0.06 MPa under the permissive means an accepted fire by construction.
-    { instrument: 'primary_pressure', direction: 'low',  setpoint: 2.70,
-      action: 'set_rhr', active: true, condition: 'rps_scrammed', arm: 'rhr' },
+    // THERE IS NO RHR AUTO-ENTRY ACTUATION, AND THAT IS THE POINT (#453, 2026-08-11).
+    // A row used to live here that opened the RHR hot-leg suction valve by itself once the
+    // reactor was tripped and indicated pressure fell below 2.70 MPa. No plant does that,
+    // and the evidence is one-sided: every RHR suction interlock in the corpus is an
+    // INHIBIT, never a command.
+    //
+    //   WTSM 5.1 §5.1.3.3 (ML11223A219): "These interlocks PREVENT THE VALVES FROM BEING
+    //   OPENED UNLESS the reactor coolant system pressure is less than 425 psig … After the
+    //   valves are open, another set of interlocks will cause the valves to automatically
+    //   close when the reactor coolant system pressure increases to approximately 585 psig."
+    //
+    //   NUREG-1431 Rev 4 tests the two directions as SEPARATE surveillances — SR 3.4.14.2
+    //   "prevents the valves from being opened" (425 psig) and SR 3.4.14.3 "causes the
+    //   valves to close automatically" (600 psig). Neither says "opens".
+    //
+    // Placing RHR in service is a hand-throttled evolution, not a threshold event: WTSM 5.1
+    // §5.1.4.1 gives it a warmup period with flow limited "to minimize thermal shock" and
+    // the rate "manually controlled", and WTSM 19.0 writes it as numbered operator steps
+    // under a 350 °F CAUTION. Ginna TS Bases B 3.4.6 defines an isolated RHR loop as
+    // OPERABLE precisely when it "can be placed into service from the control room".
+    //
+    // WHERE THE DEFECT CAME FROM, so it is not re-derived: WTSM 5.1 gives RHR entry as
+    // "approximately 350°F and 425 psig" and the open-permissive as "less than 425 psig" —
+    // the SAME NUMBER. Read as a trigger rather than a gate, it yields a pressure-only
+    // auto-open that looks right and is wrong in kind. It also had no temperature term and
+    // no subcooling term, so every depressurization after a scram aligned shutdown cooling,
+    // INCLUDING the ones where the depressurization was the casualty: measured on a
+    // `large_loca` sev 0.05 it aligned at t+540 s into a saturated, still-leaking RCS and
+    // became the largest heat sink in the plant.
+    //
+    // THE TWO REAL INTERLOCKS ARE UNCHANGED and both live in the engine, where they belong:
+    // the block-open permissive `emergency.rhr_valve_interlock_mpa` (2.76 MPa) refuses an
+    // open above it, and `emergency.rhr_autoclose_mpa` (4.14 MPa) shuts a standing-open
+    // valve on repressurization. `test/run_m4.js` "#453" pins the absence of any automatic
+    // open; `run_pwr`'s `rhr_valve_and_mode` pins both interlocks engine-direct.
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
     { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
@@ -572,6 +588,15 @@
       reclassify: [{ condition: 'rcp_secured', priority: 'status', label_learning: 'Reactor Coolant Pumps Secured', label_industry: 'RCP SECURED' }] },
     { id: 'rcp_cavitation', instrument: 'rcp_cavitating',   direction: 'is_true',  setpoint: null, priority: 'warning',  panel: 'B', category: 'coolant', label_learning: 'Reactor Coolant Pump Cavitation', label_industry: 'RCP CAVITATION' },
     { id: 'hpi_active',     instrument: 'hpi_active',       direction: 'is_true',  setpoint: null, priority: 'status',   panel: 'B', category: 'safety_system', label_learning: 'Emergency Injection Active',     label_industry: 'HPI/LPI ACTIVE' },
+    // WHY THIS TILE EXISTS AT ALL (#447). Delivered heater power reads a flat 0 % for
+    // FOUR different reasons now — a blackout, the 17 % low-level cutoff, the
+    // `failed_pzr_heaters` casualty, and this load shed — and until this row the board
+    // could not tell them apart: the AUTO/MANUAL lamp stays wherever the operator left
+    // it by design (#200), so all four look identical. The shed is the one the player is
+    // expected to ACT on (the heaters come back with one button), so an invisible one
+    // would be an orphan action — the DESIGN_CRITERIA Q4 observability test. The other
+    // three still have no indication; that is filed, not fixed here.
+    { id: 'pzr_heaters_shed', instrument: 'pzr_heaters_shed', direction: 'is_true', setpoint: null, priority: 'status', panel: 'B', category: 'coolant', label_learning: 'Pressurizer Heaters Shed (Safety Injection)', label_industry: 'PZR HTRS SHED' },
     // Containment (#386 stage 2). Pressure pair at the SOURCED actuation points
     // (3.5 psig SI backup / 30 psig hi-hi — WTSM 12.3), abs on this plant's ambient;
     // train-status pair on the DELIVERY booleans (AC-gated), not the demands.
@@ -1135,25 +1160,48 @@
   var PWR_CHANNELS = [
     { id: 'rods_tavg', kind: 'rods', group: 'Reactor',
       label: 'Rod control → Tavg (AUTO)',
-      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding 546.8 °F (286.0 °C) no-load → 580.1 °F (304.5 °C) full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±1.5 °F (±0.8 °C) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN.',
+      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding 546.8 °F (286.0 °C) no-load → 580.1 °F (304.5 °C) full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±1.5 °F (±0.8 °C) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN. The shipped lineup is MANUAL — the plant load-follows on temperature feedback alone, and the rods are how YOU put Tavg back on program after a load change.',
       group_id: 'control_rods', offOnScram: true,
-      // Free-play preset starts come up with rod control in AUTO *(OWNER RULING, 2026-08-01:
-      // "Let's start the rods in auto. Might as well, everything else starts in auto.")*, which
-      // is also what a real unit runs at power. Instructed content (noDefaults) is unaffected.
+      // NO `defaultOn` — FREE PLAY STARTS WITH THE RODS IN MANUAL *(OWNER DIRECTIVE,
+      // 2026-08-11: "lets start with rods in manual.")*. This REVERSES the 2026-08-01 ruling
+      // ("Let's start the rods in auto. Might as well, everything else starts in auto"), whose
+      // stated premise had since expired: the free-play Mode 1 lineup puts generator load in
+      // MANUAL (`pwr_engine.js` getStartupLineup), so "everything else" no longer held.
       //
-      // AT-POWER ONLY, and this half is NOT decorative — it is measured. A blanket `true`
+      // The channel is UNCHANGED and still reachable — ROD AUTO on the board, `board_check`-
+      // pinned, and Manuals 02/03/04 already treat engaging it as a deliberate optional step.
+      // Only the free-play preset moved. Instructed content (noDefaults) never read this.
+      //
+      // WHY, and it is measured (2026-08-11, `measure_stack`, hot_full_power, 100 -> 80 MWe):
+      //   * The plant load-follows WITHOUT the rods. Negative MTC alone takes power 100 ->
+      //     81.8 % and parks it, monotone, settled at 3 min 30 s. Rods in AUTO ring the same
+      //     step — Tavg 586.8 -> 567.2 °F, power 62 -> 88 % — and are still +-1.5 pts at 10 min.
+      //     Manual is the BETTER-behaved plant here, not the harder one.
+      //   * Manual rod control is linear and forgiving: -20 fine steps -> -1.8 °F, -60 -> -6.2 °F
+      //     (~0.1 °F/step), no overshoot at either size.
+      //   * It is the Tier A lesson. Inserting 60 steps moved Tavg -6.2 °F and power 81.9 ->
+      //     81.1 %: RODS SET TEMPERATURE, THE TURBINE SETS POWER. In AUTO the rods absorb that
+      //     demonstration and the player never sees it.
+      // The board already draws the sliding Tref band on Tavg (`pwr_board_wiring.js`), so the
+      // off-program park is visible without a new indication, and HI TAVG (594.0 °F) sits 3.6 °F
+      // above where it parks — a cue, not a nag.
+      //
+      // IF YOU EVER RE-ADD `defaultOn` HERE, GATE IT ON THE POWER RANGE. A blanket `true`
       // engages the channel in Mode 5 and during `pwr_heatup`, where Tavg (~60 °C cold) is
       // hundreds of degrees below the no-load Tref the load program asks for, so the channel
       // withdraws rods to close the error and takes the plant critical: `run_procedures_stack`
       // `pwr_heatup` SCRAMMED at step 6 on `source_range high`, and `run_behavior` SS-9 (cold
-      // shutdown hands-off) tripped the same way. Gated here it costs neither. A real plant
-      // does not put rod control in automatic below the power range either.
+      // shutdown hands-off) tripped the same way. A real plant does not put rod control in
+      // automatic below the power range either. And read the POWER-RANGE INSTRUMENT, not
+      // `true_state.power_pct` (HR1) — the first cut read truth and `run_hardrules` failed it,
+      // the same defect class as #220, where the P-9 permissive read the plant not the gauge.
       //
-      // HR1: reads the POWER-RANGE INSTRUMENT, not `true_state.power_pct`. The first cut read
-      // truth and `run_hardrules` failed it — the same defect class as #220, where the P-9
-      // permissive read the plant instead of the gauge. This is the P-10 analogue and a real
-      // one is a NIS power-range permissive, so the instrument is also the prototypical read.
-      defaultOn: function (ctx) { return ((ctx.instruments || {}).power_range || 0) > 10; },
+      // HR10 VALIDATION, run rather than asserted (2026-08-11). The five probes that moved with
+      // this change (TR-1g/h/i/k, TR-18) now state `rodsAuto()` instead of inheriting the
+      // preset. To prove that is a BETTER test and not a refit, `defaultOn` was temporarily
+      // restored here and the new probe forms re-run against the OLD plant: **71 pass / 1 xfail
+      // both ways**, identical to the recorded baseline. They are preset-independent, so the
+      // next lineup change moves neither.
       manual_overrides: ['rod_nudge', 'rod_start'],   // operator rod motion on this group → MAN
       pv: function (s) { return s.instruments.tavg; },
       // T-ref := the load program (HR1: reads indicated steam flow). Re-evaluated each
@@ -1259,9 +1307,12 @@
       // a three-key map and a numeric speed SILENTLY falls back to 'normal'.
       //
       // Also sourced and NOT matched: *"Automatic rod control below 15% turbine power is not
-      // provided."* `defaultOn` below engages above 10 % power range. Left alone deliberately —
-      // it is a different signal (NIS power range, the HR1-correct read) and the gap is 5
-      // points at a power nobody load-follows at; filed rather than changed on a whim.
+      // provided."* This build does not enforce a low-power lockout at all — the player may
+      // engage the channel at any power. It used to be approximated by the auto-engage gate at
+      // 10 % power range, which #460 removed along with the rest of `defaultOn`; the gap was 5
+      // points then and is the whole range now. Still filed rather than changed on a whim, but
+      // note what moved: the old note described a DEFAULT, and a default was never the lockout
+      // the source is describing.
       speeds: [{ above: 0.8, speed: 'slow' }, { above: 1.67, speed: 'normal' }, { above: 2.78, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
       // 228-step values, so the channel's authority in %-of-travel is unchanged.
@@ -1435,7 +1486,12 @@
     { id: 'afw', label: 'Auxiliary feedwater',         commands: ['set_afw', 'set_afw_flow'] },
     // set_rhr_hx (HX flow split) is a cooldown-rate adjustment, NOT an alignment
     // command — it deliberately does not disarm the RHR valve auto-open.
-    { id: 'rhr', label: 'Residual heat removal',       commands: ['set_rhr', 'set_dhr'] },
+    // NO 'rhr' ESF SYSTEM (#453). An ESF arm exists to let the operator take an AUTOMATIC
+    // actuation to MANUAL. With the RHR auto-entry actuation gone there is nothing to arm,
+    // so an arm — and the board AUTO button that set it — would be a control that does
+    // nothing: the orphan-control case DESIGN_CRITERIA Q4 vetoes. RHR is now ALIGN/ISOLATE
+    // only, which is what the sources describe. `set_rhr`/`set_dhr` still descend through
+    // M4 interception like any other command.
   ];
 
   // ---- Overtemperature ΔT and Overpower ΔT (#311) — the two missing Westinghouse trips ----

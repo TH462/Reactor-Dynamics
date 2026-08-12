@@ -206,6 +206,21 @@ Blocks **auto-reinstate** when power falls below P-10.
 
 **Use to RAISE pressure** (restore subcooling, recover after spray/overcooling).
 
+**Four different things put heater power at 0 %, and only one of them is a mode above.**
+The selector stays exactly where you left it in all four, so the panel alone cannot tell
+them apart — read the annunciators:
+
+| Zero because | Tell | Can you undo it? |
+|---|---|---|
+| You selected OFF | OFF lamp lit | Yes — select AUTO or a % |
+| **Shed on safety injection or loss of offsite power** | **PZR HTRS SHED** (PWR-A43) | Yes — **any** heater action reloads them |
+| Pressurizer level below **17 %** | PZR LVL LO / LO LO, level on the gauge | Not directly — recover level |
+| Station blackout | SBO | No — there is no ac to deliver |
+
+The shed is the one that needs a deliberate decision: the heaters are healthy and the bus
+is alive, they have just been dropped off it to make room for safety loads, and **securing
+injection does not put them back**.
+
 ### 5.3 PZR Spray
 
 | Mode | Effect |
@@ -563,8 +578,7 @@ heat that is a very small number.
 
 | Control | Effect |
 |---------|--------|
-| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point. **Interlocked on two separate setpoints**: it will not **open** above **400 psi (2.76 MPa)**, and **autocloses** only once pressure rises back above **600 psi (4.14 MPa)** (protects the low-pressure piping). The ~200 psi (1.38 MPa) gap between them is deliberate — see **09 §RHR** |
-| **AUTO** | Arms the valve to open itself when scrammed and pressure is below the **400 psi (2.76 MPa)** block-open permissive |
+| **Suction valve Open / Shut** | The RHR hot-leg suction valve — the system's entry point, and **the only way RHR goes in service: nothing opens it for you** (#453). **Interlocked on two separate setpoints**: it will not **open** above **400 psi (2.76 MPa)**, and **autocloses** only once pressure rises back above **600 psi (4.14 MPa)** (protects the low-pressure piping). The ~200 psi (1.38 MPa) gap between them is deliberate — see **09 §RHR**. **Throttle the HX split first** — see the rate row below and **04 PWR-N15** step 5 |
 | **Cooldown Rate (HX flow split)** | Throttles how much RHR flow passes through the heat exchanger vs the bypass — this sets the **cooldown RATE without disturbing inventory**. Walk it up slowly to hold the ~**122 °F (50 °C)/h** cooldown limit; full HX flow on a hot plant overshoots the limit |
 | **Indication** | `eccs_mode` shows **RHR** while the system is in service; primary temperature trend is the rate instrument |
 | **Scope** | The Mode 4→5 decay-heat path: below the interlock pressure RHR carries the plant to Cold Shutdown and holds it there (see `05_MODE_TRANSITIONS.md` PWR-T21) |
@@ -706,6 +720,8 @@ pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 i
 
 ### 14.3 Rod AUTO (Tavg)
 
+- **The shipped lineup has the rods in MANUAL.** The plant load-follows without them: on a 100 → 80 MWe cut, moderator feedback alone takes power to 81.8 % and parks it in about 3½ minutes. What it does *not* do is put Tavg back on program — it settles roughly 17 °F (9.4 °C) high. Trimming that off is the operator's job, in MAN or by engaging this channel.  
+- **Rods set temperature; the turbine sets power.** Inserting 60 fine steps at 80 MWe moves Tavg about 6 °F (3.3 °C) and generator load less than one point. Roughly 0.1 °F (0.06 °C) per fine step, linear over the useful range.  
 - **T-ref is PROGRAMMED on turbine load, not captured from Tavg** — a sliding line from 546.8 °F (286.0 °C) at no load to 580.1 °F (304.5 °C) at full power, re-derived from indicated steam flow every evaluation. Engaging does not freeze a target; as load moves, T-ref moves with it.  
 - Holds Tavg with variable rod speed and deadband (±1.5 °F / ±0.8 °C).  
 - **Rod gain is scheduled on bank position.** One rod step is worth several times more reactivity mid-bank than near either stop, so the controller de-rates itself as the bank comes in and returns to full gain while the load program is sliding. The operator sees nothing of this; it is what keeps the plant steady at part power.  

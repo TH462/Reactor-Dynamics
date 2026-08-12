@@ -45,6 +45,133 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-11-backshop-c — #460: the rods ship in MANUAL, and the AUTO channel was absorbing the lesson
+
+*(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in manual.")* — reversing the 2026-08-01
+ruling behind #289, whose premise had expired.
+
+### The decision
+
+`rods_tavg` loses `defaultOn`. Free play comes up with rod control in **MANUAL**; the channel,
+its board control (**ROD AUTO**), its manual sections and its reachability are untouched. Only
+the preset moved. Instructed content (`noDefaults`) never read `defaultOn`.
+
+**Removing the channel was considered and rejected** — it fails Q1 (real units run rod control
+in automatic at power) and destroys the compare-to-auto exercise, which is worth more than
+either mode alone.
+
+### Q0 — the measurement that reframed the question
+
+The owner's argument was interactivity. The measurement found two stronger reasons.
+`measure_stack`, full stack, `hot_full_power`, 100 → 80 MWe:
+
+| | rods AUTO | rods MANUAL, hands off |
+|---|---|---|
+| power | 100 → 62.1 → 87.6 → 77.3 → 81.4 % | 100 → **81.8 %**, monotone |
+| Tavg | 580.2 → 586.8 → 567.2 → 573.1 °F | 580.2 → **590.4 °F**, parks |
+| settled | ~10 min, ±1.5 pts | **3 min 30 s** |
+
+1. **The plant load-follows without the rods** (moderator feedback carried 18 points), and
+   **AUTO is the worse ride on this step.** What manual does *not* do is return Tavg to
+   program — it parks 17.3 °F (9.6 °C) high, and that trim is the operator's job.
+2. **Inserting 60 fine steps moved Tavg −6.2 °F and generator load 0.8 points.** Rods set
+   temperature; the turbine sets power. In AUTO the channel performs that Tier A coupling on
+   the player's behalf and the demonstration never happens.
+
+Manual authority is linear and forgiving — −20 steps → −1.8 °F, −60 → −6.2 °F, ~0.1 °F/step,
+no overshoot at either size.
+
+### Q4 — the veto argued FOR it
+
+The cue exists already: the board draws the sliding Tref band (`pwr_board_wiring.js:1599`), so
+an off-program park reads outside normal with no new indication, and HI TAVG sits 3.6 °F above
+where it settles. The prior arrangement had the channel doing invisible work that the player's
+own rod buttons cancelled through `manual_overrides`, unexplained.
+
+### Relationship to #331
+
+#331 ("remove or reduce the automatic systems") was ruled **"Leave automatic systems in
+place."** (2026-08-05). Built to the narrow reading and **flagged to the owner rather than
+assumed**: no automatic system was removed, only a preset changed.
+
+### The gate work, and the symmetry in it
+
+`run_all` drifted two runners. `run_behavior` 71 → 66: the five failures were TR-1g, TR-1h,
+TR-1i, TR-1k and TR-18 — every probe whose *subject* is the rod controller. None was testing
+the preset; all five were reading it. A `rodsAuto()` helper (the mirror of the `rodsManual()`
+helper #289 was forced to write in the other direction) makes the precondition explicit with
+every assertion byte-identical. Back to **71 pass / 1 xfail** — baseline, so `BASELINES` does
+not move. `verify_board_check` 0 → 3: the default check inverts and the two directions swap.
+
+**#289 added `rodsManual()` because probes about the rod-less plant were inheriting AUTO. This
+change added `rodsAuto()` because probes about the rod controller were inheriting the preset.
+Both directions of one defect, ten days apart, and the first did not prompt anyone to check the
+other side.** A probe that inherits a lineup rather than stating one changes subject silently
+when the lineup moves, and reddens later, when the cause is furthest away.
+
+**`board_check` cost one line per check because #289 had already been burned there** and split
+a toggle pair into three — the default itself, then both directions from it. The reversal
+therefore reddened a check whose *name* said what moved. Copy the pattern: **give a default its
+own named check** instead of leaving it the implicit precondition of its neighbours.
+
+### Side effect
+
+**#400**'s measured all-auto oscillation (12.93–13.65 points p2p at the 50 % plateau, never
+settling) leaves the shipped free-play plant. **#400 is not fixed** — the channel still rings
+when engaged.
+
+---
+
+## 2026-08-11-backshop-a — #447: safety injection sheds the pressurizer heaters, and the LOOP decision was a misread of its own source
+
+**The change.** A rising edge of safety injection (`hpi_active`) or a loss of offsite power
+latches `_heater_shed`, which zeroes DELIVERED heater power (`heater_power_frac`,
+`_heater_dp_frac`) and is cleared only by an operator `set_heater`. Derived in
+`pwr_engine.step` as step 0b, consumed in `pwr_pressurizer.autoControl` beside the existing
+AC guard and 17 % cutoff. New `true_state`/instrument field `pzr_heaters_shed`, a
+`PZR HTRS SHED` status row, and a new engine state `_offsite_power` — offsite power had only
+ever been a one-shot coastdown effect, which is why nothing could ask whether it was there.
+
+**Why the shed and not a gain change.** `K_heater` 0.55 MPa/s is a ruled departure
+(2026-08-04, `Manuals/12` §12.15) and stays. The defect was that the term had no gate for a
+regime with nothing physical behind it — its own sibling `P_restore_rate_gain` has carried
+one since #408. Sourced: NUREG-0737 II.E.3.1 Clarification (7) requires the automatic shed on
+an SI signal; (5)(b) and (4) make the restore an SI reset plus a manual control-room
+changeover. This plant collapses those to one `set_heater`, the same collapse `pwr_control.js`
+already declares for SI reset because there is no SI-reset control on the board.
+
+**Decisions, with what would change them.**
+- **Edge-triggered, not level.** A level trigger cannot be cleared while the accident lasts,
+  which contradicts "can be manually loaded … if required" and makes CA-10 leg D unrepairable.
+  One LOCA is one shed; securing and re-initiating SI is a second edge and a second shed.
+- **Keyed on `hpi_active`, the handswitch** — no latched SI-actuation state exists here, and
+  `set_hpi` is both the three ESFAS rows and a manual SI. Defensible (a real manual SI sheds
+  too) but it means starting HPI by hand at power also sheds. Stated, not inherited.
+- **LOOP folded in.** `pwr_pressurizer.js:79-84` argued heaters survive a LOOP *because* of
+  NUREG-0578/0737. They require manual connectability, not ride-through; Ginna TS Bases B 3.4.9
+  sheds on LOOP with reload "within one hour". CA-7 leg C pinned the wrong reading and now
+  pins the right one — the reload is what proves the bus, which a blackout cannot do.
+- **`P_restore_rate_gain` at `:511` deliberately NOT gated.** Already dead on every LOCA path
+  (`loopBreak` true), so it cannot affect the oscillation, while it is the sole route to the
+  SGTR/cooldown/stuck-PORV blast radius. Landed without it: `run_ops` moved zero. Deferred
+  with the numbers, the `Manuals/12` §12.4c idiom.
+- **Accepted wart:** the `pzr_pressure` channel's bumpless disengage sends the DELIVERED
+  value, which while shed is 0 — so taking that channel to MANUAL clears the shed with nothing
+  changing physically. The alternatives break bumpless transfer or the reload path.
+
+**Gate movement** (all reconciled by hand): `run_pwr` 257→260 (migration pins, including a
+guard that a mid-SI save fires no phantom shed on load), `run_contract` 175→177,
+`run_behavior` 70pass/0xfail→71pass/1xfail (+CA-25, CA-20b split out as a strict xfail),
+`run_campaign` 3039→3049 (the re-keyed `pwr_qualify` cue reaches `challenge` earlier).
+`run_ops`, `run_meltdown_stack`, `run_procedures*`, `run_scenarios`, `run_checklist`, `run_m4`,
+`run_autoctl`, `run_e2e_controls`, `run_hardrules` all unmoved. **45/45 at baseline.**
+
+**Filed, not absorbed: #451.** The small-break pressure plateau was heater-held — recorded in
+`pwr_config.js`'s own #363 note — and the state it propped was #334's deadheaded-ECCS
+pathology (900 psia, inventory pinned at 59 %). With the prop gone nothing holds it and every
+severity collapses to the same cold solid state. CA-20 leg B split to CA-20b, strict xfail,
+band untouched.
+
 ## 2026-08-10-develop-a — #433: the MSLI fires again, on the channel's own sourced rate sensitivity
 
 **Decision — the low-steam-pressure leg is rate-compensated (`lead_lag`), not re-windowed**
@@ -4290,6 +4417,13 @@ starts in auto."; and "the auto rod button doesn't follow the color convention. 
 should be green not white.")*
 
 ### The decision
+
+> **SUPERSEDED by #460** *(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in manual.")* —
+> `defaultOn` is gone and free play comes up in MANUAL. Everything below is the record of why
+> the auto default was taken and why its gate was not optional; the gate reasoning is still
+> live and is retained as a warning in `pwr_control.js` for anyone re-adding a default. What
+> expired is this entry's stated premise, *"everything else starts in auto"* — the Mode 1
+> lineup already put generator load in MANUAL. See the 2026-08-11-backshop-c entry.
 
 `rods_tavg` is `defaultOn` **above 10 % indicated power**. Free-play Mode 1 presets come up with
 rod control in AUTO; Mode 3/5 and instructed content (`noDefaults`) do not.

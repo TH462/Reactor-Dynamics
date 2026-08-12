@@ -91,12 +91,12 @@ body {
   gap: var(--gap);
   overflow: hidden;
 }
-/* Panel order in the right column: sim controls, TOOLS block, then the instructor
-   block, then the scanner (the tool block sits above the Shift Supervisor). */
+/* Panel order in the right column: sim controls, the reference TAB strip, then the
+   Instructor block below it — pull above, push below (#439, spec §2/§3). The Scanner
+   used to be a fourth entry here and is now a line under the board (spec §6). */
 .right-col > .sim-controls { order: 0; }
 .right-col > #toolsCard     { order: 1; }
 .right-col > #instructorCard { order: 2; }
-.right-col > .scanner       { order: 3; }
 
 /* Responsive: the layout must survive any monitor. The 760px plant-area floor
    was what forced horizontal scroll on mid-size displays; relax it first, then
@@ -156,7 +156,17 @@ body {
 .app.pwr-synoptic .view-switcher,
 .app.pwr-synoptic .status-bar,
 .app.pwr-synoptic .pd-controlbar { display: none; }
-.app.pwr-synoptic .view-area { padding: 0; overflow: hidden; }
+/* NO TOP OR LEFT BORDER ON THE DIAGRAM *(OWNER DIRECTIVE, 2026-08-11: "The top edge of
+   the boarder around the diagram takes up too much space. Remove the top and left sides
+   of the boarder around the diagram.")*. The board scales to fit its own HEIGHT, so every
+   pixel the top edge takes comes straight out of the diagram — and the corner radius has
+   to go with the two edges or it draws an arc against nothing. The right and bottom edges
+   stay: they separate the diagram from the sim column and the trend strip. */
+.app.pwr-synoptic .view-area {
+  padding: 0; overflow: hidden;
+  border-top: none; border-left: none;
+  border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-left-radius: 0;
+}
 
 /* The V2 board carries its own vital-parameter tile strip (six Indicator Panel
    components across the top), which is what the shell's .gauge-strip used to provide.
@@ -423,6 +433,83 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .num-line .nv.q-normal  { color: var(--clr-status-normal); }
 .num-line .nv.q-caution { color: var(--caution); }
 .num-line .nv.q-alarm   { color: var(--critical); }
+
+/* ---------------- the merged indicated-vs-true list (#439, spec §3) ----------------
+   TWO SHORT VALUES PER ROW, not two tables. The row is a grid rather than a flex so
+   the two value columns line up down the list — a ragged right edge is what makes a
+   paired list unreadable, and the whole claim of the merge is that a disagreement is
+   visible without hunting. Fixed columns also mean the true side can be hidden by
+   collapsing one track (HR1), with no reflow of the other two. */
+/* FIXED TRACK WIDTHS, shared with the column header via custom properties. They used to
+   be `auto`, which sizes to content — fine when only values were in the column, wrong the
+   moment a HEADING joined it: "Plant indication" is far wider than "50 %", so the header's
+   auto track came out 25px wider than the row's and every number sat left of its label.
+   Two grids can only agree on `auto` if they contain the same text, which these never do. */
+:root { --ind-plot: 30px; --ind-v: 64px; --ind-t: 64px; }
+.num-line {
+  display: grid; align-items: baseline; gap: 0 8px;
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) 0 0;
+}
+#indicationsList.show-true .num-line {
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) var(--ind-t) 12px;
+}
+/* The column headings. SAME GRID TEMPLATE AS .num-line, deliberately duplicated rather
+   than shared through a wrapper: the rows are grouped inside .ind-grp blocks with their
+   own <h4>, so a heading row and a value row are never siblings in one grid and cannot be
+   aligned by a common parent. Two identical templates that must move together is the
+   honest cost of that; KEEP THEM IN SYNC — if a track is added below, add it here. */
+.ind-colhead {
+  display: grid; gap: 0 8px;
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) 0 0;
+  align-items: baseline; position: sticky; top: 0; z-index: 2;
+  background: var(--bg-panel, var(--bg-elevated)); border-bottom: 1px solid var(--border);
+  padding: 2px 0 3px; margin-bottom: 2px;
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+.ind-colhead.show-true {
+  grid-template-columns: var(--ind-plot) 1fr var(--ind-v) var(--ind-t) 12px;
+}
+/* The heading's first cell must be EXACTLY as wide as a row's .plot-cell, or every
+   column below drifts left of its label: both tracks are `auto`, and an empty span
+   measures 0 while a checkbox does not. Mirrors .plot-cell — keep them in step. */
+.ind-colhead .ch-plot { display: inline-block; }   /* the track sizes it now */
+.ind-colhead .ch-v, .ind-colhead .ch-t { text-align: right; white-space: nowrap; }
+.ind-colhead:not(.show-true) .ch-t, .ind-colhead:not(.show-true) .ch-w { display: none; }
+.num-line .nk { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.num-line .nv { text-align: right; white-space: nowrap; }
+/* The true side is deliberately quieter than the instrument beside it: the instrument
+   is what the operator is meant to be reading, and this is the debug overlay. */
+.num-line .nv-true {
+  font-weight: 600; color: var(--muted); text-align: right; white-space: nowrap;
+  font-size: 12px; overflow: hidden;
+}
+.num-line .nv-warn { color: var(--caution); font-size: 11px; visibility: hidden; }
+#indicationsList:not(.show-true) .nv-true,
+#indicationsList:not(.show-true) .nv-warn { display: none; }
+/* A DISAGREEING row, flagged rather than left to be spotted. Not red: an instrument
+   that disagrees with the plant is not itself a plant condition — it is a fact about
+   the channel, and colouring it like an alarm would put a plant state on the board
+   that the plant is not in. */
+.num-line.diverged .nv-warn { visibility: visible; }
+.num-line.diverged .nv { color: var(--caution); }
+.num-line.diverged .nv-true { color: var(--text-2); }
+/* Row-type chips. The filter is a data-attribute on the list so it costs one attribute
+   write rather than a class toggle per row on a 119-row list. */
+.ind-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 8px; }
+.ind-filters { display: flex; }
+.ind-filters button {
+  background: var(--bg-elevated); border: 1px solid var(--border); color: var(--muted);
+  font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer;
+}
+.ind-filters button:first-child { border-radius: 4px 0 0 4px; }
+.ind-filters button:last-child { border-radius: 0 4px 4px 0; }
+.ind-filters button + button { border-left: none; }
+.ind-filters button.on { color: var(--text); border-color: var(--normal); background: rgba(91,179,196,.12); }
+.ind-truth { margin-left: auto; font-size: 11px; }
+.ind-truth.on { color: var(--normal); border-color: var(--normal); }
+#indicationsList[data-filter="paired"] .num-line:not([data-rowtype="paired"]),
+#indicationsList[data-filter="ind"] .num-line:not([data-rowtype="ind"]),
+#indicationsList[data-filter="phys"] .num-line:not([data-rowtype="phys"]) { display: none; }
 .ff-badge { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: var(--caution);
   background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); border-radius: 4px; padding: 1px 6px; }
 
@@ -433,7 +520,158 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
   flex: 1 1 auto; background: var(--bg-strip); border: 1px solid var(--border); border-radius: var(--radius);
   display: flex; flex-direction: column; padding: 6px 8px;
 }
-.chart-legend { min-height: 14px; font-size: 10px; color: var(--muted); letter-spacing: .02em; }
+/* The chart's own header (#439, spec §8): the legend on the left, the window ladder
+   and CSV on the right. These two came OUT of Settings when Settings became a pausing
+   modal — the control that changes how you are watching a transient must sit on the
+   thing it changes, and must never stop the plant to do it. */
+.chart-head { display: flex; align-items: center; gap: 8px; min-height: 16px; }
+.chart-ctl { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.chart-ctl .seg button { font-size: 10px; padding: 1px 5px; min-height: 18px; }
+.chart-ctl .btn { font-size: 10px; padding: 1px 6px; }
+.chart-legend { flex: 1 1 auto; min-width: 0; font-size: 10px; color: var(--muted); letter-spacing: .02em; }
+
+/* ---------------- the lane stack (#440, spec §8) ----------------------------
+   PORTED FROM ui/test_panel/lane_reference.html, which is the golden artifact and
+   measures itself against the budget: four 48 px lanes plus the 12 px shared axis
+   and a 10 px event ribbon come to 216 px against ~220 px. Change the reference
+   first, re-measure, then port — prose is poor at density because density is a
+   hundred small decisions and a document can only name a few of them.
+
+   PROHIBITED IN THIS REGION, stated as a rule because it otherwise returns every
+   time the file is regenerated: card wrappers, drop shadows, nested borders, and
+   default utility spacing scales. Spacing values here are explicit.
+
+   Labels and values are HTML over the SVG. The canvas is preserveAspectRatio="none"
+   over a fixed 400x120 box, so <text> inside it would be squashed non-uniformly at
+   exactly the widths this budget is fighting for. */
+.lane-chrome {
+  position: absolute; left: 0; right: 0;
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 0 2px 0 4px;                 /* 4 px horizontal, per the reference */
+  font-size: 10px; line-height: 1.1;
+  pointer-events: none;
+}
+.lane-name {
+  font-weight: 600; letter-spacing: .02em;
+  text-shadow: 0 0 3px var(--bg-strip), 0 0 3px var(--bg-strip);   /* readable over its own trace */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* EACH LANE PRINTS ITS CURRENT RANGE, so no lane's amplitude is ambiguous — which is
+   what makes per-lane autoscale honest now that traces are not overlaid. */
+.lane-rng {
+  margin-left: auto; margin-right: 14.5%;   /* clears the value column (1 - CHART_PLOT_FRAC) */
+  font-size: 9px; color: var(--muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 3px var(--bg-strip);
+}
+/* The value column: fixed width, tabular, right-aligned. Without all three, values
+   shift horizontally as digit counts change and the whole stack jitters. */
+.lane-value {
+  position: absolute; right: 2px; transform: translateY(-50%);
+  min-width: 13%; text-align: right;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px; line-height: 1.15; color: var(--text);
+  border-left: 2px solid var(--cf, var(--text-2)); padding-left: 4px;
+  white-space: nowrap; pointer-events: none;
+}
+.lane-chrome.hot .lane-name, .lane-value.hot { color: var(--caution); }
+/* Reading AT THE CURSOR rather than live — coloured so the two can never be confused.
+   Cyan, because it is a property of the view and not of the plant. */
+.lane-value.at-cursor { color: var(--normal); }
+/* THE SECOND FIGURE, for a channel set to trace BOTH sides (#454). It goes on its own line
+   under the instrument reading rather than beside it: the value column is deliberately
+   fixed-width to stop the stack jittering, and widening it to fit a pair would undo that for
+   every lane including the ones showing one number. Dotted underline, matching the dashed
+   trace it names — the lane holds two lines in one hue and this is what says which is which.
+   The lane is 44-56 px and two 11 px lines with a 9 px second are ~24 px, so the pair still
+   sits inside the band it belongs to. */
+.lane-value-phys {
+  display: block; font-size: 9px; line-height: 1.1; color: var(--text-2);
+  border-bottom: 1px dashed currentColor; padding-bottom: 1px;
+}
+.lane-value.paired { line-height: 1.05; }
+.lane-numv .lane-value-phys { display: inline; border-bottom: 1px dashed currentColor; margin-left: 4px; }
+
+/* NUMERIC ROWS — the pinned channels that did not fit as traces (#440, §14-7a ruling).
+   ~18 px each against a 44–56 px lane, so a stack that cannot hold another trace still
+   holds several more numbers. Same pinned list, a second rendering — not a second
+   feature, which is why they share the lane host and the value column's alignment. */
+.lane-nums {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  pointer-events: none;
+}
+.lane-num {
+  display: flex; align-items: baseline; gap: 6px;
+  height: 18px; padding: 0 2px 0 4px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; line-height: 18px;
+  background: var(--bg-strip);
+}
+.lane-numv {
+  margin-left: auto; min-width: 13%; text-align: right;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text);
+  border-left: 2px solid var(--cf, var(--text-2)); padding-left: 4px;
+}
+.lane-num.hot .lane-name, .lane-num.hot .lane-numv { color: var(--caution); }
+
+/* ---------------- the SOE ribbon (#442, spec §8) ----------------------------
+   10 px, reserved in the density budget by the reference lane. Tier-2 ticks live
+   here; tier 1 draws full height across the lanes instead, because a
+   plant-defining event is context for every lane at once.
+
+   OPERATOR ACTIONS ARE VISUALLY DISTINCT FROM PLANT RESPONSES — cyan for what you
+   did, amber for what the plant did. The spec calls this the most valuable
+   teaching distinction the timeline can carry: a student reads their own hand in
+   the record and sees cause and effect directly. */
+.soe-ribbon {
+  position: relative; height: 10px; flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, .015);
+}
+.soe-mark {
+  position: absolute; top: 1px; height: 8px; min-width: 2px;
+  background: var(--caution); border-radius: 1px;
+  font-size: 7px; line-height: 8px; color: #17120A; text-align: center;
+  cursor: pointer;
+  /* Density applies to DISPLAY, not controls: keep the visual small and expand the
+     hit region beyond it, or a 2 px mark is unclickable. */
+  padding: 0 1px;
+  box-shadow: 0 0 0 6px transparent;
+}
+.soe-mark.op { background: var(--normal); color: #04121a; }
+/* A CLUSTER carries its count. A trip cascade fires a dozen events inside two
+   seconds — one pixel in a 30-minute window — and drawn individually they overlap
+   into a mark that says "something happened" and nothing else. */
+.soe-mark.many { min-width: 9px; font-weight: 700; }
+.soe-mark:hover { outline: 1px solid var(--text-2); }
+/* Tier-1 lines are drawn in the SVG, so they scale with the plot rather than
+   needing their own layer. */
+#chartCanvas .soe-t1 { pointer-events: none; }
+/* WHERE THE RUN BEGAN (sim time zero). The chart opens holding 30 minutes of PRESEEDED
+   trend at negative sim time, so this marks a real join between the plant's history and the
+   run you are driving — not the left edge.
+
+   THE TAG SITS AT THE BOTTOM, and that is a screenshot finding rather than a preference. At
+   the top it landed inside the first lane's range label and rendered as "40% T+0 %" — the
+   lane chrome puts a NAME top-left and a RANGE top-right in every lane, so the top strip is
+   the one row of the plot that is never free. The bottom edge carries nothing but trace, and
+   it is also the end nearest the time axis the mark belongs to. Element-counting checks saw
+   nothing wrong either way.
+
+   It hangs to the LEFT of the line because the line spends the first `window` seconds of
+   every run near the right-hand edge (measured: 97 % at T+10 s on a 5-minute window), where
+   a right-anchored tag would be clipped by the value gutter. */
+#chartCanvas .run-start { pointer-events: none; }
+.run-start-tag {
+  position: absolute; bottom: 1px; transform: translateX(-100%);
+  padding: 0 3px; font-size: 8px; letter-spacing: .06em;
+  color: var(--muted); background: var(--bg-strip); border-radius: 2px;
+  pointer-events: none; white-space: nowrap;
+}
 .chart-legend .chart-meta.muted { font-style: italic; }
 /* plot wrapper holds the stretched SVG + the floating value-label overlay */
 .chart-plot { position: relative; flex: 1 1 auto; min-height: 0; overflow: visible; }
@@ -616,6 +854,23 @@ html[data-channel="dev"] .logo-test {
 .sim-status:hover { color: var(--text); border-color: var(--normal); }
 .sim-status .ss-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sim-status .ss-chev { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
+/* THE BUTTON SAYS WHAT IT OPENS *(OWNER DIRECTIVE, 2026-08-11: "The button should be
+   clearly labeled.")*. It used to read only its own state — "PWR · Free Play — 50 % Power"
+   — which says where you are and not that pressing it takes you somewhere. */
+.sim-status .ss-lbl {
+  flex: 0 0 auto; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--normal); border-right: 1px solid var(--border); padding-right: 6px;
+}
+/* The pointer back to that button, for a few seconds after the window is closed. */
+.ss-tip {
+  position: relative; margin-top: 4px; padding: 4px 8px;
+  background: rgba(91, 179, 196, .12); border: 1px solid var(--normal); border-radius: 5px;
+  color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
+  animation: ssTipIn .18s ease-out;
+}
+.ss-tip[hidden] { display: none; }
+@keyframes ssTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ss-tip { animation: none; } }
 
 /* Help / tour — reuses the mission-modal chrome, narrower and content-sized */
 .help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }
@@ -784,6 +1039,16 @@ html[data-channel="dev"] .logo-test {
 /* In-sim bug report (2026-08-07). The send block is `hidden` in the markup and only
    revealed when a deploy stamped a telemetry endpoint, so a local checkout and the
    offline build show the email route alone rather than a button that cannot work. */
+/* Restricted-info warning (#438) — sits ABOVE the input. Caution accent, but muted:
+   this is a modal notice, not a plant condition, so no alarm-tile styling. */
+.fb-warn {
+  margin-top: 12px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
+  color: var(--text); border: 1px solid var(--border);
+  border-left: 3px solid var(--caution); background: rgba(217, 164, 65, .08);
+  border-radius: 3px;
+}
+.fb-warn strong { color: var(--caution); }
+.lc-fb { margin-top: 10px; }
 .fb-send { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
 .fb-note {
   width: 100%; resize: vertical; min-height: 68px;
@@ -860,17 +1125,45 @@ html[data-channel="dev"] .logo-test {
 .instructor.mini .instr-nav,
 .instructor.mini .instr-ack { display: none; }
 .instructor.mini .persona { padding-top: 2px; padding-bottom: 2px; }
+/* NEW-MESSAGE CUE — CYAN, and bounded (#439, spec §4).
+   It was AMBER. On a plant board amber is a plant condition, so the Instructor
+   announcing itself read as the plant announcing something — the one colour the cue
+   must not borrow. Cyan is the only board colour that is not a state.
+   Two cycles, then a steady marker: indefinite motion in peripheral vision is
+   fatiguing over an hour and stops being noticed, which spends the signal. */
 @keyframes instrAttnPulse {
   0%, 100% { box-shadow: none; }
-  45% { box-shadow: inset 0 0 0 2px var(--caution, #d9a441); }
+  45% { box-shadow: inset 0 0 0 2px var(--normal, #5BB3C4); }
 }
 .instructor.instr-attn { animation: instrAttnPulse 1.1s ease 2; }
+/* Reduced motion: the signal must be FULLY legible with no motion at all — motion is
+   an accelerator here, never the only carrier. The steady ring is what the animation
+   settles to anyway, so this is the same cue minus the flash phase. */
+@media (prefers-reduced-motion: reduce) {
+  .instructor.instr-attn { animation: none; box-shadow: inset 0 0 0 2px var(--normal, #5BB3C4); }
+}
+/* Open, but scrolled away from the newest line (spec §4) — a quiet marker inside the
+   panel, not a flash on a header the player is already looking at. */
+.instr-newbelow {
+  display: block; width: 100%; margin-top: 4px; padding: 2px 6px;
+  background: transparent; border: 1px solid var(--normal); border-radius: 4px;
+  color: var(--normal); font: inherit; font-size: 11px; cursor: pointer; text-align: center;
+}
+.instr-newbelow[hidden] { display: none; }
 .instructor.collapsed .instr-prev,
 .instructor.collapsed .instr-nav,
 .instructor.collapsed .instr-ack { display: none; }
 .instructor.collapsed .instr-current {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* COLLAPSED MEANS ONE LINE, and the free-play content is not one line. `.collapsed` is
+   `flex: 0 0 auto` — size to content — and it relied on the body being a text node that
+   `white-space: nowrap` could ellipsize. The idle block is BLOCK content (the checklist
+   launcher and the numbered orientation list), which nowrap does not touch, so a collapsed
+   card still stood 374 px tall and squeezed the tab it had just handed the column to.
+   Measured: tools 205 px against an instructor 374 px, on a card marked collapsed. */
+.instructor.collapsed .instr-launch,
+.instructor.collapsed .instr-idle { display: none; }
 .tools.collapsed .tab-body { display: none; }
 /* #237: a scenario that declares ui_policy.failures:'locked' owns the Failures
    tab — visible but inert, with the note explaining why. */
@@ -1014,20 +1307,19 @@ html[data-channel="dev"] .logo-test {
 /* Headers stay named while the list scrolls — it is ~100 rows on the PWR. */
 .ind-grp h4 { margin: 0 0 4px; font-size: 9px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase;
   position: sticky; top: 0; z-index: 1; background: var(--bg-panel, #12181f); padding: 3px 0 2px; }
-/* TWO COLUMNS WHEN THERE IS ROOM *(OWNER DIRECTIVE, 2026-08-04: "add a second column to the
-   graph menu when space allows.")*, #350 item 23 — carried over from the Graph tab this
-   replaced, and it matters more here: that list was 51 checkboxes, this one is every channel
-   the plant publishes with its reading beside it. `auto-fill` + a minmax track is the "when
-   space allows" part with no breakpoint to guess and no JS: the panel is operator-resizable
-   between 360 px and 900 px (pwr_board.js SIMCOL_*), so any fixed media query would be wrong
-   at some width the operator can choose. GRID, NOT CSS `columns`, and the reason is the
-   sticky headers: `position: sticky` does not work inside a multicol container, and a group
-   split down a column break would leave half its rows under someone else's heading. Each
-   group is one grid item, so it stays whole and its header still sticks. The track is wider
-   than the Graph tab's 168 px because these rows carry a value as well as a label. */
+/* ONE COLUMN *(OWNER DIRECTIVE, 2026-08-11: "Put indications in the indications tab into
+   one column.")*. This SUPERSEDES the 2026-08-04 directive that asked for a second column
+   when space allowed — and the reason that one has expired is that the rows changed under
+   it. When that was written this was a list of 51 checkboxes with a label; since #439 every
+   row carries a label, an indicated value, a true value and a divergence flag, so a 240 px
+   track splits a row that needs the width. Two columns of truncated readings read worse
+   than one column of complete ones.
+
+   The sticky group headers stay, which is why this remains a grid rather than reverting to
+   CSS `columns`: `position: sticky` does not work inside a multicol container. */
 #indicationsList {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  column-gap: 14px; align-items: start;
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 /* In a grid the first item of the SECOND column is not a first-child, so a sibling rule
    would leave it with a top border and the one beside it without. Uniform reads as a
@@ -1042,41 +1334,72 @@ html[data-channel="dev"] .logo-test {
 .set-row[hidden] { display: none; }
 .set-row .k { font-size: 12px; color: var(--text-2); }
 
-/* ============================================ right col: scanner / inspection
-   Two tiers on one surface (#96): collapsed is the one-line summary, expanded
-   adds the full description, the card an item belongs to, and a link into the
-   manual section that documents it. The whole panel is the click target — the
-   ⤢ button only makes that affordance visible. */
-/* FIXED height, both states (owner, 2026-07-28: "the jumping up and down when
-   moving the mouse over things is annoying"). The block used to size to its
-   text, so every hover across the board re-laid-out the whole right column and
-   the Instructor panel above it jumped. The body is a constant box that scrolls
-   its own overflow instead — collapsed fits the longest summary (~4 lines),
-   expanded is a stable reading pane. */
-.scanner { flex: 0 0 auto; cursor: pointer; }
-.scanner .panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.scanner .body {
-  padding: 8px 10px; font-size: 12px; color: var(--text-2); line-height: 1.45;
-  height: 74px; overflow-y: auto; overscroll-behavior: contain;
+/* ================================================ System Scanner — a STATUS LINE
+   #439 / spec §6. It was a panel at the bottom of the right column, two fixed
+   heights (74 px / 28vh) with the choice persisted. Both are gone: the content is
+   one sentence plus an affordance, and the panel sat at the maximum eye distance
+   from the board it describes. It is now a single ~26 px line directly under the
+   board, and the long form is a pausing modal.
+
+   The FIXED height stays load-bearing for the same reason it always was (owner,
+   2026-07-28: "the jumping up and down when moving the mouse over things is
+   annoying") — one line, `nowrap`, ellipsis. A line that reflows to two while the
+   pointer crosses the board would push the whole board up and down. */
+.scanline {
+  flex: 0 0 auto; height: 26px; display: flex; align-items: center; gap: 8px;
+  padding: 0 8px; margin-top: 4px;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px;
+  font-size: 12px; color: var(--text-2); line-height: 1;
 }
-.scanner .body strong { color: var(--text); }
-.scanner .idle { color: var(--muted); font-style: italic; }
+.scanline-tag {
+  font-size: 9px; letter-spacing: .12em; color: var(--muted);
+  border-right: 1px solid var(--border); padding-right: 8px; flex: 0 0 auto;
+}
+.scanline-body {
+  flex: 1 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* EXPANDED: the line grows in place to show the whole description — no second box
+   *(OWNER DIRECTIVE, 2026-08-11)* — and while expanded it is PINNED TO ONE HEIGHT
+   *(OWNER DIRECTIVE, 2026-08-11: "Find a max height for the expanded scanner and pin it
+   to that height when maximized. The height jumps around shifting everything when the
+   player mouses over things.")*.
+   
+   The previous rule CLAIMED to be a fixed height in its own comment and was
+   `height: auto; max-height: 190px` — content-sized, so every hover re-laid the board
+   below it. 140px IS MEASURED, not chosen: across all 133 `data-scanner-hint` elements
+   the tallest description renders 127px of content (p95 109, median 92, min 17), and
+   140 = 127 + 10 padding + 2 border. So every description in the app fits with nothing
+   clipped and nothing scrolling, and the height never changes while expanded.
+   
+   The 190 it replaces was 50% taller than the tallest thing that exists. The body keeps
+   `overflow-y: auto` purely as a safety net for copy written later — if that scrollbar
+   ever appears, the right fix is to re-run the measurement, not to raise this number. */
+.scanline.expanded {
+  height: 140px; align-items: flex-start; padding: 5px 8px; line-height: 1.45;
+}
+.scanline.expanded .scanline-tag { padding-top: 1px; }
+.scanline.expanded .scanline-body {
+  white-space: normal; overflow-y: auto; text-overflow: clip;
+  max-height: 128px; overscroll-behavior: contain;
+}
+.scanline.expanded .scan-exp { position: sticky; top: 0; }
+.scan-detail { display: block; margin-top: 5px; color: var(--text-2); }
+.scan-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center;
+  margin-top: 5px; font-size: 11px; color: var(--muted);
+}
+.scanline-body strong { color: var(--text); }
+.scanline .idle { color: var(--muted); font-style: italic; }
 .scan-exp {
+  flex: 0 0 auto;
   background: transparent; border: 1px solid var(--border); border-radius: 4px;
   color: var(--text-2); font: inherit; font-size: 10px; letter-spacing: .06em;
   padding: 1px 6px; cursor: pointer; text-transform: uppercase;
 }
 .scan-exp:hover { color: var(--text); border-color: var(--text-2); }
-/* Expanded: a taller pane of the SAME fixed size for every entry — a long
-   description scrolls inside it rather than growing the panel. Viewport-relative
-   so it stays usable on a laptop, clamped so it cannot eat the column. */
-.scanner.expanded { cursor: default; }
-.scanner.expanded .body { height: 28vh; min-height: 200px; max-height: 260px; }
-.scan-detail { margin-top: 6px; color: var(--text-2); }
-.scan-meta {
-  margin-top: 6px; font-size: 11px; color: var(--muted);
-  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center;
-}
+.scan-exp[hidden] { display: none; }
+.scan-brief { color: var(--text); font-size: 13px; margin: 0 0 10px; }
 .scan-manual {
   background: transparent; border: none; padding: 0; cursor: pointer;
   color: var(--running); font: inherit; font-size: 11px;
@@ -1093,6 +1416,7 @@ html[data-channel="dev"] .logo-test {
   font-size: 11px; letter-spacing: .02em; color: var(--muted);
 }
 .scan-live.on { color: var(--running); }
+.scanline .scan-live { display: inline; margin-top: 0; margin-left: 8px; }
 /* NO hover ring on the inspected object (owner, 2026-07-28) — the first cut drew
    one and it reads as noise, flickering across every control the pointer passes.
    The glows that remain (.instr-glow, .ckl-glow) point at something the player did
@@ -1537,6 +1861,40 @@ select.num-input { width: auto; }
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
 }
+/* ============================================ the highlight bus (#444, spec §7)
+   A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
+   board colour that is not a plant state: green, amber and red all carry condition
+   meaning, so a halo in any of them could be misread as a state change. The
+   element's own colours stay untouched underneath, which is what lets a haloed
+   component in alarm still read as in alarm.
+
+   It survives colour-vision deficiency because it is GEOMETRY, not hue: cyan and
+   green can converge under deuteranopia, but a glow around an outline still reads
+   as a glow.
+
+   PINNED DIFFERS BY WEIGHT, NOT HUE. A second colour would be a second meaning, and
+   the two states are the same relation — one of them is just holding still.
+
+   IT DOES NOT PULSE. The instructor and checklist glows animate because they are
+   telling you to look at something you did not choose; this one answers a question
+   you asked by pointing, so it appears and stays. That also satisfies §7's
+   reduced-motion requirement without a media query. */
+.hl-glow {
+  border-radius: 6px; position: relative; z-index: 5;
+  box-shadow: 0 0 0 1px rgba(91, 179, 196, .70), 0 0 12px 3px rgba(91, 179, 196, .30);
+}
+.hl-pin {
+  border-radius: 6px; position: relative; z-index: 5;
+  box-shadow: 0 0 0 2px rgba(91, 179, 196, .95), 0 0 18px 5px rgba(91, 179, 196, .45);
+}
+/* The UI relation (spec §7): a control lighting the INTERFACE element it changes.
+   Applied only where the target is not already obvious — a control sitting beside
+   what it changes gains nothing from a halo but flicker. */
+.hl-lane {
+  box-shadow: inset 0 0 0 1px rgba(91, 179, 196, .55);
+  border-radius: 3px;
+}
+
 .lc-msg { margin-bottom: 8px; }   /* endpoint beat commentary shown above the level-complete panel */
 .lc-panel { display: flex; flex-direction: column; gap: 6px; }
 .lc-title { font-weight: 700; font-size: 13px; color: var(--text); }
@@ -1741,6 +2099,90 @@ select.num-input { width: auto; }
   border: 1px solid var(--caution); color: var(--caution); border-radius: 4px;
   padding: 1px 6px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
 }
+/* ---- selection screen (#443, spec §9) --------------------------------------
+   Reuses .mission-overlay / .mplant-card so the front door and the Plant &
+   Mission window read as one family; only the frame and the activity rows are
+   new. z-index sits above the mission overlay because the start screen can hand
+   off to it. */
+/* Settings and the Scanner's long form: modal class, so they pause (#439, spec §1).
+   Narrower than the Plant & Mission window — both are a column of rows, not a picker. */
+.set-modal { height: auto; max-height: min(84vh, 700px); width: min(560px, 96vw); }
+.set-body { padding: 12px 16px 16px; overflow-y: auto; }
+.set-body p { font-size: 13px; line-height: 1.55; color: var(--text-2); margin: 0 0 10px; }
+.set-body .scan-hint { color: var(--muted); }
+
+/* Checklists — its own tab since #439 (spec §9: it ranks above the Manual, and it is
+   a live operating aid, so it never pauses). */
+.ckl-picker[hidden] { display: none; }
+.ckl-busy { color: var(--muted); font-style: italic; }
+
+/* ---- relevance ordering (#443, spec §9): SORT, DO NOT FILTER -----------------
+   A demoted procedure keeps its place in the list and states its gating condition.
+   That is the whole value of demoting rather than hiding: the demotion becomes
+   instruction, and a player who saw a checklist yesterday can still find it. */
+.ckl-gate {
+  display: block; font-size: 10px; color: var(--muted); font-style: italic;
+  margin-top: 1px;
+}
+.ckl-gated { opacity: .72; }
+.ckl-later { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 4px; }
+.ckl-later > summary {
+  font-size: 11px; color: var(--muted); cursor: pointer; padding: 2px 0;
+  list-style: none;
+}
+.ckl-later > summary::before { content: '▸ '; }
+.ckl-later[open] > summary::before { content: '▾ '; }
+
+/* The free-play Instructor's launcher — it had static help copy in the shell's most
+   valuable slot; this gives it a job (#443, spec §9). */
+.instr-launch { margin-bottom: 10px; }
+.instr-launch-t {
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-2); margin-bottom: 4px;
+}
+.instr-launch .btn { display: block; width: 100%; text-align: left; margin-bottom: 3px; font-size: 12px; }
+.instr-launch-more { margin-top: 4px; }
+
+.start-overlay { z-index: 215; }
+.start-modal { height: auto; max-height: min(84vh, 620px); width: min(720px, 96vw); }
+.start-head { padding: 18px 18px 6px; }
+.start-title { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: .01em; }
+.start-title .a { font-size: 16px; }
+.start-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.start-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 18px; min-height: 0; overflow-y: auto; }
+.start-body[hidden] { display: none; }
+.start-plants { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.start-acts { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.start-act {
+  display: flex; gap: 8px; align-items: flex-start; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+  background: var(--bg-elevated);
+}
+.start-act:hover { border-color: rgba(122, 176, 255, 0.4); }
+.start-act.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
+.sa-name { display: block; font-size: 13px; font-weight: 700; color: var(--text); }
+.sa-desc { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.start-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 18px 16px; border-top: 1px solid var(--border);
+}
+.start-go { font-size: 13px; padding: 8px 14px; border-color: var(--running); color: var(--text); }
+.start-foot .btn[hidden] { display: none; }
+
+/* ---- reset, in the session footer of the Plant & Mission window (#443) ---- */
+.mp-session { flex: 0 0 auto; padding: 10px 14px 12px; border-top: 1px solid var(--border); }
+.mp-reset { margin-top: 8px; }
+.mp-reset.mp-reset-armed { border-color: var(--caution); color: var(--caution); }
+
+/* ---- coach marks (#443): a dot that waits, and retires on first use -------- */
+.unvisited { position: relative; }
+.unvisited::after {
+  content: ''; position: absolute; top: -3px; right: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--normal); box-shadow: 0 0 0 2px var(--bg-plant);
+  pointer-events: none;
+}
+
 /* step 2 — mode tabs; step 3 — the nested content */
 .mp-right { display: flex; flex-direction: column; min-height: 0; }
 .mp-modes { display: flex; border-bottom: 1px solid var(--border); }
@@ -1853,3 +2295,148 @@ select.num-input { width: auto; }
    .mission-modal's fixed height — that rule comes later in the file — so the
    compound selector here outranks it.) */
 .mission-modal.fb-modal { height: auto; max-height: min(84vh, 760px); }
+
+/* ===================================================================================
+   THE INSTRUCTOR AS A TAB, AND ITS TRANSCRIPT (2026-08-11, owner items 4 and 7)
+   =================================================================================== */
+
+/* The pane fills the tab body and scrolls INSIDE the log, not as a whole — the persona
+   header and the walkthrough nav have to stay put while the messages move under them. */
+/* THE INSTRUCTOR PANE OWNS ITS HEIGHT, and the LOG is what scrolls — not .tab-body.
+   
+   .tab-body is `overflow-y: auto` and .tabpane.on is `display: block`, so every other pane
+   is content-sized and the tab body scrolls it. That is right for a list of failures and
+   wrong for a transcript: a `flex: 1 1 0` log inside a content-sized parent resolves to
+   ZERO height and every message overflows an invisible box. Measured: log clientHeight 0
+   against scrollHeight 1270, four messages in the DOM and one visible.
+   
+   `.instr-mode` is set on .tab-body by selectTab so this does not depend on :has(). */
+.tab-body.instr-mode { overflow: hidden; display: flex; flex-direction: column; }
+.tabpane.instructor { display: none; flex-direction: column; min-height: 0; }
+.tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
+.tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* THE LOG. `flex: 1 1 0` with `min-height: 0` is what makes it the scrolling element
+   rather than growing the pane — without the min-height a flex child refuses to shrink
+   below its content and the scrollbar silently moves to an ancestor. */
+.instr-log {
+  flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 6px; padding-right: 2px;
+}
+/* A frozen message. Quieter than the live one: it is history, and the eye should land on
+   the newest bubble. Left rule instead of a full bubble outline — at 350px wide a boxed
+   chat bubble spends most of its width on the box. */
+.instr-msg {
+  border-left: 2px solid var(--border); padding: 2px 0 2px 8px;
+  color: var(--text-2); font-size: 12px; opacity: .85;
+}
+.instr-msg .m-note { font-size: 11px; }
+/* The live bubble is the last child and keeps its existing look; it just stops being the
+   only thing in the panel. */
+.instr-log .instr-current { flex: 0 0 auto; }
+
+/* THE TAB'S ATTENTION CUE. The pane is off screen when this fires, so the count goes on
+   the button. Same grammar as the board's TRIP BLOCKS badge: a count plus a brief pulse,
+   never a colour that could read as a plant condition. */
+#tabbar button[data-unseen]::after {
+  content: attr(data-unseen);
+  margin-left: 5px; padding: 0 4px; border-radius: 7px;
+  background: var(--accent, #2f81f7); color: #fff; font-size: 9px; font-weight: 700;
+}
+@keyframes tabAttn { 0%, 100% { box-shadow: none; } 50% { box-shadow: 0 0 0 2px var(--accent, #2f81f7) inset; } }
+#tabbar button.tab-attn { animation: tabAttn .7s ease-in-out 2; }
+
+/* THE PLAY BUTTON FLASHES WHILE PAUSED *(OWNER DIRECTIVE, 2026-08-11: "When the sim is
+   paused flash the play button.")*. It carries the cue the removed SIMULATION PAUSED veil
+   used to carry, which is why the veil could go: the state is still announced, by the
+   control that changes it. Steady pulse rather than a few blinks — this is a standing
+   condition, not an event, and it stops the moment the plant runs. */
+@keyframes playPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(90, 173, 124, .55); }
+  50%      { box-shadow: 0 0 0 5px rgba(90, 173, 124, 0); }
+}
+#playBtn.paused { animation: playPulse 1.5s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  #playBtn.paused { animation: none; outline: 2px solid var(--running, #5aad7c); }
+  #tabbar button.tab-attn { animation: none; }
+}
+
+/* ================================= CHART SETTINGS WINDOW (#454, 2026-08-11) ==============
+   The anchored .chart-opts popover that stood here is GONE. It was 300 px, opened upward out
+   of the chart, and deliberately did not pause; the owner's follow-up reversed all three
+   ("like the plant selection menu … large and pause the sim"). The window now reuses
+   .mission-overlay / .mission-modal / .mission-body wholesale, so only the two columns'
+   contents need rules of their own.
+
+   Twice in one day the popover shipped with its channel list unreachable — first clipped by
+   the chart, then below the fold — and both times a check that counted elements passed. That
+   is why verify_e2e_ui now measures the list's RECT rather than its row count. */
+.strip-chart { position: relative; }
+#chartOptsBtn.on { background: var(--bg-elevated); border-color: var(--accent, #2f81f7); }
+
+/* left column — the chart's own options, in .mission-body's 260 px track */
+.cs-opts {
+  border-right: 1px solid var(--border); overflow-y: auto;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.cs-opts .seg { flex: 0 0 auto; }
+.cs-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+.cs-count { font-size: 12px; color: var(--text-2); }
+.cs-note { font-size: 11px; color: var(--muted); line-height: 1.45; margin: 8px 0 0; }
+.cs-note b { color: var(--text-2); font-weight: 600; }
+
+/* right column — the channel list. The FILTER and the column heads are pinned and the list
+   scrolls under them: with 120 rows, a head that scrolls away leaves two unlabelled columns
+   of selectors, which is the one thing this layout cannot afford to be ambiguous about. */
+.cs-right { display: flex; flex-direction: column; min-height: 0; padding: 10px 12px; gap: 6px; }
+.cs-filter {
+  flex: 0 0 auto; box-sizing: border-box; padding: 5px 8px; font: inherit; font-size: 12px;
+  background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px;
+}
+/* ONE GRID, DECLARED ONCE, shared by the head and every row — otherwise the head's columns
+   and the rows' columns are two independent claims that drift apart the first time a label
+   gets long. */
+/* The physics column is WIDER than the indication column because its readings are longer:
+   it carries the curated physics prose where one exists, and "3.12 % · 9.4 MWt" or
+   "563 °F · 0 °F vs Tavg" is two facts, not one number. At equal widths the second fact
+   ellipsised away on every such row — which are exactly the rows worth reading. */
+.cs-head, .cs-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 116px 178px; gap: 8px; align-items: center;
+}
+.cs-head {
+  flex: 0 0 auto; font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); padding: 0 6px 4px; border-bottom: 1px solid var(--border);
+}
+.cs-head span + span, .cs-row .cs-pick { justify-self: start; }
+.cs-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.cs-grp h5 {
+  margin: 10px 0 2px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-2); font-weight: 600;
+}
+.cs-row { font-size: 12px; padding: 3px 6px; border-radius: 3px; }
+.cs-row:hover { background: rgba(255,255,255,.04); }
+.cs-row.on { background: rgba(122, 176, 255, 0.07); }
+.cs-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* THE SELECTOR SITS NEXT TO ITS VALUE *(OWNER DIRECTIVE: "Put a radial next to each value to
+   let the user choose")* — one per side, so "both" is simply both lit. They are checkboxes
+   styled as radios on purpose: the owner's word was "radial", but the required behaviour is
+   two independent choices, and a real radio group cannot express both-at-once. */
+.cs-pick { display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 0; }
+.cs-pick input {
+  flex: 0 0 auto; appearance: none; -webkit-appearance: none;
+  width: 13px; height: 13px; border-radius: 50%; margin: 0;
+  border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer;
+}
+.cs-pick input:checked { border-color: var(--accent, #7ab0ff); background: var(--accent, #7ab0ff); box-shadow: inset 0 0 0 2.5px var(--bg-panel, #121821); }
+.cs-pick input:disabled { opacity: .3; cursor: default; }
+.cs-pick.na { cursor: default; }
+/* Tabular figures: the value beside a selector changes every broadcast, and a proportional
+   font makes the whole column twitch sideways as digits change. Same rule as the lane values. */
+.cs-val {
+  font-family: var(--mono, ui-monospace, monospace); font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; min-width: 0;
+}
+.cs-pick input:checked + .cs-val { color: var(--text); }
+.cs-row.diverged .cs-val { color: var(--caution, #D9A441); }

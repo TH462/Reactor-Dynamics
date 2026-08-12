@@ -234,7 +234,38 @@
   function clearOverrides() { writeJson(K_OV, null); writeJson(K_VIEW, null); }
 
   // ================================================================= resolve
-  function stage(id) { return REG[id] ? REG[id].stage : null; }
+  /* THE FLOOR. free_play and manual are the sim and its manual; a build that hid them
+   * would ship a site with nothing on it. run_flags.js already refuses to let the
+   * literals below drop under 'public', and since the stamped layer can now set a
+   * stage from outside this file, the same rule has to bind there — otherwise remote
+   * control could do exactly what the gate forbids in source, and the gate would be
+   * decorative. The dashboard refuses it too; this is the end that cannot be bypassed.
+   */
+  var FLOOR = { free_play: true, manual: true };
+
+  /* Stages stamped into site/channel.js at BUILD time from the ops dashboard, which
+   * override the literals above. Read lazily, so load order with channel.js does not
+   * matter, and validated on the way through: this arrives as generated source and a
+   * malformed value must fall back rather than resolve to something arbitrary.
+   *
+   * Note what this is NOT: a runtime fetch. The value is a literal in a script tag by
+   * the time any browser sees it — test/run_portable.js requires that, and it is what
+   * lets the offline single-file build carry the same answer as the website.
+   */
+  function stamped(id) {
+    var m = G.RD_FLAG_STAGES;
+    if (!m || typeof m !== 'object') return null;
+    var v = m[id];
+    if (STAGES.indexOf(v) === -1) return null;
+    if (FLOOR[id] && v !== 'public') return null;   // cannot be lowered from outside
+    return v;
+  }
+
+  function stage(id) {
+    var s = stamped(id);
+    if (s) return s;
+    return REG[id] ? REG[id].stage : null;
+  }
 
   function on(id) {
     var ov = override(id);

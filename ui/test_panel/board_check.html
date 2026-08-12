@@ -41,6 +41,8 @@
   <script src="../../layers/instructor_layer.js"></script>
   <script src="../../layers/simulation_service.js"></script>
 
+  <script src="../chart_math.js"></script>      <!-- RD.ChartMath: the held-axis policy, shared by the chart and the vital tiles (#393) -->
+  <script src="../highlight_bus.js"></script>   <!-- RD.Highlight: the one highlight bus (#444) -->
   <script src="../diagram/board/board_h.js"></script>
   <script src="../diagram/board/std_pipe.js"></script>
   <script src="../diagram/board/pwr_board_data.js"></script>
@@ -494,24 +496,26 @@
       // The toggle reads the channel state off the RENDERED snapshot (SR DET pattern),
       // so re-render between clicks — in the app every broadcast does this.
       //
-      // STARTS ENGAGED since #289 *(OWNER RULING, 2026-08-01: "Let's start the rods in auto.
-      // Might as well, everything else starts in auto.")*, so the first click DISENGAGES.
+      // STARTS DISENGAGED since #460 *(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in
+      // manual.")*, reversing #289's auto default — so the first click ENGAGES.
       // The old pair asserted engage-then-disengage and inverted the moment the lineup
       // changed — they were reading the shipped default, not the toggle. Pinned as three
-      // now: the default itself, then both directions from it.
-      ck('func: ROD AUTO comes up ENGAGED on a Mode 1 start (#289)',
-        !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
+      // now: the default itself, then both directions from it. That structure is why this
+      // reversal cost a one-line edit per check instead of a re-diagnosis: the default has
+      // its OWN check, so a lineup change reddens the thing that actually moved and says so
+      // in its name, rather than silently inverting a direction assertion.
+      ck('func: ROD AUTO comes up DISENGAGED on a Mode 1 start (#460)',
+        !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
       clickBtn('ims5glucngg'); ticks(2);
-      ck('func: ROD AUTO disengages rods_tavg', !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
+      ck('func: ROD AUTO engages rods_tavg', !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
       RD.PwrBoard.render(svc.assembleSnapshot());
       clickBtn('ims5glucngg'); ticks(2);
-      ck('func: ROD AUTO re-engages rods_tavg', !!(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
+      ck('func: ROD AUTO re-disengages rods_tavg', !(chanOf('rods_tavg') && chanOf('rods_tavg').engaged));
       RD.PwrBoard.render(svc.assembleSnapshot());
-      // Leave it DISENGAGED for the rest of the harness: the physics-perturbing checks below
-      // were all authored against a hand-controlled plant, and an active rod controller would
-      // quietly change what they are measuring.
-      clickBtn('ims5glucngg'); ticks(2);
-      RD.PwrBoard.render(svc.assembleSnapshot());
+      // The rest of the harness needs it DISENGAGED: the physics-perturbing checks below were
+      // all authored against a hand-controlled plant, and an active rod controller would
+      // quietly change what they are measuring. The sequence above already ends there, so
+      // there is no trailing click — adding one back would ENGAGE it.
 
       // rods: the WITHDRAW/INSERT buttons are momentary (tap-or-hold). A quick TAP
       // (pointerdown then pointerup before the hold threshold) nudges EXACTLY ONE step;

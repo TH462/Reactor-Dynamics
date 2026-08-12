@@ -166,6 +166,24 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>The control room, rebuilt</h2>
+      <span class="log-ver mono">Alpha 1.6.0</span>
+      <time class="log-date mono" datetime="2026-08-12">12 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>The strip chart is a stack of lanes.</strong> One lane per indication, each with its own scale, name and value, and a shared cursor that reads every lane at the same instant. A dashed line marks where the run began.</li>
+      <li><span class="log-tag added">Added</span><strong>Sequence of events.</strong> A ribbon under the chart marks what happened and when — cyan for your actions, amber for the plant's. Trips and safety injections cross every lane; component events cluster into counted badges.</li>
+      <li><span class="log-tag added">Added</span><strong>Chart settings.</strong> Every channel the plant publishes, listed with its current reading, and a choice per channel: trace the instrument, the physics, or both. Both draws them together in one lane so you can see how far the gauge is from the plant.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The Instructor is a tab, and it keeps a transcript.</strong> Guidance and walkthrough steps accumulate and scroll instead of overwriting one another.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Plant &amp; Mission opens on load</strong> and the plant is running when you close it. Checklists are ordered by relevance, launch from free play, and link to the manual section they came from.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Indications has Plant and Physics columns</strong>, and the disagreement flag now measures each channel's own noise instead of a fixed band — so a gauge is flagged when it is further out than it normally wanders.</li>
+      <li><span class="log-tag added">Added</span><strong>Report a Problem</strong> from the header, in one action, with the diagnostics it will send shown before you send them.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Four plant behaviours.</strong> Safety injection now sheds the pressurizer heaters, ending a slow pressure oscillation after every loss-of-coolant accident; shutdown cooling no longer aligns itself into an unisolated break; full auxiliary feedwater cools the plant instead of banking the heat; free play starts with rod control in manual.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>A protection function that never fired</h2>
       <span class="log-ver mono">Alpha 1.5.2</span>
       <time class="log-date mono" datetime="2026-08-10">10 August 2026</time>

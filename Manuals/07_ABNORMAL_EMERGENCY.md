@@ -358,6 +358,7 @@ Operator does not use the light as sole truth.
 | 3 | Confirm accumulators discharge when pressure low enough |
 | 4 | Secondary heat sink for residual heat if available |
 | 5 | Do not secure ECCS on misleading level |
+| 6 | Expect **PZR HTRS SHED** — safety injection drops the heaters off the bus. Leave them shed while you are still losing inventory: pressure control is not the problem here, and reloading them raises break flow. Reload only once the leak is isolated and you want pressure back. |
 
 ### Acceptance
 Core cooling maximized; damage avoided if injection timely. Large breaks are severe — success = covered core / no melt when systems work.
@@ -475,7 +476,7 @@ Power driven down; core cooled; eventually subcritical. Stuck-rod partial ATWS s
 | Step | Action |
 |------|--------|
 | 1 | Attempt spray close / AUTO (may fail) |
-| 2 | Energize heaters max |
+| 2 | Energize heaters max — if injection has actuated they are **shed** (PZR HTRS SHED) and will not answer until reloaded |
 | 3 | If pressure approaches trip/HPI, SCRAM as required |
 | 4 | Stop RCP only if procedure/drill requires (spray needs flow — stopping RCP reduces spray effectiveness but loses forced flow) — prefer pressure recovery without at-power RCP stop |
 | 5 | HPI if pressure LO-LO path |
@@ -778,9 +779,10 @@ no trip, no ESF, and the decision to shut down made deliberately rather than for
 | 3 | RCS inventory: stable or improving |
 | 4 | Subcooling: positive and improving |
 | 5 | Pressure: controlled; relief paths isolated if leaking |
-| 6 | ESF: intentional AUTO/MAN state |
-| 7 | Failures: cleared or documented still active |
-| 8 | Alarms: understood, not merely silenced |
+| 6 | Pressurizer heaters: if they were shed by injection or a loss of offsite power, **deliberately** reloaded or **deliberately** left shed — not merely forgotten. Pressure control and natural-circulation subcooling both depend on it. |
+| 7 | ESF: intentional AUTO/MAN state |
+| 8 | Failures: cleared or documented still active |
+| 9 | Alarms: understood, not merely silenced |
 
 ---
 

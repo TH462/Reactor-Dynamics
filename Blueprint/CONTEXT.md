@@ -545,6 +545,20 @@ physical-quantity vocabulary.
     "porv_stuck": bool, "hpi_active": bool, "hpi_flow_normalized": float, "afw_active": bool,   // hpi_* = the ONE merged HPI/LPI emergency-injection system (two-segment pump curve; flow normalized to combined rated)
     "hpi_discharge_pressure_mpa": float,   // HPI/charging pump discharge head — RCS pressure + the pump margin,
                                       //   clamped to shutoff head; 0 when HPI is not injecting
+    "pzr_heaters_shed": bool,         // PRESSURIZER HEATERS OFF THE BUS — the ESF load shed (#447). Latched on
+                                      //   the RISING EDGE of a safety injection (hpi_active) or a loss of offsite
+                                      //   power, and cleared ONLY by an operator `set_heater` — the AUTO/MANUAL/
+                                      //   OFF buttons and the % box ARE the manual reload. SOURCED: NUREG-0737
+                                      //   II.E.3.1 Clarification (7), "the pressurizer heaters must be
+                                      //   automatically shed from the emergency power sources upon the occurrence
+                                      //   of a safety injection actuation signal"; Ginna TS Bases B 3.4.9 adds the
+                                      //   LOOP half and the manual reload onto the diesels.
+                                      //   SECURING SI DOES NOT CLEAR IT — that is the whole point of a latch, and
+                                      //   it is what makes a post-LOCA cooldown owe the operator a reload step.
+                                      //   TRAP: this is one of FOUR reasons delivered heater power reads zero.
+                                      //   The others are a blackout (ac_available), the 17 % low-level cutoff
+                                      //   (_heater_cut), and the failed_pzr_heaters casualty — and only this one
+                                      //   has an indication, so do not read a zero as "shed" without checking it.
     "afw_pump_running": bool,         // AFW PUMP demand (run lights, honest) — distinct from delivered flow afw_active; the TMI-2 pumps-running/valves-shut split
     "afw_blocked": bool,              // AFW block/discharge valve SHUT — pumps can run against it (the TMI-2 tag-out)
     "afw_discharge_pressure_mpa": float,   // AFW discharge head: SG pressure + margin while delivering, pinned at

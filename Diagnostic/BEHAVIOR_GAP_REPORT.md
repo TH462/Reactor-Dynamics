@@ -6,6 +6,13 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 70 pass, 0 known gaps (xfail).
+Battery result: 72 pass, 1 known gaps (xfail).
 
-**No gaps — the battery is fully green. The tuning pass is complete.**
+## CA-20b — CA-20b a small break holds its plateau — the STEAM GENERATORS hold the primary up (#451)
+*Known gap:* the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else holds the primary at its heat sink. MEASURED (Phase 1, #451): the dominant term is the cold-ECCS quench, NOT the SG and not the break flash term — `eccs_cooling_gain` 1.0 is ~2x true enthalpy mixing INTO THIS NODE (231 MJ/°C carries the metal; one RCS mass of water is ~113, so the physical gain is 0.489). The primary is driven 266 psi below its own heat sink and then drains the secondary through the 5 % reverse path to 202 psi. See #451.
+
+- **leg A — the primary never falls a control band below its own heat sink** — required `< 51 psi below SG`, observed `274 psi worst (1.887 MPa); healthy plant 5 psi`
+- **leg B — the heat sink is still a heat sink: the secondary was not drained through the tubes** — required `> accumulator_trip_mpa (600 psi)`, observed `260 psi min (1.79 MPa)`
+- measurement: accumulator level at t+600 (full = the fence held) = `0.0 %`
+- measurement: inventory / Tavg at t+600 (the #451 collapse signature: solid and cold) = `92.0 % / 403.5 °F`
+- measurement: primary / secondary at t+600 (equal is NOT healthy — they fell together) = `260 / 260 psi`

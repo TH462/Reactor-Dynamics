@@ -313,7 +313,7 @@ to read everything.
 
 _Last updated: **2026-08-10**._
 
-**Where the PWR is.** `run_all` is **45 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **47 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -328,8 +328,25 @@ re-querying. Run the query.
   mini-pass; the declared ~7,500 gal makes absolute-size components ~5–6× fractionally bigger
   than the power-scaled rows) and the wave-3 mission items, the tag+defend "quiet night" story
   the beat graph cannot express (#416). Wave 1's re-clock and the relief sizing are landed.
-- **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
-  themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
+- **#436 — the control-room rework, BUILT to its content gates** (2026-08-10/11). Its plan filed
+  **#437–#446**; #436 is the tracking issue. Landed: **#438** feedback · **#437** `RD.Events` ·
+  **#439** right column + merged list · **#443** navigation, relevance ordering, manual anchors ·
+  **#393** `ui/chart_math.js` · **#440** the lane stack · **#442** the SOE layer · **#444** the
+  highlight bus · **#445** splitters. The chart is now one lane per indication with a shared
+  cursor and an event ribbon; `ui/test_panel/lane_reference.html` is the golden artifact and
+  measures itself — **change it first, re-measure, then port**. Open by design: **#441** (needs
+  the rung authoring pass), **#446** (deferred by ruling). Filed: **#449** — three steady-state
+  indicated-vs-true disagreements the merged list surfaced, 20–400× larger than instrument lag.
+- **#454 — the chart settings WINDOW, built and gated** (2026-08-11). Supersedes the anchored
+  popover #436 shipped hours earlier: large, modal, pausing, 120 channels each with both live
+  readings and one selector per value. A channel set to `both` is **one lane, one union-fitted
+  scale, two traces** (physics = lighter dashed twin) — an owner ruling that settles a
+  contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
+  untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
+  verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
+- **Built, waiting on review or a close** — #460 (rods ship in MANUAL — one owner call open: it
+  brushes #331's "Leave automatic systems in place", and it was built to the NARROW reading),
+  #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
   two owner actions remain (delete the Vercel project, revoke a token).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
@@ -349,21 +366,45 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
-- **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
-  #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
-  telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
-  building; flow-keying would stall on the burn's own backpressure spike); the burn deposits
-  GEND-061's ADIABATIC ΔP — the measured 27.5 psi form landed the drained family 27.2 psig,
-  UNDER the ruled side of the 30 psig hi-hi (a sourced anchor can be the wrong FORM of the
-  measurement for your model's discretization). Recombiners measurably prevent no ignition
-  (declared, prototypical). **#425, folded in here on eviction** (2026-08-10 merge — its own
-  bullet went to keep the list at 5, and its trap is the same subject): the SBO base passed
-  design on relief steam alone, and the fix is a saturation-ΔT sink enhancement charged on a
-  **120 s LAG, because time is the only separator between families whose pressures overlap** —
-  a static curve brakes the SBO park but eats the pulse grading. Two traps worth keeping: a
-  "pre-damage" window bounded by the damage FLAG catches the very burn it exists to exclude
-  (H₂ reaches 8 v/o before the hot node passes 1200 °C — bind on `!ctmt_h2_burned`), and the
-  BURN margin rather than the ruled 30 psig spray point is what binds the park.
+- **The rods ship in MANUAL, and every probe that broke was INHERITING the lineup instead of
+  stating it** (2026-08-11, #460). `rods_tavg` loses `defaultOn`, reversing #289 — whose
+  premise, *"everything else starts in auto"*, had expired when the Mode 1 lineup put generator
+  load in MANUAL: **a ruling's premise ages independently of the ruling, and nothing re-checks
+  it.** Measured, the plant load-follows WITHOUT the rods (100 → 81.8 %, parked in 3 min 30 s,
+  monotone) where AUTO rings 62 → 88 % for ten minutes; 60 fine steps move Tavg −6.2 °F and
+  generator load **0.8 points** — rods set temperature, the turbine sets power, and AUTO was
+  performing that Tier A coupling on the player's behalf. All five reds had the rod controller
+  as their SUBJECT, not the preset; `rodsAuto()` mirrors the `rodsManual()` helper #289 was
+  forced to write in the other direction — **both directions of one defect, ten days apart.**
+- **The OBSERVER is where the defect is, and no source read finds it** (2026-08-10/11, the
+  #436 rework — #437/#439/#440/#442/#443/#393). Six of the night's defects were in the thing
+  doing the watching. A recorder's first pass emits a transition per alarm — right for a bug
+  report, and on a timeline **46 `alarm_clear` events at t=0** (now 0). A paired list
+  comparing FORMATTED strings lights five rows on a healthy plant (`-0.0` vs `0.0` among
+  them); lag measures **0.18 %**, so the band is 0.5 % with a floor at the displayed
+  precision — and the first fix, exempting rows with curated prose, swallowed the PORV
+  reading `shut` against `OPEN · STUCK`, the case it was built for. **An exponent is part of
+  that precision**: `2.0e-3 A` read as precise to 0.1 and hid a 75.9 % divergence on the
+  nuclear instruments. A cluster taking its ref from `evs[0]` points at nothing, because a
+  cascade LEADS WITH ALARMS. Two more the SCREENSHOT caught and no check did: numeric rows
+  drawn over the bottom lane (element counts all passed), and my own drive measuring lane
+  height as `plot ÷ lanes` — 56 px reported, 38 px true, which is how a floor gets certified
+  while being violated. Corollary that paid twice: **a refactor's claim is "nothing
+  changed", so pin the OLD implementation and replay it** (`run_chart_math`, 235 frames).
+- **A ~40 s limit cycle after EVERY LOCA, and the loop gain was a heater bank that should
+  have been off the bus** (2026-08-11, #447). Below 17 % level the heaters cut and pressure
+  floors at containment; ECCS refills past the 20 % restore point; the heaters return at FULL
+  demand and 0.29 MPa/s net takes pressure 15 → 163 psia in 3 s, spiking leak ~20× and
+  back-pressuring HPI 0.90 → 0.34. 134 cycles at sev 0.05 (839 psia excursion) up to 936 at
+  1.00; MDS-2/3 ride 2500 s of it and pass, because nothing asserted STABILITY, only endpoints.
+  Fixed by the shed NUREG-0737 II.E.3.1 (7) requires on an SI signal — the document was in
+  our own corpus, uncited. **#334 did not finish**: its cutoff converted a stable wrong
+  equilibrium into an oscillation. Traps: **an equilibrium a 347× term participates in is not
+  evidence about geometry** (CA-15 re-authored around this artifact TWICE, #408 reasoning
+  explicitly from the defect); **a red can be VACUOUS rather than red** (CA-10 leg B's break
+  actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
+  threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
+  two-parameter signature validated on three plants including a negative control.
 - **The board can list every channel and get CHEAPER — the row shape was the cost** (2026-08-08,
   the Indications tab). `chartBuf` stored one NAMED PROPERTY per series per side, and property
   cost is what scaled: at 9000 rows, 40 series = **39.5 MB**, 110 = **137.8**. Packed into
@@ -383,23 +424,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   degenerate latch reads exactly like a working feature**; **a filed root cause repeated in
   four documents was never re-measured** — "flow reads 0" came from watching the
   turbine-only variable; **a sourced number is not the whole source**.
-- **The bug report's RECORDING was the broken instrument, and the fix passed 31 of its own
-  checks while recording nothing** (2026-08-09, #432/#431). Sampling ran once per BROADCAST, so
-  a 3600× LOCA is two rows under a manifest hardcoded to `sample_hz: 1`; it now rides the
-  chart's fine seam with min/max per bucket. The trap is the fix's own first version: the fine
-  drain sat inside the rAF paint, one frame late, so the recorder — a separate synchronous
-  subscriber — saw every row AFTER recording a later timestamp. **1475 rows in, 35 recorded.**
-  Invisible to a source scan (call sites all correct) and to the new Node gate (it hands the
-  recorder its rows); only a browser sees it.
-- **The part-power limit cycle was LOOP GAIN, not the stop-exit rod travel two sessions
-  rejected fixes for** (2026-08-09, #394 + #378 + #420 — `run_behavior` now carries no strict
-  xfails). One lumped bank on the S-curve makes a step worth 4.657 pcm mid-bank against 0.892
-  at the stops — 5.2× against a CONSTANT gain — and the incidence curve is monotone in bank
-  position over six points. `gainScale` is **gated on the program being parked**, because the
-  de-gain that stabilises the loop also slows ramp tracking and no floor did both; the two
-  separate in TIME (d(spEff)/dt is 144× larger through a ramp). Traps: **a mechanism repeated
-  in four documents is still unmeasured** (nobody had multiplied step count by step rate), and
-  **a pre-declared reject criterion can outlive its measurement** (#378's was void next day).
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -407,6 +431,9 @@ one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written
 what a GATE already catches**, keep what nothing can tell you. This list was the only unbounded
 thing left in the file and it grew about a bullet a session.
 
+- **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
+  limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
+  criterion, not just the result, before you let it reject anything.
 - **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
   eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
   both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
@@ -480,19 +507,14 @@ thing left in the file and it grew about a bullet a session.
   — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
   ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the
   floor once already.
-- **The two Hot Standby starting points are DIFFERENT PLANTS for a startup** (#303).
-  `cold_shutdown` arrives at Mode 3 at **857 ppm**, `hot_zero_power` ships **683**: ~561 critical
-  rod steps against 319, and the manual is written for the latter. Only `run_procedures_chain`
-  crosses that seam. **`boron_ppm` ending at 2500 is the fingerprint of an unintended ECCS
-  injection.** The moderator model was re-done twice — a **1400 ppm crossover** or **−20 pcm/°C**
-  in any document is stale (#260/#263).
 - **Protection cadence is written down TWICE** — `PROTECTION_DT` 0.1 s and an independent copy in
   `test/ops_harness.js`. Move one and not the other and the ops suites certify a plant no player
   can produce. 1× is byte-identical by construction, which is why a divergence hides at the speed
   you are most likely to test at.
-- **The pzr level PROGRAM and the level PHYSICS are two different lines** (#289). Every consumer of
-  "the program" must call `levelProgram`, not `levelBase` — the latter read −38.5 % with the
-  controller exactly on setpoint. A program maximum is a limit, not part of the control law.
+- **A sourced anchor can be the WRONG FORM of the measurement for your model** (rescued from the
+  #386 hydrogen bullet on eviction, 2026-08-11): GEND-061's burn ΔP is real, and the adiabatic
+  form vs the measured 27.5 psi form decides whether the drained family lands over or under the
+  ruled 30 psig hi-hi. Having the document is not having the number.
 - **"Block SI" is THREE actions on a cooldown** and the procedure named one: `lo_press` and
   `si_trip` both watch pressure downward and neither auto-blocks on the way down; both need P-11,
   so the Pressure SP comes down first. **The live checklist NEVER issues `cmd`** — it draws text
@@ -515,9 +537,12 @@ thing left in the file and it grew about a bullet a session.
   FAIL the channel (#220). A trip's `condition:` key is a status word the ENGINE computes, so the
   `run_hardrules` scan cannot see it; hence HR1(b), every permissive key declared. **A comment
   carrying the real plant's premise rots when this plant departs from it.**
-- **New PWR instruments ship `noise: 0`** (the PRNG is one cross-step stream) and must declare
-  `noise_failure`, or their `noisy` failure is silently dead. (The `true_state` §6.3 obligation
-  beside it is under *Definition of done*, where `run_contract` is listed.)
+- **A subscriber that reads inside the rAF paint is ONE FRAME LATE, and only a browser
+  can see it** (rescued from the #432 themes bullet on eviction, 2026-08-11): the
+  recorder's drain sat in the paint and logged **1475 rows in, 35 recorded** — call sites
+  all correct to a source scan, and green to a Node gate that hands it the rows itself.
+  `drainFine()` is the single `takeFine()` caller and is called synchronously from
+  `render()`; keep it there.
 - **Provenance matters more than it looks.** Many "owner rulings" here were written by agents, and
   all agent work commits under the owner's name, so git blame proves nothing. A ruling without a
   date and a verbatim owner quote is advisory — `CONTEXT.md` §3. **`test/run_hr3.js` guards HR3;
@@ -561,7 +586,7 @@ with different numbers**. Run the gate; read the map. The per-change rationale l
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
-node test/run_all.js            # all 45 runners (~3.5 min, 10-way parallel)
+node test/run_all.js            # all 47 runners (~8 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -587,8 +612,8 @@ Four things about it that are procedure, not history:
   three days, including a release to `main`, because `--fast` still ran a Playwright gate that was
   not marked `slow`. Nobody noticed, which is the argument for a required status check (#191).
 
-**One tracked red, carrying its `note` in `BASELINES`: `run_ops` 58/69** — ops probes are tuning
-targets by design. Of the 11 reds, 10 are RBMK/BWR (on hold). The single PWR one is
+**One tracked red, carrying its `note` in `BASELINES`: `run_ops` 59/70** — ops probes are tuning
+targets by design. Of the reds, all but one are RBMK/BWR (on hold). The single PWR one is
 `ops_cvcs_pzr_drain_rate` (**284.3 s** against `>= 300 s`), a **RULED, ACCEPTED state, not a
 regression** *(OWNER RULING, 2026-08-04: "A")*. **It must NOT be re-banded** — the probe exists
 for a 2026-07-22 owner request for a drain-rate feel target, and re-banding a target whenever the
@@ -626,7 +651,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 45 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 47 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi

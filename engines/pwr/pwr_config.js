@@ -680,6 +680,42 @@
       // valve depressurizes the plant to the containment floor instead of parking. Both are
       // real plant behaviours, and the ruling above chose the present ones.
       K_heater: 0.55,
+      // K_spray — SOURCED FLOW, FITTED GAIN, AND THE PAIR IS INVERTED (#450, 2026-08-11).
+      //
+      // It carried NO derivation at all until this note — the only gain in this block with no
+      // argument behind it, against 48 lines for K_heater directly above.
+      //
+      // THE PHYSICAL FIGURE. Ginna UFSAR ch.15 (ML20339A101) gives the capacity directly:
+      // "the total spray capacity was 52.2 lbm/sec" = 23.68 kg/s (and the full-open spray valve
+      // flow area, 0.0376 ft², for anyone re-deriving it). Power-scaled to this plant
+      // (300/1520) that is 4.67 kg/s. Spray controls pressure by CONDENSING the bubble, so the
+      // authority is the condensing rate over the pressurizer's effective capacitance: an
+      // enthalpy rise of ~358 kJ/kg from cold-leg temperature to saturated liquid at 2235 psia
+      // condenses 1.80 kg/s of steam, and against the C_eff ≈ 68 kg/MPa the K_porv_relief block
+      // derives for this vessel that is 0.0265 MPa/s — 230 psi/min.
+      //
+      // THE SHIPPED CEILING IS 0.204 MPa/s (1,775 psi/min): K_spray 1.7 × the `spray_flow_max`
+      // 0.12 cap below, which binds auto demand and operator override alike. So spray runs ~8×
+      // its physical authority — a far smaller departure than the heaters' 347×, and that
+      // asymmetry is the point:
+      //
+      //   SOURCED   spray 8.48 MW condensing duty vs the heater bank's 1.794 MW  →  4.7 : 1
+      //   MODEL     spray 0.204 MPa/s vs heaters 0.550 MPa/s                     →  0.37 : 1
+      //
+      // The pair is INVERTED — this plant's heaters out-muscle its spray 2.7:1 where the real
+      // ones lose 4.7:1. Measured consequence: heaters forced to 100 % at NOP lift the PORV in
+      // 3 s against FULL spray and then limit-cycle 2284–2373 psi indefinitely. On a real plant
+      // 1,794 kW cannot lift a PORV. Same family as #447 (a heater bank as the loop gain of a
+      // limit cycle), and the K_porv_relief block met it from the other side: "the ruled F14
+      // heater … out-muscles the physical relief authority".
+      //
+      // ρ AND cp ARE RECALLED STEAM-TABLE VALUES, NOT SOURCED — the flow is sourced, the
+      // thermodynamics are not, and the evidence-pass rule says mark it. The ratio is robust to
+      // them: across ρ 690–720 and cp 5.0–6.0 the duty comparison stays 4–5 : 1.
+      //
+      // NOT RETUNED HERE. Moving it is a coupled three-term re-solve (spray, heaters, relief —
+      // `Manuals/12` §12.4c) and the F14 sweep measured that the heater side cannot move without
+      // costing TR-1h. Recorded so the next reader inherits the number instead of the silence.
       K_spray: 1.7,
       // K_porv_relief / K_safety_relief — RE-SOLVED 300 → 600 with #337 F15, ruled
       // *(OWNER RULING, 2026-08-04: "Do f15 how you recommend.")*. ONE constant applied twice:
@@ -1295,9 +1331,30 @@
       // real heat now: at decay-heat power the sensible demand of full AFW flow
       // exceeds the heat crossing the tubes, steam generation clamps at zero, and
       // the SG depressurizes — which is what "AFW is a heat sink" means.
+      // ALL THREE CLAUSES ARE TRUE ONLY SINCE #464. The first two always were; the
+      // third could not happen, because the SG clamped generation at zero and
+      // pressure integrates (generation − out), so dP/dt was exactly zero and the
+      // heat was silently discarded. Measured: 947.1 psi flat for six hours at full
+      // AFW. This paragraph was right and the code was the outlier — as was
+      // `Manuals/12` §8.4, which has said "the plant is pulled below the no-load
+      // anchor" since Rev 9. Nothing could tell, because nothing exercised it; the
+      // probe that does now is TR-19.
       feed_sensible_frac: 0.127,   // of latent_heat_secondary, at the rated point [tune]
       feedwater_temp_c: 224,       // °C final feed = 435 °F, top of Ginna's sourced 390–435 °F band
       afw_temp_c: 40,              // °C — inside the sourced 40–120 °F design band (WTSM §5.7)
+      /* THE TWO FLOW SCALES THE SENSIBLE TERM MUST WEIGH AFW AGAINST MAIN FEED ON (#464).
+       * `main_feed` and `afw_flow` are each normalized 0–1 on their OWN full-scale, and
+       * those differ — the board renders them with `GPM_FEED` = 1000 and `GPM_AFW` = 640
+       * (ui/diagram/board/pwr_board_wiring.js). Adding them under one coefficient counted
+       * full AFW as 15 % of rated feed in the heat balance while the board showed the same
+       * water as 96 gpm = 9.6 %: the same flow, 1.56× heavier where it mattered than where
+       * it was read. Declared here so the ratio is a config fact rather than a number
+       * buried in the SG; they MUST track the board's constants, like `units` above.
+       * Outside check: Ginna is 170 gpm per SG on 1520 MWt (UFSAR ch15, stated
+       * "conservatively low"), ~67 gpm power-scaled to our 300 MWt — so 96 gpm indicated
+       * is defensible and the 15 % weight was not. */
+      feed_flow_gpm_full: 1000,    // = GPM_FEED — main feed normalized 1.0
+      afw_flow_gpm_full: 640,      // = GPM_AFW  — AFW normalized 1.0 (so afw_flow_frac 0.15 = 96 gpm)
       // K_sg_level FITTED TO A REAL LOSS-OF-FEEDWATER TRANSIENT (#135), 5.0 -> 1.37.
       //
       // The level integrates the feed/steam imbalance: d(level)/dt = K_sg_level x
@@ -1860,7 +1917,79 @@
       // dramatic-but-observable (~°C/s) rather than an instantaneous single-step
       // crash. The mixing form is self-limiting — it cannot cool below eccs_temp_c. [tune]
       eccs_temp_c: 40.0,           // °C — RWST / SIT injection temperature (~104 °F) [tune]
-      eccs_cooling_gain: 1.0,      // dimensionless scale on the cold-injection mixing term — at REAL rates the physical value of this mixing form IS 1.0 (true enthalpy mixing); the 0.08 divider existed only to decouple the compressed rate (#408) [tune]
+      // eccs_cooling_gain — THE PHYSICAL VALUE IS 0.489 AND THE SHIPPED VALUE IS 1.0, ON
+      // PURPOSE (#451, 2026-08-11). The derivation below is correct and the change was BUILT,
+      // MEASURED AND REVERTED; read the "WHY IT IS NOT APPLIED" note at the end before
+      // re-deriving any of this. Its stated justification is "at REAL rates the physical value
+      // of this mixing form IS 1.0 (true enthalpy mixing)". That is
+      // RIGHT ABOUT THE PHYSICS AND WRONG ABOUT THE NODE, which is
+      // the trap worth keeping: true enthalpy mixing gives dT/dt = (m_dot/M)·(T_inj − T), so
+      // the gain is 1.0 only if M — the node's heat capacity — is ONE RCS MASS OF WATER.
+      // This model's node is not:
+      //
+      //   coolant node        231 MJ/°C   MEASURED from the plant's own t=0 energy balance:
+      //                                   the fuel→coolant term is 1.30 °C/s at `mwt_rated`
+      //                                   300, so 1 °C/s ≡ 231 MWt.
+      //   one RCS mass water  ~113 MJ/°C  7,467 gal (the declared RCS currency, from the
+      //                                   K_porv_relief block) × ρ 700 × cp 5.7.
+      //   ratio               0.489
+      //
+      // The excess is the METAL — vessel, piping, SG tubes — and the node is RIGHT to carry
+      // it. What is out of step is that the MIXING terms are written per unit RCS *water*
+      // mass while every POWER term (decay heat, the SG, RHR) runs on the metal-inclusive
+      // node. The two halves of `stepCoolant` were using effective heat capacities differing
+      // by ~2.1×, and that is precisely why decay heat lost to the quench.
+      //
+      // ρ AND cp ARE RECALLED STEAM-TABLE VALUES, NOT SOURCED — flagged under the
+      // evidence-pass rule. The conclusion does not rest on them: across ρ 690–720 and
+      // cp 5.0–6.0 the ratio lands 0.44–0.51. "About twice too strong" survives the whole
+      // plausible range; the third decimal does not, and nothing here depends on it.
+      //
+      // WHAT IT WAS COSTING, measured full stack on `large_loca` sev 0.05 (#451): the quench
+      // was the DOMINANT term driving the primary below its own heat sink — 266 psi below the
+      // steam generators at worst — after which the secondary was drained through the 5 %
+      // reverse path to 202 psi and every break severity collapsed to the same cold solid
+      // state. Killing the term entirely holds Tavg flat at 530 °F for ten minutes (and boils
+      // the core dry, which is why the fix is the MAGNITUDE, not the term). At the derived
+      // value the mechanism returns: from t+800 the primary tracks the secondary within 7 psi.
+      //
+      // `blowdown_gain` USES THE IDENTICAL MIXING FORM — its own comment says "same
+      // dimensionless form as the ECCS cold-injection quench" — and therefore carries the same
+      // 2.1× node error. IT IS DELIBERATELY NOT CHANGED, and the two constants are not in the
+      // same epistemic position: this one CLAIMED a physical value and failed to meet it,
+      // which is a defect; `blowdown_gain` is openly FITTED against a sourced arc (sev 1.0
+      // empties the vessel in ~28 s against a sourced 25–38 s, WCAP-16009 §12-4-3 / Ginna
+      // T15.6-15) and its fit already absorbs the ratio. Moving it would break a sourced
+      // anchor to correct a derivation nobody reads. Verified the anchor is untouched by THIS
+      // change: the sev-1.0 blowdown reaches < 65 % inventory at 2.7 s and bottoms at 62.1 %
+      // at BOTH gains, identically — on a full shear the blowdown is over before ECCS matters.
+      //
+      // WHY IT IS NOT APPLIED — §12.4c ARRIVING FOR REAL, AND THIS IS THE POINT OF THE ENTRY.
+      // 0.489 was built and gated. `run_all` went to THREE drifted runners, and one of them is
+      // not a fixture: `run_meltdown` MD-6's mitigation leg — "inventory is HELD by the
+      // injection, not merely drained slower" — falls from > 50 % to **13.8 %**. The mechanism
+      // is the coupling, not the arithmetic: a weaker quench leaves the primary HOTTER, so
+      // pressure stays higher, so the PRESSURE-DRIVEN ECCS curve delivers less, so a
+      // core-damage path that was mitigable stops being mitigable. That is #334's deadhead
+      // shape re-entering through the thermal side. (`run_campaign` pwr_tmi2_p3 also misses its
+      // premise by 0.5 points, 90.5 vs ≤ 90; `run_behavior` loses 3.)
+      //
+      // So the quench gain and the ECCS pressure curve are ONE CALIBRATED PAIR, exactly as
+      // `Manuals/12` §12.4c warns for the pressure/inventory regime: **a single term of a
+      // coupled regime is worse than none**, now on its fourth independent measurement. Making
+      // the mixing arithmetic right while leaving the injection curve fitted to the OLD
+      // arithmetic buys a correct derivation and a less survivable plant.
+      //
+      // THE FIX, IF IT IS EVER TAKEN, IS THE WHOLE SET: apply the water/node capacity ratio
+      // explicitly to BOTH mixing terms (this and `thermal.blowdown_gain`, which shares the
+      // form) and RE-SOLVE the ECCS delivery curve against it, judged on MD-6's hold and the
+      // TMI arc rather than on #451's plateau alone. Not attempted here — it is a plant
+      // decision, not a tuning, and it is on #451.
+      //
+      // What is NOT in doubt: 1.0 is not the physical value of this term as written, and the
+      // ~2.1× node mismatch between the mixing and power halves of `stepCoolant` is real and
+      // measured. The number stays 1.0 because the plant around it is calibrated to it.
+      eccs_cooling_gain: 1.0,      // dimensionless scale on the cold-injection mixing term — NOT the physical 0.489; see the block above, and do not "correct" it alone [tune]
       // Residual Heat Removal (RHR, formerly DHR): the low-pressure shutdown-cooling
       // loop that doubles as LPI. Suction is taken from the HOT LEG through a valve
       // interlocked to primary pressure. Aligned = suction valve open (rhr_active).
@@ -2501,6 +2630,11 @@
                // `accumulators_discharging` goes true the tanks are already emptying.
                'accum_valve_open',
                'condenser_cooling_available', 'safety_relief_active', 'rcp_cavitating',
+               // PRESSURIZER HEATER BREAKER POSITION (#447) — the ESF load shed on a
+               // safety injection or a loss of offsite power. A status passthrough, so
+               // it draws no PRNG number and the instrument stream is unchanged; a
+               // breaker position is a direct digital indication, not a measurement.
+               'pzr_heaters_shed',
                // condensate pump run status (operator-controlled; gates main feedwater)
                'condensate_pump_running',
                // MAIN FEEDWATER ISOLATION VALVE POSITION (#247) — shut/open. A real

@@ -81,19 +81,27 @@
   blocks it, everything works the same and the visit simply is not counted.</p>
 
   <h2>Usage data in the simulator</h2>
-  <p>The simulator sends anonymous usage counts while you use it. <strong>You can turn
-  this off at any time under <em>Settings → Share usage data</em>, and nothing further
-  is sent from the moment you do.</strong></p>
+  <p>The simulator sends anonymous usage data while you use it.</p>
   <p>Almost nobody sends feedback, so this is the only way to find out which parts
-  of the plant are confusing. What it sends is counts:</p>
+  of the plant are confusing. What it sends is counts, and how long things took:</p>
   <ul>
-    <li>which plant and starting condition you chose, and how long the session ran</li>
-    <li>the <em>names</em> of the controls you use — never the values you set them to</li>
-    <li>which panels you open</li>
-    <li>how far through a startup you get (the plant mode the engine reports), and
+    <li data-collects="session_start.plant session_start.initial_state session_start.channel session_end.seconds session_end.sim_seconds">which
+    plant and starting condition you chose, which build you are on, and how long the
+    session ran</li>
+    <li data-collects="command.action command.blocked">the <em>names</em> of the
+    controls you use — never the values you set them to — and whether the plant
+    refused one</li>
+    <li data-collects="panel_open.panel session_end.last_panel">which panels you open,
+    and which one you were on when you left</li>
+    <li data-collects="plant_mode.mode plant_mode.sim_seconds milestone.name milestone.sim_seconds">how
+    far through a startup you get (the plant mode the engine reports), and
     whether the plant went on the grid, scrammed, or was damaged</li>
-    <li>which training missions you start, finish, or leave</li>
+    <li data-collects="mission_start.id mission_complete.id mission_complete.seconds mission_abandon.id mission_abandon.seconds mission_abandon.beat">which
+    training missions you start, finish, or leave, and how far into one you got</li>
   </ul>
+  <p>Each of those carries the time it happened, measured from when the page opened —
+  enough to put one visit's actions in order and see where the time went, and not
+  tied to a clock or a calendar date.</p>
   <p>It does <strong>not</strong> send any text you type, any plant recording, or
   anything about your machine beyond what a web request unavoidably reveals. It
   carries an identifier that lasts for one visit and is discarded when you close the

@@ -150,25 +150,54 @@
     // config), so at rated feed/temperature/pressure this is ALGEBRAICALLY
     // IDENTICAL to the old line (calibration pinned by TR-1e leg D); only
     // off-nominal feed — overfeed, cold AFW, low-load feed — moves the balance.
-    // The max(0,·) clamp is the lumped model's honest boundary: when cold feed
-    // can absorb more than the crossing heat (full AFW against decay heat),
-    // steam generation stops rather than going negative — the feed then simply
-    // does not all reach saturation, which a one-node SG cannot track further.
+    /* THE max(0,·) CLAMP DISCARDED ENERGY, and it is gone (#464). It used to read as the
+     * lumped model's honest boundary — "steam generation stops rather than going negative,
+     * the feed simply does not all reach saturation, which a one-node SG cannot track
+     * further". What it actually did was make the SG an INFINITE HEAT SINK AT FIXED
+     * TEMPERATURE. Pressure integrates (generation − out), so with generation clamped to 0
+     * and no steam leaving, dP/dt is exactly 0 and the SG cannot depressurize; meanwhile
+     * `Q_sg = h_sg·flow·ΔT` keeps delivering the primary's heat into a node that neither
+     * boils it, stores it (mass clipped at max, level pegged 100 %) nor warms on it
+     * (`t_sec ≡ T_sat(P)`, and P is frozen). MEASURED, full AFW after a loss of feedwater,
+     * six plant-hours: steam pressure 947.1 psi flat to the psi while decay heat fell
+     * 6.25 % → 0.94 %, primary-secondary ΔT collapsed 29.4 °F → 0.4 °F (a ratio of 1.36 %
+     * against 1.16 % decay heat, i.e. the SG still absorbing essentially all of it).
+     *
+     * The deficit now flows through as CONDENSATION, which is the same balance with the
+     * sign gate removed — no new constant, and `K_steam_pressure` calibrates both
+     * directions. It is self-limiting by construction: as P falls, `t_sec` falls, ΔT grows,
+     * `Q_sg` grows, and the deficit closes. The plant settles where `Q_sg = _sensible`,
+     * which IS the AFW-overcooling equilibrium; the clamp pinned the wrong one (ΔT ≈ 0)
+     * by removing the only path to the right one. */
     var _L = sg.latent_heat_secondary, _fs = sg.feed_sensible_frac || 0;
     var _latent_eff = _L * (1 - _fs);
     var _cNorm = _fs > 0
       ? (_fs * _L) / Math.max(T_sat(sg.steam_p_rated) - sg.feedwater_temp_c, 1)
       : 0;
+    /* AFW IS WEIGHTED ON ITS OWN FLOW SCALE, not on main feed's (#464). `_cNorm` is
+     * calibrated against MAIN FEED, whose normalized 1.0 is `GPM_FEED` = 1000 gpm; AFW's
+     * normalized 1.0 is `GPM_AFW` = 640 gpm (both in ui/diagram/board/pwr_board_wiring.js,
+     * and `afw_gpm: 100` in the config states the intent). Adding the two flows under one
+     * coefficient weighted full AFW as 15 % of rated feed while the board displayed it as
+     * 96 gpm = 9.6 % — the same water counted 1.56× heavier in the heat balance than in the
+     * indication the player reads. Power-scaled Ginna is the outside check: 170 gpm per SG
+     * on a 1520 MWt plant (UFSAR ch15, "conservatively low") is ~67 gpm at our 300 MWt, so
+     * the 96 gpm INDICATION is defensible and the 15 % WEIGHT was not. */
+    var _afwScale = (sg.afw_flow_gpm_full && sg.feed_flow_gpm_full)
+      ? (sg.afw_flow_gpm_full / sg.feed_flow_gpm_full) : 1;
     var _sensible = _cNorm * (main_feed * Math.max(0, s.t_secondary_c - sg.feedwater_temp_c)
-      + afw_flow * Math.max(0, s.t_secondary_c - (sg.afw_temp_c != null ? sg.afw_temp_c : 40)));
+      + afw_flow * _afwScale * Math.max(0, s.t_secondary_c - (sg.afw_temp_c != null ? sg.afw_temp_c : 40)));
     // Stashed for the follow governor (pwr_engine extractFrac): "draw the steam the
     // heat actually generates" now means AFTER the sensible duty. Without this the
     // follow demand chases a steam flow the heat can no longer make and the
     // secondary ratchets down until a trip (measured: the 5 % IC walked 8.03 →
     // 6.89 MPa over 36 min and tripped).
     s._sg_sensible_norm = _sensible / _L;
-    var steam_generation_rate = Math.max(0,
-      Q_sg / (1 + (cfg.thermal.pump_heat_frac || 0)) - _sensible) / _latent_eff;
+    var _net = Q_sg / (1 + (cfg.thermal.pump_heat_frac || 0)) - _sensible;
+    var steam_generation_rate = Math.max(0, _net) / _latent_eff;
+    // The deficit, as a condensation rate in the same normalized currency. Stashed so a
+    // probe can assert the mechanism directly rather than inferring it from pressure.
+    s._sg_condense_norm = Math.max(0, -_net) / _latent_eff;
 
     // B2 — steam dump / turbine bypass: vents steam straight to the condenser,
     // bypassing the turbine, to control SG pressure on a turbine trip / load
@@ -402,7 +431,9 @@
     s.sg_dry_deplete = clip(dep + ((dryUnfed ? 1 : 0) - dep) / depTau * dt, 0, 1);
 
     // Secondary pressure and steam flow.
-    var dSteamP = (steam_generation_rate - steam_out) * sg.K_steam_pressure;
+    // Condensation is negative generation — see the #464 note at the sensible split. The
+    // Psat(Tavg) cap below bounds this integral ABOVE only, so nothing there stops a fall.
+    var dSteamP = (steam_generation_rate - (s._sg_condense_norm || 0) - steam_out) * sg.K_steam_pressure;
     s.steam_pressure_mpa += dSteamP * dt;
 
     // (The §9.1 steam line break used to apply its dP/dt sink here. Since #370a it

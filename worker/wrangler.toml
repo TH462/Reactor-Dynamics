@@ -24,6 +24,22 @@ bucket_name = "reactor-dynamics-bundles"
 binding = "EVENTS"
 dataset = "reactor_dynamics_usage"
 
+# Feature-flag STAGES, set from the dashboard and read by the site BUILD.
+#
+# This is deliberately not read by the sim at runtime. site/flags.js resolves a stage
+# from a build-stamped literal, and it must stay that way: test/run_portable.js asserts
+# that nothing the shell ships loads anything at runtime, which is the only reason the
+# single-file offline build works at all. A boot-time fetch of flag values would break
+# that gate — it already caught the same pattern in telemetry.js, and the answer then
+# was to ship neither file rather than add an exception.
+#
+# So the flow is dashboard -> KV -> `site/stamp_version.js` at BUILD -> a literal in the
+# generated site/channel.js. A change therefore takes effect on the next deploy, not
+# immediately, and the dashboard says so rather than implying otherwise.
+[[kv_namespaces]]
+binding = "FLAGS"
+id = "7a421f75b14444e78a72a239c841c90d"
+
 # OBSERVABILITY IS DELIBERATELY OFF. Do not turn it on to "see what the Worker is doing".
 #
 # Cloudflare's docs (workers/observability/logs/workers-logs, and the 2025-04-07 changelog):

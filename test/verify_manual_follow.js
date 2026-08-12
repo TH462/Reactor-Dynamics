@@ -51,6 +51,48 @@ function cgLabels(page) {
   });
 }
 
+
+/* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD since 2026-08-11 *(OWNER DIRECTIVE: "It
+ * should always the the first thing someone sees when loading the sim.")*, so every gate
+ * navigation dismisses it exactly as a player does — never by a URL exemption, because a
+ * bypass list containing `engine=` is precisely what hid the window from every real
+ * visitor while a bare-URL check reported it working.
+ *
+ * IT WAITS FOR THE WINDOW RATHER THAN ASSUMING IT IS UP. `waitUntil: 'load'` returns
+ * before app.js has run its init, so a fixed 200 ms probe found nothing, skipped, and then
+ * the window appeared and swallowed every later click — 34 checks instead of 261. "Not
+ * there yet" and "not there" are different answers and only one of them means skip. */
+async function dismissMission(page) {
+  for (var i = 0; i < 30; i++) {
+    try {
+      if (await page.isVisible('#missionOverlay')) {
+        await page.click('#missionClose');
+        /* AND PAUSE. Closing the window now RESUMES the plant (owner, 2026-08-11: "Sim
+         * should start running not paused"), and this gate never plays the sim — it checks
+         * control-surface reachability step by step. On a running plant the steps grade
+         * themselves off the instruments and advance, so every reading came out one step
+         * late: 34 failures, all of the form 'Instructor "<step N+1>" expected "<step N>"'.
+         * The gate's subject is the mapping, not the dynamics; freeze the clock. */
+        // IMMEDIATELY, with no intervening wait. A 200 ms gap between the close and the
+        // pause let the plant tick twice, and two ticks are enough for a follow step whose
+        // acceptance is already satisfied to grade itself and advance — which shifted every
+        // subsequent reading by exactly one step (24 failures, all off-by-one). Pausing in
+        // the same turn removes the window rather than making it smaller.
+        try {
+          await page.evaluate(function () {
+            var b = document.getElementById('playBtn');
+            if (b && b.textContent.trim() !== '▶') b.click();
+          });
+        } catch (e) { /* no play button on this view */ }
+        await page.waitForTimeout(150);
+        return true;
+      }
+    } catch (e) { /* not mounted yet */ }
+    await page.waitForTimeout(100);
+  }
+  return false;   // never appeared — let the caller's own checks report what that broke
+}
+
 async function checkControlOnBar(page, prof, view, control) {
   if (prof === 'pwr') {
     // The PWR plant display is the learning board (no view bar): a control is
@@ -89,6 +131,7 @@ async function verifyProcedure(page, prof, proc) {
   var fails = 0;
 
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof, { waitUntil: 'load', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(600);
   await page.click('#manualBtn');
   await page.click('#manualNav [data-msec="procedures"]');
@@ -130,6 +173,7 @@ async function verifyProcedure(page, prof, proc) {
   // gate several minutes slower for no extra assurance. Load once, click the tab when the
   // plant has one, check each entry.
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof, { waitUntil: 'load', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(500);
   var lastView = null;
   for (var b = 0; b < expects.length; b++) {
@@ -155,6 +199,7 @@ async function verifyProcedure(page, prof, proc) {
   // Sorted defensively — an out-of-order entry would otherwise silently skip a step.
   var ordered = expects.slice().sort(function (p, q) { return p.i - q.i; });
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + prof + '&follow=' + proc.id, { waitUntil: 'load', timeout: 90000 });
+  await dismissMission(page);
   await page.waitForTimeout(400);
   var at = 0;
   for (var f = 0; f < ordered.length; f++) {

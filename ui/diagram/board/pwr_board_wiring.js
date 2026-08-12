@@ -499,11 +499,18 @@
     // (2.76 MPa / 400 psi) and force-closes a standing-open valve only above the separate
     // emergency.rhr_autoclose_mpa (4.14 MPa / 600 psig). active() reads the true valve
     // state — a refused press visibly fails to latch instead of lying about the lineup.
-    // Same triad convention as HPI: AUTO lights when the ESF arm is armed; ALIGN/ISOLATE
-    // light only while in MANUAL.
-    ims3wg27iif: { press: function () { cmd({ action: 'set_rhr', active: true }); }, active: function (s) { return !esfAuto(s, 'rhr') && !!IN(s).rhr_valve_open; } },
-    ims3xfeye1q: { press: function () { cmd({ action: 'set_rhr', active: false }); }, active: function (s) { return !esfAuto(s, 'rhr') && !IN(s).rhr_valve_open; } },
-    ims3xfl3xn6: { press: function () { cmd({ action: 'set_esf_auto', system: 'rhr', auto: true }); }, active: function (s) { return esfAuto(s, 'rhr'); } },
+    // NOT the HPI triad — RHR is ALIGN/ISOLATE ONLY, with no AUTO (#453). RHR used to carry
+    // an ESF arm because an actuation opened the suction valve by itself once the plant was
+    // scrammed and depressurized. No plant does that (WTSM 5.1 §5.1.3.3: the interlocks
+    // "prevent the valves from being opened unless…"; NUREG-1431 SR 3.4.14.2/.3 test
+    // "prevents from being opened" and "causes to close" as separate functions), so the
+    // actuation is gone — and with nothing left to arm, an AUTO button would light for a
+    // state that gates nothing. That is the orphan control DESIGN_CRITERIA Q4 vetoes, so the
+    // button is removed via DOC_REMOVE and the two survivors take its slot via DOC_PATCHES.
+    // `active()` still reads the TRUE valve state, so a refused press visibly fails to latch
+    // instead of lying about the lineup.
+    ims3wg27iif: { press: function () { cmd({ action: 'set_rhr', active: true }); }, active: function (s) { return !!IN(s).rhr_valve_open; } },
+    ims3xfeye1q: { press: function () { cmd({ action: 'set_rhr', active: false }); }, active: function (s) { return !IN(s).rhr_valve_open; } },
     // --- AFW ---
     imrmsslj42u: { press: function () { cmd({ action: 'set_afw', active: true }); }, active: function (s) { return !esfAuto(s, 'afw') && (IN(s).afw_active || IN(s).afw_pump_running); } },
     imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !esfAuto(s, 'afw') && !(IN(s).afw_active || IN(s).afw_pump_running); } },
@@ -843,7 +850,21 @@
   // happens once, in the driver's onNumber/numberFor, so a formatter here never has to
   // know which unit the operator is looking at.
   var NUMBERS = {
-    imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); }, get: function (s) { return CS(s).load_target_mwe; } },              // Generator Load MW
+    /* GENERATOR LOAD — the spinner reads the operator's DEMAND, not the ramping reference
+     * *(OWNER DIRECTIVE, 2026-08-11: "The generator load increase button doesn't let the
+     * user go up more than one press due to the rate increase limit. Let the user raise to
+     * the desired level before starting the climb/rate limit.")*.
+     *
+     * It used to read `load_target_mwe`, the EHC reference that climbs at
+     * load_rate_pct_per_min. So each press computed "current + 1" from a number the ramp
+     * was still moving, and a second press a moment later started from almost the same
+     * place — the demand could never get ahead of the ramp, which is exactly what dialling
+     * a target IS. Reading `load_cmd_mwe` lets the operator set 100 MW in ten presses and
+     * then watch the machine walk there at its own rate, which is how a real EHC thumbwheel
+     * behaves. The RATE LIMIT IS UNTOUCHED — this changes what the control reads, not how
+     * fast the plant may move. Falls back to the reference before any load is set. */
+    imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); },
+      get: function (s) { var c = CS(s); return c.load_cmd_mwe != null ? c.load_cmd_mwe : c.load_target_mwe; } },   // Generator Load MW
     imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { return (CS(s).feed_pump_speed_pct || 0) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
     imro929i738: { set: function (v) { cmd({ action: 'set_spray', pct: v }); }, get: function (s) { return CS(s).spray_valve_pct; } },                    // spray %
     imro96mj15p: { set: function (v) { cmd({ action: 'set_heater', power_pct: v }); }, get: function (s) { return CS(s).heater_power_pct; } },             // heater %
@@ -2374,6 +2395,11 @@
   // the 1/M plot are both written against. Two readouts for one fact is DESIGN_CRITERIA Q4.
   // PERIOD takes the vacated slot (see EXTRA_ITEMS) rather than leaving a hole.
   var DOC_REMOVE = {
+    // RHR AUTO button (#453). The RHR auto-entry actuation it armed is gone — see the RHR
+    // block in CONTROLS above and the sourced note in pwr_control.js — so the button armed
+    // nothing. ALIGN and ISOLATE move up into its slot (DOC_PATCHES below) rather than
+    // leaving a hole, the same treatment PERIOD got when REACTIVITY was removed.
+    ims3xfl3xn6: 1,    // AUTO (RHR) — nothing left to arm
     imro6rdwwdn: 1,    // reactivity readout (pcm)
     imrshokxy4u: 1,    // its "REACTIVITY" caption
     // The labelled STEAM DUMP readout tile. The 2026-08-05 diagram re-export drags it to
@@ -2445,6 +2471,12 @@
       // CVCS flow captions to 14 px — #350 item 27, see the note above DOC_PATCHES.
       // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
       imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // RHR ALIGN / ISOLATE move up 30 px each into the slot the removed AUTO button
+      // vacated (#453) — authored 665/695 under AUTO at 635. The card is 175 tall from
+      // top 605; with AUTO gone, leaving them where they were would put a 30 px hole under
+      // the card title. 30 is the authored button pitch, so the spacing is unchanged.
+      ims3wg27iif: { props: { top: 635 } },
+      ims3xfeye1q: { props: { top: 665 } },
       // SG FEED rate box: 1740 → 1750, the other half of the RESTORE widening (#357). With
       // RESTORE at 68 wide it ends at 1738, so the old 1740 left a 2 px gap; 1750 restores a
       // 12 px one, comparable to the 10 px between AUTO/MAN/OFF in the row above. It also

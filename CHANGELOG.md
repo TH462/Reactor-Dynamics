@@ -30,6 +30,429 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.6.0] — 2026-08-12
+
+### Changed
+- **The ops dashboard lays records out as cards, and stops stretching across wide screens**
+  *(OWNER, 2026-08-12: "put the data on cards instead of infinitely expandable rows"; and,
+  on what that meant: "when the screen is stretched the rows become very long left to right
+  with the data far from eachother. lots of wasted space")*. Bug reports and sessions render
+  as cards on an auto-filling grid, so a wider screen shows **more records** rather than the
+  same few with bigger gaps — five reports abreast at 1920 px, against one stretched row
+  before. Long player notes clamp to five lines with the full text a click away. The page is
+  width-capped and centred, and tables size to their content instead of to the window.
+  Comparison tables (top pages, actions, by-day) stay tables: they are columns of numbers
+  meant to be read down the column, and cards would break that alignment.
+- **The ops dashboard reads Eastern time** (`worker/src/`). Bug-report times, session
+  "first seen", per-event "written at" and the feature-flag "last changed" stamp all render
+  in `America/New_York`, so EST/EDT switch themselves rather than being a fixed offset that
+  drifts an hour every March. Headers say **(ET)**. Storage and queries are untouched and
+  stay UTC. **The daily traffic table deliberately stays UTC and now says so** — those rows
+  are bucketed upstream on UTC calendar days, so relabelling them ET without re-grouping the
+  query would shift every count four or five hours into the neighbouring day while looking
+  entirely correct. *(Website change — no simulator behaviour, so no `changelog.html` entry
+  and no version bump.)*
+
+### Added
+- **The strip chart marks where the run began** *(OWNER, 2026-08-11: "The strip chart should
+  have a line to show the start of the sim at time=0.")*. A dashed slate line, tagged `T+0`,
+  across every lane. It marks a real join rather than the left edge: the chart opens already
+  holding 30 minutes of trend, and that history is laid *before* sim time zero — at T+10 s on
+  the 5-minute window, 290 s of the plot is the plant's past and 10 s is your run. It scrolls
+  off once the run is older than the window, like any other moment on the chart.
+- **Free play starts with rod control in MANUAL** (#460) *(OWNER DIRECTIVE, 2026-08-11: "lets
+  start with rods in manual.")*. `rods_tavg` loses its `defaultOn`, reversing the 2026-08-01
+  auto default (#289). The channel is otherwise untouched — same controller, same board
+  control (**ROD AUTO**), same manuals, still engageable at any time; only the free-play preset
+  moved. Instructed content never read `defaultOn` and is unaffected.
+
+  The 2026-08-01 ruling's stated premise — *"everything else starts in auto"* — had expired:
+  the Mode 1 free-play lineup puts generator load in MANUAL (`getStartupLineup`), so the two
+  halves of the load/reactivity pair now agree.
+
+  **Measured** (`measure_stack`, full stack, `hot_full_power`, 100 → 80 MWe):
+  - The plant load-follows **without** the rods. Moderator feedback alone takes power to
+    **81.8 %** and parks it, monotone, settled at **3 min 30 s**. Rods in AUTO ring the same
+    step — Tavg 586.8 → 567.2 °F (308.2 → 297.3 °C), power 62 → 88 % — and are still ±1.5 pts
+    at ten minutes. Manual is the better-behaved plant on this transient, not the harder one.
+  - What the plant does **not** do by itself is put Tavg back on program: it settles
+    **17.3 °F (9.6 °C) high**. That trim is now the operator's, and the board already draws
+    the sliding Tref band, so it is visible without a new indication. HI TAVG sits 3.6 °F
+    (2.0 °C) above where it parks — a cue, not a nag.
+  - Manual rod control is linear and forgiving: −20 fine steps → −1.8 °F (−1.0 °C), −60 →
+    −6.2 °F (−3.4 °C), ~0.1 °F (0.06 °C) per step, no overshoot at either size.
+  - Inserting 60 steps moved generator load **0.8 points**. Rods set temperature; the turbine
+    sets power — the Tier A coupling the AUTO channel was absorbing.
+
+  Side effect: **#400**'s measured all-auto oscillation (12.93–13.65 points p2p at the 50 %
+  plateau, never settling) leaves the shipped free-play plant. It is not fixed — the channel
+  still rings when engaged, and #400 stands.
+
+  Five behaviour probes moved with it — TR-1g, TR-1h, TR-1i, TR-1k, TR-18 — none by changing
+  an assertion. All five are *about* the rod controller and were inheriting it from the preset;
+  they now call a `rodsAuto()` helper, the mirror of the existing `rodsManual()`, so both
+  halves of the lineup question are stated out loud and the next preset change moves neither.
+  `board_check`'s three ROD AUTO checks invert (default, then both directions from it — the
+  structure that made this a one-line edit per check rather than a re-diagnosis).
+
+### Fixed
+- **Auxiliary feedwater actually overcools the plant now — the steam generator was throwing
+  heat away (#464).** Cold AFW is supposed to be a heat sink: at decay-heat power, full flow
+  absorbs more heat than crosses the tubes, boiling stops, and the plant cools below the
+  no-load point until you throttle it back. The first two happened; the third could not. The
+  generator clamped steam production at zero and then simply *held* — measured, **947.1 psi
+  flat for six hours** while decay heat fell to a sixth of its starting value, with the
+  primary's heat still crossing into a generator that neither boiled it nor warmed on it.
+  Now the excess condenses and the plant cools: **171 °F in the first hour**, slowing as it
+  approaches the temperature of the feedwater itself. Nothing changes at power, and nothing
+  changes while the level controller is throttling AFW normally — this is the unthrottled
+  case, which is exactly the one the procedures tell you to catch. The same fix corrects AFW
+  being weighed **1.56× heavier** in the heat balance than the 96 gpm the board shows for it.
+- **Closing Plant & Mission leaves the plant running** *(OWNER, 2026-08-11: "When i close the
+  plant menu after starting the sim the sim should start playing. it currently starts paused. it
+  should start running after closing the plant & mission menu.")*. Starting Free Play closed the
+  window and started the clock, and the engine swap that followed stopped it again for good — a
+  pause taken to cover the rebuild that nothing ever released. A **Reset** now also lands you on
+  a running plant rather than one waiting for ▶. A plant you stopped yourself with ⏸ still stays
+  stopped through both.
+- **Residual heat removal no longer puts itself in service during an unisolated LOCA**
+  (#453). The auto-align actuation gated on RCS pressure and a reactor trip and nothing
+  else, so on a small break `eccs_mode` went HPI → RHR at **t+10 min, at 381 °F (194 °C),
+  at saturation, with the break still discharging** — and shutdown cooling then became the
+  largest heat sink in the plant, more than every other term combined. It now also requires
+  the sourced entry temperature (Tavg < 350 °F — Ginna TS Bases Rev 101, ML20339A221) and
+  20 °F of subcooling, which is what expresses that source's other half, "during normal
+  operations". The plant now answers a small break with **low-head injection (LPI)** as it
+  should; core inventory holds **77–92 %** instead of walking to a 109 % cold-solid state.
+
+### Changed
+- **`K_spray` carries its derivation** (#450) — sourced flow (Ginna UFSAR ch.15,
+  ML20339A101: "the total spray capacity was 52.2 lbm/sec"), ~8× the physical authority,
+  and the measured finding that this plant's heater/spray pair is **inverted**: sourced,
+  spray beats the heaters 4.7:1; modelled, the heaters beat spray 2.7:1. No behaviour change.
+- **`K_heater` was swept and NOT moved** (#450). The F14 departure stands: restoring the
+  sourced 25 psi spray-crack band needs `K_heater` ≈ 0.0061, about **8× below** where this
+  plant's ruled ride-out character breaks, and the gain buys nothing on #447 or #451.
+
+### Changed
+- **The strip chart's settings are a full window now, and every channel can trace its
+  instrument, its physics, or both (#454)** *(OWNER DIRECTIVE, 2026-08-11: "The strip chart option
+  menu should be like the plant selection menu. It should be large and pause the sim. It should
+  have options to customize the strip chart. It should list all the indications you can put on the
+  chart with their current values. You should be able to choose the indication or the physics
+  value for each. Put a radial next to each value to let the user choose so they could even choose
+  both the indication and physics if they want.")*.
+
+  Replaces the anchored ⚙ popover shipped hours earlier, reversing three of its properties by
+  name: it is **large**, it is **modal**, and it **pauses**. The pause is the deliberate part —
+  the popover argued that changing how you watch a transient should not stop the transient, and
+  that argument does not survive the change of size, because a full-screen window covers the
+  board. Closing it starts the plant again *unless you had paused it yourself*, which the named
+  pause holds make expressible.
+
+  Every one of the 120 channels is listed with **its current reading on both sides**, taken from
+  the same functions the Indications tab uses, and carries **one selector per value**: neither is
+  "not plotted", one is that side, both is both. A channel set to both draws **two traces in one
+  lane on one shared scale** — the physics as a lighter dashed twin — and prints both figures in
+  the lane's value column. One scale, not two: independently fitted axes would put an indicated
+  549 °F (287 °C) and a true 551 °F (288 °C) on the same pixel and draw a disagreement as
+  agreement. The CSV export follows, emitting `id_ind` and `id_phys` for a paired channel and the
+  bare `id` for every other.
+
+  A channel with only one side — decay heat, reactivity and the other physics-only quantities —
+  shows a disabled selector and a dash rather than a missing cell, so the columns stay readable
+  down the list and "this quantity has no instrument" is itself visible.
+- **Shutdown cooling no longer puts itself in service (#453).** The RHR hot-leg suction valve
+  used to open by itself whenever the reactor was tripped and pressure fell below 400 psi — so
+  every depressurization after a scram aligned shutdown cooling, including a LOCA, where it
+  became the largest heat sink in the plant while the break was still open. No real plant has
+  that function: every RHR interlock is a *permissive* that blocks opening above pressure
+  (WTSM 5.1 §5.1.3.3; NUREG-1431 SR 3.4.14.2/.3 test "prevents from being opened" and "causes
+  to close" as separate things). **Placing RHR in service is now yours to do** — the ALIGN
+  button, below the 400 psi interlock, after throttling the heat-exchanger split as the
+  cooldown procedure already tells you. The 400 psi block-open and 600 psi autoclose
+  interlocks are unchanged. The RHR **AUTO** button is gone with the automatic function it
+  armed; ALIGN and ISOLATE remain.
+- **Control room: ten further adjustments** *(OWNER DIRECTIVE, 2026-08-11: "Put the strip chart
+  rewind button to the left of the x axis time selection. Get rid of the slider bar at the bottom
+  of the chart."; "Remove the sim paused popup at the start. Sim should start running not paused…
+  When the sim is paused flash the play button. All animations should stop when the sim is
+  paused."; "The plant selection menu should start at page load but it does not."; "It should show
+  up every time the sim is loaded… It should always the the first thing someone sees when loading
+  the sim."; "Make the instructor block a tab. Make it the leftmost tab."; "Find a max height for
+  the expanded scanner and pin it to that height when maximized."; "In indications tab, Make
+  dedicated columns for the plant indications and physics indications so they are easier to read.
+  Remove the true values button."; "Instructor and other messages like walkthroughs should be like
+  teams messages. They should be persistent and scrollable only cleared when the user changes what
+  that instructor block is showing with a different walkthroughs, training, etc."; "The generator
+  load increase button doesn’t let the user go up more than one press due to the rate increase
+  limit. Let the user raise to the desired level before starting the climb/rate limit."; "In the
+  plant and mission menu show mode next to the two free play options without mode."; "The strip
+  chart needs a chart settings button that brings up a dedicated strip chart options menu.")*.
+
+  **The plant now loads RUNNING and the SIMULATION PAUSED curtain is gone** — the Plant &
+  Mission window is what a cold load opens on, so the veil’s job was already done elsewhere.
+  Its two affordances survive: click-to-resume became the ▶ button, which now flashes while
+  paused, and the quick tour is on Help. **Pausing now actually stops the board**: the freeze rode
+  on the snapshot’s `running` flag, and pausing is precisely when snapshots stop arriving, so
+  105 of 112 animations kept running behind a stopped clock. **The Plant & Mission window opens on
+  every load, with no deep-link exemption** — the old bypass list contained `engine=` and the
+  site links `?engine=pwr`, so no visitor arriving normally had ever seen it.
+
+  **The Instructor is now the leftmost tab** rather than a card in a two-card accordion, and its
+  messages are a **persistent, scrollable transcript**: walkthrough steps and instructor guidance
+  accumulate instead of overwriting one another, and the log clears only when you change what the
+  panel is showing. **The strip chart** loses its slider bar (a track that looked draggable and
+  was a single click target duplicating click-to-pick on the plot), moves Rewind beside the window
+  buttons, and gains a **chart settings panel** listing all 120 plottable channels with a filter,
+  the window ladder, the event ribbon and CSV. *(That panel was an anchored popover that
+  deliberately did not pause; the owner's follow-up reversed its size, its modality and its pause
+  behaviour, and it is superseded by the window described under #454 below.)* **Indications** gain headed Plant and
+  Physics columns and lose the true-values button. **The expanded System Scanner is pinned to one
+  height** (140 px, measured: the tallest of 133 descriptions renders 127 px) instead of resizing
+  under every hover. **The generator load spinner reads your demand, not the ramping reference**,
+  so you can dial a target and let the machine walk there — ten presses now move it 50 →
+  60 MW where they previously moved it 50 → 50. The rate limit itself is unchanged. **Free-play
+  starting conditions all name their Mode.**
+- **Safety injection now sheds the pressurizer heaters, and so does a loss of offsite power
+  (#447).** They stay off until you deliberately put them back — HEATER AUTO, MANUAL, OFF or
+  the % box all count as the reload, and a new **PZR HTRS SHED** indication says why heater
+  power is reading zero. Sourced: NUREG-0737 II.E.3.1 Clarification (7) requires the shed on
+  an SI signal; Ginna TS Bases B 3.4.9 adds the LOOP half and the manual reload onto the
+  diesels. Fixes a ~40 s pressure/level limit cycle that ran for hours after **every** LOCA
+  severity (measured: 134 heater cycles at severity 0.05 with an 839 psia excursion, up to
+  936 at 1.00) and flooded the alarm log — the heaters were returning to full power every
+  time ECCS refilled the pressurizer past 20 %. The plant now settles into long-term cooling
+  instead. The previous behaviour, where a loss of offsite power left the heaters running,
+  was a misreading of that same NUREG requirement.
+
+### Added
+- **Ops dashboard on the telemetry Worker** — `GET /dashboard?token=T`, token-gated and
+  read-only, in two views. **Bug reports** (`worker/src/dashboard.js`): list + detail + raw
+  JSON over the R2 bundles, so reading player feedback no longer needs the throwaway
+  `wrangler dev --remote` reader (`tools/fetch_bug_reports.js` still works and is unchanged).
+  **Analytics** (`worker/src/analytics.js`): Web Analytics traffic and in-sim usage over
+  7/14/30-day windows — the same numbers `tools/site_report.js` prints, cross-checked against
+  it row for row, with the coarse-tier rounding shown per row instead of quoted as exact.
+  **Sessions** (`worker/src/sessions.js`): one row per session, click through to the ordered
+  trace of what was pressed and opened. It states its own limits on the page rather than
+  implying a replay — the rows are sampled (`command` stored 42 raw against 64 estimated),
+  the timestamp is the batch flush and not the press, and a session is a browser tab rather
+  than a sitting. Needs a `CF_ANALYTICS_TOKEN` secret because the `EVENTS` binding is
+  write-only: a Worker cannot read its own Analytics Engine dataset. Ops-only, not part of
+  the sim — see `worker/README.md` → "The ops dashboard".
+- **Per-event timing and refused commands are kept instead of discarded.** `site/telemetry.js`
+  has always stamped each event with `t` (seconds since page load) and put it on the wire;
+  `command.blocked` has been declared and emitted since it was added. The Worker read neither,
+  so a session's order was unrecoverable and every refused command was recorded as though it
+  succeeded. Both now have columns and both produce data from the deploy, with no release
+  needed — the clients already in the wild were already sending them. Verified in a real
+  browser: six events sharing one batch write time, ordered 0:01/0:01/0:01/0:05/0:06/0:06.
+  Adds a "controls people try but cannot use" view (with the rate beside the count) and a
+  session trace that marks page reloads. `privacy.html` now discloses the refusal flag, which
+  it never had, and its "counts" framing is corrected.
+
+- **Feature flags are set from the dashboard and applied at build.** A Features tab shows
+  what the live sim gates — read from the deployed `flags.js`, not the repo — and sets the
+  stage for all 6 areas and all 64 content items. The dashboard writes to KV;
+  `site/stamp_version.js` reads it at build and freezes it into the generated
+  `site/channel.js`, so the sim still loads nothing at runtime and the offline single-file
+  build keeps working. Changes are therefore **queued until the next deploy**, and the tab
+  shows live and queued stages side by side. `free_play` and `manual` cannot be set below
+  public, refused at both ends. Inactive until `RD_FLAGS_ENDPOINT` is set in the Pages
+  build environment; unset behaves exactly as before.
+
+- **A selection screen on start, and the session bar as the front door (#443, spec §9).**
+  A cold load now opens on a plant × activity picker (PWR / Free Play preselected, so pressing
+  straight through costs one click); a returning visitor gets **Resume — PWR · Free Play** with
+  the pickers folded behind *Change*. Campaign and Scenarios hand off to the existing Plant &
+  Mission window rather than duplicating it. **Reset moved into that window's session footer**
+  as a two-press arm — "reset is restart what the session bar describes" — replacing a browser
+  `confirm()`. Three persistent **coach marks** (session bar, Checklists, Feedback) wait as cyan
+  dots until first use, then retire; they are not a timed tour. Deep links (`?engine=`, `?run=1`,
+  `?follow=` …) bypass the screen: the URL already made the choice.
+- **`RD.Events` — one sequence-of-events stream (#437, `ui/event_stream.js`).** Discrete plant
+  occurrences (scram, turbine trip, safety injection, mode change, PORV/MSIV position, pump
+  starts and stops) plus operator commands, each stamped at emission with a **priority tier**
+  (1 plant-defining / 2 component / 3 minor), a **component reference** resolvable through the
+  board's highlight vocabulary, and an **actor** — operator action vs plant response. Edges are
+  detected at the service/UI seam and the bug-report recorder is the *only* detector of alarm
+  and scram transitions, feeding the stream through its existing hook, so the two cannot
+  disagree. New gate `test/run_events.js` (40 checks) — it caught two observer artefacts before
+  the file landed: the recorder's first-pass alarm sweep arriving as **46 `alarm_clear` events at
+  t=0** (a steady 20 s at power now produces 0), and a watched channel that was an instrument
+  with no `true_state` field behind it.
+
+- **The splitters give the lane stack more rows, not taller ones (#445, spec §8).** Dragging the
+  trend strip taller **promotes demoted channels back to full traces** rather than inflating the
+  ones already there — measured: 230 px → 375 px took the stack from 3 lanes + 3 numeric rows to
+  **6 lanes at 51 px**, inside the 44–56 target and above the 36 px floor. **Double-click resets
+  an axis** and hands it back to auto-fit, because users will drag themselves into a corner and
+  the way back has to be obvious. A **persisted split is re-clamped on load**: the right column
+  lost the Scanner and the bottom row gained the lane stack, so a value saved by an older layout
+  describes a geometry that no longer exists — an absurd stored size now opens at the nearest
+  legal one instead of a broken board.
+- **Checklists are ordered by relevance to the plant (#443, spec §9).** At power the normal
+  operations rank first; **after a scram, post-trip response goes to the top**, the way emergency
+  procedures supersede normal ones in a real control room. **Sort, do not filter:** inapplicable
+  procedures collapse into a labelled group and each states *why* — "Requires RCS temperature
+  near 286" — which turns the demotion into instruction rather than hiding a checklist a player
+  saw yesterday. An open list never reorders under the cursor. The scoring lives in the
+  instructor layer, where the preconditions are already graded instrument-first; "warn, never
+  block" is untouched, since this orders a list and refuses nothing. **In free play the
+  Instructor now hosts the launcher** instead of static quick-tour text. The manual gains **real
+  section anchors** (`## 7.3 …` → `id="s7-3"`, so §9.1 and §9.10 are distinct) and a search over
+  the packed markdown — the anchors the checklist "why" links will target.
+- **One shared highlight bus (#444, spec §7, `ui/highlight_bus.js`).** Point at a channel in the
+  merged list, a lane on the chart, or an event marker, and **its component lights on the
+  board** — as a soft cyan halo, an outer glow that never recolors the element, so a haloed
+  component in alarm still reads as in alarm. **It never lights the thing under the pointer**,
+  only its relations: that is the 2026-07-28 hover-halo directive read as "no self-halo on
+  non-interactive elements", and it preserves the property that nothing lighting under the
+  cursor means *readout* while something lighting means *control*. Relations are **sets** —
+  subcooling margin lights both the loop bulk and the core-exit thermocouple. Hover is
+  transient, click pins, Escape clears, and pinned differs by **weight, not hue**. The halo
+  appears rather than pulses, which is the reduced-motion answer. Built on the board's real,
+  gate-validated label vocabulary — the `data-highlight-id` hooks the spec assumed exist only
+  in blueprint documents for a renderer that was never built.
+- **A Sequence of Events record on the chart (#442, spec §8).** Real plants have SOE recorders
+  and post-trip review is conducted with them — naming it that tells an operator-minded player
+  what they are looking at, and makes the chart an accident-analysis instrument rather than a
+  trend display. **Tier 1** (scram, turbine trip, safety injection, mode change) draws full
+  height across every lane, because a plant-defining event is context for all of them at once;
+  **tier 2** (PORV, MSIV, pump starts and stops) goes in a 10 px ribbon under the axis; tier 3 is
+  off. **A cascade collapses into a counted badge** — measured on a real trip: 11 events became
+  one badge reading "5", where drawing them individually is one illegible pixel in a 30-minute
+  window. **Operator actions are visually distinct from plant responses** (cyan against amber,
+  from the actor stamped at emission, never inferred from proximity). **Clicking a marker jumps
+  Rewind to that instant** — measured, T+9 back to T+1 — landing on the nearest checkpoint, which
+  the copy says. The SOE exports as a second CSV alongside the trace.
+
+### Changed
+- **Seven control-room adjustments** *(OWNER DIRECTIVE, 2026-08-11: "The top edge of the boarder around the diagram takes up too much space."; "The plant and mission menu should be up when the sim page is loaded… a tooltip should point to the button that opens it again… The button should be clearly labeled."; "The scanner full description should make the scanner larger so the full description is visible. It should not open another box or window."; "The instructor block should start full size when free play is started."; "Put indications in the indications tab into one column."; "The checklist tab should always show the list of checklists. They should stay in a standard order."; "Checklists are supposed to be automatically checked off by the sim when complete. Remove the user clickable step complete button.")*.
+  **The diagram's top and left borders are gone** — the board scales to its own height, so every
+  pixel the top edge took came out of the diagram. **The Plant & Mission window is up on load**,
+  replacing the selection screen entirely; closing it raises a brief tooltip pointing at the
+  button that reopens it, and that button now says **Plant & Mission** rather than only its own
+  state. **The Scanner's full description grows the line in place** instead of opening a modal —
+  the description belongs beside the thing it describes, which was the point of moving it under
+  the board. **The Instructor starts full size**, including on a first visit, where the previous
+  code returned early and left the markup's collapsed default. **Indications render in one
+  column**, superseding the 2026-08-04 two-column directive: those rows were checkboxes then and
+  now carry a label, an indicated value, a true value and a divergence flag. **The Checklists tab
+  always shows the list, in a standard order** — category then title — and stays visible while a
+  checklist runs; the relevance *scoring* is kept for the gating labels, only the reordering is
+  retired. **The manual step-complete button is gone**: every step now completes on evidence, and
+  a step with no `acc`/`saw`/`cmd` — 2 of the PWR's 106, both "Read the…" observations — completes
+  on a 12 s dwell, so omitting a predicate can never soft-lock a procedure.
+
+### Fixed
+- **The merged list's divergence flag was flagging healthy channels (#449, #439).** Measured at
+  the full stack, 300 s at hot full power: charging flow indicates **30.45 ± 1.81 gpm** against a
+  true **30.64 ± 0.13** — a mean gap of 0.6 %, but single samples land 7 gpm out, so an
+  instantaneous comparison against a fixed band lit charging, letdown and heatup rate
+  permanently. Averaging over 6 s did not help (the noise has an 8 s correlation time), and
+  reading the declared sigma out of the config was worse (0.58 gpm against a measured 1.81 — a
+  second, wrong copy of a number the data already carries). **The spread is now measured from
+  the data**: `sd(indicated − true)` over 60 s *is* the channel's noise, and a row flags when the
+  mean gap exceeds twice it — "is it further off than this gauge normally wanders?". **92
+  comparable rows, 1 flagged**, down from 4. The one that remains is correct: the intermediate
+  range is pegged at its 2e-3 A over-range ceiling at power, which is prototypical, and a row
+  saying so is the lesson. A stuck PORV indicator still flags on the instant; a frozen analog
+  instrument flags within ~40 s, which is the honest cost of a threshold that is not noise.
+
+### Changed
+- **`test/run_flags.js` 16/320 → 19/342 checks** for the build-stamped layer: a stamped
+  stage beats the source literal, cannot lower the floor, and falls back when malformed.
+  Three of those were hollow when first written — asserted against a `preview` literal,
+  where a rejected value and an accepted-but-meaningless one resolve identically — and now
+  run against a `public` probe where the outcomes differ.
+- **`test/run_telemetry.js` 84 → 103 checks.** The client and the Worker agreed about NAMES
+  while the numbers went missing: `KEY_OF` gates each event's principal string and nothing
+  gated the `'num'`/`'bool'` props, so a field could be declared, validated, transmitted and
+  silently dropped on arrival with every gate green. Adds: every scalar prop reaches a real
+  column (both directions, plus the two envelope fields no prop loop can see); every declared
+  prop type is a kind `clean()` understands (a `'number'` typo is dropped for ever *and* is
+  invisible to the column check, which filters on the same spelling); and `privacy.html`
+  discloses what the schema collects, read off `data-collects` markup so prose can be reworded
+  freely and only a change to what is COLLECTED reddens it. Injection-verified six ways.
+- **The strip chart is a lane stack — one lane per indication (#440, spec §8).** Traces are no
+  longer overlaid, which is what makes per-lane autoscale honest: the false-correlation problem
+  existed only because two traces shared one vertical space. Each lane prints its **own current
+  range** and carries its name over its own trace; the **time axis is drawn once for the stack**;
+  the value column is fixed-width and tabular so numbers cannot jitter as digit counts change;
+  and the **legend block is gone**, its swatch/name/range now inside the lane that owns them.
+  **New default set: Turbine Load, Reactor Power, Tavg** — the old four showed independent state
+  variables, demonstrated no coupling, and duplicated the gauge row; these teach that the reactor
+  follows the turbine. **Pinning past what fits demotes to numeric rows rather than squeezing
+  lanes** — measured: six channels in the 168 px plot gave 28 px lanes, under the 36 px floor, and
+  now give 3 lanes at 38 px plus 3 numeric rows. A **shared time cursor** crosses every lane with
+  each lane's value at that instant, coloured so a cursor reading cannot be mistaken for a live
+  one. The chart's fitter now calls `RD.ChartMath.holdRange`, so it and the vital tiles cannot
+  drift. Built against `ui/test_panel/lane_reference.html`, which stays in the tree as the golden
+  artifact and measures itself against the density budget.
+- **The held-axis policy extracted to `ui/chart_math.js` (#393).** The 1-2-5 ladder and the
+  held-band dwell existed twice — in the strip chart and in the vital tiles, the second behind a
+  "KEEP IN SYNC WITH ui/app.js" comment, on two surfaces 12 px apart showing the same six
+  quantities where a divergence reads as "the tile jumped and the chart didn't". `RD.ChartMath`
+  owns the **policy**; each caller keeps its own **placement**. New gate `test/run_chart_math.js`
+  pins both original implementations verbatim and replays them against the shared one — 770
+  `niceStep` inputs and a 235-frame transient with 50 re-fits, matching frame for frame,
+  including the two behaviours the old comments record as having cost real bugs (the clamp
+  beating the data, and the dwell snapping on a single quiet frame).
+- **Indications and Physics merged into one paired list (#439, spec §3).** Every channel the
+  plant publishes now shows the **indicated value and the true state on the same row**, and a
+  row where they disagree is **flagged** — a stuck valve announces itself instead of waiting to
+  be noticed by comparing the right pair of rows across two panels. Three filter chips (paired /
+  indication-only / physics-only); the physics-only set is itself a teaching artifact, being the
+  list of things the operator can never see. **HR1 guard:** the true column can be switched off
+  and is off by default in missions and campaigns. The 46 curated physics rows are not lost —
+  their authored prose now renders the true column of the series they were already bound to.
+  The divergence rule was **measured, not assumed**: a plain string comparison lit five rows
+  permanently on a healthy plant (including `-0.0` against `0.0`, the same number), so it is now
+  a 0.5 % relative test with a floor at the displayed precision — above instrument lag (Cold Leg
+  reads 551 °F against 550 °F, 0.18 %) and below the spec's own worked example (core exit 618 °F
+  against 623 °F, 0.8 %). Four rows still flag at hot full power with nothing injected, and all
+  four are genuinely large disagreements rather than lag; they are recorded on the issue for
+  investigation.
+- **The right column restructured (#439, spec §1–§4/§6).** The tab strip is now
+  **Checklists · Indications · Physics · Inject Failure** — everything in it is *pull*, and the
+  Instructor below it is *push*. The **Operate tab is dissolved**: it held no operating controls
+  (those are on the board), only session management, which is why nobody hunting for a course
+  ever clicked it and the quick tour had to say "Checklists (Operate tab)". Session setup went to
+  the session bar, Save/Load and Features to Settings, and **Checklists was promoted to its own
+  tab** and made the default — it ranks above the Manual by design. **Settings became a header
+  modal** that pauses; the chart's **window ladder and CSV export moved onto the chart itself**
+  in the same change and do *not* pause, because stopping the plant to change how you are
+  watching a transient is backwards. **The System Scanner is a 26 px status line under the
+  board** instead of a panel in the far corner from the board it describes; its full description
+  opens as a pausing modal, and the 74 px/28 vh two-height variant is retired. The Instructor's
+  new-message cue is **cyan, not amber** — amber on a plant board reads as a plant condition —
+  bounded to two cycles, legible with no motion at all under `prefers-reduced-motion`, and it
+  now shows a quiet "new below" marker inside the panel when the block is open but scrolled
+  away. **A gating instructor step auto-opens the block once per beat**, and a dismissal stands
+  for that beat. Active tab and Instructor fold state persist across sessions. ~110 lines of
+  dead "Automate tab" code removed — it drove a pane `shell.html` never had.
+- **One way to pause the plant, and it remembers why (#439, spec §1).** `pauseSim(reason)` /
+  `resumeSim()` replace four copied `service.stop()` idioms; the Plant & Mission, Features,
+  Feedback and About-document overlays are now **modal class: opening one pauses the sim, and
+  closing it does not resume** — the play button is the only thing that starts the plant, so
+  coming back from a dialog can never leave a transient running unwatched. The board's own
+  PAUSED veil now paints when a modal takes the plant down, which is the cue that it is waiting.
+  Rewind review records its own pause reason, which #441 needs to stop the lanes rescaling
+  mid-review.
+- **Feedback in one action (#438, first child of the #436 UI rework).** A `Feedback` button in
+  the sim-controls row beside Manual/Help opens the contact form directly — it was three levels
+  down (Settings → About → Contact), and feedback volume is known to be very low. The form now
+  carries a **restricted-information warning above the input** naming the four categories (no
+  proprietary plant data, no safeguards/security information, no export-controlled technical
+  data, no personal information — the audience includes working nuclear professionals), and the
+  attach checkbox **discloses exactly what a bundle contains** for the session being reported
+  (T+ length, sample/event/command counts, end snapshot), filled from the recorder at open time.
+  Mission completion cards offer a quiet "Send feedback" chip — asking at endpoints, not only
+  from a passive button. `DiagRecorder.readout()` gains `events`/`commands` counts. Planning for
+  the rework filed children #437–#446 from the #436 spec.
+
 ## [Alpha 1.5.2] — 2026-08-10
 
 ### Added

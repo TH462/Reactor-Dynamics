@@ -109,6 +109,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A40 | CTMT H2 HI | warning | B |
 | PWR-A41 | CTMT H2 BURN | critical | B |
 | PWR-A42 | H2 RECOMB ON | status | B |
+| PWR-A43 | PZR HTRS SHED | status | B |
 
 ---
 
@@ -162,7 +163,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | ≤ **2149 psi (14.82 MPa)** |
 | **Means** | Primary pressure low — subcooling at risk. |
-| **Actions** | 1) Energize heaters. 2) Secure excessive spray. 3) Check PORV/safety path and block valve. 4) Check leak / HPI need. 5) Watch subcooling. |
+| **Actions** | 1) Energize heaters — **and check PZR HTRS SHED (A43) first**: after a safety injection or a loss of offsite power they are off the bus and must be reloaded before they will answer. 2) Secure excessive spray. 3) Check PORV/safety path and block valve. 4) Check leak / HPI need. 5) Watch subcooling. |
 
 ---
 
@@ -212,7 +213,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | Subcooling ≤ **20 °F** (11.1 °C) |
 | **Means** | Approaching boiling in primary. |
-| **Actions** | 1) Raise pressure (heaters) and/or lower temperature (power/load). 2) Check for leak / open relief. 3) Prepare HPI. 4) **Trust this over a single PORV light.** |
+| **Actions** | 1) Raise pressure (heaters) and/or lower temperature (power/load) — if injection has already actuated, the heaters are **shed** (A43) and reloading them is step one. 2) Check for leak / open relief. 3) Prepare HPI, knowing that actuating it sheds the heaters and gives that pressure tool away until you take it back. 4) **Trust this over a single PORV light.** |
 
 ---
 
@@ -472,12 +473,12 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Setpoint** | Plant in **Mode 4 or Mode 5** **and** the RHR hot-leg suction valve **not open** |
 | **Means** | The plant is in a mode where residual heat removal is the heat sink, and it is not aligned. Decay heat is going somewhere else — or nowhere. |
 | **Why gated on the mode** | Not on pressure, and not on the reactor-trip latch. RHR is correctly *unaligned* for the whole of Modes 1–3, so a pressure-only gate would stand in through every cooldown; and a Mode 5 plant reads **not tripped** — it was never scrammed, it is simply cold — so gating on the trip latch made the tile impossible to get in the one mode where it matters most. |
-| **Automatic actions** | **None.** The entry permissive that opened the valve is **one-shot**: it fires on the first crossing below **400 psi (2.76 MPa)** and does not re-arm *(OWNER RULING, 2026-07-31: "Keep it and enunciate")*. Nothing will re-align RHR for you. |
-| **How a real plant does this** | It has **no automatic open at all.** NUREG-0933 Issue 99: *"Two basic features are incorporated in the interlock design: (1) an automatic closure signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open signal at a lower RCS pressure (typically 425 psig)."* The operator opens the suction valves; the interlock only **blocks** that open above the setpoint. This trainer's automatic entry is a simplification in the *permissive* direction, so a one-shot is the closer of the two behaviours. The **two separated setpoints** the same passage describes are now modelled: block-open **400 psi (2.76 MPa)**, autoclose **600 psi (4.14 MPa)** (#288). |
+| **Automatic actions** | **None, and now nothing opened it automatically in the first place.** Until 2026-08-11 this trainer had an entry permissive that opened the valve by itself on the first crossing below 400 psi (2.76 MPa); that was a declared simplification and it is **retired** (#453) — see the row below. **Nothing aligns RHR for you, ever.** The ruling that created this annunciator stands and is why you are reading it *(OWNER RULING, 2026-07-31: "Keep it and enunciate")* — annunciation, not automation, was always the point. |
+| **How a real plant does this** | It has **no automatic open at all — and neither does this trainer any more** (#453, 2026-08-11). NUREG-0933 Issue 99: *"Two basic features are incorporated in the interlock design: (1) an automatic closure signal on high RCS pressure (typically 600 psig), and (2) a block of the manual open signal at a lower RCS pressure (typically 425 psig)."* Westinghouse Technology Systems Manual §5.1 (ML11223A219) puts it in the same direction for valves 8701/8702: *"These interlocks **prevent the valves from being opened unless** the reactor coolant system pressure is less than 425 psig."* NUREG-1431 tests the two directions as separate surveillances — SR 3.4.14.2 *"prevents the valves from being opened"*, SR 3.4.14.3 *"causes the valves to close automatically"*. The operator opens the suction valves; the interlock only **blocks** that open above the setpoint. Both setpoints are modelled — block-open **400 psi (2.76 MPa)**, autoclose **600 psi (4.14 MPa)** (#288) — and the automatic entry that used to sit alongside them is gone. |
 | **This is a real event, not a contrivance** | Inadvertent RHR suction valve closure is one of the better-documented PWR nuisances: NUREG-0933 Issue 99 cites **27 events through 1981**, a frequency of **0.12 unplanned closures per plant-year**, with the consequence *"the potential for RHR pump damage and loss of decay heat removal by the RHR system."* The issue was resolved by **Generic Letter 88-17** through improved instrumentation, procedures and administrative controls — annunciation, not automation, which is why this tile exists. |
 | **Immediate operator actions** | Confirm RCS pressure is below **400 psi (2.76 MPa)** — the valve interlock refuses to open above it. Re-align RHR from the ECCS side of the board. Confirm the ECCS card reads **RHR** and that Tavg resumes falling. |
-| **The way this usually happens** | A **repressurization while aligned**, past **600 psi (4.14 MPa)**. The suction valve auto-closes there — that protection is real and stays — and because the entry permissive is spent, pressure coming back down does **not** bring RHR back. Note it takes a genuine 200 psi (1.38 MPa) excursion above the alignment pressure: a plant merely hunting around 400 psi no longer sheds the valve, which it did until 2026-07-31 (#288). |
-| **If it comes in with pressure ABOVE the interlock** | Expected, briefly. Losing the valve took **600 psi (4.14 MPa)**; getting it back takes **400 psi (2.76 MPa)** — the block-open permissive is the lower of the two setpoints, so you must come down past where you lost it. Get pressure down, then re-align. |
+| **The way this usually happens** | A **repressurization while aligned**, past **600 psi (4.14 MPa)**. The suction valve auto-closes there — that protection is real and stays — and pressure coming back down does **not** bring RHR back, because nothing brings RHR back but you. Note it takes a genuine 200 psi (1.38 MPa) excursion above the alignment pressure: a plant merely hunting around 400 psi no longer sheds the valve, which it did until 2026-07-31 (#288). |
+| **If it comes in with pressure ABOVE the interlock** | Expected, briefly. Losing the valve took **600 psi (4.14 MPa)**; getting it back takes **400 psi (2.76 MPa)** — the block-open permissive is the lower of the two setpoints, so you must come down past where you lost it. Get pressure down, then re-align — and **throttle the HX split before you open the valve**, or you buy the shock 04 PWR-N15 step 5 exists to prevent. |
 | **What told you before this tile existed** | Nothing, directly. The only indication was the ECCS card quietly changing from **RHR** back to **LPI**, which is why this annunciator was added. |
 | **Watch for** | Losing RHR in **Mode 5 with the steam generators unavailable** — there is no other heat sink in that lineup, and the temperature rise is slow enough to be missed until it is not. |
 
@@ -573,6 +574,16 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Logic** | `ctmt_recomb_active` — the trains are **delivering** (a blackout stops them with the demand standing) |
 | **Means** | Started automatically on rising containment hydrogen (0.5 % by volume in this build; secures itself at 0.2 %). Removal is slow by design — hours per factor of e — which is the real machine: recombiners manage the slow post-accident tail, not a degraded-core generation rate. |
 | **Actions** | Informational. If CTMT H2 HI (A40) comes in while this lamp is lit, the recombiners are being outrun — the answer is at the core, not in the building. |
+
+---
+
+## PWR-A43 — Pressurizer Heaters Shed (PZR HTRS SHED)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | `pzr_heaters_shed` — latched by a **safety injection** signal or a **loss of offsite power** |
+| **Means** | The heaters are a large non-safety load, so they are automatically dropped off the emergency buses to leave capacity for equipment that matters more. They are **not** faulted and the bus is **not** dead — they have simply been taken off it. This lamp is the only thing that separates a shed from the three other reasons heater power can read zero (a blackout, the 17 % low-level cutoff, and a heater failure). |
+| **Actions** | 1) Expect heater power **0 %** and the pressurizer to stop holding pressure — pressure now follows the plant, not the controller. 2) They do **not** come back on their own, and **securing safety injection does not restore them**. 3) When you want pressure control back, put them back deliberately: any heater action (AUTO, MANUAL, OFF, or typing a %) reloads them. 4) Before you do, know what you are asking for — on a depressurized plant the heaters answer at full demand, so expect a pressure rise, and with a relief path or a break still open that rise also increases what leaves through it. 5) Restoring pressure control matters most for **natural circulation**, where subcooling has to be maintained without the pumps. |
 
 ---
 

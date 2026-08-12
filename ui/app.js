@@ -46,7 +46,16 @@
     physOverlay: false,     // synoptic: Physics Overlay toggle (Learning only)
     rodSpeed: 'normal',
     window: 300,            // strip-chart seconds
-    series: {},             // per-plant; defaults set on plant load
+    series: {},             // per-plant; defaults set on plant load — "is it plotted at all"
+    /* WHICH SIDE(S) each plotted channel traces (#454): id -> 'ind' | 'phys' | 'both'.
+     * ABSENT MEANS "follow the global Learning/Realistic rule", which is why this starts
+     * empty and is never pre-filled — a pre-filled map would freeze every channel against
+     * the diagMode that happened to be set when the plant loaded, and the Settings switch
+     * would then appear to do nothing. See sideOf().
+     *
+     * Deliberately NOT persisted, unlike the panel state: it would save the SIDES of channel
+     * selections that are themselves forgotten on reload. Reset wherever `series` is. */
+    seriesSide: {},
     plant: 'pwr',           // active plant_id
     engineKey: 'pwr',       // active engine selector key
     // The SHIPPED starting point *(OWNER, 2026-08-08: "the plant should start with the 50%
@@ -60,7 +69,9 @@
     ctlVals: {},            // last value typed into each control-bar number input (id → value), so the shared bar doesn't revert on view switch
     manualSection: 'overview', // active section in the Operator's Manual overlay
     follow: null,           // { id, idx } — a procedure being followed in the Instructor block
-    inspectExpanded: false, // System Scanner expanded to its detail tier (#96); restored from localStorage
+    inspectExpanded: false, // Scanner grown to show the full description (owner, 2026-08-11)
+    indFilter: 'all',       // merged list row-type chip: all | paired | ind | phys (#439)
+    indTruth: null,         // HR1 truth column: null = follow the mode default (off in missions)
   };
   var service, latest = null, lastScrammed = false;
   // Operator automation now lives IN-STACK (layers/control/control_kernel.js);
@@ -101,7 +112,7 @@
   var gaugeHist = {};       // id -> [{ t, v }]
   var gaugeTrend = {};      // id -> -1|0|1 — latched trend-arrow state (#237 hysteresis)
   // Fraction of the strip-chart plot width the traces occupy; the remaining right
-  // gutter holds the live value chips (see drawChart / drawFloats / rewindPickClick).
+  // gutter holds the per-lane value column (see drawChart / drawLanes / rewindPickClick).
   var CHART_PLOT_FRAC = 0.86;
   // WINDOWS SCALE WITH TIME ACCELERATION *(OWNER: "Can you also extend the time window
   // automatically when choosing faster time warps? At 3600 it's going to zoom past 30 minutes
@@ -363,8 +374,26 @@
     // ------------------------------------------------------------------ PWR
     pwr: {
       scram: 'REACTOR SCRAM', scramShort: 'SCRAM',
-      initStates: [['hot_full_power', 'Hot Full Power'], ['50_percent', '50 % Power'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
-      defaultSeries: { power: true, tavg: true, pressure: true, sg_level: true },
+      /* EVERY starting condition names its MODE *(OWNER DIRECTIVE, 2026-08-11: "In the
+       * plant and mission menu show mode next to the two free play options without
+       * mode.")*. Two of the four carried one and two did not, which read as though the
+       * unlabelled pair were not in a mode at all. MEASURED, not assumed — the engine
+       * reports plant_mode 1 for both at 100.0 % and 50.0 % power (Mode 1 is At Power,
+       * i.e. above the low-power threshold, which is why two different powers share it). */
+      initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'], ['50_percent', '50 % Power (Mode 1)'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
+      /* THE DEFAULT SET TEACHES A COUPLING (#440, spec §8). It was Power / Tavg / Pressure /
+       * SG Level — four independent state variables that demonstrate nothing between them
+       * and duplicate the vital gauge row above the board.
+       *
+       * Turbine Load, Reactor Power, Tavg teaches the plant's most counterintuitive
+       * behaviour: THE REACTOR FOLLOWS THE TURBINE. Newcomers assume the reverse. Load
+       * steps, power climbs after it, and Tavg dips in between as moderator feedback does
+       * the work. Turbine load is not on the gauge row, so nothing is duplicated, and
+       * changing load is among the most likely first actions in free play at 50 %.
+       *
+       * `mwe` IS the turbine-load channel here — there is no separate series for it
+       * (OWNER SELECTION 2026-08-10, from the options presented: "mwe = Turbine Load"). */
+      defaultSeries: { mwe: true, power: true, tavg: true },
       // `instr` names the snapshot instrument the gauge reads — the key into the
       // generated manual reference (RD.MANUAL indications) that the inspection
       // block quotes range, lag and driven alarms from (#96).
@@ -632,6 +661,7 @@
         { id: 'hpi_dp',   instr: 'hpi_discharge_pressure', grp: 'Support systems', label: 'HPI Discharge Press', c: '#409878', get: function (i) { return i.hpi_discharge_pressure; }, tru: function (t) { return t.hpi_discharge_pressure_mpa; }, range: [0, 18], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         { id: 'afw_dp',   instr: 'afw_discharge_pressure', grp: 'Support systems', label: 'AFW Discharge Press', c: '#38887e', get: function (i) { return i.afw_discharge_pressure; }, tru: function (t) { return t.afw_discharge_pressure_mpa; }, range: [0, 12], fmt: function (v) { return conv(v, 'pressure').toFixed(0) + ' ' + unit('pressure'); } },
         stat({ id: 'hpi_on',    grp: 'Support systems', label: 'HPI Actuated', c: '#50c0a0', ins: 'hpi_active', tru: 'hpi_active', on: 'ACTUATED', off: 'no', hint: 'whether high-pressure injection has been actuated.', detail: 'The pumped emergency injection path, and the only one that works against a nearly intact primary. It actuates automatically on low pressure or on high containment pressure. Actuated does not mean delivering — at normal operating pressure the pumps can barely overcome the system, which is why the flow row beside it is the one to read.' }),
+        stat({ id: 'htr_shed',  grp: 'Support systems', label: 'PZR Heaters Shed', c: '#c08850', ins: 'pzr_heaters_shed', tru: 'pzr_heaters_shed', on: 'SHED', off: 'no', alarm: 'on', hint: 'whether the pressurizer heaters have been taken off the bus by a safety injection or a loss of offsite power.', detail: 'The heaters are a large non-safety load, so a safety injection signal automatically drops them off the emergency buses to leave room for equipment that matters more. They do not come back on their own — someone has to put them back deliberately. Read this row whenever heater power sits at zero and you did not put it there: it separates a load shed, which you can undo with one button, from a low-level cutoff or a dead bus, which you cannot.' }),
         stat({ id: 'accum_disch',grp: 'Support systems', label: 'Accumulators Discharging', c: '#98c860', ins: 'accumulators_discharging', tru: 'accumulators_discharging', on: 'DISCHARGING', off: 'no', hint: 'whether the passive accumulators are dumping into the cold leg.', detail: 'The accumulators are nitrogen-pressurized tanks behind check valves: no power, no signal, no operator. They fire on their own the moment primary pressure falls below them and they empty in minutes. They fire once, so a discharging accumulator is a clock running down.' }),
         stat({ id: 'accum_valve',grp: 'Support systems', label: 'Accumulator Valve', c: '#78a850', ins: 'accum_valve_open', tru: 'accumulator_valve_open', on: 'OPEN', off: 'SHUT', hint: 'whether the accumulator isolation valve is open.', detail: 'Shut, the passive injection cannot happen at all whatever the pressure does. The valves are deliberately shut during a controlled cooldown so the tanks do not dump into a depressurizing plant that does not need them — and leaving them shut afterwards is the way that protection gets quietly lost.' }),
         stat({ id: 'rhr_on',    grp: 'Support systems', label: 'RHR Active', c: '#60a8c0', ins: 'rhr_active', tru: 'rhr_active', on: 'ACTIVE', off: 'no', hint: 'whether residual heat removal is in service.', detail: 'The low-pressure, long-term cooling path: it takes suction from the hot leg and rejects core heat through its own heat exchangers, which is what carries a shut-down plant for days. It is interlocked to pressure and cannot be placed in service until the primary is well down, so getting to it is the object of most of a cooldown.' }),
@@ -645,7 +675,7 @@
         // beside pressure, dump beside steam flow.
         { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
         { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
-        { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how hard the pressurizer heaters are being driven, as a percentage.', detail: 'Heaters are the slow way UP in pressure: they boil water in the pressurizer steam space over minutes, where spray drops pressure in seconds. They also need alternating-current power, so pressure control is asymmetric in a blackout — you can still spray, but you cannot heat.' },
+        { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how hard the pressurizer heaters are being driven, as a percentage.', detail: 'Heaters are the slow way UP in pressure: they boil water in the pressurizer steam space over minutes, where spray drops pressure in seconds. They also need alternating-current power, so pressure control is asymmetric in a blackout — and a safety injection or a loss of offsite power SHEDS them off the bus until you put them back — you can still spray, but you cannot heat.' },
         { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so it needs a running pump to work at all — losing the pumps costs the pressure control you are most likely to want.' },
         { id: 'dump',     grp: 'Controls', label: 'Steam Dump', c: '#a0b850', ctl: function (c) { return c.steam_dump_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the steam dump valves have been commanded open.', detail: 'The turbine bypass: steam routed straight to the condenser instead of the turbine. It is what lets the plant survive a load rejection without tripping, and it only works while the condenser is available. Plot it against steam pressure to see the pressure control loop working.' },
         { id: 'feed_pump',grp: 'Controls', label: 'Feed Pump Speed', c: '#40988a', ctl: function (c) { return c.feed_pump_speed_pct; }, range: [0, 120], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'the commanded feed pump speed, as a percentage.', detail: 'The demand behind main feedwater flow. The three-element controller sets it from level, steam flow and feed flow together, which is what lets it anticipate a load change instead of chasing level after the fact. Commanded speed and delivered flow part company whenever the suction side cannot supply it.' },
@@ -1513,11 +1543,54 @@
   // them has a row. A plant with NO physics panel (RBMK/BWR, on hold) lists everything, so
   // nothing becomes unreachable on those.
   var indRows = [];   // [{ el, ser }] in profile order — element refs cached at build time
+  /* ONE LIST OF PAIRED ROWS (#439, spec §3) — indicated and true on the same line.
+   *
+   * It was two tabs. Side-by-side was never possible: Indications is ~93 rows, and two
+   * tables in a ~360 px column is ~170 px each, unreadable at 1280 px. But the deciding
+   * argument is not width — it is that DIVERGENCE IS NOW COMPUTED RATHER THAN SPOTTED. A
+   * stuck valve used to announce itself only to somebody who thought to compare the right
+   * pair of rows across two panels; here the software flags it.
+   *
+   * WHY THE DATA DID NOT MOVE. `PROFILES.pwr.series` (119 entries) and `prof().physics`
+   * (46 curated rows, 43 of them bound to a series by `ser:`) both stay exactly where they
+   * are, in the same order, under the same marker comments. `test/run_inspect.js` parses
+   * ui/app.js AS TEXT between `'      series: ['` and `'------ Physics tab'`; moving or
+   * reindenting either block silently empties that slice and the gate then passes on
+   * nothing. This is a RENDERING merge, not a data merge — which is also why the physics
+   * rows keep their hand-written `v()` prose for the true column: it is better than
+   * `tru()` + `fmt()` (it prints "3.12 % · 9.4 MWt", not "3"), and it is already gated.
+   *
+   * HR1 guard: a view showing truth beside indication is a DEBUG view. The truth column is
+   * suppressible and defaults OFF in mission and campaign modes — HR1 only teaches if the
+   * operator is genuinely fooled.
+   */
+  var indPhysIdx = null;      // series id -> its curated physics row, if any
+  function buildPhysIndex() {
+    indPhysIdx = {};
+    var groups = prof().physics || [];
+    groups.forEach(function (g) {
+      g.rows.forEach(function (r) { if (r.ser && !indPhysIdx[r.ser]) indPhysIdx[r.ser] = r; });
+    });
+  }
+  // What KIND of row is this? The three the spec names, as filter chips:
+  //   paired — an instrument and a true value both exist; they can disagree.
+  //   ind    — derived or commanded channels with no true counterpart.
+  //   phys   — true state with no instrument. This category IS a teaching artifact:
+  //            it is the list of things the operator can never see.
+  function rowType(s) {
+    var hasInd = !!(s.get || s.ctl);
+    var hasTru = !!(s.tru || (indPhysIdx && indPhysIdx[s.id]));
+    return hasInd && hasTru ? 'paired' : hasInd ? 'ind' : 'phys';
+  }
   function buildIndications() {
     var box = $('indicationsList'); if (!box) return;
     indRows = [];
-    var listAll = !prof().physics;
-    var rows = prof().series.filter(function (s) { return listAll || s.get || s.ctl; });
+    buildPhysIndex();
+    // EVERY series now, not just the instrumented ones: the physics-only rows are the
+    // third row type, and dropping them would lose exactly the channels the merge exists
+    // to show. (RBMK/BWR have no `physics` block at all — they land as ind/phys rows and
+    // render as a plain list, which is what they had before.)
+    var rows = prof().series.slice();
     var html = '', grp = null;
     rows.forEach(function (s) {
       if (s.grp !== grp) {
@@ -1532,13 +1605,202 @@
       var cp = indicationCopy(s);
       var attrs = (cp.hint ? ' data-scanner-hint="' + esc(s.label + ' — ' + cp.hint) + '"' : '') +
                   (cp.hint && cp.detail ? ' data-scanner-detail="' + esc(cp.detail) + '"' : '');
-      html += '<div class="num-line"' + attrs + '>' + plotCell(s.id) +
-              '<span class="nk">' + s.label + '</span><span class="nv">—</span></div>';
+      var ty = rowType(s);
+      html += '<div class="num-line" data-rowtype="' + ty + '"' + attrs + '>' + plotCell(s.id) +
+              '<span class="nk">' + s.label + '</span>' +
+              '<span class="nv">—</span>' +
+              '<span class="nv-true">—</span>' +
+              '<span class="nv-warn" title="The instrument disagrees with the plant">⚠</span>' +
+              '</div>';
     });
     if (grp !== null) html += '</div>';
     box.innerHTML = html;
-    var cells = box.querySelectorAll('.nv'), n = 0;
-    rows.forEach(function (s) { indRows.push({ el: cells[n++], ser: s }); });
+    var lines = box.querySelectorAll('.num-line'), n = 0;
+    rows.forEach(function (s) {
+      var el = lines[n++];
+      indRows.push({ line: el, el: el.querySelector('.nv'), tel: el.querySelector('.nv-true'),
+                     ser: s, phys: indPhysIdx[s.id] || null, type: rowType(s) });
+    });
+    applyIndFilter();
+    applyTruthMode();
+  }
+  // The true side of a row, formatted. Prefers the curated physics prose where one exists
+  // for this series — see the note above.
+  function seriesTrue(r, snap) {
+    if (!snap || !snap.true_state) return null;
+    try {
+      if (r.phys && r.phys.v) return r.phys.v(snap.true_state, snap);
+      if (r.ser.tru) return r.ser.fmt(r.ser.tru(snap.true_state));
+    } catch (e) { /* a field this plant does not publish */ }
+    return null;
+  }
+  /* Does the instrument disagree with the plant? (spec §3.)
+   *
+   * MEASURED FIRST, because a threshold is a claim that what it excludes is harmless.
+   * At hot full power with nothing injected, 92 rows are comparable and the spread runs:
+   *
+   *     Cold Leg           551 °F   vs 550 °F     0.18 %   <- lag. not a disagreement
+   *     Steam P            826 psi  vs 825 psi    0.12 %   <- lag
+   *     Primary -> SG dT    29.3 °F vs 29 °F      1.02 %   <- rounding
+   *     Letdown Flow        23 gpm  vs 31 gpm    25.81 %   <- a REAL disagreement
+   *     Intermediate Range 2.0e-3 A vs 8.3e-3 A  75.90 %   <- a REAL disagreement
+   *
+   * A plain string comparison — the first version of this — flagged all five, permanently,
+   * on a plant doing nothing wrong. A flag that is always lit teaches the player to ignore
+   * it, which costs more than not having it. It also flagged `-0.0 DPM` against `0.0 DPM`,
+   * which is the same number.
+   *
+   * So: relative, with a floor at the DISPLAYED precision. The band has to sit above lag
+   * (0.18 %) and below the spec's own worked example — core exit 618 °F indicated against
+   * 623 °F true, which is 0.8 % and must flag. 0.5 % is the middle of that gap, and the
+   * floor ("more than one unit in the last digit you can see") means a reading can never be
+   * flagged for a difference the player could not have seen on the board.
+   *
+   * Rows whose true side is curated physics prose are EXEMPT: "3.12 % · 9.4 MWt" against
+   * "3 %" is a different rendering, not a different value.
+   */
+  var IND_DIV_REL = 0.005;                 // 0.5 % — see the measurements above
+  function indNum(str) {
+    if (str == null) return null;
+    var m = String(str).replace(/,/g, '').match(/-?\d+(\.\d+)?(e[-+]?\d+)?/i);
+    return m ? parseFloat(m[0]) : null;
+  }
+  /* The RAW pair behind a row: the number the instrument publishes and the number the
+   * plant has. Compared instead of the rendered text, because the rendered text is where
+   * this went wrong the first time: the PORV row displays `shut` against the curated prose
+   * `OPEN · STUCK` — the spec's own headline example of a divergence — and a rule that
+   * exempted every row with curated prose flagged nothing on it. Prose is for READING; the
+   * comparison belongs on the values.
+   *
+   * AVERAGED OVER A SHORT WINDOW, NOT SAMPLED (#449). An instantaneous comparison flags a
+   * noisy channel for ever. Measured over 300 s at hot full power: charging flow indicates
+   * 30.45 ± 1.81 gpm against a true 30.64 ± 0.13 — a MEAN gap of 0.6 %, but individual
+   * samples land 7 gpm out, which is 23 % and four times the threshold. Both charging and
+   * letdown were flagged permanently on a healthy plant for exactly that reason.
+   *
+   * The window comes from `chartBuf`, which already carries both sides per sample, so this
+   * reconstructs nothing: rebuilding the engine's signal-tapered noise model in the UI to
+   * derive a per-channel sigma would be a second copy of a truth that already exists, which
+   * is the shape #432 was. "Is it still off?" is also what an operator asks. */
+  /* HOW FAR APART IS "FURTHER APART THAN THIS GAUGE WANDERS"? (#449.)
+   *
+   * A fixed relative band cannot answer that, and the first two attempts both failed on the
+   * same channel. Measured, 300 s at hot full power, full stack:
+   *
+   *     charging flow   indicated 30.45 ± 1.81 gpm   true 30.64 ± 0.13   mean gap 0.6 %
+   *
+   * The MEAN gap is 0.6 % — the instrument is fine — but single samples land 7 gpm out,
+   * which is 23 % and four times a 0.5 % threshold, so charging and letdown were flagged
+   * permanently on a healthy plant. Averaging over 6 s did not help either: the noise is an
+   * OU process with `noise_tau` = 8 s, so a window shorter than its own correlation time
+   * averages almost nothing.
+   *
+   * Reading the declared sigma out of the config was the next idea and is worse: it comes to
+   * 0.58 gpm against a measured 1.81, so the UI would encode a number that disagrees with
+   * the instrument it describes — a second, wrong copy of a truth the data already carries.
+   *
+   * So the spread is MEASURED FROM THE DATA. `sd(indicated − true)` over the window IS the
+   * channel's noise, because the true side is smooth; it self-calibrates to whatever the
+   * instrument actually does, needs no config, and stays right if the noise model is ever
+   * retuned. A row is diverged when the mean gap exceeds twice that spread — which is the
+   * question an operator asks: "is it further off than this gauge normally wanders?"
+   *
+   * A STUCK instrument still flags fast: its reading stops moving while the plant does not,
+   * so the gap grows while the spread does not. A saturated one (the intermediate range at
+   * power, pegged at its 2e-3 A over-range ceiling) has sd = 0 and flags on any gap at all,
+   * which is correct — it IS disagreeing, prototypically, and the row saying so is the
+   * lesson. And a STATUS channel never reaches this code: a word against a word is compared
+   * directly, so the PORV reading `shut` over an open valve flags on the instant.
+   */
+  var IND_AVG_SEC = 60;                  // 7.5 x the 8 s noise correlation time
+  var IND_SPREAD_K = 2;                  // gap must exceed this many spreads
+  function seriesRawPair(r, snap) {
+    var s = r.ser, i = null, t = null;
+    try { if (s.get && snap.instruments) i = s.get(snap.instruments); } catch (e) { /* not on this plant */ }
+    try { if (s.tru && snap.true_state) t = s.tru(snap.true_state); } catch (e) { /* not on this plant */ }
+    if (!(typeof i === 'number' && typeof t === 'number' && isFinite(i) && isFinite(t))) return null;
+    var col = RD.ChartCols ? RD.ChartCols[s.id] : null;
+    if (col != null && chartBuf.length > 4) {
+      var t1 = chartBuf[chartBuf.length - 1].t, si = 0, st = 0, n = 0, d = [];
+      for (var k = chartBuf.length - 1; k >= 0 && chartBuf[k].t >= t1 - IND_AVG_SEC; k--) {
+        var row = chartBuf[k];
+        var a = row.v ? row.v[col] : NaN, b = row.tv ? row.tv[col] : NaN;
+        if (!isFinite(a) || !isFinite(b)) continue;
+        si += a; st += b; d.push(a - b); n++;
+      }
+      if (n >= 5) {
+        var md = d.reduce(function (x, y) { return x + y; }, 0) / n;
+        var sd = Math.sqrt(d.reduce(function (x, y) { return x + (y - md) * (y - md); }, 0) / n);
+        return { i: si / n, t: st / n, sd: sd, n: n };
+      }
+    }
+    return { i: i, t: t, sd: 0, n: 1 };
+  }
+  function indLastDigit(str) {
+    var s = String(str);
+    var dec = s.match(/\.(\d+)/);
+    var step = dec ? Math.pow(10, -dec[1].length) : 1;
+    var exp = s.match(/e([-+]?\d+)/i);
+    return exp ? step * Math.pow(10, parseInt(exp[1], 10)) : step;
+  }
+  function indDiverged(r, snap, shownInd) {
+    var raw = seriesRawPair(r, snap);
+    if (!raw) return false;                    // nothing to compare: not a paired row
+    var d = Math.abs(raw.i - raw.t);
+    if (d === 0) return false;
+    // A STATUS channel is a 0/1 word, and there is no "close" for it — a light reading SHUT
+    // over an open valve is the whole PORV lesson, so any difference is the divergence.
+    // Detected by the RENDERING rather than by a flag on the series: `fmt` returning a word
+    // instead of a number IS the definition of a status row here.
+    if (indNum(shownInd) == null) return true;
+    if (d <= indLastDigit(shownInd)) return false;       // invisible at the shown precision
+    // Further apart than this gauge wanders — see seriesRawPair for the measurements.
+    if (raw.sd > 0) return d > IND_SPREAD_K * raw.sd;
+    // No history yet (or a dead-steady channel): fall back to the relative band.
+    return d > IND_DIV_REL * Math.max(Math.abs(raw.i), Math.abs(raw.t));
+  }
+  function renderIndications(s) {
+    if (!indRows.length || !paneVisible('indications')) return;
+    var showTrue = indTruth();
+    indRows.forEach(function (r) {
+      var txt = seriesLive(r.ser, s);
+      var missing = (txt == null || txt === '—' || /NaN|Infinity/.test(txt));
+      var shown = missing ? '—' : txt;
+      if (r.el.textContent !== shown) r.el.textContent = shown;
+      if (!showTrue) return;                       // HR1: nothing about truth is computed
+      var tv = seriesTrue(r, s);
+      var tshown = (tv == null || /NaN|Infinity/.test(tv)) ? '—' : tv;
+      if (r.tel.textContent !== tshown) r.tel.textContent = tshown;
+      var div = missing ? false : indDiverged(r, s, txt);
+      if (r.line.classList.contains('diverged') !== div) r.line.classList.toggle('diverged', div);
+    });
+  }
+  // ---- filter chips + the HR1 truth switch ---------------------------------------
+  function applyIndFilter() {
+    var box = $('indicationsList'); if (!box) return;
+    box.setAttribute('data-filter', ui.indFilter || 'all');
+    document.querySelectorAll('#indFilters [data-indfilter]').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-indfilter') === (ui.indFilter || 'all'));
+    });
+  }
+  /* Truth OFF by default in mission and campaign modes (HR1, spec §3). Free play is where
+   * the debug view belongs: exploring is when "what is it really doing?" is the question.
+   * Inside instructed content the whole point is that the operator is genuinely fooled, so
+   * a truth column beside every instrument would hand back the answer the lesson is asking
+   * for — and it would do it silently, which is worse than not having the feature. */
+  function indTruthDefault() { return !(ui.scenario || ui.follow); }
+  function indTruth() { return ui.indTruth == null ? indTruthDefault() : ui.indTruth; }
+  /* The "True values: shown" BUTTON was removed 2026-08-11 (owner, quoted in shell.html).
+   *
+   * What went is the manual override, NOT the HR1 rule underneath it: indTruthDefault()
+   * still hides the physics column inside a scenario or a walkthrough, because handing the
+   * operator the answer is the one thing instructed content cannot do. In free play — where
+   * "what is it really doing?" is the whole question — both columns are simply always on,
+   * which is what the headed layout is for. The column header follows the same switch, so a
+   * mission shows a two-column list with two headings rather than an empty third track. */
+  function applyTruthMode() {
+    var box = $('indicationsList'); if (box) box.classList.toggle('show-true', indTruth());
+    var h = $('indColHead'); if (h) h.classList.toggle('show-true', indTruth());
   }
   // One row's live reading, in the same words the chart chip uses — `fmt` is the series' own
   // formatter, so a value can never disagree with its trace. Reads the side the row IS: the
@@ -1552,66 +1814,30 @@
     } catch (e) { /* a channel this plant does not publish */ }
     return null;
   }
-  function renderIndications(s) {
-    if (!indRows.length || !paneVisible('indications')) return;
-    indRows.forEach(function (r) {
-      var txt = seriesLive(r.ser, s);
-      var missing = (txt == null || txt === '—' || /NaN|Infinity/.test(txt));
-      r.el.textContent = missing ? '—' : txt;
-    });
-  }
+  // ------------------------------------------------- physics tab (MERGED, #439)
+  // The Physics tab is gone; its rows render as the TRUE column of the merged list
+  // (buildIndications above). The DATA is untouched — PROFILES[plant].physics keeps its
+  // 46 curated rows, their authored v() prose and their scanner copy, and run_inspect
+  // still parses the same block between the same marker comments. What is retired is the
+  // second pane that showed them, and physRows with it.
+  //
+  // The three builders stay as no-ops rather than chasing down their call sites, exactly
+  // as the Automate tab's did.
+  function buildPhysics() {}
 
-  // ------------------------------------------------------------- physics tab
-  // Built once per plant, updated from the same snapshot as everything else —
-  // but ONLY while the pane is actually on screen. The rows are formatted
-  // strings, so a hidden pane would burn ~24 of them a frame for nobody.
-  // Element references are cached at build time: the frame path does no DOM
-  // queries at all (the All-view grid re-queries per row per frame, and this
-  // pane updates on every broadcast, fast-forward included).
-  var physRows = [];   // [{ el, row }] in profile order
-  function buildPhysics() {
-    var box = $('physicsPane'); if (!box) return;
-    physRows = [];
-    var groups = prof().physics;
-    if (!groups) {
-      // RBMK/BWR: no panel authored (those plants are on hold). Say so rather
-      // than showing an empty box that reads like a broken tab.
-      box.innerHTML = '<div class="phys-none">No physics panel is built for this plant yet.</div>';
-      return;
-    }
-    // Every row carries its own System Scanner copy (#350 item 3). The panel is the one
-    // place on the board where the numbers are UNDER-THE-HOOD physics rather than gauges —
-    // fuel temperature, xenon, void fraction, oxidation heat — so it is precisely the list
-    // a player is least able to interpret from the label alone, and it was the only surface
-    // in the shell with no inspection copy at all. `hint`/`detail` are authored beside the
-    // formatter in `prof().physics` so the two cannot drift apart, and `run_inspect` fails
-    // if a row ships without them.
-    var html = '';
-    groups.forEach(function (g) {
-      html += '<div class="phys-grp"><h4>' + g.title + '</h4>';
-      g.rows.forEach(function (r) {
-        // The block splits the summary on ' — ', so the row key becomes the title.
-        var hint = r.hint ? ' data-scanner-hint="' + esc(r.k + ' — ' + r.hint) + '"' : '';
-        var det = r.detail ? ' data-scanner-detail="' + esc(r.detail) + '"' : '';
-        html += '<div class="num-line"' + hint + det + '>' + plotCell(r.ser) +
-                '<span class="nk">' + r.k + '</span><span class="nv">—</span></div>';
-      });
-      html += '</div>';
-    });
-    box.innerHTML = html;
-    var cells = box.querySelectorAll('.nv'), n = 0;
-    groups.forEach(function (g) { g.rows.forEach(function (r) { physRows.push({ el: cells[n++], row: r }); }); });
-  }
   // Is a Tools-block tab actually on screen? Generalised from physicsVisible() on
   // 2026-08-06 so renderAutomate can use the same test — a pane that is behind another
   // tab, or inside a collapsed card, is DOM nobody can see, and writing to it every
   // broadcast is pure cost. Matters most at the 20 Hz transient cadence, which is
   // exactly when the frame budget is tight.
+  /* Visible == this pane is the selected tab. The `toolsCard.collapsed` half of this test
+   * went with the accordion on 2026-08-11 (the Instructor became a tab): there is one strip
+   * and one visible pane, so a pane cannot be both selected and hidden. */
   function paneVisible(name) {
-    var card = $('toolsCard'), pane = document.querySelector('.tabpane[data-pane="' + name + '"]');
-    return !!(pane && pane.classList.contains('on') && card && !card.classList.contains('collapsed'));
+    var pane = document.querySelector('.tabpane[data-pane="' + name + '"]');
+    return !!(pane && pane.classList.contains('on'));
   }
-  function physicsVisible() { return paneVisible('physics'); }
+  function physicsVisible() { return paneVisible('indications'); }   // the merged pane (#439)
   /* The performance readout, throttled to 1 Hz and only while the tab is open. It reads
    * ring buffers that are always filling, so the numbers are live whether or not anyone is
    * looking — but computing percentiles on every frame would put the profiler into its own
@@ -1648,27 +1874,10 @@
     }
   }
 
-  function renderPhysics(s) {
-    if (!physicsVisible()) return;
-    renderPerf();                       // independent of the plant rows — it has its own data
-    if (!physRows.length) return;
-    var t = s.true_state; if (!t) return;
-    physRows.forEach(function (p) {
-      var txt, cls = '';
-      // A row that throws is a missing true_state field on this plant, not a
-      // reason to take the whole frame down with it.
-      try { txt = p.row.v(t, s); cls = p.row.cls ? p.row.cls(t, s) : ''; } catch (e) { txt = '—'; }
-      // A MISSING value gets no state colour. `cls` is computed from true_state and can
-      // come back 'q-ok' (green) or 'q-alarm' (red) for a row whose value renders as an
-      // em-dash — a field this plant has not published yet, which is the normal state for
-      // one broadcast at t=0 (measured: clad_temp_c is absent at t=0 and reads 1280 °F /
-      // 693 °C by the first sample). A green dash asserts "this criterion is satisfied"
-      // about a number nobody has, which is worse than saying nothing.
-      var missing = (txt == null || txt === '—');
-      p.el.textContent = missing ? '—' : txt;
-      p.el.className = 'nv' + (missing ? '' : ' ' + cls);
-    });
-  }
+  // renderPhysics is now the PERF READOUT only — the plant rows it used to paint are the
+  // merged list's true column (#439). Kept as an entry point because renderPerf has to run
+  // on the same cadence and from the same three call sites it always did.
+  function renderPhysics() { if (paneVisible('indications')) renderPerf(); }
 
   // Order the catalog into the profile's `failGroups`, with a trailing catch-all.
   // NOTHING MAY VANISH: the membership table is hand-maintained, so a failure absent from
@@ -1891,6 +2100,18 @@
   function render(s) {
     latest = s;
     _renderSnap = s;
+    /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
+     * IS DRAWN. Re-stamp it from the live service here, which is the one place every
+     * renderer downstream reads it from.
+     *
+     * Without this the board un-freezes itself: syncPlayBtn pushes setRunning(false) the
+     * instant the player pauses, and then any re-render of a snapshot ASSEMBLED WHILE
+     * RUNNING — a tab switch, a pane reveal, a queued broadcast still in flight — calls
+     * setRunning(true) again off `metadata.running` and the animations resume behind a
+     * paused clock. Measured: `.bd-frozen` present 200 ms after the pause and absent a
+     * second later, with 105 board animations running. The push was right and a stale
+     * snapshot was overwriting it. */
+    if (s && s.metadata && service) s.metadata.running = !!service.running;
     drainFine();
     // Perf sampling (ui/perf.js). The service measured its own physics loop and left it on
     // the instance; pair it here with the render cost so the two stages can be told apart —
@@ -1959,6 +2180,11 @@
     renderPlantDisplay(s);
     renderPhysics(s);
     renderIndications(s);   // both panes no-op unless they are actually on screen
+    // The chart-settings window's live values (#454). Same no-op-unless-visible rule, and
+    // the same reason it is here rather than on a timer: it must move when the plant moves.
+    // The window pauses the plant, so in practice it shows the reading the plant was at
+    // when it opened — which IS the current value, and the point of pausing.
+    renderChartSettings(s);
     // INSIDE the rAF, not as their own subscribers (2026-08-06). The rationale above says
     // a DOM write off the paint cycle "let the compositor present a frame mid-rebuild on
     // real GPUs ... dispersing and reappearing ... while software-rendered headless looked
@@ -2582,24 +2808,58 @@
     '<div class="instr-idle">' +
     '<p class="instr-idle-lead">Free play — operate the plant on the left. This panel is your coach and checklist host.</p>' +
     '<ol class="instr-idle-list">' +
-    '<li><b>Play</b> starts the clock (or click SIMULATION PAUSED on the board).</li>' +
-    '<li><b>System Scanner</b> (below) — hover anything on the board for what it is.</li>' +
-    '<li><b>Checklists</b> (Operate tab) — interactive procedures that check themselves off the instruments.</li>' +
+    /* F11 IS THE FIRST LINE *(OWNER DIRECTIVE, 2026-08-11: "I would like the helpful hints
+     * list that shows in the instructor during free play to mention F11 makes the screen
+     * fullscreen and it plays better that way.")*. It goes first because it changes how
+     * everything else on this list is read: the board is the one panel that grows with the
+     * window, so the hint is worth most before the player has arranged anything. */
+    '<li><b>F11</b> goes fullscreen — the plant diagram gets the extra room, and it plays better that way.</li>' +
+    '<li><b>Play</b> starts the clock (the ▶ button flashes whenever the plant is stopped).</li>' +
+    '<li><b>System Scanner</b> (the line under the board) — hover anything for what it is.</li>' +
+    '<li><b>Checklists</b> (second tab above) — interactive procedures that check themselves off the instruments.</li>' +
     '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
-    '<li><b>Plant &amp; Mission</b> (under the clock) — starting condition and guided training.</li>' +
+    '<li><b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.</li>' +
     '</ol>' +
     '<p class="instr-idle-more">More help: <button type="button" class="btn linkish" data-open-help="1">Help</button> · ' +
     '<button type="button" class="btn linkish" data-open-tour="1">Quick tour</button> · ' +
     'advanced failures under <b>Inject Failure</b>.</p>' +
     '</div>';
+  /* IN FREE PLAY THE INSTRUCTOR HOSTS THE CHECKLIST LAUNCHER (#443, spec §9).
+   *
+   * It is the default open panel and it had nothing to say when no module is running, so it
+   * showed static quick-tour text — help copy occupying the most valuable real estate in the
+   * shell. Giving it a real job solves checklist discoverability without adding a surface,
+   * and it matches the stated priority: the manual serves users who want depth, the average
+   * user wants a checklist to follow. */
+  function idleLauncherHtml() {
+    if (!flagOn('checklists')) return '';
+    var ranked = rankedProcedures().filter(function (r) { return r.score >= 100; }).slice(0, 4);
+    if (!ranked.length) return '';
+    return '<div class="instr-launch"><div class="instr-launch-t">Pick a procedure to follow</div>' +
+      ranked.map(function (r) {
+        return '<button class="btn" data-ckl-start="' + mesc(r.id) + '">' +
+               '<span class="ckl-cat">' + mesc(r.category || '') + '</span>' + mesc(r.title) + '</button>';
+      }).join('') +
+      '<div class="instr-launch-more"><button type="button" class="btn linkish" data-open-ckl="1">All checklists…</button></div></div>';
+  }
   function showIdleInstructor() {
     setInstrRole('Instructor');
     var cur = $('instrCurrent');
     if (!cur) return;
     cur.classList.add('instr-standby');
-    cur.innerHTML = IDLE_INSTR_HTML;
+    cur.innerHTML = (idleLauncherHtml() + IDLE_INSTR_HTML);
   }
+  /* WRAPPED, NOT APPENDED TO. renderInstructor dispatches to renderFollow / renderChat /
+   * renderChecklist / renderLevelComplete and RETURNS from each — five early returns — so
+   * a call placed at the end of its body runs only on the idle path. Measured: walkthrough
+   * step text advancing correctly ("Set up the heat sink..." -> "Set the 1/M baseline..."
+   * -> "First burst: withdraw...") with the transcript frozen at 0 messages the whole way,
+   * because the fold-in was on the one branch that never fires during a walkthrough. */
   function renderInstructor(s) {
+    renderInstructorInner(s);
+    instrLogTick(s);
+  }
+  function renderInstructorInner(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
     var noCp = !(service && service.checkpoints && service.checkpoints.length);
     document.querySelectorAll('[data-fnav="rewind"]').forEach(function (rw) { rw.disabled = noCp; });
@@ -2608,16 +2868,27 @@
     syncSpeedUI(s);
     renderHighlight(s);
     updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
+    instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
     // Checklist picker row: free play only — anything instructed owns the card.
+    /* THE TAB ALWAYS SHOWS THE LIST *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
+     * should always show the list of checklists... Currently when a checklist is running
+     * this tab is empty.")*. It used to hide the whole picker whenever the Instructor was
+     * busy — which is exactly when a player most wants to see what else there is, or to
+     * switch. Nothing about showing the list starts anything; picking one does, and that
+     * was always allowed. */
     var cklRow = $('instrCklRow');
     if (cklRow) {
-      var cklBusy = !!(ui.scenario || (s.instructor && (s.instructor.follow || s.instructor.chat ||
-        s.instructor.checklist || s.instructor.level_complete)));
-      cklRow.hidden = cklBusy || !flagOn('checklists');
-      if (cklBusy) { var cm = $('cklMenu'); if (cm) cm.hidden = true; }
+      cklRow.hidden = !flagOn('checklists');
+      var running = !!(s.instructor && s.instructor.checklist);
+      var cklNote = $('cklBusyNote');
+      if (cklNote) {
+        cklNote.hidden = !running;
+        if (running) txt(cklNote, 'A checklist is running in the Instructor below. Pick another to switch.');
+      }
+      if (!cklRow.hidden) toggleCklMenu();      // keeps the list current; no-op when unchanged
     }
     var fb = s.instructor && s.instructor.follow;
     if (fb) {
@@ -2934,7 +3205,13 @@
             (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
         }
         if (st.note) h += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
-        h += '<button class="btn ckl-mark" data-ckl-check="' + i + '">✓ Mark done</button>';
+        // NO MANUAL TICK *(OWNER DIRECTIVE, 2026-08-11: "Checklists are supposed to be
+        // automatically checked off by the sim when complete. Remove the user clickable
+        // step complete button.")*. Every step now completes on evidence: an `acc`
+        // predicate, a `saw` latch, the step's own command, or — for a pure observation
+        // with none of those — a dwell, added in instructor_layer so omitting a predicate
+        // can never soft-lock a procedure. The `checklist_check` COMMAND survives; only
+        // its button is gone.
       }
       h += '</div></div>';
     }
@@ -2959,7 +3236,11 @@
       if (ck.complete) log.scrollTop = log.scrollHeight;
       else if (!firstBuild) { var act = log.querySelector('.ckl-active'); if (act) act.scrollIntoView({ block: 'nearest' }); }
     }
-    if (firstBuild) setFocus('instructor');
+    // SPLIT, not take-the-column: the Checklists tab has to stay visible while a checklist
+    // runs (owner, 2026-08-11), and setFocus('instructor') collapses the tools card. This
+    // is the second of the two places that did it — startChecklist was the obvious one and
+    // this render-path call is the one that put it back a frame later.
+    if (firstBuild) applyFocus(true, true);
   }
   // Observed value for the precondition banner: whole units above 100 (ppm, °C
   // near operating point), one decimal below (fractions, small margins).
@@ -2992,22 +3273,94 @@
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.
+  /* THE LAUNCHER, ORDERED BY RELEVANCE (#443, spec §9).
+   *
+   * SORT, DO NOT FILTER. Inapplicable procedures are demoted into a collapsed group and
+   * LABELLED WITH THEIR GATING CONDITION — "Requires RCS temperature below 95" — which
+   * turns the demotion into instruction: a beginner learns which mode gates which
+   * evolution just by scanning. Hiding them would break the mental model, because a player
+   * who saw a checklist yesterday and cannot find it today assumes a bug, and someone at
+   * power may legitimately want to read ahead about an evolution they will do later.
+   *
+   * The scoring is `RD.InstructorLayer.prototype.rankProcedures`, NOT a copy here: the
+   * preconditions it reads are already graded in that layer, instrument-first per HR1, and
+   * a second evaluator in this file would be the two-samplers-of-one-truth shape #432 was.
+   *
+   * RECOMPUTED ON EVENTS, NOT CONTINUOUSLY (see cklRelevanceKey). During a heatup the plant
+   * crosses mode boundaries; a live-recomputing sort would reshuffle the list under the
+   * cursor at exactly the busiest moments.
+   */
+  function rankedProcedures() {
+    var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) {
+      return !x.narrative && flagOn('procedure:' + x.id);
+    });
+    if (!procs.length || !latest || !RD.InstructorLayer) return procs.map(function (p) {
+      return { id: p.id, category: p.category, title: p.title, score: 0, ready: true, gate: null };
+    });
+    var active = latest.instructor && latest.instructor.checklist
+      ? latest.instructor.checklist.procedure_id : null;
+    return RD.InstructorLayer.prototype.rankProcedures.call(
+      { _grade: RD.InstructorLayer.prototype._grade, _predMet: RD.InstructorLayer.prototype._predMet },
+      latest, procs, active);
+  }
+  /* The list is ALWAYS on screen in its tab (owner, 2026-08-11) — there is no open/close
+   * any more, so `toggleCklMenu` only means "make sure it is current". Kept under its old
+   * name because three call sites reach it (the idle launcher's "All checklists…", the
+   * mission window, and the tour) and renaming it would be churn for nothing.
+   *
+   * Rebuilt on a KEY, not every broadcast: the order is stable now, so a per-frame
+   * innerHTML would be pure cost on the densest list in the shell. */
+  var cklMenuKey = null;
   function toggleCklMenu(force) {
     var menu = $('cklMenu'); if (!menu) return;
-    var show = force != null ? !!force : menu.hidden;
-    if (show) {
-      var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) {
-        return !x.narrative && flagOn('procedure:' + x.id);
-      });
-      menu.innerHTML = procs.length ? procs.map(function (p) {
-        return '<button data-ckl-start="' + mesc(p.id) + '"><span class="ckl-cat">' + mesc(p.category) + '</span>' + mesc(p.title) + '</button>';
-      }).join('') : '<div class="m-note">No procedures for this plant.</div>';
-    }
-    menu.hidden = !show;
+    menu.hidden = false;
+    var key = ui.engineKey + '|' + (latest && latest.instructor && latest.instructor.checklist
+      ? latest.instructor.checklist.procedure_id : '');
+    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(); }
   }
+  /* A STANDARD ORDER *(OWNER DIRECTIVE, 2026-08-11: "They should stay in a standard
+   * order.")*. This supersedes the relevance SORT: the list is now always in the same
+   * order — category first, on the sequence an operator would name them (startup, power,
+   * control, shutdown, emergency, accident), then title. A list that rearranges itself is
+   * a list you have to re-read every time, and muscle memory is worth more here than
+   * putting the most likely item on top.
+   *
+   * The relevance SCORING is kept and still earns its place, because it is what produces
+   * the gating labels ("Requires reactor power above 10") and what the free-play
+   * Instructor's short launcher picks its four from. What is retired is the reordering,
+   * not the knowledge. */
+  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident'];
+  function cklMenuHtml() {
+    var ranked = rankedProcedures();
+    if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
+    var stable = ranked.slice().sort(function (a, b) {
+      var ai = CKL_CAT_ORDER.indexOf(a.category || ''), bi = CKL_CAT_ORDER.indexOf(b.category || '');
+      if (ai < 0) ai = CKL_CAT_ORDER.length;
+      if (bi < 0) bi = CKL_CAT_ORDER.length;
+      if (ai !== bi) return ai - bi;
+      return (a.title || '').localeCompare(b.title || '');
+    });
+    return stable.map(function (r) {
+      return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') + '>' +
+             '<span class="ckl-cat">' + mesc(r.category || '') + '</span>' + mesc(r.title) +
+             (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
+    }).join('');
+  }
+  /* NEVER REORDER AN OPEN LIST (spec §9), and the way to guarantee that is to have no
+   * refresh path at all: the menu is rebuilt when it OPENS and not again. A first version
+   * of this had a `refreshCklRelevance` that recomputed on every event — with the guard
+   * inverted, so it fired only while the menu was open, which is exactly the case the spec
+   * forbids. The list reshuffling under the cursor during a heatup is the failure; a list
+   * that is stale-but-stable until the next time you open it is the specified behaviour,
+   * and it needs no state to achieve. */
   function startChecklist(id) {
     cmd({ action: 'start_checklist', procedure_id: id });
-    setFocus('instructor', true);
+    /* SPLIT, do not take the column *(OWNER DIRECTIVE, 2026-08-11: "The checklist tab
+     * should always show the list of checklists.")*. `setFocus('instructor')` collapses the
+     * tools card, which left the list present in the DOM and invisible on screen — the
+     * directive is about what the player can SEE, so rendering it is not enough. Both cards
+     * stay open: the running checklist in the Instructor, the list still above it. */
+    applyFocus(true, true);
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -3070,10 +3423,17 @@
     cur.innerHTML = (msg ? '<div class="lc-msg">' + mesc(msg) + '</div>' : '') +
       '<div class="lc-panel"><div class="lc-title">🏁 ' + mesc(lc.title) + '</div>' +
       (lc.outcome ? '<div class="m-note">' + mesc(lc.outcome) + '</div>' : '') +
-      '<div class="lc-actions">' + btns + '</div></div>';
+      '<div class="lc-actions">' + btns + '</div>' +
+      // Ask at endpoints, not only from a button (#438, spec §10): a completion point is
+      // when the user has an opinion and no task in flight. A quiet offer, not a modal.
+      '<div class="fb-hint lc-fb">Something read wrong, or an idea? ' +
+      '<button class="btn" data-lc="feedback">Send feedback</button></div></div>';
     setFocus('instructor');
   }
   function levelCompleteAction(a) {
+    // Feedback offer on the completion card (#438) — opens the form and leaves the
+    // card standing, so Continue/Retry are still there when the form closes.
+    if (a === 'feedback') { openFeedback(); return; }
     // Rewind from a failure card opens the picker like every other ⏪ (#137), so
     // escaping back to the decision point is one click on it rather than repeated
     // presses walking backwards. The commentary queue is dropped at the pick.
@@ -3227,13 +3587,35 @@
   // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
   // running sim until a start button is pressed.
   var msel = { engine: 'pwr', mode: 'free', init: null };
+  var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
+  /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
+   * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
+   *
+   * I briefly made it run behind the window, reading "the sim should not start paused" as
+   * being about the load moment. That was wrong and the owner corrected it: freeze while
+   * the menu is up, unfreeze on close. openModal/closeModal already express exactly that —
+   * closeModal releases this hold and restarts the plant when no other hold is standing. */
   function openMissionSelect() {
     msel.engine = ui.engineKey;
     msel.init = ui.initState;
     renderMissionSelect();
-    $('missionOverlay').hidden = false;
+    openModal('missionOverlay');
   }
-  function closeMissionSelect() { $('missionOverlay').hidden = true; }
+  /* A FEW SECONDS, then gone *(OWNER DIRECTIVE, 2026-08-11: "a tooltip should point to the
+   * button that opens it again. The tooltip should only show up for a few seconds.")*.
+   * Armed only by the on-load open, so it fires once per session and never interrupts a
+   * player who opened the window deliberately and knows where it is. */
+  var missionTipArmed = false, missionTipT = null;
+  function closeMissionSelect() {
+    closeModal('missionOverlay');
+    if (!missionTipArmed) return;
+    missionTipArmed = false;
+    var tip = $('simStatusTip'); if (!tip) return;
+    tip.hidden = false;
+    clearTimeout(missionTipT);
+    missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
+    markSeen('session');
+  }
   // Called whenever something that the mission window displays has changed
   // (completion marks, the active-scenario card): re-render it if it is open.
   // Was `buildTraining`, a leftover from the retired Training tab — renamed
@@ -3287,6 +3669,16 @@
       msel.mode === 'free'      ? mpFree() :
       msel.mode === 'campaign'  ? mpCampaign() :
       msel.mode === 'scenarios' ? mpScenarios() : mpWalkthroughs();
+    // Step 4 — the session footer. OUTSIDE #mpContent deliberately: that element is "the
+    // selected mode's content", and Reset is neither a mode nor content — it is session
+    // management, offered on every channel and every tab. Putting it inside also rebuilt
+    // it on every tab switch, and tripped verify_flags_ui's "public: campaign offers
+    // nothing to start", which counts buttons in #mpContent as things you can start. That
+    // check was right and reads correctly again with the footer where it belongs.
+    setHTML($('mpSession'),
+      '<div class="m-note">Reset returns the plant to ' + mesc(ui.initState) +
+      ' and ends anything the Instructor is running.</div>' +
+      '<button class="btn mp-reset" data-mreset="arm">↺ Reset the plant</button>');
   }
   function mpFree() {
     if (!flagOn('free_play')) return soonPanel('free_play');
@@ -3342,6 +3734,80 @@
     }).join('') || '<div class="m-note">No procedures for this plant.</div>');
   }
 
+  // THE SELECTION SCREEN IS GONE *(OWNER DIRECTIVE, 2026-08-11: "The plant and mission menu
+  // should be up when the sim page is loaded.")*. It asked which plant and which activity,
+  // then handed off to the Plant & Mission window for everything except free play — so the
+  // window now does the whole job and the extra surface is removed rather than left
+  // unreachable. Its one genuinely new idea, Resume-for-a-returning-visitor, is not lost:
+  // the window opens on the plant and mode the player last used, because `msel` is seeded
+  // from `ui` in openMissionSelect().
+
+  /* Coach marks — PERSISTENT unvisited dots, not a timed tour (#443, spec §9).
+   * A tooltip that fades gets dismissed by the click the user was already making
+   * and is then gone for ever; a dot waits until they are curious and retires
+   * itself the first time they open the thing. Exactly three, by ruling: the
+   * session bar, Checklists, and Feedback. */
+  /* Panel state across sessions (#439, spec §14-7 — OWNER SELECTION 2026-08-10 from the
+   * options presented: "Persist panel state"). Which tab was open and whether the
+   * Instructor was folded are the player's arrangement of their own control room, and
+   * re-making it every launch is the same class of annoyance as re-dragging a splitter
+   * (which HAS been persisted since the board's splitters landed). Deliberately NOT
+   * persisted: plant state, which has never been autosaved, and the tools/instructor
+   * split while content is live — a scenario decides that. */
+  var PANEL_KEY = 'rd_panel_state';
+  function savePanelState() {
+    try {
+      var tab = document.querySelector('#tabbar button.on');
+      var card = $('instructorCard');
+      localStorage.setItem(PANEL_KEY, JSON.stringify({
+        tab: tab ? tab.getAttribute('data-tab') : null,
+        instr: !card ? null : card.classList.contains('mini') ? 'mini'
+          : card.classList.contains('expanded') ? 'expanded' : 'collapsed'
+      }));
+    } catch (e) { /* private mode */ }
+  }
+  function restorePanelState() {
+    /* THE STARTING STATE IS APPLIED FIRST AND UNCONDITIONALLY. It used to sit after an
+     * `if (!st) return`, so a visitor with nothing saved — a first visit, a cleared
+     * browser — never reached it and got the markup's default, which is `collapsed`. The
+     * one case the directive is about was the one case that skipped it. */
+    applyFocus(true, true);
+    var st;
+    try { st = JSON.parse(localStorage.getItem(PANEL_KEY) || 'null'); } catch (e) { return; }
+    if (!st) return;
+    if (st.tab) {
+      var b = document.querySelector('#tabbar [data-tab="' + st.tab + '"]');
+      // A tab that no longer exists is not an error — the strip was restructured in
+      // #439 and a saved 'operate' or 'settings' must fall back, not throw.
+      if (b && !b.classList.contains('on')) b.click();
+    }
+    /* THE INSTRUCTOR STARTS FULL SIZE *(OWNER DIRECTIVE, 2026-08-11: "The instructor block
+     * should start full size when free play is started.")*. A remembered fold is not
+     * restored on a fresh start: the block is where free play's coaching and the checklist
+     * launcher live, and opening folded hides the one surface that tells a new player what
+     * to do next. The tab choice is still restored — that is a preference; this is a
+     * starting state. */
+  }
+
+  var SEEN_KEY = 'rd_seen_';
+  // The Checklists mark points at the LIST now — its open button is gone, because the
+  // list is always on screen (owner, 2026-08-11).
+  var COACH = { session: 'simStatus', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
+  function seenCoach(k) {
+    try { return localStorage.getItem(SEEN_KEY + k) === '1'; } catch (e) { return true; }
+  }
+  function markSeen(k) {
+    if (seenCoach(k)) return;
+    try { localStorage.setItem(SEEN_KEY + k, '1'); } catch (e) { /* private mode */ }
+    applyCoachMarks();
+  }
+  function applyCoachMarks() {
+    Object.keys(COACH).forEach(function (k) {
+      var el = $(COACH[k]);
+      if (el) el.classList.toggle('unvisited', !seenCoach(k));
+    });
+  }
+
   // ============================================== Features window (#241)
   // The development toggle board: every flag in site/flags.js, its stage, and
   // what this browser currently resolves it to. Toggles write localStorage
@@ -3350,8 +3816,8 @@
   //
   // "View as" re-resolves the whole app against another channel, which is the
   // one thing worth doing before a release: look at develop as the public will.
-  function openFeaturePanel() { renderFeaturePanel(); $('featureOverlay').hidden = false; }
-  function closeFeaturePanel() { $('featureOverlay').hidden = true; }
+  function openFeaturePanel() { renderFeaturePanel(); openModal('featureOverlay'); }
+  function closeFeaturePanel() { closeModal('featureOverlay'); }
   // Item labels come off the artifacts, not a second copy in the registry.
   function flagLabel(id) {
     var e = RD.Flags.entry(id);
@@ -3454,7 +3920,7 @@
     if (!sc) return;
     ui.follow = null;
     ui.scenario = id;
-    service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
+    pauseSim('content');
     service.handleCommand({ action: 'start_scenario', scenario_id: id });
     afterPlantChange();          // the scenario may have switched the plant
     // (M5's start_scenario starts from a clean automation board and applies the
@@ -3464,7 +3930,7 @@
     resetChat();                 // fresh transcript state (chat-mode scenarios)
     setFocus('instructor', true);
     service.handleCommand({ action: 'play' });
-    $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); $('playBtn').classList.remove('attention');
+    resumeSim();                 // the scenario runs it: clears the 'content' hold above
   }
 
   // ---- "Follow in Instructor" (Path 2): the Instructor (M6) runs the procedure —
@@ -3503,9 +3969,11 @@
     var hint = $('rewindHint'); if (hint) hint.hidden = !ui.rewindPick;
     if (ui.rewindPick) {
       // Freeze the target: picking a moment on a moving graph is a carnival game.
-      service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
+      // The REASON is load-bearing beyond the freeze — #441 forbids the lanes
+      // rescaling during rewind review, and `pausedFor('rewind')` is how it asks.
+      pauseSim('rewind');
       latest = service.assembleSnapshot(); render(latest);
-    } else if (latest) drawChart();
+    } else { clearPause('rewind'); if (latest) drawChart(); }
   }
   function rewindPickClick(e) {
     if (!ui.rewindPick) return;
@@ -3585,46 +4053,70 @@
   // owns the layout and all three states are reachable — instructor max, 50/50
   // split, tools max — via the persona header (toggles the instructor card) and
   // the tab strip (expands the tools; clicking the ACTIVE tab again collapses
-  // them). The instructor never expands itself on a message any more: new content
-  // while collapsed cues the header badge + a brief glow instead (instrAttention).
-  // setFocus remains only as the CONTENT-TRANSITION entry point — scenario /
-  // walkthrough / checklist start, level-complete, strict-gate feedback — where
+  // them). A ROUTINE message never expands the card: while collapsed it cues the
+  // header badge and a brief glow instead (instrAttention), and while expanded but
+  // scrolled away it marks "new below" inside the panel.
+  //
+  // A GATING step is the exception and DOES open the card (#439, spec §4 — see
+  // instrGateOpen for the ruling and the per-beat dismissal rule). Instruction that
+  // blocks progress cannot be allowed to arrive somewhere the player is not looking.
+  // setFocus is also the CONTENT-TRANSITION entry point — scenario / walkthrough /
+  // checklist start, level-complete, strict-gate feedback — where
   // the named card taking the column is what the player's own action asked for.
   // Invariant (applyFocus): at least one card is always expanded.
   function isLive() { return !!(ui.scenario || ui.follow || chatState.sid || cklState.key); }
-  function applyFocus(iExp, tExp) {
-    var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
-    if (!iExp && !tExp) iExp = true;
-    instr.classList.toggle('expanded', iExp);
-    instr.classList.toggle('collapsed', !iExp);
-    // `mini` (#350 item 19) is a sub-state of collapsed and cannot survive an expansion:
-    // the card would take its flex share while still hiding its body. This is the choke
-    // point every expansion goes through — the header toggle, the tab strip, a scenario
-    // taking focus — so clearing it here covers the paths toggleInstructorCard does not.
-    if (iExp && instr.classList.contains('mini')) { instr.classList.remove('mini'); setMinGlyph(); }
-    tools.classList.toggle('expanded', tExp);
-    tools.classList.toggle('collapsed', !tExp);
-    if (iExp) clearInstrAttention();
-    // Keep the transcript sliver pinned to its latest lines when the chat card
-    // collapses (the collapsed chat card shows the tail, not the top).
-    var cur = $('instrCurrent'); if (cur) cur.scrollTop = cur.scrollHeight;
-    // The Physics pane only paints while it is visible, and this is the one choke
-    // point every reveal goes through (tab click, card expand, accordion). Without
-    // it, opening Physics on a PAUSED plant shows em-dashes until a broadcast that
-    // never comes.
-    if (tExp && latest) { renderPhysics(latest); renderIndications(latest); }
+  /* ONE TAB STRIP, ONE VISIBLE PANE *(OWNER DIRECTIVE, 2026-08-11: "Make the instructor
+   * block a tab. Make it the leftmost tab.")*.
+   *
+   * This replaces the two-card accordion (instructor card above, tools card below, exactly
+   * one expanded in free play and a 50/50 split allowed while instructed content ran). That
+   * model needed applyFocus, focusTools, toggleInstructorCard, a minimize LADDER and a
+   * persisted split, all to answer one question the tab strip answers by construction:
+   * which of these am I looking at.
+   *
+   * applyFocus keeps its signature because ~20 call sites pass it, and its meaning survives
+   * the translation intact: "give the instructor the column" is now "select the Instructor
+   * tab", and "give the tools the column" is "select some other tab". */
+  function selectTab(name) {
+    var bar = $('tabbar'); if (!bar) return;
+    var btn = bar.querySelector('[data-tab="' + name + '"]'); if (!btn) return;
+    bar.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === btn); });
+    document.querySelectorAll('.tabpane').forEach(function (p) {
+      p.classList.toggle('on', p.getAttribute('data-pane') === name);
+    });
+    if (name === 'instructor') clearInstrAttention();
+    // The transcript scrolls itself; every other pane is scrolled by .tab-body. See the
+    // .instr-mode rule in shell.css for what goes wrong without this.
+    var tb = document.querySelector('.tab-body');
+    if (tb) tb.classList.toggle('instr-mode', name === 'instructor');
+    // A pane that skips its work while hidden shows whatever it last painted, and on a
+    // PAUSED plant no broadcast is coming to correct it. Repaint on reveal.
+    if (latest) { renderPhysics(latest); renderIndications(latest); renderAutomate(latest); }
+    scrollInstrLog();
+    if (typeof savePanelState === 'function') savePanelState();
   }
+  function currentTab() {
+    var b = document.querySelector('#tabbar button.on');
+    return b ? b.getAttribute('data-tab') : 'instructor';
+  }
+  // Where "hand it back to the tools" goes. Remembers the last non-instructor tab so
+  // dismissing the Instructor returns you to what you were doing, not to a fixed default.
+  var lastToolsTab = 'checklists';
+  function applyFocus(iExp, tExp) {
+    if (iExp) { selectTab('instructor'); return; }
+    if (tExp) { selectTab(currentTab() === 'instructor' ? lastToolsTab : currentTab()); }
+  }
+
   function setFocus(which) {
     applyFocus(which === 'instructor', which !== 'instructor');
   }
   // Persona header: the always-visible collapse/expand affordance (it survives
   // chat mode now). Collapsing hands the column to the tools; expanding splits
   // while live and takes the column in free play (accordion).
+  // The persona header still toggles, but between TABS: press it on the Instructor tab to
+  // go back to what you were doing, press it anywhere else to come here.
   function toggleInstructorCard() {
-    var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
-    var iExp = instr.classList.contains('expanded'), tExp = tools.classList.contains('expanded');
-    if (iExp) applyFocus(false, true);
-    else applyFocus(true, isLive() ? tExp : false);
+    if (currentTab() === 'instructor') selectTab(lastToolsTab); else selectTab('instructor');
   }
   // ---- the third state: FULLY minimized (#350 item 19) -----------------------------
   // *(OWNER DIRECTIVE, 2026-08-04: "Need button to be able to fully minimize instructor
@@ -3661,28 +4153,143 @@
 
   // Tab strip: expand the tools (split while live, accordion in free play);
   // re-clicking the already-active tab collapses them back to the strip.
-  function focusTools(activeAgain) {
-    var instr = $('instructorCard'), tools = $('toolsCard'); if (!instr || !tools) return;
-    if (activeAgain && tools.classList.contains('expanded')) { applyFocus(true, false); return; }
-    applyFocus(isLive() ? instr.classList.contains('expanded') : false, true);
-  }
+  // Re-clicking the active tab used to collapse the card. There is nothing to collapse
+  // now — every tab shows a pane — so a second click is simply the tab you are on.
+  function focusTools(activeAgain) { /* handled by the tab strip itself */ }
   // #237 attention cue: new instructor content while the card is collapsed gets a
   // count badge + glow on the header (same grammar as the board's TRIP BLOCKS
   // badge) instead of stealing the column. Cleared when the player expands.
   var instrUnseen = 0;
   function instrAttention() {
-    var card = $('instructorCard'); if (!card || card.classList.contains('expanded')) return;
+    var card = $('instructorCard'); if (!card) return;
+    // OPEN BUT SCROLLED AWAY gets a quiet "new below" marker inside the panel, not a
+    // header flash (#439, spec §4). The message is on screen — it is just not the part
+    // of the screen being read — and flashing the header for something already visible
+    // spends the signal on nothing.
+    // The Instructor is a tab now: when it is not the selected tab, the cue belongs on
+    // its BUTTON, which is the thing the player would have to press. `expanded` reads as
+    // "this pane is on screen".
+    if (card.classList.contains('on')) {
+      var log = $('instrLog');
+      var away = log && (log.scrollHeight - log.scrollTop - log.clientHeight) > 24;
+      var nb = $('instrNewBelow'); if (nb) nb.hidden = !away;
+      return;
+    }
     instrUnseen++;
     var b = $('instrBadge');
     if (b) { b.hidden = false; b.textContent = instrUnseen > 9 ? '9+' : String(instrUnseen); }
-    card.classList.remove('instr-attn');
-    void card.offsetWidth;   // restart the pulse animation for each new line
-    card.classList.add('instr-attn');
+    // The badge lives inside the pane, which is not on screen — so the count also goes on
+    // the TAB BUTTON, the only part of the Instructor a player can see right now.
+    var tb = document.querySelector('#tabbar [data-tab="instructor"]');
+    if (tb) {
+      tb.setAttribute('data-unseen', instrUnseen > 9 ? '9+' : String(instrUnseen));
+      tb.classList.remove('tab-attn');
+      void tb.offsetWidth;   // restart the pulse for each new line
+      tb.classList.add('tab-attn');
+    }
   }
   function clearInstrAttention() {
     instrUnseen = 0;
     var b = $('instrBadge'); if (b) b.hidden = true;
     var card = $('instructorCard'); if (card) card.classList.remove('instr-attn');
+    var nb = $('instrNewBelow'); if (nb) nb.hidden = true;
+    var tb = document.querySelector('#tabbar [data-tab="instructor"]');
+    if (tb) { tb.classList.remove('tab-attn'); tb.removeAttribute('data-unseen'); }
+  }
+
+  /* ================================================ THE TRANSCRIPT (item 7, 2026-08-11)
+   * "like teams messages ... persistent and scrollable only cleared when the user changes
+   * what that instructor block is showing".
+   *
+   * TWO KEYS, and the distinction is the whole design:
+   *
+   *   TOPIC  — which walkthrough / checklist / scenario / chat is being shown. A change
+   *            here CLEARS the log, because it is the player changing the subject, which
+   *            is the one clearing condition the directive names.
+   *   MESSAGE — the identity of the current message inside that topic. A change here
+   *            FREEZES the live bubble into the transcript and starts a new one.
+   *
+   * The message key is the FIRST LINE only, deliberately. Every renderer rebuilds
+   * #instrCurrent on each broadcast to update live acceptance status ("…not yet" -> "met"),
+   * so keying on the whole text would append a near-duplicate bubble several times a
+   * second. The first line is the step text, which is stable for exactly as long as the
+   * message is the same message. */
+  var instrLog = { topic: null, key: null, html: '' };
+  /* THE TOPIC COMES FROM THE SNAPSHOT, NOT FROM `ui`. renderInstructor's own header says
+   * it: "Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow is
+   * just a synced mirror." The mirror is not cleared when a walkthrough stops, so keying on
+   * it left the topic reading `flw:pwr_startup` after the panel had already returned to the
+   * idle launcher — measured: Stop pressed, nav hidden, idle content on screen, and the log
+   * still growing (5 -> 6) instead of clearing. */
+  function instrTopic(s) {
+    var i = (s && s.instructor) || {};
+    if (i.checklist && i.checklist.procedure_id) return 'ckl:' + i.checklist.procedure_id;
+    if (i.follow && i.follow.procedure_id) return 'flw:' + i.follow.procedure_id;
+    if (i.chat && (i.chat.sid || i.chat.id)) return 'cht:' + (i.chat.sid || i.chat.id);
+    if (ui.scenario) return 'scn:' + (ui.scenario.id || ui.scenario);
+    return 'idle';
+  }
+  function scrollInstrLog() {
+    var log = $('instrLog'); if (log) log.scrollTop = log.scrollHeight;
+  }
+  function clearInstrLog() {
+    var log = $('instrLog'), cur = $('instrCurrent');
+    if (!log || !cur) return;
+    var msgs = log.querySelectorAll('.instr-msg');
+    for (var i = 0; i < msgs.length; i++) log.removeChild(msgs[i]);
+    instrLog.key = null; instrLog.html = '';
+  }
+  function instrLogTick(s) {
+    var cur = $('instrCurrent'), log = $('instrLog');
+    if (!cur || !log) return;
+    var topic = instrTopic(s);
+    if (topic !== instrLog.topic) { instrLog.topic = topic; clearInstrLog(); }
+    /* A CHECKLIST IS ALREADY THE THING THIS FEATURE ASKS FOR and must not be folded in.
+     * It renders its WHOLE step list into the bubble at once — persistent and scrollable
+     * by construction — so there is no outgoing message to freeze, and its first line is
+     * the checklist title, which never changes. Measured: the key sat on "Post-trip
+     * response — Mode 1, At Power -> Mode 3, Hot Sta" for eight consecutive samples while
+     * the steps underneath it advanced. Accumulating here would either do nothing (as it
+     * did) or, on a full-text key, duplicate the entire list on every acceptance flicker.
+     *
+     * What DOES accumulate is the message-shaped content the directive names: instructor
+     * guidance, scenario commentary, and walkthrough steps — each a discrete message that
+     * used to be overwritten by the next one. */
+    if (cklState.key) { instrLog.key = null; instrLog.html = ''; return; }
+    var first = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    if (!first) return;
+    if (first === instrLog.key) { instrLog.html = cur.innerHTML; return; }  // same message, live
+    if (instrLog.key) {
+      var d = document.createElement('div');
+      d.className = 'instr-msg';
+      d.innerHTML = instrLog.html;
+      log.insertBefore(d, cur);
+    }
+    instrLog.key = first; instrLog.html = cur.innerHTML;
+    // Only follow the tail if the reader is already at it — yanking the view away from
+    // something being read is exactly what the "new below" marker exists to avoid.
+    var away = (log.scrollHeight - log.scrollTop - log.clientHeight) > 40;
+    if (!away) scrollInstrLog();
+  }
+  /* AUTO-OPEN ON A GATING STEP (#439, spec §4).
+   *
+   * OWNER SELECTION 2026-08-10 (from the options presented: "Adopt spec's auto-open"),
+   * reversing the removal this section's own note used to record. What made auto-open
+   * intolerable before was that it repeated: close it, and the next broadcast opened it
+   * again, so reading Physics during a mission was impossible. The rule that fixes it is
+   * per-STEP, not per-message — a dismissal stands for the beat it was made on, and the
+   * card comes back on the NEXT beat. That is why the key is `current_beat_id` and why it
+   * is set BEFORE the focus call rather than after: a re-render inside the same beat must
+   * find it already claimed.
+   */
+  var lastGateBeat = null;
+  function instrGateOpen(s) {
+    var inst = s && s.instructor;
+    if (!inst || !inst.gated) return;
+    var key = inst.current_beat_id || inst.scenario_id;
+    if (!key || key === lastGateBeat) return;
+    lastGateBeat = key;
+    setFocus('instructor');
   }
 
   function renderFailures(s) {
@@ -3713,14 +4320,55 @@
   // split, core damage) has nothing else to trace, and the alternative is a blank line in
   // Realistic. That is not a softening of HR1: it is the same explicit diagnostic overlay
   // the Physics tab is, and it is visible as such because those series carry no channel.
-  function seriesTruth(ser) { return !!ser.tru && (chartTruth() || !ser.get); }
+  // Since #454 that rule is the DEFAULT rather than the whole story — see sideOf below.
+  /* WHICH SIDE(S) A CHANNEL TRACES — PER SERIES SINCE #454 *(OWNER DIRECTIVE, 2026-08-11:
+   * "You should be able to choose the indication or the physics value for each. Put a radial
+   * next to each value to let the user choose so they could even choose both the indication
+   * and physics if they want.")*.
+   *
+   * TWO MAPS, NOT ONE, and the split is load-bearing. `ui.series[id]` still means exactly
+   * what it meant before — "is this channel plotted at all" — because it is shared with the
+   * Indications tab and the board's plot cells through syncPlotCells(). `ui.seriesSide[id]`
+   * is the NEW question and only ever refines an already-plotted channel.
+   *
+   * THE FALLBACK IS THE OLD GLOBAL RULE, VERBATIM. A series nobody has overridden traces
+   * whatever `chartTruth()` says, so an untouched plant charts identically to before and the
+   * Settings Learning/Realistic switch keeps moving every series it used to move. Writing the
+   * default as `(chartTruth() || !ser.get)` rather than as "whichever side exists" is
+   * deliberate: they differ for a `ctl` series that also carries `tru`, and taking the
+   * convenient form would have silently changed such a channel in Realistic mode. There is no
+   * such series on any plant today — which is exactly why it had to be checked rather than
+   * assumed, since the first one added would have inherited the bug. */
+  function sideAvail(ser) {
+    return { ind: !!(ser.get || ser.ctl), phys: !!ser.tru };
+  }
+  function sideOf(ser, ignorePlotted) {
+    if (!ignorePlotted && !ui.series[ser.id]) return null;
+    var av = sideAvail(ser), want = ui.seriesSide[ser.id];
+    // An override is honoured only for a side this series HAS. A physics-only quantity
+    // (decay heat, void, reactivity) cannot be forced to 'ind' and a demand cannot be
+    // forced to 'phys' — the toggle for the missing side is disabled in the overlay, and
+    // this is the second half of that so a stale map entry cannot produce a blank lane.
+    if (want === 'both' && av.ind && av.phys) return 'both';
+    if (want === 'ind' && av.ind) return 'ind';
+    if (want === 'phys' && av.phys) return 'phys';
+    return (!!ser.tru && (chartTruth() || !ser.get)) ? 'phys' : 'ind';
+  }
+  // The SOLID trace's side, and the DASHED twin's — 'both' is one lane with two traces, so
+  // every drawing site asks these two rather than branching on the string three times.
+  function sideSolid(side) { return side === 'phys' ? 'phys' : 'ind'; }
+  function sideDashed(side) { return side === 'both' ? 'phys' : null; }
   // Rows are PACKED (see chartBuf): a column index, not a key, and an absent reading is NaN
   // rather than undefined. `isFinite` rejects both, so the guard is unchanged — but a series
   // whose id is not in the current index must return null rather than read column
   // `undefined`, which on a Float64Array is undefined and would slip past a `!= null` test.
-  function seriesVal(ser, sample) {
+  // `side` is 'ind' or 'phys' — ONE side, resolved by the caller. 'both' never reaches here:
+  // it is two traces, so the caller asks twice. Defaulting it keeps the handful of callers
+  // that only ever want the primary reading (the value chip, the numeric row) short.
+  function seriesVal(ser, sample, side) {
     var i = serCol[ser.id]; if (i == null) return null;
-    var src = seriesTruth(ser) ? sample.tv : sample.v;
+    if (side == null) side = sideSolid(sideOf(ser, true));
+    var src = (side === 'phys') ? sample.tv : sample.v;
     var v = src ? src[i] : null;
     return (v == null || !isFinite(v)) ? null : v;
   }
@@ -3728,9 +4376,9 @@
   // the min/max the service folded over their sub-interval (see setFineSampler there);
   // broadcast rows and the preseed carry none, and collapse to the point value — which is
   // correct, they represent one instant rather than a span.
-  function seriesExt(ser, sample, val) {
+  function seriesExt(ser, sample, val, side) {
     var i = serCol[ser.id]; if (i == null) return [val, val];
-    var t = seriesTruth(ser);
+    var t = (side == null ? sideSolid(sideOf(ser, true)) : side) === 'phys';
     var l = t ? sample.tlo : sample.lo, h = t ? sample.thi : sample.hi;
     var a = l ? l[i] : null, b = h ? h[i] : null;
     return [(a == null || !isFinite(a)) ? val : a, (b == null || !isFinite(b)) ? val : b];
@@ -3743,8 +4391,12 @@
     if (!latest) return false;
     var v = null;
     try {
+      // Follows the SOLID trace's side — the emphasis belongs to the line the eye is on.
+      // For a 'both' lane that is the instrument, which is also the prototypical answer:
+      // alarms read instruments (HR1), so a channel showing both sides lights on the one
+      // the protection system is actually watching.
       if (ser.ctl) v = ser.ctl(latest.control_state || {});
-      else if (seriesTruth(ser) && latest.true_state) v = ser.tru(latest.true_state);
+      else if (sideSolid(sideOf(ser, true)) === 'phys' && latest.true_state) v = ser.tru(latest.true_state);
       else if (ser.get) v = ser.get(latest.instruments);
     } catch (e) { v = null; }
     if (v == null || !isFinite(v)) return !!seriesHot[ser.id];
@@ -3784,8 +4436,86 @@
      That clamp is also why no flatness test is needed: a trace already filling its band
      has no slack and simply stays where it is (it needs the room to show its shape),
      a flat one has half a band either way and slides the whole distance. */
-  var LANE_LO = 0.14, LANE_HI = 0.86;   // lane centres span this much of the plot
-  function laneOf(i, n) { return n < 2 ? 0.5 : LANE_HI - i * (LANE_HI - LANE_LO) / (n - 1); }
+  /* ONE LANE PER INDICATION (#440, spec §8) — real stacked bands, not offsets inside one
+   * plot. `laneOf` used to slide each series' held band up or down a shared vertical space
+   * so the traces did not sit on top of each other; that is what the spec calls the
+   * false-correlation problem, and it is why per-lane autoscale used to mislead. Traces are
+   * no longer overlaid, so each lane owns its own vertical extent outright.
+   *
+   * The geometry is in the SVG's own viewBox units (H below), and the pixel numbers the
+   * spec fixes — 44-56 px lane, 36 px floor, 2/4 px padding, 1 px hairline — live in
+   * ui/shell.css and in the hand-built reference at ui/test_panel/lane_reference.html,
+   * which measures itself against the ~220 px budget. Do not re-derive them here.
+   *
+   * TEXT NEVER GOES IN THE SVG. The canvas is `preserveAspectRatio="none"` over a fixed
+   * 400x120 box, so it stretches non-uniformly with the panel — a <text> in it would be
+   * squashed at exactly the widths the density budget is fighting for. Names, ranges and
+   * values are HTML in the overlay layer, which is what `#chartFloats` already was. */
+  /* THE SHARED TIME CURSOR (#440, spec §8) — what turns a stack of lanes into a
+   * RELATIONSHIP display. Hovering places one vertical line across EVERY lane and each
+   * lane's value column shows its reading at that instant: "at this moment, load was here,
+   * power was here, Tavg was here." Without it the viewer is eyeballing vertical alignment
+   * between traces and the teaching claim goes soft — which is the whole reason the stack
+   * replaced an overlaid plot.
+   *
+   * `frac` is the pointer's position along the PLOT, 0..1, or null for live. Stored as a
+   * fraction rather than a time so it survives the window scrolling under it: the cursor
+   * belongs to the chart, not to a moment that slides off the left edge while the pointer
+   * sits still. */
+  var chartCursor = { frac: null };
+  var LANE_GAP = 1.5;                   // viewBox units between lanes — the hairline
+  var LANE_FLOOR_PX = 36;               // the spec's HARD floor; below it a trace is not a trace
+  function laneBand(i, n, H) {
+    var h = H / Math.max(1, n);
+    return { top: i * h + LANE_GAP, bot: (i + 1) * h - LANE_GAP, h: h };
+  }
+  /* HOW MANY TRACE LANES FIT, and what happens to the rest (#440, §14-7a).
+   *
+   * OWNER SELECTION 2026-08-10, from the options presented: "max trace lanes = what fits at
+   * the 36 px floor; when a lesson or the user pins more than fit, the excess renders as
+   * numeric rows (never squeezed lanes), newest-pinned demoted first."
+   *
+   * Measured before this existed: six pinned channels in the shipped 168 px plot gave 28 px
+   * lanes — under the floor, and a 28 px trace is a smear that says less than the number
+   * beside it would. Dividing the space further is the one thing the stack must not do.
+   *
+   * Read from the LIVE element, not from a constant: the splitters (#445) make the region's
+   * height the operator's to choose, so the lane count has to follow it. */
+  var NUM_ROW_PX = 18;                  // a demoted channel's numeric row, per the reference
+  var LANE_TARGET_PX = 56;              // the top of the spec's 44-56 band
+  /* The split is JOINTLY constrained and has to be solved as one: every channel demoted to a
+   * numeric row TAKES 18 px from the lanes above it, so "how many lanes fit" depends on how
+   * many were demoted, which depends on how many fit. Computing the lane count first and
+   * dropping the rows underneath is what the first version did, and it drew the numeric rows
+   * straight over the bottom lane — visible in the screenshot, invisible to every check
+   * that only counted elements.
+   *
+   * Walk d upward until the remaining lanes clear the floor. Bounded by n, and the last
+   * iteration (one lane, everything else a number) always terminates. */
+  function laneSplit(n, px) {
+    if (!px) return { lanes: Math.min(n, 4), rows: Math.max(0, n - 4), px: 0 };
+    for (var d = 0; d < n; d++) {
+      var lanes = n - d;
+      var avail = px - d * NUM_ROW_PX;
+      if (avail / lanes >= LANE_FLOOR_PX) {
+        /* EXTRA SPACE ADDS ROWS, IT DOES NOT INFLATE THEM (#445, spec §8). Dragging the
+         * strip taller with three channels pinned must not give three enormous traces —
+         * "which is nobody's intent". Lanes stop growing at the target height and the
+         * surplus is simply not used by the stack; it becomes room for the next channel
+         * the operator pins, which is the point of having dragged. */
+        var used = Math.min(avail, lanes * LANE_TARGET_PX);
+        return { lanes: lanes, rows: d, px: used };
+      }
+    }
+    return { lanes: 1, rows: n - 1, px: Math.max(LANE_FLOOR_PX, px - (n - 1) * NUM_ROW_PX) };
+  }
+  /* Pin order, oldest first. `ui.series` is an object and JS preserves string-key insertion
+   * order, so a newly ticked channel lands at the end — which is exactly "newest pinned".
+   * Demotion takes from that end, so the channels someone has been watching all along keep
+   * their traces and the one just added is the one that arrives as a number. */
+  function pinOrder() {
+    return Object.keys(ui.series).filter(function (k) { return ui.series[k]; });
+  }
 
   // The plot's x extent — ONE definition, because drawChart and the rewind picker
   // must agree on it. Normally the strip-chart window: the axis always spans the
@@ -3823,10 +4553,16 @@
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
       chartRange = {};   // no data → forget held ranges so the next fit starts clean
-      setHTML($('chartLegend'), active.map(function (s) {
-        return '<span class="leg" style="color:' + s.c + '"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.range[0] + '–' + s.range[1] + '</b></span>';
-      }).join(''));
-      svg.innerHTML = ''; if (floats) floats.innerHTML = ''; return;
+      // Nothing plotted yet: name the pinned channels in their lanes so the stack reads as
+      // "waiting" rather than as empty. Their declared range stands in for the fitted one.
+      setHTML($('chartLegend'), '');
+      svg.innerHTML = '';
+      drawLanes(active.map(function (s, i) {
+        var b = laneBand(i, active.length, H);
+        return { ser: s, top: b.top / H * 100, mid: (b.top + b.bot) / 2 / H * 100,
+                 lo: s.range[0], hi: s.range[1], val: null, hot: false };
+      }));
+      return;
     }
     var ext = chartExtent(), t1 = ext.t1, t0 = ext.t0, span = ext.span;
     var PW = W * CHART_PLOT_FRAC;   // traces stop short of the right edge; value chips live in the gutter
@@ -3861,7 +4597,7 @@
     var startI = 0;
     while (startI < chartBuf.length - 1 && chartBuf[startI].t < t0) startI++;
     var NB = Math.max(2, Math.round(PW));   // one bucket per plot pixel
-    var ranges = {}, seriesMeans = {};
+    var ranges = {}, seriesMeans = {}, seriesDash = {};
     // Realistic traces the raw instrument, so it still carries sensor noise. Bucket
     // averaging alone thins out at short windows (fewer samples per bucket), so smooth
     // over a FIXED TIME width instead — the trace reads the same at 1 min and 30 min.
@@ -3869,17 +4605,27 @@
     var secPerBucket = span / NB;
     var bOrigin = Math.floor(t0 / secPerBucket);   // absolute grid index of the left edge
     var SMOOTH_SEC = 3;
-    var kSmooth = chartTruth() ? 0 : Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
-    active.forEach(function (ser, si) {
+    /* SMOOTHING IS PER SIDE, NOT PER CHART (#454). It used to key on `chartTruth()`, which
+     * was right while every trace on the chart came from the same side; a 'both' lane draws
+     * an instrument and the physics TOGETHER, and running the 3-second centred average over
+     * the true side would smooth a signal that has no noise in it — inventing a difference
+     * between the two traces at exactly the moment the player put them side by side to
+     * compare them. The comment above ("Truth needs none of this") was already the rule; it
+     * simply had nowhere per-trace to live. */
+    var kInd = Math.min(12, Math.floor(SMOOTH_SEC / Math.max(1e-6, secPerBucket) / 2));
+    function smoothFor(side) { return side === 'phys' ? 0 : kInd; }
+    /* ONE SIDE'S BUCKETED MEANS. Extracted from the loop below so a lane can ask for two of
+     * them; the arithmetic is unchanged, including that the BAND is never smoothed. */
+    function bucketSide(ser, side) {
       var sum = {}, cnt = {}, blo = {}, bhi = {};   // sparse per-bucket accumulators
       for (var j = startI; j < chartBuf.length; j++) {
-        var val = seriesVal(ser, chartBuf[j]);
+        var val = seriesVal(ser, chartBuf[j], side);
         if (val == null || !isFinite(val)) continue;
         var bk = Math.floor(chartBuf[j].t / secPerBucket) - bOrigin;
         if (bk < 0) bk = 0; else if (bk >= NB) bk = NB - 1;
         if (cnt[bk] === undefined) { sum[bk] = 0; cnt[bk] = 0; blo[bk] = Infinity; bhi[bk] = -Infinity; }
         sum[bk] += val; cnt[bk] += 1;
-        var ex = seriesExt(ser, chartBuf[j], val);
+        var ex = seriesExt(ser, chartBuf[j], val, side);
         if (ex[0] < blo[bk]) blo[bk] = ex[0];
         if (ex[1] > bhi[bk]) bhi[bk] = ex[1];
       }
@@ -3892,6 +4638,7 @@
       }
       // centred moving average — zero net lag, unlike an EWMA (a drifting or stuck
       // sensor survives it untouched; only the per-sample jitter goes)
+      var kSmooth = smoothFor(side);
       if (kSmooth > 0 && means.length > 2 * kSmooth) {
         var sm = new Array(means.length);
         for (var m = 0; m < means.length; m++) {
@@ -3903,15 +4650,31 @@
         }
         means = sm;
       }
+      return means;
+    }
+    active.forEach(function (ser, si) {
+      var side = sideOf(ser);
+      var means = bucketSide(ser, sideSolid(side));
+      var dashSide = sideDashed(side);
+      var dashMeans = dashSide ? bucketSide(ser, dashSide) : null;
       var vmin = Infinity, vmax = -Infinity;
       // the BAND sets the range, not the line — otherwise a transient the band exists to
       // reveal would be drawn outside the axis and clipped away
-      means.forEach(function (p) {
-        var a2 = (p.lo != null && isFinite(p.lo)) ? p.lo : p.v;
-        var b2 = (p.hi != null && isFinite(p.hi)) ? p.hi : p.v;
-        if (a2 < vmin) vmin = a2; if (b2 > vmax) vmax = b2;
-      });
+      /* ONE SCALE FOR BOTH TRACES *(OWNER RULING, 2026-08-11, selecting "One lane, dashed
+       * twin" from the options presented)*. The fit spans the UNION of the two sides, which
+       * is the whole point: two independently-fitted axes would put an indicated 549 °F and
+       * a true 551 °F on the same pixel and draw the disagreement as agreement. */
+      function grow(list) {
+        list.forEach(function (p) {
+          var a2 = (p.lo != null && isFinite(p.lo)) ? p.lo : p.v;
+          var b2 = (p.hi != null && isFinite(p.hi)) ? p.hi : p.v;
+          if (a2 < vmin) vmin = a2; if (b2 > vmax) vmax = b2;
+        });
+      }
+      grow(means);
+      if (dashMeans) grow(dashMeans);
       seriesMeans[ser.id] = means;
+      seriesDash[ser.id] = dashMeans;
       // STABLE auto-range. The old model eased lo/hi toward the data every frame, which
       // re-projected the WHOLE trace every frame — history that had already been drawn
       // kept sliding and changing shape. The axis now sits on a 1-2-5 ladder and is HELD:
@@ -3922,100 +4685,179 @@
       // of full scale, and a fortieth for the slow-moving boron trend.
       var minSpan = full * ((ser.id === 'boron') ? 0.025 : 0.1);
       var h = chartRange[ser.id];
-      var fits = h && isFinite(vmin) && vmin >= h.lo && vmax <= h.hi;
-      var band = h ? (h.hi - h.lo) : 0;
-      var need = Math.max(vmax - vmin, minSpan) * 1.3;   // 30 % headroom so a drifting line doesn't re-fit every few seconds
-      var lane = laneOf(si, active.length);
-      // Zoom back in only once the band is MUCH wider than a fresh fit would be (after a
-      // transient has scrolled away), and only after a dwell. Comparing against `need` —
-      // rather than against the minimum span — matters: a band that already equals its
-      // fresh fit must not keep re-fitting to the identical numbers forever.
-      var tooSmall = fits && band > need * 1.6;
-      if (h) h.small = tooSmall ? (h.small || 0) + 1 : 0;
       if (!isFinite(vmin) || !isFinite(vmax)) {
         ranges[ser.id] = h ? [h.lo, h.hi] : [ser.range[0], ser.range[1]];
         return;
       }
-      // The lane belongs to the series' slot in the list, so it is the same on every
-      // fit for the life of the selection — re-fitting can change a trace's ZOOM but
-      // never which lane it lives in.
-      if (!h || !fits || h.small > CHART_SHRINK_FRAMES || h.lane !== si + '/' + active.length) {
-        var step = niceStep(need / 4);
-        var c = (vmin + vmax) / 2;
-        h = { lo: Math.floor((c - need / 2) / step) * step, hi: Math.ceil((c + need / 2) / step) * step,
-              small: 0, lane: si + '/' + active.length };
-        if (h.hi - h.lo < step) h.hi = h.lo + step;
-        // Don't spend plot height on values the quantity can't take — a level axis
-        // running to −50 % reads as broken. Only clamps where the data allows it.
-        var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
-        var inRange = h.lo >= rLo - 1e-9 && h.hi <= rHi + 1e-9;
-        if (h.lo < rLo && vmin >= rLo) { h.lo = rLo; inRange = true; }
-        if (h.hi > rHi && vmax <= rHi) { h.hi = rHi; inRange = true; }
-        // Slide onto this series' lane. Measure from where the trace ACTUALLY sits —
-        // rounding the limits onto the ladder leaves it off centre, so assuming 0.5 here
-        // put traces in the wrong lane entirely. Shifting the band UP in value moves the
-        // trace DOWN the plot. Clamped so the data never leaves the band, which is what
-        // lets this work with no flatness test: a trace already filling its band has no
-        // slack, clamps to zero and stays put; a flat one slides the whole way.
-        var wide = h.hi - h.lo;
-        var shift = (c - h.lo) - lane * wide;
-        var up = vmin - h.lo, dn = vmax - h.hi;               // dn ≤ 0 ≤ up
-        if (inRange) { up = Math.min(up, rHi - h.hi); dn = Math.max(dn, rLo - h.lo); }
-        shift = Math.max(dn, Math.min(up, shift));
-        h.lo += shift; h.hi += shift;
-        chartRange[ser.id] = h;
-      }
+      /* THE POLICY IS RD.ChartMath.holdRange (#393) — the same call the vital tiles make,
+       * so the two cannot drift; it was duplicated here behind a KEEP-IN-SYNC comment.
+       *
+       * AND THE LANE SLIDE IS GONE (#440). This block used to shift each fitted band up or
+       * down in VALUE so the trace would land at its allotted height inside one shared
+       * plot — the reason `laneOf` existed. With one lane per indication there is nothing
+       * to dodge: each trace owns its own vertical band outright, so the fit is just a fit
+       * and the geometry is the lane's. That also retires the subtlety the old comment
+       * here had to warn about (measure the shift from where the trace ACTUALLY sits, not
+       * from the band centre, or traces land in the wrong lane).
+       *
+       * The clamp preference — don't spend height on values the quantity cannot take, a
+       * level axis running to -50 % reads as broken — moves into holdRange's clampLo/Hi,
+       * which is careful never to let it beat the data. */
+      var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
+      var hr = RD.ChartMath.holdRange(h && { lo: h.lo, hi: h.hi }, vmin, vmax, {
+        minSpan: minSpan, shrinkFrames: CHART_SHRINK_FRAMES, shrinkFor: h ? (h.small || 0) : 0,
+        clampLo: rLo, clampHi: rHi
+      });
+      h = { lo: hr.lo, hi: hr.hi, small: hr.shrinkFor };
+      chartRange[ser.id] = h;
       ranges[ser.id] = [h.lo, h.hi];
     });
-    // legend reflects the current (dynamic) range each line is scaled to.
-    // Bounds render through the series' own fmt — the same conversion + unit suffix
-    // the float chips use — so the legend agrees with the chips in either display
-    // unit (it used to print raw internal SI beside imperial chips, #235).
-    setHTML($('chartLegend'), active.map(function (s) {
-      var r = ranges[s.id];
-      return '<span class="leg" style="color:' + s.c + ';margin-right:10px"><i style="background:' + s.c + '"></i>' + s.label + ' <b>' + s.fmt(r[0]) + '–' + s.fmt(r[1]) + '</b></span>';
-    }).join(''));
-    // horizontal gridlines — barely visible, thin; recede behind the traces
-    [20, 40, 60, 80, 100].forEach(function (y) { html += '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1e2831" stroke-width="0.5" vector-effect="non-scaling-stroke"/>'; });
-    var lastY = [];
-    active.forEach(function (ser) {
-      var r = ranges[ser.id], lo = r[0], hi = r[1], rng = (hi - lo) || 1, ly = 0;
-      var pts = seriesMeans[ser.id].map(function (m) {
-        var x = (m.t - t0) / span * PW;
-        var f = Math.max(0, Math.min(1, (m.v - lo) / rng));
-        var y = H - 8 - f * (H - 16); ly = y;
-        return x.toFixed(1) + ',' + y.toFixed(1);
-      }).join(' ');
-      var hot = seriesAlarmed(ser);
-      // MIN/MAX BAND, drawn UNDER the line. Each bucket knows the extremes the plant reached
-      // over the sim time it covers, so a transient shorter than the sample interval still
-      // shows — at 3600× a bucket spans several seconds of plant and the line alone would
-      // step straight over a relief lift inside it. Emitted only where the band is wider
-      // than the stroke: at 1× it collapses onto the line (one instant per sample, nothing
-      // to span) and drawing a degenerate polygon there would just thicken the trace.
+    // NO LEGEND BLOCK (#440, spec §8). It carried a swatch, a name and the fitted range
+    // for every trace — exactly the three things that now sit INSIDE each lane, where they
+    // name the trace they belong to instead of asking the eye to match a colour. Removing
+    // it is one of the structural savings the ~220 px budget is made of; trimming padding
+    // alone does not get there. The strip keeps its own header for the window ladder.
+    setHTML($('chartLegend'), '');
+    // ---- ONE LANE PER INDICATION (#440, spec §8) --------------------------------
+    // Each series gets its own vertical band. Traces are no longer overlaid, so per-lane
+    // autoscale stops misleading — the false-correlation problem existed only because two
+    // traces shared one vertical space. A 1 px hairline separates lanes; there is no gap,
+    // no card, no shadow (the spec states that as a prohibition because it otherwise
+    // returns every time this file is regenerated).
+    // Split the pinned set into what gets a TRACE and what arrives as a NUMBER. Same list,
+    // two renderings — pin once, and the stack decides which form fits rather than
+    // shrinking every lane until none of them reads.
+    var canvasEl = $('chartCanvas');
+    var plotPx = (canvasEl && canvasEl.clientHeight) || 0;
+    var split = laneSplit(active.length, plotPx);
+    // The lanes get the space the numeric rows do NOT take. In viewBox units, since that is
+    // what the trace geometry is in.
+    var laneH = plotPx ? (H * split.px / plotPx) : H;
+    var order = pinOrder();
+    var demoted = {};
+    if (split.rows > 0) {
+      var over = split.rows;
+      for (var oi = order.length - 1; oi >= 0 && over > 0; oi--) {
+        if (!ui.series[order[oi]]) continue;
+        demoted[order[oi]] = true; over--;
+      }
+    }
+    var traced = active.filter(function (s) { return !demoted[s.id]; });
+    var numeric = active.filter(function (s) { return demoted[s.id]; });
+    var N = traced.length;
+    var lastY = [], laneChrome = [], numRows = [];
+    traced.forEach(function (ser, si) {
+      var bnd = laneBand(si, N, laneH);
+      var r = ranges[ser.id], lo = r[0], hi = r[1], rng = (hi - lo) || 1;
       var yOf = function (v) {
-        var f2 = Math.max(0, Math.min(1, (v - lo) / rng));
-        return H - 8 - f2 * (H - 16);
+        var f = Math.max(0, Math.min(1, (v - lo) / rng));
+        return bnd.bot - f * (bnd.bot - bnd.top);
       };
-      var mmB = seriesMeans[ser.id], wide = false, up = [], dn = [];
+      // Hairline between lanes, under everything.
+      if (si > 0) html += '<line x1="0" y1="' + (bnd.top - LANE_GAP).toFixed(1) + '" x2="' + W +
+        '" y2="' + (bnd.top - LANE_GAP).toFixed(1) + '" stroke="#1e2831" stroke-width="0.6" vector-effect="non-scaling-stroke"/>';
+      var mmB = seriesMeans[ser.id];
+      // MIN/MAX BAND, drawn UNDER the line. Each bucket knows the extremes the plant
+      // reached over the sim time it covers, so a transient shorter than the sample
+      // interval still shows — at 3600x a bucket spans several seconds of plant and the
+      // line alone would step straight over a relief lift inside it. Emitted only where
+      // the band is wider than the stroke: at 1x it collapses onto the line.
+      var wide = false, up = [], dn = [];
       for (var bi = 0; bi < mmB.length; bi++) {
         var m2 = mmB[bi];
         if (m2.lo == null || !isFinite(m2.lo) || m2.hi == null || !isFinite(m2.hi)) continue;
         var xb = ((m2.t - t0) / span * PW).toFixed(1);
         var yh = yOf(m2.hi), yl = yOf(m2.lo);
-        if (yl - yh > 1.2) wide = true;
+        if (yl - yh > 1.0) wide = true;
         up.push(xb + ',' + yh.toFixed(1));
         dn.push(xb + ',' + yl.toFixed(1));
       }
+      var hot = seriesAlarmed(ser);
       if (wide && up.length > 1) {
         html += '<polygon points="' + up.concat(dn.reverse()).join(' ') + '" fill="' + ser.c +
           '" fill-opacity="0.22" stroke="none"/>';
       }
-      html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) + '" stroke-width="' + (hot ? 2.4 : 1.5) + '" vector-effect="non-scaling-stroke"/>';
-      var mm = seriesMeans[ser.id];
-      lastY.push({ ser: ser, y: ly, hot: hot, val: mm.length ? mm[mm.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1]) });
+      var ly = bnd.bot;
+      var pts = mmB.map(function (m) {
+        var x = (m.t - t0) / span * PW;
+        var y = yOf(m.v); ly = y;
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+      html += '<polyline points="' + pts + '" fill="none" stroke="' + (hot ? lighten(ser.c) : ser.c) +
+              '" stroke-width="' + (hot ? 2.2 : 1.4) + '" vector-effect="non-scaling-stroke"/>';
+      /* THE DASHED TWIN — the physics side of a channel set to 'both' (#454). SAME HUE,
+       * deliberately *(OWNER RULING, 2026-08-11, from the options presented)*: a second
+       * colour would read as two unrelated channels sharing a box, where the dash reads as
+       * "the same quantity, the other side" — which is the comparison the feature exists to
+       * make. It also spends no second slot from a palette that already has 120 claimants.
+       *
+       * SAME HUE, LIGHTENED — and the lightening is not decoration, it is the whole reason
+       * the twin is visible. MEASURED, or rather reasoned from the geometry and then seen in
+       * a screenshot: on a healthy plant the two sides agree, so the twin's polyline lands on
+       * the SAME PIXELS as the solid one. Painting colour X over colour X changes nothing —
+       * a dash pattern is invisible when the thing showing through the gaps is the identical
+       * colour. Tavg set to 'both' at hot full power drew exactly one visible line, so the
+       * feature looked switched off at the moment it was most switched on. Lightening the
+       * stroke makes the dashes read against the solid line where they coincide, and the two
+       * still read as one quantity rather than as two unrelated channels.
+       *
+       * Drawn AFTER the solid line so the dashes sit on top. Only the solid trace gets the
+       * min/max band: two overlapping 0.22-opacity polygons in one hue is mud, and the
+       * physics side has no noise envelope worth the second draw. */
+      var dashB = seriesDash[ser.id];
+      if (dashB && dashB.length > 1) {
+        html += '<polyline class="trace-phys" points="' + dashB.map(function (m) {
+          return ((m.t - t0) / span * PW).toFixed(1) + ',' + yOf(m.v).toFixed(1);
+        }).join(' ') + '" fill="none" stroke="' + lighten(ser.c) +
+                '" stroke-width="1.1" stroke-dasharray="3,2.5"' +
+                ' vector-effect="non-scaling-stroke"/>';
+      }
+      // Cursor value, not live value, while the pointer is over the plot. Nearest bucket
+      // rather than an interpolation: a bucket IS a pixel, so the nearest one is what is
+      // under the cursor, and inventing a value between two samples would be a reading the
+      // plant never produced.
+      var val = mmB.length ? mmB[mmB.length - 1].v : seriesVal(ser, chartBuf[chartBuf.length - 1], sideSolid(sideOf(ser)));
+      var dval = dashB && dashB.length ? dashB[dashB.length - 1].v : null;
+      var atCursor = false;
+      if (chartCursor.frac != null && mmB.length) {
+        var tc = t0 + chartCursor.frac * span;
+        var best = null, bd = Infinity;
+        for (var ci = 0; ci < mmB.length; ci++) {
+          var d = Math.abs(mmB[ci].t - tc);
+          if (d < bd) { bd = d; best = mmB[ci]; }
+        }
+        if (best) { val = best.v; atCursor = true; }
+        // The twin follows the SAME cursor — a shared cursor that moved one of two traces
+        // in one lane would be worse than none.
+        if (dashB && dashB.length) {
+          var db = null, dd = Infinity;
+          for (var di = 0; di < dashB.length; di++) {
+            var d2 = Math.abs(dashB[di].t - tc);
+            if (d2 < dd) { dd = d2; db = dashB[di]; }
+          }
+          if (db) dval = db.v;
+        }
+      }
+      lastY.push({ ser: ser, y: ly, hot: hot, val: val });
+      // In-lane chrome: NAME top-left, RANGE top-right, VALUE in the fixed column. Each
+      // lane prints its current range, so no lane's amplitude is ambiguous — which is what
+      // makes per-lane autoscale honest. Emitted as HTML, not SVG: see laneBand.
+      laneChrome.push({ ser: ser, top: bnd.top / H * 100, mid: (bnd.top + bnd.bot) / 2 / H * 100,
+                        lo: lo, hi: hi, val: val, dval: dval, hot: hot, cursor: atCursor });
     });
-    // Rewind-pick mode: mark every checkpoint inside the window as a jump target.
+    // The demoted channels, as numeric rows under the lanes. ~18 px each against a 44-56 px
+    // lane, so a stack that cannot hold another trace can still hold several more numbers.
+    numeric.forEach(function (ser) {
+      var last = chartBuf[chartBuf.length - 1], sd = sideOf(ser), dsd = sideDashed(sd);
+      // A demoted 'both' channel keeps BOTH figures. It is the same pinned channel in a
+      // different rendering, so dropping the second side here would silently answer the
+      // player's comparison with one number the moment the stack ran out of lanes.
+      numRows.push({ ser: ser, val: seriesVal(ser, last, sideSolid(sd)),
+                     dval: dsd ? seriesVal(ser, last, dsd) : null, hot: seriesAlarmed(ser) });
+    });
+    // Rewind-pick mode: mark every checkpoint inside the window as a jump target. FULL
+    // HEIGHT across every lane, which is also the tier-1 event style #442 will use — a
+    // plant-defining moment crosses the whole stack by construction.
     if (ui.rewindPick && service && service.checkpoints) {
       service.checkpoints.forEach(function (cp) {
         var t = cp.metadata.sim_time;
@@ -4025,8 +4867,53 @@
                 '<circle cx="' + x + '" cy="6" r="2.5" fill="#7ab0ff"/>';
       });
     }
+    // TIER-1 EVENTS: full height across every lane (#442, spec §8). A scram, a turbine trip,
+    // a safety injection or a mode change is plant-defining — it is context for every lane
+    // at once, so it crosses all of them. Tier 2 goes in the ribbon below; tier 3 is off.
+    var soe = (RD.Events && RD.Events.inWindow(t0, t1)) || [];
+    soe.forEach(function (ev) {
+      if (ev.tier !== 1) return;
+      var x = ((ev.t - t0) / span * PW).toFixed(1);
+      var col = ev.actor === 'operator' ? '#5BB3C4' : '#D9A441';
+      html += '<line class="soe-t1" x1="' + x + '" y1="0" x2="' + x + '" y2="' + H +
+              '" stroke="' + col + '" stroke-width="1" stroke-opacity="0.55"' +
+              (ev.actor === 'operator' ? ' stroke-dasharray="2,2"' : '') +
+              ' vector-effect="non-scaling-stroke"/>';
+    });
+    /* WHERE THE RUN BEGAN — sim time zero *(OWNER, 2026-08-11: "The strip chart should have
+     * a line to show the start of the sim at time=0.")*.
+     *
+     * IT IS A REAL BOUNDARY, NOT THE LEFT EDGE. The chart opens already holding 30 minutes
+     * of trend, because a preset start is preseeded with a genuinely-run trace laid at
+     * NEGATIVE sim time (applyPreseed: rows land on [t0 − CHART_RECORD_SEC, t0)). Measured
+     * at T+10 s on a fresh load with the default 5-minute window: 290 s of the plot is that
+     * synthetic history and 10 s is the run you are driving, with nothing marking the join.
+     * This line is the join.
+     *
+     * Distinct from every other full-height mark by construction: checkpoints are blue
+     * `3,3`, tier-1 events amber (plant) or cyan `2,2` (operator), the cursor solid white.
+     * This is a neutral slate `6,3` — it is not an event and nobody did it, it is where the
+     * record starts. Drawn UNDER the cursor so hovering still reads cleanly over it.
+     *
+     * Only when zero is actually in frame. Past the first `window` seconds of a run it
+     * scrolls off the left, which is correct — it is a moment, not a permanent axis. */
+    var zeroPct = null;
+    if (t0 <= 0 && t1 >= 0) {
+      var zx = ((0 - t0) / span * PW);
+      zeroPct = zx / W * 100;
+      html += '<line class="run-start" x1="' + zx.toFixed(1) + '" y1="0" x2="' + zx.toFixed(1) +
+              '" y2="' + H + '" stroke="#8fa0ae" stroke-width="1" stroke-opacity="0.55"' +
+              ' stroke-dasharray="6,3" vector-effect="non-scaling-stroke"/>';
+    }
+    // ONE line across every lane. Lanes are pixel-aligned on x by construction — they share
+    // this viewBox and the same t0/span — so a single full-height line IS the shared cursor.
+    if (chartCursor.frac != null) {
+      var cx = (chartCursor.frac * PW).toFixed(1);
+      html += '<line class="cursor-line" x1="' + cx + '" y1="0" x2="' + cx + '" y2="' + H +
+              '" stroke="rgba(255,255,255,.30)" stroke-width="1" vector-effect="non-scaling-stroke"/>';
+    }
     setHTML(svg, html);
-    drawFloats(lastY, H);
+    drawLanes(laneChrome, numRows, zeroPct);
     // low-profile x-axis
     // Seconds read fine over a 30-min window; a rewind-pick span can be many hours
     // of sim, where "−72000s" is unreadable. Switch to h:mm:ss past ten minutes.
@@ -4051,49 +4938,370 @@
       axHtml += '<span>' + (relR === 0 ? '0' : '−' + (axLong ? hms(relR) : relR + 's')) + '</span>';
     }
     setHTML($('chartXAxis'), axHtml);
-    txt($('chartWindowLbl'), '−' + (span > 3600 ? hms(span) : hms(span).slice(3)));
+    // (`chartWindowLbl` went with the scrubber strip on 2026-08-11 — it printed the window
+    //  span a second time, one line under the x-axis that already ends in that number.)
+    drawSoe(soe, t0, span);
   }
 
-  // Live floating value labels at the right edge, one per trace, color-coded and
-  // spread vertically so they never overlap (move with each line).
-  var _cfloatH = 0;   // measured chip height in px, cached after the first paint
-  function drawFloats(items, H) {
-    var floats = $('chartFloats'); if (!floats) return;
-    if (!items.length) { floats.innerHTML = ''; return; }
-    // The minimum separation has to come from the chip's REAL height. It was a fixed 11 %,
-    // which on the shipped 174 px gutter is 19.1 px against a 21 px chip — so any time two
-    // traces came close enough for the spread rule to fire, the chips it had just
-    // "separated" still overlapped by a couple of pixels and the numbers were unreadable.
-    // Measured once from the DOM and cached; the fallback matches the current styling.
-    var hostH = floats.clientHeight || H || 1;
-    var chipH = _cfloatH || 21;
-    var GAP = Math.min(45, ((chipH + 3) / hostH) * 100);   // percent, always > one chip
-    // `top` positions the chip's TOP edge, so the last slot has to leave room for its height
-    // or the bottom chip hangs out of the gutter.
-    var MIN = 0, MAX = Math.max(MIN, 100 - (chipH / hostH) * 100);
-    items.forEach(function (it) { it.pct = Math.max(MIN, Math.min(MAX, it.y / H * 100)); });
-    items.sort(function (a, b) { return a.pct - b.pct; });
-    for (var i = 1; i < items.length; i++) if (items[i].pct < items[i - 1].pct + GAP) items[i].pct = items[i - 1].pct + GAP;
-    // Shift the WHOLE column by ONE offset. The old version clamped each item with
-    // Math.max(2, …) while pushing up, which could collapse the gap between the top two
-    // items — i.e. the overflow fix could itself create the overlap it was preventing.
-    var overflow = items[items.length - 1].pct - MAX;
-    if (overflow > 0) for (var j = 0; j < items.length; j++) items[j].pct -= overflow;
-    // If that pushed the top out, the column genuinely does not fit — distribute evenly so
-    // the chips stay stacked and legible rather than piling up against the top edge.
-    if (items[0].pct < MIN) {
-      var step = (MAX - MIN) / Math.max(1, items.length - 1);
-      for (var k = 0; k < items.length; k++) items[k].pct = MIN + k * step;
-    }
-    var floatHtml = items.map(function (it) {
-      var col = it.hot ? lighten(it.ser.c) : it.ser.c;
-      return '<span class="cfloat" style="top:' + it.pct.toFixed(1) + '%;color:' + col + '">' + it.ser.fmt(it.val) + '</span>';
+  /* THE SOE RIBBON (#442, spec §8) — tier-2 component events on the shared time axis.
+   *
+   * CLUSTERING IS THE FEATURE, not a refinement. A trip cascade fires a dozen events inside
+   * two seconds — turbine trip, reactor trip, MSIV shut, AFW start — and in a 30-minute
+   * window that is one pixel. Drawn individually they overlap into a single illegible mark
+   * that says "something happened" and nothing else. Collapsed into a counted badge they say
+   * "twelve things happened here", which is the readable form of the same truth, and they
+   * separate on their own as the window narrows. This is the detail that decides whether the
+   * feature survives a real transient.
+   *
+   * OPERATOR ACTIONS ARE VISUALLY DISTINCT FROM PLANT RESPONSES. The spec calls this the most
+   * valuable teaching distinction the timeline can carry: a student reads their own hand in
+   * the record and sees cause and effect directly rather than being told about it afterwards.
+   * Cyan for what you did, amber for what the plant did — and the actor is stamped at
+   * emission (#437), never inferred here from proximity.
+   */
+  var CLUSTER_PX = 6;                    // marks closer than this collapse into one badge
+  function drawSoe(events, t0, span) {
+    var host = $('soeRibbon'); if (!host) return;
+    var t2 = events.filter(function (e) { return e.tier === 2; });
+    if (!t2.length) { setHTML(host, ''); return; }
+    var w = host.clientWidth || 400;
+    var plotW = w * CHART_PLOT_FRAC;
+    var clusters = [], cur = null;
+    t2.forEach(function (ev) {
+      var x = (ev.t - t0) / span * plotW;
+      if (cur && x - cur.x <= CLUSTER_PX) { cur.n++; cur.evs.push(ev); if (ev.actor === 'operator') cur.op = true; }
+      else { cur = { x: x, n: 1, evs: [ev], op: ev.actor === 'operator' }; clusters.push(cur); }
+    });
+    setHTML(host, clusters.map(function (c) {
+      var label = c.evs.slice(0, 6).map(function (e) { return soeLabel(e); }).join(', ') +
+                  (c.evs.length > 6 ? ' +' + (c.evs.length - 6) + ' more' : '');
+      var pct = (c.x / w * 100).toFixed(2);
+      // The cluster's component ref is the first one IN IT that has a ref, not the first
+      // event's. A trip cascade leads with alarms, which carry none — taking evs[0].ref
+      // blindly meant a badge containing a PORV open and an MSIV shut pointed at nothing,
+      // and the highlight bus had nothing to light. Measured: every marker after a scram
+      // came back with ref=null.
+      var ref = null;
+      for (var ri = 0; ri < c.evs.length && !ref; ri++) ref = c.evs[ri].ref || null;
+      return '<span class="soe-mark' + (c.op ? ' op' : '') + (c.n > 1 ? ' many' : '') +
+             '" style="left:' + pct + '%" title="' + esc(label) + '"' +
+             ' data-soe-t="' + c.evs[0].t + '"' +
+             (ref ? ' data-soe-ref="' + esc(ref) + '"' : '') +
+             '>' + (c.n > 1 ? c.n : '') + '</span>';
+    }).join(''));
+  }
+  // Event type -> the words an operator would use. Falls back to the raw type rather than
+  // hiding an event nobody has named yet — an unlabelled mark still says WHEN.
+  var SOE_WORDS = {
+    scram: 'Reactor trip', turbine_trip: 'Turbine trip', safety_injection: 'Safety injection',
+    station_blackout: 'Station blackout', ac_restored: 'AC restored', mode_change: 'Mode change',
+    accumulator_discharge: 'Accumulators discharging', hydrogen_burn: 'Hydrogen burn',
+    porv_open: 'PORV open', porv_shut: 'PORV shut', msiv_shut: 'MSIV shut',
+    rcp_start: 'RCP start', rcp_stop: 'RCP stop', afw_start: 'AFW start', afw_stop: 'AFW stop',
+    rhr_in_service: 'RHR in service', rhr_secured: 'RHR secured',
+    ctmt_spray_start: 'Containment spray', ctmt_spray_stop: 'Containment spray off',
+    condenser_lost: 'Condenser lost', alarm: 'Alarm', alarm_clear: 'Alarm clear'
+  };
+  function soeLabel(ev) {
+    var w = SOE_WORDS[ev.type] || (ev.type.indexOf('cmd_') === 0 ? ev.type.slice(4).replace(/_/g, ' ') : ev.type);
+    if (ev.type === 'alarm' && ev.detail && ev.detail.id) w = 'Alarm: ' + ev.detail.id;
+    if (ev.type === 'mode_change' && ev.detail) w = 'Mode ' + ev.detail.from + ' → ' + ev.detail.to;
+    return hms(Math.max(0, ev.t)) + '  ' + w + (ev.actor === 'operator' ? '  (you)' : '');
+  }
+
+  /* LANE CHROME — name, range and value, as HTML over the SVG (#440, spec §8).
+   *
+   * This replaces the floating value chips and their collision-spread. With traces
+   * overlaid in one plot, chips had to be pushed apart so two lines close together did not
+   * stack their numbers; there was a whole spreading algorithm for it, including a
+   * measured chip height because a fixed percentage separated chips that still overlapped.
+   * With one lane per indication the value belongs at the LANE's centre and two values can
+   * never collide, so the algorithm is not simplified — it is unnecessary.
+   *
+   * FIXED-WIDTH NUMERIC COLUMN, TABULAR FIGURES (in shell.css). Otherwise values shift
+   * horizontally as digit counts change and the whole stack jitters; on a display watched
+   * for an hour that is worse than it sounds.
+   *
+   * Labels and values live INSIDE the lane, and the time axis is drawn once for the stack
+   * — no title row, no per-lane axis, no legend block with swatches. Those are the
+   * STRUCTURAL savings the ~220 px budget is made of; trimming padding alone does not get
+   * there. The measured geometry is ui/test_panel/lane_reference.html.
+   */
+  function drawLanes(lanes, numRows, zeroPct) {
+    var host = $('chartFloats'); if (!host) return;
+    numRows = numRows || [];
+    if (!lanes.length && !numRows.length) { setHTML(host, ''); return; }
+    /* The run-start line's LABEL. Without it the line is one more unexplained vertical among
+     * checkpoints, tier-1 events and the cursor — and the x-axis cannot disambiguate it,
+     * because those ticks read seconds BEFORE NOW ("−300s … 0"), so the axis's own "0" is the
+     * right-hand edge and means the opposite of this mark. HTML, in the floats layer, for the
+     * reason stated on drawLanes: the SVG is preserveAspectRatio="none" over a fixed 400x120
+     * box, so any <text> in it is squashed non-uniformly with the panel. */
+    // …and it is DROPPED when channels have been demoted to numeric rows, because those
+    // occupy the bottom strip it would otherwise sit in. The LINE still draws — only its
+    // label goes, which is the right half to lose: the mark stays, the collision does not.
+    var zeroTag = (zeroPct == null || numRows.length) ? '' :
+      '<div class="run-start-tag" style="left:' + zeroPct.toFixed(2) + '%">T+0</div>';
+    var h = lanes.map(function (L) {
+      var s = L.ser;
+      /* A 'both' lane prints BOTH readings in the one value column — the instrument first
+       * and the physics under it, styled to match its dashed trace. The pair is the point
+       * of the setting: overlapping traces tell you the two agree, but only the two numbers
+       * tell you BY HOW MUCH, which is the question #449 raised (three steady-state
+       * disagreements 20-400x larger than instrument lag). */
+      return '<div class="lane-chrome' + (L.hot ? ' hot' : '') + '" data-ser="' + esc(s.id) +
+               '" style="top:' + L.top.toFixed(2) + '%">' +
+               '<span class="lane-name" style="color:' + s.c + '">' + mesc(s.label) + '</span>' +
+               '<span class="lane-rng">' + mesc(s.fmt(L.lo)) + ' – ' + mesc(s.fmt(L.hi)) + '</span>' +
+             '</div>' +
+             '<div class="lane-value' + (L.hot ? ' hot' : '') + (L.cursor ? ' at-cursor' : '') +
+               (L.dval == null ? '' : ' paired') + '" style="top:' + L.mid.toFixed(2) +
+               '%;--cf:' + s.c + '">' + mesc(L.val == null ? '—' : s.fmt(L.val)) +
+               (L.dval == null ? '' : '<span class="lane-value-phys">' + mesc(s.fmt(L.dval)) + '</span>') +
+             '</div>';
     }).join('');
-    setHTML(floats, floatHtml);
-    if (!_cfloatH) {
-      var first = floats.firstChild;
-      if (first && first.offsetHeight) _cfloatH = first.offsetHeight;
+    // The numeric rows sit under the lanes in their own strip. They are the SAME pinned
+    // list rendered differently, not a second feature — which is why they share this host
+    // and the value column's alignment.
+    if (numRows.length) {
+      h += '<div class="lane-nums">' + numRows.map(function (R) {
+        return '<div class="lane-num' + (R.hot ? ' hot' : '') + '" style="--cf:' + R.ser.c + '">' +
+                 '<span class="lane-name" style="color:' + R.ser.c + '">' + mesc(R.ser.label) + '</span>' +
+                 '<span class="lane-numv">' + mesc(R.val == null ? '—' : R.ser.fmt(R.val)) +
+                   (R.dval == null ? '' : ' <span class="lane-value-phys">' + mesc(R.ser.fmt(R.dval)) + '</span>') +
+                 '</span>' +
+               '</div>';
+      }).join('') + '</div>';
     }
+    setHTML(host, h + zeroTag);
+  }
+
+  /* ==================================== CHART SETTINGS WINDOW (#454, 2026-08-11) ========
+   * *(OWNER DIRECTIVE: "The strip chart option menu should be like the plant selection
+   * menu. It should be large and pause the sim. … It should list all the indications you
+   * can put on the chart with their current values. You should be able to choose the
+   * indication or the physics value for each. Put a radial next to each value to let the
+   * user choose so they could even choose both the indication and physics if they want.")*
+   *
+   * IT PAUSES, reversing the anchored popover this replaces. That panel argued you change
+   * how you are watching a transient WHILE it runs; the argument does not survive the
+   * change of size, because a full-screen overlay covers the board and that is precisely
+   * the case openModal's hold exists for. Routing through openModal/closeModal also means
+   * the resume is correct for free: closing releases only the `modal` hold, so a plant the
+   * player had already stopped with ⏸ stays stopped.
+   *
+   * ONE SOURCE OF TRUTH, still. `ui.series` is written here exactly as the Indications tab
+   * writes it, and syncPlotCells() carries the change back — the side is the only NEW
+   * state, and it lives in `ui.seriesSide` where sideOf() reads it.
+   *
+   * Module level, not inside bindUI(): render() has to reach renderChartSettings the same
+   * way it reaches renderIndications. Only the listeners live in bindUI. */
+  var csRows = [];                 // { ser, row, iv, pv, ib, pb } — node refs, built once
+  function csOpen() { return !$('chartOverlay').hidden; }
+  function buildChartSettings() {
+    var list = $('coList'); if (!list) return;
+    csRows = [];
+    // Mirror the live window ladder rather than hard-coding rungs: the labels change with
+    // time acceleration (syncChartWindows rewrites them), so a static copy would go stale.
+    var src = $('graphWindow'), dst = $('chartOptsWin');
+    if (src && dst) dst.innerHTML = src.innerHTML;
+    var soe = $('coSoe'); if (soe) soe.checked = !ui.soeOff;
+    var grp = null, html = '';
+    prof().series.forEach(function (ser) {
+      if (ser.grp !== grp) {
+        if (grp !== null) html += '</div>';
+        grp = ser.grp;
+        html += '<div class="cs-grp"><h5>' + esc(grp || '') + '</h5>';
+      }
+      var av = sideAvail(ser);
+      // A side this series does not have gets a DISABLED selector and a dash, not a
+      // missing cell: the column has to stay readable down the list, and "this channel
+      // has no instrument" is itself worth seeing — it is how the physics-only quantities
+      // (decay heat, void, reactivity) announce themselves.
+      html += '<div class="cs-row" data-cs="' + esc(ser.id) +
+              '" data-cs-label="' + esc((ser.label || '').toLowerCase()) + '">' +
+              '<span class="cs-name">' + esc(ser.label) + '</span>' +
+              csPick(ser, 'ind', av.ind) + csPick(ser, 'phys', av.phys) +
+              '</div>';
+    });
+    if (grp !== null) html += '</div>';
+    setHTML(list, html);
+    list.querySelectorAll('.cs-row').forEach(function (row) {
+      var id = row.getAttribute('data-cs'), ser = seriesById(id);
+      if (!ser) return;
+      csRows.push({ ser: ser, row: row,
+        ib: row.querySelector('[data-cs-side="ind"]'), pb: row.querySelector('[data-cs-side="phys"]'),
+        iv: row.querySelector('[data-cs-val="ind"]'), pv: row.querySelector('[data-cs-val="phys"]') });
+    });
+    syncChartSettings();
+    applyCsFilter();
+    if (latest) renderChartSettings(latest);
+  }
+  function csPick(ser, side, avail) {
+    return '<label class="cs-pick' + (avail ? '' : ' na') + '">' +
+           '<input type="checkbox" data-cs-side="' + side + '"' + (avail ? '' : ' disabled') + '>' +
+           '<span class="cs-val" data-cs-val="' + side + '">—</span></label>';
+  }
+  /* The selectors are DERIVED from (ui.series, ui.seriesSide) through sideOf, never held
+   * separately. That is what keeps this window agreeing with the Indications tab's plain
+   * tickbox: ticking a channel there gives it its default side, and this reads that back
+   * rather than remembering something of its own. */
+  function syncChartSettings() {
+    csRows.forEach(function (r) {
+      var side = sideOf(r.ser);
+      var on = { ind: side === 'ind' || side === 'both', phys: side === 'phys' || side === 'both' };
+      if (r.ib) r.ib.checked = !!on.ind;
+      if (r.pb) r.pb.checked = !!on.phys;
+      r.row.classList.toggle('on', !!side);
+    });
+    var n = Object.keys(ui.series).filter(function (k) { return ui.series[k]; }).length;
+    txt($('coCount'), n + (n === 1 ? ' channel plotted' : ' channels plotted'));
+  }
+  /* THE VALUES, LIVE — requirement 3. They come from the Indications tab's OWN functions
+   * rather than from anything written here, because "matches the Indications tab" is the
+   * requirement and a second formatter is how two surfaces start disagreeing about the
+   * same channel. seriesLive() reads the instrument (or the demand, or truth where a
+   * series has nothing else); seriesTrue() prefers the curated physics prose. */
+  function renderChartSettings(s) {
+    if (!csRows.length || !csOpen()) return;
+    csRows.forEach(function (r) {
+      var av = sideAvail(r.ser);
+      // `title` as well as text: a curated physics reading can be two facts long and the
+      // column ellipsises the tail, so hovering has to be able to give it back.
+      if (r.iv && av.ind) {
+        var iv = seriesLive(r.ser, s);
+        var ishown = (iv == null || /NaN|Infinity/.test(iv)) ? '—' : iv;
+        if (r.iv.textContent !== ishown) { r.iv.textContent = ishown; r.iv.title = ishown; }
+      }
+      if (r.pv && av.phys) {
+        var pv = seriesTrue({ ser: r.ser, phys: indPhysIdx[r.ser.id] || null }, s);
+        var pshown = (pv == null || /NaN|Infinity/.test(pv)) ? '—' : pv;
+        if (r.pv.textContent !== pshown) { r.pv.textContent = pshown; r.pv.title = pshown; }
+      }
+    });
+  }
+  function applyCsFilter() {
+    var q = (($('coFilter') || {}).value || '').trim().toLowerCase();
+    var list = $('coList'); if (!list) return;
+    var rows = list.querySelectorAll('[data-cs-label]');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].style.display = (!q || rows[i].getAttribute('data-cs-label').indexOf(q) !== -1) ? '' : 'none';
+    }
+    // A group whose every row is filtered out should not leave its heading behind.
+    var grps = list.querySelectorAll('.cs-grp');
+    for (var g = 0; g < grps.length; g++) {
+      var any = grps[g].querySelectorAll('[data-cs-label]'), vis = 0;
+      for (var k = 0; k < any.length; k++) if (any[k].style.display !== 'none') vis++;
+      grps[g].style.display = vis ? '' : 'none';
+    }
+  }
+  function openChartSettings() { buildChartSettings(); openModal('chartOverlay'); }
+  function closeChartSettings() { closeModal('chartOverlay'); }
+
+  // ============================================================ pause / resume
+  /* ONE way to stop the plant, and it remembers WHY (#439, spec §1).
+   *
+   * There used to be four copies of `service.stop(); playBtn.textContent='▶';
+   * playBtn.classList.add('paused')` — scenario start, rewind pick, plant switch and
+   * reset — and every new pausing surface was a fifth. Worse, none of them recorded a
+   * REASON, and two downstream rules need one: a modal must not resume a plant the
+   * player had already paused by hand, and the chart must not rescale during rewind
+   * review (#441) — both are questions about why we are stopped, not whether.
+   *
+   * CLOSING A MODAL NEVER RESUMES (spec §13). `clearPause` drops the reason and leaves
+   * the plant stopped; the play button is the only thing that starts it. That is
+   * deliberate: coming back from Settings into a running plant you stopped looking at
+   * is how an unwatched transient happens, and the button is one click away.
+   */
+  var pauseWhy = {};                     // reason -> true, for anything currently holding the plant
+  function syncPlayBtn() {
+    var b = $('playBtn'); if (!b) return;
+    var run = !!service.running;
+    b.textContent = run ? '⏸' : '▶';
+    b.classList.toggle('paused', !run);
+    if (run) b.classList.remove('attention');
+    /* THE BOARD HAS TO BE TOLD, because pausing is exactly the moment it stops being
+     * told anything *(OWNER DIRECTIVE, 2026-08-11: "All animations should stop when the
+     * sim is paused.")*.
+     *
+     * The freeze used to ride on render(), reading `metadata.running` off the snapshot.
+     * But pausing STOPS THE BROADCAST, so no snapshot arrives and render() never runs:
+     * the board kept its last running frame and animated on. MEASURED, paused: 106 of
+     * 112 running animations, 105 of them inside the board stage that `.bd-frozen` is
+     * supposed to cover — the rule was right and nothing ever added the class. The one
+     * place it appeared to work was startup, where an unrelated first paint happened to
+     * carry running:false.
+     *
+     * A pause is a UI event, not a plant event, so it is pushed here rather than waited
+     * for. render() still sets it too — that path is correct when a snapshot does arrive. */
+    try {
+      var B = window.RD && RD.PwrBoard;
+      if (B && B.setRunning && B.isMounted && B.isMounted()) B.setRunning(run);
+    } catch (e) {}
+  }
+  function pauseSim(reason) {
+    pauseWhy[reason || 'user'] = true;
+    if (service.running) service.stop();
+    syncPlayBtn();
+  }
+  function clearPause(reason) { delete pauseWhy[reason || 'user']; }   // NOT a resume — see above
+  function pausedFor(reason) { return !!pauseWhy[reason]; }
+  function resumeSim() {
+    pauseWhy = {};                       // the player said go: every hold is released
+    if (!service.running) service.start();
+    syncPlayBtn();
+  }
+  /* MODAL class (spec §1): covers the board, so it pauses. One reason for all of them —
+   * they are mutually exclusive in practice, and since closing never resumes, a shared
+   * key cannot leak a hold. Use these instead of touching `.hidden` directly, or the
+   * next modal added will be the one that forgets. */
+  function openModal(id) {
+    var wasRunning = service.running;
+    pauseSim('modal');
+    // Repaint once on the way down, or the board behind the modal keeps the last
+    // running frame and the veil that says PAUSED never appears — which is the only
+    // cue, when the modal closes, that the plant is stopped and waiting for ▶.
+    if (wasRunning) { latest = service.assembleSnapshot(); render(latest); }
+    $(id).hidden = false;
+  }
+  /* Closing releases THIS hold, and resumes only if no other hold is left
+   * *(OWNER DIRECTIVE, 2026-08-11: "Sim should start running not paused.")*.
+   *
+   * This reverses the old "closing never resumes" rule, which existed to protect a
+   * paused-at-start plant that no longer exists. The reversal is SAFE BECAUSE THE HOLDS
+   * ARE NAMED: an explicit ▶/⏸ press sets `user`, a modal sets `modal`, so closing a
+   * modal over a plant the player deliberately paused finds `user` still standing and
+   * leaves it stopped. A single boolean could not tell those apart, which is why the
+   * reason map is what makes this rule expressible at all. */
+  function closeModal(id) {
+    $(id).hidden = true;
+    releaseHold('modal');
+  }
+  /* RELEASE A HOLD AND START IF NOTHING ELSE IS STANDING — closeModal's tail, extracted
+   * *(OWNER, 2026-08-11: "When i close the plant menu after starting the sim the sim should
+   * start playing. it currently starts paused.")*.
+   *
+   * THE HOLDS SPLIT IN TWO AND ONLY ONE KIND WAS EVER RELEASED. `modal`, `plant_change` and
+   * `reset` are TRANSIENT and mechanical — they cover a window being up or a rebuild being
+   * half done, and they should end when that does. `user` and `content` are DELIBERATE:
+   * someone (the player, or a scenario) decided the plant should be stopped, and only they
+   * may lift it. Only `modal` was ever released; the other two were taken with pauseSim()
+   * and then cleared by nothing except the ▶ button, which wipes the whole map.
+   * (`rewind` is left on plain clearPause deliberately — cancelling the picker returning you
+   * to a running plant is a separate behaviour question nobody has asked for.)
+   *
+   * That is the reported bug, and it is an ORDERING one. Free Play runs
+   * `closeMissionSelect(); switchEngine(...)`: the close correctly releases `modal` and
+   * starts the plant, and the switch immediately takes `plant_change` for the rebuild and
+   * keeps it for ever. The plant ran for a few milliseconds and then stopped for good, so
+   * the modal logic looked broken when it was working perfectly.
+   *
+   * Extracted rather than copied to the three call sites: a hold whose release is spelled
+   * out at each site is a hold that will be taken somewhere new and not released, which is
+   * exactly how this one got here. */
+  function releaseHold(reason) {
+    clearPause(reason);
+    if (!Object.keys(pauseWhy).length && !service.running) { service.start(); syncPlayBtn(); }
   }
 
   // ============================================================ commands
@@ -4102,8 +5310,11 @@
     // release the transcript's reading dwell so the exchange answers promptly.
     if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
     var r = service.handleCommand(c);
-    diag.command(latest && latest.metadata ? latest.metadata.sim_time : 0, c,
-      !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
+    var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
+    diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
+    // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
+    // this is the player acting. Blocked commands are dropped inside command().
+    if (RD.Events) RD.Events.command(cmdT, c, !!(r && r.type === 'blocked') || !!(r && r.type === 'error'));
     TEL.command(c, !!(r && r.type === 'blocked'));
     // The command was blocked, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
@@ -4139,10 +5350,10 @@
     return v;
   }
 
-  // ============================================================ Automate tab
-  // A pure face over snapshot.automation (the in-stack channel runtime in the
-  // Control Layer): toggles and setpoint edits send set_auto_channel /
-  // set_auto_setpoint down the stack; readouts render from each broadcast.
+  // ====================================================== automation-channel readers
+  // Small readers over snapshot.automation (the in-stack channel runtime in the Control
+  // Layer). Still used by the 1/M panel and the rod AUTO/MANUAL actions; what is gone is
+  // the tab that was the only thing they were written for — see below.
   function autoSnap() { return latest || service.assembleSnapshot(); }
   function autoChans(s) { return (s && s.automation && s.automation.channels) || []; }
   function autoChan(s, id) {
@@ -4151,116 +5362,16 @@
     return null;
   }
 
-  function buildAutomate() {
-    var list = $('autoList'), master = $('autoMaster');
-    if (!list) return;
-    var chans = autoChans(autoSnap());
-    master.innerHTML =
-      '<span class="k">Automatic control</span>' +
-      '<span><button class="btn" data-autoall="on" data-scanner-hint="All Auto — engages every automation channel for this plant (setpoints capture the current readings).">All auto</button> ' +
-      '<button class="btn" data-autoall="off" data-scanner-hint="All Manual — disengages every automation channel; each control freezes where automation left it.">All manual</button></span>';
-    var html = '', lastGroup = null;
-    chans.forEach(function (c) {
-      if (c.group !== lastGroup) { html += '<div class="g-section-title" style="margin-top:10px">' + mesc(c.group) + '</div>'; lastGroup = c.group; }
-      html += '<div class="auto-row" data-autorow="' + c.id + '" data-scanner-hint="' + esc(c.label + ' — ' + c.hint) + '">' +
-        '<button class="auto-tog" data-autotog="' + c.id + '">MAN</button>' +
-        '<div class="auto-main"><div class="auto-name">' + mesc(c.label) + '</div>' +
-        '<div class="auto-read mono" data-autoread="' + c.id + '">—</div></div>';
-      if (c.setpoint_meta) {
-        html += '<div class="auto-spbox"><span class="auto-splbl">SP</span>' +
-          '<input class="num-input mono auto-sp" data-autosp="' + c.id + '" type="number" step="' + (c.setpoint_meta.step || 1) + '" disabled>' +
-          '<span class="auto-spunit" data-autospu="' + c.id + '"></span></div>';
-      }
-      html += '</div>';
-    });
-    list.innerHTML = html;
-    if (latest) renderAutomate(latest);
-  }
-
-  function autoSpUnit(c) { return c.setpoint_meta ? (c.setpoint_meta.dim ? unit(c.setpoint_meta.dim) : (c.setpoint_meta.unit || '')) : ''; }
-  function autoFmtPv(c, v, dp) {
-    if (v == null || !isFinite(v)) return '—';
-    var dim = c.setpoint_meta && c.setpoint_meta.dim;
-    return (dim ? conv(v, dim) : v).toFixed(dp != null ? dp : (c.setpoint_meta ? c.setpoint_meta.dp : 0));
-  }
-
-  function renderAutomate(s) {
-    var list = $('autoList');
-    if (!list || !list.firstChild) return;
-    // Sync any AUTO/MAN mirror segs on the plant display (RBMK AR card) to the
-    // rod channel's true state — the seg is a second face of the same channel.
-    // This half runs even when the pane is hidden, ON PURPOSE: the segs it writes are
-    // on the PLANT DISPLAY, not in the pane, so they are visible whatever tab is up.
-    var arc = autoChan(s, 'rods_power');
-    if (arc) {
-      var on = arc.engaged;
-      document.querySelectorAll('[data-arsync]').forEach(function (b) {
-        b.classList.toggle('on', (b.getAttribute('data-arsync') === 'on') === on);
-        b.classList.toggle('run', b.getAttribute('data-arsync') === 'on' && on);
-      });
-    }
-    // The row updates below are all INSIDE the Automate pane, so they are skipped while
-    // it is not on screen — same test renderPhysics has used since the Physics tab was
-    // built. Nothing latches here: every row is recomputed from the snapshot, so opening
-    // the tab paints current values on the next broadcast.
-    if (!paneVisible('automate')) return;
-    autoChans(s).forEach(function (c) {
-      var on = c.engaged;
-      var row = list.querySelector('[data-autorow="' + c.id + '"]'); if (!row) return;
-      row.classList.toggle('on', on);
-      var tog = row.querySelector('[data-autotog]');
-      tog.textContent = on ? 'AUTO' : 'MAN';
-      tog.classList.toggle('on', on);
-      var read = row.querySelector('[data-autoread]');
-      if (c.kind === 'mode') {
-        read.textContent = on ? 'engaged (plant-side control)' : 'manual';
-      } else {
-        var txt = c.kind === 'bang'
-          ? 'rods ' + autoFmtPv(c, c.pv, 0) + ' % out'
-          : autoFmtPv(c, c.pv) + (on && c.setpoint != null ? ' → ' + autoFmtPv(c, c.setpoint) : '') + ' ' + autoSpUnit(c);
-        if (on && c.note) txt += ' · ' + c.note;
-        read.textContent = txt;
-      }
-      if (c.setpoint_meta) {
-        var inp = row.querySelector('[data-autosp]'), un = row.querySelector('[data-autospu]');
-        inp.disabled = !on;
-        un.textContent = autoSpUnit(c);
-        if (document.activeElement !== inp) {
-          inp.value = (on && c.setpoint != null) ? autoFmtPv(c, c.setpoint) : '';
-          // display-side bounds so the browser spinner respects the channel range
-          inp.min = autoFmtPv(c, c.setpoint_meta.min); inp.max = autoFmtPv(c, c.setpoint_meta.max);
-        }
-      }
-    });
-  }
-
-  function bindAutomate() {
-    var pane = document.querySelector('[data-pane="automate"]');
-    if (!pane) return;
-    pane.addEventListener('click', function (e) {
-      var all = e.target.closest('[data-autoall]');
-      if (all) {
-        cmd({ action: 'set_auto_channel', channel_id: 'all', engaged: all.getAttribute('data-autoall') === 'on' });
-        renderAutomate(service.assembleSnapshot()); return;
-      }
-      var b = e.target.closest('[data-autotog]');
-      if (b) {
-        var id = b.getAttribute('data-autotog');
-        var c = autoChan(autoSnap(), id); if (!c) return;
-        cmd({ action: 'set_auto_channel', channel_id: id, engaged: !c.engaged });
-        renderAutomate(service.assembleSnapshot());
-      }
-    });
-    pane.addEventListener('change', function (e) {
-      var inp = e.target.closest('[data-autosp]');
-      if (!inp) return;
-      var id = inp.getAttribute('data-autosp'), c = autoChan(autoSnap(), id); if (!c) return;
-      var v = parseFloat(inp.value);
-      if (isNaN(v)) return;
-      cmd({ action: 'set_auto_setpoint', channel_id: id, value: (c.setpoint_meta && c.setpoint_meta.dim) ? invConv(v, c.setpoint_meta.dim) : v });
-      renderAutomate(service.assembleSnapshot());
-    });
-  }
+  // THE AUTOMATE TAB IS GONE (#439). buildAutomate/renderAutomate/bindAutomate lived here
+  // for ~150 lines behind a pane that shell.html never had: no tab button, no #autoList, so
+  // buildAutomate returned on its first line every time it was called and the other two were
+  // unreachable. The automation channels themselves are alive and are operated from the BOARD
+  // (the AUTO buttons on each card); this was a second, dead face over the same snapshot.
+  //
+  // The three call sites stay as no-ops rather than being hunted down — see the stubs below.
+  function buildAutomate() {}
+  function renderAutomate() {}
+  function bindAutomate() {}
 
   // ============================================================ session diagnosis (Dev tab)
   // Records the session — sampled true state, alarm transitions, scram edges and every
@@ -4274,10 +5385,15 @@
   // subscribing it, the Dev-tab readout, and gathering the ids and objects only the UI can
   // reach. `test/run_diag_bundle.js` drives the other file directly.
   var diag = RD.DiagRecorder.create({
-    onEvent: function (t, type) {
+    onEvent: function (t, type, detail) {
       // Every recorded scram passes through the recorder, so hooking it here covers each
       // site that reports one without a second call to keep in step.
       if (type === 'scram') TEL.milestone('scram', t);
+      // …and the SAME hook feeds the sequence-of-events stream (#437). The recorder is
+      // the only detector of alarm and scram edges in the app; RD.Events subscribes to
+      // it rather than diffing `s.alarms` a second time, which is precisely the
+      // two-samplers-of-one-truth shape that #432 was.
+      if (RD.Events) RD.Events.fromRecorder(t, type, detail);
     }
   });
   // ======================================================== usage data (aggregate)
@@ -4437,6 +5553,10 @@
   function diagReset(reason, meta) {
     var t = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag.reset(reason, meta, t, ui.plant);
+    // The SOE stream is per-plant for the same reason the recording is: the watch table
+    // and the seeded edge state are the plant's, so carrying either across a plant change
+    // would compare one reactor's booleans against another's.
+    if (RD.Events) RD.Events.reset(t, ui.plant);
     TEL.sessionStart(reason, meta);
   }
   function diagTick(s) {
@@ -4446,6 +5566,11 @@
     // reached the render path cannot hand the same rows over twice.
     var fine = pendingDiagFine; pendingDiagFine = null;
     diag.tick(s, fine);
+    // Plant-state edges for the SOE stream (#437) ride this same synchronous subscriber:
+    // it sees every broadcast the recorder does, and it is NOT inside the rAF paint —
+    // the seam #432 was fixed on. `diag.tick` runs first so a rewind truncation lands
+    // before this broadcast's edges are compared against it.
+    if (RD.Events) RD.Events.observe(s);
   }
   // The readout half of diagTick, called from renderNow so it lands inside the paint
   // cycle with every other DOM write.
@@ -4497,6 +5622,25 @@
   // the address (owner, 2026-07-29); the diagnostics bundle is still offered
   // separately, to attach by hand.
   var FEEDBACK_EMAIL = 'reactordynamics@gmail.com';
+  // Open the feedback form (#438) — callable from the header button, the Settings entry,
+  // and the level-complete prompt. Fills the build stamp and the attachment DISCLOSURE:
+  // the concrete contents of what "Attach this session's recording" would send, read from
+  // the recorder at open time so the numbers describe the session being reported.
+  function openFeedback() {
+    $('fbStatus').textContent = '';
+    $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
+      ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
+      : '';
+    var ro = diag && diag.readout && diag.readout();
+    if (ro && ro.samples) {
+      txt($('fbAttachSum'),
+        'Attached: ' + String(ro.plant || '').toUpperCase() + ' session — T+' + hms(ro.t) +
+        ' of plant readings (' + ro.samples + ' samples), ' + ro.events + ' alarm/plant events, ' +
+        ro.commands + ' commands you issued, and an end-of-session snapshot. Nothing about you ' +
+        'or your device. Untick it to send just your message.');
+    }
+    openModal('feedbackOverlay');
+  }
   function copyFeedbackEmail() {
     var status = $('fbStatus');
     function ok() { status.className = 'fb-msg'; status.textContent = 'Address copied.'; }
@@ -4651,7 +5795,7 @@
     'bwr-turbine-set': function () { cmd({ action: 'set_turbine_load', mwe: inputVal('bwrMwe') }); },
     'bwr-feed-set': function () { cmd({ action: 'set_feedwater_flow', pct: inputVal('bwrFeed') }); },
     // lifecycle
-    'save': function () { downloadSave(); }, 'load': function () { $('loadFile').click(); }, 'reset': function () { doReset(); }, 'export-csv': function () { exportCsv(); },
+    'save': function () { downloadSave(); }, 'load': function () { $('loadFile').click(); }, 'reset': function () { doReset(); }, 'export-csv': function () { exportCsv(); exportSoe(); },
   };
 
   // Press-and-hold controls (rod drive): pointerdown starts motion at the selected
@@ -4800,17 +5944,11 @@
   function bindUI() {
     $('tabbar').addEventListener('click', function (e) {
       var b = e.target.closest('button[data-tab]'); if (!b) return;
-      var again = b.classList.contains('on');   // re-click of the active tab = collapse toggle (#237)
-      $('tabbar').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
-      document.querySelectorAll('.tabpane').forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-pane') === b.getAttribute('data-tab')); });
-      TEL.panel(b.getAttribute('data-tab'));   // which parts of the board get used at all
-      focusTools(again);
-      // Repaint the pane that just came up. Physics and Automate both skip their work
-      // while hidden (see paneVisible), so without this they show whatever was last
-      // painted until the next broadcast — and on a PAUSED sim no broadcast is coming,
-      // so the tab would open stale and stay that way. Cheap: both are no-ops for the
-      // pane that is not on screen.
-      if (latest) { renderPhysics(latest); renderIndications(latest); renderAutomate(latest); }
+      var name = b.getAttribute('data-tab');
+      if (name !== 'instructor') lastToolsTab = name;   // where the Instructor hands back to
+      selectTab(name);
+      TEL.panel(name);   // which parts of the board get used at all
+      // (the repaint-on-reveal and the state save both live in selectTab now)
     });
     // Persona header (now visible in every mode, chat included): collapse/expand
     // via the header or the explicit minimize button (top-right). stopPropagation
@@ -4830,10 +5968,24 @@
     // Expand a collapsed instructor by clicking anywhere on the collapsed card.
     // When expanded, this is a no-op so the card's own buttons (Acknowledge,
     // chat, level-complete) still work normally.
-    $('instructorCard').addEventListener('click', function () {
+    $('instructorCard').addEventListener('click', function (e) {
       var c = $('instructorCard');
+      // "New message below" (#439): scroll to it and clear the marker.
+      if (e.target.closest && e.target.closest('#instrNewBelow')) {
+        var cur = $('instrCurrent');
+        if (cur) cur.scrollTop = cur.scrollHeight;
+        $('instrNewBelow').hidden = true;
+        return;
+      }
       if (c.classList.contains('mini')) { restoreInstructor(); return; }
       if (c.classList.contains('collapsed')) toggleInstructorCard();
+    });
+    // Reading down to the newest line clears the marker without a click on it.
+    var instrCur = $('instrCurrent');
+    if (instrCur) instrCur.addEventListener('scroll', function () {
+      if ((instrCur.scrollHeight - instrCur.scrollTop - instrCur.clientHeight) <= 24) {
+        var nb = $('instrNewBelow'); if (nb) nb.hidden = true;
+      }
     });
     // generic segmented active state (delegated so rebuilt controls keep working)
     document.body.addEventListener('click', function (e) {
@@ -4841,8 +5993,7 @@
       var seg = btn.closest('.seg'); seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); btn.classList.add('on');
     });
     $('playBtn').addEventListener('click', function () {
-      if (service.running) { service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused'); }
-      else { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); $('playBtn').classList.remove('attention'); }
+      if (service.running) pauseSim('user'); else resumeSim();
     });
     $('speed').addEventListener('click', function (e) {
       var b = e.target.closest('[data-speed]'); if (!b) return;
@@ -4869,7 +6020,14 @@
     var tabBody = document.querySelector('.tab-body');
     if (tabBody) tabBody.addEventListener('change', function (e) {
       var cb = e.target.closest('input[data-series]'); if (!cb) return;
-      ui.series[cb.getAttribute('data-series')] = cb.checked;
+      var sid = cb.getAttribute('data-series');
+      ui.series[sid] = cb.checked;
+      // UNTICKING ANYWHERE CLEARS THE SIDE (#454). The plain tickbox here and the two
+      // selectors in the chart-settings window are two ways to reach one setting, so they
+      // must leave the same state behind: "not plotted" means no side, and re-ticking gives
+      // the channel its default rather than silently restoring a choice made in the other
+      // surface an hour ago. Ticking sets nothing — an absent side IS the default.
+      if (!cb.checked) delete ui.seriesSide[sid];
       syncPlotCells();     // the same series may be listed on more than one tab
       drawChart();
     });
@@ -4880,6 +6038,114 @@
       if (e.target.closest('.plot-cell')) e.stopPropagation();
     }, true);
     $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
+
+    $('chartOptsBtn').addEventListener('click', function () { openChartSettings(); });
+    $('chartOptsClose').addEventListener('click', closeChartSettings);
+    $('chartOverlay').addEventListener('click', function (e) {
+      if (e.target === $('chartOverlay')) closeChartSettings();
+    });
+    $('coFilter').addEventListener('input', applyCsFilter);
+    $('chartOptsWin').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-win]'); if (!b) return;
+      ui.window = +b.getAttribute('data-win');
+      chartRange = {};
+      // Keep the on-chart ladder in step — they are two views of one setting.
+      var src = $('graphWindow').querySelectorAll('[data-win]');
+      for (var i = 0; i < src.length; i++) src[i].classList.toggle('on', src[i].getAttribute('data-win') === b.getAttribute('data-win'));
+      var dst = $('chartOptsWin').querySelectorAll('[data-win]');
+      for (var j = 0; j < dst.length; j++) dst[j].classList.toggle('on', dst[j].getAttribute('data-win') === b.getAttribute('data-win'));
+      drawChart();
+    });
+    $('chartOverlay').addEventListener('change', function (e) {
+      var box = e.target.closest('input[data-cs-side]');
+      if (box) {
+        var row = box.closest('.cs-row'), ser = seriesById(row.getAttribute('data-cs'));
+        if (!ser) return;
+        /* READ BOTH BOXES AND DERIVE — do not try to mutate the side by name from the one
+         * that changed. Neither ticked is "not plotted", which has to clear `ui.series` as
+         * well as the side, and only looking at the pair can tell that from "the other one
+         * is still on". */
+        var wantInd = !!(row.querySelector('[data-cs-side="ind"]') || {}).checked;
+        var wantPhys = !!(row.querySelector('[data-cs-side="phys"]') || {}).checked;
+        if (!wantInd && !wantPhys) {
+          ui.series[ser.id] = false;
+          delete ui.seriesSide[ser.id];
+        } else {
+          ui.series[ser.id] = true;
+          ui.seriesSide[ser.id] = (wantInd && wantPhys) ? 'both' : wantInd ? 'ind' : 'phys';
+        }
+        syncPlotCells();
+        syncChartSettings();
+        chartRange = {};    // the union fit changes when a side is added or dropped
+        drawChart();
+        return;
+      }
+      if (e.target.id === 'coSoe') {
+        ui.soeOff = !e.target.checked;
+        var rib = $('soeRibbon'); if (rib) rib.hidden = !!ui.soeOff;
+        drawChart();
+      }
+    });
+    /* THE HIGHLIGHT BUS's consumers (#444, spec §7). Each surface says what it is pointing
+     * at; the bus decides what lights. NONE of them lights the element under the pointer —
+     * that is the ruling, and it is also what makes hover teach the control/indication
+     * distinction for free: nothing lights under the cursor means "this is a readout".  */
+    var indList = $('indicationsList');
+    if (indList) {
+      indList.addEventListener('mouseover', function (e) {
+        var row = e.target.closest('.num-line'); if (!row) return;
+        var cb = row.querySelector('input[data-series]'); if (!cb) return;
+        RD.Highlight.enter(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+      });
+      indList.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
+      indList.addEventListener('click', function (e) {
+        var row = e.target.closest('.num-line'); if (!row) return;
+        if (e.target.closest('.plot-cell')) return;        // the checkbox is its own gesture
+        var cb = row.querySelector('input[data-series]'); if (!cb) return;
+        RD.Highlight.pin(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+      });
+      /* THE UI RELATION (spec §7): hovering a trend checkbox highlights what it CHANGES —
+       * the chart. And when the channel is already plotted it highlights THAT LANE rather
+       * than the whole chart, because once several are up "which line is this one" is the
+       * more useful answer. */
+      indList.addEventListener('mouseover', function (e) {
+        var cell = e.target.closest('.plot-cell'); if (!cell) return;
+        var cb = cell.querySelector('input[data-series]'); if (!cb) return;
+        var id = cb.getAttribute('data-series');
+        var lane = ui.series[id] ? document.querySelector('.lane-chrome[data-ser="' + id + '"]') : null;
+        var chart = document.querySelector('.strip-chart');
+        if (lane) lane.classList.add('hl-lane');
+        else if (chart) chart.classList.add('hl-lane');
+      });
+      indList.addEventListener('mouseout', function (e) {
+        if (!e.target.closest('.plot-cell')) return;
+        document.querySelectorAll('.hl-lane').forEach(function (x) { x.classList.remove('hl-lane'); });
+      });
+    }
+    // The chart's own lanes, and the SOE markers, point back at the board.
+    var floatsEl = $('chartFloats');
+    if (floatsEl) {
+      floatsEl.addEventListener('mouseover', function (e) {
+        var l = e.target.closest('[data-ser]'); if (!l) return;
+        RD.Highlight.enter(RD.Highlight.forSeries(l.getAttribute('data-ser')));
+      });
+      floatsEl.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
+    }
+    var ribbonEl = $('soeRibbon');
+    if (ribbonEl) {
+      ribbonEl.addEventListener('mouseover', function (e) {
+        var m = e.target.closest('[data-soe-ref]'); if (!m) return;
+        RD.Highlight.enter([m.getAttribute('data-soe-ref')]);
+      });
+      ribbonEl.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
+    }
+    // Merged-list chips + the HR1 truth switch (#439).
+    var indF = $('indFilters');
+    if (indF) indF.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-indfilter]'); if (!b) return;
+      ui.indFilter = b.getAttribute('data-indfilter');
+      applyIndFilter();
+    });
     $('loadFile').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return; var r = new FileReader();
       r.onload = function () { try { var st = JSON.parse(r.result); service.loadState(st); afterPlantChange(); diagReset('restore', { engine_key: ui.engineKey }); showToast('State loaded — ' + f.name); } catch (err) { showToast('Not a valid save file: ' + f.name, 'error'); } };
@@ -4940,12 +6206,14 @@
       }
       var b = e.target.closest('[data-lc]'); if (!b) return; levelCompleteAction(b.getAttribute('data-lc'));
     });
-    // Auto-checklists: picker in Operate (free play) + bubble-list buttons on the card.
-    var cklPicker = $('instrCklRow');
-    if (cklPicker) cklPicker.addEventListener('click', function (e) {
+    // Auto-checklists. `data-ckl-start` is now delegated at the BODY, because the launcher
+    // appears in two places since #443 — the Checklists tab and the free-play Instructor
+    // slot — and binding per host is how the second one would silently do nothing.
+    document.body.addEventListener('click', function (e) {
       var st = e.target.closest('[data-ckl-start]');
-      if (st) { toggleCklMenu(false); startChecklist(st.getAttribute('data-ckl-start')); return; }
-      if (e.target.closest('#cklOpenBtn')) toggleCklMenu();
+      if (!st) return;
+      toggleCklMenu(false);
+      startChecklist(st.getAttribute('data-ckl-start'));
     });
     $('instructorCard').addEventListener('click', function (e) {
       var mk = e.target.closest('[data-ckl-check]');
@@ -4954,11 +6222,19 @@
     });
     // Plant & Mission window: plant / mode / start-condition picks re-render in
     // place; the start buttons close the window and launch.
-    $('missionBtn').addEventListener('click', openMissionSelect);
-    $('simStatus').addEventListener('click', openMissionSelect);   // the always-visible entry point
+    // The session bar is now the ONLY entry point (#439/#443) — the Operate tab that
+    // carried a "Plant & Mission…" button is dissolved.
+    $('simStatus').addEventListener('click', openMissionSelect);
     $('missionClose').addEventListener('click', closeMissionSelect);
+    // Settings — a pausing modal off the header (#439, spec §1).
+    $('settingsBtn').addEventListener('click', function () { openModal('settingsOverlay'); });
+    $('settingsClose').addEventListener('click', function () { closeModal('settingsOverlay'); });
+    $('settingsOverlay').addEventListener('click', function (e) {
+      if (e.target === $('settingsOverlay')) closeModal('settingsOverlay');
+    });
     initFeaturePanel();          // Features — development toggles (#241)
-    // Help + quick tour (also offered from SIMULATION PAUSED on the board).
+    // Help + quick tour. (The paused veil used to offer the tour too; it was removed
+    // 2026-08-11 and Help is now the only route to it.)
     $('helpBtn').addEventListener('click', function () { $('helpOverlay').hidden = false; });
     $('helpClose').addEventListener('click', function () { $('helpOverlay').hidden = true; });
     $('helpOverlay').addEventListener('click', function (e) { if (e.target === $('helpOverlay')) $('helpOverlay').hidden = true; });
@@ -5006,40 +6282,23 @@
         !out.endpoint_set ? 'no endpoint stamped — RD_TELEMETRY_ENDPOINT is unset in the build' :
         out.consent === 'denied' ? 'opted out — nothing is collected, as asked' :
         !out.storage_writable ? 'collecting, but localStorage is NOT writable — an opt-out could not persist' :
-        'collecting (default; opt out under Settings → Share usage data)';
+        'collecting';
       return out;
     };
 
-    // ---- the Settings toggle: now the ONLY consent control, and the opt-out --------
-    // It used to be the prompt's echo; since the prompt was removed (2026-08-09) it is the
-    // whole mechanism, so it has to show the DEFAULT truthfully. `=== 'granted'` would paint
-    // Off for every visitor who has never touched it — i.e. almost everyone — while the sim
-    // was in fact collecting, and a toggle that misreports the state it controls is worse
-    // than no toggle at all. Mirrors granted() in site/telemetry.js; move the two together.
-    (function () {
-      var T = window.RD && RD.Telemetry;
-      var row = $('telemetryRow'), seg = $('telSeg');
-      if (!row || !seg || !T || !T.enabled()) return;   // no endpoint: no toggle to offer
-      row.hidden = false;
-      function paint() {
-        var on = T.consent() !== 'denied';
-        seg.querySelectorAll('button').forEach(function (b) {
-          b.classList.toggle('on', (b.getAttribute('data-tel') === 'on') === on);
-        });
-      }
-      seg.addEventListener('click', function (e) {
-        var b = e.target.closest('button[data-tel]'); if (!b) return;
-        var on = b.getAttribute('data-tel') === 'on';
-        try { T.setConsent(on ? 'granted' : 'denied'); } catch (err) {}
-        if (on) TEL.consentAnswered();
-        paint();
-        showToast(on ? 'Usage data on — thank you.' : 'Usage data off. Nothing is sent.');
-      });
-      paint();
-      // (`repaintTelemetryToggle = paint` stood here to keep this in step with the launch
-      //  prompt. The prompt is gone, so there is no second control to synchronise with —
-      //  and its declaration went with it, which would have made this a dangling assign.)
-    }());
+    // ---- the consent toggle: REMOVED 2026-08-11 -----------------------------------
+    // Owner instruction, in two steps: first out of the options menu, then removed
+    // altogether. There is no user-facing opt-out control anywhere in the app or on the
+    // site. The wiring went with the row (`#telemetryRow` / `#telSeg` no longer exist),
+    // so what stood here would have been a no-op reaching for two missing ids on boot.
+    //
+    // `RD.Telemetry.setConsent` IS DELIBERATELY LEFT IN PLACE and still honoured. It is
+    // what enforces invariant (a) — an opt-out drops the queue rather than holding it —
+    // and removing the API would take that guarantee with it. Nothing in the shipped UI
+    // calls it; it remains reachable from the console for support and for RD.diagnose().
+    //
+    // RD.diagnose()'s verdict is now a bare 'collecting': a diagnostic that names a
+    // control which does not exist sends the next reader hunting for a menu item.
 
     // ---- send a bug report, with the session attached ------------------------
     (function () {
@@ -5072,15 +6331,10 @@
       });
     }());
 
-    $('fbBtn').addEventListener('click', function () {
-      $('fbStatus').textContent = '';
-      $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
-        ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
-        : '';
-      $('feedbackOverlay').hidden = false;
-    });
-    $('fbClose').addEventListener('click', function () { $('feedbackOverlay').hidden = true; });
-    $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) $('feedbackOverlay').hidden = true; });
+    $('fbBtn').addEventListener('click', openFeedback);
+    $('fbHeaderBtn').addEventListener('click', openFeedback);
+    $('fbClose').addEventListener('click', function () { closeModal('feedbackOverlay'); });
+    $('feedbackOverlay').addEventListener('click', function (e) { if (e.target === $('feedbackOverlay')) closeModal('feedbackOverlay'); });
     $('fbCopy').addEventListener('click', copyFeedbackEmail);
     $('fbDiag').addEventListener('click', function () { exportDiag(); });
     // About docs (#259) — Settings → Disclaimer / License / Changelog. Content is
@@ -5093,10 +6347,10 @@
         $('docTitle').textContent = d.title || id;
         $('docBody').innerHTML = d.html || '';
         $('docBody').scrollTop = 0;
-        $('docOverlay').hidden = false;
+        openModal('docOverlay');
       }
-      function closeSiteDoc() { $('docOverlay').hidden = true; }
-      var settingsPane = document.querySelector('[data-pane="settings"]');
+      function closeSiteDoc() { closeModal('docOverlay'); }
+      var settingsPane = $('settingsOverlay');    // Settings is a modal now (#439)
       if (settingsPane) {
         settingsPane.addEventListener('click', function (e) {
           var b = e.target.closest('[data-site-doc]');
@@ -5119,6 +6373,14 @@
     })();
     // Instructor idle links (Help / Tour) — delegated so re-rendered HTML works.
     $('instructorCard').addEventListener('click', function (e) {
+      if (e.target.closest('[data-open-ckl]')) {
+        e.preventDefault();
+        var t = document.querySelector('#tabbar [data-tab="checklists"]');
+        if (t) t.click();
+        toggleCklMenu(true);
+        markSeen('checklists');
+        return;
+      }
       if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
       if (e.target.closest('[data-open-tour]')) { e.preventDefault(); openTour(0); return; }
     });
@@ -5147,8 +6409,30 @@
         }
       });
     })();
+    // Coach marks retire on first use of the thing they point at (#443).
+    $('simStatus').addEventListener('click', function () { markSeen('session'); });
+    $('fbHeaderBtn').addEventListener('click', function () { markSeen('feedback'); });
+    $('cklMenu').addEventListener('click', function () { markSeen('checklists'); });
+
     $('missionOverlay').addEventListener('click', function (e) {
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
+      // Reset lives here because reset is "restart what the session bar describes"
+      // (#443, spec §9) — and it is a two-press arm rather than a browser confirm(),
+      // which blocks the headless drive and cannot be styled or read by the tour.
+      var rs = e.target.closest('[data-mreset]');
+      if (rs) {
+        if (rs.getAttribute('data-mreset') === 'arm') {
+          rs.setAttribute('data-mreset', 'go');
+          rs.classList.add('mp-reset-armed');
+          txt(rs, '⚠ Confirm reset — the current run is lost');
+          clearTimeout(resetArmT);
+          resetArmT = setTimeout(function () { renderMissionSelect(); }, 6000);   // disarms itself
+        } else {
+          clearTimeout(resetArmT);
+          closeMissionSelect(); doReset(true);
+        }
+        return;
+      }
       var pc = e.target.closest('[data-mplant]');
       if (pc) {
         // Plants whose control room isn't built yet are shown but not selectable.
@@ -5196,11 +6480,13 @@
       if (e.key === 'Escape') {
         if (!$('manualOverlay').hidden) closeManual();
         if (!$('missionOverlay').hidden) closeMissionSelect();
+        if (!$('chartOverlay').hidden) closeChartSettings();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
         if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
-        if (!$('feedbackOverlay').hidden) $('feedbackOverlay').hidden = true;
-        if ($('docOverlay') && !$('docOverlay').hidden) $('docOverlay').hidden = true;
+        if (!$('feedbackOverlay').hidden) closeModal('feedbackOverlay');
+        if ($('docOverlay') && !$('docOverlay').hidden) closeModal('docOverlay');
+        if (RD.Highlight && RD.Highlight.hasPin()) RD.Highlight.clearPin();
         if (ui.rewindPick) toggleRewindPick(false);
         return;
       }
@@ -5239,14 +6525,55 @@
     window.addEventListener('blur', function () {
       if (RD.PwrBoard && RD.PwrBoard.driveRod) RD.PwrBoard.driveRod('control_rods', 0, false);
     });
-    // Strip-chart rewind: the ⏪ by the scrubber + click-to-pick on the plot.
-    // The scrubber track is the same affordance — clicking the timeline opens
-    // pick-a-moment mode (it used to be decoration that looked draggable).
+    // Strip-chart rewind: the ⏪ (now left of the window buttons) + click-to-pick on the
+    // plot. The scrubber track was the same affordance and was removed with the strip —
+    // a second control for one action, and the only one of the two that looked draggable
+    // without being draggable.
     $('chartRewindBtn').addEventListener('click', function () { rewindPressed(); });
-    $('scrubTrack').addEventListener('click', function () {
-      if (service && service.checkpoints && service.checkpoints.length) toggleRewindPick();
-    });
     document.querySelector('.chart-plot').addEventListener('click', rewindPickClick);
+    /* CLICKING A MARKER JUMPS REWIND TO THAT INSTANT (#442) — the event record becomes
+     * navigation, and a debrief becomes clicking through the sequence. Zero extra cost:
+     * rewind already exists.
+     *
+     * IT LANDS ON THE NEAREST CHECKPOINT, NOT THE EXACT INSTANT, and the copy says so.
+     * The service rewinds to checkpoints (~20 s of real time apart in free play, one per
+     * beat in a scenario), so an event between two of them cannot be reached exactly. A
+     * marker that silently landed somewhere else would be worse than one that says where
+     * it can go. */
+    var ribbon = $('soeRibbon');
+    if (ribbon) ribbon.addEventListener('click', function (e) {
+      var m = e.target.closest('[data-soe-t]'); if (!m) return;
+      var t = +m.getAttribute('data-soe-t');
+      var cps = (service && service.checkpoints) || [];
+      if (!cps.length) { showToast('No checkpoint to rewind to yet.', 'error'); return; }
+      var best = 0, bd = Infinity;
+      for (var i = 0; i < cps.length; i++) {
+        var d = Math.abs(cps[i].metadata.sim_time - t);
+        if (d < bd) { bd = d; best = i; }
+      }
+      cmd({ action: 'rewind', steps: cps.length - 1 - best, exact: true });
+    });
+    // The shared cursor (#440). Redraw on a frame rather than per mousemove: a pointer can
+    // fire far faster than the chart's own cadence, and drawChart rebuilds the whole SVG.
+    (function () {
+      var plot = document.querySelector('.chart-plot'); if (!plot) return;
+      var pending = false;
+      function schedule() {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(function () { pending = false; if (chartBuf.length > 1) drawChart(); });
+      }
+      plot.addEventListener('mousemove', function (e) {
+        var r = plot.getBoundingClientRect();
+        var f = (e.clientX - r.left) / (r.width * CHART_PLOT_FRAC);
+        chartCursor.frac = (f < 0 || f > 1) ? null : f;
+        schedule();
+      });
+      plot.addEventListener('mouseleave', function () {
+        if (chartCursor.frac == null) return;
+        chartCursor.frac = null; schedule();
+      });
+    }());
     // System Scanner / inspection block — hover OR tap (touch devices have no
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
@@ -5255,14 +6582,12 @@
     var sp = $('scannerPanel');
     if (sp) sp.addEventListener('click', function (e) {
       var m = e.target.closest && e.target.closest('[data-scan-doc]');
-      if (m) {
-        e.stopPropagation();                      // the link is not an expand click
-        openManualAt(m.getAttribute('data-scan-doc'), m.getAttribute('data-scan-sec'));
-        return;
-      }
-      inspectExpand();
+      if (m) { openManualAt(m.getAttribute('data-scan-doc'), m.getAttribute('data-scan-sec')); return; }
+      // Only the button toggles — the line sits under the board, so a click anywhere on it
+      // would fire while reaching for the diagram.
+      if (e.target.closest('#scannerToggle')) inspectExpand();
     });
-    inspectExpand(loadInspectExpanded());         // restore the operator's last choice
+    inspectExpand(loadInspectExpanded());        // restore the operator's last choice
   }
 
   // ============================================ System Scanner / inspection (#96)
@@ -5286,11 +6611,7 @@
   // the M8 §11 mechanism, which needs no manifest for chrome that has no plant
   // meaning. Nothing here reads a live value, so there is nothing to be stuck or
   // misleading (HR1 does not apply to a surface with no instruments on it).
-  var inspectCur = null;        // the entry the block is describing
-
-  function loadInspectExpanded() {
-    try { return localStorage.getItem('rd_inspect_expanded') === '1'; } catch (e) { return false; }
-  }
+  var inspectCur = null;        // the entry the line is describing
   // What is under the pointer, as an inspection entry (or null for "nothing to say").
   function inspectResolve(e) {
     var t = e.target;
@@ -5352,7 +6673,7 @@
   function inspectRender() {
     var box = $('scanner'); if (!box) return;
     var it = inspectCur;
-    if (!it) { box.innerHTML = '<span class="idle">Hover or tap anything to see what it does.</span>'; return; }
+    if (!it) { box.innerHTML = '<span class="idle">Hover or tap anything on the board to see what it does.</span>'; return; }
     var h = it.title ? '<strong>' + mesc(it.title) + '</strong> — ' + mesc(it.brief) : mesc(it.brief);
     // What this control's channel is doing RIGHT NOW, above the authored copy. The
     // stand-down cases are the whole point: an unlit AUTO lamp says the channel is off
@@ -5363,19 +6684,24 @@
     if (live) {
       h += '<span class="scan-live' + (live.engaged ? ' on' : '') + '">' + mesc(live.text) + '</span>';
     }
+    // Expanded: the full description, the card note, and the manual link, all IN THE LINE.
     if (ui.inspectExpanded) {
-      if (it.detail) h += '<div class="scan-detail">' + mesc(it.detail) + '</div>';
+      if (it.detail) h += '<span class="scan-detail">' + mesc(it.detail) + '</span>';
       var meta = [];
-      // An inherited entry describes the CARD, not the part under the cursor. Say
-      // so — a group summary read as a per-item one is a quiet lie about coverage.
+      // An inherited entry describes the CARD, not the part under the cursor. Say so — a
+      // group summary read as a per-item one is a quiet lie about coverage.
       if (it.inherited) meta.push('<span class="scan-hint">Describes this card as a whole.</span>');
       if (it.doc) {
         meta.push('<button class="scan-manual" data-scan-doc="' + esc(it.doc) + '" data-scan-sec="' +
                   esc(it.sec || '') + '">Manual' + (it.sec ? ' §' + mesc(it.sec) : '') + '</button>');
       }
-      if (meta.length) h += '<div class="scan-meta">' + meta.join('') + '</div>';
+      if (meta.length) h += '<span class="scan-meta">' + meta.join('') + '</span>';
     }
     box.innerHTML = h;
+    // The Full-description button only means anything when there IS one; a dead control
+    // on a 26 px line is worse than no control (#439).
+    var tg = $('scannerToggle');
+    if (tg) tg.hidden = !(it.detail || it.doc);
   }
   // Per-broadcast refresh, and ONLY while a live entry is on screen (#214). The block
   // otherwise repaints on pointer-move alone, so a channel that stood itself down while
@@ -5396,6 +6722,21 @@
     inspectCur = { key: 'flash:' + msg, title: title, brief: msg, detail: null, inherited: false };
     inspectRender();
   }
+  /* FULL DESCRIPTION GROWS THE LINE IN PLACE *(OWNER DIRECTIVE, 2026-08-11: "The scanner
+   * full description should make the scanner larger so the full description is visible. It
+   * should not open another box or window.")*.
+   *
+   * It was a pausing modal, on the reasoning that reading a paragraph is not operating. The
+   * directive is the stronger argument: a modal covers the board you are asking about, and
+   * the whole reason the Scanner moved under the diagram was to put the description next to
+   * the thing it describes. A window undoes that.
+   *
+   * The height is CONTENT-DRIVEN but capped, and the cap is not decoration — a growing
+   * panel that pushes its neighbours around on every hover is the exact complaint the fixed
+   * 74 px geometry was introduced for (owner, 2026-07-28: "the jumping up and down when
+   * moving the mouse over things is annoying"). Expanded it takes a fixed, generous box and
+   * scrolls anything longer; collapsed it is the 26 px line. It only changes size when the
+   * player asks, never on hover. */
   function inspectExpand(force) {
     ui.inspectExpanded = force != null ? !!force : !ui.inspectExpanded;
     var p = $('scannerPanel'); if (p) p.classList.toggle('expanded', ui.inspectExpanded);
@@ -5404,9 +6745,13 @@
       b.textContent = ui.inspectExpanded ? 'Summary only' : 'Full description';
       b.setAttribute('aria-expanded', String(ui.inspectExpanded));
     }
-    try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) {}
+    try { localStorage.setItem('rd_inspect_expanded', ui.inspectExpanded ? '1' : '0'); } catch (e) { /* private mode */ }
     inspectRender();
   }
+  function loadInspectExpanded() {
+    try { return localStorage.getItem('rd_inspect_expanded') === '1'; } catch (e) { return false; }
+  }
+
   // Open the Operator's Manual on the document an inspection entry cites, and
   // scroll to its numbered section. Headings render as "7.3 Letdown Orifices…",
   // so the section number is the anchor — matched on a whole number segment so
@@ -5416,13 +6761,48 @@
     openManual();
     if (!sec) return;
     var content = $('manualContent'); if (!content) return;
+    // ANCHOR FIRST (#443): md_render now emits `id="s7-3"` from the section number, which
+    // is the stable part — the number is what the manual's own cross-references, the
+    // Scanner's deep links and the checklist "why" links all cite.
+    var byId = content.querySelector('#s' + String(sec).replace(/\./g, '-'));
+    if (byId) { byId.scrollIntoView({ block: 'start' }); return; }
+    // The heading-TEXT scan stays as the fallback, for content that predates the ids or
+    // carries an unnumbered heading. Whole-segment matched: "9.1" must not land on "9.10".
     var hs = content.querySelectorAll('h1,h2,h3,h4,h5');
     for (var i = 0; i < hs.length; i++) {
       var txt = hs[i].textContent.trim();
       if (txt.indexOf(sec) !== 0) continue;
-      // whole-segment match: "9.1" must not land on "9.10 …"
       if (/^\s*$/.test(txt.charAt(sec.length))) { hs[i].scrollIntoView({ block: 'start' }); return; }
     }
+  }
+  /* Manual SEARCH (#443, spec §11). The manual is large and a wall of it intimidates
+   * exactly the users checklists exist to serve, so it is the depth layer: reached in small
+   * pieces, by anchor, from a step's "why". Search is the other way in for someone who does
+   * know what they are looking for.
+   *
+   * Over the PACKED markdown rather than the rendered DOM: the DOM only holds the document
+   * currently open, so a DOM search would silently only ever find what you were already
+   * reading — which looks like a working search returning nothing. */
+  function manualSearch(q) {
+    q = String(q || '').trim().toLowerCase();
+    if (q.length < 3) return [];
+    var docs = mdManual() || {};
+    var hits = [];
+    Object.keys(docs).forEach(function (docId) {
+      var lines = String(docs[docId] || '').split('\n');
+      var sec = null;
+      for (var i = 0; i < lines.length && hits.length < 40; i++) {
+        var hm = /^#{1,6}\s+(.*)$/.exec(lines[i]);
+        if (hm) { sec = hm[1].replace(/\s*#+\s*$/, ''); continue; }
+        var low = lines[i].toLowerCase();
+        if (low.indexOf(q) === -1) continue;
+        var at = low.indexOf(q);
+        hits.push({ doc: docId, sec: sec,
+                    num: (sec && /^(\d+(?:\.\d+)*)\s/.exec(sec) || [])[1] || null,
+                    snippet: lines[i].slice(Math.max(0, at - 40), at + 80).trim() });
+      }
+    });
+    return hits;
   }
   function syncSeg(sel, val, attr) { document.querySelectorAll(sel).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-' + attr) === val); }); }
 
@@ -5472,32 +6852,31 @@
     {
       sel: '#toolsCard',
       place: 'left',
-      title: 'Operate &amp; tools',
-      body: '<p><b>Operate</b> — plant, mode, checklists, reset, save/load. ' +
-        '<b>Inject Failure</b> when you are ready for casualties. ' +
-        '<b>Graph</b> and <b>Settings</b> for trends and units.</p>',
+      title: 'The reference tabs',
+      body: '<p><b>Checklists</b> to follow a procedure. <b>Indications</b> and ' +
+        '<b>Physics</b> for every reading the plant produces and the true state behind ' +
+        'them. <b>Inject Failure</b> when you are ready for casualties. None of them ' +
+        'stops the plant.</p>',
       prep: function () {
-        var t = document.querySelector('#tabbar [data-tab="operate"]');
+        var t = document.querySelector('#tabbar [data-tab="checklists"]');
         if (t) t.click();
       }
     },
     {
-      sel: '#cklOpenBtn',
+      sel: '#cklMenu',
       place: 'left',
       title: 'Checklists',
       body: '<p>Interactive procedures that check themselves off the instruments. ' +
         'Best next step after this tour — hover a step to glow the controls it names.</p>',
       prep: function () {
-        // Checklists live in Operate now — expand tools and show the picker.
+        // Checklists is its own tab since #439, and the list is always on screen since
+        // 2026-08-11 — there is nothing to un-hide, only a tab to select.
         applyFocus(false, true);
-        var t = document.querySelector('#tabbar [data-tab="operate"]');
-        if (t) t.click();
-        if (typeof flagOn === 'function' && flagOn('checklists')) {
-          var row = $('instrCklRow');
-          if (row) row.hidden = false;
-        }
+        var t = document.querySelector('#tabbar [data-tab="checklists"]');
+        if (t && !t.classList.contains('on')) t.click();
+        toggleCklMenu('force');
       },
-      // If checklists are gated off or the button is not visible, use Operate.
+      // If checklists are gated off on this channel, point at the strip instead.
       fallback: '#toolsCard'
     },
     {
@@ -5516,10 +6895,10 @@
     },
     {
       sel: '#scannerPanel',
-      place: 'left',
+      place: 'top',
       title: 'System Scanner',
-      body: '<p>Hover anything on the board. Summary first; <b>Full description</b> ' +
-        'for detail and a Manual link.</p>'
+      body: '<p>The line under the board. Hover anything and it says what that is; ' +
+        '<b>Full description</b> opens the detail and a Manual link.</p>'
     },
     {
       sel: '#playBtn',
@@ -6007,10 +7386,14 @@
     ui.engineKey = key; ui.plant = e.plant; ui.initState = init || e.init;
     ui.scenario = null; ui.follow = null;   // a manual plant switch ends instructed content
     ui.series = Object.assign({}, prof().defaultSeries);
-    service.stop(); $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
+    pauseSim('plant_change');
     service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: ui.initState, design_version: e.dv });
     rebuildPlantUI();
     diagReset('plant_change', { engine_key: key, initial_state: ui.initState });
+    // The hold covered the swap; the swap is done. It does NOT resume a plant the player
+    // had stopped themselves — `user` is a separate hold and releaseHold leaves it standing.
+    releaseHold('plant_change');
   }
 
   function rebuildPlantUI() {
@@ -6045,16 +7428,23 @@
     var dv = snap.metadata.design_version;
     ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
     ui.series = Object.assign({}, prof().defaultSeries);
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     rebuildPlantUI();
   }
 
-  function doReset() {
-    if (!confirm('Reset to ' + ui.initState + '? Current run is lost.')) return;
+  // `armed` = the caller already took a confirmation (the session-footer two-press in
+  // the Plant & Mission window, #443). The legacy Operate-tab button has no such step,
+  // so it still raises the browser confirm; that button goes away with the tab in #439.
+  function doReset(armed) {
+    if (!armed && !confirm('Reset to ' + ui.initState + '? Current run is lost.')) return;
     ui.scenario = null; ui.follow = null;   // a plant reset ends instructed content
-    service.stop();
+    pauseSim('reset');
     service.handleCommand({ action: 'reset', plant_id: ui.plant, initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
-    $('playBtn').textContent = '▶'; $('playBtn').classList.add('paused');
     rebuildPlantUI();
+    // Same transient hold, same release *(OWNER SELECTION, 2026-08-11, from the options
+    // presented: "Fix both")*. A reset lands you on a running plant at the chosen initial
+    // condition, rather than on a stopped one that needs ▶ before anything happens.
+    releaseHold('reset');
   }
   function downloadSave() {
     var data = JSON.stringify(service.saveState(), null, 2);
@@ -6064,13 +7454,45 @@
     showToast('State saved — reactor_save.json');
   }
   function exportCsv() {
-    var cols = prof().series.filter(function (s) { return ui.series[s.id]; });
-    var head = ['sim_time'].concat(cols.map(function (c) { return c.id; })).join(',');
+    /* ONE COLUMN PER TRACE, not per channel (#454). A channel set to 'both' is two traces,
+     * so it exports two columns — `id_ind` and `id_phys` — because the export's whole
+     * contract is that it carries what the chart is showing. A single-side channel keeps
+     * the BARE id it has always had, so an existing worksheet built on `tavg` does not
+     * break; the suffix appears only where there is genuinely a pair to tell apart. */
+    var cols = [];
+    prof().series.forEach(function (s) {
+      var side = sideOf(s); if (!side) return;
+      if (side === 'both') {
+        cols.push({ ser: s, side: 'ind', name: s.id + '_ind' });
+        cols.push({ ser: s, side: 'phys', name: s.id + '_phys' });
+      } else cols.push({ ser: s, side: side, name: s.id });
+    });
+    var head = ['sim_time'].concat(cols.map(function (c) { return c.name; })).join(',');
     // export what the chart is actually showing (seriesVal), so the CSV and the trace agree
-    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c, b); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
+    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c.ser, b, c.side); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
     var url = URL.createObjectURL(new Blob([head + '\n' + rows.join('\n')], { type: 'text/csv' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_trend.csv'; a.click();
   }
+  /* The SOE exports ALONGSIDE the trace CSV (#442) — it is the artifact a classroom
+   * worksheet is built from, and a trace without its events is a shape with no story. A
+   * separate file rather than extra columns: one row per event against one row per sample
+   * are different tables, and jamming them together makes both awkward to read. */
+  function exportSoe() {
+    var evs = (RD.Events && RD.Events.all()) || [];
+    if (!evs.length) { showToast('No events recorded yet.', 'error'); return; }
+    var rows = ['sim_time_s,clock,tier,actor,type,detail'];
+    evs.forEach(function (e) {
+      var det = '';
+      try { det = e.detail ? JSON.stringify(e.detail).replace(/"/g, "'") : ''; } catch (x) { det = ''; }
+      rows.push([e.t.toFixed(2), hms(Math.max(0, e.t)), e.tier, e.actor, e.type, '"' + det + '"'].join(','));
+    });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv' }));
+    a.download = 'reactor_soe.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+
   function hms(sec) {
     sec = Math.max(0, Math.floor(sec));
     var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
@@ -6457,7 +7879,8 @@
         units: function () { return ui.units; },
         mode: function () { return ui.diagMode; },
         overlay: function () { return ui.physOverlay; },
-        // #237 (owner): the SIMULATION PAUSED veil is clickable to resume. Route
+        // #237 (owner): the paused veil was clickable to resume. The veil was removed
+        // 2026-08-11; this hook is kept because the board API still declares it. Route
         // through the play button so its ▶/⏸ state stays the single source of truth.
         resume: function () { if (!service.running) $('playBtn').click(); },
         // Quick tour from the pause overlay (newcomer path).
@@ -6474,6 +7897,7 @@
     // missing rather than printing a placeholder that could go stale unnoticed.
     if ($('logoVer')) $('logoVer').textContent = window.RD_RELEASE || '';
     ui.series = Object.assign({}, PROFILES.pwr.defaultSeries);
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     service = new RD.SimulationService({ seed: 0x1234 });
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
     // its step loop, so the chart sees the plant between broadcasts and its resolution stops
@@ -6500,6 +7924,7 @@
     var initm = /[?&]init=([a-z0-9_]+)/.exec(location.search || '');
     if (initm && (prof().initStates || []).some(function (s) { return s[0] === initm[1]; })) ui.initState = initm[1];
     ui.series = Object.assign({}, prof().defaultSeries);
+    ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
     buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
@@ -6536,13 +7961,17 @@
     // does not render at all (paneVisible), so `?tab=physics` opened a tab that stayed
     // blank and looked like a broken panel rather than a broken link. `sim` stays as the
     // legacy alias for `operate`.
-    var tbm = /[?&]tab=(failures|graph|indications|physics|operate|sim|settings|training)/.exec(location.search || '');
+    var tbm = /[?&]tab=(failures|graph|indications|physics|checklists|operate|sim|settings|training)/.exec(location.search || '');
     if (tbm) {
-      if (tbm[1] === 'training') openMissionSelect();
+      // Three of these no longer name a TAB (#439) and route to what replaced them:
+      // `training` and `operate`/`sim` to the Plant & Mission window, `settings` to the
+      // Settings modal. They stay accepted because they are pasted into issues and
+      // screenshots — a dead deep link is a broken bug report, not a tidy-up.
+      var a = tbm[1];
+      if (a === 'training' || a === 'operate' || a === 'sim') openMissionSelect();
+      else if (a === 'settings') openModal('settingsOverlay');
       else {
-        // `sim` and `graph` are legacy aliases kept because they are pasted into issues and
-        // screenshots: the panes are `operate` and `indications` now.
-        var tabId = tbm[1] === 'sim' ? 'operate' : (tbm[1] === 'graph' ? 'indications' : tbm[1]);
+        var tabId = a === 'graph' ? 'indications' : a;      // `graph` is the old Indications
         var tbtn = document.querySelector('#tabbar [data-tab="' + tabId + '"]');
         if (tbtn) tbtn.click();
       }
@@ -6561,7 +7990,7 @@
       else am[1].split(',').forEach(function (id) { service.handleCommand({ action: 'set_auto_channel', channel_id: id, engaged: true }); });
       renderAutomate(service.assembleSnapshot());
     }
-    if (/[?&]run=1/.test(location.search || '')) { service.start(); $('playBtn').textContent = '⏸'; $('playBtn').classList.remove('paused'); $('playBtn').classList.remove('attention'); }
+    if (/[?&]run=1/.test(location.search || '')) resumeSim();
     // optional ?follow=<procId> deep-link — loads a procedure into the Instructor block
     var fm = /[?&]follow=([a-z0-9_]+)/.exec(location.search || '');
     if (fm) followProcedure(fm[1]);
@@ -6571,6 +8000,31 @@
     if (scm && RD.SCENARIOS && RD.SCENARIOS[scm[1]]) { startScenario(scm[1]); refreshMissionSelect(); }
     // Free-play Instructor idle coaching (Help / Checklists / tour pointers).
     showIdleInstructor();
+    applyCoachMarks();
+    restorePanelState();       // the player's own arrangement of the right column (#439)
+    // The selection screen (#443) — but NOT when the URL already made the choice.
+    // Every dev deep-link and both browser gates arrive with one of these, and a
+    // screen asking "which plant?" over a link that named the plant is a wall, not
+    // a front door.
+    /* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD, UNCONDITIONALLY *(OWNER DIRECTIVE,
+     * 2026-08-11: "The plant and mission menu should be up when the sim page is loaded.";
+     * narrowed the same day after it did not appear: "It should show up every time the sim
+     * is loaded it should not keep from loading if the player has sent before. It should
+     * always the the first thing someone sees when loading the sim.")*.
+     *
+     * THE DEEP-LINK BYPASS THAT USED TO GUARD THIS IS WHY IT NEVER FIRED FOR ANYONE. The
+     * list included `engine=`, and index.html links the simulator as
+     * `ui/shell.html?engine=pwr` — from BOTH entry points — so every visitor arriving the
+     * normal way matched the bypass and never saw the window. My check for it passed
+     * because it loaded a bare `ui/shell.html`, a URL only a developer types. A test that
+     * reaches the feature by a path no user takes cannot see a defect that lives on the
+     * path they all take.
+     *
+     * There is now no bypass at all, which is what "always" means. Anything automated —
+     * a gate, a dev deep link — dismisses the window rather than being exempted from it,
+     * so the thing under test is the thing players get. */
+    openMissionSelect();
+    missionTipArmed = true;            // the NEXT close is the one that needs the pointer
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

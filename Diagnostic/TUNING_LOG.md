@@ -29,6 +29,868 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-develop-a (#464 — the SG was discarding energy, and the manual had been right about it for a week)
+
+**Issue:** #464. **Gates:** `run_all` 47 runners at baseline; `run_behavior` 71 → **72** for the
+new probe. **Landed:** the condensation term, the AFW flow-scale correction, TR-19.
+
+**The defect.** `steam_generation_rate = max(0, Q_sg/(1+pump) − _sensible)/_latent_eff`, and
+pressure integrates `(generation − steam_out)`. When cold feed's sensible demand exceeded the
+crossing heat the clamp took generation to zero, and with nothing drawing steam `dP/dt` was
+**exactly zero** — the SG could not depressurize. Meanwhile `Q_sg = h_sg·flow·ΔT` kept
+delivering the primary's heat into a node that neither boiled it, stored it (mass clipped at
+max, level pegged 100 %) nor warmed on it (`t_sec ≡ T_sat(P)`, P frozen). **An infinite heat
+sink at fixed temperature.** Measured, full AFW after a loss of feedwater, six plant-hours:
+**947.1 psi flat to the psi** while decay heat fell 6.25 % → 0.94 %, primary–secondary ΔT
+collapsed **29.4 °F → 0.4 °F** (a ratio of 1.36 % against 1.16 % decay heat — the SG still
+absorbing essentially all of it).
+
+**The fix** is the same balance with the sign gate removed: the deficit flows through as
+condensation, no new constant, `K_steam_pressure` calibrating both directions. Self-limiting
+by construction — P falls, `t_sec` falls, ΔT grows, `Q_sg` grows, the deficit closes. Measured
+cooldown **170.6 → 94.0 → 48.7 → 25.6 → 14.4 → 7.7 °F/hr** over six hours, asymptoting to the
+104 °F AFW temperature. Undisturbed full power is unchanged (825.3 → 825.6 psi, 100 %) and the
+level-controlled case is unchanged (hot standby at 547 °F / 1012 psi) — the overcooling
+appears only with AFW unthrottled, which is the case operators are trained to throttle.
+
+### The traps
+
+- **A PREDICTION IS NOT A MEASUREMENT, and mine was 4.2× out.** Sizing the fix from the shipped
+  constants predicted a **722 °F/hr** cooldown — 7.2× the sourced 100 °F/hr limit — which
+  nearly bought a magnitude retune the plant did not need. The prediction held `t_sec` at
+  280 °C; the real `t_sec` falls as the plant cools and takes the demand down with it. Actual
+  peak **170.6 °F/hr**. The owner's call to build-and-measure rather than pre-correct is what
+  caught it.
+- **THE SAME WATER, WEIGHED TWICE, DIFFERENTLY.** `_sensible` added `afw_flow` and `main_feed`
+  under one coefficient calibrated on main feed — but the two normalize on different
+  full-scales (`GPM_FEED` 1000, `GPM_AFW` 640). Full AFW was weighted as **15 % of rated feed**
+  in the heat balance while the board displayed the same water as **96 gpm = 9.6 %**: 1.56×
+  heavier where it mattered than where it was read. Two normalized quantities are not
+  addable just because both run 0–1. Both scales are now declared config facts.
+- **THE CONTENT WAS RIGHT AND THE PLANT WAS WRONG** — the reverse of the usual presumption.
+  `Manuals/12` §8.4 has said *"full AFW flow absorbs more heat than crosses the tubes, steam
+  generation stops, and the plant is pulled below the no-load anchor"* since **Rev 9
+  (2026-08-05)**, and `07`'s PWR-E01 step 5 tells the operator to *"throttle AFW to hold level
+  without severe overcooling"* — a procedure step for a behaviour the plant could not produce.
+  HR9's presumption (content follows the plant; when content breaks, suspect the content) is a
+  rule about content that BREAKS. **Content nobody exercises never breaks, so it never tells
+  you it disagrees.** No manual change was needed here; the code was the outlier.
+- **THE CHANGE REDDENED NOTHING, AND THAT IS THE FINDING.** The SG energy balance was rewritten
+  and all 47 runners held — `run_pwr` 37/37, `run_behavior` 71+1, `run_meltdown` 12/12 — because
+  the regime it fixes is the regime nothing exercised. `run_m4` already drove AFW to full
+  capacity by the stuck-instrument route and only ever checked `afw_flow_normalized`. **An
+  unasserted mechanism is one nobody can tell is missing**; the only reason this surfaced at
+  all is that someone asked what temperature the charging water was.
+- **My filed diagnosis was wrong in BOTH directions.** #464 said the sensible term was too
+  *weak*. It is not weak — when allowed to act it is strong enough to overcool, and the
+  defect was that the balance discarded the energy instead of spending it. An issue's own
+  investigation comment is a claim like any other.
+
+**Deliberately not asserted:** TR-19 does not cap the cooldown at the sourced 100 °F/hr
+(ML11223A342). That is an OPERATOR limit; a plant that physically could not exceed it with AFW
+wide open would have nothing to teach about throttling, and Ginna's TS Bases names *"excessive
+cooldown of the primary system"* from *"excessive feedwater flows"* as a real concern.
+
+**Evidence pass, AFW sizing:** Ginna is **170 gpm per SG** on 1520 MWt (UFSAR ch15, stated
+"conservatively low") — ~67 gpm power-scaled to our 300 MWt, so the model's 96 gpm indication
+is defensible and the 15 % weighting was the defect. The linear sensible form was checked too:
+extrapolating a 47.9 °C calibration to a 232 °C one lands within **8 %** of a proper enthalpy
+ratio, so the shape is sound and only the flow weighting moved.
+## Session log — 2026-08-11-backshop-c (#460 — the rods ship in MANUAL, and the AUTO channel was absorbing the lesson)
+
+**The ask.** The owner opened on content — *"what should the player want to do the first time
+they open the sim?"* — and then: *"I'm debating removing the auto modes for load and rod
+control… at least i think these two should start in manual."* Ruled the same turn: **"lets
+start with rods in manual."**
+
+**Half of it was already built and nobody knew.** Free play has put generator load in MANUAL
+at Mode 1 since `getStartupLineup` (`pwr_engine.js:1724`); `grid_follow` has no `defaultOn`.
+Only the rod channel was in question. Worth stating because the 2026-08-01 ruling that made
+`rods_tavg` `defaultOn` (#289) rested on *"everything else starts in auto"* — a premise that
+had already expired when that lineup landed. **A ruling's premise ages independently of the
+ruling**, and nothing re-checks it; this one sat wrong for ten days.
+
+**Q0 first — and the measurement inverted the framing of the question.** The owner's argument
+was interactivity. The measurement says the AUTO channel is also the worse plant *and* the
+thing eating the curriculum. `measure_stack`, full stack, `hot_full_power`, seed 4242,
+100 → 80 MWe at t = 60 s:
+
+| | rods AUTO (old default) | rods MANUAL, hands off |
+|---|---|---|
+| power | 100 → **62.1** → **87.6** → 77.3 → 81.4 % | 100 → 81.8 %, monotone |
+| Tavg | 580.2 → **586.8** → **567.2** → 573.1 °F | 580.2 → **590.4** °F, parks |
+| settled | ~10 min, still ±1.5 pts | **3 min 30 s**, flat |
+| ends | on program (573 °F) | 17.3 °F (9.6 °C) high, 980 psi steam |
+
+**The plant load-follows without the rods** — negative MTC alone carried 18 points of load.
+The rod controller's job is not power; it is putting Tavg back on the sliding program. Then
+the insertion sweep, same evolution, rods manual, nudge at t = 300 s: **−20 fine steps →
+−1.8 °F, −60 → −6.2 °F** (~0.1 °F/step, linear across a 3× range, no overshoot either time),
+and generator load moved **0.8 points**. That last number is the whole case: **rods set
+temperature, the turbine sets power**, a Tier A coupling the AUTO channel performs on the
+player's behalf so completely that they never see it happen.
+
+**Trap — a channel can absorb the lesson it exists to demonstrate.** Q4 (player complexity)
+is a veto and it is normally the one that kills things; here it argued the other way. The
+cue already exists (the board draws the sliding Tref band, `pwr_board_wiring.js:1599`), HI
+TAVG sits **3.6 °F above where the plant parks** so it nudges without nagging, and the old
+arrangement had the channel doing invisible work that the player's own rod buttons silently
+cancelled via `manual_overrides`. Removing the channel was rejected — that fails Q1 (real
+units run auto at power) and kills the compare-to-auto exercise. **Only the preset moved.**
+
+**Conflict surfaced, not resolved by me.** #331 ("remove or reduce the automatic systems")
+was ruled **"Leave automatic systems in place."** (2026-08-05). Built to the narrow reading —
+channel stays, preset moves — and flagged to the owner rather than assumed either way.
+
+**Adjudicating the reds ONE AT A TIME (HR10), and all five were the same shape.** `run_all`
+drifted two runners: `run_behavior` 71 → 66 (5 FAIL) and `verify_board_check` 0 → 3 failures.
+The five — TR-1g, TR-1h, TR-1i, TR-1k, TR-18 — are every probe whose *subject is the rod
+controller*: the sourced WTSM ±5 °F duty, the rejection it should absorb, whether its step
+settles. **None of them was testing the preset; all five were reading it.** Fixed by a
+`rodsAuto()` helper — the exact mirror of the `rodsManual()` helper #289 had already been
+forced to write in the other direction — leaving every `ck` byte-identical. Back to **71 pass
+/ 1 xfail**, the recorded baseline, so `BASELINES` does not move.
+
+**The symmetry is the lesson.** #289 had to add `rodsManual()` because probes about the
+rod-less plant were inheriting AUTO. This change had to add `rodsAuto()` because probes about
+the rod controller were inheriting the preset. **Both directions of the same defect, ten days
+apart, and the first one did not prompt anyone to check the other side.** A probe that
+inherits a lineup instead of stating one is a probe that will silently change subject the next
+time the lineup does — and it reddens *then*, when the cause is furthest away.
+
+**HR10 validation, run rather than asserted.** The code comment claims the five probes now run
+on the same plant they ran on before. That is an assertion about behaviour, so `defaultOn` was
+temporarily restored and the new probe forms re-run against the OLD plant — passing on both is
+what makes them better tests rather than refitted ones. (Result recorded in the entry's own
+gate line; the temporary line was reverted immediately after.)
+
+**`board_check` cost one line per check, and its own comment explains why.** #289 had already
+been bitten by a pair of toggle checks that "inverted the moment the lineup changed — they were
+reading the shipped default, not the toggle", and split them into three: **the default itself,
+then both directions from it.** So this reversal reddened a check whose *name* said what moved
+(`ROD AUTO comes up ENGAGED on a Mode 1 start`) instead of a direction assertion failing
+mysteriously. Worth copying: **give a default its own named check** rather than letting it be
+the implicit precondition of the checks around it. The trailing "leave it disengaged" click had
+to go — the sequence now ends there on its own, and keeping it would have re-engaged.
+
+**The write-up reddened the gate after the gate was green, exactly as `run_all`'s own note
+warns.** `run_hardrules` counts every well-formed ruling citation as a SITE, and citations live
+in `Blueprint/` and the logs as well as in source — so writing the change up moved the score
+after the aggregate had passed. It went 280 → 283 (three new citations: the channel, the new
+`rodsAuto()` helper, the inverted `board_check` default), and one FOURTH citation — the
+SUPERSEDED marker on #289's entry — went in with a date but no verbatim words and failed red.
+That bare shape is now the sixth appearance in that baseline note's own history. Two things
+worth carrying: **a standalone `node test/run_hardrules.js` cannot catch the count half** (it
+exits 0 on "0 failed" and says nothing about the tally — only `run_all` compares it), and **a
+green aggregate is only evidence about the tree it ran on.** Re-run it after the docs, not after
+the code. The note says all of this already; reading it did not prevent it, and the gate did.
+
+**Doc staleness the change created, all of it the same phrase.** `12 §8.3`'s steam-dump cliff
+warning attributed the AUTO excursion to *"the shipped lineup"*; the measured figure (593.2 °F,
+~15 °F past program) is unchanged and simply stopped describing the default. Fixed, and
+`03 §14.3` gains the two operator-facing facts (the plant load-follows without the rods but
+parks off program; rods set temperature, the turbine sets power) — Rev 15 item (e), extending
+the pending row rather than opening Rev 16.
+
+---
+
+## Session log — 2026-08-11-develop-b (#454 — the chart's per-series side, and two defects only a screenshot and a replay could find)
+
+**Issue:** #454. **Gates:** `run_all` **47 runners at baseline**. `verify_e2e_ui` gains
+`testChartSettings` (six checks); its recorded score is `16screenshots` and does not move,
+which is the point of a throw-based test.
+
+**What shipped.** The anchored ⚙ popover is deleted and replaced by `#chartOverlay`, a
+`.mission-overlay` modal that takes the `modal` pause hold. Every one of the 120 channels is
+listed with its live reading on **both** sides and one selector per value. A channel set to
+`both` is **one lane, one union-fitted scale, two traces** — the physics a lighter dashed twin.
+
+**Three rulings, 2026-08-11, all as recommended.** (1) Replace the popover. (2) `both` is one
+lane with a dashed twin — this settles a contradiction *inside the issue*, whose technical
+section specified `{ser, side}` entries flowing through `pinOrder`/the lane stack while its own
+Q3 recommended one lane. (3) The row control is a toggle beside each value, not a four-state
+radio group.
+
+**Ruling 2 is why this was a small change.** Taking the issue's own technical section would have
+re-keyed `active`, `pinOrder`, the demotion walk, `chartRange`, the CSV and the highlight bus's
+`.lane-chrome[data-ser]` selector from `ser.id` to `ser.id+side`, and put two lanes per paired
+channel against a 36 px floor. One lane per series left `laneSplit`, `pinOrder`, the demotion
+walk and `drawLanes` **untouched**. A filed technical shape is a proposal, not a specification —
+and when it disagrees with its own open questions, that disagreement is the thing to resolve
+first.
+
+### The traps
+
+- **A refactor's claim is "nothing changed", and a screenshot A/B cannot check it here.** The
+  live sample count depends on tick timing, so two page loads never hold the same `chartBuf`
+  and only the seeded preseed portion would ever match. Pinning at FUNCTION level instead —
+  keeping `seriesValOld` alongside and replaying both over the real buffer — is exact and free:
+  **50,160 comparisons per diagMode, 0 mismatches**, and the pin was proved non-vacuous by
+  inverting the fallback (**33,422 mismatches**). Scaffold deleted with the measurement.
+- **The default has to be the OLD RULE VERBATIM, not the convenient equivalent.** `sideOf`
+  falls back to `(chartTruth() || !ser.get)` rather than to "whichever side exists". The two
+  differ for a `ctl` series that also carries `tru`, which in Realistic mode would have silently
+  changed side. **There is no such series on any plant today** — which is exactly why it had to
+  be checked rather than assumed, since the first one added would have inherited the bug.
+- **PAINTING COLOUR X OVER COLOUR X CHANGES NOTHING.** The dashed twin was drawn in the series'
+  own hue, per the "same hue" ruling. On a healthy plant the two sides agree, so the twin's
+  polyline lands on the *same pixels* — Tavg set to `both` drew exactly one visible line, and
+  the feature looked switched off at the moment it was most switched on. The DOM check was
+  perfectly happy (`polylines 4, dashed 1`); only the screenshot showed it. Fixed by lightening
+  the twin's stroke, which keeps it one hue rather than a second palette slot.
+  **CONFIRMED ON THE LIVE BOARD** *(OWNER RULING, 2026-08-11: "im looking at it and it looks
+  fine the way it is now.")* — given after the departure was flagged for review, so the
+  lightening is the ruled form and **is not to be reverted to the plain hue**. The earlier
+  "same hue" selection stands as written; what it could not anticipate is that an identical
+  hue makes the twin invisible in precisely the case the feature exists for.
+- **`flex-grow` beats `height`, so the first attempt to prove a check could fail, failed.**
+  Injecting `height: 40px !important` on the channel list did NOT go red: the list is
+  `flex: 1 1 auto` in a column, so grow re-expanded it and the check read 633 px. `flex: 0 0 40px`
+  reddened it properly. **An injection that does not reproduce the defect has not verified the
+  check** — it has only verified that the injection missed.
+- **The lane floor is measured from the DRAWN lanes.** Consecutive `.lane-chrome` tops in real
+  px, with the last lane bounded by the numeric strip. Verified by dropping `LANE_FLOOR_PX` to 8
+  and pinning eight channels: **19.6 px**, caught. `plot ÷ lanes` would not have caught it.
+- **Unticking anywhere clears the side.** The Indications tab's plain tickbox and the window's
+  two selectors are one setting reached two ways, so they must leave the same state behind, or
+  re-ticking silently restores a choice made in the other surface an hour ago.
+
+- **A GREEN AGGREGATE IS ONLY EVIDENCE ABOUT THE TREE IT RAN ON — and the write-up changes the
+  tree.** `run_all` said *47 runners at baseline*, I wrote CHANGELOG/TUNING_LOG/CLAUDE.md, pushed,
+  and **CI went red on `run_hardrules` 276 against a baseline of 275**. The extra check is the one
+  new HR11 citation site in the CHANGELOG entry — well-formed, 0 failed, purely a count moving.
+  The local run was not wrong; it was *stale*, and it was stale because I invalidated it myself,
+  after it passed. Drift is symmetric, so a count going UP reddens exactly like a count going
+  down. **`run_hardrules`'s own `BASELINES` key already carries the standing warning — "prose
+  moves this score; run the aggregate after the docs, not before" — and records the same trap
+  costing a CI red on 2026-08-07.** Reading the note did not prevent it; only the gate did, which
+  is what that note already says about itself. The rule has a sharper form worth keeping: **the
+  last thing you change must be the last thing you gate.**
+
+**Observed, not fixed, out of scope:** a long lane value (`50 MWe` on Output MW) overlaps the
+right-hand gutter marker. Pre-existing, single-side, untouched by this change.
+
+### A t=0 line on the strip chart — and the tag landed on the range label
+
+*(OWNER, 2026-08-11: "The strip chart should have a line to show the start of the sim at
+time=0.")*
+
+A dashed slate `6,3` line across every lane, tagged `T+0`, drawn only when zero is inside
+`[t0, t1]`. Distinct from the three other full-height marks by construction: checkpoints are
+blue `3,3`, tier-1 events amber (plant) or cyan `2,2` (operator), the cursor solid white.
+
+**It marks a REAL JOIN, which is the reason it is worth having.** A preset start preseeds 30
+minutes of genuinely-run trend at **negative sim time** (`applyPreseed` lays rows on
+`[t0 − CHART_RECORD_SEC, t0)`). Measured at T+10 s on the default 5-minute window: **290 s of
+the visible plot is the plant's history and 10 s is the run you are driving**, with nothing
+marking the boundary. The x-axis cannot say it either — those ticks read seconds BEFORE NOW
+(`−300s … 0`), so the axis's own "0" is the right-hand edge and means the opposite of this
+mark. That is also why the line needed a label rather than standing alone.
+
+**The trap: the tag rendered ON TOP of the first lane's range label** — literally `40% T+0 %`
+on screen. The lane chrome puts a NAME top-left and a RANGE top-right in *every* lane, so the
+top strip is the one row of the plot that is never free; the bottom edge carries nothing but
+trace and is nearer the time axis the mark belongs to. **Every element existed and every count
+was right** — only the screenshot showed it, which is the same lesson as the invisible dashed
+twin earlier in this entry. It is now a gate: `testRunStartMark` compares the tag's RECT
+against `.lane-rng` / `.lane-name` / `.lane-value` and names what it hit. Injection-verified by
+moving the tag back to `top: 0` — it reports `lane-rng "40% – 60%"`.
+
+The tag is dropped (the line is not) when channels are demoted to numeric rows, since those
+occupy the bottom strip. Negative control in the gate: drive to ~25 plant-minutes, drop to 1x,
+select the 60 s rung — both line and tag must be gone, or the mark is an axis rather than a
+moment.
+
+**And a gate that was defined, exported, and never called.** The edit wiring
+`testRunStartMark` into `main()` silently failed while the export succeeded, so the standalone
+driver passed and the aggregate would have run 16 screenshots and none of this. Caught by
+grepping for the call rather than trusting that the edit landed. **A test file's export list
+is not evidence the test runs.**
+
+### Closing Plant & Mission left the plant paused — an ORDERING bug, not a modal bug
+
+*(OWNER, 2026-08-11: "When i close the plant menu after starting the sim the sim should start
+playing. it currently starts paused. it should start running after closing the plant & mission
+menu.")*
+
+**The modal logic was working perfectly.** Free Play runs, at `ui/app.js:6388`:
+
+```js
+closeMissionSelect(); switchEngine(msel.engine, msel.init);
+```
+
+`closeMissionSelect` releases the `modal` hold and **starts** the plant — correct. Then
+`switchEngine` takes `pauseSim('plant_change')` to cover the engine swap and the UI rebuild,
+and **nothing ever released it**. The plant ran for a few milliseconds and then stopped for
+good. Only ▶ could recover it, because `resumeSim()` wipes the whole map rather than clearing
+a reason.
+
+**The holds had split into two kinds and only one kind was ever released.** `modal`,
+`plant_change` and `reset` are TRANSIENT — they cover a window being up or a rebuild being
+half done. `user` and `content` are DELIBERATE. `closeModal`'s tail was the only release path
+in the file, so it is now extracted as `releaseHold(reason)` and called at all three transient
+sites. Extracted rather than copied: a hold whose release is spelled out per-site is a hold
+that gets taken somewhere new and not released, which is exactly how this one arrived.
+
+`reset` fixed too *(OWNER SELECTION, 2026-08-11, from the options presented: "Fix both")* —
+a reset now lands you on a running plant rather than one that needs ▶ before anything happens.
+`rewind` deliberately left on plain `clearPause`; whether cancelling the picker should resume
+is a separate question nobody has asked.
+
+**The trap: the ✕ button passes on this defect.** `#missionClose` alone never calls
+`switchEngine`, so a check that opened the window and pressed ✕ would be green while the
+reported path was broken — and ✕ is the obvious thing to test. `testMissionCloseResumes`
+exercises **both** doors plus the player-paused case, and all three were driven red by
+injection (restore the missing release → the reported failure; make `releaseHold` wipe the map
+→ the `user` hold is dropped).
+
+**Also swept:** the Settings button's scanner detail still promised "the window and CSV export
+sit on the chart itself, so changing how you are watching a transient never stops the
+transient" — player-facing copy describing the pre-#454 world. Rewritten. Two surfaces had that
+sentence and the ⚙'s own copy was fixed with the feature; this one was not, because nothing
+links them.
+## Session log — 2026-08-11-workbench-a (RHR was putting ITSELF in service during a LOCA; the heater gain turned out to be the wrong lever, and three "reds" were three stale windows)
+
+**Issues:** #450 (owner stub, no body), #451, #453 (filed this session). **Commits:** `1a334a7`,
+`25bfc11`. **Gates:** `run_all` **47 runners at baseline**; `run_hardrules` 273 → 275 (baseline
+updated). **Rulings taken** *(OWNER RULING, 2026-08-11: answered "1:A 2:A 3:A" to three options
+tables I wrote — a selection, not verbatim words)* — sweep `K_heater` then rule on F14; re-key
+CA-20b to the physical claim; investigate before building. Later, on sweep scope
+*(OWNER RULING, 2026-08-11: selected "K_heater alone first" from three options I wrote — a
+selection, not verbatim words)*.
+
+Per-issue detail is on each issue. This entry is for what the diffs do not say.
+
+### The plant put itself on shutdown cooling with a hole in it
+
+`set_rhr` auto-aligned on **indicated pressure < 2.70 MPa AND `rps_scrammed`, and nothing else**.
+Measured full stack, `large_loca` sev 0.05: `eccs_mode` HPI → **RHR at t+10 min, Tavg 381 °F,
+at saturation, break still discharging**, after which RHR removes −0.288 → −0.064 °C/s — more
+than every other sink combined, including the accumulator dump it follows. The RHR pumps would
+be taking suction from a voiding hot leg.
+
+The sourced entry condition was **in our own corpus, uncited**: Ginna TS Bases Rev 101
+(ML20339A221) — *"residual heat removal (RHR) entry conditions (Tavg < 350 ºF) … during normal
+operations."* **Both halves bind, and the second is the one that mattered**: "during normal
+operations" is what excludes a LOCA, and no pressure reading can express it. Subcooling can.
+
+### The three traps worth keeping
+
+1. **A CONSTANT'S STATED PHYSICAL BASIS CAN BE RIGHT ABOUT THE PHYSICS AND WRONG ABOUT THE
+   NODE.** `eccs_cooling_gain: 1.0` says *"at REAL rates the physical value of this mixing form
+   IS 1.0 (true enthalpy mixing)"*. True enthalpy mixing gives gain 1.0 **only if the node's
+   heat capacity is one RCS mass of water.** This model's is not: measured from the plant's own
+   t=0 energy balance (fuel→coolant 1.30 °C/s at `mwt_rated` 300), the coolant node carries
+   **231 MJ/°C**, while one RCS mass of water is **~113** — the difference is the metal, which
+   the node is right to carry. So the *mixing* terms (ECCS quench, blowdown flash) run on a
+   water-only capacity while every *power* term (decay heat, SG, RHR) runs on the
+   metal-inclusive one. **The two halves of `stepCoolant` use effective heat capacities that
+   differ by ~2.1×**, which is exactly why decay heat loses to the quench. True gain 0.489, and
+   the conclusion survives ρ 690–720 / cp 5.0–6.0 (0.44–0.51) — only the third decimal moves.
+2. **A "RED" AFTER A BEHAVIOUR CHANGE CAN BE A STALE *WINDOW* RATHER THAN A STALE CLAIM.** All
+   three probes the RHR fix reddened (CA-15, CA-16, CA-25) were measuring at times calibrated on
+   a plant that rode shutdown cooling to its terminal state at t+10 min. Every claim was intact
+   **600–2000 s later**: CA-25 reads *exactly* 0.00 psi / 0.00 pts / 0 reversals in every window
+   from t+5000 to t+15000; CA-15 arrests at 109.28 % against a solid line of 109.3 with drift
+   *exactly* 0.00. Adjudicating them as a batch ("the fix moved things") would have been right
+   by accident; adjudicating them one at a time is what turned up trap 3.
+3. **AN UNASSERTED PREMISE DOES NOT FAIL — IT SILENTLY MEASURES A DIFFERENT REGIME.** CA-16
+   leg D said *"by 10 min the ECCS quench has taken the source below flashing"* and never checked
+   it. Measured, the source is **still flashing at t+3030** and crosses at ~t+3630 — by which
+   time containment has bled to 0.006 MPa over ambient and the leg's own genuine-peak guard
+   correctly refuses the measurement as vacuous. **There is no window where both hold**, so
+   waiting cannot fix it: the leg now REMOVES the source (`clear_failure`) and asserts it is gone.
+
+### The lever I expected was the wrong lever
+
+I predicted `K_heater` 0.10 would restore the sourced spray band. **Measured, it does not, and
+neither does anything down to the physically correct value.** Excursion on a 50 % load rejection:
+0.73 / 1.64 / 3.01 / 5.59 psi at K = 0.55 / 0.20 / 0.10 / 0.05, against a band that cracks the
+spray at +25 psi. The mechanism is explicit in a `stepPressure` term budget — at t+300,
+heater **+8.89e-3** against K×surge **−8.91e-3**, cancelling to three significant figures — and
+because the loop is proportional, a 347× gain needs 1/347 of its band to do it. **The flat gauge
+IS the gain.**
+
+**And the extrapolation would have been wrong.** I expected 1/K scaling; it SATURATES. Measured
+12.13 / 18.84 / 26.82 / 45.54 psi at K = 0.020 / 0.011 / 0.0061 / 0.00158, against a naive 1/K
+prediction of 20.1 / 36.5 / 65.8 / 253.5. The 25 psi crack point lands at **K ≈ 0.0061**, ~8×
+below where TR-1h breaks, and the 75 psi full-open point is unreachable at **any** `K_heater`
+including the physical one — so the flat-pressure symptom is not solely a heater-gain problem
+and #450 stays open on the residual. Negative result worth the same weight: `P_restore_rate_gain`
+looked like an obvious second regulator and zeroing it moves the excursion **0.01 psi**.
+
+### Two guards were not guarding, and injection is what found both
+
+- **`run_hardrules` could not see ARRAY-FORM conditions.** `condition: ['a', {…}, {…}]` has been
+  valid kernel syntax since #287; both regexes anchor on `condition:` followed by a quote or a
+  brace, and continuation lines do not contain the word at all. #453 added the first array
+  condition in the codebase and **three permissive keys went unscanned — the only symptom was
+  the site count dropping 273 → 272**, as the old single site vanished. No failure, no warning.
+- **`perturb_sweep --self-test` was STUCK AT FAIL**, and CLAUDE.md tells every agent to run that
+  tool before touching a `[tune]` constant. Its deliberately-fragile check asserted
+  `|tavg − 304.07| < 0.05` against a build producing **304.5291**, so it failed on the
+  unperturbed run *and* every nudge — **and a check stuck at FAIL never FLIPS**. The tool whose
+  whole job is to certify that a null result means something was reporting *"do not trust a
+  negative result"* on a pipeline that works (`h_sg*1.03` moves that value 19× the band).
+  **A literal baseline inside a deliberately-fragile check is a contradiction in terms** — it is
+  built to move when the plant moves, so it rots at the first retune. Anchored on the baseline
+  run's own value; the parent now asserts the baseline passes before looking for flips.
+- **CA-16's decay leg could not catch a deleted sink**, though its comment claimed it could: with
+  all three sink taus ×1e6 it PASSED, because the expectation integrates the engine's own live
+  sink and collapses with it (`expRem` → 1, bound → 3). A self-referencing expectation answers
+  "is the sink APPLIED as computed" and cannot answer "is there a sink at all". Capped at 0.9.
+
+### Tooling
+
+`tools/term_budget.js` — per-term `dTavg` budget that **proves closure** instead of attributing
+by difference. Its first version read post-step state and did not close (1.2e-2 °C/s), because
+`fuel_temp_c` is written at step 5 and read at step 6 and a tick is 50 physics steps, so any
+mid-tick regime flip is read in the wrong regime. Evaluating `stepCoolant`'s own pre-step inputs
+closes it to **1.4e-17**. `tools/_config_nudge.js` — the override applier extracted from
+`_perturb_child.js` so `measure_stack --nudge=` and `perturb_sweep` share one path, because a
+nudge applied two ways is two different plants.
+
+---
+
+## Session log — 2026-08-11-develop-a (#436 finished to its content gates — and the night's defects were nearly all the observer, not the plant)
+
+**Issues:** #436 planned into #437–#446. **Landed:** #438, #437, #439, #443, #393, #440, #442,
+#444, #445. **Filed:** #449. **Open by design:** #441 (content-gated), #446 (deferred by ruling).
+**Commits:** `2a31361`, `496375b`, `b540b72`, `91e8c65`, `5573f42`, `4f7026a`, `cf7e4c4`,
+`41ea828`. **Gates:** `run_all` **47 runners at baseline** at every landing; CI green on each
+push. Runners added: `run_events` (40), `run_chart_math` (8). `run_portable` 139 → **142** as
+three new `<script src>` tags raised its own tally by design.
+
+Per-issue detail is on each issue. This entry is for what the diffs do not say.
+
+### The pattern: the observer, not the plant
+
+Of the night's defects, most were in the thing doing the WATCHING, and none was visible in a
+source read. They are worth naming together because they are one family.
+
+1. **A recorder's first pass looks exactly like plant activity.** `_alarms` emits a transition
+   per alarm when it has no previous state — right for a bug report, and on a timeline it
+   arrived as **46 `alarm_clear` events at t = 0**. `run_events` TR-1 measured a steady 20 s at
+   power producing 46 events; it now produces **0**.
+2. **A merged indicated-vs-true list comparing FORMATTED STRINGS flags a healthy plant.** Five
+   rows lit permanently, `-0.0` against `0.0` among them. Ordinary lag measures **0.18 %** (Cold
+   Leg 551/550 °F); the rule is now 0.5 % relative with a floor at the displayed precision.
+3. **…and the first fix for that swallowed the case it was built for.** Exempting rows whose
+   true side is curated prose also exempted the PORV — `shut` against `OPEN · STUCK`, the spec's
+   headline example. Prose is for READING; the comparison belongs on the values.
+4. **The exponent is part of the displayed precision.** `2.0e-3 A` read as precise to 0.1, and
+   the floor swallowed a **75.9 %** divergence on the intermediate-range channel — the nuclear
+   instruments, where a failure is least cross-checkable.
+5. **A cluster took its ref from `evs[0]`**, and a trip cascade LEADS WITH ALARMS, which carry
+   none. Every SOE marker after a scram pointed at nothing.
+6. **A relevance guard was inverted** — it recomputed only while the list was open, precisely
+   the case the spec forbids. Deleted rather than fixed: the menu already rebuilds on open.
+
+**Corollary that paid twice: a refactor's only claim is "nothing changed", so pin the OLD
+implementation and replay it.** `run_chart_math` keeps both original copies verbatim as dead
+code — 770 `niceStep` inputs and a 235-frame transient with 50 re-fits, frame-for-frame.
+
+### Two things a screenshot caught that no check did
+
+- **The numeric rows drew over the bottom lane.** Every element-counting check passed. The lane
+  count and the row count are JOINTLY constrained — each demoted channel takes 18 px from the
+  lanes above it — so it is one solve, not two steps.
+- **My own drive measured lane height as `plot ÷ lanes`**, ignoring the space the rows take:
+  56 px reported where the truth was 38. An optimistic measurement is how a floor gets certified
+  while being violated.
+
+### Gates moved, none weakened
+
+Five browser gates drove paths that no longer exist; each moved to the SHIPPED path. Two were
+improvements rather than repairs: `verify_e2e_ui` now reaches Feedback by the one-click header
+button, and `verify_flags_ui`'s Features probes open Settings first — which **restored** a check
+that had silently become "is the modal open?" rather than "is the flag on?". That same gate
+caught a real error of mine (the session footer belonged outside `#mpContent`) and passed
+**unmodified** once it was fixed.
+
+**Three gate runs were invalidated by editing during them.** The lesson is cheap and was learned
+three times: a source-scanning gate reads the tree as it is, not as it was when the run started.
+
+### Where a spec was wrong, and what was built instead
+
+**#444's premise.** §7 says the synoptic carries `data-highlight-id` hooks. It does not — that
+attribute exists only in two Blueprint documents describing a `pwr_synoptic.js` that was never
+built, and `pwr_board_data.js` is generated so retrofitting was never an option. The bus runs on
+`CONTROL_LABEL_MAP` + `revealControl`, which is already gate-validated.
+
+### Left open deliberately, and why
+
+- **#449** — Intermediate Range **75.9 %**, Charging and Letdown Flow **~23 %** apart at steady
+  state with nothing injected, against a 0.18 % lag baseline. Surfaced by the merged list on its
+  first run. Building the panel that found them and chasing an instrument-scale defect are
+  different work.
+- **#441** — the rung ladders need the authoring pass (3–4 rungs + axis type per channel).
+- **Two content gaps named rather than faked:** per-step `why:` fields (the anchors they target
+  now exist), and an authored `responds_to` per procedure — without it, relevance can only
+  promote conditions the plant reports unambiguously, and guessing from a title would be a
+  heuristic pretending to be knowledge.
+- **§7's sensing-location highlight** (SG level from its reference leg) is bounded by what the
+  board distinguishes, which is the card, not the tap.
+
+### Seven owner adjustments after the review — and three defects of the same shape
+
+Seven direct requests, all shipped, all live-driven (19/19 in the drive script). The
+engineering interest is not the features; it is that **three separate defects had one shape: a
+state that was set correctly and did not take effect**, and in all three the DOM said the right
+thing while the pixels did not.
+
+| # | The state was right | The pixels were not |
+|---|---|---|
+| 6 | The checklist list was built and in the DOM | Its container was collapsed — 17 nodes nobody could see |
+| 4 | `applyFocus(true, true)` was written and correct | It sat after `if (!st) return`, so a first visit never reached it |
+| 5 | The Instructor card carried `collapsed` | `collapsed` is `flex: 0 0 auto` and ellipsizes ONE TEXT LINE; the free-play launcher I had added that night is BLOCK content, so a "collapsed" card stood **374 px** and left the tab it had just handed the column to **205 px** |
+
+**The lesson is about the check, not the code.** My first #6 check counted
+`querySelectorAll('[data-ckl-start]').length` and passed — against a list that was invisible,
+which is verbatim the complaint the request was filed about. A node count cannot answer a
+question about visibility. It now asks `offsetParent !== null`, which is null inside any hidden
+ancestor. The #5 defect was found by **looking at a screenshot**, after every element-counting
+check in the drive had passed; this is the third time this week that the artifact caught what
+the assertion could not (cf. the numeric-row overdraw in the -c entry below).
+
+**Two supersessions, recorded because both overrode a previous instruction:**
+
+- **Indications go to one column**, superseding the 2026-08-04 two-column layout. That directive
+  was given when the rows were checkboxes; #439 made them paired indicated/true rows, and two
+  columns of a two-column row is four columns of numbers in a 350 px panel.
+- **A standard checklist order** supersedes the relevance sort from #443 pt 2. The relevance
+  *scoring* is kept and still labels what the plant is asking for — what is retired is letting it
+  reorder the list under the player's hand. An order that moves is an order you cannot learn.
+
+**#7 removed the step-complete button, which required the steps to actually self-complete.**
+Measured first: **2 of 106 authored steps declare no `acc`, `saw` or `cmd`** — pure observation
+steps, which had no completion path other than the button. They now complete on a 12 s dwell.
+Deleting the button without that measurement would have hung two checklists for ever, and
+nothing in the suite would have said so.
+
+**HR11 caught this session's own citation.** The CHANGELOG entry went in as
+`*(OWNER DIRECTIVE, 2026-08-11)*` — a date with no verbatim words, which is the exact failure the
+`run_hardrules` baseline note describes happening four times before. It reads as authority while
+carrying none of the evidence. 274 checks, 1 failed, and it was mine.
+
+### Ten more adjustments — and the two that were only ever visible from outside
+
+**The window that had never opened for anyone.** "The plant selection menu should start at page
+load but it does not." I had built that the same night and *measured it passing*. Both were true:
+the open-on-load carried a deep-link bypass list, that list contained `engine=`, and `index.html`
+links the simulator as `ui/shell.html?engine=pwr` from **both** entry points. So the window opened
+on exactly one URL — a bare `ui/shell.html` — and that is the URL my check had used. **A test that
+reaches a feature by a path no user takes cannot see a defect that lives on the path they all
+take.** There is now no bypass; automated gates dismiss the window as a player does.
+
+**The freeze that was never applied.** "All animations should stop when the sim is paused." The
+`.bd-frozen` rule was correct and had been for months; the class was set from `render()`, off the
+snapshot's `running` flag. **Pausing stops the broadcast**, so the render that would have applied
+the freeze never happens. Measured while paused: **106 of 112 animations still running**, 105 of
+them inside the very stage the rule covers. Fixed by pushing the state on the play/pause event —
+and then by re-stamping `metadata.running` at render, because a stale snapshot re-rendered on a
+tab switch called `setRunning(true)` and un-froze it a second later.
+
+**Three of my own checks were hollow or wrong-vehicled, and each failed differently:**
+
+| check | why it lied |
+|---|---|
+| `log.scrollHeight > log.clientHeight` | passed **because `clientHeight` was 0** — the transcript had no height and every message overflowed an invisible box. A ratio between two numbers is not a claim about either. |
+| transcript keyed on the first line | right for a walkthrough, meaningless for a **checklist**, which renders its whole list at once under a title that never changes. Eight samples, same key. |
+| transcript exercised with a checklist | the directive named *walkthroughs*. The vehicle decides what the check can see. |
+
+**And the fold-in ran on the one branch that never fires.** `renderInstructor` dispatches to
+`renderFollow` / `renderChat` / `renderChecklist` / `renderLevelComplete` and **returns from each**
+— five early returns — so appending the transcript call to the end of its body reached only the
+idle path. Wrapped instead. **When a function has more than one exit, "at the end" is not a place.**
+
+**The load spinner, proved both ways.** The engine has always separated `load_cmd_mwe` (what the
+operator asked for) from `load_target_mwe` (the EHC reference ramping toward it at
+`load_rate_pct_per_min`) — but only the reference was published, so the ▲ button stepped from a
+number the ramp was moving underneath it. Measured: **10 presses moved the demand 50 → 50** on the
+old wiring and **50 → 60** on the new. The rate limit is untouched; what changed is what the
+control reads.
+
+**The scanner's pin is measured, and its old comment was aspirational.** The rule claimed "a fixed
+generous height" in its own text while being `height: auto; max-height: 190px`. Across all 133
+`data-scanner-hint` elements the tallest description renders **127 px** (p95 109, median 92), so
+the pin is 140 and the old cap was 50 % taller than anything that exists.
+
+### The usage-data opt-out, removed in two steps — and what had to go with it
+
+Ruled in two parts on 2026-08-11. First: out of the options menu. I moved the control onto
+`privacy.html` rather than deleting it, because that page states **in bold** that collection can
+be turned off, and collection has been on by default since the launch consent prompt was removed
+(2026-08-09) — so the opt-out was not a convenience, it *was* the consent mechanism. Then the
+ruling completed: **no opt-out anywhere, and say nothing on the privacy page about it being
+unavailable.**
+
+**The promise had to go with the mechanism.** Removing the control while leaving "you can turn
+this off" on a live public page is not a wording choice, it is a false statement to a visitor.
+So that sentence was deleted and **nothing was asserted in its place** — the instruction was to
+assert nothing, and silence is not a claim. The explanation for the removal is deliberately not
+in the page's source either: an HTML comment is visible in view-source, which is still the
+privacy page. It lives here and in the commit instead.
+
+`RD.Telemetry.setConsent` is **left in place and still honoured**, with no UI calling it. It
+enforces the invariant that an opt-out DROPS the queued events rather than holding them; deleting
+the API would take that guarantee out with the button. `RD.diagnose()` now reports a bare
+`collecting` — a diagnostic naming a control that does not exist sends the next reader hunting
+for a menu item.
+
+**The gate check was re-pointed twice in one day, and the direction matters.** It began as "the
+in-sim Settings row points at the schema", became "privacy.html carries a working opt-out", and
+is now **"privacy.html makes no opt-out promise it cannot keep"**. The subject moved from the
+mechanism to the CLAIM, because the mechanism is gone by decision and the claim is what a future
+edit could reintroduce for free by restoring one sentence of old copy. It deliberately passes on
+silence and fails only on an unbacked promise — proven by injection: restoring "You can turn this
+off at any time" with no control behind it reddens it.
+
+**One consequence worth recording:** closing a modal now resumes the plant, which is correct for a
+player and wrong for `verify_manual_follow` — that gate checks control-surface reachability and
+never plays the sim. On a running plant its steps graded themselves and advanced, and every reading
+came out one step late (**34 failures, all off-by-one**). It now pauses in the same turn as the
+close; a 200 ms gap was enough for two ticks and left 24 of them.
+
+---
+
+## Session log — 2026-08-10-develop-c (the #436 control-room rework: plan, five phases, and three defects that were all the observer, not the plant)
+
+**Issues:** #436 (planned, now the tracking issue; filed **#437–#446**) · #438 · #437 · #439 ·
+#443 part 1 · #393 · **#449 filed**.
+**Commits:** `2a31361` (#438), `496375b` (P2–P6), `b540b72` (#393 + the #440 reference lane).
+**Gates:** `run_all` **47 runners at baseline** at each landing; CI green on 2a31361 and 496375b.
+Two runners added (`run_events` 40 checks, `run_chart_math` 8), `run_portable` 139 → **141** as
+two new `<script src>` tags raised its own tally by design.
+
+### What was built
+
+The owner's Control Room Layout Spec v3 (the comment on #436) was planned into ten children and
+five phases were executed overnight against pre-issued rulings. Detail is on each issue; this
+entry records what is not obvious from the diff.
+
+- **#437 `ui/event_stream.js`** — one SOE stream, tier/componentRef/actor stamped at emission.
+  Edge detection sits at the service/UI seam by ruling; the bug-report recorder stays the ONLY
+  detector of alarm and scram transitions and feeds the stream through its existing `onEvent`
+  hook.
+- **#439** — the pause primitive (`pauseSim(reason)`, four copied idioms folded, modals pause and
+  closing never resumes), the strip reduced to Checklists/Indications/Inject Failure with Operate
+  dissolved, Settings a pausing header modal with the chart's window and CSV moved onto the chart,
+  the Scanner reduced to a 26 px line under the board, and Indications/Physics merged into one
+  paired list with computed divergence.
+- **#443 part 1** — a selection screen on cold load, Reset into the session-bar window as a
+  two-press arm, three persistent coach marks.
+- **#393** — `ui/chart_math.js`, the held-axis policy shared by the chart and the vital tiles.
+
+### The trap: three of the four defects were the OBSERVER, not the plant
+
+None was visible in a source read; every one needed something to be driven.
+
+1. **The recorder's first pass looks exactly like plant activity.** `_alarms` emits a transition
+   for every alarm when `lastAlarms === null` — correct for a bug report, which wants the
+   starting state of the panel. Fed to a timeline it arrived as **46 `alarm_clear` events at
+   t = 0**. `run_events` TR-1 measured a steady 20 s at hot full power producing 46 events; the
+   guard (only emit a clear for an alarm this stream saw annunciate) takes it to **0**.
+2. **A merged indicated-vs-true list comparing FORMATTED STRINGS flags a healthy plant.** Five
+   rows lit permanently, `-0.0 DPM` against `0.0 DPM` among them — the same number. Measured
+   spread at hot full power over 92 comparable rows: ordinary lag is **0.18 %** (Cold Leg 551 °F
+   indicated / 550 °F true) and **0.12 %** (Steam P 826 / 825 psi). The rule is now **0.5 %
+   relative with a floor at the displayed precision**, which sits above lag and below the spec's
+   own worked example (core exit 618 / 623 °F, 0.8 %).
+3. **…and the first version of that rule swallowed the case it was built for.** Exempting rows
+   whose true side is curated physics prose was meant for "3.12 % · 9.4 MWt" against "3 %" — a
+   different rendering of one value. It also exempted the PORV row, which is the spec's headline
+   example: `shut` against `OPEN · STUCK`, flagged by nothing. Fixed by comparing the RAW pair
+   (`get(instruments)` vs `tru(true_state)`) and using the rendered text only to derive the
+   precision floor. Prose is for reading; the comparison belongs on the values.
+
+The fourth was mine and the same family: the exponent is part of the displayed precision, so
+`2.0e-3 A` read as precise to 0.1 and the floor swallowed a **75.9 %** divergence on the
+intermediate-range channel — the nuclear instruments, where a failure is least cross-checkable.
+
+**Corollary that paid twice: a refactor's only claim is "nothing changed", so pin the OLD
+implementation and replay it.** `test/run_chart_math.js` keeps both original copies verbatim as
+dead code and replays 770 `niceStep` inputs and a 235-frame transient with 50 re-fits,
+frame-for-frame. A check that only drove the new function would agree with whatever the new
+function does.
+
+### Gates moved, and why none was weakened
+
+Three browser gates drove paths that no longer exist. Each moved to the **shipped** path rather
+than to a test-only door: `verify_e2e_ui` reaches Feedback by the one-click header button (#438),
+and `verify_flags_ui` presses through the selection screen the way a player does and opens
+Settings before probing the Features row. That last one **restored** a check that had silently
+become "is the modal open?" rather than "is the flag on?" — the vacuous-guard failure that file's
+own comments already record twice.
+
+`verify_flags_ui` also caught a real error: the session footer had been put inside `#mpContent`,
+where "public: campaign offers nothing to start" counts buttons as things you can start. The
+check was right; moving the footer out made it pass **unmodified**.
+
+### Left open deliberately
+
+**#449** — the merged list, at hot full power with nothing injected, flags Intermediate Range
+(**75.9 %**), Charging Flow and Letdown Flow (**~23 %** each) against a 0.18 % lag baseline. Not
+investigated: building the panel that found them and chasing a possible instrument-scale defect
+are different work. The fourth flagged row (Heatup Rate, −4 °F/hr against 0) is a derived rate
+hovering at zero where a relative test is meaningless; left flagged rather than tuned silent,
+because tuning a band quiet in the dark is how it comes to exclude something that mattered.
+
+**#440's reference lane** (`ui/test_panel/lane_reference.html`) is built and awaiting review
+before the lane stack generalises. It measures itself: four 48 px lanes plus a 12 px shared axis
+and a 10 px event ribbon come to **216 px** against the spec's ~220 px budget.
+
+---
+## Session log — 2026-08-11-backshop-b (shutdown cooling was letting itself into a LOCA, and no plant has that function at all)
+
+**Outcome: the RHR auto-entry actuation is DELETED (#453). Placing shutdown cooling in
+service is now the operator evolution every source describes. `run_all` 47/47 at baseline.**
+
+**The filed fix was to CONDITION the actuation; the evidence said to remove it.** #453 named
+the defect exactly — the row carried only "indicated pressure < 2.70 MPa" and "scrammed", so
+every depressurization after a scram aligned shutdown cooling, including the ones where the
+depressurization *was* the casualty — and proposed adding a Tavg term and a subcooling term.
+An evidence pass over all three lanes found no auto-open anywhere:
+
+- WTSM 5.1 §5.1.3.3 (ML11223A219): *"These interlocks **prevent the valves from being opened
+  unless** the reactor coolant system pressure is less than 425 psig … After the valves are
+  open, another set of interlocks will cause the valves to automatically close when the
+  reactor coolant system pressure increases to approximately 585 psig."*
+- NUREG-1431 Rev 4 tests the two directions as **separate surveillances** — SR 3.4.14.2
+  *"prevents the valves from being opened"*, SR 3.4.14.3 *"causes the valves to close
+  automatically"*. Neither says "opens".
+- `find_source` for RHR auto-opening: **0 hits across 34 documents in 3 lanes.**
+- The interlock is *deliberately defeated* in the modes where RHR runs — STS Bases B 3.4.12,
+  *"Autoclosure interlocks are not permitted to cause the RHR suction isolation valves to
+  close"*, valve **locked open with operator power removed** (SR 3.4.12.7).
+
+**Where the defect came from, and it is worth knowing because it will recur.** WTSM 5.1 gives
+RHR entry as *"approximately 350 °F and 425 psig"* and the open-permissive as *"less than
+425 psig"* — **the same number**. Read as a trigger rather than a gate it yields a
+pressure-only auto-open that looks right and is wrong in kind. **A permissive and a setpoint
+that share a value are not the same fact.**
+
+**Removal was cheap, and the reason is a fact nobody had checked.** `hot_zero_power` ships
+`scrammed: false`, so `condition: 'rps_scrammed'` is false for the whole of a NORMAL cooldown
+— the auto-align could never fire there. The campaign's `place_rhr` beat and procedure PWR-N15
+both already have the **player** open it, after throttling the HX split to 7 %. Exactly one
+probe depended on the automatic behaviour.
+
+**Traps worth keeping.**
+- **Two probes asserted the right claim in the wrong regime.** `run_m4`'s #287 and #294 both
+  say "nothing re-aligns RHR by itself" — in Modes 4/5, where `rps_scrammed` is false anyway.
+  They passed for a reason unrelated to the claim. The new `#453` suite asks it where the
+  actuation was live: scrammed, depressurized, **still leaking**. Red before the fix (aligned
+  at t+540 s), green after.
+- **A structural check can pin the wrong structure.** #287 read the row out of config and
+  pinned *the absence of a reset on it*. Re-authored to **"no actuation targets `set_rhr`"** —
+  the stronger form, which a reinstated auto-open of any shape reddens, including a
+  conditioned one that the old form would have waved through.
+- **Deleting an actuation can orphan a CONTROL.** The `rhr` ESF arm existed only to gate that
+  row, so the board's RHR AUTO button would have armed nothing — the Q4 orphan-control case.
+  Arm and button both retired; `pwr_board_data.js` is generated, so the button goes via
+  `DOC_REMOVE` and ALIGN/ISOLATE move up one 30 px slot via `DOC_PATCHES` rather than leaving
+  a hole under the card title.
+- **Three probes moved for one reason: the settle got SLOWER.** Taking the largest heat sink
+  out of an unisolated LOCA means the same end state arrives later. CA-15's arrest, CA-25's
+  stable tail and CA-16's containment decay were all windowed on a plant where RHR accelerated
+  the cooldown. Windows moved with the measurement printed (CA-25 3000→5000 s: flat from
+  4000 s on, 0.2/0.1/0.1/0.0 psi per 2000 s bucket out to 16 000 s, 0 heater samples), and
+  **CA-16's acceptance bound was left exactly where it was** — what changed is how long the
+  plant is watched, not how much decay counts as decay.
+
+**What this does NOT buy, measured, so nobody hunts for a second defect.** #453 is the
+dominant LATE-TIME cooling term in #451 — sev 0.05 at t+2400 reads 324 °F against 176 °F with
+RHR, 84 % inventory against solid at 109 % — but it is **not** the plateau. At t+600 the two
+plants read 345.8 and 324.5 psia against the > 901 psia CA-20b needs, and the accumulators
+have dumped in both. **CA-20b stays xfail and #451 stays open.**
+
+## Session log — 2026-08-11-backshop-a (a ~40 s limit cycle after every LOCA, and the loop gain was a heater bank that should have been off the bus)
+
+**Outcome: safety injection — and a loss of offsite power — now SHED the pressurizer
+heaters (#447). `run_all` 45/45 at baseline. One new probe (CA-25), one new strict xfail
+(CA-20b) against a defect this uncovered (#451), and one calibrated exam cue re-keyed.**
+
+**The filed root cause was wrong twice over.** #447 was opened against a missing hysteresis
+on `rcp_cavitating` after a player's bug report showed alarms re-firing for 6 h 21 m.
+`rcp_cavitating` has no physics consumer (`pwr_primary` reads the continuous
+`rcp_cavitation_frac`), and the driver is not a bistable deadband at all. Measured full
+stack, reading engine internals per broadcast: below 17 % indicated level `_heater_cut`
+latches and pressure floors at containment backpressure, 15.1 psia (0.1043 MPa); HPI at 0.90
+refills; level crosses the 20 % restore point; **the heaters return at FULL demand** — auto
+control sees pressure 2220 psi below setpoint — and `K_heater` adds a measured **0.29 MPa/s
+net**, taking pressure 15 → 163 psia in ~3 s; that spikes `leak_flow` ~20× on the √Δp law
+and back-pressures HPI 0.90 → 0.34; level falls back through 17 %; repeat. Period ~40 s.
+
+**It is the whole LOCA family, not the board default the issue named.** `_heater_cut`
+transitions over 3000–16000 s: **134** at sev 0.05 (peak excursion **839 psia**), 248 / 410 /
+620 / 761 / 936 at 0.10 / 0.20 / 0.40 / 0.60 / 1.00 — monotone in severity, starting within
+4–28 s of the break at every one. `run_meltdown_stack` MDS-2/MDS-3 ride 2500 s straight
+through it and pass: nothing in the suite asserted pressure or level *stability*, only
+endpoints, and this defect has a respectable endpoint.
+
+**Injection-confirmed before any fix.** `K_heater = 0`, or heaters that never restore, both
+give **0 transitions** and the plant settles at injection ≈ break discharge (solid, 109.3 %
+inventory, 69.9 °F subcooled), clad peak and `fuel_damaged` unchanged. Widening the 17/20
+differential is measurably WORSE — restore at 80 % gives 99 transitions but a **352 psia**
+peak against 172 at 20 %. The differential was sized against ~0.7 pt of transmitter dither
+(#348); this swings 15 points.
+
+**#334 did not finish. It converted a stable wrong equilibrium into an oscillation.** Its
+cutoff removed the heaters holding a drained RCS at 2207 psi, but not the authority — once
+ECCS refills past 20 % the same 347×-rated term reappears at full strength.
+
+**The fix is a REQUIREMENT, and the document was in this worktree's own corpus.**
+NUREG-0737 II.E.3.1 Clarification (7) (`ML051400209.txt:4574`): *"Being non-Class IE loads,
+the pressurizer heaters must be automatically shed from the emergency power sources upon the
+occurrence of a safety injection actuation signal."* (5)(b) makes the restore need an SI
+reset; (4) makes the changeover *"accomplished manually in the control room."* Ginna TS Bases
+B 3.4.9 adds the LOOP half and the manual reload onto the diesels.
+
+**The LOOP half was a MISREAD of that same document, standing in the code.**
+`pwr_pressurizer.js:79-84` argued heaters must survive a LOOP *because* NUREG-0578/0737 put
+them on diesel-backed buses. II.E.3.1 requires them to be *manually connectable*, not to ride
+through — item (4) says so, and Ginna sheds them on LOOP with reload *"within one hour."*
+Scoped out at first on the strength of that comment, then folded back in once the evidence
+pass read the source. CA-7 leg C was the probe pinning the wrong reading; it now pins the
+right one and is a better probe for it — the reload is what proves the bus is alive, which a
+blackout cannot do.
+
+**Traps worth keeping.**
+- **An equilibrium a 347× term participates in is not evidence about geometry.** CA-15 has
+  now been re-authored around a heater artifact TWICE. #408 replaced #361's "goes solid" with
+  "settles in the spill band", reasoning explicitly that *"the heaters throttle the
+  pressure-driven injection"* — the defect itself. With the shed: 109.28 % against a solid
+  line of 109.3, drift 0.00. Both re-scopes were honest readings of a measured plant; only
+  one of the two plants was right.
+- **A red can be VACUOUS rather than red.** CA-10 leg B asserts no heater power below the
+  17 % cutoff on a sev-0.10 break — which actuates SI, so the shed zeroes power and the leg
+  would pass while testing nothing. Repaired by reloading the heaters after SI, which is only
+  possible because the latch is EDGE-triggered; a level-triggered shed would make leg D (the
+  HR1 stuck-transmitter pin) unrepairable. The probe now pins the edge semantics from outside.
+- **A bare threshold chases the plant; a signature does not.** `pwr_qualify`'s `challenge`
+  cue had been re-keyed three times, each time onto another level number, and the scenario's
+  own comment already described the intent as a two-parameter signature. Less heater energy →
+  less void → the deception crests 54.9 % instead of 78.5 %, so `> 58` could never arm. Now
+  keyed on level > 45 % WHILE inventory < 96 %, validated on THREE plants (1322 s shed, 791 s
+  pre-#447, never uninjected) — the negative control a bare threshold never had.
+- **Deriving in `step`, consuming in `autoControl`, is load-bearing.** Five probe rigs call
+  `autoControl` with hand-built state; an edge detector there reads `undefined → true` and
+  fires a spurious shed in every one.
+
+**What it uncovered — #451, filed not absorbed.** The small-break pressure plateau was
+heater-held, which `pwr_config.js:587` already recorded (*"it pins NOTHING … the heaters are
+winning against the break. Right behaviour, wrong mechanism"*). The state it propped was the
+deadheaded-ECCS pathology #334 was filed for — 900 psia with inventory pinned at 59 %,
+core partially drained, indefinitely. Removing the prop is right; nothing else holds the
+plateau, so every severity now collapses to the same cold solid state and the SG secondary
+falls to 14.5 psia. CA-20 leg B split out as **CA-20b**, strict xfail, band untouched.
+
+**Deliberately deferred, measured.** The `P_restore_rate_gain` gate at
+`pwr_pressurizer.js:511` was NOT taken. It is already dead on every LOCA path (`loopBreak`
+true), so it contributes nothing to killing the oscillation, while it is the sole route to
+the SGTR / cooldown / stuck-PORV blast radius. Landed without it: `run_ops` moved **zero**.
+
 ## Session log — 2026-08-10-develop-b (site stats in one command — and BOTH datasets were being counted wrong, in opposite directions)
 
 **Outcome: `tools/site_report.js` + a `site-stats` skill; `tools/usage_report.js` deleted,
