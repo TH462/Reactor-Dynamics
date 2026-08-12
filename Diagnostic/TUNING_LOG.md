@@ -29,6 +29,43 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-workbench-b (#472 phase 0 — the behaviour catalog unfrozen, and its freeze given a gate)
+
+Phase 0 of the pressurizer rebuild (#472; the approved plan is on the issue). The catalog
+amendment the method requires turned up a finding bigger than the amendment itself:
+
+- **"FROZEN-FINAL" had no mechanical meaning.** Nothing reads
+  `Blueprint/PWR_BEHAVIOR_CATALOG.md`: nine in-place amendments landed after the v3.1
+  freeze, `run_behavior.js` and `behavior_pwr.js` stamped **v2.0** for over a year, and the
+  catalog header's own tally claim ("26 pass / 0 xfail") sat against a live 72 pass /
+  1 xfail. Nothing noticed, because nothing could.
+- **39 probe IDs had no catalog row** — the CA-7…CA-25 block among them, which is most of
+  the pressurizer's real acceptance surface (heater cutoff/shed, solid-plant surge, the
+  inventory node, the void deception, containment backpressure). The battery asserted all
+  of it with no owner ruling behind any of it.
+
+What landed (all on `workbench`, gated):
+
+- **Catalog v3.1 → v4.0-DRAFT.** New §13 (FG-8, the pressurizer): 13 absorbed pressurizer
+  rows + 18 rebuild acceptance rows (`MO-*` manual-first authority, `TD-*` the TMI
+  deception named and numbered, `HE-*` heater elevation, `SB/SA/BD`, `CAT-1`), the new
+  ones marked `[NEW-UNMEASURED]` per HR12. New §14: 26 absorbed non-pressurizer rows.
+  Absorbed rows document what the probes already assert — nothing re-banded. §12 carries
+  the DRAFT log entry; **the owner rules the amended set before Phase 1**.
+- **`CAT-1`, the parity lock** (`test/behavior_pwr.js`): catalog header version must match
+  the battery's `CATALOG_VERSION` (single source, now printed by the runner); every
+  `COVERAGE` key must have a catalog row; every un-covered row must name where its claim
+  is held. Injection-verified both directions: a fake COVERAGE key reddens direction A, a
+  bogus catalog row reddens direction B. `run_behavior` **72pass 1xfail → 73pass 1xfail**,
+  `BASELINES` updated in the same change.
+- Session cost of note: a `git checkout --` used to clean an injection line out of the
+  catalog also reverted the whole uncommitted amendment — re-applied from session context.
+  Inject into a COPY next time, or commit before injecting.
+
+**Open:** owner ruling on v4.0-DRAFT (the Phase-0 gate) · then Phase 1 characterisation
+(`measure_stack` manual lineups per MO/TD rows + a pressurizer `perturb_sweep` set —
+`DEFAULT_NUDGES` has zero pressurizer constants today).
+
 ## Session log — 2026-08-12-workbench-a (#468 — the Mode 5 preset handed the player a plant its own cooldown cannot produce)
 
 Started as a prototypicality pass over all **15 normal operating procedures** in `Manuals/04`

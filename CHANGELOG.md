@@ -30,6 +30,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The PWR behaviour catalog is unfrozen (v3.1 → v4.0-DRAFT) for the #472 pressurizer
+  rebuild, and its freeze now has a gate.** The v3.1 "FROZEN-FINAL" label had no mechanical
+  lock — 39 probe IDs in the behaviour battery (nearly the whole CA-7…CA-25 pressurizer
+  block) had no catalog row, and the battery's stamps read v2.0 for over a year. v4.0-DRAFT
+  absorbs all 39 as rows (§13 FG-8 pressurizer, §14 non-pressurizer), adds 18 rebuild
+  acceptance rows (manual-first pressure authority, the TMI deception named and numbered,
+  heater elevation), and the new `CAT-1` probe fails the gate if catalog and battery ever
+  diverge again (`run_behavior` 73pass 1xfail). Owner ruling on the amended set pending.
+
 ### Fixed
 - **Turbine roll moves to 10–15 % power, where the real plant does it.** `Manuals/04` PWR-N05
   said Mode 2, ≤ 5 %. Real practice: *"To minimize primary plant transients, the turbine is
