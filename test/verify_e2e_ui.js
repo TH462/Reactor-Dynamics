@@ -748,6 +748,86 @@ async function testMissionCloseResumes(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE RUN-START MARK — sim time zero *(OWNER, 2026-08-11: "The strip chart should have a
+ * line to show the start of the sim at time=0.")*.
+ *
+ * IT MARKS A REAL JOIN, which is why it is worth gating rather than eyeballing. A preset
+ * start preseeds 30 minutes of genuinely-run trend at NEGATIVE sim time, so at T+10 s on the
+ * default 5-minute window 290 s of the plot is history and 10 s is the run you are driving.
+ *
+ * THE OVERLAP CHECK IS THE ONE THAT EARNED ITS PLACE. The tag first rendered at the TOP of
+ * the plot and landed inside the first lane's range label — "40% T+0 %" on screen. Every
+ * element existed, every count was right, and only the screenshot showed it. Comparing the
+ * tag's RECT against the lane chrome turns that into something a gate can hold. */
+async function testRunStartMark(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await page.waitForTimeout(2500);
+
+  var st = await page.evaluate(function () {
+    var line = document.querySelector('#chartCanvas .run-start');
+    var tag = document.querySelector('.run-start-tag');
+    var svg = document.getElementById('chartCanvas');
+    if (!line || !tag) return { line: !!line, tag: !!tag };
+    var tr = tag.getBoundingClientRect(), pr = svg.getBoundingClientRect();
+    // Every piece of lane chrome the tag could land on top of.
+    var hits = [];
+    Array.prototype.forEach.call(document.querySelectorAll('#chartFloats .lane-rng, #chartFloats .lane-name, #chartFloats .lane-value'), function (el) {
+      var r = el.getBoundingClientRect();
+      if (tr.left < r.right && tr.right > r.left && tr.top < r.bottom && tr.bottom > r.top) {
+        hits.push((el.className || '') + ' "' + el.textContent.trim().slice(0, 24) + '"');
+      }
+    });
+    return {
+      line: true, tag: true, text: tag.textContent,
+      x1: parseFloat(line.getAttribute('x1')),
+      inside: tr.left >= pr.left - 1 && tr.right <= pr.right + 1 && tr.top >= pr.top - 1 && tr.bottom <= pr.bottom + 1,
+      overlaps: hits,
+    };
+  });
+  if (!st.line) throw new Error('no run-start line on the chart at T+0 (#chartCanvas .run-start)');
+  if (!st.tag) throw new Error('the run-start line has no label (.run-start-tag)');
+  if (!st.inside) throw new Error('the run-start tag is drawn outside the plot');
+  if (st.overlaps.length) {
+    throw new Error('the run-start tag overlaps lane chrome: ' + st.overlaps.join(' | ') +
+      '. It rendered over the first lane\'s range label ("40% T+0 %") before it was moved to ' +
+      'the bottom strip — element counts all passed on that.');
+  }
+  // The mark is at t=0, not merely somewhere: with the window entirely ahead of the run
+  // start, x must land in the right-hand part of the plot and short of the gutter.
+  if (!(st.x1 > 0 && st.x1 < 400 * 0.86)) {
+    throw new Error('the run-start line is off the plot area: x1=' + st.x1);
+  }
+  log.push('run start: line at x=' + st.x1.toFixed(1) + ', tag "' + st.text + '" clear of lane chrome');
+
+  /* NEGATIVE CONTROL — it must SCROLL OFF. An "always drawn" line would pass everything
+   * above, and a mark that never leaves is not marking a moment. Drive sim time forward at
+   * 600x, then drop to 1x (whose ladder offers a 60 s rung) so the run is far older than the
+   * window. */
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(6000);
+  await page.click('#speed [data-speed="1"]');
+  await page.waitForTimeout(600);
+  await page.click('#graphWindow [data-win="60"]');
+  await page.waitForTimeout(700);
+  var gone = await page.evaluate(function () {
+    return {
+      clock: (document.getElementById('clock') || {}).textContent,
+      line: !!document.querySelector('#chartCanvas .run-start'),
+      tag: !!document.querySelector('.run-start-tag'),
+    };
+  });
+  if (gone.line || gone.tag) {
+    throw new Error('the run-start mark is still drawn at ' + gone.clock + ' on a 60 s window — ' +
+      'it is being drawn unconditionally rather than only when t=0 is in frame ' +
+      '(line=' + gone.line + ' tag=' + gone.tag + ')');
+  }
+  log.push('run start: gone at ' + gone.clock + ' on a 60 s window — it marks a moment, not an axis');
+  return log.join('\n') + '\n';
+}
+
 async function testRewindPicker(page) {
   var log = [];
   var VBW = 400, PLOT_FRAC = 0.86;                 // mirror ui/app.js drawChart
@@ -956,6 +1036,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
     var mcLog = await testMissionCloseResumes(page);
     fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
+    var rsLog = await testRunStartMark(page);
+    fs.writeFileSync(path.join(SCRATCH, 'run-start-mark.log'), rsLog);
     var rpLog = await testRewindPicker(page);
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
     var tpLog = await testTrendPreseed(page);
@@ -978,7 +1060,7 @@ async function main() {
  * re-running all 16 screenshots. Running the file directly is unaffected. */
 if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
-                     testChartSettings: testChartSettings, testMissionCloseResumes: testMissionCloseResumes, port: function () { return PORT; } };
+                     testChartSettings: testChartSettings, testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark, port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
     fs.mkdirSync(SCRATCH, { recursive: true });

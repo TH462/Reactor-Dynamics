@@ -4880,6 +4880,31 @@
               (ev.actor === 'operator' ? ' stroke-dasharray="2,2"' : '') +
               ' vector-effect="non-scaling-stroke"/>';
     });
+    /* WHERE THE RUN BEGAN — sim time zero *(OWNER, 2026-08-11: "The strip chart should have
+     * a line to show the start of the sim at time=0.")*.
+     *
+     * IT IS A REAL BOUNDARY, NOT THE LEFT EDGE. The chart opens already holding 30 minutes
+     * of trend, because a preset start is preseeded with a genuinely-run trace laid at
+     * NEGATIVE sim time (applyPreseed: rows land on [t0 − CHART_RECORD_SEC, t0)). Measured
+     * at T+10 s on a fresh load with the default 5-minute window: 290 s of the plot is that
+     * synthetic history and 10 s is the run you are driving, with nothing marking the join.
+     * This line is the join.
+     *
+     * Distinct from every other full-height mark by construction: checkpoints are blue
+     * `3,3`, tier-1 events amber (plant) or cyan `2,2` (operator), the cursor solid white.
+     * This is a neutral slate `6,3` — it is not an event and nobody did it, it is where the
+     * record starts. Drawn UNDER the cursor so hovering still reads cleanly over it.
+     *
+     * Only when zero is actually in frame. Past the first `window` seconds of a run it
+     * scrolls off the left, which is correct — it is a moment, not a permanent axis. */
+    var zeroPct = null;
+    if (t0 <= 0 && t1 >= 0) {
+      var zx = ((0 - t0) / span * PW);
+      zeroPct = zx / W * 100;
+      html += '<line class="run-start" x1="' + zx.toFixed(1) + '" y1="0" x2="' + zx.toFixed(1) +
+              '" y2="' + H + '" stroke="#8fa0ae" stroke-width="1" stroke-opacity="0.55"' +
+              ' stroke-dasharray="6,3" vector-effect="non-scaling-stroke"/>';
+    }
     // ONE line across every lane. Lanes are pixel-aligned on x by construction — they share
     // this viewBox and the same t0/span — so a single full-height line IS the shared cursor.
     if (chartCursor.frac != null) {
@@ -4888,7 +4913,7 @@
               '" stroke="rgba(255,255,255,.30)" stroke-width="1" vector-effect="non-scaling-stroke"/>';
     }
     setHTML(svg, html);
-    drawLanes(laneChrome, numRows);
+    drawLanes(laneChrome, numRows, zeroPct);
     // low-profile x-axis
     // Seconds read fine over a 30-min window; a rewind-pick span can be many hours
     // of sim, where "−72000s" is unreadable. Switch to h:mm:ss past ten minutes.
@@ -5002,10 +5027,21 @@
    * STRUCTURAL savings the ~220 px budget is made of; trimming padding alone does not get
    * there. The measured geometry is ui/test_panel/lane_reference.html.
    */
-  function drawLanes(lanes, numRows) {
+  function drawLanes(lanes, numRows, zeroPct) {
     var host = $('chartFloats'); if (!host) return;
     numRows = numRows || [];
     if (!lanes.length && !numRows.length) { setHTML(host, ''); return; }
+    /* The run-start line's LABEL. Without it the line is one more unexplained vertical among
+     * checkpoints, tier-1 events and the cursor — and the x-axis cannot disambiguate it,
+     * because those ticks read seconds BEFORE NOW ("−300s … 0"), so the axis's own "0" is the
+     * right-hand edge and means the opposite of this mark. HTML, in the floats layer, for the
+     * reason stated on drawLanes: the SVG is preserveAspectRatio="none" over a fixed 400x120
+     * box, so any <text> in it is squashed non-uniformly with the panel. */
+    // …and it is DROPPED when channels have been demoted to numeric rows, because those
+    // occupy the bottom strip it would otherwise sit in. The LINE still draws — only its
+    // label goes, which is the right half to lose: the mark stays, the collision does not.
+    var zeroTag = (zeroPct == null || numRows.length) ? '' :
+      '<div class="run-start-tag" style="left:' + zeroPct.toFixed(2) + '%">T+0</div>';
     var h = lanes.map(function (L) {
       var s = L.ser;
       /* A 'both' lane prints BOTH readings in the one value column — the instrument first
@@ -5037,7 +5073,7 @@
                '</div>';
       }).join('') + '</div>';
     }
-    setHTML(host, h);
+    setHTML(host, h + zeroTag);
   }
 
   /* ==================================== CHART SETTINGS WINDOW (#454, 2026-08-11) ========

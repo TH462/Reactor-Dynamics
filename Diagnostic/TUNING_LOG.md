@@ -105,6 +105,43 @@ first.
 **Observed, not fixed, out of scope:** a long lane value (`50 MWe` on Output MW) overlaps the
 right-hand gutter marker. Pre-existing, single-side, untouched by this change.
 
+### A t=0 line on the strip chart — and the tag landed on the range label
+
+*(OWNER, 2026-08-11: "The strip chart should have a line to show the start of the sim at
+time=0.")*
+
+A dashed slate `6,3` line across every lane, tagged `T+0`, drawn only when zero is inside
+`[t0, t1]`. Distinct from the three other full-height marks by construction: checkpoints are
+blue `3,3`, tier-1 events amber (plant) or cyan `2,2` (operator), the cursor solid white.
+
+**It marks a REAL JOIN, which is the reason it is worth having.** A preset start preseeds 30
+minutes of genuinely-run trend at **negative sim time** (`applyPreseed` lays rows on
+`[t0 − CHART_RECORD_SEC, t0)`). Measured at T+10 s on the default 5-minute window: **290 s of
+the visible plot is the plant's history and 10 s is the run you are driving**, with nothing
+marking the boundary. The x-axis cannot say it either — those ticks read seconds BEFORE NOW
+(`−300s … 0`), so the axis's own "0" is the right-hand edge and means the opposite of this
+mark. That is also why the line needed a label rather than standing alone.
+
+**The trap: the tag rendered ON TOP of the first lane's range label** — literally `40% T+0 %`
+on screen. The lane chrome puts a NAME top-left and a RANGE top-right in *every* lane, so the
+top strip is the one row of the plot that is never free; the bottom edge carries nothing but
+trace and is nearer the time axis the mark belongs to. **Every element existed and every count
+was right** — only the screenshot showed it, which is the same lesson as the invisible dashed
+twin earlier in this entry. It is now a gate: `testRunStartMark` compares the tag's RECT
+against `.lane-rng` / `.lane-name` / `.lane-value` and names what it hit. Injection-verified by
+moving the tag back to `top: 0` — it reports `lane-rng "40% – 60%"`.
+
+The tag is dropped (the line is not) when channels are demoted to numeric rows, since those
+occupy the bottom strip. Negative control in the gate: drive to ~25 plant-minutes, drop to 1x,
+select the 60 s rung — both line and tag must be gone, or the mark is an axis rather than a
+moment.
+
+**And a gate that was defined, exported, and never called.** The edit wiring
+`testRunStartMark` into `main()` silently failed while the export succeeded, so the standalone
+driver passed and the aggregate would have run 16 screenshots and none of this. Caught by
+grepping for the call rather than trusting that the edit landed. **A test file's export list
+is not evidence the test runs.**
+
 ### Closing Plant & Mission left the plant paused — an ORDERING bug, not a modal bug
 
 *(OWNER, 2026-08-11: "When i close the plant menu after starting the sim the sim should start

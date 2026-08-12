@@ -651,6 +651,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 /* Tier-1 lines are drawn in the SVG, so they scale with the plot rather than
    needing their own layer. */
 #chartCanvas .soe-t1 { pointer-events: none; }
+/* WHERE THE RUN BEGAN (sim time zero). The chart opens holding 30 minutes of PRESEEDED
+   trend at negative sim time, so this marks a real join between the plant's history and the
+   run you are driving — not the left edge.
+
+   THE TAG SITS AT THE BOTTOM, and that is a screenshot finding rather than a preference. At
+   the top it landed inside the first lane's range label and rendered as "40% T+0 %" — the
+   lane chrome puts a NAME top-left and a RANGE top-right in every lane, so the top strip is
+   the one row of the plot that is never free. The bottom edge carries nothing but trace, and
+   it is also the end nearest the time axis the mark belongs to. Element-counting checks saw
+   nothing wrong either way.
+
+   It hangs to the LEFT of the line because the line spends the first `window` seconds of
+   every run near the right-hand edge (measured: 97 % at T+10 s on a 5-minute window), where
+   a right-anchored tag would be clipped by the value gutter. */
+#chartCanvas .run-start { pointer-events: none; }
+.run-start-tag {
+  position: absolute; bottom: 1px; transform: translateX(-100%);
+  padding: 0 3px; font-size: 8px; letter-spacing: .06em;
+  color: var(--muted); background: var(--bg-strip); border-radius: 2px;
+  pointer-events: none; white-space: nowrap;
+}
 .chart-legend .chart-meta.muted { font-style: italic; }
 /* plot wrapper holds the stretched SVG + the floating value-label overlay */
 .chart-plot { position: relative; flex: 1 1 auto; min-height: 0; overflow: visible; }

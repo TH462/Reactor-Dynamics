@@ -30,6 +30,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The strip chart marks where the run began** *(OWNER, 2026-08-11: "The strip chart should
+  have a line to show the start of the sim at time=0.")*. A dashed slate line, tagged `T+0`,
+  across every lane. It marks a real join rather than the left edge: the chart opens already
+  holding 30 minutes of trend, and that history is laid *before* sim time zero — at T+10 s on
+  the 5-minute window, 290 s of the plot is the plant's past and 10 s is your run. It scrolls
+  off once the run is older than the window, like any other moment on the chart.
+
 ### Fixed
 - **Closing Plant & Mission leaves the plant running** *(OWNER, 2026-08-11: "When i close the
   plant menu after starting the sim the sim should start playing. it currently starts paused. it
