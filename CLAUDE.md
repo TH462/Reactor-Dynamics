@@ -344,8 +344,9 @@ re-querying. Run the query.
   contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
   untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
   verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
-- **Built, waiting on review or a close** — #432/#431 (bug-report recorder, schema 1.1, see
-  themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
+- **Built, waiting on review or a close** — #460 (rods ship in MANUAL — one owner call open: it
+  brushes #331's "Leave automatic systems in place", and it was built to the NARROW reading),
+  #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
   two owner actions remain (delete the Vercel project, revoke a token).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
@@ -365,6 +366,16 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **The rods ship in MANUAL, and every probe that broke was INHERITING the lineup instead of
+  stating it** (2026-08-11, #460). `rods_tavg` loses `defaultOn`, reversing #289 — whose
+  premise, *"everything else starts in auto"*, had expired when the Mode 1 lineup put generator
+  load in MANUAL: **a ruling's premise ages independently of the ruling, and nothing re-checks
+  it.** Measured, the plant load-follows WITHOUT the rods (100 → 81.8 %, parked in 3 min 30 s,
+  monotone) where AUTO rings 62 → 88 % for ten minutes; 60 fine steps move Tavg −6.2 °F and
+  generator load **0.8 points** — rods set temperature, the turbine sets power, and AUTO was
+  performing that Tier A coupling on the player's behalf. All five reds had the rod controller
+  as their SUBJECT, not the preset; `rodsAuto()` mirrors the `rodsManual()` helper #289 was
+  forced to write in the other direction — **both directions of one defect, ten days apart.**
 - **The OBSERVER is where the defect is, and no source read finds it** (2026-08-10/11, the
   #436 rework — #437/#439/#440/#442/#443/#393). Six of the night's defects were in the thing
   doing the watching. A recorder's first pass emits a transition per alarm — right for a bug
@@ -394,21 +405,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
   threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
   two-parameter signature validated on three plants including a negative control.
-- **The hydrogen is real and it burns once, per the ruling** (2026-08-08, #386 stage 3 +
-  #387 bundled). H₂ rate ∝ q_ox EXACTLY (same reaction event — no second f_unc; the ledger
-  telescopes to Δw, MD-11-pinned); transport geometry-gated (an SGTR's H₂ stays out of the
-  building; flow-keying would stall on the burn's own backpressure spike); the burn deposits
-  GEND-061's ADIABATIC ΔP — the measured 27.5 psi form landed the drained family 27.2 psig,
-  UNDER the ruled side of the 30 psig hi-hi (a sourced anchor can be the wrong FORM of the
-  measurement for your model's discretization). Recombiners measurably prevent no ignition
-  (declared, prototypical). **#425, folded in here on eviction** (2026-08-10 merge — its own
-  bullet went to keep the list at 5, and its trap is the same subject): the SBO base passed
-  design on relief steam alone, and the fix is a saturation-ΔT sink enhancement charged on a
-  **120 s LAG, because time is the only separator between families whose pressures overlap** —
-  a static curve brakes the SBO park but eats the pulse grading. Two traps worth keeping: a
-  "pre-damage" window bounded by the damage FLAG catches the very burn it exists to exclude
-  (H₂ reaches 8 v/o before the hot node passes 1200 °C — bind on `!ctmt_h2_burned`), and the
-  BURN margin rather than the ruled 30 psig spray point is what binds the park.
 - **The board can list every channel and get CHEAPER — the row shape was the cost** (2026-08-08,
   the Indications tab). `chartBuf` stored one NAMED PROPERTY per series per side, and property
   cost is what scaled: at 9000 rows, 40 series = **39.5 MB**, 110 = **137.8**. Packed into
@@ -515,9 +511,10 @@ thing left in the file and it grew about a bullet a session.
   `test/ops_harness.js`. Move one and not the other and the ops suites certify a plant no player
   can produce. 1× is byte-identical by construction, which is why a divergence hides at the speed
   you are most likely to test at.
-- **The pzr level PROGRAM and the level PHYSICS are two different lines** (#289). Every consumer of
-  "the program" must call `levelProgram`, not `levelBase` — the latter read −38.5 % with the
-  controller exactly on setpoint. A program maximum is a limit, not part of the control law.
+- **A sourced anchor can be the WRONG FORM of the measurement for your model** (rescued from the
+  #386 hydrogen bullet on eviction, 2026-08-11): GEND-061's burn ΔP is real, and the adiabatic
+  form vs the measured 27.5 psi form decides whether the drained family lands over or under the
+  ruled 30 psig hi-hi. Having the document is not having the number.
 - **"Block SI" is THREE actions on a cooldown** and the procedure named one: `lo_press` and
   `si_trip` both watch pressure downward and neither auto-blocks on the way down; both need P-11,
   so the Pressure SP comes down first. **The live checklist NEVER issues `cmd`** — it draws text

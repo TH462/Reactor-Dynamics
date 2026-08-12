@@ -720,6 +720,8 @@ pumps, condenser air removal), and the walk continues to **COND VAC TRIP** (22 i
 
 ### 14.3 Rod AUTO (Tavg)
 
+- **The shipped lineup has the rods in MANUAL.** The plant load-follows without them: on a 100 → 80 MWe cut, moderator feedback alone takes power to 81.8 % and parks it in about 3½ minutes. What it does *not* do is put Tavg back on program — it settles roughly 17 °F (9.4 °C) high. Trimming that off is the operator's job, in MAN or by engaging this channel.  
+- **Rods set temperature; the turbine sets power.** Inserting 60 fine steps at 80 MWe moves Tavg about 6 °F (3.3 °C) and generator load less than one point. Roughly 0.1 °F (0.06 °C) per fine step, linear over the useful range.  
 - **T-ref is PROGRAMMED on turbine load, not captured from Tavg** — a sliding line from 546.8 °F (286.0 °C) at no load to 580.1 °F (304.5 °C) at full power, re-derived from indicated steam flow every evaluation. Engaging does not freeze a target; as load moves, T-ref moves with it.  
 - Holds Tavg with variable rod speed and deadband (±1.5 °F / ±0.8 °C).  
 - **Rod gain is scheduled on bank position.** One rod step is worth several times more reactivity mid-bank than near either stop, so the controller de-rates itself as the bank comes in and returns to full gain while the load program is sliding. The operator sees nothing of this; it is what keeps the plant steady at part power.  

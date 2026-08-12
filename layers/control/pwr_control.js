@@ -1160,25 +1160,48 @@
   var PWR_CHANNELS = [
     { id: 'rods_tavg', kind: 'rods', group: 'Reactor',
       label: 'Rod control → Tavg (AUTO)',
-      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding 546.8 °F (286.0 °C) no-load → 580.1 °F (304.5 °C) full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±1.5 °F (±0.8 °C) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN.',
+      hint: 'Automatic rod control — the reference temperature Tref is PROGRAMMED on turbine load (a sliding 546.8 °F (286.0 °C) no-load → 580.1 °F (304.5 °C) full-power line), and the rods drive indicated Tavg to it: a Tavg−Tref mismatch (e.g. after a load change) computes the required rod direction and a Westinghouse-style variable speed (bigger error → faster drive), locking up inside a ±1.5 °F (±0.8 °C) deadband. As load changes Tref slides with it, so the rods walk Tavg along the program. Any manual rod motion takes it back to MAN. The shipped lineup is MANUAL — the plant load-follows on temperature feedback alone, and the rods are how YOU put Tavg back on program after a load change.',
       group_id: 'control_rods', offOnScram: true,
-      // Free-play preset starts come up with rod control in AUTO *(OWNER RULING, 2026-08-01:
-      // "Let's start the rods in auto. Might as well, everything else starts in auto.")*, which
-      // is also what a real unit runs at power. Instructed content (noDefaults) is unaffected.
+      // NO `defaultOn` — FREE PLAY STARTS WITH THE RODS IN MANUAL *(OWNER DIRECTIVE,
+      // 2026-08-11: "lets start with rods in manual.")*. This REVERSES the 2026-08-01 ruling
+      // ("Let's start the rods in auto. Might as well, everything else starts in auto"), whose
+      // stated premise had since expired: the free-play Mode 1 lineup puts generator load in
+      // MANUAL (`pwr_engine.js` getStartupLineup), so "everything else" no longer held.
       //
-      // AT-POWER ONLY, and this half is NOT decorative — it is measured. A blanket `true`
+      // The channel is UNCHANGED and still reachable — ROD AUTO on the board, `board_check`-
+      // pinned, and Manuals 02/03/04 already treat engaging it as a deliberate optional step.
+      // Only the free-play preset moved. Instructed content (noDefaults) never read this.
+      //
+      // WHY, and it is measured (2026-08-11, `measure_stack`, hot_full_power, 100 -> 80 MWe):
+      //   * The plant load-follows WITHOUT the rods. Negative MTC alone takes power 100 ->
+      //     81.8 % and parks it, monotone, settled at 3 min 30 s. Rods in AUTO ring the same
+      //     step — Tavg 586.8 -> 567.2 °F, power 62 -> 88 % — and are still +-1.5 pts at 10 min.
+      //     Manual is the BETTER-behaved plant here, not the harder one.
+      //   * Manual rod control is linear and forgiving: -20 fine steps -> -1.8 °F, -60 -> -6.2 °F
+      //     (~0.1 °F/step), no overshoot at either size.
+      //   * It is the Tier A lesson. Inserting 60 steps moved Tavg -6.2 °F and power 81.9 ->
+      //     81.1 %: RODS SET TEMPERATURE, THE TURBINE SETS POWER. In AUTO the rods absorb that
+      //     demonstration and the player never sees it.
+      // The board already draws the sliding Tref band on Tavg (`pwr_board_wiring.js`), so the
+      // off-program park is visible without a new indication, and HI TAVG (594.0 °F) sits 3.6 °F
+      // above where it parks — a cue, not a nag.
+      //
+      // IF YOU EVER RE-ADD `defaultOn` HERE, GATE IT ON THE POWER RANGE. A blanket `true`
       // engages the channel in Mode 5 and during `pwr_heatup`, where Tavg (~60 °C cold) is
       // hundreds of degrees below the no-load Tref the load program asks for, so the channel
       // withdraws rods to close the error and takes the plant critical: `run_procedures_stack`
       // `pwr_heatup` SCRAMMED at step 6 on `source_range high`, and `run_behavior` SS-9 (cold
-      // shutdown hands-off) tripped the same way. Gated here it costs neither. A real plant
-      // does not put rod control in automatic below the power range either.
+      // shutdown hands-off) tripped the same way. A real plant does not put rod control in
+      // automatic below the power range either. And read the POWER-RANGE INSTRUMENT, not
+      // `true_state.power_pct` (HR1) — the first cut read truth and `run_hardrules` failed it,
+      // the same defect class as #220, where the P-9 permissive read the plant not the gauge.
       //
-      // HR1: reads the POWER-RANGE INSTRUMENT, not `true_state.power_pct`. The first cut read
-      // truth and `run_hardrules` failed it — the same defect class as #220, where the P-9
-      // permissive read the plant instead of the gauge. This is the P-10 analogue and a real
-      // one is a NIS power-range permissive, so the instrument is also the prototypical read.
-      defaultOn: function (ctx) { return ((ctx.instruments || {}).power_range || 0) > 10; },
+      // HR10 VALIDATION, run rather than asserted (2026-08-11). The five probes that moved with
+      // this change (TR-1g/h/i/k, TR-18) now state `rodsAuto()` instead of inheriting the
+      // preset. To prove that is a BETTER test and not a refit, `defaultOn` was temporarily
+      // restored here and the new probe forms re-run against the OLD plant: **71 pass / 1 xfail
+      // both ways**, identical to the recorded baseline. They are preset-independent, so the
+      // next lineup change moves neither.
       manual_overrides: ['rod_nudge', 'rod_start'],   // operator rod motion on this group → MAN
       pv: function (s) { return s.instruments.tavg; },
       // T-ref := the load program (HR1: reads indicated steam flow). Re-evaluated each
@@ -1284,9 +1307,12 @@
       // a three-key map and a numeric speed SILENTLY falls back to 'normal'.
       //
       // Also sourced and NOT matched: *"Automatic rod control below 15% turbine power is not
-      // provided."* `defaultOn` below engages above 10 % power range. Left alone deliberately —
-      // it is a different signal (NIS power range, the HR1-correct read) and the gap is 5
-      // points at a power nobody load-follows at; filed rather than changed on a whim.
+      // provided."* This build does not enforce a low-power lockout at all — the player may
+      // engage the channel at any power. It used to be approximated by the auto-engage gate at
+      // 10 % power range, which #460 removed along with the rest of `defaultOn`; the gap was 5
+      // points then and is the whole range now. Still filed rather than changed on a whim, but
+      // note what moved: the old note described a DEFAULT, and a default was never the lockout
+      // the source is describing.
       speeds: [{ above: 0.8, speed: 'slow' }, { above: 1.67, speed: 'normal' }, { above: 2.78, speed: 'fast' }],
       // gain/maxStep are in FINE steps (912-step drive, 2026-07-23): ×4 the old
       // 228-step values, so the channel's authority in %-of-travel is unchanged.

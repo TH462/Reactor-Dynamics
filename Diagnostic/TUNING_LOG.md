@@ -96,6 +96,101 @@ cooldown of the primary system"* from *"excessive feedwater flows"* as a real co
 is defensible and the 15 % weighting was the defect. The linear sensible form was checked too:
 extrapolating a 47.9 °C calibration to a 232 °C one lands within **8 %** of a proper enthalpy
 ratio, so the shape is sound and only the flow weighting moved.
+## Session log — 2026-08-11-backshop-c (#460 — the rods ship in MANUAL, and the AUTO channel was absorbing the lesson)
+
+**The ask.** The owner opened on content — *"what should the player want to do the first time
+they open the sim?"* — and then: *"I'm debating removing the auto modes for load and rod
+control… at least i think these two should start in manual."* Ruled the same turn: **"lets
+start with rods in manual."**
+
+**Half of it was already built and nobody knew.** Free play has put generator load in MANUAL
+at Mode 1 since `getStartupLineup` (`pwr_engine.js:1724`); `grid_follow` has no `defaultOn`.
+Only the rod channel was in question. Worth stating because the 2026-08-01 ruling that made
+`rods_tavg` `defaultOn` (#289) rested on *"everything else starts in auto"* — a premise that
+had already expired when that lineup landed. **A ruling's premise ages independently of the
+ruling**, and nothing re-checks it; this one sat wrong for ten days.
+
+**Q0 first — and the measurement inverted the framing of the question.** The owner's argument
+was interactivity. The measurement says the AUTO channel is also the worse plant *and* the
+thing eating the curriculum. `measure_stack`, full stack, `hot_full_power`, seed 4242,
+100 → 80 MWe at t = 60 s:
+
+| | rods AUTO (old default) | rods MANUAL, hands off |
+|---|---|---|
+| power | 100 → **62.1** → **87.6** → 77.3 → 81.4 % | 100 → 81.8 %, monotone |
+| Tavg | 580.2 → **586.8** → **567.2** → 573.1 °F | 580.2 → **590.4** °F, parks |
+| settled | ~10 min, still ±1.5 pts | **3 min 30 s**, flat |
+| ends | on program (573 °F) | 17.3 °F (9.6 °C) high, 980 psi steam |
+
+**The plant load-follows without the rods** — negative MTC alone carried 18 points of load.
+The rod controller's job is not power; it is putting Tavg back on the sliding program. Then
+the insertion sweep, same evolution, rods manual, nudge at t = 300 s: **−20 fine steps →
+−1.8 °F, −60 → −6.2 °F** (~0.1 °F/step, linear across a 3× range, no overshoot either time),
+and generator load moved **0.8 points**. That last number is the whole case: **rods set
+temperature, the turbine sets power**, a Tier A coupling the AUTO channel performs on the
+player's behalf so completely that they never see it happen.
+
+**Trap — a channel can absorb the lesson it exists to demonstrate.** Q4 (player complexity)
+is a veto and it is normally the one that kills things; here it argued the other way. The
+cue already exists (the board draws the sliding Tref band, `pwr_board_wiring.js:1599`), HI
+TAVG sits **3.6 °F above where the plant parks** so it nudges without nagging, and the old
+arrangement had the channel doing invisible work that the player's own rod buttons silently
+cancelled via `manual_overrides`. Removing the channel was rejected — that fails Q1 (real
+units run auto at power) and kills the compare-to-auto exercise. **Only the preset moved.**
+
+**Conflict surfaced, not resolved by me.** #331 ("remove or reduce the automatic systems")
+was ruled **"Leave automatic systems in place."** (2026-08-05). Built to the narrow reading —
+channel stays, preset moves — and flagged to the owner rather than assumed either way.
+
+**Adjudicating the reds ONE AT A TIME (HR10), and all five were the same shape.** `run_all`
+drifted two runners: `run_behavior` 71 → 66 (5 FAIL) and `verify_board_check` 0 → 3 failures.
+The five — TR-1g, TR-1h, TR-1i, TR-1k, TR-18 — are every probe whose *subject is the rod
+controller*: the sourced WTSM ±5 °F duty, the rejection it should absorb, whether its step
+settles. **None of them was testing the preset; all five were reading it.** Fixed by a
+`rodsAuto()` helper — the exact mirror of the `rodsManual()` helper #289 had already been
+forced to write in the other direction — leaving every `ck` byte-identical. Back to **71 pass
+/ 1 xfail**, the recorded baseline, so `BASELINES` does not move.
+
+**The symmetry is the lesson.** #289 had to add `rodsManual()` because probes about the
+rod-less plant were inheriting AUTO. This change had to add `rodsAuto()` because probes about
+the rod controller were inheriting the preset. **Both directions of the same defect, ten days
+apart, and the first one did not prompt anyone to check the other side.** A probe that
+inherits a lineup instead of stating one is a probe that will silently change subject the next
+time the lineup does — and it reddens *then*, when the cause is furthest away.
+
+**HR10 validation, run rather than asserted.** The code comment claims the five probes now run
+on the same plant they ran on before. That is an assertion about behaviour, so `defaultOn` was
+temporarily restored and the new probe forms re-run against the OLD plant — passing on both is
+what makes them better tests rather than refitted ones. (Result recorded in the entry's own
+gate line; the temporary line was reverted immediately after.)
+
+**`board_check` cost one line per check, and its own comment explains why.** #289 had already
+been bitten by a pair of toggle checks that "inverted the moment the lineup changed — they were
+reading the shipped default, not the toggle", and split them into three: **the default itself,
+then both directions from it.** So this reversal reddened a check whose *name* said what moved
+(`ROD AUTO comes up ENGAGED on a Mode 1 start`) instead of a direction assertion failing
+mysteriously. Worth copying: **give a default its own named check** rather than letting it be
+the implicit precondition of the checks around it. The trailing "leave it disengaged" click had
+to go — the sequence now ends there on its own, and keeping it would have re-engaged.
+
+**The write-up reddened the gate after the gate was green, exactly as `run_all`'s own note
+warns.** `run_hardrules` counts every well-formed ruling citation as a SITE, and citations live
+in `Blueprint/` and the logs as well as in source — so writing the change up moved the score
+after the aggregate had passed. It went 280 → 283 (three new citations: the channel, the new
+`rodsAuto()` helper, the inverted `board_check` default), and one FOURTH citation — the
+SUPERSEDED marker on #289's entry — went in with a date but no verbatim words and failed red.
+That bare shape is now the sixth appearance in that baseline note's own history. Two things
+worth carrying: **a standalone `node test/run_hardrules.js` cannot catch the count half** (it
+exits 0 on "0 failed" and says nothing about the tally — only `run_all` compares it), and **a
+green aggregate is only evidence about the tree it ran on.** Re-run it after the docs, not after
+the code. The note says all of this already; reading it did not prevent it, and the gate did.
+
+**Doc staleness the change created, all of it the same phrase.** `12 §8.3`'s steam-dump cliff
+warning attributed the AUTO excursion to *"the shipped lineup"*; the measured figure (593.2 °F,
+~15 °F past program) is unchanged and simply stopped describing the default. Fixed, and
+`03 §14.3` gains the two operator-facing facts (the plant load-follows without the rods but
+parks off program; rods set temperature, the turbine sets power) — Rev 15 item (e), extending
+the pending row rather than opening Rev 16.
 
 ---
 

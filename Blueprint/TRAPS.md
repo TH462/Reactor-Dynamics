@@ -22,6 +22,17 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-08-11 (#460 — one out for the hydrogen bullet's rescued trap)
+
+Plant-specific and loud: calling the wrong one produces a level that is tens of percent wrong
+with the controller sitting exactly on setpoint, which the level probes redden on.
+
+- **The pzr level PROGRAM and the level PHYSICS are two different lines** (#289): every consumer
+  of "the program" must call `levelProgram`, not `levelBase` — the latter read −38.5 % with the
+  controller exactly on setpoint. A program maximum is a limit, not part of the control law.
+
+---
+
 ## Evicted 2026-08-10 (the first application of the cap: 30 → 25)
 
 All five are PLANT-SPECIFIC and all five are pinned by a suite that reddens if the number moves.
