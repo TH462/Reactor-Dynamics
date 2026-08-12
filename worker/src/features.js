@@ -17,7 +17,7 @@
  * empty table, because "nothing is gated" and "the parser broke" look identical.
  */
 
-import { esc, html, PAGE_HEAD, nav, table, errBlock } from './render.js';
+import { esc, html, PAGE_HEAD, nav, table, errBlock, etFull } from './render.js';
 
 const SITE = 'https://reactordynamics.com';
 const KV_KEY = 'stages';
@@ -252,7 +252,7 @@ export async function featuresPage(env, url, token) {
           { key: 'vetted', label: 'Vetted (public)', num: true }, { key: 'off', label: 'Off', num: true },
           { key: 'live', label: 'Public sees', num: true }])
       + (updated ? '<p class="muted">Queued settings last changed <span class="mono">'
-          + esc(updated) + '</span> UTC · ' + Object.keys(pending).length
+          + esc(etFull(updated)) + '</span> · ' + Object.keys(pending).length
           + ' override(s) waiting for a deploy.</p>' : '')
       + '<p class="muted">Every entry has been <span class="mono">preview</span> since '
       + '2026-07-28 by owner decision (#241) — they are placeholders until played '

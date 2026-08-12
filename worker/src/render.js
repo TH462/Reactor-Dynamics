@@ -30,9 +30,105 @@ export function dow(s) {
 
 // A date with its weekday: "2026-08-09 Su". Suffixed rather than prefixed so the dates
 // stay left-aligned in a column.
+//
+// STILL UTC, DELIBERATELY. This is the helper for DAY BUCKETS — rows the upstream API
+// already grouped by UTC calendar day. Point-in-time stamps use `etWithDow` below; see
+// the note there for why the two must not be swapped.
 export function withDow(s) {
   const w = dow(s);
   return w ? String(s) + ' ' + w : String(s == null ? '' : s);
+}
+
+/* ---------------------------------------------------------------- Eastern time
+ *
+ * The dashboard reads EASTERN, because a person reads it (owner request, 2026-08-12).
+ * STORAGE AND QUERIES STAY UTC and must: Analytics Engine stores UTC, the SQL windows
+ * are built in UTC, and the R2 bundle keys are UTC day prefixes. Only the presentation
+ * of an INSTANT is converted.
+ *
+ * WHAT IS NOT CONVERTED, AND WHY IT WOULD BE WRONG TO. The daily traffic table is
+ * bucketed by the upstream API on UTC calendar days. Relabelling those rows "ET" would
+ * be a lie about their contents: the row marked 2026-08-11 holds UTC 00:00–24:00, which
+ * is 20:00 on the 10th to 20:00 on the 11th in Eastern. Converting a bucket's LABEL
+ * without re-grouping the QUERY silently shifts every count by four or five hours into
+ * the neighbouring day. That column stays UTC and now says so in its header.
+ *
+ * DST IS HANDLED BY THE ZONE, NOT BY ARITHMETIC — `America/New_York`, so EST and EDT
+ * switch themselves. A fixed −5 (or −4) offset would be right for half the year, which
+ * is the failure mode worth naming: it reads correct in testing and drifts an hour in
+ * March. `Intl` is available in Workers; nothing extra is loaded.
+ *
+ * The abbreviation is carried in the COLUMN HEADER ("ET") rather than on every row,
+ * because these columns are scanned. Single headline values print it in full.
+ */
+const ET_ZONE = 'America/New_York';
+const ET_PARTS = new Intl.DateTimeFormat('en-CA', {
+  timeZone: ET_ZONE, hour12: false,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+  weekday: 'short', timeZoneName: 'short',
+});
+const EN_DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/* Accepts epoch MILLISECONDS or an Analytics Engine "YYYY-MM-DD HH:MM:SS" string.
+ *
+ * That string has no zone marker and `new Date()` is NOT required to parse it — V8
+ * treats it as LOCAL time when it does, which on a UTC Worker is harmless and on any
+ * other machine is a silent hours-long shift. It is normalised to explicit ISO-Z first,
+ * exactly as `dow()` above already does. Same trap, same fix, one place each. */
+function toDate(input) {
+  if (input == null || input === '') return null;
+  if (typeof input === 'number') return Number.isFinite(input) ? new Date(input) : null;
+  let iso = String(input).trim().replace(' ', 'T');
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(iso)) iso += 'Z';
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+/* A BARE "YYYY-MM-DD" IS A DAY, NOT AN INSTANT, and must not be converted.
+ *
+ * The reports view falls back to the R2 key's day prefix when an id carries no parseable
+ * timestamp. Treating that as midnight UTC and converting would print the PREVIOUS DAY at
+ * 20:00 — a report filed on the 11th listed under the 10th, which is worse than showing a
+ * date with no time. Date-only input passes through and gets its UTC weekday, exactly as
+ * `withDow` would give it. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function etFields(input) {
+  const d = toDate(input);
+  if (!d) return null;
+  const p = {};
+  for (const part of ET_PARTS.formatToParts(d)) p[part.type] = part.value;
+  return p;
+}
+
+// "2026-08-11 21:34:07" in Eastern. Same shape as the UTC strings it replaces, so
+// columns and CSVs do not change width or sort order within a zone.
+export function et(input) {
+  if (typeof input === 'string' && DATE_ONLY.test(input.trim())) return input.trim();
+  const p = etFields(input);
+  if (!p) return String(input == null ? '' : input);
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+}
+
+// …with the weekday initial, in the house DOW convention: "2026-08-11 21:34:07 T".
+// The weekday is taken in EASTERN too — computing it from the UTC date would print the
+// wrong letter for anything after 19:00 ET, which is most of an evening's traffic.
+export function etWithDow(input) {
+  if (typeof input === 'string' && DATE_ONLY.test(input.trim())) return withDow(input.trim());
+  const p = etFields(input);
+  if (!p) return String(input == null ? '' : input);
+  const w = DOW[EN_DOW[p.weekday]] || '';
+  return et(input) + (w ? ' ' + w : '');
+}
+
+// …and with the zone spelled out: "2026-08-11 21:34:07 T EDT". For single headline
+// values, where there is room and the EST/EDT distinction is worth stating outright.
+export function etFull(input) {
+  if (typeof input === 'string' && DATE_ONLY.test(input.trim())) return withDow(input.trim());
+  const p = etFields(input);
+  if (!p) return String(input == null ? '' : input);
+  return etWithDow(input) + (p.timeZoneName ? ' ' + p.timeZoneName : '');
 }
 
 // Whole seconds -> "45s" / "3m 12s" / "11h 34m". Never a bare decimal: these are read

@@ -19,7 +19,7 @@
  * safe to display.
  */
 
-import { esc, html, PAGE_HEAD, nav, withDow } from './render.js';
+import { esc, html, PAGE_HEAD, nav, etWithDow, etFull } from './render.js';
 import { analyticsPage } from './analytics.js';
 import { sessionList, sessionDetail } from './sessions.js';
 import { featuresPage, featuresAction } from './features.js';
@@ -39,6 +39,9 @@ function parseKey(key) {
   const ms = parseInt(id.split('-')[0], 36);
   // Match the Analytics Engine format the other two views print ("YYYY-MM-DD HH:MM:SS")
   // rather than raw ISO — milliseconds and a T are noise in a column someone scans.
+  // This stays UTC: it is the wire format, and `etWithDow` converts it at RENDER (2026-08-12).
+  // The `day` fallback is a bare date and the ET helpers pass it through unconverted — see
+  // the DATE_ONLY note in render.js for why converting it would list a report a day early.
   const when = Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 19).replace('T', ' ') : day;
   return { day, id, when };
 }
@@ -74,7 +77,7 @@ async function reportList(env, token) {
     }
     const preview = note.length > 140 ? note.slice(0, 140) + '…' : note;
     const href = '?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key);
-    return '<tr><td class="mono muted">' + esc(withDow(when)) + '</td>'
+    return '<tr><td class="mono muted">' + esc(etWithDow(when)) + '</td>'
       + '<td class="mono">' + esc(plant) + '</td>'
       + '<td class="note">' + esc(preview) + '</td>'
       + '<td><a href="' + href + '">view</a></td></tr>';
@@ -83,7 +86,7 @@ async function reportList(env, token) {
   return html('<!doctype html><html><head>' + PAGE_HEAD
     + '<title>Feedback — Reactor Dynamics</title></head><body>' + nav(token, '')
     + '<h1>Bug reports — ' + rows.length + ' of ' + listed.objects.length + ', newest first</h1>'
-    + '<table><tr><th>When (UTC)</th><th>Plant</th><th>Note</th><th></th></tr>' + rows.join('') + '</table>'
+    + '<table><tr><th>When (ET)</th><th>Plant</th><th>Note</th><th></th></tr>' + rows.join('') + '</table>'
     + (listed.objects.length > rows.length ? '<p class="muted">Showing the most recent ' + rows.length + '.</p>' : '')
     + '</body></html>');
 }
@@ -116,7 +119,7 @@ async function reportDetail(env, key, token) {
   return html('<!doctype html><html><head>' + PAGE_HEAD
     + '<title>Report ' + esc(id) + '</title></head><body>' + nav(token, '')
     + '<a class="backlink" href="' + backHref + '">&larr; all reports</a>'
-    + '<h1>' + esc(withDow(when)) + ' — <span class="mono">' + esc(id) + '</span></h1>'
+    + '<h1>' + esc(etFull(when)) + ' — <span class="mono">' + esc(id) + '</span></h1>'
     + '<section><h2>Note</h2><pre>' + esc(bundle.note || '(no note)') + '</pre></section>'
     + '<section><h2>Manifest</h2><pre>' + esc(JSON.stringify(manifest, null, 2)) + '</pre></section>'
     + '<section><h2>Events (' + events.length + ')</h2><table><tr><th>t</th><th>type</th><th>raw</th></tr>' + eventRows + '</table></section>'
