@@ -304,6 +304,21 @@ Place the turbine-generator on the grid and establish electrical output coordina
 ### Applicability
 Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 
+> **ROLL AT 10–15 % POWER, NOT AT 2–5 %.** *"To minimize primary plant transients, the turbine is
+> rolled with reactor power between 10 and 15 percent"* — WTSM §19.3 (ADAMS **ML11223A342**); its
+> App 19-1 sequences the same thing, raising power until the dumps pass 10–15 % of full-load steam
+> flow (step 17), blocking the IR-high and PR-low trips above P-10 (steps 18–19), and *then*
+> accelerating and synchronizing (step 21). The reason is the steam balance: at 10–15 % the dumps
+> are already passing that flow, so as the governor valves open the dumps modulate shut and
+> **total steam flow barely changes** — Tavg, SG heat transfer and feed flow all stay put.
+> Synchronize at 2–5 % and there is no dump flow to trade away, so the load pickup is a step
+> demand on the primary.
+>
+> **This chapter said "Mode 2, ≤ 5 %" until 2026-08-12, and the plant never did.** The shipped
+> `pwr_startup` checklist has always raised power to ~12 % and blocked both trips before pressing
+> Connect Grid — gated by `run_procedures_stack`. The manual contradicted a passing gate; the
+> manual was the wrong one.
+
 ### Scope note — synchronization is ATOMIC here **[sim, approx]**
 This plant has **no turbine roll and no no-load speed hold**. A real unit rolls the machine off
 the turning gear on no-load steam, holds rated speed off line, and synchronizes before the
@@ -352,6 +367,7 @@ P-9 interlock — is modelled properly; it is the roll and the synchroscope that
 |------|--------|---------|------------|
 | 1 | Verify condenser vacuum healthy | Condenser | Above trip region |
 | 2 | Verify MSIV **Open** | Steam | MSIV open |
+| 2a | **Raise reactor power to 10–15 % BEFORE synchronizing**, and block the startup trips on the way (IR HIGH, then PR 25 %, both available above P-10). Do not roll at 2–5 % | Control Bank · Trip Blocks | Power 10–15 %; both blocks in |
 | 3 | **Put the turbine on line: press FOLLOW** on the generator selector. It synchronizes and picks up load matched to reactor power — the reactor's heat now has somewhere to go besides the steam dump | Turbine — Connect Grid | Rotor 1800 rpm; MWe > 0; OFF lamp out |
 | 3a | Take load control: press **MAN**. The setpoint stays where FOLLOW left it, already matched to the power you are making | Turbine Load | MAN; setpoint matched |
 | 4 | Raise Turbine Load in steps toward a low MWe target consistent with reactor power | Turbine Load | MWe rises; steam flow rises |
@@ -684,7 +700,7 @@ After **PWR-N14** or any hot, subcritical plant.
 
 | Step | MODE | Action | Control | Acceptance |
 |------|------|--------|---------|------------|
-| 1 | Mode 3 | Borate to the cold-shutdown boron — **~857 ppm** on this plant (806 ppm critical cold with the control bank in, **09 §7.5**, plus ~1000 pcm). Measured, 683 → 857 ppm takes **~58 plant-minutes** at the ~3 ppm/min make-up rate. **That ~1000 pcm is the boron's contribution alone.** If you got here through PWR-N14 the trip also dropped the shutdown bank, which is worth another **3676 pcm** — so the plant you arrive at in Mode 5 sits near **−4676 pcm**, and that is the number the Mode 5 preset carries | CVCS Borate | Boron at the cold-shutdown value before any cooling |
+| 1 | Mode 3 | Borate to the cold-shutdown boron — **~857 ppm** on this plant (806 ppm critical cold with the control bank in, **09 §7.5**, plus ~1000 pcm). Measured, 683 → 857 ppm takes **~58 plant-minutes** at the ~3 ppm/min make-up rate. **That ~1000 pcm is the boron's contribution alone — it is not the SHUTDOWN MARGIN**, which is computed with all rods assumed inserted (**09 §7.5.3**). If you got here through PWR-N14 the trip also dropped the shutdown bank, worth another **3676 pcm**, so the plant you arrive at in Mode 5 sits near **−4676 pcm** — the number the Mode 5 preset carries | CVCS Borate | Boron at the cold-shutdown value before any cooling |
 | 1a | Mode 3 | **Block SI** — HPI/LPI to OFF. See the WARNING. Do this before the pressure setpoint moves | HPI/LPI | SI in MANUAL; HPI will not auto-actuate |
 | 1b | Mode 3 | Lower the **Pressure SP to 1901 psi (13.11 MPa)** — saturation for present Tavg plus the 63 °F (35 °C) subcooling margin this cooldown holds. It also puts you inside the **P-11** permissive, which is what makes 1c/1d possible | Pressure SP | Pressure below 1972 psi (13.6 MPa) |
 | 1c | Mode 3 | **Block the low-pressure reactor trip** (1800 psi / 12.41 MPa) | Trip Blocks | Trip BLOCKED |
@@ -729,7 +745,7 @@ it at a different rate and every row below moves; that is the point of a program
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
 | Start Mode 3 | 0 | **566.6 °F (297 °C)**, **2235 psi (15.41 MPa)**, 683 ppm |
-| Boration to cold SDM complete | ~1.0 plant-h | 857 ppm; **cooling does not start until this is done** |
+| Boration to the cold-shutdown boron complete | ~1.0 plant-h | 857 ppm; **cooling does not start until this is done** |
 | SI blocked, both reactor trips blocked | ~1.09 plant-h | 1901 psi (13.11 MPa), inside P-11 |
 | Isolate accumulators at **1000 psi (6.895 MPa)** | **~2.04 plant-h** | Tavg **482.7 °F (250.4 °C)**; SIT inventory still 100 % |
 | RHR permissive reached, **400 psi (2.76 MPa)** | **~3.16 plant-h** | Tavg **382.8 °F (194.9 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |

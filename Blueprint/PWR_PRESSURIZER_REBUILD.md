@@ -1,7 +1,48 @@
 # PWR Pressurizer — rebuild dossier
 
-**Status: RESEARCH COMPLETE, BUILD NOT PLANNED.** This document is the **harvest** — step 1 of
-the owner-approved method below. It is deliberately *not* a plan. The plan is Fable's to write.
+**Status: RESEARCH COMPLETE, SCOPE RULED, BUILD NOT PLANNED.** This document is the **harvest** —
+step 1 of the owner-approved method below. It is deliberately *not* a plan. The plan is Fable's
+to write, and **§0 is the ruled scope it must be written to.**
+
+---
+
+## 0. RULED SCOPE — read this first
+
+*(OWNER RULINGS, 2026-08-12, given as numbered answers to a decision list: "1: B  2: A  3: A
+4: A and then B after the pzr  5: yes, behind, rename")*
+
+| # | Decision | Ruling |
+|---|---|---|
+| 1 | Rebuild scope | **B — THE WHOLE PRESSURIZER**, level *and* authority together. **This overrides my recommendation of A** (authority half only). See the risk note below — it is not an objection, it is the thing the plan must handle. |
+| 2 | Pressurizer temperature node | **A — include it in the rebuilt structure.** Liquid region, steam region, saturation between. Not an add-on; the shape of the new model. |
+| 3 | Heater elevation | **A — physical elevation with progressive authority loss** as the level falls through the bank. Replaces the 17 % cliff. |
+| 4 | Spec audit (#471) | **A now, B after the pressurizer** — cheap manual-mode-row filter across all auto systems first; full 59-row + coupling audit once the pressurizer is the worked example. |
+| 5 | Everything else | NOP findings 4–8 go **behind** this work · **do the SDM rename** · findings 2 and 8 proceed. |
+
+### The risk that scope B carries, stated plainly
+
+The level half is the half that has had **recent sourced work that landed well** — #385 (the
+pressurizer inventory node), #424 (the small-break lift, IE Bulletins 79-06A/C), #337 (the surge
+law), #362 (the clip removal). Rebuilding it means re-deriving all four rather than inheriting
+them, and it puts **§6.5, the TMI deception, directly in the blast radius**: that behaviour is a
+*difference* between three level constants, and it is the flagship's entire teaching payload.
+
+**The plan must make the deception an explicit, measured acceptance row characterised BEFORE any
+code is written** (method step 3), not a behaviour hoped to fall out of better physics. That is
+the single highest-risk item in scope B and the one most likely to be discovered late.
+
+### Two additions ruled in the same message
+
+*(OWNER, 2026-08-12: "We need the heater in the diagram to visually match the height the heater
+is located in reality. We should think about making the primary loop pipes a physics node or
+nodes. Same with the RCP.")*
+
+- **The board's heater must sit at the real elevation** — §6.1a. Tracked separately because it is
+  `system-hmi`, but it is the *same* fact as decision 3 and the two must agree: if the model
+  loses authority as the level falls through the bank, the player has to be able to **see** the
+  bank the level is falling through.
+- **Loop piping and RCP as physics nodes** — §6.6. **Not part of this rebuild**, but the
+  pressurizer node's interface has to be designed so it does not block them.
 
 **Why it exists.** `engines/pwr/pwr_pressurizer.js` is 794 lines of which **599 are comment**
 (75 %). Those comments carry thirteen sourced citations and a dozen recorded failed attempts,
@@ -152,6 +193,27 @@ vessel"*, and S1's 17 % bistable exists precisely because they can be uncovered.
 elevation with authority falling off as the bank uncovers would replace two patches with one
 mechanism. **Recommended for the spec.**
 
+### 6.1a The BOARD must show the heaters where they physically are
+*(OWNER, 2026-08-12: "We need the heater in the diagram to visually match the height the heater
+is located in reality.")* **RULED IN.**
+
+This is the visual half of §6.1 and the two are one fact. S2 puts the bank *"in the lower portion
+of the pressurizer vessel"*; if the model loses heater authority progressively as the level falls
+through the bank, the player must be able to see the bank the level is falling through — an
+authority that changes at an invisible elevation is an orphan control by the DESIGN_CRITERIA Q4
+test.
+
+**Board editing is not free-form — read the trap before touching it.** `pwr_board_data.js` is
+**GENERATED**; never hand-edit it. Re-export-safe changes go through `EXTRA_ITEMS` /
+`extraItems()` / `DOC_PATCHES`, a re-export changes PIPE ids, and
+`node test/verify_board_check.js` must be run after any board change. `RD.PwrBoard.ports()`
+turns an alignment claim into a subtraction — **measure the board, do not eyeball it** — and
+screenshot it, because art overlap is invisible to an item-vs-item scan. Full list: `CLAUDE.md`
+standing procedure.
+
+Tracked as its own `system-hmi` issue because it lands in a different subsystem, but **it must
+ship agreeing with whatever decision 3 builds.**
+
 ### 6.2 Does the rebuild need a pressurizer temperature node?
 A properly structured pressurizer has a liquid region, a steam region and saturation between
 them — the node is the natural shape of the rebuilt model, **not an add-on to the current one**.
@@ -176,6 +238,46 @@ that calibration. It must be an explicit acceptance row, not something hoped to 
 better physics.
 
 ---
+
+### 6.6 Loop piping and the RCP as physics nodes — NOT this rebuild, but do not block it
+*(OWNER, 2026-08-12: "We should think about making the primary loop pipes a physics node or
+nodes. Same with the RCP.")*
+
+**The plant is already partly nodalised, which is the argument that this is a continuation rather
+than a new direction.** It has loop *pressure* nodes (`p_coldleg`, `p_hotleg`, `p_pumpsuction`,
+`computeNodePressures()`), an SG tube node (#418, the `C_tube` capacity rule), and a pressurizer
+inventory node (#385). What is still lumped is loop **thermal and inventory** state — one Tavg
+with a hot/cold split, and transport modelled as a time constant scaled by flow
+(`tau / flow_frac`) rather than as mass moving between nodes.
+
+**What node-ifying the legs and the RCP would buy** (unmeasured — this is a design argument, not
+a measurement):
+
+- **Transport becomes structural**, not a fitted τ. Loop transit time falls out of node volumes
+  and flow instead of being a constant that has to be re-tuned whenever flow changes meaning.
+- **Cold-water addition becomes reachable.** WTSM App 19-1 caps RCS temperature at 160 °F during
+  the early heatup *"based on cold water addition accident … the ΔT between seal injection water
+  accumulating in the intermediate leg and the remainder of the RCS."* That is a real prototypical
+  limit we currently cannot express, because there is no intermediate leg to accumulate in.
+- **Natural circulation and stratification** get somewhere to live. Today the natural-circulation
+  magnitude is fitted and declared (`Manuals/12` §12.4).
+- **The RCP as a node** makes pump heat a located source rather than a fraction of core heat
+  (`pump_heat_frac` 0.55 %) — and pump heat is the entire heat source of PWR-N01.
+
+**Why it is NOT in this rebuild.** It is a larger change than the pressurizer and it touches every
+system; doing both at once compounds two large blast radii and makes every red ambiguous, which is
+the failure mode method step 4 exists to avoid. `Manuals/12` §12.2 also currently *declares* one
+lumped loop as adequate for this plant's goals — that declaration should be re-argued on its own
+evidence, not quietly overturned inside a pressurizer commit.
+
+**What this rebuild owes it: an interface, not an implementation.** The pressurizer node connects
+to the loop somewhere. Design that connection as a **node boundary** — a surge line between the
+pressurizer and a hot-leg *node*, even if that node is initially the existing lumped loop wearing
+a node's interface — so leg nodalisation later is a substitution rather than a re-write. Getting
+this wrong is the one way the pressurizer rebuild could make the loop work harder later.
+
+**Recommended as a separate spec**, informed by whatever the pressurizer rebuild learns about
+node interfaces.
 
 ## 7. Blast radius
 

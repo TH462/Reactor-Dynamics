@@ -31,6 +31,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Turbine roll moves to 10–15 % power, where the real plant does it.** `Manuals/04` PWR-N05
+  said Mode 2, ≤ 5 %. Real practice: *"To minimize primary plant transients, the turbine is
+  rolled with reactor power between 10 and 15 percent"* (WTSM §19.3, ML11223A342). The reason is
+  the steam balance — at 10–15 % the dumps already pass that flow, so as the governor valves open
+  the dumps modulate shut and **total steam flow barely changes**. The shipped `pwr_startup`
+  checklist has always done it correctly (~12 %, both startup trips blocked, then Connect Grid)
+  and is gated by `run_procedures_stack`: **the manual contradicted a passing gate, and the
+  manual was the wrong one.**
+- **SHUTDOWN MARGIN is defined, and stops being used for a different quantity** — new
+  `09 §7.5.3`. SDM is computed with all rods assumed inserted except the highest-worth stuck
+  rod; this set used the name for *net reactivity as the rods happen to sit*. The two coincided
+  only while the Mode 5 shutdown bank was parked withdrawn, which since #468 it is not.
+  Measured cold at 857 ppm: **−4676 pcm** both banks in, **−1000 pcm** bank withdrawn, boron's
+  own **~1000 pcm**, bank worth **3676 pcm** — and the operational point, that withdrawing the
+  bank spends the margin buying you **time** (79 min to criticality on an unattended dilution
+  with it in; a source-range trip inside the hour with it out).
+- **The psia/psig convention is declared** — new note at `09 §3.0`. Every pressure in the manual
+  set is absolute; Westinghouse quotes pressurizer setpoints in gauge, 14.7 psi apart. Our 2235
+  reads the real 2235 *psig* as absolute, while our PORV 2350 **is** the real 2335 psig correctly
+  converted — so the nominal-to-PORV margin is 115 psi against a real 100. **Declared rather than
+  fixed**: 2235 is the plant's pressure anchor, and re-anchoring it for 15 psi of margin fidelity
+  would re-baseline every equilibrium, initial condition, alarm band and scenario for no
+  behavioural gain.
 - **Mode 5 starts with the shutdown bank IN, and withdrawing it is now a step** (#468). The
   `Cold Shutdown (Mode 5)` preset shipped with the shutdown rods already parked fully out —
   not as a property of Mode 5 but of the engine *constructor*, which placed every rod group

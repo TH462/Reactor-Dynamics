@@ -89,6 +89,25 @@
 
 ## 3.0 Engineered safety & automatic actuations
 
+> **A NOTE ON psi vs psig, because this set mixes the two conventions and the difference is
+> real.** Every pressure printed in this manual set is **absolute (psia)** — it is a conversion of
+> the engine's MPa, which is absolute. Real Westinghouse documentation quotes pressurizer
+> setpoints in **gauge (psig)**, and the two differ by one atmosphere, **14.7 psi**.
+>
+> The consequence is a small internal inconsistency, declared here rather than silently carried.
+> Our nominal **2235 psi** takes the real plant's *2235 psig* and reads it as absolute — so it is
+> 14.7 psi below the real operating point. Our PORV at **2350 psi** *is* the real **2335 psig**,
+> correctly converted. The plant's nominal-to-PORV margin is therefore **115 psi against the real
+> 100 psi**.
+>
+> **This is not being "fixed" by moving 2235.** That number is the pressure anchor of the whole
+> plant — every equilibrium, initial condition, alarm band and scenario is referenced to it — and
+> re-anchoring it 14.7 psi to buy 15 psi of margin fidelity would re-baseline the entire model for
+> no behavioural gain. Recorded 2026-08-12 so the next reader who spots the mismatch finds the
+> reason instead of the discrepancy. Real values for reference (WTSM 10.2, **ML11223A287**):
+> nominal **2235 psig**, spray starts **2260 psig**, spray full open **2310 psig**, PORV
+> **2335 psig**, safeties **2485 psig**.
+
 | Function | Instrument | Direction | Setpoint | Reset / notes |
 |----------|------------|-----------|----------|---------------|
 | Open PORV | primary_pressure | high | **2350 psi (16.20 MPa)** | Close/reseat **2300 psi (15.86 MPa)** |
@@ -331,6 +350,34 @@ planning.
 > because Tavg is required above 541 °F. This plant does not model samarium separately, and it
 > *will* let you sit below 541 °F — so if you are cold, the moderator term is **not**
 > negligible and the §7.5 table, not this worksheet, is your reference.
+
+### 7.5.3 SHUTDOWN MARGIN — and why it is not the number the board shows you
+
+**SDM is computed with ALL RODS ASSUMED INSERTED** except the single highest-worth rod, which is
+assumed stuck fully withdrawn. It is a *calculated* quantity, not a reading: it answers *"if the
+reactor tripped right now, how far subcritical would it be?"* — which is a different question
+from *"how far subcritical is it right now?"*
+
+This manual set said "cold shutdown margin" for the second quantity until 2026-08-12. The two
+coincided only because the shutdown bank used to be parked withdrawn in Mode 5, which it no
+longer is (**04** PWR-N01 step 2a). Measured on this plant at cold shutdown, 857 ppm:
+
+| Quantity | Value | What it is |
+|---|---|---|
+| Net reactivity, banks as they sit | **−4676 pcm** | both banks in — what the plant *is* |
+| Net reactivity, shutdown bank withdrawn | **−1000 pcm** | after PWR-N01 step 2a |
+| Boron's own contribution | **~1000 pcm** | the trim target the initial condition is solved to |
+| Shutdown bank worth | **3676 pcm** | the margin a trip restores |
+
+**The operational point.** Withdrawing the shutdown bank does not make the plant unsafe — it is
+still 1000 pcm subcritical — but it spends the margin that was buying you *time*. Measured: an
+unattended dilution at the plant's make-up rate takes **79 minutes** to reach criticality with the
+bank in, and trips the source range **inside the hour** with it out. That is what a shutdown
+margin is for, and it is why the real procedure verifies it before the bank moves
+(**ML11223A342** App 19-1 A.12 / C.8).
+
+**Applicability:** NUREG-1431 **LCO 3.1.1** — MODE 2 with k_eff < 1.0, and MODES 3, 4, 5.
+Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2.1).
 
 ## 8.0 Operator training limits (authored standards)
 
