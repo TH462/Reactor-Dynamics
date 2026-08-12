@@ -58,7 +58,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   It builds into a scratch directory (`RD_SITE_OUT`, so `dist-site/` is never touched) and asks
   the files two questions — is every `*.html` in the output a **declared** page, and does every
   local `.css`/`.js` url carry `?v=<stamp>`. The first question is what found the dev harnesses.
-  41 checks, injection-verified three ways.
+  31 checks, injection-verified three ways.
+- **`site/build_site.js` now builds on a bare tree.** Running it in CI is what showed it never
+  had: its reference walk threw on `download/latest.zip` and `download/manifest.js` whenever
+  `download/` was absent, contradicting the `OPTIONAL_DIRS` declaration eight lines above it
+  ("may be absent on a bare local run and that is not an error"). Only the deploy host ever ran
+  the build, and there `make_download.js` runs first. References into an optional directory
+  that was not built are now skipped; the directory is still fully link-checked whenever it
+  exists, which is every real deploy.
 
 ## [Alpha 1.6.0] — 2026-08-12
 

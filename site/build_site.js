@@ -150,6 +150,17 @@ function checkHtml(rel) {
     if (href[0] === '/') continue;
     const target = path.posix.normalize(path.posix.join(base, href.split(/[?#]/)[0]));
     if (!target || target === '.') continue;
+    // A reference INTO AN OPTIONAL DIRECTORY THAT WAS NOT BUILT is not a broken link — it is
+    // the state OPTIONAL_DIRS declares above ("may be absent on a bare local run and that is
+    // not an error"). The walk used to contradict that declaration and throw, which meant
+    // `node site/build_site.js` had never once worked on a fresh clone: measured 2026-08-12,
+    // with `download/` renamed aside, it dies on `download/latest.zip` and
+    // `download/manifest.js`. Invisible because only the deploy host ran it, and there
+    // make_download.js runs first. It surfaced the day test/run_site_build.js started running
+    // the build in CI. The directory still gets full link-checking whenever it EXISTS, which
+    // is every real deploy, so nothing about the deploy's guarantees moves.
+    const optional = OPTIONAL_DIRS.some((d) => target === d || target.startsWith(d + '/'));
+    if (optional && !fs.existsSync(path.join(OUT, target.split('/')[0]))) continue;
     if (!fs.existsSync(path.join(OUT, target))) problems.push(rel + '  ->  ' + href);
   }
 }

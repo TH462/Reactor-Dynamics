@@ -71,9 +71,25 @@ nothing else. Fixed by putting the build in the url; measured on the develop pre
 - **A FIX NOTHING CAN FAIL IS A FIX WAITING TO BE REFACTORED AWAY.** The cache-bust landed
   guarded by nothing: `run_site_meta` reads source and scored **163/163 unchanged** across it,
   and deleting the block was green in every gate in the directory. `test/run_site_build.js` now
-  runs the real build into a scratch dir and reads the FILES. Injection-verified three ways;
-  the one that matters is excluding a single url from busting — **42 checks / 2 failed**,
-  naming `ui/shell.html -> shell.css`, while the source still looks perfectly healthy.
+  runs the real build into a scratch dir and reads the FILES. Injection-verified three ways
+  against a 31/0 baseline; the one that matters is excluding a single url from busting —
+  **32 checks / 2 failed**, naming `ui/shell.html -> shell.css`, while the source still looks
+  perfectly healthy.
+- **A SCORE THAT COUNTS FILES COUNTS THE ENVIRONMENT, and mine shipped red in CI for exactly
+  that.** The first draft emitted one check per html file in the output. `download/` is an
+  `OPTIONAL_DIR` — present in a working tree and on the deploy host (`make_download.js` runs
+  first), **absent on a fresh clone and in CI** — so a HEALTHY tree scored **41 locally and 40
+  there**. Now one aggregate check that names offenders only when there are some: **31/0 with
+  and without the directory** (11 html files vs 10), measured both ways rather than reasoned
+  about.
+- **THE BUILD HAD NEVER RUN ON A BARE TREE, AND ITS OWN DECLARATION SAID IT COULD.**
+  `OPTIONAL_DIRS` announces that `download/` "may be absent on a bare local run and that is not
+  an error"; the reference walk eight lines below threw on `download/latest.zip` and
+  `download/manifest.js` when it was. Two statements in one file, contradicting each other,
+  neither wrong enough to notice — because the only thing that ever ran `build_site.js` was the
+  deploy host, where the directory always exists. **A gate that runs a build in a second
+  environment is how a one-environment assumption becomes visible**, and it cost this change a
+  red CI run to learn.
 - **THE SECOND DEFECT WAS FOUND BY ASKING WHAT IS IN THE OUTPUT, WHICH NO SOURCE READ ASKS.**
   `build_site.js` partitions the root `*.html` glob into PAGES / NOT_PUBLISHED, but the DIRS
   loop copies each asset directory **wholesale** — so `ui/test_panel/` shipped, and both of its

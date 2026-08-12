@@ -26,15 +26,20 @@
  * nothing, and nothing is a violation.
  *
  * VERIFIED BY INJECTION, because a check written beside its own fix has never been red.
- * Measured 2026-08-12, each reverted after:
- *   - disable the cache-bust call -> BUILD 1 ("reports 0 urls") + BUST 132 (0 of 131 carry
- *     ?v=, then every bare url named). Two independent rules catch it, one from the build's
- *     own tally and one from the files.
- *   - empty WITHHELD_DIRS, republishing ui/test_panel -> PAGES 2, both harnesses named.
- *   - add ui/shell.css to the build's NO_BUST, leaving exactly ONE url bare -> BUST 2:
+ * Measured 2026-08-12 against a 31/0 baseline, each reverted after:
+ *   - disable the cache-bust call -> 162 checks / 133 failed. Two independent rules catch it:
+ *     BUILD, from the build's own tally ("reports 0 urls"), and BUST, from the files.
+ *   - empty WITHHELD_DIRS, republishing ui/test_panel -> 33/3, both harnesses named.
+ *   - add ui/shell.css to the build's NO_BUST, leaving exactly ONE url bare -> 32/2:
  *     "130 of 131" and `ui/shell.html -> shell.css`. That is the case that matters — it is
  *     #470 itself, and it proves the walk reads the OUTPUT rather than the source, since the
  *     source still contains a perfectly healthy-looking bust block.
+ *
+ * THE TALLY IS DELIBERATELY INDEPENDENT OF THE ENVIRONMENT, and the first draft was not.
+ * It emitted one check per html file, which made the score depend on whether `download/`
+ * exists — it does here and on the deploy host, it does not on a fresh clone or in CI. That
+ * form scored 41 locally and 40 in CI ON A HEALTHY TREE: a baseline reporting the environment
+ * rather than the code. Measured after the fix: 31/0 both ways (11 html files vs 10).
  *
  * WHAT IT DOES NOT COVER. Whether the STAMP is the right sha — that is the deploy host's job
  * (measured live instead: develop's preview served `shell.css?v=b06dcd8`) — and whether the
@@ -117,19 +122,29 @@ function walk(dir, acc) {
 var OUT_FILES = walk(OUT, []);
 var OUT_HTML = OUT_FILES.filter(function (f) { return /\.html$/.test(f); }).sort();
 
-// The pages that must carry versioned assets: everything served as a page.
-var SERVED = [];
+// ONE CHECK FOR THE WHOLE SET, NOT ONE PER FILE — and that is not a style choice. A per-file
+// tally moves with the CONTENTS of the output, and `download/` is an OPTIONAL_DIR: it exists
+// on this machine and on the deploy host (make_download.js runs first) and does not exist on a
+// fresh clone or in CI. So the per-file form scored 41 locally and would have scored 40 in CI
+// on a healthy tree — a baseline that reports the environment rather than the code. Offenders
+// are still named individually, but only when there are some.
+var SERVED = [], undeclared = [];
 OUT_HTML.forEach(function (rel) {
-  var declared = PAGES.indexOf(rel) !== -1 || rel === 'ui/shell.html';
-  var offline = /^download\//.test(rel);
-  check('PAGES', rel, 'is declared publishable',
-    declared ? 'in build_site.js PAGES'
-      : offline ? 'under download/ — the inlined offline build, not a served page' : null);
-  if (declared) SERVED.push(rel);
+  if (PAGES.indexOf(rel) !== -1 || rel === 'ui/shell.html') { SERVED.push(rel); return; }
+  // download/ holds the single-file OFFLINE build — everything inlined, downloaded rather
+  // than served, so it is neither a page nor bustable.
+  if (/^download\//.test(rel)) return;
+  undeclared.push(rel);
 });
-check('PAGES', 'the built output', OUT_HTML.length + ' html file(s) in the output, ' +
-  SERVED.length + ' served as pages',
-  SERVED.length === PAGES.length + 1 ? 'every declared page plus the control room' : null);
+check('PAGES', 'the built output', OUT_HTML.length + ' html file(s), ' + SERVED.length +
+  ' served as pages, ' + undeclared.length + ' undeclared',
+  undeclared.length === 0 ? 'nothing ships that no file declares' : null);
+undeclared.forEach(function (f) {
+  check('PAGES', f, 'is published but declared nowhere — a dev harness on the live domain', null);
+});
+check('PAGES', 'the built output', SERVED.length + ' served pages vs ' + PAGES.length +
+  ' declared', SERVED.length === PAGES.length + 1
+    ? 'every declared page plus the control room, and nothing extra' : null);
 
 // ---------------------------------------------------------------- every asset url versioned
 // Walked from the OUTPUT, not from build_site.js's own list of files to rewrite. That is the

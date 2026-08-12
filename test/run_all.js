@@ -1271,11 +1271,19 @@ var BASELINES = {
   // local css/js url carry ?v=<stamp>. The first found the second defect on its first run (#476) —
   // ui/test_panel's two dev harnesses were live on the public domain, because PAGES/
   // NOT_PUBLISHED partitions the root glob while the DIRS loop copies wholesale.
-  // INJECTION-VERIFIED three ways, each reverted: bust call disabled 41/133 (BUILD's own
-  // tally AND every bare url), WITHHELD_DIRS emptied 43/2 (both harnesses named), and one
-  // single url excluded from busting 42/2 — that last is #470 itself, and it is the one that
+  // INJECTION-VERIFIED three ways, each reverted: bust call disabled 162/133 (BUILD's own
+  // tally AND every bare url), WITHHELD_DIRS emptied 33/3 (both harnesses named), and one
+  // single url excluded from busting 32/2 — that last is #470 itself, and it is the one that
   // proves the walk reads the OUTPUT, since the source still looks healthy.
-  'run_site_build.js':     { code: 0, score: '41checks 0failed' },
+  // IT SHIPPED RED IN CI AT 41 AND THE CAUSE IS WORTH KEEPING. The first draft emitted one
+  // check per html file in the output, and `download/` is an OPTIONAL_DIR — present here and
+  // on the deploy host (make_download.js runs first), absent on a fresh clone and in CI. So a
+  // HEALTHY tree scored 41 locally and 40 there. Worse, the build itself exited 1 in CI: the
+  // reference walk threw on `download/latest.zip` and `download/manifest.js`, contradicting
+  // the OPTIONAL_DIRS declaration eight lines above it, which means `node site/build_site.js`
+  // had never once worked on a bare clone. Both fixed; the tally is now 31/0 with or without
+  // the directory (11 html files vs 10), measured both ways rather than reasoned about.
+  'run_site_build.js':     { code: 0, score: '31checks 0failed' },
   // NEW 2026-08-07 — WHICH AUDIENCE a deploy thinks it is for. site/stamp_version.js read
   // VERCEL_ENV and nothing else, so the move to Cloudflare Pages (CF_PAGES_BRANCH, no
   // VERCEL_ENV) would have stamped the PUBLIC site 'dev' — and 'dev' is the most PERMISSIVE
