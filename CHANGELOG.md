@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.6.0] — 2026-08-12
+
 ### Changed
 - **The ops dashboard lays records out as cards, and stops stretching across wide screens**
   *(OWNER, 2026-08-12: "put the data on cards instead of infinitely expandable rows"; and,
