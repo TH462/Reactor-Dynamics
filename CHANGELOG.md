@@ -30,6 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **A release can no longer serve new HTML against the previous release's stylesheet** (#470).
+  `ui/shell.html` is served `Cache-Control: max-age=0, must-revalidate` while `ui/shell.css` is
+  `max-age=14400` and was referenced as a bare `href="shell.css"` — and `must-revalidate` does
+  nothing until `max-age` expires. So anyone who had loaded the sim in the four hours before a
+  release got that release's HTML against the previous release's CSS, and every element whose
+  styling was new in it drew unstyled. Reported on the live Alpha 1.6.0 as the chart text
+  "crammed on the left edge"; reproduced by serving the release HTML with 1.5.2's stylesheet
+  (`.lane-chrome` computes `position: static`, `.cs-row` matches no rule at all). It never
+  showed in testing because **testing always loads cold**. `site/build_site.js` now appends
+  `?v=<build sha>` to every local `.css`/`.js` reference in the published HTML — 131 urls — so
+  a release requests urls no cache has seen while repeat visits *within* a release still hit
+  the four-hour cache. The three version stamps (`version.js`, `release.js`, `manifest.js`) are
+  excluded: they are already `no-cache`, and pinning them to the build that emitted them is the
+  opposite of their job. Measured live on the develop preview: `shell.css?v=b06dcd8`.
+- **Two dev harnesses are no longer published to the live site** (#476). `ui/test_panel/board_check`
+  and `ui/test_panel/lane_reference` both answered **200 on reactordynamics.com** — the
+  published/withheld partition covers the root `*.html` glob only, while each asset directory
+  is copied wholesale, so being one directory deeper was their whole exemption. Withheld now
+  via a `WITHHELD_DIRS` declaration beside `NOT_PUBLISHED`.
+
+### Added
+- **`test/run_site_build.js`** — the first gate that runs the deploy build and reads its
+  output. Everything else about the site is static: `run_site_meta` scored 163/163 unchanged
+  across the fix above, which means deleting that fix was green in every gate in the directory.
+  It builds into a scratch directory (`RD_SITE_OUT`, so `dist-site/` is never touched) and asks
+  the files two questions — is every `*.html` in the output a **declared** page, and does every
+  local `.css`/`.js` url carry `?v=<stamp>`. The first question is what found the dev harnesses.
+  31 checks, injection-verified three ways.
+- **`site/build_site.js` now builds on a bare tree.** Running it in CI is what showed it never
+  had: its reference walk threw on `download/latest.zip` and `download/manifest.js` whenever
+  `download/` was absent, contradicting the `OPTIONAL_DIRS` declaration eight lines above it
+  ("may be absent on a bare local run and that is not an error"). Only the deploy host ever ran
+  the build, and there `make_download.js` runs first. References into an optional directory
+  that was not built are now skipped; the directory is still fully link-checked whenever it
+  exists, which is every real deploy.
+
 ## [Alpha 1.6.0] — 2026-08-12
 
 ### Changed

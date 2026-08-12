@@ -29,7 +29,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const OUT = path.join(ROOT, 'dist-site');
+/* RD_SITE_OUT exists so test/run_site_build.js can build somewhere harmless and assert on the
+ * REAL output. Without it the only way to check this file was to read it, and a source read is
+ * what let the #470 cache-bust ship unguarded — see that runner's header. Default unchanged. */
+const OUT = process.env.RD_SITE_OUT || path.join(ROOT, 'dist-site');
 
 /* The public site: eight pages plus the directories they and the control room pull
  * from. Derived from a reference scan of the shipped HTML, not from memory. */
@@ -52,6 +55,26 @@ const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios'];
  * the partition, so a new root page cannot exist without some file saying whether it ships.
  * That is the property `.vercelignore` used to provide, kept rather than dropped. */
 const NOT_PUBLISHED = ['test_pwr.html', 'test_bwr.html', 'test_rbmk.html'];
+
+/* THE SAME RULE, ONE DIRECTORY DOWN — and it was missing, which is not hypothetical (#476).
+ * NOT_PUBLISHED partitions the root `*.html` glob and nothing else, while the DIRS loop below
+ * copies each directory WHOLESALE. So `ui/test_panel/` shipped, and on 2026-08-12 both of its
+ * pages answered 200 on the live domain:
+ *
+ *     https://reactordynamics.com/ui/test_panel/board_check      200, 90,568 bytes
+ *     https://reactordynamics.com/ui/test_panel/lane_reference   200, 13,755 bytes
+ *
+ * They are dev harnesses — the same category the paragraph above calls "a bug, not a feature"
+ * — and being one directory deeper was the whole of their exemption. Nothing links to them, so
+ * the reference walk never had an opinion either way.
+ *
+ * Keyed by the DIRS entry rather than a flat name set, because `copyDir`'s prune is checked at
+ * the TOP LEVEL of the directory it is given (the recursive call passes no prune), which is
+ * exactly where `test_panel` sits. A bare name would silently do nothing one level deeper.
+ * test/run_site_build.js proves the result rather than the intent: it requires every `*.html`
+ * in the built output to be a declared page, so a new dev page anywhere under a published
+ * directory is a red rather than a live url. */
+const WITHHELD_DIRS = { ui: new Set(['test_panel']) };
 
 /* Generated earlier in the build. `download/` may be absent on a bare local run and
  * that is not an error — the page degrades to no metadata line. */
@@ -97,7 +120,7 @@ for (const p of PAGES) {
   fs.copyFileSync(path.join(ROOT, p), path.join(OUT, p));
 }
 for (const d of DIRS) {
-  copyDir(path.join(ROOT, d), path.join(OUT, d), d === 'site' ? BUILD_ONLY : null);
+  copyDir(path.join(ROOT, d), path.join(OUT, d), d === 'site' ? BUILD_ONLY : WITHHELD_DIRS[d]);
 }
 for (const f of OPTIONAL) {
   if (fs.existsSync(path.join(ROOT, f))) fs.copyFileSync(path.join(ROOT, f), path.join(OUT, f));
@@ -127,6 +150,17 @@ function checkHtml(rel) {
     if (href[0] === '/') continue;
     const target = path.posix.normalize(path.posix.join(base, href.split(/[?#]/)[0]));
     if (!target || target === '.') continue;
+    // A reference INTO AN OPTIONAL DIRECTORY THAT WAS NOT BUILT is not a broken link — it is
+    // the state OPTIONAL_DIRS declares above ("may be absent on a bare local run and that is
+    // not an error"). The walk used to contradict that declaration and throw, which meant
+    // `node site/build_site.js` had never once worked on a fresh clone: measured 2026-08-12,
+    // with `download/` renamed aside, it dies on `download/latest.zip` and
+    // `download/manifest.js`. Invisible because only the deploy host ran it, and there
+    // make_download.js runs first. It surfaced the day test/run_site_build.js started running
+    // the build in CI. The directory still gets full link-checking whenever it EXISTS, which
+    // is every real deploy, so nothing about the deploy's guarantees moves.
+    const optional = OPTIONAL_DIRS.some((d) => target === d || target.startsWith(d + '/'));
+    if (optional && !fs.existsSync(path.join(OUT, target.split('/')[0]))) continue;
     if (!fs.existsSync(path.join(OUT, target))) problems.push(rel + '  ->  ' + href);
   }
 }
@@ -193,6 +227,62 @@ if (deadLinks.length) {
   throw new Error(deadLinks.length + ' link(s) point at files dist-site does not contain.');
 }
 
+/* ---------------------------------------------- CACHE-BUST THE ASSETS (#470, 2026-08-12)
+ *
+ * THE PREMISE THE HEADER NOTE BELOW USED TO REST ON WAS FALSE. It said `max-age=14400` was
+ * "fine for engine code — it is immutable per deploy and the page that loads it is
+ * revalidated". Immutable per deploy, yes; but the URL is IDENTICAL across deploys, so a
+ * browser holding last release's `shell.css` serves it against this release's HTML and never
+ * asks. Revalidating the PAGE does not help — the page then requests `shell.css` and the
+ * cache answers locally.
+ *
+ * MEASURED after Alpha 1.6.0 shipped, and reported by the owner: the control room's text
+ * "crammed on the left edge" with the chart-settings menu "crammed to the left instead of
+ * nice columns". Reproduced exactly by serving the release's HTML with the PREVIOUS release's
+ * stylesheet — `.lane-chrome` computes `position: static` instead of `absolute`, `.lane-value`
+ * spans the full width instead of sitting in the right gutter, and `.cs-row` matches no rule
+ * at all. Every crammed element was one whose CSS was NEW in that release, which is the
+ * signature of this and of nothing else. It never showed in testing because testing always
+ * loads cold.
+ *
+ * This is the same defect the `_headers` note below already diagnosed for the three version
+ * stamps on 2026-08-09 — it just under-called the scope, treating the rest as safe.
+ *
+ * SO THE URL CARRIES THE BUILD. `?v=<sha>` changes every deploy, so a release is instantly
+ * correct while repeat visits WITHIN a release still hit the 4-hour cache. Read from the
+ * stamp `stamp_version.js` has already written rather than re-deriving the host env — one
+ * source of truth, and it is the file whose whole job is to say which build this is.
+ *
+ * Deliberately AFTER the reference walk and the extensionless rewrite: both resolve hrefs
+ * against real files, and a `?v=` would have to be stripped by every one of them. Verify
+ * first, rewrite second, bust third. */
+const stampSrc = fs.readFileSync(path.join(__dirname, 'version.js'), 'utf8');
+const stampM = /RD_VERSION\s*=\s*"[^"]*?([0-9a-f]{7,40}|dev|preview)"/.exec(stampSrc);
+const STAMP = stampM ? stampM[1] : null;
+if (!STAMP) throw new Error('site/version.js carries no build stamp — run stamp_version.js first');
+// The three files whose job is to BE current are already `no-cache` below; versioning them
+// would pin them to the build that emitted them, which is the opposite of what they are for.
+const NO_BUST = new Set(['/site/version.js', '/site/release.js', '/download/manifest.js']);
+let busted = 0;
+function bustAssets(rel) {
+  const abs = path.join(OUT, rel);
+  const base = path.posix.dirname(rel.replace(/\\/g, '/'));
+  let src = fs.readFileSync(abs, 'utf8');
+  src = src.replace(/(\s(?:src|href)=")([^"?#]+\.(?:css|js))(")/g, (whole, pre, url, post) => {
+    if (/^(https?:|data:|\/\/)/.test(url)) return whole;
+    const resolved = path.posix.normalize(path.posix.join(url.startsWith('/') ? '' : base,
+      url.replace(/^\//, '')));
+    // Same discipline as the rewrite above: never invent a URL for a file we did not publish.
+    if (!fs.existsSync(path.join(OUT, resolved))) return whole;
+    if (NO_BUST.has('/' + resolved)) return whole;
+    busted++;
+    return pre + url + '?v=' + STAMP + post;
+  });
+  fs.writeFileSync(abs, src);
+}
+PAGES.forEach(bustAssets);
+bustAssets('ui/shell.html');
+
 // /sim must land on the FINAL url, not one that redirects again.
 fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell?engine=pwr  302\n');
 
@@ -224,3 +314,5 @@ if (problems.length) {
 count(OUT);
 console.log('dist-site/  ' + files + ' files  (' + PAGES.length + ' pages, ' +
   DIRS.length + ' asset directories)  — every reference resolves');
+console.log('            ' + busted + ' asset urls carry ?v=' + STAMP +
+  '  (a release cannot serve new HTML against cached CSS — #470)');
