@@ -3848,7 +3848,12 @@
         a.run(30);
         a.cmd('inject_failure', { failure_id: 'large_loca', severity: 0.5 });
         var invMax = 0, inv2100 = null, tAcc = 0;
-        a.run(2700, function (hh) {
+        // 2700 -> 4700 s at #453. Removing the RHR auto-align took the largest heat sink out
+        // of an unisolated LOCA, so the same arrest arrives later — measured, this ride was
+        // still drifting 7.07 pts over its last 10 min at 2700 s, and is flat (level band
+        // 0.0 pts, P band ≤ 0.2 psi) from ~4000 s on. The arrest itself is unchanged: still
+        // ON the solid line, still clear of the mass_max clip.
+        a.run(4700, function (hh) {
           var t = hh.ts();
           if (t.core_inventory_pct > invMax) invMax = t.core_inventory_pct;
           if (inv2100 == null && t.sim_time_s == null) { /* time not exposed; capture below */ }
@@ -4046,9 +4051,26 @@
         // live per sample — so the leg asserts observed decay ≈ the sink the
         // engine says it is applying (and with gain 0 the integral collapses to
         // the old 1200/τ_eff form exactly — validated both ways at the change).
+        //
+        // WINDOW 1200 -> 3000 s AT #453, and the reason is the plant, not the band. This leg's
+        // premise is that "by 10 min the ECCS quench has taken the source below flashing, so
+        // the input is ~0". #453 removed the RHR auto-align, which used to let the largest
+        // heat sink in the plant into an unisolated LOCA; without it the primary stays hotter
+        // for longer and keeps feeding containment. MEASURED on this path after #453
+        // (`_ctmt_steam`): 1.63e-2 at 600 s, 6.1e-3 at 1200, 2.8e-3 at 3000, 8.8e-5 at 4800 —
+        // so at the old window start the source is emphatically NOT quenched.
+        //
+        // The window is LENGTHENED rather than started later, because the two things this leg
+        // needs became mutually exclusive: waiting for a genuinely quenched source also waits
+        // out the pressure, and by 3000 s the excess over ambient is 0.0062 MPa — under this
+        // leg's own `(pPk - AMB) > 0.01` genuine-peak floor. Measured decay ratios from a
+        // 600 s start: 0.4667 over 1200 s, 0.102 over 3000 s. The ACCEPTANCE BOUND IS
+        // UNCHANGED at max(3·expRem, 0.35) — what changed is how long the plant is watched,
+        // not how much decay counts as decay. `sinkInt` integrates per sample, so the
+        // expectation follows the window without being retuned.
         var cc2 = RD.PWR_CONFIG.containment;
         var sinkInt = 0;
-        a.run(1200, function (hh) {
+        a.run(3000, function (hh) {
           var es = hh.eng.s;
           sinkInt += ((es._ctmt_sink_enh || 1) / cc2.passive_sink_tau_s
                     + (es.ctmt_fan_active ? 1 / (cc2.fan_sink_tau_s || 750) : 0)
@@ -4056,14 +4078,14 @@
         });
         var pLate = a.ts().containment_pressure_mpa;
         var frac = (pLate - AMB) / Math.max(pPk - AMB, 1e-9);
-        var tauC = 1200 / Math.max(sinkInt, 1e-9);   // effective τ over the window, for the report
+        var tauC = 3000 / Math.max(sinkInt, 1e-9);   // effective τ over the window, for the report
         var expRem = Math.exp(-sinkInt);
         // Floor at ~0, not above it: with the fans running, full decay TO AMBIENT
         // inside the window is the correct outcome (τ_eff ≈ 170 s, e^-1200/170 ≈
         // 9e-4), and steam ≥ 0 means the ratio cannot go meaningfully negative —
         // the deleted-sink failure mode is caught by the UPPER bound (ratio ≈ 1).
         ck('with the source quenched below flashing, pressure DECAYS on the running sinks',
-          fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 20 min (ratio ' + fmt(frac, 4) +
+          fmt(pPk, 3) + ' → ' + fmt(pLate, 3) + ' MPa abs over 50 min (ratio ' + fmt(frac, 4) +
           ' vs e^(−Δt/τ_eff) ' + fmt(expRem, 4) + ', τ_eff ' + fmt(tauC, 0) + ' s)',
           frac < Math.min(Math.max(3 * expRem, 0.35), 0.9) && frac > -0.001 && (pPk - AMB) > 0.01,
           'decayed toward the τ_eff remainder from a genuine peak, not held');
@@ -5906,9 +5928,21 @@
      * oscillation rides on. So: H() with the shipped lineup, no `noDefaults`.
      *
      * THE CLAIM IS A BAND, NOT A TRANSITION COUNT. A count pins the number of ECCS refill
-     * cycles, which is a tuning; CA-10's own bMaxStreak note is the worked case. The tail
-     * window opens at 3000 s because the shed plant is fully settled by ~2000 s at both
-     * severities (measured, per-1000 s buckets: P band 0.00 psi from 2000 s on).
+     * cycles, which is a tuning; CA-10's own bMaxStreak note is the worked case.
+     *
+     * THE TAIL WINDOW OPENS AT 5000 s, MOVED FROM 3000 AT #453, and the reason is a real
+     * change in the plant rather than a band being widened to fit. #453 removed the RHR
+     * auto-align, which used to let the largest heat sink in the plant into an unisolated
+     * LOCA and drove the cooldown to its end state fast. Without it the same end state
+     * arrives later. Measured per-2000 s bucket after #453, both severities: still moving
+     * through 2000-4000 s (P band 138.4 psi at sev 0.05), then FLAT from 4000 s on — 0.2,
+     * 0.1, 0.1, 0.0, 0.0 psi and a level band of 0.0 pts out to 16 000 s.
+     *
+     * The window move does NOT weaken the probe, and that is checkable rather than asserted:
+     * the defect this exists to catch ran for the WHOLE 16 000 s (620 `_heater_cut`
+     * transitions over 3000-16000 s at sev 0.40, 134 at 0.05, monotone in severity), so it
+     * is still caught at 5000-7000 s. What the move drops is a settling transient that was
+     * never the subject. Heater samples in the new window: 0 of 4000, at both severities.
      *
      * Injection-verified 2026-08-11: RED on the pre-change engine, 14 of 34 checks, and
      * the numbers are this probe's own window (3000-5000 s), not the issue's. sev 0.05:

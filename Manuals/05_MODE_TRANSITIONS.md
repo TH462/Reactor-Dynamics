@@ -204,7 +204,7 @@ This is the deepest **fully simulated** shutdown state.
 | C1a | Set the cold lineup **before** the pressure setpoint moves: HPI/LPI OFF, then — once inside the **P-11** permissive — **block the low-pressure reactor trip AND the reactor trip on safety injection** | Mode 3, Hot Standby |
 | C2 | Cooldown and depressurize within limits using steam dump / AFW / secondary | Mode 4, Hot Shutdown |
 | C3 | **Isolate the SI accumulators** while descending through **1000 psi (6.895 MPa)** — before RCS pressure reaches their **600 psi (4.14 MPa)** cover gas | Mode 4, Hot Shutdown |
-| C4 | Place **RHR** in service when pressure/temperature permit | Mode 4, Hot Shutdown |
+| C4 | Place **RHR** in service when pressure permits — **you place it; nothing aligns it for you** (#453). Throttle the HX split to ~7 % before opening the suction valve | Mode 4, Hot Shutdown |
 | C5 | Continue to cold conditions (Tavg ≤ ~199.4 °F (93 °C) class) | **Mode 5, Cold Shutdown** |
 | C6 | Secure secondary as appropriate; solid plant / cold solid per commercial practice | Mode 5, Cold Shutdown |
 
