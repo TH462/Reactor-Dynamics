@@ -935,3 +935,70 @@ Friedel) is admissible without also admitting slip, which the ruling excludes.
 **Flagged: UNSOURCED.** The form is standard, but it has no citation in this repo's corpus and it
 is load-bearing for natural circulation. **It goes on the evidence list**, and per D3 §1a's rule it
 may not *confirm* anything until sourced.
+
+---
+
+## 15. FINDING (H) RESOLVED — kinetics needs ANALYTIC integration, not sub-stepping
+
+Flagged by three separate reviews and never addressed: §4 named kinetics the one genuinely stiff
+term and resolved it by "prompt-jump/sub-stepping", but **sub-steps are intermediate writes that
+must read feedback Phase 2 has not written** — so the one term everyone agreed was stiff had no
+integration story compatible with gather-then-integrate.
+
+### 15.1 The stiffness is real — measured
+
+Standard U-235 6-group data, β = 0.00645, Λ = 2.0e-5 s. Prompt eigenvalue ≈ (ρ − β)/Λ:
+
+| ρ | eigenvalue | τ | dt/τ at 0.02 |
+|---|---|---|---|
+| 0 | −323 s⁻¹ | 3.10e-3 s | 6.5 |
+| −0.001 | −373 s⁻¹ | 2.68e-3 s | 7.5 |
+| −0.05 (scrammed) | −2,820 s⁻¹ | 3.54e-4 s | **56** |
+
+**Explicit Euler at dt = 0.02 with no sub-steps returns n = 0.000e+0 — it diverges to zero.** It
+needs **250 sub-steps** per 0.02 s step to be stable.
+
+### 15.2 The resolution — sub-stepping was never necessary
+
+**With ρ frozen over the step, point kinetics is a LINEAR system with constant coefficients.** It
+has a closed-form solution — a 7×7 matrix exponential (scaling-and-squaring is ample; the system is
+tiny and the matrix is sparse). Measured against the diverging explicit step: **analytic gives
+n = 0.865167, stable, in one step, with no sub-steps at all.**
+
+**This is exactly compatible with gather-then-integrate**, and the apparent conflict dissolves:
+**ρ is a Phase-1 coefficient**, computed from time-*n* state. Phase 2 advances the kinetics
+analytically using it. **Nothing re-reads feedback mid-step, because nothing needs to.**
+
+**So §4's "sub-stepping" was the error, not the constraint.** Finding (H) was correct that
+sub-stepping violates the step; it is resolved by not sub-stepping.
+
+### 15.3 But freezing ρ has a real cost — and it is NOT small
+
+**Measured**, one 0.02 s step, frozen-ρ against a ρ ramped within the step:
+
+| Reactivity ramp | Relative error in `n` |
+|---|---|
+| 0.001 dk/s | 2.3e-3 |
+| 0.01 dk/s | **2.3e-2** |
+| 0.1 dk/s | **2.2e-1** |
+
+A real scram inserts ~4,000–6,000 pcm in 2–3 s ≈ **0.016–0.024 dk/s**, so a scram sits between the
+second and third rows — **a few percent per step, not negligible.**
+
+**Mitigation, and it is nearly free:** use **ρ at the step MIDPOINT** rather than its start. Rod
+position is already integrated in Phase 1, so the midpoint rod worth is known without any extra
+coupling — this is a second-order correction bought with arithmetic already on hand. **D3 should
+specify midpoint-ρ, not start-of-step ρ**, which also means PWR2 is *more* accurate here than the
+current engine, whose `CONTEXT.md` §11 coupling reads start-of-step reactivity.
+
+### 15.4 A methodological note worth more than the finding
+
+**My own verification script printed a conclusion contradicting the data one line above it** — it
+asserted *"a scram-class ramp costs ~1e-4 relative"* as a hardcoded string while its own measured
+value was **2.18e-1**, three orders out. I caught it only by reading the table rather than the
+summary line.
+
+**That is the recalled-band failure executed in code**: a conclusion written *before* the
+measurement and not re-read against it. The generalised rule in D3 §1a — *any acceptance criterion
+I choose that cannot fail* — now has a third form: **a summary line in a script is an acceptance
+criterion, and it does not fail when the data disagrees with it.**
