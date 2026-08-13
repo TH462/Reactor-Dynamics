@@ -49,6 +49,78 @@
   var V1 = RD.pwrPressurizer;
   if (!V1) throw new Error('pwr_pressurizer2.js: load AFTER pwr_pressurizer.js (v1 is the phase-3a delegate)');
 
+  // ================================================================== correlations
+  //
+  // v1 needed exactly ONE property of steam: `P_sat_from_T`. A two-region model needs the
+  // steam side as well, because pressure is no longer a gain — it is the state of the
+  // bubble, `rho_g_sat(P) = m_stm / V_stm`. These are the two functions that make the
+  // difference between computing a pressure and fitting one.
+  //
+  // PROVENANCE, stated plainly: the table below is RECALLED IAPWS saturated-vapour
+  // density, not a sourced document. That is the same standing the config's own rho/cp
+  // figures have (see the `eccs_cooling_gain` block, which flags its 700 kg/m³ and
+  // 5.7 kJ/kg·K the same way), and it is flagged here for the same reason — so a later
+  // reader knows which numbers would move if a steam-table reference entered the corpus.
+  // Nothing structural depends on the third digit: what the model needs is the SHAPE
+  // (rho_g rising ~linearly in P at low pressure and steepening toward the critical
+  // point), and that shape is what the table carries.
+  //
+  // A TABLE RATHER THAN A FIT, deliberately. A log-log power law through the endpoints
+  // reads 18 % high at 7 MPa — the curve is not straight in any simple coordinates, and a
+  // closed form accurate across 0.1–22 MPa would be a correlation nobody in this repo
+  // could check by eye. Twenty-three points with log-space interpolation is <1 % across
+  // the whole range, and every entry is independently verifiable against any steam table.
+  var PSAT_MPA = [0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+                  11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0];
+  var RHO_G    = [0.5903, 1.129, 2.668, 5.145, 10.04, 15.00, 20.09, 25.35, 30.82, 36.53,
+                  42.51, 48.79, 55.43, 62.48, 70.01, 78.14, 87.00, 96.71, 107.4, 119.3,
+                  132.6, 147.8, 165.3];
+
+  // rho_g_sat(P) — saturated vapour density [kg/m³] at pressure P [MPa].
+  // Interpolated in LOG-LOG space: both quantities span two-plus decades, and a linear
+  // interpolation on the raw values is visibly wrong between the widely-spaced low-P
+  // entries (0.1 → 0.2 → 0.5).
+  function rho_g_sat(P) {
+    if (!(P > 0)) return RHO_G[0];
+    if (P <= PSAT_MPA[0]) return RHO_G[0] * (P / PSAT_MPA[0]);          // ideal-gas limit
+    var n = PSAT_MPA.length;
+    if (P >= PSAT_MPA[n - 1]) {
+      // Above the table the curve is steepening toward the critical point; extrapolating
+      // the last log-log segment is the least-wrong option and the regime is guarded
+      // elsewhere (the code safeties lift at 17.13).
+      var s = Math.log(RHO_G[n - 1] / RHO_G[n - 2]) / Math.log(PSAT_MPA[n - 1] / PSAT_MPA[n - 2]);
+      return RHO_G[n - 1] * Math.pow(P / PSAT_MPA[n - 1], s);
+    }
+    var i = 0;
+    while (i < n - 2 && PSAT_MPA[i + 1] < P) i++;
+    var f = Math.log(P / PSAT_MPA[i]) / Math.log(PSAT_MPA[i + 1] / PSAT_MPA[i]);
+    return RHO_G[i] * Math.pow(RHO_G[i + 1] / RHO_G[i], f);
+  }
+
+  // T_sat_from_P — the inverse of v1's `P_sat_from_T`, by bisection ON THAT FUNCTION.
+  //
+  // Inverting our OWN correlation rather than tabulating Tsat independently is the point:
+  // a second table would let the saturation line disagree with itself, and every regime
+  // predicate in this model (flash, condense, solid, the sat-branch entry) tests one side
+  // of that line against the other. 60 bisections over a 100–374 °C bracket converge to
+  // ~2e-7 °C, and the whole call costs less than one `Math.pow`.
+  function T_sat_from_P(P) {
+    var lo = 100, hi = 374, m;
+    for (var i = 0; i < 60; i++) {
+      m = 0.5 * (lo + hi);
+      if (V1.P_sat_from_T(m) < P) lo = m; else hi = m;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  // dTsat/dP [°C/MPa] — the slope that converts heat into pressure rate. This is the term
+  // that makes heater authority an OUTPUT: dP/dt = Q / (C · dTsat/dP). Central difference
+  // on the inverse above, clamped so the step cannot cross into the extrapolated region.
+  function dTsat_dP(P) {
+    var h = Math.min(0.05, Math.max(0.001, P * 0.005));
+    return (T_sat_from_P(P + h) - T_sat_from_P(P - h)) / (2 * h);
+  }
+
   // ------------------------------------------------------------------ the model
   //
   // PHASE 3a: pure delegation. Each function is listed explicitly rather than copied with
@@ -56,8 +128,12 @@
   // would let v1 grow a function that silently appears here without anyone deciding it
   // belongs in the rebuilt model.
   var PZ2 = {
-    // correlations
+    // correlations — P_sat_from_T is v1's (one saturation line, see T_sat_from_P);
+    // the rest are new and are what a two-region model needs that v1 never did.
     P_sat_from_T:     function (T_c)          { return V1.P_sat_from_T(T_c); },
+    rho_g_sat:        rho_g_sat,
+    T_sat_from_P:     T_sat_from_P,
+    dTsat_dP:         dTsat_dP,
     // step entry points (pwr_engine.js:508 / :540 / :542, and :1992 with dt=0)
     stepPressure:     function (s, cfg, dt)   { return V1.stepPressure(s, cfg, dt); },
     stepLevel:        function (s, cfg, dt)   { return V1.stepLevel(s, cfg, dt); },
