@@ -203,6 +203,137 @@
     s.pzr_surge_kgps = 0;
   }
 
+  var CP_LIQ = 6.0;   // kJ/kg·K, saturated liquid near 345 °C
+
+  // stepRegions — ONE step of the two-region pressurizer. Mass and energy in, pressure out.
+  //
+  // The order is the physics, not a convention: mass moves first (surge, spray, relief),
+  // then energy is accounted at the new masses, then the state is returned to the
+  // saturation line by an implicit flash/condense, and pressure is READ OFF the steam
+  // region. Nothing in here is a gain, and there is nowhere to put one.
+  //
+  // `surge_kgps` is the loop-side demand — POSITIVE is an insurge. It is computed by the
+  // caller from the same displacement law v1 uses (thermal + inventory), because that half
+  // is loop bookkeeping and belongs to #474; what changes here is the RESPONSE, which is
+  // the whole point of the rebuild.
+  function stepRegions(s, cfg, dt, io) {
+    var p2 = cfg.pressurizer2;
+    ensureRegions(s, cfg);
+
+    var P0 = pressureFrom(s, cfg);
+    var T0 = T_sat_from_P(P0);
+    var C  = (s.pzr_m_liq_kg * CP_LIQ + p2.pzr_vessel_mass_kg * p2.pzr_vessel_cp_kj_kgk); // kJ/°C
+
+    // ---- 1. MASS. Insurge arrives at the hot-leg temperature and MIXES; an outsurge
+    // leaves at the pressurizer's own temperature and changes no temperature at all. That
+    // asymmetry is real and is the reason an insurge is a cooling event for the bubble.
+    // A PRESSURIZER IS STRATIFIED, AND ASSUMING OTHERWISE INVERTS THE PLANT'S MOST BASIC
+    // BEHAVIOUR. Measured 2026-08-12, and this is the correction that earned the iteration:
+    // mixing the insurge instantly through the whole liquid node makes a load reduction
+    // DROP pressure 43 psi, because 265 kg of 311.7 °C water cools 14 MJ/°C of node and
+    // condenses more bubble than the volume displaces. Every PWR text has it the other way
+    // — an insurge RAISES pressure, which is precisely why spray exists as the countermeasure.
+    //
+    // The physical reason the naive form is wrong: surge water enters BELOW the liquid
+    // surface through the surge line and stays there. It displaces steam volume immediately;
+    // it reaches the saturated interface only as it mixes, over minutes. Spray is the
+    // opposite by construction — it is injected INTO the steam space, which is why it
+    // condenses on contact and why the two cannot share a code path (they did, one revision
+    // ago, and that was the defect).
+    //
+    // So an insurge displaces volume NOW and cools the node LATER: the enthalpy deficit is
+    // banked and released with a mixing time constant. That also produces the shape an
+    // operator actually sees — pressure spikes on the insurge, then decays back as the cold
+    // water works in.
+    var m_surge = (io.surge_kgps || 0) * dt;
+    if (m_surge > 0) {
+      var T_in = (io.surge_t_c != null ? io.surge_t_c : s.pzr_t_liq_c);
+      s.pzr_mix_deficit_kj = (s.pzr_mix_deficit_kj || 0) + m_surge * CP_LIQ * (s.pzr_t_liq_c - T_in);
+      s.pzr_m_liq_kg += m_surge;
+    } else if (m_surge < 0) {
+      // An outsurge carries away liquid at the pressurizer's OWN temperature, so it removes
+      // banked deficit in proportion rather than concentrating it.
+      var frac = Math.min(1, -m_surge / Math.max(1e-6, s.pzr_m_liq_kg));
+      s.pzr_mix_deficit_kj = (s.pzr_mix_deficit_kj || 0) * (1 - frac);
+      s.pzr_m_liq_kg = Math.max(0, s.pzr_m_liq_kg + m_surge);
+    }
+    // Release the banked deficit toward the bulk on the mixing time constant.
+    if (s.pzr_mix_deficit_kj) {
+      var rel = s.pzr_mix_deficit_kj * dt / (p2.surge_mix_tau_s + dt);
+      s.pzr_t_liq_c -= rel / C;
+      s.pzr_mix_deficit_kj -= rel;
+    }
+
+    // Spray: cold water into the steam space. It joins the liquid region AND drags the
+    // node temperature down, which is what actually condenses the bubble — v1 spent a
+    // `K_spray` gain to say this.
+    var m_spray = (io.spray_kgps || 0) * dt;
+    if (m_spray > 0) {
+      var T_sp = (io.spray_t_c != null ? io.spray_t_c : s.pzr_t_liq_c);
+      C = (s.pzr_m_liq_kg * CP_LIQ + p2.pzr_vessel_mass_kg * p2.pzr_vessel_cp_kj_kgk);
+      s.pzr_t_liq_c = (C * s.pzr_t_liq_c + m_spray * CP_LIQ * T_sp) / (C + m_spray * CP_LIQ);
+      s.pzr_m_liq_kg += m_spray;
+    }
+
+    // Relief draws STEAM from the steam space. Structurally, not by exemption: this is why
+    // a PORV lift does not move the liquid level, which v1 had to fence with an admittance
+    // split (the `w` term) and which TD-5 asserts.
+    var m_relief = (io.relief_kgps || 0) * dt;
+    if (m_relief > 0) s.pzr_m_stm_kg = Math.max(1e-6, s.pzr_m_stm_kg - m_relief);
+
+    // ---- 2. ENERGY. Heaters into the liquid+metal node, scaled by the wetted fraction of
+    // the bank (§2.6 — physics, on TRUE level; the 17 % bistable is protection and lives in
+    // autoControl on the INDICATED level).
+    C = (s.pzr_m_liq_kg * CP_LIQ + p2.pzr_vessel_mass_kg * p2.pzr_vessel_cp_kj_kgk);
+    var lvl = 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3;
+    var wet = (p2.heater_elev_top_pct > p2.heater_elev_bot_pct)
+      ? Math.max(0, Math.min(1, (lvl - p2.heater_elev_bot_pct) /
+                                (p2.heater_elev_top_pct - p2.heater_elev_bot_pct)))
+      : (lvl > p2.heater_elev_top_pct ? 1 : 0);
+    var Q = (io.heater_frac || 0) * p2.heater_power_mw * 1000 * wet * dt;   // kJ
+    if (Q) s.pzr_t_liq_c += Q / C;
+    s.pzr_heater_wetted_frac = wet;
+
+    // ---- 3. RETURN TO SATURATION — implicit, and this is the 4× trap (spec §2.5).
+    // Q·dt = m_flash·h_fg(P_new) + C·(Tsat(P_new) − Tsat(P_old)). Flashing against the OLD
+    // Tsat puts all the energy into latent heat and over-predicts pressure rate 4×.
+    var E = C * (s.pzr_t_liq_c - T0);          // kJ of departure from the old saturation line
+    var mf = solveFlash(s, cfg, E, C, T0);
+    s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg - mf);
+    s.pzr_m_stm_kg = Math.max(1e-9, s.pzr_m_stm_kg + mf);
+
+    var P1 = pressureFrom(s, cfg);
+    s.pzr_t_liq_c = T_sat_from_P(P1);          // the pressurizer sits ON its saturation line
+    s.pzr_surge_kgps = io.surge_kgps || 0;
+    return P1;
+  }
+
+  function pressureFrom(s, cfg) {
+    var V_liq = s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c);
+    var V_stm = Math.max(1e-6, cfg.pressurizer2.V_pzr_m3 - V_liq);
+    return P_from_steam_density(s.pzr_m_stm_kg / V_stm);
+  }
+
+  // Bisect on the flashed mass until the energy books balance at the RESULTING pressure.
+  // Bracket is signed: E < 0 is a condensing (subcooled) node and mf comes out negative.
+  function solveFlash(s, cfg, E, C, T0) {
+    var p2 = cfg.pressurizer2, hfg0 = h_fg(T0 > 0 ? V1.P_sat_from_T(T0) : 15.41);
+    var span = Math.abs(E) / Math.max(1, hfg0) * 1.5 + 1e-6;
+    var lo = E >= 0 ? 0 : -Math.min(span, s.pzr_m_stm_kg * 0.9);
+    var hi = E >= 0 ? Math.min(span, s.pzr_m_liq_kg * 0.9) : 0;
+    var mf = 0;
+    for (var i = 0; i < 50; i++) {
+      mf = 0.5 * (lo + hi);
+      var mL = s.pzr_m_liq_kg - mf, mS = s.pzr_m_stm_kg + mf;
+      if (mL <= 0 || mS <= 0) { hi = mf; continue; }
+      var Vl = mL / rho_l_sat(T0);
+      var Pn = P_from_steam_density(mS / Math.max(1e-6, p2.V_pzr_m3 - Vl));
+      var resid = E - mf * h_fg(Pn) - C * (T_sat_from_P(Pn) - T0);
+      if (resid > 0) lo = mf; else hi = mf;
+    }
+    return mf;
+  }
+
   // ------------------------------------------------------------------ the model
   //
   // PHASE 3a: pure delegation. Each function is listed explicitly rather than copied with
@@ -226,6 +357,8 @@
     levelFromRegions: function (s, cfg) {
       return 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / cfg.pressurizer2.V_pzr_m3;
     },
+    stepRegions:      stepRegions,
+    solveFlash:       solveFlash,
     pressureFromRegions: function (s, cfg) {
       var V_liq = s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c);
       var V_stm = Math.max(1e-6, cfg.pressurizer2.V_pzr_m3 - V_liq);

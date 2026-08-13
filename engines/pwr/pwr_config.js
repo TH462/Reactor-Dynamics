@@ -1174,6 +1174,21 @@
       pzr_vessel_mass_kg: 11451,
       pzr_vessel_cp_kj_kgk: 0.5,   // carbon/low-alloy steel at temperature
 
+      // surge_mix_tau_s — how long insurge water takes to reach the saturated interface.
+      // A pressurizer is STRATIFIED: surge enters below the liquid surface and displaces
+      // steam volume at once, but only cools the bulk as it mixes. Assuming instant mixing
+      // inverts the plant's most basic behaviour — measured, a load reduction DROPS pressure
+      // 43 psi instead of raising it, because the cold insurge condenses more bubble than
+      // its volume displaces. Every PWR text has an insurge raising pressure; that is why
+      // spray exists as the countermeasure, and spray works precisely because it is injected
+      // INTO the steam space instead.
+      //
+      // 180 s is a DECLARED ESTIMATE, not sourced — the order of a pressurizer's internal
+      // recirculation, chosen so pressure spikes on the insurge and decays over the minutes
+      // an operator would watch. The SIGN and the SHAPE do not depend on its value; only
+      // the decay rate does. [tune]
+      surge_mix_tau_s: 180.0,
+
       // Resulting full-heater authority, for the record and for anyone re-deriving:
       //   C = 8.41 (liquid, 55 % level) + 5.73 (metal) = 14.14 MJ/°C
       //   dTsat/dP = 5.35 °C/MPa at 15.41 MPa (from this file's own P_sat_from_T)
