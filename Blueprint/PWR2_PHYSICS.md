@@ -671,3 +671,94 @@ boundaries, asserted numerically, since a kink there would corrupt the affine co
 **Containment is still not covered** by any of the three — it is an air/steam mixture with a
 non-condensable partial pressure. It needs its own state relation, which the current
 `stepContainment` already effectively has. **Do not force it into the water-only dispatch.**
+
+---
+
+## 12. NUMERICAL TEST RESULTS (2026-08-13) — two claims broken, the architecture validated
+
+An independent agent built throwaway experiments against §§0, 11.1, 11.2 and 0.5, including a
+working 11-node prototype. **It disclosed and fixed a bug in its own harness mid-run** (Q in W
+against h in kJ/kg, plus a missing MPa·m³→kJ factor) — the bug *understated* coupling, so pre-fix
+findings were conservative.
+
+### 12.1 ✅ THE ARCHITECTURE WORKS — the prototype runs
+
+11 nodes, one momentum state, one pressure, affine solve, algebraic junctions, dt = 0.02:
+
+| | |
+|---|---|
+| 1000 s run | **stable**; P constant to 5 dp |
+| Heat imbalance | **0.000 kW of 3.0e5** |
+| Mass ledger residual | **0.0 kg of 20,822** |
+| Core rise | **183.038 kJ/kg = Q/ṁ exactly** (ΔT 32.99 °C / 59.4 °F) |
+| Largest stable dt | **0.2 s — 10× margin at 0.02** |
+| Perturbations survived | heat +10/+50/+100 %, RCP trip + decay heat, hot leg voided, drain to **24 % void** |
+| **#447-style limit cycle** | **NONE** — 1200 s held *on* the saturation line: 1 crossing, 2 Ṗ sign flips |
+
+**RCP trip at full power runs away to P > 25 MPa — PHYSICAL, not numerical** (identical at
+dt = 0.005; the modelled PORV removes ~165 MW of 300).
+
+**Caveat that matters: the prototype has NO WALLS**, and §9 puts the SG tube wall at τ ≈ 0.10 s —
+**5 steps at dt = 0.02, the binding constraint. The 10× margin does not cover it.**
+
+### 12.2 ❌ §11.1's AFFINE CLAIM IS BROKEN — the system is PIECEWISE affine
+
+**Exactly affine with donor-cell directions held fixed** (3e-16 to 5e-15 relative, Ṗ from −1000 to
++1e5 MPa/s, single- *and* two-phase — **enormous `∂ρ/∂P` does not hurt it**). But `h_in` is a
+*coefficient* of the map, so **a junction reversal switches the map.** §11.1 never states that.
+
+**Worst case: 299 % deviation INCLUDING A SIGN INVERSION** — 2 % void @ 1.0 MPa, Ṗ = −1 MPa/s:
+true march −779 kg/s, affine prediction **+1551 kg/s**.
+
+Error in the solved Ṗ, present even at `dM/dt = 0`: **0.00 %** liquid · 24.3 % at 5 % void @
+15.41 · 83.5 % at 2 % void @ 1.0 · **195 % at 1 % void @ 0.5** · 123 % on natural circulation.
+
+**My "verified numerically" could not have caught this, and THAT is the finding.** My 3-node
+single-phase toy has its first junction reversal at **Ṗ = +200 MPa/s** — affine to 0.00e+0 because
+**nothing in it can reverse**. I verified a claim on a case structurally incapable of falsifying
+it. **The recalled-band lesson generalises again: it is not just bands — it is ANY acceptance
+criterion I choose that cannot fail.**
+
+**Fix is cheap:** 3 re-linearisations converge to the true root exactly in every case tested. So
+"two marches and one division" becomes **three marches**, and **"non-iterative" is false** wherever
+a junction can reverse. `m_i` frozen within the step is consistent, but its error is **13 % at
+1 MPa and 27 % at 0.5 MPa** in a flashing node.
+
+**"Exact" is true of the RATE, not the STEP.** Pre-correction closure residual after one dt: 0.0 kg
+liquid → **166 kg with a node on the `h_f` kink**. **The Newton corrector is the AUTHORITY there,
+not a round-off polisher** — which reverses §11.1's framing.
+
+### 12.3 ❌ §0.5's COST MODEL MEASURED THE WRONG FUNCTION — architecture-threatening
+
+The `A(T)+C(T)·P` separation is **exact algebra** (2.3e-13) and the speed gain was *understated*
+(**15.6×**, not 4.1×). But **§1 makes ENTHALPY the node state, so the hot path is `ρ(h,P)`**:
+
+| | |
+|---|---|
+| `ρ(T,P)` committed | 345 ns |
+| **`ρ(h,P)` committed** | **3,748 ns — 12×** (`T_from_h` runs 3–9 Newton iterations, each calling `h_l → rho_l → P_sat`) |
+| §0.5 quoted | 2.16 s / 12 plant-hours |
+| **Honest, one eval per node per step** | **98.6 s** |
+| **With the affine march's partials** | **493 s** |
+| **Budget** | **35 s** |
+
+**The `A(T)+C(T)·P` fix does not touch that path.** Fixable — tabulating `P_sat` reached **179 ns
+(21×)** — **but not by the change §0.5 specifies.**
+
+**Also: 0.027 kg/m³ needs a MINIMAX fit.** Plain least-squares gives **0.0610 — 2.3× over** — and
+least-squares is what every other correlation in `pwr2_water.js` declares.
+
+### 12.4 ❌ §11.2's OWN GATE IS UNSATISFIABLE BY §11.2's OWN FORMULA
+
+- **ρ continuous at both boundaries** ✅ (1.7e-9 at `h_g`, 7.2e-7 at `h_f`).
+- **`∂ρ/∂h` at `h_g` discontinuous, and NO `cp_v` can fix it.** Continuity needs `cp_v` running
+  **6.07 → 1.78 kJ/kg·K** over 0.1→17 MPa; real saturated-steam `cp_v` runs **2.08 → 17.5 in the
+  OPPOSITE direction**. Mismatch **9.8× at 17 MPa**.
+- **`∂ρ/∂h` at `h_f`:** 6.2× at 15.41 MPa, **3812× at 0.1 MPa.** §10(4)'s "~15×" was the 10 MPa
+  value quoted as general; **at blowdown pressures it is 250× worse.**
+- **`∂ρ/∂P` is discontinuous too — a LIVE TRAP.** A central difference at 0.5 MPa returns
+  **19,378 instead of the one-sided 0.764 — a 25,000× coefficient error** — and the affine march
+  needs exactly that partial, where a central difference is the obvious way to get it.
+
+**Needs a design ruling:** smooth the boundary, accept the kink and declare it, or reformulate the
+superheat anchor. **The gate as written must not ship, because it cannot pass.**
