@@ -29,6 +29,232 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-13-backshop-c (#479 — PWR2 Layer 0 built, 56/56)
+
+**Issue:** #479. **Gates:** `run_pwr2_water` **56/56 NEW** (baseline added) **and
+`run_hardrules` 281 → 284** — see the correction below. `engines/pwr/` **untouched**.
+
+*(OWNER DIRECTIVE, 2026-08-13: "I want a full new engine. We should design it in a logical
+fashion. An advantage to a new engine is that we don't screw up the current, mostly working
+one. We save the current one as a reference.")*
+
+**Landed.** `Blueprint/PWR2_ARCHITECTURE.md` (7 strict dependency layers, L0 water
+properties → L6 casualties-as-junctions), `engines/pwr2/pwr2_water.js`,
+`test/run_pwr2_water.js`.
+
+**The architectural rule that does the work: `[tune]` does not exist in PWR2.** Every
+number is `[ruled]`, `[derived]` or `[sourced]`, and carries its kind at its definition
+site. A number nobody can derive or cite is a number nobody can check — ~90 of those are
+why the current plant can answer "does it pass?" but not "is it right?".
+
+**Trap — the gate caught my own first pass, and that is the point.** The correlations were
+eyeballed, not fitted: **39 of 56 checks failed** on first run (`rho_l_sat` 90 kg/m³ high at
+321 °C, `h_v` 150 kJ/kg low, `h_fg` 200 kJ/kg low). Re-fitted by least squares against
+published steam-table points and re-ran: 56/56. **A gate written against external
+reference values caught what a gate written against the fit's own output could not have
+(HR10).** Two specifics worth keeping:
+- **A cubic is not enough for either liquid correlation.** Both `h_l_sat` and `rho_l_sat`
+  needed a QUARTIC — the cubic over-predicted density by ~50 kg/m³ at 300 °C, which is
+  precisely this plant's operating regime.
+- **The ideal-gas + single-Z form for `rho_v` ran 25 % low at 15.41 MPa** (72.4 vs 96.7
+  kg/m³). Near-critical steam is nowhere near ideal and no one-term Z covers 0.1–17 MPa;
+  replaced with a log-log fit, max error 1.56 %.
+
+**`cp_l` is the EXACT analytic derivative of `h_l_sat`, not an independent fit** — a
+deliberate trade, documented at the definition. It costs 5 % accuracy at 20 °C and buys
+the guarantee that cp and h can never disagree. An independently-fitted cp is more
+accurate *and* silently breaks the energy balance by the gap between the two fits, which
+is the exact class of defect this engine exists to make impossible.
+
+**The check `engines/pwr/` cannot make in any form, now runs every gate:** `Q = ṁΔh` on the
+plant's own ruled identity gives Δh **183.1 kJ/kg**, ṁ **1639 kg/s**, **36,817 gpm**, loop
+transit **10.2 s** (real-PWR band 10–12). It **rejects the declared `rcs_flow_gpm: 24000`
+at 1.53×** — written as an explicit **negative control**: if that assertion ever passes,
+the property library has drifted far enough to bless the defect #479 was filed over.
+
+**CORRECTION — I claimed "no existing baseline moves" and it was wrong.** `run_hardrules`
+went **281 → 284**. **Proven by removal, not assumed — and my first guess was also wrong:**
+pulling the whole `engines/pwr2/` directory changes the count by **zero**; pulling
+`Blueprint/PWR2_ARCHITECTURE.md` alone drops it to 283. `run_hardrules` walks
+`Blueprint`/`Diagnostic`/`Manuals` for `.md` as part of the HR11 provenance scan
+(`run_hardrules.js:355`), so the **three new Blueprint documents** are three new HR11
+sites. All three cite owner directives with dates and verbatim words and pass first try —
+the count moved, the compliance did not.
+
+Two things this earned: **"drift is symmetric" is what caught it** — the gate scored
+BETTER than baseline and still failed, and absorbing a +3 as "more checks, fine" would
+have shipped a stale baseline into CI. And **the `run_hardrules` baseline comment's own
+standing warning applied verbatim** — it already records this exact trap costing CI reds
+on 2026-08-07 and 2026-08-11 (a green aggregate is evidence only about the tree it ran on;
+editing markdown afterwards invalidates it). Caught locally here only because the docs
+were written BEFORE the aggregate re-ran.
+
+**Next:** L1 geometry (design basis as machine-readable data, ledger closure as
+assertions). Blocked on nothing. The §§2–3 design-practice constants are still RECALLED,
+not cited — an evidence pass is owed before L1's gate can reject anything.
+
+---
+
+## Session log — 2026-08-13-backshop-b (#479 — the plant has no conservation law)
+
+**Issue:** #479 filed (new). No code touched; no gate impact. Artifact:
+`Blueprint/PWR_DESIGN_BASIS.md`.
+
+**What forced it.** The closure failure in the -a entry below turned out to be a symptom,
+not the disease *(OWNER, 2026-08-13: "Currently this plant was built up overtime in a
+patchwork fashion and just made to work. I don't think we've ever sat down and just built
+or sketched out the entire plant and how it all works together.")*. Derived the plant
+FORWARD from its ruled identity instead of scaling components independently.
+
+**THE FINDING — there is no physical mass flow anywhere in `engines/pwr/`.** The engine
+runs on normalized `flow_frac` against `coolant_heat_capacity` (units:
+fraction-of-rated-heat per °C/s, not J/K). **No quantity exists that a `Q = ṁΔh` check
+could be run against.** That is the structural defect; individual wrong constants are
+downstream of it.
+
+Measured consequence: `Q = ṁΔh` on the plant's OWN ruled numbers (300 MWt, 321/288 °C at
+15.41 MPa, Δh = 188 kJ/kg) gives **ṁ = 1596 kg/s = 36,240 gpm**. The plant declares
+`rcs_flow_gpm: 24000` — **1.51× low**, or equivalently the declared flow implies a
+**50 °C core ΔT against the ruled 33 °C**. Verified it is INERT in physics (sits in a
+block headed *"NOT READ BY ANY CODE"*, `pwr_config.js:56`) but **player-facing** — it
+feeds the manuals. A 1.5× error in a number a player reads, that nothing could catch.
+
+**The forward derivation closes where the patchwork did not.** Core from power density
+(105 kW/L → 1.0 m × 3.66 m), RPV built up geometrically from the core outward (376.6 ft³),
+piping from flow at the reference plant's real 43 ft/s design velocity (hot leg ID 18.6"
+vs the 17.2" power-scaling gave), SG from heat-transfer area (50 ft²/MWt → 1,637 tubes).
+**Nothing fitted.** Three independent cross-checks:
+
+| Check | Derived | Expected | |
+|---|---|---|---|
+| RPV share of RCS | 45.1 % | 40–45 % real-plant band | PASS |
+| Loop transit time | 10.3 s | 10–12 s real PWR | PASS |
+| RCS total vs declared 998 ft³ | 834 ft³ (0.84×) | — | 16 % low |
+
+Patchwork got loop+SG+RCP = 213 ft³ and a 64 % RPV residual; forward gets **333 ft³ and
+45 %**. 16 % is an engineering disagreement; 2× was structural.
+
+**Trap worth the line — the A/B for this refactor is NOT #393's.** #393 (`chart_math`)
+pinned the old implementation and replayed 235 frames because its claim was *"nothing
+changed"*, making replay a regression harness. Here the claim is the opposite: things
+SHOULD change. The A/B is a **divergence measurement**, and it cannot adjudicate — HR9
+does (a derived number outranks a fitted one), one divergence at a time. Reading a
+divergence table as a pass/fail gate would either bless every change or reject every
+change, and both are wrong.
+
+**Also flagged:** every design-practice constant in `PWR_DESIGN_BASIS.md` §§2–3 (power
+density, lattice coolant fraction, downcomer gap, plena heights) is RECALLED, not cited —
+per the evidence-pass SOP they need sourcing before they can reject anything the as-built
+plant says. **Not started:** any code. Sequencing against #472 (pressurizer, live on
+workbench) and #474 needs an owner call.
+
+---
+
+## Session log — 2026-08-13-backshop-a (#474 — loop geometry table, no code)
+
+**Issue:** #474 (deferred behind #472, not scheduled — this is prep, not the node build).
+No engine files touched; no gate impact.
+
+**What landed.** `Blueprint/PWR_LOOP_GEOMETRY.md` — a sourced-where-possible geometry
+table for the hot leg, crossover, cold leg, RCP and SG primary tube bundle: flow area,
+metal wall area/mass per foot, fluid mass per foot. **Prerequisite finding, not a code
+gap:** there are no physical volumes/masses/areas anywhere in `engines/pwr/` today —
+every thermal constant (`coolant_heat_capacity`, `h_fc`, `h_sg`, `sg_tube_capacity`,
+`tau_hotleg_s`, `tau_coldleg_s`) is a normalized rate, not a derived quantity. A node
+model needs V/M_wall/A to write an energy balance at all.
+
+**Method (evidence-pass SOP).** Anchor = Westinghouse Technology Systems Manual §3.2,
+`ML11223A213` (already in this repo's `inbox/sources` corpus), a generic 4-loop
+reference plant, 3411 MWt / 852.75 MWt per loop (the 3411 MWt figure was web-sourced
+this session, not yet in the local corpus — flag for a corpus add).
+
+**Trap: this is NOT the Ginna anchor plant** the rest of `pwr_config.js` uses almost
+everywhere else. Checked both the local corpus and the web specifically for Ginna's own
+RCS piping dimensions before defaulting to WTSM — neither had them (Ginna is 2-loop and
+no UFSAR Ch.5-style diameter table for it turned up). Owner caught the departure from
+the established convention mid-session; the consequence is real, not cosmetic — this
+document's `r_P = 0.3518` is a *different* number from the codebase's established
+Ginna-anchored per-loop factor `300/908.5 = 0.3302` (`pwr_config.js:1435`), ~6.5% apart,
+two different real plants' per-loop power. Flagged prominently in the doc rather than
+silently reconciled either direction — see `PWR_LOOP_GEOMETRY.md` §1. Scaled to SLS-100
+(300 MWt, single loop, `r_P = 0.3518`) two different ways for two different physical
+quantities: **flow area / pipe ID by `sqrt(r_P)`** (holds coolant velocity constant at
+this plant's own 33 °C rated ΔT), **wall thickness by the same factor** (holds hoop
+stress constant at roughly the same design pressure), **SG tube count by `r_P` directly
+with real unscaled tube OD** (tube diameter is a manufacturing standard across plant
+sizes, not a per-plant dimension — scaling it down would imply custom-drawn tubing this
+plant wouldn't use).
+
+**What is NOT sourced:** SG average tube length (~39 ft, scaled from a commonly-cited
+~55 ft real-plant figure that isn't itself pinned to a citation). **Decided this session,
+owner delegated the call:** pipe run lengths + a full loop elevation layout (RCP suction
+lowest at −5 ft, SG tube top highest at ≈+50 ft — ~55 ft of natural-circ driving head),
+and RCP internal volume (≈9.5 ft³) + hydraulic-casing metal mass (≈5,300 lbm) via a
+stated ROM method. Real finding surfaced while deciding RCP flow: the geometry-derived
+rated flow (≈31,100 gpm, scaled from the reference plant's 88,500 gpm/pump) disagrees
+with the plant's own existing `rcs_flow_gpm: 24000` (`pwr_config.js:71`, #408) by ~23% in
+implied hot-leg velocity (43 ft/s reference vs 33 ft/s here) — not rounding noise,
+flagged in the doc, not resolved (touching `rcs_flow_gpm` is a tuning decision outside
+today's scope).
+
+**Also decided: a per-segment voided/flashed display flag**, generalizing the surge-line
+idea to hot leg, crossover, cold leg and the SG tube bundle. Not a new node and not new
+physics — it's the existing cavitation test (`stepCavitation`'s `T_sat(p_pumpsuction) −
+tcold_c`) evaluated at each segment's already-computed pressure node
+(`p_hotleg`/`p_pumpsuction`/`p_coldleg`) against its already-computed local temperature
+(`thot_c`/`tcold_c`/`t_sg_c`) — zero new state. Named limitation: crossover and cold leg
+share one lag temperature (`tcold_c`) today, so their voided flags would move in
+lockstep except for which pressure gates them, until the loop actually splits into
+separate temperature states (that split is #474's real scope, not this flag).
+
+**Trap worth naming:** the pressurizer is deliberately excluded from this table even
+though the user's original node list included it — #472 is actively rebuilding it on
+workbench right now, and inventing a competing pressurizer volume here would either
+duplicate or contradict that work. The surge line is modeled as the junction connecting
+this table's hot-leg node to whatever #472 lands, not as a node of its own — a node
+carries state (mass, enthalpy, wall temp) that persists; a surge line has negligible
+capacity and is pure flow resistance + elevation, so it's a junction (`{from, to, ṁ, K,
+Δz}`) by definition, not a fifth thing to give a state vector to.
+
+**THE FINDING — the geometry does not close against the plant's own declared RCS volume.**
+Ran the reconciliation the owner asked for and the scale-factor question turned out to be
+the small problem. `pwr_config.js:790` declares ~7,467 gal = **998.2 ft³** of RCS (#408's
+currency, power-scaled from Ginna's 38,323 gal). This document's components sum to
+**213.2 ft³** (piping 51.7 + SG bundle 152.0 + RCP 9.5) = 21.4 % of that; with the
+Ginna-scaled pressurizer at 147.4 ft³, the **residual left for the RPV is 637.5 ft³ —
+63.9 % of the RCS**, against a real-plant norm of ~40–45 %. Loop+SG+RCP should be
+~400–450 ft³; it is short by **~1.9–2.1×**.
+
+**It cannot be closed by lengthening pipe** — holding the SG bundle and RCP fixed, closure
+demands hot 46–56 ft / crossover 60–73 ft / cold 37–45 ft, longer than a full-size 4-loop
+plant's runs and plainly unphysical at 300 MWt single-loop. So the §5 layout is not the
+error. Most likely culprits in order: the SG tube bundle (the one component resting
+entirely on an unsourced tube length), the declared RCS volume itself (power-scaled from
+a whole-plant figure, never checked against component dimensions because none existed
+until now), and the RPV (a residual, not a measurement, and the dominant term).
+
+**Deliberately NOT resolved.** Fudging one number to force closure is the exact failure
+mode this document exists to prevent — fitting geometry to a declared constant instead of
+deriving it, which is how `coolant_heat_capacity` and friends became unfalsifiable. Three
+unknowns against one equation is not solvable; the disagreement is the output.
+
+**This reverses my own earlier line in this same entry** that no further research pass was
+needed before node code. **Next: an RPV/core geometry pass** (vessel ID, downcomer
+annulus, plenum and core coolant volumes, same evidence method), which turns the residual
+into a measurement and the problem into an over-determined, checkable one. Node code
+written against these volumes today would inherit an unexplained ~2× loop-to-vessel
+inventory split error — precisely the kind that gets absorbed into a fitted constant and
+vanishes. Still deferred behind #472; nothing here touches that lane.
+
+**Also flagged, unresolved:** the 0.3518 vs 0.3302 scale-factor split (§1) is deprioritized
+— 6.5 % is noise beside a 2× closure failure. And `pwr_config.js` itself carries both
+`300/1520` (whole-plant Ginna) and `300/908.5` ("one Ginna SG carries 1817/2 MWt") — 1520
+vs 1817 looks like pre- vs post-uprate Ginna ratings; the whole-plant and per-loop routes
+happen to coincide for a single-loop plant, so this may be benign, but it has not been
+verified and is worth a look by whoever next touches the scaling.
+
+---
+
 ## Session log — 2026-08-12-backshop-a (#477 — the monitor list, and a red that could not go red)
 
 **Issue:** #477. **Gates:** `run_all` 47 runners at baseline; `verify_e2e_ui` gains
