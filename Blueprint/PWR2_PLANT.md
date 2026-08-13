@@ -1,0 +1,202 @@
+# PWR2 — Plant Model (D3)
+
+**Status:** DESIGN, for review. Nothing built. #479. Spine: `PWR2_DESIGN.md`. Core: `PWR2_PHYSICS.md`.
+
+---
+
+## 1. Q5 — ANSWERED: the cross-check valid for a single-loop plant
+
+D1 §3 recorded that the 40–45 % RPV-share check was invalid for SLS-100 (it is a 4-loop
+statistic) and left the replacement open. **A valid check must be per-unit-power**, because that
+is what makes it independent of how many loops the power is divided among. Two exist, and both
+are computed from reference-plant data rather than recalled.
+
+**(A) Specific RCS volume, ft³ per MWt**
+
+| Plant | RCS | Rating | ft³/MWt |
+|---|---|---|---|
+| W 4-loop (WTSM §3.2) | 12,600 ft³ | 3,411 MWt | 3.69 |
+| BVPS-2 (UFSAR T5.1-1) | 9,650 ft³ | 2,660 MWt | 3.63 |
+| Ginna (38,323 gal) | 5,123 ft³ | 1,520 MWt | 3.37 |
+| | | **band** | **3.37 – 3.69** |
+
+At 300 MWt that is **1,011 – 1,108 ft³**.
+
+**(B) Loop transit time** — flow-path volume ÷ volumetric flow. **Computed from reference
+geometry, not recalled** (my earlier "10–12 s" was itself a recalled number and was wrong):
+
+| Plant | Flow path | Flow | Transit |
+|---|---|---|---|
+| W 4-loop | 10,800 ft³ | 789 ft³/s | **13.7 s** |
+| Ginna | 4,376 ft³ | 397 ft³/s | **11.0 s** |
+| | | **band** | **11.0 – 13.7 s** |
+
+### Applying both — and the result reverses an earlier position
+
+| | Specific volume | Transit |
+|---|---|---|
+| **Derived** (this design set, 685.9 ft³) | **2.29 ft³/MWt — FAIL** | **6.84 s — FAIL** |
+| **Declared** (`pwr_config`, 998.2 ft³) | **3.33 ft³/MWt — PASS** | 10.37 s — 6 % under, in family |
+
+**Both checks reject the derived geometry and accept the declared one.** The forward derivation is
+short by roughly **35–45 %**; the checks imply a total nearer **1,000–1,270 ft³**.
+
+**This reverses my own earlier suspicion.** I recorded (`PWR_LOOP_GEOMETRY.md` §8, and in chat)
+that the declared RCS volume was a likely error with "wide blast radius" across #408's flow
+currency, PORV sizing and boration rates. **It is not.** It is approximately right, and the
+forward derivation is the thing that is wrong. Two independent per-unit-power checks agreeing is
+also considerably stronger evidence than the single invalid check that appeared to validate the
+derivation in the first place.
+
+### Where the shortfall most likely is — and the design insight behind it
+
+Ranked, **not resolved here** (closing a ledger by adjusting the least-defended number is the
+failure mode this whole effort exists to end):
+
+1. **Loop piping length — the likeliest, and there is a real reason.** I chose 15/25/15 ft by
+   scaling. **Loop length does not scale with power.** The SG must sit above the core for natural
+   circulation; the RCP must sit at a low point for NPSH; thermal-expansion loops and maintenance
+   access are set by pipe metallurgy and human bodies. **None of those shrink when the reactor
+   does** — so a small plant has *proportionally more* loop volume per MWt, which is exactly the
+   direction the checks demand. Real-plant-class runs are ~75–85 ft total against my 55 ft.
+2. **SG tube length** — 40 ft, derived from an uncited ~55 ft. The one component resting entirely
+   on an unsourced length.
+3. **RPV plena** — still ratios of RPV ID (0.50× / 0.70×), which is scaling, not sourcing.
+
+**D3's geometry table is therefore PROVISIONAL** and is the first thing the build must re-derive.
+
+---
+
+## 2. Topology — nodes and junctions
+
+Elevations from `PWR_LOOP_GEOMETRY.md` §5 (core midplane = 0). **Volumes provisional per §1.**
+
+### Nodes
+
+| # | Node | Transport | Wall lumps | Notes |
+|---|---|---|---|---|
+| 1 | RPV downcomer | plug | 3 | Thick vessel wall dominates; Biot number is not small |
+| 2 | RPV lower plenum | stirred | 2 | |
+| 3 | Core | plug | 1 (clad) | Heat source; clad is its own thermal node |
+| 4 | RPV upper plenum | stirred | 2 | |
+| 5 | Hot leg | **plug** | 2 | Transport must arrive intact, not smeared |
+| 6 | SG primary (tubes) | plug | 1 | Thin tubing; heat sink to secondary |
+| 7 | Crossover leg | **plug** | 2 | Loop-seal behaviour lives here |
+| 8 | RCP | stirred | 1 | Located pump-work source (not a fraction of core heat) |
+| 9 | Cold leg | **plug** | 2 | ECCS injects here — the bypass path |
+| 10 | Pressurizer | stirred | 1 | **#472 owns this** — see §4 |
+| 11 | SG secondary | stirred | 1 | Lumped, see §3 |
+| 12 | Containment | stirred | 0 | Already node-shaped today (`stepContainment`) |
+
+### Junctions
+
+| Junction | From → To | Carries |
+|---|---|---|
+| J1–J8 | the loop, node *n* → *n+1* | ṁ, buoyancy, friction; **J8 (RCP) carries the pump head curve** |
+| J-surge | hot leg ↔ pressurizer | **bidirectional** — insurge and outsurge. Resistance + elevation, no capacity |
+| J-spray | cold leg → pressurizer | Spray, driven by the loop ΔP the RCP creates |
+| J-relief | pressurizer → containment | PORV + code safeties |
+| J-charge / J-letdown | CVCS ↔ cold leg / crossover | |
+| J-hpi / J-lpi / J-accum | ECCS → **cold leg** | Injection point is what makes cold-leg-break bypass real |
+| J-rhr | hot leg → RHR → cold leg | Interlocked suction |
+| J-break | **any node** → containment (or SG secondary) | §6 |
+
+**The surge line is a junction, not a node** — negligible capacity, so it is resistance plus
+elevation. It is bidirectional by construction, which is what the owner's "both inlet and outlet"
+observation requires.
+
+---
+
+## 3. Q6 — ANSWERED: the secondary is LUMPED
+
+**Nodalise the primary; lump the secondary.** Reasons, in order:
+
+1. **The defect is not there.** The measured failures (no mass flow, ~35–45 % volume shortfall,
+   1.51× flow error) are all primary-side. Nodalising the secondary would add state and risk
+   without addressing anything that is known to be wrong.
+2. **The Tier A couplings that involve the secondary — A5 (SG is the only heat sink) and A9 (SG
+   shrink/swell) — are satisfiable by a lumped SG.** A9 is explicitly an *instrument* effect, not
+   SG void physics.
+3. **Performance.** D1's highest-severity risk after validation. Every node costs.
+
+**Consequence to declare:** SG secondary stratification and downcomer/riser circulation are not
+represented. Revisit only if a Tier C casualty is found to need it.
+
+---
+
+## 4. Subsystems
+
+**Kinetics — reuse the formulation, not the code.** Point kinetics, 6 delayed groups, 4-group
+decay heat, Xe/I. This is standard and is not what is broken. **The improvement is real
+feedback:** the current engine's `_modDensity` is its own cubic density fit; PWR2's moderator
+coefficient reads **real density from L0**, so the moderator feedback and the coolant it feeds
+back from are the same water. Today they are two independent approximations that were never
+required to agree.
+
+**Pressurizer — #472 owns it.** Its rebuild is live on `workbench`; **its design is an input to
+this document, not something this document may pre-empt.** PWR2 needs from it: two-region
+liquid/steam state, heater elevation and progressive authority loss, and the surge-line boundary
+(which per D2 must expose local saturation margin at the hot-leg tap, not just flow and
+direction).
+
+**SG, BOP, containment.** SG: lumped secondary (§3), primary tube node with real metal mass — the
+tube bundle is ~20,500 lbm of Inconel and is the largest metal thermal mass in the plant.
+Turbine/condenser/generator: carry over the existing formulation; it is downstream of the defect.
+Containment: **already a node** and the smallest slice — `stepContainment` integrates
+`_ctmt_steam`, `_ctmt_sump` and a hydrogen ledger, takes flux inputs and publishes pressure.
+
+**ECCS / CVCS / RHR.** All become junctions with pump curves. The one that changes character is
+**ECCS injection point**: it injects into the *cold leg node*, so a cold-leg break is spatially
+between the injection and the core. That is not a special case in the code — it is the topology.
+
+---
+
+## 5. The nine Tier A couplings — what the model must express
+
+`Blueprint/CURRICULUM.md`, all RULED and binding.
+
+| | Coupling | Mechanism in PWR2 |
+|---|---|---|
+| A1 | Power follows load | MTC from **real** density + Doppler |
+| A2 | Tavg is the coupling variable | Node temperatures are real; Tavg is derived from them, not a state |
+| A3 | Pressure follows temperature | Single pressure state driven by thermal-expansion surge through J-surge |
+| A4 | Level is not inventory | Pressurizer two-region (#472) + surge; **shrink/swell falls out** |
+| A5 | SG is the only heat sink | SG tube node is the only sink path; lose feed and it saturates |
+| A6 | A reactor cannot be switched off | Decay-heat groups, unchanged formulation |
+| A7 | Xenon | Unchanged formulation |
+| A8 | Boron vs rods | Boron mixes through the **node network**, so its transport lag is derived rather than a fitted first-order lag |
+| A9 | SG shrink/swell (gauge) | **Instrument** effect — lives in the instrument layer, which PWR2 does not change |
+
+**A8 is the one that improves most:** today `boron_reactive` is a fitted mixing lag; in a node
+model boron is a transported scalar and the lag is loop transit.
+
+---
+
+## 6. Casualties as junctions
+
+A break is `{from: <any node>, to: containment | sg_secondary, area, flow law}`. **Break location
+becomes physics rather than a scalar severity** — the current engine has one `leak_flow` with a
+single destination flag (`_leak_to_sg`).
+
+| Break location | Emergent behaviour |
+|---|---|
+| **Cold leg** | ECCS injects into the same node — injection spills out before reaching the core (**ECCS bypass**, the limiting case in real PWR LOCA analysis). Pure topology. |
+| **Crossover** | Drains the loop seal; governs whether natural circulation survives |
+| **Hot leg** | Highest-enthalpy discharge → different flash fraction into containment |
+| **SG tubes** | Destination is SG secondary, not containment — **the containment-bypass diagnosis lesson**, and the one case the current engine already models this way |
+
+**No new physics is required for any of these** — only the junction primitive and honest
+topology. That is the strongest single argument for the node model, and it is why §1's unresolved
+volume question does not undermine the architecture: the topology is right even where the
+numbers are provisional.
+
+---
+
+## 7. Open, carried forward
+
+- **§1's shortfall is not closed.** The geometry table is provisional; the build must re-derive
+  loop lengths (not scaled), SG tube length (sourced), and plena (sourced).
+- Pump head curve shape and rotational inertia — needed for derived coastdown (D2 §3).
+- `h_film` correlations for boiling and condensing — D2 §8 flags these as the likeliest route for
+  recalled constants to re-enter.
+- #472's pressurizer design, as an input.

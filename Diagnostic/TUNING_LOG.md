@@ -29,6 +29,60 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-13-backshop-d (#479 — DESIGN phase; the evidence pass broke my own validation)
+
+**Issue:** #479. **No code.** *(OWNER, 2026-08-13: "We should be designing and not building. Once
+we have it designed I will have the design reviewed before we build it.")* Owner rulings taken:
+PWR2 **eventually replaces** `engines/pwr/`; **whole plant** scope; **homogeneous equilibrium**
+two-phase; **design the right contract and adapt afterwards** (shim to the 109 fields); **one RCS
+pressure state + per-node void**.
+
+**THE FINDING — the evidence pass destroyed the cross-check that appeared to validate the forward
+method.** `PWR_DESIGN_BASIS.md` §7 reported three cross-checks agreeing. One of its inputs, the
+downcomer annular gap **0.25 m**, was RECALLED. Re-derived from the reference plant's
+downcomer/hot-leg **area ratio** (2.37, from RPV ID 4.39 m vs barrel OD 3.76 m and four 29-in hot
+legs): **0.093 m — 2.7× smaller**. RPV volume 376.6 → **228.1 ft³**; RPV share **45.1 % → 33.3 %**,
+from inside the 40–45 % band to outside it. **The 45.1 % was an artifact and must not be cited.**
+
+**And the check was invalid anyway, independent of the constant.** The 40–45 % RPV-share band is a
+**4-loop-plant statistic** — a 4-loop plant splits ~55 % of RCS volume across four loops (~14 %
+each), so a single-loop plant has no reason to match. **It never transferred to SLS-100.** A
+reasoning error, not a data error, and the more embarrassing of the two. What survives: the energy
+balance. Loop transit now reads **~6.8 s** through the flow path against a real-PWR 10–12 s —
+live and unadjudicated.
+
+**Two constants genuinely improved.** Lattice coolant fraction is now **derived** from sourced
+Westinghouse 17×17 geometry (pitch 12.6 mm, rod OD 9.5 mm, 264 rods + 25 tubes) = **0.584**
+(recalled 0.58 — close, but now computed). And **power density is a CONSEQUENCE, not an input** —
+assuming it and back-solving core volume was the wrong direction; real design picks an **assembly
+count**. Adopted **21 assemblies** (5×5 less corners) → 1.11 m core, **85.1 kW/L**, below the
+100–110 typical band in the direction the plant's own ruled character already claims (*"small and
+generously margined by design"*, `Manuals/01`).
+
+**Design analysis that reversed a plan-stage decision: junction momentum is NOT stiff.** The plan
+leaned to quasi-steady-with-lag out of a fear of a second stiff term. Measured on design values,
+the hot-leg inertia coefficient L/A = 26.3 m⁻¹ gives τ = 0.43–43 s (22–2152 steps at dt = 0.02).
+**Full junction momentum is comfortably explicit** — and it makes RCP coastdown derived (pump
+inertia vs loop friction, not a fitted exponential) and makes **W ∝ Q^⅓ EMERGE** from the buoyancy
+balance rather than being imposed (`Manuals/12` §12.4 currently declares that scale fitted).
+Caveat named: `K·ṁ|ṁ|` damping vanishes at ṁ = 0, so friction goes semi-implicit with a laminar
+floor.
+
+**The structural choice with the most leverage: a two-phase GATHER-then-INTEGRATE step.** Phase 1
+reads only time n and writes nothing; Phase 2 writes only n+1. **There is no step ordering to get
+wrong** — no analogue of the current 27-step schedule where step 9 precedes step 8 and 14c
+precedes 14b, each load-bearing. It also dissolves the hardest existing coupling: break flow →
+containment pressure → break flow is an algebraic loop today, broken by a one-step-late read; in
+PWR2 containment is just another node and the break just another junction, both read at time n.
+**One-step-old couplings go ~23 → 2**, and both survivors are outside the engine (instrument lag
+is HR1 by design; control acts on last cycle's read, which is real plant behaviour).
+
+**Landed:** `Blueprint/PWR2_DESIGN.md` (D1 spine — rulings, risk register, stop criteria, 9 open
+questions) and `Blueprint/PWR2_PHYSICS.md` (D2 — settles 4 of the 9). **Owed:** D3 plant model,
+D4 interface + shim map, D5 validation. `PWR2_ARCHITECTURE.md` is superseded by D1.
+
+---
+
 ## Session log — 2026-08-13-backshop-c (#479 — PWR2 Layer 0 built, 56/56)
 
 **Issue:** #479. **Gates:** `run_pwr2_water` **56/56 NEW** (baseline added) **and
