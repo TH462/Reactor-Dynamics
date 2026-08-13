@@ -220,3 +220,120 @@ Carried forward to the documents that own them. **None may be deferred past revi
 | 7 | Which of the 109 fields are natural / translation / proxy? | D4 |
 | 8 | Must PWR2 load `pwr-1.0` saves, and from when? | D4 |
 | 9 | What concretely makes PWR2 ready to replace `engines/pwr/`? | D5 |
+
+---
+
+## 19. WHAT THE EDUCATIONAL TIER ACTUALLY DOES — and this design has been reasoning two tiers too high
+
+*(OWNER, 2026-08-13: "Why don't you do some research before proceeding on the different ways the
+industry models the sims.")* Correct instinct, and the answer changes the ambition level.
+
+**Every design argument in §§0–18 was drawn from RELAP5 and TRACE. Those are safety-analysis
+codes.** This is an educational simulator, and the educational tier turns out to be a different
+engineering problem with a different published standard of success.
+
+### 19.1 The tier, measured
+
+| Simulator | Primary T/H nodes | Timestep |
+|---|---|---|
+| **PCTRAN** (most widely deployed educational PWR) | **2 volumes, 1 moving boundary — the ENTIRE RCS** | unpublished |
+| IAEA PWR (TCS-22, CASSIM) | 12 lumped (4 channels × 3 axial) | **0.1 s fixed** |
+| Kerlin/UTK (EPRI EL-3087) | **1 fuel + 2 coolant** | 0.02 → 0.5 s |
+| INL RO-TPD-PWR | **2 primary coolant nodes** | — |
+| BNL HIPA | 54 cells, but **54 momentum equations replaced by 3 loop balances** |
+| IAEA iPWR (TCS-65, Tecnatom) | full 6-equation two-fluid | implicit |
+
+**PWR2's ~12 nodes sits at the UPPER END of this band — not outside it.** Scale does not drive
+node count in this tier; provenance of the borrowed code does.
+
+### 19.2 ⚠ THE STRUCTURAL FINDING — nobody solves a transient momentum equation
+
+**Not one educational simulator sourced solves momentum in the loop.** Flows are `W = K·√ΔP`.
+IAEA TCS-22 §5.6 says so explicitly:
+
+> *"Since these equations are coupled in a relatively weak fashion, it is possible to **de-couple
+> the mass and momentum equations from the energy equation**… This allows a much simpler solution
+> of simultaneous equations in the core."*
+
+Kerlin uses "a static momentum balance"; PCTRAN assumes rated volumetric flow; BNL collapsed 54
+cell momentum equations to 3 loop balances.
+
+**D2 §0.2 integrates a loop momentum state. That is a departure from the entire tier, and it was
+inherited rather than decided.** It must now be an explicit choice with a stated payoff:
+
+| Momentum buys | Worth it? |
+|---|---|
+| RCP coastdown **derived** from pump inertia rather than a fitted exponential | The current engine fits it; sourced inertia now exists (Ginna 80,000 lbm·ft²) |
+| Natural circulation **emergent** rather than fitted | But a `√ΔP` network with a buoyancy term also gives natural circ, quasi-steadily |
+| Loop flow transients during a pump trip | **The real question — does any Tier A coupling need it?** |
+
+**Checked against `CURRICULUM.md`: none of the nine Tier A couplings obviously requires transient
+loop momentum.** A1–A9 are thermal/reactivity/level couplings. **This is now an open design
+question, not a settled one.**
+
+### 19.3 The IAEA's fidelity standard — and it is NOT "more physics is better"
+
+**IAEA-TECDOC-995 §2.4.4:**
+> *"**Rating a simulator purely on factors such as scope, fidelity, or technical sophistication
+> could be misleading. The real criterion should be its overall ability to enhance the training
+> process.** … the inappropriate use of a simulator can lead to poor training and could even
+> mislead the trainee, i.e., cause so-called **negative training**."*
+
+**IAEA-TECDOC-1887 §4.1.2.1 — the nodalization criterion is FUNCTIONAL, not numerical:**
+> *"**Sufficient nodalization of the system allows the simulation of all phenomena having an
+> impact on the selected operating procedure.** The required depth and accuracy are determined by
+> the education and training objectives and needs."*
+
+**And more fidelity actively harms at the wrong level** (TECDOC-1887 §3.3): basic simulators should
+allow *"'turning off' of some of the more complex physical effects… without spending unnecessary
+time learning to use complex or advanced simulator features."*
+
+**TCS-65 p. 1:** *"The simulators are **not expected to produce accurate results** but do
+demonstrate realistic trends and transients."*
+
+**This is the yardstick PWR2 should be measured against — and it is `CURRICULUM.md`'s Tier A
+couplings, not a residual in kg.**
+
+### 19.4 Directly relevant to #472 — the IAEA on pressurizer depth
+
+**TCS-22 §5.8:**
+> *"It should be emphasized that **the depth of a pressurizer model required for educational
+> simulator differs considerably from that required for engineering or safety analysis**, and
+> therefore for this purpose, the model presented here is only a basic model."*
+
+Their basic model is **three ODEs, six steam-table evaluations, three algebraic calculations** —
+and they list what it deliberately omits: superheated/condensing steam region, subcooled/boiling
+lower region, interfacial heat transfer, bubble rise, spray condensation. **#472 should see this
+before it finishes.**
+
+### 19.5 Where PWR2's ambition IS defensible
+
+**The tier's limits are real and they bite on this plant's stated goals.** PCTRAN's 2-volume RCS
+**cannot represent break location at all** — and IAEA TCS-68 §3.5.2 records what that costs:
+
+> *"This is the bypass phase… **In PCTRAN, this phase is not observed**"*; and *"**only the top of
+> the core is uncovered**… the refill phase and reflood phase are not clearly distinguished."*
+
+**That is exactly the phenomenon the owner asked about and §8's CCFL junction closure exists to
+deliver.** So PWR2 being at the top of the tier is a deliberate, justified departure — *for
+break location and node-to-node coupling*, which are the educational payload. **It is not a
+justification for analysis-code machinery everywhere else.**
+
+### 19.6 The costing passage worth adopting wholesale
+
+Kerlin bought a 25× larger timestep by applying the prompt-jump approximation and **multiplying
+the SG tube-metal mass by ten** — then wrote the bill down (EPRI EL-3087 §5):
+
+> *"there is a **large difference in the response of the internal system variables**… for
+> applications where PWR internal variables are important (as for plant tripping) **the error in
+> these variables may be intolerable**."*
+
+**That is the right form for every simplification in this design set: state the shortcut, state
+what it costs, state where it becomes intolerable.**
+
+### 19.7 What this does NOT settle
+
+Two research strands are still running (commercial full-scope architectures; real-time robustness
+without timestep rejection). **The scheme-B ruling is deferred until they land** — scheme B's
+headline virtue is *dt-convergence across a 200× range*, which is an **analysis-code** virtue. A
+simulator's virtue is *never producing a bad frame*, and those may not be the same purchase.
