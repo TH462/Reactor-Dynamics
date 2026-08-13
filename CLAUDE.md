@@ -344,7 +344,10 @@ re-querying. Run the query.
   contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
   untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
   verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
-- **Built, waiting on review or a close** — #460 (rods ship in MANUAL — one owner call open: it
+- **Built, waiting on review or a close** — **#458** (shutdown cooling and low-head injection are
+  the same pumps: the ALIGN is refused while SI runs — *(OWNER RULING, 2026-08-12: "A'")*. It is
+  **not** a plant interlock and the code/manual/message all say so; declared `Manuals/12` §12.20),
+  #460 (rods ship in MANUAL — one owner call open: it
   brushes #331's "Leave automatic systems in place", and it was built to the NARROW reading),
   #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;

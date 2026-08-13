@@ -29,6 +29,85 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-develop-c (#458 — shutdown cooling and low-head injection are the same pumps, and the annunciator was asking for the wrong one)
+
+**Issue:** #458. **Gates:** `run_all` **48 runners at baseline**; `run_m4` 45/45 300 →
+**46/46 311**. **Landed:** the SI-lineup refusal on `set_rhr`, the control-kernel boolean
+interlock clear, the re-authored #453 leg, the new `#458` suite, `Manuals` 03/06/12 + Rev 15
+item (g). *(OWNER RULING, 2026-08-12: "A'".)*
+
+**What was wrong.** `Q_rhr` was gated on `rhr_active && condenser_cooling_available`, and
+`rhr_active` was gated on one thing — the 400 psi (2.76 MPa) block-open permissive. A LOCA
+satisfies that permissive in **20 s** at severity 1.0. So a player could align shutdown cooling
+into a running break and get the largest heat sink in the plant, out of heat exchangers WTSM 5.2
+§5.2.4.5 (ML11223A220) says are **uncooled** in the injection lineup.
+
+**Measured full stack, before the change** (`hot_full_power`, `large_loca`, run A takes no
+action, run B aligns on the first legal tick; heat currency: rated core = 19.45 units = 300 MWt):
+
+| | align at | peak `Q_rhr` | vs decay heat | primary void at align+300 s | end Tavg (A → B) |
+|---|---|---|---|---|---|
+| sev 0.05 | t+553 s | 4.28 (~66 MWt) | **8.8×** | — | 266 °F → **175 °F** |
+| sev 1.0 | **t+20 s** | 2.38 (~37 MWt) | **4.2×** | **0.788** | 253 °F → 172 °F |
+
+With `degraded_hpi` at 1.0 as well, aligning RHR took core inventory from a parked 66.8 % to
+**99.9 %** — the player recovers a degraded-injection LOCA with a system that in that alignment
+supplies neither the cooling nor the suction.
+
+**THE DEFECT WAS REACHABLE BY FOLLOWING THE BOARD, and that is the part worth keeping.**
+`rhr_not_aligned` (PWR-A33, RHR NOT IN SERVICE) came in at **t+191 s** of the sev-1.0 run
+(`active_unacknowledged`, measured) and stood for the rest of it — correctly: `plant_mode` reads
+4 from t+300 and the row's own comment says it deliberately stands in during a LOCA to read *"you
+are on injection, not on shutdown cooling"*. But `Manuals/06`'s **Immediate operator actions** for
+that tile said *"Re-align RHR from the ECCS side of the board"* with no carve-out. **An alarm that
+is right and a response procedure that is wrong compose into a board that walks the player into
+the defect** — and neither half looks wrong on its own, which is why reading the alarm row alone
+would have closed this as "deliberate".
+
+**The blast-radius warning in the issue, converted into a number.** The issue warned that
+`pwr_thermal.js` is the heat balance every LOCA probe's bands were measured against. Instrumented
+the thermal step to log the first co-occurrence of `rhr_active && hpi_active` per process, then ran
+the full 48-runner gate: **one hit, in one runner** — `run_m4`'s own #453 leg. No LOCA probe's heat
+balance contains `Q_rhr` at all, because #453 removed the auto-align and PWR-N15 takes HPI/LPI to
+OFF two steps *before* it opens the suction valve. **A blast-radius warning is a claim like any
+other; it cost ~13 min of gate time to measure and it was wrong by a factor of the whole suite.**
+
+**The fix is a REFUSAL, not a heat gate, and the reason matters.** Gating `Q_rhr` on `!hpi_active`
+would have moved zero gates — but it leaves a control that engages, lights `eccs_mode: RHR`, and
+does nothing: the Q4 orphan-control case #453 had just finished removing from this same system.
+The refusal is a control-layer interlock row reading the `hpi_active` status instrument (HR1),
+`blocks_when {active:true}` so ISOLATE is never refused.
+
+**It is NOT a plant interlock and the code, the manual and the message all say so.**
+`find_source.js` finds the pressure permissive and the autoclosure for 8701/8702 and nothing else;
+there is no SI inhibit in 34 documents across 3 lanes. Claiming one would be #453's exact error —
+reading a lineup/procedural fact as an automatic function — committed by the agent who wrote up
+#453's lesson. What it *is*: this trainer has one `rhr_active` flag for two mutually exclusive
+alignments of one set of pumps, and no refueling-water-tank inventory, so it can never reach the
+real exit (the sump swap-over, where a real crew opens component cooling water to the RHR heat
+exchangers). Declared `Manuals/12` §12.20.
+
+**The gate defect found on the way, and its failure mode is backwards.** `_evalInterlocks` clears
+an interlock through a hysteresis band (`v < clears_below` / `v > clears_above`); a boolean has no
+band. `crossed()` learned `is_true`/`is_false` at #314 — the clear path never did, and it was
+latent because **no interlock in the codebase had ever been keyed on a status instrument.** The
+obvious guess is that it latches for ever. Measured by reverting the branch: a boolean row carries
+`setpoint: null`, so the clear arm asks `true > null` → `1 > 0` → **true**, and the interlock
+releases on the next pass *with its own signal still standing*, blocking nothing. **I wrote the
+latches-for-ever version into the comment first and the injection run disproved it** — the same
+shape as every other unmeasured claim in this log, committed in a comment rather than a number.
+
+**Two traps.**
+- **An alarm row's "this is deliberate" comment is about the ALARM, not about the response.**
+  PWR-A33's row comment justified standing in during a LOCA and was right; the manual chapter
+  three files away said what to do about it and was wrong. Nothing connects them.
+- **A probe can pin the defect as the feature.** `run_m4`'s #453 leg commanded the align *with the
+  break open and SI running* and asserted it succeeded — a check written to prove "we removed an
+  automatic action, not the system", asking it in the one regime where the answer should be no.
+  Re-authored to secure injection first, which is also the lineup PWR-N15 actually reaches.
+
+---
+
 ## Session log — 2026-08-12-develop-b (#470 — the browser was running the new control room on the old stylesheet, and no gate could see it)
 
 **Issue:** #470, plus a second defect it exposed — **#476**. **Gates:** `run_all` 47 →

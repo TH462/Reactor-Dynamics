@@ -31,6 +31,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Shutdown cooling can no longer be placed in service during a safety injection — they are the
+  same pumps** (#458). The RHR pumps *are* the low-head half of the merged HPI/LPI system, and a
+  real plant runs them in two mutually exclusive alignments: **injection** (suction from the
+  refueling water tank, heat exchangers **uncooled** — WTSM 5.2 §5.2.4.5, ML11223A220:
+  *"the RHR pumps start and recirculate water through the uncooled RHR heat exchangers"*) and
+  **shutdown cooling** (hot-leg suction through 8701/8702, heat exchangers on component cooling
+  water). This plant carried **one** `rhr_active` flag for both, gated only on the 400 psi
+  (2.76 MPa) block-open permissive — which a loss-of-coolant accident satisfies in **20 seconds**
+  at full severity. Measured full stack: aligning RHR into a large break removed **4.28 heat units
+  against 0.49 units of decay heat — 8.8×**, about 66 MWt in this model's currency, at a primary
+  void fraction of **0.788**, i.e. a centrifugal pump taking suction on 79 % steam. **It was not a
+  curiosity: the board asked for it.** PWR-A33 *RHR NOT IN SERVICE* annunciates at **t+191 s** of
+  that same run — correctly, it means "you are on injection, not on shutdown cooling" — and
+  `Manuals/06`'s response for the tile said *"Re-align RHR from the ECCS side of the board"* with
+  no accident carve-out. `set_rhr {active:true}` is now refused while SI is running, with a
+  labelled message; `{active:false}` never is. **This is NOT presented as a plant interlock** —
+  no document in any lane's corpus gives 8701/8702 a safety-injection inhibit, and inventing one
+  would repeat #453's error of reading a lineup fact as an automatic function. Declared as a
+  departure in `Manuals/12` §12.20, which also names what the trainer genuinely cannot do: a real
+  plant's exit is the **sump swap-over on refueling-water-tank depletion**, and there is no such
+  inventory node here, so its accidents stay in the injection phase for ever.
+- **The control kernel could not release an interlock keyed on a boolean** (#458). `_evalInterlocks`
+  engages through `crossed()` (which learned `is_true`/`is_false` at #314) but clears through a
+  hysteresis band — `v < clears_below` / `v > clears_above` — and a boolean has no band. Latent
+  until now because no interlock had ever been authored on a status instrument. **The failure is
+  the opposite of the obvious one:** a boolean row carries `setpoint: null`, so the clear arm asks
+  `true > null`, which is `1 > 0`, so the interlock released on the very next pass with its own
+  signal still standing and blocked nothing at all. Injection-verified in `run_m4`: reverting the
+  branch reddens exactly 5 checks across two suites and nothing else in 46.
 - **A release can no longer serve new HTML against the previous release's stylesheet** (#470).
   `ui/shell.html` is served `Cache-Control: max-age=0, must-revalidate` while `ui/shell.css` is
   `max-age=14400` and was referenced as a bare `href="shell.css"` — and `must-revalidate` does
