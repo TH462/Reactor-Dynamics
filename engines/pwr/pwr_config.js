@@ -1128,6 +1128,58 @@
     // each model. Overridable per-run by `RD_PZR2=1` (Node) or `?pzr2=1` (browser).
     pressurizer2: {
       enabled: 0,   // 0 = ship v1. NOT [tune] — a model selector, not a number.
+
+      // ---- GEOMETRY. Derived, not fitted; both figures are outputs of constraints.
+      //
+      // V_pzr_m3 is SOLVED from the level identity the shipped plant already obeys:
+      //   100 · M_rcs / (rho_liq · V_pzr) == level_per_mass (776 %/frac)
+      // with M_rcs = the declared RCS currency (7,467 gal = 28.266 m³, from the
+      // `K_porv_relief` block) × 700 kg/m³ = 19,786 kg, and rho_liq = 594 kg/m³ (saturated
+      // liquid at 15.41 MPa / 345 °C). That gives 4.292 m³ = 151.6 ft³.
+      //
+      // CROSS-CHECKED TWO WAYS, because a solved number can satisfy its identity and still
+      // be the wrong size. (1) Ginna's pressurizer level span: TS Bases Rev 101
+      // (ML20339A221) "the pressurizer water volume be < 324 cubic feet (38% level)" ⇒ a
+      // full span of ~853 ft³ at 470 MWe; power-scaled to this plant's 100 MWe that is
+      // 5.15 m³, and we are 17 % under it. (2) Ginna UFSAR ch15 (ML20339A101) quotes a
+      // maximum pressurizer mixture volume of 800 ft³, the same order. A compact plant
+      // running slightly small on pressurizer volume is the expected direction.
+      V_pzr_m3: 4.292,       // m³ — solved from the 776 identity, cross-checked vs Ginna
+      M_rcs_kg: 19786,       // kg — the declared RCS currency in mass terms
+
+      // ---- HEATERS. The SOURCED quantity is POWER. There is deliberately no authority
+      // multiplier: pressure RATE is an output, `Q / (C · dTsat/dP)`, and v1 needed a gain
+      // only because it had no thermodynamics to put the joules into.
+      //
+      // 78 direct-immersion heaters, 1794 kW total (WTSM 3.2, ML11223A213). NOT [tune].
+      heater_power_mw: 1.794,
+
+      // pzr_vessel_mass_kg — A DECLARED ESTIMATE, NOT A SOURCE, and it is load-bearing.
+      // `node tools/find_source.js` finds NO pressurizer vessel mass, thickness or
+      // dimensions in any of the three lanes' corpora (searched: weight/lbs/pounds, shell
+      // and wall thickness, diameter/height/length — 0 hits each). Rather than pick a
+      // number, it is computed from the vessel's own duty:
+      //
+      //   V 4.292 m³ at L/D = 5 (Westinghouse pressurizers are tall)  ⇒ D 1.030 m, L 5.150 m
+      //   ASME thin-wall at the code-safety design pressure 17.13 MPa, SA-533B allowable
+      //   S ≈ 138 MPa:  t = P·r/(S − 0.6P) = 69.1 mm
+      //   shell π·L·t·(D+t) + 2 hemispherical heads 2·(2πr²)·t = 1.459 m³ × 7850 kg/m³
+      //
+      // ⇒ 11,451 kg. WHY IT MATTERS ENOUGH TO DERIVE: with cp 0.5 kJ/kg·K the metal carries
+      // 5.73 MJ/°C against the liquid's 8.41, so it is 41 % of the heated capacity and the
+      // difference between 5.8 psi/s (liquid alone) and 3.4 psi/s. It sets heater authority
+      // outright — which is why the v2 spec RETRACTED its earlier "wall node is
+      // second-order, defer it" call. Replace this with a real vessel weight the moment one
+      // enters the corpus; the estimate is honest but it is an estimate. [UNVERIFIED]
+      pzr_vessel_mass_kg: 11451,
+      pzr_vessel_cp_kj_kgk: 0.5,   // carbon/low-alloy steel at temperature
+
+      // Resulting full-heater authority, for the record and for anyone re-deriving:
+      //   C = 8.41 (liquid, 55 % level) + 5.73 (metal) = 14.14 MJ/°C
+      //   dTsat/dP = 5.35 °C/MPa at 15.41 MPa (from this file's own P_sat_from_T)
+      //   dP/dt = 1.794 / (14.14 × 5.35) = 0.0237 MPa/s = 3.44 psi/s
+      // 15.41 → PORV 16.20 MPa takes 33 s; recovering MO-2's 0.97 MPa outsurge takes 41 s,
+      // well inside CC-6's 300 s band. Both numbers the withdrawn §7 dilemma turned on.
     },
 
     // ------------------------------------------------------------------ primary
