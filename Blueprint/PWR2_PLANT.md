@@ -47,10 +47,31 @@
 
 ## 1a. What a valid check must be — the pattern behind three failures
 
-**The lesson, stated so it is not learned a fourth time:** every check that has collapsed was
-**denominated in MWt**, the same unit as the thing being validated. RPV-share, specific volume and
-transit time all divide by power, and the geometry under test was itself derived by dividing by
-power. *A check denominated in the same unit as its subject cannot be independent of it.*
+**The lesson — ~~stated so it is not learned a fourth time~~ and then learned a fourth time
+anyway.** My first formulation was: every collapsed check was **denominated in MWt**, the same unit
+as the thing being validated. True, and too narrow.
+
+> **⛔ GENERALISED, 2026-08-13, by review.** *"The author's 'denominated in MWt' self-diagnosis is
+> too narrow; the invariant across all four failures is **recalled acceptance band**."*
+>
+> **The invariant is not the unit. It is that I chose the band from memory.** Restated:
+>
+> > **When I recall an acceptance band and my number lands inside it, that is weak evidence,
+> > because I chose the band.** The failure survives any change of denominator.
+>
+> **The fourth instance, caught by this review and denominated in %-flow, not MWt:**
+> *"real-PWR natural circulation ~4–5 % of rated at 2–3 % power"* — recalled, unsourced, and used
+> **twice** (D2 §6, §1a-ii below) as the confirmation that the 8.0 m thermal-centre correction is
+> right, described as *"independently confirmed"*. **It escaped my own MWt test precisely because
+> it is not denominated in MWt.**
+>
+> **Others still load-bearing and now flagged:** the RCP "250–300 ft class" (§1a-ii's pass
+> criterion), the **271.9 °C secondary saturation** the entire U check is denominated through, and
+> the 43 ft/s reference velocity.
+>
+> **The operative rule going forward: a band must be sourced before it can accept anything.** A
+> recalled band may *reject* — being wildly outside a remembered range is still information — but
+> it may never confirm.
 
 **The next checks must be denominated in something else.** Candidates, from the review, none yet run
 to completion:
@@ -512,15 +533,36 @@ single destination flag (`_leak_to_sg`).
 
 | Break location | Emergent behaviour |
 |---|---|
-| **Cold leg** | ECCS injects into the same node — injection spills out before reaching the core (**ECCS bypass**, the limiting case in real PWR LOCA analysis). Pure topology. |
+| **Cold leg** | ECCS injects into the same node. ⚠ **See the correction below — this row overreached.** |
 | **Crossover** | Drains the loop seal; governs whether natural circulation survives |
 | **Hot leg** | Highest-enthalpy discharge → different flash fraction into containment |
 | **SG tubes** | Destination is SG secondary, not containment — **the containment-bypass diagnosis lesson**, and the one case the current engine already models this way |
 
-**No new physics is required for any of these** — only the junction primitive and honest
-topology. That is the strongest single argument for the node model, and it is why §1's unresolved
-volume question does not undermine the architecture: the topology is right even where the
-numbers are provisional.
+**No new physics is required for MOST of these** — only the junction primitive and honest
+topology.
+
+> **⛔ CORRECTION, 2026-08-13 — the ECCS-bypass claim overreached the RULED physics.**
+> I called cold-leg-break ECCS bypass *"pure topology"* and *"the strongest single argument for the
+> node model"*. **It is not reachable under the homogeneous-equilibrium ruling.**
+>
+> Real ECCS bypass is **counter-current flow limitation** — steam flowing up the downcomer drags
+> injected water back out the break against gravity. That requires **relative velocity between the
+> phases.** Ruled HEM has **one velocity, no slip**, so a shared node produces proportional
+> *mixing*: whatever the algebraic junction flows happen to give, not a bypass mechanism. **The
+> ruling structurally cannot produce the phenomenon I claimed as the architecture's best argument.**
+>
+> **What survives, and it is still real:** break *location* changes where inventory leaves and what
+> the injected water mixes with before reaching the core, so a cold-leg break is still meaningfully
+> worse than a hot-leg break. **That is a topology effect and it does hold.** What does not hold is
+> naming it ECCS bypass, or claiming the limiting-case behaviour of real LOCA analysis.
+>
+> **Consequence for the scope ruling:** if genuine CCFL is wanted, HEM is insufficient and the
+> two-phase ruling would need revisiting (drift-flux was offered and declined). **That is an owner
+> decision, not something to smuggle in through a correlation.** The loop-seal and SGTR rows are
+> unaffected — both are genuine topology.
+
+The topology argument still stands where the numbers are provisional; it stands **less strongly**
+than this section originally claimed.
 
 ---
 

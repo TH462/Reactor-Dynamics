@@ -239,7 +239,7 @@ which is what makes break *location* physics rather than a scalar severity.
 
 ```
 SYSTEM mass    dM_total/dt = Σ sources − Σ sinks         (branches only; the loop is closed)
-NODE   energy  m_i·dh_i/dt = ṁ_in·(h_in − h_i) + Q_wall + Q_src      m_i = ρ(h_i,P)·V_i
+NODE   energy  m_i·dh_i/dt = ṁ_in·(h_in − h_i) + Q_wall + Q_src + V_i·dP/dt    <-- CORRECTED
        wall    M·cp·dT_w/dt = −Q_wall        Q_wall = h_film·A·(T_wall − T)
 LOOP   momentum (ΣL/A)·dṁ/dt = ΔP_pump + ΔP_buoy − ΔP_fric           ONE state
 CLOSURE         M_total = Σ ρ(h_i,P)·V_i + m_pzr(P)      →  solve for P   (1-D Newton)
@@ -247,11 +247,29 @@ CLOSURE         M_total = Σ ρ(h_i,P)·V_i + m_pzr(P)      →  solve for P   (
 state           T, ρ, x = f(h, P)            [L0, engines/pwr2/pwr2_water.js]
 ```
 
-**Note the node energy equation is in non-conservative form** (`m·dh/dt`, not `d(mh)/dt`). That is
-deliberate and follows from §0: `m` is derived, so differentiating it would reintroduce the
-spurious state. Energy is still conserved — the `dm/dt` term that the conservative form would
-carry is exactly the thermal-expansion flow the junction equation already accounts for, so
-including it would double-count.
+**Non-conservative form** (`m·dh/dt`, not `d(mh)/dt`) follows from §0: `m` is derived, so
+differentiating it would reintroduce the spurious state. The `dm/dt` term the conservative form
+carries is exactly the thermal-expansion flow the junction equation already accounts for, so
+including it would double-count. *That argument was right and is retained.*
+
+> **⛔ BUT THE EQUATION WAS STILL WRONG — `V·dP/dt` WAS MISSING. Found in review 2026-08-13, the
+> same day it was written.** The derivation above answered only half the question, because it
+> conflated `u` and `h`. Exact first law for a rigid node:
+> ```
+> d(mu)/dt = ṁ_in·h_in − ṁ_out·h_out + Q        with  u = h − P/ρ,  V fixed
+> d(mu)/dt = d(mh)/dt − d(PV)/dt = d(mh)/dt − V·dP/dt
+> ⇒  m·dh/dt = ṁ_in(h_in − h) + Q + V·dP/dt
+> ```
+> **Magnitude — and it is not a rounding term.** RCS ≈ 28 m³. At a brisk pressurizer transient
+> (dP/dt ≈ 0.1 MPa/s ≈ 15 psi/s) it is **2.8 MW, ~1 % of rated** — tolerable. **During blowdown at
+> 1–10 MPa/s (150–1,500 psi/s) it is 28–280 MW — comparable to or exceeding decay heat**, with the
+> sign that makes depressurised fluid read **too hot** (isenthalpic rather than ~isentropic
+> expansion of retained inventory).
+>
+> **It lands hardest in exactly the LOCA/TMI scenarios D3 §6 calls the architecture's strongest
+> case.** Corrected in the block above.
+
+**The assertion that justifies the rewrite, restated correctly.** The naive claim — *"total mass
 
 **The assertion that justifies the rewrite, restated correctly.** The naive claim — *"total mass
 and energy are conserved to machine precision"* — is now **trivially true for mass** (`M_total` is
@@ -535,3 +553,54 @@ Sourced 2026-08-13:
    a **wall conduction resistance and a fouling allowance explicitly** — a series-resistance
    network, not a single lumped `h_sg`. The current engine's `sg_tube_split: 0.5` gestures at this
    with a fitted 50/50 split; PWR2 can compute it.
+
+---
+
+## 10. Review findings on §0 itself (2026-08-13) — the resolution SURVIVES, as an outline
+
+Independent review re-derived §0's load-bearing arithmetic and **confirmed the core**: the DOF
+argument is correct, the momentum eigenvalue checks (ΣL/A ≈ 165 m⁻¹ → τ ≈ 0.23 s), `M(P)` is
+monotone so the root-find is well-posed, and the escape from the trilemma (no acoustics, no
+Poisson, no lost redistribution) is genuine.
+
+**But it survives as an outline, not as written. Six holes INSIDE §0's own machinery** — every one
+would ship as a defect if built from these pages:
+
+1. **The missing `V·dP/dt`** — fixed above (§2).
+2. **The junction equation is circular through `dP/dt`.** `dρ_i/dt = (∂ρ/∂h)·dh_i/dt +
+   (∂ρ/∂P)·dP/dt`, but **`dP/dt` is only known after the Newton closure, which runs after
+   integration.** Near saturation `∂ρ/∂P` is enormous, so in a *flashing* node the `dP/dt` term
+   **dominates** the expulsion flow. §7's "P↔void solved implicitly" covers only the *h*-fixed
+   closure — **the flash-flow↔pressure loop is still explicitly lagged**, which is the #447
+   mechanism family re-entering through the equation §0 added. **Unsequenced. Must be specified.**
+3. **No superheated vapour exists in the model.** `x = (h−h_f)/h_fg` **clipped to [0,1]**, so a node
+   past `h_g` gets saturation density forever. **Core uncovery — the physics behind every meltdown
+   path — is clad heatup in *superheated* steam.** One clip in one formula forecloses the
+   severe-accident half of the ruled scope. Containment (air + steam) is not covered by the stated
+   forms either.
+4. **`m_pzr(P)` is undefined and the conditioning table is inconsistent.** Pressurizer mass is not
+   a function of `P` alone — it depends on liquid inventory and bubble steam mass, both dynamic.
+   **The closure's best-conditioned term is currently undefined.** And my "measured" dM/dP table
+   held bubble *volume* fixed at 2 m³, which is not how a pressurizer works: a real bubble softens
+   as `P` falls, so dM/dP should *rise* at low `P`, and my table shows the opposite. **It was a
+   property-library exercise mislabelled as a pressurizer measurement.** Also: at void onset
+   `∂ρ/∂h` jumps ~15×, so **plain Newton with a 1–2 iteration warm-start can chatter across the
+   kink — use a bracketed solve.** And the 2.16 s cost is the *one-evaluation* cost; with 2–3
+   iterations it is ~5–7 s (still in budget).
+5. **Plug-flow nodes contradict the single-`h` closure.** A plug node's point is an enthalpy
+   *profile*; the closure sums `ρ(h_i,P)·V_i` with one `h_i`, and `ρ` is nonlinear in `h`, so
+   `ρ(h̄) ≠ mean ρ` during exactly the hot-slug transport the flag exists for.
+6. **"One loop momentum DOF" is false of D3's own junction table.** J-rhr is a **parallel path**
+   around the SG/RCP segment — under RHR cooling with the RCP off there are genuinely two circuits
+   and two flow DOF. Likewise a large break makes the flow field differ by thousands of kg/s across
+   the break, so a single `ṁ` in `Σ K ṁ|ṁ|` is wrong segment-by-segment. Both may be acceptable
+   simplifications; **neither is declared.** Also absent everywhere: a **two-phase friction
+   multiplier**, without which loop ΔP at high void is badly wrong.
+
+**Unresolved from the earlier review and still unresolved: finding (H).** Kinetics sub-stepping
+violates the two-phase step; §0 is silent on kinetics; §4 still specifies sub-stepping. **The one
+term everyone agrees is stiff has no consistent integration story anywhere in the set.**
+
+**Bookkeeping:** §§3 and 5 got `-OLD` splits; **§§1 and 4 did not, and are still cited as live** —
+§1's junction primitive still says *"carries one integrated state, ṁ"*, flatly contradicting §0.2.
+A future agent reading §1 builds the superseded design.
