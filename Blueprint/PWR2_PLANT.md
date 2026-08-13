@@ -241,8 +241,24 @@ start of bend 356.75 in, to end of bend 416.59 in.
 | **Overall U** | 7,274 W/m²·K (out of band) | **6,016** | **mid-band** |
 
 **§1a-iii's independent U check predicted the area was low by ×1.12–1.45. The sourced area is
-×1.21.** Two routes that share no denominator, converging — the U check is per-unit-*area* and the
-EPRI figure is a measured plant. That is the second genuine convergence in this document.
+×1.21.** ~~That is the second genuine convergence in this document.~~
+
+> **⚠ CLAIM WALKED BACK, same day.** A later evidence pass sourced the U band itself as
+> **3,500–6,000 W/m²·K**, *"set by tube wall + fouling, NOT by the film coefficients"* — against
+> the **5,000–6,500** I had recalled. **The two bands disagree, and my "mid-band" result of 6,016
+> sits at the ceiling of the sourced one, not in its middle.**
+>
+> Worse for the claim: the reference Model 51 **computes to the same U as SLS-100 by construction**
+> (area scaled linearly with power at a fixed LMTD ⇒ identical U), and on its *own* steam
+> conditions (895 psig ⇒ Tsat 278.4 °C, hot/cold ~325/292 °C ⇒ LMTD 26.8 K) it reads **≈6,600
+> W/m²·K — above both bands.** A check that puts a real, working steam generator out of band is
+> not discriminating; something in the LMTD treatment (counter-flow idealisation, fouling
+> allowance, or the effective secondary temperature) is unmodelled.
+>
+> **Downgraded from "convergence" to an order-of-magnitude sanity check.** It still says the
+> original 15,000 ft² was too small — that survives — but it cannot arbitrate ×1.21 against ×1.45,
+> and I claimed it did. **The agreement was partly an artifact of my having recalled a band that
+> happened to bracket the answer.**
 
 **RPV — CASL-U-2012-0131-004 Table 16 + WTSM §3.1 (ML11223A212):** vessel ID 173 in, core barrel
 OD 152.5 in, and plena from Indian Point 2 elevations.
@@ -254,8 +270,22 @@ OD 152.5 in, and plena from Indian Point 2 elevations.
 | Heads | **omitted entirely** | hemispherical pair | +62.9 ft³ |
 | **RPV total** | 228.1 ft³ | **315.1 ft³** | |
 
-**New ledger: 315.1 (RPV) + 108.1 (piping) + 259.3 (SG) + 10 (RCP) + 125.2 (PZR) = 817.8 ft³**,
-i.e. **2.73 ft³/MWt** against the previous 2.29.
+**RCP — SOURCED**, matched 4-loop pump data from the same pass: 100,400 gpm, **289 ft developed
+head**, 1185 rpm, 7000 hp, **casing water volume 80 ft³**, dry weight 195,200 lb. Inertia for the
+fleet 45,000–123,000 lbm·ft², with **Ginna at 80,000 lbm·ft² (3,371 kg·m²)** — which is what makes
+RCP coastdown derivable (D2 §0.2) instead of a fitted exponential.
+
+| | Design basis used | **SOURCED** |
+|---|---|---|
+| Casing water volume | 10 ft³ (authored ROM estimate) | **28.1 ft³** (80 × 300/852.75) |
+
+**And an independent confirmation of §1a-ii:** the sourced pump develops **289 ft**; the loop ΔP
+derived from geometry was **275 ft — 95 %.** That comparison is now against a sourced number rather
+than a recalled "~280 ft class", and it is the *non*-circular half of §1a-ii (core + SG resistance)
+that had to land for it to work.
+
+**New ledger: 315.1 (RPV) + 108.1 (piping) + 259.3 (SG) + 28.1 (RCP) + 125.2 (PZR) = 835.8 ft³**,
+i.e. **2.79 ft³/MWt** against the previous 2.29.
 
 ### The vintage correction — flagged by review, recorded by me, and never applied until now
 
@@ -267,11 +297,11 @@ uprate**, so the same plant reads two different specific volumes:
 | at its **original** 1,520 MWt | 3.37 |
 | at its **current** 1,811 MWt | **2.83** |
 
-**SLS-100 derived: 2.73 ft³/MWt — 96 % of Ginna's current-rating figure.**
+**SLS-100 derived: 2.79 ft³/MWt — 99 % of Ginna's current-rating figure.**
 
 **Both readings, because picking the flattering one is the habit that caused this mess:**
 
-- **Against current ratings (2.83):** essentially closed — 96 %, well inside the metric's own 19 %
+- **Against current ratings (2.83):** essentially closed — 99 %, well inside the metric's own 19 %
   vintage spread.
 - **Against original ratings (3.37–3.69):** still 20–26 % low. And there is an argument this is the
   right basis: SLS-100 is a *new* design built for its rating, not a plant uprated past its

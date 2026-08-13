@@ -507,3 +507,31 @@ assert it rather than trust it.
   for recalled constants to re-enter**, and the `[ruled]/[derived]/[sourced]` rule applies.
 - Pump head curve — needs a real curve shape, and coastdown needs pump rotational inertia. D3.
 - Whether the secondary uses the same primitives or a lumped model — D3.
+
+---
+
+## 9. Film coefficients — SOURCED, closing §8's flagged gap
+
+§8 named `h_film` correlations as *"the most likely place for recalled constants to re-enter"*.
+Sourced 2026-08-13:
+
+| Surface | Value | Note |
+|---|---|---|
+| **Core**, rated (15.41 MPa, Tavg 304.5 °C, G = 3,400 kg/m²·s) | **34,500 W/m²·K** plain Dittus-Boelter, **48,200** with the rod-bundle P/D correction | defensible band 30,000–50,000; **use the rod-bundle-corrected value** |
+| **SG tube, primary side** (ID 0.775 in, v 5.42 m/s) | **35,000 W/m²·K** | |
+| **SG secondary, nucleate boiling** (6.27 MPa, q″ 0.05–0.20 MW/m²) | 11,600–32,900 (Jens-Lottes) / 20,300–40,600 (Thom) | |
+| **SG overall U** | **3,500–6,000 W/m²·K** | *"set by tube wall + fouling, NOT by the film coefficients"* |
+| **CHF (W-3)** at SLS-100 conditions | 2.2–3.7 MW/m² for quality −0.15 to 0 | the DNB limit the core model must respect |
+| Core nucleate-boiling wall superheat at 1 MW/m² | 2.1 °C (Jens-Lottes) | |
+
+**Two consequences that change earlier text:**
+
+1. **D2 §4's SG-tube-wall time constant was computed with the wrong coefficient.** It used
+   h = 5,000 W/m²·K — which this pass confirms is the **overall U**, not the primary-side film.
+   The correct tube-side film is **35,000 W/m²·K**, a factor of 7, so the wall τ is
+   **~0.10 s, not 0.67 s — roughly 5 steps at dt = 0.02, not 33.** Still stable; the margin is far
+   thinner than §4 claimed. This is the review's finding (E), now with a sourced number behind it.
+2. **`U` is dominated by tube wall and fouling, not the films.** That means the SG model must carry
+   a **wall conduction resistance and a fouling allowance explicitly** — a series-resistance
+   network, not a single lumped `h_sg`. The current engine's `sg_tube_split: 0.5` gestures at this
+   with a fitted 50/50 split; PWR2 can compute it.
