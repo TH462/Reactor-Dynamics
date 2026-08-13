@@ -604,3 +604,70 @@ term everyone agrees is stiff has no consistent integration story anywhere in th
 **Bookkeeping:** §§3 and 5 got `-OLD` splits; **§§1 and 4 did not, and are still cited as live** —
 §1's junction primitive still says *"carries one integrated state, ṁ"*, flatly contradicting §0.2.
 A future agent reading §1 builds the superseded design.
+
+---
+
+## 11. RESOLUTIONS to §10's holes (2) and (3)
+
+### 11.1 The `dP/dt` circularity — resolved EXACTLY, no lag
+
+§10(2) is real: `dρ_i/dt` needs `dP/dt`, which the Newton closure only produces afterwards, and
+near saturation that term dominates the expulsion flow. Lagging it would re-introduce the #447
+mechanism through the very equation §0 added.
+
+**It does not need lagging. The entire node/junction system is AFFINE in `dP/dt`.** Every
+constituent relation is linear in it:
+
+```
+dh_i/dt  = [ṁ_in,i(h_in − h_i) + Q_i + V_i·dP/dt] / m_i      linear in ṁ_in and dP/dt
+dρ_i/dt  = (∂ρ/∂h)·dh_i/dt + (∂ρ/∂P)·dP/dt                   linear in dh/dt and dP/dt
+ṁ_out,i  = ṁ_in,i − V_i·dρ_i/dt                              linear in ṁ_in and dρ/dt
+```
+and a composition of affine maps is affine — including around the loop, where each node's `ṁ_in`
+is the previous node's `ṁ_out`, so the `dP/dt` coefficients simply accumulate.
+
+**Therefore:**
+```
+march(Ṗ) ≡ Σ V_i·dρ_i/dt        evaluated by marching the loop from the anchor at flow ṁ_loop
+Ṗ = (dM_loop/dt − march(0)) / (march(1) − march(0))
+```
+**Two marches and one division. Exact, non-iterative, no lag.**
+
+**Verified numerically** on a 3-node toy loop (2026-08-13): `march(2)` and `march(−0.5)` match the
+affine prediction from `march(0)` and `march(1)` to **7e-12 and 9e-13**; solving for a closed loop
+(`dM/dt = 0`) and re-marching returns `Σ V dρ/dt = 0.00000000`.
+
+**This supersedes §0.3's Newton framing for the *within-step* solve.** Newton is still worth
+keeping as a **drift corrector on the absolute ledger** (`M_total = Σρ(h_i,P)V_i + m_pzr`) run
+every step or every few steps, because integrating `Ṗ` alone accumulates round-off. Two mechanisms,
+different jobs: the affine solve gives an exact *rate*, Newton pins the *level*.
+
+*Note this also removes §10(4)'s Newton-chatter concern from the hot path — the kink in `∂ρ/∂h` at
+void onset is now inside the coefficient evaluation, not inside an iteration.*
+
+### 11.2 The superheat clip — the state equation needs a THIRD regime
+
+§10(3) is correct and is the more serious of the two: `x = (h−h_f)/h_fg` **clipped to [0,1]** means
+a node past `h_g` gets saturated-vapour density forever. **Core uncovery is clad heatup in
+superheated steam**, so as written the model forecloses every meltdown path — half the ruled scope.
+
+**Three regimes, not two:**
+
+| Regime | Condition | ρ | T |
+|---|---|---|---|
+| Subcooled liquid | `h < h_f(P)` | `ρ_l(T,P)` | `T_from_h(h,P)` |
+| Two-phase | `h_f ≤ h ≤ h_g` | `ρ_mix` from `x` | `T_sat(P)` |
+| **Superheated vapour** | **`h > h_g(P)`** | **`ρ_v_sat(P)·(T_sat+273.15)/(T_sup+273.15)`** | **`T_sat(P) + (h − h_g)/cp_v(P)`** |
+
+The superheated density uses the ideal-gas `ρ ∝ 1/T` at constant pressure, anchored on the
+*saturated* vapour density the library already has — so it is continuous at `h = h_g` by
+construction, which matters because §11.1's affine solve differentiates through it.
+
+**L0 additions required** (`engines/pwr2/pwr2_water.js`): **`cp_v(P)`** — vapour specific heat,
+which the library does not currently have — and the three-regime dispatch in a single `ρ(h,P)`
+entry point so callers never branch. **Gate:** continuity of `ρ` *and* `∂ρ/∂h` across both regime
+boundaries, asserted numerically, since a kink there would corrupt the affine coefficients.
+
+**Containment is still not covered** by any of the three — it is an air/steam mixture with a
+non-condensable partial pressure. It needs its own state relation, which the current
+`stepContainment` already effectively has. **Do not force it into the water-only dispatch.**
