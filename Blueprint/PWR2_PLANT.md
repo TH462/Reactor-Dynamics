@@ -574,3 +574,80 @@ than this section originally claimed.
 - `h_film` correlations for boiling and condensing — D2 §8 flags these as the likeliest route for
   recalled constants to re-enter.
 - #472's pressurizer design, as an input.
+
+---
+
+## 8. CCFL under HEM — RESOLVED as a JUNCTION closure *(owner, 2026-08-13)*
+
+*(OWNER, 2026-08-13: "For hem what if we solved it at the boundary between the downcomer/pipe
+interface or the rod channel/bottom pool interface? Basically when it's full of steam it rejects
+water.")*
+
+**This is correct, it is standard practice, and it dissolves a choice I had wrongly framed as
+binary.**
+
+### 8.1 Where I went wrong
+
+§6's correction said the ruled homogeneous-equilibrium model *"structurally cannot produce"*
+ECCS bypass, and offered two exits: drop the ambition, or reopen the two-phase ruling to
+drift-flux. **Both premises were too narrow.**
+
+The reasoning error: I treated CCFL as something that must **emerge from node physics**. It is not
+a node phenomenon at all. **It is a junction closure** — and junctions are precisely where this
+design already has freedom, because §0.2 makes them quasi-steady algebraic rather than integrated.
+
+### 8.2 The mechanism
+
+At a **designated** junction, cap the downward liquid delivery as a function of the upward vapour
+flux. The standard forms are dimensionless superficial velocities:
+
+```
+sqrt(j*_g) + m·sqrt(j*_f) = C           Wallis  (small bore, horizontal)
+Kutateladze form                        (bore > ~50 mm, set by critical wavelength / surface tension)
+```
+
+Under HEM the junction carries one mixture at one velocity, and its **quality gives the phase
+split** of what is trying to pass — so `j*_g` is known. The CCFL relation then **caps the liquid
+that may pass downward**, and the rejected liquid stays upstream. That is exactly *"when it's full
+of steam it rejects water."*
+
+**Crucially this needs no slip inside any node.** It is a *directional capacity limit on a
+junction*, not a two-velocity field. The HEM ruling stands untouched.
+
+### 8.3 The two locations named are the right two
+
+| Junction | Phenomenon |
+|---|---|
+| **Cold leg → downcomer** | **ECCS bypass** — the limiting cold-leg-break case. Upward steam rejects injected water before it reaches the lower plenum. |
+| **Core channel → lower plenum / upper tie plate** | **Reflood delay** — steam generated in the core rejects water attempting to re-enter from above. |
+
+Both are standard CCFL application points in production codes. The surge line is a third
+(documented in the literature) and is worth considering once #472 lands.
+
+### 8.4 Sourcing status
+
+- **RELAP5 carries a CCFL model applied at user-designated junctions**, with both Wallis and
+  Kutateladze forms — and it has its own NRC assessment, **NUREG/IA-0100, "Assessment of CCFL
+  Model of RELAP5"**. *(Located, not yet retrieved — nrc.gov 403s; use the INIS/Wayback routes
+  that worked for the RELAP5 manuals.)*
+- **The correlation constants are geometry-specific and are NOT yet sourced for this plant.** One
+  published pair found (`m = 0.94`, `C_K = 1.24 ± 0.1`) is for a **pressurizer surge line**, not a
+  downcomer — **do not adopt it.** Per D3 §1a's rule, a recalled or borrowed band may not confirm
+  anything; the downcomer and tie-plate constants need their own citation.
+
+### 8.5 Honest accounting — what this is and is not
+
+**It is a DECLARED DEPARTURE, not emergent physics.** A correlation is being asserted at a
+junction because the ruled model cannot generate the phenomenon underneath it. That is legitimate
+and well-precedented — it is what production codes do — but it must be **declared**
+(`DESIGN_COMPANION` §8), not presented as the node model producing CCFL on its own.
+
+**What genuinely improves:** the *topology* argument in §6 was already sound (break location
+changes where inventory leaves and what injected water mixes with). CCFL at the junction now adds
+the **magnitude** that topology alone could not supply. Together they make cold-leg-break bypass
+reachable **without abandoning HEM and without drift-flux.**
+
+**Still owed:** the constants, sourced for downcomer and tie-plate geometry; a rule for where the
+rejected liquid goes (stays upstream vs exits the break — this changes the inventory ledger and is
+not a free choice); and whether the cap applies to the algebraic junction flow before or after
+§18.2's closure solve, which is a sequencing question the build must settle.
