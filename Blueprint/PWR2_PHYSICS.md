@@ -762,3 +762,49 @@ least-squares is what every other correlation in `pwr2_water.js` declares.
 
 **Needs a design ruling:** smooth the boundary, accept the kink and declare it, or reformulate the
 superheat anchor. **The gate as written must not ship, because it cannot pass.**
+
+---
+
+## 13. §0.5's COST BASIS REDONE — the architecture survives, by a different fix
+
+§12.3 showed §0.5 benchmarked `ρ(T,P)` while §1 makes **enthalpy** the state, so the hot path is
+`ρ(h,P)` — and that the honest cost (98.6–493 s against a 35 s budget) was architecture-
+threatening. Redone against the right function.
+
+**What the architecture actually needs.** 2.16M steps × 12 nodes × **3 marches** (§12.2's fix)
+= **78M node-evaluations**, where a node-evaluation must yield `ρ` *and* both partials. Against a
+property budget of ~15 s (engine.step is ~88 % of 35 s; properties roughly half of that):
+**≤ 193 ns per node-evaluation.**
+
+**Three routes measured, and the tradeoff is real:**
+
+| Route | Accuracy | Cost | Verdict |
+|---|---|---|---|
+| Committed `ρ(h,P)` (`T_from_h` → `h_l` → `P_sat`, Newton in Newton) | exact | **7,189 ns** | 37× over |
+| §0.5's `A(T)+C(T)·P` | exact algebra | — | **does not touch this path** |
+| Poly `T(h)` + linear-in-P correction, Horner | **0.87 °C — too loose** | 6.0 ns | fast, not accurate |
+| **Poly `P_sat(T)` + poly seed in `h` + 2 Newton on a cheap `h_l`** | **0.039 °C** | **123 ns** | **FITS — 9.56 s of 15, 2× margin** |
+
+**The adopted route** removes every nested iteration from the hot path:
+1. **`P_sat(T)` as a direct degree-6 polynomial in `ln P`** (max rel. error 0.57 %) — this is what
+   kills the cost, because the committed `P_sat` is a Newton inverse called *inside* another
+   Newton.
+2. **A degree-7 polynomial seed** for `T(h)` at a reference pressure, `h` scaled to [0,1].
+3. **Two Newton steps on a now-cheap `h_l`**, giving **0.039 °C** — 22× better than the fast route
+   and comfortably inside anything the plant cares about.
+
+**58× faster than committed. The cost objection is answered.**
+
+**Three things to carry forward rather than celebrate:**
+
+- **The 2× margin is thinner than it looks.** It assumes 12 nodes and 3 marches. **Node count and
+  march count both multiply it directly** — 20 nodes would consume the margin entirely. **This is
+  now a design constraint on D3's topology, not a free parameter.**
+- **`P_sat` as a fitted polynomial breaks L0's one-curve-one-source-of-truth rule**, which the
+  library's own comments justify at length (the Newton inverse exists so `T_sat` and `P_sat` cannot
+  disagree). Adopting the fit means **the consistency must move from *by construction* to *gated***
+  — assert `P_sat(T_sat(P)) = P` to tolerance. That is an acceptable trade, but it is a trade, and
+  the gate is now load-bearing rather than decorative.
+- **§12.3's minimax point still stands**: 0.027 kg/m³ for `A(T)` needs a Remez fit; plain
+  least-squares gives 0.0610. The library declares least-squares everywhere else, so either the
+  fit method or the claimed accuracy has to change.
