@@ -110,6 +110,58 @@ methods share no denominator.
 candidate: WTSM's 1,800 ft³/3,411 MWt = 0.528 ft³/MWt implies ~158 against my 125, and #472 owns
 it.)*
 
+### 1a-ii. Loop ΔP closure — RUN. **Partially independent, and the honest reading is "in family", not "validated".**
+
+The first check denominated in **pressure** rather than MWt. Computed from geometry:
+Darcy-Weisbach friction plus form losses, on velocity-sized bores and the **sourced** lengths of
+§1a-i, at ṁ = 1639 kg/s.
+
+| Segment | v (m/s) | friction | form | total |
+|---|---|---|---|---|
+| SG tubes (1,637 × 0.775 in × 40 ft) | 4.66 | 85.4 | 19.2 | **104.6 kPa** |
+| Core (21 assemblies, lattice Dh, 7 grids) | 4.13 | 37.3 | 42.1 | **79.4 kPa** |
+| Hot leg | 13.31 | 13.5 | 93.7 | **107.2 kPa** |
+| Crossover | 11.44 | 9.0 | 92.4 | **101.4 kPa** |
+| Cold leg | 14.77 | 19.4 | 115.5 | **134.9 kPa** |
+| Vessel internals | 5.63 | 7.2 | 44.8 | **52.1 kPa** |
+| | | | **TOTAL** | **579.6 kPa = 0.580 MPa = 84.1 psi = 275 ft** |
+
+D2 §6 **asserted** "~0.5 MPa of rated loop friction"; derived is **116 %** of it. Reference
+Westinghouse RCP head is the **~280 ft** class against this **275 ft**.
+
+**WHAT THIS DOES NOT PROVE — stated first, because the reflex to call it validation is exactly
+what went wrong three times.**
+
+- **The piping term is partly circular.** Bores were sized to hold the *reference plant's* 43 ft/s
+  velocity, and §1a-i's lengths are the *reference plant's* lengths. Since ΔP ∝ v² at fixed L/D,
+  reference velocity × reference length ⇒ reference ΔP **by construction**. Piping is
+  **343 of 580 kPa (59 %)**, so the majority of this check is near-tautological. What it really
+  says is: *pump head is set by velocity and layout, not by power* — true, useful, and not a test
+  of SLS-100's geometry.
+- **It is sensitive to recalled numbers.** Form losses are **59 % of the total**, and the K values
+  (1.5–2.0 per leg, 7.0 for grid spacers, 2.5 for tube entrance/exit) are **RECALLED, not
+  sourced**. A 30 % error in K moves the total ~18 %. **These belong on the evidence list.**
+
+**WHAT IT DOES PROVE, and it is real.** The **core and SG terms — 184 kPa, 32 % — are genuinely
+independent.** They come from assembly count and heat-transfer area, derived without reference to
+any pump or velocity. Had they come out at, say, 500 kPa, the total would have blown past any
+buildable single-stage RCP head and the sizing would be refuted. They did not. **That is a real,
+non-circular constraint satisfied**, and it is the first one this design set has passed.
+
+**A second result, and it confirms the review's correction.** Re-running natural circulation on
+the derived ΔP with the review's corrected elevation — **thermal-centre separation ~8.0 m**, not
+D2 §6's 16.8 m RCP-suction-to-tube-top:
+
+| Δz | buoyancy | flow @ 2 % decay | @ 5 % |
+|---|---|---|---|
+| 16.8 m (D2 as written) | 12.2 kPa | 7.5 % | 10.2 % |
+| **8.0 m (review-corrected)** | **5.8 kPa** | **5.9 %** | **7.9 %** |
+
+Real-PWR natural circulation is **~4–5 % of rated at 2–3 % power**. The corrected elevation moves
+the answer *toward* the real band from above. **The review's correction is independently
+confirmed**, and D2 §6's 16.8 m should be replaced — the RCP suction is on the cold side,
+downstream of the heat sink, so it contributes nothing net to ∮ρg·dz.
+
 **A finding the retracted section missed entirely.** Its ranked shortfall list (loop length, SG tube
 length, plena) omits **the number that was just cut by 2.7× to create the shortfall**. The
 re-derived downcomer gap is *itself* a 4-loop statistic — the area ratio is
