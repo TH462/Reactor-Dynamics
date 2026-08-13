@@ -9,7 +9,7 @@
 | L | What it proves | Pattern | Reference |
 |---|---|---|---|
 | **0** | Correlations match reality | Assert vs **external published data**; tolerance = the file's own claimed accuracy; plus a **negative control** | `test/run_pwr2_water.js` — **BUILT, 56/56** |
-| **1** | **Conservation** | Closed loop, no sources: mass and energy conserved **to machine precision** | **NEW — the assertion `engines/pwr/` cannot make in any form** |
+| **1** | **CLOSURE RESIDUAL** *(revised — see below)* | After the pressure solve, `M_total − Σρ(h_i,P)V_i − m_pzr(P)` stays below tolerance; and the Newton converges | **NEW — the assertion `engines/pwr/` cannot make in any form** |
 | **2** | Engine-direct acceptance | In-file `Harness`, fixed dt 0.02, `test()/ck()`, explicit `runAll()` order array | `pwr_engine.js:2382/2582/4140` + `test/run_pwr.js` |
 | **3** | Engine under the control layer | `OpsHarness` — M5 tick order, `evalDt`, recorder, `checkSanity` | `test/ops_harness.js` |
 | **4** | Behaviour vs the catalog | Catalog-derived bands, `XFAIL`/`COVERAGE`, strict xfail **including XPASS-red** | `test/behavior_pwr.js` |
@@ -28,6 +28,29 @@
 > This is also a worked instance of HR10: Layer 1 was written from what the architecture *does*
 > (integrate conserved quantities) rather than from what it must be *right* about, so it could only
 > ever confirm the thing it was derived from.
+>
+> ### UPDATE, 2026-08-13 — the architecture changed underneath this finding
+>
+> D2 §0 resolves the over-determination by making **`m` derived rather than integrated**, so
+> **volume closure is now satisfied BY CONSTRUCTION and can no longer fail.** The gate as proposed
+> above would be vacuous — a check that cannot go red, which is the exact failure mode this repo
+> keeps re-learning.
+>
+> **What replaces it, and it is not vacuous.** Pressure is *solved* from the mass ledger
+> (`M_total = Σρ(h_i,P)V_i + m_pzr(P)`, 1-D Newton), so the meaningful assertions are:
+> 1. **Closure residual** after the solve stays below tolerance — catches a non-converging or
+>    ill-conditioned solve, which is a real failure mode.
+> 2. **Newton iteration count** stays bounded — catches conditioning degrading silently
+>    (measured dM/dP: 26.9 kg/MPa bubbled, **10.6 solid** — the solid regime is genuinely
+>    tighter and is where this would first bite).
+> 3. **`M_total` drift** is zero to machine precision with no branches open — now trivially true,
+>    since `M_total` is a single integrated scalar, so **this one IS weak** and should be labelled
+>    as a smoke test rather than evidence.
+>
+> **Note what just happened, because it is the same lesson twice:** the original Layer 1 was
+> hollow, the review's proposed fix was right *for the architecture as it then stood*, and the
+> architecture change made the fix vacuous in a different way. **A gate must be re-checked against
+> the design it guards whenever that design moves** — inheriting a gate is inheriting a claim.
 
 **Layer 1 is the one that justifies the rewrite** and it must be written first, before any plant
 topology exists. A closed loop of N nodes with arbitrary initial enthalpies, no sources, no sinks:

@@ -199,12 +199,17 @@ the two fits cannot drift.
 ## 1. Primitives
 
 ### Node — a control volume
+
 | | |
 |---|---|
-| **State (integrated)** | `m` mass · `h` specific enthalpy · `T_wall[]` metal temperature, 1..N lumps |
+| **State (integrated)** | `h` specific enthalpy · `T_wall[]` metal temperature, 1..N lumps |
 | **Fixed (geometry)** | `V` volume · `z` centroid elevation · `M_wall` metal mass · `A` wetted area · `cp_wall` |
-| **Derived each step** | `T`, `ρ`, `x` (quality), `α` (void fraction) — all from `h`, `P` via L0 |
+| **DERIVED each step** | **`m = ρ(h,P)·V`** · `T`, `ρ`, `x` (quality), `α` (void fraction) — all from `h`, `P` via L0 |
 | **Per-node flags** | `transport: plug \| stirred` · `wallLumps: N` |
+
+**`m` is DERIVED, not integrated** — §0.1. A rigid node has one thermal degree of freedom, and
+carrying both `m` and `h` is the over-determination the review found. The system-level mass ledger
+is a *single* integrated scalar, `M_total`, and it is what the pressure solve consumes (§0.3).
 
 **Enthalpy is the state, not temperature.** Advection is then the state variable literally moving,
 so energy conservation becomes a runnable assertion; and the node survives phase change with no
@@ -233,15 +238,28 @@ which is what makes break *location* physics rather than a scalar severity.
 ## 2. Conservation — the core, and the assertion
 
 ```
-mass      dm/dt      = Σ ṁ_in − Σ ṁ_out
-energy    d(m·h)/dt  = Σ ṁ_in·h_in − Σ ṁ_out·h_out + Q_wall + Q_src
-wall      M·cp·dT_w/dt = −Q_wall          Q_wall = h_film·A·(T_wall − T)
-state     T, ρ, x    = f(h, P)            [L0, engines/pwr2/pwr2_water.js]
+SYSTEM mass    dM_total/dt = Σ sources − Σ sinks         (branches only; the loop is closed)
+NODE   energy  m_i·dh_i/dt = ṁ_in·(h_in − h_i) + Q_wall + Q_src      m_i = ρ(h_i,P)·V_i
+       wall    M·cp·dT_w/dt = −Q_wall        Q_wall = h_film·A·(T_wall − T)
+LOOP   momentum (ΣL/A)·dṁ/dt = ΔP_pump + ΔP_buoy − ΔP_fric           ONE state
+CLOSURE         M_total = Σ ρ(h_i,P)·V_i + m_pzr(P)      →  solve for P   (1-D Newton)
+       junction ṁ_out,i = ṁ_in,i − V_i·dρ_i/dt           ALGEBRAIC, not a state
+state           T, ρ, x = f(h, P)            [L0, engines/pwr2/pwr2_water.js]
 ```
 
-**The assertion that justifies the whole rewrite:** on a closed loop with no sources, total mass
-and total energy are conserved **to machine precision**. `engines/pwr/` cannot make this claim in
-any form — it has no mass and no enthalpy. This is D5's Layer-1 gate.
+**Note the node energy equation is in non-conservative form** (`m·dh/dt`, not `d(mh)/dt`). That is
+deliberate and follows from §0: `m` is derived, so differentiating it would reintroduce the
+spurious state. Energy is still conserved — the `dm/dt` term that the conservative form would
+carry is exactly the thermal-expansion flow the junction equation already accounts for, so
+including it would double-count.
+
+**The assertion that justifies the rewrite, restated correctly.** The naive claim — *"total mass
+and energy are conserved to machine precision"* — is now **trivially true for mass** (`M_total` is
+a single integrated scalar with no internal redistribution to get wrong) and therefore **worthless
+as a gate**. The gate that carries weight is the **closure residual**: after solving for `P`, the
+quantity `M_total − Σρ(h_i,P)V_i − m_pzr(P)` must stay below tolerance. That is a real failure
+mode (a non-converging or ill-conditioned solve), and it is what D5 must assert. See D5's revised
+Layer 1.
 
 **Two-phase: homogeneous equilibrium** (ruled). Quality from enthalpy, phases at equal temperature
 and velocity:
@@ -256,7 +274,37 @@ one velocity here. That is the known cost of the ruling.
 
 ---
 
-## 3. Q1 — How is flow computed? **ANSWER: full junction momentum.**
+## 3. Q1 — How is flow computed? **ANSWER: one loop momentum state; branches quasi-steady.**
+
+**REWRITTEN 2026-08-13.** This section previously answered *"full junction momentum"* on the
+strength of the table below. **Both the answer and the table were wrong** — see the review block
+above (findings B and C) and §0.2. The correct answer:
+
+| Path | Treatment | Why |
+|---|---|---|
+| **Main loop** | **ONE integrated momentum state** | A series loop has one flow DOF; continuity plus thermal expansion determines every junction algebraically (§0.2). |
+| **Branches** — surge, spray, charging, letdown, ECCS, relief, **break** | **Quasi-steady algebraic** | Collapsed `L/A` and up to 15.3 MPa driving ΔP. A DE cold-leg guillotine has **τ ≈ 6.9e-4 s = 0.034 steps** at dt = 0.02 — explicit momentum there is unstable by ~3 orders of magnitude. Critical-flow correlations, as every production code does. |
+
+**The margin on the loop state, computed correctly** (inertia over damping, not the forcing
+timescale the old table used): `τ = (ΣL/A)/(2·ΔP_fric/ṁ)` ≈ **0.23 s, ~11 steps** at dt = 0.02.
+Stable, but **~190× less margin than this section originally claimed** — and it was the sole
+evidence offered for "comfortably explicit". A design margin quoted 190× high is not a margin.
+
+**The friction caveat, corrected.** The original text linearised friction because *"damping
+vanishes at ṁ = 0"*. That is backwards: vanishing damping is the *absence* of stiffness. Friction
+is stiffest at **high** flow, where `∂(Kṁ|ṁ|)/∂ṁ = 2K|ṁ|` is largest — that is where
+semi-implicit treatment earns its place. At reversal the Jacobian → 0, so semi-implicit degenerates
+to explicit exactly where the original justification put it, and can chatter when
+`dt·(A/L)·2K|ṁ| > 2`. **Flow reversal is handled by the laminar floor, which must be specified,
+not by the semi-implicit term.**
+
+---
+
+### 3-OLD. Superseded — the original analysis, kept legible
+
+> The claim below (*"full junction momentum"*) is **wrong**, and the table computes a **forcing
+> timescale under an arbitrary imposed ΔP, not a system eigenvalue**. Retained because the error is
+> instructive: the number looked like a comfortable margin and was ~190× optimistic.
 
 **This reverses the plan-stage lean toward quasi-steady-with-lag.** The reason was a fear that
 momentum is a second stiff term. Analysed, it is not:
@@ -321,7 +369,27 @@ and step 14c before 14b, each ordering load-bearing — has no analogue here.
 
 ---
 
-## 5. Pressure — one RCS state, per-node void (ruled)
+## 5. Pressure — one RCS state, solved from mass closure
+
+**REWRITTEN 2026-08-13.** The original text below asserted **two different node pressures at
+once** — `P_node = P_rcs + ΔP_quasi-static`, *and* that a node voids "when enthalpy crosses
+saturation at its local pressure" with `m` and `V` both fixed. **§0.3 removes the contradiction by
+never asserting a node pressure at all:** `P` is *solved* from the system mass ledger, and the
+quasi-static ΔP field is a reporting output, not a second claim about pressure.
+
+**Voiding therefore needs no special case.** `ρ` becomes `ρ_mix(h,P)`, `∂ρ/∂P` grows by orders of
+magnitude, and the same closure equation transfers pressure capacitance from the pressurizer bubble
+to the voids continuously. **Measured:** dM/dP falls 26.9 → 10.6 kg/MPa when the bubble is
+removed — water-solid stiffness is real physics, retained rather than approximated.
+
+**The declared limitation is unchanged and still honest:** there is **no true pressure gradient
+during blowdown**. Break *location* effects survive because they are **topology** — cold-leg-break
+ECCS bypass, crossover loop-seal drain, SGTR containment bypass all come from *which nodes the
+junction connects*.
+
+---
+
+### 5-OLD. Superseded — the original, self-contradictory formulation
 
 The liquid RCS is incompressible; the pressurizer bubble is the compressible volume. So there is
 **one dynamic pressure state**, plus a quasi-static ΔP field for the loop, plus per-node void.
@@ -344,20 +412,27 @@ survive intact.
 
 ## 6. Q4 — Natural circulation. **ANSWER: derived, and W ∝ Q^⅓ emerges.**
 
-The buoyancy term `ρ g Δz` is already in the momentum equation, and node densities are real (L0).
-With ~55 ft (16.8 m) between RCP suction and SG tube top (`PWR_LOOP_GEOMETRY.md` §5) and
-Δρ = 74 kg/m³ at rated ΔT, buoyancy head is 12.2 kPa against ~0.5 MPa of rated loop friction.
+The buoyancy term `ρ g Δz` is already in the loop momentum equation, and node densities are real
+(L0). **The elevation and the friction figure have both been corrected since this section was
+written:**
 
-Balancing buoyancy against friction, with ΔT = 33·(q/w) by the energy balance:
-```
-w³ = (buoy_rated / Δp_rated) · q
-```
+- **Δz is the separation of THERMAL CENTRES, ~8.0 m — not the 16.8 m RCP-suction-to-tube-top this
+  section originally used.** The RCP suction sits on the **cold** side, *downstream* of the heat
+  sink: fluid descends to it cold and leaves it cold, contributing nothing net to ∮ρg·dz. Found in
+  review, **independently confirmed** by the result below.
+- **Loop friction is 0.580 MPa, DERIVED** (`PWR2_PLANT.md` §1a-ii), not the ~0.5 MPa this section
+  asserted.
 
-| Decay heat | Emergent flow |
-|---|---|
-| 2 % | 7.9 % of rated |
-| 5 % | 10.7 % |
-| 10 % | 13.5 % |
+Balancing buoyancy against friction, with ΔT = 33·(q/w) by the energy balance, `w³ = (buoy/Δp)·q`:
+
+| Decay heat | ORIGINAL (16.8 m, 0.5 MPa) | **CORRECTED (8.0 m, 0.580 MPa)** |
+|---|---|---|
+| 2 % | 7.9 % | **5.9 %** |
+| 5 % | 10.7 % | **7.9 %** |
+
+**Real-PWR natural circulation is ~4–5 % of rated at 2–3 % power.** The correction moves the answer
+*toward* the real band from above — which is the confirmation that the elevation fix is right, and
+it was reached by a route (loop ΔP from geometry) independent of the review that proposed it.
 
 **The cube-root law is not a correlation PWR2 imposes — it falls out of the momentum balance.**
 Today it is asserted (`Manuals/12` §12.4 notes the shape is sourced but *"the SCALE is this
@@ -369,7 +444,40 @@ D3 fixes.*
 
 ---
 
-## 7. Q3 — Surviving one-step-old couplings. **ANSWER: target 2, from ~23.**
+## 7. Q3 — Surviving one-step-old couplings. **ANSWER: ~23 → 0 INSIDE the engine, plus 2 that were always outside it.**
+
+**REWRITTEN 2026-08-13.** The original *"23 → 2"* was a **category swap**: both named survivors
+are **outside** the engine and exist identically today — they were never among the ~23 in-engine
+reads. And **`CONTEXT.md` §11 contains no count of 23**, which D1 §5 cited it for; the figure came
+from an inventory of annotated sites, and **at least one of them survives by design** (kinetics
+reading start-of-step reactivity, which §4 explicitly retains).
+
+**What gather-then-integrate actually does, stated at the strength the mechanism supports:**
+
+| | |
+|---|---|
+| **Ordering couplings** — a term reading a value another term wrote *this step* | **Genuinely eliminated.** Phase 1 reads only time *n*; Phase 2 writes only *n+1*. The current 27-step schedule's step-9-before-step-8 problem has no analogue. |
+| **Algebraic couplings** — two quantities that depend on each other simultaneously | **NOT eliminated — converted to a uniform first-order explicit lag.** Whether that is an improvement depends entirely on whether the lagged loop is stiff. |
+
+**The containment example the original section used is a redefinition, not an elimination.**
+Reading both endpoints at time *n* **is** the one-step-old read. It is a real consistency
+improvement on today's mixed treatment (current break flow against stale containment pressure) and
+should be claimed as *that* — but the loop is still closed explicitly, with identical stability.
+
+**§0 does eliminate the worst algebraic loop, by a different mechanism.** P↔void — the stiffest
+loop in the plant, since `∂ρ/∂P` is enormous near saturation — is not lagged at all: it is solved
+**implicitly within the step** by the 1-D Newton closure (§0.3). That matters, because an explicit
+lag on P↔void is mechanically the same family as **#447's 40-second limit cycle**.
+
+**Honest scorecard:** in-engine ordering couplings → **0**. The pressure/void algebraic loop →
+**solved implicitly**. Remaining explicit algebraic lags → break/relief flow against containment
+pressure, and kinetics feedback. The two engine↔instruments↔control couplings are **outside** and
+were never in the count; instrument lag is HR1 *by design* and control acting on last cycle's read
+is real plant behaviour.
+
+---
+
+### 7-OLD. Superseded — the original claim
 
 The gather-then-integrate step (§4) eliminates **every** within-physics ordering coupling, because
 no physics term ever reads a value another physics term wrote in the same step.
