@@ -1216,3 +1216,140 @@ the bracketing case is *constructed*, not a run that failed.
 
 **I wrote that trichotomy into the ruling request.** The gate demanded a property the physics does
 not have, and the argument about how to satisfy it hid three defects in the branches underneath.
+
+---
+
+## 18. SUPERHEAT/KINK RESOLVED — ATTEMPT 3 WINS. Delete §11.1; the derivative was the defect.
+
+Three independent attempts, one clear answer. **Attempt 3 subsumes attempt 2 (accept the kink) and
+refutes attempt 1 (smooth it): if you never differentiate ρ, the kink cannot hurt you.**
+
+### 18.1 No state variable can help — a coordinate invariant, proven and measured
+
+For any state `σ = φ(h,P)` with `φ` smooth in `h`, the chain rule gives `∂ρ/∂σ = (∂ρ/∂h)/(∂φ/∂h)`
+and `∂φ/∂h` is **continuous** at `h_f` — so it **cancels from the ratio**:
+
+| P | h | quality | entropy | h^1.7 | **internal energy** |
+|---|---|---|---|---|---|
+| 0.1 MPa | 3792 | **3792** | **3792** | 3792 | **4100** |
+| 15.41 MPa | 5.74 | 5.74 | 5.74 | 5.74 | **6.49** |
+
+**Quality and entropy are exactly invariant — zero gain. Internal energy is 8–13 % WORSE.**
+`(ρ,e)` with per-node pressure returns acoustics: liquid c = 932 m/s, **dt ≤ 0.002 s, 10× more
+steps, 39–65 s against a 15 s budget.** **`h` stays** — precedented in CTF/COBRA-TF, VIPRE, APROS,
+Modelica.
+
+### 18.2 THE FIX — eliminate the derivative by never taking it
+
+With §2's corrected `V·dP/dt` term, the energy equation integrates to a form **exactly affine in P
+whose coefficient needs no property derivative at all**:
+
+```
+h_i(P) = a_i + v_i·(P − P_n)      v_i = V_i/m_i = THE SPECIFIC VOLUME   ← exact, not a partial
+F(P)   = Σ V_i·ρ(a_i + v_i(P−P_n), P) − M_total = 0    ← bracketed 1-D root-find
+ṁ_out,i = ṁ_in,i − (V_i·ρ_i^{n+1} − m_i^n)/dt          ← an exact mass DIFFERENCE
+```
+
+**Why the kink cannot corrupt it — a theorem.** Moving `P` at fixed `a_i` moves `h` along
+`dh = v·dP`, which **is the isentrope**. Therefore `dF/dP = Σ V_i/c_i² > 0` by thermodynamic
+stability — **verified to 2.5e-10**. `F` is continuous (ρ is continuous, 6.1e-10 at `h_f`) and
+**strictly monotone: 0 non-monotone samples in 4,000**, including cases where the slope spans
+**17,000×**. A bracketed solve on a continuous monotone function converges however violent the
+derivative jump is.
+
+### 18.3 Head-to-head — 8-node loop, same physics, same dt
+
+**A1** = §11.1 as written · **A2** = §12.2's 3-march fix at its strongest · **B** = proposed.
+
+| case | A1 | A2 | **B** |
+|---|---|---|---|
+| small break, 400 s | 153 kg | 10.8 kg | **5.9e-8 kg** |
+| through the kink, 250 s | 492 kg | **941 kg — WORSE than A1** | **1.0e-7 kg** |
+| blowdown, deep void | **7,000 kg (47 % of inventory), STALLS** | 604 kg | **1.0e-7 kg** |
+| evals/node/step | 8 | 24 | **5–7** |
+
+**Timestep convergence — the single strongest result:**
+
+| dt | A1 | A2 | **B** |
+|---|---|---|---|
+| 0.005 s | 11.10838 | 11.10933 | **11.27867** |
+| 0.1 s | 11.00133 | 11.00055 | **11.27824** |
+| 1.0 s | **DIVERGED** | **DIVERGED** | **11.27405** |
+
+**B varies 0.67 psi across a 200× dt range; A varies 32.6 psi over 80× and diverges at 1.0 s.**
+**B is converged; A is not** — and §12.1's "largest stable dt 0.2 s, 10× margin" was measuring
+A-family behaviour. **Cost: B needs NO partials — 3.91 s vs 11.73 s, a 3.8× margin**, and it
+survives §14.2's plug-flow multiplier that §13 said would consume everything.
+
+### 18.4 §12.2's diagnosis was INCOMPLETE, and §0's justification is CIRCULAR
+
+- **The affine failure needs no donor-cell reversal.** Measured with **zero flow anywhere**: 50.3 %
+  error with one node on `h_f`, **999.1 % mixed-regime at 145 psia.** The cause is the ρ-kink
+  itself. **"Three re-linearisations" is not a fix — it is an unsafeguarded iteration**, and it
+  measured *worse* than no fix on the kink case.
+- **§0's reason is circular.** *"In a rigid node V is fixed and ρ = ρ(h,P), therefore m is
+  determined"* treats `P` as externally given, but `P` is a property of the node's own state.
+  **Rigidity reduces nothing.** The reduction comes **entirely from the one-pressure ruling**,
+  which imposes N−1 constraints — measured at **53–529 psi of node-pressure disagreement per
+  step**. The conclusion survives; the argument does not. **And §0.4's claim that volume closure
+  "can no longer fail" is WRONG** — it reached **7,000 kg, 47 % of inventory**, in the prototype.
+
+### 18.5 Production codes corroborate — sourced, verbatim
+
+- **RELAP5/MOD3 (NUREG/CR-5535 §3.4.6) has this exact bug and it has a NAME — "water packing":**
+  *"The cause of the anomalous pressure spikes is the discontinuous change in compressibility…
+  The density-pressure relationship used to calculate the new time pressure is based upon the
+  beginning of time step values for the state properties and derivatives."* And decisively:
+  **"The same problems are seen using a two-fluid model or the homogeneous equilibrium model."**
+  That is A1's 7,000 kg stall, documented in a 1995 NRC manual.
+- **RELAP5's remedy is UNAVAILABLE to us.** Its metastable extrapolation (§3.2.2, capped at 50 K
+  and policed by timestep rejection) works because RELAP5 is **two-fluid** — each phase has a
+  continuous branch to extrapolate along. **Under the ruled HEM there is no metastable state; the
+  mixture IS the discontinuity.** Adopting RELAP5's fix means abandoning the HEM ruling.
+- **TRACE (ML071000097) is scheme B's principle in a production code:** *"The nonlinear equations
+  are not simply replaced by a linearized approximation, as is done in RELAP5."*
+- **TRACE also kills `(ρ,e)` on our exact grounds:** *"Density is not a good choice because of the
+  need to model liquid solid regions… a small error in a solution for density can translate to a
+  significant error in pressure."*
+- **A 2023 MERL patent (US 11,739,996 B2) refutes attempt 1 from the literature** — its remedy is
+  saturation-aligned coordinates with knots **on** the saturation curve at continuity degree 0,
+  i.e. **represent the kink**, warning that smoothing *"create[s] inaccurate derivatives in
+  single-phase regions."*
+- **ThermoCycle names our failure mode in an enthalpy-state code:** *"the main discontinuity is
+  often the density derivative on the liquid saturation curve. Simulation failure or stiff systems
+  can occur if the cell-generated (and purely numerical) flow rate due to this discontinuity causes
+  a flow reversal."* Its four remedies each cost something — filtering *"affects the energy
+  balance"*, smoothing *"might cause a mass defect."* **Scheme B pays none of them.**
+- **The published WHY for (p,h)** — Hirsch/Eck/Steinmann, 4th Modelica Conf. 2005: *"Using
+  temperature T instead of h is not possible since temperature and pressure are directly linked in
+  the two-phase region. The steam fraction x can not be used since it is not defined in the single
+  phase regions."*
+
+### 18.6 The property table — store `v`, not `ρ`
+
+`v_mix = v_f(P) + x·v_fg(P)` is **exactly linear in quality** under HEM. Tabulate on **(quality, P)
+with x = 0 and x = 1 as exact grid lines**, so no cell straddles the boundary and the kink lands
+*on* a node line instead of being averaged away. **161 × 69 = 87 kB, 50 ns**, max error **0.06 %** —
+10× tighter than the correlations it interpolates — and **the kink is reproduced** (6.0 vs exact 5.7
+at 2235 psia), not smeared. **A ρ-table is 762 % wrong at 0.12 MPa.**
+
+### 18.7 Rulings recommended
+
+1. **Keep `h`.** 2. **Delete §11.1's affine march; bracketed root-find on the exact closure; never
+compute `∂ρ/∂h` or `∂ρ/∂P` in the hot path.** 3. **Gate ρ-continuity + `dF/dP > 0`; delete the
+`∂ρ/∂h` continuity requirement.** 4. **Tabulate `v` on (quality, P).** 5. **Correct §0's
+justification** — the DOF count is right, the reason is the one-pressure ruling, and the closure
+residual **can** fail.
+
+**What it costs:** *"non-iterative"* is dead (1–7 iterations, typically 2–3); one new explicit lag
+on junction expansion flows; §§1, 2, 4, 11.1, 11.2 all need edits. **Untested:** walls (§9's
+τ ≈ 0.10 s is still the binding constraint and no prototype has any), the pressurizer pair,
+kinetics coupling, two-momentum-DOF lineups.
+
+**And §14.1 is over-determined** — the RCS mass ledger *and* `V_liq + V_steam = V_pzr` are two
+equations for one `P`. Flagged, not investigated.
+
+> **The framing error, in the finding agent's words:** *"The 3,812× number was read as a defect to
+> be engineered away. It is a first-order phase transition — the thing a LOCA IS. Every hour spent
+> making it smooth is spent making the sim less able to teach flashing. The kink is not the
+> problem; taking its derivative was."*
