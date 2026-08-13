@@ -1002,3 +1002,97 @@ summary line.
 measurement and not re-read against it. The generalised rule in D3 §1a — *any acceptance criterion
 I choose that cannot fail* — now has a third form: **a summary line in a script is an acceptance
 criterion, and it does not fail when the data disagrees with it.**
+
+---
+
+## 16. SUPERHEAT ANCHOR — first of three independent attempts (2026-08-13)
+
+*(OWNER RULING, 2026-08-13: "Reformulate the superheat anchor. You could try deploying a few
+agents that will try to find independent solutions.")* Three agents were given deliberately
+different mandates. **This records the first to report; two are still running and the final choice
+must wait for them.**
+
+### 16.1 A C1-continuous formulation EXISTS and is cheap — "SBV"
+
+**State the equation in SPECIFIC VOLUME, not density.** `v` is *exactly* linear in `h` in the
+two-phase region and near-linear in the other two, so the state equation is piecewise-near-linear
+with two **corners** — a slope problem, not a shape problem. Then on a narrow band around each
+boundary, **blend the SLOPES** (quintic smoothstep, with the linear coefficient *solved* so the
+value lands exactly on the right branch), leaving the pure branches untouched outside the bands.
+
+| | measured |
+|---|---|
+| `∂ρ/∂h` left-vs-right gap | **5e-13 … 7e-8** relative (control: the committed form reads `*** KINK ***`, gap ratio 1.00) |
+| `∂ρ/∂P` gap | 3e-13 … 5e-6 |
+| **§12.4's live trap** (central vs one-sided `∂ρ/∂P`) | **0.91–1.00×**, against **25,000×** on the kinked form |
+| Cost incl. **both analytic partials** | **28–60 ns** — **6.5× inside §13's 193 ns budget** |
+| Accuracy outside bands | two-phase 0.000, superheat 0.0000, liquid ≤0.76 kg/m³ |
+
+**It also removes §13's `P_sat`-as-a-fitted-polynomial trade** — no Newton anywhere — so L0's
+one-curve-one-source-of-truth rule survives after all.
+
+### 16.2 ⛔ BUT C1 IS A PROXY FOR THE WRONG REQUIREMENT — and this is the real finding
+
+**The 166 kg residual is a CURVATURE problem, not a continuity problem.** The linearisation is
+valid only while `band ≫ Δh_per_step`. Measured one-step residual, node sitting on `h_f`:
+
+| P | kinked | SBV | gain |
+|---|---|---|---|
+| 15.41 MPa (2235 psi) | 14.0 kg (31 lb) | **1.6 kg** | 12.6× |
+| 5.0 MPa | 73 kg | 27 kg | 3.7× |
+| 1.0 MPa | 340 kg | 123 kg | 2.9× |
+| **0.1 MPa (14.5 psi)** | 1280 kg | **615 kg** | **2.1× — still enormous** |
+
+**And at larger steps SBV is WORSE**: Δh = 10 kJ/kg at 0.1 MPa gives 5068 kg against the kinked
+form's 1680, because the smoothed tangent is steeper and the step leaps the whole band. When a node
+jumps clean over the band, kinked and SBV are **identical to 3 significant figures.**
+
+**The governing quantity is `h_dbl(P) = v_f·h_fg/v_fg`** — the enthalpy above `h_f` at which ρ
+halves: **1.39 kJ/kg at 0.1 MPa, 191.6 at 15.41 — a 138× range.** Band/Δh is 5.3× at operating
+pressure and **0.03× at blowdown pressure**. **No formulation escapes this**; the bound
+`max|Δv| ≈ 0.156·b·Δs` is a property of mollifying a corner, not of the blend chosen.
+
+> **THE GATE MUST BE `band ≥ k·Δh_max`, NOT CONTINUITY.** A formulation reporting *"C1: PASS"* at
+> 0.1 MPa while the residual is unchanged at 615 kg is **a green gate over a live defect** — which
+> is the exact failure mode this repo keeps re-learning. §11.2's proposed gate was asking for the
+> wrong property, and would have certified a plant the solver still cannot integrate.
+
+### 16.3 Three results worth keeping regardless of which attempt wins
+
+- **Blending VALUES is structurally wrong** — it makes ρ **non-monotone** (heating *densifies* the
+  fluid) once the slope ratio exceeds **5.76**, and measured ratios run **4.6× at 17 MPa to 3800×
+  at 0.1 MPa**. It fails at every pressure. Blending slopes is monotone by construction.
+- **Why no `cp_v` can fix `h_g` — the deeper reason.** Continuity requires
+  `cp_v = h_fg/(T_sat_K·(1−ρ_g/ρ_f))`, and the leading term `h_fg/T_sat_K` **is the entropy of
+  vaporisation** — a *Clapeyron* quantity. The two-phase slope at x=1 is set by **the slope of the
+  saturation line**, not by any isobaric specific heat. **It is a category error, not a fitting
+  failure.**
+- **A single global bivariate fit is dead:** tensor Chebyshev over the whole envelope gives
+  **168 % → 92 % max relative error for 32 → 300 terms.** Gibbs behaviour against a
+  near-discontinuity; it will not converge.
+
+### 16.4 Method findings — three of them change how the other work should be checked
+
+- **A single left-vs-right derivative comparison cannot distinguish a kink from truncation error.**
+  Only **step refinement** can: a kink holds its gap (ratio 1.00 over a 1000× step reduction),
+  truncation falls linearly. The agent's own first C1 table misread a perfectly C1 point as a kink.
+- **A central difference across a kink AVERAGES the two sides, which flatters the kinked model.**
+  Its first residual table showed kinked and SBV identical, for exactly this reason.
+- **An ITERATIVE INVERSE IS NOT A SMOOTH FUNCTION.** A tolerance-terminated Newton put a ~1e-2
+  noise floor on the derivative at 15.41 MPa. **§13's adopted route uses a FIXED two-step Newton,
+  which is smooth — that distinction is load-bearing and must be stated in the spec**, because
+  "iterate until converged" and "iterate exactly twice" differ in whether the result is
+  differentiable.
+
+### 16.5 Physical honesty cost, declared
+
+**Both kinks are real.** SBV erases the `h_f` kink and **over-reads void by 1.00 ± 0.05 percentage
+points** at band centre. At 15.41 MPa the band spans 2.8 °F of subcooling while real
+net-vapour-generation subcooling is tens of °F — **so the smoothing is NOT a subcooled-boiling
+model and must not be sold as one.** UNSOURCED. Real water also has a kink at `h_g` (recalled
+~2.4× slope ratio at 1 MPa); SBV erases that too, at ≤1.01 % of ρ_g.
+
+**Still owed on this attempt:** `cp_v(P)` uses recalled anchors (max residual 1.02 kJ/kg·K) and the
+`h_g` band width depends on it; the real-steam superheat slope ratio at `h_g` is recalled; and the
+**2.8 kJ/kg per-step Δh that sets where the whole thing stops working is derived, not measured
+against the engine's actual per-node distribution.**
