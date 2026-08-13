@@ -223,6 +223,70 @@ causes, and **the two largest are errors in my own geometry** (an unbuildable an
 vessel heads) rather than disagreements with a reference plant. The residual third is not
 attributed and **must not be closed by adjusting the least-defended number.**
 
+### 1a-v. SOURCED geometry applied — the shortfall largely closes, and one correction was mine to make weeks ago
+
+Five evidence passes returned **SOURCED, high confidence**. Applying the two that bear on the
+shortfall:
+
+**SG — EPRI NP-1721 Vol. 1 §3 (Westinghouse Model 51):** *"number of tubes and tie rods 3393 …
+heat transfer area 51534 ft2"* per SG at 852.5 MWt, tube 0.875 in OD × 0.050 in wall, height to
+start of bend 356.75 in, to end of bend 416.59 in.
+
+| | Design basis used | **SOURCED** | |
+|---|---|---|---|
+| HT area per MWt | 50 ft²/MWt | **60.5** | 21 % low |
+| Average tube length | 40 ft (from an uncited ~55 ft) | **66.4 ft** | |
+| At 300 MWt | 15,000 ft², 1,637 tubes | **18,135 ft², 1,192 tubes** | |
+| SG primary volume | 214.5 ft³ | **259.3 ft³** | |
+| **Overall U** | 7,274 W/m²·K (out of band) | **6,016** | **mid-band** |
+
+**§1a-iii's independent U check predicted the area was low by ×1.12–1.45. The sourced area is
+×1.21.** Two routes that share no denominator, converging — the U check is per-unit-*area* and the
+EPRI figure is a measured plant. That is the second genuine convergence in this document.
+
+**RPV — CASL-U-2012-0131-004 Table 16 + WTSM §3.1 (ML11223A212):** vessel ID 173 in, core barrel
+OD 152.5 in, and plena from Indian Point 2 elevations.
+
+| | Design basis used | **SOURCED ratio** | |
+|---|---|---|---|
+| Lower plenum | 0.50 × ID | **0.674 × ID** | 26 % short |
+| Upper plenum | 0.70 × ID | **0.844 × ID** | 17 % short |
+| Heads | **omitted entirely** | hemispherical pair | +62.9 ft³ |
+| **RPV total** | 228.1 ft³ | **315.1 ft³** | |
+
+**New ledger: 315.1 (RPV) + 108.1 (piping) + 259.3 (SG) + 10 (RCP) + 125.2 (PZR) = 817.8 ft³**,
+i.e. **2.73 ft³/MWt** against the previous 2.29.
+
+### The vintage correction — flagged by review, recorded by me, and never applied until now
+
+The review's objection to any ft³/MWt metric was that **Ginna's RCS hardware did not change at
+uprate**, so the same plant reads two different specific volumes:
+
+| Ginna, 5,123 ft³ of unchanged hardware | ft³/MWt |
+|---|---|
+| at its **original** 1,520 MWt | 3.37 |
+| at its **current** 1,811 MWt | **2.83** |
+
+**SLS-100 derived: 2.73 ft³/MWt — 96 % of Ginna's current-rating figure.**
+
+**Both readings, because picking the flattering one is the habit that caused this mess:**
+
+- **Against current ratings (2.83):** essentially closed — 96 %, well inside the metric's own 19 %
+  vintage spread.
+- **Against original ratings (3.37–3.69):** still 20–26 % low. And there is an argument this is the
+  right basis: SLS-100 is a *new* design built for its rating, not a plant uprated past its
+  original design margin.
+- **Cutting the other way:** SLS-100's power density is **85.1 kW/L against a typical 100–110**, so
+  it has *more* core volume per MWt than a conventional plant — which should push its ft³/MWt
+  **up**, not down. That the number still sits at the low end is unexplained.
+
+**Status: the shortfall is reduced from ~324 ft³ to a residual that depends on which rating basis
+is correct — a question this document does not settle.** What is now solid is that **every
+component is built from a sourced dimension** rather than a power-scaled one, so the total is a
+build-up rather than a division. That, not the ratio agreement, is why the number is worth more
+than the one it replaced: the declared 998 ft³ was Ginna divided by power, and **817.8 is not a
+division at all.**
+
 **A finding the retracted section missed entirely.** Its ranked shortfall list (loop length, SG tube
 length, plena) omits **the number that was just cut by 2.7× to create the shortfall**. The
 re-derived downcomer gap is *itself* a 4-loop statistic — the area ratio is

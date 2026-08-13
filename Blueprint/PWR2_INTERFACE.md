@@ -9,10 +9,16 @@ Ruled: **PWR2 publishes what its physics naturally produces; a shim maps to the 
 
 ## 1. Native state — what PWR2 actually owns
 
+**CORRECTED 2026-08-13** to match D2 §0 — the original listed `m` per node and `mdot` per
+junction, both of which were the over-determination.
+
 ```
-nodes[]      { id, m, h, T_wall[],  V, z, M_wall, A, transport, wallLumps }
-junctions[]  { id, from, to, mdot,  K, dz, L, A }
-P_rcs        one dynamic pressure state          [D2 §5]
+nodes[]      { id, h, T_wall[],   V, z, M_wall, A, transport, wallLumps }   <- h only
+M_total      ONE integrated mass scalar (sources/sinks only)               [D2 §0.3]
+mdot_loop    ONE integrated loop momentum state                            [D2 §0.2]
+P_rcs        SOLVED each step from M_total = SUM rho(h_i,P)*V_i + m_pzr(P)
+junctions[]  { id, from, to, K, dz, L, A }        <- no mdot state; loop flows ALGEBRAIC,
+                                                     branches quasi-steady
 kinetics     { P, C[6], I, X, H[4] }             formulation reused
 rods         { groups[] }                        formulation reused
 chemistry    boron as a TRANSPORTED SCALAR per node   [not a lumped ppm + fitted lag]
@@ -20,11 +26,11 @@ control      valve/pump/handswitch positions, setpoints
 failures     active malfunctions
 ```
 
-Everything else — temperature, density, quality, void, level, subcooling, ΔT, flow fraction — is
-**derived on demand** from `(m, h, P)` through L0. **The native state has no derived quantity in
-it.** That is the property that makes conservation assertable, and it is the single biggest
-structural difference from the current engine, whose `s` object mixes ~200 integrated and derived
-values with no marking of which is which.
+Everything else — **node mass**, temperature, density, quality, void, level, subcooling, ΔT, flow
+fraction — is **derived on demand** from `(h, P)` through L0. **The native state has no derived
+quantity in it.** That is the single biggest structural difference from the current engine, whose
+`s` object mixes ~200 integrated and derived values with no marking of which is which — and it is
+what makes the closure residual (D5 Layer 1) a meaningful assertion rather than a tautology.
 
 ---
 
@@ -152,3 +158,45 @@ require the physics to be right:
   before build, and writing it will likely reclassify some rows — the exercise of doing it
   field-by-field is itself a design check.
 - #472's pressurizer fields depend on its rebuild landing.
+
+---
+
+## 8. The full 109-field classification — RESULT
+
+Completed 2026-08-13 by a 41-agent pass: 7 agents classified all 109 fields, then **every field
+called a proxy was handed to an independent agent instructed to REFUTE it**, defaulting to
+downgrade when no fitted expression could be found in the source.
+
+| Class | Count |
+|---|---|
+| **natural** | 44 |
+| **translation** | 36 |
+| **proxy — claimed** | 29 |
+| **proxy — UPHELD under challenge** | **19** |
+| **proxy — downgraded to translation** | **10 (34 %)** |
+
+**The 34 % downgrade rate is the most useful number here.** The asymmetric instruction did real
+work: an over-eager proxy call makes the A/B *expect* divergence where none should occur, which is
+exactly how a real defect would hide as "expected". A third of the first-pass proxy calls would
+have done that.
+
+**The 19 upheld proxies — the predicted-divergence set**, to be scored *first* in the A/B because
+they were written down in advance:
+
+`primary_void_fraction` · `core_void_fraction` · `pzr_level_pct` · `pzr_mass_frac` ·
+`sg_level_pct` · `sg_level_wide_pct` · `leak_flow` · `natural_circulation` · `t_core_exit_c` ·
+`clad_temp_c` · `core_uncovered_frac` · `zirc_heat_pct` · `rcp_cavitation_frac` ·
+`porv_tailpipe_temp_c` · `afw_discharge_pressure_mpa` · `hpi_discharge_pressure_mpa` ·
+`mwe_output` · `containment_pressure_mpa` · `containment_sump_pct`
+
+**Downgraded on challenge** (no fitted expression found — treat as translation, expect agreement):
+`fuel_temp_c` · `afw_flow_normalized` · `spray_flow_pct` · `accumulator_flow_normalized` ·
+`steam_pressure_mpa` · `rcp_cavitating` · `condenser_vacuum_kpa` · `melted` · `ctmt_h2_pct` ·
+`containment_temp_c`
+
+**This supersedes §2's group-granularity table**, which guessed at group level and got the
+proportions materially wrong — it implied most groups were dominated by one class, where the real
+distribution is 40 % / 33 % / 27 % spread across nearly every group. §2's specific *named* proxies
+(`primary_void_fraction`, `pzr_mass_frac`, `sg_mass_frac`, `core_void_fraction`,
+`natural_circulation`) all survive except `sg_mass_frac`, which this pass classified differently —
+**worth checking before the A/B, since §2 predicted it in advance and this pass did not.**
