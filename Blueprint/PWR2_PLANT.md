@@ -162,6 +162,67 @@ the answer *toward* the real band from above. **The review's correction is indep
 confirmed**, and D2 §6's 16.8 m should be replaced — the RCP suction is on the cold side,
 downstream of the heat sink, so it contributes nothing net to ∮ρg·dz.
 
+### 1a-iii. SG sizing run to a conclusion, and an omission in my own RPV
+
+**SG — the overall-U check, denominated in W/m²·K (per-unit-AREA, loop-count-blind).**
+```
+LMTD = (321−271.9 − (288−271.9)) / ln((321−271.9)/(288−271.9)) = 29.60 K
+U    = 300 MW / (1,394 m² × 29.60 K) = 7,274 W/m²·K
+```
+against a typical PWR SG's **5,000–6,500**. The SG is undersized. Area required to land in band:
+
+| Target U | Area | factor | Tubes | SG volume |
+|---|---|---|---|---|
+| 6,500 | 16,786 ft² | 1.12× | 1,832 | 240.0 ft³ (+25.5) |
+| **5,750 (mid)** | **18,976 ft²** | **1.27×** | **2,071** | **271.4 ft³ (+56.9)** |
+| 5,000 | 21,822 ft² | 1.45× | 2,382 | 312.1 ft³ (+97.6) |
+
+*Caveat: the 5,000–6,500 band is a recalled engineering norm, not sourced from this repo's corpus.
+It belongs on the evidence list. The LMTD and the resulting U are computed from this plant's own
+ruled temperatures and this document's own area, so the **direction** is solid even if the band
+moves.*
+
+**RPV — I NEVER COUNTED THE VESSEL HEADS.** §3's build-up is core + downcomer + lower plenum +
+upper plenum. A real RPV is closed by hemispherical (or ellipsoidal) **upper and lower heads**, and
+they hold coolant. On D = 1.504 m:
+
+```
+hemisphere = (2/3)·π·(0.752)³ = 0.89 m³ = 31.5 ft³ each  ->  +62.9 ft³ for the pair
+```
+
+**This is the strongest finding of this pass**, because unlike everything else in §1 it needs **no
+reference plant and no per-MWt scaling** — it is a term missing from my own geometry, verifiable by
+inspecting the build-up. It is also, notably, *not* on the retracted §1's ranked list of suspects.
+
+### 1a-iv. Where the shortfall stands
+
+**⚠ The decomposition below rests on an ESTIMATED component split of Almaraz's non-piping volume
+(RPV 45 % / SG 37 % / PZR 15 % / RCP 3 %). That split is RECALLED, not sourced** — the same class
+of number that has already cost this design three retractions. **Use it to localise where to look,
+not as a target to size against.**
+
+| | Target (est.) | Mine | Short |
+|---|---|---|---|
+| RPV | 405.9 | 228.1 | **177.8** |
+| SG | 333.7 | 214.5 | **119.2** |
+| PZR | 135.3 | 125.2 | 10.1 |
+| RCP | 27.1 | 10.0 | 17.1 |
+| | | **TOTAL** | **324.2 ft³** |
+
+| Identified correction | ft³ |
+|---|---|
+| Downcomer gap 0.093 → 0.15–0.20 m (the unbuildable nozzle/gap ratio) | +86.0 |
+| **Vessel heads — never counted** | **+62.9** |
+| SG area to land U mid-band | +56.9 |
+| RCP casing to per-MWt parity | +17.0 |
+| **identified** | **+222.8** |
+| **residual** | **~101 ft³ (31 %)** |
+
+**Honest reading:** roughly two-thirds of the gap is now attributed to named, individually-defensible
+causes, and **the two largest are errors in my own geometry** (an unbuildable annulus, and missing
+vessel heads) rather than disagreements with a reference plant. The residual third is not
+attributed and **must not be closed by adjusting the least-defended number.**
+
 **A finding the retracted section missed entirely.** Its ranked shortfall list (loop length, SG tube
 length, plena) omits **the number that was just cut by 2.7× to create the shortfall**. The
 re-derived downcomer gap is *itself* a 4-loop statistic — the area ratio is
