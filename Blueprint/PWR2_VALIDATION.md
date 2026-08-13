@@ -15,6 +15,20 @@
 | **4** | Behaviour vs the catalog | Catalog-derived bands, `XFAIL`/`COVERAGE`, strict xfail **including XPASS-red** | `test/behavior_pwr.js` |
 | **5** | Full stack | `SimulationService` + `tick()`, **never `start()`**; header stamps the layer | `test/measure_stack.js` |
 
+> **⛔ REVIEW FINDING, 2026-08-13 — LAYER 1 AS SPECIFIED IS HOLLOW.** Conservation of `Σm` and
+> `Σ(mh)` **passes trivially for any conservative-form integrator**, whether or not the state is
+> physically consistent. It proves the bookkeeping, and nothing else. Specifically it cannot see
+> D2's finding (A): that nothing enforces `m = ρ(h, P)·V`.
+>
+> **Add an L2 gate: VOLUME CLOSURE.** Assert `Σ ρ(h_i, P_i)·V_i = Σ m_i` to tolerance, per node
+> and in total. **This would have caught the over-determination before any topology existed** —
+> which is the whole argument for the layered ladder, and the ladder as first written would have
+> missed it. It is the single most valuable addition to this document.
+>
+> This is also a worked instance of HR10: Layer 1 was written from what the architecture *does*
+> (integrate conserved quantities) rather than from what it must be *right* about, so it could only
+> ever confirm the thing it was derived from.
+
 **Layer 1 is the one that justifies the rewrite** and it must be written first, before any plant
 topology exists. A closed loop of N nodes with arbitrary initial enthalpies, no sources, no sinks:
 total mass constant, total energy constant, to ~1e-12 relative. **If that cannot be made to pass,

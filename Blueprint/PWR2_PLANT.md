@@ -4,7 +4,132 @@
 
 ---
 
-## 1. Q5 — ANSWERED: the cross-check valid for a single-loop plant
+## 1. Q5 — ~~ANSWERED~~ **RETRACTED. STATUS: OPEN.**
+
+> **⛔ THIS SECTION IS WRONG. Do not cite any number in it.** Independent adversarial review,
+> 2026-08-13, found the replacement cross-check is **CIRCULAR**, plus three sourcing failures.
+> Retained below only so the error is legible; superseded by §1a.
+>
+> 1. **Check A cannot reject the declared value, because the declared value IS Check A run
+>    backwards.** `pwr_config.js:790` says so in its own comment: *"the declared RCS currency IS
+>    power-scaled Ginna to 1.3 %: 38,323 gal × 300/1520 ≈ 7,467 gal"*. Check A's Ginna row is that
+>    same division. Declared 3.327 vs Ginna 3.370 ft³/MWt = ratio **0.987 — exactly the 1.3 %
+>    rounding**. The agreement I read as validation is one division reported twice. **This is the
+>    THIRD time a "validation" has turned out to be a restatement of where the number came from.**
+> 2. **Ginna's flow is wrong and the corpus had the right number.** I used **178,000 gpm**; that is
+>    Ginna's *circulating water pumps* (UFSAR ch10). RCS thermal design flow is **170,200 gpm**
+>    (UFSAR ch15, Table 15.6-11, 85,100 gpm/loop × 2) — **in the corpus**. I web-recalled a number
+>    `find_source.js` would have corrected, in a document claiming *"computed, not recalled"*.
+> 3. **The band is narrower than one plant's own licensing history.** Ginna's RCS hardware did not
+>    change at uprate, yet it reads **3.37 ft³/MWt at 1,520 MWt and 2.83 at 1,811** — a 19 % swing
+>    with no pipe moved, against a band only **9 % wide**. Specific RCS volume is not a design
+>    invariant; it is hardware-over-license-condition, and my band silently mixed vintages.
+> 4. **Two of three data points are not in the corpus.** The 12,600 ft³ "W 4-loop (WTSM §3.2)" is
+>    **not in `ML11223A213`** — it traces to my own *"~12,600 ft³"* tilde'd recall in
+>    `PWR_DESIGN_BASIS.md` §6, which became a hard table row with a section citation here. That is
+>    laundering. BVPS-2's 9,650 ft³ has no document in any lane. Ginna's 38,323 gal is not in the
+>    corpus either.
+> 5. **The dataset varies the wrong axis.** Per-loop power spans only **1.17×** across all three
+>    plants while loop count spans 2× — so the near-constancy is evidence of invariance to *loop
+>    count*, the parameter **not** being extrapolated. SLS-100 is a 5–11× extrapolation in plant
+>    power on an axis where the data has no leverage. Same structure as the error it replaced.
+> 6. **The verdicts were stated more favourably than the numbers.** Declared 3.327 against a band
+>    starting at 3.37 is **below** it, and I marked it PASS. Both checks reject **both** candidates
+>    on the same side. Honest reading: **both are wrong — declared by ~9 %, derived by ~37 %.**
+> 7. **The two checks are not independent.** transit ≡ (V/P)·ρΔh, so B is A times flow-per-MWt,
+>    which is *ruled identical* for SLS-100. One check reported twice — and it was the sole stated
+>    basis for reversing my earlier position on the declared volume. **That reversal is withdrawn.**
+> 8. **§1 contradicts itself:** it uses size-*invariance* to license the band and size-*dependence*
+>    (item 1 of the shortfall ranking) to explain the miss.
+>
+> **D1 §8(2)'s stop condition is currently met** — no valid topology-appropriate check exists yet.
+> Not fatally: §1a names checks that should work.
+
+## 1a. What a valid check must be — the pattern behind three failures
+
+**The lesson, stated so it is not learned a fourth time:** every check that has collapsed was
+**denominated in MWt**, the same unit as the thing being validated. RPV-share, specific volume and
+transit time all divide by power, and the geometry under test was itself derived by dividing by
+power. *A check denominated in the same unit as its subject cannot be independent of it.*
+
+**The next checks must be denominated in something else.** Candidates, from the review, none yet run
+to completion:
+
+| Check | Unit | Why it is independent |
+|---|---|---|
+| **Loop ΔP closure** | pressure | Compute `Σ K ṁ²/2ρA²` from derived lengths and bores; require it to equal a real single-stage RCP developed head (~250–300 ft / 0.5–0.6 MPa). Ties length, bore and flow together with **no reference-plant scaling at all**, and independently constrains the very lengths §1 blames. D2 §6's "~0.5 MPa" is currently *asserted* — deriving it **is** the check. |
+| **SG overall U = Q/(A·LMTD)** | W/m²·K | Per-unit-**area**, set by film physics, loop-count-blind. Run on this set's own numbers: 15,000 ft² (1,394 m²), 300 MWt, LMTD 29.6 K → **U ≈ 7,300 W/m²·K against a typical PWR SG's 5,000–6,500**. The SG is **15–45 % undersized** — same direction as everything else, and genuinely independent of the volume question. |
+| **Core mass flux** | kg/m²·s | DNB-set. ~2,970 computed — ~15 % below typical. |
+| **Linear heat rate** | kW/ft | Centreline-melt-set. ~4.5 kW/ft — ~15 % below typical, consistent with the ruled "generously margined" character. |
+
+### 1a-i. SOURCED loop geometry — and it redirects the shortfall away from the piping
+
+**Primary source found 2026-08-13: NUREG/IA-0444** (USNRC, April 2014), *"Simulation of LSTF Hot
+Leg Break (OECD/NEA ROSA-2 Test 1) with TRACE Code"*, Tables 5 and 7 — obtained via GovInfo
+(`GOVPUB-Y3_N88-PURL-gpo49031`; every nrc.gov PDF 403'd). It gives real Westinghouse loop
+geometry for two plants:
+
+| | Tsuruga-2 (W 4-loop, 3423 MWt) | Almaraz I (W 3-loop, 2947 MWt) |
+|---|---|---|
+| Hot leg length | **22.9 ft (6.99 m)** | **23.8 ft (7.25 m)** |
+| Per-loop piping volume | — | hot 112.3 + crossover 127.1 + cold 114.1 = **353 ft³** |
+| Total RCS | 12,254 ft³ = **3.580 ft³/MWt** | 9,922 ft³ = **3.367 ft³/MWt** |
+
+**These are independent of Ginna**, so they are not subject to §1's circularity — though the
+review's *vintage-sensitivity* objection to any ft³/MWt metric still stands and this is offered
+as a bound, not a proof.
+
+**THE DESIGN RULE, now sourced rather than argued:** loop **length** is set by layout and does
+**not** scale with power. Only **diameter** scales, with flow, to hold velocity. Correct scaling
+is therefore `A × ratio, L unchanged → V × ratio`.
+
+**And the arithmetic exonerates the piping:**
+
+```
+Almaraz per-loop power  982.3 MWt   ->  SLS-100 ratio 300/982.3 = 0.3054
+piping   353 ft3 x 0.3054 = 107.8 ft3        my derived value: 108.1 ft3
+```
+
+**Essentially exact.** §1's ranked shortfall list put loop length FIRST, and it is wrong — the
+piping was already right. Where the shortfall actually is:
+
+```
+Almaraz NON-piping (RPV + SGs + RCPs + PZR) = 3.007 ft3/MWt  ->  902 ft3 at 300 MWt
+mine: RPV 228.1 + SG 214.5 + RCP 10 + PZR 125.2             =   578 ft3
+SHORT BY 324 ft3 -- ALL of it outside the piping
+```
+
+**Two independent lines converge here.** The review — which never saw this source — independently
+found the RPV downcomer gap mechanically unbuildable (recovering ~86 ft³) and the SG **15–45 %
+undersized** on an overall-U check (7,300 W/m²·K against a typical 5,000–6,500). Those are exactly
+the two components this arithmetic indicts, reached by a different route. **That convergence is
+the first thing in this design set that looks like real validation**, precisely because the two
+methods share no denominator.
+
+*(Remaining gap after both corrections is ~140 ft³, still unattributed — the pressurizer is a
+candidate: WTSM's 1,800 ft³/3,411 MWt = 0.528 ft³/MWt implies ~158 against my 125, and #472 owns
+it.)*
+
+**A finding the retracted section missed entirely.** Its ranked shortfall list (loop length, SG tube
+length, plena) omits **the number that was just cut by 2.7× to create the shortfall**. The
+re-derived downcomer gap is *itself* a 4-loop statistic — the area ratio is
+`A_downcomer ÷ (N × A_hotleg)` with N = 4 — and transferring it to N = 1 preserves area but not
+linear geometry, because nozzle bore scales as √(P/N) while annular gap scales as √P:
+
+| | Reference (4-loop) | SLS-100 (derived) |
+|---|---|---|
+| Downcomer gap | 0.315 m (12.4 in) | 0.093 m (3.7 in) |
+| Cold-leg nozzle ID | 0.737 m (29 in) | 0.447 m (17.6 in) |
+| **nozzle ÷ gap** | **2.34** | **4.8** |
+
+**A 17.6-inch nozzle discharging into a 3.7-inch annulus is not a buildable vessel.** The ratio
+doubled for precisely the reason the RPV-share band failed — N went 4 → 1. **Error #2 recurred
+inside the fix for error #1.** A mechanically-set gap of 0.15–0.20 m recovers ~86 ft³
+(686 → ~772 ft³), the same direction as the shortfall.
+
+---
+
+## 1b. Superseded — the retracted reasoning, kept legible
 
 D1 §3 recorded that the 40–45 % RPV-share check was invalid for SLS-100 (it is a 4-loop
 statistic) and left the replacement open. **A valid check must be per-unit-power**, because that

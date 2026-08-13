@@ -5,6 +5,80 @@
 The generic model — primitives, equations, integration — independent of this plant.
 The SLS-100 wiring is D3 (`PWR2_PLANT.md`).
 
+> ## ⛔ REVIEW FINDINGS, 2026-08-13 — §§3, 4, 7 ARE WRONG AS WRITTEN
+>
+> Independent adversarial review. **The affected sections are left in place below so the errors are
+> legible, but their conclusions do not stand.** In severity order:
+>
+> **A. THE STATE IS OVER-DETERMINED AND NOTHING RECONCILES IT.** *(the deepest finding — it is
+> architectural, not a numerical error)* Each node carries integrated `m` and `h`, a **fixed**
+> geometric `V`, and derives `ρ = ρ(h, P)` from L0. There is one global `P_rcs` plus a quasi-static
+> ΔP field. **Nothing enforces `m = ρ(h, P_node)·V`.** Consequences, all landing on the same hole:
+> - **The momentum equation is either circular or unconstrained.** If `P_node` comes from the
+>   quasi-static field, and that field is `ΔP = Kṁ|ṁ|`, then `dṁ/dt = (A/L)(Kṁ|ṁ| − Kṁ|ṁ|) = 0` —
+>   **the momentum integration is vacuous.** If `P_node` comes from anywhere else, nothing forces
+>   the eight loop junctions to carry consistent flow and node mass drifts with no restoring force.
+>   A single-loop RCS has **one** momentum degree of freedom; eight independent `ṁ` states leave
+>   seven constraints unenforced.
+> - **Every escape route is closed by another ruling.** Node-compressibility pressure → acoustics
+>   return, and they *are* stiff: ω ≈ 101 rad/s for the hot-leg/upper-plenum pair, a **62 ms
+>   period — 3 steps at dt = 0.02, unstable.** A pressure-Poisson constraint → an implicit solve,
+>   which §4 forbids and D1 §6 names as the performance risk. One lumped loop momentum state →
+>   loses the flow redistribution §3 gives as the whole reason for choosing momentum.
+> - **§5 contradicts itself the moment a node voids.** A two-phase node's pressure *is* its
+>   saturation pressure for its enthalpy. §5 asserts both `P_node = P_rcs + ΔP_quasi-static` **and**
+>   that a node voids when enthalpy crosses saturation "at its local pressure", with `m` and `V`
+>   both fixed. Two different pressures, both claimed. It breaks in exactly the scenarios D3 §6
+>   calls the architecture's strongest argument — LOCA, loss of subcooling, TMI. And near
+>   saturation `dρ/dP` is enormous, so **P↔void is the stiffest algebraic loop in the plant**;
+>   explicit gather-then-integrate on it oscillates — mechanically the same family as **#447's
+>   40-second limit cycle**, already in this repo's history.
+>
+> **B. §3's stiffness table does not compute a time constant.** It divides rated `ṁ` by `dṁ/dt`
+> under an arbitrary imposed ΔP — a *forcing* timescale, not the system eigenvalue. The eigenvalue
+> is inertia over damping: `τ = (ΣL/A)/(2·ΔP_fric,rated/ṁ_rated)` ≈ **0.23 s, ~11 steps** — not
+> 43 s and 2,152 steps. Explicit is still stable, but **the margin is ~190× smaller than claimed**,
+> and that table was the sole evidence for "comfortably explicit".
+>
+> **C. §3's answer to Q1 is wrong for orifice-class junctions.** Breaks, relief and injection have
+> collapsed `L/A` and 15.3 MPa driving ΔP: a DE cold-leg guillotine gives **τ ≈ 6.9e-4 s — 0.034
+> steps**; a PORV ≈ 0.11 steps. **Explicit momentum there is unstable by ~3 orders of magnitude.**
+> These must be **algebraic quasi-steady critical flow**, as every production code does. The
+> correct answer is *momentum for the loop, quasi-steady for orifice-class junctions* — which is
+> closer to the plan-stage lean §3 believes it reversed.
+>
+> **D. §3's semi-implicit friction fix is justified at the wrong operating point.** Damping
+> vanishing at `ṁ = 0` is the *absence* of stiffness — slow drift, not explicit instability.
+> Friction is stiffest at **high** flow, where `∂(Kṁ|ṁ|)/∂ṁ = 2K|ṁ|` is largest. Worse, linearising
+> about the current `ṁ` gives a Jacobian → 0 as `ṁ` → 0, so **the fix degenerates to plain explicit
+> exactly at the reversal point it was introduced for**, and can chatter when
+> `dt·(A/L)·2K|ṁ| > 2`.
+>
+> **E. §4's τ table is evaluated only at rated steady state**, in a design that exists for
+> transients. A voided node at ρ ≈ 100 kg/m³ passing 5,000 kg/s empties a 1 m³ node in ~0.02 s —
+> **Courant ≈ 1**, donor-cell advection marginal, in precisely the scenario the node model was built
+> for. And the SG-tube-wall τ = 0.67 s back-solves to h = 5,000 W/m²·K — that is the **overall U**
+> used where the **primary-side film** belongs; against the real tube-side film it is **0.13–0.19 s,
+> 6–10 steps, not 33.** The table certifying the integration scheme depends on the correlation §8
+> admits is unchosen.
+>
+> **F. §7's "23 → 2" is a category swap.** Both named survivors are **outside** the engine and exist
+> identically today — they were never among the ~23 in-engine reads. Honest claim: *"23 → 0 inside,
+> plus the same 2 outside that were always there."* Also: **`CONTEXT.md` §11 contains no count of
+> 23** (D1 §5 cites it for one). Its one relevant bullet — kinetics using start-of-step reactivity —
+> is a coupling §4 explicitly **retains**, so at least one survives by design, uncounted.
+> **G. §7's containment example is a redefinition, not an elimination:** reading both endpoints at
+> time *n* **is** the one-step-old read. It is a consistency improvement on today's mixed treatment,
+> and worth claiming as that — but the loop is still closed explicitly with identical stability.
+> **H. §4's kinetics sub-stepping violates the two-phase step** — sub-steps are intermediate writes
+> that must read feedback Phase 2 has not written. *"No step ordering to get wrong"* is false for
+> the one term §4 concedes is stiff.
+>
+> **The mitigation that would have caught (A) early — adopt it in D5 as an L2 gate:**
+> **volume closure**, `Σ ρ(h_i, P_i)·V_i = Σ m_i` to tolerance. D5's Layer-1 conservation gate is
+> **hollow against (A)**: conservation of `Σm` and `Σ(mh)` passes trivially for any
+> conservative-form integrator whether or not `m = ρ(h,P)·V` holds.
+
 ---
 
 ## 1. Primitives
