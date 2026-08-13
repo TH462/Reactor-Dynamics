@@ -1096,3 +1096,123 @@ model and must not be sold as one.** UNSOURCED. Real water also has a kink at `h
 `h_g` band width depends on it; the real-steam superheat slope ratio at `h_g` is recalled; and the
 **2.8 kJ/kg per-step Δh that sets where the whole thing stops working is derived, not measured
 against the engine's actual per-node distribution.**
+
+---
+
+## 17. SUPERHEAT ANCHOR — attempt 2 (accept-the-kink). Stronger, and it found real defects.
+
+Third agent still running. **This attempt disagrees with §16 on smoothing and beats it on evidence.**
+
+### 17.1 The kink is REAL — confirmed against published steam tables, and entailed by Clapeyron
+
+Built from standard saturated tables using **only** `(T_sat, P_sat, v_f, v_g, h_f, h_g)`, deriving
+`cp` and `β` along the saturation line, so no recalled property enters:
+
+| P | ratio (tables) | ratio (repo lib) |
+|---|---|---|
+| 0.1 MPa (15 psia) | **4001×** | 3800× |
+| 1.0 MPa (145 psia) | 308× | 319× |
+| 7.0 MPa (1015 psia) | 30× | 24.5× |
+| 14.6 MPa (2118 psia) | 7.7× | 5.7× |
+
+**It cannot be an artifact.** Clausius-Clapeyron `dP/dT = h_fg/(T·v_fg)` makes the two-phase slope
+at `h_g` equal `−ρ_g²/(T·dP_sat/dT)` — **fixed by the saturation curve alone.** Two independent
+routes agree to 0.8–9.8 %. **The slope discontinuity is entailed by the saturation line existing.**
+
+**Nuance the design must absorb: the two boundaries are NOT equally severe.** Against real
+superheated tables the `h_g` kink is only **1.4–3.2×** and measured crossings there produce
+**0.006 kg** residuals against **664 kg** at `h_f`. **`h_f` is the whole problem.**
+
+### 17.2 "One-sided derivatives" is the WRONG fix — BRANCH-FREEZING is right
+
+**The discontinuity lives in the `if`, not in the branch functions.** Each of the three ρ formulas
+is smooth on the whole `(h,P)` plane. So: **pick the branch once from the state, differentiate
+THAT function, and never re-run the regime test inside a difference.**
+
+One-sided is measurably insufficient — **the boundary moves with P** (a liquid node stepped *down*
+in P lands in two-phase: **758,203× error at 0.1 MPa**), **the correct direction differs per
+partial and flips mid-envelope** (`dh_g/dP` changes sign near 3 MPa), and it is only first-order
+anyway (16–48 % error). **Branch-freezing is ε-independent: 0.6437 at every ε from 1e-1 to 1e-6,
+where naive runs 3991 → 23,855.**
+
+### 17.3 ⛔ A PREREQUISITE DEFECT IN THE COMMITTED L0 — `h_l()` has a hidden fourth branch
+
+```js
+if (P_MPa <= Ps) return h_sat;              // <-- a regime test INSIDE the liquid branch
+return h_sat + v * (P_MPa - Ps) * 1000.0;
+```
+This makes `h_l → T_from_h →` the liquid ρ branch **non-smooth across the saturation line**, so
+**branch-freezing cannot work on the library as committed** (branch derivative drifts 0.96 → 1.42
+as ε shrinks; stable to 5 dp with the clip removed). **L0 must expose unclipped branch
+continuations for derivative evaluation.** This is a real bug in code already committed, proven by
+injection, and **every other recommendation here is blocked on it.**
+
+### 17.4 A second hazard the kink was concealing — a 263× cancellation
+
+In a flashing node `dρ/dt` is a **small difference of two enormous terms**: measured
+`−11,054 + 11,035 = −18.7`. Branch-frozen FD partials are ~0.2 % accurate **individually** and
+**55–92 % wrong in the sum.** Fix: differentiate the *saturation-line* functions (all smooth in P)
+and compose **analytically** — measured error **0.00 %**.
+
+### 17.5 Regime crossing: SUB-STEP to it
+
+| Option | Verdict |
+|---|---|
+| **Sub-step to the crossing** | **ADOPT.** Crossing time is **linear** in τ — one division, no iteration. **664 kg → 8.4 kg** (0.5 MPa); **0.86 → 4.7e-5 kg** (15.41 MPa). Residual goes O(dt) → ~O(dt^1.3). |
+| Project onto the boundary | **REJECT** — discards 118–1312 kW (up to ~4 % of core power) and **chatters: 942–1999 crossings** vs 2. |
+| Absorb in the corrector | Insufficient alone. `M_total` is integrated from sources, so **mass is conserved by construction** — the 166 kg is a *predictor* error, not lost mass — but at 26.9 kg/MPa that is ~6 MPa of correction in one step. |
+
+**THE DAMAGE THE CORRECTOR CANNOT REPAIR — junction flows.** `ṁ_out = ṁ_in − V·dρ/dt` uses the same
+partials and is never re-solved against anything:
+
+| P, Q | true `ṁ_out` | naive | branch-frozen | analytic |
+|---|---|---|---|---|
+| 7.0 MPa, 300 MW | +492 kg/s | **−448 (sign INVERTED)** | 492 (0.0 %) | 492 (0.00 %) |
+| 0.5 MPa, 300 MW | +375 kg/s | **−12,732 (3497 %, sign INVERTED)** | 282 (24.9 %) | 375 (0.00 %) |
+
+**A sign-inverted surge means the model says a flashing node is DRAWING MASS IN while it is
+expelling it — the exact mechanism §0.2 was rewritten to represent.**
+
+**Bracketed Newton (rtsafe): adopt.** Honest result — plain Newton **did not fail** in ordinary
+operation (0/30 trials, 0 bisections). In the adversarial regime (all nodes on `h_f`, water-solid)
+the closure slope ratio reaches **148,597×** and plain Newton fails **305/504** at mean 38.7
+iterations; bracketed **0/504** at 10.4. `F(P)` is monotone (0 decreasing steps in 3,360 samples),
+so a bracket always exists.
+
+**Cost: all five schemes within 4 % of each other.** Branch-freezing and sub-stepping are free.
+
+### 17.6 The gate, rewritten — 7 checks, 7/7 passing, **7/7 injections correctly red**
+
+**Delete** *"continuity of `∂ρ/∂h` across both regime boundaries."* Replace with:
+**G1** ρ continuous at both boundaries (kept) · **G2** *each branch admits a smooth continuation
+past its own boundary* — **the committed library FAILS this** · **G3** the kink's magnitude is
+**pinned** against the exact HEM identity and published tables, so **smoothing is now a gate
+FAILURE, not a fix** · **G4** partials are branch-frozen (behavioural, not a source scan) ·
+**G5** `F(P)` monotone · **G6** two-phase partials survive the 263× cancellation ·
+**G7** crossing-residual band, carrying its own negative control.
+
+### 17.7 ✅ YOUR RULING WAS RIGHT — the superheat anchor IS wrong, independently of the kink
+
+*(OWNER RULING, 2026-08-13: "Reformulate the superheat anchor.")* **Vindicated, for a reason I had
+not identified.** §11.2's `ρ ∝ 1/T` branch is ρ-continuous at `h_g` by construction but its
+**slope is 1.02× → 7.07× too shallow**, worsening with pressure, against published superheated
+tables. **It is the same non-ideality `pwr2_water.js`'s own `rho_v` comment already rejected**
+(*"ran 25 % low at 15.41 MPa… near-critical steam is nowhere near ideal"*) — **re-applied one
+derivative up.** A real defect, independent of the continuity question, and still unfixed.
+
+**Accepting the kink also has a payoff:** it frees `cp_v` to be the physically correct function.
+§11.2's continuity gate would have forced `cp_v` to run **backwards**.
+
+**Honest limits:** loop momentum was prescribed, no walls (so §12.1's τ ≈ 0.10 s constraint is
+still unexercised), the bubble was fixed-volume (which §14.1 says is not a real pressurizer), and
+the bracketing case is *constructed*, not a run that failed.
+
+### 17.8 The framing itself was the error
+
+> *"'smooth, accept, or reformulate' is a false trichotomy… three of my four findings — `h_l`'s
+> hidden clip, the 263× cancellation, the 7× superheat slope error — are defects the continuity
+> debate was CONCEALING, and none is a kink problem. Asserting the absence of physics is what
+> stopped anyone looking at the branches themselves."*
+
+**I wrote that trichotomy into the ruling request.** The gate demanded a property the physics does
+not have, and the argument about how to satisfy it hid three defects in the branches underneath.
