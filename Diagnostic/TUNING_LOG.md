@@ -29,6 +29,84 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-13-develop-a (the ops dashboard reads Eastern everywhere — and the "obviously safe" DST fix is wrong on exactly the two days that matter)
+
+**Ask:** *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in
+eastern time.")* **Gates:** `run_all` **49 runners at baseline** (new runner). **Landed:** the
+by-day re-group, the Eastern-midnight window, `etDay`/`etDayStartMs`, zone statements on two
+views, and `test/run_dashboard_time.js` **12/12, 64 checks**.
+
+**What was left.** The 2026-08-12 pass (commit `e290aa7`) converted every point-in-time stamp and
+stopped, on purpose, at the traffic table's **By day** rows — leaving one column headed
+`Date (UTC)` on an otherwise Eastern page. Its reasoning was right and is worth keeping: those
+rows are **buckets the upstream API groups on UTC calendar days**, so the row marked `2026-08-11`
+holds 20:00 on the 10th through 20:00 on the 11th Eastern. Relabelling a bucket is a claim about
+its *contents*, and this one would have been false by four or five hours in every row while
+looking perfect. Its note called re-grouping "an upstream-API question, not a formatting one",
+which is where it stopped — and the API does in fact answer it.
+
+**The measurement that unblocked it.** `rumPageloadEventsAdaptiveGroups` accepts a
+`datetimeHour` dimension, and an hour never straddles an Eastern midnight, so hourly rows can be
+summed into Eastern days here-side exactly. The risk was that a finer grouping drops to a coarser
+sampling tier — which would trade a labelling error for an accuracy one — so it was measured
+against the live dataset **before** anything changed:
+
+| window | hourly | daily | `sampleInterval` |
+|---|---|---|---|
+| 7 d | 67 pageloads / 51 visits, 38 rows | 67 / 51, 5 rows | 1 both |
+| 30 d | 50 / 40 | 50 / 40 | 10 both |
+| 90 d | 50 / 40 | 50 / 40 | 10 both |
+
+Identical totals, identical granularity. The re-bucket then moves **10 pageloads off UTC
+`2026-08-09` onto Eastern `2026-08-08`** on the live 30-day window — the exact shift the old
+header existed to warn about, now simply correct.
+
+**The trap, and it cost the first implementation.** `etDayStartMs` has to answer "at what UTC
+instant did this Eastern day begin", and that needs the zone offset — which is a property of an
+*instant*, not of a day. The obvious way out is to sample the offset at **noon**, safely away from
+the 02:00 switch. It is wrong on precisely the two days a year the whole exercise is about, and in
+**opposite directions**:
+
+| day | noon is | it computes | truth |
+|---|---|---|---|
+| 2026-03-08 (spring fwd) | already EDT | `04:00Z` — an hour early, into the 7th | `05:00Z` (00:00 EST) |
+| 2026-11-01 (fall back) | already EST | `05:00Z` — an hour late, losing hour one | `04:00Z` (00:00 EDT) |
+
+Every other day of the year it is right, which is why it survived the first round of spot checks.
+The fix is a **two-pass fixed point**: guess with the offset at the same wall time read as UTC,
+then re-read the offset *at the guess* and re-solve. One iteration is exact, because the guess is
+already within an hour and DST moves at 02:00, not 00:00. Verified by a 365-day sweep asserting
+each day contains its own start and the millisecond before it does not.
+
+A second, smaller one: `toDate()` fell through to the string branch for a **Date object**
+(`String(date)` is `"Thu Aug 13 2026 …"`, which parses as nothing), so `etDayStartMs` threw on
+the first call — on its own output. Dates are handled explicitly now.
+
+**The gate.** `test/run_dashboard_time.js` — the dashboard had none, which is why the 2026-08-12
+conversion shipped unpinned. render.js is an ES module and the runners are CommonJS, so it is
+imported through a **data: URL** rather than re-implemented (re-implementing would test the copy).
+The static half **strips comments first** — every file here argues about UTC at length, because
+that is where the reasoning has to live, and an unstripped scan passes green on the very sentence
+explaining the bug (the trap `CLAUDE.md` already records against the Indications tab). It caught
+my own page copy on the first run: the new analytics blurb said "…not UTC ones", which was
+reworded rather than exempted.
+
+Injection-verified, five ways: noon offset → **61/64** (and the 365-day sweep names both dates
+unprompted), `datetimeHour` → `date` → **62/64**, column relabelled `Date (UTC)` → **62/64**, a
+view printing a raw Analytics Engine stamp → **63/64**, UTC-midnight window → **62/64**.
+
+**Pinned in the other direction too.** Storage and queries **stay UTC** and must — R2 bundle keys
+are UTC day prefixes, the KV stamp is UTC, the SQL windows are relative, and the GraphQL filter
+accepts nothing else. Those are asserted as *requirements*, so a later "make it all Eastern" pass
+cannot walk past the display layer and shift the key space out from under every existing bundle.
+
+**Not deployed.** The Worker ships by hand (`cd worker && wrangler deploy`); wrangler is not on
+this machine's PATH and the scoped `CLOUDFLARE_API_TOKEN` in the environment would shadow its
+OAuth login (`worker/README.md` §"If wrangler auths via a scoped token"). Committed and gated,
+awaiting the owner's deploy.
+
+---
+
 ## Session log — 2026-08-12-develop-c (#458 — shutdown cooling and low-head injection are the same pumps, and the annunciator was asking for the wrong one)
 
 **Issue:** #458. **Gates:** `run_all` **48 runners at baseline**; `run_m4` 45/45 300 →

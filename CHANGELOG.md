@@ -30,6 +30,41 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The ops dashboard now reads Eastern time on every view, day buckets included**
+  *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in eastern
+  time.")*. The 2026-08-12 pass converted the point-in-time stamps and deliberately stopped at the
+  traffic table's **By day** rows, because those are buckets the upstream API groups on UTC
+  calendar days — the row marked `2026-08-11` holds 20:00 on the 10th through 20:00 on the 11th
+  Eastern, so stamping "ET" on the label without re-grouping the query moves four or five hours of
+  every day's counts into the neighbouring row *and looks entirely correct*. The finished job
+  re-groups instead of relabelling: `analytics.js` asks Web Analytics RUM for `datetimeHour` and
+  sums the hours into Eastern days here-side (an hour never straddles an Eastern midnight, so the
+  sum is exact), and the query window is aligned to Eastern midnight rather than UTC midnight so
+  the oldest row is a whole day instead of the last 19 or 20 hours of one. **Measured on the live
+  dataset before the change**: hourly and daily grouping return identical totals at the same
+  `sampleInterval` over 7 / 30 / 90 days (67/51, 50/40, 50/40 pageloads/visits), so the finer
+  grouping neither loses rows nor drops to a coarser sampling tier. On the live 30-day window the
+  re-bucket moves 10 pageloads off `2026-08-09` onto `2026-08-08`, which is the shift the old
+  header was warning about. Storage and queries **stay UTC** and must: Analytics Engine stores
+  UTC, the SQL windows are relative, the GraphQL filter accepts only UTC, and the R2 bundle keys
+  are UTC day prefixes — only what is displayed is converted. Sessions and Analytics now state the
+  zone on the page the way the reports view already did.
+- **New gate `test/run_dashboard_time.js` — 12/12, 64 checks.** The dashboard had no gate at all,
+  and every way this rots is silent. **DST is the one worth naming**: the implementation that
+  looks obviously safe — sample the zone offset at **noon**, well away from the 02:00 switch — is
+  wrong on exactly the two days a year the exercise is about, and in *opposite* directions. It
+  dates 2026-03-08 an hour early (04:00Z, when 00:00 EST is 05:00Z) and 2026-11-01 an hour late,
+  losing that day's first hour. It was the first implementation here, and it passed every check
+  written against an ordinary day; the fix is a two-pass fixed point (guess with the offset at the
+  wall time read as UTC, then re-read the offset at the guess), and all four transition cases plus
+  a 365-day sweep are pinned. The static half also pins the re-group so it cannot quietly become a
+  relabel again, and pins storage staying UTC so a later pass cannot walk past the display layer.
+  It **strips comments before scanning** — every file here argues about UTC at length, and an
+  unstripped scan passes green on the prose. Injection-verified, five ways: noon offset → 61/64,
+  `datetimeHour` reverted to `date` → 62/64, column relabelled `Date (UTC)` → 62/64, a view
+  printing a raw Analytics Engine stamp → 63/64, UTC-midnight window → 62/64.
+
 ### Fixed
 - **Shutdown cooling can no longer be placed in service during a safety injection — they are the
   same pumps** (#458). The RHR pumps *are* the low-head half of the merged HPI/LPI system, and a
