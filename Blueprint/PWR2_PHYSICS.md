@@ -81,6 +81,121 @@ The SLS-100 wiring is D3 (`PWR2_PLANT.md`).
 
 ---
 
+## 0. RESOLUTION of the over-determination — supersedes §§1, 3, 4, 5, 7
+
+**The review was right that nothing enforced `m = ρ(h,P)·V`. The fix is not to add a
+constraint — it is to notice that `m` was never a legitimate state.**
+
+**In a rigid node, `V` is fixed and `ρ = ρ(h,P)`. Therefore `m = ρ(h,P)·V` is *determined* by
+`(h,P)`. `m` and `h` are not independent, and integrating both is the defect.** Everything the
+review found downstream — the vacuous momentum equation, the unconstrained junction flows, the
+voiding contradiction — follows from integrating a quantity that has no freedom.
+
+### 0.1 The true degrees of freedom
+
+| DOF | Count | Note |
+|---|---|---|
+| Node enthalpy `h_i` | **N** | the thermal DOF |
+| **Loop mass flow** | **1** | a *series* loop: continuity links every junction. Not J. |
+| **System pressure** | **1** | the compressible volume |
+| Wall temperature | N × lumps | |
+| Kinetics, rods, chemistry | — | unchanged |
+
+**Not `2N + J`.** The superseded design carried N masses + N enthalpies + J junction flows, so it
+had **N + J − 1 spurious states** — which is exactly why nothing constrained them.
+
+### 0.2 Flow: one integrated momentum state, everything else algebraic
+
+```
+(Σ L/A)·dṁ_loop/dt = ΔP_pump(ṁ) + ΔP_buoyancy(ρ_i, z_i) − ΔP_friction(ṁ)
+```
+**This is not circular**, because the quasi-static ΔP field is now an *output* computed from the
+solved `ṁ`, never an input to the momentum equation. The superseded §3 had ΔP both computed from
+`ṁ` and driving `ṁ` — the review's `dṁ/dt = (A/L)(Kṁ|ṁ| − Kṁ|ṁ|) = 0`.
+
+**Junction flows inside the loop are algebraic, from continuity plus thermal expansion:**
+```
+ṁ_out,i = ṁ_in,i − V_i·dρ_i/dt
+```
+A node that heats up expels mass — that *is* the surge, and it now falls out of the mass balance
+instead of being a separate mechanism.
+
+**Every branch is quasi-steady algebraic** — surge line, spray, charging, letdown, ECCS,
+relief, break. **This is the review's finding (C) arrived at independently**: orifice-class
+junctions have collapsed `L/A` and cannot carry an explicit momentum state. Here they don't need
+one, because they were never loop-continuity states.
+
+### 0.3 Pressure: mass conservation IS the pressure equation
+
+```
+INTEGRATE  M_total   from sources and sinks only  →  exactly conserved
+SOLVE      P         from  M_total = Σ ρ(h_i, P)·V_i + m_pzr(P)
+```
+**One scalar equation in one unknown — a 1-D Newton root-find, not a Poisson solve.** This is the
+escape the review believed was closed: it is neither a node-compressibility pressure (which would
+return acoustics at ~3 steps) nor an implicit system solve.
+
+**Conditioning, measured:**
+
+| P | dM/dP |
+|---|---|
+| 8 MPa | 23.1 kg/MPa |
+| 12 MPa | 25.2 |
+| 15.41 MPa | 26.9 |
+| 17 MPa | 27.8 |
+
+Non-zero, monotone, smooth → Newton converges in ~3 iterations, and warm-starting from the
+previous step's `P` makes it 1–2.
+
+**Water-solid stiffness is real physics, not an artifact.** Removing the bubble takes dM/dP from
+26.9 to **10.6 kg/MPa**, so a 1 kg mass error moves pressure 0.037 → 0.095 MPa. A water-solid
+plant genuinely *is* pressure-stiff. It stays a well-conditioned root-find; it just needs a
+tighter convergence tolerance in that regime, which is a declared behaviour rather than a hazard.
+
+**Voiding needs no special case.** `ρ` becomes `ρ_mix(h,P)` and `∂ρ/∂P` grows by orders of
+magnitude, so the same closure equation automatically transfers pressure capacitance from the
+pressurizer bubble to the voids. The superseded §5's self-contradiction — two different node
+pressures both claimed — disappears, because node pressure is never independently asserted.
+
+### 0.4 The review's volume-closure gate is satisfied BY CONSTRUCTION
+
+D5's proposed L2 gate (`Σρ(h_i,P_i)V_i = Σm_i`) can no longer fail, because `m` is never
+independently integrated. **It should still be asserted** — as the Newton *residual* — because a
+non-converging solve is a real failure mode and this is what would catch it.
+
+### 0.5 Cost — measured, and it exposed a defect in the committed L0
+
+Naïvely this is 2.16M steps × ~12 nodes of density evaluation. Measured against the committed
+`pwr2_water.js`: **37.7 s — over the entire 35 s budget.** Investigating rather than accepting
+that found a real defect:
+
+**`rho_l` costs 377 ns/call and ~99 % of it is `P_sat`**, which runs 7 Newton iterations from a
+**hard-coded 0.1 MPa initial guess regardless of temperature** (`pwr2_water.js`, `P_sat`).
+
+*A first fix — seeding the guess linearly — was tested and **diverges at high temperature**
+(6.8 and 9.2 MPa error at 321 and 343 °C, this plant's own operating range). Recorded because it
+looked obviously correct and was not.*
+
+**The fix that works removes `P_sat` from the density path entirely.** The compressed-liquid form
+is linear in pressure, so it separates:
+```
+ρ(T,P) = ρ_sat(T)·(1 + (P − P_sat(T))/B(T))  =  A(T) + C(T)·P
+   A(T) = ρ_sat(T)·(1 − P_sat(T)/B(T))   ← fitted, quintic in T
+   C(T) = ρ_sat(T)/B(T)                  ← analytic, cheap
+```
+
+| | Committed | Fixed |
+|---|---|---|
+| `ρ(T,P)` cost | 377 ns | **92 ns** |
+| Max error vs reference form | — | **0.027 kg/m³** (vs `rho_l_sat`'s own 4 kg/m³ claim) |
+| Closure over 12 plant-hours | **37.7 s** | **2.16 s** |
+
+**NOT APPLIED — this is the design phase.** The change is specified and measured; applying it is a
+build task. Its gate is a consistency assertion of the fast form against the reference form, so
+the two fits cannot drift.
+
+---
+
 ## 1. Primitives
 
 ### Node — a control volume
