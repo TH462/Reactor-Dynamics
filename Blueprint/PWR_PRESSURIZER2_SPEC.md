@@ -144,7 +144,30 @@ T_liq < Tsat(P):  m_cond  = (symmetric, cond_tau_s)                          ste
 
 An outsurge grows the steam volume → `rho_stm` falls → P falls → Tsat falls below T_liq →
 flashing partially restores P. **That is the surge→pressure gain, emergent from geometry
-and one time constant** instead of `K_surge_level`. It also gives the plant a bubble draw
+and one time constant** instead of `K_surge_level`.
+
+**THE FLASH MUST BE SOLVED IMPLICITLY — measured, 2026-08-12, and it is a 4× error.** As
+pressure rises, saturation temperature rises with it, so part of the delivered heat warms
+the liquid and metal to the *new* Tsat and only the remainder flashes. The full balance is
+
+```
+Q·dt  =  m_flash · h_fg(P_new)  +  C · (Tsat(P_new) − Tsat(P_old))
+```
+
+which is implicit in `P_new` and is solved by bisection on `m_flash`. Flashing against the
+OLD Tsat — the obvious explicit form — puts **all** the energy into latent heat and reads
+**10.77 psi/s where the correct answer is 2.61**. This was caught by the first
+region-level test rather than by a gate, and it is precisely the class of error a fitted
+gain absorbs invisibly: v1 would simply have been re-tuned to whatever the explicit form
+produced.
+
+**Two results that only exist because the gain is gone.** Full-heater authority computes to
+**2.61 psi/s at 55 % level**, and it **varies with level** — 2.85 psi/s at 25 %, 2.37 at
+90 % — because a fuller pressurizer has more liquid to heat. v1 carried one constant for
+every level. (The analytic estimate in §7 gave 3.44 psi/s because it counted only
+`C · dTsat/dP` and ignored the latent heat of the flashed mass; 2.61 is the complete
+balance and supersedes it. Both are ~20–30× below the shipped 80 psi/s and ~11× above the
+config's mis-derived 0.23 psi/s "ceiling".) It also gives the plant a bubble draw
 for free: heaters on a solid vessel raise T_liq to Tsat and create the steam region, which
 is the evolution `Manuals/04` PWR-N01 currently has no step for (WTSM 19.2.2 makes it the
 first evolution of a heatup).

@@ -121,6 +121,88 @@
     return (T_sat_from_P(P + h) - T_sat_from_P(P - h)) / (2 * h);
   }
 
+  // rho_l_sat(T) — saturated LIQUID density [kg/m³] at temperature T [°C]. Same provenance
+  // and same reason as the vapour table: recalled IAPWS, flagged. The pressurizer's liquid
+  // lives between ~250 °C (cold-plant bubble) and 355 °C (code-safety saturation), and its
+  // density falls 25 % across that span — which is why level cannot be a mass proxy in a
+  // model that claims to be geometric.
+  var TL_C   = [100, 150, 200, 250, 275, 300, 320, 330, 340, 345, 350, 360, 370];
+  var RHO_L  = [958.4, 917.0, 864.7, 799.2, 758.6, 712.1, 667.1, 640.4, 610.3, 594.0, 574.7, 528.1, 451.4];
+
+  function rho_l_sat(T) {
+    if (T <= TL_C[0]) return RHO_L[0];
+    var n = TL_C.length;
+    if (T >= TL_C[n - 1]) return RHO_L[n - 1];
+    var i = 0;
+    while (i < n - 2 && TL_C[i + 1] < T) i++;
+    var f = (T - TL_C[i]) / (TL_C[i + 1] - TL_C[i]);
+    return RHO_L[i] + f * (RHO_L[i + 1] - RHO_L[i]);
+  }
+
+  // h_fg(P) — latent heat [kJ/kg]. It is NOT a constant over this plant's range: 1000 at
+  // operating pressure, 2258 at atmospheric. A model that flashes and condenses with a
+  // fixed h_fg gets the cold end of a cooldown wrong by 2×.
+  var HFG_P   = [0.1, 0.5, 1.0, 2.0, 5.0, 7.0, 10.0, 12.0, 15.0, 16.0, 17.0, 18.0, 20.0];
+  var HFG_KJ  = [2257.5, 2108.0, 2014.6, 1889.8, 1639.7, 1505.1, 1317.1, 1193.6, 1000.0, 930.0, 856.9, 777.1, 583.4];
+
+  function h_fg(P) {
+    if (P <= HFG_P[0]) return HFG_KJ[0];
+    var n = HFG_P.length;
+    if (P >= HFG_P[n - 1]) return HFG_KJ[n - 1];
+    var i = 0;
+    while (i < n - 2 && HFG_P[i + 1] < P) i++;
+    var f = (P - HFG_P[i]) / (HFG_P[i + 1] - HFG_P[i]);
+    return HFG_KJ[i] + f * (HFG_KJ[i + 1] - HFG_KJ[i]);
+  }
+
+  // P_from_steam_density — the pressure solve, and the sentence that replaces `K_surge_level`.
+  //
+  // v1 asked "how many MPa per unit of level rate?" and answered with a fitted gain. v2 asks
+  // "what pressure has a saturated vapour of THIS density?" and answers with the steam
+  // tables. Bisection on the monotone rho_g_sat, bracketed to the model's own range.
+  function P_from_steam_density(rho) {
+    if (!(rho > 0)) return 0.1;
+    var lo = 0.05, hi = 20.0, m;
+    for (var i = 0; i < 50; i++) {
+      m = 0.5 * (lo + hi);
+      if (rho_g_sat(m) < rho) lo = m; else hi = m;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  // ============================================================ the two regions
+  //
+  // ONE LUMPED THERMAL NODE FOR LIQUID + VESSEL METAL, declared. The metal is carried for
+  // its HEAT CAPACITY (41 % of the total, and the difference between 5.8 and 3.4 psi/s of
+  // heater authority — the reason the spec retracted its "wall node is second-order" call),
+  // but it is held AT the liquid temperature rather than given its own state and time
+  // constant. A second node needs a heat-transfer coefficient nothing in this repo sources,
+  // and no catalog row bands on the metal's LAG. Capacity is the load-bearing half and it
+  // is captured exactly; the lag is the declared approximation.
+  function capacity_mj_per_c(s, cfg) {
+    var p2 = cfg.pressurizer2;
+    var cp_l = 6.0;                                   // kJ/kg·K, saturated liquid near 345 °C
+    return (s.pzr_m_liq_kg * cp_l + p2.pzr_vessel_mass_kg * p2.pzr_vessel_cp_kj_kgk) / 1000;
+  }
+
+  // Seed the region state from whatever the plant already is. v2 has to be able to take over
+  // a plant mid-run (the A/B switch, a loaded save, a scenario IC), so the regions are
+  // RECONSTRUCTED from the two published quantities that always exist — pressure and level —
+  // rather than requiring an initialiser nobody would remember to call.
+  function ensureRegions(s, cfg) {
+    if (s.pzr_m_liq_kg != null) return;
+    var p2 = cfg.pressurizer2;
+    var P = s.pressure_mpa > 0 ? s.pressure_mpa : cfg.pressurizer.P_equilibrium;
+    var lvl = (s.pzr_level_pct != null ? s.pzr_level_pct : cfg.pressurizer.pzr_level_nominal) / 100;
+    lvl = Math.max(0, Math.min(1, lvl));
+    var Tsat = T_sat_from_P(P);
+    var V_liq = lvl * p2.V_pzr_m3;
+    s.pzr_t_liq_c   = Tsat;                    // the pressurizer sits ON its saturation line
+    s.pzr_m_liq_kg  = V_liq * rho_l_sat(Tsat);
+    s.pzr_m_stm_kg  = (p2.V_pzr_m3 - V_liq) * rho_g_sat(P);
+    s.pzr_surge_kgps = 0;
+  }
+
   // ------------------------------------------------------------------ the model
   //
   // PHASE 3a: pure delegation. Each function is listed explicitly rather than copied with
@@ -132,8 +214,23 @@
     // the rest are new and are what a two-region model needs that v1 never did.
     P_sat_from_T:     function (T_c)          { return V1.P_sat_from_T(T_c); },
     rho_g_sat:        rho_g_sat,
+    rho_l_sat:        rho_l_sat,
+    h_fg:             h_fg,
     T_sat_from_P:     T_sat_from_P,
     dTsat_dP:         dTsat_dP,
+    P_from_steam_density: P_from_steam_density,
+    // two-region internals, exported so probes can drive them WITHOUT stepping a plant —
+    // the CV fences need to assert geometry and closure at a state, not over a run.
+    ensureRegions:    ensureRegions,
+    capacity_mj_per_c: capacity_mj_per_c,
+    levelFromRegions: function (s, cfg) {
+      return 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / cfg.pressurizer2.V_pzr_m3;
+    },
+    pressureFromRegions: function (s, cfg) {
+      var V_liq = s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c);
+      var V_stm = Math.max(1e-6, cfg.pressurizer2.V_pzr_m3 - V_liq);
+      return P_from_steam_density(s.pzr_m_stm_kg / V_stm);
+    },
     // step entry points (pwr_engine.js:508 / :540 / :542, and :1992 with dt=0)
     stepPressure:     function (s, cfg, dt)   { return V1.stepPressure(s, cfg, dt); },
     stepLevel:        function (s, cfg, dt)   { return V1.stepLevel(s, cfg, dt); },
