@@ -48,7 +48,7 @@ var RD = globalThis.RD;
 var SHIPPED_FLAG = !!(RD.PWR_CONFIG.protection_options || {}).otdt_opdt_trips;
 RD.PWR_CONFIG.protection_options.otdt_opdt_trips = true;     // <-- Part B needs them wired
 L('layers/control/pwr_control.js');
-['engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js',
+['engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js', 'engines/pwr/pwr_primary.js',
  'engines/pwr/pwr_steam_generator.js', 'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
  'layers/control/control_kernel.js', 'layers/instructor_layer.js', 'layers/simulation_service.js'
 ].forEach(L);

@@ -29,6 +29,78 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-12-workbench-c (#472 phases 1–3a — the dossier's headline was a sampling artifact, and a hollow gate I wrote myself)
+
+**Phase 1 characterisation** (`Diagnostic/PZR_CHARACTERIZATION.md`). The dossier's §5 —
+*"2235 psi, never moves"* — is a **2-minute-sampling artifact**. At 20 s resolution the
+surge→pressure coupling is present: a 100→70 MWe swing peaks **+27 psi**, a trip troughs
+**−54 psi**. What `P_restore_rate_gain` suppresses is **persistence**, not response: both
+return to *exactly* the setpoint with heaters and spray at 0 %. Neutered ×0.001 they park
+at **+30** and **−136 psi**. So the rebuild's job is narrower than "rebuild the coupling":
+**fix the equilibrium**.
+
+- **The auto channel is decorative on a trip.** Channel engaged: 2235 psi at all 21
+  samples, heaters peaking **1.77 %**. Every gate asserts endpoints with it engaged.
+- **MO-3: a manual heater press reaches safety injection in 115 s.** 0→100 % at power →
+  2235→2341 psi in 5 s → PORV cycles ~9× in 50 s → pzr mass 0.0709→0.0613 → the discharge
+  pressurizes containment past the sourced 3.5 psig SI backup → **HPI actuates, heaters
+  shed**. No failure injected. At the sourced 1.586e-3 MPa/s the same rise takes 500 s.
+- **MO-4:** manual spray at its 12 % cap takes the plant **2235 → 1266 psi in 4 min**.
+
+**First-ever pressurizer perturb sweep.** Nine constants × the 37-scenario suite, **zero
+verdict flips**: `run_pwr` is nearly blind to pressurizer tuning. `K_spray` and
+`solid_bulk_mpa` are **INERT** (0/260) — the constant behind MO-4's 969 psi excursion is
+invisible to the scenario suite, and no scenario reaches the solid regime. `level_per_void`
+moves **one** check. **Consequence: Phase 3d's A/B must lean on the behaviour battery.**
+`K_heater` moves 18/260, all in the Mode 5↔1 heatup family — narrow, so the spec keeps its
+single-jump recommendation. Harness finding: an unperturbed scenario child costs 53.0 s and
+a nudged one 53.3 s, but **behaviour children run ~14 min against a 96 s baseline** (~9×),
+consistent with threshold-terminated run loops riding to horizon — the battery is
+effectively un-sweepable, which is part of why these constants were never swept.
+
+**Phase 2 spec** (`Blueprint/PWR_PRESSURIZER2_SPEC.md`). The rebuild's sourced anchor was
+**already in our own config and unusable**: `solid_bulk_mpa`'s comment derives the
+steam-side compression gain as **206 MPa/frac** (BVPS-2 RCS 9,650 ft³; WTSM steam volume
+720 ft³) against the shipped `K_surge_level × level_per_mass` = **310** — 1.5× stiff. In v1
+that gain is a constant so nothing could act on the check; a two-region model computes it.
+
+**Phase 3a — the switch skeleton, built and gated in BOTH positions** (46 runners at
+baseline with the flag off and on). `pwr_pressurizer2.js` delegates every entry point to
+v1, so 3a is bit-identical by construction; that is the point, since it proves the switch,
+the load order and the A/B harness before any physics exists.
+
+- **The load-order trap is guarded twice.** `pwr_engine.js:22` caches `PZ` at load time, so
+  a v2 loaded after the engine swaps the global for the late-binding readers while the
+  engine keeps calling v1 — **half of each model, invisibly, in a green gate**. The module
+  throws when the flag is on; `verify_pzr2_loadlists.js` catches it with the flag off,
+  across all 33 carriers, plus ordering.
+- **A HOLLOW CHECK I WROTE AND CAUGHT — the lesson of the phase.** Its fourth check
+  asserted *"`pressurizer2.enabled` is read in exactly one place"* and **passed for the
+  wrong reason**: the only occurrence of that string in the selector is **a COMMENT** (the
+  real read goes through an alias, `cfg2.enabled === 1`, which the regex never sees). It
+  was measuring prose — CLAUDE.md's *"a static gate reading source must strip COMMENTS"*,
+  in a gate written the same hour. The invariant was also wrong: the A/B harnesses
+  legitimately **write** that flag, which is what finally reddened it. **A check whose
+  green comes from a comment and whose red comes from correct code is worth deleting, not
+  repairing.** Replaced with one that cannot be aliased away — *exactly two files may
+  assign `RD.pwrPressurizer`* — injection-verified red on a third swapper and green on a
+  comment-only mention. The file self-matched **twice** (its regex literal, then its own
+  explanation), so both exclusions are by path and named.
+- **Verify the switch, not just the output.** In 3a both positions must agree, so "the gate
+  passed" is equally consistent with "the flag did nothing". Confirmed separately:
+  `RD.PWR_PZR_MODEL === 'v2'` and `RD.pwrPressurizer === RD.pwrPressurizer2`.
+- Baselines moved with adjudication, not absorption: `run_hardrules` **286→290** (+4
+  declared-read sites in the new source) and `run_portable` **142→143** (one more shipped
+  script). Both are the gates *noticing a new engine file* — and had `run_portable` NOT
+  moved, the offline build would have been silently missing the rebuilt model.
+- Two self-inflicted breakages worth recording: a `--pzr2` flag rejected because
+  `measure_stack`'s option regex was `[a-z-]+` and cannot match a digit; and a BASELINES
+  edit whose `//` comment **swallowed the trailing comma**, breaking `run_all` outright.
+  `node --check` before re-gating now.
+
+**Open:** the §7 heater-authority ruling (both ends measured, they fail in opposite
+directions) · Phase 3b, the real physics.
+
 ## Session log — 2026-08-12-workbench-b (#472 phase 0 — the behaviour catalog unfrozen, and its freeze given a gate)
 
 Phase 0 of the pressurizer rebuild (#472; the approved plan is on the issue). The catalog

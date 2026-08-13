@@ -25,9 +25,14 @@ if (NUDGE && NUDGE !== 'none') {
   try { require('./_config_nudge.js').applyNudge(RD.PWR_CONFIG, NUDGE); }
   catch (e) { console.error(e.message); process.exit(2); }
 }
+// #472: `--nudge=pressurizer2.enabled*N` cannot select the rebuilt model, because the
+// applier MULTIPLIES and 0 × anything is 0. The env var is the same switch the module's
+// selector already reads, so a sweep of v2 is `RD_PZR2=1 node tools/perturb_sweep.js …`
+// and nothing here has to know what the flag means. Dies at cutover.
+if (process.env.RD_PZR2 === '1') RD.PWR_CONFIG.pressurizer2.enabled = 1;
 
 load('layers/control/pwr_control.js');
-['engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js',
+['engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js', 'engines/pwr/pwr_primary.js',
  'engines/pwr/pwr_steam_generator.js', 'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
  'layers/control/control_kernel.js'].forEach(load);
 

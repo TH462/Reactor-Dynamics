@@ -1115,6 +1115,21 @@
       tailpipe_cool_tau: 900.0,    // s — cools slowly after the line is isolated [tune]
     },
 
+    // ------------------------------------------------------- pressurizer v2 (#472)
+    //
+    // THE REBUILD'S CONFIG BLOCK. Deliberately separate from `pressurizer:` above so the
+    // two models can be A/B'd on the same tree — build alongside, not in place (the
+    // owner-approved method, `Blueprint/PWR_PRESSURIZER_REBUILD.md` §1.4). This whole
+    // block MERGES INTO `pressurizer:` at cutover and this comment goes with it.
+    //
+    // `enabled` IS THE SWITCH and it is READ AT LOAD TIME by pwr_pressurizer2.js, which
+    // replaces `RD.pwrPressurizer` when it is 1. Do not read it anywhere else: a second
+    // reader turns one switch into two, and the failure mode is a plant running half of
+    // each model. Overridable per-run by `RD_PZR2=1` (Node) or `?pzr2=1` (browser).
+    pressurizer2: {
+      enabled: 0,   // 0 = ship v1. NOT [tune] — a model selector, not a number.
+    },
+
     // ------------------------------------------------------------------ primary
     primary: {
       void_gain: 3.0,              // [tune]
