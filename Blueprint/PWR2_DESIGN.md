@@ -337,3 +337,141 @@ Two research strands are still running (commercial full-scope architectures; rea
 without timestep rejection). **The scheme-B ruling is deferred until they land** — scheme B's
 headline virtue is *dt-convergence across a 200× range*, which is an **analysis-code** virtue. A
 simulator's virtue is *never producing a bad frame*, and those may not be the same purchase.
+
+---
+
+## 20. FULL-SCOPE SIMULATOR PRACTICE — and it settles the scheme-B question
+
+### 20.1 The finding that most changes the design
+
+**US Patent 5,619,433 (THEATRe, GP International, filed 1992)** — a real-time NPP simulator whose
+claims specify **"said constant time step to be selected from between 0.0625 to 0.125 seconds"**,
+solved **without iteration**. Its motive, verbatim:
+
+> *"One deficiency in applying RELAP5/MOD3 in the real time domain is that **it uses variable time
+> steps to assure system stability** … **However, this approach will not guarantee that it can run
+> in real time under all operating conditions.**"*
+
+**And the A/B they publish inverts the assumption this design was built on:**
+
+> *"**The RELAP calculation allows the time step to dynamically reduce to cope with the unstable
+> calculations… However, this particular capability does not remove the numerical spikes. In fact,
+> the RELAP calculation involves substantially more numerical oscillations than the THEATRe
+> calculation which uses a constant time step (0.125 sec).** … It is suspected that the causes for
+> unstable RELAP calculations are primarily introduced by the **discontinuity which exist in the
+> interfacial heat transfer correlation package and the critical flow model**."*
+
+**Read that carefully: the instability was traced to DISCONTINUOUS CORRELATIONS, not to step size.**
+A *constant* 0.125 s step was measured **more stable** than adaptive cutback on the same LBLOCA.
+
+**Consequence for PWR2:** §§11–18 spent the day fighting a discontinuity in the **state equation**,
+and §18 correctly concluded the fix is to stop differentiating it. But the sourced instability in a
+real production simulator came from the **constitutive correlations** — interfacial heat transfer
+and critical flow. **That is where our smoothing effort belongs, and D2 has not looked there at
+all.** §9's `h_film` regimes and D3 §8's CCFL cap are exactly that class.
+
+### 20.2 How frame time is actually guaranteed — eliminate data-dependent branching
+
+THEATRe again: solvers are code-generated per configuration and written so that
+*"factorization, forward and backward substitutions can be performed sequentially (i.e., **no
+do-loops and no if-checks**)"*, because *"for a fixed nodalization, the operations involved …
+is fixed so the computational time is within a narrow interval of timing, while other method of
+matrix solution, e.g., iterative method, **cannot control the computation time if there is any
+convergence problem**."*
+
+**This is the real-time constraint stated precisely, and it is not the one §18 optimised for.**
+
+### 20.3 The tier's answers, and they contradict each other
+
+| Product | Equations | Integration | Step | Iterate? |
+|---|---|---|---|---|
+| **THEATRe** | 5 + drift flux | semi-implicit, ICE | **constant 62.5–125 ms** | **No, by design** |
+| **THOR** (CORYS) | 5 drift flux | **explicit Euler** | 100 cps | **No** |
+| **TRAC_RT** (Tecnatom) | 6 two-fluid + 3-D | semi-implicit predictor-corrector | **100 ms fixed** | only in fast transients |
+| **CATHARE-2/SCAR** (EDF) | 6 | fully implicit Newton | 100 ms frame, n sub-steps | **yes — budget 8/frame** |
+| **APROS 5-eq** | 5 | implicit Euler | adaptive | **no iterations needed** |
+| **3KEYRELAP5-RT** (WSC) | 6 | RELAP5-3D **unmodified** | adaptive | yes |
+
+**CORYS on why explicit wins in real time:** *"the execution time is **proportional to the number of
+control volumes**"* versus implicit *"at best, **proportional to the square**."* And: *"To maintain
+numerical stability, the explicit method requires smaller time steps … **But because of the faster
+execution time per time step this is not a drawback.**"*
+
+**And the sobering datum:** CATHARE-2/SCAR — a 6-equation best-estimate code, heavily parallelised
+across 12 processors — still lands at **~3× slower than real time**: *"This is not sufficient for
+real-time training, but it is of great interest in engineering or safety analysis studies."*
+
+### 20.4 THE ONLY PUBLISHED DEFINITION OF "LATE" — adopt this
+
+CATHARE-2/SCAR (Ruby et al., SNA 2003) is the sole formalism found:
+
+> *"Local criterion: the '**local time lag**' TLl must be lower than **1 s**. Global criterion: the
+> '**global time lag**' TLg must be lower than **1 % of Tsimu**."*
+
+They budget explicitly — 100 ms cycles, 20 ms auxiliaries, **"CATHARE gets 80 ms"**, target
+10 µs/iteration/mesh, **"compute 100 ms-cycles in a maximum of 8 iterations"** — and they
+**tolerate misses**: a valve opening *"might induce a local time lag, even exceeding the
+criteria"*, measured as a maximum *"encountered in **95 % of the 100 ms cycles**."*
+
+### 20.5 ⚖ THE SCHEME-B RULING — synthesis, not a straight adoption
+
+**Scheme B's headline virtue is dt-convergence across a 200× range. That is an ANALYSIS-CODE
+virtue and this tier does not buy it.** But scheme B should not simply be dropped, because its
+*mechanism* is compatible with the tier's requirement in a way §11.1's was not:
+
+| | §11.1 affine march | Scheme B bracketed solve | Tier requirement |
+|---|---|---|---|
+| Compute per frame | fixed | **variable (1–7 iters)** | must be **bounded** |
+| Failure mode | silent 47 % mass error | converges or brackets | must **never diverge** |
+| Convergence guarantee | none | **monotone `F`, bracket always exists** | — |
+
+**RECOMMENDATION: adopt scheme B WITH A HARD ITERATION CAP.** A bracketed solve on a proven-monotone
+function is the one iterative scheme whose *worst case is bounded* — cap at N iterations, accept
+the residual, and the bracket width bounds the error even when the cap binds. That satisfies
+THEATRe's frame-time argument without giving up §18's correctness result. **It is not
+"non-iterative", and that claim stays dead.**
+
+**And the acceptance criterion must change with it.** Not a residual in kg — **ANS-3.5's actual
+bar**, which the NRC states as: steady state within **2 %**, and transients judged by
+*"observable change in the parameters **correspond in direction**"*, *"shall **not fail to cause an
+alarm** or automatic action if the reference unit would have"*, and *"shall **not cause an alarm**
+… if the reference unit would not."* **Directional correctness and alarm fidelity — which is
+`CURRICULUM.md`'s Tier A framing, not a mass ledger.**
+
+### 20.6 What coarseness actually costs — three measured cases
+
+- **PCTRAN vs NOTRUMP** (AP1000 SBLOCA): sequence right, **clock wrong by 20–150 %, and the error
+  GROWS with elapsed time** — reactor trip +66 %, ADS-4 **+151 %** (24–38 minutes late).
+- **Krško full-scope (79 volumes) vs RELAP5 (469)**: the coarse model **crossed an ECCS setpoint the
+  best-estimate code never reached** — *"LPSI system actuated at around 4400 s … while in the case
+  of RELAP5 … there was no LPSI injection"* — traced directly to *"only **two volumes between the
+  reactor vessel and reactor coolant pump**."* **A node-count decision changed which safety systems
+  fired.** That is the strongest argument yet for PWR2's node count being a curriculum question.
+- **Mesh coarsening, isolated** (DOE-WSC-18915): MDNBR reads **5.4 coarse vs 4.4 resolved** — the
+  coarse model reports **23 % more margin than exists, non-conservatively**, from a 4.4 % heat-flux
+  understatement.
+
+### 20.7 ✅ HR1 VINDICATED BY A VENDOR BENCHMARK
+
+CAE's Krško work found their real-time simulator **beat RELAP5** against plant data:
+
+> *"**RELAP5 initially predicts a much steeper change to hot leg and cold leg temperatures compared
+> to plant data** … The slower hot leg response in the plant data is believed to be at least
+> partially associated with **the effect of the hot leg metal on the thermal response of the
+> temperature sensor itself, which is not explicitly modeled in RELAP 5** … The temperatures shown
+> for the simulator represent the **response of the simulated sensors**."*
+
+**Modelling the instrument beat a finer mesh of the fluid.** That is HR1, externally confirmed —
+and it argues PWR2's effort is better spent on wall/sensor dynamics (§9's τ ≈ 0.10 s, still
+untested) than on solver convergence.
+
+### 20.8 A node-sizing rule that inverts the analysis-code logic
+
+Janosy (InTech 2011): *"if we multiply the maximal feasible volumetric flow-rates with the 0.2 sec.
+integration time step, we get the **minimal volumes for the nodes**."* — **`V_node ≥ Q_max · dt`.**
+Analysis codes shrink `dt` to fit the nodes; **real-time codes size the nodes to fit `dt`.** D3's
+node list should be checked against this before anything is built.
+
+*Sourcing note: THEATRe's body text came via Google Patents (front-page data and the constant-step
+claim independently re-verified at USPTO). **ANS-3.5's own §4.1 tables are paywalled and were not
+obtained** — the 2 % is the NRC quoting the standard, not the standard itself.*
