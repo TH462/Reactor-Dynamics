@@ -475,3 +475,120 @@ node list should be checked against this before anything is built.
 *Sourcing note: THEATRe's body text came via Google Patents (front-page data and the constant-step
 claim independently re-verified at USPTO). **ANS-3.5's own §4.1 tables are paywalled and were not
 obtained** — the 2 % is the NRC quoting the standard, not the standard itself.*
+
+---
+
+## 21. REAL-TIME ROBUSTNESS — the direct answer, and sourced evidence bearing on the HEM ruling
+
+### 21.1 The direct answer, from a 2026 paper on a real-time RELAP5-3D
+
+Arshavsky, *Nuclear Technology*, 13 Jan 2026, DOI 10.1080/00295450.2025.2572004:
+
+> *"Code improvements were made to address major challenges in real-time nuclear power plant
+> simulators to enable high performance, stability, and accuracy concurrently. The code changes,
+> **which were accumulated over 3 decades**, include implementation of a **smooth transition between
+> different heat transfer and flow regime conditions**, Dalton-Gibbs mixture equation solver
+> corrections, and numerical scheme improvements to **avoid code aborts and unphysical spikes when
+> transitioning from one-phase to two-phase flow conditions and vice versa**."*
+
+**Three things this settles:**
+
+1. **The technique that replaces step rejection is smoothing the REGIME AND CORRELATION
+   transitions** — not the properties, and not sub-stepping. **Same conclusion as THEATRe's patent
+   thirty years earlier.** Two independent codes, three decades apart, put the fix in the
+   *correlation layer*. §20.1 reached this; this confirms it independently.
+2. **"Unphysical spikes when transitioning from one-phase to two-phase" is water packing — named as
+   a live problem in a shipping product in 2026.** §18.5 treats it as a documented 1995 defect. It
+   is a documented **permanent** one.
+3. **"Avoid code aborts."** The analysis code's terminal state is explicit (NUREG/CR-5535 §8.1):
+   *"If the minimum time step is reached without obtaining a valid solution, **the code calculation
+   is terminated**."* That halt is what the real-time variant had to engineer away — and it took
+   **three decades**.
+
+### 21.2 ⚠ SOURCED EVIDENCE BEARING ON THE HEM RULING — recorded here, next to the ruling
+
+**US 5,619,433 col. 12, ll. 58–67:**
+
+> *"**The two energy equation approach is much more mechanistic and numerically stable than the one
+> equation model** … the one energy equation model requires **substantial non physical treatment**
+> to calculate interfacial heat…"*
+
+PWR2's ruled two-phase model is **homogeneous equilibrium — one energy equation.** A shipped
+real-time code is on record that this formulation is *less* numerically stable and needs
+compensating non-physical treatment.
+
+**And our own findings are consistent with it rather than contradicting it.** The 3,800× slope
+ratio, the 263× cancellation, the sign-inverted junction flow, the 148,597× closure-slope ratio in
+the water-solid case — **all are consequences of collapsing two phases onto one energy variable.**
+
+**This is NOT a recommendation to reopen the ruling.** The educational argument for HEM is separate,
+and this is one vendor's unquantified assertion. **But HR9 makes the plant's identity answerable to
+physics, and this is sourced evidence bearing on that ruling's cost.** It belongs beside the ruling
+rather than being discovered later by whoever hits the next boundary defect.
+
+### 21.3 What happens when a frame is missed — the policy, sourced
+
+**IAEA-TECDOC-1500, pp. 55–56:**
+
+> *"**MAAP4 code execution time slippage is allowed for short time periods. When the minimum time
+> step limitation diminishes, the faster then real time execution of MAAP4 code is used to catch up
+> with normal simulation time, until the accumulated time difference is zero.**"*
+
+**Both nuclear and the Modelica world converge on the same policy: let the frame slip, then run the
+deficit back to zero.** Neither pretends the deadline is always met.
+
+**Concrete implementation item for PWR2:** the architecture already has the mechanism
+(`timeAcceleration` and the step-count loop in `simulation_service.js`). **The open question is
+whether a §17.5 crossing sub-step accrues a time deficit that nothing repays.** Cheap to verify,
+and the failure is silent.
+
+### 21.4 The stability/cost design space, complete
+
+| Scheme | Stability | Cost/step | Iterations |
+|---|---|---|---|
+| Explicit | **unstable** (Ransom: *"entirely explicit schemes are unstable"*) | lowest | 0 |
+| **Semi-implicit** | to the material Courant limit | low | **0 — direct linear solve** |
+| Nearly-implicit | ~20–40× Courant | +25–60 % | **bounded** |
+| Fully implicit | unconditional | high | **UNBOUNDED** |
+
+> **Semi-implicit does not buy unconditional stability, and nothing that does is safe at a fixed
+> frame.**
+
+**This sharpens §20.5's ruling.** A capped bracketed solve is **nearly-implicit** in character —
+bounded iteration for extra Courant headroom — **not** fully implicit. That is the row every
+real-time code in this research occupies, and it is the right row.
+
+### 21.5 The regulator says conservation is a BUDGET, not an identity
+
+**NEI 09-09 Rev 0 §3.9 (ML091310538):**
+> *"The response of the simulator … shall be realistic and **shall not violate the physical laws of
+> nature, such as conservation of mass, momentum, and energy, WITHIN THE LIMITS of the
+> verification, validation, and performance testing criteria of the standard**."*
+
+**Even the conservation requirement is qualified by a tolerance.** That is the strongest available
+answer to what a residual may be: **conservation in a real-time simulator is a budgeted quantity,
+and the regulator says so.** D5's Layer-1 gate should be written as a budget with a stated number,
+not as an identity.
+
+### 21.6 Two corrections to the record
+
+- **WITHDRAW the ±2 % steady-state figure** quoted in §20.5. It traces to a 1989 licensee procedure
+  citing ANSI/ANS-3.5-**1985**; the **2018 edition uses temperature-range-dependent bands**
+  (Appendix B, Table B.1). The transient criteria (directional, alarm-based) stand.
+- **`nrc.gov` IS FETCHABLE** — it 403s a bare user-agent but returns **HTTP 200 with a full browser
+  header set** (UA + Accept + Accept-Language + sec-ch-ua + Sec-Fetch-*). Three documents were
+  pulled that way. **Meanwhile archive.org returned HTTP 498 to every content request this
+  session.** `CLAUDE.md` and the `pwr-prototypicality-sources` memory both record the archive.org
+  route as *the* workaround — **the documented workaround is currently the broken one, and the
+  "broken" path works.** Worth fixing in both places.
+
+### 21.7 The caution to carry into the build
+
+> *"RELAP5-3D needed **three decades** of accumulated source changes to stop aborting at the
+> one-phase/two-phase transition, and a 2026 paper still lists it as a headline fix. This design
+> treats crossing that boundary as a solved problem with a measured residual. **It is worth asking
+> whether §17.5's 8.4 kg was measured across the same variety of crossings that took the industry
+> thirty years to cover.**"*
+
+**It was not.** §17.5's number comes from one node driven across `h_f` at four pressures. That is a
+sample, not coverage.
