@@ -609,7 +609,38 @@ A future agent reading §1 builds the superseded design.
 
 ## 11. RESOLUTIONS to §10's holes (2) and (3)
 
-### 11.1 The `dP/dt` circularity — resolved EXACTLY, no lag
+### 11.1 The `dP/dt` circularity — resolved, but the system is PIECEWISE affine
+
+> **⛔ CORRECTED after numerical test (§12.2). Read this before the derivation below.**
+>
+> **The precondition the original text omitted: affineness holds only while the donor-cell
+> DIRECTIONS are fixed.** `h_in` is a *coefficient* of the map, so **a junction reversal switches
+> the map.** The system is **piecewise affine**, not affine.
+>
+> **Measured consequence:** error in the solved `Ṗ` is **0.00 % in single-phase liquid** but
+> **24 % at 5 % void, 195 % at 1 % void / 0.5 MPa**, and the worst case produced a **299 %
+> deviation including a sign inversion**. The probe point matters: on natural circulation the
+> first kink is at Ṗ = 0.110 MPa/s, so `march(1)` reads the wrong branch and the "slope" is a
+> secant across a kink. **Moving the probe closer does not fix it** — the kink can lie between 0
+> and the root.
+>
+> **THE FIX: three marches, not two.** Re-linearising converges to the true root **exactly, in
+> every case tested**. So:
+> - **"Two marches and one division" → three marches.**
+> - **"Non-iterative" is FALSE** wherever a junction can reverse. It is non-iterative only in
+>   single-phase liquid.
+> - **"Exact" is true of the RATE, not the STEP.** Pre-correction closure residual after one
+>   dt = 0.02 reaches **166 kg with a node on the `h_f` kink**, so **the Newton level-corrector is
+>   the AUTHORITY there, not a round-off polisher** — the reverse of how §11.1 originally framed
+>   the two mechanisms.
+>
+> **And the way this was found is the more important lesson.** My original "verified numerically"
+> used a 3-node single-phase toy whose **first junction reversal is at Ṗ = +200 MPa/s** — it was
+> affine to 0.00e+0 because *nothing in it could reverse*. **I verified a claim on a case
+> structurally incapable of falsifying it.** Recorded in D3 §1a as the generalised rule: it is not
+> just recalled *bands* — it is **any acceptance criterion I choose that cannot fail.**
+
+The derivation below is correct *within a branch*, and is retained for that reason.
 
 §10(2) is real: `dρ_i/dt` needs `dP/dt`, which the Newton closure only produces afterwards, and
 near saturation that term dominates the expulsion flow. Lagging it would re-introduce the #447
@@ -808,3 +839,99 @@ property budget of ~15 s (engine.step is ~88 % of 35 s; properties roughly half 
 - **§12.3's minimax point still stands**: 0.027 kg/m³ for `A(T)` needs a Remez fit; plain
   least-squares gives 0.0610. The library declares least-squares everywhere else, so either the
   fit method or the claimed accuracy has to change.
+
+---
+
+## 14. The four remaining holes — RESOLVED
+
+§10's items (4), (5) and (6) plus the missing two-phase friction term. None needed an owner ruling;
+all four turned out to be under-specification rather than error.
+
+### 14.1 `m_pzr(P)` — the pressurizer is the ONE node where `m` IS a legitimate state
+
+§0.3 wrote the closure as `M_total = Σρ(h_i,P)V_i + m_pzr(P)`, and the review correctly objected
+that pressurizer mass is not a function of `P` alone. **The special term was my error.** The
+resolution explains *why* the pressurizer is different, and it is not arbitrary:
+
+**§0's whole argument is that `m` has no freedom because `V` is FIXED. The pressurizer's regions do
+not have fixed volume** — the liquid/steam interface moves. So for the pressurizer, and only there,
+`m` recovers its freedom:
+
+```
+STATES   m_liq, h_liq, m_steam, h_steam          (4 -- m IS a state here)
+DERIVED  V_liq   = m_liq  / ρ_l(h_liq,  P)
+         V_steam = m_steam/ ρ_v(h_steam,P)
+CONSTRAINT                V_liq + V_steam = V_pzr        (the total IS fixed)
+```
+
+That constraint is the pressurizer's contribution to the pressure closure — it enters
+`Σ V_i` rather than `Σ m_i`, which is the same equation viewed from the other side. **No special
+`m_pzr(P)` function is needed or possible.**
+
+**This also resolves the HEM objection** (D3 §4): a single stirred HEM node cannot hold liquid and
+steam at different enthalpies, but **two nodes with a moving boundary can** — spray condensation,
+heater input and insurge subcooling all act on distinct regions. **#472 still owns the pressurizer;
+this is the interface it must satisfy, not a competing model.**
+
+**And it explains my own conditioning table's inconsistency** (§10(4)): I held bubble *volume*
+fixed at 2 m³, which is exactly the assumption this section shows is wrong. The table was a
+property-library exercise, not a pressurizer measurement.
+
+### 14.2 Plug-flow nodes vs the single-`h` closure — and it costs
+
+A plug node holds an enthalpy *profile*, but the closure summed one `ρ(h_i,P)·V_i` per node, and
+`ρ` is nonlinear in `h` so `ρ(h̄) ≠ mean ρ`. **Resolution: a plug node contributes its sub-cells to
+the closure, not its mean.**
+
+```
+plug node k sub-cells:   m_i = Σ_k ρ(h_k, P)·V_k        (and dρ_i/dt likewise, per sub-cell)
+```
+
+**Consequence that lands on §13's budget, not on correctness:** a plug node costs **K
+node-evaluations, not 1**. With hot leg, crossover and cold leg as plug nodes at, say, K = 5, the
+per-step evaluation count rises from 12 to ~24 — **which consumes §13's entire 2× margin.**
+**Plug sub-cell count is now a budget parameter**, and D3 must set K explicitly rather than leaving
+`transport: plug` as a free flag.
+
+### 14.3 "One loop momentum DOF" — the rule is the flow graph's cyclomatic number
+
+§0.1's *"a series loop: continuity links every junction"* is **false of D3's own junction table** —
+J-rhr connects hot leg to cold leg, forming a second circuit around the SG/RCP segment. **Stated
+correctly:**
+
+> **The number of integrated momentum states equals the number of independent cycles in the flow
+> graph** (edges − nodes + 1 for the connected flow network), **counting only paths whose flow is
+> not pump- or valve-dominated.**
+
+| Lineup | Independent cycles | Momentum states |
+|---|---|---|
+| Normal, RCP running | 1 | **1** |
+| **RHR aligned, RCP off** | **2** | **2** — RHR forced flow *and* the SG limb, which may stagnate or reverse |
+| Large break | 1 + break path | break path is **quasi-steady critical flow**, so still 1 integrated |
+
+**The RHR case is not academic**: the SG-limb flow under RHR cooling is exactly the mode transition
+Tier B cares about, and a single loop state cannot represent stagnation in one limb while the other
+circulates.
+
+**A second admission the original section owed:** under a large break the flow field differs by
+thousands of kg/s across the break, so **a single `ṁ` in `Σ K ṁ|ṁ|` is wrong segment-by-segment.**
+Segment flows come from the algebraic march (§0.2) and the friction sum must use *those*, not the
+loop state.
+
+### 14.4 Two-phase friction multiplier — absent everywhere, and required
+
+No two-phase friction term existed in any document, without which loop ΔP at high void is badly
+wrong — and high void is precisely the natural-circulation-degradation regime that defines this
+plant's ruled ride-out character.
+
+**Under the HEM ruling the consistent choice is the homogeneous multiplier:**
+```
+φ²_lo = 1 + x·(ρ_f/ρ_g − 1)          ΔP_2φ = φ²_lo · ΔP_liquid-only
+```
+It is the form that follows from treating the mixture as a single fluid with `ρ_mix`, so it is
+*entailed* by the ruling rather than bolted on — no separated-flow correlation (Lockhart-Martinelli,
+Friedel) is admissible without also admitting slip, which the ruling excludes.
+
+**Flagged: UNSOURCED.** The form is standard, but it has no citation in this repo's corpus and it
+is load-bearing for natural circulation. **It goes on the evidence list**, and per D3 §1a's rule it
+may not *confirm* anything until sourced.
