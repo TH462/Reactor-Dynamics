@@ -125,9 +125,15 @@ months, the constant it checked moved 12.5×, and nothing connected the two.
 - **The steam region is always saturated at P.** No independent superheat state: it is a
   stiff second solve with no acceptance row behind it. Consequence: a steam space cannot be
   superheated by the heaters alone.
-- **No wall-metal node.** It matters second-order for spray effectiveness and heatup pace;
-  nothing in §13 bands on it. If a future row needs it, it is an additive change, not a
-  restructure.
+- **A wall-metal node IS REQUIRED. This reverses an earlier deferral in this same spec, and
+  the reversal is the point.** It was written off as "second-order, nothing bands on it".
+  §7's arithmetic then showed it is **the** term setting heater authority: 1794 kW into the
+  pressurizer liquid alone gives **5.8 psi/s**, with 10 t of vessel metal **3.6**, with 20 t
+  **2.6** — a 2.2× swing in the quantity an owner ruling was about to be requested on.
+  A node is only "second-order" with respect to the rows you happened to look at; this one
+  sets the headline number. Vessel mass needs a source (WTSM 3.2 Tbl 3.2-2 class) or an
+  explicit declared estimate — **not** a `[tune]`, because it is a mass and masses are
+  measurable.
 
 ### 2.5 Flash and condense — the emergent surge gain
 
@@ -152,7 +158,11 @@ wetted_frac = clip((level_true - heater_elev_bot_pct)
 ```
 
 - `heater_power_mw = 1.794` — **sourced** (S9, WTSM: 78 heaters, 1794 kW). Not `[tune]`.
-- `heater_authority_mult` — the declared departure, **§7 ruling**.
+- **THERE IS NO AUTHORITY MULTIPLIER.** *(OWNER, 2026-08-12: "why have a multiplier? why not
+  have physics. how much does the real one output?")* — and the arithmetic agrees, see §7.
+  Pressure rate is not a property of a heater; it is `Q / (C · dTsat/dP)`, an **output** of
+  what the heat goes into. v1 needed `K_heater` because v1 has no thermodynamics to put the
+  joules into. v2 does, so the constant disappears rather than being re-banded.
 - `wetted_frac` reads **TRUE** level: it is physics, not an instrument reading.
 - **The S1 bistable survives untouched in `autoControl`, reading INDICATED level** (HR1)
   *(OWNER RULING, 2026-08-12: "keep both")*. Two different things: the latch is the plant
@@ -321,9 +331,51 @@ controller**, which is its actual subject (today it measures `P_restore_rate_gai
 
 ---
 
-## 7. THE RULING THIS SPEC NEEDS — heater authority
+## 7. Heater authority — THE RULING REQUEST IS WITHDRAWN
 
-Both ends are measured and they fail in opposite directions.
+*(OWNER, 2026-08-12: "why have a multiplier? why not have physics. how much does the real
+one output?")* — the question dissolved the dilemma below rather than choosing between its
+horns. **Both numbers this section was going to ask you to pick between are wrong, in
+opposite directions, and the trade-off it described does not exist.**
+
+**What the real one outputs is 1794 kW.** That is the sourced quantity (S9). A pressure
+*rate* is not a property of a heater at all — it is `Q / (C · dTsat/dP)`, where `C` is the
+heat capacity of what is actually being heated. Computed with this repo's own saturation
+correlation (Tsat 345.0 °C at 15.41 MPa, dTsat/dP = **5.35 °C/MPa**), pressurizer liquid
+1402 kg at 55 % level, cp ≈ 6.0 kJ/kg·K:
+
+| 1794 kW heats… | dP/dt |
+|---|---|
+| the pressurizer liquid alone | 0.0398 MPa/s = **5.78 psi/s** |
+| + 10 t of vessel metal | 0.0250 MPa/s = **3.62 psi/s** |
+| + 20 t of vessel metal | 0.0182 MPa/s = **2.64 psi/s** |
+
+**The config's "sourced ceiling" of 1.586e-3 MPa/s (0.230 psi/s) is not the source's
+number — it is a derivation error.** Back-solve it and the implied heated capacity is
+**211 MJ/°C**, which is essentially the entire RCS coolant node (231 MJ/°C). It was computed
+as though the pressurizer heaters had to warm the whole reactor coolant system. They do not:
+they boil the pressurizer's own liquid, and the bubble sets system pressure. The real
+ceiling is **15–25× higher** than the figure `Manuals/12` §12.15 declares the departure
+against, so **the shipped 0.55 MPa/s overstates by ~20×, not 347×** — and the manual chapter
+says otherwise and needs correcting.
+
+**Why the dilemma evaporates.** Its two horns were: (a) the sourced value cannot recover
+MO-2's −140 psi outsurge inside `CC-6`'s ~5 min band, and (b) 347× makes a manual heater
+press a casualty in 115 s. At real physics (~0.025 MPa/s): recovering 0.97 MPa takes
+**~40 s**, comfortably inside CC-6; and a full manual press reaches the PORV in **~32 s**
+instead of 1.4 s — which is the *prototypical* outcome, since walking away with the heaters
+on should eventually lift the valve. Neither horn survives.
+
+**So v2 ships no multiplier**, `heater_authority_mult` is deleted from §4's config list, and
+the number to defend becomes the **vessel metal mass** (§2.4) — a mass, which is sourceable,
+rather than a gain, which is not.
+
+---
+
+### The withdrawn dilemma, kept for the record
+
+Both ends were measured and appeared to fail in opposite directions. The reasoning was
+sound given a wrong baseline, which is exactly why it is left visible rather than deleted:
 
 | | `heater_authority_mult` ≈ 347 (today's 0.55 MPa/s) | ≈ 1 (the sourced 1.586e-3 MPa/s) |
 |---|---|---|
