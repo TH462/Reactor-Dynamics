@@ -127,6 +127,60 @@ automatic channel engaged: MO-1 and MO-2 read flat 2235, and MO-3's excursion ne
 happens because the controller never asks for full heaters. The directive is three days
 old and it has already produced the rebuild's central measurement.
 
-**Still to measure before Phase 2 closes:** the pressurizer `perturb_sweep` set
-(`DEFAULT_NUDGES` has zero pressurizer constants) — the load-bearing map of which existing
-checks feel which constant, and therefore which of Phase 3d's reds will be real.
+---
+
+## 4. The load-bearing map — first sweep of the pressurizer constants, ever
+
+`node tools/perturb_sweep.js --suite=pwr` with nine pressurizer nudges. `DEFAULT_NUDGES`
+has never contained one, so there is no prior to compare against.
+
+| Nudge | moved | verdict |
+|---|---|---|
+| `K_heater ×1.03` | **18/260 (6.9 %)** | ok |
+| `level_per_mass ×1.02` | 17/260 (6.5 %) | ok |
+| `K_surge_level ×1.03` | 16/260 (6.2 %) | ok |
+| `level_per_tavg ×1.02` | 15/260 (5.8 %) | ok |
+| `P_restore_rate_gain ×1.03` | 8/260 (3.1 %) | weak |
+| `K_sat_pull ×1.03` | 7/260 (2.7 %) | weak |
+| `level_per_void ×1.02` | **1/260 (0.4 %)** | weak |
+| `K_spray ×1.03` | **0/260** | **INERT** |
+| `solid_bulk_mpa ×1.03` | **0/260** | **INERT** |
+
+**Verdict flips across all nine: ZERO.**
+
+### What this actually says
+
+1. **The 37-scenario suite is nearly blind to pressurizer tuning.** Every band in it is
+   wider than a 2–3 % move of any pressurizer constant. It will stay quiet through the
+   rebuild — so **Phase 3d's A/B has to lean on the behaviour battery, not the scenarios**,
+   and a green `run_pwr` will be weak evidence that the rebuild landed correctly.
+2. **`K_spray` is INERT across 37 scenarios** — and `MO-4` measured that same constant
+   driving the plant **2235 → 1266 psi** under a manual demand. The authority with the
+   largest measured single-control excursion on the plant is invisible to the scenario
+   suite. (INERT means *this suite cannot speak about it*, not that it does not matter —
+   `CC-5`/`TR-11` hold spray in the battery.)
+3. **`solid_bulk_mpa` is INERT** — no scenario reaches the solid regime. `CA-12`, `CA-15`
+   and `CA-19` are battery probes, so the entire solid-plant regime rests on three probes
+   in one suite.
+4. **`level_per_void` moves exactly ONE check.** The TMI deception constant — the flagship's
+   whole teaching payload — is felt by a single check in the scenario suite. `TD-2`/`TD-5`/
+   `TD-6` live in `CA-18`, again in the battery.
+5. **`K_heater`'s 18 movers are all in the Mode 5↔1 heatup/cooldown family** (verified by
+   diffing the child outputs directly: heatup peak rate 375.9 → 364.7 °C/hr, cooldown
+   −579.7 → −604.6 °C/hr, criticality timing, the paced-heatup worst hour). Heaters move
+   what heaters do work on, and nothing else.
+
+**The honest limit on point 5, stated because §7 leans on it:** a 3 % nudge identifies which
+checks *feel* a constant. It does **not** predict behaviour under a 347× change. It rules
+out "twenty unrelated probes redden at once"; it does not promise the heatup family will be
+easy.
+
+### A finding about the harness itself
+
+The two-suite sweep was killed at 70 minutes. Measured cause: an unperturbed scenario-suite
+child costs **53.0 s** and a `K_heater`-nudged one **53.3 s** — the scenario suite was never
+the problem. The **behaviour-battery** children run **~14 min each against a 96 s
+baseline**, a ~9× blowup, consistent with probes whose run loops terminate on a pressure or
+level threshold and ride to their horizon when that threshold moves. **The behaviour
+battery is effectively un-sweepable today**, which is part of why these constants have
+never been swept. Worth its own issue; not part of this rebuild.

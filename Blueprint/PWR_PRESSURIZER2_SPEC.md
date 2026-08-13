@@ -302,10 +302,22 @@ that is the behaviour `MO-2` says we currently cannot show at all. The intermedi
 (something like 5–20×) is available and I would take it only if re-banding `CC-6` turns out
 to break the post-trip beat pacing in a way the missions cannot absorb.
 
-**What would change my mind:** if the perturb sweep shows a wide set of unrelated checks
-riding on `K_heater`, the honest move is a staged reduction with the intermediate value
-first, rather than one jump that reddens twenty probes at once and makes every red
-ambiguous.
+**The sweep has now run, and it supports the single jump.** `K_heater ×1.03` moves **18 of
+260** scenario-suite checks and **flips none**, and every mover is in the Mode 5↔1
+heatup/cooldown family — heaters move what heaters do work on. There is no wide set of
+unrelated checks riding on it, so the staged reduction buys nothing it would otherwise buy.
+**Stated limit:** a 3 % nudge says which checks *feel* a constant, not how they behave under
+a 347× change. It rules out a twenty-probe pile-up; it does not promise the heatup family
+will be easy, and the heatup pacing (`EV-1`, the sourced 100 °F/hr TS limit) is where the
+work will land.
+
+**What the same sweep says about the rebuild's evidence base, which matters more than §7.**
+Zero verdict flips across all nine pressurizer constants: **the 37-scenario suite is nearly
+blind to pressurizer tuning**, `K_spray` and `solid_bulk_mpa` are outright INERT in it, and
+`level_per_void` — the deception constant — moves exactly one check. **Phase 3d's A/B must
+therefore lean on the behaviour battery, not on `run_pwr`.** A green scenario suite will be
+weak evidence that the rebuild landed correctly, and the plan's adjudication protocol should
+weight the battery accordingly.
 
 **Defaults if I get no reply:** I build v2 with `heater_authority_mult` as a config
 constant defaulted to today's effective value, so the switch is a pure A/B and the
