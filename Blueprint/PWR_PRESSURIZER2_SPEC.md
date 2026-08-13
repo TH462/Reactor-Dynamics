@@ -72,15 +72,53 @@ P                relaxed toward the P satisfying rho_g_sat(P) = rho_stm_target
 `P_sat_from_T`, both exported. Relaxation uses the house idiom
 (`x += (target - x) * dt / (tau + dt)`), not a Newton solve.
 
-**This is where the sourced anchor lands.** `solid_bulk_mpa`'s own comment already carries
-the check: isothermal bubble compression gives `dP/dm_frac = P * V_RCS / V_steam`, and on
-the sourced geometry (BVPS-2 UFSAR Tbl 5.1-1 RCS 9,650 ft³; WTSM 3.2 Tbl 3.2-2 full-power
-steam volume 720 ft³) that is **206 MPa/frac** — against the shipped
-`K_surge_level × level_per_mass` = **310**, i.e. the current model runs **1.5× stiff**.
-**v2 must PRODUCE ~206, not carry it**: the number falls out of `V_pzr_m3`, the level, and
-`rho_g_sat`. `K_surge_level` ceases to exist. This is the single strongest argument that
-the rebuild is a re-derivation rather than a re-dressing — the check was written into the
-config four months ago and nothing could act on it.
+**This is where the sourced anchor lands — and the direction is the OPPOSITE of what this
+spec first said. Correction, 2026-08-12, before any code was written.**
+
+`solid_bulk_mpa`'s comment carries the check: isothermal bubble compression gives
+`dP/dm_frac = P · V_RCS / V_steam`, which on the sourced geometry (BVPS-2 UFSAR Tbl 5.1-1
+RCS 9,650 ft³; WTSM 3.2 Tbl 3.2-2 full-power steam volume 720 ft³) is **206 MPa/frac**. The
+comment compares that to *"the shipped `K_surge_level · level_per_mass` = 310"* and
+concludes the two agree to within 50 %.
+
+**That comparison is STALE and this spec repeated it.** `K_surge_level` was **0.4** when
+the comment was written (0.4 × 776 = 310.4 ✓); it has been **0.032 since #419 wave 3** — a
+12.5× reduction the comment never followed. The shipped gain is therefore
+
+```
+K_surge_level × level_per_mass  =  0.032 × 776  =  24.8 MPa/frac
+```
+
+**~8.3× SOFTER than the sourced figure, not 1.5× stiffer.** The first draft of this section
+asserted the opposite because it inherited a number from a comment instead of multiplying
+the live constants — the standing trap *"verify a claim before you act on it; an inherited
+claim is the risky one"*, committed and then caught by arithmetic.
+
+**On this plant's own declared volumes** (RCS currency 7,467 gal = 28.26 m³ from the
+`K_porv_relief` block; `V_pzr_m3` = 4.29 m³ derived from the §2.2 identity; steam space at
+55 % level = 1.93 m³):
+
+```
+dP/dm_frac = 15.41 × 28.26 / 1.93 = 226 MPa/frac
+```
+
+**The 24.8 figure is independently confirmed by measurement**, which is why it is the one
+to trust: Phase 1's neutered load swing moved level 55.0 → 65.4 (10.4 points = 0.0134 frac)
+and pressure **+48 psi peak = 0.33 MPa**, i.e. an effective **24.6 MPa/frac**. Theory and
+plant agree to 1 %.
+
+**Consequence the build must expect rather than discover.** A two-region model computes this
+gain from geometry, so v2's bubbled surge response will be **roughly an order of magnitude
+stiffer than v1's**, in the direction the source points. Phase 3b's first pressure
+measurements will therefore diverge hugely from v1 — that is the rebuild working, not a
+defect, and it is predicted here so it cannot later be adjudicated as a surprise. It also
+raises a real question for §7's sibling: at 226 MPa/frac the Phase-1 insurge would move
+pressure ~420 psi and lift the PORV, so **either the sourced geometry or the surge
+magnitude needs a second look during 3b** — with the manual-mode rows as the arbiter.
+
+`K_surge_level` ceases to exist either way. This remains the strongest evidence that the
+rebuild is a re-derivation rather than a re-dressing: the check sat in the config for
+months, the constant it checked moved 12.5×, and nothing connected the two.
 
 ### 2.4 Declared simplifications (both revisitable, neither free)
 
