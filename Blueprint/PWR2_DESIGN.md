@@ -592,3 +592,81 @@ not as an identity.
 
 **It was not.** §17.5's number comes from one node driven across `h_f` at four pressures. That is a
 sample, not coverage.
+
+---
+
+## 22. SECOND WAVE OF RULINGS (2026-08-13) — taken after the industry research
+
+**All four are SELECTIONS from options I wrote**, recorded in the form `CLAUDE.md` uses for that
+case. Same caveat as §2: a selection binds only as far as my option text was accurate.
+
+| | Ruling | Form |
+|---|---|---|
+| **Solver** | **Bracketed root-find, capped at ~8 iterations** | *(OWNER RULING, 2026-08-13: selected "Bracketed, capped at ~8 iterations")* |
+| **Momentum** | **Keep the integrated loop momentum state** | *(OWNER RULING, 2026-08-13: selected "Keep integrated momentum — one state")* |
+| **Two-phase** | **HEM stands; record its cost** | *(OWNER RULING, 2026-08-13: selected "Keep HEM, record the cost")* |
+| **Ambition** | **Continue at ~12 nodes; change the acceptance bar** | *(OWNER RULING, 2026-08-13: selected "Continue at ~12 nodes, change the acceptance bar")* |
+
+### 22.1 What each settles
+
+**SOLVER — §11.1's affine march is DELETED.** Replaced by scheme B (§18.2): a bracketed 1-D
+root-find on the exact closure `F(P) = Σ V_i·ρ(a_i + v_i(P−P_n), P) − M_total = 0`, **capped at ~8
+iterations** (matching CATHARE-2/SCAR's published per-frame budget). Never compute `∂ρ/∂h` or
+`∂ρ/∂P` in the hot path. **This is nearly-implicit in character** — bounded iteration for Courant
+headroom — which is the row every real-time code in the research occupies. **"Non-iterative" is
+dead and stays dead.** Typical cost 2–3 iterations; the bracket width bounds the error when the cap
+binds.
+
+**MOMENTUM — kept, and it is now a DECLARED departure from the tier.** Not one educational
+simulator sourced solves transient momentum; IAEA explicitly decouples it. PWR2 keeps it because
+it is **one state** and it makes RCP coastdown derived from sourced pump inertia (Ginna
+80,000 lbm·ft²) rather than a fitted exponential, and natural circulation `W ∝ Q^⅓` emergent rather
+than a fitted scale. **Dropping it would reintroduce exactly the fitted-constant problem #479
+exists to end.** Recorded honestly: **none of the nine Tier A couplings strictly requires it** —
+this is a means-of-derivation argument, not a curriculum one.
+
+**TWO-PHASE — HEM stands, and §21.2's cost is recorded beside it.** A shipped real-time code holds
+that two-energy is *"much more mechanistic and numerically stable"* and that one-energy *"requires
+substantial non physical treatment."* Our measured pathologies — the 3,800× slope ratio, the 263×
+cancellation, the sign-inverted junction flow — are consequences of HEM. **The ruling stands
+because scheme B plus correlation-layer smoothing manages them and the educational argument is
+separate. The cost is now visible in the file rather than waiting to be rediscovered.**
+
+**AMBITION — continue, but THE ACCEPTANCE BAR CHANGES.** Justified because PCTRAN's two-volume RCS
+**cannot represent break location at all** (IAEA: the LOCA bypass phase *"is not observed"*), and
+that capability is the educational payload. **But PWR2 is no longer judged by residuals in kg.**
+
+### 22.2 ⚖ THE NEW ACCEPTANCE BAR — this supersedes D5's framing
+
+Per ANS-3.5 as the NRC states it, and NEI 09-09 §3.9:
+
+| Criterion | Standard |
+|---|---|
+| **Directional correctness** | *"observable change in the parameters **correspond in direction** to those expected"* |
+| **No missed alarm** | *"shall **not fail to cause an alarm** or automatic action if the reference unit would"* |
+| **No spurious alarm** | *"shall **not cause an alarm** … if the reference unit would not"* |
+| **Conservation** | a **BUDGET**, not an identity — NEI 09-09: *"within the limits of the verification, validation, and performance testing criteria"* |
+| **Tier A couplings** | all nine expressible (`CURRICULUM.md`) |
+| Steady state | a tolerance band — **exact figure UNSOURCED**; ANS-3.5-2018 App. B Table B.1 is paywalled and the ±2 % I quoted earlier is **withdrawn** (it traces to the 1985 edition) |
+
+**D5 must be rewritten around this.** Its Layer-1 gate becomes a **stated conservation budget with
+a number**, not a machine-precision assertion.
+
+### 22.3 What is now unblocked, and what is still open
+
+**Unblocked — no further ruling needed:** the D2 rewrite (§§1, 2, 4, 11.1, 11.2 to scheme B),
+D5's re-framing around the new bar, node-count selection via `V_node ≥ Q_max·dt`, and the
+plug sub-cell count.
+
+**Still open, and none needs an owner ruling:**
+1. **Correlation-layer smoothing is unspecified** — the highest-value gap. THEATRe (1992) and a
+   real-time RELAP5-3D paper (2026) independently put the fix here, and **D2 has never looked at
+   it.** G3 must be amended to say it forbids smoothing *properties*, not *regime transitions*.
+2. **The material Courant number has never been computed** at dt = 0.02 across the nodes — the
+   actual stability bound of a semi-implicit solve.
+3. **Crossing sub-steps may accrue an unrepaid time deficit.** Both nuclear and Modelica practice
+   repay it; PWR2 has the mechanism and it is unverified. Silent failure.
+4. **Walls and sensor dynamics untested** — and §20.7's vendor benchmark, where modelling the
+   *instrument* beat a finer mesh of the fluid, argues this outranks further solver work.
+5. `h_l()`'s clip (a live bug in committed L0), §14.1's over-determined pressurizer closure, CCFL
+   constants for downcomer/tie-plate geometry.
