@@ -1426,9 +1426,13 @@ error. This is **nearly-implicit** in character, the row every real-time code oc
   CVCS, ECCS, relief, break — are quasi-steady**, because orifice-class junctions have collapsed
   `L/A` and explicit momentum there is unstable by ~3 orders.
 - **Two-phase friction multiplier** `φ² = 1 + x(ρ_f/ρ_g − 1)`, entailed by HEM. **UNSOURCED.**
-- **CCFL as a junction cap** at cold-leg→downcomer and core→lower-plenum (D3 §8). A **declared
-  departure** — a correlation, because HEM cannot generate counter-current flow. Constants
-  **unsourced** for our geometry.
+- ~~**CCFL as a junction cap** at cold-leg→downcomer and core→lower-plenum (D3 §8).~~ **NOT
+  REQUIRED — D1 §23** *(OWNER RULING, 2026-08-14: "drop it as a design requirement, keep it as a
+  declared demonstration.")* CCFL exists to make the large-break ECCS-bypass
+  phase come out right; large break is now a declared demonstration, not a fidelity target. The
+  design is preserved in D3 §8 and its unsourced downcomer/tie-plate constants are **no longer
+  owed**. **Do not implement it speculatively** — it returns only if E09 is ever promoted, and
+  promotion needs a Q0 measurement first (`CURRICULUM.md`).
 
 ## 23.4 Properties
 
@@ -1436,6 +1440,13 @@ Three regimes — subcooled / two-phase / **superheated** (the `[0,1]` quality c
 meltdown path). **Tabulate `v`, not `ρ`, on `(quality, P)` with x = 0 and x = 1 as exact grid
 lines**, so the kink lands *on* a node line rather than being averaged away: 87 kB, 50 ns, 0.06 %,
 kink **reproduced**. A ρ-table is 762 % wrong at 0.12 MPa.
+
+> **⚠ SUPERHEAT STAYS REQUIRED after D1 §23 — do not delete it with the large-break scope.** It is
+> the obvious thing to cut next and it would be wrong. **SBO (E04/E05), loss of shutdown cooling
+> (#287) and ATWS (E13) are all Tier C CORE and all reach core uncovery**; large break was never
+> the only route to superheated steam over a dry node. The committed L0 **cannot express it at
+> all** today — `h_v`/`rho_v` are functions of P only, and `T_from_h(h_g + 200, 7 MPa)` returns
+> 373.95 °C, the critical-temperature clip, silently.
 
 **Smoothing belongs in the CORRELATION layer, never the state equation** — §22.3's highest-value
 open item, and where two production codes thirty years apart independently put the fix.
@@ -1460,8 +1471,9 @@ the verification, validation, and performance testing criteria"*) · local time 
 |---|---|
 | **HEM** | A shipped real-time code holds two-energy is *"much more mechanistic and numerically stable"*. Our 3,800× slope ratio, 263× cancellation and sign-inverted junction flow are all consequences of one energy equation. Ruled to stand; cost recorded (§21.2). |
 | **Momentum** | No Tier A coupling requires it. Kept as a means-of-derivation argument. |
-| **CCFL** | A correlation, not emergent physics. |
-| **Node count** | Krško's coarse model **crossed an ECCS setpoint** the fine one never reached, from having two volumes where PWR2 has more — node count is a curriculum decision, not a performance one. |
+| ~~**CCFL**~~ | **Out of the required set — D1 §23.** No longer a cost because no longer built. |
+| **Node count** | Krško's coarse model **crossed an ECCS setpoint** the fine one never reached, from having two volumes where PWR2 has more — node count is a curriculum decision, not a performance one. **⚠ The ~12-node ruling is REOPENED (D1 §23.2)**: its justification was break location, which the binding curriculum ranks Tier D-adjacent. A replacement justification is owed from natural circulation, boron transport and small-break location — or the count comes down. |
+| **Large break** | **A declared demonstration, not a fidelity target** (D1 §23). It ships, it is injectable, it is directionally correct, and it carries **no fidelity claim** — §26.3's low-pressure resolution limit is its honest label rather than a defect. |
 | **The boundary is not "solved"** | RELAP5-3D took **three decades** to stop aborting at the one-phase/two-phase transition and a 2026 paper still lists it as a headline fix. §17.5's 8.4 kg came from one node at four pressures. **That is a sample, not coverage.** |
 
 ---

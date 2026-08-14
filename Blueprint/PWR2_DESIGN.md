@@ -319,6 +319,14 @@ deliver.** So PWR2 being at the top of the tier is a deliberate, justified depar
 break location and node-to-node coupling*, which are the educational payload. **It is not a
 justification for analysis-code machinery everywhere else.**
 
+> **⚠ THIS SECTION'S CONCLUSION IS SUPERSEDED BY §23 (2026-08-14).** The IAEA quotes are accurate
+> and the *phenomenon* is real; what was wrong is the leap from "PCTRAN cannot show it" to "so it
+> is our educational payload." **`CURRICULUM.md` ranks Large LOCA (E09) Tier D-adjacent**, and it
+> was ruled binding on 2026-08-03 — before this section was written. Break location survives for
+> the three **named** Core paths; the large-break bypass/refill/reflood sequence is now a declared
+> demonstration. **The trap worth keeping: a capability argument sourced entirely to what OTHER
+> simulators cannot do never asks whether OUR curriculum wants it.**
+
 ### 19.6 The costing passage worth adopting wholesale
 
 Kerlin bought a 25× larger timestep by applying the prompt-jump approximation and **multiplying
@@ -632,9 +640,15 @@ cancellation, the sign-inverted junction flow — are consequences of HEM. **The
 because scheme B plus correlation-layer smoothing manages them and the educational argument is
 separate. The cost is now visible in the file rather than waiting to be rediscovered.**
 
-**AMBITION — continue, but THE ACCEPTANCE BAR CHANGES.** Justified because PCTRAN's two-volume RCS
+**AMBITION — continue, but THE ACCEPTANCE BAR CHANGES.** ~~Justified because PCTRAN's two-volume RCS
 **cannot represent break location at all** (IAEA: the LOCA bypass phase *"is not observed"*), and
-that capability is the educational payload. **But PWR2 is no longer judged by residuals in kg.**
+that capability is the educational payload.~~ **But PWR2 is no longer judged by residuals in kg.**
+
+> **⚠ THE NODE-COUNT HALF OF THIS RULING IS REOPENED (§23.2, 2026-08-14).** Its justification —
+> struck above — rested on break location being the educational payload, which the binding
+> `CURRICULUM.md` contradicts. This was a **selection from options I wrote**, and §2 records that
+> such a ruling binds only as far as my option text was accurate; it was not. **The acceptance-bar
+> half is unaffected and stands** — it rests on ANS-3.5/NEI 09-09, not on break location.
 
 ### 22.2 ⚖ THE NEW ACCEPTANCE BAR — this supersedes D5's framing
 
@@ -668,5 +682,68 @@ plug sub-cell count.
    repay it; PWR2 has the mechanism and it is unverified. Silent failure.
 4. **Walls and sensor dynamics untested** — and §20.7's vendor benchmark, where modelling the
    *instrument* beat a finer mesh of the fluid, argues this outranks further solver work.
-5. `h_l()`'s clip (a live bug in committed L0), §14.1's over-determined pressurizer closure, CCFL
-   constants for downcomer/tie-plate geometry.
+5. `h_l()`'s clip (a live bug in committed L0), §14.1's over-determined pressurizer closure, ~~CCFL
+   constants for downcomer/tie-plate geometry~~ — **CCFL left the required set at §23; the evidence
+   pass is no longer owed.**
+
+---
+
+## 23. THIRD RULING (2026-08-14) — LARGE BREAK DROPS TO A DECLARED DEMONSTRATION
+
+*(OWNER RULING, 2026-08-14: "drop it as a design requirement, keep it as a declared demonstration"
+— verbatim, adopting the recommendation I put to him. His stated reasons for raising it: "My
+argument for removing the requirement is to lower processing requirements and lowering the
+potential bug surface area… it's not a main part of what I want to teach but it would be a nice
+include." And the reason the DEMONSTRATION half is load-bearing, in his words: "that is what people
+seem to want to try first (absent any actual content in the sim).")*
+
+**The finding that forced it: §19.5 and §22.1 justify PWR2's entire node-count ambition on break
+location, and `CURRICULUM.md` — RULED 2026-08-03, binding, and the yardstick DESIGN_CRITERIA Q2 is
+scored against — already ranks that capability lowest.** Verbatim: *"**Large LOCA (E09)** is
+declared **Tier D-adjacent**: it is meltdown-path material and `run_meltdown` already covers it."*
+It is not Core; it is not even in the Covered table. **The design set reasoned from IAEA fidelity
+comparisons and never checked its central justification against the curriculum ruled binding ten
+days earlier.**
+
+**The Core table agrees independently.** Every primary-boundary Core casualty is small, stays at
+high pressure, and sits at a **fixed named location** — stuck-open PORV (E07, pressurizer steam
+space), small RCS/seal leak (E23, RCP seal), SGTR (E06, SG tube). **No Core casualty is a large
+break, and none needs arbitrary break placement.** All three live in the regime §26.3 calls well
+resolved, not the reflood regime it declares structurally coarse.
+
+### 23.1 What this changes
+
+| | |
+|---|---|
+| **Break location** | Narrows to the three named Core paths. Hot-leg and cold-leg breaks stay as **Covered demonstrations** — injectable, directionally correct, **carrying no fidelity claim**. |
+| **CCFL** (D2 §23.3, D3 §8) | **Leaves the required set**, and the owed evidence pass for downcomer/tie-plate constants goes with it. The owner's junction-closure insight is preserved in D3 §8 against a future promotion — it is a good design and may return. |
+| **`K = 5` vs Courant** | §24.1's live conflict resolves. A heavily voided cold leg (ρ 100 kg/m³ / 6.2 lb/ft³ → C = 0.456, exceeding 1 once sub-cells divide it) is no longer a regime the design must hold. |
+| **§26.3's low-pressure limit** | Stops being an embarrassment and becomes the honest label on a demonstration — which is the IAEA-TECDOC-995 *"negative training"* argument (§19.3) applied to our own product. |
+| **Node count (§22.1)** | **REOPENED** — §23.2. |
+
+### 23.2 ⚠ THE NODE-COUNT RULING IS REOPENED BY ITS OWN TERMS
+
+§22.1's AMBITION ruling was a **SELECTION from options I wrote**, and §2 records that *"a selection
+binds only as far as the option text I offered was accurate."* My option text said break location
+is the educational payload. The binding curriculum says it is Tier D-adjacent. **The option
+mis-stated its own consequence, so the ruling is open again — no override is required.**
+
+**Do not read this as "the node count drops."** ~12 nodes may well survive on grounds that were
+never the *stated* justification: natural circulation needs real thermal centres, boron-as-a-
+transported-scalar needs transport length, and telling a seal leak (cold leg) from a stuck-open
+PORV (pressurizer) still needs the loop resolved. **That justification is now owed explicitly
+rather than inherited.**
+
+### 23.3 What this does NOT do — all three are easy to hope for
+
+1. **It does not clear §8(2)'s stop condition.** That is the **total** RCS volume ledger — 101.4 ft³
+   (2.87 m³) unattributed out of 324.2 ft³ of corrections, and a ledger summing to 835.8 ft³
+   against a closing sentence citing an orphan 817.8. Per-node splitting was never the failing
+   part. **PWR2 is still stopped there.**
+2. **It does not reduce steady-state frame cost.** `dt = 0.02` and the node count are fixed, so
+   per-frame cost is identical whether a LOCA is running or not. The gain is **headroom and a
+   bounded worst case**, not relief for a system that is taxed today.
+3. **It does not delete core uncovery.** Superheat and the three-regime property layer (D2 §23.4)
+   stay **REQUIRED**: SBO (E04/E05), loss of shutdown cooling (#287) and ATWS (E13) are all **Core**
+   and all reach uncovery. Large break was never the only route there — and the committed L0
+   cannot express superheat at all today (D2 review, F7).

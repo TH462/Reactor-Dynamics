@@ -148,7 +148,10 @@ re-authoring bill, not a veto on the physics.
 
 - **The A/B is only as good as the scenarios driven through it.** A divergence in a regime nobody
   exercises is invisible. The scenario set must include the Tier C **Core** casualties, not just
-  steady state and Tier A.
+  steady state and Tier A. **Large break (E09) is NOT in the acceptance set** *(D1 §23, OWNER
+  RULING 2026-08-14)* — it is a declared demonstration, so it is **run for stability and direction,
+  never scored for divergence**. Scoring it would re-import, through the back door of a gate, the
+  fidelity requirement the ruling removed.
 - **The shim can mask a physics error** by translating a wrong native value into a plausible
   published one. D4 §6's independent shim tests are the mitigation; they are necessary, not
   sufficient.

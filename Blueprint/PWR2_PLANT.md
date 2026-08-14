@@ -577,7 +577,16 @@ than this section originally claimed.
 
 ---
 
-## 8. CCFL under HEM — RESOLVED as a JUNCTION closure *(owner, 2026-08-13)*
+## 8. CCFL under HEM — RESOLVED as a JUNCTION closure *(owner, 2026-08-13)* — **NOT REQUIRED, D1 §23**
+
+> **⚠ STATUS, 2026-08-14: this section is PRESERVED DESIGN, not a build item.** *(OWNER RULING,
+> 2026-08-14: "drop it as a design requirement, keep it as a declared demonstration.")* CCFL exists
+> to make the **large-break** ECCS-bypass phase come out right, and large break is now a declared
+> demonstration rather than a fidelity target — `CURRICULUM.md` ranks Large LOCA (E09)
+> **Tier D-adjacent**. **The unsourced downcomer/tie-plate constants are no longer owed and the
+> evidence pass is cancelled.** The reasoning below is sound and is kept deliberately: it is the
+> right answer if E09 is ever promoted, and promotion requires a Q0 measurement first. **Do not
+> build it speculatively, and do not delete it.**
 
 *(OWNER, 2026-08-13: "For hem what if we solved it at the boundary between the downcomer/pipe
 interface or the rod channel/bottom pool interface? Basically when it's full of steam it rejects
