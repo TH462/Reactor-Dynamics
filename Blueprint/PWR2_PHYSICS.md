@@ -1548,3 +1548,66 @@ and PWR2 currently has no quantity that measures it. The rule above avoids needi
 `V_node ≥ Q_max·dt` is satisfied with 15.5× margin at the binding node at rated flow, and is the
 same constraint as the Courant number. **The rule to record for D3: size sub-cells, not nodes** —
 the nodes are comfortable; only their subdivision approaches the limit.
+
+---
+
+## 25. §14.1's PRESSURIZER CLOSURE — resolved. It WAS over-determined; the fix is one state fewer.
+
+Flagged by two independent reviewers and never investigated. **The objection was correct.**
+
+### 25.1 The error
+
+§14.1 gave the pressurizer **four** states — `m_liq, h_liq, m_steam, h_steam` — with
+`V_liq = m_liq/ρ_l`, `V_steam = m_steam/ρ_v`, and the constraint `V_liq + V_steam = V_pzr`.
+But the global closure **also** needs `M_total = Σ ρ(h_i,P)V_i + m_pzr`. **Both constrain `P`.
+Two equations, one unknown.**
+
+**The error: `m_liq` and `m_steam` are not independent — the volume constraint links them.**
+
+### 25.2 The fix — three states, not four
+
+```
+STATES    h_liq, h_steam, m_pzr                          (three)
+DERIVED   V_liq = (m_pzr − ρ_v·V_pzr) / (ρ_l − ρ_v)      one division, no iteration
+          V_steam = V_pzr − V_liq ;  m_liq = ρ_l·V_liq ;  m_steam = ρ_v·V_steam
+```
+
+Verified numerically at 15.41 MPa, `V_pzr` = 4.13 m³ — `m_liq + m_steam` reproduces `m_pzr`
+**exactly** at every point tested, and the physical bounds fall out of the formula rather than
+being imposed:
+
+| | |
+|---|---|
+| all steam | `m_pzr = ρ_v·V_pzr` = **398.9 kg** → `V_liq` = 0 |
+| **water solid** | `m_pzr = ρ_l·V_pzr` = **2444.4 kg** → `V_liq` = `V_pzr` |
+| divisor `ρ_l − ρ_v` | **495.3 kg/m³** — degenerate only at the critical point, far outside the envelope |
+
+**The pressurizer now contributes exactly ONE mass term to the global closure, like any other
+node — and the over-determination is gone.**
+
+**And its two-region character survives**, which is the whole reason §14.1 wanted the split:
+`h_liq` and `h_steam` remain independent states, so **spray acts on the steam and heaters on the
+liquid** — precisely what HEM in a single node cannot express, and what #472 needs.
+
+### 25.3 A second finding the test surfaced — the bounds are REGIME TRANSITIONS, not clips
+
+Beyond 2444.4 kg the linear split returns `V_liq > V_pzr` and **`m_steam` negative** (measured:
+−69.4 kg at 2800 kg, −88.9 at 2900). That is not a formula defect — it is the formula correctly
+reporting that **the pressurizer has gone water-solid** and the two-region model no longer applies.
+
+**So the bounds must be handled as regime transitions, not clamped silently:**
+
+- `V_liq ≥ V_pzr` → **WATER SOLID.** The bubble is gone; system compressibility collapses to the
+  liquid bulk modulus. **This is exactly the regime where §0.3's measured `dM/dP` falls 26.9 →
+  10.6 kg/MPa**, and where §21.4's stability margin is thinnest.
+- `V_liq ≤ 0` → **pressurizer emptied of liquid.** Heaters must be shed (they are already, by
+  §22's ESF logic) and the level instrument reads off-scale low.
+
+**Both are real plant states with real operator consequences, and both need declaring rather than
+clipping** — a silent clamp here would produce a pressurizer that cannot go solid, which is a
+behaviour the TMI curriculum depends on.
+
+**This is the third instance of the same pattern today** (after §11.2's gate and §16.2's band): **a
+bound that looks like a numerical guard is actually a physical regime boundary.** Worth stating as
+a standing rule for the build — *before clipping anything, ask what the plant is doing when the
+clip engages.*
