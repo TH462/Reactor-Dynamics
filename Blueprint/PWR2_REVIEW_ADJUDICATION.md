@@ -123,7 +123,7 @@ acceptance system.
 | **F7** | **CONFIRMED, every sub-claim, by execution** | below |
 | **F8** | **CONFIRMED — and this is the one with procedural teeth** | below |
 | **F9** | **CONFIRMED exactly** | below |
-| **F10** | **NOT independently verified** — plausible, accepted provisionally | — |
+| **F10** | **CONFIRMED, and UNDERSTATED** — verified 2026-08-14 | below |
 | **F11** | **CONFIRMED** (spot-checked, three of three) | below |
 
 ### F3 — accuracy claims false as stated. Confirmed, and cp_l is worse than reported.
@@ -232,10 +232,28 @@ actually applied; the better one is declared and unused.
 
 ---
 
-## 6. What I did NOT verify
+### F10 — curriculum coverage. Verified 2026-08-14; the review understated it.
 
-- **F10** (curriculum coverage — Tier C Core casualties without mechanism rows, HR4 not defined in
-  the bundle). Plausible on a skim; not independently established here.
+- **HR4 is absent from the entire design set.** Grep across all five design documents:
+  **zero occurrences.** HR4 is a binding Hard Rule — *"Every snapshot carries both true state and
+  instrument readings, as distinct fields"* (`CONTEXT.md` §3) — and the interface document, which
+  defines the 109-field contract *and* the shim that publishes it, never mentions it. Confirmed
+  exactly as filed.
+- **The Tier C Core casualties are worse covered than reported.** The review said *seven of
+  eleven* have no mechanism row in the plant document. Measured, by id and by name: **not one of
+  the eleven is referenced by its id at all**, and by name only two appear — SGTR (1 mention) and
+  PORV (2). **Nine of eleven have no mechanism anywhere in the plant document.**
+
+  **In fairness to the design**, casualties are L6 in the build order (*"breaks as junctions onto
+  any node"*) and L6 is not designed yet, so their absence from a topology document is not by
+  itself a defect. **The consequence that IS real:** D5 §5 requires the scenario set to include
+  the Tier C Core casualties, so that requirement is currently unsatisfiable — and nobody has
+  checked whether the ruled ~12 nodes can express them. **Two of the nine are secondary-side**
+  (loss of main feedwater, steam line break) against a plant document that **lumps the secondary**,
+  and a lumped secondary may not be able to express a steam line break's asymmetry at all. That is
+  a node-count question, and it lands on the node-count ruling that D1 §23.2 has already reopened.
+
+## 6. What I did NOT verify
 - F8's topology sub-claims beyond the arithmetic (plug-node evaluation-site count, the two live
   loop-length sets).
 - The review's §23.2 closure-monotonicity adjudication (~30,000 samples, 0 non-monotone). I did not
