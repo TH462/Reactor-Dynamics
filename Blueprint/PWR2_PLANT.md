@@ -613,8 +613,64 @@ the 91 ± 11 min boil-dry number that declaration rests on.
 velocity-scaling rule yields an annulus narrower than the one already judged unbuildable? The
 honest options are (a) a minimum-buildable-annulus rule, declared, with velocity allowed to fall
 below the reference plant's; (b) accept a higher downcomer velocity and a wider gap chosen to hold
-some other constraint; or (c) source a small-PWR vessel and scale from it rather than from a
-4-loop. **Layer 1 stops here rather than fabricating past it.**
+some other constraint; or (c) scale the downcomer from a real plant's VESSEL PROPORTIONS rather
+than from an area rule. **Layer 1 stops here rather than fabricating past it.**
+
+### 7.0a EVIDENCE FOR OPTION (c) — the source exists, and it was already in this design set
+
+**Found 2026-08-14 by an evidence pass on NUREG/IA-0444** — the same document §1a-i already cites
+for loop geometry. Nobody had read its **vessel** tables. Fetched from GovInfo
+(`GOVPUB-Y3_N88-PURL-gpo49031`; `nrc.gov` returns 301 bare and **403 with browser headers** — the
+opposite of what `CLAUDE.md` records, tested directly this session).
+
+**Two of §1a-i's own citations independently VERIFIED against the source while doing this:**
+Almaraz total primary volume **280.97 m³ (9,922 ft³)** and per-loop piping **hot 3.18 / cross 3.60
+/ cold 3.23 m³ = 112.3 / 127.1 / 114.1 ft³** — exactly as cited. *(Table alignment confirmed by a
+sum check: vessel + 3×(hot+SG+cross+RCP+cold) + surge + PZR + spray = **280.97**, matching the
+stated total to the digit. `pdftotext` offsets the value rows by one and the naive reading gives a
+0.43 m³ lower plenum — absurd for a 2947 MWt vessel, which is how the alignment was settled.)*
+
+**The vessel breakdown, which is what the blocked decision needs** (Table 6, Almaraz column):
+
+| Vessel component | m³ | % of vessel |
+|---|---|---|
+| Upper head | 11.81 | 11.7 % |
+| Upper plenum | 28.0 | 27.8 % |
+| Core | 14.10 | 14.0 % |
+| Lower plenum | 20.20 | 20.0 % |
+| **Downcomer** | **20.0** | **19.8 %** |
+| *(residual — guide tubes, bypass, supports)* | 6.70 | 6.6 % |
+| **RPV total** | **100.81** | |
+
+**THE CROSS-CHECK, and it converges with the other two lines:**
+
+| Route | Downcomer as % of vessel |
+|---|---|
+| §1a-i's area-scaling rule (0.317 m² × ~4 m) | **14.2 %** |
+| A real 3-loop plant (Almaraz, sourced above) | **19.8 %** |
+
+**The area rule under-sizes the downcomer by ~28 %, the same direction as the review's independent
+"mechanically unbuildable" finding and the same direction as the 79 mm < 93 mm conflict.** Three
+lines, three different methods, one conclusion: **the downcomer derivation is too small, and the
+error is in the rule, not in the arithmetic.**
+
+**What option (c) would give, if ruled** — applied to the ledger's 315.1 ft³ vessel:
+
+| Node | ft³ | Basis |
+|---|---|---|
+| Downcomer | **62.5** | Almaraz fraction 19.8 % |
+| Core | **72.8** | [derived] independently — 21 assemblies × 3.53 m³ × 0.584 |
+| Heads | **62.9** | [sourced] |
+| Lower plenum | **49.0** | remainder, split by Almaraz's lower/upper ratio |
+| Upper plenum | **67.9** | " |
+
+**⚠ STATED AS A CANDIDATE, NOT A RESULT.** The method assumes **vessel internal proportions are
+scale-invariant**, and that is a claim, not a measurement — for a much smaller plant the plena and
+heads plausibly grow as a *fraction* because their heights do not shrink with power. A hint that
+this is real: SLS-100's core would be **23.1 %** of its vessel against Almaraz's **14.0 %**, which
+says the non-core volume is relatively smaller here — the same direction as every other finding.
+**This needs the owner's ruling before it becomes geometry, and it does not by itself clear
+D1 §8(2).**
 
 - **§1's shortfall is not closed.** The geometry table is provisional; the build must re-derive
   loop lengths (not scaled), SG tube length (sourced), and plena (sourced).
