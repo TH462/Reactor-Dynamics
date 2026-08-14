@@ -38,11 +38,21 @@ whose units are *fraction-of-rated-heat per °C/s*, not J/K. There is no quantit
 `engines/pwr/` that a `Q = ṁΔh` check could be run against — so nothing could ever have detected
 a disagreement, and nothing can detect the next one.
 
-Measured consequence, 2026-08-13: the plant's own ruled identity (300 MWt, 321/288 °C at
-15.41 MPa) gives Δh = 183.1 kJ/kg → **ṁ = 1639 kg/s = 36,817 gpm**. The plant declares
-`rcs_flow_gpm: 24000` — **1.51× low**, equivalently a 50 °C core ΔT against the ruled 33 °C. It is
-inert in physics (it sits in a config block headed *"NOT READ BY ANY CODE"*) but **player-facing**:
-it feeds the manuals.
+Measured consequence, **re-measured 2026-08-14 on the rebuilt Layer 0** (the 2026-08-13 figures
+were 183.1 kJ/kg → 1639 kg/s → 36,817 gpm → "1.51× low", computed with the property library before
+its compressed-liquid term was found wrong in sign — `PWR2_L0_REBUILD.md` §2.1): the plant's own
+ruled identity (300 MWt, 321/288 °C at 15.41 MPa) gives **Δh = 184.1 kJ/kg** against the IAPWS-95
+value of 185.4 → **ṁ = 1630 kg/s (3,590 lbm/s) ≈ 34,500 gpm at cold-leg density**. The plant
+declares `rcs_flow_gpm: 24000` — **1.44× low**, equivalently a 47 °C core ΔT against the ruled
+33 °C.
+
+It is inert in physics (it sits in a config block headed *"NOT READ BY ANY CODE"*) but was
+**player-facing**: it fed `Manuals/12` §14.0. **The manual half is FIXED** (2026-08-14, corrected
+to ≈ 34,500 gpm with its derivation and a note that a volumetric flow is meaningless without a
+reference temperature). **The engine half is NOT** — `engines/pwr/` is the frozen A/B reference
+and is not touched; filed as **#481**, which also records that `pwr_config.js:455-461` reasons
+*from* the wrong figure to justify the loop transport constants (7,500 gal at 24,000 gpm = "~19 s"
+turnover; at the energy-balance flow it is ~13 s).
 
 **Why rewrite rather than repair.** Repairing means adjudicating ~90 constants one at a time
 against gates tuned to the plant those constants produced. There is no vantage point inside the
@@ -110,7 +120,9 @@ one loop against one vessel, so there is no reason its share should match. **The
 transferred to SLS-100 regardless of the constants** — a reasoning error independent of the data.
 
 **What survives as a valid cross-check:** the energy balance (`Q = ṁΔh`), which is topology-
-independent and is gated today at `run_pwr2_water` 56/56. **Loop transit time now reads short**
+independent and is gated today at `run_pwr2_water` **164/164, with a 17-mutation injection
+self-test** (rebuilt 2026-08-14 — the 56/56 this sentence used to cite was itself a
+could-not-fail instrument, `PWR2_L0_REBUILD.md` §1). **Loop transit time now reads short**
 (~6.8 s through the flow path, excluding the pressurizer, against a real-PWR band) — a live, unadjudicated finding.
 **⚠ The "10–12 s" figure this section originally quoted is RETRACTED** — it was recalled, and D3 §1b computes the real band as 11.0–13.7 s from reference geometry. Both this transit check and the specific-volume check it sits beside were later found CIRCULAR (D3 §1); neither may be cited.
 
@@ -763,3 +775,84 @@ rather than inherited.**
    stay **REQUIRED**: SBO (E04/E05), loss of shutdown cooling (#287) and ATWS (E13) are all **Core**
    and all reach uncovery. Large break was never the only route there — and the committed L0
    cannot express superheat at all today (D2 review, F7).
+
+---
+
+## 24. THE GEOMETRY DECLARATION (2026-08-14) — §8(2)'s stop condition, adjudicated on a measurement
+
+*(OWNER RULING, 2026-08-14: "Go with your recommendations." — approving, of four options put to
+him, "declare the uncertainty with the measured number, proceed, and move the residual risk to the
+Layer 2 gate", plus a scoped evidence pass on the recalled form-loss coefficients. The rejected
+options were: stop the rewrite per §8(2); override the stop condition silently; or a full
+bottom-up sourcing pass before anything else.)*
+
+**§8(2) is a stop condition this design set triggered and never cleared.** D3 §1:45, verbatim:
+*"D1 §8(2)'s stop condition is currently met — no valid topology-appropriate check exists yet."*
+D3 §7 still opens *"§1's shortfall is not closed."* Three cross-checks were tried; all three were
+circular or borrowed from four-loop plants and never transferred to a single-loop topology.
+
+### 24.1 The measurement that decides it
+
+**The stop condition was being argued, not measured — which is HR12's exact failure mode, at the
+top of the project.** Measured 2026-08-14:
+
+| | |
+|---|---|
+| Unattributed RCS volume | **101.4 ft³ (2.87 m³)** of a ledger totalling 835.8 ft³ (23.67 m³) |
+| **As a fraction of TOTAL volume** | **12.1 %** |
+| RCS inventory | 36,810 lbm (16,697 kg) **± 4,470 lbm (2,026 kg)** |
+| Time to boil dry at 1 % decay heat (3 MWt) | **91.1 min ± 11.1 min** |
+
+**⚠ A correction worth carrying: the "31 % unattributed" figure repeated through the review and
+my own first three reports is 31 % OF THE CORRECTION BUDGET (324.2 ft³), not of the total.**
+Against total RCS volume the uncertainty is **12.1 %**. A denominator was inherited three times
+without being checked — the same class of error the review was commissioned to find.
+
+### 24.2 Why 12.1 % is a declared limit and not a stop
+
+- **The tier's own benchmark is far worse.** §20.6 records PCTRAN against NOTRUMP on an AP1000
+  small break: sequence right, **clock wrong by 20–150 %**, ADS-4 **+151 %**. A 12 % timing
+  uncertainty is several times better than the most widely deployed educational PWR simulator.
+- **The ruled acceptance bar is directional, not chronometric** (§22.2): directional correctness,
+  no missed alarm, no spurious alarm. None of those is failed by a 12 % inventory band.
+- **§8(2) conflates two things.** The rewrite's justification (§1) is the `Q = ṁΔh` vantage
+  point — *a conservation law the plant can be wrong against* — and that is **topology-
+  independent**. It survives unresolved geometry entirely. "Geometry unverified" does not equal
+  "rewrite unjustified", and §8(2) as written overstates.
+
+### 24.3 ⚠ THE RESIDUAL, WHICH IS REAL AND IS NOT CLOSED BY THIS DECLARATION
+
+**`Q = ṁΔh` validates mass FLOW. It says nothing about total MASS.** So the gap lands precisely on
+inventory behaviour — which is **A4, level is not inventory, the TMI coupling**, the thing this
+plant most wants to teach.
+
+And the failure mode is documented: §20.6's Krško case, where a coarse model **actuated an ECCS
+system the best-estimate code never actuated at all**. *Whether a 12 % inventory error flips a
+setpoint crossing* is the live question, it is not answerable by argument, and **it is not
+answerable until Layer 2 exists**. It is therefore **assigned to the Layer 2 gate**, not waved
+through here:
+
+> **LAYER 2 OWES:** for each Tier C **Core** casualty, does a ±12.1 % perturbation of RCS
+> inventory change *which* protective actions fire, or only *when*? A change in **which** is a
+> stop condition again. A change in **when**, inside the declared band, is this declaration
+> holding.
+
+### 24.4 What is declared, and what is still owed
+
+**DECLARED** (`DESIGN_COMPANION` §8 class): *PWR2's RCS volume ledger carries a 12.1 % unattributed
+fraction. Inventory-dependent timings — boil-off, time to uncovery, ECCS adequacy margins — are
+accurate to about ±12 %, and no better. The distribution of that volume between nodes is
+provisional.*
+
+**OWED, and scoped deliberately narrow:**
+1. **The form-loss coefficients.** D3 §1a-v records them as **RECALLED** (1.5–2.0 per leg, 7.0 for
+   grid spacers, 2.5 tube entrance/exit) while being **59 % of the derived pump head** — a 30 %
+   error moves the total ~18 %. One evidence pass, bounded. **This is the highest-value single
+   sourcing item in the geometry.**
+2. The other recalled geometry (plena heights as ratios, SG average tube length ~55 ft, the two
+   simultaneously-live loop-length sets) stays provisional and declared, not chased.
+
+**Not owed: a global cross-check.** If every component volume is individually derived from stated
+geometry, the total validates componentwise and there is nothing left for a global check to check.
+That reframing is what makes §8(2) tractable — it was written assuming a total that could only be
+validated from outside.

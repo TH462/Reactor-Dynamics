@@ -1376,24 +1376,51 @@ equations for one `P`. Flagged, not investigated.
 
 Everything above is history. This is the design as ruled on 2026-08-13.
 
+> **⛔ §23 IS NOT SELF-SUFFICIENT, AND CALLING ITSELF "THE ONLY SECTION TO BUILD FROM" MADE THAT
+> DANGEROUS.** §§24–26 were written AFTER it and carry binding constraints it never absorbed. A
+> build from §23 alone violates all four. *(Reconciled 2026-08-14 — the contradictions were found
+> by an adversarial review of this design set, and every one of them is a case of a later section
+> correcting an earlier one without the earlier one being told.)*
+>
+> | Constraint | Where | What it binds |
+> |---|---|---|
+> | **`engine.step(dt)` must advance physics by EXACTLY `dt`** | §24.2 | A crossing sub-step may run to the boundary and then **must continue to the end of the step**. It may never return early — `simulation_service.js:370` credits `simTime += steps·PHYSICS_DT` unconditionally, so an early return makes the plant's clock run ahead of its physics **silently**, with nothing to repay it. |
+> | **`K ≤ 8` sub-cells on the binding node** | §24.1 | Plug sub-cells divide the volume, so `K` is a STABILITY parameter, not just a budget one. At `K = 20` the cold leg violates the material Courant limit outright; at `K = 5` a heavily voided cold leg (ρ 100 kg/m³ / 6.2 lb/ft³) already reaches C = 0.456 and exceeds 1 once subdivided. |
+> | **Correlation windows denominated in ENTHALPY** | §26.2 | `window = min(k·Δh_step, f·h_fg(P))`, `k ≈ 5`, **`f` still TBD**. A fixed void-fraction window collapses with pressure — ~4 steps wide at operating pressure, **0.03 of one step at 0.1 MPa**. |
+> | **A declared low-pressure resolution limit** | §26.3 | Below ~1–2 MPa (150–290 psia) the liquid/two-phase transition is resolved at the limit of the timestep. Directionally correct, quantitatively coarse. **Declare it; do not engineer around it.** |
+>
+> **Smoothing belongs in the CORRELATION layer, never the state equation** (§23.4, D5 §6.3) — and
+> D5 §6.3 also amends G3, which as written forbade the very thing two production codes thirty
+> years apart independently identified as the fix.
+
 ## 23.1 State
 
 | | |
 |---|---|
 | **Per node** | `h` specific enthalpy · `T_wall[]` (1..N lumps) — **NOT `m`** |
 | **System** | `M_total` (one integrated mass scalar, sources/sinks only) · `ṁ_loop` (one momentum state) · `P` (**solved**, not integrated) |
-| **Pressurizer** | the ONE exception — `m_liq, h_liq, m_steam, h_steam` are genuine states, because its regions' volumes are free (§14.1) |
-| **Derived** | `m_i = ρ(h_i,P)·V_i`, T, ρ, quality, void, level, flow fraction |
+| **Pressurizer** | the ONE exception — **`h_liq, h_steam, m_pzr` — THREE states, per §25.2** |
+| **Derived** | `m_i = ρ(h_i,P)·V_i`, T, ρ, quality, void, level, flow fraction; and in the pressurizer `V_liq = (m_pzr − ρ_v·V_pzr)/(ρ_l − ρ_v)`, one division, no iteration |
 
 **Why `m` is not a node state:** a rigid node has one thermal DOF. **The DOF reduction comes from
 the one-pressure ruling** (which imposes N−1 constraints), *not* from rigid volumes — §0's original
 argument was circular and §18.4 corrects it. The conclusion stands; the reason changed.
 
+> **⚠ CORRECTED 2026-08-14.** This table said **four** pressurizer states (`m_liq, h_liq, m_steam,
+> h_steam`) citing §14.1, and §25.1 had already proved that formulation **over-determined** —
+> `m_liq` and `m_steam` are not independent, because the volume constraint links them, so the
+> global mass ledger and `V_liq + V_steam = V_pzr` were two equations for one `P`. §25.2 replaced
+> it with three states hours later and **this section was not updated**, while still calling itself
+> "the only section to build from". Its two-region character survives, which was the whole point:
+> `h_liq` and `h_steam` remain independent, so **spray acts on the steam and heaters on the
+> liquid**. The bounds are REGIME TRANSITIONS, not clips — §25.3.
+
 ## 23.2 The step
 
 ```
 1  GATHER     evaluate all fluxes from state at time n. Write nothing.
-2  SOLVE P    F(P) = Σ V_i·ρ(a_i + v_i(P−P_n), P) − M_total = 0
+2  SOLVE P    F(P) = Σ V_i·ρ(a_i + v_i(P−P_n), P) + m_pzr(P) − M_total = 0
+                                                   ^^^^^^^^^ THE PRESSURIZER TERM
               a_i = h_i^n + dt·[ṁ_in(h_don − h_i^n) + Q_i]/m_i^n
               v_i = V_i/m_i^n        ← THE SPECIFIC VOLUME. Exact. Not a partial.
               BRACKETED root-find, warm-started at P_n, CAPPED AT ~8 ITERATIONS
@@ -1415,13 +1442,37 @@ iterative scheme whose **worst case is bounded** — when the cap binds, the bra
 error. This is **nearly-implicit** in character, the row every real-time code occupies.
 **"Non-iterative" is dead.** Typical 2–3 iterations; cap 8, matching CATHARE-2/SCAR's budget.
 
+> **⚠ TWO CORRECTIONS, 2026-08-14.**
+>
+> **(1) `F(P)` was missing the pressurizer term.** It is added above. Every other statement of the
+> closure in the set — §0.3, §25.1, D4 §1, D5 §1 — carries `+ m_pzr(P)`, and this one did not,
+> in the section headed *"the only section to build from"*. A build from §23 as it stood would
+> have solved pressure against a ledger that omits the one node whose volume is free, which is
+> the compressible volume the whole one-pressure ruling rests on.
+>
+> **(2) THE CAP IS BELOW THE MEASUREMENT THAT MOTIVATED IT.** §17.5 measured the bracketed solve
+> in the adversarial water-solid case — all nodes on `h_f`, closure-slope ratio 148,597× — at
+> **0/504 failures and a MEAN of 10.4 iterations**. The ruled cap is ~8. So in the regime that
+> justified bracketing in the first place, **the cap binds more often than not.**
+>
+> **This is not a correctness failure and must not be "fixed" by raising the cap on feel.** When
+> the cap binds, the bracket width bounds the error — that is the property that made a capped
+> bracketed solve acceptable at a fixed frame. What is unacceptable is not KNOWING. The build owes
+> two numbers before the cap is ruled again: **the residual left when the cap binds at 8 in the
+> water-solid case**, and **the frame-time cost of 12 vs 8**. If the residual at 8 is inside the
+> conservation budget (D5 §6.2 — a number that also does not yet exist), the cap stands as ruled
+> and this note closes. Measure both; do not choose between them by argument.
+
 ## 23.3 Flow
 
-- **ONE integrated loop momentum state** — a declared departure from the entire educational tier
-  (nobody else solves transient momentum), kept because it makes RCP coastdown derived from sourced
-  pump inertia and natural circulation `W ∝ Q^⅓` emergent, rather than fitted.
-- **The number of momentum states = the flow graph's cyclomatic number** (§14.3). Normal lineup 1;
-  **RHR-aligned with the RCP off is 2.**
+- **Integrated loop momentum** — a declared departure from the entire educational tier (nobody else
+  solves transient momentum), kept because it makes RCP coastdown derived from sourced pump inertia
+  and natural circulation `W ∝ Q^⅓` emergent, rather than fitted.
+- **The number of momentum states is NOT fixed at one — it is the flow graph's cyclomatic number**
+  (§14.3), evaluated for the CURRENT lineup. **Normal lineup 1; RHR-aligned with the RCP off is 2.**
+  *(Clarified 2026-08-14: this section opened "ONE integrated loop momentum state" and said "RHR-
+  aligned … is 2" four lines later, and §23.1's state table listed one flatly. The state vector is
+  lineup-dependent and the build must allocate for the maximum, not the normal case.)*
 - **Junction flows inside the loop are algebraic** (§23.2 step 4). **All branches — surge, spray,
   CVCS, ECCS, relief, break — are quasi-steady**, because orifice-class junctions have collapsed
   `L/A` and explicit momentum there is unstable by ~3 orders.
