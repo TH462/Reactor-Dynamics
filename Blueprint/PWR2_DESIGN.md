@@ -5,6 +5,22 @@
 `PWR2_PHYSICS.md` (D2) · `PWR2_PLANT.md` (D3) · `PWR2_INTERFACE.md` (D4) ·
 `PWR2_VALIDATION.md` (D5).
 
+## ⚠ DECODER — what the letter-number codes in these documents mean
+
+*(OWNER DIRECTIVE, 2026-08-14: "I don't know what these letter number combos are (L0, D1). Always
+spell them out.")* **This shorthand is agent-invented and belongs ONLY inside these five
+documents.** Never use it in chat, an issue, or a commit message — spell it out there. CLAUDE.md
+*Domain conventions* carries the standing rule.
+
+| Code | Means |
+|---|---|
+| **D1 … D5** | The five design documents. **D1** = this file, the spine · **D2** `PWR2_PHYSICS.md` · **D3** `PWR2_PLANT.md` · **D4** `PWR2_INTERFACE.md` · **D5** `PWR2_VALIDATION.md` |
+| **L0 … L6** | The build layers, bottom-up (§7). **L0** = water properties (the only thing built) · **L1** geometry · **L2** node/junction conservation · **L3** topology · **L4** sources/sinks · **L5** systems · **L6** casualties |
+| **A1 … A9** | The nine Tier A curriculum couplings (`CURRICULUM.md`) — e.g. **A4** = "level is not inventory", the TMI coupling |
+| **E01 … E23** | Casualty/failure ids in the behaviour catalog — e.g. **E07** = stuck-open PORV, **E09** = large LOCA |
+| **HR1 … HR12** | The repo's Hard Rules (`CONTEXT.md` §3) — e.g. **HR9** the plant is ground truth, **HR12** measure, don't assert |
+| **F1 … F11** | Findings in the 2026-08-14 adversarial review (`PWR2_REVIEW_ADJUDICATION.md`) |
+
 **Supersedes `PWR2_ARCHITECTURE.md`**, whose layer stack predates the 2026-08-13 rulings.
 
 ---

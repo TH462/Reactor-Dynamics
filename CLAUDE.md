@@ -1061,6 +1061,20 @@ instructor + flagship scenarios).
 - **Two registers.** Every label/instructional string exists in a **Learning** register
   (plain language) and an **Industry** register (real plant terminology).
 - **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **US customary FIRST with SI in parentheses — `2235 psi (15.41 MPa)`, `565 °F (296 °C)` — in the `Manuals/` set AND in everything you hand the owner**: chat replies, issue bodies and comments, commit messages, `Diagnostic/` entries *(OWNER DIRECTIVE, 2026-07-29: "also add a gh issue to add to claude.md to always give me imperial numbers not SI.")*. Temperature DIFFERENCES and RATES (subcooling margin, leg ΔT, DNB margin, deadbands, heatup/cooldown rates) convert ×9/5 with NO offset — this is the one that gets written wrong: 41 °C of subcooling is 73.8 °F, not 105.8, and 21.8 °C/hr is 39.2 °F/hr. `test/run_manual_units.js` enforces it across the manual and the board-facing copy (`ui/manual_procedures.js`, `ui/diagram/board/pwr_board_inspect.js`); **agent prose is not gateable**, like HR10 and HR12 — a green run does not cover it. Engine internals stay SI and do not move: command payloads, config constants, `true_state`.
+- **SPELL OUT EVERY CODE — ALL OF THEM, not a favoured few** *(OWNER DIRECTIVE, 2026-08-14: "I
+  don't know what these letter number combos are (L0, D1). Always spell them out."; broadened
+  minutes later when a first pass named only two families: "Not just those to, spell out all of
+  them.")*. **The test: if a token abbreviates something that HAS a name, write the name the first
+  time it appears in anything the owner reads.** That covers the PWR2 build layers (`L0`→**Layer 0,
+  water properties**), the five PWR2 design documents (`D1`→**the design spine,
+  `PWR2_DESIGN.md`**), the Hard Rules (`HR9`→**Hard Rule 9, the plant is ground truth**), the Tier A
+  couplings (`A4`→**level is not inventory, the TMI coupling**), casualty ids (`E09`→**large
+  LOCA**), interlocks (`P-11`), probe and finding ids (`CA-15`, `MDS-2`, `F1`), and section refs
+  (`§8(2)`→**the stop condition in the design spine §8, item 2**). Agents invent these constantly
+  and go blind to them, then put them in decision briefs — so the owner is asked to rule on options
+  he cannot parse. **Bare codes are fine only INSIDE a document that defines them, and between
+  agents.** Never in chat, an issue body or comment, or a commit message. **Not gateable** — like
+  HR12 and the units rule, a green run does not cover it.
 - **Plant MODES** use commercial numbering, written **Mode N, Name** (e.g. *Mode 1, At
   Power*). Do not confuse with turbine load modes (Follow / Manual / Disconnected).
 - **This is an educational lumped-parameter plant,** not a full-scope replica of a
