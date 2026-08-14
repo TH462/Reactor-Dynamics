@@ -1611,3 +1611,75 @@ behaviour the TMI curriculum depends on.
 bound that looks like a numerical guard is actually a physical regime boundary.** Worth stating as
 a standing rule for the build — *before clipping anything, ask what the plant is doing when the
 clip engages.*
+
+---
+
+## 26. CORRELATION INTERPOLATION WINDOWS — sized. And a structural low-pressure limit, declared.
+
+D5 §6.4 established that smoothing belongs in the correlation layer and collected the prior art.
+This sizes PWR2's own windows — the last specification item that did not need external sourcing.
+
+### 26.1 RELAP5's RULE transfers. Their VALUE does not.
+
+RELAP5 blends the choking sound speed over `1e-5 < α < 0.10`, chosen *"so that it would require
+several time steps to traverse the interpolation region."* **Their reasoning is right and their
+number is not portable**, because the enthalpy width of a fixed void window collapses with
+pressure. Core node, 300 MWt, dt = 0.02 → **Δh = 4.13 kJ/kg per step**:
+
+| P (MPa) | ρ_f/ρ_g | Δh to reach α = 0.10 | **steps to cross** |
+|---|---|---|---|
+| **0.1** | **1629** | 0.139 kJ/kg | **0.03 — a thirtieth of one step** |
+| 0.5 | 338 | 0.619 | 0.15 |
+| 1 | 173 | 1.166 | 0.28 |
+| 5 | 31 | 5.344 | 1.29 |
+| 10 | 12 | 10.595 | 2.57 |
+| **15.41** | **6** | 16.030 | **3.88 — as intended** |
+
+**`ρ_f/ρ_g` runs 6 → 1629 across the envelope**, so a fixed α window is ~4 steps wide at operating
+pressure and **essentially instantaneous at blowdown pressure** — where it is needed most.
+
+### 26.2 The specification — denominate the window in ENTHALPY
+
+```
+window = min( k·Δh_step ,  f·h_fg(P) )        k ≈ 5, f a small fraction (TBD)
+```
+applied about each regime boundary, with `Δh_step` evaluated from the node's own current heat rate
+rather than a global constant. **Both bounds are required**, and the second is not a safety belt —
+see §26.3.
+
+Targets, all currently unwindowed in PWR2: §9's film-coefficient regimes (single-phase → nucleate
+boiling → CHF → film boiling), critical/break flow, and D3 §8's CCFL cap engagement.
+
+### 26.3 ⚠ A STRUCTURAL LOW-PRESSURE LIMIT — declare it, do not engineer around it
+
+At 5 × Δh_step the window spans **the entire two-phase region** below ~1 MPa (α reaches 1.000).
+**That is not a window failure.** It is the model reporting that **a low-pressure node flashes
+through the whole two-phase regime in about five timesteps.** No interpolation can smooth a region
+narrower than the step that crosses it.
+
+**Three independent routes now converge on this same limit:**
+
+| Route | Finding |
+|---|---|
+| §16.2 (property side) | band/Δh is 5.3× at 15.41 MPa and **0.03× at 0.1 MPa** — *"no formulation escapes this"* |
+| §24.1 (Courant) | a heavily voided node reaches **C = 0.456**, and with plug sub-cells would exceed 1 |
+| §26.1 (correlation side) | the two-phase region is **< 5 steps wide** below ~1 MPa |
+
+**Three different analyses, three different denominators, one conclusion: PWR2 has a resolution
+limit at low pressure that is structural, not a defect.** It should be **declared** —
+`DESIGN_COMPANION` §8 — rather than chased:
+
+> **Below roughly 1–2 MPa (150–290 psia), PWR2 resolves the liquid/two-phase transition at the
+> limit of its timestep. Late-blowdown and low-pressure behaviour is directionally correct and
+> quantitatively coarse.** Sub-stepping (§17.5) and the bracketed closure (§23.2) keep it *stable*
+> and *conservative*; they do not make it *accurate*.
+
+**And that is an acceptable declaration under the ruled acceptance bar** (§22.2 / D5 §6):
+directional correctness and alarm fidelity are achievable there; a tight mass residual is not, and
+is no longer what PWR2 is judged on. **Under the OLD bar this limit would have read as a failure.
+Under the ruled one it is a declared scope boundary** — which is the clearest illustration yet of
+why that ruling mattered.
+
+**What it costs, stated plainly:** the late stages of a large LOCA — reflood, long-term
+recirculation — are the least trustworthy part of this plant. **That is worth knowing before a
+scenario author builds a mission on them.**
