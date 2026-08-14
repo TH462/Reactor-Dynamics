@@ -1463,3 +1463,88 @@ the verification, validation, and performance testing criteria"*) · local time 
 | **CCFL** | A correlation, not emergent physics. |
 | **Node count** | Krško's coarse model **crossed an ECCS setpoint** the fine one never reached, from having two volumes where PWR2 has more — node count is a curriculum decision, not a performance one. |
 | **The boundary is not "solved"** | RELAP5-3D took **three decades** to stop aborting at the one-phase/two-phase transition and a 2026 paper still lists it as a headline fix. §17.5's 8.4 kg came from one node at four pressures. **That is a sample, not coverage.** |
+
+---
+
+## 24. THE THREE UNTAKEN MEASUREMENTS (2026-08-13)
+
+Plan item 4. None had been computed; all three produce design constraints.
+
+### 24.1 Material Courant number — comfortable at rated, and it CONSTRAINS `K`
+
+`C = ṁ·dt/(ρV) = dt / residence_time`. **Janosy's node-sizing rule `V_node ≥ Q_max·dt` is the same
+criterion** (`C ≤ 1`), so one calculation answers both.
+
+At rated 1639 kg/s (2.322 m³/s):
+
+| Node | Residence | **C at dt = 0.02** | margin |
+|---|---|---|---|
+| SG primary | 3.163 s | 0.0063 | 158× |
+| Core | 0.887 s | 0.0226 | 44× |
+| Crossover | 0.666 s | 0.0300 | 33× |
+| Hot leg / RCP | 0.344 / 0.343 s | 0.058 | 17× |
+| **Cold leg — BINDING** | **0.310 s** | **0.0646** | **15.5×** |
+
+**At rated flow the Courant limit is comfortable.** No node is close.
+
+**But plug sub-cells divide the volume, so `K` is a STABILITY parameter, not only the budget
+parameter §14.2 made it:**
+
+| K | sub-cell residence | C | |
+|---|---|---|---|
+| 5 | 0.0620 s | 0.323 | ok |
+| **8** | 0.0387 s | **0.516** | **marginal** |
+| 20 | 0.0155 s | **1.291** | **VIOLATES** |
+
+**`K ≤ 8` on the binding node.** §13's performance budget independently pointed at `K ≈ 5`;
+**two unrelated constraints converge on the same ceiling**, which is a useful check on both.
+
+**And the transient case is where it bites.** At constant *mass* flow, a voided node has ~7× the
+velocity:
+
+| Cold leg at | Residence | C |
+|---|---|---|
+| ρ 706 (liquid, rated) | 0.310 s | 0.065 |
+| ρ 300 (flashing) | 0.132 s | 0.152 |
+| ρ 100 (heavily voided) | 0.044 s | **0.456** |
+
+**This independently reproduces the test agent's "Courant ≈ 1 during blowdown" finding** by a
+different route. With `K = 5` on top, a voided cold leg would exceed 1. **The plug flag and the
+void regime interact, and neither §13 nor §14.2 saw it.**
+
+### 24.2 ⛔ THE TIME DEFICIT IS REAL — `simTime` advances unconditionally
+
+`layers/simulation_service.js:370`:
+```js
+this.simTime += steps * PHYSICS_DT;      // UNCONDITIONAL
+```
+against the loop at `:325–330`:
+```js
+for (var i = 0; i < steps; i++) { … this.engine.step(PHYSICS_DT); }
+```
+
+**The service credits a full `PHYSICS_DT` per iteration no matter what the engine did internally.**
+So if §17.5's crossing sub-step advances the physics to the boundary and stops — the natural
+implementation — **the plant's clock runs ahead of its physics, silently, with nothing to repay
+it.** Nothing in the service can detect this; `simTime` is an accumulator, not a measurement.
+
+**THE DESIGN RULE THIS FORCES, and D2 §17.5 does not state it:**
+
+> **`engine.step(dt)` MUST advance the physics by exactly `dt`, however it subdivides internally.**
+> A crossing sub-step must run to the boundary **and then continue to the end of the step**. It may
+> never return early.
+
+**This is the exact inverse of the analysis-code pattern**, where the correct response to trouble is
+to reject the step and retry shorter. **Here the step is a contract with the clock and it cannot be
+broken** — which is the same distinction (analysis code vs simulator) that §§19–21 found everywhere
+else.
+
+*Note the industry's alternative: IAEA/MAAP4 and Modelica both **let the frame slip and then repay
+the deficit**. That is a legitimate second design, but it requires the deficit to be **measured**,
+and PWR2 currently has no quantity that measures it. The rule above avoids needing one.*
+
+### 24.3 Node sizing — answered by 24.1
+
+`V_node ≥ Q_max·dt` is satisfied with 15.5× margin at the binding node at rated flow, and is the
+same constraint as the Courant number. **The rule to record for D3: size sub-cells, not nodes** —
+the nodes are comfortable; only their subdivision approaches the limit.
