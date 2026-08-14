@@ -48,10 +48,13 @@
  *     pressure     0.1 .. 18.0 MPa        (14.5 .. 2611 psia)
  *     liquid T     20 .. 358 degC         (68 .. 676 degF)
  *     vapour T     T_sat .. 800 degC      (.. 1472 degF)  — core uncovery needs this
- * rangeOK() reports whether a call was inside. It is CALLED INTERNALLY, not decorative:
- * the previous version exported it with zero callers while claiming "never a silent
- * extrapolation", which was false — T_sat(20 MPa) returned 365.4 and h_l_sat(400) 1828.8,
- * both finite, both unflagged, both nonsense.
+ * rangeOK() reports whether a call was inside. **It has no internal callers, and saying
+ * otherwise was this file's own version of the defect it accused its predecessor of** — the
+ * first rebuild's header claimed "it is CALLED INTERNALLY, not decorative" while nothing
+ * called it (independent review, 2026-08-14). What is actually true, and is what matters:
+ * every public function CLAMPS its arguments to the envelope, so an out-of-range call returns
+ * the boundary value rather than a divergent extrapolation, and rangeOK lets a caller that
+ * cares find out that the clamp engaged.
  *
  * UNITS ARE SI THROUGHOUT (CLAUDE.md: engine internals stay SI; US-customary is a
  * display/reporting concern).
@@ -78,26 +81,36 @@
   }
 
   /* ---------------------------------------------------------------- saturation line
-   * T_sat(P) — [derived] degree-6 in ln(P), fitted to 220 IAPWS-95 points 0.1-22 MPa.
-   * MEASURED max error over the whole range: 0.090 degC (0.16 degF).
-   * (The previous cubic measured 0.41 degC and its 15.41 MPa reference was 0.92 degC wrong.) */
-  var C_TSAT = [1.7989094760e+2, 4.3544068573e+1, 4.5324565888e+0, 3.8368767118e-1,
-                9.2354415563e-2, 1.1855674319e-2, -8.1512408230e-3];
-  function T_sat(P_MPa) { return poly(C_TSAT, Math.log(clip(P_MPa, P_MIN, P_CRIT))); }
+   * T_sat(P) — [derived] degree-9 in ln(P), fitted to 395 IAPWS-95 points 0.0017-22 MPa.
+   * MEASURED max error, OFF-GRID: 0.065 degC (0.12 degF).
+   *
+   * *** ITS RANGE DELIBERATELY EXCEEDS THE PRESSURE ENVELOPE, AND THAT IS A BUG FIX. ***
+   * The first rebuild fitted 0.1-22 MPa and clipped its argument at P_MIN, so T_sat was FLAT
+   * below 0.1 MPa. P_sat inverts T_sat by bisection, so the bracket collapsed and
+   * **P_sat returned ~1e-4 MPa (a vacuum) for EVERY temperature below 99.6 degC (211 degF)** —
+   * the whole cold end, which is exactly where Cold Shutdown (Mode 5) lives. Measured before the
+   * fix: P_sat(50 degC) = 1.0e-4 against a true 0.01235, wrong by 100x. Internal impact was small
+   * (the compressed-liquid term moves < 0.1 kJ/kg there) but the EXPORT was broken, and the gate
+   * could not see it because its round-trips all started at 1 MPa.
+   * Found by independent adversarial review, 2026-08-14. */
+  var C_TSAT = [1.7989231544e+2, 4.3488524369e+1, 4.5765597716e+0, 4.3613638013e-1,
+                4.7985258863e-2, 7.7779466301e-3, -7.0540150743e-4, -7.1499854545e-4,
+                -1.2159302709e-4, -6.6178509438e-6];
+  function T_sat(P_MPa) { return poly(C_TSAT, Math.log(clip(P_MPa, 1.0e-5, P_CRIT))); }
 
   /* P_sat(T) — the inverse by bisection on T_sat, not a second fit. An independent inverse
    * fit is a second source of truth for one physical curve and they drift. Bisection rather
    * than Newton: T_sat is monotone in P, so a bracket always exists and cannot fail to
    * converge, and this is not a hot-path function. */
   function P_sat(T_c) {
-    var T = clip(T_c, 0.0, T_CRIT), lo = 1e-4, hi = P_CRIT, mid = lo;
-    for (var i = 0; i < 60; i++) { mid = 0.5 * (lo + hi); if (T_sat(mid) < T) lo = mid; else hi = mid; }
+    var T = clip(T_c, 0.0, T_CRIT), lo = 1.0e-5, hi = P_CRIT, mid = lo;
+    for (var i = 0; i < 80; i++) { mid = 0.5 * (lo + hi); if (T_sat(mid) < T) lo = mid; else hi = mid; }
     return mid;
   }
 
   /* ---------------------------------------------------------------- saturated liquid
    * h_l_sat(T) — [derived] degree-10 in T, fitted to 339 IAPWS-95 points 20-358 degC.
-   * MEASURED max error over the whole range: 0.52 kJ/kg (0.22 Btu/lb).
+   * MEASURED max error, OFF-GRID: 0.63 kJ/kg (0.27 Btu/lb) at 357.4 degC.
    * (The previous quartic measured 10.57 kJ/kg in range against a +/-5 claim.)
    *
    * Why the range stops at 358 degC and not the critical point: cp diverges toward the
@@ -111,7 +124,7 @@
   function h_l_sat(T_c) { return poly(C_HLSAT, clip(T_c, 0.0, T_MAX)); }
 
   /* rho_l_sat(T) — [derived] degree-10, same 339 points.
-   * MEASURED max error over the whole range: 0.42 kg/m3 (0.026 lb/ft3).
+   * MEASURED max error, OFF-GRID: 0.51 kg/m3 (0.032 lb/ft3) at 357.4 degC.
    * (The previous quartic measured 5.68 kg/m3 against a +/-4 claim.) */
   var C_RLSAT = [1.0045015111e+3, -4.3373956628e-1, 1.1748906995e-2, -3.5121709960e-4,
                  4.5291019834e-6, -3.4248214475e-8, 1.5789993024e-10, -4.3662760518e-13,
@@ -166,7 +179,7 @@
   function h_g(P_MPa) { var t = T_sat(P_MPa); return h_l_sat(t) + h_fg_T(t); }
 
   /* rho_v_sat(P) — [derived] log-log degree-6 in ln(P), 0.1-18 MPa, 180 points.
-   * MEASURED max error over the whole range: 0.98 %.
+   * MEASURED max error, OFF-GRID: 1.25 %.
    * (The previous cubic measured 4.4 % at the operating point against a +/-2 % gate claim,
    * hidden because the reference it was checked against was the 15.0 MPa value.)
    * The envelope stops at 18 MPa deliberately: measured, extending to 22 MPa takes the error
@@ -177,7 +190,17 @@
 
   /* ---------------------------------------------------------------- compressed liquid
    * B(T) — isothermal bulk modulus, [derived] as ln(B) = quartic(T) from 445 adjacent-isobar
-   * density differences, B = rho*dP/drho. MEASURED max error 15.3 %.
+   * density differences, B = rho*dP/drho.
+   *
+   * ACCURACY, STATED HONESTLY: B is fitted in T ALONE, but the true isothermal bulk modulus
+   * depends on (T,P) and collapses as a state approaches its saturation line. MEASURED:
+   * ~15 % away from saturation, but **46 % at 344 degC / 15.41 MPa (saturation at the operating
+   * pressure), 66 % at 350/16.5, and 120 % at 357/18** — all liquid states inside the declared
+   * envelope. The first rebuild claimed a flat 15.3 %, which is false near saturation; found by
+   * independent adversarial review, 2026-08-14. A (T,P) surface is the fix and is NOT built —
+   * anything depending quantitatively on compressibility within ~10 degC of saturation must not
+   * use this. The 5.5x correction to the old 2200-3T value is unaffected and independently
+   * confirmed by the sound-speed route.
    *
    * *** THIS REPLACES A VALUE THAT WAS WRONG BY 5.5x AT OPERATING TEMPERATURE. ***
    * The previous version used B = 2200 - 3*T, "the same physical constant the old engine
@@ -292,8 +315,16 @@
   function rho_v(T_c, P_MPa) {
     var P = clip(P_MPa, P_MIN, P_MAX), lp = Math.log(P);
     var Ts = T_sat(P), T = Math.max(Ts, clip(T_c, 0, TV_MAX));
-    var Z = 1 - (1 - poly(C_ZS, lp)) * Math.exp(-(T - Ts) / Math.exp(poly(C_TZ, lp)));
-    return (P * 1000) / (Z * R_STEAM * (T + 273.15));
+    var Zs = poly(C_ZS, lp);
+    var Z = 1 - (1 - Zs) * Math.exp(-(T - Ts) / Math.exp(poly(C_TZ, lp)));
+    // ANCHORED to rho_v_sat, so rho_v(T_sat, P) === rho_v_sat(P) EXACTLY and rho_from_h is
+    // continuous at h_g by construction. The first rebuild returned P/(Z*R*T) directly, which
+    // is a SECOND independent fit of the saturated vapour density -- the very pattern P_sat's
+    // comment forswears -- and the two disagreed by up to 1.45 kg/m3 (1.10 % at 18 MPa). The
+    // sign of that jump varied with pressure, so rho_from_h was NON-MONOTONE in h at ~1, 2, 10
+    // and 13 MPa: density rising with enthalpy across the boundary, in a function the pressure
+    // solve brackets through. Found by independent adversarial review, 2026-08-14.
+    return rho_v_sat(P) * (Zs / Z) * (Ts + 273.15) / (T + 273.15);
   }
 
   /* ---------------------------------------------------------------- mixture / inverses */

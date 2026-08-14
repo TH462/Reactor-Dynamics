@@ -108,6 +108,13 @@ canonical steam-table values, with P_sat at exactly 100 °C correctly *above* on
 **One number per function, stated once, measured against IAPWS-95 over the whole declared range
 — never at the points the fit was built on.**
 
+> **⚠ THE FIGURES IN THIS TABLE WERE MEASURED ON THE FIT GRID, WHICH IS THE THING THE SENTENCE
+> ABOVE FORBIDS. §7.2 CARRIES THE CORRECTED OFF-GRID NUMBERS** — `h_l_sat` 0.63 not 0.52,
+> `rho_l_sat` 0.51 not 0.42, `rho_v_sat` 1.25 % not 0.98 %, and `bulk_modulus` up to 120 % near
+> saturation rather than a flat 15.3 %. `T_sat` was refitted (0.090 → **0.065 °C off-grid**) to
+> fix the `P_sat` defect in §7.1. Left visible rather than silently overwritten: the point of this
+> document is that stating a rule is not the same as obeying it.
+
 | Function | Form | Measured max error | Was |
 |---|---|---|---|
 | `T_sat(P)` | degree-6 in ln P, 0.1–22 MPa | **0.090 °C** | 0.41 °C |
@@ -183,3 +190,86 @@ energy balance now asserts Δh against the IAPWS-95 value **185.41 kJ/kg**, not 
   computes mixture density from `h` and `P` directly. The ruled table is a performance and
   kink-placement decision that belongs with Layer 2, where there is something to measure it
   against.
+
+---
+
+## 7. THE INDEPENDENT REVIEW (2026-08-14) — and what it found that the self-test could not
+
+*(OWNER RULING, 2026-08-14: selected "Yes, before building on it" from three options — an
+independent pass on the rebuilt library before Layer 1 or Layer 2 is built on top of it. The
+reasoning accepted: the same agent had written both the library AND the gate that judges it,
+which is exactly the conflict the whole PWR2 review exists to catch.)*
+
+Run on a **different model**, adversarially prompted (*refute; default to rejecting*), read-only,
+fetching its own IAPWS-95 truth rather than trusting any number in the repo.
+
+**It found two real defects, five false claims, and eleven blind spots. The decision to commission
+it paid for itself immediately.**
+
+### 7.1 Two real defects — both now fixed
+
+| | |
+|---|---|
+| **`P_sat` returned a VACUUM below 99.6 °C (211 °F)** | `T_sat` clipped its argument at `P_MIN = 0.1 MPa`, so it was **flat** below that; `P_sat` inverts it by bisection, so the bracket collapsed to its lower bound. Measured: `P_sat(50 °C)` = 1.0e-4 MPa against a true 0.01235 — **wrong by 100×**, across the entire cold end, which is exactly where Cold Shutdown (Mode 5) lives. **Fixed** by refitting `T_sat` to degree 9 over **0.0017–22 MPa**; `P_sat(50 °C)` now reads 1.2357e-2. Off-grid error also improved, 0.090 → **0.065 °C**. |
+| **`rho_from_h` was discontinuous and NON-MONOTONE at h_g** | The vapour side used a `Z_sat` fit inside `rho_v`; the two-phase side ended at the independent `rho_v_sat` fit — **two fits of one quantity**, the exact pattern `P_sat`'s own comment forswears. Jump up to **1.45 kg/m³ (1.10 % at 18 MPa)**, and **the sign varied with pressure**, so density *rose* with enthalpy across the boundary at ~1, 2, 10 and 13 MPa — in a function the pressure solve brackets through. **Fixed** by anchoring `rho_v` to `rho_v_sat`, so continuity holds by construction; the jump is now ~1e-7 kg/m³. |
+
+### 7.2 Five accuracy claims false OFF-GRID — the same failure at smaller amplitude
+
+The header's own rule is *"measured over the WHOLE declared range — never at the points the fit was
+built on."* **The measurement had been taken on the fit grid itself.** Re-measured on a genuinely
+off-grid set (temperatures offset by 0.37 °C, pressures by 0.137 MPa):
+
+| | claimed | measured off-grid |
+|---|---|---|
+| `h_l_sat` | 0.52 kJ/kg | **0.63** |
+| `rho_l_sat` | 0.42 kg/m³ | **0.51** |
+| `rho_v_sat` | 0.98 % | **1.25 %** |
+| `T_sat` | 0.090 °C | 0.14 (now 0.065 after the refit) |
+| `bulk_modulus` | 15.3 % flat | **46 % at saturation at operating pressure; 120 % at 357 °C / 18 MPa** — it is fitted in T alone but the true value depends on (T, P) |
+
+All now restated honestly. **The bulk-modulus case is the instructive one:** the headline 5.5×
+correction to the old value is real and was independently confirmed by a sound-speed route the
+reviewer chose precisely because it does not share my method — but *the accuracy claim about that
+correction* was still false near saturation.
+
+### 7.3 Seven of eight `cp_f` references were not from NIST
+
+In a file whose header stated *"No recalled numbers… satisfied by construction, because nothing
+here is recalled."* The h and ρ columns of the same rows verify to the digit; the cp column had
+been pasted from a different source and differed in the 4th significant figure (288 °C: 5.4383
+against a true 5.4485852). **Writing "nothing here is recalled" is not the same as checking.**
+
+### 7.4 Eleven blind spots — the structural lesson
+
+The reviewer applied 19 mutations; **11 stayed green**, three of them on exported functions the
+suite **never called at all** (`subcooling`, `h_fg(P)`, deep-subcooled `rho_from_h`). It also found
+that **every gate tolerance was 1.4–2.6× looser than the header claim beside it**, so no claim was
+policed by any check — which is *how five of them came to be false*.
+
+> **AN INJECTION SELF-TEST PROVES THE CHECKS YOU THOUGHT TO WRITE. IT CANNOT PROVE THE ONES YOU
+> DID NOT.** The mutation set is itself an artifact of the author's imagination, and mine had a
+> three-function hole in it. The framework was sound — 8 of the reviewer's 19 mutations were
+> already caught — but **a self-test is a floor, not a substitute for an adversary who does not
+> share your blind spots.**
+
+**Fixed:** mutation set 17 → **26**, covering every demonstrated class; tolerances tightened to sit
+just above the measured claims; new checks for every previously-uncalled export; continuity now
+asserted **relatively** at 8 pressures including 0.35 and 18 MPa (the old absolute 0.5 kg/m³ band
+was 26 % of ρ_g at low pressure — vacuous — and never checked the pressures where the real jump
+exceeded it). **231 checks, 26/26 mutations caught, no blind spots.**
+
+**One more trap, found while fixing:** git's `autocrlf` rewrites the library to CRLF, so every
+**multi-line** mutation anchor silently stopped matching. The runner now normalises line endings
+before matching — *a gate whose coverage depends on the checkout's line-ending policy is not a
+gate.*
+
+### 7.5 What the review confirmed — evidence too
+
+- **`k_comp`'s sign reversal is right.** NIST secant at 288 °C: −0.645 against the library's
+  −0.642. The physics call holds.
+- **The bulk modulus really is ~225 MPa at 610 °F (321 °C)**, not 1237 — confirmed by an
+  independent sound-speed method. The 5.5× revision stands.
+- `cp_l` is the exact analytic derivative of `h_l_sat` (1e-7). `T_from_h` round-trips to 2.4e-10 °C
+  in all three regimes. Two-phase mixing is exactly linear in specific volume. No NaN or Infinity
+  for any finite input. `h_fg` → 0 at the critical point confirmed. Every `SAT_P`, `COMP_L` and
+  `SUP_V` row verifies against NIST to the printed digit.

@@ -1,5 +1,22 @@
 /* run_pwr2_water.js — Layer 0 gate for the PWR2 engine (#479).
  *
+ * *** HARDENED 2026-08-14 (second pass) after an INDEPENDENT adversarial review. ***
+ * The first rebuild of this file reported 164/164 with 17/17 mutations caught. An independent
+ * reviewer — a different model, run because the same agent had written both the library and this
+ * gate — applied 19 mutations of its own and **11 stayed green**, three of them on exported
+ * functions this suite never called at all (`subcooling`, `h_fg(P)`, deep-subcooled
+ * `rho_from_h`). It also found TWO REAL DEFECTS the suite could not see (`P_sat` returning a
+ * vacuum below 99.6 degC; a 1.45 kg/m3 discontinuity and non-monotonicity in `rho_from_h` at
+ * h_g), FIVE header accuracy claims false OFF-GRID, and — worst — that **7 of 8 cp_f reference
+ * values were NOT from NIST** in a file whose header swore nothing in it was recalled.
+ *
+ * The structural lesson, recorded because it generalises past this file: **an injection
+ * self-test proves the checks you thought to write; it cannot prove the ones you did not.**
+ * Its mutation set is itself an artifact of the author's imagination, and mine had a
+ * three-function hole in it. The framework was sound — the review confirmed 8 of its own 19
+ * mutations were already caught — but a self-test is a floor, never a substitute for an
+ * adversary who does not share your blind spots.
+ *
  * REBUILT 2026-08-14. The previous version reported 56/56 GREEN while:
  *   - asserting a claim the design spine had RETRACTED (loop transit "10-12 s", recalled
  *     and later found circular — D1 §3);
@@ -12,9 +29,12 @@
  * Three structural changes follow from that, and they are the point of this file:
  *
  *   1. EVERY reference value is IAPWS-95 from the NIST Chemistry WebBook (SRD 69), fetched
- *      2026-08-14, quoted to 8 figures, AT THE PRESSURE OR TEMPERATURE NAMED. No recalled
- *      numbers. The design's own rule — "a recalled band may REJECT, but may never CONFIRM"
- *      — is now satisfied by construction, because nothing here is recalled.
+ *      2026-08-14, quoted to 8 figures, AT THE PRESSURE OR TEMPERATURE NAMED. The design's own
+ *      rule — "a recalled band may REJECT, but may never CONFIRM" — is satisfied because
+ *      nothing here is recalled. **That sentence was FALSE when first written**: the cp_f column
+ *      had been pasted from a different source and 7 of its 8 values differed from NIST in the
+ *      4th significant figure (288 degC: 5.4383 against a true 5.4485852). Corrected. Writing
+ *      "nothing here is recalled" is not the same as checking.
  *
  *   2. OFF-NODE checks. The fits were built on a 1 degC / 0.1 MPa grid, so this gate also
  *      asserts at deliberately awkward points (137.37 degC, 4.21 MPa, 320.5 degC) that no
@@ -32,7 +52,12 @@
 'use strict';
 var fs = require('fs'), path = require('path');
 var LIB = path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_water.js');
-var SRC = fs.readFileSync(LIB, 'utf8');
+/* NORMALISE LINE ENDINGS BEFORE ANY MUTATION ANCHOR IS MATCHED. git's autocrlf rewrites this
+ * file to CRLF on checkout, so every MULTI-LINE anchor below silently stopped matching and the
+ * self-test reported "anchor not found" — which, before that error was made fatal, would have
+ * degraded to "mutation not applied" and then to a mutation that appeared to pass. A gate whose
+ * coverage depends on the checkout's line-ending policy is not a gate. */
+var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 
 /* load a (possibly mutated) copy of the library into a private root */
 function loadFrom(src) {
@@ -64,19 +89,19 @@ var SAT_P = [
 ];
 /* Saturation by temperature: [T degC, h_f kJ/kg, rho_f kg/m3, cp_f kJ/kg-K] */
 var SAT_T = [
-  [ 20.00,   83.914145, 998.16180, 4.1836000],
+  [ 20.00,   83.914145, 998.16180, 4.1843605],
   [ 37.37,  156.53994,  993.15438, 4.1794925],   // off-node
-  [100.00,  419.16616,  958.34905, 4.2151000],
+  [100.00,  419.16616,  958.34905, 4.2156736],
   [137.37,  577.88925,  928.46371, 4.2767186],   // off-node
-  [150.00,  632.17944,  917.00774, 4.3097000],
+  [150.00,  632.17944,  917.00774, 4.3070798],
   [187.37,  795.71808,  878.99535, 4.4356894],   // off-node
-  [200.00,  852.27129,  864.65810, 4.4952000],
+  [200.00,  852.27129,  864.65810, 4.4958426],
   [237.37, 1025.0173,   817.04954, 4.7484904],   // off-node
-  [250.00, 1085.7675,   798.89422, 4.8654000],
+  [250.00, 1085.7675,   798.89422, 4.8701349],
   [287.37, 1275.8899,   736.86220, 5.4349765],   // off-node
-  [288.00, 1279.2662,   735.68332, 5.4383000],
-  [300.00, 1345.0079,   712.13564, 5.7504000],
-  [321.00, 1468.4072,   664.59816, 6.5860000],
+  [288.00, 1279.2662,   735.68332, 5.4485852],
+  [300.00, 1345.0079,   712.13564, 5.7504003],
+  [321.00, 1468.4072,   664.59816, 6.5915932],
   [337.37, 1575.8716,   619.03887, 7.8851790]    // off-node
 ];
 /* Compressed liquid, all OFF-NODE: [P MPa, T degC, h kJ/kg, rho kg/m3] */
@@ -94,7 +119,13 @@ var SUP_V = [
   [ 4.21, 500, 3443.6492, 12.196847,  2.2974795],
   [ 8.63, 650, 3757.8225, 20.926872,  2.4098246],
   [15.41, 450, 3150.4958, 55.959993,  3.3179410],
-  [ 7.00, 800, 4128.4449, 14.315272,  2.4216949]
+  [ 7.00, 800, 4128.4449, 14.315272,  2.4216949],
+  /* HIGH-dT, LOW-P: here the g*dT term dominates the superheat model, so a wrong g cannot
+     hide by cancelling against fit error the way it does at moderate dT. Added after an
+     independent review showed g x1.4 passing every moderate-dT point. */
+  [ 0.37, 800, 4158.9744,  0.74755497, 2.3464183],
+  [ 1.73, 750, 4035.4721,  3.6782652,  2.3297341],
+  [ 0.10, 700, 3929.3710,  0.22271881, 2.2731466]
 ];
 
 /* ---------------------------------------------------------------- the suite
@@ -114,7 +145,7 @@ function runSuite(W, rec, quiet) {
   }
 
   if (!quiet) console.log('\nT_sat(P)  [IAPWS-95, claim +/-0.09 degC over 0.1-22 MPa]');
-  SAT_P.forEach(function (r) { ck('T_sat(' + r[0] + ' MPa)', W.T_sat(r[0]), r[1], 0.15, 'degC'); });
+  SAT_P.forEach(function (r) { ck('T_sat(' + r[0] + ' MPa)', W.T_sat(r[0]), r[1], 0.10, 'degC'); });
 
   if (!quiet) console.log('\nP_sat(T) round-trip  [bisection inverse of T_sat]');
   [1.0, 5.0, 10.0, 15.41].forEach(function (P) {
@@ -123,8 +154,8 @@ function runSuite(W, rec, quiet) {
 
   if (!quiet) console.log('\nh_l_sat(T) / rho_l_sat(T)  [claims +/-0.54 kJ/kg, +/-0.42 kg/m3]');
   SAT_T.forEach(function (r) {
-    ck('h_l_sat(' + r[0] + ' degC)', W.h_l_sat(r[0]), r[1], 0.8, 'kJ/kg');
-    ck('rho_l_sat(' + r[0] + ' degC)', W.rho_l_sat(r[0]), r[2], 0.7, 'kg/m3');
+    ck('h_l_sat(' + r[0] + ' degC)', W.h_l_sat(r[0]), r[1], 0.75, 'kJ/kg');
+    ck('rho_l_sat(' + r[0] + ' degC)', W.rho_l_sat(r[0]), r[2], 0.65, 'kg/m3');
   });
 
   /* cp_l -- ASSERTED, which the previous gate never did anywhere. Banded, because the
@@ -138,8 +169,8 @@ function runSuite(W, rec, quiet) {
   if (!quiet) console.log('\nh_f(P) / h_g(P) / rho_v_sat(P)  [h_g is DERIVED as h_f + h_fg]');
   SAT_P.forEach(function (r) {
     ck('h_f(' + r[0] + ' MPa)', W.h_f(r[0]), r[2], 1.5, 'kJ/kg');
-    if (r[0] <= 17) ck('h_g(' + r[0] + ' MPa)', W.h_g(r[0]), r[3], 3.0, 'kJ/kg');
-    if (r[0] <= 18) ck('rho_v_sat(' + r[0] + ' MPa) rel', W.rho_v_sat(r[0]) / r[4], 1.0, 0.02, '(frac)');
+    if (r[0] <= 17) ck('h_g(' + r[0] + ' MPa)', W.h_g(r[0]), r[3], 1.8, 'kJ/kg');
+    if (r[0] <= 18) ck('rho_v_sat(' + r[0] + ' MPa) rel', W.rho_v_sat(r[0]) / r[4], 1.0, 0.015, '(frac)');
   });
 
   /* h_fg at the critical point -- the claim the previous file made and did not deliver. */
@@ -171,7 +202,7 @@ function runSuite(W, rec, quiet) {
 
   if (!quiet) console.log('\nSUPERHEATED VAPOUR  [the regime the previous library could not express]');
   SUP_V.forEach(function (r) {
-    ck('h_v(' + r[1] + ' degC,' + r[0] + ' MPa)', W.h_v(r[1], r[0]), r[2], 40.0, 'kJ/kg');
+    ck('h_v(' + r[1] + ' degC,' + r[0] + ' MPa)', W.h_v(r[1], r[0]), r[2], 37.0, 'kJ/kg');
     ck('cp_v(' + r[1] + ' degC,' + r[0] + ' MPa)', W.cp_v(r[1], r[0]), r[4], 0.35, 'kJ/kg-K');
     ck('rho_v(' + r[1] + ' degC,' + r[0] + ' MPa) rel', W.rho_v(r[1], r[0]) / r[3], 1.0, 0.10, '(frac)');
   });
@@ -183,12 +214,15 @@ function runSuite(W, rec, quiet) {
       ' degC of superheat (old library: 373.95, the T_crit clip)');
 
   if (!quiet) console.log('\nREGIME CONTINUITY  [what the bracketed pressure solve depends on]');
-  [1.0, 7.0, 15.41].forEach(function (P) {
+  [0.35, 1.0, 2.0, 7.0, 10.0, 13.0, 15.41, 18.0].forEach(function (P) {
     var hf = W.h_f(P), hg = W.h_g(P), e = 1e-6;
-    ck('rho_from_h continuous at h_f (' + P + ' MPa)',
-       W.rho_from_h(hf + e, P), W.rho_from_h(hf - e, P), 0.5, 'kg/m3');
-    ck('rho_from_h continuous at h_g (' + P + ' MPa)',
-       W.rho_from_h(hg + e, P), W.rho_from_h(hg - e, P), 0.5, 'kg/m3');
+    /* RELATIVE, not absolute. The first rebuild used an absolute 0.5 kg/m3 at three pressures:
+     * at 0.35 MPa that is 26 % of rho_g (vacuous), and it never checked 17-18 MPa, where the
+     * real jump was 0.81 and 1.45 kg/m3. A relative band is scale-free and catches both ends. */
+    ck('rho_from_h continuous at h_f (' + P + ' MPa) rel',
+       W.rho_from_h(hf + e, P) / W.rho_from_h(hf - e, P), 1.0, 2e-4, '(frac)');
+    ck('rho_from_h continuous at h_g (' + P + ' MPa) rel',
+       W.rho_from_h(hg + e, P) / W.rho_from_h(hg - e, P), 1.0, 2e-4, '(frac)');
     ck('T_from_h in the two-phase region returns T_sat (' + P + ')',
        W.T_from_h(0.5 * (hf + hg), P), W.T_sat(P), 1e-6, 'degC');
     ck('quality at mid-dome (' + P + ' MPa)', W.quality(0.5 * (hf + hg), P), 0.5, 1e-6, '-');
@@ -215,7 +249,50 @@ function runSuite(W, rec, quiet) {
     ck('dh_l/dP continuous at P_sat(' + T + ' degC)', up, dn, 1e-3, 'kJ/kg-MPa');
   });
 
-  if (!quiet) console.log('\nrangeOK / clamping  [the honesty guard, now WIRED IN]');
+  /* ---- EXPORTS THE FIRST REBUILD'S GATE NEVER CALLED AT ALL ----
+   * An independent adversarial review applied 19 mutations; 11 stayed green, and three of those
+   * were on exported functions this suite never invoked. A function nothing calls is a function
+   * nothing checks, however good its implementation looks on the page. */
+  if (!quiet) console.log('\nEXPORTED FUNCTIONS THE SUITE MUST ACTUALLY CALL');
+  /* P_sat across the WHOLE liquid range -- the real defect lived below 99.6 degC (211 degF) */
+  [[20, 2.3393182e-3], [50, 1.2351926e-2], [100, 1.0141800e-1],
+   [150, 4.7616454e-1], [250, 3.9761749], [321, 11.434496]].forEach(function (r) {
+    ck('P_sat(' + r[0] + ' degC) rel', W.P_sat(r[0]) / r[1], 1.0, 0.01, '(frac)');
+  });
+  /* subcooling -- sign and magnitude. A sign flip was invisible before. */
+  ck('subcooling(550 degF, 2235 psia)', W.subcooling(288, 15.41), W.T_sat(15.41) - 288, 1e-9, 'degC');
+  ckT('subcooling is POSITIVE below saturation', W.subcooling(288, 15.41) > 50);
+  ckT('subcooling is NEGATIVE above saturation', W.subcooling(360, 15.41) < 0);
+  /* h_fg(P) -- the pressure-argument form; only h_fg_T was ever exercised */
+  SAT_P.forEach(function (r) {
+    if (r[0] <= 17) ck('h_fg(' + r[0] + ' MPa)', W.h_fg(r[0]), r[3] - r[2], 3.5, 'kJ/kg');
+  });
+  /* quality -- clamped at both ends */
+  ck('quality below h_f is 0', W.quality(W.h_f(7) - 100, 7), 0, 1e-12, '-');
+  ck('quality above h_g is 1', W.quality(W.h_g(7) + 100, 7), 1, 1e-12, '-');
+  /* rho_from_h in the SUBCOOLED interior must depend on PRESSURE. Losing that dependence kills
+   * dP/drho in the pressure closure -- the water-solid response -- and stayed green. */
+  [[288, 10.0, 17.0], [250, 8.0, 17.0]].forEach(function (r) {
+    var h = W.h_l(r[0], r[2]);
+    var lo = W.rho_from_h(h, r[1]), hi = W.rho_from_h(h, r[2]);
+    ckT('rho_from_h is pressure-dependent when subcooled (' + r[0] + ' degC)',
+        hi - lo > 5.0, (hi - lo).toFixed(2) + ' kg/m3 between ' + r[1] + ' and ' + r[2] + ' MPa');
+  });
+  /* cp_v / rho_v honour their stated at-or-below-saturation contract */
+  [1.0, 7.0, 15.41].forEach(function (P) {
+    ck('cp_v below saturation == at saturation (' + P + ')',
+       W.cp_v(W.T_sat(P) - 50, P), W.cp_v(W.T_sat(P), P), 1e-12, 'kJ/kg-K');
+    ck('rho_v at saturation == rho_v_sat (' + P + ')',
+       W.rho_v(W.T_sat(P), P), W.rho_v_sat(P), 1e-9, 'kg/m3');
+  });
+  /* bulk modulus -- banded tightly enough to reject a 35 % error, which passed before */
+  ck('bulk_modulus(550 degF) vs IAPWS 440 MPa', W.bulk_modulus(288), 440, 70, 'MPa');
+  ck('bulk_modulus(212 degF) vs IAPWS 2086 MPa', W.bulk_modulus(100), 2086, 250, 'MPa');
+  /* rangeOK boundaries exactly -- moving them was invisible */
+  ckT('rangeOK boundary P_MIN', W.rangeOK(288, 0.1) === true && W.rangeOK(288, 0.0999) === false);
+  ckT('rangeOK boundary T_MIN', W.rangeOK(20, 7) === true && W.rangeOK(19.9, 7) === false);
+
+  if (!quiet) console.log('\nrangeOK / clamping  [the honesty guard]');
   ckT('in-range accepted (288 degC, 15.41 MPa)', W.rangeOK(288, 15.41) === true);
   ckT('over-pressure rejected (288 degC, 20 MPa)', W.rangeOK(288, 20) === false);
   ckT('over-temp rejected (900 degC, 15 MPa)', W.rangeOK(900, 15) === false);
@@ -287,8 +364,8 @@ var MUTATIONS = [
    'function cp_l(T_c) { return poly(C_CPL, clip(T_c, 0.0, T_MAX)); }',
    'function cp_l(T_c) { return 1.5 * poly(C_CPL, clip(T_c, 0.0, T_MAX)); }'],
   ['bias T_sat by +0.5 degC',
-   'function T_sat(P_MPa) { return poly(C_TSAT, Math.log(clip(P_MPa, P_MIN, P_CRIT))); }',
-   'function T_sat(P_MPa) { return 0.5 + poly(C_TSAT, Math.log(clip(P_MPa, P_MIN, P_CRIT))); }'],
+   'function T_sat(P_MPa) { return poly(C_TSAT, Math.log(clip(P_MPa, 1.0e-5, P_CRIT))); }',
+   'function T_sat(P_MPa) { return 0.5 + poly(C_TSAT, Math.log(clip(P_MPa, 1.0e-5, P_CRIT))); }'],
   ['scale h_l_sat by 1.005',
    'function h_l_sat(T_c) { return poly(C_HLSAT, clip(T_c, 0.0, T_MAX)); }',
    'function h_l_sat(T_c) { return 1.005 * poly(C_HLSAT, clip(T_c, 0.0, T_MAX)); }'],
@@ -314,10 +391,35 @@ var MUTATIONS = [
    'return h_l_sat(T) + k_comp(T) * (P - P_sat(T));',
    'var Ps0 = P_sat(T); if (P <= Ps0) return h_l_sat(T);\n    return h_l_sat(T) + k_comp(T) * (P - Ps0);'],
   ['revert vapour density to ideal-gas scaling off the saturated point',
-   'var Z = 1 - (1 - poly(C_ZS, lp)) * Math.exp(-(T - Ts) / Math.exp(poly(C_TZ, lp)));\n    return (P * 1000) / (Z * R_STEAM * (T + 273.15));',
+   'return rho_v_sat(P) * (Zs / Z) * (Ts + 273.15) / (T + 273.15);',
    'return rho_v_sat(P) * (Ts + 273.15) / (T + 273.15);'],
   ['rangeOK always true', 'return (P_MPa >= P_MIN && P_MPa <= P_MAX && T_c >= T_MIN && T_c <= TV_MAX);',
    'return true;'],
+  // --- classes an INDEPENDENT adversarial review proved this gate was blind to (2026-08-14) ---
+  ['rho_from_h subcooled ignores PRESSURE (kills dP/drho)',
+   'if (h_kJkg <= hf) return rho_l(T_from_h(h_kJkg, P_MPa), P_MPa);',
+   'if (h_kJkg <= hf) return rho_l_sat(T_from_h(h_kJkg, P_MPa));'],
+  ['subcooling sign flipped',
+   'function subcooling(T_c, P_MPa) { return T_sat(P_MPa) - T_c; }',
+   'function subcooling(T_c, P_MPa) { return T_c - T_sat(P_MPa); }'],
+  ['h_fg(P) x1.5  (only h_fg_T was ever exercised)',
+   'function h_fg(P_MPa) { return h_fg_T(T_sat(P_MPa)); }',
+   'function h_fg(P_MPa) { return 1.5 * h_fg_T(T_sat(P_MPa)); }'],
+  ['quality unclamped below h_f',
+   'if (h_kJkg <= hf) return 0;', 'if (h_kJkg <= -1e30) return 0;'],
+  ['bulk_modulus x1.35',
+   'function bulk_modulus(T_c) { return Math.exp(poly(C_B, clip(T_c, 0.0, T_MAX))); }',
+   'function bulk_modulus(T_c) { return 1.35 * Math.exp(poly(C_B, clip(T_c, 0.0, T_MAX))); }'],
+  ['superheat g x1.4', 'g: poly(C_G, lp)', 'g: 1.4 * poly(C_G, lp)'],
+  ['rangeOK envelope moved (P_MIN 0.5, T_MIN -50)',
+   'return (P_MPa >= P_MIN && P_MPa <= P_MAX && T_c >= T_MIN && T_c <= TV_MAX);',
+   'return (P_MPa >= 0.5 && P_MPa <= P_MAX && T_c >= -50 && T_c <= TV_MAX);'],
+  ['P_sat bracket collapses below 0.1 MPa (the REAL defect, restored)',
+   'var T = clip(T_c, 0.0, T_CRIT), lo = 1.0e-5, hi = P_CRIT, mid = lo;',
+   'var T = clip(T_c, 0.0, T_CRIT), lo = 0.1, hi = P_CRIT, mid = lo;'],
+  ['rho_v un-anchored from rho_v_sat (the h_g discontinuity, restored)',
+   'return rho_v_sat(P) * (Zs / Z) * (Ts + 273.15) / (T + 273.15);',
+   'return (P * 1000) / (Z * R_STEAM * (T + 273.15));'],
   ['stop clamping -- let out-of-range extrapolate',
    'function h_l_sat(T_c) { return poly(C_HLSAT, clip(T_c, 0.0, T_MAX)); }',
    'function h_l_sat(T_c) { return poly(C_HLSAT, T_c); }']
