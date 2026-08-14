@@ -80,6 +80,19 @@ docs.
 > them if there are several. And do not ask at all when the call is routine: make it, state
 > the assumption, move on. Full guidance, including the cases where it genuinely blocks:
 > `Blueprint/SOP.md` §5.
+>
+> **RE-ISSUED, because the rule above was not enough** *(OWNER DIRECTIVE, 2026-08-14: "From now on,
+> whenever you need a ruling, tell me what you need me to decide, my options and your
+> recommendation. I'm tired of having to ask every time.")*. **The failure mode is specific and it
+> is NOT refusing to recommend — it is naming a blocker without the decision attached.** Writing
+> *"blocked on your ruling"* or *"needs your call"* in a status line, a STILL OUTSTANDING block or
+> an issue comment, and leaving the options in a document he has to go find, makes him ask. It
+> made him ask twice in one session against a rule already a fortnight old.
+>
+> **Every time you say a thing is blocked on him, the decision travels WITH it, in that message:**
+> what he is deciding · the options · your recommendation and why. **No exceptions for brevity** —
+> if it is worth telling him he is blocking something, it is worth telling him what to do about it.
+> A pointer to where the options are written is not the options.
 
 > **The First Principles section — a CANARY, not an essay** *(OWNER RULING, 2026-07-29: "I would
 > label it the 'First Principles' section. The start and end should be marked."; narrowed hours
