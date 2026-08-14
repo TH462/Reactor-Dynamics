@@ -568,7 +568,37 @@ than this section originally claimed.
 
 ## 7. Open, carried forward
 
-### ⛔ 7.0 LAYER 1 IS BLOCKED: the reactor-vessel split is not derivable, and it is 38 % of the RCS
+### ✅ 7.0 RULED 2026-08-14 — the vessel scales from real-plant PROPORTIONS. Layer 1 is unblocked.
+
+*(OWNER RULING, 2026-08-14: selected "Scale from real-plant proportions" from four options I put —
+the rejected three were a declared minimum-buildable annulus, keeping the area-scaling rule as-is,
+and stopping the rewrite under D1 §8(2).)*
+
+**The vessel node split is §7.0a's table**, taken from Almaraz's sourced internal fractions:
+
+| Node | ft³ | m³ | Basis |
+|---|---|---|---|
+| Downcomer | **62.5** | 1.770 | Almaraz fraction 19.8 % of vessel — `[sourced]` proportion |
+| Core | **72.8** | 2.062 | `[derived]` independently: 21 assemblies × 3.53 m³ × 0.584 |
+| Vessel heads | **62.9** | 1.781 | `[sourced]`, hemispherical pair |
+| Lower plenum | **49.0** | 1.388 | remainder × Almaraz lower/upper ratio |
+| Upper plenum | **67.9** | 1.923 | " |
+| **Total** | **315.1** | 8.923 | matches the §1a-v ledger by construction |
+
+**THE DECLARED ASSUMPTION, which the ruling does not make true:** this assumes **vessel internal
+proportions are scale-invariant**. That is a claim, not a measurement, and the direction of its
+likely error is known — for a much smaller plant the plena and heads plausibly grow as a
+*fraction*, because their heights do not shrink with power. **SLS-100's core computes to 23.1 % of
+its vessel against Almaraz's 14.0 %**, which says exactly that. Carried into D1 §24's declared
+±12.1 % inventory band rather than treated as resolved.
+
+**What this does NOT do: it does not clear D1 §8(2).** The stop condition asks for a *valid
+topology-appropriate cross-check on the ledger*, and this is a **basis for splitting a total**, not
+a check on it. §8(2) remains adjudicated by D1 §24's declaration, not by this ruling.
+
+**Superseded reasoning kept below**, because the three-way conflict is why the ruling went this way.
+
+### ⛔ 7.0 (superseded) LAYER 1 WAS BLOCKED: the reactor-vessel split is not derivable, and it is 38 % of the RCS
 
 **Found 2026-08-14 while starting Layer 1 (geometry).** Building the geometry data layer needs a
 volume per NODE. §2's node table has **no volume column** and its headnote says *"Volumes
@@ -674,6 +704,16 @@ D1 §8(2).**
 
 - **§1's shortfall is not closed.** The geometry table is provisional; the build must re-derive
   loop lengths (not scaled), SG tube length (sourced), and plena (sourced).
+- **Form-loss coefficients: RULED DECLARED-UNSOURCED, 2026-08-14** *(OWNER RULING, 2026-08-14:
+  selected "Declare unsourced, proceed" from three options — the rejected two were obtaining
+  Idelchik/Crane TP-410, and backing an effective total loss out of the sourced pump head)*. The
+  recalled values (1.5–2.0 per leg, 7.0 grid spacers, 2.5 tube entrance/exit) stay, **marked
+  recalled at their definition site**, after a dedicated evidence pass returned nothing — not in
+  any lane's corpus, not in NUREG/IA-0444. **They feed a CROSS-CHECK, not plant behaviour**: a
+  30 % error moves the derived pump head ~18 %, which the check absorbs, and nothing the player
+  sees depends on them. **The rejected third option is worth remembering** — backing an effective
+  loss coefficient out of the sourced pump head would have made the pump-head comparison circular,
+  destroying the one non-circular constraint this geometry has passed (§1a-v).
 - Pump head curve shape and rotational inertia — needed for derived coastdown (D2 §3).
 - `h_film` correlations for boiling and condensing — D2 §8 flags these as the likeliest route for
   recalled constants to re-enter.

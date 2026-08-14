@@ -163,6 +163,13 @@ docs.
 >   need a rule to never merge unless I say so. Develop was being worked")*. Applies to
 >   fast-forwards and anything else that moves `develop`. A clean `git status` is not permission.
 >   "Committed on the lane, gated, waiting" is the correct end state.
+> - **PWR2 (#479) HAS A STANDING HOLD ON TOP OF THAT RULE** *(OWNER DIRECTIVE, 2026-08-14: "Do not
+>   merge until I explicitly tell you to. We are not going to merge until the new physics have been
+>   finished, tested and validated.")*. **The bar is the whole engine — finished, tested AND
+>   validated — not a green lane and not a finished layer.** Do not propose a merge at each
+>   milestone; do not carve out "just the docs" or "just the manual fix" (asked and declined
+>   2026-08-14). The lane accumulating commits is the INTENDED state, so treat conflict management,
+>   not merging, as the maintenance job.
 > - **The lanes are LOCAL. Never `git push origin workbench` / `backshop`** *(OWNER DIRECTIVE,
 >   2026-07-31: "I don't want the workbench or backshop trees pushed to gh. Gh should only have
 >   main and develop.")*. The repo is public and a pushed lane also builds a Vercel preview site.
