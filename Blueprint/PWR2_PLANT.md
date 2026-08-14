@@ -568,6 +568,54 @@ than this section originally claimed.
 
 ## 7. Open, carried forward
 
+### ⛔ 7.0 LAYER 1 IS BLOCKED: the reactor-vessel split is not derivable, and it is 38 % of the RCS
+
+**Found 2026-08-14 while starting Layer 1 (geometry).** Building the geometry data layer needs a
+volume per NODE. §2's node table has **no volume column** and its headnote says *"Volumes
+provisional per §1"*. The component ledger (§1a-v) gives 315.1 ft³ for the reactor vessel —
+**38 % of the 835.8 ft³ total** — and that number cannot be split into downcomer / lower plenum /
+core / upper plenum from anything written down, because **the annular gap that sets it is carried
+three different ways and they contradict each other**:
+
+| Gap | RPV inside dia. | Downcomer area | Provenance |
+|---|---|---|---|
+| **250 mm** | 1.700 m | 1.139 m² | **RECALLED** — D1 §3 retracted it |
+| **93 mm** | 1.386 m | 0.378 m² | derived from the area ratio — and **REJECTED**: the review found it *"mechanically unbuildable"*, recovering ~86 ft³ |
+| **79 mm** | 1.358 m | 0.317 m² | **what §1a-i's own SOURCED area-scaling rule actually gives** (reference downcomer/hot-leg area ratio 2.366, verified against D1 §3's cited 2.37, applied to the scaled hot-leg area) |
+
+**The third row is the finding.** §1a-i's rule — *"loop length is set by layout and does not scale
+with power; only diameter scales, with flow, to hold velocity"* — is the sourced rule that
+exonerated the piping. **Applied to the downcomer it produces 79 mm, which is SMALLER than the
+93 mm already rejected as unbuildable.** So the sourced rule and the rejection are in direct
+conflict, and nothing in the set resolves it.
+
+**And the 315.1 ft³ was reached by overriding the derivation**, not by extending it: 228.1 ft³
+derived, then ~86 ft³ *recovered* because the derived annulus could not be built. Splitting it now
+means either **fitting the gap to reproduce 315.1** — which is precisely the fitted-constant
+failure #479 exists to end — or **inventing a minimum-buildable-annulus rule**, which is a plant
+design decision, not a coding one.
+
+**Why it cannot be deferred into Layer 2:** the candidate gaps differ in downcomer flow area by
+**3.6×**, so downcomer transit time differs by 3.6×. That is not a sensitivity to carry silently
+into the conservation core — and it lands directly on D1 §24's ±12.1 % inventory declaration and
+the 91 ± 11 min boil-dry number that declaration rests on.
+
+**What is derivable and is NOT in dispute** (recorded so the next session does not redo it):
+
+| | |
+|---|---|
+| Core coolant volume | **72.8 ft³** — 21 assemblies × 3.53 m³ × 0.584 lattice coolant fraction, all [derived] from sourced Westinghouse 17×17 geometry |
+| Vessel heads | **62.9 ft³** — [sourced], hemispherical pair |
+| **Remaining for downcomer + both plena** | **179.4 ft³** — the disputed part |
+| Piping split | hot **34.30**, crossover **38.82**, cold **34.85** ft³ = 108.0 (ledger 108.1) — [derived] from Almaraz per-loop volumes × 0.3054, **and this half is sound**: the reference hot leg computes to 29.4 in against D1 §3's cited "four 29-in hot legs" |
+
+**THE DECISION OWED, and it is the owner's:** what sets SLS-100's downcomer gap, given that the
+velocity-scaling rule yields an annulus narrower than the one already judged unbuildable? The
+honest options are (a) a minimum-buildable-annulus rule, declared, with velocity allowed to fall
+below the reference plant's; (b) accept a higher downcomer velocity and a wider gap chosen to hold
+some other constraint; or (c) source a small-PWR vessel and scale from it rather than from a
+4-loop. **Layer 1 stops here rather than fabricating past it.**
+
 - **§1's shortfall is not closed.** The geometry table is provisional; the build must re-derive
   loop lengths (not scaled), SG tube length (sourced), and plena (sourced).
 - Pump head curve shape and rotational inertia — needed for derived coastdown (D2 §3).
