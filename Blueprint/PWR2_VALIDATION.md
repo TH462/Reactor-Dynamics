@@ -155,3 +155,74 @@ re-authoring bill, not a veto on the physics.
 - **Layer 1 conservation can pass on a model that is conservative but wrong** — conserving the
   wrong energy exactly. It proves bookkeeping, not physics. Layers 2–5 carry that burden, which is
   why Layer 1 is necessary but nowhere near sufficient (HR10).
+
+---
+
+# 6. THE ACCEPTANCE BAR — RULED 2026-08-13. This supersedes §§1–5's framing.
+
+*(OWNER RULING, 2026-08-13: selected "Continue at ~12 nodes, change the acceptance bar")*
+
+**Everything above judges PWR2 by residuals and convergence. That is an ANALYSIS-CODE standard and
+it is the wrong one.** A simulator's virtue is never producing a bad frame, judged the way the
+regulator judges simulators.
+
+## 6.1 The bar
+
+| Criterion | Standard | Source |
+|---|---|---|
+| **Directional correctness** | *"observable change in the parameters **correspond in direction** to those expected"* | ANS-3.5 via NRC IP 41502 §03.02 |
+| **No missed alarm** | *"shall **not fail to cause an alarm** or automatic action if the reference unit would … under identical circumstances"* | same |
+| **No spurious alarm** | *"shall **not cause an alarm** … if the reference unit would not"* | same |
+| **Conservation** | **A BUDGET, NOT AN IDENTITY** — *"shall not violate … conservation of mass, momentum, and energy, **within the limits of** the verification, validation, and performance testing criteria"* | NEI 09-09 §3.9 (ML091310538) |
+| **Real-time** | **local time lag < 1 s; global time lag < 1 % of simulated time** | CATHARE-2/SCAR, SNA 2003 — the only published definition of "late" found |
+| **Curriculum** | all **nine Tier A couplings** expressible | `CURRICULUM.md` |
+| Steady state | a tolerance band — **figure UNSOURCED.** ANS-3.5-2018 App. B Table B.1 is paywalled. **The ±2 % previously quoted is WITHDRAWN** (it traces to the 1985 edition). | — |
+
+## 6.2 What this changes
+
+- **Layer 1 becomes a conservation BUDGET with a stated number**, not a machine-precision
+  assertion. The number is owed; it does not yet exist.
+- **`M_total` drift is a SMOKE TEST, not evidence** — it is trivially true for a single integrated
+  scalar. Labelled as such.
+- **Keep as real gates:** the closure residual after the solve, and the **Newton iteration count**
+  (conditioning degrades silently — dM/dP is 26.9 kg/MPa bubbled but **10.6 solid**, so the solid
+  regime is where a cap first binds).
+- **Frame-miss policy is now in scope.** Both nuclear (IAEA/MAAP4) and Modelica practice **let the
+  frame slip, then repay the deficit until it reaches zero.** PWR2 has the mechanism
+  (`timeAcceleration`, the step-count loop in `simulation_service.js`); **whether a crossing
+  sub-step accrues a deficit that nothing repays is unverified** and is a silent failure.
+
+## 6.3 ⛔ AMEND G3 — it currently forbids the thing the industry does
+
+G3 (§17.6) pins the kink's magnitude so that **smoothing the state equation is a gate failure**.
+That is right and must stay. **But as written it will be read as forbidding smoothing REGIME
+TRANSITIONS**, which is precisely where two production codes independently place the fix:
+
+- **THEATRe (1992)** blamed RELAP5's instability on *"the discontinuity which exist in the
+  **interfacial heat transfer correlation package and the critical flow model**"* — and measured a
+  *constant* timestep as more stable than adaptive cutback.
+- **A real-time RELAP5-3D paper (2026)** lists, among changes *"accumulated over 3 decades"*,
+  *"implementation of a **smooth transition between different heat transfer and flow regime
+  conditions**"*.
+
+**G3 must say explicitly: forbidden to smooth PROPERTIES; REQUIRED to smooth regime transitions.**
+
+## 6.4 Where the smoothing goes — the specification owed
+
+**This is the highest-value open gap in the whole design set, and D2 has never looked at it.**
+Prior art to follow, all sourced:
+
+| Code | Transition | Method |
+|---|---|---|
+| RELAP5 | subcooled → two-phase choking | sound speed interpolated over `1e-5 < α < 0.10`, chosen *"so that it would require several time steps to traverse the interpolation region"* |
+| APROS | CHF | interpolated between correlations over mass flux 100–200 kg/m²·s; wetted → dry wall likewise |
+| THEATRe | flow-pattern change | *"an exponential interpolation scheme … to prevent the numerical instability which might arise when abruptly switching from one flow pattern to another"* |
+| CATHARE-SIMU | out-of-range | *"Optimization of treatment of 'out-of-range' variables"*; convergence criteria chosen *"to avoid oscillations problems when the water phase is residual"* |
+
+**PWR2's transitions needing this treatment:** §9's film-coefficient regimes (single-phase →
+nucleate boiling → CHF → film boiling), critical/break flow, and D3 §8's CCFL cap. **None is
+specified.**
+
+**The design rule to adopt, from RELAP5's own reasoning:** size each interpolation window so a node
+takes **several timesteps to traverse it**. That is a `dt`-relative criterion, which is the same
+form as §16.2's `band ≥ k·Δh_step` finding — reached independently, from the other direction.

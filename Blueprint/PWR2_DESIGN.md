@@ -95,8 +95,8 @@ transferred to SLS-100 regardless of the constants** — a reasoning error indep
 
 **What survives as a valid cross-check:** the energy balance (`Q = ṁΔh`), which is topology-
 independent and is gated today at `run_pwr2_water` 56/56. **Loop transit time now reads short**
-(~6.8 s through the flow path, excluding the pressurizer, against a real-PWR 10–12 s) — a live,
-unadjudicated finding, not a settled result.
+(~6.8 s through the flow path, excluding the pressurizer, against a real-PWR band) — a live, unadjudicated finding.
+**⚠ The "10–12 s" figure this section originally quoted is RETRACTED** — it was recalled, and D3 §1b computes the real band as 11.0–13.7 s from reference geometry. Both this transit check and the specific-volume check it sits beside were later found CIRCULAR (D3 §1); neither may be cited.
 
 **Consequence for the review: the forward method is NOT yet independently validated.** It is
 better-founded than the patchwork — it has derivations where the old plant has fits — but the

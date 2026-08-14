@@ -5,6 +5,22 @@
 The generic model — primitives, equations, integration — independent of this plant.
 The SLS-100 wiring is D3 (`PWR2_PLANT.md`).
 
+> # ▶ READING ORDER — READ THIS FIRST
+>
+> **This document accumulated three successive solver designs in one day. Only one is live.**
+>
+> | Read | Why |
+> |---|---|
+> | **§23 — THE RULED DESIGN** | **The design as it stands. Start and finish here.** |
+> | §0 | The over-determination resolution (conclusion stands; its *justification* is corrected in §18.4) |
+> | §§19–22 | The industry research and the second wave of rulings that settled everything |
+> | **Everything else** | **HISTORY.** §§1–18 record how the design got here, including three wrong turns kept legible on purpose. **Do not build from them.** |
+>
+> **The wrong turns, named so nobody reconstructs them:** §11.1's affine march (deleted by ruling —
+> measured 7,000 kg error and a stall on blowdown), §12.2's three-march "fix" (measured *worse*
+> than no fix), and §11.2's C1-continuity gate (unsatisfiable by its own formula, and asking for
+> the wrong property besides).
+
 > ## ⛔ REVIEW FINDINGS, 2026-08-13 — §§3, 4, 7 ARE WRONG AS WRITTEN
 >
 > Independent adversarial review. **The affected sections are left in place below so the errors are
@@ -227,7 +243,7 @@ fine for the RPV wall, where the inner surface follows the fluid within seconds 
 lags minutes. U-tubes 1, pipe 1–2, RPV 3+.
 
 ### Junction — a connection carrying flow
-`{from, to, ṁ, K, Δz, L, A}`. Carries **one integrated state, `ṁ`** (see §3).
+`{from, to, K, Δz, L, A}`. ⛔ **CORRECTED — the original read `{… ṁ …}` and "Carries one integrated state, `ṁ`", which §0.2 and §23.3 supersede.** Loop junction flows are **algebraic** (continuity plus thermal expansion); branches are **quasi-steady**. There is exactly **ONE** integrated momentum state for the whole loop, not one per junction.
 
 **The surge line is a junction, not a node** — negligible capacity, so it is resistance plus
 elevation, not a state vector. **A break is also a junction**, onto whatever node it pierces,
@@ -1353,3 +1369,97 @@ equations for one `P`. Flagged, not investigated.
 > be engineered away. It is a first-order phase transition — the thing a LOCA IS. Every hour spent
 > making it smooth is spent making the sim less able to teach flashing. The kink is not the
 > problem; taking its derivative was."*
+
+---
+
+# 23. THE RULED DESIGN — consolidated, and the only section to build from
+
+Everything above is history. This is the design as ruled on 2026-08-13.
+
+## 23.1 State
+
+| | |
+|---|---|
+| **Per node** | `h` specific enthalpy · `T_wall[]` (1..N lumps) — **NOT `m`** |
+| **System** | `M_total` (one integrated mass scalar, sources/sinks only) · `ṁ_loop` (one momentum state) · `P` (**solved**, not integrated) |
+| **Pressurizer** | the ONE exception — `m_liq, h_liq, m_steam, h_steam` are genuine states, because its regions' volumes are free (§14.1) |
+| **Derived** | `m_i = ρ(h_i,P)·V_i`, T, ρ, quality, void, level, flow fraction |
+
+**Why `m` is not a node state:** a rigid node has one thermal DOF. **The DOF reduction comes from
+the one-pressure ruling** (which imposes N−1 constraints), *not* from rigid volumes — §0's original
+argument was circular and §18.4 corrects it. The conclusion stands; the reason changed.
+
+## 23.2 The step
+
+```
+1  GATHER     evaluate all fluxes from state at time n. Write nothing.
+2  SOLVE P    F(P) = Σ V_i·ρ(a_i + v_i(P−P_n), P) − M_total = 0
+              a_i = h_i^n + dt·[ṁ_in(h_don − h_i^n) + Q_i]/m_i^n
+              v_i = V_i/m_i^n        ← THE SPECIFIC VOLUME. Exact. Not a partial.
+              BRACKETED root-find, warm-started at P_n, CAPPED AT ~8 ITERATIONS
+3  INTEGRATE  advance h_i, T_wall, ṁ_loop, M_total to n+1
+4  JUNCTIONS  ṁ_out,i = ṁ_in,i − (V_i·ρ_i^{n+1} − m_i^n)/dt    ← an exact mass DIFFERENCE
+```
+
+**`∂ρ/∂h` and `∂ρ/∂P` are NEVER computed in the hot path.** That is the whole point: the saturation
+kink is real physics (confirmed against steam tables and entailed by Clausius-Clapeyron), and the
+defect was never the kink — it was taking its derivative.
+
+**Why the kink cannot corrupt this, as a theorem:** moving `P` at fixed `a_i` moves `h` along
+`dh = v·dP`, which **is the isentrope**, so `dF/dP = Σ V_i/c_i² > 0` by thermodynamic stability.
+`F` is continuous and strictly monotone, so a bracketed solve converges however violent the
+derivative jump is. Verified to 2.5e-10; **0 non-monotone samples in 4,000.**
+
+**The cap is what makes it real-time-safe.** A bracketed solve on a monotone function is the one
+iterative scheme whose **worst case is bounded** — when the cap binds, the bracket width bounds the
+error. This is **nearly-implicit** in character, the row every real-time code occupies.
+**"Non-iterative" is dead.** Typical 2–3 iterations; cap 8, matching CATHARE-2/SCAR's budget.
+
+## 23.3 Flow
+
+- **ONE integrated loop momentum state** — a declared departure from the entire educational tier
+  (nobody else solves transient momentum), kept because it makes RCP coastdown derived from sourced
+  pump inertia and natural circulation `W ∝ Q^⅓` emergent, rather than fitted.
+- **The number of momentum states = the flow graph's cyclomatic number** (§14.3). Normal lineup 1;
+  **RHR-aligned with the RCP off is 2.**
+- **Junction flows inside the loop are algebraic** (§23.2 step 4). **All branches — surge, spray,
+  CVCS, ECCS, relief, break — are quasi-steady**, because orifice-class junctions have collapsed
+  `L/A` and explicit momentum there is unstable by ~3 orders.
+- **Two-phase friction multiplier** `φ² = 1 + x(ρ_f/ρ_g − 1)`, entailed by HEM. **UNSOURCED.**
+- **CCFL as a junction cap** at cold-leg→downcomer and core→lower-plenum (D3 §8). A **declared
+  departure** — a correlation, because HEM cannot generate counter-current flow. Constants
+  **unsourced** for our geometry.
+
+## 23.4 Properties
+
+Three regimes — subcooled / two-phase / **superheated** (the `[0,1]` quality clip foreclosed every
+meltdown path). **Tabulate `v`, not `ρ`, on `(quality, P)` with x = 0 and x = 1 as exact grid
+lines**, so the kink lands *on* a node line rather than being averaged away: 87 kB, 50 ns, 0.06 %,
+kink **reproduced**. A ρ-table is 762 % wrong at 0.12 MPa.
+
+**Smoothing belongs in the CORRELATION layer, never the state equation** — §22.3's highest-value
+open item, and where two production codes thirty years apart independently put the fix.
+
+## 23.5 Kinetics
+
+Point kinetics, 6 delayed groups, **frozen-ρ analytic integration** (7×7 matrix exponential) — not
+sub-stepping, which would violate the two-phase step. **Use ρ at the step MIDPOINT**, not its start:
+freezing at the start costs a few percent per step at scram rates, and rod position is already
+integrated in Phase 1 so the midpoint is free.
+
+## 23.6 The acceptance bar
+
+**Not a residual in kg.** Directional correctness · no missed alarm · no spurious alarm · all nine
+Tier A couplings expressible · **conservation as a budget** (NEI 09-09 §3.9: *"within the limits of
+the verification, validation, and performance testing criteria"*) · local time lag < 1 s and global
+< 1 % of simulated time.
+
+## 23.7 Known costs, declared
+
+| | |
+|---|---|
+| **HEM** | A shipped real-time code holds two-energy is *"much more mechanistic and numerically stable"*. Our 3,800× slope ratio, 263× cancellation and sign-inverted junction flow are all consequences of one energy equation. Ruled to stand; cost recorded (§21.2). |
+| **Momentum** | No Tier A coupling requires it. Kept as a means-of-derivation argument. |
+| **CCFL** | A correlation, not emergent physics. |
+| **Node count** | Krško's coarse model **crossed an ECCS setpoint** the fine one never reached, from having two volumes where PWR2 has more — node count is a curriculum decision, not a performance one. |
+| **The boundary is not "solved"** | RELAP5-3D took **three decades** to stop aborting at the one-phase/two-phase transition and a 2026 paper still lists it as a headline fix. §17.5's 8.4 kg came from one node at four pressures. **That is a sample, not coverage.** |
