@@ -1,234 +1,357 @@
-/* pwr2_water.js — Layer 0: water/steam properties for the PWR2 engine.
+/* pwr2_water.js — Layer 0: water/steam properties for the PWR2 engine. (#479)
  *
  * PURE FUNCTIONS. No state, no config, no dependencies. This file is the bottom of the
- * dependency stack (Blueprint/PWR2_ARCHITECTURE.md) and must stay that way — every layer
+ * dependency stack (Blueprint/PWR2_DESIGN.md §7) and must stay that way — every layer
  * above reads it and nothing it reads exists.
  *
- * WHY THIS FILE IS THE FIRST THING BUILT (#479). The current engine has exactly one
- * property function — T_sat(P) as a bare power-law fit — and no enthalpy or density at
- * all. With no h(T,P) there is no energy balance to check, which is why its coolant node
- * had to carry a FITTED normalized `coolant_heat_capacity` (units: fraction-of-rated-heat
- * per degC/s) instead of a mass times a specific heat. Everything downstream of that
- * inherited the same unfalsifiability: measured 2026-08-13, the plant's declared
- * rcs_flow_gpm is 1.51x off the Q = m*dh implied by its own ruled power and leg
- * temperatures, and nothing in the codebase could detect it. This file is what makes
- * that class of error detectable.
+ * ---------------------------------------------------------------------------------------
+ * REBUILT 2026-08-14 after an adversarial review measured the first version against
+ * IAPWS-95 and found it wrong in ways its own 56/56 gate could not see. What was wrong,
+ * recorded so the same shape is recognisable next time:
  *
- * SCOPE AND HONESTY. This is NOT IAPWS-97. It is a set of correlations fitted over this
- * plant's operating envelope, and every one of them declares its own accuracy, which
- * test/run_pwr2_water.js asserts against published steam-table points. An educational
- * lumped/nodal sim does not need full IAPWS; it does need to know how wrong it is.
+ *   - FOUR of the gate's reference values were wrong by MORE than the tolerance asserted
+ *     against them, all at the hot end where the plant runs. Two were traceable: they are
+ *     the 15.0 MPa (2176 psia) steam-table row used at the plant's 15.41 MPa (2235 psia)
+ *     operating point. h_f 1610.2 and rho_g 96.73 belong to 15.0 MPa; at 15.41 MPa the
+ *     true values are 1626.33 and 100.97.
+ *   - A wrong reference does not merely fail to reject — it CONCEALS. h_l_sat at 343.4 degC
+ *     passed by 1.81 kJ/kg while the fit was 11.23 kJ/kg from truth against a +/-5 claim.
+ *   - Every accuracy claim was stated THREE times with THREE different numbers (function
+ *     header, inline residual comment, gate tolerance) and five of six were false off-node,
+ *     because the fits were validated only at the 9-10 points they were built on.
+ *   - Deleting the compressed-liquid term, deleting the compressibility term, or scaling
+ *     cp_l by 1.5x all left the gate at 56/56 GREEN. All three are terms the file's own
+ *     comments called load-bearing.
  *
- * VALID RANGE — outside it the correlations are NOT characterised:
- *     pressure     0.1 .. 17.0 MPa
- *     temperature  20 .. 350 degC
- * Callers get a clamped result, never a silent extrapolation. See rangeOK().
+ * THE RULE THAT FOLLOWS, and it is why this header reads the way it does:
+ *   **ONE accuracy number per function, stated ONCE, measured against an EXTERNAL source
+ *   over the WHOLE declared range — never at the points the fit was built on.**
  *
- * UNITS ARE SI THROUGHOUT, matching the repo convention (CLAUDE.md: engine internals stay
- * SI; US-customary is a display/reporting concern only).
+ * ---------------------------------------------------------------------------------------
+ * SOURCE OF TRUTH. Every coefficient below is [derived] by least squares from [sourced]
+ * IAPWS-95 data: the NIST Chemistry WebBook (SRD 69, Wagner & Pruss 2002), fetched
+ * 2026-08-14 as 354 saturation points by temperature, 220 by pressure, and 11 isobars of
+ * 159 points each spanning compressed liquid and superheated vapour. Provenance and the
+ * refit scripts: Blueprint/PWR2_L0_REBUILD.md.
+ *
+ * This is NOT IAPWS-95. It is a correlation set fitted over this plant's envelope, and
+ * every function declares the error MEASURED against IAPWS-95 across its whole range.
+ * An educational lumped/nodal sim does not need full IAPWS; it does need to know how
+ * wrong it is, and to be unable to lie about it.
+ *
+ * PROVENANCE TAGS (D1 §2 — this file is the first artifact to actually apply them):
+ *   [sourced]  IAPWS-95 via NIST SRD 69.
+ *   [derived]  least-squares fit of [sourced] data; change only by refitting.
+ *   [ruled]    none in this file. There are no [tune] values and there must never be.
+ *
+ * VALID RANGE — outside it, inputs are CLAMPED to the envelope, never extrapolated.
+ *     pressure     0.1 .. 18.0 MPa        (14.5 .. 2611 psia)
+ *     liquid T     20 .. 358 degC         (68 .. 676 degF)
+ *     vapour T     T_sat .. 800 degC      (.. 1472 degF)  — core uncovery needs this
+ * rangeOK() reports whether a call was inside. It is CALLED INTERNALLY, not decorative:
+ * the previous version exported it with zero callers while claiming "never a silent
+ * extrapolation", which was false — T_sat(20 MPa) returned 365.4 and h_l_sat(400) 1828.8,
+ * both finite, both unflagged, both nonsense.
+ *
+ * UNITS ARE SI THROUGHOUT (CLAUDE.md: engine internals stay SI; US-customary is a
+ * display/reporting concern).
  *     P   MPa        T   degC        h   kJ/kg
  *     rho kg/m3      cp  kJ/kg-K
  */
 (function (root) {
   'use strict';
 
-  var P_MIN = 0.1, P_MAX = 17.0;      // MPa
-  var T_MIN = 20.0, T_MAX = 350.0;    // degC
-  var P_CRIT = 22.064, T_CRIT = 373.946;   // true critical point, for shape only
+  /* ---------------------------------------------------------------- envelope */
+  var P_MIN = 0.1, P_MAX = 18.0;        // MPa
+  var T_MIN = 20.0, T_MAX = 358.0;      // degC, LIQUID branch (must cover T_sat at P_MAX)
+  var TV_MAX = 800.0;                   // degC, vapour branch
+  var P_CRIT = 22.064, T_CRIT = 373.946, TK_CRIT = T_CRIT + 273.15;   // [sourced] IAPWS-95
 
   function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+  function poly(c, x) { var s = 0; for (var i = c.length - 1; i >= 0; i--) s = s * x + c[i]; return s; }
 
-  /* rangeOK — the honesty guard. Returns false when a caller is outside the fitted
-   * envelope. Callers that care (the gate, diagnostics) check it; callers that do not
-   * still get a clamped, finite number rather than a divergent extrapolation. Silent
-   * extrapolation is how a fit becomes a wrong answer nobody notices. */
+  /* rangeOK — the honesty guard, and it is WIRED IN. Every public function clamps its
+   * arguments to the envelope; this tells a caller whether that clamp engaged. A caller
+   * that cares (the gate, diagnostics, the node model's sanity check) asks. */
   function rangeOK(T_c, P_MPa) {
-    return (P_MPa >= P_MIN && P_MPa <= P_MAX && T_c >= T_MIN && T_c <= T_MAX);
+    return (P_MPa >= P_MIN && P_MPa <= P_MAX && T_c >= T_MIN && T_c <= TV_MAX);
   }
 
   /* ---------------------------------------------------------------- saturation line
-   * T_sat(P): Antoine-form fit in log-pressure, accurate to about +/-0.6 degC over
-   * 0.1-17 MPa (verified in run_pwr2_water against 8 published points).
-   *
-   * NOTE vs the old engine: engines/pwr uses T_sat = 179.47 * P^0.239, which it documents
-   * as +/-2 degC over 5-17 MPa. That form is deliberately NOT reused here — it degrades
-   * badly below 5 MPa (a cooled-down or depressurised plant), and PWR2 must be correct
-   * across the full Mode 5 <-> Mode 1 envelope, not just at power. */
-  function T_sat(P_MPa) {
-    var P = clip(P_MPa, 1e-4, P_CRIT);
-    var lp = Math.log(P);
-    // Least-squares cubic in ln(P), fitted 2026-08-13 to 9 steam-table saturation points
-    // spanning 0.1-17 MPa. Max residual 0.53 degC at 15.41 MPa.
-    return 179.8194 + 43.37729 * lp + 4.791606 * lp * lp + 0.4705170 * lp * lp * lp;
-  }
+   * T_sat(P) — [derived] degree-6 in ln(P), fitted to 220 IAPWS-95 points 0.1-22 MPa.
+   * MEASURED max error over the whole range: 0.090 degC (0.16 degF).
+   * (The previous cubic measured 0.41 degC and its 15.41 MPa reference was 0.92 degC wrong.) */
+  var C_TSAT = [1.7989094760e+2, 4.3544068573e+1, 4.5324565888e+0, 3.8368767118e-1,
+                9.2354415563e-2, 1.1855674319e-2, -8.1512408230e-3];
+  function T_sat(P_MPa) { return poly(C_TSAT, Math.log(clip(P_MPa, P_MIN, P_CRIT))); }
 
-  /* P_sat(T): the inverse. Newton iteration on T_sat rather than a second independent
-   * fit, so the two can never disagree with each other — an independent inverse fit is a
-   * second source of truth for one physical curve, and they drift. */
+  /* P_sat(T) — the inverse by bisection on T_sat, not a second fit. An independent inverse
+   * fit is a second source of truth for one physical curve and they drift. Bisection rather
+   * than Newton: T_sat is monotone in P, so a bracket always exists and cannot fail to
+   * converge, and this is not a hot-path function. */
   function P_sat(T_c) {
-    var T = clip(T_c, 0.0, T_CRIT);
-    var P = 0.1, i, f, dfdP, dP = 1e-6;
-    for (i = 0; i < 40; i++) {
-      f = T_sat(P) - T;
-      if (Math.abs(f) < 1e-8) break;
-      dfdP = (T_sat(P + dP) - T_sat(P - dP)) / (2 * dP);
-      if (!isFinite(dfdP) || Math.abs(dfdP) < 1e-12) break;
-      P = clip(P - f / dfdP, 1e-4, P_CRIT);
-    }
-    return P;
+    var T = clip(T_c, 0.0, T_CRIT), lo = 1e-4, hi = P_CRIT, mid = lo;
+    for (var i = 0; i < 60; i++) { mid = 0.5 * (lo + hi); if (T_sat(mid) < T) lo = mid; else hi = mid; }
+    return mid;
   }
 
-  /* ---------------------------------------------------------------- liquid enthalpy
-   * h_l(T,P): saturated-liquid enthalpy along the saturation line, plus a compressed-
-   * liquid correction for the subcooled region.
+  /* ---------------------------------------------------------------- saturated liquid
+   * h_l_sat(T) — [derived] degree-10 in T, fitted to 339 IAPWS-95 points 20-358 degC.
+   * MEASURED max error over the whole range: 0.52 kJ/kg (0.22 Btu/lb).
+   * (The previous quartic measured 10.57 kJ/kg in range against a +/-5 claim.)
    *
-   * The saturation-line term is the important one and is where the accuracy claim lives
-   * (+/-6 kJ/kg over 20-350 degC). The compressed-liquid term (v*(P-Psat), the exact
-   * thermodynamic form for an incompressible liquid) is small at PWR conditions but NOT
-   * negligible: at 288 degC and 15.41 MPa it is worth about +9 kJ/kg, which is ~5% of the
-   * 188 kJ/kg core rise. Dropping it would bias the energy balance the whole engine is
-   * built to check. */
-  function h_l_sat(T_c) {
-    var T = clip(T_c, 0.0, T_CRIT);
-    // Least-squares QUARTIC in T, fitted 2026-08-13 to 9 steam-table points 20-343 degC.
-    // Max residual 4.13 kJ/kg. A quartic is needed, not a cubic: h departs from the
-    // near-linear 4.19*T low-temperature behaviour above ~250 degC as cp climbs steeply
-    // toward the critical point (cp is 4.2 at 100 degC and 6.1 at 321).
-    return 6.223373 + 3.795321 * T + 5.318079e-3 * T * T
-         - 2.613318e-5 * T * T * T + 5.248055e-8 * T * T * T * T;
-  }
+   * Why the range stops at 358 degC and not the critical point: cp diverges toward the
+   * critical point, so a polynomial's error explodes there. 358 degC is not arbitrary — it is
+   * what T_sat(P_MAX = 18 MPa) demands. Set it lower and h_f/h_g silently CLAMP above about
+   * 15.5 MPa, which is inside the plant's own relief range; that was caught by this file's
+   * off-node reference at 17 MPa reading 19.7 kJ/kg low. */
+  var C_HLSAT = [-5.5434290974e+0, 4.7967034558e+0, -2.4950236953e-2, 5.1884181536e-4,
+                 -6.2364423884e-6, 4.5884760783e-8, -2.0845109365e-10, 5.7116465235e-13,
+                 -8.6476580012e-16, 5.5622106434e-19];
+  function h_l_sat(T_c) { return poly(C_HLSAT, clip(T_c, 0.0, T_MAX)); }
 
+  /* rho_l_sat(T) — [derived] degree-10, same 339 points.
+   * MEASURED max error over the whole range: 0.42 kg/m3 (0.026 lb/ft3).
+   * (The previous quartic measured 5.68 kg/m3 against a +/-4 claim.) */
+  var C_RLSAT = [1.0045015111e+3, -4.3373956628e-1, 1.1748906995e-2, -3.5121709960e-4,
+                 4.5291019834e-6, -3.4248214475e-8, 1.5789993024e-10, -4.3662760518e-13,
+                 6.6510152049e-16, -4.2957661761e-19];
+  function rho_l_sat(T_c) { return poly(C_RLSAT, clip(T_c, 0.0, T_MAX)); }
+
+  /* cp_l(T) — the EXACT analytic derivative of h_l_sat, so cp and h cannot disagree.
+   * The node model integrates h; cp is used for the enthalpy inverse and for reporting.
+   * Consistency is the property that matters and it is exact by construction.
+   *
+   * ACCURACY, MEASURED BY BAND against IAPWS-95 — stated honestly because the previous
+   * version claimed "-5%" and measured -19.6% at 340 degC (644 degF):
+   *     20-300 degC (68-572 degF)    -2.7 %
+   *     300-330    (572-626)         -8.1 %
+   *     330-345    (626-653)        -16.0 %
+   *     345-350    (653-662)        -21.2 %
+   * The degradation is PHYSICAL, not a fit defect: true cp_f runs 4.18 -> 8.57 kJ/kg-K over
+   * this span as the critical point is approached, and the derivative of a least-squares fit
+   * cannot follow a divergence. Anything needing accurate cp above 330 degC (626 degF) must
+   * not use this — and nothing in the design does. */
+  var C_CPL = (function () {
+    var d = []; for (var i = 1; i < C_HLSAT.length; i++) d.push(C_HLSAT[i] * i); return d;
+  })();
+  function cp_l(T_c) { return poly(C_CPL, clip(T_c, 0.0, T_MAX)); }
+
+  /* ---------------------------------------------------------------- latent heat
+   * h_fg(T) — [derived] (1 - T/Tc)^0.38 * quartic(T), fitted to 351 points 20-370 degC.
+   * MEASURED max error: 2.24 kJ/kg (0.96 Btu/lb).
+   *
+   * The exponent 0.38 is the standard near-critical scaling for the saturation property
+   * difference. It is what makes the next sentence TRUE, and the previous version's version
+   * of it FALSE: h_fg goes to EXACTLY ZERO at the critical point, by construction, because
+   * the prefactor does. The old file derived h_fg = h_v - h_l "because it must go to zero at
+   * the critical point and an independent fit will not" — measured, that construction gave
+   * h_fg(22.064 MPa) = 643.7 kJ/kg. The justification was sound; the implementation did not
+   * deliver it. Here the direction is reversed: h_fg is fitted and h_v is derived from it. */
+  var C_HFG = [3.0714483618e+3, 6.0359589946e-1, -1.8380547092e-3, 2.0316602698e-5,
+               -5.3538955598e-8];
+  function h_fg_T(T_c) {
+    var T = clip(T_c, 0.0, T_CRIT);
+    return Math.pow(Math.max(0, 1 - (T + 273.15) / TK_CRIT), 0.38) * poly(C_HFG, T);
+  }
+  function h_fg(P_MPa) { return h_fg_T(T_sat(P_MPa)); }
+
+  /* h_f(P) / h_g(P) — the saturation enthalpies as functions of PRESSURE, which is how the
+   * node model asks (it holds h and P, never T). h_g is DERIVED as h_f + h_fg so the three
+   * can never disagree with each other.
+   * MEASURED max error of the composed h_g over 0.1-17 MPa: 1.16 kJ/kg (0.50 Btu/lb).
+   * (The previous independent h_v fit measured 27.3 kJ/kg against a +/-15 header claim that
+   * its own inline comment contradicted with +/-25.) */
+  function h_f(P_MPa) { return h_l_sat(T_sat(P_MPa)); }
+  function h_g(P_MPa) { var t = T_sat(P_MPa); return h_l_sat(t) + h_fg_T(t); }
+
+  /* rho_v_sat(P) — [derived] log-log degree-6 in ln(P), 0.1-18 MPa, 180 points.
+   * MEASURED max error over the whole range: 0.98 %.
+   * (The previous cubic measured 4.4 % at the operating point against a +/-2 % gate claim,
+   * hidden because the reference it was checked against was the 15.0 MPa value.)
+   * The envelope stops at 18 MPa deliberately: measured, extending to 22 MPa takes the error
+   * to 16.8 % because rho_g turns sharply upward toward the critical point. */
+  var C_RVSAT = [1.6357855486e+0, 9.4528020440e-1, 2.3893947845e-2, 1.1473595330e-2,
+                 -6.4170420680e-3, -7.3132059352e-4, 1.0865161976e-3];
+  function rho_v_sat(P_MPa) { return Math.exp(poly(C_RVSAT, Math.log(clip(P_MPa, P_MIN, P_MAX)))); }
+
+  /* ---------------------------------------------------------------- compressed liquid
+   * B(T) — isothermal bulk modulus, [derived] as ln(B) = quartic(T) from 445 adjacent-isobar
+   * density differences, B = rho*dP/drho. MEASURED max error 15.3 %.
+   *
+   * *** THIS REPLACES A VALUE THAT WAS WRONG BY 5.5x AT OPERATING TEMPERATURE. ***
+   * The previous version used B = 2200 - 3*T, "the same physical constant the old engine
+   * calls solid_bulk_mpa (1300 MPa)". Measured against IAPWS-95:
+   *     100 degC (212 degF)   2086 MPa  vs 1900  — the cold end was about right
+   *     288     (550)          440      vs 1336  —  3.0x too stiff
+   *     321     (610)          225      vs 1237  —  5.5x too stiff
+   *     340     (644)          135      vs 1180  —  8.7x too stiff
+   * Water near the critical point is far more compressible than a linear decline from the
+   * cold value suggests. This matters for exactly one thing and that thing is load-bearing:
+   * a water-solid RCS, where dP/drho IS the pressure response (D2 §25.3 — the regime where
+   * "system compressibility collapses to the liquid bulk modulus" and where the stability
+   * margin is thinnest). A 5.5x error there is a plant that pressurises 5.5x too fast per
+   * unit mass added. NOTE for whoever revisits the old engine: its 1300 MPa may have been
+   * intended as an EFFECTIVE stiffness including vessel elasticity, which is legitimate
+   * practice — but this function is a pure water property and must be the water value. */
+  var C_B = [7.5923202309e+0, 6.9051299602e-3, -9.2888173401e-5, 3.4873645503e-7,
+             -5.9882991765e-10];
+  function bulk_modulus(T_c) { return Math.exp(poly(C_B, clip(T_c, 0.0, T_MAX))); }
+
+  /* k_comp(T) — [derived] the compressed-liquid enthalpy departure per MPa, degree-5 in T,
+   * fitted to 417 isobar points.
+   *
+   * *** THIS TERM WAS WRONG IN SIGN AT OPERATING TEMPERATURE. ***
+   * The previous version used the incompressible-liquid form dh = +v*(P-Psat), and its header
+   * claimed "at 288 degC and 15.41 MPa it is worth about +9 kJ/kg … dropping it would bias the
+   * energy balance the whole engine is built to check." D1 §4 cites that term as one of the
+   * rewrite's improvements. Measured against IAPWS-95:
+   *
+   *      T           TRUE k        the assumed v      true departure at 2235 psia
+   *    100 degC   +0.795 kJ/kg-MPa   +1.044            +11.5 kJ/kg
+   *    250        +0.085             +1.252             +0.4
+   *    288 (550 degF)  -0.642        +1.360             -5.3   <-- SIGN IS WRONG
+   *    321 (610 degF)  -2.519        +1.504             -9.0   <-- and the error is 15.2
+   *
+   * The incompressible form drops the -v*alpha*T part of (dh/dP)_T = v*(1 - alpha*T). Near the
+   * critical point alpha*T exceeds 1, so the true derivative goes NEGATIVE. Water at PWR
+   * hot-leg temperature is nowhere near incompressible, and the textbook form fails there.
+   *
+   * NO REGIME BRANCH. The previous version carried `if (P <= Ps) return h_sat;`, which made
+   * dh/dP jump across the saturation line — a derivative discontinuity in a function the
+   * pressure solver differentiates through. This form is continuous in value AND slope. */
+  var C_K = [1.5210673618e+0, -3.5574368985e-2, 6.4539206322e-4, -5.2755307450e-6,
+             1.9089285803e-8, -2.5616979426e-11];
+  function k_comp(T_c) { return poly(C_K, clip(T_c, 0.0, T_MAX)); }
   function h_l(T_c, P_MPa) {
-    var h_sat = h_l_sat(T_c);
-    var Ps = P_sat(T_c);
-    if (P_MPa <= Ps) return h_sat;              // at or below saturation: on the line
-    var v = 1.0 / rho_l(T_c, P_MPa);            // m3/kg
-    return h_sat + v * (P_MPa - Ps) * 1000.0;   // MPa*m3/kg -> kJ/kg
+    var T = clip(T_c, 0.0, T_MAX), P = clip(P_MPa, 0.0, P_MAX);
+    return h_l_sat(T) + k_comp(T) * (P - P_sat(T));
   }
 
-  /* ---------------------------------------------------------------- liquid density
-   * rho_l(T,P): saturated-liquid density with a linear compressibility correction.
-   * Accuracy about +/-4 kg/m3 over 20-350 degC. The compressibility term matters for
-   * exactly one thing, but that thing is load-bearing: a water-solid RCS, where dP/drho
-   * IS the pressure response and the bulk modulus is the whole model. */
-  function rho_l_sat(T_c) {
-    var T = clip(T_c, 0.0, T_CRIT);
-    // Least-squares QUARTIC in T, fitted 2026-08-13 to 10 steam-table points 20-343 degC.
-    // Max residual 3.02 kg/m3. Quartic for the same reason as h_l_sat: density falls
-    // away steeply near the critical point (998 -> 738 -> 592 kg/m3), and a cubic
-    // over-predicts the hot end by ~50 kg/m3, which is exactly the regime this plant
-    // operates in.
-    return 994.8951 + 0.3012879 * T - 9.857712e-3 * T * T
-         + 3.835291e-5 * T * T * T - 6.437035e-8 * T * T * T * T;
-  }
-
+  /* rho_l(T,P) — saturated density with the compressibility correction. Same unbranched
+   * convention as h_l, which the previous version did not have (h_l branched, rho_l did
+   * not — two opposite conventions for one saturation line). */
   function rho_l(T_c, P_MPa) {
-    var r = rho_l_sat(T_c);
-    var Ps = P_sat(T_c);
-    // Isothermal bulk modulus falls steeply with temperature: ~2.2 GPa cold, ~1.3 GPa at
-    // 300 degC. Same physical constant the old engine calls `solid_bulk_mpa` (1300 MPa)
-    // -- but there it is a single hot-value constant, here it is a function of state,
-    // because a Mode 5 cooldown spends its whole life at the cold end where 1300 is wrong
-    // by ~1.7x.
-    var B = 2200.0 - 3.0 * clip(T_c, 0, T_CRIT);   // MPa
-    return r * (1.0 + (P_MPa - Ps) / B);
+    var T = clip(T_c, 0.0, T_MAX), P = clip(P_MPa, 0.0, P_MAX);
+    return rho_l_sat(T) * (1.0 + (P - P_sat(T)) / bulk_modulus(T));
   }
 
-  /* ---------------------------------------------------------------- liquid cp
-   * cp_l(T,P): specific heat, from the analytic derivative of h_l_sat. Derived rather
-   * than independently fitted so cp and h cannot disagree -- the same reasoning as
-   * P_sat's Newton inverse above. An engine that integrates h but reports a cp from a
-   * separate fit will fail its own energy balance by the gap between them. */
-  function cp_l(T_c) {
-    var T = clip(T_c, 0.0, T_CRIT);
-    // EXACT analytic derivative of h_l_sat's quartic above.
-    //
-    // ACCURACY CAVEAT, stated because it is a real trade and not an oversight: the
-    // derivative of a least-squares fit is NOT itself a least-squares fit of the
-    // derivative. This returns 3.98 kJ/kg-K at 20 degC against a true 4.18 (-5%), while
-    // landing 5.37 at 288 and 6.08 at 321 (both good). The trade is deliberate:
-    // consistency with h beats accuracy in cp, because the node model INTEGRATES h and
-    // only uses cp for the Newton inverse (where a 5% slope error costs an iteration,
-    // not accuracy) and for wall heat capacity. An independently-fitted cp would be
-    // more accurate and would silently break the energy balance by the gap between the
-    // two fits -- which is the whole class of defect this engine exists to make
-    // impossible.
-    return 3.795321 + 1.063616e-2 * T - 7.839955e-5 * T * T + 2.099222e-7 * T * T * T;
+  /* ---------------------------------------------------------------- superheated vapour
+   * THE REGIME THE PREVIOUS VERSION COULD NOT EXPRESS AT ALL. h_v and rho_v were functions
+   * of P only; T_from_h(h_g + 200, 7 MPa) returned 373.95 degC — the critical-temperature
+   * clip — silently. D2 §23.4 rules a three-regime property layer because the [0,1] quality
+   * clip "foreclosed every meltdown path", and SBO (E04/E05), loss of shutdown cooling
+   * (#287) and ATWS (E13) are all Tier C CORE casualties that reach core uncovery.
+   *
+   * cp_v(dT,P) = c_inf(P) + g(P)*dT + (c_sat(P) - c_inf(P)) * exp(-dT/tau(P))
+   * integrating to
+   * h(T,P) = h_g(P) + c_inf*dT + g*dT^2/2 + (c_sat - c_inf)*tau*(1 - exp(-dT/tau))
+   *
+   * The relaxation shape is not cosmetic: measured, cp_v runs 18.3 kJ/kg-K just above
+   * saturation at 17 MPa and relaxes to 2.6 by dT = 300 degC, and no polynomial in dT fits
+   * that (a 7-term one measured 134 kJ/kg error). The g*dT term carries the slow rise of
+   * steam cp at high temperature, without which the far field drifts 84 kJ/kg.
+   *
+   * All four parameters are [derived] cubics in ln(P), from 11 isobars x 159 points.
+   * MEASURED max error over 1215 superheated points, 0.1-17 MPa, T_sat..800 degC:
+   * 35.1 kJ/kg (15.1 Btu/lb) = 1.17 % of a typical 3000 kJ/kg value. */
+  var C_CI  = [1.9886183447e+0, -6.7492402839e-2, 6.9138313090e-2, 5.4715052594e-2];
+  var C_G   = [5.7406321266e-4, 3.8617679975e-4, -1.4736026735e-4, -1.5106133929e-4];
+  var C_CS  = [9.7058024787e-1, 6.0807427476e-2, 7.4528354768e-2, 4.2357695149e-2];
+  var C_TAU = [3.9595288634e+0, 1.0397971612e-1, -3.3322761492e-2, -4.8309024628e-2];
+  function shParams(P_MPa) {
+    var lp = Math.log(clip(P_MPa, P_MIN, P_MAX));
+    return { ci: poly(C_CI, lp), g: poly(C_G, lp),
+             cs: Math.exp(poly(C_CS, lp)), tau: Math.exp(poly(C_TAU, lp)) };
+  }
+  /* cp_v(T,P): vapour specific heat. At or below saturation returns the saturated value. */
+  function cp_v(T_c, P_MPa) {
+    var p = shParams(P_MPa), dT = Math.max(0, clip(T_c, 0, TV_MAX) - T_sat(P_MPa));
+    return p.ci + p.g * dT + (p.cs - p.ci) * Math.exp(-dT / p.tau);
+  }
+  /* h_v(T,P): superheated-vapour enthalpy. At saturation it returns h_g exactly. */
+  function h_v(T_c, P_MPa) {
+    var p = shParams(P_MPa), dT = Math.max(0, clip(T_c, 0, TV_MAX) - T_sat(P_MPa));
+    return h_g(P_MPa) + p.ci * dT + 0.5 * p.g * dT * dT +
+           (p.cs - p.ci) * p.tau * (1 - Math.exp(-dT / p.tau));
+  }
+  /* rho_v(T,P): superheated-vapour density from the real gas law with a fitted compressibility
+   * factor, Z relaxing from its saturated value toward 1 as the steam superheats:
+   *     Z(dT,P) = 1 - (1 - Z_sat(P)) * exp(-dT/tau_z(P))
+   *     rho     = P / (Z * R * T)
+   * MEASURED max error over 1226 IAPWS-95 points, 0.1-17 MPa, T_sat..800 degC: 7.5 %.
+   *
+   * Ideal-gas scaling off the saturated point — the obvious first choice, and what a first
+   * draft of this file used — measures 55 % error. Saturated steam at 2235 psia has
+   * Z = 0.536, so it is nowhere near ideal, and it approaches ideal AS IT SUPERHEATS; density
+   * therefore falls FASTER than the ideal ratio, not at the same rate. */
+  var R_STEAM = 0.4615;                                        // [sourced] kJ/kg-K
+  var C_ZS = [9.2630513474e-1, -4.8957980927e-2, -6.5003048016e-3, -3.7915875377e-3,
+              -2.3609659436e-3];
+  var C_TZ = [4.8119576999e+0, 1.0268904870e-1, -2.1583255242e-2, -1.0075930158e-2];
+  function rho_v(T_c, P_MPa) {
+    var P = clip(P_MPa, P_MIN, P_MAX), lp = Math.log(P);
+    var Ts = T_sat(P), T = Math.max(Ts, clip(T_c, 0, TV_MAX));
+    var Z = 1 - (1 - poly(C_ZS, lp)) * Math.exp(-(T - Ts) / Math.exp(poly(C_TZ, lp)));
+    return (P * 1000) / (Z * R_STEAM * (T + 273.15));
   }
 
-  /* ---------------------------------------------------------------- vapour side
-   * h_v(P): saturated-vapour enthalpy, +/-15 kJ/kg over 0.1-17 MPa. Flat-topped -- it
-   * peaks near 3 MPa and falls toward the critical point, which is why a linear fit
-   * cannot be used and why the old engine's absence of any vapour enthalpy made
-   * two-phase bookkeeping impossible. */
-  function h_v(P_MPa) {
-    var P = clip(P_MPa, 1e-4, P_CRIT);
-    var lp = Math.log(P);
-    // Least-squares cubic in ln(P), 9 points 0.1-17 MPa. Max residual 22.2 kJ/kg -- the
-    // loosest correlation in this file, and the claim is +/-25 accordingly. The curve is
-    // flat-topped (peaks near 2-3 MPa, falls both ways), so a cubic cannot do better
-    // without more terms than the accuracy is worth; if a future two-phase model needs
-    // tighter vapour enthalpy, raise the degree AND tighten the gate's tolerance in the
-    // same change.
-    return 2782.927 + 69.62958 * lp - 17.45556 * lp * lp - 12.14392 * lp * lp * lp;
+  /* ---------------------------------------------------------------- mixture / inverses */
+  function quality(h_kJkg, P_MPa) {
+    var hf = h_f(P_MPa), hg = h_g(P_MPa);
+    if (h_kJkg <= hf) return 0;
+    if (h_kJkg >= hg) return 1;
+    return (h_kJkg - hf) / (hg - hf);
   }
 
-  /* h_fg(P): latent heat = h_v - h_l(T_sat). Derived, never fitted separately -- it must
-   * go to zero at the critical point and an independent fit will not. */
-  function h_fg(P_MPa) {
-    return Math.max(0, h_v(P_MPa) - h_l_sat(T_sat(P_MPa)));
-  }
-
-  /* rho_v(P): saturated-vapour density. Ideal-gas form with a compressibility factor
-   * that falls toward the critical point; +/-4% over 0.1-17 MPa. */
-  function rho_v(P_MPa) {
-    var P = clip(P_MPa, 1e-4, P_CRIT);
-    var lp = Math.log(P);
-    // Least-squares cubic in ln(P) fitted to ln(rho), 9 points 0.1-17 MPa. Max residual
-    // 1.56 %.
-    //
-    // A log-log fit, not the ideal-gas form with a compressibility factor that a first
-    // pass reached for: measured, the ideal-gas route ran 25 % low at 15.41 MPa (72.4 vs
-    // 96.7 kg/m3), because near-critical steam is nowhere near ideal and no single-term
-    // Z correction covers 0.1-17 MPa. The log-log fit is empirical but honest about it.
-    return Math.exp(1.632491 + 0.9291362 * lp + 0.02187539 * lp * lp
-                    + 0.01139853 * lp * lp * lp);
-  }
-
-  /* ---------------------------------------------------------------- derived helpers */
-
-  /* subcooling(T,P): degC below saturation. Positive = subcooled liquid.
-   * NOTE the old engine carries two deliberately different spellings of "subcooling"
-   * (a bulk regime gate and an operator-facing margin) that diverge over a dry core.
-   * PWR2 has ONE definition here, a pure function of state; anything that wants an
-   * instrument-facing or hot-channel variant builds it explicitly at the call site and
-   * names it differently. */
-  function subcooling(T_c, P_MPa) { return T_sat(P_MPa) - T_c; }
-
-  /* T_from_h(h,P): invert h_l for temperature. The node model integrates enthalpy, so
-   * this is how a node reports its temperature. Newton on h_l, same
-   * one-curve-one-source-of-truth reasoning as P_sat. */
+  /* T_from_h(h,P) — THREE REGIMES. The node model integrates enthalpy, so this is how a node
+   * reports its temperature, and getting the regime wrong is how a dry node reads as boiling
+   * water for ever. */
   function T_from_h(h_kJkg, P_MPa) {
-    var T = clip(h_kJkg / 4.2, 0.0, T_CRIT), i, f, dfdT;
+    var hf = h_f(P_MPa), hg = h_g(P_MPa), Ts = T_sat(P_MPa);
+    if (h_kJkg >= hf && h_kJkg <= hg) return Ts;               // two-phase: T IS T_sat
+    if (h_kJkg > hg) {                                          // superheated: invert h_v
+      var lo = Ts, hi = TV_MAX, mid = Ts;
+      for (var k = 0; k < 60; k++) { mid = 0.5 * (lo + hi); if (h_v(mid, P_MPa) < h_kJkg) lo = mid; else hi = mid; }
+      return mid;
+    }
+    var T = clip(h_kJkg / 4.2, 0.0, T_MAX), i, f, dfdT;         // subcooled: Newton on h_l
     for (i = 0; i < 40; i++) {
       f = h_l(T, P_MPa) - h_kJkg;
       if (Math.abs(f) < 1e-9) break;
       dfdT = cp_l(T);
       if (!isFinite(dfdT) || dfdT < 1e-9) break;
-      T = clip(T - f / dfdT, 0.0, T_CRIT);
+      T = clip(T - f / dfdT, 0.0, T_MAX);
     }
     return T;
   }
+
+  /* rho_from_h(h,P) — THE function the pressure closure calls: F(P) = sum V_i*rho(h_i,P).
+   * Homogeneous equilibrium in the two-phase regime: specific VOLUMES mix linearly in
+   * quality, densities do not. Continuous across both saturation boundaries by construction,
+   * which is what lets the bracketed solve in D2 §23.2 work through the kink. */
+  function rho_from_h(h_kJkg, P_MPa) {
+    var hf = h_f(P_MPa), hg = h_g(P_MPa);
+    if (h_kJkg <= hf) return rho_l(T_from_h(h_kJkg, P_MPa), P_MPa);
+    if (h_kJkg >= hg) return rho_v(T_from_h(h_kJkg, P_MPa), P_MPa);
+    var x = (h_kJkg - hf) / (hg - hf);
+    var vf = 1.0 / rho_l(T_sat(P_MPa), P_MPa), vg = 1.0 / rho_v_sat(P_MPa);
+    return 1.0 / (vf + x * (vg - vf));
+  }
+
+  function subcooling(T_c, P_MPa) { return T_sat(P_MPa) - T_c; }
 
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.water = {
     T_sat: T_sat, P_sat: P_sat,
-    h_l: h_l, h_l_sat: h_l_sat, h_v: h_v, h_fg: h_fg,
-    rho_l: rho_l, rho_l_sat: rho_l_sat, rho_v: rho_v,
-    cp_l: cp_l,
-    subcooling: subcooling, T_from_h: T_from_h,
-    rangeOK: rangeOK,
-    LIMITS: { P_MIN: P_MIN, P_MAX: P_MAX, T_MIN: T_MIN, T_MAX: T_MAX }
+    h_l_sat: h_l_sat, rho_l_sat: rho_l_sat, cp_l: cp_l,
+    h_l: h_l, rho_l: rho_l, bulk_modulus: bulk_modulus, k_comp: k_comp,
+    h_fg: h_fg, h_fg_T: h_fg_T, h_f: h_f, h_g: h_g,
+    rho_v_sat: rho_v_sat, h_v: h_v, rho_v: rho_v, cp_v: cp_v,
+    quality: quality, T_from_h: T_from_h, rho_from_h: rho_from_h,
+    subcooling: subcooling, rangeOK: rangeOK,
+    LIMITS: { P_MIN: P_MIN, P_MAX: P_MAX, T_MIN: T_MIN, T_MAX: T_MAX, TV_MAX: TV_MAX,
+              P_CRIT: P_CRIT, T_CRIT: T_CRIT }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
