@@ -416,6 +416,101 @@
     return mf;
   }
 
+  // ======================================================== the surge line as a boundary
+  //
+  // WHAT THIS IS FOR (#474 must not be blocked). Today the pressurizer meets the loop at
+  // three unnamed code sites: the identity `p_hotleg = pressure_mpa` (pwr_primary.js:30), a
+  // one-step-late `_dmass_dt` in, and a WRITE-ONLY `_pzr_surge_flow` out. This function
+  // replaces that with a named contract, so that when the loop becomes real nodes the surge
+  // line is a SUBSTITUTION rather than a rewrite:
+  //
+  //   IN   `_surge_demand_m3s` / `_dmass_dt` / `_dTavg_dt`   the loop's displacement
+  //        `_surge_t_c`                                       insurge enthalpy (hot leg)
+  //        `p_hotleg`                                         tap pressure
+  //   OUT  `pzr_surge_kgps`                                   realized flow, + = insurge
+  //        `pressure_mpa`                                     the boundary's other half
+  //        `pzr_tap_sat_margin_c`                             saturation margin AT THE TAP
+  //
+  // The margin is #474's addition (issue comment 5278211729): the board wants a derived
+  // voided/liquid flag for the tap point, which needs the local margin rather than the
+  // flow. It is computed here because here is where the tap pressure is known; when the
+  // hot-leg node exists it becomes that node's property and this line is deleted.
+  //
+  // IT LIVES IN THIS FILE DURING THE BRIDGE, marked to move. Build-alongside means the
+  // v1-path files stay untouched, so the lumped loop wears a node's interface until there
+  // is a node — #474 inherits a CONTRACT, not a location.
+  //
+  // CURRENCY. v1 does all of this in LEVEL POINTS (%/s) because its level is a
+  // reconstruction; v2 integrates liquid mass, so the demand has to come out in kg/s. The
+  // conversion is the CV-3 identity and not a new constant: one point of level is
+  // `M_rcs_kg / level_per_mass` = 25.5 kg, which is also 1 % of 4.292 m³ at 594 kg/m³. The
+  // algebra above the conversion is v1's, term for term, so a TD-1/TD-2 drift during the
+  // rebuild is a conversion bug and not a recalibration — which is the only reason the
+  // ledger is ported rather than re-derived (spec §3.4: the void SOURCE is loop
+  // bookkeeping, `pwr_primary.js:441`, and the loop is #474's scope).
+  function voidCreditRate(s, cfg, dt) {
+    var p = cfg.pressurizer;
+    var v = s.primary_void_fraction || 0;
+    var wref = p.void_weight_surge_ref;
+    var w = (wref != null) ? wref / (wref + (s.leak_flow || 0)) : 1;
+    var before = (s._pzr_void_lvl != null) ? s._pzr_void_lvl : p.level_per_void * w * v;
+    if (!s._pzr_dep && (s.leak_flow || 0) > 0) s._pzr_dep = true;
+    var c;
+    if (!s._pzr_dep) {
+      // NEVER-LEAKED: the state form, with w === 1 exactly. The stuck-PORV / safeties /
+      // loss-of-heat-sink families — the calibrated TMI arc — keep v1's line exactly.
+      c = p.level_per_void * w * v;
+    } else {
+      // ONCE A LEAK HAS FLOWED the credit is a FLOW: growth takes the admittance split
+      // (the (1−w) share left through the hole and is not owed back), collapse returns
+      // UNWEIGHTED (the condensing loop pulls its liquid back through the surge line — the
+      // hole cannot supply it), floored at zero. Growth <= collapse keeps the credit under
+      // level_per_void·void inductively, so there is no cap constant and no ratchet.
+      var pv = (s._pzr_prev_void != null) ? s._pzr_prev_void : v;
+      var dv = v - pv;
+      c = before + p.level_per_void * (dv > 0 ? w * dv : dv);
+      if (c < 0) c = 0;
+    }
+    s._pzr_void_lvl = c;
+    s._pzr_prev_void = v;
+    return dt > 0 ? (c - before) / dt : 0;      // level points per second
+  }
+
+  function surgeDemand(s, cfg, dt) {
+    var p = cfg.pressurizer, p2 = cfg.pressurizer2;
+
+    // THERMAL — the re-expression of `level_per_tavg`, keeping #384 stage 4's suppression.
+    // `levelBase` floors below ~293 °C (the #289 cold-modes stand-in), so on a cold solid
+    // plant the level line credits NO room from thermal contraction while a raw `_dTavg_dt`
+    // reading goes on crediting it — two accountings of one vessel, and the road by which
+    // inventory once rode a cooldown to the mass_max clip. Same narrow predicate as v1:
+    // solid, base ON its floor, and contracting.
+    var thermal = p.level_per_tavg * (s._dTavg_dt || 0);
+    var solidNow = s.pzr_m_liq_kg != null &&
+                   (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) >= p2.V_pzr_m3;
+    if (thermal < 0 && solidNow && V1.levelBase(s, cfg) <= p.level_prog_floor + 1e-9) thermal = 0;
+
+    // INVENTORY — `_dmass_dt` is the loop's realized rate, read ONE STEP LATE (inventory is
+    // engine step 9, this is step 7 — the CONTEXT §11 explicit coupling). RELIEF IS ALREADY
+    // ADDED BACK by `stepInventory` (`dm_surge = dm + porv_flow + safety_flow`,
+    // pwr_primary.js:396), which is what makes "relief is not surge" true upstream of here;
+    // adding it again would double-count it.
+    var inventory = p.level_per_mass * (s._dmass_dt || 0);
+
+    var lvl_rate = thermal + inventory + voidCreditRate(s, cfg, dt);
+    return lvl_rate * (p2.M_rcs_kg / p.level_per_mass);        // kg/s, + = insurge
+  }
+
+  // The tap's local saturation margin — positive is subcooled. `p_hotleg` is the identity
+  // `pressure_mpa` today (pwr_primary.js:30) and becomes the hot-leg node's own pressure at
+  // #474; reading it through this accessor is what makes that a substitution.
+  function tapSatMargin(s) {
+    var P = (s.p_hotleg != null) ? s.p_hotleg : s.pressure_mpa;
+    var T = (s.thot_c != null) ? s.thot_c : s.tavg_c;
+    if (!(P > 0) || T == null) return null;
+    return T_sat_from_P(P) - T;
+  }
+
   // ------------------------------------------------------------------ the model
   //
   // PHASE 3a: pure delegation. Each function is listed explicitly rather than copied with
@@ -441,6 +536,10 @@
     },
     stepRegions:      stepRegions,
     solveFlash:       solveFlash,
+    // the node boundary (#474 inherits this contract; the implementation moves)
+    surgeDemand:      surgeDemand,
+    voidCreditRate:   voidCreditRate,
+    tapSatMargin:     tapSatMargin,
     pressureFromRegions: function (s, cfg) {
       var V_liq = s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c);
       var V_stm = Math.max(1e-6, cfg.pressurizer2.V_pzr_m3 - V_liq);

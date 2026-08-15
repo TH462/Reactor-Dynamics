@@ -432,6 +432,153 @@ ck('F3 relief drops pressure and the liquid flashes to replace the steam',
    r3(psi(press(sR2) - pr0)) + ' psi; ' + r3(flashed) + ' kg flashed against ' + r3(steamNet) + ' kg net steam loss of 60 drawn',
    press(sR2) < pr0 - 0.05 && flashed > 30 && steamNet < 10, 'pressure falls, > 30 kg flashes, net steam loss < 10 kg');
 
+// ============================================================ G. the node boundary
+console.log('\n' + B + 'G. Surge boundary — v1\'s algebra in kg/s, and the ledger that carries TMI' + X);
+
+// G1 DERIVED — the currency conversion is the CV-3 identity, not a new constant. One point
+// of level is M_rcs_kg / level_per_mass = 25.5 kg, which is also 1 % of the vessel at the
+// saturated liquid density. If those disagree, the boundary and the regions are measuring
+// two different pressurizers.
+var kgPerPoint = P2.M_rcs_kg / P1.level_per_mass;
+var kgPerPointGeom = 0.01 * P2.V_pzr_m3 * PZ2.rho_l_sat(PZ2.T_sat_from_P(P_OP));
+ck('G1 one level point is the same mass both ways', r3(kgPerPoint) + ' vs ' + r3(kgPerPointGeom) + ' kg',
+   Math.abs(kgPerPoint - kgPerPointGeom) / kgPerPoint < 0.01, 'within 1 %');
+
+// G2 DERIVED — the thermal and inventory terms ARE v1's, converted. Computed here from the
+// same config constants v1 reads, against the boundary's answer for the same state. This is
+// what makes a TD drift during the rebuild a conversion bug rather than a recalibration.
+var sB = stateAt(55.0);
+sB.tavg_c = 304.0; sB._tavg_fp = 304.0; sB._dTavg_dt = 0.01; sB._dmass_dt = -1e-5;
+sB._mass = 1.0; sB.primary_void_fraction = 0; sB.leak_flow = 0;
+var expect_lvl = P1.level_per_tavg * 0.01 + P1.level_per_mass * -1e-5;
+var got = PZ2.surgeDemand(sB, CFG, 0.1);
+ck('G2 thermal + inventory match v1\'s law in the new currency', r3(got) + ' vs ' + r3(expect_lvl * kgPerPoint) + ' kg/s',
+   Math.abs(got - expect_lvl * kgPerPoint) < 1e-9, 'equal to 1e-9');
+
+// G3 DERIVED — the NEVER-LEAKED family keeps v1's state form with w === 1 exactly. That is
+// the calibrated TMI arc (stuck PORV, safeties, loss of heat sink), and "bitwise the frozen
+// line" is the property that lets TD-3/TD-4 stay green through the rebuild.
+var sV = stateAt(55.0);
+sV.tavg_c = 304.0; sV._tavg_fp = 304.0; sV._dTavg_dt = 0; sV._dmass_dt = 0; sV.leak_flow = 0;
+sV.primary_void_fraction = 0.0; PZ2.surgeDemand(sV, CFG, 0.1);
+sV.primary_void_fraction = 0.2; var credit_kgps = PZ2.surgeDemand(sV, CFG, 0.1);
+ck('G3 void credit with no leak is v1\'s state form, w = 1', r3(sV._pzr_void_lvl) + ' points at void 0.2',
+   Math.abs(sV._pzr_void_lvl - P1.level_per_void * 0.2) < 1e-9, r3(P1.level_per_void * 0.2) + ' points');
+
+// G4 = CV-4. DERIVED — the ledger's bounds. Once a leak has flowed the credit accretes as a
+// FLOW with the admittance split on growth and unweighted collapse, floored at zero. Two
+// properties and both are the anti-ratchet: the credit never exceeds level_per_void * void
+// (growth is weighted, collapse is not), and saturation-boundary flicker can only take it
+// DOWN. Driven here with a leak running, which is the regime v1's state form got wrong.
+var sL = stateAt(55.0);
+sL.tavg_c = 304.0; sL._tavg_fp = 304.0; sL._dTavg_dt = 0; sL._dmass_dt = 0; sL.leak_flow = 0.05;
+sL.primary_void_fraction = 0; PZ2.surgeDemand(sL, CFG, 0.1);
+var maxOver = 0;
+for (var gv = 0; gv < 40; gv++) {                       // ramp the void up, then flicker it
+  sL.primary_void_fraction = Math.min(0.8, sL.primary_void_fraction + 0.02);
+  PZ2.surgeDemand(sL, CFG, 0.1);
+  maxOver = Math.max(maxOver, sL._pzr_void_lvl - P1.level_per_void * sL.primary_void_fraction);
+}
+var beforeFlicker = sL._pzr_void_lvl;
+for (var gf = 0; gf < 20; gf++) {
+  sL.primary_void_fraction = 0.8 + (gf % 2 ? 0.02 : -0.02);
+  PZ2.surgeDemand(sL, CFG, 0.1);
+}
+ck('G4a CV-4 the credit never exceeds the unweighted displacement', 'worst excess ' + maxOver.toExponential(2) + ' points',
+   maxOver <= 1e-9, '<= 0');
+ck('G4b CV-4 boundary flicker can only ratchet DOWN', r3(beforeFlicker) + ' -> ' + r3(sL._pzr_void_lvl) + ' points over 20 flickers',
+   sL._pzr_void_lvl <= beforeFlicker + 1e-9, 'no net rise');
+
+// G4c CV-4 THE FLOOR. Growth is weighted and collapse is not, so a void that grows through
+// a leak and then condenses away takes MORE credit out than it ever put in — the node would
+// end up owing liquid it was never given. The floor at zero is what stops that, and it only
+// binds on this path: a full collapse after a weighted growth. ADDED after the injection
+// pass deleted the floor and every other ledger check stayed green, because none of their
+// trajectories ever reached it.
+var sFl = stateAt(55.0);
+sFl.tavg_c = 304.0; sFl._tavg_fp = 304.0; sFl._dTavg_dt = 0; sFl._dmass_dt = 0; sFl.leak_flow = 0.05;
+sFl.primary_void_fraction = 0; PZ2.surgeDemand(sFl, CFG, 0.1);
+for (var gg = 1; gg <= 30; gg++) { sFl.primary_void_fraction = gg * 0.02; PZ2.surgeDemand(sFl, CFG, 0.1); }
+var peakCredit = sFl._pzr_void_lvl, minCredit = peakCredit;
+for (var gc = 29; gc >= 0; gc--) {
+  sFl.primary_void_fraction = gc * 0.02;
+  PZ2.surgeDemand(sFl, CFG, 0.1);
+  minCredit = Math.min(minCredit, sFl._pzr_void_lvl);
+}
+ck('G4c CV-4 the credit floors at zero on a full collapse',
+   'peak ' + r3(peakCredit) + ' -> ' + r3(sFl._pzr_void_lvl) + ' points, minimum ' + r3(minCredit),
+   minCredit >= 0 && sFl._pzr_void_lvl < 1e-9, 'never negative, ends at 0');
+
+// G6 DERIVED, and it is the strongest thing in this file — THE PORTED LEDGER IS RUN
+// AGAINST V1'S OWN, step for step, on the same trajectory. v1 accretes the credit inside
+// `stepLevel`; v2 does it in `voidCreditRate` at the boundary. Same keys, same algebra,
+// different callers. If they ever disagree the deception has been RECALIBRATED rather than
+// ported, which is the one outcome spec §3.4 says must not happen quietly: TD-1 and TD-2
+// are algebra-preserving by construction or they are not preserved at all.
+var sv1 = { _mass: 1.0, tavg_c: 304.0, _tavg_fp: 304.0, pzr_mass_frac: 0.0709, primary_void_fraction: 0, leak_flow: 0 };
+var sv2 = { _mass: 1.0, tavg_c: 304.0, _tavg_fp: 304.0, primary_void_fraction: 0, leak_flow: 0, _dTavg_dt: 0, _dmass_dt: 0 };
+var worstLedger = 0;
+for (var gt = 0; gt < 200; gt++) {
+  var vv = gt < 120 ? gt * 0.006 : Math.max(0, 0.72 - (gt - 120) * 0.004);   // ramp up, then collapse
+  var lk = gt < 40 ? 0 : 0.03 * Math.min(1, (gt - 40) / 20);                 // a leak opens at step 40
+  sv1.primary_void_fraction = sv2.primary_void_fraction = vv;
+  sv1.leak_flow = sv2.leak_flow = lk;
+  PZ1.stepLevel(sv1, CFG, 0.1);
+  PZ2.surgeDemand(sv2, CFG, 0.1);
+  worstLedger = Math.max(worstLedger, Math.abs((sv1._pzr_void_lvl || 0) - (sv2._pzr_void_lvl || 0)));
+}
+ck('G6 the ported ledger tracks v1\'s bitwise over a leak-and-collapse trajectory',
+   'worst divergence ' + worstLedger.toExponential(2) + ' points over 200 steps, ending ' + r3(sv2._pzr_void_lvl),
+   worstLedger < 1e-12, '< 1e-12 points');
+
+// G7 DERIVED — TD-5 AT THE LAYER THAT OWNS IT. "Relief is not surge" is a statement about
+// the boundary, not the regions (the regions' attempt is recorded in section F): mass
+// leaving through the PORV leaves the pressurizer directly, so it must not appear in the
+// surge demand. `stepInventory` already adds it back into `_dmass_dt`
+// (pwr_primary.js:396), so the boundary's job is simply not to add it AGAIN — and this
+// check is the one that notices, since a double count is invisible on any state where the
+// valve is shut. ADDED after the injection pass duplicated the term and the gate stayed
+// green through it.
+var sNoRel = stateAt(55.0), sRel = stateAt(55.0);
+[sNoRel, sRel].forEach(function (x) {
+  x.tavg_c = 304.0; x._tavg_fp = 304.0; x._dTavg_dt = 0; x._dmass_dt = -2e-4;
+  x._mass = 1.0; x.primary_void_fraction = 0; x.leak_flow = 0;
+});
+sRel.porv_flow = 0.6; sRel.safety_flow = 0.2;
+var qNoRel = PZ2.surgeDemand(sNoRel, CFG, 0.1), qRel = PZ2.surgeDemand(sRel, CFG, 0.1);
+ck('G7 TD-5 relief flow does not appear in the surge demand', r3(qRel) + ' vs ' + r3(qNoRel) + ' kg/s with 0.8 of relief flowing',
+   Math.abs(qRel - qNoRel) < 1e-12, 'identical');
+
+// G8 DERIVED — #384 stage 4's suppression survives the port. On a SOLID plant whose level
+// base is floored (below ~293 °C, the #289 cold-modes stand-in) and CONTRACTING, the level
+// line credits no room from thermal contraction, so the surge must not credit it either —
+// two accountings of one vessel is how inventory once rode a cooldown to the mass_max clip.
+// Both legs are asserted: suppressed when solid, and NOT suppressed when a bubble exists,
+// because a suppression that fired everywhere would be a different defect.
+var sSol = stateAt(101.0);                       // over capacity: solid
+sSol.tavg_c = 200.0; sSol._tavg_fp = 304.0; sSol._dTavg_dt = -0.01; sSol._dmass_dt = 0;
+sSol._mass = 1.0; sSol.primary_void_fraction = 0; sSol.leak_flow = 0;
+var qSolid = PZ2.surgeDemand(sSol, CFG, 0.1);
+var sBub = stateAt(55.0);
+sBub.tavg_c = 200.0; sBub._tavg_fp = 304.0; sBub._dTavg_dt = -0.01; sBub._dmass_dt = 0;
+sBub._mass = 1.0; sBub.primary_void_fraction = 0; sBub.leak_flow = 0;
+var qBubble = PZ2.surgeDemand(sBub, CFG, 0.1);
+ck('G8 the cold-solid thermal suppression survives the port, and only there',
+   'solid ' + r3(qSolid) + ' kg/s, bubbled ' + r3(qBubble) + ' kg/s on the same contraction',
+   Math.abs(qSolid) < 1e-12 && qBubble < -0.1, 'solid 0, bubbled negative');
+
+// G5 DERIVED — the tap's saturation margin, which is what #474 asked this boundary to
+// expose (a derived voided/liquid flag needs the local margin, not the flow). Positive is
+// subcooled; at the operating point the hot leg sits about 60 °F under saturation, and a
+// depressurization to the hot leg's own saturation pressure takes it to zero.
+var sT = { pressure_mpa: P_OP, thot_c: 311.7 };
+var m1 = PZ2.tapSatMargin(sT);
+sT.pressure_mpa = PZ1.P_sat_from_T(311.7);
+var m2 = PZ2.tapSatMargin(sT);
+ck('G5 tap saturation margin reads subcooled, and reaches zero at Psat(Thot)',
+   r3(m1 * 9 / 5) + ' F subcooled at 2235 psia, ' + r3(m2 * 9 / 5) + ' F at Psat(Thot)',
+   m1 > 25 && Math.abs(m2) < 0.05, '> 45 F, then ~0');
+
 // ============================================================ tally
 console.log('\n' + D + '──────────────────────────────────────────' + X);
 if (failed === 0) console.log(B + G + 'PRESSURIZER v2 REGIONS: OK' + X + '  ' + checks + ' checks, 0 failed');

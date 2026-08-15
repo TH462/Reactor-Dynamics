@@ -1174,7 +1174,16 @@ var BASELINES = {
   // rerouted to draw LIQUID (mass still closed, and "> 30 kg flashed" was satisfied by the
   // 60 kg the valve itself took -> F4, the steam-draw/liquid-draw pressure ratio). Both
   // holes were found by running the injections, not by reading the checks.
-  'run_pzr2.js':           { code: 0, score: '28checks 0failed' },
+  // 28 -> 38 (#472 phase 3b, the surge boundary): section G. Six of the ten are the ported
+  // void ledger, and G6 is the one that matters — it runs v2's `voidCreditRate` against
+  // v1's `stepLevel` step for step over a leak-and-collapse trajectory and requires BITWISE
+  // agreement (measured: 0.00e+0 over 200 steps). The TMI deception is that ledger, and the
+  // port is algebra-preserving or it is a recalibration nobody voted for. Three more of the
+  // ten were added because injections walked through the first set: a doubled relief term
+  // (invisible on any state with the valve shut -> G7), the #384-s4 cold-solid suppression
+  // (needs a solid, floored, contracting state to see -> G8), and the ledger's zero floor
+  // (only binds on a full collapse after a weighted growth -> G4c).
+  'run_pzr2.js':           { code: 0, score: '38checks 0failed' },
   // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
   // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
   // instrument's declared range, because `crossed()` is strict and a setpoint on the edge
