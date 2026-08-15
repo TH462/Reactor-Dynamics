@@ -192,7 +192,7 @@ redesigned); the control, service and instructor layers (untouched).
 | **Scope** | High | 10,070 lines. §8 names the stop criteria. |
 | **Shim surface** | Medium | New, untested, and the A/B runs *through* it. D4 must say how it is tested independently of the physics. |
 | **Contract exactness** | Medium | `run_contract.js` fails in **both** directions on 109 fields. No slack. |
-| **#472 collision** | Medium | Pressurizer rebuild live on `workbench`. D3 consumes its design; must not race it. |
+| **#472 collision** | **HIGH — IT IS HAPPENING** | See §25. The reference engine is being modified right now. |
 | **Remaining recalled numbers** | Medium | Plena heights (§4). Fewer than before, not zero. |
 
 ---
@@ -856,3 +856,59 @@ provisional.*
 geometry, the total validates componentwise and there is nothing left for a global check to check.
 That reframing is what makes §8(2) tractable — it was written assuming a total that could only be
 validated from outside.
+
+---
+
+## 25. ⛔ THE A/B REFERENCE IS DRIFTING — observed 2026-08-15, not predicted
+
+**§2 states: *"`engines/pwr/` IS NOT TOUCHED. Not 'mostly' — at all. A reference that drifts is
+not a reference, and every A/B number taken before a change to it would be invalidated."*
+That sentence is now FALSE as a description of what is happening.**
+
+Observed by the lane check at the start of a build tick. In the ~81 minutes before it, another
+agent working **#472 on the `workbench` lane** committed five times, and the diff against the
+session's starting point is:
+
+```
+engines/pwr/pwr_config.js         +58
+engines/pwr/pwr_pressurizer2.js  +427 / -38
+test/run_pzr2.js                 +588  (new)
+```
+
+Commit subjects include *"v2 takes the engine path — and a trip now drops 231 psi and STAYS
+there"* and *"the surge line becomes a named boundary"*. **This is real physics work on the very
+engine PWR2 declares frozen.**
+
+### 25.1 What is and is NOT damaged
+
+**NOT damaged, and this is the important half: PWR2 has taken ZERO A/B measurements.** The A/B
+harness (D5 §2) is not built. Nothing in this design set quotes a number obtained from
+`engines/pwr/` at runtime — the comparisons made so far are against *sourced documents* and
+against IAPWS-95, neither of which #472 can move. **No existing PWR2 result is invalidated.**
+
+**Damaged: the CLAIM in §2, and the assumption behind D5's whole A/B plan.** "Freeze the old
+engine and diff against it" silently assumed a stationary target. It is not stationary, and
+nothing was ever going to stop it — **§2's freeze is a rule this design set wrote for itself
+and has no authority to impose on another workstream.** #472 is legitimate, owner-sanctioned,
+`priority-high` work that predates the PWR2 decision.
+
+### 25.2 The consequence, stated plainly
+
+**PWR2's A/B baseline must be taken AFTER #472 lands, not before** — and whatever the reference
+is on that day is the reference, permanently, because the same thing will happen again with the
+next issue. The honest reframing:
+
+> The A/B reference is not "the old engine, frozen". It is **the old engine as of a stated
+> commit**, recorded with that SHA, and re-baselined deliberately when it moves.
+
+That is a weaker guarantee than §2 promised and it should be written down as such rather than
+discovered during the A/B.
+
+### 25.3 And it is why Layer 5 did NOT start with the pressurizer
+
+§6's risk register said *"D3 consumes its design; must not race it"*, and this tick was scheduled
+to build the pressurizer. **It did not, because #472 is producing pressurizer physics right now
+and building a second one in parallel is exactly the race that row names.** The conservation core
+already carries the seat for it (Layer 2's `extraMass` hook, exercised by Layer 3's measurement
+that a rigid loop is 1.06 MPa stiff without a bubble), so the interface is ready and the physics
+can be consumed rather than reinvented.
