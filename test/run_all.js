@@ -1168,7 +1168,13 @@ var BASELINES = {
   // hold (a two-step zigzag), and the inner fixed point ran a fixed 3 passes and stopped
   // 6 % short of its own root. It runs in about a second: no plant is stepped, which is the
   // point — conservation is a property of a state and a step, not of a scenario.
-  'run_pzr2.js':           { code: 0, score: '26checks 0failed' },
+  // Injection-verified TEN ways, and two of those injections went through green: a
+  // corrupted vapour-table node (monotonicity, node-exactness and the round trip are all
+  // satisfied by any table, including a wrong one -> A6, slope smoothness) and relief
+  // rerouted to draw LIQUID (mass still closed, and "> 30 kg flashed" was satisfied by the
+  // 60 kg the valve itself took -> F4, the steam-draw/liquid-draw pressure ratio). Both
+  // holes were found by running the injections, not by reading the checks.
+  'run_pzr2.js':           { code: 0, score: '28checks 0failed' },
   // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
   // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
   // instrument's declared range, because `crossed()` is strict and a setpoint on the edge

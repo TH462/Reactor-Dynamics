@@ -86,6 +86,27 @@ ck('A1 rho_g_sat is monotone in P across 0.1-20 MPa', mono ? 'monotone' : 'NOT m
 ck('A1b rho_g_sat is exact at its table nodes (15 MPa)', r3(PZ2.rho_g_sat(15.0)) + ' kg/m3',
    near(PZ2.rho_g_sat(15.0), 96.71, 0.01), '96.71 kg/m3');
 
+// A6 DERIVED — the table is SMOOTH, which is the only independent thing that can be said
+// about 23 recalled numbers without a steam-table reference in the corpus. Saturated-vapour
+// density steepens gradually toward the critical point: the log-log slope of each segment
+// rises 0.936 -> 2.182 and never jumps, worst adjacent change 8.7 %. A mistyped digit
+// breaks that and nothing else does — ADDED because the injection pass corrupted the last
+// node (165.3 -> 175.3, a 66 % slope jump) and every other check in this file stayed green.
+// Monotonicity, the node-exactness spot check and the round trip all survive a corrupted
+// entry, because they are satisfied by any table, including a wrong one.
+var slopes = [], worstJump = 0, jumpAt = 0;
+for (var si = 0; si < 22; si++) {
+  var Pa = [0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20][si];
+  var Pb = [0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20][si + 1];
+  slopes.push(Math.log(PZ2.rho_g_sat(Pb) / PZ2.rho_g_sat(Pa)) / Math.log(Pb / Pa));
+}
+for (var sj = 1; sj < slopes.length; sj++) {
+  var rel = Math.abs(slopes[sj] - slopes[sj - 1]) / slopes[sj - 1];
+  if (rel > worstJump) { worstJump = rel; jumpAt = sj; }
+}
+ck('A6 the vapour table is smooth (no mistyped node)', 'worst adjacent slope change ' + r3(worstJump * 100) + ' % at segment ' + jumpAt,
+   worstJump < 0.20, '< 20 %');
+
 // A2 DERIVED — the round trip the pressure solve depends on. `stepRegions` reads pressure
 // off the steam region through P_from_steam_density(rho); if that is not the inverse of
 // rho_g_sat, every pressure in the model is wrong by the residual and nothing says so.
@@ -392,6 +413,21 @@ ck('F1 CV-1 step mass closure (surge + spray - relief)', 'residual ' + closure.t
 var sR2 = stateAt(55.0), pr0 = press(sR2), mliq0 = sR2.pzr_m_liq_kg, mstm0 = sR2.pzr_m_stm_kg;
 for (var r2 = 0; r2 < 30; r2++) PZ2.stepRegions(sR2, CFG, 1.0, { relief_kgps: 2.0 });
 var flashed = mliq0 - sR2.pzr_m_liq_kg, steamNet = mstm0 - sR2.pzr_m_stm_kg;
+// F4 DERIVED — the valve is on the STEAM space, and this is the measurement that says so.
+// Sixty kilograms out of the top drops pressure 112 psi; the same sixty out of the surge
+// line drops it 19. ADDED because the injection pass rerouted relief to draw liquid and
+// F1/F3 both stayed green: mass still closed, and "flashed > 30 kg" was satisfied by the
+// 60 kg the valve itself had taken. A check whose predicate the wrong model also satisfies
+// is not a check, and the ratio is what separates them.
+var sSteamD = stateAt(55.0), pS0 = press(sSteamD);
+for (var fs1 = 0; fs1 < 30; fs1++) PZ2.stepRegions(sSteamD, CFG, 1.0, { relief_kgps: 2.0 });
+var sLiqD = stateAt(55.0), pL0 = press(sLiqD);
+for (var fs2 = 0; fs2 < 30; fs2++) PZ2.stepRegions(sLiqD, CFG, 1.0, { surge_kgps: -2.0 });
+var dropSteam = pS0 - press(sSteamD), dropLiq = pL0 - press(sLiqD);
+ck('F4 60 kg off the steam space costs far more pressure than 60 kg off the liquid',
+   r3(psi(dropSteam)) + ' vs ' + r3(psi(dropLiq)) + ' psi',
+   dropSteam > 3 * dropLiq && dropLiq > 0, 'steam draw > 3x the liquid draw');
+
 ck('F3 relief drops pressure and the liquid flashes to replace the steam',
    r3(psi(press(sR2) - pr0)) + ' psi; ' + r3(flashed) + ' kg flashed against ' + r3(steamNet) + ' kg net steam loss of 60 drawn',
    press(sR2) < pr0 - 0.05 && flashed > 30 && steamNet < 10, 'pressure falls, > 30 kg flashes, net steam loss < 10 kg');
