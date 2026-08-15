@@ -966,6 +966,24 @@ var BASELINES = {
   // blow up -- it quietly gives a plant with EXACTLY 0.0 kg/s of natural circulation. This runner
   // is slow (~100 s) because each mutation re-runs three settles; that cost is the price of the
   // self-test and the step counts are already cut to the minimum that keeps the power law visible.
+  // NEW 2026-08-15 (#479): Layer 5's first system, the LUMPED SG secondary. 18 checks + a
+  // 10-mutation self-test. It makes Tier A coupling A5 -- "the SG is the only heat sink" --
+  // EXPRESSIBLE for the first time: Layer 4 was handed a duty, so the sink could not be taken
+  // away. Now cutting the feed makes the primary heat up because there is nowhere else for the
+  // energy to go, and the gate rides exactly that.
+  // THE NON-CIRCULAR CROSS-CHECK worth knowing about: overall U is DERIVED (what the sourced EPRI
+  // area must deliver to move the ruled power across the ruled temperatures) and then compared to
+  // a SOURCED band it was never fitted to -- 5,498 W/m2-K against 3,500-6,000. D3 sec 1a-v's own
+  // LMTD attempt landed at 6,016, the ceiling, and was walked back the same day.
+  // NOT BUILT HERE, DELIBERATELY: the pressurizer. #472 is rebuilding it on another lane right
+  // now and D1 sec 6 says "must not race it" -- see D1 sec 25.
+  // TWO TRAPS, both in the TEST rather than the model: a reversal check used a primary
+  // temperature still ABOVE the secondary saturation (it could not have gone the way it asserted),
+  // and the A5 ride started the primary 20 degC BELOW its design point, so the generator steamed
+  // itself down and a depressurising secondary opened the dT until it was ripping heat OUT of the
+  // primary. That runaway is real physics for a generator steamed harder than the primary can
+  // supply -- it just was not the test being written.
+  'run_pwr2_sg.js':        { code: 0, score: '18passed 0failed 18checks', secs: 90 },
   'run_pwr2_sources.js':   { code: 0, score: '16passed 0failed 16checks', secs: 195 },
   'run_pwr2_loop.js':      { code: 0, score: '26passed 0failed 26checks', secs: 46 },
   'run_pwr2_core.js':      { code: 0, score: '33passed 0failed 33checks', secs: 52 },
