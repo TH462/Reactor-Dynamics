@@ -218,6 +218,7 @@
     return {
       P: sys.P, dP: sys.P - P_prev,
       iterations: sol.iters, capBound: sol.capBound, bracketWidth: sol.width,
+      unbracketed: !!sol.unbracketed, envelopeExceeded: !!sol.envelopeExceeded,
       residual: F(sol.P),                                  // kg, after the solve
       junction: junction,
       transfers: flows.length + sources.length             // vacuity guard, D5 §1
@@ -229,6 +230,16 @@
    * bracket width is then a HARD error bound at every iteration count, which is the whole
    * property that makes a capped solve acceptable at a fixed frame. */
   function solveP(F, P0, cap) {
+    /* THE PROPERTY ENVELOPE IS A HARD WALL ON THE SEARCH, and it must be.
+     * Past P_MAX, Layer 0 CLAMPS density — so F(P) goes FLAT, the root disappears, and an
+     * unbounded expansion happily runs to absurdity while reporting success. Measured before
+     * this guard: 300 MW into a closed loop with no heat sink crossed 18 MPa in about a second
+     * and the solve then returned P = 1.15e+15 MPa with `unbracketed: false`. A silent absurd
+     * answer is the exact failure mode this engine exists to make impossible, so the search is
+     * confined to the envelope and stepping outside it is REPORTED as `envelopeExceeded`.
+     * The physical reading is not "the solver failed" — it is "this plant left the range the
+     * property library is characterised over", which is a real condition a caller must handle. */
+    var LIM = W.LIMITS, P_LO = LIM.P_MIN, P_HI = LIM.P_MAX;
     var flo, fhi, evals = 0;
     function f(P) { evals++; return F(P); }
 
@@ -248,11 +259,12 @@
      * that counts only the bisections is not counting the work. */
     var k;
     for (k = 0; k < 60; k++) {
-      if (flo > 0) { lo = Math.max(1e-4, lo - span); flo = f(lo); }
-      else if (fhi < 0) { hi = hi + span; fhi = f(hi); }
+      if (flo > 0) { lo = Math.max(P_LO, lo - span); flo = f(lo); }
+      else if (fhi < 0) { hi = Math.min(P_HI, hi + span); fhi = f(hi); }
       if (flo <= 0 && fhi >= 0) break;
       span *= 2;
-      if (lo <= 1e-4 && flo > 0) break;                    // pinned at the floor
+      if (lo <= P_LO && flo > 0) break;                    // pinned at the floor
+      if (hi >= P_HI && fhi < 0) break;                    // pinned at the ceiling
     }
 
     if (!(flo <= 0 && fhi >= 0)) {
@@ -261,8 +273,9 @@
        * theorem the whole solver rests on. Report it loudly rather than return a number that
        * looks converged; a silent wrong pressure is the failure mode this design exists to
        * make impossible. */
-      return { P: flo > 0 ? lo : hi, iters: k, evals: evals,
-               capBound: true, width: hi - lo, unbracketed: true };
+      return { P: flo > 0 ? lo : hi, iters: k, evals: evals, capBound: true,
+               width: hi - lo, unbracketed: true,
+               envelopeExceeded: (hi >= P_HI && fhi < 0) || (lo <= P_LO && flo > 0) };
     }
 
     var iters = 0, mid = 0.5 * (lo + hi);

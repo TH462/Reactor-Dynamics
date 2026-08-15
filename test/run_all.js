@@ -939,6 +939,21 @@ var BASELINES = {
   // the self-test reported FOUR NEW BLIND SPOTS -- a conservation check is INTEGRAL and can never
   // localise a defect, so reversed upwinding, heat on the wrong node and a source with the wrong
   // enthalpy all conserve energy perfectly while being wrong. The directional checks exist for that.
+  // NEW 2026-08-14 (#479): Layer 3, the SLS-100 wiring. 26 checks + an 8-mutation self-test.
+  // IT ANSWERS THE QUESTION LAYER 2 LEFT OPEN, by measurement rather than assertion: DERIVING the
+  // junction flows sequentially (D2 sec 23.2 step 4) instead of specifying them cuts the energy
+  // drift 3.9x (5.58e-5 -> 1.41e-5) AND IS STABLE -- where the same term applied as a CORRECTION
+  // on top of specified flows diverged at -2.97e+12. The gate measures derived against specified
+  // every run, so if deriving ever stops helping it says so.
+  // TRAP: the first draft of its directional check drove 300 MW into a closed loop with NO heat
+  // sink. That is not a plant, it crosses the 18 MPa property envelope in about a second -- and
+  // it exposed a real solver defect, an unbounded bracket expansion that reached 1e+15 MPa while
+  // reporting success. Now guarded and clamped, and the envelope is a REPORTED condition.
+  // SECOND TRAP: a check asserting the loop "holds pressure roughly steady" was simply wrong
+  // about the plant. A rigid all-liquid loop is STIFF (1.06 MPa for a zero-net-heat
+  // redistribution) and that is exactly why a pressurizer exists; the check now asserts the
+  // stiffness and that a compressible volume relieves it.
+  'run_pwr2_loop.js':      { code: 0, score: '26passed 0failed 26checks', secs: 46 },
   'run_pwr2_core.js':      { code: 0, score: '33passed 0failed 33checks', secs: 52 },
   'run_pwr2_geometry.js':  { code: 0, score: '29passed 0failed 29checks', secs: 1 },
   'run_pwr2_water.js':     { code: 0, score: '231passed 0failed 231checks', secs: 2 },   // 164 -> 231 (2026-08-14, second pass): hardened after an INDEPENDENT review applied 19 mutations of its own and 11 stayed green -- three on exported functions the suite never called. Two REAL defects found (P_sat returned a vacuum below 99.6 degC; a 1.45 kg/m3 discontinuity at h_g), five accuracy claims false OFF-GRID, and 7 of 8 cp_f references not from NIST in a file claiming none were recalled. Mutation set 17 -> 26. TRAP: git autocrlf made every MULTI-LINE mutation anchor silently stop matching -- the runner now normalises line endings before matching, because a gate whose coverage depends on the checkout's line-ending policy is not a gate.
