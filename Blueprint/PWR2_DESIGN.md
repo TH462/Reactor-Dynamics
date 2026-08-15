@@ -912,3 +912,73 @@ and building a second one in parallel is exactly the race that row names.** The 
 already carries the seat for it (Layer 2's `extraMass` hook, exercised by Layer 3's measurement
 that a rigid loop is 1.06 MPa stiff without a bubble), so the interface is ready and the physics
 can be consumed rather than reinvented.
+
+---
+
+## 26. ⛔ THE PERFORMANCE STOP CONDITION IS TRIGGERED — measured 2026-08-15
+
+**§8(1) names this as a stop condition:** *"If the conservation core cannot hold ~35 s for 12
+plant-hours at `dt = 0.02`, the design's central premise (a real node model at the service's
+fixed cadence) is wrong and should be re-opened rather than optimised around."*
+
+**Measured, on the built stack:**
+
+| | steps/s | vs real time | 12 plant-hours takes |
+|---|---|---|---|
+| **The budget** | **61,700** | 1234× | **35 s** |
+| Layer 2 core alone, 11 nodes | 900 | 19× | 2,303 s |
+| Layer 3 loop | 900 | 19× | 2,305 s |
+| Layer 4 plant | 600 | 12× | **3,617 s** |
+
+**Over budget by 103×.** This is not marginal and it is not noise.
+
+### 26.1 The cause is located exactly, and it is NOT the node model
+
+| call | cost | why |
+|---|---|---|
+| `T_sat(P)` | 0.04 µs | a polynomial |
+| `h_l_sat(T)` | 0.02 µs | a polynomial |
+| **`P_sat(T)`** | **3.30 µs** | **a 60-iteration BISECTION** |
+| `h_l(T,P)` | 3.15 µs | calls `P_sat` |
+| `T_from_h(h,P)` | 32.5 µs | Newton on `h_l` → ~10 × `P_sat` |
+| **`rho_from_h(h,P)`** | **31.5 µs** | **THE HOT PATH** |
+
+The pressure solve evaluates `rho_from_h` once per node per bracket iteration — about **132 calls
+per step**, which at 31.5 µs is 4.2 ms/step, and that is the whole of the measured cost.
+
+**So the premise "a real node model at a fixed cadence" is NOT what failed.** The node model is
+cheap. What is expensive is evaluating water properties by iterating on an iteration: a Newton
+inverse whose every residual costs a 60-step bisection.
+
+### 26.2 THE FIX IS ALREADY RULED, AND IT WAS NEVER BUILT
+
+**D2 §23.4**, verbatim: *"Tabulate `v`, not `ρ`, on `(quality, P)` with x = 0 and x = 1 as exact
+grid lines, so the kink lands ON a node line rather than being averaged away: **87 kB, 50 ns,
+0.06 %**, kink reproduced."*
+
+**50 ns against the measured 31,500 ns is 630×.** Applied to the measured 600 steps/s that is
+~378,000 steps/s — comfortably inside the 61,700 the budget needs, with margin to spare.
+
+`PWR2_L0_REBUILD.md` §6 already lists the table as owed: *"The `(quality, P)` specific-volume
+table ruled in D2 §23.4 is NOT built. This library computes mixture density from `h` and `P`
+directly."* That entry was written as a tidiness note. **It is not tidiness — it is the
+difference between meeting the design's own performance stop condition and missing it by 103×.**
+
+**A cheaper partial fix also exists and is worth measuring before the table:** `P_sat`'s
+60-iteration bisection is absurd for a smooth monotone curve. A Newton on `T_sat` would be
+~10× faster and keeps the one-curve-one-source-of-truth rule the design insists on (what it
+forbids is a *second independent inverse fit*, not a better solver). That alone may be ~10×,
+which is not enough on its own — but it is an afternoon, and it would tell us whether the
+table is the whole answer or only most of it.
+
+### 26.3 What this does and does not mean
+
+**It does NOT refute the design.** §8(1) says a performance failure means the premise "should be
+re-opened rather than optimised around" — but that sentence assumed the failure would be in the
+node model. It is not. It is in an optimisation the design **already ruled and nobody built**.
+Reopening the premise on this evidence would be the wrong call.
+
+**It DOES mean the build order was wrong.** The property table was treated as an optimisation to
+do later; it is a precondition. Layers 2–5 have all been built and gated against a property
+library 630× slower than the ruled one, and every performance figure taken so far is meaningless
+until it exists.
