@@ -53,12 +53,12 @@ been finished, tested and validated.")* — recorded in `CLAUDE.md`. The bar is 
 | layer | file | checks | mutations |
 |---|---|---|---|
 | 0 water properties | `pwr2_water.js` | 231 | 26 |
-| 0b property table | `pwr2_vtable.js` | 23 | 11 |
-| 1 geometry | `pwr2_geometry.js` | 29 | — |
+| 0b property table | `pwr2_vtable.js` | 23 | 12 |
+| 1 geometry | `pwr2_geometry.js` | 29 | 13 |
 | 2 conservation core | `pwr2_core.js` | 33 | 12 |
-| 3 loop topology | `pwr2_loop.js` | 26 | — |
-| 4 sources | `pwr2_sources.js` | 16 | — |
-| 5 steam generator | `pwr2_sg.js` | 18 | — |
+| 3 loop topology | `pwr2_loop.js` | 26 | 8 |
+| 4 sources | `pwr2_sources.js` | 16 | 9 |
+| 5 steam generator | `pwr2_sg.js` | 21 | 12 |
 
 **Layer 0 was REBUILT, not accepted, and the rebuild found two physics errors in the original.**
 Refit on 354 + 220 + 11×159 IAPWS-95 points from NIST SRD 69. The compressed-liquid enthalpy term
@@ -195,6 +195,21 @@ hour earlier -- averaged the core and SG LUMPS rather than the hot and cold LEGS
 gate's own `tavg()` helper had used the legs all along. It costs **0.14 degF** today. Fixed anyway,
 with a mutation re-arming it: **two helpers in one layer disagreeing about what Tavg MEANS** is how
 a rounding error becomes a real divergence the first time the lumps and the legs come apart.
+
+**RETRACTED, and it is the sharpest lesson of the session: I claimed four of the seven layer gates
+had NO injection self-test. All seven have one -- 92 mutations, 92 caught, no blind spots.** The
+claim came from the table above, where I had written "--" in the mutations column for four layers
+meaning *I did not look*. A later write-up read that dash as *there are none*, built an argument on
+it, and it propagated into `PWR2_DESIGN.md` §28.3, a commit message and TWO status reports to the
+owner as outstanding work. **Nobody had run the gates.** One command settled it.
+
+**`CLAUDE.md` names this exact class** -- *"A claim about COVERAGE is an unmeasured claim -- prove
+it by injection"* -- and the inherited claim was **my own, from ninety minutes earlier**, which is
+worse than inheriting someone else's: it carried no foreign provenance to make me suspicious.
+**And the argument built on it was good.** It reasoned that the gap mattered especially here
+because value-only checks had burned this session twice, and named Layer 4 -- whose buoyancy term
+returned exactly 0.0 from a sign error -- as uncovered. Every clause true except the premise.
+**A sound argument from a false premise reads exactly like a finding.**
 
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's

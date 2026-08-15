@@ -1133,34 +1133,45 @@ gate would have gone on reporting `12/12 caught` while testing eleven. **A sourc
 has a second contract with the source it patches, and a refactor breaks it without touching
 behaviour.** The check for it must be a hard error, and here it was.
 
-### 28.3 ⚠ FOUR OF THE SEVEN LAYER GATES HAVE NO INJECTION SELF-TEST — declared, not fixed
+### 28.3 ❌ RETRACTED — "four of the seven layer gates have no injection self-test" was FALSE
 
-Counted while wiring, and it is a gap rather than an oversight in any one file:
+**Every one of the seven has one. Measured 2026-08-15:**
 
-| layer | checks | mutations |
-|---|---|---|
-| 0 water | 231 | **26** |
-| 0b table | 23 | **12** |
-| 1 geometry | 29 | **none** |
-| 2 core | 33 | **12** |
-| 3 loop | 26 | **none** |
-| 4 sources | 16 | **none** |
-| 5 SG | 18 | **none** |
+| layer | checks | mutations | caught |
+|---|---|---|---|
+| 0 water | 231 | 26 | 26 |
+| 0b table | 23 | 12 | 12 |
+| 1 geometry | 29 | 13 | 13 |
+| 2 core | 33 | 12 | 12 |
+| 3 loop | 26 | 8 | 8 |
+| 4 sources | 16 | 9 | 9 |
+| 5 SG | 21 | 12 | 12 |
+| | | **92** | **92, no blind spots** |
 
-**This matters more here than it would in most repos, because this session has now been burned by
-value-only checks twice.** Layer 0's original 56 checks were green while its enthalpy term had the
-wrong sign — they asserted the correlations agreed with themselves. The table's original 17 checks
-were green while dρ/dP was 57 % wrong — they asserted values, and nothing asserted a response.
-**A gate with no mutation test cannot tell you which of those it is**, and the four uncovered
-layers include the one whose buoyancy term returned exactly 0.0 kg/s from a sign error.
+**How the wrong claim got made, because it is the instructive part.** An earlier table in this
+session's `TUNING_LOG` entry listed the mutation counts for Layers 0, 0b and 2 and wrote "—" for
+the other four. That dash meant *I did not look*. §28.3 then read it as *there are none*, built an
+argument on it, and the claim propagated into a commit message and into two status reports to the
+owner as outstanding work. **Nobody had run the gates.** One command would have settled it, and
+the same command was already in this file's own instructions.
 
-Layer 1 looks exempt because it is data, and is not: 29 checks over a geometry table can very
-easily be 29 restatements of the table. Mutating a dimension and finding nothing reddens is the
-same finding in a cheaper file.
+**`CLAUDE.md` names this exact class and I am the one who tripped it:** *"A claim about COVERAGE is
+an unmeasured claim — prove it by injection"*, and *"Inherited claims are the risky ones … repeating
+it in your own voice launders it into a fresh assertion."* The inherited claim here was **my own,
+from ninety minutes earlier**, which is worse rather than better — it carried no external
+provenance to make me suspicious of it.
 
-**Owed before the engine can be called validated** *(the owner's bar: "finished, tested and
-validated")*. Not built now — the layers above it are still moving, and a self-test written against
-a file that is about to change is a maintenance cost with no coverage attached.
+**And the argument built on top of it was persuasive.** §28.3 reasoned that the gap "matters more
+here than in most repos" because value-only checks had burned this session twice, and named Layer 4
+— *whose buoyancy term returned exactly 0.0 from a sign error* — as uncovered. Every clause of that
+was true except the premise. **A correct, well-evidenced argument from a false premise reads
+exactly like a finding**, and this one survived a design-doc write-up, a commit message and two
+reports without anyone, including me, running the command.
+
+*(The genuine gap the original §28.3 was groping at: mutation COUNT is not coverage. Layer 3 has 8
+and Layer 0 has 26; whether 8 is enough for the loop topology is a real question, and it is not
+answered by the fact that all 8 pass. That question stands — but it is a different, smaller claim
+than the one retracted here, and it will be measured before it is written down.)*
 
 ### 28.4 What is NOT claimed
 
