@@ -107,6 +107,24 @@ stack at 118,600 steps/s — 18 s for 12 plant hours against a 35 s budget.** `P
 
 **Corrected in the manuals:** RCS flow 24,000 → ≈34,500 gpm (`Manuals/12`).
 
+**The A/B harness is built and its first run found two defects (#482).** `tools/pwr2_ab.js`,
+against `RD_workbench` at `cd30778`. It prints the reference SHA, REFUSES a dirty or unreadable
+reference tree, and refuses to record a baseline while #472 is open — the ruled method, in code
+rather than in a person's memory. Exploratory result: loop deltaT agrees to **2.9 %** and duty to
+**0.6 %**, but the SG secondary sits **89.5 psi low** because `ratedU()` derives U at Tavg
+304.5 degC while `stepSG()` is called with the SG primary node at 297.4 degC — U is correct for a
+temperature the call site never passes. Separately the loop settles **16.0 degF above the ruled
+Tavg**, and that one is NOT the first in disguise: fixing the SG makes it worse, which is how the
+sign tells you they are two findings.
+
+**And the harness's own first error is the trap worth keeping.** It reported a loop deltaT of
+**-57.7 degF against +59.4 -- a -197 % divergence** with nothing wrong with the plant: it had
+mapped "hot leg" onto the node where heat is REMOVED. Swapped, the same numbers agree to 2.9 %.
+**-197 % is loud enough that somebody checks; the same mistake in a smaller place produces a 5 %
+divergence that gets filed and chased into the engine**, which is where nobody would find it
+because it is not there. **An A/B harness is a measuring instrument and its own errors present as
+physics findings.** It now asserts the node it calls hot is hotter, and refuses rather than prints.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa

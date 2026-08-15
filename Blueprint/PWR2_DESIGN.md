@@ -1169,3 +1169,77 @@ direct correlations, resolved once at load rather than branched per call. That i
 is not dead code — it is how *"table or physics?"* stays answerable when a future disagreement
 needs to be attributed. **The layer gates load the table**, so what is gated is the production
 path; the fallback is exercised only by Layer 0's own 231 checks.
+
+---
+
+## 29. THE A/B HARNESS IS BUILT, AND ITS FIRST RUN FOUND TWO THINGS — 2026-08-15
+
+`tools/pwr2_ab.js`. Discharges D5 §2 and all four obligations §25.1a placed on it: it prints the
+reference SHA, **refuses** to run against a dirty or unreadable reference tree, refuses to record
+a baseline while #472 is open, and states that a reference move voids prior divergences.
+
+**It lives in `tools/`, not `test/`** — `run_all` auto-discovers `run_*.js` and fails on any
+runner with no baseline, but this harness's exit code tracks the state of `RD_workbench` and of
+GitHub rather than the state of this repo. As a gate it would redden for reasons no change here
+could fix.
+
+**Reference: `RD_workbench` at `cd30778`, clean.** Exploratory — no baseline recorded, because
+#472 is OPEN and §25.1a(3) puts the first baseline after it lands.
+
+| quantity | reference | PWR2 | delta |
+|---|---|---|---|
+| hot leg | 609.9 °F | 625.0 °F | +15.2 (+2.5 %) |
+| cold leg | 550.5 °F | 567.3 °F | +16.9 (+3.1 %) |
+| loop ΔT | 59.4 °F | 57.7 °F | **−1.7 (−2.9 %)** |
+| SG steam pressure | 825.3 psia | 735.8 psia | **−89.5 (−10.8 %)** |
+| SG saturation temperature | 550.8 °F | 508.7 °F | −42.1 (−7.6 %) |
+| SG duty | 300.0 MWt | 301.7 MWt | +1.7 (+0.6 %) |
+
+Not compared, and the harness says so on every run rather than omitting them: **RCS pressure**
+(PWR2 has no pressurizer — §25.3), **level** (mass fraction only; a level is a geometry map owned
+by the instrument layer), and **anything on a transient** (PWR2 has no control layer, so a
+transient diff would compare an absent controller against a live one and call it physics).
+
+### 29.1 ⚠ FINDING — `ratedU()` and `stepSG()` disagree about which temperature drives the SG
+
+`ratedU()` derives U at **Tavg = 304.5 °C**, the ruled value. `stepSG()` is called with the
+**`sg_primary` node temperature, 297.4 °C** — 7.1 °C (12.8 °F) below it. The heat-transfer
+coefficient is therefore correct for a temperature the call site never passes, and the secondary
+has to sit low to move the same duty:
+
+```
+driving dT at settle   32.58 C     ratedU derived at 32.39 C    <- U itself is fine
+T_sec at settle       264.8 C      T_sat(825 psia) = 272.1 C    <- 7.3 C (13.1 degF) low
+```
+
+**That is the whole 89.5 psi.** It is a self-consistency defect between a derivation and its call
+site — Layer 5's, and mine — not a property-library or conservation error. The design question
+underneath it is real and is not settled here: *what temperature drives a LUMPED steam generator?*
+Tavg, the primary outlet, or an LMTD. Whichever is chosen, **`ratedU()` must be derived at the
+same one the call site passes**, and today it is not.
+
+### 29.2 ⚠ OPEN AND UNEXPLAINED — the loop settles 16 °F above the ruled Tavg
+
+Measured Tavg **313.4 °C (596.1 °F)** against the ruled **304.5 °C (580.1 °F)** — 8.9 °C
+(16.0 °F) high. **This is NOT §29.1 in disguise, and the sign is how you can tell**: correcting
+§29.1 raises the secondary temperature, which raises the primary further. Fixing the SG
+inconsistency makes this divergence *worse*, to roughly 16 °C.
+
+Stated as open rather than explained. The loop ΔT is right to 2.9 % and the duty to 0.6 %, so
+what is wrong is the absolute level, not the transport — which points at the SG's area or the
+inventory the temperature is being carried by, and neither has been measured yet.
+
+### 29.3 The trap, and it is the one that matters most in this section
+
+**AN A/B HARNESS IS A MEASURING INSTRUMENT, AND ITS OWN ERRORS PRESENT AS PHYSICS FINDINGS.**
+
+Its first run reported a loop ΔT of **−57.7 °F against the reference's +59.4 — a −197 %
+divergence**. There was nothing wrong with the plant. The harness had mapped "hot leg" onto the
+node where heat is *removed*. Swapped, the same two numbers agree to **2.9 %**.
+
+**−197 % is loud enough that somebody checks. The same mistake in a smaller place produces a 5 %
+divergence that gets filed and chased into the engine**, and the engine is where nobody would
+find it, because it is not there. So the fix is not "read the labels more carefully" — the
+harness now **asserts that the node it calls hot is hotter**, and that the reference reached
+power at all, and refuses rather than printing. This is the `run_reachability` lesson arriving in
+a new place: a comparison that cannot fail for a structural reason is not a comparison.
