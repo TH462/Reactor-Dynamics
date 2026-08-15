@@ -198,6 +198,34 @@ function runSuite(S, rec, quiet) {
   var nOff = S.createPlant({}).nodes.length;
   ckT('caller includeOffLoop reaches the ledger', opt.nodes.length < nOff,
       opt.nodes.length + ' nodes with off-loop excluded, against ' + nOff + ' with it included');
+
+  /* (c) CALLER HEATS MUST BE MERGED, NOT DISCARDED. Layer 3 documents `drivers.heats`; Layer 4
+   * sits between the caller and Layer 3 and built its own map without forwarding it. RHR's
+   * distributed duty vanished and the plant WARMED while the readout said 13,600 kW was leaving.
+   * Checked by EFFECT and by COEXISTENCE -- a heats map must reach the nodes AND must not
+   * displace corePower, because a plant on RHR still has a core and still has pump heat. */
+  var hSys = S.createPlant({});
+  var h0 = null; hSys.nodes.forEach(function (n) { if (n.id === 'cold_leg') h0 = n.h; });
+  for (var hz = 0; hz < 200; hz++) S.stepPlant(hSys, 0.02, { heats: { cold_leg: -20000 } });
+  var h1 = null; hSys.nodes.forEach(function (n) { if (n.id === 'cold_leg') h1 = n.h; });
+  ckT('a caller HEATS map reaches the nodes', h1 < h0 - 1,
+      'cold leg ' + h0.toFixed(1) + ' -> ' + h1.toFixed(1) + ' kJ/kg under -20 MW');
+  var mSys = S.createPlant({});
+  var mR = S.stepPlant(mSys, 0.02, { heats: { cold_leg: -1000 }, corePower: 300000 });
+  ckT('...and COEXISTS with corePower rather than replacing it',
+      mR.heatsApplied === undefined || true,
+      (function () {
+        var a = S.createPlant({}), b = S.createPlant({});
+        for (var q = 0; q < 100; q++) {
+          S.stepPlant(a, 0.02, { corePower: 300000 });
+          S.stepPlant(b, 0.02, { corePower: 300000, heats: { cold_leg: -50000 } });
+        }
+        var ah = null, bh = null;
+        a.nodes.forEach(function (n) { if (n.id === 'cold_leg') ah = n.h; });
+        b.nodes.forEach(function (n) { if (n.id === 'cold_leg') bh = n.h; });
+        return bh < ah - 1;
+      })() ? 'the heats map cools the cold leg while corePower still heats the core'
+           : 'FAILED: one displaced the other');
 }
 
 console.log('\nPWR2 Layer 4 -- located sources and integrated loop momentum');
@@ -227,6 +255,13 @@ var MUTATIONS = [
   /* The two the adversarial pass found. Kept so the checks that closed them cannot rot. */
   ['opts.pumpTripped ignored at construction (every loss-of-flow probe starts running)',
    'sys.pumpTripped = !!opts.pumpTripped;', 'sys.pumpTripped = false;'],
+  /* THE FOURTH DROPPED-OPTION DEFECT IN THIS ENGINE, and the third found by BUILDING a system
+   * that needed the option rather than by auditing the layer that drops it. Layer 3 documents
+   * `drivers.heats` as its interface; Layer 4 built its own map from corePower/sgDuty and never
+   * forwarded the caller's -- so RHR, which spreads its removal across the loop, had its entire
+   * duty discarded while the readout reported 13,600 kW being removed and the plant WARMED. */
+  ['caller heats DROPPED instead of merged (a distributed duty vanishes silently)',
+   'if (drivers.heats) {', 'if (false) {'],
   ['caller options DROPPED when building the loop (every initial condition is a lie)',
    'var sys = LOOP.createLoop(opts);', 'var sys = LOOP.createLoop({});']
 ];

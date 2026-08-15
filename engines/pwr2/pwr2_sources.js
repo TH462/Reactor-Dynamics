@@ -164,9 +164,23 @@
 
     /* ---- pump work as a LOCATED heat source at the RCP node ---- */
     var pumpKW = dPp * 1e6 * (sys.mdot_loop / 700) / 1000;         // kW, hydraulic
+    /* CALLER HEATS ARE MERGED, and they were silently DISCARDED until 2026-08-15.
+     * Layer 3 documents `drivers.heats` as its interface. Layer 4 built its own map from
+     * corePower/sgDuty and never forwarded the caller's -- so a system supplying a distributed
+     * duty (RHR spreads its removal across the loop) had it thrown away, and the plant WARMED
+     * while the readout said 13,600 kW was being removed.
+     *
+     * FOURTH caller-option-silently-dropped defect in this engine, after `createLoop(opts)`,
+     * `extraMass`, and Layer 5's construction knobs -- and the third found by BUILDING a system
+     * that needed the option rather than by auditing the layer that drops it (D1 §32.4).
+     * Merged rather than replaced, so corePower/sgDuty and a heats map can coexist: a plant on
+     * RHR still has pump heat and may still have a steam generator. */
     var heats = {};
-    if (drivers.corePower) heats.core = drivers.corePower;
-    if (drivers.sgDuty) heats.sg_primary = -Math.abs(drivers.sgDuty);
+    if (drivers.heats) {
+      Object.keys(drivers.heats).forEach(function (id) { heats[id] = drivers.heats[id]; });
+    }
+    if (drivers.corePower) heats.core = (heats.core || 0) + drivers.corePower;
+    if (drivers.sgDuty) heats.sg_primary = (heats.sg_primary || 0) - Math.abs(drivers.sgDuty);
     heats.rcp = (heats.rcp || 0) + pumpKW;
 
     var r = LOOP.stepLoop(sys, dt, { heats: heats, sources: drivers.sources, mdot: sys.mdot_loop });
