@@ -385,3 +385,34 @@ the #384-class seam risk the plan listed, now with a measurement attached.
 
 **That is the next defect and it should be measured before it is touched**: instrument the
 predicate through a cooldown and see whether it flips, flickers, or never fires.
+
+### The subcooling cluster is NOT the saturated pin failing to arm (2026-08-15)
+
+Instrumented the predicate through a full cooldown on v2 — scram, dumps open, pressure
+setpoint walked 15.4 → 10 → 4 MPa, 90 plant-minutes, 270,000 steps:
+
+| t (s) | P (psia) | Psat(Tavg) (psia) | Tavg (°F) | subcooling (°F) | saturated? |
+|---|---|---|---|---|---|
+| 600 | 1453 | 377 | 437.8 | +154.6 | no |
+| 1800 | 1198 | 107 | 332.5 | +234.5 | no |
+| 3600 | 558 | 51 | 283.1 | +194.7 | no |
+| 5400 | 527 | 21 | 234.6 | +237.2 | no |
+
+**Subcooling stays strongly positive the whole way and the predicate correctly never arms.**
+So the branch is not failing to fire on an ordinary cooldown, and the seam hypothesis in its
+first form is wrong — worth recording, because "the pin never arms" was the obvious reading
+and it is not what the plant does.
+
+**Where the signal actually points**: `full spray does not crash pressure to the containment
+floor` reads **1.24 MPa against a > 6.0 MPa bound**, and the remaining subcooling reds are on
+paths where spray is the pressure control. In v1 spray is a RATE (`K_spray` × demand), so its
+authority is bounded per step; in v2 it is condensation — a mass and an enthalpy — and
+condensing into a small bubble can take pressure down far faster than a gain would. The
+`Psat(Thot)` taper is ported and it scales DELIVERED FLOW, which is not the same as bounding
+the pressure the flow can remove.
+
+**Not yet localised, and deliberately not guessed at.** The next step is the same
+instrumentation pointed at the failing spray scenario rather than at a generic cooldown:
+whether the saturated branch arms and is then out-run, or the crash happens inside the
+bubbled branch within a step, decides whether this is a spray-authority question or a seam
+one — and those have different fixes.
