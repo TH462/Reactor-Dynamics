@@ -112,10 +112,26 @@
    * ASSUMING lengths unchanged. Adopting §5's 10 ft would keep the volume and halve the
    * velocity, breaking the very rule that licensed the volume. So lengths are [sourced]. */
   var LOOP = {
-    hot_leg:   { L: 7.25, kind: '[sourced]', note: 'Almaraz 23.8 ft — NUREG/IA-0444 Table 7, verified 2026-08-14' },
-    crossover: { L: 8.20, kind: '[derived]', note: 'Almaraz crossover, same length-unchanged rule' },
-    cold_leg:  { L: 7.40, kind: '[derived]', note: 'Almaraz cold leg, same rule' }
+    hot_leg:   { L: 7.25,  kind: '[sourced]', note: 'Almaraz 23.8 ft — NUREG/IA-0444 Table 7, verified 2026-08-14' },
+    crossover: { L: 8.20,  kind: '[derived]', note: 'Almaraz crossover, same length-unchanged rule' },
+    cold_leg:  { L: 7.40,  kind: '[derived]', note: 'Almaraz cold leg, same rule' },
+    /* [derived], NOT [sourced] — and this file's own gate caught the difference. D1 §4 rules
+     * the active fuel length at the standard 12 ft on a DESIGN argument ("a 300 MWt plant buying
+     * custom-length fuel would be a poor design decision"), not from a document that states it.
+     * That is exactly what [derived] means: computed from a stated rule written next to it. */
+    core:      { L: 3.66,  kind: '[derived]', note: 'active fuel 12 ft — D1 §4 design rule: no custom-length fuel' },
+    sg_primary:{ L: 20.24, kind: '[sourced]', note: 'average tube length 66.4 ft — EPRI NP-1721 Model 51' }
   };
+
+  /* ⚠ FOUR RING NODES HAVE NO SOURCED FLOW LENGTH: downcomer, lower_plenum, upper_plenum, rcp.
+   * They are needed for the loop inertia SUM(L/A) that Layer 4's momentum equation integrates.
+   * MEASURED so the omission is a number rather than a shrug: the five sourced nodes above give
+   * 232.9 1/m, and a generous estimate for the four missing ones adds ~13 1/m — **5.3 %**.
+   * Layer 4 therefore builds momentum on the sourced five and DECLARES the ~5 % it omits.
+   * Do not paper over this by inventing lengths: the vessel nodes have large flow areas, so
+   * their contribution is genuinely small, and a fabricated length would look identical to a
+   * sourced one in six months. It is on the geometry evidence list (§7). */
+  var LOOP_INERTIA_OMITTED = 0.053;
 
   /* Form losses — the ONLY [recalled] family in this file, and it is ruled.
    * *(OWNER RULING, 2026-08-14: selected "Declare unsourced, proceed")* after a dedicated
@@ -134,6 +150,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.geometry = {
     NODES: NODES, LEDGER: LEDGER, LOOP: LOOP, FORM_LOSS_K: FORM_LOSS_K,
+    LOOP_INERTIA_OMITTED: LOOP_INERTIA_OMITTED,
     RCS_TOTAL_M3: RCS_TOTAL_M3,
     UNATTRIBUTED_M3: UNATTRIBUTED_M3,
     /* The declared band travels WITH the data, so a consumer cannot read the volumes

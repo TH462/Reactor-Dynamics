@@ -953,6 +953,20 @@ var BASELINES = {
   // about the plant. A rigid all-liquid loop is STIFF (1.06 MPa for a zero-net-heat
   // redistribution) and that is exactly why a pressurizer exists; the check now asserts the
   // stiffness and that a compressible volume relieves it.
+  // NEW 2026-08-14 (#479): Layer 4, located sources + the INTEGRATED loop momentum. 16 checks +
+  // a 9-mutation self-test. Momentum is a declared departure from the whole educational tier
+  // (nobody else solves it) justified by exactly two claims, and this gate tests both rather than
+  // repeating them. (1) COASTDOWN IS DERIVED from the sourced Ginna pump inertia, and the proof is
+  // the SHAPE: a rotor coasting against hydraulic torque decays HYPERBOLICALLY, measured at 3.7x
+  // an equal-half-time exponential at 60 s and 11.8x at 90 s. A fitted exponential cannot match
+  // both the half-time and the tail. (2) NATURAL CIRCULATION IS EMERGENT, tested as the POWER LAW
+  // W ~ Q^(1/3) rather than against the recalled 4-5 % band -- which D3 sec 1a explicitly says may
+  // reject but may never confirm. An exponent that falls out of elevations and densities cannot be
+  // fitted by accident. TRAP: the buoyancy sign was backwards on the first write, and it does not
+  // blow up -- it quietly gives a plant with EXACTLY 0.0 kg/s of natural circulation. This runner
+  // is slow (~100 s) because each mutation re-runs three settles; that cost is the price of the
+  // self-test and the step counts are already cut to the minimum that keeps the power law visible.
+  'run_pwr2_sources.js':   { code: 0, score: '16passed 0failed 16checks', secs: 195 },
   'run_pwr2_loop.js':      { code: 0, score: '26passed 0failed 26checks', secs: 46 },
   'run_pwr2_core.js':      { code: 0, score: '33passed 0failed 33checks', secs: 52 },
   'run_pwr2_geometry.js':  { code: 0, score: '29passed 0failed 29checks', secs: 1 },
