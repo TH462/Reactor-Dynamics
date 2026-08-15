@@ -1194,7 +1194,12 @@ var BASELINES = {
   // the one that matters — reseed used to rebuild the vessel's mass THROUGH LEVEL at the new
   // pressure, which mints water whenever Tsat moves (the liquid gets denser, so the same
   // level is more kilograms). Invisible in normal operation, where the temperatures agree.
-  'run_pzr2.js':           { code: 0, score: '41checks 0failed' },
+  // 41 -> 44 (2026-08-15): J3a/b/c, the SIGNED node inventory. An outsurge that outran the
+  // water used to stop at zero and DISCARD the rest — measured, 8,684 kg thrown away over
+  // 80,209 steps on one break, 3.4x the vessel's capacity — while the ECCS refill that
+  // followed was credited in full, so a pressurizer holding zero water published a 100 %
+  // gauge. v1 cannot fail this way because its level is a signed reconstruction.
+  'run_pzr2.js':           { code: 0, score: '44checks 0failed' },
   // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
   // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
   // instrument's declared range, because `crossed()` is strict and a setpoint on the edge

@@ -279,17 +279,20 @@
     // banked and released with a mixing time constant. That also produces the shape an
     // operator actually sees — pressure spikes on the insurge, then decays back as the cold
     // water works in.
-    var m_surge = (io.surge_kgps || 0) * dt;
+    // Mass through `applySurge`, which owns the signed bookkeeping: an outsurge that outruns
+    // the water banks the remainder as a deficit to be repaid, instead of discarding it. The
+    // RETURN is what actually crossed into (or out of) the liquid, so the enthalpy below is
+    // banked on water that really arrived rather than on demand that could not be met.
+    var m_before_surge = s.pzr_m_liq_kg;
+    var m_surge = applySurge(s, cfg, (io.surge_kgps || 0) * dt);
     if (m_surge > 0) {
       var T_in = (io.surge_t_c != null ? io.surge_t_c : s.pzr_t_liq_c);
       s.pzr_mix_deficit_kj = (s.pzr_mix_deficit_kj || 0) + m_surge * CP_LIQ * (s.pzr_t_liq_c - T_in);
-      s.pzr_m_liq_kg += m_surge;
     } else if (m_surge < 0) {
       // An outsurge carries away liquid at the pressurizer's OWN temperature, so it removes
-      // banked deficit in proportion rather than concentrating it.
-      var frac = Math.min(1, -m_surge / Math.max(1e-6, s.pzr_m_liq_kg));
+      // banked enthalpy in proportion rather than concentrating it.
+      var frac = Math.min(1, -m_surge / Math.max(1e-6, m_before_surge));
       s.pzr_mix_deficit_kj = (s.pzr_mix_deficit_kj || 0) * (1 - frac);
-      s.pzr_m_liq_kg = Math.max(0, s.pzr_m_liq_kg + m_surge);
     }
     // Release the banked deficit toward the bulk on the mixing time constant.
     if (s.pzr_mix_deficit_kj) {
@@ -629,6 +632,49 @@
   // ever BINDS in a normal regime, that is a defect in the surge accounting and not a
   // rounding issue — `run_pzr2` J2 measures the headroom so a bind is visible rather than
   // silently absorbed.
+  // applySurge — the node's inventory is SIGNED, and this is the single place that knows it.
+  //
+  // MEASURED 2026-08-15, and it is the defect that made the post-LOCA gauge peg at 100 %.
+  // The vessel cannot hold negative water, so an outsurge that empties it used to stop at
+  // zero and the remaining demand was DISCARDED: on a severity-0.09 break the clamp bound
+  // for 80,209 steps and threw away 8,684 kg — 3.4x the vessel's entire capacity — while
+  // the ECCS refill that followed was credited in full.
+  //
+  // v1 cannot fail this way because its level is a signed RECONSTRUCTION: `level = base +
+  // level_per_mass·(m−1) + credit`, and on a drained plant the inventory term is about −248
+  // points, which is exactly what OFFSETS the void credit. `ui/app.js` documents v1's node
+  // reading −105 and −172 points off-scale on a sev-0.6 LOCA — the negative reading is the
+  // design, not an artifact. v2 floored the geometry at an empty vessel, the offset
+  // vanished, and the credit stood alone: 285 points of credit published as a 100 % gauge
+  // while the vessel held ZERO water.
+  //
+  // So the demand that cannot be met is BANKED as a deficit and must be REPAID before the
+  // vessel refills, which is what a signed integrator does. The region physics still sees a
+  // non-negative mass; only the bookkeeping is signed. Returns the mass actually realised
+  // into the liquid region, so callers account energy on water that really arrived.
+  function applySurge(s, cfg, kg) {
+    var d = s.pzr_m_deficit_kg || 0;
+    if (kg > 0 && d > 0) {                 // repay the hole before refilling the vessel
+      var pay = Math.min(kg, d);
+      s.pzr_m_deficit_kg = d - pay;
+      kg -= pay;
+    }
+    var m = (s.pzr_m_liq_kg || 0) + kg;
+    if (m < 0) {                           // the outsurge outran the water: bank the rest
+      s.pzr_m_deficit_kg = (s.pzr_m_deficit_kg || 0) - m;
+      kg -= m;                             // realised is only what was actually there
+      m = 0;
+    }
+    s.pzr_m_liq_kg = m;
+    return kg;
+  }
+
+  // The deficit in LEVEL POINTS — what the published level must carry so the reading is the
+  // same signed quantity v1 reconstructs. One point is `M_rcs_kg / level_per_mass` (G1).
+  function deficitPoints(s, cfg) {
+    return (s.pzr_m_deficit_kg || 0) / (cfg.pressurizer2.M_rcs_kg / cfg.pressurizer.level_per_mass);
+  }
+
   function reconcile(s, cfg) {
     var p2 = cfg.pressurizer2;
     if (s._mass == null) return;
@@ -685,7 +731,7 @@
       s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dP * dt);
       if (loopBreak) s.pressure_mpa = Math.max(s.pressure_mpa, Math.min(pb_vent, 15.41));
       // The vessel's own inventory still moves on the surge; level is the loop's story here.
-      s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg + surge_kgps * dt);
+      applySurge(s, cfg, surge_kgps * dt);      // signed: see applySurge
       reseed(s, cfg);
 
     } else if (solid) {
@@ -773,7 +819,11 @@
     // publishes, in the same units, reached the same way.
     var geometric = 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3;
     var credit = s._pzr_void_lvl || 0;
-    var lvl = geometric + credit;
+    // MINUS THE DEFICIT — the outsurge the vessel could not supply, in level points. This is
+    // what makes the published quantity the same SIGNED reconstruction v1 produces, where
+    // the inventory term goes negative on a drained plant and offsets the void credit.
+    // Without it the credit stands alone and a pressurizer holding zero water reads 100 %.
+    var lvl = geometric + credit - deficitPoints(s, cfg);
 
     // `pzr_mass_frac` is the UNCLIPPED level in RCS-mass-fraction units, exactly as v1
     // defines it (`pzrNodeLevel / level_per_mass`). `ui/app.js`'s `pzrNodePct` multiplies it

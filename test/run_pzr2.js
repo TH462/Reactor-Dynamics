@@ -655,6 +655,35 @@ ck('J2 the node is clamped to the plant\'s inventory, and normal ops are far fro
    'clamped to ' + r3(sCap.pzr_m_liq_kg) + ' kg; normal-ops headroom ' + r3(headroom * 100) + ' % of RCS mass',
    Math.abs(sCap.pzr_m_liq_kg - 0.02 * P2.M_rcs_kg) < 1e-9 && headroom > 0.9, 'clamped; headroom > 90 %');
 
+// J3 DERIVED — THE INVENTORY IS SIGNED. An outsurge that outruns the water must BANK the
+// remainder and a refill must REPAY it before the vessel fills, or the plant gets water for
+// free at the empty end. Measured before this existed: on a severity-0.09 break the clamp
+// bound for 80,209 steps and discarded 8,684 kg — 3.4x the vessel's capacity — while the
+// ECCS refill that followed was credited in full, so a pressurizer holding ZERO water
+// published a 100 % gauge. v1 cannot fail this way because its level is a signed
+// reconstruction; `ui/app.js` records its node reading −105 and −172 points off-scale.
+var sSg = stateAt(55.0);
+var mFull = sSg.pzr_m_liq_kg;
+var out = PZ2.stepRegions(sSg, CFG, 1.0, { surge_kgps: -(mFull + 500) });   // 500 kg past empty
+var bankedKg = sSg.pzr_m_deficit_kg || 0;
+PZ2.stepRegions(sSg, CFG, 1.0, { surge_kgps: 200, surge_t_c: 300 });        // partial refill
+var afterPartial = sSg.pzr_m_liq_kg, stillOwed = sSg.pzr_m_deficit_kg || 0;
+ck('J3a an outsurge past empty banks the remainder instead of discarding it',
+   r3(bankedKg) + ' kg banked from a ' + r3(mFull + 500) + ' kg demand on ' + r3(mFull) + ' kg of water',
+   Math.abs(bankedKg - 500) < 1e-6 && sSg.pzr_m_liq_kg >= 0, '500 kg banked, vessel not negative');
+// Tolerance is 1 kg against a 1402 kg vessel, not zero: the flash solve legitimately moves a
+// fraction of a kilogram across the interface in the same step (the region is condensing at
+// this pressure), and asserting an exact zero was measuring the flash, not the repayment.
+ck('J3b a refill repays the debt before the vessel fills',
+   afterPartial.toExponential(2) + ' kg in the vessel, ' + r3(stillOwed) + ' kg still owed after 200 kg back',
+   afterPartial < 1.0 && Math.abs(stillOwed - 300) < 1.0, 'vessel still ~empty, ~300 kg owed');
+// And normal operation never touches any of it — a deficit on a plant that is simply running
+// would mean the surge accounting is wrong, not that the fence is working.
+var sNorm = stateAt(55.0);
+for (var jn = 0; jn < 200; jn++) PZ2.stepRegions(sNorm, CFG, 1.0, { surge_kgps: (jn % 2 ? 1.5 : -1.5), surge_t_c: 311.7 });
+ck('J3c normal surge cycling banks nothing', r3(sNorm.pzr_m_deficit_kg || 0) + ' kg after 200 steps of ±1.5 kg/s',
+   !(sNorm.pzr_m_deficit_kg > 1e-9), 'zero');
+
 // ============================================================ tally
 console.log('\n' + D + '──────────────────────────────────────────' + X);
 if (failed === 0) console.log(B + G + 'PRESSURIZER v2 REGIONS: OK' + X + '  ' + checks + ' checks, 0 failed');
