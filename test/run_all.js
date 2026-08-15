@@ -985,6 +985,7 @@ var BASELINES = {
   // supply -- it just was not the test being written.
   'run_pwr2_sg.js':        { code: 0, score: '25passed 0failed 25checks', secs: 90 },
   'run_pwr2_sources.js':   { code: 0, score: '23passed 0failed 23checks', secs: 195 },
+  'run_pwr2_forwarding.js': { code: 0, score: '11passed 0failed 11checks', secs: 2 },
   'run_pwr2_rhr.js':       { code: 0, score: '35passed 0failed 35checks', secs: 150 },
   'run_pwr2_eccs.js':      { code: 0, score: '28passed 0failed 28checks', secs: 25 },
   'run_pwr2_cvcs.js':      { code: 0, score: '29passed 0failed 29checks', secs: 60 },
