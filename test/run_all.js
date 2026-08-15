@@ -926,6 +926,20 @@ var BASELINES = {
   // quietly. TRAP WORTH THE LINE: the first draft counted node provenance tags but collected
   // [recalled] only from the keyed objects, so a recalled NODE was invisible while a recalled
   // ledger entry was caught -- the self-test found it immediately. Two containers, one rule.
+  // NEW 2026-08-14 (#479): Layer 2, the conservation core -- the first thing in this rewrite
+  // that actually steps a plant. 33 checks + a 12-mutation self-test. TWO FINDINGS ARE BAKED IN.
+  // (1) A UNIT TRAP: dh = v*dP with v in m3/kg and P in MPa needs a factor of 1000, and without
+  // it the compression term is 1000x too small -- which does not look wrong, it looks like a
+  // nearly-incompressible fluid. Caught by the energy gate: heating a closed system raised U by
+  // 7983 kJ against 12000, and the 4011 kJ gap was exactly V*dP. (2) THE CONSERVATION BUDGET
+  // D5 sec 6.2 said was owed now EXISTS and is measured here: ~3e-4 relative internal energy at
+  // 15.41 MPa, degrading to ~1e-3 at 1 MPa. Banded PER REGIME on purpose so that degradation
+  // stays visible as D2 sec 26.3's declared low-pressure limit instead of being absorbed into one
+  // loose number. THIRD TRAP, and the most general: the moment those tolerances became a budget,
+  // the self-test reported FOUR NEW BLIND SPOTS -- a conservation check is INTEGRAL and can never
+  // localise a defect, so reversed upwinding, heat on the wrong node and a source with the wrong
+  // enthalpy all conserve energy perfectly while being wrong. The directional checks exist for that.
+  'run_pwr2_core.js':      { code: 0, score: '33passed 0failed 33checks', secs: 52 },
   'run_pwr2_geometry.js':  { code: 0, score: '29passed 0failed 29checks', secs: 1 },
   'run_pwr2_water.js':     { code: 0, score: '231passed 0failed 231checks', secs: 2 },   // 164 -> 231 (2026-08-14, second pass): hardened after an INDEPENDENT review applied 19 mutations of its own and 11 stayed green -- three on exported functions the suite never called. Two REAL defects found (P_sat returned a vacuum below 99.6 degC; a 1.45 kg/m3 discontinuity at h_g), five accuracy claims false OFF-GRID, and 7 of 8 cp_f references not from NIST in a file claiming none were recalled. Mutation set 17 -> 26. TRAP: git autocrlf made every MULTI-LINE mutation anchor silently stop matching -- the runner now normalises line endings before matching, because a gate whose coverage depends on the checkout's line-ending policy is not a gate.
   'run_contract.js':       { code: 0, score: '177checks 0failed' },   // 175 -> 177 (#447): the pzr_heaters_shed true_state field's §6.3 line + the PZR HTRS SHED alarm's category check   // 168 -> 175 (#386 stage 3): 4 hydrogen true_state fields + 3 new alarms' category checks. 167 -> 168 (#385 node stage 1): the pzr_mass_frac inventory-node field's §6.3 line. 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
