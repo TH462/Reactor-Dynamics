@@ -25,7 +25,7 @@ var fs = require('fs'), path = require('path');
 var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_sources.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
-['pwr2_water', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop'].forEach(function (f) {
+['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop'].forEach(function (f) {
   require(path.join(E, f + '.js'));
 });
 var RD = globalThis.RD.pwr2, GEO = RD.geometry;

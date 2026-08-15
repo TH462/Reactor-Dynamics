@@ -77,6 +77,27 @@
   var Pg = new Float64Array(NP);
   var Xg = new Float64Array(NSUB + NDOME + NSUP - 1);
   var LNV = null;                                 // ln(v), used ONLY in the superheated wing
+  /* ---- THE SUBCOOLED BRANCH IS NOT INTERPOLATED IN PRESSURE AT ALL ----
+   * It was, as a ratio to v_f(P), and that destroyed d(rho)/dP: v_f moves strongly with pressure
+   * through T_sat, so subcooled v came out as a product of two strongly P-dependent terms whose
+   * derivatives nearly cancel — and the small residual difference IS the compressibility.
+   * Differencing two large nearly-equal numbers to recover a small one is the classic way to lose
+   * a derivative, and it measured -57 % (D1 §27).
+   *
+   * So the pressure dependence is now APPLIED ANALYTICALLY, exactly as `rho_l` does it:
+   *     rho(h,P) = rho_sat(T) * (1 + (P - P_sat(T)) / B(T))
+   * with T, rho_sat, P_sat and B all read from 1-D tables indexed by ENTHALPY. The derivative is
+   * then closed-form — d(rho)/dP = rho_sat/B — rather than a difference of interpolants.
+   * Tabulating a quantity whose derivative matters is a different problem from tabulating the
+   * quantity itself; this branch solves the second by not tabulating the first. */
+  var NH = 2000;   /* 1-D and cheap: 6 arrays x 8 bytes = 96 kB, and it is where the accuracy lives */
+  var HL = new Float64Array(NH);      // saturated-liquid enthalpy grid (the index)
+  var T_OF_H = new Float64Array(NH);  // T such that h_l_sat(T) = HL[i]
+  var RHO_S = new Float64Array(NH);   // rho_l_sat(T)
+  var PSAT_H = new Float64Array(NH);  // P_sat(T)
+  var BULK_H = new Float64Array(NH);  // bulk_modulus(T)
+  var KCMP_H = new Float64Array(NH);  // k_comp(T), for the one-step enthalpy correction
+
   var HF = new Float64Array(NP1), HG = new Float64Array(NP1);   // saturation enthalpies, FINE grid
   var LNVF = new Float64Array(NP1), LNVG = new Float64Array(NP1);  // ln v_f, ln v_g -- the dome's edges
   var NX = Xg.length;
@@ -103,6 +124,17 @@
 
   function build() {
     buildGrid();
+    /* 1-D subcooled tables, indexed by saturated-liquid enthalpy over the declared liquid range */
+    var TA = 20, TB = 358;
+    for (var q = 0; q < NH; q++) {
+      var Tq = TA + (TB - TA) * q / (NH - 1);
+      HL[q] = W.h_l_sat(Tq);
+      T_OF_H[q] = Tq;
+      RHO_S[q] = W.rho_l_sat(Tq);
+      PSAT_H[q] = W.P_sat(Tq);
+      BULK_H[q] = W.bulk_modulus(Tq);
+      KCMP_H[q] = W.k_comp(Tq);
+    }
     for (var q = 0; q < NP1; q++) {
       var Pq = Math.exp(lnPmin + (lnPmax - lnPmin) * q / (NP1 - 1));
       HF[q] = W.h_f(Pq);
@@ -161,6 +193,39 @@
     return Math.exp(arrLn[i] + (arrLn[i + 1] - arrLn[i]) * t);
   }
 
+  /* Linear read on the enthalpy grid. Returns the index fraction so several arrays share one
+   * search — the grid is uniform in T, so h is monotone but not evenly spaced. */
+  function hIndex(hs) {
+    var lo = 0, hi = NH - 1, mid;
+    if (hs <= HL[0]) return { i: 0, t: 0 };
+    if (hs >= HL[NH - 1]) return { i: NH - 2, t: 1 };
+    while (hi - lo > 1) { mid = (lo + hi) >> 1; if (HL[mid] <= hs) lo = mid; else hi = mid; }
+    return { i: lo, t: (hs - HL[lo]) / (HL[hi] - HL[lo]) };
+  }
+  function lin(arr, ix) { return arr[ix.i] + (arr[ix.i + 1] - arr[ix.i]) * ix.t; }
+
+  /* SUBCOOLED density, analytic in pressure. */
+  function rho_sub(h, P) {
+    var ix = hIndex(h);
+    /* TWO FIXED CORRECTION PASSES, not iteration to convergence. The saturated-liquid enthalpy
+     * corresponding to (h,P) is h minus the compressed-liquid departure, and that departure needs
+     * T — which is what we are solving for. So: read T uncorrected, correct, read again, correct
+     * again, stop.
+     *
+     * THE SECOND PASS IS LOAD-BEARING AND WAS ALMOST NOT WRITTEN. With one pass this reads
+     * -0.0674 % against the ruled 0.06 % — a miss by 12 %, close enough to look like a resolution
+     * problem. It is not: raising NH from 600 to 2000 did not clear it, because the residual is
+     * the CORRECTION and not the grid. The second pass clears it ninefold to 0.0072 %. The place
+     * this nearly went wrong was re-banding the threshold instead, which retires a target rather
+     * than meeting it. A third pass measures no better and costs the same as the second. */
+    var hs = h - lin(KCMP_H, ix) * (P - lin(PSAT_H, ix));
+    ix = hIndex(hs);
+    hs = h - lin(KCMP_H, ix) * (P - lin(PSAT_H, ix));
+    ix = hIndex(hs);
+    var rs = lin(RHO_S, ix), ps = lin(PSAT_H, ix), B = lin(BULK_H, ix);
+    return rs * (1 + (P - ps) / B);
+  }
+
   function v_from_x(x, P) {
     if (x >= 0 && x <= 1) {
       var vf = interp1(LNVF, P), vg = interp1(LNVG, P);
@@ -198,7 +263,9 @@
   }
 
   function rho_from_h(h, P) {
-    var s = satPair(P), hfg = s.hg - s.hf;
+    var s = satPair(P);
+    if (h < s.hf) return rho_sub(h, P);          /* analytic in P -- see the note above */
+    var hfg = s.hg - s.hf;
     return 1 / v_from_x((h - s.hf) / (hfg <= 0 ? 1e-9 : hfg), P);
   }
   function v_from_h(h, P) {
@@ -212,7 +279,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.vtable = {
     rho_from_h: rho_from_h, v_from_h: v_from_h, v_from_x: v_from_x, v_exact: v_exact,
-    satPair: satPair,
+    satPair: satPair, rho_sub: rho_sub,
     build: build,
     GRID: { P: Pg, X: Xg, NP: NP, get NX() { return NX; } },
     bytes: function () { return NP * NX * 8 + NP1 * 4 * 8; }

@@ -65,6 +65,15 @@
 
   var W = root.RD && root.RD.pwr2 && root.RD.pwr2.water;
 
+  /* THE HOT PATH GOES THROUGH THE TABLE WHEN IT IS LOADED. D1 §26 measured this call at
+   * 31,500 ns and the whole stack missing its performance stop condition because of it.
+   * Resolved ONCE at load, not per call — a branch inside the one function this exercise was
+   * about would be self-defeating. The fallback is not a convenience: it lets Layer 2 be run
+   * against the DIRECT correlations when something disagrees, so "table or physics?" stays
+   * answerable. */
+  var VT = root.RD && root.RD.pwr2 && root.RD.pwr2.vtable;
+  var RHO = VT ? VT.rho_from_h : W.rho_from_h;
+
   /* createSystem(spec) — spec.nodes: [{id, V, h}]  (V m3, h kJ/kg initial)
    *                      spec.P: initial pressure MPa
    *                      spec.extraMass: optional f(P) -> kg, a compressible volume outside
@@ -91,7 +100,7 @@
 
   function totalMass(sys, P, hs) {
     var m = 0;
-    for (var i = 0; i < sys.nodes.length; i++) m += sys.nodes[i].V * W.rho_from_h(hs[i], P);
+    for (var i = 0; i < sys.nodes.length; i++) m += sys.nodes[i].V * RHO(hs[i], P);
     if (sys.extraMass) m += sys.extraMass(P);
     return m;
   }
@@ -100,7 +109,7 @@
   function internalEnergy(sys) {
     var H = 0;
     for (var i = 0; i < sys.nodes.length; i++) {
-      H += sys.nodes[i].V * W.rho_from_h(sys.nodes[i].h, sys.P) * sys.nodes[i].h;
+      H += sys.nodes[i].V * RHO(sys.nodes[i].h, sys.P) * sys.nodes[i].h;
     }
     return H - sys.P * 1000 * sys.V_total;      // MPa*m3 -> kJ
   }
@@ -124,7 +133,7 @@
     /* ---- 1. GATHER. Read the state at time n; write nothing. ---- */
     var m_n = new Array(N), a = new Array(N), v = new Array(N), dH = new Array(N);
     for (i = 0; i < N; i++) {
-      m_n[i] = sys.nodes[i].V * W.rho_from_h(sys.nodes[i].h, sys.P);
+      m_n[i] = sys.nodes[i].V * RHO(sys.nodes[i].h, sys.P);
       dH[i] = heats[sys.nodes[i].id] || 0;                       // kW
     }
     var idx = {};
@@ -191,7 +200,7 @@
     var M_target = sys.M_total + dt * dM;
     function F(P) {
       var s = 0;
-      for (var k = 0; k < N; k++) s += sys.nodes[k].V * W.rho_from_h(a[k] + v[k] * (P - sys.P), P);
+      for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(a[k] + v[k] * (P - sys.P), P);
       if (sys.extraMass) s += sys.extraMass(P);
       return s - M_target;
     }
@@ -208,7 +217,7 @@
     var junction = new Array(N);
     var nextExp = new Array(N);
     for (i = 0; i < N; i++) {
-      var m_new = sys.nodes[i].V * W.rho_from_h(sys.nodes[i].h, sys.P);
+      var m_new = sys.nodes[i].V * RHO(sys.nodes[i].h, sys.P);
       var rate = (m_new - m_n[i]) / dt;
       junction[i] = { id: sys.nodes[i].id, dm_dt: rate };
       nextExp[i] = rate;                    // carried forward as the explicit lag

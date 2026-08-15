@@ -1078,3 +1078,94 @@ ratio trick fixed the *value* accuracy in the wings (§26) and broke the *deriva
    F-findings: a gate that measures the quantity you named rather than the quantity that matters.
 3. Re-wire and re-measure only after both. **The 159× is available and should not be taken on
    terms that break A3.**
+
+---
+
+## 28. ✅ THE TABLE IS WIRED IN — all three items of §27.3 discharged, measured 2026-08-15
+
+**The subcooled branch was rebuilt on §27.3(1)'s second option — analytic compressibility on top
+of a pressure-independent table — and it works.** The wing is gone. Subcooled density is now
+reconstructed the way `rho_l` computes it, from six 1-D arrays indexed on **enthalpy** rather than
+temperature:
+
+```
+ρ(h,P) = ρ_sat(h_s) · (1 + (P − P_sat(h_s)) / B(h_s))      h_s = h − k_comp·(P − P_sat)
+```
+
+`h_s` is the saturated-liquid enthalpy that the subcooled state at (h, P) came from, and it
+depends on P through the same compressed-liquid enthalpy term Layer 0 was refit to carry. It is
+solved by **two fixed correction passes** — not iterated to convergence, because the cost of a
+third pass is real and the second already lands the error two decades under target.
+
+| | ruled | measured |
+|---|---|---|
+| ρ accuracy, operating envelope | 0.06 % | **0.0072 %** |
+| dρ/dP at ±0.02 MPa — *the §27.2 failure* | — | **0.1 %** (was −57.6 %) |
+| cost per call | — | **119 ns** (direct: 31,500 ns) |
+
+**Why two passes and not one.** One pass measured −0.0674 % against the 0.06 % target — a *miss by
+12 %*, close enough to be tempting to re-band. Raising `NH` 600 → 2000 did not clear it either;
+the residual is the correction, not the resolution. The second pass clears it by a factor of nine.
+**The threshold was not moved**, which is the point: the ruled number is what the design owes, and
+an accuracy target that gets re-banded when the implementation misses it has stopped being a
+target (`CLAUDE.md`, the `ops_cvcs_pzr_drain_rate` precedent).
+
+### 28.1 The stack result
+
+| | steps/s | 12 plant-hours | budget |
+|---|---|---|---|
+| D1 §26, direct correlations | 600 | 3,617 s | 35 s |
+| **Table wired, derivative correct** | **118,600** | **18 s** | 35 s |
+
+**198× on the stack and 2,372× real time**, inside budget with a factor of two in hand. §26's
+performance stop condition is **CLEARED**. Note the number beat §27.1's own 95,200 — the same
+wiring is faster now than it was with the broken wing, because the wing's 2-D interpolation was
+costing more than the analytic form that replaced it. *The correct physics was also the cheaper
+code*, which is not usually how that goes and is not a general lesson.
+
+### 28.2 The trap this landed on the way through
+
+**Re-wiring silently invalidated an injection-self-test anchor.** Swapping `W.rho_from_h` for the
+resolved-once `RHO` alias changed the text of the line one of the core gate's twelve mutations
+patches. The gate reported `ERROR anchor not found` and **failed** — which is the design working:
+an anchor-miss is counted as a blind spot, not skipped. Had it been silently skipped, the core
+gate would have gone on reporting `12/12 caught` while testing eleven. **A source-patching gate
+has a second contract with the source it patches, and a refactor breaks it without touching
+behaviour.** The check for it must be a hard error, and here it was.
+
+### 28.3 ⚠ FOUR OF THE SEVEN LAYER GATES HAVE NO INJECTION SELF-TEST — declared, not fixed
+
+Counted while wiring, and it is a gap rather than an oversight in any one file:
+
+| layer | checks | mutations |
+|---|---|---|
+| 0 water | 231 | **26** |
+| 0b table | 23 | **12** |
+| 1 geometry | 29 | **none** |
+| 2 core | 33 | **12** |
+| 3 loop | 26 | **none** |
+| 4 sources | 16 | **none** |
+| 5 SG | 18 | **none** |
+
+**This matters more here than it would in most repos, because this session has now been burned by
+value-only checks twice.** Layer 0's original 56 checks were green while its enthalpy term had the
+wrong sign — they asserted the correlations agreed with themselves. The table's original 17 checks
+were green while dρ/dP was 57 % wrong — they asserted values, and nothing asserted a response.
+**A gate with no mutation test cannot tell you which of those it is**, and the four uncovered
+layers include the one whose buoyancy term returned exactly 0.0 kg/s from a sign error.
+
+Layer 1 looks exempt because it is data, and is not: 29 checks over a geometry table can very
+easily be 29 restatements of the table. Mutating a dimension and finding nothing reddens is the
+same finding in a cheaper file.
+
+**Owed before the engine can be called validated** *(the owner's bar: "finished, tested and
+validated")*. Not built now — the layers above it are still moving, and a self-test written against
+a file that is about to change is a maintenance cost with no coverage attached.
+
+### 28.4 What is NOT claimed
+
+The fallback path is still live: with the table absent, Layer 2 and Layer 4 both fall back to the
+direct correlations, resolved once at load rather than branched per call. That is deliberate and
+is not dead code — it is how *"table or physics?"* stays answerable when a future disagreement
+needs to be attributed. **The layer gates load the table**, so what is gated is the production
+path; the fallback is exercised only by Layer 0's own 231 checks.

@@ -29,6 +29,91 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-14-backshop-a (#479 — the review adjudicated, then six layers built)
+
+**Issue:** #479. The owner supplied an adversarial review of the PWR2 design set with the standing
+instruction that I did not write the design and should judge the findings on their own terms.
+
+**The adjudication (`Blueprint/PWR2_REVIEW_ADJUDICATION.md`).** All eleven findings independently
+re-tested rather than read. **Ten confirmed; one (F1) confirmed in substance with an overstated
+headline; two (F2, F10) confirmed and UNDERSTATED** — the review was, on its own terms, too
+generous twice. That is the useful direction for a review to be wrong in and it is why the
+re-test was worth the tokens: an adjudication that only ever softens findings is indistinguishable
+from a defence of the work.
+
+**Owner rulings taken this stretch** — the large break is **dropped as a design requirement, kept
+as a declared demonstration**; vessel proportions **scaled from a real plant**; loss coefficients
+**declared unsourced and proceeded on**; build scope **through the conservation core**; A/B testing
+**against the workbench tree**. And the one that governs everything after it: *(OWNER, 2026-08-14:
+"Do not merge until I explicitly tell you to. We are not going to merge until the new physics have
+been finished, tested and validated.")* — recorded in `CLAUDE.md`. The bar is the WHOLE engine.
+
+**Built: Layers 0 through 5**, each with its own gate and injection self-test.
+
+| layer | file | checks | mutations |
+|---|---|---|---|
+| 0 water properties | `pwr2_water.js` | 231 | 26 |
+| 0b property table | `pwr2_vtable.js` | 23 | 11 |
+| 1 geometry | `pwr2_geometry.js` | 29 | — |
+| 2 conservation core | `pwr2_core.js` | 33 | 12 |
+| 3 loop topology | `pwr2_loop.js` | 26 | — |
+| 4 sources | `pwr2_sources.js` | 16 | — |
+| 5 steam generator | `pwr2_sg.js` | 18 | — |
+
+**Layer 0 was REBUILT, not accepted, and the rebuild found two physics errors in the original.**
+Refit on 354 + 220 + 11×159 IAPWS-95 points from NIST SRD 69. The compressed-liquid enthalpy term
+had **the wrong SIGN** at operating temperature (−9.0 kJ/kg true against +6.2 assumed at 610 °F /
+321 °C), and the bulk modulus was **up to 8.7× too stiff**. Both were inside a library whose
+original 56 checks were green — 56 checks that asserted the correlations agreed with themselves.
+
+**The performance stop condition, and the finding that nearly got taken on the wrong terms.** The
+direct correlations ran the stack at 600 steps/s against a 61,700 budget — 3,617 s for 12 plant
+hours. A tabulated property lookup cleared it at 95,200 steps/s, and **every accuracy check
+passed while dρ/dP was −57.6 % wrong at the pressure scale a timestep actually moves.** Wiring it
+in reddened three layer gates on the pressure response — which is what **A3, "pressure follows
+temperature", is made of.** The cause was mine and structural: the subcooled wing stored `v` as a
+ratio to `v_f(P)`, so density came out as a difference of two large nearly-equal P-dependent terms
+and the residual *was* the compressibility. **An accuracy target on a VALUE says nothing about its
+DERIVATIVE**, and 17 green checks all measured the value. Rebuilt with the compressibility applied
+analytically on an enthalpy-indexed table: **0.0072 % on ρ, 0.1 % on dρ/dP, 119 ns/call, and the
+stack at 118,600 steps/s — 18 s for 12 plant hours against a 35 s budget.** `PWR2_DESIGN.md` §26–28.
+
+**Traps worth the lines:**
+- **A gate that PATCHES SOURCE has a second contract with that source.** Re-wiring `W.rho_from_h`
+  to a resolved-once `RHO` alias invalidated a mutation anchor in the core gate. It failed with
+  `anchor not found` — counted as a blind spot, not skipped. Had it skipped, the gate would have
+  gone on printing `12/12 caught` while testing eleven. A refactor breaks this without touching
+  behaviour, so anchor-miss must be a HARD ERROR.
+- **A one-pass correction missing a ruled threshold by 12 % is where thresholds get re-banded.**
+  −0.0674 % against 0.06 %. Raising the table resolution 600 → 2000 did not clear it, because the
+  residual was the correction and not the resolution. A second correction pass cleared it ninefold.
+  The number was not moved.
+- **Three of my own probes were UNPHYSICAL and one of them found a real defect** — 300 MW into a
+  closed loop with no sink drove the bracket to 1e15 MPa *reporting success*. An envelope guard
+  went in. The other two (a primary started 20 °C below the design point; a duty reversal probed
+  above the secondary saturation) were mine to fix, and a fourth "0.30 % subcooled error" was water
+  at 6 °C — below Layer 0's own declared 20 °C floor. **Probe inside the declared envelope, or you
+  are measuring the declaration.**
+- **Explicit lag on junction expansion flows was built as designed and diverged** in both sign
+  conventions (−2.97e+12, −4.42e+2). Reverted and recorded rather than tuned into submission.
+- **A buoyancy sign error returned exactly 0.0 kg/s natural circulation** — an exact zero from a
+  physics function is a structural tell, not a small number.
+- Benchmarks were reported in the wrong unit **twice** (ms × 1e9 instead of 1e6 — 145 µs claimed
+  where truth was 145 ns). Now on `process.hrtime.bigint()`.
+- **`git autocrlf` silently stopped multi-line mutation anchors from matching.** `.replace(/\r\n/g,
+  '\n')` before every anchor comparison.
+- **HR11 rejected two of my own citations** — one lacked the verbatim quote, one lacked the date.
+  The scan wants BOTH, and it was right to.
+
+**Corrected in the manuals:** RCS flow 24,000 → ≈34,500 gpm (`Manuals/12`).
+
+**Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
+`PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
+`extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa
+stiff without a bubble).
+
+---
+
 ## Session log — 2026-08-13-backshop-d (#479 — DESIGN phase; the evidence pass broke my own validation)
 
 **Issue:** #479. **No code.** *(OWNER, 2026-08-13: "We should be designing and not building. Once

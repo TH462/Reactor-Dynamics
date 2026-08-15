@@ -48,6 +48,12 @@
 
   var RD = root.RD && root.RD.pwr2;
   var LOOP = RD && RD.loop, GEO = RD && RD.geometry, W = RD && RD.water;
+  /* Same resolution as Layer 2, and it mattered more than it looks: buoyancy() called the DIRECT
+   * path twice per step, measured at 63,000 ns against a 9,000 ns Layer 3 step. Layer 4 was SEVEN
+   * TIMES the layer beneath it because two calls in one helper were missed when the table landed.
+   * A hot path is only as fast as the slowest call still in it. */
+  var VT = RD && RD.vtable;
+  var RHO = VT ? VT.rho_from_h : (W && W.rho_from_h);
 
   /* ---- SOURCED PUMP DATA, D3 §1a-v (matched 4-loop Westinghouse RCP) ----
    * 100,400 gpm · 289 ft developed head · 1185 rpm · 7000 hp · casing water 80 ft3.
@@ -104,16 +110,20 @@
   /* Buoyancy: thermal centres set the natural-circulation driving head. Computed from Layer 1's
    * elevations and the CURRENT densities, so natural circulation is EMERGENT rather than a
    * fitted scale factor — which is the other half of what the momentum ruling bought. */
+  /* Elevations resolved once — the inner scan made this O(N^2) for two lookups. */
+  var Z = null;
+  function elevations() {
+    if (Z) return Z;
+    Z = {}; GEO.NODES.forEach(function (x) { Z[x.id] = x.z; }); return Z;
+  }
   function buoyancy(sys) {
-    var g = 9.80665, dP = 0;
+    var g = 9.80665, dP = 0, z = elevations();
     var zc = null, zh = null, rc = null, rh = null;
-    sys.nodes.forEach(function (n) {
-      var gn = null;
-      GEO.NODES.forEach(function (x) { if (x.id === n.id) gn = x; });
-      if (!gn) return;
-      if (n.id === 'core') { zc = gn.z; rc = W.rho_from_h(n.h, sys.P); }
-      if (n.id === 'sg_primary') { zh = gn.z; rh = W.rho_from_h(n.h, sys.P); }
-    });
+    for (var i = 0; i < sys.nodes.length; i++) {
+      var n = sys.nodes[i];
+      if (n.id === 'core') { zc = z.core; rc = RHO(n.h, sys.P); }
+      else if (n.id === 'sg_primary') { zh = z.sg_primary; rh = RHO(n.h, sys.P); }
+    }
     if (zc === null || zh === null) return 0;
     /* SIGN: the DESCENDING leg is the dense one. Fluid heated in the core rises to the SG,
      * is cooled, and falls back — so the driving head is (rho_cold - rho_hot)*g*dz with the

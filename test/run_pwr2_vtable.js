@@ -102,6 +102,32 @@ function runSuite(T, rec, quiet) {
   ckT('deep superheat is the loosest region, and DECLARED', Math.abs(deep.w) < 1.0,
       deep.w.toFixed(4) + ' % at x > 1.5 -- very dry steam, severe-accident territory');
 
+  /* ---- 2b. THE DERIVATIVE, WHICH IS WHAT THE SOLVER ACTUALLY READS -------------------
+   * ADDED after the first wiring attempt was reverted (D1 §27). The table met the ruled 0.06 %
+   * on rho and its d(rho)/dP was **57 % wrong at the scale a timestep moves pressure** — and all
+   * 17 checks here passed anyway, because every one of them asserted a VALUE.
+   *
+   * **AN ACCURACY TARGET ON A VALUE SAYS NOTHING ABOUT ITS DERIVATIVE.** The pressure solve reads
+   * dF/dP = SUM V*d(rho)/dP, so a 57 % error there is a 57 % error in the plant's pressure
+   * RESPONSE — which is Tier A coupling A3, "pressure follows temperature". The level was right
+   * and the response was not.
+   *
+   * Probed at +/-0.02 MPa deliberately: that is the scale a step moves pressure, and it is far
+   * finer than the grid. A probe wide enough to span a grid interval reads the interval AVERAGE
+   * and hides exactly this defect — measured, the same table read -0.1 % at +/-0.40 MPa while
+   * being -57 % wrong at the scale that matters. */
+  if (!quiet) console.log('\nd(rho)/dP  [probed at the scale a TIMESTEP moves pressure, not a grid interval]');
+  [[1250, 15.41], [1362, 15.41], [1300, 15.41], [700, 1.0], [400, 5.0]].forEach(function (c) {
+    var e = 0.02;
+    var dD = (W.rho_from_h(c[0], c[1] + e) - W.rho_from_h(c[0], c[1] - e)) / (2 * e);
+    var dT = (T.rho_from_h(c[0], c[1] + e) - T.rho_from_h(c[0], c[1] - e)) / (2 * e);
+    ck('d(rho)/dP at h=' + c[0] + ', P=' + c[1] + ' (rel)', dT / dD, 1.0, 0.06, '(ratio)');
+  });
+  var eD = 0.02, hm = W.h_f(7) + 0.3 * (W.h_g(7) - W.h_f(7));
+  var dDm = (W.rho_from_h(hm, 7 + eD) - W.rho_from_h(hm, 7 - eD)) / (2 * eD);
+  var dTm = (T.rho_from_h(hm, 7 + eD) - T.rho_from_h(hm, 7 - eD)) / (2 * eD);
+  ck('d(rho)/dP inside the dome (rel)', dTm / dDm, 1.0, 0.06, '(ratio)');
+
   /* ---- 3. THE RULING'S CORE PROPERTY: EXACT IN QUALITY ------------------------------- */
   if (!quiet) console.log('\nLINEAR IN QUALITY  [why the ruling says tabulate v and not rho]');
   [1.0, 7.0, 15.41].forEach(function (P) {
@@ -186,7 +212,21 @@ var MUTATIONS = [
    'for (i = 0; i < NDOME; i++) Xg[k++] = i / (NDOME - 1);',
    'for (i = 0; i < NDOME; i++) Xg[k++] = -0.017 + 1.031 * i / (NDOME - 1);'],
   ['the wing reconstruction loses its saturation edge',
-   'return ratio * interp1(x > 1 ? LNVG : LNVF, P);', 'return ratio;']
+   'return ratio * interp1(x > 1 ? LNVG : LNVF, P);', 'return ratio;'],
+  ['subcooled pressure dependence goes back through the 2-D wing (kills d(rho)/dP)',
+   'if (h < s.hf) return rho_sub(h, P);          /* analytic in P -- see the note above */', ''],
+  ['the analytic compressibility term dropped',
+   'return rs * (1 + (P - ps) / B);', 'return rs;'],
+  ['the compressed-liquid enthalpy correction dropped',
+   'var hs = h - lin(KCMP_H, ix) * (P - lin(PSAT_H, ix));', 'var hs = h;'],
+  /* The engine's own comment claims the SECOND correction pass is load-bearing -- that it is the
+   * difference between -0.0674 % and 0.0072 % against a ruled 0.06 %. A claim in a comment is an
+   * unmeasured claim until something can make it fail (HR10), and the pass above only proves the
+   * FIRST correction matters: neutering it leaves the second one to re-correct, which is exactly
+   * the one-pass form. This mutation is the other half. */
+  ['the SECOND correction pass dropped (one-pass form, the 12 % near-miss)',
+   '    hs = h - lin(KCMP_H, ix) * (P - lin(PSAT_H, ix));\n    ix = hIndex(hs);\n    var rs =',
+   '    var rs =']
 ];
 
 console.log('\n' + '='.repeat(70));

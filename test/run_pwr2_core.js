@@ -25,10 +25,13 @@ var fs = require('fs'), path = require('path');
 var LIB = path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_core.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 require(path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_water.js'));
-var W = globalThis.RD.pwr2.water;
+/* The table is loaded so this gate tests the PRODUCTION path. Testing the fallback while
+ * shipping the table would gate a plant nobody runs. */
+require(path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_vtable.js'));
+var W = globalThis.RD.pwr2.water, VT = globalThis.RD.pwr2.vtable;
 
 function loadFrom(src) {
-  var root = { RD: { pwr2: { water: W } } };
+  var root = { RD: { pwr2: { water: W, vtable: VT } } };
   var body = src.replace("(typeof globalThis !== 'undefined' ? globalThis : this)", '(RD_ROOT)') +
              '\nreturn RD_ROOT.RD.pwr2.core;';
   return new Function('RD_ROOT', body)(root);
@@ -233,7 +236,7 @@ var MUTATIONS = [
   ['donor-cell upwinding reversed (front smears backwards)',
    'var don = md > 0 ? A : B, rec = md > 0 ? B : A', 'var don = md > 0 ? B : A, rec = md > 0 ? A : B'],
   ['node mass integrated instead of derived (the over-determination)',
-   'm_n[i] = sys.nodes[i].V * W.rho_from_h(sys.nodes[i].h, sys.P);', 'm_n[i] = sys.nodes[i].V * 700;'],
+   'm_n[i] = sys.nodes[i].V * RHO(sys.nodes[i].h, sys.P);', 'm_n[i] = sys.nodes[i].V * 700;'],
   ['the isentropic term dropped from the closure',
    'a[k] + v[k] * (P - sys.P)', 'a[k]'],
   ['specific volume halved (the unit trap, at half strength)',
