@@ -134,18 +134,54 @@ function runReference(RD) {
   var e = new RD.PWREngine();
   e.reset('full_power');
   for (var i = 0; i < 6000; i++) e.step(0.1);   /* 10 minutes of plant */
-  return e.getTrueState();
+  var mark = e.getTrueState().tavg_c;
+  for (var j = 0; j < 12000; j++) e.step(0.1);  /* 20 more — same convergence test, both sides */
+  var t = e.getTrueState();
+  if (Math.abs(t.tavg_c - mark) > 0.05) {
+    bail('the REFERENCE had not settled at the read point — 20 further minutes moved its Tavg by ' +
+         dC2F(t.tavg_c - mark).toFixed(2) + ' degF.');
+  }
+  return t;
 }
 
+/* THE SECONDARY MUST BE BALANCED, AND THE HARNESS MUST CHECK THAT IT SETTLED.
+ *
+ * The first version drove feed = steam = 165 kg/s open-loop. That removes ~302 MW against 300 MW
+ * of core power, so the plant NEVER SETTLES -- it cools monotonically, Tavg falling 599 -> 509
+ * degF over an hour with no equilibrium in sight. Every absolute temperature in the first A/B was
+ * therefore a reading taken in mid-transient, and "a settled full-power condition" was a claim
+ * this function made about itself and never tested. It is the third error of the same family in
+ * this file (§29.3, §29.4, §29.5) and the worst, because a drifting number is not wrong at any
+ * particular moment -- it is just meaningless.
+ *
+ * A steam demand that takes exactly the heat delivered holds the secondary at its design pressure,
+ * which is what the reference plant's control layer achieves. With it, the plant settles in under
+ * ten minutes and is bit-identical at 30 and 60.
+ *
+ * AND IT IS ASSERTED, not assumed: the run continues past the read point and refuses if anything
+ * moved. A convergence claim nothing can falsify is the same defect one level up. */
 function runPWR2(P2) {
   var W = P2.water, S = P2.sources, SG = P2.sg;
   var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
   var sg = SG.createSG();
-  var out = null;
-  for (var i = 0; i < 30000; i++) {                /* 10 minutes at dt = 0.02 */
-    var T_prim = W.T_from_h(node(sys, 'sg_primary').h, sys.P);
-    out = SG.stepSG(sg, T_prim, 0.02, { feed: 165, steam: 165 });
+  var out = null, mark = null;
+  var N = 30000, EXTRA = 60000;                    /* 10 min, then 20 more to prove it holds */
+  for (var i = 0; i < N + EXTRA; i++) {
+    /* Tavg, via the Layer 5 helper -- NOT the sg_primary node. §29.1/§29.5, and the helper exists
+     * precisely so this call site cannot get it wrong again. */
+    var T_prim = SG.primaryTavg(sys);
+    var duty = sg.U * sg.area * (T_prim - W.T_sat(sg.P));
+    var st = duty / (W.h_g(sg.P) - SG.SG.h_feed);
+    out = SG.stepSG(sg, T_prim, 0.02, { feed: st, steam: st });
     S.stepPlant(sys, 0.02, { corePower: 300000, sgDuty: out.duty_kW });
+    if (i === N - 1) mark = { tavg: SG.primaryTavg(sys), P: out.P_sec };
+  }
+  var end = { tavg: SG.primaryTavg(sys), P: out.P_sec };
+  if (Math.abs(end.tavg - mark.tavg) > 0.05 || Math.abs(end.P - mark.P) > 0.01) {
+    bail('PWR2 had NOT settled at the read point — 20 further minutes moved Tavg by ' +
+         dC2F(end.tavg - mark.tavg).toFixed(2) + ' degF and secondary pressure by ' +
+         M2PSI(end.P - mark.P).toFixed(2) + ' psi.\n' +
+         '               Every absolute temperature below would be a mid-transient reading.');
   }
   return { sys: sys, sg: out, W: W };
 }

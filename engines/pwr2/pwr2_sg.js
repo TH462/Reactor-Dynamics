@@ -89,7 +89,37 @@
     return sg.P;
   }
 
+  /* THE PRIMARY TEMPERATURE THAT DRIVES THIS SG **MUST** BE Tavg. Use this to get it.
+   *
+   * `ratedU()` above derives U at Tavg = 304.5 degC. If a call site passes anything else, U is
+   * correct for a temperature the plant never sees and the secondary settles wherever the
+   * mismatch puts it. THAT IS NOT HYPOTHETICAL -- it is what the first A/B run measured (#482,
+   * D1 §29.1): the harness passed the `sg_primary` node, 7.1 degC below Tavg, and the secondary
+   * sat 89.5 psi low.
+   *
+   * MEASURED, with a secondary held at its design pressure (D1 §29.5):
+   *
+   *     drive = sg_primary node    Tavg settles 607.79 degF   ruled 580.1, reference 580.3
+   *     drive = Tavg               Tavg settles 580.36 degF   +0.06 degF -- both, to 0.01 %
+   *
+   * So the choice is not a matter of taste between Tavg, primary outlet and LMTD, which is how
+   * #482 first framed it. Tavg is the one that reproduces this plant's ruled temperature AND the
+   * reference engine, and it is the one U is already derived at. The other two are wrong here.
+   *
+   * The helper exists so no call site has to know that. A contract that lives only in a comment
+   * gets broken by the next person who writes `stepSG(sg, someTemperature, ...)`. */
+  function primaryTavg(sys) {
+    var W2 = RD && RD.water, hot = null, cold = null;
+    for (var i = 0; i < sys.nodes.length; i++) {
+      if (sys.nodes[i].id === 'core') hot = sys.nodes[i];
+      else if (sys.nodes[i].id === 'sg_primary') cold = sys.nodes[i];
+    }
+    if (!hot || !cold) return null;
+    return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));
+  }
+
   /* stepSG(sg, primaryT, dt, drivers) -> heat REMOVED from the primary, kW
+   *   primaryT      degC -- Tavg. Get it from primaryTavg(sys); see the note above.
    *   drivers.feed  kg/s of feedwater
    *   drivers.steam kg/s of steam drawn
    *
@@ -133,7 +163,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.sg = {
-    SG: SG, createSG: createSG, stepSG: stepSG,
+    SG: SG, createSG: createSG, stepSG: stepSG, primaryTavg: primaryTavg,
     ratedU: ratedU, boilDryTime: boilDryTime, updatePressure: updatePressure
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -92,6 +92,45 @@ function runSuite(G, rec, quiet) {
       G.boilDryTime(sg, steamRated) > 50 && G.boilDryTime(sg, steamRated) < 110,
       G.boilDryTime(sg, steamRated).toFixed(0) + ' s at rated steaming; Manuals/12 §8.1 sources ~78 s ' +
       'from the Ginna inventory');
+  /* ---- THE DRIVING-TEMPERATURE CONTRACT ---------------------------------------------
+   * `ratedU()` derives U at Tavg. Nothing forced a call site to PASS Tavg, and the first A/B run
+   * passed the `sg_primary` node instead (#482, D1 §29.1/§29.5) -- 7.1 degC low, and the secondary
+   * settled 89.5 psi off. An unstated contract is not a contract.
+   *
+   * This closes the loop end to end: build a primary, hold the secondary at its design pressure
+   * the way the reference plant's control layer does, and check WHERE Tavg SETTLES. Driving on
+   * Tavg lands the ruled 304.5 degC; driving on the SG node lands 15.3 degC high. The check is on
+   * the plant's settled temperature rather than on which argument was passed, because an
+   * argument-shaped check would pass for a helper that returned the wrong number. */
+  if (!quiet) console.log('\nDRIVING TEMPERATURE  [ratedU derives at Tavg -- so a call site must PASS Tavg]');
+  var S4 = SRCS, W4 = W;
+  function settle(useTavg) {
+    var sys = S4.createPlant({ h: W4.h_l(304.5, 15.41), P: 15.41 }), sg4 = G.createSG(), o = null;
+    function nd(id) { for (var q = 0; q < sys.nodes.length; q++) if (sys.nodes[q].id === id) return sys.nodes[q]; }
+    for (var t = 0; t < 45000; t++) {
+      var Td = useTavg ? G.primaryTavg(sys) : W4.T_from_h(nd('sg_primary').h, sys.P);
+      var duty = sg4.U * sg4.area * (Td - W4.T_sat(sg4.P));
+      var st4 = duty / (W4.h_g(sg4.P) - G.SG.h_feed);
+      o = G.stepSG(sg4, Td, 0.02, { feed: st4, steam: st4 });
+      S4.stepPlant(sys, 0.02, { corePower: 300000, sgDuty: o.duty_kW });
+    }
+    return G.primaryTavg(sys);
+  }
+  var tavgOK = settle(true), tavgBad = settle(false);
+  ck('driven on Tavg, the plant settles AT the ruled Tavg', tavgOK, 304.5, 0.5, 'degC');
+  ckT('driven on the SG node instead, it does NOT  [the defect this contract prevents]',
+      Math.abs(tavgBad - 304.5) > 5,
+      'settles ' + tavgBad.toFixed(1) + ' degC, ' + (tavgBad - 304.5).toFixed(1) +
+      ' degC off -- so the check above is not vacuous');
+  ckT('primaryTavg() is the mean of the core and SG primary nodes, not one of them',
+      (function () {
+        var sy = S4.createPlant({ h: W4.h_l(304.5, 15.41), P: 15.41 });
+        S4.stepPlant(sy, 0.02, { corePower: 300000, sgDuty: 100000 });
+        function nd2(id) { for (var q = 0; q < sy.nodes.length; q++) if (sy.nodes[q].id === id) return sy.nodes[q]; }
+        var a = W4.T_from_h(nd2('core').h, sy.P), b = W4.T_from_h(nd2('sg_primary').h, sy.P);
+        return Math.abs(G.primaryTavg(sy) - 0.5 * (a + b)) < 1e-9 && Math.abs(a - b) > 1e-6;
+      })(), 'and the two nodes differ, so the mean is distinguishable from either');
+
   var sgM = G.createSG(), M0 = sgM.mass;
   for (var k = 0; k < 500; k++) G.stepSG(sgM, 304.5, 0.02, { feed: 100, steam: 60 });
   ck('mass balance is exact on feed minus steam', sgM.mass - M0, 40 * 500 * 0.02, 1e-6, 'kg');
@@ -174,7 +213,12 @@ var MUTATIONS = [
   ['U derived from the wrong power (breaks the sourced-band check)',
    'return 300000 / (SG.area_m2 * (T_prim - T_sec));', 'return 700000 / (SG.area_m2 * (T_prim - T_sec));'],
   ['the dry floor removed (inventory goes negative)',
-   'if (m_new < 1) m_new = 1;', '']
+   'if (m_new < 1) m_new = 1;', ''],
+  /* The contract itself: a helper that hands back one node instead of the mean is exactly the
+   * defect #482 filed, so it must not survive. */
+  ['primaryTavg returns the SG node instead of the mean (the #482 defect, re-armed)',
+   'return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));',
+   'return W2.T_from_h(cold.h, sys.P);']
 ];
 
 console.log('\n' + '='.repeat(70));

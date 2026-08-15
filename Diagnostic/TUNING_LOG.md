@@ -143,6 +143,33 @@ injection. **The general rule: when two compared quantities are physically coupl
 can check the COUPLING without understanding either one** -- a stronger guard than knowing what
 the fields mean, because it survives someone renaming them.
 
+**AND A THIRD TIME, WHICH INVALIDATED MOST OF THE FIRST A/B: the plant was never at steady
+state.** The harness drove the secondary at a fixed feed = steam = 165 kg/s, open-loop, removing
+~302 MWt against 300 MWt of core power. The plant does not settle -- **it cools monotonically,
+Tavg falling 599 -> 509 degF over an hour**, and `runPWR2` described itself as reaching "a settled
+full-power condition" without ever testing that. **A drifting number is not wrong at any
+particular moment; it is meaningless.** Fixed with a steam demand that takes exactly the heat
+delivered (what the reference's control layer achieves): settles in under 10 min, bit-identical at
+30 and 60. Both sides now run 20 minutes PAST the read point and refuse if anything moved.
+
+**Corrected, everything agrees to 0.5 % except the loop deltaT at -5.3 %** -- the only real
+divergence in Layers 0-5, and a FLOW question (deltaT = Q/(W.cp)) belonging to Layer 3, not the SG.
+**#482 defect 2 is WITHDRAWN** (it was the cooldown read at an arbitrary moment: 596.1 degF at
+30,000 steps, 592.3 at 40,000). **Defect 1 is confirmed and its "open design question" is settled
+by measurement**: held at design pressure, driving on Tavg settles at 580.36 degF against a ruled
+580.1 and a reference 580.3 -- **0.01 %** -- while driving on the SG node lands 607.79. Tavg is
+not one option among three; it is the one that reproduces both. The defect was that the CONTRACT
+WAS UNSTATED, so `stepSG(sg, someTemperature, ...)` took whatever a call site held. Layer 5 now
+exports `primaryTavg(sys)` and the gate pins the SETTLED TEMPERATURE, not the argument -- an
+argument-shaped check passes for a helper that returns the wrong number.
+
+**The trap that outranks all three: I argued defect 2 was independent of defect 1 from the sign,
+and that argument was REPRODUCIBLE ON THE BROKEN HARNESS** -- driving off Tavg really did move
+Tavg the wrong way, 592.3 -> 598.5 degF. A consistent, repeatable, mechanistic-sounding argument
+built on a lying instrument. It did not feel like a guess. **Each of the three was caught only by
+a check that could FAIL -- never by care, and never by the warning written after the previous
+one.** §29.3 warned in prose and §29.4 happened one table below it.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa

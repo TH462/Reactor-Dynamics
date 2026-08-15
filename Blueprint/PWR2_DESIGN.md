@@ -1221,7 +1221,7 @@ underneath it is real and is not settled here: *what temperature drives a LUMPED
 Tavg, the primary outlet, or an LMTD. Whichever is chosen, **`ratedU()` must be derived at the
 same one the call site passes**, and today it is not.
 
-### 29.2 ⚠ OPEN AND UNEXPLAINED — the loop settles 16 °F above the ruled Tavg
+### 29.2 ❌ WITHDRAWN — "the loop settles 16 °F above the ruled Tavg" was an artifact. See §29.5.
 
 Measured Tavg **313.4 °C (596.1 °F)** against the ruled **304.5 °C (580.1 °F)** — 8.9 °C
 (16.0 °F) high. **This is NOT §29.1 in disguise, and the sign is how you can tell**: correcting
@@ -1276,3 +1276,75 @@ Verified by injection: re-pointing the check at `t_sg_c` refuses with *"reports 
 **The general rule this is an instance of: when two compared quantities are physically coupled,
 the harness can check the COUPLING without understanding either one.** That is a much stronger
 guard than knowing what the fields mean, because it survives someone else renaming them.
+
+---
+
+### 29.5 ⛔ AND A THIRD TIME — the plant was never at steady state, so most of §29 was measuring a transient
+
+**The harness drove the secondary at a fixed `feed = steam = 165 kg/s`, open-loop.** That removes
+~302 MWt against 300 MWt of core power, so the plant does not settle — **it cools monotonically,
+Tavg falling 599 → 509 °F over an hour with no equilibrium in sight.** `runPWR2` described itself
+as taking the plant to "a settled full-power condition". It was a claim the function made about
+itself and never tested.
+
+**A drifting number is not wrong at any particular moment. It is meaningless**, and it is worse
+than the first two errors for exactly that reason: there is no correct value to compare it to.
+
+**The fix is a steam demand that takes exactly the heat delivered**, holding the secondary at its
+design pressure — which is what the reference plant's control layer achieves. With it the plant
+settles in under ten minutes and is bit-identical at 30 and 60. **Both sides now assert
+convergence and refuse rather than print**: the run continues 20 minutes past the read point and
+bails if anything moved.
+
+#### What the corrected A/B says
+
+| quantity | reference | PWR2 | delta |
+|---|---|---|---|
+| hot leg | 609.9 °F | 608.5 °F | −1.3 (−0.2 %) |
+| cold leg | 550.5 °F | 552.2 °F | +1.8 (+0.3 %) |
+| **loop ΔT** | 59.4 °F | 56.3 °F | **−3.1 (−5.3 %)** |
+| SG steam pressure | 825.3 psia | 825.0 psia | −0.3 (−0.0 %) |
+| SG saturation temperature | 521.8 °F | 521.8 °F | −0.0 (−0.0 %) |
+| SG duty | 300.0 MWt | 301.4 MWt | +1.4 (+0.5 %) |
+
+**Everything agrees to within 0.5 % except the loop ΔT, which is 5.3 % low. That is the one real
+divergence Layers 0–5 have** — and it is a flow question (ΔT = Q / (W·cp)), so it belongs to
+Layer 3's derived junction flows, not to the SG.
+
+#### §29.1 is confirmed, and its "unsettled design question" is settled by measurement
+
+§29.1 framed the driving temperature as an open choice between Tavg, primary outlet and LMTD.
+**It is not a matter of taste.** Held at design pressure, the settled Tavg is:
+
+| drive temperature | settled Tavg | vs ruled 580.1 °F / reference 580.3 °F |
+|---|---|---|
+| `sg_primary` node — *as the harness called it* | 607.79 °F | **+27.5 °F** |
+| **Tavg** — *what `ratedU()` already derives at* | **580.36 °F** | **+0.06 °F (+0.01 %)** |
+
+Tavg reproduces this plant's ruled temperature **and** the reference engine to 0.01 %. The other
+candidates are simply wrong here. **The defect was never the choice — it was that the contract was
+unstated**, so `stepSG(sg, someTemperature, …)` accepted whatever a call site happened to hold.
+Layer 5 now exports **`primaryTavg(sys)`** and the Layer 5 gate pins the *settled temperature*
+rather than the argument, because an argument-shaped check would pass for a helper returning the
+wrong number.
+
+#### §29.2 is WITHDRAWN
+
+"The loop settles 16 °F above the ruled Tavg" was the cooldown, read at an arbitrary moment. At
+30,000 steps Tavg read 596.1 °F; at 40,000, 592.3 °F. **The number was a function of how long the
+harness ran.** Corrected, hot and cold legs agree to 0.3 %.
+
+**And the sign argument in §29.2 — "fixing §29.1 makes this worse, which is how you can tell they
+are two findings" — was reasoning from the broken harness.** It was even reproducible: on the
+unbalanced secondary, driving off Tavg did move Tavg the wrong way, 592.3 → 598.5 °F. **A
+consistent, repeatable, mechanistic-sounding argument built on an instrument that was lying.**
+That is the part to remember, because it did not feel like a guess.
+
+#### The pattern across §29.3, §29.4 and §29.5
+
+Three errors, all in the measuring instrument, none in the plant: a swapped label, a mislabelled
+field, an unconverged run. **Each was caught only by a check that could FAIL — never by care,
+and never by the warning written after the previous one.** §29.3 warned in prose and §29.4
+happened anyway, one table below it. What actually holds now is three assertions: the hot node
+must be hotter, each secondary must sit on its own saturation line, and both plants must still
+be where they were 20 minutes later.

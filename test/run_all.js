@@ -983,7 +983,7 @@ var BASELINES = {
   // itself down and a depressurising secondary opened the dT until it was ripping heat OUT of the
   // primary. That runaway is real physics for a generator steamed harder than the primary can
   // supply -- it just was not the test being written.
-  'run_pwr2_sg.js':        { code: 0, score: '18passed 0failed 18checks', secs: 90 },
+  'run_pwr2_sg.js':        { code: 0, score: '21passed 0failed 21checks', secs: 90 },
   'run_pwr2_sources.js':   { code: 0, score: '16passed 0failed 16checks', secs: 195 },
   'run_pwr2_loop.js':      { code: 0, score: '26passed 0failed 26checks', secs: 46 },
   'run_pwr2_core.js':      { code: 0, score: '33passed 0failed 33checks', secs: 52 },
