@@ -657,6 +657,34 @@
         relief_kgps: relief_kg,
         heater_frac: (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) || 0
       });
+
+      // A HOLE IN THE LOOP DEPRESSURIZES THE BUBBLE, and leaving this out was a defect —
+      // measured 2026-08-15, found by CA-15's leg and confirmed on a real break.
+      //
+      // The reasoning that dropped it was: the leak is already in `_dmass_dt`, so it arrives
+      // as an outsurge and the bubble grows, so a separate term would double-count. The
+      // first half is true and the conclusion is still wrong, because of what the regions
+      // CANNOT do: steam has no way out of this vessel except the relief valves. So as the
+      // loop empties, the pressurizer's liquid drains away and its steam simply stays,
+      // holding pressure up — and pressure staying up keeps the loop SUBCOOLED, which keeps
+      // `primary_void_fraction` at 0, which keeps the saturated/blowdown branch from ever
+      // firing. Measured on a severity-0.8 large break: core inventory 0.0 %, void 0.0,
+      // pressure PINNED at 1871 psi for fifteen minutes, accumulators never dumping.
+      // Circular, and stable, and wrong.
+      //
+      // The physical version is steam venting DOWN THE SURGE LINE to the hole, which needs
+      // the loop to be a node that can hold steam — #474. Until then this is v1's fitted
+      // stand-in, ported with its constant, and it is declared as a stand-in rather than
+      // dressed up: `K_leak_depressurize` is a gain, and the reason it survives the rebuild
+      // is that the thing it stands for is outside the rebuild's scope.
+      //
+      // Gated to the bubbled branch exactly as v1 gates it — the saturated branch has its
+      // own vent term and the solid branch has no bubble to depressurize.
+      var leak_depress = (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
+      if (leak_depress > 0) {
+        s.pressure_mpa = Math.max(0.1, s.pressure_mpa - leak_depress * dt);
+        reseed(s, cfg, 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3);
+      }
     }
 
     s.pzr_surge_kgps = surge_kgps;

@@ -1171,6 +1171,14 @@
       // outright — which is why the v2 spec RETRACTED its earlier "wall node is
       // second-order, defer it" call. Replace this with a real vessel weight the moment one
       // enters the corpus; the estimate is honest but it is an estimate. [UNVERIFIED]
+      //
+      // KEPT, AND KEPT MARKED UNVERIFIED *(OWNER RULING, 2026-08-15: "Go with your
+      // recommendations" — on the recommendation put in #472; a selection, not verbatim
+      // words)*. The reasoning that was accepted: this is a MASS, which a document can
+      // settle if one ever turns up, where the `heater_authority_mult` it replaced was a
+      // GAIN, which no document could ever settle. Trading an unsourceable knob for a
+      // sourceable estimate is the trade worth making even while the estimate stands
+      // unverified — and the marking is what keeps the difference visible.
       pzr_vessel_mass_kg: 11451,
       pzr_vessel_cp_kj_kgk: 0.5,   // carbon/low-alloy steel at temperature
 

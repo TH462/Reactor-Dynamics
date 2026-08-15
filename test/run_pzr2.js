@@ -16,12 +16,15 @@
  * at every level — and the wetted fraction was 0 for ever. Full heater demand, zero watts
  * delivered, no error, no red anywhere, because nothing was watching. See D3.
  *
- * IT RUNS AT THE REGION LEVEL, DELIBERATELY. These checks drive the exported internals
- * directly rather than stepping a plant: v2 is not on the engine path yet (`stepPressure`
- * and `stepLevel` still delegate to v1), and a model's conservation properties are
- * statements about a state and a step, not about a scenario. The plant-level acceptance
- * rows (MO-*, TD-*, HE-*, SB-*, SA-*, BD-*) are `PWR_BEHAVIOR_CATALOG.md` §13.2 and are
- * measured with `measure_stack --pzr2` once the orchestration lands.
+ * IT RUNS MOSTLY AT THE REGION LEVEL, DELIBERATELY. Most checks drive the exported
+ * internals directly rather than stepping a plant, because a model's conservation
+ * properties are statements about a state and a step, not about a scenario — and a probe
+ * that has to run a scenario to see a mass-closure violation will miss most of them.
+ * Section H is the exception and it exists because one defect was invisible from here: the
+ * regions cannot see that steam has no way OUT of the vessel, since that is a statement
+ * about what the loop does with it. The plant-level acceptance rows (MO-*, TD-*, HE-*,
+ * SB-*, SA-*, BD-*) are `PWR_BEHAVIOR_CATALOG.md` §13.2, measured by hand with
+ * `measure_stack --pzr2`; they have no probe yet and the catalog says so.
  *
  * WHAT IS PINNED vs WHAT IS DERIVED — the HR10 split, stated per check below.
  *   DERIVED  : the check computes both sides and asserts they agree (round trips, the
@@ -579,10 +582,43 @@ ck('G5 tap saturation margin reads subcooled, and reaches zero at Psat(Thot)',
    r3(m1 * 9 / 5) + ' F subcooled at 2235 psia, ' + r3(m2 * 9 / 5) + ' F at Psat(Thot)',
    m1 > 25 && Math.abs(m2) < 0.05, '> 45 F, then ~0');
 
+// ============================================================ H. the step, at the top level
+console.log('\n' + B + 'H. stepPressure — the regime branch, and the hole in the loop' + X);
+
+// H1 THE REGRESSION GUARD FOR A DEFECT THE REGIONS CANNOT SEE. Steam has no way out of this
+// vessel except the relief valves, so as a break drains the loop the pressurizer's liquid
+// leaves and its STEAM STAYS — holding pressure up, which keeps the loop subcooled, which
+// keeps `primary_void_fraction` at 0, which keeps the saturated/blowdown branch from ever
+// firing. Measured on a severity-0.8 large break before the fix: core inventory 0.0 %, void
+// 0.0, pressure PINNED at 1871 psi for fifteen minutes, accumulators never dumping.
+//
+// v1's `K_leak_depressurize` is the stand-in that prevents it and it was dropped from v2 as
+// a double count (the leak IS already in `_dmass_dt`). The first half of that reasoning is
+// right and the conclusion was wrong. The real fix is steam venting down the surge line,
+// which needs the loop to hold steam — #474. This check is what stops the term being
+// "simplified" out again before then.
+function stepOnce(leak) {
+  var s = stateAt(55.0);
+  s.tavg_c = 304.0; s._tavg_fp = 304.0; s.thot_c = 311.7; s.tcold_c = 297.0;
+  s._dTavg_dt = 0; s._dmass_dt = 0; s._mass = 1.0; s.primary_void_fraction = 0;
+  s.leak_flow = leak; s._leak_base = leak > 0 ? leak : 0;
+  s.heater_power_frac = 0; s.spray_flow_frac = 0; s.flow_frac = 1;
+  s.porv_flow = 0; s.safety_flow = 0; s.pressure_mpa = P_OP;
+  s.pzr_level_pct = 55; s.pzr_mass_frac = s.pzr_m_liq_kg / P2.M_rcs_kg;
+  var p0 = s.pressure_mpa;
+  for (var i = 0; i < 100; i++) PZ2.stepPressure(s, CFG, 1.0);
+  return psi(s.pressure_mpa - p0);
+}
+var dry = stepOnce(0), leaking = stepOnce(2e-4);
+ck('H1 a hole in the loop depressurizes the bubble (and no leak does not)',
+   r3(leaking) + ' psi with a leak vs ' + r3(dry) + ' psi without, over 100 s',
+   leaking < -10 && Math.abs(dry) < 5, 'leaking falls > 10 psi, dry stays put');
+
 // ============================================================ tally
 console.log('\n' + D + '──────────────────────────────────────────' + X);
 if (failed === 0) console.log(B + G + 'PRESSURIZER v2 REGIONS: OK' + X + '  ' + checks + ' checks, 0 failed');
 else console.log(B + R + 'PRESSURIZER v2 REGIONS: FAIL' + X + '  ' + checks + ' checks, ' + R + failed + ' failed' + X);
-console.log(D + 'Region level only — v2 is not on the engine path yet. Plant-level acceptance is' + X);
-console.log(D + 'PWR_BEHAVIOR_CATALOG §13.2, measured with measure_stack --pzr2.' + X + '\n');
+console.log(D + 'Mostly region level: conservation is a property of a state and a step, not of a' + X);
+console.log(D + 'scenario. Plant-level acceptance is PWR_BEHAVIOR_CATALOG §13.2, measured by hand' + X);
+console.log(D + 'with measure_stack --pzr2 — those rows have no probe yet (todo, #472 3d).' + X + '\n');
 process.exit(failed === 0 ? 0 : 1);
