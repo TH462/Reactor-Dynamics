@@ -31,6 +31,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The rebuilt pressurizer (#472) computes the plant's pressure and level end to end,
+  behind its flag — and a reactor trip now drops 231 psi and stays there.** Phase 3b:
+  `stepPressure` and `stepLevel` stop delegating to v1. Three regimes replace v1's ~300
+  lines of summed authorities — the saturated/blowdown branch ported nearly verbatim (its
+  subject is *loop* flashing, which is #474's), a solid branch where spray and heater
+  flashing are zero by construction rather than by patch, and the two-region bubbled model
+  that is the actual rebuild. `P_restore_rate_gain` does not exist in v2 and **nothing
+  replaces it**: pressure-holding becomes the automatic channel's job. Measured full stack
+  in a manual lineup against v1's Phase-1 figures — a load cut peaks **+73 psi** and settles
+  12 psi BELOW start (v1: +27 and exactly 0); a trip troughs **−231 psi** and stays down
+  (v1: −54, back to setpoint on 0 % heaters); with the channel engaged the heaters recover a
+  −24 psi dip in ~3 min (v1: flat 2235 psi, heaters peaking at 1.77 %); a manual heater press
+  reaches the PORV in ~40 s instead of 5, and no longer ends in safety injection. Settled
+  level agrees with v1 to **0.01 points**. Shipped plant untouched: the flag is off, v1's
+  code is not edited, `run_all` is 51 runners at baseline.
+- **`test/run_pzr2.js` — the first gate over any of that model, and it found five defects
+  in code that had already been committed as working.** Four commits of two-region
+  thermodynamics had no consumer at all: `stepRegions`, `solveFlash` and `pressureFrom` were
+  called only by their own file, so every number in those commit messages came from a
+  throwaway script. The heater bank computed **zero** authority (two config keys the code
+  read did not exist — both `undefined` silently selects the wrong branch); the flash
+  bracket was sized off delivered energy alone, so a pressure change from relief or an
+  outsurge could flash nothing (60 kg of steam drawn boiled **0.2 kg** of liquid, pressure
+  falling 665 psi where the vessel should boil to hold it up — now 112 psi and 58.8 kg); the
+  step returned a pressure the state did not hold, a two-step zigzag with pressure RISING on
+  alternate steps while steam was drawn out; the inner fixed point ran three passes and
+  stopped 6 % short of its own root (fixed by making the passes cheap — v1's saturation line
+  is a power law, so its inverse is closed-form, and the steam-density solve is the exact
+  inverse of its own table); and v2 seeded the regions from a **published reading** the
+  engine initialises to 0, so every run started with an empty vessel. 38 checks,
+  injection-verified 17 ways — three of which walked through the checks as first written.
 - **The ops dashboard now reads Eastern time on every view, day buckets included**
   *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in eastern
   time.")*. The 2026-08-12 pass converted the point-in-time stamps and deliberately stopped at the

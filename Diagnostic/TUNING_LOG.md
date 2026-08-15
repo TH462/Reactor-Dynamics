@@ -29,6 +29,113 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-14-workbench-a (#472 phase 3b — four commits of thermodynamics with no consumer, and the five defects that hid there)
+
+**Where it started.** Phase 3b had been going for four commits — correlations, geometry,
+two-region flash, `stepRegions` — and **nothing consumed any of it.** `stepRegions`,
+`solveFlash` and `pressureFrom` had exactly one caller: their own file.
+`verify_pzr2_loadlists.js` checks load ORDER and nothing else. Every number in those commit
+messages was measured with a throwaway script and then had no home. The model was green in
+all 50 runners because no runner could see it.
+
+`test/run_pzr2.js` is the home. Writing it found **five defects**, four of them in code that
+had been committed as working:
+
+1. **The heater bank computed zero authority.** `stepRegions` read `heater_elev_top_pct` and
+   `heater_elev_bot_pct`; neither key existed in the config block. Both `undefined` makes
+   `top > bot` false, so the fallback arm evaluates `lvl > undefined` — false at every level
+   — and the wetted fraction was 0 for ever. Full heater demand, zero watts delivered, no
+   error, nothing to see. **This is the shape to remember**: a missing config key does not
+   throw in JavaScript, it silently picks the branch you did not intend.
+2. **The flash bracket could not express its own answer.** It was sized off the delivered
+   energy alone (`span = |E|/h_fg × 1.5`), so at `E = 0` the search interval was 1e-6 kg and
+   the answer was 1e-6 kg by construction. Any pressure change arriving from the MASS phase
+   — relief drawing steam, an outsurge growing the bubble — could therefore flash nothing:
+   30 s of PORV flow drew **60 kg of steam and boiled 0.2 kg of liquid**, pressure falling
+   **665 psi** where the real vessel boils to hold it up. Fixed by bracketing on the sign of
+   the residual: the same 60 kg now falls **112 psi** and flashes **58.8 kg**. A bracket that
+   cannot contain the answer is indistinguishable from a physics claim that the answer is
+   zero.
+3. **The step returned a pressure the state did not hold.** `T_liq` is an INPUT to pressure
+   (it sets `rho_l`, hence the liquid volume, hence the steam volume), so assigning
+   `T_liq = Tsat(P)` after reading `P` leaves the two disagreeing — measured, by 0.18 °C of
+   saturation temperature. The signature was a two-step zigzag with pressure **RISING on
+   alternate steps while steam was being drawn out**: 2216.06, 2216.44, 2204.33 psia.
+   `settle()` iterates to the fixed point.
+4. **The inner fixed point ran a fixed three passes** and stopped **6 % short of its own
+   root** — the energy books closed to 5.9 %, not to zero. It ran three passes because each
+   was expensive, so the fix was to make them cheap: `T_sat_from_P` has a closed form (v1's
+   saturation line is a power law, so its inverse is one too) and `P_from_steam_density` is
+   the exact segment-wise inverse of `rho_g_sat`. Two 50–60 step bisections became direct
+   evaluations, the loops became tolerance-based, and the books now close to **1.7e-6 %**.
+5. **v2 started every run with an empty vessel** (found when it first took the engine path).
+   `ensureRegions` seeded from `pzr_level_pct` — a PUBLISHED READING that step 8 fills in,
+   and which the engine's initial state literally sets to **0** (`pwr_engine.js:1840`). Level
+   read 0.0 at t=0, the plant tripped on pzr level low at six seconds, and CVCS refilled a
+   pressurizer that was supposed to start at 55 %. It seeds from `pzr_mass_frac` now. **An
+   inventory model seeds from an inventory quantity, never from a display of one.**
+
+**What the gate is worth, measured.** 38 checks, **injection-verified 17 ways**, and *three
+of those injections walked straight through the checks as first written*:
+
+- A **corrupted vapour-table node** passed everything. Monotonicity, node-exactness at one
+  node and the rho↔P round trip are satisfied by ANY table, including a wrong one — the
+  round trip especially, since both directions read the same corrupted numbers. What
+  distinguishes a real steam table is **smoothness**: the log-log slope climbs 0.936 → 2.182
+  and never jumps more than 8.7 % between segments, where a mistyped digit jumps 66 %.
+- **Relief rerouted to draw LIQUID** passed. Mass closure still held (the valve removes the
+  same mass either way) and *"more than 30 kg flashed"* was satisfied by the 60 kg the valve
+  itself had taken. The discriminator is the pressure COST: 60 kg off the steam space is
+  112 psi, the same 60 kg off the liquid is 19.
+- A **doubled relief term** in the surge boundary passed, because it is invisible on any
+  state where the valve is shut.
+
+**The corollary is the general one:** a check that looks like it is asserting its subject,
+and passes, is not evidence until the subject has been broken underneath it.
+
+**The surge line became a named boundary.** `surgeDemand` replaces three unnamed code sites
+(the `p_hotleg = pressure_mpa` identity, a one-step-late `_dmass_dt` in, a **write-only**
+`_pzr_surge_flow` out) and adds the tap's local saturation margin that #474 asked for. The
+void ledger — which IS the TMI deception — is **ported, not re-derived**, and `G6` makes that
+a measurement rather than an intention: v2's `voidCreditRate` is run against v1's `stepLevel`
+step for step over a 200-step ramp/leak/collapse trajectory and required to agree **bitwise**.
+Measured 0.00e+0 divergence.
+
+**What the rebuild actually does, measured full stack, manual lineup, seed 4242** (v1's
+Phase-1 numbers in brackets — `Diagnostic/PZR_CHARACTERIZATION.md` Part 2 has the table):
+
+| | v2 | v1 |
+|---|---|---|
+| MO-1 load 100→70 MWe | **+73 psi peak, settles 12 psi BELOW start** | +27 peak, **exactly 0** settled |
+| MO-2 reactor trip | **−231 psi and it STAYS down** | −54, back to setpoint on 0 % heaters |
+| MO-2b same trip, AUTO | dip **−24 psi**, heaters recover it in ~3 min | flat 2235, heaters peak 1.77 % |
+| MO-3 heater step 0→100 % | PORV in **~40 s**, then cycles | PORV in **5 s**, safety injection at t+115 s |
+| MO-4 spray step 0→100 % | −508 psi/10 min, level **RISES** to 67.9 | −969 psi/4 min, level dips to 33.6 |
+
+Settled level on MO-1 agrees with v1 to **0.01 points** — the ported surge law and the new
+geometry agreeing about inventory, which is the strongest single sign the port is faithful.
+
+**One prediction from the spec did not survive contact.** §2.5 reasoned from heated capacity
+alone and wrote heater authority as 2.85 / 2.61 / 2.37 psi/s at 25 / 55 / 90 % level.
+Measured on the converged solve, capacity nearly DOUBLES across the normal band (8.78 →
+16.43 MJ/°C from 20 % to 70 %) while the delivered rate falls **under 6 %** — because a
+shrinking bubble makes each flashed kilogram worth more pressure, and the two effects nearly
+cancel. v1's single constant was accidentally close in the normal band, for a reason it did
+not model. The commit-message figure of 2.61 psi/s is **not reproducible** on this tree; it
+predates all four solver fixes. It is 2.89 psi/s at 55 %.
+
+**Known gap, pinned rather than papered over.** Above ~75 % level the two-region path runs
+away and rails at the top of the steam table — 5.4 psi/s at 75 %, then six-figure nonsense
+that is dt-dependent (1.06e6 at dt 1.0 s, 1.06e7 at 0.1 s: the same jump divided by a smaller
+step). That regime belongs to the SOLID branch, which is built but not yet exercised there.
+`C4c` asserts the rail, so it goes red the day the handover lands — which is when that check
+should be rewritten to assert the handover instead.
+
+**Gates.** Flag OFF: `run_all` **51 runners at baseline**, `run_pwr` 37/37 260 checks — the
+shipped plant is untouched, which is what build-alongside is for. Flag ON: `run_pwr` 28/37,
+19 checks red, **not yet adjudicated** — that is 3d's per-probe pass and it needs 3c's auto
+channel first. `run_pzr2` 38/38.
+
 ## Session log — 2026-08-13-develop-a (the ops dashboard reads Eastern everywhere — and the "obviously safe" DST fix is wrong on exactly the two days that matter)
 
 **Ask:** *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in

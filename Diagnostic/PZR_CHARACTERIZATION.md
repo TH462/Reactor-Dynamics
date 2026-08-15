@@ -184,3 +184,30 @@ baseline**, a ~9× blowup, consistent with probes whose run loops terminate on a
 level threshold and ride to their horizon when that threshold moves. **The behaviour
 battery is effectively un-sweepable today**, which is part of why these constants have
 never been swept. Worth its own issue; not part of this rebuild.
+
+---
+
+# Part 2 — the SAME rows measured on v2 (2026-08-14, phase 3b)
+
+**What changed since Part 1.** v2 is on the engine path behind the flag: `stepPressure`
+and `stepLevel` are the rebuilt model, `P_restore_rate_gain` does not exist in it, and
+nothing replaces it. Same harness, same seed (4242), same manual lineup — the pressure
+channel disengaged and heater/spray demand fixed by command — so the two columns are
+comparable line for line. `--pzr2` stamps the model into the artifact header.
+
+| Row | v1 (Part 1) | **v2** | Reading |
+|---|---|---|---|
+| **MO-1** load 100→70 MWe, manual | +27 psi peak, **0 psi settled** (exactly setpoint); level 55.00 → 65.38 → 61.49 | **+73 psi peak (2308), settles 2223 — 12 psi BELOW start**; level 55.00 → 67.69 → **61.48** | The transient roughly triples and, more importantly, the plant no longer returns to the operator's setpoint on its own. Settled LEVEL agrees with v1 to **0.01 points**, which is the ported surge law and the new geometry agreeing about inventory. |
+| **MO-2** reactor trip, manual | trough 2181 (**−54 psi**), back to 2235 by t+8 min on **0 %** heaters | **trough 2004 psi (−231), and it stays down** (2004 at t+15 min, still drifting) | The row's stated intent — *"a real PWR drops several hundred psi on a trip before the heaters recover it"* — is now several hundred psi. Tavg −32.9 °F and level → 28.0 (the program floor) are unchanged from v1. |
+| **MO-2b** same trip, channel ENGAGED | **2235 psi at all 21 samples**, heaters peak 1.77 % | dip to **2211 (−24 psi)**, recovered to 2235 in **~3 min** by the heaters | The automatic channel is doing the work it is named for, inside `CC-6`'s ~5 min band. In v1 the restore term did it and left the controller nothing to do — which is why every gate agreed with a decorative channel. |
+| **MO-3** manual heater step 0→100 % | 2235 → 2341 **in 5 s** (80 psi/s), PORV lifts, **safety injection at t+115 s** | 2235 → 2345 in **~40 s** (≈2.7 psi/s), then the PORV **cycles** 2296–2349 and level drains 55.6 → ~49 | An operator button press is no longer a self-inflicted casualty. The rate matches the region-level measurement (2.89 psi/s at 55 %) and the outcome is the prototypical one: walk away with the heaters on and the valve eventually lifts. |
+| **MO-4** manual spray step 0→100 % | 2235 → **1266 psi in 4 min** (−969); level **dips** 55 → 33.6 then recovers | 2235 → **1727 psi in 10 min** (−508); level **RISES** 55 → 67.9; plant trips at t+3 min on OTΔT margin | Direction reverses and it is the physical direction: spray is cold water ENTERING the vessel, so it adds liquid. v1's level dip was the level law reacting to pressure, not to the water. |
+
+**Not yet measured on v2**: the TD (deception), HE (heater elevation), SB, SA and BD rows.
+The ledger those TD rows ride is asserted bitwise against v1 at the region level
+(`run_pzr2` G6), but that is not the same as measuring the flagship arc, and it is the
+first thing 3b owes when it resumes.
+
+**The band for MO-1 is still the owner's** and is now measurable: v2 gives **+73 psi peak
+and a −12 psi offset**. Part 1 recommended deferring the band until v2's first
+measurement; this is that measurement.
