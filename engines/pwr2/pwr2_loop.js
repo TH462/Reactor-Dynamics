@@ -98,6 +98,34 @@
    *
    * The ring's flows are the DERIVED junction flows from the previous step, with the driving
    * flow re-imposed at the ring's head. That is what makes node mass balance close. */
+  /* ---- THE COURANT LIMIT, AND IT IS REPORTED RATHER THAN SILENT --------------------------
+   *
+   * Donor-cell transport is only stable while a timestep moves LESS than a node's contents. The
+   * binding node is the smallest one on the ring divided by the loop flow -- for the SLS-100 that
+   * is the cold leg at ~930 kg against 1630 kg/s, i.e. **0.435 s**.
+   *
+   * VIOLATING IT DOES NOT LOOK LIKE AN ERROR. Measured at dt = 4 s, the cold leg's enthalpy
+   * oscillated with growing amplitude -- 749 -> 806 -> -30 -> 8,999 -> -41,000,000 -- while duty
+   * and pressure went on reading entirely sane values, and a 16-hour cooldown probe reported
+   * reaching its target in 36 seconds. **Smooth, plausible, and wrong**, which is the worst thing
+   * a numerical instability can be.
+   *
+   * Every probe in this engine had used dt = 0.02 s and never approached the limit, so nothing
+   * documented it and nothing checked it. It is now a REPORTED condition on the step's result:
+   * this layer does not refuse the step -- a caller may legitimately want a coarse survey and know
+   * what it is buying -- but it can no longer do so unknowingly. Same principle as the envelope
+   * guard: the model says when it has left the regime it is valid in. */
+  function courantLimit(sys) {
+    var mMin = Infinity, W2 = RD.water;
+    for (var i = 0; i < sys.nodes.length; i++) {
+      if (RING.indexOf(sys.nodes[i].id) === -1) continue;
+      var m = sys.nodes[i].V * W2.rho_from_h(sys.nodes[i].h, sys.P);
+      if (m < mMin) mMin = m;
+    }
+    var flow = Math.abs(sys.mdot_loop);
+    return flow > 1e-9 ? mMin / flow : Infinity;
+  }
+
   function stepLoop(sys, dt, drivers) {
     drivers = drivers || {};
     if (drivers.mdot !== undefined) sys.mdot_loop = drivers.mdot;
@@ -135,6 +163,9 @@
      * is REPORTED, because it is the honest measure of how well the sequential derivation
      * closed — not hidden inside a conserved total. */
     r.ringClosure = carry - sys.mdot_loop;
+    /* REPORTED, every step. `courantOK` false means the numbers above are not to be trusted. */
+    r.courantLimit_s = courantLimit(sys);
+    r.courantOK = dt <= r.courantLimit_s;
     r.mdot_loop = sys.mdot_loop;
     r.headFlowUsed = flows[0].mdot;      // what the head junction actually carried THIS step
     r.junctionFlow = {};
@@ -155,6 +186,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.loop = {
     RING: RING, OFF_LOOP: OFF_LOOP,
-    createLoop: createLoop, stepLoop: stepLoop, transitTime: transitTime
+    createLoop: createLoop, stepLoop: stepLoop, transitTime: transitTime,
+    courantLimit: courantLimit
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

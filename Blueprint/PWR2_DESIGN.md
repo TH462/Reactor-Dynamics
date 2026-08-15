@@ -1563,3 +1563,77 @@ the checks cannot rot. Two of those checks failed on their first run against *co
 tripped pump still coasts at rated speed and makes 0.578 MPa at t=0, which is precisely why the
 coastdown is modelled — and now assert the thing that actually distinguishes a trip: that the head
 **decays**.
+
+---
+
+## 32. ⛔ THE CONSERVATION CORE HAS A COURANT LIMIT, AND VIOLATING IT LOOKS LIKE PHYSICS — 2026-08-15
+
+**Donor-cell transport is stable only while a timestep moves LESS than a node's contents.** The
+binding node is the smallest on the ring divided by the loop flow — for the SLS-100, the cold leg
+at ~600 kg against 1630 kg/s:
+
+> **dt ≤ 0.370 s at rated flow.**
+
+**Nothing in this engine documented that, and nothing checked it**, because every probe ever
+written for it used `dt = 0.02 s` and never came close.
+
+### 32.1 What violating it actually looks like
+
+Measured at `dt = 4 s`, the cold leg's enthalpy in kJ/kg over six steps:
+
+```
+749  →  806  →  -30  →  8,999  →  -41,026,526  →  358,286,850
+```
+
+**And nothing else looked wrong.** `duty` read 13,600 kW throughout. Pressure read 425 psig.
+`T_suction` read 350 °F. The RHR cooldown probe that found this reported *"reached the sourced
+140 °F target"* — **in 36 seconds instead of 16 hours** — which reads as a plant cooling too fast,
+not as a solver that has exploded.
+
+That is the worst failure mode a numerical instability can have: **smooth, plausible, and wrong.**
+An oscillation that diverges to 10⁸ in six steps is obvious if you print the node; it is invisible
+if you print the thing you were measuring.
+
+### 32.2 It is REPORTED, not enforced
+
+`stepLoop` now returns `courantLimit_s` and `courantOK` every step. **The layer still takes the
+step** — a caller may legitimately want a coarse survey and know what it is buying — but it can no
+longer do so unknowingly. Same principle as the ledger/reconstruction envelope guard (§31): the
+model says when it has left the regime it is valid in, and does not decide what to do about it.
+
+Gated across the boundary rather than as a band, and against **flow** rather than as a constant:
+a quarter of the flow buys about four times the step, so what binds is the plant, not a number
+somebody wrote down. Layer 3: 37 checks, 15/15 mutations.
+
+### 32.3 Two other findings from the same probe, recorded here because they will recur
+
+**YOU CANNOT COOL DOWN A WATER-SOLID PLANT.** With no compressible volume, an RHR cooldown drove
+pressure 425 → 2596 psig in twelve seconds before the solver gave up. **A cooldown is precisely the
+evolution that needs the pressurizer** — the same dependency CVCS hit from the inventory side
+(§25.3, and the `extraMass` forwarding defect that section's correction records). Any future
+cooldown, heatup or solid-plant probe needs the seat occupied.
+
+**A DESIGN BASIS STATED AS A TIME CAN BE A BOUND RATHER THAN A TIME CONSTANT.** RHR's UA was first
+derived by bisecting for "140 °F after exactly 16 hours". It found a **degenerate** solution — the
+UA whose equilibrium *floor* sits on 140 °F, reaching it in 0.46 h and staying. The degeneracy was
+the physics objecting to the question: with ~1.2 MW of decay heat in a ~22,000 kg plant, a UA fast
+enough to *reach* 140 °F has a time constant near half an hour, and one slow enough to take 16
+hours has a floor near 270 °C and never arrives. **Ginna is no different** — the same arithmetic on
+its 137,000 kg and 6.1 MW gives ~0.7 h. The source's own word is *"**within** 16 hours"*, and the
+requirement that actually sizes the system is that it must **hold** 140 °F against decay heat, per
+train, because the same source says half the system still gets there.
+
+### 32.4 The pattern across §31 and §32
+
+**Seven layer gates were adversarially probed and found fourteen defects — every one of them in a
+gate.** The three defects found since, all in the ENGINE, came from building the next system and
+watching it fail to use the layers beneath it:
+
+| defect | found by | invisible to |
+|---|---|---|
+| `extraMass` never forwarded — every plant rigid | CVCS trying to add 111 kg | 7 gates, the A/B |
+| ledger vs reconstruction diverging at the table ceiling | CVCS inventory probe | 7 gates |
+| the Courant limit | RHR cooldown at `dt = 4 s` | 7 gates, every probe |
+
+**Auditing the gates found gate defects. Building on the layers found engine defects.** Both were
+worth doing; only one of them was going to find these.

@@ -384,6 +384,49 @@ session and which `CLAUDE.md` carries a standing trap about -- in a file whose o
 §31. Rewritten single-line. **Knowing a trap and not tripping it are different things**; the only
 thing that caught it was the gate refusing to parse.
 
+**THE CONSERVATION CORE HAS A COURANT LIMIT AND NOTHING KNEW (D1 §32).** Donor-cell transport is
+stable only while a step moves LESS than a node's contents; the binding node is the smallest on the
+ring over the loop flow -- for the SLS-100 the cold leg, **dt <= 0.370 s at rated flow**. Nothing
+documented it and nothing checked it, because **every probe ever written for this engine used
+dt = 0.02 s and never came close.**
+
+**VIOLATING IT LOOKS LIKE PHYSICS.** At dt = 4 s the cold leg's enthalpy went
+`749 -> 806 -> -30 -> 8,999 -> -41,026,526 -> 358,286,850` kJ/kg -- while `duty` read 13,600 kW
+throughout, pressure read 425 psig, and `T_suction` read 350 degF. The RHR probe that found it
+reported *"reached the sourced 140 degF target"* -- **in 36 seconds instead of 16 hours** -- which
+reads as a plant cooling too fast, not as a solver that has exploded. **Smooth, plausible and
+wrong** is the worst thing an instability can be: an oscillation diverging to 1e8 in six steps is
+obvious if you print the node and invisible if you print the thing you were measuring.
+
+Now REPORTED every step (`courantLimit_s`, `courantOK`) and **not enforced** -- a caller may want a
+coarse survey and know what it is buying, but can no longer do so unknowingly. Same principle as
+the ledger/reconstruction guard. Gated ACROSS the boundary and against FLOW rather than as a
+constant: a quarter of the flow buys ~4x the step, so what binds is the plant. Layer 3: 37 checks,
+15/15 mutations.
+
+**TWO MORE FROM THE SAME PROBE.** **You cannot cool down a water-solid plant** -- with no
+compressible volume an RHR cooldown drove pressure 425 -> 2596 psig in twelve seconds before the
+solver gave up. A cooldown is precisely the evolution that needs the PRESSURIZER, the same
+dependency CVCS hit from the inventory side. And **a design basis stated as a TIME can be a BOUND
+rather than a time constant**: deriving RHR's UA by bisecting for "140 degF after exactly 16 hours"
+found a DEGENERATE solution -- the UA whose equilibrium FLOOR sits on 140 degF, reaching it in
+0.46 h and staying. The degeneracy was the physics objecting to the question: with ~1.2 MW of decay
+heat in ~22,000 kg, a UA fast enough to REACH 140 degF has a time constant near half an hour, and
+one slow enough to take 16 hours has a floor near 270 degC and never arrives. **Ginna is no
+different** (137,000 kg, 6.1 MW -> ~0.7 h). The source's own word is *"WITHIN 16 hours"*, and what
+sizes the system is that it must HOLD 140 degF against decay heat, PER TRAIN.
+
+**THE PATTERN, and it is the session's most useful output.** Seven layer gates were adversarially
+probed and found **fourteen defects -- every one of them in a GATE**. The three ENGINE defects
+found since all came from BUILDING THE NEXT SYSTEM and watching it fail to use the layers beneath:
+`extraMass` never forwarded (CVCS, invisible to 7 gates and the A/B), ledger-vs-reconstruction
+divergence at the table ceiling (CVCS, invisible to 7 gates), the Courant limit (RHR, invisible to
+7 gates and every probe). **Auditing the gates found gate defects; building on the layers found
+engine defects.** Both were worth doing; only one was going to find these.
+
+**RHR is PARKED, not committed** -- engine and gate written, all sourced figures verified, cooldown
+wiring unfinished. Committing a runner with no `BASELINES` entry reddens `run_all` for everyone.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa

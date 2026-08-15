@@ -291,6 +291,50 @@ function runSuite(L, rec, quiet) {
     pSoft = L.stepLoop(sysPz, 0.02, { heats: { core: 5000 } }).P || sysPz.P;
     pHard = L.stepLoop(rigid, 0.02, { heats: { core: 5000 } }).P || rigid.P;
   }
+  /* (f) THE COURANT LIMIT IS REPORTED. Donor-cell transport is stable only while a step moves
+   * less than a node's contents, and the binding node is the smallest on the ring. Nothing in
+   * this engine documented that, because every probe used dt = 0.02 s and never went near it.
+   *
+   * VIOLATING IT DOES NOT LOOK LIKE AN ERROR -- measured at dt = 4 s the cold leg's enthalpy
+   * oscillated 749 -> 806 -> -30 -> 8,999 -> -41,000,000 while duty and pressure read entirely
+   * sane values, and an RHR cooldown probe reported reaching its 16-hour target in 36 seconds.
+   * Smooth, plausible and wrong. Checked ACROSS the boundary, because "a limit exists" is
+   * satisfied by one that is always true. */
+  var sysCo = mk();
+  var lim = L.courantLimit(sysCo);
+  ckT('the Courant limit is a real, plant-sized number', lim > 0.05 && lim < 5,
+      lim.toFixed(3) + ' s -- the smallest ring node divided by the loop flow');
+  ckT('a step INSIDE the limit reports courantOK', L.stepLoop(mk(), lim * 0.5, {}).courantOK === true,
+      'dt = ' + (lim * 0.5).toFixed(3) + ' s');
+  ckT('...and a step OUTSIDE it reports NOT ok  [the boundary, not a band]',
+      L.stepLoop(mk(), lim * 2, {}).courantOK === false,
+      'dt = ' + (lim * 2).toFixed(3) + ' s -- the layer still STEPS; it just stops doing so silently');
+  /* THE OFF-LOOP FILTER IS CORRECT AND CURRENTLY INERT, and that was measured rather than
+   * assumed. Deleting `if (RING.indexOf(...) === -1) continue;` changes nothing today, because
+   * both off-loop nodes -- vessel heads 1.78 m3 and the pressurizer 3.55 m3 -- are LARGER than
+   * the cold leg at 0.99 m3, so the minimum does not move. It carries no mutation for the same
+   * reason NH and the boron floor carry none (D1 §31.1d): a mutation that cannot fail is noise in
+   * a self-test that exists to prove things can. The filter STAYS because it is correct -- an
+   * off-loop node is not on the transport path and its residence time is meaningless there -- not
+   * because anything exercises it. */
+  ckT('the binding node is a RING node, and the off-loop filter is retained though inert',
+      (function () {
+        var mm = Infinity, id = null;
+        sysCo.nodes.forEach(function (n) {
+          if (L.RING.indexOf(n.id) === -1) return;
+          var m = n.V * RD.water.rho_from_h(n.h, sysCo.P);
+          if (m < mm) { mm = m; id = n.id; }
+        });
+        return id !== null && L.OFF_LOOP.indexOf(id) === -1;
+      })(), 'binds on a ring node; both off-loop volumes are larger, so excluding them is inert ' +
+      'TODAY and would not be if one ever shrank');
+
+  ckT('the limit tightens when the loop runs faster', (function () {
+        var slow = L.createLoop({ h: H0, P: 15.41, mdot: 400 });
+        return L.courantLimit(slow) > lim * 2;
+      })(), 'a quarter of the flow buys about four times the step -- so it is the FLOW that binds, ' +
+      'not a constant somebody wrote down');
+
   ckT('...and it actually SOFTENS the loop, so the hook is not cosmetic',
       (sysPz.P - 15.41) < 0.9 * (rigid.P - 15.41) && (rigid.P - 15.41) > 0,
       'dP ' + (sysPz.P - 15.41).toFixed(4) + ' MPa with the bubble against ' +
@@ -331,6 +375,10 @@ var MUTATIONS = [
    'RING.forEach(function (id) { sys.junctionFlow[id] = sys.mdot_loop; });',
    'RING.forEach(function (id) { sys.junctionFlow[id] = 0; });']
 ,
+  ['the Courant limit reported as a constant instead of from the plant',
+   'return flow > 1e-9 ? mMin / flow : Infinity;', 'return 999;'],
+  ['courantOK always true (the instability goes back to being silent)',
+   'r.courantOK = dt <= r.courantLimit_s;', 'r.courantOK = true;'],
   ['extraMass NOT forwarded to Layer 2 (the pressurizer seat is unreachable)',
    'extraMass: opts.extraMass });', '});']];
 
