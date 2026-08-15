@@ -470,3 +470,29 @@ balanced or just differently wrong.
 **Next measurement, and it is NOT a diagnosis**: trace pressure and `leak_flow` against
 containment through a sev-0.5 break on both models. If v2 equalises with containment where
 v1 holds above it, the arrest failure and the precondition failure are one thing.
+
+### The blowdown itself is faithful — CA-15's divergence needs ECCS (2026-08-15)
+
+Traced CA-15's own lineup (`hot_full_power`, sev-0.5 `large_loca`) on both models
+engine-direct, pressure against containment:
+
+| t (s) | v1 P / ctmt (psia) | v2 P / ctmt (psia) | leak_flow v1 / v2 | inventory |
+|---|---|---|---|---|
+| 600 | 21.9 / 16.2 | 21.9 / 16.2 | 1.02e-3 / 1.02e-3 | 63.6 % both |
+| 1800 | 15.4 / 14.9 | 15.4 / 14.9 | 3.00e-4 / 3.00e-4 | 60.5 % both |
+| 4200 | 46.9 / 41.4 | 46.8 / 40.5 | 9.96e-4 / 1.07e-3 | 58.1 % both |
+
+**Identical to three significant figures, and the break never goes dry** — it keeps flowing
+on a small positive Δp all the way out. So the ported blowdown branch is faithful and "v2
+equalises with containment where v1 holds above it" is refuted. Sixth hypothesis, sixth
+refutation.
+
+**What the reproduction was missing**: `Harness` sets `autoM4 = true`, emulating M4's
+mechanical protections so **ECCS actuates**; a raw `PWREngine` has none, so nothing injects
+and nothing overfills. CA-15's 120 % clip is an ECCS overfill, which this trace could not
+produce.
+
+**So the divergence is downstream of the blowdown, in what happens once injection starts** —
+and the next trace must run under the same M4 emulation the probe uses, or it will keep
+agreeing with itself. That is the third time on this cluster that a LAYER difference, not a
+physics difference, explained a disagreement.
