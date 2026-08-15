@@ -211,3 +211,42 @@ first thing 3b owes when it resumes.
 **The band for MO-1 is still the owner's** and is now measurable: v2 gives **+73 psi peak
 and a −12 psi offset**. Part 1 recommended deferring the band until v2's first
 measurement; this is that measurement.
+
+## Part 2b — what the flag-on battery says (2026-08-15)
+
+Three probes driven on v2 with `RD_PZR2=1`, adjudicated one at a time (HR10) rather than
+batched as "the rebuild moved things":
+
+**`CA-20` blowdown — WAS A REAL DEFECT, now fixed.** Full-size break floored at 12.89 MPa
+against v1's < 1.0. Root cause: steam has no way out of the vessel except the relief
+valves, so a draining loop left the pressurizer's steam behind holding pressure up, which
+kept the loop subcooled, which kept `primary_void_fraction` at 0, which kept the blowdown
+branch from firing. `K_leak_depressurize` ported back into the bubbled branch. The same
+break now blows down to 50 psi with ECCS reflooding to 73.8 %.
+
+**`CA-15` solid arrest — A REAL DEFECT, OPEN.** On v2 inventory walks to the **120.00 %
+`mass_max` clip** instead of arresting on the solid line at 109.3 %, which is #361's
+signature by another road. Two causes, both mine and both stated so the next session does
+not re-derive them:
+
+1. **`bulk_mod_eff_mpa` was never calibrated.** Its comment claims it reproduces v1's arrest;
+   that claim was written from the intent, not from a measurement, and it is wrong. v1's
+   stiffness is `solid_bulk_mpa / level_per_mass` per unit of LEVEL; v2 needs it per unit of
+   vessel VOLUME FRACTION, and the conversion was assumed rather than solved.
+2. **v2's solid predicate does not fire where v1's does.** v1 enters on `pzrNodeLevel >= 100`;
+   v2 enters on `V_liq >= V_pzr_m3`. On a state built for v1 (`levelRaw` 110.3) v2 can still
+   be in the bubbled branch, which is why the third leg sees a leak-depressurization term
+   that the solid branch would have zeroed. **The seam, not the stiffness, is the first
+   thing to fix** — an uncalibrated gain in a branch you are not entering explains nothing.
+
+This is the same gap `run_pzr2` C4c pins from the other side (above ~75 % level the bubbled
+path runs away and rails at the steam table's top). One defect, two symptoms, and the fix is
+the handover.
+
+**`CA-18` deception ledger — REFIT, not a physics change.** Its algebra legs read
+`undefined` on v2 because the probe drives `stepLevel` and the ledger moved to the surge
+BOUNDARY (`surgeDemand`), which `stepPressure` calls. The algebra itself is asserted bitwise
+against v1 by `run_pzr2` G6 (0.00e+0 divergence over a 200-step ramp/leak/collapse), and the
+flagship arc passes on v2 unchanged — `run_pwr flagship_tmi` is **9/9 with `RD_PZR2=1`**,
+including the deception episode (level lifts to 100 % while inventory falls to 31 %). The
+probe asserts a v1 CALL SITE, so it is 3d refit territory.
