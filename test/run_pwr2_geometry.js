@@ -168,6 +168,42 @@ function runSuite(G, rec, quiet) {
         var e = G.LOOP[k] || G.LEDGER[k];
         return e.kind !== '[sourced]' || /NUREG|EPRI|WTSM|CASL|ML\d/.test(e.note);
       }));
+
+  /* ---- 6. THE TABLES MUST CORRESPOND  [what an adversarial pass found this gate blind to] ----
+   * The thirteen curated mutations all edit a NUMBER -- a volume, an elevation, a fraction, a
+   * provenance tag -- because Layer 1 is a data file and that is what data files get wrong. Four
+   * more were written against the file's STRUCTURE and three survived. Same shape as Layers 2, 3
+   * and 4 (D1 §31): what the curated set is aimed at is what it defends.
+   *
+   * The third is the one that matters. LOOP (segment lengths) and NODES (volumes) are two tables
+   * that must describe the SAME loop, and Layer 4 multiplies them together to get the momentum
+   * inertia. Dropping a segment from LOOP silently reduces that inertia and NOTHING noticed --
+   * not here, and not in Layer 4, which computes SUM(L/A) from whatever keys it happens to find.
+   * Two tables that must agree, with nothing asserting they do. */
+  if (!quiet) console.log('\nCORRESPONDENCE  [two tables that must describe the same loop]');
+  var ringIds = ['downcomer', 'lower_plenum', 'core', 'upper_plenum', 'hot_leg',
+                 'sg_primary', 'crossover', 'rcp', 'cold_leg'];
+  var stray = Object.keys(G.LOOP).filter(function (k) { return ringIds.indexOf(k) === -1; });
+  var absent = ringIds.filter(function (id) {
+    return !G.NODES.some(function (n) { return n.id === id; }); });
+  ckT('every LOOP segment names a ring node, and none is missing',
+      stray.length === 0 && absent.length === 0,
+      Object.keys(G.LOOP).length + ' segments against ' + ringIds.length + ' ring nodes' +
+      (absent.length ? '; ABSENT ' + absent.join(', ') : '') +
+      (stray.length ? '; STRAY ' + stray.join(', ') : ''));
+  ckT('...and every LOOP segment carries a positive length',
+      Object.keys(G.LOOP).every(function (k) { return G.LOOP[k].L > 0; }),
+      'shortest ' + Math.min.apply(null, Object.keys(G.LOOP).map(function (k) {
+        return G.LOOP[k].L; })).toFixed(2) + ' m -- Layer 4 divides by these');
+
+  /* A DECLARED gap silently set to zero stops being a declaration. Layer 4's gate bands this;
+   * Layer 1 should own the number it declares rather than rely on a consumer to notice. */
+  ck('the omitted-inertia fraction is the declared 5.3 %', G.LOOP_INERTIA_OMITTED, 0.053, 1e-9, '');
+  ckT('the form-loss map is exactly the three declared families',
+      Object.keys(G.FORM_LOSS_K).length === 3 &&
+      Object.keys(G.FORM_LOSS_K).every(function (k) { return G.FORM_LOSS_K[k].K > 0; }),
+      Object.keys(G.FORM_LOSS_K).join(', ') + ' -- all [recalled] and ruled to stand, so a ' +
+      'FOURTH appearing unannounced is a change of basis, not a tweak');
 }
 
 console.log('\nPWR2 Layer 1 -- SLS-100 geometry');
@@ -190,7 +226,14 @@ var MUTATIONS = [
   ['a [tune] constant introduced', "kind: '[derived]', note: 'Almaraz 3.18 m3", "kind: '[tune]', note: 'Almaraz 3.18 m3"],
   ['a SECOND [recalled] family appears', "kind: '[derived]', note: 'Almaraz 3.60 m3", "kind: '[recalled]', note: 'Almaraz 3.60 m3"],
   ['Almaraz vessel fractions edited away from the source', "downcomer: 0.198", "downcomer: 0.150"],
-  ['core volume detached from lattice geometry', "{ id: 'core',        V: ft3(72.8)", "{ id: 'core',        V: ft3(85.0)"]
+  ['core volume detached from lattice geometry', "{ id: 'core',        V: ft3(72.8)", "{ id: 'core',        V: ft3(85.0)"],
+  /* The three an adversarial STRUCTURE pass found. */
+  ['a loop segment dropped from the LOOP map (Layer 4 silently loses inertia)',
+   'crossover:', 'crossover_GONE:'],
+  ['the declared omitted-inertia fraction silently zeroed',
+   'var LOOP_INERTIA_OMITTED = 0.053;', 'var LOOP_INERTIA_OMITTED = 0;'],
+  ['a FOURTH form-loss family appears unannounced',
+   'var FORM_LOSS_K = {', "var FORM_LOSS_K = { extra_bend: { K: 0.5, kind: '[recalled]', note: 'x' },"]
 ];
 
 console.log('\n' + '='.repeat(70));

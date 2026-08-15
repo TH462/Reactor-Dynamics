@@ -220,9 +220,33 @@ function runSuite(C, rec, quiet) {
   for (var k8 = 0; k8 < 100; k8++) C.step(sysE, 0.02, { flows: [{ from: 'a', to: 'b', mdot: 50 }], heats: { a: 500 } });
   ck('closed system with a compressible volume still conserves mass',
      (C.totalMass(sysE) - M0e) / M0e, 0, 1e-4, '(rel)');
+  /* THIS CHECK IS NAMED AFTER A COMPARISON AND DID NOT MAKE ONE. It asserted
+   * `0 < dP < 3.0 MPa`, a band wide enough to accept the RIGID case too -- so dropping
+   * `extraMass` at construction passed it, and an adversarial mutation pass found exactly that.
+   * `extraMass` is the seat the pressurizer plugs into (D1 §25.3), so a gate blind to its
+   * absence is blind to the pressurizer never connecting.
+   *
+   * It now builds the rigid twin and compares, which is what the name always claimed. */
+  var sysR = C.createSystem({
+    nodes: [{ id: 'a', V: 2.0, h: 1250 }, { id: 'b', V: 2.0, h: 1250 }], P: 15.41
+  });
+  for (var k9 = 0; k9 < 100; k9++) C.step(sysR, 0.02, { flows: [{ from: 'a', to: 'b', mdot: 50 }], heats: { a: 500 } });
   ckT('the compressible volume made pressure softer than a rigid one',
-      sysE.P > 15.41 && (sysE.P - 15.41) < 3.0,
-      'dP ' + (sysE.P - 15.41).toFixed(4) + ' MPa over 2 s of heating');
+      sysE.P > 15.41 && (sysE.P - 15.41) < 0.5 * (sysR.P - 15.41),
+      'dP ' + (sysE.P - 15.41).toFixed(4) + ' MPa with the bubble vs ' +
+      (sysR.P - 15.41).toFixed(4) + ' rigid -- a COMPARISON, not a band');
+  ckT('...and the caller-supplied extraMass is the one actually used',
+      Math.abs(sysE.extraMass(16.41) - 408) < 1e-9,
+      'extraMass(16.41 MPa) = ' + sysE.extraMass(16.41).toFixed(1) +
+      ' kg -- dropping it at construction would leave null here');
+
+  /* THE SOLVER'S ITERATION CAP MUST BE THE CALLER'S. `iterCap` is how a probe trades accuracy for
+   * speed, and how the envelope guard gets exercised; a construction that ignores it silently
+   * pins every plant at 8 while appearing to accept the argument. Found by the same pass. */
+  var sysI = C.createSystem({ nodes: [{ id: 'a', V: 2.0, h: 1250 }], P: 15.41, iterCap: 3 });
+  ck('a caller-supplied iterCap reaches the solver', sysI.iterCap, 3, 0, 'iterations');
+  ck('...and omitting it gives the documented default of 8',
+     C.createSystem({ nodes: [{ id: 'a', V: 2.0, h: 1250 }], P: 15.41 }).iterCap, 8, 0, 'iterations');
 }
 
 console.log('\nPWR2 Layer 2 -- node/junction conservation core');
@@ -255,7 +279,14 @@ var MUTATIONS = [
    'dH[A] += s.mdot * (s.h - sys.nodes[A].h);', 'dH[A] += 0;'],
   ['junction flow reported as a modelled value, not a mass difference',
    'var rate = (m_new - m_n[i]) / dt;', 'var rate = 0;']
-];
+,
+  /* The two an adversarial CONSTRUCTION pass found. Layers 3 and 4 had six more of the same
+   * shape (D1 §31): every blind spot in this engine so far has been an initial condition, an
+   * alias, or a dropped option -- never the physics the curated mutations were aimed at. */
+  ['the extraMass hook silently dropped at construction (the pressurizer never connects)',
+   'extraMass: spec.extraMass || null,', 'extraMass: null,'],
+  ['a caller-supplied iterCap ignored (every plant pinned at the default)',
+   'iterCap: spec.iterCap === undefined ? 8 : spec.iterCap,', 'iterCap: 8,']];
 
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');

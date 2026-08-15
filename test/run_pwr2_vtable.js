@@ -83,6 +83,22 @@ function runSuite(T, rec, quiet) {
       stepsPerSec.toFixed(0) + ' steps/s from property cost alone, i.e. 12 plant-hours in ' +
       (2160000 / stepsPerSec).toFixed(1) + ' s against a 35 s budget');
   }
+  /* MEMORY IS A MEASURED SIZE, NOT A GENEROUS ONE.
+   * `NH` sat at 2000 with a comment claiming it was "where the accuracy lives". An adversarial
+   * mutation cut it to 200 and reddened NOTHING -- and the measurement that followed showed
+   * accuracy is FLAT from 100 to 4000 in every region, because it is carried by the correction
+   * passes, not the grid. So the surviving mutation was right and the comment was wrong.
+   *
+   * The honest close is not a check pinning resolution for accuracy's sake -- there is nothing
+   * there to protect. It is a check on the thing that DOES change, so a future inflation has to
+   * justify itself in the same terms. This engine loads in a browser; 5x the array for no
+   * measured gain is a cost with no counterpart. */
+  ckT('the table is held to its MEASURED size, not a generous one',
+      T.footprintBytes() < 260 * 1024,
+      (T.footprintBytes() / 1024).toFixed(1) + ' kB -- NH=400 on the measured asymptote; at ' +
+      'NH=2000 this reads ' + ((T.footprintBytes() + 1600 * 6 * 8) / 1024).toFixed(1) +
+      ' kB for a 4th-decimal accuracy change');
+
   ckT('property cost is no longer the binding constraint it was',
       nsDirect / ns > 100 && ns < 5000,
       'at ' + ns.toFixed(0) + ' ns/call the 31,500 ns direct path is gone as the bottleneck');
@@ -227,7 +243,13 @@ var MUTATIONS = [
   ['the SECOND correction pass dropped (one-pass form, the 12 % near-miss)',
    '    hs = h - lin(KCMP_H, ix) * (P - lin(PSAT_H, ix));\n    ix = hIndex(hs);\n    var rs =',
    '    var rs =']
-];
+,
+  /* An adversarial pass shrank NH 2000 -> 200 and NOTHING reddened, because accuracy does not
+   * live there (see the engine's own table). The honest close is therefore NOT a check pinning
+   * the resolution for accuracy's sake -- it is a check on the thing that DOES change, memory,
+   * so a future inflation back to 2000 has to justify itself. */
+  ['the subcooled table silently inflated 5x in memory',
+   'var NH = 400;', 'var NH = 2000;']];
 
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');

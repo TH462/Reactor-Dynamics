@@ -1449,3 +1449,94 @@ session (§29 records three others: 300 MW into a closed loop with no sink, a pr
 below the design point, a duty reversal probed above the secondary saturation). The pattern is
 consistent enough to state as a rule: **when a check fails, measure the FIXTURE before you believe
 the subject** — and a zero that is exactly zero is a structural tell, not a small number.
+
+---
+
+## 31. MUTATION COUNT IS NOT COVERAGE — measured, and both layers probed had blind spots
+
+§28.3's retraction left one honest question behind: *all 92 mutations pass, but is 92 enough?*
+Layer 3 had 8 where Layer 0 had 26, and **the fact that all 8 pass says nothing about the 9th.**
+That was written down as unmeasured. It has now been measured, by the only method that can answer
+it: **write mutations the gate has never seen and count the survivors.**
+
+| layer | curated | adversarial probes written | **survived (blind spots)** |
+|---|---|---|---|
+| 1 geometry | 13 | 4 | **3** |
+| 2 core | 12 | 6 | **2** |
+| 3 loop | 8 | 8 | **4** |
+| 4 sources | 9 | 6 | **2** |
+| 5 SG | 12 | 5 | **2** |
+| 0b table | 12 | 4 | **1** |
+
+**Fourteen survivors across six layers probed here, plus 11 of 19 on Layer 0 by an outside
+reviewer before this session (§31.1c). Thirteen were real defects. The fourteenth was not, and it
+is the most useful of them. EVERY layer probed had them** — including the conservation
+core with twelve curated mutations and the geometry table with thirteen. **The count was never the
+thing.**
+
+### 31.1 Every single blind spot was CONSTRUCTION or STRUCTURE, never physics
+
+| layer | what survived | why it matters |
+|---|---|---|
+| 3 | `sys.ring = RING` aliases the module constant | one plant mutating its ring re-plumbs every plant made after it — in the same process, which is how these gates run |
+| 3 | the shipped default loop flow (1630 kg/s) | what every probe silently inherits when it does not say otherwise |
+| 3 | the shipped default enthalpy (1250 kJ/kg) | same |
+| 3 | junction flows seeded at **zero** | **heals within one step**, so every settled-state check is blind; it corrupts only the first step, where 8 of 9 junctions carry nothing |
+| 4 | `opts.pumpTripped` ignored at construction | every loss-of-flow and blackout probe would silently start with a *running* pump — a whole casualty family testing nothing |
+| 4 | caller options dropped: `createLoop(opts)` → `createLoop({})` | **the worst defect this layer can have**: everything still runs, and every initial condition is a lie |
+| 2 | **`extraMass` dropped at construction** | this is **the seat the pressurizer plugs into** (§25.3) — a gate blind to its absence is blind to the pressurizer never connecting |
+| 2 | caller `iterCap` ignored | every plant silently pinned at 8 while appearing to accept the argument |
+| 1 | **a segment dropped from the `LOOP` map** | Layer 4 computes SUM(L/A) from whatever keys it finds, so the momentum inertia silently shrinks — **two tables that must describe the same loop, with nothing asserting they do** |
+| 1 | the declared omitted-inertia fraction zeroed | a declaration set to zero stops being a declaration |
+| 1 | a fourth form-loss family appearing unannounced | a change of basis wearing the shape of a tweak |
+| 5 | caller `mass` ignored | **how a boil-dry is staged** — every such probe would run a healthy generator while reporting a sick one |
+| 5 | caller `U` ignored | **how fouled or plugged tubes are staged** — same |
+
+**The curated mutations in both layers attack the STEP** — ring order, junction derivation, closure,
+buoyancy, coastdown, friction, momentum. That is what those layers are *interesting for*.
+
+> **A mutation set written from "what is this layer FOR?" inherits that question's blind spot.**
+> The step is where the physics is; **construction is where the physics gets its inputs**, and
+> nothing was defending it because nothing was thinking about it.
+
+This is a sharper form of the trap `CLAUDE.md` already carries about de-energization healing itself
+on the next button press. The zero-seed is the same shape: **a wrong initial condition that the next
+update repairs is not benign — it is unobservable.**
+
+### 31.1b Layer 5's two are the ones with teeth, and they are not incidental
+
+`opts.mass` and `opts.U` are **exactly the knobs a casualty is staged with** — a degraded inventory
+is how you set up a boil-dry, a reduced U is how you set up fouled or plugged tubes. A constructor
+that silently ignores them makes every such probe **run a healthy generator while reporting that it
+staged a sick one.** Identical in shape to Layer 4's ignored `pumpTripped`, which would have started
+every loss-of-flow and blackout probe with a running pump.
+
+**Three of the thirteen blind spots would each have silently disarmed a whole casualty family.**
+None of them touches the physics; all of them decide whether the physics is ever asked the question.
+
+### 31.1a The Layer 2 case is the sharpest, because the check was NAMED after the missing comparison
+
+`extraMass` had a check already: *"the compressible volume made pressure softer than a rigid one."*
+It asserted `0 < dP < 3.0 MPa` — **a band wide enough to accept the rigid case too.** So dropping
+the hook at construction passed it. The check was named after a comparison it never made.
+
+Rebuilt to construct the rigid twin and compare, it reads **0.0409 MPa with the bubble against
+0.1292 rigid** — and now cannot pass without the hook. **A check whose name describes a comparison
+should contain a subtraction**; if it contains a band instead, the band is doing the work and the
+name is describing something else.
+
+### 31.2 What is NOT claimed
+
+**Five of seven layers were probed. The two that were not — Layer 0's water library and the property
+table — have no constructor at all: they are pure functions of (h, P), so the construction pattern
+has nothing to bite on. That is an argument, not a measurement.** All five with constructors had
+blind spots, so the reasonable expectation is that anything else with one does too — and **that is an expectation, not a
+measurement.** It is written here as such rather than as a finding, because the immediately
+preceding section of this document is a retraction of a coverage claim made without running
+anything.
+
+The six found are closed, each with the check that catches it **and** the mutation that found it, so
+the checks cannot rot. Two of those checks failed on their first run against *correct* physics — a
+tripped pump still coasts at rated speed and makes 0.578 MPa at t=0, which is precisely why the
+coastdown is modelled — and now assert the thing that actually distinguishes a trip: that the head
+**decays**.

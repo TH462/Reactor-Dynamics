@@ -152,6 +152,52 @@ function runSuite(S, rec, quiet) {
   ckT('pump head and friction are the same order at rated',
       rr.pumpHead > 0.1 && Math.abs(rr.pumpHead - rr.frictionDrop) / rr.pumpHead < 0.5,
       'head ' + rr.pumpHead.toFixed(4) + ' MPa vs friction ' + rr.frictionDrop.toFixed(4));
+
+  /* ---- CONSTRUCTION  [what an adversarial mutation pass found this gate could not see] -------
+   * The nine curated mutations above all attack the STEP -- buoyancy, coastdown, pump work,
+   * friction, momentum -- because that is what Layer 4 is interesting for. Six more were written
+   * against CONSTRUCTION and two of them survived. Layer 3's gate had exactly the same shape:
+   * four blind spots, every one of them an initial condition or an alias.
+   *
+   * THE GENERAL LESSON, and it is about how mutation sets get written rather than about pumps:
+   * a mutation set derived from "what is this layer FOR?" inherits that question's blind spot.
+   * Nothing here was about what the plant is HANDED before the first step, so nothing defended
+   * it. The step is where the physics is; construction is where the physics gets its inputs. */
+  if (!quiet) console.log('\nCONSTRUCTION  [the blind spots the adversarial pass found]');
+
+  /* (a) A PLANT MUST BE CONSTRUCTIBLE WITH ITS PUMP ALREADY TRIPPED. Every station-blackout and
+   * loss-of-flow probe starts there, and `!!opts.pumpTripped` collapsing to `false` would make
+   * all of them silently start with a running pump -- a whole casualty family testing nothing. */
+  var trip = S.createPlant({ pumpTripped: true });
+  ckT('a plant can be built with its pump ALREADY tripped', trip.pumpTripped === true,
+      'pumpTripped=' + trip.pumpTripped + ' -- loss-of-flow probes start here');
+  /* AND THE FLAG MUST REACH THE HYDRAULICS -- but NOT as "head is zero". A tripped pump is one
+   * that has lost POWER, not one that has stopped: at t=0 it is still turning at rated speed and
+   * still making 0.578 MPa, which is the whole reason the coastdown is modelled. The first
+   * version of this check asserted zero head and failed against correct physics. What separates
+   * a trip from a running pump is that the head DECAYS -- so that is what is checked. */
+  var run0 = S.createPlant({}), trip0 = S.createPlant({ pumpTripped: true });
+  var hRun = 0, hTrip = 0;
+  for (var q = 0; q < 3000; q++) {
+    hRun  = S.stepPlant(run0,  0.02, { corePower: 300000, sgDuty: 300000 }).pumpHead;
+    hTrip = S.stepPlant(trip0, 0.02, { corePower: 300000, sgDuty: 300000 }).pumpHead;
+  }
+  ckT('...and after 60 s the tripped pump has COASTED DOWN while the running one has not',
+      hTrip < 0.5 * hRun && hRun > 0.1,
+      'tripped ' + hTrip.toFixed(4) + ' MPa vs running ' + hRun.toFixed(4) +
+      ' -- so the flag reaches the hydraulics and is not cosmetic');
+
+  /* (b) CALLER OPTIONS MUST REACH LAYER 3. `LOOP.createLoop(opts)` degrading to `createLoop({})`
+   * is a one-word edit that silently discards h, P, mdot and includeOffLoop -- every probe and
+   * the A/B harness would quietly get defaults while appearing to specify a condition. It is
+   * the worst kind of defect this layer can have: everything still runs, and every initial
+   * condition is a lie. */
+  var opt = S.createPlant({ h: 1180, P: 12.5, includeOffLoop: false });
+  ck('caller enthalpy reaches the nodes', opt.nodes[0].h, 1180, 1e-9, 'kJ/kg');
+  ck('caller pressure reaches the system', opt.P, 12.5, 1e-9, 'MPa');
+  var nOff = S.createPlant({}).nodes.length;
+  ckT('caller includeOffLoop reaches the ledger', opt.nodes.length < nOff,
+      opt.nodes.length + ' nodes with off-loop excluded, against ' + nOff + ' with it included');
 }
 
 console.log('\nPWR2 Layer 4 -- located sources and integrated loop momentum');
@@ -177,7 +223,12 @@ var MUTATIONS = [
   ['friction dropped (flow runs away)',
    'var net = dPp - dPf + dPb;', 'var net = dPp + dPb;'],
   ['momentum not integrated at all (flow frozen)',
-   'sys.mdot_loop = sys.mdot_loop + dt * net * 1e6 / sys.LA;', '']
+   'sys.mdot_loop = sys.mdot_loop + dt * net * 1e6 / sys.LA;', ''],
+  /* The two the adversarial pass found. Kept so the checks that closed them cannot rot. */
+  ['opts.pumpTripped ignored at construction (every loss-of-flow probe starts running)',
+   'sys.pumpTripped = !!opts.pumpTripped;', 'sys.pumpTripped = false;'],
+  ['caller options DROPPED when building the loop (every initial condition is a lie)',
+   'var sys = LOOP.createLoop(opts);', 'var sys = LOOP.createLoop({});']
 ];
 
 console.log('\n' + '='.repeat(70));

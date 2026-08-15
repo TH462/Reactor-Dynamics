@@ -226,6 +226,48 @@ function runSuite(L, rec, quiet) {
       'ring ' + Vring.toFixed(2) + ' m3 vs plant ' + Vall.toFixed(2) + ' m3');
   ckT('loop transit is REPORTED, never banded', isFinite(tt) && tt > 0,
       tt.toFixed(2) + ' s -- NO BAND ASSERTED; geometry is declared provisional (D1 §24)');
+
+  /* ---- 6. WHAT THE FIRST EIGHT MUTATIONS COULD NOT SEE --------------------------------
+   * This section exists because the question "is 8 mutations enough?" was ASKED and then
+   * MEASURED rather than assumed. Eight adversarial mutations were written against this gate;
+   * four of them survived. All four are closed here, and each keeps the mutation that found it.
+   *
+   * The finding worth carrying: EVERY BLIND SPOT WAS AN INITIAL CONDITION OR AN ALIAS -- never
+   * the physics. The curated eight all attacked the STEP (ring order, derivation, closure,
+   * transit), because that is what the layer is interesting for. Nothing attacked what the plant
+   * is HANDED before the first step, so nothing defended it. A mutation set written from "what
+   * is this layer about?" inherits that question's blind spot. */
+  if (!quiet) console.log('\nCONSTRUCTION  [the four blind spots the adversarial pass found]');
+
+  /* (a) THE ALIAS. `sys.ring = RING` instead of `RING.slice()` hands every plant a reference to
+   * the module constant, so one plant mutating its ring silently re-plumbs every plant made
+   * after it -- including in the same process, which is exactly how these gates run. */
+  var sysA = mk(), sysB = mk();
+  sysA.ring.push('BOGUS');
+  ckT('each plant owns its ring -- mutating one does not re-plumb the next',
+      sysB.ring.indexOf('BOGUS') === -1 && L.RING.indexOf('BOGUS') === -1,
+      'pushed a node onto plant A; plant B has ' + sysB.ring.length + ' and the module has ' +
+      L.RING.length);
+
+  /* (b,c) THE SHIPPED DEFAULTS. A caller that omits mdot/h gets these, and nothing pinned them.
+   * 1630 kg/s is the rated loop flow and 1250 kJ/kg is the operating enthalpy -- both are the
+   * numbers a probe silently inherits when it does not say otherwise, which is most probes. */
+  var sysD = L.createLoop({});
+  ck('default loop flow is the rated 1630 kg/s', sysD.mdot_loop, 1630, 1e-9, 'kg/s');
+  ck('default node enthalpy is 1250 kJ/kg', sysD.nodes[0].h, 1250, 1e-9, 'kJ/kg');
+
+  /* (d) THE SEED, and it is the subtle one. Junction flows are seeded at the loop flow and
+   * DERIVED from the first step onward -- so a seed of zero HEALS ITSELF within one step and is
+   * invisible to every settled-state check in this file. What it corrupts is the FIRST step,
+   * where eight of nine junctions would carry nothing while the head carried full flow. The
+   * check therefore reads the ring BEFORE stepping, which is the only place the seed exists.
+   *
+   * Same family as the de-energization traps in CLAUDE.md: a wrong initial condition that the
+   * next update repairs is not benign, it is unobservable. */
+  var sysS = mk(), seeded = 0;
+  L.RING.forEach(function (id) { if (sysS.junctionFlow[id] === sysS.mdot_loop) seeded++; });
+  ck('every junction is seeded at the loop flow BEFORE the first step',
+     seeded, L.RING.length, 0, 'junctions');
 }
 
 console.log('\nPWR2 Layer 3 -- the SLS-100 loop');
@@ -249,7 +291,18 @@ var MUTATIONS = [
   ['off-loop volumes dropped from the ledger',
    'if (opts.includeOffLoop !== false) ids = ids.concat(OFF_LOOP);', ''],
   ['transit time computed on the whole plant, not the ring',
-   'if (RING.indexOf(n.id) !== -1) V += n.V;', 'V += n.V;']
+   'if (RING.indexOf(n.id) !== -1) V += n.V;', 'V += n.V;'],
+  /* The four the adversarial pass found. Each is kept so the check that closed it cannot rot. */
+  ['sys.ring ALIASES the module constant instead of copying it',
+   'sys.ring = RING.slice();', 'sys.ring = RING;'],
+  ['the shipped default loop flow is changed',
+   'sys.mdot_loop = opts.mdot === undefined ? 1630 : opts.mdot;',
+   'sys.mdot_loop = opts.mdot === undefined ? 1000 : opts.mdot;'],
+  ['the shipped default node enthalpy is changed',
+   'h: h === undefined ? 1250 : h };', 'h: h === undefined ? 1400 : h };'],
+  ['junction flows seeded at ZERO (heals in one step, corrupts the first)',
+   'RING.forEach(function (id) { sys.junctionFlow[id] = sys.mdot_loop; });',
+   'RING.forEach(function (id) { sys.junctionFlow[id] = 0; });']
 ];
 
 console.log('\n' + '='.repeat(70));

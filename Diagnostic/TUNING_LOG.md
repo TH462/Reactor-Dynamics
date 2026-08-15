@@ -211,6 +211,82 @@ because value-only checks had burned this session twice, and named Layer 4 -- wh
 returned exactly 0.0 from a sign error -- as uncovered. Every clause true except the premise.
 **A sound argument from a false premise reads exactly like a finding.**
 
+**MUTATION COUNT IS NOT COVERAGE -- measured, and all five layers with a constructor had blind
+spots (D1 §31).** §28.3's retraction left an honest question: all 92 mutations pass, but is 92
+enough? Layer 3 had 8 where Layer 0 had 26, and **all 8 passing says nothing about the 9th.** The
+only method that answers it is to write mutations the gate has never seen and count survivors.
+
+| layer | curated | adversarial written | **survived** |
+|---|---|---|---|
+| 1 geometry | 13 | 4 | **3** |
+| 2 core | 12 | 6 | **2** |
+| 3 loop | 8 | 8 | **4** |
+| 4 sources | 9 | 6 | **2** |
+| 5 SG | 12 | 5 | **2** |
+| 0b table | 12 | 4 | **1** |
+
+**Fourteen survivors. EVERY layer probed had them** -- including the conservation core with
+twelve curated mutations and the geometry table with thirteen.
+
+**AND EVERY SINGLE ONE WAS CONSTRUCTION OR STRUCTURE, NEVER PHYSICS.** The curated sets all attack
+the STEP -- ring order, junction derivation, buoyancy, coastdown, friction, momentum -- because
+that is what each layer is interesting FOR. **A mutation set written from "what is this layer for?"
+inherits that question's blind spot.** The step is where the physics is; construction is where the
+physics gets its INPUTS, and nothing was defending it because nothing was thinking about it.
+
+**Three of the thirteen would each have silently disarmed a whole casualty family:**
+`opts.pumpTripped` ignored (every loss-of-flow and blackout probe starts with a RUNNING pump),
+`opts.mass` ignored (every boil-dry stages a healthy generator), `opts.U` ignored (every fouling
+probe stages clean tubes). None of them touches the physics; all of them decide whether the physics
+is ever ASKED the question.
+
+**The four worth naming individually:**
+- **`extraMass` dropped at construction (Layer 2)** -- that is the seat the PRESSURIZER plugs into
+  (§25.3). Its existing check was named *"the compressible volume made pressure softer than a rigid
+  one"* and asserted `0 < dP < 3.0 MPa` -- **a band wide enough to accept the rigid case**, so the
+  check was named after a comparison it never made. Rebuilt to construct the rigid twin: 0.0409 MPa
+  with the bubble against 0.1292 rigid. **A check whose name describes a comparison should contain
+  a subtraction.**
+- **`createLoop(opts)` -> `createLoop({})` (Layer 4)** -- everything still runs and EVERY INITIAL
+  CONDITION IS A LIE.
+- **A segment dropped from the `LOOP` map (Layer 1)** -- Layer 4 computes SUM(L/A) from whatever
+  keys it finds, so momentum inertia silently shrinks. **Two tables that must describe the same
+  loop, with nothing asserting they do.**
+- **Junction flows seeded at ZERO (Layer 3)** -- **heals within one step**, so every settled-state
+  check is blind; it corrupts only the first step, where 8 of 9 junctions carry nothing. Same
+  family as the de-energization traps: **a wrong initial condition the next update repairs is not
+  benign, it is unobservable.**
+
+All thirteen closed, each keeping the check that catches it AND the mutation that found it. Two of
+the new checks failed first time against CORRECT physics -- a tripped pump still coasts at rated
+speed and makes 0.578 MPa at t=0, which is why the coastdown is modelled at all -- and now assert
+what actually distinguishes a trip: that the head DECAYS. Gates: geometry 33, core 36, loop 30,
+sources 21, SG 25. **AND THIS ALREADY HAPPENED ONCE, TO LAYER 0, RECORDED IN `BASELINES` ALL ALONG.** Found while
+updating baselines for this very pass, in the `note` on `run_pwr2_water.js`: *"hardened after an
+INDEPENDENT review applied 19 mutations of its own and 11 stayed green -- three on exported
+functions the suite never called."* Same experiment, same outcome, sitting in a file this session
+edited four times. **So all seven layers have now been probed and all seven had blind spots** --
+six here, one by an outside reviewer. That is no longer a pattern that might generalise; it is the
+result of every attempt anyone has made. **A hand-written mutation set is a record of what its
+author was thinking about**, and the only known way to find the rest is for someone else to attack
+it fresh.
+
+**THE FOURTEENTH SURVIVOR WAS NOT A DEFECT, AND IT IS THE MOST USEFUL ONE.** The property table's
+`NH` cut 2000 -> 200 reddened nothing -- because **`NH` does not matter.** Measured across the whole
+envelope, accuracy is FLAT from 100 to 4000: superheat bit-identical (it never reads that table),
+operating and subcooled moving in the 4th decimal, and the derivative wobbling NON-monotonically
+(best at 600, worst at 100 -- noise, not a trend). The line's comment said *"it is where the
+accuracy lives"*. **False** -- and the same file's note on `rho_sub`, forty lines away and by the
+same author, correctly says the accuracy comes from the two correction passes. **The file asserted
+both and neither was measured when written.** NH is now **400: 19 kB instead of 94**, in an engine
+that loads in a browser.
+
+**THE RULE: a surviving mutation has TWO meanings -- the gate is blind, or the mutated thing does
+not matter -- and only measurement separates them.** Adding a check that pins the mutated value is
+the reflex, and here it would have frozen 94 kB of waste behind a green gate and made the false
+comment permanent. The close is instead a check on the thing that DOES change (footprint), so a
+future inflation has to justify itself in the same terms.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa

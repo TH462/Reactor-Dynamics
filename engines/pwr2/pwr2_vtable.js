@@ -90,7 +90,31 @@
    * then closed-form — d(rho)/dP = rho_sat/B — rather than a difference of interpolants.
    * Tabulating a quantity whose derivative matters is a different problem from tabulating the
    * quantity itself; this branch solves the second by not tabulating the first. */
-  var NH = 2000;   /* 1-D and cheap: 6 arrays x 8 bytes = 96 kB, and it is where the accuracy lives */
+  /* NH -- THE SUBCOOLED TABLE'S RESOLUTION, AND IT IS **NOT** WHERE THE ACCURACY LIVES.
+   *
+   * This line used to read 2000 with the comment "it is where the accuracy lives". THAT WAS
+   * FALSE, and it was falsified by an adversarial mutation that reduced it to 200 and reddened
+   * NOTHING. A surviving mutation has two possible meanings -- the gate is blind, or the mutated
+   * thing does not matter -- and here it was the second. Measured across the whole declared
+   * envelope:
+   *
+   *     NH    operating   subcooled   superheat   deep-SH   worst d(rho)/dP    kB
+   *     100    -0.0060     -0.0055      0.0877     0.4848        0.316 %        5
+   *     200     0.0061      0.0068      0.0877     0.4848        0.146 %        9
+   *     400     0.0070      0.0075      0.0877     0.4848        0.215 %       19
+   *     600     0.0073      0.0077      0.0877     0.4848        0.126 %       28
+   *    2000     0.0074      0.0079      0.0877     0.4848        0.146 %       94
+   *    limits    0.06        0.12        0.12      1.0           6.0 %
+   *
+   * FLAT. Superheat is bit-identical because it never reads this table; operating and subcooled
+   * move in the fourth decimal; the derivative wobbles NON-MONOTONICALLY (best at 600, worst at
+   * 100), which is numerical noise rather than a trend. The accuracy is carried by the two
+   * correction passes and the analytic compressibility form, exactly as the note on `rho_sub`
+   * already said -- **the file contained both claims and they contradicted each other.**
+   *
+   * So 400, not 2000: past the sign flip between 100 and 200, on the asymptote, and 19 kB instead
+   * of 94 for a browser-loaded engine. THE NUMBER IS NOW MEASURED RATHER THAN GENEROUS. */
+  var NH = 400;
   var HL = new Float64Array(NH);      // saturated-liquid enthalpy grid (the index)
   var T_OF_H = new Float64Array(NH);  // T such that h_l_sat(T) = HL[i]
   var RHO_S = new Float64Array(NH);   // rho_l_sat(T)
@@ -277,7 +301,15 @@
 
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
+  /* The table's own memory footprint, in bytes — REPORTED so a gate can hold it to a measured
+   * size rather than a generous one. NH was 2000 for no measured reason (see its note). */
+  function footprintBytes() {
+    return 8 * (NH * 6 + NP + Xg.length + NP1 * 6 + (LNV ? LNV.length : 0) +
+                (LNVF ? LNVF.length : 0) + (LNVG ? LNVG.length : 0));
+  }
+
   root.RD.pwr2.vtable = {
+    footprintBytes: footprintBytes,
     rho_from_h: rho_from_h, v_from_h: v_from_h, v_from_x: v_from_x, v_exact: v_exact,
     satPair: satPair, rho_sub: rho_sub,
     build: build,

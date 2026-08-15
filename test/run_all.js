@@ -983,11 +983,11 @@ var BASELINES = {
   // itself down and a depressurising secondary opened the dT until it was ripping heat OUT of the
   // primary. That runaway is real physics for a generator steamed harder than the primary can
   // supply -- it just was not the test being written.
-  'run_pwr2_sg.js':        { code: 0, score: '21passed 0failed 21checks', secs: 90 },
-  'run_pwr2_sources.js':   { code: 0, score: '16passed 0failed 16checks', secs: 195 },
-  'run_pwr2_loop.js':      { code: 0, score: '26passed 0failed 26checks', secs: 46 },
-  'run_pwr2_core.js':      { code: 0, score: '33passed 0failed 33checks', secs: 52 },
-  'run_pwr2_geometry.js':  { code: 0, score: '29passed 0failed 29checks', secs: 1 },
+  'run_pwr2_sg.js':        { code: 0, score: '25passed 0failed 25checks', secs: 90 },
+  'run_pwr2_sources.js':   { code: 0, score: '21passed 0failed 21checks', secs: 195 },
+  'run_pwr2_loop.js':      { code: 0, score: '30passed 0failed 30checks', secs: 46 },
+  'run_pwr2_core.js':      { code: 0, score: '36passed 0failed 36checks', secs: 52 },
+  'run_pwr2_geometry.js':  { code: 0, score: '33passed 0failed 33checks', secs: 1 },
   // NEW 2026-08-15 (#479): the ruled (quality, P) specific-volume table -- D2 sec 23.4, ruled and
   // never built, and D1 sec 26 measured what not having it cost: the whole stack missed its own
   // performance stop condition by 103x with the entire deficit in rho_from_h. MEASURED: 31,500 ns
@@ -1003,7 +1003,7 @@ var BASELINES = {
   // the x-lines, not 3x the pressure lines. The worst point was 6 degC water, BELOW Layer 0's
   // declared 20 degC liquid floor, where its correlations clamp. The table was being blamed for
   // reproducing a clamp faithfully. Probing outside a declared envelope manufactures defects.
-  'run_pwr2_vtable.js':    { code: 0, score: '23passed 0failed 23checks', secs: 95 },
+  'run_pwr2_vtable.js':    { code: 0, score: '24passed 0failed 24checks', secs: 95 },
   'run_pwr2_water.js':     { code: 0, score: '231passed 0failed 231checks', secs: 2 },   // 164 -> 231 (2026-08-14, second pass): hardened after an INDEPENDENT review applied 19 mutations of its own and 11 stayed green -- three on exported functions the suite never called. Two REAL defects found (P_sat returned a vacuum below 99.6 degC; a 1.45 kg/m3 discontinuity at h_g), five accuracy claims false OFF-GRID, and 7 of 8 cp_f references not from NIST in a file claiming none were recalled. Mutation set 17 -> 26. TRAP: git autocrlf made every MULTI-LINE mutation anchor silently stop matching -- the runner now normalises line endings before matching, because a gate whose coverage depends on the checkout's line-ending policy is not a gate.
   'run_contract.js':       { code: 0, score: '177checks 0failed' },   // 175 -> 177 (#447): the pzr_heaters_shed true_state field's §6.3 line + the PZR HTRS SHED alarm's category check   // 168 -> 175 (#386 stage 3): 4 hydrogen true_state fields + 3 new alarms' category checks. 167 -> 168 (#385 node stage 1): the pzr_mass_frac inventory-node field's §6.3 line. 159 -> 167 (#386 stage 2): 4 new true_state fields (spray/fan demand+active) + 4 new containment alarms' category checks
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented

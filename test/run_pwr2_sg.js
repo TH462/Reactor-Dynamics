@@ -144,6 +144,27 @@ function runSuite(G, rec, quiet) {
         return Math.abs(G.primaryTavg(sy) - 0.5 * (a + b)) < 1e-9 && Math.abs(a - b) > 1e-6;
       })(), 'and the two nodes differ, so the mean is distinguishable from either');
 
+  /* ---- CONSTRUCTION  [what an adversarial pass found this gate blind to] ------------------
+   * Five layers were probed this way and every one had blind spots (D1 §31). Here the survivors
+   * were `opts.mass` and `opts.U` -- and those two are not incidental: they are exactly the knobs
+   * a CASUALTY is set up with. A degraded inventory is how you stage a boil-dry; a reduced U is
+   * how you stage fouled or plugged tubes. A constructor that silently ignores them would make
+   * every such probe quietly run a healthy generator while reporting that it had staged a sick
+   * one. Same family as the pumpTripped blind spot in Layer 4. */
+  if (!quiet) console.log('\nCONSTRUCTION  [the knobs a casualty is staged with]');
+  var sgLow = G.createSG({ mass: 6000 });
+  ck('caller inventory reaches the vessel  [staging a boil-dry]', sgLow.mass, 6000, 1e-9, 'kg');
+  ckT('...and the boil-dry clock follows it',
+      G.boilDryTime(sgLow, 100) < 0.55 * G.boilDryTime(G.createSG(), 100),
+      G.boilDryTime(sgLow, 100).toFixed(0) + ' s against ' +
+      G.boilDryTime(G.createSG(), 100).toFixed(0) + ' s at nominal -- a COMPARISON, not a band');
+  var sgFoul = G.createSG({ U: G.ratedU() * 0.5 });
+  ck('caller U reaches the tubes  [staging fouling]', sgFoul.U, G.ratedU() * 0.5, 1e-9, 'kW/m2-K');
+  ckT('...and the duty follows it',
+      Math.abs(G.stepSG(sgFoul, 304.5, 0.02, {}).duty_kW /
+               G.stepSG(G.createSG(), 304.5, 0.02, {}).duty_kW - 0.5) < 1e-6,
+      'half the coefficient moves half the heat -- so the argument is not cosmetic');
+
   var sgM = G.createSG(), M0 = sgM.mass;
   for (var k = 0; k < 500; k++) G.stepSG(sgM, 304.5, 0.02, { feed: 100, steam: 60 });
   ck('mass balance is exact on feed minus steam', sgM.mass - M0, 40 * 500 * 0.02, 1e-6, 'kg');
@@ -237,7 +258,12 @@ var MUTATIONS = [
    * the core and the hot leg stop sharing an enthalpy. */
   ['primaryTavg averages the core LUMP instead of the hot LEG',
    "if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];",
-   "if (sys.nodes[i].id === 'core') hot = sys.nodes[i];"]
+   "if (sys.nodes[i].id === 'core') hot = sys.nodes[i];"],
+  /* The two an adversarial CONSTRUCTION pass found -- both of them casualty-staging knobs. */
+  ['caller inventory ignored at construction (every boil-dry probe stages a healthy SG)',
+   'mass: opts.mass === undefined ? SG.mass_nominal : opts.mass,', 'mass: SG.mass_nominal,'],
+  ['caller U ignored at construction (every fouling probe stages clean tubes)',
+   'U: opts.U === undefined ? ratedU() : opts.U,', 'U: ratedU(),']
 ];
 
 console.log('\n' + '='.repeat(70));
