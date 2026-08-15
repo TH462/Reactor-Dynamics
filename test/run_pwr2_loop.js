@@ -268,6 +268,33 @@ function runSuite(L, rec, quiet) {
   L.RING.forEach(function (id) { if (sysS.junctionFlow[id] === sysS.mdot_loop) seeded++; });
   ck('every junction is seeded at the loop flow BEFORE the first step',
      seeded, L.RING.length, 0, 'junctions');
+
+  /* (e) THE PRESSURIZER'S SEAT MUST BE REACHABLE FROM HERE. Layer 2 owns the `extraMass` hook a
+   * compressible volume plugs into, and D1 §25.3 said "the interface is ready and the physics can
+   * be consumed" -- but `createLoop` did not forward `opts.extraMass`, so the seat existed and
+   * NOTHING ABOVE LAYER 2 COULD SIT IN IT. Every plant built at Layer 3 or above was rigid, and
+   * the doc asserted otherwise for a fortnight.
+   *
+   * Found by a CVCS probe that could not add 111 kg without pegging at the property table's
+   * 18 MPa ceiling. Checked here, at the layer that drops it, and by its EFFECT rather than by
+   * the option's presence -- an option that arrives and is never read is the same defect wearing
+   * a passing check. */
+  var bubble = function (P) { return 400 + 8.0 * (P - 15.41); };
+  var sysPz = L.createLoop({ h: 1250, P: 15.41, extraMass: bubble });
+  ckT('a compressible volume passed to createLoop REACHES Layer 2',
+      typeof sysPz.extraMass === 'function' && Math.abs(sysPz.extraMass(16.41) - 408) < 1e-9,
+      'extraMass(16.41 MPa) = ' + (sysPz.extraMass ? sysPz.extraMass(16.41).toFixed(1) : 'ABSENT') +
+      ' kg -- the seat #472 plugs into');
+  var rigid = L.createLoop({ h: 1250, P: 15.41 });
+  var pSoft = null, pHard = null;
+  for (var pz = 0; pz < 100; pz++) {
+    pSoft = L.stepLoop(sysPz, 0.02, { heats: { core: 5000 } }).P || sysPz.P;
+    pHard = L.stepLoop(rigid, 0.02, { heats: { core: 5000 } }).P || rigid.P;
+  }
+  ckT('...and it actually SOFTENS the loop, so the hook is not cosmetic',
+      (sysPz.P - 15.41) < 0.9 * (rigid.P - 15.41) && (rigid.P - 15.41) > 0,
+      'dP ' + (sysPz.P - 15.41).toFixed(4) + ' MPa with the bubble against ' +
+      (rigid.P - 15.41).toFixed(4) + ' rigid, over 2 s of heating');
 }
 
 console.log('\nPWR2 Layer 3 -- the SLS-100 loop');
@@ -303,7 +330,9 @@ var MUTATIONS = [
   ['junction flows seeded at ZERO (heals in one step, corrupts the first)',
    'RING.forEach(function (id) { sys.junctionFlow[id] = sys.mdot_loop; });',
    'RING.forEach(function (id) { sys.junctionFlow[id] = 0; });']
-];
+,
+  ['extraMass NOT forwarded to Layer 2 (the pressurizer seat is unreachable)',
+   'extraMass: opts.extraMass });', '});']];
 
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');

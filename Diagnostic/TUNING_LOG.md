@@ -287,6 +287,55 @@ the reflex, and here it would have frozen 94 kB of waste behind a green gate and
 comment permanent. The close is instead a check on the thing that DOES change (footprint), so a
 future inflation has to justify itself in the same terms.
 
+**CVCS BUILT -- charging, letdown and boron (Layer 5's second system).** Sourced from Ginna's own
+UFSAR (*"three positive displacement charging pumps can deliver a maximum of 180 gpm (charging
+flow is normally maintained at 46 gpm)"*, RCS 5123 ft3) and the Westinghouse Technology Systems
+Manual §4.1. Letdown is an ORIFICE, `mdot ~ sqrt(dP)` -- the same form `Manuals/12` §12.4b adopted
+for break discharge under 10 CFR 50 App. K -- so **letdown WEAKENS as the plant depressurises** and
+a set-and-forget lineup over-charges during a cooldown. Boron is a mass balance, and the SHAPE is
+the evidence: letdown carries the RCS concentration away, so ppm/min is proportional to
+concentration (4x boron -> 4x removal). 29 checks, 17/17 mutations.
+
+**THE SCALING BASIS IS VOLUME, NOT POWER, AND IT IS A DECLARED CHOICE.** Everything else in this
+design set power-scales; CVCS does not, because what charging and letdown DO is move a fraction of
+inventory per minute and boration moves ppm per minute -- both volume-normalised by definition.
+The bases disagree by 21 % because this plant carries 17 % less water per MWt than Ginna
+(0.0789 vs 0.0954 m3/MWt): volume gives **29.4 gpm**, power would give 35.5. **The gate prints
+both every run** so the choice cannot harden into a number nobody remembers making.
+Declared omissions: no volume control tank, no letdown HX, and **seal injection left OPEN** --
+WTSM gives 20 gpm across four pumps, this plant has one, and a seal flow is a property of the SEAL
+rather than of plant size, so it neither volume- nor power-scales cleanly.
+
+**AND CVCS FOUND TWO ENGINE DEFECTS NOTHING ELSE COULD REACH.**
+
+**(1) `extraMass` -- THE PRESSURIZER'S SEAT -- WAS UNREACHABLE FROM EVERY LAYER THAT WOULD USE IT.**
+Layer 2 owns the hook; **`createLoop` never forwarded `opts.extraMass`**, so every plant built at
+Layer 3 or above was RIGID -- including every plant in the A/B harness and every probe in four
+gates. D1 §25.3 said *"the interface is ready and the physics can be consumed"* and had been false
+for a fortnight. Found only by a CVCS probe that could not add 111 kg without pegging at the
+property table's 18 MPa ceiling. Fixed and guarded **by EFFECT, not by the option's presence** --
+an argument that arrives and is never read is the same defect wearing a passing check; the Layer 3
+gate now measures 0.1551 MPa with a bubble against 0.2115 rigid. **The claim had been verified by
+READING Layer 2, never by BUILDING a plant through Layer 3** -- same shape as the retracted
+coverage claim. **An interface is ready when something has come THROUGH it, not when both ends
+exist.** Flagged for #472 and deliberately not answered: an `f(P)` hook is a COMPRESSIBILITY term,
+not an inventory buffer -- a real pressurizer absorbs an insurge by its LEVEL rising, a state.
+
+**(2) THE LEDGER AND THE RECONSTRUCTED INVENTORY CAN DISAGREE, AND ONLY THE LEDGER IS RIGHT.**
+`sys.M_total` moves only by boundary sources and tracks charging exactly; `SUM V*rho(h,P)` is
+reconstructed, and a rigid loop pins V -- so it can only represent inventory the property table
+has a PRESSURE for. With letdown's sign flipped: ledger +31.0 kg (**caught it**), reconstruction
+16918.0 (**unchanged**), P pegged at 2611 psia = 18.0 MPa exactly. **61 kg diverged silently and
+the run looked entirely normal.** The gate now measures the LEDGER and asserts the two AGREE --
+a plant pinned at the table ceiling reads a plausible mass and is not one.
+
+**Two more of my own checks passed for reasons unrelated to their claims**, both written the same
+day while thinking about exactly this: the charging-temperature check compared against a FIXED
+304.5 degC reference and caught its mutation only because a 60 s run had heated the plant past it
+(shortening the window to stay in envelope made it go blind -- it now compares against **the node
+charging actually enters**); and the inventory probe ran 60 s where the envelope lasts 15,
+**fourth unphysical fixture this session**.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa

@@ -74,7 +74,14 @@
       var h = (opts.h && typeof opts.h === 'object') ? opts.h[id] : opts.h;
       return { id: id, V: g.V, h: h === undefined ? 1250 : h };
     });
-    var sys = CORE.createSystem({ nodes: nodes, P: P, iterCap: opts.iterCap });
+    /* extraMass IS FORWARDED, and it was not until 2026-08-15. Layer 2 owns the compressible-volume
+     * hook that the PRESSURIZER plugs into (D1 §25.3), but `createLoop` did not pass it through --
+     * so no plant built at Layer 3 or above could have one, and every such plant was RIGID.
+     * §25.3 said "the interface is ready and the physics can be consumed"; the seat existed and
+     * was unreachable from every layer that would sit in it. Found by a CVCS inventory probe that
+     * could not add 111 kg without pegging at 18 MPa. */
+    var sys = CORE.createSystem({ nodes: nodes, P: P, iterCap: opts.iterCap,
+                                  extraMass: opts.extraMass });
     sys.ring = RING.slice();
     sys.mdot_loop = opts.mdot === undefined ? 1630 : opts.mdot;
     /* Junction flows, one per ring segment, indexed by the node the segment LEAVES.

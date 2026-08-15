@@ -948,6 +948,29 @@ already carries the seat for it (Layer 2's `extraMass` hook, exercised by Layer 
 that a rigid loop is 1.06 MPa stiff without a bubble), so the interface is ready and the physics
 can be consumed rather than reinvented.
 
+> **⛔ CORRECTION, 2026-08-15: "the interface is ready" WAS FALSE WHEN WRITTEN, and stayed false
+> for a fortnight.** Layer 2 owned the `extraMass` hook, but **`createLoop` never forwarded
+> `opts.extraMass`** — so the seat existed and *nothing above Layer 2 could sit in it*. Every
+> plant built at Layer 3 or above was RIGID, including every plant in the A/B harness and every
+> probe in four gates.
+>
+> Found by a CVCS inventory probe that could not add 111 kg without pegging at the property
+> table's 18 MPa ceiling. Fixed, and guarded at the layer that dropped it — **by its EFFECT, not
+> by the option's presence**: an argument that arrives and is never read is the same defect
+> wearing a passing check. The Layer 3 gate now measures 0.1551 MPa with a bubble against 0.2115
+> rigid.
+>
+> **The lesson is about how the claim was made.** "The seat exists" was verified by *reading
+> Layer 2*, never by *building a plant through Layer 3*. That is the same shape as §28.3's
+> retracted coverage claim: a structural fact asserted from the code that happened to be open,
+> rather than from the path the code is actually used on. **An interface is ready when something
+> has come through it, not when both ends exist.**
+>
+> **Flagged for #472, and deliberately not answered here:** an `f(P)` hook is a COMPRESSIBILITY
+> term, not an inventory buffer. A real pressurizer absorbs an insurge by its LEVEL rising into
+> the steam space — a state, not a function of pressure. Whether the hook's shape is sufficient
+> is that issue's call, and §25.3's whole point is not to race it.
+
 ---
 
 ## 26. ⛔ THE PERFORMANCE STOP CONDITION IS TRIGGERED — measured 2026-08-15
