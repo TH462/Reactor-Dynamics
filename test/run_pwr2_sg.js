@@ -122,12 +122,25 @@ function runSuite(G, rec, quiet) {
       Math.abs(tavgBad - 304.5) > 5,
       'settles ' + tavgBad.toFixed(1) + ' degC, ' + (tavgBad - 304.5).toFixed(1) +
       ' degC off -- so the check above is not vacuous');
-  ckT('primaryTavg() is the mean of the core and SG primary nodes, not one of them',
+  ckT('primaryTavg() is the mean of the HOT and COLD LEGS, not one of them and not the lumps',
       (function () {
+        /* THE LEGS MUST ACTUALLY HAVE COME APART, AND THE PLANT MUST STILL BE A PLANT.
+         *
+         * This fixture was wrong TWICE, in opposite directions, and both times it read as the
+         * helper failing:
+         *   - ONE 0.02 s step: the plant starts uniform, so every node still held the same
+         *     enthalpy. |hot - cold| = 0 because nothing had propagated.
+         *   - 3,000 steps at 300 MW in against 100 MW out: a 200 MW imbalance cooked the loop and
+         *     BOTH legs pegged at 800 degC, the water library's ceiling. |hot - cold| = 0 again,
+         *     for the opposite reason.
+         *
+         * An unphysical fixture does not announce itself -- it produces a clean, symmetric, very
+         * believable zero. The drive is now BALANCED (300 in, 300 out), which differentiates the
+         * legs by 31.7 degC in 60 s and leaves the plant inside its declared envelope. */
         var sy = S4.createPlant({ h: W4.h_l(304.5, 15.41), P: 15.41 });
-        S4.stepPlant(sy, 0.02, { corePower: 300000, sgDuty: 100000 });
+        for (var w = 0; w < 3000; w++) S4.stepPlant(sy, 0.02, { corePower: 300000, sgDuty: 300000 });
         function nd2(id) { for (var q = 0; q < sy.nodes.length; q++) if (sy.nodes[q].id === id) return sy.nodes[q]; }
-        var a = W4.T_from_h(nd2('core').h, sy.P), b = W4.T_from_h(nd2('sg_primary').h, sy.P);
+        var a = W4.T_from_h(nd2('hot_leg').h, sy.P), b = W4.T_from_h(nd2('cold_leg').h, sy.P);
         return Math.abs(G.primaryTavg(sy) - 0.5 * (a + b)) < 1e-9 && Math.abs(a - b) > 1e-6;
       })(), 'and the two nodes differ, so the mean is distinguishable from either');
 
@@ -216,9 +229,15 @@ var MUTATIONS = [
    'if (m_new < 1) m_new = 1;', ''],
   /* The contract itself: a helper that hands back one node instead of the mean is exactly the
    * defect #482 filed, so it must not survive. */
-  ['primaryTavg returns the SG node instead of the mean (the #482 defect, re-armed)',
+  ['primaryTavg returns the cold leg instead of the mean (the #482 defect, re-armed)',
    'return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));',
-   'return W2.T_from_h(cold.h, sys.P);']
+   'return W2.T_from_h(cold.h, sys.P);'],
+  /* The LUMP-vs-LEG confusion, re-armed. It costs only 0.14 degF today, which is exactly why it
+   * needs a mutation: nothing else in this gate would notice, and the two come apart the moment
+   * the core and the hot leg stop sharing an enthalpy. */
+  ['primaryTavg averages the core LUMP instead of the hot LEG',
+   "if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];",
+   "if (sys.nodes[i].id === 'core') hot = sys.nodes[i];"]
 ];
 
 console.log('\n' + '='.repeat(70));

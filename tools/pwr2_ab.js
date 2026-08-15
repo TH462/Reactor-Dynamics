@@ -222,8 +222,8 @@ var B = runPWR2(P2);
  * OWN ERRORS PRESENT AS PHYSICS FINDINGS. A -197 % number is loud enough that someone would have
  * checked; a 5 % one from the same mistake would have been filed as a divergence and chased into
  * the engine. Hence the assertion below rather than a fixed comment. */
-var bTh = B.W.T_from_h(node(B.sys, 'core').h, B.sys.P);
-var bTc = B.W.T_from_h(node(B.sys, 'sg_primary').h, B.sys.P);
+var bTh = B.W.T_from_h(node(B.sys, 'hot_leg').h, B.sys.P);
+var bTc = B.W.T_from_h(node(B.sys, 'cold_leg').h, B.sys.P);
 if (!(bTh > bTc)) bail('the node the harness calls HOT is not hotter (' + bTh.toFixed(1) +
                        ' vs ' + bTc.toFixed(1) + ' degC). Labels are swapped, or the loop is dead.');
 if (!(A.thot_c > A.tcold_c)) bail('the REFERENCE hot leg is not hotter than its cold leg — the ' +

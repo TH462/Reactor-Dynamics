@@ -109,10 +109,17 @@
    * The helper exists so no call site has to know that. A contract that lives only in a comment
    * gets broken by the next person who writes `stepSG(sg, someTemperature, ...)`. */
   function primaryTavg(sys) {
+    /* THE LEGS, not `core` and `sg_primary`. Tavg IS (Thot + Tcold)/2 by definition, and this
+     * plant HAS hot_leg and cold_leg nodes -- Layer 1 builds eleven of them. The first version of
+     * this helper averaged the core and SG lumps instead, which are volume averages rather than
+     * leg temperatures. Measured, it costs 0.14 degF (580.36 against 580.50), so it was not
+     * material -- but it was the wrong pair, and `run_pwr2_sg`'s own tavg() helper had used the
+     * legs all along. TWO HELPERS IN ONE LAYER DISAGREEING ABOUT WHAT Tavg MEANS is how a 0.14
+     * degF nothing becomes a real divergence the first time the lumps and the legs come apart. */
     var W2 = RD && RD.water, hot = null, cold = null;
     for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === 'core') hot = sys.nodes[i];
-      else if (sys.nodes[i].id === 'sg_primary') cold = sys.nodes[i];
+      if (sys.nodes[i].id === 'hot_leg') hot = sys.nodes[i];
+      else if (sys.nodes[i].id === 'cold_leg') cold = sys.nodes[i];
     }
     if (!hot || !cold) return null;
     return 0.5 * (W2.T_from_h(hot.h, sys.P) + W2.T_from_h(cold.h, sys.P));

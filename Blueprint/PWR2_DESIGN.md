@@ -1348,3 +1348,93 @@ and never by the warning written after the previous one.** §29.3 warned in pros
 happened anyway, one table below it. What actually holds now is three assertions: the hot node
 must be hotter, each secondary must sit on its own saturation line, and both plants must still
 be where they were 20 minutes later.
+
+---
+
+## 30. THE LAST DIVERGENCE IS AGAINST A `[tune]` CONSTANT, NOT AGAINST PHYSICS — 2026-08-15
+
+§29.5 left exactly one row outstanding: **loop ΔT 56.0 °F against the reference's 59.4 °F, −5.7 %.**
+Chasing it produced the most important result the A/B has given so far, and it is a result about
+**what an A/B comparison is allowed to conclude.**
+
+### 30.1 The reference's ΔT is authored. PWR2's is emergent.
+
+```
+engines/pwr/pwr_config.js:392
+      delta_T_rated: 33.0,         // hot/cold leg split at rated, °C [tune]
+```
+
+**59.40 °F is exactly 33.00 °C.** The reference does not *arrive* at that split — it is told it,
+and `pwr_thermal` scales it as ΔT = `delta_T_rated`·Q/W. PWR2's 56.0 °F falls out of an enthalpy
+balance across eleven nodes with a flow computed from geometry and hydraulics. **Nothing in PWR2
+can be adjusted to produce 33.0 °C, because PWR2 has no `[tune]` — that was §3's ruling and this
+is the first place it bites.**
+
+So the divergence is *emergent value vs authored value*. **An A/B against a `[tune]` constant
+cannot tell you PWR2 is wrong.** It can only tell you the two disagree, which was already known
+the moment one of them was a tuning knob.
+
+### 30.2 What DOES adjudicate it: the sourced flow
+
+HR9 says the plant is ground truth and content follows. Here the reference's ΔT is *content* — an
+authored number — so the tie-break has to come from a source. It does:
+
+| | RCS flow | vs the sourced ~34,500 gpm |
+|---|---|---|
+| **sourced anchor** — `Manuals/12`, corrected this session | ~34,500 gpm | — |
+| **PWR2**, computed from geometry + hydraulics | **35,092 gpm** | **+1.7 %** |
+| reference, implied from its ΔT under IAPWS-95 properties | 34,472 gpm | −0.1 % |
+| reference's own `rcs_flow_gpm` constant | 24,000 gpm | **−30.4 %** |
+
+**PWR2 lands within 1.7 % of the sourced flow without being told it** — the geometry, the loss
+coefficients and the pump curve produce it. That is the check that matters, and it passes.
+
+**The last row is a finding about the reference and is left where it is.** `rcs_flow_gpm: 24000`
+disagrees with the flow its own thermal model implies by 30 %; the comment marks it "not
+displayed — the board shows % of rated", so nothing reads it as an absolute. It is `engines/pwr/`
+and #472's territory, **not PWR2's to fix**, and it is recorded rather than chased. It is also the
+same 24,000 figure this session corrected in `Manuals/12` to ~34,500.
+
+### 30.3 A 0.55 % omission in the A/B drive, declared
+
+The reference's SG duty is *rated core heat **plus** full-flow RCP heat* —
+`pump_heat_frac: 0.0055`. The A/B drives PWR2 with `corePower: 300000` and no pump heat, so
+~0.3 °F of the ΔT gap is the harness, not either plant. Too small to change the conclusion,
+large enough that leaving it unstated would make the remaining number look cleaner than it is.
+
+### 30.4 The rule this establishes for every future A/B
+
+**Before treating a divergence as a PWR2 defect, check whether the reference's side of it is
+`[tune]`.** The reference engine has 89 `[tune]` constants. Each one is a number somebody chose,
+and a disagreement with a chosen number is not evidence about physics — it is evidence that a
+choice was made. The A/B's authority runs only as far as the reference's own derivations do.
+
+**This is HR9 pointed at the A/B itself**: the reference engine is not ground truth, the plant is,
+and where the reference is authored the adjudication must come from a source. Getting this
+backwards would have PWR2 fitted to a tuning knob — which is exactly the outcome §3 banned `[tune]`
+to prevent, arriving by a route §3 did not anticipate.
+
+### 30.5 Two more of the same family, caught by the same habit
+
+**`primaryTavg()` averaged the LUMPS, not the LEGS.** Built and gated an hour earlier (§29.5), it
+took the mean of the `core` and `sg_primary` nodes — volume averages — where Tavg is by definition
+(Thot + Tcold)/2, and this plant has explicit `hot_leg` and `cold_leg` nodes. **`run_pwr2_sg`'s own
+`tavg()` helper had used the legs all along**, so one layer carried two helpers disagreeing about
+what Tavg means. Measured cost today: **0.14 °F** (580.36 against 580.50). Fixed anyway, with a
+mutation re-arming it — the two come apart the moment the core and the hot leg stop sharing an
+enthalpy, and then a rounding error becomes a divergence someone chases.
+
+**And the check written to catch it had an unphysical fixture, twice, in opposite directions.**
+
+| fixture | `|hot − cold|` | why |
+|---|---|---|
+| one 0.02 s step | **0** | plant starts uniform; nothing had propagated |
+| 3,000 steps, 300 MW in / 100 MW out | **0** | 200 MW imbalance cooked the loop; **both legs pegged at 800 °C**, the water library's ceiling |
+| 3,000 steps, 300 MW in / 300 MW out | 31.7 °C | balanced, inside the declared envelope |
+
+Both failures read as *the helper is broken*. **An unphysical fixture does not announce itself — it
+produces a clean, symmetric, entirely believable zero.** This is the fourth unphysical probe this
+session (§29 records three others: 300 MW into a closed loop with no sink, a primary started 20 °C
+below the design point, a duty reversal probed above the secondary saturation). The pattern is
+consistent enough to state as a rule: **when a check fails, measure the FIXTURE before you believe
+the subject** — and a zero that is exactly zero is a structural tell, not a small number.

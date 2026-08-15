@@ -170,6 +170,32 @@ built on a lying instrument. It did not feel like a guess. **Each of the three w
 a check that could FAIL -- never by care, and never by the warning written after the previous
 one.** §29.3 warned in prose and §29.4 happened one table below it.
 
+**AND THE LAST DIVERGENCE WAS NOT A DEFECT -- it was a `[tune]` CONSTANT (D1 §30).** The one row
+left after the steady-state fix was loop deltaT, 56.0 degF against the reference's 59.4. Chasing it
+found `delta_T_rated: 33.0, // hot/cold leg split at rated, degC [tune]` -- and 59.40 degF is
+EXACTLY 33.00 degC. **The reference does not arrive at that split; it is told it.** PWR2's falls out
+of an enthalpy balance across eleven nodes, and PWR2 has no `[tune]` at all by §3's ruling. So the
+comparison was emergent-vs-authored, which cannot tell you PWR2 is wrong.
+
+**What adjudicates it is the SOURCED flow, and PWR2 passes**: 35,092 gpm computed from geometry and
+hydraulics against the sourced ~34,500 (Manuals/12) -- **+1.7 %, without being told it**. The
+reference implies 34,472 (-0.1 %). Recorded and NOT chased: the reference's own
+`rcs_flow_gpm: 24000` disagrees with its own thermal model by **30 %**, and is the same figure this
+session corrected in the manual; it is `engines/pwr/` and #472's territory.
+
+**THE RULE THIS ESTABLISHES, and it is the durable part: before treating an A/B divergence as a
+PWR2 defect, check whether the REFERENCE's side of it is `[tune]`.** That engine has **89** of them.
+Each is a number somebody chose, and disagreeing with a chosen number is evidence that a choice was
+made, not evidence about physics. **This is HR9 pointed at the A/B itself** -- and getting it
+backwards would have fitted PWR2 to a tuning knob, the exact outcome §3 banned `[tune]` to prevent,
+arriving by a route §3 did not anticipate. D1 §30.4.
+
+**One more of the same family, caught by the same habit:** `primaryTavg()` -- built and gated an
+hour earlier -- averaged the core and SG LUMPS rather than the hot and cold LEGS, while the same
+gate's own `tavg()` helper had used the legs all along. It costs **0.14 degF** today. Fixed anyway,
+with a mutation re-arming it: **two helpers in one layer disagreeing about what Tavg MEANS** is how
+a rounding error becomes a real divergence the first time the lumps and the legs come apart.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa
