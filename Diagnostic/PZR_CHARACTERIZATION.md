@@ -250,3 +250,28 @@ against v1 by `run_pzr2` G6 (0.00e+0 divergence over a 200-step ramp/leak/collap
 flagship arc passes on v2 unchanged — `run_pwr flagship_tmi` is **9/9 with `RD_PZR2=1`**,
 including the deception episode (level lifts to 100 % while inventory falls to 31 %). The
 probe asserts a v1 CALL SITE, so it is 3d refit territory.
+
+### Where the node/loop seam does and does not drift (2026-08-15, follow-up)
+
+`CA-15`'s rig sets `_mass = 1.11` and nothing else, which is a **v1-shaped state**: v1
+reconstructs level from `_mass`, so that is all it needs, while in v2 the node's own mass IS
+the state. So the probe's "forced solid" plant is not solid to v2 and it takes the bubbled
+branch — a refit for 3d, and NOT evidence about the solid regime either way.
+
+The real question the rig raised is whether the node's mass and the loop's inventory drift
+apart, since v2 integrates where v1 reconstructs. Measured on both models, same command
+sequence:
+
+| | v1 `pzr_mass_frac` | v2 `pzr_mass_frac` |
+|---|---|---|
+| MO-1 load swing, 30 min, settled | 0.0792 | **0.0794** (0.25 % apart; level 61.48 on both) |
+| severity-0.09 break, 40 min post-trip | 0.08 → 0.11 | **0.03 → 0.20, swinging** |
+
+**Normal regimes are fine; the divergence is confined to the heavily-voided post-LOCA
+plant** — which is the ported saturated branch, where v2 sets pressure by v1's dP law and
+then RESEEDS the regions from level every step. That reseed is the suspect, not the surge
+integration, and it is inside the declared narrowing (spec §2.8: the saturated branch models
+*loop* flashing and belongs to #474).
+
+**So the open solid defect is narrower than it looked**: it is a seam between the two ported
+branches and the rebuilt one, not a drift in the rebuild's own bookkeeping.
