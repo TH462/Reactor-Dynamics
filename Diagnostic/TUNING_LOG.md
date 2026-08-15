@@ -125,6 +125,24 @@ divergence that gets filed and chased into the engine**, which is where nobody w
 because it is not there. **An A/B harness is a measuring instrument and its own errors present as
 physics findings.** It now asserts the node it calls hot is hotter, and refuses rather than prints.
 
+**AND IT HAPPENED A SECOND TIME, QUIETLY, IN THE TABLE UNDER THAT WARNING -- which is the entry
+that matters.** The secondary-temperature row read the reference's `t_sg_c`, which is NOT a
+saturation temperature: `CONTEXT.md` §6.3 defines it as the SG TUBE-BUNDLE node, a metal
+temperature 29.0 degF above saturation. It reported **-7.6 %** where the truth is **-2.5 %** --
+precisely the "5 % divergence that gets filed and chased into the engine" the paragraph above had
+just predicted, and it WAS filed, in #482, before it was caught. **A warning addressed to a
+careful reader is not a check.**
+
+**What catches it with no knowledge of field semantics: the rows disagreed WITH EACH OTHER.** For
+saturated water, pressure and temperature are locked, so a -10.8 % pressure divergence and an
+independent -7.6 % temperature divergence cannot both be true of one saturated secondary.
+Corrected, both are the same -7.3 degC on the saturation line. The harness now checks each side
+against its OWN saturation line, and DERIVES the reference's saturation temperature from its own
+pressure rather than reading a field -- deriving it cannot pick up the wrong field. Verified by
+injection. **The general rule: when two compared quantities are physically coupled, the harness
+can check the COUPLING without understanding either one** -- a stronger guard than knowing what
+the fields mean, because it survives someone renaming them.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa

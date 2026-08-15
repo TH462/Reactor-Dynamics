@@ -1192,13 +1192,16 @@ could fix.
 | cold leg | 550.5 °F | 567.3 °F | +16.9 (+3.1 %) |
 | loop ΔT | 59.4 °F | 57.7 °F | **−1.7 (−2.9 %)** |
 | SG steam pressure | 825.3 psia | 735.8 psia | **−89.5 (−10.8 %)** |
-| SG saturation temperature | 550.8 °F | 508.7 °F | −42.1 (−7.6 %) |
+| SG saturation temperature | 521.8 °F | 508.7 °F | −13.1 (−2.5 %) |
 | SG duty | 300.0 MWt | 301.7 MWt | +1.7 (+0.6 %) |
+
+*(The saturation-temperature row is CORRECTED — it first read 550.8 °F / −7.6 %. See §29.4.)*
 
 Not compared, and the harness says so on every run rather than omitting them: **RCS pressure**
 (PWR2 has no pressurizer — §25.3), **level** (mass fraction only; a level is a geometry map owned
-by the instrument layer), and **anything on a transient** (PWR2 has no control layer, so a
-transient diff would compare an absent controller against a live one and call it physics).
+by the instrument layer), **the SG tube-bundle metal node** (the reference has one; PWR2's lumped
+secondary does not), and **anything on a transient** (PWR2 has no control layer, so a transient
+diff would compare an absent controller against a live one and call it physics).
 
 ### 29.1 ⚠ FINDING — `ratedU()` and `stepSG()` disagree about which temperature drives the SG
 
@@ -1243,3 +1246,33 @@ find it, because it is not there. So the fix is not "read the labels more carefu
 harness now **asserts that the node it calls hot is hotter**, and that the reference reached
 power at all, and refuses rather than printing. This is the `run_reachability` lesson arriving in
 a new place: a comparison that cannot fail for a structural reason is not a comparison.
+
+### 29.4 ⛔ AND THEN IT HAPPENED AGAIN, QUIETLY, IN THE TABLE UNDER THAT WARNING
+
+**§29.3's prediction was tested within the hour and it was right.**
+
+The secondary-temperature row above was taken from the reference's `t_sg_c`. That field is **not a
+saturation temperature**: `CONTEXT.md` §6.3 defines it as the **SG tube-bundle node** — a metal
+temperature, `Tavg − split·(Tavg − Tsec)` — and it sits **29.0 °F above** the real saturation
+temperature. Compared against PWR2's `T_sec` it reported **−7.6 %** where the truth is **−2.5 %**.
+
+**The first error printed −197 % and was caught in minutes. This one printed −7.6 %, which is
+precisely the "5 % divergence that gets filed and chased into the engine" §29.3 had just
+described** — and it was filed, in #482, before it was caught. The warning did not stop it,
+because **a warning addressed to a careful reader is not a check.**
+
+**What would have caught it, with no knowledge of what any field name means.** For saturated
+water, pressure and temperature are LOCKED. A −10.8 % pressure divergence and an *independent*
+−7.6 % temperature divergence cannot both be true of the same saturated secondary. **The two rows
+disagreed with each other**, and that is checkable arithmetic rather than a judgement about
+semantics. Corrected, they are the same −7.3 °C on the saturation line and now agree.
+
+`satPairOK()` therefore checks each side's secondary against its **own** saturation line before
+anything is compared across plants, and the reference's saturation temperature is **derived from
+its own pressure rather than read from a field** — deriving it cannot pick up the wrong field.
+Verified by injection: re-pointing the check at `t_sg_c` refuses with *"reports 550.8 degF at
+825.3 psia, where T_sat is 521.8 degF (29.0 degF off)"*.
+
+**The general rule this is an instance of: when two compared quantities are physically coupled,
+the harness can check the COUPLING without understanding either one.** That is a much stronger
+guard than knowing what the fields mean, because it survives someone else renaming them.

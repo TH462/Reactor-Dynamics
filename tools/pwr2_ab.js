@@ -193,12 +193,51 @@ if (!(bTh > bTc)) bail('the node the harness calls HOT is not hotter (' + bTh.to
 if (!(A.thot_c > A.tcold_c)) bail('the REFERENCE hot leg is not hotter than its cold leg — the ' +
                                   'reference did not reach power, so nothing below is a comparison.');
 
+/* ---------------------------------------------------------------- THE SATURATION-PAIR GUARD
+ * READ THIS BEFORE ADDING A ROW. §29.3 says an A/B harness's own errors present as physics
+ * findings, and this file then made the SAME MISTAKE A SECOND TIME, quietly, in the table
+ * directly below that warning.
+ *
+ * The secondary temperature row was taken from the reference's `t_sg_c`, which is NOT a
+ * saturation temperature at all -- Blueprint/CONTEXT.md §6.3 calls it the SG TUBE-BUNDLE node,
+ * a metal temperature computed as `Tavg - split*(Tavg - Tsec)`. It sits 29.0 degF above the real
+ * saturation temperature, and comparing it against PWR2's T_sec reported a -7.6 % divergence
+ * where the truth is -2.5 %.
+ *
+ * THE FIRST MISTAKE PRINTED -197 % AND WAS CAUGHT IN MINUTES. THIS ONE PRINTED -7.6 %, WHICH IS
+ * EXACTLY THE "5 % DIVERGENCE THAT GETS FILED AND CHASED INTO THE ENGINE" §29.3 PREDICTED. The
+ * prediction was right and the warning did not stop it, because a warning addressed to a careful
+ * reader is not a check.
+ *
+ * WHAT WOULD HAVE CAUGHT IT, WITHOUT KNOWING ANY FIELD SEMANTICS: for saturated water, pressure
+ * and temperature are LOCKED. A -10.8 % pressure divergence and an independent -7.6 % temperature
+ * divergence cannot both be true of the same saturated secondary. The rows disagreed WITH EACH
+ * OTHER, and that is checkable arithmetic rather than a judgement about what a field name means.
+ *
+ * So each side's secondary is now checked against its OWN saturation line before anything is
+ * compared across plants. A field that fails is not the quantity the row claims it is. */
+function satPairOK(label, P_MPa, T_c) {
+  var Tsat = P2.water.T_sat(P_MPa);
+  if (Math.abs(T_c - Tsat) > 1.0) {
+    bail(label + ' is not on its own saturation line: reports ' + C2F(T_c).toFixed(1) +
+         ' degF at ' + M2PSI(P_MPa).toFixed(1) + ' psia, where T_sat is ' +
+         C2F(Tsat).toFixed(1) + ' degF (' + dC2F(T_c - Tsat).toFixed(1) + ' degF off).\n' +
+         '               That field is not a saturation temperature. Do not compare it as one.');
+  }
+  return Tsat;
+}
+
+/* The reference's secondary saturation temperature is DERIVED FROM ITS OWN PRESSURE rather than
+ * read from a field, because deriving it cannot pick up the wrong field. */
+var aTsec = P2.water.T_sat(A.steam_pressure_mpa);
+satPairOK('PWR2 secondary', B.sg.P_sec, B.sg.T_sec);
+
 var rows = [
   ['hot leg',            C2F(A.thot_c),              C2F(bTh),            '°F',  'abs'],
   ['cold leg',           C2F(A.tcold_c),             C2F(bTc),            '°F',  'abs'],
   ['loop dT',            dC2F(A.thot_c - A.tcold_c), dC2F(bTh - bTc),     '°F',  'diff'],
   ['SG steam pressure',  M2PSI(A.steam_pressure_mpa), M2PSI(B.sg.P_sec),  'psia','abs'],
-  ['SG sat temperature', C2F(A.t_sg_c),              C2F(B.sg.T_sec),     '°F',  'abs'],
+  ['SG sat temperature', C2F(aTsec),                 C2F(B.sg.T_sec),     '°F',  'abs'],
   ['SG duty',            300.0,                       B.sg.duty_kW / 1000, 'MWt', 'abs']
 ];
 
@@ -221,7 +260,9 @@ console.log('\n  ' + BOLD + 'NOT COMPARABLE — stated, not silently omitted' + 
  ['level',          'PWR2 publishes mass fraction only. A level is a GEOMETRY map and belongs to',
                     'the instrument layer (§28.3 / review F10), so there is nothing to diff.'],
  ['anything on a',  'PWR2 has no control layer. Diffing a transient would compare an absent',
-  'transient',      'controller against a live one and call the difference physics.']
+  'transient',      'controller against a live one and call the difference physics.'],
+ ['SG tube metal',  'the reference carries a tube-bundle node (t_sg_c, 29.0 degF above saturation);',
+                    'PWR2 lumps its secondary and has no metal node. NOT the same quantity.']
 ].forEach(function (r) {
   console.log('  ' + YEL + r[0].padEnd(18) + RST + DIM + r[1] + '\n' + ' '.repeat(20) + r[2] + RST);
 });
