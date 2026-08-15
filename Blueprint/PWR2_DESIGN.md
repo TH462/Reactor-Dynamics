@@ -1017,3 +1017,64 @@ Reopening the premise on this evidence would be the wrong call.
 do later; it is a precondition. Layers 2–5 have all been built and gated against a property
 library 630× slower than the ruled one, and every performance figure taken so far is meaningless
 until it exists.
+
+---
+
+## 27. ⚠ THE TABLE IS FAST ENOUGH AND ITS DERIVATIVE IS NOT — measured 2026-08-15
+
+**Wiring §26's property table into the conservation core was attempted, measured, and REVERTED.**
+The speed result is real and worth banking; the reason for the revert is a finding that matters
+more than the speed.
+
+### 27.1 The speed result — the stop condition CAN be cleared
+
+| | steps/s | 12 plant-hours |
+|---|---|---|
+| Before (D1 §26) | 600 | 3,617 s |
+| **Table wired in** | **95,200** | **23 s** |
+| Budget | 61,700 | 35 s |
+
+**159× on the stack, and inside budget with margin.** Getting there took two fixes, and the
+second is the instructive one: after the table went in, **Layer 4 was still 7× the cost of
+Layer 3**, because `buoyancy()` called the DIRECT path twice per step — two calls at 31,500 ns
+that were simply missed when the table landed. **A hot path is only as fast as the slowest call
+still in it**, and 63,000 ns of a 65,000 ns step hid behind a helper nobody thought of as hot.
+
+### 27.2 Why it was reverted — an accuracy target on a VALUE says nothing about its DERIVATIVE
+
+The table meets the ruled 0.06 % on ρ. Its **dρ/dP is wrong by ~50 % at the scale the solver
+actually uses**:
+
+| probe | error in dρ/dP |
+|---|---|
+| ±0.02 MPa — *what a timestep moves* | **−57.6 %** |
+| ±0.10 MPa | −10.1 % |
+| ±0.40 MPa — *one grid interval* | **−0.1 %** |
+
+**That is not a bug, it is what a piecewise interpolant does:** the derivative is right on average
+across an interval and quantised within it. The pressure LEVEL was fine and the pressure RESPONSE
+was not — and the response is what **A3, "pressure follows temperature"**, is made of. Three layer
+gates went red on exactly that: the pressure rise from heating one node changed by 2×.
+
+**Two fixes were tried and neither worked**, which is what identified the real cause. Cubic
+interpolation in P (safe there — the kink lives on the x axis, not the P axis) moved the error
+from 57 % to 49 %. Applying it to the 2-D wing as well: 49 % to 50 %.
+
+**THE ACTUAL CAUSE IS A STRUCTURAL CHOICE IN THE WING, AND IT IS MINE.** The subcooled wing is
+stored as a ratio to `v_f(P)` — but `v_f` varies strongly with pressure, because `T_sat` does. So
+subcooled `v` is reconstructed as a product of two strongly P-dependent terms whose derivatives
+very nearly cancel, and the small residual difference IS the compressibility. Differencing two
+large nearly-equal numbers to get a small one is the classic way to destroy a derivative. The
+ratio trick fixed the *value* accuracy in the wings (§26) and broke the *derivative* doing it.
+
+### 27.3 What is owed
+
+1. **The subcooled wing must not be normalised to a strongly P-dependent edge.** Subcooled `v` is
+   nearly flat in pressure, so it should be stored directly, with enough resolution to carry the
+   compressibility — or the compressibility should be applied ANALYTICALLY on top of a
+   P-independent table, which is what `rho_l` already does (`ρ_sat(T)·(1 + (P−P_sat)/B)`).
+2. **Add a dρ/dP check to the table's gate.** Its current 17 checks all assert VALUES, and every
+   one of them passed while the derivative was 50 % wrong. That is the same shape as the review's
+   F-findings: a gate that measures the quantity you named rather than the quantity that matters.
+3. Re-wire and re-measure only after both. **The 159× is available and should not be taken on
+   terms that break A3.**
