@@ -446,3 +446,27 @@ So the next measurement is that exact lineup, and the three things that differ f
 run are the candidates in order: **both controls at full**, **engine-direct**, **dt 0.5 s**.
 v2's solid branch sub-steps; the bubbled branch does not, and a condensation term at half-
 second resolution is the kind of thing that overshoots where a rate-limited gain would not.
+
+### Sub-stepping did not move CA-15 (2026-08-15)
+
+Re-measured straight after the adaptive sub-step landed, on the expectation that it touched
+the same stiff near-solid regime. It does not: inventory still reaches the **120.00 %
+`mass_max` clip** and the arrest still does not happen. **Fifth prediction on this cluster to
+be refuted by its own measurement** — the running score is worth stating plainly, because
+every one of the five looked reasonable from the code and only the number settled it.
+
+What the probe actually drives (`behavior_pwr.js:3936`): `hot_full_power`, a **severity-0.5
+`large_loca`** at t+30 s, 4700 s of run, expecting ECCS overfill to arrest on the solid line
+at 109.3 % against the 120 % ceiling.
+
+The failing precondition is the lead: *"the break is still flowing at settle"* reads
+**0.000000** where v1 reads 0.000456. **A break stops flowing when pressure reaches
+containment backpressure** (the √Δp law), and if ECCS keeps injecting into a plant whose
+relief path has closed, inventory rides to the clip — which is exactly the shape observed.
+Before the `K_leak_depressurize` port v2 pinned a large break HIGH at 1871 psi; the question
+now is whether it goes too LOW, i.e. whether the blowdown branch's vent term and pin are
+balanced or just differently wrong.
+
+**Next measurement, and it is NOT a diagnosis**: trace pressure and `leak_flow` against
+containment through a sev-0.5 break on both models. If v2 equalises with containment where
+v1 holds above it, the arrest failure and the precondition failure are one thing.
