@@ -892,6 +892,41 @@ nothing was ever going to stop it — **§2's freeze is a rule this design set w
 and has no authority to impose on another workstream.** #472 is legitimate, owner-sanctioned,
 `priority-high` work that predates the PWR2 decision.
 
+### 25.1a ✅ RULED 2026-08-15 — re-baseline against a stated commit
+
+*(OWNER RULING, 2026-08-15: "Do A/B decision as you recommend." — selecting, of three options
+put to him, re-baselining against a stated commit. The rejected two were asking #472 to hold
+`engines/pwr/` frozen for the length of the rewrite, and forking a private read-only snapshot
+for PWR2 to diff against.)*
+
+**The A/B reference is `engines/pwr/` AS OF A NAMED COMMIT, recorded by SHA in the A/B harness
+itself, and re-baselined deliberately whenever it moves.** Not "frozen" — that was never in this
+design set's power to promise.
+
+**AND THE REFERENCE TREE IS THE `workbench` WORKTREE** *(OWNER DIRECTIVE, 2026-08-15: "For A/B
+testing, test it against the workshop worktree." — read as `C:\grok_build\RD_workbench`, the
+only lane matching that name and the one carrying the live engine work. Flagged rather than
+assumed silently: if `develop` was meant instead, this line is the thing to correct.)*
+That is the right choice for the reason §25 exists — **workbench is where the engine is actually
+being developed**, so diffing against it compares PWR2 to the newest real plant rather than to a
+stale copy. It also means #472's pressurizer rebuild is INSIDE the reference by construction,
+which is what step 3 below was asking for.
+
+**What the harness must therefore do**, and D5 §2 owes these:
+1. **Record the reference SHA in its own output.** An A/B result that does not say which reference
+   it ran against is not a result.
+2. **Refuse to run against a dirty or unknown reference tree** — the same reasoning as the
+   vacuity guard: a comparison whose baseline you cannot name is indistinguishable from one you
+   made up.
+3. **Take the first baseline from the `workbench` worktree after #472 lands**, not before, so the
+   pressurizer rebuild is inside the reference rather than straddling it.
+4. **Treat a reference move as a re-baseline event, not a regression.** When the SHA changes, old
+   divergences are void until re-measured — they were measured against a different plant.
+
+**The honest cost, stated:** this is a weaker guarantee than §2 promised. Divergences can no
+longer be attributed to PWR2 alone without checking whether the reference moved underneath them,
+and that check is now part of the method rather than an assumption.
+
 ### 25.2 The consequence, stated plainly
 
 **PWR2's A/B baseline must be taken AFTER #472 lands, not before** — and whatever the reference
