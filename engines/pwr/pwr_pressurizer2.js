@@ -219,7 +219,13 @@
     var Tsat = T_sat_from_P(P);
     var m_liq;
     if (s.pzr_mass_frac != null && s.pzr_mass_frac > 0) {
-      m_liq = s.pzr_mass_frac * p2.M_rcs_kg;                       // the node's own currency
+      // `pzr_mass_frac` is the unclipped LEVEL in mass-fraction units, so it carries the
+      // void credit (stepLevel says why). The node's real water is the geometric half, so
+      // the credit comes back off before seeding — otherwise taking over a voided plant
+      // mid-run would hand v2 water the vessel does not contain, which is the same
+      // currency confusion the surge term was ruled out of.
+      var credit_frac = (s._pzr_void_lvl || 0) / cfg.pressurizer.level_per_mass;
+      m_liq = Math.max(0, s.pzr_mass_frac - credit_frac) * p2.M_rcs_kg;
     } else {
       var lvl = (s.pzr_level_pct > 0 ? s.pzr_level_pct : cfg.pressurizer.pzr_level_nominal) / 100;
       m_liq = Math.max(0, Math.min(1, lvl)) * p2.V_pzr_m3 * rho_l_sat(Tsat);
@@ -514,7 +520,27 @@
     // adding it again would double-count it.
     var inventory = p.level_per_mass * (s._dmass_dt || 0);
 
-    var lvl_rate = thermal + inventory + voidCreditRate(s, cfg, dt);
+    // THE VOID CREDIT IS NOT A SURGE *(OWNER RULING, 2026-08-15: "Option 1" — on the two
+    // treatments put in #472; a selection, not verbatim words)*.
+    //
+    // The ledger still runs — it is advanced here for its side effect and published through
+    // the LEVEL (see stepLevel) — but its rate is deliberately NOT added to the flow.
+    //
+    // WHY, measured 2026-08-15. In v1 the credit is a term in a LEVEL law: it inflates what
+    // the gauge shows to model loop steam displacing liquid up the surge line. Converting
+    // its rate into kg/s of real water crossing the boundary looked like a faithful port —
+    // `run_pzr2` G6 shows the algebra IS bitwise faithful — but the CURRENCY does not carry.
+    // Level points of apparent displacement are not kilograms, and integrating them on a
+    // voiding plant fills the vessel with water the plant does not have: measured, the
+    // post-LOCA node pinned at 100 % with `pzr_mass_frac` 0.37 against v1's 0.08–0.11.
+    // It was invisible until the reseed stopped destroying the surplus every step.
+    //
+    // THE DECLARED WART, and it is the cost of this ruling: v2's published level is
+    // therefore NOT purely geometric — it is geometry PLUS the credit. The physical version
+    // is the displaced liquid being real water leaving a loop NODE, which is #474's work
+    // and cannot be done inside this rebuild's scope.
+    voidCreditRate(s, cfg, dt);
+    var lvl_rate = thermal + inventory;
     return lvl_rate * (p2.M_rcs_kg / p.level_per_mass);        // kg/s, + = insurge
   }
 
@@ -736,10 +762,27 @@
   // and its currency (a share of RCS mass, never a second inventory), so `ui/app.js:251-271`
   // and the migration path keep working.
   function stepLevel(s, cfg, dt) {
-    var p2 = cfg.pressurizer2;
+    var p = cfg.pressurizer, p2 = cfg.pressurizer2;
     ensureRegions(s, cfg);
-    var lvl = 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3;
-    s.pzr_mass_frac = s.pzr_m_liq_kg / p2.M_rcs_kg;
+
+    // GEOMETRY plus the void credit. The geometric half is the node's real water, `V_liq /
+    // V_pzr`; the credit is loop steam displacing liquid up the surge line, which lifts what
+    // the pressurizer SHOWS without the vessel receiving the water (see surgeDemand for the
+    // ruling and the measurement behind it). Keeping the credit here rather than in the
+    // inventory is what preserves TD-1…TD-6 by construction — it is the same term v1
+    // publishes, in the same units, reached the same way.
+    var geometric = 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3;
+    var credit = s._pzr_void_lvl || 0;
+    var lvl = geometric + credit;
+
+    // `pzr_mass_frac` is the UNCLIPPED level in RCS-mass-fraction units, exactly as v1
+    // defines it (`pzrNodeLevel / level_per_mass`). `ui/app.js`'s `pzrNodePct` multiplies it
+    // straight back by `level_per_mass` to draw the off-scale reading the gauge cannot show,
+    // and that row's comment records the credit being inside it — so this is a contract, not
+    // an implementation detail. The node's own water is `pzr_m_liq_kg`, which is published
+    // separately and is the quantity conservation is asserted on.
+    s.pzr_mass_frac = lvl / p.level_per_mass;
+    s.pzr_level_geometric_pct = geometric;
     s._pzr_surge_flow = s.pzr_surge_kgps != null ? s.pzr_surge_kgps / p2.M_rcs_kg : 0;
     s.pzr_level_pct = clip(lvl, 0, 100);
   }

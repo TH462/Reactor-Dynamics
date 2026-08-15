@@ -313,3 +313,34 @@ belongs to the owner:
 
 **Recommendation: (1) now, with the wart declared, and (2) when #474 lands.** It preserves
 the flagship's teaching payload today and leaves the physical version reachable.
+
+### Option 1 built (2026-08-15) — deception intact, one defect left behind
+
+*(OWNER RULING, 2026-08-15: "Option 1")*. The void credit no longer enters the surge. The
+ledger still runs and is published through the LEVEL: `pzr_level_pct = geometry + credit`,
+and `pzr_mass_frac` remains the UNCLIPPED level in mass-fraction units exactly as v1 defines
+it — `ui/app.js`'s `pzrNodePct` multiplies it straight back by `level_per_mass` to draw the
+off-scale reading, and that row's comment records the credit being inside it, so it is a
+contract rather than an implementation detail. `ensureRegions` takes the credit back off
+before seeding, or taking over a voided plant would hand v2 water the vessel does not hold.
+
+**The declared wart, as ruled:** v2's published level is no longer purely geometric.
+
+**It works where it matters** — `run_pwr flagship_tmi` is **9/9 on v2**, deception episode
+included, and `run_pzr2` is 41/41.
+
+**What is still wrong, measured rather than inferred.** On the severity-0.09 break the node's
+UNCLIPPED level (`pzr_mass_frac × 776`) reads **~225 points against v1's ~78** on the same
+transient, and the vessel is 100 points — so **the node holds more water than the vessel can
+contain**, and the published level pegs at 100 % throughout. The credit is bitwise v1's
+(G6), so the excess is in the geometric half, i.e. in the integrated inventory.
+
+**Leading hypothesis, NOT yet confirmed and flagged as such:** an integrator ratchet at the
+empty end. The surge is integrated, and the drain is clamped (`Math.max(1e-6, …)`), so
+outsurge demand beyond an empty vessel is DISCARDED — while the ECCS refill that follows
+(`_dmass_dt` turns positive as inventory recovers 68 → 83 %) is credited in full. v1 cannot
+have this failure because it RECONSTRUCTS: its node reads honestly negative off-scale
+(`app.js` records −105 at 100 s, −172 at 400 s on a sev-0.6 LOCA). If the hypothesis holds,
+the fix is to let the node's inventory bookkeeping go signed the way v1's does, with the
+region physics using the clipped-at-zero value — **which needs measuring first, not
+assuming.**
