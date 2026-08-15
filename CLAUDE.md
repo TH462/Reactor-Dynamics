@@ -313,7 +313,7 @@ to read everything.
 
 _Last updated: **2026-08-10**._
 
-**Where the PWR is.** `run_all` is **47 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **49 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -344,7 +344,10 @@ re-querying. Run the query.
   contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
   untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
   verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
-- **Built, waiting on review or a close** — #460 (rods ship in MANUAL — one owner call open: it
+- **Built, waiting on review or a close** — **#458** (shutdown cooling and low-head injection are
+  the same pumps: the ALIGN is refused while SI runs — *(OWNER RULING, 2026-08-12: "A'")*. It is
+  **not** a plant interlock and the code/manual/message all say so; declared `Manuals/12` §12.20),
+  #460 (rods ship in MANUAL — one owner call open: it
   brushes #331's "Leave automatic systems in place", and it was built to the NARROW reading),
   #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
@@ -598,7 +601,7 @@ with different numbers**. Run the gate; read the map. The per-change rationale l
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
-node test/run_all.js            # all 47 runners (~8 min, 10-way parallel)
+node test/run_all.js            # all 49 runners (~8 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -663,7 +666,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 47 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 49 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi

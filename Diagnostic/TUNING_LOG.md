@@ -29,6 +29,239 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-13-develop-a (the ops dashboard reads Eastern everywhere — and the "obviously safe" DST fix is wrong on exactly the two days that matter)
+
+**Ask:** *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in
+eastern time.")* **Gates:** `run_all` **49 runners at baseline** (new runner). **Landed:** the
+by-day re-group, the Eastern-midnight window, `etDay`/`etDayStartMs`, zone statements on two
+views, and `test/run_dashboard_time.js` **12/12, 64 checks**.
+
+**What was left.** The 2026-08-12 pass (commit `e290aa7`) converted every point-in-time stamp and
+stopped, on purpose, at the traffic table's **By day** rows — leaving one column headed
+`Date (UTC)` on an otherwise Eastern page. Its reasoning was right and is worth keeping: those
+rows are **buckets the upstream API groups on UTC calendar days**, so the row marked `2026-08-11`
+holds 20:00 on the 10th through 20:00 on the 11th Eastern. Relabelling a bucket is a claim about
+its *contents*, and this one would have been false by four or five hours in every row while
+looking perfect. Its note called re-grouping "an upstream-API question, not a formatting one",
+which is where it stopped — and the API does in fact answer it.
+
+**The measurement that unblocked it.** `rumPageloadEventsAdaptiveGroups` accepts a
+`datetimeHour` dimension, and an hour never straddles an Eastern midnight, so hourly rows can be
+summed into Eastern days here-side exactly. The risk was that a finer grouping drops to a coarser
+sampling tier — which would trade a labelling error for an accuracy one — so it was measured
+against the live dataset **before** anything changed:
+
+| window | hourly | daily | `sampleInterval` |
+|---|---|---|---|
+| 7 d | 67 pageloads / 51 visits, 38 rows | 67 / 51, 5 rows | 1 both |
+| 30 d | 50 / 40 | 50 / 40 | 10 both |
+| 90 d | 50 / 40 | 50 / 40 | 10 both |
+
+Identical totals, identical granularity. The re-bucket then moves **10 pageloads off UTC
+`2026-08-09` onto Eastern `2026-08-08`** on the live 30-day window — the exact shift the old
+header existed to warn about, now simply correct.
+
+**The trap, and it cost the first implementation.** `etDayStartMs` has to answer "at what UTC
+instant did this Eastern day begin", and that needs the zone offset — which is a property of an
+*instant*, not of a day. The obvious way out is to sample the offset at **noon**, safely away from
+the 02:00 switch. It is wrong on precisely the two days a year the whole exercise is about, and in
+**opposite directions**:
+
+| day | noon is | it computes | truth |
+|---|---|---|---|
+| 2026-03-08 (spring fwd) | already EDT | `04:00Z` — an hour early, into the 7th | `05:00Z` (00:00 EST) |
+| 2026-11-01 (fall back) | already EST | `05:00Z` — an hour late, losing hour one | `04:00Z` (00:00 EDT) |
+
+Every other day of the year it is right, which is why it survived the first round of spot checks.
+The fix is a **two-pass fixed point**: guess with the offset at the same wall time read as UTC,
+then re-read the offset *at the guess* and re-solve. One iteration is exact, because the guess is
+already within an hour and DST moves at 02:00, not 00:00. Verified by a 365-day sweep asserting
+each day contains its own start and the millisecond before it does not.
+
+A second, smaller one: `toDate()` fell through to the string branch for a **Date object**
+(`String(date)` is `"Thu Aug 13 2026 …"`, which parses as nothing), so `etDayStartMs` threw on
+the first call — on its own output. Dates are handled explicitly now.
+
+**The gate.** `test/run_dashboard_time.js` — the dashboard had none, which is why the 2026-08-12
+conversion shipped unpinned. render.js is an ES module and the runners are CommonJS, so it is
+imported through a **data: URL** rather than re-implemented (re-implementing would test the copy).
+The static half **strips comments first** — every file here argues about UTC at length, because
+that is where the reasoning has to live, and an unstripped scan passes green on the very sentence
+explaining the bug (the trap `CLAUDE.md` already records against the Indications tab). It caught
+my own page copy on the first run: the new analytics blurb said "…not UTC ones", which was
+reworded rather than exempted.
+
+Injection-verified, five ways: noon offset → **61/64** (and the 365-day sweep names both dates
+unprompted), `datetimeHour` → `date` → **62/64**, column relabelled `Date (UTC)` → **62/64**, a
+view printing a raw Analytics Engine stamp → **63/64**, UTC-midnight window → **62/64**.
+
+**Pinned in the other direction too.** Storage and queries **stay UTC** and must — R2 bundle keys
+are UTC day prefixes, the KV stamp is UTC, the SQL windows are relative, and the GraphQL filter
+accepts nothing else. Those are asserted as *requirements*, so a later "make it all Eastern" pass
+cannot walk past the display layer and shift the key space out from under every existing bundle.
+
+**Not deployed.** The Worker ships by hand (`cd worker && wrangler deploy`); wrangler is not on
+this machine's PATH and the scoped `CLOUDFLARE_API_TOKEN` in the environment would shadow its
+OAuth login (`worker/README.md` §"If wrangler auths via a scoped token"). Committed and gated,
+awaiting the owner's deploy.
+
+---
+
+## Session log — 2026-08-12-develop-c (#458 — shutdown cooling and low-head injection are the same pumps, and the annunciator was asking for the wrong one)
+
+**Issue:** #458. **Gates:** `run_all` **48 runners at baseline**; `run_m4` 45/45 300 →
+**46/46 311**. **Landed:** the SI-lineup refusal on `set_rhr`, the control-kernel boolean
+interlock clear, the re-authored #453 leg, the new `#458` suite, `Manuals` 03/06/12 + Rev 15
+item (g). *(OWNER RULING, 2026-08-12: "A'".)*
+
+**What was wrong.** `Q_rhr` was gated on `rhr_active && condenser_cooling_available`, and
+`rhr_active` was gated on one thing — the 400 psi (2.76 MPa) block-open permissive. A LOCA
+satisfies that permissive in **20 s** at severity 1.0. So a player could align shutdown cooling
+into a running break and get the largest heat sink in the plant, out of heat exchangers WTSM 5.2
+§5.2.4.5 (ML11223A220) says are **uncooled** in the injection lineup.
+
+**Measured full stack, before the change** (`hot_full_power`, `large_loca`, run A takes no
+action, run B aligns on the first legal tick; heat currency: rated core = 19.45 units = 300 MWt):
+
+| | align at | peak `Q_rhr` | vs decay heat | primary void at align+300 s | end Tavg (A → B) |
+|---|---|---|---|---|---|
+| sev 0.05 | t+553 s | 4.28 (~66 MWt) | **8.8×** | — | 266 °F → **175 °F** |
+| sev 1.0 | **t+20 s** | 2.38 (~37 MWt) | **4.2×** | **0.788** | 253 °F → 172 °F |
+
+With `degraded_hpi` at 1.0 as well, aligning RHR took core inventory from a parked 66.8 % to
+**99.9 %** — the player recovers a degraded-injection LOCA with a system that in that alignment
+supplies neither the cooling nor the suction.
+
+**THE DEFECT WAS REACHABLE BY FOLLOWING THE BOARD, and that is the part worth keeping.**
+`rhr_not_aligned` (PWR-A33, RHR NOT IN SERVICE) came in at **t+191 s** of the sev-1.0 run
+(`active_unacknowledged`, measured) and stood for the rest of it — correctly: `plant_mode` reads
+4 from t+300 and the row's own comment says it deliberately stands in during a LOCA to read *"you
+are on injection, not on shutdown cooling"*. But `Manuals/06`'s **Immediate operator actions** for
+that tile said *"Re-align RHR from the ECCS side of the board"* with no carve-out. **An alarm that
+is right and a response procedure that is wrong compose into a board that walks the player into
+the defect** — and neither half looks wrong on its own, which is why reading the alarm row alone
+would have closed this as "deliberate".
+
+**The blast-radius warning in the issue, converted into a number.** The issue warned that
+`pwr_thermal.js` is the heat balance every LOCA probe's bands were measured against. Instrumented
+the thermal step to log the first co-occurrence of `rhr_active && hpi_active` per process, then ran
+the full 48-runner gate: **one hit, in one runner** — `run_m4`'s own #453 leg. No LOCA probe's heat
+balance contains `Q_rhr` at all, because #453 removed the auto-align and PWR-N15 takes HPI/LPI to
+OFF two steps *before* it opens the suction valve. **A blast-radius warning is a claim like any
+other; it cost ~13 min of gate time to measure and it was wrong by a factor of the whole suite.**
+
+**The fix is a REFUSAL, not a heat gate, and the reason matters.** Gating `Q_rhr` on `!hpi_active`
+would have moved zero gates — but it leaves a control that engages, lights `eccs_mode: RHR`, and
+does nothing: the Q4 orphan-control case #453 had just finished removing from this same system.
+The refusal is a control-layer interlock row reading the `hpi_active` status instrument (HR1),
+`blocks_when {active:true}` so ISOLATE is never refused.
+
+**It is NOT a plant interlock and the code, the manual and the message all say so.**
+`find_source.js` finds the pressure permissive and the autoclosure for 8701/8702 and nothing else;
+there is no SI inhibit in 34 documents across 3 lanes. Claiming one would be #453's exact error —
+reading a lineup/procedural fact as an automatic function — committed by the agent who wrote up
+#453's lesson. What it *is*: this trainer has one `rhr_active` flag for two mutually exclusive
+alignments of one set of pumps, and no refueling-water-tank inventory, so it can never reach the
+real exit (the sump swap-over, where a real crew opens component cooling water to the RHR heat
+exchangers). Declared `Manuals/12` §12.20.
+
+**The gate defect found on the way, and its failure mode is backwards.** `_evalInterlocks` clears
+an interlock through a hysteresis band (`v < clears_below` / `v > clears_above`); a boolean has no
+band. `crossed()` learned `is_true`/`is_false` at #314 — the clear path never did, and it was
+latent because **no interlock in the codebase had ever been keyed on a status instrument.** The
+obvious guess is that it latches for ever. Measured by reverting the branch: a boolean row carries
+`setpoint: null`, so the clear arm asks `true > null` → `1 > 0` → **true**, and the interlock
+releases on the next pass *with its own signal still standing*, blocking nothing. **I wrote the
+latches-for-ever version into the comment first and the injection run disproved it** — the same
+shape as every other unmeasured claim in this log, committed in a comment rather than a number.
+
+**Two traps.**
+- **An alarm row's "this is deliberate" comment is about the ALARM, not about the response.**
+  PWR-A33's row comment justified standing in during a LOCA and was right; the manual chapter
+  three files away said what to do about it and was wrong. Nothing connects them.
+- **A probe can pin the defect as the feature.** `run_m4`'s #453 leg commanded the align *with the
+  break open and SI running* and asserted it succeeded — a check written to prove "we removed an
+  automatic action, not the system", asking it in the one regime where the answer should be no.
+  Re-authored to secure injection first, which is also the lineup PWR-N15 actually reaches.
+
+---
+
+## Session log — 2026-08-12-develop-b (#470 — the browser was running the new control room on the old stylesheet, and no gate could see it)
+
+**Issue:** #470, plus a second defect it exposed — **#476**. **Gates:** `run_all` 47 →
+**48 runners** for the new `run_site_build`; `run_site_meta` 163, `run_release` 22,
+`run_channel` 25, `run_portable` 142, all at baseline. **Landed:** the `?v=` cache-bust
+(b06dcd8, earlier session), `WITHHELD_DIRS`, `RD_SITE_OUT`, `test/run_site_build.js`.
+
+**The report.** *(OWNER, 2026-08-12, on the live Alpha 1.6.0: "the text for the strip chart is now crammed
+on the left edge of the chart. Same issue in the strip chart menu")* — and it "didn't show in
+testing". The in-sim recording submitted with it (`msq6jwdc-zungldef`) shows a **healthy
+plant**: PWR at 50 %, 13 s, **0 commands**, 2235 psi (15.41 MPa), Tavg 563.4 °F (295.2 °C), no
+event but `session_start`. Nothing moved, so nothing plant-side could explain it.
+
+**The defect is a pair of cache headers.** `ui/shell.html` is served `max-age=0,
+must-revalidate`; `ui/shell.css` is `max-age=14400` and was referenced as a bare
+`href="shell.css"`. **`must-revalidate` does nothing until `max-age` expires** — revalidating
+the PAGE does not help, because the page then asks for `shell.css` and the cache answers
+locally. Anyone who had loaded the sim within four hours of the release got that release's HTML
+against the *previous* release's CSS. Reproduced by serving the release HTML with 1.5.2's
+stylesheet: `.lane-chrome` computes `position: static` instead of `absolute`, `.lane-value`
+spans l=26→r=561 instead of sitting in the l=489→r=559 gutter, `.cs-row` matches **no rule at
+all**. Every crammed element was one whose CSS was new in 1.6.0 — the signature of this and of
+nothing else. Fixed by putting the build in the url; measured on the develop preview,
+`shell.css?v=b06dcd8`.
+
+### The traps
+
+- **THE SAME DEFECT HAD ALREADY BEEN DIAGNOSED HERE AND ITS SCOPE UNDER-CALLED.** The
+  `_headers` note written 2026-08-09 after Alpha 1.5.1 set `no-cache` on the three version
+  stamps and reasoned the rest was *"fine for engine code — it is immutable per deploy and the
+  page that loads it is revalidated"*. **Immutable per deploy is not the property that
+  matters**: the URL is identical ACROSS deploys, so the cache serves the old file against the
+  new page and never asks. A correct fix for the symptom in front of you, with a stated premise
+  that was false for everything else, and nothing re-checked the premise.
+- **A DEFECT THAT ONLY EXISTS ON THE SECOND VISIT CANNOT BE TESTED BY ANYTHING THAT LOADS
+  COLD** — which is every gate here, every headless run, and every hard refresh. The state that
+  breaks it is *the previous release still being in the browser*, and it is unreachable before
+  the release exists. That is why it shipped, and why the guard had to move to the build's
+  output rather than the running app.
+- **A FIX NOTHING CAN FAIL IS A FIX WAITING TO BE REFACTORED AWAY.** The cache-bust landed
+  guarded by nothing: `run_site_meta` reads source and scored **163/163 unchanged** across it,
+  and deleting the block was green in every gate in the directory. `test/run_site_build.js` now
+  runs the real build into a scratch dir and reads the FILES. Injection-verified three ways
+  against a 31/0 baseline; the one that matters is excluding a single url from busting —
+  **32 checks / 2 failed**, naming `ui/shell.html -> shell.css`, while the source still looks
+  perfectly healthy.
+- **A SCORE THAT COUNTS FILES COUNTS THE ENVIRONMENT, and mine shipped red in CI for exactly
+  that.** The first draft emitted one check per html file in the output. `download/` is an
+  `OPTIONAL_DIR` — present in a working tree and on the deploy host (`make_download.js` runs
+  first), **absent on a fresh clone and in CI** — so a HEALTHY tree scored **41 locally and 40
+  there**. Now one aggregate check that names offenders only when there are some: **31/0 with
+  and without the directory** (11 html files vs 10), measured both ways rather than reasoned
+  about.
+- **THE BUILD HAD NEVER RUN ON A BARE TREE, AND ITS OWN DECLARATION SAID IT COULD.**
+  `OPTIONAL_DIRS` announces that `download/` "may be absent on a bare local run and that is not
+  an error"; the reference walk eight lines below threw on `download/latest.zip` and
+  `download/manifest.js` when it was. Two statements in one file, contradicting each other,
+  neither wrong enough to notice — because the only thing that ever ran `build_site.js` was the
+  deploy host, where the directory always exists. **A gate that runs a build in a second
+  environment is how a one-environment assumption becomes visible**, and it cost this change a
+  red CI run to learn.
+- **VERIFY A REMOVAL WITH A CACHE-BUSTING QUERY — THE EDGE WILL SERVE A FILE THE DEPLOY NO
+  LONGER CONTAINS.** Confirming the withhold on the develop preview: `board_check` answered
+  **404** and `lane_reference` answered **200** off the same deploy. Not a partial fix —
+  `cf-cache-status=HIT, age=2626` (43 minutes, i.e. the *previous* build), and the same url with
+  `?cachebust=1` is 404. The defect this whole session is about, appearing inside its own
+  verification: a cached copy makes a deleted file look present exactly as it makes an old
+  stylesheet look current. **A bare-url check after a deploy is not a measurement.**
+- **THE SECOND DEFECT WAS FOUND BY ASKING WHAT IS IN THE OUTPUT, WHICH NO SOURCE READ ASKS.**
+  `build_site.js` partitions the root `*.html` glob into PAGES / NOT_PUBLISHED, but the DIRS
+  loop copies each asset directory **wholesale** — so `ui/test_panel/` shipped, and both of its
+  dev harnesses answered **200 on the live domain** (`board_check` 90,568 bytes,
+  `lane_reference` 13,755). Being one directory deeper was their whole exemption. The check
+  that keeps them out is a *declared-set* rule — every html in the output must be a declared
+  page — because a deny-list cannot name the page nobody has written yet.
+
 ## Session log — 2026-08-12-workbench-c (#472 phases 1–3a — the dossier's headline was a sampling artifact, and a hollow gate I wrote myself)
 
 **Phase 1 characterisation** (`Diagnostic/PZR_CHARACTERIZATION.md`). The dossier's §5 —
@@ -222,7 +455,6 @@ draw cannot be modelled.
 `run_all`: **47 runners at baseline.** Four baselines moved, each with its reasoning at the entry.
 
 ---
-
 ## Session log — 2026-08-12-develop-a (#464 — the SG was discarding energy, and the manual had been right about it for a week)
 
 **Issue:** #464. **Gates:** `run_all` 47 runners at baseline; `run_behavior` 71 → **72** for the

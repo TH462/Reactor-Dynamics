@@ -31,6 +31,40 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The ops dashboard now reads Eastern time on every view, day buckets included**
+  *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in eastern
+  time.")*. The 2026-08-12 pass converted the point-in-time stamps and deliberately stopped at the
+  traffic table's **By day** rows, because those are buckets the upstream API groups on UTC
+  calendar days — the row marked `2026-08-11` holds 20:00 on the 10th through 20:00 on the 11th
+  Eastern, so stamping "ET" on the label without re-grouping the query moves four or five hours of
+  every day's counts into the neighbouring row *and looks entirely correct*. The finished job
+  re-groups instead of relabelling: `analytics.js` asks Web Analytics RUM for `datetimeHour` and
+  sums the hours into Eastern days here-side (an hour never straddles an Eastern midnight, so the
+  sum is exact), and the query window is aligned to Eastern midnight rather than UTC midnight so
+  the oldest row is a whole day instead of the last 19 or 20 hours of one. **Measured on the live
+  dataset before the change**: hourly and daily grouping return identical totals at the same
+  `sampleInterval` over 7 / 30 / 90 days (67/51, 50/40, 50/40 pageloads/visits), so the finer
+  grouping neither loses rows nor drops to a coarser sampling tier. On the live 30-day window the
+  re-bucket moves 10 pageloads off `2026-08-09` onto `2026-08-08`, which is the shift the old
+  header was warning about. Storage and queries **stay UTC** and must: Analytics Engine stores
+  UTC, the SQL windows are relative, the GraphQL filter accepts only UTC, and the R2 bundle keys
+  are UTC day prefixes — only what is displayed is converted. Sessions and Analytics now state the
+  zone on the page the way the reports view already did.
+- **New gate `test/run_dashboard_time.js` — 12/12, 64 checks.** The dashboard had no gate at all,
+  and every way this rots is silent. **DST is the one worth naming**: the implementation that
+  looks obviously safe — sample the zone offset at **noon**, well away from the 02:00 switch — is
+  wrong on exactly the two days a year the exercise is about, and in *opposite* directions. It
+  dates 2026-03-08 an hour early (04:00Z, when 00:00 EST is 05:00Z) and 2026-11-01 an hour late,
+  losing that day's first hour. It was the first implementation here, and it passed every check
+  written against an ordinary day; the fix is a two-pass fixed point (guess with the offset at the
+  wall time read as UTC, then re-read the offset at the guess), and all four transition cases plus
+  a 365-day sweep are pinned. The static half also pins the re-group so it cannot quietly become a
+  relabel again, and pins storage staying UTC so a later pass cannot walk past the display layer.
+  It **strips comments before scanning** — every file here argues about UTC at length, and an
+  unstripped scan passes green on the prose. Injection-verified, five ways: noon offset → 61/64,
+  `datetimeHour` reverted to `date` → 62/64, column relabelled `Date (UTC)` → 62/64, a view
+  printing a raw Analytics Engine stamp → 63/64, UTC-midnight window → 62/64.
+
 - **The PWR behaviour catalog is unfrozen (v3.1 → v4.0-DRAFT) for the #472 pressurizer
   rebuild, and its freeze now has a gate.** The v3.1 "FROZEN-FINAL" label had no mechanical
   lock — 39 probe IDs in the behaviour battery (nearly the whole CA-7…CA-25 pressurizer
@@ -41,6 +75,54 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   diverge again (`run_behavior` 73pass 1xfail). Owner ruling on the amended set pending.
 
 ### Fixed
+- **Shutdown cooling can no longer be placed in service during a safety injection — they are the
+  same pumps** (#458). The RHR pumps *are* the low-head half of the merged HPI/LPI system, and a
+  real plant runs them in two mutually exclusive alignments: **injection** (suction from the
+  refueling water tank, heat exchangers **uncooled** — WTSM 5.2 §5.2.4.5, ML11223A220:
+  *"the RHR pumps start and recirculate water through the uncooled RHR heat exchangers"*) and
+  **shutdown cooling** (hot-leg suction through 8701/8702, heat exchangers on component cooling
+  water). This plant carried **one** `rhr_active` flag for both, gated only on the 400 psi
+  (2.76 MPa) block-open permissive — which a loss-of-coolant accident satisfies in **20 seconds**
+  at full severity. Measured full stack: aligning RHR into a large break removed **4.28 heat units
+  against 0.49 units of decay heat — 8.8×**, about 66 MWt in this model's currency, at a primary
+  void fraction of **0.788**, i.e. a centrifugal pump taking suction on 79 % steam. **It was not a
+  curiosity: the board asked for it.** PWR-A33 *RHR NOT IN SERVICE* annunciates at **t+191 s** of
+  that same run — correctly, it means "you are on injection, not on shutdown cooling" — and
+  `Manuals/06`'s response for the tile said *"Re-align RHR from the ECCS side of the board"* with
+  no accident carve-out. `set_rhr {active:true}` is now refused while SI is running, with a
+  labelled message; `{active:false}` never is. **This is NOT presented as a plant interlock** —
+  no document in any lane's corpus gives 8701/8702 a safety-injection inhibit, and inventing one
+  would repeat #453's error of reading a lineup fact as an automatic function. Declared as a
+  departure in `Manuals/12` §12.20, which also names what the trainer genuinely cannot do: a real
+  plant's exit is the **sump swap-over on refueling-water-tank depletion**, and there is no such
+  inventory node here, so its accidents stay in the injection phase for ever.
+- **The control kernel could not release an interlock keyed on a boolean** (#458). `_evalInterlocks`
+  engages through `crossed()` (which learned `is_true`/`is_false` at #314) but clears through a
+  hysteresis band — `v < clears_below` / `v > clears_above` — and a boolean has no band. Latent
+  until now because no interlock had ever been authored on a status instrument. **The failure is
+  the opposite of the obvious one:** a boolean row carries `setpoint: null`, so the clear arm asks
+  `true > null`, which is `1 > 0`, so the interlock released on the very next pass with its own
+  signal still standing and blocked nothing at all. Injection-verified in `run_m4`: reverting the
+  branch reddens exactly 5 checks across two suites and nothing else in 46.
+- **A release can no longer serve new HTML against the previous release's stylesheet** (#470).
+  `ui/shell.html` is served `Cache-Control: max-age=0, must-revalidate` while `ui/shell.css` is
+  `max-age=14400` and was referenced as a bare `href="shell.css"` — and `must-revalidate` does
+  nothing until `max-age` expires. So anyone who had loaded the sim in the four hours before a
+  release got that release's HTML against the previous release's CSS, and every element whose
+  styling was new in it drew unstyled. Reported on the live Alpha 1.6.0 as the chart text
+  "crammed on the left edge"; reproduced by serving the release HTML with 1.5.2's stylesheet
+  (`.lane-chrome` computes `position: static`, `.cs-row` matches no rule at all). It never
+  showed in testing because **testing always loads cold**. `site/build_site.js` now appends
+  `?v=<build sha>` to every local `.css`/`.js` reference in the published HTML — 131 urls — so
+  a release requests urls no cache has seen while repeat visits *within* a release still hit
+  the four-hour cache. The three version stamps (`version.js`, `release.js`, `manifest.js`) are
+  excluded: they are already `no-cache`, and pinning them to the build that emitted them is the
+  opposite of their job. Measured live on the develop preview: `shell.css?v=b06dcd8`.
+- **Two dev harnesses are no longer published to the live site** (#476). `ui/test_panel/board_check`
+  and `ui/test_panel/lane_reference` both answered **200 on reactordynamics.com** — the
+  published/withheld partition covers the root `*.html` glob only, while each asset directory
+  is copied wholesale, so being one directory deeper was their whole exemption. Withheld now
+  via a `WITHHELD_DIRS` declaration beside `NOT_PUBLISHED`.
 - **Turbine roll moves to 10–15 % power, where the real plant does it.** `Manuals/04` PWR-N05
   said Mode 2, ≤ 5 %. Real practice: *"To minimize primary plant transients, the turbine is
   rolled with reactor power between 10 and 15 percent"* (WTSM §19.3, ML11223A342). The reason is
@@ -95,6 +177,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   was ruled on 2026-08-09 (#398, *"100 F/hr TS + 50 admin"*), and has annunciated on the board
   since #375 — only the manual's reference table still said "UNVERIFIED — no source found".
   The 90 °F/hr used in PWR-N15 is a *programme* and sits inside the limit; that was always true.
+
+### Added
+- **`test/run_site_build.js`** — the first gate that runs the deploy build and reads its
+  output. Everything else about the site is static: `run_site_meta` scored 163/163 unchanged
+  across the fix above, which means deleting that fix was green in every gate in the directory.
+  It builds into a scratch directory (`RD_SITE_OUT`, so `dist-site/` is never touched) and asks
+  the files two questions — is every `*.html` in the output a **declared** page, and does every
+  local `.css`/`.js` url carry `?v=<stamp>`. The first question is what found the dev harnesses.
+  31 checks, injection-verified three ways.
+- **`site/build_site.js` now builds on a bare tree.** Running it in CI is what showed it never
+  had: its reference walk threw on `download/latest.zip` and `download/manifest.js` whenever
+  `download/` was absent, contradicting the `OPTIONAL_DIRS` declaration eight lines above it
+  ("may be absent on a bare local run and that is not an error"). Only the deploy host ever ran
+  the build, and there `make_download.js` runs first. References into an optional directory
+  that was not built are now skipped; the directory is still fully link-checked whenever it
+  exists, which is every real deploy.
+
+## [Alpha 1.6.0] — 2026-08-12
 
 ### Changed
 - **The ops dashboard lays records out as cards, and stops stretching across wide screens**

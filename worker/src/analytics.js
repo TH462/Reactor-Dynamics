@@ -21,7 +21,7 @@
  * figure says so on the page instead of being quoted as exact.
  */
 
-import { esc, html, PAGE_HEAD, nav, table, errBlock, withDow, dur } from './render.js';
+import { esc, html, PAGE_HEAD, nav, table, errBlock, withDow, etDay, etDayStartMs, dur } from './render.js';
 import { sql, gql, ACCOUNT, SITE_TAG, DATASET, COLUMNS_SINCE } from './cfapi.js';
 
 // ---------------------------------------------------------------- RUM helpers
@@ -41,6 +41,10 @@ function rumGroup(dims, order, limit, from, to) {
 
 // Returns {rows, coarse} — `coarse` is the largest sampleInterval seen, i.e. how rounded
 // these numbers are. 1 means exact.
+//
+// `si` is the row's own interval as a NUMBER, alongside the `exact` string the tables
+// render. The by-day view re-buckets rows and has to combine intervals, and parsing them
+// back out of "±10" would be reading a display string as data.
 function rumRows(group, map) {
   let coarse = 0;
   const rows = (group.rumPageloadEventsAdaptiveGroups || []).map((r) => {
@@ -49,6 +53,7 @@ function rumRows(group, map) {
     return Object.assign(map(r.dimensions || {}), {
       pageloads: num(r.count),
       visits: num((r.sum || {}).visits),
+      si,
       exact: si === 1 ? 'yes' : '±' + si,
     });
   });
@@ -74,7 +79,10 @@ const RUM_COLS = [
 export async function analyticsPage(env, url, token) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 7));
-  const from = new Date(Date.now() - days * 864e5).toISOString().slice(0, 11) + '00:00:00Z';
+  // Aligned to EASTERN midnight, not UTC midnight — otherwise the oldest row of the
+  // by-day table is the last 19 or 20 hours of its day and reads as a quiet morning.
+  // The filter itself is still sent as UTC, which is the only thing the API accepts.
+  const from = new Date(etDayStartMs(Date.now() - days * 864e5)).toISOString();
   const to = new Date().toISOString();
   const since = `timestamp > NOW() - INTERVAL '${days}' DAY`;
 
@@ -95,13 +103,28 @@ export async function analyticsPage(env, url, token) {
     return n === days ? '<b>' + n + 'd</b>' : '<a href="' + href + '">' + n + 'd</a>';
   };
 
-  // The headline tiles. RUM `count` is already sample-adjusted — summing the per-day
-  // rows is correct here; multiplying by sampleInterval would double-count.
+  // The headline tiles. RUM `count` is already sample-adjusted — summing the hourly rows
+  // is correct here; multiplying by sampleInterval would double-count.
   let tiles = '', coarseNote = '';
   let byDay = '<p class="muted">(none)</p>';
   try {
-    const g = rumRows(await gql(apiToken, rumGroup('date', 'date_ASC', 90, from, to)),
-      (d) => ({ date: withDow(d.date) }));
+    /* GROUPED BY HOUR AND RE-SUMMED INTO EASTERN DAYS (2026-08-13). Asking RUM for `date`
+     * gets UTC calendar days, and there is no way to relabel those "ET" honestly — the
+     * bucket marked 2026-08-11 holds 20:00 on the 10th to 20:00 on the 11th Eastern, so a
+     * relabel silently moves four or five hours of every day's traffic into the wrong row.
+     * `datetimeHour` is the finest grouping this endpoint offers that still aggregates,
+     * and an hour never straddles an Eastern midnight, so the sum is exact.
+     *
+     * Measured on the live dataset before the change (see render.js's Eastern block):
+     * hourly and daily grouping return the same totals at the same sampleInterval over
+     * 7/30/90 days, so this buys the correct buckets for nothing.
+     *
+     * The limit must cover every hour in the window or the tail is silently dropped —
+     * `days * 24` plus a day's slack for the partial hours at both ends.
+     */
+    const g = rumRows(await gql(apiToken,
+      rumGroup('datetimeHour', 'datetimeHour_ASC', Math.min(10000, days * 24 + 48), from, to)),
+      (d) => ({ day: etDay(d.datetimeHour) }));
     const pageloads = g.rows.reduce((a, r) => a + r.pageloads, 0);
     const visits = g.rows.reduce((a, r) => a + r.visits, 0);
     tiles = '<div class="tiles">'
@@ -109,13 +132,20 @@ export async function analyticsPage(env, url, token) {
       + '<div class="tile"><div class="v">' + visits + '</div><div class="k">Visits</div></div>'
       + '<div class="tile"><div class="v">' + days + 'd</div><div class="k">Window</div></div>'
       + '</div>';
-    // "Date (UTC)", and it STAYS UTC while the rest of the dashboard reads Eastern
-    // (2026-08-12). These rows are bucketed by Cloudflare on UTC calendar days. Relabelling
-    // them ET without re-grouping the query would move every count four or five hours into
-    // the neighbouring day while looking entirely correct — the row marked 2026-08-11 holds
-    // UTC 00:00–24:00, i.e. 20:00 on the 10th to 20:00 on the 11th Eastern. The header is
-    // the honest fix; re-grouping is an upstream-API question, not a formatting one.
-    byDay = table(g.rows, [{ key: 'date', label: 'Date (UTC)' }, ...RUM_COLS]);
+    // The day's `exact` is the COARSEST of its hours, not an average: one rounded hour
+    // makes the whole day's figure rounded, and claiming otherwise would overstate it.
+    const byEtDay = new Map();
+    g.rows.forEach((r) => {
+      const cur = byEtDay.get(r.day) || { date: r.day, pageloads: 0, visits: 0, si: 1 };
+      cur.pageloads += r.pageloads;
+      cur.visits += r.visits;
+      if (r.si > cur.si) cur.si = r.si;
+      byEtDay.set(r.day, cur);
+    });
+    const dayRows = [...byEtDay.values()].sort((a, b) => (a.date < b.date ? -1 : 1))
+      .map((r) => ({ date: withDow(r.date), pageloads: r.pageloads, visits: r.visits,
+                     exact: r.si === 1 ? 'yes' : '±' + r.si }));
+    byDay = table(dayRows, [{ key: 'date', label: 'Date (ET)' }, ...RUM_COLS]);
     if (g.coarse > 1) {
       coarseNote = '<p class="warn">Window &gt; 7 days: Cloudflare answered from a coarser '
         + 'pre-aggregated tier, so these counts are rounded to the nearest ' + g.coarse
@@ -275,7 +305,9 @@ export async function analyticsPage(env, url, token) {
 
   return html(head
     + '<h1>Analytics <span class="muted">— last ' + days + ' days</span></h1>'
-    + '<p class="muted">Window: ' + windowLink(7) + ' · ' + windowLink(14) + ' · ' + windowLink(30) + '</p>'
+    + '<p class="muted">Window: ' + windowLink(7) + ' · ' + windowLink(14) + ' · ' + windowLink(30)
+    + ' · every date and time here is <b>Eastern</b>, and the rows below are Eastern days '
+    + 'measured midnight to midnight.</p>'
     + tiles + coarseNote
     + '<h2>Traffic <span class="muted">— real browsers, bots excluded</span></h2>'
     + sections.join('')
