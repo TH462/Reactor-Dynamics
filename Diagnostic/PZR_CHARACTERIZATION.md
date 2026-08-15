@@ -275,3 +275,41 @@ integration, and it is inside the declared narrowing (spec §2.8: the saturated 
 
 **So the open solid defect is narrower than it looked**: it is a seam between the two ported
 branches and the rebuilt one, not a drift in the rebuild's own bookkeeping.
+
+### The reseed was minting water — and fixing it exposed the real question (2026-08-15)
+
+**Fixed.** `reseed` rebuilt the vessel's liquid mass *through level* at the branch's new
+pressure: the caller computed a level from `m_liq / rho_l(T_liq_old)` and reseed rebuilt the
+mass as `level × V_pzr × rho_l(Tsat(P_new))`. Those agree only while the two temperatures do
+— and during a blowdown they do not, because Tsat falls with pressure and the liquid gets
+**denser**, so the same level comes back as more kilograms. Every step of a depressurization
+minted inventory. Normal operation hid it perfectly (`pzr_mass_frac` tracked v1 to 0.25 %).
+Reseed now changes temperature and steam content only (`run_pzr2` J1), and the node is
+fenced against holding more water than the plant has (J2, the #418 rule).
+
+**And that is where it gets interesting.** With the mass no longer destroyed each step, the
+post-LOCA pressurizer **fills to 100 % and pins there** — `pzr_mass_frac` 0.37 against v1's
+0.08–0.11. The mass had to be going somewhere before; it was being thrown away by the very
+bug that was hiding it.
+
+**The finding: the void credit is an INDICATION artifact, not an inventory transfer.** In v1
+the credit is a term in a LEVEL law — it inflates what the gauge reads (and `pzr_mass_frac`,
+which is that level ÷ 776) to model loop steam displacing liquid up the surge line. v2's
+boundary converts the credit's rate into **kg/s of real water crossing into the node**, and
+integrating that on a voiding plant physically fills the vessel with water the plant does not
+have. `run_pzr2` G6 says the port is bitwise faithful *as algebra*, and it is; what does not
+carry across is the **currency** — level points of apparent displacement are not kilograms.
+
+**This is the TMI deception's own mechanism**, i.e. the highest-risk item the ruled scope
+named, so it is not a change to make quietly. Two candidate treatments, and the choice
+belongs to the owner:
+
+1. **Credit affects the derived LEVEL, not the node's mass** — v2 publishes
+   `level = geometry + void credit`, and the credit never enters the surge. Closest to v1,
+   keeps TD-1…TD-6 calibrated by construction, and costs the rebuild one honest wart: the
+   published level is no longer purely geometric.
+2. **Credit stays in the surge but the loop supplies it** — the displaced liquid is real
+   water leaving the loop node, which is #474's work and cannot be done inside this rebuild.
+
+**Recommendation: (1) now, with the wart declared, and (2) when #474 lands.** It preserves
+the flagship's teaching payload today and leaves the physical version reachable.

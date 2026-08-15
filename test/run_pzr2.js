@@ -614,6 +614,47 @@ ck('H1 a hole in the loop depressurizes the bubble (and no leak does not)',
    r3(leaking) + ' psi with a leak vs ' + r3(dry) + ' psi without, over 100 s',
    leaking < -10 && Math.abs(dry) < 5, 'leaking falls > 10 psi, dry stays put');
 
+// ============================================================ J. inventory conservation
+console.log('\n' + B + 'J. The node against the loop — mass is not created by pressure' + X);
+
+// J1 DERIVED — RESEED PRESERVES MASS. The ported branches set pressure by a dP law and then
+// re-derive the vessel's thermodynamic state; that re-derivation must not touch inventory.
+// It used to go through LEVEL — the caller computed a level from `m_liq / rho_l(T_old)` and
+// reseed rebuilt the mass as `level × V_pzr × rho_l(Tsat(P_new))`. Identical only while the
+// two temperatures agree, which during a blowdown they do not: Tsat falls with pressure, the
+// liquid gets denser, and the same level comes back as MORE kilograms. Every step of a
+// depressurization minted water. Normal operation hid it completely (the temperatures do
+// agree there, and `pzr_mass_frac` tracked v1 to 0.25 %).
+var sRS = stateAt(55.0);
+sRS._mass = 1.0;
+var mBefore = sRS.pzr_m_liq_kg;
+sRS.pressure_mpa = 8.0;                       // a blowdown's worth of pressure change
+PZ2.reseed(sRS, CFG);
+ck('J1 reseed changes temperature and steam, never liquid mass',
+   r3(mBefore) + ' -> ' + r3(sRS.pzr_m_liq_kg) + ' kg across a 15.41 -> 8.0 MPa reseed',
+   Math.abs(sRS.pzr_m_liq_kg - mBefore) < 1e-9, 'unchanged to 1e-9');
+
+// J2 DERIVED — the node cannot hold water the plant does not have (#418: a node's capacity
+// comes OUT of what it split from, and the loop's share is the implicit `_mass − share`).
+// v1 could not violate this because it RECONSTRUCTED the share from `_mass` every step; v2
+// integrates the surge, so numerics can drift the two apart. The fence is a clamp, not a
+// trim toward a reconstruction — anchoring to one would re-import v1's level law as the
+// authority and undo the rebuild.
+//
+// IT ALSO REPORTS HEADROOM, deliberately: if this ever binds in a normal regime that is a
+// defect in the surge accounting, not a rounding issue, and a silent clamp is exactly how
+// such a defect would be absorbed.
+var sCap = stateAt(55.0);
+sCap._mass = 0.02;                            // a plant holding less than the vessel does
+sCap.pzr_m_liq_kg = 5000;
+PZ2.reconcile(sCap, CFG);
+var sHead = stateAt(55.0); sHead._mass = 1.0;
+PZ2.reconcile(sHead, CFG);
+var headroom = (1.0 * P2.M_rcs_kg - sHead.pzr_m_liq_kg) / P2.M_rcs_kg;
+ck('J2 the node is clamped to the plant\'s inventory, and normal ops are far from it',
+   'clamped to ' + r3(sCap.pzr_m_liq_kg) + ' kg; normal-ops headroom ' + r3(headroom * 100) + ' % of RCS mass',
+   Math.abs(sCap.pzr_m_liq_kg - 0.02 * P2.M_rcs_kg) < 1e-9 && headroom > 0.9, 'clamped; headroom > 90 %');
+
 // ============================================================ tally
 console.log('\n' + D + '──────────────────────────────────────────' + X);
 if (failed === 0) console.log(B + G + 'PRESSURIZER v2 REGIONS: OK' + X + '  ' + checks + ' checks, 0 failed');

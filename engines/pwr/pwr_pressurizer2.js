@@ -561,15 +561,54 @@
   // is deliberately the same function `ensureRegions` uses, so a seam crossing and a fresh
   // start produce identical states. Seam flicker at the predicate boundary is the #384 class
   // of risk and CA-20's fences are what watch for it.
-  function reseed(s, cfg, level_pct) {
+  // RESEED PRESERVES MASS. It re-derives the vessel's TEMPERATURE and STEAM content at the
+  // branch's new pressure and leaves the liquid inventory exactly where the surge put it.
+  //
+  // IT USED TO GO THROUGH LEVEL, and that quietly created and destroyed water — measured
+  // 2026-08-15. The caller computed a level from `m_liq / rho_l(T_liq_old)` and reseed then
+  // rebuilt the mass as `level × V_pzr × rho_l(Tsat(P_new))`. Identical only while the two
+  // temperatures agree; during a blowdown they do not, because Tsat falls with pressure and
+  // the liquid gets DENSER, so the same level came back as more kilograms. Every step of a
+  // depressurization minted inventory. The signature was `pzr_mass_frac` swinging 0.03–0.20
+  // through a post-LOCA plant where v1 held 0.08–0.11, while normal operation — where the
+  // two temperatures do agree — tracked v1 to 0.25 % and hid it completely.
+  //
+  // The rule this now follows is #418's: A NODE'S INVENTORY IS ITS OWN, and it changes only
+  // by what crosses its boundary. Pressure changes the vessel's THERMODYNAMIC state, never
+  // its mass.
+  function reseed(s, cfg) {
     var p2 = cfg.pressurizer2;
     var P = Math.max(0.1, s.pressure_mpa);
     var Tsat = T_sat_from_P(P);
-    var V_liq = Math.max(0, Math.min(1, level_pct / 100)) * p2.V_pzr_m3;
     s.pzr_t_liq_c = Tsat;
-    s.pzr_m_liq_kg = V_liq * rho_l_sat(Tsat);
+    var V_liq = Math.min(s.pzr_m_liq_kg / rho_l_sat(Tsat), p2.V_pzr_m3);
     s.pzr_m_stm_kg = Math.max(1e-9, (p2.V_pzr_m3 - V_liq) * rho_g_sat(P));
     s.pzr_mix_deficit_kj = 0;
+  }
+
+  // THE NODE'S SHARE CANNOT EXCEED WHAT THE PLANT HOLDS *(OWNER RULING, 2026-08-15: "Do as
+  // you recommend" — on the recommendation to reconcile the node against loop inventory
+  // rather than teach the solid predicate to recognise v1-shaped states)*.
+  //
+  // `_mass` is the RCS total and the loop's share is implicit — `_mass − pzr_mass_frac`
+  // (the #418 rule: a node's capacity comes OUT of what it split from). v1 could not violate
+  // that because it RECONSTRUCTED the pressurizer's share from the same `_mass` every step;
+  // v2 integrates the surge, so the two can drift apart through numerics — the one-step-late
+  // `_dmass_dt`, `stepInventory`'s clip at `mass_max`, a branch crossing.
+  //
+  // This is the reconciliation, and it is deliberately a FENCE rather than a trim toward a
+  // target: anchoring the integrated mass to a reconstruction would re-import v1's level law
+  // as the authority and undo the rebuild. What conservation actually requires is only that
+  // the node never claims water the plant does not have, and never goes negative. If this
+  // ever BINDS in a normal regime, that is a defect in the surge accounting and not a
+  // rounding issue — `run_pzr2` J2 measures the headroom so a bind is visible rather than
+  // silently absorbed.
+  function reconcile(s, cfg) {
+    var p2 = cfg.pressurizer2;
+    if (s._mass == null) return;
+    var cap = Math.max(0, s._mass) * p2.M_rcs_kg;
+    if (s.pzr_m_liq_kg > cap) s.pzr_m_liq_kg = cap;
+    if (!(s.pzr_m_liq_kg >= 0)) s.pzr_m_liq_kg = 0;
   }
 
   function stepPressure(s, cfg, dt) {
@@ -621,7 +660,7 @@
       if (loopBreak) s.pressure_mpa = Math.max(s.pressure_mpa, Math.min(pb_vent, 15.41));
       // The vessel's own inventory still moves on the surge; level is the loop's story here.
       s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg + surge_kgps * dt);
-      reseed(s, cfg, 100 * (s.pzr_m_liq_kg / rho_l_sat(T_sat_from_P(s.pressure_mpa))) / p2.V_pzr_m3);
+      reseed(s, cfg);
 
     } else if (solid) {
       // ---- SOLID: no bubble, so the same displacement compresses water. dP is the bulk
@@ -683,10 +722,11 @@
       var leak_depress = (p.K_leak_depressurize || 0) * (s.leak_flow || 0);
       if (leak_depress > 0) {
         s.pressure_mpa = Math.max(0.1, s.pressure_mpa - leak_depress * dt);
-        reseed(s, cfg, 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3);
+        reseed(s, cfg);
       }
     }
 
+    reconcile(s, cfg);
     s.pzr_surge_kgps = surge_kgps;
     return s.pressure_mpa;
   }
@@ -745,6 +785,7 @@
     stepLevel:        stepLevel,
     stepTailpipe:     function (s, cfg, dt)   { return V1.stepTailpipe(s, cfg, dt); },
     reseed:           reseed,
+    reconcile:        reconcile,
     // control + hydraulics — PORTED UNCHANGED in 3b. `relief()` is recent, sourced and not
     // implicated (block valve, porv_stuck_frac, sqrt-dp against live containment); the
     // control channel is 3c's, per the manual-first directive.

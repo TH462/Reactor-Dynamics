@@ -1190,7 +1190,11 @@ var BASELINES = {
   // branch from ever firing. Measured on a severity-0.8 break: inventory 0.0 %, void 0.0,
   // pressure pinned at 1871 psi for fifteen minutes. Found by CA-15's leg, which read as a
   // stale fixture and was the fence.
-  'run_pzr2.js':           { code: 0, score: '39checks 0failed' },
+  // 39 -> 41 (2026-08-15): J1/J2, inventory conservation across the ported branches. J1 is
+  // the one that matters — reseed used to rebuild the vessel's mass THROUGH LEVEL at the new
+  // pressure, which mints water whenever Tsat moves (the liquid gets denser, so the same
+  // level is more kilograms). Invisible in normal operation, where the temperatures agree.
+  'run_pzr2.js':           { code: 0, score: '41checks 0failed' },
   // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
   // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
   // instrument's declared range, because `crossed()` is strict and a setpoint on the edge
