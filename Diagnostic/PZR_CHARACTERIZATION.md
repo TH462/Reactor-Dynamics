@@ -344,3 +344,20 @@ have this failure because it RECONSTRUCTS: its node reads honestly negative off-
 the fix is to let the node's inventory bookkeeping go signed the way v1's does, with the
 region physics using the clipped-at-zero value — **which needs measuring first, not
 assuming.**
+
+### The signed inventory did NOT fix the solid arrest (2026-08-15)
+
+Worth recording because it was my own prediction and it is wrong. `CA-15` was re-measured on
+v2 straight after the signed-inventory fix, on the expectation that the solid arrest and the
+discarded outsurge shared a root. They do not: inventory still reaches the **120.00 %
+`mass_max` clip** and still fails to arrest on the solid line at 109.3 %.
+
+One leg changed direction, which is the new information: *"the break is still flowing at
+settle"* now reads **0.000000** where it previously read 0.000456. The break has stopped
+flowing, so the probe's own precondition — the one that exists so the other legs cannot pass
+vacuously — is no longer met. **The arrest legs are therefore not currently saying anything
+about the arrest**, and re-reading them as evidence would be reading a vacuous probe (the
+`run_reachability` lesson, and CA-10 leg B's).
+
+So the solid work is still open and still starts where it did: with the PREDICATE (v1 enters
+on `pzrNodeLevel >= 100`, v2 on `V_liq >= V_pzr_m3`), not with `bulk_mod_eff_mpa`.
