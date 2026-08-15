@@ -336,6 +336,54 @@ day while thinking about exactly this: the charging-temperature check compared a
 charging actually enters**); and the inventory probe ran 60 s where the envelope lasts 15,
 **fourth unphysical fixture this session**.
 
+**ECCS BUILT on Ginna's OWN PUMP CURVES** -- UFSAR Table 15.6-17, all 24 points of the high- and
+low-head safety injection flow-versus-pressure tables, verbatim. 28 checks, 17/17 mutations.
+
+**A CURVE, NOT A CONSTANT, AND THAT IS THE WHOLE POINT.** Both pumps have a SHUTOFF HEAD -- HHSI
+delivers nothing above **1389.7 psia**, LHSI nothing above **214.7**. So an RCS that has not
+depressurised gets NO emergency cooling however many pumps run, and the operator action that makes
+ECCS work is the one that lowers pressure. A constant-flow ECCS teaches that injection is automatic
+and unconditional: the opposite of the lesson, and the opposite of TMI. The curves also cross a
+regime boundary at ~215 psia -- above it only the high-head train contributes, below it the
+low-head train delivers ~3.5x as much, which is why "get below the cut-in" is a procedure step.
+**Nothing here decides WHEN to inject** (HR5): actuation is control.
+
+**SCALED BY POWER, DELIBERATELY THE OPPOSITE OF CVCS.** CVCS volume-scales because charging moves
+a fraction of inventory per minute; ECCS is sized to carry away DECAY HEAT, a fraction of rated
+power. Two systems, two purposes, two bases -- stated so a future session does not "tidy up" an
+apparent inconsistency. Both are reported by their gates every run.
+
+**THE GATE RETYPES THE SOURCE INDEPENDENTLY** rather than importing the engine's table -- importing
+it would check that a copy equals itself, the exact circularity Layer 0's original 56 green checks
+turned out to have. First check in PWR2 that can catch a MIS-TRANSCRIPTION rather than a misuse.
+**The other six sourced sets have never been diffed against their documents.**
+
+**AND IT FOUND AN ENGINE DEFECT THE 24-POINT DIFF COULD NOT SEE.** `interp()` opened with
+`if (P_psia >= tbl[last][0]) return 0;` -- redundant ABOVE the table (the bracket loop finds
+nothing and falls through to `return 0` anyway) but SHORT-CIRCUITING at exactly the shutoff
+pressure, so **the last row's value was never read**. Changing `[1389.7, 0]` to `[1389.7, 5]`
+passed every check including the document diff: the row that DEFINES the shutoff head was the one
+row the sourced-table check could not see. Removed; both shutoff mutations went from invisible to
+8 red and 1 red. **A guard that is redundant in the case it was written for, and load-bearing in a
+case nobody considered, is worse than no guard -- it makes the masked value untestable while
+looking like defence in depth.** Different from the NH and boron-floor cases, where the redundant
+code was merely inert; this actively hid something.
+
+**FIFTH UNPHYSICAL FIXTURE, and they all have one shape.** The "depressurised" plant was built by
+taking the nominal enthalpy and lowering P to 1.0 MPa -- at 1362 kJ/kg that is **quality 0.298**,
+thirty per cent steam, holding 494 kg instead of ~16,900, with the reconstruction NaN off the
+table. **P AND h ARE NOT INDEPENDENT**: needing a non-nominal state, I set the variable I was
+thinking about and inherited the other. The fixture now targets ~60 degC of subcooling at whatever
+pressure is asked for **and ASSERTS it is single-phase liquid before anything reads from it** --
+the first fixture in PWR2 that checks itself. The previous four were caught only because something
+downstream went visibly strange (an exact 0.0, an 800 degC leg, a NaN); nothing systematic was
+watching.
+
+**And I wrote a MULTI-LINE mutation anchor** -- the construct autocrlf silently broke earlier this
+session and which `CLAUDE.md` carries a standing trap about -- in a file whose own header cites
+§31. Rewritten single-line. **Knowing a trap and not tripping it are different things**; the only
+thing that caught it was the gate refusing to parse.
+
 **Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
 `PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
 `extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa
