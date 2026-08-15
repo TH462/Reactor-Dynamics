@@ -416,3 +416,33 @@ instrumentation pointed at the failing spray scenario rather than at a generic c
 whether the saturated branch arms and is then out-run, or the crash happens inside the
 bubbled branch within a step, decides whether this is a spray-authority question or a seam
 one — and those have different fixes.
+
+### Full spray is clean full-stack — the red is a different LAYER (2026-08-15)
+
+Manual full spray on v2, full stack, pressure channel disengaged, heaters at 0:
+
+| t (s) | P (psia) | subcooling (°F) | delivered spray (%) | pzr level (%) |
+|---|---|---|---|---|
+| 60 | 2235 | +72.9 | 0 | 55.0 |
+| 300 | 1896 | +76.4 | 100 | 43.5 |
+| 720 | 1678 | +64.8 | 100 | 81.6 |
+| 900 | 1053 | +5.5 | **4.8** | 87.8 |
+
+**Subcooling never goes negative, and the `Psat(Thot)` taper visibly does its job** —
+delivered spray closes from 100 % to 4.8 % as pressure approaches the floor. 45,000 steps,
+all in the bubbled branch. So "v2's spray authority is unbounded" is not supported either;
+that is the third hypothesis this cluster has produced and the third the measurement has
+refuted.
+
+**The red lives at a different LAYER, which is the standing trap.**
+`pressure_saturation_bounds` (`pwr_engine.js:3852`) is **engine-direct** —
+`new Harness('hot_full_power')` stepping `h.eng.step(0.5)` — so `stepAutomation` never ticks
+and no channel is ever engaged. It also drives **heaters at 100 % AND spray at 100 %
+simultaneously**, which is the case v1's taper comment is explicitly written about ("full
+heaters vs. full spray floors just at the onset of core-exit boiling"), and it steps at
+**dt = 0.5 s** against the plant's 0.1 s.
+
+So the next measurement is that exact lineup, and the three things that differ from the clean
+run are the candidates in order: **both controls at full**, **engine-direct**, **dt 0.5 s**.
+v2's solid branch sub-steps; the bubbled branch does not, and a condensation term at half-
+second resolution is the kind of thing that overshoots where a rate-limited gain would not.
