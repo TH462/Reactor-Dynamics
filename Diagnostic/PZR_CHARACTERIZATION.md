@@ -361,3 +361,27 @@ about the arrest**, and re-reading them as evidence would be reading a vacuous p
 
 So the solid work is still open and still starts where it did: with the PREDICATE (v1 enters
 on `pzrNodeLevel >= 100`, v2 on `V_liq >= V_pzr_m3`), not with `bulk_mod_eff_mpa`.
+
+### The floor is ruled out, and the heatup family verified (2026-08-15)
+
+*(OWNER RULING, 2026-08-15: "Go with b")* — no `level_prog_floor` in v2; level is what the
+vessel holds. The ruling rests on a measurement rather than a preference: v2 holds the Mode 5
+preset at **55.04 → 55.25 %** over 30 minutes at **122 °F (50 °C)** with no floor, because
+the node integrates real charging flow and CVCS actually holds the level where v1 needed a
+constant to stand in for it (#289). Accepted consequence: a drained plant reads off-scale low
+where v1 reads about +78 points, and the gauge clips to 0 % — which is true.
+
+**Verification, as promised before treating it as settled.** Flag-on `run_pwr` is now
+**31/37, 9 checks red** — from 28/37 and 19 red when v2 first took the engine path. Nothing
+in the remaining set is level-banded, so the missing floor did not bite the heatup family.
+
+**The 9 are one signal, not nine.** Subcooling goes impossibly negative — **−56 °F on the
+heatup, −224 °F on the cooldown, −114.7 °F** on the bound check — i.e. pressure is falling
+BELOW saturation for the coolant temperature. That is exactly what the saturated branch's
+`K_sat_pull` pin exists to prevent (a liquid cannot superheat; flashing pins pressure AT
+Psat(Tavg)), and the predicate that arms it is carried over from v1 unchanged. So the
+question is whether the branch is being ENTERED and losing authority, or not being entered —
+the #384-class seam risk the plan listed, now with a measurement attached.
+
+**That is the next defect and it should be measured before it is touched**: instrument the
+predicate through a cooldown and see whether it flips, flickers, or never fires.

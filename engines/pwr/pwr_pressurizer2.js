@@ -817,6 +817,23 @@
     // ruling and the measurement behind it). Keeping the credit here rather than in the
     // inventory is what preserves TD-1…TD-6 by construction — it is the same term v1
     // publishes, in the same units, reached the same way.
+    // THERE IS NO `level_prog_floor` HERE, AND THAT IS RULED *(OWNER RULING, 2026-08-15: "Go
+    // with b" — selecting "no floor; level is what the vessel holds" from three options put
+    // in #472; a selection, not verbatim words)*.
+    //
+    // v1 floors its base term at 28 % as the #289 cold-modes stand-in — its own comment says
+    // the floor stands in for "CVCS keeping the pressurizer on span in the cold modes",
+    // because normalized mass bookkeeping does not model the cold plant's real mass surplus.
+    // v2 does not need the stand-in, and that is measured rather than argued: on the Mode 5
+    // preset it holds 55.04 -> 55.25 % over 30 minutes at 122 °F (50 °C) with no floor at
+    // all, because the node integrates REAL charging flow and CVCS actually holds the level
+    // instead of a constant pretending it did.
+    //
+    // The consequence, accepted with the ruling: on a drained plant v2 reads off-scale LOW
+    // where v1 reads about +78 points, and the player's gauge clips to 0 % — which is true,
+    // the vessel is empty. The TMI lift is untouched because it comes from the credit above.
+    // Modelling the cold surplus properly (denser water, more capacity) is the honest third
+    // answer and belongs to #385's noted follow-on, not to this rebuild.
     var geometric = 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3;
     var credit = s._pzr_void_lvl || 0;
     // MINUS THE DEFICIT — the outsurge the vessel could not supply, in level points. This is
