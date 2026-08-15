@@ -1199,7 +1199,13 @@ var BASELINES = {
   // 80,209 steps on one break, 3.4x the vessel's capacity — while the ECCS refill that
   // followed was credited in full, so a pressurizer holding zero water published a 100 %
   // gauge. v1 cannot fail this way because its level is a signed reconstruction.
-  'run_pzr2.js':           { code: 0, score: '44checks 0failed' },
+  // 44 -> 45 (2026-08-15): K1, the adaptive sub-step. Two earlier forms of this check read
+  // "1 sub-step" and would have shipped green while testing nothing — the first because it
+  // measured a 55 % plant where there is no stiffness, the second because it set
+  // `spray_flow_frac` directly and `autoControl` overwrites that on the way through. The
+  // real command sets `spray_override`, which is what the check drives now: 64 sub-steps
+  // with both controls full at 85 % level, exactly 1 on a quiet plant.
+  'run_pzr2.js':           { code: 0, score: '45checks 0failed' },
   // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
   // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
   // instrument's declared range, because `crossed()` is strict and a setpoint on the edge

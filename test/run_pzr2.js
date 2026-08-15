@@ -684,6 +684,36 @@ for (var jn = 0; jn < 200; jn++) PZ2.stepRegions(sNorm, CFG, 1.0, { surge_kgps: 
 ck('J3c normal surge cycling banks nothing', r3(sNorm.pzr_m_deficit_kg || 0) + ' kg after 200 steps of ±1.5 kg/s',
    !(sNorm.pzr_m_deficit_kg > 1e-9), 'zero');
 
+// K1 DERIVED — THE STEP DIVIDES ITSELF WHEN THE PRESSURE EXCURSION IS LARGE. The two-region
+// model is stiffest where spray condenses steam (pressure down) while the same spray adds
+// liquid volume that squeezes the remaining bubble (pressure up): no single term is large
+// while the net swings hundreds of psi. Measured on `pressure_saturation_bounds`
+// (engine-direct, heaters AND spray both full, dt 0.5 s) before the guard existed: pressure
+// collapsed to 180 psia with −208 °F of impossible subcooling, and the saturated pin armed
+// on 4 of 1200 steps because the crash happened INSIDE a step. After: 1260 psia and −6.5 °F.
+//
+// The criterion is a TRIAL STEP on a copy, not a per-term estimate — the first version of
+// this guard sized the split off condensed mass against bubble mass and never fired once
+// (3.4 kg a step against a ~100 kg bubble looks harmless right up until the result swings
+// 600 psi). No gain is lowered and no flow is capped: §2.7's rule is that a ringing branch
+// is the integrator's problem.
+var sK = stateAt(85.0);   // small bubble — where the stiffness lives (C4c pins the same regime)
+sK.tavg_c = 304.0; sK._tavg_fp = 304.0; sK.thot_c = 311.7; sK.tcold_c = 297.0;
+sK._dTavg_dt = 0; sK._dmass_dt = 0; sK._mass = 1.0; sK.primary_void_fraction = 0;
+sK.leak_flow = 0; sK.porv_flow = 0; sK.safety_flow = 0; sK.flow_frac = 1;
+sK.heater_override = 1; sK.spray_override = 1; sK.pressure_mpa = P_OP;   // what set_heater/set_spray actually set
+PZ2.stepPressure(sK, CFG, 0.5);
+var subs = sK.pzr_pressure_substeps || 1;
+var sQ = stateAt(55.0);
+sQ.tavg_c = 304.0; sQ._tavg_fp = 304.0; sQ.thot_c = 311.7; sQ.tcold_c = 297.0;
+sQ._dTavg_dt = 0; sQ._dmass_dt = 0; sQ._mass = 1.0; sQ.primary_void_fraction = 0;
+sQ.leak_flow = 0; sQ.porv_flow = 0; sQ.safety_flow = 0; sQ.flow_frac = 1;
+sQ.heater_power_frac = 0; sQ.spray_flow_frac = 0; sQ.pressure_mpa = P_OP;
+PZ2.stepPressure(sQ, CFG, 0.5);
+ck('K1 the step sub-divides under full spray, and not on a quiet plant',
+   subs + ' sub-steps with both controls full, ' + (sQ.pzr_pressure_substeps || 1) + ' quiet',
+   subs > 1 && (sQ.pzr_pressure_substeps || 1) === 1, '> 1 under load, exactly 1 quiet');
+
 // ============================================================ tally
 console.log('\n' + D + '──────────────────────────────────────────' + X);
 if (failed === 0) console.log(B + G + 'PRESSURIZER v2 REGIONS: OK' + X + '  ' + checks + ' checks, 0 failed');

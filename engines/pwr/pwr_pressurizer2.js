@@ -760,15 +760,54 @@
       // steam draw; the heaters put joules into the liquid and the metal. Nothing here is a
       // fitted authority and there is nowhere to put one.
       var relief_kg = ((s.porv_flow || 0) + (s.safety_flow || 0)) * p2.M_rcs_kg;
-      s.pressure_mpa = stepRegions(s, cfg, dt, {
+
+      // SUB-STEP WHEN THE BUBBLE IS SMALL RELATIVE TO WHAT ONE STEP WOULD MOVE.
+      //
+      // The two-region model is stiffest as the steam space shrinks: pressure is
+      // `rho_g_sat⁻¹(m_stm / V_stm)`, so once the bubble is small a step that condenses a
+      // large FRACTION of it moves pressure enormously. Measured 2026-08-15 on
+      // `pressure_saturation_bounds` (engine-direct, heaters AND spray both full, dt 0.5 s):
+      // the steam inventory was driven 195 -> 13 kg, pressure oscillated 2372 / 1275 / 1886
+      // psia instead of falling monotonically, and finally collapsed to 180 psia with
+      // -208 °F of impossible subcooling. The saturated pin — which exists to catch exactly
+      // that — armed on 4 of 1200 steps, because the crash happened INSIDE a single step and
+      // the predicate is only tested between them.
+      //
+      // So the fix is the integrator, not an authority: no gain is lowered and no flow is
+      // capped. The step is divided until no sub-step moves more than a tenth of the steam
+      // region, which is the same rule §2.7 already states for the solid branch ("integrate
+      // implicitly and sub-step; a ringing branch is fixed by the integrator, NEVER by
+      // lowering the gain"). It is also the other face of `run_pzr2` C4c's known gap, where
+      // heater authority rails above ~75 % level — one stiff regime, reached from two sides.
+      //
+      // The cost is bounded: sub-stepping only engages when the demanded phase change is
+      // large against the bubble, which on a healthy plant is never.
+      // The criterion is the PRESSURE EXCURSION the step would produce, measured by trial on
+      // a copy of the five region numbers, because the stiffness is not attributable to any
+      // one term. A first version of this guard sized the split off how much steam the spray
+      // would condense against the bubble's mass, and it never fired: 3.4 kg a step against
+      // a ~100 kg bubble looks harmless. What the trace actually shows is a COUPLED
+      // oscillation — the same spray condenses steam (pressure down) AND adds liquid volume
+      // that squeezes the remaining bubble (pressure up) — so no single term is large while
+      // the result swings 600 psi. Trial-stepping asks the only question that generalises.
+      var T_spray_c = (s.tcold_c != null) ? s.tcold_c : s.tavg_c;
+      var io_try = {
         surge_kgps: surge_kgps,
         surge_t_c: (s._surge_t_c != null) ? s._surge_t_c : (s.thot_c != null ? s.thot_c : s.tavg_c),
         spray_kgps: spray_eff * p2.spray_capacity_kgps,
-        spray_t_c: (s.tcold_c != null) ? s.tcold_c : s.tavg_c,
+        spray_t_c: T_spray_c,
         relief_kgps: relief_kg,
         heater_frac: (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) || 0
-      });
-
+      };
+      var probe = { pzr_m_liq_kg: s.pzr_m_liq_kg, pzr_m_stm_kg: s.pzr_m_stm_kg,
+                    pzr_t_liq_c: s.pzr_t_liq_c, pzr_mix_deficit_kj: s.pzr_mix_deficit_kj,
+                    pzr_m_deficit_kg: s.pzr_m_deficit_kg, pressure_mpa: s.pressure_mpa };
+      var P_try = stepRegions(probe, cfg, dt, io_try);
+      var excursion = Math.abs(P_try - s.pressure_mpa);
+      var nSub = Math.min(64, Math.max(1, Math.ceil(excursion / 0.05)));   // 0.05 MPa = 7.3 psi
+      var sub_dt = dt / nSub;
+      s.pzr_pressure_substeps = nSub;
+      for (var isub = 0; isub < nSub; isub++) s.pressure_mpa = stepRegions(s, cfg, sub_dt, io_try);
       // A HOLE IN THE LOOP DEPRESSURIZES THE BUBBLE, and leaving this out was a defect —
       // measured 2026-08-15, found by CA-15's leg and confirmed on a real break.
       //
