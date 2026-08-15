@@ -200,17 +200,34 @@
   // a plant mid-run (the A/B switch, a loaded save, a scenario IC), so the regions are
   // RECONSTRUCTED from the two published quantities that always exist — pressure and level —
   // rather than requiring an initialiser nobody would remember to call.
+  // SEED FROM INVENTORY, NOT FROM THE GAUGE. `pzr_mass_frac` is the pressurizer's liquid
+  // content as a share of RCS mass — the #385 node's own currency — and it is what an IC, a
+  // save and the migration path all carry. `pzr_level_pct` is a PUBLISHED READING that the
+  // level step fills in, and the engine's initial state literally sets it to 0
+  // (pwr_engine.js:1840) on the understanding that step 8 will overwrite it.
+  //
+  // Reading the gauge first was measured on 2026-08-14 and it seeds an EMPTY VESSEL: level
+  // 0.0 at t=0, a reactor trip on pzr level low at six seconds, and CVCS then refilling a
+  // plant that was supposed to start at 55 %. Nothing about the physics was wrong; the model
+  // was handed a pressurizer with no water in it. The order below is the fix and it is also
+  // the general rule — an inventory model seeds from an inventory quantity, never from a
+  // display of one.
   function ensureRegions(s, cfg) {
     if (s.pzr_m_liq_kg != null) return;
     var p2 = cfg.pressurizer2;
     var P = s.pressure_mpa > 0 ? s.pressure_mpa : cfg.pressurizer.P_equilibrium;
-    var lvl = (s.pzr_level_pct != null ? s.pzr_level_pct : cfg.pressurizer.pzr_level_nominal) / 100;
-    lvl = Math.max(0, Math.min(1, lvl));
     var Tsat = T_sat_from_P(P);
-    var V_liq = lvl * p2.V_pzr_m3;
+    var m_liq;
+    if (s.pzr_mass_frac != null && s.pzr_mass_frac > 0) {
+      m_liq = s.pzr_mass_frac * p2.M_rcs_kg;                       // the node's own currency
+    } else {
+      var lvl = (s.pzr_level_pct > 0 ? s.pzr_level_pct : cfg.pressurizer.pzr_level_nominal) / 100;
+      m_liq = Math.max(0, Math.min(1, lvl)) * p2.V_pzr_m3 * rho_l_sat(Tsat);
+    }
+    var V_liq = Math.min(m_liq / rho_l_sat(Tsat), p2.V_pzr_m3);
     s.pzr_t_liq_c   = Tsat;                    // the pressurizer sits ON its saturation line
-    s.pzr_m_liq_kg  = V_liq * rho_l_sat(Tsat);
-    s.pzr_m_stm_kg  = (p2.V_pzr_m3 - V_liq) * rho_g_sat(P);
+    s.pzr_m_liq_kg  = m_liq;
+    s.pzr_m_stm_kg  = Math.max(1e-9, (p2.V_pzr_m3 - V_liq) * rho_g_sat(P));
     s.pzr_surge_kgps = 0;
   }
 
@@ -511,6 +528,156 @@
     return T_sat_from_P(P) - T;
   }
 
+  // ========================================================== the step, and its three regimes
+  //
+  // v1's `stepPressure` is ~300 lines that sum four accreted authorities into one `dP` and
+  // integrate it. v2 has three REGIMES, each owning its own physics, and the branch is the
+  // structure rather than a patch:
+  //
+  //   SATURATED / BLOWDOWN   ported nearly verbatim from v1. Its subject is the LOOP
+  //                          flashing wearing a pressurizer address (`K_sat_pull` pins
+  //                          pressure at Psat(Tavg); `K_break_vent` and the containment
+  //                          floor handle an open hole). Re-deriving it means modelling
+  //                          loop flashing, which is #474. A DECLARED NARROWING of scope B,
+  //                          spec §2.8.
+  //   SOLID                  no bubble: dP = bulk modulus x (net volume change / volume).
+  //                          Spray and heater flashing are zero BY CONSTRUCTION here, which
+  //                          is the four separately-gated solid patches (#346, #347, #361,
+  //                          2026-08-07) collapsing into one regime.
+  //   BUBBLED                `stepRegions` — two regions, saturation between, pressure read
+  //                          off the steam. This is the rebuild.
+  //
+  // WHAT IS GONE: `P_restore_rate_gain`. Nothing replaces it (spec §5). Its own comment
+  // called it a stand-in for heater and charging authority; charging is CVCS's channel and
+  // always was, and heater authority is now the heaters acting through real thermodynamics.
+  // Pressure-holding becomes the automatic channel's job, which is what MO-2b asserts and
+  // what Phase 1 showed the channel is not currently doing (heaters peak at 1.77 % on a trip
+  // while the term holds 2235 psi flat). Removing it is what makes the controller's own
+  // probes mean anything.
+  //
+  // THE SEAM. The two ported branches set pressure by a dP law rather than from the regions,
+  // so on the way out they RE-SEED the regions to the state they just described — otherwise
+  // a return to the bubbled branch would resume from stale masses. `reseed` is that, and it
+  // is deliberately the same function `ensureRegions` uses, so a seam crossing and a fresh
+  // start produce identical states. Seam flicker at the predicate boundary is the #384 class
+  // of risk and CA-20's fences are what watch for it.
+  function reseed(s, cfg, level_pct) {
+    var p2 = cfg.pressurizer2;
+    var P = Math.max(0.1, s.pressure_mpa);
+    var Tsat = T_sat_from_P(P);
+    var V_liq = Math.max(0, Math.min(1, level_pct / 100)) * p2.V_pzr_m3;
+    s.pzr_t_liq_c = Tsat;
+    s.pzr_m_liq_kg = V_liq * rho_l_sat(Tsat);
+    s.pzr_m_stm_kg = Math.max(1e-9, (p2.V_pzr_m3 - V_liq) * rho_g_sat(P));
+    s.pzr_mix_deficit_kj = 0;
+  }
+
+  function stepPressure(s, cfg, dt) {
+    var p = cfg.pressurizer, p2 = cfg.pressurizer2;
+    ensureRegions(s, cfg);
+
+    // Control and hydraulics run first and are v1's, unchanged. 3b is the MANUAL-first half
+    // (CLAUDE.md's standing testing-order directive): the acceptance rows fix heater and
+    // spray demand by command, so what `autoControl` decides is not under test here. 3c is
+    // where the channel is ported and asserted to hold what manual proved.
+    var spEff = V1.effectiveSetpoint(s, cfg, dt);
+    V1.autoControl(s, cfg, spEff);
+    V1.relief(s, cfg);
+
+    // DELIVERED spray — v1's authority taper kept verbatim, including the indication split
+    // (#350): `spray_flow_pct` publishes what the nozzle passes, and the solid regime removes
+    // the spray's pressure AUTHORITY without pretending the valve shut.
+    var spray_floor = V1.P_sat_from_T(s.thot_c != null ? s.thot_c : s.tavg_c);
+    var spray_authority = clip((s.pressure_mpa - spray_floor) / (p.spray_floor_band || 1.0), 0, 1);
+    var spray_eff = (s.spray_flow_frac || 0) * clip(s.flow_frac != null ? s.flow_frac : 1, 0, 1) * spray_authority;
+    s.spray_flow_pct = clip(spray_eff / (p.spray_flow_max || 1), 0, 1.1) * 100;
+
+    // ---- REGIME. Same predicates as v1, so the seam sits where every probe expects it.
+    var p_sat_tavg = V1.P_sat_from_T(s.tavg_c);
+    var saturated = (s.primary_void_fraction > 0) || (p_sat_tavg > s.pressure_mpa);
+    var V_liq = s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c);
+    var solid = !saturated && V_liq >= p2.V_pzr_m3;
+    var surge_kgps = surgeDemand(s, cfg, dt);
+    s.pzr_tap_sat_margin_c = tapSatMargin(s);
+
+    if (saturated) {
+      // ---- PORTED: the loop is two-phase and the loop decides. A liquid cannot superheat,
+      // so flashing PINS pressure at Psat(Tavg) and the operator depressurizes by COOLING.
+      // With a hole in the loop the pin weakens as void approaches 1 (the steam the flash
+      // makes LEAVES) and a vent term takes the RCS down to containment backpressure —
+      // WTSM 5.0 §5.0.1.1. Constants and comments live in v1's block during the bridge.
+      var loopBreak = (s._leak_base > 0) && !s._leak_to_sg;
+      var pb_vent = s.containment_pressure_mpa != null ? s.containment_pressure_mpa : p.P_containment;
+      var vf = s.primary_void_fraction || 0;
+      var vfVent = Math.max(vf, Math.min(1, Math.max(0, 1 - (s._mass != null ? s._mass : 1))));
+      var p_pin = loopBreak ? Math.max(p_sat_tavg, pb_vent) : p_sat_tavg;
+      var dP = p.K_sat_pull * (loopBreak ? (1 - vfVent) : 1) * (p_pin - s.pressure_mpa)
+             - (s.porv_flow || 0) * p.K_porv_relief
+             - (s.safety_flow || 0) * p.K_safety_relief;
+      if (loopBreak && p.K_break_vent) {
+        dP -= p.K_break_vent * (s.leak_flow || 0) * vfVent * Math.max(0, s.pressure_mpa - pb_vent);
+      }
+      s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dP * dt);
+      if (loopBreak) s.pressure_mpa = Math.max(s.pressure_mpa, Math.min(pb_vent, 15.41));
+      // The vessel's own inventory still moves on the surge; level is the loop's story here.
+      s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg + surge_kgps * dt);
+      reseed(s, cfg, 100 * (s.pzr_m_liq_kg / rho_l_sat(T_sat_from_P(s.pressure_mpa))) / p2.V_pzr_m3);
+
+    } else if (solid) {
+      // ---- SOLID: no bubble, so the same displacement compresses water. dP is the bulk
+      // modulus times the fractional volume change. Spray has NO pressure authority here and
+      // the heaters cannot flash — both fall out of the branch rather than being fenced by a
+      // patch, which is the point of having a regime at all. Relief draws LIQUID and pays the
+      // same stiffness (the 2026-08-07 ruling: a vented mass releases bulk-modulus pressure
+      // when there is no bubble to absorb it).
+      var relief_kgps = ((s.porv_flow || 0) + (s.safety_flow || 0)) * p2.M_rcs_kg;
+      var dV = (surge_kgps - relief_kgps) * dt / rho_l_sat(s.pzr_t_liq_c);      // m³ this step
+      var dPs = p2.bulk_mod_eff_mpa * (dV / p2.V_pzr_m3);
+      // SUB-STEP RATHER THAN SOFTEN THE GAIN. A ringing solid branch is an integrator
+      // problem; lowering the stiffness to quiet it would be re-tuning the plant's
+      // incompressibility to suit a time step (spec §2.7).
+      var sub = Math.min(64, Math.max(1, Math.ceil(Math.abs(dPs) / 0.05)));
+      for (var i = 0; i < sub; i++) {
+        s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dPs / sub);
+      }
+      s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg + (surge_kgps - relief_kgps) * dt);
+      s.pzr_m_stm_kg = 1e-9;
+      s.pzr_t_liq_c = T_sat_from_P(s.pressure_mpa);
+
+    } else {
+      // ---- BUBBLED: the rebuild. Spray is a MASS with an enthalpy, not a gain; relief is a
+      // steam draw; the heaters put joules into the liquid and the metal. Nothing here is a
+      // fitted authority and there is nowhere to put one.
+      var relief_kg = ((s.porv_flow || 0) + (s.safety_flow || 0)) * p2.M_rcs_kg;
+      s.pressure_mpa = stepRegions(s, cfg, dt, {
+        surge_kgps: surge_kgps,
+        surge_t_c: (s._surge_t_c != null) ? s._surge_t_c : (s.thot_c != null ? s.thot_c : s.tavg_c),
+        spray_kgps: spray_eff * p2.spray_capacity_kgps,
+        spray_t_c: (s.tcold_c != null) ? s.tcold_c : s.tavg_c,
+        relief_kgps: relief_kg,
+        heater_frac: (s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) || 0
+      });
+    }
+
+    s.pzr_surge_kgps = surge_kgps;
+    return s.pressure_mpa;
+  }
+
+  // stepLevel — LEVEL IS GEOMETRY NOW. v1 reconstructs it from a base line plus three fitted
+  // slopes; v2 divides the liquid volume by the vessel's. `pzr_mass_frac` keeps its meaning
+  // and its currency (a share of RCS mass, never a second inventory), so `ui/app.js:251-271`
+  // and the migration path keep working.
+  function stepLevel(s, cfg, dt) {
+    var p2 = cfg.pressurizer2;
+    ensureRegions(s, cfg);
+    var lvl = 100 * (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) / p2.V_pzr_m3;
+    s.pzr_mass_frac = s.pzr_m_liq_kg / p2.M_rcs_kg;
+    s._pzr_surge_flow = s.pzr_surge_kgps != null ? s.pzr_surge_kgps / p2.M_rcs_kg : 0;
+    s.pzr_level_pct = clip(lvl, 0, 100);
+  }
+
+  function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+
   // ------------------------------------------------------------------ the model
   //
   // PHASE 3a: pure delegation. Each function is listed explicitly rather than copied with
@@ -546,10 +713,13 @@
       return P_from_steam_density(s.pzr_m_stm_kg / V_stm);
     },
     // step entry points (pwr_engine.js:508 / :540 / :542, and :1992 with dt=0)
-    stepPressure:     function (s, cfg, dt)   { return V1.stepPressure(s, cfg, dt); },
-    stepLevel:        function (s, cfg, dt)   { return V1.stepLevel(s, cfg, dt); },
+    stepPressure:     stepPressure,
+    stepLevel:        stepLevel,
     stepTailpipe:     function (s, cfg, dt)   { return V1.stepTailpipe(s, cfg, dt); },
-    // control + hydraulics
+    reseed:           reseed,
+    // control + hydraulics — PORTED UNCHANGED in 3b. `relief()` is recent, sourced and not
+    // implicated (block valve, porv_stuck_frac, sqrt-dp against live containment); the
+    // control channel is 3c's, per the manual-first directive.
     effectiveSetpoint: function (s, cfg, dt)  { return V1.effectiveSetpoint(s, cfg, dt); },
     autoControl:      function (s, cfg, sp)   { return V1.autoControl(s, cfg, sp); },
     relief:           function (s, cfg)       { return V1.relief(s, cfg); },

@@ -1218,6 +1218,35 @@
       // the decay rate does. [tune]
       surge_mix_tau_s: 180.0,
 
+      // ---- SPRAY. v1 works in a demand FRACTION times a `K_spray` gain; v2 needs a MASS
+      // FLOW, because spray controls pressure by condensing bubble and condensation is an
+      // energy balance on the water actually delivered. 23.68 kg/s is the spray line's full
+      // capacity (S10). The taper that closes spray out as the plant approaches Psat(Thot),
+      // the `flow_frac` dependence (no RCP, no spray) and the delivered-flow indication
+      // (#350) are all v1's and are ported unchanged.
+      spray_capacity_kgps: 23.68,
+
+      // ---- SOLID. With no bubble the vessel is a bulk modulus, and dP is the fractional
+      // volume change times this. v1's effective stiffness in this regime is
+      // `solid_bulk_mpa / level_per_mass` per unit of level, which in v2's currency
+      // (fraction of vessel volume) is solid_bulk_mpa scaled by the volume ratio — the
+      // number below reproduces v1's solid arrest at ~109.3 % inventory (SA-1), which is the
+      // behaviour that must survive rather than the constant.
+      //
+      // A RINGING SOLID BRANCH IS FIXED BY THE INTEGRATOR, NEVER BY THIS NUMBER. Lowering it
+      // to quiet an oscillation is retuning the plant's incompressibility to suit a time
+      // step; stepPressure sub-steps instead. [tune]
+      bulk_mod_eff_mpa: 1300.0,
+
+      // ---- SHARED WITH v1 DURING THE BRIDGE, deliberately not copied. `level_per_tavg`,
+      // `level_per_mass`, `level_per_void`, `void_weight_surge_ref`, `level_prog_floor`,
+      // `K_sat_pull`, `K_break_vent`, `K_porv_relief`, `K_safety_relief` and the spray taper
+      // constants are read from the `pressurizer:` block above. The spec's §4 listed them as
+      // ported copies; copying them would create a SECOND source that can drift, and it
+      // would make `run_pzr2`'s G6 parity check compare two copies of the same number
+      // instead of comparing the ported ledger against the live one. They merge into one
+      // block at cutover, which is when the duplication question actually arises.
+
       // Resulting full-heater authority, for the record and for anyone re-deriving:
       //   C = 8.41 (liquid, 55 % level) + 5.73 (metal) = 14.14 MJ/°C
       //   dTsat/dP = 5.35 °C/MPa at 15.41 MPa (from this file's own P_sat_from_T)
