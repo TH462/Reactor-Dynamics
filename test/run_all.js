@@ -1155,6 +1155,20 @@ var BASELINES = {
   // the band, and the excess the creep leaves. Injection-verified: a 3.2 % rod-worth retune
   // reddens all four. Before this the 26 was a swept number with nothing holding its inputs.
   'run_reactivity.js':     { code: 0, score: '27checks 0failed' },
+  // NEW 2026-08-14 (#472 phase 3b) — the pressurizer v2 two-region model at the REGION
+  // level: correlations, geometry, the implicit flash, heater elevation, stratification and
+  // mass closure. It exists because four commits of thermodynamics had NO consumer at all —
+  // `stepRegions`, `solveFlash` and `pressureFrom` were called only by their own file, and
+  // every number in those commit messages came from a throwaway script. Writing it found
+  // four defects in a model that had passed every gate in the repo, because no gate could
+  // see it: the heater elevation keys were MISSING from config (wetted fraction 0 at every
+  // level — full demand, zero watts), the flash bracket was sized off the delivered energy
+  // alone (so a pressure change from relief or an outsurge could flash nothing — 60 kg of
+  // steam drawn boiled 0.2 kg of liquid), the step returned a pressure the state did not
+  // hold (a two-step zigzag), and the inner fixed point ran a fixed 3 passes and stopped
+  // 6 % short of its own root. It runs in about a second: no plant is stepped, which is the
+  // point — conservation is a property of a state and a step, not of a scenario.
+  'run_pzr2.js':           { code: 0, score: '26checks 0failed' },
   // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
   // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
   // instrument's declared range, because `crossed()` is strict and a setpoint on the edge

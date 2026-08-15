@@ -97,20 +97,22 @@
     return RHO_G[i] * Math.pow(RHO_G[i + 1] / RHO_G[i], f);
   }
 
-  // T_sat_from_P — the inverse of v1's `P_sat_from_T`, by bisection ON THAT FUNCTION.
+  // T_sat_from_P — the inverse of v1's `P_sat_from_T`, in CLOSED FORM.
   //
   // Inverting our OWN correlation rather than tabulating Tsat independently is the point:
   // a second table would let the saturation line disagree with itself, and every regime
   // predicate in this model (flash, condense, solid, the sat-branch entry) tests one side
-  // of that line against the other. 60 bisections over a 100–374 °C bracket converge to
-  // ~2e-7 °C, and the whole call costs less than one `Math.pow`.
+  // of that line against the other. v1's line is `P = (T/179.47)^(1/0.239)`, so the inverse
+  // is `T = 179.47·P^0.239` exactly — no bracket, no tolerance.
+  //
+  // IT WAS A 60-STEP BISECTION UNTIL 2026-08-14, and the cost was not academic: the flash
+  // solve calls this inside a fixed point inside a bisection, and the expense is what made
+  // the fixed point run three passes and stop 6 % short of its own root (see solveFlash).
+  // An exact form bought the iterations that made the answer right. `run_pzr2` A3 still
+  // asserts the round trip against v1's forward correlation, so the closed form cannot
+  // drift away from the line it inverts.
   function T_sat_from_P(P) {
-    var lo = 100, hi = 374, m;
-    for (var i = 0; i < 60; i++) {
-      m = 0.5 * (lo + hi);
-      if (V1.P_sat_from_T(m) < P) lo = m; else hi = m;
-    }
-    return 0.5 * (lo + hi);
+    return 179.47 * Math.pow(Math.max(P, 1e-9), 0.239);
   }
 
   // dTsat/dP [°C/MPa] — the slope that converts heat into pressure rate. This is the term
@@ -159,15 +161,24 @@
   //
   // v1 asked "how many MPa per unit of level rate?" and answered with a fitted gain. v2 asks
   // "what pressure has a saturated vapour of THIS density?" and answers with the steam
-  // tables. Bisection on the monotone rho_g_sat, bracketed to the model's own range.
+  // tables. It is the EXACT inverse of `rho_g_sat`, segment for segment, rather than a
+  // bisection on it: the interpolation is a power law inside each segment, so inverting it
+  // is the same algebra with the roles swapped. (It was a 50-step bisection until
+  // 2026-08-14 — see T_sat_from_P for why the cost mattered.) The extrapolation and the
+  // ideal-gas limit mirror the forward function branch for branch, so the round trip holds
+  // outside the table as well as inside it; `run_pzr2` A2 asserts exactly that.
   function P_from_steam_density(rho) {
     if (!(rho > 0)) return 0.1;
-    var lo = 0.05, hi = 20.0, m;
-    for (var i = 0; i < 50; i++) {
-      m = 0.5 * (lo + hi);
-      if (rho_g_sat(m) < rho) lo = m; else hi = m;
+    var n = RHO_G.length;
+    if (rho <= RHO_G[0]) return PSAT_MPA[0] * (rho / RHO_G[0]);              // ideal-gas limit
+    if (rho >= RHO_G[n - 1]) {
+      var s = Math.log(RHO_G[n - 1] / RHO_G[n - 2]) / Math.log(PSAT_MPA[n - 1] / PSAT_MPA[n - 2]);
+      return PSAT_MPA[n - 1] * Math.pow(rho / RHO_G[n - 1], 1 / s);
     }
-    return 0.5 * (lo + hi);
+    var i = 0;
+    while (i < n - 2 && RHO_G[i + 1] < rho) i++;
+    var f = Math.log(rho / RHO_G[i]) / Math.log(RHO_G[i + 1] / RHO_G[i]);
+    return PSAT_MPA[i] * Math.pow(PSAT_MPA[i + 1] / PSAT_MPA[i], f);
   }
 
   // ============================================================ the two regions
@@ -302,10 +313,38 @@
     s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg - mf);
     s.pzr_m_stm_kg = Math.max(1e-9, s.pzr_m_stm_kg + mf);
 
-    var P1 = pressureFrom(s, cfg);
-    s.pzr_t_liq_c = T_sat_from_P(P1);          // the pressurizer sits ON its saturation line
+    var P1 = settle(s, cfg);
     s.pzr_surge_kgps = io.surge_kgps || 0;
     return P1;
+  }
+
+  // settle — put the liquid ON its saturation line AND leave the state self-consistent.
+  //
+  // THE DEFECT THIS REPLACES, measured 2026-08-14 with the first gate this model ever had.
+  // The line was `P1 = pressureFrom(s); s.pzr_t_liq_c = T_sat_from_P(P1)`, one pass. But
+  // T_liq is an INPUT to the pressure: it sets rho_l, which sets V_liq, which sets the steam
+  // volume. Assigning it after reading the pressure means the pressure returned is not the
+  // pressure the state holds — off by 0.18 °C of saturation temperature on a relief step —
+  // and the flash then chases it one step late. The signature was a two-step zigzag with
+  // pressure RISING on alternate steps while steam was being drawn out:
+  //
+  //     t=1 2216.06 psia (Tl 344.523 vs Tsat 344.344) · t=2 2216.44 · t=3 2204.33
+  //
+  // A fixed point removes it: iterate T_liq = Tsat(P(T_liq)) until the temperature stops
+  // moving. rho_l varies slowly with T, so it converges in three passes to ~1e-9 °C; the
+  // loop is bounded at six and the tolerance is the exit. `run_pzr2.js` asserts the fixed
+  // point directly (the pressure returned equals the pressure the state re-computes), which
+  // is the check that would have caught the original — a numerical inconsistency is
+  // invisible to any assertion about the physics being modelled.
+  function settle(s, cfg) {
+    var P = pressureFrom(s, cfg);
+    for (var i = 0; i < 20; i++) {
+      var T = T_sat_from_P(P);
+      if (Math.abs(T - s.pzr_t_liq_c) < 1e-9) break;
+      s.pzr_t_liq_c = T;
+      P = pressureFrom(s, cfg);
+    }
+    return P;
   }
 
   function pressureFrom(s, cfg) {
@@ -314,22 +353,65 @@
     return P_from_steam_density(s.pzr_m_stm_kg / V_stm);
   }
 
-  // Bisect on the flashed mass until the energy books balance at the RESULTING pressure.
-  // Bracket is signed: E < 0 is a condensing (subcooled) node and mf comes out negative.
+  // Solve the flash: how much mass crosses the interface so the books balance AT the
+  // pressure that crossing produces.
+  //
+  //     E  =  m_flash · h_fg(P_new)  +  C · (Tsat(P_new) − Tsat(P_old))
+  //
+  // E is the node's departure from the OLD saturation line (heaters put it there). The
+  // second term is what makes this implicit and is also what carries the OTHER driver:
+  // when the mass phase alone has moved pressure — relief drawing steam, an outsurge
+  // growing the bubble — Tsat(P_new) is already below Tsat(P_old) with E = 0, and the
+  // liquid's sensible heat above the new saturation temperature is what boils.
+  //
+  // THE BRACKET WAS THE BUG, measured 2026-08-14. It was sized off |E| alone
+  // (`span = |E|/h_fg · 1.5`), so with E = 0 the search interval was 1e-6 kg and the answer
+  // was 1e-6 kg by construction. Thirty seconds of PORV flow drew 60 kg of steam and
+  // flashed 0.2 kg of liquid — pressure fell 665 psi where a real pressurizer boils to hold
+  // it up. That is the model's whole reason for existing (an outsurge flashes and partially
+  // restores pressure — v1 spent `K_surge_level` to fake it), and it was disarmed by an
+  // interval, not by a physics term. A bracket that cannot express the answer is
+  // indistinguishable from a physics claim that the answer is zero.
+  //
+  // So: bracket by EXPANSION on the sign of the residual, capped at what the phases
+  // physically hold, then bisect. R(mf) is monotone decreasing — more flash, more steam,
+  // higher pressure, higher Tsat — so a sign change brackets the single root.
   function solveFlash(s, cfg, E, C, T0) {
-    var p2 = cfg.pressurizer2, hfg0 = h_fg(T0 > 0 ? V1.P_sat_from_T(T0) : 15.41);
-    var span = Math.abs(E) / Math.max(1, hfg0) * 1.5 + 1e-6;
-    var lo = E >= 0 ? 0 : -Math.min(span, s.pzr_m_stm_kg * 0.9);
-    var hi = E >= 0 ? Math.min(span, s.pzr_m_liq_kg * 0.9) : 0;
-    var mf = 0;
-    for (var i = 0; i < 50; i++) {
-      mf = 0.5 * (lo + hi);
+    var p2 = cfg.pressurizer2;
+    var mLiqCap = s.pzr_m_liq_kg * 0.9, mStmCap = s.pzr_m_stm_kg * 0.9;
+
+    function resid(mf) {
       var mL = s.pzr_m_liq_kg - mf, mS = s.pzr_m_stm_kg + mf;
-      if (mL <= 0 || mS <= 0) { hi = mf; continue; }
-      var Vl = mL / rho_l_sat(T0);
-      var Pn = P_from_steam_density(mS / Math.max(1e-6, p2.V_pzr_m3 - Vl));
-      var resid = E - mf * h_fg(Pn) - C * (T_sat_from_P(Pn) - T0);
-      if (resid > 0) lo = mf; else hi = mf;
+      if (mL <= 1e-6 || mS <= 1e-9) return -Infinity;
+      // Price the candidate at the state it would actually produce — liquid volume at the
+      // NEW saturation temperature, not the old one. Evaluating rho_l at T0 was the other
+      // half of the zigzag `settle` fixes: the solve balanced its books against a pressure
+      // the step then did not deliver. Same three-pass fixed point as `settle`.
+      var Tn = T0, Vl, Pn = 15.41, Tp;
+      for (var k = 0; k < 20; k++) {
+        Vl = mL / rho_l_sat(Tn);
+        Pn = P_from_steam_density(mS / Math.max(1e-6, p2.V_pzr_m3 - Vl));
+        Tp = Tn; Tn = T_sat_from_P(Pn);
+        if (Math.abs(Tn - Tp) < 1e-9) break;
+      }
+      return E - mf * h_fg(Pn) - C * (Tn - T0);
+    }
+
+    var r0 = resid(0);
+    if (!isFinite(r0) || Math.abs(r0) < 1e-9) return 0;
+    var lo, hi, step = Math.max(1e-4, Math.abs(E) / 1000), i;
+    if (r0 > 0) {                       // needs flashing: walk the upper bound out
+      lo = 0; hi = Math.min(step, mLiqCap);
+      for (i = 0; i < 60 && resid(hi) > 0 && hi < mLiqCap; i++) hi = Math.min(hi * 2, mLiqCap);
+    } else {                            // needs condensing: walk the lower bound out
+      hi = 0; lo = -Math.min(step, mStmCap);
+      for (i = 0; i < 60 && resid(lo) < 0 && -lo < mStmCap; i++) lo = Math.max(lo * 2, -mStmCap);
+    }
+    var mf = 0;
+    for (i = 0; i < 60; i++) {
+      mf = 0.5 * (lo + hi);
+      if (hi - lo < 1e-9) break;                 // kg — far below anything the model resolves
+      if (resid(mf) > 0) lo = mf; else hi = mf;
     }
     return mf;
   }

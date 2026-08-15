@@ -1174,6 +1174,35 @@
       pzr_vessel_mass_kg: 11451,
       pzr_vessel_cp_kj_kgk: 0.5,   // carbon/low-alloy steel at temperature
 
+      // ---- HEATER ELEVATION. The bank occupies a BAND of the vessel, and delivered power
+      // falls with the wetted fraction of that band as true level passes through it — the
+      // owner's decision 3 (2026-08-12), replacing v1's 0-or-full cliff. `wetted_frac` reads
+      // TRUE level because it is physics: a rod in steam cannot heat water. The S1 bistable
+      // is a DIFFERENT thing and survives untouched in autoControl on INDICATED level (HR1,
+      // owner 2026-08-12: "keep both") — that latch is the plant protecting its hardware.
+      //
+      // THE BAND SITS BELOW THE 17 % CUTOFF, and that ordering is the whole point of the
+      // cutoff: S1 exists to de-energize the heaters BEFORE they uncover, not after. A band
+      // straddling 17 % would make the protection fire in the middle of its own subject.
+      // S2 (WTSM 3.2, ML11223A213) places the bank "in the lower portion of the pressurizer
+      // vessel" — the qualitative fact is sourced; the two percentages are this plant's, and
+      // are DECLARED ESTIMATES chosen to sit clear beneath S1 with the bank's own height
+      // (10 points of a 4.292 m³ vessel ≈ 0.5 m of a 5.15 m shell) roughly the physical
+      // depth of an immersion-heater bundle.
+      //
+      // THESE TWO KEYS ARE THE SINGLE SOURCE FOR #473: the board draws the bank between
+      // them. Move one and the drawn elevation moves with it — there is deliberately no
+      // second number to drift.
+      //
+      // WITHOUT THEM THE HEATERS ARE DEAD, SILENTLY. They were referenced by stepRegions
+      // before they existed here: both undefined makes `top > bot` false, the fallback
+      // `lvl > undefined` is false, and wetted_frac is 0 at every level — full heater
+      // demand delivering zero watts, with nothing to see. That is the class of defect a
+      // model with no gate has no way to report, and it is why run_pzr2.js asserts the
+      // wetted band directly rather than only asserting a pressure rate. [tune]
+      heater_elev_top_pct: 15.0,
+      heater_elev_bot_pct: 5.0,
+
       // surge_mix_tau_s — how long insurge water takes to reach the saturated interface.
       // A pressurizer is STRATIFIED: surge enters below the liquid surface and displaces
       // steam volume at once, but only cools the bulk as it mixes. Assuming instant mixing
