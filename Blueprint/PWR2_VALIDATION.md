@@ -229,3 +229,79 @@ specified.**
 **The design rule to adopt, from RELAP5's own reasoning:** size each interpolation window so a node
 takes **several timesteps to traverse it**. That is a `dt`-relative criterion, which is the same
 form as §16.2's `band ≥ k·Δh_step` finding — reached independently, from the other direction.
+
+---
+
+## 20. A1 IS MEASURED, AND IT PASSES — 2026-08-16
+
+§3's table has carried "PWR2 expectation: reproduce within a few %" since it was written. It is no
+longer an expectation.
+
+`test/run_pwr2_loadfollow.js` rides the whole stack — Layer 0 water, the conservation core, the
+loop, the sources layer, kinetics, fuel, the reactor coupling and the steam generator — cuts steam
+demand to 57.5 % and lets the plant find its own power. **Rods in MANUAL. Nothing moves them and
+nothing sets a power.**
+
+| | current engine | **PWR2 measured** | Δ |
+|---|---|---|---|
+| baseline Tavg | 579.3 °F | **577.70 °F** | −1.6 |
+| power after the cut | 57.5 % | **54.20 %** | −3.3 points |
+| final Tavg | 602.1 °F | **598.49 °F** | −3.6 |
+| **Tavg rise** | **+22.8 °F** | **+20.79 °F** | −2.0 |
+
+### 20.1 The chain, not just the endpoint
+
+The gate asserts each link, because an endpoint check passes for a plant that got there by some
+other route and the point of A1 is the MECHANISM:
+
+```
+  steam demand 100 -> 57.5 %
+  -> secondary pressure   5.570 -> 8.170 MPa      (less steam drawn, so it backs up)
+  -> primary Tavg        577.70 -> 598.49 degF    (a hotter sink removes less)
+  -> fuel temperature     596.8 -> 469.6 degC     (the Doppler half)
+  -> power                 99.63 -> 54.20 %       (temperature feedback alone)
+  -> rho                            -4.17 pcm     (an equilibrium, not a drift)
+```
+
+**It settles in 60 seconds.** The slow crawl after that — 54.2 % creeping to 56.3 % over an hour —
+is xenon burning out at the lower flux, 100.0 → 101.9 % of equilibrium. That is **A7 turning up
+unbidden**, which is a better cross-check than a probe written for it.
+
+### 20.2 Two more couplings fell out of the same harness
+
+- **Reversibility.** Restore demand and the plant returns to 99.91 % and 577.37 °F with nobody
+  resetting anything. A coupling that only works downward is a leak, not a feedback — and the
+  check exists because a one-directional test would not have told them apart.
+- **A5 — the SG is the only heat sink.** Cut steam to zero: the secondary pressurises
+  5.57 → 14.83 MPa, Tavg climbs to 649.23 °F, and power falls to **4.87 %**. The plant shuts
+  ITSELF down when the sink is removed. §3's row for A5 said "loss of feed → Tavg climbs"; the
+  measured behaviour is stronger than the row claimed.
+
+### 20.3 The bands are NOT fitted to the current engine
+
+Deliberately, and it matters for how this row should be read later. PWR2's moderator coefficient
+reads real Layer 0 density and measures **−23.4 pcm/°C** against the current engine's −26.8 — a
+change `PWR2_PLANT.md` explicitly asked for. Its fuel rise is derived from sourced rod geometry and
+a real resistance stack, **277 °C** against 389 from two `[tune]` constants. The two engines are
+therefore *not expected to agree exactly*, and a check tight enough to force agreement would be
+fitting the replacement to the plant it replaces — HR9 inverted.
+
+So the gate's bands admit the declared difference (±5 points on power, ±6 °F on the rise) and are
+tight enough that a broken link fails. All eight steam-generator mutations redden it.
+
+### 20.4 ⚠ THE DEFECT THIS FOUND, AND WHY IT IS THE WORST KIND
+
+`criticalBoron` evaluated Doppler at the **moderator** temperature for both feedbacks. That is
+correct at ZERO POWER — there is no heat to drive a fuel-to-coolant rise, and it is the condition
+the 975 ppm anchor is measured at, so the function was right for the caller it was written for.
+Used to trim boron at RATED it is wrong by `alpha_D · (581.8 − 304.5)` = **693 pcm**.
+
+What that looked like: the plant started 693 pcm subcritical, power dived to 43 %, and it bought
+the reactivity back by **cooling 16 °C** — settling stable, critical, self-consistent, at a Tavg of
+551 °F where the design point is 580. **Nothing was red.** Every absolute temperature in this
+section would have been wrong by 29 °F and the only symptom was a number that looked plausible.
+
+**A zero-power function used at power fails quietly.** The fix makes the fuel temperature an
+explicit argument that defaults to the moderator temperature, so the zero-power call still reads
+naturally and the at-power call has to say what it means. Two checks in `run_pwr2_reactor.js` had
+been written against the cooled plant and were corrected with it.
