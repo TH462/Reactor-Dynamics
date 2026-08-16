@@ -237,6 +237,39 @@
     s.pzr_surge_kgps = 0;
   }
 
+  // seedFromState — AN INITIAL-CONDITION HOOK, and v1 deliberately does not have one.
+  //
+  // `pwr_engine._buildState` computes the derived init level with `PZ.stepLevel(s, cfg, 0)`
+  // BEFORE the per-state overrides, and its comment promises those overrides "still win,
+  // exactly as they did when this was inline". That promise holds for v1, whose level is a
+  // RECONSTRUCTION with no state of its own — write `pressure_mpa`, write `tavg_c`, and the
+  // next reconstruction simply uses them. v2's node IS state: `ensureRegions` seeds once and
+  // returns early for ever after, and pressure is READ OFF the steam region rather than
+  // stored, so an override that assigns `pressure_mpa` is published and then overwritten on
+  // the first step by a node that was never told.
+  //
+  // MEASURED 2026-08-16, the Mode 5 preset on v2: at construction the state read 363 psia /
+  // 122 °F with the node already on the HOT saturation line at 653 °F, and ONE 0.02 s step
+  // took published pressure to 2235 psia. The whole heatup family then ran from a hot,
+  // pressurized "cold shutdown": 1,369 code-safety lifts in a single heatup (v1: 0),
+  // inventory bled 100.3 -> 55.3 %, the core uncovered, and `subcooling_c` switched to its
+  // uncovered-core branch (pwr_thermal.js:501) and printed -380 °C. The subcooling reds were
+  // never a saturation-line defect; they were this, three refuted hypotheses ago.
+  //
+  // Called once per reset, after every override, so it seeds from the FINAL state. It clears
+  // `pzr_mass_frac` on purpose: an IC states a LEVEL, and the stale mass-fraction left by the
+  // pre-override `stepLevel` would take precedence in `ensureRegions` and re-import the value
+  // the overrides just replaced. Numerically a no-op on the hot presets — `V_pzr_m3` was
+  // SOLVED from the 776 identity, so both seeding routes give the same 1402 kg there.
+  function seedFromState(s, cfg) {
+    s.pzr_m_liq_kg = null; s.pzr_m_stm_kg = null; s.pzr_t_liq_c = null;
+    s.pzr_mass_frac = null; s._pzr_void_lvl = null;
+    s.pzr_m_deficit_kg = 0; s.pzr_mix_deficit_kj = 0;
+    ensureRegions(s, cfg);
+    s.pressure_mpa = pressureFrom(s, cfg);   // the node is the authority; make the two agree
+    stepLevel(s, cfg, 0);                    // republish the derived level from the new node
+  }
+
   var CP_LIQ = 6.0;   // kJ/kg·K, saturated liquid near 345 °C
 
   // stepRegions — ONE step of the two-region pressurizer. Mass and energy in, pressure out.
@@ -962,6 +995,7 @@
     stepTailpipe:     function (s, cfg, dt)   { return V1.stepTailpipe(s, cfg, dt); },
     reseed:           reseed,
     reconcile:        reconcile,
+    seedFromState:    seedFromState,   // v1 has no counterpart — the engine's call is guarded
     // control + hydraulics — PORTED UNCHANGED in 3b. `relief()` is recent, sourced and not
     // implicated (block valve, porv_stuck_frac, sqrt-dp against live containment); the
     // control channel is 3c's, per the manual-first directive.

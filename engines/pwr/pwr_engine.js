@@ -2092,6 +2092,14 @@
     if (name === 'hot_full_power' && !this._hfp_refs) {
       this._hfp_refs = { Tf: Tfuel, Tavg: Tavg };
     }
+    // A pressurizer model may carry STATE of its own, and every override has now run — so
+    // this is the point at which its node must be (re)seeded from the FINAL state. v1 does
+    // not define the hook and does not need one: its level is a reconstruction, so the
+    // `PZ.stepLevel(s, cfg, 0)` above plus the overrides after it are already consistent.
+    // v2's node is seeded once and sticky, which silently broke this function's own promise
+    // that "overrides below … still win" — see pwr_pressurizer2.seedFromState for the
+    // measurement (a Mode 5 preset that came up hot and snapped 363 -> 2235 psia in one step).
+    if (PZ.seedFromState) PZ.seedFromState(s, cfg);
     // Finalize the loop pressure nodes from the settled pressure_mpa / flow_frac.
     PR.computeNodePressures(s, cfg);
     return s;

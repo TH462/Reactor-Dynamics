@@ -1205,7 +1205,7 @@ var BASELINES = {
   // `spray_flow_frac` directly and `autoControl` overwrites that on the way through. The
   // real command sets `spray_override`, which is what the check drives now: 64 sub-steps
   // with both controls full at 85 % level, exactly 1 on a quiet plant.
-  'run_pzr2.js':           { code: 0, score: '46checks 0failed' },
+  'run_pzr2.js':           { code: 0, score: '47checks 0failed' },
   // NEW 2026-07-30 (#249/#273) — "can the plant reach its own setpoints?" Part A is static
   // and total: all 50 PWR trip/actuation/alarm thresholds must sit STRICTLY inside their
   // instrument's declared range, because `crossed()` is strict and a setpoint on the edge

@@ -711,6 +711,29 @@ ck('J4 the node cannot be owed more than the plant is short',
    Math.abs(oweShort - 0.10 * P2.M_rcs_kg) < 1e-6 && sOwe2.pzr_m_deficit_kg === 0,
    'clamped to the shortfall; zero when the plant is full');
 
+// J5 DERIVED — AN INITIAL CONDITION MUST REACH THE NODE. `pwr_engine._buildState` computes
+// the derived init level BEFORE the per-state overrides and its comment promises those
+// overrides "still win" — true of v1's reconstruction, false of a node that seeds once and
+// returns early for ever after. Measured before `seedFromState` existed: the Mode 5 preset
+// came up with the node on the HOT saturation line (653 °F) on a 122 °F plant, and one
+// 0.02 s step took published pressure 363 -> 2235 psia. The heatup family then ran out of a
+// hot, pressurized "cold shutdown" — 1,369 code-safety lifts in one heatup against v1's 0.
+//
+// The state below is what `_buildState` hands over: a HOT-seeded node with the cold branch's
+// overrides written on top of it. Re-seeding must put the node on the COLD saturation line
+// and make published pressure agree with it.
+var sIC = stateAt(55.0);                          // seeded hot, node on the 15.41 MPa line
+var hotT = sIC.pzr_t_liq_c;
+sIC.pressure_mpa = 2.5;                           // ...then the cold IC's override, as written
+sIC.tavg_c = 50; sIC.pzr_level_pct = 30;
+PZ2.seedFromState(sIC, CFG);
+var TsatCold = PZ2.T_sat_from_P(2.5);
+ck('J5 an IC override reaches the node — it does not seed once and stay hot',
+   'node ' + r3(hotT) + ' -> ' + r3(sIC.pzr_t_liq_c) + ' °C against Tsat(2.5 MPa) = ' + r3(TsatCold) +
+   ' °C; published P ' + r3(sIC.pressure_mpa) + ' MPa',
+   Math.abs(sIC.pzr_t_liq_c - TsatCold) < 0.5 && Math.abs(sIC.pressure_mpa - 2.5) < 0.05,
+   'node on the COLD saturation line, pressure still 2.5 MPa');
+
 // K1 DERIVED — THE STEP DIVIDES ITSELF WHEN THE PRESSURE EXCURSION IS LARGE. The two-region
 // model is stiffest where spray condenses steam (pressure down) while the same spray adds
 // liquid volume that squeezes the remaining bubble (pressure up): no single term is large
