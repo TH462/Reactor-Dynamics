@@ -1781,3 +1781,87 @@ needed.
 **Disposition:** proceed with the bounded recall (clad 0.0225 in, gap 0.00325 in → pellet 0.3225 in)
 tagged `[recalled]` with §34.2's sensitivity table beside it, and put the owner's attention on
 `alpha_D`, which is genuinely unsourced *and* genuinely sets A1.
+
+---
+
+## 35. THE DOPPLER EVIDENCE PASS — THE GAP CONDUCTANCE IS SOLVABLE, NOT OPEN — 2026-08-16
+
+`alpha_D` has been the loudest entry in `pwr2_kinetics.js`'s `OPEN` block since the port started,
+and it now sets a MEASURED acceptance result (§20 of D4), so it was the right one to take an
+evidence pass at. The pass found something better than a value for it.
+
+### 35.1 What the corpus holds
+
+Two figures, both **Ginna UFSAR ch15 (ML20339A101)** — the anchor plant.
+
+1. Verbatim: *"A low doppler coefficient of **-1.0 pcm/ºF** is assumed in order to minimize the
+   negative reactivity feedback from the fuel with increasing power and fuel temperature."*
+   That is explicitly a **deliberately weak bounding value for a conservative analysis**, so it is
+   a ONE-SIDED constraint: the real coefficient is more negative than this. Ours is
+   **-2.50 pcm/°C = -1.389 pcm/°F**, which satisfies it. A bound satisfied is not a source for the
+   value, and `alpha_D` stays `[recalled]` — but it is no longer unconstrained.
+2. A rod-ejection parameter table: **`Doppler defect, pcm 1000 1000 950 950`** (BOL/EOL × two
+   pump configurations).
+
+### 35.2 ⚠ The defect figure needs its caveat stated before anyone leans on it
+
+That table also carries `Feedback reactivity weighting 1.231 2.008 1.316 2.041`, so the numbers in
+it are **accident-analysis quantities for a rod ejection**, not a plain zero-power-to-full-power
+Doppler defect. 950–1000 pcm is the right FAMILY for a PWR defect and it is citable, but it is not
+the same measurement, and this section is the place that says so rather than letting a later reader
+find the table and assume otherwise.
+
+### 35.3 The measurement, and what it points at
+
+Our model's implied defect — fuel at the moderator temperature at zero power, at its derived value
+at full power:
+
+```
+   T_fuel  291.7 -> 581.8 degC,  rise 290.1
+   defect  = alpha_D x 290.1 = 725 pcm        [table: 950-1000]
+```
+
+**725 against 950–1000.** And A1 lands at 54.20 % against the current engine's 57.5 % — power
+falling FURTHER than the engine being replaced. **Both discrepancies point the same way**, and
+one mechanism explains both: a fuel rise that is too small gives too little Doppler, so cooling the
+fuel on a load drop returns less positive reactivity and power settles lower.
+
+The fuel rise is set by `UA_gap`, and the only free term in that stack is **`h_gap`, which is
+UNSOURCED** — `find_source` returns zero for a numeric gap conductance across 35 documents in
+3 lanes, and 10 CFR 50 App. K names MATPRO-11 without our corpus carrying it.
+
+### 35.4 So size it against the defect — the `rho_excess` pattern again
+
+| `h_gap` | T_fuel HFP | rise above HZP | implied defect | gap share of stack |
+|---|---|---|---|---|
+| **5700** (current) | 581.8 °C | 290.1 | **725 pcm** | 35.4 % |
+| 4000 | 630.1 | 338.4 | 846 | 42.9 % |
+| **3000** | **684.2** | **392.6** | **981** | 49.1 % |
+| 2600 | 717.6 | 425.9 | 1065 | 52.0 % |
+| 2000 | 792.9 | 501.2 | 1253 | 57.2 % |
+
+**3000 W/m²K lands the defect at 981 pcm, mid-range of the sourced 950–1000.**
+
+And the corroboration that makes it worth acting on: at that conductance the full-power fuel
+temperature is **684.2 °C against the current engine's 693** — a 9 °C agreement reached by a
+COMPLETELY DIFFERENT ROUTE. The current engine's 693 comes from two `[tune]` constants
+(`heat_gen_coeff`, `h_fc`) fitted to make the plant feel right. Ours would come from sourced rod
+geometry, real UO₂ property correlations, and a gap conductance solved against a sourced defect.
+Two independent derivations landing 1.3 % apart is the strongest evidence in this section.
+
+3000 W/m²K is also physically unremarkable: gap conductance runs ~2000–10000 W/m²K and the low end
+is fresh fuel with an open gap, which is the beginning-of-life condition the 975 ppm critical-boron
+anchor is also measured at. The two are consistent.
+
+### 35.5 NOT YET IMPLEMENTED, and what it will move
+
+Recorded rather than applied, because it is a physics change with a dependency fan-out and it
+should land deliberately rather than at the end of a tick:
+
+- **`rho_excess` must be RE-SOLVED** — the Doppler reference moves 581.8 → 684.2 °C.
+- `DEFAULT_T_FUEL_REF` in `pwr2_kinetics.js` and the retyped `DOC.t_fuel_ref_c` in its gate.
+- The fuel gate's steady-state expectations and its resistance-split band (gap goes 35 → 49 %,
+  which changes which term dominates the stack — pellet 54.7 % vs gap 49.1 % becomes nearly even).
+- **A1 will move UP**, toward the 57.5 % it currently undershoots. That is the prediction this
+  section makes, and it is falsifiable: if A1 does not improve, the reasoning above is wrong and
+  the change should be reverted rather than argued for.
