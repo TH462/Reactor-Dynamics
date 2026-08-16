@@ -266,6 +266,28 @@ var MUTATIONS = [
    'hhsiRunning: opts.hhsiRunning === undefined ? true : !!opts.hhsiRunning,']
 ];
 
+/* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
+ * A MUTATION SELF-TEST IS ONLY MEANINGFUL IF THE UNMUTATED SUITE IS GREEN. If any check fails in
+ * the clean run it fails in every mutant too, so `f2 > 0` holds unconditionally and EVERY mutation
+ * is reported as caught. Coverage then reads 25/25 while the suite is measuring nothing.
+ *
+ * MEASURED in run_pwr2_kinetics.js, 2026-08-16: a fixture producing NaN made one check fail in the
+ * clean run. The self-test reported 23/25. Fixing that ONE check dropped it to 21/25 -- the two
+ * extra "caught" mutations had never been caught by anything, and both were genuinely blind.
+ *
+ * So the tally is REFUSED, not annotated, when the clean run is red. */
+if (fail > 0) {
+  /* PRINT THE SCORE FIRST. run_all parses this line to report drift; exiting without it
+   * makes a legitimately-failing gate read as `score ?`, which is LESS informative than
+   * before the guard existed. The guard refuses the MUTATION TALLY, not the tally line. */
+  console.log('  ' + require('path').basename(__filename, '.js') + ': ' + pass +
+              ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
+  console.log('  MUTATION SELF-TEST SKIPPED -- ' + fail + ' check(s) failed in the CLEAN run.');
+  console.log('  A failing check fails in every mutant too, so every mutation would report as');
+  console.log('  caught and the coverage number would be a lie. Fix the check first.');
+  process.exit(1);
+}
+
 console.log('\n' + '='.repeat(70));
 console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
 console.log('='.repeat(70));

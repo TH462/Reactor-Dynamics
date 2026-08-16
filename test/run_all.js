@@ -983,8 +983,9 @@ var BASELINES = {
   // itself down and a depressurising secondary opened the dT until it was ripping heat OUT of the
   // primary. That runaway is real physics for a generator steamed harder than the primary can
   // supply -- it just was not the test being written.
-  'run_pwr2_sg.js':        { code: 0, score: '25passed 0failed 25checks', secs: 90 },
+  'run_pwr2_sg.js':        { code: 0, score: '25passed 0failed 25checks', secs: 340 },  // 90 -> 340 (2026-08-16): the 90 was never measured on a quiet machine. Timed alone, twice: 341 s. `secs` is only a longest-first scheduling nudge and cannot fail anything, which is exactly why a wrong one goes unnoticed -- it just schedules a 5.7-minute runner as if it were a 90-second one.
   'run_pwr2_sources.js':   { code: 0, score: '23passed 0failed 23checks', secs: 195 },
+  'run_pwr2_kinetics.js':  { code: 0, score: '50passed 0failed 50checks', secs: 3 },
   'run_pwr2_bases.js':     { code: 0, score: '11passed 0failed 11checks', secs: 2 },
   'run_pwr2_forwarding.js': { code: 0, score: '11passed 0failed 11checks', secs: 2 },
   'run_pwr2_rhr.js':       { code: 0, score: '35passed 0failed 35checks', secs: 150 },
