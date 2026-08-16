@@ -8,15 +8,27 @@
  * Every other pwr2 gate tests a piece. This one tests whether the pieces make a PLANT.
  *
  * ---------------------------------------------------------------------------------------
- * THE COMPARISON POINTS ARE REPORTED, NOT FITTED. `PWR2_VALIDATION.md` records the first engine's
- * A1: 100 -> 57.5 % power with Tavg 579.3 -> 602.1 degF. PWR2 is a from-scratch reformulation whose
- * moderator coefficient reads real Layer 0 density (-23.4 pcm/degC against the first engine's
- * -26.8, a change PWR2_PLANT.md ASKED FOR) and whose fuel rise is derived rather than tuned
- * (277 degC against 389). The two engines are therefore NOT expected to agree exactly, and a check
- * that forced them to would be fitting PWR2 to a plant it was built to replace. The bands below
- * are wide enough to admit the physics difference and tight enough that a broken coupling fails.
+ * THE COMPARISON POINTS ARE REPORTED, NOT FITTED. `CURRICULUM.md` records the current engine's A1:
+ * 100 -> 57.5 % power with Tavg 579.3 -> 602.1 degF, on a 100 -> 60 MWe drop. PWR2 is a
+ * from-scratch reformulation whose moderator coefficient reads real Layer 0 density (-23.4 pcm/degC
+ * against the current engine's -26.8, a change PWR2_PLANT.md ASKED FOR) and whose fuel rise is
+ * derived rather than tuned (379.7 degC against 389, from a gap conductance solved against a
+ * sourced Doppler defect). They are NOT expected to agree exactly, and a check forcing them to
+ * would be fitting PWR2 to the plant it was built to replace.
  *
- * MEASURED, this engine:  99.6 -> 54.0 %,  Tavg 577.95 -> 603.92 degF (+25.97 against +22.8)
+ * MEASURED, this engine, SAME COMMAND:  99.5 -> 57.90 %,  Tavg 577.98 -> 601.93 degF
+ *                                       against            57.5 %              602.10
+ *
+ * 0.4 points of power and 0.17 degF. The bands below were set when this gate cut STEAM MASS FLOW
+ * and the comparison was ill-posed (D4 section 20.7); they are tightened here to reflect what a
+ * like-for-like drive actually delivers, because a band wide enough to be safe is wide enough to
+ * be useless -- the lesson the fuel gate's density mutation taught.
+ *
+ * ⚠ THE AGREEMENT'S REASON IS NOT THE OBVIOUS ONE. PWR2 has no steam dump; the current engine
+ * always finds a relief path and with rods in MANUAL holds 76.8 % (#484). The curriculum figure was
+ * measured BEFORE #460, when rods shipped in AUTO and the dump reseated. Both settle on turbine
+ * steam alone, for different reasons -- D4 section 21.1. What this gate pins is PWR2's reproduction
+ * of the current engine's CLOSED-RELIEF behaviour, and nothing wider.
  *
  * ⚠ THOSE ARE READ AT t + 150 s, AND THE PLANT IS STILL MOVING THERE. The THERMAL transient settles
  * in 60 s, but xenon runs for hours: ridden to six, power climbs 54.0 -> ~56.5 % while Tavg PEAKS
@@ -48,8 +60,9 @@ var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_sg.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
- 'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor'].forEach(function (f) { require(path.join(E, f + '.js')); });
-var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, R = RD.reactor;
+ 'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_turbine'].forEach(function (f) { require(path.join(E, f + '.js')); });
+var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, R = RD.reactor,
+    TB = RD.turbine;
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, core: RD.core,
@@ -59,9 +72,9 @@ function loadFrom(src) {
   return new Function('RD_ROOT', body)(root);
 }
 
-/* THE FIRST ENGINE'S A1, RETYPED from PWR2_VALIDATION.md — comparison points, not targets. */
+/* THE CURRENT ENGINE'S A1, RETYPED from CURRICULUM.md — comparison points, not targets. */
 var A1 = { power_from: 100, power_to: 57.5, tavg_from_f: 579.3, tavg_to_f: 602.1 };
-var TREF = 304.5, P0 = 15.41, RATED = 300000;
+var TREF = 304.5, P0 = 15.41, RATED = 300000, MWE_RATED = 100.0, MWE_CUT = 60.0;
 function degF(c) { return c * 9 / 5 + 32; }
 
 function runSuite(G, rec, quiet) {
@@ -89,22 +102,34 @@ function runSuite(G, rec, quiet) {
     var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
     var rx  = R.createReactor({ P: 1.0, coolTemp_c: TREF });
     var sg  = G.createSG({});
+    var tb  = TB.createTurbine({ load_target_mwe: MWE_RATED });
     /* SEE THE HEADER: the fuel temperature is REQUIRED here, not optional. */
     var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
-    var hg  = W.h_g(sg.P);
-    return { sys: sys, rx: rx, sg: sg, B: B, rated_steam: RATED / (hg - G.SG.h_feed) };
+    return { sys: sys, rx: rx, sg: sg, tb: tb, B: B };
   }
+  /* ⚠ THE DEMAND IS IN MEGAWATTS ELECTRICAL, and that is the whole point of this revision.
+   *
+   * This gate used to cut steam MASS FLOW to a fraction of rated, and compare the result against
+   * CURRICULUM.md's A1 — which cuts ELECTRICAL DEMAND. Those are different experiments, and the
+   * near-agreement of "57.5 %" with a steam-fraction result was a coincidence of two
+   * similar-looking percentages (D4 §20.7, where the quantitative claim was withdrawn). With
+   * pwr2_turbine.js the two engines can finally be handed the SAME command. */
   function ride(pl, n, demandOf) {
-    var r = null, sr = null, t = 0;
+    var r = null, sr = null, tr = null, t = 0;
     for (var i = 0; i < n; i++) {
-      var steam = pl.rated_steam * (demandOf ? demandOf(t) : 1.0);
+      if (demandOf) pl.tb.load_target_mwe = demandOf(t);
+      /* The turbine asks for the flow its load needs AT THE CURRENT SECONDARY PRESSURE; the SG
+       * delivers it; the turbine's output is then read off what was actually admitted. */
+      var steam = TB.steamDemand(pl.tb, pl.sg.P, G.SG.h_feed);
       sr = G.stepSG(pl.sg, G.primaryTavg(pl.sys), 0.02, { feed: steam, steam: steam });
+      tr = TB.stepTurbine(pl.tb, 0.02, { steam_kgs: steam, P_mpa: sr.P_sec, h_feed: G.SG.h_feed });
       r  = R.stepReactor(pl.rx, pl.sys, 0.02, { boron_ppm: pl.B, rodGroups: null });
       S.stepPlant(pl.sys, 0.02, { heats: r.heats, sgDuty: sr.duty_kW });
       t += 0.02;
     }
     return { power: r.power_pct, tavg_c: G.primaryTavg(pl.sys), tavg_f: degF(G.primaryTavg(pl.sys)),
-             sgP: sr.P_sec, duty: sr.duty_kW, fuel: r.T_fuel_c, rho: r.rho_pcm };
+             sgP: sr.P_sec, duty: sr.duty_kW, fuel: r.T_fuel_c, rho: r.rho_pcm,
+             mwe: tr.mwe_output, deficit: tr.deficit_mwe, steam: tr.steam_kgs };
   }
 
   /* ---- THE PLANT IS AT ITS DESIGN POINT BEFORE ANYTHING IS ASKED OF IT ---------------------- */
@@ -126,7 +151,7 @@ function runSuite(G, rec, quiet) {
   head('A1 -- POWER FOLLOWS LOAD  [rods in MANUAL: nothing moves them, and nothing sets power]');
   var pl2 = plant();
   ride(pl2, BASE);
-  var cut = ride(pl2, AFTER, function () { return 0.575; });
+  var cut = ride(pl2, AFTER, function () { return MWE_CUT; });
   /* THE CHAIN, LINK BY LINK. Asserting only the endpoint would pass for a plant that got there
    * by some other route, and the point of this gate is the MECHANISM. */
   ckT('cutting steam demand RAISES secondary pressure', cut.sgP > base.sgP * 1.15,
@@ -142,20 +167,20 @@ function runSuite(G, rec, quiet) {
       cut.rho.toFixed(2) + ' pcm — it found an equilibrium, it did not merely drift');
 
   /* THE NUMBERS, against the first engine. Bands admit the declared physics differences. */
-  ck('power lands near the demand it was given', cut.power, 57.5, 5.0, '%');
-  ck('...and near the first engine A1 endpoint', cut.power, A1.power_to, 5.0, '%');
-  ck('Tavg lands near the first engine A1 endpoint', cut.tavg_f, A1.tavg_to_f, 8.0, 'degF');
+  ck('power lands near the demand it was given', cut.power, 57.5, 2.5, '%');
+  ck('...and near the current engine A1 endpoint', cut.power, A1.power_to, 2.5, '%');
+  ck('Tavg lands near the current engine A1 endpoint', cut.tavg_f, A1.tavg_to_f, 3.0, 'degF');
   ck('the Tavg RISE is the right size', cut.tavg_f - base.tavg_f,
-     A1.tavg_to_f - A1.tavg_from_f, 6.0, 'degF');
-  ckT('the duty follows the demand', Math.abs(cut.duty / RATED - 0.575) < 0.05,
+     A1.tavg_to_f - A1.tavg_from_f, 3.0, 'degF');
+  ckT('the duty follows the ELECTRICAL demand', Math.abs(cut.duty / RATED - MWE_CUT / MWE_RATED) < 0.05,
       (cut.duty / 1000).toFixed(1) + ' MW = ' + (cut.duty / RATED * 100).toFixed(1) + ' % of rated');
 
   /* ---- REVERSIBILITY ------------------------------------------------------------------------ */
   head('REVERSIBILITY  [a coupling that only works downward is a leak, not a feedback]');
   var pl3 = plant();
   ride(pl3, BASE);
-  ride(pl3, AFTER, function () { return 0.575; });
-  var restored = ride(pl3, AFTER, function () { return 1.0; });
+  ride(pl3, AFTER, function () { return MWE_CUT; });
+  var restored = ride(pl3, AFTER, function () { return MWE_RATED; });
   ckT('restoring demand brings power back up', restored.power > cut.power + 30,
       cut.power.toFixed(2) + ' -> ' + restored.power.toFixed(2) + ' %');
   ckT('...and Tavg back down', restored.tavg_f < cut.tavg_f - 10,
