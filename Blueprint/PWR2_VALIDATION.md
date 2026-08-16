@@ -620,6 +620,10 @@ from measurement to claim.
 
 ### 23.2 What PWR2 CAN be compared against, measured
 
+> **⚠ SUPERSEDED BY §25 (same day).** The table below was measured with PWR2 on a PRESSURE
+> dump law and the current engine on its Tavg-ERROR law -- different controllers. The
+> agreement is coincidence, not evidence, and must not be cited as an A/B result.
+
 The current engine as it is **today** — rods MANUAL, dump modulating, safeties shut — is the state
 PWR2 can actually be given, and here it does well. Both plants, 100 → 60 MWe, same retyped dump law
 (setpoint 7.03 MPa, band 0.25, max 0.28):
@@ -719,3 +723,75 @@ conductance at off-nominal pressure, a difference in feedwater enthalpy, or deca
 PWR2's split is derived differently).
 
 Recorded as open rather than attributed, because two attributions have already failed.
+
+## 25. THE RESIDUAL IS EXPLAINED — THE TWO PLANTS RUN DIFFERENT DUMP CONTROLLERS — 2026-08-16
+
+§24 left the 3.1-point open-relief difference open after two failed attributions. Found.
+
+**`run_pwr2_loadfollow.js` commands its dump on a PRESSURE law. The current engine, at the A1
+command, is running its Tavg-ERROR law.** They are different controllers, and the 15.00 % vs 14.75 %
+agreement that made me believe otherwise was a coincidence.
+
+### 25.1 How it was found — sweep the law, do not read it
+
+Mapping the current engine's dump position against secondary pressure across five load targets:
+
+| load | SG press | dump % | Tavg |
+|---|---|---|---|
+| 90 MWe | 6.20 MPa | 0 | 585.2 °F |
+| 80 | 6.76 | 0 | 590.4 |
+| 70 | 7.04 | 5.14 | 592.8 |
+| 60 | 7.07 | 14.75 | 593.0 |
+| 50 | **6.88** | **28.00** | 591.4 |
+
+The last row kills the pressure hypothesis outright: **the dump is at its 28 % cap while pressure is
+6.88 MPa, BELOW the 7.03 setpoint** where a pressure law gives exactly zero. No proportional-on-
+pressure controller produces that row.
+
+The channel's own hint says *"Automatic pressure-mode steam dump — opens proportionally above the
+no-load setpoint"*, which is what I retyped from. It is true of one of the two modes. The other is
+the **fast Tavg-error mode**, armed by `dump_load_reject_mwe: 40.0` on a load rejection — and the
+A1 command, 100 → 60 MWe, is a rejection of exactly 40.
+
+**Reading the config comment was not enough; sweeping the behaviour was.**
+
+### 25.2 The A1 point sits on a cliff
+
+| load | rejection | dump | **core heat** |
+|---|---|---|---|
+| 61 MWe | 39 | 13.90 % | 77.51 % |
+| **60 MWe ← A1** | **40** | 14.75 % | **77.47 %** |
+| **59 MWe** | **41** | **28.00 %** | **88.56 %** |
+
+**One megawatt less demand, eleven points more reactor power** — stable over 45 minutes, dump pegged
+at its cap, ~33 MWt made and dumped to the condenser. Reported on #484, which is the right home
+because the root cause is the same: rods in MANUAL, so nothing walks Tavg back and an armed dump
+never reseats.
+
+### 25.3 What this means for PWR2's comparison
+
+The open-relief agreement in §23.2 — Tavg to 0.05 °F, dump to 0.3 points — was reached **with the
+wrong controller**, so it is coincidence and not evidence. The 3.1 points of power are the
+difference between two dump laws, not two physics models.
+
+**§23.2's table should not be cited as an A/B agreement.** What survives is §24.1: PWR2's own energy
+balance closes exactly, which was never in question here.
+
+To make the comparison real, PWR2's harness needs the Tavg-error law and its 40 MWe arm — which in
+turn needs the Tref program (`546.8 → 580.1 °F` sliding on load). That is control-layer logic, and
+by the standing ruling it does not go in the engine; it goes in the harness, declared, exactly as
+the pressure law is now.
+
+### 25.4 Fourth instance, and the pattern is now unmistakable
+
+- §20.7 — a steam-mass-flow cut compared against an electrical-demand cut.
+- §23 — a plant with safety valves compared against a figure measured without them.
+- §24.3 — a mass fraction compared against a heat fraction.
+- §25 — a pressure-law dump compared against a Tavg-error-law dump.
+
+Four times, one move: **two configurations that were never written down side by side, assumed to
+match because the numbers were close.** Closeness has now been wrong four times out of four.
+
+The operational rule this earns: **before comparing two plants, write down every input that differs
+and check each one — including the ones the documentation says are the same.** Three of these four
+had a document asserting the equivalence I was relying on.
