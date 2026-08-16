@@ -388,3 +388,57 @@ timescale a PWR's post-load-change state moves for hours, so:
 
 **This does not weaken §20's verdict** — the coupling is real, the chain is asserted link by link,
 and the plant finds its own power. It sharpens what the numbers are evidence FOR.
+
+### 20.7 ⚠ RETRACTION — THE A1 COMPARISON WAS BETWEEN TWO DIFFERENT EXPERIMENTS — 2026-08-16
+
+§20 claimed A1 "passes" against the current engine. **The quantitative half of that claim is
+withdrawn.** The mechanism half stands. Two separate problems, and the second is mine.
+
+#### 20.7.1 The curriculum's A1 number does not reproduce on the current engine
+
+`CURRICULUM.md` A1 records, undated: *"drop generator demand 100 → 60 MWe. **Measured:** power
+**100 → 57.5 %** … Tavg **579.3 → 602.1 °F**."*
+
+Re-measured 2026-08-16, full stack, `hot_full_power`, free-play lineup, rods MANUAL, the same
+100 → 60 MWe drop, via `test/measure_stack.js`:
+
+| | curriculum | **measured now** |
+|---|---|---|
+| power | 100 → 57.5 % | 100 → **76.7 %** |
+| Tavg | 579.3 → 602.1 °F | 580.2 → **593.5 °F** |
+
+The command was verified to land: `load_target_mwe` 60.00, `mwe_output` 60.00, `load_mode` manual.
+Repeating with the `rods_tavg` channel engaged gives **76.65 %** — rod mode does not explain it.
+
+**The arithmetic says 57.5 % was never consistent with 60 MWe on this plant.** 60 MWe at 76.7 % of
+300 MWt is 26 % efficiency, against 33 % at full power — the ordinary part-load penalty. For the
+plant to sit at 57.5 % thermal *while making 60 MWe* would require efficiency to RISE to 35 % at
+part load, which is backwards. Filed as needing investigation; the curriculum row is a Tier A
+teaching claim and one of the nine ruled couplings, so it matters beyond PWR2.
+
+#### 20.7.2 My own error: the two engines were not given the same experiment
+
+`run_pwr2_loadfollow.js` cuts **steam MASS FLOW to 57.5 % of rated**. The curriculum's A1 cuts
+**ELECTRICAL demand to 60 MWe**. Those are not the same boundary condition, and part-load turbine
+efficiency is exactly what separates them: 60 % electrical is 76.7 % thermal on the current engine.
+
+So the comparison in §20 — PWR2's 54–56.5 % against "57.5 %" — put a steam-fraction result next to
+a number produced by an electrical-load experiment, and the near-agreement was **a coincidence of
+two similar-looking percentages**. PWR2 has no turbine model, so it cannot yet be given the real
+experiment at all.
+
+#### 20.7.3 What survives, precisely
+
+- **The mechanism is demonstrated.** Steam demand → secondary pressure → primary Tavg → fuel
+  temperature → power, asserted link by link, 8/8 steam-generator mutations reddening it. Nothing
+  about §20.7 touches that.
+- **Reversibility and A5 stand** — both are qualitative and boundary-condition-independent.
+- **The self-regulation result stands**: the plant finds its own power against an imposed sink and
+  returns to zero net reactivity, which `run_pwr2_reactor.js` establishes separately.
+- **WITHDRAWN**: that PWR2 reproduces the current engine's A1 *numbers*. Until PWR2 has a turbine,
+  the two engines cannot be driven with the same command, and the tolerance bands in
+  `run_pwr2_loadfollow.js` should be read as pinning PWR2's own steam-fraction behaviour against
+  regression — which is worth having — and NOT as an A/B agreement.
+
+**The order of work this implies:** a turbine/generator model is now on the critical path for the
+acceptance test, ahead of further tuning of anything the load-follow gate measures.
