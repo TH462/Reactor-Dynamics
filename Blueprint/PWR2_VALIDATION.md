@@ -795,3 +795,81 @@ match because the numbers were close.** Closeness has now been wrong four times 
 The operational rule this earns: **before comparing two plants, write down every input that differs
 and check each one — including the ones the documentation says are the same.** Three of these four
 had a document asserting the equivalence I was relying on.
+
+## 26. §25's MECHANISM WAS WRONG — SAME LAW, DIFFERENT SEMANTICS — 2026-08-16
+
+**§25's conclusion stands; its diagnosis does not.** It said the two plants run different dump
+*controllers* — a pressure law against a Tavg-error law. They do not, at the A1 command. They run
+**the same pressure law with two different readings of what its proportional output means**, and
+that is a subtler and more instructive error.
+
+### 26.1 What the current engine actually computes
+
+`pwr_steam_generator.js:210`:
+
+```js
+    dump = clip((s.steam_pressure_mpa - dump_setpoint) / sg.steam_dump_band, 0, 1);
+    …
+    dump = Math.min(dump, sg.steam_dump_max);
+```
+
+**The proportional output IS the share of rated steam flow.** `steam_dump_max` = 0.28 **caps** it.
+My harness read the same term as a valve POSITION and multiplied by 0.28 — which is **3.57× shallower**
+below the cap:
+
+| P (MPa) | current engine | mine |
+|---|---|---|
+| 7.050 | 8.00 % | 2.24 % |
+| 7.067 | **14.80 %** | 4.14 % |
+| 7.100 | 28.00 % (capped) | 7.84 % |
+| 7.164 | 28.00 % | **15.01 %** |
+
+Both plants reported ~15 % dump — **at different pressures, by different formulas.** 14.80 % at
+7.067 against 15.01 % at 7.164. The agreement was arithmetic coincidence twice over.
+
+### 26.2 Why §25 reached the wrong mechanism
+
+The 50 MWe row (dump at its 28 % cap while pressure sat at 6.88 MPa, *below* the setpoint) genuinely
+cannot come from a pressure law — so a second mode had to exist, and it does: the fast Tavg-error
+mode, armed by `dump_load_reject_mwe: 40.0`.
+
+**But A1 is a rejection of exactly 40, and the arm is `rejectMwe > 40`** — strictly greater. So the
+fast mode is NOT armed at the A1 command, and both plants are in pressure mode there. §25 correctly
+identified a second mode and then wrongly assumed it was active in the case under test.
+
+That is a distinct failure from the previous four: not two things assumed equal, but **a real
+difference found in one regime and applied to another where it does not hold.**
+
+### 26.3 Corrected, the comparison improves substantially
+
+| | current engine | PWR2 (wrong semantics) | **PWR2 (corrected)** |
+|---|---|---|---|
+| SG pressure | 7.067 MPa | 7.164 | **7.071** — 0.004 apart |
+| power | 76.81 % | 73.74 | **75.10 %** |
+| Tavg | 593.00 °F | 592.95 | **592.12 °F** |
+| dump | 14.75 % | 15.00 | **16.32 %** |
+
+**Secondary pressure now agrees to 0.004 MPa** — the strongest single indication that the controller
+matches, because pressure is what the law acts on. The power gap halves, **3.1 → 1.71 points**.
+
+The residual dump difference is consistent rather than anomalous: the law passes ~4 points of dump
+per 0.01 MPa, so 0.004 MPa of pressure difference is 1.6 points of dump. Both plants are on the law;
+they sit a hair apart on it.
+
+### 26.4 Standing
+
+- **§23.2's "superseded" marker stays.** That table was measured with the wrong semantics.
+- **§25's headline stays** (the agreement was coincidence); **§25.1's mechanism is corrected here.**
+- The remaining **1.71 points of power** are unattributed. Untested: decay-heat accounting, SG
+  conductance at off-nominal pressure, feedwater enthalpy.
+
+### 26.5 The fifth instance, and it is a different species
+
+Four previous errors were *two things assumed comparable that were not*. This one is **a correct
+finding over-applied** — the fast mode is real, it just was not running in the case I invoked it
+for. Over-correction is its own failure mode, and it produced a published retraction of a result
+that was closer to right than the retraction was.
+
+The rule that would have caught it: **when a sweep reveals a regime change, establish which side of
+it your case sits on before reasoning from it.** The arming threshold was in the code I had already
+read — `rejectMwe > 40` against a rejection of exactly 40 — and I did not check the inequality.

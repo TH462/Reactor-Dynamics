@@ -79,15 +79,29 @@ function loadFrom(src) {
  *   A1_DOC    CURRICULUM.md's pre-#460 figure, measured with rods in AUTO. Reproducing it needs
  *             rod control to walk Tavg back to program so the dump reseats -- PWR2 has no rod
  *             controller, so it is recorded here and NOT asserted. */
-var A1_NOW = { power_to: 76.8, tavg_to_f: 593.0, dump_frac: 0.147 };
+var A1_NOW = { power_to: 76.81, tavg_to_f: 593.00, dump_frac: 0.1475, sgP: 7.067 };
 var A1_DOC = { power_to: 57.5, tavg_from_f: 579.3, tavg_to_f: 602.1 };
 var A1 = A1_DOC;
 /* The current engine's steady-state dump law, RETYPED from pwr_config: proportional across a band
  * above the Ginna 1005 psig no-load pressure. Commanding a dump position is control-layer work by
  * owner ruling and PWR2 has no control layer, so this gate stands in for one -- declared here
  * rather than smuggled into the engine. */
-var DUMP_SP = 7.03, DUMP_BAND = 0.25;
-function dumpLaw(P) { var d = (P - DUMP_SP) / DUMP_BAND; return d < 0 ? 0 : (d > 1 ? 1 : d); }
+var DUMP_SP = 7.03, DUMP_BAND = 0.25, DUMP_MAX = 0.28;
+/* ⚠ THE PROPORTIONAL TERM IS THE FLOW FRACTION, NOT A VALVE POSITION, and getting that backwards
+ * cost a published false agreement. pwr_steam_generator.js:210 computes
+ *     dump = clip((P - setpoint) / band, 0, 1)      then      dump = min(dump, steam_dump_max)
+ * so the proportional output IS the share of RATED STEAM FLOW, and 0.28 CAPS it. The first version
+ * here read it as a valve position and multiplied by 0.28 instead -- which is 3.57x shallower below
+ * the cap, so the two plants settled at different secondary pressures and then agreed on dump
+ * position (15.00 vs 14.75 %) BY COINCIDENCE at those different pressures.
+ *
+ * pwr2_relief takes a demand as a share of CAPACITY, hence the divide. With this corrected the
+ * secondary pressures agree to 0.004 MPa (7.071 vs 7.067) and the power gap halves, 3.1 -> 1.7. */
+function dumpLaw(P) {
+  var d = (P - DUMP_SP) / DUMP_BAND;
+  d = d < 0 ? 0 : (d > 1 ? 1 : d);
+  return Math.min(d / DUMP_MAX, 1);
+}
 var TREF = 304.5, P0 = 15.41, RATED = 300000, MWE_RATED = 100.0, MWE_CUT = 60.0;
 function degF(c) { return c * 9 / 5 + 32; }
 
