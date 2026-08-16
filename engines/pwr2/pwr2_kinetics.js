@@ -454,13 +454,26 @@
    * compared against is BOL ZERO XENON, so the check returned 747 ppm against a 975 ppm target and
    * looked like a failed solve. It was a failed COMPARISON: the two sides were at different xenon.
    * Defaulting to the object's own state would make that mistake the easy one to repeat. */
-  function criticalBoron(kin, T_c, P_mpa, rodGroups, xeFrac) {
+  /* ⚠ THE FUEL TEMPERATURE IS A SEPARATE ARGUMENT, AND OMITTING IT MEANS ZERO POWER.
+   *
+   * The first version had no such argument and evaluated Doppler at `T_c` — the moderator
+   * temperature — for both feedbacks. That is correct ONLY at zero power, where there is no heat
+   * to drive a fuel-to-coolant rise, and it is the condition the 975 ppm anchor is measured at.
+   * Used at RATED power it is wrong by alpha_D * (581.8 - 304.5) = 693 pcm, because the fuel is
+   * 277 degC above the coolant and the function assumed it was not.
+   *
+   * MEASURED, using it to trim boron at rated: the plant started 693 pcm subcritical, power fell
+   * to 43 %, and it then bought the reactivity back by COOLING 16 degC — settling at a Tavg of
+   * 551 degF where the design point is 580. Every absolute temperature downstream of that was
+   * wrong, and nothing was red: the plant was self-consistent, critical, and stable at the wrong
+   * place. A zero-power function used at power fails QUIETLY, which is why the argument is now
+   * explicit and this comment is this long. */
+  function criticalBoron(kin, T_c, P_mpa, rodGroups, xeFrac, T_fuel_c) {
     if (xeFrac === undefined) xeFrac = 0;
-    /* Everything independent of boron, evaluated once. At zero power the fuel sits at the
-     * moderator temperature, so T_c drives both feedbacks. */
+    if (T_fuel_c === undefined) T_fuel_c = T_c;      /* zero power: fuel sits at the moderator */
     var base = kin.rho_excess
              + (rodGroups ? rodReactivity(rodGroups) : 0)
-             + OPEN.alpha_D.value * (T_c - kin.T_fuel_ref_c)
+             + OPEN.alpha_D.value * (T_fuel_c - kin.T_fuel_ref_c)
              - OPEN.xenon_worth.value * xeFrac;
     var r0 = base + moderatorReactivity(T_c, kin.T_mod_ref_c, 0, P_mpa);
     var r1 = base + moderatorReactivity(T_c, kin.T_mod_ref_c, 1000, P_mpa)

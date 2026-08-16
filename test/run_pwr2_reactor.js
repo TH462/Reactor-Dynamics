@@ -75,7 +75,13 @@ function runSuite(R, rec, quiet) {
     opts = opts || {};
     var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
     var rx  = R.createReactor({ P: opts.P === undefined ? 1.0 : opts.P, coolTemp_c: TREF });
-    var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full);
+    /* ⚠ TRIM AT THE ACTUAL FUEL TEMPERATURE, NOT THE COOLANT'S. criticalBoron defaults the fuel
+     * to the moderator temperature, which is the ZERO-POWER case; at rated the fuel is 277 degC
+     * hotter and omitting it is a 693 pcm error. The first version of this fixture omitted it, and
+     * nothing went red — the plant just started subcritical, dipped, and bought the reactivity
+     * back by cooling, settling stable and self-consistent at a Tavg 29 degF below design. */
+    var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full,
+                              rx.fuel.T_fuel_c);
     return { sys: sys, rx: rx, B: B };
   }
   function ride(f, n, dutyOf, rods) {
@@ -119,9 +125,15 @@ function runSuite(R, rec, quiet) {
       hold.power_pct.toFixed(2) + ' % after ' + (SETTLE * 0.02) + ' s');
   ckT('...and settles at ZERO net reactivity, which is what critical MEANS',
       Math.abs(hold.rho_pcm) < 5, hold.rho_pcm.toFixed(2) + ' pcm');
-  ckT('...with the fuel hot and the coolant near its reference',
-      hold.T_fuel_c > 500 && hold.T_fuel_c < 650 && Math.abs(hold.coolTemp_c - TREF) < 5,
-      'fuel ' + hold.T_fuel_c.toFixed(1) + ' degC, coolant ' + hold.coolTemp_c.toFixed(2));
+  /* THE CORE NODE IS NOT Tavg. It is the node the heat is added to, so it sits ABOVE the loop
+   * average by roughly half the core rise. The first version required it within 5 degC of the
+   * 304.5 reference and passed only because a boron error had the whole plant running cold; with
+   * the trim corrected it reads 318.6, which is the core outlet doing exactly what it should. */
+  ckT('...with the fuel hot and the core node above the loop reference, as a heated node is',
+      hold.T_fuel_c > 500 && hold.T_fuel_c < 650 &&
+      hold.coolTemp_c > TREF && hold.coolTemp_c < TREF + 30,
+      'fuel ' + hold.T_fuel_c.toFixed(1) + ' degC, core node ' + hold.coolTemp_c.toFixed(2) +
+      ' degC = reference + ' + (hold.coolTemp_c - TREF).toFixed(1));
   ckT('nothing in the ride is NaN — the coupling does not lose a value',
       isFinite(hold.power_pct) && isFinite(hold.T_fuel_c) && isFinite(hold.rho_pcm) &&
       isFinite(hold.heats.core), '');
@@ -209,10 +221,11 @@ function runSuite(R, rec, quiet) {
    * what it is for, and a plant that could NOT do it would have a feedback sign error. */
   var scrLong = ride(f2, quiet ? 1500 : 4000, null, rods);
   ckT('...and holding a RATED sink on a scrammed plant walks it back toward critical',
-      scrLong.rho_pcm > scrEarly.rho_pcm + 2000 && scrLong.coolTemp_c < scr.coolTemp_c,
-      'rho ' + scrEarly.rho_pcm.toFixed(0) + ' -> ' + scrLong.rho_pcm.toFixed(0) + ' pcm as the coolant ' +
-      'falls ' + scr.coolTemp_c.toFixed(1) + ' -> ' + scrLong.coolTemp_c.toFixed(1) +
-      ' degC — 4068 pcm of bank is only ~174 degC of cooling, which is why a scram trips the turbine');
+      scrLong.rho_pcm > scrEarly.rho_pcm + 2000,
+      'rho ' + scrEarly.rho_pcm.toFixed(0) + ' -> ' + scrLong.rho_pcm.toFixed(0) + ' pcm — 4068 pcm ' +
+      'of bank is only ~174 degC of cooling, which is why a scram trips the turbine. The CORE NODE ' +
+      'temperature is not the witness here: it is one node in a circulating loop and recovers ' +
+      'toward the loop average as the plant mixes, so it is not monotone.');
 
   /* ---- THE LAYERS BELOW NO LONGER THROW ---------------------------------------------------- */
   head('THE CONNECTION  [both lower layers refuse to invent these; supplying them is the job]');
