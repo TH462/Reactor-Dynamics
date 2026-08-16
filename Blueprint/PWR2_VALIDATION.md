@@ -445,6 +445,10 @@ acceptance test, ahead of further tuning of anything the load-follow gate measur
 
 ## 21. THE TURBINE LANDS A1 — AND IT LANDS ON THE CURRICULUM NUMBER — 2026-08-16
 
+> **⚠ SUPERSEDED BY §23 (same day).** The measurement below is correct; the CLAIM built on it
+> is not. The agreement depended on PWR2 having no safety valves — once `pwr2_relief.js`
+> modelled them the same experiment moved 57.9 → 70.7 %. Read §23 before citing anything here.
+
 §20.7 withdrew the quantitative A1 claim because PWR2 was being cut on **steam mass flow** while
 the current engine's A1 cuts **electrical demand**, and PWR2 had no turbine to accept the second.
 `engines/pwr2/pwr2_turbine.js` closes that. Driven with the same command:
@@ -578,3 +582,76 @@ discrepancy actually has. Recorded rather than tuned away; nothing here is fitte
 These belong to different plant classes than this one and must be re-anchored, not adopted — the
 same trap #380 recorded when a bracketed NUREG-1431 template figure was cited as a number. They are
 recorded here so the relief work starts from a source rather than from recall.
+
+## 23. §21's AGREEMENT WAS AN ARTIFACT OF A MISSING MODEL — 2026-08-16
+
+**§21 is superseded by this section.** Its measurement was real; its interpretation was not.
+
+§21 reported PWR2 landing on `CURRICULUM.md`'s A1 to **0.4 points of power and 0.17 °F**, on the
+same 100 → 60 MWe command, and called it the acceptance test passing. Then `pwr2_relief.js` added
+**safety valves**, and the same experiment moved:
+
+```
+    closed-relief A1, before safety valves modelled     57.90 %
+    closed-relief A1, with safety valves modelled       70.69 %
+```
+
+**12.8 points, from adding a component rather than changing a constant.** The secondary was running
+to 8.26 MPa with nothing to stop it; the safeties lift at 1085 psig (7.582 MPa) and cap it, and a
+capped secondary removes less heat, so the reactor sits higher.
+
+### 23.1 The agreement was measuring the absence of a component
+
+The curriculum figure was taken with rods in **AUTO**: the controller walks Tavg back to program,
+secondary pressure falls, the dump reseats, and the plant genuinely settles on turbine steam alone
+with its safeties shut. PWR2 reached the same endpoint **because it had no relief path at all** —
+not because it reproduced the mechanism.
+
+That is HR10 in its exact form: *a passing test is not evidence the mechanism is right.* The check
+was green for a reason unrelated to what it claimed to test, and it stayed green until an unrelated
+piece of work made the missing component appear. **Nothing in the gate could have caught this** —
+its mutations perturb code that exists, and this was a component that did not.
+
+Worth being blunt about the sequence, because the shape of the mistake matters more than the number:
+§20 claimed A1 passed and was retracted (§20.7, wrong experiment). §21 claimed it passed again on
+the corrected experiment. §23 now says that second claim was also unearned, for a different reason.
+**Three passes, two withdrawn.** The measurements were all correct; what kept failing was the step
+from measurement to claim.
+
+### 23.2 What PWR2 CAN be compared against, measured
+
+The current engine as it is **today** — rods MANUAL, dump modulating, safeties shut — is the state
+PWR2 can actually be given, and here it does well. Both plants, 100 → 60 MWe, same retyped dump law
+(setpoint 7.03 MPa, band 0.25, max 0.28):
+
+| | current engine | **PWR2** | Δ |
+|---|---|---|---|
+| Tavg | 593.0 °F | **592.95 °F** | **0.05** |
+| dump position | 14.7 % | **15.00 %** | 0.3 pts |
+| power | 76.8 % | **73.74 %** | 3.1 pts |
+| safety valves | shut | shut | — |
+
+Tavg to a twentieth of a degree and the dump to a third of a point are strong; the 3.1 points of
+power are not explained and are recorded as open. Candidate: PWR2 has **no atmospheric dump valves**
+(§ the relief file's closing note), so its relief ladder has a rung missing between the dump's range
+and the safeties.
+
+### 23.3 The two gaps this exposes, neither of which is a tuning problem
+
+1. **No rod controller.** PWR2 cannot reach the pre-#460 state at all, because nothing walks Tavg
+   back to its program after a load change. The gate now asserts the curriculum figure is **NOT**
+   reached — asserting it would be asserting the absence of a controller.
+2. **No protection layer.** On a full load rejection PWR2 rides it out on relief at ~67 % power. A
+   real plant scrams: *"Complete loss of load, when operating above 50%, will cause a reactor trip"*
+   (Ginna UFSAR ch10 §10.1.2.1). Declared in the gate rather than passed over.
+
+### 23.4 The methodological rule this earns
+
+**A component that does not exist cannot be mutated, so its absence is invisible to every gate that
+covers the code around it.** The three artifacts in this session all have that shape — the missing
+direct boron term (50/50 with 25/25 mutations against it), the missing turbine (which made the whole
+A1 comparison the wrong experiment), and now the missing safety valves.
+
+The only thing that found any of them was **reading a claim and asking what it depends on that is
+not there**. That is not automatable, and it is worth budgeting for deliberately rather than hoping
+a mutation score covers it.
