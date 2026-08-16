@@ -18,6 +18,17 @@
  *
  * MEASURED, this engine:  99.6 -> 54.0 %,  Tavg 577.95 -> 603.92 degF (+25.97 against +22.8)
  *
+ * ⚠ THOSE ARE READ AT t + 150 s, AND THE PLANT IS STILL MOVING THERE. The THERMAL transient settles
+ * in 60 s, but xenon runs for hours: ridden to six, power climbs 54.0 -> ~56.5 % while Tavg PEAKS
+ * near 604 degF and then FALLS to 598 as xenon builds to 104 % of equilibrium (rising xenon is
+ * negative reactivity, and a negative moderator coefficient answers by cooling). Our Tavg passes
+ * through the current engine's 602.1 degF at roughly 30 minutes.
+ *
+ * So 150 s is a DECLARED SAMPLE POINT, not an equilibrium: it is where the coupling this gate
+ * tests has finished acting, and running to xenon equilibrium would cost 70 s of wall clock per
+ * simulated hour for a slower-moving comparison. The current engine's A1 row carries no timestamp
+ * of its own, which means a single (power, Tavg) pair does not fully specify A1 — D4 section 20.6.
+ *
  * ---------------------------------------------------------------------------------------
  * ⚠ THE BORON TRIM MUST USE THE FUEL TEMPERATURE. `criticalBoron` defaults the fuel to the
  * moderator temperature, which is the ZERO-POWER case. Omitting it at rated is a 693 pcm error,
