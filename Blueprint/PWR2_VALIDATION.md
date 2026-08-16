@@ -520,3 +520,61 @@ of 12.8 % to 100 %"*. Turbine speed 1800 rpm comes from the same table.
   which is control-layer work.
 - **NO GATE YET.** `run_pwr2_turbine.js` is owed, and until it exists this file is unmutated — the
   only PWR2 engine file in that state. The numbers above are measurements, not a gate.
+
+## 22. THE STEAM SIDE VALIDATES AGAINST A SOURCE IT WAS NOT BUILT FROM — 2026-08-16
+
+Found while looking for secondary relief setpoints, which makes it the useful kind of check: nothing
+in the steam-side sizing was derived from this document, so agreement is evidence rather than
+arithmetic.
+
+**ML11223A213** (Westinghouse Technology Systems Manual), Table 3.2-7, a **four-loop** plant —
+`Number of steam generators 4`, `Number of reactor coolant pumps 4`, so ~3411 MWt:
+
+> *Steam generator conditions at full load* — **Steam flow 3.77×10⁶ lb/hr**, **Steam pressure
+> 895 psig**, **Steam temperature 533.3 °F**, Moisture carryover 0.25 %.
+
+### 22.1 The source is self-consistent, and Layer 0 reproduces it exactly
+
+895 psig is **6.272 MPa** absolute. `pwr2_water.T_sat(6.272)` returns **278.5 °C = 533.3 °F**,
+against the table's stated **533.3 °F**.
+
+**Exact, to the tenth of a degree.** That is a saturation pair from a document our property library
+has never seen, and it lands on the number. It also confirms the table describes *saturated* steam,
+which is what a PWR steam generator makes — so the reading of the table is right as well as the
+library.
+
+### 22.2 The steam flow agrees to 1.7 %
+
+| | |
+|---|---|
+| sourced, 4 loops | 3.77×10⁶ lb/hr × 4 = **1900 kg/s** at ~3411 MWt |
+| specific | **0.5570 kg/s per MWt** |
+| power-scaled to 300 MWt | **167.11 kg/s** |
+| **this plant** | **164.25 kg/s** |
+| difference | **−1.71 %** |
+
+And the implied enthalpy rise, 3411 MW / 1900 kg/s = **1795.2 kJ/kg**, against this plant's
+`h_g − h_feed` = **1826.5** — 1.7 % apart, the same discrepancy seen from the other side.
+
+### 22.3 Why this is worth more than it looks
+
+`164.25 kg/s` is not a number anyone chose. It falls out of **two independent routes that had to
+agree** (§21.2): the steam generator computes it as 300 MWt / (h_g − h_feed), and the turbine as
+100 MWe / (eta · (h_g − h_feed)), where eta is the plant's ruled 100/300 identity. Those two agreeing
+is internal consistency. **This is the first EXTERNAL check on either of them**, and it puts the
+pair within 2 % of a real plant's measured full-load steam flow, power-scaled.
+
+The residual 1.7 % is expected and has a candidate: this plant's secondary runs at the Ginna-class
+**810 psig**, while the sourced four-loop plant runs at **895 psig**. Higher pressure means lower
+h_g, so a real 895-psig plant needs slightly *more* steam per MWt than ours — which is the sign the
+discrepancy actually has. Recorded rather than tuned away; nothing here is fitted to it.
+
+### 22.4 Also sourced from the same pass, for the relief model still to be built
+
+- **SG safety valve highest setpoint 1234 psig** — ML11223A229, verbatim: *"to the highest setpoint
+  of the steam generator safety valves (1234 psig)"*.
+- **Design pressure steam side 1185 psig**, ML11223A213 Table 3.2-7.
+
+These belong to different plant classes than this one and must be re-anchored, not adopted — the
+same trap #380 recorded when a bracketed NUREG-1431 template figure was cited as a number. They are
+recorded here so the relief work starts from a source rather than from recall.
