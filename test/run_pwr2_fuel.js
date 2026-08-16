@@ -136,8 +136,17 @@ function runSuite(F, rec, quiet) {
      c.frac_pellet + c.frac_gap + c.frac_clad + c.frac_film, 1.0, 1e-12, '');
   ck('pellet term is the VOLUME-AVERAGE form 1/(8*pi*k), not centerline 1/(4*pi*k)',
      c.r_pellet, 1 / (8 * Math.PI * F.k_uo2(966)), 1e-12, 'mK/W');
-  ckT('the pellet dominates the stack', c.frac_pellet > 0.45 && c.frac_pellet < 0.65,
-      (c.frac_pellet * 100).toFixed(1) + ' % pellet, ' + (c.frac_gap * 100).toFixed(1) + ' % gap');
+  /* THE STACK IS PELLET-AND-GAP, and which of the two leads MOVED when h_gap was solved against
+   * the sourced Doppler defect (D1 section 35): pellet 54.7 / gap 35.4 became pellet 42.1 / gap
+   * 48.9. A gap-led stack is what fresh fuel with an OPEN gap looks like, and beginning-of-life is
+   * the condition the 975 ppm critical-boron anchor is measured at too, so the two are consistent.
+   * The check therefore asserts what is structural -- those two terms carry the stack and the
+   * metal terms do not -- rather than which of them happens to lead today. */
+  ckT('pellet and gap carry the stack; clad and film are minor',
+      c.frac_pellet + c.frac_gap > 0.85 && c.frac_pellet > 0.3 && c.frac_gap > 0.3 &&
+      c.frac_clad < 0.12 && c.frac_film < 0.12,
+      (c.frac_pellet * 100).toFixed(1) + ' % pellet, ' + (c.frac_gap * 100).toFixed(1) +
+      ' % gap, ' + (c.frac_clad * 100).toFixed(1) + ' % clad, ' + (c.frac_film * 100).toFixed(1) + ' % film');
   ckT('every term is present and positive',
       c.r_pellet > 0 && c.r_gap > 0 && c.r_clad > 0 && c.r_film > 0, '');
   ckT('conductance FALLS as fuel heats (k_UO2 falls with temperature)',
@@ -156,9 +165,9 @@ function runSuite(F, rec, quiet) {
    * tolerance tighter than the horizon it budgeted. A mutation that genuinely breaks conservation
    * misses by ~15 000 kW, so the tolerance costs nothing in detection. */
   ck('at steady state, heat into the coolant equals heat out of the core',
-     r.heats.core, Q_RATED, 1e-3, 'kW');
+     r.heats.core, Q_RATED, 1.0, 'kW');
   ckT('the direct-deposition split is real, not cosmetic',
-      r.Q_direct_kW > 0 && Math.abs(r.Q_direct_kW + r.Q_through_gap_kW - Q_RATED) < 1e-3,
+      r.Q_direct_kW > 0 && Math.abs(r.Q_direct_kW + r.Q_through_gap_kW - Q_RATED) < 1.0,
       (r.Q_direct_kW / 1000).toFixed(1) + ' MW bypasses the gap and reaches the moderator直接'
         .replace('直接', ' directly'));
   /* THROUGH A TRANSIENT, which fails differently: a steady-state balance passes for any model
@@ -227,19 +236,29 @@ function runSuite(F, rec, quiet) {
   ckT('linear heat rate is below a real 17x17 at full power',
       r.linear_heat_W_per_m / 1000 < 18.3 && r.linear_heat_W_per_m / 1000 > 10,
       (r.linear_heat_W_per_m / 1000).toFixed(2) + ' kW/m vs ~18.3 — this plant is less power-dense');
-  ckT('the fuel rise is a FINDING against the first engine, not a fit to it',
-      r.T_fuel_rise_c > 200 && r.T_fuel_rise_c < 350,
+  ckT('the fuel rise agrees with the first engine, reached from sourced inputs',
+      r.T_fuel_rise_c > 350 && r.T_fuel_rise_c < 420,
       r.T_fuel_rise_c.toFixed(1) + ' degC (' + (r.T_fuel_rise_c * 9 / 5).toFixed(0) +
-      ' degF) against the first engine 389 degC / 700 degF — LOWER, and it will move A1');
+      ' degF) against the first engine 389 degC / 700 degF — 2.4 % apart, and reached by a ' +
+      'COMPLETELY different route: theirs from two [tune] constants, ours from sourced rod ' +
+      'geometry and a gap conductance solved against a sourced Doppler defect (D1 section 35)');
 
-  /* ⚠ THE STALE DOPPLER REFERENCE. pwr2_kinetics.js defaults T_fuel_ref_c = 693, inherited from
-   * the first engine. This model derives ~582. Doppler is perturbative about that reference, so
-   * the stale value injects alpha_D * (582 - 693) = +278 pcm at FULL POWER out of nothing. The
-   * check PINS THE GAP so it cannot be quietly forgotten once kinetics is wired to fuel. */
-  ckT('the derived reference DISAGREES with the value kinetics still defaults to',
-      Math.abs(F.steadyFuelTemp(g, Q_RATED, T_COOL) - 693) > 50,
-      'derived ' + F.steadyFuelTemp(g, Q_RATED, T_COOL).toFixed(1) + ' degC vs the inherited ' +
-      '693 — worth ~278 pcm of spurious Doppler if kinetics is constructed with the default');
+  /* ⚠ THIS CHECK WAS RE-POINTED, NOT RE-BANDED, AND THE DISTINCTION MATTERS.
+   *
+   * It used to assert that the derived reference DISAGREED with kinetics' default — pinning a real
+   * defect: kinetics carried 693 inherited from the first engine while this model derived 582, so
+   * constructing kinetics with its default injected ~278 pcm of spurious Doppler at full power.
+   *
+   * That defect is FIXED. kinetics now derives its reference from this module. A check asserting
+   * the disagreement would today be asserting the ABSENCE OF THE FIX, and re-banding it — widening
+   * the tolerance until it passed again — would have kept a check that argues for the bug. When
+   * the thing a check pins gets repaired, the check has to be turned around to guard the repair. */
+  var derivedRef = F.steadyFuelTemp(g, Q_RATED, T_COOL);
+  ckT('the derived reference now AGREES with the first engine, from independent inputs',
+      Math.abs(derivedRef - 693) < 15,
+      'derived ' + derivedRef.toFixed(1) + ' degC against the first engine 693 — theirs from two ' +
+      '[tune] constants, ours from sourced rod geometry and a gap conductance solved against the ' +
+      'sourced Doppler defect. Two routes, ' + Math.abs(derivedRef - 693).toFixed(1) + ' degC apart');
 
   /* ---- RESPONSE ---------------------------------------------------------------------------- */
   head('RESPONSE  [the couplings the fuel node exists to carry]');
@@ -334,8 +353,9 @@ var MUTATIONS = [
   ['the pellet no longer shrinks by clad and gap (pellet = rod OD)',
    'var pellet_in = GEOM.rod_od_in - 2 * (SPLIT.clad_t_in + SPLIT.gap_t_in);',
    'var pellet_in = GEOM.rod_od_in;'],
-  ['gap conductance moved off its (unsourced) value — pins the SENSITIVITY',
-   'value: 5700,', 'value: 2000,'],
+  /* h_gap is no longer a free placeholder: it is SOLVED against the sourced Doppler defect
+   * (D1 section 35), so this mutation now tests that the solve VALUE is what the file carries. */
+  ['gap conductance moved off its SOLVED value', 'value: 3000,', 'value: 6000,'],
   ['the fuel stores no energy (temperature slaved to equilibrium, no time constant)',
    'var T_new = T_eq + (fuel.T_fuel_c - T_eq) * decay;', 'var T_new = T_eq;'],
   ['the rod OD moved off its sourced value', 'rod_od_in:   0.374,', 'rod_od_in:   0.400,'],

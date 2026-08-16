@@ -55,7 +55,7 @@ var DOC = {
    * injection self-test caught exactly that. BEAVRS / Watts Bar U1 Cycle 1, OSTI 1991715. */
   hzp_boron_ppm: 975.0, hzp_temp_c: 291.67, boron_worth_pcm_per_ppm: 10.0,
   /* pwr2_fuel.steadyFuelTemp at 300 MWt / 304.5 degC — cross-checked against the module below. */
-  t_fuel_ref_c: 581.8,
+  t_fuel_ref_c: 684.2,
   rod_worth_control: 0.04068, rod_worth_shutdown: 0.03676
 };
 
@@ -502,7 +502,7 @@ var MUTATIONS = [
    '    if (xeFrac === undefined) xeFrac = 0;',
    '    if (xeFrac === undefined) xeFrac = kin.X / kin.X_eq_full;'],
   ['the derived fuel reference reverts to the first engine\'s 693',
-   '  var DEFAULT_T_FUEL_REF = 581.8;', '  var DEFAULT_T_FUEL_REF = 693.0;'],
+   '  var DEFAULT_T_FUEL_REF = 684.2;', '  var DEFAULT_T_FUEL_REF = 581.8;'],
   ['caller fuel reference ignored at construction',
    'T_fuel_ref_c: opts.T_fuel_ref_c === undefined ? DEFAULT_T_FUEL_REF : opts.T_fuel_ref_c,',
    'T_fuel_ref_c: DEFAULT_T_FUEL_REF,'],

@@ -130,7 +130,7 @@ function runSuite(R, rec, quiet) {
    * 304.5 reference and passed only because a boron error had the whole plant running cold; with
    * the trim corrected it reads 318.6, which is the core outlet doing exactly what it should. */
   ckT('...with the fuel hot and the core node above the loop reference, as a heated node is',
-      hold.T_fuel_c > 500 && hold.T_fuel_c < 650 &&
+      hold.T_fuel_c > 620 && hold.T_fuel_c < 760 &&
       hold.coolTemp_c > TREF && hold.coolTemp_c < TREF + 30,
       'fuel ' + hold.T_fuel_c.toFixed(1) + ' degC, core node ' + hold.coolTemp_c.toFixed(2) +
       ' degC = reference + ' + (hold.coolTemp_c - TREF).toFixed(1));
@@ -204,8 +204,22 @@ function runSuite(R, rec, quiet) {
    * them all at one horizon is what made the first two versions fail. The recovery is FAST — the
    * bank is already down to -991 pcm by 10 s — so "the rods inserted" has to be read while they
    * are still holding, not after the moderator has taken most of it back. */
-  var scrEarly = ride(f2, 50, null, rods);          /* 1 s — the insertion itself */
-  var scr = ride(f2, quiet ? 250 : 450, null, rods);
+  /* ⚠ THE SINK IS CUT WITH THE RODS, because that is what a scram actually does. Holding a RATED
+   * heat sink on a shut-down reactor over-cools it, and the stronger the Doppler the harder that
+   * pushes back: after h_gap was solved against the sourced defect (D1 section 35) the fuel sits at
+   * 699 degC instead of 597, so cooling it releases enough positive reactivity to drive the plant
+   * back through critical to 127 % INSIDE FOURTEEN SECONDS. Measuring "a scram shuts the reactor
+   * down" against that is measuring a scram plus an over-cooling accident.
+   *
+   * So the scram checks below trip the turbine too, and the over-cooling recovery is kept as its
+   * own separate finding at the end, where it is the subject rather than a contaminant. */
+  function tripped() { return RATED * 0.07; }
+  var scrEarly = ride(f2, 50, tripped, rods);       /* 1 s — the insertion itself */
+  /* WINDOW LENGTHENED 250/450 -> 400/700 steps. The fuel time constant grew 3.26 -> 4.50 s when
+   * h_gap was solved against the sourced Doppler defect (D1 section 35), so at the old horizon
+   * the plant had not decayed far enough for the split to open past this check's 3-point bar.
+   * The horizon follows the physics; the BAR is what must not move. */
+  var scr = ride(f2, quiet ? 400 : 700, tripped, rods);
   ckT('a scram makes fission and total DIVERGE, where steady state had them equal',
       scr.core_heat_pct - scr.power_pct > 3,
       'fission ' + scr.power_pct.toFixed(3) + ' % against total ' + scr.core_heat_pct.toFixed(3) +
@@ -219,10 +233,13 @@ function runSuite(R, rec, quiet) {
   /* THE RECOVERY, asserted rather than avoided. Keep removing rated heat from a scrammed plant and
    * the cooling walks reactivity back up through the bank. This is the moderator coefficient doing
    * what it is for, and a plant that could NOT do it would have a feedback sign error. */
-  var scrLong = ride(f2, quiet ? 1500 : 4000, null, rods);
+  var f3 = fixture(); var rods3 = [{ steps: 228, max_steps: 228, worth: 0.04068 }];
+  ride(f3, 200, null, rods3); rods3[0].steps = 0;
+  var recEarly = ride(f3, 50, null, rods3);
+  var scrLong = ride(f3, quiet ? 700 : 1200, null, rods3);
   ckT('...and holding a RATED sink on a scrammed plant walks it back toward critical',
-      scrLong.rho_pcm > scrEarly.rho_pcm + 2000,
-      'rho ' + scrEarly.rho_pcm.toFixed(0) + ' -> ' + scrLong.rho_pcm.toFixed(0) + ' pcm — 4068 pcm ' +
+      scrLong.rho_pcm > recEarly.rho_pcm + 2000,
+      'rho ' + recEarly.rho_pcm.toFixed(0) + ' -> ' + scrLong.rho_pcm.toFixed(0) + ' pcm — 4068 pcm ' +
       'of bank is only ~174 degC of cooling, which is why a scram trips the turbine. The CORE NODE ' +
       'temperature is not the witness here: it is one node in a circulating loop and recovers ' +
       'toward the loop average as the plant mixes, so it is not monotone.');

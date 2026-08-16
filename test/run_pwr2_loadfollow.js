@@ -16,7 +16,7 @@
  * that forced them to would be fitting PWR2 to a plant it was built to replace. The bands below
  * are wide enough to admit the physics difference and tight enough that a broken coupling fails.
  *
- * MEASURED, this engine:  99.6 -> 54.7 %,  Tavg 577.75 -> 598.0 degF  (+20.3 against +22.8)
+ * MEASURED, this engine:  99.6 -> 54.0 %,  Tavg 577.95 -> 603.92 degF (+25.97 against +22.8)
  *
  * ---------------------------------------------------------------------------------------
  * ⚠ THE BORON TRIM MUST USE THE FUEL TEMPERATURE. `criticalBoron` defaults the fuel to the

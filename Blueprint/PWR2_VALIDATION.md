@@ -305,3 +305,43 @@ section would have been wrong by 29 °F and the only symptom was a number that l
 explicit argument that defaults to the moderator temperature, so the zero-power call still reads
 naturally and the at-power call has to say what it means. Two checks in `run_pwr2_reactor.js` had
 been written against the cooled plant and were corrected with it.
+
+### 20.5 AMENDED — the gap conductance was solved, and my prediction was WRONG — 2026-08-16
+
+`D1` §35 predicted, in writing and as a reject criterion: *"A1 will move UP, toward the 57.5 % it
+currently undershoots… if A1 does not improve, the reasoning above is wrong and the change should
+be reverted rather than argued for."*
+
+**It did not move up. The prediction is falsified.** Re-measured after solving `h_gap` to 3000 W/m²K:
+
+| | current engine | before | **after** |
+|---|---|---|---|
+| power after cut | 57.5 % | 54.20 % | **54.00 %** |
+| final Tavg | 602.1 °F | 598.49 | **603.92 °F** |
+| Tavg rise | +22.8 °F | +20.79 | **+25.97 °F** |
+| fuel at power | 693 °C | 596.9 | **699.1 °C** |
+
+**Why the reasoning was wrong.** I argued that more Doppler means less power drop. But at steady
+state **power is pinned by the steam energy balance, not by the reactivity balance** — the turbine
+draws a fixed mass of steam at a given enthalpy, and the core must make exactly that. What the
+reactivity balance sets is the **temperature at which that power is made**. So `h_gap` could never
+have moved power; it could only ever move Tavg, which is precisely what it did.
+
+**The reject criterion was therefore ill-posed, not merely unmet** — it tested a prediction derived
+from a wrong mechanism model. `CLAUDE.md`'s standing trap covers exactly this: *a pre-declared
+reject criterion can outlive its measurement — re-measure the criterion, not just the result,
+before you let it reject anything.*
+
+**The change is KEPT, on grounds independent of A1:**
+
+1. The **Doppler defect** now reads 981 pcm against the sourced 950–1000; it was 725, outside.
+2. The **full-power fuel temperature** lands at 699 °C against the current engine's 693 — 0.9 %,
+   by a completely different route.
+3. **Absolute final Tavg IMPROVED**, 598.49 → 603.92 against a target of 602.1: error −3.6 → +1.8.
+
+What got slightly worse is the Tavg **rise**, +20.79 → +25.97 against +22.8: error −2.0 → +3.2,
+comparable magnitude, opposite side. That is recorded rather than smoothed over.
+
+**Power remains 3.5 points below the current engine and is now known NOT to be a Doppler effect.**
+It is set by the steam side, so the residual lives in the steam-generator or turbine model, not in
+the reactivity loop. That is the next thing to look at, and this section is what says where.

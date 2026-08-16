@@ -165,13 +165,13 @@
    * engine, whose fuel rise came out of two `[tune]` constants. pwr2_fuel.js derives the rise from
    * sourced rod geometry and a real resistance stack and gets 581.8 degC at rated power. Doppler is
    * perturbative about this number, so leaving 693 in place injected
-   * alpha_D * (581.8 - 693) = +278 pcm AT FULL POWER out of nothing at all.
+   * alpha_D * (T_fuel - T_ref) AT FULL POWER out of nothing at all.
    *
    * This is `pwr2_fuel.steadyFuelTemp(geom, rated_kW, T_mod_ref)`. It is written here as a literal
    * rather than imported so that Layer 5 files stay independent of each other — but it is a DERIVED
    * value with a computation behind it, and the fuel gate pins the two together so they cannot
    * drift apart silently. RE-DERIVE IT if the resistance stack or the pellet split moves. */
-  var DEFAULT_T_FUEL_REF = 581.8;   /* [derived] pwr2_fuel.steadyFuelTemp at 300 MWt, 304.5 degC */
+  var DEFAULT_T_FUEL_REF = 684.2;   /* [derived] pwr2_fuel.steadyFuelTemp at 300 MWt, 304.5 degC */
   var DEFAULT_T_MOD_REF  = 304.5;   /* rated Tavg */
 
   /* ROD WORTH — [sourced] WTSM 2.2 (ML11216A051) Table 2.2-1. Already sourced in the old engine's

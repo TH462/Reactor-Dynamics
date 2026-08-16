@@ -89,12 +89,13 @@
   /* ---- OPEN: unsourced, and an evidence pass owes every one of these ------------------------ */
   var OPEN = {
     h_gap: {
-      value: 5700,                 /* W/m2K */
-      why: 'Gap conductance. UNSOURCED — `find_source` finds no numeric value; 10 CFR 50 App. K ' +
-           'requires it be varied with gap dimensions and names MATPRO-11 Rev. 1 (Hagrman, ' +
-           'Reymann, Mason 1980) for the gap gas, and we do not hold that document. 5700 is a ' +
-           'beginning-of-life figure. It is the SECOND-largest resistance in the stack (30 %), so ' +
-           'it matters; burnup would raise it as the gap closes, which this model does not track.'
+      value: 3000,                 /* W/m2K — SOLVED, see below */
+      why: 'Gap conductance. No numeric value in the corpus — `find_source` returns zero across ' +
+           '35 documents in 3 lanes, and 10 CFR 50 App. K names MATPRO-11 Rev. 1 (Hagrman, ' +
+           'Reymann, Mason 1980) without our holding it. So it is SOLVED rather than recalled, ' +
+           'the same pattern as rho_excess: it is whatever makes the DOPPLER DEFECT come out at ' +
+           'the sourced figure. Ginna UFSAR ch15 (ML20339A101) rod-ejection table: "Doppler ' +
+           'defect, pcm 1000 1000 950 950". 3000 W/m2K gives 981 pcm, mid-range. D1 section 35.'
     },
     k_clad: {
       value: 16.0,                 /* W/mK, Zircaloy */
