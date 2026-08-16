@@ -529,3 +529,71 @@ way v1's reconstruction does.
 **Not built**: this is the same class of change as the void-credit currency question, it is
 mine to have caused, and the honest sequence is to measure the bound against v1's
 reconstruction before writing it rather than after.
+
+### The bound, measured then built — and CA-15 splits into two defects (2026-08-16)
+
+**The bound was measured against v1's reconstruction first**, as the previous entry promised.
+Both models at CA-15's own layer (`OpsHarness`, sev-0.5 `large_loca`), reading the SIGNED
+non-credit half of each node level — v1's `levelBase + 776·(m−1)` against v2's
+`geometric − deficitPoints` — beside the plant's own shortfall `(1 − _mass)·M_rcs`:
+
+| t (s) | plant short (kg) | **v1** implied debt (kg) | v1 under the bound | **v2** banked debt (kg) |
+|---|---|---|---|---|
+| 300 | 5581 | 4876 | **712** | 9188 |
+| 1200 | 4880 | 4164 | **714** | 10484 |
+| 1800 | 4235 | 3519 | **713** | 10623 |
+| 2400 | 2410 | 2257 | **713** | 9334 |
+| 2700 | **0** | — (positive) | — | 5212 |
+| 4500 | **0** | — (positive) | — | **3573** |
+
+v1 sits under `(1 − m)·M_rcs` by a **constant 712–714 kg** — exactly `level_prog_floor`
+(28 points × 25.5 kg/point), because its implied debt is `776·(1 − m) − levelBase` and
+`levelBase` cannot go below its floor. **So the bound is one v1 satisfies structurally at
+every instant**, which is what makes it a fence rather than a fitted number. It is
+deliberately the LOOSE version: trimming to v1's exact figure would re-import v1's level law
+as the authority, the same thing the upper fence explicitly refuses to do.
+
+The bottom row is the defect stated as a number: **v2's node was owed 3,573 kg by a plant
+sitting 20 % OVERFILLED.** Built into `reconcile` (one clamp, mirroring the upper one),
+gated by `run_pzr2` J4, injection-verified.
+
+**What it fixed, and it is half of CA-15.** Same lineup at 4500 s:
+
+| | deficit | node water | published level | break |
+|---|---|---|---|---|
+| before | 3573 kg | 0 kg | **0.0 %** | dry |
+| after | **0 kg** | **3520 kg** | **85.8 %** | dry |
+
+Peak debt 10,657 → 7,214 kg against a shortfall peaking at 7,481 (ratio 1.42 → 0.96). The
+"100 % overfilled plant with an EMPTY pressurizer" is gone.
+
+**The other half is a DIFFERENT defect, and it is about temperature.** Inventory still rides
+to the clip, so the arrest still does not happen — but the cause is no longer the deficit.
+With `mass_max` lifted to 1.6 (**not the shipped plant**; the run is shown only to let the
+model state its own answer) v2 makes a **clean solid arrest**: node 4,101 kg, level 100.0 %,
+flat from t=3000 to t=6900, inventory **119.4 %** and drifting −0.2 points per 40 min.
+
+So v2's solid line is **119.4 %** where v1's is **109.28 %**, and the whole 10 points are
+`level_per_mass` being **temperature-blind**. Measured on v1's own settled state
+(`inbox/_solidline.js`): at 17.1 psia the node's water is at Tsat **107.6 °C (225.7 °F)**,
+density **952 kg/m³**, and v1's declared-solid share of 0.1289 RCS-frac is **2,550 kg =
+2.678 m³ in a 4.292 m³ vessel — 62.4 % FULL BY VOLUME**. A genuinely full vessel at that
+density is **4,086 kg = 20.65 % of nominal RCS mass**, which is where v2 goes solid (4,101 kg
+measured) and it lands **on top of a clip the config's own comment calls "keep unreachable"**.
+
+**v2 is the physical one here** — cold water is denser, so filling the same vessel takes more
+kilograms, and v1 calls a 62 %-full pressurizer solid because 100 points is 100 points to it.
+That makes the remaining half of CA-15 an **HR9 question about which solid line is the
+plant's**, with a consequence attached (the 120 % clip is sized against v1's answer), and
+therefore **an owner ruling rather than a fix**. It is not built.
+
+**A limitation of the fence, declared rather than discovered later.** `(1 − m)·M_rcs` is a
+MASS-fraction statement, so it says the loop stops accepting water at nominal mass regardless
+of temperature. A cold loop holds denser water and could legitimately accept more, which
+would push the honest solid line *higher* still, not lower. Stating the loop's capacity as a
+VOLUME needs a loop node — #474 — and is outside this rebuild. Consequence to watch: the
+fence BINDS continuously for ~2,400 s on this transient (v2's debt tracks the bound exactly
+from t=300 to t=2400), so on a deep-shortfall plant v2's level is effectively
+`credit − 776·(1 − m)`, i.e. v1's law without the base term. That is a real re-import of the
+reconstruction in that one regime, and it is the price of keeping the node's water
+non-negative without a loop node to allocate against.
