@@ -496,3 +496,36 @@ produce.
 and the next trace must run under the same M4 emulation the probe uses, or it will keep
 agreeing with itself. That is the third time on this cluster that a LAYER difference, not a
 physics difference, explained a disagreement.
+
+### CA-15 localised: the signed deficit does not recover (2026-08-15)
+
+Run at CA-15's own layer at last — `RD.OpsHarness` (engine + M4, shipped lineup), which is
+what makes ECCS actuate. Same lineup, both models, 4700 s after a sev-0.5 break:
+
+| | core inventory | pzr level | leak_flow |
+|---|---|---|---|
+| **v1** | **109.28 %** — arrests on the solid line | 100.0 % (solid) | 6.5e-4, still flowing |
+| **v2** | **120.00 %** — rides to the `mass_max` clip | **0.0 %** | 0.0 — dry |
+
+**v2's plant is overfilled to 120 % while its pressurizer reads EMPTY.** The vessel never
+refills, so it never goes solid, never relieves, and inventory has nowhere to stop. That is
+the whole failure, and both broken legs are one thing: the break "goes dry" because pressure
+has equalised with a plant that cannot relieve, not because the blowdown is wrong (the
+blowdown traces bit-comparable to v1 — previous entry).
+
+**The cause is the signed deficit added earlier today.** During the blowdown the loop demands
+far more outsurge than the vessel holds, and `applySurge` banks the remainder as debt that a
+refill must repay BEFORE the vessel fills. v1 cannot behave this way because its level is a
+FUNCTION of current mass — `base + level_per_mass·(m−1) + credit` recovers the instant mass
+returns, with no memory. v2's deficit is an INTEGRAL, and an integral remembers.
+
+**Recommendation for the fix**: the deficit must be bounded by what the loop can actually owe
+rather than accumulating without limit — the same #418 rule `reconcile` already applies to
+the upper bound (the node cannot hold more than the plant has) applied to the lower one (the
+node cannot be owed more than the plant is short). That keeps the signed semantics that fixed
+the 100 %-gauge-on-an-empty-vessel defect, while letting the node recover with the loop the
+way v1's reconstruction does.
+
+**Not built**: this is the same class of change as the void-credit currency question, it is
+mine to have caused, and the honest sequence is to measure the bound against v1's
+reconstruction before writing it rather than after.
