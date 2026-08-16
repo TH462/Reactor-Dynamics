@@ -25,7 +25,10 @@ var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_kinetics.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop',
- 'pwr2_sources'].forEach(function (f) { require(path.join(E, f + '.js')); });
+ 'pwr2_sources', 'pwr2_fuel'].forEach(function (f) { require(path.join(E, f + '.js')); });
+/* pwr2_fuel is loaded ONLY to cross-check the Doppler reference. The engine files stay independent
+ * of each other; it is the GATE that ties them together, which is the right place for a consistency
+ * claim spanning two modules. */
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
 function loadFrom(src) {
@@ -47,6 +50,12 @@ var DOC = {
   f0: 0.06248,
   lambda_I: 2.87e-5, lambda_X: 2.09e-5,
   mod_boron_zero_ppm: 986.0, mod_anchor_pcm_per_F: -31.43,
+  /* RETYPED, because comparing the solve against the engine's OWN HZP block is circular:
+   * moving the anchor moves the target with it and the check passes at any value. The
+   * injection self-test caught exactly that. BEAVRS / Watts Bar U1 Cycle 1, OSTI 1991715. */
+  hzp_boron_ppm: 975.0, hzp_temp_c: 291.67, boron_worth_pcm_per_ppm: 10.0,
+  /* pwr2_fuel.steadyFuelTemp at 300 MWt / 304.5 degC — cross-checked against the module below. */
+  t_fuel_ref_c: 581.8,
   rod_worth_control: 0.04068, rod_worth_shutdown: 0.03676
 };
 
@@ -76,7 +85,20 @@ function runSuite(K, rec, quiet) {
     return K.createKinetics({ P: P,
                               rho_excess: K.OPEN.xenon_worth.value * (k0.X / k0.X_eq_full) });
   }
-  var REF = { fuelTemp_c: 693.0, boron_ppm: 0, modTemp_c: 304.5 };
+  /* THE REFERENCE CONDITION, READ FROM THE PLANT RATHER THAN RESTATED.
+   *
+   * This was `{ fuelTemp_c: 693.0, ..., modTemp_c: 304.5 }` — literals that were correct when
+   * written and silently stopped being so. When pwr2_fuel.js derived the fuel reference down to
+   * 581.8, `critical()` — which cancels only the xenon term and ASSUMES every other term is zero —
+   * was suddenly handing the plant -278 pcm of Doppler, and five checks went red claiming the
+   * SOLVER was broken. The solver was fine; the fixture was describing a plant that no longer
+   * existed.
+   *
+   * A fixture that means "at the reference condition" must SAY that, not repeat today's value of
+   * it. Same defect class as the rod-lineup finding of 2026-08-11: a premise ages independently of
+   * the thing that relies on it, and nothing re-checks it. */
+  var _ref = K.createKinetics({});
+  var REF = { fuelTemp_c: _ref.T_fuel_ref_c, boron_ppm: 0, modTemp_c: _ref.T_mod_ref_c };
   /* COST ASYMMETRY — the mutation replay runs short horizons, the live pass runs real ones.
    * 23 mutations x probes that simulate 60-300 s of plant is minutes of compute, and a gate that
    * expensive stops being run (D1 §31, and the same mistake made in CVCS and RHR before it).
@@ -184,7 +206,7 @@ function runSuite(K, rec, quiet) {
   var prevRaw = null;
   for (var rr = 1; rr <= 12; rr++) {
     var g = [{ steps: 912 - rr * 6, max_steps: 912, worth: DOC.rod_worth_control }];
-    var rrres = K.stepKinetics(kRamp, sysR2, 0.02, { fuelTemp_c: 693, boron_ppm: 0,
+    var rrres = K.stepKinetics(kRamp, sysR2, 0.02, { fuelTemp_c: REF.fuelTemp_c, boron_ppm: 0,
                                                     modTemp_c: 304.5, rodGroups: g });
     /* kin.rho_last holds the RAW reactivity; the reported rho is the midpoint estimate. */
     if (prevRaw !== null && rrres.rho < kRamp.rho_last - 1e-12) leads++;
@@ -234,7 +256,7 @@ function runSuite(K, rec, quiet) {
       'both ' + rc.power.toFixed(6) + ' — this is why no calibration moves');
   var ks = critical(1.0), syss = plant(), rs = null;
   var rods = [{ steps: 0, max_steps: 912, worth: DOC.rod_worth_control }];
-  var dScram = { fuelTemp_c: 693, boron_ppm: 0, modTemp_c: 304.5, rodGroups: rods };
+  var dScram = { fuelTemp_c: REF.fuelTemp_c, boron_ppm: 0, modTemp_c: REF.modTemp_c, rodGroups: rods };
   for (var u = 0; u < SCRAM; u++) rs = K.stepKinetics(ks, syss, 0.02, dScram);
   ckT('after a scram they DIVERGE, and by a plant-sized amount',
       rs.Q_total_frac - rs.power > (quiet ? 0.005 : 0.01) && rs.power < (quiet ? 0.2 : 0.01),
@@ -282,6 +304,80 @@ function runSuite(K, rec, quiet) {
   ckT('feedback is ZERO at the reference condition, by construction',
       Math.abs(K.moderatorReactivity(304.5, 304.5, 700, 15.41)) < 1e-15,
       'both feedbacks are perturbative about the reference, not absolute');
+
+  /* ---- THE DIRECT BORON TERM — the half this section NAMED and did not check.
+   *
+   * This gate scored 50/50 with 25/25 mutations while `rho_bor` did not exist. The section header
+   * above says "boron appears TWICE"; every check under it exercised the moderator coupling, and
+   * the direct worth term was absent from the engine entirely. MEASURED before the fix: boron
+   * moved reactivity by 0.00 pcm at 0, 500, 975 AND 2000 ppm at the reference temperature — i.e.
+   * at the condition the plant actually runs at, boron was inert.
+   *
+   * The lesson is about mutation testing, not about boron: a self-test perturbs code that EXISTS.
+   * It cannot report a term nobody wrote. A section header naming two mechanisms and checking one
+   * is the only thing that would have caught this, and it has to be read by a person. */
+  var kRef = K.createKinetics({});
+  function rhoAt(B, T) { return K.reactivity(kRef, T === undefined ? 304.5 : T,
+                                             kRef.T_fuel_ref_c, B, null, 15.41); }
+  ckT('boron has worth AT THE REFERENCE TEMPERATURE, where the density coupling gives nothing',
+      Math.abs(rhoAt(1000) - rhoAt(0)) > 1e-3,
+      'the moderator half is identically zero here, so this measures the direct term alone: ' +
+      ((rhoAt(1000) - rhoAt(0)) * 1e5).toFixed(1) + ' pcm over 1000 ppm');
+  ck('differential boron worth at rated equals the sourced 10 pcm/ppm',
+     (rhoAt(1000) - rhoAt(0)) * 1e5 / 1000, -10.0, 1e-9, 'pcm/ppm');
+  ckT('boron is a POISON — more boron is always less reactivity',
+      rhoAt(2000) < rhoAt(975) && rhoAt(975) < rhoAt(0), '');
+  ckT('differential worth is LARGER COLD, because both halves grow',
+      Math.abs(rhoAt(1000, 150) - rhoAt(0, 150)) > Math.abs(rhoAt(1000) - rhoAt(0)) * 1.3,
+      ((rhoAt(1000, 150) - rhoAt(0, 150)) * 1e5 / 1000).toFixed(2) + ' pcm/ppm at 150 degC ' +
+      'against -10.00 at rated — the operator sees the sum of both mechanisms');
+
+  /* ---- rho_excess IS A SOLVE, AND THIS IS WHERE IT IS PINNED ------------------------------
+   * It has no direct observable, so the only check possible is that it lands the plant critical
+   * at the one startup condition a real measurement exists for. Re-solving is required whenever
+   * alpha_D, the moderator block, the boron worth or either reference moves — all four moved in
+   * this port, which is why the number is 0.090139 against the first engine's 0.087354. */
+  ck('the solve lands ARO critical boron on the BEAVRS / Watts Bar measurement',
+     K.criticalBoron(K.createKinetics({}), DOC.hzp_temp_c, K.HZP.P_mpa, null, 0),
+     DOC.hzp_boron_ppm, 1e-6, 'ppm');
+  ck('the anchor the engine carries IS the measurement', K.HZP.boron_ppm,
+     DOC.hzp_boron_ppm, 1e-9, 'ppm');
+  ckT('rho_excess DEFAULTS to the solve rather than to zero',
+      Math.abs(K.createKinetics({}).rho_excess - K.solveRhoExcess()) < 1e-15 &&
+      K.createKinetics({}).rho_excess > 0.05,
+      'a zero default is a core with ~9750 pcm of unopposed boron that cannot go critical at any ' +
+      'concentration — a silent way to ship a plant that will not start up');
+  /* ---- THE CROSS-MODULE TIE. Nothing else in this gate can see the fuel reference change:
+   * REF now derives from the plant, so moving the reference moves the fixture with it and every
+   * check stays self-consistently wrong. The injection self-test caught that — a mutation
+   * reverting the reference to the first engine's 693 was invisible to 59 checks. The only
+   * external witness is pwr2_fuel, which is where the number comes from in the first place. */
+  var FUEL = globalThis.RD.pwr2.fuel;
+  var fuelDerived = FUEL.steadyFuelTemp(FUEL.deriveGeometry(), 300000, 304.5);
+  ck('the Doppler reference IS what pwr2_fuel derives, not a carried-over number',
+     K.createKinetics({}).T_fuel_ref_c, fuelDerived, 0.1, 'degC');
+  ck('...and equals the retyped value, so both modules drifting together cannot hide it',
+     K.createKinetics({}).T_fuel_ref_c, DOC.t_fuel_ref_c, 0.1, 'degC');
+  ckT('the quote temperature is WATTS BAR\'S, not this plant\'s no-load anchor',
+      Math.abs(K.HZP.temp_c - 291.67) < 1e-9,
+      '975 ppm was measured at 557 degF; conflating it with this plant\'s 286 degC anchor is a ' +
+      'trap the first engine fell into and had to correct');
+  ckT('critical boron FALLS as the plant heats  [negative moderator coefficient]',
+      K.criticalBoron(kRef, 150, 15.41, null, 0) > K.criticalBoron(kRef, 291.67, 15.41, null, 0) &&
+      K.criticalBoron(kRef, 291.67, 15.41, null, 0) > K.criticalBoron(kRef, 304.5, 15.41, null, 0),
+      'heating adds negative reactivity, so less boron is needed to stay critical');
+  /* CALL IT WITHOUT THE ARGUMENT, on an object carrying rated-power xenon. The pair of
+   * explicit calls below never exercises the default branch, so the mutation that made the
+   * default inherit `kin.X` was invisible to them -- the self-test said so. */
+  ckT('omitting the xenon argument means ZERO xenon, not the object inventory',
+      Math.abs(K.criticalBoron(kRef, DOC.hzp_temp_c, K.HZP.P_mpa) -
+               K.criticalBoron(kRef, DOC.hzp_temp_c, K.HZP.P_mpa, null, 0)) < 1e-9,
+      'kRef is built at rated power and carries equilibrium xenon; the default must ignore it');
+  ckT('xenon is an EXPLICIT argument to criticalBoron, not read from the object',
+      Math.abs(K.criticalBoron(kRef, 291.67, 15.41, null, 0) -
+               K.criticalBoron(kRef, 291.67, 15.41, null, 1)) > 100,
+      'the 975 ppm anchor is a ZERO-XENON measurement; inheriting a rated-power object\'s xenon ' +
+      'shifts it ~228 ppm and reads as a failed solve when it is a failed comparison');
   /* THE ENDPOINTS ARE THE SAME FOR A STRAIGHT LINE — scruve(0)=0 and scruve(1)=1 hold for a linear
    * ramp too, so checking them proves nothing about the curve. What distinguishes an S-curve is
    * that DIFFERENTIAL worth varies across the band: near-zero at the ends, peaked mid-core. That
@@ -380,10 +476,36 @@ var MUTATIONS = [
   /* CONSTRUCTION */
   ['caller power ignored at construction', 'var P0 = opts.P === undefined ? 1.0 : opts.P;', 'var P0 = 1.0;'],
   ['caller rho_excess ignored at construction',
-   'rho_excess:   opts.rho_excess === undefined ? 0 : opts.rho_excess,', 'rho_excess:   0,'],
+   '      rho_excess:   opts.rho_excess === undefined\n', '      rho_excess:   false\n'],
+  /* ---- THE BORON TERM AND THE SOLVE. Both are NEW, and the reason they are worth a block of
+   * their own is that the gate scored 50/50 with 25/25 mutations while the direct boron term was
+   * MISSING ENTIRELY. Mutation testing perturbs code that exists; it is structurally blind to a
+   * term that was never written. These mutations exist so that its removal is now visible. */
+  ['the DIRECT boron term dropped again (boron inert at the reference temperature)',
+   '    var rho_bor  = -BORON.worth_per_ppm * B_ppm;', '    var rho_bor  = 0;'],
+  ['boron worth moved off its sourced 10 pcm/ppm', 'worth_per_ppm: 1.0e-4,',
+   'worth_per_ppm: 5.0e-5,'],
+  ['boron becomes a positive reactivity addition (sign inverted)',
+   '    var rho_bor  = -BORON.worth_per_ppm * B_ppm;',
+   '    var rho_bor  = BORON.worth_per_ppm * B_ppm;'],
+  ['the HZP critical-boron anchor moved off the BEAVRS measurement', 'boron_ppm: 975.0,',
+   'boron_ppm: 800.0,'],
+  ['the solve quote temperature reverts to this plant\'s anchor instead of Watts Bar\'s',
+   'temp_c: 291.67,', 'temp_c: 286.0,'],
+  ['rho_excess stops being solved and returns a fixed number',
+   '    return -(rho_dop + rho_mod + rho_bor);', '    return 0.087354;'],
+  ['the solve drops the Doppler term', '    var rho_dop = OPEN.alpha_D.value * (T - TfRef);',
+   '    var rho_dop = 0;'],
+  ['the solve drops the moderator term',
+   '    var rho_mod = moderatorReactivity(T, TmRef, B, P);', '    var rho_mod = 0;'],
+  ['criticalBoron silently inherits the object\'s xenon instead of taking it explicitly',
+   '    if (xeFrac === undefined) xeFrac = 0;',
+   '    if (xeFrac === undefined) xeFrac = kin.X / kin.X_eq_full;'],
+  ['the derived fuel reference reverts to the first engine\'s 693',
+   '  var DEFAULT_T_FUEL_REF = 581.8;', '  var DEFAULT_T_FUEL_REF = 693.0;'],
   ['caller fuel reference ignored at construction',
-   'T_fuel_ref_c: opts.T_fuel_ref_c === undefined ? 693.0 : opts.T_fuel_ref_c,',
-   'T_fuel_ref_c: 693.0,'],
+   'T_fuel_ref_c: opts.T_fuel_ref_c === undefined ? DEFAULT_T_FUEL_REF : opts.T_fuel_ref_c,',
+   'T_fuel_ref_c: DEFAULT_T_FUEL_REF,'],
   ['the midpoint ramp correction reverts to frozen rho (the original no-op)',
    'var rhoMid = kin.rho_valid ? rhoNow + 0.5 * (rhoNow - kin.rho_last) : rhoNow;',
    'var rhoMid = rhoNow;'],

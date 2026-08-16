@@ -117,6 +117,63 @@
     anchor_temp_F:    500.0
   };
 
+  /* BORON — [sourced]. 10 pcm/ppm, verbatim and independently in TWO NRC primaries, one of them
+   * this plant's anchor:
+   *
+   *   Ginna TS Bases (ML20339A221):        "If a boron worth of 10 pcm/ppm is assumed, this
+   *   NUREG-1431 Rev 4 Vol 2 (ML12100A228)  combination of parameters will increase the SDM by
+   *                                         1% k/k."
+   *
+   * HONEST CAVEAT: both say "is ASSUMED". It is a bounding figure used in a shutdown-margin
+   * calculation, not a measured differential worth for a specific core — Ginna's own bases note
+   * that the fuel vendor "does not utilize the measured differential boron worth for design
+   * validation". So it is sourced as a DESIGN-BASIS number and should not be quoted as a
+   * measurement. It is the right magnitude and it is citable, which is more than recall gives.
+   *
+   * ⚠ THIS TERM WAS MISSING, AND THE FILE'S OWN COMMENT SAID SO. `moderatorReactivity` carries the
+   * note "BORON APPEARS TWICE and porting one half is wrong: the direct worth term, and the
+   * density coupling inside the moderator term" — and only the density coupling was implemented.
+   * MEASURED before the fix: at the reference temperature, where the plant actually operates,
+   * boron changed reactivity by 0.00 pcm at 0, 500, 975 AND 2000 ppm. Boron was inert. Away from
+   * the reference the apparent worth was -0.98 pcm/ppm, a tenth of the real figure, and it was an
+   * artifact of the moderator coefficient's boron dependence rather than boron worth at all.
+   *
+   * The kinetics gate scored 50/50 with 25/25 mutations against that. IT COULD NOT HAVE CAUGHT IT:
+   * mutation testing perturbs code that EXISTS, and this was a missing term. HR10, exactly. */
+  var BORON = {
+    worth_per_ppm: 1.0e-4,       /* 10 pcm/ppm */
+    src: 'ML20339A221 (Ginna TS Bases) and ML12100A228 (NUREG-1431 Rev 4 Vol 2 Bases), both ' +
+         '"If a boron worth of 10 pcm/ppm is assumed" — a design-basis figure, not a measurement'
+  };
+
+  /* THE HZP CRITICAL-BORON ANCHOR — the one real startup measurement this engine is pinned to.
+   * BEAVRS / Watts Bar Unit 1 Cycle 1 HZP physics tests (OSTI 1991715): ARO critical boron
+   * 975 ppm at BOL with zero xenon, measured at the WBN HZP temperature of 557 degF = 291.67 degC.
+   *
+   * ⚠ THE QUOTE TEMPERATURE IS WATTS BAR'S, NOT THIS PLANT'S. They are different numbers and
+   * conflating them is a real trap the first engine fell into and had to correct: it evaluated the
+   * solve at its own then-anchor and only split the two when the Ginna re-anchor forced it. The
+   * 975 ppm belongs to 291.67 degC; this plant's own no-load anchor is a separate quantity and the
+   * initial conditions trim against that instead. */
+  var HZP = { boron_ppm: 975.0, temp_c: 291.67, P_mpa: 15.5,
+              src: 'BEAVRS / Watts Bar U1 Cycle 1 HZP physics tests, OSTI 1991715' };
+
+  /* THE FEEDBACK REFERENCES. Both feedbacks are zero at these by construction, so they are
+   * perturbative about the rated condition rather than absolute.
+   *
+   * ⚠ THE FUEL REFERENCE IS DERIVED, AND IT MOVED. It was 693 degC, inherited from the first
+   * engine, whose fuel rise came out of two `[tune]` constants. pwr2_fuel.js derives the rise from
+   * sourced rod geometry and a real resistance stack and gets 581.8 degC at rated power. Doppler is
+   * perturbative about this number, so leaving 693 in place injected
+   * alpha_D * (581.8 - 693) = +278 pcm AT FULL POWER out of nothing at all.
+   *
+   * This is `pwr2_fuel.steadyFuelTemp(geom, rated_kW, T_mod_ref)`. It is written here as a literal
+   * rather than imported so that Layer 5 files stay independent of each other — but it is a DERIVED
+   * value with a computation behind it, and the fuel gate pins the two together so they cannot
+   * drift apart silently. RE-DERIVE IT if the resistance stack or the pellet split moves. */
+  var DEFAULT_T_FUEL_REF = 581.8;   /* [derived] pwr2_fuel.steadyFuelTemp at 300 MWt, 304.5 degC */
+  var DEFAULT_T_MOD_REF  = 304.5;   /* rated Tavg */
+
   /* ROD WORTH — [sourced] WTSM 2.2 (ML11216A051) Table 2.2-1. Already sourced in the old engine's
    * comment and mis-marked `[tune]`; relabelled on the strength of that citation. */
   var RODS = {
@@ -325,9 +382,15 @@
       X_eq_full: xenonEq(1.0),          /* the FULL-POWER normaliser, fixed */
       /* Feedback references. Both feedbacks are zero at these by construction, so they are
        * perturbative about the reference condition rather than absolute. */
-      T_fuel_ref_c: opts.T_fuel_ref_c === undefined ? 693.0 : opts.T_fuel_ref_c,
-      T_mod_ref_c:  opts.T_mod_ref_c  === undefined ? 304.5 : opts.T_mod_ref_c,
-      rho_excess:   opts.rho_excess === undefined ? 0 : opts.rho_excess,
+      T_fuel_ref_c: opts.T_fuel_ref_c === undefined ? DEFAULT_T_FUEL_REF : opts.T_fuel_ref_c,
+      T_mod_ref_c:  opts.T_mod_ref_c  === undefined ? DEFAULT_T_MOD_REF  : opts.T_mod_ref_c,
+      /* DEFAULTS TO THE SOLVE, not to zero. A zero default is a plant with ~9 750 pcm of
+       * unopposed boron holddown that cannot be made critical at any boron concentration, which
+       * is a silent way to ship a core that will not start up. */
+      rho_excess:   opts.rho_excess === undefined
+                      ? solveRhoExcess({ T_fuel_ref_c: opts.T_fuel_ref_c,
+                                         T_mod_ref_c:  opts.T_mod_ref_c })
+                      : opts.rho_excess,
       rho_last:     0,
       rho_valid:    false
     };
@@ -344,8 +407,66 @@
     var rho_rods = rodGroups ? rodReactivity(rodGroups) : 0;
     var rho_dop  = OPEN.alpha_D.value * (T_fuel_c - kin.T_fuel_ref_c);
     var rho_mod  = moderatorReactivity(T_mod_c, kin.T_mod_ref_c, B_ppm, P_mpa);
+    /* THE DIRECT BORON TERM — the half that was missing. Boron is a poison, so it is strictly
+     * negative and it acts AT ANY TEMPERATURE, including the reference where the density coupling
+     * above contributes exactly nothing. */
+    var rho_bor  = -BORON.worth_per_ppm * B_ppm;
     var rho_xe   = -OPEN.xenon_worth.value * (kin.X / kin.X_eq_full);
-    return kin.rho_excess + rho_rods + rho_dop + rho_mod + rho_xe;
+    return kin.rho_excess + rho_rods + rho_dop + rho_mod + rho_bor + rho_xe;
+  }
+
+  /* solveRhoExcess(opts) — rho_excess is a SOLVE, not a number, and this is the algebra.
+   *
+   * It has no direct observable, so it is whatever makes the plant critical at the one startup
+   * condition we hold a real measurement for: all rods out, no xenon, 975 ppm, 291.67 degC. Set
+   * rho = 0 there and everything else is known:
+   *
+   *   0 = rho_excess + 0(ARO) + alpha_D*(T - T_fuel_ref) + rho_mod(T, B) - worth*B + 0(no xenon)
+   *
+   * At zero power the fuel sits at the moderator temperature — there is no heat to drive a rise —
+   * so the SAME T goes into both feedbacks.
+   *
+   * ⚠ RE-SOLVE IT whenever the Doppler coefficient, the moderator block, the boron worth or either
+   * reference temperature moves. All four have moved in this port: the moderator coefficient now
+   * reads real Layer 0 density, the boron term did not previously exist, and the fuel reference
+   * came down from 693 to the value pwr2_fuel derives. A stale rho_excess is invisible — it just
+   * puts the plant critical at the wrong boron. */
+  function solveRhoExcess(opts) {
+    opts = opts || {};
+    var T      = opts.temp_c   === undefined ? HZP.temp_c   : opts.temp_c;
+    var B      = opts.boron_ppm === undefined ? HZP.boron_ppm : opts.boron_ppm;
+    var P      = opts.P_mpa    === undefined ? HZP.P_mpa    : opts.P_mpa;
+    var TfRef  = opts.T_fuel_ref_c === undefined ? DEFAULT_T_FUEL_REF : opts.T_fuel_ref_c;
+    var TmRef  = opts.T_mod_ref_c  === undefined ? DEFAULT_T_MOD_REF  : opts.T_mod_ref_c;
+    var rho_dop = OPEN.alpha_D.value * (T - TfRef);
+    var rho_mod = moderatorReactivity(T, TmRef, B, P);
+    var rho_bor = -BORON.worth_per_ppm * B;
+    return -(rho_dop + rho_mod + rho_bor);
+  }
+
+  /* criticalBoron(kin, T_c, P_mpa) — the inverse, and the check that the solve actually landed.
+   * Reactivity is LINEAR in boron (a direct term plus a density coupling that scales as 1 - B/B0),
+   * so this is a quadratic-free closed solve rather than an iteration: evaluate rho at two boron
+   * concentrations and interpolate to zero. */
+  /* ⚠ XENON IS AN EXPLICIT ARGUMENT, NOT INHERITED FROM `kin`. The first version called
+   * `reactivity()`, which reads the kinetics object's live xenon inventory — and a kinetics object
+   * built at rated power carries equilibrium xenon worth ~2 500 pcm. The anchor it is being
+   * compared against is BOL ZERO XENON, so the check returned 747 ppm against a 975 ppm target and
+   * looked like a failed solve. It was a failed COMPARISON: the two sides were at different xenon.
+   * Defaulting to the object's own state would make that mistake the easy one to repeat. */
+  function criticalBoron(kin, T_c, P_mpa, rodGroups, xeFrac) {
+    if (xeFrac === undefined) xeFrac = 0;
+    /* Everything independent of boron, evaluated once. At zero power the fuel sits at the
+     * moderator temperature, so T_c drives both feedbacks. */
+    var base = kin.rho_excess
+             + (rodGroups ? rodReactivity(rodGroups) : 0)
+             + OPEN.alpha_D.value * (T_c - kin.T_fuel_ref_c)
+             - OPEN.xenon_worth.value * xeFrac;
+    var r0 = base + moderatorReactivity(T_c, kin.T_mod_ref_c, 0, P_mpa);
+    var r1 = base + moderatorReactivity(T_c, kin.T_mod_ref_c, 1000, P_mpa)
+                  - BORON.worth_per_ppm * 1000;
+    if (r1 === r0) return NaN;
+    return 1000 * r0 / (r0 - r1);
   }
 
   function stepKinetics(kin, sys, dt, drivers) {
@@ -438,6 +559,8 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.kinetics = {
     DELAYED: DELAYED, DECAY: DECAY, XENON: XENON, MOD: MOD, RODS: RODS, OPEN: OPEN,
+    BORON: BORON, HZP: HZP,
+    solveRhoExcess: solveRhoExcess, criticalBoron: criticalBoron,
     createKinetics: createKinetics, stepKinetics: stepKinetics,
     advance: advance, expm: expm, reactivity: reactivity,
     modCoeff: modCoeff, moderatorReactivity: moderatorReactivity,
