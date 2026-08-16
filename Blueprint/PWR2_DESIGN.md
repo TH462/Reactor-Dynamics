@@ -1637,3 +1637,64 @@ watching it fail to use the layers beneath it:
 
 **Auditing the gates found gate defects. Building on the layers found engine defects.** Both were
 worth doing; only one of them was going to find these.
+
+---
+
+## 33. THE SOURCED NUMBERS, DIFFED AGAINST THEIR DOCUMENTS — 2026-08-15
+
+ECCS was the first layer whose gate retypes its source independently rather than importing the
+engine's copy (§32), and it found that the shutoff row — the single most important number in the
+curve — was masked from its own 24-point document check. That raised an obvious question about
+every OTHER sourced number in PWR2, none of which had ever been diffed against its document.
+
+**Five checked. Nothing wrong.**
+
+| figure | verdict |
+|---|---|
+| Ginna SG inventory **85,359 lbm** | verified in-corpus, exact: *"Initial steam generator water mass (lbm) 85,359"* |
+| Ginna no-load **1005 psig** | verified in-corpus, exact: *"steam line breaks occurring from no load conditions (1005 psig)"* |
+| Almaraz per-loop piping **353 ft³** | verified, and the table's row alignment independently re-confirmed |
+| EPRI heat-transfer area **18,135 ft²** | verified through D3's verbatim quote — **not a corpus file** |
+| Ginna pump inertia **80,000 lbm·ft²** | verified through D3's verbatim quote — **not a corpus file** |
+
+### 33.1 ⚠ `find_source.js` RETURNS ZERO FOR TWO FIGURES THAT ARE PROPERLY SOURCED
+
+`Blueprint/PWR2_PLANT.md` (D3) carries both with quotes — *"number of tubes and tie rods 3393 …
+heat transfer area 51534 ft2"* per SG at 852.5 MWt, and the RCP's 100,400 gpm / 289 ft / 1185 rpm /
+80 ft³ casing with the fleet inertia range 45,000–123,000 lbm·ft². The engine scales the first
+(51,534 × 300/852.5 = 18,137) and takes the second directly.
+
+**But EPRI NP-1721 and the pump data are not FILES in any lane's `inbox/sources`.** They were read
+and quoted during an evidence pass rather than downloaded. So `node tools/find_source.js "18,?135"`
+exits 1 — and `CLAUDE.md` instructs an agent to treat that exit code as the authority on whether
+something is sourced:
+
+> *"It exits **1** on a genuine zero, so 'not in the corpus' is a command's verdict rather than
+> your claim."*
+
+**Following that rule correctly leads to a wrong conclusion for these two.** The gap is that the
+corpus holds *files*, while provenance can also live as a *quotation in a design document* — and
+the tool only sees the first. This session came within one check of writing up "two figures cite
+documents nobody has" as a finding.
+
+**What to do about it is NOT decided here.** The options are to download the two documents into a
+lane's corpus, to teach `find_source.js` to search `Blueprint/` as a secondary corpus, or to leave
+it and rely on the citation naming D3. Each has a cost and none is urgent.
+
+### 33.2 The pass's real lesson is about the checker, not the numbers
+
+**Two separate times in this pass I built a case toward a serious finding and it dissolved on the
+next check.**
+
+1. *"PWR2's piping volume is 3× too large"* — the Almaraz table's `(×3)` labels were read as
+   three-loop totals. Testing both readings against the document's own stated total settles it:
+   per-unit values × 3 sum to **280.97 m³**, matching the report's independent comparison table to
+   the digit. The geometry file's header **already said exactly that**, and I had read past it
+   twice while assembling the case against it.
+2. *"Two figures cite documents nobody has"* — I searched `PWR2_PHYSICS.md` for them, because I had
+   assumed D3 was that file. D3 is `PWR2_PLANT.md`, which carries both with verbatim quotes.
+
+Both errors were the same shape: **a suspicion pursued past the point where the answer was already
+written down.** Neither was caught by care — the first was caught by testing an alternative reading
+arithmetically, the second by checking what a citation actually pointed at. **Suspicion is cheap
+and wrong most of the time; the check is what earns the finding.**
