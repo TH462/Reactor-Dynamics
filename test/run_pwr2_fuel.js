@@ -1,0 +1,398 @@
+/* run_pwr2_fuel.js — Layer 5 gate: the lumped fuel node. (#479)
+ *
+ * WHAT THIS GATE CAN AND CANNOT PROVE, stated first because the fuel model's inputs are the least
+ * sourced in the engine and a gate that hides that is worse than no gate:
+ *
+ *   IT CAN prove the GEOMETRY, because that is derived from two sourced numbers (rod OD, rod
+ *   pitch) plus the core envelope already in pwr2_geometry.js, and the derivation is checkable
+ *   three ways that do not share a route — assembly pitch against the real Westinghouse 17x17
+ *   value, active height against 12 ft, and coolant volume against the geometry file's own node.
+ *
+ *   IT CAN prove the PROPERTY CORRELATIONS are the ones claimed, because a correlation has to
+ *   reproduce anchor values at more than one temperature. cp and k are checked at 300 K and
+ *   1000 K. A recalled correlation hitting four independent anchors is real evidence; a recalled
+ *   SCALAR can only ever agree with itself, which is why the anchors are the check and not the
+ *   constants.
+ *
+ *   IT CANNOT prove h_gap, k_clad, h_film or the 2.6 % direct deposition. Those are UNSOURCED —
+ *   `find_source` returns zero for numeric gap conductance across 35 documents in 3 lanes — and
+ *   no arrangement of checks written here can source them. What the gate does instead is pin
+ *   their SENSITIVITY, so that when the evidence pass lands, the size of the correction to the
+ *   fuel temperature is already known rather than discovered.
+ *
+ * THE CONSERVATION CHECK IS THE LOAD-BEARING ONE. The fuel node sits between fission and the
+ * coolant, so an error in it silently creates or destroys energy in a plant whose whole Layer 3
+ * is a conservation core. Checked at steady state AND through a transient, because those fail
+ * differently: a steady-state balance passes for any model that reaches equilibrium at all.
+ *
+ * Run: node test/run_pwr2_fuel.js
+ */
+'use strict';
+var fs = require('fs'), path = require('path');
+var E = path.join(__dirname, '..', 'engines', 'pwr2');
+var LIB = path.join(E, 'pwr2_fuel.js');
+var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
+
+/* pwr2_fuel.js depends on NOTHING else in the engine — it is pure geometry and properties — so
+ * the harness needs no other module loaded. That independence is itself worth noting: it is the
+ * only Layer 5 file that can be reasoned about without the conservation core underneath it. */
+function loadFrom(src) {
+  var root = { RD: { pwr2: {} } };
+  var body = src.replace("(typeof globalThis !== 'undefined' ? globalThis : this)", '(RD_ROOT)') +
+             '\nreturn RD_ROOT.RD.pwr2.fuel;';
+  return new Function('RD_ROOT', body)(root);
+}
+
+/* THE SOURCE, RETYPED INDEPENDENTLY of the engine's copy — the ECCS discipline.
+ * ML050910161 (WCAP-16009-NP-A Rev 0, Jan 2005) Fig 3-1, "Westinghouse 17x17 Fuel Assembly
+ * Lattice". The page is OCR-mangled; these are the values the metric and US columns agree on. */
+var DOC = { rod_od_in: 0.374, rod_od_mm: 9.50, rod_pitch_in: 0.496, rod_pitch_mm: 12.6,
+            thimble_in: 0.474, lattice: 17 };
+/* WTSM 12.2 (ML11223A301) — the melt limit, used as a sanity BOUND and not as a target. */
+var MELT_LIMIT_F = 4700;
+/* Anchors for the recalled Fink correlations. Also recalled — they are a CONSISTENCY check on the
+ * correlation's shape, not a source for it. */
+var CP_300 = 235, CP_1000 = 311, K_300 = 7.6, K_1000 = 3.5;
+
+var T_COOL = 304.5, Q_RATED = 300000;
+
+function runSuite(F, rec, quiet) {
+  function ck(name, got, want, tol, unit) {
+    var d = Math.abs(got - want), ok = d <= tol && isFinite(got);
+    rec.push({ name: name, ok: ok });
+    if (!quiet) console.log((ok ? '  PASS  ' : '  FAIL  ') + name.padEnd(54) +
+      'got ' + got.toFixed(3) + ' want ' + want.toFixed(3) + ' (tol ' + tol + ') ' + (unit || ''));
+  }
+  function ckT(name, cond, note) {
+    rec.push({ name: name, ok: !!cond });
+    if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
+  }
+  function head(s) { if (!quiet) console.log('\n' + s); }
+
+  /* ---- CONSTRUCTION, WRITTEN FIRST (D1 §31) ---------------------------------------------- */
+  head('CONSTRUCTION  [a caller argument that never arrives is invisible to a physics check]');
+  /* VARY ONE AT A TIME. The first version passed both a count AND an envelope, so ignoring the
+   * envelope entirely still reddened the check via the count — the gate was blind to it and the
+   * injection self-test said so. Two separate fixtures, each moving exactly one argument. */
+  ck('caller assembly count reaches the geometry',
+     F.deriveGeometry({ n_assemblies: 40 }).n_assemblies, 40, 1e-12, '');
+  ckT('caller envelope reaches the geometry — ALONE, count left at its default',
+      Math.abs(F.deriveGeometry({ envelope_m3: 7.0 }).H_m - F.deriveGeometry().H_m) > 1e-6,
+      'envelope is the only argument moved, so nothing else can redden this');
+  var fCustom = F.createFuel({ T_fuel_c: 123.5, rated_thermal_kW: 4242 });
+  ck('caller initial fuel temperature reaches the plant', fCustom.T_fuel_c, 123.5, 1e-12, 'degC');
+  ck('caller rated power reaches the plant', fCustom.rated_thermal_kW, 4242, 1e-12, 'kW');
+
+  /* ---- GEOMETRY, DERIVED FROM THE SOURCED LATTICE ----------------------------------------- */
+  head('GEOMETRY  [derived from two sourced numbers plus the core envelope]');
+  var g = F.deriveGeometry();
+  ck('rod OD matches the source', F.GEOM.rod_od_in, DOC.rod_od_in, 1e-12, 'in');
+  ck('rod pitch matches the source', F.GEOM.rod_pitch_in, DOC.rod_pitch_in, 1e-12, 'in');
+  ck('rod OD metric and US columns agree', F.GEOM.rod_od_in * 25.4, DOC.rod_od_mm, 0.01, 'mm');
+  ck('rod pitch metric and US columns agree', F.GEOM.rod_pitch_in * 25.4, DOC.rod_pitch_mm,
+     0.05, 'mm');
+  ck('pellet is the rod less twice the clad and gap', g.pellet_in,
+     DOC.rod_od_in - 2 * (F.SPLIT.clad_t_in + F.SPLIT.gap_t_in), 1e-12, 'in');
+  ck('264 fuel rods per assembly (289 lattice less 24 thimbles and 1 instrument)',
+     g.n_rod_per_assy, 264, 1e-12, '');
+  ck('assembly pitch is 17 rod pitches', g.assy_pitch_in, DOC.lattice * DOC.rod_pitch_in,
+     1e-9, 'in');
+  ckT('assembly pitch lands just SHORT of the real 17x17 8.466 in, by a water gap',
+      g.assy_pitch_in < 8.466 && g.assy_pitch_in > 8.40,
+      'lattice-only arithmetic omits the inter-assembly gap: ' +
+      (8.466 - g.assy_pitch_in).toFixed(3) + ' in short, right sign and size');
+  ck('active height derives to 12 ft', g.H_ft, 12.0, 0.15, 'ft');
+  /* M_fuel COMPUTED INDEPENDENTLY HERE, from retyped constants, rather than range-checked. The
+   * range check ("9-14 t") was blind to UO2 at theoretical density instead of 95 % — a 5.3 % mass
+   * error that sat comfortably inside it. A band wide enough to be safe is wide enough to be
+   * useless; the gate has to know what the number should BE. */
+  var RHO_RETYPED = 10410;      /* 95 % of 10 960 theoretical */
+  var pelletM = (DOC.rod_od_in - 2 * (F.SPLIT.clad_t_in + F.SPLIT.gap_t_in)) * 0.0254;
+  var hM = (3.53 / 21) / Math.pow(DOC.lattice * DOC.rod_pitch_in * 0.0254, 2);
+  var expectM = Math.PI / 4 * pelletM * pelletM * hM * 264 * 21 * RHO_RETYPED;
+  ck('fuel mass matches an independent computation from the retyped lattice',
+     g.M_fuel_kg, expectM, 1.0, 'kg');
+  ck('UO2 density is 95 % of theoretical, not theoretical', F.RHO_UO2, RHO_RETYPED, 1e-9, 'kg/m3');
+  ckT('fuel loading is plant-sized and BELOW a real 17x17 per assembly',
+      (g.M_fuel_kg * 0.8815 / 1000) / g.n_assemblies < 0.53,
+      (g.M_fuel_kg / 1000).toFixed(2) + ' t UO2 = ' + (g.M_fuel_kg * 0.8815 / 1000).toFixed(2) +
+      ' MTU, ' + ((g.M_fuel_kg * 0.8815 / 1000) / g.n_assemblies).toFixed(3) +
+      ' MTU/assy vs ~0.53 real — low, as the 95 % density predicts');
+
+  /* ---- PROPERTIES: the anchors are the check, not the constants ---------------------------- */
+  head('PROPERTIES  [a correlation must hit anchors at more than one temperature]');
+  ck('UO2 cp at 300 K', F.cp_uo2(300), CP_300, 4, 'J/kgK');
+  ck('UO2 cp at 1000 K', F.cp_uo2(1000), CP_1000, 4, 'J/kgK');
+  ck('UO2 k at 300 K', F.k_uo2(300), K_300, 0.3, 'W/mK');
+  ck('UO2 k at 1000 K', F.k_uo2(1000), K_1000, 0.15, 'W/mK');
+  ckT('cp RISES with temperature and k FALLS — opposite signs, and both matter',
+      F.cp_uo2(1000) > F.cp_uo2(300) && F.k_uo2(1000) < F.k_uo2(300),
+      'a constant stand-in for either would pass a single-point check and fail this');
+
+  /* ---- THE RESISTANCE STACK ---------------------------------------------------------------- */
+  head('RESISTANCE  [the volume-average form, which is the easy thing to get wrong]');
+  var c = F.conductance(g, 966);
+  ck('the four fractions sum to one',
+     c.frac_pellet + c.frac_gap + c.frac_clad + c.frac_film, 1.0, 1e-12, '');
+  ck('pellet term is the VOLUME-AVERAGE form 1/(8*pi*k), not centerline 1/(4*pi*k)',
+     c.r_pellet, 1 / (8 * Math.PI * F.k_uo2(966)), 1e-12, 'mK/W');
+  ckT('the pellet dominates the stack', c.frac_pellet > 0.45 && c.frac_pellet < 0.65,
+      (c.frac_pellet * 100).toFixed(1) + ' % pellet, ' + (c.frac_gap * 100).toFixed(1) + ' % gap');
+  ckT('every term is present and positive',
+      c.r_pellet > 0 && c.r_gap > 0 && c.r_clad > 0 && c.r_film > 0, '');
+  ckT('conductance FALLS as fuel heats (k_UO2 falls with temperature)',
+      F.conductance(g, 1400).UA_W_per_K < F.conductance(g, 600).UA_W_per_K,
+      'so the fuel rise is superlinear in power — a constant-k model would miss it');
+
+  /* ---- CONSERVATION: the load-bearing check ------------------------------------------------ */
+  head('CONSERVATION  [an error here creates energy inside a conservation core]');
+  var f = F.createFuel({ T_fuel_c: T_COOL });
+  var r = null, i;
+  for (i = 0; i < 4000; i++) r = F.stepFuel(f, 0.02, { Q_core_kW: Q_RATED, coolTemp_c: T_COOL });
+  /* TOLERANCE 1e-3 kW = 1 W out of 300 MW, 3e-9 relative. It is NOT slack for a modelling error:
+   * MEASURED, the residual here is the CONVERGENCE remainder of the exponential approach — after
+   * 4 000 steps (24.5 tau) it is -1.3e-4 kW and by 44 000 steps it is exactly 0.0. The first
+   * version of this check asked for 1e-6 and failed on that remainder, which is a test writing its
+   * tolerance tighter than the horizon it budgeted. A mutation that genuinely breaks conservation
+   * misses by ~15 000 kW, so the tolerance costs nothing in detection. */
+  ck('at steady state, heat into the coolant equals heat out of the core',
+     r.heats.core, Q_RATED, 1e-3, 'kW');
+  ckT('the direct-deposition split is real, not cosmetic',
+      r.Q_direct_kW > 0 && Math.abs(r.Q_direct_kW + r.Q_through_gap_kW - Q_RATED) < 1e-3,
+      (r.Q_direct_kW / 1000).toFixed(1) + ' MW bypasses the gap and reaches the moderator直接'
+        .replace('直接', ' directly'));
+  /* THROUGH A TRANSIENT, which fails differently: a steady-state balance passes for any model
+   * that reaches equilibrium at all, however wrong the path there was. */
+  /* STORED ENERGY ACCUMULATED STEP BY STEP, not estimated from the endpoints.
+   *
+   * The first version took `stored = dT_total * M * cp(T_final)`, which uses the FINAL cp for the
+   * whole excursion. cp rises ~15 % from 305 to 582 degC, so that estimate carried a 0.357 %
+   * residual of its own — and a 1 % band around it was wide enough to hide a mutant that computed
+   * the coolant heat from UA*(T_f - T_cool) instead of the fuel's energy change. The gate was
+   * blind to a genuine conservation break because MY reference calculation was the sloppy one.
+   *
+   * Summing C_i * dT_i per step, with cp reported by the model at each step, the clean residual
+   * falls to roundoff and the band can close to 0.01 %. */
+  var f2 = F.createFuel({ T_fuel_c: T_COOL }), inKJ = 0, outKJ = 0, storedKJ = 0, r2, tPrev;
+  for (i = 0; i < 1000; i++) {
+    tPrev = f2.T_fuel_c;
+    r2 = F.stepFuel(f2, 0.02, { Q_core_kW: Q_RATED, coolTemp_c: T_COOL });
+    inKJ += Q_RATED * 0.02;
+    outKJ += r2.heats.core * 0.02;
+    storedKJ += g.M_fuel_kg * r2.cp_J_per_kgK / 1000 * (f2.T_fuel_c - tPrev);
+  }
+  var resid = Math.abs(inKJ - outKJ - storedKJ) / inKJ;
+  ckT('through a HEATUP transient, in = out + stored to better than 0.01 %', resid < 1e-4,
+      'in ' + (inKJ / 1000).toFixed(0) + ' MJ, out ' + (outKJ / 1000).toFixed(0) +
+      ' MJ, stored ' + (storedKJ / 1000).toFixed(0) + ' MJ, residual ' +
+      (resid * 100).toExponential(2) + ' %');
+  ckT('the fuel node ABSORBS energy while heating (out < in during the transient)',
+      outKJ < inKJ, 'a model that passes heat straight through has no time constant');
+
+  /* ---- THE ANALYTIC ADVANCE ---------------------------------------------------------------- */
+  head('INTEGRATION  [analytic, so stability cannot depend on a caller timestep]');
+  var tau = r.tau_s;
+  ckT('the time constant is physical', tau > 1 && tau < 10, tau.toFixed(2) + ' s');
+  /* dt = 30 tau. Explicit Euler at this dt returns T_eq + (T-T_eq)*(1-30) — a 29x overshoot with
+   * the wrong sign, growing every step. The analytic form cannot overshoot at ANY dt. */
+  var fBig = F.createFuel({ T_fuel_c: T_COOL });
+  var rBig = F.stepFuel(fBig, 30 * tau, { Q_core_kW: Q_RATED, coolTemp_c: T_COOL });
+  ckT('one step of 30 tau lands ON equilibrium rather than overshooting',
+      rBig.T_fuel_c > T_COOL && rBig.T_fuel_c < T_COOL + 400 && isFinite(rBig.T_fuel_c),
+      'explicit Euler here overshoots by 29x with the wrong sign and diverges; got ' +
+      rBig.T_fuel_c.toFixed(1) + ' degC');
+  ckT('a zero-length step changes nothing',
+      Math.abs(F.stepFuel(F.createFuel({ T_fuel_c: 500 }), 0,
+        { Q_core_kW: Q_RATED, coolTemp_c: T_COOL }).T_fuel_c - 500) < 1e-12, '');
+  ck('the direct steady solve agrees with integrating to convergence',
+     F.steadyFuelTemp(g, Q_RATED, T_COOL), r.T_fuel_c, 0.5, 'degC');
+
+  /* ---- THE STEADY STATE, REPORTED AGAINST ITS COMPARISON POINTS ---------------------------- */
+  head('STEADY STATE  [reported against comparison points, NOT fitted to them]');
+  ckT('fuel sits above coolant, surface between them, centerline above all',
+      r.T_fuel_c > T_COOL && r.T_surface_c > T_COOL && r.T_centerline_c > r.T_surface_c &&
+      r.T_centerline_c > r.T_fuel_c, '');
+  /* THE UNIFORM-GENERATION IDENTITY, and it is what tells 4*pi from 8*pi. For a cylinder with
+   * uniform heat generation, T_centre - T_surface = q'/(4 pi k) while T_average - T_surface =
+   * q'/(8 pi k) — so the centre rise is EXACTLY TWICE the average rise, whatever k, q' or the
+   * geometry are. The gate was blind to the centerline being computed with the average's own
+   * coefficient because nothing checked its VALUE, only that it was the largest of three. */
+  ckT('centre rise is exactly twice the average rise (uniform generation)',
+      Math.abs((r.T_centerline_c - r.T_surface_c) / (r.T_fuel_c - r.T_surface_c) - 2) < 1e-6,
+      'ratio ' + ((r.T_centerline_c - r.T_surface_c) / (r.T_fuel_c - r.T_surface_c)).toFixed(6) +
+      ' — an identity, so it holds independently of every unsourced constant in the stack');
+  ckT('centerline is comfortably below the WTSM melt limit',
+      r.T_centerline_f < MELT_LIMIT_F * 0.6,
+      r.T_centerline_f.toFixed(0) + ' F against a ' + MELT_LIMIT_F + ' F limit');
+  ckT('linear heat rate is below a real 17x17 at full power',
+      r.linear_heat_W_per_m / 1000 < 18.3 && r.linear_heat_W_per_m / 1000 > 10,
+      (r.linear_heat_W_per_m / 1000).toFixed(2) + ' kW/m vs ~18.3 — this plant is less power-dense');
+  ckT('the fuel rise is a FINDING against the first engine, not a fit to it',
+      r.T_fuel_rise_c > 200 && r.T_fuel_rise_c < 350,
+      r.T_fuel_rise_c.toFixed(1) + ' degC (' + (r.T_fuel_rise_c * 9 / 5).toFixed(0) +
+      ' degF) against the first engine 389 degC / 700 degF — LOWER, and it will move A1');
+
+  /* ⚠ THE STALE DOPPLER REFERENCE. pwr2_kinetics.js defaults T_fuel_ref_c = 693, inherited from
+   * the first engine. This model derives ~582. Doppler is perturbative about that reference, so
+   * the stale value injects alpha_D * (582 - 693) = +278 pcm at FULL POWER out of nothing. The
+   * check PINS THE GAP so it cannot be quietly forgotten once kinetics is wired to fuel. */
+  ckT('the derived reference DISAGREES with the value kinetics still defaults to',
+      Math.abs(F.steadyFuelTemp(g, Q_RATED, T_COOL) - 693) > 50,
+      'derived ' + F.steadyFuelTemp(g, Q_RATED, T_COOL).toFixed(1) + ' degC vs the inherited ' +
+      '693 — worth ~278 pcm of spurious Doppler if kinetics is constructed with the default');
+
+  /* ---- RESPONSE ---------------------------------------------------------------------------- */
+  head('RESPONSE  [the couplings the fuel node exists to carry]');
+  var hi = F.steadyFuelTemp(g, Q_RATED, T_COOL), lo = F.steadyFuelTemp(g, Q_RATED * 0.5, T_COOL);
+  ckT('halving power lowers the fuel temperature', lo < hi - 100,
+      hi.toFixed(1) + ' -> ' + lo.toFixed(1) + ' degC');
+  ckT('the fuel rise is SUPERLINEAR in power, because k_UO2 falls as it heats',
+      (hi - T_COOL) > 2 * (lo - T_COOL) * 1.001,
+      'full-power rise ' + (hi - T_COOL).toFixed(1) + ' vs twice the half-power rise ' +
+      (2 * (lo - T_COOL)).toFixed(1) + ' degC');
+  /* ⚠ THIS CHECK ORIGINALLY ASSERTED ONE-FOR-ONE AND FAILED — correctly. Written from the
+   * assumption that "the rise is set by Q/UA so the offset carries through", it contradicted the
+   * superlinearity check three lines above, which says the rise itself grows as fuel heats. Both
+   * cannot be true. MEASURED, d(T_fuel)/d(T_coolant) = 1.159, flat across +10/+20/+40 K:
+   *
+   *     coolant +0   fuel 581.78   rise 277.28
+   *     coolant +20  fuel 604.95   rise 280.45      1.1588
+   *     coolant +40  fuel 628.15   rise 283.65      1.1594
+   *
+   * The fuel node AMPLIFIES a coolant temperature change by ~16 %, because hotter fuel has lower
+   * k_UO2, so the pellet resistance — 55 % of the stack — rises with it. That matters beyond this
+   * gate: on a load drop the coolant rises and the fuel rises MORE, so the Doppler and moderator
+   * terms do not offset on the naive arithmetic. Recorded here because it is the kind of coupling
+   * a one-for-one assumption would have hidden for as long as nobody measured it. */
+  var amp = (F.steadyFuelTemp(g, Q_RATED, T_COOL + 20) - hi) / 20;
+  ckT('a coolant temperature change is AMPLIFIED into the fuel, not carried one for one',
+      amp > 1.10 && amp < 1.22,
+      'd(T_fuel)/d(T_cool) = ' + amp.toFixed(4) + ' — hotter fuel conducts worse, so the rise grows');
+
+  /* ---- REFUSALS ---------------------------------------------------------------------------- */
+  head('REFUSALS  [this layer invents neither a power nor a coolant temperature]');
+  ckT('omitting core power throws rather than assuming one', (function () {
+        try { F.stepFuel(F.createFuel({}), 0.02, { coolTemp_c: T_COOL }); return false; }
+        catch (e) { return /Q_core_kW/.test(e.message); }
+      })(), '');
+  ckT('omitting coolant temperature throws rather than assuming one', (function () {
+        try { F.stepFuel(F.createFuel({}), 0.02, { Q_core_kW: Q_RATED }); return false; }
+        catch (e) { return /coolTemp_c/.test(e.message); }
+      })(), '');
+}
+
+console.log('\nPWR2 Layer 5 -- FUEL: the lumped node, and Doppler\'s lever arm');
+var F = loadFrom(SRC), rec = [];
+runSuite(F, rec, false);
+var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
+
+/* MUTATIONS. Cost budgeted AS EACH WAS ADDED (D1 §31): the suite runs 5 000 integration steps
+ * plus ~10 direct solves, measured at 0.35 s clean, so a 22-mutation replay is ~8 s. That is why
+ * the conservation transient is 1 000 steps and not 200 000 — the horizon was chosen against the
+ * replay cost, not after it. */
+var MUTATIONS = [
+  ['pellet resistance uses the CENTERLINE form 1/(4 pi k) instead of volume-average 1/(8 pi k)',
+   'var r_pellet = 1 / (8 * Math.PI * k_f);', 'var r_pellet = 1 / (4 * Math.PI * k_f);'],
+  ['guide thimbles counted as fuel rods (289 instead of 264)',
+   'var nRod = GEOM.lattice_n * GEOM.lattice_n - 25;',
+   'var nRod = GEOM.lattice_n * GEOM.lattice_n;'],
+  ['direct energy deposition dropped — all fission heat routed through the gap',
+   'value: 0.974,', 'value: 1.0,'],
+  ['heat to the coolant taken from UA*dT instead of the fuel energy change (breaks conservation)',
+   'var Q_out = dt > 0 ? Q_fuel - Ccap * (T_new - fuel.T_fuel_c) / dt : Q_fuel;',
+   'var Q_out = UA_kW * (fuel.T_fuel_c - drivers.coolTemp_c);'],
+  ['the direct deposition never reaches the coolant (energy destroyed)',
+   'heats: { core: Q_out + Q_direct },', 'heats: { core: Q_out },'],
+  ['UO2 specific heat becomes a constant',
+   'return cp_mol / M_MOL_UO2;', 'return 300;'],
+  ['UO2 conductivity becomes a constant',
+   'return 100 / (7.5408 + 17.692 * t + 3.6142 * t * t)\n         + 6400 / Math.pow(t, 2.5) * Math.exp(-16.35 / t);',
+   'return 3.5;'],
+  ['gap resistance dropped from the stack',
+   'var r_total  = r_pellet + r_gap + r_clad + r_film;',
+   'var r_total  = r_pellet + r_clad + r_film;'],
+  ['clad resistance dropped from the stack',
+   'var r_clad   = Math.log(g.clad_ro_m / g.clad_ri_m) / (2 * Math.PI * OPEN.k_clad.value);',
+   'var r_clad   = 0;'],
+  ['film resistance dropped from the stack',
+   'var r_film   = 1 / (Math.PI * g.rod_od_m * OPEN.h_film.value);', 'var r_film   = 0;'],
+  ['the advance becomes EXPLICIT EULER (unstable at a large caller timestep)',
+   'var decay = dt > 0 ? Math.exp(-dt / tau) : 1;', 'var decay = dt > 0 ? 1 - dt / tau : 1;'],
+  ['assembly pitch built from rod OD instead of rod PITCH (rods touching)',
+   'var assyPitch = GEOM.lattice_n * GEOM.rod_pitch_in * IN;',
+   'var assyPitch = GEOM.lattice_n * GEOM.rod_od_in * IN;'],
+  ['UO2 at theoretical density instead of 95 %', 'var RHO_UO2   = 10410;',
+   'var RHO_UO2   = 10960;'],
+  ['centerline uses the volume-average form 1/(8 pi k) instead of 1/(4 pi k)',
+   'var T_ctr   = T_surf + qPrime / (4 * Math.PI * k_uo2(T_f_k));',
+   'var T_ctr   = T_surf + qPrime / (8 * Math.PI * k_uo2(T_f_k));'],
+  ['the steady solve returns the STALE inherited reference instead of deriving one',
+   '  function steadyFuelTemp(g, Q_kW, T_cool_c) {\n    var T = T_cool_c + 300;',
+   '  function steadyFuelTemp(g, Q_kW, T_cool_c) {\n    return 693;\n    var T = T_cool_c + 300;'],
+  ['the steady solve stops iterating (one pass, wrong k)',
+   'for (var i = 0; i < 60; i++) {', 'for (var i = 0; i < 1; i++) {'],
+  ['the pellet no longer shrinks by clad and gap (pellet = rod OD)',
+   'var pellet_in = GEOM.rod_od_in - 2 * (SPLIT.clad_t_in + SPLIT.gap_t_in);',
+   'var pellet_in = GEOM.rod_od_in;'],
+  ['gap conductance moved off its (unsourced) value — pins the SENSITIVITY',
+   'value: 5700,', 'value: 2000,'],
+  ['the fuel stores no energy (temperature slaved to equilibrium, no time constant)',
+   'var T_new = T_eq + (fuel.T_fuel_c - T_eq) * decay;', 'var T_new = T_eq;'],
+  ['the rod OD moved off its sourced value', 'rod_od_in:   0.374,', 'rod_od_in:   0.400,'],
+  ['the rod pitch moved off its sourced value', 'rod_pitch_in:0.496,', 'rod_pitch_in:0.530,'],
+  /* CONSTRUCTION */
+  ['caller assembly count ignored at construction',
+   'var nAssy    = opts.n_assemblies === undefined ? 21   : opts.n_assemblies;',
+   'var nAssy    = 21;'],
+  ['caller envelope ignored at construction',
+   'var envelope = opts.envelope_m3  === undefined ? 3.53 : opts.envelope_m3;',
+   'var envelope = 3.53;'],
+  ['caller initial fuel temperature ignored at construction',
+   'T_fuel_c: opts.T_fuel_c === undefined ? 693.0 : opts.T_fuel_c,', 'T_fuel_c: 693.0,'],
+  ['caller rated power ignored at construction',
+   'rated_thermal_kW: opts.rated_thermal_kW === undefined ? 300000 : opts.rated_thermal_kW',
+   'rated_thermal_kW: 300000']
+];
+
+/* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
+ * A MUTATION SELF-TEST IS ONLY MEANINGFUL IF THE UNMUTATED SUITE IS GREEN. If any check fails in
+ * the clean run it fails in every mutant too, so `f2 > 0` holds unconditionally and EVERY mutation
+ * is reported as caught. Coverage then reads 25/25 while the suite is measuring nothing.
+ *
+ * MEASURED in run_pwr2_kinetics.js, 2026-08-16: a fixture producing NaN made one check fail in the
+ * clean run. The self-test reported 23/25. Fixing that ONE check dropped it to 21/25 -- the two
+ * extra "caught" mutations had never been caught by anything, and both were genuinely blind.
+ *
+ * So the tally is REFUSED, not annotated, when the clean run is red. */
+if (fail > 0) {
+  /* PRINT THE SCORE FIRST. run_all parses this line to report drift; exiting without it
+   * makes a legitimately-failing gate read as `score ?`, which is LESS informative than
+   * before the guard existed. The guard refuses the MUTATION TALLY, not the tally line. */
+  console.log('  ' + require('path').basename(__filename, '.js') + ': ' + pass +
+              ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
+  console.log('  MUTATION SELF-TEST SKIPPED -- ' + fail + ' check(s) failed in the CLEAN run.');
+  console.log('  A failing check fails in every mutant too, so every mutation would report as');
+  console.log('  caught and the coverage number would be a lie. Fix the check first.');
+  process.exit(1);
+}
+
+console.log('\n' + '='.repeat(70));
+console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
+console.log('='.repeat(70));
+var blind = 0;
+MUTATIONS.forEach(function (m) {
+  if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
+  var r2 = [];
+  try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
+  catch (e) { r2.push({ name: 'threw', ok: false }); }
+  var f2 = r2.filter(function (r) { return !r.ok; }).length;
+  if (f2 === 0) { blind++; console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); }
+  else console.log('  caught    ' + m[0].padEnd(72) + f2 + ' red');
+});
+
+console.log('\n' + '='.repeat(70));
+console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+console.log('  run_pwr2_fuel: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
+console.log('='.repeat(70) + '\n');
+process.exit((fail > 0 || blind > 0) ? 1 : 0);

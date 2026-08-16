@@ -988,6 +988,7 @@ var BASELINES = {
   'run_pwr2_kinetics.js':  { code: 0, score: '50passed 0failed 50checks', secs: 3 },
   'run_pwr2_bases.js':     { code: 0, score: '11passed 0failed 11checks', secs: 2 },
   'run_pwr2_forwarding.js': { code: 0, score: '11passed 0failed 11checks', secs: 2 },
+  'run_pwr2_fuel.js':      { code: 0, score: '45passed 0failed 45checks', secs: 2 },
   'run_pwr2_rhr.js':       { code: 0, score: '35passed 0failed 35checks', secs: 150 },
   'run_pwr2_eccs.js':      { code: 0, score: '28passed 0failed 28checks', secs: 25 },
   'run_pwr2_cvcs.js':      { code: 0, score: '30passed 0failed 30checks', secs: 300 },
