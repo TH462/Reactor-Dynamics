@@ -597,3 +597,70 @@ from t=300 to t=2400), so on a deep-shortfall plant v2's level is effectively
 `credit − 776·(1 − m)`, i.e. v1's law without the base term. That is a real re-import of the
 reconstruction in that one regime, and it is the price of keeping the node's water
 non-negative without a loop node to allocate against.
+
+### The seven flag-on reds, adjudicated one at a time — with the LAYER stated first (2026-08-16)
+
+**The layer, because it decides most of them.** `run_pwr`'s `Harness` (`pwr_engine.js:2400`)
+is **engine-direct plus M4's MECHANICAL protections only** — it emulates the pressurizer
+relief and the turbine trips, and nothing else. `stepAutomation` never ticks, so the
+`pzr_pressure` channel **never engages**: heaters and spray read 0.0 % at every sample of
+every run below. In **v1 that does not matter, because `P_restore_rate_gain` drags pressure
+onto the setpoint by itself** — measured over a 16,000 s heatup, v1 publishes **2235.1 psia
+at every single sample** with both controls at zero. The rebuild deletes that term by design
+(spec §5). So every probe that leaned on it is now standing on nothing, and that is what six
+of the seven are.
+
+| # | probe · check | layer | verdict |
+|---|---|---|---|
+| 1 | `cold_shutdown_hold` · pressure holds | engine+M4mech | **v2 DEFECT — fixed.** The IC never reached the node |
+| 2 | `mode5_heatup_paced` · stayed subcooled | engine+M4mech | **same defect — fixed.** Downstream of 1 |
+| 3–6 | `mode5_to_mode1_roundtrip` · 4 checks | engine+M4mech | **probe fixture + a new v2 defect** (below) |
+| 5 | `rcp_cavitation` · severity, flow | engine+M4mech | **PROBE FIXTURE.** Its own comment: *"hold it low via the setpoint so it can't recover"* — only `P_restore_rate_gain` can do that |
+| 7 | `mode5_controls` · pressure recovers to a raised setpoint | engine+M4mech | **PROBE FIXTURE.** Its own comment: *"heaters/spray hold the operator's target"* — at this layer they are not running |
+
+**#1 and #2, root-caused and fixed. `_buildState` computes the derived init level BEFORE the
+per-state overrides**, and its comment promises those overrides "still win, exactly as they
+did when this was inline". True of v1's reconstruction; false of a node that seeds once. The
+Mode 5 preset came up published at 363 psia / 122 °F **with the node already on the HOT
+saturation line at 653 °F**, and one 0.02 s step took pressure to **2235 psia**. Consequences,
+measured on the heatup that starts from it:
+
+| | v1 | v2 (before) |
+|---|---|---|
+| code-safety lifts, one heatup | **0** | **1,369** |
+| core inventory, start → end | 101.2 % held | **100.3 → 55.3 %** |
+| core exit vs Tavg at the end | 549 / 549 °F | **1,119 / 549 °F — uncovered** |
+| `subcooling_c` | +103 °F | **−685 °F** |
+
+**So the subcooling number was never about saturation.** With the core uncovered
+`pwr_thermal.js:501` switches `subcooling_c` to `T_sat(P) − max(tavg, t_core_exit)`, and that
+is what printed −380 °C. This cluster has now produced four hypotheses — the saturated pin
+failing to arm, unbounded spray authority, a branch seam, and this — and only the fourth
+survived its own measurement. `seedFromState` is the fix (`run_pzr2` J5); flag-on `run_pwr`
+went **32/37 → 34/37**.
+
+**#3–6, and this is where the next defect is.** The roundtrip's heatup is UNPACED with a
+6,000 s budget. On v2 the node fills 1,074 → 3,808 kg, goes **solid at t≈2,500 s**, and the
+heatup then crawls: Tavg 143 °C at 6,000 s against v1's 285 °C. The same driver *with* pacing
+and a 20,000 s budget is green. Two things are true and only one of them is the probe's:
+
+- **The budget was sized against the mask.** v1's unpaced heatup peaks at 435.8 °C/hr, ~8×
+  the TS limit — the probe's own comment says so. A heatup with nobody on the pressurizer is
+  not an evolution; under MANUAL-FIRST the driver owes explicit heater/spray commands, and
+  the auto-mode row then belongs at a layer where the channel actually runs.
+- **THE SOLID BRANCH RAILS, and every check is green through it.** Instrumented per 0.02 s
+  step over the *passing* paced heatup: published pressure peaks at **188,432 psia
+  (1,299 MPa) at t = 2,770.78 s, at level 100.0 %, node 3,553 kg, Tavg 250 °F.** The adaptive
+  sub-step is not missing it — it is **saturated**: `nSub = min(64, ceil(excursion/0.05))`
+  hits the **64 cap on 335,917 steps** of that one run. The criterion detects the excursion
+  correctly and the CAP silently truncates the response, which is the repo's own "no silent
+  caps" failure wearing a guard's clothes. It is also why the plant lifts its code safeties
+  273 times and bleeds 20 points of inventory while passing.
+
+**Recommended next**, and it is a measurement before a fix: find what `nSub` the solid branch
+actually needs at that state. If the answer is thousands, the branch wants an implicit or
+analytic treatment rather than more subdivision — its own comment already says a ringing
+branch is the integrator's problem, and 64 sub-steps of 0.0016 s not being enough is evidence
+about which integrator, not about the gain. C4c pins the same regime from the synthetic side
+("driven directly, `stepRegions` still rails above ~75 % level"); this is the first time it
+has been caught **on a plant evolution, inside a green suite**.
