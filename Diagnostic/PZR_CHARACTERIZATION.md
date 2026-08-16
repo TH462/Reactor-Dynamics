@@ -664,3 +664,69 @@ branch is the integrator's problem, and 64 sub-steps of 0.0016 s not being enoug
 about which integrator, not about the gain. C4c pins the same regime from the synthetic side
 ("driven directly, `stepRegions` still rails above ~75 % level"); this is the first time it
 has been caught **on a plant evolution, inside a green suite**.
+
+### The rail is NOT a stiffness problem — it converges, to 1000 °C water (2026-08-16)
+
+**This overturns the recommendation in the entry above, which was mine and was wrong.** That
+entry said: *"if the answer is thousands, the solid branch wants an implicit treatment rather
+than more subdivision"* — reasoning from the saturated sub-step guard. Measured, subdivision
+is not the issue at all.
+
+**What the guard demands, first.** Publishing the UNCAPPED `nWant` over the passing paced
+heatup: peak **21,116** sub-steps, and of the 335,917 steps that hit the 64 cap, **335,916
+want between 4,096 and 65,536** — one wants 512–4k, none want less. So raising the cap was
+never going to be the fix; the demand is uniformly two to three orders of magnitude above it.
+
+**Then the step that actually blows up, captured entering** (`inbox/_rail1.json`):
+
+| entering the step | |
+|---|---|
+| pressure | **1.554 MPa (225 psia)** |
+| liquid / steam | 3,546.5 kg / **1.523 kg** — the bubble is nearly gone |
+| node liquid T | 196.1 °C · level **95.42 %** · plant Tavg **68.1 °C** |
+| surge in | **125.3 kg/s** at 68.2 °C, heaters full, no spray, no relief |
+| **the guard's trial predicted** | **1.428 MPa — a FALL. So `nWant` = 3.** |
+| **what the step delivered** | **1,323.6 MPa (191,970 psia)** |
+
+The guard mispredicted by four orders of magnitude **and in the wrong direction**, at exactly
+the state it exists to catch. It trials in the same explicit scheme, so a step that crosses
+into a liquid-full vessel is invisible to the probe meant to detect it.
+
+**Replaying that one step at increasing subdivision (`inbox/_converge.js`) settles it:**
+
+| nSub | 1 | 3 | 8 | 64 | 1024 | 65536 |
+|---|---|---|---|---|---|---|
+| P_out (MPa) | 1314.0 | 1319.5 | 1321.2 | 1322.1 | 1322.3 | **1322.3** |
+| node T_liq (°C) | 998.5 | 999.5 | 999.8 | 999.9 | 1000.0 | **1000.0** |
+
+**It converges from nSub = 1.** The integrator is fine. The converged answer is liquid water
+at **1,000 °C and 1,322 MPa**, and the model reaches it without complaint.
+
+**Why, and it is two dead feedbacks either side of 370 °C.** Water's critical point is
+373.95 °C / 22.064 MPa; the model has no notion of it.
+
+| P (MPa) | `T_sat_from_P` (°C) | `rho_l_sat(T_sat)` |
+|---|---|---|
+| 1.55 | 199.3 | 865.4 |
+| 22.064 | 376.0 | 451.4 |
+| 50 | 457.1 | **451.4** |
+| 1322.3 | **1000.0** | **451.4** |
+
+- **`T_sat_from_P` is `179.47·P^0.239` — a power law with NO ceiling.** The observed 1000.0 °C
+  is not a clamp; it is this correlation evaluated at 1,322 MPa. There is no saturation
+  temperature there to return.
+- **`rho_l_sat` CLAMPS at 451.4 kg/m³ for every T ≥ 370 °C.** Below that, heating the liquid
+  expands it, which relieves an over-full vessel and arrests the pressure rise. Above it,
+  expansion buys no volume at all.
+
+So past 370 °C both restoring forces are switched off simultaneously: pressure has nothing to
+push against and temperature has no ceiling. The vessel in the captured state needs
+827 kg/m³ to hold its 3,549 kg, which `rho_l_sat` reaches at about **228 °C** — comfortably
+inside the table. The runaway is not that the state is unreachable; it is that once a step
+overshoots past 370 °C **nothing brings it back**.
+
+**So the fix is a DOMAIN question, not an integrator one**, and it is the first defect in this
+rebuild that is about the correlations rather than the physics built on them. Both functions
+need to say what they do at and above the critical point, and the flash solve needs to be
+unable to walk the state there. Sizing that is the next measurement; **do not raise the
+sub-step cap** — it is a symptom, and 65,536 slices give the same 1,322 MPa as one.
