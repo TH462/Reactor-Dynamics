@@ -730,3 +730,73 @@ rebuild that is about the correlations rather than the physics built on them. Bo
 need to say what they do at and above the critical point, and the flash solve needs to be
 unable to walk the state there. Sizing that is the next measurement; **do not raise the
 sub-step cap** — it is a symptom, and 65,536 slices give the same 1,322 MPa as one.
+
+### The rail, finally: 0.65 °C of superheat flashed in one step (2026-08-16)
+
+**This corrects the entry above, which corrected the one above that.** Both of my published
+diagnoses were one layer too shallow, and the pattern is the finding: every diagnosis on this
+cluster that reasoned from the code was wrong, and the one that found it removed variables
+instead — set `dt` to zero and every input to zero and see what is left.
+
+**The measurement that settled it.** Replaying the captured step with **all inputs zero and
+dt = 1e-12 s**:
+
+| dt | 1e-2 | 1e-4 | 1e-6 | 1e-9 | **1e-12** |
+|---|---|---|---|---|---|
+| P out (MPa) | 1322.3 | 1322.3 | 1322.3 | 1322.3 | **1322.3** |
+| T_liq out (°C) | 1000.0 | 1000.0 | 1000.0 | 1000.0 | **1000.0** |
+
+Zeroing `surge`, `spray`, `relief` and `heater` individually changes nothing either. **A step
+of zero duration with zero inputs is not the identity**, so this was never about integration,
+subdivision, or a regime crossing inside a step.
+
+**Layer 1 — `settle` does not converge at a small bubble.** It is a Picard iteration
+`T_liq = Tsat(P(T_liq))`, and its own comment justifies the bound: *"rho_l varies slowly with
+T, so it converges in three passes to ~1e-9 °C"*. True at a normal bubble; false at a small
+one, because the loop gain scales as V_liq/V_stm. Traced by hand:
+
+| pass | 0 | 3 | 6 | 9 | 12 |
+|---|---|---|---|---|---|
+| **captured node** (95.1 % level, 0.21 m³ bubble) | 196.082 | 193.891 | 191.202 | 188.569 | **186.492 — still moving** |
+| **normal node** (55 % level, 1.93 m³ bubble) | 345.000 | 260.496 | 260.367 | converged | — |
+
+The small-bubble case exits its 20-pass bound still drifting, so **the state is left off its
+own saturation line.**
+
+**Layer 2 — the next step flashes that residual in ONE step, with no rate limit.**
+
+| | |
+|---|---|
+| the state's own saturation pressure | 1.4282 MPa → Tsat **195.429 °C** |
+| the node's liquid is at | **196.082 °C** |
+| **superheat** | **0.653 °C (1.18 °F)** |
+| node heat capacity C | 27,005 kJ/°C |
+| **E = C·ΔT** | **17,643 kJ — a STATE departure, with no dt in it** |
+| flash mass at h_fg = 1961 kJ/kg | **9.00 kg of steam, in one step** |
+| into a bubble of | 0.2099 m³ holding 1.523 kg |
+| resulting steam density | 7.26 → **50.11 kg/m³ — 6.9×** |
+
+**The same 0.65 °C on a normal 55 % node is a 15.8 % density change.** One and a fifth degrees
+Fahrenheit is harmless at 55 % level and catastrophic at 95 %, and nothing in the model knows
+the difference.
+
+**Layer 3 — and then it cannot come back.** Past 370 °C `rho_l_sat` clamps flat at
+451.4 kg/m³ so expansion stops relieving the vessel, `T_sat_from_P` (`179.47·P^0.239`) has no
+ceiling, and `pressureFrom` floors `V_stm` at **1e-6 m³** when the liquid over-fills — measured
+after the step, V_liq is **7.862 m³ in a 4.292 m³ vessel**, a true steam volume of **−3.570 m³**
+presented as one millilitre. Those three together make **1,000.0 °C / 1,322.3 MPa a STABLE
+fixed point of `settle`**, which is why the answer is that exact number every time and why
+65,536 sub-steps give the same one as a single step.
+
+**Recommendation, and it is a design call rather than a fix — it is not built.** Layer 3 is
+the cheapest and the least controversial: no saturation correlation should return a state past
+the critical point (373.95 °C / 22.064 MPa), and a negative steam volume is the SOLID
+condition, not a millilitre. But bounding layer 3 alone converts a runaway into a pin, which
+is the #334 mistake (a cutoff that turned a stable wrong equilibrium into an oscillation)
+wearing new clothes. **The real repair is layer 1** — `settle` needs a method that converges
+at low bubble fraction, because layer 2 is only dangerous when it is fed a residual. Sizing
+that, and deciding whether the flash also owes a volume constraint, is the same open
+solid-regime question this document has been circling, now with a mechanism attached.
+
+**The trap, for whoever picks this up:** a state departure is not a rate, so it does not shrink
+when you shrink the step. Three sessions of sub-step reasoning went past that.
