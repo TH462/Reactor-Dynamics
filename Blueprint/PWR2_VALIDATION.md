@@ -442,3 +442,81 @@ experiment at all.
 
 **The order of work this implies:** a turbine/generator model is now on the critical path for the
 acceptance test, ahead of further tuning of anything the load-follow gate measures.
+
+## 21. THE TURBINE LANDS A1 — AND IT LANDS ON THE CURRICULUM NUMBER — 2026-08-16
+
+§20.7 withdrew the quantitative A1 claim because PWR2 was being cut on **steam mass flow** while
+the current engine's A1 cuts **electrical demand**, and PWR2 had no turbine to accept the second.
+`engines/pwr2/pwr2_turbine.js` closes that. Driven with the same command:
+
+| | `CURRICULUM.md` A1 | **PWR2, electrical demand** | current engine, today |
+|---|---|---|---|
+| power | **57.5 %** | **58.5 %** | 76.8 % |
+| Tavg | 579.3 → **602.1 °F** | 578.0 → **601.1 °F** | 593.0 °F |
+| command | 100 → 60 MWe | 100 → 60 MWe | 100 → 60 MWe |
+
+**One point of power and one degree of Tavg.** The trajectory: 100 MWe held to t=300 s, then
+60 MWe — power 99.54 → 58.7 % within a minute, Tavg 578.0 → 603.1 °F peak settling to 600.4 °F,
+secondary 5.586 → 8.15 MPa, turbine deficit 0.000 MWe throughout (it always got the steam it asked
+for), rho back to 0.0 pcm.
+
+### 21.1 THE AGREEMENT IS REAL BUT THE CONFIGURATIONS ARE NOT IDENTICAL — say it plainly
+
+PWR2 has **no steam dump and no atmospheric dump valve**. The current engine always finds a relief
+path (#484: dump → ADV → SG safeties), and with rods in MANUAL that path stays open and holds the
+reactor at 76.8 %.
+
+The curriculum's number was measured **before #460**, when the shipped lineup had rods in **AUTO** —
+the controller walks Tavg back to program, the dump reseats, and the plant settles on turbine steam
+alone. **PWR2 settles on turbine steam alone because it has no dump to open.** Same endpoint,
+different reason.
+
+So the honest claim is narrow, and worth stating exactly:
+
+> **PWR2's reactivity → fuel → steam-generator → turbine chain reproduces the current engine's
+> CLOSED-RELIEF behaviour to about one point of power and one degree of Tavg.** It cannot yet
+> reproduce the open-relief behaviour, because it has no relief path to open.
+
+That is a stronger result than §20 claimed and a narrower one than §20 claimed — which is the point
+of having withdrawn it rather than patched it.
+
+### 21.2 What the turbine is, and the one number it did not have to fit
+
+```
+    W_electrical = m_steam * (h_g(P_sg) - h_feed) * eta_cycle
+```
+
+Layer 0 has **no entropy**, so a real isentropic expansion is unavailable, and faking one with a
+fitted pressure ratio would be a fitted constant in thermodynamic clothing. The bracket is exactly
+the heat the SG gives up per kg — the same expression `pwr2_sg.js` uses — so `eta_cycle` is a gross
+thermal efficiency, which a source can speak to.
+
+**It is a solve, not a fit:** at rated, steam flow is *defined* as 300 MWt / (h_g − h_feed), so
+W = 300 MW · eta, and this plant's ruled identity is 300 MWt → 100 MWe. Hence **eta = 1/3 exactly**.
+
+**Sourced corroboration** — Ginna UFSAR ch10 (ML20339A040) Table 10.1-1, turbine *"Maximum
+guaranteed, kW 585,000 @ 1775 MWt"* = **32.96 %**, and §10.1.2.1's verified gross capability
+612,855 kW = **34.53 %**. This plant sits at 33.33 %, between them. The efficiency was not chosen
+to land there; it fell out of a rating that predates the file.
+
+**Independent consistency check that was not constructed to pass:** the turbine's steam demand for
+100 MWe computes to **164.25 kg/s**, and the SG's rated steam — derived separately as
+300 MWt / (h_g − h_feed) — is **164.25 kg/s**. Two routes, same number.
+
+Also sourced from the same chapter, and REPORTED not enforced (HR5): the load-following envelope,
+*"step load increases of 10 % … ramp increases of 5 % of full power per min within the load range
+of 12.8 % to 100 %"*. Turbine speed 1800 rpm comes from the same table.
+
+### 21.3 Declared omissions
+
+- **No part-load efficiency penalty** — `eta_cycle` is constant, so output is linear in steam flow.
+  The current engine does not model it either (`pwr_steam_generator.js:575` has no enthalpy and no
+  efficiency term at all), so this is not a regression, but neither engine can teach it.
+- **No feedwater heating or extraction.** Ginna's condenser is sized for 4,235,070 lb/hr against a
+  full-power steam flow near 985 kg/s — it sees about HALF the steam, the rest bled for feedwater
+  heating. This model has one steam path, so a future condenser cannot scale its duty from Ginna's
+  without accounting for extraction.
+- **No shaft dynamics.** Speed is reported at rated or zero; coastdown belongs with a trip model,
+  which is control-layer work.
+- **NO GATE YET.** `run_pwr2_turbine.js` is owed, and until it exists this file is unmutated — the
+  only PWR2 engine file in that state. The numbers above are measurements, not a gate.
