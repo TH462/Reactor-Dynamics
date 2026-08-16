@@ -655,3 +655,67 @@ A1 comparison the wrong experiment), and now the missing safety valves.
 The only thing that found any of them was **reading a claim and asking what it depends on that is
 not there**. That is not automatable, and it is worth budgeting for deliberately rather than hoping
 a mutation score covers it.
+
+## 24. THE 3.1-POINT RESIDUAL: TWO CANDIDATES RULED OUT, STILL OPEN — 2026-08-16
+
+§23.2 left the open-relief power difference unexplained (PWR2 73.74 % against the current engine's
+76.8 %) and named the missing atmospheric dump valves as the candidate. **Both that candidate and
+the one that replaced it are now ruled out.** The residual stands.
+
+### 24.1 PWR2's own balance closes — measured
+
+At the settled open-relief point:
+
+```
+    core power              223.18 MW   (74.39 % of 300)
+    SG duty                 224.55 MW
+    turbine steam   99.52 kg/s x 1808.7 kJ/kg = 180.00 MW  ->  60.00 MWe at eta 0.3333
+    dump steam      24.63 kg/s x 1808.7       =  44.55 MW
+    total steam energy                          224.55 MW
+    imbalance (core - steam)                     -1.37 MW   (0.6 %, still settling)
+```
+
+**Total steam energy equals SG duty to the decimal.** Whatever the difference between the engines
+is, it is not a conservation error in PWR2.
+
+### 24.2 Candidate 1 — the missing ADV. RULED OUT.
+
+§23.2 proposed that PWR2's relief ladder has a rung missing between the dump's range and the
+safeties. Re-reading the measurement that prompted it: in the current engine's 76.8 % case,
+`adv_flow_normalized` reads **0**. The ADVs are not carrying anything there — they only opened in
+#484's experiment when the condenser dump was deliberately disarmed. **The candidate was proposed
+from the wrong measurement.**
+
+### 24.3 Candidate 2 — an energy imbalance in the current engine. RULED OUT, AND IT WAS MY ERROR.
+
+The replacement hypothesis: the current engine reports `core_heat_pct` 76.21 % against
+`steam_out_total` 0.7371, a persistent 2.5-point excess across a full hour with Tavg falling and
+pressurizer level flat — which would need a second heat sink to close.
+
+**That comparison is invalid.** `pwr_steam_generator.js:395` sets `s.steam_out_total = steam_out` —
+a normalized **mass** flow. `core_heat_pct` is a **heat** fraction. The SG's actual heat transfer is
+computed separately, so the two are different quantities and are not required to be equal at a
+pressure and enthalpy away from rated. There is **no established imbalance in the current engine**,
+and this section should not be cited as evidence of one.
+
+### 24.4 The error is the session's recurring shape, for the third time
+
+- §20.7 — compared a **steam-mass-flow** cut against an **electrical-demand** cut.
+- §23 — compared a plant **with** safety valves against a figure measured **without** them.
+- §24.3 — compared a **mass** fraction against a **heat** fraction.
+
+Every one is the same move: two numbers that look comparable, aren't, and agree or disagree for
+reasons unrelated to the mechanism under test. **The tell is always a unit or a configuration that
+was never stated**, and the fix is always the same — write down what each number IS before
+subtracting them.
+
+### 24.5 Where the residual stands
+
+**Open.** PWR2 is internally consistent; the current engine is not shown to be otherwise; the two
+plants differ by 3.1 points of power at the same command with the same dump law, and no mechanism
+for it has survived scrutiny. Candidates not yet tested: a difference in SG heat-transfer
+conductance at off-nominal pressure, a difference in feedwater enthalpy, or decay-heat accounting
+(the current engine's `core_heat_pct` runs ~0.6 points above its `power_pct` at this state, and
+PWR2's split is derived differently).
+
+Recorded as open rather than attributed, because two attributions have already failed.
