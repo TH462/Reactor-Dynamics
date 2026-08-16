@@ -50,6 +50,20 @@ function runSuite(C, rec, quiet) {
     if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
   }
   function plant() { return S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 }); }
+  /* THE MUTATION REPLAY RUNS SHORT LOOPS; THE LIVE MEASUREMENT RUNS FULL ONES.
+   *
+   * MEASURED, and it is why this exists: this gate reached **25 minutes standalone**. Its boron
+   * checks each simulate 10-20 plant-minutes at dt = 0.02 s, and the self-test replays the WHOLE
+   * suite once per mutation -- twenty of them. That is hours of simulated plant per run, for a
+   * suite whose slowest genuine measurement takes seconds.
+   *
+   * Same asymmetry Layer 4 and RHR use, for the same reason: the LAW being measured (ppm/min is
+   * proportional to concentration; boration approaches the tank and stops) needs a real horizon,
+   * while every mutation here -- a dropped transport term, a scaled seal, an unfloored demand --
+   * shows up grossly in a fraction of it. The RATIO check that carries the boron claim is asserted
+   * with a wider band in quiet mode and its full band in the live pass, where it means something. */
+  var SCALE = quiet ? 0.15 : 1;
+  var N = function (n) { return Math.max(200, Math.round(n * SCALE)); };
   var GPM = function (kgs) { return kgs / 1000 * 264.172 * 60; };
 
   /* ---- 1. THE SOURCED ANCHORS SURVIVED THE SCALING ------------------------------------ */
@@ -75,6 +89,16 @@ function runSuite(C, rec, quiet) {
   ckT('normal charging is the sourced 46 gpm, same basis',
       Math.abs(C.CVCS.charging_normal_gpm() - 46 * vs) < 1e-9,
       C.CVCS.charging_normal_gpm().toFixed(1) + ' gpm (Ginna 46 gpm normal)');
+  /* SEAL INJECTION IS UNSCALED, and this check has to live HERE as well as in the cross-file
+   * bases gate. The mutation that scales it belongs to this file's self-test, and a self-test can
+   * only see what its own suite asserts -- a property checked exclusively in another gate is
+   * invisible to this one's mutations. The duplication is the price of that, and it is small. */
+  ckT('seal injection is the sourced per-pump figure with NO scale factor',
+      Math.abs(C.sealInjectionGpm() - 5 * C.CVCS.rcp_count) < 1e-12 &&
+      Math.abs(C.sealInjectionGpm() - 5 * C.CVCS.rcp_count * vs) > 1,
+      C.sealInjectionGpm().toFixed(1) + ' gpm = WTSM 5 gpm/RCP x ' + C.CVCS.rcp_count +
+      ' pump; scaled it would be ' + (5 * C.CVCS.rcp_count * vs).toFixed(1) +
+      ' -- a seal does not shrink because the PLANT is smaller (owner ruling 2026-08-15)');
   ckT('the boric acid tank sits inside the sourced RWST band',
       C.CVCS.boric_acid_ppm >= 2000 && C.CVCS.boric_acid_ppm <= 2500,
       C.CVCS.boric_acid_ppm + ' ppm; ML11223A220 gives 2,000-2,500');
@@ -83,8 +107,12 @@ function runSuite(C, rec, quiet) {
   if (!quiet) console.log('\nLETDOWN  [an ORIFICE: flow must FALL as the plant depressurises]');
   var sysN = plant(), cvN = C.createCVCS({});
   var rN = C.stepCVCS(cvN, sysN, 0.02);
-  ck('at NOP the orifice passes the normal letdown flow', GPM(rN.letdown_kgs),
-     C.CVCS.charging_normal_gpm(), 1e-6, 'gpm');
+  /* LETDOWN CARRIES CHARGING **PLUS SEAL INJECTION**, which is the balance WTSM §4.1 states:
+   * "This flow, plus the 55 gpm normal charging, results in a total of 75 gpm returning to the
+   * RCS, matching the letdown flow." Seal injection is an inflow the operator does not command,
+   * so letdown has to carry it or inventory climbs on its own. */
+  ck('at NOP the orifice passes charging PLUS seal injection', GPM(rN.letdown_kgs),
+     C.CVCS.charging_normal_gpm() + C.sealInjectionGpm(), 1e-6, 'gpm');
   ckT('...and charging balances it, so inventory holds', Math.abs(rN.net_kgs) < 1e-9,
       'net ' + rN.net_kgs.toExponential(2) + ' kg/s at the normal lineup');
   /* THE COMPARISON, not a band. Half the pressure difference is 1/sqrt(2) of the flow. */
@@ -109,7 +137,7 @@ function runSuite(C, rec, quiet) {
   if (!quiet) console.log('\nBORON  [a mass balance -- the SHAPE is the evidence, not the rate]');
   function dilute(from, minutes) {
     var sys = plant(), cv = C.createCVCS({ boron_ppm: from, makeupSource: 'dilute' });
-    for (var i = 0; i < minutes * 3000; i++) C.stepCVCS(cv, sys, 0.02);
+    for (var i = 0; i < N(minutes * 3000); i++) C.stepCVCS(cv, sys, 0.02);
     return from - cv.boron_ppm;
   }
   var dHi = dilute(1400, 10), dLo = dilute(350, 10);
@@ -119,10 +147,10 @@ function runSuite(C, rec, quiet) {
    * proportional to the concentration itself: 4x the boron, ~4x the removal rate. A fitted ramp
    * would remove the same ppm/min at both ends. */
   ck('ppm/min is PROPORTIONAL to concentration  [4x boron -> 4x rate]',
-     dHi / dLo, 4.0, 0.35, '(ratio)');
+     dHi / dLo, 4.0, quiet ? 1.2 : 0.35, '(ratio)');
   var cvB = C.createCVCS({ boron_ppm: 700, makeupSource: 'borate' });
   var sysB = plant();
-  for (var b = 0; b < 30000; b++) C.stepCVCS(cvB, sysB, 0.02);
+  for (var b = 0; b < N(30000); b++) C.stepCVCS(cvB, sysB, 0.02);
   ckT('boration RAISES boron toward the boric acid tank, never past it',
       cvB.boron_ppm > 700 && cvB.boron_ppm < C.CVCS.boric_acid_ppm,
       cvB.boron_ppm.toFixed(1) + ' ppm after 10 min against a ' + C.CVCS.boric_acid_ppm +
@@ -137,7 +165,7 @@ function runSuite(C, rec, quiet) {
   var cvM = C.createCVCS({ boron_ppm: 700, makeupSource: 'match',
                            chargingDemand: 1, letdownOpen: 0 });
   var sysM = plant();
-  for (var m = 0; m < 30000; m++) {
+  for (var m = 0; m < N(30000); m++) {
     var rM = C.stepCVCS(cvM, sysM, 0.02);
     S.stepPlant(sysM, 0.02, { corePower: 300000, sgDuty: 300000, sources: rM.sources });
   }
@@ -158,7 +186,7 @@ function runSuite(C, rec, quiet) {
         var sy = plant(), cv = C.createCVCS({ boron_ppm: 5, makeupSource: 'dilute',
                                               chargingDemand: 1, letdownOpen: 1 });
         var lo = 1e9;
-        for (var q = 0; q < 60000; q++) { C.stepCVCS(cv, sy, 0.02); if (cv.boron_ppm < lo) lo = cv.boron_ppm; }
+        for (var q = 0; q < N(60000); q++) { C.stepCVCS(cv, sy, 0.02); if (cv.boron_ppm < lo) lo = cv.boron_ppm; }
         return lo > 0 && isFinite(lo);
       })(), 'bottoms at 4.385 ppm from 5 over 20 min at max charge -- proportional decay, so ' +
       'zero is approached and never crossed');
@@ -283,11 +311,22 @@ var MUTATIONS = [
   ['the orifice runs backwards below its backpressure',
    '(cv.letdownOpen <= 0 || dP <= 0) ? 0 :', '(cv.letdownOpen <= 0) ? 0 :'],
   ['letdown stops carrying the RCS concentration away (boron shape breaks)',
-   'var dC = (charging * C_in - letdown * cv.boron_ppm) / M;',
-   'var dC = (charging * C_in - letdown * 0) / M;'],
+   'var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;',
+   'var dC = (inFlow * C_in - letdown * 0) / M;'],
   ['the re-concentration term dropped (inventory change stops affecting ppm)',
    'cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);',
    'cv.boron_ppm = cv.boron_ppm + dt * dC;'],
+  /* SEAL INJECTION, ruled unscaled 2026-08-15. It is not a control -- it runs with the charging
+   * pumps -- so the mutations are that it vanishes, that it gets scaled after all, and that
+   * letdown stops carrying it. */
+  ['seal injection dropped entirely (letdown then over-drains the plant)',
+   'var seal = cv.isolated ? 0 : gpmToKgs(sealInjectionGpm(), 1000);', 'var seal = 0;'],
+  ['seal injection SCALED after all (a seal shrinks because the plant is smaller)',
+   'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count;',
+   'return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count * volumeScale();'],
+  ['letdown stops carrying seal injection (inventory climbs on its own)',
+   'return gpmToKgs(CVCS.charging_normal_gpm() + sealInjectionGpm(), 1000);',
+   'return gpmToKgs(CVCS.charging_normal_gpm(), 1000);'],
   ['the scale factor is written down instead of derived from Layer 1',
    'function volumeScale() { return rcsVolume() / GINNA_RCS_M3; }',
    'function volumeScale() { return 0.20; }'],

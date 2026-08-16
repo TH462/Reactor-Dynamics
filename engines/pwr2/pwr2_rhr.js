@@ -85,9 +85,17 @@
      * magnitude, not used as a constant — decay heat is supplied by the caller, because it is
      * kinetics and kinetics is not built. */
     design_decay_fraction_20h: 0.004,
-    /* [derived] the component cooling water sink. 95 degF is the usual CCW design temperature;
-     * it is NOT sourced in this corpus and is marked accordingly. */
-    ccw_temp_c: C(95),               // [recalled] UNSOURCED — see the note above
+    /* ⚠ [recalled] UNSOURCED, AND QUEUED FOR AN EVIDENCE PASS.
+     * (OWNER RULING, 2026-08-15: chose "leave it marked, queue it" over running an evidence pass
+     * now or sourcing a document — no component-cooling document is in any lane's corpus, so the
+     * pass would likely find nothing today.)
+     *
+     * 95 degF is the usual component cooling water design temperature and it is NOT sourced here.
+     * It is an INPUT to the derived UA, and the cooldown check structurally cannot detect an error
+     * in it, because UA was derived to produce that cooldown (see this gate's header). Breaking
+     * that circularity needs a second, independent source for either this sink temperature or the
+     * heat exchanger duty. Until one exists, the number stands MARKED. */
+    ccw_temp_c: C(95),               // [recalled] UNSOURCED -- queued, see the note above
     POWER_SCALE: 300 / 1520          // with ECCS; RHR's duty is decay heat, a power fraction
   };
 

@@ -55,11 +55,9 @@
  *   concentration and letdown discharges to one. The VCT is a real inventory with a real level
  *   and a real gas space, and it is where "letdown isolated" actually bites. Not modelled.
  *
- *   NO SEAL INJECTION. WTSM gives 20 gpm nominal across four pumps. This plant has ONE pump, and
- *   a seal flow is a property of the SEAL, not of plant size — so it neither volume-scales nor
- *   power-scales cleanly, and 5 gpm on a 6,251 gal RCS is proportionally far larger than 20 gpm
- *   on a four-loop plant. That is a real modelling question and it is left OPEN rather than
- *   answered by picking whichever scaling looks tidy.
+ *   SEAL INJECTION IS NOW BUILT — 5 gpm, UNSCALED, by owner ruling 2026-08-15. See its own note
+ *   at the constant. It was the open question this list used to record, and the answer is that a
+ *   seal belongs to the pump rather than to the plant.
  *
  *   NO LETDOWN HEAT EXCHANGER, no ion exchange, no degasifier. This layer moves mass and boron.
  *
@@ -101,8 +99,40 @@
     /* Letdown backpressure — the orifice discharges to the letdown HX / VCT, not to atmosphere.
      * [derived]: WTSM §4.1 puts the low-pressure letdown line downstream of a pressure control
      * valve holding a few hundred psig to keep the coolant subcooled. Taken as 2.07 MPa (300 psi). */
-    letdown_backpressure_mpa: 2.07
+    letdown_backpressure_mpa: 2.07,
+
+    /* ---- SEAL INJECTION — **UNSCALED, BY RULING** ------------------------------------
+     * (OWNER RULING, 2026-08-15: chose "5 gpm per pump, unscaled, declared" from four options —
+     * volume-scale, power-scale, unscaled, or omit.)
+     *
+     * SOURCED VERBATIM, Westinghouse Technology Systems Manual §4.1 (ML11223A214):
+     *   "Five gpm per RCP are returned to the RCS via the hydraulic chambers of the RCPs, for an
+     *    RCS total of 20 gpm. This flow, plus the 55 gpm normal charging, results in a total of
+     *    75 gpm returning to the RCS, matching the letdown flow."
+     *
+     * FIVE GPM PER PUMP IS THE DOCUMENT'S OWN PER-PUMP FIGURE, not a division performed here —
+     * 20 gpm is what it makes of four pumps. **This plant has ONE**, so it gets 5 gpm.
+     *
+     * WHY IT IS NOT SCALED, AND WHAT THAT COSTS. A seal flow is set by the SEAL — its clearance,
+     * its differential pressure, its injection requirement — and a seal on a 300 MWt plant's pump
+     * is not a fifth the size of one on a 3,400 MWt plant's. Neither the volume basis (which CVCS
+     * uses) nor the power basis (which ECCS and RHR use) has any claim on it.
+     *
+     * **The consequence is real and is the point of declaring it.** 5 gpm into a 6,251 gal RCS is
+     * 0.08 %/min, against 20 gpm into a four-loop plant's much larger inventory. Seal injection is
+     * therefore PROPORTIONALLY LARGER here than on any plant it was sourced from — about 40 % of
+     * normal makeup rather than a quarter of it. That is a declared departure, not an accident:
+     * it follows from a one-pump plant keeping a real pump's seal. */
+    seal_injection_gpm_per_pump: 5,   // [sourced] WTSM §4.1, verbatim
+    rcp_count: 1                      // [ruled] SLS-100 is a single-loop plant
   };
+
+  /* Seal injection returns to the RCS through the pump's hydraulic chambers. It is NOT operator
+   * demand — it runs whenever the charging pumps are lined up — so it is a property of the lineup
+   * rather than a control, and `isolated` is the only thing that stops it. */
+  function sealInjectionGpm() {
+    return CVCS.seal_injection_gpm_per_pump * CVCS.rcp_count;
+  }
 
   /* ---- LETDOWN IS AN ORIFICE, NOT A SETPOINT -------------------------------------------
    * Flow follows the orifice law, mdot ~ sqrt(dP), the same form `Manuals/12` §12.4b adopted for
@@ -129,7 +159,11 @@
    * modelled (see the omissions above) that balance is exactly one-to-one -- stated rather than
    * derived from a flow diagram this layer does not have. */
   function normalLetdownKgs() {
-    return gpmToKgs(CVCS.charging_normal_gpm(), 1000);
+    /* LETDOWN BALANCES CHARGING **PLUS SEAL INJECTION**, which is the balance the source states:
+     * "This flow, plus the 55 gpm normal charging, results in a total of 75 gpm returning to the
+     * RCS, matching the letdown flow." Seal injection is an inflow the operator does not command,
+     * so letdown has to carry it or inventory climbs on its own. */
+    return gpmToKgs(CVCS.charging_normal_gpm() + sealInjectionGpm(), 1000);
   }
 
   function createCVCS(opts) {
@@ -164,6 +198,8 @@
       ? CVCS.charging_normal_gpm() / CVCS.charging_max_gpm()
       : Math.max(0, Math.min(1, cv.chargingDemand));
     var charging = cv.isolated ? 0 : gpmToKgs(demand * CVCS.charging_max_gpm(), 1000);
+    /* SEAL INJECTION runs with the charging pumps and is not commanded. Only isolation stops it. */
+    var seal = cv.isolated ? 0 : gpmToKgs(sealInjectionGpm(), 1000);
 
     /* THE ORIFICE. Negative dP means the sink is above the plant -- letdown cannot run backwards
      * through it, so it stops rather than reversing sign under a square root. */
@@ -178,14 +214,17 @@
     var C_in = cv.makeupSource === 'borate' ? CVCS.boric_acid_ppm
              : cv.makeupSource === 'dilute' ? CVCS.primary_water_ppm
              : cv.boron_ppm;                              /* 'match' -- inventory only, no shift */
+    /* Seal injection is drawn from the SAME charging pump suction, so it carries the same
+     * concentration as charging -- it is not a separate chemistry path. */
+    var inFlow = charging + seal;
     var M = 0;
     for (var k = 0; k < sys.nodes.length; k++) {
       M += sys.nodes[k].V * W.rho_from_h(sys.nodes[k].h, sys.P);
     }
     if (M > 0) {
-      var dC = (charging * C_in - letdown * cv.boron_ppm) / M;
+      var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;
       /* the inventory change itself re-concentrates what is left */
-      var dM = charging - letdown;
+      var dM = inFlow - letdown;
       cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);
       if (cv.boron_ppm < 0) cv.boron_ppm = 0;
     }
@@ -194,15 +233,16 @@
 
     return {
       charging_kgs: charging,
+      seal_kgs: seal,
       letdown_kgs: letdown,
-      net_kgs: charging - letdown,
+      net_kgs: charging + seal - letdown,
       boron_ppm: cv.boron_ppm,
       rho_coldleg: rho,
       /* Layer 3's boundary-source shape. Letdown leaves at the node's OWN enthalpy (it is RCS
        * water); charging arrives cold, which is a real and teachable effect -- charging into a
        * hot leg is a local cooldown. */
       sources: [
-        { node: 'cold_leg', mdot: charging,  h: h_charge },
+        { node: 'cold_leg', mdot: charging + seal,  h: h_charge },
         { node: 'cold_leg', mdot: -letdown,  h: node ? node.h : 1250 }
       ]
     };
@@ -220,6 +260,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.cvcs = {
     CVCS: CVCS, createCVCS: createCVCS, stepCVCS: stepCVCS,
+    sealInjectionGpm: sealInjectionGpm,
     volumeScale: volumeScale, rcsVolume: rcsVolume, orificeK: orificeK,
     normalLetdownKgs: normalLetdownKgs, gpmToKgs: gpmToKgs,
     maxFillRateFracPerMin: maxFillRateFracPerMin,
