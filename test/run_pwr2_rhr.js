@@ -274,6 +274,36 @@ function runSuite(R, rec, quiet) {
         var cold = R.stepRHR(R.createRHR({ running: true, ccw_temp_c: 10 }), plantAt(340, P_cd), 1, {});
         return cold.duty_kW > warm.duty_kW * 1.2;
       })(), 'a colder ultimate heat sink removes more -- the argument is not cosmetic');
+  /* ---- THE COOLDOWN MARGIN. drivers.decayHeat_kW was documented and INERT for the whole build:
+   * the comment said it was waiting on kinetics. Kinetics exists now, and the right answer turned
+   * out to be that it must NOT enter the duty -- a heat exchanger removes what its area and
+   * temperatures allow, and the actual decay heat already reaches the plant through the reactor's
+   * heats map, so adding it here would double-count. It is reported instead, answering the
+   * question an operator actually asks during a cooldown: is RHR keeping up? */
+  ckT('the margin is NULL when no decay heat is supplied, not a fabricated zero', (function () {
+        var o = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1, {});
+        return o.margin_kW === null && o.keeping_up === null && o.decay_heat_kW === null;
+      })(), 'a margin against an ASSUMED decay heat would be a made-up operator-facing number');
+  ckT('a supplied decay heat is reported back unchanged', (function () {
+        var o = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+                          { decayHeat_kW: 4200 });
+        return o.decay_heat_kW === 4200;
+      })(), '');
+  ckT('the margin is duty MINUS decay heat, and says whether RHR is keeping up', (function () {
+        var win = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+                            { decayHeat_kW: 100 });
+        var lose = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+                             { decayHeat_kW: 1e9 });
+        return Math.abs(win.margin_kW - (win.duty_kW - 100)) < 1e-9 && win.keeping_up === true &&
+               lose.keeping_up === false && lose.margin_kW < 0;
+      })(), 'positive margin = cooling, negative = losing ground');
+  ckT('the decay heat does NOT enter the duty (it would double-count the reactor heats map)',
+      (function () {
+        var a = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1, {});
+        var b = R.stepRHR(R.createRHR({ running: true }), plantAt(340, P_cd), 1,
+                          { decayHeat_kW: 50000 });
+        return Math.abs(a.duty_kW - b.duty_kW) < 1e-9;
+      })(), '50 MW of decay heat must not move the duty by a single kW');
   ckT('negative availability is floored rather than trusted',
       R.stepRHR(R.createRHR({ running: true, avail: -2 }), plantAt(340, P_cd), 1, {}).duty_kW === 0,
       'a negative availability would otherwise HEAT the plant');
@@ -308,6 +338,15 @@ var MUTATIONS = [
   ['the engine ENFORCES the interlock instead of reporting it (protection in the wrong layer)',
    'if (rh.running) {', 'if (rh.running && mayOpen) {'],
   ['the removed-energy total stops accumulating', 'rh.removed_kJ += duty * dt;', ''],
+  ['the cooldown margin fabricates a zero instead of reporting NULL',
+   'margin_kW: drivers.decayHeat_kW === undefined ? null : duty - drivers.decayHeat_kW,',
+   'margin_kW: duty - (drivers.decayHeat_kW || 0),'],
+  ['the margin loses its sign convention (reads keeping-up when losing ground)',
+   'keeping_up: drivers.decayHeat_kW === undefined ? null : duty >= drivers.decayHeat_kW,',
+   'keeping_up: drivers.decayHeat_kW === undefined ? null : duty <= drivers.decayHeat_kW,'],
+  ['decay heat leaks into the DUTY, double-counting the reactor heats map',
+   'rh.removed_kJ += duty * dt;',
+   'duty += (drivers.decayHeat_kW || 0); rh.removed_kJ += duty * dt;'],
   ['duty stops following the suction temperature',
    'rh.UA * (Thot - rh.ccw_temp_c)', 'rh.UA * (200 - rh.ccw_temp_c)'],
   /* CONSTRUCTION */

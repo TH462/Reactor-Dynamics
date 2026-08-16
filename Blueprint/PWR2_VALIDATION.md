@@ -345,3 +345,46 @@ comparable magnitude, opposite side. That is recorded rather than smoothed over.
 **Power remains 3.5 points below the current engine and is now known NOT to be a Doppler effect.**
 It is set by the steam side, so the residual lives in the steam-generator or turbine model, not in
 the reactivity loop. That is the next thing to look at, and this section is what says where.
+
+### 20.6 ⚠ THE A1 COMPARISON IS TIME-SENSITIVE, AND NEITHER NUMBER CARRIES A TIMESTAMP — 2026-08-16
+
+§20.5 reported power "3.5 points below the current engine" and located the residual on the steam
+side. **That figure was read 150 s after the demand cut, and A1 does not finish in 150 s.**
+
+Ridden for six hours:
+
+| t after the cut | power | SG duty | Tavg | xenon |
+|---|---|---|---|---|
+| 240 s *(gate sample)* | 54.00 % | — | 603.92 °F | 100.0 % |
+| 600 s | 54.49 | 56.30 | 603.35 | 100.2 |
+| 1800 s | 55.07 | 56.35 | **602.14** | 101.1 |
+| 3600 s | 55.28 | 56.40 | 600.63 | 102.3 |
+| 7200 s | 55.45 | 56.48 | 598.38 | 104.0 |
+
+**Power asymptotes near 56.5 %, not 54 % — about ONE point below the current engine, not 3.5.**
+And `duty` equals `steamQ` to two decimals throughout, which confirms §20.5's mechanism claim
+directly: the steam side sets the sink and the core matches it.
+
+**Tavg is not monotone after the cut.** It peaks around 604 °F and then FALLS as xenon builds to
+104 % of equilibrium — rising xenon is negative reactivity, and with a negative moderator
+coefficient the plant answers by cooling. So our trajectory **passes through the current engine's
+602.1 °F at roughly 30 minutes** and keeps going.
+
+### 20.6.1 What this means for how the row should be read
+
+The §3 table records "100 → 57.5 %, Tavg 579.3 → 602.1 °F" **with no time attached**, and this
+section is the first thing in the project to notice that the omission matters. On the xenon
+timescale a PWR's post-load-change state moves for hours, so:
+
+- **A single (power, Tavg) pair is not a sufficient specification of A1.** Two engines can agree
+  perfectly and still disagree at every instant, or disagree at the sample point and cross later.
+- Our gate samples at 240 s because the THERMAL transient settles in 60 s and running to xenon
+  equilibrium costs 70 s of wall clock per simulated hour. That is a defensible sample point, but
+  it must be **stated**, which it now is in the gate header.
+- **The current engine's A1 numbers should be re-measured with a timestamp** before the comparison
+  is treated as tight. Until that happens the honest claim is: PWR2 reproduces A1's mechanism and
+  lands within about a point of power and a few degrees of Tavg *somewhere on a trajectory both
+  engines traverse*, which is weaker than the §20 table implies and is the claim actually supported.
+
+**This does not weaken §20's verdict** — the coupling is real, the chain is asserted link by link,
+and the plant finds its own power. It sharpens what the numbers are evidence FOR.

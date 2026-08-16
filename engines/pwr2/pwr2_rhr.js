@@ -202,9 +202,25 @@
   }
 
   /* stepRHR(rh, sys, dt, drivers) -> {duty_kW, permissive, ...}
-   *   drivers.decayHeat_kW  what the core is still making. Supplied by the caller because it is
-   *                         KINETICS, which is not built — and inventing a decay curve here would
-   *                         put it in the wrong layer twice over.
+   *   drivers.decayHeat_kW  what the core is still making. OPTIONAL, and REPORTED ONLY.
+   *
+   * ⚠ IT DOES NOT ENTER THE DUTY, and the comment here used to imply it would. The parameter was
+   * documented when kinetics did not exist, with the note "supplied by the caller because it is
+   * KINETICS, which is not built" — which reads as a wire waiting to be connected. Kinetics is
+   * built now, and connecting it here would be WRONG TWICE:
+   *
+   *   - the duty is `UA * (T_hot - T_ccw)`. A heat exchanger removes what its area and its
+   *     temperatures let it remove; it does not know what the core is making.
+   *   - the actual decay heat already reaches the plant through the reactor's `heats` map. Adding
+   *     it here as well would double-count it, the same trap pwr2_reactor.js's header describes
+   *     for `corePower`.
+   *
+   * `UA` is sized against the DESIGN decay fraction at 20 h, which is a different quantity: a
+   * design-basis number used once to size the exchanger, not a live one.
+   *
+   * What the live figure is genuinely good for is the question an operator actually asks during a
+   * cooldown — **is RHR keeping up?** So it is reported as a margin and nothing more (HR5: this
+   * layer reports, it does not act).
    *
    * Returns the duty as a POSITIVE number of kW REMOVED, in the shape Layer 4 wants for `sgDuty`,
    * so a caller can hand RHR the heat-sink role the steam generator plays at power. */
@@ -267,6 +283,13 @@
        * teach. Recorded as an omission rather than left to be discovered. */
       heats: shareOut(sys, duty),
       removed_kJ: rh.removed_kJ,
+      /* THE COOLDOWN MARGIN — reported, never acted on. Positive means RHR is removing more than
+       * the core is making, so the plant is cooling; negative means it is losing ground. `null`
+       * when the caller supplies no decay heat, because a margin against an ASSUMED decay heat
+       * would be a fabricated number wearing an operator-facing name. */
+      decay_heat_kW: drivers.decayHeat_kW === undefined ? null : drivers.decayHeat_kW,
+      margin_kW: drivers.decayHeat_kW === undefined ? null : duty - drivers.decayHeat_kW,
+      keeping_up: drivers.decayHeat_kW === undefined ? null : duty >= drivers.decayHeat_kW,
       UA_kW_per_K: rh.UA,
       T_suction_c: Thot,
       /* the interlock, REPORTED */
