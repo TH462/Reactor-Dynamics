@@ -675,12 +675,39 @@
     return (s.pzr_m_deficit_kg || 0) / (cfg.pressurizer2.M_rcs_kg / cfg.pressurizer.level_per_mass);
   }
 
+  // ...AND THE NODE CANNOT BE OWED MORE THAN THE PLANT IS SHORT — the same rule applied to
+  // the LOWER bound. Added 2026-08-16 after CA-15: without it the deficit is an unbounded
+  // integral and an integral remembers, so an ECCS refill spends itself repaying debt the
+  // loop never owed. Measured at CA-15's own layer (`OpsHarness`, sev-0.5 `large_loca`),
+  // deficit against the plant's own shortfall `(1 − _mass)·M_rcs`:
+  //
+  //   t(s)     1200    1800    2400    2700    3000    4500
+  //   v2 debt 10484   10623    9334    5212    3331    3573  kg
+  //   short    4880    4235    2410       0       0       0  kg
+  //
+  // The node ends up owed 3.6 tonnes by a plant sitting 20 % OVERFILLED, which is how the
+  // vessel never refilled, never went solid, never relieved, and inventory rode to the
+  // `mass_max` clip while the gauge read 0 %.
+  //
+  // THE BOUND WAS MEASURED BEFORE IT WAS WRITTEN — the deficit itself got in by being
+  // written before it was measured. v1's reconstruction, run on the same lineup, carries an
+  // implied deficit of `776·(1 − m) − levelBase` points, i.e. this bound MINUS the base-level
+  // term: measured 712, 712, 714, 713, 713 kg under it at t = 300…2400. So the fence is one
+  // v1 satisfies structurally at every instant (`levelBase >= level_prog_floor`, 28 points),
+  // and it is deliberately the LOOSE version — trimming to v1's exact figure would re-import
+  // v1's level law as the authority, which is the same thing the upper bound refuses to do.
+  //
+  // Forgiving debt moves no water: `pzr_m_liq_kg` is untouched, and the only consequence is
+  // that the next insurge fills the vessel instead of repaying a hole the loop cannot own.
   function reconcile(s, cfg) {
     var p2 = cfg.pressurizer2;
     if (s._mass == null) return;
     var cap = Math.max(0, s._mass) * p2.M_rcs_kg;
     if (s.pzr_m_liq_kg > cap) s.pzr_m_liq_kg = cap;
     if (!(s.pzr_m_liq_kg >= 0)) s.pzr_m_liq_kg = 0;
+    var owed = Math.max(0, 1 - Math.max(0, s._mass)) * p2.M_rcs_kg;
+    if (s.pzr_m_deficit_kg > owed) s.pzr_m_deficit_kg = owed;
+    if (!(s.pzr_m_deficit_kg >= 0)) s.pzr_m_deficit_kg = 0;
   }
 
   function stepPressure(s, cfg, dt) {

@@ -684,6 +684,33 @@ for (var jn = 0; jn < 200; jn++) PZ2.stepRegions(sNorm, CFG, 1.0, { surge_kgps: 
 ck('J3c normal surge cycling banks nothing', r3(sNorm.pzr_m_deficit_kg || 0) + ' kg after 200 steps of ±1.5 kg/s',
    !(sNorm.pzr_m_deficit_kg > 1e-9), 'zero');
 
+// J4 DERIVED — ...AND THE DEBT IS BOUNDED BY WHAT THE LOOP CAN OWE. J3's bank is an INTEGRAL
+// and an integral remembers: measured at CA-15's own layer (OpsHarness, sev-0.5 large_loca)
+// the node ended up owed 3406 kg by a plant sitting 20 % OVERFILLED, so the ECCS refill spent
+// itself repaying a hole and the vessel never refilled, never went solid, never relieved —
+// a 120.00 % clip under a gauge reading 0.0 %. The fence is the mirror of J2's: the node
+// cannot be owed more than the plant is SHORT of nominal, `(1 − _mass)·M_rcs`.
+//
+// THE BOUND WAS MEASURED FIRST. v1's reconstruction on the same lineup carries an implied
+// deficit of `776·(1 − m) − levelBase` points — this bound minus the base term, i.e. 712,
+// 712, 714, 713, 713 kg under it at t = 300…2400 s. So it is a fence v1 satisfies
+// structurally at every instant, and deliberately the LOOSE version: trimming to v1's exact
+// figure would re-import v1's level law as the authority, the same thing J2 refuses to do.
+var sOwe = stateAt(55.0);
+sOwe._mass = 0.90;                              // plant short 10 % = 1978.6 kg
+sOwe.pzr_m_deficit_kg = 9000;                   // ...owed far more than that
+PZ2.reconcile(sOwe, CFG);
+var oweShort = sOwe.pzr_m_deficit_kg;
+var sOwe2 = stateAt(55.0);
+sOwe2._mass = 1.20;                             // the CA-15 state: 20 % OVERFILLED
+sOwe2.pzr_m_deficit_kg = 3406;                  // ...and still carrying the measured debt
+PZ2.reconcile(sOwe2, CFG);
+ck('J4 the node cannot be owed more than the plant is short',
+   '9000 -> ' + r3(oweShort) + ' kg at _mass 0.90 (short ' + r3(0.10 * P2.M_rcs_kg) + ' kg); ' +
+   '3406 -> ' + r3(sOwe2.pzr_m_deficit_kg) + ' kg on a 120 % plant',
+   Math.abs(oweShort - 0.10 * P2.M_rcs_kg) < 1e-6 && sOwe2.pzr_m_deficit_kg === 0,
+   'clamped to the shortfall; zero when the plant is full');
+
 // K1 DERIVED — THE STEP DIVIDES ITSELF WHEN THE PRESSURE EXCURSION IS LARGE. The two-region
 // model is stiffest where spray condenses steam (pressure down) while the same spray adds
 // liquid volume that squeezes the remaining bubble (pressure up): no single term is large
