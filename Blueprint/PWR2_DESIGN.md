@@ -1698,3 +1698,86 @@ Both errors were the same shape: **a suspicion pursued past the point where the 
 written down.** Neither was caught by care — the first was caught by testing an alternative reading
 arithmetically, the second by checking what a citation actually pointed at. **Suspicion is cheap
 and wrong most of the time; the check is what earns the finding.**
+
+---
+
+## 34. THE FUEL MASS WAS NEVER BLOCKED — I HAD NOT RUN `find_source` — 2026-08-16
+
+I filed `M_fuel` as **blocked on an owner ruling**, on the grounds that pellet diameter and clad
+thickness were *"in neither the corpus nor the design set"*. Half of that was a claim I had not
+checked, and it is the exact failure `tools/find_source.js` exists to prevent — the standing rule
+says run it **before** you declare anything unsourced, and I declared first.
+
+### 34.1 What the corpus actually holds
+
+`ML050910161` (WCAP-16009-NP-A, Rev 0, January 2005), Figure 3-1 — captioned verbatim
+**"FLECHT-SEASET Bundle (Westinghouse 17x17 Fuel Assembly Lattice)"**:
+
+| quantity | value | |
+|---|---|---|
+| rod diameter | **0.374 in** (9.50 mm) | `[sourced]` |
+| rod pitch | **0.496 in** (12.6 mm) | `[sourced]` |
+| thimble diameter | **0.474 in** (12.0 mm) | `[sourced]` |
+| housing inside diameter | 194.0 mm | `[sourced]` |
+
+The text is OCR'd and mangled (`ROD DIAMfEtR`, `10.374 hi.`, `=;0.506 inch`) — the figures are
+recoverable only because the metric and US columns cross-check each other. **A grep that requires
+clean text would have returned zero here**, which is a second reason a single search is not
+evidence of absence.
+
+**Still unsourced after searching all 35 documents across 3 lanes: pellet diameter and clad
+thickness.** `find_source.js` exits 0 hits on the numeric forms. That half of the original claim
+stands, and it is the only half.
+
+### 34.2 The split is BOUNDED and it does not move the answer
+
+The rod OD is sourced, so the pellet is not free — pellet = rod OD − 2·(clad + gap), and the three
+must sum to a number we know. Sweeping clad 0.020–0.026 in and gap 0.002–0.0045 in, i.e. the whole
+plausible range for this lattice:
+
+```
+  clad    gap     pellet   V_UO2    M_fuel     vs nominal
+  0.0225  0.0032   0.3225   1.069   11.12 t     0.0 %
+  0.0200  0.0030   0.3280   1.105   11.51 t    +3.4 %
+  0.0250  0.0040   0.3160   1.026   10.68 t    -4.0 %
+  0.0200  0.0020   0.3300   1.119   11.65 t    +4.7 %
+  0.0260  0.0045   0.3130   1.007   10.48 t    -5.8 %
+```
+
+**±6 % on `M_fuel` across the entire range.** And the sensitivity that matters is smaller still,
+because of *where the term sits*: at steady state
+
+```
+    T_fuel - T_core = Q / UA_gap
+```
+
+`M_fuel · cp` does not appear. It sets the fuel thermal **time constant**, not the temperature
+rise — so the unsourced split moves the **A1 endpoint by 0 %** and the approach-to-endpoint by the
+percentages above. **`M_fuel` was never the load-bearing number.** `UA_gap` is, and `alpha_D`
+is more so, because those two decide how much Doppler reactivity the rise is worth.
+
+### 34.3 Two independent cross-checks that the 17×17 / 12 ft reading is right
+
+Neither was constructed to agree; both were computed from the geometry file's own basis.
+
+1. **Coolant volume** — 21 assemblies × 3.53 m³ envelope × 0.584 = **2.062 m³** against the `core`
+   node's stored **2.061 m³**. The note's arithmetic reproduces the node.
+2. **Assembly pitch** — deriving it from the envelope volume and a 12 ft active height gives
+   **8.440 in**, against the real Westinghouse 17×17 **8.466 in**. **0.3 %**, by a route that never
+   touched the assembly pitch. That is strong evidence the envelope really is 21 × 17×17 × 12 ft.
+
+Fuel loading falls out at **9.81 MTU, 0.467 MTU/assembly**, against ~0.53 for a real 17×17 — 12 %
+low, in the direction the 95 %-dense pellet and this plant's smaller scale both predict.
+
+### 34.4 The lesson, which is not the one I expected
+
+The rule I broke is written down and I have broken it before: **`find_source.js` exits 1 on a
+genuine zero, so "not in the corpus" is a command's verdict rather than your claim.** What is new
+is the *shape* of the error — I did not assert a wrong number, I asserted a wrong **blocker**, and
+a wrong blocker is worse than a wrong number because it stops work and spends the owner's attention
+instead of being caught by a gate. Nothing in the test suite can go red for a ruling that was never
+needed.
+
+**Disposition:** proceed with the bounded recall (clad 0.0225 in, gap 0.00325 in → pellet 0.3225 in)
+tagged `[recalled]` with §34.2's sensitivity table beside it, and put the owner's attention on
+`alpha_D`, which is genuinely unsourced *and* genuinely sets A1.
