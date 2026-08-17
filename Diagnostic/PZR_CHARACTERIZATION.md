@@ -1005,3 +1005,50 @@ way the solve can fail is quality reaching zero — which *is* the vessel being 
 i.e. the geometric predicate, reached by the physics rather than asserted alongside it. The
 two conditions stop disagreeing by construction, which was the whole point: `gain > 1` was
 never a second solid condition, it was the operator split failing to have an answer.
+
+### The conservative solve is BUILT and MEASURED — and it cannot ship yet (2026-08-17)
+
+*(OWNER RULING, 2026-08-17: "Go")*. Written, exported, A/B'd against the shipped path, and
+**deliberately not wired in.** Both halves of that are results.
+
+**Where it is a strict improvement.** It is a fixed point of an already-settled state to
+**1e-11 °C** at every level from 20 to 95 %, and heater authority becomes **continuous across
+the whole band**:
+
+| level % | 20 | 55 | 70 | 75 | 78 | 85 | 95 |
+|---|---|---|---|---|---|---|---|
+| **shipped** (flash + settle) | 3.017 | 2.893 | 2.858 | 2.958 | **−0.124** | **−0.000** | **−0.000** |
+| **conservative solve** | 2.563 | 2.843 | 2.835 | 2.826 | **2.818** | **2.799** | **2.765** |
+
+and it reports `solid` **false** at every one of them. So the scoping call was right: **the
+"no equilibrium above 75 %" cliff is an artifact of the operator split, not a property of the
+plant.** On the captured railing step it returns 210.1 psia against the shipped path's 176.0,
+both bounded, neither railing.
+
+**Why it cannot ship: the model has no state function for energy.** Wired in, a heater step
+**leaks 9.79 % at 55 % level** — the node gains **1618.5 kJ of a delivered 1794.0**, with no
+surge in the case to defer any of it through the mixing bank. The fault is not in the solve.
+Heat is injected as `T += Q/C` against the **liquid + metal** capacity, while any (M, V, U)
+solve must account the **whole mass**; the two disagree by exactly the steam's share. Measured
+across cases: −9.79 % (heaters at 55 %), −2.46 % (heaters at 85 %), +1.85 % (spray), +10.64 %
+(insurge — that one *is* the mixing bank and is expected), 0.00 % (quiet).
+
+**So the job is bigger than "replace the solve", and this is the finding.** The injection side
+has to be converted with it: heater, spray and surge enthalpy added to U directly rather than
+as a temperature step against a partial capacity. Until then `solveFlash` + `settle` stays,
+and the functions sit exported and unused with the measurement in their header.
+
+**Four checks it would move, none of them adjudicated** — recorded so the next session does
+not discover them as surprises: **C1b** measures the OLD decomposition's own identity
+(`E = mf·h_fg + C·ΔTsat`) and is stale by construction once the split goes — it should become
+a *total energy* check, which is strictly stronger. **E1**'s stratification contrast weakens:
+instant-mix peaks **+6.578 psi** where it used to fall, and whether that is the conservative
+answer or a defect is unsettled. **C4b**'s "gently decreasing" ordering inverts (2.563 / 2.843
+/ 2.835 at 20 / 55 / 70 — inside the 10 % spread but no longer monotone). **C4c** would need
+rewriting a third time, because the gap it pins would be closed.
+
+**The discipline note, since it is the whole reason this entry exists:** the rewrite made the
+rail better and the authority cliff disappear, and it would have been easy to land it and
+re-band the four checks around it. That is precisely the refit HR10 names. The energy
+measurement was taken *because* two of those four are conservation checks, and it found a
+9.79 % leak that no amount of re-banding would have made honest.

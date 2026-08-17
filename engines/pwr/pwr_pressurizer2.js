@@ -367,6 +367,12 @@
     // ---- 3. RETURN TO SATURATION — implicit, and this is the 4× trap (spec §2.5).
     // Q·dt = m_flash·h_fg(P_new) + C·(Tsat(P_new) − Tsat(P_old)). Flashing against the OLD
     // Tsat puts all the energy into latent heat and over-predicts pressure rate 4×.
+    //
+    // NOT YET REPLACED BY `solveSaturated`, and the reason is measured — see that function's
+    // header. Wiring it in here leaks 9.79 % of a heater step's energy, because this model
+    // injects energy as `T += Q/C` against the LIQUID+METAL capacity while any state function
+    // must account the whole mass. The solve is right; the injection side has to be converted
+    // with it, and that is the rest of the job.
     var E = C * (s.pzr_t_liq_c - T0);          // kJ of departure from the old saturation line
     var mf = solveFlash(s, cfg, E, C, T0);
     s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg - mf);
@@ -436,6 +442,119 @@
   var T_CRIT_C = 373.946;      // water's critical point — 22.064 MPa. The model had no notion
                                // of one: T_sat_from_P is an unbounded power law and returned
                                // a "saturation temperature" of 1000 °C at 1322 MPa.
+
+  // ================================================== THE CONSERVATIVE SOLVE
+  //
+  // The state of a saturated two-phase node in a FIXED volume is determined by its total
+  // mass and its internal energy — one state, no split. `solveFlash` + `settle` computes it
+  // in two passes instead (flash against an approximate energy departure, THEN re-saturate
+  // with the masses frozen), and the frozen-mass pass is the one that can have no root. That
+  // operator split is what produced the pressure rail, and this replaces it.
+  //
+  // WELL-POSEDNESS WAS MEASURED BEFORE THIS WAS WRITTEN, at 0.25 °C resolution on the model's
+  // own correlations, for nodes seeded at 55 / 78 / 95 % level:
+  //   - quality crosses zero EXACTLY ONCE (365.75 °C at 78 %, 351.25 °C at 95 %, never at 55)
+  //   - energy is STRICTLY MONOTONE in T inside the two-phase domain — 0 of ~1000 steps
+  //     decreasing, at all three levels
+  // so the bracket is [T_LO, T_solid], both ends computable, one root inside, and bisection
+  // cannot miss it. (An earlier scan that read non-monotone at 95 % was measuring past the
+  // solid point, where x < 0 is not a state at all.)
+  //
+  // AND THE ONLY WAY IT CAN FAIL IS x REACHING ZERO — which IS the vessel being full of
+  // liquid, i.e. the geometric solid condition, reached BY the physics rather than asserted
+  // alongside it. That is what makes the two solid predicates stop disagreeing.
+
+  // Quality demanded by the volume constraint at temperature T: the split that makes liquid
+  // plus steam exactly fill the vessel.
+  function qualityAt(cfg, M, T) {
+    var vl = 1 / rho_l_sat(T), vg = 1 / rho_g_sat(V1.P_sat_from_T(T));
+    return (cfg.pressurizer2.V_pzr_m3 / M - vl) / (vg - vl);
+  }
+
+  // The node's internal energy in the MODEL'S OWN currency — sensible heat on the whole mass
+  // plus the vessel metal, latent heat on the steam. Evaluated on the saturation line at T in
+  // both directions, so "the energy of the state before" and "the energy of the state after"
+  // are the same function and the solve conserves what it claims to.
+  function nodeEnergy(cfg, M, m_stm, T) {
+    var p2 = cfg.pressurizer2;
+    return (M * CP_LIQ + p2.pzr_vessel_mass_kg * p2.pzr_vessel_cp_kj_kgk) * T
+         + m_stm * h_fg(V1.P_sat_from_T(T));
+  }
+
+  // The temperature at which the liquid alone exactly fills the vessel — x = 0, the solid
+  // point. rho_l_sat is monotone decreasing, so this is unique where it exists.
+  function tempSolid(cfg, M) {
+    var p2 = cfg.pressurizer2;
+    if (!(M > 0)) return T_CRIT_C;
+    if (M / rho_l_sat(1) >= p2.V_pzr_m3) return null;          // over-full even ice-cold
+    if (M / rho_l_sat(T_CRIT_C) < p2.V_pzr_m3) return T_CRIT_C; // fits at every temperature
+    var lo = 1, hi = T_CRIT_C;
+    for (var i = 0; i < 60; i++) {
+      var m = 0.5 * (lo + hi);
+      if (M / rho_l_sat(m) < p2.V_pzr_m3) lo = m; else hi = m;
+    }
+    return lo;
+  }
+
+  // BUILT AND MEASURED, NOT YET WIRED IN — and the measurement is why *(OWNER RULING,
+  // 2026-08-17: "Go")*. Against the shipped path it is a strict improvement on everything the
+  // rail touched: it is a FIXED POINT of an already-settled state to 1e-11 °C at every level
+  // from 20 to 95 %, and heater authority becomes CONTINUOUS across the whole band —
+  //
+  //   level %        20      55      70      75      78      85      95
+  //   shipped      3.017   2.893   2.858   2.958  -0.124  -0.000  -0.000   psi/s
+  //   this solve   2.563   2.843   2.835   2.826   2.818   2.799   2.765
+  //
+  // — so the near-solid "no equilibrium above" gap is an artifact of the operator split, not
+  // a property of the plant, exactly as the scoping predicted.
+  //
+  // WHAT STOPS IT SHIPPING: energy. Wired in, a heater step leaks **9.79 % at 55 % level**
+  // (node gains 1618.5 kJ of a delivered 1794.0, with no surge in the case to defer any of
+  // it). The cause is not in this function — it is that **this model has no state function
+  // for energy**. Heat is injected as `T += Q/C` against the LIQUID+METAL capacity, while any
+  // (M, V, U) solve must account the whole mass; the two disagree by exactly the steam's
+  // share. So the injection side has to be converted with the solve — heater, spray and surge
+  // enthalpy added to U directly — and until it is, `solveFlash`+`settle` stays.
+  //
+  // Wiring it in prematurely also reddens `C1b` (which measures the OLD decomposition's own
+  // identity, `E = mf·h_fg + C·ΔTsat`, and is stale by construction once the split goes) and
+  // `E1` (the stratification contrast weakens: instant-mix peaks +6.578 psi where it used to
+  // fall). Neither has been adjudicated. `C4b` and `C4c` would also need rewriting — C4c for
+  // the third time, because the gap it pins would be closed.
+  // Solve the node from (mass, volume, energy). Sets m_liq / m_stm / T_liq and returns the
+  // pressure. Sets `pzr_solid_unresolved` when the energy demands x <= 0 — the node is
+  // water-solid and the two-region model has no state to return.
+  function solveSaturated(s, cfg) {
+    s.pzr_solid_unresolved = false;
+    var M = (s.pzr_m_liq_kg || 0) + (s.pzr_m_stm_kg || 0);
+    var U = nodeEnergy(cfg, M, s.pzr_m_stm_kg || 0, s.pzr_t_liq_c);
+    var Tsol = tempSolid(cfg, M);
+    if (Tsol === null) { s.pzr_solid_unresolved = true; return pressureFrom(s, cfg); }
+    var TLO = 1, THI = Tsol;
+    function resid(T) { return nodeEnergy(cfg, M, Math.max(0, qualityAt(cfg, M, T)) * M, T) - U; }
+    var rLo = resid(TLO), rHi = resid(THI);
+    if (rHi < 0) {                       // more energy than the solid point can hold: SOLID
+      s.pzr_solid_unresolved = true;
+      s.pzr_t_liq_c = THI;
+      var xS = Math.max(0, qualityAt(cfg, M, THI));
+      s.pzr_m_stm_kg = Math.max(1e-9, xS * M);
+      s.pzr_m_liq_kg = Math.max(1e-6, M - s.pzr_m_stm_kg);
+      return pressureFrom(s, cfg);
+    }
+    if (rLo > 0) { s.pzr_t_liq_c = TLO; }   // colder than the table: clamp, no flag (not solid)
+    else {
+      var lo = TLO, hi = THI;
+      for (var i = 0; i < 80 && hi - lo > 1e-10; i++) {
+        var mid = 0.5 * (lo + hi);
+        if (resid(mid) < 0) lo = mid; else hi = mid;
+      }
+      s.pzr_t_liq_c = 0.5 * (lo + hi);
+    }
+    var x = Math.min(1, Math.max(0, qualityAt(cfg, M, s.pzr_t_liq_c)));
+    s.pzr_m_stm_kg = Math.max(1e-9, x * M);
+    s.pzr_m_liq_kg = Math.max(1e-6, M - s.pzr_m_stm_kg);
+    return pressureFrom(s, cfg);
+  }
 
   // The residual whose root is the settled state. Evaluated on a scratch temperature so the
   // caller's state is never left holding a probe value.
@@ -1109,6 +1228,10 @@
     stepTailpipe:     function (s, cfg, dt)   { return V1.stepTailpipe(s, cfg, dt); },
     reseed:           reseed,
     reconcile:        reconcile,
+    solveSaturated:   solveSaturated,   // the conservative solve — A/B before it is wired in
+    qualityAt:        qualityAt,
+    nodeEnergy:       nodeEnergy,
+    tempSolid:        tempSolid,
     seedFromState:    seedFromState,   // v1 has no counterpart — the engine's call is guarded
     // control + hydraulics — PORTED UNCHANGED in 3b. `relief()` is recent, sourced and not
     // implicated (block valve, porv_stuck_frac, sqrt-dp against live containment); the
