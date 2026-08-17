@@ -336,6 +336,24 @@ function runSuite(D, rec, quiet) {
         try { D.stepDamage(D.createDamage({}), 0.02, { cladTemp_c: 300 }); return false; }
         catch (e) { return /fuelTemp_c/.test(e.message); }
       })(), '');
+  /* AND A NON-FINITE TEMPERATURE MUST THROW RATHER THAN LATCH. Measured on a 20 cm2 break
+   * with emergency injection running: the plant is held cool and undamaged for 1250 s, then
+   * reaches the 0.1 MPa property floor (#487) and the temperatures diverge. The latches
+   * reported DAMAGED and MELTED on a plant whose state had been LOST -- the alarming answer,
+   * and unearned in exactly the way run_pwr2_true_state refuses 'not scrammed' from an
+   * engine with no protection layer. NaN >= x is false, so NaN alone never latched; the
+   * latch fired on the DIVERGING finite values on the way there. */
+  ckT('a NaN clad temperature THROWS rather than latching a wrecked core', (function () {
+        var dmN = D.createDamage({});
+        try { D.stepDamage(dmN, 0.02, { cladTemp_c: NaN, fuelTemp_c: 300 }); return false; }
+        catch (e) { return /NON-FINITE/.test(e.message) && dmN.melted === false &&
+                           dmN.fuel_damaged === false; }
+      })(), 'and it must leave the latches untouched on the way out');
+  ckT('...and so does an infinite FUEL temperature', (function () {
+        try { D.stepDamage(D.createDamage({}), 0.02,
+                           { cladTemp_c: 300, fuelTemp_c: Infinity }); return false; }
+        catch (e) { return /NON-FINITE/.test(e.message); }
+      })(), '');
 }
 
 console.log('\nPWR2 Layer 5 -- DAMAGE: Baker-Just oxidation, and nothing in it is fitted');
@@ -388,6 +406,9 @@ var MUTATIONS = [
   ['the margin FLOORS at zero, hiding how far past the limit a core went',
    '      pct_margin_f: LIM.pct_limit_f - (drivers.cladTemp_c * 9 / 5 + 32),',
    '      pct_margin_f: Math.max(0, LIM.pct_limit_f - (drivers.cladTemp_c * 9 / 5 + 32)),'],
+  ['a lost (non-finite) state is allowed to latch damage -- the alarming unearned answer',
+   '    if (!isFinite(drivers.cladTemp_c) || !isFinite(drivers.fuelTemp_c)) {',
+   '    if (false) {'],
   /* CONSTRUCTION */
   ['caller rated power ignored at construction',
    '      rated_thermal_kW: opts.rated_thermal_kW === undefined ? 300000 : opts.rated_thermal_kW,',

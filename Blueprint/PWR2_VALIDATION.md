@@ -1982,3 +1982,104 @@ minimal-context fixture asserts every damage field rather than only the latches.
 
 `run_pwr2_true_state.js`: 34 → 42 checks, 13/13 mutations. `node test/run_all.js --fast`:
 **70 runners at baseline.**
+
+## 39. THE CHAIN, DRIVEN ONCE — AND THE FEEDBACK IS WORTH 344 SECONDS — 2026-08-17
+
+Part 3. Every link had a gate; nothing had driven them together, and the chain **is** the claim:
+
+```
+break -> inventory falls -> core voids -> LOOP FLOW COLLAPSES -> the film coefficient collapses
+      -> the cladding heats -> Baker-Just runs -> ITS HEAT GOES BACK INTO THE CLADDING
+      -> it heats faster -> the reaction runs faster still
+```
+
+That last feedback is the only thing here no single-file gate can see, and it is why core damage
+behaves unlike every other transient in this engine: **it accelerates.** Everything else decays.
+
+### 39.1 The chain, measured — 0.002 m² (20 cm²) break at full power, no emergency injection
+
+| t (s) | event | source for the milestone |
+|---|---|---|
+| 108 | core void past 50 % | — |
+| 131 | loop flow under 5 % of rated | — |
+| **334** | clad reaches **1200 °F**, hydrogen generation begins | GEND-061 §4.3 |
+| **507** | clad reaches **1800 °F**, reaction "can be significant" | Ginna UFSAR ch15 |
+| **637** | clad reaches **2200 °F** — `fuel_damaged` latches | 10 CFR 50.46 criterion 1 |
+| 749 | fuel passes the UO₂ melting point — `melted` latches | GEND-061 §4.3 |
+
+The ordering is the evidence. **Voiding precedes the flow collapse, and the flow collapse precedes
+the heat-up** — so the cladding heats because cooling was lost, not because the break happened.
+That distinction is exactly what §36's pump fix bought: before it, the flow never collapsed and the
+cladding never heated at all.
+
+### 39.2 The feedback, isolated
+
+The same scenario run twice, differing in one argument — whether the reaction's own heat is handed
+back to the cladding:
+
+| | feedback OFF | feedback ON |
+|---|---|---|
+| clad reaches 1200 °F | 334 s | **334 s** — identical |
+| clad reaches 2200 °F | 981 s | **637 s** |
+| cladding consumed at 1200 s | 15.4 % | **100 %** |
+
+**Both runs reach the hydrogen onset at the same instant**, which is what makes everything after it
+attributable: the feedback cannot act before there is a reaction to feed back. From there the two
+diverge by **344 seconds** to the 50.46 limit and by a factor of six in oxidation. And the
+feedback-off run still oxidises 15.4 %, so the comparison is against a model that does something —
+a zero there would have proved nothing.
+
+### 39.3 Closure instead of a mutation harness
+
+No `loadFrom`/`MUTATIONS` here, deliberately and for `run_pwr2_loca.js`'s stated reason: every
+library this touches already carries its own injection self-test, and the only new code is wiring
+that lives in the test's own `scenario()` rather than in a patchable `SRC` string. The defence is
+tight quantitative equality instead — a dropped term, a sign error or a double-count fails these
+directly rather than merely going unasserted:
+
+| claim | measured |
+|---|---|
+| energy released = 1510 cal/g × zirconium consumed | **13,497,322.3238 kJ**, both sides, tolerance 1 kJ |
+| hydrogen = the stoichiometric ratio × it | 94.4257 kg, to 1×10⁻⁹ |
+| oxidised mass = areal oxide × clad surface | 2136.3824 kg, to 1×10⁻⁹ |
+| never more zirconium than the core contains | 2136 of 2136 kg |
+
+Courant held for all 60,000 steps at the unchanged house `dt = 0.02 s`, with no substepping, in
+both runs.
+
+### 39.4 ⚠ TWO THINGS THIS GATE EXPLICITLY DOES NOT CLAIM
+
+**TIMING.** When the cladding reaches a temperature depends on `pwr2_fuel.js`'s low-flow film
+coefficient, which is unsourced, and on two declared optimistic simplifications. The times above
+are recorded so the *acceleration* can be measured as a difference between two runs of the same
+model — a real comparison — and are not offered as plant data.
+
+**THE END STATE, and this is the one place the model runs PESSIMISTIC** where every other declared
+simplification runs optimistic. Unmitigated, the reaction consumes 100 % of the cladding, because
+nothing here models the two things that actually terminate it: **relocation** — GEND-061 lists
+*"Zircaloy melting and relocation to generally colder regions and resulting reduced exposed-surface
+areas"* among what makes TMI-2 hard to calculate — and **quenching**. TMI-2 itself stopped at ~45 %
+because injection was restored. The terminal 100 % is what an unmitigated, unrelocated core does,
+reported rather than asserted as prototypical.
+
+### 39.5 The mitigated case runs, and it found one more defect
+
+Emergency injection was tried on the same break, and it **works for 1250 s** — the cladding stays
+at 230–450 °F, oxidation is zero and no latch fires. Then the plant reaches the 0.1 MPa property
+floor with almost no inventory left, which is the condition #487 records, and the temperatures
+diverge.
+
+**The latches then reported `fuel_damaged` AND `melted` on a plant whose state had been lost.**
+`NaN >= x` is false, so NaN alone never latched — the latch fired on the diverging *finite* values
+on the way there. That is the worst possible failure mode for an outcome-grading flag: it is the
+alarming answer, and it is unearned in exactly the way `pwr2_true_state.js` refuses to report *"not
+scrammed"* from an engine with no protection layer.
+
+`stepDamage` now **refuses a non-finite temperature loudly**, and leaves the latches untouched on
+the way out. That is all this layer can honestly do — the divergence itself is #487's and is not
+papered over here.
+
+### 39.6 Gate
+
+`test/run_pwr2_coredamage.js`, 18 checks. `run_pwr2_damage.js` 43 → 45.
+`node test/run_all.js --fast`: **71 runners at baseline.**

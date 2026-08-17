@@ -185,6 +185,24 @@
       throw new Error('pwr2_damage: drivers.fuelTemp_c is REQUIRED — the melt latch is a FUEL ' +
                       'temperature and this layer will not substitute the clad\'s.');
     }
+    /* ⚠ A NON-FINITE TEMPERATURE MUST NOT LATCH DAMAGE, and this is not hypothetical. MEASURED,
+     * 0.002 m2 (20 cm2) break with emergency injection running: the plant is held cool and
+     * undamaged for 1250 s, then reaches the 0.1 MPa property floor with almost no inventory —
+     * the condition issue #487 records — and the temperatures diverge and go NaN. The latches
+     * then reported **fuel_damaged AND melted on a plant whose state had been LOST**, which is
+     * the worst possible failure for an outcome-grading flag: it is the alarming answer, and it
+     * is unearned in exactly the way `pwr2_true_state.js` refuses "not scrammed" from an engine
+     * with no protection layer.
+     *
+     * `NaN >= x` is false, so NaN alone never latched — the latch fired on the DIVERGING finite
+     * values on the way there. This refuses the non-finite case loudly, which is all this layer
+     * can honestly do; the divergence itself belongs to #487 and is not papered over here. */
+    if (!isFinite(drivers.cladTemp_c) || !isFinite(drivers.fuelTemp_c)) {
+      throw new Error('pwr2_damage: a NON-FINITE temperature was supplied (clad ' +
+                      drivers.cladTemp_c + ', fuel ' + drivers.fuelTemp_c + '). The plant has ' +
+                      'left the range its property library is characterised over — see #487. ' +
+                      'This layer will NOT latch core damage from a state that has been lost.');
+    }
 
     var g     = dm.geom;
     var w_max = wMax(g);
