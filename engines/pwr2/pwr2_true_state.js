@@ -69,10 +69,34 @@
      'ctmt_spray_active', 'ctmt_fan_demand', 'ctmt_fan_safety', 'ctmt_fan_active',
      'ctmt_recomb_demand', 'ctmt_recomb_active']);
 
-  declareMissing('protection', 'PWR2 has NO PROTECTION LAYER. Measured consequence (D4 §23.3): a ' +
-    'full load rejection is ridden out on relief at ~67 % power where a real plant scrams.',
-    ['scrammed', 'msiv_open', 'sg_imbalance_active', 'station_blackout', 'ac_available',
-     'plant_mode', 'plant_mode_name', 'load_mode']);
+  /* ⚠ THE PROTECTION BLOCK SPLIT WHEN pwr2_protection.js LANDED, and the split is the useful
+   * part. It used to be one entry reading "PWR2 has NO PROTECTION LAYER" — true when written,
+   * false the moment the RPS existed, and it would have gone on telling consumers there was no
+   * model for `scrammed` while a real sourced one answered. `scrammed` is now supplied. The
+   * remaining seven were never really "no protection layer": each is blocked by its OWN missing
+   * system, and lumping them under one reason hid which. */
+  declareMissing('main steam isolation', 'there is no main steam isolation valve in PWR2. The ' +
+    'ISOLATION SIGNAL is real — pwr2_protection.js carries the sourced low-steam-pressure and ' +
+    'high-high-steam-flow functions with the table\'s lead/lag — but nothing downstream has a ' +
+    'valve for it to shut, so a position would be invented.',
+    ['msiv_open']);
+
+  declareMissing('electrical', 'PWR2 has no electrical model at all: no buses, no diesels, no ' +
+    'offsite supply. Both fields are the same gap, and it also keeps the sourced RCP ' +
+    'undervoltage and underfrequency (57 Hz) reactor trips out of pwr2_protection.js.',
+    ['station_blackout', 'ac_available']);
+
+  declareMissing('plant mode', 'a plant MODE is a classification of temperature, pressure and ' +
+    'shutdown margin against commercial mode definitions. Every input exists; the mode BANDS do ' +
+    'not, and inventing them would put a made-up boundary in front of the player as though it ' +
+    'were the industry one.',
+    ['plant_mode', 'plant_mode_name']);
+
+  declareMissing('load coupling detail', 'load_mode is the TURBINE load mode (follow / manual / ' +
+    'disconnected), a control-layer concept with no engine state behind it; sg_imbalance_active ' +
+    'is an annunciator threshold on indicated MWe against a commanded target, and PWR2 has no ' +
+    'load target because nothing here commands one.',
+    ['sg_imbalance_active', 'load_mode']);
 
   declareMissing('condenser', 'pwr2_condenser.js supplies vacuum, CW inlet temp and availability; ' +
     'there is no hotwell or condensate-pump model, so the feed-side flows stay unmapped.',
@@ -163,7 +187,8 @@
     var rx = ctx.reactor || {}, sg = ctx.sg || {}, tb = ctx.turbine || {},
         rl = ctx.relief || {}, cv = ctx.cvcs || {}, rh = ctx.rhr || {},
         br = ctx.break_ || {}, ct = ctx.containment || {}, cd = ctx.condenser || {},
-        ec = ctx.eccs || {}, aw = ctx.afw || {}, dg = ctx.damage || {};
+        ec = ctx.eccs || {}, aw = ctx.afw || {}, dg = ctx.damage || {},
+        pt = ctx.protection || {};
     var ts = {};
     function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }
 
@@ -286,6 +311,14 @@
      * defect ("the wiring stopped one call short of where the physics landed") reproduced in a
      * commit whose whole subject is not doing that. It reads as ABSENT, i.e. "no model", which is
      * indistinguishable from the truth to every consumer downstream. Each `put` guards itself. */
+    /* --- PROTECTION, from pwr2_protection.js ---
+     * `scrammed` is the LATCHED reactor trip. The reactor protection system is automatic plant
+     * hardware, so the latch is plant state and belongs here — but the ROD INSERTION that follows
+     * it is the caller's, exactly as pwr2_protection.js's header says. A consumer seeing
+     * `scrammed` true while power stays up is looking at a wiring gap, and that is the intended
+     * visibility rather than something to paper over here. */
+    put('scrammed', pt.reactor_trip);
+
     put('clad_temp_c',       rx.T_clad_c);
     put('fuel_damaged',      dg.fuel_damaged);
     put('melted',            dg.melted);

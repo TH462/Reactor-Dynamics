@@ -27,7 +27,7 @@ var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr', 'pwr2_break', 'pwr2_containment', 'pwr2_condenser',
- 'pwr2_afw', 'pwr2_damage'
+ 'pwr2_afw', 'pwr2_damage', 'pwr2_protection'
 ].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
@@ -104,13 +104,20 @@ function runSuite(TS, rec, quiet) {
      * exercised separately below. */
     var dmg = RD.damage.stepDamage(RD.damage.createDamage({}), 0.02,
       { cladTemp_c: r.T_clad_c, fuelTemp_c: r.T_fuel_c });
+    /* PROTECTION at the plant's OWN readings, lined up as a plant AT POWER is -- the low flux
+     * block requested, which P-10 permits at 100 %. A healthy plant, so `scrammed` reads false
+     * because it EARNED false. */
+    var prt = RD.protection.stepProtection(
+      RD.protection.createProtection({ blockLowFlux: true }), 0.02,
+      { pressure_mpa: sys.P, power_frac: r.power_pct / 100,
+        flow_frac: sys.mdot_loop / 1630, steam_pressure_mpa: sr.P_sec, steam_flow_frac: 1.0 });
     var ctx = { sys: sys, reactor: r, sg: sr, turbine: tr, relief: rr, cvcs: cv, rhr: rh,
                 break_: brk, containment: ctr, condenser: cnd, eccs: ecc, afw: awf,
-                damage: dmg,
+                damage: dmg, protection: prt,
                 boron_ppm: 700, rated_steam_kgs: rated, mdot_rated: 1630, natcirc_frac: 0.15,
                 M_nominal: sys.M_total };
     return { ts: TS.buildTrueState(ctx), ctx: ctx, sys: sys, r: r, sr: sr, tr: tr, rr: rr,
-             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf, dmg: dmg };
+             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf, dmg: dmg, prt: prt };
   }
   var B = build(), ts = B.ts;
 
@@ -164,9 +171,28 @@ function runSuite(TS, rec, quiet) {
      'SUPPLIED, checked below');
   ck('the pressurizer is ABSENT, not zero', ts.pzr_level_pct === undefined &&
      ts.porv_open === undefined, '#472 owns it; a level of 0 would be a fabricated TMI trainer');
-  ck('scram state is ABSENT, not false', ts.scrammed === undefined,
-     'reporting "not scrammed" from an engine with no protection layer is the worst case: it is ' +
-     'the reassuring answer, and it is unearned');
+  /* ⚠ TURNED AROUND, NOT RE-BANDED. This check used to assert `scrammed` was ABSENT, with the
+   * note "reporting 'not scrammed' from an engine with no protection layer is the worst case: it
+   * is the reassuring answer, and it is unearned". That was right, and it stopped being right the
+   * moment `pwr2_protection.js` landed — a check still asserting the absence would now be
+   * asserting the ABSENCE OF THE FIX. When the thing a check pins gets repaired, the check has to
+   * be turned around to guard the repair, exactly as run_pwr2_fuel's Doppler-reference check was.
+   *
+   * The unearned-false worry does not go away, it just moves: a supplied `false` is only worth
+   * anything if the field can also be TRUE, so both are checked. */
+  ck('scram state is SUPPLIED now, and reads false on a healthy plant',
+     ts.scrammed === false && ts.scrammed === B.prt.reactor_trip,
+     'supplied-and-false is a MEASUREMENT that no trip function is past its setpoint; absent ' +
+     'would mean no protection system, and the two must not read alike');
+  var tsTrip = TS.buildTrueState({
+    sys: B.sys, reactor: B.r,
+    protection: RD.protection.stepProtection(RD.protection.createProtection({}), 5.0,
+      { pressure_mpa: 20.0, power_frac: 1.0, flow_frac: 1.0 })
+  });
+  ck('...and TRUE on a plant past a sourced setpoint, so the false above is earned',
+     tsTrip.scrammed === true,
+     'driven past the 2425 psia high-pressure trip for longer than its 2.0 s delay, on a context ' +
+     'carrying ONLY sys, reactor and protection');
 
   /* ---- EVERY DECLARED GAP CARRIES ITS REASON ------------------------------------------- */
   head('EVERY DECLARED GAP CARRIES A REASON AND AN OWNER');
@@ -328,6 +354,10 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['scram state is never wired through, so a tripped plant reads as no protection system',
+   "    put('scrammed', pt.reactor_trip);", ''],
+  ['scram state is fabricated as FALSE rather than read from the protection system',
+   "    put('scrammed', pt.reactor_trip);", "    put('scrammed', false);"],
   /* ---- CORE DAMAGE WIRING (2026-08-17). The first is the defect this commit actually made:
    * the damage block landed INSIDE the auxiliary-feedwater guard, so a caller with a damage
    * model and no AFW silently got no damage fields at all. It reads as "no model", which is
@@ -350,8 +380,13 @@ var MUTATIONS = [
    '    function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }',
    '    function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }\n' +
    '    Object.keys(MISSING).forEach(function (f) { ts[f] = 0; });'],
-  ['scram state is reported FALSE from an engine with no protection layer',
-   "    put('pressure_mpa',  sys.P);", "    put('pressure_mpa',  sys.P);\n    ts.scrammed = false;"],
+  /* RETIRED, not lost: the mutation here injected `ts.scrammed = false` right after the first
+   * put, pinning "do not fabricate a scram from an engine with no protection layer". There IS
+   * a protection layer now and the real assignment happens LATER, overwriting the injection —
+   * so the mutation became a NO-OP that still reported as caught. That is a mutation testing
+   * nothing while looking like coverage, which is the thing this file's own header warns
+   * about. Its intent is carried by the two scram mutations above, which fabricate at the
+   * real assignment site instead. */
   ['a MISSING entry loses its reason',
    "  declareMissing('containment', 'pwr2_containment.js supplies pressure and temperature; spray, ' +\n" +
    "    'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +\n" +

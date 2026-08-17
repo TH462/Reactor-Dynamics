@@ -2083,3 +2083,134 @@ papered over here.
 
 `test/run_pwr2_coredamage.js`, 18 checks. `run_pwr2_damage.js` 43 → 45.
 `node test/run_all.js --fast`: **71 runners at baseline.**
+
+## 40. THE PROTECTION SYSTEM — AND THE FIRST THING IT SAYS IS THAT THE PLANT CANNOT RUN — 2026-08-17
+
+Owner ruling, 2026-08-17: the protection layer next, chosen over consolidating. `pwr2_protection.js`,
+`test/run_pwr2_protection.js` — 57 checks, 24/24 mutations, no blind spots.
+
+### 40.1 Sourced, from one table, with delays
+
+Ginna UFSAR ch15 (ML20339A101) **Table 15.0-6, "Summary of RPS and ESFAS Functions Actuated"** gives
+a setpoint *and* an analysis delay per function. Eight are built:
+
+| function | setpoint | delay |
+|---|---|---|
+| High pressurizer pressure reactor trip | 2425 psia | 2.0 s |
+| Low pressurizer pressure reactor trip | 1775 psia | 2.0 s |
+| Power-range high flux, low setting | 35 % | 0.5 s |
+| Power-range high flux, high setting | 118 % | 0.5 s |
+| Low reactor coolant loop flow | 87 % | 1.0 s |
+| Safety injection, low pressurizer pressure | 1715 psia | — |
+| Safety injection, low steam pressure | 327.7 psia, **lead/lag 12/2** | 2.0 s |
+| High-high steam flow | 155 % of nominal | 2.0 s |
+
+**It reports and latches; it does not move anything.** The reactor protection system is automatic
+plant hardware, so it acts on its own the way a safety valve lifts — the split `pwr2_relief.js`
+already draws, where its safeties lift by themselves and its dump takes a caller's demand. So this
+file evaluates, delays and latches, and the *caller* inserts the rods and lines up injection. **A
+trip reported and not acted on is a wiring gap, and it is visible** — the shim shows `scrammed`
+true while power stays up.
+
+### 40.2 P-10, and why the asymmetry is the whole model
+
+Ginna TS Bases B 3.3.1 on Power Range Neutron Flux-Low, verbatim: *"This Function may be **manually
+blocked** by the operator when two-out-of-four power range channels are greater than approximately
+8% RTP (P-10 setpoint). This Function is **automatically unblocked** when three-out-of-four power
+range channels are below the P-10 setpoint."*
+
+Blocking is an operator action the permissive merely *permits*; unblocking is automatic and the
+operator has no say. So the block is a **permissive-gated enable that always auto-reinstates** —
+never a defeatable trip, which is what this engine's predecessor shipped and had to have superseded
+(#295 F1/F2). Modelled by **revoking the request itself** below the permissive, so it must be made
+again on the way up; gating without revoking would leave a stale request that re-arms by itself.
+
+**⚠ And the gate proved a line of mine redundant.** I had written `blockEffective = request && p10Met`
+as well as the revoke. No mutation of the `&& p10Met` could be made to fail, because the revoke has
+already cleared the request whenever the permissive is not met. Removed: *a guard that cannot alter
+behaviour is not defence in depth, it is an untestable line* — and keeping it would have hidden
+which mechanism carries the safety property. It is the revoke.
+
+### 40.3 ⚠ OVERTEMPERATURE ΔT IS ABSENT, AND THIS IS THE BEST-EVIDENCED OMISSION IN THE ENGINE
+
+Overtemperature and overpower ΔT are the DNBR protection and are what a real plant trips on first
+in most transients. **The corpus has both halves and they cannot be joined:**
+
+- **Ginna UFSAR ch15 Table 15.0-7 gives the CONSTANTS** — K1 1.30, K2 0.00093/psi, K3 0.0185/°F,
+  K4 1.15, K5 0.0014/°F, K6 0.00/°F, T′ 564.6–576.0 °F, P′ 2250 psia.
+- **NUREG-1431 Rev 4 Vol 1 (ML12100A222) Table 3.3.1-1 Note 1 gives the EQUATION** — and every
+  constant in it is a bracketed placeholder: *"These values denoted with [*] are specified in the
+  COLR."* The transfer-function structure on that page is also OCR-scrambled.
+
+**And the two documents transpose the units on the symbols.** NUREG-1431 writes `K2 [*]/°F` and
+`K3 [*]/psig`; Ginna gives K2 in /psi and K3 in /°F. Mapping Ginna's constants onto NUREG-1431's
+equation therefore requires guessing which symbol carries which term — an inference across two
+documents that disagree, on a page one of them has already mangled.
+
+That is **the bracketed-placeholder trap and the OCR-column trap at once**, and both are already in
+this project's standing trap list. **Having the constants is not having the equation.** Left out
+rather than assembled.
+
+Also absent, each for its own reason rather than one blanket one: low-low and high-high SG water
+level (sourced, but `pwr2_sg.js` is lumped and has no level geometry — the fabricated linear scale
+the shim already refuses); RCP undervoltage and underfrequency (57 Hz sourced, no electrical model);
+turbine trip (no trip state on `pwr2_turbine.js`).
+
+### 40.4 THE FIRST THING IT MEASURED: every PWR2 fixture runs below the low-pressure trip
+
+The point of building this was that **PWR2 rides out a full load rejection at ~67 % power where a
+real plant scrams**, so every casualty started from an unscrammed plant. Driving that scenario with
+the protection system wired produced something else entirely.
+
+| | |
+|---|---|
+| sourced low pressurizer pressure reactor trip | **1775 psia (12.238 MPa)** |
+| design operating pressure | 2235 psia (15.41 MPa) |
+| where the settling fixture actually sits | **1285 psia (8.860 MPa)** |
+| margin | **490 psia BELOW the trip** |
+| protection latches | **t = 9.08 s**, `lo_pzr_press`, at 11.229 MPa on the way down |
+
+**The plant trips nine seconds into every run, on a real sourced setpoint, before any casualty is
+injected.** The load-rejection measurement is unrunnable as a result: the trip fires at t = 6.70 s
+against a rejection scheduled for t = 20 s.
+
+**The protection system is not wrong — it is the first instrument PWR2 has had that reads on this.**
+§35.4 found the fixtures were not at their design point (11.096 MPa, zero core subcooling) and
+recorded it as #486, a caveat on steady-state comparisons. It is worse than a caveat: **a plant
+490 psia below its low-pressure reactor trip is a plant that cannot run at all**, and until now
+nothing in the engine could say so, because nothing knew what the setpoint was.
+
+This escalates #486 from "steady-state comparisons carry a caveat" to **"no protection or casualty
+scenario is meaningful until the pressurizer exists"** — and the pressurizer is #472, on the
+workbench lane.
+
+### 40.5 Gate
+
+`run_pwr2_protection.js` — 57 checks, 24/24 mutations. Both directions are checked for every
+function, because a protection system's first failure mode is tripping a healthy plant and its
+second is being wired in and never firing.
+
+**Three fixture defects of mine, all found by the injection self-test, and the third generalises:**
+
+- **The at-power fixture inherited a lineup instead of stating one.** Twelve checks went red on a
+  correct model because the low flux setting (35 % RTP) is permanently asserted at 100 % power and
+  the fixture had not requested the block a real plant has in. #460's lesson exactly.
+- **A "check on ordering" that could not distinguish two orderings.** The cascade check asserts the
+  latch keeps the FIRST cause. Three arrangements failed to test it: one function per system (first
+  = last); two crossed simultaneously (same step, so table order decides either way); and staged in
+  time but with the later function later in the table (the per-step scan picks the earlier-in-table
+  one regardless). **The arrangement that discriminates puts the second-in-time function EARLIER in
+  the table.** Generalised: *a check on ordering is vacuous unless the two orderings disagree.*
+- **A mutation that had quietly become a no-op.** `run_pwr2_true_state`'s "scram reported FALSE from
+  an engine with no protection layer" injected `ts.scrammed = false` before the real assignment —
+  which now exists and overwrites it. It reported as caught while testing nothing. Retired, its
+  intent carried by two mutations at the real assignment site.
+
+`pwr2_true_state.js` coverage **56 → 57 of 109**: `scrammed` is supplied, and the check that pinned
+its absence was **turned around to guard the repair** rather than deleted — asserting false on a
+healthy plant *and* true past a setpoint, because a supplied `false` is only worth anything if the
+field can also be true. The old single "no protection layer" declaration split into four, each
+naming the system that actually blocks it: main steam isolation, electrical, plant mode, and load
+coupling.
+
+`node test/run_all.js --fast`: **74 runners at baseline.**
