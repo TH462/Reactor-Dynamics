@@ -82,9 +82,11 @@
     ['clad_temp_c', 'fuel_damaged', 'melted', 'destruction_cause', 'zirc_heat_pct',
      'core_uncovered_frac']);
 
-  declareMissing('nuclear instruments', 'kinetics produces reactor power, not detector readings. ' +
-    'Source/intermediate range and period are an instrument-layer concern.',
-    ['sr_counts_cps', 'ir_amps', 'sr_energized', 'startup_rate_dpm', 'reactor_period_s']);
+  declareMissing('nuclear instruments', 'period and startup rate are supplied (pwr2_reactor.js, ' +
+    'derived from the fission signal — no calibration needed); source/intermediate range counts ' +
+    'and current stay missing because turning a neutron population into cps or amps needs a ' +
+    'full-scale calibration this corpus does not give — only the TRIP setpoints are sourced.',
+    ['sr_counts_cps', 'ir_amps', 'sr_energized']);
 
   declareMissing('auxiliary feedwater', 'pwr2_afw.js supplies flow; there is no pump curve to ' +
     'read a discharge pressure off, and no CST inventory to report running dry.',
@@ -185,6 +187,11 @@
     put('reactivity_pcm', rx.rho_pcm);
     put('xenon_pct_eq',   rx.xenon_pct_eq);
     put('boron_ppm',      ctx.boron_ppm);
+    /* period_s is genuinely Infinity at true steady state -- reported as such (a perfectly
+     * steady reactor HAS an infinite period), not suppressed to undefined, which would make the
+     * field flicker in and out of `unaccounted` depending on plant state. */
+    put('reactor_period_s',   rx.period_s);
+    put('startup_rate_dpm',   rx.startup_rate_dpm);
 
     /* --- steam generator --- */
     put('steam_pressure_mpa', sg.P_sec);

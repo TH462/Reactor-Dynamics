@@ -244,6 +244,41 @@ function runSuite(R, rec, quiet) {
       'temperature is not the witness here: it is one node in a circulating loop and recovers ' +
       'toward the loop average as the plant mixes, so it is not monotone.');
 
+  /* ---- REACTOR PERIOD AND STARTUP RATE -----------------------------------------------------
+   * MEASURED first (HR12), not assumed: a critical reactor at t=0 gives SUR = -2.1e-9 dpm (the
+   * sign is roundoff, the magnitude is the point); after settling, 0.005 dpm. Riving the same
+   * over-cooling recovery the section above already drives (rods scrammed, RATED sink held on)
+   * gives -3.34 dpm at 1 s (power still falling), +12.5 dpm at 10 s (climbing back THROUGH
+   * criticality -- "supercriticality is indicated by a constant positive startup rate",
+   * ML11223A342), and 0.04 dpm at 24 s once the plant has re-settled near 100 %. */
+  head('REACTOR PERIOD AND STARTUP RATE  [derived from the fission signal, no calibration needed]');
+  var f0 = fixture();
+  var step0 = R.stepReactor(f0.rx, f0.sys, 0.02, { boron_ppm: f0.B });
+  ck('a reactor at its own critical IC reports essentially ZERO startup rate on step one',
+     step0.startup_rate_dpm, 0, 1e-4, 'dpm');
+  ckT('...and period is effectively infinite there, not some finite fitted number',
+      !isFinite(step0.period_s) || Math.abs(step0.period_s) > 1e6, step0.period_s);
+  ckT('SUR stays near zero once the plant SETTLES at steady state (the loop-holds fixture)',
+      Math.abs(hold.startup_rate_dpm) < 0.5, hold.startup_rate_dpm.toFixed(4) + ' dpm');
+
+  var f4 = fixture(); var rods4 = [{ steps: 228, max_steps: 228, worth: 0.04068 }];
+  ride(f4, 200, null, rods4); rods4[0].steps = 0;                 /* settle, then scram */
+  var sur1s  = ride(f4, 50, null, rods4);                          /* 1 s: still falling */
+  var sur10s = ride(f4, 450, null, rods4);                         /* +9 s = 10 s: climbing back */
+  var sur24s = ride(f4, 700, null, rods4);                         /* +14 s = 24 s: re-settled */
+  ckT('SUR is clearly NEGATIVE while the scrammed core is still cooling down',
+      sur1s.startup_rate_dpm < -1, sur1s.startup_rate_dpm.toFixed(2) + ' dpm at 1 s');
+  ckT('...and clearly POSITIVE while it climbs back THROUGH criticality -- the sourced lesson',
+      sur10s.startup_rate_dpm > 5,
+      sur10s.startup_rate_dpm.toFixed(2) + ' dpm at 10 s, power ' + sur10s.power_pct.toFixed(1) + ' %');
+  ckT('...and back near zero once it has RE-SETTLED -- proves prevPower tracks the LATEST step',
+      Math.abs(sur24s.startup_rate_dpm) < 2, sur24s.startup_rate_dpm.toFixed(3) + ' dpm at 24 s');
+  /* THE CONVERSION CONSTANT, AS A PURE IDENTITY. SUR = C/T by definition, so SUR*T recovers C
+   * exactly whenever T is finite -- true no matter what the reactor is doing, which is what makes
+   * it a mutation-sensitive check on the CONSTANT specifically rather than on plant behaviour. */
+  ck('SUR * period recovers the sourced conversion constant exactly (60 / ln 10, not 26.06 typed)',
+     sur1s.startup_rate_dpm * sur1s.period_s, 60 / Math.LN10, 1e-9, '');
+
   /* ---- THE LAYERS BELOW NO LONGER THROW ---------------------------------------------------- */
   head('THE CONNECTION  [both lower layers refuse to invent these; supplying them is the job]');
   ckT('kinetics is given a fuel temperature it did not have to invent', (function () {
@@ -299,7 +334,19 @@ var MUTATIONS = [
    '    var cool  = opts.coolTemp_c === undefined ? kin.T_mod_ref_c : opts.coolTemp_c;',
    '    var cool  = kin.T_mod_ref_c;'],
   ['caller options never reach the kinetics it builds',
-   '    var kin   = K.createKinetics(opts);', '    var kin   = K.createKinetics({});']
+   '    var kin   = K.createKinetics(opts);', '    var kin   = K.createKinetics({});'],
+  /* PERIOD / STARTUP RATE */
+  ['the ratio is inverted (period and SUR come out with the wrong SIGN everywhere)',
+   'var ratio = rx.prevPower > 0 ? kr.power / rx.prevPower : 1;',
+   'var ratio = rx.prevPower > 0 ? rx.prevPower / kr.power : 1;'],
+  ['prevPower is never updated (SUR compares every step against the INITIAL power forever)',
+   '    rx.prevPower = kr.power;', ''],
+  ['SUR is derived from TOTAL core heat instead of the fission signal (wrong physical quantity)',
+   'var ratio = rx.prevPower > 0 ? kr.power / rx.prevPower : 1;',
+   'var ratio = rx.prevPower > 0 ? kr.Q_total_frac / rx.prevPower : 1;'],
+  ['the sourced conversion constant is wrong (60/ln10 replaced by a nearby-looking number)',
+   'var sur_dpm = isFinite(period_s) ? (60 / Math.LN10) / period_s : 0;',
+   'var sur_dpm = isFinite(period_s) ? 26 / period_s : 0;']
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------

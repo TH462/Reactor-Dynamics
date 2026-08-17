@@ -32,6 +32,29 @@
  * rated power with cold fuel spends the first ~15 s dumping the difference into the coolant, which
  * looks exactly like a physics defect and is purely an initial-condition error.
  *
+ * ---------------------------------------------------------------------------------------
+ * REACTOR PERIOD AND STARTUP RATE — [derived], not sourced, because there is nothing plant-
+ * specific to source. *"Supercriticality is indicated by a constant positive startup rate and
+ * steadily increasing source range count rate"* (ML11223A342) is the operational fact this
+ * unlocks; the formula itself is a textbook definition, the same status as the matrix-exponential
+ * integrator PWR2_PHYSICS.md §15 already carries:
+ *
+ *     n(t) = n0 * e^(t/T)   =>   T = dt / ln(n_new / n_old)         reactor period, seconds
+ *     SUR = (60 / ln 10) / T                                        decades per minute
+ *
+ * `60 / ln(10)` is COMPUTED from `Math.LN10`, never written as the literal 26.06 some training
+ * texts quote — a computed constant cannot silently drift from its own definition.
+ *
+ * FISSION power (`kr.power`), not `Q_total_frac`, is the signal — reactor period describes
+ * NEUTRON POPULATION growth, and decay heat's slow tail would give the wrong number entirely
+ * (core_heat_pct barely moves in the first second of a startup that power_pct has already left
+ * subcritical). What this does NOT attempt: `sr_counts_cps` and `ir_amps` need a count-rate /
+ * current CALIBRATION this corpus does not give (an evidence pass found the sourced NIS TRIP
+ * setpoints — Ginna's 5e-11 A P-6 permissive, a generic 1e5 cps source-range trip — but no
+ * full-scale figure to turn a neutron population into an instrument reading). Building period/SUR
+ * needs no such calibration; building count-rate or current from the same population would, and
+ * stays declared-missing rather than invented.
+ *
  * UNITS ARE SI internally. Powers in kW, temperatures degC, reactivity dk/k.
  */
 (function (root) {
@@ -67,7 +90,10 @@
      * kinetics reports Q_total = P*(1-f0) + sum(H_i), which equals P at any steady state. */
     var fuel  = F.createFuel({ rated_thermal_kW: rated,
                                T_fuel_c: F.steadyFuelTemp(geom, rated * kin.P, cool) });
-    return { kin: kin, fuel: fuel, rated_thermal_kW: rated };
+    /* Seeded at the initial fission fraction, so the FIRST step's period compares against the
+     * condition the plant actually started at rather than against undefined. A reactor created
+     * already at steady state therefore reports Infinity/0 on step one, correctly. */
+    return { kin: kin, fuel: fuel, rated_thermal_kW: rated, prevPower: kin.P };
   }
 
   /* stepReactor(rx, sys, dt, drivers) -> the reactor's contribution to Layer 4.
@@ -94,6 +120,12 @@
       coolTemp_c: cool
     });
 
+    /* ---- REACTOR PERIOD AND STARTUP RATE -- see the header derivation. ---- */
+    var ratio = rx.prevPower > 0 ? kr.power / rx.prevPower : 1;
+    var period_s = (ratio > 0 && ratio !== 1) ? dt / Math.log(ratio) : Infinity;
+    var sur_dpm = isFinite(period_s) ? (60 / Math.LN10) / period_s : 0;
+    rx.prevPower = kr.power;
+
     return {
       /* THE SPLIT, CARRIED THROUGH. `power_pct` is FISSION; `core_heat_pct` is TOTAL. Equal at
        * every steady state, apart the moment the rods drop — CLAUDE.md and CONTEXT.md §6.3 both
@@ -111,7 +143,9 @@
       tau_fuel_s:     fr.tau_s,
       /* THE ONLY heat path. Do not add corePower alongside this — see the header. */
       heats:          fr.heats,
-      Q_core_kW:      kr.Q_total_frac * rx.rated_thermal_kW
+      Q_core_kW:      kr.Q_total_frac * rx.rated_thermal_kW,
+      period_s:       period_s,
+      startup_rate_dpm: sur_dpm
     };
   }
 

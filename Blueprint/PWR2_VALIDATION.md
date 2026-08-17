@@ -1361,3 +1361,40 @@ drying SG stops absorbing heat whatever the dump does — is not yet DEMONSTRATE
 loss-of-main-feedwater scenario driving `pwr2_sg.js` to dryout with AFW as the only save, which is
 scenario-authoring, not engine work, and out of scope for today per the owner's directive that
 instructional content is placeholder for now). Built and gated; the demonstration is future work.
+
+## 34. REACTOR PERIOD AND STARTUP RATE — THE OTHER TWO OF FIVE NUCLEAR-INSTRUMENT FIELDS — 2026-08-17
+
+Third build today. §31.4's other independently-buildable candidate was nuclear instruments (3
+channels). The evidence pass found real Ginna setpoints — the P-6 permissive at **5×10⁻¹¹ A**
+(Ginna TS Bases, the plant's own anchor figure, preferred over a generic 10⁻¹⁰ A HRTD figure found
+in the same pass) and a generic **10⁵ cps** source-range trip (NRC HRTD ML11216A094, no Ginna-
+specific cps figure exists) — but **no full-scale calibration** anywhere in the corpus for turning
+a neutron population into counts-per-second or amps. Two more searches (`"10-3 amps"`, `"IR
+calibrat"`) confirmed the genuine zero. **Building `sr_counts_cps` / `ir_amps` / `sr_energized`
+without that calibration would be fabricating an instrument reading** — exactly the defect
+`pwr2_true_state.js` exists to forbid — so those three stay declared-missing.
+
+**Reactor period and startup rate needed no such calibration**, because kinetics already tracks
+the fission power fraction (`kr.power`) with full dynamic range from deep subcritical through
+rated power — the SAME signal a real neutron population is, just not yet turned into an instrument
+current. `T = dt / ln(P_new/P_old)`; `SUR = (60/ln 10) / T` — a textbook definition, computed from
+`Math.LN10` rather than typed as the literal 26.06 some training texts quote, so the constant
+cannot silently drift from its own derivation. Added to `pwr2_reactor.js` (the file that already
+owns the fission signal) rather than a new file, since there is no new system here, only two more
+derived outputs of one that exists.
+
+**Measured** (the over-cooling recovery scenario `run_pwr2_reactor.js` already drives — rods
+scrammed, RATED sink held on, the plant walks back through criticality on moderator feedback
+alone): a critical reactor reports SUR = **-2×10⁻⁹ dpm** on step one (indistinguishable from zero);
+**-3.37 dpm** at 1 s post-scram (still falling); **+12.28 dpm** at 10 s, power 42 % and climbing —
+*"supercriticality is indicated by a constant positive startup rate and steadily increasing source
+range count rate"* (ML11223A342), demonstrated numerically rather than asserted; **+0.08 dpm** at
+24 s, re-settled near 100 %. `SUR * period` recovers `60/ln(10)` to 1e-9 as a pure identity, at any
+point in the transient where period is finite — the check that would catch the constant being
+typed wrong rather than derived.
+
+`test/run_pwr2_reactor.js`: 27 → 34 checks, 18/18 mutations caught (four new: inverted ratio,
+frozen `prevPower`, wrong signal — total heat instead of fission — and a mistyped constant).
+`pwr2_true_state.js` coverage: **49 → 51 of 109**. `run_all.js`: 69 runners at baseline, unchanged
+count from the AFW commit — this landed in the same foundational file five other gates depend on
+(`pwr2_reactor.js`), so the full aggregate was re-run rather than assumed safe.

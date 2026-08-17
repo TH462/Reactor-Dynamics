@@ -182,6 +182,10 @@ function runSuite(TS, rec, quiet) {
      ts.fuel_temp_c.toFixed(1) + ' degC');
   ck('reactivity is the reactor\'s', Math.abs(ts.reactivity_pcm - B.r.rho_pcm) < 1e-12,
      ts.reactivity_pcm.toFixed(1) + ' pcm');
+  ck('startup_rate_dpm traces to the reactor\'s own signal, not re-derived here',
+     ts.startup_rate_dpm === B.r.startup_rate_dpm, ts.startup_rate_dpm.toFixed(3) + ' dpm');
+  ck('reactor_period_s is a real number (possibly Infinity), never dropped to undefined',
+     typeof ts.reactor_period_s === 'number', ts.reactor_period_s + ' s');
   ck('secondary pressure is the SG\'s', Math.abs(ts.steam_pressure_mpa - B.sr.P_sec) < 1e-12, '');
   ck('electrical output is the turbine\'s', Math.abs(ts.mwe_output - B.tr.mwe_output) < 1e-12,
      ts.mwe_output.toFixed(2) + ' MWe');
