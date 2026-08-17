@@ -58,9 +58,10 @@ var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_sg.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
- 'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_turbine', 'pwr2_relief'].forEach(function (f) { require(path.join(E, f + '.js')); });
+ 'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_turbine', 'pwr2_relief',
+ 'pwr2_condenser'].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, R = RD.reactor,
-    TB = RD.turbine, RL = RD.relief;
+    TB = RD.turbine, RL = RD.relief, CD = RD.condenser;
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, core: RD.core,
@@ -132,9 +133,10 @@ function runSuite(G, rec, quiet) {
     var sg  = G.createSG({});
     var tb  = TB.createTurbine({ load_target_mwe: MWE_RATED });
     var rl  = RL.createRelief({});
+    var cd  = CD.createCondenser({});
     /* SEE THE HEADER: the fuel temperature is REQUIRED here, not optional. */
     var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
-    return { sys: sys, rx: rx, sg: sg, tb: tb, rl: rl, B: B,
+    return { sys: sys, rx: rx, sg: sg, tb: tb, rl: rl, cd: cd, B: B,
              rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed) };
   }
   /* ⚠ THE DEMAND IS IN MEGAWATTS ELECTRICAL, and that is the whole point of this revision.
@@ -144,7 +146,7 @@ function runSuite(G, rec, quiet) {
    * near-agreement of "57.5 %" with a steam-fraction result was a coincidence of two
    * similar-looking percentages (D4 §20.7, where the quantitative claim was withdrawn). With
    * pwr2_turbine.js the two engines can finally be handed the SAME command. */
-  function ride(pl, n, demandOf, dumpLaw) {
+  function ride(pl, n, demandOf, dumpLaw, cwOn) {
     var r = null, sr = null, tr = null, t = 0;
     for (var i = 0; i < n; i++) {
       if (demandOf) pl.tb.load_target_mwe = demandOf(t);
@@ -157,9 +159,18 @@ function runSuite(G, rec, quiet) {
        * engine's steady-state form (pwr_config: setpoint 7.03 MPa = Ginna 1005 psig no-load,
        * band 0.25, max 0.28), so the two plants are given the same dump behaviour and not just
        * the same command. */
+      /* THE CONDENSER GATES THE DUMP. Availability is no longer a boolean somebody asserts: it
+       * comes from a computed backpressure, so losing circulating water removes the dump path the
+       * way it does in a real plant. `cwOn` is the caller's, because tripping a pump is an
+       * operator action and not something this layer decides. */
+      var cr = CD.stepCondenser(pl.cd, 0.02, {
+        duty_kW: steam * (W.h_g(pl.sg.P) - G.SG.h_feed) * (1 - TB.etaCycle()),
+        cw_pumps_running: cwOn === undefined ? true : cwOn
+      });
       var rr = RL.stepRelief(pl.rl, pl.sg.P, 0.02, {
         rated_steam_kgs: pl.rated_steam,
-        dump_demand: dumpLaw ? dumpLaw(pl.sg.P) : 0
+        dump_demand: dumpLaw ? dumpLaw(pl.sg.P) : 0,
+        condenser_available: cr.available
       });
       var out = steam + rr.total_kgs;
       sr = G.stepSG(pl.sg, G.primaryTavg(pl.sys), 0.02, { feed: out, steam: out });
@@ -171,7 +182,8 @@ function runSuite(G, rec, quiet) {
     return { power: r.power_pct, tavg_c: G.primaryTavg(pl.sys), tavg_f: degF(G.primaryTavg(pl.sys)),
              sgP: sr.P_sec, duty: sr.duty_kW, fuel: r.T_fuel_c, rho: r.rho_pcm,
              mwe: tr.mwe_output, deficit: tr.deficit_mwe, steam: tr.steam_kgs,
-             dumpFrac: rr.dump_kgs / pl.rated_steam, safetyOpen: rr.safety_open };
+             dumpFrac: rr.dump_kgs / pl.rated_steam, safetyOpen: rr.safety_open,
+             backpressure: cr.backpressure_in_hg, condAvail: cr.available };
   }
 
   /* ---- THE PLANT IS AT ITS DESIGN POINT BEFORE ANYTHING IS ASKED OF IT ---------------------- */
@@ -259,6 +271,28 @@ function runSuite(G, rec, quiet) {
       Math.abs(restored.power - base.power) < 6 && Math.abs(restored.tavg_f - base.tavg_f) < 6,
       'power ' + restored.power.toFixed(2) + ' % vs ' + base.power.toFixed(2) +
       ', Tavg ' + restored.tavg_f.toFixed(2) + ' vs ' + base.tavg_f.toFixed(2) + ' degF');
+
+  /* ---- LOSS OF THE CONDENSER: THE RELIEF LADDER, DRIVEN BY A PHYSICAL CAUSE ----------------
+   * Until pwr2_condenser.js existed, `condenser_available` was a boolean a scenario asserted, so
+   * the dump could only be taken away by fiat. Now the vacuum is computed, and losing circulating
+   * water removes the dump because the backpressure says so. This is the chain end to end. */
+  head('LOSS OF CIRCULATING WATER  [the dump is removed by PHYSICS, not by a flag]');
+  var plC = plant();
+  ride(plC, BASE, null, dumpLaw);
+  var withCw = ride(plC, AFTER, function () { return MWE_CUT; }, dumpLaw);
+  var noCw   = ride(plC, AFTER, function () { return MWE_CUT; }, dumpLaw, false);
+  ckT('with circulating water the condenser holds a vacuum and the dump is passing steam',
+      withCw.backpressure < 5 && withCw.condAvail === true && withCw.dumpFrac > 0.05,
+      withCw.backpressure.toFixed(2) + ' in Hg, dump ' + (withCw.dumpFrac * 100).toFixed(1) + ' %');
+  ckT('losing the pumps destroys the vacuum', noCw.backpressure > 20 && noCw.condAvail === false,
+      withCw.backpressure.toFixed(2) + ' -> ' + noCw.backpressure.toFixed(1) + ' in Hg');
+  ckT('...which SHUTS THE DUMP, with nobody commanding it shut', noCw.dumpFrac < 1e-9,
+      'the dump law is still calling for ' + (dumpLaw(plC.sg.P) * 100).toFixed(0) +
+      ' % of capacity; the condenser is what stops it');
+  ckT('...and the secondary climbs onto the SAFETY VALVES instead',
+      noCw.safetyOpen === true && noCw.sgP > withCw.sgP,
+      withCw.sgP.toFixed(3) + ' -> ' + noCw.sgP.toFixed(3) + ' MPa, safeties LIFTED — dump to ADV ' +
+      'to safeties is the ladder #484 measured on the current engine, now reachable here');
 
   /* ---- SECONDARY INVENTORY -----------------------------------------------------------------
    * ⚠ ADDED BECAUSE A MUTATION WENT VACUOUS. The ride always sets feed = steam, so `dM = feed -
