@@ -1109,3 +1109,48 @@ depressurization, cold-shutdown arrival, and its subcooling leg) and `pressure t
 setpoint` still misses at 14.21 MPa against 13.0 ± 1. **Parity on suites with conservation now
 exact is a real gain, but the cooldown regression is not adjudicated and must be** — it is the
 first thing to look at, not the freeze.
+
+### The cooldown reds adjudicated — one chain, and one of the old passes was hollow (2026-08-17)
+
+*(OWNER RULING, 2026-08-17: "Next")*. Five checks changed state across the energy conversion.
+Measured on both models at the same layer, one at a time.
+
+**`pressure tracks a lowered setpoint` — the OLD PASS WAS HOLLOW.** Setpoint to 13.0 MPa, 300 s,
+traced step by step:
+
+| t (s) | 0 | 100 | 200 | **250** | 300 |
+|---|---|---|---|---|---|
+| **before** (psia) | 2235.0 | 2173.5 | 2081.7 | **1855.6 — `solid=true`, spray → 0.0 %** | 1855.7 |
+| **after** (psia) | 2235.0 | 2169.3 | 2111.2 | 2084.8 | 2060.9 |
+
+The old model reached 12.79 MPa — inside the probe's 13.0 ± 1 band — **by falling into the
+exhausted state and freezing there**, with the spray shut off and nothing moving for the last
+50 s. That is a pass produced by the very defect the conversion removes. The new model
+depressurizes continuously and honestly; it simply does not reach the band in 300 s.
+**Not a regression. The check needs a longer window, once the freeze below is fixed.**
+
+**The four cooldown reds are ONE CHAIN, and it is the freeze.** Instrumented over the whole
+roundtrip:
+
+| | steps | **exhausted** | **pressure frozen** | lowest P reached |
+|---|---|---|---|---|
+| **before** | 397,000 | **95.4 %** | **17.9 %** | 0.086 MPa |
+| **after** | 927,000 | **98.0 %** | **2.4 %** | 0.100 MPa |
+
+**The exhaustion is not new** — the pre-conversion model already spent 95.4 % of the roundtrip
+there, so the conversion did not cause it. What the conversion did is cut *freezing* from
+17.9 % to 2.4 %: the node now moves where it used to be stuck, which is why
+`pressure recovers to a raised setpoint` went **green** (12.79 → 12.79 before).
+
+The chain, end to end: the heatup fills the node solid at t ≈ 1000 s (letdown removes
+0.120 kg/s against 0.31–1.57 kg/s of thermal displacement) → the node stays solid for the rest
+of the run → **`stepPressure`'s solid branch does not advance the node's masses**, so spray has
+no bubble to condense and no way to make one → the cooldown cannot get below **4.06 MPa**
+against the 2.76 MPa RHR interlock → RHR never aligns → cold shutdown is never reached → the
+subcooling leg follows. **Four reds, one cause.**
+
+**So the freeze is not a corner case.** It was found on a synthetic full-spray probe and looked
+like one; measured here it governs 98 % of the plant's longest evolution. It is the next thing,
+ahead of everything else on this issue — and the fix is specific: the solid branch predates the
+pressurizer having state, and has to advance `pzr_m_liq_kg` / `pzr_m_stm_kg` with the surge
+while bulk modulus owns pressure.
