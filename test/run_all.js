@@ -992,6 +992,7 @@ var BASELINES = {
   'run_pwr2_loadfollow.js':{ code: 0, score: '26passed 0failed 26checks', secs: 90 },   // THE ACCEPTANCE TEST: Tier A coupling A1, power follows load, rods in MANUAL. Measured 99.6 -> 54.0 % with Tavg 577.95 -> 603.92 degF against the first engine's 100 -> 57.5 % and 579.3 -> 602.1. Bands admit the declared physics differences (real L0 density in the moderator coefficient, derived rather than tuned fuel rise); they are NOT fitted to the first engine.
   'run_pwr2_reactor.js':   { code: 0, score: '27passed 0failed 27checks', secs: 30 },
   'run_pwr2_turbine.js':   { code: 0, score: '29passed 0failed 29checks', secs: 2 },
+  'run_pwr2_true_state.js':{ code: 0, score: '22passed 0failed 22checks', secs: 2 },   // THE SHIM. 37 of 109 contract fields supplied, 72 DECLARED missing with a reason and an owning system, 0 unaccounted. The fraction is NOT a score to raise by writing mappings -- it measures how much plant exists, and any other way of raising it is the fabrication the gate forbids.
   'run_pwr2_relief.js':    { code: 0, score: '30passed 0failed 30checks', secs: 2 },
   'run_pwr2_rhr.js':       { code: 0, score: '39passed 0failed 39checks', secs: 150 },
   'run_pwr2_eccs.js':      { code: 0, score: '28passed 0failed 28checks', secs: 25 },
