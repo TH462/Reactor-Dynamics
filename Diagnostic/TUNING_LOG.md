@@ -29,6 +29,138 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-17-backshop-a (#479 — core damage built, and three defects that had to be cleared before it could work at all)
+
+**Ask:** core damage was chosen over the protection layer *(owner ruling, 2026-08-17, selecting the
+recommended option of two put to him)*, and the fuel model was to be changed under a second ruling:
+**"pin at rated"** — make the film coefficient respond to the coolant, normalised so the rated
+state, and therefore the gap conductance solved against the sourced Doppler defect, cannot move.
+**Gates:** `run_all` **75 runners at baseline** (full, not `--fast`). **Landed:** six commits
+`1d8ee11` → `bf6b74a`, nothing pushed. **Detail:** `Blueprint/PWR2_VALIDATION.md` §35–39, which
+carries the tables; this entry carries the traps.
+
+**The plan's premise got a probe before any code, and the probe found the plant was NaN 62 s into a
+50 cm² break.** Nothing had ever run a PWR2 break past ~60 s. Three defects came out of that, in
+sequence, each hidden behind the one before it — and all three are the SAME CLASS: **a term that
+silently assumes single-phase liquid and has no way to notice the fluid changed.** None needed a
+new constant. All three are exactly neutral at rated by construction, which is what let them be
+added to a calibrated model without re-solving anything.
+
+**1. The enthalpy state had no wall while every READER had one.** `a[i] = h + dt*dH[i]/m_n[i]`
+divides by a node mass a boil-off drives toward zero. The core node hit quality 1.0 at 0.4 kg of
+steam, `h` passed 1×10³⁰⁴ by t = 62 s and overflowed. *Invisible because `T_from_h`, `rho_from_h`
+and the vtable all saturate* — a node at 1e304 reported 800 °C and a sane density, so the state was
+absurd for tens of seconds while every gauge read plausibly. `solveP` in the same file argues at
+length for exactly this wall on the pressure SEARCH and nobody applied it to `h`.
+**⚠ The trap inside the fix, and I walked into it:** clamping the stored `h` AFTER the solve leaves
+the solve balancing one set of densities while the state holds another — the table saturates at a
+different value than `RHO(h_ceiling)`, 0.24 kg/m³ at 15.41 MPa, 0.5 kg on the core node,
+**re-introduced every step a node sits out of range**. The clamp has to be inside `F(P)`. The gate
+now checks it against the solve's OWN reported residual, which separates the two causes.
+
+**2. PWR2 had a POSITIVE reactivity excursion on every large break.** `moderatorReactivity` takes a
+**temperature** and rebuilds a density through the LIQUID branch, so a boiling core was invisible
+to it and there was no void coefficient at all. On a depressurising plant the coolant follows
+saturation DOWN — at t = 60 s the core was 241 °C and 92.5 % steam while the term read *"colder
+moderator, therefore denser"* and inserted **+3433 pcm**. Five times prompt critical; power 0.8 % →
+4.7×10¹² in ONE step. That is the inverse of the defining characteristic of an undermoderated PWR.
+The file's own header claimed it *"reads real density from L0"* — true only while subcooled, and
+nothing said so. Fixed with the **density deficit against saturated liquid**, using the
+already-calibrated `modCoeff`, exactly zero on a subcooled core.
+**⚠ Two things nearly caused a correct term to be "corrected":** *quality is not void fraction, and
+here they differ by 12×* — 1.53 % quality is 18.8 % void by volume, and normalising on quality puts
+the coefficient at −1100 pcm/% void, far outside every published range; measured properly it is
+**−89.4 pcm per % void**, inside the real-PWR band. And the first reference — "liquid at the node's
+own temperature" — **died in exactly the case it existed for**: `T_from_h` clamps a dry node to
+800 °C, `h_l` clamps that back to 358, and at 0.1 MPa the result is itself two-phase, so it reported
+**−7.6 pcm** on a completely dry core where the deficit is ~958 kg/m³. *A void coefficient that
+switches itself off in a voided core is worse than not having one, because it is invisible.*
+
+**3. The reactor coolant pump did not know it was pumping steam.** `pumpHead` returned
+`dP_rated * r*r` — pressure rise from shaft speed and nothing else. Measured, 5 cm² break, no ECCS:
+**`mdot_loop` held 1630 kg/s for the whole 840 s blowdown**, unchanged to four figures, with the core
+dry at 470 °C and 2.4 % of the inventory left. **The plant was circulating rated mass flow of
+steam.** Consequences: clad heat-up was 1 °C so core damage was *unreachable*, and natural
+circulation — a Tier A behaviour — could never be observed because forced flow never stopped. A
+centrifugal pump develops HEAD, `dP = ρgH`; friction for a given MASS flow runs as `1/ρ`. Neither
+term had a density, which is why the flow did not merely stay high but stayed EXACTLY at rated. The
+equilibrium that falls out is the textbook affinity result, **mass flow proportional to density**,
+checked as an identity to 1×10⁻³. **Blast radius: none — all 69 runners at baseline with the
+momentum equation changed**, which is the neutrality claim cashed rather than asserted.
+
+**What the fixes exposed: PWR2's fixtures have never been at their design point.** Measured with
+the void term disabled, i.e. the plant as it stood before this session, `run_pwr2_loadfollow`'s
+baseline sits at **11.096 MPa against a 15.41 MPa design with ZERO core subcooling**. It always
+did. The block asserting *"the plant is at its design point"* checked Tavg, secondary pressure and
+net reactivity and **never primary pressure or subcooling**, which is where the whole departure is;
+it passed a 579.30 °F Tavg check because a depressurised plant happened to land near that number.
+`run_pwr2_reactor` was worse — a check read a **saturation temperature** and its comment explained
+it as *"the core outlet doing exactly what it should"*. Cause is the fixture having no pressure
+control; **#472 owns it, filed as #486.** A1 itself is unchanged (71.1 % / 594.8 °F both plants),
+because the load cut repressurises the primary and the core goes subcooled.
+**⚠ A delta contaminated by a baseline is not a delta:** the "fuel cools with it" check asserted a
+≥80 °C drop; across the change the RESULT moved 0.5 °C while the BASELINE moved 21, so the delta
+went 94.7 → 73.9 and failed. Re-banding 80 to 60 would have fitted the check to whichever plant it
+last ran against. It is now an identity against `steadyFuelTemp` — **within 0.01 °C on both plants.**
+
+**Then the ruled work.** Clad became a thermal node (stack split so `r_fc + r_cw ≡ r_total` to full
+double precision — the Doppler solve untouched; clad τ 0.061 s against the fuel's 3.7, advanced by
+an exact 2×2 matrix exponential). `pwr2_damage.js` is Baker-Just with **nothing fitted** — rate law,
+both constants, 1510 cal/g, the stoichiometry, the UO₂ melting point and all three 10 CFR 50.46
+criteria quoted from the corpus. **The strongest check in it: the model agrees with both onset
+statements while having no threshold** — negligible at GEND-061's 1200 °F (0.066 %/100 s),
+appreciable at Ginna's 1800 °F (1.78 %), 7.04 % at the 2200 °F limit against 50.46's own 17 %
+ceiling, from one Arrhenius exponent. Zirconium inventory cross-checks to **83.6 %** of GEND-061's
+TMI-2 whole-core figure scaled on power, and it MUST land below because a whole-core figure includes
+thimbles and grids.
+
+**The chain, driven once** (20 cm², no injection): void 108 s → flow collapse 131 s → 1200 °F 334 s
+→ 1800 °F 507 s → 2200 °F 637 s → melt 749 s. **With the reaction heat fed back the 50.46 limit
+arrives 344 s earlier than without**, and 100 % of the cladding is consumed against 15.4 %. Both
+runs reach the onset at the same instant, which is what makes the divergence after it attributable.
+Energy closes to 1 kJ in 13,497,322.
+
+**NOT claimed, and both directions matter.** Timing depends on the unsourced low-flow film
+coefficient, so the times exist only so the *acceleration* can be measured as a difference between
+two runs of one model. And the terminal 100 % is **the one place this model runs PESSIMISTIC** where
+every other declared simplification runs optimistic: nothing models relocation or quench, and TMI-2
+stopped at ~45 % because injection was restored. Injection holds the core here for 1250 s.
+
+**⚠ Defects made and caught inside this session's own commits.** The shim's damage block first
+landed **inside the auxiliary-feedwater guard**, so a caller with damage and no AFW got all five
+fields silently dropped and read them as "no model" — `pwr2_true_state.js`'s own headline defect,
+reproduced in the commit whose subject is not doing that. Caught only because the wrecked-core
+fixture passes a MINIMAL context; a check written on the populated fixture would have passed. And
+the latches **reported `fuel_damaged` and `melted` on a plant whose state had been lost** — `NaN >= x`
+is false so NaN never latched, it fired on the diverging finite values on the way to the 0.1 MPa
+floor. `stepDamage` now refuses a non-finite temperature loudly.
+
+**Three more authoring traps, all mine:** a guess wearing an assertion's clothes (asked for >50 °C
+of oxidation-driven clad rise, measured 12.7 — the model was right, 5000 kW into 397 kW/K can only
+be 12.6); *every clad check read a SETTLED state*, so an instantly-slaving clad was invisible until
+a transient was added; and that transient's first fixture started both nodes cold, which measures
+the FUEL's time constant, not the clad's. A fourth: a construction fixture that varied nothing —
+`n_assemblies` leaves `rod_length_total_m` unchanged because the ENVELOPE is held fixed.
+
+**Filed:** **#486** (fixtures never at design point, blocked behind #472), **#487** (a blowdown
+reaching the 0.1 MPa property floor ends in NaN rather than a held state; `enthalpyClamped` fires
+one step before, so a caller can detect it). `core_uncovered_frac` stays declared-missing with its
+reason **rewritten** — not "no damage model" but that a level needs PHASE SEPARATION Layer 2's
+homogeneous-equilibrium water does not have, and that machinery is #472's.
+
+**Lane maintenance.** `develop` merged in at the end (8 commits, 7 conflicts). The one that would
+have gone wrong silently: `run_hardrules` conflicted at backshop **311** vs develop **286** and the
+answer is **NEITHER** — it is a static scan, so the merged tree carries the union of both lanes'
+sites. **Measured 316.** `Manuals/12_SIM_PHYSICS.md` auto-merged, which is the case that dropped a
+§5.5 in the 2026-08-03 merge; both lanes' content was grepped back out explicitly and both survived.
+
+**Still open on this issue:** the protection layer — the last substantial system not blocked behind
+another lane, and today's work sharpens the case, because PWR2 now models a core that damages itself
+but still rides out a full load rejection at ~67 % power where a real plant scrams. Needs a ruling;
+it was the option declined this morning.
+
+---
+
 ## Session log — 2026-08-17-develop-a (#485 — the 7-day analytics window rounded everything for four hours a day, and the commit that broke it had measured its *other* half)
 
 **Ask:** owner, 2026-08-16 evening: *"on the telemetry analytics page i have it set to a 7 day
