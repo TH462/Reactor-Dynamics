@@ -873,3 +873,76 @@ that was closer to right than the retraction was.
 The rule that would have caught it: **when a sweep reveals a regime change, establish which side of
 it your case sits on before reasoning from it.** The arming threshold was in the code I had already
 read — `rejectMwe > 40` against a rejection of exactly 40 — and I did not check the inequality.
+
+## 27. THE RESIDUAL IS CLOSED — IT IS THE DECLARED MODERATOR COEFFICIENT, AMPLIFIED 12× — 2026-08-16
+
+§26 left 1.71 points of power unattributed. Built the full side-by-side first this time, and
+reasoned second — which is what previous attempts skipped.
+
+| quantity | current engine | PWR2 | Δ |
+|---|---|---|---|
+| fission power | 76.81 % | 75.10 % | **−1.71** |
+| core heat | 77.39 % | 75.72 % | −1.67 |
+| decay heat | 5.38 % | 5.31 % | −0.07 |
+| **Tavg** | **593.00 °F** | **592.12 °F** | **−0.88** |
+| T hot leg | 616.0 °F | 614.08 °F | −1.92 |
+| T cold leg | 570.0 °F | 570.16 °F | +0.16 |
+| SG pressure | 7.067 MPa | 7.070 MPa | +0.003 |
+| dump | 14.74 % | 16.32 % | +1.58 |
+| loop ΔT | 46.00 °F | 43.92 °F | −2.08 |
+
+### 27.1 ⚠ One row is a KNOWN TRAP and is not a finding
+
+`T secondary` reads **570.2 °F against 547.71 °F** — 22 °F apart at the same pressure, which looks
+alarming and is not real. The current engine's `t_sg_c` is the **tube-bundle metal temperature**,
+not the secondary saturation temperature. At 7.07 MPa, T_sat is ~548 °F, so **PWR2's 547.71 is the
+correct saturation value** and the two quantities are simply different things.
+
+This trap was already hit and recorded earlier in this same session, when `tools/pwr2_ab.js`
+compared the same pair and produced a −7.6 % error against a truth of −2.5 %. It was fixed there
+with a `satPairOK()` guard. **It cost a second encounter anyway**, which is an argument for the
+guard living somewhere a person reads rather than only in one harness.
+
+### 27.2 The mechanism: SG duty is a small difference of large numbers
+
+```
+    SG duty = UA * (Tavg - T_sat)
+```
+
+ΔT is **~25 °C** against a Tavg of **~311 °C**. So the duty — and therefore the power the reactor
+must make to balance it — is sensitive to Tavg by a factor of **Tavg/ΔT ≈ 12**.
+
+Checked both ways, and the arithmetic closes:
+
+- **UA is the same in both plants.** PWR2: 228.53 MW / 24.67 °C = **9264 kW/K**, against the design
+  value 9262 in `pwr2_sg.js`. The current engine at Tavg 593.0 °F with T_sat 286.6 °C gives
+  25.07 °C of ΔT, and 9262 × 25.07 = **232.2 MW = 77.4 % of rated** — which is its measured core
+  heat of **77.39 %**, to two decimals.
+- **The amplification predicts the gap.** 0.49 °C of Tavg over a 24.67 °C ΔT is **2.0 %** of power.
+  Measured difference: **2.2 %**.
+
+So the two plants have the same heat exchanger doing the same thing. **The entire residual is the
+0.88 °F difference in where the reactivity balance puts Tavg**, multiplied by twelve.
+
+### 27.3 And that Tavg difference is a DECLARED design change, not a defect
+
+Where a plant with rods in MANUAL settles is set by ρ = 0 — the sum of moderator, Doppler, boron and
+xenon. PWR2's moderator coefficient reads **real Layer 0 density and measures −23.4 pcm/°C** against
+the current engine's **−26.8**, which `PWR2_PLANT.md` explicitly asked for: *"PWR2's moderator
+coefficient reads real density from L0, so the moderator feedback and the coolant it feeds back from
+are the same water."*
+
+A 13 % weaker moderator coefficient means the plant needs slightly more temperature change to close
+the same reactivity balance — and it lands 0.88 °F away. **The residual is the change working, seen
+through a 12× amplifier.**
+
+### 27.4 Standing
+
+**Closed.** The open-relief A/B now reads: same heat exchanger, same dump law, same command;
+secondary pressure agreeing to 0.003 MPa; Tavg 0.88 °F apart for a declared and intended reason;
+power following from that by the SG's own geometry.
+
+Nothing here is fitted, and nothing needs tuning. What it does say is that **any future A/B on this
+plant must quote Tavg to better than a tenth of a degree to say anything about power**, because the
+SG converts one into the other with a gain of twelve. That is a property of the plant, not of the
+comparison.
