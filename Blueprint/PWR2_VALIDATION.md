@@ -1849,3 +1849,136 @@ identity the gate checks depends on it being the pellet surface, so the *name* w
 quantity left exactly where it was. The clad now has its own reported temperature.
 
 `node test/run_all.js --fast`: all runners at baseline.
+
+## 38. CLAD OXIDATION — AND NOTHING IN IT IS FITTED — 2026-08-17
+
+Part 2 of the core-damage plan. `engines/pwr2/pwr2_damage.js`, and it is the most heavily sourced
+file in this engine: the rate law, both its constants, its heat of reaction, the stoichiometry, the
+fuel melting point and all three acceptance criteria are quoted from documents in the corpus.
+**There is no knob.** So the gate does not check that the model is self-consistent — it checks that
+the model **reproduces its own sources**, at points those sources state independently of the law.
+
+### 38.1 What the evidence pass gave, and it gave more than expected
+
+| fact | value | source |
+|---|---|---|
+| rate law | **d(w²)/dt = 33.3×10⁶ · exp(−45500 / 1.986·T)**, w mg/cm², t s, T K | Ginna UFSAR ch15 (ML20339A101) §15.3.2.4.2 |
+| — mandated by | *"shall be calculated using the Baker-Just equation … ANL-6548"* | 10 CFR 50 Appendix K |
+| — and **not steam limited** | *"The reaction shall be assumed not to be steam limited."* | same |
+| heat of reaction | **1510 cal/g** | Ginna UFSAR ch15, same passage |
+| stoichiometry | *"1 mol of zirconium reacting with 2 mol of water liberates 2 mol of hydrogen"* | GEND-061 §4.3 |
+| peak clad limit | **2200 °F (1204 °C)** | 10 CFR 50.46 criterion 1, verbatim in Ginna ch15 |
+| oxidation limit | **0.17 × cladding thickness** | criterion 2, same |
+| hydrogen limit | **0.01 × the hypothetical all-clad amount** | criterion 3, same |
+| UO₂ melting point | **3100 K (5100 °F)** | GEND-061 §4.3 |
+| onset | *"very little hydrogen … until … 1,200 °F (650 °C)"* | GEND-061 §4.3 |
+
+That App. K sentence matters more than it reads: **the absence of a steam-availability term in this
+model is SOURCED, not an omission.**
+
+### 38.2 The strongest check in the file: it agrees with the onset statements while having no threshold
+
+There is **no onset temperature anywhere in the code** — only an Arrhenius exponent. Yet the law has
+to be negligible where GEND-061 says *"very little hydrogen is generated"* and appreciable where
+Ginna says it *"can be significant"*. A model with a hand-placed onset would satisfy both **by
+construction** and prove nothing. Measured, oxidation of the cladding over 100 s at a held clad
+temperature:
+
+| clad temperature | source's own words | measured |
+|---|---|---|
+| 1200 °F (650 °C) | *"very little hydrogen is generated"* | **0.066 %** |
+| 1800 °F (982 °C) | *"can be significant"* | **1.78 %** |
+| 2200 °F (1204 °C) | 50.46's own limit | **7.04 %**, against 50.46's 17 % ceiling |
+
+Three sourced statements, in the order the two documents put them in, from one exponent. The
+2200 °F figure lands on the right side of criterion 2 with margin — which is what a plant analysed
+to that limit ought to do, and nothing was aimed at it.
+
+### 38.3 Two modelling decisions that each turned out to matter
+
+**Integrated in w², not in w.** Baker-Just is parabolic, so `dw/dt = K/(2w)` is **singular at
+w = 0** — a fresh core takes an infinite first step, or has to be started at a fudged non-zero
+oxide. Advancing `w²` linearly is exact for constant K over a step, has no singularity, and is
+monotone by construction, which is what the contract requires: *"the OXIDE state … is monotonic and
+does not un-grow, but the heat release stops."* **The heat stopping needs no rule** — measured, the
+release falls by more than six orders of magnitude when the core cools from 2200 °F to 300 °C, and
+the Arrhenius factor does all of it.
+
+The parabolic signature is checked directly: **quadrupling the time doubles the oxide, measured
+2.0000 against 2.** Linear kinetics would give 4.
+
+**w_max is mass over surface, not density × thickness.** The two disagree by 6 % — 352.3 against
+374.9 mg/cm² — because ρ·t uses the *outer* radius for an area whose mass sits at a smaller mean
+radius. M/S is the mass-consistent choice: it makes `w/w_max` exactly the fraction of the clad
+inventory consumed, so 50.46's oxidation criterion and its hydrogen criterion are computed off one
+quantity that **closes against `M_clad_kg` to 1×10⁻⁹** instead of two that nearly do.
+
+### 38.4 The source does its own arithmetic twice, and we have to match it
+
+GEND-061 computes hydrogen from zirconium in words, on two different masses. Reproducing those is a
+check on **our reading of the document** as much as on the constant:
+
+- 9,400 kg Zr → **415 kg** H₂, against the document's *"over 400 kg"*
+- 10,500 kg Zr → **464 kg** H₂, against the document's *"460 kg"*
+
+Both inside 1 %. And the engine has to *use* the ratio, not merely export it — the reported hydrogen
+must equal it times the zirconium consumed, checked to 1×10⁻⁹.
+
+### 38.5 The heat, and why damage accelerates
+
+**1.58 % of rated at the 2200 °F limit**, against a decay tail of roughly 1.5 % by the time a core
+gets there. **The reaction roughly doubles the heat source exactly where the cladding already is.**
+That is the acceleration the contract describes — *"the one that makes core damage ACCELERATE
+rather than decay with the decay tail"* — and it falls out of the sourced constants rather than
+being arranged. On a healthy core at 650 °F it is **0.09 kW in a 300 MWt plant**.
+
+### 38.6 The latches, and the split that is easy to get backwards
+
+`fuel_damaged` latches on the **CLAD** passing 50.46's 2200 °F, because criterion 1 is a *cladding*
+limit — the clad is the barrier. `melted` latches on the **FUEL** passing the UO₂ melting point,
+because that is a *fuel* property. `destruction_cause` goes `"none"` → `"thermal_melt"`. All latch
+and none clear: a core that has been damaged stays damaged.
+
+Swapping the two temperatures is a real defect and the gate carries a mutation for each direction,
+plus the pair of fixtures that separates them — hot clad with cool fuel must be *damaged and not
+melted*, hot fuel with cool clad the reverse.
+
+### 38.7 The shim: five fields land, and the sixth's reason CHANGES
+
+`pwr2_true_state.js` coverage **51 → 56 of 109**, all five from systems landing, which is the only
+legitimate way that number moves. `core_uncovered_frac` stays declared-missing — but **its reason
+was rewritten, and that is the point.** It used to read *"no fuel-damage or clad-oxidation model"*,
+which became false the moment this file landed. The real reason is sharper: the geometry is all
+there (volume, midplane datum, 3.66 m flow length), and what is absent is **phase separation** —
+Layer 2 is homogeneous equilibrium with no slip, so a collapsed level would make the uncovered
+fraction identically the void fraction, asserting a stratification the model does not contain. That
+machinery is #472's. The gate now checks the reason *names* the lane and no longer says "no model".
+
+### 38.8 ⚠ THE DEFECT THIS COMMIT MADE, in the commit whose subject is not making it
+
+The damage block landed **inside the auxiliary-feedwater guard** — `if (aw.total_kgs !== undefined)`
+— so a caller supplying a damage model and no AFW got all five fields silently dropped and read
+them as *"no model"*. That is `pwr2_true_state.js`'s own headline defect, verbatim: *"the wiring
+stopped one call short of where the physics landed."*
+
+Caught only because the wrecked-core fixture passes a **minimal context** — `sys`, `reactor`,
+`damage`, nothing else — rather than the fully-populated one. On the populated fixture AFW is
+present, the guard is satisfied, and every field appears. **A check written on the rich fixture
+would have passed and the defect would have shipped.** It is now pinned by a mutation, and the
+minimal-context fixture asserts every damage field rather than only the latches.
+
+### 38.9 Gate
+
+`run_pwr2_damage.js`: **43 checks, 22/22 mutations, no blind spots**. Two authoring traps, both mine:
+
+- **A fixture that varied nothing.** The construction check passed `n_assemblies: 40` expecting more
+  zirconium. `deriveGeometry` holds the core ENVELOPE fixed, so more assemblies means a
+  proportionally shorter active height and `rod_length_total_m` — hence the inventory — is
+  **unchanged**. Moved to the envelope, which changes the height directly.
+- **A threshold asserted only from above.** The melt check drove the fuel one degree past 3100 K,
+  which a model with the melting point set *anywhere below* also satisfies — the self-test found it
+  blind to 3100 K becoming 2500 K. It now also requires that fuel 100 K *below* the point does not
+  melt, which is what actually locates a threshold.
+
+`run_pwr2_true_state.js`: 34 → 42 checks, 13/13 mutations. `node test/run_all.js --fast`:
+**70 runners at baseline.**

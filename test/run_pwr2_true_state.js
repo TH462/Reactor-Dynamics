@@ -27,7 +27,7 @@ var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr', 'pwr2_break', 'pwr2_containment', 'pwr2_condenser',
- 'pwr2_afw'
+ 'pwr2_afw', 'pwr2_damage'
 ].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
@@ -99,12 +99,18 @@ function runSuite(TS, rec, quiet) {
      * (not part of ctx) exercises the injecting branch separately, below. */
     var ecc = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }), sys, 0.02);
     var awf = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true }), 0.02);
+    /* DAMAGE, driven at the plant's OWN temperatures -- a healthy core, so every latch reads
+     * false because it EARNED false and not because nothing was wired. The damaged branch is
+     * exercised separately below. */
+    var dmg = RD.damage.stepDamage(RD.damage.createDamage({}), 0.02,
+      { cladTemp_c: r.T_clad_c, fuelTemp_c: r.T_fuel_c });
     var ctx = { sys: sys, reactor: r, sg: sr, turbine: tr, relief: rr, cvcs: cv, rhr: rh,
                 break_: brk, containment: ctr, condenser: cnd, eccs: ecc, afw: awf,
+                damage: dmg,
                 boron_ppm: 700, rated_steam_kgs: rated, mdot_rated: 1630, natcirc_frac: 0.15,
                 M_nominal: sys.M_total };
     return { ts: TS.buildTrueState(ctx), ctx: ctx, sys: sys, r: r, sr: sr, tr: tr, rr: rr,
-             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf };
+             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf, dmg: dmg };
   }
   var B = build(), ts = B.ts;
 
@@ -235,6 +241,67 @@ function runSuite(TS, rec, quiet) {
      ts.afw_blocked === undefined && ts.afw_discharge_pressure_mpa === undefined &&
      !!TS.MISSING.afw_blocked && !!TS.MISSING.afw_discharge_pressure_mpa, '');
 
+  /* ---- CORE DAMAGE: five supplied, one still declared, and the reason CHANGED -------------
+   * This block is the one this file's header warns about most directly. Five of these six were
+   * declared missing under "no fuel-damage or clad-oxidation model" until the models landed, and
+   * the registry had to be rewritten in the SAME commit or it would have gone on telling
+   * consumers there was no model for a field a real, sourced one already answers. */
+  head('CORE DAMAGE  [five landed today; the sixth is missing for a DIFFERENT reason than before]');
+  ck('clad_temp_c is SUPPLIED, and it traces to the reactor rather than to the damage model',
+     ts.clad_temp_c !== undefined && ts.clad_temp_c === B.r.T_clad_c,
+     'the cladding is a thermal node in the plant energy balance; a damage model reporting its ' +
+     'own clad temperature would report one the balance never saw');
+  ck('...and it sits between the coolant and the fuel, as a node in that stack must',
+     ts.clad_temp_c > ts.tavg_c && ts.clad_temp_c < ts.fuel_temp_c,
+     'coolant ' + ts.tavg_c.toFixed(1) + ' < clad ' + ts.clad_temp_c.toFixed(1) +
+     ' < fuel ' + ts.fuel_temp_c.toFixed(1) + ' degC');
+  /* ⚠ THE BAR IS THE DECAY TAIL, NOT A SMALL-LOOKING NUMBER. The first version asked for
+   * "< 1e-3 %" and measured 2.9e-3 — a threshold picked for how small it read. Stated against
+   * something physical: this plant's decay heat never falls below ~0.5 % of rated, so anything
+   * two orders below that is unmeasurable beside it. (The single first step from a PRISTINE
+   * oxide is also the parabolic law's fastest instant — dw/dt = K/(2w) — so a one-step reading
+   * overstates the sustained rate.) */
+  ck('zirc_heat_pct is SUPPLIED and is negligible beside decay heat on a healthy core',
+     ts.zirc_heat_pct !== undefined && ts.zirc_heat_pct >= 0 && ts.zirc_heat_pct < 0.01,
+     'a supplied ' + ts.zirc_heat_pct.toExponential(2) + ' % is a MEASUREMENT of no reaction, ' +
+     'two orders below the smallest decay heat this plant ever has; an absent field would mean ' +
+     'no model, and the two must not read alike');
+  /* ⚠ A LATCH REPORTING false ON A HEALTHY PLANT IS ONLY MEANINGFUL IF IT CAN REPORT true.
+   * This gate's own header names the worst case exactly: reporting "not scrammed" from an engine
+   * with no protection layer is "the reassuring answer, and it is unearned". So the false is
+   * checked here AND the true is earned on a second fixture, or the pair proves nothing. */
+  ck('the damage latches are SUPPLIED and read false on a healthy plant',
+     ts.fuel_damaged === false && ts.melted === false && ts.destruction_cause === 'none',
+     'supplied-and-false, not absent -- the engine has looked and found no damage');
+  var dmgHot = RD.damage.createDamage({});
+  var rHot = RD.damage.stepDamage(dmgHot, 0.02, { cladTemp_c: 1300, fuelTemp_c: 2900 });
+  var tsHot = TS.buildTrueState({ sys: B.sys, reactor: B.r, damage: rHot });
+  /* ⚠ THIS CONTEXT DELIBERATELY CARRIES NO AFW, NO SG, NO TURBINE — only a plant, a reactor and
+   * a damage model. It is the check that catches the damage block being NESTED inside another
+   * system's guard, which is how the first version of the shim wiring shipped: it landed inside
+   * `if (aw.total_kgs !== undefined)`, so a caller with damage and no auxiliary feedwater got all
+   * five fields dropped and read them as "no model". Every damage field is asserted HERE, on the
+   * minimal context, and not only on the fully-populated fixture. */
+  ck('...and they read TRUE on a wrecked core, so the false above is earned and not a default',
+     tsHot.fuel_damaged === true && tsHot.melted === true &&
+     tsHot.destruction_cause === 'thermal_melt' && tsHot.clad_temp_c !== undefined,
+     'clad 1300 degC past the 2200 degF limit, fuel 2900 degC past the UO2 melting point — on a ' +
+     'context carrying ONLY sys, reactor and damage, so no other system can be propping it up');
+  ck('...and zirc_heat_pct is a REAL number there, not the healthy zero',
+     tsHot.zirc_heat_pct > ts.zirc_heat_pct,
+     tsHot.zirc_heat_pct.toExponential(2) + ' % against ' + ts.zirc_heat_pct.toExponential(2));
+  /* THE SIXTH FIELD, AND ITS REASON IS THE POINT. It is not "no damage model" any more -- there
+   * is one. It is that a LEVEL needs a free surface this engine has no phase separation to give,
+   * and that machinery belongs to another lane. The gate checks the reason NAMES that lane, the
+   * same way it does for the pressurizer. */
+  ck('core_uncovered_frac is ABSENT, not zero -- an uncovered core must not read as covered',
+     ts.core_uncovered_frac === undefined && !!TS.MISSING.core_uncovered_frac, '');
+  ck('...and its reason names PHASE SEPARATION and the lane that owns it, not "no model"',
+     /472/.test(TS.MISSING.core_uncovered_frac.reason) &&
+     /separation/i.test(TS.MISSING.core_uncovered_frac.reason) &&
+     !/no fuel-damage/.test(TS.MISSING.core_uncovered_frac.reason),
+     'a stale reason is the defect this file exists to prevent, in the opposite direction');
+
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');
   ck('hot, cold and suction pressures are the SAME number',
@@ -261,6 +328,24 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* ---- CORE DAMAGE WIRING (2026-08-17). The first is the defect this commit actually made:
+   * the damage block landed INSIDE the auxiliary-feedwater guard, so a caller with a damage
+   * model and no AFW silently got no damage fields at all. It reads as "no model", which is
+   * exactly what this file exists to stop, and it happened in the commit whose subject is not
+   * doing that. */
+  ['the damage block is nested inside ANOTHER system guard, so it vanishes without AFW',
+   "    put('clad_temp_c',       rx.T_clad_c);",
+   "    if (aw.total_kgs !== undefined) put('clad_temp_c', rx.T_clad_c);"],
+  ['the damage latches are never wired through, so a wrecked core reads as no model',
+   "    put('fuel_damaged',      dg.fuel_damaged);\n" +
+   "    put('melted',            dg.melted);",
+   ''],
+  ['clad_temp_c is fabricated from the coolant instead of read from the clad NODE',
+   "    put('clad_temp_c',       rx.T_clad_c);",
+   "    put('clad_temp_c',       nodeT(sys, 'core'));"],
+  ['core_uncovered_frac reverts to its STALE reason, which named a model that now exists',
+   "    'core uncovery needs PHASE SEPARATION, not geometry: Layer 2 is homogeneous equilibrium ' +",
+   "    'no fuel-damage or clad-oxidation model. ' +"],
   ['A DECLARED GAP IS FABRICATED AS ZERO -- the defect this file exists to prevent',
    '    function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }',
    '    function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }\n' +

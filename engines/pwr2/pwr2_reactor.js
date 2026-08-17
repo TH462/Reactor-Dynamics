@@ -174,6 +174,13 @@
       xenon_pct_eq:   kr.xenon_pct_eq,
       T_fuel_c:       fr.T_fuel_c,
       T_fuel_rise_c:  fr.T_fuel_rise_c,
+      /* THE CLADDING'S OWN TEMPERATURE, which is what `pwr2_damage.js` reacts on and what the
+       * contract's `clad_temp_c` means. It comes from HERE and not from the damage model, because
+       * the clad is a thermal node in the plant's energy balance; a damage model reporting its own
+       * clad temperature would be reporting one the balance never saw. */
+      T_clad_c:       fr.T_clad_c,
+      T_clad_f:       fr.T_clad_f,
+      h_film_W_per_m2K: fr.h_film_W_per_m2K,
       T_centerline_c: fr.T_centerline_c,
       T_mod_c:        kr.T_mod_c,
       coolTemp_c:     cool,

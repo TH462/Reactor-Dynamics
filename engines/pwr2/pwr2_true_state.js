@@ -78,9 +78,24 @@
     'there is no hotwell or condensate-pump model, so the feed-side flows stay unmapped.',
     ['condensate_flow_normalized', 'condensate_pump_running', 'fw_flow_normalized']);
 
-  declareMissing('damage', 'no fuel-damage or clad-oxidation model.',
-    ['clad_temp_c', 'fuel_damaged', 'melted', 'destruction_cause', 'zirc_heat_pct',
-     'core_uncovered_frac']);
+  /* ⚠ FIVE OF THESE SIX WERE BUILT ON 2026-08-17 and this block was rewritten in the same commit,
+   * which is the discipline this file's header records the hard way: "Declaring a system missing
+   * is a claim, and it rots exactly like any other claim the moment the system gets built."
+   *
+   * `core_uncovered_frac` STAYS MISSING, and the reason is NOT the generic one it used to carry.
+   * The geometry is all present — the core node has a volume, a midplane elevation datum and a
+   * 3.66 m flow length, so an area falls out. What is absent is PHASE SEPARATION: `pwr2_water.js`
+   * is homogeneous equilibrium with no slip, so void fraction and quality are the same number and
+   * there is no free surface anywhere in the engine. A collapsed level computed from void would
+   * make the uncovered fraction identically equal to the core node's void fraction, which asserts
+   * a stratification the model does not contain. A free surface with a compressible volume above
+   * it is exactly the machinery issue #472 is building on the workbench lane, and a second
+   * incompatible one here is the race the design spine forbids. */
+  declareMissing('damage',
+    'core uncovery needs PHASE SEPARATION, not geometry: Layer 2 is homogeneous equilibrium ' +
+    'with no slip, so there is no free surface to take a level from. The compressible-volume ' +
+    'machinery a level needs is issue #472, live on the workbench lane, and must not be raced.',
+    ['core_uncovered_frac']);
 
   declareMissing('nuclear instruments', 'period and startup rate are supplied (pwr2_reactor.js, ' +
     'derived from the fission signal — no calibration needed); source/intermediate range counts ' +
@@ -148,7 +163,7 @@
     var rx = ctx.reactor || {}, sg = ctx.sg || {}, tb = ctx.turbine || {},
         rl = ctx.relief || {}, cv = ctx.cvcs || {}, rh = ctx.rhr || {},
         br = ctx.break_ || {}, ct = ctx.containment || {}, cd = ctx.condenser || {},
-        ec = ctx.eccs || {}, aw = ctx.afw || {};
+        ec = ctx.eccs || {}, aw = ctx.afw || {}, dg = ctx.damage || {};
     var ts = {};
     function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }
 
@@ -259,6 +274,23 @@
       put('afw_active',       aw.total_kgs > 0);
       put('afw_flow_normalized', aw.afw_flow_normalized);
     }
+
+    /* --- CORE DAMAGE, from pwr2_damage.js + the clad node in pwr2_fuel.js ---
+     * `clad_temp_c` comes from the REACTOR's return, not from the damage model: the cladding is a
+     * thermal node in `pwr2_fuel.js` and the oxidation model READS it. Wiring it the other way
+     * round would report a temperature the plant's own energy balance never saw.
+     *
+     * ⚠ NOT INSIDE ANY OTHER SYSTEM'S GUARD, and the first version of this block WAS — it landed
+     * inside `if (aw.total_kgs !== undefined)`, so a caller supplying a damage model but no
+     * auxiliary feedwater got all five fields silently dropped. That is this file's own headline
+     * defect ("the wiring stopped one call short of where the physics landed") reproduced in a
+     * commit whose whole subject is not doing that. It reads as ABSENT, i.e. "no model", which is
+     * indistinguishable from the truth to every consumer downstream. Each `put` guards itself. */
+    put('clad_temp_c',       rx.T_clad_c);
+    put('fuel_damaged',      dg.fuel_damaged);
+    put('melted',            dg.melted);
+    put('destruction_cause', dg.destruction_cause);
+    put('zirc_heat_pct',     dg.zirc_heat_pct);
 
     return ts;
   }
