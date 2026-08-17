@@ -206,21 +206,53 @@ function bookResidual(s0, sN, delivered, extraMass) {
   var resid = delivered - mf * PZ2.h_fg(press(sN)) - C * dTsat;
   return { resid: resid, rel: Math.abs(resid) / Math.max(1, Math.abs(delivered)), mf: mf };
 }
-// (a) FLASH — heaters deliver 1794 kJ in one second and nothing else happens.
-var sF0 = stateAt(55.0), sF1 = stateAt(55.0);
-PZ2.stepRegions(sF1, CFG, 1.0, { heater_frac: 1 });
-var eUp = bookResidual(sF0, sF1, P2.heater_power_mw * 1000);
-ck('C1a CV-2 energy books close on a heater step', 'residual ' + eUp.resid.toExponential(2) + ' kJ of 1794 (' + (eUp.rel * 100).toExponential(1) + ' %), flashed ' + r3(eUp.mf) + ' kg',
-   eUp.rel < 0.02 && eUp.mf > 0, '< 2 % and mass flashed');
-// (b) CONDENSE — spray puts 2 kg/s of 290 C water into the steam space. Delivered energy is
-// negative relative to the old saturation line, mass crosses the other way.
-var sC0 = stateAt(55.0), sC1 = stateAt(55.0);
-var T_SPRAY = 290, m_spray = 2.0;
-var deliveredSpray = m_spray * 6.0 * (T_SPRAY - PZ2.T_sat_from_P(press(sC0)));
-PZ2.stepRegions(sC1, CFG, 1.0, { spray_kgps: m_spray, spray_t_c: T_SPRAY });
-var eDn = bookResidual(sC0, sC1, deliveredSpray, m_spray);
-ck('C1b CV-2 energy books close on a spray step', 'residual ' + eDn.resid.toExponential(2) + ' kJ of ' + r3(deliveredSpray) + ' (' + (eDn.rel * 100).toExponential(1) + ' %), condensed ' + r3(-eDn.mf) + ' kg',
-   eDn.rel < 0.02 && eDn.mf < 0, '< 2 % and mass condensed');
+// C1a/C1b REPLACED 2026-08-17 — the PROXY became the real thing *(OWNER RULING, 2026-08-17:
+// "Go")*. Both asserted the residual of the OLD decomposition, `E = mf·h_fg + C·ΔTsat`, which
+// is the flash-then-settle split's own algebra. Once `stepRegions` solves the state from
+// (mass, volume, energy) that identity is not a claim the model makes, so measuring its
+// residual measures nothing — it read 9.0 % and 3.6 % on a model whose TOTAL ENERGY closes
+// exactly.
+//
+// So assert the stronger thing directly: energy in equals energy stored. This is what CV-2
+// always meant, and the decomposition was only ever a way of getting at it without a state
+// function. HR10-validated by running this form against the OLD code, where it FAILS at
+// −9.79 % on the heater step — the leak that stopped the conservative solve shipping until
+// the injection side was converted with it.
+//
+// THE INSURGE ROW IS THE INTERESTING ONE and is asserted separately (C1c): its residual must
+// equal the STRATIFICATION BANK to the joule, because deferred enthalpy is exactly energy
+// that has arrived at the node and not yet reached the bulk. A single well-mixed (M,V,U)
+// state cannot hold it, which is why the bank is an energy account and not a temperature
+// offset — and this check is what stops that account quietly becoming a leak.
+function stored(s) {
+  return PZ2.nodeEnergy(CFG, s.pzr_m_liq_kg + s.pzr_m_stm_kg, s.pzr_m_stm_kg, s.pzr_t_liq_c);
+}
+function conserves(io, dt) {
+  var s = stateAt(55.0), U0 = stored(s);
+  var wet0 = 100 * (s.pzr_m_liq_kg / PZ2.rho_l_sat(s.pzr_t_liq_c)) / P2.V_pzr_m3;
+  var wet = Math.max(0, Math.min(1, (wet0 - P2.heater_elev_bot_pct) /
+    (P2.heater_elev_top_pct - P2.heater_elev_bot_pct)));
+  PZ2.stepRegions(s, CFG, dt, io);
+  var delivered = (io.heater_frac || 0) * P2.heater_power_mw * 1000 * wet * dt
+    + (io.spray_kgps || 0) * dt * 6.0 * (io.spray_t_c || 0)
+    + (io.surge_kgps || 0) * dt * 6.0 * (io.surge_t_c || 0);
+  var resid = (stored(s) - U0) - delivered;
+  return { resid: resid, rel: Math.abs(resid) / Math.max(1, Math.abs(delivered)),
+           banked: s.pzr_mix_deficit_kj || 0 };
+}
+var cHeat = conserves({ heater_frac: 1 }, 1.0);
+ck('C1a CV-2 energy IN equals energy STORED — a heater step',
+   'residual ' + cHeat.resid.toExponential(2) + ' kJ of 1794 (' + (cHeat.rel * 100).toExponential(1) +
+   ' %); the pre-conversion model leaked -9.79 %',
+   cHeat.rel < 1e-6, 'closes to 1e-6');
+var cSpray = conserves({ spray_kgps: 2.0, spray_t_c: 290 }, 1.0);
+ck('C1b CV-2 energy IN equals energy STORED — a spray step, mass and enthalpy both crossing',
+   'residual ' + cSpray.resid.toExponential(2) + ' kJ (' + (cSpray.rel * 100).toExponential(1) + ' %)',
+   cSpray.rel < 1e-6, 'closes to 1e-6');
+var cSurge = conserves({ surge_kgps: 4.4, surge_t_c: 311.7 }, 1.0);
+ck('C1c …and an insurge shortfall is BANKED, not lost — the bank equals the residual',
+   'residual ' + r3(cSurge.resid) + ' kJ vs ' + r3(cSurge.banked) + ' kJ banked',
+   Math.abs(cSurge.resid - cSurge.banked) < 1e-6, 'equal to 1e-6 kJ');
 
 // C2 DERIVED — the implicit rate sits between the two wrong answers. Below the explicit
 // form (C3), and within a factor of the no-latent-heat estimate the config records
@@ -263,35 +295,45 @@ var r20 = psi(heaterRate(20.0, 1, 1.0).dP), r55 = psi(full.dP), r70 = psi(heater
 var C20 = PZ2.capacity_mj_per_c(stateAt(20.0), CFG), C70 = PZ2.capacity_mj_per_c(stateAt(70.0), CFG);
 ck('C4a capacity nearly doubles across the normal band', r3(C20) + ' -> ' + r3(C70) + ' MJ/C (20 -> 70 %)',
    C70 / C20 > 1.8, '> 1.8x');
-ck('C4b but authority stays within 10 % — capacity and geometry cancel',
+// C4b RE-BANDED 2026-08-17, and the ORDERING is the part that survives untouched. The 10 %
+// figure was measured on the flash-then-settle model, which did not conserve energy (-9.79 %
+// on a heater step); under the conservative solve the same three levels read 3.561 / 3.152 /
+// 3.004 psi/s — still monotone decreasing, but spread 17.7 %. The qualitative claim the check
+// exists for is that a capacity change of nearly 2x (C4a) does NOT produce a 2x authority
+// change, and 18 % across a 50-point level range says that as well as 5.5 % did. HR10 note:
+// this form passes on the OLD model too (5.5 % spread, same ordering), so it is a widened
+// band and not a refit — the number is reported so a real change in it is still visible.
+ck('C4b but authority stays in the same family across the band — capacity and geometry largely cancel',
    r3(r20) + ' / ' + r3(r55) + ' / ' + r3(r70) + ' psi/s at 20 / 55 / 70 %',
-   Math.abs(r20 - r70) / r55 < 0.10 && r20 > r55 && r55 > r70, 'spread < 10 %, gently decreasing');
+   Math.abs(r20 - r70) / r55 < 0.25 && r20 > r55 && r55 > r70, 'spread < 25 %, monotone decreasing');
 
-// C4c THE KNOWN GAP — REWRITTEN 2026-08-16, as its previous form said it should be
-// *(OWNER RULING, 2026-08-16: "Do them as you recommend")*. It used to ASSERT THE RAIL:
-// "above about 75 % the two-region path runs away — 1.06e6 psi/s at dt 1.0 s, 1.06e7 at
-// 0.1 s, 1.06e8 at 0.01 s, the same jump divided by a smaller dt", and it closed by saying
-// it "goes red the day the solid branch lands, which is when this check should be rewritten
-// to assert the handover instead". The rail is gone (settle no longer diverges), so it went
-// red exactly as promised — a red turning green that must be acknowledged, not absorbed.
+// C4c — THE GAP IS CLOSED, and this is its third form *(OWNER RULING, 2026-08-17: "Go")*.
 //
-// THE GAP ITSELF IS STILL OPEN and this still pins it, but on the honest symptom: above
-// ~75 % the two-region model has no equilibrium in the direction the heaters push, so
-// `settle` reports exhaustion and heater AUTHORITY IS LOST rather than the pressure
-// railing. Losing authority is wrong too — a real pressurizer goes solid and pressure rises
-// on bulk modulus — but it is BOUNDED and it is flagged, which the rail was not. What the
-// check now asserts is the three properties that distinguish a handover from a blow-up:
-// bounded, dt-independent, and reported.
-var r85_1  = psi(heaterRate(85.0, 1, 1.0).dP);
-var r85_01 = psi(heaterRate(85.0, 1, 0.01).dP);
-var sEx = heaterRate(85.0, 1, 1.0).s, sOk = heaterRate(55.0, 1, 1.0).s;
-ck('C4c [known gap] above ~75 % the two-region path is EXHAUSTED — bounded and flagged, not railing',
-   r3(psi(heaterRate(75.0, 1, 1.0).dP)) + ' psi/s at 75 %, ' + r85_1.toExponential(2) +
-   ' at 85 % (dt 1.0) vs ' + r85_01.toExponential(2) + ' (dt 0.01); flag 85 % ' +
-   sEx.pzr_solid_unresolved + ' / 55 % ' + sOk.pzr_solid_unresolved,
-   Math.abs(r85_1) < 1e3 && Math.abs(r85_1 - r85_01) < 1.0 &&
-   sEx.pzr_solid_unresolved === true && sOk.pzr_solid_unresolved === false,
-   'bounded < 1e3 psi/s, dt-independent, flagged at 85 % and NOT at 55 %');
+// Form 1 asserted the RAIL: "above ~75 % the two-region path runs away", 1.06e6 psi/s at
+// dt 1.0 and 1.06e8 at dt 0.01. Form 2 asserted the HANDOVER: bounded, dt-independent, and
+// flagged, after `settle` stopped diverging but still had no equilibrium to find above the
+// current root. Both were honest readings of the model they were written against, and both
+// described a gap that does not exist once the operator split goes.
+//
+// There was never a near-solid regime here. The cliff was flash-then-settle: the frozen-mass
+// pass had no root above ~75 % level, so authority collapsed (2.958 psi/s at 75 %, -0.124 at
+// 78 %, -0.000 at 85 %). Solving the state from (mass, volume, energy) instead, the same
+// levels read 2.826 / 2.818 / 2.799 — CONTINUOUS, and `pzr_solid_unresolved` never sets.
+//
+// So this now asserts continuity, which is the property that was missing all along. The gap
+// it used to pin belongs to the TUNING_LOG; what stays here is the assertion that would go
+// red if the split — or anything shaped like it — came back.
+var a75 = psi(heaterRate(75.0, 1, 1.0).dP);
+var a85_1 = psi(heaterRate(85.0, 1, 1.0).dP), a85_01 = psi(heaterRate(85.0, 1, 0.01).dP);
+var a95 = psi(heaterRate(95.0, 1, 1.0).dP);
+var sHi = heaterRate(85.0, 1, 1.0).s, sMid = heaterRate(55.0, 1, 1.0).s;
+ck('C4c the near-solid band is CONTINUOUS — no cliff, no exhaustion, no rail',
+   r3(a75) + ' / ' + r3(a85_1) + ' / ' + r3(a95) + ' psi/s at 75 / 85 / 95 % (dt 1.0), ' +
+   r3(a85_01) + ' at dt 0.01; exhaustion flag ' + !!sHi.pzr_solid_unresolved + ' / ' +
+   !!sMid.pzr_solid_unresolved,
+   a75 > 1 && a85_1 > 1 && a95 > 1 && Math.abs(a85_1 - a85_01) < 0.1 &&
+   !sHi.pzr_solid_unresolved && !sMid.pzr_solid_unresolved,
+   'authority > 1 psi/s at every level, dt-independent, never exhausted');
 
 // C5 PINNED — the characterisation. Says "the number moved", nothing more; C1-C4 are what
 // say the mechanism is right. Measured 2026-08-14 at 55 % level, after the `settle` fixed

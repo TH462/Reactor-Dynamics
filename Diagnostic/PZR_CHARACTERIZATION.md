@@ -1052,3 +1052,60 @@ rail better and the authority cliff disappear, and it would have been easy to la
 re-band the four checks around it. That is precisely the refit HR10 names. The energy
 measurement was taken *because* two of those four are conservation checks, and it found a
 9.79 % leak that no amount of re-banding would have made honest.
+
+### The injection side converted — conservation is now EXACT, and the solid branch is the next gap (2026-08-17)
+
+*(OWNER RULING, 2026-08-17: "Next")*. `stepRegions` no longer injects heat as a temperature
+step and infers energy from it. Every term adds or removes a known quantity of energy and the
+state is solved once from (mass, volume, energy).
+
+| one 1.0 s step | before | after |
+|---|---|---|
+| heaters full, 55 % | **−9.79 %** | **0.00 %** (residual 3.7e-7 kJ of 1794) |
+| heaters full, 85 % | −2.46 % | **0.00 %** |
+| spray 2 kg/s @ 290 °C | +1.85 % | **0.00 %** (−5.5e-7 kJ) |
+| insurge 4.4 kg/s @ 311.7 °C | +10.64 % | **875.464 kJ — and the bank holds 875.464** |
+| quiet | 0.00 % | 0.00 % |
+
+**Stratification survives, and that was the risk.** A single (M, V, U) node is by definition
+well mixed, so the deferred enthalpy cannot live inside U. It is now an **energy account**
+rather than a temperature offset: the bulk is credited as if the water arrived at the node's
+own temperature, and the shortfall is banked and released on the same `dt/(tau+dt)`.
+Algebraically identical to the old form, and `E1` — the check that exists to demonstrate
+stratification — **passes unchanged**, where a first attempt at the solve had weakened it.
+
+**Four checks moved, all HR10-validated by running the NEW form against the OLD model:**
+
+| | now asserts | on the old model |
+|---|---|---|
+| **C1a/C1b** | energy IN equals energy STORED, to 1e-6 | **FAIL** — 8.2 % and 0.62 % |
+| **C1c** (new) | an insurge's shortfall is BANKED, not lost | **FAIL** — 803.9 kJ residual vs 875.5 banked |
+| **C4c** | the near-solid band is CONTINUOUS | **FAIL** — 0 psi/s at 85 and 95 %, flag set |
+| **C4b** | same family, monotone decreasing, spread < 25 % | passes on both — a declared widening |
+
+C1a/C1b previously measured the residual of the OLD split's own identity
+(`E = mf·h_fg + C·ΔTsat`), which is not a claim the model makes any more. Replacing a proxy
+with the thing it was a proxy for is why three of these now fail on the old code.
+
+**THE NEXT GAP, found by fixing the one before it.** With no bubble, `pressureFrom` reads the
+steam density and returns ~0 — measured, a full-spray ride filled the vessel (steam
+191.6 → 0.000 kg) and published **0.0 psia**, a formula being asked a question it cannot
+answer. Fixed by holding pressure and handing over, and the solid predicate now reads
+`V_liq >= V_pzr **or** the solve found no two-phase state` — the second being the same
+statement reached by the physics. *(This is not the rejected `gain > 1` trigger: that fires at
+78 % level with 0.944 m³ of bubble left, where bulk modulus overstates the response 30×. This
+fires only when there is no steam at all.)*
+
+**But `stepPressure`'s solid branch does not advance the node's masses** — it was written when
+the pressurizer had no state of its own. So a genuinely solid node now FREEZES: measured, m_liq
+pinned at 2143.9 kg and T_liq at 363.71 °C while spray kept running. Bounded and obvious rather
+than a rail, but wrong, and it is the next piece.
+
+**Where this leaves the flagged model.** `run_pzr2` **49/49**. Flag-off `run_all` at baseline —
+the shipped plant is untouched. Flag-on `run_pwr` **33/37, the same suite count as before the
+conversion**, with the reds redistributed: the spray crash to containment and the −280 °C
+superheat are gone; the cooldown family has picked up four (RHR alignment, the RHR interlock
+depressurization, cold-shutdown arrival, and its subcooling leg) and `pressure tracks a lowered
+setpoint` still misses at 14.21 MPa against 13.0 ± 1. **Parity on suites with conservation now
+exact is a real gain, but the cooldown regression is not adjudicated and must be** — it is the
+first thing to look at, not the freeze.
