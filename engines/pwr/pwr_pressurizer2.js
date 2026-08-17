@@ -1041,7 +1041,11 @@
       // same stiffness (the 2026-08-07 ruling: a vented mass releases bulk-modulus pressure
       // when there is no bubble to absorb it).
       var relief_kgps = ((s.porv_flow || 0) + (s.safety_flow || 0)) * p2.M_rcs_kg;
-      var dV = (surge_kgps - relief_kgps) * dt / rho_l_sat(s.pzr_t_liq_c);      // m³ this step
+      // SPRAY IS PART OF THE DISPLACEMENT. It has no CONDENSATION authority with no bubble,
+      // but water pushed into a water-solid vessel is the bulk-modulus case by definition —
+      // leaving it out of dV froze pressure at 2786.2 psia for 350 s while ~2.8 kg/s went in.
+      var m_spray_solid = spray_eff * p2.spray_capacity_kgps * dt;
+      var dV = ((surge_kgps - relief_kgps) * dt + m_spray_solid) / rho_l_sat(s.pzr_t_liq_c);
       var dPs = p2.bulk_mod_eff_mpa * (dV / p2.V_pzr_m3);
       // SUB-STEP RATHER THAN SOFTEN THE GAIN. A ringing solid branch is an integrator
       // problem; lowering the stiffness to quiet it would be re-tuning the plant's
@@ -1050,9 +1054,39 @@
       for (var i = 0; i < sub; i++) {
         s.pressure_mpa = Math.max(0.1, s.pressure_mpa + dPs / sub);
       }
-      s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg + (surge_kgps - relief_kgps) * dt);
+      // SPRAY STILL DELIVERS WATER HERE, and dropping it was a mass leak *(OWNER RULING,
+      // 2026-08-17: "Next")*. The branch is right that spray has no pressure AUTHORITY on a
+      // solid node — there is no bubble to condense — but the valve is open and the flow is
+      // real, and the previous form discarded it. Measured on a full-spray ride: `pzr_m_liq_kg`
+      // sat at 2143.9 kg for 350 s while ~2.8 kg/s was being delivered, so the node could
+      // neither fill further nor ever leave the regime. "No authority" is a statement about
+      // pressure, not about mass.
+      s.pzr_m_liq_kg = Math.max(1e-6, s.pzr_m_liq_kg + (surge_kgps - relief_kgps) * dt + m_spray_solid);
       s.pzr_m_stm_kg = 1e-9;
-      s.pzr_t_liq_c = T_sat_from_P(s.pressure_mpa);
+
+      // A WATER-SOLID PRESSURIZER IS SUBCOOLED — its temperature is what its energy says, not
+      // saturation at whatever pressure the bulk modulus has reached. Pinning it to
+      // `T_sat_from_P(P)` is what turned a pressure excursion into a TEMPERATURE one:
+      // measured, the full-spray lineup drove 104,398 psia and the pin followed it to 864 °C,
+      // evaluating the saturation correlation hundreds of MPa past the critical point where
+      // there is no saturation state to return. Once there is no bubble the two are simply
+      // not the same quantity, and the branch has no business claiming they are.
+      var C_sol = s.pzr_m_liq_kg * CP_LIQ + p2.pzr_vessel_mass_kg * p2.pzr_vessel_cp_kj_kgk;
+      var Q_sol = ((s._heater_dp_frac != null ? s._heater_dp_frac : s.heater_power_frac) || 0)
+                * p2.heater_power_mw * 1000 * dt;
+      var T_sp_sol = (s.tcold_c != null) ? s.tcold_c : s.pzr_t_liq_c;
+      s.pzr_t_liq_c += (Q_sol + m_spray_solid * CP_LIQ * (T_sp_sol - s.pzr_t_liq_c)) / Math.max(1e-6, C_sol);
+      // ...but it can never be hotter than saturation: at that point a bubble forms and the
+      // two-region branch owns it again. This is the exit, and it is a physical statement.
+      var Tsat_here = T_sat_from_P(Math.min(s.pressure_mpa, 22.064));
+      if (s.pzr_t_liq_c > Tsat_here) s.pzr_t_liq_c = Tsat_here;
+
+      // AND THE FLAG MUST NOT LATCH. `pzr_solid_unresolved` is set by the conservative solve,
+      // which only runs in the bubbled branch — so once this branch takes over, a flag left
+      // standing would keep it here for ever and the node could never hand back. Re-evaluate
+      // it on the geometry, which is the whole point of the two conditions agreeing: the solve
+      // reaches "no two-phase state" by the physics, and here the vessel says so directly.
+      s.pzr_solid_unresolved = (s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c)) >= p2.V_pzr_m3;
 
     } else {
       // ---- BUBBLED: the rebuild. Spray is a MASS with an enthalpy, not a gain; relief is a

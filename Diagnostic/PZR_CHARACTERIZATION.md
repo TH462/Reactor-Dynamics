@@ -1154,3 +1154,49 @@ like one; measured here it governs 98 % of the plant's longest evolution. It is 
 ahead of everything else on this issue — and the fix is specific: the solid branch predates the
 pressurizer having state, and has to advance `pzr_m_liq_kg` / `pzr_m_stm_kg` with the surge
 while bulk modulus owns pressure.
+
+### The freeze fixed — four defects in the solid branch, and my diagnosis of it was wrong (2026-08-17)
+
+*(OWNER RULING, 2026-08-17: "Next")*. I said the solid branch "does not advance the node's
+masses". **It does** — `pzr_m_liq_kg += (surge − relief)·dt` was there all along. Reading the
+branch instead of measuring it produced a wrong diagnosis for the second time on this cluster.
+What was actually wrong was four things, each found by fixing the one before it:
+
+1. **Spray mass was discarded.** The branch is right that spray has no *pressure* authority
+   with no bubble — there is nothing to condense — but the valve is open and ~2.8 kg/s is real
+   water. `pzr_m_liq_kg` sat at 2143.9 kg for 350 s while it poured in. **"No authority" is a
+   statement about pressure, not about mass.**
+2. **Spray was missing from the displacement.** Water pushed into a water-solid vessel *is* the
+   bulk-modulus case by definition; leaving it out of `dV` froze pressure at 2786.2 psia.
+3. **The solid flag latched.** `pzr_solid_unresolved` is set by the conservative solve, which
+   only runs in the *bubbled* branch — so once the solid branch took over, a flag left standing
+   kept it there for ever and the node could never hand back. It is now re-evaluated on the
+   geometry each step, which is the two conditions agreeing rather than one shadowing the other.
+4. **The node was pinned to saturation.** `T_liq = T_sat_from_P(P)` on a solid node is wrong —
+   **a water-solid pressurizer is SUBCOOLED**, its temperature is what its energy says. The pin
+   is what turned a pressure excursion into a temperature one: the full-spray lineup drove
+   104,398 psia and the pin followed it to **864 °C**, evaluating the saturation correlation
+   hundreds of MPa past the critical point. Temperature now comes from the energy balance and
+   is capped at saturation (above which a bubble forms and the two-region branch owns it again
+   — that is the exit, and it is a physical statement).
+
+**Measured over the full roundtrip:**
+
+| | exhausted | pressure frozen | lowest P reached |
+|---|---|---|---|
+| before the conversion | 95.4 % | 17.9 % | 0.086 MPa |
+| after the conversion | 98.0 % | 2.4 % | 0.100 MPa |
+| **after these four** | **33.4 %** | **0.2 %** | 1.236 MPa |
+
+The node now spends two thirds of the run in the two-region regime where it used to spend 2 %.
+Flag-on `run_pwr` **33/37 with 11 reds** (was 12): `stayed subcooled during cooldown` is green.
+`depressurized below RHR interlock` moved the wrong way, 4.06 → 11.17 MPa, and is **not
+adjudicated** — the plant now repressurizes after reaching 1.236 MPa, which is the solid branch
+doing real work where it used to do none.
+
+**What is left standing, and it is a lineup rather than a defect.** The synthetic
+`pressure_saturation_bounds` case — heaters AND spray both jammed at 100 %, stepped engine-direct
+so no PORV or safety ever lifts — now runs to **100,671 psia**. With continuous mass injection
+into a rigid vessel and no relief path, that is what a bulk modulus gives; the temperature no
+longer follows it, and no check reddens on it. A plant cannot produce that lineup, but the
+number is published, and a later reader should know it is the probe's own doing.
