@@ -1101,3 +1101,61 @@ would now say "nothing blocks control-layer drive", which is technically true an
 misleading.
 
 Sixth time this session that a number was right and the thing it was taken to mean was wrong.
+
+## 30. THE MECHANICAL INTEGRATION PATH IS COMPLETE — AND THE MAP I PLANNED TO BUILD ALREADY EXISTED — 2026-08-16
+
+§29 recommended building a shim → instrument-name map as the next mechanical step. **It exists.**
+`engines/pwr/pwr_instruments.js:37` carries `SOURCE`, a 40-entry map of instrument id → the
+`true_state` field that feeds it — `power_range: 'power_pct'`, `tavg: 'tavg_c'`,
+`primary_pressure: 'pressure_mpa'`, and so on.
+
+I found it by grepping for where `power_range` is produced before writing a line of the
+replacement. That is the second time this session a check-before-building was worth more than the
+building would have been, and it is worth stating plainly: **§29.3's recommendation was wrong, and
+the work it proposed was already done.**
+
+### 30.1 Measured against the real map
+
+Reading `SOURCE` out of the file rather than retyping it, and resolving each entry against the
+shim's output:
+
+| | |
+|---|---|
+| instrument channels | **40** |
+| **feedable by the shim today** | **16** |
+| blocked by a declared-missing system | 24 |
+| **source in neither state** | **0** |
+
+The zero is the one that matters. **Every instrument channel's source field is either supplied or
+explicitly declared missing** — the shim has an opinion about all forty, and none of them is a
+surprise.
+
+**Feedable now (16):** `power_range`, `tavg`, `thot`, `tcold`, `primary_pressure`, `steam_pressure`,
+`core_exit_temp`, `steam_flow`, `sg_steam_flow`, `steam_dump_valve`, `charging_flow`,
+`letdown_flow`, `boron_analyzer`, `rcs_flow`, `mwe_output`, `turbine_rpm`.
+
+**Blocked (24), by owning system:** containment 4 · condenser 4 · pressurizer 3 · nuclear
+instruments 3 · ECCS detail 2 · SG level geometry 2 · auxiliary feedwater 2 · accumulators 1 ·
+atmospheric dump 1 · break/leak 1 · turbine detail 1.
+
+### 30.2 What this settles
+
+```
+    PWR2 layers ──shim──▶ true_state ──SOURCE map──▶ indications ──▶ control layer
+       (built)    (built)              (already existed)
+```
+
+**Every mechanical hop is in place.** Nothing further can be translated, renamed or wired: the 24
+blocked channels are blocked because the plant does not have the systems, and the only way to move
+that number is to build one.
+
+That makes the next decision a clean one — **which system, and the payoff is now countable**:
+containment or the condenser unlock 4 channels each, the pressurizer 3 (and it is #472's, not this
+lane's), nuclear instruments 3.
+
+### 30.3 Recorded honestly
+
+This tick produced no code. It produced a measurement that **cancelled the work item it was meant to
+scope**, and a number (16/40, 0 unaccounted) that says where the engine actually stands. That is a
+better outcome than the map would have been, but it is worth being explicit that the plan in §29.3
+was superseded within one tick by checking whether the thing already existed.
