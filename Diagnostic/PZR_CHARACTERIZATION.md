@@ -923,3 +923,55 @@ re-adjudicate — none of them is waiting on a probe fixture.** And the trap, wh
 document's own standing rule caught in the act: *a load-bearing claim in a code comment is an
 inherited claim.* Two comments asserted a mechanism, I repeated both in my own voice to the
 owner, and neither survived being run.
+
+### Scoping the solid regime: the trigger is a GAIN, not a geometry (2026-08-16)
+
+Promised before building, and it makes the job smaller and different from how I described it.
+
+**The frozen `mode5_controls` state is not solid.** Reproduced and measured: 79 % level,
+`V_liq/V_pzr = 0.7892`, and `f(330.040) = −0.0001` — the node is sitting **on** a root, in a
+0.1 psi two-step limit cycle, with heaters at 100 % and pressure going nowhere. The vessel has
+0.9 m³ of bubble left. So "the node is water-solid" was the wrong picture.
+
+**What is actually true: there is no equilibrium ABOVE the current root.** Every temperature
+above 330.04 has `f < 0` out to the liquid-full boundary (−1.13 at 340 °C, −41.5 at 360 °C).
+The heaters push the state where no equilibrium exists, `settle` reports exhaustion, and the
+fallback returns it to the root it came from — energy in, nothing out.
+
+**The discriminator is one number: `gain = d[Tsat(P(T))]/dT_liq`.** Heating a saturated node in
+a FIXED volume expands the liquid, squeezes the bubble, raises P and therefore Tsat. When Tsat
+rises faster than T_liq, the node cannot settle anywhere above and is thermodynamically
+committed to going solid. Measured across the band:
+
+| level | bubble (m³) | **gain** | equilibrium above? | heater authority |
+|---|---|---|---|---|
+| 20 % | 3.434 | 0.082 | yes | 3.017 psi/s |
+| 55 % | 1.931 | 0.403 | yes | 2.893 |
+| 70 % | 1.288 | 0.770 | yes | 2.858 |
+| 74 % | 1.116 | 0.939 | yes | 4.062 |
+| **75 %** | **1.073** | **0.990** | yes | 2.958 |
+| **78 %** | **0.944** | **1.170** | **no** | **−0.124** |
+| 85 % | 0.644 | 1.870 | no | −0.000 |
+
+**Heater authority falls off a cliff exactly where the gain crosses 1.0**, at about 75.2 %
+level. It is the same gain that made the Picard iteration diverge — one quantity explaining
+both failures.
+
+**And this is correct physics, not a modelling artifact.** A nearly-full pressurizer with the
+heaters on *does* go solid; that is why level control exists. The model is telling the truth
+and has nowhere to hand over to. So `pzr_solid_unresolved` turns out to be named right after
+all — it is the solid condition, detected **thermodynamically** rather than geometrically.
+
+**THE SCOPE, then, in one sentence: `stepPressure`'s solid predicate asks the wrong question.**
+It asks `V_liq >= V_pzr_m3` — is the vessel full *now* — which at the transition is **false**,
+because the vessel is only 75 % full. The physics asks whether an equilibrium exists above the
+current state. That is why the handover never happens and the node sits in a limit cycle
+instead: **two predicates, both live, and neither of them the right one.**
+
+What building it needs, and none of it is guesswork any more: (1) the solid branch triggers on
+the thermodynamic condition rather than the geometric one; (2) `stepRegions` returns the
+exhaustion so `stepPressure` can switch branch **within** the step rather than one step late;
+(3) the existing bulk-modulus branch then owns pressure, which it already knows how to do.
+Open question for the owner rather than for me: whether the geometric predicate stays as a
+second, later trigger or is replaced outright — they disagree by about 25 points of level, and
+that gap is where every remaining flag-on red lives.
