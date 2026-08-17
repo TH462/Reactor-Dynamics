@@ -29,6 +29,75 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-17-develop-a (#485 — the 7-day analytics window rounded everything for four hours a day, and the commit that broke it had measured its *other* half)
+
+**Ask:** owner, 2026-08-16 evening: *"on the telemetry analytics page i have it set to a 7 day
+window. it is showing everything +-10 which should only apply when greater than 7 days. the 7 day
+window used to have exact counts. why did it change?"* — then, on the diagnosis and the recommended
+fix: *"Approved."* **Gates:** `run_all` **49 runners at baseline**; `run_dashboard_time` **12/12 64
+→ 14/14 87**. **Landed:** `windowStartMs()` + `dayLabel()` in `worker/src/render.js`, the clamp and
+the partial-row note in `worker/src/analytics.js`, the corrected coarse warning, two new gate
+suites. **NOT DEPLOYED** — the Worker ships by hand (`cd worker && wrangler deploy`) and wrangler
+is not on this machine's PATH.
+
+**The mechanism.** Cloudflare RUM holds full resolution behind a **fixed retention edge at 00:00
+UTC of (today − 7 days)**, and it is a cliff. Measured one second either side:
+
+| `datetime_geq` | sampleInterval | pageloads |
+|---|---|---|
+| `2026-08-09T23:59:59Z` | 10 | 50 |
+| `2026-08-10T00:00:00Z` | **1** | **67** |
+
+#480 moved the window start from UTC midnight to Eastern midnight. The old expression,
+`new Date(now - days*864e5).toISOString().slice(0,11) + '00:00:00Z'`, landed on that edge
+**exactly, at every hour of the day** — it hugged the boundary by construction, which is the whole
+reason the 7d view had always been exact. The new one takes the Eastern *day* of `now − 7×24h`, and
+between 00:00 and 04:00 UTC — **8 pm to midnight Eastern** — that instant has already rolled into
+the previous Eastern day, so the start jumps 20 h past the edge. For the other 20 hours a day it
+lands 4 h *inside* and is exact. Measured at the owner's instant (2026-08-17T01:39Z = 21:39 ET):
+
+```
+BEFORE  from=2026-08-09T04:00:00Z  span=189.7h  maxSI=10  60 pageloads / 40 visits  "±10"
+AFTER   from=2026-08-10T00:00:00Z  span=169.7h  maxSI= 1  67 pageloads / 50 visits  "yes"
+```
+
+All five RUM tables share one window start, which is the "everything ±10" in the report.
+
+**Traps.**
+
+- **A commit that measures one of its two edits reads as fully measured.** #480's header records
+  a careful pre-measurement of the re-grouping against the sampling tier — *"hourly and daily
+  grouping return IDENTICAL totals … at the same sampleInterval, so the finer grouping neither
+  loses rows nor drops to a coarser sampling tier."* Correct, and it is why the grouping was
+  cleared here in one query. The **window-boundary move, in the same commit and the same
+  paragraph, got no such check** — and that is the half that broke. The prose around a measured
+  claim launders the unmeasured one standing next to it.
+- **A defect that is a function of the HOUR OF DAY survives every spot check.** Wrong for 4 hours
+  in 24, always the four nobody tests in. The gate now sweeps **8760 hours of 2026** rather than
+  spot instants, for exactly this reason; a one-instant check proves nothing about the other 23.
+- **A source scan for a rendered string cannot tell you the string is REACHABLE.** The first
+  version of the partial-label check was `/\(partial\)/.test(source)`. It passed green on
+  `(false ? ' (partial)' : '')` — measured, on the first injection run of the check itself. The
+  fix was to make the label a function (`dayLabel`) so the claim could be tested instead of
+  spelled. Same family as `!range(bool).max` and the hand-maintained-map gates already on the
+  standing list, and the reason the injection pass is not optional.
+- **A "coarse tier" warning that names the WINDOW is naming a cause, not reporting a fact.** The
+  banner opened *"Window > 7 days:"* while firing on a 7-day window — so the one reader who could
+  have caught this was told the window was the reason it was rounded. It reports the interval it
+  actually got now.
+- **Clamping is only right INSIDE the full-resolution window.** At 14/30/90 days the coarse tier
+  is unavoidable, so trimming the start there buys nothing and silently shortens the window that
+  was asked for — a 30d heading over 7 days of traffic is a worse lie than a rounded number.
+  Pinned in the gate in both directions.
+
+**Injection-verified ten ways, all caught** (87 checks): the defect itself → 84, a clamp that
+shortens the window to a day → 80, clamping the wide windows too → 84, the edge off by one day →
+84, the edge given a zone offset it must not have → 83, the label dropped → 86, the label on every
+row → 84, the table not routing through it → 86, the warning reverted → 86, the start re-derived
+inline → 85.
+
+---
+
 ## Session log — 2026-08-13-develop-a (the ops dashboard reads Eastern everywhere — and the "obviously safe" DST fix is wrong on exactly the two days that matter)
 
 **Ask:** *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in

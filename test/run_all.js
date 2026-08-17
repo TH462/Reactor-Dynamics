@@ -920,8 +920,21 @@ var BASELINES = {
    * walk past the display layer and shift the key space.
    * The count moves with the source scan: it counts VIEWS x checks, so adding a
    * dashboard view adds ~3. Comments are stripped before scanning — every one of these
-   * files argues about UTC at length and an unstripped scan passes on the prose. */
-  'run_dashboard_time.js': { code: 0, score: '12/12 64/64' },
+   * files argues about UTC at length and an unstripped scan passes on the prose.
+   *
+   * 12/12 64 -> 14/14 87 (2026-08-17, #485): the Eastern alignment above is right for the
+   * TABLE and, for four hours a day, wrong for the NUMBERS — `now - 7*24h` read between
+   * 8pm and midnight Eastern lands 20 h past Cloudflare's full-resolution edge and every
+   * figure on the page comes back rounded to +/-10. Two suites added: the window start
+   * over 8760 hours of 2026, and the label on the short bucket the clamp leaves behind.
+   * Injection-verified ten ways, all caught: the defect itself -> 84/87, a clamp that
+   * shortens the window to a day -> 80/87, clamping the wide windows too -> 84/87, the
+   * edge off by one day -> 84/87, the edge given a zone offset -> 83/87, the label
+   * dropped -> 86/87, the label on every row -> 84/87, the table not using it -> 86/87,
+   * the warning back to blaming the window size -> 86/87, the start re-derived inline ->
+   * 85/87. The label check had to become BEHAVIOURAL to bite: as a source scan for
+   * "(partial)" it passed green on `(false ? ' (partial)' : '')`. */
+  'run_dashboard_time.js': { code: 0, score: '14/14 87/87' },
   // New 2026-07-29 (#253 phase 1) — the seam between the manual's 57 documented
   // procedures and the 10 executable checklists that run them. They referenced each
   // other NOWHERE until now, so nothing could answer "which documented procedures can

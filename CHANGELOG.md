@@ -30,6 +30,44 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The ops dashboard's 7-day traffic window returned rounded counts for four hours a day**
+  (#485). Every figure on the analytics page read `±10` in the **Exact** column — By day, Top
+  pages, Referrers, Countries and Devices together, because all five share one window start.
+  Reported from the live page, and it had been true since the entry below landed.
+
+  Cloudflare RUM holds full resolution behind a **fixed retention edge at 00:00 UTC of
+  (today − 7 days)**. It is a cliff, not a slope — measured one second either side:
+  `datetime_geq 2026-08-09T23:59:59Z` answers at sampleInterval **10** (50 pageloads),
+  `2026-08-10T00:00:00Z` at sampleInterval **1** (67).
+
+  The Eastern alignment below crosses it. `now − 7×24h` taken between 00:00 and 04:00 UTC —
+  **8 pm to midnight Eastern** — is already in the *previous* Eastern day, so its midnight
+  lands **20 hours** the wrong side of the edge. The UTC-midnight expression it replaced sat
+  exactly *on* the edge at every hour of the day, which is why the 7d view had always been
+  exact and why nothing looked wrong in daylight. Measured at the reported instant
+  (21:39 ET): start `2026-08-09T04:00Z` → ±10, **60** pageloads / **40** visits, against
+  start `2026-08-10T00:00Z` → exact, **67** / **50**.
+
+  `windowStartMs()` now takes the later of the Eastern midnight and the edge, and **only**
+  inside the full-resolution window — at 14/30/90 days the coarse tier is unavoidable and
+  trimming the start there would silently shorten the window that was asked for. The clamp
+  costs a short oldest bucket, which is the misreading the entry below exists to remove, so
+  that row is labelled `(partial)` with a note under the table.
+
+  The re-grouping in the entry below was the obvious suspect and is innocent — `date`,
+  `datetimeHour` and `requestPath` all return the same sampleInterval at the same window
+  (1 at a 169.7 h span, 10 at 189.7 h). That half *was* measured against the tier before it
+  landed; the window-boundary half, in the same commit, was not.
+
+  Also: the coarse-tier warning opened **"Window > 7 days:"** — a claim about the window
+  rather than about the answer, and false for every one of the four hours a day the 7d view
+  was rounding. It named the wrong cause to the one person who could have caught it.
+
+  `run_dashboard_time` 12/12 64 → **14/14 87** (the window start over 8760 hours of 2026;
+  the partial label), injection-verified ten ways. **Not deployed** — the Worker ships by
+  hand and wrangler is not on this machine's PATH.
+
 ### Changed
 - **The ops dashboard now reads Eastern time on every view, day buckets included**
   *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in eastern

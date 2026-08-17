@@ -195,6 +195,50 @@ export function etDayStartMs(input) {
   return wall - etOffsetMs(guess);
 }
 
+/* How many days of RUM the upstream API holds at FULL RESOLUTION. Not a preference and
+ * not a guess — it is a property of Cloudflare's adaptive tiers, measured on the live
+ * dataset (the numbers are in analytics.js, at the only place that consumes this). */
+export const RUM_FULL_RES_DAYS = 7;
+
+/* How a by-day row is titled: the Eastern day, its weekday letter, and — for the one row
+ * a clamped window opens partway into — the word that stops it being read as a real drop
+ * in traffic. A short bucket and a quiet day are the same row without it.
+ *
+ * A function, and exported, for one reason: written inline at the call site the only
+ * available check is a regex for "(partial)", and that regex passes on
+ * `(false ? ' (partial)' : '')`. Measured — it did, on the first injection run. */
+export function dayLabel(day, partialDay) {
+  return withDow(day) + (day != null && day === partialDay ? ' (partial)' : '');
+}
+
+/* WHERE A QUERY WINDOW MAY START: the Eastern midnight `days` back, but never earlier
+ * than the full-resolution edge.
+ *
+ * Aligning the start to an Eastern midnight (2026-08-13) is right for the TABLE — it is
+ * what makes the oldest row a whole day — and for four hours out of every twenty-four it
+ * is fatal to the NUMBERS. `now - days*24h` taken between 00:00 and 04:00 UTC, which is
+ * 8pm to midnight Eastern, has already rolled into the previous Eastern day, so its
+ * midnight sits twenty hours the wrong side of the edge and the whole page drops to the
+ * coarse tier. Nothing errors; the counts just quietly become approximations.
+ *
+ * Clamping trades that for a short oldest row, which the caller labels. Only inside the
+ * full-resolution window: at 14/30/90 days the coarse tier is unavoidable, and trimming
+ * the start there would silently shorten the window that was actually asked for.
+ *
+ * IT LIVES HERE, next to the helper it corrects, because this file is the one
+ * `test/run_dashboard_time.js` imports — so the rule is exercised across a year of real
+ * instants rather than pattern-matched out of the source. A copy in analytics.js could
+ * only be tested by regex, and a regex cannot tell 8pm from 8am.
+ */
+export function windowStartMs(nowMs, days) {
+  const want = etDayStartMs(nowMs - days * 864e5);
+  if (days > RUM_FULL_RES_DAYS) return want;
+  // 00:00 of (today - RUM_FULL_RES_DAYS), by arithmetic: an epoch day is exactly 864e5 ms,
+  // and this edge is not a wall-clock date in any zone, so no offset belongs in it.
+  const edge = nowMs - (nowMs % 864e5) - RUM_FULL_RES_DAYS * 864e5;
+  return Math.max(want, edge);
+}
+
 // Whole seconds -> "45s" / "3m 12s" / "11h 34m". Never a bare decimal: these are read
 // at a glance and "0.05 h" is not a glance.
 export function dur(sec) {

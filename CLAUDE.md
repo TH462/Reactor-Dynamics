@@ -471,7 +471,10 @@ thing left in the file and it grew about a bullet a session.
   check asserting an ABSENCE can be pinning a NON-EVENT (`run_reachability` exists for the
   instrument half). `h.range()` spans the WHOLE run, the wrong window for a loss on an event that
   recovers — take the ends and assert the SPAN. A gate that iterates a hand-maintained MAP tests
-  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). And a term that is
+  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). A SOURCE SCAN for a
+  rendered string cannot tell you the string is REACHABLE — `/\(partial\)/` passed green on
+  `(false ? ' (partial)' : '')` (#485); make it a function and test the claim, don't spell it. And
+  a term that is
   an IDENTITY in the regime you test in is a term nothing tests — 44 green probes agreed with a
   leg-split formula that computed 0.0 °F on a scrammed core.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
