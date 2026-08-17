@@ -28,7 +28,7 @@ var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop'].forEach(function (f) {
   require(path.join(E, f + '.js'));
 });
-var RD = globalThis.RD.pwr2, GEO = RD.geometry;
+var RD = globalThis.RD.pwr2, GEO = RD.geometry, W = RD.water;
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, core: RD.core, geometry: RD.geometry, loop: RD.loop } } };
@@ -245,6 +245,56 @@ function runSuite(S, rec, quiet) {
         return bh < ah - 1;
       })() ? 'the heats map cools the cold leg while corePower still heats the core'
            : 'FAILED: one displaced the other');
+
+  /* ---- THE PUMP KNOWS WHAT IT IS PUMPING (added 2026-08-17) --------------------------
+   *
+   * `pumpHead` returned `dP_rated * r*r` — pressure rise from shaft speed alone. A centrifugal
+   * pump develops HEAD, not pressure: dP = rho*g*H, so the rise scales with the density in the
+   * impeller, and friction for a given MASS flow runs the other way, as 1/rho.
+   *
+   * MEASURED before this existed, 0.0005 m2 (5 cm2) break at full power with no ECCS:
+   * `mdot_loop` held **1630 kg/s for the whole 840 s blowdown**, unchanged to four figures, with
+   * the core at quality 1.0 superheated to 470 degC (878 degF) and 2.4 % of the inventory left.
+   * The plant was circulating rated mass flow of steam. Clad heat-up was 1 degC, so core damage
+   * was unreachable, and natural circulation could never be observed because forced flow never
+   * stopped. */
+  if (!quiet) console.log('\nPUMP DENSITY COUPLING  [it was pumping steam at rated mass flow]');
+  var pRat = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
+  /* NEUTRAL AT RATED, and this is the check that lets the term be added to a calibrated
+   * pump/friction balance at all. Both factors are exactly 1 at the design density, so
+   * `dP_rated` and `Kf` keep the meaning they were derived with. */
+  ck('the density ratio is EXACTLY 1 at the design condition', S.densityRatio(pRat), 1.0,
+     2e-3, '');
+  ck('...so the pump develops exactly its rated dP there', S.pumpHead(pRat), 0.58, 2e-3, 'MPa');
+  /* AND IT MUST ACTUALLY BITE. A ratio only ever checked at rated is a ratio nobody has seen
+   * work — the flag-asserted-only-false trap (run_pwr2_containment.js:110). */
+  var pVoid = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
+  node(pVoid, 'rcp').h = W.h_g(15.41) + 200;          /* dry superheated steam at the pump */
+  var drV = S.densityRatio(pVoid);
+  ckT('a pump full of STEAM develops a small fraction of its rated head',
+      drV < 0.2 && drV > 0 && S.pumpHead(pVoid) < 0.58 * 0.2,
+      'density ratio ' + drV.toFixed(4) + ', head ' + S.pumpHead(pVoid).toFixed(4) +
+      ' MPa against a rated 0.58');
+  /* THE EQUILIBRIUM IS THE TEXTBOOK AFFINITY RESULT, and it is what makes this a derivation
+   * rather than a knob: setting pump dP equal to friction dP gives mdot PROPORTIONAL to rho —
+   * a centrifugal pump at fixed speed moves a roughly constant VOLUME. Driven to steady state
+   * on a loop held at a reduced density, the flow must land at rated * that ratio. */
+  var pHalf = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
+  /* Hold EVERY node at the same two-phase state: the loop is uniformly light, so buoyancy is
+   * identically zero (measured 0.00e+0) and the balance left standing is pump against friction,
+   * which is the one the identity is about. */
+  var hMix = W.h_f(15.41) + 0.5 * (W.h_g(15.41) - W.h_f(15.41)), k;
+  for (k = 0; k < 6000; k++) {
+    pHalf.nodes.forEach(function (n) { n.h = hMix; });      /* pin the fluid; momentum only */
+    S.stepPlant(pHalf, 0.02, {});
+  }
+  /* ⚠ READ THE RATIO AT THE SETTLED STATE, NOT THE INITIAL ONE — my own first version of this
+   * check took it before the ride and failed at 0.3005 against 0.2418. Pinning the enthalpies
+   * drives the pressure solve to the 18 MPa envelope wall, which moves the density and therefore
+   * the ratio. Compared at the same instant, the identity is EXACT rather than approximate, so
+   * the tolerance is 1e-3 and not a band. */
+  ck('flow settles at rated x the density ratio — the pump-affinity identity',
+     pHalf.mdot_loop / 1630, S.densityRatio(pHalf), 1e-3, 'frac');
 }
 
 console.log('\nPWR2 Layer 4 -- located sources and integrated loop momentum');
@@ -253,6 +303,18 @@ runSuite(S, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* THE PUMP DENSITY COUPLING (2026-08-17). The first is the defect exactly as it shipped. */
+  ['the pump develops rated dP whatever it is pumping (rated mass flow through STEAM)',
+   'return PUMP.dP_rated * r * r * densityRatio(sys);', 'return PUMP.dP_rated * r * r;'],
+  ['friction stops scaling with density (the other half of the same coupling)',
+   'var dPf = sys.Kf * sys.mdot_loop * Math.abs(sys.mdot_loop) / densityRatio(sys);',
+   'var dPf = sys.Kf * sys.mdot_loop * Math.abs(sys.mdot_loop);'],
+  ['the density ratio is INVERTED — a voided pump develops MORE head, not less',
+   '    var d = loopDensity(sys) / rhoRated();',
+   '    var d = rhoRated() / loopDensity(sys);'],
+  ['the rated density reference is typed as a round number instead of derived at the design point',
+   '    if (_rhoRated === null) _rhoRated = RHO(W.h_l(304.5, 15.41), 15.41);',
+   '    if (_rhoRated === null) _rhoRated = 1000;'],
   ['buoyancy sign flipped (kills natural circulation silently)',
    'dP = (rh - rc) * g * (zh - zc);', 'dP = (rc - rh) * g * (zh - zc);'],
   ['buoyancy zeroed entirely', 'return dP / 1e6;                                // MPa', 'return 0;'],

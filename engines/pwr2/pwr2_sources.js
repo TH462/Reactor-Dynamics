@@ -101,10 +101,60 @@
   }
 
   /* Pump head, affinity-scaled from the rated point. H ~ w^2 at fixed flow coefficient. */
+  /* THE RATED LOOP DENSITY, resolved once from the design condition rather than typed. It is the
+   * denominator of the density ratio below, so it must be the density the pump curve and the
+   * friction coefficient were both calibrated at — 304.5 degC / 15.41 MPa (580 degF / 2235 psia),
+   * this plant's design point, which is where `dP_rated` and `Kf` are balanced against each
+   * other by construction. */
+  var _rhoRated = null;
+  function rhoRated() {
+    if (_rhoRated === null) _rhoRated = RHO(W.h_l(304.5, 15.41), 15.41);
+    return _rhoRated;
+  }
+
+  /* densityRatio(sys) — the fluid the PUMP is actually working on, against the design fluid.
+   *
+   * ⚠ THIS TERM WAS MISSING AND THE PUMP KEPT RATED FLOW THROUGH STEAM. `pumpHead` returned
+   * `dP_rated * r*r` — a pressure rise that depends only on shaft speed. A centrifugal pump does
+   * not develop pressure, it develops HEAD: dP = rho*g*H, so the pressure rise scales with the
+   * density of what is in the impeller. Friction runs the other way — for a given MASS flow,
+   * dP_f goes as 1/rho, because the same kg/s of a lighter fluid moves far faster.
+   *
+   * MEASURED before this term existed, 0.0005 m2 (5 cm2) break at full power, no ECCS:
+   * `mdot_loop` sat at **1630 kg/s for the whole 840 s blowdown** — unchanged to four figures
+   * with the core at quality 1.0, superheated to 470 degC (878 degF), and 2.4 % of the plant's
+   * inventory left. The plant was circulating rated mass flow of STEAM. Consequences: forced
+   * convection never ends, so clad heat-up is 1 degC and core damage is unreachable; and natural
+   * circulation, a Tier A behaviour, can never be observed because forced flow never stops.
+   *
+   * Same class as the two defects fixed alongside it (D4 §35): a term that silently assumes
+   * single-phase liquid and has no way to notice the fluid changed.
+   *
+   * NO NEW CONSTANT, AND EXACTLY NEUTRAL AT RATED. Both factors are 1 when the loop is at its
+   * design density, so `dP_rated`, `Kf` and their balance are untouched by construction — the
+   * same "pin at rated" discipline the owner ruled for the film coefficient (2026-08-17). The
+   * equilibrium that falls out is the textbook pump-affinity result: setting dPp = dPf gives
+   * **mdot proportional to rho**, i.e. a centrifugal pump at fixed speed moves a roughly constant
+   * VOLUME. At 0.2 kg/m3 that is 1630 * 0.2/716 = 0.46 kg/s rather than 1630.
+   *
+   * THE RCP NODE'S OWN DENSITY, not a loop average: the impeller works on its suction, and a loop
+   * whose core has voided while the cold leg is still solid should keep pumping — which it does,
+   * correctly, under this form. */
+  function loopDensity(sys) {
+    for (var i = 0; i < sys.nodes.length; i++) {
+      if (sys.nodes[i].id === 'rcp') return RHO(sys.nodes[i].h, sys.P);
+    }
+    return rhoRated();                       /* no rcp node: a Layer 2 fixture, stay neutral */
+  }
+  function densityRatio(sys) {
+    var d = loopDensity(sys) / rhoRated();
+    return d > 0 ? d : 1e-9;                 /* never zero: it divides the friction term */
+  }
+
   function pumpHead(sys) {
     if (sys.omega <= 0) return 0;
     var r = sys.omega / PUMP.w_rated;
-    return PUMP.dP_rated * r * r;
+    return PUMP.dP_rated * r * r * densityRatio(sys);
   }
 
   /* Buoyancy: thermal centres set the natural-circulation driving head. Computed from Layer 1's
@@ -155,7 +205,11 @@
 
     /* ---- loop momentum ---- */
     var dPp = pumpHead(sys);
-    var dPf = sys.Kf * sys.mdot_loop * Math.abs(sys.mdot_loop) / (PUMP.mdot_rated ? 1 : 1);
+    /* FRICTION IS THE OTHER HALF OF THE DENSITY COUPLING — see `densityRatio`. For a given MASS
+     * flow, dP_f goes as 1/rho: the same kg/s of steam moves ~3500x faster than water and pays
+     * for it quadratically. Dividing here rather than re-deriving Kf keeps Kf exactly the rated
+     * calibration it has always been. */
+    var dPf = sys.Kf * sys.mdot_loop * Math.abs(sys.mdot_loop) / densityRatio(sys);
     var dPb = buoyancy(sys);
     var net = dPp - dPf + dPb;                                     // MPa
     /* (L/A) dmdot/dt = dP  ->  dmdot = dt * dP * 1e6 / (L/A) */
@@ -214,6 +268,7 @@
     PUMP: PUMP, REF: REF,
     createPlant: createPlant, stepPlant: stepPlant,
     loopInertia: loopInertia, pumpHead: pumpHead, buoyancy: buoyancy,
+    densityRatio: densityRatio, rhoRated: rhoRated,
     mergeSources: mergeSources
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

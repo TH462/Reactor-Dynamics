@@ -1588,3 +1588,124 @@ guarding the mechanism. Hard Rule 10, applied deliberately rather than cited.
   currently assert, correctly, that their plant cannot hold pressure. Until a pressurizer exists,
   no PWR2 fixture is at its design condition and every steady-state comparison carries that
   caveat.
+
+## 36. THE THIRD ONE — THE REACTOR COOLANT PUMP DID NOT KNOW IT WAS PUMPING STEAM — 2026-08-17
+
+§35 fixed two defects and then measured the clad temperature a core-damage model would see. It
+was **1 °C above the coolant, for the entire blowdown.** That is the third defect, and it is the
+same shape as the other two.
+
+### 36.1 What the measurement said
+
+With §35's fixes in, a 0.0005 m² (5 cm²) break at full power with no emergency core cooling runs
+cleanly for 840 s. Through all of it:
+
+| t (s) | `mdot_loop` | core quality | core coolant | clad rise |
+|---|---|---|---|---|
+| 0 | 1630 kg/s | 0.000 | 581 °F (305 °C) | 3 °C |
+| 360 | **1630 kg/s** | **1.000** | 666 °F (352 °C) | 1 °C |
+| 420 | **1630 kg/s** | **1.000** | 878 °F (470 °C) | 1 °C |
+| 840 | **1630 kg/s** | 0.036 | 230 °F (110 °C) | 1 °C |
+
+**`mdot_loop` never moved** — 1630 kg/s to four figures, with the core dry and superheated and
+2.4 % of the plant's inventory left. The plant was circulating rated mass flow of steam.
+
+### 36.2 The mechanism
+
+```js
+function pumpHead(sys) {
+  if (sys.omega <= 0) return 0;
+  var r = sys.omega / PUMP.w_rated;
+  return PUMP.dP_rated * r * r;          // <- depends on shaft speed and NOTHING else
+}
+```
+
+A centrifugal pump does not develop pressure, it develops **head**: `dP = rho*g*H`, so the pressure
+rise scales with the density of what is in the impeller. Friction runs the other way — for a given
+**mass** flow, `dP_f` goes as `1/rho`, because the same kg/s of a lighter fluid moves far faster and
+pays for it quadratically. Neither term had a density in it. Both errors push the same way, which
+is why the flow did not merely stay high, it stayed *exactly* at rated.
+
+This is the same class as §35.3's moderator term and §35.2's unbounded enthalpy: **a term that
+silently assumes single-phase liquid and has no way to notice the fluid changed.** Three of them in
+one engine, found in one afternoon, each by measuring a scenario nobody had run.
+
+### 36.3 Consequences, which is why this is not cosmetic
+
+- **Core damage was unreachable.** 1630 kg/s of anything gives an enormous heat transfer
+  coefficient, so the cladding sits ~1 °C above the coolant no matter how hot the coolant gets.
+  No clad model, however carefully built, could have produced damage on top of it.
+- **Natural circulation could never be observed.** It is a Tier A behaviour, and forced flow never
+  stopped, so it could never take over. `run_pwr2_sources.js` tests natural circulation only on a
+  fixture that trips the pump explicitly — which is why a green gate coexisted with this.
+- Every loss-of-flow and loss-of-coolant casualty ran with full forced circulation throughout.
+
+### 36.4 The fix needs no new constant, and is exactly neutral at rated
+
+One ratio: the density the pump is actually working on, against the density its curve and the
+friction coefficient were both calibrated at.
+
+```
+dP_pump     = dP_rated * (w/w_rated)^2 * (rho / rho_rated)
+dP_friction = Kf * mdot*|mdot| / (rho / rho_rated)
+```
+
+`rho_rated` is resolved once from the design condition — 304.5 °C / 15.41 MPa (580 °F / 2235 psia)
+— rather than typed, so it cannot drift from the point where `dP_rated` and `Kf` are balanced
+against each other. **Both factors are exactly 1 there**, so the calibration is untouched by
+construction, not by re-tuning: the same "pin at rated" discipline the owner ruled for the film
+coefficient the same day, and the same one §35.3 used for the void coefficient.
+
+**The equilibrium that falls out is the textbook pump-affinity result**, and this is what makes it a
+derivation rather than a knob. Setting pump ΔP equal to friction ΔP:
+
+```
+dP_rated * d  =  Kf * mdot^2 / d      =>      mdot = mdot_rated * d
+```
+
+**Mass flow proportional to density** — a centrifugal pump at fixed speed moves a roughly constant
+*volume*. Nothing was fitted to produce that; it is algebra on two terms that each had to be right
+for their own reason. The gate checks it as an identity rather than a band and it lands to 1×10⁻³.
+
+**THE RCP NODE'S OWN DENSITY**, not a loop average: the impeller works on its suction, so a loop
+whose core has voided while the cold leg is still solid should keep pumping — and does, correctly,
+under this form.
+
+### 36.5 What it does to the plant
+
+Same 5 cm² break, no emergency core cooling, after the fix:
+
+| t (s) | `mdot_loop` | core quality | core coolant | implied clad |
+|---|---|---|---|---|
+| 60 | 1174 kg/s | 0.039 | 624 °F | 624 °F |
+| 240 | 264 kg/s | 0.448 | 596 °F | 596 °F |
+| 420 | 65 kg/s | **1.000** | 799 °F | **799 °F** |
+| 600 | 31 kg/s | 1.000 | 1352 °F | **1389 °F** |
+| 840 | 14 kg/s | 1.000 | 1472 °F (the envelope ceiling) | **1531 °F** |
+
+Flow decays two orders of magnitude as the loop voids, and the cladding climbs past GEND-061's
+1200 °F (650 °C) hydrogen-generation onset. It is not yet at Ginna's 1800 °F "the reaction can be
+significant", and the core coolant is pinned at the property library's 800 °C (1472 °F) vapour
+ceiling, which caps how far the clad can be carried by this route. Whether the 10 CFR 50.46 limit
+of 2200 °F is reachable is **not yet known** and must not be assumed — it depends on the film
+coefficient at very low flow, which is exactly what the clad model in the approved plan will
+determine. That number must be chosen on physical grounds and the reachability *reported*, not
+chosen to make damage reachable.
+
+### 36.6 Blast radius: none
+
+`node test/run_all.js --fast` — **all 69 runners at baseline, zero drift**, with the momentum
+equation changed. That is the neutrality claim being cashed rather than asserted: a term that is
+identically 1 at the design density cannot move a plant that stays there, and every existing
+fixture does.
+
+`run_pwr2_sources.js`: 26 → 30 checks, 17/17 mutations. The four new checks are the two halves of
+the neutrality claim, a case where the ratio actually bites (a pump full of dry steam develops
+0.0688 MPa against a rated 0.58), and the affinity identity.
+
+**⚠ One test-authoring trap, mine:** the affinity check first read the density ratio *before* the
+settling ride and failed at 0.3005 against 0.2418. Pinning the node enthalpies to hold the fluid
+still drives the pressure solve to the 18 MPa envelope wall, which moves the density and therefore
+the ratio. Compared at the same instant the identity is exact. **A ratio taken at one moment and
+compared against a state from another is not an identity check** — it is two measurements of
+different plants, the same error §35.4 found in the acceptance test's before-and-after.
