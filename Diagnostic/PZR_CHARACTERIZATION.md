@@ -975,3 +975,33 @@ exhaustion so `stepPressure` can switch branch **within** the step rather than o
 Open question for the owner rather than for me: whether the geometric predicate stays as a
 second, later trigger or is replaced outright — they disagree by about 25 points of level, and
 that gap is where every remaining flag-on red lives.
+
+### The conservative solve is well-posed — the caveat on the recommendation is cleared (2026-08-16)
+
+The recommended rewrite replaces flash-then-settle with a single solve: given total mass M,
+vessel volume V and internal energy U, find the saturated state. I said it was only a clean
+1-D root find if **(a)** quality crosses zero exactly once and **(b)** energy is monotone in
+temperature along the volume constraint — and that if (b) failed, the cheap interim patch
+would be the better first step. Measured on the model's own correlations and its own energy
+accounting, at 0.25 °C resolution:
+
+| node seeded at | total mass | solid point (x = 0) | zero crossings | E monotone where x > 0 |
+|---|---|---|---|---|
+| **55 %** | 1596.9 kg | none below 373 °C | 0 | **0 of 1013 steps decreasing** |
+| **78 %** | 2083.4 kg | **365.75 °C** | 1 | **0 of 983** |
+| **95 %** | 2442.9 kg | **351.25 °C** | 1 | **0 of 925** |
+
+**Both conditions hold.** The earlier reading that energy was non-monotone at 95 % was an
+artifact of scanning past the solid point: those two decreasing steps are at x < 0, which is
+not a state at all. Restricted to the valid two-phase domain the energy curve is strictly
+increasing everywhere, and `dE/dT` falls smoothly from ~20.8 to ~15.9 MJ/°C without turning.
+
+**The solid point is unique, well-defined, and well below the critical point** — 365.75 °C at
+78 % level, 351.25 °C at 95 %, and a 55 % node never reaches one inside the table. So the
+bracket for the solve is `[T_lo, T_solid]`, both ends computable, with a single root inside.
+
+**So the recommendation stands unqualified, and the interim patch is not needed.** The only
+way the solve can fail is quality reaching zero — which *is* the vessel being full of liquid,
+i.e. the geometric predicate, reached by the physics rather than asserted alongside it. The
+two conditions stop disagreeing by construction, which was the whole point: `gain > 1` was
+never a second solid condition, it was the operator split failing to have an answer.
