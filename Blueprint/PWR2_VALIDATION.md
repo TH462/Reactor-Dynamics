@@ -1159,3 +1159,73 @@ This tick produced no code. It produced a measurement that **cancelled the work 
 scope**, and a number (16/40, 0 unaccounted) that says where the engine actually stands. That is a
 better outcome than the map would have been, but it is worth being explicit that the plan in §29.3
 was superseded within one tick by checking whether the thing already existed.
+
+## 31. CONTAINMENT IS THE WRONG NEXT SYSTEM — IT IS BLOCKED BEHIND A BREAK MODEL — 2026-08-16
+
+I named containment as the next build on channel count alone (4 blocked, joint-largest with the
+condenser). The evidence pass says otherwise, and for a reason the count could not show.
+
+### 31.1 What IS sourced
+
+- **Containment net free volume 1×10⁶ ft³** — Ginna UFSAR ch15 (ML20339A101), the anchor plant.
+- **Pre-accident initial conditions 125 °F and 1.0 psig** — same corpus.
+
+### 31.2 What is NOT, and one near-miss worth recording
+
+**No containment design pressure.** The only hit is NUREG-1431 Rev 4 Bases: *"[44.1] psig results
+from the LOCA analysis… maximum peak containment atmosphere temperature of [385]°F"*. Both are
+**bracketed template placeholders** — the plant-specific number a licensee fills in. That is exactly
+the trap `CLAUDE.md` records from #380, where a bracketed *"~30–32 %"* SG lo-lo survived two
+evidence passes because both verdicted the mechanism and inherited the figure. Not a source.
+
+Also unsourced: containment spray flow, fan-cooler capacity, recombiner capacity.
+
+### 31.3 The real objection is not the missing numbers — it is that containment would do NOTHING
+
+Of the four blocked channels, only two come from a containment model at all:
+
+| channel | needs |
+|---|---|
+| `containment_pressure_mpa` | free volume + **an energy source** |
+| `containment_temp_c` | free volume + **an energy source** |
+| `containment_sump_pct` | **break flow** — declared missing under *break / leak* |
+| `ctmt_h2_pct` | **clad oxidation** — declared missing under *damage* |
+
+And the energy source for the first two is *also* a break. **With no break model there is no mass and
+no energy entering containment**, so a containment built today would report 1.0 psig and 125 °F
+for ever: two constants where the condenser produced a coupling.
+
+That is the difference between the condenser and containment, and the channel count could not
+express it. **The condenser gated the dump the moment it existed** (§30, and the measured loss-of-
+circulating-water ladder). Containment gates nothing until something can leak into it.
+
+### 31.4 The dependency structure, which is the useful output
+
+Sorting the eight unbuilt systems by what they need rather than what they supply:
+
+**Independently meaningful today**
+- **Auxiliary feedwater** (2 channels) — loss of feedwater needs no break; it is the TMI
+  differentiator and the SG is already built.
+- **Nuclear instruments** (3 channels) — source and intermediate range are a startup story, and
+  kinetics already produces the flux they read.
+
+**Blocked behind a BREAK/LEAK model** — the keystone
+- containment (2 of its 4), damage (6), accumulators (5), ECCS detail (2), and `leak_flow` itself.
+  That is **one system standing in front of roughly sixteen channels**.
+
+**Owned elsewhere or instrument-layer**
+- pressurizer (11, #472), SG level geometry (2, a level map).
+
+### 31.5 Recommendation
+
+**Build the break/leak model next, not containment.** It is the only unbuilt system whose absence
+blocks four others, it makes the LOCA path expressible at all, and the layers underneath it are
+already in place — `pwr2_sources.js` takes a `sources` driver that adds and removes mass, and
+`pwr2_eccs.js` exists to answer a break.
+
+The alternative worth stating: **auxiliary feedwater** is smaller, needs no break, and carries the
+TMI lesson (*a drying steam generator stops absorbing heat whatever the dump does*). If the
+preference is a quick coupling over a keystone, AFW is the better small step.
+
+**I would not build containment until a break exists**, and this section is the record of why the
+channel count was the wrong way to choose.
