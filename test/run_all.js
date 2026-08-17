@@ -986,7 +986,7 @@ var BASELINES = {
   'run_pwr2_sg.js':        { code: 0, score: '25passed 0failed 25checks', secs: 340 },  // 90 -> 340 (2026-08-16): the 90 was never measured on a quiet machine. Timed alone, twice: 341 s. `secs` is only a longest-first scheduling nudge and cannot fail anything, which is exactly why a wrong one goes unnoticed -- it just schedules a 5.7-minute runner as if it were a 90-second one.
   'run_pwr2_sources.js':   { code: 0, score: '23passed 0failed 23checks', secs: 195 },
   'run_pwr2_kinetics.js':  { code: 0, score: '63passed 0failed 63checks', secs: 3 },   // 50 -> 63 (2026-08-16): the direct BORON worth term was missing entirely and the gate scored 50/50 with 25/25 mutations against it -- mutation testing perturbs code that exists and is structurally blind to a term nobody wrote. Added the term, the rho_excess solve pinned to the 975 ppm BEAVRS anchor, and a cross-module tie to pwr2_fuel's derived Doppler reference.
-  'run_pwr2_bases.js':     { code: 0, score: '11passed 0failed 11checks', secs: 2 },
+  'run_pwr2_bases.js':     { code: 0, score: '12passed 0failed 12checks', secs: 2 },
   'run_pwr2_forwarding.js': { code: 0, score: '11passed 0failed 11checks', secs: 2 },
   'run_pwr2_fuel.js':      { code: 0, score: '45passed 0failed 45checks', secs: 2 },
   'run_pwr2_loadfollow.js':{ code: 0, score: '26passed 0failed 26checks', secs: 90 },   // THE ACCEPTANCE TEST: Tier A coupling A1, power follows load, rods in MANUAL. Measured 99.6 -> 54.0 % with Tavg 577.95 -> 603.92 degF against the first engine's 100 -> 57.5 % and 579.3 -> 602.1. Bands admit the declared physics differences (real L0 density in the moderator coefficient, derived rather than tuned fuel rise); they are NOT fitted to the first engine.
