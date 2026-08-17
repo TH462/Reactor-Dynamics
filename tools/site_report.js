@@ -48,10 +48,23 @@
  *     span >= 14 days  08-09: count 20, visits 20   sampleInterval 10   <- quantized to 10s
  *                      08-10: count 10, visits 10   sampleInterval 10
  *
- * The adaptive dataset switches to a coarser pre-aggregated tier somewhere between 7 and 14
- * days. The first draft of this file multiplied count × sampleInterval and reported 300
- * pageloads against a true 20. So: report what comes back, print the granularity beside it,
- * and use `--days=7` or less when you need an exact figure.
+ * The first draft of this file multiplied count × sampleInterval and reported 300 pageloads
+ * against a true 20. So: report what comes back, print the granularity beside it, and use
+ * `--days=7` or less when you need an exact figure.
+ *
+ * "SOMEWHERE BETWEEN 7 AND 14 DAYS" was the original reading of that table and it is too
+ * loose to build on. The switch is a FIXED RETENTION EDGE at 00:00 UTC of (today - 7), and
+ * it is a cliff — measured 2026-08-17, one second either side:
+ *
+ *     datetime_geq 2026-08-09T23:59:59Z  ->  sampleInterval 10,  50 pageloads
+ *     datetime_geq 2026-08-10T00:00:00Z  ->  sampleInterval  1,  67 pageloads
+ *
+ * The distinction is not academic: a "7-day window" can land on EITHER side of that edge
+ * depending on the hour it is asked at. `FROM` below is a UTC midnight and therefore sits
+ * exactly ON the edge at every hour of the day, which is the only reason --days=7 has always
+ * been exact here. The dashboard aligned the same window to an EASTERN midnight and spent
+ * three days rounding every figure between 8pm and midnight (#485). Do not "tidy" `FROM`
+ * into a local-midnight or a rolling `now - 7d` without re-reading that issue.
  *
  * ---------------------------------------------------------------------------- query traps
  *   - `uniq()`, `round()` and `quantile()` are all 422. `quantileWeighted(q)(col, _sample_interval)`
@@ -219,9 +232,13 @@ async function traffic() {
   await sec('traffic_devices', 'Devices', ['device', ...COLS],
     async () => rumRows(await gql(rumGroup('deviceType', 'count_DESC', 10)), (d) => ({ device: d.deviceType })));
 
+  /* Report what came BACK, not what was asked for. This used to open "Window > 7 days:",
+   * which is a claim about the window rather than about the answer — and the dashboard's
+   * copy of that sentence spent three days telling the one person who could have caught
+   * it that a 7-day window was the reason a 7-day window was rounding (#485). */
   if (rumCoarse > 1 && !JSON_OUT) {
-    console.log(`\n  ${C.y}Window > 7 days: Cloudflare answered from a coarser tier, so these counts are`);
-    console.log(`  rounded to the nearest ${rumCoarse}. Re-run with --days=7 for exact figures.${C.x}`);
+    console.log(`\n  ${C.y}Cloudflare answered from a coarser tier, so these counts are rounded to`);
+    console.log(`  the nearest ${rumCoarse}. Only the last 7 days are held at full resolution.${C.x}`);
   }
   OUT.traffic_granularity = rumCoarse;
 }

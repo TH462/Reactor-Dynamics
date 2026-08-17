@@ -207,7 +207,8 @@ export async function sessionList(env, url, token) {
     + 'is the client\'s own figure at <span class="mono">session_end</span> — measured '
     + 'from the last plant reset rather than from the start of the session, and absent '
     + 'entirely when a tab did not close cleanly. <b>Rows</b> is what was stored, '
-    + '<b>Est</b> what was sampled away — where they differ, presses are missing.</p>'
+    + '<b>Est</b> what was sampled away — where they differ, presses are missing. '
+    + 'Times are <b>Eastern</b>.</p>'
     + body + '</body></html>');
 }
 

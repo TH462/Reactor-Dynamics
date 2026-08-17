@@ -45,6 +45,90 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-08-12-develop-c — #458: shutdown cooling and low-head injection are the same pumps, so the align is refused during injection
+
+*(OWNER RULING, 2026-08-12: "A'" — selecting the refusal over gating `Q_rhr` or a documentation-only
+close, from three options I costed. The recommendation was A'.)*
+
+### The decision
+
+`set_rhr {active:true}` is refused while safety injection is running. A control-layer interlock row
+reading the `hpi_active` **status instrument** (HR1), `blocks_when {active: true}` so **ISOLATE is
+never refused** — the same asymmetry the engine's block-open permissive already has. The engine's
+two real interlocks (2.76 MPa block-open, 4.14 MPa autoclose) are untouched.
+
+### Why a refusal and not a heat gate
+
+Option A was one `&&` on `Q_rhr` — the WTSM "uncooled heat exchangers" fact stated directly — and it
+was **measured to move zero gates**. It was rejected anyway: it leaves a control that engages, lights
+`eccs_mode: RHR`, and removes no heat. That is the Q4 orphan-control case, and #453 had *just*
+removed an orphan control from this same system (the RHR AUTO button). The refusal states the same
+fact where the player can act on it.
+
+### This is NOT a plant interlock, and that constraint shaped the build
+
+`find_source.js` across 34 documents in 3 lanes finds **the pressure permissive and the autoclosure
+for 8701/8702 and nothing else**. There is no safety-injection inhibit on those valves in the corpus.
+Writing one would be **#453's exact error** — reading a lineup/procedural fact as an automatic
+function — repeated by the session that wrote up #453's lesson. So:
+
+- the message says **lineup**, never *interlock*: *"RHR ALIGN BLOCKED: RHR pumps in ECCS injection
+  lineup (SI actuated)."*
+- `Manuals/12` **§12.20** is a new declared departure that says what it is *and what it costs*.
+- `Manuals/03` §11.2's new row calls it "a third refusal, and it is **not** one of the two interlocks
+  above".
+
+What it *is*: this trainer has **one `rhr_active` flag for two mutually exclusive alignments of one
+set of pumps**, and **no refueling-water-tank inventory node** (declared, `pwr_config.js:2145`), so it
+can never reach the real exit — the sump swap-over, where a crew opens component cooling water to the
+RHR heat exchangers (WTSM 5.2 §5.2.4.5). Within every state this sim can represent, "injection is
+running" and "the heat exchangers are uncooled" are the same fact.
+
+### Q0 — the measurement
+
+Full stack, `hot_full_power` + `large_loca`; heat currency: rated core = 19.45 units = 300 MWt.
+
+| | align legal at | peak `Q_rhr` | ÷ decay heat | void at align+300 s |
+|---|---|---|---|---|
+| sev 0.05 | t+553 s | 4.28 (~66 MWt) | **8.8×** | — |
+| sev 1.0 | **t+20 s** | 2.38 (~37 MWt) | **4.2×** | **0.788** |
+
+A single-stage vertical centrifugal pump on 79 % steam, feeding heat exchangers with no cooling water.
+
+### The reachability finding, which is the part that made this urgent
+
+`rhr_not_aligned` (PWR-A33) annunciates at **t+191 s** of the sev-1.0 run and stands. That is
+deliberate and correct — the row's comment says it reads *"you are on injection, not on shutdown
+cooling"*. But `Manuals/06`'s **Immediate operator actions** for that tile said *"Re-align RHR from
+the ECCS side of the board"* with no accident carve-out. **A correct alarm and an incorrect response
+procedure compose into a board that recommends the defect**, and nothing links the two files.
+
+### The blast-radius warning, measured rather than inherited
+
+The issue warned that `pwr_thermal.js` is the heat balance every LOCA probe's bands were measured
+against. Instrumented the thermal step for the first `rhr_active && hpi_active` co-occurrence per
+process and ran the full 48-runner gate: **one hit**, in `run_m4`'s own #453 leg. Since #453 nothing
+auto-aligns RHR, and PWR-N15 takes HPI/LPI to OFF **two steps before** it opens the suction valve —
+so no LOCA probe's heat balance ever contained `Q_rhr`.
+
+### The kernel defect found on the way, and why its comment had to be rewritten
+
+`_evalInterlocks` clears through a hysteresis band (`v < clears_below` / `v > clears_above`); a
+boolean has none. `crossed()` gained `is_true`/`is_false` at #314; the clear path did not, and it was
+latent because **no interlock had ever been keyed on a status instrument**. The obvious reading is
+"it latches for ever" — that is what I wrote in the comment first. **Injection disproved it**: a
+boolean row carries `setpoint: null`, so the clear arm asks `true > null` → `1 > 0` → **true**, and
+the interlock releases on the next pass with its own signal still standing, blocking **nothing**.
+Fixed generically (`!crossed(...)` for boolean directions); reverting reddens exactly 5 checks across
+two suites and nothing else in 46.
+
+### Gates
+
+`run_all` **48 runners at baseline**. `run_m4` 45/45 300 → **46/46 311**: the new `#458` suite
+(10 checks, including two negative controls on a cold plant) plus one added to `#453`, whose
+*"the OPERATOR can still align it"* leg was **re-authored** — it commanded the align with the break
+open and SI running, i.e. it was pinning this defect as the feature.
+
 ## 2026-08-12-backshop-a — #477: the Indications tick becomes a monitor list, and one surface owns the chart
 
 *(OWNER, 2026-08-12: "the check boxes select what you see in the [strip chart] which is
