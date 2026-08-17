@@ -800,3 +800,78 @@ solid-regime question this document has been circling, now with a mechanism atta
 
 **The trap, for whoever picks this up:** a state departure is not a rate, so it does not shrink
 when you shrink the step. Three sessions of sub-step reasoning went past that.
+
+### The rail is fixed; decision 1 is refused on its own evidence (2026-08-16)
+
+*(OWNER RULING, 2026-08-16: "Do them as you recommend")*, on three decisions. Two are
+built. **The first is not, and the reason is that my own recommendation rested on a premise
+the config had already disproved** — which is the standing trap about inherited claims,
+committed here by me, one turn after writing it up.
+
+**Decision 2 — settle solves instead of iterating. BUILT.** The measurement that had to come
+first: scanning `f(T) = T − Tsat(P(T))` showed the failing state **has** consistent roots
+(183.361 °C and 199.397 °C), and the upper one sits at **1.5535 MPa — exactly the pressure
+the state was already carrying.** Picard was walking away from a correct answer, so this was
+a method question, not the solid-regime design work. Bracket-and-bisect, the idiom
+`solveFlash` already uses.
+
+| the captured railing step | before | after |
+|---|---|---|
+| published pressure | **191,970 psia** | **206.8 psia** |
+| node liquid | 1000.0 °C | 195.4 °C |
+| converged? | to a spurious fixed point | **from one sub-step** |
+
+Heater authority at 20 / 55 / 70 % is unchanged at 3.017 / 2.893 / 2.858 psi/s.
+
+**Two wrong turns inside the fix, both caught by measurement and neither by review** —
+recorded because each looked obviously right:
+
+1. **Taking the NEAREST root** snapped the node back past the equilibrium the physics had
+   just pushed it off, **discarding the heater energy entirely** — 0.000 psi/s at 85, 90, 95
+   and 99 % level. The rule has to be the direction of travel, `−sign(f0)`.
+2. **Holding at the liquid-full BOUNDARY** when no root exists re-created the singularity from
+   the other side (1.2e6 psi/s), because that boundary is precisely where `pressureFrom`'s
+   1e-6 floor manufactures it. Holding the *incoming* state is bounded.
+
+**Two gates rewritten, both HR10-validated by running the NEW form against the OLD code:**
+
+| | asserted | old code |
+|---|---|---|
+| **C4c** | the handover: bounded, dt-independent, flagged at 85 % / not at 55 % | 1.06e6 psi/s at dt 1.0 and 1.06e8 at dt 0.01, flag undefined — **fails** |
+| **K1** | convergence: the two finest refinements < 1 psi apart | 1 / 256 / 4096 sub-steps gave 1531 / 1907 / **1,074,635** psia — **fails** |
+
+K1's old form asserted that the sub-step guard FIRED. Measured, **more subdivision made the
+old model worse**, so that check was certifying that a broken guard was being fed.
+
+**Decision 3 — `_pzrTrim` in the heatup driver. BUILT (the half that was mechanical).** It has
+always run in the cooldown and never in the heatup. Flag-off `run_pwr` is **37/37** with it,
+so it passes on both models, which is HR10's condition for moving a test.
+
+**Decision 1 — raising `mass_max`. NOT DONE, and I was wrong to recommend it.** The constant's
+own comment records a measurement I had not read: *"RAISING IT IS NOT A FIX AND WAS MEASURED:
+at 3.0 the plant runs to 300 % inventory with pressure still parked in the PORV band (#346)"*,
+and CA-12's header adds *"THE FIX IS A REGIME, NOT A CEILING … `mass_max` then stops being
+reachable on this path"*. The ceiling becomes unreachable **because a solid regime exists** —
+and v2's is exactly what is exhausted above 75 % level. Raising it there would be removing the
+guard that is currently the only thing bounding a regime the model cannot express.
+
+*(CA-12 leg C turned out not to be the obstacle I feared: its band is `< mass_max·100 − 1.0`,
+relative, so it follows the constant. The obstacle is #346's measurement, not that leg.)*
+
+**What the heatup family is now blocked on, measured rather than asserted.** With level control
+running, a 100 °F/hr heatup still fills the pressurizer solid by t ≈ 1000 s of a 20,000 s ride
+and the flag stays set for the remainder. The insurge is **not** a modelling error — the
+model's thermal term is within 0.4–2.0× of a first-principles expansion computed from its own
+density table:
+
+| Tavg | 150 °C | 200 °C | 250 °C | 300 °C | 340 °C |
+|---|---|---|---|---|---|
+| first principles (kg/s) | 0.312 | 0.416 | 0.561 | 0.882 | 1.570 |
+| the model (kg/s) | 0.638 | 0.638 | 0.638 | 0.638 | 0.638 |
+
+**Letdown removes 0.120 kg/s.** Against a displacement of 0.31–1.57 kg/s, an unmatched insurge
+fills the vessel in about **82 minutes** — and then v2 has no solid regime to hand over to.
+So the heatup reds are no longer about the rail, the seam, the correlations or the sub-step
+guard. **They are the solid regime, and behind it a real plant question this rebuild has
+surfaced and v1 could never show: whether this plant's letdown can accommodate a
+Tech-Spec-rate heatup at all.** That is a Q0 measurement and an owner question, not a fix.
