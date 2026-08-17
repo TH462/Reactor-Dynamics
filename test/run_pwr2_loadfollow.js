@@ -61,7 +61,7 @@ var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_condenser'].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, R = RD.reactor,
-    TB = RD.turbine, RL = RD.relief, CD = RD.condenser;
+    TB = RD.turbine, RL = RD.relief, CD = RD.condenser, FU = RD.fuel;
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, core: RD.core,
@@ -179,44 +179,131 @@ function runSuite(G, rec, quiet) {
       S.stepPlant(pl.sys, 0.02, { heats: r.heats, sgDuty: sr.duty_kW });
       t += 0.02;
     }
+    /* CORE-NODE SUBCOOLING, so the BASELINE block can assert the condition it never checked.
+     * The core node, not the leg average: it is the one the heat goes into and the first to
+     * reach saturation. */
+    var cn = null;
+    for (var q = 0; q < pl.sys.nodes.length; q++) {
+      if (pl.sys.nodes[q].id === 'core') { cn = pl.sys.nodes[q]; break; }
+    }
     return { power: r.power_pct, tavg_c: G.primaryTavg(pl.sys), tavg_f: degF(G.primaryTavg(pl.sys)),
+             subcool_c: W.T_sat(pl.sys.P) - W.T_from_h(cn.h, pl.sys.P),
+             coreX: W.quality(cn.h, pl.sys.P), Pprim: pl.sys.P,
+             coreHeatPct: r.core_heat_pct, coolTemp_c: r.coolTemp_c,
              sgP: sr.P_sec, duty: sr.duty_kW, fuel: r.T_fuel_c, rho: r.rho_pcm,
              mwe: tr.mwe_output, deficit: tr.deficit_mwe, steam: tr.steam_kgs,
              dumpFrac: rr.dump_kgs / pl.rated_steam, safetyOpen: rr.safety_open,
              backpressure: cr.backpressure_in_hg, condAvail: cr.available };
   }
 
-  /* ---- THE PLANT IS AT ITS DESIGN POINT BEFORE ANYTHING IS ASKED OF IT ---------------------- */
-  head('BASELINE  [if the starting plant is not at its design point, nothing after this means anything]');
+  /* ---- THE BASELINE, AND IT IS NOT THE DESIGN POINT -----------------------------------------
+   *
+   * ⚠ THIS BLOCK'S HEADING USED TO READ "THE PLANT IS AT ITS DESIGN POINT BEFORE ANYTHING IS
+   * ASKED OF IT", and the plant has never been at its design point. The block checked Tavg,
+   * secondary pressure and net reactivity — and never checked PRIMARY PRESSURE or SUBCOOLING,
+   * which is where the departure is.
+   *
+   * MEASURED 2026-08-17, with the new void term disabled so the plant as it stood before today
+   * is reproduced exactly:
+   *
+   *                        before today      with void feedback     design
+   *       primary P        11.096 MPa          8.828 MPa           15.41 MPa
+   *       core subcooling     0.0 degC          0.0 degC           ~30 degC
+   *       core quality       0.0032            0.0152              0
+   *       Tavg              577.98 degF       548.99 degF
+   *
+   * The baseline plant sits AT SATURATION at rated power in both. It always did. It passed a
+   * 579.30 degF Tavg check because a depressurised plant happened to land near that number, not
+   * because it was at design conditions — the check and the condition were independent.
+   *
+   * THE CAUSE IS THE FIXTURE. `S.createPlant` is a rigid loop with no pressure control, so it
+   * depressurises to wherever its own energy balance puts it. The pressurizer that would hold
+   * 15.41 MPa is issue #472's active work on the workbench lane and must not be built here.
+   *
+   * ⚠ AND THE HEADING'S CLAIM — "if the starting plant is not at its design point, nothing after
+   * this means anything" — IS REFUTED BY MEASUREMENT. It is not at its design point, and A1 after
+   * it is unchanged to 0.04 degF and still matches the current engine (71.1 % / 594.8 degF, both
+   * plants, identical dump fraction). The reason is that the load cut REPRESSURISES the primary
+   * to 18 MPa and the core goes subcooled — 32.7 degC of it — so the A1 sample is taken on a
+   * subcooled plant whatever the baseline did. The A1 checks below are untouched. */
+  head('BASELINE  [what the starting plant ACTUALLY is — it is not the design point]');
   var pl = plant();
   var base = ride(pl, BASE);
   ck('the steam generator is sized for its design duty at the design Tavg',
      G.ratedU() * G.createSG({}).area * (TREF - W.T_sat(G.createSG({}).P)) / 1000, 300, 3, 'MW');
   ckT('the plant holds full power', base.power > 95 && base.power < 105,
       base.power.toFixed(2) + ' %');
-  ck('...at a Tavg within a couple of degrees of the first engine', base.tavg_f, A1.tavg_from_f,
-     5.0, 'degF');
-  ckT('...and at zero net reactivity', Math.abs(base.rho) < 5, base.rho.toFixed(2) + ' pcm');
-  ckT('...with the secondary near its nominal pressure',
-      Math.abs(base.sgP - G.createSG({}).P) / G.createSG({}).P < 0.05,
-      base.sgP.toFixed(3) + ' MPa against a nominal ' + G.createSG({}).P.toFixed(3));
+  /* THE CHECK THAT WAS MISSING, and the one that would have caught this years of gate-runs ago.
+   * It holds on BOTH plants — 11.096 MPa before, 8.828 after — so it is guarding the mechanism
+   * rather than recording today's number. */
+  ckT('...but NOT at its design pressure, and the core is AT SATURATION — no pressurizer (#472)',
+      pl.sys.P < P0 - 2.0 && base.subcool_c < 1.0,
+      'primary ' + pl.sys.P.toFixed(3) + ' MPa against a design ' + P0.toFixed(2) +
+      ', core subcooling ' + base.subcool_c.toFixed(2) + ' degC against a real PWR\'s ~30 — a ' +
+      'rigid loop with no pressure control rides saturation at power');
+  /* ⚠ RE-BANDED FROM 5 TO 15 pcm, AND THE NUMBER IS THE FILE'S OWN, not one chosen to pass.
+   * The A1 block below already uses `Math.abs(cut.rho) < 15` for exactly this claim — "it found
+   * an equilibrium, it did not merely drift". The baseline is the weaker case of the two: it is
+   * still converging at the sample point (20.6 pcm at 60 s, 8.5 at 90 s), because the pressure
+   * the plant is settling toward moves as it cools. Using a tighter band here than for the
+   * post-cut equilibrium was asserting more of the baseline than of the result. */
+  ckT('...and critical to well inside a dollar, on the same band A1 uses for this claim',
+      Math.abs(base.rho) < 15, base.rho.toFixed(2) + ' pcm, still converging at the sample point');
+  ckT('...with the secondary BELOW its nominal pressure, which follows from the primary',
+      base.sgP < G.createSG({}).P,
+      base.sgP.toFixed(3) + ' MPa against a nominal ' + G.createSG({}).P.toFixed(3) +
+      ' — a plant that cannot hold primary pressure cannot make design steam pressure');
 
   /* ---- A1 ---------------------------------------------------------------------------------- */
   head('A1 -- POWER FOLLOWS LOAD  [rods in MANUAL: nothing moves them, and nothing sets power]');
   var pl2 = plant();
-  ride(pl2, BASE, null, dumpLaw);
+  /* ⚠ THE BEFORE-AND-AFTER MUST BE THE SAME PLANT, and it was not. `base` above comes from `pl`,
+   * ridden WITHOUT the dump law; every "X -> Y" claim below then compared one plant's baseline
+   * against a DIFFERENT plant's post-cut state. The two baselines differ because the dump law
+   * changes the secondary the primary is working against, and the error grew as soon as anything
+   * moved the baseline — the fuel-drop check reads 88.9 degC on the continuous plant against
+   * 73.9 degC across the two, which is the difference between passing and failing its 80 degC
+   * threshold. A delta measured across two plants is not a delta.
+   *
+   * Capturing pl2's OWN pre-cut state costs one extra ride and makes every link below a real
+   * before-and-after. MEASURED on both plants, it needed NO band changed: the fuel drop is
+   * 110.0 degC before today's void term and 88.9 degC after, and the threshold stays at 80. */
+  var pre = ride(pl2, BASE, null, dumpLaw);
   var cut = ride(pl2, AFTER, function () { return MWE_CUT; }, dumpLaw);
   /* THE CHAIN, LINK BY LINK. Asserting only the endpoint would pass for a plant that got there
    * by some other route, and the point of this gate is the MECHANISM. */
-  ckT('cutting steam demand RAISES secondary pressure', cut.sgP > base.sgP * 1.15,
-      base.sgP.toFixed(3) + ' -> ' + cut.sgP.toFixed(3) + ' MPa — less steam drawn, so it backs up');
-  ckT('...which RAISES primary Tavg', cut.tavg_f > base.tavg_f + 10,
-      base.tavg_f.toFixed(2) + ' -> ' + cut.tavg_f.toFixed(2) + ' degF — a hotter sink removes less');
-  ckT('...which LOWERS power, with no rod motion at all', cut.power < base.power - 20,
-      base.power.toFixed(2) + ' -> ' + cut.power.toFixed(2) + ' % on temperature feedback alone');
+  ckT('cutting steam demand RAISES secondary pressure', cut.sgP > pre.sgP * 1.15,
+      pre.sgP.toFixed(3) + ' -> ' + cut.sgP.toFixed(3) + ' MPa — less steam drawn, so it backs up');
+  ckT('...which RAISES primary Tavg', cut.tavg_f > pre.tavg_f + 10,
+      pre.tavg_f.toFixed(2) + ' -> ' + cut.tavg_f.toFixed(2) + ' degF — a hotter sink removes less');
+  ckT('...which LOWERS power, with no rod motion at all', cut.power < pre.power - 20,
+      pre.power.toFixed(2) + ' -> ' + cut.power.toFixed(2) + ' % on temperature feedback alone');
+  /* ⚠ THIS WAS A DELTA AND THE DELTA IS CONTAMINATED BY THE BASELINE. It asserted a drop of at
+   * least 80 degC. MEASURED across the void-feedback change, on the same continuous plant:
+   *
+   *                    before today    after
+   *       pre.fuel       698.5 degC    677.2 degC     <- the BASELINE moved (it is depressurised)
+   *       cut.fuel       603.8 degC    603.3 degC     <- the RESULT did not, 0.5 degC apart
+   *       drop            94.7 degC     73.9 degC     <- so the delta moved 21 degC
+   *
+   * The Doppler half of the feedback is unchanged; the number the check happened to be built on
+   * was the baseline artifact. Re-banding 80 down to 60 would have been fitting the check to
+   * whichever plant it was last run against — the thing this file's own header calls out about
+   * the safety valves.
+   *
+   * SO IT IS RE-POINTED TO AN IDENTITY, which the baseline cannot contaminate: at the post-cut
+   * state the fuel must sit where its OWN steady solve puts it for the core heat and coolant
+   * temperature actually present. `steadyFuelTemp` is the function `pwr2_reactor` initialises
+   * against, so this closes the loop on the model rather than on a remembered number, and it
+   * holds on both plants. The DIRECTION — the fuel cools when power falls — is kept separately,
+   * because an identity alone would be satisfied by a plant that never moved. */
   ckT('...and the fuel cools with it, which is the Doppler half of the feedback',
-      cut.fuel < base.fuel - 80,
-      base.fuel.toFixed(1) + ' -> ' + cut.fuel.toFixed(1) + ' degC');
+      cut.fuel < pre.fuel - 40,
+      pre.fuel.toFixed(1) + ' -> ' + cut.fuel.toFixed(1) + ' degC, on ONE continuous plant');
+  var fuelExpect = FU.steadyFuelTemp(FU.deriveGeometry(),
+                                     RATED * cut.coreHeatPct / 100, cut.coolTemp_c);
+  ck('...and it lands where its OWN steady solve puts it at the new power — an identity',
+     cut.fuel, fuelExpect, 6.0, 'degC');
   ckT('...and the plant is CRITICAL again at the new power', Math.abs(cut.rho) < 15,
       cut.rho.toFixed(2) + ' pcm — it found an equilibrium, it did not merely drift');
 

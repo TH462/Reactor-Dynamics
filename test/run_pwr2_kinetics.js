@@ -305,6 +305,90 @@ function runSuite(K, rec, quiet) {
       Math.abs(K.moderatorReactivity(304.5, 304.5, 700, 15.41)) < 1e-15,
       'both feedbacks are perturbative about the reference, not absolute');
 
+  /* ---- THE VOID HALF OF THE DENSITY COUPLING (added 2026-08-17) ---------------------------
+   *
+   * The section above says the moderator coefficient "reads real density from L0". It reads a
+   * density RECONSTRUCTED FROM A TEMPERATURE via the liquid branch, which is the same number only
+   * while the core is subcooled. A boiling core was invisible to it and there was no void
+   * coefficient at all — so on a depressurising plant, whose coolant follows saturation DOWN, the
+   * term read "colder moderator, therefore denser" and inserted POSITIVE reactivity while the
+   * water was actually leaving. MEASURED on a 0.005 m2 (50 cm2) break at full power: +3433 pcm at
+   * t = 60 s, five times prompt critical, power 0.8 % -> 4.7e+12 in ONE step.
+   *
+   * A PWR is undermoderated: voiding the core shuts it down. The engine had the opposite sign. */
+  var hf = W.h_f(8.827), hg = W.h_g(8.827);
+  function atQuality(x) { return hf + x * (hg - hf); }
+  ckT('a SUBCOOLED core contributes EXACTLY zero — an exact branch, not zero-to-roundoff',
+      K.voidReactivity(W.h_l(300, 15.41), 15.41, 700) === 0 &&
+      K.voidReactivity(W.h_l(200, 8.827), 8.827, 700) === 0 &&
+      K.voidReactivity(hf - 0.001, 8.827, 700) === 0,
+      'this is what makes it safe to add to a calibrated balance: rho_excess and the ' +
+      'critical-boron solve cannot move');
+  ckT('...and a BOILING core contributes a strongly NEGATIVE one',
+      K.voidReactivity(atQuality(0.0153), 8.827, 700) < -0.005,
+      (K.voidReactivity(atQuality(0.0153), 8.827, 700) * 1e5).toFixed(0) +
+      ' pcm at 1.53 % quality');
+  /* NORMALISED ON VOID FRACTION BY VOLUME, and the distinction is worth 12x here. At 1.53 %
+   * quality the volume void is 18.8 %; dividing by quality instead puts the coefficient at
+   * -1100 pcm per "% void", far outside every published range, and invites re-tuning a term that
+   * is correct. The conversion is written out here rather than taken from the engine. */
+  var xq = 0.0153, rf = W.rho_l(W.T_sat(8.827), 8.827), rg = W.rho_v_sat(8.827);
+  var alph = (xq / rg) / ((xq / rg) + ((1 - xq) / rf));
+  var pcmPerPct = K.voidReactivity(atQuality(xq), 8.827, 700) * 1e5 / (alph * 100);
+  ckT('...sized like a real PWR void coefficient, per % void BY VOLUME',
+      pcmPerPct > -250 && pcmPerPct < -20,
+      (alph * 100).toFixed(1) + ' % void by volume -> ' + pcmPerPct.toFixed(1) +
+      ' pcm per % void, against a real-PWR range of roughly -100 to -250');
+  ckT('it is MONOTONE in void — more steam is always less reactivity',
+      K.voidReactivity(atQuality(0.5), 8.827, 700) < K.voidReactivity(atQuality(0.1), 8.827, 700) &&
+      K.voidReactivity(atQuality(1.0), 8.827, 700) < K.voidReactivity(atQuality(0.5), 8.827, 700),
+      'a term that saturates or turns over would let a dry core come back critical');
+  /* ⚠ THE FULLY-VOIDED CASE IS THE ONE THAT MATTERS AND THE ONE THE FIRST VERSION GOT WRONG.
+   * Referencing "liquid at the node's own temperature" collapses at low pressure — T_from_h
+   * clamps a dry node to 800 degC, h_l clamps that back to 358, and the result is itself
+   * two-phase — so the term reported -7.6 pcm on a completely dry core at 0.1 MPa. A void
+   * coefficient that switches itself off in a voided core is worse than not having one. */
+  ckT('a DRY core at the bottom of a blowdown is held deeply subcritical, not released',
+      K.voidReactivity(W.h_v(400, 0.1), 0.1, 700) * 1e5 < -5000,
+      (K.voidReactivity(W.h_v(400, 0.1), 0.1, 700) * 1e5).toFixed(0) +
+      ' pcm at 0.1 MPa, dry — the first version read -7.6 here');
+  ckT('boron scales it, the same way it scales the temperature half',
+      Math.abs(K.voidReactivity(atQuality(0.5), 8.827, 0)) >
+      Math.abs(K.voidReactivity(atQuality(0.5), 8.827, 700)),
+      'less boron, more moderator worth to lose');
+
+  /* ⚠ AND IT HAS TO BE ASSERTED THROUGH `stepKinetics`, NOT ONLY ON THE FUNCTION. Every check
+   * above calls `voidReactivity` directly, so all of them survive the term being dropped from the
+   * reactivity sum, or `stepKinetics` failing to find the `core` node at all — the injection
+   * self-test found exactly those two blind spots. A term that is correct and not WIRED IN is the
+   * same defect as a term that is wrong, and it is the one this engine keeps producing: the
+   * missing direct boron term above, and four caller-options-silently-dropped defects before it.
+   *
+   * TWO IDENTICAL PLANTS, differing ONLY in the core node's enthalpy, stepped through the real
+   * entry point. Everything else — legs, pressure, boron, fuel temperature, rods — is held, so
+   * the reactivity difference can only be the void term. */
+  function plantWithCore(h_core) {
+    var p = S.createPlant({ h: W.h_l(300, 8.827), P: 8.827 });
+    for (var i = 0; i < p.nodes.length; i++) {
+      if (p.nodes[i].id === 'core') { p.nodes[i].h = h_core; break; }
+    }
+    return p;
+  }
+  var kSub  = K.createKinetics({}), kVoid = K.createKinetics({});
+  var drv   = { fuelTemp_c: 684.2, boron_ppm: 700, rodGroups: null, modTemp_c: 300 };
+  var rSub  = K.stepKinetics(kSub,  plantWithCore(W.h_l(300, 8.827)), 0.02, drv);
+  var rVoid = K.stepKinetics(kVoid, plantWithCore(atQuality(0.5)),    0.02, drv);
+  ckT('the void term is WIRED IN — a boiling core node moves rho through stepKinetics itself',
+      (rVoid.rho_pcm - rSub.rho_pcm) < -3000,
+      'subcooled core ' + rSub.rho_pcm.toFixed(0) + ' pcm, half-void core ' +
+      rVoid.rho_pcm.toFixed(0) + ' pcm, difference ' +
+      (rVoid.rho_pcm - rSub.rho_pcm).toFixed(0) + ' pcm — same plant, same legs, same boron');
+  ckT('...and the SUBCOOLED plant is unmoved, so the wiring cannot be a blanket offset',
+      Math.abs(rSub.rho_pcm -
+               K.stepKinetics(K.createKinetics({}), plantWithCore(W.h_l(300, 8.827)), 0.02, drv)
+                .rho_pcm) < 1e-9,
+      'the term is present and contributing exactly nothing on a single-phase core');
+
   /* ---- THE DIRECT BORON TERM — the half this section NAMED and did not check.
    *
    * This gate scored 50/50 with 25/25 mutations while `rho_bor` did not exist. The section header
@@ -488,6 +572,22 @@ var MUTATIONS = [
   ['boron becomes a positive reactivity addition (sign inverted)',
    '    var rho_bor  = -BORON.worth_per_ppm * B_ppm;',
    '    var rho_bor  = BORON.worth_per_ppm * B_ppm;'],
+  /* THE VOID HALF (2026-08-17). The fourth of these is the defect as it actually shipped:
+   * a reference that is exact while subcooled and meaningless once the core is dry. */
+  ['the void term is dropped from the reactivity sum (a voiding core reads as a COLD one)',
+   '    var rho_void = voidReactivity(h_core, P_mpa, B_ppm);', '    var rho_void = 0;'],
+  ['void reactivity inverted — voiding a PWR core RELEASES reactivity',
+   '    return modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * (D_real - D_liq);',
+   '    return -modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * (D_real - D_liq);'],
+  ['the subcooled branch stops being exact (feedback leaks into a single-phase core)',
+   '    if (h_core <= W.h_f(P_mpa)) return 0;        /* subcooled: no void, EXACTLY zero */',
+   '    if (h_core <= W.h_f(P_mpa) * 0.5) return 0;'],
+  ['the void reference reverts to liquid-at-the-node-temperature (dies in a DRY core)',
+   '    var D_liq  = W.rho_l_sat(W.T_sat(P_mpa));    /* what a liquid-full core would have */',
+   '    var D_liq  = RHO_W(W.h_l(W.T_from_h(h_core, P_mpa), P_mpa), P_mpa);'],
+  ['stepKinetics never finds the core node, so the void term is permanently absent',
+   "      if (sys.nodes[ci].id === 'core') { h_core = sys.nodes[ci].h; break; }",
+   "      if (sys.nodes[ci].id === 'nosuchnode') { h_core = sys.nodes[ci].h; break; }"],
   ['the HZP critical-boron anchor moved off the BEAVRS measurement', 'boron_ppm: 975.0,',
    'boron_ppm: 800.0,'],
   ['the solve quote temperature reverts to this plant\'s anchor instead of Watts Bar\'s',

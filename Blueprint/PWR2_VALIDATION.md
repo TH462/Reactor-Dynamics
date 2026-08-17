@@ -1398,3 +1398,193 @@ frozen `prevPower`, wrong signal — total heat instead of fission — and a mis
 `pwr2_true_state.js` coverage: **49 → 51 of 109**. `run_all.js`: 69 runners at baseline, unchanged
 count from the AFW commit — this landed in the same foundational file five other gates depend on
 (`pwr2_reactor.js`), so the full aggregate was re-run rather than assumed safe.
+
+## 35. TWO DEFECTS BETWEEN PWR2 AND CORE DAMAGE — A POSITIVE EXCURSION ON EVERY LOCA, AND A STATE WITH NO WALL — 2026-08-17
+
+The session's ruled work was **core damage** (owner ruling, 2026-08-17, selecting it over the
+protection layer). The evidence pass came back rich — Baker-Just with its constants and its
+1510 cal/g heat of reaction from Ginna UFSAR ch15, the 2200 °F (1204 °C) peak-clad limit and all
+five 10 CFR 50.46 criteria quoted verbatim in the same chapter, TMI-2's whole-core zirconium
+inventory of 23,600 kg (52,000 lb) and a 9,400 kg oxidation integral from GEND-061. None of it got
+used, because **a probe written to check one premise found two defects standing between PWR2 and
+any severe-accident scenario at all.** Both are now fixed and gated; core damage is not started.
+
+### 35.1 The probe, and why it was written before any code
+
+The plan rested on one unmeasured premise: that a voided PWR2 core node superheats, so damage can
+be driven by coolant regime rather than by a water level (the level needs phase separation, which
+Layer 2 does not have — that is #472's compressible-volume work and must not be raced). The
+premise held. Everything around it did not.
+
+**MEASURED, 0.005 m² (50 cm²) break at full power, no emergency core cooling: the entire plant is
+NaN 62 s in.** Not the damage model — the plant. Nothing had ever run a PWR2 break past ~60 s.
+
+### 35.2 Defect one — the enthalpy state had no wall while every reader had one
+
+`pwr2_core.js` advances each node as `a[i] = h + dt*dH[i]/m_n[i]`. That divides by a node mass a
+boil-off drives toward zero, and **nothing bounded the result.** The core node reached quality 1.0
+at 0.4 kg of steam, `h` passed 1×10³⁰⁴ by t = 62 s, overflowed to Infinity, and NaN propagated
+through the ring flows into every node, the kinetics precursors and the fuel temperature.
+
+**What made it invisible is that every READER already clamps.** `T_from_h`, `rho_from_h` and the
+vtable all saturate at the property envelope, so a node at h = 1×10³⁰⁴ reported 800 °C and a sane
+density. The state was absurd for tens of seconds while every gauge read plausibly. `solveP` in
+the same file carries a long, correct note about why the envelope must bound the pressure SEARCH —
+*"a silent absurd answer is the exact failure mode this engine exists to make impossible"* — and
+the identical argument was never applied to `h`.
+
+The fix is the same wall, and it costs nothing: a node inside the envelope is never touched, and a
+node outside it was **already** being read as clamped. `enthalpyClamped` and
+`enthalpyDiscarded_kJ` are reported, in the same spirit as `envelopeExceeded`.
+
+**⚠ THE TRAP INSIDE THE FIX, and I walked into it.** The first version clamped the stored `h`
+*after* `solveP` returned. The solve then balanced mass against one set of densities while the
+state held another — `RHO` saturates at the *table's* edge value, which differs from
+`RHO(h_ceiling)` by up to 0.24 kg/m³ at 15.41 MPa (2235 psia), i.e. 0.5 kg on the core node,
+re-introduced **every step** a node sits out of range. The clamp has to be inside `F(P)`. The gate
+now checks it by reconstructing node masses from the stored enthalpies and requiring agreement to
+the solve's **own reported residual** — which separates the two causes, because a clamp outside
+the solve misses by ~0.5 kg per step and the capped bisection does not.
+
+`run_pwr2_core.js`: 36 → 42 checks, 18/18 mutations. One of the four new mutations was **blind on
+the first pass** and is worth the line: the "held at the ceiling" check was written as *at most*
+the ceiling, so a ceiling built from the LIQUID limit — pinning every steam node ~2400 kJ/kg too
+low — satisfied it perfectly. **A one-sided check on a clamp can only see it failing open; the
+interesting failure is it closing in the wrong place.**
+
+### 35.3 Defect two — PWR2 had a POSITIVE reactivity excursion on every large break
+
+With the plant no longer overflowing, the reactor still diverged. Not the fuel model, and not the
+integrator: **reactivity jumped to +3433 pcm at t = 60 s.** That is five times prompt critical.
+Power went from 0.8 % to 4.7×10¹² **in one step**, and the fuel temperature followed it.
+
+`moderatorReactivity` takes a **temperature** and rebuilds a density from it through the LIQUID
+branch, `W.h_l(T, P)`. It therefore reports the density of liquid water at that temperature
+whether or not any liquid water is there. **A boiling core was invisible to it, and there was no
+void coefficient at all.** On a depressurising plant the coolant follows saturation *down*, so at
+t = 60 s the core node was at 241 °C (466 °F) and 92.5 % steam while the term read "colder
+moderator, therefore denser" and inserted positive reactivity — the exact inverse of the defining
+safety characteristic of an undermoderated PWR, which is that voiding the core shuts it down.
+
+The file's own header claimed *"PWR2's moderator coefficient reads real density from L0, so the
+moderator feedback and the coolant it acts on cannot disagree."* That is true only while the
+coolant is subcooled liquid, and nothing said so.
+
+**THE FIX USES NO NEW CONSTANT.** `modCoeff` already converts a density difference into reactivity
+and is calibrated against sourced BEAVRS / Watts Bar isothermal coefficients. What was missing was
+not a coefficient but the **density deficit** — the gap between the density the moderator term
+assumes and the density actually in the core, measured against saturated liquid at the same
+pressure, and an **exact zero** on a subcooled core. So `rho_excess`, the critical-boron solve and
+every single-phase gate are untouched by construction, not by re-tuning — the same "pin at rated"
+discipline the owner ruled for the film coefficient hours earlier.
+
+**MEASURED: −89.4 pcm per % void by volume**, against a real-PWR range of roughly −100 to −250.
+Two things nearly caused that number to be "corrected" and both are worth recording:
+
+- **Quality is not void fraction, and here they differ by 12×.** At 1.53 % quality the volume void
+  is 18.8 %. Normalising on quality puts the coefficient at −1100 pcm per "% void", far outside
+  every published range, and invites re-tuning a term that is correct. The gate writes the
+  conversion out rather than taking it from the engine.
+- **The first version of the reference died in exactly the case it existed for.** Differencing
+  against "liquid at the node's own temperature" is exact while subcooled and meaningless once it
+  is not: `T_from_h` clamps a dry node to 800 °C, `h_l` clamps that back to its 358 °C liquid
+  limit, and at 0.1 MPa (14.5 psia) the result is itself two-phase. It reported **−7.6 pcm** on a
+  completely dry core where the physical deficit is ~958 kg/m³, about −10,300 pcm. **A void
+  coefficient that switches itself off in a voided core is worse than not having one**, because it
+  is invisible.
+
+The extrapolation is declared: a coefficient fitted over tens of kg/m³ of isothermal data is being
+applied across a deficit up to ~958 kg/m³, so the magnitude past a few hundred is indicative. What
+survives is the sign and the order — a fully voided core reads about −11,500 pcm and stays deeply
+subcritical under any plausible nonlinearity. The alternative is not a better number; it is
++3433 pcm and a prompt excursion.
+
+`run_pwr2_kinetics.js`: 63 → 71 checks, 40/40 mutations. **Two of the five new mutations were
+blind on the first pass, and both were WIRING** — every new check called `voidReactivity`
+directly, so all of them survived the term being dropped from the reactivity sum, and survived
+`stepKinetics` never finding the `core` node. The remedy is two identical plants differing only in
+the core node's enthalpy, stepped through the real entry point: **−6654 pcm apart, same legs, same
+boron.** *A term that is correct and not wired in is the same defect as a term that is wrong*, and
+it is the one this engine keeps producing — the missing direct boron term, and four
+caller-option-silently-dropped defects before it.
+
+### 35.4 What the fixes exposed: PWR2's fixtures have never been at their design point
+
+Fixing the void coefficient reddened four checks in **`run_pwr2_loadfollow.js`, the acceptance
+test** — Tier A coupling A1, power follows load. Adjudicated one at a time, they were all the same
+finding, and it is not about the void term.
+
+**MEASURED with the new term disabled, so the plant as it stood before today is reproduced
+exactly:**
+
+| | before today | with void feedback | design |
+|---|---|---|---|
+| primary pressure | 11.096 MPa (1609 psia) | 8.828 MPa (1280 psia) | **15.41 MPa (2235 psia)** |
+| core subcooling | **0.0 °C** | **0.0 °C** | ~30 °C (54 °F) |
+| core quality | 0.0032 | 0.0152 | 0 |
+| Tavg | 577.98 °F | 548.99 °F | — |
+
+**The baseline plant sits at saturation at rated power, and always did.** The block asserting it
+was headed *"if the starting plant is not at its design point, nothing after this means anything"*
+and it checked Tavg, secondary pressure and net reactivity — **never primary pressure and never
+subcooling**, which is where the whole departure is. It passed a 579.30 °F Tavg check because a
+depressurised plant happened to land near that number; the check and the condition were
+independent. The same defect sat in `run_pwr2_reactor.js`, where a check read a **saturation
+temperature** and its comment explained it as *"the core outlet doing exactly what it should"*.
+
+The cause is the fixture: `S.createPlant` is a rigid loop with **no pressure control**, so it
+depressurises to wherever its own energy balance puts it. The pressurizer that would hold
+15.41 MPa is **#472**, live on the workbench lane, and must not be built here.
+
+**AND THE BLOCK'S OWN CLAIM IS REFUTED BY MEASUREMENT.** The plant is not at its design point, and
+A1 after it is unchanged:
+
+| at the A1 sample point | before today | with void feedback |
+|---|---|---|
+| power | 71.1 % | **71.1 %** |
+| Tavg | 594.81 °F | **594.77 °F** |
+| dump fraction | 0.0784 | **0.0784** |
+| post-cut fuel | 603.8 °C | **603.3 °C** |
+
+Because the load cut **repressurises** the primary to 18 MPa and the core goes subcooled — 32.7 °C
+(58.9 °F) of it — so the A1 sample is taken on a subcooled plant whatever the baseline did. Every
+A1 check is untouched.
+
+**One re-pointing worth its own line: a delta contaminated by a baseline is not a delta.** The
+"fuel cools with it" check asserted a ≥80 °C drop. Across the change the *result* moved 0.5 °C
+(603.8 → 603.3) while the *baseline* moved 21 °C (698.5 → 677.2), so the delta went 94.7 → 73.9
+and failed. Re-banding 80 down to 60 would have fitted the check to whichever plant it last ran
+against — the exact failure this file's own header calls out about the safety valves. It is now an
+**identity**: the post-cut fuel must sit where `steadyFuelTemp` puts it for the core heat and
+coolant temperature actually present. **It lands within 0.01 °C, on both plants.**
+
+A second, smaller defect found on the way: the gate compared `base` from one plant against `cut`
+from a *different* one (ridden with the dump law, without it for the baseline). A before-and-after
+across two plants is not a before-and-after.
+
+### 35.5 The discipline that says these are repairs and not refits
+
+Every re-pointed check **passes on both engines** — `run_pwr2_loadfollow` 31/31 and
+`run_pwr2_reactor` 35/35 with the void term disabled, and the same with it live. A check that had
+to be re-banded to pass would have been refitted to the change; one that holds across it is
+guarding the mechanism. Hard Rule 10, applied deliberately rather than cited.
+
+### 35.6 What this leaves open
+
+- **Core damage is NOT STARTED.** The evidence pass is complete and recorded above; the design is
+  in the approved plan. The zirconium inventory falls out of geometry `pwr2_fuel.js` already
+  carries — **2,136 kg derived clad-only against 2,554 kg from GEND-061's TMI-2 figure scaled on
+  power, 83.6 %**, with the 16 % shortfall the right sign and size for the non-clad zirconium a
+  whole-core figure includes. Baker-Just at the sourced milestones gives 1.67 % oxidation per
+  100 s at 1800 °F and 6.60 % at the 2200 °F limit, against 50.46's own 17 % ceiling, with
+  zirconium heat crossing decay heat between 2200 and 2550 °F. Nothing is fitted to any of it.
+- **A deep blowdown still ends in NaN, and it is outside the declared envelope.** With both fixes
+  a 0.0005 m² (5 cm²) break now runs cleanly for **840 s** — 15.48 → 0.14 MPa (2245 → 20 psia),
+  the core voiding to dry superheated steam at 470 °C (878 °F) — before the plant reaches the
+  0.1 MPa property floor with 2.4 % of its inventory left. `enthalpyClamped` fires one step before
+  the NaN, so the engine does say it has left its range. Fixing it properly is the Layer 3 flow
+  solve the design already records as open (D2 §23.2 step 4); it is not chased here.
+- **#472 is now on PWR2's critical path for validation, not just for the pressurizer.** Two gates
+  currently assert, correctly, that their plant cannot hold pressure. Until a pressurizer exists,
+  no PWR2 fixture is at its design condition and every steady-state comparison carries that
+  caveat.

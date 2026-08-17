@@ -119,21 +119,75 @@ function runSuite(R, rec, quiet) {
 
   /* ---- THE LOOP HOLDS --------------------------------------------------------------------- */
   head('THE LOOP HOLDS  [a sign error passes one step and diverges over three hundred seconds]');
-  var hold = ride(fixture(), SETTLE);
+  /* THE FIXTURE IS KEPT, not discarded. The checks below have to interrogate the PLANT the ride
+   * left behind — its pressure, its core node quality — and `ride()` returns only the reactor's
+   * own output, which cannot answer either. */
+  var holdF = fixture();
+  var hold = ride(holdF, SETTLE);
+  function hold_core() {
+    for (var i = 0; i < holdF.sys.nodes.length; i++) {
+      if (holdF.sys.nodes[i].id === 'core') return holdF.sys.nodes[i];
+    }
+    return null;
+  }
+  function hold_P() { return holdF.sys.P; }
+  /* VOID FRACTION BY VOLUME from static quality — alpha = (x/rho_g) / (x/rho_g + (1-x)/rho_f).
+   * Written out rather than taken from the engine, so the normalisation the check depends on is
+   * not supplied by the thing under test. */
+  function hold_voidFrac() {
+    var cn = hold_core(), P = holdF.sys.P, x = W.quality(cn.h, P);
+    if (!(x > 0)) return 0;
+    var rf = W.rho_l(W.T_sat(P), P), rg = W.rho_v_sat(P);
+    return (x / rg) / ((x / rg) + ((1 - x) / rf));
+  }
+  function hold_voidPcm() {
+    return K.voidReactivity(hold_core().h, holdF.sys.P, holdF.B) * 1e5;
+  }
   ckT('a critical reactor with a matched sink stays at power',
       hold.power_pct > 95 && hold.power_pct < 105,
       hold.power_pct.toFixed(2) + ' % after ' + (SETTLE * 0.02) + ' s');
   ckT('...and settles at ZERO net reactivity, which is what critical MEANS',
       Math.abs(hold.rho_pcm) < 5, hold.rho_pcm.toFixed(2) + ' pcm');
-  /* THE CORE NODE IS NOT Tavg. It is the node the heat is added to, so it sits ABOVE the loop
-   * average by roughly half the core rise. The first version required it within 5 degC of the
-   * 304.5 reference and passed only because a boron error had the whole plant running cold; with
-   * the trim corrected it reads 318.6, which is the core outlet doing exactly what it should. */
-  ckT('...with the fuel hot and the core node above the loop reference, as a heated node is',
+  /* ⚠ RE-POINTED A SECOND TIME, 2026-08-17, AND THE OLD FORM WAS READING A SATURATION
+   * TEMPERATURE AS A CORE OUTLET TEMPERATURE.
+   *
+   * It asserted the core node sits above TREF and below TREF+30, and its comment explained the
+   * 318.6 degC it saw as "the core outlet doing exactly what it should". MEASURED, with the void
+   * term of the density coupling disabled so the OLD plant is reproduced exactly: the fixture
+   * settles at 11.098 MPa, T_sat = 318.76 degC, core node = 318.76 degC, core quality 0.00318 —
+   * a VOID FRACTION of 3.28 % by volume. The number the check was passing on was saturation, and
+   * the plant it was certifying as settled was BOILING. Nothing said so, because nothing asked.
+   *
+   * THE CAUSE IS THE FIXTURE, NOT THE COUPLING. `S.createPlant` is a rigid loop with no pressure
+   * control, so at rated power against a rated sink it depressurises to wherever its own energy
+   * balance puts it and then rides saturation. That is what a plant with no pressurizer does. The
+   * pressurizer is issue #472's active work on the workbench lane and must not be built here.
+   *
+   * SO THE CHECK NOW ASSERTS WHAT IS ACTUALLY TRUE, and it is a strictly better check because it
+   * PASSES ON BOTH PLANTS — 318.76 against T_sat(11.098) before, 301.97 against T_sat(8.827)
+   * after. A check that holds across the change is guarding the mechanism; one that had to be
+   * re-banded to pass would have been refitted to it. */
+  var holdSat = W.T_sat(hold_P());
+  ckT('...with the fuel hot, and the core node AT SATURATION because this fixture cannot hold ' +
+      'pressure',
       hold.T_fuel_c > 620 && hold.T_fuel_c < 760 &&
-      hold.coolTemp_c > TREF && hold.coolTemp_c < TREF + 30,
+      Math.abs(hold.coolTemp_c - holdSat) < 1.0,
       'fuel ' + hold.T_fuel_c.toFixed(1) + ' degC, core node ' + hold.coolTemp_c.toFixed(2) +
-      ' degC = reference + ' + (hold.coolTemp_c - TREF).toFixed(1));
+      ' degC against T_sat ' + holdSat.toFixed(2) + ' — a rigid loop with no pressurizer ' +
+      'rides saturation; #472 owns the fix');
+  /* THE VOID HALF OF THE DENSITY COUPLING, ASSERTED WHERE IT IS NON-ZERO — the flag-only-false
+   * trap (run_pwr2_containment.js:110). A term that is only ever checked on a subcooled core is
+   * a term nobody has seen work, and this one is worth about -1680 pcm here. Normalised on VOID
+   * FRACTION BY VOLUME rather than on quality: at 1.53 % quality the volume void is 18.8 %, a
+   * 12x difference, and dividing by the wrong one puts the coefficient outside every published
+   * range and invites "re-tuning" a term that is correct. */
+  var holdVoid = hold_voidFrac();
+  ckT('the VOID half of the density coupling is live, negative, and real-PWR sized',
+      holdVoid > 0.02 && hold_voidPcm() < 0 &&
+      (hold_voidPcm() / (holdVoid * 100)) > -250 && (hold_voidPcm() / (holdVoid * 100)) < -20,
+      (holdVoid * 100).toFixed(2) + ' % void by volume, ' + hold_voidPcm().toFixed(0) +
+      ' pcm = ' + (hold_voidPcm() / (holdVoid * 100)).toFixed(1) + ' pcm per % void, against a ' +
+      'real-PWR range of roughly -100 to -250');
   ckT('nothing in the ride is NaN — the coupling does not lose a value',
       isFinite(hold.power_pct) && isFinite(hold.T_fuel_c) && isFinite(hold.rho_pcm) &&
       isFinite(hold.heats.core), '');

@@ -247,6 +247,74 @@ function runSuite(C, rec, quiet) {
   ck('a caller-supplied iterCap reaches the solver', sysI.iterCap, 3, 0, 'iterations');
   ck('...and omitting it gives the documented default of 8',
      C.createSystem({ nodes: [{ id: 'a', V: 2.0, h: 1250 }], P: 15.41 }).iterCap, 8, 0, 'iterations');
+
+  /* ---- THE ENTHALPY ENVELOPE (added 2026-08-17) -------------------------------------------
+   * The state had no bound while every reader had one, so a node boiling dry ran `h` to 1e+304
+   * and then to NaN — invisible, because `T_from_h` and `rho_from_h` saturate and the gauges
+   * stayed plausible throughout. Both halves are checked: that it does NOT fire in normal
+   * service, and that it DOES fire and holds when driven out of range. */
+  if (!quiet) console.log('\nTHE ENTHALPY ENVELOPE  [the state had no wall while every reader had one]');
+  /* HALF ONE: a normal step must not clamp. A version that clamped everything would satisfy
+   * every "it holds" check below and quietly pin the whole plant at the ceiling. */
+  var sysN = ring(3, 15.41, [1250, 1300, 1350]);
+  var rN = C.step(sysN, 0.02, { flows: ringFlows(sysN, 100), heats: { n0: 5000 } });
+  ckT('a normal step clamps NOTHING and discards no energy',
+      rN.enthalpyClamped === 0 && rN.enthalpyDiscarded_kJ === 0,
+      'clamped ' + rN.enthalpyClamped + ', discarded ' + rN.enthalpyDiscarded_kJ + ' kJ');
+
+  /* HALF TWO: drive one node past the ceiling. 2e6 kW into a 2 m3 node is the boil-dry case in
+   * miniature — the same divide-by-a-vanishing-mass that took the real plant to 1e+304. */
+  var sysX = ring(2, 1.0, [2600, 2600]);
+  var rX = null;
+  for (var xi = 0; xi < 200; xi++) rX = C.step(sysX, 0.02, { heats: { n0: 2.0e6 } });
+  var hCeil = W.h_v(W.LIMITS.TV_MAX, sysX.P);
+  /* ⚠ ASSERTED AS AN EQUALITY, NOT AS "at most". The first version asked only that `h` stay BELOW
+   * the ceiling, and the injection self-test found it blind to a ceiling built from the LIQUID
+   * limit instead of the vapour one — which pins every steam node ~2400 kJ/kg too low and
+   * satisfies "at most" perfectly. A one-sided check on a clamp can only ever see the clamp
+   * failing OPEN; the interesting failure is it closing in the wrong place. */
+  ckT('a node driven past 800 degC is HELD AT the ceiling — not above it and not below it',
+      isFinite(sysX.nodes[0].h) && Math.abs(sysX.nodes[0].h - hCeil) < 1.0,
+      'h = ' + sysX.nodes[0].h.toFixed(1) + ' kJ/kg against a ceiling of ' + hCeil.toFixed(1));
+  ckT('...and the clamp SAYS SO rather than absorbing it silently',
+      rX.enthalpyClamped > 0 && rX.enthalpyDiscarded_kJ > 0,
+      rX.enthalpyClamped + ' node(s), ' + (rX.enthalpyDiscarded_kJ / 1e6).toFixed(2) +
+      ' GJ discarded this step — the absurd size IS the signal that the plant left the range');
+  ckT('...and NOTHING in the system is NaN afterwards, which is the whole point',
+      sysX.nodes.every(function (n) { return isFinite(n.h); }) && isFinite(sysX.P) &&
+      isFinite(sysX.M_total), '');
+
+  /* THE MASS BOOKKEEPING IS THE CHECK THAT CAUGHT MY OWN FIRST VERSION. Clamping AFTER the
+   * solve left the solve balancing one set of densities while the state held another — up to
+   * 0.24 kg/m3 apart at the table edge, re-introduced every step a node sits out of range. The
+   * clamp has to be inside `F(P)`. A closed system's mass is moved only by boundary sources, so
+   * with none supplied it must be EXACTLY unmoved however hard the nodes are driven. */
+  var sysM = ring(2, 1.0, [2600, 2600]);
+  var M_before = sysM.M_total;
+  for (xi = 0; xi < 200; xi++) C.step(sysM, 0.02, { heats: { n0: 2.0e6 } });
+  ck('a closed system driven past the ceiling conserves M_total EXACTLY',
+     sysM.M_total, M_before, 1e-9, 'kg');
+  /* AND THE SOLVE MUST AGREE WITH THE STATE IT STORED. Recomputing node masses from the stored
+   * enthalpies has to reproduce M_total. This is what goes wrong when the clamp sits outside the
+   * solve — the solve balances one set of densities and the state holds another.
+   *
+   * ⚠ THE TOLERANCE IS THE SOLVE'S OWN REPORTED RESIDUAL, not a number I chose, and the first
+   * version asked for 1e-6 kg and failed at 1.33e-5. That was the check being written tighter
+   * than the CAPPED bisection it is measuring through: `solveP` stops at 8 iterations by ruling,
+   * so `F(sol.P)` is non-zero BY DESIGN and this file already reports it. Measured here, the
+   * reconstruction is out by -1.33e-5 kg against a reported residual of -1.54e-5 — the whole
+   * discrepancy is the cap. Asserting against `residual` is what separates the two causes: a
+   * clamp outside the solve misses by ~0.5 kg per step and grows, the cap does not. */
+  var mSum = 0;
+  for (xi = 0; xi < sysM.nodes.length; xi++) {
+    mSum += sysM.nodes[xi].V * (VT ? VT.rho_from_h : W.rho_from_h)(sysM.nodes[xi].h, sysM.P);
+  }
+  var rM = C.step(sysM, 0, {});          /* zero-length step: reports the residual, moves nothing */
+  ckT('...and the STORED enthalpies reproduce that mass to the SOLVE\'S OWN residual',
+      Math.abs(mSum - sysM.M_total) <= Math.abs(rM.residual) * 1.5 + 1e-9,
+      'reconstruction out by ' + (mSum - sysM.M_total).toExponential(3) +
+      ' kg against a reported solve residual of ' + rM.residual.toExponential(3) +
+      ' — the capped bisection, not the clamp');
 }
 
 console.log('\nPWR2 Layer 2 -- node/junction conservation core');
@@ -255,6 +323,19 @@ runSuite(C, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* THE ENTHALPY ENVELOPE (2026-08-17). Three ways to get it wrong, and the third is the one
+   * that actually happened to me: the clamp applied AFTER the solve instead of inside it. */
+  ['the enthalpy state loses its ceiling (a dry node runs to 1e+304 and then NaN)',
+   'var h_new = hClamp(h_raw);                 /* THE SAME function the solve used */',
+   'var h_new = h_raw;'],
+  ['the clamp binds SILENTLY — nothing is reported, so a caller cannot tell it left the range',
+   'if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }',
+   'if (h_new !== h_raw) { discardedKJ += 0; }'],
+  ['the clamp sits OUTSIDE the pressure solve — solve and stored state disagree on density',
+   'for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(hClamp(a[k] + v[k] * (P - sys.P)), P);',
+   'for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(a[k] + v[k] * (P - sys.P), P);'],
+  ['the envelope ceiling becomes the LIQUID limit (every vapour node pinned far too low)',
+   'var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);', 'var hHi = W.h_l(W.LIMITS.T_MAX, sys.P);'],
   ['energy check fooled: drop the flow-work term from U',
    'return H - sys.P * 1000 * sys.V_total;', 'return H;'],
   ['donor-cell upwinding reversed (front smears backwards)',

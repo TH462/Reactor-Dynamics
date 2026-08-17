@@ -196,18 +196,67 @@
       v[i] = 1000 * sys.nodes[i].V / m_n[i];
     }
 
+    /* ---- 1b. THE ENTHALPY ENVELOPE. See the long note at step 3. ----
+     *
+     * ⚠ THE BOUND HAS TO BE INSIDE `F(P)`, NOT APPLIED AFTER THE SOLVE, and the first version of
+     * this got it wrong. Clamping the stored `h` after `solveP` returned meant the solve balanced
+     * mass against one set of densities and the state then held another: `RHO` saturates at the
+     * table's own edge value, which differs from `RHO(h_ceiling)` by up to 0.24 kg/m3 at 15.41 MPa
+     * — 0.5 kg on the core node, small, but re-introduced EVERY STEP a node sits out of range. The
+     * solve and the integration must evaluate the same function or mass conservation is a fiction.
+     *
+     * EVALUATED ONCE PER STEP, at the time-n pressure, rather than per `F` call. The bounds move
+     * only as fast as pressure does, and `F` is called ~10 times per step on the hot path that
+     * D1 §26 already recorded a performance stop condition against. Fixed bounds also make the
+     * clamp a pure function of `a` and `P` within the step, which is what keeps `F` monotone. */
+    var hHi = W.h_v(W.LIMITS.TV_MAX, sys.P);     /* vapour at 800 degC — the envelope ceiling */
+    var hLo = W.h_l(0, sys.P);                   /* liquid at 0 degC — the envelope floor */
+    function hClamp(h) { return h > hHi ? hHi : (h < hLo ? hLo : h); }
+
     /* ---- 2. SOLVE P. Bracketed, warm-started, capped. ---- */
     var M_target = sys.M_total + dt * dM;
     function F(P) {
       var s = 0;
-      for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(a[k] + v[k] * (P - sys.P), P);
+      for (var k = 0; k < N; k++) s += sys.nodes[k].V * RHO(hClamp(a[k] + v[k] * (P - sys.P)), P);
       if (sys.extraMass) s += sys.extraMass(P);
       return s - M_target;
     }
     var sol = solveP(F, sys.P, sys.iterCap);
 
-    /* ---- 3. INTEGRATE ---- */
-    for (i = 0; i < N; i++) sys.nodes[i].h = a[i] + v[i] * (sol.P - sys.P);
+    /* ---- 3. INTEGRATE ----
+     *
+     * ⚠ THE ENTHALPY STATE GETS THE SAME HARD WALL THE PRESSURE SEARCH ALREADY HAS, and it did
+     * not have one until 2026-08-17. `solveP` below carries a long note about why the property
+     * envelope has to bound the SEARCH — "a silent absurd answer is the exact failure mode this
+     * engine exists to make impossible". The identical argument applies to `h`, and nothing was
+     * applying it: `a[i] = h + dt*dH[i]/m_n[i]` divides by a node mass that a boil-off drives
+     * toward zero, so a dry node's enthalpy grows without bound.
+     *
+     * MEASURED, 0.005 m2 (50 cm2) break at full power with no ECCS: the core node reaches
+     * quality 1.0 at 0.4 kg of steam, `h` passes 1e+304 by t = 62 s, overflows to Infinity, and
+     * NaN then propagates through the ring flows into every node, the kinetics precursors and
+     * the fuel temperature. The whole plant is NaN 62 s into a large break.
+     *
+     * WHAT MADE IT INVISIBLE is that every READER already clamps. `T_from_h`, `rho_from_h` and
+     * the vtable all saturate at the envelope, so a node at h = 1e+304 reports 800 degC and a
+     * sane density — the state was absurd for tens of seconds while every gauge read plausibly.
+     * That is why no gate caught it and why the clamp costs nothing: a node inside the envelope
+     * is never touched, and a node outside it was ALREADY being read as clamped. The only
+     * behaviour that changes is that the state stops running to infinity.
+     *
+     * ENERGY IS DISCARDED WHEN THE CLAMP BINDS, and it is REPORTED rather than absorbed —
+     * `enthalpyDiscarded_kJ` is how much physics this step threw away. The physical reading is
+     * `solveP`'s, verbatim: not "the solver failed" but "this plant left the range the property
+     * library is characterised over", which is a real condition a caller must handle. A caller
+     * modelling core damage needs exactly this, because the CLAD is a metal node with its own
+     * properties and is not bounded by the water envelope at all. */
+    var clampedNodes = 0, discardedKJ = 0;
+    for (i = 0; i < N; i++) {
+      var h_raw = a[i] + v[i] * (sol.P - sys.P);
+      var h_new = hClamp(h_raw);                 /* THE SAME function the solve used */
+      if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }
+      sys.nodes[i].h = h_new;
+    }
     var P_prev = sys.P;
     sys.P = sol.P;
     sys.M_total = M_target;
@@ -228,6 +277,8 @@
       P: sys.P, dP: sys.P - P_prev,
       iterations: sol.iters, capBound: sol.capBound, bracketWidth: sol.width,
       unbracketed: !!sol.unbracketed, envelopeExceeded: !!sol.envelopeExceeded,
+      enthalpyClamped: clampedNodes,                       // nodes outside the property envelope
+      enthalpyDiscarded_kJ: discardedKJ,                   // energy the clamp threw away, kJ
       residual: F(sol.P),                                  // kg, after the solve
       junction: junction,
       transfers: flows.length + sources.length             // vacuity guard, D5 §1

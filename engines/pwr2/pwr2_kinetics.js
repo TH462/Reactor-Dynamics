@@ -332,6 +332,68 @@
     return modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * dD;
   }
 
+  /* voidReactivity(h_core, P_mpa, B_ppm) — THE OTHER HALF OF THE DENSITY COUPLING, and it was
+   * missing in exactly the way the direct boron term was.
+   *
+   * ⚠ THE FILE'S OWN HEADER OVERSTATED WHAT WAS BUILT. Line 42 claims *"PWR2's moderator
+   * coefficient reads real density from L0, so the moderator feedback and the coolant it acts on
+   * cannot disagree"*. That is true only while the coolant is SUBCOOLED LIQUID. `moderatorReactivity`
+   * above takes a TEMPERATURE and reconstructs a density with `W.h_l(T, P)` — the liquid branch —
+   * so it reports the density of liquid water at that temperature whether or not any liquid water
+   * is there. A boiling core is invisible to it. There is no void coefficient.
+   *
+   * MEASURED, 0.005 m2 (50 cm2) break at full power, no ECCS: as the plant depressurises the
+   * coolant follows saturation DOWN, so at t = 60 s the core node is at 241 degC and 92.5 % steam
+   * while the moderator term sees "liquid water at 241 degC" — DENSER than the 304.5 degC
+   * reference — and reports **+3433 pcm**. That is five times prompt critical. Power went from
+   * 0.8 % to 4.7e+12 in ONE step and the fuel temperature followed it. **PWR2 had a positive
+   * reactivity excursion on every large break**, which is the exact inverse of the defining safety
+   * characteristic of an undermoderated PWR: voiding a PWR core shuts it down.
+   *
+   * THE FIX USES NO NEW CONSTANT. `modCoeff` already converts a density difference into
+   * reactivity and is calibrated against the sourced BEAVRS/Watts Bar isothermal coefficients.
+   * What was missing is not a coefficient but the DENSITY DEFICIT — the gap between the density
+   * the moderator term ASSUMES and the density that is actually in the core:
+   *
+   *     rho_void = modCoeff * (1 - B/B0) * ( rho(h_core, P) - rho_l_sat(P) ),   0 if subcooled
+   *
+   * ⚠ IT IS IDENTICALLY ZERO ON A SUBCOOLED CORE, which is what makes it safe to add to a
+   * calibrated reactivity balance. `rho_excess`, the critical-boron solve and every existing
+   * single-phase gate are untouched BY CONSTRUCTION, not by re-tuning — the same discipline the
+   * film coefficient was ruled to follow (owner ruling 2026-08-17, "pin at rated").
+   *
+   * ⚠ THE REFERENCE IS SATURATED LIQUID AT THE NODE'S PRESSURE, and the first version got this
+   * wrong in a way that only showed up at the bottom of a blowdown. It differenced against
+   * `rho(h_l(T(h_core), P), P)` — "liquid at the node's own temperature" — which is exact while
+   * the node is subcooled and MEANINGLESS once it is not: `T_from_h` clamps a dry node to 800
+   * degC, `h_l` then clamps that back to its own 358 degC liquid limit, and at 0.1 MPa the
+   * resulting enthalpy is itself two-phase. MEASURED at the state that exposed it — 0.1 MPa,
+   * quality 1.0, 0.2022 kg/m3 — the term reported **-7.6 pcm** where the physical deficit is
+   * ~958 kg/m3, i.e. about -10,300 pcm. A void coefficient that switches itself off in a fully
+   * voided core is worse than none, because it is invisible.
+   *
+   * Against saturated liquid the deficit is exactly `alpha * (rho_g - rho_f)` for a two-phase
+   * node — the textbook definition of what voiding removes — it stays correct for a superheated
+   * one, and the subcooled case is an EXACT branch returning zero rather than zero-to-roundoff.
+   *
+   * ⚠ AND IT IS A LARGE EXTRAPOLATION, DECLARED. The coefficient is fitted over a few degrees of
+   * hot zero-power isothermal data, i.e. tens of kg/m3, and this applies it across a deficit of up
+   * to ~958 kg/m3. The MAGNITUDE past a few hundred kg/m3 is therefore indicative, not predictive.
+   * What survives the extrapolation is the SIGN and the ORDER: a fully voided core reads about
+   * -11,500 pcm, so the reactor is held deeply subcritical by any plausible nonlinearity. The
+   * alternative is not a better number, it is +3433 pcm and a prompt excursion.
+   *
+   * CORE NODE, not the leg average, deliberately: the coolant that moderates neutrons is the
+   * coolant in the core, and a voided hot leg does not remove moderator from the fuel. The
+   * TEMPERATURE term above keeps its leg average untouched. */
+  function voidReactivity(h_core, P_mpa, B_ppm) {
+    if (h_core === undefined || h_core === null || !isFinite(h_core)) return 0;
+    if (h_core <= W.h_f(P_mpa)) return 0;        /* subcooled: no void, EXACTLY zero */
+    var D_real = RHO_W(h_core, P_mpa);
+    var D_liq  = W.rho_l_sat(W.T_sat(P_mpa));    /* what a liquid-full core would have */
+    return modCoeff(P_mpa) * (1 - B_ppm / MOD.boron_zero_ppm) * (D_real - D_liq);
+  }
+
   /* Integral rod worth: the classic sinusoid-corrected ramp. scruve(0)=0 and scruve(1)=1 for ANY K,
    * so the flattening changes only the mid-core differential peak, never total worth.
    * EXPORTED DELIBERATELY: the control layer schedules its rod-channel loop gain on the differential
@@ -403,16 +465,20 @@
    *
    * rho is evaluated at the step MIDPOINT per §15's error analysis, which measured frozen-start-of-
    * step rho at 2.2e-1 relative error for a 0.1 dk/s ramp; a real scram is 0.016-0.024 dk/s. */
-  function reactivity(kin, T_mod_c, T_fuel_c, B_ppm, rodGroups, P_mpa) {
+  function reactivity(kin, T_mod_c, T_fuel_c, B_ppm, rodGroups, P_mpa, h_core) {
     var rho_rods = rodGroups ? rodReactivity(rodGroups) : 0;
     var rho_dop  = OPEN.alpha_D.value * (T_fuel_c - kin.T_fuel_ref_c);
     var rho_mod  = moderatorReactivity(T_mod_c, kin.T_mod_ref_c, B_ppm, P_mpa);
+    /* THE VOID HALF of the density coupling. Omitted when the caller has no core enthalpy to
+     * offer — `critical()` and `boronWorth()` are single-phase by definition — and zero to
+     * roundoff whenever the core is subcooled, so it can never move a calibration. */
+    var rho_void = voidReactivity(h_core, P_mpa, B_ppm);
     /* THE DIRECT BORON TERM — the half that was missing. Boron is a poison, so it is strictly
      * negative and it acts AT ANY TEMPERATURE, including the reference where the density coupling
      * above contributes exactly nothing. */
     var rho_bor  = -BORON.worth_per_ppm * B_ppm;
     var rho_xe   = -OPEN.xenon_worth.value * (kin.X / kin.X_eq_full);
-    return kin.rho_excess + rho_rods + rho_dop + rho_mod + rho_bor + rho_xe;
+    return kin.rho_excess + rho_rods + rho_dop + rho_mod + rho_void + rho_bor + rho_xe;
   }
 
   /* solveRhoExcess(opts) — rho_excess is a SOLVE, not a number, and this is the algebra.
@@ -501,6 +567,15 @@
     }
     var B = drivers.boron_ppm === undefined ? 0 : drivers.boron_ppm;
 
+    /* THE CORE NODE'S ACTUAL ENTHALPY, for the void half of the density coupling. Read from the
+     * plant rather than reconstructed from a temperature — that reconstruction is precisely the
+     * blind spot `voidReactivity` exists to close. A system with no `core` node (Layer 2 fixtures
+     * name their nodes freely) leaves it undefined and the void term is simply absent. */
+    var h_core;
+    for (var ci = 0; ci < sys.nodes.length; ci++) {
+      if (sys.nodes[ci].id === 'core') { h_core = sys.nodes[ci].h; break; }
+    }
+
     /* ---- MIDPOINT rho, AND THE FIRST ATTEMPT AT IT WAS A NO-OP THAT COST HALF THE RUNTIME.
      *
      * It took a trial half-step and re-evaluated reactivity from the result. But WITH EVERY DRIVER
@@ -524,7 +599,7 @@
      * That costs nothing, captures the ramp §15 was worried about, and degrades to rho_now on the
      * first step and whenever rho is steady — which is exactly right, because then there is no ramp
      * to correct for. */
-    var rhoNow = reactivity(kin, T_mod, drivers.fuelTemp_c, B, drivers.rodGroups, P_mpa);
+    var rhoNow = reactivity(kin, T_mod, drivers.fuelTemp_c, B, drivers.rodGroups, P_mpa, h_core);
     var rhoMid = kin.rho_valid ? rhoNow + 0.5 * (rhoNow - kin.rho_last) : rhoNow;
     kin.rho_valid = true;
 
@@ -577,6 +652,7 @@
     createKinetics: createKinetics, stepKinetics: stepKinetics,
     advance: advance, expm: expm, reactivity: reactivity,
     modCoeff: modCoeff, moderatorReactivity: moderatorReactivity,
+    voidReactivity: voidReactivity,
     rodReactivity: rodReactivity, scruve: scruve, scruveSlope: scruveSlope,
     xenonEq: xenonEq, f0: f0
   };
