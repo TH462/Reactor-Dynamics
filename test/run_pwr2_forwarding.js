@@ -44,6 +44,28 @@ var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, L = RD.loop, C = RD.c
 function src(name) {
   return fs.readFileSync(path.join(E, 'pwr2_' + name + '.js'), 'utf8').replace(/\r\n/g, '\n');
 }
+var SRC = { core: src('core'), loop: src('loop'), sources: src('sources') };
+
+/* ---- THE SELF-TEST HAS TO MUTATE THE SOURCE **AND** THE MODULE TOGETHER, which is why this
+ * gate went without one. Its static half scans source text and its dynamic half runs the loaded
+ * module, so a mutation that patched only one would prove nothing: patch the text alone and the
+ * dynamic checks still pass, patch the module alone and the static scan still passes. loadStack()
+ * evaluates the patched file into a namespace built from the unmutated ones and returns BOTH, so
+ * every mutation below is seen by both halves. */
+function loadStack(texts) {
+  var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, geometry: RD.geometry } } };
+  function evalInto(name, exportName) {
+    var body = texts[name].replace("(typeof globalThis !== 'undefined' ? globalThis : this)", '(RD_ROOT)') +
+               '\nreturn RD_ROOT.RD.pwr2.' + exportName + ';';
+    return new Function('RD_ROOT', body)(root);
+  }
+  var C2 = evalInto('core', 'core');
+  root.RD.pwr2.core = C2;
+  var L2 = evalInto('loop', 'loop');
+  root.RD.pwr2.loop = L2;
+  var S2 = evalInto('sources', 'sources');
+  return { S: S2, L: L2, C: C2 };
+}
 /* Options a layer CONSUMES. Comments are stripped first: a name that appears only in prose is
  * documentation, not plumbing, and counting it would let a comment satisfy this gate. */
 function consumes(text) {
@@ -54,11 +76,13 @@ function consumes(text) {
 }
 
 /* ---- THE CHAIN, BOTTOM TO TOP ---- */
-var LAYERS = [
-  { id: 'core',    n: 2, text: src('core') },
-  { id: 'loop',    n: 3, text: src('loop') },
-  { id: 'sources', n: 4, text: src('sources') }
-];
+function buildLayers(texts) {
+  return [
+    { id: 'core',    n: 2, text: texts.core },
+    { id: 'loop',    n: 3, text: texts.loop },
+    { id: 'sources', n: 4, text: texts.sources }
+  ];
+}
 
 /* OPTIONS A LAYER DELIBERATELY OWNS rather than forwards. Each needs a REASON, because an
  * undeclared exception is how a dropped option gets called a design decision after the fact. */
@@ -82,22 +106,22 @@ var OWNED = {
   'sources:includeOffLoop': 'forwarded wholesale via createLoop(opts)'
 };
 
-var rec = [];
+function runSuite(S, texts, rec, quiet) {
 function ck(name, cond, note) {
   rec.push({ name: name, ok: !!cond });
-  console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
+  if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
 }
+function log(x) { if (!quiet) console.log(x); }
+var LAYERS = buildLayers(texts);
 
-console.log('\nPWR2 -- DOES EACH LAYER PASS ON WHAT IT RECEIVES?');
-
-console.log('\nTHE OPTION SURFACE  [read from source, comments stripped]');
+log('\nTHE OPTION SURFACE  [read from source, comments stripped]');
 LAYERS.forEach(function (Ly) {
   Ly.opts = consumes(Ly.text);
-  console.log('  Layer ' + Ly.n + ' (' + Ly.id + ')  ' + Ly.opts.join(' '));
+  log('  Layer ' + Ly.n + ' (' + Ly.id + ')  ' + Ly.opts.join(' '));
 });
 
 /* ---- 1. STATIC: EVERY LOWER OPTION IS REACHABLE FROM ABOVE -------------------------- */
-console.log('\nSTATIC  [a lower option must be named above, passed wholesale, or declared OWNED]');
+log('\nSTATIC  [a lower option must be named above, passed wholesale, or declared OWNED]');
 for (var i = 0; i < LAYERS.length - 1; i++) {
   var lo = LAYERS[i], hi = LAYERS[i + 1];
   var hiCode = hi.text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
@@ -127,7 +151,7 @@ ck('every OWNED exception carries a reason',
    Object.keys(OWNED).length + ' declared exceptions, each with a stated reason');
 
 /* ---- 2. DYNAMIC: SET IT AT THE TOP, OBSERVE IT AT THE BOTTOM ------------------------ */
-console.log('\nDYNAMIC  [a source scan is satisfied by a MENTION; these need an EFFECT]');
+log('\nDYNAMIC  [a source scan is satisfied by a MENTION; these need an EFFECT]');
 var bubble = function (p) { return 400 + 8 * (p - 15.41); };
 
 var p1 = S.createPlant({ extraMass: bubble });
@@ -178,8 +202,60 @@ ck('...and the OWNED exception is genuine: Layer 4 overrides a per-step mdot dri
    'stayed near ' + before.toFixed(0) + ' kg/s -- Layer 4 integrates momentum and does not take ' +
    'a flow it did not compute');
 
+}
+
+console.log('\nPWR2 -- DOES EACH LAYER PASS ON WHAT IT RECEIVES?');
+var rec = [];
+runSuite(S, SRC, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
+
+/* MUTATIONS: the four historical defects named in the header, plus the OWNED exception it
+ * declares. Each is applied to BOTH the scanned text and the executed module. */
+var MUTATIONS = [
+  ['sources', 'the WHOLESALE forward is broken -- createLoop(opts) becomes createLoop({})',
+   'var sys = LOOP.createLoop(opts);',
+   'var sys = LOOP.createLoop({});'],
+  ['loop', 'extraMass stops being forwarded to Layer 2 -- every plant RIGID again',
+   'extraMass: opts.extraMass });',
+   'extraMass: undefined });'],
+  ['sources', 'drivers.heats is discarded -- RHR loses its entire duty, silently',
+   '    if (drivers.heats) {',
+   '    if (false) {'],
+  ['sources', 'drivers.sources is dropped on the way to Layer 3 -- CVCS and ECCS go inert',
+   '{ heats: heats, sources: drivers.sources, mdot: sys.mdot_loop }',
+   '{ heats: heats, mdot: sys.mdot_loop }'],
+  ['sources', 'Layer 4 stops overriding a per-step mdot driver, so the OWNED reason becomes false',
+   '{ heats: heats, sources: drivers.sources, mdot: sys.mdot_loop }',
+   '{ heats: heats, sources: drivers.sources, mdot: drivers.mdot || sys.mdot_loop }'],
+];
+
+if (fail > 0) {
+  console.log('  run_pwr2_forwarding: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
+  console.log('  MUTATION SELF-TEST SKIPPED -- ' + fail + ' check(s) failed in the CLEAN run.');
+  console.log('  A failing check fails in every mutant too, so every mutation would report as');
+  console.log('  caught and the coverage number would be a lie. Fix the check first.');
+  process.exit(1);
+}
+
 console.log('\n' + '='.repeat(70));
+console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one check');
+console.log('='.repeat(70));
+var blind = 0;
+MUTATIONS.forEach(function (m) {
+  if (SRC[m[0]].indexOf(m[2]) === -1) { console.log('  ERROR   anchor not found: ' + m[1]); blind++; return; }
+  var texts = { core: SRC.core, loop: SRC.loop, sources: SRC.sources };
+  texts[m[0]] = SRC[m[0]].split(m[2]).join(m[3]);
+  var r2 = [];
+  try { runSuite(loadStack(texts).S, texts, r2, true); }
+  catch (e) { r2.push({ name: 'threw', ok: false }); }
+  var f2 = r2.filter(function (r) { return !r.ok; }).length;
+  if (f2 === 0) { blind++; console.log('  BLIND TO  ' + m[1] + '   <-- THIS GATE CANNOT SEE IT'); }
+  else console.log('  caught    ' + m[1].padEnd(72) + f2 + ' red');
+});
+
+console.log('\n' + '='.repeat(70));
+console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
 console.log('  run_pwr2_forwarding: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 ? 1 : 0);
+process.exit((fail > 0 || blind > 0) ? 1 : 0);
