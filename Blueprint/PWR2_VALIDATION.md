@@ -1709,3 +1709,143 @@ still drives the pressure solve to the 18 MPa envelope wall, which moves the den
 the ratio. Compared at the same instant the identity is exact. **A ratio taken at one moment and
 compared against a state from another is not an identity check** — it is two measurements of
 different plants, the same error §35.4 found in the acceptance test's before-and-after.
+
+## 37. THE CLADDING BECOMES A BODY — AND CORE DAMAGE IS MEASURED REACHABLE, NOT ASSUMED — 2026-08-17
+
+Part 1 of the approved core-damage plan, under the owner's *"pin at rated"* ruling (2026-08-17).
+`pwr2_fuel.js` ran one resistance stack from volume-average fuel straight to bulk coolant, with the
+cladding as a pure conduction term and no temperature of its own, and a film coefficient frozen at
+30,000 W/m²K. The file's own `OPEN` block had named the consequence and left it standing:
+
+> *"UNSOURCED, and a CONSTANT where it should fall out of the coolant flow (Dittus-Boelter on the
+> real mass flux)… the fuel rise does not grow when flow is lost, so this model UNDERSTATES fuel
+> heatup on a loss of forced circulation. Recorded, not hidden."*
+
+### 37.1 Two changes, both provably neutral at rated
+
+**The stack is split at the clad**, giving the cladding a temperature state and a thermal mass. Half
+its conduction resistance goes on each side of the node — the standard thin-shell lumping — and the
+two halves sum:
+
+```
+r_fc + r_cw = (r_pellet + r_gap + r_clad/2) + (r_clad/2 + r_film) = r_total
+```
+
+**Measured to full double precision: `2.640194047628e-2` both ways.** So `r_total`, `UA_W_per_K` and
+every resistance fraction are byte-identical to what the function returned before, which means
+`steadyFuelTemp` (684.22 °C), the Doppler reference derived from it, and the gap conductance solved
+against the sourced Doppler defect are all untouched. **A clad node changes the path, never the
+destination** — that is what lets it be added to a calibrated model without re-solving anything.
+
+**The film coefficient becomes a function of what the coolant is doing**, normalised so it is
+*exactly* its old value at rated:
+
+```
+forced = h_rated * flowFrac^0.8 * [ (1-void) + void*vapor_ratio ]
+h      = max(h_stagnant, forced)
+```
+
+`filmCoefficient(1, 0)` returns 30000 exactly. Three new `OPEN` values, each doing a distinct job:
+`dittus_exp = 0.8` (the Dittus-Boelter Reynolds exponent), `vapor_ratio = 0.5` (vapour against
+liquid at the *same mass flux*, from the property group k^0.6·cp^0.4·μ^-0.4 near 300 °C — higher
+than intuition because equal mass flux means the vapour moves far faster), and `h_stagnant = 10`
+W/m²K (natural convection to a gas; without a floor `h → 0` at zero flow and the rod temperature is
+infinite, which is a missing regime rather than physics).
+
+**The flow term does the work, not the phase term** — which is only true because §36 fixed the pump.
+
+### 37.2 Why the clad had to be a state and not an algebraic temperature
+
+Baker-Just is an exponential in temperature *integrated over time*. A clad temperature that steps
+the instant cooling is lost gives a badly wrong oxidation history. **Measured: the clad time
+constant is 0.061 s against the fuel's 3.7 s** — a factor of 60, and it is *shorter* than the house
+`dt = 0.02` by only a factor of 3. That is stiff enough that explicit Euler is stable but
+inaccurate, so the two-node system is advanced by an exact 2×2 matrix exponential (Sylvester's
+formula, no eigenvectors needed), for the same reason the single node was advanced analytically:
+stability must not depend on a caller's timestep.
+
+**One 0.02 s step closes 29.7 % of the gap, against an analytic 1 − exp(−0.02/0.061) = 28 %.**
+
+### 37.3 IS CORE DAMAGE REACHABLE? MEASURED, AND THE ANSWER IS "IT DEPENDS ON THE BREAK"
+
+This is the question §36.5 refused to assume, because `h_stagnant` very nearly sets it — clad
+temperature at decay heat is `Q/(S·h)`, so it is close to inversely proportional to that one
+unsourced number. It was therefore chosen on physical grounds first and the reachability measured
+afterwards. Full-power break, no emergency core cooling, no oxidation heat yet:
+
+| milestone | source | 0.0005 m² (5 cm²) | 0.002 m² (20 cm²) |
+|---|---|---|---|
+| **1200 °F** hydrogen generation begins | GEND-061 §4.3 | t = 583 s | t = 334 s |
+| **1800 °F** reaction "can be significant" | Ginna UFSAR ch15 | t = 1375 s | t = 532 s |
+| **2200 °F** peak clad temperature limit | 10 CFR 50.46 criterion 1 | **not reached in 4000 s** (plateaus ~2020 °F) | **t = 981 s** |
+| 3200 °F Zircaloy melt | — | not reached | not reached |
+
+The small break **asymptotes below the limit** because decay heat decays faster than the film
+coefficient falls; the larger break crosses it at 981 s, peaks, and then falls back as the decay
+tail runs down. Both behaviours are physically sensible and neither was aimed for. **That the
+answer differs by break size, rather than being "always" or "never", is the evidence that the
+mechanism is doing the work and not a threshold.**
+
+Note what is *absent* from that table: oxidation heat. Baker-Just at 1800–2200 °F is worth
+0.4–1.6 % of rated (1200–4800 kW) against a decay tail of ~1.5 % at that time — so the reaction
+roughly *doubles* the heat source exactly where the cladding already is. That is the acceleration
+the contract describes and it is Part 2's subject, not a claim made here.
+
+### 37.4 Declared, in the file headers
+
+- **No departure-from-nucleate-boiling criterion and no film-boiling correlation.** Ginna UFSAR
+  ch15 **names** Bishop-Sandberg-Tong as what VIPRE uses for the peak-clad-temperature calculation
+  and gives neither its form nor its coefficients; the corpus has neither. The coefficient
+  therefore blends on void rather than switching at critical heat flux. **Direction of error:
+  optimistic** — early clad heat-up is too slow — so this model may not claim oxidation *onset
+  timing*, only that the reaction runs once the core is dry. Having the document is not having
+  the number.
+- **The coolant is pinned at the 800 °C (1472 °F) property ceiling from ~750 s.** The clad is a
+  metal node and is not bounded by the water envelope, but the heat it rejects is computed against
+  a *clamped* coolant temperature, which **overstates** the removal and so **understates** clad
+  temperature. Another optimistic direction, and it compounds with the one above rather than
+  cancelling.
+- **One lumped clad node, no axial or hot-channel peaking.** `clad_temp_c` will be a core-average
+  clad temperature where the contract asks for a peak. Optimistic again: a real hot channel runs
+  above core average.
+- **Zircaloy density and specific heat are unsourced**, and live in `OPEN` beside `k_clad` and
+  `h_film` rather than under a `[recalled]` tag — D1 §2 reserves that tag for values the owner has
+  ruled may stand and warns against extending it. `RHO_ZR` does two jobs: it sets the clad thermal
+  mass here and it *is* the zirconium inventory Part 2's reaction will consume.
+
+### 37.5 The zirconium inventory, cross-checked against a source it was not built from
+
+The clad mass falls out of geometry `pwr2_fuel.js` already carried — a **sourced** Westinghouse
+17×17 lattice, 5,544 rods, 12.02 ft of active height — plus one density. **2,136 kg.**
+
+GEND-061 §4.3: *"The TMI-2 reactor core contains a calculated 23,600 kg (52,000 lb) of zirconium"*,
+at 2772 MWt. Power-scaled to this 300 MWt plant: **2,554 kg**. The lattice figure is **83.6 %** of
+it — and it *must* land below, because a whole-core zirconium figure includes guide thimbles and
+spacer grids that a clad-only calculation cannot see. Landing at or above it would mean the
+cladding alone accounted for all the core's zirconium. **Right sign, right size, independent
+route**, and the gate asserts the band rather than the number.
+
+### 37.6 Gate
+
+`run_pwr2_fuel.js`: 45 → 62 checks, 32/32 mutations, no blind spots. Three authoring traps, all
+mine, all recorded in the file beside the checks they produced:
+
+- **A guess wearing an assertion's clothes.** The oxidation-heat check asked for "more than 50 °C"
+  of extra clad temperature from 5 MW of reaction and measured 12.7. The model was right and the
+  expectation was invented: at that regime `UA_cw` is 397 kW/K, so 5000 kW *can only ever* be
+  12.6 °C. Widening 50 down to 10 would have replaced one guess with another. It is now the
+  identity `ΔT = Q_ox/UA_cw`, which cannot be fitted.
+- **Every clad check read a SETTLED state**, where the clad sits at its equilibrium by definition —
+  so a model slamming it straight there each step satisfied all of them. The injection self-test
+  found exactly that. Only a transient can see a lag.
+- **And the transient's first fixture measured the wrong node.** Started with fuel *and* clad at
+  the coolant temperature it closed 0.1 % of the gap and looked like a failure — correctly, because
+  cold fuel means no ΔT across the gap and no heat reaching the clad at all. That measures the
+  fuel's time constant. Fuel hot, clad cold isolates the one under test.
+
+Also corrected: `T_surface_c` was commented as "CLAD OUTER SURFACE" and the arithmetic always said
+**pellet surface** (it subtracts only the pellet term from the fuel average). The centerline
+identity the gate checks depends on it being the pellet surface, so the *name* was fixed and the
+quantity left exactly where it was. The clad now has its own reported temperature.
+
+`node test/run_all.js --fast`: all runners at baseline.

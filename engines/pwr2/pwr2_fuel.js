@@ -103,11 +103,40 @@
            'so a 20 % error here is a 1 % error in the fuel rise.'
     },
     h_film: {
-      value: 30000,                /* W/m2K */
-      why: 'Clad-to-coolant film coefficient. UNSOURCED, and a CONSTANT where it should fall out ' +
-           'of the coolant flow (Dittus-Boelter on the real mass flux). Contributes 5.0 %. The ' +
-           'consequence of freezing it: the fuel rise does not grow when flow is lost, so this ' +
-           'model UNDERSTATES fuel heatup on a loss of forced circulation. Recorded, not hidden.'
+      value: 30000,                /* W/m2K — the RATED value; see filmCoefficient() */
+      why: 'Clad-to-coolant film coefficient AT RATED CONDITIONS. Still UNSOURCED as a level, ' +
+           'but no longer a constant: filmCoefficient() scales it with the coolant the rods are ' +
+           'actually sitting in. It is the anchor the regime factors multiply, and they are ' +
+           'EXACTLY 1 at rated, so this number keeps the meaning it was solved alongside.'
+    },
+    /* ---- THE REGIME FACTORS. What used to be "h_film is a constant, and the consequence is that
+     * the fuel rise does not grow when flow is lost" (this file's own words until 2026-08-17).
+     * Three numbers, each doing a distinct job, none of them chosen to make anything come out. */
+    dittus_exp: {
+      value: 0.8,
+      why: 'The Reynolds exponent in Dittus-Boelter, h ~ G^0.8. Textbook and uncontroversial, ' +
+           'but NOT in this corpus, so it is OPEN like everything else here. It is the term that ' +
+           'carries the collapse of forced convection as the loop flow decays.'
+    },
+    vapor_ratio: {
+      value: 0.5,
+      why: 'Film coefficient in pure vapour against pure liquid AT THE SAME MASS FLUX. From the ' +
+           'property group h ~ k^0.6 * cp^0.4 * mu^-0.4 evaluated near 300 degC, which gives ' +
+           '~0.50 -- higher than intuition because at equal MASS flux the vapour moves far ' +
+           'faster. UNSOURCED: Layer 0 carries no conductivity or viscosity and the corpus has ' +
+           'neither. The real collapse on a voided core comes from the FLOW term, not this one.'
+    },
+    h_stagnant: {
+      value: 10,                   /* W/m2K */
+      why: 'The floor when forced flow stops: natural convection from a rod to a gas, textbook ' +
+           'range 5-25 W/m2K. UNSOURCED. It exists because h ~ G^0.8 goes to ZERO at zero flow ' +
+           'and a rod with no heat sink at all has an infinite temperature rise, which is not ' +
+           'physics, it is a missing regime. ⚠ THIS NUMBER, MORE THAN ANY OTHER HERE, DECIDES ' +
+           'WHETHER CORE DAMAGE IS REACHABLE -- clad temperature at decay heat is Q/(S*h), so it ' +
+           'is very nearly inversely proportional to it. It was therefore chosen ON PHYSICAL ' +
+           'GROUNDS FIRST and the reachability of the 10 CFR 50.46 2200 degF limit MEASURED ' +
+           'afterwards and reported, rather than the other way round. If a later evidence pass ' +
+           'moves it, the damage timeline moves with it and that is correct.'
     },
     q_to_fuel: {
       value: 0.974,
@@ -129,6 +158,27 @@
    * scalar, which can only ever agree with itself. It is still not a source. */
   var M_MOL_UO2 = 0.270028;        /* kg/mol */
   var RHO_UO2   = 10410;           /* kg/m3 — 95 % of 10 960 theoretical density. RECALLED. */
+
+  /* ---- ZIRCALOY PROPERTIES, for the clad THERMAL NODE ---------------------------------------
+   * Both UNSOURCED and both in OPEN's spirit rather than under a `[recalled]` tag, which D1 §2
+   * reserves for values the owner has ruled may stand and warns against extending. They sit here
+   * beside RHO_UO2 because they play the same role: a density and a specific heat that set a
+   * THERMAL MASS, i.e. a time constant, not a temperature.
+   *
+   * WHAT THEY BUY, and why the clad cannot stay algebraic: Baker-Just is an exponential in
+   * temperature integrated over time, so a clad temperature that STEPS the instant cooling is
+   * lost gives a badly wrong oxidation history. The clad's small heat capacity is precisely why
+   * real clad temperatures ramp over tens of seconds rather than jumping, as at TMI-2.
+   *
+   * `RHO_ZR` is also the zirconium INVENTORY the metal/water reaction consumes, so it is one
+   * number doing two jobs and it is cross-checkable: the clad-only mass it gives is 2136 kg
+   * against 2554 kg from GEND-061's TMI-2 whole-core figure (23,600 kg at 2772 MWt) scaled on
+   * power — 83.6 %, with the balance the guide thimbles and spacer grids a whole-core figure
+   * includes and a clad-only calculation cannot. Right sign, right size, independent route. */
+  var RHO_ZR = 6560;               /* kg/m3, Zircaloy-4. UNSOURCED. */
+  var CP_ZR  = 330;                /* J/kg/K near 600 K. UNSOURCED; weakly temperature-dependent
+                                    * and carried as a constant, which sets a time constant and
+                                    * not a temperature. */
 
   function cp_uo2(T_k) {           /* J/kg/K */
     var t = T_k / 1000;
@@ -166,6 +216,15 @@
 
     var nRodTotal = nRod * nAssy;
     var V_fuel    = Math.PI / 4 * pellet * pellet * H * nRodTotal;
+    var rodLenTot = nRodTotal * H;
+
+    /* THE CLAD AS A BODY, not just a resistance. Annulus area x total rod length gives its
+     * volume; its outer surface is what the coolant touches and what the metal/water reaction
+     * happens on. Nothing new is assumed — clad_ri and clad_ro are already fixed by the SOURCED
+     * rod OD and the bounded split above. */
+    var A_annulus = Math.PI * (clad_ro * clad_ro - clad_ri * clad_ri);   /* m2 per rod */
+    var V_clad    = A_annulus * rodLenTot;
+    var S_clad    = Math.PI * rod_od * rodLenTot;                        /* outer surface, m2 */
 
     return {
       rod_od_m: rod_od, pellet_m: pellet, pellet_in: pellet_in,
@@ -175,8 +234,47 @@
       H_m: H, H_ft: H / 0.3048,
       V_fuel_m3: V_fuel,
       M_fuel_kg: V_fuel * RHO_UO2,
-      rod_length_total_m: nRodTotal * H
+      rod_length_total_m: rodLenTot,
+      clad_annulus_m2: A_annulus,
+      V_clad_m3: V_clad,
+      M_clad_kg: V_clad * RHO_ZR,
+      clad_surface_m2: S_clad
     };
+  }
+
+  /* filmCoefficient(flowFrac, voidFrac) -> W/m2K
+   *
+   * The clad-to-coolant coefficient, as a function of what the coolant is DOING rather than as a
+   * constant. Two multiplicative factors on the rated anchor, plus a floor:
+   *
+   *     forced = h_rated * flowFrac^0.8 * [ (1-void) + void*vapor_ratio ]
+   *     h      = max(h_stagnant, forced)
+   *
+   * ⚠ EXACTLY THE RATED VALUE AT RATED, by construction: flowFrac = 1 and voidFrac = 0 give
+   * 30000 * 1 * 1, and the floor is far below it. That is what lets this be added to a resistance
+   * stack whose gap conductance is SOLVED against a sourced Doppler defect without re-opening the
+   * solve — the owner's "pin at rated" ruling, 2026-08-17.
+   *
+   * THE FLOW TERM DOES THE WORK, NOT THE PHASE TERM. Vapour at the same mass flux transfers about
+   * half as well as liquid; what actually collapses cooling on a voided core is that the loop
+   * STOPS — measured, `mdot_loop` falls 1630 -> 14 kg/s through a small-break blowdown once the
+   * pump knows what it is pumping (D4 §36). At 14 kg/s and quality 1 the forced term is worth
+   * ~340 W/m2K against 30,000 at rated.
+   *
+   * ⚠ DECLARED SIMPLIFICATION — NO DEPARTURE FROM NUCLEATE BOILING AND NO FILM-BOILING
+   * CORRELATION. Ginna UFSAR ch15 (ML20339A101) NAMES Bishop-Sandberg-Tong as what VIPRE uses for
+   * the peak-clad-temperature calculation, and does not give its form or its coefficients; the
+   * corpus has neither. So this blends smoothly on void instead of switching at critical heat
+   * flux. DIRECTION OF ERROR: optimistic — early clad heat-up is too slow — which means this
+   * model may not claim oxidation ONSET TIMING, only that the reaction runs once the core is dry.
+   * Having the document is not having the number.
+   */
+  function filmCoefficient(flowFrac, voidFrac) {
+    var f = flowFrac > 0 ? flowFrac : 0;
+    var v = voidFrac < 0 ? 0 : (voidFrac > 1 ? 1 : voidFrac);
+    var phase  = (1 - v) + v * OPEN.vapor_ratio.value;
+    var forced = OPEN.h_film.value * Math.pow(f, OPEN.dittus_exp.value) * phase;
+    return forced > OPEN.h_stagnant.value ? forced : OPEN.h_stagnant.value;
   }
 
   /* ---- THE RESISTANCE STACK -----------------------------------------------------------------
@@ -191,16 +289,36 @@
    *   film    1/(pi*d_rod*h_film)
    *
    * k_f is temperature-dependent, so UA is evaluated at the CURRENT fuel temperature each step. */
-  function conductance(g, T_f_k) {
+  function conductance(g, T_f_k, hFilm) {
     var k_f = k_uo2(T_f_k);
+    var h_f = hFilm === undefined ? OPEN.h_film.value : hFilm;
     var r_pellet = 1 / (8 * Math.PI * k_f);
     var r_gap    = 1 / (Math.PI * g.pellet_m * OPEN.h_gap.value);
     var r_clad   = Math.log(g.clad_ro_m / g.clad_ri_m) / (2 * Math.PI * OPEN.k_clad.value);
-    var r_film   = 1 / (Math.PI * g.rod_od_m * OPEN.h_film.value);
+    var r_film   = 1 / (Math.PI * g.rod_od_m * h_f);
     var r_total  = r_pellet + r_gap + r_clad + r_film;
+    /* ---- THE STACK SPLIT AT THE CLAD, so the cladding can have a TEMPERATURE ----------------
+     * The clad node sits at its own volume average, so HALF its conduction resistance is on the
+     * fuel side and half on the coolant side. That is the standard lumping for a thin shell, and
+     * the choice is free of consequence at steady state precisely because the two halves sum:
+     *
+     *     r_fc + r_cw = (r_pellet + r_gap + r_clad/2) + (r_clad/2 + r_film) = r_total
+     *
+     * ⚠ WHICH IS WHY ADDING A CLAD NODE MOVES NO STEADY STATE AT ALL. `r_total`, `UA_W_per_K`
+     * and every fraction below are byte-identical to what this function returned before the
+     * split, so `steadyFuelTemp`, the Doppler reference it derives, and the gap conductance
+     * solved against the sourced Doppler defect are all untouched. The clad node changes the
+     * PATH, never the destination -- which is the whole reason it can be added to a calibrated
+     * model without re-solving anything. */
+    var r_fc = r_pellet + r_gap + r_clad / 2;
+    var r_cw = r_clad / 2 + r_film;
     return {
       UA_W_per_K: g.rod_length_total_m / r_total,
+      UA_fc_W_per_K: g.rod_length_total_m / r_fc,     /* fuel  <-> clad  */
+      UA_cw_W_per_K: g.rod_length_total_m / r_cw,     /* clad  <-> water */
+      h_film: h_f,
       r_pellet: r_pellet, r_gap: r_gap, r_clad: r_clad, r_film: r_film, r_total: r_total,
+      r_fc: r_fc, r_cw: r_cw,
       frac_pellet: r_pellet / r_total, frac_gap: r_gap / r_total,
       frac_clad: r_clad / r_total, frac_film: r_film / r_total
     };
@@ -233,14 +351,70 @@
     return T;
   }
 
+  /* steadyCladTemp — where the clad sits at steady state for a given power and coolant, at RATED
+   * cooling. The initial-condition companion to steadyFuelTemp, and it exists for the same
+   * reason: a reactor created with its cladding at some default temperature spends the first
+   * seconds dumping the difference, which reads as a physics defect and is an IC error. */
+  function steadyCladTemp(g, Q_kW, T_cool_c) {
+    var T_f  = steadyFuelTemp(g, Q_kW, T_cool_c);
+    var cond = conductance(g, T_f + 273.15);
+    return T_cool_c + Q_kW * OPEN.q_to_fuel.value / (cond.UA_cw_W_per_K / 1000);
+  }
+
   function createFuel(opts) {
     opts = opts || {};
     var g = deriveGeometry(opts);
+    var Tf = opts.T_fuel_c === undefined ? 693.0 : opts.T_fuel_c;
     return {
       geom: g,
-      T_fuel_c: opts.T_fuel_c === undefined ? 693.0 : opts.T_fuel_c,
+      T_fuel_c: Tf,
+      /* Absent a caller value the clad starts AT the fuel temperature rather than at the
+       * coolant's: it is the conservative end for an initial condition (no stored energy is
+       * invented) and `pwr2_reactor` supplies the real one from `steadyCladTemp`. */
+      T_clad_c: opts.T_clad_c === undefined ? Tf : opts.T_clad_c,
       rated_thermal_kW: opts.rated_thermal_kW === undefined ? 300000 : opts.rated_thermal_kW
     };
+  }
+
+  /* advance2(x0, y0, a, b, c, dt) -> [x, y]
+   *
+   * EXACT advance of the two-node deviation system, by the same argument the single node uses:
+   * with coefficients frozen over a step it is a linear ODE with a closed form, so stability
+   * cannot depend on a caller's timestep choice.
+   *
+   *     dx/dt = -a*x + a*y            a = UA_fc / C_fuel
+   *     dy/dt =  b*x - (b+c)*y        b = UA_fc / C_clad,  c = UA_cw / C_clad
+   *
+   * The matrix exponential of a 2x2 with distinct eigenvalues is Sylvester's formula, which
+   * needs no eigenvectors:
+   *
+   *     exp(A*dt) = [ e^(l1*dt)*(A - l2*I) - e^(l2*dt)*(A - l1*I) ] / (l1 - l2)
+   *
+   * ⚠ THE CLAD IS THE STIFF ONE AND THAT IS WHY THIS IS NOT EULER. Measured at rated, the clad
+   * time constant is ~0.06 s against a house dt of 0.02 -- a ratio of 3, where explicit Euler is
+   * stable but inaccurate. It gets STIFFER, not looser, the better the cooling. */
+  function advance2(x0, y0, a, b, c, dt) {
+    if (!(dt > 0)) return [x0, y0];
+    var tr = -(a + b + c), det = a * c;
+    var disc = tr * tr - 4 * det;
+    if (disc < 0) disc = 0;                       /* both roots are real; guard roundoff only */
+    var sq = Math.sqrt(disc);
+    var l1 = 0.5 * (tr + sq), l2 = 0.5 * (tr - sq);
+    var d11 = -a, d12 = a, d21 = b, d22 = -(b + c);
+    var m11, m12, m21, m22;
+    if (Math.abs(l1 - l2) > 1e-12 * (1 + Math.abs(l1))) {
+      var e1 = Math.exp(l1 * dt), e2 = Math.exp(l2 * dt), k = 1 / (l1 - l2);
+      m11 = k * (e1 * (d11 - l2) - e2 * (d11 - l1));
+      m12 = k * (e1 * d12 - e2 * d12);
+      m21 = k * (e1 * d21 - e2 * d21);
+      m22 = k * (e1 * (d22 - l2) - e2 * (d22 - l1));
+    } else {
+      /* Repeated root: exp(A*dt) = e^(l*dt) * (I + (A - l*I)*dt). */
+      var el = Math.exp(l1 * dt);
+      m11 = el * (1 + (d11 - l1) * dt); m12 = el * (d12 * dt);
+      m21 = el * (d21 * dt);            m22 = el * (1 + (d22 - l1) * dt);
+    }
+    return [m11 * x0 + m12 * y0, m21 * x0 + m22 * y0];
   }
 
   /* stepFuel(fuel, dt, drivers) -> { T_fuel_c, heats, ... }
@@ -262,47 +436,85 @@
       throw new Error('pwr2_fuel: drivers.coolTemp_c is REQUIRED — this layer will not invent a ' +
                       'coolant temperature for the fuel to sit in.');
     }
+    /* ⚠ THE COOLANT REGIME IS REQUIRED, and defaulting it would be the worst kind of wrong.
+     * A default of "rated flow, no void" hands every caller that forgets it PERFECT COOLING —
+     * the reassuring answer, unearned, and exactly the failure `pwr2_true_state.js` refuses when
+     * it declines to report `scrammed: false` from an engine with no protection layer. There is
+     * ONE production caller (`pwr2_reactor.stepReactor`) and it has the plant in hand. */
+    if (drivers.flowFrac === undefined || drivers.voidFrac === undefined) {
+      throw new Error('pwr2_fuel: drivers.flowFrac and drivers.voidFrac are REQUIRED — this ' +
+                      'layer will not assume the rods are being cooled.');
+    }
 
     var Q_total  = drivers.Q_core_kW;
     var Q_fuel   = Q_total * OPEN.q_to_fuel.value;          /* kW through the gap */
     var Q_direct = Q_total - Q_fuel;                        /* kW straight to the moderator */
+    /* Metal/water reaction heat, deposited IN THE CLAD where the reaction happens. Optional and
+     * zero by default: oxidation is a separate Layer 5 file and this layer will not invent a
+     * reaction it cannot see. */
+    var Q_ox     = drivers.Q_ox_kW === undefined ? 0 : drivers.Q_ox_kW;
 
     var T_f_k = fuel.T_fuel_c + 273.15;
-    var cond  = conductance(fuel.geom, T_f_k);
+    var hFilm = filmCoefficient(drivers.flowFrac, drivers.voidFrac);
+    var cond  = conductance(fuel.geom, T_f_k, hFilm);
     var UA_kW = cond.UA_W_per_K / 1000;
+    var UA_fc = cond.UA_fc_W_per_K / 1000;                  /* kW/K, fuel <-> clad  */
+    var UA_cw = cond.UA_cw_W_per_K / 1000;                  /* kW/K, clad <-> water */
     var cp    = cp_uo2(T_f_k);
     var Ccap  = fuel.geom.M_fuel_kg * cp / 1000;            /* kJ/K */
+    var Cclad = fuel.geom.M_clad_kg * CP_ZR / 1000;         /* kJ/K */
     var tau   = Ccap / UA_kW;                               /* s */
 
-    var T_eq  = drivers.coolTemp_c + Q_fuel / UA_kW;
-    var decay = dt > 0 ? Math.exp(-dt / tau) : 1;
-    var T_new = T_eq + (fuel.T_fuel_c - T_eq) * decay;
+    /* THE TWO EQUILIBRIA. Heat leaving the clad to the coolant is everything generated in the
+     * fuel plus everything generated by oxidation; heat crossing the gap is the fuel's alone. */
+    var T_c_eq  = drivers.coolTemp_c + (Q_fuel + Q_ox) / UA_cw;
+    var T_eq    = T_c_eq + Q_fuel / UA_fc;
+    var T_f_old = fuel.T_fuel_c, T_c_old = fuel.T_clad_c;
+    var adv     = advance2(T_f_old - T_eq, T_c_old - T_c_eq,
+                           UA_fc / Ccap, UA_fc / Cclad, UA_cw / Cclad, dt);
+    var T_new   = T_eq + adv[0];
+    var T_cnew  = T_c_eq + adv[1];
 
-    /* WHAT THE COOLANT ACTUALLY RECEIVES over the step: the direct deposition, plus the heat that
-     * left the fuel. The second is taken from the fuel's own energy CHANGE rather than from
-     * UA*(T_f - T_cool) at either endpoint, so the two sides balance exactly and the node cannot
-     * gain or lose energy through the integrator. Over a step:
-     *     Q_out * dt = Q_fuel * dt - C * (T_new - T_old) */
-    var Q_out = dt > 0 ? Q_fuel - Ccap * (T_new - fuel.T_fuel_c) / dt : Q_fuel;
+    /* WHAT THE COOLANT ACTUALLY RECEIVES over the step: the direct deposition, plus everything
+     * generated in fuel and clad that did not end up STORED in one of them. Taken from the two
+     * nodes' own energy CHANGE rather than from UA*(T_c - T_cool) at either endpoint, so both
+     * sides balance exactly and neither node can gain or lose energy through the integrator:
+     *     Q_out * dt = (Q_fuel + Q_ox) * dt - C_f*(dT_f) - C_c*(dT_c) */
+    var stored = Ccap * (T_new - T_f_old) + Cclad * (T_cnew - T_c_old);
+    var Q_out  = dt > 0 ? (Q_fuel + Q_ox) - stored / dt : Q_fuel + Q_ox;
     fuel.T_fuel_c = T_new;
+    fuel.T_clad_c = T_cnew;
 
     /* Centerline, REPORTED so it cannot be confused with the average the model integrates.
-     * T_center - T_surface = q' / (4*pi*k_f); T_surface from the non-pellet resistances. */
+     * T_center - T_surface = q' / (4*pi*k_f).
+     * ⚠ `T_surface_c` IS THE PELLET SURFACE, and the old comment called it "CLAD OUTER SURFACE".
+     * The arithmetic always said pellet — it subtracts only the pellet term from the fuel average
+     * — and the centerline identity this gate checks depends on that. So the NAME was corrected
+     * and the quantity left exactly where it was. The clad's own temperature is now a STATE and
+     * is reported as `T_clad_c`. */
     var qPrime  = Q_fuel * 1000 / fuel.geom.rod_length_total_m;     /* W/m */
-    var T_surf  = drivers.coolTemp_c + qPrime * (cond.r_gap + cond.r_clad + cond.r_film);
+    var T_surf  = fuel.T_fuel_c - qPrime * cond.r_pellet;
     var T_ctr   = T_surf + qPrime / (4 * Math.PI * k_uo2(T_f_k));
 
     return {
       T_fuel_c: fuel.T_fuel_c,
       T_fuel_rise_c: fuel.T_fuel_c - drivers.coolTemp_c,
+      T_clad_c: fuel.T_clad_c,
+      T_clad_rise_c: fuel.T_clad_c - drivers.coolTemp_c,
+      T_clad_f: fuel.T_clad_c * 9 / 5 + 32,
       T_surface_c: T_surf,
       T_centerline_c: T_ctr,
       T_centerline_f: T_ctr * 9 / 5 + 32,
       heats: { core: Q_out + Q_direct },      /* kW INTO the core node */
       Q_through_gap_kW: Q_out,
       Q_direct_kW: Q_direct,
+      Q_ox_kW: Q_ox,
       UA_kW_per_K: UA_kW,
+      UA_fc_kW_per_K: UA_fc,
+      UA_cw_kW_per_K: UA_cw,
+      h_film_W_per_m2K: hFilm,
       tau_s: tau,
+      tau_clad_s: Cclad / UA_cw,
       cp_J_per_kgK: cp,
       linear_heat_W_per_m: qPrime,
       resistance_split: {
@@ -316,9 +528,11 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.fuel = {
     GEOM: GEOM, SPLIT: SPLIT, OPEN: OPEN, RHO_UO2: RHO_UO2, M_MOL_UO2: M_MOL_UO2,
+    RHO_ZR: RHO_ZR, CP_ZR: CP_ZR,
     cp_uo2: cp_uo2, k_uo2: k_uo2,
     deriveGeometry: deriveGeometry, conductance: conductance,
-    steadyFuelTemp: steadyFuelTemp,
+    filmCoefficient: filmCoefficient, advance2: advance2,
+    steadyFuelTemp: steadyFuelTemp, steadyCladTemp: steadyCladTemp,
     createFuel: createFuel, stepFuel: stepFuel
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

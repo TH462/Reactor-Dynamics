@@ -66,12 +66,37 @@
   var F  = RD && RD.fuel;
 
   var RATED_THERMAL_KW = 300000;   /* 300 MWt — this plant's rating */
+  var MDOT_RATED = 1630;           /* kg/s — pwr2_sources' PUMP.mdot_rated, the flow reference */
 
   function coreTemp(sys) {
     for (var i = 0; i < sys.nodes.length; i++) {
       if (sys.nodes[i].id === 'core') return W.T_from_h(sys.nodes[i].h, sys.P);
     }
     return NaN;
+  }
+
+  /* coreRegime(sys) — what the rods are actually sitting in, for pwr2_fuel's film coefficient.
+   *
+   * `pwr2_fuel.js` REFUSES to run without these, the same way it refuses to invent a power or a
+   * coolant temperature, and this file's whole job is to supply what the layers below will not
+   * assume. Both come straight off the plant:
+   *
+   *   voidFrac  the core node's static quality. Layer 2 is homogeneous equilibrium — no slip —
+   *             so quality and void fraction are the same number by construction. That is also
+   *             why `core_uncovered_frac` stays declared-missing: a LEVEL needs a free surface
+   *             this engine does not have, and that machinery is #472's.
+   *   flowFrac  loop mass flow against rated. It is the term that matters: measured through a
+   *             small-break blowdown, `mdot_loop` falls 1630 -> 14 kg/s, and that is what ends
+   *             forced convection, not the phase change on its own (D4 §36). */
+  function coreRegime(sys) {
+    var v = 0;
+    for (var i = 0; i < sys.nodes.length; i++) {
+      if (sys.nodes[i].id === 'core') { v = W.quality(sys.nodes[i].h, sys.P); break; }
+    }
+    if (!isFinite(v) || v < 0) v = 0;
+    var f = sys.mdot_loop === undefined ? 1 : sys.mdot_loop / MDOT_RATED;
+    if (!isFinite(f) || f < 0) f = 0;
+    return { voidFrac: v, flowFrac: f };
   }
 
   /* createReactor(opts)
@@ -88,8 +113,13 @@
     var cool  = opts.coolTemp_c === undefined ? kin.T_mod_ref_c : opts.coolTemp_c;
     /* Settle the fuel against the power it is actually starting at, INCLUDING the decay fraction —
      * kinetics reports Q_total = P*(1-f0) + sum(H_i), which equals P at any steady state. */
+    /* THE CLAD IS SETTLED TOO, for the same reason and it is a stronger one: its heat capacity
+     * is ~1/50th of the fuel's, so a clad starting at the wrong temperature does not merely
+     * settle, it dumps or absorbs its error in a fraction of a second and shows up as a spike in
+     * the heat reaching the coolant on step one. */
     var fuel  = F.createFuel({ rated_thermal_kW: rated,
-                               T_fuel_c: F.steadyFuelTemp(geom, rated * kin.P, cool) });
+                               T_fuel_c: F.steadyFuelTemp(geom, rated * kin.P, cool),
+                               T_clad_c: F.steadyCladTemp(geom, rated * kin.P, cool) });
     /* Seeded at the initial fission fraction, so the FIRST step's period compares against the
      * condition the plant actually started at rather than against undefined. A reactor created
      * already at steady state therefore reports Infinity/0 on step one, correctly. */
@@ -115,9 +145,16 @@
       modTemp_c:  drivers.modTemp_c
     });
 
+    var reg = coreRegime(sys);
     var fr = F.stepFuel(rx.fuel, dt, {
       Q_core_kW:  kr.Q_total_frac * rx.rated_thermal_kW,
-      coolTemp_c: cool
+      coolTemp_c: cool,
+      voidFrac:   reg.voidFrac,
+      flowFrac:   reg.flowFrac,
+      /* Oxidation heat, when a damage model is supplying it. Absent today: pwr2_damage.js is
+       * not built, and passing 0 explicitly would be indistinguishable from a built model
+       * reporting no reaction. */
+      Q_ox_kW:    drivers.Q_ox_kW
     });
 
     /* ---- REACTOR PERIOD AND STARTUP RATE -- see the header derivation. ---- */
@@ -153,6 +190,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.reactor = {
     RATED_THERMAL_KW: RATED_THERMAL_KW,
-    createReactor: createReactor, stepReactor: stepReactor, coreTemp: coreTemp
+    createReactor: createReactor, stepReactor: stepReactor, coreTemp: coreTemp,
+    coreRegime: coreRegime, MDOT_RATED: MDOT_RATED
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

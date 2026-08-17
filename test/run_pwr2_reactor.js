@@ -368,8 +368,14 @@ var MUTATIONS = [
    "      if (sys.nodes[i].id === 'core') return W.T_from_h(sys.nodes[i].h, sys.P);",
    "      if (sys.nodes[i].id === 'hot_leg') return W.T_from_h(sys.nodes[i].h, sys.P);"],
   ['fuel is NOT initialised on its steady solve (a 15 s lurch at t=0 that looks like physics)',
-   '                               T_fuel_c: F.steadyFuelTemp(geom, rated * kin.P, cool) });',
-   '                               T_fuel_c: 693 });'],
+   '                               T_fuel_c: F.steadyFuelTemp(geom, rated * kin.P, cool),',
+   '                               T_fuel_c: 693,'],
+  /* THE CLAD IC MATTERS MORE THAN THE FUEL'S, not less: its heat capacity is ~1/50th, so a clad
+   * started at the wrong temperature dumps or absorbs its error in a fraction of a second and
+   * shows up as a spike in the heat reaching the coolant on step one. */
+  ['the CLAD is not initialised on its steady solve (a heat spike into the coolant at t=0)',
+   '                               T_clad_c: F.steadyCladTemp(geom, rated * kin.P, cool) });',
+   '                               T_clad_c: 20 });'],
   ['the initial fuel solve ignores the power it is built at',
    'F.steadyFuelTemp(geom, rated * kin.P, cool)', 'F.steadyFuelTemp(geom, rated, cool)'],
   ['boron never reaches kinetics (the operator control is inert)',
