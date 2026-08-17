@@ -946,3 +946,84 @@ Nothing here is fitted, and nothing needs tuning. What it does say is that **any
 plant must quote Tavg to better than a tenth of a degree to say anything about power**, because the
 SG converts one into the other with a gain of twelve. That is a property of the plant, not of the
 comparison.
+
+## 28. SCOPING THE `true_state` SHIM — THE NEXT WORK ITEM, MEASURED — 2026-08-16
+
+The approved kinetics plan named what comes after it: *"The control layer — it already exists and is
+not being rebuilt. PWR2 shims to the 109 `true_state` fields; that is the next piece of work after
+this one."* This scopes that, with numbers rather than an estimate.
+
+### 28.1 The measurement
+
+Field list extracted **exactly as `test/run_contract.js` extracts it** — the fenced block under
+`### 6.3 true_state fields, per plant`, `"name":` entries, `//` comments stripped. Using the same
+parser as the gate matters: a hand-rolled scan of the same section returned **17** fields on the
+first attempt, and that number was wrong enough to be obviously wrong, which is the only reason it
+did not get built on.
+
+```
+    documented PWR contract fields        110
+    PWR2 Layer 5 return keys               70
+    exact name matches                      6   (5 %)
+```
+
+The six: `boron_ppm`, `core_heat_pct`, `load_target_mwe`, `mwe_output`, `power_pct`, `xenon_pct_eq`.
+
+### 28.2 ⚠ THE 104 "MISSING" IS A NAME-MATCHING ARTIFACT, NOT A PHYSICS GAP
+
+Spot-checked ten of them against the live engine rather than assuming:
+
+| contract field | computed today as | value |
+|---|---|---|
+| `tavg_c` | `sg.primaryTavg(sys)` | 304.500 |
+| `pressure_mpa` | `sys.P` | 15.410 |
+| `thot_c` / `tcold_c` | node enthalpy → `T_from_h` | 304.500 |
+| `fuel_temp_c` | `reactor.T_fuel_c` | 683.378 |
+| `decay_heat_pct` | `reactor.decay_pct` | 6.247 |
+| `reactivity_pcm` | `reactor.rho_pcm` | −742.159 |
+| `steam_pressure_mpa` | `sg.P_sec` | 5.688 |
+| `t_sg_c` | `sg.T_sec` | 272.111 |
+| `sg_mass_frac` | `sg.mass_frac` | 1.000 |
+
+**All ten exist and carry the right quantity.** They simply are not named what the contract names
+them, which is exactly what a shim is for.
+
+### 28.3 The honest split
+
+Reading the 104 by hand and grouping them — this is a **scoping estimate**, not a gate:
+
+- **~48 are a rename or a one-line derivation** from quantities Layer 5 already produces
+  (temperatures, pressures, flows, fractions, the reactor split).
+- **~56 need a system PWR2 does not have**, in coherent blocks:
+
+| block | fields | note |
+|---|---|---|
+| pressurizer | ~10 | `pzr_*`, `porv_*`, `spray_*`, `subcooling_c` — **#472 owns this**, deliberately not built |
+| containment | ~11 | `containment_*`, `ctmt_*` |
+| protection / lineup | ~8 | `scrammed`, `msiv_open`, `station_blackout`, `plant_mode`, `load_mode` |
+| condensate / condenser | ~6 | `condensate_*`, `cw_inlet_temp_c`, `condenser_vacuum_kpa` |
+| damage | ~6 | `clad_temp_c`, `melted`, `fuel_damaged`, `zirc_heat_pct` |
+| nuclear instruments | ~5 | `sr_counts_cps`, `ir_amps`, `startup_rate_dpm`, `reactor_period_s` |
+| auxiliary feedwater | ~5 | `afw_*` |
+| accumulators | ~5 | `accumulator_*` |
+
+### 28.4 What this says about sequencing
+
+**The shim is not one task.** Roughly half of it is mechanical and can be done now; the other half
+is blocked behind systems that are either owned elsewhere (#472, the pressurizer) or not yet
+designed.
+
+So the useful shape is a shim that **maps what exists and declares the rest explicitly missing**,
+rather than one that waits for the whole engine. `run_contract.js` already distinguishes the two
+directions it needs — *doc field not in the engine* → STALE, *engine field not in the doc* →
+UNDOCUMENTED — so a partial shim can be gated honestly from the first field.
+
+**And the shim must not invent values.** Every PWR2 layer so far throws rather than fabricate a
+missing driver (`fuelTemp_c`, `Q_core_kW`, `rated_steam_kgs`). A shim that returned `0` for
+`containment_pressure_mpa` because containment is not built would be the same defect as the missing
+components §23.4 catalogues — invisible, because the consumer cannot tell an unbuilt system from a
+quiet one.
+
+**Recommendation, for whoever picks this up:** build the shim over the ~48 derivable fields, have it
+throw or report `null` for the rest with the reason attached, and let `run_contract.js` count the
+gap. That turns 56 unbuilt fields from a silent hole into a measured backlog.
