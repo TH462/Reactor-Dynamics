@@ -1200,3 +1200,48 @@ so no PORV or safety ever lifts — now runs to **100,671 psia**. With continuou
 into a rigid vessel and no relief path, that is what a bulk modulus gives; the temperature no
 longer follows it, and no check reddens on it. A plant cannot produce that lineup, but the
 number is published, and a later reader should know it is the probe's own doing.
+
+### The RHR-interlock red: the plant gets there, then the heaters undo it — and nothing can spray (2026-08-17)
+
+Traced through the roundtrip's cooldown, one probe, its own layer:
+
+| t (s) | P (psia) | SP | Tavg | spray dem / **delivered** | heat % | **flow_frac** | RHR |
+|---|---|---|---|---|---|---|---|
+| 6797 | **179.3 — the minimum, BELOW the 2.76 MPa interlock** | — | — | — | — | — | — |
+| 7000 | 214.2 | 2105 | 78.0 | 0.0 / 0 | **100** | 0.00 | **true** |
+| 7500 | 472.1 | 1959 | 61.0 | 0.0 / 0 | **100** | 0.00 | **true** |
+| 8000 | 950.7 | 1814 | 57.9 | 0.0 / 0 | **100** | 0.00 | **false** |
+| 8500 | 1687.9 | 1669 | 58.0 | **12.0 / 0** | 0 | **0.00** | false |
+| 11000 | 1664.5 | 944 | 58.2 | **12.0 / 0** | 0 | **0.00** | false |
+
+**The plant reaches the interlock and RHR OPENS.** The red is not a failure to depressurize —
+it is what happens next. Two separate things, and only one of them is the model's:
+
+**1. The driver's heaters fight its own cooldown.** At t = 7000 the setpoint is still 2105 psia
+while pressure is 214, so `autoControl` correctly commands **100 % heaters** and drives it back
+to 1688 psia. RHR closes at t = 8000. `_driveCooldown` walks the setpoint down on a fixed
+schedule that the plant outruns; a real operator keeps the setpoint *below* actual pressure.
+That is a driver defect, in the same family as the heatup's missing `_pzrTrim`.
+
+**2. And then nothing can bring it back down.** From t = 8500 the controller demands
+**12.0 % spray — the full `spray_flow_max` — continuously, and ZERO is delivered**, because
+`spray_eff = spray_flow_frac × flow_frac × spray_authority` and **`flow_frac` is 0.00**: the
+RCPs are secured for the cooldown. Pressurizer spray is drawn from the cold leg on pump head,
+so with the pumps off there is no motive pressure. **That is correct physics**, and it is
+exactly why real plants have **AUXILIARY pressurizer spray** from the charging pumps. This
+plant has none — checked, there is no reference to auxiliary spray anywhere in the pressurizer
+source. Pressure then decays at about **4 psi per 500 s** on ambient loss alone, ending at
+11.05 MPa.
+
+**So the rebuild has surfaced a second real capability gap, and it is the same shape as the
+letdown one.** v1 could never show either, because `P_restore_rate_gain` moved pressure onto
+the setpoint whether or not any mechanism existed to do it. Two evolutions now have no
+actuator behind them: a Tech-Spec-rate heatup (letdown removes 0.120 kg/s against 0.31–1.57
+displaced) and a cooldown below the RHR interlock (spray demand 12 %, delivered 0). **Both are
+owner questions about what this plant HAS, not defects in what it does.**
+
+**A method note, because it nearly cost the finding.** The first attempt to confirm the
+`flow_frac` cause built a synthetic state and set `flow_frac = 0` by hand — the engine
+recomputed it to 0.49 on the next step and the test read "spray available", which would have
+refuted a correct hypothesis. The trace of the real evolution is what settled it. **Setting a
+derived field by hand tests the setter, not the plant.**
