@@ -875,3 +875,51 @@ So the heatup reds are no longer about the rail, the seam, the correlations or t
 guard. **They are the solid regime, and behind it a real plant question this rebuild has
 surfaced and v1 could never show: whether this plant's letdown can accommodate a
 Tech-Spec-rate heatup at all.** That is a Q0 measurement and an owner question, not a fix.
+
+### Neither remaining probe is a restore-term fixture — I inherited that from their comments (2026-08-16)
+
+I told the owner that six of the seven flag-on reds were "probes standing on the deleted
+`P_restore_rate_gain`, and two of them say so in their own comments." **The comments do say
+it. The measurement says otherwise.** Both probes were run on both models at their own layer.
+
+**`mode5_controls` leg 2 — "pressure recovers to a raised setpoint".** The probe's comment is
+*"heaters/spray hold the operator's target"*, which I read as a controller claim at a layer
+with no controller. Wrong: `V1.autoControl` runs INSIDE `stepPressure`, so proportional
+heater/spray control is present engine-direct — it is the M4 *channel* that never engages,
+not the pressurizer's own controller.
+
+| after depressurizing to 13.0 MPa, then SP → 15.41 | v1 | v2 |
+|---|---|---|
+| pzr level | **55.0 %** throughout | **55.0 → 78.9 %** |
+| exhausted flag | false | **true** |
+| pressure at +900 s, heaters 100 % | 1908 → **2046 psia** | **1855.6 → 1855.6 psia** |
+| forced MANUAL full heaters | → **2380 psia**, level drains 55 → 17 % | **no movement at all** |
+
+v1 recovers on **real heater authority**, not the restore term. So this red is not a fixture —
+**it is the exhausted near-solid band**, the same blocker as the heatup family. And the reason
+v2 gets there is itself physical: `autoControl` sprays to make the depressurization, v2's spray
+is REAL WATER joining the liquid region, and 300 s of it fills the node from 55 to 79 %. v1's
+spray is a pressure rate and moves no mass, which is why its level never budges.
+
+**`rcp_cavitation`.** Its comment says the setpoint is used to *"hold it low via the setpoint so
+it can't recover"*. **That is not true of v1 either** — measured, v1 recovers 1160 → 1211 psia
+in the probe's 15 seconds. The claim was wrong when it was written and I repeated it.
+
+| the probe's own 15 s | v1 | v2 |
+|---|---|---|
+| pressure after | 1211.5 psia | **1247.9 psia** |
+| suction subcooling | **4.3 °F** | **12.7 °F** |
+| cavitating | true | **true** |
+| severity / flow | 0.70 / 50 % | **0.12 / 80 %** |
+| exhausted flag | false | **false** |
+
+**The mechanism fires on both.** v2 simply repressurizes 73 % further in the same 15 s, so the
+suction margin never collapses as far and the severity band — set on v1's 0.70 — is missed.
+That is a v2-moved-the-number case for 3d's A/B, not a driver rewrite.
+
+**So no driver rewrite was warranted for either, and none was made.** The correction that
+matters: **every remaining flag-on red is now either the missing solid regime or a band to
+re-adjudicate — none of them is waiting on a probe fixture.** And the trap, which is this
+document's own standing rule caught in the act: *a load-bearing claim in a code comment is an
+inherited claim.* Two comments asserted a mechanism, I repeated both in my own voice to the
+owner, and neither survived being run.
