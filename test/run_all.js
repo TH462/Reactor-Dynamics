@@ -1000,6 +1000,7 @@ var BASELINES = {
   'run_pwr2_loop.js':      { code: 0, score: '37passed 0failed 37checks', secs: 46 },
   'run_pwr2_break.js':     { code: 0, score: '29passed 0failed 29checks', secs: 3 },
   'run_pwr2_condenser.js': { code: 0, score: '30passed 0failed 30checks', secs: 2 },
+  'run_pwr2_containment.js':{ code: 0, score: '25passed 0failed 25checks', secs: 4 },
   'run_pwr2_core.js':      { code: 0, score: '36passed 0failed 36checks', secs: 52 },
   'run_pwr2_geometry.js':  { code: 0, score: '33passed 0failed 33checks', secs: 1 },
   // NEW 2026-08-15 (#479): the ruled (quality, P) specific-volume table -- D2 sec 23.4, ruled and
