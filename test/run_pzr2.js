@@ -267,18 +267,31 @@ ck('C4b but authority stays within 10 % — capacity and geometry cancel',
    r3(r20) + ' / ' + r3(r55) + ' / ' + r3(r70) + ' psi/s at 20 / 55 / 70 %',
    Math.abs(r20 - r70) / r55 < 0.10 && r20 > r55 && r55 > r70, 'spread < 10 %, gently decreasing');
 
-// C4c THE KNOWN GAP, asserted so it cannot be forgotten. Above about 75 % level the
-// two-region path runs away — 5.4 psi/s at 75 %, then six-figure nonsense that is
-// dt-DEPENDENT (at 85 %: 1.06e6 psi/s at dt 1.0 s, 1.06e7 at 0.1 s, 1.06e8 at 0.01 s — the
-// same jump divided by a smaller dt, i.e. the solve railing at the top of the rho_g_sat
-// table, 20 MPa). That regime belongs to the SOLID branch — bulk modulus, sub-stepped,
-// spec §2.7 — which is not built yet. The check pins the rail so that (a) nobody measures
-// an acceptance row up there by accident, and (b) it goes red the day the solid branch
-// lands, which is when this check should be rewritten to assert the handover instead.
-var r85 = psi(heaterRate(85.0, 1, 1.0).dP);
-ck('C4c [known gap] the near-solid regime runs away until the solid branch lands',
-   r3(psi(heaterRate(75.0, 1, 1.0).dP)) + ' psi/s at 75 %, ' + r85.toExponential(2) + ' at 85 %',
-   r85 > 1e3, '> 1e3 psi/s — the gap, not the plant');
+// C4c THE KNOWN GAP — REWRITTEN 2026-08-16, as its previous form said it should be
+// *(OWNER RULING, 2026-08-16: "Do them as you recommend")*. It used to ASSERT THE RAIL:
+// "above about 75 % the two-region path runs away — 1.06e6 psi/s at dt 1.0 s, 1.06e7 at
+// 0.1 s, 1.06e8 at 0.01 s, the same jump divided by a smaller dt", and it closed by saying
+// it "goes red the day the solid branch lands, which is when this check should be rewritten
+// to assert the handover instead". The rail is gone (settle no longer diverges), so it went
+// red exactly as promised — a red turning green that must be acknowledged, not absorbed.
+//
+// THE GAP ITSELF IS STILL OPEN and this still pins it, but on the honest symptom: above
+// ~75 % the two-region model has no equilibrium in the direction the heaters push, so
+// `settle` reports exhaustion and heater AUTHORITY IS LOST rather than the pressure
+// railing. Losing authority is wrong too — a real pressurizer goes solid and pressure rises
+// on bulk modulus — but it is BOUNDED and it is flagged, which the rail was not. What the
+// check now asserts is the three properties that distinguish a handover from a blow-up:
+// bounded, dt-independent, and reported.
+var r85_1  = psi(heaterRate(85.0, 1, 1.0).dP);
+var r85_01 = psi(heaterRate(85.0, 1, 0.01).dP);
+var sEx = heaterRate(85.0, 1, 1.0).s, sOk = heaterRate(55.0, 1, 1.0).s;
+ck('C4c [known gap] above ~75 % the two-region path is EXHAUSTED — bounded and flagged, not railing',
+   r3(psi(heaterRate(75.0, 1, 1.0).dP)) + ' psi/s at 75 %, ' + r85_1.toExponential(2) +
+   ' at 85 % (dt 1.0) vs ' + r85_01.toExponential(2) + ' (dt 0.01); flag 85 % ' +
+   sEx.pzr_solid_unresolved + ' / 55 % ' + sOk.pzr_solid_unresolved,
+   Math.abs(r85_1) < 1e3 && Math.abs(r85_1 - r85_01) < 1.0 &&
+   sEx.pzr_solid_unresolved === true && sOk.pzr_solid_unresolved === false,
+   'bounded < 1e3 psi/s, dt-independent, flagged at 85 % and NOT at 55 %');
 
 // C5 PINNED — the characterisation. Says "the number moved", nothing more; C1-C4 are what
 // say the mechanism is right. Measured 2026-08-14 at 55 % level, after the `settle` fixed
@@ -760,9 +773,53 @@ sQ._dTavg_dt = 0; sQ._dmass_dt = 0; sQ._mass = 1.0; sQ.primary_void_fraction = 0
 sQ.leak_flow = 0; sQ.porv_flow = 0; sQ.safety_flow = 0; sQ.flow_frac = 1;
 sQ.heater_power_frac = 0; sQ.spray_flow_frac = 0; sQ.pressure_mpa = P_OP;
 PZ2.stepPressure(sQ, CFG, 0.5);
-ck('K1 the step sub-divides under full spray, and not on a quiet plant',
+// K1 REWRITTEN 2026-08-16 *(OWNER RULING, 2026-08-16: "Do them as you recommend")*. Its old
+// form asserted THE GUARD FIRES ("> 1 sub-step with both controls full"), and it went red
+// when `settle` stopped diverging, because the excursion the guard was reacting to was an
+// artifact of the solver rather than of the physics.
+//
+// MEASURED, and this is why the old form was the wrong property to assert. The same case —
+// 85 % level, spray AND heaters full, one 0.1 s step — stepped at increasing subdivision:
+//
+//   nSub          1         2         4        64       256       4096
+//   OLD     1531 psia  1557.84   1586.56   1921.97  1096846   1071901     <- DIVERGES
+//   NEW     2235.04    2235.04   2235.04   2235.04  2235.04    2235.04    <- converges
+//
+// More subdivision made the old model WORSE, so a check that the guard fired was certifying
+// that a broken guard was being fed. THE PROPERTY THAT ACTUALLY MATTERS IS CONVERGENCE: one
+// step and 256 sub-steps must agree. That is a strictly better test by HR10's own standard —
+// it passes on the new implementation and fails catastrophically (by 1.09e6 psia) on the old
+// one, where the previous form passed on the old and failed on the new.
+//
+// The guard itself is kept: it is harmless when it does not fire, and the trial-step
+// criterion is still the right shape for a genuinely stiff step. It is simply no longer
+// load-bearing, so nothing asserts that it fires.
+var sC1 = stateAt(85.0);
+sC1.tavg_c = 304.0; sC1._tavg_fp = 304.0; sC1.thot_c = 311.7; sC1.tcold_c = 297.0;
+sC1._dTavg_dt = 0; sC1._dmass_dt = 0; sC1._mass = 1.0; sC1.primary_void_fraction = 0;
+sC1.leak_flow = 0; sC1.porv_flow = 0; sC1.safety_flow = 0; sC1.flow_frac = 1;
+sC1.heater_override = 1; sC1.spray_override = 1; sC1.pressure_mpa = P_OP;
+var ioK = { surge_kgps: 0, surge_t_c: 311.7, spray_kgps: P2.spray_capacity_kgps,
+            spray_t_c: 297.0, relief_kgps: 0, heater_frac: 1 };
+// The tail of the refinement sequence is the right comparison, not one step against many:
+// a single 0.5 s step legitimately carries first-order truncation (measured, 54 psi against
+// a 757 psi swing), which is convergence working, not failing. What the old model did was
+// DIVERGE — its 256- and 4096-sub-step answers are 1,072,727 psi apart, and further
+// subdivision kept making it worse. So compare the two finest refinements.
+function stepN(n) {
+  var sN = stateAt(85.0), P = sN.pressure_mpa;
+  for (var q = 0; q < n; q++) P = PZ2.stepRegions(sN, CFG, 0.5 / n, ioK);
+  return psi(P);
+}
+var PK1 = psi(PZ2.stepRegions(sC1, CFG, 0.5, ioK));
+var PK256 = stepN(256), PK4096 = stepN(4096);
+ck('K1 the step CONVERGES under subdivision — spray and heaters both full at a small bubble',
+   '1 step ' + r3(PK1) + ' psia, 256 sub-steps ' + r3(PK256) + ', 4096 ' + r3(PK4096) +
+   ' — tail spread ' + r3(Math.abs(PK256 - PK4096)) + ' psi (old model: 1.07e6 psi, and growing)',
+   Math.abs(PK256 - PK4096) < 1.0, 'the two finest refinements < 1 psi apart');
+ck('K1b …and the guard still exists and still stays out of the way on a quiet plant',
    subs + ' sub-steps with both controls full, ' + (sQ.pzr_pressure_substeps || 1) + ' quiet',
-   subs > 1 && (sQ.pzr_pressure_substeps || 1) === 1, '> 1 under load, exactly 1 quiet');
+   (sQ.pzr_pressure_substeps || 1) === 1, 'exactly 1 quiet');
 
 // ============================================================ tally
 console.log('\n' + D + '──────────────────────────────────────────' + X);

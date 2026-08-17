@@ -389,23 +389,137 @@
   //
   //     t=1 2216.06 psia (Tl 344.523 vs Tsat 344.344) · t=2 2216.44 · t=3 2204.33
   //
-  // A fixed point removes it: iterate T_liq = Tsat(P(T_liq)) until the temperature stops
-  // moving. rho_l varies slowly with T, so it converges in three passes to ~1e-9 °C; the
-  // loop is bounded at six and the tolerance is the exit. `run_pzr2.js` asserts the fixed
-  // point directly (the pressure returned equals the pressure the state re-computes), which
-  // is the check that would have caught the original — a numerical inconsistency is
-  // invisible to any assertion about the physics being modelled.
-  function settle(s, cfg) {
-    var P = pressureFrom(s, cfg);
-    for (var i = 0; i < 20; i++) {
-      var T = T_sat_from_P(P);
-      if (Math.abs(T - s.pzr_t_liq_c) < 1e-9) break;
-      s.pzr_t_liq_c = T;
-      P = pressureFrom(s, cfg);
-    }
-    return P;
+  // A fixed point removes it: solve T_liq = Tsat(P(T_liq)). The ORIGINAL FORM ITERATED IT
+  // DIRECTLY (Picard), justified in this comment by "rho_l varies slowly with T, so it
+  // converges in three passes". **That justification is false at a small bubble, and it is
+  // the root of the pressure rail** *(measured 2026-08-16, ruled the same day: OWNER RULING,
+  // 2026-08-16: "Do them as you recommend")*.
+  //
+  // The map's gain is d/dT[Tsat(P(T))], which scales as V_liq/V_stm: hotter liquid expands,
+  // the bubble shrinks, steam density and therefore Tsat rise FASTER than T. At a normal
+  // bubble the gain is well under 1 and three passes is right. At 95 % level it is about 1
+  // and the iteration crawls — traced, a 95.1 %-level node ran 196.082 -> 186.492 over 12
+  // passes and was STILL MOVING, where a 55 % node converged by pass 6. Exiting the bound
+  // still drifting leaves the state OFF its own saturation line, and the next step reads
+  // that residual as an energy imbalance: 0.653 °C (1.18 °F) of superheat is E = 17,643 kJ,
+  // which flashes 9.00 kg of steam into a 0.2099 m³ bubble holding 1.523 kg — 6.9x the
+  // density, in ONE step. E is a STATE departure with no dt in it, which is why the rail
+  // was dt-independent (identical at dt = 1e-12 s) and why three sessions of sub-step
+  // reasoning went straight past it. THE TRAP: a state departure is not a rate, so it does
+  // not shrink when you shrink the step.
+  //
+  // SO THE FIX IS THE METHOD, NOT THE PHYSICS — the fixed point being sought is unchanged.
+  // Measured before the swap, and this is what made it a method question rather than a
+  // design one: scanning f(T) = T − Tsat(P(T)) across the table showed the failing state
+  // HAS consistent roots (183.361 °C and 199.397 °C), and the upper one sits at 1.5535 MPa
+  // — EXACTLY the pressure the state was already carrying. Picard was walking away from a
+  // correct answer. A bracket-and-bisect finds it deterministically, the same idiom
+  // `solveFlash` already uses, and it brackets by expanding from the incoming temperature
+  // so the common case costs a handful of evaluations rather than a table scan.
+  //
+  // WHICH ROOT: the one the physics is PUSHING TOWARD — direction `−sign(f0)`, which is the
+  // direction Picard itself moves (`g(T) − T = −f`). Searching for the NEAREST root instead
+  // was my first attempt and it is wrong, measured: at 85 % level the only root is a
+  // downward crossing, so full heaters raise T above it and the nearest root lies BELOW —
+  // the solve then snapped the node back to exactly where it started and **discarded the
+  // heater energy entirely** (0.000 psi/s at 85, 90, 95 and 99 % level). A solver may not
+  // teleport the state backwards past the equilibrium the physics just pushed it off.
+  //
+  // AND WHEN THERE IS NO ROOT IN THAT DIRECTION, THAT IS A PHYSICAL STATEMENT, NOT A
+  // FAILURE. Above about 75 % level with the heaters on, f stays negative all the way to the
+  // liquid-full boundary: there is no two-region equilibrium above, because the node is on
+  // its way to being water-solid. That is exactly the regime `run_pzr2` C4c has always
+  // documented as belonging to the SOLID branch. So the two-region path reports exhaustion
+  // (`pzr_solid_unresolved`) and holds at the last admissible state instead of railing —
+  // the old code's answer here was 1.06e6 psi/s, dt-dependent, six-figure nonsense.
+  // Handing over beats both inventing a solid state here and pretending nothing happened.
+  var T_CRIT_C = 373.946;      // water's critical point — 22.064 MPa. The model had no notion
+                               // of one: T_sat_from_P is an unbounded power law and returned
+                               // a "saturation temperature" of 1000 °C at 1322 MPa.
+
+  // The residual whose root is the settled state. Evaluated on a scratch temperature so the
+  // caller's state is never left holding a probe value.
+  function satResid(s, cfg, T) {
+    var save = s.pzr_t_liq_c;
+    s.pzr_t_liq_c = T;
+    var r = T - T_sat_from_P(pressureFrom(s, cfg));
+    s.pzr_t_liq_c = save;
+    return r;
   }
 
+  // The hottest temperature at which the liquid still leaves a bubble. Above it the node is
+  // liquid-full and there is no two-region state to solve for.
+  function tempLiquidFull(s, cfg) {
+    var p2 = cfg.pressurizer2;
+    if (!(s.pzr_m_liq_kg > 0)) return T_CRIT_C;
+    var lo = 1, hi = T_CRIT_C;
+    if (s.pzr_m_liq_kg / rho_l_sat(lo) >= p2.V_pzr_m3) return null;   // over-full even cold
+    if (s.pzr_m_liq_kg / rho_l_sat(hi) < p2.V_pzr_m3) return T_CRIT_C; // fits everywhere
+    for (var i = 0; i < 60; i++) {
+      var m = 0.5 * (lo + hi);
+      if (s.pzr_m_liq_kg / rho_l_sat(m) < p2.V_pzr_m3) lo = m; else hi = m;
+    }
+    return lo;
+  }
+
+  function settle(s, cfg) {
+    s.pzr_solid_unresolved = false;
+    var Tfull = tempLiquidFull(s, cfg);
+    if (Tfull === null) {                    // no bubble at any temperature: water-solid
+      s.pzr_solid_unresolved = true;
+      return pressureFrom(s, cfg);
+    }
+    var TLO = 1, THI = Math.min(Tfull, T_CRIT_C);
+    var T0 = clip(s.pzr_t_liq_c, TLO, THI);
+    var f0 = satResid(s, cfg, T0);
+    if (Math.abs(f0) < 1e-12) { s.pzr_t_liq_c = T0; return pressureFrom(s, cfg); }
+
+    // Bracket by EXPANDING FROM THE INCOMING TEMPERATURE, in the direction the physics is
+    // pushing (`−sign(f0)` — Picard's own direction), never past the admissible range.
+    var bracket = null;
+    function walk(dir) {                     // expand from T0 until the residual changes sign
+      var edge = (dir > 0) ? THI : TLO, step = 0.05, probe;
+      for (var k = 0; k < 45; k++) {
+        probe = T0 + dir * step;
+        if ((dir > 0 && probe > edge) || (dir < 0 && probe < edge)) probe = edge;
+        if ((satResid(s, cfg, probe) < 0) !== (f0 < 0)) {
+          return (dir > 0) ? [T0, probe] : [probe, T0];
+        }
+        if (probe === edge) return null;     // reached the boundary with no crossing
+        step *= 1.6;
+      }
+      return null;
+    }
+    // The direction of travel first — `−sign(f0)` is where Picard moves and where the
+    // physics is pushing. Only if there is no equilibrium that way do we accept the one
+    // behind us, and taking it is what the exhaustion flag reports.
+    var dir = (f0 < 0) ? 1 : -1;
+    bracket = walk(dir);
+    if (bracket === null) { s.pzr_solid_unresolved = (dir > 0); bracket = walk(-dir); }
+    if (bracket === null) {
+      // No two-region equilibrium in EITHER direction. Hold the state rather than move it to
+      // a boundary: `T0` is admissible by construction, so pressure stays finite, whereas the
+      // liquid-full boundary is exactly where `pressureFrom`'s 1e-6 floor manufactures the
+      // rail. A bounded one-step error beats a singularity, and the flag says which happened.
+      s.pzr_solid_unresolved = true;
+      s.pzr_t_liq_c = T0;
+      return pressureFrom(s, cfg);
+    }
+    var lo = bracket[0], hi = bracket[1];
+    var flo = satResid(s, cfg, lo);
+    for (var i = 0; i < 80 && hi - lo > 1e-12; i++) {
+      var mid = 0.5 * (lo + hi);
+      if ((satResid(s, cfg, mid) < 0) === (flo < 0)) lo = mid; else hi = mid;
+    }
+    s.pzr_t_liq_c = 0.5 * (lo + hi);
+    return pressureFrom(s, cfg);
+  }
+
+  // pressureFrom — and the 1e-6 FLOOR IS A BACKSTOP, not a model. When the liquid over-fills
+  // the vessel the true steam volume is NEGATIVE (measured on the railing state: V_liq
+  // 7.862 m³ in a 4.292 m³ vessel, a true steam volume of −3.570 m³ presented as one
+  // millilitre, which is where 1322 MPa came from). `settle` now DETECTS that case and says
+  // so; this floor only keeps the arithmetic finite until it does.
   function pressureFrom(s, cfg) {
     var V_liq = s.pzr_m_liq_kg / rho_l_sat(s.pzr_t_liq_c);
     var V_stm = Math.max(1e-6, cfg.pressurizer2.V_pzr_m3 - V_liq);

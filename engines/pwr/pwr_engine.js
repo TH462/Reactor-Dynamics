@@ -2528,6 +2528,19 @@
     var trace = [], WIN = Math.round(3600 / dt), maxHourly = 0, maxHourlyAt = -1, paceP = null;
     while (elapsed < maxSec) {
       t = h.ts();
+      // HOLD PRESSURIZER LEVEL — the cooldown driver has always done this and the heatup
+      // never did, which is the asymmetry *(OWNER RULING, 2026-08-16: "Do them as you
+      // recommend")*. A heatup with nobody on the pressurizer is not an evolution: the loop
+      // expands, the insurge has nowhere to go, and the vessel fills. v1 tolerated it
+      // because its level is a RECONSTRUCTION clipped at `level_prog_ceiling` and its
+      // pressure was pinned by `P_restore_rate_gain` regardless — measured on v2, which
+      // fills the vessel for real, level reaches 100 % by t≈1000 s of a 20,000 s heatup and
+      // the node is water-solid for the entire remainder of the run.
+      //
+      // This is the MANUAL-FIRST reading of CLAUDE.md's standing directive: the operator
+      // does the action, at a layer where no automatic channel is running. `run_ops` and the
+      // full-stack runners get the same job done by `cvcs_makeup`, which never ticks here.
+      _pzrTrim(h);
       minSub = Math.min(minSub, t.subcooling_c); maxFuel = Math.max(maxFuel, t.fuel_temp_c);
       var rt = t.tavg_rate_c_per_hr || 0;
       if (rt > maxRate) { maxRate = rt; maxRateAt = elapsed; }
