@@ -193,11 +193,27 @@
     return r;
   }
 
+  /* mergeSources(a, b, c, ...) -> one `sources` array, concatenated.
+   *
+   * `pwr2_core.js`'s `step()` sums `mdot` per node with a plain `forEach`, so two entries at the
+   * same node already accumulate correctly — CVCS proves it today, returning charging and letdown
+   * as two separate `cold_leg` entries. What does NOT exist anywhere is the concatenation itself:
+   * a caller combining break + ECCS + CVCS has to write `[a].concat(b, c)` by hand, and every
+   * call site that needs it would otherwise re-invent it. One function, so it is written once. */
+  function mergeSources() {
+    var out = [];
+    for (var i = 0; i < arguments.length; i++) {
+      if (arguments[i]) out = out.concat(arguments[i]);
+    }
+    return out;
+  }
+
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.sources = {
     PUMP: PUMP, REF: REF,
     createPlant: createPlant, stepPlant: stepPlant,
-    loopInertia: loopInertia, pumpHead: pumpHead, buoyancy: buoyancy
+    loopInertia: loopInertia, pumpHead: pumpHead, buoyancy: buoyancy,
+    mergeSources: mergeSources
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

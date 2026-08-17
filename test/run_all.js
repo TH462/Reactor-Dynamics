@@ -984,7 +984,7 @@ var BASELINES = {
   // primary. That runaway is real physics for a generator steamed harder than the primary can
   // supply -- it just was not the test being written.
   'run_pwr2_sg.js':        { code: 0, score: '25passed 0failed 25checks', secs: 340 },  // 90 -> 340 (2026-08-16): the 90 was never measured on a quiet machine. Timed alone, twice: 341 s. `secs` is only a longest-first scheduling nudge and cannot fail anything, which is exactly why a wrong one goes unnoticed -- it just schedules a 5.7-minute runner as if it were a 90-second one.
-  'run_pwr2_sources.js':   { code: 0, score: '23passed 0failed 23checks', secs: 195 },
+  'run_pwr2_sources.js':   { code: 0, score: '26passed 0failed 26checks', secs: 195 },   // +3 (#479, 2026-08-17): mergeSources(), the concatenation point break/ECCS/CVCS all need before stepPlant.
   'run_pwr2_kinetics.js':  { code: 0, score: '63passed 0failed 63checks', secs: 3 },   // 50 -> 63 (2026-08-16): the direct BORON worth term was missing entirely and the gate scored 50/50 with 25/25 mutations against it -- mutation testing perturbs code that exists and is structurally blind to a term nobody wrote. Added the term, the rho_excess solve pinned to the 975 ppm BEAVRS anchor, and a cross-module tie to pwr2_fuel's derived Doppler reference.
   'run_pwr2_bases.js':     { code: 0, score: '12passed 0failed 12checks', secs: 2 },
   'run_pwr2_forwarding.js': { code: 0, score: '11passed 0failed 11checks', secs: 2 },
@@ -992,7 +992,7 @@ var BASELINES = {
   'run_pwr2_loadfollow.js':{ code: 0, score: '30passed 0failed 30checks', secs: 110 },   // THE ACCEPTANCE TEST: Tier A coupling A1, power follows load, rods in MANUAL. Measured 99.6 -> 54.0 % with Tavg 577.95 -> 603.92 degF against the first engine's 100 -> 57.5 % and 579.3 -> 602.1. Bands admit the declared physics differences (real L0 density in the moderator coefficient, derived rather than tuned fuel rise); they are NOT fitted to the first engine.
   'run_pwr2_reactor.js':   { code: 0, score: '27passed 0failed 27checks', secs: 30 },
   'run_pwr2_turbine.js':   { code: 0, score: '29passed 0failed 29checks', secs: 2 },
-  'run_pwr2_true_state.js':{ code: 0, score: '22passed 0failed 22checks', secs: 2 },   // THE SHIM. 37 of 109 contract fields supplied, 72 DECLARED missing with a reason and an owning system, 0 unaccounted. The fraction is NOT a score to raise by writing mappings -- it measures how much plant exists, and any other way of raising it is the fabrication the gate forbids.
+  'run_pwr2_true_state.js':{ code: 0, score: '30passed 0failed 30checks', secs: 2 },   // THE SHIM. 46 of 109 contract fields supplied, 63 DECLARED missing with a reason and an owning system, 0 unaccounted. Rose from 37/72 (#479, 2026-08-17): break/containment/condenser/ECCS landed as gated systems but the shim still declared them fully missing -- the SAME defect this file exists to prevent, in reverse. The fraction is NOT a score to raise by writing mappings -- it measures how much plant exists, and any other way of raising it is the fabrication the gate forbids.
   'run_pwr2_relief.js':    { code: 0, score: '30passed 0failed 30checks', secs: 2 },
   'run_pwr2_rhr.js':       { code: 0, score: '39passed 0failed 39checks', secs: 150 },
   'run_pwr2_eccs.js':      { code: 0, score: '28passed 0failed 28checks', secs: 25 },
@@ -1001,6 +1001,7 @@ var BASELINES = {
   'run_pwr2_break.js':     { code: 0, score: '29passed 0failed 29checks', secs: 3 },
   'run_pwr2_condenser.js': { code: 0, score: '30passed 0failed 30checks', secs: 2 },
   'run_pwr2_containment.js':{ code: 0, score: '25passed 0failed 25checks', secs: 4 },
+  'run_pwr2_loca.js':      { code: 0, score: '14passed 0failed 14checks', secs: 3 },   // JOINT: break -> containment -> ECCS, added 2026-08-17 (#479). Mass bookkeeping closes to 1e-6 relative in both directions; ECCS starts injecting at t=1.10s, the moment P crosses the 9.58 MPa HHSI shutoff head -- physics-timed, not scripted.
   'run_pwr2_core.js':      { code: 0, score: '36passed 0failed 36checks', secs: 52 },
   'run_pwr2_geometry.js':  { code: 0, score: '33passed 0failed 33checks', secs: 1 },
   // NEW 2026-08-15 (#479): the ruled (quality, P) specific-volume table -- D2 sec 23.4, ruled and

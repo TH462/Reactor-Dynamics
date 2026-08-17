@@ -8,11 +8,21 @@
  * ⚠ THIS FILE INVENTS NOTHING. It is the single rule the design turns on.
  *
  * Roughly half the contract is blocked behind systems PWR2 does not have — the pressurizer (#472
- * owns it), containment, protection, the condenser, damage modelling, the nuclear instruments,
- * auxiliary feedwater, accumulators. A shim that returned `0` for `containment_pressure_mpa`
- * because containment is not built would be **the same defect D4 §23.4 catalogues**: invisible,
- * because a consumer cannot tell an unbuilt system from a quiet one. A containment at 0 MPa reads
- * exactly like a containment that is fine.
+ * owns it), protection, damage modelling, the nuclear instruments, auxiliary feedwater,
+ * accumulators. A shim that returned `0` for `containment_pressure_mpa` because containment is not
+ * built would be **the same defect D4 §23.4 catalogues**: invisible, because a consumer cannot tell
+ * an unbuilt system from a quiet one. A containment at 0 MPa reads exactly like a containment that
+ * is fine.
+ *
+ * ⚠ AND THE REVERSE DEFECT IS EQUALLY REAL, and this file had it. Break discharge, containment and
+ * the condenser all landed as gated Layer 5 systems while this shim still declared all three fully
+ * missing — a stale registry telling a consumer "no model exists" for a field a real, sourced model
+ * already answers. `buildTrueState()` had no `ctx.break_` / `ctx.containment` / `ctx.condenser` /
+ * `ctx.eccs` block at all; the wiring stopped one call short of where the physics landed. Found by
+ * re-reading this file after the containment commit rather than by a gate — nothing here could have
+ * caught it, because a field that is merely ABSENT and a field that is DECLARED missing both read
+ * as "not supplied" to every consumer downstream. **Declaring a system missing is a claim, and it
+ * rots exactly like any other claim the moment the system gets built.**
  *
  * So an unbuilt field is **ABSENT from the output and DECLARED in `MISSING`, with the reason and
  * the system that owns it**. `run_contract.js` then reports it as a documented field the engine
@@ -53,20 +63,21 @@
      'porv_tailpipe_temp_c', 'block_valve_open', 'spray_flow_pct', 'spray_stuck',
      'subcooling_c', 'suction_subcool_c']);
 
-  declareMissing('containment', 'no containment model exists in PWR2.',
-    ['containment_pressure_mpa', 'containment_temp_c', 'containment_sump_pct', 'ctmt_h2_pct',
-     'ctmt_h2_burned', 'ctmt_spray_demand', 'ctmt_spray_active', 'ctmt_fan_demand',
-     'ctmt_fan_safety', 'ctmt_fan_active', 'ctmt_recomb_demand', 'ctmt_recomb_active']);
+  declareMissing('containment', 'pwr2_containment.js supplies pressure and temperature; spray, ' +
+    'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +
+    'corpus) and sump level needs a geometry map this engine does not have.',
+    ['containment_sump_pct', 'ctmt_h2_pct', 'ctmt_h2_burned', 'ctmt_spray_demand',
+     'ctmt_spray_active', 'ctmt_fan_demand', 'ctmt_fan_safety', 'ctmt_fan_active',
+     'ctmt_recomb_demand', 'ctmt_recomb_active']);
 
   declareMissing('protection', 'PWR2 has NO PROTECTION LAYER. Measured consequence (D4 §23.3): a ' +
     'full load rejection is ridden out on relief at ~67 % power where a real plant scrams.',
     ['scrammed', 'msiv_open', 'sg_imbalance_active', 'station_blackout', 'ac_available',
      'plant_mode', 'plant_mode_name', 'load_mode']);
 
-  declareMissing('condenser', 'no condenser or circulating-water model. pwr2_relief.js takes ' +
-    'condenser availability as a DRIVER rather than computing it.',
-    ['condenser_vacuum_kpa', 'condenser_cooling_available', 'cw_inlet_temp_c',
-     'condensate_flow_normalized', 'condensate_pump_running', 'fw_flow_normalized']);
+  declareMissing('condenser', 'pwr2_condenser.js supplies vacuum, CW inlet temp and availability; ' +
+    'there is no hotwell or condensate-pump model, so the feed-side flows stay unmapped.',
+    ['condensate_flow_normalized', 'condensate_pump_running', 'fw_flow_normalized']);
 
   declareMissing('damage', 'no fuel-damage or clad-oxidation model.',
     ['clad_temp_c', 'fuel_damaged', 'melted', 'destruction_cause', 'zirc_heat_pct',
@@ -90,10 +101,6 @@
     'valves; the ADVs are NOT built because their capacity is unsourced — see that file.',
     ['adv_valve_pct', 'adv_flow_normalized']);
 
-  declareMissing('break / leak', 'no break model. Reporting 0 would say "no leak" when the truth ' +
-    'is "leaks cannot be represented", and those are different claims.',
-    ['leak_flow']);
-
   declareMissing('SG level geometry', 'the secondary is LUMPED by ruling, so there is no geometry ' +
     'to turn inventory into a gauge reading. sg_mass_frac IS supplied; a level percentage would ' +
     'be a fabricated linear scale.',
@@ -106,9 +113,9 @@
     'steam its load needs, and governor/stop valve positions belong with a trip model.',
     ['governor_valve_pct', 'stop_valve_pct']);
 
-  declareMissing('ECCS detail', 'pwr2_eccs.js supplies flows; the discharge-pressure and mode ' +
-    'reporting the contract names are not yet mapped.',
-    ['hpi_active', 'hpi_flow_normalized', 'hpi_discharge_pressure_mpa', 'eccs_mode']);
+  declareMissing('ECCS detail', 'pwr2_eccs.js is a flow-vs-pressure curve with no pump-discharge ' +
+    'head term — there is a real number to derive here, not one to invent, and it is not built.',
+    ['hpi_discharge_pressure_mpa']);
 
   declareMissing('rate tracking', 'no Tavg rate tracker; it needs a history this layer does not ' +
     'keep.', ['tavg_rate_c_per_hr']);
@@ -140,7 +147,9 @@
                       'does not build one.');
     }
     var rx = ctx.reactor || {}, sg = ctx.sg || {}, tb = ctx.turbine || {},
-        rl = ctx.relief || {}, cv = ctx.cvcs || {}, rh = ctx.rhr || {};
+        rl = ctx.relief || {}, cv = ctx.cvcs || {}, rh = ctx.rhr || {},
+        br = ctx.break_ || {}, ct = ctx.containment || {}, cd = ctx.condenser || {},
+        ec = ctx.eccs || {};
     var ts = {};
     function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }
 
@@ -211,6 +220,34 @@
     /* --- RHR --- */
     put('rhr_active',     rh.duty_kW !== undefined ? rh.duty_kW > 0 : undefined);
     put('rhr_valve_open', rh.permissive_may_open);
+
+    /* --- break / leak --- */
+    put('leak_flow', br.mdot_kgs);
+
+    /* --- containment --- */
+    put('containment_pressure_mpa', ct.containment_pressure_mpa);
+    put('containment_temp_c',       ct.containment_temp_c);
+
+    /* --- condenser --- */
+    put('condenser_vacuum_kpa',        cd.condenser_vacuum_kpa);
+    put('cw_inlet_temp_c',             cd.cw_inlet_temp_c);
+    put('condenser_cooling_available', cd.available);
+
+    /* --- ECCS ---
+     * [derived] naming state pwr2_eccs.js already carries, not new physics: `mode` and the two
+     * booleans/normalization below are read straight off its flow return, not computed here. */
+    if (ec.total_kgs !== undefined) {
+      put('hpi_active', ec.total_kgs > 0);
+      if (RD.eccs) {
+        var hpiRated = RD.eccs.hhsiFlow(0) + RD.eccs.lhsiFlow(0);     /* nameplate, both trains */
+        if (hpiRated > 0) put('hpi_flow_normalized', ec.total_kgs / hpiRated);
+      }
+      var mode = 'standby';
+      if (ec.hhsi_kgs > 0 && ec.lhsi_kgs > 0) mode = 'both';
+      else if (ec.hhsi_kgs > 0) mode = 'hhsi';
+      else if (ec.lhsi_kgs > 0) mode = 'lhsi';
+      put('eccs_mode', mode);
+    }
 
     return ts;
   }

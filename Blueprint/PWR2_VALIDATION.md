@@ -1229,3 +1229,103 @@ preference is a quick coupling over a keystone, AFW is the better small step.
 
 **I would not build containment until a break exists**, and this section is the record of why the
 channel count was the wrong way to choose.
+
+## 32. THE WIRING PASS — BREAK, CONTAINMENT, CONDENSER AND ECCS WERE BUILT AND NEVER CONNECTED — 2026-08-17
+
+§31 recommended the break, and it landed the same session (commit `4c2b1b0`), followed by
+containment (`efe58e6`). Both are real, gated, sourced systems. **Neither was wired to
+`pwr2_true_state.js`, and neither was wired to the other.** Re-reading the shim after the
+containment commit found the defect directly, not a gate: `MISSING` still declared containment
+*"no containment model exists in PWR2"* — stale the moment the previous commit landed — and the
+same was true of the condenser (built earlier, commit `b08bfeb`). **A shim that declares a built
+system missing is the same defect this file exists to prevent, in the opposite direction**: a
+consumer asking for `containment_pressure_mpa` was told "no model" when a real one already answers.
+
+### 32.1 What closed
+
+`pwr2_true_state.js` now consumes `ctx.break_` / `ctx.containment` / `ctx.condenser` / `ctx.eccs`.
+Nine fields moved from `MISSING` to supplied: `leak_flow`, `containment_pressure_mpa`,
+`containment_temp_c`, `condenser_vacuum_kpa`, `cw_inlet_temp_c`, `condenser_cooling_available`,
+`hpi_active`, `hpi_flow_normalized`, `eccs_mode`. Coverage rose **37 → 46 of 109**, `run_pwr2_true_
+state.js` 22 → 30 checks. `eccs_mode` and the two HPI booleans are `[derived]` — named directly off
+state `pwr2_eccs.js` already carries (`hhsiRunning`/`lhsiRunning`, `total_kgs`), not new physics.
+`hpi_discharge_pressure_mpa` stays declared-missing on purpose: the sourced HHSI/LHSI curves are
+flow-vs-RCS-pressure only, with no discharge-head term to read a real number off — inventing one
+would be exactly the fabrication this file exists to forbid.
+
+### 32.2 The merge point that did not exist
+
+`pwr2_core.js` already sums multiple `sources` entries at the same node correctly (CVCS proved it,
+returning two entries at `cold_leg` today) — but nothing concatenated arrays FROM DIFFERENT Layer 5
+systems before handing them to `stepPlant`. `pwr2_sources.js` now exports `mergeSources(...)`, a
+plain concatenation, gated in `run_pwr2_sources.js` with its own injection self-test (13/13, no
+blind spots) — including the mutation that matters most here: dropping every argument after the
+first, which would let a break survive a merge while ECCS silently vanished from it.
+
+### 32.3 The joint scenario, and what the numbers say
+
+`test/run_pwr2_loca.js` — break + containment + ECCS driven together for the first time, 60 s at
+the house `dt = 0.02 s`, a 0.001 m² (10 cm²) break at full power (15.41 MPa):
+
+|  | measured |
+|---|---|
+| primary mass lost (ECCS off) | 5874.5 kg in 60 s |
+| containment mass received | 5874.5 kg — **matches to 1×10⁻⁶ relative**, both figures are the same `mdot × dt` fed to two different ledgers |
+| containment pressure | 0.1082 → 0.1299 MPa (125 °F/1.0 psig start) |
+| containment temperature | 51.7 → 69.1 °C |
+| ECCS start (lined up from t=0) | **t = 1.10 s** — the instant RCS pressure crosses the sourced 9.58 MPa HHSI shutoff head, not a scripted delay |
+| net primary mass (ECCS live) | discharged − injected, closes to 1×10⁻⁴ relative |
+| containment mass (ECCS live) | still exactly the break's own `discharged_kg` — ECCS is invisible to it, as it should be |
+| Courant limit | held (`courantOK` true) for all 3000 steps in both runs, at the unchanged house cadence |
+
+The ECCS-start number is the actual demonstration: nothing in the test schedules an injection time.
+The engine answers "how much flow" from a sourced curve against whatever pressure the break has
+produced, and the moment it crosses the shutoff head the flow appears — the mechanism
+`pwr2_eccs.js`'s own header names as the point of using a curve instead of a constant.
+
+### 32.4 Why this gate has no injection self-test, and that is deliberate
+
+Every library file this scenario touches (`pwr2_break.js`, `pwr2_containment.js`, `pwr2_eccs.js`,
+`pwr2_sources.js`) already carries its own mutation-tested gate. The only code that is NEW here is
+the wiring itself, and it lives in the test's own `scenario()` function rather than in a `SRC`
+string a harness could patch. Its defence is a tight quantitative closure instead — mass equalities
+checked to 1×10⁻⁶–1×10⁻⁴ relative tolerance, not a pass/fail band — which a sign error, a dropped
+term, or a double-count in the merge would fail directly rather than merely go unasserted.
+
+### 32.5 Performance note, since it was a standing constraint this session
+
+No substep machinery was added. `courantLimit()` binds on the smallest ring node's mass divided by
+the MAIN LOOP flow, not on break flow directly, and the house `dt = 0.02 s` — unchanged everywhere
+else in the engine — held through a break moving up to ~150 kg/s. Realism here cost nothing in
+cadence.
+
+### 32.6 Accumulators — the evidence pass completed, and the build stopped anyway
+
+The plan's stretch goal was accumulators, conditional on `tools/find_source.js` finding real
+numbers first. It did:
+
+- **Water volume, Ginna UFSAR ch15 (ML20339A101)**: *"nominal accumulator water volume (1115 ft³)"*,
+  sensitivity-table bounds 1090–1140 ft³.
+- **Cover gas pressure, same document**: table gives *"Minimum Cover Gas Pressure 714.7 psia"*
+  against a nominal *"Accumulator pressure Nominal (764.7 psia)"* and a sampled upper bound
+  *804.7 psia*.
+- **A DIFFERENT figure already sits in `pwr2_eccs.js`'s own header** — *"arm at a sourced 600 psi
+  (4.14 MPa)"* — sourced instead from ML11223A220 (a generic USNRC HRTD training document): *"the
+  remaining volume is filled with nitrogen at a pressure greater than 600 psig."* That is a
+  **generic industry figure, not this plant's anchor**. Every other Layer 5 constant this session
+  used Ginna's own number in preference to a generic one when both exist (the condenser, the
+  relief valves, ECCS's own flow curves) — so building accumulators today would mean either
+  reconciling two sources that disagree by ~100–200 psi, or quietly picking the wrong one under
+  time pressure. Recorded here rather than resolved, so the reconciliation is owed rather than lost.
+
+**The build stopped anyway, for a reason the evidence pass could not settle: the lane, not the
+sourcing.** `pwr2_eccs.js`'s header already named the real objection when it deferred
+accumulators: *"an accumulator is an INVENTORY with a level and a cover gas that expands as it
+empties, so its discharge is a state, not a curve. It belongs with the pressurizer's compressible-
+volume work (#472) rather than being invented here in a second incompatible way."* Issue #472 —
+*"Rebuild the pressurizer from the ground up"* — is tagged `status-wip-workbench` and live RIGHT
+NOW, on the same compressible-volume state machinery an accumulator needs. `CLAUDE.md`'s standing
+rule is explicit: *"D3 consumes its design; must not race it."* Building an accumulator state model
+in `backshop` today would be exactly that race — two lanes independently inventing the same kind of
+physics, one of which is already someone's active, scoped work. **Stopping here is the deliberate
+choice, not a shortfall against the plan.**

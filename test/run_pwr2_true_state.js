@@ -26,13 +26,17 @@ var LIB = path.join(E, 'pwr2_true_state.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
- 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr'].forEach(function (f) { require(path.join(E, f + '.js')); });
+ 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr', 'pwr2_break', 'pwr2_containment', 'pwr2_condenser'
+].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
 function loadFrom(src) {
+  /* eccs IS included -- buildTrueState() calls RD.eccs.hhsiFlow/lhsiFlow directly to normalize
+   * hpi_flow_normalized, the same reason `sg` is here for RD.sg.primaryTavg. break_/containment/
+   * condenser are NOT: the shim only reads their STEP RESULTS off ctx, never calls into them. */
   var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, core: RD.core,
                              geometry: RD.geometry, loop: RD.loop, sources: RD.sources,
-                             sg: RD.sg } } };
+                             sg: RD.sg, eccs: RD.eccs } } };
   var body = src.replace("(typeof globalThis !== 'undefined' ? globalThis : this)", '(RD_ROOT)') +
              '\nreturn RD_ROOT.RD.pwr2.trueState;';
   return new Function('RD_ROOT', body)(root);
@@ -81,10 +85,24 @@ function runSuite(TS, rec, quiet) {
     var rr = RD.relief.stepRelief(rl, sg.P, 0.02, { rated_steam_kgs: rated });
     var cv = RD.cvcs.stepCVCS(RD.cvcs.createCVCS({}), sys, 0.02);
     var rh = RD.rhr.stepRHR(RD.rhr.createRHR({}), sys, 0.02, {});
+    /* A SMALL LEAK, at full power, so leak_flow is a plausible small number rather than zero --
+     * a break wired in but never exercised in the fixture would leave the wiring untested. */
+    var brk = RD.break_.stepBreak(
+      RD.break_.createBreak({ area_m2: 0.0001, cd: 1.0, node: 'cold_leg', open: true }), sys, 0.02, {});
+    var ctm = RD.containment.createContainment({});
+    var ctr = RD.containment.stepContainment(ctm, 0.02,
+      brk.mdot_kgs > 0 ? { mdot_kgs: brk.mdot_kgs, h_kJkg: brk.source.h } : { mdot_kgs: 0 });
+    var cnd = RD.condenser.stepCondenser(RD.condenser.createCondenser({}), 0.02, { duty_kW: 200000 });
+    /* ECCS at the plant's OWN pressure (15.41 MPa) is above both shutoff heads -- zero flow, and
+     * that IS the lesson pwr2_eccs.js's own header makes the point of. A second, LOW-pressure call
+     * (not part of ctx) exercises the injecting branch separately, below. */
+    var ecc = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }), sys, 0.02);
     var ctx = { sys: sys, reactor: r, sg: sr, turbine: tr, relief: rr, cvcs: cv, rhr: rh,
+                break_: brk, containment: ctr, condenser: cnd, eccs: ecc,
                 boron_ppm: 700, rated_steam_kgs: rated, mdot_rated: 1630, natcirc_frac: 0.15,
                 M_nominal: sys.M_total };
-    return { ts: TS.buildTrueState(ctx), ctx: ctx, sys: sys, r: r, sr: sr, tr: tr, rr: rr };
+    return { ts: TS.buildTrueState(ctx), ctx: ctx, sys: sys, r: r, sr: sr, tr: tr, rr: rr,
+             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc };
   }
   var B = build(), ts = B.ts;
 
@@ -118,7 +136,7 @@ function runSuite(TS, rec, quiet) {
    * and stays invisible. Same vacuity that hid the steam-mass mutation in run_pwr2_loadfollow:
    * a check cannot see a bucket the live case never fills. */
   var synth = TS.coverage({ pressure_mpa: 15.41 },
-                          ['pressure_mpa', 'containment_pressure_mpa', 'a_field_nobody_declared']);
+                          ['pressure_mpa', 'containment_sump_pct', 'a_field_nobody_declared']);
   ck('coverage() REPORTS a field that is neither supplied nor declared',
      synth.unaccounted.length === 1 && synth.unaccounted[0] === 'a_field_nobody_declared',
      'given one supplied, one declared and one unknown, it must put the unknown in its own bucket ' +
@@ -132,8 +150,10 @@ function runSuite(TS, rec, quiet) {
   ck('no DECLARED-MISSING field appears in the output at all', fabricated.length === 0,
      fabricated.length ? 'FABRICATED: ' + fabricated.join(', ')
                        : Object.keys(TS.MISSING).length + ' declared gaps, none of them emitted');
-  ck('containment is ABSENT, not zero', ts.containment_pressure_mpa === undefined,
-     'a containment at 0 MPa reads exactly like a containment that is fine');
+  ck('containment SPRAY is ABSENT, not zero -- the sub-system that is genuinely unbuilt',
+     ts.ctmt_spray_active === undefined && ts.containment_sump_pct === undefined,
+     'spray/fans/recombiners/sump have no sourced capacity; containment pressure itself is now ' +
+     'SUPPLIED, checked below');
   ck('the pressurizer is ABSENT, not zero', ts.pzr_level_pct === undefined &&
      ts.porv_open === undefined, '#472 owns it; a level of 0 would be a fabricated TMI trainer');
   ck('scram state is ABSENT, not false', ts.scrammed === undefined,
@@ -166,6 +186,41 @@ function runSuite(TS, rec, quiet) {
   ck('...and they are plant-sized, not placeholders',
      ts.pressure_mpa > 10 && ts.fuel_temp_c > 400 && ts.mwe_output > 50,
      'a shim that returned zeros would pass every equality above');
+
+  /* ---- THE NEWLY-WIRED SYSTEMS: break, containment, condenser, ECCS ---------------------- */
+  head('BREAK / CONTAINMENT / CONDENSER / ECCS -- built earlier this session, wired NOW');
+  ck('leak_flow is the break\'s own discharge, not re-derived',
+     ts.leak_flow === B.brk.mdot_kgs && ts.leak_flow > 0,
+     ts.leak_flow.toFixed(4) + ' kg/s -- a small leak at full power, not a placeholder');
+  ck('containment pressure is SUPPLIED and near its sourced initial condition',
+     ts.containment_pressure_mpa !== undefined &&
+     Math.abs(ts.containment_pressure_mpa - B.ctr.containment_pressure_mpa) < 1e-12 &&
+     ts.containment_pressure_mpa > 0.1 && ts.containment_pressure_mpa < 0.2,
+     ts.containment_pressure_mpa.toFixed(4) + ' MPa -- one 0.02 s step off the 125 F/1.0 psig start');
+  ck('containment temperature traces to the same step',
+     ts.containment_temp_c === B.ctr.containment_temp_c, ts.containment_temp_c.toFixed(2) + ' degC');
+  ck('condenser vacuum is SUPPLIED and plant-plausible',
+     ts.condenser_vacuum_kpa !== undefined && ts.condenser_vacuum_kpa > 0,
+     ts.condenser_vacuum_kpa.toFixed(2) + ' kPa');
+  ck('condenser availability traces to the condenser\'s own C-9 read, not re-derived',
+     ts.condenser_cooling_available === B.cnd.available, '');
+  ck('ECCS at full power (above both shutoff heads) reports standby, not fabricated flow',
+     ts.hpi_active === false && ts.eccs_mode === 'standby',
+     'both HHSI (9.58 MPa) and LHSI (1.48 MPa) shutoff sit BELOW 15.41 MPa -- zero flow is the ' +
+     'lesson pwr2_eccs.js exists to teach, not a wiring gap');
+
+  /* ECCS INJECTING -- a second, low-pressure call, isolated from the steady-state ctx above so
+   * that fixture stays internally consistent (build() is a full-power steady state). */
+  var ecLow = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }),
+                                { P: 1.0 }, 0.02);
+  var tsLow = TS.buildTrueState({ sys: B.sys, eccs: ecLow });
+  ck('below both shutoff heads, ECCS mode and normalized flow are DERIVED, not fabricated',
+     tsLow.hpi_active === true && tsLow.eccs_mode === 'both' &&
+     tsLow.hpi_flow_normalized > 0 && tsLow.hpi_flow_normalized <= 1,
+     'mode=' + tsLow.eccs_mode + '  normalized=' + tsLow.hpi_flow_normalized.toFixed(3));
+  ck('hpi_discharge_pressure_mpa stays declared-missing -- no pump curve gives it',
+     tsLow.hpi_discharge_pressure_mpa === undefined && !!TS.MISSING.hpi_discharge_pressure_mpa,
+     'wiring the flows must not tempt inventing the one field the curve does not supply');
 
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');
@@ -200,7 +255,9 @@ var MUTATIONS = [
   ['scram state is reported FALSE from an engine with no protection layer',
    "    put('pressure_mpa',  sys.P);", "    put('pressure_mpa',  sys.P);\n    ts.scrammed = false;"],
   ['a MISSING entry loses its reason',
-   "  declareMissing('containment', 'no containment model exists in PWR2.',",
+   "  declareMissing('containment', 'pwr2_containment.js supplies pressure and temperature; spray, ' +\n" +
+   "    'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +\n" +
+   "    'corpus) and sump level needs a geometry map this engine does not have.',",
    "  declareMissing('containment', '',"],
   ['a MISSING entry loses the lane that owns the pressurizer',
    "#472 is rebuilding the pressurizer on ", "the pressurizer is not built on "],

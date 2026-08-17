@@ -153,6 +153,25 @@ function runSuite(S, rec, quiet) {
       rr.pumpHead > 0.1 && Math.abs(rr.pumpHead - rr.frictionDrop) / rr.pumpHead < 0.5,
       'head ' + rr.pumpHead.toFixed(4) + ' MPa vs friction ' + rr.frictionDrop.toFixed(4));
 
+  /* ---- 6. MERGE SOURCES  [the concatenation point break + ECCS + CVCS all need] -------------- */
+  if (!quiet) console.log('\nMERGE SOURCES  [plumbing for the joint break/ECCS/CVCS scenario]');
+  ckT('mergeSources concatenates multiple arrays, in order',
+      JSON.stringify(S.mergeSources([{ node: 'a', mdot: 1, h: 2 }], [{ node: 'b', mdot: 3, h: 4 }])) ===
+      JSON.stringify([{ node: 'a', mdot: 1, h: 2 }, { node: 'b', mdot: 3, h: 4 }]), '');
+  ckT('...and tolerates empty/falsy arguments -- a system with no active source this step',
+      S.mergeSources([], null, [{ node: 'a', mdot: 1, h: 2 }]).length === 1, '');
+  var merged = S.mergeSources([{ node: 'cold_leg', mdot: 5, h: 80 }],
+                               [{ node: 'cold_leg', mdot: 3, h: 120 }]);
+  var direct = [{ node: 'cold_leg', mdot: 5, h: 80 }, { node: 'cold_leg', mdot: 3, h: 120 }];
+  var pMerge = S.createPlant({}), pDirect = S.createPlant({});
+  S.stepPlant(pMerge,  0.02, { sources: merged });
+  S.stepPlant(pDirect, 0.02, { sources: direct });
+  var hMerge = null, hDirect = null;
+  pMerge.nodes.forEach(function (n)  { if (n.id === 'cold_leg') hMerge  = n.h; });
+  pDirect.nodes.forEach(function (n) { if (n.id === 'cold_leg') hDirect = n.h; });
+  ckT('merged sources feed the plant IDENTICALLY to a hand-concatenated array',
+      hMerge === hDirect, 'cold leg h: ' + hMerge.toFixed(4) + ' == ' + hDirect.toFixed(4));
+
   /* ---- CONSTRUCTION  [what an adversarial mutation pass found this gate could not see] -------
    * The nine curated mutations above all attack the STEP -- buoyancy, coastdown, pump work,
    * friction, momentum -- because that is what Layer 4 is interesting for. Six more were written
@@ -263,7 +282,10 @@ var MUTATIONS = [
   ['caller heats DROPPED instead of merged (a distributed duty vanishes silently)',
    'if (drivers.heats) {', 'if (false) {'],
   ['caller options DROPPED when building the loop (every initial condition is a lie)',
-   'var sys = LOOP.createLoop(opts);', 'var sys = LOOP.createLoop({});']
+   'var sys = LOOP.createLoop(opts);', 'var sys = LOOP.createLoop({});'],
+  ['mergeSources drops every array after the first (break survives, ECCS silently vanishes)',
+   'if (arguments[i]) out = out.concat(arguments[i]);',
+   'if (i === 0 && arguments[i]) out = out.concat(arguments[i]);']
 ];
 
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
