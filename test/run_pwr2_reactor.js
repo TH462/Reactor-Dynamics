@@ -117,6 +117,61 @@ function runSuite(R, rec, quiet) {
       R.createReactor({ P: 1.0, coolTemp_c: TREF }).fuel.T_fuel_c - 100,
       'the IC follows the power it is built at, not a fixed number');
 
+  /* ---- THE COOLANT REGIME (added 2026-08-17) ----------------------------------------------
+   * `coreRegime` is what tells `pwr2_fuel.js` whether the rods are being cooled, and that layer
+   * REFUSES to run without it rather than assume they are. It had no direct coverage when it
+   * landed, and it could not have got any by accident: every fixture in this file runs at rated
+   * flow on a subcooled core, so a version returning "fully cooled, no void" unconditionally
+   * agrees with all of them. The mutations below are the point of this section. */
+  head('COOLANT REGIME  [what pwr2_fuel refuses to assume, and no fixture here varies by itself]');
+  /* THE DUPLICATED CONSTANT, PINNED. `MDOT_RATED` here and `PUMP.mdot_rated` in pwr2_sources are
+   * the same physical number written down twice, which is the failure mode CLAUDE.md records for
+   * the protection cadence: move one and not the other and the flow fraction silently rescales
+   * while every gate stays green. A cross-module consistency claim belongs in the GATE — the same
+   * place run_pwr2_kinetics ties its Doppler reference to pwr2_fuel's derivation. */
+  ck('the flow reference is the SAME number pwr2_sources pumps to', R.MDOT_RATED,
+     S.PUMP.mdot_rated, 0, 'kg/s');
+
+  var rgP = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+  var rg0 = R.coreRegime(rgP);
+  ckT('a subcooled core at rated flow reports no void and full flow',
+      Math.abs(rg0.voidFrac) < 1e-12 && Math.abs(rg0.flowFrac - 1) < 1e-9,
+      'void ' + rg0.voidFrac.toFixed(6) + ', flow ' + rg0.flowFrac.toFixed(6));
+  /* IT MUST READ THE PLANT, not report a lineup. Two fixtures, each moving exactly one thing. */
+  var rgV = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+  for (var q = 0; q < rgV.nodes.length; q++) {
+    if (rgV.nodes[q].id === 'core') {
+      rgV.nodes[q].h = W.h_f(P0) + 0.4 * (W.h_g(P0) - W.h_f(P0));
+      break;
+    }
+  }
+  ckT('a BOILING core node is seen -- the void fraction comes off the plant, not a default',
+      R.coreRegime(rgV).voidFrac > 0.3,
+      'void ' + R.coreRegime(rgV).voidFrac.toFixed(3) + ' from a 40 % quality core node');
+  var rgF = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+  rgF.mdot_loop = S.PUMP.mdot_rated / 4;
+  ckT('...and a COLLAPSING loop flow is seen too, as the fraction it actually is',
+      Math.abs(R.coreRegime(rgF).flowFrac - 0.25) < 1e-9,
+      'flow ' + R.coreRegime(rgF).flowFrac.toFixed(4) + ' at a quarter of rated');
+  /* AND THE REGIME MUST REACH pwr2_fuel, not merely be computable. A film coefficient that never
+   * moves is the defect this whole chain exists to have fixed. */
+  /* ⚠ READ ON THE FIRST STEP AFTER THE INJECTION, and the reason is real physics rather than a
+   * testing convenience. `ride()` calls stepReactor and then stepPlant, so one step reads the
+   * flow that was injected — but ten steps do NOT, because stepPlant re-integrates the momentum
+   * and a LIQUID-FULL loop with a running pump restores its flow in a fraction of a second. The
+   * first version rode 10 steps and measured a factor of 2.8 rather than 10, which is the plant
+   * being right and the fixture being wrong. That recovery is exactly why the pump fix mattered:
+   * flow collapses when the FLUID changes, not when somebody perturbs it. */
+  var rgHot = fixture();
+  var rgCold = ride(rgHot, 1);
+  rgHot.sys.mdot_loop = S.PUMP.mdot_rated * 0.01;
+  var rgSlow = ride(rgHot, 1);
+  ckT('the regime reaches the fuel -- collapsing the loop flow collapses the film coefficient',
+      rgSlow.h_film_W_per_m2K < rgCold.h_film_W_per_m2K / 10,
+      rgCold.h_film_W_per_m2K.toFixed(0) + ' -> ' + rgSlow.h_film_W_per_m2K.toFixed(0) +
+      ' W/m2K when the loop drops to 1 % of rated -- a computed regime that never reached ' +
+      'pwr2_fuel would leave this unmoved');
+
   /* ---- THE LOOP HOLDS --------------------------------------------------------------------- */
   head('THE LOOP HOLDS  [a sign error passes one step and diverges over three hundred seconds]');
   /* THE FIXTURE IS KEPT, not discarded. The checks below have to interrogate the PLANT the ride
@@ -355,6 +410,18 @@ runSuite(R, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* THE COOLANT REGIME (2026-08-17). The first two are the failure this section exists for:
+   * a regime that reports the rods are cooled whatever the plant is doing. Every fixture in
+   * this file runs at rated flow on a subcooled core, so neither shows up without the
+   * dedicated checks above. */
+  ['the coolant regime reports FULL FLOW whatever the loop is doing',
+   '    var f = sys.mdot_loop === undefined ? 1 : sys.mdot_loop / MDOT_RATED;',
+   '    var f = 1;'],
+  ['the coolant regime reports NO VOID whatever the core is doing',
+   "      if (sys.nodes[i].id === 'core') { v = W.quality(sys.nodes[i].h, sys.P); break; }",
+   "      if (sys.nodes[i].id === 'core') { v = 0; break; }"],
+  ['the flow reference drifts off the value pwr2_sources actually pumps to',
+   '  var MDOT_RATED = 1630;', '  var MDOT_RATED = 2000;'],
   ['the heat path DOUBLE-COUNTS (corePower supplied alongside heats)',
    '      heats:          fr.heats,', '      heats: fr.heats, corePower: kr.Q_total_frac * rx.rated_thermal_kW,'],
   ['the decay fraction is lost — fuel driven by FISSION power instead of total core heat',
