@@ -8,11 +8,10 @@
  * ⚠ THIS FILE INVENTS NOTHING. It is the single rule the design turns on.
  *
  * Roughly half the contract is blocked behind systems PWR2 does not have — the pressurizer (#472
- * owns it), protection, damage modelling, the nuclear instruments, auxiliary feedwater,
- * accumulators. A shim that returned `0` for `containment_pressure_mpa` because containment is not
- * built would be **the same defect D4 §23.4 catalogues**: invisible, because a consumer cannot tell
- * an unbuilt system from a quiet one. A containment at 0 MPa reads exactly like a containment that
- * is fine.
+ * owns it), protection, damage modelling, the nuclear instruments, accumulators. A shim that
+ * returned `0` for `containment_pressure_mpa` because containment is not built would be **the same
+ * defect D4 §23.4 catalogues**: invisible, because a consumer cannot tell an unbuilt system from a
+ * quiet one. A containment at 0 MPa reads exactly like a containment that is fine.
  *
  * ⚠ AND THE REVERSE DEFECT IS EQUALLY REAL, and this file had it. Break discharge, containment and
  * the condenser all landed as gated Layer 5 systems while this shim still declared all three fully
@@ -87,11 +86,9 @@
     'Source/intermediate range and period are an instrument-layer concern.',
     ['sr_counts_cps', 'ir_amps', 'sr_energized', 'startup_rate_dpm', 'reactor_period_s']);
 
-  declareMissing('auxiliary feedwater', 'AFW is not built. It is the secondary heat sink of last ' +
-    'resort and the TMI differentiator — a drying SG stops absorbing heat whatever the dump does — ' +
-    'so it needs the feed path Layer 5 does not yet have, not just a flow number.',
-    ['afw_active', 'afw_blocked', 'afw_pump_running', 'afw_flow_normalized',
-     'afw_discharge_pressure_mpa']);
+  declareMissing('auxiliary feedwater', 'pwr2_afw.js supplies flow; there is no pump curve to ' +
+    'read a discharge pressure off, and no CST inventory to report running dry.',
+    ['afw_blocked', 'afw_discharge_pressure_mpa']);
 
   declareMissing('accumulators', 'the passive injection train is not built.',
     ['accumulator_valve_open', 'accumulators_discharging', 'accumulator_flow_normalized',
@@ -149,7 +146,7 @@
     var rx = ctx.reactor || {}, sg = ctx.sg || {}, tb = ctx.turbine || {},
         rl = ctx.relief || {}, cv = ctx.cvcs || {}, rh = ctx.rhr || {},
         br = ctx.break_ || {}, ct = ctx.containment || {}, cd = ctx.condenser || {},
-        ec = ctx.eccs || {};
+        ec = ctx.eccs || {}, aw = ctx.afw || {};
     var ts = {};
     function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }
 
@@ -247,6 +244,13 @@
       else if (ec.hhsi_kgs > 0) mode = 'hhsi';
       else if (ec.lhsi_kgs > 0) mode = 'lhsi';
       put('eccs_mode', mode);
+    }
+
+    /* --- AFW --- */
+    if (aw.total_kgs !== undefined) {
+      put('afw_pump_running', aw.total_kgs > 0);
+      put('afw_active',       aw.total_kgs > 0);
+      put('afw_flow_normalized', aw.afw_flow_normalized);
     }
 
     return ts;

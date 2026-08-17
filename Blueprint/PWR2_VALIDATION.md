@@ -1329,3 +1329,35 @@ rule is explicit: *"D3 consumes its design; must not race it."* Building an accu
 in `backshop` today would be exactly that race — two lanes independently inventing the same kind of
 physics, one of which is already someone's active, scoped work. **Stopping here is the deliberate
 choice, not a shortfall against the plan.**
+
+## 33. AUXILIARY FEEDWATER, BUILT INSTEAD — THE OTHER INDEPENDENTLY-MEANINGFUL SYSTEM — 2026-08-17
+
+§31.4 named AFW alongside nuclear instruments as buildable without a break — it needs no accumulator
+-shaped compressible-volume work either, so it did not carry the lane-race problem accumulators did.
+
+**Sourced, Ginna UFSAR ch10/ch15**: one MDAFW pump rated **170 gpm** per SG (ch15, transient
+analysis); TDAFW **200 % of one MDAFW's "required feedwater"** (ch10), i.e. exactly double — the
+ratio is sourced, not assumed; design AFW temperature **70 °F** (ch15 table, the low end of a
+70/100/100 sensitivity row). This single-loop plant gets ONE MDAFW and ONE TDAFW, the same "one
+loop, one pump" convention already used for the RCP and CVCS's charging pump — Ginna's own ch10
+text supports it directly: *"One motor-driven auxiliary feedwater pump (MDAFW) can supply
+sufficient feedwater for removal of decay heat from the plant."*
+
+**Scaled on POWER** (decay-heat duty, the ECCS/RHR/condenser basis), giving this plant **1.81 kg/s**
+MDAFW-rated, **3.63 kg/s** TDAFW-rated — `test/run_pwr2_afw.js`, 19/19 checks, 7/7 mutations caught,
+no blind spots.
+
+**Declared, not modelled**: no pump curve (the corpus gives one rated point per pump, not a
+head-flow curve, so `afw_discharge_pressure_mpa` stays declared-missing rather than invented — same
+reasoning as ECCS's `hpi_discharge_pressure_mpa`); no CST inventory (`afw_blocked` stays
+declared-missing — a real tank can run dry, this model's cannot). `pwr2_true_state.js` coverage:
+**49/109 supplied, 60 declared missing, 0 unaccounted** — the second rise today, 46 → 49, three
+fields (`afw_pump_running`, `afw_active`, `afw_flow_normalized`).
+
+`stepAFW()` returns a plain kg/s and enthalpy rather than a Layer 3 `sources` entry — AFW feeds the
+SECONDARY, and `pwr2_sg.js`'s `drivers.feed` already takes exactly that shape, so a caller adds AFW
+to whatever main feedwater is running rather than replacing it. The TMI lesson this unlocks — a
+drying SG stops absorbing heat whatever the dump does — is not yet DEMONSTRATED (that needs a
+loss-of-main-feedwater scenario driving `pwr2_sg.js` to dryout with AFW as the only save, which is
+scenario-authoring, not engine work, and out of scope for today per the owner's directive that
+instructional content is placeholder for now). Built and gated; the demonstration is future work.

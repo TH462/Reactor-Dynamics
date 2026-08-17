@@ -26,7 +26,8 @@ var LIB = path.join(E, 'pwr2_true_state.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
- 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr', 'pwr2_break', 'pwr2_containment', 'pwr2_condenser'
+ 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr', 'pwr2_break', 'pwr2_containment', 'pwr2_condenser',
+ 'pwr2_afw'
 ].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
@@ -97,12 +98,13 @@ function runSuite(TS, rec, quiet) {
      * that IS the lesson pwr2_eccs.js's own header makes the point of. A second, LOW-pressure call
      * (not part of ctx) exercises the injecting branch separately, below. */
     var ecc = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }), sys, 0.02);
+    var awf = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true }), 0.02);
     var ctx = { sys: sys, reactor: r, sg: sr, turbine: tr, relief: rr, cvcs: cv, rhr: rh,
-                break_: brk, containment: ctr, condenser: cnd, eccs: ecc,
+                break_: brk, containment: ctr, condenser: cnd, eccs: ecc, afw: awf,
                 boron_ppm: 700, rated_steam_kgs: rated, mdot_rated: 1630, natcirc_frac: 0.15,
                 M_nominal: sys.M_total };
     return { ts: TS.buildTrueState(ctx), ctx: ctx, sys: sys, r: r, sr: sr, tr: tr, rr: rr,
-             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc };
+             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf };
   }
   var B = build(), ts = B.ts;
 
@@ -221,6 +223,13 @@ function runSuite(TS, rec, quiet) {
   ck('hpi_discharge_pressure_mpa stays declared-missing -- no pump curve gives it',
      tsLow.hpi_discharge_pressure_mpa === undefined && !!TS.MISSING.hpi_discharge_pressure_mpa,
      'wiring the flows must not tempt inventing the one field the curve does not supply');
+  ck('AFW pump-running and flow-normalized are SUPPLIED once a train is lined up',
+     ts.afw_pump_running === true && ts.afw_active === true &&
+     ts.afw_flow_normalized !== undefined && ts.afw_flow_normalized > 0,
+     'normalized=' + ts.afw_flow_normalized.toFixed(3));
+  ck('afw_blocked and afw_discharge_pressure_mpa stay declared-missing -- no CST, no pump curve',
+     ts.afw_blocked === undefined && ts.afw_discharge_pressure_mpa === undefined &&
+     !!TS.MISSING.afw_blocked && !!TS.MISSING.afw_discharge_pressure_mpa, '');
 
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');

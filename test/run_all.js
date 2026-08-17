@@ -992,7 +992,7 @@ var BASELINES = {
   'run_pwr2_loadfollow.js':{ code: 0, score: '30passed 0failed 30checks', secs: 110 },   // THE ACCEPTANCE TEST: Tier A coupling A1, power follows load, rods in MANUAL. Measured 99.6 -> 54.0 % with Tavg 577.95 -> 603.92 degF against the first engine's 100 -> 57.5 % and 579.3 -> 602.1. Bands admit the declared physics differences (real L0 density in the moderator coefficient, derived rather than tuned fuel rise); they are NOT fitted to the first engine.
   'run_pwr2_reactor.js':   { code: 0, score: '27passed 0failed 27checks', secs: 30 },
   'run_pwr2_turbine.js':   { code: 0, score: '29passed 0failed 29checks', secs: 2 },
-  'run_pwr2_true_state.js':{ code: 0, score: '30passed 0failed 30checks', secs: 2 },   // THE SHIM. 46 of 109 contract fields supplied, 63 DECLARED missing with a reason and an owning system, 0 unaccounted. Rose from 37/72 (#479, 2026-08-17): break/containment/condenser/ECCS landed as gated systems but the shim still declared them fully missing -- the SAME defect this file exists to prevent, in reverse. The fraction is NOT a score to raise by writing mappings -- it measures how much plant exists, and any other way of raising it is the fabrication the gate forbids.
+  'run_pwr2_true_state.js':{ code: 0, score: '32passed 0failed 32checks', secs: 2 },   // THE SHIM. 49 of 109 contract fields supplied, 60 DECLARED missing with a reason and an owning system, 0 unaccounted. Rose from 37/72 across two passes 2026-08-17 (#479): break/containment/condenser/ECCS/AFW landed as gated systems but the shim still declared them fully missing -- the SAME defect this file exists to prevent, in reverse. The fraction is NOT a score to raise by writing mappings -- it measures how much plant exists, and any other way of raising it is the fabrication the gate forbids.
   'run_pwr2_relief.js':    { code: 0, score: '30passed 0failed 30checks', secs: 2 },
   'run_pwr2_rhr.js':       { code: 0, score: '39passed 0failed 39checks', secs: 150 },
   'run_pwr2_eccs.js':      { code: 0, score: '28passed 0failed 28checks', secs: 25 },
@@ -1002,6 +1002,7 @@ var BASELINES = {
   'run_pwr2_condenser.js': { code: 0, score: '30passed 0failed 30checks', secs: 2 },
   'run_pwr2_containment.js':{ code: 0, score: '25passed 0failed 25checks', secs: 4 },
   'run_pwr2_loca.js':      { code: 0, score: '14passed 0failed 14checks', secs: 3 },   // JOINT: break -> containment -> ECCS, added 2026-08-17 (#479). Mass bookkeeping closes to 1e-6 relative in both directions; ECCS starts injecting at t=1.10s, the moment P crosses the 9.58 MPa HHSI shutoff head -- physics-timed, not scripted.
+  'run_pwr2_afw.js':       { code: 0, score: '19passed 0failed 19checks', secs: 1 },   // AUXILIARY FEEDWATER, added 2026-08-17 (#479). Ginna UFSAR ch10/ch15: 170 gpm/MDAFW, TDAFW = 200% of it, 70 degF design temp; POWER-scaled (decay-heat duty); one MDAFW + one TDAFW for this single-loop plant. No sourced pump curve, so afw_discharge_pressure_mpa and afw_blocked (no CST inventory) stay declared-missing.
   'run_pwr2_core.js':      { code: 0, score: '36passed 0failed 36checks', secs: 52 },
   'run_pwr2_geometry.js':  { code: 0, score: '33passed 0failed 33checks', secs: 1 },
   // NEW 2026-08-15 (#479): the ruled (quality, P) specific-volume table -- D2 sec 23.4, ruled and
