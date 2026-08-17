@@ -369,6 +369,19 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **The pressure rail was a SOLVER, and a state departure is not a rate** (2026-08-17, #472
+  phase 3b). v2 published **188,432 psia (1,299 MPa)** with liquid water at **1,000 °C** on a
+  heatup and every check was green through it. `settle`'s Picard iteration has gain
+  `V_liq/V_stm`, so its own comment ("converges in three passes") is true at a normal bubble
+  and false at a small one — a 95 %-level node ran 196.082 → 186.492 over 12 passes still
+  moving, leaving the state off its saturation line; the next step read that as **0.653 °C
+  (1.18 °F)** of superheat and flashed **9.00 kg into a 0.2099 m³ bubble in ONE step**.
+  `E = C·(T_liq − Tsat(P))` has no `dt` in it, which is why the rail was identical at
+  `dt = 1e-12 s` and why three sessions of sub-step reasoning went past it. Bracket-and-bisect
+  fixed it (191,970 → 206.8 psia); the failing state HAD roots and Picard was walking away from
+  one sitting at exactly the pressure the state carried. Three of my own published diagnoses
+  were each one layer too shallow, and what found it was **removing variables, not reading
+  code**. Two probe comments asserting mechanisms turned out false when run.
 - **The rods ship in MANUAL, and every probe that broke was INHERITING the lineup instead of
   stating it** (2026-08-11, #460). `rods_tavg` loses `defaultOn`, reversing #289 — whose
   premise, *"everything else starts in auto"*, had expired when the Mode 1 lineup put generator
@@ -408,16 +421,6 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
   threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
   two-parameter signature validated on three plants including a negative control.
-- **The board can list every channel and get CHEAPER — the row shape was the cost** (2026-08-08,
-  the Indications tab). `chartBuf` stored one NAMED PROPERTY per series per side, and property
-  cost is what scaled: at 9000 rows, 40 series = **39.5 MB**, 110 = **137.8**. Packed into
-  fixed-width `Float64Array`s (NaN = no reading; every reader already guarded `isFinite`) the
-  registry went 40 → 96 and the buffer fell to ~9.6 MB. Two traps: **an unmeasured claim in
-  PLAYER-FACING COPY is still an unmeasured claim** — a "pressurizer mass-only level" row
-  promised a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is
-  `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
-  COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
-  MENTIONED counting as covered — fails green.
 - **The Mode 5 PRESET and the Mode 5 the plant PRODUCES were different plants, and nothing
   compared them** (2026-08-12, #468). The shutdown bank was parked withdrawn by the engine
   CONSTRUCTOR, so it was never a statement about Mode 5 at all: measured, a scram leaves it
@@ -545,9 +548,10 @@ thing left in the file and it grew about a bullet a session.
   `kind: 'component'` tiles from a free-slot scan or the instrument column reads as full.
   **Measure the board, don't eyeball it** — `RD.PwrBoard.ports()` makes an alignment claim a
   subtraction. **Screenshot it** — art overlap is invisible to an item-vs-item scan.
-- **The board's FLOW family is the one where US is the base unit** — gpm is the identity side and
-  m³/h the converted one, backwards from every other family. The units key is an ACCESSOR
-  (`ctx.units()`); a frozen value pins the board in whichever mode it mounted in.
+- **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
+  Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
+  a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
+  of the very same number. HR12 does not stop at engine prose.
 - **A SENSING bug is invisible while the instrument is healthy** — to test an HR1 fix you have to
   FAIL the channel (#220). A trip's `condition:` key is a status word the ENGINE computes, so the
   `run_hardrules` scan cannot see it; hence HR1(b), every permissive key declared. **A comment

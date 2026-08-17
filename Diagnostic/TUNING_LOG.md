@@ -29,6 +29,167 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-17-workbench-a (#472 phase 3b — the pressure rail was a solver, not a physics, and three of my own diagnoses were wrong on the way)
+
+**Where it started.** The rail: on a Mode 5 → Mode 3 heatup v2 published **188,432 psia
+(1,299 MPa)** for a step, with liquid water at **1,000 °C**, and every check in the suite was
+green through it. The previous day had localised it to `settle` and left a recommendation.
+
+**The recommendation was wrong, and so were the two before it.** Three diagnoses were
+published and each was one layer too shallow — *the branch needs an implicit integrator*
+(no: it converges from ONE sub-step), *the correlations have no critical point* (true, but
+they are the trap it falls into, not the push), *a regime crossing inside a step* (no: it is
+dt-independent). **What found it was removing variables, not reading code**: with every input
+zeroed and `dt = 1e-12 s` the step still returned 1322.3 MPa. A step of zero duration with
+zero inputs was not the identity.
+
+**The actual chain, measured.** `settle` is a Picard iteration `T_liq = Tsat(P(T_liq))` whose
+gain scales as `V_liq/V_stm`. Its own comment justified a 20-pass bound with *"rho_l varies
+slowly with T, so it converges in three passes"* — true at a normal bubble, false at a small
+one: a 95.1 %-level node ran 196.082 → 186.492 over 12 passes and was **still moving**, where
+a 55 % node converged by pass 6. Exiting still drifting left the state off its own saturation
+line, and the next step read that residual as **0.653 °C (1.18 °F)** of superheat = 17,643 kJ
+= **9.00 kg of steam flashed into a 0.2099 m³ bubble in one step**, 6.9× the density. The same
+0.65 °C on a 55 % node is a 15.8 % change.
+
+**THE TRAP, and it is the one that cost three sessions: a state departure is not a rate, so it
+does not shrink when you shrink the step.** `E = C·(T_liq − Tsat(P))` has no `dt` in it. Every
+sub-step argument went straight past that.
+
+**The fix is the METHOD, and the measurement that established it came first.** Scanning
+`f(T) = T − Tsat(P(T))` showed the failing state HAS roots — 183.361 °C and 199.397 °C — and
+the upper one sits at **1.5535 MPa, exactly the pressure the state was already carrying.**
+Picard was walking away from a correct answer. Bracket-and-bisect (the idiom `solveFlash`
+already uses) replaced it: the railing step went **191,970 → 206.8 psia**, converged from one
+sub-step, with heater authority at 20/55/70 % unchanged at 3.017/2.893/2.858 psi/s.
+
+**Two wrong turns inside the fix, both caught by measurement and neither by review.** Worth
+recording because each looked obviously right:
+
+1. **Taking the NEAREST root** snapped the node back past the equilibrium the physics had just
+   pushed it off, **discarding the heater energy entirely** — 0.000 psi/s at 85, 90, 95 and
+   99 % level. The rule must be the direction of travel, `−sign(f0)`.
+2. **Holding at the liquid-full BOUNDARY** when no root exists re-created the singularity from
+   the other side (1.2e6 psi/s), because that boundary is exactly where `pressureFrom`'s 1e-6
+   floor manufactures it. Holding the *incoming* state is bounded.
+
+**Two gates rewritten, both HR10-validated by running the NEW form against the OLD code** —
+each passes on the new and fails on the old, where the old forms did the reverse:
+
+- **C4c** asserted the rail (`> 1e3 psi/s`). It now asserts the handover: bounded,
+  dt-independent, flagged at 85 % and not at 55 %.
+- **K1** asserted that the sub-step guard FIRES. Measured, **more subdivision made the old
+  model worse** — 1 / 256 / 4096 sub-steps gave 1531 / 1907 / **1,074,635 psia** — so the
+  check was certifying that a broken guard was being fed. It now asserts CONVERGENCE.
+
+**`_pzrTrim` now runs in the HEATUP driver, not only the cooldown.** A heatup with nobody on
+the pressurizer is not an evolution; v1 tolerated it because its level is a clipped
+reconstruction and its pressure was pinned by `P_restore_rate_gain`. Flag-off `run_pwr` 37/37
+with the change, so it passes on both models.
+
+**`mass_max` was NOT raised, and I had recommended raising it.** The constant's own comment
+records *"RAISING IT IS NOT A FIX AND WAS MEASURED: at 3.0 the plant runs to 300 % inventory"*
+(#346), and CA-12 adds *"THE FIX IS A REGIME, NOT A CEILING."* The ceiling becomes unreachable
+**because a solid regime exists** — and v2's is exactly what is exhausted. **I proposed
+changing a constant without reading it.** The evidence was three lines above the value.
+
+**Two probe comments turned out to be false, and I had repeated both in my own voice.** I
+reported six of seven flag-on reds as probes leaning on the deleted restore term, *"two of
+them say so in their own comments"*. Measured: `mode5_controls` recovers on **real heater
+authority** on v1 (1908 → 2046 psia at 100 % heaters; manual takes it to 2380) — its red is
+the near-solid band, not a fixture. And `rcp_cavitation`'s *"hold it low via the setpoint so
+it can't recover"* is **not true of v1 either** — v1 recovers 1160 → 1211 psia inside the
+probe's own 15 s. **A load-bearing claim in a code comment is an inherited claim.**
+
+**The solid regime, scoped: the trigger is a GAIN, not a geometry.** `gain =
+d[Tsat(P(T))]/dT_liq` crosses 1.0 at **~75.2 % level**, and heater authority falls off a cliff
+exactly there — 2.958 psi/s at 75 %, **−0.124 at 78 %**, −0.000 at 85 %. Above it there is no
+equilibrium at any higher temperature, so the node is thermodynamically committed to going
+solid. **That is correct physics**, and it is the same gain that made Picard diverge — one
+quantity, both failures.
+
+**But the gain must NOT become the branch predicate**, which is what I first proposed.
+Measured, for the same 0.001 m³ insurge, the bulk-modulus branch would overstate the response
+**30.1× at 78 %** (43.93 psi against 1.458) — the node still holds 0.944 m³ of compressible
+steam. The two laws only meet near 98–99 %, which is where the geometric predicate already
+fires. **`stepPressure`'s predicate is well sited; the split that feeds it is not.**
+
+**The real fix, verified well-posed before recommending it.** `stepRegions` uses an operator
+split — flash against an approximate energy departure, *then* re-saturate with masses frozen —
+and the frozen-mass step is what can have no root. A single conservative solve on
+(mass, volume, energy) cannot: measured at 0.25 °C resolution, quality crosses zero **exactly
+once** (365.75 °C at 78 % level, 351.25 °C at 95 %, never at 55 %) and energy is **strictly
+monotone inside the two-phase domain** — 0 of ~1000 steps decreasing at all three levels. The
+earlier reading that 95 % was non-monotone was an artifact of scanning past the solid point,
+where `x < 0` is not a state. So the only way the solve can fail is quality reaching zero,
+which IS the vessel being full of liquid — the geometric predicate reached by the physics
+instead of asserted alongside it.
+
+**Gates.** `run_pzr2` **48/48** (C4c and K1 rewritten, K1b added). `run_all --fast` **49
+runners at baseline FLAG OFF** — the shipped plant is untouched by all of it. Flag-on
+`run_pwr` **33/37**, and every remaining red is now either the missing solid regime or a band
+for 3d to re-adjudicate; none is waiting on a probe fixture.
+
+**Left for the owner.** The conservative-solve rewrite (specified, verified, not built), and a
+plant question the rebuild surfaced that v1 could never show: **letdown removes 0.120 kg/s
+against a 100 °F/hr heatup's 0.31–1.57 kg/s of thermal displacement**, so the pressurizer
+fills in about 82 minutes. The model's thermal term is within 0.4–2.0× of a first-principles
+expansion computed from its own density table, so the insurge is right and the letdown is the
+question.
+
+---
+
+## Session log — 2026-08-16-workbench-a (#472 phase 3b — an integral remembers, and a Mode 5 preset that came up hot)
+
+*(The 2026-08-15 commits in this lane have no session entry of their own; their record is
+`Diagnostic/PZR_CHARACTERIZATION.md`, Part 2b onward. This entry starts where they left off,
+at `ed3e32e`.)*
+
+**The deficit bound, measured against v1 BEFORE it was written** — the deficit itself had got
+in by being written before it was measured, so the sequence mattered. v1's implied debt sits a
+**constant 712–714 kg** under `(1 − _mass)·M_rcs`, and that constant is `level_prog_floor`
+(28 points × 25.5 kg/point) — so the bound is a fence v1 satisfies structurally at every
+instant, which is what makes it a fence rather than a fitted number.
+
+v2 was banking **10,657 kg against a plant only ever short 7,481**, and still owed **3,573 kg
+by a plant sitting 20 % OVERFILLED**. Every kilogram the ECCS delivered went to repaying a
+hole the loop never owned, so the vessel never refilled, never went solid, never relieved.
+Fixed in `reconcile`, mirroring the #418 upper bound. At 4,500 s: pzr level **0.0 → 85.8 %**,
+node water **0 → 3,520 kg**. `run_pzr2` J4, injection-verified.
+
+**CA-15 then split into two defects, and the second is temperature.** With `mass_max` lifted
+to 1.6 (**not the shipped plant** — the run exists only to let v2 state its own answer) v2
+makes a **clean solid arrest at 119.4 %**, flat from 3,000 to 6,900 s, against v1's 109.28 %.
+The ten points are `level_per_mass` being temperature-blind: measured on v1's own settled
+state, **v1 calls the vessel SOLID holding 2,550 kg = 2.678 m³ of a 4.292 m³ vessel — 62.4 %
+full by volume** at the post-LOCA density of 952 kg/m³. v2 needs the whole 4,086 kg.
+
+**An initial condition must REACH the node.** `_buildState` computes the derived init level
+with `PZ.stepLevel(s, cfg, 0)` **before** the per-state overrides, and its comment promises
+those overrides *"still win, exactly as they did when this was inline"*. True of v1, whose
+level is a reconstruction with no state of its own; **false of a node that seeds once and
+returns early for ever after**, and whose pressure is READ OFF the steam region rather than
+stored. The Mode 5 preset published 363 psia / 122 °F with the node already on the **hot
+saturation line at 653 °F**, and one 0.02 s step took pressure to **2235 psia**.
+
+Downstream, on the heatup that starts from it: **1,369 code-safety lifts against v1's ZERO**,
+inventory bled **100.3 → 55.3 %**, the core uncovered (exit 1,119 °F against Tavg 549 °F), and
+`subcooling_c` switched to its uncovered-core branch and printed **−380 °C**. So the whole
+"impossibly negative subcooling" cluster — which had already produced three refuted
+hypotheses — was this. Fixed with a guarded IC hook (`seedFromState`); v1 does not define it,
+so the shipped plant executes nothing new. Flag-on `run_pwr` **32/37 → 34/37**.
+
+**THE TRAP: a ruling's premise can be a promise a comment makes about its own function.** That
+comment was correct for years and became false the day the node got state, and nothing
+re-checked it.
+
+**And a second: `power_pct`-class layer confusion kept explaining disagreements.** Three
+separate times on this cluster a LAYER difference, not a physics difference, was the answer —
+a raw `PWREngine` has no ECCS, `Harness` emulates M4's mechanical protections only, and
+`stepAutomation` never ticks in either. Reproduce a failing probe with ITS harness first.
+
+---
+
 ## Session log — 2026-08-14-workbench-a (#472 phase 3b — four commits of thermodynamics with no consumer, and the five defects that hid there)
 
 **Where it started.** Phase 3b had been going for four commits — correlations, geometry,
