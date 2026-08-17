@@ -1027,3 +1027,77 @@ quiet one.
 **Recommendation, for whoever picks this up:** build the shim over the ~48 derivable fields, have it
 throw or report `null` for the rest with the reason attached, and let `run_contract.js` count the
 gap. That turns 56 unbuilt fields from a silent hole into a measured backlog.
+
+## 29. THE INTEGRATION PATH HAS THREE NAMING LAYERS, AND THE CONTROL LAYER NEVER READS `true_state` — 2026-08-16
+
+§28 scoped the shim as "PWR2 → the 109 contract fields". That is the first hop of three, and the
+question *"which missing fields block control-layer drive?"* — which I set out to answer — turns out
+to be mis-posed.
+
+### 29.1 The control layer does not read `true_state`. It reads INDICATIONS.
+
+Scanned `pwr_control.js` and `control_kernel.js` for property reads, comments stripped:
+
+```
+    s.instruments      11
+    s.control_state     8
+    true_state.*        3      <- power_pct, load_target_mwe, feedwater_isolated
+```
+
+**Three direct reads out of the whole control layer.** And a scan for the 73 declared-missing
+fields returns **zero** hits — every apparent match (`scrammed`, four times) is in a comment.
+
+That is not a gap; **it is HR1 working exactly as written**: *gauges, alarms and automatic
+protection read instrumented values.* The control layer consumes the instrument layer, and the
+instrument layer consumes `true_state`. So the missing fields block the INSTRUMENTS, and the
+instruments block control — one hop further out than the question assumed.
+
+### 29.2 And instrument channels are named differently again
+
+49 instrument channels are defined in `pwr_config.js`. Compared against the shim's output by name:
+
+```
+    source supplied under the same name       2      mwe_output, turbine_rpm
+    name matching neither supplied nor missing 47
+```
+
+47 unmatched is not 47 missing — it is a **third vocabulary**. The instrument channel is
+`primary_pressure` where the contract says `pressure_mpa`; `tavg` against `tavg_c`; `power_range`
+against `power_pct`; `sg_level` against `sg_level_pct`; `core_exit_temp` against `t_core_exit_c`.
+
+So the real chain is:
+
+```
+    PWR2 layers  ──shim──▶  true_state  ──instrument map──▶  indications  ──▶  control layer
+                  (built)                  (exists, in the current engine)
+```
+
+### 29.3 What that means for sequencing
+
+Reading the 49 channels against the shim's 37 supplied fields by hand, roughly **14 are feedable
+today** — `tavg`, `thot`, `tcold`, `primary_pressure`, `power_range`, `steam_pressure`,
+`core_exit_temp`, `charging_flow`, `letdown_flow`, `boron_analyzer`, `steam_dump_valve`,
+`steam_flow`, `loop_delta_t` (derived), `rcs_flow`.
+
+The other ~35 need the systems §28.3 enumerated: pressurizer level and subcooling, SG level,
+containment, HPI and AFW discharge, accumulators, condenser vacuum, the source and intermediate
+ranges, the OTΔT/OPΔT margins.
+
+**So the integration milestone is not "finish the shim".** It is:
+
+1. **A shim → instrument-name map** (mechanical, ~14 channels today, no new physics).
+2. **The unbuilt systems**, in whatever order the owner rules, each unlocking its channels.
+
+Neither is blocked on the other, and (1) is worth doing first because it makes (2) measurable: with
+the map in place, building a system converts directly into a channel count, and the same
+supplied/declared/unaccounted discipline the shim already enforces extends to the instrument layer.
+
+### 29.4 The methodological note
+
+**This section exists because a measurement returned zero and I did not believe it.** The scan said
+no missing field blocks the control layer, which was suspicious enough to check by hand — and the
+hand check confirmed the scan while overturning the question. Had I reported the zero, the record
+would now say "nothing blocks control-layer drive", which is technically true and completely
+misleading.
+
+Sixth time this session that a number was right and the thing it was taken to mean was wrong.
