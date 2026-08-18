@@ -29,6 +29,64 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-17-develop-b (#484/#489 — the A1 teaching row was measured on a lineup that no longer ships, and the point it teaches at sits in a dead band)
+
+**Ask:** owner, 2026-08-17, on three options I wrote: re-author the row, move the demonstration,
+split the non-monotonicity — then, on the measurement that killed the first choice of point,
+*"100→80 MWe, rods MANUAL"*. **Gates:** `run_all` 49 runners at baseline. **Landed:**
+`Blueprint/CURRICULUM.md` Tier A rows A1, A2, A7, A9, the A1 arithmetic paragraph and the
+instrument-lag table, all re-measured; **#489** filed. **`engines/pwr/` untouched** — it is the
+frozen A/B reference for #479.
+
+**What the row said and why it was wrong.** A1: *"rods to MANUAL, drop generator demand
+100 → 60 MWe. Measured: power 100 → 57.5 %, Tavg 579.3 → 602.1 °F."* The plant settles at
+**76.8 %**. Bisected across 112 commits (`git archive` per commit into a scratch dir, `measure_stack`
+there — the working tree was never modified): the single step is **`d606f0e`, #460**, which took
+`defaultOn` off `rods_tavg`. The row's numbers reproduce only with rods in **AUTO**. It says MANUAL.
+
+**Then the replacement point failed its own measurement, which is the part worth keeping.** The
+ruling was to move the demonstration to 100 → 70 MWe. Measured, 70 MWe is inside a **dead band**:
+
+| load MWe | 95 | 85 | 78 | 76 | **75** | 74 | 72 | **70** | 65 | **60** | **59** | 55 | 40 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| power % | 95.5 | 86.5 | 80.1 | 78.1 | **77.3** | 76.9 | 76.8 | **76.7** | 76.5 | **76.3** | **88.4** | 84.7 | 72.2 |
+| dump % | 0 | 0 | 0 | 0 | **0** | 0.5 | 2.4 | 4.3 | 9.3 | 13.9 | **28 (cap)** | 28 | 28 |
+
+Across **60–74 MWe** reactor power moves **0.6 points** for 15 MWe of load — the dump takes exactly
+what the turbine gives up, total steam out holding ~0.744. At **59 MWe** the fast Tavg-error dump
+mode arms and power **jumps up 12.1 points**. So the ruled point would have demonstrated the
+coupling *not working*, one step from an inversion. Re-put to the owner with the sweep; answer
+**100 → 80 MWe**, where the dump is shut and power tracks load. Filed the dump behaviour as **#489**.
+
+**Traps.**
+
+- **A ruling can be correct and its chosen NUMBER still be unmeasured.** "Move it off the cliff
+  edge" was right; 70 MWe was my own suggestion inside that ruling and it was wrong, because I had
+  measured the *cliff* (59/60) without measuring the *plateau* either side of it. Measuring the
+  discontinuity is not measuring the function. One sweep would have caught it and cost 90 seconds.
+- **Prose is not swept.** #460's own themes entry says *"every probe that broke was INHERITING the
+  lineup instead of stating it"* — and the sweep that found those probes could not see this row,
+  because a curriculum row is prose. **Every measured claim in a document is an unswept probe.**
+- **A stale row drags its NEIGHBOURS.** A7 and A9 both said *"run A1"*, so moving A1 silently moved
+  them. A9 turned out not to survive either drop: its claimed **−2.45 %** measures ~**−0.5 %** on
+  the new one and ~**−1.0 %** on the old, against a noise band that itself measures **±1.0 %**, not
+  the **±0.6 %** the row asserts — i.e. the effect was *inside* its own significance threshold and
+  the threshold was wrong too. Moved to a turbine trip: **−10.2 %** at t+6 s, ~10× the band.
+- **A measurement inherits its SAMPLING RATE, and a lag cannot be resolved near its own time
+  constant.** The `tavg` lag read **+2.13 s** at 1 s sampling and **+3.49 s at 0.2 s** for the same
+  event. The old table's **"+0.00 s"** entries for the fast channels were the same artifact
+  reported as a result — and one of them, re-taken properly, comes back **negative** (−0.57 s),
+  because on a gentle transient `power_range`'s noise moves the crossing further than its 0.1 s lag
+  does. That row is now stated as *not resolvable*, which is what it is.
+- **Verify the coefficient, not the sentence.** The arithmetic paragraph quoted "measured MTC
+  −26.8 pcm/°C". MTC has not been a single constant since #263 — it is boron- and
+  temperature-dependent (`mod_anchor_pcm_per_f −31.43`). The −26.8 is still right, but only because
+  `run_reactivity` pins it *at the full-power reference, 618 ppm*; the number needed its conditions,
+  which the row did not carry. `xenon_worth 0.025` and `rod_worth_total 0.04068` were re-read from
+  source the same way rather than inherited from the old row's pcm figures.
+
+---
+
 ## Session log — 2026-08-17-develop-a (#485 — the 7-day analytics window rounded everything for four hours a day, and the commit that broke it had measured its *other* half)
 
 **Ask:** owner, 2026-08-16 evening: *"on the telemetry analytics page i have it set to a 7 day

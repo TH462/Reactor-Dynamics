@@ -87,23 +87,56 @@ modelled**; measurements are full stack, `hot_full_power`, free-play lineup.
 
 | # | Coupling | Mechanism | Demonstration |
 |---|---|---|---|
-| **A1** | **Power follows load** | negative **moderator temperature coefficient**, balanced by Doppler | rods to MANUAL, drop generator demand 100 → 60 MWe. **Measured:** power **100 → 57.5 %** with nobody touching the rods, Tavg **579.3 → 602.1 °F (304.1 → 316.7 °C)** |
-| **A2** | **Tavg is the coupling variable** — what the rod controller exists to hold | the rod channel trades Tavg error for rod motion | run A1 with rods in AUTO and compare the excursion (the comparison principle) |
+| **A1** | **Power follows load** | negative **moderator temperature coefficient**, balanced by Doppler | rods **MANUAL** (the shipped free-play lineup), steam dump **shut throughout** — drop generator demand 100 → 80 MWe. **Measured 2026-08-17, both numbers at t+15 min:** power **100.0 → 81.9 %** with nobody touching the rods, Tavg **580.2 → 590.2 °F (304.5 → 310.1 °C)**, net reactivity **+0.03 pcm**. Tavg peaks 590.5 °F (310.3 °C) at t+2 min 45 s, i.e. 0.3 °F above where it settles |
+| **A2** | **Tavg is the coupling variable** — what the rod controller exists to hold | the rod channel trades Tavg error for rod motion | run A1 with rods in AUTO and compare (the comparison principle). **Measured 2026-08-17, same 100 → 80 MWe drop:** AUTO settles power **80.1 %** and Tavg **573.4 °F (300.8 °C)** — the controller walks Tavg *down* the program line, where MANUAL let it rise to 590.2 °F. Same load, **16.8 °F (9.3 °C)** apart |
 | **A3** | **Pressure follows temperature; subcooling is the margin** | the pressurizer holds the primary liquid as Tavg moves | PWR-N15 walks Dump SP and Pressure SP down **together**, holding 63 °F (35 °C) subcooling |
 | **A4** | **Level is not inventory** | shrink/swell; the level *program* moves with Tavg | pzr level rises on a load rejection with inventory unchanged |
 | **A5** | **The SG is the primary's only heat sink** | lose feed and Tavg climbs whatever the rods do | loss of feedwater; AFW starts |
 | **A6** | **A reactor cannot be switched off** | decay heat; subcritical ≠ cooled down | post-scram tail; the Mode 5 cooldown; SBO |
-| **A7** | **Xenon is a slow, invisible reactivity load** | ¹³⁵I decays to ¹³⁵Xe faster than flux burns it out, so poison *builds* after a power cut | run A1 and wait. **Measured:** `xenon_pct_eq` **100.0 → 104.9 %** peaking at **4–5 h**, back through **98.6 %** at 12 h — **−123 pcm** then **+159 pcm**, ~4 % of the 4068 pcm bank. **There is no xenon gauge**: the player sees the rods walk out |
+| **A7** | **Xenon is a slow, invisible reactivity load** | ¹³⁵I decays to ¹³⁵Xe faster than flux burns it out, so poison *builds* after a power cut | run A1 (100 → 80 MWe, rods MANUAL) and wait. **Measured 2026-08-17:** `xenon_pct_eq` **100.0 → 102.1 %** peaking at **4–5 h**, back through **99.3 %** at 12 h — **−53 pcm** into the peak, then **+71 pcm** back out of it, ~1.7 % of the 4068 pcm bank (`xenon_worth` 0.025, so one point of `xenon_pct_eq` is 25 pcm). **There is no xenon gauge**: the player sees the rods walk out |
 | **A8** | **Boron sets WHERE critical is; rods set HOW FAST you get there** | boron is slow, bulk, bank-wide; rods are fast and local | **the live one, and it is board-reachable:** at full power set the BORON target up 618 → 700 ppm and watch. **Measured 2026-08-03, full stack, rods in AUTO:** the control bank withdraws 839 → **912/912 and pegs at its stop** inside ten minutes, then Tavg falls away to **40.6 °F below its own program** because the rod channel has no travel left — 82 ppm of boron outruns the rods entirely, power settles 100 → 75.5 %. *Boron won.* (Also, statically: **#303 record** — 857 ppm → ~561 steps critical, 683 ppm → 319, ~1830 pcm apart.) |
-| **A9** | **The gauge moves the wrong way on the SECONDARY side too** | shrink-and-swell: indicated SG level leads on smoothed `power_rate` — an **instrument** effect (`swell_factor` 0.8, `M1` §8.4), not SG void physics | the A1 load drop. **Measured:** at t+10 s the gauge reads **66.40 %** while truth is **68.85 %** and still *rising* to 70.44 — **−2.45 %**, ~4× the ±0.6 % noise band. Why three-element feed exists |
+| **A9** | **The gauge moves the wrong way on the SECONDARY side too** | shrink-and-swell: indicated SG level leads on smoothed `power_rate` — an **instrument** effect (`swell_factor` 0.8, `M1` §8.4), not SG void physics | **a turbine trip from full power** — *not* the A1 drop, which is far too gentle to show it (see the note below). **Measured 2026-08-17:** at t+6 s the gauge reads **59.73 %** while truth is **69.96 %** and still *rising* to 71.47 — **−10.2 %**, ~10× the measured **±1.0 %** noise band (31 samples of quiet full power: spread −0.55 to +0.96, σ 0.34). Converged again by t+21 s. Why three-element feed exists |
 
-**A1's arithmetic is itself the lesson.** Tavg rose 12.6 °C against a measured MTC of
-**−26.8 pcm/°C** → **−338 pcm**; the fuel *cooled* 693 → 551 °C, and at `alpha_D` **−2.5e-5 K⁻¹**
-that returns **+355 pcm**. They sum to ≈ 0, which is where the plant settled. *The moderator term
-drives power down; the Doppler term comes back as the fuel cools; equilibrium is where they
-cancel.* The actor is the **moderator** coefficient, not the void coefficient — the primary is held
-subcooled, so there is no bulk void. Void *is* the actor on the RBMK (positive) and BWR (negative),
-which is the cross-plant contrast those tiers should carry.
+**A1's arithmetic is itself the lesson.** Tavg rose **10.1 °F (5.6 °C)** against a measured MTC of
+**−26.8 pcm/°C** (`run_reactivity`, at the full-power reference, 618 ppm) → **−150 pcm**; the fuel
+*cooled* **1280 → 1167 °F (693.5 → 630.3 °C)**, a fall of **113.8 °F (63.2 °C)**, and at `alpha_D`
+**−2.5e-5 K⁻¹** that returns **+158 pcm**. They sum
+to **+8 pcm ≈ 0**, which is where the plant settled — and `reactivity_pcm` reads **+0.03** there, so
+the balance is not an argument, it is the state variable. *The moderator term drives power down; the
+Doppler term comes back as the fuel cools; equilibrium is where they cancel.* The actor is the
+**moderator** coefficient, not the void coefficient — the primary is held subcooled, so there is no
+bulk void. Void *is* the actor on the RBMK (positive) and BWR (negative), which is the cross-plant
+contrast those tiers should carry.
+
+> **WHY 80 MWe AND NOT 60, AND WHY EVERY ROW ABOVE NOW STATES ITS LINEUP** *(OWNER RULING,
+> 2026-08-17: selected "100→80 MWe, rods MANUAL" and "Re-author the row" from options I wrote —
+> selections, not verbatim words; #484)*.
+>
+> The row used to read *"rods to MANUAL, 100 → 60 MWe, power 100 → 57.5 %"*. Bisected across 112
+> commits, that measurement was taken when **`rods_tavg` still had `defaultOn`** — the numbers
+> reproduce only with rods in **AUTO**, and #460 made MANUAL the shipped default on 2026-08-11
+> *(OWNER DIRECTIVE, 2026-08-11: "lets start with rods in manual.")*. **The row's stated condition
+> and the lineup it was measured on disagreed**, and nothing re-checked it because it is prose, not
+> a probe. That is the same defect #460's own themes entry names — *inheriting the lineup instead
+> of stating it* — so every measured row above now names the lineup it was taken on.
+>
+> **60 MWe is also the wrong point on the current plant**, for a reason worth knowing before
+> anyone moves it back. With rods MANUAL the steam dump modulates on the standing Tavg error, and
+> between **60 and 74 MWe** it absorbs exactly the load the turbine gives up: reactor power is
+> pinned at **76.3–76.9 % across that whole 15 MWe span** — asking for 15 MWe less moves power
+> **0.6 points**. Below 60 MWe the fast Tavg-error dump mode arms and power *inverts*: 60 MWe →
+> 76.3 %, **59 MWe → 88.4 %**. A demonstration of *"power follows load"* at 60 MWe therefore sat
+> inside a dead band and one megawatt from a 12-point inversion. **Power only tracks load at
+> ≥ 75 MWe, where the dump is shut** — hence 80 MWe, five megawatts clear of the boundary. The
+> dump behaviour itself is filed as **#489** and is not settled here.
+>
+> **Three other numbers on this page were stale the same way** and were re-measured rather than
+> carried: A9's divergence (the row claimed −2.45 % against a ±0.6 % band; the band measures
+> **±1.0 %** and the A1 drop yields only ~−0.5 %, *inside* it — so A9 moved to a turbine trip and
+> states it), A7's xenon swing, and the instrument-lag table below. **A measurement inherits the
+> lineup, the transient AND the sampling rate it was taken at**: the lag row read +2.13 s at 1 s
+> sampling and **+3.49 s at 0.2 s** for the same event, because a first-order lag cannot be
+> resolved by a sample interval near its own time constant.
 
 **A7–A9 were missed by the first draft because it derived from what is DEMONSTRATED**, which
 silently drops every coupling the plant models and no content ever shows (#312). For the RBMK and
@@ -121,24 +154,35 @@ curriculum, not the curriculum — it belongs to Tier C and D.
 instruments rather than truth is what makes the failure scenarios possible at all, and **a HEALTHY
 channel's lag is itself part of the dynamics**, with no failure injected anywhere.
 
-**And the size of that belongs to the CHANNEL, not to the transient** *(measured 2026-08-03 on
-`workbench`, full stack, seed 42, healthy channels throughout — an earlier draft of this paragraph
-said the lag "changes what the operator sees in **every** Tier A transient", which is not what the
-plant does)*. Timing the moment the indicated value crosses a threshold against the moment the
-plant does:
+**And the size of that belongs to the CHANNEL, not to the transient** *(re-measured 2026-08-17,
+full stack, `hot_full_power`, seed 4242, healthy channels throughout, sampled every **0.2 s** at
+**1× acceleration** — an earlier draft of this paragraph said the lag "changes what the operator
+sees in **every** Tier A transient", which is not what the plant does)*. Timing the moment the
+indicated value crosses a threshold against the moment the plant does, by interpolated crossing:
 
 | case | channel (lag) | gauge is behind |
 |---|---|---|
-| **A1 load drop 100 → 60 MWe, Tavg through 590 °F** | `tavg` (**4.0 s**) | **+4.00 s** |
-| A1 load drop, power through 80 % | `power_range` (0.1 s) | +0.00 s |
-| manual scram from HFP, power through 50 % | `power_range` (0.1 s) | +0.00 s |
-| 20 % LOCA, pressure through the **1800 psi reactor trip** | `primary_pressure` (0.5 s) | +0.00 s |
+| **A1 load drop 100 → 80 MWe, Tavg through 585 °F** | `tavg` (**4.0 s**) | **+3.49 s** |
+| A1 load drop, power through 90 % | `power_range` (0.1 s) | **not resolvable** (−0.57 s) |
+| manual scram from HFP, power through 50 % | `power_range` (0.1 s) | +0.08 s |
+| 20 % LOCA, pressure through the **1800 psi reactor trip** | `primary_pressure` (0.5 s) | +0.50 s |
 
-**The slow demonstration shows the largest shift and the fast casualty shows none**, because
-`tavg` carries 40× `power_range`'s lag. The claim holds squarely for **A1** — four seconds on the
-very variable A1 is about — and does not generalise. **Two effects are in play and they are not
-the same**: *timing shift* follows the channel's time constant, while *value divergence* does
-follow transient speed (the LOCA reaches 414 psi and 25.6 °F of it). Cite the right one.
+**The slow demonstration shows the largest shift and the fast casualty shows almost none**, because
+`tavg` carries 40× `power_range`'s lag — and measured, the shifts land at **3.49 s** against
+**0.08 s**, a ratio of 44. Each figure sits at or just under its own channel's time constant, which
+is what a first-order lag on a ramp should do. The claim holds squarely for **A1** — three and a
+half seconds on the very variable A1 is about — and does not generalise.
+
+**Row 2 is a negative result and is left in as one.** On a *gentle* transient `power_range`'s own
+noise moves the crossing further than its 0.1 s lag does, so the measurement comes back **negative**
+— the gauge appearing to cross *before* the plant. That is not a lead; it is the lag being smaller
+than the noise floor of the method. The same channel resolves cleanly on the scram, where the slope
+is steep enough for 0.1 s to matter. **Reporting it as "+0.00 s", as this table did, states a
+measurement where there was only a resolution limit.**
+
+**Two effects are in play and they are not the same**: *timing shift* follows the channel's time
+constant, while *value divergence* does follow transient speed (the LOCA reaches 414 psi and
+25.6 °F of it). Cite the right one.
 
 The observation layer is in scope; *distrust* as a headline lesson is not.
 

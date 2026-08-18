@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **`CURRICULUM.md` Tier A re-measured — the A1 demonstration moves to 100 → 80 MWe** (#484)
+  *(OWNER RULING, 2026-08-17: selected "Re-author the row" and "100→80 MWe, rods MANUAL" from
+  options I wrote — selections, not verbatim words)*. A1 recorded power **100 → 57.5 %** and Tavg
+  **579.3 → 602.1 °F** for a 100 → 60 MWe drop with *"rods to MANUAL"*. Bisected across 112
+  commits, that measurement was taken when `rods_tavg` still had `defaultOn` — it reproduces only
+  with rods in **AUTO**, and #460 made MANUAL the shipped default on 2026-08-11. **The row's
+  stated condition and the lineup it was measured on disagreed**, and nothing re-checked it
+  because it is prose, not a probe.
+
+  60 MWe is also the wrong point on the current plant. With rods MANUAL the steam dump absorbs
+  whatever the turbine gives up: power is pinned at **76.3–76.9 % across the whole 60–74 MWe
+  span**, and below 60 MWe it *inverts* — 60 MWe → 76.3 %, **59 MWe → 88.4 %**. Power only tracks
+  load at **≥ 75 MWe**, where the dump is shut. Filed separately as **#489**; not settled here.
+
+  A1 now reads power **100.0 → 81.9 %**, Tavg **580.2 → 590.2 °F (304.5 → 310.1 °C)**, both at
+  **t+15 min**, net reactivity **+0.03 pcm** — and states its lineup instead of inheriting it. The
+  reactivity arithmetic re-derives: −150 pcm moderator against +158 pcm Doppler, sum ≈ 0.
+
+  **Three further numbers on that page were stale the same way and were re-measured, not carried:**
+  **A2** now carries the measured AUTO comparison (80.1 %, Tavg 573.4 °F — 16.8 °F apart from
+  MANUAL at the same load); **A7**'s xenon swing (100.0 → **102.1 %** peak at 4–5 h, back through
+  **99.3 %** at 12 h); **A9** moved off the A1 drop entirely to a **turbine trip**, because its
+  claimed −2.45 % divergence measures ~−0.5 % on the new drop — *inside* the noise band, which
+  itself measures **±1.0 %**, not the ±0.6 % claimed. On a turbine trip it is **−10.2 %**, ~10× the
+  band. The **instrument-lag table** was re-taken at 0.2 s sampling: `tavg` **+3.49 s**,
+  `primary_pressure` **+0.50 s**, `power_range` **+0.08 s** on a scram and **not resolvable** on a
+  gentle transient, where the channel's own noise exceeds its 0.1 s lag. The table previously
+  reported those as "+0.00 s", which stated a measurement where there was only a resolution limit.
+
 ### Fixed
 - **The ops dashboard's 7-day traffic window returned rounded counts for four hours a day**
   (#485). Every figure on the analytics page read `±10` in the **Exact** column — By day, Top
