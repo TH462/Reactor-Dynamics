@@ -1245,3 +1245,42 @@ owner questions about what this plant HAS, not defects in what it does.**
 recomputed it to 0.49 on the next step and the test read "spray available", which would have
 refuted a correct hypothesis. The trace of the real evolution is what settled it. **Setting a
 derived field by hand tests the setter, not the plant.**
+
+### The cooldown family is GREEN — the driver was fighting its own cooldown (2026-08-17)
+
+The previous entry split the RHR red into a driver defect and a plant-capability gap, and
+recommended the capability question first. **That order was wrong, and fixing the driver
+settled it.**
+
+`_driveCooldown` walked the pressure setpoint down on a fixed ramp — `15.41 − k×0.02` MPa,
+0.02 MPa per 10 s, **0.29 psi/s**. The plant depressurizes an order of magnitude faster, so the
+schedule sat *above* actual pressure and `autoControl` correctly commanded 100 % heaters to
+close the gap. **The driver was undoing its own cooldown**, and it closed the RHR valve it had
+just opened. One clamp — the setpoint may not exceed the plant's own pressure — and a real
+operator's practice (lower the setpoint ahead of the plant, not behind it) is restored. The
+`satGuard` floor is untouched, so the 25 °C subcooling margin is unchanged.
+
+| flag-on `run_pwr` | reds |
+|---|---|
+| before the energy conversion | 8 |
+| after the conversion | 12 |
+| after the solid-branch repairs | 11 |
+| **after this clamp** | **8** |
+
+**All four cooldown reds are gone** — `depressurized below RHR interlock`, `RHR aligned for cold
+cooling`, `returned to cold shutdown`, and `stayed subcooled during cooldown`. The remaining
+eight are the same eight that stood before the conversion began, **now on a model that conserves
+energy exactly and has no pressure rail.** Flag-off `run_pwr` is **37/37** with the change, so it
+passes on both models — HR10's condition for touching a shared driver.
+
+**And it retires one of the two capability questions, for now.** The missing auxiliary spray is
+real — with the RCPs secured the controller demands 12 % and gets 0 — but it **only bites if
+pressure has to come back down after rising**, and with the heaters no longer fighting the
+cooldown it never does. So the aux-spray gap is a genuine finding about what this plant lacks,
+not a blocker: it matters the moment a scenario needs to depressurize with the pumps off, and
+until then it is a documented absence. **The letdown question stands unchanged** — that one is
+upstream of the heatup and still has no actuator behind it.
+
+**The lesson, and it is the same one twice in a row:** I recommended settling the plant-capability
+question first because it looked like the deeper of the two. The cheap driver fix made it moot.
+**Fix the thing you control before asking for a ruling on the thing you don't.**

@@ -2613,7 +2613,18 @@
       if (elapsed >= SETTLE_S && rt < minRateSettled) minRateSettled = rt;
       h.cmd({ action: 'set_steam_dump_setpoint', mpa: Math.max(0.3, h.eng.cfg.steam_generator.steam_dump_setpoint - k * 0.03) });
       var satGuard = Math.pow(Math.max(t.tavg_c + 25, 1) / 179.47, 1 / 0.239);
-      var psp = Math.max(satGuard, 15.41 - k * 0.02);
+      // ...AND NEVER ABOVE THE PLANT'S OWN PRESSURE. The ramp alone falls at 0.02 MPa per
+      // 10 s (0.29 psi/s) and the plant outruns it by an order of magnitude — measured on v2,
+      // pressure reached 214 psia while this schedule still read 2105, so `autoControl`
+      // correctly commanded 100 % HEATERS and drove it back to 1688 psia, closing the RHR
+      // valve that had just opened. The driver was fighting its own cooldown.
+      //
+      // A real operator lowers the setpoint ahead of the plant, not behind it. Clamping to
+      // current pressure is the minimal form of that: the ramp still sets the pace when the
+      // plant is the slower of the two, and the heaters can no longer be commanded to undo a
+      // depressurization that has already happened. `satGuard` still floors it, so the 25 °C
+      // subcooling margin is unchanged.
+      var psp = Math.max(satGuard, Math.min(15.41 - k * 0.02, t.pressure_mpa));
       h.cmd({ action: 'set_pressure_setpoint', mpa: psp });
       if (t.pressure_mpa < 2.6) h.cmd({ action: 'set_spray', pct: 0 });
       else if (psp < t.pressure_mpa - 0.2) h.cmd({ action: 'set_spray', pct: 60 });
