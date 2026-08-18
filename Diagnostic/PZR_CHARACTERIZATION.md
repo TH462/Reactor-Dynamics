@@ -1284,3 +1284,43 @@ upstream of the heatup and still has no actuator behind it.
 **The lesson, and it is the same one twice in a row:** I recommended settling the plant-capability
 question first because it looked like the deeper of the two. The cheap driver fix made it moot.
 **Fix the thing you control before asking for a ruling on the thing you don't.**
+
+### Two attempts on the setpoint legs, both reverted — and what the measurement was worth (2026-08-17)
+
+Neither shipped. Recorded because the measurements stand even though the changes did not.
+
+**The `pressure tracks a lowered setpoint` window.** I extended it 300 → 900 s on the reasoning
+that #419 wave 1 had already made exactly that correction to the *raised* leg, for the same
+stated reason ("a raised setpoint walks up at the REAL slew"). The measurement behind it is
+worth keeping whatever happens to the probe:
+
+| lowering the setpoint 15.41 → 13.0 MPa | reaches it | spray delivered | pzr level |
+|---|---|---|---|
+| **v1 (the shipped plant)** | **75 seconds** | **0.0 %** | **55.0 %, unmoved** |
+| v2 | ~900 s | real flow | 55 → 100 % |
+
+**v1 completes this leg in seventy-five seconds with the spray shut and the level not moving.**
+That is `P_restore_rate_gain` doing the whole thing — one of the purest demonstrations of the
+term the rebuild exists to delete, and the 300 s window was calibrated against it.
+
+**Why it was reverted anyway: it only moved the red.** With 900 s the lowered leg goes green and
+the RAISED leg fails — 12.96 → 12.96 MPa — because v2's node has gone water-solid on the way
+down (spray adds inventory the loop never loses, the #474 seam) and a solid node cannot be
+repressurized by the heaters.
+
+**The second attempt was the obvious fix for that, and it was worse.** Heating trapped water in
+a rigid vessel *must* raise pressure through the bulk modulus — that is why you do not heat a
+solid pressurizer — so I added the thermal-expansion term the solid branch was missing:
+`dV_therm = m_liq·(1/ρ(T_new) − 1/ρ(T_old))`. Correct physics. **Flag-on went 8 reds → 12**, with
+pressure now RISING on a lowered setpoint (15.41 → 16.97) and the heatup stalling at 84.6 °C of
+rise. The term is right and the regime it landed in is an artifact: the node is only solid
+because spray filled it, and putting a real positive feedback on top of an artifact amplifies
+the artifact. **That is the #334 shape — a term added without the mechanism it depends on** —
+and the standing rule about measuring the regime before declaring a simplification, met from the
+other direction.
+
+**Reverted to `4abee1a`, 8 reds, gates green.** The two findings that survive: v1's 75-second
+teleport on this leg, and the fact that **v2's node goes solid during a spray-driven
+depressurization at all**, which is the node/loop mass seam and belongs to #474. The solid
+branch's missing thermal-expansion response is real and should go in **after** that seam, not
+before it.
