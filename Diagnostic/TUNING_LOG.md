@@ -29,6 +29,52 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-17-develop-c (#489 — the dump latch's RESET has a premise, and #460 deleted it; three artifacts now found resting on the same dead assumption)
+
+**Ask:** owner, 2026-08-17, on options I wrote — regime 3 *"Accept and document it"*, regime 2
+*"Defer to the PWR2 rebuild (#479)"*. **Gates:** `run_all` 49 runners at baseline. **Landed:**
+`DESIGN_COMPANION` §8.30 extended, catalog **TR-1m** added (DOCUMENTED, not probed), the
+`dump_reject_clear_mwe` comment, and the regime-2 acceptance case handed to #479 by comment.
+**No behaviour change anywhere** — both rulings are records.
+
+**The finding.** `#489` was filed saying *"nothing un-arms it once Tavg cannot recover"*. Wrong,
+and the correction is the whole entry. There **is** an auto-reset — `pwr_steam_generator.js:233-235`,
+`dump_reject_clear_mwe: 10.0` — and it clears on `|load_imbalance_mwe| < 10`, which the code
+comment glosses as *"the reactor has come back to meet the load, so the ride-out is over"*.
+
+**What brings the reactor back is the rod controller.** #460 took `rods_tavg` out of the shipped
+free-play lineup on 2026-08-11. Measured 2026-08-17, rods MANUAL: a 100 → 59 MWe rejection settles
+the reactor at **88.4 %** against a 59 MWe target — imbalance ~**29 MWe**, never re-entering the
+10 MWe window, dump pegged at its 28 % cap for the full 45-minute ride. The latch is **unclearable
+in the shipped lineup** for any rejection past 40 MWe.
+
+**Traps.**
+
+- **A premise ages independently of the design resting on it, and NOTHING re-checks a premise.**
+  This is the third artifact found in two days resting on *"rods are in AUTO"* after #460 removed
+  it: the **A1 curriculum row** (#484), **#460's own five reds**, and now **this latch**. The
+  pattern is not "someone made a mistake" — each was correct when written. **When a ruling changes
+  a default, the work is to enumerate what CONSUMES that default**, and nothing in this repo can do
+  that automatically: the consumers are prose, config comments and a conditional in another file.
+- **Read the neighbouring constant before you call something missing.** `dump_reject_clear_mwe` is
+  the line directly below `dump_load_reject_mwe`, which I had already read and quoted in the issue.
+  I filed "there is no reset" having stopped one constant short.
+- **The declared-simplification register had already priced this trade, and I recommended half of
+  it.** My recommendation was to build the operator RESET the real plant has (sourced verbatim,
+  WTSM §11.2). **`DESIGN_COMPANION` §8.30 explicitly forbids exactly that** — the auto-clear and
+  §8.21's 40 MWe arm are *one* decision, and the real plant can afford a 10 %-step arm only
+  *because* a human de-arms it; building the reset alone re-opens the #219 cliff ruling from the
+  other side. **The register is not a history file — it is a list of decisions that constrain the
+  next one, and I had not read it before recommending.** The owner's "accept and document" was the
+  better call and this is why.
+- **A declared simplification that is not PROBED can move silently** — §8.21's own argument, and
+  TR-1m is currently documented-only. Flagged in the row itself rather than left implicit.
+- **Do not edit another lane's tree to file a record.** The PWR2 docs are all in `RD_backshop`;
+  the regime-2 acceptance case went onto **#479 as a comment** instead, which is the tracked unit
+  of work and the thing the next backshop session actually reads.
+
+---
+
 ## Session log — 2026-08-17-develop-b (#484/#489 — the A1 teaching row was measured on a lineup that no longer ships, and the point it teaches at sits in a dead band)
 
 **Ask:** owner, 2026-08-17, on three options I wrote: re-author the row, move the demonstration,

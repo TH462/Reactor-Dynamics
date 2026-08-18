@@ -30,6 +30,31 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Documented
+- **The steam-dump load-rejection latch cannot clear with the rods in MANUAL** (#489) *(OWNER
+  RULING, 2026-08-17: selected "Accept and document it" from options I wrote — a selection, not
+  verbatim words)*. **Ruled accepted; no behaviour changed.** The latch clears on
+  `|load_imbalance_mwe| < dump_reject_clear_mwe` (10 MWe) — *the reactor has come back to meet the
+  load* — and what brings it back is the rod controller, which **#460** took out of the shipped
+  free-play lineup on 2026-08-11. Measured: a 100 → 59 MWe rejection settles the reactor at
+  **88.4 %** against a 59 MWe target, an imbalance of ~29 MWe that never re-enters the reset
+  window, so the dump stays pegged at its 28 % cap indefinitely (~29 MWt to the condenser at
+  steady state, ridden 45 min). Power is non-monotonic across the arm: 60 MWe → 76.3 %,
+  **59 MWe → 88.4 %**, a 12.1-point *rise* for one megawatt less demand. With rods in AUTO the
+  latch clears normally and none of it appears.
+
+  Accepted rather than fixed because the fix is not available in isolation: `DESIGN_COMPANION`
+  §8.30 already records that this auto-clear and §8.21's 40 MWe arm threshold are **one trade** —
+  the real plant can afford a far more sensitive arm only because a human de-arms it, so building
+  the operator RESET without the sourced sensitive arm re-opens the #219 cliff ruling from the
+  other side. Recorded at §8.30, at the constant, and as catalog **TR-1m** (documented, **not yet
+  probed**).
+
+  Separately, the 60–74 MWe **dead band** — where the dump absorbs whatever the turbine gives up
+  and reactor power moves 0.6 points for 15 MWe of load — is **deferred to the PWR2 rebuild**
+  *(OWNER RULING, 2026-08-17: selected "Defer to the PWR2 rebuild (#479)")* and handed to #479 as
+  an acceptance case with the full load sweep.
+
 ### Changed
 - **`CURRICULUM.md` Tier A re-measured — the A1 demonstration moves to 100 → 80 MWe** (#484)
   *(OWNER RULING, 2026-08-17: selected "Re-author the row" and "100→80 MWe, rods MANUAL" from

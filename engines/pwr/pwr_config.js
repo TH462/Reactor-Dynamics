@@ -1714,6 +1714,23 @@
       // design is WHY it can be that sensitive without venting forever, which
       // is the exact trade the §8.21 ruling (#219) weighed from the other side.
       // Value UNVERIFIED.
+      //
+      // AND SINCE #460 IT CANNOT FIRE AT ALL IN THE SHIPPED LINEUP. The clear asks whether
+      // the reactor has come back to meet the load, and what brings it back is the rod
+      // controller — which #460 (2026-08-11) took out of free play. Measured 2026-08-17,
+      // full stack, rods MANUAL: a 100 -> 59 MWe rejection settles the reactor at 88.4 %
+      // against a 59 MWe target, an imbalance of ~29 MWe that never re-enters this 10 MWe
+      // window, so the dump stays pegged at its 28 % cap indefinitely (ridden 45 min).
+      // Power is non-monotonic across the arm: 60 MWe -> 76.3 %, 59 MWe -> 88.4 %.
+      //
+      // This is the constant's PREMISE aging out, not a coding error — the same commit
+      // invalidated a Tier A curriculum row (#484) and five probes. RULED ACCEPTED
+      // 2026-08-17 (#489; owner selected "Accept and document it" from options I wrote —
+      // a selection, not verbatim words), because the fix is not available in isolation:
+      // DESIGN_COMPANION §8.30 records that this auto-clear and §8.21's arm threshold are
+      // ONE trade, and that building the operator RESET without the sourced sensitive arm
+      // re-opens the #219 cliff ruling. Catalog TR-1m, DOCUMENTED but NOT PROBED.
+      // With rods in AUTO the clear fires normally and none of this appears.
       dump_reject_clear_mwe: 10.0,
     },
 
