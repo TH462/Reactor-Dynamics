@@ -31,6 +31,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Documented
+- **Behaviour probe TR-1m pins the load-rejection latch — and is built to RED when it is fixed**
+  (#489). The state ruled accepted below now has a probe, because on §8.21's own argument a
+  declared simplification that nothing pins can move silently. `run_behavior` **72 → 73 pass**.
+
+  Three legs: rods **MANUAL** sticks (88.4 % against a 59 MWe target, dump on its 28 % cap,
+  imbalance 29.1 MWe, still armed 1200 s later); rods **AUTO** clears (58.7 %, dump reseated) —
+  the control that names the cause as the rod lineup rather than the arm threshold; and one MWe
+  the other side of the arm pins the non-monotonicity as a **span**, 76.7 % → 88.4 %, **+11.7
+  points for one megawatt less demand**.
+
+  Its semantics are deliberately inverted: injecting a reset window the latch can reach makes it
+  go red and collapses the inversion to −0.1 points. So the day `DESIGN_COMPANION` §8.30's
+  operator RESET is built, this probe is what says the register entry and the catalog row retire
+  together. Injection-verified five ways.
+
 - **The steam-dump load-rejection latch cannot clear with the rods in MANUAL** (#489) *(OWNER
   RULING, 2026-08-17: selected "Accept and document it" from options I wrote — a selection, not
   verbatim words)*. **Ruled accepted; no behaviour changed.** The latch clears on

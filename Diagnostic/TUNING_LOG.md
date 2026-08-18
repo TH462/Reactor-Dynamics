@@ -29,6 +29,51 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-18-develop-a (#489 — TR-1m: pinning a simplification you have decided NOT to fix, so that fixing it is what breaks the gate)
+
+**Ask:** owner, 2026-08-18: *"Next"* — i.e. proceed with the recommendation left outstanding the
+night before, the probe for the declared simplification ruled at #489. **Gates:** `run_all` 49
+runners at baseline; `run_behavior` **72 → 73 pass**. **Landed:** probe **TR-1m** in
+`test/behavior_pwr.js`, the catalog row promoted DOCUMENTED → PASS. **No behaviour change.**
+
+**What it pins.** TR-1m asserts a state the project has ruled it does not want to fix: with the
+rods in MANUAL — the shipped lineup — an armed load rejection never stands down. Measured at
+engine+M4, matching the full-stack figures that produced the ruling: leg A settles **88.4 %**
+against a 59 MWe target with the dump on its 28 % cap and an imbalance of **29.1 MWe**, ten times
+the 10 MWe reset window, still armed 1200 s later.
+
+**Three legs, and the middle one is the argument.** Leg B is the same rejection with rods AUTO:
+the latch clears, the dump reseats, power tracks the load at 58.7 %. Without leg B the probe would
+be consistent with the arm threshold being wrong; with it, the cause is named as the lineup. Leg C
+sits one MWe the other side of the arm and lets the non-monotonicity be asserted as a **SPAN**
+(76.7 % at 61 MWe → 88.4 % at 59 MWe, **+11.7 pts**) rather than as two absolute numbers that
+could drift together and still pass.
+
+**Traps.**
+
+- **A probe for an ACCEPTED simplification has inverted semantics, and that has to be deliberate.**
+  Normally a probe reds when the plant breaks. This one reds when the plant is **fixed** — injected
+  a reset window the latch can actually reach and it goes red in four places, the inversion
+  collapsing from +11.7 to **−0.1 pts**. That is correct and is stated in the row: the day someone
+  builds §8.30's operator RESET, this probe is the thing that tells them the register entry and the
+  catalog row now need retiring together. A declared simplification with no pin can move silently
+  (§8.21's own argument); a declared simplification with a pin announces its own repeal.
+- **Injection is what separates "green" from "asserting".** Five injections, all caught: a reachable
+  reset window, leg A silently switched to rods AUTO (proving the lineup is load-bearing and not
+  decoration), the arm moved so nothing arms at all, leg C moved to the SAME side of the arm so
+  there is no inversion left to find, and the dump cap lowered so *"parked on its cap"* has to be
+  re-read from config rather than assumed at 28.
+- **Check that an injection FAILED AN ASSERTION rather than crashed.** My harness scored CAUGHT off
+  the exit code alone and printed no failing lines — its `✗` regex missed an ANSI reset. A crash and
+  a red look identical to an exit code, so one injection was re-run by hand to read the actual
+  check output before the result was believed.
+- **The layer was re-measured, not carried.** The ruling's numbers came from `measure_stack`
+  (full stack); this probe runs engine+M4. They agree here (88.4 / 29.1 / +11.7), but that was
+  checked rather than assumed — the two layers are different plants and this suite is the one that
+  looks full-stack and is not.
+
+---
+
 ## Session log — 2026-08-17-develop-c (#489 — the dump latch's RESET has a premise, and #460 deleted it; three artifacts now found resting on the same dead assumption)
 
 **Ask:** owner, 2026-08-17, on options I wrote — regime 3 *"Accept and document it"*, regime 2
