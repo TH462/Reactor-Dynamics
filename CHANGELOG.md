@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.6.1] — 2026-08-18
+
 ### Documented
 - **Behaviour probe TR-1m pins the load-rejection latch — and is built to RED when it is fixed**
   (#489). The state ruled accepted below now has a probe, because on §8.21's own argument a

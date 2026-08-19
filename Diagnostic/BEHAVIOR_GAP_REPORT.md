@@ -6,7 +6,7 @@ re-run the battery to refresh. Each row is a catalog behavior the sim does
 not yet exhibit — observed vs required, with the catalog §8 decision that
 covers the fix.
 
-Battery result: 73 pass, 1 known gaps (xfail).
+Battery result: 74 pass, 1 known gaps (xfail).
 
 ## CA-20b — CA-20b a small break holds its plateau — the STEAM GENERATORS hold the primary up (#451)
 *Known gap:* the small-break plateau was HEATER-HELD (pwr_config #363 note: "it pins NOTHING … the heaters are winning against the break"). #447 sheds the heaters on SI per NUREG-0737 II.E.3.1 (7), and nothing else holds the primary at its heat sink. MEASURED (Phase 1, #451): the dominant term is the cold-ECCS quench, NOT the SG and not the break flash term — `eccs_cooling_gain` 1.0 is ~2x true enthalpy mixing INTO THIS NODE (231 MJ/°C carries the metal; one RCS mass of water is ~113, so the physical gain is 0.489). The primary is driven 266 psi below its own heat sink and then drains the secondary through the 5 % reverse path to 202 psi. See #451.

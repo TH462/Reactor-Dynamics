@@ -166,6 +166,20 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Cold shutdown starts with the rods in</h2>
+      <span class="log-ver mono">Alpha 1.6.1</span>
+      <time class="log-date mono" datetime="2026-08-18">18 August 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>Cold shutdown now starts with the shutdown bank inserted.</strong> Withdrawing it is a step in the startup procedure. Loading Mode 5 and driving to Mode 5 now give the same plant.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The turbine rolls at 10&ndash;15 % power</strong>, not below 5 %. The steam dumps already pass that flow, so total steam flow barely changes as the governor valves open.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Shutdown cooling can no longer be aligned during a safety injection.</strong> The same pumps do both jobs, and aligning mid-accident gave the full shutdown-cooling heat sink through heat exchangers that have no cooling in that lineup.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Manuals at Revision 16.</strong> Shutdown margin is defined, and pressures are marked psia or psig.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>The control room, rebuilt</h2>
       <span class="log-ver mono">Alpha 1.6.0</span>
       <time class="log-date mono" datetime="2026-08-12">12 August 2026</time>
