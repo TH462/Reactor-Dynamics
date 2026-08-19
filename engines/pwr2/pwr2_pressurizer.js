@@ -119,7 +119,22 @@
      * Spray needs a running RCP: the driving head is the loop dP the pump makes (WTSM 3.2,
      * and #472's measured lesson). Auxiliary spray from CVCS is stage 2. */
     max_kgs: 3.45,
-    needs_rcp: true
+    needs_rcp: true,
+    /* AUXILIARY SPRAY (stage 2c, 2026-08-19) — WTSM 3.2: "A flow path from the CVCS to the
+     * pressurizer spray line is also provided. This connection provides auxiliary spray to the
+     * vapor space of the pressurizer during cool down if the reactor coolant pumps are not
+     * operating." An OPERATOR command (drivers.aux_spray), never automatic — it is a cooldown
+     * procedure action — and it deliberately does NOT need the RCPs: charging pumps drive it,
+     * which is its whole reason to exist (#472 measured the old engine lacking exactly this:
+     * RCPs secured, spray demanded 12 %, delivered 0).
+     * aux_max_kgs is the CVCS charging maximum (29.4 gpm volume-scaled, at charging-water
+     * density) — THE SAME PHYSICAL NUMBER pwr2_cvcs derives, written down twice, which is the
+     * protection-cadence failure mode; the GATE ties the two together so they cannot drift
+     * apart silently. aux_water_c is VCT-temperature charging water [derived ~55 degC]: the
+     * per-kg condensing duty is h_f(P) − h_l(55, P), several times the loop-water spray's,
+     * on a quarter of the flow. */
+    aux_max_kgs: 1.83,
+    aux_water_c: 55
   };
 
   var CONTROL = {
@@ -335,6 +350,9 @@
                                                        : sprayAuto;
     if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;   /* no RCP head, no spray */
     if (pz.waterSolid) sprayFrac = 0;                               /* no steam to condense */
+    /* Auxiliary spray: operator-commanded, RCP-independent (see the SPRAY block). */
+    var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);
+    if (pz.waterSolid) auxFrac = 0;
 
     /* ---- 3. RELIEF: controller PORV at +100 psi, mechanical safeties at 2500 psia. Both act
      * on their own (HR5: plant hardware) and are REPORTED for the caller to wire as a sink.
@@ -384,6 +402,11 @@
         Q_spray_kW = m_spray * (hf - h_cold);              /* condensing duty, energy only */
       }
     }
+    var m_aux = auxFrac * SPRAY.aux_max_kgs, Q_aux_kW = 0;
+    if (m_aux > 0) {
+      Q_aux_kW = m_aux * (hf - W.h_l(SPRAY.aux_water_c, P));   /* VCT-cold water, energy only */
+      Q_spray_kW += Q_aux_kW;
+    }
     H += dt * (Q_heat_kW - Q_spray_kW);
     if (relief_kgs > 0) {
       pz.m_pzr -= relief_kgs * dt;
@@ -410,6 +433,9 @@
       spray_frac: sprayFrac,
       spray_kgs: m_spray,
       spray_duty_kW: Q_spray_kW,
+      aux_spray_frac: auxFrac,
+      aux_spray_kgs: m_aux,
+      aux_spray_duty_kW: Q_aux_kW,
       porv_open: pz.porvOpen || (pz.porvStuck && pz.blockOpen),
       porv_stuck: pz.porvStuck,
       block_valve_open: pz.blockOpen,

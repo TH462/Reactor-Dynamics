@@ -52,6 +52,7 @@ var DOC = {
   lo_flow: 0.87,
   si_pzr_psia: 1715.0, si_steam_psia: 327.7,
   steam_flow: 1.55,
+  hi_pzr_level: 0.87, p7_frac: 0.10,
   lead_s: 12.0, lag_s: 2.0,
   d_press: 2.0, d_flux: 0.5, d_flow: 1.0,
   psia_per_mpa: 145.0377,
@@ -63,7 +64,7 @@ var DT = 0.02;
  * driven from this, and every "does trip" check perturbs exactly one of them. */
 function healthy() {
   return { pressure_mpa: 15.41, power_frac: 1.0, flow_frac: 1.0,
-           steam_pressure_mpa: 5.688, steam_flow_frac: 1.0 };
+           steam_pressure_mpa: 5.688, steam_flow_frac: 1.0, pzr_level_frac: 0.615 };
 }
 /* ⚠ A PLANT AT POWER HAS THE LOW FLUX TRIP BLOCKED, and a fixture must SAY SO rather than
  * inherit it. The Power Range Neutron Flux-LOW setting is 35 % RTP — a plant at 100 % is
@@ -167,7 +168,8 @@ function runSuite(P, rec, quiet) {
     ['hi_flux_hi',        'power_frac',         DOC.flux_hi + 0.05,                       'rps'],
     ['lo_flow',           'flow_frac',          DOC.lo_flow - 0.05,                       'rps'],
     ['si_lo_pzr_press',   'pressure_mpa',       DOC.si_pzr_psia / DOC.psia_per_mpa - 0.5, 'esfas'],
-    ['hi_hi_steam_flow',  'steam_flow_frac',    DOC.steam_flow + 0.05,                    'esfas']
+    ['hi_hi_steam_flow',  'steam_flow_frac',    DOC.steam_flow + 0.05,                    'esfas'],
+    ['hi_pzr_level',      'pzr_level_frac',     DOC.hi_pzr_level + 0.05,                  'rps']
   ];
   CASES.forEach(function (c) {
     var pr = atPower();
@@ -197,6 +199,34 @@ function runSuite(P, rec, quiet) {
   ckT('...and with the block IN, the high setting still trips',
       rB2.reactor_trip === true && rB2.trip_cause === 'hi_flux_hi',
       'blocking the startup trip must not blind the plant at power');
+
+  /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19) ---------------------------------
+   * WTSM 10.3.4.3: an AT-POWER trip, "only active if either reactor power or turbine power is
+   * 10% or greater". Ginna's 87 % setpoint (TS Bases B 3.4.9). Unlike P-10 there is no operator
+   * request in P-7 -- a plain automatic gate -- so the two permissives are DIFFERENT shapes on
+   * purpose, and the checks pin both sides of the gate plus graceful absence of the reading. */
+  head('THE HIGH-LEVEL TRIP  [at-power via P-7 -- a plain gate, not a revoked request]');
+  ck("the setpoint is Ginna's 87 %", P.RPS.hi_pzr_level_frac, DOC.hi_pzr_level, 0, 'frac');
+  ck('P-7 is the sourced 10 %', P.P7.frac, DOC.p7_frac, 0, 'frac');
+  var sHiL = withReading('pzr_level_frac', 0.92);
+  sHiL.power_frac = 0.05;                              /* below P-7: the trip is NOT ACTIVE */
+  var rP7lo = ride(P.createProtection({}), sHiL, 10);
+  ckT('92 % level BELOW P-7 does not even assert -- the at-power gate is real',
+      fn(rP7lo, 'hi_pzr_level').asserted === false && rP7lo.reactor_trip === false &&
+      rP7lo.p7_met === false,
+      "a solid-bound pressurizer at 5 % power is the LTOP/heatup regime, not this trip's");
+  var sHiL2 = withReading('pzr_level_frac', 0.92);
+  sHiL2.power_frac = 0.12;                             /* above P-7, below every flux setpoint */
+  var rP7hi = ride(P.createProtection({}), sHiL2, 10);
+  ckT('...and the SAME level at 12 % power trips, on this function and no other',
+      rP7hi.reactor_trip === true && rP7hi.trip_cause === 'hi_pzr_level' && rP7hi.p7_met === true,
+      'held ' + fn(rP7hi, 'hi_pzr_level').held_s.toFixed(1) + ' s past the 2.0 s [open] delay');
+  var sNoL = healthy();
+  delete sNoL.pzr_level_frac;
+  var rNoL = ride(atPower(), sNoL, 5);
+  ckT('a plant with NO level reading reports the function UNAVAILABLE, not untripped-forever',
+      fn(rNoL, 'hi_pzr_level').available === false && rNoL.reactor_trip === false,
+      'the optional-reading convention: absence is reported, never silently healthy');
 
   /* ---- P-10, AND ITS ASYMMETRY IS THE POINT ---------------------------------------------
    * Ginna TS Bases B 3.3.1: the block is MANUAL and only PERMITTED above ~8 % RTP; the unblock
@@ -390,6 +420,15 @@ runSuite(P, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the P-7 at-power gate is deleted (the high-level trip fires during heatup)',
+   '        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;',
+   ''],
+  ['the high-level setpoint drifts 87 -> 95 %',
+   '    hi_pzr_level_frac:  0.87,',
+   '    hi_pzr_level_frac:  0.95,'],
+  ['the high-level trip function is deleted from the table',
+   "      { id: 'hi_pzr_level', name: 'High pressurizer level', kind: 'rps', dir: +1,\n        sp: RPS.hi_pzr_level_frac, unit: 'frac', read: 'pzr_level_frac',\n        delay: DELAY.hi_pzr_level, atPower: true },",
+   ''],
   ['a healthy plant TRIPS -- the comparison direction is inverted',
    '        asserted = f.dir > 0 ? (value >= f.sp) : (value <= f.sp);',
    '        asserted = f.dir > 0 ? (value <= f.sp) : (value >= f.sp);'],

@@ -159,6 +159,27 @@ function runSuite(RD, rec, quiet) {
   ckT('spray needs a running RCP -- stopped loop, no spray at any error',
       PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 0), DT, {}).spray_frac === 0,
       'the driving head is the pump\'s (WTSM 3.2, #472\'s measured lesson)');
+  /* AUXILIARY SPRAY (stage 2c): the CVCS path that works EXACTLY when main spray cannot --
+   * "auxiliary spray to the vapor space ... during cool down if the reactor coolant pumps are
+   * not operating" (WTSM 3.2). Operator-commanded, never automatic. */
+  var rAux = PZ.stepPressurizer(PZ.createPressurizer({}), stub(15.41, 0), DT, { aux_spray: 1.0 });
+  ckT('AUX spray condenses with the RCPs STOPPED -- the capability #472 measured missing',
+      rAux.spray_frac === 0 && rAux.aux_spray_frac === 1 && rAux.aux_spray_duty_kW > 1000,
+      rAux.aux_spray_duty_kW.toFixed(0) + ' kW of VCT-cold condensing duty on ' +
+      rAux.aux_spray_kgs.toFixed(2) + ' kg/s -- main spray dead at zero loop flow');
+  /* THE DUPLICATED CONSTANT, PINNED (the protection-cadence / MDOT_RATED pattern): aux capacity
+   * is the CVCS charging maximum written down twice; the gate owns the consistency claim. */
+  var auxTie = CV.CVCS.charging_max_gpm() * 6.30902e-5 *
+               W.rho_l(PZ.SPRAY.aux_water_c, 15.41);
+  ck('aux capacity IS the CVCS charging maximum at charging-water density',
+     PZ.SPRAY.aux_max_kgs, auxTie, 0.06, 'kg/s');
+  ckT('...and a SOLID vessel zeroes aux spray too -- no steam space, nothing to condense',
+      (function () {
+        var pzS2 = PZ.createPressurizer({ level_frac: 0.999999 });
+        pzS2.h_bar = W.h_l(340, 15.41);
+        PZ.stepPressurizer(pzS2, stub(15.41, 0), DT, {});   /* flags update on first step */
+        return PZ.stepPressurizer(pzS2, stub(15.41, 0), DT, { aux_spray: 1.0 }).aux_spray_frac === 0;
+      })(), '');
   ckT('SI SHEDS THE HEATERS (NUREG-0737 II.E.3.1 (7), the #447 requirement)',
       once(-40, { si_active: true }).heater_kW === 0 &&
       once(-40, { si_active: true }).heaters_shed === true,
@@ -443,7 +464,13 @@ var MUTATIONS = [
    ''],
   ['the tailpipe cools as fast as it heats (the deceptive half deleted)',
    'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;',
-   'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_heat_s;']
+   'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_heat_s;'],
+  ['the aux-spray command is dead',
+   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = 0;'],
+  ['aux spray gated on the RCPs (its reason to exist, inverted)',
+   'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);',
+   'var auxFrac = !(sys.mdot_loop > 100) ? 0 : (drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1));']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

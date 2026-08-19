@@ -2499,3 +2499,30 @@ Shim: `porv_stuck`, `block_valve_open`, `porv_tailpipe_temp_c` supplied (67 of 1
 tailpipe-never-heats, symmetric-tailpipe all red); quiet-mode rides trimmed to keep the
 19-replay self-test under the runner budget. Stage 2 remainder: two-h stratified states, aux
 spray, the high-level trip function in `pwr2_protection`.
+
+## 46. STAGE 2c — THE HIGH-LEVEL TRIP AND AUXILIARY SPRAY — 2026-08-19
+
+**The high pressurizer level trip**, in `pwr2_protection` where it belongs: Ginna's **87 %**
+(TS Bases B 3.4.9 — the same 650 ft³ point the level instrument's own trip flag uses), delay
+2.0 s ([open] — not in the 15.0-6 delay set; matches the pressure channels), gated by **P-7**
+(WTSM 10.3.4.3: *"only active if either reactor power or turbine power is 10% or greater"*).
+P-7 is deliberately a **plain automatic gate, not a revoked request** — there is no operator
+anywhere in it, so the P-10 revoke-not-gate lesson does not transfer, and the two permissives
+being different shapes is itself sourced. Pinned on both sides: 92 % level at 5 % power does
+not even assert (a solid-bound vessel during heatup is LTOP's regime, not this trip's); the
+same level at 12 % trips on this function alone; a plant with no level reading reports the
+function UNAVAILABLE rather than silently healthy. `run_pwr2_protection` 57 → 64 checks,
+mutations 24 → 27 (P-7 deleted, setpoint drift, function deleted — all red).
+
+**Auxiliary spray**, in the vessel: WTSM 3.2 verbatim — *"auxiliary spray to the vapor space
+of the pressurizer during cool down if the reactor coolant pumps are not operating"* — the
+capability #472 measured the old engine lacking (RCPs secured, spray demanded 12 %, delivered
+0). Operator-commanded (`drivers.aux_spray`), never automatic, RCP-independent by its whole
+point, zeroed water-solid. Capacity is the CVCS charging maximum at VCT-cold water density
+(1.83 kg/s — **the same physical number `pwr2_cvcs` derives, written down twice**, tied by
+the gate per the MDOT_RATED pattern); per-kg condensing duty h_f − h_l(55 °C) gives
+**2,533 kW** at design pressure on a quarter of main spray's flow. `run_pwr2_pressurizer`
+56 → 59 checks, mutations 19 → 21 (command-dead, gated-on-RCPs both red).
+
+Stage 2 remainder: the two-h stratified vessel states — the last and deepest piece, which
+re-measures everything above it and is deliberately sequenced last.

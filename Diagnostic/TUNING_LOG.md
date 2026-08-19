@@ -29,6 +29,30 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-d (#479 stage 2c — the high-level trip and auxiliary spray)
+
+**Ask:** autonomous continuation of the ruled Option 1 stage 2 — the two remaining small
+sourced pieces. **Gates:** `run_pwr2_protection` 64 checks / 27 mutations,
+`run_pwr2_pressurizer` 59 / 21, `run_all --fast` at baseline. **Detail:**
+`PWR2_VALIDATION.md` §46.
+
+**The high pressurizer level trip** (Ginna 87 %, TS Bases B 3.4.9) landed in
+`pwr2_protection`, gated by **P-7** (WTSM 10.3.4.3, at-power ≥ 10 %). **⚠ The permissive-shape
+trap, named**: P-7 is a PLAIN automatic gate — no operator request exists anywhere in it — so
+the P-10 revoke-not-gate lesson deliberately does NOT transfer; modelling every permissive the
+same way would have been the real error. Pinned both sides (92 % level at 5 % power does not
+even assert; at 12 % it trips alone), and the function first landed with ZERO coverage — the
+gate passed 57/57 untouched, the coreRegime lesson repeating to the letter — before the checks
+and three mutations went in.
+
+**Auxiliary spray** (WTSM 3.2 verbatim) landed in the vessel: operator-commanded,
+RCP-independent by its whole point — 2,533 kW of VCT-cold condensing duty with the loop
+STOPPED, where main spray is dead. Capacity is the CVCS charging max written down twice and
+TIED BY THE GATE (the MDOT_RATED pattern).
+
+**Stage 2 remainder:** the two-h stratified vessel states only — the deepest piece, sequenced
+last because it re-measures everything above it.
+
 ## Session log — 2026-08-19-backshop-c (#479 stage 2b — the TMI levers, and the deception emerges unscripted)
 
 **Ask:** autonomous continuation of the ruled Option 1 stage 2 — the drained/TMI machinery.

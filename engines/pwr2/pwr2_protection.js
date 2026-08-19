@@ -94,7 +94,25 @@
     hi_flux_lo_frac:    0.35,
     hi_flux_hi_frac:    1.18,
     lo_flow_frac:       0.87,
-    src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6'
+    /* stage 2b (2026-08-19): the HIGH PRESSURIZER LEVEL trip. Ginna TS Bases B 3.4.9
+     * (ML20339A221): "the upper limit is the same as the Pressurizer High Level Trip" -- the
+     * 650 ft3 / 87 % point this engine's vessel already carries. WTSM 10.3.4.3 gives the
+     * generic function's SHAPE: 2-of-3 level channels, "to protect the RCS pressure boundary
+     * by tripping the reactor before the pressurizer completely fills", "at a value low enough
+     * to prevent the discharge of water through the pressurizer safety valves", and it is an
+     * AT-POWER trip -- "only active if either reactor power or turbine power is 10% or greater
+     * ('at-power permissive' P-7)". The 4-loop plant's 92 % is noted; Ginna's 87 % is carried
+     * (the anchor plant, and the same number the level instrument's own trip flag uses). */
+    hi_pzr_level_frac:  0.87,
+    src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6; hi level Ginna TS Bases B 3.4.9 + WTSM 10.3.4.3'
+  };
+  /* P-7, the at-power permissive gating the high-level trip. UNLIKE P-10 there is no operator
+   * request anywhere in it -- below 10 % power the function is simply not active, above it is
+   * -- so it is a plain automatic gate, not a revoked request. WTSM 10.3.4.3 verbatim. */
+  var P7 = {
+    kind: '[sourced]',
+    frac: 0.10,
+    src: 'WTSM 10.3 (ML11223A290) sec 10.3.4.3'
   };
   var ESFAS = {
     kind: '[sourced]',
@@ -134,6 +152,7 @@
     hi_pzr_press: 2.0, lo_pzr_press: 2.0,
     hi_flux_lo:   0.5, hi_flux_hi:   0.5,
     lo_flow:      1.0,
+    hi_pzr_level: 2.0,         /* [open] -- not in the 15.0-6 delay set; matches the pressure channels */
     si_lo_pzr_press: 2.0,      /* see the note below — the table's column is ambiguous here */
     si_lo_steam_press: 2.0,
     hi_hi_steam_flow: 2.0
@@ -181,6 +200,9 @@
         sp: RPS.hi_flux_hi_frac, unit: 'frac', read: 'power_frac', delay: DELAY.hi_flux_hi },
       { id: 'lo_flow', name: 'Low reactor coolant loop flow', kind: 'rps', dir: -1,
         sp: RPS.lo_flow_frac, unit: 'frac', read: 'flow_frac', delay: DELAY.lo_flow },
+      { id: 'hi_pzr_level', name: 'High pressurizer level', kind: 'rps', dir: +1,
+        sp: RPS.hi_pzr_level_frac, unit: 'frac', read: 'pzr_level_frac',
+        delay: DELAY.hi_pzr_level, atPower: true },
       { id: 'si_lo_pzr_press', name: 'Safety injection on low pressurizer pressure',
         kind: 'esfas', dir: -1, sp: ESFAS.si_lo_pzr_press_psia / PSIA_PER_MPA, unit: 'MPa',
         read: 'pressure_mpa', delay: DELAY.si_lo_pzr_press },
@@ -284,6 +306,11 @@
         if (f.leadlag) value = leadLag(pr, raw, dt);
         asserted = f.dir > 0 ? (value >= f.sp) : (value <= f.sp);
         if (f.blockable && blockEffective) asserted = false;
+        /* P-7: an at-power trip is NOT ACTIVE below 10 % power. A plain gate, deliberately --
+         * there is no operator request in P-7 to revoke, so the revoke-not-gate lesson from
+         * P-10 does not transfer; gating the ASSERTION also zeroes the hold timer below, so
+         * nothing stale accumulates while inactive. */
+        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;
       }
 
       /* THE DELAY IS A CONTINUOUS HOLD, not an elapsed-time-since-first-seen. A function that
@@ -315,6 +342,7 @@
       reactor_trip: pr.reactor_trip,
       si: pr.si,
       p10_met: p10Met,
+      p7_met: drivers.power_frac >= P7.frac,
       low_flux_blocked: blockEffective,
       trip_cause: pr.trip_cause,
       si_cause: pr.si_cause,
@@ -329,7 +357,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.protection = {
-    RPS: RPS, ESFAS: ESFAS, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10,
+    RPS: RPS, ESFAS: ESFAS, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     PSIA_PER_MPA: PSIA_PER_MPA,
     functions: functions, leadLag: leadLag,
     createProtection: createProtection, stepProtection: stepProtection, reset: reset
