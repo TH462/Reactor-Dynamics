@@ -30,6 +30,48 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The release's production-deploy check could not answer in the environment it is run
+  from** (#494). `tools/verify_release_deploy.js` — the §5b gate that decides whether a
+  **production** deployment exists for the SHA being released — printed its yellow
+  *"could not query Pages"* line and returned no verdict whenever `CLOUDFLARE_API_TOKEN`
+  was set. Its header claimed *"wrangler carries its own OAuth — no API token needed, and
+  nothing to put in an environment variable"*: true of the script, false of the shell.
+  Wrangler **prefers** a credential variable over its stored OAuth whenever one exists, and
+  the token this project keeps in that variable is the Analytics Engine token from the ops
+  runbook, which has no Pages permission.
+
+  Measured during the Alpha 1.6.1 release, same shell, same commit, one variable apart —
+  token set: `Authentication error [code: 10000]`, verdict **NOT LIVE**; `env -u
+  CLOUDFLARE_API_TOKEN`: `cloudflare PRODUCTION`, verdict **LIVE**. Production *was* live
+  both times, confirmed independently by `curl` (`site/version.js` → `alpha · 8265291`).
+
+  This is the **fifth** way this one check has failed, and the fourth of the same shape: it
+  had no reachable state in which it could say NOT LIVE and mean it — for every agent who
+  had followed the documented telemetry setup. The three earlier instances are in the file's
+  own header; this one joins them as (5).
+
+  **Fixed by taking the OAuth path deliberately** rather than inheriting whatever the shell
+  has: credential variables are scrubbed from the child environment, with a retry using them
+  behind it, so a CI box that genuinely has a scoped token and no OAuth still works while a
+  wrong-scope token can no longer outvote a working login. `CLOUDFLARE_ACCOUNT_ID` is
+  deliberately **not** scrubbed — it is a disambiguator, not a credential. `CI=1` forces
+  non-interactive so a missing login errors instead of waiting on a prompt.
+
+  The failure text is now diagnostic, which is the point of a check whose non-answer is
+  defined as not-a-failure: `BOTH auth paths failed` names the wrangler error for the OAuth
+  attempt and for the credentials separately. Two measured traps in getting that message
+  right — wrangler prints part of the diagnosis on **stdout**, and its real API failures do
+  not contain the word "error" at all (`- Invalid format for Authorization header
+  [code: 6111]`), so the scan takes a `[code: NNNN]` line first.
+
+  Injection-verified four ways, since the file's own lesson is that a verifier needs both a
+  true positive and a true negative on record: token set on the released sha → **LIVE**
+  (exit 0, the case that was broken); an unreleased sha → **NOT LIVE** (exit 1); no OAuth
+  config plus a bogus token → the BOTH-paths line quoting
+  `CLOUDFLARE_API_TOKEN` is required… / `Authentication failed (status: 400) [code: 9106]`
+  (exit 1); no credential variables at all → **LIVE** (exit 0).
+
 ## [Alpha 1.6.1] — 2026-08-18
 
 ### Documented
