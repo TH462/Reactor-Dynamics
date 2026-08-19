@@ -68,6 +68,42 @@ LIVE (exit 0).
 `Workers Builds: reactor-dynamics` check. If the site moves off Pages this is failure (2) again
 wearing a third host's name — but that needs a decision about where the site lives, not a patch.
 
+**Later the same session — the second half of #494, and the check caught a real one on its first
+outing.** Asked which host to query now that both `Cloudflare Pages` and `Workers Builds:
+reactor-dynamics` report on every PR, the investigation found something worse than the ambiguity.
+Run the record-only version against `bb67a83` — Alpha 1.6.0's released commit, six hours after the
+domain stopped serving it: **`LIVE`, exit 0.** A production deployment record for a commit exists
+for ever; what changes at a release is which one the domain points at. **The file written to catch
+the Alpha 1.0.0 failure reported LIVE for exactly that shape**, and had done since it was written
+— it was a true positive for *"a build succeeded once"*, never for *"this commit is live"*.
+
+So the question was wrong, not merely hard. It now fetches `site/version.js` from
+`reactordynamics.com` and compares the commit `stamp_version.js` stamps into it, and **the live
+origin outranks the record when both spoke** — a build that succeeded and a domain that serves it
+are different claims. The host question retires rather than being answered: nothing depends on
+which product got the bytes there. `Cache-Control: max-age=14400` on that file is why the sha goes
+in the query string. An unreadable origin is UNREACHABLE, NOT WRONG — it falls back to the record
+and says in plain text that that is what you are reading. Injection-verified six ways, the two that
+matter being the #494 case (Pages unqueryable, origin answers → LIVE on evidence the old code could
+not gather) and the stale case above (→ NOT LIVE where the old code passed).
+
+**Then it fired for real, minutes later.** On the `8b35291` merge: `cloudflare PRODUCTION … Active`
+with the domain still serving `8265291`. Under the old logic that is exit 0 — I would have
+fast-forwarded `develop` and called the release done over a domain serving the previous commit.
+Held, waited, re-ran: `live origin SERVING → alpha · 8b35291`. **A deployment record can read
+`Active` before the domain has moved**, which is the whole §5b ordering in one observation.
+
+**Released `Alpha 1.6.1` (#493) and then caught `main` up (#495) with NO version bump** — the
+second carried only tooling and record, and the changelog page is *"strictly for simulator
+changes"*. `run_release` is happy with no-bump-no-entry; it forbids only the mismatched pair.
+
+**One thing filed rather than fixed: #496.** PR #495's gate went RED on a 25-minute CI timeout for
+a commit whose other `aggregate-gate` run — **same SHA** — passed in 15m26s, and which passed in
+**8m16s** when re-run alone. `gates.yml` fires on both `push` and `pull_request`, so a release SHA
+runs the whole suite twice concurrently with no `concurrency:` block. **A gate that passes or fails
+on runner luck is not reporting on the code.** Not built here because that file's own header
+records what landing an unproven CI change costs: 32 consecutive red runs, through a release.
+
 ---
 
 ## Session log — 2026-08-18-develop-b (the workbench merge, and a gate whose verdict depended on whether the lane had ever run the build)
