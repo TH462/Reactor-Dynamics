@@ -47,6 +47,34 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+# ONE GATE RUN AT A TIME PER COMMIT (#496, 2026-08-19).
+#
+# A release PR is `develop -> main`, so a release commit fires BOTH triggers above: the push to
+# `develop` and the pull_request. Same SHA, two jobs, seconds apart, each running the full
+# 10-way-parallel `run_all` on one runner. They starve each other. Measured on PR #495:
+#
+#     pull_request              15m26s   pass
+#     push, same SHA, alongside 25m17s   FAIL — "exceeded the maximum execution time of 25m0s"
+#     push, same SHA, re-run alone       8m16s    pass
+#
+# PR #493 ran the same pair at 11m21s and 14m37s and both passed, which is the same race
+# finishing under the cap by luck. A gate that passes or fails on runner luck is not reporting
+# on the code — and the remedy for the red was "notice the other check passed and press re-run",
+# which is the judgement a status check exists to remove.
+#
+# QUEUE, DO NOT CANCEL. `cancel-in-progress: true` would trade a timeout for a cancellation and
+# a cancelled run still reports as a failed check; the ruleset on `main` wants the pull_request
+# status and `develop` pushes want the other, so both must finish. Queue time does not count
+# against `timeout-minutes`, which is why 25 stays as it is.
+#
+# THE KEY IS THE HEAD SHA, NOT `github.sha`. On a pull_request event `github.sha` is the
+# EPHEMERAL MERGE COMMIT (`refs/pull/N/merge`), not the commit being tested — so grouping on it
+# would put the two runs in different groups and serialise nothing, while looking exactly like a
+# working fix. `github.event.pull_request.head.sha` is null on a push, hence the fallback.
+concurrency:
+  group: gates-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
 env:
   PW_VERSION: 1.61.1
 
