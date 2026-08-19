@@ -30,6 +30,38 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **CORRECTION — the CI timeouts were the Playwright vendoring step, not runner contention;
+  the `concurrency` group is reverted and per-step budgets replace it** (#496). The original
+  diagnosis was built from run DURATIONS and never opened the STEP timings. They say something
+  else. PR #495's failing run, attempt 1:
+
+  | step | | |
+  |---|---|---|
+  | 5 · vendor playwright | 12:20:50 → 12:38:36 | **17m46s** |
+  | 7 · aggregate gate | 12:38:36 → cancelled | 7m19s of a ~13 min job |
+
+  `npm install` ate the budget. The gate was never slow and was never starved — and two later
+  runs hung in that same step for the **full 25 minutes** and were cancelled before the gate
+  ran at all. Across one day that step took 13 s, 13 s, 15 s, 1m24s, 1m34s, 17m46s, 24m55s,
+  25m07s: a **115× spread** on a step whose healthy cost is under two minutes.
+
+  The contention premise was also wrong on its face — **each workflow run gets its own hosted
+  runner**, so the two never shared a CPU. The runs at 12:58:46 and 12:59:00 overlapped
+  completely, before any concurrency group existed, and their gate steps took 14m53s and
+  12m36s — indistinguishable from the serialised pair later cited as proof the group had fixed
+  something. It bought nothing and cost every release ~15 minutes of waiting.
+
+  **The real fix is a step budget**, because `timeout-minutes` on the *job* can only ever say
+  "the job was too slow" — which is precisely what made a registry stall read as a slow test
+  suite. Vendoring now gets **5 min** (~3× the worst healthy figure, far under the stalls) and
+  the gate step **20 min** (measured 7m42s–14m53s, a real ~2× runner spread). A stall now fails
+  in minutes and names itself.
+
+  The reasoning that produced the wrong change is kept in the workflow's own comment. The
+  mistake is more useful than the change was: **a duration is a symptom, and the step timings
+  were one API call away the whole time.**
+
 ### Added
 - **The release deploy check now has a self-test, and it is in the aggregate gate** (#494).
   `tools/verify_release_deploy.js --self-test` — no network, no wrangler, no Cloudflare — plus
