@@ -384,9 +384,11 @@ re-querying. Run the query.
   above). The #488 audit adjudicated and closed; #486/#487 resolved; **the plant settles at its
   design point** (2226–2238 psia, 45 °F core subcooling) and **the TMI level deception is
   emergent physics** (`PWR2_VALIDATION.md` §41–46: level control, stuck PORV + block valve +
-  tailpipe, 87 % high-level trip via P-7, aux spray). Open, needing rulings: the two-h vessel
-  stratification (last stage-2 piece — a Q2/Q3 question, the deception already emerges without
-  it), and the secondary dump/Tavg layer with its §42 acceptance-criterion ruling.
+  tailpipe, 87 % high-level trip via P-7, aux spray). The two-h stratification is DEFERRED
+  and the §42 criterion RULED A *(OWNER RULING, 2026-08-19: "Defer. A.")* — the steam dump
+  control layer is built and **criterion A is met for the sourced reason** (C-7 keeps the dumps
+  shut on dispatch; power monotone, rods MANUAL — §47). Owed next: the ADV rung, the P-9-class
+  turbine-trip reactor trip, OTΔT (blocked on a source), the DELAYED-data evidence pass.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
