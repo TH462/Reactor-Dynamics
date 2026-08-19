@@ -47,33 +47,34 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
-# ONE GATE RUN AT A TIME PER COMMIT (#496, 2026-08-19).
+# THE 25-MINUTE TIMEOUTS WERE THE VENDORING STEP, NOT CONTENTION (#496, corrected 2026-08-19).
 #
-# A release PR is `develop -> main`, so a release commit fires BOTH triggers above: the push to
-# `develop` and the pull_request. Same SHA, two jobs, seconds apart, each running the full
-# 10-way-parallel `run_all` on one runner. They starve each other. Measured on PR #495:
+# This file briefly carried a `concurrency:` group serialising the two runs a release commit
+# fires (the push to `develop` and the pull_request, same SHA). IT WAS REVERTED THE SAME DAY,
+# and the reasoning that produced it is kept here because the mistake is more useful than the
+# change was.
 #
-#     pull_request              15m26s   pass
-#     push, same SHA, alongside 25m17s   FAIL — "exceeded the maximum execution time of 25m0s"
-#     push, same SHA, re-run alone       8m16s    pass
+# The diagnosis was built from run DURATIONS — 15m26s pass beside a 25m17s timeout, 8m16s on a
+# solo re-run — and never opened the STEP timings. They say something else entirely. On PR
+# #495's failing run, attempt 1:
 #
-# PR #493 ran the same pair at 11m21s and 14m37s and both passed, which is the same race
-# finishing under the cap by luck. A gate that passes or fails on runner luck is not reporting
-# on the code — and the remedy for the red was "notice the other check passed and press re-run",
-# which is the judgement a status check exists to remove.
+#     step 5  vendor playwright   12:20:50 -> 12:38:36   17m46s
+#     step 7  aggregate gate      12:38:36 -> cancelled   7m19s of a ~13 min job
 #
-# QUEUE, DO NOT CANCEL. `cancel-in-progress: true` would trade a timeout for a cancellation and
-# a cancelled run still reports as a failed check; the ruleset on `main` wants the pull_request
-# status and `develop` pushes want the other, so both must finish. Queue time does not count
-# against `timeout-minutes`, which is why 25 stays as it is.
+# `npm install` ate the budget; the gate was never slow and was never starved. Two later runs
+# hung in the same step for the FULL 25 minutes and were cancelled before the gate ran at all.
+# Measured across one day, that step ran 13 s, 13 s, 15 s, 1m24s, 1m34s, 17m46s, 24m55s,
+# 25m07s — a 115x spread on a step whose healthy cost is under two minutes.
 #
-# THE KEY IS THE HEAD SHA, NOT `github.sha`. On a pull_request event `github.sha` is the
-# EPHEMERAL MERGE COMMIT (`refs/pull/N/merge`), not the commit being tested — so grouping on it
-# would put the two runs in different groups and serialise nothing, while looking exactly like a
-# working fix. `github.event.pull_request.head.sha` is null on a push, hence the fallback.
-concurrency:
-  group: gates-${{ github.event.pull_request.head.sha || github.sha }}
-  cancel-in-progress: false
+# And the contention premise was wrong on its face: each workflow run gets its OWN hosted runner,
+# so they never shared a CPU. The two runs at 12:58:46 and 12:59:00 overlapped completely, before
+# any concurrency group existed, and their gate steps took 14m53s and 12m36s — indistinguishable
+# from the serialised pair later cited as proof the group had fixed something. The group bought
+# nothing and cost every release ~15 minutes of added wall time waiting its turn.
+#
+# THE REAL FIX IS A STEP BUDGET. `timeout-minutes` on the job can only ever say "the job was too
+# slow", which is what made a registry stall read as a slow test suite. Per-step budgets name the
+# step, and they fail in minutes instead of consuming the whole job.
 
 env:
   PW_VERSION: 1.61.1
@@ -113,7 +114,15 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ env.PW_VERSION }}
 
+      # 5 MINUTES, AND IT IS THE POINT OF #496. Measured over one day this step ran 13 s, 13 s,
+      # 15 s, 1m24s and 1m34s when healthy — and 17m46s, 24m55s and 25m07s when the registry or
+      # `--with-deps` apt stalled. Those three took the whole JOB budget, so the gate either got
+      # 7 minutes of a 13-minute run or never started, and the only thing the check said was
+      # "the job exceeded the maximum execution time" — which reads as a slow test suite and is
+      # what sent the first diagnosis chasing runner contention. 5 min is ~3x the worst healthy
+      # figure and well under the stalls, so a stall now fails fast and NAMES ITSELF.
       - name: Vendor playwright into ./node_modules (no manifest in the repo)
+        timeout-minutes: 5
         run: |
           # cd in a subshell, NOT `npm --prefix`: npm init honours --prefix
           # inconsistently across versions, and the version that ignores it writes
@@ -133,7 +142,12 @@ jobs:
           test ! -f package-lock.json || { echo "::error::a package-lock.json appeared in the repo root"; exit 1; }
           git status --porcelain
 
+      # 20 MINUTES. Measured on this runner class the gate step itself takes 7m42s to 14m53s —
+      # a ~2x spread on identical work, which is real and is the runner, not the suite. 20 gives
+      # the slow end headroom while still failing on its OWN name rather than the job's, so a
+      # genuinely slow suite and a stalled install are never again the same red.
       - name: Aggregate gate (all runners)
+        timeout-minutes: 20
         run: node test/run_all.js
 
       - name: Upload diagnostic reports

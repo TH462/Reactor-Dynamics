@@ -105,6 +105,62 @@ runs the whole suite twice concurrently with no `concurrency:` block. **A gate t
 on runner luck is not reporting on the code.** Not built here because that file's own header
 records what landing an unproven CI change costs: 32 consecutive red runs, through a release.
 
+**And the third thing the day owed: the check that has failed six times now has a self-test, and
+it RUNS.** (Work from here on was in the `develop` tree, not the workbench — one session, two
+lanes.) The six failures share no bug; what they share is that **nothing ran the file except a
+person, at a release**, which is the most expensive moment to discover any of them. Five of the
+six were decision logic or parsing — pure functions — so they are pinned: `decide()`,
+`matchDeployments()` and `parseVersion()` extracted, `--self-test` driving 20 checks over recorded
+fixtures, and `test/verify_deploy_check.js` so `run_all` discovers it. **52 runners.**
+
+**Injection-verified seven ways, and two of the seven found defects in the TEST rather than the
+code.** One assertion reached into `good[0].Status` and *crashed* instead of reporting when the
+array was empty — a red either way, but an illegible one. And my first attempt at breaking the
+caveat replaced the opening words of the note while leaving the asserted phrase `deployment
+RECORD` intact three words later, so the check passed against a note that now said nothing: **an
+injection that does not actually break the thing proves the test works when it does not.** The
+lesson is the one this repo keeps relearning from the other side — a check written beside its own
+fix is not green until you have made it go red, *and you have to verify the breaking, too*.
+
+**What it cannot see, and the file says so in its own closing line:** the fixtures are COPIES of
+wrangler's output and the site's version stamp. If either format moves, the self-test stays green
+while the real check breaks — which is failure (3) exactly, in a new place. A green here never
+retires the §5b step; only a release proves that half.
+
+**The refactor's claim was replayed, not asserted** (#393's rule): the released sha and the stale
+`bb67a83` produce byte-identical verdicts and exit codes before and after the extraction.
+
+**And the day's own correction: #496 was diagnosed wrong, and I shipped the wrong fix before
+catching it.** The story I filed was that a release SHA fires two gate runs which race for one
+runner. Evidence: 15m26s passing beside a 25m17s timeout on the same commit, and 8m16s on a solo
+re-run. All three numbers are real. **All three are run DURATIONS, and the step timings say
+something else entirely** — PR #495's failing run, attempt 1: `vendor playwright` **17m46s**, then
+the gate step got 7m19s of a job that needs ~13 min before the cap fired. `npm install` ate the
+budget. Two later runs hung in that same step for the **full 25 minutes** and were cancelled
+before the gate started at all. That step measured 13 s, 13 s, 15 s, 1m24s, 1m34s, 17m46s,
+24m55s, 25m07s across one day — a **115x spread**.
+
+The premise was also wrong on its face, and that is the part I should not have needed data for:
+**each workflow run gets its own hosted runner.** They never shared a CPU. The runs at 12:58:46
+and 12:59:00 overlapped completely, before any concurrency group existed, and their gate steps
+took 14m53s and 12m36s — indistinguishable from the serialised pair I then cited as proof the
+group had fixed something. **I observed the group working and called it the fix working.** It
+sequenced exactly as designed and changed nothing except adding ~15 minutes of waiting to every
+release.
+
+**Reverted, and replaced with what the measurement actually asks for: per-step budgets.**
+`timeout-minutes` on the JOB can only ever say *"the job was too slow"*, which is precisely how a
+registry stall came to read as a slow test suite. Vendoring gets 5 min (~3x the worst healthy
+figure, far below the stalls); the gate step gets 20 (measured 7m42s–14m53s, a genuine ~2x runner
+spread). A stall now fails in minutes and names itself.
+
+**Two traps worth carrying.** A **duration is a symptom**; the step timings were one `gh api`
+call away the whole time and I never made it. And **a fix that visibly does what it was designed
+to do is not thereby the right fix** — watching the pull_request run sit `pending` while the push
+run executed proved the YAML worked, and I reported it as confirmation of a cause it had no
+bearing on. That is HR10 in a place with no test in sight: I had a mechanism, I watched it
+operate, and I mistook operation for correctness.
+
 ---
 
 ## Session log — 2026-08-18-develop-b (the workbench merge, and a gate whose verdict depended on whether the lane had ever run the build)
