@@ -29,6 +29,58 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-18-develop-b (the workbench merge, and a gate whose verdict depended on whether the lane had ever run the build)
+
+**Ask:** owner, 2026-08-18: *"merge workbench and develop. release to maine and push to gh."*
+**Gates:** `run_all` **51 runners at baseline**, one tracked red (`run_ops` 59/70, the ruled
+`ops_cvcs_pzr_drain_rate`). Released **Alpha 1.6.1**.
+
+**`backshop` was not merged.** An agent is live on it — `status-wip-backshop` on **#479**, tip
+committed 29 minutes before this session started, 40+ `pwr2` commits ahead of `develop`. The ask
+named two lanes and this is the third; merging a tree someone is standing in is the failure
+`LANES.md` exists for.
+
+**The two BASELINES combines were both a real COMBINE, and both were confirmed by measurement
+rather than left as arithmetic.** `run_behavior`: both sides moved it **72 → 73pass** and neither
+number was the merged one — develop added TR-1m (#489), workbench added CAT-1 (#472 phase 0), so
+the result is **74pass 1xfail**. `run_hardrules`: develop 286 → 290, workbench 286 → 303, merged
+**307checks**. Taking either side whole would have shipped a baseline the tree cannot produce, and
+`run_all`'s drift is symmetric so it would have reddened either way — the point is that it would
+have reddened for a *bookkeeping* reason and invited a "just re-record it" fix.
+
+**The defect the merge found: `verify_pzr2_loadlists` scored `4checks 1failed` on the develop tree
+and `4checks 0failed` on workbench AT THE SAME COMMIT.** The whole difference was a stale
+`download/Reactor_Dynamics_Alpha_1.10.0.html` — a portable build left over from an earlier release
+— which contains a full inlined copy of both pressurizer models and therefore a third assignment
+of `RD.pwrPressurizer`. The scanner's SKIP list named `node_modules`, `dist`, `dist-site`, `inbox`,
+`terminals`, `mcps` and `.git`; it did not name **`download/`**, which is the one build-output
+directory the *release procedure itself* populates (`site/make_download.js`, run at step 4, three
+steps before the merge). So the gate would have gone red on the very next step regardless of the
+leftover file.
+
+The trap worth keeping: **a gate that walks the tree can have a verdict that depends on the lane's
+BUILD HISTORY rather than on its source.** It is invisible in a lane that has never run the build,
+and it is not caught by running the gate twice in the same tree. Injection-verified both
+directions after the fix — a probe file assigning `RD.pwrPressurizer` under `ui/` still reds it,
+the identical file under `download/` does not.
+
+**The manual set opens Rev 16, and the "extend the pending row" rule had quietly expired.** Rev 15
+was still worded *"pending; extends until the next release"* — but it **shipped at Alpha 1.6.0**
+carrying items (a)–(f), and (g)/(h)/(i) landed after that release. Extending it further would give
+a player who downloaded at 1.6.0 a *"Rev 15"* whose content differs from the site's *"Rev 15"*,
+which is precisely what a revision row exists to prevent. The three post-1.6.0 items moved to a new
+Rev 16, re-lettered (a)–(c); Rev 15 keeps a–f and is now marked shipped. Same shape as the CLAUDE.md
+theme two weeks ago: **a rule's premise ages independently of the rule** — "extend the pending row"
+is right while the row is pending and wrong the moment it ships, and nothing re-checks which it is.
+
+**Alpha 1.6.1 is a Z bump on three player-facing items** — the Mode 5 shutdown-bank preset and the
+10–15 % turbine roll (#468), and the shutdown-cooling align refused during injection (#458). The
+pressurizer v2 rebuild is the bulk of the diff (~5,800 lines) and gets **no** entry: it ships behind
+`pressurizer2.enabled = 0` and changes nothing a player can reach. The analytics and asset-URL work
+(#470, #476, #480, #485) gets none either, being website rather than simulator.
+
+---
+
 ## Session log — 2026-08-18-develop-a (#489 — TR-1m: pinning a simplification you have decided NOT to fix, so that fixing it is what breaks the gate)
 
 **Ask:** owner, 2026-08-18: *"Next"* — i.e. proceed with the recommendation left outstanding the
