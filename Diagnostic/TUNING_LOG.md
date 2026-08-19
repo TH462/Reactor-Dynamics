@@ -64,9 +64,10 @@ sha → LIVE (exit 0, the broken case); an unreleased sha → NOT LIVE (exit 1);
 a bogus token → the BOTH-paths line naming each path's error (exit 1); no credential variables →
 LIVE (exit 0).
 
-**Deliberately not fixed:** the script knows **Pages** only, while every PR now also reports a
-`Workers Builds: reactor-dynamics` check. If the site moves off Pages this is failure (2) again
-wearing a third host's name — but that needs a decision about where the site lives, not a patch.
+**Left open at this point, and closed later the same session (see below):** the script knows
+**Pages** only, while every PR now also reports a `Workers Builds: reactor-dynamics` check. If the
+site moves off Pages this is failure (2) again wearing a third host’s name. It looked like it
+needed a decision about where the site lives; it did not.
 
 **Later the same session — the second half of #494, and the check caught a real one on its first
 outing.** Asked which host to query now that both `Cloudflare Pages` and `Workers Builds:
