@@ -197,21 +197,109 @@ const found = [];
   }
 }());
 
-// ---------------------------------------------------------------- verdict
-console.log('');
-if (found.length) {
-  console.log(B + G + 'LIVE' + X + '  a successful production deployment exists for this commit — ' +
-    found.join(' and ') + '\n');
-  process.exit(0);
+// ------------------------------------------------------- the live origin (HOST-INDEPENDENT)
+// The deployment record above is evidence about Cloudflare's build queue. THIS is evidence
+// about what the public domain actually serves, and it is the question the file's title asks.
+//
+// It exists because every previous failure of this check was the same mistake in a different
+// costume: trusting one host's bookkeeping. (2) knew only Vercel after the move to Pages; (5)
+// asked Pages with credentials that could not answer. As of 2026-08-19 the project ALSO builds
+// as a Worker — `Workers Builds: reactor-dynamics` reports on every PR alongside
+// `Cloudflare Pages`, and a Worker of that name has been deploying since 2026-08-12 — so
+// "which product serves the site" is a live question with a moving answer.
+//
+// This check does not care. `site/version.js` is stamped at deploy with the COMMIT
+// (`site/stamp_version.js`: `window.RD_VERSION = "alpha · <7-char sha>"`, and "alpha · dev"
+// off the released channel), so fetching it from the production domain proves the released
+// commit is what a visitor gets — whichever host got it there, and whether or not any
+// deployment API can be reached.
+//
+// Cache: the file is served `Cache-Control: max-age=14400` (4 h, measured), so a plain GET can
+// be answered from an edge or connection cache and report the PREVIOUS release. The sha in the
+// query string plus `Cache-Control: no-cache` is what makes the answer about now.
+const SITE = 'https://reactordynamics.com';          // the production domain
+const https = require('https');
+
+function liveOrigin(done) {
+  const url = SITE + '/site/version.js?_=' + sha.slice(0, 12);
+  const req = https.get(url, {
+    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+    timeout: 20000,
+  }, (res) => {
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      res.resume();
+      return https.get(res.headers.location, {
+        headers: { 'Cache-Control': 'no-cache' }, timeout: 20000,
+      }, (r2) => body(r2, done)).on('error', (e) => done({ err: e.message }));
+    }
+    body(res, done);
+  });
+  req.on('timeout', () => { req.destroy(new Error('timed out after 20 s')); });
+  req.on('error', (e) => done({ err: e.message }));
+
+  function body(res, cb) {
+    let s = '';
+    res.setEncoding('utf8');
+    res.on('data', (c) => { s += c; });
+    res.on('end', () => {
+      if (res.statusCode !== 200) return cb({ err: 'HTTP ' + res.statusCode });
+      const m = /RD_VERSION\s*=\s*"([^"]*)"/.exec(s);
+      if (!m) return cb({ err: 'no RD_VERSION in the response' });
+      cb({ label: m[1], stamped: (m[1].split('·').pop() || '').trim() });
+    });
+  }
 }
-console.log(B + R + 'NOT LIVE' + X + '  no successful production deployment found for this commit.\n');
-console.log(D +
-  'Before assuming the deploy failed, rule out the two things that look identical to it:\n' +
-  '  1. It may still be building. A missing production deploy and a slow one are the same\n' +
-  '     from outside, so WAIT and re-run rather than re-pushing.\n' +
-  '  2. Cloudflare may not have been reachable — a `wrangler` auth failure prints a YELLOW\n' +
-  '     line above and is NOT the same as "no deployment". Read which one you got.\n' +
-  'If it is genuinely missing: promoting a deployment in the Pages dashboard is one click.\n' +
-  'Do NOT push develop to the same commit to retrigger it — that is the suspected CAUSE of\n' +
-  'the original Alpha 1.0.0 failure, not a remedy.' + X);
-process.exit(1);
+
+liveOrigin((live) => {
+  const short = sha.slice(0, 7);
+  let served = null;                                  // true / false / null = could not tell
+  if (live.err) {
+    // Unreachable is NOT wrong — the same rule this file already applies to wrangler. Say so
+    // and fall back to the deployment record, rather than reporting a release as dead because
+    // the machine running the check has no network.
+    console.log(Y + '  live origin ' + X + D + 'could not read ' + SITE +
+      '/site/version.js (' + live.err + ')' + X);
+  } else if (live.stamped === short) {
+    served = true;
+    console.log(G + '  live origin SERVING' + X + D + '  ' + SITE + ' → ' + live.label + X);
+  } else {
+    served = false;
+    console.log(R + '  live origin ' + X + D + SITE + ' is serving ' + live.label +
+      ', not ' + short + X);
+  }
+
+  console.log('');
+
+  // The live origin OUTRANKS the deployment record when both spoke: a build that succeeded and
+  // a domain that serves it are different claims, and only the second one is the release.
+  if (served === true) {
+    console.log(B + G + 'LIVE' + X + '  ' + SITE + ' is serving this commit' +
+      (found.length ? ' — and a successful production deployment exists (' + found.join(', ') + ')' : '') + '\n');
+    process.exit(0);
+  }
+  if (served === null && found.length) {
+    console.log(B + G + 'LIVE' + X + '  a successful production deployment exists for this commit — ' +
+      found.join(' and ') + '\n');
+    console.log(D + 'The live origin could not be read, so this is the deployment RECORD, not\n' +
+      'proof of what the domain serves. Re-run with a network, or curl ' + SITE +
+      '/site/version.js.' + X + '\n');
+    process.exit(0);
+  }
+
+  console.log(B + R + 'NOT LIVE' + X + '  ' + (served === false
+    ? 'the production domain is not serving this commit.'
+    : 'no successful production deployment found for this commit.') + '\n');
+  console.log(D +
+    'Before assuming the deploy failed, rule out the things that look identical to it:\n' +
+    '  1. It may still be building. A missing production deploy and a slow one are the same\n' +
+    '     from outside, so WAIT and re-run rather than re-pushing.\n' +
+    '  2. Cloudflare may not have been reachable — a `wrangler` auth failure prints a YELLOW\n' +
+    '     line above and is NOT the same as "no deployment". Read which one you got.\n' +
+    '  3. A deployment record WITHOUT the live origin agreeing is the interesting case: the\n' +
+    '     build succeeded and the domain still serves the previous release. That is the\n' +
+    '     Alpha 1.0.0 shape, and it is what promoting a deployment fixes.\n' +
+    'If it is genuinely missing: promoting a deployment in the Pages dashboard is one click.\n' +
+    'Do NOT push develop to the same commit to retrigger it — that is the suspected CAUSE of\n' +
+    'the original Alpha 1.0.0 failure, not a remedy.' + X);
+  process.exit(1);
+});

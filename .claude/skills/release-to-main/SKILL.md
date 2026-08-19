@@ -293,6 +293,15 @@ both times in ways a careful reader would not catch:
   reachable state in which it said NOT LIVE and meant it. **Fixed**: OAuth is now taken
   deliberately, credentials scrubbed from the child env, with a credential retry behind it.
 
+**It now checks the LIVE ORIGIN as well, and that half outranks the record** (#494, 2026-08-19).
+It fetches `site/version.js` from `https://reactordynamics.com` and compares the commit stamped
+into it. Measured on `bb67a83` — Alpha 1.6.0's commit, six hours after the domain stopped
+serving it — the record-only version said **LIVE, exit 0**; that is the Alpha 1.0.0 shape, blessed
+by the file written to catch it. A production deployment record for a commit exists for ever;
+which one the domain points at is the thing that changes. **A build that succeeded and a domain
+that serves it are different claims.** An unreadable origin falls back to the record and says so
+in plain text — unreachable is not wrong.
+
 The script queries `wrangler pages deployment list`, demands a full sha, and requires the
 deployment to be BOTH `environment=production` AND finished successfully — a queued, blocked or
 failed build is not a live site. A yellow "could not query" line means Cloudflare was

@@ -31,8 +31,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **The release's production-deploy check asked a HOST whether the release was live, and
+  the honest question is what the DOMAIN serves** (#494, second half). Measured, and this
+  is the headline: on `bb67a83` — Alpha 1.6.0's released commit, which the production
+  domain stopped serving six hours earlier — the check reported
+  `cloudflare PRODUCTION … LIVE`, **exit 0**. A successful production deployment record
+  exists for that commit and always will; what changed is which one the domain points at.
+  **That is the Alpha 1.0.0 shape exactly, and the file written to catch it blessed it.**
+
+  The fix is a second, host-independent check: fetch `site/version.js` from
+  `https://reactordynamics.com` and compare the commit `site/stamp_version.js` stamped into
+  it (`window.RD_VERSION = "alpha · <7-char sha>"`). It proves the released commit is what a
+  visitor gets, whichever product served it and whether or not any deployment API can be
+  reached. **The live origin outranks the record when both spoke** — a build that succeeded
+  and a domain that serves it are different claims, and only the second one is the release.
+
+  This also retires the question the first half left open. As of 2026-08-19 the project
+  builds **both** ways — `Cloudflare Pages` and `Workers Builds: reactor-dynamics` report on
+  every PR, and a Worker of that name has been deploying since 2026-08-12 — so "which host
+  do we query" had a moving answer. The live origin does not care, which is why it is the
+  right question rather than a second guess at the old one.
+
+  Two measured details. `site/version.js` is served `Cache-Control: max-age=14400`, so a
+  plain GET can answer from cache with the *previous* release — the sha goes in the query
+  string and `Cache-Control: no-cache` in the headers. And an unreadable origin is treated
+  as **unreachable, not wrong**: it falls back to the deployment record and says in plain
+  text that what it printed is the record rather than proof.
+
+  Injection-verified six ways, including the two that matter most: the stale-release case
+  above now exits **1** naming the domain, and the #494 case — Pages unqueryable, live
+  origin answering — now exits **0** on evidence the old code had no way to gather.
+
 - **The release's production-deploy check could not answer in the environment it is run
-  from** (#494). `tools/verify_release_deploy.js` — the §5b gate that decides whether a
+  from** (#494, first half). `tools/verify_release_deploy.js` — the §5b gate that decides whether a
   **production** deployment exists for the SHA being released — printed its yellow
   *"could not query Pages"* line and returned no verdict whenever `CLOUDFLARE_API_TOKEN`
   was set. Its header claimed *"wrangler carries its own OAuth — no API token needed, and
