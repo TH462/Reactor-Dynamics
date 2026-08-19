@@ -29,6 +29,32 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-c (#479 stage 2b — the TMI levers, and the deception emerges unscripted)
+
+**Ask:** autonomous continuation of the ruled Option 1 stage 2 — the drained/TMI machinery.
+**Gates:** `run_pwr2_pressurizer` 56 checks / 19 mutations; `run_pwr2_true_state` 47 (67 of 109
+supplied); `run_all --fast` at baseline. **Detail:** `PWR2_VALIDATION.md` §45 carries the
+measured deception table; this entry carries the read.
+
+**Built:** `drivers.porv_stick` (one valve of two — PWR2's first failure-injection machinery,
+a failure STATE beside an untouched controller), the block valve (one combined isolation,
+declared; never touches the code safeties), and the tailpipe temperature with its [open]
+fast-heat/slow-cool asymmetry — the asymmetry, not the taus, is the claim.
+
+**The measurement the curriculum tier waits on: THE TMI DECEPTION EMERGES UNSCRIPTED.** Stuck
+3–11 minutes, the indicated level reads 100 % — high-level alarm in — while true inventory
+falls 96 → 84 % through the open valve (2,900 kg gone). The depressurising loop saturates and
+swells into the vessel: the level instrument tells the truth about the vessel and lies about
+the plant. Closing the block valve freezes the loss instantly at 4,273 kg, and the tailpipe
+stays hot for minutes afterwards — why a hot pipe proves nothing about the valve. Nothing in
+any of that is scripted; it is the stage-1 machinery plus one stuck valve.
+
+**⚠ Operational trap: a 19-replay injection self-test rides the whole suite 20 times.** The
+gate crossed 600 s standalone when the TMI section landed; quiet-mode rides were trimmed
+(with quiet-loosened bands where a shorter ride samples mid-transient) to bring it to 445 s.
+A mutation-replay gate's cost is (suite cost) × (mutations + 1), and every scenario second
+added to the loud path is paid twentyfold.
+
 ## Session log — 2026-08-19-backshop-b (#479 stage 2a — the level control system, and the integral that railed its own demand)
 
 **Ask:** autonomous continuation of the ruled Option 1 ("pressure control first, level machinery

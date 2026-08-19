@@ -230,10 +230,18 @@ function runSuite(TS, rec, quiet) {
      Math.abs(tsOff.pzr_level_pct - pzOffR.level_pct) < 1e-12 && tsOff.pzr_level_pct < 50,
      ts.pzr_level_pct.toFixed(1) + ' % at program, ' + tsOff.pzr_level_pct.toFixed(1) +
      ' % drained -- a fabricated healthy constant reads 61.5 in both and reds');
-  ck('...and the four still-missing pressurizer fields each name their OWN blocker',
-     /failure-injection|failure injection/.test(TS.MISSING.porv_stuck.reason) &&
-     /tailpipe|relief-PATH|stage 1/.test(TS.MISSING.porv_tailpipe_temp_c.reason) &&
-     !!TS.MISSING.block_valve_open && !!TS.MISSING.spray_stuck,
+  /* TURNED AROUND A SECOND TIME (stage 2b): three of the four then-missing fields are real now
+   * — the PORV can stick (the TMI-2 failure lever), the block valve isolates it, the tailpipe
+   * has a temperature. Only spray_stuck remains declared, and its reason must say WHY it alone
+   * survives (no spray failure lever exists). */
+  ck('the TMI relief-path fields are SUPPLIED with earned-healthy values',
+     ts.porv_stuck === false && ts.block_valve_open === true &&
+     typeof ts.porv_tailpipe_temp_c === 'number' && ts.porv_tailpipe_temp_c < 100,
+     'stuck ' + ts.porv_stuck + ', block ' + ts.block_valve_open + ', tailpipe ' +
+     (typeof ts.porv_tailpipe_temp_c === 'number' ? ts.porv_tailpipe_temp_c.toFixed(0) : '?') +
+     ' degC cold on a healthy plant — a PORV that has never passed has a cold pipe');
+  ck('...and spray_stuck, the one survivor, says why it alone stays missing',
+     !!TS.MISSING.spray_stuck && /spray valves have no failure lever/.test(TS.MISSING.spray_stuck.reason),
      'a reason that names the machinery outlives a reason that names a lane');
 
   /* ---- SUPPLIED VALUES COME FROM THE LAYERS, NOT FROM CONSTANTS ------------------------ */

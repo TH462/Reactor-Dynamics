@@ -190,9 +190,13 @@
     safety_kgs: 2 * 288000 * LB_HR * (300 / 1520),    /* 14.33 kg/s, both valves */
     safety_open_mpa: 17.24,              /* 2485 psig = 2500 psia */
     safety_reseat_frac: 0.95,
-    porv_reseat_psi: +85                 /* reclose below +85: a 15 psi deadband, [open] — the
+    porv_reseat_psi: +85,                /* reclose below +85: a 15 psi deadband, [open] — the
                                           * sources give the opening point only; zero deadband
                                           * chatters at the house cadence */
+    /* the tailpipe's two time constants, [open] — the ASYMMETRY is the claim (fast heat from
+     * live steam, slow cool through pipe lagging), not the numbers; see step 3b */
+    tail_tau_heat_s: 30,
+    tail_tau_cool_s: 600
   };
 
   /* ---- the level split (D2 §25.2 verbatim — saturation densities, from MASS) --------------- */
@@ -227,7 +231,10 @@
       emptied: false,
       heatersShed: false,
       levErrInt: 0,                      /* the level PI's integral state, %*s */
-      lowLevelCut: false                 /* the 17 % letdown-isolate / heater-cut latch */
+      lowLevelCut: false,                /* the 17 % letdown-isolate / heater-cut latch */
+      porvStuck: false,                  /* the TMI failure lever (drivers.porv_stick) */
+      blockOpen: true,                   /* the PORV block valve — the operator's isolation */
+      T_tail_c: opts.tail_c === undefined ? 50 : opts.tail_c
     };
   }
 
@@ -330,15 +337,43 @@
     if (pz.waterSolid) sprayFrac = 0;                               /* no steam to condense */
 
     /* ---- 3. RELIEF: controller PORV at +100 psi, mechanical safeties at 2500 psia. Both act
-     * on their own (HR5: plant hardware) and are REPORTED for the caller to wire as a sink. ---- */
+     * on their own (HR5: plant hardware) and are REPORTED for the caller to wire as a sink.
+     *
+     * THE TMI LEVERS (stage 2b, 2026-08-19):
+     *   drivers.porv_stick   ONE PORV latched open regardless of the controller — the TMI-2
+     *                        failure (a legitimate lift that never reseated). Half the
+     *                        two-valve capacity, because one valve stuck is one valve.
+     *   drivers.block_valve  the motor-operated isolation upstream of the PORVs — the operator
+     *                        action that ENDED the TMI-2 loss (closed at 142 min). One combined
+     *                        valve for the pair, declared (Ginna has one per PORV). Default
+     *                        OPEN; closing it zeroes PORV discharge, stuck or commanded, and
+     *                        never touches the code safeties, which have no isolation by design.
+     * The stick is a FAILURE STATE, not an extra command path: the controller logic above runs
+     * untouched, so an un-stuck PORV still cycles on its own ladder. */
     if (!pz.porvOpen && err_psi >= CONTROL.porv_open_psi) pz.porvOpen = true;
     else if (pz.porvOpen && err_psi <= RELIEF.porv_reseat_psi) pz.porvOpen = false;
     if (!pz.safetyOpen && P >= RELIEF.safety_open_mpa) pz.safetyOpen = true;
     else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa * RELIEF.safety_reseat_frac) {
       pz.safetyOpen = false;
     }
-    var relief_kgs = (pz.porvOpen ? RELIEF.porv_kgs : 0) +
-                     (pz.safetyOpen ? RELIEF.safety_kgs : 0);
+    pz.porvStuck = !!drivers.porv_stick;
+    if (drivers.block_valve !== undefined) pz.blockOpen = !!drivers.block_valve;
+    var porv_kgs = !pz.blockOpen ? 0
+                 : (pz.porvOpen ? RELIEF.porv_kgs
+                 : (pz.porvStuck ? RELIEF.porv_kgs / 2 : 0));
+    var relief_kgs = porv_kgs + (pz.safetyOpen ? RELIEF.safety_kgs : 0);
+
+    /* ---- 3b. THE TAILPIPE — the TMI indication. A pipe-metal temperature: heats toward the
+     * discharge steam's own T_sat while the PORV passes, cools toward ambient when it does not
+     * — SLOWLY, which is the deceptive half: TMI-2's operators read a hot tailpipe as "always
+     * hot" because it had been passing for years of small lifts. Both taus [open]; the
+     * asymmetry (fast heat, slow cool) is the physical claim, not the numbers. */
+    if (porv_kgs > 0) {
+      pz.T_tail_c += dt * (W.T_sat(P) - pz.T_tail_c) / RELIEF.tail_tau_heat_s;
+    } else {
+      var amb = drivers.ambient_c === undefined ? 50 : drivers.ambient_c;
+      pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;
+    }
 
     /* ---- 4. ENERGY. Heaters in; spray's condensing duty out; relief leaves at h_g (steam
      * relief — a SOLID vessel relieves liquid at h_f, the honest cheaper stream). ---- */
@@ -375,7 +410,10 @@
       spray_frac: sprayFrac,
       spray_kgs: m_spray,
       spray_duty_kW: Q_spray_kW,
-      porv_open: pz.porvOpen,
+      porv_open: pz.porvOpen || (pz.porvStuck && pz.blockOpen),
+      porv_stuck: pz.porvStuck,
+      block_valve_open: pz.blockOpen,
+      tailpipe_temp_c: pz.T_tail_c,
       safety_open: pz.safetyOpen,
       relief_kgs: relief_kgs,
       relief_h: pz.waterSolid ? hf : hg,

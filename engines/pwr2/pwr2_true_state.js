@@ -61,14 +61,14 @@
    * by their OWN absent machinery, named per the protection-block precedent — the old single
    * "not built" reason would have kept telling consumers there was no model while a sourced
    * one answered. */
-  declareMissing('failure injection', 'porv_stuck and spray_stuck are INJECTED failure states — ' +
-    'PWR2 has no failure-injection machinery at all, so a value here would describe a lever ' +
-    'that does not exist. The PORV and spray themselves are live in pwr2_pressurizer.js.',
-    ['porv_stuck', 'spray_stuck']);
-  declareMissing('pressurizer stage 2', 'the PORV tailpipe (a pipe with its own temperature — ' +
-    'the TMI indication) and the PORV block valve are relief-PATH hardware pwr2_pressurizer.js ' +
-    'stage 1 does not model; it reports valve states and discharge, not the pipework downstream.',
-    ['porv_tailpipe_temp_c', 'block_valve_open']);
+  /* ⚠ SHRANK AGAIN when stage 2b landed (2026-08-19): porv_stuck is a real failure lever now
+   * (drivers.porv_stick — PWR2's first failure-injection machinery), the block valve and the
+   * tailpipe are modelled, and all three are SUPPLIED below. spray_stuck is the one survivor:
+   * the spray valves have no failure lever yet, and a false here would describe one. */
+  declareMissing('failure injection', 'spray_stuck is an INJECTED failure state and the spray ' +
+    'valves have no failure lever — the PORV grew one (drivers.porv_stick, the TMI-2 failure) ' +
+    'and its field moved to SUPPLIED; a value here would describe a lever that does not exist.',
+    ['spray_stuck']);
 
   declareMissing('containment', 'pwr2_containment.js supplies pressure and temperature; spray, ' +
     'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +
@@ -235,6 +235,9 @@
     }
     put('pzr_heaters_shed',  pz.heaters_shed);
     put('porv_open',         pz.porv_open);
+    put('porv_stuck',        pz.porv_stuck);
+    put('block_valve_open',  pz.block_valve_open);
+    put('porv_tailpipe_temp_c', pz.tailpipe_temp_c);
     if (pz.spray_frac !== undefined) put('spray_flow_pct', 100 * pz.spray_frac);
     if (typeof sys.M_total === 'number' && typeof ctx.M_nominal === 'number' && ctx.M_nominal > 0) {
       put('core_inventory_pct', 100 * sys.M_total / ctx.M_nominal);

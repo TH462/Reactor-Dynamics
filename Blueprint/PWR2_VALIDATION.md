@@ -2459,3 +2459,43 @@ Gates: `run_pwr2_pressurizer` 39 → 51 checks, mutations 10 → 14 (program-fla
 PI-backward, anticipator-deleted all red). Stage 2 remainder: two-h stratified states, auxiliary
 spray, PORV block valve + tailpipe, the drained/TMI deception machinery, and the high-level trip
 function in `pwr2_protection`.
+
+## 45. STAGE 2b — THE TMI LEVERS, AND THE DECEPTION EMERGES UNSCRIPTED — 2026-08-19
+
+Three pieces of relief-path hardware, and the measurement the whole curriculum tier waits on:
+
+- **`drivers.porv_stick`** — ONE PORV latched open regardless of the controller (half the
+  two-valve capacity: one valve stuck is one valve). PWR2's first failure-injection machinery;
+  the controller ladder runs untouched, so the stick is a failure STATE, not a command path.
+- **The block valve** — one combined motor-operated isolation for the pair (declared; Ginna
+  has one per PORV). Closing it zeroes PORV discharge, stuck or commanded, and never touches
+  the code safeties, which have no isolation by design.
+- **The tailpipe** — a pipe-metal temperature: heats toward the discharge steam's T_sat while
+  passing (τ ≈ 30 s), cools toward ambient when not (τ ≈ 600 s). Both taus [open]; **the
+  asymmetry is the claim** — a pipe that stays hot for minutes after isolation is why a hot
+  tailpipe proves nothing about the valve, which is the TMI-2 indication lesson.
+
+**The measurement** (closed-loop plant, CVCS in auto, PORV stuck at t = 120 s — nothing below
+is scripted):
+
+| t stuck | P (psia) | indicated level | true inventory | lost through valve |
+|---|---|---|---|---|
+| 0 | 2212 | 60.2 % | 99.7 % | 0 |
+| 1 min | 1564 | 55.2 % | 98.6 % | 267 kg |
+| 3 min | 1190 | **100 % — HI ALARM** | 95.8 % | 801 kg |
+| 11 min | 823 | **100 % — HI ALARM** | 83.9 % | 2,938 kg |
+| 16 min | 442 | 69.9 % | 76.7 % | 4,273 kg |
+| block closed | 446 | 61.7 % | 76.7 % | **frozen at 4,273** |
+
+**The TMI deception emerges from the machinery**: the depressurising loop saturates and swells
+into the vessel, so the level instrument tells the truth about the vessel and lies about the
+plant — an operator "going by pressurizer level" throttles injection exactly as TMI-2's crew
+did. Closing the block valve ends the loss instantly (the minute-142 action), the heaters
+recover pressure, and the tailpipe cools slowly through it all (288 → 154 °C over ~11 min).
+
+Shim: `porv_stuck`, `block_valve_open`, `porv_tailpipe_temp_c` supplied (67 of 109;
+`spray_stuck` is the failure-injection block's one survivor). Gates: `run_pwr2_pressurizer`
+51 → 56 checks, mutations 14 → 19 (stick-lever-dead, both-valves-flow, block-never-isolates,
+tailpipe-never-heats, symmetric-tailpipe all red); quiet-mode rides trimmed to keep the
+19-replay self-test under the runner budget. Stage 2 remainder: two-h stratified states, aux
+spray, the high-level trip function in `pwr2_protection`.

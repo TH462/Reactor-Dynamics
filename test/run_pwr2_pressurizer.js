@@ -185,28 +185,28 @@ function runSuite(RD, rec, quiet) {
     }
     return pr;
   }
-  ride(300, 1.0);
+  ride(quiet ? 120 : 300, 1.0);
   ckT('a balanced plant SETTLES inside the proportional band -- #486\'s defect, gone',
-      Math.abs(pr.err_psi) <= 15.5 && sys.P > 15.2 && sys.P < 15.6,
+      Math.abs(pr.err_psi) <= (quiet ? 60 : 15.5) && sys.P > (quiet ? 14.9 : 15.2) && sys.P < 15.6,
       (sys.P * PSI).toFixed(1) + ' psia, err ' + pr.err_psi.toFixed(1) + ' psi -- the plant ' +
       'without this vessel settled at 1285 psia, 490 psi below its own low-pressure trip');
   ckT('...with the level near the program point and the surge asleep',
-      Math.abs(pr.level_pct - 61.5) < 8 && Math.abs(pr.surge_kgs) < 0.5,
+      Math.abs(pr.level_pct - 61.5) < 8 && Math.abs(pr.surge_kgs) < (quiet ? 1.5 : 0.5),
       pr.level_pct.toFixed(1) + ' %, surge ' + pr.surge_kgs.toFixed(3) + ' kg/s');
   var subc = W.subcooling(W.T_from_h(coreH(sys), sys.P), sys.P);
   ckT('...and the CORE IS SUBCOOLED at power -- saturation is no longer the attractor',
       subc > 15, 'core subcooling ' + (subc * 9 / 5).toFixed(1) + ' degF (' + subc.toFixed(1) +
       ' degC) -- the audit\'s E18 finding was ZERO, by construction, before this vessel');
   var Pbefore = sys.P;
-  ride(60, 1.10);
+  ride(quiet ? 30 : 60, 1.10);
   ckT('OVERCOOLING outsurges and pressure FALLS -- and the heaters answer',
       pr.surge_kgs < -1 || (sys.P < Pbefore - 0.3 && pr.heater_kW > PZ.HEATERS.prop_kW),
       'P ' + (sys.P * PSI).toFixed(0) + ' psia, level ' + pr.level_pct.toFixed(1) + ' %, ' +
       pr.heater_kW.toFixed(0) + ' kW in -- formulation 2 in the header INVERTED this response');
   var Plow = sys.P;
-  ride(240, 1.0);
+  ride(quiet ? 60 : 240, 1.0);
   ckT('...and the heaters RECOVER pressure once the duty rebalances',
-      sys.P > Plow + 0.2,
+      sys.P > Plow + (quiet ? 0.05 : 0.2),
       (Plow * PSI).toFixed(0) + ' -> ' + (sys.P * PSI).toFixed(0) + ' psia over 4 minutes');
   function coreH(s) {
     for (var k = 0; k < s.nodes.length; k++) if (s.nodes[k].id === 'core') return s.nodes[k].h;
@@ -273,7 +273,7 @@ function runSuite(RD, rec, quiet) {
     }
     return prC;
   }
-  rideC(quiet ? 120 : 600, 0);
+  rideC(quiet ? 90 : 600, 0);
   ckT('closed-loop with the CVCS, the level HOLDS near program and the demand is off the rails',
       Math.abs(prC.level_pct - prC.level_program_pct) < (quiet ? 10 : 4) &&
       prC.charging_demand < 1 - 1e-9,
@@ -281,21 +281,82 @@ function runSuite(RD, rec, quiet) {
       ' %, demand ' + prC.charging_demand.toFixed(2) + ' — a railed demand is a wound-up ' +
       'integral, the first closed-loop probe\'s measured defect');
   var lvlPre = prC.level_pct;
-  rideC(quiet ? 60 : 120, 6.0);
+  rideC(quiet ? 40 : 120, 6.0);
   var lvlDrained = prC.level_pct, demDrained = prC.charging_demand;
-  rideC(quiet ? 120 : 300, 0);
+  rideC(quiet ? 80 : 300, 0);
   ckT('a 6 kg/s drain pulls the level down and the controller answers with FULL charging',
       lvlDrained < lvlPre - 10 && demDrained >= 1 - 1e-9 && prC.level_pct > lvlDrained + 1,
       lvlPre.toFixed(1) + ' -> ' + lvlDrained.toFixed(1) + ' % drained, demand ' +
       demDrained.toFixed(2) + ', recovering to ' + prC.level_pct.toFixed(1) +
       ' % — CVCS-scale recovery is SLOW, which is the real plant\'s shape too');
 
+  /* ---- 5c. THE TMI LEVERS (stage 2b) — and the DECEPTION EMERGES --------------------------- */
+  head('THE TMI LEVERS  [stuck PORV, block valve, tailpipe — nothing below is scripted]');
+  var pzT = PZ.createPressurizer({});
+  var sysT = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzT) });
+  var cvT = CV.createCVCS({});
+  var M0T = sysT.M_total, prT = null, pwT = 0, reliefT = 0, lostT = 0;
+  function rideT(secs, drv) {
+    for (var i = 0; i < secs / DT; i++) {
+      var cr = CV.stepCVCS(cvT, sysT, DT);
+      var srcs = (cr.sources || []).slice();
+      if (reliefT > 0) {
+        srcs.push({ node: 'hot_leg', mdot: -reliefT, h: prT.relief_h });
+        lostT += reliefT * DT;
+      }
+      var r = S.stepPlant(sysT, DT, { corePower: 300000, sgDuty: 300000 + pwT, sources: srcs });
+      pwT = r.pumpWork_kW;
+      prT = PZ.stepPressurizer(pzT, sysT, DT, Object.assign({ tavg_c: 304.5 }, drv));
+      reliefT = prT.relief_kgs;
+      cvT.chargingDemand = prT.charging_demand;
+      cvT.letdownOpen = prT.letdown_isolated ? 0 : 1;
+    }
+    return prT;
+  }
+  rideT(quiet ? 40 : 120, {});
+  ckT('before the failure: tailpipe COLD, no discharge, stuck reads an earned false',
+      prT.tailpipe_temp_c < 100 && prT.relief_kgs === 0 && prT.porv_stuck === false,
+      'tailpipe ' + prT.tailpipe_temp_c.toFixed(0) + ' degC — a pipe that has never passed');
+  rideT(quiet ? 40 : 120, { porv_stick: true });
+  ckT('the PORV sticks: HALF the two-valve capacity flows and the tailpipe goes HOT',
+      Math.abs(prT.relief_kgs - PZ.RELIEF.porv_kgs / 2) < 1e-9 &&
+      prT.tailpipe_temp_c > 200 && prT.porv_stuck === true,
+      prT.relief_kgs.toFixed(2) + ' kg/s (one valve of two), tailpipe ' +
+      prT.tailpipe_temp_c.toFixed(0) + ' degC — the passing indication');
+  var invMid = 100 * sysT.M_total / M0T;
+  rideT(quiet ? 160 : 480, { porv_stick: true });
+  var invLate = 100 * sysT.M_total / M0T;
+  /* ⚠ THE MEASUREMENT THIS STAGE EXISTS FOR. Measured on the first probe: from 3 to 11 minutes
+   * stuck, the LEVEL reads 100 % — high-level alarm in — while INVENTORY falls 96 -> 84 %
+   * through the open valve. The depressurising loop saturates and swells into the vessel;
+   * an operator "going by pressurizer level" throttles injection exactly as TMI-2's did.
+   * Nothing here is scripted: the deception is the machinery. */
+  ckT('THE TMI DECEPTION: the level reads HIGH while the inventory is LEAVING',
+      prT.level_pct > 90 && invLate < invMid - 2 && lostT > 500,
+      'level ' + prT.level_pct.toFixed(1) + ' % (hi alarm ' + prT.level_hi_alarm + ') with ' +
+      lostT.toFixed(0) + ' kg gone through the valve and inventory ' + invLate.toFixed(1) +
+      ' % — the level instrument is telling the truth about the vessel and lying about the plant');
+  rideT(quiet ? 40 : 120, { porv_stick: true, block_valve: false });
+  var lostAtIso = lostT;
+  var tailAtIso = prT.tailpipe_temp_c;
+  ckT('CLOSING THE BLOCK VALVE ends the loss — stuck or not',
+      prT.relief_kgs === 0 && prT.block_valve_open === false,
+      'discharge 0.00 with the PORV still stuck open behind the valve — the operator action ' +
+      'that ended TMI-2, at minute 142');
+  rideT(quiet ? 80 : 300, { porv_stick: true, block_valve: false });
+  ckT('...the inventory loss is FROZEN and the tailpipe cools SLOWLY — the deceptive half',
+      lostT === lostAtIso && prT.tailpipe_temp_c < tailAtIso - 20 &&
+      prT.tailpipe_temp_c > 100,
+      'lost held at ' + lostT.toFixed(0) + ' kg; tailpipe ' + tailAtIso.toFixed(0) + ' -> ' +
+      prT.tailpipe_temp_c.toFixed(0) + ' degC — still hot minutes after isolation, which is ' +
+      'why a hot pipe proves nothing about the valve');
+
   /* ---- 6. THE SOLID REGIME IS REACHABLE ---------------------------------------------------- */
   head('WATER SOLID  [drivable, flagged, and the plant stiffens -- the TMI curriculum\'s regime]');
   var pzS = PZ.createPressurizer({ level_frac: 0.90 });
   var sysS = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzS) });
   var prS = null, dPmax = 0, lastP = sysS.P;
-  for (var iS = 0; iS < 400 / DT; iS++) {
+  for (var iS = 0; iS < (quiet ? 150 : 400) / DT; iS++) {
     /* charging without letdown: a slow net mass ADD, the classic route to solid */
     var rS = S.stepPlant(sysS, DT, { corePower: 300000, sgDuty: 300000 + pw,
       sources: [{ node: 'cold_leg', mdot: 3.0, h: W.h_l(288, sysS.P) }] });
@@ -367,7 +428,22 @@ var MUTATIONS = [
    'var levErr = level_pct - program_pct;'],
   ['the +5 % anticipatory backup-heater signal is deleted',
    'var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;',
-   'var backupOnLevel = false;']
+   'var backupOnLevel = false;'],
+  ['the stick lever is dead (drivers.porv_stick ignored)',
+   'pz.porvStuck = !!drivers.porv_stick;',
+   'pz.porvStuck = false;'],
+  ['a stuck PORV flows BOTH valves\' capacity (one valve stuck is one valve)',
+   ': (pz.porvStuck ? RELIEF.porv_kgs / 2 : 0));',
+   ': (pz.porvStuck ? RELIEF.porv_kgs : 0));'],
+  ['the block valve never isolates',
+   'var porv_kgs = !pz.blockOpen ? 0',
+   'var porv_kgs = false ? 0'],
+  ['the tailpipe never heats (the passing indication is dead)',
+   'pz.T_tail_c += dt * (W.T_sat(P) - pz.T_tail_c) / RELIEF.tail_tau_heat_s;',
+   ''],
+  ['the tailpipe cools as fast as it heats (the deceptive half deleted)',
+   'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_cool_s;',
+   'pz.T_tail_c += dt * (amb - pz.T_tail_c) / RELIEF.tail_tau_heat_s;']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
