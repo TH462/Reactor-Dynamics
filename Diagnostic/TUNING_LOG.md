@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-workbench-a (#494 — the release's deploy check read its authentication from the shell, and its own header said otherwise)
+
+**Ask:** owner, 2026-08-19: *"Next"* — the recommendation left outstanding at the end of the
+Alpha 1.6.1 release. **Gates:** `run_all` **51 runners at baseline**. Committed on `workbench`
+as `374a982`; **not merged into `develop`**.
+
+**The whole entry in one line: a comment asserted a property of the ENVIRONMENT while claiming
+to describe the SCRIPT.** `tools/verify_release_deploy.js` said *"wrangler carries its own OAuth
+— no API token needed, and nothing to put in an environment variable"*. True of the script.
+False of the shell: wrangler **prefers** `CLOUDFLARE_API_TOKEN` over its stored OAuth whenever
+that variable exists, and the token this project keeps there is the Analytics Engine token from
+the ops runbook, with no Pages permission. Measured during the release, same shell, same commit,
+one variable apart — token set: `Authentication error [code: 10000]`, verdict **NOT LIVE**;
+`env -u CLOUDFLARE_API_TOKEN`: `cloudflare PRODUCTION`, verdict **LIVE**. Production was live
+both times.
+
+**Fifth failure of this one check, fourth of the same shape.** The shape: no reachable state in
+which it says NOT LIVE and means it. (2) knew only Vercel after the Cloudflare move; (4) read
+the deployment record and never the build outcome; (5) is this. The full list is in the file's
+own header and is the reason none of the first four is repeatable — **keep writing to it**.
+
+**The diagnostic message was half the defect, and getting it right took two measurements that
+defeat the obvious implementation.** A check whose non-answer is *defined* as not-a-failure must
+say WHICH non-answer you got, or a real outage is waved through. The original scanned stderr for
+`/error|Error/` — but wrangler prints part of its diagnosis on **stdout**, and its actual API
+failures contain no such word: the real line is `- Invalid format for Authorization header
+[code: 6111]`. So it printed the generic `wrangler not authenticated?` in exactly the case the
+message existed for. Now: `[code: NNNN]` first, the word as fallback, both streams.
+
+**Injection-verified four ways** against live Cloudflare, because this file's standing lesson is
+that a verifier needs a true positive *and* a true negative on record: token set on the released
+sha → LIVE (exit 0, the broken case); an unreleased sha → NOT LIVE (exit 1); no OAuth config plus
+a bogus token → the BOTH-paths line naming each path's error (exit 1); no credential variables →
+LIVE (exit 0).
+
+**Deliberately not fixed:** the script knows **Pages** only, while every PR now also reports a
+`Workers Builds: reactor-dynamics` check. If the site moves off Pages this is failure (2) again
+wearing a third host's name — but that needs a decision about where the site lives, not a patch.
+
+---
+
 ## Session log — 2026-08-18-develop-b (the workbench merge, and a gate whose verdict depended on whether the lane had ever run the build)
 
 **Ask:** owner, 2026-08-18: *"merge workbench and develop. release to maine and push to gh."*

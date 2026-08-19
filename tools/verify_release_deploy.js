@@ -36,6 +36,15 @@
  *      it reported PRODUCTION for a deployment whose only status was
  *      `failure — "Deployment was blocked"`.
  *
+ *   5. It read wrangler's OAuth in a comment and the ENVIRONMENT in practice. Wrangler
+ *      prefers `CLOUDFLARE_API_TOKEN` over its stored OAuth whenever that variable exists,
+ *      and the token this project keeps there is the ANALYTICS ENGINE token from the ops
+ *      runbook — no Pages permission. Measured on Alpha 1.6.1, same shell, one variable
+ *      apart: with the variable set, `Authentication error [code: 10000]` and a yellow
+ *      "could not query" line; with `env -u CLOUDFLARE_API_TOKEN`, PRODUCTION found.
+ *      Same shape as (2) and (4): the check had no reachable state in which it could say
+ *      NOT LIVE and mean it, for every agent who had followed the telemetry setup. #494.
+ *
  * (3) and (4) are the same bug mirrored, and the pair is the lesson: a verifier with no
  * true-positive on record is not a verifier, and neither is one with no true-negative.
  * Exercise BOTH directions against real data before believing either.
@@ -62,9 +71,41 @@ const G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', B = '\x1b[1m', D = '\x1b[2
 
 const PROJECT = 'reactor-dynamics';          // Cloudflare Pages project
 
-function run(cmd, args) {
-  const r = cp.spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' });
+function run(cmd, args, env) {
+  const r = cp.spawnSync(cmd, args, {
+    encoding: 'utf8', shell: process.platform === 'win32', env: env || process.env,
+  });
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
+}
+
+// The message this returns is the ONLY thing that tells the next reader whether "could not
+// query" means an expired login, a wrong-scope token, or Cloudflare being down — and
+// "could not query" is defined here as not-a-failure, so a useless message is how a real
+// outage gets waved through. Two things a stderr scan for /error/ misses, both measured:
+// wrangler prints part of the diagnosis on STDOUT, and its actual API failures carry no
+// such word at all — the real line is `- Invalid format for Authorization header
+// [code: 6111]`. So take a `[code: NNNN]` line first, and fall back to the word.
+function firstError(r) {
+  const lines = ((r.err || '') + '\n' + (r.out || '')).split('\n')
+    .map((l) => l.replace(/\x1b\[[0-9;]*m/g, '').replace(/^[\s-]+/, '').trim())
+    .filter(Boolean);
+  return lines.filter((l) => /\[code: \d+\]/.test(l))[0] ||
+    lines.filter((l) => /error/i.test(l))[0] ||
+    'wrangler not authenticated?';
+}
+
+// CREDENTIAL variables wrangler will use INSTEAD of its stored OAuth if they are present.
+// `CLOUDFLARE_ACCOUNT_ID` is deliberately NOT here: it is a disambiguator, not a credential,
+// and dropping it would make a multi-account OAuth session ambiguous in non-interactive mode.
+const CREDENTIAL_VARS = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_API_KEY', 'CLOUDFLARE_EMAIL',
+  'CF_API_TOKEN', 'CF_API_KEY', 'CF_EMAIL'];
+
+// CI=1 forces wrangler non-interactive: with no credentials at all it must ERROR rather than
+// wait on a login prompt this script would never answer.
+function wranglerEnv(keepCredentials) {
+  const e = Object.assign({}, process.env, { CI: '1' });
+  if (!keepCredentials) CREDENTIAL_VARS.forEach((k) => { delete e[k]; });
+  return e;
 }
 
 // FULL sha, always. The short form is the trap this file exists to remove.
@@ -81,9 +122,15 @@ console.log(B + '\nRelease deploy check' + X + D + '  ' + sha.slice(0, 12) + '�
 const found = [];
 
 // ---------------------------------------------------------------- Cloudflare Pages
-// Uses wrangler, which carries its own OAuth — no API token needed, and nothing to put in
-// an environment variable. A deployment counts only if it is BOTH environment=production
-// AND finished successfully; a queued or failed build is not a live site.
+// Uses wrangler, which carries its own OAuth — no API token needed. That sentence used to
+// end "and nothing to put in an environment variable", which was a claim about the
+// ENVIRONMENT dressed as a claim about this script (#494). Wrangler prefers a credential
+// variable over its stored OAuth whenever one exists, so the OAuth path is now taken
+// DELIBERATELY, by scrubbing those variables from the child env, with a credential retry
+// behind it for an environment that genuinely has one and no OAuth.
+//
+// A deployment counts only if it is BOTH environment=production AND finished successfully;
+// a queued or failed build is not a live site.
 (function cloudflare() {
   // `wrangler pages deployment list --json` DOES NOT return the API shape. It returns the
   // TABLE it would have printed, with capitalised keys:
@@ -101,12 +148,33 @@ const found = [];
   //     GitHub half needs, and it makes the input unambiguous.)
   //   * `Status` is a RELATIVE TIME on success ("8 minutes ago") and the literal string
   //     "Failure" on failure. So success is "not Failure", not a status match.
-  const r = run('npx', ['--yes', 'wrangler', 'pages', 'deployment', 'list',
-    '--project-name', PROJECT, '--environment', 'production', '--json']);
-  if (!r.ok) {
-    console.log(Y + '  cloudflare ' + X + D + 'could not query Pages (' +
-      (r.err.split('\n').filter((l) => /error|Error/.test(l))[0] || 'wrangler not authenticated?') + ')' + X);
+  const ARGS = ['--yes', 'wrangler', 'pages', 'deployment', 'list',
+    '--project-name', PROJECT, '--environment', 'production', '--json'];
+  const present = CREDENTIAL_VARS.filter((k) => process.env[k]);
+
+  // OAuth FIRST, credentials scrubbed; the environment's own credentials only as a FALLBACK.
+  // That ordering is the whole fix: a CI box with a properly scoped token and no OAuth still
+  // works, while a wrong-scope token sitting in a developer's shell can no longer outvote a
+  // working login. Reporting which path answered matters — "could not query" is defined here
+  // as not-a-failure, so a silent degrade to it is the same hole as (2) and (4).
+  let r = run('npx', ARGS, wranglerEnv(false));
+  let via = 'oauth';
+  if (!r.ok && present.length) {
+    const oauthErr = firstError(r);
+    r = run('npx', ARGS, wranglerEnv(true));
+    via = 'credentials';
+    if (!r.ok) {
+      console.log(Y + '  cloudflare ' + X + D + 'could not query Pages — BOTH auth paths failed. ' +
+        'oauth: ' + oauthErr + '  |  ' + present.join(', ') + ': ' + firstError(r) + X);
+      return;
+    }
+  } else if (!r.ok) {
+    console.log(Y + '  cloudflare ' + X + D + 'could not query Pages (' + firstError(r) + ')' + X);
     return;
+  }
+  if (via === 'credentials') {
+    console.log(D + '  cloudflare  wrangler OAuth was unusable; answered via ' +
+      present.join(', ') + X);
   }
   let list;
   try {

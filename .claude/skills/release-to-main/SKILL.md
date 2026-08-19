@@ -283,12 +283,24 @@ both times in ways a careful reader would not catch:
 - **Its Vercel half read the deployment RECORD and never the build OUTCOME**, so it could not
   fail (2026-08-09). Measured on Alpha 1.5.1: it printed `vercel PRODUCTION` for a deployment
   whose only status is `failure — "Deployment was blocked"`. See below.
+- **It said "wrangler carries its own OAuth, nothing to put in an environment variable" — a
+  claim about the ENVIRONMENT, not about the script** (#494, 2026-08-19). Wrangler prefers
+  `CLOUDFLARE_API_TOKEN` over its stored OAuth whenever that variable exists, and the token
+  this project keeps there is the **Analytics Engine** token from the ops runbook, with no
+  Pages permission. Measured on Alpha 1.6.1, same shell, one variable apart: token set →
+  `Authentication error [code: 10000]` and a yellow line; `env -u CLOUDFLARE_API_TOKEN` →
+  PRODUCTION found. So for every agent who had followed the telemetry setup, the check had no
+  reachable state in which it said NOT LIVE and meant it. **Fixed**: OAuth is now taken
+  deliberately, credentials scrubbed from the child env, with a credential retry behind it.
 
 The script queries `wrangler pages deployment list`, demands a full sha, and requires the
 deployment to be BOTH `environment=production` AND finished successfully — a queued, blocked or
 failed build is not a live site. A yellow "could not query" line means Cloudflare was
 unreachable, which is **not** the same as "no deployment"; the script says so in its own failure
-text.
+text. **Read which yellow line you got** — `BOTH auth paths failed` names the wrangler error for
+the OAuth attempt and for each credential variable separately, so an expired login, a
+wrong-scope token and a Cloudflare outage are three distinguishable states rather than one
+shrug.
 
 **It is Cloudflare-only from 2026-08-10.** The owner disconnected Vercel's GitHub integration, so
 no `vercel[bot]` record is created for any new commit — verified before the code was removed:
