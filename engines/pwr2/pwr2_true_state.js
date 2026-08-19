@@ -55,12 +55,20 @@
     fields.forEach(function (f) { MISSING[f] = { system: system, reason: reason }; });
   }
 
-  declareMissing('pressurizer', 'NOT BUILT HERE BY DESIGN — #472 is rebuilding the pressurizer on ' +
-    'another lane and D1 §6 warns "D3 consumes its design; must not race it". Layer 2 holds the ' +
-    'seat via extraMass.',
-    ['pzr_level_pct', 'pzr_mass_frac', 'pzr_heaters_shed', 'porv_open', 'porv_stuck',
-     'porv_tailpipe_temp_c', 'block_valve_open', 'spray_flow_pct', 'spray_stuck',
-     'subcooling_c', 'suction_subcool_c']);
+  /* ⚠ THE PRESSURIZER BLOCK SHRANK ON 2026-08-18 — pwr2_pressurizer.js exists (owner ruling
+   * 2026-08-18: "Option 1", superseding the wait-for-#472 posture the old reason cited), so
+   * seven of its eleven fields are SUPPLIED below. The four that stay missing are each blocked
+   * by their OWN absent machinery, named per the protection-block precedent — the old single
+   * "not built" reason would have kept telling consumers there was no model while a sourced
+   * one answered. */
+  declareMissing('failure injection', 'porv_stuck and spray_stuck are INJECTED failure states — ' +
+    'PWR2 has no failure-injection machinery at all, so a value here would describe a lever ' +
+    'that does not exist. The PORV and spray themselves are live in pwr2_pressurizer.js.',
+    ['porv_stuck', 'spray_stuck']);
+  declareMissing('pressurizer stage 2', 'the PORV tailpipe (a pipe with its own temperature — ' +
+    'the TMI indication) and the PORV block valve are relief-PATH hardware pwr2_pressurizer.js ' +
+    'stage 1 does not model; it reports valve states and discharge, not the pipework downstream.',
+    ['porv_tailpipe_temp_c', 'block_valve_open']);
 
   declareMissing('containment', 'pwr2_containment.js supplies pressure and temperature; spray, ' +
     'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +
@@ -192,7 +200,7 @@
         rl = ctx.relief || {}, cv = ctx.cvcs || {}, rh = ctx.rhr || {},
         br = ctx.break_ || {}, ct = ctx.containment || {}, cd = ctx.condenser || {},
         ec = ctx.eccs || {}, aw = ctx.afw || {}, dg = ctx.damage || {},
-        pt = ctx.protection || {};
+        pt = ctx.protection || {}, pz = ctx.pressurizer || {};
     var ts = {};
     function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }
 
@@ -211,6 +219,23 @@
     put('tavg_c',        RD.sg ? RD.sg.primaryTavg(sys) : undefined);
     put('core_void_fraction',    nodeAlpha(sys, 'core'));
     put('primary_void_fraction', nodeAlpha(sys, 'hot_leg'));
+    /* Subcooling from TRUE P and T, exactly as the contract line says — Layer 0 owns the
+     * saturation line, the loop owns the temperatures, nothing here is invented. The suction
+     * margin reads the CROSSOVER node, the leg that feeds the RCP. */
+    var tHot = nodeT(sys, 'hot_leg'), tXo = nodeT(sys, 'crossover');
+    if (tHot !== undefined) put('subcooling_c', W.subcooling(tHot, sys.P));
+    if (tXo !== undefined)  put('suction_subcool_c', W.subcooling(tXo, sys.P));
+
+    /* --- pressurizer (pwr2_pressurizer.js, stage 1 — owner ruling 2026-08-18 "Option 1") --- */
+    put('pzr_level_pct',     pz.level_pct);
+    /* the contract's pzr_mass_frac is the pressurizer's SHARE of total primary mass — the
+     * liquid inventory sitting in the vessel over the whole plant's ledger. */
+    if (pz.m_pzr !== undefined && typeof sys.M_total === 'number' && sys.M_total > 0) {
+      put('pzr_mass_frac', pz.m_pzr / sys.M_total);
+    }
+    put('pzr_heaters_shed',  pz.heaters_shed);
+    put('porv_open',         pz.porv_open);
+    if (pz.spray_frac !== undefined) put('spray_flow_pct', 100 * pz.spray_frac);
     if (typeof sys.M_total === 'number' && typeof ctx.M_nominal === 'number' && ctx.M_nominal > 0) {
       put('core_inventory_pct', 100 * sys.M_total / ctx.M_nominal);
     }

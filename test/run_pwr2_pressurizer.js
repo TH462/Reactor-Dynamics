@@ -1,0 +1,305 @@
+/* run_pwr2_pressurizer.js — Layer 5 gate: the pressurizer (stage 1, owner ruling 2026-08-18
+ * "Option 1").
+ *
+ * WHAT THIS GATE PINS, in order: the sourced constants against their own documents (the WTSM
+ * Fig 10.2-3 delta ladder is retyped HERE as independent literals — a drifted engine constant
+ * cannot re-derive the reference); the construction round-trip identities; the projection's
+ * COMPLIANCE (sign, and the water-solid regime collapse); the control ladder's actuation
+ * points, exercised through a stub plant at exact pressures; and the plant-coupled behaviour —
+ * a balanced plant SETTLES inside the declared proportional band, an overcooling transient
+ * outsurges and recovers on heaters, and the vessel can be DRIVEN SOLID (the regime the TMI
+ * curriculum depends on, D2 §25.3).
+ *
+ * The three formulation failures this file's header records were all found by probes of the
+ * kinds below being run BEFORE the gate existed; the gate is those probes made permanent.
+ *
+ * Run: node test/run_pwr2_pressurizer.js
+ */
+'use strict';
+var path = require('path');
+var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
+var fs = require('fs');
+
+function loadAll(pzSource) {
+  ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources'
+  ].forEach(function (f) {
+    delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
+    require(path.join(SRC, f + '.js'));
+  });
+  if (pzSource === undefined) {
+    delete require.cache[require.resolve(path.join(SRC, 'pwr2_pressurizer.js'))];
+    require(path.join(SRC, 'pwr2_pressurizer.js'));
+  } else {
+    /* eslint-disable no-eval */
+    (0, eval)(pzSource);
+  }
+  return globalThis.RD.pwr2;
+}
+
+function runSuite(RD, rec, quiet) {
+  var W = RD.water, S = RD.sources, PZ = RD.pressurizer;
+  var DT = 0.02, PSI = 145.037738;
+
+  function ck(name, got, want, tol, unit) {
+    var d = Math.abs(got - want), ok = d <= tol && isFinite(got);
+    rec.push({ name: name, ok: ok });
+    if (!quiet) console.log((ok ? '  PASS  ' : '  FAIL  ') + name.padEnd(58) +
+      'got ' + (typeof got === 'number' ? got.toFixed(4) : got) + ' want ' + want +
+      ' (tol ' + tol + ') ' + (unit || ''));
+  }
+  function ckT(name, cond, note) {
+    rec.push({ name: name, ok: !!cond });
+    if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
+  }
+  function head(s) { if (!quiet) console.log('\n' + s); }
+
+  /* A stub plant at an exact pressure — stepPressurizer reads only P, node h and mdot_loop,
+   * so the ladder can be exercised at the psi it actuates at rather than hoping a transient
+   * passes through it. */
+  function stub(P_mpa, mdot) {
+    return { P: P_mpa,
+             nodes: [{ id: 'hot_leg', h: W.h_l(310, P_mpa) },
+                     { id: 'cold_leg', h: W.h_l(288, P_mpa) }],
+             mdot_loop: mdot === undefined ? 1630 : mdot };
+  }
+  function at(err_psi) { return 15.41 + err_psi / PSI; }
+
+  /* ---- 1. THE SOURCED CONSTANTS, AGAINST THEIR DOCUMENTS ----------------------------------- */
+  head('SOURCED CONSTANTS  [independent literals -- the engine cannot re-derive its reference]');
+  /* WTSM Fig 10.2-3 (ML11223A287, page image), deltas about the setpoint: */
+  ck('proportional heaters FULL ON at -15 psi', PZ.CONTROL.prop_full_on_psi, -15, 0, 'psi');
+  ck('proportional heaters OFF at +15 psi', PZ.CONTROL.prop_off_psi, 15, 0, 'psi');
+  ck('backup heaters ON at -25 psi (the low alarm)', PZ.CONTROL.backup_on_psi, -25, 0, 'psi');
+  ck('backup heaters OFF at -17 psi (sourced hysteresis)', PZ.CONTROL.backup_off_psi, -17, 0, 'psi');
+  ck('spray starts at +25 psi', PZ.CONTROL.spray_start_psi, 25, 0, 'psi');
+  ck('spray full at +75 psi (the high alarm)', PZ.CONTROL.spray_full_psi, 75, 0, 'psi');
+  ck('PORV opens at +100 psi', PZ.CONTROL.porv_open_psi, 100, 0, 'psi');
+  /* Ginna TS Bases: 650 ft3 == 87 % -> 747.1 ft3 total, per-MWt to 300 MWt; 0.0283168 m3/ft3 */
+  ck('V_pzr is the Ginna-derived, per-MWt-scaled volume',
+     PZ.GEOM.V_pzr_m3, (650 / 0.87) * (300 / 1520) * 0.0283168, 0.01, 'm3');
+  /* WTSM 3.2: 1794 kW total at 3411 MWt, split 414:1380 */
+  ck('heater bank total is the WTSM per-MWt scaling',
+     PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW, 1794 * 300 / 3411, 0.5, 'kW');
+  ckT('...split in the source\'s own 414:1380 ratio',
+      Math.abs(PZ.HEATERS.prop_kW / PZ.HEATERS.backup_kW - 414 / 1380) < 0.01,
+      (PZ.HEATERS.prop_kW / PZ.HEATERS.backup_kW).toFixed(3) + ' vs 0.300');
+  ckT('...and the scaled bank clears Ginna\'s 100 kW nat-circ floor, per-MWt',
+      PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW > 100 * 300 / 1520,
+      (PZ.HEATERS.prop_kW + PZ.HEATERS.backup_kW).toFixed(0) + ' kW vs the 19.7 kW scaled LCO');
+  ck('safety valves open at 2500 psia', PZ.RELIEF.safety_open_mpa * PSI, 2500, 1, 'psia');
+  ck('safety reseat is the SOURCED 5 % blowdown', PZ.RELIEF.safety_reseat_frac, 0.95, 0, '-');
+  ck('PORV capacity is 2 x 179,000 lb/hr per-MWt scaled',
+     PZ.RELIEF.porv_kgs, 2 * 179000 / 7936.64 * 300 / 1520, 0.01, 'kg/s');
+  ck('level program full-power point is WTSM 10.3\'s 61.5 %', PZ.GEOM.level_program_full, 0.615, 0, '-');
+  ck('high-level trip is Ginna\'s 87 %', PZ.GEOM.hi_level_trip_frac, 0.87, 0, '-');
+
+  /* ---- 2. CONSTRUCTION ROUND-TRIPS --------------------------------------------------------- */
+  head('CONSTRUCTION  [the state, the projection and the level must be ONE consistent object]');
+  var pz0 = PZ.createPressurizer({});
+  ck('the projection reproduces the constructed mass EXACTLY',
+     PZ.extraMassFn(pz0)(15.41), pz0.m_pzr, 1e-9, 'kg');
+  ck('...and the derived level reproduces the requested program level',
+     100 * pz0.V_liq / pz0.V, 61.5, 1e-9, '%');
+  var pz40 = PZ.createPressurizer({ level_frac: 0.40 });
+  ck('a 40 % vessel round-trips too -- no hidden dependence on the program point',
+     PZ.extraMassFn(pz40)(15.41), pz40.m_pzr, 1e-9, 'kg');
+  ckT('h_bar sits inside the dome -- the constructed vessel is genuinely two-phase',
+      pz0.h_bar > W.h_f(15.41) && pz0.h_bar < W.h_g(15.41),
+      'h_bar ' + pz0.h_bar.toFixed(1) + ' kJ/kg between h_f ' + W.h_f(15.41).toFixed(1) +
+      ' and h_g ' + W.h_g(15.41).toFixed(1));
+
+  /* ---- 3. COMPLIANCE ----------------------------------------------------------------------- */
+  head('COMPLIANCE  [the bubble is soft, monotone -- and water-solid is STIFF, not clipped]');
+  var f0 = PZ.extraMassFn(pz0);
+  var mono = true, prev = f0(1.0);
+  for (var Pm = 1.5; Pm <= 17.0; Pm += 0.5) {
+    var mm = f0(Pm);
+    if (mm < prev) mono = false;
+    prev = mm;
+  }
+  ckT('the projection is MONOTONE in P across the envelope -- F(P) stays solvable',
+      mono, 'formulation 3 in the header inverted this and ran the solve to the floor');
+  var softSlope = (f0(15.51) - f0(15.31)) / 0.2;
+  var solid = PZ.createPressurizer({ level_frac: 0.999999 });
+  solid.h_bar = W.h_l(340, 15.41);            /* driven SOLID: subcooled liquid fills it */
+  var solidSlope = (PZ.extraMassFn(solid)(15.51) - PZ.extraMassFn(solid)(15.31)) / 0.2;
+  ckT('water-solid compliance COLLAPSES -- the regime transition, expressed not clamped',
+      solidSlope > 0 && solidSlope < softSlope / 5,
+      'dM/dP ' + softSlope.toFixed(1) + ' kg/MPa with a bubble vs ' + solidSlope.toFixed(2) +
+      ' solid -- D2 §25.3\'s "system compressibility collapses to the liquid bulk modulus"');
+
+  /* ---- 4. THE CONTROL LADDER, AT ITS OWN ACTUATION POINTS ---------------------------------- */
+  head('THE LADDER  [each component at the psi the figure puts it, through a stub plant]');
+  function once(err_psi, drivers, pzOpts) {
+    var p = PZ.createPressurizer(pzOpts || {});
+    return PZ.stepPressurizer(p, stub(at(err_psi)), DT, drivers || {});
+  }
+  ckT('at setpoint: proportional heaters at HALF output, nothing else',
+      Math.abs(once(0).heater_frac - 0.5) < 0.01 && once(0).spray_frac === 0 &&
+      !once(0).porv_open && !once(0).backup_on,
+      'the mid-band idle the WTSM text describes (bypass spray + ambient losses in the real plant)');
+  ckT('-15 psi: proportional heaters FULL', once(-15).heater_frac >= 1 - 1e-9, '');
+  ckT('+15 psi: proportional heaters OFF', once(15).heater_frac <= 1e-9, '');
+  ckT('-25 psi: backup heaters LATCH', once(-25.05).backup_on === true,
+      once(-25.05).heater_kW.toFixed(0) + ' kW with the backup bank in  (probed a hundredth ' +
+      'below the threshold -- the stub\'s MPa round-trip cannot land EXACTLY on it)');
+  var pzHys = PZ.createPressurizer({});
+  PZ.stepPressurizer(pzHys, stub(at(-25.05)), DT, {});
+  PZ.stepPressurizer(pzHys, stub(at(-20)), DT, {});
+  var hysMid = pzHys.backupOn;
+  PZ.stepPressurizer(pzHys, stub(at(-16)), DT, {});
+  ckT('...and clear at -17, not -25 -- the sourced hysteresis, not a mirrored threshold',
+      hysMid === true && pzHys.backupOn === false,
+      'still ON at -20 psi, OFF above -17 -- a symmetric band reds here');
+  ck('+50 psi: spray HALF open (linear between +25 and +75)', once(50).spray_frac, 0.5, 1e-9, '-');
+  ckT('+75 psi: spray full; +100: PORV OPEN',
+      once(75).spray_frac >= 1 - 1e-9 && once(100.5).porv_open === true &&
+      once(100.5).relief_kgs > 0, '');
+  ckT('spray needs a running RCP -- stopped loop, no spray at any error',
+      PZ.stepPressurizer(PZ.createPressurizer({}), stub(at(60), 0), DT, {}).spray_frac === 0,
+      'the driving head is the pump\'s (WTSM 3.2, #472\'s measured lesson)');
+  ckT('SI SHEDS THE HEATERS (NUREG-0737 II.E.3.1 (7), the #447 requirement)',
+      once(-40, { si_active: true }).heater_kW === 0 &&
+      once(-40, { si_active: true }).heaters_shed === true,
+      'a -40 psi error would otherwise demand every bank');
+  ckT('safeties open at 2500 psia and reseat 5 % lower, not at the lift point',
+      (function () {
+        var p = PZ.createPressurizer({});
+        var r1 = PZ.stepPressurizer(p, stub(17.25), DT, {});
+        var r2 = PZ.stepPressurizer(p, stub(16.60), DT, {});   /* inside the blowdown */
+        var r3 = PZ.stepPressurizer(p, stub(16.30), DT, {});   /* below 95 % of lift */
+        return r1.safety_open && r2.safety_open && !r3.safety_open;
+      })(), 'open at lift, HELD open through the blowdown band, reseat below it');
+
+  /* ---- 5. PLANT-COUPLED BEHAVIOUR ---------------------------------------------------------- */
+  head('THE PLANT  [settles in-band at the design point; transients move the right way]');
+  var pz = PZ.createPressurizer({});
+  var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pz) });
+  var pw = 0, pr = null;
+  function ride(secs, duty) {
+    for (var i = 0; i < secs / DT; i++) {
+      var r = S.stepPlant(sys, DT, { corePower: 300000, sgDuty: 300000 * duty + pw });
+      pw = r.pumpWork_kW;
+      pr = PZ.stepPressurizer(pz, sys, DT, {});
+    }
+    return pr;
+  }
+  ride(300, 1.0);
+  ckT('a balanced plant SETTLES inside the proportional band -- #486\'s defect, gone',
+      Math.abs(pr.err_psi) <= 15.5 && sys.P > 15.2 && sys.P < 15.6,
+      (sys.P * PSI).toFixed(1) + ' psia, err ' + pr.err_psi.toFixed(1) + ' psi -- the plant ' +
+      'without this vessel settled at 1285 psia, 490 psi below its own low-pressure trip');
+  ckT('...with the level near the program point and the surge asleep',
+      Math.abs(pr.level_pct - 61.5) < 8 && Math.abs(pr.surge_kgs) < 0.5,
+      pr.level_pct.toFixed(1) + ' %, surge ' + pr.surge_kgs.toFixed(3) + ' kg/s');
+  var subc = W.subcooling(W.T_from_h(coreH(sys), sys.P), sys.P);
+  ckT('...and the CORE IS SUBCOOLED at power -- saturation is no longer the attractor',
+      subc > 15, 'core subcooling ' + (subc * 9 / 5).toFixed(1) + ' degF (' + subc.toFixed(1) +
+      ' degC) -- the audit\'s E18 finding was ZERO, by construction, before this vessel');
+  var Pbefore = sys.P;
+  ride(60, 1.10);
+  ckT('OVERCOOLING outsurges and pressure FALLS -- and the heaters answer',
+      pr.surge_kgs < -1 || (sys.P < Pbefore - 0.3 && pr.heater_kW > PZ.HEATERS.prop_kW),
+      'P ' + (sys.P * PSI).toFixed(0) + ' psia, level ' + pr.level_pct.toFixed(1) + ' %, ' +
+      pr.heater_kW.toFixed(0) + ' kW in -- formulation 2 in the header INVERTED this response');
+  var Plow = sys.P;
+  ride(240, 1.0);
+  ckT('...and the heaters RECOVER pressure once the duty rebalances',
+      sys.P > Plow + 0.2,
+      (Plow * PSI).toFixed(0) + ' -> ' + (sys.P * PSI).toFixed(0) + ' psia over 4 minutes');
+  function coreH(s) {
+    for (var k = 0; k < s.nodes.length; k++) if (s.nodes[k].id === 'core') return s.nodes[k].h;
+  }
+
+  /* ---- 6. THE SOLID REGIME IS REACHABLE ---------------------------------------------------- */
+  head('WATER SOLID  [drivable, flagged, and the plant stiffens -- the TMI curriculum\'s regime]');
+  var pzS = PZ.createPressurizer({ level_frac: 0.90 });
+  var sysS = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzS) });
+  var prS = null, dPmax = 0, lastP = sysS.P;
+  for (var iS = 0; iS < 400 / DT; iS++) {
+    /* charging without letdown: a slow net mass ADD, the classic route to solid */
+    var rS = S.stepPlant(sysS, DT, { corePower: 300000, sgDuty: 300000 + pw,
+      sources: [{ node: 'cold_leg', mdot: 3.0, h: W.h_l(288, sysS.P) }] });
+    prS = PZ.stepPressurizer(pzS, sysS, DT, { spray_manual: 0, heaters_manual: 0 });
+    if (Math.abs(sysS.P - lastP) > dPmax) dPmax = Math.abs(sysS.P - lastP);
+    lastP = sysS.P;
+    if (prS.water_solid) break;
+  }
+  ckT('charging with no letdown DRIVES THE VESSEL SOLID -- the flag earns true',
+      prS.water_solid === true && prS.level_pct > 99.9,
+      'solid at t = ' + (iS * DT).toFixed(0) + ' s, ' + (sysS.P * PSI).toFixed(0) + ' psia');
+  var Psolid0 = sysS.P;
+  for (var iS2 = 0; iS2 < 10 / DT; iS2++) {
+    S.stepPlant(sysS, DT, { corePower: 300000, sgDuty: 300000 + pw,
+      sources: [{ node: 'cold_leg', mdot: 3.0, h: W.h_l(288, sysS.P) }] });
+    prS = PZ.stepPressurizer(pzS, sysS, DT, { spray_manual: 0, heaters_manual: 0 });
+  }
+  ckT('...and the SOLID plant pressurizes ~an order faster per kg -- the §25.3 collapse, live',
+      (sysS.P - Psolid0) / 10 > 8 * dPmax / DT * DT,
+      ((sysS.P - Psolid0) * PSI / 10).toFixed(1) + ' psi/s solid vs ' +
+      (dPmax * PSI / DT * DT).toFixed(2) + ' psi/s max while the bubble lived');
+}
+
+/* ---- run + injection self-test -------------------------------------------------------------- */
+console.log('\nPWR2 Layer 5 -- THE PRESSURIZER (stage 1): sourced ladder, compliance, regimes');
+var rec = [];
+runSuite(loadAll(), rec, false);
+var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
+
+var PZSRC = fs.readFileSync(path.join(SRC, 'pwr2_pressurizer.js'), 'utf8').replace(/\r\n/g, '\n');
+var MUTATIONS = [
+  ['the projection loses its P-dependence (a rigid vessel wearing a bubble\'s name)',
+   'return function (P) { return pz.V * W.rho_from_h(pz.h_bar, P); };',
+   'return function (P) { return pz.m_pzr; };'],
+  ['the split uses the spaces\' own densities again (formulation 1, the level collapse)',
+   'var rf = W.rho_l_sat(W.T_sat(P)), rg = W.rho_v_sat(P);\n    var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;',
+   'var rf = W.rho_from_h(1000, P), rg = W.rho_from_h(2800, P);\n    var Vl = (rf - rg) > 1e-9 ? (m - rg * V) / (rf - rg) : V;'],
+  ['spray ignores the RCP (a stopped loop sprays anyway)',
+   'if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;', ''],
+  ['the SI heater shed is deleted (the #447 requirement, undone)',
+   'pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied;',
+   'pz.heatersShed = drivers.ac_available === false || pz.emptied;'],
+  ['backup heaters clear at their own on-point (the sourced -17 hysteresis flattened)',
+   'else if (err_psi >= CONTROL.backup_off_psi) pz.backupOn = false;',
+   'else if (err_psi >= CONTROL.backup_on_psi) pz.backupOn = false;'],
+  ['the safeties reseat at the lift point (the sourced 5 % blowdown deleted)',
+   'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa * RELIEF.safety_reseat_frac) {',
+   'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa) {'],
+  ['insurge enthalpy is dropped (mass arrives carrying nothing)',
+   'H += surge_kgs * dt * (h_hot === undefined ? hf : h_hot);',
+   'H += 0;'],
+  ['the heaters never reach the energy ledger (a demand with no watts)',
+   'H += dt * (Q_heat_kW - Q_spray_kW);',
+   'H += dt * (0 - Q_spray_kW);'],
+  ['the spray band opens at the backup-heater point (a sign confusion on the ladder)',
+   'var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /',
+   'var sprayAuto = clip((err_psi - CONTROL.backup_on_psi) /'],
+  ['water-solid never flags (the regime transition clipped away)',
+   'pz.waterSolid = pz.h_bar <= hf;',
+   'pz.waterSolid = false;']
+];
+
+console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
+var blind = 0;
+MUTATIONS.forEach(function (m) {
+  var mutated = PZSRC.replace(m[1], m[2]);
+  if (mutated === PZSRC) {
+    console.log('  ANCHOR MISS ' + m[0] + '   <-- mutation did not apply');
+    blind++;
+    return;
+  }
+  var rec2 = [];
+  try { runSuite(loadAll(mutated), rec2, true); } catch (e) { /* a crash is caught too */ }
+  var f2 = rec2.length ? rec2.filter(function (r) { return !r.ok; }).length : 1;
+  if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
+  else console.log('  caught    ' + m[0].padEnd(70) + f2 + ' checks red');
+});
+loadAll();   /* restore the real module for whoever requires after us */
+
+console.log('\n' + '='.repeat(70));
+console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+  ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+console.log('  run_pwr2_pressurizer: ' + pass + ' passed, ' + fail + ' failed  (' +
+  rec.length + ' checks)');
+console.log('='.repeat(70) + '\n');
+process.exit(fail > 0 || blind > 0 ? 1 : 0);

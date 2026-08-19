@@ -27,7 +27,7 @@ var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr', 'pwr2_break', 'pwr2_containment', 'pwr2_condenser',
- 'pwr2_afw', 'pwr2_damage', 'pwr2_protection'
+ 'pwr2_afw', 'pwr2_damage', 'pwr2_protection', 'pwr2_pressurizer'
 ].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
@@ -111,13 +111,17 @@ function runSuite(TS, rec, quiet) {
       RD.protection.createProtection({ blockLowFlux: true }), 0.02,
       { pressure_mpa: sys.P, power_frac: r.power_pct / 100,
         flow_frac: sys.mdot_loop / 1630, steam_pressure_mpa: sr.P_sec, steam_flow_frac: 1.0 });
+    /* The pressurizer, stepped at the plant's own state like every other system — a healthy
+     * plant near setpoint, so the flags it supplies read false because they EARNED false. */
+    var pzo = RD.pressurizer.createPressurizer({});
+    var pzr = RD.pressurizer.stepPressurizer(pzo, sys, 0.02, {});
     var ctx = { sys: sys, reactor: r, sg: sr, turbine: tr, relief: rr, cvcs: cv, rhr: rh,
                 break_: brk, containment: ctr, condenser: cnd, eccs: ecc, afw: awf,
-                damage: dmg, protection: prt,
+                damage: dmg, protection: prt, pressurizer: pzr,
                 boron_ppm: 700, rated_steam_kgs: rated, mdot_rated: 1630, natcirc_frac: 0.15,
                 M_nominal: sys.M_total };
     return { ts: TS.buildTrueState(ctx), ctx: ctx, sys: sys, r: r, sr: sr, tr: tr, rr: rr,
-             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf, dmg: dmg, prt: prt };
+             brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf, dmg: dmg, prt: prt, pzr: pzr };
   }
   var B = build(), ts = B.ts;
 
@@ -169,8 +173,15 @@ function runSuite(TS, rec, quiet) {
      ts.ctmt_spray_active === undefined && ts.containment_sump_pct === undefined,
      'spray/fans/recombiners/sump have no sourced capacity; containment pressure itself is now ' +
      'SUPPLIED, checked below');
-  ck('the pressurizer is ABSENT, not zero', ts.pzr_level_pct === undefined &&
-     ts.porv_open === undefined, '#472 owns it; a level of 0 would be a fabricated TMI trainer');
+  /* TURNED AROUND (same rule as the scrammed check below): this asserted the pressurizer was
+   * ABSENT ("a level of 0 would be a fabricated TMI trainer") until pwr2_pressurizer.js landed
+   * (owner ruling 2026-08-18 "Option 1"). It now guards the repair: a REAL level from the
+   * vessel's own split, a REAL earned-false PORV — and it must be earned, so the level has to
+   * be plant-sized, not a zero wearing a supplied name. */
+  ck('the pressurizer level is SUPPLIED, plant-sized, with an earned-false PORV',
+     ts.pzr_level_pct > 20 && ts.pzr_level_pct < 90 && ts.porv_open === false,
+     ts.pzr_level_pct !== undefined ? ts.pzr_level_pct.toFixed(1) + ' %, porv_open ' +
+     ts.porv_open : 'ABSENT -- the fabricated-trainer worry now points the other way');
   /* ⚠ TURNED AROUND, NOT RE-BANDED. This check used to assert `scrammed` was ABSENT, with the
    * note "reporting 'not scrammed' from an engine with no protection layer is the worst case: it
    * is the reassuring answer, and it is unearned". That was right, and it stopped being right the
@@ -202,9 +213,28 @@ function runSuite(TS, rec, quiet) {
   });
   ck('each MISSING entry names a system and gives a reason', thin.length === 0,
      thin.length ? 'THIN: ' + thin.join(', ') : Object.keys(TS.MISSING).length + ' entries');
-  ck('the pressurizer gap names the lane that owns it',
-     /472/.test(TS.MISSING.pzr_level_pct.reason),
-     'an unbuilt system owned elsewhere is a different fact from one nobody has designed');
+  /* TURNED AROUND, not deleted (the protection-block precedent): this check used to pin that
+   * the pressurizer gap named #472 as its owner. pwr2_pressurizer.js now exists (owner ruling
+   * 2026-08-18 "Option 1"), so the check guards the REPAIR — the level is supplied, it traces
+   * to the vessel's own derived split, and the four fields that STAY missing name their own
+   * blocking machinery rather than a lane. */
+  /* ⚠ THE TRACE IS CHECKED ON AN OFF-DEFAULT VESSEL, deliberately: the build fixture sits at
+   * the 61.5 % program point, so a shim fabricating a healthy 61.5 agrees with it EXACTLY and
+   * a trace check there is blind by coincidence — the same lesson as the quality/void 40 %
+   * fixture. A vessel drained to 40 % separates the reading from the brochure. */
+  var pzOff = RD.pressurizer.createPressurizer({ level_frac: 0.40 });
+  var pzOffR = RD.pressurizer.stepPressurizer(pzOff, B.sys, 0.02, {});
+  var tsOff = TS.buildTrueState({ sys: B.sys, pressurizer: pzOffR });
+  ck('pzr_level_pct is SUPPLIED and traces to the pressurizer\'s own split',
+     ts.pzr_level_pct !== undefined && Math.abs(ts.pzr_level_pct - B.pzr.level_pct) < 1e-12 &&
+     Math.abs(tsOff.pzr_level_pct - pzOffR.level_pct) < 1e-12 && tsOff.pzr_level_pct < 50,
+     ts.pzr_level_pct.toFixed(1) + ' % at program, ' + tsOff.pzr_level_pct.toFixed(1) +
+     ' % drained -- a fabricated healthy constant reads 61.5 in both and reds');
+  ck('...and the four still-missing pressurizer fields each name their OWN blocker',
+     /failure-injection|failure injection/.test(TS.MISSING.porv_stuck.reason) &&
+     /tailpipe|relief-PATH|stage 1/.test(TS.MISSING.porv_tailpipe_temp_c.reason) &&
+     !!TS.MISSING.block_valve_open && !!TS.MISSING.spray_stuck,
+     'a reason that names the machinery outlives a reason that names a lane');
 
   /* ---- SUPPLIED VALUES COME FROM THE LAYERS, NOT FROM CONSTANTS ------------------------ */
   head('SUPPLIED VALUES TRACE TO THEIR LAYER');
@@ -422,8 +452,13 @@ var MUTATIONS = [
    "    'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +\n" +
    "    'corpus) and sump level needs a geometry map this engine does not have.',",
    "  declareMissing('containment', '',"],
-  ['a MISSING entry loses the lane that owns the pressurizer',
-   "#472 is rebuilding the pressurizer on ", "the pressurizer is not built on "],
+  /* RETARGETED 2026-08-18: this mutation used to blank the "#472 owns it" lane attribution,
+   * whose anchor text left with the old declared-missing block when pwr2_pressurizer.js landed.
+   * The same failure class now lives in the SUPPLIED side: a level published as a constant
+   * instead of read from the vessel's own split. */
+  ['pzr_level_pct is fabricated as a healthy constant instead of read from the vessel',
+   "    put('pzr_level_pct',     pz.level_pct);",
+   "    put('pzr_level_pct',     61.5);"],
   ['coverage() counts DECLARED gaps as supplied, inflating the fraction',
    '      if (ts[f] !== undefined) supplied.push(f);',
    '      if (ts[f] !== undefined || MISSING[f]) supplied.push(f);'],

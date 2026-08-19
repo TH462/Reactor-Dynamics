@@ -59,9 +59,9 @@ var LIB = path.join(E, 'pwr2_sg.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_turbine', 'pwr2_relief',
- 'pwr2_condenser'].forEach(function (f) { require(path.join(E, f + '.js')); });
+ 'pwr2_condenser', 'pwr2_pressurizer'].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, R = RD.reactor,
-    TB = RD.turbine, RL = RD.relief, CD = RD.condenser, FU = RD.fuel;
+    TB = RD.turbine, RL = RD.relief, CD = RD.condenser, FU = RD.fuel, PZ = RD.pressurizer;
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, core: RD.core,
@@ -128,7 +128,11 @@ function runSuite(G, rec, quiet) {
   var AFTER = quiet ? 4000 : 7500;     /* 80 s vs 150 s */
 
   function plant() {
-    var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+    /* THE PLANT HAS A PRESSURIZER NOW (pwr2_pressurizer.js, owner ruling 2026-08-18 "Option 1")
+     * — the fixture defect this block spent two days documenting (#486) is repaired at its
+     * cause, not re-banded around. */
+    var pz  = PZ.createPressurizer({});
+    var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0, extraMass: PZ.extraMassFn(pz) });
     var rx  = R.createReactor({ P: 1.0, coolTemp_c: TREF });
     var sg  = G.createSG({});
     var tb  = TB.createTurbine({ load_target_mwe: MWE_RATED });
@@ -136,7 +140,7 @@ function runSuite(G, rec, quiet) {
     var cd  = CD.createCondenser({});
     /* SEE THE HEADER: the fuel temperature is REQUIRED here, not optional. */
     var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
-    return { sys: sys, rx: rx, sg: sg, tb: tb, rl: rl, cd: cd, B: B,
+    return { sys: sys, rx: rx, sg: sg, tb: tb, rl: rl, cd: cd, B: B, pz: pz,
              rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed) };
   }
   /* ⚠ THE DEMAND IS IN MEGAWATTS ELECTRICAL, and that is the whole point of this revision.
@@ -147,7 +151,7 @@ function runSuite(G, rec, quiet) {
    * similar-looking percentages (D4 §20.7, where the quantitative claim was withdrawn). With
    * pwr2_turbine.js the two engines can finally be handed the SAME command. */
   function ride(pl, n, demandOf, dumpLaw, cwOn) {
-    var r = null, sr = null, tr = null, t = 0;
+    var r = null, sr = null, tr = null, t = 0, pzr = null;
     for (var i = 0; i < n; i++) {
       if (demandOf) pl.tb.load_target_mwe = demandOf(t);
       /* The turbine asks for the flow its load needs AT THE CURRENT SECONDARY PRESSURE; the SG
@@ -177,6 +181,7 @@ function runSuite(G, rec, quiet) {
       tr = TB.stepTurbine(pl.tb, 0.02, { steam_kgs: steam, P_mpa: sr.P_sec, h_feed: G.SG.h_feed });
       r  = R.stepReactor(pl.rx, pl.sys, 0.02, { boron_ppm: pl.B, rodGroups: null });
       S.stepPlant(pl.sys, 0.02, { heats: r.heats, sgDuty: sr.duty_kW });
+      pzr = PZ.stepPressurizer(pl.pz, pl.sys, 0.02, {});
       t += 0.02;
     }
     /* CORE-NODE SUBCOOLING, so the BASELINE block can assert the condition it never checked.
@@ -193,7 +198,8 @@ function runSuite(G, rec, quiet) {
              sgP: sr.P_sec, duty: sr.duty_kW, fuel: r.T_fuel_c, rho: r.rho_pcm,
              mwe: tr.mwe_output, deficit: tr.deficit_mwe, steam: tr.steam_kgs,
              dumpFrac: rr.dump_kgs / pl.rated_steam, safetyOpen: rr.safety_open,
-             backpressure: cr.backpressure_in_hg, condAvail: cr.available };
+             backpressure: cr.backpressure_in_hg, condAvail: cr.available,
+             pzrLevel: pzr ? pzr.level_pct : null, pzrErr: pzr ? pzr.err_psi : null };
   }
 
   /* ---- THE BASELINE, AND IT IS NOT THE DESIGN POINT -----------------------------------------
@@ -233,14 +239,21 @@ function runSuite(G, rec, quiet) {
      G.ratedU() * G.createSG({}).area * (TREF - W.T_sat(G.createSG({}).P)) / 1000, 300, 3, 'MW');
   ckT('the plant holds full power', base.power > 95 && base.power < 105,
       base.power.toFixed(2) + ' %');
-  /* THE CHECK THAT WAS MISSING, and the one that would have caught this years of gate-runs ago.
-   * It holds on BOTH plants — 11.096 MPa before, 8.828 after — so it is guarding the mechanism
-   * rather than recording today's number. */
-  ckT('...but NOT at its design pressure, and the core is AT SATURATION — no pressurizer (#472)',
-      pl.sys.P < P0 - 2.0 && base.subcool_c < 1.0,
-      'primary ' + pl.sys.P.toFixed(3) + ' MPa against a design ' + P0.toFixed(2) +
-      ', core subcooling ' + base.subcool_c.toFixed(2) + ' degC against a real PWR\'s ~30 — a ' +
-      'rigid loop with no pressure control rides saturation at power');
+  /* ⚠ TURNED AROUND 2026-08-18 — this check used to pin the DEFECT: "NOT at its design
+   * pressure, and the core is AT SATURATION — no pressurizer (#472)", measured at 11.096 MPa
+   * with 0.0 degC subcooling on the rigid loop. pwr2_pressurizer.js now holds the plant (owner
+   * ruling "Option 1"), so the check guards the REPAIR, on the same mechanism-not-number
+   * principle: NEAR design pressure and genuinely SUBCOOLED. The sample rides past the
+   * fixture's startup transient (the boron-trim settle outsurges ~1 m3 and the heaters
+   * recover at ~0.33 psi/s — measured, 2140 -> 2218 psia over 50 -> 300 s), because a
+   * design-point claim sampled mid-recovery asserts the transient, not the point. */
+  var settled = ride(pl, quiet ? 3000 : 16500);
+  ckT('...AT ITS DESIGN PRESSURE, core SUBCOOLED — the #486 fixture defect, repaired at cause',
+      settled.Pprim > 14.7 && settled.subcool_c > 15,
+      'primary ' + (settled.Pprim * 145.04).toFixed(0) + ' psia (' + settled.Pprim.toFixed(3) +
+      ' MPa) vs design ' + (P0 * 145.04).toFixed(0) + ', core subcooling ' +
+      (settled.subcool_c * 1.8).toFixed(1) + ' degF — the rigid loop read 11.096 MPa at ' +
+      'SATURATION here, 490 psi below its own low-pressure reactor trip');
   /* ⚠ RE-BANDED FROM 5 TO 15 pcm, AND THE NUMBER IS THE FILE'S OWN, not one chosen to pass.
    * The A1 block below already uses `Math.abs(cut.rho) < 15` for exactly this claim — "it found
    * an equilibrium, it did not merely drift". The baseline is the weaker case of the two: it is

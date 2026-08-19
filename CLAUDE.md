@@ -379,10 +379,12 @@ re-querying. Run the query.
   #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
   two owner actions remain (delete the Vercel project, revoke a token).
-- **#479 PWR2** — Layers 0–5 + core damage + protection built on `backshop` (local, under the
-  standing no-merge hold above). The #488 as-built audit is adjudicated and closed (2026-08-18,
-  `PWR2_VALIDATION.md` §41); #487 resolved. Next decision on the issue: the pressurizer /
-  pressure-control layer — #486 says no protection or casualty scenario is meaningful without it.
+- **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer (stage 1, ruled
+  2026-08-18 "Option 1")** built on `backshop` (local, under the standing no-merge hold above).
+  The #488 as-built audit is adjudicated and closed; #487 resolved; **the plant now settles at
+  its design point** (2226 psia, 45 °F core subcooling — `PWR2_VALIDATION.md` §41–43). Open:
+  the LOCA/damage scenarios still ride pressurizer-less plants (#486, rescoped), pressurizer
+  stage 2, and the secondary dump/Tavg layer with its §42 acceptance-criterion ruling.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,

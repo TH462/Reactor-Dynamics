@@ -32,8 +32,10 @@ var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_reactor.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
- 'pwr2_kinetics', 'pwr2_fuel'].forEach(function (f) { require(path.join(E, f + '.js')); });
-var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, F = RD.fuel;
+ 'pwr2_kinetics', 'pwr2_fuel', 'pwr2_pressurizer'
+].forEach(function (f) { require(path.join(E, f + '.js')); });
+var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, F = RD.fuel,
+    PZ = RD.pressurizer;
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, core: RD.core,
@@ -73,7 +75,14 @@ function runSuite(R, rec, quiet) {
    * shutdown reactor being measured for dynamics it cannot show. */
   function fixture(opts) {
     opts = opts || {};
-    var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+    /* THE PLANT HAS A PRESSURIZER (pwr2_pressurizer.js, owner ruling 2026-08-18 "Option 1") —
+     * the rigid depressurised loop this file's own §486 notes documented is gone from the
+     * default fixture. `opts.rigid` keeps the old plant available DELIBERATELY: the void-half
+     * check below needs a boiling core to have a subject at all, and a rigid loop riding
+     * saturation is the honest way to produce one. */
+    var pz = opts.rigid ? null : PZ.createPressurizer({});
+    var sys = S.createPlant({ h: W.h_l(TREF, P0), P: P0,
+                              extraMass: pz ? PZ.extraMassFn(pz) : undefined });
     var rx  = R.createReactor({ P: opts.P === undefined ? 1.0 : opts.P, coolTemp_c: TREF });
     /* ⚠ TRIM AT THE ACTUAL FUEL TEMPERATURE, NOT THE COOLANT'S. criticalBoron defaults the fuel
      * to the moderator temperature, which is the ZERO-POWER case; at rated the fuel is 277 degC
@@ -82,13 +91,14 @@ function runSuite(R, rec, quiet) {
      * back by cooling, settling stable and self-consistent at a Tavg 29 degF below design. */
     var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full,
                               rx.fuel.T_fuel_c);
-    return { sys: sys, rx: rx, B: B };
+    return { sys: sys, rx: rx, B: B, pz: pz };
   }
   function ride(f, n, dutyOf, rods) {
     var last = null, t = 0;
     for (var i = 0; i < n; i++) {
       last = R.stepReactor(f.rx, f.sys, 0.02, { boron_ppm: f.B, rodGroups: rods || null });
       S.stepPlant(f.sys, 0.02, { heats: last.heats, sgDuty: dutyOf ? dutyOf(t) : RATED });
+      if (f.pz) PZ.stepPressurizer(f.pz, f.sys, 0.02, {});
       t += 0.02;
     }
     return last;
@@ -221,45 +231,55 @@ function runSuite(R, rec, quiet) {
       hold.power_pct.toFixed(2) + ' % after ' + (SETTLE * 0.02) + ' s');
   ckT('...and settles at ZERO net reactivity, which is what critical MEANS',
       Math.abs(hold.rho_pcm) < 5, hold.rho_pcm.toFixed(2) + ' pcm');
-  /* ⚠ RE-POINTED A SECOND TIME, 2026-08-17, AND THE OLD FORM WAS READING A SATURATION
-   * TEMPERATURE AS A CORE OUTLET TEMPERATURE.
+  /* ⚠ RE-POINTED A THIRD TIME, 2026-08-18 — AND BACK TO ITS ORIGINAL FORM, WHICH IS THE POINT.
    *
-   * It asserted the core node sits above TREF and below TREF+30, and its comment explained the
-   * 318.6 degC it saw as "the core outlet doing exactly what it should". MEASURED, with the void
-   * term of the density coupling disabled so the OLD plant is reproduced exactly: the fixture
-   * settles at 11.098 MPa, T_sat = 318.76 degC, core node = 318.76 degC, core quality 0.00318 —
-   * a VOID FRACTION of 3.28 % by volume. The number the check was passing on was saturation, and
-   * the plant it was certifying as settled was BOILING. Nothing said so, because nothing asked.
-   *
-   * THE CAUSE IS THE FIXTURE, NOT THE COUPLING. `S.createPlant` is a rigid loop with no pressure
-   * control, so at rated power against a rated sink it depressurises to wherever its own energy
-   * balance puts it and then rides saturation. That is what a plant with no pressurizer does. The
-   * pressurizer is issue #472's active work on the workbench lane and must not be built here.
-   *
-   * SO THE CHECK NOW ASSERTS WHAT IS ACTUALLY TRUE, and it is a strictly better check because it
-   * PASSES ON BOTH PLANTS — 318.76 against T_sat(11.098) before, 301.97 against T_sat(8.827)
-   * after. A check that holds across the change is guarding the mechanism; one that had to be
-   * re-banded to pass would have been refitted to it. */
+   * The original check asserted the core node sits above TREF and below TREF+30. On 2026-08-17
+   * that was found to be reading a SATURATION temperature (the rigid fixture settled at
+   * 11.098 MPa and rode the dome, core boiling at 3.28 % void) and was re-pointed to assert
+   * saturation, with the cause filed as #486: "the fixture having no pressure control". The
+   * fixture NOW HAS pressure control — pwr2_pressurizer.js in the extraMass seat (owner ruling
+   * 2026-08-18 "Option 1") — so the original assertion is finally true FOR THE RIGHT REASON:
+   * the core node is a subcooled outlet a bounded distance above the reference, not a
+   * saturation line wearing an outlet's name. Measured at the sample: ~2226 psia with ~45 degF
+   * of core subcooling. The saturation-riding plant is kept alive below, deliberately, where
+   * the void half needs it. */
   var holdSat = W.T_sat(hold_P());
-  ckT('...with the fuel hot, and the core node AT SATURATION because this fixture cannot hold ' +
-      'pressure',
+  ckT('...with the fuel hot, and the core node a SUBCOOLED outlet — the #486 fixture, repaired',
       hold.T_fuel_c > 620 && hold.T_fuel_c < 760 &&
-      Math.abs(hold.coolTemp_c - holdSat) < 1.0,
+      hold.coolTemp_c > TREF - 2 && hold.coolTemp_c < TREF + 30 &&
+      holdSat - hold.coolTemp_c > 10,
       'fuel ' + hold.T_fuel_c.toFixed(1) + ' degC, core node ' + hold.coolTemp_c.toFixed(2) +
-      ' degC against T_sat ' + holdSat.toFixed(2) + ' — a rigid loop with no pressurizer ' +
-      'rides saturation; #472 owns the fix');
+      ' degC, ' + ((holdSat - hold.coolTemp_c) * 1.8).toFixed(1) + ' degF below saturation — ' +
+      'the rigid fixture read the saturation line here and called it an outlet');
   /* THE VOID HALF OF THE DENSITY COUPLING, ASSERTED WHERE IT IS NON-ZERO — the flag-only-false
    * trap (run_pwr2_containment.js:110). A term that is only ever checked on a subcooled core is
-   * a term nobody has seen work, and this one is worth about -1680 pcm here. Normalised on VOID
-   * FRACTION BY VOLUME rather than on quality: at 1.53 % quality the volume void is 18.8 %, a
-   * 12x difference, and dividing by the wrong one puts the coefficient outside every published
-   * range and invites "re-tuning" a term that is correct. */
-  var holdVoid = hold_voidFrac();
+   * a term nobody has seen work. ⚠ THE PRESSURIZED FIXTURE CAN NO LONGER PROVIDE THE SUBJECT —
+   * its core is subcooled by design now — so this check rides the RIGID plant DELIBERATELY:
+   * the depressurised saturation-riding loop that was this file's default fixture until
+   * 2026-08-18 survives as the adversarial one, because a boiling core is exactly what it
+   * honestly produces. Normalised on VOID FRACTION BY VOLUME rather than on quality: at 1.53 %
+   * quality the volume void is 18.8 %, a 12x difference, and dividing by the wrong one puts
+   * the coefficient outside every published range and invites "re-tuning" a correct term. */
+  var voidF = fixture({ rigid: true });
+  ride(voidF, SETTLE);
+  function void_core() {
+    for (var vq = 0; vq < voidF.sys.nodes.length; vq++) {
+      if (voidF.sys.nodes[vq].id === 'core') return voidF.sys.nodes[vq];
+    }
+    return null;
+  }
+  var voidFrac = (function () {
+    var cn = void_core(), P = voidF.sys.P, x = W.quality(cn.h, P);
+    if (!(x > 0)) return 0;
+    var rf = W.rho_l(W.T_sat(P), P), rg = W.rho_v_sat(P);
+    return (x / rg) / ((x / rg) + ((1 - x) / rf));
+  })();
+  var voidPcm = K.voidReactivity(void_core().h, voidF.sys.P, voidF.B) * 1e5;
   ckT('the VOID half of the density coupling is live, negative, and real-PWR sized',
-      holdVoid > 0.02 && hold_voidPcm() < 0 &&
-      (hold_voidPcm() / (holdVoid * 100)) > -250 && (hold_voidPcm() / (holdVoid * 100)) < -20,
-      (holdVoid * 100).toFixed(2) + ' % void by volume, ' + hold_voidPcm().toFixed(0) +
-      ' pcm = ' + (hold_voidPcm() / (holdVoid * 100)).toFixed(1) + ' pcm per % void, against a ' +
+      voidFrac > 0.02 && voidPcm < 0 &&
+      (voidPcm / (voidFrac * 100)) > -250 && (voidPcm / (voidFrac * 100)) < -20,
+      (voidFrac * 100).toFixed(2) + ' % void by volume on the rigid plant, ' + voidPcm.toFixed(0) +
+      ' pcm = ' + (voidPcm / (voidFrac * 100)).toFixed(1) + ' pcm per % void, against a ' +
       'real-PWR range of roughly -100 to -250');
   ckT('nothing in the ride is NaN — the coupling does not lose a value',
       isFinite(hold.power_pct) && isFinite(hold.T_fuel_c) && isFinite(hold.rho_pcm) &&
@@ -388,18 +408,27 @@ function runSuite(R, rec, quiet) {
   ckT('SUR stays near zero once the plant SETTLES at steady state (the loop-holds fixture)',
       Math.abs(hold.startup_rate_dpm) < 0.5, hold.startup_rate_dpm.toFixed(4) + ' dpm');
 
+  /* ⚠ SAMPLE TIMES RE-MEASURED 2026-08-18, because the fixture gained its pressurizer and the
+   * recovery MOVED — deliberately, and in the physical direction. On the rigid plant the scram
+   * cooldown depressurised the loop freely and the moderator-density insertion walked the core
+   * back through criticality by 10 s (+12.28 dpm). The vessel now FIGHTS that depressurisation
+   * (outsurge + full heaters), so the same insertion arrives ~8 s later: measured, SUR turns at
+   * ~16.5 s, climbs at +12.0 dpm at 20 s (power 28 %), overshoots to ~139 %, and re-settles by
+   * ~38 s. The MECHANISM is the invariant the checks hold — negative falling, positive through
+   * criticality, zero re-settled — and the old sample times pass only on the old plant, which
+   * is the fixture change speaking, not a refit. */
   var f4 = fixture(); var rods4 = [{ steps: 228, max_steps: 228, worth: 0.04068 }];
   ride(f4, 200, null, rods4); rods4[0].steps = 0;                 /* settle, then scram */
   var sur1s  = ride(f4, 50, null, rods4);                          /* 1 s: still falling */
-  var sur10s = ride(f4, 450, null, rods4);                         /* +9 s = 10 s: climbing back */
-  var sur24s = ride(f4, 700, null, rods4);                         /* +14 s = 24 s: re-settled */
+  var sur20s = ride(f4, 950, null, rods4);                         /* +19 s = 20 s: climbing back */
+  var sur38s = ride(f4, 900, null, rods4);                         /* +18 s = 38 s: re-settled */
   ckT('SUR is clearly NEGATIVE while the scrammed core is still cooling down',
       sur1s.startup_rate_dpm < -1, sur1s.startup_rate_dpm.toFixed(2) + ' dpm at 1 s');
   ckT('...and clearly POSITIVE while it climbs back THROUGH criticality -- the sourced lesson',
-      sur10s.startup_rate_dpm > 5,
-      sur10s.startup_rate_dpm.toFixed(2) + ' dpm at 10 s, power ' + sur10s.power_pct.toFixed(1) + ' %');
+      sur20s.startup_rate_dpm > 5,
+      sur20s.startup_rate_dpm.toFixed(2) + ' dpm at 20 s, power ' + sur20s.power_pct.toFixed(1) + ' %');
   ckT('...and back near zero once it has RE-SETTLED -- proves prevPower tracks the LATEST step',
-      Math.abs(sur24s.startup_rate_dpm) < 2, sur24s.startup_rate_dpm.toFixed(3) + ' dpm at 24 s');
+      Math.abs(sur38s.startup_rate_dpm) < 2, sur38s.startup_rate_dpm.toFixed(3) + ' dpm at 38 s');
   /* THE CONVERSION CONSTANT, AS A PURE IDENTITY. SUR = C/T by definition, so SUR*T recovers C
    * exactly whenever T is finite -- true no matter what the reactor is doing, which is what makes
    * it a mutation-sensitive check on the CONSTANT specifically rather than on plant behaviour. */

@@ -29,6 +29,49 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-18-backshop-b (#479 — the pressurizer, stage 1: the plant holds its design point, and three formulations died getting there)
+
+**Ask:** *(OWNER RULING, 2026-08-18: "Option 1" — build PWR2's own pressurizer now, staged,
+pressure control first, #472's findings as evidence not code; supersedes D1 §25.3 / D3 §4's
+wait-for-#472 posture, which was option 3 of the set put to him.)* **Gates:** `run_all` full at
+baseline; `run_pwr2_pressurizer` NEW 39 checks / 10 mutations; loadfollow, reactor and
+true_state fixtures adjudicated per-check. **Detail:** `Blueprint/PWR2_VALIDATION.md` §43 —
+the sourced table, the three formulation post-mortems, the plant-coupled measurements. This
+entry carries the traps.
+
+**The evidence pass came first and the corpus had nearly everything**: the WTSM chapters this
+lane already held carry the entire pressure-control system — Fig 10.2-3's setpoint ladder
+(read from the PAGE IMAGE; the text layer does not carry figures), the 1794 kW heater banks
+with the source's own 414:1380 split, 840 gpm spray, the 25→61.5 % level program — and Ginna's
+TS Bases give the vessel volume by division ("650 cubic feet … equivalent to 87 %"). One
+number class is genuinely absent: nothing times interphase equilibration, and the surviving
+formulation deliberately needs no such constant.
+
+**⚠ Trap of the session: the FROZEN variable in a pressure projection must be INTENSIVE.**
+Three formulations were built and measured before the fourth survived (all recorded in the
+module header): a split from the spaces' own densities collapses the LEVEL under spray (a
+dense steam space reads as vanished liquid); fully-mixed two-space energy states INVERT the
+insurge response (compressed-liquid density does the bubble's job); and a (mass, total-H)
+projection at frozen H inverts the COMPLIANCE itself (∂m/∂P < 0 — freezing extensive energy
+drops the compression work) and ran the solve to the floor in one step. The survivor is one
+HEM vessel at specific h̄ through `rho_from_h` — the loop nodes' own discipline, the same
+audit-validated function.
+
+**⚠ Second trap: a fixture repair RELOCATES checks' subjects.** Two checks needed the boiling
+core the default fixture no longer has: the void-coefficient liveness check now rides a
+DELIBERATE rigid fixture (the old plant, kept as the adversarial one), and the scram-recovery
+SUR samples moved ~8 s later because the vessel fights the depressurisation that used to
+deliver the moderator insertion — mechanism unchanged, sample times re-measured, and the old
+times pass only on the old plant, which is the fixture change speaking rather than a refit.
+The loadfollow baseline check that PINNED the #486 defect ("NOT at its design pressure, core
+AT SATURATION") is TURNED AROUND: 2226 psia, 45 °F subcooling, sampled past the startup
+transient's heater recovery. A1 held unchanged through all of it.
+
+**Deliberately NOT done**: the LOCA/core-damage scenarios still ride pressurizer-less plants —
+integrating the vessel moves every blowdown timeline and is its own per-probe adjudication
+pass. #486 stays open scoped to that. Stage 2 (two-h stratification, CVCS level control, aux
+spray, block valve/tailpipe, drained/TMI machinery) queued behind it.
+
 ## Session log — 2026-08-18-backshop-a (#479 — the as-built audit adjudicated, every confirmed finding landed, and #487 turned out already cured)
 
 **Ask:** pick up PWR2 after the #488 as-built audit completed; owner rulings this session: **no

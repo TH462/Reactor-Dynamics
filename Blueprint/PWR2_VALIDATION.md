@@ -2313,3 +2313,81 @@ Either way the **rod lineup is part of the case**, stated, never inherited (#460
 the shipped default and three artifacts each assumed AUTO). PWR2 cannot run this case yet —
 it needs the secondary-side dump/Tavg control layer, which does not exist — so this section is
 the parking spot the handoff asked for, not a result.
+
+## 43. THE PRESSURIZER, STAGE 1 — THE PLANT HOLDS ITS DESIGN POINT, AND THREE FORMULATIONS DIED FIRST — 2026-08-18
+
+*(OWNER RULING, 2026-08-18: "Option 1" — selecting "build PWR2's own pressurizer now, staged —
+pressure control first, level machinery second — taking #472's measured findings as design
+evidence, not its code" from three options put to him. This supersedes the wait-for-#472 posture
+recorded in D1 §25.3 and D3 §4: that exact trade was the option set.)*
+
+### 43.1 The evidence pass — every stage-1 number sourced or explicitly scaled
+
+| quantity | value | source |
+|---|---|---|
+| Setpoint ladder (deltas about the operator setpoint) | prop. heaters full ON −15 / OFF +15 · backup ON −25 / OFF −17 · spray +25 → +75 linear · PORV +100 · safeties 2485 psig, 5 % blowdown | **WTSM Fig 10.2-3, read from the page image** (ML11223A287 — the text layer does not carry the figure); safety blowdown Ginna ch15 Model 1 verbatim |
+| Controller | PID master, setpoint span 1700–2500 psig, operator-selectable | WTSM 10.2 (built proportional-only, declared — the figure's own note scopes the ladder to proportional output; measured cost ≤ 15 psi park) |
+| Level program | 25 % no-load → 61.5 % full power; high-level trip 87 % | WTSM 10.3 (ML11223A290); Ginna TS Bases (ML20339A221) |
+| Vessel volume | Ginna "650 cubic feet … equivalent to 87 %" → 747.1 ft³ at 1520 MWt → **147.5 ft³ (4.176 m³)** per-MWt at 300 MWt | Ginna TS Bases, derived; cross-checks: D2 §25.2's worked 4.13 m³ (1.1 %), WTSM 4-loop 0.526 ft³/MWt (7 %) |
+| Heaters | 1794 kW (prop 414 + backup 1380) at 3411 MWt → **157.8 kW** scaled, source's own split; clears Ginna's ≥100 kW nat-circ LCO per-MWt 8× | WTSM 3.2 (ML11223A213); Ginna TS Bases |
+| Spray | 840 gpm at 3411 MWt → **73.9 gpm (3.45 kg/s)**; needs a running RCP; +25/+75 band | WTSM 3.2; band corroborated Ginna ch15 Model 1 |
+| PORV / safeties | 2×179,000 lb/hr @ +100 psi; 2×288,000 lb/hr @ 2500 psia; per-MWt scaled | Ginna TS Bases; Ginna ch15 Model 1 |
+| Heater shed on SI / LOOP / uncovered | — | Ginna TS Bases; NUREG-0737 II.E.3.1 (7) (#447) |
+
+**The scaling method is the declared claim**: per-MWt from the anchor plant. The OCR-mangled
+Table/Figure reads used the page-image method the audit's B5 follow-up established.
+
+### 43.2 Three formulations were built, measured, and killed before the fourth survived
+
+All three are recorded in the module header because the failure classes generalise:
+
+1. **Two-space split from the spaces' own ρ(h,P)** — sustained spray drove the steam space's h
+   into the dome, its density rose ~5×, and the derived V_liq COLLAPSED: level 61.5 → 0 %
+   during an *insurge*, then the plant rode its own spray to the 18 MPa ceiling. *A level must
+   be monotone in mass*, which §25.2's saturation-density split is and a self-density split is not.
+2. **§25.2 split + fully-mixed independent h_liq/h_steam** — settled at −0.5 psi, but a ±10 %
+   duty step INVERTED the pressure response: a 35 °C-subcooled insurge mixed into 2.7 m³ of
+   liquid state densified it ~36 kg/m³ and pulled the plant to 1711 psia. *A fully-mixed liquid
+   space hands the bubble's job to compressed-liquid density*; real insurge water stratifies.
+3. **State (m, total H), projected at frozen H** — compliance came out INVERTED (∂m/∂P < 0: at
+   fixed total energy, higher P supports less saturated liquid) and the solve ran to the floor
+   in one step. *Freezing an EXTENSIVE energy drops the compression work — the frozen variable
+   must be INTENSIVE* — Layer 2's own "dh = v·dP" lesson met from the other side.
+
+**The survivor**: one HEM vessel at specific enthalpy h̄ — the projection is
+`V·rho_from_h(h̄, P)`, the same audit-validated function and the same frozen-intensive
+discipline as every loop node; the level is D2 §25.2's one-division saturated split; water-solid
+and emptied are §25.3's regime transitions and fall out of the same function (measured: dM/dP
+226 kg/MPa with the bubble → 9.1 solid).
+
+### 43.3 Measured, plant-coupled
+
+- **The plant settles AT ITS DESIGN POINT**: 2238 psia balanced-duty, 2226 psia on the full
+  SG/turbine fixture (err +3…+9 psi — inside the declared proportional-only park), core
+  subcooling **45.0 °F (25 °C)** where the audit's E18 measured **zero, structurally**. The
+  #486 escalation — "a plant 490 psia below its low-pressure reactor trip cannot run at all" —
+  is repaired at cause for the steady-state fixtures.
+- **Transients move the right way**: 60 s of +10 % duty outsurges −14 kg/s, level 64 → 23 %,
+  pressure to 1886 psia with every heater in, then RECOVERS at ~0.33 psi/s; −10 % insurges and
+  the level restores. The scram-recovery fixture's climb through criticality arrives ~8 s later
+  than on the rigid plant (the vessel fights the depressurisation) — same mechanism, sample
+  times re-measured.
+- **Water-solid is reachable and expressed**: 3 kg/s of charging with control defeated drives
+  the vessel solid in 54 s, after which the plant pressurises at **10.0 psi/s against 0.07**
+  with the bubble — §25.3's compliance collapse, live, which the TMI curriculum depends on.
+- Gates: `run_pwr2_pressurizer` NEW (39 checks, 10 mutations, none blind);
+  `run_pwr2_loadfollow` and `run_pwr2_reactor` fixtures pressurized with the #486-era defect
+  checks TURNED AROUND (the A1 chain held unchanged); `run_pwr2_true_state` supplies seven more
+  contract fields (57 → 64 of 109).
+
+### 43.4 Declared, not claimed
+
+Spray is an energy sink whose mass stays in the loop (level optimistic during spray). The
+controller is proportional-only. The vessel is saturated-equilibrium (no superheated steam
+space on outsurge — low-pressure trips arrive pessimistically early; no subcooled pool on
+insurge). Surge enthalpy transport into the loop side is not modelled at Layer 2 (the
+conservation budget carries it). **The LOCA/core-damage scenarios still ride pressurizer-less
+plants** — integrating the vessel there moves every blowdown timeline and is its own
+adjudication pass, deliberately not rushed into this one. Stage 2 owes: the two-h stratified
+states, level control via CVCS (the 25–61.5 % program as a controller), auxiliary spray, PORV
+block valve and tailpipe, and the drained/TMI deception machinery.
