@@ -36,6 +36,15 @@
  *      it reported PRODUCTION for a deployment whose only status was
  *      `failure — "Deployment was blocked"`.
  *
+ *   5. It read wrangler's OAuth in a comment and the ENVIRONMENT in practice. Wrangler
+ *      prefers `CLOUDFLARE_API_TOKEN` over its stored OAuth whenever that variable exists,
+ *      and the token this project keeps there is the ANALYTICS ENGINE token from the ops
+ *      runbook — no Pages permission. Measured on Alpha 1.6.1, same shell, one variable
+ *      apart: with the variable set, `Authentication error [code: 10000]` and a yellow
+ *      "could not query" line; with `env -u CLOUDFLARE_API_TOKEN`, PRODUCTION found.
+ *      Same shape as (2) and (4): the check had no reachable state in which it could say
+ *      NOT LIVE and mean it, for every agent who had followed the telemetry setup. #494.
+ *
  * (3) and (4) are the same bug mirrored, and the pair is the lesson: a verifier with no
  * true-positive on record is not a verifier, and neither is one with no true-negative.
  * Exercise BOTH directions against real data before believing either.
@@ -62,9 +71,41 @@ const G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', B = '\x1b[1m', D = '\x1b[2
 
 const PROJECT = 'reactor-dynamics';          // Cloudflare Pages project
 
-function run(cmd, args) {
-  const r = cp.spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' });
+function run(cmd, args, env) {
+  const r = cp.spawnSync(cmd, args, {
+    encoding: 'utf8', shell: process.platform === 'win32', env: env || process.env,
+  });
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
+}
+
+// The message this returns is the ONLY thing that tells the next reader whether "could not
+// query" means an expired login, a wrong-scope token, or Cloudflare being down — and
+// "could not query" is defined here as not-a-failure, so a useless message is how a real
+// outage gets waved through. Two things a stderr scan for /error/ misses, both measured:
+// wrangler prints part of the diagnosis on STDOUT, and its actual API failures carry no
+// such word at all — the real line is `- Invalid format for Authorization header
+// [code: 6111]`. So take a `[code: NNNN]` line first, and fall back to the word.
+function firstError(r) {
+  const lines = ((r.err || '') + '\n' + (r.out || '')).split('\n')
+    .map((l) => l.replace(/\x1b\[[0-9;]*m/g, '').replace(/^[\s-]+/, '').trim())
+    .filter(Boolean);
+  return lines.filter((l) => /\[code: \d+\]/.test(l))[0] ||
+    lines.filter((l) => /error/i.test(l))[0] ||
+    'wrangler not authenticated?';
+}
+
+// CREDENTIAL variables wrangler will use INSTEAD of its stored OAuth if they are present.
+// `CLOUDFLARE_ACCOUNT_ID` is deliberately NOT here: it is a disambiguator, not a credential,
+// and dropping it would make a multi-account OAuth session ambiguous in non-interactive mode.
+const CREDENTIAL_VARS = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_API_KEY', 'CLOUDFLARE_EMAIL',
+  'CF_API_TOKEN', 'CF_API_KEY', 'CF_EMAIL'];
+
+// CI=1 forces wrangler non-interactive: with no credentials at all it must ERROR rather than
+// wait on a login prompt this script would never answer.
+function wranglerEnv(keepCredentials) {
+  const e = Object.assign({}, process.env, { CI: '1' });
+  if (!keepCredentials) CREDENTIAL_VARS.forEach((k) => { delete e[k]; });
+  return e;
 }
 
 // FULL sha, always. The short form is the trap this file exists to remove.
@@ -81,9 +122,15 @@ console.log(B + '\nRelease deploy check' + X + D + '  ' + sha.slice(0, 12) + '�
 const found = [];
 
 // ---------------------------------------------------------------- Cloudflare Pages
-// Uses wrangler, which carries its own OAuth — no API token needed, and nothing to put in
-// an environment variable. A deployment counts only if it is BOTH environment=production
-// AND finished successfully; a queued or failed build is not a live site.
+// Uses wrangler, which carries its own OAuth — no API token needed. That sentence used to
+// end "and nothing to put in an environment variable", which was a claim about the
+// ENVIRONMENT dressed as a claim about this script (#494). Wrangler prefers a credential
+// variable over its stored OAuth whenever one exists, so the OAuth path is now taken
+// DELIBERATELY, by scrubbing those variables from the child env, with a credential retry
+// behind it for an environment that genuinely has one and no OAuth.
+//
+// A deployment counts only if it is BOTH environment=production AND finished successfully;
+// a queued or failed build is not a live site.
 (function cloudflare() {
   // `wrangler pages deployment list --json` DOES NOT return the API shape. It returns the
   // TABLE it would have printed, with capitalised keys:
@@ -101,12 +148,33 @@ const found = [];
   //     GitHub half needs, and it makes the input unambiguous.)
   //   * `Status` is a RELATIVE TIME on success ("8 minutes ago") and the literal string
   //     "Failure" on failure. So success is "not Failure", not a status match.
-  const r = run('npx', ['--yes', 'wrangler', 'pages', 'deployment', 'list',
-    '--project-name', PROJECT, '--environment', 'production', '--json']);
-  if (!r.ok) {
-    console.log(Y + '  cloudflare ' + X + D + 'could not query Pages (' +
-      (r.err.split('\n').filter((l) => /error|Error/.test(l))[0] || 'wrangler not authenticated?') + ')' + X);
+  const ARGS = ['--yes', 'wrangler', 'pages', 'deployment', 'list',
+    '--project-name', PROJECT, '--environment', 'production', '--json'];
+  const present = CREDENTIAL_VARS.filter((k) => process.env[k]);
+
+  // OAuth FIRST, credentials scrubbed; the environment's own credentials only as a FALLBACK.
+  // That ordering is the whole fix: a CI box with a properly scoped token and no OAuth still
+  // works, while a wrong-scope token sitting in a developer's shell can no longer outvote a
+  // working login. Reporting which path answered matters — "could not query" is defined here
+  // as not-a-failure, so a silent degrade to it is the same hole as (2) and (4).
+  let r = run('npx', ARGS, wranglerEnv(false));
+  let via = 'oauth';
+  if (!r.ok && present.length) {
+    const oauthErr = firstError(r);
+    r = run('npx', ARGS, wranglerEnv(true));
+    via = 'credentials';
+    if (!r.ok) {
+      console.log(Y + '  cloudflare ' + X + D + 'could not query Pages — BOTH auth paths failed. ' +
+        'oauth: ' + oauthErr + '  |  ' + present.join(', ') + ': ' + firstError(r) + X);
+      return;
+    }
+  } else if (!r.ok) {
+    console.log(Y + '  cloudflare ' + X + D + 'could not query Pages (' + firstError(r) + ')' + X);
     return;
+  }
+  if (via === 'credentials') {
+    console.log(D + '  cloudflare  wrangler OAuth was unusable; answered via ' +
+      present.join(', ') + X);
   }
   let list;
   try {
@@ -129,21 +197,109 @@ const found = [];
   }
 }());
 
-// ---------------------------------------------------------------- verdict
-console.log('');
-if (found.length) {
-  console.log(B + G + 'LIVE' + X + '  a successful production deployment exists for this commit — ' +
-    found.join(' and ') + '\n');
-  process.exit(0);
+// ------------------------------------------------------- the live origin (HOST-INDEPENDENT)
+// The deployment record above is evidence about Cloudflare's build queue. THIS is evidence
+// about what the public domain actually serves, and it is the question the file's title asks.
+//
+// It exists because every previous failure of this check was the same mistake in a different
+// costume: trusting one host's bookkeeping. (2) knew only Vercel after the move to Pages; (5)
+// asked Pages with credentials that could not answer. As of 2026-08-19 the project ALSO builds
+// as a Worker — `Workers Builds: reactor-dynamics` reports on every PR alongside
+// `Cloudflare Pages`, and a Worker of that name has been deploying since 2026-08-12 — so
+// "which product serves the site" is a live question with a moving answer.
+//
+// This check does not care. `site/version.js` is stamped at deploy with the COMMIT
+// (`site/stamp_version.js`: `window.RD_VERSION = "alpha · <7-char sha>"`, and "alpha · dev"
+// off the released channel), so fetching it from the production domain proves the released
+// commit is what a visitor gets — whichever host got it there, and whether or not any
+// deployment API can be reached.
+//
+// Cache: the file is served `Cache-Control: max-age=14400` (4 h, measured), so a plain GET can
+// be answered from an edge or connection cache and report the PREVIOUS release. The sha in the
+// query string plus `Cache-Control: no-cache` is what makes the answer about now.
+const SITE = 'https://reactordynamics.com';          // the production domain
+const https = require('https');
+
+function liveOrigin(done) {
+  const url = SITE + '/site/version.js?_=' + sha.slice(0, 12);
+  const req = https.get(url, {
+    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+    timeout: 20000,
+  }, (res) => {
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      res.resume();
+      return https.get(res.headers.location, {
+        headers: { 'Cache-Control': 'no-cache' }, timeout: 20000,
+      }, (r2) => body(r2, done)).on('error', (e) => done({ err: e.message }));
+    }
+    body(res, done);
+  });
+  req.on('timeout', () => { req.destroy(new Error('timed out after 20 s')); });
+  req.on('error', (e) => done({ err: e.message }));
+
+  function body(res, cb) {
+    let s = '';
+    res.setEncoding('utf8');
+    res.on('data', (c) => { s += c; });
+    res.on('end', () => {
+      if (res.statusCode !== 200) return cb({ err: 'HTTP ' + res.statusCode });
+      const m = /RD_VERSION\s*=\s*"([^"]*)"/.exec(s);
+      if (!m) return cb({ err: 'no RD_VERSION in the response' });
+      cb({ label: m[1], stamped: (m[1].split('·').pop() || '').trim() });
+    });
+  }
 }
-console.log(B + R + 'NOT LIVE' + X + '  no successful production deployment found for this commit.\n');
-console.log(D +
-  'Before assuming the deploy failed, rule out the two things that look identical to it:\n' +
-  '  1. It may still be building. A missing production deploy and a slow one are the same\n' +
-  '     from outside, so WAIT and re-run rather than re-pushing.\n' +
-  '  2. Cloudflare may not have been reachable — a `wrangler` auth failure prints a YELLOW\n' +
-  '     line above and is NOT the same as "no deployment". Read which one you got.\n' +
-  'If it is genuinely missing: promoting a deployment in the Pages dashboard is one click.\n' +
-  'Do NOT push develop to the same commit to retrigger it — that is the suspected CAUSE of\n' +
-  'the original Alpha 1.0.0 failure, not a remedy.' + X);
-process.exit(1);
+
+liveOrigin((live) => {
+  const short = sha.slice(0, 7);
+  let served = null;                                  // true / false / null = could not tell
+  if (live.err) {
+    // Unreachable is NOT wrong — the same rule this file already applies to wrangler. Say so
+    // and fall back to the deployment record, rather than reporting a release as dead because
+    // the machine running the check has no network.
+    console.log(Y + '  live origin ' + X + D + 'could not read ' + SITE +
+      '/site/version.js (' + live.err + ')' + X);
+  } else if (live.stamped === short) {
+    served = true;
+    console.log(G + '  live origin SERVING' + X + D + '  ' + SITE + ' → ' + live.label + X);
+  } else {
+    served = false;
+    console.log(R + '  live origin ' + X + D + SITE + ' is serving ' + live.label +
+      ', not ' + short + X);
+  }
+
+  console.log('');
+
+  // The live origin OUTRANKS the deployment record when both spoke: a build that succeeded and
+  // a domain that serves it are different claims, and only the second one is the release.
+  if (served === true) {
+    console.log(B + G + 'LIVE' + X + '  ' + SITE + ' is serving this commit' +
+      (found.length ? ' — and a successful production deployment exists (' + found.join(', ') + ')' : '') + '\n');
+    process.exit(0);
+  }
+  if (served === null && found.length) {
+    console.log(B + G + 'LIVE' + X + '  a successful production deployment exists for this commit — ' +
+      found.join(' and ') + '\n');
+    console.log(D + 'The live origin could not be read, so this is the deployment RECORD, not\n' +
+      'proof of what the domain serves. Re-run with a network, or curl ' + SITE +
+      '/site/version.js.' + X + '\n');
+    process.exit(0);
+  }
+
+  console.log(B + R + 'NOT LIVE' + X + '  ' + (served === false
+    ? 'the production domain is not serving this commit.'
+    : 'no successful production deployment found for this commit.') + '\n');
+  console.log(D +
+    'Before assuming the deploy failed, rule out the things that look identical to it:\n' +
+    '  1. It may still be building. A missing production deploy and a slow one are the same\n' +
+    '     from outside, so WAIT and re-run rather than re-pushing.\n' +
+    '  2. Cloudflare may not have been reachable — a `wrangler` auth failure prints a YELLOW\n' +
+    '     line above and is NOT the same as "no deployment". Read which one you got.\n' +
+    '  3. A deployment record WITHOUT the live origin agreeing is the interesting case: the\n' +
+    '     build succeeded and the domain still serves the previous release. That is the\n' +
+    '     Alpha 1.0.0 shape, and it is what promoting a deployment fixes.\n' +
+    'If it is genuinely missing: promoting a deployment in the Pages dashboard is one click.\n' +
+    'Do NOT push develop to the same commit to retrigger it — that is the suspected CAUSE of\n' +
+    'the original Alpha 1.0.0 failure, not a remedy.' + X);
+  process.exit(1);
+});
