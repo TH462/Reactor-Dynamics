@@ -67,9 +67,11 @@
  */
 'use strict';
 const cp = require('child_process');
+const https = require('https');
 const G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', B = '\x1b[1m', D = '\x1b[2m', X = '\x1b[0m';
 
 const PROJECT = 'reactor-dynamics';          // Cloudflare Pages project
+const SITE = 'https://reactordynamics.com';  // the production domain
 
 function run(cmd, args, env) {
   const r = cp.spawnSync(cmd, args, {
@@ -106,6 +108,98 @@ function wranglerEnv(keepCredentials) {
   const e = Object.assign({}, process.env, { CI: '1' });
   if (!keepCredentials) CREDENTIAL_VARS.forEach((k) => { delete e[k]; });
   return e;
+}
+
+// -------------------------------------------------------------------------------- --self-test
+// `node tools/verify_release_deploy.js --self-test` — no network, no wrangler, no Cloudflare.
+//
+// SIX recorded failures, and every one was found by a person running this at a release, which is
+// the worst place to discover it. Five of the six were decision logic or parsing, and both of
+// those are pure functions of their input, so they can be pinned. What CANNOT be pinned here is
+// whether wrangler's output shape or the site's stamp format have MOVED — that is what failure
+// (3) was, and the fixtures below are copies of real output taken on 2026-08-19, so they will go
+// stale silently. Read this as "the logic still does what it was proved to do", never as "the
+// check still works". Only a real release proves the second one.
+if (process.argv.includes('--self-test')) selfTest();
+
+function selfTest() {
+  let pass = 0; const fails = [];
+  function ok(name, cond, detail) {
+    if (cond) { pass++; console.log(G + '  ✓' + X + ' ' + name); }
+    else { fails.push(name); console.log(R + '  ✗' + X + ' ' + name + (detail ? D + '  ' + detail + X : '')); }
+  }
+
+  console.log(B + '\n════════ RELEASE DEPLOY CHECK — SELF TEST ════════' + X);
+
+  // ---- the verdict table. Every combination, so neither direction can go missing.
+  console.log(D + '\n  decide(record, served)' + X);
+  const T = [
+    ['record + serving          → LIVE',            'cloudflare', true,  0],
+    ['NO record + serving       → LIVE   (#494)',   '',           true,  0],
+    ['record + serving OTHER    → NOT LIVE (1.0.0)', 'cloudflare', false, 1],
+    ['NO record + serving OTHER → NOT LIVE',        '',           false, 1],
+    ['record + origin unread    → LIVE, caveated',  'cloudflare', null,  0],
+    ['NO record + origin unread → NOT LIVE',        '',           null,  1],
+  ];
+  T.forEach((row) => {
+    const v = decide(row[1], row[2]);
+    ok(row[0], v.code === row[3], 'got exit ' + v.code + ', expected ' + row[3]);
+  });
+  // The two rows above that carry history are not enough on their own — assert the WORDING that
+  // makes the caveated pass honest, because a LIVE with no caveat is the failure, not the exit code.
+  ok('the unread-origin pass SAYS it is the record, not proof',
+    /deployment RECORD/.test(decide('cloudflare', null).note || ''));
+  ok('a serving verdict never claims a record it does not have',
+    !/deployment exists/.test(decide('', true).headline));
+
+  // ---- wrangler's table shape. Failure (3) was reading API field names against this.
+  console.log(D + '\n  matchDeployments(list, short)   fixture: wrangler pages deployment list --json' + X);
+  const ROWS = [
+    { Id: 'a', Environment: 'Production', Branch: 'main', Source: '8265291',
+      Deployment: 'https://1e7d899f.reactor-dynamics.pages.dev', Status: '8 hours ago' },
+    { Id: 'b', Environment: 'Production', Branch: 'main', Source: 'bb67a83',
+      Deployment: 'https://21a83a5a.reactor-dynamics.pages.dev', Status: 'Failure' },
+  ];
+  ok('a success row matches on the SHORT sha', matchDeployments(ROWS, '8265291').good.length === 1);
+  ok('Status is a relative TIME on success, so success is "not Failure"',
+    (matchDeployments(ROWS, '8265291').good[0] || {}).Status === '8 hours ago');
+  ok('a Failure row is FOUND but not GOOD', matchDeployments(ROWS, 'bb67a83').forSha.length === 1 &&
+    matchDeployments(ROWS, 'bb67a83').good.length === 0);
+  ok('an unrelated sha matches nothing', matchDeployments(ROWS, '0000000').forSha.length === 0);
+  ok('an empty list is handled, not thrown at', matchDeployments(null, '8265291').good.length === 0);
+
+  // ---- the site stamp. Fixture is the real body served on 2026-08-19.
+  console.log(D + '\n  parseVersion(body)             fixture: GET ' + SITE + '/site/version.js' + X);
+  const BODY = '/* Generated at deploy by site/stamp_version.js. Repo copy is a placeholder. */\n' +
+    'window.RD_VERSION = "alpha · 8265291";\n';
+  ok('the released stamp yields the short sha', (parseVersion(BODY) || {}).stamped === '8265291');
+  ok('the OFF-CHANNEL stamp yields "dev", and must never match a sha',
+    (parseVersion('window.RD_VERSION = "alpha · dev";') || {}).stamped === 'dev');
+  ok('a page that is not version.js yields null, not a false match',
+    parseVersion('<!doctype html><title>404</title>') === null);
+
+  // ---- the diagnostic message. Failure (5)'s second half: the scan found nothing to say.
+  console.log(D + '\n  firstError(r)                  fixtures: real wrangler failures' + X);
+  ok('a [code: NNNN] line wins, and loses its leading "- "',
+    firstError({ err: '  - Invalid format for Authorization header [code: 6111]\n', out: '' }) ===
+      'Invalid format for Authorization header [code: 6111]');
+  ok('it reads STDOUT too — wrangler puts part of the diagnosis there',
+    /10000/.test(firstError({ err: '', out: 'Getting User settings...\nAuthentication error [code: 10000]' })));
+  ok('an ANSI-coloured [ERROR] line with no code is still reported',
+    /non-interactive/.test(firstError({ err: '\x1b[31mX [ERROR]\x1b[0m In a non-interactive environment, ...', out: '' })));
+  ok('nothing to report falls back to a guess that READS like one',
+    firstError({ err: '', out: '' }) === 'wrangler not authenticated?');
+
+  console.log('');
+  if (fails.length) {
+    console.log(B + R + 'SELF TEST: ' + fails.length + ' failed' + X + D + '  ' + (pass + fails.length) + ' checks' + X + '\n');
+    process.exit(1);
+  }
+  console.log(B + G + 'SELF TEST: OK' + X + D + '  ' + pass + ' checks, 0 failed' + X);
+  console.log(D + 'OK means the LOGIC still does what it was proved to do on 2026-08-19. It says\n' +
+    'nothing about whether wrangler’s output or the site’s stamp format have moved since —\n' +
+    'the fixtures here are copies, and copies go stale quietly. Only a release proves that.' + X + '\n');
+  process.exit(0);
 }
 
 // FULL sha, always. The short form is the trap this file exists to remove.
@@ -184,8 +278,8 @@ const found = [];
     return;
   }
   const short = sha.slice(0, 7);
-  const forSha = (list || []).filter((d) => String(d.Source || '').slice(0, 7) === short);
-  const good = forSha.filter((d) => !/^failure$/i.test(String(d.Status || '')));
+  const m = matchDeployments(list, short);
+  const forSha = m.forSha, good = m.good;
   if (good.length) {
     found.push('cloudflare');
     console.log(G + '  cloudflare PRODUCTION' + X + D + '  ' + (good[0].Deployment || '') +
@@ -196,6 +290,49 @@ const found = [];
       ', ' + (list || []).length + ' production deployment(s) total)' + X);
   }
 }());
+
+// ---------------------------------------------------------------- the verdict, as a FUNCTION
+// Extracted so `--self-test` can drive every combination without a network. That is not tidiness:
+// FIVE of this file's six recorded failures were decision-logic or parsing errors — could never
+// pass, could never fail, record outranking the domain — and every one of them was found by a
+// human running it at a release, which is the worst possible place to discover it.
+//
+//   record  — a successful PRODUCTION deployment exists for this commit
+//   served  — true / false / null, where NULL means the origin could not be read at all
+//
+// The two rows that carry the history: (record, served=false) must be NOT LIVE — a build that
+// succeeded over a domain still serving the previous release is the Alpha 1.0.0 shape, and this
+// file reported LIVE for it until 2026-08-19. (no record, served=true) must be LIVE — that is
+// #494, where the only host we could ask had locked us out and the domain answered anyway.
+function decide(record, served) {
+  if (served === true) {
+    return { code: 0, headline: B + G + 'LIVE' + X + '  ' + SITE + ' is serving this commit' +
+      (record ? ' — and a successful production deployment exists (' + record + ')' : '') };
+  }
+  if (served === null && record) {
+    return { code: 0,
+      headline: B + G + 'LIVE' + X + '  a successful production deployment exists for this commit — ' + record,
+      note: D + 'The live origin could not be read, so this is the deployment RECORD, not\n' +
+        'proof of what the domain serves. Re-run with a network, or curl ' + SITE +
+        '/site/version.js.' + X };
+  }
+  return { code: 1, headline: B + R + 'NOT LIVE' + X + '  ' + (served === false
+    ? 'the production domain is not serving this commit.'
+    : 'no successful production deployment found for this commit.') };
+}
+
+// `Source` is the SHORT sha, and `Status` is a RELATIVE TIME on success ("8 minutes ago") and the
+// literal string "Failure" on failure — so success is "not Failure", never a status match.
+function matchDeployments(list, short) {
+  const forSha = (list || []).filter((d) => String(d.Source || '').slice(0, 7) === short);
+  return { forSha: forSha, good: forSha.filter((d) => !/^failure$/i.test(String(d.Status || ''))) };
+}
+
+function parseVersion(bodyText) {
+  const m = /RD_VERSION\s*=\s*"([^"]*)"/.exec(bodyText);
+  if (!m) return null;
+  return { label: m[1], stamped: (m[1].split('·').pop() || '').trim() };
+}
 
 // ------------------------------------------------------- the live origin (HOST-INDEPENDENT)
 // The deployment record above is evidence about Cloudflare's build queue. THIS is evidence
@@ -217,9 +354,6 @@ const found = [];
 // Cache: the file is served `Cache-Control: max-age=14400` (4 h, measured), so a plain GET can
 // be answered from an edge or connection cache and report the PREVIOUS release. The sha in the
 // query string plus `Cache-Control: no-cache` is what makes the answer about now.
-const SITE = 'https://reactordynamics.com';          // the production domain
-const https = require('https');
-
 function liveOrigin(done) {
   const url = SITE + '/site/version.js?_=' + sha.slice(0, 12);
   const req = https.get(url, {
@@ -243,9 +377,9 @@ function liveOrigin(done) {
     res.on('data', (c) => { s += c; });
     res.on('end', () => {
       if (res.statusCode !== 200) return cb({ err: 'HTTP ' + res.statusCode });
-      const m = /RD_VERSION\s*=\s*"([^"]*)"/.exec(s);
-      if (!m) return cb({ err: 'no RD_VERSION in the response' });
-      cb({ label: m[1], stamped: (m[1].split('·').pop() || '').trim() });
+      const v = parseVersion(s);
+      if (!v) return cb({ err: 'no RD_VERSION in the response' });
+      cb(v);
     });
   }
 }
@@ -272,23 +406,11 @@ liveOrigin((live) => {
 
   // The live origin OUTRANKS the deployment record when both spoke: a build that succeeded and
   // a domain that serves it are different claims, and only the second one is the release.
-  if (served === true) {
-    console.log(B + G + 'LIVE' + X + '  ' + SITE + ' is serving this commit' +
-      (found.length ? ' — and a successful production deployment exists (' + found.join(', ') + ')' : '') + '\n');
-    process.exit(0);
-  }
-  if (served === null && found.length) {
-    console.log(B + G + 'LIVE' + X + '  a successful production deployment exists for this commit — ' +
-      found.join(' and ') + '\n');
-    console.log(D + 'The live origin could not be read, so this is the deployment RECORD, not\n' +
-      'proof of what the domain serves. Re-run with a network, or curl ' + SITE +
-      '/site/version.js.' + X + '\n');
-    process.exit(0);
-  }
+  const v = decide(found.join(', '), served);
+  console.log(v.headline + '\n');
+  if (v.note) console.log(v.note + '\n');
+  if (v.code === 0) process.exit(0);
 
-  console.log(B + R + 'NOT LIVE' + X + '  ' + (served === false
-    ? 'the production domain is not serving this commit.'
-    : 'no successful production deployment found for this commit.') + '\n');
   console.log(D +
     'Before assuming the deploy failed, rule out the things that look identical to it:\n' +
     '  1. It may still be building. A missing production deploy and a slow one are the same\n' +

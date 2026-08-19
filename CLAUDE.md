@@ -313,7 +313,7 @@ to read everything.
 
 _Last updated: **2026-08-10**._
 
-**Where the PWR is.** `run_all` is **51 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **52 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -608,7 +608,7 @@ with different numbers**. Run the gate; read the map. The per-change rationale l
 `Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
-node test/run_all.js            # all 51 runners (~8 min, 10-way parallel)
+node test/run_all.js            # all 52 runners (~8 min, 10-way parallel)
 node test/run_all.js --fast     # skip the 2 slow Playwright gates (~2.5 min)
 node test/run_all.js --jobs=1   # SEQUENTIAL (~13 min) — escape hatch if a runner is
                                 #   ever suspected of not being isolated
@@ -673,7 +673,7 @@ global-namespace scripts that attach to `globalThis.RD`; `require()` executes th
 into a shared global.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — all 51 runners vs recorded baselines
+node test/run_all.js            # THE AGGREGATE GATE — all 52 runners vs recorded baselines
 node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
 node test/run_pwr.js            # PWR scenario suite (all)
 node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi

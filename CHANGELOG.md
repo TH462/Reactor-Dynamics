@@ -30,6 +30,44 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The release deploy check now has a self-test, and it is in the aggregate gate** (#494).
+  `tools/verify_release_deploy.js --self-test` — no network, no wrangler, no Cloudflare — plus
+  `test/verify_deploy_check.js`, a thin runner so `run_all` discovers it. **52 runners.**
+
+  The reason is not coverage for its own sake. That file has failed **six** times, and what the
+  six have in common is not a shared bug: **nothing ran it except a person, at a release.**
+  (2) knew only Vercel and returned nothing for ever; (3) read API field names against
+  wrangler's table output and could never PASS; (4) read the deployment record and never the
+  build outcome and could never FAIL; (5) took its auth from the shell and could not answer at
+  all; (6) let the record outrank the domain — `LIVE`, exit 0, for a commit the production
+  domain had stopped serving six hours earlier. Every one was found at the moment it was most
+  expensive to find.
+
+  Five of the six were decision logic or parsing, both pure functions of their input, so they
+  are now pinned. **20 checks**: the verdict table over all six (record × served) states — the
+  two that carry the history being *(record, served=false) → NOT LIVE*, the Alpha 1.0.0 shape,
+  and *(no record, served=true) → LIVE*, which is #494 — plus wrangler's table shape (`Source`
+  is the SHORT sha; `Status` is a relative time on success and the literal `"Failure"` on
+  failure), the version stamp, and the error-line scan.
+
+  **Injection-verified seven ways**, because a self-test written beside its own code is worth
+  nothing until it has been made to fail: reverting the record-outranks-domain logic reds 3,
+  failure (3)'s API field names red 3, dropping the build-outcome check reds 1, taking the
+  channel instead of the sha reds 2, stderr-only `firstError` reds 1, dropping the
+  `[code: NNNN]` preference reds 1, removing the caveat wording reds 1. Two of those runs found
+  defects in the *test*: one assertion crashed instead of reporting, and my first caveat
+  injection left the asserted phrase in place, so the check passed against a broken note.
+
+  **What it cannot do, stated in its own closing line:** the fixtures are COPIES of wrangler's
+  output and the site's stamp. If either format moves, these stay green while the real check
+  breaks — which is failure (3) exactly. A green here never retires the §5b step.
+
+  The verdict is also now a pure function (`decide`), with `matchDeployments` and `parseVersion`
+  extracted alongside it. Behaviour is unchanged, and that claim was replayed rather than
+  asserted: the released sha and the stale `bb67a83` both produce identical output and exit
+  codes before and after.
+
 ### Fixed
 - **The release's production-deploy check asked a HOST whether the release was live, and
   the honest question is what the DOMAIN serves** (#494, second half). Measured, and this

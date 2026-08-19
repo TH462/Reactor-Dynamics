@@ -105,6 +105,31 @@ runs the whole suite twice concurrently with no `concurrency:` block. **A gate t
 on runner luck is not reporting on the code.** Not built here because that file's own header
 records what landing an unproven CI change costs: 32 consecutive red runs, through a release.
 
+**And the third thing the day owed: the check that has failed six times now has a self-test, and
+it RUNS.** (Work from here on was in the `develop` tree, not the workbench — one session, two
+lanes.) The six failures share no bug; what they share is that **nothing ran the file except a
+person, at a release**, which is the most expensive moment to discover any of them. Five of the
+six were decision logic or parsing — pure functions — so they are pinned: `decide()`,
+`matchDeployments()` and `parseVersion()` extracted, `--self-test` driving 20 checks over recorded
+fixtures, and `test/verify_deploy_check.js` so `run_all` discovers it. **52 runners.**
+
+**Injection-verified seven ways, and two of the seven found defects in the TEST rather than the
+code.** One assertion reached into `good[0].Status` and *crashed* instead of reporting when the
+array was empty — a red either way, but an illegible one. And my first attempt at breaking the
+caveat replaced the opening words of the note while leaving the asserted phrase `deployment
+RECORD` intact three words later, so the check passed against a note that now said nothing: **an
+injection that does not actually break the thing proves the test works when it does not.** The
+lesson is the one this repo keeps relearning from the other side — a check written beside its own
+fix is not green until you have made it go red, *and you have to verify the breaking, too*.
+
+**What it cannot see, and the file says so in its own closing line:** the fixtures are COPIES of
+wrangler's output and the site's version stamp. If either format moves, the self-test stays green
+while the real check breaks — which is failure (3) exactly, in a new place. A green here never
+retires the §5b step; only a release proves that half.
+
+**The refactor's claim was replayed, not asserted** (#393's rule): the released sha and the stale
+`bb67a83` produce byte-identical verdicts and exit codes before and after the extraction.
+
 ---
 
 ## Session log — 2026-08-18-develop-b (the workbench merge, and a gate whose verdict depended on whether the lane had ever run the build)
