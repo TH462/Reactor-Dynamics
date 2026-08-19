@@ -31,9 +31,12 @@ export function dow(s) {
 // A date with its weekday: "2026-08-09 Su". Suffixed rather than prefixed so the dates
 // stay left-aligned in a column.
 //
-// STILL UTC, DELIBERATELY. This is the helper for DAY BUCKETS — rows the upstream API
-// already grouped by UTC calendar day. Point-in-time stamps use `etWithDow` below; see
-// the note there for why the two must not be swapped.
+// ZONE-FREE, and takes a BARE CALENDAR DAY. "2026-08-09" is a label, not an instant, so
+// there is nothing here to convert — the weekday of that date is the same in every zone.
+// Its callers are the ones that decide which zone the day was computed in: the traffic
+// table now hands it `etDay()` output (Eastern), and the reports view hands it an R2 key's
+// UTC day prefix when an id carries no parseable stamp. Point-in-time stamps must use
+// `etWithDow` instead; see the note there for why the two must not be swapped.
 export function withDow(s) {
   const w = dow(s);
   return w ? String(s) + ' ' + w : String(s == null ? '' : s);
@@ -41,22 +44,34 @@ export function withDow(s) {
 
 /* ---------------------------------------------------------------- Eastern time
  *
- * The dashboard reads EASTERN, because a person reads it (owner request, 2026-08-12).
- * STORAGE AND QUERIES STAY UTC and must: Analytics Engine stores UTC, the SQL windows
- * are built in UTC, and the R2 bundle keys are UTC day prefixes. Only the presentation
- * of an INSTANT is converted.
+ * The dashboard reads EASTERN, because a person reads it (owner request, 2026-08-12) —
+ * every date and time on every view, since 2026-08-13. STORAGE AND QUERIES STAY UTC and
+ * must: Analytics Engine stores UTC, the SQL windows are relative (NOW() - INTERVAL), the
+ * GraphQL filter accepts nothing but UTC, and the R2 bundle keys are UTC day prefixes.
+ * Only what is DISPLAYED is converted — where a window BOUNDARY is now chosen in Eastern
+ * (`etDayStartMs`), it is still sent over the wire as UTC.
  *
- * WHAT IS NOT CONVERTED, AND WHY IT WOULD BE WRONG TO. The daily traffic table is
- * bucketed by the upstream API on UTC calendar days. Relabelling those rows "ET" would
- * be a lie about their contents: the row marked 2026-08-11 holds UTC 00:00–24:00, which
- * is 20:00 on the 10th to 20:00 on the 11th in Eastern. Converting a bucket's LABEL
- * without re-grouping the QUERY silently shifts every count by four or five hours into
- * the neighbouring day. That column stays UTC and now says so in its header.
+ * A BUCKET IS NOT AN INSTANT, AND RELABELLING ONE IS A LIE. The traffic table's rows are
+ * day buckets. The row the upstream API marks 2026-08-11 holds UTC 00:00–24:00, which in
+ * Eastern is 20:00 on the 10th through 20:00 on the 11th — so stamping "ET" on that label
+ * without re-grouping the underlying query moves four or five hours of every day's counts
+ * into the neighbouring row while looking entirely correct. That is why the first pass at
+ * this (2026-08-12) left the column UTC and said so in its header.
+ *
+ * The fix is to re-group, not to relabel: `analytics.js` now asks RUM for `datetimeHour`
+ * and sums the hours into Eastern days here-side, via `etDay()`. Measured 2026-08-13 on
+ * the live dataset before the change landed — hourly and daily grouping return IDENTICAL
+ * totals over 7/30/90 days (67/51, 50/40, 50/40 pageloads/visits) at the same
+ * sampleInterval, so the finer grouping neither loses rows nor drops to a coarser
+ * sampling tier. Without that measurement the re-group would be trading a labelling error
+ * for an accuracy one.
  *
  * DST IS HANDLED BY THE ZONE, NOT BY ARITHMETIC — `America/New_York`, so EST and EDT
  * switch themselves. A fixed −5 (or −4) offset would be right for half the year, which
  * is the failure mode worth naming: it reads correct in testing and drifts an hour in
- * March. `Intl` is available in Workers; nothing extra is loaded.
+ * March. `Intl` is available in Workers; nothing extra is loaded. Asking the zone is
+ * necessary but not sufficient — WHEN you ask it also matters, and `etDayStartMs` below
+ * carries the case where the obvious sampling instant gives the wrong answer.
  *
  * The abbreviation is carried in the COLUMN HEADER ("ET") rather than on every row,
  * because these columns are scanned. Single headline values print it in full.
@@ -78,6 +93,10 @@ const EN_DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
  * exactly as `dow()` above already does. Same trap, same fix, one place each. */
 function toDate(input) {
   if (input == null || input === '') return null;
+  // A Date falls through to the string branch otherwise, where "Mon Aug 11 2026 …" parses
+  // as nothing and the caller silently gets null — which is how `etDayStartMs` threw on
+  // its own output the first time it was run.
+  if (input instanceof Date) return Number.isFinite(input.getTime()) ? input : null;
   if (typeof input === 'number') return Number.isFinite(input) ? new Date(input) : null;
   let iso = String(input).trim().replace(' ', 'T');
   if (!/[zZ]|[+-]\d\d:?\d\d$/.test(iso)) iso += 'Z';
@@ -129,6 +148,95 @@ export function etFull(input) {
   const p = etFields(input);
   if (!p) return String(input == null ? '' : input);
   return etWithDow(input) + (p.timeZoneName ? ' ' + p.timeZoneName : '');
+}
+
+// Which EASTERN calendar day an instant fell on: "2026-08-11". The bucketing key for the
+// traffic table — an hour stamped 2026-08-12T02:00Z belongs to the 11th here, and that
+// shift is the entire reason the table is grouped hourly and re-summed rather than read
+// off the API's own day buckets.
+export function etDay(input) {
+  if (typeof input === 'string' && DATE_ONLY.test(input.trim())) return input.trim();
+  const p = etFields(input);
+  if (!p) return String(input == null ? '' : input);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+// How far the Eastern wall clock sits from UTC at a given instant, in ms. Negative west
+// of Greenwich: -4h in EDT, -5h in EST. Read off the zone, never assumed.
+function etOffsetMs(ms) {
+  const q = etFields(ms);
+  return Date.UTC(+q.year, +q.month - 1, +q.day, +q.hour, +q.minute, +q.second)
+    - Math.floor(ms / 1000) * 1000;
+}
+
+/* The UTC instant at which the Eastern calendar day containing `input` BEGAN — used to
+ * align the query window, so the oldest row in the table is a whole Eastern day rather
+ * than the last 19 or 20 hours of one.
+ *
+ * TWO PASSES, AND THE SECOND IS NOT OPTIONAL. An offset is a property of an instant, not
+ * of a day, so finding the instant needs the offset and finding the offset needs the
+ * instant. The fix is to guess with the offset at the same wall time read as UTC, then
+ * re-read the offset AT THE GUESS and re-solve; one iteration is exact because the guess
+ * is already within an hour of the answer and DST moves by an hour at 02:00, not at 00:00.
+ *
+ * The obvious alternative — sample the offset at NOON, safely away from the switch — is
+ * what this was written as first, and it is wrong on precisely the two days a year the
+ * whole exercise is about, in OPPOSITE directions. Noon on 2026-03-08 is already EDT, so
+ * it puts that day's start at 04:00Z when 00:00 EST is 05:00Z (an hour early, into the
+ * 7th); noon on 2026-11-01 is already EST, so it puts that day's start at 05:00Z when
+ * 00:00 EDT is 04:00Z (an hour late, dropping the day's first hour). Both were measured;
+ * `test/run_dashboard_time.js` pins all four cases so it cannot be "simplified" back.
+ */
+export function etDayStartMs(input) {
+  const p = etFields(input);
+  if (!p) return null;
+  const wall = Date.UTC(+p.year, +p.month - 1, +p.day, 0, 0, 0);
+  const guess = wall - etOffsetMs(wall);
+  return wall - etOffsetMs(guess);
+}
+
+/* How many days of RUM the upstream API holds at FULL RESOLUTION. Not a preference and
+ * not a guess — it is a property of Cloudflare's adaptive tiers, measured on the live
+ * dataset (the numbers are in analytics.js, at the only place that consumes this). */
+export const RUM_FULL_RES_DAYS = 7;
+
+/* How a by-day row is titled: the Eastern day, its weekday letter, and — for the one row
+ * a clamped window opens partway into — the word that stops it being read as a real drop
+ * in traffic. A short bucket and a quiet day are the same row without it.
+ *
+ * A function, and exported, for one reason: written inline at the call site the only
+ * available check is a regex for "(partial)", and that regex passes on
+ * `(false ? ' (partial)' : '')`. Measured — it did, on the first injection run. */
+export function dayLabel(day, partialDay) {
+  return withDow(day) + (day != null && day === partialDay ? ' (partial)' : '');
+}
+
+/* WHERE A QUERY WINDOW MAY START: the Eastern midnight `days` back, but never earlier
+ * than the full-resolution edge.
+ *
+ * Aligning the start to an Eastern midnight (2026-08-13) is right for the TABLE — it is
+ * what makes the oldest row a whole day — and for four hours out of every twenty-four it
+ * is fatal to the NUMBERS. `now - days*24h` taken between 00:00 and 04:00 UTC, which is
+ * 8pm to midnight Eastern, has already rolled into the previous Eastern day, so its
+ * midnight sits twenty hours the wrong side of the edge and the whole page drops to the
+ * coarse tier. Nothing errors; the counts just quietly become approximations.
+ *
+ * Clamping trades that for a short oldest row, which the caller labels. Only inside the
+ * full-resolution window: at 14/30/90 days the coarse tier is unavoidable, and trimming
+ * the start there would silently shorten the window that was actually asked for.
+ *
+ * IT LIVES HERE, next to the helper it corrects, because this file is the one
+ * `test/run_dashboard_time.js` imports — so the rule is exercised across a year of real
+ * instants rather than pattern-matched out of the source. A copy in analytics.js could
+ * only be tested by regex, and a regex cannot tell 8pm from 8am.
+ */
+export function windowStartMs(nowMs, days) {
+  const want = etDayStartMs(nowMs - days * 864e5);
+  if (days > RUM_FULL_RES_DAYS) return want;
+  // 00:00 of (today - RUM_FULL_RES_DAYS), by arithmetic: an epoch day is exactly 864e5 ms,
+  // and this edge is not a wall-clock date in any zone, so no offset belongs in it.
+  const edge = nowMs - (nowMs % 864e5) - RUM_FULL_RES_DAYS * 864e5;
+  return Math.max(want, edge);
 }
 
 // Whole seconds -> "45s" / "3m 12s" / "11h 34m". Never a bare decimal: these are read

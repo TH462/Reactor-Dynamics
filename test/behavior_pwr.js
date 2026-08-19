@@ -1,7 +1,10 @@
 /*
  * behavior_pwr.js — PWR BEHAVIOR BATTERY (spec layer, run by test/run_behavior.js).
  *
- * One probe per Blueprint/PWR_BEHAVIOR_CATALOG.md entry (v2.0, frozen 2026-07-20).
+ * One probe per Blueprint/PWR_BEHAVIOR_CATALOG.md entry. CATALOG_VERSION below is the
+ * single source for the version the runner prints, and the CAT-1 probe asserts it
+ * matches the catalog file's own header — the stamps here read "v2.0" for a year while
+ * the catalog moved to v3.1 (#472 found it; nothing noticed).
  * Unlike the engine/ops suites, which regress the sim against itself, every check
  * here asserts a band taken FROM THE CATALOG — i.e. from real-Westinghouse
  * behavior. Known defects are declared in XFAIL below (strict: an XFAIL that
@@ -17,6 +20,10 @@
   'use strict';
 
   var T = RD.OpsTest, test = T.test, near = T.near, fmt = T.fmt;
+
+  // The catalog version this battery is written against. CAT-1 fails if the catalog
+  // header disagrees — bump BOTH together, in the same change as the ruling.
+  var CATALOG_VERSION = 'v4.0';
 
   function H(initial, opts) {
     opts = opts || {};
@@ -153,6 +160,7 @@
     'TR-18': 'probe (load-change settling — the manual step ends instead of hunting forever, #378)',
     'TR-19': 'probe (UNTHROTTLED AFW OVERCOOLS — the SG depressurizes instead of discarding heat, #464)',
     'TR-1k': 'probe (the arm cliff with rods in AUTO — both lineups end at the backstop, #377)',
+    'TR-1m': 'probe (an armed rejection never clears with rods in MANUAL — declared §8.30, #489)',
     'TR-13': 'probe + ops SGTR single-SG EOP', 'TR-13b': 'probe',
     'SS-9': 'probe (cold thermal stability)', 'SS-10': 'probe (severity clamp)',
     // (a stale duplicate 'TR-14': 'existing:campaign SBO fact' sat here until #376 —
@@ -191,6 +199,7 @@
     'PI-7': 'probe', 'PI-7-reset': 'existing:run_ops abuse scram-then-withdraw (reset leg added P4)',
     'PI-8': 'probe (setpoint + ordering) + probe:CA-4 (both behaviour legs)',
     'PI-9': 'probe — the #199 absence narrowed at #386 stage 2: no steam-pressure SI channel exists, and the sourced 3.5 psig containment backup now answers the upstream break, catalog §10',
+    'CAT-1': 'probe',
   };
 
   var PROBES = {
@@ -1782,6 +1791,111 @@
           fmt(lo.range('pressure_mpa').max - hi.range('pressure_mpa').max, 2) + ' MPa');
         T.checkSanity(ck, hi);
         T.checkSanity(ck, lo);   // #376: the sub-arm leg's commands were never inspected
+      });
+    },
+
+    /* TR-1m (NEW 2026-08-17, #489) — AN ARMED REJECTION NEVER STANDS DOWN WITH THE RODS
+     * IN MANUAL, WHICH IS THE LINEUP THAT SHIPS.
+     *
+     * The fast-dump latch clears on `|load_imbalance_mwe| < dump_reject_clear_mwe` — its
+     * own comment glosses that as "the reactor has come back to meet the load". What
+     * brings it back is the ROD CONTROLLER, and #460 took `rods_tavg` out of free play on
+     * 2026-08-11. So in the shipped lineup the ride-out has no end condition: the latch
+     * holds, the dump sits on its cap, and the reactor parks well above the load forever.
+     *
+     * RULED ACCEPTED, not a defect (2026-08-17, #489; DESIGN_COMPANION §8.30) — the fix is
+     * the operator RESET the real plant has, and §8.30 forbids building it without the
+     * sourced sensitive arm because the two are one trade. This probe exists because a
+     * declared simplification NOTHING PINS can move silently, which is §8.21's own
+     * argument about its neighbour.
+     *
+     * THREE LEGS, AND THE THIRD IS THE POINT. Legs A and B are the same rejection under
+     * the two rod lineups — that pair is what proves the CAUSE is the lineup and not the
+     * threshold, and it is why leg B is here at all. Leg C sits one MWe the other side of
+     * the arm and pins the NON-MONOTONICITY: less demand, more reactor power, permanently.
+     *
+     * Both lineups are stated out loud (`rodsManual`/`rodsAuto`) rather than inherited —
+     * this probe is the record of what inheriting a lineup costs, so it had better not.
+     */
+    'TR-1m': function () {
+      return test('TR-1m armed rejection never clears with rods in MANUAL (declared, §8.30)', function (ck) {
+        var arm   = RD.PWR_CONFIG.steam_generator.dump_load_reject_mwe;
+        var clear = RD.PWR_CONFIG.steam_generator.dump_reject_clear_mwe;
+        var dcap  = 100 * RD.PWR_CONFIG.steam_generator.steam_dump_max;
+        var over  = 100 - (arm + 1);          // 59 MWe — one MWe PAST the arm
+        var under = 100 - (arm - 1);          // 61 MWe — one MWe short of it
+        ck.info('arm / clear / dump cap (config)',
+          fmt(arm, 0) + ' MWe  /  ' + fmt(clear, 0) + ' MWe  /  ' + fmt(dcap, 0) + ' %');
+
+        // Settle long enough that "never clears" means something. The latch would clear
+        // within a couple of minutes if it were going to; 1200 s is 10x that.
+        function ride(h, mwe) {
+          h.run(30);
+          // `immediate`: a rejection is an EVENT, not an operator ramp — see TR-1.
+          h.cmd('set_load_target', { immediate: true, mwe: mwe });
+          var armedEver = false;
+          for (var i = 0; i < 240; i++) {
+            h.run(5);
+            if (h.eng.s.dump_reject_mode) armedEver = true;
+          }
+          return armedEver;
+        }
+
+        // ---- leg A: rods MANUAL (the shipped lineup) -------------------------------
+        var a = rodsManual(H('hot_full_power'));
+        var aArmed = ride(a, over);
+        var aTs = a.ts();
+        ck('A/MANUAL: the rejection arms the fast dump', String(aArmed), aArmed === true, 'true');
+        ck('A/MANUAL: …and it is STILL armed 1200 s later — no path home',
+          String(a.eng.s.dump_reject_mode), a.eng.s.dump_reject_mode === true, 'true');
+        ck('A/MANUAL: the dump is parked on its cap', fmt(aTs.steam_dump_valve_pct, 1) + ' %',
+          aTs.steam_dump_valve_pct >= dcap - 1, '≥ ' + fmt(dcap - 1, 0));
+        // The reset's own quantity, and why it can never fire: the reactor is nowhere
+        // near the load, so the window is never entered.
+        ck('A/MANUAL: the imbalance never re-enters the reset window',
+          fmt(Math.abs(aTs.load_imbalance_mwe), 1) + ' MWe',
+          Math.abs(aTs.load_imbalance_mwe) > clear, '> ' + fmt(clear, 0) + ' (config)');
+        ck('A/MANUAL: so the reactor parks far above the load it was given',
+          fmt(aTs.power_pct, 1) + ' %', aTs.power_pct > over + 15, '> ' + fmt(over + 15, 0));
+
+        // ---- leg B: rods AUTO — the control that names the cause --------------------
+        // Same rejection, same everything else. If B also stuck, the story would be the
+        // arm threshold; it does not, so the story is the rod lineup.
+        var b = rodsAuto(H('hot_full_power'));
+        var bArmed = ride(b, over);
+        var bTs = b.ts();
+        ck('B/AUTO: the same rejection arms the same way', String(bArmed), bArmed === true, 'true');
+        ck('B/AUTO: …but the latch CLEARS once the rods walk power back',
+          String(b.eng.s.dump_reject_mode), b.eng.s.dump_reject_mode === false, 'false');
+        ck('B/AUTO: the dump reseats', fmt(bTs.steam_dump_valve_pct, 1) + ' %',
+          bTs.steam_dump_valve_pct < 1, '< 1 %');
+        ck('B/AUTO: and power tracks the load it was given',
+          fmt(bTs.power_pct, 1) + ' %', Math.abs(bTs.power_pct - over) < 5,
+          'within 5 pts of ' + fmt(over, 0));
+
+        // ---- leg C: one MWe the OTHER side of the arm, rods MANUAL ------------------
+        var c = rodsManual(H('hot_full_power'));
+        var cArmed = ride(c, under);
+        var cTs = c.ts();
+        ck('C/MANUAL: one MWe short of the arm, the fast mode never arms',
+          String(cArmed), cArmed === false, 'false');
+        ck('C/MANUAL: the dump only modulates', fmt(cTs.steam_dump_valve_pct, 1) + ' %',
+          cTs.steam_dump_valve_pct < dcap - 5, '< ' + fmt(dcap - 5, 0) + ' %');
+
+        // ---- THE NON-MONOTONICITY, which is the row's headline ----------------------
+        // Leg A asks for LESS electrical output than leg C and gets MORE reactor power.
+        // Asserted as a SPAN so it cannot be satisfied by both legs drifting together.
+        var span = aTs.power_pct - cTs.power_pct;
+        ck('THE INVERSION: 1 MWe LESS demand across the arm gives MORE reactor power',
+          fmt(cTs.power_pct, 1) + ' % at ' + fmt(under, 0) + ' MWe → '
+            + fmt(aTs.power_pct, 1) + ' % at ' + fmt(over, 0) + ' MWe  (+' + fmt(span, 1) + ' pts)',
+          span >= 5, '≥ 5 pts');
+        ck.info('steady-state heat to the condenser on leg A',
+          fmt(aTs.core_heat_pct - aTs.mwe_output, 1) + ' points of rated');
+
+        T.checkSanity(ck, a);
+        T.checkSanity(ck, b);
+        T.checkSanity(ck, c);
       });
     },
 
@@ -6172,12 +6286,70 @@
         T.checkSanity(ck, e);
       });
     },
+
+    // ============================================== the catalog's own lock (#472)
+
+    'CAT-1': function () {
+      return test('CAT-1 catalog ↔ battery parity — the v4.0 lock (#472)', function (ck) {
+        // v3.1 was "FROZEN-FINAL" with no mechanical lock: nine in-place amendments,
+        // stale version stamps, and 39 probe IDs with no catalog row. This probe is the
+        // lock. It is DELIBERATELY a probe (not a separate runner) so the strict-xfail
+        // machinery, the per-ID CLI, and the run_all score all apply unchanged.
+        var fs = require('fs'), path = require('path');
+        var catPath = path.join(__dirname, '..', 'Blueprint', 'PWR_BEHAVIOR_CATALOG.md');
+        var txt = fs.readFileSync(catPath, 'utf8');
+        var lines = txt.split('\n');
+
+        // Header version — the battery and the catalog must agree on which version
+        // this is (the stamps read v2.0 for a year while the catalog moved to v3.1).
+        var hdr = (lines[0].match(/—\s*(v[\d.]+(?:-[A-Z]+)?)/) || [])[1] || '(none)';
+        ck('catalog header version matches CATALOG_VERSION', hdr,
+          hdr === CATALOG_VERSION, CATALOG_VERSION);
+
+        // Parse every table-row ID. The ID must open the first cell; bold marks, flags
+        // (⚑) and "PI-6 / TR-4" style compounds are tolerated. Non-ID tables (§2
+        // ratios, §9 setpoints) never match.
+        var rowIds = {}, rowText = {};
+        lines.forEach(function (ln) {
+          var m = ln.match(/^\|\s*\**([A-Z]{2,4}-\d+[a-z]*)\**[^|]*\|/);
+          if (m) { rowIds[m[1]] = true; rowText[m[1]] = (rowText[m[1]] || '') + ln; }
+        });
+        var nRows = Object.keys(rowIds).length;
+        ck.info('distinct row IDs parsed from the catalog', String(nRows));
+        ck('the parser is not returning an empty catalog', String(nRows), nRows > 50, '> 50');
+
+        // Direction A — the one that was broken for a year: every COVERAGE key has a
+        // catalog row. Keys normalize by their leading ID ('PI-7-reset' → 'PI-7').
+        var missing = Object.keys(COVERAGE).filter(function (k) {
+          var base = (k.match(/^([A-Z]{2,4}-\d+[a-z]*)/) || [])[1];
+          return !base || !rowIds[base];
+        });
+        ck('every COVERAGE key has a catalog row', missing.length ? missing.join(', ') : 'all',
+          missing.length === 0, 'none missing');
+
+        // Direction B — a catalog ID outside COVERAGE must SAY where its claim is held:
+        // 'todo' (unwritten probe), an external suite pointer, or another probe's ID.
+        var covered = {};
+        Object.keys(COVERAGE).forEach(function (k) {
+          var base = (k.match(/^([A-Z]{2,4}-\d+[a-z]*)/) || [])[1];
+          if (base) covered[base] = true;
+        });
+        var orphans = Object.keys(rowIds).filter(function (id) {
+          if (covered[id]) return false;
+          var rest = rowText[id].slice(rowText[id].indexOf('|', 1));
+          return !/todo|existing|run_|campaign|ops|probe|RETIRED|preserved|[A-Z]{2}-\d/.test(rest);
+        });
+        ck('every un-covered catalog row names where its claim is held',
+          orphans.length ? orphans.join(', ') : 'all', orphans.length === 0, 'none orphaned');
+      });
+    },
   };
 
   RD.BehaviorPWR = {
     probes: PROBES,
     XFAIL: XFAIL,
     COVERAGE: COVERAGE,
+    CATALOG_VERSION: CATALOG_VERSION,
     runAll: function () {
       return Object.keys(PROBES).map(function (id) {
         var r = PROBES[id]();

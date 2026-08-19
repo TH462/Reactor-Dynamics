@@ -744,9 +744,27 @@
           if (il.on_engage) this._sendInternal(il.on_engage);   // e.g. stop rods already in motion
         }
       } else {
-        var cleared = il.direction === 'high'
-          ? v < (il.clears_below != null ? il.clears_below : il.setpoint)
-          : v > (il.clears_above != null ? il.clears_above : il.setpoint);
+        // BOOLEAN directions clear when the signal simply goes away — there is no
+        // hysteresis band to come back through, and asking for one is what made this
+        // branch UNUSABLE for a boolean. `is_true`/`is_false` reached `crossed()` at
+        // #314 but never reached here, so the engage half worked and the clear half
+        // read a number: same shape as #314 itself — two comparators in one kernel with
+        // different vocabularies — and silent in the same way, because no interlock had
+        // been authored on a boolean until #458.
+        //
+        // MEASURED, not assumed, because the failure mode is the OPPOSITE of the obvious
+        // one. Reverting this branch does not latch the interlock on; it makes it INERT.
+        // A boolean row carries `setpoint: null`, so the `clears_above` arm below asks
+        // `true > null` — which is `1 > 0`, TRUE — and the interlock clears on the very
+        // next pass while its own signal is still standing. Injection-verified in
+        // `run_m4` (#458 legs a/d/e + the #453 refusal): reverting it reddens exactly
+        // those 5 checks and nothing else in 46 suites, with the block never firing at
+        // all rather than firing and sticking.
+        var cleared = (il.direction === 'is_true' || il.direction === 'is_false')
+          ? !crossed(v, il.direction, il.setpoint)
+          : (il.direction === 'high'
+              ? v < (il.clears_below != null ? il.clears_below : il.setpoint)
+              : v > (il.clears_above != null ? il.clears_above : il.setpoint));
         if (cleared) this.interlockActive[i] = false;
       }
     }

@@ -22,6 +22,20 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-08-17 (#472 — one out for the pressure-rail bullet's trap)
+
+Board-specific and loud in the direction that matters: a unit read on the wrong side of the
+identity shows on the board, and `test/run_manual_units.js` enforces US-first across the
+board-facing copy while `verify_board_check.js` reads the tiles. The ACCESSOR half is the
+subtler part and is the reason this is a criterion and not a rule — if a frozen `units()` ever
+ships again, this belongs back in `CLAUDE.md`.
+
+- **The board's FLOW family is the one where US is the base unit** — gpm is the identity side and
+  m3/h the converted one, backwards from every other family. The units key is an ACCESSOR
+  (`ctx.units()`); a frozen value pins the board in whichever mode it mounted in.
+
+---
+
 ## Evicted 2026-08-11 (#460 — one out for the hydrogen bullet's rescued trap)
 
 Plant-specific and loud: calling the wrong one produces a level that is tens of percent wrong

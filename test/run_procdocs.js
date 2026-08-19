@@ -64,7 +64,7 @@ fs.readdirSync(path.join(ROOT, 'Manuals')).filter(function (f) { return /\.md$/.
 // ---------------------------------------------------------------- checklists
 require(path.join(ROOT, 'engines/load_mode.js'));
 ['engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js',
- 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
+ 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
  'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js'
 ].forEach(function (f) { require(path.join(ROOT, f)); });
 require(path.join(ROOT, 'ui/manual_procedures.js'));

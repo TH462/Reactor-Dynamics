@@ -877,6 +877,52 @@
       blocks: ['set_sr_detector'], blocks_when: { field: 'on', equals: true },
       message_learning: 'Source-range detector stays off — the flux is far above its range (past P-6); energizing the counter here would burn it out.',
       message_industry: 'SR ENERGIZE BLOCKED: IR ≥ 1e-6 A — flux above SR detector limits.' },
+    // SHUTDOWN COOLING AND LOW-HEAD INJECTION ARE THE SAME PUMPS (#458, 2026-08-12).
+    // Blocks the ALIGN only (`blocks_when active:true`); ISOLATE is always available, the
+    // same asymmetry as the engine's block-open permissive.
+    //
+    // THIS IS NOT A PLANT INTERLOCK AND MUST NEVER BE WRITTEN AS ONE. No document in any
+    // lane's corpus gives 8701/8702 an SI-actuated inhibit — `find_source.js` finds the
+    // pressure permissive and the autoclosure and nothing else — and inventing a third
+    // would repeat #453's exact error of reading an operator/lineup fact as an automatic
+    // function. What it IS: this trainer carries ONE `rhr_active` flag for what a real
+    // plant runs as two mutually exclusive alignments of one set of pumps, so the refusal
+    // is the model declining to be in both at once. Declared as a departure in
+    // `Manuals/12` §12.20; the message says "lineup", never "interlock".
+    //
+    // SOURCED, on the lineups themselves (all three verified this tree, 34 docs / 3 lanes):
+    //   WTSM 5.1 §5.1.2 (ML11223A219): "The RHR pump suction line from the reactor coolant
+    //   system is normally isolated by two series motor-operated valves (8701&8702)";
+    //   §5.1.2 again: "The residual heat removal system is normally aligned to perform its
+    //   safety function. Therefore, no valves are required to change position."
+    //   WTSM 5.1 §5.1.4.1: "The normal plant cooldown function of the residual heat removal
+    //   system is INDEPENDENT of any engineered safety features function."
+    //   WTSM 5.2 §5.2.4.5 (ML11223A220): "Upon receipt of a safety injection actuation
+    //   signal, the RHR pumps start and recirculate water through the UNCOOLED RHR heat
+    //   exchangers … the cold-leg recirculation lineup is completed by opening the component
+    //   cooling water supplies to the RHR heat exchangers" — i.e. the heat exchangers do not
+    //   remove heat in the injection lineup at all, and the CCW that makes them work is
+    //   opened BY HAND at the sump swap-over, on RWST depletion.
+    //   Ginna TS Bases B 3.5.3: the two are not merely separate but INTERFERING — "after the
+    //   initiation of RHR shutdown cooling, there is a temperature range during which, if a
+    //   shutdown loss-of-coolant-accident (LOCA) occurred, the RHR subsystem may not be fully
+    //   capable of delivering water from the RWST to the reactor core."
+    //
+    // WHAT IT COSTS THE PLAYER TO NOT HAVE IT, measured full stack before the change
+    // (#458 comment): aligning RHR into a `large_loca` removed 4.28 units of heat against
+    // 0.49 units of decay heat — 8.8x — from heat exchangers WTSM says are uncooled, at a
+    // primary void fraction of 0.788, i.e. a centrifugal pump taking suction on 79 % steam.
+    // At severity 1.0 the block-open permissive is satisfied at t+20 s. It was REACHABLE by
+    // following the board: PWR-A33 RHR NOT IN SERVICE comes in at t+191 s of that same run.
+    //
+    // `hpi_active` IS the SI signal on this plant (a ruling, `pwr_engine.js` step 4b) and is
+    // a status instrument, so this reads instruments like every other interlock (HR1).
+    // Note the CLEAR path: this is the first interlock in the codebase keyed on a boolean,
+    // and `_evalInterlocks` could not release one until this change — see the comment there.
+    { instrument: 'hpi_active', direction: 'is_true', setpoint: null,
+      blocks: ['set_rhr', 'set_dhr'], blocks_when: { field: 'active', equals: true },
+      message_learning: 'Shutdown cooling cannot be placed in service while safety injection is running — the RHR pumps are the low-head injection pumps, and they are lined up to the refueling water tank, not to the hot leg. Secure injection first, then align RHR.',
+      message_industry: 'RHR ALIGN BLOCKED: RHR pumps in ECCS injection lineup (SI actuated). Hot-leg suction unavailable until injection is secured.' },
   ];
 
   // Automation channels (M4b automation) — operator-selectable controllers the

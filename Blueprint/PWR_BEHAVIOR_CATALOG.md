@@ -1,14 +1,22 @@
-# SLS-100 Behavior Catalog — v3.1 (feel-first, FROZEN-FINAL)
+# SLS-100 Behavior Catalog — v4.0 (feel-first; RULED 2026-08-12, open until #472 lands)
 
-**Status: v3.1 FROZEN-FINAL — 2026-07-21, feel-plan Phase 7 complete. The plant is the
-SLS-100** (Single Loop Simulated, 100 MWe — owner-named; SLX-100 until 2026-08-04, #328).
-**Every catalog gap is
-closed: the battery runs 26 pass / 0 xfail / 0 fail, and its bands ARE the minted
-character bands** — each probe was re-authored during the pass to this plant's own tuned
-behavior (297→~304 °C program, ~13 % shrink, graceful ride-out, TR-3 dryout arc, ΔP-
-killed SGTR). Changes require an owner ruling; owner playtest feedback
-(Blueprint/PLAYTEST_CHECKLIST.md) is the standing re-tune channel — knobs are one-line.
-Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, all phases complete).**
+**Status: v4.0 — the amended set is RULED** *(OWNER RULING, 2026-08-12: "1: accept as
+drafted 2: keep both 3: out of scope, but measured.")* **and the catalog stays OPEN until
+the #472 pressurizer rebuild completes** — §13.2's rows carry `[NEW-UNMEASURED]` until
+Phase-1 characterisation supplies their numbers, and a catalog cannot be frozen around
+rows that have none. It re-freezes at the #472 cutover, this time behind the `CAT-1` gate.
+The plant is the **SLS-100** (Single Loop Simulated, 100 MWe
+— owner-named; SLX-100 until 2026-08-04, #328). v3.1 was declared FROZEN-FINAL 2026-07-21,
+but the freeze had no mechanical lock: nine in-place amendments landed after it, the
+battery's own stamps still read v2.0, this header's tally claim ("26 pass / 0 xfail") had
+rotted against a live **72 pass / 1 xfail**, and **39 probe IDs asserted behaviour with no
+catalog row at all** (mostly the CA-7…CA-25 pressurizer block). v4.0 absorbs them (§13,
+§14), adds the #472 rebuild acceptance rows (§13.2), and puts a **mechanical parity lock**
+on the freeze: the `CAT-1` probe in `test/run_behavior.js` fails if the catalog's row IDs
+and the battery's `COVERAGE` keys ever diverge again. Bands remain minted from this
+plant's own tuned golden runs; changes still require an owner ruling; owner playtest
+feedback (Blueprint/PLAYTEST_CHECKLIST.md) is the standing re-tune channel.
+Companion: `Blueprint/PWR_FEEL_TUNING_PLAN.md` (v1.0, all phases complete).
 
 **⚑ TEACHING GOAL (owner, 2026-07-21) — the plant's reason to exist: teach people how a
 PWR works — the physics and how it acts.** When a tuning choice trades convenience against
@@ -66,7 +74,8 @@ specific causal chain is the product.
   freeze).
 - Status legend: `PASS` (green today) · `PASS?` (believed right, needs a pin) ·
   `XFAIL→Pn` (known gap, fixed in feel-plan Phase n) · `todo→Pn` (probe not yet written) ·
-  `RETIRED` (see §8).
+  `RETIRED` (see §10) · `[NEW-UNMEASURED]` (v4.0: row authored for the #472 rebuild,
+  characterisation measurement pending — HR12 says so out loud).
 
 ## 2. Design ratios — the feel knobs
 
@@ -156,6 +165,7 @@ a real limit is reached — and then they mean it.*
 | TR-1 | **FULL load rejection @100 %: NO reactor trip, and the ladder runs in order.** The dump goes to its 40 % stop and STAYS there, so the core sheds the rest through MTC — self-parks ~46 % with Tavg 320.1 °C — the **PORV lifts at 16.37 MPa as the designed backstop** and the pressurizer safety does not; SG safeties graze 9.32. The operator then walks it to the no-load anchor at their own pace. A real Westinghouse plant does not ride a full rejection either (its design case is 50 %), so the relief lifts are prototypical. Contrast **TR-1g** (the 50 % case, which must stay clean) | C | probe | **PASS** (re-banded 2026-07-31 for the 40 % dump) |
 | TR-1g | **50 % loss of load: no trip, no relief lift — THE case the 40 % capacity is sized for.** *"designed for 40 percent of rated steam flow… in conjunction with a 10 percent reactor power decrease, of 50 percent rated steam flow without a trip"* (STPEGS UFSAR §10.4.4, ML22140A078). Measured, this plant reproduces the documented SPLIT: dump saturates at 40 %, core takes a 10.7 % step to 89.3 %, Tavg peaks 307.4 °C, nothing lifts. Ours comes from MTC rather than rod control — same division of labour, different mechanism. This is the check that says 40 % is ENOUGH | C | probe | **PASS** (NEW 2026-07-31) |
 | TR-1c | **Sub-threshold load rejection: operator-managed, and since #418 the cliff is THERMAL.** Below the C-7 arm (`dump_load_reject_mwe` 40 MWe) the fast dump does not arm at all — on the derived secondary clock (#418 wave A1) 39 MWe rejected hands-off peaks Tavg 315.6 °C with spray holding pressure 0.66 MPa clear of the PORV, while 41 MWe arms and is caught at 305.8 °C on program: a ~10 °C cliff read on the Tavg/Tref deviation, no valve lift. (Pre-#418 the compressed SG bottled in seconds and the uncaught side ran pressure to the PORV setpoint — that was the clock's rendering, not the plant's.) **Declared simplification** (DESIGN_COMPANION §8.21), not a defect: any armed system has a threshold, and lowering it destroys the EV-11 load-follow lesson. Probe pins BOTH sides so the cliff cannot move silently | C | probe | **PASS** (ruled 2026-07-27, #219; re-measured 2026-08-07, #418) |
+| TR-1m | **An ARMED load rejection never stands down when the rods are in MANUAL — and MANUAL is what ships.** The fast-dump latch clears on `\|load_imbalance_mwe\| < dump_reject_clear_mwe` (10 MWe), i.e. *when the reactor has come back to meet the load* — and what brings it back is the rod controller, which #460 removed from the free-play lineup on 2026-08-11. **Measured 2026-08-17, full stack, `hot_full_power`, rods MANUAL:** a 100 → 59 MWe rejection arms the fast mode, pegs the dump at its 28 % cap and settles the reactor at **88.4 %** against a 59 MWe target — an imbalance of ~29 MWe that never re-enters the 10 MWe reset window, held for 45 minutes with ~29 MWt going to the condenser. Power is also **non-monotonic across the arm**: 60 MWe → 76.3 %, 59 MWe → 88.4 %, a 12.1-point *rise* for one megawatt less demand. With rods in AUTO the latch clears normally and none of it appears. **Declared simplification** (DESIGN_COMPANION §8.30), not a defect: the auto-clear is a stand-in for a reset control the board does not carry, and §8.30 forbids building that reset without the sourced sensitive arm — so the accepted state is the latched one. Pinned in BOTH LINEUPS by probe **TR-1m**: leg B (rods AUTO) is the control that names the CAUSE as the rod lineup rather than the arm threshold, and leg C sits one MWe the other side of the arm so the inversion is asserted as a SPAN and cannot be satisfied by both legs drifting together. Injection-verified five ways; notably it **reds when the §8.30 fix is built** — given a reset window it can reach, the latch clears and the inversion collapses to +−0.1 pts — which is the correct semantics for a declared simplification | C | probe | **PASS** (ruled 2026-08-17, #489 — owner selected "Accept and document it" from options I wrote, a selection, not verbatim words; probed 2026-08-18) |
 | TR-1d | **Planned offline is NOT a turbine trip.** `disconnect_grid` opens the generator breaker: load → 0, the stop valves stay open, `turbine_tripped` never sets, so **P-9 is never armed** and the evolution is reversible (`connect_grid` re-synchronises). At 100 % the dump catches the rejected load exactly as in TR-1; at 5 % nothing latches, so a later P-9 crossing is not carrying a trip from the start of the heatup. A real turbine trip still arrives by its own routes — `trip_turbine` (low-vacuum/overspeed actuation, `turbine_trip` failure), a reactor trip, or MSIV closure at load. Contrast TR-1 (load rejection) and TR-1b (turbine trip → P-9 scram) | C | probe | **PASS** (ruled 2026-07-28, #230) |
 | TR-1f | **P-9 is an INSTRUMENT reading, and a failed power-range channel defeats it.** The real permissive comes off the nuclear instrumentation and nothing else — *"actuated at approximately 50% power as determined by two-out-of-four NIS power range detectors"* (NUREG-1431 Rev 4 Bases B 3.3.1, ML12100A228). Ours read true `power_pct`, so the permissive gating **two reactor trips and the loss-of-main-feed AFW start** could not be fooled by the channel it reads (HR1). Measured: channel stuck at 40 % with the core at 100 % still scrammed on a turbine trip at +0.5 s; de-armed, the plant rides the trip out on the 105 % dump instead, and the SG hi-hi does its un-gated half (isolate feed, trip the turbine) without scramming — trips 59 s later on `sg_level low`, a genuine limit. **Declared departure** (DESIGN_COMPANION §8.11): one channel, not 2/4, so a single failure defeats it here where a real plant out-votes it | C | probe | **PASS** (2026-07-31, #220) |
 | TR-6 | 50 % load rejection: a non-event — dump + rods absorb, Tavg returns to program | C | ops grid step | PASS — re-band P3/P4 |
@@ -302,3 +312,152 @@ safety 17.13 MPa, with reseats ordered below lifts):
   −3.3e-5 → −2.0e-4 (real-PWR range). Un-trimmed mismatch +18 → ~+7 °C; slider asks now
   delivered almost exactly; PI-8 implemented at 97 %; EV-11 re-worded to the honest
   character. All 51 campaign gates re-validated green on the new coefficient.
+- **2026-08-12 (owner): the v4.0 amendment RULED, three answers** *(OWNER RULING,
+  2026-08-12: "1: accept as drafted  2: keep both  3: out of scope, but measured.", given
+  as numbered answers to the three decisions below)*.
+  1. **The amended set is ACCEPTED as drafted** — §13 (FG-8), §14 and the `CAT-1` lock
+     stand as written. The absorbed rows are ruled, not provisional; the catalog does not
+     split into two authority levels.
+  2. **Heater elevation keeps BOTH mechanisms** — progressive wetted-fraction authority
+     loss is the physics, and the sourced 17 %/20 % bistable (S1, WTSM 10.3 §10.3.4.1)
+     survives on top of it as PROTECTION. This settles the reading of the 2026-08-12
+     decision-3 ruling ("physical elevation with progressive authority loss **replacing**
+     the 17 % cliff"): what the cliff loses is its role as the *physics*, not the
+     interlock's existence. Rows `HE-1`/`HE-2`/`HE-3` are written to this reading, and
+     `HE-3` is why it matters — a stuck transmitter fools the latch, and the physics is
+     then the only thing bounding #334's 2207-psi deadhead.
+  3. **`CA-20b` is OUT OF SCOPE for #472, but MEASURED through it** — its measured
+     dominant term is the cold-ECCS quench gain (1.0 against a physical 0.489), which is
+     the ECCS and not the pressurizer, so fixing it would pull a second subsystem into the
+     rebuild's blast radius. It stays a strict xfail with its own issue, and is
+     re-measured in Phase-1 characterisation and again in the Phase-3d A/B so the rebuild
+     cannot move it silently in either direction.
+- **2026-08-12 (Fable; #472):** v3.1 unfrozen → **v4.0**
+  per the approved #472 pressurizer-rebuild plan (method step 2). Findings that forced it:
+  the freeze had no mechanical lock (nine in-place amendments since FROZEN-FINAL; the
+  battery stamps read v2.0; the header tally claimed 26 pass against a live 72 pass /
+  1 xfail), and **39 probe IDs had no catalog row** — the CA-7…CA-25 block, i.e. most of
+  the pressurizer's real acceptance surface, was asserted in code with no owner ruling
+  behind it. Amendment: **§13** (FG-8, the pressurizer — 13 absorbed rows + 18 rebuild
+  acceptance rows marked `[NEW-UNMEASURED]`), **§14** (26 absorbed non-pressurizer rows),
+  and the **CAT-1 parity probe** locking catalog IDs ↔ battery `COVERAGE` keys. Absorbed
+  rows document what the probes already assert (status unchanged); nothing was re-banded.
+  **Ruled by the owner the same day — see the entry above.**
+
+## 13. FG-8 — The pressurizer as a machine (v4.0, #472)
+
+*Feel: the pressurizer is an honest machine with visible authorities. Pressure moves
+because surge, heaters, spray or relief moved it — never because a hidden term holds the
+operator's setpoint. The gauge deceives (TMI) exactly and only when the primary voids.*
+
+**This section is the acceptance surface for the #472 rebuild.** §13.1 absorbs the
+pressurizer probes that were asserted in the battery without catalog rows (the v4.0
+finding); their claims document what the probes already check — status unchanged, nothing
+re-banded. §13.2 is the rebuild's new acceptance set, `[NEW-UNMEASURED]` until Phase-1
+characterisation supplies the numbers. **The MANUAL-FIRST directive (owner, 2026-08-12,
+CLAUDE.md) governs the MO rows**: manual-mode behaviour is established first; the auto
+rows then assert the controller holds what manual proved.
+
+### 13.1 Absorbed pressurizer rows (probes existed; rows did not)
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| CA-7 | SBO delivers 0 % heater power against both a full manual demand and an AUTO demand, selector untouched, no phantom-heat pressurization; a plain LOOP is NOT a blackout — heaters are SHED (B 3.4.9) with demand standing, and a manual reload onto the diesels answers at full power | I | probe | PASS — absorbed v4.0 |
+| CA-9 | Loss of CVCS make-up never uncovers the core and parks the gauge deep in alarm (< 25 %); a deficit moves level as far as an equal surplus on ONE slope, and that slope is the sourced 776 ± 20 %/frac geometry; the low-level letdown isolation fires with the core still covered; a beyond-capacity leak scrams on an inventory path | I | probe | PASS — absorbed v4.0 |
+| CA-10 | The 17 % low-level heater cutoff (WTSM 10.3 §10.3.4.1), 20 % restore latch: never fires in normal ops; below the cutoff no SUSTAINED heater power under a standing demand; a transmitter stuck at 20 % DEFEATS it (HR1 — instrument-driven); SI shed reloads first (#447) | I | probe | PASS — absorbed v4.0 |
+| CA-12 | A water-solid RCS repressurizes: pressure RESPONDS (> 50 psi swing), the PORV terminates the fill, inventory settles ON the config-computed solid point and never reaches the mass_max clip; a bubbled plant is untouched | I | probe | PASS — absorbed v4.0 |
+| CA-13 | A heatup fills the pressurizer solid — the level LINE is unbounded upward (> 105 % peak) while the level PROGRAM stays clamped at its ceiling; hands-off, the casualty is relief-ladder boiloff | I | probe | PASS — absorbed v4.0 |
+| CA-15 | A LIQUID break fills to SOLID and arrests THERE — on the config-computed solid line (109.28 % vs 109.3 predicted), never at the 120 % mass_max clip; a solid plant's break adds NO separate leak_depress term | C | probe | PASS — absorbed v4.0 |
+| CA-17 | Break and relief read the LIVE containment backpressure (exact-formula clone pairs through the real stepInventory/stepPressure) | C | probe | PASS — absorbed v4.0 |
+| CA-18 | A loop break DRAINS the pressurizer (TRUE level < 25 at core-top uncovery; indicated never re-rises past 75); the RELIEF path keeps the FULL lift (the TMI fence, exact); void 0.2 on the deception line reads 78.3 ± 0.2 %; boundary flicker can only ratchet the credit DOWN | C | probe | PASS — absorbed v4.0 |
+| CA-19 | A refilled solid RCS with a break settles at injection = discharge (mass frozen on the solid line, both streams flowing, pressure at the config-solved balance); injection defeated, the same state DRAINS | I | probe | PASS — absorbed v4.0 |
+| CA-20 | A loop break vents the RCS toward containment — falls past Psat of the hot remnant and never below the LIVE backpressure; SGTR and relief keep the saturation pin (clone-triplet algebra) | I | probe | PASS — absorbed v4.0 |
+| CA-20b | A small break holds its plateau — the STEAM GENERATORS hold the primary up: never > 51 psi below its own heat sink AND the secondary not drained through the tubes | I | probe | **XFAIL** (#451; the plateau was HEATER-HELD, #447 shed removed the prop — **do NOT re-band green**) — absorbed v4.0 · **OUT OF SCOPE for #472, MEASURED through it** *(owner ruling 2026-08-12)*: the dominant term is the ECCS quench gain, not the pressurizer; re-measured in Phase 1 and the Phase-3d A/B so the rebuild cannot move it silently |
+| CA-23 | The pressurizer node: no-leak families BITWISE the frozen levelRaw line (< 1e-9); the node IS its law; credit ∈ [0, level_per_void·void]; pre-node saves seed bitwise | C | probe | PASS — absorbed v4.0 · **dies with v1 at #472 cutover → CV-1…4** |
+| CA-25 | Safety injection SHEDS the heaters (NUREG-0737 II.E.3.1 (7)); the post-LOCA plant SETTLES instead of limit-cycling (0 heater samples in the settled tail, ≤ 2 reversals); HEATER AUTO clears the shed and answers; the operator's manual demand is never overwritten | I | probe | PASS — absorbed v4.0 |
+
+### 13.2 Rebuild acceptance rows (#472) — `[NEW-UNMEASURED]` until Phase 1
+
+**MO — manual-first pressure authority** (the §5 defect class; today ZERO probes at any
+layer run with the pressure channel disengaged):
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| MO-1 | Normal-ops surge → pressure coupling with the pressure channel DISENGAGED (heaters + spray manual-fixed): a 100→70→100 MWe swing moves pressure with the insurge. **BAND RULED 2026-08-15: peak +50 to +100 psi · settles within ±25 psi of the starting pressure · and does NOT return to setpoint.** *(OWNER RULING, 2026-08-15: "Go with your recommendations" — on the recommendation quoted in #472; a selection, not verbatim words.)* **The third clause is the row's subject**: v1 passed a naive "pressure moves" reading while returning to 2235 psi exactly, which is the defect this rebuild exists to remove. Measured — v1 **+27 peak / 0 settled**; v1 with the restore term ×0.001 **+48 / +30**; **v2 +73 peak / −12 settled** | C | measured by hand: measure_stack `--pzr2`, `Diagnostic/PZR_CHARACTERIZATION.md` Part 2; **no probe yet — todo→#472 3d** | **RULED 2026-08-15** — v2 in band; v1 out (settles ON setpoint) |
+| MO-2 | Reactor-trip outsurge, MANUAL: with heaters/spray fixed, a ~30 °F Tavg collapse DROPS pressure and it STAYS down — no hidden restore. v1 measured: 2235 → 2234 → 2235 psi, a 1 psi response (#471 pass A — not credible; real plants drop several hundred psi). **Measured on v2 2026-08-14: trough 2004 psi, −231, and it holds down through t+15 min** (v1 manual: −54, back to 2235 by t+8 min on 0 % heaters). Tavg −32.9 °F and level → 28.0 unchanged between models | C | measured by hand: measure_stack `--pzr2`; **no probe yet — todo→#472 3d** | **MEASURED on v2** — several hundred psi is now several hundred psi |
+| MO-2b | Reactor-trip outsurge, AUTO: the heaters recover pressure to setpoint on the CC-6 tempo (~5 min / 0.207 MPa band) — the controller holds what MO-2 proved manual. **Measured on v2 2026-08-14: dip to 2211 (−24 psi), back to 2235 in ~3 min, inside CC-6** (v1: 2235 at all 21 samples, heaters peaking 1.77 % — the channel was decorative because `P_restore_rate_gain` did its job for it) | C | measured by hand: measure_stack `--pzr2`; **no probe yet — todo→#472 3d** | **MEASURED on v2** |
+| MO-3 | Manual heater step authority: from a steady manual lineup, a heater step raises pressure at the plant's own thermodynamic rate. **The "declared authority × §6.4 multiplier" wording is RETIRED** — the §7 ruling request was withdrawn 2026-08-12 (owner: *"why have a multiplier? why not have physics"*) and v2 has no multiplier: rate is an OUTPUT, `Q / (C · dTsat/dP)`. **Measured on v2 2026-08-14: 0→100 % reaches the PORV in ~40 s (≈2.7 psi/s) and then cycles 2296–2349** (v1: 2341 psi in **5 s**, PORV lift, safety injection at t+115 s — an operator button press was a self-inflicted casualty) | C | measure_stack `--pzr2`; region-level rate `run_pzr2` C5 | **MEASURED on v2** |
+| MO-4 | Manual spray step authority: a spray step lowers pressure at its declared authority, capped (CC-5's cap still binds). **Measured on v2 2026-08-14: −508 psi over 10 min and level RISES 55.0 → 67.9** (v1: −969 psi in 4 min with level DIPPING to 33.6). The direction reverses and v2's is the physical one — spray is cold water entering the vessel, so it adds liquid; v1's dip was the level law reacting to pressure rather than to the water | C | measured by hand: measure_stack `--pzr2`; **no probe yet — todo→#472 3d** | **MEASURED on v2** — v1's level direction was an artifact |
+
+**TD — the TMI deception, named and numbered** (the flagship's teaching payload; scope
+B's highest-risk preserved behaviour):
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| TD-1 | The deception is a DIFFERENCE: d(level)/d(1−m) on the relief path = −level_per_mass + void_gain·level_per_void = **+350 %/frac**, computed from config, not transcribed | C | todo→#472-P3 | [NEW-UNMEASURED] |
+| TD-2 | Calibration point: void 0.2 on the deception line reads **78.3 ± 0.2 %** — past the 75 % high alarm (today CA-18 leg C) | C | CA-18 today · todo→#472-P3 | [NEW-UNMEASURED] |
+| TD-3 | Flagship episode: > 25-point indicated lift over 1200 s with inventory FALLING (measured shape: 0 → 66 % at ~22 min through 92 % inventory) | C | run_pwr flagship_tmi | PASS today — preserved |
+| TD-4 | Mission crest: full-stack indicated pzr_level crosses **65.0** and crests ~69.4 % at ~50 min — the TMI-2 story clock rides this number | C | campaign tmi2 | PASS today — preserved |
+| TD-5 | Relief is NOT surge: PORV/safety flow moves the level law by exactly NOTHING (w = 1 on the relief path); a LOOP break suppresses the lift | I | CA-18 today · todo→#472-P3 | [NEW-UNMEASURED] |
+| TD-6 | No-ratchet: the void credit stays in [0, calibration·void]; saturation-boundary flicker can only ratchet DOWN | I | CA-18/CA-23 today · todo→#472-P3 | [NEW-UNMEASURED] |
+
+**HE — heater elevation** (ruled decision 3: physical elevation with progressive authority
+loss replaces the 17 % cliff **as the physics**; the S1 bistable survives ON TOP as
+protection — *OWNER RULING, 2026-08-12: "keep both"*):
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| HE-1 | Delivered heater power falls PROGRESSIVELY as TRUE level falls through the bank (wetted fraction over the elevation band) — replacing the 0-or-full cliff (#348/#447 are what a cliff does) | C | todo→#472-P3 | [NEW-UNMEASURED] |
+| HE-2 | The S1 bistable survives on top: 17 % cut / 20 % restore latch on INDICATED level (HR1) — protection independent of the physics (today CA-10) | I | CA-10 today | PASS today — preserved |
+| HE-3 | Failed transmitter: the latch is fooled exactly as the operator is (CA-10 leg), and the PHYSICS now bounds the damage — #334's 2207-psi steam-heating deadhead becomes unreachable | C | todo→#472-P3 | [NEW-UNMEASURED] |
+
+**SB / SA / BD — small-break lift, solid plant, blowdown:**
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| SB-1 | Small-break lift (S8, IE Bulletins 79-06A/C): at seal-leak severities the w-split preserves the lift (the ~65 % magnitude is this plant's — shape sourced, scale fitted); at board-LOCA leak the lift is suppressed (w ≈ 0.12) | C | CA-18 leg B today · todo→#472-P3 | [NEW-UNMEASURED] |
+| SA-1 | Solid arrest: a filling casualty arrests ON the geometry (~109.3 % inventory), never at the 120 % numerical clip (CA-15, preserved through the rebuild) | C | CA-15 today | PASS today — preserved |
+| SA-2 | Solid bulk-modulus response: at solid, dP follows the bulk law (v1 effective 1300 MPa per RCS-mass-frac); spray has NO pressure authority at solid (`Manuals/12` §12.4c is load-bearing) | C | todo→#472-P3 | [NEW-UNMEASURED] |
+| BD-1 | A vented RCS equalises with containment (S7, WTSM 5.0 §5.0.1.1): the blowdown ends AT live backpressure, never below (CA-20, preserved through the rebuild) | I | CA-20 today | PASS today — preserved |
+
+**CAT — the catalog's own lock:**
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| CAT-1 | Catalog ↔ battery parity: every `COVERAGE` key in test/behavior_pwr.js has a catalog row; every catalog row's probe pointer resolves (todo/existing allowed); the battery's printed catalog version matches this file's header | I | probe | PASS (new, v4.0) |
+
+## 14. Absorbed coverage — non-pressurizer probes that predate v4.0 rows
+
+**Same finding as §13.1, outside the pressurizer.** These rows document what the battery
+already asserts; status unchanged, nothing re-banded. They may migrate into their FG
+tables at the next ruled amendment — the point today is that every asserted behaviour has
+a row an owner ruling can reach.
+
+| ID | Behavior | Tier | Probe | Status |
+|----|----------|------|-------|--------|
+| CA-8 | SBO AC-load roster: letdown isolates, charging delivers nothing (demand latched, selector in RUN), demanded SI makes no flow and no head; turbine-driven AFW still makes head and accumulators still dump; a LOOP leaves CVCS + SI working | I | probe | PASS — absorbed v4.0 |
+| CA-11 | Break discharge follows RCS pressure — a break is a hole, not a pump: App K orifice law, √Δp within 2 % across the blowdown with LIVE backpressure, exponent 0.5 ± 0.05; SGTR scales on primary−secondary ΔP | I | probe | PASS — absorbed v4.0 |
+| CA-14 | Break flash-cooling stops when the flashing does — a drained core is never driven subcooled while the break flows; the flash term is live when saturated and EXACTLY zero when subcooled | I | probe | PASS — absorbed v4.0 |
+| CA-16 | Containment receives the discharge: a LOCA pressurizes past the sourced 3.5 psig SI backup, an SGTR BYPASSES (ambient), a stuck PORV pressurizes too; source removed, pressure decays on the running sinks | I | probe | PASS — absorbed v4.0 |
+| CA-21 | Subcooling margin goes NEGATIVE over a dry core (core-exit datum, NUREG-0737 II.F.2); covered, the exit datum IS the bulk exactly; a TC failed LOW degrades the gauge to the bulk datum exactly (HR1) | I | probe | PASS — absorbed v4.0 |
+| CA-22 | Containment spray auto-actuates inside 3 min past the sourced 30 psig hi-hi, fans realign on SI, spray SECURES ITSELF on recovery (AUTO-ONLY, owner-ruled 2026-08-08) | I | probe | PASS — absorbed v4.0 |
+| CA-24 | Hydrogen: mitigated stays cold (< 0.5 v/o vs 4.1 flammability); unmitigated burns ONCE (~85 % consumed, GEND-061), spikes above the 30 psig hi-hi and under 60 psig design; recombiners work the tail and die in a blackout; SGTR H2 never reaches the building | C | probe | PASS — absorbed v4.0 |
+| CC-1 | Rod auto-control behaviour — held externally by run_autoctl's rod probes. Claim not audited this pass; the "(re-work with SS-2)" note in COVERAGE looks stale | — | existing:run_autoctl | absorbed v4.0 — **claim held externally, needs an audit pass** |
+| CC-2 | Automation channels stay engaged (no silent PID drop-out) — held externally by run_autoctl | — | existing:run_autoctl | absorbed v4.0 — claim held externally |
+| CC-4 | Control-layer behaviour, bare pointer — held externally by run_autoctl; the COVERAGE entry names no specific test | — | existing:run_autoctl | absorbed v4.0 — **bare pointer, needs an audit pass** |
+| CC-9 | ESF actuation behaviour — held externally by run_pwr + run_campaign pwr_esf | — | existing:run_pwr + campaign | absorbed v4.0 — claim held externally |
+| SS-9 | Cold shutdown hands-off stays thermally quiet 30 min (drift ≤ ±5 °C, no trip/spurious ESF, pressure < 4 MPa) — pins the 5 % sg_reverse_frac damping | C | probe | PASS — absorbed v4.0 |
+| SS-10 | Severity clamp: out-of-range `inject_failure` severity clamps to ≤ 1.05× one full rupture, not 40 of them | C | probe | PASS — absorbed v4.0 |
+| TR-1b | Turbine trip @100 %: P-9 scrams within 5 s, dump carries decay heat, SG safeties never lift, stop-valve leak-through bounded as flow-seconds, PORV holds the burst below its setpoint | I | probe | PASS — absorbed v4.0 |
+| TR-1e | Synchronised at zero load: the grid holds the rotor (1800 ± 20 rpm, < 1 MWe); on a 50 % rejection with rods MANUAL the MWe gauge reads the TURBINE while the core stays > 75 %; off line the rotor coasts | I | probe | PASS — absorbed v4.0 |
+| TR-1h | Full rejection, rods in AUTO: no scram, dump reaches its stop then comes back off, SG safeties RESEAT, core runs back < 5 %, level-program ceiling holds the peak < 95 % against the 97 % trip | C | probe | PASS — absorbed v4.0 |
+| TR-1i | Load-follow tracking: the WTSM ±5 °F duty (scaled by the declared program-span departure to ≤ 5.74 °F, owner-ruled 2026-08-09) on a 10 % step and a 5 %/min ramp; 2 h soak settles inside ±1.5 °F | I | probe | PASS — absorbed v4.0 |
+| TR-1k | Sub-threshold rejection, rods AUTO: both lineups end at the backstop; the arm cliff spans ≥ 4 °C; the declared §8.21 non-monotonicity is PINNED (the smaller rejection undershoots deeper — reddening it means revisiting §8.21) | C | probe | PASS — absorbed v4.0 |
+| TR-4 | Total loss of forced flow trips the reactor ≤ 15 s on coastdown; no fuel damage in 5 min (natural circulation carries decay heat). Lumped single-RCP model — P-8 selectivity out of scope (PI-6 retired) | I | probe | PASS — absorbed v4.0 |
+| TR-12b | The MSIV ends a DOWNSTREAM steam break (self-isolates ≤ 180 s, SG re-pressurizes, overcooling arrests) and cannot touch an UPSTREAM one (same actuation, nothing changes); neither damages fuel | I | probe | PASS — absorbed v4.0 |
+| TR-12c | Steam-line isolation fires on the BREAK, not on the plant: a full cooldown does NOT isolate (flow term), a bottled SG at full safety lift does NOT re-isolate (pressure term), and while sealed in `open_msiv` is BLOCKED (WTSM §12.3.5.1) | I | probe | PASS — absorbed v4.0 |
+| TR-13b | SGTR save/load: the ΔP-scaled leak survives a restore — same `_leak_base` to 1e-9, `_leak_to_sg` intact | C | probe | PASS — absorbed v4.0 |
+| TR-16 | SG code safeties are SELF-ACTUATING: a transmitter stuck below the pop cannot defeat them — they lift anyway and regulate under 9.6 MPa | I | probe | PASS — absorbed v4.0 |
+| TR-17 | Atmospheric dump: a cooldown exists WITHOUT the condenser — shipped AUTO ADV modulates and the safeties RESEAT; AUTO only caps pressure, the OPERATOR opening it cools < 230 °C | I | probe | PASS — absorbed v4.0 |
+| TR-18 | A manual load step ENDS: no trip, settles at the ask (±2 pts held 5 min, ≤ 25 min), stays settled — the plant does not hunt forever (#378/#394 loop-gain fix) | C | probe | PASS — absorbed v4.0 |
+| TR-19 | Unthrottled AFW OVERCOOLS: SG pressure falls, the primary cools with it, ΔT never inverts, and the cooldown DECELERATES hour-over-hour (self-limiting) | I | probe | PASS — absorbed v4.0 |

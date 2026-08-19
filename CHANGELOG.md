@@ -30,7 +30,221 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.6.1] — 2026-08-18
+
+### Documented
+- **Behaviour probe TR-1m pins the load-rejection latch — and is built to RED when it is fixed**
+  (#489). The state ruled accepted below now has a probe, because on §8.21's own argument a
+  declared simplification that nothing pins can move silently. `run_behavior` **72 → 73 pass**.
+
+  Three legs: rods **MANUAL** sticks (88.4 % against a 59 MWe target, dump on its 28 % cap,
+  imbalance 29.1 MWe, still armed 1200 s later); rods **AUTO** clears (58.7 %, dump reseated) —
+  the control that names the cause as the rod lineup rather than the arm threshold; and one MWe
+  the other side of the arm pins the non-monotonicity as a **span**, 76.7 % → 88.4 %, **+11.7
+  points for one megawatt less demand**.
+
+  Its semantics are deliberately inverted: injecting a reset window the latch can reach makes it
+  go red and collapses the inversion to −0.1 points. So the day `DESIGN_COMPANION` §8.30's
+  operator RESET is built, this probe is what says the register entry and the catalog row retire
+  together. Injection-verified five ways.
+
+- **The steam-dump load-rejection latch cannot clear with the rods in MANUAL** (#489) *(OWNER
+  RULING, 2026-08-17: selected "Accept and document it" from options I wrote — a selection, not
+  verbatim words)*. **Ruled accepted; no behaviour changed.** The latch clears on
+  `|load_imbalance_mwe| < dump_reject_clear_mwe` (10 MWe) — *the reactor has come back to meet the
+  load* — and what brings it back is the rod controller, which **#460** took out of the shipped
+  free-play lineup on 2026-08-11. Measured: a 100 → 59 MWe rejection settles the reactor at
+  **88.4 %** against a 59 MWe target, an imbalance of ~29 MWe that never re-enters the reset
+  window, so the dump stays pegged at its 28 % cap indefinitely (~29 MWt to the condenser at
+  steady state, ridden 45 min). Power is non-monotonic across the arm: 60 MWe → 76.3 %,
+  **59 MWe → 88.4 %**, a 12.1-point *rise* for one megawatt less demand. With rods in AUTO the
+  latch clears normally and none of it appears.
+
+  Accepted rather than fixed because the fix is not available in isolation: `DESIGN_COMPANION`
+  §8.30 already records that this auto-clear and §8.21's 40 MWe arm threshold are **one trade** —
+  the real plant can afford a far more sensitive arm only because a human de-arms it, so building
+  the operator RESET without the sourced sensitive arm re-opens the #219 cliff ruling from the
+  other side. Recorded at §8.30, at the constant, and as catalog **TR-1m** (documented, **not yet
+  probed**).
+
+  Separately, the 60–74 MWe **dead band** — where the dump absorbs whatever the turbine gives up
+  and reactor power moves 0.6 points for 15 MWe of load — is **deferred to the PWR2 rebuild**
+  *(OWNER RULING, 2026-08-17: selected "Defer to the PWR2 rebuild (#479)")* and handed to #479 as
+  an acceptance case with the full load sweep.
+
+### Changed
+- **`CURRICULUM.md` Tier A re-measured — the A1 demonstration moves to 100 → 80 MWe** (#484)
+  *(OWNER RULING, 2026-08-17: selected "Re-author the row" and "100→80 MWe, rods MANUAL" from
+  options I wrote — selections, not verbatim words)*. A1 recorded power **100 → 57.5 %** and Tavg
+  **579.3 → 602.1 °F** for a 100 → 60 MWe drop with *"rods to MANUAL"*. Bisected across 112
+  commits, that measurement was taken when `rods_tavg` still had `defaultOn` — it reproduces only
+  with rods in **AUTO**, and #460 made MANUAL the shipped default on 2026-08-11. **The row's
+  stated condition and the lineup it was measured on disagreed**, and nothing re-checked it
+  because it is prose, not a probe.
+
+  60 MWe is also the wrong point on the current plant. With rods MANUAL the steam dump absorbs
+  whatever the turbine gives up: power is pinned at **76.3–76.9 % across the whole 60–74 MWe
+  span**, and below 60 MWe it *inverts* — 60 MWe → 76.3 %, **59 MWe → 88.4 %**. Power only tracks
+  load at **≥ 75 MWe**, where the dump is shut. Filed separately as **#489**; not settled here.
+
+  A1 now reads power **100.0 → 81.9 %**, Tavg **580.2 → 590.2 °F (304.5 → 310.1 °C)**, both at
+  **t+15 min**, net reactivity **+0.03 pcm** — and states its lineup instead of inheriting it. The
+  reactivity arithmetic re-derives: −150 pcm moderator against +158 pcm Doppler, sum ≈ 0.
+
+  **Three further numbers on that page were stale the same way and were re-measured, not carried:**
+  **A2** now carries the measured AUTO comparison (80.1 %, Tavg 573.4 °F — 16.8 °F apart from
+  MANUAL at the same load); **A7**'s xenon swing (100.0 → **102.1 %** peak at 4–5 h, back through
+  **99.3 %** at 12 h); **A9** moved off the A1 drop entirely to a **turbine trip**, because its
+  claimed −2.45 % divergence measures ~−0.5 % on the new drop — *inside* the noise band, which
+  itself measures **±1.0 %**, not the ±0.6 % claimed. On a turbine trip it is **−10.2 %**, ~10× the
+  band. The **instrument-lag table** was re-taken at 0.2 s sampling: `tavg` **+3.49 s**,
+  `primary_pressure` **+0.50 s**, `power_range` **+0.08 s** on a scram and **not resolvable** on a
+  gentle transient, where the channel's own noise exceeds its 0.1 s lag. The table previously
+  reported those as "+0.00 s", which stated a measurement where there was only a resolution limit.
+
 ### Fixed
+- **The ops dashboard's 7-day traffic window returned rounded counts for four hours a day**
+  (#485). Every figure on the analytics page read `±10` in the **Exact** column — By day, Top
+  pages, Referrers, Countries and Devices together, because all five share one window start.
+  Reported from the live page, and it had been true since the entry below landed.
+
+  Cloudflare RUM holds full resolution behind a **fixed retention edge at 00:00 UTC of
+  (today − 7 days)**. It is a cliff, not a slope — measured one second either side:
+  `datetime_geq 2026-08-09T23:59:59Z` answers at sampleInterval **10** (50 pageloads),
+  `2026-08-10T00:00:00Z` at sampleInterval **1** (67).
+
+  The Eastern alignment below crosses it. `now − 7×24h` taken between 00:00 and 04:00 UTC —
+  **8 pm to midnight Eastern** — is already in the *previous* Eastern day, so its midnight
+  lands **20 hours** the wrong side of the edge. The UTC-midnight expression it replaced sat
+  exactly *on* the edge at every hour of the day, which is why the 7d view had always been
+  exact and why nothing looked wrong in daylight. Measured at the reported instant
+  (21:39 ET): start `2026-08-09T04:00Z` → ±10, **60** pageloads / **40** visits, against
+  start `2026-08-10T00:00Z` → exact, **67** / **50**.
+
+  `windowStartMs()` now takes the later of the Eastern midnight and the edge, and **only**
+  inside the full-resolution window — at 14/30/90 days the coarse tier is unavoidable and
+  trimming the start there would silently shorten the window that was asked for. The clamp
+  costs a short oldest bucket, which is the misreading the entry below exists to remove, so
+  that row is labelled `(partial)` with a note under the table.
+
+  The re-grouping in the entry below was the obvious suspect and is innocent — `date`,
+  `datetimeHour` and `requestPath` all return the same sampleInterval at the same window
+  (1 at a 169.7 h span, 10 at 189.7 h). That half *was* measured against the tier before it
+  landed; the window-boundary half, in the same commit, was not.
+
+  Also: the coarse-tier warning opened **"Window > 7 days:"** — a claim about the window
+  rather than about the answer, and false for every one of the four hours a day the 7d view
+  was rounding. It named the wrong cause to the one person who could have caught it.
+
+  `run_dashboard_time` 12/12 64 → **14/14 87** (the window start over 8760 hours of 2026;
+  the partial label), injection-verified ten ways. **Not deployed** — the Worker ships by
+  hand and wrangler is not on this machine's PATH.
+
+### Changed
+- **The rebuilt pressurizer (#472) computes the plant's pressure and level end to end,
+  behind its flag — and a reactor trip now drops 231 psi and stays there.** Phase 3b:
+  `stepPressure` and `stepLevel` stop delegating to v1. Three regimes replace v1's ~300
+  lines of summed authorities — the saturated/blowdown branch ported nearly verbatim (its
+  subject is *loop* flashing, which is #474's), a solid branch where spray and heater
+  flashing are zero by construction rather than by patch, and the two-region bubbled model
+  that is the actual rebuild. `P_restore_rate_gain` does not exist in v2 and **nothing
+  replaces it**: pressure-holding becomes the automatic channel's job. Measured full stack
+  in a manual lineup against v1's Phase-1 figures — a load cut peaks **+73 psi** and settles
+  12 psi BELOW start (v1: +27 and exactly 0); a trip troughs **−231 psi** and stays down
+  (v1: −54, back to setpoint on 0 % heaters); with the channel engaged the heaters recover a
+  −24 psi dip in ~3 min (v1: flat 2235 psi, heaters peaking at 1.77 %); a manual heater press
+  reaches the PORV in ~40 s instead of 5, and no longer ends in safety injection. Settled
+  level agrees with v1 to **0.01 points**. Shipped plant untouched: the flag is off, v1's
+  code is not edited, `run_all` is 51 runners at baseline.
+- **`test/run_pzr2.js` — the first gate over any of that model, and it found five defects
+  in code that had already been committed as working.** Four commits of two-region
+  thermodynamics had no consumer at all: `stepRegions`, `solveFlash` and `pressureFrom` were
+  called only by their own file, so every number in those commit messages came from a
+  throwaway script. The heater bank computed **zero** authority (two config keys the code
+  read did not exist — both `undefined` silently selects the wrong branch); the flash
+  bracket was sized off delivered energy alone, so a pressure change from relief or an
+  outsurge could flash nothing (60 kg of steam drawn boiled **0.2 kg** of liquid, pressure
+  falling 665 psi where the vessel should boil to hold it up — now 112 psi and 58.8 kg); the
+  step returned a pressure the state did not hold, a two-step zigzag with pressure RISING on
+  alternate steps while steam was drawn out; the inner fixed point ran three passes and
+  stopped 6 % short of its own root (fixed by making the passes cheap — v1's saturation line
+  is a power law, so its inverse is closed-form, and the steam-density solve is the exact
+  inverse of its own table); and v2 seeded the regions from a **published reading** the
+  engine initialises to 0, so every run started with an empty vessel. 38 checks,
+  injection-verified 17 ways — three of which walked through the checks as first written.
+- **The ops dashboard now reads Eastern time on every view, day buckets included**
+  *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in eastern
+  time.")*. The 2026-08-12 pass converted the point-in-time stamps and deliberately stopped at the
+  traffic table's **By day** rows, because those are buckets the upstream API groups on UTC
+  calendar days — the row marked `2026-08-11` holds 20:00 on the 10th through 20:00 on the 11th
+  Eastern, so stamping "ET" on the label without re-grouping the query moves four or five hours of
+  every day's counts into the neighbouring row *and looks entirely correct*. The finished job
+  re-groups instead of relabelling: `analytics.js` asks Web Analytics RUM for `datetimeHour` and
+  sums the hours into Eastern days here-side (an hour never straddles an Eastern midnight, so the
+  sum is exact), and the query window is aligned to Eastern midnight rather than UTC midnight so
+  the oldest row is a whole day instead of the last 19 or 20 hours of one. **Measured on the live
+  dataset before the change**: hourly and daily grouping return identical totals at the same
+  `sampleInterval` over 7 / 30 / 90 days (67/51, 50/40, 50/40 pageloads/visits), so the finer
+  grouping neither loses rows nor drops to a coarser sampling tier. On the live 30-day window the
+  re-bucket moves 10 pageloads off `2026-08-09` onto `2026-08-08`, which is the shift the old
+  header was warning about. Storage and queries **stay UTC** and must: Analytics Engine stores
+  UTC, the SQL windows are relative, the GraphQL filter accepts only UTC, and the R2 bundle keys
+  are UTC day prefixes — only what is displayed is converted. Sessions and Analytics now state the
+  zone on the page the way the reports view already did.
+- **New gate `test/run_dashboard_time.js` — 12/12, 64 checks.** The dashboard had no gate at all,
+  and every way this rots is silent. **DST is the one worth naming**: the implementation that
+  looks obviously safe — sample the zone offset at **noon**, well away from the 02:00 switch — is
+  wrong on exactly the two days a year the exercise is about, and in *opposite* directions. It
+  dates 2026-03-08 an hour early (04:00Z, when 00:00 EST is 05:00Z) and 2026-11-01 an hour late,
+  losing that day's first hour. It was the first implementation here, and it passed every check
+  written against an ordinary day; the fix is a two-pass fixed point (guess with the offset at the
+  wall time read as UTC, then re-read the offset at the guess), and all four transition cases plus
+  a 365-day sweep are pinned. The static half also pins the re-group so it cannot quietly become a
+  relabel again, and pins storage staying UTC so a later pass cannot walk past the display layer.
+  It **strips comments before scanning** — every file here argues about UTC at length, and an
+  unstripped scan passes green on the prose. Injection-verified, five ways: noon offset → 61/64,
+  `datetimeHour` reverted to `date` → 62/64, column relabelled `Date (UTC)` → 62/64, a view
+  printing a raw Analytics Engine stamp → 63/64, UTC-midnight window → 62/64.
+
+- **The PWR behaviour catalog is unfrozen (v3.1 → v4.0-DRAFT) for the #472 pressurizer
+  rebuild, and its freeze now has a gate.** The v3.1 "FROZEN-FINAL" label had no mechanical
+  lock — 39 probe IDs in the behaviour battery (nearly the whole CA-7…CA-25 pressurizer
+  block) had no catalog row, and the battery's stamps read v2.0 for over a year. v4.0-DRAFT
+  absorbs all 39 as rows (§13 FG-8 pressurizer, §14 non-pressurizer), adds 18 rebuild
+  acceptance rows (manual-first pressure authority, the TMI deception named and numbered,
+  heater elevation), and the new `CAT-1` probe fails the gate if catalog and battery ever
+  diverge again (`run_behavior` 73pass 1xfail). Owner ruling on the amended set pending.
+
+### Fixed
+- **Shutdown cooling can no longer be placed in service during a safety injection — they are the
+  same pumps** (#458). The RHR pumps *are* the low-head half of the merged HPI/LPI system, and a
+  real plant runs them in two mutually exclusive alignments: **injection** (suction from the
+  refueling water tank, heat exchangers **uncooled** — WTSM 5.2 §5.2.4.5, ML11223A220:
+  *"the RHR pumps start and recirculate water through the uncooled RHR heat exchangers"*) and
+  **shutdown cooling** (hot-leg suction through 8701/8702, heat exchangers on component cooling
+  water). This plant carried **one** `rhr_active` flag for both, gated only on the 400 psi
+  (2.76 MPa) block-open permissive — which a loss-of-coolant accident satisfies in **20 seconds**
+  at full severity. Measured full stack: aligning RHR into a large break removed **4.28 heat units
+  against 0.49 units of decay heat — 8.8×**, about 66 MWt in this model's currency, at a primary
+  void fraction of **0.788**, i.e. a centrifugal pump taking suction on 79 % steam. **It was not a
+  curiosity: the board asked for it.** PWR-A33 *RHR NOT IN SERVICE* annunciates at **t+191 s** of
+  that same run — correctly, it means "you are on injection, not on shutdown cooling" — and
+  `Manuals/06`'s response for the tile said *"Re-align RHR from the ECCS side of the board"* with
+  no accident carve-out. `set_rhr {active:true}` is now refused while SI is running, with a
+  labelled message; `{active:false}` never is. **This is NOT presented as a plant interlock** —
+  no document in any lane's corpus gives 8701/8702 a safety-injection inhibit, and inventing one
+  would repeat #453's error of reading a lineup fact as an automatic function. Declared as a
+  departure in `Manuals/12` §12.20, which also names what the trainer genuinely cannot do: a real
+  plant's exit is the **sump swap-over on refueling-water-tank depletion**, and there is no such
+  inventory node here, so its accidents stay in the injection phase for ever.
+- **The control kernel could not release an interlock keyed on a boolean** (#458). `_evalInterlocks`
+  engages through `crossed()` (which learned `is_true`/`is_false` at #314) but clears through a
+  hysteresis band — `v < clears_below` / `v > clears_above` — and a boolean has no band. Latent
+  until now because no interlock had ever been authored on a status instrument. **The failure is
+  the opposite of the obvious one:** a boolean row carries `setpoint: null`, so the clear arm asks
+  `true > null`, which is `1 > 0`, so the interlock released on the very next pass with its own
+  signal still standing and blocked nothing at all. Injection-verified in `run_m4`: reverting the
+  branch reddens exactly 5 checks across two suites and nothing else in 46.
 - **A release can no longer serve new HTML against the previous release's stylesheet** (#470).
   `ui/shell.html` is served `Cache-Control: max-age=0, must-revalidate` while `ui/shell.css` is
   `max-age=14400` and was referenced as a bare `href="shell.css"` — and `must-revalidate` does
@@ -50,6 +264,60 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   published/withheld partition covers the root `*.html` glob only, while each asset directory
   is copied wholesale, so being one directory deeper was their whole exemption. Withheld now
   via a `WITHHELD_DIRS` declaration beside `NOT_PUBLISHED`.
+- **Turbine roll moves to 10–15 % power, where the real plant does it.** `Manuals/04` PWR-N05
+  said Mode 2, ≤ 5 %. Real practice: *"To minimize primary plant transients, the turbine is
+  rolled with reactor power between 10 and 15 percent"* (WTSM §19.3, ML11223A342). The reason is
+  the steam balance — at 10–15 % the dumps already pass that flow, so as the governor valves open
+  the dumps modulate shut and **total steam flow barely changes**. The shipped `pwr_startup`
+  checklist has always done it correctly (~12 %, both startup trips blocked, then Connect Grid)
+  and is gated by `run_procedures_stack`: **the manual contradicted a passing gate, and the
+  manual was the wrong one.**
+- **SHUTDOWN MARGIN is defined, and stops being used for a different quantity** — new
+  `09 §7.5.3`. SDM is computed with all rods assumed inserted except the highest-worth stuck
+  rod; this set used the name for *net reactivity as the rods happen to sit*. The two coincided
+  only while the Mode 5 shutdown bank was parked withdrawn, which since #468 it is not.
+  Measured cold at 857 ppm: **−4676 pcm** both banks in, **−1000 pcm** bank withdrawn, boron's
+  own **~1000 pcm**, bank worth **3676 pcm** — and the operational point, that withdrawing the
+  bank spends the margin buying you **time** (79 min to criticality on an unattended dilution
+  with it in; a source-range trip inside the hour with it out).
+- **The psia/psig convention is declared** — new note at `09 §3.0`. Every pressure in the manual
+  set is absolute; Westinghouse quotes pressurizer setpoints in gauge, 14.7 psi apart. Our 2235
+  reads the real 2235 *psig* as absolute, while our PORV 2350 **is** the real 2335 psig correctly
+  converted — so the nominal-to-PORV margin is 115 psi against a real 100. **Declared rather than
+  fixed**: 2235 is the plant's pressure anchor, and re-anchoring it for 15 psi of margin fidelity
+  would re-baseline every equilibrium, initial condition, alarm band and scenario for no
+  behavioural gain.
+- **Mode 5 starts with the shutdown bank IN, and withdrawing it is now a step** (#468). The
+  `Cold Shutdown (Mode 5)` preset shipped with the shutdown rods already parked fully out —
+  not as a property of Mode 5 but of the engine *constructor*, which placed every rod group
+  at its withdrawn position for every initial condition. It did not match this plant's own
+  shutdown path: measured, a scram leaves the bank at **0/912** and nothing ever re-withdraws
+  it, so a player who **drove** to cold shutdown through PWR-N14/N15 ended with the trip rods
+  on the bottom while a player who **loaded** cold shutdown got them out. Same mode, two
+  plants. Real practice makes withdrawal an operator evolution and never an initial
+  condition — the shutdown banks are *"moved into [the fully withdrawn] position at a fixed
+  speed in manual bank control **prior to criticality**"* (WTSM §8.1.1, ML11223A252), verified
+  on the Mode 5 → 4 leg and required complete within 15 minutes of control-bank withdrawal
+  (App 19-1 A.12 / C.7, ML11223A342).
+  - Mode 5 is now **ρ = −4676 pcm on 857 ppm** with both banks inserted, and **PWR-N01 gains
+    step 2a** — withdraw the bank, 912 steps, ~3 plant-minutes at Fast. N02 step 7 covers
+    arriving by trip; N15 step 1 separates the boron's ~1000 pcm from the bank's 3676 pcm.
+  - **Boron is unchanged at 856.1 ppm, and that took an ordering fix.** `_trimToCritical`
+    solves IC boron for a fixed −1000 pcm net with rod reactivity as an *input*, so inserting
+    the bank before the trim makes the solver pay for 3676 pcm of rods by removing boron —
+    measured **671.3 ppm**, less than the 704.8 ppm the *hot* standby preset carries, on a
+    *cold* plant, where withdrawing the bank alone would then take it critical. The bank is
+    placed after the trim; the ordering is commented at both ends.
+  - The margin is worth something measurable: an unattended dilution at the plant make-up
+    rate reaches criticality in **79 minutes** with the bank in, against a source-range trip
+    inside the hour with it out. `ops_shutdown_dilution` now runs two hours, keeps its
+    original source-range assertion (which passes on **both** presets) and asserts the first
+    hour does *not* reach criticality.
+- **`Manuals/04` §5.0 no longer claims the RCS heatup/cooldown rate limit is unsourced.**
+  100 °F/hr is sourced twice in the corpus (ML11223A342 App 19-1; ML11223A213 Table 3.2-10),
+  was ruled on 2026-08-09 (#398, *"100 F/hr TS + 50 admin"*), and has annunciated on the board
+  since #375 — only the manual's reference table still said "UNVERIFIED — no source found".
+  The 90 °F/hr used in PWR-N15 is a *programme* and sits inside the limit; that was always true.
 
 ### Added
 - **`test/run_site_build.js`** — the first gate that runs the deploy build and reads its

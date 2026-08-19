@@ -13,7 +13,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
 [
   'engines/load_mode.js',
   'engines/pwr/pwr_config.js', 'layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js',
-  'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
+  'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js', 'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
   'layers/control/control_kernel.js',
 ].forEach(load);
@@ -718,11 +718,28 @@ T.push(test('#453 — shutdown cooling never aligns ITSELF, least of all into a 
     b.ts().eccs_mode !== 'RHR', 'not RHR');
   // …but the operator can still put it in service, which is the whole point: what was
   // removed is an automatic action, not the system.
-  b.cmd({ action: 'set_rhr', active: true });
+  //
+  // RE-AUTHORED AT #458 (2026-08-12), and the old form is worth keeping in view because it
+  // was RIGHT ABOUT ITS CLAIM AND WRONG ABOUT WHERE TO ASK IT. It commanded the align here,
+  // with the break still open and safety injection running, and asserted it succeeded. That
+  // is the exact action #458 is about — shutdown cooling and low-head injection are the same
+  // pumps in two mutually exclusive alignments — so this check was pinning the defect as the
+  // feature. The claim it MEANT to make ("an automatic action was removed, the system was
+  // not") discriminates just as well one step later, on a plant that is below the permissive
+  // and NOT taking injection, which is also the lineup PWR-N15 actually reaches.
+  var rBlocked = b.cmd({ action: 'set_rhr', active: true });
   b.run(3);
-  ck('the OPERATOR can still align it below the permissive (the evolution survives)',
-    'rhr_active=' + b.ts().rhr_active + ', mode=' + b.ts().eccs_mode,
-    b.ts().rhr_active === true && b.ts().eccs_mode === 'RHR', 'true / RHR');
+  ck('with SI running the align is REFUSED — same pumps, two lineups (#458)',
+    (rBlocked && rBlocked.code) + ' / rhr_active=' + b.ts().rhr_active,
+    rBlocked && rBlocked.type === 'blocked' && rBlocked.code === 'INTERLOCK'
+      && b.ts().rhr_active === false, 'INTERLOCK / false');
+  b.cmd({ action: 'set_hpi', active: false });   // secure injection — the operator's decision
+  b.run(3);
+  var rOk = b.cmd({ action: 'set_rhr', active: true });
+  b.run(3);
+  ck('the OPERATOR can still align it once injection is secured (the evolution survives)',
+    'refusal=' + (rOk && rOk.code || 'none') + ', rhr_active=' + b.ts().rhr_active + ', mode=' + b.ts().eccs_mode,
+    !rOk && b.ts().rhr_active === true && b.ts().eccs_mode === 'RHR', 'accepted / true / RHR');
   // And the engine's real interlock still refuses an open above the block-open pressure —
   // the sourced half that STAYS. Fresh at-power plant, no break.
   var hp = new Stack('hot_full_power');
@@ -731,6 +748,87 @@ T.push(test('#453 — shutdown cooling never aligns ITSELF, least of all into a 
   hp.run(3);
   ck('at operating pressure the block-open permissive still refuses (2.76 MPa, unchanged)',
     'rhr_active=' + hp.ts().rhr_active, hp.ts().rhr_active === false, 'false');
+}));
+
+T.push(test('#458 — shutdown cooling and low-head injection are the same pumps: not co-available', function (ck) {
+  // WHAT THIS PINS. Until 2026-08-12 `set_rhr {active:true}` had exactly one gate — the
+  // engine's 400 psi (2.76 MPa) block-open permissive — so a player could align shutdown
+  // cooling into a running LOCA and get the full heat sink. MEASURED full stack before the
+  // change: at `large_loca` sev 0.05 the align became legal at t+553 s and removed 4.28 heat
+  // units against 0.49 units of decay heat (8.8x, ~66 MWt in this model's currency, where
+  // rated core = 19.45 units = 300 MWt); at sev 1.0 it was legal at t+20 s with the primary
+  // void fraction at 0.788 — a centrifugal pump on 79 % steam. WTSM 5.2 §5.2.4.5 says those
+  // heat exchangers are UNCOOLED in the injection lineup and that the component cooling water
+  // that makes them work is opened by hand at the sump swap-over.
+  //
+  // IT WAS NOT A CURIOSITY — THE BOARD ASKED FOR IT. `rhr_not_aligned` (PWR-A33, RHR NOT IN
+  // SERVICE) annunciated at t+191 s of that same sev-1.0 run and stood for the rest of it,
+  // and `Manuals/06`'s response for that tile said "Re-align RHR from the ECCS side of the
+  // board" with no LOCA carve-out. Both are fixed in the same change.
+  //
+  // NOT A PLANT INTERLOCK — see the row's comment in pwr_control.js. It is this trainer's one
+  // `rhr_active` flag declining to be in two alignments at once, declared in `Manuals/12`
+  // §12.20. Which is why the negative controls below matter as much as the positive one:
+  // over-restricting here would break every cooldown to Mode 5.
+  var b = new Stack('hot_full_power');
+  b.run(30);
+  b.cmd({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+  b.run(120);
+  // Precondition: the ENGINE permissive is satisfied, so a refusal here is this row's doing
+  // and not the pressure gate passing the buck.
+  ck('precondition — below the 2.76 MPa block-open permissive, so the engine would allow it',
+    b.ts().pressure_mpa.toFixed(2) + ' MPa true', b.ts().pressure_mpa < 2.76, '< 2.76 MPa');
+  ck('precondition — safety injection is actuated', String(b.ts().hpi_active), b.ts().hpi_active === true, 'true');
+  // (a) THE REFUSAL, and it is LABELLED — a silent no-op would be an orphan control (Q4).
+  var r = b.cmd({ action: 'set_rhr', active: true });
+  b.run(3);
+  ck('ALIGN is refused while injection is running',
+    (r && r.type + '/' + r.code) + ', rhr_active=' + b.ts().rhr_active,
+    r && r.type === 'blocked' && r.code === 'INTERLOCK' && b.ts().rhr_active === false, 'blocked/INTERLOCK, false');
+  ck('…and the refusal explains itself in the operator\'s own words',
+    JSON.stringify((r && r.message || '').slice(0, 48)),
+    !!(r && r.message && r.message.length > 40), 'a message, not a bare code');
+  // (b) THE LAMP AND THE REFUSAL ARE ONE FACT (#306) — a board that asks without commanding
+  // must get the same answer the command gets.
+  ck('isCommandBlocked agrees with the refusal it would get',
+    String(b.layer.isCommandBlocked({ action: 'set_rhr', active: true })),
+    b.layer.isCommandBlocked({ action: 'set_rhr', active: true }) === true, 'true');
+  // (c) ISOLATE IS NEVER BLOCKED — same asymmetry as the engine's block-open permissive, and
+  // the reason `blocks_when` is on the row. Taking a system OUT of service is always allowed.
+  ck('ISOLATE is never blocked, even with the interlock standing',
+    String(b.layer.isCommandBlocked({ action: 'set_rhr', active: false })),
+    b.layer.isCommandBlocked({ action: 'set_rhr', active: false }) === false, 'false');
+  // (d) IT CLEARS. This is the leg that pins the KERNEL fix: `_evalInterlocks` clears through
+  // a hysteresis band (`v < clears_below` / `v > clears_above`) and a boolean has no band, so
+  // before 2026-08-12 the first boolean-keyed interlock in the codebase could not have worked
+  // at all. MEASURED by reverting that branch — and the failure is the opposite of the one you
+  // would guess: a boolean row carries `setpoint: null`, so the clear arm asks `true > null`,
+  // which is `1 > 0`, so the interlock releases on the next pass with its own signal still
+  // standing and blocks NOTHING. Reverting reddens legs (a), (d), (e) and the #453 refusal —
+  // 5 checks — and nothing else in 46 suites.
+  b.cmd({ action: 'set_hpi', active: false });
+  b.run(3);
+  var r2 = b.cmd({ action: 'set_rhr', active: true });
+  b.run(3);
+  ck('securing injection CLEARS it — the block is not a latch',
+    'refusal=' + (r2 && r2.code || 'none') + ', rhr_active=' + b.ts().rhr_active,
+    !r2 && b.ts().rhr_active === true, 'accepted, true');
+  // (e) …AND RE-ENGAGES. A clear that cannot re-arm is the same defect facing the other way.
+  b.cmd({ action: 'set_hpi', active: true });
+  b.run(3);
+  var r3 = b.cmd({ action: 'set_rhr', active: true });
+  ck('…and re-engages when injection comes back',
+    (r3 && r3.code) || 'ACCEPTED', r3 && r3.code === 'INTERLOCK', 'INTERLOCK');
+  // (f) NEGATIVE CONTROL — the lineup every cooldown actually reaches. Mode 5 ships with RHR
+  // aligned and no SI; if this row could reach that plant it would break PWR-N15 and every
+  // Mode 5 initial condition, which is the over-restriction risk that makes A' cost anything.
+  var c = new Stack('cold_shutdown');
+  c.run(30);
+  ck('negative control — a cold plant with no SI is not blocked',
+    'hpi_active=' + c.ts().hpi_active + ', blocked=' + c.layer.isCommandBlocked({ action: 'set_rhr', active: true }),
+    c.ts().hpi_active !== true && c.layer.isCommandBlocked({ action: 'set_rhr', active: true }) === false,
+    'no SI, not blocked');
+  ck('…and it is still aligned, carrying decay heat', String(c.ts().rhr_active), c.ts().rhr_active === true, 'true');
 }));
 
 T.push(test('#294 — MODE 4 is a cold mode too: the whole COLD_MODES half was untested', function (ck) {

@@ -29,6 +29,703 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-18-develop-b (the workbench merge, and a gate whose verdict depended on whether the lane had ever run the build)
+
+**Ask:** owner, 2026-08-18: *"merge workbench and develop. release to maine and push to gh."*
+**Gates:** `run_all` **51 runners at baseline**, one tracked red (`run_ops` 59/70, the ruled
+`ops_cvcs_pzr_drain_rate`). Released **Alpha 1.6.1**.
+
+**`backshop` was not merged.** An agent is live on it — `status-wip-backshop` on **#479**, tip
+committed 29 minutes before this session started, 40+ `pwr2` commits ahead of `develop`. The ask
+named two lanes and this is the third; merging a tree someone is standing in is the failure
+`LANES.md` exists for.
+
+**The two BASELINES combines were both a real COMBINE, and both were confirmed by measurement
+rather than left as arithmetic.** `run_behavior`: both sides moved it **72 → 73pass** and neither
+number was the merged one — develop added TR-1m (#489), workbench added CAT-1 (#472 phase 0), so
+the result is **74pass 1xfail**. `run_hardrules`: develop 286 → 290, workbench 286 → 303, merged
+**307checks**. Taking either side whole would have shipped a baseline the tree cannot produce, and
+`run_all`'s drift is symmetric so it would have reddened either way — the point is that it would
+have reddened for a *bookkeeping* reason and invited a "just re-record it" fix.
+
+**The defect the merge found: `verify_pzr2_loadlists` scored `4checks 1failed` on the develop tree
+and `4checks 0failed` on workbench AT THE SAME COMMIT.** The whole difference was a stale
+`download/Reactor_Dynamics_Alpha_1.10.0.html` — a portable build left over from an earlier release
+— which contains a full inlined copy of both pressurizer models and therefore a third assignment
+of `RD.pwrPressurizer`. The scanner's SKIP list named `node_modules`, `dist`, `dist-site`, `inbox`,
+`terminals`, `mcps` and `.git`; it did not name **`download/`**, which is the one build-output
+directory the *release procedure itself* populates (`site/make_download.js`, run at step 4, three
+steps before the merge). So the gate would have gone red on the very next step regardless of the
+leftover file.
+
+The trap worth keeping: **a gate that walks the tree can have a verdict that depends on the lane's
+BUILD HISTORY rather than on its source.** It is invisible in a lane that has never run the build,
+and it is not caught by running the gate twice in the same tree. Injection-verified both
+directions after the fix — a probe file assigning `RD.pwrPressurizer` under `ui/` still reds it,
+the identical file under `download/` does not.
+
+**The manual set opens Rev 16, and the "extend the pending row" rule had quietly expired.** Rev 15
+was still worded *"pending; extends until the next release"* — but it **shipped at Alpha 1.6.0**
+carrying items (a)–(f), and (g)/(h)/(i) landed after that release. Extending it further would give
+a player who downloaded at 1.6.0 a *"Rev 15"* whose content differs from the site's *"Rev 15"*,
+which is precisely what a revision row exists to prevent. The three post-1.6.0 items moved to a new
+Rev 16, re-lettered (a)–(c); Rev 15 keeps a–f and is now marked shipped. Same shape as the CLAUDE.md
+theme two weeks ago: **a rule's premise ages independently of the rule** — "extend the pending row"
+is right while the row is pending and wrong the moment it ships, and nothing re-checks which it is.
+
+**Alpha 1.6.1 is a Z bump on three player-facing items** — the Mode 5 shutdown-bank preset and the
+10–15 % turbine roll (#468), and the shutdown-cooling align refused during injection (#458). The
+pressurizer v2 rebuild is the bulk of the diff (~5,800 lines) and gets **no** entry: it ships behind
+`pressurizer2.enabled = 0` and changes nothing a player can reach. The analytics and asset-URL work
+(#470, #476, #480, #485) gets none either, being website rather than simulator.
+
+---
+
+## Session log — 2026-08-18-develop-a (#489 — TR-1m: pinning a simplification you have decided NOT to fix, so that fixing it is what breaks the gate)
+
+**Ask:** owner, 2026-08-18: *"Next"* — i.e. proceed with the recommendation left outstanding the
+night before, the probe for the declared simplification ruled at #489. **Gates:** `run_all` 49
+runners at baseline; `run_behavior` **72 → 73 pass**. **Landed:** probe **TR-1m** in
+`test/behavior_pwr.js`, the catalog row promoted DOCUMENTED → PASS. **No behaviour change.**
+
+**What it pins.** TR-1m asserts a state the project has ruled it does not want to fix: with the
+rods in MANUAL — the shipped lineup — an armed load rejection never stands down. Measured at
+engine+M4, matching the full-stack figures that produced the ruling: leg A settles **88.4 %**
+against a 59 MWe target with the dump on its 28 % cap and an imbalance of **29.1 MWe**, ten times
+the 10 MWe reset window, still armed 1200 s later.
+
+**Three legs, and the middle one is the argument.** Leg B is the same rejection with rods AUTO:
+the latch clears, the dump reseats, power tracks the load at 58.7 %. Without leg B the probe would
+be consistent with the arm threshold being wrong; with it, the cause is named as the lineup. Leg C
+sits one MWe the other side of the arm and lets the non-monotonicity be asserted as a **SPAN**
+(76.7 % at 61 MWe → 88.4 % at 59 MWe, **+11.7 pts**) rather than as two absolute numbers that
+could drift together and still pass.
+
+**Traps.**
+
+- **A probe for an ACCEPTED simplification has inverted semantics, and that has to be deliberate.**
+  Normally a probe reds when the plant breaks. This one reds when the plant is **fixed** — injected
+  a reset window the latch can actually reach and it goes red in four places, the inversion
+  collapsing from +11.7 to **−0.1 pts**. That is correct and is stated in the row: the day someone
+  builds §8.30's operator RESET, this probe is the thing that tells them the register entry and the
+  catalog row now need retiring together. A declared simplification with no pin can move silently
+  (§8.21's own argument); a declared simplification with a pin announces its own repeal.
+- **Injection is what separates "green" from "asserting".** Five injections, all caught: a reachable
+  reset window, leg A silently switched to rods AUTO (proving the lineup is load-bearing and not
+  decoration), the arm moved so nothing arms at all, leg C moved to the SAME side of the arm so
+  there is no inversion left to find, and the dump cap lowered so *"parked on its cap"* has to be
+  re-read from config rather than assumed at 28.
+- **Check that an injection FAILED AN ASSERTION rather than crashed.** My harness scored CAUGHT off
+  the exit code alone and printed no failing lines — its `✗` regex missed an ANSI reset. A crash and
+  a red look identical to an exit code, so one injection was re-run by hand to read the actual
+  check output before the result was believed.
+- **The layer was re-measured, not carried.** The ruling's numbers came from `measure_stack`
+  (full stack); this probe runs engine+M4. They agree here (88.4 / 29.1 / +11.7), but that was
+  checked rather than assumed — the two layers are different plants and this suite is the one that
+  looks full-stack and is not.
+
+---
+
+## Session log — 2026-08-17-develop-c (#489 — the dump latch's RESET has a premise, and #460 deleted it; three artifacts now found resting on the same dead assumption)
+
+**Ask:** owner, 2026-08-17, on options I wrote — regime 3 *"Accept and document it"*, regime 2
+*"Defer to the PWR2 rebuild (#479)"*. **Gates:** `run_all` 49 runners at baseline. **Landed:**
+`DESIGN_COMPANION` §8.30 extended, catalog **TR-1m** added (DOCUMENTED, not probed), the
+`dump_reject_clear_mwe` comment, and the regime-2 acceptance case handed to #479 by comment.
+**No behaviour change anywhere** — both rulings are records.
+
+**The finding.** `#489` was filed saying *"nothing un-arms it once Tavg cannot recover"*. Wrong,
+and the correction is the whole entry. There **is** an auto-reset — `pwr_steam_generator.js:233-235`,
+`dump_reject_clear_mwe: 10.0` — and it clears on `|load_imbalance_mwe| < 10`, which the code
+comment glosses as *"the reactor has come back to meet the load, so the ride-out is over"*.
+
+**What brings the reactor back is the rod controller.** #460 took `rods_tavg` out of the shipped
+free-play lineup on 2026-08-11. Measured 2026-08-17, rods MANUAL: a 100 → 59 MWe rejection settles
+the reactor at **88.4 %** against a 59 MWe target — imbalance ~**29 MWe**, never re-entering the
+10 MWe window, dump pegged at its 28 % cap for the full 45-minute ride. The latch is **unclearable
+in the shipped lineup** for any rejection past 40 MWe.
+
+**Traps.**
+
+- **A premise ages independently of the design resting on it, and NOTHING re-checks a premise.**
+  This is the third artifact found in two days resting on *"rods are in AUTO"* after #460 removed
+  it: the **A1 curriculum row** (#484), **#460's own five reds**, and now **this latch**. The
+  pattern is not "someone made a mistake" — each was correct when written. **When a ruling changes
+  a default, the work is to enumerate what CONSUMES that default**, and nothing in this repo can do
+  that automatically: the consumers are prose, config comments and a conditional in another file.
+- **Read the neighbouring constant before you call something missing.** `dump_reject_clear_mwe` is
+  the line directly below `dump_load_reject_mwe`, which I had already read and quoted in the issue.
+  I filed "there is no reset" having stopped one constant short.
+- **The declared-simplification register had already priced this trade, and I recommended half of
+  it.** My recommendation was to build the operator RESET the real plant has (sourced verbatim,
+  WTSM §11.2). **`DESIGN_COMPANION` §8.30 explicitly forbids exactly that** — the auto-clear and
+  §8.21's 40 MWe arm are *one* decision, and the real plant can afford a 10 %-step arm only
+  *because* a human de-arms it; building the reset alone re-opens the #219 cliff ruling from the
+  other side. **The register is not a history file — it is a list of decisions that constrain the
+  next one, and I had not read it before recommending.** The owner's "accept and document" was the
+  better call and this is why.
+- **A declared simplification that is not PROBED can move silently** — §8.21's own argument, and
+  TR-1m is currently documented-only. Flagged in the row itself rather than left implicit.
+- **Do not edit another lane's tree to file a record.** The PWR2 docs are all in `RD_backshop`;
+  the regime-2 acceptance case went onto **#479 as a comment** instead, which is the tracked unit
+  of work and the thing the next backshop session actually reads.
+
+---
+
+## Session log — 2026-08-17-develop-b (#484/#489 — the A1 teaching row was measured on a lineup that no longer ships, and the point it teaches at sits in a dead band)
+
+**Ask:** owner, 2026-08-17, on three options I wrote: re-author the row, move the demonstration,
+split the non-monotonicity — then, on the measurement that killed the first choice of point,
+*"100→80 MWe, rods MANUAL"*. **Gates:** `run_all` 49 runners at baseline. **Landed:**
+`Blueprint/CURRICULUM.md` Tier A rows A1, A2, A7, A9, the A1 arithmetic paragraph and the
+instrument-lag table, all re-measured; **#489** filed. **`engines/pwr/` untouched** — it is the
+frozen A/B reference for #479.
+
+**What the row said and why it was wrong.** A1: *"rods to MANUAL, drop generator demand
+100 → 60 MWe. Measured: power 100 → 57.5 %, Tavg 579.3 → 602.1 °F."* The plant settles at
+**76.8 %**. Bisected across 112 commits (`git archive` per commit into a scratch dir, `measure_stack`
+there — the working tree was never modified): the single step is **`d606f0e`, #460**, which took
+`defaultOn` off `rods_tavg`. The row's numbers reproduce only with rods in **AUTO**. It says MANUAL.
+
+**Then the replacement point failed its own measurement, which is the part worth keeping.** The
+ruling was to move the demonstration to 100 → 70 MWe. Measured, 70 MWe is inside a **dead band**:
+
+| load MWe | 95 | 85 | 78 | 76 | **75** | 74 | 72 | **70** | 65 | **60** | **59** | 55 | 40 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| power % | 95.5 | 86.5 | 80.1 | 78.1 | **77.3** | 76.9 | 76.8 | **76.7** | 76.5 | **76.3** | **88.4** | 84.7 | 72.2 |
+| dump % | 0 | 0 | 0 | 0 | **0** | 0.5 | 2.4 | 4.3 | 9.3 | 13.9 | **28 (cap)** | 28 | 28 |
+
+Across **60–74 MWe** reactor power moves **0.6 points** for 15 MWe of load — the dump takes exactly
+what the turbine gives up, total steam out holding ~0.744. At **59 MWe** the fast Tavg-error dump
+mode arms and power **jumps up 12.1 points**. So the ruled point would have demonstrated the
+coupling *not working*, one step from an inversion. Re-put to the owner with the sweep; answer
+**100 → 80 MWe**, where the dump is shut and power tracks load. Filed the dump behaviour as **#489**.
+
+**Traps.**
+
+- **A ruling can be correct and its chosen NUMBER still be unmeasured.** "Move it off the cliff
+  edge" was right; 70 MWe was my own suggestion inside that ruling and it was wrong, because I had
+  measured the *cliff* (59/60) without measuring the *plateau* either side of it. Measuring the
+  discontinuity is not measuring the function. One sweep would have caught it and cost 90 seconds.
+- **Prose is not swept.** #460's own themes entry says *"every probe that broke was INHERITING the
+  lineup instead of stating it"* — and the sweep that found those probes could not see this row,
+  because a curriculum row is prose. **Every measured claim in a document is an unswept probe.**
+- **A stale row drags its NEIGHBOURS.** A7 and A9 both said *"run A1"*, so moving A1 silently moved
+  them. A9 turned out not to survive either drop: its claimed **−2.45 %** measures ~**−0.5 %** on
+  the new one and ~**−1.0 %** on the old, against a noise band that itself measures **±1.0 %**, not
+  the **±0.6 %** the row asserts — i.e. the effect was *inside* its own significance threshold and
+  the threshold was wrong too. Moved to a turbine trip: **−10.2 %** at t+6 s, ~10× the band.
+- **A measurement inherits its SAMPLING RATE, and a lag cannot be resolved near its own time
+  constant.** The `tavg` lag read **+2.13 s** at 1 s sampling and **+3.49 s at 0.2 s** for the same
+  event. The old table's **"+0.00 s"** entries for the fast channels were the same artifact
+  reported as a result — and one of them, re-taken properly, comes back **negative** (−0.57 s),
+  because on a gentle transient `power_range`'s noise moves the crossing further than its 0.1 s lag
+  does. That row is now stated as *not resolvable*, which is what it is.
+- **Verify the coefficient, not the sentence.** The arithmetic paragraph quoted "measured MTC
+  −26.8 pcm/°C". MTC has not been a single constant since #263 — it is boron- and
+  temperature-dependent (`mod_anchor_pcm_per_f −31.43`). The −26.8 is still right, but only because
+  `run_reactivity` pins it *at the full-power reference, 618 ppm*; the number needed its conditions,
+  which the row did not carry. `xenon_worth 0.025` and `rod_worth_total 0.04068` were re-read from
+  source the same way rather than inherited from the old row's pcm figures.
+
+---
+
+## Session log — 2026-08-17-develop-a (#485 — the 7-day analytics window rounded everything for four hours a day, and the commit that broke it had measured its *other* half)
+
+**Ask:** owner, 2026-08-16 evening: *"on the telemetry analytics page i have it set to a 7 day
+window. it is showing everything +-10 which should only apply when greater than 7 days. the 7 day
+window used to have exact counts. why did it change?"* — then, on the diagnosis and the recommended
+fix: *"Approved."* **Gates:** `run_all` **49 runners at baseline**; `run_dashboard_time` **12/12 64
+→ 14/14 87**. **Landed:** `windowStartMs()` + `dayLabel()` in `worker/src/render.js`, the clamp and
+the partial-row note in `worker/src/analytics.js`, the corrected coarse warning, two new gate
+suites. **NOT DEPLOYED** — the Worker ships by hand (`cd worker && wrangler deploy`) and wrangler
+is not on this machine's PATH.
+
+**The mechanism.** Cloudflare RUM holds full resolution behind a **fixed retention edge at 00:00
+UTC of (today − 7 days)**, and it is a cliff. Measured one second either side:
+
+| `datetime_geq` | sampleInterval | pageloads |
+|---|---|---|
+| `2026-08-09T23:59:59Z` | 10 | 50 |
+| `2026-08-10T00:00:00Z` | **1** | **67** |
+
+#480 moved the window start from UTC midnight to Eastern midnight. The old expression,
+`new Date(now - days*864e5).toISOString().slice(0,11) + '00:00:00Z'`, landed on that edge
+**exactly, at every hour of the day** — it hugged the boundary by construction, which is the whole
+reason the 7d view had always been exact. The new one takes the Eastern *day* of `now − 7×24h`, and
+between 00:00 and 04:00 UTC — **8 pm to midnight Eastern** — that instant has already rolled into
+the previous Eastern day, so the start jumps 20 h past the edge. For the other 20 hours a day it
+lands 4 h *inside* and is exact. Measured at the owner's instant (2026-08-17T01:39Z = 21:39 ET):
+
+```
+BEFORE  from=2026-08-09T04:00:00Z  span=189.7h  maxSI=10  60 pageloads / 40 visits  "±10"
+AFTER   from=2026-08-10T00:00:00Z  span=169.7h  maxSI= 1  67 pageloads / 50 visits  "yes"
+```
+
+All five RUM tables share one window start, which is the "everything ±10" in the report.
+
+**Traps.**
+
+- **A commit that measures one of its two edits reads as fully measured.** #480's header records
+  a careful pre-measurement of the re-grouping against the sampling tier — *"hourly and daily
+  grouping return IDENTICAL totals … at the same sampleInterval, so the finer grouping neither
+  loses rows nor drops to a coarser sampling tier."* Correct, and it is why the grouping was
+  cleared here in one query. The **window-boundary move, in the same commit and the same
+  paragraph, got no such check** — and that is the half that broke. The prose around a measured
+  claim launders the unmeasured one standing next to it.
+- **A defect that is a function of the HOUR OF DAY survives every spot check.** Wrong for 4 hours
+  in 24, always the four nobody tests in. The gate now sweeps **8760 hours of 2026** rather than
+  spot instants, for exactly this reason; a one-instant check proves nothing about the other 23.
+- **A source scan for a rendered string cannot tell you the string is REACHABLE.** The first
+  version of the partial-label check was `/\(partial\)/.test(source)`. It passed green on
+  `(false ? ' (partial)' : '')` — measured, on the first injection run of the check itself. The
+  fix was to make the label a function (`dayLabel`) so the claim could be tested instead of
+  spelled. Same family as `!range(bool).max` and the hand-maintained-map gates already on the
+  standing list, and the reason the injection pass is not optional.
+- **A "coarse tier" warning that names the WINDOW is naming a cause, not reporting a fact.** The
+  banner opened *"Window > 7 days:"* while firing on a 7-day window — so the one reader who could
+  have caught this was told the window was the reason it was rounded. It reports the interval it
+  actually got now.
+- **Clamping is only right INSIDE the full-resolution window.** At 14/30/90 days the coarse tier
+  is unavoidable, so trimming the start there buys nothing and silently shortens the window that
+  was asked for — a 30d heading over 7 days of traffic is a worse lie than a rounded number.
+  Pinned in the gate in both directions.
+
+**Injection-verified ten ways, all caught** (87 checks): the defect itself → 84, a clamp that
+shortens the window to a day → 80, clamping the wide windows too → 84, the edge off by one day →
+84, the edge given a zone offset it must not have → 83, the label dropped → 86, the label on every
+row → 84, the table not routing through it → 86, the warning reverted → 86, the start re-derived
+inline → 85.
+
+---
+
+## Session log — 2026-08-17-workbench-a (#472 phase 3b — the pressure rail was a solver, not a physics, and three of my own diagnoses were wrong on the way)
+
+**Where it started.** The rail: on a Mode 5 → Mode 3 heatup v2 published **188,432 psia
+(1,299 MPa)** for a step, with liquid water at **1,000 °C**, and every check in the suite was
+green through it. The previous day had localised it to `settle` and left a recommendation.
+
+**The recommendation was wrong, and so were the two before it.** Three diagnoses were
+published and each was one layer too shallow — *the branch needs an implicit integrator*
+(no: it converges from ONE sub-step), *the correlations have no critical point* (true, but
+they are the trap it falls into, not the push), *a regime crossing inside a step* (no: it is
+dt-independent). **What found it was removing variables, not reading code**: with every input
+zeroed and `dt = 1e-12 s` the step still returned 1322.3 MPa. A step of zero duration with
+zero inputs was not the identity.
+
+**The actual chain, measured.** `settle` is a Picard iteration `T_liq = Tsat(P(T_liq))` whose
+gain scales as `V_liq/V_stm`. Its own comment justified a 20-pass bound with *"rho_l varies
+slowly with T, so it converges in three passes"* — true at a normal bubble, false at a small
+one: a 95.1 %-level node ran 196.082 → 186.492 over 12 passes and was **still moving**, where
+a 55 % node converged by pass 6. Exiting still drifting left the state off its own saturation
+line, and the next step read that residual as **0.653 °C (1.18 °F)** of superheat = 17,643 kJ
+= **9.00 kg of steam flashed into a 0.2099 m³ bubble in one step**, 6.9× the density. The same
+0.65 °C on a 55 % node is a 15.8 % change.
+
+**THE TRAP, and it is the one that cost three sessions: a state departure is not a rate, so it
+does not shrink when you shrink the step.** `E = C·(T_liq − Tsat(P))` has no `dt` in it. Every
+sub-step argument went straight past that.
+
+**The fix is the METHOD, and the measurement that established it came first.** Scanning
+`f(T) = T − Tsat(P(T))` showed the failing state HAS roots — 183.361 °C and 199.397 °C — and
+the upper one sits at **1.5535 MPa, exactly the pressure the state was already carrying.**
+Picard was walking away from a correct answer. Bracket-and-bisect (the idiom `solveFlash`
+already uses) replaced it: the railing step went **191,970 → 206.8 psia**, converged from one
+sub-step, with heater authority at 20/55/70 % unchanged at 3.017/2.893/2.858 psi/s.
+
+**Two wrong turns inside the fix, both caught by measurement and neither by review.** Worth
+recording because each looked obviously right:
+
+1. **Taking the NEAREST root** snapped the node back past the equilibrium the physics had just
+   pushed it off, **discarding the heater energy entirely** — 0.000 psi/s at 85, 90, 95 and
+   99 % level. The rule must be the direction of travel, `−sign(f0)`.
+2. **Holding at the liquid-full BOUNDARY** when no root exists re-created the singularity from
+   the other side (1.2e6 psi/s), because that boundary is exactly where `pressureFrom`'s 1e-6
+   floor manufactures it. Holding the *incoming* state is bounded.
+
+**Two gates rewritten, both HR10-validated by running the NEW form against the OLD code** —
+each passes on the new and fails on the old, where the old forms did the reverse:
+
+- **C4c** asserted the rail (`> 1e3 psi/s`). It now asserts the handover: bounded,
+  dt-independent, flagged at 85 % and not at 55 %.
+- **K1** asserted that the sub-step guard FIRES. Measured, **more subdivision made the old
+  model worse** — 1 / 256 / 4096 sub-steps gave 1531 / 1907 / **1,074,635 psia** — so the
+  check was certifying that a broken guard was being fed. It now asserts CONVERGENCE.
+
+**`_pzrTrim` now runs in the HEATUP driver, not only the cooldown.** A heatup with nobody on
+the pressurizer is not an evolution; v1 tolerated it because its level is a clipped
+reconstruction and its pressure was pinned by `P_restore_rate_gain`. Flag-off `run_pwr` 37/37
+with the change, so it passes on both models.
+
+**`mass_max` was NOT raised, and I had recommended raising it.** The constant's own comment
+records *"RAISING IT IS NOT A FIX AND WAS MEASURED: at 3.0 the plant runs to 300 % inventory"*
+(#346), and CA-12 adds *"THE FIX IS A REGIME, NOT A CEILING."* The ceiling becomes unreachable
+**because a solid regime exists** — and v2's is exactly what is exhausted. **I proposed
+changing a constant without reading it.** The evidence was three lines above the value.
+
+**Two probe comments turned out to be false, and I had repeated both in my own voice.** I
+reported six of seven flag-on reds as probes leaning on the deleted restore term, *"two of
+them say so in their own comments"*. Measured: `mode5_controls` recovers on **real heater
+authority** on v1 (1908 → 2046 psia at 100 % heaters; manual takes it to 2380) — its red is
+the near-solid band, not a fixture. And `rcp_cavitation`'s *"hold it low via the setpoint so
+it can't recover"* is **not true of v1 either** — v1 recovers 1160 → 1211 psia inside the
+probe's own 15 s. **A load-bearing claim in a code comment is an inherited claim.**
+
+**The solid regime, scoped: the trigger is a GAIN, not a geometry.** `gain =
+d[Tsat(P(T))]/dT_liq` crosses 1.0 at **~75.2 % level**, and heater authority falls off a cliff
+exactly there — 2.958 psi/s at 75 %, **−0.124 at 78 %**, −0.000 at 85 %. Above it there is no
+equilibrium at any higher temperature, so the node is thermodynamically committed to going
+solid. **That is correct physics**, and it is the same gain that made Picard diverge — one
+quantity, both failures.
+
+**But the gain must NOT become the branch predicate**, which is what I first proposed.
+Measured, for the same 0.001 m³ insurge, the bulk-modulus branch would overstate the response
+**30.1× at 78 %** (43.93 psi against 1.458) — the node still holds 0.944 m³ of compressible
+steam. The two laws only meet near 98–99 %, which is where the geometric predicate already
+fires. **`stepPressure`'s predicate is well sited; the split that feeds it is not.**
+
+**The real fix, verified well-posed before recommending it.** `stepRegions` uses an operator
+split — flash against an approximate energy departure, *then* re-saturate with masses frozen —
+and the frozen-mass step is what can have no root. A single conservative solve on
+(mass, volume, energy) cannot: measured at 0.25 °C resolution, quality crosses zero **exactly
+once** (365.75 °C at 78 % level, 351.25 °C at 95 %, never at 55 %) and energy is **strictly
+monotone inside the two-phase domain** — 0 of ~1000 steps decreasing at all three levels. The
+earlier reading that 95 % was non-monotone was an artifact of scanning past the solid point,
+where `x < 0` is not a state. So the only way the solve can fail is quality reaching zero,
+which IS the vessel being full of liquid — the geometric predicate reached by the physics
+instead of asserted alongside it.
+
+**Gates.** `run_pzr2` **48/48** (C4c and K1 rewritten, K1b added). `run_all --fast` **49
+runners at baseline FLAG OFF** — the shipped plant is untouched by all of it. Flag-on
+`run_pwr` **33/37**, and every remaining red is now either the missing solid regime or a band
+for 3d to re-adjudicate; none is waiting on a probe fixture.
+
+**Left for the owner.** The conservative-solve rewrite (specified, verified, not built), and a
+plant question the rebuild surfaced that v1 could never show: **letdown removes 0.120 kg/s
+against a 100 °F/hr heatup's 0.31–1.57 kg/s of thermal displacement**, so the pressurizer
+fills in about 82 minutes. The model's thermal term is within 0.4–2.0× of a first-principles
+expansion computed from its own density table, so the insurge is right and the letdown is the
+question.
+
+---
+
+## Session log — 2026-08-16-workbench-a (#472 phase 3b — an integral remembers, and a Mode 5 preset that came up hot)
+
+*(The 2026-08-15 commits in this lane have no session entry of their own; their record is
+`Diagnostic/PZR_CHARACTERIZATION.md`, Part 2b onward. This entry starts where they left off,
+at `ed3e32e`.)*
+
+**The deficit bound, measured against v1 BEFORE it was written** — the deficit itself had got
+in by being written before it was measured, so the sequence mattered. v1's implied debt sits a
+**constant 712–714 kg** under `(1 − _mass)·M_rcs`, and that constant is `level_prog_floor`
+(28 points × 25.5 kg/point) — so the bound is a fence v1 satisfies structurally at every
+instant, which is what makes it a fence rather than a fitted number.
+
+v2 was banking **10,657 kg against a plant only ever short 7,481**, and still owed **3,573 kg
+by a plant sitting 20 % OVERFILLED**. Every kilogram the ECCS delivered went to repaying a
+hole the loop never owned, so the vessel never refilled, never went solid, never relieved.
+Fixed in `reconcile`, mirroring the #418 upper bound. At 4,500 s: pzr level **0.0 → 85.8 %**,
+node water **0 → 3,520 kg**. `run_pzr2` J4, injection-verified.
+
+**CA-15 then split into two defects, and the second is temperature.** With `mass_max` lifted
+to 1.6 (**not the shipped plant** — the run exists only to let v2 state its own answer) v2
+makes a **clean solid arrest at 119.4 %**, flat from 3,000 to 6,900 s, against v1's 109.28 %.
+The ten points are `level_per_mass` being temperature-blind: measured on v1's own settled
+state, **v1 calls the vessel SOLID holding 2,550 kg = 2.678 m³ of a 4.292 m³ vessel — 62.4 %
+full by volume** at the post-LOCA density of 952 kg/m³. v2 needs the whole 4,086 kg.
+
+**An initial condition must REACH the node.** `_buildState` computes the derived init level
+with `PZ.stepLevel(s, cfg, 0)` **before** the per-state overrides, and its comment promises
+those overrides *"still win, exactly as they did when this was inline"*. True of v1, whose
+level is a reconstruction with no state of its own; **false of a node that seeds once and
+returns early for ever after**, and whose pressure is READ OFF the steam region rather than
+stored. The Mode 5 preset published 363 psia / 122 °F with the node already on the **hot
+saturation line at 653 °F**, and one 0.02 s step took pressure to **2235 psia**.
+
+Downstream, on the heatup that starts from it: **1,369 code-safety lifts against v1's ZERO**,
+inventory bled **100.3 → 55.3 %**, the core uncovered (exit 1,119 °F against Tavg 549 °F), and
+`subcooling_c` switched to its uncovered-core branch and printed **−380 °C**. So the whole
+"impossibly negative subcooling" cluster — which had already produced three refuted
+hypotheses — was this. Fixed with a guarded IC hook (`seedFromState`); v1 does not define it,
+so the shipped plant executes nothing new. Flag-on `run_pwr` **32/37 → 34/37**.
+
+**THE TRAP: a ruling's premise can be a promise a comment makes about its own function.** That
+comment was correct for years and became false the day the node got state, and nothing
+re-checked it.
+
+**And a second: `power_pct`-class layer confusion kept explaining disagreements.** Three
+separate times on this cluster a LAYER difference, not a physics difference, was the answer —
+a raw `PWREngine` has no ECCS, `Harness` emulates M4's mechanical protections only, and
+`stepAutomation` never ticks in either. Reproduce a failing probe with ITS harness first.
+
+---
+
+## Session log — 2026-08-14-workbench-a (#472 phase 3b — four commits of thermodynamics with no consumer, and the five defects that hid there)
+
+**Where it started.** Phase 3b had been going for four commits — correlations, geometry,
+two-region flash, `stepRegions` — and **nothing consumed any of it.** `stepRegions`,
+`solveFlash` and `pressureFrom` had exactly one caller: their own file.
+`verify_pzr2_loadlists.js` checks load ORDER and nothing else. Every number in those commit
+messages was measured with a throwaway script and then had no home. The model was green in
+all 50 runners because no runner could see it.
+
+`test/run_pzr2.js` is the home. Writing it found **five defects**, four of them in code that
+had been committed as working:
+
+1. **The heater bank computed zero authority.** `stepRegions` read `heater_elev_top_pct` and
+   `heater_elev_bot_pct`; neither key existed in the config block. Both `undefined` makes
+   `top > bot` false, so the fallback arm evaluates `lvl > undefined` — false at every level
+   — and the wetted fraction was 0 for ever. Full heater demand, zero watts delivered, no
+   error, nothing to see. **This is the shape to remember**: a missing config key does not
+   throw in JavaScript, it silently picks the branch you did not intend.
+2. **The flash bracket could not express its own answer.** It was sized off the delivered
+   energy alone (`span = |E|/h_fg × 1.5`), so at `E = 0` the search interval was 1e-6 kg and
+   the answer was 1e-6 kg by construction. Any pressure change arriving from the MASS phase
+   — relief drawing steam, an outsurge growing the bubble — could therefore flash nothing:
+   30 s of PORV flow drew **60 kg of steam and boiled 0.2 kg of liquid**, pressure falling
+   **665 psi** where the real vessel boils to hold it up. Fixed by bracketing on the sign of
+   the residual: the same 60 kg now falls **112 psi** and flashes **58.8 kg**. A bracket that
+   cannot contain the answer is indistinguishable from a physics claim that the answer is
+   zero.
+3. **The step returned a pressure the state did not hold.** `T_liq` is an INPUT to pressure
+   (it sets `rho_l`, hence the liquid volume, hence the steam volume), so assigning
+   `T_liq = Tsat(P)` after reading `P` leaves the two disagreeing — measured, by 0.18 °C of
+   saturation temperature. The signature was a two-step zigzag with pressure **RISING on
+   alternate steps while steam was being drawn out**: 2216.06, 2216.44, 2204.33 psia.
+   `settle()` iterates to the fixed point.
+4. **The inner fixed point ran a fixed three passes** and stopped **6 % short of its own
+   root** — the energy books closed to 5.9 %, not to zero. It ran three passes because each
+   was expensive, so the fix was to make them cheap: `T_sat_from_P` has a closed form (v1's
+   saturation line is a power law, so its inverse is one too) and `P_from_steam_density` is
+   the exact segment-wise inverse of `rho_g_sat`. Two 50–60 step bisections became direct
+   evaluations, the loops became tolerance-based, and the books now close to **1.7e-6 %**.
+5. **v2 started every run with an empty vessel** (found when it first took the engine path).
+   `ensureRegions` seeded from `pzr_level_pct` — a PUBLISHED READING that step 8 fills in,
+   and which the engine's initial state literally sets to **0** (`pwr_engine.js:1840`). Level
+   read 0.0 at t=0, the plant tripped on pzr level low at six seconds, and CVCS refilled a
+   pressurizer that was supposed to start at 55 %. It seeds from `pzr_mass_frac` now. **An
+   inventory model seeds from an inventory quantity, never from a display of one.**
+
+**What the gate is worth, measured.** 38 checks, **injection-verified 17 ways**, and *three
+of those injections walked straight through the checks as first written*:
+
+- A **corrupted vapour-table node** passed everything. Monotonicity, node-exactness at one
+  node and the rho↔P round trip are satisfied by ANY table, including a wrong one — the
+  round trip especially, since both directions read the same corrupted numbers. What
+  distinguishes a real steam table is **smoothness**: the log-log slope climbs 0.936 → 2.182
+  and never jumps more than 8.7 % between segments, where a mistyped digit jumps 66 %.
+- **Relief rerouted to draw LIQUID** passed. Mass closure still held (the valve removes the
+  same mass either way) and *"more than 30 kg flashed"* was satisfied by the 60 kg the valve
+  itself had taken. The discriminator is the pressure COST: 60 kg off the steam space is
+  112 psi, the same 60 kg off the liquid is 19.
+- A **doubled relief term** in the surge boundary passed, because it is invisible on any
+  state where the valve is shut.
+
+**The corollary is the general one:** a check that looks like it is asserting its subject,
+and passes, is not evidence until the subject has been broken underneath it.
+
+**The surge line became a named boundary.** `surgeDemand` replaces three unnamed code sites
+(the `p_hotleg = pressure_mpa` identity, a one-step-late `_dmass_dt` in, a **write-only**
+`_pzr_surge_flow` out) and adds the tap's local saturation margin that #474 asked for. The
+void ledger — which IS the TMI deception — is **ported, not re-derived**, and `G6` makes that
+a measurement rather than an intention: v2's `voidCreditRate` is run against v1's `stepLevel`
+step for step over a 200-step ramp/leak/collapse trajectory and required to agree **bitwise**.
+Measured 0.00e+0 divergence.
+
+**What the rebuild actually does, measured full stack, manual lineup, seed 4242** (v1's
+Phase-1 numbers in brackets — `Diagnostic/PZR_CHARACTERIZATION.md` Part 2 has the table):
+
+| | v2 | v1 |
+|---|---|---|
+| MO-1 load 100→70 MWe | **+73 psi peak, settles 12 psi BELOW start** | +27 peak, **exactly 0** settled |
+| MO-2 reactor trip | **−231 psi and it STAYS down** | −54, back to setpoint on 0 % heaters |
+| MO-2b same trip, AUTO | dip **−24 psi**, heaters recover it in ~3 min | flat 2235, heaters peak 1.77 % |
+| MO-3 heater step 0→100 % | PORV in **~40 s**, then cycles | PORV in **5 s**, safety injection at t+115 s |
+| MO-4 spray step 0→100 % | −508 psi/10 min, level **RISES** to 67.9 | −969 psi/4 min, level dips to 33.6 |
+
+Settled level on MO-1 agrees with v1 to **0.01 points** — the ported surge law and the new
+geometry agreeing about inventory, which is the strongest single sign the port is faithful.
+
+**One prediction from the spec did not survive contact.** §2.5 reasoned from heated capacity
+alone and wrote heater authority as 2.85 / 2.61 / 2.37 psi/s at 25 / 55 / 90 % level.
+Measured on the converged solve, capacity nearly DOUBLES across the normal band (8.78 →
+16.43 MJ/°C from 20 % to 70 %) while the delivered rate falls **under 6 %** — because a
+shrinking bubble makes each flashed kilogram worth more pressure, and the two effects nearly
+cancel. v1's single constant was accidentally close in the normal band, for a reason it did
+not model. The commit-message figure of 2.61 psi/s is **not reproducible** on this tree; it
+predates all four solver fixes. It is 2.89 psi/s at 55 %.
+
+**Known gap, pinned rather than papered over.** Above ~75 % level the two-region path runs
+away and rails at the top of the steam table — 5.4 psi/s at 75 %, then six-figure nonsense
+that is dt-dependent (1.06e6 at dt 1.0 s, 1.06e7 at 0.1 s: the same jump divided by a smaller
+step). That regime belongs to the SOLID branch, which is built but not yet exercised there.
+`C4c` asserts the rail, so it goes red the day the handover lands — which is when that check
+should be rewritten to assert the handover instead.
+
+**Gates.** Flag OFF: `run_all` **51 runners at baseline**, `run_pwr` 37/37 260 checks — the
+shipped plant is untouched, which is what build-alongside is for. Flag ON: `run_pwr` 28/37,
+19 checks red, **not yet adjudicated** — that is 3d's per-probe pass and it needs 3c's auto
+channel first. `run_pzr2` 38/38.
+
+---
+
+## Session log — 2026-08-13-develop-a (the ops dashboard reads Eastern everywhere — and the "obviously safe" DST fix is wrong on exactly the two days that matter)
+
+**Ask:** *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in
+eastern time.")* **Gates:** `run_all` **49 runners at baseline** (new runner). **Landed:** the
+by-day re-group, the Eastern-midnight window, `etDay`/`etDayStartMs`, zone statements on two
+views, and `test/run_dashboard_time.js` **12/12, 64 checks**.
+
+**What was left.** The 2026-08-12 pass (commit `e290aa7`) converted every point-in-time stamp and
+stopped, on purpose, at the traffic table's **By day** rows — leaving one column headed
+`Date (UTC)` on an otherwise Eastern page. Its reasoning was right and is worth keeping: those
+rows are **buckets the upstream API groups on UTC calendar days**, so the row marked `2026-08-11`
+holds 20:00 on the 10th through 20:00 on the 11th Eastern. Relabelling a bucket is a claim about
+its *contents*, and this one would have been false by four or five hours in every row while
+looking perfect. Its note called re-grouping "an upstream-API question, not a formatting one",
+which is where it stopped — and the API does in fact answer it.
+
+**The measurement that unblocked it.** `rumPageloadEventsAdaptiveGroups` accepts a
+`datetimeHour` dimension, and an hour never straddles an Eastern midnight, so hourly rows can be
+summed into Eastern days here-side exactly. The risk was that a finer grouping drops to a coarser
+sampling tier — which would trade a labelling error for an accuracy one — so it was measured
+against the live dataset **before** anything changed:
+
+| window | hourly | daily | `sampleInterval` |
+|---|---|---|---|
+| 7 d | 67 pageloads / 51 visits, 38 rows | 67 / 51, 5 rows | 1 both |
+| 30 d | 50 / 40 | 50 / 40 | 10 both |
+| 90 d | 50 / 40 | 50 / 40 | 10 both |
+
+Identical totals, identical granularity. The re-bucket then moves **10 pageloads off UTC
+`2026-08-09` onto Eastern `2026-08-08`** on the live 30-day window — the exact shift the old
+header existed to warn about, now simply correct.
+
+**The trap, and it cost the first implementation.** `etDayStartMs` has to answer "at what UTC
+instant did this Eastern day begin", and that needs the zone offset — which is a property of an
+*instant*, not of a day. The obvious way out is to sample the offset at **noon**, safely away from
+the 02:00 switch. It is wrong on precisely the two days a year the whole exercise is about, and in
+**opposite directions**:
+
+| day | noon is | it computes | truth |
+|---|---|---|---|
+| 2026-03-08 (spring fwd) | already EDT | `04:00Z` — an hour early, into the 7th | `05:00Z` (00:00 EST) |
+| 2026-11-01 (fall back) | already EST | `05:00Z` — an hour late, losing hour one | `04:00Z` (00:00 EDT) |
+
+Every other day of the year it is right, which is why it survived the first round of spot checks.
+The fix is a **two-pass fixed point**: guess with the offset at the same wall time read as UTC,
+then re-read the offset *at the guess* and re-solve. One iteration is exact, because the guess is
+already within an hour and DST moves at 02:00, not 00:00. Verified by a 365-day sweep asserting
+each day contains its own start and the millisecond before it does not.
+
+A second, smaller one: `toDate()` fell through to the string branch for a **Date object**
+(`String(date)` is `"Thu Aug 13 2026 …"`, which parses as nothing), so `etDayStartMs` threw on
+the first call — on its own output. Dates are handled explicitly now.
+
+**The gate.** `test/run_dashboard_time.js` — the dashboard had none, which is why the 2026-08-12
+conversion shipped unpinned. render.js is an ES module and the runners are CommonJS, so it is
+imported through a **data: URL** rather than re-implemented (re-implementing would test the copy).
+The static half **strips comments first** — every file here argues about UTC at length, because
+that is where the reasoning has to live, and an unstripped scan passes green on the very sentence
+explaining the bug (the trap `CLAUDE.md` already records against the Indications tab). It caught
+my own page copy on the first run: the new analytics blurb said "…not UTC ones", which was
+reworded rather than exempted.
+
+Injection-verified, five ways: noon offset → **61/64** (and the 365-day sweep names both dates
+unprompted), `datetimeHour` → `date` → **62/64**, column relabelled `Date (UTC)` → **62/64**, a
+view printing a raw Analytics Engine stamp → **63/64**, UTC-midnight window → **62/64**.
+
+**Pinned in the other direction too.** Storage and queries **stay UTC** and must — R2 bundle keys
+are UTC day prefixes, the KV stamp is UTC, the SQL windows are relative, and the GraphQL filter
+accepts nothing else. Those are asserted as *requirements*, so a later "make it all Eastern" pass
+cannot walk past the display layer and shift the key space out from under every existing bundle.
+
+**Not deployed.** The Worker ships by hand (`cd worker && wrangler deploy`); wrangler is not on
+this machine's PATH and the scoped `CLOUDFLARE_API_TOKEN` in the environment would shadow its
+OAuth login (`worker/README.md` §"If wrangler auths via a scoped token"). Committed and gated,
+awaiting the owner's deploy.
+
+---
+
+## Session log — 2026-08-12-develop-c (#458 — shutdown cooling and low-head injection are the same pumps, and the annunciator was asking for the wrong one)
+
+**Issue:** #458. **Gates:** `run_all` **48 runners at baseline**; `run_m4` 45/45 300 →
+**46/46 311**. **Landed:** the SI-lineup refusal on `set_rhr`, the control-kernel boolean
+interlock clear, the re-authored #453 leg, the new `#458` suite, `Manuals` 03/06/12 + Rev 15
+item (g). *(OWNER RULING, 2026-08-12: "A'".)*
+
+**What was wrong.** `Q_rhr` was gated on `rhr_active && condenser_cooling_available`, and
+`rhr_active` was gated on one thing — the 400 psi (2.76 MPa) block-open permissive. A LOCA
+satisfies that permissive in **20 s** at severity 1.0. So a player could align shutdown cooling
+into a running break and get the largest heat sink in the plant, out of heat exchangers WTSM 5.2
+§5.2.4.5 (ML11223A220) says are **uncooled** in the injection lineup.
+
+**Measured full stack, before the change** (`hot_full_power`, `large_loca`, run A takes no
+action, run B aligns on the first legal tick; heat currency: rated core = 19.45 units = 300 MWt):
+
+| | align at | peak `Q_rhr` | vs decay heat | primary void at align+300 s | end Tavg (A → B) |
+|---|---|---|---|---|---|
+| sev 0.05 | t+553 s | 4.28 (~66 MWt) | **8.8×** | — | 266 °F → **175 °F** |
+| sev 1.0 | **t+20 s** | 2.38 (~37 MWt) | **4.2×** | **0.788** | 253 °F → 172 °F |
+
+With `degraded_hpi` at 1.0 as well, aligning RHR took core inventory from a parked 66.8 % to
+**99.9 %** — the player recovers a degraded-injection LOCA with a system that in that alignment
+supplies neither the cooling nor the suction.
+
+**THE DEFECT WAS REACHABLE BY FOLLOWING THE BOARD, and that is the part worth keeping.**
+`rhr_not_aligned` (PWR-A33, RHR NOT IN SERVICE) came in at **t+191 s** of the sev-1.0 run
+(`active_unacknowledged`, measured) and stood for the rest of it — correctly: `plant_mode` reads
+4 from t+300 and the row's own comment says it deliberately stands in during a LOCA to read *"you
+are on injection, not on shutdown cooling"*. But `Manuals/06`'s **Immediate operator actions** for
+that tile said *"Re-align RHR from the ECCS side of the board"* with no carve-out. **An alarm that
+is right and a response procedure that is wrong compose into a board that walks the player into
+the defect** — and neither half looks wrong on its own, which is why reading the alarm row alone
+would have closed this as "deliberate".
+
+**The blast-radius warning in the issue, converted into a number.** The issue warned that
+`pwr_thermal.js` is the heat balance every LOCA probe's bands were measured against. Instrumented
+the thermal step to log the first co-occurrence of `rhr_active && hpi_active` per process, then ran
+the full 48-runner gate: **one hit, in one runner** — `run_m4`'s own #453 leg. No LOCA probe's heat
+balance contains `Q_rhr` at all, because #453 removed the auto-align and PWR-N15 takes HPI/LPI to
+OFF two steps *before* it opens the suction valve. **A blast-radius warning is a claim like any
+other; it cost ~13 min of gate time to measure and it was wrong by a factor of the whole suite.**
+
+**The fix is a REFUSAL, not a heat gate, and the reason matters.** Gating `Q_rhr` on `!hpi_active`
+would have moved zero gates — but it leaves a control that engages, lights `eccs_mode: RHR`, and
+does nothing: the Q4 orphan-control case #453 had just finished removing from this same system.
+The refusal is a control-layer interlock row reading the `hpi_active` status instrument (HR1),
+`blocks_when {active:true}` so ISOLATE is never refused.
+
+**It is NOT a plant interlock and the code, the manual and the message all say so.**
+`find_source.js` finds the pressure permissive and the autoclosure for 8701/8702 and nothing else;
+there is no SI inhibit in 34 documents across 3 lanes. Claiming one would be #453's exact error —
+reading a lineup/procedural fact as an automatic function — committed by the agent who wrote up
+#453's lesson. What it *is*: this trainer has one `rhr_active` flag for two mutually exclusive
+alignments of one set of pumps, and no refueling-water-tank inventory, so it can never reach the
+real exit (the sump swap-over, where a real crew opens component cooling water to the RHR heat
+exchangers). Declared `Manuals/12` §12.20.
+
+**The gate defect found on the way, and its failure mode is backwards.** `_evalInterlocks` clears
+an interlock through a hysteresis band (`v < clears_below` / `v > clears_above`); a boolean has no
+band. `crossed()` learned `is_true`/`is_false` at #314 — the clear path never did, and it was
+latent because **no interlock in the codebase had ever been keyed on a status instrument.** The
+obvious guess is that it latches for ever. Measured by reverting the branch: a boolean row carries
+`setpoint: null`, so the clear arm asks `true > null` → `1 > 0` → **true**, and the interlock
+releases on the next pass *with its own signal still standing*, blocking nothing. **I wrote the
+latches-for-ever version into the comment first and the injection run disproved it** — the same
+shape as every other unmeasured claim in this log, committed in a comment rather than a number.
+
+**Two traps.**
+- **An alarm row's "this is deliberate" comment is about the ALARM, not about the response.**
+  PWR-A33's row comment justified standing in during a LOCA and was right; the manual chapter
+  three files away said what to do about it and was wrong. Nothing connects them.
+- **A probe can pin the defect as the feature.** `run_m4`'s #453 leg commanded the align *with the
+  break open and SI running* and asserted it succeeded — a check written to prove "we removed an
+  automatic action, not the system", asking it in the one regime where the answer should be no.
+  Re-authored to secure injection first, which is also the lineup PWR-N15 actually reaches.
+
+---
+
 ## Session log — 2026-08-12-develop-b (#470 — the browser was running the new control room on the old stylesheet, and no gate could see it)
 
 **Issue:** #470, plus a second defect it exposed — **#476**. **Gates:** `run_all` 47 →
@@ -105,6 +802,199 @@ nothing else. Fixed by putting the build in the url; measured on the develop pre
   that keeps them out is a *declared-set* rule — every html in the output must be a declared
   page — because a deny-list cannot name the page nobody has written yet.
 
+## Session log — 2026-08-12-workbench-c (#472 phases 1–3a — the dossier's headline was a sampling artifact, and a hollow gate I wrote myself)
+
+**Phase 1 characterisation** (`Diagnostic/PZR_CHARACTERIZATION.md`). The dossier's §5 —
+*"2235 psi, never moves"* — is a **2-minute-sampling artifact**. At 20 s resolution the
+surge→pressure coupling is present: a 100→70 MWe swing peaks **+27 psi**, a trip troughs
+**−54 psi**. What `P_restore_rate_gain` suppresses is **persistence**, not response: both
+return to *exactly* the setpoint with heaters and spray at 0 %. Neutered ×0.001 they park
+at **+30** and **−136 psi**. So the rebuild's job is narrower than "rebuild the coupling":
+**fix the equilibrium**.
+
+- **The auto channel is decorative on a trip.** Channel engaged: 2235 psi at all 21
+  samples, heaters peaking **1.77 %**. Every gate asserts endpoints with it engaged.
+- **MO-3: a manual heater press reaches safety injection in 115 s.** 0→100 % at power →
+  2235→2341 psi in 5 s → PORV cycles ~9× in 50 s → pzr mass 0.0709→0.0613 → the discharge
+  pressurizes containment past the sourced 3.5 psig SI backup → **HPI actuates, heaters
+  shed**. No failure injected. At the sourced 1.586e-3 MPa/s the same rise takes 500 s.
+- **MO-4:** manual spray at its 12 % cap takes the plant **2235 → 1266 psi in 4 min**.
+
+**First-ever pressurizer perturb sweep.** Nine constants × the 37-scenario suite, **zero
+verdict flips**: `run_pwr` is nearly blind to pressurizer tuning. `K_spray` and
+`solid_bulk_mpa` are **INERT** (0/260) — the constant behind MO-4's 969 psi excursion is
+invisible to the scenario suite, and no scenario reaches the solid regime. `level_per_void`
+moves **one** check. **Consequence: Phase 3d's A/B must lean on the behaviour battery.**
+`K_heater` moves 18/260, all in the Mode 5↔1 heatup family — narrow, so the spec keeps its
+single-jump recommendation. Harness finding: an unperturbed scenario child costs 53.0 s and
+a nudged one 53.3 s, but **behaviour children run ~14 min against a 96 s baseline** (~9×),
+consistent with threshold-terminated run loops riding to horizon — the battery is
+effectively un-sweepable, which is part of why these constants were never swept.
+
+**Phase 2 spec** (`Blueprint/PWR_PRESSURIZER2_SPEC.md`). The rebuild's sourced anchor was
+**already in our own config and unusable**: `solid_bulk_mpa`'s comment derives the
+steam-side compression gain as **206 MPa/frac** (BVPS-2 RCS 9,650 ft³; WTSM steam volume
+720 ft³) against the shipped `K_surge_level × level_per_mass` = **310** — 1.5× stiff. In v1
+that gain is a constant so nothing could act on the check; a two-region model computes it.
+
+**Phase 3a — the switch skeleton, built and gated in BOTH positions** (46 runners at
+baseline with the flag off and on). `pwr_pressurizer2.js` delegates every entry point to
+v1, so 3a is bit-identical by construction; that is the point, since it proves the switch,
+the load order and the A/B harness before any physics exists.
+
+- **The load-order trap is guarded twice.** `pwr_engine.js:22` caches `PZ` at load time, so
+  a v2 loaded after the engine swaps the global for the late-binding readers while the
+  engine keeps calling v1 — **half of each model, invisibly, in a green gate**. The module
+  throws when the flag is on; `verify_pzr2_loadlists.js` catches it with the flag off,
+  across all 33 carriers, plus ordering.
+- **A HOLLOW CHECK I WROTE AND CAUGHT — the lesson of the phase.** Its fourth check
+  asserted *"`pressurizer2.enabled` is read in exactly one place"* and **passed for the
+  wrong reason**: the only occurrence of that string in the selector is **a COMMENT** (the
+  real read goes through an alias, `cfg2.enabled === 1`, which the regex never sees). It
+  was measuring prose — CLAUDE.md's *"a static gate reading source must strip COMMENTS"*,
+  in a gate written the same hour. The invariant was also wrong: the A/B harnesses
+  legitimately **write** that flag, which is what finally reddened it. **A check whose
+  green comes from a comment and whose red comes from correct code is worth deleting, not
+  repairing.** Replaced with one that cannot be aliased away — *exactly two files may
+  assign `RD.pwrPressurizer`* — injection-verified red on a third swapper and green on a
+  comment-only mention. The file self-matched **twice** (its regex literal, then its own
+  explanation), so both exclusions are by path and named.
+- **Verify the switch, not just the output.** In 3a both positions must agree, so "the gate
+  passed" is equally consistent with "the flag did nothing". Confirmed separately:
+  `RD.PWR_PZR_MODEL === 'v2'` and `RD.pwrPressurizer === RD.pwrPressurizer2`.
+- Baselines moved with adjudication, not absorption: `run_hardrules` **286→290** (+4
+  declared-read sites in the new source) and `run_portable` **142→143** (one more shipped
+  script). Both are the gates *noticing a new engine file* — and had `run_portable` NOT
+  moved, the offline build would have been silently missing the rebuilt model.
+- Two self-inflicted breakages worth recording: a `--pzr2` flag rejected because
+  `measure_stack`'s option regex was `[a-z-]+` and cannot match a digit; and a BASELINES
+  edit whose `//` comment **swallowed the trailing comma**, breaking `run_all` outright.
+  `node --check` before re-gating now.
+
+**Open:** the §7 heater-authority ruling (both ends measured, they fail in opposite
+directions) · Phase 3b, the real physics.
+
+## Session log — 2026-08-12-workbench-b (#472 phase 0 — the behaviour catalog unfrozen, and its freeze given a gate)
+
+Phase 0 of the pressurizer rebuild (#472; the approved plan is on the issue). The catalog
+amendment the method requires turned up a finding bigger than the amendment itself:
+
+- **"FROZEN-FINAL" had no mechanical meaning.** Nothing reads
+  `Blueprint/PWR_BEHAVIOR_CATALOG.md`: nine in-place amendments landed after the v3.1
+  freeze, `run_behavior.js` and `behavior_pwr.js` stamped **v2.0** for over a year, and the
+  catalog header's own tally claim ("26 pass / 0 xfail") sat against a live 72 pass /
+  1 xfail. Nothing noticed, because nothing could.
+- **39 probe IDs had no catalog row** — the CA-7…CA-25 block among them, which is most of
+  the pressurizer's real acceptance surface (heater cutoff/shed, solid-plant surge, the
+  inventory node, the void deception, containment backpressure). The battery asserted all
+  of it with no owner ruling behind any of it.
+
+What landed (all on `workbench`, gated):
+
+- **Catalog v3.1 → v4.0-DRAFT.** New §13 (FG-8, the pressurizer): 13 absorbed pressurizer
+  rows + 18 rebuild acceptance rows (`MO-*` manual-first authority, `TD-*` the TMI
+  deception named and numbered, `HE-*` heater elevation, `SB/SA/BD`, `CAT-1`), the new
+  ones marked `[NEW-UNMEASURED]` per HR12. New §14: 26 absorbed non-pressurizer rows.
+  Absorbed rows document what the probes already assert — nothing re-banded. §12 carries
+  the DRAFT log entry; **the owner rules the amended set before Phase 1**.
+- **`CAT-1`, the parity lock** (`test/behavior_pwr.js`): catalog header version must match
+  the battery's `CATALOG_VERSION` (single source, now printed by the runner); every
+  `COVERAGE` key must have a catalog row; every un-covered row must name where its claim
+  is held. Injection-verified both directions: a fake COVERAGE key reddens direction A, a
+  bogus catalog row reddens direction B. `run_behavior` **72pass 1xfail → 73pass 1xfail**,
+  `BASELINES` updated in the same change.
+- Session cost of note: a `git checkout --` used to clean an injection line out of the
+  catalog also reverted the whole uncommitted amendment — re-applied from session context.
+  Inject into a COPY next time, or commit before injecting.
+
+**Open:** owner ruling on v4.0-DRAFT (the Phase-0 gate) · then Phase 1 characterisation
+(`measure_stack` manual lineups per MO/TD rows + a pressurizer `perturb_sweep` set —
+`DEFAULT_NUDGES` has zero pressurizer constants today).
+
+## Session log — 2026-08-12-workbench-a (#468 — the Mode 5 preset handed the player a plant its own cooldown cannot produce)
+
+Started as a prototypicality pass over all **15 normal operating procedures** in `Manuals/04`
+against real plant documentation. The pass found its own best source **already in the corpus and
+uncited**: **WTSM §19.0 Plant Operations (ML11223A342)** — a step-by-step Westinghouse
+startup/shutdown narrative plus Appendix 19-1, a 29-step abbreviated startup procedure with its
+own CAUTIONs. Eight findings; the owner picked one to build and asked to revisit the Mode 5
+initial state.
+
+### The defect, and why nothing caught it
+
+```
+PRESET the player loads      SD bank 912/912 (OUT)   856.1 ppm   rho = -1000 pcm
+AFTER A SCRAM (PWR-N14 §2)   SD bank   0/912 (IN)
+```
+
+The shutdown bank was parked withdrawn by `_makeRodGroups` — the engine **constructor** — for
+every IC. So it was not a statement about Mode 5 at all, and no IC ever said otherwise. PWR-N14
+scrams, both banks drop, PWR-N15 cools down, nothing re-withdraws them: **drive** to cold
+shutdown and the trip rods are on the bottom; **load** cold shutdown and they are out. Two
+plants, one mode, and every gate green on both for years because no probe ever compared them.
+
+Real practice is unambiguous and makes it an evolution, never an IC: *"The shutdown banks are
+always in the fully withdrawn position during power operations and are moved into this position
+at a fixed speed in manual bank control **prior to criticality**"* (WTSM §8.1.1, ML11223A252);
+verified on the Mode 5 → 4 leg (App 19-1 A.12) and required complete *"within 15 minutes of
+withdrawing control banks"* (C.7).
+
+### The traps
+
+- **The IC boron solver takes rod reactivity as an INPUT, so "insert the bank" is a two-part
+  change.** `_trimToCritical` pins subcritical ICs to a fixed −1000 pcm net. Insert the bank
+  before it and the solver pays for the rods' 3676 pcm by **removing boron** — measured
+  **671.3 ppm**, *below* the 704.8 ppm the HOT standby preset carries, on a COLD plant, where
+  withdrawing the bank alone would then take it critical. Placing the bank **after** the trim
+  keeps 856.1 ppm and makes the worth margin: **ρ = −4676 pcm**. Rod position and `margin` are
+  one object; same shape as the pressurizer level constants.
+- **Our "1000 pcm cold shutdown margin" was never the Tech Spec quantity.** Real SDM is computed
+  *assuming all rods inserted* except the worst stuck rod. Ours was net reactivity as the rods
+  happened to sit — the two coincided only because the rods were out. The manual now states both
+  numbers rather than one under the wrong name; the rename is still owed a ruling.
+- **Four reds, four different causes — batch-judging them would have hidden a real one.**
+  `run_pwr` (2 scenarios) and `run_campaign` (`pwr_return_to_mode1`) both failed on `critAt = -1`
+  / no endpoint: the plant **declining to go critical with the trip rods in**, which is the
+  correct decline, from drivers that scripted a startup without the one step a real startup
+  requires. `run_ops` lost `ops_shutdown_dilution`. But `run_manual_controls` was a genuine
+  **6-failure red** of a completely different kind, and "the preset moved things" would have
+  swallowed it.
+- **A six-mismatch cascade in a hand-maintained map is ONE insertion.** Adding a step at index 2
+  shifted every `pwr_heatup` entry in `test/manual_ui_map.js`, so the gate printed six
+  consecutive `pill X != STEP_UI Y` plus one unmapped tail step. Renumber, do not re-derive.
+  **Third time** that table has broken this exact way — its own header records the first two.
+- **A "better than baseline" score still has to be explained, not absorbed.** `run_hardrules`
+  281 → 283: HR11 scans `Manuals/*.md` and I added exactly two `OWNER RULING` citations, both
+  well-formed. `verify_manual_follow` 261 → 264: **three** checks per controlled step (manual
+  pill, board bar, instructor-follow) — read off the gate's own `manual-follow-ui.log`, not
+  inferred from the delta. That log is also the only thing that proves the new step points at a
+  control reachable in a real browser.
+- **The margin is worth a measurable number, so it is now asserted.** Unattended dilution at the
+  plant make-up rate: bank IN → ρ = −1126 pcm at 3600 s, **critical at 4733 s**, source-range
+  trip at 4944 s. Bank OUT → trip inside the hour. `ops_shutdown_dilution` runs two hours,
+  keeps its original source-range assertion (passes on **both** presets — which is what makes
+  the extension legitimate rather than a refit, HR10) and adds one check pinning the change.
+- **`Manuals/04` §5.0 said the RCS heatup/cooldown rate limit was UNVERIFIED for four months
+  after it was settled.** 100 °F/hr is sourced twice in our own corpus (ML11223A342 App 19-1,
+  ML11223A213 Table 3.2-10), was ruled 2026-08-09 (#398, *"100 F/hr TS + 50 admin"*), and has
+  annunciated on the board since #375. **Nothing gates manual prose against rulings the engine
+  already implements** — that is the general lesson, and the reason the whole NOP pass was worth
+  running.
+
+### Still open from the pass
+
+Seven findings await an owner decision, ranked in the issue thread: the **P-12 low-low-Tavg dump
+interlock** (below 553 °F a real cooldown needs a deliberate bypass and gives only 3 cooldown
+valves of 12), the **1–2 %/min** real power-ramp rate against N06's stated ~10 %/min, the SG
+level program's **low-power 33 → 44 % NR ramp**, **manual bypass-valve feedwater below ~20 %**,
+turbine roll at 10–15 % (the *checklist* is right, the manual chapter is not), and a psig/psia
+inconsistency in the pressurizer setpoints. Separately, a **solid / no-bubble Mode 5** is blocked
+on whether to add a pressurizer temperature node — there is none today, so a thermodynamic bubble
+draw cannot be modelled.
+
+`run_all`: **47 runners at baseline.** Four baselines moved, each with its reasoning at the entry.
+
+---
 ## Session log — 2026-08-12-develop-a (#464 — the SG was discarding energy, and the manual had been right about it for a week)
 
 **Issue:** #464. **Gates:** `run_all` 47 runners at baseline; `run_behavior` 71 → **72** for the
