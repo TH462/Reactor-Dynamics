@@ -369,6 +369,19 @@ FIRST** — ask what in it would still burn someone in a month, move that to the
 ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the list was running
 7 bullets averaging 500 words, two of them duplicating traps already rescued below.)
 
+- **The pressure rail was a SOLVER, and a state departure is not a rate** (2026-08-17, #472
+  phase 3b). v2 published **188,432 psia (1,299 MPa)** with liquid water at **1,000 °C** on a
+  heatup and every check was green through it. `settle`'s Picard iteration has gain
+  `V_liq/V_stm`, so its own comment ("converges in three passes") is true at a normal bubble
+  and false at a small one — a 95 %-level node ran 196.082 → 186.492 over 12 passes still
+  moving, leaving the state off its saturation line; the next step read that as **0.653 °C
+  (1.18 °F)** of superheat and flashed **9.00 kg into a 0.2099 m³ bubble in ONE step**.
+  `E = C·(T_liq − Tsat(P))` has no `dt` in it, which is why the rail was identical at
+  `dt = 1e-12 s` and why three sessions of sub-step reasoning went past it. Bracket-and-bisect
+  fixed it (191,970 → 206.8 psia); the failing state HAD roots and Picard was walking away from
+  one sitting at exactly the pressure the state carried. Three of my own published diagnoses
+  were each one layer too shallow, and what found it was **removing variables, not reading
+  code**. Two probe comments asserting mechanisms turned out false when run.
 - **The rods ship in MANUAL, and every probe that broke was INHERITING the lineup instead of
   stating it** (2026-08-11, #460). `rods_tavg` loses `defaultOn`, reversing #289 — whose
   premise, *"everything else starts in auto"*, had expired when the Mode 1 lineup put generator
@@ -408,25 +421,20 @@ ONE line, drop the rest. **A bullet is ~80 words.** (Measured 2026-08-06: the li
   actuates SI, so the shed would zero its subject and it passes testing nothing); and **a bare
   threshold chases the plant** — `pwr_qualify`'s cue, re-keyed a fourth time, now on a
   two-parameter signature validated on three plants including a negative control.
-- **The board can list every channel and get CHEAPER — the row shape was the cost** (2026-08-08,
-  the Indications tab). `chartBuf` stored one NAMED PROPERTY per series per side, and property
-  cost is what scaled: at 9000 rows, 40 series = **39.5 MB**, 110 = **137.8**. Packed into
-  fixed-width `Float64Array`s (NaN = no reading; every reader already guarded `isFinite`) the
-  registry went 40 → 96 and the buffer fell to ~9.6 MB. Two traps: **an unmeasured claim in
-  PLAYER-FACING COPY is still an unmeasured claim** — a "pressurizer mass-only level" row
-  promised a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is
-  `clip(that,0,100)` of the very same number; and **a static gate reading source must strip
-  COMMENTS**, or prose ("i.e.") registers as a channel and the quiet direction — a key merely
-  MENTIONED counting as covered — fails green.
-- **The dead MSLI was a TIMING MISS wearing a wrong root cause — fixed by the rate
-  sensitivity the setpoint's own source cell carried** (2026-08-09/10, #403 → #433). A no-dt
-  harness made the flow leg's `held_within_s` latch PERMANENT (age `0 <= 60` for ever), so
-  three green probes certified an isolation that never fired: #408 adopted "600 psig" and
-  dropped "(Rate sensitive)", leaving the raw crossing ~+103 s against a 60 s latch. Now
-  `lead_lag` 20/2 (Ginna's 12/2 shape, scale fitted) — isolates +2..3 s. Traps: **a
-  degenerate latch reads exactly like a working feature**; **a filed root cause repeated in
-  four documents was never re-measured** — "flow reads 0" came from watching the
-  turbine-only variable; **a sourced number is not the whole source**.
+- **The Mode 5 PRESET and the Mode 5 the plant PRODUCES were different plants, and nothing
+  compared them** (2026-08-12, #468). The shutdown bank was parked withdrawn by the engine
+  CONSTRUCTOR, so it was never a statement about Mode 5 at all: measured, a scram leaves it
+  at 0/912 and nothing re-withdraws it, so *driving* to cold shutdown gave trip rods in and
+  *loading* it gave them out — green on both for years. Real practice makes withdrawal an
+  evolution, never an IC (WTSM 8.1.1). Inserting it is TWO changes, because `_trimToCritical`
+  takes rod reactivity as an INPUT: trim after the bank and the solver pays for its 3676 pcm
+  in BORON — 671 ppm, below the HOT standby figure on a COLD plant. Placed after the trim,
+  ρ = −4676 pcm on unchanged 857 ppm, and the margin buys a measurable 79 min against an
+  unattended dilution. Found by a sourced pass over all 15 NOPs whose best source
+  (**WTSM §19.0 Plant Operations, ML11223A342**) was already in the corpus, uncited — the
+  same pass found §5.0 calling the 100 °F/hr rate limit UNSOURCED **four months after it was
+  ruled and shipped to the board**. Nothing gates manual prose against the rulings the engine
+  already implements.
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md" from
 options I wrote — a selection, not verbatim words)*, gated by `test/run_doc_budget.js`. Adding
@@ -459,7 +467,11 @@ thing left in the file and it grew about a bullet a session.
 - **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were stale
   or mis-framed. An issue's own investigation comment is a claim like any other, and this repo
   merges faster than one ages well (#326 — both comments were correct when written and wrong hours
-  later). Re-measure on the tree you are standing in, including your own lane's.
+  later). Re-measure on the tree you are standing in, including your own lane's. **A filed root
+  cause repeated in four documents was still never re-measured** (rescued from the #403/#433
+  bullet on eviction, 2026-08-12): "MSLI flow reads 0" came from watching the turbine-only
+  variable, and repetition is not corroboration — neither is a sourced number being the WHOLE
+  source ("600 psig" was adopted and "(Rate sensitive)" dropped from the same cell).
 - **Declare a simplification only after you have MEASURED the regime it lives in** (rescued from
   the #347 themes bullet on eviction, 2026-08-07). "Optimistic" and "defeats the relief ladder"
   look identical from outside: spray-at-solid was declared harmless and held pressure 164 psi
@@ -476,7 +488,10 @@ thing left in the file and it grew about a bullet a session.
   `(false ? ' (partial)' : '')` (#485); make it a function and test the claim, don't spell it. And
   a term that is
   an IDENTITY in the regime you test in is a term nothing tests — 44 green probes agreed with a
-  leg-split formula that computed 0.0 °F on a scrammed core.
+  leg-split formula that computed 0.0 °F on a scrammed core. **A DEGENERATE LATCH reads exactly
+  like a working feature** (rescued from the #403/#433 bullet on eviction, 2026-08-12): a no-dt
+  harness left `held_within_s` permanently satisfied (age `0 <= 60` for ever) and three green
+  probes certified an isolation that never once fired.
 - **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
   from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
   hid an interlock with no reset differential chattering at 35 % duty.
@@ -536,9 +551,10 @@ thing left in the file and it grew about a bullet a session.
   `kind: 'component'` tiles from a free-slot scan or the instrument column reads as full.
   **Measure the board, don't eyeball it** — `RD.PwrBoard.ports()` makes an alignment claim a
   subtraction. **Screenshot it** — art overlap is invisible to an item-vs-item scan.
-- **The board's FLOW family is the one where US is the base unit** — gpm is the identity side and
-  m³/h the converted one, backwards from every other family. The units key is an ACCESSOR
-  (`ctx.units()`); a frozen value pins the board in whichever mode it mounted in.
+- **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
+  Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
+  a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
+  of the very same number. HR12 does not stop at engine prose.
 - **A SENSING bug is invisible while the instrument is healthy** — to test an HR1 fix you have to
   FAIL the channel (#220). A trip's `condition:` key is a status word the ENGINE computes, so the
   `run_hardrules` scan cannot see it; hence HR1(b), every permissive key declared. **A comment
@@ -690,6 +706,29 @@ are PART OF THE GATE LIST — both drifted red unnoticed once because they weren
 listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
 `test/verify_*.js` automatically and fails on any runner it has no baseline for**, so
 a new gate cannot go unlisted again — add it to `BASELINES` when you add the runner.
+
+### MANUAL FIRST, THEN AUTO — the order in which a system gets tested
+
+> *(OWNER DIRECTIVE, 2026-08-12: "Testing of systems should happen without automatic mode first.
+> Once proper manual behavior is established we test auto mode. This goes for all systems with an
+> auto mode.")*
+
+**Establish that a system behaves correctly with its automatic control OFF before you test it
+with the control ON.** Applies to every system with an auto mode — pressure control, feed,
+rods, boron, steam dump, ADV, turbine load.
+
+**Why it binds rather than being style.** An automatic controller holds the plant on setpoint,
+which is exactly the condition under which a *wrong* mechanism and a *right* one produce the
+same board. Measured 2026-08-12: `P_restore_rate_gain` drags pressurizer pressure to the
+operator's setpoint whether or not the heaters and spray are in AUTO, so a 30 MWe load change
+moved pressure **0 psi** — while the real coupling underneath it moves **+31 psi and −10.7 °F of
+subcooling**, which is what the plant does once the term is neutered. Every gate we had asserted
+endpoints with the controllers on, so 47 runners and a frozen behaviour catalog all agreed with a
+plant whose central pressure coupling was invisible. The owner found it in free play.
+
+**In practice:** a behaviour row that can only be demonstrated with the automation engaged is
+testing the automation, not the plant. Write the manual-mode acceptance first; the auto-mode row
+then asserts that the controller *holds* what manual proved, which is a different claim.
 
 ### Know which LAYER a gate runs at (this has bitten us three times)
 

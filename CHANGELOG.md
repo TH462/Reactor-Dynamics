@@ -139,6 +139,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   hand and wrangler is not on this machine's PATH.
 
 ### Changed
+- **The rebuilt pressurizer (#472) computes the plant's pressure and level end to end,
+  behind its flag — and a reactor trip now drops 231 psi and stays there.** Phase 3b:
+  `stepPressure` and `stepLevel` stop delegating to v1. Three regimes replace v1's ~300
+  lines of summed authorities — the saturated/blowdown branch ported nearly verbatim (its
+  subject is *loop* flashing, which is #474's), a solid branch where spray and heater
+  flashing are zero by construction rather than by patch, and the two-region bubbled model
+  that is the actual rebuild. `P_restore_rate_gain` does not exist in v2 and **nothing
+  replaces it**: pressure-holding becomes the automatic channel's job. Measured full stack
+  in a manual lineup against v1's Phase-1 figures — a load cut peaks **+73 psi** and settles
+  12 psi BELOW start (v1: +27 and exactly 0); a trip troughs **−231 psi** and stays down
+  (v1: −54, back to setpoint on 0 % heaters); with the channel engaged the heaters recover a
+  −24 psi dip in ~3 min (v1: flat 2235 psi, heaters peaking at 1.77 %); a manual heater press
+  reaches the PORV in ~40 s instead of 5, and no longer ends in safety injection. Settled
+  level agrees with v1 to **0.01 points**. Shipped plant untouched: the flag is off, v1's
+  code is not edited, `run_all` is 51 runners at baseline.
+- **`test/run_pzr2.js` — the first gate over any of that model, and it found five defects
+  in code that had already been committed as working.** Four commits of two-region
+  thermodynamics had no consumer at all: `stepRegions`, `solveFlash` and `pressureFrom` were
+  called only by their own file, so every number in those commit messages came from a
+  throwaway script. The heater bank computed **zero** authority (two config keys the code
+  read did not exist — both `undefined` silently selects the wrong branch); the flash
+  bracket was sized off delivered energy alone, so a pressure change from relief or an
+  outsurge could flash nothing (60 kg of steam drawn boiled **0.2 kg** of liquid, pressure
+  falling 665 psi where the vessel should boil to hold it up — now 112 psi and 58.8 kg); the
+  step returned a pressure the state did not hold, a two-step zigzag with pressure RISING on
+  alternate steps while steam was drawn out; the inner fixed point ran three passes and
+  stopped 6 % short of its own root (fixed by making the passes cheap — v1's saturation line
+  is a power law, so its inverse is closed-form, and the steam-density solve is the exact
+  inverse of its own table); and v2 seeded the regions from a **published reading** the
+  engine initialises to 0, so every run started with an empty vessel. 38 checks,
+  injection-verified 17 ways — three of which walked through the checks as first written.
 - **The ops dashboard now reads Eastern time on every view, day buckets included**
   *(OWNER DIRECTIVE, 2026-08-13: "I need all dates in times in my telemetry site to be in eastern
   time.")*. The 2026-08-12 pass converted the point-in-time stamps and deliberately stopped at the
@@ -172,6 +203,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   unstripped scan passes green on the prose. Injection-verified, five ways: noon offset → 61/64,
   `datetimeHour` reverted to `date` → 62/64, column relabelled `Date (UTC)` → 62/64, a view
   printing a raw Analytics Engine stamp → 63/64, UTC-midnight window → 62/64.
+
+- **The PWR behaviour catalog is unfrozen (v3.1 → v4.0-DRAFT) for the #472 pressurizer
+  rebuild, and its freeze now has a gate.** The v3.1 "FROZEN-FINAL" label had no mechanical
+  lock — 39 probe IDs in the behaviour battery (nearly the whole CA-7…CA-25 pressurizer
+  block) had no catalog row, and the battery's stamps read v2.0 for over a year. v4.0-DRAFT
+  absorbs all 39 as rows (§13 FG-8 pressurizer, §14 non-pressurizer), adds 18 rebuild
+  acceptance rows (manual-first pressure authority, the TMI deception named and numbered,
+  heater elevation), and the new `CAT-1` probe fails the gate if catalog and battery ever
+  diverge again (`run_behavior` 73pass 1xfail). Owner ruling on the amended set pending.
 
 ### Fixed
 - **Shutdown cooling can no longer be placed in service during a safety injection — they are the
@@ -222,6 +262,60 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   published/withheld partition covers the root `*.html` glob only, while each asset directory
   is copied wholesale, so being one directory deeper was their whole exemption. Withheld now
   via a `WITHHELD_DIRS` declaration beside `NOT_PUBLISHED`.
+- **Turbine roll moves to 10–15 % power, where the real plant does it.** `Manuals/04` PWR-N05
+  said Mode 2, ≤ 5 %. Real practice: *"To minimize primary plant transients, the turbine is
+  rolled with reactor power between 10 and 15 percent"* (WTSM §19.3, ML11223A342). The reason is
+  the steam balance — at 10–15 % the dumps already pass that flow, so as the governor valves open
+  the dumps modulate shut and **total steam flow barely changes**. The shipped `pwr_startup`
+  checklist has always done it correctly (~12 %, both startup trips blocked, then Connect Grid)
+  and is gated by `run_procedures_stack`: **the manual contradicted a passing gate, and the
+  manual was the wrong one.**
+- **SHUTDOWN MARGIN is defined, and stops being used for a different quantity** — new
+  `09 §7.5.3`. SDM is computed with all rods assumed inserted except the highest-worth stuck
+  rod; this set used the name for *net reactivity as the rods happen to sit*. The two coincided
+  only while the Mode 5 shutdown bank was parked withdrawn, which since #468 it is not.
+  Measured cold at 857 ppm: **−4676 pcm** both banks in, **−1000 pcm** bank withdrawn, boron's
+  own **~1000 pcm**, bank worth **3676 pcm** — and the operational point, that withdrawing the
+  bank spends the margin buying you **time** (79 min to criticality on an unattended dilution
+  with it in; a source-range trip inside the hour with it out).
+- **The psia/psig convention is declared** — new note at `09 §3.0`. Every pressure in the manual
+  set is absolute; Westinghouse quotes pressurizer setpoints in gauge, 14.7 psi apart. Our 2235
+  reads the real 2235 *psig* as absolute, while our PORV 2350 **is** the real 2335 psig correctly
+  converted — so the nominal-to-PORV margin is 115 psi against a real 100. **Declared rather than
+  fixed**: 2235 is the plant's pressure anchor, and re-anchoring it for 15 psi of margin fidelity
+  would re-baseline every equilibrium, initial condition, alarm band and scenario for no
+  behavioural gain.
+- **Mode 5 starts with the shutdown bank IN, and withdrawing it is now a step** (#468). The
+  `Cold Shutdown (Mode 5)` preset shipped with the shutdown rods already parked fully out —
+  not as a property of Mode 5 but of the engine *constructor*, which placed every rod group
+  at its withdrawn position for every initial condition. It did not match this plant's own
+  shutdown path: measured, a scram leaves the bank at **0/912** and nothing ever re-withdraws
+  it, so a player who **drove** to cold shutdown through PWR-N14/N15 ended with the trip rods
+  on the bottom while a player who **loaded** cold shutdown got them out. Same mode, two
+  plants. Real practice makes withdrawal an operator evolution and never an initial
+  condition — the shutdown banks are *"moved into [the fully withdrawn] position at a fixed
+  speed in manual bank control **prior to criticality**"* (WTSM §8.1.1, ML11223A252), verified
+  on the Mode 5 → 4 leg and required complete within 15 minutes of control-bank withdrawal
+  (App 19-1 A.12 / C.7, ML11223A342).
+  - Mode 5 is now **ρ = −4676 pcm on 857 ppm** with both banks inserted, and **PWR-N01 gains
+    step 2a** — withdraw the bank, 912 steps, ~3 plant-minutes at Fast. N02 step 7 covers
+    arriving by trip; N15 step 1 separates the boron's ~1000 pcm from the bank's 3676 pcm.
+  - **Boron is unchanged at 856.1 ppm, and that took an ordering fix.** `_trimToCritical`
+    solves IC boron for a fixed −1000 pcm net with rod reactivity as an *input*, so inserting
+    the bank before the trim makes the solver pay for 3676 pcm of rods by removing boron —
+    measured **671.3 ppm**, less than the 704.8 ppm the *hot* standby preset carries, on a
+    *cold* plant, where withdrawing the bank alone would then take it critical. The bank is
+    placed after the trim; the ordering is commented at both ends.
+  - The margin is worth something measurable: an unattended dilution at the plant make-up
+    rate reaches criticality in **79 minutes** with the bank in, against a source-range trip
+    inside the hour with it out. `ops_shutdown_dilution` now runs two hours, keeps its
+    original source-range assertion (which passes on **both** presets) and asserts the first
+    hour does *not* reach criticality.
+- **`Manuals/04` §5.0 no longer claims the RCS heatup/cooldown rate limit is unsourced.**
+  100 °F/hr is sourced twice in the corpus (ML11223A342 App 19-1; ML11223A213 Table 3.2-10),
+  was ruled on 2026-08-09 (#398, *"100 F/hr TS + 50 admin"*), and has annunciated on the board
+  since #375 — only the manual's reference table still said "UNVERIFIED — no source found".
+  The 90 °F/hr used in PWR-N15 is a *programme* and sits inside the limit; that was always true.
 
 ### Added
 - **`test/run_site_build.js`** — the first gate that runs the deploy build and reads its

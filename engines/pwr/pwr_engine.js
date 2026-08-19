@@ -1696,6 +1696,24 @@
     this.T_fuel_ref = this._hfp_refs.Tf;
     this.T_coolant_ref = this._hfp_refs.Tavg;
     this._trimToCritical(name);
+    // SHUTDOWN BANK, per-state — AND IT MUST STAY AFTER THE TRIM (2026-08-12).
+    // `_trimToCritical` solves boron for a fixed −1000 pcm net with rod reactivity as an
+    // INPUT, so a bank inserted before it is paid for in boron rather than added to it:
+    // measured on `cold_shutdown`, trimming with the bank in gives 671.3 ppm against the
+    // 856.1 ppm it carries here — under the 704.8 ppm of the HOT standby preset, on a cold
+    // plant, which means withdrawing the bank alone would take it critical. Trimmed first,
+    // the bank's 3676 pcm is margin ON TOP of the cold-shutdown boron (ρ = −4676 pcm).
+    // Default stays fully withdrawn: `_makeRodGroups` parks it at max_steps and every
+    // at-power/hot state relies on that, which is also correct — the bank is out for all
+    // power operation (WTSM 8.1.1). Only Mode 5 declares otherwise. See `pwr_config.js`
+    // `initial_states.cold_shutdown` for the sourcing and the two-plants defect it fixes.
+    var initSd = (this.cfg.initial_states[name] || {}).sd_bank_pct;
+    if (initSd != null) {
+      var sg_rods = this.rod_groups[1];
+      sg_rods.steps = Math.round(initSd / 100 * sg_rods.max_steps);
+      this._updateRodDerived(sg_rods);
+      this.s._rho = this._totalReactivity();   // the trim's ρ predates the bank move
+    }
     // Post an initial RCS chemistry grab-sample result. A real plant always has a
     // last lab boron number standing on the board; opening free-play startups with
     // "—" (never sampled) is the unrealistic state. The lab number IS the settled
@@ -2074,6 +2092,14 @@
     if (name === 'hot_full_power' && !this._hfp_refs) {
       this._hfp_refs = { Tf: Tfuel, Tavg: Tavg };
     }
+    // A pressurizer model may carry STATE of its own, and every override has now run — so
+    // this is the point at which its node must be (re)seeded from the FINAL state. v1 does
+    // not define the hook and does not need one: its level is a reconstruction, so the
+    // `PZ.stepLevel(s, cfg, 0)` above plus the overrides after it are already consistent.
+    // v2's node is seeded once and sticky, which silently broke this function's own promise
+    // that "overrides below … still win" — see pwr_pressurizer2.seedFromState for the
+    // measurement (a Mode 5 preset that came up hot and snapped 363 -> 2235 psia in one step).
+    if (PZ.seedFromState) PZ.seedFromState(s, cfg);
     // Finalize the loop pressure nodes from the settled pressure_mpa / flow_frac.
     PR.computeNodePressures(s, cfg);
     return s;
@@ -2467,6 +2493,21 @@
     // RCS is now above the accumulator cover-gas pressure — re-align the SI accumulators
     // (isolated in the cold-shutdown lineup) so they are operable for the at-power Modes.
     h.cmd({ action: 'open_accumulator_valve' });
+    // WITHDRAW THE SHUTDOWN BANK (2026-08-12). Mode 5 now ships with the bank fully
+    // INSERTED (`pwr_config.js initial_states.cold_shutdown`), so this is no longer a
+    // no-op the driver could skip: with 3676 pcm of shutdown worth in the core the
+    // control bank cannot reach criticality on its own, and before this line both the
+    // round-trip and the paced-heatup gates failed on `critAt = -1` — the plant refusing
+    // to go critical with the trip rods in, which is the correct refusal.
+    //   It is an OPERATOR EVOLUTION and it belongs here, ahead of any control-bank
+    // motion: *"The shutdown banks … are moved into [the fully withdrawn] position at a
+    // fixed speed in manual bank control prior to criticality"* (WTSM 8.1.1, ML11223A252);
+    // App 19-1 A.12 verifies it on the Mode 5 → 4 leg and C.7 requires all shutdown banks
+    // withdrawn *"within 15 minutes of withdrawing control banks"* (ML11223A342). At the
+    // fast drive rate (4.8 steps/s) the full 912-step travel takes ~190 s, inside that.
+    var sdb = h.eng.rod_groups[1];
+    h.cmd({ action: 'rod_nudge', group_id: 'shutdown_rods', steps: sdb.max_steps, speed: 'fast' });
+    for (var sdw = 0; sdw < 60 && sdb.steps < sdb.max_steps; sdw++) h.run(10);
     h.cmd({ action: 'set_feed_pump_speed', pct: 20 });
     var elapsed = 0, dt = 5;
     // EV-1's rate half (#398). `maxRate` is the peak over the WHOLE drive; `maxRateAfterCrit`
@@ -2487,6 +2528,19 @@
     var trace = [], WIN = Math.round(3600 / dt), maxHourly = 0, maxHourlyAt = -1, paceP = null;
     while (elapsed < maxSec) {
       t = h.ts();
+      // HOLD PRESSURIZER LEVEL — the cooldown driver has always done this and the heatup
+      // never did, which is the asymmetry *(OWNER RULING, 2026-08-16: "Do them as you
+      // recommend")*. A heatup with nobody on the pressurizer is not an evolution: the loop
+      // expands, the insurge has nowhere to go, and the vessel fills. v1 tolerated it
+      // because its level is a RECONSTRUCTION clipped at `level_prog_ceiling` and its
+      // pressure was pinned by `P_restore_rate_gain` regardless — measured on v2, which
+      // fills the vessel for real, level reaches 100 % by t≈1000 s of a 20,000 s heatup and
+      // the node is water-solid for the entire remainder of the run.
+      //
+      // This is the MANUAL-FIRST reading of CLAUDE.md's standing directive: the operator
+      // does the action, at a layer where no automatic channel is running. `run_ops` and the
+      // full-stack runners get the same job done by `cvcs_makeup`, which never ticks here.
+      _pzrTrim(h);
       minSub = Math.min(minSub, t.subcooling_c); maxFuel = Math.max(maxFuel, t.fuel_temp_c);
       var rt = t.tavg_rate_c_per_hr || 0;
       if (rt > maxRate) { maxRate = rt; maxRateAt = elapsed; }
@@ -2559,7 +2613,18 @@
       if (elapsed >= SETTLE_S && rt < minRateSettled) minRateSettled = rt;
       h.cmd({ action: 'set_steam_dump_setpoint', mpa: Math.max(0.3, h.eng.cfg.steam_generator.steam_dump_setpoint - k * 0.03) });
       var satGuard = Math.pow(Math.max(t.tavg_c + 25, 1) / 179.47, 1 / 0.239);
-      var psp = Math.max(satGuard, 15.41 - k * 0.02);
+      // ...AND NEVER ABOVE THE PLANT'S OWN PRESSURE. The ramp alone falls at 0.02 MPa per
+      // 10 s (0.29 psi/s) and the plant outruns it by an order of magnitude — measured on v2,
+      // pressure reached 214 psia while this schedule still read 2105, so `autoControl`
+      // correctly commanded 100 % HEATERS and drove it back to 1688 psia, closing the RHR
+      // valve that had just opened. The driver was fighting its own cooldown.
+      //
+      // A real operator lowers the setpoint ahead of the plant, not behind it. Clamping to
+      // current pressure is the minimal form of that: the ramp still sets the pace when the
+      // plant is the slower of the two, and the heaters can no longer be commanded to undo a
+      // depressurization that has already happened. `satGuard` still floors it, so the 25 °C
+      // subcooling margin is unchanged.
+      var psp = Math.max(satGuard, Math.min(15.41 - k * 0.02, t.pressure_mpa));
       h.cmd({ action: 'set_pressure_setpoint', mpa: psp });
       if (t.pressure_mpa < 2.6) h.cmd({ action: 'set_spray', pct: 0 });
       else if (psp < t.pressure_mpa - 0.2) h.cmd({ action: 'set_spray', pct: 60 });

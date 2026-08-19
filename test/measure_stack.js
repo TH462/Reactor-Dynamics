@@ -92,6 +92,9 @@
  *                             measurement has no operator to protect, and leaving it on is
  *                             what silently ran 11 of 22 procedures at a tenth of their
  *                             declared speed in #245)
+ *   --pzr2                    take the measurement on the REBUILT pressurizer (#472) instead
+ *                             of the shipped one. Stamped in the header like --nudge, and
+ *                             for the same reason. Disappears at cutover.
  *   --csv                     emit CSV instead of the aligned table
  *   --quiet                   suppress the header (implies you know the layer)
  */
@@ -115,7 +118,14 @@ if (NUDGE) {
   try { NUDGED = require('../tools/_config_nudge.js').applyNudge(globalThis.RD.PWR_CONFIG, NUDGE); }
   catch (e) { console.error('\x1b[31mmeasure_stack: ' + e.message + '\x1b[0m'); process.exit(2); }
 }
-['layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js',
+// --pzr2 — take the measurement on the REBUILT pressurizer (#472). Same pre-load slot and
+// the same reason as --nudge: pwr_pressurizer2.js reads this flag when it loads, two lines
+// below, and pwr_engine.js caches its pressurizer at load time. A nudge cannot express this
+// (applyNudge multiplies, and 0 × anything is 0), so it is its own flag rather than a
+// widening of a grammar that is load-bearing in published artifacts. Dies at cutover.
+var PZR2 = process.argv.slice(2).indexOf('--pzr2') >= 0;
+if (PZR2) globalThis.RD.PWR_CONFIG.pressurizer2.enabled = 1;
+['layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js',
  'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js', 'engines/pwr/pwr_instruments.js', 'engines/pwr/pwr_engine.js',
  'engines/rbmk/rbmk_config.js', 'layers/control/rbmk_control.js', 'engines/rbmk/rbmk_kinetics.js', 'engines/rbmk/rbmk_thermal.js',
  'engines/rbmk/rbmk_rods.js', 'engines/rbmk/rbmk_instruments.js', 'engines/rbmk/rbmk_engine.js',
@@ -189,10 +199,11 @@ function die(msg) { console.error(R + 'measure_stack: ' + msg + X); process.exit
 // accepted as an unknown key would have run the default field set and printed a table that
 // looks entirely correct — the quiet-wrong-answer class this harness exists to stop.
 var KNOWN = { plant: 1, version: 1, ic: 1, for: 1, every: 1, accel: 1, lineup: 1, watch: 1,
-              cmd: 1, seed: 1, 'attention-stops': 1, csv: 1, quiet: 1, list: 1, help: 1, nudge: 1 };
+              cmd: 1, seed: 1, 'attention-stops': 1, csv: 1, quiet: 1, list: 1, help: 1, nudge: 1,
+              pzr2: 1 };   // #472 A/B selector — consumed in the pre-load block above
 var argv = process.argv.slice(2), OPT = { cmds: [] };
 argv.forEach(function (a) {
-  var m = /^--([a-z-]+)(?:=(.*))?$/.exec(a);
+  var m = /^--([a-z0-9-]+)(?:=(.*))?$/.exec(a);   // [0-9] since #472 added --pzr2
   if (!m) die('unrecognised argument "' + a + '" — options are --' + Object.keys(KNOWN).join(' --'));
   var k = m[1], v = m[2];
   if (!KNOWN[k]) die('unknown option "--' + k + '" — options are --' + Object.keys(KNOWN).join(' --'));
@@ -281,6 +292,7 @@ if (!OPT.quiet) {
   // A PERTURBED PLANT MUST BE VISIBLE IN ITS OWN ARTIFACT, same rule as the layer stamp
   // (#266). Prints the REALISED from→to, not just the spec: "K_heater*0.18" does not tell a
   // later reader what the constant actually was when the number was taken.
+  if (PZR2) console.log('  ' + Y + 'MODEL          pressurizer2 (v2, #472) — NOT THE SHIPPED PLANT' + X);
   if (NUDGED) console.log('  ' + Y + 'nudge          ' + NUDGED.path + ' ×' + NUDGED.factor +
     '  (' + NUDGED.from + ' → ' + NUDGED.to + ')  — NOT THE SHIPPED PLANT' + X);
   console.log('  covering       ' + (FOR / 3600).toFixed(2) + ' plant-hours, sampled every ' + (EVERY >= 60 ? (EVERY / 60).toFixed(1) + ' min' : EVERY + ' s'));

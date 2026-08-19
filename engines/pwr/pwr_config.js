@@ -1115,6 +1115,154 @@
       tailpipe_cool_tau: 900.0,    // s — cools slowly after the line is isolated [tune]
     },
 
+    // ------------------------------------------------------- pressurizer v2 (#472)
+    //
+    // THE REBUILD'S CONFIG BLOCK. Deliberately separate from `pressurizer:` above so the
+    // two models can be A/B'd on the same tree — build alongside, not in place (the
+    // owner-approved method, `Blueprint/PWR_PRESSURIZER_REBUILD.md` §1.4). This whole
+    // block MERGES INTO `pressurizer:` at cutover and this comment goes with it.
+    //
+    // `enabled` IS THE SWITCH and it is READ AT LOAD TIME by pwr_pressurizer2.js, which
+    // replaces `RD.pwrPressurizer` when it is 1. Do not read it anywhere else: a second
+    // reader turns one switch into two, and the failure mode is a plant running half of
+    // each model. Overridable per-run by `RD_PZR2=1` (Node) or `?pzr2=1` (browser).
+    pressurizer2: {
+      enabled: 0,   // 0 = ship v1. NOT [tune] — a model selector, not a number.
+
+      // ---- GEOMETRY. Derived, not fitted; both figures are outputs of constraints.
+      //
+      // V_pzr_m3 is SOLVED from the level identity the shipped plant already obeys:
+      //   100 · M_rcs / (rho_liq · V_pzr) == level_per_mass (776 %/frac)
+      // with M_rcs = the declared RCS currency (7,467 gal = 28.266 m³, from the
+      // `K_porv_relief` block) × 700 kg/m³ = 19,786 kg, and rho_liq = 594 kg/m³ (saturated
+      // liquid at 15.41 MPa / 345 °C). That gives 4.292 m³ = 151.6 ft³.
+      //
+      // CROSS-CHECKED TWO WAYS, because a solved number can satisfy its identity and still
+      // be the wrong size. (1) Ginna's pressurizer level span: TS Bases Rev 101
+      // (ML20339A221) "the pressurizer water volume be < 324 cubic feet (38% level)" ⇒ a
+      // full span of ~853 ft³ at 470 MWe; power-scaled to this plant's 100 MWe that is
+      // 5.15 m³, and we are 17 % under it. (2) Ginna UFSAR ch15 (ML20339A101) quotes a
+      // maximum pressurizer mixture volume of 800 ft³, the same order. A compact plant
+      // running slightly small on pressurizer volume is the expected direction.
+      V_pzr_m3: 4.292,       // m³ — solved from the 776 identity, cross-checked vs Ginna
+      M_rcs_kg: 19786,       // kg — the declared RCS currency in mass terms
+
+      // ---- HEATERS. The SOURCED quantity is POWER. There is deliberately no authority
+      // multiplier: pressure RATE is an output, `Q / (C · dTsat/dP)`, and v1 needed a gain
+      // only because it had no thermodynamics to put the joules into.
+      //
+      // 78 direct-immersion heaters, 1794 kW total (WTSM 3.2, ML11223A213). NOT [tune].
+      heater_power_mw: 1.794,
+
+      // pzr_vessel_mass_kg — A DECLARED ESTIMATE, NOT A SOURCE, and it is load-bearing.
+      // `node tools/find_source.js` finds NO pressurizer vessel mass, thickness or
+      // dimensions in any of the three lanes' corpora (searched: weight/lbs/pounds, shell
+      // and wall thickness, diameter/height/length — 0 hits each). Rather than pick a
+      // number, it is computed from the vessel's own duty:
+      //
+      //   V 4.292 m³ at L/D = 5 (Westinghouse pressurizers are tall)  ⇒ D 1.030 m, L 5.150 m
+      //   ASME thin-wall at the code-safety design pressure 17.13 MPa, SA-533B allowable
+      //   S ≈ 138 MPa:  t = P·r/(S − 0.6P) = 69.1 mm
+      //   shell π·L·t·(D+t) + 2 hemispherical heads 2·(2πr²)·t = 1.459 m³ × 7850 kg/m³
+      //
+      // ⇒ 11,451 kg. WHY IT MATTERS ENOUGH TO DERIVE: with cp 0.5 kJ/kg·K the metal carries
+      // 5.73 MJ/°C against the liquid's 8.41, so it is 41 % of the heated capacity and the
+      // difference between 5.8 psi/s (liquid alone) and 3.4 psi/s. It sets heater authority
+      // outright — which is why the v2 spec RETRACTED its earlier "wall node is
+      // second-order, defer it" call. Replace this with a real vessel weight the moment one
+      // enters the corpus; the estimate is honest but it is an estimate. [UNVERIFIED]
+      //
+      // KEPT, AND KEPT MARKED UNVERIFIED *(OWNER RULING, 2026-08-15: "Go with your
+      // recommendations" — on the recommendation put in #472; a selection, not verbatim
+      // words)*. The reasoning that was accepted: this is a MASS, which a document can
+      // settle if one ever turns up, where the `heater_authority_mult` it replaced was a
+      // GAIN, which no document could ever settle. Trading an unsourceable knob for a
+      // sourceable estimate is the trade worth making even while the estimate stands
+      // unverified — and the marking is what keeps the difference visible.
+      pzr_vessel_mass_kg: 11451,
+      pzr_vessel_cp_kj_kgk: 0.5,   // carbon/low-alloy steel at temperature
+
+      // ---- HEATER ELEVATION. The bank occupies a BAND of the vessel, and delivered power
+      // falls with the wetted fraction of that band as true level passes through it — the
+      // owner's decision 3 (2026-08-12), replacing v1's 0-or-full cliff. `wetted_frac` reads
+      // TRUE level because it is physics: a rod in steam cannot heat water. The S1 bistable
+      // is a DIFFERENT thing and survives untouched in autoControl on INDICATED level (HR1,
+      // owner 2026-08-12: "keep both") — that latch is the plant protecting its hardware.
+      //
+      // THE BAND SITS BELOW THE 17 % CUTOFF, and that ordering is the whole point of the
+      // cutoff: S1 exists to de-energize the heaters BEFORE they uncover, not after. A band
+      // straddling 17 % would make the protection fire in the middle of its own subject.
+      // S2 (WTSM 3.2, ML11223A213) places the bank "in the lower portion of the pressurizer
+      // vessel" — the qualitative fact is sourced; the two percentages are this plant's, and
+      // are DECLARED ESTIMATES chosen to sit clear beneath S1 with the bank's own height
+      // (10 points of a 4.292 m³ vessel ≈ 0.5 m of a 5.15 m shell) roughly the physical
+      // depth of an immersion-heater bundle.
+      //
+      // THESE TWO KEYS ARE THE SINGLE SOURCE FOR #473: the board draws the bank between
+      // them. Move one and the drawn elevation moves with it — there is deliberately no
+      // second number to drift.
+      //
+      // WITHOUT THEM THE HEATERS ARE DEAD, SILENTLY. They were referenced by stepRegions
+      // before they existed here: both undefined makes `top > bot` false, the fallback
+      // `lvl > undefined` is false, and wetted_frac is 0 at every level — full heater
+      // demand delivering zero watts, with nothing to see. That is the class of defect a
+      // model with no gate has no way to report, and it is why run_pzr2.js asserts the
+      // wetted band directly rather than only asserting a pressure rate. [tune]
+      heater_elev_top_pct: 15.0,
+      heater_elev_bot_pct: 5.0,
+
+      // surge_mix_tau_s — how long insurge water takes to reach the saturated interface.
+      // A pressurizer is STRATIFIED: surge enters below the liquid surface and displaces
+      // steam volume at once, but only cools the bulk as it mixes. Assuming instant mixing
+      // inverts the plant's most basic behaviour — measured, a load reduction DROPS pressure
+      // 43 psi instead of raising it, because the cold insurge condenses more bubble than
+      // its volume displaces. Every PWR text has an insurge raising pressure; that is why
+      // spray exists as the countermeasure, and spray works precisely because it is injected
+      // INTO the steam space instead.
+      //
+      // 180 s is a DECLARED ESTIMATE, not sourced — the order of a pressurizer's internal
+      // recirculation, chosen so pressure spikes on the insurge and decays over the minutes
+      // an operator would watch. The SIGN and the SHAPE do not depend on its value; only
+      // the decay rate does. [tune]
+      surge_mix_tau_s: 180.0,
+
+      // ---- SPRAY. v1 works in a demand FRACTION times a `K_spray` gain; v2 needs a MASS
+      // FLOW, because spray controls pressure by condensing bubble and condensation is an
+      // energy balance on the water actually delivered. 23.68 kg/s is the spray line's full
+      // capacity (S10). The taper that closes spray out as the plant approaches Psat(Thot),
+      // the `flow_frac` dependence (no RCP, no spray) and the delivered-flow indication
+      // (#350) are all v1's and are ported unchanged.
+      spray_capacity_kgps: 23.68,
+
+      // ---- SOLID. With no bubble the vessel is a bulk modulus, and dP is the fractional
+      // volume change times this. v1's effective stiffness in this regime is
+      // `solid_bulk_mpa / level_per_mass` per unit of level, which in v2's currency
+      // (fraction of vessel volume) is solid_bulk_mpa scaled by the volume ratio — the
+      // number below reproduces v1's solid arrest at ~109.3 % inventory (SA-1), which is the
+      // behaviour that must survive rather than the constant.
+      //
+      // A RINGING SOLID BRANCH IS FIXED BY THE INTEGRATOR, NEVER BY THIS NUMBER. Lowering it
+      // to quiet an oscillation is retuning the plant's incompressibility to suit a time
+      // step; stepPressure sub-steps instead. [tune]
+      bulk_mod_eff_mpa: 1300.0,
+
+      // ---- SHARED WITH v1 DURING THE BRIDGE, deliberately not copied. `level_per_tavg`,
+      // `level_per_mass`, `level_per_void`, `void_weight_surge_ref`, `level_prog_floor`,
+      // `K_sat_pull`, `K_break_vent`, `K_porv_relief`, `K_safety_relief` and the spray taper
+      // constants are read from the `pressurizer:` block above. The spec's §4 listed them as
+      // ported copies; copying them would create a SECOND source that can drift, and it
+      // would make `run_pzr2`'s G6 parity check compare two copies of the same number
+      // instead of comparing the ported ledger against the live one. They merge into one
+      // block at cutover, which is when the duplication question actually arises.
+
+      // Resulting full-heater authority, for the record and for anyone re-deriving:
+      //   C = 8.41 (liquid, 55 % level) + 5.73 (metal) = 14.14 MJ/°C
+      //   dTsat/dP = 5.35 °C/MPa at 15.41 MPa (from this file's own P_sat_from_T)
+      //   dP/dt = 1.794 / (14.14 × 5.35) = 0.0237 MPa/s = 3.44 psi/s
+      // 15.41 → PORV 16.20 MPa takes 33 s; recovering MO-2's 0.97 MPa outsurge takes 41 s,
+      // well inside CC-6's 300 s band. Both numbers the withdrawn §7 dilemma turned on.
+    },
+
     // ------------------------------------------------------------------ primary
     primary: {
       void_gain: 3.0,              // [tune]
@@ -2865,8 +3013,30 @@
       // cold sink, RCPs secured (RHR provides forced circulation), pressurizer
       // bubble at the cold setpoint, SR energized, ~0 decay heat (long-shut core).
       // The Mode 5↔1 heatup/cooldown path is driven from here (see _buildState).
+      //
+      // SHUTDOWN BANK FULLY INSERTED (`sd_bank_pct: 0`) — the only IC that declares it.
+      // Until 2026-08-12 every state got the bank parked at 912/912 from the engine
+      // CONSTRUCTOR (`_makeRodGroups`), so Mode 5 was the one place it was wrong, and it
+      // was wrong against this plant's own shutdown path: measured, a scram puts the bank
+      // at 0/912 and nothing ever re-withdraws it, so a player who DRIVES to cold shutdown
+      // through PWR-N14/N15 ended on the bottom while a player who LOADED this preset got
+      // it fully out. Same mode, two plants.
+      //   Prototypical basis: *"The shutdown banks are always in the fully withdrawn
+      // position during power operations and are moved into this position at a fixed speed
+      // in manual bank control PRIOR TO CRITICALITY."* — WTSM 8.1.1, ML11223A252. Withdrawal
+      // is verified on the Mode 5 → 4 leg (App 19-1 A.12, ML11223A342) and is a discrete
+      // step gated on an SDM calculation if the bank is found in at Mode 3 (App 19-1 C.7/C.8).
+      // So the bank being OUT is the product of an operator evolution, never an IC.
+      //
+      // IT IS PLACED AFTER `_trimToCritical` (see `reset`), AND THAT ORDER IS THE WHOLE
+      // POINT. The trim solves boron for a fixed −1000 pcm net and takes rod reactivity as
+      // an input, so inserting the bank BEFORE it makes the solver pay for the bank's 3676
+      // pcm by REMOVING boron: measured, 856.1 → 671.3 ppm — less boron on a cold plant than
+      // the 704.8 ppm the HOT standby preset carries, i.e. withdrawing the bank alone would
+      // take it critical. Trimmed first, the bank's worth is what it should be — margin
+      // sitting in the core on top of the cold-shutdown boron, ρ = −4676 pcm at 856.1 ppm.
       cold_shutdown:  { power: 1e-6, scrammed: false, subcritical: true, cold: true,
-        rod_op_pct: 0.0, sr_on: true, rcp_off: true,
+        rod_op_pct: 0.0, sd_bank_pct: 0.0, sr_on: true, rcp_off: true,
         // cold_pzr_level 60 → 30 with the derived-level rework: an IC level implies a
         // mass surplus (level = floor 28 + 100·(mass−1)); 30 % ⇒ mass 1.02, inside both
         // the 1.2 tank cap and the m5 suite's ≤105 % cold-init sanity bound.

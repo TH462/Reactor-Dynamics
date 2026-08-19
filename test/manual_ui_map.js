@@ -104,13 +104,20 @@ var STEP_UI = {
     { i: 16, view: 'board', control: 'Turbine Load' },
   ],
   // PWR-N01 pump-heat heatup (#255) — six controlled steps, then a long observe ride.
+  // i:2 is the shutdown-bank withdrawal, inserted 2026-08-12 when the Mode 5 preset
+  // started shipping with the bank INSERTED (#468) — and it shifted every entry below it
+  // by one, which is the third time this table has been broken that exact way (see the
+  // `pwr_startup` i:3 / i:7 cases in the header). The gate caught it as six consecutive
+  // "pill X != STEP_UI Y" mismatches plus one unmapped tail step; a cascade shaped like
+  // that is an INSERTION, not six independent errors. Renumber, do not re-derive.
   pwr_heatup: [
     { i: 1,  view: 'board', control: 'RCP Run/Stop' },
-    { i: 2,  view: 'board', control: 'Turbine Load' },
-    { i: 3,  view: 'board', control: 'Feed Pumps' },
-    { i: 4,  view: 'board', control: 'Dump SP' },
-    { i: 5,  view: 'board', control: 'Pressure SP' },
-    { i: 6,  view: 'board', control: 'Accumulator valve' },
+    { i: 2,  view: 'board', control: 'Shutdown Bank' },
+    { i: 3,  view: 'board', control: 'Turbine Load' },
+    { i: 4,  view: 'board', control: 'Feed Pumps' },
+    { i: 5,  view: 'board', control: 'Dump SP' },
+    { i: 6,  view: 'board', control: 'Pressure SP' },
+    { i: 7,  view: 'board', control: 'Accumulator valve' },
   ],
   // PWR-N15 controlled cooldown (#310) — fourteen controlled steps. The four cooling
   // legs are RAMP steps, but a ramp is still one control on the board: the player is

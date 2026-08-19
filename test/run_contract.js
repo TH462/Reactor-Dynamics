@@ -43,7 +43,7 @@ function load(p) { require(path.join(__dirname, '..', p)); }
   'engines/pwr/pwr_config.js',
   'layers/control/pwr_control.js',
   'engines/pwr/pwr_thermal.js',
-  'engines/pwr/pwr_pressurizer.js',
+  'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js',
   'engines/pwr/pwr_primary.js',
   'engines/pwr/pwr_steam_generator.js',
   'engines/pwr/pwr_instruments.js',

@@ -930,6 +930,22 @@
         // Dilute at the tuned makeup rate (0.05 ppm/s) and walk away — the free-play
         // mistake. Nothing is touched again; protection is the only actor.
         h.cmd('set_boron_adjust', { rate: -0.05 });
+        // THE HOUR IS NOW THE SHUTDOWN MARGIN'S HALF OF THE PROBE (2026-08-12). Mode 5
+        // ships with the shutdown bank INSERTED, so the cold plant sits at −4676 pcm
+        // instead of −1000, and an hour of unattended dilution no longer reaches
+        // criticality — measured, ρ = −1126 pcm at 3600 s, critical at 4733 s. That is
+        // the margin doing exactly the job it exists for, so it is asserted rather than
+        // left implicit. THIS CHECK IS NEW BEHAVIOUR AND WOULD HAVE FAILED ON THE OLD
+        // PRESET (which tripped inside the hour) — it is pinning the change, not
+        // refitting to it; the source-range half below is the ORIGINAL assertion and
+        // passes on both plants, which is what makes the extension legitimate (HR10).
+        h.run(3540);
+        var tHr = h.ts();
+        ck('an hour of unattended dilution does NOT reach criticality — this is the shutdown margin',
+          fmt(tHr.reactivity_pcm, 0) + ' pcm after ' + fmt(b0 - tHr.boron_ppm, 0) + ' ppm removed',
+          tHr.reactivity_pcm < 0 && h.tripTime == null, '< 0 pcm, no trip yet');
+        // …and then it DOES, because nothing was secured. Run on past the measured
+        // 4733 s criticality so the source-range catch still has to happen.
         h.run(3600);
         var t = h.ts();
         var removed = b0 - t.boron_ppm;
@@ -951,8 +967,8 @@
         ck.info('boron removed WHEN protection acted (ppm)',
           h.tripTime != null ? fmt(0.05 * (h.tripTime - 60), 0) : 'n/a');
         ck.info('boron at trip (ppm)', h.tripTime != null ? fmt(b0 - 0.05 * (h.tripTime - 60), 0) : 'n/a');
-        ck.info('boron after the full hour, dilution never secured (ppm)', fmt(t.boron_ppm, 0));
-        ck.info('total removed over the hour (ppm)', fmt(removed, 0));
+        ck.info('boron after two hours, dilution never secured (ppm)', fmt(t.boron_ppm, 0));
+        ck.info('total removed over the two hours (ppm)', fmt(removed, 0));
         T.checkSanity(ck, h);
       });
     },

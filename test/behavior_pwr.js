@@ -1,7 +1,10 @@
 /*
  * behavior_pwr.js — PWR BEHAVIOR BATTERY (spec layer, run by test/run_behavior.js).
  *
- * One probe per Blueprint/PWR_BEHAVIOR_CATALOG.md entry (v2.0, frozen 2026-07-20).
+ * One probe per Blueprint/PWR_BEHAVIOR_CATALOG.md entry. CATALOG_VERSION below is the
+ * single source for the version the runner prints, and the CAT-1 probe asserts it
+ * matches the catalog file's own header — the stamps here read "v2.0" for a year while
+ * the catalog moved to v3.1 (#472 found it; nothing noticed).
  * Unlike the engine/ops suites, which regress the sim against itself, every check
  * here asserts a band taken FROM THE CATALOG — i.e. from real-Westinghouse
  * behavior. Known defects are declared in XFAIL below (strict: an XFAIL that
@@ -17,6 +20,10 @@
   'use strict';
 
   var T = RD.OpsTest, test = T.test, near = T.near, fmt = T.fmt;
+
+  // The catalog version this battery is written against. CAT-1 fails if the catalog
+  // header disagrees — bump BOTH together, in the same change as the ruling.
+  var CATALOG_VERSION = 'v4.0';
 
   function H(initial, opts) {
     opts = opts || {};
@@ -192,6 +199,7 @@
     'PI-7': 'probe', 'PI-7-reset': 'existing:run_ops abuse scram-then-withdraw (reset leg added P4)',
     'PI-8': 'probe (setpoint + ordering) + probe:CA-4 (both behaviour legs)',
     'PI-9': 'probe — the #199 absence narrowed at #386 stage 2: no steam-pressure SI channel exists, and the sourced 3.5 psig containment backup now answers the upstream break, catalog §10',
+    'CAT-1': 'probe',
   };
 
   var PROBES = {
@@ -6278,12 +6286,70 @@
         T.checkSanity(ck, e);
       });
     },
+
+    // ============================================== the catalog's own lock (#472)
+
+    'CAT-1': function () {
+      return test('CAT-1 catalog ↔ battery parity — the v4.0 lock (#472)', function (ck) {
+        // v3.1 was "FROZEN-FINAL" with no mechanical lock: nine in-place amendments,
+        // stale version stamps, and 39 probe IDs with no catalog row. This probe is the
+        // lock. It is DELIBERATELY a probe (not a separate runner) so the strict-xfail
+        // machinery, the per-ID CLI, and the run_all score all apply unchanged.
+        var fs = require('fs'), path = require('path');
+        var catPath = path.join(__dirname, '..', 'Blueprint', 'PWR_BEHAVIOR_CATALOG.md');
+        var txt = fs.readFileSync(catPath, 'utf8');
+        var lines = txt.split('\n');
+
+        // Header version — the battery and the catalog must agree on which version
+        // this is (the stamps read v2.0 for a year while the catalog moved to v3.1).
+        var hdr = (lines[0].match(/—\s*(v[\d.]+(?:-[A-Z]+)?)/) || [])[1] || '(none)';
+        ck('catalog header version matches CATALOG_VERSION', hdr,
+          hdr === CATALOG_VERSION, CATALOG_VERSION);
+
+        // Parse every table-row ID. The ID must open the first cell; bold marks, flags
+        // (⚑) and "PI-6 / TR-4" style compounds are tolerated. Non-ID tables (§2
+        // ratios, §9 setpoints) never match.
+        var rowIds = {}, rowText = {};
+        lines.forEach(function (ln) {
+          var m = ln.match(/^\|\s*\**([A-Z]{2,4}-\d+[a-z]*)\**[^|]*\|/);
+          if (m) { rowIds[m[1]] = true; rowText[m[1]] = (rowText[m[1]] || '') + ln; }
+        });
+        var nRows = Object.keys(rowIds).length;
+        ck.info('distinct row IDs parsed from the catalog', String(nRows));
+        ck('the parser is not returning an empty catalog', String(nRows), nRows > 50, '> 50');
+
+        // Direction A — the one that was broken for a year: every COVERAGE key has a
+        // catalog row. Keys normalize by their leading ID ('PI-7-reset' → 'PI-7').
+        var missing = Object.keys(COVERAGE).filter(function (k) {
+          var base = (k.match(/^([A-Z]{2,4}-\d+[a-z]*)/) || [])[1];
+          return !base || !rowIds[base];
+        });
+        ck('every COVERAGE key has a catalog row', missing.length ? missing.join(', ') : 'all',
+          missing.length === 0, 'none missing');
+
+        // Direction B — a catalog ID outside COVERAGE must SAY where its claim is held:
+        // 'todo' (unwritten probe), an external suite pointer, or another probe's ID.
+        var covered = {};
+        Object.keys(COVERAGE).forEach(function (k) {
+          var base = (k.match(/^([A-Z]{2,4}-\d+[a-z]*)/) || [])[1];
+          if (base) covered[base] = true;
+        });
+        var orphans = Object.keys(rowIds).filter(function (id) {
+          if (covered[id]) return false;
+          var rest = rowText[id].slice(rowText[id].indexOf('|', 1));
+          return !/todo|existing|run_|campaign|ops|probe|RETIRED|preserved|[A-Z]{2}-\d/.test(rest);
+        });
+        ck('every un-covered catalog row names where its claim is held',
+          orphans.length ? orphans.join(', ') : 'all', orphans.length === 0, 'none orphaned');
+      });
+    },
   };
 
   RD.BehaviorPWR = {
     probes: PROBES,
     XFAIL: XFAIL,
     COVERAGE: COVERAGE,
+    CATALOG_VERSION: CATALOG_VERSION,
     runAll: function () {
       return Object.keys(PROBES).map(function (id) {
         var r = PROBES[id]();

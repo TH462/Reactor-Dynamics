@@ -67,7 +67,7 @@ if (OPT.nudge) {
   try { NUDGED = require('./_config_nudge.js').applyNudge(RD.PWR_CONFIG, OPT.nudge); }
   catch (e) { die(e.message); }
 }
-['layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js',
+['layers/control/pwr_control.js', 'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js',
  'engines/pwr/pwr_primary.js', 'engines/pwr/pwr_steam_generator.js', 'engines/pwr/pwr_instruments.js',
  'engines/pwr/pwr_engine.js', 'layers/control/control_kernel.js', 'layers/instructor_layer.js',
  'layers/simulation_service.js'].forEach(load);
