@@ -315,6 +315,33 @@ function runSuite(C, rec, quiet) {
       'reconstruction out by ' + (mSum - sysM.M_total).toExponential(3) +
       ' kg against a reported solve residual of ' + rM.residual.toExponential(3) +
       ' — the capped bisection, not the clamp');
+
+  /* ---- THE BEYOND-MODEL LATCH (#487) -------------------------------------------------------
+   * The filed failure: a blowdown that made the 0.1 MPa floor mass-inconsistent went NaN one
+   * step after the enthalpy clamp first fired. The latch is BOTH-HALVES by design — a solve
+   * pinned at the floor (flooredLow) while nodes clamp — because each half alone fires on a
+   * healthy plant (the clamp fires transiently in a 50 cm2 break; the floor is touched benignly
+   * whenever mass still closes there). Driven here the way the plant cannot be driven from
+   * outside: a sink at the floor until the target mass leaves the representable range. */
+  if (!quiet) console.log('\nTHE BEYOND-MODEL LATCH (#487)  [held state, flowing time, never NaN]');
+  var sysZ = C.createSystem({ nodes: [{ id: 'a', V: 2.0, h: 400 }], P: 0.2 });
+  var rZ = null, latchedZ = false;
+  for (var kz = 0; kz < 200 && !latchedZ; kz++) {
+    rZ = C.step(sysZ, 0.02, { sources: [{ node: 'a', mdot: -800, h: 400 }], heats: { a: -200000 } });
+    if (rZ.beyond_model) latchedZ = true;
+  }
+  ckT('a floor the solve cannot close mass at LATCHES beyond_model instead of integrating on',
+      latchedZ && isFinite(sysZ.P) && isFinite(sysZ.nodes[0].h),
+      latchedZ ? 'latched at step ' + kz + ' with P ' + sysZ.P.toFixed(3) +
+                 ' MPa and h finite — the pre-latch build went NaN here'
+               : 'never latched in 200 sink-driven steps at the floor');
+  var Pz = sysZ.P, hz = sysZ.nodes[0].h, tz = sysZ.simTime;
+  var rZ2 = C.step(sysZ, 0.02, { sources: [{ node: 'a', mdot: -800, h: 400 }],
+                                 heats: { a: -200000 } });
+  ckT('...and the held step FREEZES state while time flows — a hold, not a crash and not physics',
+      rZ2.held === true && rZ2.dP === 0 && sysZ.P === Pz && sysZ.nodes[0].h === hz &&
+      sysZ.simTime === tz + 0.02 && rZ2.junction.length === 1 && rZ2.junction[0].dm_dt === 0,
+      'P and h byte-identical through a driven step, simTime += dt exactly, junctions zero');
 }
 
 console.log('\nPWR2 Layer 2 -- node/junction conservation core');
@@ -323,6 +350,10 @@ runSuite(C, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the beyond-model latch never fires (#487 — the pre-latch build, which went NaN)',
+   '    if (sol.flooredLow && clampedNodes > 0) sys.beyond_model = true;', ''],
+  ['the held step keeps integrating (the hold is announced but not performed)',
+   '    if (sys.beyond_model) {\n      sys.simTime += dt;', '    if (false) {\n      sys.simTime += dt;'],
   /* THE ENTHALPY ENVELOPE (2026-08-17). Three ways to get it wrong, and the third is the one
    * that actually happened to me: the clamp applied AFTER the solve instead of inside it. */
   ['the enthalpy state loses its ceiling (a dry node runs to 1e+304 and then NaN)',

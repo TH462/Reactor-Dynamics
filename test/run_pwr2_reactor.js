@@ -148,6 +148,24 @@ function runSuite(R, rec, quiet) {
   ckT('a BOILING core node is seen -- the void fraction comes off the plant, not a default',
       R.coreRegime(rgV).voidFrac > 0.3,
       'void ' + R.coreRegime(rgV).voidFrac.toFixed(3) + ' from a 40 % quality core node');
+  /* AND IT IS VOID FRACTION, NOT QUALITY. The 40 % fixture above cannot tell them apart (both
+   * clear 0.3); the LOW-quality regime can — alpha and x differ 5-16x there, which is where the
+   * shipped defect hid (#490, audit #488 D10.2: consumers read 1.5 % on a 15-20 %-void core).
+   * The reference is independent algebra on Layer 0's saturated volumes, not W.voidFraction,
+   * so a coreRegime and a voidFraction that are wrong TOGETHER still red here. */
+  var rgQ = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+  for (var q2 = 0; q2 < rgQ.nodes.length; q2++) {
+    if (rgQ.nodes[q2].id === 'core') {
+      rgQ.nodes[q2].h = W.h_f(P0) + 0.0153 * (W.h_g(P0) - W.h_f(P0));
+      break;
+    }
+  }
+  var vfQ = 1 / W.rho_l(W.T_sat(P0), P0), vgQ = 1 / W.rho_v_sat(P0);
+  var alphaQ = 0.0153 * vgQ / (0.0153 * vgQ + (1 - 0.0153) * vfQ);
+  ckT('a 1.53 % QUALITY core reports the ~8 % VOID it is by volume, not the quality',
+      Math.abs(R.coreRegime(rgQ).voidFrac - alphaQ) < 1e-9 && R.coreRegime(rgQ).voidFrac > 0.06,
+      'void ' + (100 * R.coreRegime(rgQ).voidFrac).toFixed(2) + ' % against algebra ' +
+      (100 * alphaQ).toFixed(2) + ' % -- a coreRegime handing quality onward reads 1.53 and reds');
   var rgF = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
   rgF.mdot_loop = S.PUMP.mdot_rated / 4;
   ckT('...and a COLLAPSING loop flow is seen too, as the fraction it actually is',
@@ -418,8 +436,11 @@ var MUTATIONS = [
    '    var f = sys.mdot_loop === undefined ? 1 : sys.mdot_loop / MDOT_RATED;',
    '    var f = 1;'],
   ['the coolant regime reports NO VOID whatever the core is doing',
-   "      if (sys.nodes[i].id === 'core') { v = W.quality(sys.nodes[i].h, sys.P); break; }",
+   "      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }",
    "      if (sys.nodes[i].id === 'core') { v = 0; break; }"],
+  ['the coolant regime hands QUALITY onward as void fraction (the shipped defect, #490)',
+   "      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }",
+   "      if (sys.nodes[i].id === 'core') { v = W.quality(sys.nodes[i].h, sys.P); break; }"],
   ['the flow reference drifts off the value pwr2_sources actually pumps to',
    '  var MDOT_RATED = 1630;', '  var MDOT_RATED = 2000;'],
   ['the heat path DOUBLE-COUNTS (corePower supplied alongside heats)',

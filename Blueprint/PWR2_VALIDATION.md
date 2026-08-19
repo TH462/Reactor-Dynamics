@@ -2214,3 +2214,102 @@ naming the system that actually blocks it: main steam isolation, electrical, pla
 coupling.
 
 `node test/run_all.js --fast`: **74 runners at baseline.**
+
+## 41. THE AS-BUILT AUDIT ADJUDICATED — 18 VERDICTS, AND EVERY CONFIRMED FINDING LANDED — 2026-08-18
+
+The #488 audit slice (independent, self-report clean; findings in
+`RD_Audit/findings/pwr2_asbuilt/`, one comment per group on the issue) returned 18 verdicts on
+18 subjects. This session re-verified the load-bearing ones on backshop HEAD before acting —
+`d10_void`, `a1_hgap`, `c9_e18_fixture` all reproduce exactly at `ec051d1` — and landed the lot.
+The audit's read of the build: **citations mostly survive checking** (kinetics integrator
+externally validated at ≤9e-15/step against an independent RK4; Baker-Just verbatim to the
+digit; the pump density coupling confirmed in full; the B5 lattice resolved 3-for-3 by reading
+the page image). Where it failed, it failed two ways, and both are now fixed classes:
+
+- **Claims about what the corpus does NOT contain** (A1.4 gap conductance "zero hits" — Ginna
+  carries a transient 10,000 Btu/hr-ft²-°F; C7.3 the DELAYED "[sourced] typical" tag — zero
+  documents; D12 "the corpus has neither" — WCAP-16009 §10-2 carries both). All corrected;
+  D12 became a full evidence pass (below).
+- **Prose never re-measured after the constants moved** (A1.5 the 581.8 °C fuel-temperature
+  rationale, stale by 184 °F; C7.2 a kinetics validation table computed at β = 0.00645 against
+  a shipped 0.006502; B6 a clad/gap bound measured before the clad was a thermal node).
+
+**The one live physics-output defect — D10.2/E16.1, quality published as void fraction — is
+fixed at the source**: `voidFraction(h, P)` in Layer 0 (α = x·v_g / (x·v_g + (1−x)·v_f), the
+same vf/vg as `rho_from_h`, so ρ(h) ≡ (1−α)ρ_f + αρ_g is asserted as an identity), `coreRegime`
+and both shim fields publish it, and the discriminator is pinned where the defect hid: a 1.53 %
+quality core is **8.37 % void at 2235 psia** and up to 24.0 % at 1015 psia. Mutations replaying
+the shipped defect red 10 checks in each of two gates. Measured blast radius on the damage
+chain: the milestones move ~1 s earlier on a 636 s ride (real α > x → phase factor smaller),
+every gate stays in-band. E16.2 (`steam_dump_valve_pct` fabricated from a retyped 0.28) now
+publishes `pwr2_relief`'s own reported `dump_demand`, pinned on a commanded-open dump with the
+condenser unavailable — 40 % open, 0 kg/s passing, where the flow-derived form read 0 %.
+
+**The D12 evidence pass** (owner-selected, 2026-08-18): `vapor_ratio` is upgraded
+[recalled] → **[derived]**. WCAP-16009 Table 10-3 (90 saturation rows, read from the page image
+at 200 dpi — the OCR text layer is mangled) puts the Dittus-Boelter property group
+(k^0.6·cp^0.4·μ^−0.4)_g/(…)_f at **0.403 / 0.495 / 0.535 / 0.551 across 502 / 1050 / 1260 /
+1334 psia**, so the shipped 0.5 is the representative of a sourced band, not a recalled point —
+and the value therefore did not move. Cross-check inside the same document: eqs 10-20..10-23
+(ASME 1968 forms) reproduce the table's k_g at 300 °C to 3 % and μ_g to 0.3 %. `dittus_exp` is
+[sourced-form]: Ginna ch15 names Dittus-Boelter verbatim for pre-DNB film heat transfer, and
+0.8 is that correlation's defining exponent. Both the 1050-psia group value and band membership
+are gated (`run_pwr2_fuel` 62 → 64).
+
+Also landed from the audit: the A3 natural-circulation capability anchor (Ginna TS Bases,
+*"as high as 3% RTP can be removed by natural circulation alone"*) as a gate check — 9 MW
+carried at 116.5 kg/s with the core subcooled, the flow magnitude still deliberately
+unasserted; the E17.5 scoping of `pwr2_damage`'s "every simplification points the same way" to
+the severity chain (the timeline is not single-signed — `pwr2_break` declares a ~2× discharge
+overstatement, pessimistic on timing); and the E16.3/E16.4 shim caveats (`t_core_exit_c` is the
+node average, ~15–20 °F low at rated; `turbine_rpm` is a synthesized two-state).
+
+**#487 resolved while here** (owner-selected into this batch): the filed 5 cm² floor NaN **no
+longer reproduces at HEAD** — re-measured 3600 s at 5/20/50 cm², the plant drains to 0.08 %
+inventory and floats at 15.7 psia (0.108 MPa), finite — because the pump density coupling
+changed the endgame after the issue was filed. The cure is pinned (`run_pwr2_coredamage` third
+scenario, 1800 s, asserting the run reaches the floor region AND stays finite), and the class
+is backstopped: `pwr2_core` latches `sys.beyond_model` when the solve pins at the floor while
+nodes clamp, and every later step HOLDS — state frozen, time flowing — with `stepPlant`
+freezing rotor and momentum alongside. Unit-tested by a sink drive; two mutations red.
+
+Issues: filed #490 (void), #491 (dump), #492 (provenance umbrella) per the audit charter;
+all three resolved by this session's commit. #488 closed with the convergence row on #221.
+
+## 42. ACCEPTANCE CASE ADOPTED FROM #489 — LOAD-FOLLOWING BELOW 75 MWe, RODS IN MANUAL — 2026-08-18
+
+Handed to #479 by owner selection *(OWNER RULING, 2026-08-17: selected "Defer to the PWR2
+rebuild (#479)" from options written for #484/#489 — a selection, not verbatim words)*. The
+current engine, measured full-stack (M4+M5+M6, `hot_full_power`, free-play lineup, **rods
+MANUAL** — the lineup is stated because three artifacts already went wrong by inheriting it),
+load target stepped at t+300 s, settled at t+40 m, seed 4242:
+
+| load MWe | 95 | 85 | 78 | 76 | **75** | 74 | 72 | 70 | 65 | 62 | **60** | **59** | 55 | 50 | 40 | 30 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| power % | 95.5 | 86.5 | 80.1 | 78.1 | **77.3** | 76.9 | 76.8 | 76.7 | 76.5 | 76.4 | **76.3** | **88.4** | 84.7 | 80.0 | 72.2 | 70.5 |
+| dump % | 0 | 0 | 0 | 0 | **0** | 0.5 | 2.4 | 4.3 | 9.3 | 12.0 | 13.9 | **28 (cap)** | 28 | 28 | 28 | 28 |
+
+Three regimes, and only the first load-follows: **≥75 MWe** power tracks load with the dump
+shut; **60–74 MWe** power pins at 76.3–76.9 % across a 15 MWe span while the dump modulates —
+the dump holds Tavg and therefore sets power, and the reactor follows the dump's demand, not
+the turbine's; **≤59 MWe** the fast Tavg-error arm latches (separately ruled ACCEPTED,
+DESIGN_COMPANION §8.30 / TR-1m — not part of this case). The current model cannot be *checked*
+against this, only observed — there is no conservation law for "the plant runs a permanent
+~14 % relief flow at steady state and calls it equilibrium" to be wrong against, which is
+precisely #479's argument.
+
+**The acceptance criterion is an OPEN plant-identity ruling** — two candidates, recorded
+verbatim from the handoff, decision deferred to the owner at the pressurizer/secondary design
+point:
+
+1. **Load-following is continuous with rods in MANUAL** — reactor power monotone in load
+   target over the dispatch range, no plateau wider than measurement noise. Strongest; forces
+   the dump/Tavg interaction to be solved rather than emergent.
+2. **The plateau is declared** — PWR2 may reproduce it, but the steady-state relief flow must
+   be an explicit `Q = ṁΔh` term that closes, so "33 MWt to the condenser at steady state" is
+   a number the model states rather than a residual.
+
+Either way the **rod lineup is part of the case**, stated, never inherited (#460 made MANUAL
+the shipped default and three artifacts each assumed AUTO). PWR2 cannot run this case yet —
+it needs the secondary-side dump/Tavg control layer, which does not exist — so this section is
+the parking spot the handoff asked for, not a result.

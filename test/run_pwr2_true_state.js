@@ -224,6 +224,36 @@ function runSuite(TS, rec, quiet) {
   ck('...and they are plant-sized, not placeholders',
      ts.pressure_mpa > 10 && ts.fuel_temp_c > 400 && ts.mwe_output > 50,
      'a shim that returned zeros would pass every equality above');
+  /* THE VOID FIELDS ARE VOID FRACTION, NOT QUALITY (#490, audit #488 E16.1). The rated fixture
+   * cannot tell them apart (both read 0 subcooled); a 1.53 % quality core can — it is 8.4 %
+   * void by volume at design pressure, and the shipped shim published 0.0153 under the
+   * contract's void-fraction name. Reference is independent algebra on Layer 0's saturated
+   * volumes, so this reds even if the shim and W.voidFraction go wrong together. */
+  var sysQ = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
+  for (var qv = 0; qv < sysQ.nodes.length; qv++) {
+    if (sysQ.nodes[qv].id === 'core') {
+      sysQ.nodes[qv].h = W.h_f(15.41) + 0.0153 * (W.h_g(15.41) - W.h_f(15.41));
+      break;
+    }
+  }
+  var tsQ = TS.buildTrueState({ sys: sysQ });
+  var vfV = 1 / W.rho_l(W.T_sat(15.41), 15.41), vgV = 1 / W.rho_v_sat(15.41);
+  var alphaV = 0.0153 * vgV / (0.0153 * vgV + (1 - 0.0153) * vfV);
+  ck('core_void_fraction is the VOLUME fraction, not the 1.53 % quality',
+     Math.abs(tsQ.core_void_fraction - alphaV) < 1e-9 && tsQ.core_void_fraction > 0.06,
+     (100 * tsQ.core_void_fraction).toFixed(2) + ' % against algebra ' +
+     (100 * alphaV).toFixed(2) + ' % -- publishing quality reads 1.53 and reds');
+  /* steam_dump_valve_pct is the POSITION pwr2_relief reports, not a flow re-derivation. The
+   * discriminating fixture is a commanded-open dump with the condenser UNAVAILABLE: the flow is
+   * 0 there, so the shipped version — 100*dump_kgs/(rated*0.28), the current engine's capacity
+   * constant retyped untagged — read 0 % on a 40 %-open valve (#491, audit #488 E16.2). */
+  var rlD = RD.relief.stepRelief(RD.relief.createRelief({}), 6.0, 0.02,
+    { rated_steam_kgs: 130, dump_demand: 0.4, condenser_available: false });
+  var tsD = TS.buildTrueState({ sys: B.sys, relief: rlD, rated_steam_kgs: 130 });
+  ck('steam_dump_valve_pct is the commanded POSITION, not the flow over a retyped capacity',
+     Math.abs(tsD.steam_dump_valve_pct - 40) < 1e-9 && rlD.dump_kgs === 0,
+     tsD.steam_dump_valve_pct.toFixed(1) + ' % open with the condenser unavailable and 0 kg/s ' +
+     'passing -- a flow-derived position reads 0 here and reds');
 
   /* ---- THE NEWLY-WIRED SYSTEMS: break, containment, condenser, ECCS ---------------------- */
   head('BREAK / CONTAINMENT / CONDENSER / ECCS -- built earlier this session, wired NOW');

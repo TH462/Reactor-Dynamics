@@ -981,6 +981,12 @@ has a closed-form solution — a 7×7 matrix exponential (scaling-and-squaring i
 tiny and the matrix is sparse). Measured against the diverging explicit step: **analytic gives
 n = 0.865167, stable, in one step, with no sub-steps at all.**
 
+> **Provenance note (2026-08-18, audit #488 C7.2):** 0.865167 belongs to this section's
+> β = 0.00645. The shipped engine carries β = 0.006502 and produces **0.864935** on the same
+> case — `pwr2_kinetics.js`'s header claimed to reproduce this section "to 6 decimals" without
+> re-measuring after the group data moved. The integrator is exact either way (audit C7.1:
+> independent RK4 agrees to ≤9e-15 per step); the two numbers differ because the β differs.
+
 **This is exactly compatible with gather-then-integrate**, and the apparent conflict dissolves:
 **ρ is a Phase-1 coefficient**, computed from time-*n* state. Phase 2 advances the kinetics
 analytically using it. **Nothing re-reads feedback mid-step, because nothing needs to.**

@@ -197,6 +197,21 @@
     drivers = drivers || {};
     if (drivers.pumpTrip) sys.pumpTripped = true;
 
+    /* BEYOND-MODEL HOLD (#487): the fluid state is frozen by pwr2_core's latch, so the rotor
+     * and the momentum integration must freeze with it — a momentum state evolving against a
+     * held density field would be motion the plant is not having. Time still flows; the held
+     * step() reports itself. */
+    if (sys.beyond_model) {
+      var rHeld = LOOP.stepLoop(sys, dt, { heats: {}, sources: [], mdot: sys.mdot_loop });
+      rHeld.omega = sys.omega;
+      rHeld.rpm = sys.omega * 60 / (2 * Math.PI);
+      rHeld.pumpHead = 0;
+      rHeld.frictionDrop = 0;
+      rHeld.buoyancy = 0;
+      rHeld.pumpWork_kW = 0;
+      return rHeld;
+    }
+
     /* ---- rotor: coastdown derived from inertia, not fitted ---- */
     if (sys.pumpTripped && sys.omega > 0) {
       var hyd = pumpHead(sys) * 1e6 * (sys.mdot_loop / 700) / Math.max(sys.omega, 1e-6);  // N*m

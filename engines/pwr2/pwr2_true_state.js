@@ -109,7 +109,7 @@
    * `core_uncovered_frac` STAYS MISSING, and the reason is NOT the generic one it used to carry.
    * The geometry is all present — the core node has a volume, a midplane elevation datum and a
    * 3.66 m flow length, so an area falls out. What is absent is PHASE SEPARATION: `pwr2_water.js`
-   * is homogeneous equilibrium with no slip, so void fraction and quality are the same number and
+   * is homogeneous equilibrium with no slip — the vapour is dispersed through the node, and
    * there is no free surface anywhere in the engine. A collapsed level computed from void would
    * make the uncovered fraction identically equal to the core node's void fraction, which asserts
    * a stratification the model does not contain. A free surface with a compressible volume above
@@ -170,9 +170,13 @@
     }
     return undefined;
   }
-  function nodeX(sys, id) {
+  /* nodeAlpha — the HOMOGENEOUS VOID FRACTION, not quality. The *_void_fraction fields shipped
+   * publishing W.quality under a "same number by construction" claim; alpha and x differ 5-16x
+   * over this plant's pressure range, so a consumer read 1.5 % on a core 15-20 % void by volume
+   * (#490, audit #488 E16.1). Layer 0 owns the conversion. */
+  function nodeAlpha(sys, id) {
     for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === id) return W.quality(sys.nodes[i].h, sys.P);
+      if (sys.nodes[i].id === id) return W.voidFraction(sys.nodes[i].h, sys.P);
     }
     return undefined;
   }
@@ -199,10 +203,14 @@
     put('p_pumpsuction', sys.P);
     put('thot_c',        nodeT(sys, 'hot_leg'));
     put('tcold_c',       nodeT(sys, 'cold_leg'));
+    /* ⚠ the core node's BULK temperature under an EXIT name — the lumped model has no axial
+     * profile, so a real exit reading would sit ~half the core dT higher (~15-20 degF at
+     * rated). Declared here because the header's one-pressure caveat did not cover it
+     * (audit #488 E16.3). */
     put('t_core_exit_c', nodeT(sys, 'core'));
     put('tavg_c',        RD.sg ? RD.sg.primaryTavg(sys) : undefined);
-    put('core_void_fraction',    nodeX(sys, 'core'));
-    put('primary_void_fraction', nodeX(sys, 'hot_leg'));
+    put('core_void_fraction',    nodeAlpha(sys, 'core'));
+    put('primary_void_fraction', nodeAlpha(sys, 'hot_leg'));
     if (typeof sys.M_total === 'number' && typeof ctx.M_nominal === 'number' && ctx.M_nominal > 0) {
       put('core_inventory_pct', 100 * sys.M_total / ctx.M_nominal);
     }
@@ -242,6 +250,9 @@
     put('mwe_output',        tb.mwe_output);
     put('load_target_mwe',   tb.load_target_mwe);
     put('steam_demand_mwe',  tb.load_target_mwe);
+    /* ⚠ a SYNTHESIZED two-state constant (1800 or 0) — pwr2_turbine declares "no shaft
+     * dynamics" and this forwards that caveat, which the field name alone cannot carry: a
+     * consumer cannot tell this 1800 from a measured one (audit #488 E16.4). */
     put('turbine_rpm',       tb.rpm);
     if (tb.rpm !== undefined) put('turbine_tripped', tb.rpm === 0);
     if (tb.steam_kgs !== undefined && ctx.rated_steam_kgs) {
@@ -249,9 +260,14 @@
     }
 
     /* --- relief --- */
-    if (rl.dump_kgs !== undefined && ctx.rated_steam_kgs) {
-      put('steam_dump_valve_pct', 100 * rl.dump_kgs / (ctx.rated_steam_kgs * 0.28));
-    }
+    /* dump_demand IS the valve position in pwr2_relief's model (flow = demand * capacity when
+     * the condenser is available), and the layer reports it. The first version re-derived the
+     * position from dump_kgs with a retyped 0.28 — the current engine's capacity constant,
+     * untagged, in a file whose charter is "this file invents nothing" — and read 0 % on a
+     * commanded-open dump with the condenser unavailable, which is a flow fact wearing a
+     * position name (#491, audit #488 E16.2). */
+    put('steam_dump_valve_pct',
+        rl.dump_demand !== undefined ? 100 * rl.dump_demand : undefined);
     put('sg_safety_open', rl.safety_open);
     if (tb.steam_kgs !== undefined && rl.total_kgs !== undefined && ctx.rated_steam_kgs) {
       put('steam_out_total', (tb.steam_kgs + rl.total_kgs) / ctx.rated_steam_kgs);

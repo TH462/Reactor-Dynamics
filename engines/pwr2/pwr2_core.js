@@ -130,6 +130,25 @@
     var flows = drivers.flows || [], heats = drivers.heats || {}, sources = drivers.sources || [];
     var N = sys.nodes.length, i;
 
+    /* ---- BEYOND-MODEL HOLD (#487) ----------------------------------------------------------
+     * Once the blowdown latch below has fired, the plant is HELD: state frozen, time flowing,
+     * flag up. This is a SIMULATOR — it cannot reject the timestep and it must not integrate a
+     * state the property library cannot represent. What the real plant is doing here is a slow
+     * atmospheric boil-off of the last few percent of inventory on decay heat, and Layer 0 has
+     * no physics below 0.1 MPa to compute it with; the honest continuation is a held state, not
+     * a fabricated one. Measured before this hold existed: a 5 cm2 break ran clean for 840 s,
+     * touched the floor with 2.4 % inventory, and went NaN in the reactor ONE step later. */
+    if (sys.beyond_model) {
+      sys.simTime += dt;
+      return {
+        P: sys.P, dP: 0, held: true, beyond_model: true,
+        iterations: 0, capBound: false, bracketWidth: 0, unbracketed: false,
+        envelopeExceeded: true, enthalpyClamped: 0, enthalpyDiscarded_kJ: 0, residual: 0,
+        junction: sys.nodes.map(function (n) { return { id: n.id, dm_dt: 0 }; }),
+        transfers: 0
+      };
+    }
+
     /* ---- 1. GATHER. Read the state at time n; write nothing. ---- */
     var m_n = new Array(N), a = new Array(N), v = new Array(N), dH = new Array(N);
     for (i = 0; i < N; i++) {
@@ -273,8 +292,18 @@
     }
     sys.expansion = nextExp;
 
+    /* ---- THE BLOWDOWN TERMINAL LATCH (#487) ------------------------------------------------
+     * BOTH halves are required, because each alone fires on a plant that is still fine:
+     * `enthalpyClamped` fires transiently in a 50 cm2 break at ~297 s with the plant at
+     * ordinary pressure (audit #488 C9: 147 node-steps, 141 kJ, finite throughout), and the
+     * solve touches the FLOOR benignly only if it can still close mass there. A solve pinned
+     * at P_MIN that cannot shed its mass surplus WHILE nodes sit outside the enthalpy envelope
+     * is the state the pressure search cannot make consistent — the issue's measured sequence
+     * is clamp at t = 842.78 s, NaN one step later. Latch on the first, never reach the second. */
+    if (sol.flooredLow && clampedNodes > 0) sys.beyond_model = true;
+
     return {
-      P: sys.P, dP: sys.P - P_prev,
+      P: sys.P, dP: sys.P - P_prev, held: false, beyond_model: !!sys.beyond_model,
       iterations: sol.iters, capBound: sol.capBound, bracketWidth: sol.width,
       unbracketed: !!sol.unbracketed, envelopeExceeded: !!sol.envelopeExceeded,
       enthalpyClamped: clampedNodes,                       // nodes outside the property envelope
@@ -335,7 +364,12 @@
        * make impossible. */
       return { P: flo > 0 ? lo : hi, iters: k, evals: evals, capBound: true,
                width: hi - lo, unbracketed: true,
-               envelopeExceeded: (hi >= P_HI && fhi < 0) || (lo <= P_LO && flo > 0) };
+               envelopeExceeded: (hi >= P_HI && fhi < 0) || (lo <= P_LO && flo > 0),
+               /* The LOW side separately: `envelopeExceeded` fires on the ordinary initial
+                * spike to the 18 MPa ceiling (t = 0.86 s in every large break) and is useless
+                * as a terminal signal; a solve pinned at the FLOOR with mass it cannot shed
+                * is the end-of-blowdown condition #487 latches on. */
+               flooredLow: lo <= P_LO && flo > 0 };
     }
 
     var iters = 0, mid = 0.5 * (lo + hi);

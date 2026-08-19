@@ -236,6 +236,33 @@ function runSuite(W, rec, quiet) {
       'got ' + W.rho_from_h(hm, Pm).toFixed(2) + ', volume-mix ' + (1 / (0.5 * vf + 0.5 * vg)).toFixed(2) +
       ', density-mix would be ' + (0.5 / vf + 0.5 / vg).toFixed(2));
 
+  /* voidFraction — added 2026-08-18 (#490, audit #488 D10.2). The engine shipped three claims
+   * that HEM makes quality and void fraction "the same number by construction"; the checks
+   * below are written so a voidFraction that returns QUALITY reds — the discriminator is the
+   * low-quality regime, where alpha and x differ 5-16x. Reference values are the audit's,
+   * re-derived from this library's own saturated volumes (independent algebra below), and
+   * the 8.4 %/24.0 % magnitudes cross-check the D10 harness numbers. */
+  var xq = 0.0153;
+  [[15.41, 0.084], [11.096, 0.142], [7.0, 0.240]].forEach(function (c) {
+    var P = c[0], hx = W.h_f(P) + xq * (W.h_g(P) - W.h_f(P));
+    var vfx = 1 / W.rho_l(W.T_sat(P), P), vgx = 1 / W.rho_v_sat(P);
+    var alg = xq * vgx / (xq * vgx + (1 - xq) * vfx);
+    ck('voidFraction(1.53 % quality, ' + P + ' MPa) matches the volume algebra',
+       W.voidFraction(hx, P), alg, 1e-12, '-');
+    ck('...and the audit magnitude', W.voidFraction(hx, P), c[1], 0.004, '-');
+    ckT('...and it is NOT quality (' + P + ' MPa) -- x = 1.53 %, alpha ' +
+        (100 * W.voidFraction(hx, P)).toFixed(1) + ' %',
+        W.voidFraction(hx, P) > 4 * xq,
+        'a voidFraction that returns quality reads 0.0153 here and reds');
+  });
+  ckT('voidFraction clamps: 0 below h_f, 1 above h_g',
+      W.voidFraction(W.h_f(7) - 100, 7) === 0 && W.voidFraction(W.h_g(7) + 100, 7) === 1);
+  /* CONSISTENCY WITH THE MIXTURE DENSITY the pressure solve balances: the same vf/vg must be
+   * inside both, so rho_from_h == (1-alpha)*rho_f + alpha*rho_g as an identity, not a fit. */
+  var ha = W.h_f(Pm) + 0.3 * (W.h_g(Pm) - W.h_f(Pm)), aa = W.voidFraction(ha, Pm);
+  ck('rho_from_h == (1-alpha)*rho_f + alpha*rho_g at x=0.3, 2235 psia',
+     W.rho_from_h(ha, Pm), (1 - aa) / vf + aa / vg, 1e-9, 'kg/m3');
+
   /* SLOPE continuity of h_l across the saturation line. Added 2026-08-14 because this file's
    * own injection self-test reported BLIND TO "restore the h_l regime branch" — every other
    * compressed-liquid check asserts a VALUE at P > P_sat, and the defect the branch
@@ -351,6 +378,8 @@ var fail = rec.length - pass;
  * and is reported as a failure OF THE GATE. Every mutation below corresponds to a defect
  * the previous version of this file could not see. */
 var MUTATIONS = [
+  ['voidFraction returns QUALITY (the shipped defect, #490)',
+   'return x * vg / (x * vg + (1 - x) * vf);', 'return x;'],
   ['delete the compressed-liquid correction',
    'return h_l_sat(T) + k_comp(T) * (P - P_sat(T));', 'return h_l_sat(T);'],
   ['revert to the WRONG-SIGN incompressible compressed-liquid form',

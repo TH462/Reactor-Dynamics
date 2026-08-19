@@ -126,6 +126,21 @@ function runSuite(S, rec, quiet) {
     console.log('        (' + (100 * w3 / 1630).toFixed(2) + ' % of rated at 3 MW -- REPORTED only;' +
       ' the "4-5 %" figure is a RECALLED band and may not confirm anything, D3 §1a)');
   }
+  /* THE ONE IN-CORPUS MAGNITUDE ANCHOR, found by audit #488 A3 and uncited until now. Ginna TS
+   * Bases (ML20339A221), verbatim: "as high as 3% RTP can be removed by natural circulation
+   * alone (Ref. 4)". A CAPABILITY statement, not a flow fraction — so the check is the
+   * capability: at 3 % RTP (9 MW) the settled loop must carry the heat with the core still
+   * SUBCOOLED at design pressure (measured implied core dT ~27 degF). The flow MAGNITUDE
+   * remains unasserted, which stays the right posture — no document gives one. */
+  var n9 = S.createPlant({ h: 1250, P: 15.41, mdot: 30, omega: 0, pumpTripped: true });
+  for (var i9 = 0; i9 < NSET; i9++) S.stepPlant(n9, 0.02, { corePower: 9000, sgDuty: 9000 });
+  var core9 = null;
+  for (var c9 = 0; c9 < n9.nodes.length; c9++) if (n9.nodes[c9].id === 'core') core9 = n9.nodes[c9];
+  ckT('3 % RTP is removable by natural circulation alone with the core SUBCOOLED (Ginna TS Bases)',
+      n9.mdot_loop > 5 && core9.h < W.h_f(n9.P),
+      n9.mdot_loop.toFixed(1) + ' kg/s at 9 MW, core h ' + core9.h.toFixed(0) + ' vs h_f ' +
+      W.h_f(n9.P).toFixed(0) + ' kJ/kg -- a loop that boils its core at 3 % RTP fails the ' +
+      'sourced capability');
 
   /* ---- 4. PUMP WORK IS A LOCATED SOURCE ----------------------------------------------- */
   if (!quiet) console.log('\nPUMP WORK  [LOCATED at the RCP, not smeared as a fraction of core heat]');

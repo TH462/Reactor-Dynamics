@@ -202,6 +202,27 @@ ckT('the Courant limit held at the house cadence, with no substepping',
 ckT('both runs completed their full horizon', ON.t > 1190 && OFF.t > 1190,
     ON.t.toFixed(0) + ' s and ' + OFF.t.toFixed(0) + ' s of plant');
 
+/* ---- #487: THE ENDGAME PAST THE FLOOR ------------------------------------------------------
+ * The filed case: a 5 cm2 break ran clean for 840 s and went NaN in the reactor the step after
+ * pressure touched the 0.1 MPa property floor. Re-measured 2026-08-18: the pump density
+ * coupling (landed after the issue was filed) changed the endgame — the plant now drains to
+ * ~0.08 % inventory and FLOATS just above the floor, finite, indefinitely. That cure was
+ * incidental, so this section pins it, and pwr2_core now carries a beyond-model latch
+ * (flooredLow + enthalpy clamp -> held state) as the guaranteed backstop for any state that
+ * DOES make the floor mass-inconsistent; the latch itself is unit-tested in run_pwr2_core. */
+head('#487 ENDGAME  [the filed NaN was cured incidentally; this is what keeps it cured]');
+var END = scenario({ feedback: true, secs: 1800, area_m2: 0.0005 });
+var endHFinite = true;
+END.sys.nodes.forEach(function (n) { if (!isFinite(n.h)) endHFinite = false; });
+ckT('the filed 5 cm2 case reaches the floor REGION — the check is not passing above the endgame',
+    END.sys.P < 0.5 && 100 * END.sys.M_total / END.M0 < 1.0,
+    END.sys.P.toFixed(3) + ' MPa, ' + (100 * END.sys.M_total / END.M0).toFixed(2) +
+    ' % inventory at 1800 s — a run that never got here would prove nothing');
+ckT('...and the plant is FINITE there, held or floating — never NaN (#487)',
+    END.nonFinite === 0 && isFinite(END.sys.P) && isFinite(END.sys.mdot_loop) && endHFinite,
+    'P ' + END.sys.P.toFixed(3) + ' MPa in-envelope, every node enthalpy finite through ' +
+    END.t.toFixed(0) + ' s; beyond_model latch ' + (END.sys.beyond_model ? 'FIRED' : 'not needed'));
+
 console.log('\n' + '='.repeat(70));
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 console.log('  run_pwr2_coredamage: ' + pass + ' passed, ' + fail + ' failed  (' +

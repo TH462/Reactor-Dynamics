@@ -29,6 +29,64 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-18-backshop-a (#479 — the as-built audit adjudicated, every confirmed finding landed, and #487 turned out already cured)
+
+**Ask:** pick up PWR2 after the #488 as-built audit completed; owner rulings this session: **no
+merges until explicitly ordered** (develop is 3 commits ahead of backshop — noted, untouched),
+run the **full D12 evidence pass**, and **include the #487 fix** in the batch.
+**Gates:** `run_all` full at baseline (see the commit for the tally), seven `BASELINES` entries
+moved, every one annotated. **Filed:** #490 (void-as-quality), #491 (dump valve %), #492
+(provenance umbrella) — all three resolved in the same commit, per charter §5.3. **#487**
+commented `status-work-complete`. **#488** adjudicated and closed, convergence row on #221.
+**Detail:** `Blueprint/PWR2_VALIDATION.md` §41–42; this entry carries the traps.
+
+**The audit held up under re-measurement.** Its three load-bearing harnesses (`d10_void`,
+`a1_hgap`, `c9_e18_fixture`) reproduce exactly on HEAD `ec051d1` — one commit past the audited
+SHA — so the RPS commit moved none of the findings. The fixes, in one line each: **quality is no
+longer published as void fraction** (Layer 0 `voidFraction(h,P)`; 1.53 % quality = 8.37 % void
+at 2235 psia, pinned against independent volume algebra at two layers, mutation replays of the
+shipped defect red 10 checks each); **`steam_dump_valve_pct` publishes `pwr2_relief`'s own
+`dump_demand`** (the retyped 0.28 is gone; pinned on a commanded-open dump with the condenser
+unavailable — 40 % open, 0 kg/s, where the flow form read 0 %); **`vapor_ratio` is [derived]**
+(WCAP-16009 Table 10-3 read from the page image puts the Dittus-Boelter group at 0.403–0.551
+over 502–1334 psia, so the shipped 0.5 stands as the band's representative — the value did not
+move, only its provenance); **`dittus_exp` is [sourced-form]** (Ginna names Dittus-Boelter
+verbatim); plus the stale-prose set (581.8 °C → 684.2, the β-mismatched kinetics validation
+claim, the B6 bound rewritten around its real ±12 % hydrogen width, the D11 h_stagnant
+rationale inverted, the E17.5 severity/timeline scoping, two shim caveats, the A3 nat-circ
+capability check).
+
+**⚠ The trap of the day: an issue's failure mode can be CURED INCIDENTALLY while the issue
+stays open, and nothing notices.** #487's 5 cm² floor NaN does not reproduce at HEAD — measured
+3600 s at 5/20/50 cm², the plant drains to 0.08 % inventory and floats finite at 15.7 psia —
+because the pump density coupling (`99ed53c`, landed hours after the issue was filed) changed
+the endgame it described. An incidental cure is one physics change from un-curing, so it is now
+PINNED (`run_pwr2_coredamage` third scenario: reaches the floor region AND stays finite) and
+the class is BACKSTOPPED (`pwr2_core` latches `beyond_model` when the solve pins at the floor
+while nodes clamp; later steps HOLD, state frozen, time flowing; `stepPlant` freezes rotor and
+momentum with it). The latch never fires on any reachable scenario today — it is reached in the
+gate by a sink drive the plant cannot produce, and both halves of the condition are required
+because each alone fires on a healthy plant (the clamp transiently in a 50 cm² break, the floor
+benignly while mass still closes).
+
+**⚠ Second trap, inherited but worth its own line: the discriminating fixture is in the LOW
+range, not the extreme.** A 40 % quality core cannot tell quality from void fraction (0.40 vs
+0.80, both clear any coarse band); 1.53 % can (0.0153 vs 0.084). The audit's harnesses, this
+session's checks and both mutations all live at low quality for that reason.
+
+**Housekeeping debt found:** the RPS session (`ec051d1`, 2026-08-17 evening) wrote its record
+to `PWR2_VALIDATION.md` §40 and the commit message but **no TUNING_LOG entry** — noted here
+rather than back-filled under a fabricated session heading. Its content: Ginna Table 15.0-6
+setpoints with delays, P-10 as a permissive-gated enable, OTΔT declared absent (the two corpus
+documents transpose units on the constants), and the finding that the settling fixture sits
+490 psia below the sourced low-pressure trip — #486 escalated accordingly.
+
+**Still open on #479, in rank order:** the pressurizer/pressure-control layer (blocks every
+protection and casualty scenario, #486; the owner decision point), the secondary dump/Tavg
+layer (needed before §42's #489 acceptance case can run at all), OTΔT (blocked on a document
+that types the equation and constants in one place), and the DELAYED group data evidence pass
+(now honestly [recalled]).
+
 ## Session log — 2026-08-17-backshop-a (#479 — core damage built, and three defects that had to be cleared before it could work at all)
 
 **Ask:** core damage was chosen over the protection layer *(owner ruling, 2026-08-17, selecting the

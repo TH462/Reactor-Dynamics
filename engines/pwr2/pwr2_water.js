@@ -335,6 +335,21 @@
     return (h_kJkg - hf) / (hg - hf);
   }
 
+  /* voidFraction(h,P) — homogeneous (no-slip) void fraction, alpha = x*vg / (x*vg + (1-x)*vf).
+   * NOT the same number as quality: specific volumes differ ~5-16x across this plant's pressure
+   * range, so 1.53 % quality is 8.4 % void at 15.41 MPa and 24.0 % at 7 MPa. The engine shipped
+   * three claims that HEM makes them "the same number by construction" — HEM makes alpha
+   * COMPUTABLE from x in this one line; it does not make them equal (#490, audit #488 D10.2).
+   * Same vf/vg construction as rho_from_h below, so alpha and the mixture density agree:
+   * rho_from_h == (1-alpha)*rho_f + alpha*rho_g as an identity. */
+  function voidFraction(h_kJkg, P_MPa) {
+    var x = quality(h_kJkg, P_MPa);
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    var vf = 1.0 / rho_l(T_sat(P_MPa), P_MPa), vg = 1.0 / rho_v_sat(P_MPa);
+    return x * vg / (x * vg + (1 - x) * vf);
+  }
+
   /* T_from_h(h,P) — THREE REGIMES. The node model integrates enthalpy, so this is how a node
    * reports its temperature, and getting the regime wrong is how a dry node reads as boiling
    * water for ever. */
@@ -380,7 +395,7 @@
     h_l: h_l, rho_l: rho_l, bulk_modulus: bulk_modulus, k_comp: k_comp,
     h_fg: h_fg, h_fg_T: h_fg_T, h_f: h_f, h_g: h_g,
     rho_v_sat: rho_v_sat, h_v: h_v, rho_v: rho_v, cp_v: cp_v,
-    quality: quality, T_from_h: T_from_h, rho_from_h: rho_from_h,
+    quality: quality, voidFraction: voidFraction, T_from_h: T_from_h, rho_from_h: rho_from_h,
     subcooling: subcooling, rangeOK: rangeOK,
     LIMITS: { P_MIN: P_MIN, P_MAX: P_MAX, T_MIN: T_MIN, T_MAX: T_MAX, TV_MAX: TV_MAX,
               P_CRIT: P_CRIT, T_CRIT: T_CRIT }

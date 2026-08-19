@@ -26,7 +26,14 @@
  *     prompt eigenvalue, scrammed      -2825 /s      (§15: -2,820), dt/tau = 57  (§15: 56)
  *     EXPLICIT Euler, one 0.02 s step   n = 0.000e+0   <- diverges, exactly as §15 states
  *     ANALYTIC,        one 0.02 s step  n = 1.000000 at rho = 0 — critical STAYS critical
- *     ANALYTIC at rho = -101 pcm        n = 0.865167   <- §15's own quoted number, to 6 decimals
+ *     ANALYTIC at rho = -101 pcm        n = 0.864935 with the SHIPPED beta = 0.006502
+ *
+ * ⚠ §15's quoted 0.865167 was computed at beta = 0.00645 and this header claimed to reproduce
+ * it "to 6 decimals" — as built the fourth decimal differs (audit #488 C7.2), because the
+ * validation table was not re-measured after the group data moved. The integrator itself is
+ * exact for the stated model (audit C7.1: independent RK4, rel err <= 9e-15 per step, 8.3e-12
+ * over a 500-step scram); it is the CLAIM that was stale. Re-measure this line whenever
+ * DELAYED moves.
  *
  * **DO NOT SUB-STEP.** `PWR2_TURNOVER.md` records that a sub-step returning early makes the service
  * clock run ahead of the physics silently — `simulation_service.js` credits `simTime += steps *
@@ -74,12 +81,21 @@
   /* SIX DELAYED GROUPS — the standard U-235 thermal-fission set. [sourced]
    * beta is stored pre-summed AND checked against sum(beta_i) by the gate, because a redundant
    * total that silently disagrees with its own parts is a defect waiting to happen. */
+  /* SIX DELAYED GROUPS — [recalled]. These are the standard U-235 thermal-fission group data
+   * (Keepin's), and the tag matters: `find_source` returns ZERO hits for them across all three
+   * lanes' corpora, and the only delayed-neutron figures the corpus does hold are Ginna ch15's
+   * BOUNDING beta_eff of 0.49 %/0.43 % — deliberately low licensing values, not group data.
+   * This block shipped tagged "[sourced] typical PWR value"; "typical" is not a source, which
+   * is this engine's own rule (audit #488 C7.3). An evidence pass owes the group data a real
+   * document. */
   var DELAYED = {
+    kind:     '[recalled]',
     beta_i:   [0.000215, 0.001424, 0.001274, 0.002568, 0.000748, 0.000273],
     lambda_i: [0.0124,   0.0305,   0.111,    0.301,    1.14,     3.01],
     beta:     0.006502,
-    /* PROMPT NEUTRON GENERATION TIME — the REAL one. [sourced] typical PWR value, and the whole
-     * reason this file integrates analytically. `PWR2_PHYSICS.md` §15 measures with 2.0e-5 s. */
+    /* PROMPT NEUTRON GENERATION TIME — the REAL one, [recalled] like the groups above, and the
+     * whole reason this file integrates analytically. `PWR2_PHYSICS.md` §15 measures with
+     * 2.0e-5 s. */
     Lambda:   2.0e-5
   };
 
@@ -161,11 +177,12 @@
   /* THE FEEDBACK REFERENCES. Both feedbacks are zero at these by construction, so they are
    * perturbative about the rated condition rather than absolute.
    *
-   * ⚠ THE FUEL REFERENCE IS DERIVED, AND IT MOVED. It was 693 degC, inherited from the first
-   * engine, whose fuel rise came out of two `[tune]` constants. pwr2_fuel.js derives the rise from
-   * sourced rod geometry and a real resistance stack and gets 581.8 degC at rated power. Doppler is
-   * perturbative about this number, so leaving 693 in place injected
-   * alpha_D * (T_fuel - T_ref) AT FULL POWER out of nothing at all.
+   * ⚠ THE FUEL REFERENCE IS DERIVED, AND IT MOVED — TWICE. It was 693 degC, inherited from the
+   * first engine, whose fuel rise came out of two `[tune]` constants. pwr2_fuel.js derives the
+   * rise from sourced rod geometry and a real resistance stack: 581.8 degC at an early h_gap,
+   * 684.2 degC at the solved h_gap of 3000 that ships (this comment quoted 581.8 for a day
+   * after the solve moved — audit #488 A1.5). Doppler is perturbative about this number, so a
+   * stale reference injects alpha_D * (T_fuel - T_ref) AT FULL POWER out of nothing at all.
    *
    * This is `pwr2_fuel.steadyFuelTemp(geom, rated_kW, T_mod_ref)`. It is written here as a literal
    * rather than imported so that Layer 5 files stay independent of each other — but it is a DERIVED
@@ -525,8 +542,10 @@
    * The first version had no such argument and evaluated Doppler at `T_c` — the moderator
    * temperature — for both feedbacks. That is correct ONLY at zero power, where there is no heat
    * to drive a fuel-to-coolant rise, and it is the condition the 975 ppm anchor is measured at.
-   * Used at RATED power it is wrong by alpha_D * (581.8 - 304.5) = 693 pcm, because the fuel is
-   * 277 degC above the coolant and the function assumed it was not.
+   * Used at RATED power it is wrong by alpha_D * (T_fuel_hfp - 304.5) — 693 pcm as measured
+   * below on the then-current stack (T_fuel 581.8; the shipped h_gap solve puts it at 684.2,
+   * making the error ~949 pcm today) — because the fuel is hundreds of degC above the coolant
+   * and the function assumed it was not.
    *
    * MEASURED, using it to trim boron at rated: the plant started 693 pcm subcritical, power fell
    * to 43 %, and it then bought the reactivity back by COOLING 16 degC — settling at a Tavg of

@@ -81,17 +81,21 @@
    * coolant temperature, and this file's whole job is to supply what the layers below will not
    * assume. Both come straight off the plant:
    *
-   *   voidFrac  the core node's static quality. Layer 2 is homogeneous equilibrium — no slip —
-   *             so quality and void fraction are the same number by construction. That is also
-   *             why `core_uncovered_frac` stays declared-missing: a LEVEL needs a free surface
-   *             this engine does not have, and that machinery is #472's.
+   *   voidFrac  the core node's HOMOGENEOUS VOID FRACTION, W.voidFraction(h, P) — the volume
+   *             fraction the vapour occupies, which is what a film coefficient's phase term is
+   *             written against. This shipped as static QUALITY under a claim that HEM makes
+   *             them "the same number by construction"; they differ 5-16x over this plant's
+   *             pressure range (1.53 % quality = 8.4 % void at 15.41 MPa, 24.0 % at 7 MPa) and
+   *             the no-slip assumption only makes alpha computable from x, never equal to it
+   *             (#490, audit #488 D10.2). `core_uncovered_frac` still stays declared-missing:
+   *             a LEVEL needs a free surface this engine does not have — #472's machinery.
    *   flowFrac  loop mass flow against rated. It is the term that matters: measured through a
    *             small-break blowdown, `mdot_loop` falls 1630 -> 14 kg/s, and that is what ends
    *             forced convection, not the phase change on its own (D4 §36). */
   function coreRegime(sys) {
     var v = 0;
     for (var i = 0; i < sys.nodes.length; i++) {
-      if (sys.nodes[i].id === 'core') { v = W.quality(sys.nodes[i].h, sys.P); break; }
+      if (sys.nodes[i].id === 'core') { v = W.voidFraction(sys.nodes[i].h, sys.P); break; }
     }
     if (!isFinite(v) || v < 0) v = 0;
     var f = sys.mdot_loop === undefined ? 1 : sys.mdot_loop / MDOT_RATED;

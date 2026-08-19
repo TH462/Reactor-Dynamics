@@ -192,6 +192,22 @@ function runSuite(F, rec, quiet) {
    * convection. */
   ck('a stagnant, voided core floors at the natural-convection value, not at zero',
      F.filmCoefficient(0, 1), F.OPEN.h_stagnant.value, 1e-12, 'W/m2K');
+  /* vapor_ratio IS NOW DERIVED FROM SOURCED DATA (audit #488 D12 refuted the "corpus has
+   * neither" claim), and the derivation is pinned here with the source's own rows: WCAP-16009
+   * Table 10-3, read from the page image. The Dittus-Boelter property group evaluated on
+   * those rows brackets the constant -- move the constant outside the sourced band, or break
+   * the group's exponents, and this reds. */
+  function dbGroup(kf, kg, cf, cg, mf, mg) {
+    return Math.pow(kg / kf, 0.6) * Math.pow(cg / cf, 0.4) * Math.pow(mg / mf, -0.4);
+  }
+  var vrLo = dbGroup(0.36401, 0.02841, 1.13990, 0.85307, 0.26501, 0.04183);   /* 502 psia */
+  var vrMid = dbGroup(0.32846, 0.03684, 1.30120, 1.26690, 0.21846, 0.04636);  /* 1050 psia */
+  var vrHi = dbGroup(0.31134, 0.04174, 1.41290, 1.54050, 0.20318, 0.04837);   /* 1334 psia */
+  ck('the sourced property group at 1050 psia (WCAP-16009 Table 10-3)', vrMid, 0.495, 0.002, '-');
+  ckT('vapor_ratio sits inside the sourced band over the blowdown regime',
+      F.OPEN.vapor_ratio.value >= vrLo && F.OPEN.vapor_ratio.value <= vrHi,
+      F.OPEN.vapor_ratio.value + ' against ' + vrLo.toFixed(3) + '..' + vrHi.toFixed(3) +
+      ' (502..1334 psia) -- a constant outside what its own source brackets is recall again');
 
   /* THE CLAD IS A BODY WITH A MASS, and the mass is what makes the oxidation history right --
    * Baker-Just is an exponential in temperature INTEGRATED OVER TIME, so a clad that steps

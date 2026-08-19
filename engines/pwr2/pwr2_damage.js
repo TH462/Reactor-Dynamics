@@ -79,7 +79,11 @@
  *
  * These compound with `pwr2_fuel.js`'s own two optimistic declarations (no departure from nucleate
  * boiling, and a coolant clamped at the 800 degC property ceiling) rather than cancelling them.
- * **This model understates damage, and every declared simplification points the same way.**
+ * **This model understates damage SEVERITY, and within this file every declared simplification
+ * points that way.** ⚠ The claim is scoped to the severity chain and does NOT compound across
+ * files onto the TIMELINE: `pwr2_break.js` declares (and measured) a ~2x overstatement of
+ * discharge flux, which uncovers the core EARLY — pessimistic for the timeline. Severity is
+ * single-signed optimistic; timing is not single-signed at all (audit #488 E17.5).
  *
  * UNITS ARE SI INTERNALLY except `w`, which is carried in the SOURCE'S OWN mg/cm2 so the rate law
  * can be typed exactly as the document states it. Converted once, at the boundary.

@@ -65,9 +65,17 @@
 
   var IN = 0.0254;                 /* in -> m */
 
-  /* ---- SOURCED: ML050910161 Fig 3-1, Westinghouse 17x17 lattice ---------------------------- */
+  /* ---- SOURCED: ML050910161 Fig 3-1, Westinghouse 17x17 lattice ----------------------------
+   * All three numbers verified against the page IMAGE, not just the OCR text layer (audit #488
+   * B5 + follow-up): the pitch's last digit is OCR-ambiguous (the text layer reads "0.495") and
+   * was settled by glyph comparison at 2400 dpi — the printed digit is the figure's own "6",
+   * so 0.496 in / 12.6 mm stands 3-for-3 with the rod OD and thimble cross-checks.
+   * ⚠ THE FIGURE IS A 161-ROD FLECHT-SEASET TEST BUNDLE. It sources the LATTICE (OD, pitch,
+   * thimble); the full-assembly LAYOUT below (289 positions, 24 thimbles + 1 instrument tube)
+   * is [recalled] — correct for a real W 17x17, but no document in the corpus states it, and it
+   * shipped untagged in this block's sourced adjacency (audit B5.3). */
   var GEOM = {
-    kind:        '[sourced]',
+    kind:        '[sourced]',      /* the three lattice dimensions; the 264-rod layout is [recalled] */
     rod_od_in:   0.374,            /* 9.50 mm */
     rod_pitch_in:0.496,            /* 12.6 mm */
     thimble_in:  0.474,            /* 12.0 mm */
@@ -81,21 +89,34 @@
     clad_t_in:     0.0225,
     gap_t_in:      0.00325,        /* radial; pellet = rod_od - 2*(clad + gap) = 0.3225 in */
     why: 'Pellet diameter and clad thickness return 0 hits across 35 documents in 3 lanes. The ' +
-         'sourced rod OD bounds them: over the full plausible range (clad 0.020-0.026, gap ' +
-         '0.002-0.0045) M_fuel moves +/-6 % and the steady-state fuel rise moves 0 %, because ' +
-         'M_fuel is a TIME CONSTANT here and not a lever arm. D1 section 34.2 carries the sweep.'
+         'sourced rod OD bounds them, but the bound is NARROWER than it used to claim (re-swept ' +
+         'by audit #488 B6 after the clad became a thermal node): over clad 0.020-0.026 in the ' +
+         'steady fuel rise moves ~2 % (was quoted 0 % -- clad thickness now participates in the ' +
+         'stack), the damage timeline ~1 %, and -- the term the old bound never covered -- ' +
+         'M_clad moves -10/+14 %, so TERMINAL HYDROGEN and every 50.46 criterion-3 figure carry ' +
+         'a +/-12 % width (84.5-108.0 kg) from this unsourced 0.006-inch spread. Do not cite ' +
+         'the old "M_fuel +/-6 %, rise 0 %" form for the damage chain.'
   };
 
   /* ---- OPEN: unsourced, and an evidence pass owes every one of these ------------------------ */
   var OPEN = {
     h_gap: {
       value: 3000,                 /* W/m2K — SOLVED, see below */
-      why: 'Gap conductance. No numeric value in the corpus — `find_source` returns zero across ' +
-           '35 documents in 3 lanes, and 10 CFR 50 App. K names MATPRO-11 Rev. 1 (Hagrman, ' +
-           'Reymann, Mason 1980) without our holding it. So it is SOLVED rather than recalled, ' +
-           'the same pattern as rho_excess: it is whatever makes the DOPPLER DEFECT come out at ' +
-           'the sourced figure. Ginna UFSAR ch15 (ML20339A101) rod-ejection table: "Doppler ' +
-           'defect, pcm 1000 1000 950 950". 3000 W/m2K gives 981 pcm, mid-range. D1 section 35.'
+      why: 'Gap conductance. No STEADY-STATE value in the corpus (the categorical "zero hits" ' +
+           'this used to claim was false -- Ginna ch15 sec 15.3.2.4.2 carries 10,000 ' +
+           'Btu/hr-ft2-F (56,780 W/m2K) as a TRANSIENT bounding assumption, ~19x this steady ' +
+           'value; audit #488 A1.4), and 10 CFR 50 App. K names MATPRO-11 Rev. 1 without our ' +
+           'holding it. So it is SOLVED rather than recalled, the same pattern as rho_excess: ' +
+           'it is whatever makes the DOPPLER DEFECT come out at the sourced figure. Ginna ' +
+           'UFSAR ch15 (ML20339A101) rod-ejection table: "Doppler defect, pcm 1000 1000 950 ' +
+           '950". 3000 W/m2K gives 981 pcm, mid-range. D1 section 35. TWO CAVEATS THE SOLVE ' +
+           'CARRIES (audit #488 A1.2/A1.3): (1) the defect is alpha_D * dT_fuel, so ONE anchor ' +
+           'pins the PRODUCT of two unknowns -- re-source alpha_D (itself an OPEN linear ' +
+           'placeholder) and h_gap re-solves in inverse proportion, taking every fuel ' +
+           'temperature with it; (2) the anchor is another plant\'s rod-ejection LICENSING ' +
+           'input (post-uprate Ginna, 1811 MWt, 14x14, a conservative figure at a materially ' +
+           'higher linear heat rate than this plant\'s 4.39 kW/ft) -- the quantity KIND is ' +
+           'right, the NUMBER is a transplant.'
     },
     k_clad: {
       value: 16.0,                 /* W/mK, Zircaloy */
@@ -114,29 +135,43 @@
      * Three numbers, each doing a distinct job, none of them chosen to make anything come out. */
     dittus_exp: {
       value: 0.8,
-      why: 'The Reynolds exponent in Dittus-Boelter, h ~ G^0.8. Textbook and uncontroversial, ' +
-           'but NOT in this corpus, so it is OPEN like everything else here. It is the term that ' +
+      why: '[sourced-form] The Reynolds exponent in Dittus-Boelter, h ~ G^0.8 -- and the ' +
+           'CORRELATION is named in the corpus: Ginna UFSAR ch15 (ML20339A101), verbatim, ' +
+           '"FACTRAN uses the Dittus-Boelter or Jens-Lottes correlation to determine the film ' +
+           'heat transfer before DNB". 0.8 is that correlation\'s defining exponent, so the ' +
+           'form is sourced even though no document types the digit (this entry shipped ' +
+           'claiming the corpus had nothing; audit #488 D12 refuted that). It is the term that ' +
            'carries the collapse of forced convection as the loop flow decays.'
     },
     vapor_ratio: {
       value: 0.5,
-      why: 'Film coefficient in pure vapour against pure liquid AT THE SAME MASS FLUX. From the ' +
-           'property group h ~ k^0.6 * cp^0.4 * mu^-0.4 evaluated near 300 degC, which gives ' +
-           '~0.50 -- higher than intuition because at equal MASS flux the vapour moves far ' +
-           'faster. UNSOURCED: Layer 0 carries no conductivity or viscosity and the corpus has ' +
-           'neither. The real collapse on a voided core comes from the FLOW term, not this one.'
+      why: '[derived] Film coefficient in pure vapour against pure liquid AT THE SAME MASS ' +
+           'FLUX, from the Dittus-Boelter property group (k^0.6 * cp^0.4 * mu^-0.4)_g / (...)_f ' +
+           '-- and since 2026-08-18 the properties are IN-CORPUS: WCAP-16009-NP-A ' +
+           '(ML050910161) Table 10-3 "Vessel Component Saturated Water Thermal Properties" ' +
+           '(90 saturation rows, read from the page image -- the OCR text layer is mangled). ' +
+           'Evaluated on the table\'s own rows: 0.403 at 502 psia, 0.495 at 1050 psia, 0.535 ' +
+           'at 1260 psia, 0.551 at 1334 psia -- so 0.5 is the representative constant of a ' +
+           'sourced 0.40-0.55 band over the blowdown regime, not a recalled point. ' +
+           'Cross-check: the same document\'s vapor correlations (eqs 10-20..10-23, ASME 1968 ' +
+           'forms) reproduce the table\'s k_g at 300 degC to 3 % and mu_g to 0.3 %. The old ' +
+           'claim here -- "the corpus has neither" conductivity nor viscosity -- was false ' +
+           '(audit #488 D12). The real collapse on a voided core still comes from the FLOW ' +
+           'term, not this one.'
     },
     h_stagnant: {
       value: 10,                   /* W/m2K */
       why: 'The floor when forced flow stops: natural convection from a rod to a gas, textbook ' +
            'range 5-25 W/m2K. UNSOURCED. It exists because h ~ G^0.8 goes to ZERO at zero flow ' +
            'and a rod with no heat sink at all has an infinite temperature rise, which is not ' +
-           'physics, it is a missing regime. ⚠ THIS NUMBER, MORE THAN ANY OTHER HERE, DECIDES ' +
-           'WHETHER CORE DAMAGE IS REACHABLE -- clad temperature at decay heat is Q/(S*h), so it ' +
-           'is very nearly inversely proportional to it. It was therefore chosen ON PHYSICAL ' +
-           'GROUNDS FIRST and the reachability of the 10 CFR 50.46 2200 degF limit MEASURED ' +
-           'afterwards and reported, rather than the other way round. If a later evidence pass ' +
-           'moves it, the damage timeline moves with it and that is correct.'
+           'physics, it is a missing regime. ⚠ AND IT ALMOST NEVER BINDS (audit #488 D11, ' +
+           'refuting this file\'s original "decides whether core damage is reachable" claim): ' +
+           'the pump-density equilibrium leaves a RESIDUAL forced flow, and the forced term ' +
+           'evaluated there (min 23.1 W/m2K pump-on, 10.2 tripped) stays at or above this ' +
+           'floor -- measured, the floor bound for 0.0 s of a 1200 s damage ride, and sweeping ' +
+           'it 5-25 moved the timeline at most ~10 %. What actually sets the low-flow film ' +
+           'coefficient is h_film * flowFrac^dittus_exp * phase at that residual flow -- i.e. ' +
+           'dittus_exp, vapor_ratio and the pump density coupling, not this number.'
     },
     q_to_fuel: {
       value: 0.974,
@@ -207,7 +242,9 @@
     var clad_ri   = pellet / 2 + SPLIT.gap_t_in * IN;
     var clad_ro   = rod_od / 2;
 
-    /* 17x17 = 289 positions, less 24 guide thimbles and 1 instrument tube = 264 fuel rods. */
+    /* 17x17 = 289 positions, less 24 guide thimbles and 1 instrument tube = 264 fuel rods.
+     * [recalled] — see the GEOM header: the sourced figure shows a 161-rod test bundle, and no
+     * corpus document states the full-assembly layout. */
     var nRod = GEOM.lattice_n * GEOM.lattice_n - 25;
 
     /* ACTIVE HEIGHT — derived, see the header. Assembly pitch from the SOURCED rod pitch. */
@@ -243,6 +280,11 @@
   }
 
   /* filmCoefficient(flowFrac, voidFrac) -> W/m2K
+   *
+   * voidFrac is the homogeneous VOID FRACTION — the volume fraction, which is what a
+   * (1-void) + void*ratio blend is written against. It shipped receiving QUALITY from
+   * coreRegime (5-16x smaller in the two-phase range), which made the phase factor read 0.989
+   * where the void form gives 0.906 at 18.8 % true void (#490, audit #488 D10.2).
    *
    * The clad-to-coolant coefficient, as a function of what the coolant is DOING rather than as a
    * constant. Two multiplicative factors on the rated anchor, plus a floor:
@@ -330,11 +372,14 @@
    * fixed-point iteration converges in a handful of passes. It exists because THE DOPPLER
    * REFERENCE MUST BE THIS PLANT'S OWN FULL-POWER FUEL TEMPERATURE, not a number carried over.
    *
-   * ⚠ THE CARRIED-OVER NUMBER IS WRONG FOR THIS PLANT. pwr2_kinetics.js defaults
-   * `T_fuel_ref_c: 693.0`, inherited from the first engine. This model derives 581.8 C at rated
-   * power. Doppler is perturbative about the reference — rho_dop = alpha_D * (T_f - T_ref) — so
-   * leaving 693 in place puts -2.5e-5 * (581.8 - 693) = +278 pcm of reactivity into the core AT
-   * FULL POWER, which is a quarter of a rod bank's worth, from nothing but a stale default.
+   * ⚠ THE CARRIED-OVER NUMBER IS WRONG FOR THIS PLANT. pwr2_kinetics.js used to default
+   * `T_fuel_ref_c: 693.0`, inherited from the first engine. This model derives 684.2 C at rated
+   * power at the solved h_gap of 3000 (an earlier h_gap derived 581.8, and this comment sat
+   * stale at that figure for a day while the constant moved — audit #488 A1.5; the number here
+   * is the SOLVE'S OUTPUT and rots the moment the stack moves, which is the point of the rule
+   * below). Doppler is perturbative about the reference — rho_dop = alpha_D * (T_f - T_ref) —
+   * so a reference off by 100 C puts alpha_D * 100 = ~250 pcm of phantom reactivity into the
+   * core AT FULL POWER, a quarter of a rod bank's worth, from nothing but a stale default.
    *
    * Construct kinetics with `T_fuel_ref_c: steadyFuelTemp(...)`, and RE-SOLVE it whenever the
    * resistance stack or the pellet split moves. This is the same class of dependency as
