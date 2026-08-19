@@ -21,7 +21,8 @@ var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var fs = require('fs');
 
 function loadAll(pzSource) {
-  ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources'
+  ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
+   'pwr2_cvcs'
   ].forEach(function (f) {
     delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
@@ -37,7 +38,7 @@ function loadAll(pzSource) {
 }
 
 function runSuite(RD, rec, quiet) {
-  var W = RD.water, S = RD.sources, PZ = RD.pressurizer;
+  var W = RD.water, S = RD.sources, PZ = RD.pressurizer, CV = RD.cvcs;
   var DT = 0.02, PSI = 145.037738;
 
   function ck(name, got, want, tol, unit) {
@@ -211,6 +212,84 @@ function runSuite(RD, rec, quiet) {
     for (var k = 0; k < s.nodes.length; k++) if (s.nodes[k].id === 'core') return s.nodes[k].h;
   }
 
+  /* ---- 5b. THE LEVEL CONTROL SYSTEM (stage 2a — WTSM 10.3) --------------------------------- */
+  head('LEVEL CONTROL  [PI on charging; the program follows Tavg; two sourced protections]');
+  ck('the program runs 25 % at the no-load Tavg', 100 * PZ.levelProgram(291.67), 25, 1e-9, '%');
+  ck('...to 61.5 % at the full-power Tavg', 100 * PZ.levelProgram(304.5), 61.5, 1e-9, '%');
+  ckT('...and CLAMPS beyond both ends — a cooldown below no-load does not program a vacuum',
+      Math.abs(PZ.levelProgram(280) - 0.25) < 1e-12 &&
+      Math.abs(PZ.levelProgram(320) - 0.615) < 1e-12, '');
+  ck('the low-level cut is the sourced 17 %', PZ.LEVEL.low_cut_pct, 17, 0, '%');
+  ck('the high-level alarm is the sourced 70 %', PZ.LEVEL.hi_alarm_pct, 70, 0, '%');
+  ck('the anticipatory backup-heater band is the sourced +5 %',
+     PZ.LEVEL.backup_above_program_pct, 5, 0, '%');
+  /* The +5 % anticipator: a vessel ABOVE program energises the backup heaters even with
+   * pressure AT setpoint — "the insurge water is cooler ... automatically energizes the backup
+   * heaters in an effort to offset that effect" (WTSM 10.3.4). */
+  var pzHi = PZ.createPressurizer({ level_frac: 0.615 + 0.07 });
+  var rHi = PZ.stepPressurizer(pzHi, stub(15.41), DT, { tavg_c: 304.5 });
+  ckT('level 7 % ABOVE program energises the backup heaters at setpoint pressure',
+      rHi.backup_on === true, 'the sourced anticipator, not the pressure ladder (err ' +
+      rHi.err_psi.toFixed(1) + ' psi)');
+  var pzLo = PZ.createPressurizer({ level_frac: 0.16 });
+  var rLo = PZ.stepPressurizer(pzLo, stub(at(-40)), DT, { tavg_c: 304.5 });
+  ckT('16 % level CUTS ALL HEATERS and ISOLATES LETDOWN, against a -40 psi error demanding them',
+      rLo.heater_kW === 0 && rLo.letdown_isolated === true && rLo.low_level_cut === true,
+      'a heater in a steam environment is a damaged one (WTSM 10.3.4)');
+  var pzHys2 = PZ.createPressurizer({ level_frac: 0.16 });
+  PZ.stepPressurizer(pzHys2, stub(15.41), DT, {});
+  pzHys2.V_liq = 0.185 * pzHys2.V;                     /* between cut and restore */
+  PZ.stepPressurizer(pzHys2, stub(15.41), DT, {});
+  var stillCut = pzHys2.lowLevelCut;
+  pzHys2.V_liq = 0.21 * pzHys2.V;
+  PZ.stepPressurizer(pzHys2, stub(15.41), DT, {});
+  ckT('...and the cut restores above 20 %, not at its own threshold — a latch needs a differential',
+      stillCut === true && pzHys2.lowLevelCut === false,
+      'still cut at 18.5 %, clear at 21 % — the #447 chatter shape, avoided by construction');
+  ckT('a LOW vessel demands more charging than a vessel ON program',
+      (function () {
+        var a = PZ.createPressurizer({ level_frac: 0.45 });
+        var b = PZ.createPressurizer({});
+        return PZ.stepPressurizer(a, stub(15.41), DT, { tavg_c: 304.5 }).charging_demand >
+               PZ.stepPressurizer(b, stub(15.41), DT, { tavg_c: 304.5 }).charging_demand + 0.2;
+      })(), 'the PI\'s proportional half, in the direction the source states');
+
+  /* CLOSED LOOP with the real CVCS: the plant holds its level near program, and a drain is
+   * answered with full charging. Rides shortened in quiet mode; the loud run asserts the band. */
+  var pzC = PZ.createPressurizer({});
+  var sysC = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzC) });
+  var cvC = CV.createCVCS({});
+  var prC = null, pwC = 0;
+  function rideC(secs, sink) {
+    for (var i = 0; i < secs / DT; i++) {
+      var cr = CV.stepCVCS(cvC, sysC, DT);
+      var srcs = (cr.sources || []).slice();
+      if (sink) srcs.push({ node: 'cold_leg', mdot: -sink, h: W.h_l(288, sysC.P) });
+      var r = S.stepPlant(sysC, DT, { corePower: 300000, sgDuty: 300000 + pwC, sources: srcs });
+      pwC = r.pumpWork_kW;
+      prC = PZ.stepPressurizer(pzC, sysC, DT, { tavg_c: 304.5 });
+      cvC.chargingDemand = prC.charging_demand;
+      cvC.letdownOpen = prC.letdown_isolated ? 0 : 1;
+    }
+    return prC;
+  }
+  rideC(quiet ? 120 : 600, 0);
+  ckT('closed-loop with the CVCS, the level HOLDS near program and the demand is off the rails',
+      Math.abs(prC.level_pct - prC.level_program_pct) < (quiet ? 10 : 4) &&
+      prC.charging_demand < 1 - 1e-9,
+      prC.level_pct.toFixed(1) + ' % against program ' + prC.level_program_pct.toFixed(1) +
+      ' %, demand ' + prC.charging_demand.toFixed(2) + ' — a railed demand is a wound-up ' +
+      'integral, the first closed-loop probe\'s measured defect');
+  var lvlPre = prC.level_pct;
+  rideC(quiet ? 60 : 120, 6.0);
+  var lvlDrained = prC.level_pct, demDrained = prC.charging_demand;
+  rideC(quiet ? 120 : 300, 0);
+  ckT('a 6 kg/s drain pulls the level down and the controller answers with FULL charging',
+      lvlDrained < lvlPre - 10 && demDrained >= 1 - 1e-9 && prC.level_pct > lvlDrained + 1,
+      lvlPre.toFixed(1) + ' -> ' + lvlDrained.toFixed(1) + ' % drained, demand ' +
+      demDrained.toFixed(2) + ', recovering to ' + prC.level_pct.toFixed(1) +
+      ' % — CVCS-scale recovery is SLOW, which is the real plant\'s shape too');
+
   /* ---- 6. THE SOLID REGIME IS REACHABLE ---------------------------------------------------- */
   head('WATER SOLID  [drivable, flagged, and the plant stiffens -- the TMI curriculum\'s regime]');
   var pzS = PZ.createPressurizer({ level_frac: 0.90 });
@@ -257,11 +336,11 @@ var MUTATIONS = [
   ['spray ignores the RCP (a stopped loop sprays anyway)',
    'if (SPRAY.needs_rcp && !(sys.mdot_loop > 100)) sprayFrac = 0;', ''],
   ['the SI heater shed is deleted (the #447 requirement, undone)',
-   'pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied;',
-   'pz.heatersShed = drivers.ac_available === false || pz.emptied;'],
+   'pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied ||\n                     pz.lowLevelCut;',
+   'pz.heatersShed = drivers.ac_available === false || pz.emptied ||\n                     pz.lowLevelCut;'],
   ['backup heaters clear at their own on-point (the sourced -17 hysteresis flattened)',
-   'else if (err_psi >= CONTROL.backup_off_psi) pz.backupOn = false;',
-   'else if (err_psi >= CONTROL.backup_on_psi) pz.backupOn = false;'],
+   'else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;',
+   'else if (err_psi >= CONTROL.backup_on_psi && !backupOnLevel) pz.backupOn = false;'],
   ['the safeties reseat at the lift point (the sourced 5 % blowdown deleted)',
    'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa * RELIEF.safety_reseat_frac) {',
    'else if (pz.safetyOpen && P <= RELIEF.safety_open_mpa) {'],
@@ -276,7 +355,19 @@ var MUTATIONS = [
    'var sprayAuto = clip((err_psi - CONTROL.backup_on_psi) /'],
   ['water-solid never flags (the regime transition clipped away)',
    'pz.waterSolid = pz.h_bar <= hf;',
-   'pz.waterSolid = false;']
+   'pz.waterSolid = false;'],
+  ['the level program is a constant (Tavg never reaches it)',
+   'var f = (Tavg_c - LEVEL.tavg_noload_c) / (LEVEL.tavg_full_c - LEVEL.tavg_noload_c);',
+   'var f = 1;'],
+  ['the 17 % low-level cut is deleted (heaters boil in a steam space)',
+   'if (!pz.lowLevelCut && level_pct <= LEVEL.low_cut_pct) pz.lowLevelCut = true;',
+   'if (false) pz.lowLevelCut = true;'],
+  ['the level PI acts BACKWARD (a low level throttles charging)',
+   'var levErr = program_pct - level_pct;',
+   'var levErr = level_pct - program_pct;'],
+  ['the +5 % anticipatory backup-heater signal is deleted',
+   'var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;',
+   'var backupOnLevel = false;']
 ];
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');

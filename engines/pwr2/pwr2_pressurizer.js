@@ -137,6 +137,48 @@
     src: 'WTSM Fig 10.2-3 (ML11223A287); spray band corroborated by Ginna ch15 Model 1'
   };
 
+  /* ---- THE LEVEL CONTROL SYSTEM (stage 2a, 2026-08-19) — WTSM 10.3 (ML11223A290) ----------
+   * "The difference between the actual pressurizer level and the programmed reference level
+   * signal is supplied to the master pressurizer level controller. If an error signal exists,
+   * this PI (proportional plus integral) controller varies the chemical and volume control
+   * system charging flow." Letdown is CONSTANT in the source's normal lineup; inventory is
+   * maintained by charging alone, which is why the output here is a CHARGING DEMAND the caller
+   * hands to pwr2_cvcs (cv.chargingDemand) — the same caller-wires-the-systems convention as
+   * relief discharge.
+   *
+   * THE PROGRAM is a function of Tavg — "programmed ... as a function of auctioneered high
+   * Tavg, so that it follows the natural expansion characteristics of the reactor coolant" —
+   * from 25 % at the no-load Tavg to 61.5 % at full power. The source's no-load point is
+   * 557 degF, which is EXACTLY this plant's own HZP anchor (291.67 degC, OSTI 1991715); the
+   * full-power end is this plant's design Tavg (304.5 degC), the sourced percentages adopted
+   * over the plant's own temperature span.
+   *
+   * THE PROTECTION LADDER, all sourced (WTSM 10.3.4): level > program + 5 % energises the
+   * BACKUP HEATERS (anticipatory — the insurge water is cooler and will drop pressure);
+   * level <= 17 % ISOLATES LETDOWN and CUTS ALL HEATERS (steam-environment damage); 70 % is
+   * the high-level alarm. The 92 % high-level reactor trip is the 4-loop plant's; Ginna's is
+   * the 87 % this file already carries, and the RPS FUNCTION itself is owed to
+   * pwr2_protection (recorded, not smuggled in here). The 17 % cut's RESTORE deadband is
+   * [open] — the source states the cut only — set at +3 % (restore above 20 %), the shape
+   * #447 measured mattering in the old engine (a latch with no differential chatters). */
+  var LEVEL = {
+    kind: '[sourced percentages over this plant\'s own Tavg span]',
+    tavg_noload_c: 291.67,               /* = the source's 557 degF, and the plant's HZP anchor */
+    tavg_full_c: 304.5,
+    backup_above_program_pct: 5,
+    low_cut_pct: 17,
+    low_cut_restore_pct: 20,             /* [open] deadband, see above */
+    hi_alarm_pct: 70,
+    /* PI gains — [open], plant-tuned quantities in the real system too. Sized so a 10 % level
+     * deficit swings charging by ~half its range about the normal-balance point, and the
+     * integral kills steady error on a ~5 min scale. The GATE pins the closed-loop behaviour
+     * (holds program, restores after a drain), not these two numbers. */
+    kp_per_pct: 0.05,
+    ki_per_pct_s: 1 / 300,
+    demand_bias: 46 / 180                /* the source's "normally maintained at 46 gpm" over
+                                          * its 180 gpm max — the balance point the PI trims */
+  };
+
   var RELIEF = {
     kind: '[derived from sourced anchors]',
     /* Ginna TS Bases: "two PORVs, each having a relief capacity of 179,000 lb/hr at 2335 psig";
@@ -183,8 +225,19 @@
       safetyOpen: false,
       waterSolid: false,
       emptied: false,
-      heatersShed: false
+      heatersShed: false,
+      levErrInt: 0,                      /* the level PI's integral state, %*s */
+      lowLevelCut: false                 /* the 17 % letdown-isolate / heater-cut latch */
     };
+  }
+
+  /* levelProgram(Tavg_c) -> programmed level FRACTION (WTSM 10.3 Fig 10.3-2, the sourced
+   * 25..61.5 % over this plant's own no-load..full-power Tavg span, clamped at both ends). */
+  function levelProgram(Tavg_c) {
+    var f = (Tavg_c - LEVEL.tavg_noload_c) / (LEVEL.tavg_full_c - LEVEL.tavg_noload_c);
+    f = clip(f, 0, 1);
+    return GEOM.level_program_noload +
+           f * (GEOM.level_program_full - GEOM.level_program_noload);
   }
 
   /* extraMassFn(pz) -> f(P) for Layer 2's seat. h̄ frozen within the solve; only P varies —
@@ -230,16 +283,38 @@
     }
     pz.m_pzr = m_new;
 
+    /* ---- 1b. THE LEVEL CONTROL SYSTEM (WTSM 10.3 — see the LEVEL block). Reads LAST step's
+     * split (gather-then-integrate); outputs a charging demand for the caller to wire into
+     * pwr2_cvcs, and the two sourced level protections. ---- */
+    var level_pct = 100 * pz.V_liq / V;
+    var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(drivers.tavg_c)
+                                                          : GEOM.level_program_full);
+    var levErr = program_pct - level_pct;              /* positive = level LOW, charge more */
+    /* ANTI-WINDUP: the integral's authority is capped at ±0.5 of demand (±150 %·s at this Ki)
+     * — without the cap the startup transient wound it to the rail and the controller sat at
+     * full charging with the level ABOVE program (measured, first closed-loop probe). The PI
+     * "prevents the charging flow from reacting to small temporary level perturbations while
+     * eliminating steady-state level errors" (WTSM 10.3) — a wound-up integral does neither. */
+    pz.levErrInt = clip(pz.levErrInt + levErr * dt, -0.5 / LEVEL.ki_per_pct_s,
+                                                     0.5 / LEVEL.ki_per_pct_s);
+    var charging_demand = clip(LEVEL.demand_bias + LEVEL.kp_per_pct * levErr +
+                               LEVEL.ki_per_pct_s * pz.levErrInt, 0, 1);
+    if (!pz.lowLevelCut && level_pct <= LEVEL.low_cut_pct) pz.lowLevelCut = true;
+    else if (pz.lowLevelCut && level_pct >= LEVEL.low_cut_restore_pct) pz.lowLevelCut = false;
+    var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;   /* the +5 % anticipator */
+
     /* ---- 2. THE SOURCED CONTROL LADDER (proportional output only — see header). ---- */
     var err_psi = (P - pz.setpoint_mpa) * PSI;
 
     var prop = clip((CONTROL.prop_off_psi - err_psi) /
                     (CONTROL.prop_off_psi - CONTROL.prop_full_on_psi), 0, 1);
-    if (err_psi <= CONTROL.backup_on_psi) pz.backupOn = true;
-    else if (err_psi >= CONTROL.backup_off_psi) pz.backupOn = false;
+    if (err_psi <= CONTROL.backup_on_psi || backupOnLevel) pz.backupOn = true;
+    else if (err_psi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;
 
-    /* Heater shed: SI / no AC (sourced) or uncovered heaters (D2 §25.3's emptied regime). */
-    pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied;
+    /* Heater shed: SI / no AC (sourced), uncovered heaters (D2 §25.3's emptied regime), or
+     * the 17 % low-level cut (WTSM 10.3 — a heater in a steam environment is a damaged one). */
+    pz.heatersShed = !!drivers.si_active || drivers.ac_available === false || pz.emptied ||
+                     pz.lowLevelCut;
     var heatFrac = drivers.heaters_manual !== undefined ? clip(drivers.heaters_manual, 0, 1)
                                                         : prop;
     var Q_heat_kW = pz.heatersShed ? 0
@@ -307,7 +382,13 @@
       water_solid: pz.waterSolid,
       emptied: pz.emptied,
       hi_level_trip: pz.V_liq / V >= GEOM.hi_level_trip_frac,
-      err_psi: err_psi
+      err_psi: err_psi,
+      /* the level control system (WTSM 10.3) */
+      level_program_pct: program_pct,
+      charging_demand: charging_demand,
+      letdown_isolated: pz.lowLevelCut,
+      low_level_cut: pz.lowLevelCut,
+      level_hi_alarm: level_pct >= LEVEL.hi_alarm_pct
     };
   }
 
@@ -320,10 +401,11 @@
   function clip(x, a, b) { return x < a ? a : (x > b ? b : x); }
 
   root.RD.pwr2.pressurizer = {
-    GEOM: GEOM, HEATERS: HEATERS, SPRAY: SPRAY, CONTROL: CONTROL, RELIEF: RELIEF,
+    GEOM: GEOM, HEATERS: HEATERS, SPRAY: SPRAY, CONTROL: CONTROL, RELIEF: RELIEF, LEVEL: LEVEL,
     createPressurizer: createPressurizer,
     extraMassFn: extraMassFn,
     stepPressurizer: stepPressurizer,
+    levelProgram: levelProgram,
     _satSplit: satSplit
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

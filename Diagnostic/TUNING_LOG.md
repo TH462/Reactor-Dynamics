@@ -29,6 +29,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-b (#479 stage 2a — the level control system, and the integral that railed its own demand)
+
+**Ask:** autonomous continuation of the ruled Option 1 ("pressure control first, level machinery
+second") — the first stage-2 piece, the pressurizer level control system. **Gates:**
+`run_pwr2_pressurizer` 51 checks / 14 mutations; `run_all --fast` at baseline. **Detail:**
+`PWR2_VALIDATION.md` §44; this entry carries the traps.
+
+**Everything is WTSM 10.3, adopted in shape**: PI on charging (output = `charging_demand`, wired
+by the caller into `pwr2_cvcs` — letdown constant in the normal lineup), the 25 → 61.5 % program
+over Tavg — and the source's 557 °F no-load point IS the plant's own HZP anchor (291.67 °C) —
+the +5 % anticipatory backup-heater signal, the 17 % letdown-isolate/heater-cut, the 70 % alarm.
+Closed-loop with the real CVCS the plant holds 60.3 % against a 61.5 % program, answers a 6 kg/s
+drain with railed charging, and a hard drain latches the 17 % cut with letdown isolated.
+
+**⚠ Trap 1: an uncapped PI integral railed its own demand** — the startup transient wound the
+integrator to ±10 demand-units of stored authority and the controller sat at FULL charging with
+the level ABOVE program. Anti-windup caps it at ±0.5 of the demand range. The source's own
+sentence describes a controller a wound-up integral cannot be.
+
+**⚠ Trap 2, the one that generalises: a SOURCED protection added to the plant re-excited an
+adversarial fixture tuned to the unprotected plant.** The 17 % heater cut removes 158 kW of
+pressure support mid-outsurge, and `run_pwr2_reactor`'s rated-sink-on-scrammed-plant ride (no
+RPS wired, by design) now rings through a second moderator excursion — **477 % power at ~32 s**
+— before settling at ~100 % by 56 s. A real high-flux trip ends that ride at the first spike.
+Settle sample moved 38 → 60 s; the three-phase mechanism checks unchanged.
+
+Stage 2 remainder: two-h stratified states, aux spray, PORV block valve + tailpipe, drained/TMI
+machinery, and the high-level trip function owed to `pwr2_protection`.
+
 ## Session log — 2026-08-19-backshop-a (#486 closed — the scenario fixtures pressurized, and twenty damage checks held without a band moving)
 
 **Ask:** autonomous continuation of the ruled Option 1 work — the #486 remainder named in the

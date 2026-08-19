@@ -2417,3 +2417,45 @@ start 3.0 → 30 s, because the vessel holds the plant above the 9.58 MPa shutof
 measured **12.0 s**, the SI-delay role a real pressurizer plays in a medium break. Relief is
 wired as the one-step-lag sink in both scenarios (it never fires in a blowdown; a
 wired-and-silent path beats an unwired one).
+
+## 44. STAGE 2a — THE LEVEL CONTROL SYSTEM, AND THE INTEGRAL THAT RAILED ITS OWN DEMAND — 2026-08-19
+
+WTSM 10.3 (ML11223A290) carries the whole system and all of it is adopted verbatim in shape:
+the **PI master level controller** varying CHARGING (letdown constant in the normal lineup —
+the controller's output is a `charging_demand` the caller wires into `pwr2_cvcs`, the same
+caller-wires-systems convention as relief); the **program as f(Tavg)**, 25 % at no-load →
+61.5 % at full power — and the source's 557 °F no-load point **is exactly this plant's own HZP
+anchor** (291.67 °C, OSTI 1991715), so the sourced percentages ride the plant's own span; the
+**+5 % anticipatory backup-heater signal** (an insurge is cooler water — pressure will fall);
+the **17 % low-level cut** (letdown isolated, ALL heaters off — steam-environment damage) with
+a 20 % restore differential ([open]; the source states the cut only, and a latch with no
+differential is the #447 chatter shape); the **70 % high alarm**. The 4-loop plant's 92 %
+high-level reactor trip is noted; Ginna's 87 % stays the carried trip point, and the RPS
+FUNCTION itself is recorded as owed to `pwr2_protection`, not smuggled into the vessel.
+
+**Measured, closed-loop with the real CVCS** (letdown at normal lineup, charging in auto): the
+plant holds **60.3 % against a 61.5 % program at 600 s** with the demand mid-range; a 6 kg/s
+drain pulls the level to 29 %, the controller rails charging to maximum, and recovery is
+CVCS-slow — which is the real plant's shape. A 20 kg/s hard drain empties the vessel through
+the 17 % cut: letdown isolates, heaters shed, and both stay latched below the restore point.
+
+**Two measured traps:**
+- **The PI's integral railed its own demand.** Uncapped, the startup transient wound
+  `levErrInt` to a stored authority of ±10 demand-units and the controller sat at FULL charging
+  with the level ABOVE program. Anti-windup caps the integral's authority at ±0.5 of the demand
+  range; the source's own sentence — the PI "prevents the charging flow from reacting to small
+  temporary level perturbations while eliminating steady-state level errors" — describes a
+  controller a wound-up integral cannot be.
+- **The sourced 17 % cut re-excited the adversarial scram-recovery fixture.** Cutting 158 kW of
+  heaters mid-outsurge removes pressure support, and the unprotected rated-sink-on-scrammed-plant
+  ride in `run_pwr2_reactor` now RINGS: a second moderator-density excursion peaks at **477 %
+  power at ~32 s** before settling near 100 % by ~56 s. A real plant's power-range high-flux trip
+  ends that ride at the first spike; the fixture has no RPS wired BY DESIGN. The settle sample
+  moved 38 → 60 s; the three-phase mechanism the checks pin is unchanged. Recorded because it
+  generalises: **a sourced protection added to the plant can amplify an adversarial fixture that
+  was tuned to the unprotected one.**
+
+Gates: `run_pwr2_pressurizer` 39 → 51 checks, mutations 10 → 14 (program-flattened, cut-deleted,
+PI-backward, anticipator-deleted all red). Stage 2 remainder: two-h stratified states, auxiliary
+spray, PORV block valve + tailpipe, the drained/TMI deception machinery, and the high-level trip
+function in `pwr2_protection`.

@@ -417,18 +417,26 @@ function runSuite(R, rec, quiet) {
    * ~38 s. The MECHANISM is the invariant the checks hold — negative falling, positive through
    * criticality, zero re-settled — and the old sample times pass only on the old plant, which
    * is the fixture change speaking, not a refit. */
+  /* ⚠ RE-MEASURED AGAIN when the LEVEL CONTROL landed (stage 2a): the sourced 17 % low-level
+   * heater cut removes 158 kW of pressure support MID-OUTSURGE, and this unprotected
+   * adversarial fixture (rated sink held on a scrammed plant, no RPS wired) now RINGS — a
+   * second moderator-density excursion peaks at 477 % power at ~32 s before the plant settles
+   * near 100 % by ~56 s. A real plant's power-range high-flux trip would have ended the ride at
+   * the first spike; the fixture exists to exercise the feedback, not to survive review as an
+   * operating transient. The settle sample moves 38 -> 60 s; the three-phase mechanism the
+   * checks pin (negative falling, positive through criticality, zero settled) is unchanged. */
   var f4 = fixture(); var rods4 = [{ steps: 228, max_steps: 228, worth: 0.04068 }];
   ride(f4, 200, null, rods4); rods4[0].steps = 0;                 /* settle, then scram */
   var sur1s  = ride(f4, 50, null, rods4);                          /* 1 s: still falling */
   var sur20s = ride(f4, 950, null, rods4);                         /* +19 s = 20 s: climbing back */
-  var sur38s = ride(f4, 900, null, rods4);                         /* +18 s = 38 s: re-settled */
+  var sur60s = ride(f4, 2000, null, rods4);                        /* +40 s = 60 s: re-settled */
   ckT('SUR is clearly NEGATIVE while the scrammed core is still cooling down',
       sur1s.startup_rate_dpm < -1, sur1s.startup_rate_dpm.toFixed(2) + ' dpm at 1 s');
   ckT('...and clearly POSITIVE while it climbs back THROUGH criticality -- the sourced lesson',
       sur20s.startup_rate_dpm > 5,
       sur20s.startup_rate_dpm.toFixed(2) + ' dpm at 20 s, power ' + sur20s.power_pct.toFixed(1) + ' %');
   ckT('...and back near zero once it has RE-SETTLED -- proves prevPower tracks the LATEST step',
-      Math.abs(sur38s.startup_rate_dpm) < 2, sur38s.startup_rate_dpm.toFixed(3) + ' dpm at 38 s');
+      Math.abs(sur60s.startup_rate_dpm) < 2, sur60s.startup_rate_dpm.toFixed(3) + ' dpm at 60 s');
   /* THE CONVERSION CONSTANT, AS A PURE IDENTITY. SUR = C/T by definition, so SUR*T recovers C
    * exactly whenever T is finite -- true no matter what the reactor is doing, which is what makes
    * it a mutation-sensitive check on the CONSTANT specifically rather than on plant behaviour. */
