@@ -20,6 +20,9 @@
  */
 'use strict';
 var fs = require('fs'), path = require('path');
+/* pwr2_water is loaded ONLY for the ADV's 4%-of-RTP cross-check (h_fg at the setpoint) --
+ * relief itself carries fractions and needs no properties, which the sandbox loader preserves. */
+require(path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_water.js'));
 var E = path.join(__dirname, '..', 'engines', 'pwr2');
 var LIB = path.join(E, 'pwr2_relief.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
@@ -151,10 +154,46 @@ function runSuite(R, rec, quiet) {
       })(), 'they discharge to atmosphere — losing the condenser must not disable the last resort');
 
   /* ---- TOTALS ------------------------------------------------------------------------------ */
+  /* ---- THE ADV (the middle rung, 2026-08-19) — Ginna TS Bases B 3.7.4 ------------------- */
+  head('THE ADV  [below the safeties, above the dump — and it does NOT need the condenser]');
+  ck('the auto setpoint sits BELOW the safety pop, [derived] at the WAT-05 margin',
+     (R.RELIEF.safety_pop_mpa - R.RELIEF.adv_setpoint_mpa) * 145.0377, 45, 0.5, 'psi');
+  ck("capacity is Ginna's 329,000 lb/hr per-MWt scaled, one valve on one loop",
+     R.RELIEF.adv_kgs, 329000 / 7936.64 * 300 / 1520, 1e-9, 'kg/s');
+  ckT('...which is the source own "approximately 4% of RTP" cross-check',
+      (function () {
+        var W2 = globalThis.RD.pwr2.water;
+        var rtp = R.RELIEF.adv_kgs * W2.h_fg(R.RELIEF.adv_setpoint_mpa) / 300000;
+        return rtp > 0.035 && rtp < 0.05;
+      })(), 'capacity x h_fg at the setpoint, over 300 MWt');
+  var rlA = R.createRelief({});
+  var below = step(rlA, R.RELIEF.adv_setpoint_mpa - 0.05);
+  var mid = step(rlA, R.RELIEF.adv_setpoint_mpa + R.RELIEF.adv_band_mpa / 2);
+  var full = step(rlA, R.RELIEF.adv_setpoint_mpa + R.RELIEF.adv_band_mpa + 0.02);
+  ckT('shut below the setpoint, HALF at mid-band, FULL above it — a modulating valve, not a pop',
+      below.adv_kgs === 0 && Math.abs(mid.adv_frac - 0.5) < 0.01 &&
+      Math.abs(full.adv_kgs - R.RELIEF.adv_kgs) < 1e-9,
+      "the pneumatic controller's shape; the SAFETIES are the latching pop, not this");
+  ckT('...and FULL before the safeties lift — the rung ordering is the point',
+      full.safety_open === false && full.adv_kgs > 0,
+      (R.RELIEF.adv_setpoint_mpa * 145.04 - 14.7).toFixed(0) + ' + band < 1085 psig pop');
+  ckT('the OPERATOR can open it at ANY pressure — function (b), the condenser-less cooldown',
+      step(R.createRelief({}), 6.0, { adv_demand: 0.7 }).adv_frac === 0.7,
+      'adv_demand is the cooldown lever; auto and manual take the max');
+  ckT('...and it flows with the condenser GONE, which is its whole reason to exist',
+      step(R.createRelief({}), 6.0, { adv_demand: 1.0, condenser_available: false }).adv_kgs > 0 &&
+      step(R.createRelief({}), 6.0, { dump_demand: 1.0, condenser_available: false }).dump_kgs === 0,
+      'same step: the dump dies with the condenser, the ADV does not — atmospheric discharge');
+  ckT('the BLOCK VALVE isolates it, auto and manual alike — the failed-open ARV lever',
+      step(R.createRelief({}), full ? R.RELIEF.adv_setpoint_mpa + 1 : 8,
+           { adv_demand: 1.0, adv_block: false }).adv_kgs === 0,
+      '"upstream block valves ... to isolate a failed open ARV" (B 3.7.4)');
+
   head('TOTALS AND REPORTING');
   var rl4 = R.createRelief({});
   var both = step(rl4, pop + 0.5, { dump_demand: 1.0 });
-  ck('the total is the sum of the paths', both.total_kgs, both.safety_kgs + both.dump_kgs,
+  ck('the total is the sum of the paths', both.total_kgs,
+     both.safety_kgs + both.dump_kgs + both.adv_kgs,
      1e-12, 'kg/s');
   ck('...reported as a fraction of rated', both.total_frac, both.total_kgs / RATED, 1e-12, '');
   ckT('relieved mass accumulates over time', (function () {
@@ -177,6 +216,20 @@ runSuite(R, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the ADV auto function is dead (overpressure rides straight to the safeties)',
+   'var advAuto = (P_mpa - RELIEF.adv_setpoint_mpa) / RELIEF.adv_band_mpa;',
+   'var advAuto = 0 * (P_mpa - RELIEF.adv_setpoint_mpa) / RELIEF.adv_band_mpa;'],
+  ['the ADV is gated on the condenser (function (b) deleted)',
+   'var advFrac = advBlock ? Math.max(advAuto, advMan) : 0;',
+   'var advFrac = advBlock && avail ? Math.max(advAuto, advMan) : 0;'],
+  /* the mutation must hit the DERIVED MPa, not the display psig — the two are separate
+   * literals (the safety pop has the same shape), and mutating the label moves nothing */
+  ['the ADV setpoint drifts ABOVE the safety pop (the rung ordering inverts)',
+   'adv_setpoint_mpa:    (1040.0 + 14.7) / PSI_PER_MPA,',
+   'adv_setpoint_mpa:    (1100.0 + 14.7) / PSI_PER_MPA,'],
+  ['the block valve is ignored',
+   'var advBlock = drivers.adv_block === undefined ? true : !!drivers.adv_block;',
+   'var advBlock = true;'],
   ['THE LATCH IS LOST — a stateless valve that chatters at the setpoint',
    '    if (!rl.safety_open && P_mpa >= RELIEF.safety_pop_mpa) rl.safety_open = true;\n    else if (rl.safety_open && P_mpa <= reseat) rl.safety_open = false;',
    '    rl.safety_open = P_mpa >= RELIEF.safety_pop_mpa;'],
@@ -211,7 +264,7 @@ var MUTATIONS = [
   ['the commanded position stops being reported when the condenser is lost',
    '      dump_demand: demand,', '      dump_demand: avail ? demand : 0,'],
   ['relieved mass stops accumulating', '    rl.relieved_kg += total * dt;', ''],
-  ['the total drops the dump path', '    var total = safety + dump;', '    var total = safety;'],
+  ['the total drops the dump path', '    var total = safety + dump + adv;', '    var total = safety + adv;'],
   /* CONSTRUCTION */
   ['caller safety state ignored at construction',
    'safety_open:  opts.safety_open === undefined ? false : !!opts.safety_open,',

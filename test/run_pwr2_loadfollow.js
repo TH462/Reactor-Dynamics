@@ -458,7 +458,8 @@ function runSuite(G, rec, quiet) {
       'with the dump shut');
   ckT('...tracking 1:1 while the secondary is off its relief envelope',
       swTrack === true, "measured 99.5/91.3/83.1/74.9 % at 100/92/84/76 MWe — below ~70 MWe " +
-      "the SG safeties lift VISIBLY and cap Tavg, the real plant's rods-parked ceiling");
+      "the relief envelope caps Tavg VISIBLY: the ADV takes the overflow first (3.2 % alone " +
+      "at 68 MWe, safeties SHUT) and the code safeties only what exceeds its capacity");
 
   /* THE DUMP'S REAL JOB, both sourced cases, same plant machinery: */
   head("THE DUMP'S REAL JOB  [a 50 % rejection and a turbine trip — C-7 and C-8]");
@@ -489,8 +490,8 @@ function runSuite(G, rec, quiet) {
   ckT('...and the dumps walk Tavg toward NO-LOAD and then CLOSE — the controller finishes its job',
       trip2.tavg_f < 565 && trip2.dumpFrac < 0.05,
       'Tavg ' + trip2.tavg_f.toFixed(1) + ' degF (no-load 557), dump ' +
-      (100 * trip2.dumpFrac).toFixed(1) + " % — the SG safeties' first-seconds lift is the " +
-      'missing-ADV gap, declared, not asserted away');
+      (100 * trip2.dumpFrac).toFixed(1) + " % — and the post-trip secondary settles on the ADV " +
+      'band (~1057 psig, safeties SHUT), the rung built 2026-08-19');
 
   /* ---- SECONDARY INVENTORY -----------------------------------------------------------------
    * ⚠ ADDED BECAUSE A MUTATION WENT VACUOUS. The ride always sets feed = steam, so `dM = feed -

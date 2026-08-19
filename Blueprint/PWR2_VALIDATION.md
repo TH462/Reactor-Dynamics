@@ -2581,3 +2581,36 @@ comparisons are retired — their same-dump-law premise expired with the ruling;
 bands re-sized for the halved excursion (+8.6 °F measured vs +15), holding on both plants.
 Gates: `run_pwr2_dumpctl` NEW (22 checks, 8 mutations — including "C-7 always armed", the old
 engine's hidden-parallel-sink defect — none blind); `run_pwr2_loadfollow` 31 → 36.
+
+## 48. THE ADV — THE LADDER'S MIDDLE RUNG, AND BOTH DECLARED GAPS CLOSE — 2026-08-19
+
+Ginna TS Bases B 3.7.4, verbatim and complete: one ARV per SG main steam header, **329,000
+lb/hr each (approximately 4 % of RTP)**, "normally closed, fail closed", a pneumatic controller
+"to permit control of the cooldown rate", an upstream **block valve** "to isolate a failed open
+ARV", and two functions — *(a)* secondary overpressure protection **below the MSSV setpoint**,
+*(b)* plant cooldown **when the condenser is not available** to the steam dump. The SGTR event
+is its design basis (recorded for that scenario's eventual author).
+
+Built into `pwr2_relief.js` as the rung between dump and safeties: one valve (one loop),
+capacity per-MWt scaled to **8.18 kg/s — and the source's own "~4 % of RTP" cross-check lands
+at 4.1 %** (capacity × h_fg at the setpoint over 300 MWt, gated). Auto setpoint **[derived]
+1040 psig** — B 3.7.4 places the function "below the setpoint of the MSSVs" without a number;
+the WAT 05 plant sets its ARV 45 psi below its lowest safety, and the same margin below Ginna's
+1085 psig pop gives 1040, with a 25 psi modulating band that reaches full-open before the
+safeties lift. Modulating, not popping (the safeties are the latching pop). Operator lever
+`adv_demand` (max of auto and manual), block valve, **and deliberately NOT gated on the
+condenser** — atmospheric discharge is function (b)'s whole point, pinned by the paired check
+where the same step kills the dump and not the ADV.
+
+**Both of §47's declared gaps close, measured**: on the dispatch sweep the **ADV alone carries
+the 68 MWe overflow (3.2 % of rated steam, safeties SHUT)** and deeper the code safeties take
+only what exceeds its capacity (22.0 % at 44 MWe against §47's 26.1 % all-safeties); after the
+turbine trip the secondary **settles ON the ADV band at ~1057 psig with the safeties closed**,
+where §47 measured a first-seconds safety lift. The relief ladder — dump → ADV → safeties — is
+now the built ladder, not the aspiration the #484 comment named.
+
+Gates: `run_pwr2_relief` 30 → 38 (mutations 19 → 23 — auto-dead, condenser-gated,
+rung-inverted, block-ignored; the setpoint-drift mutation had to target the DERIVED MPa, not
+the display psig — two separate literals, the same duplicated-constant shape as ever);
+`run_pwr2_loadfollow` prose de-staled where it declared the rung missing. Still owed from §47:
+the P-9-class turbine-trip reactor trip in `pwr2_protection`.

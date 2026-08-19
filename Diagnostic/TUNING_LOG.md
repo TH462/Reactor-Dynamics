@@ -29,6 +29,31 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-f (#479 — the ADV: the ladder's middle rung, and both declared gaps close)
+
+**Ask:** "Next" — the ADV recommended at the previous close. **Gates:** `run_pwr2_relief` 38
+checks / 23 mutations, `run_pwr2_loadfollow` 36 re-measured, `run_all --fast` at baseline.
+**Detail:** `PWR2_VALIDATION.md` §48.
+
+**Ginna TS Bases B 3.7.4 carries the whole valve** — 329,000 lb/hr (~4 % RTP), fail-closed,
+pneumatic cooldown control, block valve, and BOTH functions verbatim (overpressure below the
+MSSVs; cooldown when the condenser is unavailable). Per-MWt scaled to 8.18 kg/s, **the
+source's own ~4 %-of-RTP cross-check lands at 4.1 %** and is gated. Setpoint [derived] 1040
+psig — the WAT-05 plant's 45-psi ARV-below-safety margin applied under Ginna's 1085 pop.
+
+**Both of yesterday's declared gaps closed by measurement**: the 68 MWe dispatch overflow now
+rides the ADV alone (3.2 %, safeties SHUT); the post-turbine-trip secondary settles ON the ADV
+band (~1057 psig, safeties closed) where it previously lifted the safeties.
+
+**⚠ Trap: a mutation on a DISPLAY constant moves nothing.** `adv_setpoint_psig` and
+`adv_setpoint_mpa` are two literals (the safety pop has the same shape); the setpoint-drift
+mutation was blind until it targeted the derived MPa. The duplicated-constant failure mode,
+found inside my own constants block within the hour of writing it. Second trap, small: the
+ADV's arrival broke two of the relief gate's own mutation anchors (`total = safety + dump`) —
+a new term re-anchors the sums other mutations grip.
+
+**Still owed:** the P-9-class turbine-trip reactor trip in `pwr2_protection`.
+
 ## Session log — 2026-08-19-backshop-e (#479 — the steam dump control system, and §42 criterion A met for the sourced reason)
 
 **Ask:** *(OWNER RULING, 2026-08-19: "Defer. A." — stratification deferred; §42 criterion A

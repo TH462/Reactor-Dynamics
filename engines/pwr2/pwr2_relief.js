@@ -55,6 +55,28 @@
     safety_blowdown:     0.033,
     /* [sourced] full-lift capacity as a fraction of rated steam flow. */
     safety_flow_frac:    0.84,
+    /* ---- THE ATMOSPHERIC RELIEF VALVE (the ladder's middle rung, 2026-08-19) --------------
+     * Ginna TS Bases B 3.7.4 (ML20339A221), verbatim: one ARV per SG main steam header, "a
+     * relief capacity of 329,000 lbm/hr each (approximately 4% of RTP)", "normally closed,
+     * fail closed", "equipped with pneumatic controllers to permit control of the cooldown
+     * rate", with an upstream BLOCK VALVE "to isolate a failed open ARV". Two sourced
+     * functions: "(a) provide secondary system overpressure protection below the setpoint of
+     * the main steam safety valves; and (b) provide a method for cooling the plant should the
+     * preferred heat sink via the steam dump system to the condenser not be available." The
+     * SGTR event is its design basis. It discharges to ATMOSPHERE -- no condenser, which is
+     * function (b)'s whole point.
+     * CAPACITY: one valve on this single-loop plant, per-MWt from Ginna's two-loop figure:
+     * 329,000 x 300/1520 = 64,934 lb/hr = 8.18 kg/s. The source's own cross-check lands:
+     * 8.18 kg/s x h_fg at the setpoint is ~12.3 MW = 4.1 % of 300 MWt against the stated
+     * "approximately 4% of RTP".
+     * SETPOINT [derived]: B 3.7.4 places the auto function "below the setpoint of the MSSVs"
+     * without a number; the WAT 05 plant sets its ARV 45 psi below its lowest safety (1125 vs
+     * 1170 psig), and the same margin below Ginna's 1085 psig pop gives 1040 psig. The
+     * modulating band [derived, 25 psi] keeps it fully open before the safeties pop. */
+    adv_setpoint_psig:   1040.0,
+    adv_setpoint_mpa:    (1040.0 + 14.7) / PSI_PER_MPA,
+    adv_band_mpa:        25.0 / PSI_PER_MPA,
+    adv_kgs:             329000.0 / 7936.64 * (300.0 / 1520.0),
     /* [derived] the pressure band from first lift to FULL lift. A real bank is several valves at
      * staggered setpoints, which together look like a ramp; this lumps them into one. Declared,
      * because a single valve popping to full flow at one pressure would be a step and would make
@@ -111,6 +133,20 @@
       safety = lift * RELIEF.safety_flow_frac * rated;
     }
 
+    /* ---- THE ADV: auto overpressure relief below the safeties, PLUS the operator's cooldown
+     * lever (drivers.adv_demand, 0..1 -- the pneumatic controller is the operator's per the
+     * source; nothing here automates a cooldown). The block valve isolates both. Atmospheric
+     * discharge: deliberately NOT gated on the condenser. */
+    var advBlock = drivers.adv_block === undefined ? true : !!drivers.adv_block;
+    var advAuto = (P_mpa - RELIEF.adv_setpoint_mpa) / RELIEF.adv_band_mpa;
+    if (advAuto < 0) advAuto = 0;
+    if (advAuto > 1) advAuto = 1;
+    var advMan = drivers.adv_demand === undefined ? 0 : drivers.adv_demand;
+    if (advMan < 0) advMan = 0;
+    if (advMan > 1) advMan = 1;
+    var advFrac = advBlock ? Math.max(advAuto, advMan) : 0;
+    var adv = advFrac * RELIEF.adv_kgs;
+
     /* ---- STEAM DUMP. Hydraulics only. The position is the CALLER'S — this file has no Tavg
      * error, no setpoint and no permissive, by the layer ruling in the header. */
     var demand = drivers.dump_demand === undefined ? 0 : drivers.dump_demand;
@@ -119,11 +155,12 @@
     var avail = drivers.condenser_available === undefined ? true : !!drivers.condenser_available;
     var dump = avail ? demand * RELIEF.dump_capacity_frac * rated : 0;
 
-    var total = safety + dump;
+    var total = safety + dump + adv;
     rl.relieved_kg += total * dt;
 
     return {
-      safety_kgs: safety, dump_kgs: dump, total_kgs: total,
+      safety_kgs: safety, dump_kgs: dump, adv_kgs: adv, total_kgs: total,
+      adv_frac: advFrac, adv_auto: advAuto, adv_block_open: advBlock,
       safety_open: rl.safety_open,
       /* REPORTED so a caller can see WHY the dump is passing nothing — a commanded-open dump with
        * no condenser is a different plant state from a shut one, and they must not look alike. */
