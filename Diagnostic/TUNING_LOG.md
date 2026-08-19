@@ -29,6 +29,32 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-a (#486 closed — the scenario fixtures pressurized, and twenty damage checks held without a band moving)
+
+**Ask:** autonomous continuation of the ruled Option 1 work — the #486 remainder named in the
+previous entry: put the staged pressurizer under the LOCA and core-damage scenario fixtures and
+adjudicate every moved timeline. **Gates:** `run_pwr2_coredamage` 20/20 and `run_pwr2_loca`
+14/14 on the pressurized fixtures; `run_all --fast` at baseline. **Detail:**
+`PWR2_VALIDATION.md` §43.5 carries the measured shift table; this entry carries the read.
+
+**Measured before the change landed** (both plants, five scenarios): the vessel **outsurges
+into the break and empties at 22.1 s** on the 20 cm² break, so every milestone shifts a
+near-uniform +5..11 s (2200 °F 635.7 → 646.6 s, melt 748 → 760 s); the 5 cm² slow leak is
+fought **~150 s longer** (1,682 kg of vessel inventory and full heaters are real against a
+small break, 2200 °F 1614.8 → 1763.0 s); the feedback-attribution property and the #487 floor
+endgame both survive.
+
+**The read worth keeping: a gate built on ORDINALS and MECHANISMS absorbs a deliberate fixture
+change for free.** All 20 core-damage checks — order of chain events, latch-at-crossing,
+attribution, stoichiometric identities — held with zero re-banding. The one LOCA band that
+moved (HHSI start 3.0 → 30 s) moved for a reason worth the line: the vessel holds the plant
+above the 9.58 MPa (1389 psia) shutoff head for a measured **12.0 s**, which is the SI-delay
+role a real pressurizer plays in a medium break — the fixture got MORE prototypical and the
+band followed the plant.
+
+#486 closed: steady-state fixtures at the design point (2026-08-18b) + scenario fixtures
+pressurized (this entry) is the issue's whole scope.
+
 ## Session log — 2026-08-18-backshop-b (#479 — the pressurizer, stage 1: the plant holds its design point, and three formulations died getting there)
 
 **Ask:** *(OWNER RULING, 2026-08-18: "Option 1" — build PWR2's own pressurizer now, staged,

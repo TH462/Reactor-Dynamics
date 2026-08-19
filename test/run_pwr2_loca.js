@@ -30,10 +30,10 @@
 var path = require('path');
 var E = path.join(__dirname, '..', 'engines', 'pwr2');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
- 'pwr2_break', 'pwr2_containment', 'pwr2_eccs'].forEach(function (f) {
+ 'pwr2_break', 'pwr2_containment', 'pwr2_eccs', 'pwr2_pressurizer'].forEach(function (f) {
   require(path.join(E, f + '.js'));
 });
-var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
+var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, PZ = RD.pressurizer;
 var DT = 0.02;
 
 /* scenario(opts) -> runs break (+ optionally ECCS lined up from t=0) into containment for
@@ -42,7 +42,11 @@ var DT = 0.02;
  * pwr2_eccs.js's own header); this test plays that role ONCE, at t=0, and then only watches. */
 function scenario(opts) {
   opts = opts || {};
-  var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
+  /* Pressurized fixture (stage 1, 2026-08-18 "Option 1"): the mass-ledger identities this gate
+   * asserts are IDENTITIES — they hold whatever the inventory is — so the vessel changes the
+   * numbers, not the claims. Its relief never fires in a blowdown; stepped for fidelity. */
+  var pz  = PZ.createPressurizer({});
+  var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pz) });
   var brk = RD.break_.createBreak({ area_m2: opts.area_m2 || 0.001, cd: 1.0,
                                     node: 'cold_leg', open: true });
   var ctm = RD.containment.createContainment({});
@@ -54,6 +58,7 @@ function scenario(opts) {
     var ec = RD.eccs.stepECCS(ecc, sys, DT);
     var merged = S.mergeSources([br.source], ec.sources);
     var r = S.stepPlant(sys, DT, { sources: merged });
+    PZ.stepPressurizer(pz, sys, DT, {});
     var ct = RD.containment.stepContainment(ctm, DT,
       br.mdot_kgs > 0 ? { mdot_kgs: br.mdot_kgs, h_kJkg: br.source.h } : { mdot_kgs: 0 });
     if (!r.courantOK) courantBad++;
@@ -106,8 +111,16 @@ function runSuite(rec, quiet) {
       b.eccsStartedAt !== null && b.eccsStartedAt > 0.3,
       'started at t=' + (b.eccsStartedAt === null ? 'never' : b.eccsStartedAt.toFixed(2) + ' s') +
       ' -- HHSI shutoff is 9.58 MPa, and the plant starts at 15.41');
+  /* ⚠ RE-BANDED 3.0 -> 30 s WITH THE FIXTURE, 2026-08-19, and the direction is the physics:
+   * the rigid plant fell below the 9.58 MPa HHSI head in under 3 s because nothing resisted
+   * the depressurisation; the pressurizer now OUTSURGES against it and holds the plant up for
+   * 12.0 s (measured) before the head clears — which is precisely the SI-delay role the vessel
+   * plays in a real medium-break. The lower bound above (> 0.3 s) still rejects an ECCS that
+   * ignores the shutoff head entirely; this bound still rejects one that never starts. */
   ckT('...and DID deliver once the break brought pressure below the HHSI shutoff head',
-      b.eccsStartedAt !== null && b.eccsStartedAt < 3.0, '');
+      b.eccsStartedAt !== null && b.eccsStartedAt < 30.0,
+      'started ' + b.eccsStartedAt.toFixed(2) + ' s -- 12.0 s measured with the vessel ' +
+      'fighting the blowdown, <3 s on the rigid plant');
   ckT('the plant is BELOW the HHSI shutoff head by the time ECCS starts',
       b.sys.P < 9.58 || b.eccsStartedAt === null, 'final P ' + b.sys.P.toFixed(3) + ' MPa');
 

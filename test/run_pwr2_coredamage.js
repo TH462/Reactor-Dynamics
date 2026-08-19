@@ -44,9 +44,10 @@
 var path = require('path');
 var E = path.join(__dirname, '..', 'engines', 'pwr2');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_kinetics',
- 'pwr2_fuel', 'pwr2_reactor', 'pwr2_damage', 'pwr2_sources', 'pwr2_break'
+ 'pwr2_fuel', 'pwr2_reactor', 'pwr2_damage', 'pwr2_sources', 'pwr2_break', 'pwr2_pressurizer'
 ].forEach(function (f) { require(path.join(E, f + '.js')); });
-var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, R = RD.reactor, DG = RD.damage;
+var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, R = RD.reactor, DG = RD.damage,
+    PZ = RD.pressurizer;
 var DT = 0.02;
 
 /* THE SOURCED MILESTONES, RETYPED. Ginna UFSAR ch15 (ML20339A101) and GEND-061 §4.3. */
@@ -66,15 +67,25 @@ var DOC = { onset_f: 1200, significant_f: 1800, pct_limit_f: 2200,
 function scenario(opts) {
   opts = opts || {};
   var feedback = opts.feedback !== false;
-  var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41 });
+  /* THE PLANT HAS ITS PRESSURIZER (stage 1, owner ruling 2026-08-18 "Option 1") — a LOCA run
+   * on a plant with no pressure control was #486's finding, and this scenario was the last
+   * major fixture carrying it. MEASURED before the change (2026-08-19, both plants, all five
+   * scenarios): the vessel OUTSURGES INTO THE BREAK and empties at 22 s on the 20 cm2 break,
+   * shifting every milestone a near-uniform +5..11 s; the 5 cm2 slow leak is fought ~150 s
+   * longer (the heaters and 1,682 kg of vessel inventory are real); the feedback-attribution
+   * property (both runs reach onset together) and the #487 floor endgame both SURVIVE. Relief
+   * is wired as the one-step-lag sink the module header requires — it never fires in a
+   * blowdown, and a wired-and-silent path beats an unwired one. */
+  var pz  = PZ.createPressurizer({});
+  var sys = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pz) });
   var rx  = R.createReactor({ P: 1.0, coolTemp_c: 304.5 });
   var dm  = DG.createDamage({});
   var brk = RD.break_.createBreak({ area_m2: opts.area_m2 || 0.002, cd: 1.0,
                                     node: 'cold_leg', open: true });
   var rods = [{ steps: 0, max_steps: 200, worth: 0.08 }];
-  var t = 0, Qox = 0, sumOxKJ = 0, courantBad = 0, nonFinite = 0;
+  var t = 0, Qox = 0, sumOxKJ = 0, courantBad = 0, nonFinite = 0, relief = 0, pzr = null;
   var hit = {}, firstVoid = null, flowLost = null, damagedAt = null, meltedAt = null;
-  var M0 = sys.M_total, maxOx = 0, lastR = null, lastD = null;
+  var M0 = sys.M_total, maxOx = 0, lastR = null, lastD = null, pzEmptyAt = null;
   var steps = Math.round((opts.secs || 1200) / DT);
 
   for (var i = 0; i < steps; i++) {
@@ -85,7 +96,12 @@ function scenario(opts) {
     Qox = dr.Q_ox_kW;
     sumOxKJ += Qox * DT;
     var br = RD.break_.stepBreak(brk, sys, DT, {});
-    var pr = S.stepPlant(sys, DT, { heats: rr.heats, sources: [br.source] });
+    var srcs = [br.source];
+    if (relief > 0) srcs.push({ node: 'hot_leg', mdot: -relief, h: pzr.relief_h });
+    var pr = S.stepPlant(sys, DT, { heats: rr.heats, sources: srcs });
+    pzr = PZ.stepPressurizer(pz, sys, DT, {});
+    relief = pzr.relief_kgs;
+    if (pzEmptyAt === null && pzr.emptied) pzEmptyAt = t;
     if (!pr.courantOK) courantBad++;
     t += DT;
 
@@ -102,7 +118,8 @@ function scenario(opts) {
   }
   return { sys: sys, rx: rx, dm: dm, t: t, M0: M0, sumOxKJ: sumOxKJ, courantBad: courantBad,
            nonFinite: nonFinite, hit: hit, firstVoid: firstVoid, flowLost: flowLost,
-           damagedAt: damagedAt, meltedAt: meltedAt, maxOx: maxOx, r: lastR, d: lastD };
+           damagedAt: damagedAt, meltedAt: meltedAt, maxOx: maxOx, r: lastR, d: lastD,
+           pzEmptyAt: pzEmptyAt };
 }
 
 var rec = [];

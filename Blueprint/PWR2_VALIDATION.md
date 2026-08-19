@@ -2386,8 +2386,34 @@ Spray is an energy sink whose mass stays in the loop (level optimistic during sp
 controller is proportional-only. The vessel is saturated-equilibrium (no superheated steam
 space on outsurge — low-pressure trips arrive pessimistically early; no subcooled pool on
 insurge). Surge enthalpy transport into the loop side is not modelled at Layer 2 (the
-conservation budget carries it). **The LOCA/core-damage scenarios still ride pressurizer-less
-plants** — integrating the vessel there moves every blowdown timeline and is its own
-adjudication pass, deliberately not rushed into this one. Stage 2 owes: the two-h stratified
-states, level control via CVCS (the 25–61.5 % program as a controller), auxiliary spray, PORV
-block valve and tailpipe, and the drained/TMI deception machinery.
+conservation budget carries it). **The LOCA/core-damage scenarios were left on pressurizer-less
+plants by this section's own stage-1 cut — that debt was paid the next day; §43.5 carries the
+measured shifts.** Stage 2 owes: the two-h stratified states, level control via CVCS (the
+25–61.5 % program as a controller), auxiliary spray, PORV block valve and tailpipe, and the
+drained/TMI deception machinery.
+
+### 43.5 The scenario fixtures, pressurized — #486 closed out — 2026-08-19
+
+The LOCA and core-damage scenario fixtures now ride the staged vessel, measured on both plants
+before the change landed:
+
+| | rigid | pressurized | shift |
+|---|---|---|---|
+| 20 cm², void > 50 % | 27.6 s | 32.8 s | +5.2 |
+| 20 cm², flow lost | 130.7 s | 137.6 s | +6.9 |
+| 20 cm², 2200 °F (fb on) | 635.7 s | 646.6 s | +10.9 |
+| 20 cm², melt | 748.0 s | 759.6 s | +11.6 |
+| feedback acceleration at 2200 °F | 344 s | 356 s | — |
+| 5 cm², 2200 °F | 1614.8 s | 1763.0 s | **+148** |
+
+The vessel **outsurges into the break and empties at 22.1 s** on the 20 cm² break — after which
+the plant is effectively the rigid one, hence the near-uniform shift; the 5 cm² slow leak is
+fought ~150 s longer because 1,682 kg of vessel inventory and full heaters are real against a
+small break. The feedback-attribution property (both runs reach the oxidation onset together —
+now 342 s both) and the #487 floor endgame (0.108 MPa, 0.09 % inventory, finite at 1800 s)
+both survive. **All 20 core-damage checks held without a band moving** — the ordinal/mechanism
+design absorbing a deliberate fixture change — and exactly ONE LOCA band was re-measured: HHSI
+start 3.0 → 30 s, because the vessel holds the plant above the 9.58 MPa shutoff head for a
+measured **12.0 s**, the SI-delay role a real pressurizer plays in a medium break. Relief is
+wired as the one-step-lag sink in both scenarios (it never fires in a blowdown; a
+wired-and-silent path beats an unwired one).
