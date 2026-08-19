@@ -29,6 +29,42 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-e (#479 — the steam dump control system, and §42 criterion A met for the sourced reason)
+
+**Ask:** *(OWNER RULING, 2026-08-19: "Defer. A." — stratification deferred; §42 criterion A
+ruled: continuous load-following, rods MANUAL, power monotone in load.)* **Gates:**
+`run_pwr2_dumpctl` NEW 22 checks / 8 mutations, `run_pwr2_loadfollow` 36 / 8, `run_all --fast`
+at baseline. **Detail:** `PWR2_VALIDATION.md` §47 carries the sweep table; this entry the traps.
+
+**The criterion is met by the SOURCE'S OWN INTERLOCK, not by tuning**: WTSM 11.2 (fetched from
+ADAMS into this lane — it was cited from memory of a prior evidence pass but held nowhere) puts
+C-7 arming at ramp > 5 %/min or step > 10 %, so dispatch moves never arm the dumps, the
+parallel sink that pinned the old engine at 76 % (#489) is interlocked out, and power tracks
+load 1:1 down to 76 MWe with the dump at 0.0 % the whole way.
+
+**⚠ Trap 1: a guessed sensing dynamic collapsed two sourced criteria into one.** The C-7 rate
+unit with a 30 s lag read a clean 10 % step as 20 %/min and armed on the sweep's first move.
+The lag is DERIVABLE from the source's own two thresholds (step/ramp consistency → τ ≥ 120 s)
+— when a source gives two numbers about one detector, their ratio is a third number it gives
+for free.
+
+**⚠ Trap 2: a latch's fixture must keep the demand alive, or the honest disarm masks the
+detector.** Three gate fixtures in a row (the 12 %-step arm, the knife-edge no-arm, the
+arming-ignored mutation) were blind or wrong until the stub Tavg was made HOT — with demand at
+zero, C-7 correctly clears the tick it sets, and both a correct and a broken detector read
+`false`.
+
+**⚠ Trap 3: a comparison dies when a ruling changes one side.** The three "lands where the
+current engine lands" A1 checks compared two plants under the SAME stand-in dump law; the
+ruling gave PWR2 the real controller and not the old engine. Retired with the premise stated,
+the stand-in law kept in place as the record its literals were measured under; the A1 chain
+bands re-sized for the halved excursion, holding on BOTH plants.
+
+**Measured and declared**: below ~70 MWe the SG code safeties lift visibly and cap the
+rods-parked dispatch range (1066–1079 psia, up to 26 % of rated steam) — the real plant's
+secondary envelope, alarm-carrying, nothing hidden. Two owed items named: an ADV between dump
+and safeties, and the turbine-trip reactor trip (P-9 class) in `pwr2_protection`.
+
 ## Session log — 2026-08-19-backshop-d (#479 stage 2c — the high-level trip and auxiliary spray)
 
 **Ask:** autonomous continuation of the ruled Option 1 stage 2 — the two remaining small

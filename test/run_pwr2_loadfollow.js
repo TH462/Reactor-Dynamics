@@ -59,9 +59,11 @@ var LIB = path.join(E, 'pwr2_sg.js');
 var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_turbine', 'pwr2_relief',
- 'pwr2_condenser', 'pwr2_pressurizer'].forEach(function (f) { require(path.join(E, f + '.js')); });
+ 'pwr2_condenser', 'pwr2_pressurizer', 'pwr2_dumpctl'
+].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources, K = RD.kinetics, R = RD.reactor,
-    TB = RD.turbine, RL = RD.relief, CD = RD.condenser, FU = RD.fuel, PZ = RD.pressurizer;
+    TB = RD.turbine, RL = RD.relief, CD = RD.condenser, FU = RD.fuel, PZ = RD.pressurizer,
+    DC = RD.dumpctl;
 
 function loadFrom(src) {
   var root = { RD: { pwr2: { water: RD.water, vtable: RD.vtable, core: RD.core,
@@ -98,6 +100,9 @@ var DUMP_SP = 7.03, DUMP_BAND = 0.25, DUMP_MAX = 0.28;
  *
  * pwr2_relief takes a demand as a share of CAPACITY, hence the divide. With this corrected the
  * secondary pressures agree to 0.004 MPa (7.071 vs 7.067) and the power gap halves, 3.1 -> 1.7. */
+/* ⚠ RETIRED 2026-08-19 — kept as the RECORD the A1_NOW literals were measured under. The ride
+ * now uses pwr2_dumpctl (the sourced controller, ruled §42 criterion A); this function is dead
+ * code by design and the `dumpLaw` ride parameter is ignored. */
 function dumpLaw(P) {
   var d = (P - DUMP_SP) / DUMP_BAND;
   d = d < 0 ? 0 : (d > 1 ? 1 : d);
@@ -141,6 +146,7 @@ function runSuite(G, rec, quiet) {
     /* SEE THE HEADER: the fuel temperature is REQUIRED here, not optional. */
     var B   = K.criticalBoron(rx.kin, TREF, P0, null, rx.kin.X / rx.kin.X_eq_full, rx.fuel.T_fuel_c);
     return { sys: sys, rx: rx, sg: sg, tb: tb, rl: rl, cd: cd, B: B, pz: pz,
+             dc: DC.createDumpCtl({}),
              rated_steam: TB.steamDemand(tb, sg.P, G.SG.h_feed) };
   }
   /* ⚠ THE DEMAND IS IN MEGAWATTS ELECTRICAL, and that is the whole point of this revision.
@@ -151,7 +157,7 @@ function runSuite(G, rec, quiet) {
    * similar-looking percentages (D4 §20.7, where the quantitative claim was withdrawn). With
    * pwr2_turbine.js the two engines can finally be handed the SAME command. */
   function ride(pl, n, demandOf, dumpLaw, cwOn) {
-    var r = null, sr = null, tr = null, t = 0, pzr = null;
+    var r = null, sr = null, tr = null, t = 0, pzr = null, dcr = null;
     for (var i = 0; i < n; i++) {
       if (demandOf) pl.tb.load_target_mwe = demandOf(t);
       /* The turbine asks for the flow its load needs AT THE CURRENT SECONDARY PRESSURE; the SG
@@ -171,15 +177,25 @@ function runSuite(G, rec, quiet) {
         duty_kW: steam * (W.h_g(pl.sg.P) - G.SG.h_feed) * (1 - TB.etaCycle()),
         cw_pumps_running: cwOn === undefined ? true : cwOn
       });
+      /* ⚠ THE STAND-IN LAW IS GONE (2026-08-19): pwr2_dumpctl computes the demand now — the
+       * sourced Tavg-mode controller with C-7/C-8/C-9 arming, built against the RULED §42
+       * criterion A. The old retyped current-engine pressure law is what this gate carried
+       * "because PWR2 has no control layer yet"; it has this much of one. */
+      var dcr = DC.stepDumpCtl(pl.dc, 0.02, {
+        tavg_c: G.primaryTavg(pl.sys),
+        load_frac: pl.tb.tripped ? 0 : pl.tb.load_target_mwe / MWE_RATED,
+        turbine_tripped: pl.tb.tripped,
+        condenser_available: cr.available
+      });
       var rr = RL.stepRelief(pl.rl, pl.sg.P, 0.02, {
         rated_steam_kgs: pl.rated_steam,
-        dump_demand: dumpLaw ? dumpLaw(pl.sg.P) : 0,
+        dump_demand: dcr.dump_demand,
         condenser_available: cr.available
       });
       var out = steam + rr.total_kgs;
       sr = G.stepSG(pl.sg, G.primaryTavg(pl.sys), 0.02, { feed: out, steam: out });
       tr = TB.stepTurbine(pl.tb, 0.02, { steam_kgs: steam, P_mpa: sr.P_sec, h_feed: G.SG.h_feed });
-      r  = R.stepReactor(pl.rx, pl.sys, 0.02, { boron_ppm: pl.B, rodGroups: null });
+      r  = R.stepReactor(pl.rx, pl.sys, 0.02, { boron_ppm: pl.B, rodGroups: pl.rods || null });
       S.stepPlant(pl.sys, 0.02, { heats: r.heats, sgDuty: sr.duty_kW });
       pzr = PZ.stepPressurizer(pl.pz, pl.sys, 0.02, {});
       t += 0.02;
@@ -199,7 +215,9 @@ function runSuite(G, rec, quiet) {
              mwe: tr.mwe_output, deficit: tr.deficit_mwe, steam: tr.steam_kgs,
              dumpFrac: rr.dump_kgs / pl.rated_steam, safetyOpen: rr.safety_open,
              backpressure: cr.backpressure_in_hg, condAvail: cr.available,
-             pzrLevel: pzr ? pzr.level_pct : null, pzrErr: pzr ? pzr.err_psi : null };
+             pzrLevel: pzr ? pzr.level_pct : null, pzrErr: pzr ? pzr.err_psi : null,
+             dumpC7: dcr.c7, dumpArmed: dcr.armed, safetyFrac: rr.safety_kgs / pl.rated_steam,
+             trefC: dcr.tref_c };
   }
 
   /* ---- THE BASELINE, AND IT IS NOT THE DESIGN POINT -----------------------------------------
@@ -287,9 +305,14 @@ function runSuite(G, rec, quiet) {
    * by some other route, and the point of this gate is the MECHANISM. */
   ckT('cutting steam demand RAISES secondary pressure', cut.sgP > pre.sgP * 1.15,
       pre.sgP.toFixed(3) + ' -> ' + cut.sgP.toFixed(3) + ' MPa — less steam drawn, so it backs up');
-  ckT('...which RAISES primary Tavg', cut.tavg_f > pre.tavg_f + 10,
+  /* ⚠ BANDS RE-SIZED 2026-08-19 when the REAL dump controller replaced the stand-in law: a
+   * 40 % cut is a load REJECTION, C-7 arms, and the sourced Tavg-mode dump absorbs what the
+   * old pressure law did not — the Tavg excursion halves (+8.6 degF measured, was +15) and
+   * the power drop shallows (14.3 points, was 22.6). The widened bands hold on BOTH plants
+   * (both-sides rule): the stand-in-law build clears +5/-10 by miles. */
+  ckT('...which RAISES primary Tavg', cut.tavg_f > pre.tavg_f + 5,
       pre.tavg_f.toFixed(2) + ' -> ' + cut.tavg_f.toFixed(2) + ' degF — a hotter sink removes less');
-  ckT('...which LOWERS power, with no rod motion at all', cut.power < pre.power - 20,
+  ckT('...which LOWERS power, with no rod motion at all', cut.power < pre.power - 10,
       pre.power.toFixed(2) + ' -> ' + cut.power.toFixed(2) + ' % on temperature feedback alone');
   /* ⚠ THIS WAS A DELTA AND THE DELTA IS CONTAMINATED BY THE BASELINE. It asserted a drop of at
    * least 80 degC. MEASURED across the void-feedback change, on the same continuous plant:
@@ -320,14 +343,21 @@ function runSuite(G, rec, quiet) {
   ckT('...and the plant is CRITICAL again at the new power', Math.abs(cut.rho) < 15,
       cut.rho.toFixed(2) + ' pcm — it found an equilibrium, it did not merely drift');
 
-  /* THE NUMBERS, against the first engine. Bands admit the declared physics differences. */
-  /* ---- AGAINST THE CURRENT ENGINE AS IT IS TODAY. Rods MANUAL, dump modulating on pressure,
-   * safeties shut. This is the only A1 state PWR2 can be compared against without a rod
-   * controller, and it is the state the plant is actually in. */
-  ck('Tavg lands where the current engine lands', cut.tavg_f, A1_NOW.tavg_to_f, 2.0, 'degF');
-  ck('the dump settles where the current engine settles', cut.dumpFrac, A1_NOW.dump_frac,
-     0.02, 'frac');
-  ck('power lands near the current engine', cut.power, A1_NOW.power_to, 4.0, '%');
+  /* ---- ⚠ THE THREE "LANDS WHERE THE CURRENT ENGINE LANDS" COMPARISONS ARE RETIRED
+   * (2026-08-19), and the reason is a RULING, not drift: A1_NOW was measured with BOTH plants
+   * riding the same stand-in pressure law. PWR2 now carries the sourced dump controller the
+   * ruled §42 criterion A demanded, and the current engine does not — the comparison's premise
+   * (same dump behaviour, compare the plants) expired the moment the controller landed. The
+   * A1_NOW literals stay above as the RECORD of what the stand-in produced. What replaces the
+   * comparison is PWR2's own sourced behaviour: the armed dump holds the excursion NEAR TREF
+   * rather than letting Tavg ride the old law's pressure band. */
+  ckT('the ARMED dump holds Tavg within its own control authority of Tref',
+      cut.tavg_f - (cut.trefC * 1.8 + 32) < 16.4 + 2,
+      'Tavg-Tref ' + (cut.tavg_f - (cut.trefC * 1.8 + 32)).toFixed(1) + ' degF against the ' +
+      '16.4 degF full-output point — the controller saturates before the plant runs away');
+  ckT('...C-7 is ARMED, which a 40 % rejection must do',
+      cut.dumpC7 === true && cut.dumpFrac > 0.05,
+      'dump ' + (100 * cut.dumpFrac).toFixed(1) + ' % of rated steam');
   ckT('the safety valves stay SHUT, as they do on the current engine', cut.safetyOpen === false,
       'a dump doing its job keeps the secondary off the safeties — if they lift, the dump is ' +
       'either undersized or not being commanded');
@@ -363,9 +393,10 @@ function runSuite(G, rec, quiet) {
   ride(pl3, BASE);
   ride(pl3, AFTER, function () { return MWE_CUT; });
   var restored = ride(pl3, AFTER, function () { return MWE_RATED; });
-  ckT('restoring demand brings power back up', restored.power > cut.power + 20,
+  /* bands re-sized with the armed dump's halved excursion (see the A1 note); both plants clear */
+  ckT('restoring demand brings power back up', restored.power > cut.power + 10,
       cut.power.toFixed(2) + ' -> ' + restored.power.toFixed(2) + ' %');
-  ckT('...and Tavg back down', restored.tavg_f < cut.tavg_f - 10,
+  ckT('...and Tavg back down', restored.tavg_f < cut.tavg_f - 5,
       cut.tavg_f.toFixed(2) + ' -> ' + restored.tavg_f.toFixed(2) + ' degF');
   ckT('...to near where it started, without anybody resetting anything',
       Math.abs(restored.power - base.power) < 6 && Math.abs(restored.tavg_f - base.tavg_f) < 6,
@@ -387,12 +418,79 @@ function runSuite(G, rec, quiet) {
   ckT('losing the pumps destroys the vacuum', noCw.backpressure > 20 && noCw.condAvail === false,
       withCw.backpressure.toFixed(2) + ' -> ' + noCw.backpressure.toFixed(1) + ' in Hg');
   ckT('...which SHUTS THE DUMP, with nobody commanding it shut', noCw.dumpFrac < 1e-9,
-      'the dump law is still calling for ' + (dumpLaw(plC.sg.P) * 100).toFixed(0) +
-      ' % of capacity; the condenser is what stops it');
+      'the controller is still armed and asking; C-9 (the condenser) is what stops it');
   ckT('...and the secondary climbs onto the SAFETY VALVES instead',
       noCw.safetyOpen === true && noCw.sgP > withCw.sgP,
       withCw.sgP.toFixed(3) + ' -> ' + noCw.sgP.toFixed(3) + ' MPa, safeties LIFTED — dump to ADV ' +
       'to safeties is the ladder #484 measured on the current engine, now reachable here');
+
+  /* ---- §42 CRITERION A — THE RULED ACCEPTANCE (OWNER RULING, 2026-08-19: "Defer. A.") ------
+   * "Load-following is continuous with rods in MANUAL — reactor power is monotone in load
+   * target over the dispatch range, with no plateau wider than the measurement noise." Met FOR
+   * THE SOURCED REASON: dispatch-rate moves never satisfy C-7, so the dumps stay SHUT and
+   * cannot become the hidden parallel sink that pinned the old engine at 76 % over a 15 MWe
+   * span (#489). MEASURED on the 8 % dispatch schedule (loud mode): 99.5 / 91.3 / 83.1 / 74.9 %
+   * at 100 / 92 / 84 / 76 MWe with dump 0.0 % throughout — 1:1 tracking on temperature
+   * feedback alone. BELOW ~70 MWe the SG CODE SAFETIES lift (measured: 3.7 -> 26.1 % of rated
+   * steam, 1066 -> 1079 psia) and become the visible ceiling: with the rods parked, the
+   * secondary rides its own relief envelope, which is what a real PWR does when nobody inserts
+   * rods — the flattening has a nameable, alarm-carrying cause, unlike the old engine's
+   * unobservable equilibrium. (An ADV between dump and safeties is a known missing rung;
+   * with one, this steam would pass the ADV instead.) */
+  head('§42 CRITERION A  [dispatch moves never arm the dumps; power follows load 1:1]');
+  var plA = plant();
+  ride(plA, BASE);
+  var swSteps = quiet ? [100, 84, 68] : [100, 92, 84, 76, 68];
+  var swSettle = quiet ? 2400 : 15000;                    /* 48 s vs 300 s per point */
+  var swPrev = null, swMono = true, swArmed = false, swTrack = true, last = null;
+  swSteps.forEach(function (mwe) {
+    last = ride(plA, swSettle, function () { return mwe; });
+    if (swPrev !== null && last.power > swPrev + 0.3) swMono = false;
+    if (last.dumpC7 || last.dumpFrac > 1e-9) swArmed = true;
+    /* 1:1 tracking claim only where the safeties are shut (>= 76 MWe loud) */
+    if (mwe >= 76 && Math.abs(last.power - mwe) > 4) swTrack = false;
+    swPrev = last.power;
+  });
+  ckT('C-7 NEVER ARMS on the dispatch schedule — the dumps stay shut by their own interlock',
+      swArmed === false, "the ruled criterion's mechanism: no arming event, no parallel sink");
+  ckT('...and reactor power is MONOTONE in load target, rods in MANUAL',
+      swMono === true, 'the #489 inversion (76.3 -> 88.4 % on a load DECREASE) cannot happen ' +
+      'with the dump shut');
+  ckT('...tracking 1:1 while the secondary is off its relief envelope',
+      swTrack === true, "measured 99.5/91.3/83.1/74.9 % at 100/92/84/76 MWe — below ~70 MWe " +
+      "the SG safeties lift VISIBLY and cap Tavg, the real plant's rods-parked ceiling");
+
+  /* THE DUMP'S REAL JOB, both sourced cases, same plant machinery: */
+  head("THE DUMP'S REAL JOB  [a 50 % rejection and a turbine trip — C-7 and C-8]");
+  var plR = plant();
+  ride(plR, BASE);
+  var rej = ride(plR, quiet ? 2400 : 9000, function () { return 50; });
+  ckT('a 50 % rejection ARMS C-7 and the dump carries the excess — SG safeties stay SHUT',
+      rej.dumpC7 === true && rej.dumpFrac > 0.2 && rej.safetyOpen === false,
+      'dump ' + (100 * rej.dumpFrac).toFixed(1) + ' % of rated steam, safeties shut — ' +
+      '"50% loss of load is accommodated by the steam dump capacity" (WTSM 11.2), here on ' +
+      "Ginna's 28 % valves with the moderator carrying the rest");
+  var plT = plant();
+  ride(plT, BASE);
+  plT.tb.tripped = true;
+  /* SCRAMMED WITH THE TRIP, as the real plant is (the turbine-trip reactor trip above P-9 —
+   * not yet in pwr2_protection, so the fixture plays the operator). An UNTRIPPED reactor
+   * against a 28 % dump is the ATWS shape: measured, the plant self-limits HOT at 595.7 degF
+   * with the dump saturated — physical, and not this check's subject. */
+  plT.rods = [{ steps: 0, max_steps: 228, worth: 0.04068 }];
+  /* sampled EARLY (5 s): the scrammed plant sheds its stored energy fast and the demand is
+   * gone within ~30 s -- the arming/selection claim needs the window, not the aftermath */
+  var trip1 = ride(plT, 250);
+  ckT('a turbine trip auto-selects the TURBINE-TRIP controller and C-8 arms it',
+      trip1.dumpArmed === true && trip1.dumpFrac > 0.1,
+      'dump ' + (100 * trip1.dumpFrac).toFixed(1) + ' % against the no-load reference — no ' +
+      'operator, no C-7 event, the trip relay itself');
+  var trip2 = ride(plT, quiet ? 2250 : 15000);
+  ckT('...and the dumps walk Tavg toward NO-LOAD and then CLOSE — the controller finishes its job',
+      trip2.tavg_f < 565 && trip2.dumpFrac < 0.05,
+      'Tavg ' + trip2.tavg_f.toFixed(1) + ' degF (no-load 557), dump ' +
+      (100 * trip2.dumpFrac).toFixed(1) + " % — the SG safeties' first-seconds lift is the " +
+      'missing-ADV gap, declared, not asserted away');
 
   /* ---- SECONDARY INVENTORY -----------------------------------------------------------------
    * ⚠ ADDED BECAUSE A MUTATION WENT VACUOUS. The ride always sets feed = steam, so `dM = feed -

@@ -2526,3 +2526,58 @@ the gate per the MDOT_RATED pattern); per-kg condensing duty h_f − h_l(55 °C)
 
 Stage 2 remainder: the two-h stratified vessel states — the last and deepest piece, which
 re-measures everything above it and is deliberately sequenced last.
+
+## 47. THE STEAM DUMP CONTROL SYSTEM — §42 CRITERION A, MET FOR THE SOURCED REASON — 2026-08-19
+
+*(OWNER RULING, 2026-08-19: "Defer. A." — the two-h stratification DEFERRED to a stage-3
+candidate, and the §42 acceptance criterion ruled as A: continuous load-following with rods in
+MANUAL, reactor power monotone in load target, no plateau wider than measurement noise.)*
+
+**The evidence pass**: WTSM 11.2 (ML11223A294) was cited by a prior evidence pass but held in
+no lane — fetched from ADAMS into this lane's corpus, and it carries the entire system
+verbatim: the two operator modes; the **loss-of-load controller** with its **5 °F deadband**
+("to allow the rod control system to respond ... first") and C-7 arming ("a ramp load decrease
+at a rate greater than 5%/min, or a step load decrease of greater than 10% ... sensed from
+turbine impulse pressure"); the **turbine-trip controller** against the no-load Tavg (557 °F —
+the plants' own number *and* this plant's HZP anchor), no deadband, C-8 arming; the **steam
+pressure mode** whose selection *is* the arming; and **C-9** (condenser vacuum + a circ pump)
+gating actuation everywhere. WAT 05 (ML11216A094) supplies the output bands: 5–16.4 °F and
+0–27.7 °F → 0–100 %.
+
+**One constant is DERIVED from the source's own internal consistency**: the C-7 rate unit's
+lag. A step ΔL through a rate unit with lag τ peaks at ΔL/τ, so for the ">10 % step" criterion
+to mean anything a 10 % step must not trip the "5 %/min" unit: τ ≥ 0.10/(5 %/min) = **120 s**.
+Measured before the fix: a 30 s guess read a clean 10 % dispatch step as 20 %/min and armed
+C-7 on the first move of the acceptance sweep — the two sourced criteria collapsing into one
+because the sensing dynamics were guessed instead of derived.
+
+**Criterion A, measured** (full plant, rods MANUAL, 8 % dispatch schedule, 300 s settles):
+
+| MWe | 100 | 92 | 84 | 76 | 68 | 60 | 52 | 44 |
+|---|---|---|---|---|---|---|---|---|
+| power % | 99.5 | 91.3 | 83.1 | 74.9 | 70.6 | 70.0 | 69.4 | 68.8 |
+| dump % | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| SG safety % | 0 | 0 | 0 | 0 | 3.7 | 11.2 | 18.7 | 26.1 |
+
+**C-7 never arms; the dumps never open; power is monotone and tracks 1:1 down to 76 MWe** —
+the #489 plateau and inversion cannot occur because the parallel sink is interlocked out, which
+is the sourced mechanism, not a tuning. **Below ~70 MWe the SG code safeties lift, visibly**
+(1066–1079 psia) and become the ceiling: with the rods parked the secondary rides its own
+relief envelope, which is what a real PWR does when nobody inserts rods — a nameable,
+alarm-carrying cause, unlike the old engine's unobservable equilibrium. The missing rung is an
+**ADV between dump and safeties** (declared; with one, this steam would pass it instead).
+
+**The dump's real jobs, same machinery**: a 50 % rejection arms C-7, the dump runs at its
+Ginna-sourced 28 % cap, and the **SG safeties stay shut** ("50% loss of load is accommodated by
+the steam dump capacity" — WTSM 11.2, here with the moderator carrying what the smaller valves
+do not). A turbine trip auto-selects the C-8 controller with no operator and walks Tavg to
+within a few °F of no-load before closing the dumps; the first-seconds safety lift is the ADV
+gap, declared rather than asserted away. The trip fixture scrams with the trip — the
+turbine-trip reactor trip (P-9 class) is not yet in `pwr2_protection` and is recorded as owed.
+
+**Adjudications**: the loadfollow gate's stand-in dump law is retired in place as the record
+its A1_NOW literals were measured under; the three "lands where the current engine lands"
+comparisons are retired — their same-dump-law premise expired with the ruling; the A1 chain
+bands re-sized for the halved excursion (+8.6 °F measured vs +15), holding on both plants.
+Gates: `run_pwr2_dumpctl` NEW (22 checks, 8 mutations — including "C-7 always armed", the old
+engine's hidden-parallel-sink defect — none blind); `run_pwr2_loadfollow` 31 → 36.
