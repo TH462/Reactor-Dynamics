@@ -154,7 +154,51 @@
   }
 
   /* ---- THE STEP ------------------------------------------------------------------------------ */
+  /* step(eng, dt) — the outer door WRAPS the physics in the beyond-model catch: any layer's
+   * "state has been lost" throw (the pwr2_damage sentinel, the property-envelope errors)
+   * LATCHES beyond_model and HOLDS the last published state instead of propagating. Under
+   * the shell a propagated throw crashes the whole app mid-tick; the held-plant contract
+   * (#487/#499) is the simulator-grade behavior, and the guards inside pwr2_core remain the
+   * first line — this catch is the floor under them, added when the A/B pass found a
+   * sequence-dependent escape the single-ride repros could not reproduce. Errors that do NOT
+   * carry the beyond-model signature re-throw: a programming error must stay loud. */
   function step(eng, dt) {
+    if (eng._dead) {
+      eng.simTime += dt;
+      if (eng._lastTs) { eng._lastTs.sim_time_s = eng.simTime; return eng._lastTs; }
+    }
+    try {
+      var out = stepInner(eng, dt);
+      /* THE THIRD GUARD FAMILY — kinetics/thermal runaway. The inner guards (root-jump,
+       * both-walls, floor) watch the THERMODYNAMIC state; measured 2026-08-20g, a trajectory
+       * can run the KINETICS to 7.5e51 % power while every node enthalpy sits inside the
+       * envelope, so no inner guard fires. This screen is that family's latch, not merely a
+       * sanity floor — and it also keeps the held snapshot SANE (a state can be numerically
+       * wild while technically finite; measured power 2.6e54 passing isFinite). */
+      if (out.power_pct < 500 && out.fuel_temp_c < 5000 && out.pressure_mpa < 25 &&
+          out.pressure_mpa >= 0) {
+        eng._lastTs = out;
+      } else {
+        eng._dead = true;
+        eng._deadWhy = 'screen: power ' + out.power_pct + ', fuel ' + out.fuel_temp_c +
+                       ', P ' + out.pressure_mpa;
+        if (eng.sys) eng.sys.beyond_model = true;
+        if (eng._lastTs) { eng._lastTs.sim_time_s = eng.simTime; return eng._lastTs; }
+      }
+      return out;
+    } catch (e) {
+      if (/NON-FINITE|beyond|characterised|envelope/i.test(String(e && e.message))) {
+        eng._dead = true;
+        eng._deadWhy = 'throw: ' + String(e.message).slice(0, 90);
+        if (eng.sys) eng.sys.beyond_model = true;
+        eng.simTime += dt;
+        if (eng._lastTs) { eng._lastTs.sim_time_s = eng.simTime; return eng._lastTs; }
+      }
+      throw e;
+    }
+  }
+
+  function stepInner(eng, dt) {
     var sys = eng.sys;
 
     /* rods: slew toward target; a scram overrides the slew */

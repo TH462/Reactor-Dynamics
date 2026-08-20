@@ -342,6 +342,47 @@ function runSuite(C, rec, quiet) {
       rZ2.held === true && rZ2.dP === 0 && sysZ.P === Pz && sysZ.nodes[0].h === hz &&
       sysZ.simTime === tz + 0.02 && rZ2.junction.length === 1 && rZ2.junction[0].dm_dt === 0,
       'P and h byte-identical through a driven step, simTime += dt exactly, junctions zero');
+  /* ---- THE #499 GUARDS, AT THEIR OWN LAYER (migrated 2026-08-20g) ------------------------
+   * These lived as facade-gate fixtures until the control/instrument switchovers MOVED the
+   * facade trajectories: both now escape through the kinetics-runaway family first, so the
+   * inner thermodynamic guards never fire there and their facade mutations went blind. The
+   * guards are THIS layer's; direct synthetic states exercise them deterministically —
+   * measure at the probe's own layer. */
+  (function () {
+    /* ROOT-TRACKING: force the target mass FAR from the current root in one step — the solve
+     * lands > 2 MPa away and must REFUSE + latch, holding P and h unchanged. */
+    var sysJ = ring(4, 15.0, [1400, 1400, 1400, 1400]);
+    C.step(sysJ, 0.02, { flows: ringFlows(sysJ, 150) });
+    var Pbefore = sysJ.P;
+    sysJ.M_total = sysJ.M_total * 1.35;      /* a hand-teleported mass no flow produced */
+    var rJ = C.step(sysJ, 0.02, { flows: ringFlows(sysJ, 150) });
+    ckT('a hand-moved mass whose root sits far away is REFUSED: latch, hold, report the jump',
+        rJ.held === true && rJ.beyond_model === true && sysJ.beyond_model === true &&
+        Math.abs(sysJ.P - Pbefore) < 1e-9 && typeof rJ.rootJump_mpa === 'number' &&
+        Math.abs(rJ.rootJump_mpa) > 2.0,
+        'rootJump ' + (rJ.rootJump_mpa === undefined ? '?' : rJ.rootJump_mpa.toFixed(2)) +
+        ' MPa, P held at ' + sysJ.P.toFixed(3));
+    /* BOTH-WALLS: the latch counts nodes whose CLAMP BINDS this step, so the excursion must
+     * happen IN the step — and it must trip ONLY this guard. Three fixture generations died
+     * here, each caught by the injection self-test: pre-placed wall values mix back inside on
+     * the first flow (no clamp); symmetric heats on equal volumes move the mass projection so
+     * far the FLOOR or ROOT-JUMP guard fires first and masks the mutation. ASYMMETRIC volumes
+     * are the answer — two tiny nodes take opposed heats (huge delta-h, negligible mass
+     * shift) while two huge nodes anchor the root: P stays at 5.1 MPa, both walls clamp, and
+     * only the walls latch can claim the catch. */
+    var sysW = C.createSystem({ nodes: [
+      { id: 'n0', V: 0.01, h: 1000 }, { id: 'n1', V: 0.01, h: 1000 },
+      { id: 'n2', V: 50, h: 1000 }, { id: 'n3', V: 50, h: 1000 }], P: 5.0 });
+    var fW = [{ from: 'n0', to: 'n1', mdot: 0.1 }, { from: 'n1', to: 'n2', mdot: 0.1 },
+              { from: 'n2', to: 'n3', mdot: 0.1 }, { from: 'n3', to: 'n0', mdot: 0.1 }];
+    var rW = C.step(sysW, 0.02, { flows: fW, heats: { n0: 2e6, n1: -2e6 } });
+    ckT('nodes clamped on BOTH envelope walls at once latch beyond-model (the oscillation)',
+        sysW.beyond_model === true && rW.enthalpyClamped === 2 &&
+        sysW.P > 4.5 && sysW.P < 5.5,
+        'both walls clamped at P ' + sysW.P.toFixed(2) + ' MPa — no floor, no root-jump, ' +
+        'only this guard');
+  })();
+
 }
 
 console.log('\nPWR2 Layer 2 -- node/junction conservation core');
@@ -350,6 +391,13 @@ runSuite(C, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
+   'var P_JUMP_MAX = 2.0;',
+   'var P_JUMP_MAX = 1e9;'],
+  ['the both-walls latch is deleted (the near-floor oscillation runs unlatched)',
+   'if (wallHi > 0 && wallLo > 0) sys.beyond_model = true;',
+   ''],
+
   ['the beyond-model latch never fires (#487 — the pre-latch build, which went NaN)',
    '    if (sol.flooredLow && clampedNodes > 0) sys.beyond_model = true;', ''],
   ['the held step keeps integrating (the hold is announced but not performed)',

@@ -3044,3 +3044,78 @@ mission/campaign content probes the pwr engine. Both resolve at replacement, not
 
 Gates: `run_portable` 142 → 169 (the 27 pwr2 files join the shell and the portable build, all
 clean) · site meta/build green · the FULL `run_all` (browser gates included) at baseline.
+
+## 60. THE A/B DIVERGENCE PASS — THE PRE-REGISTERED PREDICTION HOLDS, AND TEN ADJUDICATIONS — 2026-08-20
+
+*(OWNER RULING, 2026-08-20: "Next" after Option B — the A/B pass, the design's own final
+exam.)* `test/run_pwr2_ab.js` is the harness `PWR2_ARCHITECTURE.md` specified: **a
+measurement, not a gate** — 7 matched rides × 32 fields (the 19 D4 §8 upheld proxies, the 10
+challenge-downgraded translations, 3 naturals), a divergence table per ride, exit 0 always.
+What follows is the Hard Rule 9 adjudication, one divergence at a time. A = `engines/pwr`
+under its M4 layer at the service's own 0.1 s protection cadence, automation channels
+unengaged on both sides (the matched posture); B = PWR2 through the shell class.
+
+**R1 — THE PRE-REGISTERED PREDICTION (D4 §2) HOLDS.** B's cold-leg vs hot-leg break at the
+same 20 cm²: `primary_void_fraction` mean |Δ| **0.78** (max 0.99), `core_void_fraction` mean
+**0.82**. The topology represents break locality the old engine structurally cannot — the
+design's stated falsifier ("if it does not diverge there, either the topology is not doing
+its job or the old proxy was better than believed") did not fire. The naturals stayed matched
+(power mean |Δ| 0.4 % on the cold ride), so this is locality, not drift.
+
+**R2 — the TMI deception, measured against the proxy it replaces.** Stuck PORV, 900 s:
+`pzr_level_pct` mean |Δ| **54 points** (max 66). B's level from the saturated split RISES as
+the vessel drains (§45's emergent deception); A's 3-constant affine law tracks inventory.
+Verdict **B** — the [derived] split against a fitted law, and the divergence IS the
+educational payload.
+
+**R3 — A rides out a full-power turbine trip; B reactor-trips on P-9.** Measured directly:
+A untripped at 100.0 % power, 2235 psia rock-steady, +120 s after `trip_turbine`. The SOURCE
+sides with B: TS Bases B 3.3.1 — above P-9 *"a turbine trip will cause a load rejection
+beyond the capacity of the Steam Dump System"*, so the reactor trips. A's ride-through
+contradicts its own source's capacity statement. Verdict **B**, prototypicality (§51).
+
+**R4 — clad temperature.** Steady |Δ| **350 °C**: B's clad is a solved thermal node
+(coolant < clad < fuel, gate-pinned); A's was upheld as a proxy by D4's challenge pass.
+Verdict **B**.
+
+**R5 — fuel temperature diverges ~370 °C POST-TRIP despite its translation downgrade.** At
+steady both agree to 0.8 %; after a trip B's fuel falls to near-coolant (decay-heat × thermal
+resistance — the physics) while A holds hundreds of degrees of offset. D4's downgrade judged
+the at-power form; off power the old fit shows through. Verdict **B**, and a note for the D4
+record: `fuel_temp_c` behaves proxy-like off power — the same after-the-fact ambiguity §8
+flagged on `sg_mass_frac`.
+
+**R6 — SG level on a load swing: A is CLOSER.** Max |Δ| 41 points: A's level swings
+(shrink-and-swell + feed dynamics); B's barely moves, because B's feed ≡ steam by
+construction. Real SG levels swing. Verdict **A** — the declared feed-train simplification
+now carries its measured cost (~40 points of missing level transient on a 30 % load change),
+recorded as the number attached to a known gap, not a new defect.
+
+**R7 — natural circulation is emergent in B.** Post pump-trip, B declares it for 81 % of the
+ride where A's fitted boolean stays false. D2 §6's design goal, delivered; the two engines'
+thresholds also differ, noted. Verdict **B**.
+
+**R8 — ambient-constant offsets, OPEN.** `containment_temp_c` differs 13.7 °C and the
+tailpipe cold-pipe base 32 °C at steady — constant choices, not dynamics (A carries 125 °F
+ambients; B's are [open]). Owed: one source check, then adopt whichever is sourced.
+
+**R9 — the cold leg is WORSE than the hot leg at the same area, emergently.** B-cold reaches
+core damage where B-hot does not: the cold-leg break spills the ECCS injected at that same
+leg — the real-plant cold-leg-worse asymmetry, falling out of topology + injection geometry.
+The topology's second dividend, recorded for the casualty authors.
+
+**R10 — harness lessons, recorded because each one burned a run.** A's command surface:
+`trip_turbine` not `turbine_trip`; its pump trip is `inject_failure/rcp_trip`; it has no
+20 cm²-class leak id (nearest `large_loca`). A bare A has no protection — M4 must be
+evaluated at the service's own 0.1 s cadence or every protective comparison is harness
+artifact. And the pass found a **sequence-dependent beyond-model escape** the single-ride
+repros could not reproduce, answered structurally: the facade's outer step now CATCHES the
+beyond-model throw, latches, and holds the last SANE snapshot — with a sanity screen, because
+a state can run numerically wild while every value is still technically finite (measured:
+power 2.6e54 rode straight through an `isFinite` check into the held snapshot). Under the
+shell, that catch is the difference between a held plant and a crashed app.
+
+**Bottom line for the replacement decision**: 9 of 10 rows side with B or record B delivering
+a designed capability; the one row siding with A (R6) is a declared simplification now
+carrying its measured cost. The pre-registered exam is passed. `run_pwr2_ab` is baselined as
+structure only (7 rides × 32 fields) — its numbers are findings, never a pass/fail.

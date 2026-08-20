@@ -217,7 +217,14 @@ function runSuite(RD, rec, quiet, only) {
     }
   } catch (eA) { threwA = eA.message; }
   ckT('...ridden deeper the plant DECLARES beyond-model and holds — no NaN (#499)',
-      latchA && threwA === null && isFinite(tsB.pressure_mpa) && isFinite(tsB.fuel_temp_c),
+      /* EITHER guard family may latch. Measured (2026-08-20g): since the RPS moved to
+       * instruments this trajectory's escape is a KINETICS RUNAWAY (power 7.5e51 while every
+       * node h sits inside the envelope — no clamp, no floor pin, so no inner latch), and the
+       * facade screen is the guard family that covers it. A `!_dead` condition here asserted
+       * inner-only and redded on the clean build. The guard MUTATIONS stay discriminated by
+       * their other observables (maxStep pins the root-jump; the SI/finite checks move). */
+      latchA && threwA === null &&
+      isFinite(tsB.pressure_mpa) && isFinite(tsB.fuel_temp_c),
       threwA ? ('THREW: ' + threwA.slice(0, 60)) :
       ('latched ' + latchA + ' at ' + tsB.sim_time_s.toFixed(1) + ' s, P ' +
        (tsB.pressure_mpa * 145.04).toFixed(1) + ' psia — 46.9 s truth-fed, ~168 s since the ' +
@@ -393,7 +400,8 @@ function runSuite(RD, rec, quiet, only) {
     }
   } catch (e3) { threw3 = e3.message; }
   ckT('a fast drain whose near root VANISHES is refused and declared — never teleported',
-      latch3 && threw3 === null && maxStep < 2.0 && ts3 !== null && isFinite(ts3.pressure_mpa),
+      latch3 && threw3 === null && maxStep < 2.0 &&
+      ts3 !== null && isFinite(ts3.pressure_mpa),
       threw3 ? ('THREW: ' + threw3.slice(0, 60)) :
       ('latched ' + latch3 + ', max |dP|/step ' + maxStep.toFixed(3) + ' MPa, P ' +
        (ts3 === null ? '?' : (ts3.pressure_mpa * 145.04).toFixed(0)) + ' psia'));
@@ -457,13 +465,12 @@ var MUTATIONS = [
   ['the RPS reads TRUTH, not the instruments (a failed channel can no longer lie to it)',
    'pressure_mpa: rd.primary_pressure !== undefined ? rd.primary_pressure : sys.P,',
    'pressure_mpa: sys.P,', { grp: 'B' }],
-  /* CORE mutations — 4th element 'core' substitutes a mutated pwr2_core into the load order */
-  ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
-   'var P_JUMP_MAX = 2.0;',
-   'var P_JUMP_MAX = 1e9;', 'core', { grp: 'D' }],
-  ['the both-walls latch is deleted (the near-floor oscillation runs unlatched)',
-   'if (wallHi > 0 && wallLo > 0) sys.beyond_model = true;',
-   '', 'core', { grp: 'D' }]
+  /* The two INNER-GUARD core mutations MIGRATED to run_pwr2_core (2026-08-20g): the
+   * control/instrument switchovers moved this gate's trajectories — both now escape through
+   * the kinetics-runaway family first, so the inner thermodynamic guards never fire here and
+   * the mutations went blind. The guards are pwr2_core's; they are now exercised there on
+   * direct synthetic states (measure at the probe's own layer). The loadAll coreSource
+   * machinery stays for future core mutations. */
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

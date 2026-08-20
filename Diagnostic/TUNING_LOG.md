@@ -29,6 +29,21 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-g (#479 — the A/B pass: the pre-registered prediction holds)
+
+`test/run_pwr2_ab.js` built per PWR2_ARCHITECTURE ("a MEASUREMENT, not a gate"): 7 matched
+rides × 32 fields, A under its M4 layer at 0.1 s, B through the shell. **The D4 §2
+pre-registered prediction HOLDS: B's cold-vs-hot-leg break at the same 20 cm² diverges mean
+Δα 0.78/0.82 — locality the old engine cannot represent — with the naturals matched (power
+0.4 %).** Ten HR9 adjudications in `Blueprint/PWR2_VALIDATION.md` §60: nine side with B
+(TMI level deception 54 pts vs the affine proxy; A rides out a full-power turbine trip its
+own source says exceeds dump capacity; post-trip fuel temp shows the old fit through its
+translation downgrade; emergent natural circulation; the cold-leg-worse asymmetry falling
+out of topology) and one with A (SG level swing — B's feed≡steam simplification now carries
+its measured ~40-point cost). Engine hardening from the pass: the facade's outer
+catch-latch-hold with a SANITY screen (a wild state can stay technically finite — measured
+power 2.6e54 passing isFinite into the held snapshot). Harness lessons in §60 R10.
+
 ## Session log — 2026-08-20-backshop-f (#479 Option B stage B3 — the control room runs PWR2)
 
 `ui/shell.html?engine=pwr2` boots the full board over `PWR2Engine`, zero console errors,
