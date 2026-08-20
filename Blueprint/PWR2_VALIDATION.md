@@ -2847,3 +2847,42 @@ measured step response, the cascade proven as a cascade, stationary σ and band-
 independence, determinism, all four failure modes, restore-heals-to-NOW);
 **`run_pwr2_engine` 19 checks / 13 mutations** — THE LYING CHANNEL check with the reads-truth
 mutation as its exact counterpart; all 18 prior checks held through the switchover unmoved.
+
+## 55. THE CONTROL SWITCHOVER — THE LADDER BELIEVES THE INSTRUMENT, THE SAFETIES BELIEVE THE METAL — 2026-08-20
+
+§54's declared follow-up, built with its owed stability pass. The split, drawn where the real
+plant draws it:
+
+- **Instrument-actuated, now on `drivers.indicated_*`** (absent = truth, so every layer-local
+  fixture is unchanged): the pressurizer heater/spray/PORV ladder, the level PI, the 17 %
+  low-level heater cut, the level program's Tavg, the dump controller's Tavg and steam
+  pressure. All one step old through the facade, the house convention.
+- **Mechanical, deliberately NOT**: the code safeties lift on TRUE pressure — spring-loaded
+  metal has no instrument in its loop. Both halves proven on lies in `run_pwr2_pressurizer`'s
+  new section: an indicated +120 psi lie opens the PORV with the safety shut; true 2510 psia
+  lifts the safety though the indicated channel reads 100 psi low. A mutation pointing the
+  safeties at the indicated channel reds.
+
+**The stability pass (Hard Rule 12), 600 s at steady full power, noise on vs off**: heater
+duty 53.2 vs 49.1 kW (+8 %), backup-heater flips 5 vs 1 (one per two minutes — the 8 psi
+hysteresis rides over the 2.9 psi noise; no #348-class chatter), spray 0, dumps 0, PORV lifts
+0, pressure band 43.8 vs 40.0 psi. No retuning needed; no constant moved.
+
+**The lying-channel payoffs, measured**:
+- Pressure channel HIGH: spray and PORV open on the lie — **true P 2188 → 1084 psia in 60 s**,
+  a real depressurization driven entirely by a failed instrument (the TMI-adjacent wiring the
+  switchover exists for).
+- Pressure channel LOW: the heaters drive full against a healthy plant — for exactly 2 s,
+  because the RPS trips **on the same lying channel** and the SI shed takes the heaters.
+  Defense in depth, emergent, not scripted.
+- Tavg channel HIGH: the dumps open to 100 % on a healthy plant, which genuinely cools —
+  and OTΔT trips because its setpoint reads the same railed channel. **DECLARED**: one lumped
+  channel per parameter makes single failures common-mode by construction (a real plant's 2/4
+  logic prevents this); the TS Bases' own control/protection-interaction discussion is the
+  frame, and per-parameter channel redundancy is future work if the teaching ever needs it.
+
+Gates: `run_pwr2_pressurizer` 59 → 63 (+3 mutations: safeties-read-indicated /
+split-undone / level-cannot-lie; one pre-existing mutation anchor repointed after the
+level_ctl rename — the self-test's ANCHOR MISS caught it); `run_pwr2_engine` 19 → 21
+(+2 wire-cut mutations). The heater-misdrive check reads at +1 s deliberately: the RPS kills
+the condition at +2 s, so a later read would find the lie already answered.

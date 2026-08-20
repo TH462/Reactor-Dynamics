@@ -399,6 +399,42 @@ function runSuite(RD, rec, quiet) {
       (sysS.P - Psolid0) / 10 > 8 * dPmax / DT * DT,
       ((sysS.P - Psolid0) * PSI / 10).toFixed(1) + ' psi/s solid vs ' +
       (dPmax * PSI / DT * DT).toFixed(2) + ' psi/s max while the bubble lived');
+  /* ---- THE HR1 SPLIT (2026-08-20, the instrument layer's control switchover) --------------
+   * CONTROL (heaters/spray/PORV ladder, level PI, 17 % cut) reads drivers.indicated_*;
+   * the CODE SAFETIES read TRUE pressure. Both halves proven on LIES, because a healthy
+   * indicated channel is indistinguishable from truth (#220). */
+  head('THE HR1 SPLIT  [the ladder believes the instrument; the safeties believe the metal]');
+  var pzH = PZ.createPressurizer({});
+  var sysH = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzH) });
+  for (var kH = 0; kH < 200; kH++) PZ.stepPressurizer(pzH, sysH, 0.02, {});
+  var rLie = PZ.stepPressurizer(pzH, sysH, 0.02,
+    { indicated_pressure_mpa: pzH.setpoint_mpa - 30 / 145.03774 });
+  ckT('an indicated -30 psi lie drives the heaters FULL with true P at the setpoint',
+      rLie.heater_frac === 1 && pzH.backupOn === true,
+      'heater frac ' + rLie.heater_frac + ', backup ' + pzH.backupOn);
+  var rLie2 = null;
+  for (kH = 0; kH < 10; kH++) {
+    rLie2 = PZ.stepPressurizer(pzH, sysH, 0.02,
+      { indicated_pressure_mpa: pzH.setpoint_mpa + 120 / 145.03774 });
+  }
+  ckT('an indicated +120 psi lie opens the PORV -- and the code safety stays SHUT (true P fine)',
+      pzH.porvOpen === true && pzH.safetyOpen === false,
+      'porv ' + pzH.porvOpen + ', safety ' + pzH.safetyOpen);
+  /* the mechanical half: true P past 2500 psia while the indicated channel lies LOW */
+  sysH.P = 2510 / 145.03774;
+  PZ.stepPressurizer(pzH, sysH, 0.02,
+    { indicated_pressure_mpa: pzH.setpoint_mpa - 100 / 145.03774 });
+  ckT('true P at 2510 psia lifts the CODE SAFETY though the indicated channel lies low',
+      pzH.safetyOpen === true,
+      'a spring-loaded valve has no instrument in its loop -- the split, both halves');
+  var pzL = PZ.createPressurizer({});
+  var sysL = S.createPlant({ h: W.h_l(304.5, 15.41), P: 15.41, extraMass: PZ.extraMassFn(pzL) });
+  for (kH = 0; kH < 200; kH++) PZ.stepPressurizer(pzL, sysL, 0.02, {});
+  var rLvl = PZ.stepPressurizer(pzL, sysL, 0.02, { indicated_level_pct: 10 });
+  ckT('an indicated 10 % level lie latches the 17 % heater cut with the true level healthy',
+      pzL.lowLevelCut === true && rLvl.heater_kW === 0,
+      'cut ' + pzL.lowLevelCut + ', heaters ' + rLvl.heater_kW + ' kW');
+
 }
 
 /* ---- run + injection self-test -------------------------------------------------------------- */
@@ -409,6 +445,16 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 var PZSRC = fs.readFileSync(path.join(SRC, 'pwr2_pressurizer.js'), 'utf8').replace(/\r\n/g, '\n');
 var MUTATIONS = [
+  ['the code safeties read the INDICATED channel (a lying-low channel could hold them shut)',
+   '    if (!pz.safetyOpen && P >= RELIEF.safety_open_mpa) pz.safetyOpen = true;',
+   '    if (!pz.safetyOpen && P_ctl >= RELIEF.safety_open_mpa) pz.safetyOpen = true;'],
+  ['the ladder reads TRUTH (the HR1 split undone -- no lie can misdrive the heaters)',
+   "    var P_ctl = drivers.indicated_pressure_mpa !== undefined ? drivers.indicated_pressure_mpa\n                                                             : P;",
+   '    var P_ctl = P;'],
+  ['the level PI and 17 % cut read TRUE level (the level channel cannot lie)',
+   "    var level_ctl = drivers.indicated_level_pct !== undefined ? drivers.indicated_level_pct\n                                                              : level_pct;",
+   '    var level_ctl = level_pct;'],
+
   ['the projection loses its P-dependence (a rigid vessel wearing a bubble\'s name)',
    'return function (P) { return pz.V * W.rho_from_h(pz.h_bar, P); };',
    'return function (P) { return pz.m_pzr; };'],
@@ -442,11 +488,11 @@ var MUTATIONS = [
    'var f = (Tavg_c - LEVEL.tavg_noload_c) / (LEVEL.tavg_full_c - LEVEL.tavg_noload_c);',
    'var f = 1;'],
   ['the 17 % low-level cut is deleted (heaters boil in a steam space)',
-   'if (!pz.lowLevelCut && level_pct <= LEVEL.low_cut_pct) pz.lowLevelCut = true;',
+   'if (!pz.lowLevelCut && level_ctl <= LEVEL.low_cut_pct) pz.lowLevelCut = true;',
    'if (false) pz.lowLevelCut = true;'],
   ['the level PI acts BACKWARD (a low level throttles charging)',
-   'var levErr = program_pct - level_pct;',
-   'var levErr = level_pct - program_pct;'],
+   'var levErr = program_pct - level_ctl;',
+   'var levErr = level_ctl - program_pct;'],
   ['the +5 % anticipatory backup-heater signal is deleted',
    'var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;',
    'var backupOnLevel = false;'],

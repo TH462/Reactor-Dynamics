@@ -243,12 +243,35 @@ function runSuite(RD, rec, quiet) {
   run(eng5, quiet ? 20 : 60);
   var trueP = eng5.sys.P;
   EN.command(eng5, 'instrument_fail', { id: 'primary_pressure', mode: 'low' });
-  run(eng5, 10);
+  var tsH = run(eng5, 1);
+  ckT('...and the HEATER LADDER drives full on the same lie, pre-trip (control switchover)',
+      tsH.pzr_heater_kw > 150,
+      tsH.pzr_heater_kw.toFixed(0) + ' kW against a plant AT its setpoint — measured 2 s of ' +
+      'this before the RPS trips on the same channel and sheds them (defense in depth)');
+  run(eng5, 9);
   ckT('the RPS trips and injects on the LYING channel, the plant itself healthy',
       eng5.pt.reactor_trip === true && eng5.pt.trip_cause === 'lo_pzr_press' &&
       eng5.pt.si === true && trueP > 14.5,
       'cause ' + eng5.pt.trip_cause + ', SI ' + eng5.pt.si + ', true P was ' +
       (trueP * 145.04).toFixed(0) + ' psia when the channel failed');
+
+  /* the DUMP side of the switchover: a lying-high Tavg opens the dumps on a healthy plant —
+   * and the common-mode tail is DECLARED, not hidden: the same lumped channel feeds OTdT,
+   * whose setpoint collapses on the railed reading, so the plant also trips (the TS Bases'
+   * own control/protection-interaction discussion; a real plant's 2/4 channel logic keeps a
+   * single failure from doing this, and this model has one lumped channel per parameter). */
+  var eng6 = EN.createEngine({});
+  run(eng6, quiet ? 20 : 60);
+  EN.command(eng6, 'instrument_fail', { id: 'tavg', mode: 'high' });
+  var maxDump6 = 0, ts6 = null;
+  for (var k6 = 0; k6 < 20 / DT; k6++) {
+    ts6 = EN.step(eng6, DT);
+    if (ts6.steam_dump_valve_pct > maxDump6) maxDump6 = ts6.steam_dump_valve_pct;
+  }
+  ckT('a lying-high Tavg OPENS THE DUMPS on a healthy plant (and OTdT trips on the same lie)',
+      maxDump6 > 50 && ts6.scrammed === true && eng6.pt.trip_cause === 'ot_delta_t',
+      'max dump ' + maxDump6.toFixed(0) + ' %, cause ' + eng6.pt.trip_cause +
+      ' — one lumped channel is common-mode by construction, declared');
 
   /* ---- 3b. THE DRAIN ROOT-JUMP (#499 second instance) ---------------------------------------
    * The pre-fix facade let a scram leave the turbine loaded; the -240 F/min cooldown drained
@@ -313,6 +336,12 @@ var MUTATIONS = [
   ['the turbine flag never reaches the RPS (P-9 watches a wire that is not connected)',
    'turbine_tripped: eng.tb.tripped,',
    'turbine_tripped: false,'],
+  ['the pressurizer ladder wire is cut (control reads truth again; no lie can drive the heaters)',
+   'indicated_pressure_mpa: eng.ins.reading.primary_pressure,',
+   ''],
+  ['the dump controller wire is cut (a lying Tavg can no longer open the dumps)',
+   "      tavg_c: eng.ins.reading.tavg !== undefined ? eng.ins.reading.tavg : tavg,\n      load_frac:",
+   '      tavg_c: tavg,\n      load_frac:'],
   ['the loop delta-T never reaches the RPS (both delta-T trips silently unavailable)',
    "delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C",
    'delta_t_frac: undefined ? 0'],

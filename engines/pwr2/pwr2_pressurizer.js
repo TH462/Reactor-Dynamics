@@ -308,10 +308,22 @@
     /* ---- 1b. THE LEVEL CONTROL SYSTEM (WTSM 10.3 — see the LEVEL block). Reads LAST step's
      * split (gather-then-integrate); outputs a charging demand for the caller to wire into
      * pwr2_cvcs, and the two sourced level protections. ---- */
+    /* ---- HR1 SPLIT (2026-08-20, the instrument layer's control switchover) ----------------
+     * CONTROL reads the INSTRUMENT; physics reads the plant. The heater/spray/PORV ladder,
+     * the level PI, and the 17 % low-level cut are all instrument-actuated in the real plant,
+     * so each takes its channel from drivers.indicated_* when the caller wires an instrument
+     * layer — ABSENT means truth, which keeps every layer-local gate's fixture exactly what
+     * it was. The CODE SAFETIES stay on TRUE pressure: spring-loaded metal has no instrument
+     * in its loop, and that split is the whole TMI-relevant point — a lying pressure channel
+     * can misdrive the heaters and the PORV, and can never hold a safety shut. Mass/energy
+     * reconciliation, saturation properties and the emptied/solid regimes all stay on truth
+     * (they are the vessel, not a reading of it). */
     var level_pct = 100 * pz.V_liq / V;
+    var level_ctl = drivers.indicated_level_pct !== undefined ? drivers.indicated_level_pct
+                                                              : level_pct;
     var program_pct = 100 * (drivers.tavg_c !== undefined ? levelProgram(drivers.tavg_c)
                                                           : GEOM.level_program_full);
-    var levErr = program_pct - level_pct;              /* positive = level LOW, charge more */
+    var levErr = program_pct - level_ctl;              /* positive = level LOW, charge more */
     /* ANTI-WINDUP: the integral's authority is capped at ±0.5 of demand (±150 %·s at this Ki)
      * — without the cap the startup transient wound it to the rail and the controller sat at
      * full charging with the level ABOVE program (measured, first closed-loop probe). The PI
@@ -321,12 +333,15 @@
                                                      0.5 / LEVEL.ki_per_pct_s);
     var charging_demand = clip(LEVEL.demand_bias + LEVEL.kp_per_pct * levErr +
                                LEVEL.ki_per_pct_s * pz.levErrInt, 0, 1);
-    if (!pz.lowLevelCut && level_pct <= LEVEL.low_cut_pct) pz.lowLevelCut = true;
-    else if (pz.lowLevelCut && level_pct >= LEVEL.low_cut_restore_pct) pz.lowLevelCut = false;
+    if (!pz.lowLevelCut && level_ctl <= LEVEL.low_cut_pct) pz.lowLevelCut = true;
+    else if (pz.lowLevelCut && level_ctl >= LEVEL.low_cut_restore_pct) pz.lowLevelCut = false;
     var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;   /* the +5 % anticipator */
 
-    /* ---- 2. THE SOURCED CONTROL LADDER (proportional output only — see header). ---- */
-    var err_psi = (P - pz.setpoint_mpa) * PSI;
+    /* ---- 2. THE SOURCED CONTROL LADDER (proportional output only — see header). The error
+     * is the CONTROL CHANNEL's — see the HR1 split note above. ---- */
+    var P_ctl = drivers.indicated_pressure_mpa !== undefined ? drivers.indicated_pressure_mpa
+                                                             : P;
+    var err_psi = (P_ctl - pz.setpoint_mpa) * PSI;
 
     var prop = clip((CONTROL.prop_off_psi - err_psi) /
                     (CONTROL.prop_off_psi - CONTROL.prop_full_on_psi), 0, 1);

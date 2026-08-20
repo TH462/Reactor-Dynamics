@@ -178,11 +178,14 @@
     });
     eng._cdAvail = cr.available;
     var dcr = DC.stepDumpCtl(eng.dc, dt, Object.assign({
-      tavg_c: tavg,
+      /* HR1 (2026-08-20): the dump controller's Tavg and steam pressure are INSTRUMENT
+       * channels (one step old); the state signals stay direct. */
+      tavg_c: eng.ins.reading.tavg !== undefined ? eng.ins.reading.tavg : tavg,
       load_frac: eng.tb.tripped ? 0 : eng.tb.load_target_mwe / MWE_RATED,
       turbine_tripped: eng.tb.tripped,
       condenser_available: cr.available,
-      steam_pressure_mpa: eng.sg.P
+      steam_pressure_mpa: eng.ins.reading.steam_pressure !== undefined
+                          ? eng.ins.reading.steam_pressure : eng.sg.P
     }, eng.dcDrivers));
     var rr = RL.stepRelief(eng.rl, eng.sg.P, dt, {
       rated_steam_kgs: eng.rated_steam,
@@ -216,7 +219,13 @@
     var pr = S.stepPlant(sys, dt, { heats: rrx.heats, sgDuty: sr.duty_kW, sources: srcs });
 
     var pzr = PZ.stepPressurizer(eng.pz, sys, dt, Object.assign({
-      tavg_c: tavg,
+      /* HR1 (2026-08-20): the heater/spray/PORV ladder, the level PI and the 17 % low-level
+       * cut read the INSTRUMENTS (one step old); the code safeties inside the module read
+       * true P regardless — the module's own split note has the why. The level PROGRAM's
+       * Tavg is the instrument channel too, same reason. */
+      tavg_c: eng.ins.reading.tavg !== undefined ? eng.ins.reading.tavg : tavg,
+      indicated_pressure_mpa: eng.ins.reading.primary_pressure,
+      indicated_level_pct: eng.ins.reading.pzr_level,
       si_active: eng.pt.si
     }, eng.pzDrivers));
     eng._pzRelief = pzr.relief_kgs;

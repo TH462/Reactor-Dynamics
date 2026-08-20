@@ -29,6 +29,19 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-b (#479 — the control switchover: ladder on the instrument, safeties on the metal)
+
+§54's owed follow-up (`Blueprint/PWR2_VALIDATION.md` §55). The heater/spray/PORV ladder, level
+PI, 17 % cut and the dump controller's Tavg/steam-pressure all read `indicated_*` (one step
+old); the code safeties stay on TRUE pressure, and both halves of that split are gate-proven
+on lies. Stability pass measured (600 s, noise on/off): heater duty +8 %, backup flips 5 vs 1,
+zero PORV lifts, band 43.8 vs 40.0 psi — nothing retuned. Payoffs: a lying-high pressure
+channel drives a REAL depressurization (2188 → 1084 psia); a lying-low one gets 2 s of heater
+misdrive before the RPS trips on the same lie; a lying-high Tavg opens the dumps and OTΔT
+trips on the same channel — the lumped-channel common-mode DECLARED (real plants' 2/4 logic
+prevents it; redundancy is future work). `run_pwr2_pressurizer` 59 → 63, `run_pwr2_engine`
+19 → 21; run_all --fast at baseline.
+
 ## Session log — 2026-08-20-backshop-a (#479 — the instrument layer: what the plant says, and the RPS believes it)
 
 *(OWNER RULING, 2026-08-20: "Do option 1".)* Full record `Blueprint/PWR2_VALIDATION.md` §54.
