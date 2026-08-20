@@ -2886,3 +2886,46 @@ split-undone / level-cannot-lie; one pre-existing mutation anchor repointed afte
 level_ctl rename — the self-test's ANCHOR MISS caught it); `run_pwr2_engine` 19 → 21
 (+2 wire-cut mutations). The heater-misdrive check reads at +1 s deliberately: the RPS kills
 the condition at +2 s, so a later read would find the lie already answered.
+
+## 56. THE ROD STOP AND THE TURBINE RUNBACK — THE WARNING BEFORE THE TRIP, AND WHAT IT BUYS HERE — 2026-08-20
+
+The last sourced protection rung. Ginna UFSAR ch7 (ML20339A027) §7.2.2.4.1/§7.2.3.2.1: at
+**3 % of rated loop ΔT below either delta-T trip setpoint**, rod stops block outward motion and
+*"a turbine runback at 200%/min for 1.5 sec every 30 sec"* runs *"until ΔT < ΔT (rod stop) ...
+to maintain essentially a constant margin to trip and gives the operator the opportunity to
+make appropriate adjustments before a reactor trip occurs."*
+
+Built as ONE signal, TWO consumers (HR5: `pwr2_protection` reports `rod_stop`/`runback`; the
+facade acts — outward rod motion refused, inward always allowed; 5 MWe nibbles, 1.5 s per 30 s
+window). **The bistable needed hysteresis the source never mentions** (assert 3.0 %, clear
+3.5 % [open]): measured without it, channel noise flickered the signal at the line and every
+flicker restarted the pulse timer — the sourced duty cycle degenerated into continuous ramping.
+
+**Measured, both directions of the sourced story** (quasi-static dilution walks the margin into
+the band at ~+193 s; ANY step of boron prompt-jumps power toward the hi-flux trip — even
+−15 ppm reads 128 %):
+- **With the operator** ("appropriate adjustments" = rods in, which the stop permits): one
+  runback nibble + 12 steps of rods recover the margin, the signal clears in seconds, **no
+  trip**. The sourced purpose, verbatim, demonstrated.
+- **Without the operator**: this rods-MANUAL plant trips ~51 s after onset anyway — the
+  runback's load cut RAISES Tavg ~1.1 °F/MWe (the load-follow character) and K3 erodes the
+  setpoint faster than the falling ΔT recovers. **On this plant the runback buys the operator
+  TIME, not an equilibrium** — a plant-identity fact the real function's design (auto rods
+  restoring Tavg program) does not have to face.
+
+**The gate work found four of its own latent defects** — the mutation replays are now
+section-scoped (17 × the full suite had reached 1074 s of contention), and the scoping exposed
+what full-suite side effects had been hiding: a turbine-flag mutation that had been cutting the
+DUMP CONTROLLER's identical line since birth (unique two-line anchor now); a delta-T mutation
+that replaced a ternary's condition and left its truth branch live (a truth-wire, not an
+absence); a ladder probe that was vacuous under the ~330 s startup pressure dip (§43) — heaters
+are legitimately full on truth there, so the probe is now a HIGH lie, which only spray and the
+PORV can answer; and an oxidation-wire mutation that had only ever been caught by trajectory
+chaos (now a designed `eng._Qox > 0` observable). A fifth find while re-fixturing: **a STUCK
+Tavg channel through a turbine trip has the C-8 controller chase the stuck 578 °F reading and
+drag the true plant to 406 °F** — a 150 °F instrument-driven overcooling casualty, now the
+dump-wire check's fixture and a scenario-ready teaching case.
+
+Gates: `run_pwr2_protection` 75 → 79 (+3 mutations; the approach fixtures sit at Tavg +10 °C
+deliberately — at T′ every point in OT's band is past OP's whole setpoint), `run_pwr2_engine`
+21 → 26 / 17 mutations, groups A–D. The page gains RUNBACK and ROD STOP lamps.

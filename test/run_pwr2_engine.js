@@ -35,7 +35,13 @@ function loadAll(engSource, coreSource) {
   return globalThis.RD.pwr2;
 }
 
-function runSuite(RD, rec, quiet) {
+/* runSuite(RD, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
+ * can see that mutation: 'A' equivalence/door/pushbutton (one engine chain), 'B' the
+ * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3).
+ * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
+ * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
+ * fixture ever added, and a mutation only needs the checks built to see it. */
+function runSuite(RD, rec, quiet, only) {
   var EN = RD.engine, W = RD.water, S = RD.sources, G = RD.sg, TB = RD.turbine,
       RL = RD.relief, CD = RD.condenser, DC = RD.dumpctl, PZ = RD.pressurizer,
       K = RD.kinetics, R = RD.reactor;
@@ -53,6 +59,7 @@ function runSuite(RD, rec, quiet) {
     if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
   }
   function head(s) { if (!quiet) console.log('\n' + s); }
+  function grp(g) { return only === undefined || only === g; }
   function run(eng, secs) {
     var ts = null;
     for (var i = 0; i < secs / DT; i++) ts = EN.step(eng, DT);
@@ -61,6 +68,7 @@ function runSuite(RD, rec, quiet) {
 
   var SETTLE = quiet ? 120 : 300;
 
+  if (grp('A')) {
   /* ---- 1. EQUIVALENCE: the facade against the gates' own hand wiring ----------------------- */
   head('EQUIVALENCE  [the facade must BE the hand wiring, proven against it]');
   var eng = EN.createEngine({});
@@ -167,6 +175,9 @@ function runSuite(RD, rec, quiet) {
       'Tavg ' + (tsS.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs no-load 557, power ' +
       tsS.power_pct.toFixed(2) + ' %, P ' + (tsS.pressure_mpa * 145.04).toFixed(0) + ' psia');
 
+  }
+
+  if (grp('D')) {
   /* ---- 3. THE CALLER-HALF OF HR5 ------------------------------------------------------------ */
   head('THE CALLER\'S HALF  [the RPS reports; THIS file inserts the rods]');
   var eng2 = EN.createEngine({});
@@ -194,10 +205,14 @@ function runSuite(RD, rec, quiet) {
   /* #499 first instance, now GUARDED: ridden deeper, the near-floor h-oscillation (nodes
    * pinned on BOTH envelope walls at once) must latch beyond_model and hold — the pre-guard
    * build threw NaN out of pwr2_damage at t = 68.5 s. Measured post-guard: latches 46.9 s. */
-  var latchA = false, threwA = null;
+  var latchA = false, threwA = null, qoxSeen = false;
   try {
-    for (var kk = 0; kk < 120 / DT; kk++) {
+    for (var kk = 0; kk < 180 / DT; kk++) {
       tsB = EN.step(eng2, DT);
+      /* the oxidation WIRING's designed observable: once the damage layer reports heat, the
+       * reactor must RECEIVE it next step (eng._Qox is that wire). Chaos used to catch the
+       * zeroed-wire mutation incidentally; this sees it deterministically. */
+      if (eng2.dm && eng2._Qox > 0) qoxSeen = true;
       if (eng2.sys.beyond_model) { latchA = true; break; }
     }
   } catch (eA) { threwA = eA.message; }
@@ -205,8 +220,14 @@ function runSuite(RD, rec, quiet) {
       latchA && threwA === null && isFinite(tsB.pressure_mpa) && isFinite(tsB.fuel_temp_c),
       threwA ? ('THREW: ' + threwA.slice(0, 60)) :
       ('latched ' + latchA + ' at ' + tsB.sim_time_s.toFixed(1) + ' s, P ' +
-       (tsB.pressure_mpa * 145.04).toFixed(1) + ' psia'));
+       (tsB.pressure_mpa * 145.04).toFixed(1) + ' psia — 46.9 s truth-fed, ~168 s since the ' +
+       'RPS moved to instruments (the switchover shifted the trajectory; latch+finite is the claim)'));
+  ckT('...and the oxidation heat the damage layer reported REACHED the reactor on the way down',
+      qoxSeen, 'eng._Qox > 0 observed during the ride — the wiring, seen directly');
 
+  }
+
+  if (grp('B')) {
   /* ---- 2c. P-9 THROUGH THE DOOR --------------------------------------------------------------
    * The setpoint logic (50 %/8 % by dump availability, the no-trip band) is gated at the
    * protection layer's own gate; THIS check is the wiring claim — turbine_tripped and dump
@@ -241,14 +262,23 @@ function runSuite(RD, rec, quiet) {
    * PLANT is healthy while the channel lies */
   var eng5 = EN.createEngine({});
   run(eng5, quiet ? 20 : 60);
+  /* THE LADDER'S WIRE, probed with a HIGH lie: the startup dip keeps true P ~72 psi below
+   * the setpoint for ~330 s (PWR2_VALIDATION.md §43), so a LOW lie cannot discriminate — the
+   * truth-fed ladder has the heaters legitimately full there too, which kept the wire-cut
+   * mutation blind through two fixture attempts. Spray and the PORV answer only a HIGH
+   * error: on the lie they open; on truth (below setpoint) they cannot. */
+  EN.command(eng5, 'instrument_fail', { id: 'primary_pressure', mode: 'high' });
+  var tsH = run(eng5, 1);
+  ckT('...and SPRAY + PORV open on a HIGH lie, pre-trip (the ladder reads the instrument)',
+      tsH.spray_flow_pct > 50 && tsH.porv_open === true,
+      'spray ' + tsH.spray_flow_pct.toFixed(0) + ' %, PORV ' + tsH.porv_open +
+      ' — true P below the setpoint the whole time');
+  EN.command(eng5, 'instrument_restore', 'primary_pressure');
+  EN.command(eng5, 'reset_protection', true);   /* hi_pzr may have latched on the railed lie */
+  run(eng5, quiet ? 5 : 10);
   var trueP = eng5.sys.P;
   EN.command(eng5, 'instrument_fail', { id: 'primary_pressure', mode: 'low' });
-  var tsH = run(eng5, 1);
-  ckT('...and the HEATER LADDER drives full on the same lie, pre-trip (control switchover)',
-      tsH.pzr_heater_kw > 150,
-      tsH.pzr_heater_kw.toFixed(0) + ' kW against a plant AT its setpoint — measured 2 s of ' +
-      'this before the RPS trips on the same channel and sheds them (defense in depth)');
-  run(eng5, 9);
+  run(eng5, 10);
   ckT('the RPS trips and injects on the LYING channel, the plant itself healthy',
       eng5.pt.reactor_trip === true && eng5.pt.trip_cause === 'lo_pzr_press' &&
       eng5.pt.si === true && trueP > 14.5,
@@ -260,19 +290,86 @@ function runSuite(RD, rec, quiet) {
    * whose setpoint collapses on the railed reading, so the plant also trips (the TS Bases'
    * own control/protection-interaction discussion; a real plant's 2/4 channel logic keeps a
    * single failure from doing this, and this model has one lumped channel per parameter). */
+  /* The dump controller's wire, seen through a STUCK channel — measured: a fail-high lie
+   * cannot discriminate here (OTdT trips on the same railed channel within 2 s and the C-8
+   * controller then opens the dumps with or without the Tavg wire; the pre-trip window is
+   * shorter than C-7's arming). A STUCK channel through a turbine trip is the clean case:
+   * C-8 chases the stuck 578 degF reading and drags the TRUE plant to 406 degF — 150 degF
+   * past the no-load program, an instrument-driven overcooling casualty — where the wire-cut
+   * mutant walks honestly to ~555 and closes the dumps. */
   var eng6 = EN.createEngine({});
   run(eng6, quiet ? 20 : 60);
-  EN.command(eng6, 'instrument_fail', { id: 'tavg', mode: 'high' });
-  var maxDump6 = 0, ts6 = null;
-  for (var k6 = 0; k6 < 20 / DT; k6++) {
-    ts6 = EN.step(eng6, DT);
-    if (ts6.steam_dump_valve_pct > maxDump6) maxDump6 = ts6.steam_dump_valve_pct;
-  }
-  ckT('a lying-high Tavg OPENS THE DUMPS on a healthy plant (and OTdT trips on the same lie)',
-      maxDump6 > 50 && ts6.scrammed === true && eng6.pt.trip_cause === 'ot_delta_t',
-      'max dump ' + maxDump6.toFixed(0) + ' %, cause ' + eng6.pt.trip_cause +
-      ' — one lumped channel is common-mode by construction, declared');
+  EN.command(eng6, 'instrument_fail', { id: 'tavg', mode: 'stuck' });
+  EN.command(eng6, 'turbine_trip', true);
+  var ts6 = run(eng6, quiet ? 180 : 240);
+  ckT('a STUCK Tavg channel makes the dumps OVERCOOL the true plant far past the program',
+      (ts6.tavg_c * 1.8 + 32) < 500 && ts6.steam_dump_valve_pct > 30,
+      'true Tavg ' + (ts6.tavg_c * 1.8 + 32).toFixed(1) + ' degF vs the 557 program, dumps ' +
+      ts6.steam_dump_valve_pct.toFixed(0) + ' % chasing a reading stuck at ' +
+      (eng6.ins.reading.tavg * 1.8 + 32).toFixed(1));
 
+  }
+
+  if (grp('C')) {
+  /* ---- 2e. THE RUNBACK AND THE ROD STOP (ch7 sec 7.2.3.2.1, the full sourced loop) ---------
+   * A quasi-static dilution (-1 ppm per 5 s of the CVCS's own boron field — a STEP of any
+   * size prompt-jumps power into the hi-flux trip, measured at -15 ppm already) walks the
+   * OTdT margin into the 3 % band at ~+193 s. Then the sourced sequence: the runback nibbles
+   * the turbine, the rod stop refuses OUTWARD motion, the operator's "appropriate
+   * adjustments" (rods IN — always allowed) recover the margin, the signal clears, and NO
+   * trip comes. Measured plant identity, recorded: WITHOUT the operator, this rods-MANUAL
+   * plant trips ~51 s after onset anyway — the runback's load cut raises Tavg ~1.1 degF/MWe
+   * (the load-follow character) and erodes the setpoint via K3 faster than the delta-T term
+   * recovers. The runback buys the operator TIME on this plant; it does not buy an
+   * equilibrium. That is the source's own framing, measured. */
+  head('THE RUNBACK  [3 % from the OTdT trip: nibble the turbine, hold the rods, no trip]');
+  var eng7 = EN.createEngine({});
+  run(eng7, quiet ? 30 : 60);
+  var onset7 = false, ts7 = null;
+  for (var d7 = 0; d7 < 60 && !onset7; d7++) {
+    eng7.cv.boron_ppm -= 2;         /* quasi-static: -2 ppm per 2.5 s (a bigger step
+                                     * prompt-jumps power toward the hi-flux trip) */
+    for (var k7 = 0; k7 < 2.5 / DT; k7++) {
+      ts7 = EN.step(eng7, DT);
+      if (ts7.runback_signal) { onset7 = true; break; }
+    }
+  }
+  ckT('the approach signal asserts on a slow dilution, before any trip',
+      onset7 && ts7.scrammed === false, 'after ' + (2 * d7) + ' ppm of dilution');
+  /* TIMING [measured]: with no operator action this rods-MANUAL plant trips ~51 s after
+   * onset (the runback's load cut RAISES Tavg ~1.1 degF/MWe — the load-follow character —
+   * and erodes the setpoint via K3 faster than the delta-T term recovers; the runback buys
+   * TIME here, not an equilibrium). So: rod-stop test in the first ~5 s, rods-in at ~+8 s. */
+  EN.command(eng7, 'rod_target', 199.0);
+  run(eng7, 2);                                  /* inward: always allowed */
+  var rodsIn = eng7.rodSteps;
+  EN.command(eng7, 'rod_target', 200);
+  run(eng7, 3);                                  /* outward: refused while the signal stands */
+  ckT('the ROD STOP: inward moves, outward is refused while the signal stands',
+      rodsIn < 199.5 && eng7.rodSteps <= rodsIn + 1e-9,
+      'in to ' + rodsIn.toFixed(1) + ', then held at ' + eng7.rodSteps.toFixed(1));
+  /* the operator's half [sourced: "appropriate adjustments"]: rods IN. The runback's first
+   * 1.5 s pulse has already nibbled ~5 MWe by now; margin recovery then clears the signal. */
+  var load0 = eng7.tb.load_target_mwe;
+  EN.command(eng7, 'rod_target', 188);
+  var clear7 = false, trip7 = false, minLoad7 = 1e9;
+  for (k7 = 0; k7 < (quiet ? 120 : 240) / DT; k7++) {
+    ts7 = EN.step(eng7, DT);
+    if (eng7.tb.load_target_mwe < minLoad7) minLoad7 = eng7.tb.load_target_mwe;
+    if (!ts7.runback_signal) clear7 = true;
+    if (ts7.scrammed) { trip7 = true; break; }
+  }
+  ckT('the RUNBACK nibbled the turbine: 200 %/min for 1.5 s per 30 s window',
+      minLoad7 <= 100 - 4,
+      '100 -> ' + minLoad7.toFixed(1) + ' MWe (load0 at rods-in ' + load0.toFixed(1) + ')');
+  ckT('rods in + the runback recover the margin: the signal CLEARS and no trip comes',
+      clear7 && !trip7,
+      'the sourced purpose verbatim: "gives the operator the opportunity to make ' +
+      'appropriate adjustments before a reactor trip occurs"');
+
+  }
+
+  if (grp('D')) {
   /* ---- 3b. THE DRAIN ROOT-JUMP (#499 second instance) ---------------------------------------
    * The pre-fix facade let a scram leave the turbine loaded; the -240 F/min cooldown drained
    * the pressurizer at 54 kg/s and ONE step teleported the solve 1724 -> 2611 psia (surge
@@ -300,6 +397,7 @@ function runSuite(RD, rec, quiet) {
       threw3 ? ('THREW: ' + threw3.slice(0, 60)) :
       ('latched ' + latch3 + ', max |dP|/step ' + maxStep.toFixed(3) + ' MPa, P ' +
        (ts3 === null ? '?' : (ts3.pressure_mpa * 145.04).toFixed(0)) + ' psia'));
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -311,62 +409,76 @@ var ENSRC = fs.readFileSync(path.join(SRC, 'pwr2_engine.js'), 'utf8').replace(/\
 var MUTATIONS = [
   ['the pressurizer relief sink is dropped (mass relieves without leaving)',
    "srcs.push({ node: 'hot_leg', mdot: -eng._pzRelief, h: eng._pzReliefH });",
-   ''],
+   '', { grp: 'A' }],
   ['the level controller is unhooked from charging',
    'eng.cv.chargingDemand = pzr.charging_demand;',
-   ''],
+   '', { grp: 'A' }],
   ['the scram-on-trip is deleted (the RPS reports into a void)',
    "if (ptr.reactor_trip && !eng._lastTrip) { eng.rodTarget = 0; eng._scramT = 0; }",
-   ''],
+   '', { grp: 'A' }],
   ['SI never starts the ECCS',
    'if (ptr.si) { eng.ec.hhsiRunning = true; eng.ec.lhsiRunning = true; }',
-   ''],
+   '', { grp: 'D' }],
   ['the oxidation heat is never fed back',
    'eng._Qox = dr.Q_ox_kW;',
-   'eng._Qox = 0;'],
+   'eng._Qox = 0;', { grp: 'D' }],
   ['the rod slew is deleted (commands teleport the bank)',
-   'eng.rodSteps += Math.max(-dS, Math.min(dS, eng.rodTarget - eng.rodSteps));',
-   'eng.rodSteps = eng.rodTarget;'],
+   '      eng.rodSteps += move;',
+   '      eng.rodSteps = eng.rodTarget;', { grp: 'A' }],
   ['the dump controller never reaches the relief valves',
    'dump_demand: dcr.dump_demand,',
-   'dump_demand: 0,'],
+   'dump_demand: 0,', { grp: 'A' }],
   ['the manual-trip pushbutton wire is cut before the RPS',
    'manual_trip: eng._manualTrip',
-   'manual_trip: false'],
+   'manual_trip: false', { grp: 'A' }],
   ['the turbine flag never reaches the RPS (P-9 watches a wire that is not connected)',
-   'turbine_tripped: eng.tb.tripped,',
-   'turbine_tripped: false,'],
+   /* the SAME line exists in the dumpctl drivers EARLIER in the file, and a bare anchor cut
+    * THAT one for two sessions while the full-suite replay's side effects hid it — the
+    * scoped replay exposed the mis-anchor. Two-line anchor, unique to the RPS block. */
+   "turbine_tripped: eng.tb.tripped,\n      steam_dumps_available: eng._cdAvail !== false,",
+   "turbine_tripped: false,\n      steam_dumps_available: eng._cdAvail !== false,", { grp: 'B' }],
+  ['the runback never reaches the turbine (the RPS warns into a void)',
+   "        eng.tb.load_target_mwe = Math.max(0,\n          eng.tb.load_target_mwe - (2.0 * MWE_RATED / 60) * dt);",
+   '', { grp: 'C' }],
+  ['the rod stop never blocks (outward motion continues at 3 % from the trip)',
+   '      if (eng._rodStopSig && move > 0) move = 0;',
+   '', { grp: 'C' }],
   ['the pressurizer ladder wire is cut (control reads truth again; no lie can drive the heaters)',
    'indicated_pressure_mpa: eng.ins.reading.primary_pressure,',
-   ''],
+   '', { grp: 'B' }],
   ['the dump controller wire is cut (a lying Tavg can no longer open the dumps)',
    "      tavg_c: eng.ins.reading.tavg !== undefined ? eng.ins.reading.tavg : tavg,\n      load_frac:",
-   '      tavg_c: tavg,\n      load_frac:'],
+   '      tavg_c: tavg,\n      load_frac:', { grp: 'B' }],
   ['the loop delta-T never reaches the RPS (both delta-T trips silently unavailable)',
-   "delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C",
-   'delta_t_frac: undefined ? 0'],
+   /* the first version replaced only the ternary CONDITION, leaving the truth branch live —
+    * it built a truth-wire, not an absence, and nothing can see a truth-wire at steady state */
+   "      delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C\n                    : (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,",
+   '      delta_t_frac: undefined,', { grp: 'B' }],
   ['the RPS reads TRUTH, not the instruments (a failed channel can no longer lie to it)',
    'pressure_mpa: rd.primary_pressure !== undefined ? rd.primary_pressure : sys.P,',
-   'pressure_mpa: sys.P,'],
+   'pressure_mpa: sys.P,', { grp: 'B' }],
   /* CORE mutations — 4th element 'core' substitutes a mutated pwr2_core into the load order */
   ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
    'var P_JUMP_MAX = 2.0;',
-   'var P_JUMP_MAX = 1e9;', 'core'],
+   'var P_JUMP_MAX = 1e9;', 'core', { grp: 'D' }],
   ['the both-walls latch is deleted (the near-floor oscillation runs unlatched)',
    'if (wallHi > 0 && wallLo > 0) sys.beyond_model = true;',
-   '', 'core']
+   '', 'core', { grp: 'D' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
 MUTATIONS.forEach(function (m) {
-  var base = m[3] === 'core' ? CORESRC : ENSRC;
+  var isCore = m[3] === 'core';
+  var opts = m[m.length - 1];
+  var grpTag = (opts && opts.grp) || undefined;
+  var base = isCore ? CORESRC : ENSRC;
   var mutated = base.replace(m[1], m[2]);
   if (mutated === base) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
   var rec2 = [];
   try {
-    runSuite(m[3] === 'core' ? loadAll(undefined, mutated) : loadAll(mutated), rec2, true);
+    runSuite(isCore ? loadAll(undefined, mutated) : loadAll(mutated), rec2, !process.env.MUTDBG, grpTag);
   } catch (e) { /* a crash counts as caught */ }
   var f2 = rec2.length ? rec2.filter(function (r) { return !r.ok; }).length : 1;
   if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }

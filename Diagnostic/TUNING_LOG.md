@@ -29,6 +29,21 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-c (#479 — the rod stop and the runback, and the gate that audited itself)
+
+The ch7-sourced approach rung (`Blueprint/PWR2_VALIDATION.md` §56): 3 % below either delta-T
+setpoint → rod stop (outward refused) + turbine runback (5 MWe per 30 s window), hysteresis
+3.0/3.5 % [open] added after measured noise-flicker degenerated the sourced duty cycle.
+Measured both ways: rods-in + one nibble recovers the margin with NO trip (the sourced purpose
+verbatim); no operator → trip ~51 s after onset because the load cut RAISES Tavg on this
+rods-MANUAL plant — **the runback buys time, not equilibrium, a plant-identity fact**. The
+engine gate's mutation replays are now SECTION-SCOPED (was 1074 s of contention), and the
+scoping exposed four latent self-test defects fixed this session — including a turbine-flag
+anchor that had been cutting the dump controller's identical line SINCE BIRTH, masked by
+full-suite side effects. Bonus fixture find: a stuck Tavg channel through a turbine trip drags
+the true plant to 406 °F while indicating 578 — C-8 chasing a lie, scenario-ready.
+`run_pwr2_protection` 79/37mut, `run_pwr2_engine` 26/17mut, run_all --fast at baseline.
+
 ## Session log — 2026-08-20-backshop-b (#479 — the control switchover: ladder on the instrument, safeties on the metal)
 
 §54's owed follow-up (`Blueprint/PWR2_VALIDATION.md` §55). The heater/spray/PORV ladder, level

@@ -308,6 +308,7 @@
       held_s: held,                         /* how long each function has been asserted */
       blockLowFlux: !!opts.blockLowFlux,
       reactor_trip: false,                  /* LATCHED */
+      dtApproach: false,                    /* the rod-stop/runback bistable, with hysteresis */
       si: false,                            /* LATCHED */
       trip_cause: null,
       si_cause: null,
@@ -445,8 +446,34 @@
       pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';
     }
 
+    /* THE DELTA-T APPROACH SIGNAL — rod stop + turbine runback [sourced], Ginna UFSAR ch7
+     * (ML20339A027) §7.2.2.4.1/§7.2.3.2.1: OT/OP delta-T "at 3% of rated loop [delta]T below
+     * trip setpoints" initiate rod stops, and "High overpower delta T and overtemperature
+     * delta T will also initiate a turbine runback at 200%/min for 1.5 sec every 30 sec";
+     * the design intent verbatim: "[delta]T (rod stop) = [delta]T (trip) - constant, with a
+     * programmed turbine runback until [delta]T < [delta]T (rod stop) ... to maintain
+     * essentially a constant margin to trip and gives the operator the opportunity to make
+     * appropriate adjustments before a reactor trip occurs." ONE signal, TWO consumers —
+     * the caller blocks outward rod motion and nibbles the turbine (HR5: reported here,
+     * acted on there). 3 % of rated loop delta-T is 0.03 in these normalized units. */
+    /* A BISTABLE NEEDS HYSTERESIS: measured without it, channel noise flickers the signal at
+     * the 3 % line and every flicker restarts the runback pulse timer — the sourced 1.5 s /
+     * 30 s duty cycle degenerates into near-continuous ramping. Assert at 3 % below the
+     * setpoint [sourced]; clear at 3.5 % [open, anti-chatter — the source names no deadband,
+     * and half a percent is ~3 sigma of the indicated delta-T noise]. */
+    var dtNear = false;
+    for (var oi = 0; oi < out.length; oi++) {
+      var of = out[oi];
+      if ((of.id === 'ot_delta_t' || of.id === 'op_delta_t') && of.available &&
+          of.value >= of.setpoint - (pr.dtApproach ? 0.035 : 0.03)) dtNear = true;
+    }
+    pr.dtApproach = dtNear;
+    var dtApproach = dtNear;
+
     return {
       functions: out,
+      rod_stop: dtApproach,
+      runback: dtApproach,
       reactor_trip: pr.reactor_trip,
       si: pr.si,
       p10_met: p10Met,

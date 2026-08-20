@@ -90,7 +90,8 @@
       advDemand: 0, advBlock: true,
       /* one-step-lag carriers */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzr: null, _dcr: null, _lastTrip: false,
-      _scramT: null, _manualTrip: false,
+      _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
+      _rbT: 0, _rbActive: false,
       ins: IN.createInstruments(opts.instruments)
     };
     return eng;
@@ -165,11 +166,30 @@
       if (eng.rodSteps === 0 && eng.rodTarget === 0) eng._scramT = null;
     } else if (eng.rodSteps !== eng.rodTarget) {
       var dS = ROD_SLEW_SPS * dt;
-      eng.rodSteps += Math.max(-dS, Math.min(dS, eng.rodTarget - eng.rodSteps));
+      var move = Math.max(-dS, Math.min(dS, eng.rodTarget - eng.rodSteps));
+      /* THE ROD STOP [sourced, ch7 §7.2.3.2.1]: within 3 % of a delta-T trip setpoint,
+       * outward motion is refused — inward is always allowed (it HELPS). One step old. */
+      if (eng._rodStopSig && move > 0) move = 0;
+      eng.rodSteps += move;
     }
     eng.rodBank[0].steps = eng.rodSteps;
 
     var tavg = G.primaryTavg(sys);
+    /* THE TURBINE RUNBACK [sourced, ch7 §7.2.2.4.1]: "200%/min for 1.5 sec every 30 sec"
+     * while the delta-T approach signal stands (one step old), "until [delta]T < [delta]T
+     * (rod stop)" — i.e. the cycle repeats only while the signal persists, and the timer
+     * resets when it clears. 200 %/min of rated = 3.333 MWe/s on this plant; one 1.5 s
+     * nibble is 5 MWe. A tripped turbine has nothing to run back. */
+    if (eng._runbackSig && !eng.tb.tripped) {
+      eng._rbT += dt;
+      if (eng._rbT >= 30.0) eng._rbT -= 30.0;
+      if (eng._rbT < 1.5) {
+        eng.tb.load_target_mwe = Math.max(0,
+          eng.tb.load_target_mwe - (2.0 * MWE_RATED / 60) * dt);
+        eng._rbActive = true;
+      } else eng._rbActive = false;
+    } else { eng._rbT = 0; eng._rbActive = false; }
+
     var steam = TB.steamDemand(eng.tb, eng.sg.P, G.SG.h_feed);
 
     var cr = CD.stepCondenser(eng.cd, dt, {
@@ -266,6 +286,7 @@
       tavg_c: rd.tavg !== undefined ? rd.tavg : G.primaryTavg(sys)
     });
     eng.rpsReport = ptr;      /* the full function report, for consumers (the page, the gate) */
+    eng._rodStopSig = ptr.rod_stop; eng._runbackSig = ptr.runback;
     /* THE CALLER'S HALF of HR5: the RPS reports, the plant acts. */
     if (ptr.reactor_trip && !eng._lastTrip) { eng.rodTarget = 0; eng._scramT = 0; }
     eng._lastTrip = ptr.reactor_trip;
@@ -296,6 +317,9 @@
     ts.sim_time_s = eng.simTime;
     ts.rod_steps = eng.rodSteps;
     ts.dump_controller = dcr.controller;
+    ts.rod_stop = !!eng._rodStopSig;
+    ts.runback_active = !!eng._rbActive;
+    ts.runback_signal = !!eng._runbackSig;
     ts.dump_armed = dcr.armed;
     ts.dump_c7 = dcr.c7;
     ts.tref_c = dcr.tref_c;

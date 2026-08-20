@@ -312,6 +312,27 @@ function runSuite(P, rec, quiet) {
       fn(rD6, 'ot_delta_t').available === false && fn(rD6, 'op_delta_t').available === false &&
       rD6.reactor_trip === false, '1.40 delta-T unseen, correctly');
 
+  /* ---- THE DELTA-T APPROACH SIGNAL (rod stop + runback, ch7 sec 7.2.3.2.1) --------------- */
+  head('THE APPROACH SIGNAL  [3 % below a delta-T setpoint: rod stop + runback, with hysteresis]');
+  /* Tavg +10 degC drops the OT setpoint to ~0.953 — BELOW the OP band (1.115+), so these
+   * fixtures exercise the OT row's band alone. The first version tested at T-prime, where
+   * every point within OT's band is already past OP's whole SETPOINT — the signal held on
+   * the other row and the clear-check redded on its own fixture. */
+  var prA = atPower();
+  var rA = ride(prA, dtDrivers(0.5, T_REF_C + 10), 1);
+  var spA = fn(rA, 'ot_delta_t').setpoint;
+  ckT('well below the band the signal is quiet', rA.runback === false && rA.rod_stop === false,
+      'OT sp ' + spA.toFixed(3));
+  rA = ride(prA, dtDrivers(spA - 0.028, T_REF_C + 10), 1);
+  ckT('at 2.8 % below the setpoint BOTH consumers assert -- and nothing trips',
+      rA.runback === true && rA.rod_stop === true && rA.reactor_trip === false, '');
+  rA = ride(prA, dtDrivers(spA - 0.032, T_REF_C + 10), 1);
+  ckT('backing off to 3.2 % the signal HOLDS -- the hysteresis rides over channel noise',
+      rA.runback === true, 'assert 3.0, clear 3.5: measured without it, noise flicker ' +
+      'restarted the pulse timer and the 1.5/30 duty cycle degenerated to continuous ramping');
+  rA = ride(prA, dtDrivers(spA - 0.045, T_REF_C + 10), 1);
+  ckT('...and at 4.5 % it CLEARS', rA.runback === false, '');
+
   head('P-10  [the block is permissive-gated and ALWAYS auto-reinstates -- never defeatable]');
   ck('the permissive setpoint is the sourced 8 % RTP', P.P10.frac, DOC.p10_frac, 1e-12, 'frac');
   var prP = P.createProtection({ blockLowFlux: true });
@@ -511,6 +532,15 @@ var MUTATIONS = [
   ['the K1 constant drifts 1.30 -> 1.60',
    '    k1:    1.30,',
    '    k1:    1.60,'],
+  ['the approach signal is deleted (the RPS never warns, only trips)',
+   "          of.value >= of.setpoint - (pr.dtApproach ? 0.035 : 0.03)) dtNear = true;",
+   '          false) dtNear = true;'],
+  ['the hysteresis is removed (the bistable chatters at the line)',
+   '(pr.dtApproach ? 0.035 : 0.03)',
+   '0.03'],
+  ['the band widens 3 % -> 30 % (the warning fires half the operating map)',
+   "          of.value >= of.setpoint - (pr.dtApproach ? 0.035 : 0.03)) dtNear = true;",
+   "          of.value >= of.setpoint - (pr.dtApproach ? 0.305 : 0.30)) dtNear = true;"],
   ['the turbine-trip reactor trip is deleted (P-9 reports into a void)',
    "    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
    ''],
