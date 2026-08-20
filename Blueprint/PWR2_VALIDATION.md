@@ -2929,3 +2929,42 @@ dump-wire check's fixture and a scenario-ready teaching case.
 Gates: `run_pwr2_protection` 75 → 79 (+3 mutations; the approach fixtures sit at Tavg +10 °C
 deliberately — at T′ every point in OT's band is past OP's whole setpoint), `run_pwr2_engine`
 21 → 26 / 17 mutations, groups A–D. The page gains RUNBACK and ROD STOP lamps.
+
+## 57. OPTION B, STAGE B1 — THE CONTRACT COMPLETED: 109 OF 109, AND THE THIRD CLASS — 2026-08-20
+
+*(OWNER RULING, 2026-08-20: "Next: option B" — the shell/M5 integration, staged. B1 is the
+enabling stage: the shim emits every §6.3 field, because `run_contract.js` fails in both
+directions and the shell's consumers read the whole surface.)*
+
+**The reconciliation the stage needed**: the declared-missing discipline (a field the model
+cannot honestly supply is ABSENT and declared) collides with a contract that requires
+emission. The resolution is a third class — a **STATIC**: a constant that states the model's
+truth about an unmodeled system, held in its own registry with system + reason, gate-checked
+three ways (every static emitted at exactly its registered value; no static moves across
+healthy/wrecked/voided fixtures; every registered name IS a contract field — a check that
+caught its own first defect on arrival: I had invented `ctmt_fan_demand` for a field the
+contract spells `ctmt_fan_safety`). `ac_available: true` is not a fabricated reading; it is
+the fact that this plant has no electrical failure model. **The boundary case is the
+accumulators** (five nominal statics, honest at steady state, wrong in a large LOCA) — the
+D4 §8 predicted-divergence set carries them, and `pwr2_eccs.js` declares the omission.
+
+**The 22 derivations**, each from state the engine really has, display scales [adopted] from
+the current engine where they are gauge calibrations: SG narrow/wide level through the sourced
+`sg_mass_map` over PWR2's REAL secondary mass — the same Ginna 85,359 lbm nominal both
+engines, so the same 65 % indication lands from different physics; SR/IR through k_sr/k_ir
+(and the SR now DE-ENERGIZES above the P-6 class point — the always-on static was wrong and
+was fixed before it shipped); hydrogen as the damage model's own oxidation through
+Zr + 2H₂O → ZrO₂ + 2H₂ mole-fraction arithmetic; the sump on a declared ruler (100 % = the
+whole primary inventory down); pump discharge pressures as min(dead-head, system P); the HEM
+core-uncovery proxy (D4-upheld — divergence is the prediction); plant mode from the two states
+this engine has; rates, imbalances, valve positions from their own systems. **The RHR was
+wired into the facade** — it existed, gated (39 checks), and the facade had never instantiated
+it; `rhr_active`/`rhr_valve_open` now read the real module's report.
+
+Gates: `run_pwr2_true_state` 47 → 59 / 16 mutations (two RETIRED as proven no-ops with the
+gate's own precedent — the empty MISSING registry made them unable to red — one replaced by a
+STATIC-reason mutation, one repointed, plus SG-map/proxy-zero/sump/static-drift new). The
+whole B1 surface: **109 of 109 contract fields emitted — 85 derived or translated, 19 statics,
+0 declared missing, 0 unaccounted** (the 5 accumulator statics + 14 others; counts printed by
+the gate). Next: B2, the engine class (`applyCommand` map, saveState/loadState as `pwr2-1.0`,
+`getControlState`, `getProtectionConfig`, the `instruments` member, scruve exports).

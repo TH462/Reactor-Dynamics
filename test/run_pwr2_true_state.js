@@ -119,7 +119,10 @@ function runSuite(TS, rec, quiet) {
                 break_: brk, containment: ctr, condenser: cnd, eccs: ecc, afw: awf,
                 damage: dmg, protection: prt, pressurizer: pzr,
                 boron_ppm: 700, rated_steam_kgs: rated, mdot_rated: 1630, natcirc_frac: 0.15,
-                M_nominal: sys.M_total };
+                M_nominal: sys.M_total,
+                /* stage B1 ctx (the facade supplies these live) */
+                load_target_mwe: 100, turbine_tripped: false, condenser_available: true,
+                pump_running: true, tavg_rate_c_per_hr: 0 };
     return { ts: TS.buildTrueState(ctx), ctx: ctx, sys: sys, r: r, sr: sr, tr: tr, rr: rr,
              brk: brk, ctr: ctr, cnd: cnd, ecc: ecc, awf: awf, dmg: dmg, prt: prt, pzr: pzr };
   }
@@ -154,8 +157,12 @@ function runSuite(TS, rec, quiet) {
    * run -- and a mutation redirecting unaccounted fields into `declared` therefore moves nothing
    * and stays invisible. Same vacuity that hid the steam-mass mutation in run_pwr2_loadfollow:
    * a check cannot see a bucket the live case never fills. */
+  /* the live registry is EMPTY since stage B1 completed the contract, so the declared bucket
+   * gets a synthetic entry for the duration of this machinery check */
+  TS.MISSING.__synthetic_declared__ = { system: 'test', reason: 'machinery check only' };
   var synth = TS.coverage({ pressure_mpa: 15.41 },
-                          ['pressure_mpa', 'containment_sump_pct', 'a_field_nobody_declared']);
+                          ['pressure_mpa', '__synthetic_declared__', 'a_field_nobody_declared']);
+  delete TS.MISSING.__synthetic_declared__;
   ck('coverage() REPORTS a field that is neither supplied nor declared',
      synth.unaccounted.length === 1 && synth.unaccounted[0] === 'a_field_nobody_declared',
      'given one supplied, one declared and one unknown, it must put the unknown in its own bucket ' +
@@ -169,10 +176,15 @@ function runSuite(TS, rec, quiet) {
   ck('no DECLARED-MISSING field appears in the output at all', fabricated.length === 0,
      fabricated.length ? 'FABRICATED: ' + fabricated.join(', ')
                        : Object.keys(TS.MISSING).length + ' declared gaps, none of them emitted');
-  ck('containment SPRAY is ABSENT, not zero -- the sub-system that is genuinely unbuilt',
-     ts.ctmt_spray_active === undefined && ts.containment_sump_pct === undefined,
-     'spray/fans/recombiners/sump have no sourced capacity; containment pressure itself is now ' +
-     'SUPPLIED, checked below');
+  /* TURNED AROUND (stage B1, owner ruling "Next: option B"): the shell contract needs every
+   * field EMITTED. Spray/fans/recombiners are REGISTERED STATICS — constants stating the
+   * systems' absence — and the sump is SUPPLIED from the containment's real tracked mass
+   * through a declared display scale (100 % = the whole primary inventory). */
+  ck('containment ESF fields are REGISTERED STATICS, and the sump is SUPPLIED from real mass',
+     ts.ctmt_spray_active === false && !!TS.STATIC.ctmt_spray_active &&
+     ts.containment_sump_pct !== undefined && !TS.STATIC.containment_sump_pct,
+     'a static false states the system does not exist; the sump percentage tracks water that ' +
+     'is really there');
   /* TURNED AROUND (same rule as the scrammed check below): this asserted the pressurizer was
    * ABSENT ("a level of 0 would be a fabricated TMI trainer") until pwr2_pressurizer.js landed
    * (owner ruling 2026-08-18 "Option 1"). It now guards the repair: a REAL level from the
@@ -240,8 +252,9 @@ function runSuite(TS, rec, quiet) {
      'stuck ' + ts.porv_stuck + ', block ' + ts.block_valve_open + ', tailpipe ' +
      (typeof ts.porv_tailpipe_temp_c === 'number' ? ts.porv_tailpipe_temp_c.toFixed(0) : '?') +
      ' degC cold on a healthy plant — a PORV that has never passed has a cold pipe');
-  ck('...and spray_stuck, the one survivor, says why it alone stays missing',
-     !!TS.MISSING.spray_stuck && /spray valves have no failure lever/.test(TS.MISSING.spray_stuck.reason),
+  ck('...and spray_stuck, the one survivor, is a REGISTERED STATIC that says why',
+     ts.spray_stuck === false && !!TS.STATIC.spray_stuck &&
+     /no failure lever/.test(TS.STATIC.spray_stuck.reason),
      'a reason that names the machinery outlives a reason that names a lane');
 
   /* ---- SUPPLIED VALUES COME FROM THE LAYERS, NOT FROM CONSTANTS ------------------------ */
@@ -324,16 +337,24 @@ function runSuite(TS, rec, quiet) {
      tsLow.hpi_active === true && tsLow.eccs_mode === 'both' &&
      tsLow.hpi_flow_normalized > 0 && tsLow.hpi_flow_normalized <= 1,
      'mode=' + tsLow.eccs_mode + '  normalized=' + tsLow.hpi_flow_normalized.toFixed(3));
-  ck('hpi_discharge_pressure_mpa stays declared-missing -- no pump curve gives it',
-     tsLow.hpi_discharge_pressure_mpa === undefined && !!TS.MISSING.hpi_discharge_pressure_mpa,
-     'wiring the flows must not tempt inventing the one field the curve does not supply');
+  /* TURNED AROUND (stage B1): discharge = min(dead-head, system P) while running — with flow
+   * the discharge sits at the injection point; against a shut check valve it sits at the
+   * sourced 9.58 MPa shutoff head. This fixture's sys is at 15.41, so the pump dead-heads. */
+  ck('hpi_discharge_pressure_mpa is SUPPLIED: dead-head against a shut check valve here',
+     Math.abs(tsLow.hpi_discharge_pressure_mpa - 9.58) < 1e-9 &&
+     ts.hpi_discharge_pressure_mpa === 0,
+     tsLow.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa injecting-side, 0 on the healthy ' +
+     'plant whose pumps are in standby');
   ck('AFW pump-running and flow-normalized are SUPPLIED once a train is lined up',
      ts.afw_pump_running === true && ts.afw_active === true &&
      ts.afw_flow_normalized !== undefined && ts.afw_flow_normalized > 0,
      'normalized=' + ts.afw_flow_normalized.toFixed(3));
-  ck('afw_blocked and afw_discharge_pressure_mpa stay declared-missing -- no CST, no pump curve',
-     ts.afw_blocked === undefined && ts.afw_discharge_pressure_mpa === undefined &&
-     !!TS.MISSING.afw_blocked && !!TS.MISSING.afw_discharge_pressure_mpa, '');
+  ck('afw_blocked is a REGISTERED STATIC; afw_discharge is SUPPLIED at the SG it feeds',
+     ts.afw_blocked === false && !!TS.STATIC.afw_blocked &&
+     ts.afw_discharge_pressure_mpa !== undefined &&
+     Math.abs(ts.afw_discharge_pressure_mpa - Math.min(8.3, ts.steam_pressure_mpa)) < 1e-9,
+     ts.afw_discharge_pressure_mpa.toFixed(2) + ' MPa -- the delivering pump sits at the SG ' +
+     'pressure it injects against, capped at its [open] 8.3 MPa dead-head');
 
   /* ---- CORE DAMAGE: five supplied, one still declared, and the reason CHANGED -------------
    * This block is the one this file's header warns about most directly. Five of these six were
@@ -388,13 +409,20 @@ function runSuite(TS, rec, quiet) {
    * is one. It is that a LEVEL needs a free surface this engine has no phase separation to give,
    * and that machinery belongs to another lane. The gate checks the reason NAMES that lane, the
    * same way it does for the pressurizer. */
-  ck('core_uncovered_frac is ABSENT, not zero -- an uncovered core must not read as covered',
-     ts.core_uncovered_frac === undefined && !!TS.MISSING.core_uncovered_frac, '');
-  ck('...and its reason names PHASE SEPARATION and the lane that owns it, not "no model"',
-     /472/.test(TS.MISSING.core_uncovered_frac.reason) &&
-     /separation/i.test(TS.MISSING.core_uncovered_frac.reason) &&
-     !/no fuel-damage/.test(TS.MISSING.core_uncovered_frac.reason),
-     'a stale reason is the defect this file exists to prevent, in the opposite direction');
+  /* TURNED AROUND (stage B1): a DECLARED HEM PROXY now — D4 sec 8 UPHELD this field as a
+   * proxy, meaning A/B divergence here is predicted, not feared. The homogeneous model has no
+   * free surface; sustained high core void is the nearest honest stand-in, and the earned pair
+   * below proves it can read nonzero. */
+  ck('core_uncovered_frac is SUPPLIED as the declared HEM proxy: zero on a covered core',
+     ts.core_uncovered_frac === 0, 'void ' + (ts.core_void_fraction * 100).toFixed(1) + ' %');
+  var sysVoid = { P: 7.0, M_total: 1, expansion: [], simTime: 0,
+    nodes: B.sys.nodes.map(function (n) {
+      return { id: n.id, V: n.V, h: n.id === 'core' ? RD.water.h_g(7.0) - 50 : n.h };
+    }), mdot_loop: B.sys.mdot_loop };
+  var tsVoid = TS.buildTrueState({ sys: sysVoid });
+  ck('...and reads NONZERO on a high-void core, so the zero above is earned',
+     tsVoid.core_uncovered_frac > 0 && tsVoid.core_uncovered_frac <= 1,
+     (tsVoid.core_uncovered_frac * 100).toFixed(0) + ' % at near-saturated-steam core enthalpy');
 
   /* ---- THE DECLARED SIMPLIFICATION IS VISIBLE ------------------------------------------ */
   head('THE ONE-PRESSURE SIMPLIFICATION IS VISIBLE, NOT HIDDEN');
@@ -402,6 +430,73 @@ function runSuite(TS, rec, quiet) {
      ts.p_hotleg === ts.p_coldleg && ts.p_coldleg === ts.p_pumpsuction,
      'Layer 3 carries one system pressure; three fields agreeing exactly is the honest ' +
      'presentation of that, not three measurements that happen to coincide');
+
+  /* ---- STAGE B1: THE CONTRACT COMPLETED, AND THE STATICS REGISTRY -------------------------- */
+  head('THE STATICS REGISTRY  [a constant that states the model\'s truth, never a faked gauge]');
+  var statThin = Object.keys(TS.STATIC).filter(function (f) {
+    var e = TS.STATIC[f];
+    return !e || !e.system || !e.reason || e.reason.length < 25;
+  });
+  ck('every STATIC names its system and carries a real reason', statThin.length === 0,
+     statThin.length ? 'THIN: ' + statThin.join(', ')
+                     : Object.keys(TS.STATIC).length + ' statics registered');
+  var statDrift = Object.keys(TS.STATIC).filter(function (f) { return ts[f] !== TS.STATIC[f].value; });
+  ck('every registered static is EMITTED at exactly its registered value', statDrift.length === 0,
+     statDrift.length ? 'DRIFTED: ' + statDrift.join(', ') : '');
+  /* statics must NOT move when the plant does — compared across the healthy fixture and the
+   * wrecked/voided ones already built above */
+  var statMoved = Object.keys(TS.STATIC).filter(function (f) {
+    return tsHot[f] !== ts[f] || tsVoid[f] !== ts[f];
+  });
+  ck('no static moves when the plant does -- across healthy, wrecked and voided fixtures',
+     statMoved.length === 0, statMoved.length ? 'MOVED: ' + statMoved.join(', ') : '');
+  var statOffContract = Object.keys(TS.STATIC).filter(function (f) {
+    return CONTRACT.indexOf(f) < 0;
+  });
+  ck('every registered static IS a contract field -- a static for a name nobody documented is dead',
+     statOffContract.length === 0,
+     statOffContract.length ? 'OFF-CONTRACT: ' + statOffContract.join(', ') : '');
+  ck('coverage() reports the statics as their own view of supplied',
+     cov.statics.length === Object.keys(TS.STATIC).length - statOffContract.length &&
+     cov.statics.every(function (f) { return cov.supplied.indexOf(f) >= 0; }),
+     cov.statics.length + ' statics inside supplied');
+
+  head('B1 DERIVATIONS  [adopted gauge scales over real state, each earned both ways]');
+  ck('SG level lands at the plant\'s own nominal through the ADOPTED sourced map',
+     ts.sg_level_pct > 57 && ts.sg_level_pct < 73 && ts.sg_level_wide_pct > 50 &&
+     ts.sg_level_wide_pct < 70,
+     ts.sg_level_pct.toFixed(1) + ' % narrow / ' + ts.sg_level_wide_pct.toFixed(1) +
+     ' % wide -- the same Ginna 85,359 lbm nominal both engines, so the same 65 % indication');
+  var tsDrySG = TS.buildTrueState({ sys: B.sys, sg: { mass_frac: 0.5 } });
+  ck('...and a half-drained SG READS drained through the same map, so the map is live',
+     tsDrySG.sg_level_wide_pct > 30 && tsDrySG.sg_level_wide_pct < 42 &&
+     tsDrySG.sg_level_pct < 20,
+     tsDrySG.sg_level_wide_pct.toFixed(1) + ' % wide / ' + tsDrySG.sg_level_pct.toFixed(1) +
+     ' % narrow at half mass');
+  ck('plant mode reads At Power on the healthy fixture and Hot Standby past a trip',
+     ts.plant_mode === 1 && /At Power/.test(ts.plant_mode_name) && tsTrip.plant_mode === 3,
+     'mode ' + ts.plant_mode + ' / ' + tsTrip.plant_mode + ' -- the two modes this engine has');
+  ck('the SR channel is DE-ENERGIZED at power and the IR reads its adopted scale',
+     ts.sr_energized === false && ts.sr_counts_cps === 0 &&
+     Math.abs(ts.ir_amps - 8.333e-3 * ts.power_pct / 100) < 1e-9,
+     'SR protected above the P-6 class point; IR ' + ts.ir_amps.toExponential(2) + ' A tracks ' +
+     ts.power_pct.toFixed(0) + ' % through the adopted k_ir');
+  ck('the governor IS the steam demand and the stop valve is the trip',
+     ts.governor_valve_pct > 90 && ts.stop_valve_pct === 100,
+     'governor ' + ts.governor_valve_pct.toFixed(1) + ' %, stop 100 -- and a tripped turbine ' +
+     'would read 0/0 (the facade gate rides that path)');
+  var tsSump = TS.buildTrueState({ sys: B.sys,
+    containment: { m_sump_kg: 0.3 * B.sys.M_total, m_air: 3.0e5, m_vapour_kg: 100 },
+    M_nominal: B.sys.M_total });
+  ck('the sump percentage MOVES with the containment\'s tracked water, on its declared ruler',
+     Math.abs(tsSump.containment_sump_pct - 30) < 1e-9 && ts.containment_sump_pct < 1,
+     tsSump.containment_sump_pct.toFixed(1) + ' % with 30 % of the primary inventory down, ' +
+     ts.containment_sump_pct.toExponential(1) + ' % healthy');
+  ck('hydrogen is the DAMAGE MODEL\'s own oxidation through mole-fraction arithmetic',
+     ts.ctmt_h2_pct !== undefined && ts.ctmt_h2_pct >= 0 && ts.ctmt_h2_pct < 0.01 &&
+     tsHot.ctmt_h2_pct === undefined,
+     ts.ctmt_h2_pct.toExponential(2) + ' % healthy; the wrecked fixture carries no ' +
+     'containment ctx, so its H2 is honestly ABSENT there rather than defaulted');
 
   /* ---- REFUSAL ------------------------------------------------------------------------- */
   head('REFUSAL  [this layer translates a plant; it does not build one]');
@@ -422,6 +517,19 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['a static drifts from its registered value (the registry lies about what is emitted)',
+   "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });",
+   "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });\n    ts.msiv_open = false;"],
+  ['the SG level map is DELETED (a drained SG reads the healthy nominal)',
+   "      put('sg_level_wide_pct', clip(wide, 0, 100));",
+   "      put('sg_level_wide_pct', 59.25);"],
+  ['the core-uncovery proxy is pinned to zero (an uncovered core reads covered)',
+   "    put('core_uncovered_frac', clip((aCore - 0.5) / 0.5, 0, 1));",
+   "    put('core_uncovered_frac', 0);"],
+  ['the sump reads a constant instead of the tracked mass',
+   "      put('containment_sump_pct', clip(100 * ct.m_sump_kg / ctx.M_nominal, 0, 100));",
+   "      put('containment_sump_pct', 0);"],
+
   ['scram state is never wired through, so a tripped plant reads as no protection system',
    "    put('scrammed', pt.reactor_trip);", ''],
   ['scram state is fabricated as FALSE rather than read from the protection system',
@@ -441,13 +549,14 @@ var MUTATIONS = [
   ['clad_temp_c is fabricated from the coolant instead of read from the clad NODE',
    "    put('clad_temp_c',       rx.T_clad_c);",
    "    put('clad_temp_c',       nodeT(sys, 'core'));"],
-  ['core_uncovered_frac reverts to its STALE reason, which named a model that now exists',
-   "    'core uncovery needs PHASE SEPARATION, not geometry: Layer 2 is homogeneous equilibrium ' +",
-   "    'no fuel-damage or clad-oxidation model. ' +"],
-  ['A DECLARED GAP IS FABRICATED AS ZERO -- the defect this file exists to prevent',
-   '    function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }',
-   '    function put(k, v) { if (v !== undefined && v !== null) ts[k] = v; }\n' +
-   '    Object.keys(MISSING).forEach(function (f) { ts[f] = 0; });'],
+  /* RETIRED (stage B1): core_uncovered_frac is SUPPLIED as a declared HEM proxy now; the
+   * stale-reason discipline this mutation guarded lives on in the proxy-pinned-zero mutation
+   * above, which is caught. */
+  /* RETIRED AS A PROVEN NO-OP (stage B1, this gate's own house precedent): the MISSING
+   * registry is empty since the contract completed, so fabricating "every declared gap"
+   * fabricates nothing and the mutation can never red. The discipline it guarded — a constant
+   * wearing a supplied name — is carried by the static-drift, proxy-pinned-zero, SG-map and
+   * sump mutations, each of which is caught. */
   /* RETIRED, not lost: the mutation here injected `ts.scrammed = false` right after the first
    * put, pinning "do not fabricate a scram from an engine with no protection layer". There IS
    * a protection layer now and the real assignment happens LATER, overwriting the injection —
@@ -455,11 +564,9 @@ var MUTATIONS = [
    * nothing while looking like coverage, which is the thing this file's own header warns
    * about. Its intent is carried by the two scram mutations above, which fabricate at the
    * real assignment site instead. */
-  ['a MISSING entry loses its reason',
-   "  declareMissing('containment', 'pwr2_containment.js supplies pressure and temperature; spray, ' +\n" +
-   "    'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +\n" +
-   "    'corpus) and sump level needs a geometry map this engine does not have.',",
-   "  declareMissing('containment', '',"],
+  ['a STATIC loses its reason (the registry stops saying why a constant is honest)',
+   "  declareStatic('electrical', 'no electrical model — AC is genuinely always available here',",
+   "  declareStatic('electrical', 'x',"],
   /* RETARGETED 2026-08-18: this mutation used to blank the "#472 owns it" lane attribution,
    * whose anchor text left with the old declared-missing block when pwr2_pressurizer.js landed.
    * The same failure class now lives in the SUPPLIED side: a level published as a constant
@@ -468,8 +575,8 @@ var MUTATIONS = [
    "    put('pzr_level_pct',     pz.level_pct);",
    "    put('pzr_level_pct',     61.5);"],
   ['coverage() counts DECLARED gaps as supplied, inflating the fraction',
-   '      if (ts[f] !== undefined) supplied.push(f);',
-   '      if (ts[f] !== undefined || MISSING[f]) supplied.push(f);'],
+   '      if (ts[f] !== undefined) {',
+   '      if (ts[f] !== undefined || MISSING[f]) {'],
   ['coverage() stops reporting unaccounted fields',
    '      else unaccounted.push(f);', '      else declared.push(f);'],
   ['fuel temperature is read from the wrong layer',

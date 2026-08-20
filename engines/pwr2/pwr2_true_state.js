@@ -55,6 +55,49 @@
     fields.forEach(function (f) { MISSING[f] = { system: system, reason: reason }; });
   }
 
+  /* ---- STATICS (stage B1, 2026-08-20 — owner ruling "Next: option B") ----------------------
+   * The shell contract needs all 109 fields EMITTED; the declared-missing discipline existed so
+   * an unbuilt system could not be faked. The reconciliation is a THIRD class: a STATIC is a
+   * constant that states the model's truth about an unmodeled system — `ac_available: true` is
+   * not a fabricated reading, it is the fact that this plant has no electrical failure model.
+   * Every static is registered here with its reason, the gate asserts the registry matches what
+   * is emitted, and an injection check proves statics never move when the plant does. The
+   * boundary case is the accumulators: their nominal statics (full, pressurized, not
+   * discharging) are honest at steady state and WRONG in a large LOCA — pwr2_eccs.js's header
+   * declares the omission, and the A/B is expected to diverge there (D4 §8 upheld them as
+   * proxies for exactly this reason). */
+  var STATIC = {};
+  function declareStatic(system, reason, fieldValues) {
+    Object.keys(fieldValues).forEach(function (f) {
+      STATIC[f] = { system: system, reason: reason, value: fieldValues[f] };
+    });
+  }
+  declareStatic('failure injection', 'the spray valves have no failure lever yet — the value ' +
+    'states that the failure is not injectable, not that a lever reads healthy',
+    { spray_stuck: false });
+  declareStatic('containment ESF', 'sprays, fans and recombiners are unmodeled (pwr2_containment ' +
+    'header) — false/0 states their absence; a large-LOCA A/B diverges here by design',
+    { ctmt_h2_burned: 0, ctmt_spray_demand: false, ctmt_spray_active: false,
+      ctmt_fan_safety: false, ctmt_fan_active: false,
+      ctmt_recomb_demand: false, ctmt_recomb_active: false });
+  declareStatic('steam lines', 'no MSIV model — the line is genuinely always open',
+    { msiv_open: true });
+  declareStatic('electrical', 'no electrical model — AC is genuinely always available here',
+    { station_blackout: false, ac_available: true });
+  declareStatic('secondary', 'a single-SG plant cannot have an SG imbalance',
+    { sg_imbalance_active: false });
+  declareStatic('turbine', 'the turbine is dispatched by an operator load target — the only ' +
+    'mode this model has', { load_mode: 'manual' });
+  declareStatic('AFW', 'no AFW block lever exists', { afw_blocked: false });
+  declareStatic('ECCS accumulators', 'DECLARED OMISSION (pwr2_eccs.js header): an accumulator ' +
+    'is an inventory with expanding cover gas, deferred to the compressible-volume work. ' +
+    'Nominals are honest at steady state and WRONG in a large LOCA — the predicted-divergence ' +
+    'set (D4 sec 8) carries them.',
+    { accumulator_valve_open: true, accumulators_discharging: false,
+      accumulator_flow_normalized: 0, accumulator_volume_pct: 100,
+      accumulator_pressure_mpa: 4.14 });
+
+
   /* ⚠ THE PRESSURIZER BLOCK SHRANK ON 2026-08-18 — pwr2_pressurizer.js exists (owner ruling
    * 2026-08-18: "Option 1", superseding the wait-for-#472 posture the old reason cited), so
    * seven of its eleven fields are SUPPLIED below. The four that stay missing are each blocked
@@ -65,17 +108,7 @@
    * (drivers.porv_stick — PWR2's first failure-injection machinery), the block valve and the
    * tailpipe are modelled, and all three are SUPPLIED below. spray_stuck is the one survivor:
    * the spray valves have no failure lever yet, and a false here would describe one. */
-  declareMissing('failure injection', 'spray_stuck is an INJECTED failure state and the spray ' +
-    'valves have no failure lever — the PORV grew one (drivers.porv_stick, the TMI-2 failure) ' +
-    'and its field moved to SUPPLIED; a value here would describe a lever that does not exist.',
-    ['spray_stuck']);
 
-  declareMissing('containment', 'pwr2_containment.js supplies pressure and temperature; spray, ' +
-    'fan coolers, recombiners and hydrogen tracking are UNBUILT (their capacities are not in the ' +
-    'corpus) and sump level needs a geometry map this engine does not have.',
-    ['containment_sump_pct', 'ctmt_h2_pct', 'ctmt_h2_burned', 'ctmt_spray_demand',
-     'ctmt_spray_active', 'ctmt_fan_demand', 'ctmt_fan_safety', 'ctmt_fan_active',
-     'ctmt_recomb_demand', 'ctmt_recomb_active']);
 
   /* ⚠ THE PROTECTION BLOCK SPLIT WHEN pwr2_protection.js LANDED, and the split is the useful
    * part. It used to be one entry reading "PWR2 has NO PROTECTION LAYER" — true when written,
@@ -83,32 +116,10 @@
    * model for `scrammed` while a real sourced one answered. `scrammed` is now supplied. The
    * remaining seven were never really "no protection layer": each is blocked by its OWN missing
    * system, and lumping them under one reason hid which. */
-  declareMissing('main steam isolation', 'there is no main steam isolation valve in PWR2. The ' +
-    'ISOLATION SIGNAL is real — pwr2_protection.js carries the sourced low-steam-pressure and ' +
-    'high-high-steam-flow functions with the table\'s lead/lag — but nothing downstream has a ' +
-    'valve for it to shut, so a position would be invented.',
-    ['msiv_open']);
 
-  declareMissing('electrical', 'PWR2 has no electrical model at all: no buses, no diesels, no ' +
-    'offsite supply. Both fields are the same gap, and it also keeps the sourced RCP ' +
-    'undervoltage and underfrequency (57 Hz) reactor trips out of pwr2_protection.js.',
-    ['station_blackout', 'ac_available']);
 
-  declareMissing('plant mode', 'a plant MODE is a classification of temperature, pressure and ' +
-    'shutdown margin against commercial mode definitions. Every input exists; the mode BANDS do ' +
-    'not, and inventing them would put a made-up boundary in front of the player as though it ' +
-    'were the industry one.',
-    ['plant_mode', 'plant_mode_name']);
 
-  declareMissing('load coupling detail', 'load_mode is the TURBINE load mode (follow / manual / ' +
-    'disconnected), a control-layer concept with no engine state behind it; sg_imbalance_active ' +
-    'is an annunciator threshold on indicated MWe against a commanded target, and PWR2 has no ' +
-    'load target because nothing here commands one.',
-    ['sg_imbalance_active', 'load_mode']);
 
-  declareMissing('condenser', 'pwr2_condenser.js supplies vacuum, CW inlet temp and availability; ' +
-    'there is no hotwell or condensate-pump model, so the feed-side flows stay unmapped.',
-    ['condensate_flow_normalized', 'condensate_pump_running', 'fw_flow_normalized']);
 
   /* ⚠ FIVE OF THESE SIX WERE BUILT ON 2026-08-17 and this block was rewritten in the same commit,
    * which is the discipline this file's header records the hard way: "Declaring a system missing
@@ -123,51 +134,16 @@
    * a stratification the model does not contain. A free surface with a compressible volume above
    * it is exactly the machinery issue #472 is building on the workbench lane, and a second
    * incompatible one here is the race the design spine forbids. */
-  declareMissing('damage',
-    'core uncovery needs PHASE SEPARATION, not geometry: Layer 2 is homogeneous equilibrium ' +
-    'with no slip, so there is no free surface to take a level from. The compressible-volume ' +
-    'machinery a level needs is issue #472, live on the workbench lane, and must not be raced.',
-    ['core_uncovered_frac']);
 
-  declareMissing('nuclear instruments', 'period and startup rate are supplied (pwr2_reactor.js, ' +
-    'derived from the fission signal — no calibration needed); source/intermediate range counts ' +
-    'and current stay missing because turning a neutron population into cps or amps needs a ' +
-    'full-scale calibration this corpus does not give — only the TRIP setpoints are sourced.',
-    ['sr_counts_cps', 'ir_amps', 'sr_energized']);
 
-  declareMissing('auxiliary feedwater', 'pwr2_afw.js supplies flow; there is no pump curve to ' +
-    'read a discharge pressure off, and no CST inventory to report running dry.',
-    ['afw_blocked', 'afw_discharge_pressure_mpa']);
 
-  declareMissing('accumulators', 'the passive injection train is not built.',
-    ['accumulator_valve_open', 'accumulators_discharging', 'accumulator_flow_normalized',
-     'accumulator_volume_pct', 'accumulator_pressure_mpa']);
 
-  declareMissing('atmospheric dump', 'pwr2_relief.js builds the condenser dump and the safety ' +
-    'valves; the ADVs are NOT built because their capacity is unsourced — see that file.',
-    ['adv_valve_pct', 'adv_flow_normalized']);
 
-  declareMissing('SG level geometry', 'the secondary is LUMPED by ruling, so there is no geometry ' +
-    'to turn inventory into a gauge reading. sg_mass_frac IS supplied; a level percentage would ' +
-    'be a fabricated linear scale.',
-    ['sg_level_pct', 'sg_level_wide_pct']);
 
-  declareMissing('RCP detail', 'Layer 4 integrates one loop momentum; per-pump cavitation is not ' +
-    'modelled.', ['rcp_cavitating', 'rcp_cavitation_frac']);
 
-  declareMissing('turbine detail', 'pwr2_turbine.js has no valve-position model — it computes the ' +
-    'steam its load needs, and governor/stop valve positions belong with a trip model.',
-    ['governor_valve_pct', 'stop_valve_pct']);
 
-  declareMissing('ECCS detail', 'pwr2_eccs.js is a flow-vs-pressure curve with no pump-discharge ' +
-    'head term — there is a real number to derive here, not one to invent, and it is not built.',
-    ['hpi_discharge_pressure_mpa']);
 
-  declareMissing('rate tracking', 'no Tavg rate tracker; it needs a history this layer does not ' +
-    'keep.', ['tavg_rate_c_per_hr']);
 
-  declareMissing('load coupling', 'load imbalance is a control-layer comparison between demand ' +
-    'and generation, not an engine quantity.', ['load_imbalance_mwe']);
 
   /* ---- THE TRANSLATION ---------------------------------------------------------------------
    * buildTrueState(ctx) — ctx carries the live plant and the most recent return of each Layer 5
@@ -188,6 +164,8 @@
     }
     return undefined;
   }
+
+  function clip(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
   function buildTrueState(ctx) {
     ctx = ctx || {};
@@ -310,7 +288,7 @@
     put('rhr_valve_open', rh.permissive_may_open);
 
     /* --- break / leak --- */
-    put('leak_flow', br.mdot_kgs);
+    put('leak_flow', br.mdot_kgs !== undefined ? br.mdot_kgs : 0);   /* no break = zero leak, stated */
 
     /* --- containment --- */
     put('containment_pressure_mpa', ct.containment_pressure_mpa);
@@ -369,6 +347,112 @@
     put('destruction_cause', dg.destruction_cause);
     put('zirc_heat_pct',     dg.zirc_heat_pct);
 
+    /* ================= STAGE B1 — THE CONTRACT COMPLETED (2026-08-20) =====================
+     * Every remaining sec 6.3 field, each a derivation/translation from state this engine
+     * really has, or a registered STATIC (see the registry above). Display scales adopted
+     * from the current engine are marked [adopted] with their source constant — they are
+     * gauge calibrations, not physics. */
+
+    /* --- plant mode: this engine models At Power and post-trip Hot Standby only --- */
+    var atPower = (ts.power_pct !== undefined ? ts.power_pct : 0) > 2 && ts.scrammed !== true;
+    put('plant_mode', atPower ? 1 : 3);
+    put('plant_mode_name', atPower ? 'At Power' : 'Hot Standby');
+
+    /* --- feed train: the facade runs feed = steam (pwr2_sg is fed what leaves), so the
+     * feed-side flows ARE the steam-side flows, stated rather than re-derived --- */
+    put('fw_flow_normalized',        ts.steam_out_total);
+    put('condensate_flow_normalized', ts.steam_out_total);
+    put('condensate_pump_running',   ctx.condenser_available === true);
+
+    /* --- NIS display channels [adopted]: cps = k_sr*P, amps = k_ir*P with the current
+     * engine's k_sr 5.0e8 / k_ir 8.333e-3 (pwr_config.js nis block) — gauge scales, not
+     * physics; the flux behind them is this engine's own --- */
+    var pFrac = (ts.power_pct !== undefined ? ts.power_pct : 0) / 100;
+    /* the SR proportional counter is DE-ENERGIZED at power (protected — the P-6 class fact);
+     * this model has no operator lever, so energization derives from flux alone [derived] */
+    var srOn = pFrac < 1e-3;
+    put('sr_energized', srOn);
+    put('sr_counts_cps', srOn ? 5.0e8 * Math.max(pFrac, 1e-9) : 0);
+    put('ir_amps',       8.333e-3 * Math.max(pFrac, 1e-9));
+
+    /* --- core uncovery: a DECLARED HEM PROXY (D4 sec 8 upheld). The homogeneous model has
+     * no water level; sustained high core void is the nearest honest stand-in. Expect A/B
+     * divergence here — that is the point of the proxy class. --- */
+    var aCore = ts.core_void_fraction !== undefined ? ts.core_void_fraction : 0;
+    put('core_uncovered_frac', clip((aCore - 0.5) / 0.5, 0, 1));
+
+    /* --- SG levels: PWR2's REAL secondary mass through the current engine's SOURCED level
+     * geometry [adopted: sg_mass_map, pwr_config.js — same Ginna 85,359 lbm nominal both
+     * engines]. Wide % from the piecewise map; narrow is its 30-75 window (sg_wr_lo/hi). --- */
+    if (ts.sg_mass_frac !== undefined) {
+      var MAP = [[0, 0], [0.38845, 30], [0.5484, 37.65], [1.0, 59.25], [1.32929, 75], [2.45, 100]];
+      var mf = ts.sg_mass_frac, wide = 100;
+      for (var mi = 1; mi < MAP.length; mi++) {
+        if (mf <= MAP[mi][0]) {
+          var m0 = MAP[mi - 1], m1 = MAP[mi];
+          wide = m0[1] + (m1[1] - m0[1]) * (mf - m0[0]) / (m1[0] - m0[0]);
+          break;
+        }
+      }
+      if (mf > MAP[MAP.length - 1][0]) wide = 100;
+      put('sg_level_wide_pct', clip(wide, 0, 100));
+      put('sg_level_pct', clip((wide - 30) / (75 - 30) * 100, 0, 100));
+    }
+
+    /* --- RCP cavitation: from the REAL suction subcooling margin (the crossover node feeds
+     * the pump). Thresholds [open]: onset below 3 degC of margin, full by 0. --- */
+    if (ts.suction_subcool_c !== undefined) {
+      var cavF = clip((3 - ts.suction_subcool_c) / 3, 0, 1);
+      var pumpOn = ts.pump_running !== false && ctx.pump_running !== false;
+      put('rcp_cavitation_frac', pumpOn ? cavF : 0);
+      put('rcp_cavitating', pumpOn && cavF > 0.5);
+    }
+
+    /* --- turbine valves: the governor IS the steam demand; the stop valve is the trip --- */
+    var tripped = ctx.turbine_tripped === true;
+    put('stop_valve_pct', tripped ? 0 : 100);
+    put('governor_valve_pct', tripped ? 0 :
+        clip((ts.steam_flow_normalized !== undefined ? ts.steam_flow_normalized : 0) * 100, 0, 110));
+
+    /* --- ADV (pwr2_relief.js, sec 48): direct reads, normalized to its own 8.18 kg/s --- */
+    if (rl.adv_frac !== undefined) put('adv_valve_pct', clip(rl.adv_frac * 100, 0, 100));
+    if (rl.adv_kgs !== undefined)  put('adv_flow_normalized', clip(rl.adv_kgs / 8.18, 0, 1.5));
+
+    /* --- pump discharge pressures: min(dead-head, system P) while running — with flow the
+     * discharge sits at the injection point; against a shut check valve it sits at dead-head.
+     * HHSI dead-head 9.58 MPa [sourced, the shutoff head]; AFW dead-head 8.3 MPa [open]. --- */
+    put('hpi_discharge_pressure_mpa',
+        ts.hpi_active === true ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);
+    put('afw_discharge_pressure_mpa',
+        ts.afw_active === true && ts.steam_pressure_mpa !== undefined
+          ? Math.min(8.3, Math.max(ts.steam_pressure_mpa, 0.101)) : 0);
+
+    /* --- rates and imbalances --- */
+    if (typeof ctx.tavg_rate_c_per_hr === 'number') {
+      put('tavg_rate_c_per_hr', ctx.tavg_rate_c_per_hr);
+    }
+    if (typeof ctx.load_target_mwe === 'number' && ts.mwe_output !== undefined) {
+      put('load_imbalance_mwe', ctx.load_target_mwe - ts.mwe_output);
+    }
+
+    /* --- containment sump and hydrogen, from state this engine really tracks --- */
+    if (ct.m_sump_kg !== undefined && typeof ctx.M_nominal === 'number' && ctx.M_nominal > 0) {
+      /* display scale [derived]: 100 % = the whole primary inventory in the sump — an honest
+       * ruler for a model with no sump geometry (pwr2_containment.js names the absence) */
+      put('containment_sump_pct', clip(100 * ct.m_sump_kg / ctx.M_nominal, 0, 100));
+    }
+    if (dg.oxidation_frac !== undefined && ct.m_air !== undefined) {
+      /* Zr + 2 H2O -> ZrO2 + 2 H2: oxidized clad (M_clad 2136 kg, pwr2_damage.js sec header)
+       * gives kmol H2 = ox * 2136 / 91.224 * 2; mole fraction against the tracked air +
+       * vapour atmosphere. A real translation — the H2 SOURCE is the damage model's own. */
+      var nH2 = dg.oxidation_frac * 2136 / 91.224 * 2;
+      var nTot = ct.m_air / 28.97 + (ct.m_vapour_kg || 0) / 18.02 + nH2;
+      put('ctmt_h2_pct', nTot > 0 ? clip(100 * nH2 / nTot, 0, 100) : 0);
+    }
+
+    /* --- the registered statics, emitted last so nothing above can shadow one --- */
+    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });
+
     return ts;
   }
 
@@ -376,18 +460,21 @@
    * The third number is the one that matters: a field in no category is one nobody has thought
    * about, and it is the only failure this file can have that is not visible from the output. */
   function coverage(ts, contractFields) {
-    var supplied = [], declared = [], unaccounted = [];
+    var supplied = [], declared = [], unaccounted = [], statics = [];
     contractFields.forEach(function (f) {
-      if (ts[f] !== undefined) supplied.push(f);
+      if (ts[f] !== undefined) {
+        supplied.push(f);
+        if (STATIC[f]) statics.push(f);       /* a supplied constant, registered with a reason */
+      }
       else if (MISSING[f]) declared.push(f);
       else unaccounted.push(f);
     });
-    return { supplied: supplied, declared: declared, unaccounted: unaccounted };
+    return { supplied: supplied, declared: declared, unaccounted: unaccounted, statics: statics };
   }
 
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.trueState = {
-    MISSING: MISSING, buildTrueState: buildTrueState, coverage: coverage
+    MISSING: MISSING, STATIC: STATIC, buildTrueState: buildTrueState, coverage: coverage
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

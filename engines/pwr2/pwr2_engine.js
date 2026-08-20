@@ -43,7 +43,7 @@
   var W = RD.water, S = RD.sources, R = RD.reactor, G = RD.sg, TB = RD.turbine, RL = RD.relief,
       CD = RD.condenser, CV = RD.cvcs, EC = RD.eccs, AW = RD.afw, DG = RD.damage,
       PT = RD.protection, PZ = RD.pressurizer, DC = RD.dumpctl, BK = RD.break_,
-      CT = RD.containment, TS = RD.trueState, IN = RD.instruments;
+      CT = RD.containment, TS = RD.trueState, IN = RD.instruments, RH = RD.rhr;
 
   var TREF = 304.5, P0 = 15.41, RATED_KW = 300000, MWE_RATED = 100;
   function tLeg(sys, id) {
@@ -92,7 +92,8 @@
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzr: null, _dcr: null, _lastTrip: false,
       _scramT: null, _manualTrip: false, _rodStopSig: false, _runbackSig: false,
       _rbT: 0, _rbActive: false,
-      ins: IN.createInstruments(opts.instruments)
+      ins: IN.createInstruments(opts.instruments),
+      rh: RD.rhr.createRHR({})
     };
     return eng;
   }
@@ -175,6 +176,12 @@
     eng.rodBank[0].steps = eng.rodSteps;
 
     var tavg = G.primaryTavg(sys);
+    /* tavg_rate_c_per_hr (stage B1): filtered derivative, tau 60 s [open] — a heatup/cooldown
+     * rate gauge, not physics */
+    if (eng._tavgPrev === undefined) { eng._tavgPrev = tavg; eng._tavgRate = 0; }
+    var rawRate = (tavg - eng._tavgPrev) / dt * 3600;
+    eng._tavgPrev = tavg;
+    eng._tavgRate += (dt / 60) * (rawRate - eng._tavgRate);
     /* THE TURBINE RUNBACK [sourced, ch7 §7.2.2.4.1]: "200%/min for 1.5 sec every 30 sec"
      * while the delta-T approach signal stands (one step old), "until [delta]T < [delta]T
      * (rod stop)" — i.e. the cycle repeats only while the signal persists, and the timer
@@ -306,12 +313,22 @@
     eng.simTime += dt;
     eng._pzr = pzr; eng._dcr = dcr;
 
+    /* the RHR exists and is REAL (run_pwr2_rhr, 39 checks) — at power its permissive holds
+     * it shut and its duty is 0; an align command is future work (the #458-class refusal
+     * belongs with it) */
+    var rhrR = RH.stepRHR(eng.rh, sys, dt, {});
     var ts = TS.buildTrueState({
       sys: sys, reactor: rrx, sg: sr, turbine: tr, relief: rr, cvcs: cvr,
-      rhr: {}, break_: br || {}, containment: ctr, condenser: cr,
+      rhr: rhrR, break_: br || {}, containment: ctr, condenser: cr,
       eccs: ecr, afw: awr, damage: dr, protection: ptr, pressurizer: pzr,
       boron_ppm: cvr.boron_ppm, rated_steam_kgs: eng.rated_steam,
-      mdot_rated: 1630, natcirc_frac: 0.15, M_nominal: eng.M_nominal
+      mdot_rated: 1630, natcirc_frac: 0.15, M_nominal: eng.M_nominal,
+      /* stage B1 ctx: contract-completion inputs */
+      load_target_mwe: eng.tb.load_target_mwe,
+      turbine_tripped: eng.tb.tripped,
+      condenser_available: eng._cdAvail === true,
+      pump_running: !eng.sys.pumpTripped,
+      tavg_rate_c_per_hr: eng._tavgRate
     });
     /* facade extras a page needs and the contract does not carry */
     ts.sim_time_s = eng.simTime;

@@ -29,6 +29,20 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-d (#479 Option B stage B1 — the contract completed, and the STATIC class)
+
+*(OWNER RULING, 2026-08-20: "Next: option B".)* Stage B1 of the shell integration
+(`Blueprint/PWR2_VALIDATION.md` §57): the shim emits **109/109** §6.3 fields — 22 new
+derivations (SG levels through the adopted sourced `sg_mass_map` over PWR2's real mass, H₂
+from the damage model's own oxidation, the sump on a declared ruler, HEM core-uncovery proxy,
+SR/IR display scales with the SR now de-energizing above the P-6 class point) + a new third
+class, the **STATIC registry** (a constant stating the model's truth about an unmodeled
+system, 19 of them, triple-gated). The RHR was wired into the facade — built and gated weeks
+ago, never instantiated. `run_pwr2_true_state` 47 → 59 / 16 mutations; the
+every-static-IS-a-contract-field check caught an invented name (`ctmt_fan_demand` vs the
+contract's `ctmt_fan_safety`) on its first run. Two mutations retired as proven no-ops
+(empty MISSING registry) with the gate's own precedent. Next: B2, the engine class.
+
 ## Session log — 2026-08-20-backshop-c (#479 — the rod stop and the runback, and the gate that audited itself)
 
 The ch7-sourced approach rung (`Blueprint/PWR2_VALIDATION.md` §56): 3 % below either delta-T
