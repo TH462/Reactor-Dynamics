@@ -18,7 +18,7 @@ var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_lo
   'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine',
   'pwr2_relief', 'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage',
   'pwr2_protection', 'pwr2_pressurizer', 'pwr2_dumpctl', 'pwr2_break', 'pwr2_containment',
-  'pwr2_true_state'];
+  'pwr2_true_state', 'pwr2_instruments'];
 
 function loadAll(engSource, coreSource) {
   ORDER.forEach(function (f) {
@@ -224,11 +224,31 @@ function runSuite(RD, rec, quiet) {
   ckT('overtemperature delta-T is LIVE through the facade wiring, margin at power ~0.3',
       fRep !== null && fRep.available === true && fRep.margin > 0.15 && fRep.margin < 0.45,
       fRep === null ? 'row missing' : ('margin ' + fRep.margin.toFixed(3)));
+
   EN.command(eng4, 'turbine_trip', true);
   var ts4 = run(eng4, 5);
   ckT('the turbine trip reaches the RPS and the reactor trips with it (TS Bases B 3.3.1 Fn 14)',
       ts4.scrammed === true && eng4.pt.trip_cause === 'turbine_trip',
       'cause ' + eng4.pt.trip_cause + ', scrammed ' + ts4.scrammed);
+  /* ---- 2d. HARD RULE 1'S PAYOFF: THE RPS BELIEVES THE INSTRUMENTS ---------------------------
+   * Fail the pressure channel LOW on a HEALTHY plant: the RPS must trip and inject on the
+   * lying channel (measured: lo_pzr_press + SI within seconds, true pressure untouched at
+   * ~2224 psia until the trip's own contraction moves it). To test an HR1 wiring you have to
+   * FAIL the channel — a healthy instrument is indistinguishable from truth (#220's lesson,
+   * and the reads-truth mutation is exactly the wiring this check exists to red). */
+  head('THE LYING CHANNEL  [a failed-low pressure channel trips a healthy plant]');
+  /* a FRESH plant — eng4 is post-trip by now, and this check's whole point is that the
+   * PLANT is healthy while the channel lies */
+  var eng5 = EN.createEngine({});
+  run(eng5, quiet ? 20 : 60);
+  var trueP = eng5.sys.P;
+  EN.command(eng5, 'instrument_fail', { id: 'primary_pressure', mode: 'low' });
+  run(eng5, 10);
+  ckT('the RPS trips and injects on the LYING channel, the plant itself healthy',
+      eng5.pt.reactor_trip === true && eng5.pt.trip_cause === 'lo_pzr_press' &&
+      eng5.pt.si === true && trueP > 14.5,
+      'cause ' + eng5.pt.trip_cause + ', SI ' + eng5.pt.si + ', true P was ' +
+      (trueP * 145.04).toFixed(0) + ' psia when the channel failed');
 
   /* ---- 3b. THE DRAIN ROOT-JUMP (#499 second instance) ---------------------------------------
    * The pre-fix facade let a scram leave the turbine loaded; the -240 F/min cooldown drained
@@ -294,8 +314,11 @@ var MUTATIONS = [
    'turbine_tripped: eng.tb.tripped,',
    'turbine_tripped: false,'],
   ['the loop delta-T never reaches the RPS (both delta-T trips silently unavailable)',
-   "delta_t_frac: (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,",
-   ''],
+   "delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C",
+   'delta_t_frac: undefined ? 0'],
+  ['the RPS reads TRUTH, not the instruments (a failed channel can no longer lie to it)',
+   'pressure_mpa: rd.primary_pressure !== undefined ? rd.primary_pressure : sys.P,',
+   'pressure_mpa: sys.P,'],
   /* CORE mutations — 4th element 'core' substitutes a mutated pwr2_core into the load order */
   ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
    'var P_JUMP_MAX = 2.0;',

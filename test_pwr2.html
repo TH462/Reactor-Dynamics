@@ -8,10 +8,10 @@
        test_pwr2.html — the PWR2 playable preview (2026-08-19, owner ruling "A").
 
        WHAT THIS IS: the from-scratch PWR2 engine (#479), driven live through the
-       pwr2_engine facade. Every value on this page is TRUTH — there is no
-       instrument layer, no lag, no noise, no failed channels (Hard Rule 1's
-       instrumented reading does not exist in PWR2 yet). The banner below says so
-       to the player; do not remove it before the shell integration lands.
+       pwr2_engine facade. Since 2026-08-20 the INSTRUMENT LAYER is live (Hard
+       Rule 1): dot-marked readouts are INDICATED — lag, noise, failable from
+       the panel — and the RPS reads the same channels. The TRUE button is the
+       diagnostic overlay. The banner below tells the player; keep it current.
 
        WHAT THIS IS NOT: the shipped control room. No M5 service, no snapshots,
        no instructor, no missions. It is listed in NOT_PUBLISHED in
@@ -77,10 +77,12 @@
 </head>
 <body>
   <h1>Reactor⚛️Dynamics — <strong>PWR2</strong> · SLS-100 physics rebuild <span style="color:var(--dim)">(#479, dev preview)</span></h1>
-  <div class="truth-banner"><strong>⚠ TRUE VALUES</strong> — this page reads the plant's actual
-    state directly. There is <strong>no instrument layer</strong>: no lag, no noise, no failed
-    channels, and nothing here can lie to you. The shipped control room will not make that
-    promise. Protection and safeguards are live (the plant trips and injects on its own).</div>
+  <div class="truth-banner"><strong>⚙ INSTRUMENTS LIVE</strong> — readouts marked with a dot
+    show <strong>indicated</strong> values: sensing lag (the RTD's sourced 2.0 s among them),
+    band-limited noise, and channels you can fail from the panel below. The reactor protection
+    system reads these same channels — <strong>fail one and the RPS believes the lie</strong>.
+    Unmarked readouts are true-state diagnostics. The TRUE button switches everything to truth.
+    The strip chart always draws truth.</div>
 
   <div class="topbar">
     <button id="runBtn" class="big">&#9654; Run</button>
@@ -88,6 +90,7 @@
       <option value="1">1&times;</option><option value="10" selected>10&times;</option>
       <option value="60">60&times;</option><option value="300">300&times;</option>
     </select></label>
+    <button id="trueBtn" title="show true values instead of indicated">TRUE</button>
     <span class="clock" id="clock">t = 0 s</span>
     <span style="color:var(--dim)" id="perf"></span>
   </div>
@@ -156,6 +159,18 @@
           <button id="rcpTrip">Trip the RCP</button></div>
       </div>
 
+      <div class="panel"><h2>Instrument failures</h2>
+        <div class="row"><label>channel</label>
+          <select id="insCh"></select></div>
+        <div class="row"><label>mode</label>
+          <select id="insMode"><option value="stuck">stuck (lies still)</option>
+            <option value="low">fail LOW</option><option value="high">fail HIGH</option>
+            <option value="noisy">noisy</option></select></div>
+        <div class="row">
+          <button id="insFail" class="big">FAIL CHANNEL</button>
+          <button id="insRestore">Restore all</button></div>
+      </div>
+
       <div class="panel"><h2>Break (casualty)</h2>
         <div class="row"><label>area</label>
           <input type="number" id="brkArea" value="5" step="1" min="0.1"> <span class="u">cm&sup2;</span>
@@ -168,7 +183,7 @@
     </div>
 
     <div>
-      <div class="panel"><h2>Plant — true state</h2>
+      <div class="panel"><h2>Plant readouts <span style="text-transform:none;letter-spacing:0">(● = indicated)</span></h2>
         <div class="reads" id="reads"></div>
       </div>
       <div class="panel"><h2>Strip chart — 20 min window</h2>
@@ -206,6 +221,7 @@
   <script src="engines/pwr2/pwr2_break.js"></script>
   <script src="engines/pwr2/pwr2_containment.js"></script>
   <script src="engines/pwr2/pwr2_true_state.js"></script>
+  <script src="engines/pwr2/pwr2_instruments.js"></script>
   <script src="engines/pwr2/pwr2_engine.js"></script>
 
   <script>
@@ -306,36 +322,58 @@
     });
 
     /* ---- readouts (US customary first, the house rule) -------------------- */
+    /* [label, trueGetter, unit, indicatedGetter?] — rows with an indicated getter read the
+     * INSTRUMENTS by default (dot-marked); rows without stay true-state diagnostics. rd()
+     * is the live readings dict. Subcooling's indicated form is a saturation-margin monitor:
+     * computed from the INDICATED pressure and hot-leg temperature, like the real device. */
+    var rd = function () { return eng.ins.reading; };
+    var Wp = RD.pwr2.water;
     var READS = [
-      ['Pressure', function () { return (ts.pressure_mpa * PSIA).toFixed(0); }, 'psia'],
-      ['Tavg', function () { return F(ts.tavg_c).toFixed(1); }, '°F'],
-      ['T-hot / T-cold', function () { return F(ts.thot_c).toFixed(0) + ' / ' + F(ts.tcold_c).toFixed(0); }, '°F'],
-      ['Subcooling', function () { return dF(ts.subcooling_c).toFixed(1); }, '°F'],
-      ['Power', function () { return ts.power_pct.toFixed(1); }, '% fission'],
+      ['Pressure', function () { return (ts.pressure_mpa * PSIA).toFixed(0); }, 'psia',
+        function () { return (rd().primary_pressure * PSIA).toFixed(0); }],
+      ['Tavg', function () { return F(ts.tavg_c).toFixed(1); }, '°F',
+        function () { return F(rd().tavg).toFixed(1); }],
+      ['T-hot / T-cold', function () { return F(ts.thot_c).toFixed(0) + ' / ' + F(ts.tcold_c).toFixed(0); }, '°F',
+        function () { return F(rd().thot).toFixed(0) + ' / ' + F(rd().tcold).toFixed(0); }],
+      ['Subcooling', function () { return dF(ts.subcooling_c).toFixed(1); }, '°F',
+        function () { return dF(Wp.T_sat(Math.max(rd().primary_pressure, 0.101)) - rd().thot).toFixed(1); }],
+      ['Power', function () { return ts.power_pct.toFixed(1); }, '% fission',
+        function () { return rd().power_range.toFixed(1); }],
       ['Core heat', function () { return ts.core_heat_pct.toFixed(1); }, '% (incl. decay)'],
-      ['Generator', function () { return ts.mwe_output.toFixed(1); }, 'MWe'],
+      ['Generator', function () { return ts.mwe_output.toFixed(1); }, 'MWe',
+        function () { return rd().mwe_output.toFixed(1); }],
       ['Rods', function () { return ts.rod_steps.toFixed(0); }, 'steps'],
-      ['Boron', function () { return ts.boron_ppm.toFixed(0); }, 'ppm'],
-      ['Startup rate', function () { return ts.startup_rate_dpm.toFixed(2); }, 'dpm'],
-      ['PZR level', function () { return ts.pzr_level_pct.toFixed(1); }, '%'],
+      ['Boron', function () { return ts.boron_ppm.toFixed(0); }, 'ppm',
+        function () { return rd().boron.toFixed(0); }],
+      ['Startup rate', function () { return ts.startup_rate_dpm.toFixed(2); }, 'dpm',
+        function () { return rd().startup_rate.toFixed(2); }],
+      ['PZR level', function () { return ts.pzr_level_pct.toFixed(1); }, '%',
+        function () { return rd().pzr_level.toFixed(1); }],
       ['PZR heaters', function () { return ts.pzr_heater_kw.toFixed(0); }, 'kW'],
       ['Spray', function () { return ts.spray_flow_pct.toFixed(0); }, '%'],
-      ['PORV tailpipe', function () { return F(ts.porv_tailpipe_temp_c).toFixed(0); }, '°F'],
-      ['Steam pressure', function () { return (ts.steam_pressure_mpa * PSIA).toFixed(0); }, 'psia'],
-      ['Steam flow', function () { return (ts.steam_flow_normalized * 100).toFixed(0); }, '% rated'],
-      ['RCS flow', function () { return ts.pump_flow_pct.toFixed(0); }, '%'],
+      ['PORV tailpipe', function () { return F(ts.porv_tailpipe_temp_c).toFixed(0); }, '°F',
+        function () { return F(rd().porv_tailpipe_temp).toFixed(0); }],
+      ['Steam pressure', function () { return (ts.steam_pressure_mpa * PSIA).toFixed(0); }, 'psia',
+        function () { return (rd().steam_pressure * PSIA).toFixed(0); }],
+      ['Steam flow', function () { return (ts.steam_flow_normalized * 100).toFixed(0); }, '% rated',
+        function () { return (rd().steam_flow * 100).toFixed(0); }],
+      ['RCS flow', function () { return ts.pump_flow_pct.toFixed(0); }, '%',
+        function () { return rd().loop_flow.toFixed(0); }],
       ['Inventory', function () { return ts.core_inventory_pct.toFixed(1); }, '%'],
       ['Core void', function () { return (ts.core_void_fraction * 100).toFixed(1); }, '%'],
       ['Clad temp', function () { return F(ts.clad_temp_c).toFixed(0); }, '°F'],
       ['Fuel temp', function () { return F(ts.fuel_temp_c).toFixed(0); }, '°F'],
-      ['Containment', function () { return (ts.containment_pressure_mpa * PSIA).toFixed(1); }, 'psia'],
+      ['Containment', function () { return (ts.containment_pressure_mpa * PSIA).toFixed(1); }, 'psia',
+        function () { return (rd().containment_pressure * PSIA).toFixed(1); }],
       ['Xenon', function () { return ts.xenon_pct_eq.toFixed(0); }, '% of eq.'],
       ['Reactivity', function () { return ts.reactivity_pcm.toFixed(0); }, 'pcm']
     ];
+    var showTrue = false;
     var readsRoot = $('reads'), readEls = [];
     READS.forEach(function (r) {
       var d = document.createElement('div'); d.className = 'read';
-      d.innerHTML = '<div class="k">' + r[0] + '</div><div class="v">–</div><div class="u">' + r[2] + '</div>';
+      var dot = r[3] ? ' <span style="color:#e0c98c" title="indicated — an instrument channel">●</span>' : '';
+      d.innerHTML = '<div class="k">' + r[0] + dot + '</div><div class="v">–</div><div class="u">' + r[2] + '</div>';
       readsRoot.appendChild(d); readEls.push(d.children[1]);
     });
 
@@ -406,7 +444,9 @@
 
     /* ---- the loop ---------------------------------------------------------- */
     function paint() {
-      READS.forEach(function (r, i) { readEls[i].textContent = r[1](); });
+      READS.forEach(function (r, i) {
+        readEls[i].textContent = (!showTrue && r[3]) ? r[3]() : r[1]();
+      });
       LAMPS.forEach(function (l, i) {
         var lit = l[1]();
         lampEls[i].className = 'lamp' + (lit ? ' ' + l[2] : '');
@@ -447,6 +487,22 @@
       if (timer) { clearInterval(timer); timer = null; }
     }
     $('runBtn').addEventListener('click', function () { running ? stop() : start(); });
+    $('trueBtn').addEventListener('click', function () {
+      showTrue = !showTrue;
+      this.classList.toggle('on', showTrue);
+      this.textContent = showTrue ? 'TRUE ✓' : 'TRUE';
+      paint();
+    });
+    /* failure panel — channels from the module's own table, so a new channel appears here
+     * without a page edit */
+    RD.pwr2.instruments.CHANNELS.forEach(function (c) {
+      var o = document.createElement('option'); o.value = c.id; o.textContent = c.id;
+      $('insCh').appendChild(o);
+    });
+    $('insFail').addEventListener('click', function () {
+      cmd('instrument_fail', { id: $('insCh').value, mode: $('insMode').value });
+    });
+    $('insRestore').addEventListener('click', function () { cmd('instrument_restore', true); });
     paint();
   })();
   </script>

@@ -392,7 +392,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). OTΔT/OPΔT BUILT same night (§53; the 'blocked on a source' status was false — Table 15.0-7 was in corpus). Owed: the instrument layer (brings the delta-T compensation + K5), the ch7 turbine-runback rung, Option B shell integration (needs a ruling).
+  DELAYED-data sourcing are all LANDED (§50–52). OTΔT/OPΔT BUILT same night (§53; the 'blocked on a source' status was false — Table 15.0-7 was in corpus). The INSTRUMENT LAYER is BUILT (ruled "Do option 1", 2026-08-20 — §54: 14 channels, sourced RTD/hot-leg lags, failable; the RPS reads the instruments and a lying channel trips a healthy plant). Owed: control loops' switchover to instruments (each needs a stability pass), the delta-T lead/lag + K5 (COLR constants still unfound), the ch7 turbine-runback rung, Option B shell integration (needs a ruling).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,

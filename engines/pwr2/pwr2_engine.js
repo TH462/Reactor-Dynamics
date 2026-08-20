@@ -36,13 +36,14 @@
   var RD = root.RD && root.RD.pwr2;
   if (!RD || !RD.water || !RD.sources || !RD.reactor || !RD.sg || !RD.turbine || !RD.relief ||
       !RD.condenser || !RD.cvcs || !RD.eccs || !RD.afw || !RD.damage || !RD.protection ||
-      !RD.pressurizer || !RD.dumpctl || !RD.break_ || !RD.containment || !RD.trueState) {
+      !RD.pressurizer || !RD.dumpctl || !RD.break_ || !RD.containment || !RD.trueState ||
+      !RD.instruments) {
     throw new Error('pwr2_engine: load the full pwr2 stack first (gate order, see any run_pwr2_*)');
   }
   var W = RD.water, S = RD.sources, R = RD.reactor, G = RD.sg, TB = RD.turbine, RL = RD.relief,
       CD = RD.condenser, CV = RD.cvcs, EC = RD.eccs, AW = RD.afw, DG = RD.damage,
       PT = RD.protection, PZ = RD.pressurizer, DC = RD.dumpctl, BK = RD.break_,
-      CT = RD.containment, TS = RD.trueState;
+      CT = RD.containment, TS = RD.trueState, IN = RD.instruments;
 
   var TREF = 304.5, P0 = 15.41, RATED_KW = 300000, MWE_RATED = 100;
   function tLeg(sys, id) {
@@ -89,7 +90,8 @@
       advDemand: 0, advBlock: true,
       /* one-step-lag carriers */
       _Qox: 0, _pzRelief: 0, _pzReliefH: 0, _pzr: null, _dcr: null, _lastTrip: false,
-      _scramT: null, _manualTrip: false
+      _scramT: null, _manualTrip: false,
+      ins: IN.createInstruments(opts.instruments)
     };
     return eng;
   }
@@ -131,6 +133,13 @@
                                    node: value.node || 'cold_leg', open: true });
         break;
       case 'break_close':    if (eng.brk) eng.brk.open = false; break;
+      case 'instrument_fail':
+        /* value: {id, mode} — mode: stuck | low | high | noisy. Throws on a misspelling,
+         * because a failure that silently does nothing reads like a plant surviving it. */
+        IN.fail(eng.ins, value.id, value.mode); break;
+      case 'instrument_restore':
+        /* value: a channel id, or null/true for ALL */
+        IN.restore(eng.ins, typeof value === 'string' ? value : null); break;
       case 'reset_protection':
         /* the operator's reset — clears the latches so a recovered plant can run again */
         eng.pt.reactor_trip = false; eng.pt.trip_cause = null;
@@ -218,13 +227,21 @@
     }
     if (pzr.letdown_isolated) eng.cv.letdownOpen = 0;
 
+    /* HR1: THE RPS READS THE INSTRUMENTS, NOT THE PLANT. Every analog driver below comes
+     * from ins.reading — one step old (the instruments step at the END of each step, on that
+     * step's true_state), which is the house lag convention. The one exception is the very
+     * FIRST step, before any reading exists: truth fills in for 0.02 s so stepProtection's
+     * REQUIRED-driver validation does not throw on a plant that has not energized its
+     * channels yet. turbine_tripped / manual_trip / steam_dumps_available stay direct — they
+     * are state signals (breaker positions, pushbuttons), not analog channels. */
+    var rd = eng.ins.reading;
     var ptr = PT.stepProtection(eng.pt, dt, {
-      pressure_mpa: sys.P,
-      power_frac: rrx.power_pct / 100,
-      flow_frac: sys.mdot_loop / 1630,
-      steam_pressure_mpa: sr.P_sec,
-      steam_flow_frac: out / eng.rated_steam,
-      pzr_level_frac: pzr.level_frac,
+      pressure_mpa: rd.primary_pressure !== undefined ? rd.primary_pressure : sys.P,
+      power_frac: (rd.power_range !== undefined ? rd.power_range : rrx.power_pct) / 100,
+      flow_frac: (rd.loop_flow !== undefined ? rd.loop_flow : 100 * sys.mdot_loop / 1630) / 100,
+      steam_pressure_mpa: rd.steam_pressure !== undefined ? rd.steam_pressure : sr.P_sec,
+      steam_flow_frac: rd.steam_flow !== undefined ? rd.steam_flow : out / eng.rated_steam,
+      pzr_level_frac: (rd.pzr_level !== undefined ? rd.pzr_level : 100 * pzr.level_frac) / 100,
       manual_trip: eng._manualTrip,
       /* P-9's inputs [sourced, TS Bases B 3.3.1]: the turbine's own tripped flag, and dump
        * availability = the condenser's (the dumps are condenser dumps; C-9 is the same fact
@@ -235,8 +252,9 @@
        * DT0_C is [derived]: the plant's own measured full-power split at the design point
        * (606/550 degF, PWR2_VALIDATION.md sec 43) — 31.1 degC. Protection converts to the
        * source's units itself. */
-      delta_t_frac: (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
-      tavg_c: G.primaryTavg(sys)
+      delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C
+                    : (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
+      tavg_c: rd.tavg !== undefined ? rd.tavg : G.primaryTavg(sys)
     });
     eng.rpsReport = ptr;      /* the full function report, for consumers (the page, the gate) */
     /* THE CALLER'S HALF of HR5: the RPS reports, the plant acts. */
@@ -277,6 +295,8 @@
     ts.pzr_surge_kgs = pzr.surge_kgs;
     ts.pzr_heater_kw = pzr.heater_kW;
     ts.oxidation_frac = dr.oxidation_frac;
+    /* the instruments read THIS step's truth; every consumer sees them NEXT step */
+    IN.stepInstruments(eng.ins, dt, ts);
     return ts;
   }
 

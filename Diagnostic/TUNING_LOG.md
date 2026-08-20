@@ -29,6 +29,20 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-a (#479 — the instrument layer: what the plant says, and the RPS believes it)
+
+*(OWNER RULING, 2026-08-20: "Do option 1".)* Full record `Blueprint/PWR2_VALIDATION.md` §54.
+`pwr2_instruments.js` (14 channels: lag / cascaded lag / AR(1) noise / stuck-low-high-noisy
+failures; RTD 2.0 s and hot-leg filter 3.5 s [sourced, Table 15.0-6 fn b], the rest [open]);
+the RPS's analog drivers switched to `ins.reading` (one step old); the page shows INDICATED
+with a TRUE overlay and a failure panel. **Measured payoff: fail the pressure channel low on a
+healthy 2224-psia plant and the RPS trips + injects on the lie.** Design departure recorded:
+per-channel PRNG streams (id-hash seeds) — the `pwr_instruments.js` append-order trap
+engineered away, gate-proven (starve a sibling → bit-identical noise). Declared: control loops
+still read truth (each switchover owes a stability pass); save/restore waits for Option B.
+Gates: `run_pwr2_instruments` NEW 16/8mut; `run_pwr2_engine` 19/13 (prior 18 held unmoved
+through the switchover); run_all --fast at baseline (+1 runner).
+
 ## Session log — 2026-08-19-backshop-k (#479 — OTΔT/OPΔT built the night they were unblocked)
 
 The delta-T trips, every coefficient UFSAR ch15 Table 15.0-7's (`Blueprint/PWR2_VALIDATION.md`

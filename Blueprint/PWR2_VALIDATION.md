@@ -2795,3 +2795,55 @@ gate self-correction recorded: the K2 fixture first asserted K2×200 psi for a 1
 and was fixed to the actual delta. Owed on this function when the instrument layer lands: the
 lead/lag compensation and the K5 rate term; owed on the control side: the ch7 200 %/min
 turbine runback rung.
+
+## 54. THE INSTRUMENT LAYER — WHAT THE PLANT SAYS, AND THE RPS BELIEVES IT — 2026-08-20
+
+*(OWNER RULING, 2026-08-20: "Do option 1" — the instrument layer, chosen from the three
+options the drained #479 list left.)*
+
+**`engines/pwr2/pwr2_instruments.js`**: per-channel first-order sensing lag (a cascaded second
+lag where the source names one), band-limited AR(1) noise, and injectable failures (stuck /
+low / high / noisy). Fourteen channels; consumers read `ins.reading[id]`; nothing writes
+physics; true_state stays truth. The design spine's "instrument model reused, not redesigned"
+note predates the preview stack, which runs without M5 and cannot reach `pwr_instruments.js` —
+the native module keeps the same `reading[id]` interface so the eventual shell integration can
+swap either way.
+
+**Sourced where the corpus gives a number**: RTD lag **2.0 s** and the hot-leg measurement
+filter **3.5 s** — Table 15.0-6 footnote b verbatim (the 3.5/6.0 pair's lower member, declared).
+Every other τ and every σ is [open], each a named constant. The OTΔT channel's effective delay
+is now **emergent** from the same pieces footnote b sums to its 7.0 s figure: RTD lag + hot-leg
+filter + the RPS's sourced 2.0 s hold — and the lead/lag compensation stays out, matching the
+analysis' own conservative modelling (it does not credit it either).
+
+**A deliberate design departure, proven by injection**: per-channel PRNG streams seeded from
+each channel's own id hash. `pwr_instruments.js`'s single cross-step stream makes channel ORDER
+load-bearing (the appended-instrument trap, worked repeatedly); here the gate starves one
+channel and a sibling's noise sequence is **bit-identical** — and a shared-seed mutation reds.
+
+**The facade**: all RPS analog drivers now come from `ins.reading`, one step old (instruments
+step at the end of each step on that step's true_state — the house convention); truth fills
+only the very first step, before channels energize. `turbine_tripped` / `manual_trip` /
+`steam_dumps_available` stay direct: state signals, not analog channels. Commands:
+`instrument_fail {id, mode}` (misspellings throw), `instrument_restore`.
+
+**Measured, the Hard Rule 1 payoff both ways**: fail `primary_pressure` LOW on a healthy plant
+at 2224 psia → the RPS trips (`lo_pzr_press`) and injects (SI) **on the lie** within seconds;
+fail `tavg` STUCK and the reading holds 561.0 °F while the true plant walks 4 °F away. Settled
+indicated-vs-true: 2220 vs 2224 psia, 577.82 vs 577.84 °F — inside the configured σ.
+
+**Declared, not silent**: the CONTROL loops (dump controller, pressurizer level and pressure
+control) still read truth — each switchover changes a control loop's stability under lag and
+noise and owes its own measured pass. Save/restore waits for the snapshot layer (Option B).
+
+**The page**: dot-marked readouts are INDICATED; a TRUE button is the diagnostic overlay; a
+failure panel drives any channel from the module's own table; the subcooling readout's
+indicated form is a saturation-margin monitor computed from indicated P and Thot, like the
+real device. Headless-verified: failed-low pressure reads 0 psia indicated while TRUE shows
+the plant; zero console errors.
+
+Gates: **`run_pwr2_instruments` NEW — 16 checks, 8 mutations** (sourced taus pinned by
+measured step response, the cascade proven as a cascade, stationary σ and band-limit,
+independence, determinism, all four failure modes, restore-heals-to-NOW);
+**`run_pwr2_engine` 19 checks / 13 mutations** — THE LYING CHANNEL check with the reads-truth
+mutation as its exact counterpart; all 18 prior checks held through the switchover unmoved.
