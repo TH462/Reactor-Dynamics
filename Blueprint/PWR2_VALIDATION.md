@@ -2664,3 +2664,46 @@ dumps take the load on the C-8 controller, Tavg walks to 554.5–555 °F against
 no-load program, power decays 5.0e-1 → 2.0e-4 % over ten minutes, pressure 2086–2156 psia,
 finite throughout. Both new gate checks REDDED on the pre-fix build (scrammed false; NaN at
 t = 54.5 s) — the injection evidence is the defect itself.
+
+## 50. #499 CLOSED — TWO BEYOND-MODEL GUARDS, BOTH THRESHOLDS MEASURED — 2026-08-19
+
+Both #499 instances are the same failure shape — the plant leaves the regime the model can
+represent and nothing declares it — with different mechanisms, so two guards in
+`pwr2_core.js`, each threshold set by measurement (Hard Rule 12), neither fitted to the defect:
+
+**Guard 1 — the root-tracking limit (`P_JUMP_MAX = 2.0` MPa/step).** The physical pressure
+trajectory is continuous, so the solve's root must stay near last step's. Measured legitimate
+per-step |dP|: operations < 0.001 MPa, a turbine trip 0.0006, the 40 cm² gate break peaks at
+0.104, and a 500 cm² guillotine-class break's first step — the worst legitimate mover found —
+0.67 MPa. The defect's jump was 6.1 MPa (1724 → 2611 psia in 0.02 s, surge +20,085 kg/s,
+adopted from a far root after the drained pressurizer's vapor-dominated projection collapsed
+the system compliance). 2.0 sits 3× above the worst legitimate and 3× below the defect. A
+solve landing beyond it is REFUSED: nothing adopted, the step held, `beyond_model` latched,
+`rootJump_mpa` reported for the post-mortem.
+
+**Guard 2 — the both-walls latch.** The near-floor h-oscillation's signature is nodes pinned
+on BOTH envelope walls at once (measured: core at +4161 kJ/kg beside upper plenum at −5.4, at
+0.115 MPa, ECCS fighting the blowdown — a pressure `flooredLow` never sees). Measured against
+the benign case first: the 50 cm² scrammed episode clamps on **45,087 of 60,000 steps over
+1200 s and is two-sided on ZERO of them** — the signature never occurs on a ride the model
+survives. Latch on it.
+
+**Verification (both directions, Hard Rule 10):** the 40 cm² full-lineup break now latches at
+46.9 s and rides finite to 300 s where the pre-guard build threw NaN out of `pwr2_damage` at
+68.5 s; the drain fixture (the pre-fix turbine wiring forced, since the facade fix made it
+unreachable through the door) latches finite with max |dP|/step 0.717 MPa — no teleport. Both
+new gate checks red by injection: deleting the limit reds 3 checks (the fixture pins
+`maxStep < 2.0`, so the teleport itself is the red, not a downstream symptom), deleting the
+walls latch reds 2 (the ride NaNs). `run_pwr2_engine` 14 → 16 checks, 8 → 10 mutations —
+the two new ones substitute a mutated `pwr2_core` into the load order. The core-family gates
+(`run_pwr2_core`, `run_pwr2_loca`, `run_pwr2_coredamage`, `run_pwr2_loadfollow`,
+`run_pwr2_pressurizer`) all hold at baseline: neither guard fires on any legitimate fixture.
+
+**One fixture adjudicated, and it sharpened the guard's caveat:** `run_pwr2_sources`' affinity
+fixture hand-pins every node's enthalpy, and its PLANT IS THE STIFF CASE — no pressurizer
+seat, a sealed rigid loop where the instant pin's first step measures a **2.589 MPa** root
+move at what works out to ~3,000 MW-equivalent forcing. The limit refused it, correctly by its
+own terms but on a harness idiom no engine trajectory produces. The pin now ramps over 400
+steps (max 0.673 MPa/step, never latches, P still reaches the 18.000 wall) and the identity
+holds exact at the settled state. The caveat — the 2.0 MPa/step limit is calibrated to the
+FULL plant's reachable dynamics, pressurizer seated — is written on the constant.

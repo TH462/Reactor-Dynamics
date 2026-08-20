@@ -20,8 +20,9 @@ var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_lo
   'pwr2_protection', 'pwr2_pressurizer', 'pwr2_dumpctl', 'pwr2_break', 'pwr2_containment',
   'pwr2_true_state'];
 
-function loadAll(engSource) {
+function loadAll(engSource, coreSource) {
   ORDER.forEach(function (f) {
+    if (f === 'pwr2_core' && coreSource !== undefined) { (0, eval)(coreSource); return; }
     delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
   });
@@ -190,6 +191,49 @@ function runSuite(RD, rec, quiet) {
       tsB.core_inventory_pct > 30,
       (tsB.pressure_mpa * 145.04).toFixed(0) + ' psia, inventory ' +
       tsB.core_inventory_pct.toFixed(1) + ' % at 30 s');
+  /* #499 first instance, now GUARDED: ridden deeper, the near-floor h-oscillation (nodes
+   * pinned on BOTH envelope walls at once) must latch beyond_model and hold — the pre-guard
+   * build threw NaN out of pwr2_damage at t = 68.5 s. Measured post-guard: latches 46.9 s. */
+  var latchA = false, threwA = null;
+  try {
+    for (var kk = 0; kk < 120 / DT; kk++) {
+      tsB = EN.step(eng2, DT);
+      if (eng2.sys.beyond_model) { latchA = true; break; }
+    }
+  } catch (eA) { threwA = eA.message; }
+  ckT('...ridden deeper the plant DECLARES beyond-model and holds — no NaN (#499)',
+      latchA && threwA === null && isFinite(tsB.pressure_mpa) && isFinite(tsB.fuel_temp_c),
+      threwA ? ('THREW: ' + threwA.slice(0, 60)) :
+      ('latched ' + latchA + ' at ' + tsB.sim_time_s.toFixed(1) + ' s, P ' +
+       (tsB.pressure_mpa * 145.04).toFixed(1) + ' psia'));
+
+  /* ---- 3b. THE DRAIN ROOT-JUMP (#499 second instance) ---------------------------------------
+   * The pre-fix facade let a scram leave the turbine loaded; the -240 F/min cooldown drained
+   * the pressurizer at 54 kg/s and ONE step teleported the solve 1724 -> 2611 psia (surge
+   * +20,085 kg/s). The facade fix makes that unreachable through the door, so this fixture
+   * FORCES the pre-fix wiring (tb.tripped = false every step) to keep the trajectory reachable
+   * — the subject is pwr2_core's root-tracking limit, which must REFUSE the far root and
+   * declare beyond_model. maxStep pins the teleport itself: with the limit deleted, some step
+   * moves > 2 MPa whether or not a later latch fires. */
+  head('THE DRAIN ROOT-JUMP  [a vanished near root is declared, never adopted]');
+  var eng3 = EN.createEngine({});
+  run(eng3, 36);
+  EN.command(eng3, 'scram', true);
+  var latch3 = false, threw3 = null, ts3 = null, maxStep = 0, Pp3 = eng3.sys.P;
+  try {
+    for (kk = 0; kk < 120 / DT; kk++) {
+      eng3.tb.tripped = false;                 /* the PRE-FIX wiring, forced */
+      ts3 = EN.step(eng3, DT);
+      var d3 = Math.abs(eng3.sys.P - Pp3); if (d3 > maxStep) maxStep = d3;
+      Pp3 = eng3.sys.P;
+      if (eng3.sys.beyond_model) { latch3 = true; break; }
+    }
+  } catch (e3) { threw3 = e3.message; }
+  ckT('a fast drain whose near root VANISHES is refused and declared — never teleported',
+      latch3 && threw3 === null && maxStep < 2.0 && ts3 !== null && isFinite(ts3.pressure_mpa),
+      threw3 ? ('THREW: ' + threw3.slice(0, 60)) :
+      ('latched ' + latch3 + ', max |dP|/step ' + maxStep.toFixed(3) + ' MPa, P ' +
+       (ts3 === null ? '?' : (ts3.pressure_mpa * 145.04).toFixed(0)) + ' psia'));
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -222,16 +266,27 @@ var MUTATIONS = [
    'dump_demand: 0,'],
   ['the manual-trip pushbutton wire is cut before the RPS',
    'manual_trip: eng._manualTrip',
-   'manual_trip: false']
+   'manual_trip: false'],
+  /* CORE mutations — 4th element 'core' substitutes a mutated pwr2_core into the load order */
+  ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
+   'var P_JUMP_MAX = 2.0;',
+   'var P_JUMP_MAX = 1e9;', 'core'],
+  ['the both-walls latch is deleted (the near-floor oscillation runs unlatched)',
+   'if (wallHi > 0 && wallLo > 0) sys.beyond_model = true;',
+   '', 'core']
 ];
+var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 
 console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
 var blind = 0;
 MUTATIONS.forEach(function (m) {
-  var mutated = ENSRC.replace(m[1], m[2]);
-  if (mutated === ENSRC) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
+  var base = m[3] === 'core' ? CORESRC : ENSRC;
+  var mutated = base.replace(m[1], m[2]);
+  if (mutated === base) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
   var rec2 = [];
-  try { runSuite(loadAll(mutated), rec2, true); } catch (e) { /* a crash counts as caught */ }
+  try {
+    runSuite(m[3] === 'core' ? loadAll(undefined, mutated) : loadAll(mutated), rec2, true);
+  } catch (e) { /* a crash counts as caught */ }
   var f2 = rec2.length ? rec2.filter(function (r) { return !r.ok; }).length : 1;
   if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
   else console.log('  caught    ' + m[0].padEnd(64) + f2 + ' checks red');

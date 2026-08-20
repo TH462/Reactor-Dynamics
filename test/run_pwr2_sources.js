@@ -299,8 +299,20 @@ function runSuite(S, rec, quiet) {
    * identically zero (measured 0.00e+0) and the balance left standing is pump against friction,
    * which is the one the identity is about. */
   var hMix = W.h_f(15.41) + 0.5 * (W.h_g(15.41) - W.h_f(15.41)), k;
+  /* RAMP the pin in over 8 s, THEN hold it. The first version teleported every node from
+   * liquid to 50 % quality in one assignment, and pwr2_core's #499 root-tracking limit
+   * REFUSES that — correctly: a hand-teleported fluid state is indistinguishable from the
+   * vanished-root discontinuity the limit exists to catch. And THIS plant is the stiff case:
+   * with no pressurizer seat the loop is a sealed rigid vessel, where a uniform 7 kJ/kg
+   * per-step pin (a ~3,000 MW-scale forcing no engine trajectory produces) measures
+   * 2.589 MPa of root move in ONE step. 400 ramp steps keeps each move well under the
+   * 2.0 MPa/step limit; the identity is about the SETTLED state, which the ramped pin
+   * reaches all the same. */
+  var h0mix = pHalf.nodes[0].h;
   for (k = 0; k < 6000; k++) {
-    pHalf.nodes.forEach(function (n) { n.h = hMix; });      /* pin the fluid; momentum only */
+    var fRamp = Math.min(1, k / 400);
+    var hPin = h0mix + fRamp * (hMix - h0mix);
+    pHalf.nodes.forEach(function (n) { n.h = hPin; });      /* pin the fluid; momentum only */
     S.stepPlant(pHalf, 0.02, {});
   }
   /* ⚠ READ THE RATIO AT THE SETTLED STATE, NOT THE INITIAL ONE — my own first version of this

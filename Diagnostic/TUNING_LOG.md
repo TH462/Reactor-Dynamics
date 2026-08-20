@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-h (#499 fixed — two beyond-model guards, thresholds measured, never fitted)
+
+Both #499 instances guarded in `pwr2_core.js`; full detail in `Blueprint/PWR2_VALIDATION.md`
+§50. The numbers that carry it: **root-tracking limit 2.0 MPa/step** (worst legitimate move
+0.67, a 500 cm² first step; the defect jumped 6.1) and the **both-walls latch** (benign 50 cm²
+episode: 45,087 clamped steps, ZERO two-sided — the signature is never legitimate). The 40 cm²
+full-lineup break latches at 46.9 s instead of NaN at 68.5; the drain trajectory latches with
+max |dP|/step 0.717 — no teleport. `run_pwr2_engine` 14 → 16 checks / 8 → 10 mutations (the
+new two substitute a mutated `pwr2_core` via `loadAll`); core-family gates all at baseline —
+neither guard fires on a legitimate fixture. Trap for the record: **the first drain-repro
+attempt (manual rod drive-in, no scram) did NOT reproduce** — the 200 s insertion is slow
+enough for charging to hold the pressurizer at 7.1 % and the plant rides through; the collapse
+needs the 2 s scram's fast contraction, so the gate fixture forces the pre-fix turbine wiring
+rather than pretending the door still reaches it. Second trap: `run_pwr2_sources`' affinity
+fixture reddened — its pressurizer-less sealed loop under an instant hand-pin moves 2.589 MPa
+in ONE step (a stiffness no full-plant trajectory has; the 500 cm2 worst is 0.67). Adjudicated
+fixture-side: the pin ramps over 400 steps and the identity holds exact, unlatched, at the
+same 18.000 MPa wall; the guard's constant carries the stiff-loop caveat.
+
 ## Session log — 2026-08-19-backshop-g (#479 — the facade, the preview page, and the scram that bypassed the RPS)
 
 **Ruling executed:** *(OWNER, 2026-08-19: "A")* — PWR2 playable as a standalone dev page, not

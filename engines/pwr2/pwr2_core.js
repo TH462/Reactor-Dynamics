@@ -269,11 +269,42 @@
      * library is characterised over", which is a real condition a caller must handle. A caller
      * modelling core damage needs exactly this, because the CLAD is a metal node with its own
      * properties and is not bounded by the water envelope at all. */
-    var clampedNodes = 0, discardedKJ = 0;
+    /* ---- THE ROOT-TRACKING LIMIT (#499, second instance) --------------------------------
+     * The physical pressure trajectory is CONTINUOUS, so the root the solve adopts must stay
+     * near the root it adopted last step. When the near root VANISHES — measured 2026-08-19:
+     * a pressurizer drained to 9.2 % level under a 54 kg/s outsurge, whose vapor-dominated
+     * projection collapsed the system compliance — the bracket expansion happily lands on a
+     * far root and one 0.02 s step "moved" 1724 -> 2611 psia with a +20,085 kg/s surge. That
+     * is not a pressure the plant reached; it is a different solution branch, and adopting it
+     * teleports the state. The limit is MEASURED, not guessed: the largest legitimate
+     * per-step move is 0.67 MPa (a 500 cm2 guillotine-class break's first step; the 40 cm2
+     * gate break peaks at 0.104, everything operational is < 0.001), the defect's jump was
+     * 6.1 MPa. A solve landing further than P_JUMP_MAX from the previous step's root is the
+     * compliance-collapse condition — hold THIS step (nothing adopted), latch beyond_model. */
+    var P_JUMP_MAX = 2.0;   /* MPa per step [derived] — 3x above the worst measured legit move.
+     * CAVEAT, measured: a PRESSURIZER-LESS rigid loop under a hand-pinned uniform h moves
+     * 2.589 MPa/step at ~3,000 MW-equivalent forcing — a HARNESS idiom, not an engine
+     * trajectory (run_pwr2_sources' affinity fixture ramps its pin for exactly this reason).
+     * The limit is calibrated to the full plant's reachable dynamics, pressurizer seated. */
+    if (Math.abs(sol.P - sys.P) > P_JUMP_MAX) {
+      sys.beyond_model = true;
+      sys.simTime += dt;
+      return {
+        P: sys.P, dP: 0, held: true, beyond_model: true,
+        iterations: sol.iters, capBound: false, bracketWidth: sol.width, unbracketed: false,
+        envelopeExceeded: true, enthalpyClamped: 0, enthalpyDiscarded_kJ: 0, residual: 0,
+        rootJump_mpa: sol.P - sys.P,             /* the rejected move, for the post-mortem */
+        junction: sys.nodes.map(function (n) { return { id: n.id, dm_dt: 0 }; }),
+        transfers: flows.length + sources.length
+      };
+    }
+
+    var clampedNodes = 0, discardedKJ = 0, wallHi = 0, wallLo = 0;
     for (i = 0; i < N; i++) {
       var h_raw = a[i] + v[i] * (sol.P - sys.P);
       var h_new = hClamp(h_raw);                 /* THE SAME function the solve used */
       if (h_new !== h_raw) { clampedNodes++; discardedKJ += (h_raw - h_new) * m_n[i]; }
+      if (h_new === hHi) wallHi++; else if (h_new === hLo) wallLo++;
       sys.nodes[i].h = h_new;
     }
     var P_prev = sys.P;
@@ -301,6 +332,12 @@
      * is the state the pressure search cannot make consistent — the issue's measured sequence
      * is clamp at t = 842.78 s, NaN one step later. Latch on the first, never reach the second. */
     if (sol.flooredLow && clampedNodes > 0) sys.beyond_model = true;
+    /* #499, first instance: the SAME h-oscillation NEAR the floor, where flooredLow never
+     * asserts. Its signature is nodes pinned on BOTH envelope walls at once (measured: core at
+     * +4161 kJ/kg beside upper plenum at -5.4, at 0.115 MPa, ECCS fighting the blowdown) — and
+     * that signature NEVER occurs on a legitimate ride: the benign 50 cm2 clamping episode has
+     * 45,087 clamped steps over 1200 s and zero two-sided ones. Latch on the signature. */
+    if (wallHi > 0 && wallLo > 0) sys.beyond_model = true;
 
     return {
       P: sys.P, dP: sys.P - P_prev, held: false, beyond_model: !!sys.beyond_model,
