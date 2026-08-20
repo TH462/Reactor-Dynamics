@@ -2707,3 +2707,35 @@ own terms but on a harness idiom no engine trajectory produces. The pin now ramp
 steps (max 0.673 MPa/step, never latches, P still reaches the 18.000 wall) and the identity
 holds exact at the settled state. The caveat — the 2.0 MPa/step limit is calibrated to the
 FULL plant's reachable dynamics, pressurizer seated — is written on the constant.
+
+## 51. P-9 — THE TURBINE TRIP BECOMES A REACTOR TRIP, WITH THE PERMISSIVE'S TWO SOURCED VALUES — 2026-08-19
+
+The owed item from §47/§49, now built. Ginna TS Bases B 3.3.1 (ML20339A221), the P-9
+Permissive, verbatim: *"actuated at approximately 50% power as determined by two-out-of-four
+NIS power range detectors if the Steam Dump System is available and at approximately 8% if the
+Steam Dump System is unavailable ... A reactor trip is automatically initiated on a turbine
+trip when it is above the P-9 setpoint."* Function 14 carries the other side: below P-9,
+*"load rejection can be accommodated by the steam dump system. Therefore, a turbine trip does
+not actuate a reactor trip."*
+
+Built in `pwr2_protection.js` as a latch input (like the manual trip — the real sensing is 2/3
+autostop-oil switches and stop-valve limit switches; this model's honest input is the
+turbine's tripped flag, declared), evaluated after the setpoint functions because the Bases
+says these trips are *"not credited in the accident analysis"* — a credited function arriving
+the same step keeps the cause. The permissive's value is SELECTED by
+`drivers.steam_dumps_available` — the setpoint IS the dumps' load-rejection capacity margin,
+which is why it moves. The facade wires `turbine_tripped` from the turbine and dump
+availability from the condenser (C-9's fact, one-step lag).
+
+**Measured through the door:** a commanded turbine trip at 100 % trips the reactor
+(`turbine_trip` cause), the dumps take the load on the C-8 controller, Tavg 555.2 °F vs the
+557 no-load program, finite. At the protection layer: no trip at 40 % with dumps available
+(30 s ride), trip at the same 40 % with dumps unavailable (the 8 % value), `p9_met` reports
+the selected value. **One plant truth recorded instead of a fourth check:** no below-8 %
+no-trip case exists — under 8 % the P-10 block auto-revokes and the low-flux trip (35 %
+setting) fires first, which is the plant working, not a coverage gap.
+
+Gates: `run_pwr2_protection` 64 → 68 (+3 mutations, all caught — including "P-9 ignores dump
+availability", which only the 40 %-unavailable check can see); `run_pwr2_engine` 16 → 17
+(+1 mutation: the turbine flag never connected). Owed next on the protection layer: OTΔT
+(still blocked on a source), the DELAYED-data evidence pass.

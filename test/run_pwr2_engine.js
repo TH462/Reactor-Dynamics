@@ -207,6 +207,19 @@ function runSuite(RD, rec, quiet) {
       ('latched ' + latchA + ' at ' + tsB.sim_time_s.toFixed(1) + ' s, P ' +
        (tsB.pressure_mpa * 145.04).toFixed(1) + ' psia'));
 
+  /* ---- 2c. P-9 THROUGH THE DOOR --------------------------------------------------------------
+   * The setpoint logic (50 %/8 % by dump availability, the no-trip band) is gated at the
+   * protection layer's own gate; THIS check is the wiring claim — turbine_tripped and dump
+   * availability actually reach the RPS from the facade. */
+  head('P-9 THROUGH THE DOOR  [a commanded turbine trip at power IS a reactor trip]');
+  var eng4 = EN.createEngine({});
+  run(eng4, 5);                                    /* starts at rated — no settle needed */
+  EN.command(eng4, 'turbine_trip', true);
+  var ts4 = run(eng4, 5);
+  ckT('the turbine trip reaches the RPS and the reactor trips with it (TS Bases B 3.3.1 Fn 14)',
+      ts4.scrammed === true && eng4.pt.trip_cause === 'turbine_trip',
+      'cause ' + eng4.pt.trip_cause + ', scrammed ' + ts4.scrammed);
+
   /* ---- 3b. THE DRAIN ROOT-JUMP (#499 second instance) ---------------------------------------
    * The pre-fix facade let a scram leave the turbine loaded; the -240 F/min cooldown drained
    * the pressurizer at 54 kg/s and ONE step teleported the solve 1724 -> 2611 psia (surge
@@ -267,6 +280,9 @@ var MUTATIONS = [
   ['the manual-trip pushbutton wire is cut before the RPS',
    'manual_trip: eng._manualTrip',
    'manual_trip: false'],
+  ['the turbine flag never reaches the RPS (P-9 watches a wire that is not connected)',
+   'turbine_tripped: eng.tb.tripped,',
+   'turbine_tripped: false,'],
   /* CORE mutations — 4th element 'core' substitutes a mutated pwr2_core into the load order */
   ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
    'var P_JUMP_MAX = 2.0;',

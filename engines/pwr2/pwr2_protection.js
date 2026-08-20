@@ -145,6 +145,24 @@
     frac: 0.08,
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux-Low'
   };
+  /* ---- SOURCED: the P-9 permissive, and it has TWO values by design --------------------------
+   * Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux, P-9 Permissive, verbatim:
+   *
+   *   *"actuated at approximately 50% power as determined by two-out-of-four NIS power range
+   *    detectors if the Steam Dump System is available and at approximately 8% if the Steam
+   *    Dump System is unavailable ... Above the P-9 setpoint, a turbine trip will cause a load
+   *    rejection beyond the capacity of the Steam Dump System and RCS. A reactor trip is
+   *    automatically initiated on a turbine trip when it is above the P-9 setpoint."*
+   *
+   * The setpoint IS the dump system's load-rejection capacity margin, which is why it moves
+   * when the dumps are unavailable. "Approximately", nominal — same reading as P-10's. Channel
+   * logic (2/4) collapses to one comparison on this plant's lumped flux signal, declared. */
+  var P9 = {
+    kind: '[sourced]',
+    frac_dumps: 0.50,
+    frac_no_dumps: 0.08,
+    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), P-9 Permissive'
+  };
 
   /* Analysis delays, same table, same rows. A function must hold CONTINUOUSLY for its delay. */
   var DELAY = {
@@ -345,12 +363,29 @@
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
     if (anyEsfas && !pr.si) { pr.si = true; pr.si_cause = anyEsfas; }
 
+    /* TURBINE-TRIP REACTOR TRIP, gated by P-9 [sourced] — Ginna TS Bases B 3.3.1 Function 14
+     * (ML20339A221): "A reactor trip is automatically initiated on a turbine trip when it is
+     * above the P-9 setpoint, to minimize the transient on the reactor"; below it, "load
+     * rejection can be accommodated by the steam dump system. Therefore, a turbine trip does
+     * not actuate a reactor trip." Evaluated AFTER the setpoint functions on purpose: the
+     * Bases says these trips are "not credited in the accident analysis" — anticipatory — so
+     * a credited function arriving the same step keeps the cause. The real sensing is 2/3
+     * autostop-oil pressure switches and stop-valve limit switches; this model's honest input
+     * is the turbine's own tripped flag (drivers.turbine_tripped), declared, and P-9 selects
+     * its value from drivers.steam_dumps_available (absent = available, the normal lineup). */
+    var p9frac = drivers.steam_dumps_available === false ? P9.frac_no_dumps : P9.frac_dumps;
+    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {
+      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';
+    }
+
     return {
       functions: out,
       reactor_trip: pr.reactor_trip,
       si: pr.si,
       p10_met: p10Met,
       p7_met: drivers.power_frac >= P7.frac,
+      p9_met: drivers.power_frac >= (drivers.steam_dumps_available === false
+                                     ? P9.frac_no_dumps : P9.frac_dumps),
       low_flux_blocked: blockEffective,
       trip_cause: pr.trip_cause,
       si_cause: pr.si_cause,

@@ -158,6 +158,7 @@
       duty_kW: steam * (W.h_g(eng.sg.P) - G.SG.h_feed) * (1 - TB.etaCycle()),
       cw_pumps_running: eng.cwPumps
     });
+    eng._cdAvail = cr.available;
     var dcr = DC.stepDumpCtl(eng.dc, dt, Object.assign({
       tavg_c: tavg,
       load_frac: eng.tb.tripped ? 0 : eng.tb.load_target_mwe / MWE_RATED,
@@ -215,7 +216,12 @@
       steam_pressure_mpa: sr.P_sec,
       steam_flow_frac: out / eng.rated_steam,
       pzr_level_frac: pzr.level_frac,
-      manual_trip: eng._manualTrip
+      manual_trip: eng._manualTrip,
+      /* P-9's inputs [sourced, TS Bases B 3.3.1]: the turbine's own tripped flag, and dump
+       * availability = the condenser's (the dumps are condenser dumps; C-9 is the same fact
+       * on the control side). One-step lag on cr, the house convention. */
+      turbine_tripped: eng.tb.tripped,
+      steam_dumps_available: eng._cdAvail !== false
     });
     /* THE CALLER'S HALF of HR5: the RPS reports, the plant acts. */
     if (ptr.reactor_trip && !eng._lastTrip) { eng.rodTarget = 0; eng._scramT = 0; }

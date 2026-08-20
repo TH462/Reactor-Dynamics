@@ -29,6 +29,18 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-i (#479 — P-9: the turbine trip becomes a reactor trip)
+
+The owed protection item, built sourced end to end (`Blueprint/PWR2_VALIDATION.md` §51): P-9's
+TWO values — ~50 % RTP with the Steam Dump System available, ~8 % without (TS Bases B 3.3.1,
+the setpoint IS the dumps' capacity margin) — select on `steam_dumps_available`; above it a
+turbine trip trips the reactor ('turbine_trip', anticipatory, evaluated after the credited
+setpoint functions), below it the dumps carry the rejection and nothing trips. Measured: trip
+at 100 % rides to no-load at 555.2 °F on the C-8 controller; no trip at 40 % with dumps; trip
+at 40 % without. Recorded truth: below 8 % the low-flux trip fires first (P-10 auto-revoked),
+so a below-8 % no-trip case does not exist on this plant. `run_pwr2_protection` 64 → 68 with
++3 mutations; `run_pwr2_engine` 16 → 17 with +1 (the wiring half). run_all --fast at baseline.
+
 ## Session log — 2026-08-19-backshop-h (#499 fixed — two beyond-model guards, thresholds measured, never fitted)
 
 Both #499 instances guarded in `pwr2_core.js`; full detail in `Blueprint/PWR2_VALIDATION.md`

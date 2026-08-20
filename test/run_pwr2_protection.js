@@ -233,6 +233,34 @@ function runSuite(P, rec, quiet) {
    * is AUTOMATIC below it. A symmetric model — an operator switch that simply holds — would be a
    * DEFEATABLE REACTOR TRIP, which is what this engine's predecessor shipped and had to have
    * superseded (#295 F1/F2). Both directions are checked, and so is the revocation. */
+  /* ---- P-9: THE TURBINE TRIP IS A REACTOR TRIP ONLY ABOVE IT (TS Bases B 3.3.1 Fn 14/18d) --
+   * The permissive has TWO sourced values: ~50 % with the Steam Dump System available, ~8 %
+   * without — the setpoint IS the dumps' load-rejection capacity margin. No below-8 % no-trip
+   * case exists on this plant: under 8 % the P-10 block auto-revokes and the low-flux trip
+   * (35 % setting) fires first, which is the plant working, not a gap in this table. */
+  head('P-9  [a turbine trip trips the reactor only when the dumps cannot carry the rejection]');
+  function withTT(power, dumps) {
+    var d = healthy(); d.power_frac = power; d.turbine_tripped = true;
+    if (dumps === false) d.steam_dumps_available = false;
+    return d;
+  }
+  var prT1 = atPower();
+  var rT1 = ride(prT1, withTT(1.0), 0.1);
+  ckT('a turbine trip at 100 % IS a reactor trip, cause turbine_trip, no delay',
+      rT1.reactor_trip === true && prT1.trip_cause === 'turbine_trip',
+      'cause ' + prT1.trip_cause);
+  var prT2 = atPower();
+  var rT2 = ride(prT2, withTT(0.40), 30);
+  ckT('at 40 % with the dumps AVAILABLE it is NOT — the dumps carry the rejection (30 s ride)',
+      rT2.reactor_trip === false, 'trip ' + rT2.reactor_trip);
+  var prT3 = atPower();
+  var rT3 = ride(prT3, withTT(0.40, false), 0.1);
+  ckT('the SAME 40 % with the dumps UNAVAILABLE trips — P-9 moves to its 8 % value',
+      rT3.reactor_trip === true && prT3.trip_cause === 'turbine_trip',
+      'cause ' + prT3.trip_cause);
+  ckT('p9_met reports the selected value: false at 40 % available, true at 40 % unavailable',
+      rT2.p9_met === false && rT3.p9_met === true, '');
+
   head('P-10  [the block is permissive-gated and ALWAYS auto-reinstates -- never defeatable]');
   ck('the permissive setpoint is the sourced 8 % RTP', P.P10.frac, DOC.p10_frac, 1e-12, 'frac');
   var prP = P.createProtection({ blockLowFlux: true });
@@ -420,6 +448,15 @@ runSuite(P, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the turbine-trip reactor trip is deleted (P-9 reports into a void)',
+   "    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
+   ''],
+  ['P-9 ignores dump availability (the 8 % value is never selected)',
+   "    var p9frac = drivers.steam_dumps_available === false ? P9.frac_no_dumps : P9.frac_dumps;",
+   '    var p9frac = P9.frac_dumps;'],
+  ['the P-9 gate is deleted (any turbine trip trips the reactor, dumps or no dumps)',
+   'drivers.turbine_tripped && drivers.power_frac >= p9frac',
+   'drivers.turbine_tripped'],
   ['the P-7 at-power gate is deleted (the high-level trip fires during heatup)',
    '        if (f.atPower && drivers.power_frac < P7.frac) asserted = false;',
    ''],
