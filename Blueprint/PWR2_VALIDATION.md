@@ -2968,3 +2968,43 @@ whole B1 surface: **109 of 109 contract fields emitted — 85 derived or transla
 0 declared missing, 0 unaccounted** (the 5 accumulator statics + 14 others; counts printed by
 the gate). Next: B2, the engine class (`applyCommand` map, saveState/loadState as `pwr2-1.0`,
 `getControlState`, `getProtectionConfig`, the `instruments` member, scruve exports).
+
+## 58. STAGE B2 — PWR2Engine: THE CLASS THE STACK CAN HOLD — 2026-08-20
+
+**`engines/pwr2/pwr2_shell.js`**: the `RD.PWREngine`-shaped class over the facade — `step`,
+`getTrueState`, `getInstruments`/`instruments.reading` (the member `control_kernel.js:512`
+reads directly), `getControlState` (the board's shape), `getProtectionConfig` (the courier:
+it hands back `RD.PWR_CONFIG.protection` itself — M4 writes it, engines only carry it; the
+double-protection consequence is declared in the header), `getActiveFailures`,
+`getStartupLineup`, `applyCommand`, `reset`, `saveState`/`loadState`.
+
+**The command partition.** All 71 actions in the CURRENT engine's own `applyCommand` switch —
+parsed from its source by the gate, so a new old-engine action cannot appear unaccounted —
+land in exactly one of three registries: **MAPPED** (33, to the facade's door), **REHOMED**
+(7, the D4 §3 class — `primary_leak`'s severity becomes a break AREA at the old implicit
+location; `open_porv_manual` becomes the stick/block pair; `disconnect_grid` becomes a load
+target), **REFUSED** (31, each with a reason that names the absent machinery — and a refusal
+THROWS, because a command that silently does nothing reads exactly like a plant that
+survived it).
+
+**The save contract**: schema `pwr2-1.0`; a `pwr-1.0` save is REFUSED with the D4 §5 reason
+verbatim (inventing node-level distribution from lumped values is fabrication
+indistinguishable from physics). The round trip is BIT-EXACT over 500 steps, physics and
+instrument readings both — the save carries the native state, the published snapshot, the
+reused shell instruments via their own documented save API, and the internal channels'
+lag/noise/PRNG state (the PRNG was reworked to a state-carrying uint32 for exactly this;
+its gate held green through the rework, proving stream compatibility).
+
+**Two fixture lessons the injection self-test forced, recorded because they generalize**:
+- A 2 °C tracks-the-plant band on a STEADY plant cannot see a frozen gauge — the
+  frozen-needle mutant needs a MANEUVER between the freeze and the read.
+- The readings-not-saved mutant was invisible at every settle shorter than ~700 s: this
+  plant's startup-dip recovery keeps the proportional heater ladder RAILED full (157.8 kW at
+  −21 psi error even at 400 s), and a railed analog path plus quantized-at-steady digital
+  paths make a one-step truth-vs-indicated substitution move NOTHING. At 700 s the ladder is
+  partial (26.9 kW, 2231 psia) and the same mutant diverges at step 1. **A fixture's
+  operating point is part of what a check asserts.**
+
+Gates: `run_pwr2_shell` NEW — 21 checks, 7 mutations, no blind spots. Next: B3, the shell
+wiring (`?engine=pwr2` script set and selection, §6.3 documentation for the facade extras,
+`run_contract` posture, headless boot).

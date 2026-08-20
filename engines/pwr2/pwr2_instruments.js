@@ -62,13 +62,15 @@
     }
     return h >>> 0;
   }
-  function mulberry32(a) {
-    return function () {
-      a |= 0; a = (a + 0x6D2B79F5) | 0;
-      var t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
+  /* STATE-CARRYING mulberry32 (reworked for stage B2, 2026-08-20): the PRNG state is a plain
+   * uint32 ON THE CHANNEL, advanced functionally — a closure-held state cannot ride a
+   * saveState()/loadState() round trip, and re-seeding on load would silently rewind every
+   * channel's noise phase. Same generator, same streams, bit-identical to the closure form. */
+  function rngNext(state) {
+    var a = (state + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return { state: a, value: ((t ^ (t >>> 14)) >>> 0) / 4294967296 };
   }
 
   var NOISY_MULT = 12;          /* 'noisy' failure: sigma multiplier [open] */
@@ -114,7 +116,7 @@
         spec: c,
         lag1: null, lag2: null,            /* primed from the first true reading */
         noise: 0,
-        rng: mulberry32(fnv1a(c.id))       /* the channel's OWN stream — see header */
+        rngState: fnv1a(c.id) | 0          /* the channel's OWN stream — see header */
       };
       ins.failure[c.id] = null;
     });
@@ -167,7 +169,9 @@
       var sig = c.sigma * ins.noiseScale * (f && f.mode === 'noisy' ? NOISY_MULT : 1);
       if (sig > 0) {
         var rho = Math.exp(-dt / NOISE_TAU_S);
-        var u1 = Math.max(ch.rng(), 1e-12), u2 = ch.rng();
+        var r1 = rngNext(ch.rngState); var r2 = rngNext(r1.state);
+        ch.rngState = r2.state;
+        var u1 = Math.max(r1.value, 1e-12), u2 = r2.value;
         var gauss = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
         ch.noise = rho * ch.noise + Math.sqrt(1 - rho * rho) * sig * gauss;
       } else {

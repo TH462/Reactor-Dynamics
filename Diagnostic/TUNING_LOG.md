@@ -29,6 +29,18 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-e (#479 Option B stage B2 — PWR2Engine, the class the stack can hold)
+
+`pwr2_shell.js` (`Blueprint/PWR2_VALIDATION.md` §58): the full `RD.PWREngine` surface over
+the facade. Command partition 33 MAPPED / 7 REHOMED / 31 REFUSED-throwing, parsed against the
+current engine's own switch; save `pwr2-1.0` only (pwr-1.0 refused, D4 §5 verbatim), round
+trip BIT-EXACT physics + readings; the reused `pwr_instruments` member primed via `reset()`
+(measured: all 45 channels NaN without it); the internal instrument PRNG reworked to
+state-carrying uint32 (gate held green through it — stream-compatible). Fixture lessons
+recorded: a steady-plant band cannot see a frozen gauge (maneuver required), and the
+readings-save mutant is invisible while the prop ladder is railed in the startup-dip
+recovery — 700 s settle needed, measured. `run_pwr2_shell` NEW 21/7mut. Next: B3 shell wiring.
+
 ## Session log — 2026-08-20-backshop-d (#479 Option B stage B1 — the contract completed, and the STATIC class)
 
 *(OWNER RULING, 2026-08-20: "Next: option B".)* Stage B1 of the shell integration
