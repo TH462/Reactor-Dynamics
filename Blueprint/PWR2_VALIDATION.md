@@ -2739,3 +2739,23 @@ Gates: `run_pwr2_protection` 64 → 68 (+3 mutations, all caught — including "
 availability", which only the 40 %-unavailable check can see); `run_pwr2_engine` 16 → 17
 (+1 mutation: the turbine flag never connected). Owed next on the protection layer: OTΔT
 (still blocked on a source), the DELAYED-data evidence pass.
+
+## 52. THE DELAYED-DATA EVIDENCE PASS — THE GROUP TABLE FINDS ITS DOCUMENT — 2026-08-19
+
+The pass audit #488 C7.3 owed. Two documents fetched into the corpus this pass:
+
+- **WTSM Section 2.1, Reactor Physics Review (ML11223A207)** — no group table, but two
+  aggregate anchors: *"For a reactor with only U-235, β is about .007"*, and *"Delayed
+  neutrons do not appear until about 13 seconds"*. The shipped set's mean delay,
+  Σ(βᵢ/λᵢ)/β, computes to **13.04 s** — a 0.3 % match on a number the set was never fitted to.
+- **DOE-HDBK-1019/1-93, Reactor Theory (Neutron Characteristics), Table 3** — *"Delayed
+  Neutron Precursor Groups for Thermal Fission in Uranium-235"*, the table itself. It gives
+  HALF-LIVES (55.7 / 22.7 / 6.2 / 2.3 / 0.61 / 0.23 s): **ln2/T½ reproduces every shipped λ
+  to its last digit**, the fractions match within the table's own 2–3 digit rounding, and the
+  total is the handbook's U-235 β = 0.0065 against our 0.006502.
+
+The `DELAYED` block in `pwr2_kinetics.js` is retagged **[recalled] → [sourced]** with both
+citations. WCAP-16009 §8 was checked because `find_source` now hits it: it carries the
+six-group point-kinetics *form* only, no values. Ginna ch15's 0.49 %/0.43 % remain what they
+always were — bounding licensing values, not group data. With this, the protection/kinetics
+owed list reduces to one item: OTΔT, still blocked on a source.

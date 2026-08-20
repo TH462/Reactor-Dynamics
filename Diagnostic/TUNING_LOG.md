@@ -29,6 +29,15 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-j (#479 — the DELAYED-data evidence pass lands its document)
+
+Audit #488 C7.3's owed pass, run and CLOSED (`Blueprint/PWR2_VALIDATION.md` §52): the six-group
+delayed-neutron set is **[sourced]** to DOE-HDBK-1019/1-93 Table 3 (half-lives; ln2/T½ matches
+every shipped λ to its last digit, β total 0.0065 vs ours 0.006502), with WTSM 2.1
+(ML11223A207) aggregate anchors — β ≈ .007 and the ~13 s first-appearance figure our set
+reproduces at 13.04 s unfitted. Both documents fetched into `inbox/sources`. WCAP-16009 §8:
+form only, no values. Remaining blocked item on this layer: OTΔT (no source yet).
+
 ## Session log — 2026-08-19-backshop-i (#479 — P-9: the turbine trip becomes a reactor trip)
 
 The owed protection item, built sourced end to end (`Blueprint/PWR2_VALIDATION.md` §51): P-9's

@@ -390,9 +390,9 @@ re-querying. Run the query.
   shut on dispatch; power monotone, rods MANUAL — §47). The ADV rung is built (§48). **PWR2 is
   PLAYABLE (ruled "A", 2026-08-19): `test_pwr2.html` + the `pwr2_engine` facade** — dev channel
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
-  scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). Owed next:
-  the P-9-class turbine-trip reactor trip, OTΔT (blocked on a source), the DELAYED-data
-  evidence pass, #499.
+  scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
+  = reactor trip above it, both sourced values), the #499 beyond-model guards and the
+  DELAYED-data sourcing are all LANDED (§50–52). Owed next: OTΔT — blocked on a source.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,

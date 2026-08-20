@@ -81,15 +81,21 @@
   /* SIX DELAYED GROUPS — the standard U-235 thermal-fission set. [sourced]
    * beta is stored pre-summed AND checked against sum(beta_i) by the gate, because a redundant
    * total that silently disagrees with its own parts is a defect waiting to happen. */
-  /* SIX DELAYED GROUPS — [recalled]. These are the standard U-235 thermal-fission group data
-   * (Keepin's), and the tag matters: `find_source` returns ZERO hits for them across all three
-   * lanes' corpora, and the only delayed-neutron figures the corpus does hold are Ginna ch15's
-   * BOUNDING beta_eff of 0.49 %/0.43 % — deliberately low licensing values, not group data.
-   * This block shipped tagged "[sourced] typical PWR value"; "typical" is not a source, which
-   * is this engine's own rule (audit #488 C7.3). An evidence pass owes the group data a real
-   * document. */
+  /* SIX DELAYED GROUPS — [sourced]. The evidence pass audit #488 C7.3 owed, run 2026-08-19:
+   * DOE-HDBK-1019/1-93 (Reactor Theory, Neutron Characteristics) Table 3, "Delayed Neutron
+   * Precursor Groups for Thermal Fission in Uranium-235" — fetched into the corpus
+   * (`inbox/sources/DOE-HDBK-1019_reactor_theory.pdf/.txt`). The table gives HALF-LIVES
+   * (55.7, 22.7, 6.2, 2.3, 0.61, 0.23 s); ln2/T-half reproduces every lambda below to its
+   * last digit, the fractions match within the table's 2-3 digit rounding, and the total is
+   * the handbook's own U-235 beta = 0.0065 (ours 0.006502). Aggregate cross-checks from WTSM
+   * 2.1 Reactor Physics (ML11223A207, also fetched this pass): "for a reactor with only
+   * U-235, beta is about .007", and "delayed neutrons do not appear until about 13 seconds"
+   * — this set's mean delay, sum(beta_i/lambda_i)/beta, computes to 13.04 s.
+   * History: shipped "[sourced] typical PWR value" ("typical" is not a source — #488 C7.3),
+   * retagged [recalled] at the audit, sourced now. Ginna ch15's 0.49 %/0.43 % remain what
+   * they are: BOUNDING licensing values, not group data. */
   var DELAYED = {
-    kind:     '[recalled]',
+    kind:     '[sourced] DOE-HDBK-1019/1-93 Table 3; WTSM 2.1 (ML11223A207) aggregates',
     beta_i:   [0.000215, 0.001424, 0.001274, 0.002568, 0.000748, 0.000273],
     lambda_i: [0.0124,   0.0305,   0.111,    0.301,    1.14,     3.01],
     beta:     0.006502,
