@@ -29,6 +29,20 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-f (#479 Option B stage B3 — the control room runs PWR2)
+
+`ui/shell.html?engine=pwr2` boots the full board over `PWR2Engine`, zero console errors,
+headless-verified with a live stuck-PORV casualty (power 4.1 %, 1783 psia falling — the TMI
+signature through the reused gauges). The design decision that kept it small: `plant: 'pwr'`
+for the whole UI + `engine: 'pwr2'` resolved by `engId()` at the four selectPlant/reset seams,
+and one `uiPlantOf()` normalizer where snapshots meet `ui.plant` (the foreign-snapshot guards
+and the profile-crash catch-up path were both measured at first boot). `getProtectionConfig`
+supersedes D4's courier reading — M4's pwr automation would issue REFUSED-throwing commands;
+PWR2's config empties the acting parts and keeps the annunciator shape. No public trace
+(`hidden: true`, picker skips entirely; `?engine=pwr2` dev-override only, `pwr2` FIRST in the
+alternation). `run_portable` 142 → 169 (+27 clean files). Full record
+`Blueprint/PWR2_VALIDATION.md` §59.
+
 ## Session log — 2026-08-20-backshop-e (#479 Option B stage B2 — PWR2Engine, the class the stack can hold)
 
 `pwr2_shell.js` (`Blueprint/PWR2_VALIDATION.md` §58): the full `RD.PWREngine` surface over

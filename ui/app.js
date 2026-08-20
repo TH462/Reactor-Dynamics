@@ -323,6 +323,16 @@
     pwr:       { plant: 'pwr',  dv: null,              init: '50_percent',
                  label: 'PWR', sub: 'Pressurized Water Reactor',
                  desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
+    // HIDDEN from the picker entirely (not even a greyed card): the PWR2 physics rebuild's
+    // parallel phase (#479 Option B). Reachable via ?engine=pwr2 only — the same dev-override
+    // channel the soon cards already use. The board runs the SAME pwr profile over the new
+    // engine, which is the point of the parallel phase.
+    // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
+    // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
+    // `engine:` and resolved at every selectPlant/reset call via engId().
+    pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: '50_percent', hidden: true,
+                 label: 'PWR2', sub: 'SLS-100 physics rebuild (dev)',
+                 desc: 'The from-scratch physics engine, parallel phase. Dev access only.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -2258,7 +2268,7 @@
     // ui.plant / the gauge-chart profile still describe the old one — every
     // profile-bound reader would throw on the foreign instrument set. Catch
     // up the UI instead of rendering the mismatch.
-    var snapPlant = s.metadata.plant_id;
+    var snapPlant = uiPlantOf(s.metadata.plant_id);
     if (snapPlant && ui.plant && snapPlant !== ui.plant) {
       // An old plant's sub-samples must not reach a new one — and since #432 that means all
       // three shares, not just the tiles'. The recorder's row is packed over the OLD plant's
@@ -2519,7 +2529,7 @@
       // trace is the plant a player actually gets, including the channels that are
       // `defaultOn` (rod control since #289).
       probe = new RD.SimulationService({ seed: 0x51EED });
-      probe.selectPlant(ui.plant, ui.initState, e.dv || undefined, undefined);
+      probe.selectPlant(engId(), ui.initState, e.dv || undefined, undefined);
       probe.running = true;
       probe.timeAcceleration = 10;                 // 1.0 sim-s per broadcast → 5 s every 5 ticks
       probe.attentionStops = false;                // nobody is watching a background run
@@ -3606,6 +3616,13 @@
   // campaign is a recommended ORDER with progress markers, not a gate.
   // Helpers take an optional engine key so the Plant & Mission window can show
   // a plant that isn't the active one; default is the running engine.
+  // the ENGINE id for the service (PWR2 parallel phase: board 'pwr', engine 'pwr2')
+  function engId(key) { var e = ENGINES[key || ui.engineKey]; return (e && e.engine) || (e && e.plant); }
+  // ...and the inverse seam: snapshots from the service carry plant_id 'pwr2' while the
+  // parallel phase wears the pwr BOARD — normalize wherever a snapshot id meets ui.plant,
+  // or the foreign-snapshot guards refuse to render and the catch-up path installs a plant
+  // id no profile table has (both measured at the first boot).
+  function uiPlantOf(id) { return id === 'pwr2' ? 'pwr' : id; }
   function campaign(key) { return (RD.CAMPAIGNS || {})[ENGINES[key || ui.engineKey].plant] || null; }
   function campaignMissions(c) {
     var out = [];
@@ -3756,7 +3773,9 @@
   }
   function renderMissionSelect() {
     // Step 1 — the plant column
-    $('mpPlants').innerHTML = Object.keys(ENGINES).map(function (k) {
+    $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
+      return !ENGINES[k].hidden;               /* pwr2: no public card at all (dev URL only) */
+    }).map(function (k) {
       var e = ENGINES[k];
       return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
         ' data-mplant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
@@ -7528,7 +7547,7 @@
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     pauseSim('plant_change');
-    service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: ui.initState, design_version: e.dv });
+    service.handleCommand({ action: 'reset', plant_id: (e.engine || e.plant), initial_state: ui.initState, design_version: e.dv });
     rebuildPlantUI();
     diagReset('plant_change', { engine_key: key, initial_state: ui.initState });
     // The hold covered the swap; the swap is done. It does NOT resume a plant the player
@@ -7564,7 +7583,7 @@
   // After load: derive the plant from the restored snapshot, set the selector, rebuild.
   function afterPlantChange() {
     var snap = service.assembleSnapshot();
-    ui.plant = snap.metadata.plant_id;
+    ui.plant = uiPlantOf(snap.metadata.plant_id);
     var dv = snap.metadata.design_version;
     ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
     ui.series = Object.assign({}, prof().defaultSeries);
@@ -7579,7 +7598,7 @@
     if (!armed && !confirm('Reset to ' + ui.initState + '? Current run is lost.')) return;
     ui.scenario = null; ui.follow = null;   // a plant reset ends instructed content
     pauseSim('reset');
-    service.handleCommand({ action: 'reset', plant_id: ui.plant, initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
+    service.handleCommand({ action: 'reset', plant_id: engId(), initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
     rebuildPlantUI();
     // Same transient hold, same release *(OWNER SELECTION, 2026-08-11, from the options
     // presented: "Fix both")*. A reset lands you on a running plant at the chosen initial
@@ -7959,7 +7978,7 @@
     // Cross-plant transition guard: a ?scenario= deep link (or any scenario
     // that switches the plant) can broadcast the NEW plant's snapshot before
     // ui.plant catches up — never feed a foreign snapshot to a display.
-    var snapPlant = s && s.metadata && s.metadata.plant_id;
+    var snapPlant = uiPlantOf(s && s.metadata && s.metadata.plant_id);
     if (snapPlant && snapPlant !== ui.plant) return;
     if (ui.plant === 'pwr') { RD.PwrBoard.render(s); return; }   // one learning-board stage — no views
     renderStatusBar(s);
@@ -8057,7 +8076,7 @@
     if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
-    var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');
+    var em = /[?&]engine=(pwr2|pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');   /* pwr2 BEFORE pwr — alternation takes the first match */
     var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     // optional ?init=<state> override (dev convenience) — one of the plant's presets
@@ -8069,7 +8088,7 @@
     syncUnitsScope();
     buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
     buildPlantDisplay();
-    service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
+    service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
     buildAutomate();

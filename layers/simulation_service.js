@@ -166,6 +166,9 @@
   // Plant id → engine constructor. RBMK/BWR register when M2/M3 land.
   function engineCtor(plantId) {
     if (plantId === 'pwr') return RD.PWREngine;
+    /* the PWR2 parallel phase (#479 Option B): reachable via ?engine=pwr2 only; replaces
+     * RD.PWREngine outright when the owner rules the replacement */
+    if (plantId === 'pwr2') return RD.pwr2 && RD.pwr2.shell && RD.pwr2.shell.PWR2Engine;
     if (plantId === 'rbmk') return RD.RBMKEngine;
     if (plantId === 'bwr') return RD.BWREngine;
     return null;

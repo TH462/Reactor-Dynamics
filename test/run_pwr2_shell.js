@@ -71,9 +71,21 @@ function runSuite(SH, rec, quiet) {
      cs.rod_groups.length === 1 && typeof cs.rod_groups[0].position_pct === 'number' &&
      typeof cs.pressure_setpoint === 'number' && typeof cs.steam_dump_pct === 'number' &&
      cs.pumps.length === 1, Object.keys(cs).length + ' keys');
-  ck('getProtectionConfig is the COURIER: it hands back RD.PWR_CONFIG.protection itself',
-     eng.getProtectionConfig() === globalThis.RD.PWR_CONFIG.protection,
-     'the inverted coupling D4 flags — M4 writes it, engines only carry it');
+  /* TURNED AROUND (stage B3): B2 built this as the courier — hand back
+   * RD.PWR_CONFIG.protection itself, D4's reading — and B3 SUPERSEDED it with the measured
+   * reason: the pwr config's automation channels issue commands PWR2 REFUSES, each refusal
+   * throwing inside the service tick. The check now guards the supersession: the ACTING
+   * parts empty (trips/actuations/channels/interlocks/ESF/runbacks are the engine's own),
+   * the annunciator shape adopted, the failures menu exactly the injectable levers. */
+  var pc = eng.getProtectionConfig();
+  ck('getProtectionConfig is PWR2 OWN config: acting parts EMPTY, annunciators adopted',
+     pc !== globalThis.RD.PWR_CONFIG.protection &&
+     pc.trips.length === 0 && pc.actuations.length === 0 && pc.channels.length === 0 &&
+     pc.interlocks.length === 0 && pc.esf_systems.length === 0 && pc.runbacks.length === 0 &&
+     pc.alarms === globalThis.RD.PWR_CONFIG.protection.alarms &&
+     Object.keys(pc.failures).length === 3 &&
+     !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip,
+     'M4 gets a shape it can hold with nothing that would command a plant it does not know');
   ck('getStartupLineup/getActiveFailures exist and answer',
      Array.isArray(eng.getStartupLineup()) && Array.isArray(eng.getActiveFailures()) &&
      eng.getActiveFailures().length === 0, '');
@@ -192,6 +204,9 @@ var MUTATIONS = [
   ['the REFUSED registry is emptied (39 refusals become unknown-action errors with no reasons)',
    'var REFUSED = {',
    'var REFUSED = {}; var REFUSED_gone = {'],
+  ['the pwr automation channels LEAK into the config (M4 would command a plant it does not know)',
+   "        trips: [], actuations: [], channels: [], interlocks: [], esf_systems: [], runbacks: [],",
+   '        trips: [], actuations: [], interlocks: [], esf_systems: [], runbacks: [],'],
   ['the instrument-failure command maps every mode to STUCK',
    "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : 'stuck';",
    "      var mode = 'stuck';"]

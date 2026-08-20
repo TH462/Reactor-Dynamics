@@ -208,8 +208,11 @@ var MUTATIONS = [
    '        var rho = Math.exp(-dt / NOISE_TAU_S);',
    '        var rho = 0;'],
   ['every channel shares ONE seed (the streams collapse into each other)',
-   '        rng: mulberry32(fnv1a(c.id))',
-   '        rng: mulberry32(12345)'],
+   /* repointed after the B2 PRNG-state rework — and the ORIGINAL anchor miss shipped in the
+    * B2 commit itself, hidden for a day by tail-piping the runner output (the self-test line
+    * scrolled past while the checks tally read clean). Read the whole verdict. */
+   '        rngState: fnv1a(c.id) | 0',
+   '        rngState: 12345'],
   ['a starved channel still draws from its stream via a fallback truth of 0',
    "      if (typeof truth !== 'number' || !isFinite(truth)) {\n        /* a missing true field is a WIRING defect, not a plant condition — hold the last\n         * reading rather than emit NaN into every consumer, and leave the lag state alone */\n        if (ins.reading[c.id] === undefined) ins.reading[c.id] = NaN;\n        return;\n      }",
    "      if (typeof truth !== 'number' || !isFinite(truth)) truth = 0;"],

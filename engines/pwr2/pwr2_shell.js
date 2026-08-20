@@ -133,6 +133,8 @@
     inject_failure:   function (e, c) {
       if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
+      else if (c.failure_id === 'rcp_trip') EN.command(e, 'pump_trip', true);
+      else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip', true);
       else throw new Error('pwr2_shell: failure "' + c.failure_id + '" REFUSED — not in ' +
         'PWR2\'s failure set yet (PORV stick, primary leak, instrument failures exist)');
     },
@@ -218,8 +220,33 @@
   PWR2Engine.prototype.getTrueState = function () { return this._ts; };
   PWR2Engine.prototype.getInstruments = function () { return this.instruments.reading; };
   PWR2Engine.prototype.getProtectionConfig = function () {
-    /* the courier pattern (see header): M4 writes RD.PWR_CONFIG.protection; engines hand it back */
-    return root.RD.PWR_CONFIG.protection;
+    /* SUPERSEDES THE COURIER READING OF D4 (stage B3): handing back the pwr protection object
+     * verbatim would run M4's pwr trip/actuation/automation DATA over this plant — and M4's
+     * automation channels issue commands PWR2 REFUSES (set_feed_pump_speed and kin), which
+     * would throw inside the service tick. PWR2's config keeps the pwr object's SHAPE (alarms,
+     * permissives, labels ride along — annunciators only READ instruments) and empties the
+     * ACTING parts: trips, actuations, ESF, runbacks, interlocks and automation channels are
+     * PWR2's own, inside the engine (pwr2_protection + the internal control systems), where
+     * they are sourced to this plant and gated. The failures table is the subset the class
+     * can actually inject — a menu entry for a lever that throws would be a lie. */
+    if (!this._protCfg) {
+      var base = root.RD.PWR_CONFIG.protection;
+      this._protCfg = Object.assign({}, base, {
+        trips: [], actuations: [], channels: [], interlocks: [], esf_systems: [], runbacks: [],
+        failures: (function () {
+          /* the pwr failures table is an OBJECT keyed by id (measured — an array filter
+           * threw at boot); keep only the levers the class can actually inject */
+          /* the menu = the defs the class can honestly HOST from the pwr table (there is
+           * no 'primary_leak' def — the leak arrives as a command, not a menu row) */
+          var keep = ['stuck_porv_open', 'rcp_trip', 'turbine_trip'], out = {};
+          keep.forEach(function (id) {
+            if (base.failures && base.failures[id]) out[id] = base.failures[id];
+          });
+          return out;
+        })()
+      });
+    }
+    return this._protCfg;
   };
   PWR2Engine.prototype.getStartupLineup = function () { return []; };
   PWR2Engine.prototype.getActiveFailures = function () {

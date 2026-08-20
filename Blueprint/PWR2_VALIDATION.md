@@ -3008,3 +3008,39 @@ its gate held green through the rework, proving stream compatibility).
 Gates: `run_pwr2_shell` NEW — 21 checks, 7 mutations, no blind spots. Next: B3, the shell
 wiring (`?engine=pwr2` script set and selection, §6.3 documentation for the facade extras,
 `run_contract` posture, headless boot).
+
+## 59. STAGE B3 — THE CONTROL ROOM RUNS PWR2 — 2026-08-20
+
+**`ui/shell.html?engine=pwr2` boots the full control room over `PWR2Engine`** — the board,
+gauges, chart, failure menu and mission shell, zero console errors, headless-verified with a
+full casualty: `?inject=stuck_porv_open&ff=180` rode the TMI lever through service →
+`applyCommand` → the REHOMED stick, and the board renders the depressurization live —
+power 4.1 % (the internal RPS tripped), 1783 psia falling, level 46 %, subcooling collapsing —
+through the reused instrument chain.
+
+**The wiring, and the design decision that made it small**: `ENGINES.pwr2` keeps
+`plant: 'pwr'` — the UI treats this as the PWR board it is (every profile table and all seven
+`ui.plant === 'pwr'` branches just work) — and carries `engine: 'pwr2'` separately, resolved
+by `engId()` at every selectPlant/reset call. The inverse seam gets one normalizer
+(`uiPlantOf`): service snapshots carry `plant_id 'pwr2'`, and without normalization the
+foreign-snapshot guards refuse to render while the catch-up path installs a plant id no
+profile table has — both measured at the first boot. No public trace: the picker skips
+`hidden: true` entries entirely (not even a greyed card); `?engine=pwr2` is the same
+dev-override channel the coming-soon plants already use, with `pwr2` FIRST in the URL
+alternation because `(pwr|pwr2)` matches `pwr` and stops.
+
+**`getProtectionConfig` SUPERSEDES the courier reading of D4**, with the measured reason:
+handing back the pwr protection object verbatim would run M4's pwr automation channels over
+this plant, and those channels issue commands PWR2 REFUSES (`set_feed_pump_speed` and kin) —
+each refusal throwing inside the service tick. PWR2's config keeps the pwr object's shape
+(alarms, permissives, labels — annunciators only read instruments) and empties the ACTING
+parts: trips, actuations, ESF, runbacks, interlocks and channels are PWR2's own, inside the
+engine, sourced to this plant and gated. The failures menu is the two levers the class can
+actually inject (the pwr table is an OBJECT keyed by id — an array filter threw at boot).
+
+**Declared parallel-phase quirks**: the free-play starting conditions still list the pwr
+presets while PWR2 has one initial condition (the constructor ignores `initial_state`); the
+mission/campaign content probes the pwr engine. Both resolve at replacement, not before.
+
+Gates: `run_portable` 142 → 169 (the 27 pwr2 files join the shell and the portable build, all
+clean) · site meta/build green · the FULL `run_all` (browser gates included) at baseline.
