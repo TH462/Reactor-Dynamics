@@ -36,7 +36,16 @@ delayed-neutron set is **[sourced]** to DOE-HDBK-1019/1-93 Table 3 (half-lives; 
 every shipped λ to its last digit, β total 0.0065 vs ours 0.006502), with WTSM 2.1
 (ML11223A207) aggregate anchors — β ≈ .007 and the ~13 s first-appearance figure our set
 reproduces at 13.04 s unfitted. Both documents fetched into `inbox/sources`. WCAP-16009 §8:
-form only, no values. Remaining blocked item on this layer: OTΔT (no source yet).
+form only, no values. And the pass KEPT GOING and un-blocked the last item: **OTΔT's "blocked
+on a source" was FALSE** — the complete setpoint table is **Ginna UFSAR ch15 Table 15.0-7**,
+in develop's corpus all along (K1 1.30, K2 0.00093/psi, K3 0.0185/°F, K4 1.15, K5 0.0014/°F
+increasing-only, K6 0.00, T′ 564.6–576.0 °F, P′ 2250 psia, f(ΔI) deadband −14/+6 % with gains
+−3.08/+2.27 %/%). The standing find-source-before-declaring-unsourced trap, hit again — the
+claim was inherited across sessions and nobody re-ran the search. UFSAR ch7 (ML20339A027,
+fetched this pass) sources the mechanism prose: DNB protection, 2/4 two-channels-per-loop,
+lo-pzr-press "limits the range of the overtemperature ΔT trip", and a 200 %/min turbine
+runback rung. OTΔT/OPΔT are now BUILDABLE; note this plant has a lumped core, so f(ΔI) has no
+ΔI to read — the deadband-zero declaration will need to carry that.
 
 ## Session log — 2026-08-19-backshop-i (#479 — P-9: the turbine trip becomes a reactor trip)
 
