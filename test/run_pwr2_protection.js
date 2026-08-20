@@ -261,6 +261,57 @@ function runSuite(P, rec, quiet) {
   ckT('p9_met reports the selected value: false at 40 % available, true at 40 % unavailable',
       rT2.p9_met === false && rT3.p9_met === true, '');
 
+  /* ---- OT/OP DELTA-T: A COMPUTED SETPOINT, EVERY COEFFICIENT Table 15.0-7's ---------------
+   * OT: sp = K1 + K2*(P-P') - K3*(T-T'); OP: sp = K4 (K6 = 0.00 is the table's own value).
+   * The f(delta-I) penalty is SOURCED ZERO here: the lumped core's delta-I is identically 0,
+   * inside the table's -14/+6 % deadband. The measured full-chain validation (dilution at
+   * rods-MANUAL 100 %: OTdT terminates it at t = 2246 s after exactly the 16.4 degF Tavg rise
+   * K3's slope predicts) lives in the facade smoke record, PWR2_VALIDATION.md sec 53. */
+  head('OT/OP DELTA-T  [the setpoint MOVES with Tavg and pressure -- Table 15.0-7]');
+  function dtDrivers(dtFrac, tavgC, pMpa) {
+    var d = healthy(); d.delta_t_frac = dtFrac; d.tavg_c = tavgC;
+    if (pMpa !== undefined) d.pressure_mpa = pMpa;
+    return d;
+  }
+  var T_REF_C = 304.5;                       /* T' in the engine's own units */
+  var prD = atPower();
+  var rD = ride(prD, dtDrivers(1.0, T_REF_C), 5);
+  var fOT = fn(rD, 'ot_delta_t'), fOP = fn(rD, 'op_delta_t');
+  ckT('at the reference point the pair are available and the plant does not trip',
+      fOT.available && fOP.available && rD.reactor_trip === false,
+      'OT sp ' + fOT.setpoint.toFixed(3) + ', OP sp ' + fOP.setpoint.toFixed(3));
+  ck('...and the OT setpoint is K1 plus the P-P-prime correction alone (T at T-prime)',
+     fOT.setpoint, 1.30 + 0.00093 * (15.41 * 145.03774 - 2250), 1e-3, 'frac');
+  /* K3 BITES: +10 degC of Tavg lowers the setpoint by 0.0185/degF * 18 degF = 0.333 */
+  var rD2 = ride(atPower(), dtDrivers(1.0, T_REF_C + 10), 5);
+  ck('+10 degC of Tavg lowers the OT setpoint by K3 x 18 degF',
+     fn(rD2, 'ot_delta_t').setpoint, fOT.setpoint - 0.0185 * 18, 1e-3, 'frac');
+  /* K2 BITES. The reference fixture sits at healthy()'s 15.41 MPa = 2234.9 psia (not at
+   * P-prime), so the drop to 2050 psia is 184.9 psi — the first version asserted K2 x 200
+   * and redded on its own arithmetic. */
+  var rD3 = ride(atPower(), dtDrivers(1.0, T_REF_C, 2050 / 145.03774), 5);
+  ck('dropping pressure to 2050 psia lowers the OT setpoint by K2 x the actual 184.9 psi',
+     fn(rD3, 'ot_delta_t').setpoint,
+     fOT.setpoint - 0.00093 * (15.41 * 145.03774 - 2050), 1e-3, 'frac');
+  /* THE TRIP: a hot, high-dT plant crosses the MOVED setpoint and holds through the delay */
+  var prD4 = atPower();
+  var rD4 = ride(prD4, dtDrivers(1.10, T_REF_C + 12), 3);
+  ckT('a hot plant at 110 % delta-T trips OVERTEMPERATURE after its sourced 2 s hold',
+      rD4.reactor_trip === true && prD4.trip_cause === 'ot_delta_t',
+      'cause ' + prD4.trip_cause + ' (sp ' + fn(rD4, 'ot_delta_t').setpoint.toFixed(3) + ')');
+  /* OP trips at the flat K4 even with Tavg AT reference (K6 = 0) */
+  var prD5 = atPower();
+  var rD5 = ride(prD5, dtDrivers(1.16, T_REF_C), 3);
+  ckT('116 % delta-T at reference Tavg trips OVERPOWER (the flat K4 = 1.15)',
+      rD5.reactor_trip === true && prD5.trip_cause === 'op_delta_t',
+      'cause ' + prD5.trip_cause);
+  /* MISSING INPUT: no tavg_c -> the pair are UNAVAILABLE, never silently static */
+  var dNoT = healthy(); dNoT.delta_t_frac = 1.4;
+  var rD6 = ride(atPower(), dNoT, 5);
+  ckT('without Tavg the pair go UNAVAILABLE -- a computed setpoint never falls back to static',
+      fn(rD6, 'ot_delta_t').available === false && fn(rD6, 'op_delta_t').available === false &&
+      rD6.reactor_trip === false, '1.40 delta-T unseen, correctly');
+
   head('P-10  [the block is permissive-gated and ALWAYS auto-reinstates -- never defeatable]');
   ck('the permissive setpoint is the sourced 8 % RTP', P.P10.frac, DOC.p10_frac, 1e-12, 'frac');
   var prP = P.createProtection({ blockLowFlux: true });
@@ -448,6 +499,18 @@ runSuite(P, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the OT setpoint temperature term is DROPPED (the setpoint never comes down to meet a hot plant)',
+   "                        - OTDT.k3_per_f * ((d.tavg_c * 9 / 5 + 32) - OTDT.t_ref_f);",
+   '                        - 0;'],
+  ['the OT pressure term is DROPPED',
+   'return OTDT.k1 + OTDT.k2_per_psi * (d.pressure_mpa * PSIA_PER_MPA - OTDT.p_ref_psia)',
+   'return OTDT.k1 + 0 * (d.pressure_mpa * PSIA_PER_MPA - OTDT.p_ref_psia)'],
+  ['a missing Tavg silently falls back to the STATIC setpoint instead of unavailable',
+   '        if (spDyn === undefined) available = false;',
+   '        if (spDyn === undefined) spDyn = f.sp;'],
+  ['the K1 constant drifts 1.30 -> 1.60',
+   '    k1:    1.30,',
+   '    k1:    1.60,'],
   ['the turbine-trip reactor trip is deleted (P-9 reports into a void)',
    "    if (drivers.turbine_tripped && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
    ''],
@@ -467,8 +530,8 @@ var MUTATIONS = [
    "      { id: 'hi_pzr_level', name: 'High pressurizer level', kind: 'rps', dir: +1,\n        sp: RPS.hi_pzr_level_frac, unit: 'frac', read: 'pzr_level_frac',\n        delay: DELAY.hi_pzr_level, atPower: true },",
    ''],
   ['a healthy plant TRIPS -- the comparison direction is inverted',
-   '        asserted = f.dir > 0 ? (value >= f.sp) : (value <= f.sp);',
-   '        asserted = f.dir > 0 ? (value <= f.sp) : (value >= f.sp);'],
+   '        asserted = f.dir > 0 ? (value >= sp) : (value <= sp);',
+   '        asserted = f.dir > 0 ? (value <= sp) : (value >= sp);'],
   ['the delay is ignored, so any momentary excursion trips',
    '      var tripping = asserted && pr.held_s[f.id] >= f.delay;',
    '      var tripping = asserted;'],
@@ -515,8 +578,8 @@ var MUTATIONS = [
    '        sp: RPS.hi_pzr_press_psia / PSIA_PER_MPA, unit: \'MPa\', read: \'pressure_mpa\',',
    '        sp: RPS.hi_pzr_press_psia, unit: \'MPa\', read: \'pressure_mpa\','],
   ['the margin FLOORS at zero, hiding how far past a setpoint a plant went',
-   '        margin: available ? (f.dir > 0 ? f.sp - value : value - f.sp) : undefined',
-   '        margin: available ? Math.max(0, f.dir > 0 ? f.sp - value : value - f.sp) : undefined'],
+   '        margin: available ? (f.dir > 0 ? sp - value : value - sp) : undefined',
+   '        margin: available ? Math.max(0, f.dir > 0 ? sp - value : value - sp) : undefined'],
   ['falling below P-10 does not REVOKE the request, so it silently re-arms on the way up',
    '    if (!p10Met && pr.blockLowFlux) pr.blockLowFlux = false;', ''],
   ['the P-10 setpoint moved off its sourced 8 %', '    frac: 0.08,', '    frac: 0.50,'],

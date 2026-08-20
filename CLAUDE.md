@@ -392,7 +392,7 @@ re-querying. Run the query.
   only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
   scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
   = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). Owed next: OTΔT — UNBLOCKED 2026-08-19: the full setpoint table (K1–K6, f(ΔI)) is UFSAR ch15 Table 15.0-7, in corpus all along; build owed.
+  DELAYED-data sourcing are all LANDED (§50–52). OTΔT/OPΔT BUILT same night (§53; the 'blocked on a source' status was false — Table 15.0-7 was in corpus). Owed: the instrument layer (brings the delta-T compensation + K5), the ch7 turbine-runback rung, Option B shell integration (needs a ruling).
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,

@@ -2759,3 +2759,39 @@ citations. WCAP-16009 §8 was checked because `find_source` now hits it: it carr
 six-group point-kinetics *form* only, no values. Ginna ch15's 0.49 %/0.43 % remain what they
 always were — bounding licensing values, not group data. With this, the protection/kinetics
 owed list reduces to one item: OTΔT, still blocked on a source.
+
+## 53. OTΔT AND OPΔT — THE LAST OWED TRIPS, EVERY COEFFICIENT THE TABLE'S — 2026-08-19
+
+Unblocked hours earlier (§52's pass found Table 15.0-7 sitting in the corpus), built the same
+night. `pwr2_protection.js` gains the delta-T pair as rows with COMPUTED setpoints (`spFn`,
+resolved each step from Tavg and pressure; a missing input makes the row UNAVAILABLE, never
+silently static — mutation-pinned):
+
+- **OTΔT**: sp = K1 + K2·(P − P′) − K3·(T − T′) with K1 1.30, K2 0.00093/psi, K3 0.0185/°F,
+  P′ 2250 psia, T′ = this plant's design full-power Tavg (580.1 °F; the table's own footnote
+  says "equal to or less than the full power operating TAVG chosen").
+- **OPΔT**: sp = K4 − K6·(T − T′) = the flat 1.15, because K6 = 0.00/°F is the table's value.
+- **Declared, each with its reason**: f(ΔI) is SOURCED ZERO — the lumped core's ΔI is
+  identically 0, inside the table's −14/+6 % deadband, so the penalty is 0 by the table's own
+  shape; the dynamic compensation (RTD lag 2.0 s + hot-leg filter 3.5/6.0 s, footnote b)
+  corrects MEASUREMENT lag and this protection reads true unlagged values — it arrives with
+  the instrument layer; OPΔT's K5 rate term (0.0014/°F, increasing-only) awaits its
+  COLR-resident time constant. Delay 2.0 s [sourced]: footnote b's electronics + breakers +
+  gripper release figure.
+- The facade computes `delta_t_frac` (loop split over DT0_C = 31.1 °C, [derived] from §43's
+  design point) and `tavg_c`, and exposes `eng.rpsReport`.
+
+**Measured.** Settled at the design point: OTΔT setpoint 1.317, margin 0.305; OPΔT margin
+0.137; no spurious trip anywhere in the suite. **The full-chain validation is UFSAR 15.4.4's
+own scenario**: an uncontrolled boron dilution at rods-MANUAL full power — power holds at
+100 % while Tavg climbs, the setpoint ramps down on K3, and **OTΔT terminates the event at
+t = 2246 s with Tavg risen 16.8 °F against the 16.4 °F the K3 slope predicts** from the
+starting margin. That is the credited trip doing the credited job, unfitted.
+
+Gates: `run_pwr2_protection` 68 → 75 (+4 mutations: K3 term dropped / K2 term dropped /
+static-fallback-on-missing-input / K1 drift), `run_pwr2_engine` 18 checks / 12 mutations. One
+gate self-correction recorded: the K2 fixture first asserted K2×200 psi for a 184.9 psi drop
+(the reference fixture sits at 2234.9 psia, not P′) — the check redded on its own arithmetic
+and was fixed to the actual delta. Owed on this function when the instrument layer lands: the
+lead/lag compensation and the K5 rate term; owed on the control side: the ch7 200 %/min
+turbine runback rung.

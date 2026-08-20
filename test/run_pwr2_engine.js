@@ -213,7 +213,17 @@ function runSuite(RD, rec, quiet) {
    * availability actually reach the RPS from the facade. */
   head('P-9 THROUGH THE DOOR  [a commanded turbine trip at power IS a reactor trip]');
   var eng4 = EN.createEngine({});
-  run(eng4, 5);                                    /* starts at rated — no settle needed */
+  run(eng4, quiet ? 60 : 120);   /* the margin check needs the SETTLED split: at t = 5 s the
+                                  * startup transient has delta-T 27 % over design and the
+                                  * margin reads 0.013 — measured, not a wiring defect */
+  /* the delta-T pair's WIRING half (their setpoint logic is run_pwr2_protection's): the
+   * facade computes delta_t_frac and tavg_c, so the rows must be AVAILABLE with a sane
+   * at-power margin — measured 0.305 at the settled design point, ~0.29 this early. */
+  var fRep = null;
+  eng4.rpsReport.functions.forEach(function (f) { if (f.id === 'ot_delta_t') fRep = f; });
+  ckT('overtemperature delta-T is LIVE through the facade wiring, margin at power ~0.3',
+      fRep !== null && fRep.available === true && fRep.margin > 0.15 && fRep.margin < 0.45,
+      fRep === null ? 'row missing' : ('margin ' + fRep.margin.toFixed(3)));
   EN.command(eng4, 'turbine_trip', true);
   var ts4 = run(eng4, 5);
   ckT('the turbine trip reaches the RPS and the reactor trips with it (TS Bases B 3.3.1 Fn 14)',
@@ -283,6 +293,9 @@ var MUTATIONS = [
   ['the turbine flag never reaches the RPS (P-9 watches a wire that is not connected)',
    'turbine_tripped: eng.tb.tripped,',
    'turbine_tripped: false,'],
+  ['the loop delta-T never reaches the RPS (both delta-T trips silently unavailable)',
+   "delta_t_frac: (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,",
+   ''],
   /* CORE mutations — 4th element 'core' substitutes a mutated pwr2_core into the load order */
   ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
    'var P_JUMP_MAX = 2.0;',

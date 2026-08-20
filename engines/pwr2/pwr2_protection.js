@@ -121,6 +121,44 @@
     hi_hi_steam_flow_frac:  1.55,
     src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6'
   };
+  /* ---- SOURCED: the OT-delta-T / OP-delta-T setpoint coefficients, Table 15.0-7 -------------
+   * Ginna UFSAR ch15 (ML20339A101), "Overtemperature and Overpower [delta]T Setpoints" —
+   * found IN THE CORPUS on 2026-08-19 after this function had carried "blocked on a source"
+   * for days (the find-source-before-declaring-unsourced trap). K1 1.30 and K4 1.15 are the
+   * table's own "(safety analysis value)" rows. The trip compares loop delta-T, normalized to
+   * full-power delta-T, against a setpoint varied by Tavg and pressure:
+   *
+   *   OT: sp = K1 + K2*(P - P') - K3*(T - T')     [P psia, T degF — the source's units]
+   *   OP: sp = K4 - K6*(T - T')                    [K6 = 0.00/degF, the table's value]
+   *
+   * DECLARED, each with its reason:
+   *   - f(delta-I): the table's penalty has a DEADBAND of -14 % to +6 % delta-I. This plant's
+   *     core is one lumped node, so its axial flux difference reads identically zero — INSIDE
+   *     the deadband — and the penalty is exactly 0 by the table's own shape. Sourced zero,
+   *     not a stub.
+   *   - The dynamic compensation (TS Bases B 3.3.1: "for system piping delays from the core
+   *     to the temperature measurement system"; footnote b of Table 15.0-6: RTD lag 2.0 s +
+   *     hot-leg filter 3.5/6.0 s) corrects MEASUREMENT lag — and this protection reads TRUE,
+   *     unlagged values (PWR2 has no instrument layer yet). The compensation comes with the
+   *     instrument layer, not before it.
+   *   - OP's K5 rate term (0.0014/degF, increasing-Tavg-only) needs its compensation time
+   *     constant, which lives in the COLR and is not in the corpus. Omitted, declared; with
+   *     K6 = 0.00 the OP setpoint is the flat K4 until then.
+   *   - T' is "to be set equal to or less than the full power operating TAVG chosen"
+   *     (footnote b of 15.0-7) — set equal to THIS plant's design full-power Tavg. P' is the
+   *     table's 2250 psia, kept even though this plant's setpoint is 2235 (the correction is
+   *     -0.014 at nominal, the source's own geometry). */
+  var OTDT = {
+    kind:  '[sourced]',
+    k1:    1.30,
+    k2_per_psi: 0.00093,
+    k3_per_f:   0.0185,
+    k4:    1.15,
+    k6_per_f:   0.00,
+    t_ref_f:    304.5 * 9 / 5 + 32,   /* T' = design full-power Tavg (580.1 degF), per footnote */
+    p_ref_psia: 2250.0,
+    src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-7'
+  };
   /* ---- SOURCED: the P-10 permissive, and it is an ASYMMETRIC gate on the low flux trip ------
    * Ginna TS Bases B 3.3.1 (ML20339A221), on Power Range Neutron Flux-Low, verbatim:
    *
@@ -171,6 +209,10 @@
     hi_flux_lo:   0.5, hi_flux_hi:   0.5,
     lo_flow:      1.0,
     hi_pzr_level: 2.0,         /* [open] -- not in the 15.0-6 delay set; matches the pressure channels */
+    ot_delta_t: 2.0, op_delta_t: 2.0,  /* [sourced] 15.0-6 footnote b: "a delay of 1.5 (or 2.0)
+                                        * seconds was assumed to account for electronic delays,
+                                        * reactor trip breakers opening, and RCCA gripper
+                                        * release" -- the sourced pair's conservative member */
     si_lo_pzr_press: 2.0,      /* see the note below — the table's column is ambiguous here */
     si_lo_steam_press: 2.0,
     hi_hi_steam_flow: 2.0
@@ -229,7 +271,24 @@
         read: 'steam_pressure_mpa', delay: DELAY.si_lo_steam_press, leadlag: true },
       { id: 'hi_hi_steam_flow', name: 'High-high steam flow', kind: 'esfas', dir: +1,
         sp: ESFAS.hi_hi_steam_flow_frac, unit: 'frac', read: 'steam_flow_frac',
-        delay: DELAY.hi_hi_steam_flow }
+        delay: DELAY.hi_hi_steam_flow },
+      /* The delta-T pair compare a MEASURED fraction against a COMPUTED setpoint — spFn
+       * resolves per step from Tavg and pressure; sp is the nominal-condition value so the
+       * row still reads sensibly in a listing. Both need delta_t_frac AND tavg_c: absent
+       * either, the row goes unavailable (never silently static). */
+      { id: 'ot_delta_t', name: 'Overtemperature delta-T', kind: 'rps', dir: +1,
+        sp: OTDT.k1, unit: 'frac', read: 'delta_t_frac', delay: DELAY.ot_delta_t,
+        spFn: function (d) {
+          if (typeof d.tavg_c !== 'number' || !isFinite(d.tavg_c)) return undefined;
+          return OTDT.k1 + OTDT.k2_per_psi * (d.pressure_mpa * PSIA_PER_MPA - OTDT.p_ref_psia)
+                        - OTDT.k3_per_f * ((d.tavg_c * 9 / 5 + 32) - OTDT.t_ref_f);
+        } },
+      { id: 'op_delta_t', name: 'Overpower delta-T', kind: 'rps', dir: +1,
+        sp: OTDT.k4, unit: 'frac', read: 'delta_t_frac', delay: DELAY.op_delta_t,
+        spFn: function (d) {
+          if (typeof d.tavg_c !== 'number' || !isFinite(d.tavg_c)) return undefined;
+          return OTDT.k4 - OTDT.k6_per_f * ((d.tavg_c * 9 / 5 + 32) - OTDT.t_ref_f);
+        } }
     ];
   }
 
@@ -320,9 +379,17 @@
       var available = raw !== undefined && isFinite(raw);
       var value = raw, asserted = false;
 
+      var sp = f.sp;
+      if (available && f.spFn) {
+        var spDyn = f.spFn(drivers);
+        if (spDyn === undefined) available = false;   /* a computed setpoint missing an input
+                                                       * is an UNAVAILABLE channel, not a
+                                                       * silently-static one */
+        else sp = spDyn;
+      }
       if (available) {
         if (f.leadlag) value = leadLag(pr, raw, dt);
-        asserted = f.dir > 0 ? (value >= f.sp) : (value <= f.sp);
+        asserted = f.dir > 0 ? (value >= sp) : (value <= sp);
         if (f.blockable && blockEffective) asserted = false;
         /* P-7: an at-power trip is NOT ACTIVE below 10 % power. A plain gate, deliberately --
          * there is no operator request in P-7 to revoke, so the revoke-not-gate lesson from
@@ -343,11 +410,11 @@
       }
       out.push({
         id: f.id, name: f.name, kind: f.kind, available: available,
-        value: value, setpoint: f.sp, unit: f.unit,
+        value: value, setpoint: sp, unit: f.unit,
         asserted: asserted, held_s: pr.held_s[f.id], delay_s: f.delay, tripping: tripping,
         /* SIGNED margin to the setpoint, in the function's own units: positive is safe.
          * A margin that floors at zero hides how far past a limit a plant went. */
-        margin: available ? (f.dir > 0 ? f.sp - value : value - f.sp) : undefined
+        margin: available ? (f.dir > 0 ? sp - value : value - sp) : undefined
       });
     }
 

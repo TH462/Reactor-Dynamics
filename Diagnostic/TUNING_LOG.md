@@ -29,6 +29,20 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-k (#479 — OTΔT/OPΔT built the night they were unblocked)
+
+The delta-T trips, every coefficient UFSAR ch15 Table 15.0-7's (`Blueprint/PWR2_VALIDATION.md`
+§53): OTΔT sp = K1 + K2·(P−P′) − K3·(T−T′), OPΔT the flat K4 (K6 = 0.00 is the table's own
+value). f(ΔI) SOURCED ZERO (lumped ΔI = 0, inside the −14/+6 deadband); compensation and K5
+declared-deferred (instrument layer / COLR). **Full-chain: an uncontrolled dilution at
+rods-MANUAL 100 % is terminated by OTΔT at t = 2246 s, Tavg +16.8 °F vs the +16.4 the K3 slope
+predicts — UFSAR 15.4.4's credited trip, unfitted.** `run_pwr2_protection` 68 → 75 (+4
+mutations), `run_pwr2_engine` 18/12 (delta-T wiring + `eng.rpsReport`). Traps: the K2 fixture
+redded on its own arithmetic (asserted K2×200 for a 184.9 psi drop — the reference fixture
+sits at 2234.9 psia, not P′); the facade margin check needed the SETTLED plant (t = 5 s reads
+margin 0.013 from the startup ΔT overshoot); and the spFn rename broke two old mutation
+anchors, caught by the self-test's ANCHOR MISS, re-pointed.
+
 ## Session log — 2026-08-19-backshop-j (#479 — the DELAYED-data evidence pass lands its document)
 
 Audit #488 C7.3's owed pass, run and CLOSED (`Blueprint/PWR2_VALIDATION.md` §52): the six-group

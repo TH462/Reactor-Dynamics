@@ -45,6 +45,15 @@
       CT = RD.containment, TS = RD.trueState;
 
   var TREF = 304.5, P0 = 15.41, RATED_KW = 300000, MWE_RATED = 100;
+  function tLeg(sys, id) {
+    for (var i = 0; i < sys.nodes.length; i++) {
+      if (sys.nodes[i].id === id) return W.T_from_h(sys.nodes[i].h, sys.P);
+    }
+    return NaN;
+  }
+  var DT0_C = 31.1;              /* full-power loop delta-T, [derived] — the settled design
+                                  * point's own split (606 - 550 degF = 56 degF = 31.1 degC),
+                                  * the delta-T pair's normalization */
   var ROD_SLEW_SPS = 1.0;        /* steps/s, manual motion — [derived], see header */
   var SCRAM_S = 2.0;             /* full insertion on a trip, [derived] class figure */
 
@@ -221,8 +230,15 @@
        * availability = the condenser's (the dumps are condenser dumps; C-9 is the same fact
        * on the control side). One-step lag on cr, the house convention. */
       turbine_tripped: eng.tb.tripped,
-      steam_dumps_available: eng._cdAvail !== false
+      steam_dumps_available: eng._cdAvail !== false,
+      /* the delta-T pair's inputs: loop delta-T normalized to full-power delta-T, and Tavg.
+       * DT0_C is [derived]: the plant's own measured full-power split at the design point
+       * (606/550 degF, PWR2_VALIDATION.md sec 43) — 31.1 degC. Protection converts to the
+       * source's units itself. */
+      delta_t_frac: (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
+      tavg_c: G.primaryTavg(sys)
     });
+    eng.rpsReport = ptr;      /* the full function report, for consumers (the page, the gate) */
     /* THE CALLER'S HALF of HR5: the RPS reports, the plant acts. */
     if (ptr.reactor_trip && !eng._lastTrip) { eng.rodTarget = 0; eng._scramT = 0; }
     eng._lastTrip = ptr.reactor_trip;
