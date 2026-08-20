@@ -29,6 +29,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-19-backshop-g (#479 — the facade, the preview page, and the scram that bypassed the RPS)
+
+**Ruling executed:** *(OWNER, 2026-08-19: "A")* — PWR2 playable as a standalone dev page, not
+the full shell integration. Built: **`engines/pwr2/pwr2_engine.js`** (the gates' wiring written
+once — one `command()` door, canonical step order, true_state out) and **`test_pwr2.html`**
+(all 23 commands as levers, 24 true-value readouts US-first, lamps, 4-lane strip chart, 1–300×;
+a banner declares TRUE VALUES / no instrument layer). Gated by **`test/run_pwr2_engine.js` —
+14 checks, 8 mutations, all caught**; equivalence proven against a hand-retyped loadfollow ride.
+
+**The full wiring found two defects the partial-wiring gates could not reach:**
+- **#499 filed** — the 40 cm² break + ECCS + CVCS together NaN at ~68 s at 0.115 MPa: the #487
+  h-oscillation at a pressure the `flooredLow` latch never sees. Gate's break case scoped to
+  the 30 s latching window, issue named in place.
+- **The facade's `scram` bypassed the RPS** (measured: `scrammed` false, turbine pulling
+  100 MWe from a 2 % core, −240 °F/min cooldown, pressurizer drained to 9.2 % at 1724 psia,
+  then ONE step jumped the pressure solve +887 psi with surge +20,085 kg/s — solver root-jump,
+  posted as #499's second instance). Fixed sourced: manual trip is an RPS input (Ginna TS
+  Bases B 3.3.1 Fn 1), turbine trips with the reactor (UFSAR ch15 "zero delay is assumed"),
+  scram ramp monotone-down (kills the second-edge rod-teleport). Post-fix: dumps take the
+  load, Tavg 554.5 °F vs the 557 no-load program, finite through 10 min.
+
+**Site plumbing:** `test_pwr2.html` in `NOT_PUBLISHED`; the index.html link sits in a
+`DEV-ONLY-START/END` block `build_site.js` now DELETES at publish (a CSS-hidden dead link is
+still dead — the builder's completeness scan failed the CSS-only attempt, correctly, and the
+strip had to run BEFORE that scan, not in the later rewrite pass where it first landed).
+Headless-verified (Playwright): page runs, scram/PORV/lamps/chart live, zero console errors.
+Record: `Blueprint/PWR2_VALIDATION.md` §49. Gates: run_site_build 31, run_site_meta 164,
+run_portable 142, run_pwr2_engine 14/8mut; run_all --fast at baseline (+1 runner).
+
 ## Session log — 2026-08-19-backshop-f (#479 — the ADV: the ladder's middle rung, and both declared gaps close)
 
 **Ask:** "Next" — the ADV recommended at the previous close. **Gates:** `run_pwr2_relief` 38

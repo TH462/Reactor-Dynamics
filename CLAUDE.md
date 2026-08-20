@@ -387,8 +387,12 @@ re-querying. Run the query.
   tailpipe, 87 % high-level trip via P-7, aux spray). The two-h stratification is DEFERRED
   and the §42 criterion RULED A *(OWNER RULING, 2026-08-19: "Defer. A.")* — the steam dump
   control layer is built and **criterion A is met for the sourced reason** (C-7 keeps the dumps
-  shut on dispatch; power monotone, rods MANUAL — §47). Owed next: the ADV rung, the P-9-class
-  turbine-trip reactor trip, OTΔT (blocked on a source), the DELAYED-data evidence pass.
+  shut on dispatch; power monotone, rods MANUAL — §47). The ADV rung is built (§48). **PWR2 is
+  PLAYABLE (ruled "A", 2026-08-19): `test_pwr2.html` + the `pwr2_engine` facade** — dev channel
+  only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
+  scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). Owed next:
+  the P-9-class turbine-trip reactor trip, OTΔT (blocked on a source), the DELAYED-data
+  evidence pass, #499.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,

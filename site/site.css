@@ -146,6 +146,21 @@ html[data-channel="dev"] .dev-bar {
 .dev-bar a { color: #17120A; text-decoration: underline; }
 .dev-bar a:hover { color: #000; }
 
+/* The PWR2 preview link on index.html (test_pwr2.html, #479) — DEV ONLY, deliberately
+   narrower than the bar/pill pair above: the page is the unreleased physics rebuild, not a
+   released feature, so the preview channel does not get it either. Same fail-safe shape:
+   default display:none, shown only when the dev attribute is POSITIVELY present. The page
+   itself is also in NOT_PUBLISHED (site/build_site.js), so off-dev the link would 404 —
+   the CSS gate is what keeps it from being seen, the publish gate what keeps it from
+   being reached. */
+.pwr2-dev-link { display: none; }
+html[data-channel="dev"] .pwr2-dev-link {
+  display: inline-block; margin-top: 14px; padding: 7px 14px;
+  border: 1px dashed var(--caution); border-radius: 8px;
+  color: var(--caution); font-size: 13px; text-decoration: none;
+}
+html[data-channel="dev"] .pwr2-dev-link:hover { background: rgba(240, 180, 41, 0.08); }
+
 html[data-channel="preview"] .brand-test,
 html[data-channel="dev"] .brand-test {
   display: inline-block;

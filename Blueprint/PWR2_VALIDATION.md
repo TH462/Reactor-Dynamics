@@ -2614,3 +2614,53 @@ rung-inverted, block-ignored; the setpoint-drift mutation had to target the DERI
 the display psig — two separate literals, the same duplicated-constant shape as ever);
 `run_pwr2_loadfollow` prose de-staled where it declared the rung missing. Still owed from §47:
 the P-9-class turbine-trip reactor trip in `pwr2_protection`.
+
+## 49. THE FACADE AND THE PREVIEW PAGE — AND THE ONE DOOR CAUGHT TWO DEFECTS ON ARRIVAL — 2026-08-19
+
+*(OWNER RULING, 2026-08-19: "A" — the standalone preview page + facade route, not the full
+shell/M5 integration, which stays a later milestone.)*
+
+**`engines/pwr2/pwr2_engine.js`** is the gates' hand wiring written once: `createEngine()`
+assembles every system, `step()` runs the canonical order with the same one-step lags, and
+`command()` is the one door (23 commands; an unknown name throws). It is NOT an M5 engine — no
+snapshots, no instrument layer (every reported value is truth, and the page says so in a
+banner), no rewind. **`test_pwr2.html`** drives it live: levers for every command, 24 true-value
+readouts (US customary first), status lamps, a four-lane strip chart, 1–300× time acceleration.
+Dev-channel only: the page is in `NOT_PUBLISHED`, and the index.html link sits in a
+`DEV-ONLY-START/END` block that `site/build_site.js` now DELETES from published pages — a
+CSS-hidden link to an unpublished page is still a dead link, and the builder's own
+completeness scan is what proved a strip was needed (it failed the first, CSS-only attempt).
+
+**The gate (`test/run_pwr2_engine.js`, 14 checks, 8 mutations)** leads with EQUIVALENCE: the
+facade's settled plant against a hand-retyped copy of the loadfollow wiring — same regime to
+P ±0.15 MPa / Tavg ±1.5 °C / power ±2 %, the differences declared (the facade runs CVCS and a
+slewed rod bank). Then the caller-half of Hard Rule 5, pinned for the first time anywhere: a
+40 cm² break trips and scrams UNCOMMANDED and SI starts the ECCS lineup.
+
+**Defect 1, found by the full wiring within minutes (#499):** riding that break past ~68 s
+NaNs — the #487 h-oscillation class at 0.115 MPa, near-but-not-AT the floor, where
+`flooredLow` never latches. The partial-wiring gates never ran break + ECCS + CVCS + relief
+sink together. Filed, and the gate's break case is scoped to the 30 s latching window with the
+issue named in place.
+
+**Defect 2, the facade's own, measured before fixing:** `scram` bypassed the RPS. `scrammed`
+stayed false, the turbine kept pulling 100 MWe from a 2 % core, the −240 °F/min cooldown
+out-surged the pressurizer at 54 kg/s, and at level 9.2 % / 1724 psia ONE 0.02 s step jumped
+the solve to 2611 psia, level 100 %, surge +20,085 kg/s, fuel 3.4e21 °C — an unlatched solver
+root-jump, the second beyond-model instance on #499 (different mechanism: pressurizer-drain
+compliance collapse, not loop-node oscillation). Fixed at cause, both halves sourced:
+
+- **Manual trip is an RPS input** — Ginna TS Bases B 3.3.1 Function 1 (ML20339A221): "the
+  control room operator can initiate a reactor trip at any time by using either of two reactor
+  trip pushbuttons". No setpoint, no permissive, latches `trip_cause: 'manual'`.
+- **The turbine trips with the reactor** — Ginna UFSAR ch15 (ML20339A101): "The turbine
+  automatically trips following a reactor trip. Zero delay is assumed". Level-held while
+  latched, so the operator cannot re-latch the turbine under a standing trip.
+- **The scram ramp is monotone-down** (`min()` with the current position): a second trip edge
+  restarting the ramp could previously TELEPORT a partially-withdrawn bank back toward 200.
+
+Measured after the fix: manual scram from 100 % → trip latched ('manual'), turbine tripped,
+dumps take the load on the C-8 controller, Tavg walks to 554.5–555 °F against the 557 °F
+no-load program, power decays 5.0e-1 → 2.0e-4 % over ten minutes, pressure 2086–2156 psia,
+finite throughout. Both new gate checks REDDED on the pre-fix build (scrammed false; NaN at
+t = 54.5 s) — the injection evidence is the defect itself.

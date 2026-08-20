@@ -333,6 +333,14 @@
       });
     }
 
+    /* MANUAL REACTOR TRIP [sourced] — Ginna TS Bases B 3.3.1 Function 1 (ML20339A221): "The
+     * Manual Reactor Trip Function ensures that the control room operator can initiate a
+     * reactor trip at any time by using either of two reactor trip pushbuttons on the main
+     * control board." No setpoint, no permissive, no delay ("This function has no adjustable
+     * trip setpoint"), so it is a latch input, not a table row — and it is evaluated FIRST so
+     * that a pushbutton and an automatic function arriving together record the operator's act. */
+    if (drivers.manual_trip && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = 'manual'; }
+
     /* LATCH. A reactor trip and a safety injection both latch in a real plant until reset. */
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
     if (anyEsfas && !pr.si) { pr.si = true; pr.si_cause = anyEsfas; }
