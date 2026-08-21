@@ -193,6 +193,27 @@ function runSuite(SH, rec, quiet) {
   run(eng, quiet ? 20 : 40);
   ck('set_feed_coupled restores the three-element controller',
      eng.eng.fw.auto === true, '');
+  /* THE #408 CURRENCY (2026-08-21) — the CVCS balance-point finding. The shipped B1/B2 forms
+   * published kg/s into charging_flow_actual (read as ~343,000 gpm; the CHG FLOW HI
+   * annunciator at 8.0e-5 = 36 gpm stood permanently — the finish list's "120 gpm balance")
+   * and read the board setter's gpm/450,000 as a 0..1 demand (any dialed setpoint became
+   * ~zero flow). The plant physics was RIGHT all along: the settled balance is the
+   * sourced-scaled charging 7.5 + seal 5 = letdown 12.5 gpm. */
+  var rdC = eng.getInstruments();
+  ck('the CHG FLOW HI annunciator input is CLEAR — a healthy plant cannot reach 36 gpm',
+     typeof rdC.charging_flow === 'number' && rdC.charging_flow < 8.0e-5 &&
+     rdC.charging_flow > 0,
+     'charging_flow ' + (rdC.charging_flow * 450000).toFixed(1) +
+     ' gpm against the 36 gpm setpoint (max charging is the sourced-scaled 29.4)');
+  eng.applyCommand({ action: 'set_charging_flow', normalized: 20 / 450000 });
+  var tCur = run(eng, 30);
+  ck('the board charging setter ROUND-TRIPS the currency: 20 gpm dialed = 20 gpm delivered',
+     Math.abs(tCur.charging_flow_actual * 450000 - 20) < 1.0 &&
+     Math.abs(eng.getControlState().charging_flow_normalized * 450000 - 20) < 1.0,
+     'delivered ' + (tCur.charging_flow_actual * 450000).toFixed(1) + ' gpm, setpoint reads ' +
+     (eng.getControlState().charging_flow_normalized * 450000).toFixed(1));
+  eng.applyCommand({ action: 'set_cvcs_auto', enabled: true });
+  run(eng, quiet ? 10 : 20);
   ck('...and the reused gauges FOLLOW the maneuver (a frozen t=0 gauge reads the old point)',
      Math.abs(eng.getInstruments().tavg - t80.tavg_c) < 2.0,
      'ind ' + eng.getInstruments().tavg.toFixed(2) + ' vs true ' + t80.tavg_c.toFixed(2) +
@@ -283,6 +304,12 @@ var MUTATIONS = [
   ['the pwr automation channels LEAK into the config (M4 would command a plant it does not know)',
    "        trips: [], actuations: [], channels: [], interlocks: [], runbacks: [],",
    '        trips: [], actuations: [], interlocks: [], runbacks: [],'],
+  ['the charging setter reads the currency as a demand fraction again (any setpoint ~= zero flow)',
+   '      var gpm = (c.normalized !== undefined ? c.normalized : c.value) * 450000;\n      e.cv.chargingDemand = Math.max(0, Math.min(1, gpm / RD.cvcs.CVCS.charging_max_gpm()));',
+   '      e.cv.chargingDemand = Math.max(0, Math.min(1, c.normalized !== undefined ? c.normalized : c.value));'],
+  ['the control-state charging setpoint reverts to a raw demand fraction (reads ~180,000 gpm)',
+   '      charging_flow_normalized: (e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand) *\n                                RD.cvcs.CVCS.charging_max_gpm() / 450000,',
+   '      charging_flow_normalized: e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand,'],
   ['the afw esf arm is dropped again (the AUX FEED tile reads SECURED over an armed AFAS)',
    "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],",
    '        esf_systems: [],'],

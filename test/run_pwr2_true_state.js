@@ -364,6 +364,23 @@ function runSuite(TS, rec, quiet) {
               t2.afw_flow_normalized === 0;
      })(),
      'run light = demand, flow = delivery');
+  /* THE #408 CURRENCY (2026-08-21): the contract's CVCS flow fields read gpm / 450,000 —
+   * the consumers' literal (board GPM_CHARGING; the CHG FLOW HI annunciator at 8.0e-5 =
+   * 36 gpm). The shipped B1 form published kg/s, which read as ~343,000 gpm and stood the
+   * annunciator permanently — the finish list's "120 gpm balance" was THIS, not physics. */
+  ck('CVCS actual flows are in the #408 currency — the 450,000 literal recovers true gpm',
+     (function () {
+       var gpmC = B.ctx.cvcs.charging_kgs * 60 * 264.172 / 1000;
+       var gpmL = B.ctx.cvcs.letdown_kgs * 60 * 264.172 / 1000;
+       return Math.abs(ts.charging_flow_actual * 450000 - gpmC) < 0.05 &&
+              Math.abs(ts.letdown_flow_actual * 450000 - gpmL) < 0.05;
+     })(),
+     'charging reads ' + (ts.charging_flow_actual * 450000).toFixed(1) + ' gpm, letdown ' +
+     (ts.letdown_flow_actual * 450000).toFixed(1) + ' gpm on the consumers own conversion');
+  ck('...and the normal point sits BELOW the 36 gpm annunciator (the standing CHG FLOW HI cleared)',
+     ts.charging_flow_actual < 8.0e-5 && ts.letdown_flow_actual < 8.0e-5,
+     'a healthy plant cannot exceed it: max charging is the sourced-scaled 29.4 gpm');
+
   /* THE FEED REWIRE (2026-08-21): fw_flow used to BE steam_out_total by construction — a
    * half-flow feedwater result must now read ~0.5 while the steam side stays where it is,
    * or the shim is still wearing the retired identity. */
@@ -545,6 +562,9 @@ runSuite(TS, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
+   "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
+   "    put('charging_flow_actual', cv.charging_kgs);"],
   ['a static drifts from its registered value (the registry lies about what is emitted)',
    "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });",
    "    Object.keys(STATIC).forEach(function (sf) { ts[sf] = STATIC[sf].value; });\n    ts.msiv_open = false;"],

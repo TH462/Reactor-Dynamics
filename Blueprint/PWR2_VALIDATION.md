@@ -3354,3 +3354,43 @@ failure menu (3 → 4), `mfw_isolated` and `feed_pump_speed_pct` read the real m
 / 49 · `run_pwr2_engine` 33 → 41 / 26 (group F) · `run_pwr2_true_state` 60 → 61 (the
 feed-≡-steam identity cannot sneak back) · `run_pwr2_shell` 25 → 27 / 12 ·
 `run_pwr2_loadfollow` 36 / 8 (stepSG anchors carried) · full sweep at baseline.
+
+## 64. THE CVCS BALANCE POINT — THE PLANT WAS RIGHT, THE CURRENCY WAS WRONG — 2026-08-21
+
+*(OWNER RULING, 2026-08-21: "Work next as recommended" — the CVCS balance point: the finish
+list's "steady charging = letdown = 120 gpm (~3–4× prototypical), keeps the Charging Flow High
+annunciator lit; needs its evidence mini-pass and a retune.")*
+
+**The evidence pass found no retune to make.** The anchor plant's number is on file — Ginna
+UFSAR ch15 (ML20339A101): *"three positive displacement charging pumps can deliver a maximum
+of 180 gpm (charging flow is normally maintained at 46 gpm)"* — and `pwr2_cvcs.js` already
+carries it, volume-scaled by its own declared basis: charging normal 46 × 0.163 = **7.5 gpm**,
+max 29.4 gpm, letdown = charging + the ruled unscaled 5 gpm seal injection = **12.5 gpm**.
+Measured settled: charging 7.5–12 gpm (the level PI trimming), letdown 12.5 gpm — the module
+holds its sourced point and always did. The Westinghouse CVCS chapter (WTSM 4.1 — located in
+corpus this session as the unnamed ML11223A214) corroborates the shape: 75 gpm normal letdown
+balancing 55 charging + 20 seal on the 4-loop reference plant.
+
+**What was actually wrong: a units CURRENCY mistranslation, in both directions.** The
+contract's CVCS flow fields are in the current engine's #408 "real currency" — fraction of RCS
+per second, where every consumer converts with the literal 450,000 (the board's
+`GPM_CHARGING`; the CHG FLOW HI annunciator at 8.0e-5 = **36 gpm**). PWR2's stage-B1 shim
+published **kg/s** into `charging_flow_actual` — 12.1 gpm of charging read as **~343,000
+gpm** and stood the annunciator permanently (the finish list's "120 gpm balance" was a
+reading of this mistranslation, not a plant state). And the stage-B2 shell read the board
+setter's `gpm / 450,000` payload as a 0..1 pump-demand fraction — **any dialed setpoint
+became ~zero flow**, a dead control wearing a working control's face.
+
+**The fix is translation only; no physics constant moved.** The shim converts kg/s → the
+currency once (`FRAC_PER_KGS`); the shell converts the setter both directions through the
+module's own sourced-scaled ratings and publishes the control-state setpoints in the same
+currency. Measured end to end: the board reads true gallons (letdown 12.5 gpm), CHG FLOW HI
+input 4.9e-6 against the 8.0e-5 setpoint — **CLEAR** — and dialing 20 gpm on the board
+delivers exactly 20.0 gpm (demand 0.681 = 20 / 29.4). A healthy plant can never reach the
+36 gpm annunciator again: its maximum charging is the sourced-scaled 29.4.
+
+**Gates**: `run_pwr2_true_state` 61 → **63** / 17 mutations (the 450,000 literal recovers
+true gpm; the normal point sits below the annunciator; a kg/s revert mutation reds) ·
+`run_pwr2_shell` 27 → **29** / 14 mutations (the annunciator input clear; the 20-gpm
+round trip; both currency-revert mutations red) · `pwr2_cvcs.js` untouched · full sweep at
+baseline.

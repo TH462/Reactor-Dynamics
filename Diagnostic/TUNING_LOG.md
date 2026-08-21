@@ -29,6 +29,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-21-backshop-b (#479 — the CVCS balance point: the plant was right, the currency was wrong)
+
+**The work order** *(OWNER RULING, 2026-08-21: "Work next as recommended" — the CVCS balance
+point evidence pass + retune)*. Record: `Blueprint/PWR2_VALIDATION.md` §64. **The evidence
+pass found no retune to make**: Ginna ch15's own "charging flow is normally maintained at
+46 gpm" is already in `pwr2_cvcs.js`, volume-scaled to 7.5 gpm charging + the ruled 5 gpm
+seal = 12.5 gpm letdown, and the plant settles exactly there. The finish list's "120 gpm
+balance / standing Charging Flow High annunciator" was a **units-currency mistranslation in
+the Option B translation layer**, both directions:
+- the B1 shim published **kg/s** into `charging_flow_actual`, whose contract currency is the
+  #408 fraction-of-RCS-per-second (every consumer multiplies by the 450,000 literal) — 12 gpm
+  of charging read as ~343,000 gpm and the 36 gpm annunciator stood permanently;
+- the B2 shell read the board setter's `gpm/450,000` payload as a 0..1 demand fraction — any
+  dialed charging/letdown setpoint became ~zero flow, **a dead control wearing a working
+  control's face**.
+- **The trap for the standing list's class**: a finish-list item's own description can be a
+  measurement in the wrong currency — "120 gpm, 3–4× prototypical, needs a retune" was
+  filed off a mistranslated display; the evidence pass re-measured at the source and the
+  physics needed nothing.
+- Fixes are translation-only (`FRAC_PER_KGS` in the shim; both setter directions + the
+  control-state setpoints through the module's own sourced-scaled ratings). Measured end to
+  end: board reads true gallons (letdown 12.5 gpm), CHG FLOW HI input 4.9e-6 vs 8.0e-5 —
+  CLEAR; 20 gpm dialed = 20.0 gpm delivered (demand 0.681 = 20/29.4). A healthy plant can
+  never reach 36 gpm again (max charging is the sourced-scaled 29.4).
+- Gates: `run_pwr2_true_state` 61 → 63 / 17 · `run_pwr2_shell` 27 → 29 / 14 ·
+  `pwr2_cvcs.js` untouched · sweep at baseline.
+
+---
+
 ## Session log — 2026-08-21-backshop-a (#479 — the feed train: feed ≡ steam retired, R6 re-adjudicated)
 
 **The work order** *(OWNER RULING, 2026-08-21: "Due next as recommended" — the feed train /

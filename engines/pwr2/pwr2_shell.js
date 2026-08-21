@@ -70,12 +70,22 @@
     open_block_valve:  function (e, c) { EN.command(e, 'block_valve', true); },
     close_block_valve: function (e, c) { EN.command(e, 'block_valve', false); },
     stuck_porv_open:   function (e, c) { EN.command(e, 'porv_stick', true); },
+    /* THE #408 CURRENCY, both directions (2026-08-21): the board's charging/letdown SET
+     * controls send `normalized` = gpm / 450,000 (pwr_board_wiring's GPM_CHARGING literal).
+     * The shipped B2 mapper read that as a 0..1 pump-demand fraction, so any board setpoint
+     * became ~zero flow — the control was effectively dead. Converted through the module's
+     * own sourced-scaled ratings. */
     set_charging_flow: function (e, c) {
       e._plcsAuto = false;
-      e.cv.chargingDemand = Math.max(0, Math.min(1, c.normalized !== undefined ? c.normalized : c.value));
+      var gpm = (c.normalized !== undefined ? c.normalized : c.value) * 450000;
+      e.cv.chargingDemand = Math.max(0, Math.min(1, gpm / RD.cvcs.CVCS.charging_max_gpm()));
     },
     set_cvcs_auto:     function (e, c) { e._plcsAuto = c.enabled === false ? false : true; },
-    set_letdown_flow:  function (e, c) { EN.command(e, 'letdown', c.normalized !== undefined ? c.normalized : c.value); },
+    set_letdown_flow:  function (e, c) {
+      var gpmL = (c.normalized !== undefined ? c.normalized : c.value) * 450000;
+      var ratedL = RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm();
+      EN.command(e, 'letdown', gpmL / ratedL);
+    },
     set_letdown_orifices: function (e, c) {
       var n = (c.a ? 1 : 0) + (c.b ? 1 : 0);                /* two-orifice lineup -> fraction */
       EN.command(e, 'letdown', n / 2);
@@ -360,8 +370,12 @@
       heater_auto: e.pzDrivers.heaters_manual === undefined,
       spray_auto: e.pzDrivers.spray_manual === undefined,
       pressure_setpoint: e.pz.setpoint_mpa,
-      charging_flow_normalized: e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand,
-      letdown_flow_normalized: e.cv.letdownOpen,
+      /* the #408 currency (gpm / 450,000) — the board multiplies back to gpm. Demand is a
+       * fraction of THIS plant's sourced-scaled max; letdown lineup of its rated point. */
+      charging_flow_normalized: (e.cv.chargingDemand === null ? 0 : e.cv.chargingDemand) *
+                                RD.cvcs.CVCS.charging_max_gpm() / 450000,
+      letdown_flow_normalized: e.cv.letdownOpen *
+                               (RD.cvcs.CVCS.charging_normal_gpm() + RD.cvcs.sealInjectionGpm()) / 450000,
       charging_pump_running: true,
       cvcs_auto: this.eng._plcsAuto !== false,
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the

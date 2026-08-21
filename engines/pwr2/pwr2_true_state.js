@@ -280,8 +280,16 @@
     }
 
     /* --- CVCS --- */
-    put('charging_flow_actual', cv.charging_kgs);
-    put('letdown_flow_actual',  cv.letdown_kgs);
+    /* THE #408 CURRENCY [adopted] (2026-08-21): the contract's CVCS flow fields read
+     * "gpm / 450,000" — the current engine's fraction-of-RCS-per-second, kept as the SHARED
+     * currency because every consumer converts with that literal (the board's GPM_CHARGING
+     * 450,000; the CHG FLOW HI annunciator at 8.0e-5 = 36 gpm). The shipped B1 form
+     * published kg/s here, which read as ~343,000 gpm: the finish list's "120 gpm balance /
+     * standing annunciator" was THIS mistranslation, not a plant defect — the true settled
+     * flows are the module's own sourced-scaled 12.1 / 12.5 gpm. */
+    var FRAC_PER_KGS = 60 * 264.172 / 1000 / 450000;   /* kg/s -> gpm -> the currency */
+    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);
+    put('letdown_flow_actual',  cv.letdown_kgs * FRAC_PER_KGS);
 
     /* --- RHR --- */
     put('rhr_active',     rh.duty_kW !== undefined ? rh.duty_kW > 0 : undefined);
