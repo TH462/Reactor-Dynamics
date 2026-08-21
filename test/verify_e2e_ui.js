@@ -1105,16 +1105,23 @@ async function testDiagBundle(page) {
     { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await page.waitForTimeout(1500);
-  // SPEED FIRST, THEN PLAY. Ticks taken at 1x produce no fine rows at all — a 1x broadcast
-  // carries 0.1 s of sim against the service's 0.2 s fine grid — so a single tick between
-  // pressing play and the speed landing latches `sampling.source` to "mixed" for the rest of
-  // the session. Ordering it this way makes the run deterministic instead of a race the
-  // parallel gate loses on a loaded box.
+  // THE PLANT IS ALREADY RUNNING — closing the boot mission overlay auto-starts it
+  // *(OWNER DIRECTIVE, 2026-08-11: "Sim should start running not paused.")*, so an
+  // unconditional #playBtn press PAUSES it. This test carried that press from before the
+  // ruling and passed for ten days on an accident: the plant raced at 600x for the
+  // ~100 ms between the speed click and the play click, and those few broadcasts held
+  // enough fine rows to satisfy the spacing check. The #501 pre-seed removal shortened
+  // boot enough to shrink that window below one broadcast, which is what exposed it.
+  // Press play only if the clock is actually stopped; `source` will read "mixed" (the 1x
+  // prefix), which the check below accepts — the spacing is the real test.
   await page.evaluate(function () {
     var b = document.querySelector('#speedSeg [data-speed="600"], [data-speed="600"]');
     if (b) b.click();
   });
-  await page.click('#playBtn');
+  var clockAt = function () { return page.evaluate(function () { return (document.querySelector('#clock, .clock') || {}).textContent; }); };
+  var c0 = await clockAt();
+  await page.waitForTimeout(400);
+  if (await clockAt() === c0) await page.click('#playBtn');
   await page.waitForTimeout(6000);
 
   // ONE CLICK, from the header (#438/#439). This used to be `Settings tab -> #fbBtn`,
