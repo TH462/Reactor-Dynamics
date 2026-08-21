@@ -29,6 +29,34 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-21-develop-a (PWR2 telemetry triage — the owner's first live session, four defects filed)
+
+**The owner played the PWR2 card and sent telemetry** ("it had some issues… I couldn't type
+into the error report"). The two bundles (`RD_Ops/bug-reports/2026-08-21_*`) are **one
+session exported twice** — same seed 4660, identical command prefix to machine precision —
+not two sessions. Triage only; no code changed. Findings, each reproduced before filing:
+
+- **#501 (high)** — the PWR2 card freezes the UI ~1–2 min after plant select. The chart
+  preseed (`ui/app.js:2525`) runs 1800 probe ticks at 10×; its 40-tick slice was calibrated
+  to the old engine ("~1.04 ms/tick") and a PWR2 tick at 10× is 50 × ~1.1 ms steps ≈ 2 s per
+  slice. Measured headless: 0.9 fps, continuous 1.9 s long tasks, engine stepped 1200/s;
+  ~70 % of CPU samples in `T_from_h`. **This is why the report form would not take typing** —
+  the outage suppressed the reporter's own words.
+- **#502 (high)** — `pwr2_engine.createEngine` ignores `initial_state`; the loop boots
+  isothermal (zero ΔT at 100 % power) and rings: power 100 → 76.6 % at t=2.9 s, Thot
+  580 → 622 °F, 2235 → 2149 psia, recovery by ~60 s. The #479 "free-play IC quirks" item,
+  now numbered and measured.
+- **#503** — ECCS AUTO on the pwr2 board sends `set_esf_auto hpi` into a config that
+  declares only `afw` (`pwr2_shell.js:314`) → COMMAND_ERROR, nothing visible. Orphan control.
+- **#504 (low)** — the recorder logs every alarm as `clear→clear` at t=0.1 s; 47 of 48
+  events in each bundle are non-transitions.
+
+Ops note: `tools/fetch_bug_reports.js` fails under the standing `CLOUDFLARE_API_TOKEN` env
+var (wrangler prefers it over OAuth and it cannot list accounts — same family as #494);
+`CLOUDFLARE_API_TOKEN= node tools/fetch_bug_reports.js` works.
+
+---
+
 ## Session log — 2026-08-21-backshop-c (the backshop merge — the PWR2 arc joins the trunk, and CI outgrows its budget)
 
 **The order** *(OWNER DIRECTIVE, 2026-08-21: "Full merge and push. Don't publish to main
