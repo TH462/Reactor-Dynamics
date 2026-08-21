@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-20-backshop-i (#479 — the AFW starts + the lo-lo trip: one bistable, two consumers)
+
+**The work order** *(OWNER RULINGS, 2026-08-20, this session: "AFW auto-start (Recommended)"
+selected as the next finish-list item; then "Include the trip rung too" — the steam-generator
+lo-lo level reactor trip, whose "not buildable" declaration rested on an expired premise)*.
+Record: `Blueprint/PWR2_VALIDATION.md` §62. All sourced: Ginna UFSAR ch10 §10.5.3.1.3 (the
+INSTALLED 17 % narrow-range lo-lo; SI starts the MDAFW pumps only; loss-of-main-feed and
+loss-of-offsite-power starts recorded and DEFERRED to the feed-train and electrical work
+orders), TS Bases B 3.3.1 Function 13 (the trip Function "also performs the ESFAS function of
+starting the AFW pumps" — ONE `sg_lolo_level` row, kind rps, whose tripping drives the
+`afas_mdafw`/`afas_tdafw` latches), Table 15.0-6 (2.0 s delay; the 0 % NRS analysis limit
+declined in favor of the installed 17 %, choice declared at the SGLL block).
+
+- **AFW flow was hydraulically inert** — `stepAFW` computed, reported, never fed to the SG
+  (`{feed: out, steam: out}`, the same variable). Now a SECOND COLD stream into `stepSG`
+  (70 °F / 21 °C CST water). Measured: +326 kg in 60 s at rated vs ~326 predicted; manual
+  MDAFW at 100 % power for 300 s reads steam P 808.2 → 802.9 psia (−5.3), level 65.0 →
+  69.5 % NR, no trip.
+- **The lying-gauge payoff**: fail the new 15th channel (`sg_level`, narrow range) LOW and at
+  the sourced 2.0 s the reactor trips AND both pumps start on the lie; fail `primary_pressure`
+  LOW and the §55 chain gains its AFW leg (MDAFW cause `si`, TDAFW stays secured). Latch law
+  is SI's: secure-while-latched refused; `reset_protection` clears without securing.
+- **Two traps found and recorded**: (1) the protection header's "not buildable" paragraph —
+  a premise that expired when stage B1's `sg_mass_map` gave the shim a real `sg_level_pct`
+  (#460's lesson standing in a module header; also fixed the stale "P-9: no trip state"
+  line). (2) **A shared-kernel path only PWR2's config can reach**: `getAutomationState`'s
+  channel-less fast path dropped the `esf` dict, so the AUX FEED tile read SECURED over an
+  armed AFAS — invisible to every current-engine gate (its config always has channels),
+  caught by the headless probe, fixed with `_attachEsf` on both paths, pinned in
+  `run_pwr2_shell` at the exact seam, `run_m4` 46/46 + `run_autoctl` 30/30 after.
+- The esf arm is UNDISARMABLE by design (`commands: []` — the engine's AFAS is not
+  defeatable, a flippable display arm would be duplicate authority); `true_state` gains the
+  demand/delivery split (`afw_pump_running` = demand, was `total_kgs > 0` — a demanded pump
+  with avail 0 read SECURED, the self-healing shape).
+- Gates: `run_pwr2_protection` 79 → 90 / 44 mutations · `run_pwr2_engine` 26 → 33 / 21
+  (group E) · `run_pwr2_instruments` 16 → 17 / 9 · `run_pwr2_true_state` 59 → 60 ·
+  `run_pwr2_shell` 23 → 25 / 12 · contract 177 OK · headless both engines zero console
+  errors · full sweep at baseline.
+
+---
+
 ## Session log — 2026-08-20-backshop-h (#479 — the menu card, and the 35 readings that were undefined)
 
 **The work order** *(OWNER, 2026-08-20: "I want to be able to use the new engine in the diagram

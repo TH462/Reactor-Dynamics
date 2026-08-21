@@ -317,7 +317,10 @@
 
     /* --- AFW --- */
     if (aw.total_kgs !== undefined) {
-      put('afw_pump_running', aw.total_kgs > 0);
+      /* DEMAND vs DELIVERY, the house split (#200/#329/#332): the run light reads the pumps'
+       * demand, the flow reads what arrives. Before 2026-08-20 both keyed on total_kgs > 0,
+       * which made a demanded pump with avail 0 read SECURED — the self-healing shape. */
+      put('afw_pump_running', !!(aw.mdafw_running || aw.tdafw_running));
       put('afw_active',       aw.total_kgs > 0);
       put('afw_flow_normalized', aw.afw_flow_normalized);
     }

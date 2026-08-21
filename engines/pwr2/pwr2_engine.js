@@ -126,7 +126,11 @@
       case 'adv_block':      eng.advBlock = !!value; break;
       case 'hhsi':           eng.ec.hhsiRunning = !!value; break;
       case 'lhsi':           eng.ec.lhsiRunning = !!value; break;
+      /* Manual initiation is PER PUMP [sourced] — Ginna TS Bases B 3.3.2 (a): "one switch for
+       * each pump". 'afw' is the motor-driven switch (kept under its old name — the shell's
+       * set_afw/set_afw_flow route here); 'afw_tdafw' is the turbine-driven pump's own. */
       case 'afw':            eng.aw.mdafwRunning = !!value; break;
+      case 'afw_tdafw':      eng.aw.tdafwRunning = !!value; break;
       case 'cw_pumps':       eng.cwPumps = !!value; break;
       case 'pump_trip':      eng.sys.pumpTripped = true; break;
       case 'break_open':
@@ -146,6 +150,10 @@
         /* the operator's reset — clears the latches so a recovered plant can run again */
         eng.pt.reactor_trip = false; eng.pt.trip_cause = null;
         eng.pt.si = false; eng.pt.si_cause = null;
+        eng.pt.afas_mdafw = false; eng.pt.afas_mdafw_cause = null;
+        eng.pt.afas_tdafw = false; eng.pt.afas_tdafw_cause = null;
+        /* the AFW pumps KEEP RUNNING through the reset — clearing a latch is not securing a
+         * pump; the operator stops each one with its own switch afterward */
         eng._manualTrip = false;   /* releasing the pushbutton is part of the reset */
         break;
       default:
@@ -266,13 +274,19 @@
       adv_block: eng.advBlock
     });
     var out = steam + rr.total_kgs;
-    var sr = G.stepSG(eng.sg, tavg, dt, { feed: out, steam: out });
+    /* AFW steps BEFORE the SG so its delivery lands in this step's balance — it is the SG's
+     * second, COLD feed stream (stepAFW reads only its own state, so the hoist is free).
+     * feed ≡ steam remains the MAIN-feed construction; AFW is additive on top of it, so a
+     * running train raises SG mass — the "merge, do not displace" rule the module's own
+     * header requires of its caller. */
+    var awr = AW.stepAFW(eng.aw, dt);
+    var sr = G.stepSG(eng.sg, tavg, dt, { feed: out, steam: out,
+                                          afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg });
     var tr = TB.stepTurbine(eng.tb, dt, { steam_kgs: steam, P_mpa: sr.P_sec,
                                           h_feed: G.SG.h_feed });
 
     var cvr = CV.stepCVCS(eng.cv, sys, dt);
     var ecr = EC.stepECCS(eng.ec, sys, dt);
-    var awr = AW.stepAFW(eng.aw, dt);
 
     var br = eng.brk ? BK.stepBreak(eng.brk, sys, dt, {}) : null;
 
@@ -321,6 +335,10 @@
       flow_frac: (rd.loop_flow !== undefined ? rd.loop_flow : 100 * sys.mdot_loop / 1630) / 100,
       steam_pressure_mpa: rd.steam_pressure !== undefined ? rd.steam_pressure : sr.P_sec,
       steam_flow_frac: rd.steam_flow !== undefined ? rd.steam_flow : out / eng.rated_steam,
+      /* no truth-fill here on purpose: sg_level_frac is an OPTIONAL driver (the hi_pzr_level
+       * precedent), so on the pre-reading first step the lo-lo row reports available:false
+       * for 0.02 s instead of borrowing truth */
+      sg_level_frac: rd.sg_level !== undefined ? rd.sg_level / 100 : undefined,
       pzr_level_frac: (rd.pzr_level !== undefined ? rd.pzr_level : 100 * pzr.level_frac) / 100,
       manual_trip: eng._manualTrip,
       /* P-9's inputs [sourced, TS Bases B 3.3.1]: the turbine's own tripped flag, and dump
@@ -346,6 +364,12 @@
      * not edge: while the trip is latched the operator cannot re-latch the turbine. */
     if (ptr.reactor_trip) eng.tb.tripped = true;
     if (ptr.si) { eng.ec.hhsiRunning = true; eng.ec.lhsiRunning = true; }
+    /* The AFW starts, same caller's-half law: level-held while the latch stands, so the
+     * operator cannot secure an actuated pump until reset_protection clears the latch —
+     * after which the per-pump switches work again (the demand itself is never rewritten,
+     * which is the demand-heals-itself trap's guard). */
+    if (ptr.afas_mdafw) eng.aw.mdafwRunning = true;
+    if (ptr.afas_tdafw) eng.aw.tdafwRunning = true;
 
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
      * up there via the relief tank; the tank itself is unmodelled, declared) */

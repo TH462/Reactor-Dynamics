@@ -406,6 +406,65 @@ function runSuite(RD, rec, quiet, only) {
       ('latched ' + latch3 + ', max |dP|/step ' + maxStep.toFixed(3) + ' MPa, P ' +
        (ts3 === null ? '?' : (ts3.pressure_mpa * 145.04).toFixed(0)) + ' psia'));
   }
+
+  if (grp('E')) {
+  /* ---- 4. THE AFW STARTS (2026-08-20) — protection latch to pump to SG water ---------------
+   * The layer gate proves the latches; THIS section proves the caller's half: the latch starts
+   * the real pumps, the pumps' water reaches the real SG, and the operator's switches obey the
+   * latch discipline. The lying-gauge route is the only one that can reach lo-lo today — the
+   * feed ≡ steam construction freezes true SG mass, a DECLARED gap the feed-train work order
+   * owns — which is also why it is the right probe: HR1's both-ways payoff, same as eng5. */
+  head('THE AFW STARTS  [a lying gauge starts real pumps; the cold water is real water]');
+  var eng8 = EN.createEngine({});
+  run(eng8, quiet ? 20 : 60);
+  ckT('settled: both pumps secured, nothing latched',
+      eng8.aw.mdafwRunning === false && eng8.aw.tdafwRunning === false &&
+      eng8.pt.afas_mdafw === false && eng8.pt.afas_tdafw === false, '');
+  var sgM0 = eng8.sg.mass;
+  EN.command(eng8, 'instrument_fail', { id: 'sg_level', mode: 'low' });
+  var ts8 = run(eng8, 5);
+  ckT('a failed-LOW SG level channel starts BOTH pumps and trips the reactor, all on the lie',
+      eng8.aw.mdafwRunning === true && eng8.aw.tdafwRunning === true &&
+      eng8.pt.reactor_trip === true && eng8.pt.trip_cause === 'sg_lolo_level' &&
+      ts8.afw_pump_running === true && ts8.afw_flow_normalized > 0.99,
+      'cause ' + eng8.pt.trip_cause + ', flow ' + ts8.afw_flow_normalized.toFixed(2) +
+      ', true level was healthy the whole time');
+  var sgMafter5 = eng8.sg.mass;
+  run(eng8, 60);
+  var dM60 = eng8.sg.mass - sgMafter5;
+  /* rated AFW: (170 + 340) gpm x 300/1775 = 86.2 gpm = 5.44 kg/s -> ~326 kg in 60 s */
+  ckT('...and the water is REAL: SG mass rises at the rated delivery, not just a lamp',
+      dM60 > 260 && dM60 < 400,
+      '+' + dM60.toFixed(0) + ' kg in 60 s against ~326 expected — the merge, not the report');
+  EN.command(eng8, 'afw', false);
+  run(eng8, 1);
+  ckT('the operator CANNOT secure an actuated pump while the latch stands',
+      eng8.aw.mdafwRunning === true, 'the level-held SI pattern, same law');
+  EN.command(eng8, 'instrument_restore', 'sg_level');
+  run(eng8, quiet ? 5 : 10);
+  EN.command(eng8, 'reset_protection', true);
+  run(eng8, 1);
+  ckT('reset clears the start latches but does NOT secure the pumps',
+      eng8.pt.afas_mdafw === false && eng8.pt.afas_tdafw === false &&
+      eng8.aw.mdafwRunning === true && eng8.aw.tdafwRunning === true,
+      'clearing a latch is not securing a pump');
+  EN.command(eng8, 'afw', false);
+  var threwT = null;
+  try { EN.command(eng8, 'afw_tdafw', false); } catch (eT) { threwT = eT.message; }
+  var ts8b = run(eng8, 5);
+  ckT('...then each pump\'s own switch secures it (TS Bases: one switch per pump)',
+      threwT === null && eng8.aw.mdafwRunning === false && eng8.aw.tdafwRunning === false &&
+      ts8b.afw_pump_running === false && eng8.pt.afas_mdafw === false,
+      threwT ? ('THREW: ' + threwT.slice(0, 60)) : 'secured, and no re-latch on the healed gauge');
+  /* SI's start, through the facade: the eng5 lying-pressure casualty gains its sourced AFW leg */
+  var eng9 = EN.createEngine({});
+  run(eng9, quiet ? 20 : 40);
+  EN.command(eng9, 'instrument_fail', { id: 'primary_pressure', mode: 'low' });
+  run(eng9, 10);
+  ckT('a safety injection starts the motor-driven pump ONLY (ch10\'s distinction, kept)',
+      eng9.pt.si === true && eng9.aw.mdafwRunning === true && eng9.aw.tdafwRunning === false,
+      'si ' + eng9.pt.si + ', mdafw ' + eng9.aw.mdafwRunning + ', tdafw ' + eng9.aw.tdafwRunning);
+  }
 }
 
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
@@ -471,6 +530,25 @@ var MUTATIONS = [
    * the mutations went blind. The guards are pwr2_core's; they are now exercised there on
    * direct synthetic states (measure at the probe's own layer). The loadAll coreSource
    * machinery stays for future core mutations. */
+  /* THE AFW STARTS (2026-08-20) */
+  ['the facade never consumes the MDAFW start latch (the RPS reports, nobody acts)',
+   '    if (ptr.afas_mdafw) eng.aw.mdafwRunning = true;',
+   '', { grp: 'E' }],
+  ['the facade never consumes the TDAFW start latch',
+   '    if (ptr.afas_tdafw) eng.aw.tdafwRunning = true;',
+   '', { grp: 'E' }],
+  ['the AFW stream never reaches the SG — reported, hydraulically inert (the pre-build wiring)',
+   'afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg });',
+   'afw_kgs: 0, afw_h: 0 });', { grp: 'E' }],
+  ['the protection never sees the SG level channel',
+   '      sg_level_frac: rd.sg_level !== undefined ? rd.sg_level / 100 : undefined,',
+   '      sg_level_frac: undefined,', { grp: 'E' }],
+  ['reset_protection leaves the AFW-start latches standing (the pumps can never be secured)',
+   '        eng.pt.afas_mdafw = false; eng.pt.afas_mdafw_cause = null;\n        eng.pt.afas_tdafw = false; eng.pt.afas_tdafw_cause = null;',
+   '', { grp: 'E' }],
+  ['the TDAFW switch is disconnected (one switch per pump, minus one)',
+   "      case 'afw_tdafw':      eng.aw.tdafwRunning = !!value; break;",
+   '', { grp: 'E' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

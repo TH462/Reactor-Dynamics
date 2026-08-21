@@ -45,6 +45,15 @@ function loadFrom(src) {
  *   "Low-Pressurizer Pressure Safety Injection        1715.0 psia"
  *   "Low Steam Pressure Safety Injection (SI) Setpoint   327.7 psia (lead/lag=12/2)   2.0"
  *   "High-High Steam Flow Setpoint                    155% of nominal   2.0"
+ *   "Low-Low Steam Generator Water Level Reactor Trip   0% NRS   2.0"       (15.2.6 LONF)
+ *   "Low-Low Steam Generator Water Level AFW Pump Start 0% NRS   60.0"      (at-full-flow)
+ *
+ * Ginna UFSAR ch10 (ML20339A040) §10.5.3.1.3 — the INSTALLED lo-lo setpoint the engine carries
+ * (the 0% NRS above is the analysis limit; the engine's SGLL block records the choice):
+ *   "...will start if one steam generator level decreases to a low-low level of 17%"
+ * Ginna TS Bases B 3.3.1 Function 13 (ML20339A221) — one bistable, two consumers:
+ *   "This Function also performs the Engineered Safety Feature Actuation System (ESFAS)
+ *    function of starting the AFW pumps on low low SG level."
  */
 var DOC = {
   hi_pzr_psia: 2425, lo_pzr_psia: 1775,
@@ -52,6 +61,7 @@ var DOC = {
   lo_flow: 0.87,
   si_pzr_psia: 1715.0, si_steam_psia: 327.7,
   steam_flow: 1.55,
+  lolo_frac: 0.17, d_lolo: 2.0,
   hi_pzr_level: 0.87, p7_frac: 0.10,
   lead_s: 12.0, lag_s: 2.0,
   d_press: 2.0, d_flux: 0.5, d_flow: 1.0,
@@ -64,7 +74,10 @@ var DT = 0.02;
  * driven from this, and every "does trip" check perturbs exactly one of them. */
 function healthy() {
   return { pressure_mpa: 15.41, power_frac: 1.0, flow_frac: 1.0,
-           steam_pressure_mpa: 5.688, steam_flow_frac: 1.0, pzr_level_frac: 0.615 };
+           steam_pressure_mpa: 5.688, steam_flow_frac: 1.0, pzr_level_frac: 0.615,
+           /* the plant's own settled narrow-range SG level (measured 2026-08-20: true 65.0 %,
+            * indicated 64.7 % at the 900 s operating point) */
+           sg_level_frac: 0.65 };
 }
 /* ⚠ A PLANT AT POWER HAS THE LOW FLUX TRIP BLOCKED, and a fixture must SAY SO rather than
  * inherit it. The Power Range Neutron Flux-LOW setting is 35 % RTP — a plant at 100 % is
@@ -124,6 +137,9 @@ function runSuite(P, rec, quiet) {
   ck('safety injection on low steam pressure', P.ESFAS.si_lo_steam_press_psia,
      DOC.si_steam_psia, 0, 'psia');
   ck('high-high steam flow', P.ESFAS.hi_hi_steam_flow_frac, DOC.steam_flow, 1e-12, 'frac');
+  ck('low-low SG water level is the INSTALLED 17 %, not the 0 % analysis limit',
+     P.SGLL.lolo_frac, DOC.lolo_frac, 1e-12, 'frac');
+  ck('...with the table\'s 2.0 s trip delay', P.DELAY.sg_lolo_level, DOC.d_lolo, 0, 's');
   ck('the lead/lag is the table\'s 12/2', P.LEADLAG.lead_s / P.LEADLAG.lag_s,
      DOC.lead_s / DOC.lag_s, 1e-12, '(ratio)');
   /* THE CONVERSION HAPPENS ONCE AND MUST BE RIGHT. A psia setpoint compared against an MPa
@@ -169,7 +185,8 @@ function runSuite(P, rec, quiet) {
     ['lo_flow',           'flow_frac',          DOC.lo_flow - 0.05,                       'rps'],
     ['si_lo_pzr_press',   'pressure_mpa',       DOC.si_pzr_psia / DOC.psia_per_mpa - 0.5, 'esfas'],
     ['hi_hi_steam_flow',  'steam_flow_frac',    DOC.steam_flow + 0.05,                    'esfas'],
-    ['hi_pzr_level',      'pzr_level_frac',     DOC.hi_pzr_level + 0.05,                  'rps']
+    ['hi_pzr_level',      'pzr_level_frac',     DOC.hi_pzr_level + 0.05,                  'rps'],
+    ['sg_lolo_level',     'sg_level_frac',      DOC.lolo_frac - 0.05,                     'rps']
   ];
   CASES.forEach(function (c) {
     var pr = atPower();
@@ -199,6 +216,45 @@ function runSuite(P, rec, quiet) {
   ckT('...and with the block IN, the high setting still trips',
       rB2.reactor_trip === true && rB2.trip_cause === 'hi_flux_hi',
       'blocking the startup trip must not blind the plant at power');
+
+  /* ---- THE AFW STARTS (2026-08-20) — one bistable, two consumers --------------------------
+   * TS Bases B 3.3.1 Function 13: the lo-lo trip Function "also performs the ESFAS function of
+   * starting the AFW pumps". So the SAME ride must latch the reactor trip AND both AFW starts,
+   * SI must start the motor-driven pump ONLY (ch10), and reset must clear all of it. */
+  head('THE AFW STARTS  [the lo-lo bistable\'s second consumer, and SI\'s MDAFW-only start]');
+  var prA = atPower();
+  var loloReading = withReading('sg_level_frac', DOC.lolo_frac - 0.05);
+  var rA1 = ride(prA, loloReading, DOC.d_lolo - 0.5);
+  ckT('below the sourced delay, lo-lo asserts but latches NOTHING — trip and starts alike',
+      fn(rA1, 'sg_lolo_level').asserted === true && rA1.reactor_trip === false &&
+      rA1.afas_mdafw === false && rA1.afas_tdafw === false,
+      'held ' + fn(rA1, 'sg_lolo_level').held_s.toFixed(2) + ' s against ' + DOC.d_lolo + ' s');
+  var rA2 = ride(prA, loloReading, 1.0);
+  ckT('past the delay, ONE crossing latches the trip AND both AFW starts together',
+      rA2.reactor_trip === true && rA2.trip_cause === 'sg_lolo_level' &&
+      rA2.afas_mdafw === true && rA2.afas_mdafw_cause === 'sg_lolo_level' &&
+      rA2.afas_tdafw === true && rA2.afas_tdafw_cause === 'sg_lolo_level',
+      'one bistable, two consumers — the source\'s own wiring');
+  var rA3 = ride(prA, healthy(), 30);
+  ckT('the AFW starts LATCH — a recovered level does not un-start a pump demand',
+      rA3.afas_mdafw === true && rA3.afas_tdafw === true, '');
+  P.reset(prA);
+  var rA4 = P.stepProtection(prA, DT, healthy());
+  ckT('...and reset clears both AFW-start latches with the rest',
+      rA4.afas_mdafw === false && rA4.afas_tdafw === false &&
+      rA4.afas_mdafw_cause === null && rA4.afas_tdafw_cause === null, '');
+  /* SI STARTS THE MOTOR-DRIVEN PUMPS ONLY [sourced ch10]: "Upon receipt of a safety injection
+   * signal, the two motor-driven preferred auxiliary feedwater pumps will start". The TDAFW
+   * start needs the lo-lo level; a mutation that cross-wires SI into it must redden HERE. */
+  var prS = atPower();
+  var rS = ride(prS, withReading('pressure_mpa', DOC.si_pzr_psia / DOC.psia_per_mpa - 0.5), 10);
+  ckT('a safety injection starts the MDAFW (cause \'si\') and NOT the TDAFW',
+      rS.si === true && rS.afas_mdafw === true && rS.afas_mdafw_cause === 'si' &&
+      rS.afas_tdafw === false,
+      'mdafw_cause=' + rS.afas_mdafw_cause + ' tdafw=' + rS.afas_tdafw);
+  ckT('...and a healthy plant held a minute latches neither start',
+      (function () { var r = ride(atPower(), healthy(), 60);
+                     return r.afas_mdafw === false && r.afas_tdafw === false; })(), '');
 
   /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19) ---------------------------------
    * WTSM 10.3.4.3: an AT-POWER trip, "only active if either reactor power or turbine power is
@@ -497,6 +553,10 @@ function runSuite(P, rec, quiet) {
       fn(rN, 'si_lo_steam_press').available === false &&
       fn(rN, 'hi_hi_steam_flow').available === false,
       'available:false is a measurement of ignorance; asserted:false would be a claim');
+  ckT('...the lo-lo level row too, and an absent level latches NO AFW start',
+      fn(rN, 'sg_lolo_level').available === false && rN.afas_mdafw === false &&
+      rN.afas_tdafw === false,
+      'a missing gauge that read as "level fine" would be the pre-B1 header\'s fear inverted');
   ckT('...and they report no margin rather than a comfortable one',
       fn(rN, 'si_lo_steam_press').margin === undefined, '');
   ckT('...while the primary functions still work on the readings that ARE there',
@@ -620,7 +680,26 @@ var MUTATIONS = [
    '      reactor_trip: false,                  /* LATCHED */',
    '      reactor_trip: true,'],
   ['reset does not actually clear the latch',
-   '    pr.reactor_trip = false; pr.si = false;', '    pr.si = false;']
+   '    pr.reactor_trip = false; pr.si = false;', '    pr.si = false;'],
+  /* THE AFW STARTS (2026-08-20) */
+  ['the lo-lo setpoint moved off the installed 17 % (toward the 0 % analysis limit)',
+   '    lolo_frac: 0.17,', '    lolo_frac: 0.05,'],
+  ['the lo-lo delay is zeroed (a degenerate latch reads exactly like a working feature)',
+   '    sg_lolo_level: 2.0         /*', '    sg_lolo_level: 0.0         /*'],
+  ['the lo-lo table row is DELETED — no trip, no starts, nothing says so',
+   "      { id: 'sg_lolo_level', name: 'Low-low steam generator water level', kind: 'rps', dir: -1,\n        sp: SGLL.lolo_frac, unit: 'frac', read: 'sg_level_frac', delay: DELAY.sg_lolo_level },",
+   ''],
+  ['the bistable\'s second consumer is disconnected (trip fires, AFW never starts)',
+   "        if (f.id === 'sg_lolo_level') sgLolo = true;   /* the bistable's second consumer */",
+   ''],
+  ['SI cross-wired into the TDAFW start (the source starts the motor-driven pumps only)',
+   '    if (sgLolo && !pr.afas_tdafw) { pr.afas_tdafw = true; pr.afas_tdafw_cause = \'sg_lolo_level\'; }',
+   '    if ((sgLolo || pr.si) && !pr.afas_tdafw) { pr.afas_tdafw = true; pr.afas_tdafw_cause = \'sg_lolo_level\'; }'],
+  ['the SI->MDAFW start is dropped',
+   "    if (pr.si && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }",
+   ''],
+  ['reset leaves the AFW-start latches standing',
+   '    pr.afas_mdafw = false; pr.afas_tdafw = false;', '']
 ];
 
 /* ---- THE CLEAN-RUN GUARD ---------------------------------------------------------------- */

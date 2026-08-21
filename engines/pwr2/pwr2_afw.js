@@ -75,7 +75,9 @@
     return {
       /* Lineup only. NOTHING here decides to start AFW -- Lo-Lo SG level, an SI signal, loss of
        * both main feed pumps, station blackout -- that is the control layer's (HR5), the same
-       * split pwr2_eccs.js draws. */
+       * split pwr2_eccs.js draws. Since 2026-08-20 pwr2_protection.js reports those starts
+       * (the SGLL block: lo-lo + SI built, the other two declared deferred) and the engine
+       * facade sets these booleans off its latches -- this file still decides nothing. */
       mdafwRunning: opts.mdafwRunning === undefined ? false : !!opts.mdafwRunning,
       tdafwRunning: opts.tdafwRunning === undefined ? false : !!opts.tdafwRunning,
       mdafwAvail: opts.mdafwAvail === undefined ? 1 : opts.mdafwAvail,
@@ -84,7 +86,8 @@
     };
   }
 
-  /* stepAFW(af, dt) -> {mdafw_kgs, tdafw_kgs, total_kgs, h_kJkg, afw_flow_normalized}
+  /* stepAFW(af, dt) -> {mdafw_kgs, tdafw_kgs, total_kgs, mdafw_running, tdafw_running,
+   *                     h_kJkg, delivered_kg, afw_flow_normalized}
    *
    * Returns a plain kg/s and enthalpy rather than a Layer 3 `sources` entry -- AFW feeds the
    * SECONDARY, and pwr2_sg.js's `drivers.feed` already takes exactly this shape (kg/s). A caller
@@ -99,6 +102,9 @@
 
     return {
       mdafw_kgs: md, tdafw_kgs: td, total_kgs: total,
+      /* DEMAND, reported separately from delivery — the house split (#200/#329/#332): a
+       * demanded pump with avail 0 is RUNNING with no flow, not SECURED. */
+      mdafw_running: !!af.mdafwRunning, tdafw_running: !!af.tdafwRunning,
       h_kJkg: W.h_l(f2c(AFW.afw_temp_f), 0.1),      /* near-atmospheric CST, cold */
       delivered_kg: af.delivered_kg,
       afw_flow_normalized: rated > 0 ? total / rated : 0

@@ -349,6 +349,17 @@ function runSuite(TS, rec, quiet) {
      ts.afw_pump_running === true && ts.afw_active === true &&
      ts.afw_flow_normalized !== undefined && ts.afw_flow_normalized > 0,
      'normalized=' + ts.afw_flow_normalized.toFixed(3));
+  /* THE DEMAND/DELIVERY SPLIT (2026-08-20, the house idiom #200/#329/#332): before it, both
+   * keys read total_kgs > 0, so a demanded pump with avail 0 reported SECURED — the
+   * de-energization written into the demand, healing itself. */
+  ck('a DEMANDED pump with zero availability reads RUNNING with no flow — never SECURED',
+     (function () {
+       var dead = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true, mdafwAvail: 0 }), 0.02);
+       var t2 = TS.buildTrueState(Object.assign({}, B.ctx, { afw: dead }));
+       return t2.afw_pump_running === true && t2.afw_active === false &&
+              t2.afw_flow_normalized === 0;
+     })(),
+     'run light = demand, flow = delivery');
   ck('afw_blocked is a REGISTERED STATIC; afw_discharge is SUPPLIED at the SG it feeds',
      ts.afw_blocked === false && !!TS.STATIC.afw_blocked &&
      ts.afw_discharge_pressure_mpa !== undefined &&

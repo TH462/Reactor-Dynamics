@@ -48,6 +48,7 @@ function runSuite(IN, rec, quiet) {
     return { power_pct: 100, startup_rate_dpm: 0, tavg_c: 300, thot_c: 315, tcold_c: 285,
              pressure_mpa: 15.41, pzr_level_pct: 61.5, pump_flow_pct: 100, boron_ppm: 600,
              porv_tailpipe_temp_c: 50, steam_pressure_mpa: 5.7, steam_flow_normalized: 1.0,
+             sg_level_pct: 65.0,
              mwe_output: 100, containment_pressure_mpa: 0.101 };
   }
   function quietIns() { return IN.createInstruments({ noise_scale: 0 }); }
@@ -55,6 +56,12 @@ function runSuite(IN, rec, quiet) {
     for (var i = 0; i < secs / DT; i++) IN.stepInstruments(ins, DT, ts);
     return ins.reading;
   }
+
+  /* ---- 0. THE ROSTER: the channel the protection layer now depends on ------------------- */
+  head('ROSTER  [the AFAS/lo-lo trip reads sg_level — a dropped channel must not go quiet]');
+  ckT('the sg_level channel exists, sourced from the narrow-range sg_level_pct',
+      IN.CHANNELS.some(function (c) { return c.id === 'sg_level' && c.src === 'sg_level_pct'; }),
+      'pwr2_protection\'s lo-lo function and both AFW starts read this channel (2026-08-20)');
 
   /* ---- 1. PRIMING + STEP RESPONSE: the sourced taus, MEASURED --------------------------- */
   head('STEP RESPONSE  [the sourced 2.0 s RTD and 3.5 s hot-leg filter, measured not retyped]');
@@ -195,6 +202,9 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 
 var INSRC = fs.readFileSync(path.join(SRC, 'pwr2_instruments.js'), 'utf8').replace(/\r\n/g, '\n');
 var MUTATIONS = [
+  ['the sg_level channel is DELETED (the AFAS/lo-lo trip loses its gauge silently)',
+   "    { id: 'sg_level',         src: 'sg_level_pct',             tau_s: 1.0,  sigma: 0.3,  range: [0, 100] },",
+   ''],
   ['the lag is deleted (every reading is instant truth)',
    '      var a1 = dt / Math.max(c.tau_s, dt);\n      ch.lag1 += a1 * (truth - ch.lag1);',
    '      ch.lag1 = truth;'],

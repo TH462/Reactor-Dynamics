@@ -282,7 +282,16 @@
     if (!this._protCfg) {
       var base = root.RD.PWR_CONFIG.protection;
       this._protCfg = Object.assign({}, base, {
-        trips: [], actuations: [], channels: [], interlocks: [], esf_systems: [], runbacks: [],
+        trips: [], actuations: [], channels: [], interlocks: [], runbacks: [],
+        /* ONE esf entry, DISPLAY-TRUE by construction (2026-08-20, the AFAS build): the board's
+         * AUX FEED word is RUNNING / STANDBY / SECURED and STANDBY requires
+         * automation.esf.afw === 'auto', which the kernel only emits for a listed system. The
+         * AFAS itself lives INSIDE the engine (pwr2_protection.js, the SGLL block) and is not
+         * defeatable, so this arm is honest exactly because nothing can flip it: commands: []
+         * means the kernel's manual-override scan never sets it MANUAL, and the board's only
+         * AFW arm control sends auto:true (a re-arm pushbutton). A disarmable arm here would
+         * claim an authority the engine does not grant it — the duplicate-authority veto. */
+        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],
         failures: (function () {
           /* the pwr failures table is an OBJECT keyed by id (measured — an array filter
            * threw at boot); keep only the levers the class can actually inject */
@@ -368,7 +377,7 @@
       hpi_active: ts.hpi_active === true,
       eccs_mode: ts.eccs_mode,
       accumulator_valve_open: true,
-      afw_throttle_pct: e.aw.mdafwRunning ? 100 : 0,
+      afw_throttle_pct: (e.aw.mdafwRunning || e.aw.tdafwRunning) ? 100 : 0,
       sr_energized: ts.sr_energized === true,
       msiv_open: true,
       pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]

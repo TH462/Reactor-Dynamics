@@ -126,9 +126,14 @@
   }
 
   /* stepSG(sg, primaryT, dt, drivers) -> heat REMOVED from the primary, kW
-   *   primaryT      degC -- Tavg. Get it from primaryTavg(sys); see the note above.
-   *   drivers.feed  kg/s of feedwater
-   *   drivers.steam kg/s of steam drawn
+   *   primaryT        degC -- Tavg. Get it from primaryTavg(sys); see the note above.
+   *   drivers.feed    kg/s of feedwater (arrives at the sourced SG.h_feed)
+   *   drivers.steam   kg/s of steam drawn
+   *   drivers.afw_kgs kg/s of auxiliary feedwater, optional -- a SECOND, COLD stream. AFW
+   *                   arrives at ~70 degF (21 degC) CST water, not the 435 degF (224 degC)
+   *                   main-feed enthalpy, and folding it into `feed` would erase exactly the
+   *                   cold-injection steam-pressure suppression the stream exists to model.
+   *   drivers.afw_h   kJ/kg of that stream (pwr2_afw.js's stepAFW returns it as h_kJkg)
    *
    * Returns the duty so Layer 4 can stop being handed one. */
   function stepSG(sg, primaryT, dt, drivers) {
@@ -137,12 +142,13 @@
     var Q = sg.U * sg.area * (primaryT - T_sec);        // kW, positive = into the secondary
 
     var feed = drivers.feed || 0, steam = drivers.steam || 0;
+    var afw = drivers.afw_kgs || 0, h_afw = drivers.afw_h || 0;
     var h_g = W.h_g(sg.P);
 
     /* Energy and mass on the secondary. Steam leaves at h_g; feed arrives at the sourced
-     * feedwater enthalpy. Both are DONOR-CELL, the same rule Layer 2 uses. */
-    var dH = Q + feed * SG.h_feed - steam * h_g;        // kW
-    var dM = feed - steam;                              // kg/s
+     * feedwater enthalpy; AFW at its own cold enthalpy. All DONOR-CELL, the Layer 2 rule. */
+    var dH = Q + feed * SG.h_feed + afw * h_afw - steam * h_g;   // kW
+    var dM = feed + afw - steam;                                 // kg/s
 
     var m_new = sg.mass + dt * dM;
     if (m_new < 1) m_new = 1;                           // dry: the vessel cannot go negative

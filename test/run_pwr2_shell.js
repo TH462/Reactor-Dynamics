@@ -17,6 +17,7 @@ var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 function loadAll(shellSource) {
   require(path.join(__dirname, '..', 'engines', 'load_mode.js'));
   require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_config.js'));
+  require(path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js'));
   require(path.join(__dirname, '..', 'layers', 'control', 'pwr_control.js'));
   require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_instruments.js'));
   ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_kinetics',
@@ -114,11 +115,33 @@ function runSuite(SH, rec, quiet) {
   ck('getProtectionConfig is PWR2 OWN config: acting parts EMPTY, annunciators adopted',
      pc !== globalThis.RD.PWR_CONFIG.protection &&
      pc.trips.length === 0 && pc.actuations.length === 0 && pc.channels.length === 0 &&
-     pc.interlocks.length === 0 && pc.esf_systems.length === 0 && pc.runbacks.length === 0 &&
+     pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      pc.alarms === globalThis.RD.PWR_CONFIG.protection.alarms &&
      Object.keys(pc.failures).length === 3 &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip,
      'M4 gets a shape it can hold with nothing that would command a plant it does not know');
+  /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
+   * automation.esf.afw === 'auto' to say STANDBY, and the kernel only emits that for a
+   * listed system — before this entry the tile read SECURED over an armed AFAS. commands
+   * MUST stay empty: a listed command would let the kernel's manual-override scan flip the
+   * arm to MANUAL, a state the engine's own AFAS (not defeatable, pwr2_protection SGLL)
+   * would immediately make a lie. */
+  ck('esf_systems carries exactly the afw arm, and it is UNDISARMABLE (commands empty)',
+     pc.esf_systems.length === 1 && pc.esf_systems[0].id === 'afw' &&
+     Array.isArray(pc.esf_systems[0].commands) && pc.esf_systems[0].commands.length === 0,
+     'the arm is display-true because nothing can flip it');
+  /* THE SEAM THE HEADLESS PASS CAUGHT (2026-08-20): the kernel's channel-less fast path in
+   * getAutomationState returned {channels: []} WITHOUT the esf dict — a path only PWR2's
+   * config (esf_systems, no channels) reaches, so no PWR1 gate could ever see it and the
+   * AUX FEED word read SECURED over an armed AFAS. Pinned here at the exact stack seam the
+   * shell ships through: the kernel over THIS engine's config. */
+  ck('the kernel emits automation.esf.afw = \'auto\' over PWR2\'s channel-less config',
+     (function () {
+       var lay = new globalThis.RD.ControlLayer(eng, eng.getProtectionConfig());
+       var a = lay.getAutomationState();
+       return a && a.esf && a.esf.afw === 'auto' && a.channels.length === 0;
+     })(),
+     'the board\'s STANDBY word reads this dict, nothing else');
   ck('getStartupLineup/getActiveFailures exist and answer',
      Array.isArray(eng.getStartupLineup()) && Array.isArray(eng.getActiveFailures()) &&
      eng.getActiveFailures().length === 0, '');
@@ -244,8 +267,14 @@ var MUTATIONS = [
    'var REFUSED = {',
    'var REFUSED = {}; var REFUSED_gone = {'],
   ['the pwr automation channels LEAK into the config (M4 would command a plant it does not know)',
-   "        trips: [], actuations: [], channels: [], interlocks: [], esf_systems: [], runbacks: [],",
-   '        trips: [], actuations: [], interlocks: [], esf_systems: [], runbacks: [],'],
+   "        trips: [], actuations: [], channels: [], interlocks: [], runbacks: [],",
+   '        trips: [], actuations: [], interlocks: [], runbacks: [],'],
+  ['the afw esf arm is dropped again (the AUX FEED tile reads SECURED over an armed AFAS)',
+   "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],",
+   '        esf_systems: [],'],
+  ['the afw arm grows a command list (the kernel\'s manual scan could flip a lie into the word)',
+   "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: [] }],",
+   "        esf_systems: [{ id: 'afw', label: 'Auxiliary feedwater', commands: ['set_afw'] }],"],
   ['the instrument-failure command maps every mode to STUCK',
    "      var mode = c.mode === 'fail_low' ? 'low' : c.mode === 'fail_high' ? 'high'\n               : c.mode === 'noisy' ? 'noisy' : 'stuck';",
    "      var mode = 'stuck';"]

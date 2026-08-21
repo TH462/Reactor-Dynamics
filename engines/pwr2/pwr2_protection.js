@@ -66,16 +66,23 @@
  * the equation.** Left out rather than assembled; an evidence pass owes the plant-specific
  * Technical Specification table.
  *
- * **LOW-LOW AND HIGH-HIGH STEAM GENERATOR WATER LEVEL** (0 % and 100 % narrow-range span, sourced
- * in the same table). Not buildable: `pwr2_sg.js` is LUMPED by ruling and `pwr2_true_state.js`
- * already declares `sg_level_pct` missing because *"there is no geometry to turn inventory into a
- * gauge reading"*. A level trip needs the gauge. `sg_mass_frac` is real and a mass-fraction trip
- * could be invented — that is precisely the fabricated linear scale the shim refuses.
+ * **LOW-LOW STEAM GENERATOR WATER LEVEL — BUILT (2026-08-20, owner ruling this session).** This
+ * paragraph used to declare the level trips "not buildable" because `pwr2_true_state.js` had no
+ * gauge — a premise that EXPIRED when Option B stage B1 adopted the sourced `sg_mass_map`
+ * geometry and the shim started emitting a real `sg_level_pct`. (The premise-ages-independently
+ * trap, #460's lesson, caught standing in this file's own header.) The lo-lo function is ONE
+ * bistable with TWO consumers [sourced] — Ginna TS Bases B 3.3.1 Function 13 (ML20339A221): the
+ * trip Function "also performs the Engineered Safety Feature Actuation System (ESFAS) function
+ * of starting the AFW pumps on low low SG level." See the SGLL block below for the
+ * setpoint/delay sourcing. HIGH-HIGH level (feedwater regulator closure, 100 % narrow-range
+ * span) stays unbuilt: there is no feedwater regulator valve in the feed ≡ steam construction —
+ * that rung belongs to the feed-train work order.
  *
  * **RCP UNDERVOLTAGE AND UNDERFREQUENCY** (57 Hz sourced). No electrical model exists; the same
  * gap that keeps `station_blackout` and `ac_available` declared-missing.
  *
- * **TURBINE TRIP / P-9 ANTICIPATORY TRIP.** `pwr2_turbine.js` has no trip state.
+ * **TURBINE TRIP / P-9 ANTICIPATORY TRIP — BUILT** (2026-08-19, PWR2_VALIDATION.md §51; this
+ * line used to say "no trip state", stale since the turbine gained one).
  *
  * ---------------------------------------------------------------------------------------
  * UNITS ARE SI INTERNALLY. Sourced setpoints are psia and are converted ONCE, at the block below,
@@ -120,6 +127,42 @@
     si_lo_steam_press_psia: 327.7,
     hi_hi_steam_flow_frac:  1.55,
     src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6'
+  };
+  /* ---- SOURCED: low-low steam generator water level — ONE bistable, TWO consumers ------------
+   * Ginna TS Bases B 3.3.1 Function 13 (ML20339A221): the reactor-trip Function "also performs
+   * the Engineered Safety Feature Actuation System (ESFAS) function of starting the AFW pumps
+   * on low low SG level" — so ONE table row below carries both the trip and the AFW start,
+   * exactly the source's own wiring (and PWR1's, #380).
+   *
+   * TWO SOURCED VALUES EXIST for the setpoint, and the INSTALLED one is carried:
+   *   - ch10 §10.5.3.1.3 (ML20339A040): "The motor-driven preferred auxiliary feedwater system
+   *     pumps will start if one steam generator level decreases to a low-low level of 17%"
+   *     (narrow-range span) — the plant's field setting.
+   *   - Table 15.0-6 (ML20339A101): "0% NRS" — the ANALYSIS limit the ch15 events assume.
+   * 17 % is used because this sim models the plant as operated (HR9); the 0 % figure is a
+   * bounding assumption, not the bistable's setting. NUREG-1431's "[30.4]%/[32.3]%" are
+   * bracketed COLR placeholders, not numbers (the #380 trap, recorded in CLAUDE.md). ch10's
+   * "+13.9% error ... at a containment temperature of 286F" adder is deliberately NOT added —
+   * it compensates an adverse-environment instrument error this model does not represent.
+   *
+   * THE SINGLE-LOOP COLLAPSE, DECLARED: the source starts the MDAFW pumps on ONE SG lo-lo and
+   * the TDAFW pump on BOTH SGs lo-lo. This plant has one steam generator, so the two conditions
+   * are the same event and both pumps start on it. SI starts the MDAFW pumps ONLY (ch10: "Upon
+   * receipt of a safety injection signal, the two motor-driven preferred auxiliary feedwater
+   * pumps will start") — that distinction survives the collapse and is kept.
+   *
+   * NOT BUILT, each with its sourced condition recorded for the work order that owns it:
+   *   - "If both main feedwater pumps fail ... the motor-driven auxiliary feedwater pumps
+   *     (MDAFW) will start automatically" (ch10) — no main feed exists under feed ≡ steam;
+   *     the feed-train work order owns this start.
+   *   - "All three preferred auxiliary feedwater pumps will start on loss of offsite power"
+   *     (ch10) — no electrical model; the same gap that keeps station_blackout declared-missing.
+   */
+  var SGLL = {
+    kind: '[sourced]',
+    lolo_frac: 0.17,
+    src: 'Ginna UFSAR ch10 (ML20339A040) sec 10.5.3.1.3 "low-low level of 17%"; one-bistable-' +
+         'two-consumers Ginna TS Bases B 3.3.1 Function 13 (ML20339A221)'
   };
   /* ---- SOURCED: the OT-delta-T / OP-delta-T setpoint coefficients, Table 15.0-7 -------------
    * Ginna UFSAR ch15 (ML20339A101), "Overtemperature and Overpower [delta]T Setpoints" —
@@ -215,7 +258,16 @@
                                         * release" -- the sourced pair's conservative member */
     si_lo_pzr_press: 2.0,      /* see the note below — the table's column is ambiguous here */
     si_lo_steam_press: 2.0,
-    hi_hi_steam_flow: 2.0
+    hi_hi_steam_flow: 2.0,
+    sg_lolo_level: 2.0         /* [sourced] 15.0-6, 15.2.6 LONF: "Low-Low Steam Generator Water
+                                * Level Reactor Trip 0% NRS 2.0". The SAME table's AFW row reads
+                                * "AFW Pump Start 0% NRS 60.0" — that 60 s is the analysis'
+                                * pumps-AT-FULL-FLOW figure (diesel loading, valve strokes), a
+                                * consequence delay like the SI 32.0 below, not a signal delay.
+                                * The one bistable actuates both consumers at 2.0 s here; the
+                                * no-spin-up pump model (pwr2_afw.js, declared) then delivers
+                                * rated flow immediately, which is OPTIMISTIC against the
+                                * analysis' 60 s by that declared simplification's own width. */
   };
   /* ⚠ ONE DELAY IS NOT CLEANLY SOURCED AND IS DECLARED. The 15.1.6 row reads "Low-Pressurizer
    * Pressure Safety Injection 1715.0 psia 32.0", but the SAME table carries "Feedwater Isolation
@@ -263,6 +315,12 @@
       { id: 'hi_pzr_level', name: 'High pressurizer level', kind: 'rps', dir: +1,
         sp: RPS.hi_pzr_level_frac, unit: 'frac', read: 'pzr_level_frac',
         delay: DELAY.hi_pzr_level, atPower: true },
+      /* ONE bistable, TWO consumers (the SGLL block above): this row IS the reactor trip, and
+       * its `tripping` also drives the AFW-start latches after the loop. kind 'rps' on purpose
+       * — inventing a third kind would put the AFW start in this row and the trip in a twin,
+       * which is not the source's wiring. */
+      { id: 'sg_lolo_level', name: 'Low-low steam generator water level', kind: 'rps', dir: -1,
+        sp: SGLL.lolo_frac, unit: 'frac', read: 'sg_level_frac', delay: DELAY.sg_lolo_level },
       { id: 'si_lo_pzr_press', name: 'Safety injection on low pressurizer pressure',
         kind: 'esfas', dir: -1, sp: ESFAS.si_lo_pzr_press_psia / PSIA_PER_MPA, unit: 'MPa',
         read: 'pressure_mpa', delay: DELAY.si_lo_pzr_press },
@@ -310,8 +368,12 @@
       reactor_trip: false,                  /* LATCHED */
       dtApproach: false,                    /* the rod-stop/runback bistable, with hysteresis */
       si: false,                            /* LATCHED */
+      afas_mdafw: false,                    /* LATCHED — the AFW starts, same law as si */
+      afas_tdafw: false,                    /* LATCHED */
       trip_cause: null,
       si_cause: null,
+      afas_mdafw_cause: null,
+      afas_tdafw_cause: null,
       ll_y: null, ll_u: null                /* lead/lag state for low steam pressure */
     };
   }
@@ -320,7 +382,9 @@
    * the CALLER's, deliberately, and it is the only way a latch ever clears. */
   function reset(pr) {
     pr.reactor_trip = false; pr.si = false;
+    pr.afas_mdafw = false; pr.afas_tdafw = false;
     pr.trip_cause = null; pr.si_cause = null;
+    pr.afas_mdafw_cause = null; pr.afas_tdafw_cause = null;
     Object.keys(pr.held_s).forEach(function (k) { pr.held_s[k] = 0; });
     return pr;
   }
@@ -340,6 +404,10 @@
    *   drivers.flow_frac          loop flow, fraction of rated              REQUIRED
    *   drivers.steam_pressure_mpa secondary pressure                        optional
    *   drivers.steam_flow_frac    steam flow, fraction of rated             optional
+   *   drivers.sg_level_frac      SG narrow-range level, fraction of span   optional
+   *                              (drives the lo-lo trip + the AFW starts; absent, that row
+   *                              reports available:false — the hi_pzr_level precedent, a
+   *                              later-added trip whose reading is not in the REQUIRED three)
    *
    * The three REQUIRED readings are the ones every reactor trip in this table depends on; a caller
    * that omits them would silently get a plant with no protection at all, which is the reassuring
@@ -373,7 +441,7 @@
      * (#295 F1/F2) the sources do not have. */
     var blockEffective = pr.blockLowFlux;
 
-    var out = [], fns = functions(), anyRps = null, anyEsfas = null;
+    var out = [], fns = functions(), anyRps = null, anyEsfas = null, sgLolo = false;
     for (var i = 0; i < fns.length; i++) {
       var f = fns[i];
       var raw = drivers[f.read];
@@ -408,6 +476,7 @@
       if (tripping) {
         if (f.kind === 'rps' && !anyRps) anyRps = f.id;
         if (f.kind === 'esfas' && !anyEsfas) anyEsfas = f.id;
+        if (f.id === 'sg_lolo_level') sgLolo = true;   /* the bistable's second consumer */
       }
       out.push({
         id: f.id, name: f.name, kind: f.kind, available: available,
@@ -430,6 +499,15 @@
     /* LATCH. A reactor trip and a safety injection both latch in a real plant until reset. */
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
     if (anyEsfas && !pr.si) { pr.si = true; pr.si_cause = anyEsfas; }
+
+    /* THE AFW STARTS [sourced — the SGLL block]. Same latch law as si; evaluated AFTER the SI
+     * latch so a safety injection arriving this very step starts the MDAFW pumps this step.
+     * Lo-lo level starts BOTH pumps (the declared single-loop collapse); SI starts the
+     * motor-driven pumps ONLY. Reported here, acted on by the caller (HR5) — this module
+     * still starts nothing. */
+    if (sgLolo && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'sg_lolo_level'; }
+    if (sgLolo && !pr.afas_tdafw) { pr.afas_tdafw = true; pr.afas_tdafw_cause = 'sg_lolo_level'; }
+    if (pr.si && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }
 
     /* TURBINE-TRIP REACTOR TRIP, gated by P-9 [sourced] — Ginna TS Bases B 3.3.1 Function 14
      * (ML20339A221): "A reactor trip is automatically initiated on a turbine trip when it is
@@ -476,6 +554,10 @@
       runback: dtApproach,
       reactor_trip: pr.reactor_trip,
       si: pr.si,
+      afas_mdafw: pr.afas_mdafw,
+      afas_tdafw: pr.afas_tdafw,
+      afas_mdafw_cause: pr.afas_mdafw_cause,
+      afas_tdafw_cause: pr.afas_tdafw_cause,
       p10_met: p10Met,
       p7_met: drivers.power_frac >= P7.frac,
       p9_met: drivers.power_frac >= (drivers.steam_dumps_available === false
@@ -494,7 +576,7 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.protection = {
-    RPS: RPS, ESFAS: ESFAS, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
+    RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     PSIA_PER_MPA: PSIA_PER_MPA,
     functions: functions, leadLag: leadLag,
     createProtection: createProtection, stepProtection: stepProtection, reset: reset

@@ -100,6 +100,9 @@
     /* secondary + BOP */
     { id: 'steam_pressure',   src: 'steam_pressure_mpa',       tau_s: 0.5,  sigma: 0.01, range: [0, 12] },       /* [open] */
     { id: 'steam_flow',       src: 'steam_flow_normalized',    tau_s: 1.0,  sigma: 0.01, range: [0, 2.5] },      /* [open] venturi dP */
+    { id: 'sg_level',         src: 'sg_level_pct',             tau_s: 1.0,  sigma: 0.3,  range: [0, 100] },      /* [open] dP cell, pzr_level's class.
+                                                                  NARROW range on purpose: the lo-lo function's sourced LSSS is "a percent of narrow
+                                                                  range instrument span" (Ginna TS Bases B 3.3.2, ML20339A221). */
     { id: 'mwe_output',       src: 'mwe_output',               tau_s: 0.5,  sigma: 0.2,  range: [0, 120] },      /* [open] wattmeter */
     /* containment */
     { id: 'containment_pressure', src: 'containment_pressure_mpa', tau_s: 1.0, sigma: 0.001, range: [0, 2] }     /* [open] */

@@ -3179,3 +3179,93 @@ unchanged except the two shared fixes; the Indications tab renders the full chan
 over PWR2 with plant and physics columns live and honest dashes where PWR2 has no model.
 AUX FEED reading SECURED on PWR2 is **correct today** — `pwr2_afw` deliberately models no
 auto-start (its header says so); the AFAS actuation is on the finish list, not a display bug.
+
+## 62. THE AFW STARTS AND THE LO-LO TRIP — ONE BISTABLE, TWO CONSUMERS, AND THE PREMISE THAT EXPIRED — 2026-08-20
+
+*(OWNER RULINGS, 2026-08-20, this session: the next finish-list item is **AFW auto-start**
+["AFW auto-start (Recommended)" selected], and the steam-generator lo-lo level reactor trip is
+INCLUDED ["Include the trip rung too"] — the trip's "not buildable" declaration rested on an
+expired premise, below.)*
+
+**The sources, all in corpus, quoted at the build site** (`pwr2_protection.js`, the SGLL block):
+
+- Ginna UFSAR ch10 §10.5.3.1.3 (ML20339A040): *"The motor-driven preferred auxiliary feedwater
+  system pumps will start if one steam generator level decreases to a low-low level of 17%"*;
+  the TDAFW starts on BOTH steam generators lo-lo; *"Upon receipt of a safety injection signal,
+  the two motor-driven preferred auxiliary feedwater pumps will start"*; all pumps on loss of
+  offsite power; MDAFW start + turbine trip *"if both main feedwater pumps fail"*.
+- Ginna TS Bases B 3.3.1 Function 13 (ML20339A221) — the design's shape: the reactor-trip
+  Function *"also performs the Engineered Safety Feature Actuation System (ESFAS) function of
+  starting the AFW pumps on low low SG level"*. **One bistable, two consumers** — implemented
+  as ONE `sg_lolo_level` table row (kind rps) whose `tripping` also drives two new latches
+  `afas_mdafw`/`afas_tdafw`, not a twin row.
+- Ginna TS Bases B 3.3.2 (a): manual initiation is *"one switch for each pump"* — the facade
+  gains `afw_tdafw` (the `afw` command stays the MDAFW switch, back-compat).
+- Table 15.0-6 (15.2.6 loss of normal feedwater): trip *"0% NRS 2.0"*, AFW start *"0% NRS
+  60.0"*.
+
+**The setpoint decision, declared.** Two sourced values exist: the INSTALLED 17 % narrow-range
+span (ch10) and the 0 % narrow-range ANALYSIS limit (Table 15.0-6). The installed value is
+carried — this sim models the plant as operated (Hard Rule 9), the analysis figure is a bounding
+assumption, and NUREG-1431's "[30.4]%/[32.3]%" are bracketed placeholders, not numbers (the
+standing #380 trap). The ch10 "+13.9 % error... at a containment temperature of 286F" adder is
+deliberately not added. Delay: the table's 2.0 s; the 60.0 s AFW row is the analysis'
+pumps-AT-FULL-FLOW figure (a consequence delay, the same reading the module's SI 32.0 note
+records), and the no-spin-up pump model (declared in `pwr2_afw.js`) is therefore OPTIMISTIC
+against the analysis by that simplification's own width.
+
+**Declared adaptations and deferrals.** The single-loop collapse: one steam generator makes
+"one SG lo-lo" (MDAFW) and "both SGs lo-lo" (TDAFW) the same event — both pumps start on it;
+SI starts the MDAFW ONLY, the distinction that survives the collapse. Deferred with their
+sourced conditions recorded: loss-of-main-feed start (no main feed exists under feed ≡ steam —
+the feed-train work order owns it) and loss-of-offsite-power start (no electrical model).
+
+**The premise that expired.** The protection header declared the level trips *"Not buildable:
+...`pwr2_true_state.js` already declares `sg_level_pct` missing"* — written before Option B
+stage B1 adopted the sourced `sg_mass_map`, after which the shim emits a real narrow-range
+gauge. The rule's premise aged independently of the rule (#460's lesson), caught standing in
+the module's own header; the paragraph is rewritten, and the same sweep corrected the header's
+stale "P-9: no trip state" line (built §51). High-high level (feedwater regulator closure)
+stays unbuilt — there is no regulator valve under feed ≡ steam.
+
+**AFW flow was hydraulically inert, and now it is water.** `stepAFW` was computed and reported
+but never entered the steam generator (`stepSG` got `{feed: out, steam: out}` — the same
+variable). `stepSG` now takes the AFW as a SECOND, COLD stream (`afw_kgs`/`afw_h` — 70 °F
+(21 °C) CST water against the 435 °F (224 °C) main-feed enthalpy), and the facade hoists
+`stepAFW` above the SG step. Measured, both regimes (HR12):
+
+- **At the rated delivery**: SG mass **+326 kg in 60 s against ~326 predicted** from the two
+  sourced rated points power-scaled (5.44 kg/s = 12.0 lbm/s) — the merge, not the report.
+- **Manual MDAFW on the settled 100 % plant, 300 s, no trip**: steam pressure 808.2 →
+  802.9 psia (5.57 → 5.54 MPa, −5.3 psi), Tavg −0.4 °F (−0.2 °C), narrow-range level 65.0 →
+  69.5 %, no spurious actuation — the pure cold-stream suppression, modest at one pump.
+
+**The lying-gauge payoff, both ways** (the only route to lo-lo today — feed ≡ steam freezes
+true SG mass, so the physics side arrives with the feed-train item): fail the new `sg_level`
+channel LOW on the settled healthy plant (2227 psia / 15.35 MPa, 99.8 %, true level 65.0 %)
+and at exactly the sourced **2.0 s** the reactor trips (`sg_lolo_level`) AND both pumps start
+at full delivery, true level healthy throughout; fail `primary_pressure` LOW instead and the
+§55 defense-in-depth chain gains its sourced AFW leg — SI at 2.0 s, MDAFW starts with cause
+`si`, TDAFW stays secured. Latch law is SI's: securing an actuated pump is refused while the
+latch stands; `reset_protection` clears the latches WITHOUT securing the pumps (clearing a
+latch is not securing a pump); each pump's own switch works after.
+
+**The board reads STANDBY, and the defect that took was in SHARED code.** The AUX FEED word
+needs `automation.esf.afw === 'auto'`; PWR2's config now lists the one esf arm —
+UNDISARMABLE (`commands: []`; the engine's AFAS is not defeatable, so a flippable arm would be
+duplicate authority; the board's only AFW arm control sends `auto: true`). The headless probe
+then found the kernel's channel-less `getAutomationState` fast path returned `{channels: []}`
+WITHOUT the esf dict — a path only PWR2's config shape (esf_systems, no channels) can reach,
+so no current-engine gate could ever see it, and the tile read SECURED over an armed AFAS.
+Fixed with `_attachEsf` on both paths (`control_kernel.js`), pinned in `run_pwr2_shell` at the
+exact stack seam, M4 green after (46/46 suites, 311 checks). `true_state` also gains the house
+demand/delivery split (#200/#329/#332): `afw_pump_running` is DEMAND, `afw_active` delivery —
+before, both keyed `total_kgs > 0` and a demanded pump with zero availability read SECURED.
+
+**Gates**: `run_pwr2_protection` 79 → **90** (44 mutations — setpoint drift toward the
+analysis limit, zeroed delay, row deletion, consumer disconnect, SI→TDAFW cross-wire,
+SI→MDAFW drop, reset leaving latches, all caught) · `run_pwr2_engine` 26 → **33** (21
+mutations, new group E) · `run_pwr2_instruments` 16 → **17** (15 channels; deletion mutation)
+· `run_pwr2_true_state` 59 → **60** · `run_pwr2_shell` 23 → **25** (12 mutations) ·
+`run_pwr2_sg` 25 and `run_pwr2_afw` 19 unchanged · contract guard 177 OK · headless: zero
+console errors on both engines, AUX FEED inputs correct on both.
