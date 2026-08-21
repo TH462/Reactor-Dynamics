@@ -361,10 +361,16 @@
     put('plant_mode', atPower ? 1 : 3);
     put('plant_mode_name', atPower ? 'At Power' : 'Hot Standby');
 
-    /* --- feed train: the facade runs feed = steam (pwr2_sg is fed what leaves), so the
-     * feed-side flows ARE the steam-side flows, stated rather than re-derived --- */
-    put('fw_flow_normalized',        ts.steam_out_total);
-    put('condensate_flow_normalized', ts.steam_out_total);
+    /* --- feed train (REAL since 2026-08-21 — pwr2_feedwater retired feed ≡ steam): the
+     * delivered main-feed fraction from the module, plus AFW on the same rated-steam scale
+     * (the current engine's fw_flow convention: main + auxiliary). A caller with no
+     * feedwater result simply does not get the fields — the shim's absent-system rule. --- */
+    if (ctx.feedwater && ctx.feedwater.feed_frac !== undefined) {
+      var afwN = (aw.total_kgs !== undefined && ctx.rated_steam_kgs > 0)
+                 ? aw.total_kgs / ctx.rated_steam_kgs : 0;
+      put('fw_flow_normalized',        ctx.feedwater.feed_frac + afwN);
+      put('condensate_flow_normalized', ctx.feedwater.feed_frac);
+    }
     put('condensate_pump_running',   ctx.condenser_available === true);
 
     /* --- NIS display channels [adopted]: cps = k_sr*P, amps = k_ir*P with the current

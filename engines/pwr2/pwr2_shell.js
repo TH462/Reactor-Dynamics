@@ -86,6 +86,19 @@
     set_lpi:           function (e, c) { EN.command(e, 'lhsi', c.running !== false); },
     set_afw:           function (e, c) { EN.command(e, 'afw', c.running !== false); },
     set_afw_flow:      function (e, c) { EN.command(e, 'afw', (c.normalized !== undefined ? c.normalized : 1) > 0); },
+    /* THE FEED TRAIN (2026-08-21, pwr2_feedwater) — the old refusals retired. Payload shapes
+     * are the current engine's: pct 0-120, delta_pct, {active}. */
+    set_feed_pump_speed: function (e, c) { EN.command(e, 'feed_manual_frac', (c.pct !== undefined ? c.pct : 100) / 100); },
+    set_feedwater_flow:  function (e, c) { EN.command(e, 'feed_manual_frac', (c.pct !== undefined ? c.pct : 100) / 100); },
+    feed_pump_nudge:     function (e, c) {
+      EN.command(e, 'feed_manual_frac', e.fw.feed_frac + (c.delta_pct || 0) / 100);
+    },
+    set_feed_coupled:    function (e, c) { EN.command(e, 'feed_auto', c.active !== false); },
+    isolate_feedwater:   function (e, c) { EN.command(e, 'isolate_feedwater', c.active !== false); },
+    loss_of_feedwater:   function (e, c) {
+      EN.command(e, 'feed_pump_a', false); EN.command(e, 'feed_pump_b', false);
+    },
+    sg_overfeed:         function (e, c) { EN.command(e, 'feed_manual_frac', 1.2); },
     coast_down_pumps:  function (e, c) { EN.command(e, 'pump_trip', true); },
     stop_pump:         function (e, c) { EN.command(e, 'pump_trip', true); },
     set_steam_dump_setpoint: function (e, c) {
@@ -135,12 +148,16 @@
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
       else if (c.failure_id === 'rcp_trip') EN.command(e, 'pump_trip', true);
       else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip', true);
+      else if (c.failure_id === 'loss_of_feedwater') MAPPED.loss_of_feedwater(e, c);
       else throw new Error('pwr2_shell: failure "' + c.failure_id + '" REFUSED — not in ' +
         'PWR2\'s failure set yet (PORV stick, primary leak, instrument failures exist)');
     },
     clear_failure:    function (e, c) {
       if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', false);
       else if (c.failure_id === 'primary_leak') EN.command(e, 'break_close', true);
+      else if (c.failure_id === 'loss_of_feedwater') {
+        EN.command(e, 'feed_pump_a', true); EN.command(e, 'feed_pump_b', true);
+      }
       /* clearing an unknown failure is a no-op: there is nothing to clear */
     }
   };
@@ -166,13 +183,6 @@
     set_rhr:          'the RHR align command is owed (the #458-class SI refusal belongs with it); the module exists and reports',
     set_dhr:          'an alias of set_rhr — the RHR align command is owed, module exists',
     set_rhr_hx:       'the RHR heat-exchanger split waits on the same owed align command',
-    set_feed_pump_speed: 'no feed train model — the SG is fed what leaves it, by construction',
-    set_feedwater_flow:  'no feed train model — the SG is fed what leaves it, by construction',
-    feed_pump_nudge:  'no feed pump model to nudge (feed = steam by construction)',
-    set_feed_coupled: 'no three-element feed controller — feed = steam by construction',
-    isolate_feedwater: 'no feed train model, so no isolation valve to shut either',
-    loss_of_feedwater: 'no feed train model to lose — the SG is fed what leaves it',
-    sg_overfeed:      'no feed train model, so nothing can overfeed the generator',
     set_steam_demand: 'the turbine is dispatched by load target only',
     open_msiv:        'no MSIV model — the line is always open (registered static)',
     close_msiv:       'no MSIV model — the steam line has no isolation valve to shut',
@@ -250,7 +260,7 @@
     ex.afw_block_open = true;                       /* no AFW block valve is modeled */
     ex.accum_valve_open = true;                     /* matches control_state.accumulator_valve_open */
     ex.safety_relief_active = !!e.pz.safetyOpen;
-    ex.mfw_isolated = false;                        /* feed ≡ steam: no MFW isolation exists */
+    ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
     ex.boron_sample = null; ex.boron_sample_pending = false; ex.boron_sample_seq = 0;
     /* COMMANDED, not the disc: pz.porvOpen is the controller/operator command and porvStuck
      * stays out of it — this is the TMI-2 indicator lie, kept exactly (HR1) */
@@ -297,7 +307,7 @@
            * threw at boot); keep only the levers the class can actually inject */
           /* the menu = the defs the class can honestly HOST from the pwr table (there is
            * no 'primary_leak' def — the leak arrives as a command, not a menu row) */
-          var keep = ['stuck_porv_open', 'rcp_trip', 'turbine_trip'], out = {};
+          var keep = ['stuck_porv_open', 'rcp_trip', 'turbine_trip', 'loss_of_feedwater'], out = {};
           keep.forEach(function (id) {
             if (base.failures && base.failures[id]) out[id] = base.failures[id];
           });
@@ -312,6 +322,7 @@
     var out = [];
     if (this.eng.pz.porvStuck) out.push('stuck_porv_open');
     if (this.eng.brk && this.eng.brk.open) out.push('primary_leak');
+    if (!this.eng.fw.pumpA && !this.eng.fw.pumpB) out.push('loss_of_feedwater');
     var f = this.eng.ins.failure;
     Object.keys(f).forEach(function (id) { if (f[id]) out.push('instrument:' + id); });
     return out;
@@ -353,11 +364,10 @@
       letdown_flow_normalized: e.cv.letdownOpen,
       charging_pump_running: true,
       cvcs_auto: this.eng._plcsAuto !== false,
-      /* no feed pump exists (feed = steam by construction); the honest gauge presentation is
-       * the coupled-feed one — "speed" tracking what the train actually delivers. The board
-       * reads this key in five places (measured), so absence would blank real tiles. */
-      feed_pump_speed_pct: ts.steam_flow_normalized !== undefined
-        ? Math.min(110, ts.steam_flow_normalized * 100) : 0,
+      /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
+       * "speed" gauge presentation the board's five reader tiles expect (measured) */
+      feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),
+      feed_coupled: e.fw.auto === true,
       condensate_pump_running: ts.condensate_pump_running === true,
       steam_demand_mwe: e.tb.load_target_mwe,
       load_mode: 'manual',
@@ -424,7 +434,7 @@
     });
     var body = {
       sys: e.sys, rx: e.rx, sg: e.sg, tb: e.tb, rl: e.rl, cd: e.cd, dc: e.dc, cv: e.cv,
-      ec: e.ec, aw: e.aw, dm: e.dm, pt: e.pt, pz: e.pz, ctm: e.ctm, rh: e.rh,
+      ec: e.ec, aw: e.aw, fw: e.fw, dm: e.dm, pt: e.pt, pz: e.pz, ctm: e.ctm, rh: e.rh,
       brk: e.brk || null,
       ins: { noiseScale: e.ins.noiseScale, failure: e.ins.failure, channels: chs,
              reading: insReading },
@@ -436,6 +446,7 @@
         _rodStopSig: e._rodStopSig, _runbackSig: e._runbackSig, _rbT: e._rbT,
         _rbActive: e._rbActive, _pzRelief: e._pzRelief, _pzReliefH: e._pzReliefH,
         _Qox: e._Qox, _cdAvail: e._cdAvail, _plcsAuto: e._plcsAuto,
+        _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,
         advBlock: e.advBlock, cwPumps: e.cwPumps,
         pzDrivers: e.pzDrivers, dcDrivers: e.dcDrivers
@@ -454,7 +465,7 @@
     }
     var st = JSON.parse(JSON.stringify(saved.state));
     var e = this.eng;
-    ['sys', 'rx', 'sg', 'tb', 'rl', 'cd', 'dc', 'cv', 'ec', 'aw', 'dm', 'pt', 'pz', 'ctm', 'rh']
+    ['sys', 'rx', 'sg', 'tb', 'rl', 'cd', 'dc', 'cv', 'ec', 'aw', 'fw', 'dm', 'pt', 'pz', 'ctm', 'rh']
       .forEach(function (k) { e[k] = st[k]; });
     e.brk = st.brk || null;
     /* re-link 1: the pressurizer's seat on the conservation core */

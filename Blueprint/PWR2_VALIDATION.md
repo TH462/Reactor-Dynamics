@@ -3269,3 +3269,88 @@ mutations, new group E) · `run_pwr2_instruments` 16 → **17** (15 channels; de
 · `run_pwr2_true_state` 59 → **60** · `run_pwr2_shell` 23 → **25** (12 mutations) ·
 `run_pwr2_sg` 25 and `run_pwr2_afw` 19 unchanged · contract guard 177 OK · headless: zero
 console errors on both engines, AUX FEED inputs correct on both.
+
+## 63. THE FEED TRAIN — FEED ≡ STEAM RETIRED, AND THE R6 ROW RE-ADJUDICATED — 2026-08-21
+
+*(OWNER RULING, 2026-08-21: "Due next as recommended" — the feed train / steam-generator level
+dynamics, the largest remaining physics gap and the one A/B row the old engine won.)*
+
+**The build: `pwr2_feedwater.js`** — two main feed pumps, one regulating valve, the sourced
+three-element controller, feedwater isolation. Every structural element is a source's:
+
+- Ginna UFSAR ch10 (ML20339A040): *"the feedwater pump remaining in service will carry
+  approximately 60% of full load feedwater flow. If both main feedwater pumps fail, the
+  turbine will be tripped and the motor-driven auxiliary feedwater pumps (MDAFW) will start
+  automatically. If the reactor is operating above 50% of full power at this time, the
+  reactor will trip."* — the pump sizing AND the whole loss-of-both consequence chain.
+- WTSM 11.1 (ML11223A293) — the steam generator water level control chapter, located in
+  corpus this session (it was the unnamed accession between the steam-dump and EHC chapters):
+  the three elements verbatim (steam flow vs feed flow → the flow error; the level *"first
+  conditioned by a lag unit"* so shrink/swell cannot mask inventory; the level PI whose
+  *"time constant associated with the integral portion ... is two minutes"*; the total error
+  positioning the valve). WAT 05 (ML11216A094) §5.3.2 gives the lag: **5 seconds**.
+- Ginna ch15 Table 15.0-6: *"Feedwater Isolation Delay from SI ... 32.0"*.
+- **The program level is the ruled 65 % narrow range** (#355, adopted — it is the adopted
+  mass map's own reading at nominal inventory, so the at-power plant holds Ginna's 85,359
+  lbm). Ginna ch15 note (g)'s *"constant 52% narrow range span"* is DECLINED, declared: the
+  accident analyses' modeling value, not the operating program, and adopting it would
+  un-anchor the map's nominal-mass knot.
+- Declared simplifications: no feed-pump speed control (nothing for it to protect without a
+  valve-wear model — the valve rides ~0.83 at rated instead of mid-travel), constant feed
+  enthalpy, one lumped valve. Gains [tune], arbitrated by the stability pass.
+
+**Shrink and swell stays INSTRUMENT-SIDE, and both prior rulings stand.** WAT 05 §5.2.3: the
+downcomer level moves with steam-flow changes while *"the change in indicated level is not due
+to a change in steam generator inventory"* — and *"the wide range level indication is
+generally not affected."* D3 §3's lumped-SG ruling therefore stands (the mass ledger carries
+no swell), and the A/B pre-registration A9 ("reproduce exactly — it is an instrument effect")
+is honored by ADOPTING the current engine's term verbatim (swell_factor 0.8 × 2-s-smoothed
+dPower/dt) onto PWR2's own `sg_level` channel via a new extras.shift hook — so the RPS, the
+feed controller, and the board all see the same downcomer story. Measured: a scram shrinks the
+indicated level **19.5 points below true** in the first 10 s.
+
+**The mass ledger is finally driven, and the plant holds itself** (HR12, all measured):
+- Settled 900 s: 2227 psia (15.35 MPa), 99.9 %, level riding 64.4–66.0 % narrow range on the
+  65 % program, valve 0.76–0.91 — no retune of any other system.
+- The A/B load swing (100 → 70 MWe): TRUE level transients 58.0 → 66.9 % and comes home to
+  64.7 — the transient feed ≡ steam suppressed by construction.
+- **One feed pump at 100 %**: the ch10 60 % ceiling against full steaming boils the SG down
+  to a REAL lo-lo — reactor trip + both AFW starts at **97.6 s**, on physics, where until
+  yesterday only a lying gauge could reach 17 %. The recovery is held honest by an
+  **anti-windup pair the smoke ride proved load-bearing**: without it the level PI banked
+  ~100 s of +40 % error and the discharge refilled the SG to 100 % NR / 17,033 kg
+  (37,600 lbm); with the rail-inhibit + a 0.25-flow-fraction cap the refill tops out below
+  15,000 kg. The windup defect is the session's recorded trap.
+- **Both pumps**: the whole ch10 sentence executes — turbine trips at once, P-9 makes it a
+  reactor trip, the MDAFW starts on `loss_of_main_feed`, and the level stabilizes at 53 %
+  without ever reaching lo-lo (the TDAFW correctly never starts).
+- **SI**: main feed isolates at 34.0 s = 2 s SI + the sourced 32 s, through the facade wire.
+- **Hi-hi (P-14 class), built with the valve it closes**: a manual overfeed walks indicated
+  level to 90 % in ~98 s → the new kind-'fwi' protection row latches, main feed isolates AND
+  the turbine trips (*"to protect the turbine against excessive moisture carryover"*, WTSM
+  3.2). Installed 0.90 [adopted — the current engine's P-14 value]; analysis row Table
+  15.0-6's "100% NRS 22.0" (the 22.0 read as an at-closure consequence figure, the module's
+  SI-32.0 precedent).
+
+**R6 RE-ADJUDICATED — the mechanism gap is closed, and the residual is the FIXTURE.** The
+harness's steady ride now reads `sg_level_pct` max |Δ| **1.03 points** (mean 0.35). The load
+ride still prints max 41.3 — and full-stack measurement shows why that number cannot be read
+as a plant gap any more: the A-side fixture runs the old engine WITHOUT its automation
+channels (engageDefaults is M5's), so its `feed_sg` three-element channel — the level backbone
+the shipped plant always has — is not running, and its follow-mode feed steps to the new load
+target instantly. The SHIPPED old plant on the same maneuver (measure_stack, full stack)
+swings **63.5–67.8 %**; PWR2 swings 58.0–66.9. The two plants now agree to a few points at
+their shipped lineups; the 41 is the #209 layer caveat surfacing inside the A/B harness's own
+fixture. The remaining sg_level divergences on the casualty rides (turbine trip 20.1, stuck
+PORV 39.8, SBLOCA 32.2) ride on the same automation-less A fixture plus PWR2's new SI
+feedwater isolation, and are findings for a future pass, not re-adjudicated here.
+
+**The shell follows**: the seven feed refusals retired to MAPPED (speed/flow/nudge/couple/
+isolate/loss/overfeed, the current engine's payload shapes), `loss_of_feedwater` joins the
+failure menu (3 → 4), `mfw_isolated` and `feed_pump_speed_pct` read the real module, and the
+`fw` state + the two swell scalars join the bit-exact save.
+
+**Gates**: `run_pwr2_feedwater` NEW 24 checks / 12 mutations · `run_pwr2_protection` 90 → 95
+/ 49 · `run_pwr2_engine` 33 → 41 / 26 (group F) · `run_pwr2_true_state` 60 → 61 (the
+feed-≡-steam identity cannot sneak back) · `run_pwr2_shell` 25 → 27 / 12 ·
+`run_pwr2_loadfollow` 36 / 8 (stepSG anchors carried) · full sweep at baseline.

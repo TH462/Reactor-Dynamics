@@ -27,7 +27,7 @@ var SRC = fs.readFileSync(LIB, 'utf8').replace(/\r\n/g, '\n');
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_sources',
  'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_cvcs', 'pwr2_eccs', 'pwr2_rhr', 'pwr2_break', 'pwr2_containment', 'pwr2_condenser',
- 'pwr2_afw', 'pwr2_damage', 'pwr2_protection', 'pwr2_pressurizer'
+ 'pwr2_afw', 'pwr2_damage', 'pwr2_protection', 'pwr2_pressurizer', 'pwr2_feedwater'
 ].forEach(function (f) { require(path.join(E, f + '.js')); });
 var RD = globalThis.RD.pwr2, W = RD.water, S = RD.sources;
 
@@ -99,6 +99,9 @@ function runSuite(TS, rec, quiet) {
      * (not part of ctx) exercises the injecting branch separately, below. */
     var ecc = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }), sys, 0.02);
     var awf = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true }), 0.02);
+    /* the feed train at its own steady point: on-program level, feed matching steam */
+    var fwf = RD.feedwater.stepFeedwater(RD.feedwater.createFeedwater({}), 0.02,
+      { sg_level_pct: 65.0, steam_flow_frac: 1.0, fw_flow_frac: 1.0, si_active: false });
     /* DAMAGE, driven at the plant's OWN temperatures -- a healthy core, so every latch reads
      * false because it EARNED false and not because nothing was wired. The damaged branch is
      * exercised separately below. */
@@ -117,6 +120,7 @@ function runSuite(TS, rec, quiet) {
     var pzr = RD.pressurizer.stepPressurizer(pzo, sys, 0.02, {});
     var ctx = { sys: sys, reactor: r, sg: sr, turbine: tr, relief: rr, cvcs: cv, rhr: rh,
                 break_: brk, containment: ctr, condenser: cnd, eccs: ecc, afw: awf,
+                feedwater: fwf,
                 damage: dmg, protection: prt, pressurizer: pzr,
                 boron_ppm: 700, rated_steam_kgs: rated, mdot_rated: 1630, natcirc_frac: 0.15,
                 M_nominal: sys.M_total,
@@ -360,6 +364,19 @@ function runSuite(TS, rec, quiet) {
               t2.afw_flow_normalized === 0;
      })(),
      'run light = demand, flow = delivery');
+  /* THE FEED REWIRE (2026-08-21): fw_flow used to BE steam_out_total by construction — a
+   * half-flow feedwater result must now read ~0.5 while the steam side stays where it is,
+   * or the shim is still wearing the retired identity. */
+  ck('fw_flow_normalized reads the FEED MODULE, not the steam side (feed ≡ steam retired)',
+     (function () {
+       var half = { feed_frac: 0.5, demand_frac: 0.5, valve: 0.4, capacity_frac: 1.2,
+                    isolated: false, main_feed_lost: false };
+       var t3 = TS.buildTrueState(Object.assign({}, B.ctx, { feedwater: half }));
+       return Math.abs(t3.condensate_flow_normalized - 0.5) < 1e-9 &&
+              t3.fw_flow_normalized > 0.5 &&          /* + the fixture's running AFW train */
+              Math.abs(t3.steam_out_total - B.ts.steam_out_total) < 1e-9;
+     })(),
+     'feed half, steam whole — two different numbers at last');
   ck('afw_blocked is a REGISTERED STATIC; afw_discharge is SUPPLIED at the SG it feeds',
      ts.afw_blocked === false && !!TS.STATIC.afw_blocked &&
      ts.afw_discharge_pressure_mpa !== undefined &&

@@ -18,7 +18,7 @@ var ORDER = ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_lo
   'pwr2_kinetics', 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine',
   'pwr2_relief', 'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage',
   'pwr2_protection', 'pwr2_pressurizer', 'pwr2_dumpctl', 'pwr2_break', 'pwr2_containment', 'pwr2_rhr',
-  'pwr2_true_state', 'pwr2_instruments'];
+  'pwr2_true_state', 'pwr2_instruments', 'pwr2_feedwater'];
 
 function loadAll(engSource, coreSource) {
   ORDER.forEach(function (f) {
@@ -37,7 +37,8 @@ function loadAll(engSource, coreSource) {
 
 /* runSuite(RD, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
  * can see that mutation: 'A' equivalence/door/pushbutton (one engine chain), 'B' the
- * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3).
+ * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
+ * 'E' the AFW starts, 'F' the feed train.
  * The CLEAN pass runs everything. Measured before this existed: 17 mutations x the whole
  * suite = 1074 s of contention in the aggregate gate — the replay cost scales with every
  * fixture ever added, and a mutation only needs the checks built to see it. */
@@ -429,13 +430,29 @@ function runSuite(RD, rec, quiet, only) {
       ts8.afw_pump_running === true && ts8.afw_flow_normalized > 0.99,
       'cause ' + eng8.pt.trip_cause + ', flow ' + ts8.afw_flow_normalized.toFixed(2) +
       ', true level was healthy the whole time');
-  var sgMafter5 = eng8.sg.mass;
-  run(eng8, 60);
+  /* isolate MAIN feed for the mass window: since the feed train landed (2026-08-21) the
+   * three-element controller believes the same lying gauge and drives the valve full open —
+   * measured +11,558 kg in 60 s with main feed swamping the AFW term this check names.
+   * (That response is itself correct physics — the controller-believes-the-lie payoff.) */
+  EN.command(eng8, 'isolate_feedwater', true);
+  /* 5 pump taus: the valve was RAILED open on the lie (capacity 1.2 = 198 kg/s), and a 20 s
+   * drain left a ~130 kg decaying tail inside the window — measured as "AFW delivered 440
+   * of 326". The tail is the module's own 8 s lag working; the fixture just has to outwait it. */
+  run(eng8, 40);
+  var sgMafter5 = eng8.sg.mass, steamKg = 0, ts8x = null;
+  for (var k8 = 0; k8 < 60 / DT; k8++) {
+    ts8x = EN.step(eng8, DT);
+    steamKg += (ts8x.steam_out_total || 0) * eng8.rated_steam * DT;   /* the dump draw */
+  }
   var dM60 = eng8.sg.mass - sgMafter5;
-  /* rated AFW: (170 + 340) gpm x 300/1775 = 86.2 gpm = 5.44 kg/s -> ~326 kg in 60 s */
-  ckT('...and the water is REAL: SG mass rises at the rated delivery, not just a lamp',
-      dM60 > 260 && dM60 < 400,
-      '+' + dM60.toFixed(0) + ' kg in 60 s against ~326 expected — the merge, not the report');
+  EN.command(eng8, 'isolate_feedwater', false);
+  /* rated AFW: (170 + 340) gpm x 300/1775 = 86.2 gpm = 5.44 kg/s -> ~326 kg in 60 s. The
+   * window measures NET mass, and post-trip the dumps still draw (measured +144 net under
+   * ~180 kg of dump steam), so the AFW term is net + steam — asserted directly. */
+  ckT('...and the AFW water is REAL: net mass + the dump draw equals the rated delivery',
+      Math.abs(dM60 + steamKg - 326) < 60,
+      'net +' + dM60.toFixed(0) + ' kg, dumps drew ' + steamKg.toFixed(0) +
+      ' kg -> AFW delivered ~' + (dM60 + steamKg).toFixed(0) + ' of ~326 expected');
   EN.command(eng8, 'afw', false);
   run(eng8, 1);
   ckT('the operator CANNOT secure an actuated pump while the latch stands',
@@ -464,6 +481,104 @@ function runSuite(RD, rec, quiet, only) {
   ckT('a safety injection starts the motor-driven pump ONLY (ch10\'s distinction, kept)',
       eng9.pt.si === true && eng9.aw.mdafwRunning === true && eng9.aw.tdafwRunning === false,
       'si ' + eng9.pt.si + ', mdafw ' + eng9.aw.mdafwRunning + ', tdafw ' + eng9.aw.tdafwRunning);
+  /* ...and the same SI, held the sourced 32 s, ISOLATES main feed (Table 15.0-6; the delay
+   * itself is pinned at the module gate — here the WIRE) */
+  run(eng9, 40);
+  ckT('...and the held SI isolates main feedwater through the facade wire',
+      eng9.fw.isolated === true && eng9.fw.feed_frac < 0.05,
+      'isolated ' + eng9.fw.isolated + ', delivered ' + eng9.fw.feed_frac.toFixed(3));
+  }
+
+  if (grp('F')) {
+  /* ---- 5. THE FEED TRAIN (2026-08-21) — feed ≡ steam retired, the casualties end to end ----
+   * The R6 arc: real feed dynamics move the TRUE mass ledger. Rides are long because a
+   * boil-down is long; the quiet replays shorten the settle, not the casualty. */
+  head('THE FEED TRAIN  [the mass ledger is finally driven; the feed casualties run whole]');
+  var engA = EN.createEngine({});
+  var tsA = run(engA, SETTLE);
+  ckT('the three-element controller HOLDS the ruled 65 % program at power',
+      Math.abs(tsA.sg_level_pct - 65) < 3 && Math.abs(tsA.fw_flow_normalized - 1.0) < 0.06 &&
+      engA.fw.valve > 0.6 && engA.fw.valve < 1.0,
+      'level ' + tsA.sg_level_pct.toFixed(1) + ' %, fw ' + tsA.fw_flow_normalized.toFixed(2) +
+      ', valve ' + engA.fw.valve.toFixed(2));
+  /* THE LOAD SWING — the exact A/B ride (100 -> 70 MWe). The TRUE level must transient and
+   * return: the R6 divergence PWR2 used to suppress by construction. */
+  EN.command(engA, 'load_mwe', 70);
+  var lmin = 100, lmax = 0, tsw = null;
+  for (var kf = 0; kf < (quiet ? 300 : 600) / DT; kf++) {
+    tsw = EN.step(engA, DT);
+    if (tsw.sg_level_pct < lmin) lmin = tsw.sg_level_pct;
+    if (tsw.sg_level_pct > lmax) lmax = tsw.sg_level_pct;
+  }
+  ckT('a 30 MWe swing moves the TRUE level several points and the controller brings it home',
+      (lmax - lmin) > 3 && Math.abs(tsw.sg_level_pct - 65) < 4,
+      'range ' + lmin.toFixed(1) + '-' + lmax.toFixed(1) + ' %, settled ' +
+      tsw.sg_level_pct.toFixed(1) + ' — feed ≡ steam read a flat line here');
+  /* ONE PUMP: the ch10 60 % ceiling against 100 % steaming — a real boil-down to the lo-lo
+   * bistable, the trip + both AFW starts arriving on PHYSICS for the first time (until now
+   * only a lying gauge could reach 17 %). */
+  var engB = EN.createEngine({});
+  run(engB, SETTLE);
+  EN.command(engB, 'feed_pump_a', false);
+  var tTripB = null, tsB = null;
+  for (var kb = 0; kb < 200 / DT; kb++) {
+    tsB = EN.step(engB, DT);
+    if (tTripB === null && engB.pt.reactor_trip) { tTripB = kb * DT; }
+  }
+  ckT('one feed pump at full power boils the SG down to a REAL lo-lo trip + both AFW starts',
+      tTripB !== null && engB.pt.trip_cause === 'sg_lolo_level' &&
+      engB.pt.afas_mdafw === true && engB.aw.mdafwRunning === true &&
+      engB.aw.tdafwRunning === true,
+      'trip at ' + (tTripB === null ? 'never' : tTripB.toFixed(1) + ' s') + ' (measured 97.6 s ' +
+      'from the settled plant), cause ' + engB.pt.trip_cause);
+  run(engB, quiet ? 100 : 200);
+  ckT('...and the recovery does NOT overfill — the anti-windup pair holds the refill honest',
+      engB.sg.mass < 15000,
+      'SG mass ' + engB.sg.mass.toFixed(0) + ' kg (the pre-fix windup refilled to 17,033)');
+  /* BOTH PUMPS: the sourced chain whole — "the turbine will be tripped and the MDAFW will
+   * start automatically. If the reactor is operating above 50% of full power at this time,
+   * the reactor will trip" — turbine trip, P-9 reactor trip, MDAFW on the loss. */
+  var engC = EN.createEngine({});
+  run(engC, quiet ? 60 : SETTLE);
+  EN.command(engC, 'feed_pump_a', false); EN.command(engC, 'feed_pump_b', false);
+  var tsC = run(engC, 5);
+  ckT('loss of BOTH pumps: turbine trips, P-9 trips the reactor, the MDAFW starts on the loss',
+      engC.tb.tripped === true && engC.pt.reactor_trip === true &&
+      engC.pt.trip_cause === 'turbine_trip' &&
+      engC.pt.afas_mdafw === true && engC.pt.afas_mdafw_cause === 'loss_of_main_feed',
+      'the whole ch10 sentence, executed');
+  /* HI-HI: an overfeed walks the level to the P-14 class function — main feed isolated AND
+   * the turbine tripped (moisture carryover), while the AFW path stays open. */
+  var engD = EN.createEngine({});
+  run(engD, quiet ? 60 : SETTLE);
+  EN.command(engD, 'feed_manual_frac', 1.2);
+  var tFwi = null, tsD = null;
+  for (var kd = 0; kd < 400 / DT; kd++) {
+    tsD = EN.step(engD, DT);
+    if (tFwi === null && engD.pt.fwi) { tFwi = kd * DT; break; }
+  }
+  ckT('a manual overfeed reaches hi-hi: fwi latches, main feed isolates, the turbine trips',
+      tFwi !== null && engD.fw.isolated === true && engD.tb.tripped === true &&
+      engD.pt.fwi_cause === 'hi_hi_sg_level',
+      tFwi === null ? 'never reached hi-hi in 400 s'
+                    : 'fwi at ' + tFwi.toFixed(1) + ' s, indicated level ' +
+                      (engD.ins.reading.sg_level || 0).toFixed(1) + ' %');
+  /* THE SHRINK, on the indicated channel only: at engC's trip the power collapse shifts the
+   * INDICATED level below TRUE (swell_factor x power rate, the adopted instrument-side
+   * term) — the mass ledger does not move that fast. */
+  var engE2 = EN.createEngine({});
+  run(engE2, quiet ? 60 : 120);
+  EN.command(engE2, 'scram', true);
+  var maxGap = 0;
+  for (var ke = 0; ke < 10 / DT; ke++) {
+    var tsE2 = EN.step(engE2, DT);
+    var gap = tsE2.sg_level_pct - engE2.ins.reading.sg_level;
+    if (gap > maxGap) maxGap = gap;
+  }
+  ckT('a scram SHRINKS the indicated level below true — the downcomer effect, instrument-side',
+      maxGap > 3,
+      'max true-minus-indicated ' + maxGap.toFixed(1) + ' points in the first 10 s — A9\'s ' +
+      'effect reproduced on PWR2\'s own channel');
   }
 }
 
@@ -548,7 +663,24 @@ var MUTATIONS = [
    '', { grp: 'E' }],
   ['the TDAFW switch is disconnected (one switch per pump, minus one)',
    "      case 'afw_tdafw':      eng.aw.tdafwRunning = !!value; break;",
-   '', { grp: 'E' }]
+   '', { grp: 'E' }],
+  /* THE FEED TRAIN (2026-08-21) */
+  ['feed ≡ steam quietly restored (the module computed, the SG fed what leaves it)',
+   'var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,',
+   'var sr = G.stepSG(eng.sg, tavg, dt, { feed: out, steam: out,', { grp: 'F' }],
+  ['loss of both pumps no longer trips the turbine (half the ch10 sentence)',
+   '    if (fwr.main_feed_lost) eng.tb.tripped = true;',
+   '', { grp: 'F' }],
+  ['the fwi latch is never consumed (hi-hi reports into a void)',
+   '    if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }',
+   '', { grp: 'F' }],
+  ['the SI wire to the feed module is cut (no isolation ever arrives)',
+   '      si_active: eng.pt.si\n    });\n    /* [sourced ch10]: "If both main feedwater pumps fail, the turbine will be tripped" —',
+   '      si_active: false\n    });\n    /* [sourced ch10]: "If both main feedwater pumps fail, the turbine will be tripped" —',
+   { grp: 'E' }],
+  ['the shrink/swell shift is dropped from the internal channel',
+   "    IN.stepInstruments(eng.ins, dt, ts, { shift: { sg_level: 0.8 * (eng._pwrRate || 0) } });",
+   '    IN.stepInstruments(eng.ins, dt, ts);', { grp: 'F' }]
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 

@@ -24,7 +24,7 @@ function loadAll(shellSource) {
    'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
    'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage', 'pwr2_protection',
    'pwr2_pressurizer', 'pwr2_dumpctl', 'pwr2_break', 'pwr2_containment', 'pwr2_rhr',
-   'pwr2_true_state', 'pwr2_instruments', 'pwr2_engine'].forEach(function (f) {
+   'pwr2_true_state', 'pwr2_instruments', 'pwr2_feedwater', 'pwr2_engine'].forEach(function (f) {
     delete require.cache[require.resolve(path.join(SRC, f + '.js'))];
     require(path.join(SRC, f + '.js'));
   });
@@ -117,9 +117,11 @@ function runSuite(SH, rec, quiet) {
      pc.trips.length === 0 && pc.actuations.length === 0 && pc.channels.length === 0 &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      pc.alarms === globalThis.RD.PWR_CONFIG.protection.alarms &&
-     Object.keys(pc.failures).length === 3 &&
-     !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip,
-     'M4 gets a shape it can hold with nothing that would command a plant it does not know');
+     Object.keys(pc.failures).length === 4 &&
+     !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
+     !!pc.failures.loss_of_feedwater,
+     'M4 gets a shape it can hold with nothing that would command a plant it does not know; ' +
+     'loss_of_feedwater joined the menu with the feed train (2026-08-21)');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
    * automation.esf.afw === 'auto' to say STANDBY, and the kernel only emits that for a
    * listed system — before this entry the tile read SECURED over an armed AFAS. commands
@@ -179,6 +181,18 @@ function runSuite(SH, rec, quiet) {
   var t80 = run(eng, quiet ? 40 : 60);
   ck('set_load_target moves the plant', Math.abs(t80.mwe_output - 80) < 2,
      t80.mwe_output.toFixed(1) + ' MWe');
+  /* THE FEED LEVERS (2026-08-21) — refusals retired; the wire proven with one round trip.
+   * pct 50 = 0.5 of rated through the old payload shape; re-coupled after so the rest of
+   * the suite inherits the AUTO lineup it states. */
+  eng.applyCommand({ action: 'set_feed_pump_speed', pct: 50 });
+  var tFd = run(eng, 20);
+  ck('set_feed_pump_speed lands: manual 50 % delivers ~0.5 and leaves auto',
+     eng.eng.fw.auto === false && Math.abs(eng.eng.fw.feed_frac - 0.5) < 0.05,
+     'delivered ' + eng.eng.fw.feed_frac.toFixed(3) + ', auto ' + eng.eng.fw.auto);
+  eng.applyCommand({ action: 'set_feed_coupled', active: true });
+  run(eng, quiet ? 20 : 40);
+  ck('set_feed_coupled restores the three-element controller',
+     eng.eng.fw.auto === true, '');
   ck('...and the reused gauges FOLLOW the maneuver (a frozen t=0 gauge reads the old point)',
      Math.abs(eng.getInstruments().tavg - t80.tavg_c) < 2.0,
      'ind ' + eng.getInstruments().tavg.toFixed(2) + ' vs true ' + t80.tavg_c.toFixed(2) +

@@ -37,13 +37,14 @@
   if (!RD || !RD.water || !RD.sources || !RD.reactor || !RD.sg || !RD.turbine || !RD.relief ||
       !RD.condenser || !RD.cvcs || !RD.eccs || !RD.afw || !RD.damage || !RD.protection ||
       !RD.pressurizer || !RD.dumpctl || !RD.break_ || !RD.containment || !RD.trueState ||
-      !RD.instruments) {
+      !RD.instruments || !RD.feedwater) {
     throw new Error('pwr2_engine: load the full pwr2 stack first (gate order, see any run_pwr2_*)');
   }
   var W = RD.water, S = RD.sources, R = RD.reactor, G = RD.sg, TB = RD.turbine, RL = RD.relief,
       CD = RD.condenser, CV = RD.cvcs, EC = RD.eccs, AW = RD.afw, DG = RD.damage,
       PT = RD.protection, PZ = RD.pressurizer, DC = RD.dumpctl, BK = RD.break_,
-      CT = RD.containment, TS = RD.trueState, IN = RD.instruments, RH = RD.rhr;
+      CT = RD.containment, TS = RD.trueState, IN = RD.instruments, RH = RD.rhr,
+      FWM = RD.feedwater;
 
   var TREF = 304.5, P0 = 15.41, RATED_KW = 300000, MWE_RATED = 100;
   function tLeg(sys, id) {
@@ -75,6 +76,7 @@
       cv: CV.createCVCS({ boron_ppm: boron0 }),
       ec: EC.createECCS({}),
       aw: AW.createAFW({}),
+      fw: FWM.createFeedwater({}),
       dm: DG.createDamage({}),
       pt: PT.createProtection({ blockLowFlux: true }),   /* a plant AT POWER blocks it — #460 */
       brk: null,
@@ -131,6 +133,21 @@
        * set_afw/set_afw_flow route here); 'afw_tdafw' is the turbine-driven pump's own. */
       case 'afw':            eng.aw.mdafwRunning = !!value; break;
       case 'afw_tdafw':      eng.aw.tdafwRunning = !!value; break;
+      /* THE FEED TRAIN (2026-08-21) */
+      case 'feed_auto':      eng.fw.auto = !!value; break;
+      case 'feed_manual_frac':
+        /* taking manual control IS leaving auto — the old engine's set_feed_pump_speed
+         * convention (it clears feed_auto_coupled); 0..1.2 of rated, the two-pump ceiling */
+        eng.fw.auto = false;
+        eng.fw.manual_frac = Math.max(0, Math.min(1.2, +value));
+        break;
+      case 'feed_pump_a':    eng.fw.pumpA = !!value; break;
+      case 'feed_pump_b':    eng.fw.pumpB = !!value; break;
+      case 'isolate_feedwater':
+        /* operator isolation AND the operator's reset; the SI-driven latch re-asserts on
+         * the next step if the sourced 32 s condition still stands */
+        eng.fw.isolated = !!value;
+        break;
       case 'cw_pumps':       eng.cwPumps = !!value; break;
       case 'pump_trip':      eng.sys.pumpTripped = true; break;
       case 'break_open':
@@ -152,6 +169,9 @@
         eng.pt.si = false; eng.pt.si_cause = null;
         eng.pt.afas_mdafw = false; eng.pt.afas_mdafw_cause = null;
         eng.pt.afas_tdafw = false; eng.pt.afas_tdafw_cause = null;
+        eng.pt.fwi = false; eng.pt.fwi_cause = null;
+        /* the FWI valve state stays isolated through the reset — clearing a latch is not
+         * re-opening a valve; isolate_feedwater false is the operator's restore */
         /* the AFW pumps KEEP RUNNING through the reset — clearing a latch is not securing a
          * pump; the operator stops each one with its own switch afterward */
         eng._manualTrip = false;   /* releasing the pushbutton is part of the reset */
@@ -274,13 +294,28 @@
       adv_block: eng.advBlock
     });
     var out = steam + rr.total_kgs;
+    /* THE FEED TRAIN (2026-08-21) — feed ≡ steam is RETIRED. Main feed is the module's
+     * delivered fraction of rated; the three-element controller reads the INDICATED
+     * channels (HR1, the §55 split — one step old, the house convention), and the SG's
+     * mass ledger is finally driven by a real imbalance. The A/B row this wins back is
+     * R6 (PWR2_VALIDATION.md §60). */
+    var rdF = eng.ins.reading;
+    var fwr = FWM.stepFeedwater(eng.fw, dt, {
+      sg_level_pct: rdF.sg_level,
+      steam_flow_frac: rdF.steam_flow !== undefined ? rdF.steam_flow : out / eng.rated_steam,
+      fw_flow_frac: rdF.fw_flow !== undefined ? rdF.fw_flow : eng.fw.feed_frac,
+      si_active: eng.pt.si
+    });
+    /* [sourced ch10]: "If both main feedwater pumps fail, the turbine will be tripped" —
+     * level, not edge, same as the reactor-trip→turbine wiring; P-9 then decides whether
+     * the reactor trips, which is the source's own ">50% of full power" clause. */
+    if (fwr.main_feed_lost) eng.tb.tripped = true;
     /* AFW steps BEFORE the SG so its delivery lands in this step's balance — it is the SG's
      * second, COLD feed stream (stepAFW reads only its own state, so the hoist is free).
-     * feed ≡ steam remains the MAIN-feed construction; AFW is additive on top of it, so a
-     * running train raises SG mass — the "merge, do not displace" rule the module's own
-     * header requires of its caller. */
+     * AFW is additive on top of main feed — the "merge, do not displace" rule the module's
+     * own header requires of its caller. */
     var awr = AW.stepAFW(eng.aw, dt);
-    var sr = G.stepSG(eng.sg, tavg, dt, { feed: out, steam: out,
+    var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,
                                           afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg });
     var tr = TB.stepTurbine(eng.tb, dt, { steam_kgs: steam, P_mpa: sr.P_sec,
                                           h_feed: G.SG.h_feed });
@@ -346,6 +381,9 @@
        * on the control side). One-step lag on cr, the house convention. */
       turbine_tripped: eng.tb.tripped,
       steam_dumps_available: eng._cdAvail !== false,
+      /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
+       * (breaker positions), the turbine_tripped convention, not an analog channel */
+      main_feed_lost: fwr.main_feed_lost,
       /* the delta-T pair's inputs: loop delta-T normalized to full-power delta-T, and Tavg.
        * DT0_C is [derived]: the plant's own measured full-power split at the design point
        * (606/550 degF, PWR2_VALIDATION.md sec 43) — 31.1 degC. Protection converts to the
@@ -370,6 +408,10 @@
      * which is the demand-heals-itself trap's guard). */
     if (ptr.afas_mdafw) eng.aw.mdafwRunning = true;
     if (ptr.afas_tdafw) eng.aw.tdafwRunning = true;
+    /* Hi-hi level feedwater isolation, same caller's-half law [sourced — protection's SGLL
+     * block]: close the regulating valve AND trip the turbine ("to protect the turbine
+     * against excessive moisture carryover", WTSM 3.2). Level-held while latched. */
+    if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }
 
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
      * up there via the relief tank; the tank itself is unmodelled, declared) */
@@ -389,6 +431,7 @@
       sys: sys, reactor: rrx, sg: sr, turbine: tr, relief: rr, cvcs: cvr,
       rhr: rhrR, break_: br || {}, containment: ctr, condenser: cr,
       eccs: ecr, afw: awr, damage: dr, protection: ptr, pressurizer: pzr,
+      feedwater: fwr,
       boron_ppm: cvr.boron_ppm, rated_steam_kgs: eng.rated_steam,
       mdot_rated: 1630, natcirc_frac: 0.15, M_nominal: eng.M_nominal,
       /* stage B1 ctx: contract-completion inputs */
@@ -413,8 +456,17 @@
     ts.pzr_surge_kgs = pzr.surge_kgs;
     ts.pzr_heater_kw = pzr.heater_kW;
     ts.oxidation_frac = dr.oxidation_frac;
-    /* the instruments read THIS step's truth; every consumer sees them NEXT step */
-    IN.stepInstruments(eng.ins, dt, ts);
+    /* the instruments read THIS step's truth; every consumer sees them NEXT step.
+     * The sg_level SHIFT is the downcomer shrink/swell — swell_factor × smoothed dPower/dt,
+     * [adopted tune] the current engine's pwr_instruments term (0.8, 2.0 s smoother)
+     * verbatim, which the A/B pre-registration A9 requires reproducing as an INSTRUMENT
+     * effect (true_state stays the mass ledger; D3 §3's lumped-SG ruling stands). */
+    if (dt > 0) {
+      var rawRate = eng._prevPower === undefined ? 0 : (ts.power_pct - eng._prevPower) / dt;
+      eng._pwrRate = (eng._pwrRate || 0) + (dt / (2.0 + dt)) * (rawRate - (eng._pwrRate || 0));
+    }
+    eng._prevPower = ts.power_pct;
+    IN.stepInstruments(eng.ins, dt, ts, { shift: { sg_level: 0.8 * (eng._pwrRate || 0) } });
     return ts;
   }
 

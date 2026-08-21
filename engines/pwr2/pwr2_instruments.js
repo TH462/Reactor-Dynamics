@@ -102,7 +102,10 @@
     { id: 'steam_flow',       src: 'steam_flow_normalized',    tau_s: 1.0,  sigma: 0.01, range: [0, 2.5] },      /* [open] venturi dP */
     { id: 'sg_level',         src: 'sg_level_pct',             tau_s: 1.0,  sigma: 0.3,  range: [0, 100] },      /* [open] dP cell, pzr_level's class.
                                                                   NARROW range on purpose: the lo-lo function's sourced LSSS is "a percent of narrow
-                                                                  range instrument span" (Ginna TS Bases B 3.3.2, ML20339A221). */
+                                                                  range instrument span" (Ginna TS Bases B 3.3.2, ML20339A221). The downcomer
+                                                                  shrink/swell SHIFT arrives via extras — see stepInstruments. */
+    { id: 'fw_flow',          src: 'fw_flow_normalized',       tau_s: 1.0,  sigma: 0.01, range: [0, 2.5] },      /* [open] venturi dP, steam_flow's class —
+                                                                  the three-element controller's element 3 (WTSM 11.1: flow error = steam − feed) */
     { id: 'mwe_output',       src: 'mwe_output',               tau_s: 0.5,  sigma: 0.2,  range: [0, 120] },      /* [open] wattmeter */
     /* containment */
     { id: 'containment_pressure', src: 'containment_pressure_mpa', tau_s: 1.0, sigma: 0.001, range: [0, 2] }     /* [open] */
@@ -145,11 +148,26 @@
     ins.failure[id] = null;
   }
 
-  /* stepInstruments(ins, dt, ts) — ts is a true_state-shaped object. Reads only. */
-  function stepInstruments(ins, dt, ts) {
+  /* stepInstruments(ins, dt, ts, extras) — ts is a true_state-shaped object. Reads only.
+   *
+   * extras.shift (optional): { channelId: value } added to the TRUE value before the lag —
+   * a MEASUREMENT-side displacement that is not instrument error and not in true_state.
+   * Its one user (2026-08-21): sg_level's downcomer shrink/swell. WAT 05 §5.2.3: the
+   * indicated (downcomer) level moves with steam-flow changes while inventory does not —
+   * "the change in indicated level is not due to a change in steam generator inventory" —
+   * and D3 §3 keeps the SG one lumped node, so the mass ledger cannot carry it. The
+   * current engine models it the same way (pwr_instruments swell_factor, [tune] 0.8 —
+   * ADOPTED by the facade), and the A/B pre-registration (A9) requires reproducing it as
+   * an instrument-side effect. Shift BEFORE the lag, the current engine's order. */
+  function stepInstruments(ins, dt, ts, extras) {
+    var shift = extras && extras.shift;
     CHANNELS.forEach(function (c) {
       var ch = ins.channels[c.id];
       var truth = ts[c.src];
+      if (shift && typeof shift[c.id] === 'number' && isFinite(shift[c.id]) &&
+          typeof truth === 'number') {
+        truth = truth + shift[c.id];
+      }
       if (typeof truth !== 'number' || !isFinite(truth)) {
         /* a missing true field is a WIRING defect, not a plant condition — hold the last
          * reading rather than emit NaN into every consumer, and leave the lag state alone */

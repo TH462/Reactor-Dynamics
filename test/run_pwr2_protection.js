@@ -54,6 +54,14 @@ function loadFrom(src) {
  * Ginna TS Bases B 3.3.1 Function 13 (ML20339A221) — one bistable, two consumers:
  *   "This Function also performs the Engineered Safety Feature Actuation System (ESFAS)
  *    function of starting the AFW pumps on low low SG level."
+ *
+ * THE FEED-TRAIN FUNCTIONS (2026-08-21):
+ * Ginna UFSAR ch10: "If both main feedwater pumps fail, the turbine will be tripped and the
+ *   motor-driven auxiliary feedwater pumps (MDAFW) will start automatically."
+ * Table 15.0-6: "High-High Steam Generator Water Level Feedwater Regulator Valve Closure
+ *   100% NRS 22.0" (analysis); WTSM 3.2 (ML11223A213): "a high-high steam generator level
+ *   turbine trip to protect the turbine against excessive moisture carryover". The INSTALLED
+ *   0.90 is [adopted] from the current engine's P-14 value.
  */
 var DOC = {
   hi_pzr_psia: 2425, lo_pzr_psia: 1775,
@@ -61,7 +69,7 @@ var DOC = {
   lo_flow: 0.87,
   si_pzr_psia: 1715.0, si_steam_psia: 327.7,
   steam_flow: 1.55,
-  lolo_frac: 0.17, d_lolo: 2.0,
+  lolo_frac: 0.17, d_lolo: 2.0, hihi_frac: 0.90, d_hihi: 2.0,
   hi_pzr_level: 0.87, p7_frac: 0.10,
   lead_s: 12.0, lag_s: 2.0,
   d_press: 2.0, d_flux: 0.5, d_flow: 1.0,
@@ -140,6 +148,8 @@ function runSuite(P, rec, quiet) {
   ck('low-low SG water level is the INSTALLED 17 %, not the 0 % analysis limit',
      P.SGLL.lolo_frac, DOC.lolo_frac, 1e-12, 'frac');
   ck('...with the table\'s 2.0 s trip delay', P.DELAY.sg_lolo_level, DOC.d_lolo, 0, 's');
+  ck('high-high SG water level is the adopted P-14 90 %', P.SGLL.hi_hi_frac, DOC.hihi_frac,
+     1e-12, 'frac');
   ck('the lead/lag is the table\'s 12/2', P.LEADLAG.lead_s / P.LEADLAG.lag_s,
      DOC.lead_s / DOC.lag_s, 1e-12, '(ratio)');
   /* THE CONVERSION HAPPENS ONCE AND MUST BE RIGHT. A psia setpoint compared against an MPa
@@ -255,6 +265,32 @@ function runSuite(P, rec, quiet) {
   ckT('...and a healthy plant held a minute latches neither start',
       (function () { var r = ride(atPower(), healthy(), 60);
                      return r.afas_mdafw === false && r.afas_tdafw === false; })(), '');
+  /* LOSS OF MAIN FEED [sourced ch10] — a STATE signal, so no delay row: the MDAFW start
+   * arrives with the breaker fact. TDAFW is NOT in the source's sentence and must not start. */
+  var prMF = atPower();
+  var sMF = healthy(); sMF.main_feed_lost = true;
+  var rMF = P.stepProtection(prMF, DT, sMF);
+  ckT('both main feed pumps lost starts the MDAFW (cause \'loss_of_main_feed\'), not the TDAFW',
+      rMF.afas_mdafw === true && rMF.afas_mdafw_cause === 'loss_of_main_feed' &&
+      rMF.afas_tdafw === false,
+      'a state signal — no analog channel, no hold time');
+
+  /* ---- HIGH-HIGH LEVEL -> FEEDWATER ISOLATION (kind \'fwi\' — its own latch) ------------- */
+  head('THE HIGH-HIGH  [P-14 class: not a reactor trip, not SI — the fwi latch]');
+  var prHH = atPower();
+  var rHH1 = ride(prHH, withReading('sg_level_frac', DOC.hihi_frac + 0.05), DOC.d_hihi - 0.5);
+  ckT('below the delay hi-hi asserts but latches nothing',
+      fn(rHH1, 'hi_hi_sg_level').asserted === true && rHH1.fwi === false, '');
+  var rHH2 = ride(prHH, withReading('sg_level_frac', DOC.hihi_frac + 0.05), 1.0);
+  ckT('past the delay the fwi latch stands with its cause — and NEITHER trip system fired',
+      rHH2.fwi === true && rHH2.fwi_cause === 'hi_hi_sg_level' &&
+      rHH2.reactor_trip === false && rHH2.si === false,
+      'a hi-hi is an actuation, not a scram; the turbine trip is the CALLER\'s half');
+  var rHH3 = ride(prHH, healthy(), 10);
+  ckT('the fwi LATCHES through recovery, and reset clears it',
+      rHH3.fwi === true &&
+      (function () { P.reset(prHH);
+                     return P.stepProtection(prHH, DT, healthy()).fwi === false; })(), '');
 
   /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19) ---------------------------------
    * WTSM 10.3.4.3: an AT-POWER trip, "only active if either reactor power or turbine power is
@@ -699,7 +735,20 @@ var MUTATIONS = [
    "    if (pr.si && !pr.afas_mdafw) { pr.afas_mdafw = true; pr.afas_mdafw_cause = 'si'; }",
    ''],
   ['reset leaves the AFW-start latches standing',
-   '    pr.afas_mdafw = false; pr.afas_tdafw = false;', '']
+   '    pr.afas_mdafw = false; pr.afas_tdafw = false;', ''],
+  /* THE FEED-TRAIN FUNCTIONS (2026-08-21) */
+  ['the hi-hi setpoint moved off the adopted 90 %',
+   '    hi_hi_frac: 0.90,', '    hi_hi_frac: 0.99,'],
+  ['the hi-hi row is DELETED (nothing stops an overfeed)',
+   "      { id: 'hi_hi_sg_level', name: 'High-high steam generator water level', kind: 'fwi', dir: +1,\n        sp: SGLL.hi_hi_frac, unit: 'frac', read: 'sg_level_frac', delay: DELAY.hi_hi_sg_level },",
+   ''],
+  ['the fwi latch is disconnected from its row',
+   '    if (anyFwi && !pr.fwi) { pr.fwi = true; pr.fwi_cause = anyFwi; }', ''],
+  ['the loss-of-main-feed start is dropped',
+   "    if (drivers.main_feed_lost && !pr.afas_mdafw) {\n      pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_main_feed';\n    }",
+   ''],
+  ['reset leaves the fwi latch standing',
+   '    pr.fwi = false;', '']
 ];
 
 /* ---- THE CLEAN-RUN GUARD ---------------------------------------------------------------- */

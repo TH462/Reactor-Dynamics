@@ -29,6 +29,41 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-21-backshop-a (#479 — the feed train: feed ≡ steam retired, R6 re-adjudicated)
+
+**The work order** *(OWNER RULING, 2026-08-21: "Due next as recommended" — the feed train /
+steam-generator level dynamics)*. Record: `Blueprint/PWR2_VALIDATION.md` §63. New module
+`engines/pwr2/pwr2_feedwater.js`: two 60 % pumps (ch10), one regulating valve, the WTSM 11.1
+three-element controller (flow error + 5 s-lagged level through a 2-minute-integral PI — both
+time constants sourced; WTSM 11.1 itself LOCATED in corpus this session: it was the unnamed
+ML11223A293), the ruled 65 % program (#355 adopted; Ginna ch15's 52 % NRS declined-declared),
+SI feedwater isolation behind the sourced 32.0 s, hi-hi (P-14 class) as a new kind-'fwi'
+protection row closing the valve it finally has + tripping the turbine, and the
+loss-of-main-feed MDAFW start + turbine trip (the whole ch10 sentence).
+
+- **Traps recorded**: (1) INTEGRAL WINDUP is a plant-shaped defect — a one-pump boil-down
+  banked ~100 s of +40 % level error and the discharge refilled the SG to 100 % NR /
+  17,033 kg after the trip; fixed with the anti-windup PAIR (rail-inhibit + 0.25-flow-frac
+  cap), both halves mutation-pinned SEPARATELY (the cap masks a deleted inhibit — measured
+  blind until the check asserted the pre-rail bank, not the cap). (2) **The A/B's R6 verdict
+  was measured on a fixture artifact**: the harness's old engine runs WITHOUT automation
+  channels (engageDefaults is M5's), so its feed_sg level backbone was off and follow-mode
+  feed teleports — the shipped old plant on the same maneuver swings 63.5–67.8 % (measured,
+  full stack), not 41 points. The #209 layer caveat, found standing inside the A/B harness.
+  (3) A gate fixture's isolation drain must outwait the PUMP TAU it just railed — 20 s left
+  a ~130 kg tail that read as "AFW delivered 440 of 326".
+- Measured: settle 2227 psia / 65 ± 1 % NR / valve 0.76–0.91; load swing true level
+  58.0–66.9 → home; one-pump lo-lo trip + both AFW at 97.6 s ON PHYSICS; both-pumps =
+  turbine trip + P-9 + MDAFW instantly, stable at 53 %; SI-FWI 34.0 s; hi-hi at 98.4 s on a
+  manual overfeed; scram shrinks INDICATED 19.5 points below true (swell adopted verbatim
+  onto PWR2's channel via extras.shift — D3's lumped ruling and A9's pre-registration both
+  stand); A/B steady sg_level max Δ 1.03 points.
+- Shell: seven feed refusals retired to MAPPED; loss_of_feedwater in the failure menu; fw +
+  swell scalars in the bit-exact save. Gates: run_pwr2_feedwater NEW 24/12 ·
+  protection 95/49 · engine 41/26 · true_state 61/16 · shell 27/12 · sweep at baseline.
+
+---
+
 ## Session log — 2026-08-20-backshop-i (#479 — the AFW starts + the lo-lo trip: one bistable, two consumers)
 
 **The work order** *(OWNER RULINGS, 2026-08-20, this session: "AFW auto-start (Recommended)"
