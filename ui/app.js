@@ -72,6 +72,16 @@
     inspectExpanded: false, // Scanner grown to show the full description (owner, 2026-08-11)
     indFilter: 'all',       // merged list row-type chip: all | paired | ind | phys (#439)
     indTruth: null,         // HR1 truth column: null = follow the mode default (off in missions)
+    /* THE MONITOR LIST (#477): id -> true for every channel the operator has ticked to
+     * watch. Each one is DUPLICATED into a block above the groups, so a set of seven or
+     * eight readings can be read without hunting down the list for them.
+     *
+     * PERSISTED, per plant — deliberately unlike `series`/`seriesSide` above. Those two are
+     * a view setting that a plant change invalidates outright; this is the player's own
+     * curated watch list, and one you have to rebuild on every reload is one you stop
+     * using. Saved and loaded in saveMonitor()/loadMonitor(), keyed by plant because the
+     * series ids differ between profiles. */
+    monitor: {},
   };
   var service, latest = null, lastScrammed = false;
   // Operator automation now lives IN-STACK (layers/control/control_kernel.js);
@@ -313,6 +323,23 @@
     pwr:       { plant: 'pwr',  dv: null,              init: '50_percent',
                  label: 'PWR', sub: 'Pressurized Water Reactor',
                  desc: 'The stable, self-regulating starting point. Separate primary and steam loops. Home of the Three Mile Island story.' },
+    // A FIRST-CLASS CARD since 2026-08-21 (owner: "I want to be able to go into the plant
+    // and scenario selection menu and be able to choose either PWR plant").
+    // plant:'pwr' ON PURPOSE — the whole UI (profiles, PD tables, the seven ui.plant==='pwr'
+    // branches) treats this as the PWR board it is; only the ENGINE differs, carried by
+    // `engine:` and resolved at every selectPlant/reset call via engId().
+    // initStates OVERRIDES the profile's list: this engine has ONE initial condition (hot
+    // full power) and offering presets the constructor ignores would be a menu that lies.
+    // freePlayOnly: the campaign/scenario/walkthrough content is authored and validated
+    // against the current engine; running it silently on different physics would grade the
+    // player against the wrong plant. Lifts when the scenario-compat pass runs.
+    pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
+                 initStates: [['hot_full_power', 'Hot Full Power (Mode 1)']],
+                 freePlayOnly: true,
+                 label: 'PWR — New Physics', sub: 'The same plant on the rebuilt engine',
+                 desc: 'The SLS-100 control room over the new from-scratch physics engine: ' +
+                       'real break locations, emergent natural circulation, the TMI level ' +
+                       'deception as physics rather than script. Free Play only for now.' },
     rbmk_pre:  { plant: 'rbmk', dv: 'pre_chernobyl',   init: 'full_power', soon: true,
                  label: 'RBMK pre-1986', sub: 'Chernobyl-type · original design',
                  desc: 'Graphite-moderated, positive void coefficient, graphite-tipped rods — the design that failed at Chernobyl.' },
@@ -1487,40 +1514,66 @@
     RD.ChartCols = serCol;
   }
 
-  // ---- the PLOT COLUMN, shared by the Physics and Indications lists ---------------------
-  // *(OWNER, 2026-08-08: "I would like a column to the left of the lables with a checkbox for
-  // the strip chart. when you check this box it puts this value on the chart.")*
-  //
-  // One cell renderer for both lists, so a quantity that appears on both (Tavg is an
-  // indication AND a physics row) toggles the SAME series and cannot end up half-ticked. A
-  // row with no series id renders an EMPTY cell of the same width rather than no cell: the
-  // composite rows — "intact · 507 °F to damage", "SPRAY + FANS-SI", "BURNED" — are text, not
-  // traces, and losing the column on those rows would step every label in the group sideways.
-  function plotCell(serId) {
+  /* ---- the TICK COLUMN of the Indications list ------------------------------------------
+   * *(OWNER, 2026-08-08: "I would like a column to the left of the lables with a checkbox for
+   * the strip chart. when you check this box it puts this value on the chart.")*
+   *
+   * THE TICK NOW MEANS "WATCH THIS", NOT "PLOT THIS" *(OWNER, 2026-08-12: "the check boxes
+   * select what you see in the [strip chart] which is redundant because now the strip chart
+   * has its own menu… they are going to be used for indications that I want to monitor.")*
+   * — #477. The 2026-08-08 directive above was answered by this column because it was the
+   * only surface there was; #454 then built the chart its own settings window, with a search
+   * box and a SEPARATE selector for each side of every channel, and from that moment this
+   * column was a strictly weaker duplicate of it. What the column had that the window does
+   * not is a tick sitting on the row you are already reading — so that is what it keeps,
+   * pointed at a list the reader curates instead of at the chart.
+   *
+   * The swatch stays and is now PASSIVE: it says "this channel is trending", which the tick
+   * no longer answers and which is otherwise only visible in the chart's own window. It is
+   * not a control — `pointer-events: none`, and clicking it hits the row, not the dot.
+   *
+   * A row with no series id renders an EMPTY cell of the same width rather than no cell: the
+   * composite rows — "intact · 507 °F to damage", "SPRAY + FANS-SI", "BURNED" — are text, not
+   * channels, and losing the column on those rows would step every label in the group sideways.
+   */
+  function monCell(serId) {
     if (!serId) return '<span class="plot-cell"></span>';
-    var s = seriesById(serId), on = !!ui.series[serId];
-    return '<span class="plot-cell"><input type="checkbox" data-series="' + serId + '"' +
-           (on ? ' checked' : '') + ' title="Plot on the strip chart">' +
-           (on && s ? '<i class="ser-swatch" style="background:' + s.c + '"></i>' : '') + '</span>';
+    var s = seriesById(serId), on = !!ui.monitor[serId], plotted = !!ui.series[serId];
+    return '<span class="plot-cell" data-ser="' + serId + '">' +
+           '<input type="checkbox" data-monitor="' + serId + '"' + (on ? ' checked' : '') +
+           ' title="Watch this — copies the row to the Monitoring list at the top">' +
+           (plotted && s ? '<i class="ser-swatch" style="background:' + s.c +
+             '" title="Trending on the strip chart"></i>' : '') + '</span>';
   }
   function seriesById(id) {
     var a = prof().series;
     for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
     return null;
   }
-  // A series toggled anywhere has to show as toggled EVERYWHERE — the Graph/Indications list
-  // and the Physics list are two views of one `ui.series` map, and the swatch appears or
-  // disappears with the tick. Re-rendered rather than diffed because the cells are cheap and
-  // this runs on a click, not on a broadcast.
-  function syncPlotCells() {
-    document.querySelectorAll('.plot-cell input[data-series]').forEach(function (cb) {
-      var id = cb.getAttribute('data-series'), on = !!ui.series[id];
-      cb.checked = on;
-      var cell = cb.parentNode, sw = cell.querySelector('.ser-swatch');
-      if (on && !sw) {
+  /* One pass over every tick cell in the document, setting BOTH of the things it shows: the
+   * checkbox from `ui.monitor` and the swatch from `ui.series`. They come from different
+   * places and change independently — a channel added in the chart-settings window must
+   * light its dot here, and a row ticked here must not touch the chart — but they live in
+   * one cell, so one function owns it.
+   *
+   * A channel is listed TWICE while it is monitored (its own row, and its copy in the block
+   * at the top), which is why this sweeps the document rather than one list: unticking from
+   * the duplicate has to clear the original's box too, and it is the same series either way.
+   * Re-rendered rather than diffed because the cells are cheap and this runs on a click. */
+  function syncIndCells() {
+    document.querySelectorAll('.plot-cell[data-ser]').forEach(function (cell) {
+      var id = cell.getAttribute('data-ser');
+      var cb = cell.querySelector('input[data-monitor]');
+      if (cb) cb.checked = !!ui.monitor[id];
+      var plotted = !!ui.series[id], sw = cell.querySelector('.ser-swatch');
+      if (plotted && !sw) {
         var s = seriesById(id);
-        if (s) { sw = document.createElement('i'); sw.className = 'ser-swatch'; sw.style.background = s.c; cell.appendChild(sw); }
-      } else if (!on && sw) { cell.removeChild(sw); }
+        if (s) {
+          sw = document.createElement('i'); sw.className = 'ser-swatch';
+          sw.style.background = s.c; sw.title = 'Trending on the strip chart';
+          cell.appendChild(sw);
+        }
+      } else if (!plotted && sw) { cell.removeChild(sw); }
     });
   }
 
@@ -1582,47 +1635,104 @@
     var hasTru = !!(s.tru || (indPhysIdx && indPhysIdx[s.id]));
     return hasInd && hasTru ? 'paired' : hasInd ? 'ind' : 'phys';
   }
+  // One row's markup. Shared by the list and by its Monitoring copies (#477) so a duplicate
+  // is the SAME row, not a second rendering of one — the two could otherwise drift apart in
+  // exactly the way that makes a watch list untrustworthy.
+  function indRowHtml(s, dup) {
+    // Same two-tier scanner copy the Physics rows carry (#350 item 3), and needed here for
+    // the same reason: this is the densest list in the shell and rows like "OPΔT Margin" or
+    // "Above P-9" are unreadable from the label alone. The block splits the summary on
+    // ' — ', so the row label becomes its title.
+    var cp = indicationCopy(s);
+    var attrs = (cp.hint ? ' data-scanner-hint="' + esc(s.label + ' — ' + cp.hint) + '"' : '') +
+                (cp.hint && cp.detail ? ' data-scanner-detail="' + esc(cp.detail) + '"' : '');
+    return '<div class="num-line" data-rowtype="' + rowType(s) + '" data-ser="' + s.id + '"' +
+           (dup ? ' data-mon-dup="1"' : '') + attrs + '>' + monCell(s.id) +
+           '<span class="nk">' + s.label + '</span>' +
+           '<span class="nv">—</span>' +
+           '<span class="nv-true">—</span>' +
+           '<span class="nv-warn" title="The instrument disagrees with the plant">⚠</span>' +
+           '</div>';
+  }
   function buildIndications() {
     var box = $('indicationsList'); if (!box) return;
     indRows = [];
     buildPhysIndex();
+    loadMonitor();          // the watch list is per plant and outlives the session (#477)
     // EVERY series now, not just the instrumented ones: the physics-only rows are the
     // third row type, and dropping them would lose exactly the channels the merge exists
     // to show. (RBMK/BWR have no `physics` block at all — they land as ind/phys rows and
     // render as a plain list, which is what they had before.)
     var rows = prof().series.slice();
-    var html = '', grp = null;
+    // The Monitoring block is the FIRST child and is rewritten on its own — see
+    // rebuildMonitor(). Emitted empty here so the container exists before anything ticks.
+    var html = '<div id="indMonitor"></div>', grp = null;
     rows.forEach(function (s) {
       if (s.grp !== grp) {
         if (grp !== null) html += '</div>';
         grp = s.grp;
         html += '<div class="ind-grp">' + (grp ? '<h4>' + grp + '</h4>' : '');
       }
-      // Same two-tier scanner copy the Physics rows carry (#350 item 3), and needed here for
-      // the same reason: this is the densest list in the shell and rows like "OPΔT Margin" or
-      // "Above P-9" are unreadable from the label alone. The block splits the summary on
-      // ' — ', so the row label becomes its title.
-      var cp = indicationCopy(s);
-      var attrs = (cp.hint ? ' data-scanner-hint="' + esc(s.label + ' — ' + cp.hint) + '"' : '') +
-                  (cp.hint && cp.detail ? ' data-scanner-detail="' + esc(cp.detail) + '"' : '');
-      var ty = rowType(s);
-      html += '<div class="num-line" data-rowtype="' + ty + '"' + attrs + '>' + plotCell(s.id) +
-              '<span class="nk">' + s.label + '</span>' +
-              '<span class="nv">—</span>' +
-              '<span class="nv-true">—</span>' +
-              '<span class="nv-warn" title="The instrument disagrees with the plant">⚠</span>' +
-              '</div>';
+      html += indRowHtml(s, false);
     });
     if (grp !== null) html += '</div>';
     box.innerHTML = html;
-    var lines = box.querySelectorAll('.num-line'), n = 0;
+    /* `:not(.ind-monitor)` is not decoration. The Monitoring block carries `.ind-grp` too —
+     * it wants the same row metrics — so every `.ind-grp` selector reaches it as well, and a
+     * bare `.ind-grp .num-line` here would splice the duplicates into `indRows` and pair each
+     * cached element ref with the wrong series. It happens to be empty at this point in the
+     * build; relying on that is one reorder away from a silent mismatch. */
+    var lines = box.querySelectorAll('.ind-grp:not(.ind-monitor) .num-line'), n = 0;
     rows.forEach(function (s) {
       var el = lines[n++];
       indRows.push({ line: el, el: el.querySelector('.nv'), tel: el.querySelector('.nv-true'),
                      ser: s, phys: indPhysIdx[s.id] || null, type: rowType(s) });
     });
+    rebuildMonitor();
     applyIndFilter();
     applyTruthMode();
+  }
+  /* ---- the MONITORING block (#477) ------------------------------------------------------
+   *
+   * The ticked channels, duplicated above every system group *(OWNER, 2026-08-12: "they place
+   * a duplicate at the top of the indications panel above all the other indications so that I
+   * can easily see my list that I want to monitor")*.
+   *
+   * ONLY THIS DIV IS REWRITTEN on a tick. Rebuilding the whole list would be simpler and is
+   * wrong: it is ~120 rows and it would throw away the reader's scroll position — you tick a
+   * row half way down the panel and the panel jumps to the top, which is the one thing a
+   * watch list must not do to the person building one.
+   *
+   * ORDER IS PROFILE ORDER, not the order they were ticked. It matches the spine the rest of
+   * the panel is in, so a channel sits in the same relative place in both copies; and it
+   * avoids `pinOrder()`'s trap (see its comment) where the ORDER of a selection is carried by
+   * the insertion order of an object's keys and a re-tick silently restores an old slot.
+   *
+   * NOTHING RENDERS WHEN NOTHING IS TICKED — no heading, no empty band. A section that is
+   * always on screen and usually empty is one the reader stops seeing.
+   */
+  var monRows = [];
+  function monitorSeries() {
+    return prof().series.filter(function (s) { return !!ui.monitor[s.id]; });
+  }
+  function rebuildMonitor() {
+    var box = $('indMonitor'); if (!box) return;
+    monRows = [];
+    var list = monitorSeries();
+    if (!list.length) { box.innerHTML = ''; return; }
+    var html = '<div class="ind-grp ind-monitor"><h4>Monitoring <span class="ind-mon-n">' +
+               list.length + '</span></h4>';
+    list.forEach(function (s) { html += indRowHtml(s, true); });
+    box.innerHTML = html + '</div>';
+    var lines = box.querySelectorAll('.num-line'), n = 0;
+    list.forEach(function (s) {
+      var el = lines[n++];
+      monRows.push({ line: el, el: el.querySelector('.nv'), tel: el.querySelector('.nv-true'),
+                     ser: s, phys: indPhysIdx[s.id] || null, type: rowType(s) });
+    });
+    // Paint immediately rather than waiting for the next broadcast: at 1x that is a second of
+    // a new row reading "—", which reads as a broken row rather than a pending one.
+    if (latest) renderIndications(latest);
   }
   // The true side of a row, formatted. Prefers the curated physics prose where one exists
   // for this series — see the note above.
@@ -1759,21 +1869,34 @@
     // No history yet (or a dead-steady channel): fall back to the relative band.
     return d > IND_DIV_REL * Math.max(Math.abs(raw.i), Math.abs(raw.t));
   }
-  function renderIndications(s) {
-    if (!indRows.length || !paneVisible('indications')) return;
-    var showTrue = indTruth();
-    indRows.forEach(function (r) {
+  /* One row painted. `memo` carries what a row costs to work out, keyed by series id, and is
+   * the reason a monitored channel does not pay for itself twice: indDiverged() walks up to
+   * 60 s of chartBuf per row, and the Monitoring copy asks it the same question about the
+   * same channel in the same frame. It is also a correctness guard — a duplicate that
+   * recomputed its own value could print a different number from the row it duplicates,
+   * which is exactly the failure that makes a watch list not worth watching. */
+  function paintIndRow(r, s, showTrue, memo) {
+    var m = memo[r.ser.id];
+    if (!m) {
       var txt = seriesLive(r.ser, s);
       var missing = (txt == null || txt === '—' || /NaN|Infinity/.test(txt));
-      var shown = missing ? '—' : txt;
-      if (r.el.textContent !== shown) r.el.textContent = shown;
-      if (!showTrue) return;                       // HR1: nothing about truth is computed
-      var tv = seriesTrue(r, s);
-      var tshown = (tv == null || /NaN|Infinity/.test(tv)) ? '—' : tv;
-      if (r.tel.textContent !== tshown) r.tel.textContent = tshown;
-      var div = missing ? false : indDiverged(r, s, txt);
-      if (r.line.classList.contains('diverged') !== div) r.line.classList.toggle('diverged', div);
-    });
+      m = memo[r.ser.id] = { shown: missing ? '—' : txt, tshown: null, div: false };
+      if (showTrue) {
+        var tv = seriesTrue(r, s);
+        m.tshown = (tv == null || /NaN|Infinity/.test(tv)) ? '—' : tv;
+        m.div = missing ? false : indDiverged(r, s, txt);
+      }
+    }
+    if (r.el.textContent !== m.shown) r.el.textContent = m.shown;
+    if (!showTrue) return;                         // HR1: nothing about truth is computed
+    if (r.tel.textContent !== m.tshown) r.tel.textContent = m.tshown;
+    if (r.line.classList.contains('diverged') !== m.div) r.line.classList.toggle('diverged', m.div);
+  }
+  function renderIndications(s) {
+    if (!indRows.length || !paneVisible('indications')) return;
+    var showTrue = indTruth(), memo = {};
+    indRows.forEach(function (r) { paintIndRow(r, s, showTrue, memo); });
+    monRows.forEach(function (r) { paintIndRow(r, s, showTrue, memo); });
   }
   // ---- filter chips + the HR1 truth switch ---------------------------------------
   function applyIndFilter() {
@@ -2152,7 +2275,7 @@
     // ui.plant / the gauge-chart profile still describe the old one — every
     // profile-bound reader would throw on the foreign instrument set. Catch
     // up the UI instead of rendering the mismatch.
-    var snapPlant = s.metadata.plant_id;
+    var snapPlant = uiPlantOf(s.metadata.plant_id);
     if (snapPlant && ui.plant && snapPlant !== ui.plant) {
       // An old plant's sub-samples must not reach a new one — and since #432 that means all
       // three shares, not just the tiles'. The recorder's row is packed over the OLD plant's
@@ -2413,7 +2536,7 @@
       // trace is the plant a player actually gets, including the channels that are
       // `defaultOn` (rod control since #289).
       probe = new RD.SimulationService({ seed: 0x51EED });
-      probe.selectPlant(ui.plant, ui.initState, e.dv || undefined, undefined);
+      probe.selectPlant(engId(), ui.initState, e.dv || undefined, undefined);
       probe.running = true;
       probe.timeAcceleration = 10;                 // 1.0 sim-s per broadcast → 5 s every 5 ticks
       probe.attentionStops = false;                // nobody is watching a background run
@@ -3500,6 +3623,13 @@
   // campaign is a recommended ORDER with progress markers, not a gate.
   // Helpers take an optional engine key so the Plant & Mission window can show
   // a plant that isn't the active one; default is the running engine.
+  // the ENGINE id for the service (PWR2 parallel phase: board 'pwr', engine 'pwr2')
+  function engId(key) { var e = ENGINES[key || ui.engineKey]; return (e && e.engine) || (e && e.plant); }
+  // ...and the inverse seam: snapshots from the service carry plant_id 'pwr2' while the
+  // parallel phase wears the pwr BOARD — normalize wherever a snapshot id meets ui.plant,
+  // or the foreign-snapshot guards refuse to render and the catch-up path installs a plant
+  // id no profile table has (both measured at the first boot).
+  function uiPlantOf(id) { return id === 'pwr2' ? 'pwr' : id; }
   function campaign(key) { return (RD.CAMPAIGNS || {})[ENGINES[key || ui.engineKey].plant] || null; }
   function campaignMissions(c) {
     var out = [];
@@ -3650,7 +3780,9 @@
   }
   function renderMissionSelect() {
     // Step 1 — the plant column
-    $('mpPlants').innerHTML = Object.keys(ENGINES).map(function (k) {
+    $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
+      return !ENGINES[k].hidden;               /* general gate; nothing hidden today */
+    }).map(function (k) {
       var e = ENGINES[k];
       return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
         ' data-mplant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
@@ -3683,7 +3815,7 @@
   function mpFree() {
     if (!flagOn('free_play')) return soonPanel('free_play');
     var e = ENGINES[msel.engine];
-    var states = PROFILES[e.plant].initStates;
+    var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (PWR2: one IC) */
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
     var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
       '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
@@ -3694,12 +3826,20 @@
     h += '<button class="btn mp-start" data-mfree="1">▶ Start Free Play — ' + mesc(e.label) + '</button>';
     return h;
   }
+  function freeOnlyPanel() {
+    return '<div class="m-note">The guided content — campaign, scenarios and walkthroughs — ' +
+      'is authored and validated against the current PWR engine. On the new physics engine ' +
+      'it is <b>Free Play only</b> for now: every control live, every failure injectable, ' +
+      'no script grading you against the wrong plant.</div>';
+  }
   function mpCampaign() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('campaign')) return soonPanel('campaign');
     return '<div class="m-note" data-scanner-hint="Campaign — the guided path from first scram to a full qualification, in the recommended order. Completed missions stay replayable.">The guided path — zero to operator, in order. Every mission stays replayable.</div>' +
       campaignHtml(msel.engine);
   }
   function mpScenarios() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('scenarios')) return soonPanel('scenarios');
     var p = progress();
     var doneS = p.completed_scenarios || [];
@@ -3720,6 +3860,7 @@
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
   function mpWalkthroughs() {
+    if (ENGINES[msel.engine].freePlayOnly) return freeOnlyPanel();
     if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);
@@ -3787,6 +3928,34 @@
      * launcher live, and opening folded hides the one surface that tells a new player what
      * to do next. The tab choice is still restored — that is a preference; this is a
      * starting state. */
+  }
+
+  /* THE MONITOR LIST SURVIVES A RELOAD (#477), which `ui.series` and `ui.seriesSide`
+   * deliberately do not. Those two are a view setting on a chart that is rebuilt from the
+   * plant's own defaults every load; this is a list the player curated by hand, and one that
+   * has to be re-made every launch is the same class of annoyance as a re-dragged splitter.
+   *
+   * KEYED BY PLANT, because series ids are per profile: `tavg` exists on all three, `void_pct`
+   * on one, and a flat list would resurrect one plant's channels under another's. Ids are
+   * filtered against the live profile on the way in, so a channel that is renamed or removed
+   * drops out silently instead of becoming a permanent row reading "—". */
+  var MONITOR_KEY = 'rd_monitor';
+  function saveMonitor() {
+    try {
+      var all = JSON.parse(localStorage.getItem(MONITOR_KEY) || '{}') || {};
+      all[ui.plant] = monitorSeries().map(function (s) { return s.id; });
+      localStorage.setItem(MONITOR_KEY, JSON.stringify(all));
+    } catch (e) { /* private mode */ }
+  }
+  function loadMonitor() {
+    ui.monitor = {};
+    var ids;
+    try { ids = (JSON.parse(localStorage.getItem(MONITOR_KEY) || '{}') || {})[ui.plant]; }
+    catch (e) { return; }
+    if (!Array.isArray(ids)) return;
+    var live = {};
+    prof().series.forEach(function (s) { live[s.id] = true; });
+    ids.forEach(function (id) { if (live[id]) ui.monitor[id] = true; });
   }
 
   var SEEN_KEY = 'rd_seen_';
@@ -4327,9 +4496,12 @@
    * and physics if they want.")*.
    *
    * TWO MAPS, NOT ONE, and the split is load-bearing. `ui.series[id]` still means exactly
-   * what it meant before — "is this channel plotted at all" — because it is shared with the
-   * Indications tab and the board's plot cells through syncPlotCells(). `ui.seriesSide[id]`
-   * is the NEW question and only ever refines an already-plotted channel.
+   * what it meant before — "is this channel plotted at all". `ui.seriesSide[id]` is the NEW
+   * question and only ever refines an already-plotted channel.
+   *
+   * SINCE #477 THE CHART-SETTINGS WINDOW IS THE ONLY WRITER of either. The Indications tab
+   * used to write `ui.series` through a tick on the row; that tick now curates the Monitoring
+   * list, and the row shows the plotted state as a passive dot instead (syncIndCells).
    *
    * THE FALLBACK IS THE OLD GLOBAL RULE, VERBATIM. A series nobody has overridden traces
    * whatever `chartTruth()` says, so an untouched plant charts identically to before and the
@@ -5090,9 +5262,10 @@
    * the resume is correct for free: closing releases only the `modal` hold, so a plant the
    * player had already stopped with ⏸ stays stopped.
    *
-   * ONE SOURCE OF TRUTH, still. `ui.series` is written here exactly as the Indications tab
-   * writes it, and syncPlotCells() carries the change back — the side is the only NEW
-   * state, and it lives in `ui.seriesSide` where sideOf() reads it.
+   * ONE SOURCE OF TRUTH, still — and since #477 this window is the ONLY place `ui.series` is
+   * written, the Indications tab's tick having been repurposed to the Monitoring list. The
+   * side is the only NEW state, and it lives in `ui.seriesSide` where sideOf() reads it.
+   * syncIndCells() carries a change here back to the list's passive "trending" dots.
    *
    * Module level, not inside bindUI(): render() has to reach renderChartSettings the same
    * way it reaches renderIndications. Only the listeners live in bindUI. */
@@ -6013,23 +6186,24 @@
       attnStops = b.getAttribute('data-attn') === 'on';
       cmd({ action: 'set_attention_stops', value: attnStops });
     });
-    // ONE delegated handler for every plot checkbox in the Tools block, wherever it lives —
-    // the plot list, the Physics tab's column, the Indications tab's column. Bound on the
-    // tab body rather than on each pane because those panes are rebuilt on a plant change
-    // and a per-pane listener would be re-attached (or silently lost) each time.
+    /* ONE delegated handler for every monitor checkbox in the Tools block, wherever it lives
+     * — the Indications list and the Monitoring copies above it. Bound on the tab body rather
+     * than on each pane because those panes are rebuilt on a plant change and a per-pane
+     * listener would be re-attached (or silently lost) each time. The duplicate rows get this
+     * for free, which is what makes unticking from the copy work.
+     *
+     * NOTE WHAT IS NOT HERE: `drawChart()`. Ticking a row no longer touches `ui.series`,
+     * `ui.seriesSide` or the chart at all — that is the whole of #477, and the browser gate
+     * asserts the trace count is unchanged across a tick precisely because a leftover call
+     * here would be invisible from the list. */
     var tabBody = document.querySelector('.tab-body');
     if (tabBody) tabBody.addEventListener('change', function (e) {
-      var cb = e.target.closest('input[data-series]'); if (!cb) return;
-      var sid = cb.getAttribute('data-series');
-      ui.series[sid] = cb.checked;
-      // UNTICKING ANYWHERE CLEARS THE SIDE (#454). The plain tickbox here and the two
-      // selectors in the chart-settings window are two ways to reach one setting, so they
-      // must leave the same state behind: "not plotted" means no side, and re-ticking gives
-      // the channel its default rather than silently restoring a choice made in the other
-      // surface an hour ago. Ticking sets nothing — an absent side IS the default.
-      if (!cb.checked) delete ui.seriesSide[sid];
-      syncPlotCells();     // the same series may be listed on more than one tab
-      drawChart();
+      var cb = e.target.closest('input[data-monitor]'); if (!cb) return;
+      var sid = cb.getAttribute('data-monitor');
+      if (cb.checked) ui.monitor[sid] = true; else delete ui.monitor[sid];
+      saveMonitor();
+      rebuildMonitor();    // the block is rewritten; the rest of the list is left alone
+      syncIndCells();      // the same channel is listed twice while it is monitored
     });
     // The row carries the System Scanner hint, and the checkbox sits inside the row — so a
     // click meant for the tickbox would also open the inspector over the panel you are
@@ -6074,7 +6248,7 @@
           ui.series[ser.id] = true;
           ui.seriesSide[ser.id] = (wantInd && wantPhys) ? 'both' : wantInd ? 'ind' : 'phys';
         }
-        syncPlotCells();
+        syncIndCells();     // the Indications list's passive "trending" dots follow this
         syncChartSettings();
         chartRange = {};    // the union fit changes when a side is added or dropped
         drawChart();
@@ -6094,28 +6268,29 @@
     if (indList) {
       indList.addEventListener('mouseover', function (e) {
         var row = e.target.closest('.num-line'); if (!row) return;
-        var cb = row.querySelector('input[data-series]'); if (!cb) return;
-        RD.Highlight.enter(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+        var id = row.getAttribute('data-ser'); if (!id) return;
+        RD.Highlight.enter(RD.Highlight.forSeries(id));
       });
       indList.addEventListener('mouseleave', function () { RD.Highlight.clearHover(); });
       indList.addEventListener('click', function (e) {
         var row = e.target.closest('.num-line'); if (!row) return;
         if (e.target.closest('.plot-cell')) return;        // the checkbox is its own gesture
-        var cb = row.querySelector('input[data-series]'); if (!cb) return;
-        RD.Highlight.pin(RD.Highlight.forSeries(cb.getAttribute('data-series')));
+        var id = row.getAttribute('data-ser'); if (!id) return;
+        RD.Highlight.pin(RD.Highlight.forSeries(id));
       });
-      /* THE UI RELATION (spec §7): hovering a trend checkbox highlights what it CHANGES —
-       * the chart. And when the channel is already plotted it highlights THAT LANE rather
-       * than the whole chart, because once several are up "which line is this one" is the
-       * more useful answer. */
+      /* THE UI RELATION (spec §7): hovering the tick highlights what it CHANGES. Since #477
+       * that is the Monitoring block, not the chart — and when the channel is already
+       * monitored it lights THAT COPY rather than the whole block, because once seven or
+       * eight are up "which one is this" is the more useful answer. The block is absent when
+       * nothing is ticked, in which case there is nothing to point at and nothing lights,
+       * which is honest: the first tick is the thing that creates it. */
       indList.addEventListener('mouseover', function (e) {
         var cell = e.target.closest('.plot-cell'); if (!cell) return;
-        var cb = cell.querySelector('input[data-series]'); if (!cb) return;
-        var id = cb.getAttribute('data-series');
-        var lane = ui.series[id] ? document.querySelector('.lane-chrome[data-ser="' + id + '"]') : null;
-        var chart = document.querySelector('.strip-chart');
-        if (lane) lane.classList.add('hl-lane');
-        else if (chart) chart.classList.add('hl-lane');
+        var id = cell.getAttribute('data-ser'); if (!id) return;
+        var dup = ui.monitor[id]
+          ? indList.querySelector('#indMonitor .num-line[data-ser="' + id + '"]') : null;
+        var target = dup || indList.querySelector('.ind-monitor');
+        if (target) target.classList.add('hl-lane');
       });
       indList.addEventListener('mouseout', function (e) {
         if (!e.target.closest('.plot-cell')) return;
@@ -7388,7 +7563,7 @@
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     pauseSim('plant_change');
-    service.handleCommand({ action: 'reset', plant_id: e.plant, initial_state: ui.initState, design_version: e.dv });
+    service.handleCommand({ action: 'reset', plant_id: (e.engine || e.plant), initial_state: ui.initState, design_version: e.dv });
     rebuildPlantUI();
     diagReset('plant_change', { engine_key: key, initial_state: ui.initState });
     // The hold covered the swap; the swap is done. It does NOT resume a plant the player
@@ -7424,7 +7599,7 @@
   // After load: derive the plant from the restored snapshot, set the selector, rebuild.
   function afterPlantChange() {
     var snap = service.assembleSnapshot();
-    ui.plant = snap.metadata.plant_id;
+    ui.plant = uiPlantOf(snap.metadata.plant_id);
     var dv = snap.metadata.design_version;
     ui.engineKey = ui.plant === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : ui.plant;
     ui.series = Object.assign({}, prof().defaultSeries);
@@ -7439,7 +7614,7 @@
     if (!armed && !confirm('Reset to ' + ui.initState + '? Current run is lost.')) return;
     ui.scenario = null; ui.follow = null;   // a plant reset ends instructed content
     pauseSim('reset');
-    service.handleCommand({ action: 'reset', plant_id: ui.plant, initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
+    service.handleCommand({ action: 'reset', plant_id: engId(), initial_state: ui.initState, design_version: ENGINES[ui.engineKey].dv });
     rebuildPlantUI();
     // Same transient hold, same release *(OWNER SELECTION, 2026-08-11, from the options
     // presented: "Fix both")*. A reset lands you on a running plant at the chosen initial
@@ -7819,7 +7994,7 @@
     // Cross-plant transition guard: a ?scenario= deep link (or any scenario
     // that switches the plant) can broadcast the NEW plant's snapshot before
     // ui.plant catches up — never feed a foreign snapshot to a display.
-    var snapPlant = s && s.metadata && s.metadata.plant_id;
+    var snapPlant = uiPlantOf(s && s.metadata && s.metadata.plant_id);
     if (snapPlant && snapPlant !== ui.plant) return;
     if (ui.plant === 'pwr') { RD.PwrBoard.render(s); return; }   // one learning-board stage — no views
     renderStatusBar(s);
@@ -7917,7 +8092,7 @@
     if (RD.OneOverM) { RD.OneOverM.init({ getSnap: autoSnap, cmd: cmd }); service.subscribe(RD.OneOverM.tick); }
     bindUI(); bindCommands(); bindAutomate();
     // optional ?engine= override (dev convenience / sharing)
-    var em = /[?&]engine=(pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');
+    var em = /[?&]engine=(pwr2|pwr|rbmk_pre|rbmk_post|bwr)/.exec(location.search || '');   /* pwr2 BEFORE pwr — alternation takes the first match */
     var startKey = em ? em[1] : 'pwr', startEng = ENGINES[startKey];
     ui.engineKey = startKey; ui.plant = startEng.plant; ui.initState = startEng.init;
     // optional ?init=<state> override (dev convenience) — one of the plant's presets
@@ -7929,7 +8104,7 @@
     syncUnitsScope();
     buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
     buildPlantDisplay();
-    service.selectPlant(startEng.plant, ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
+    service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
     buildAutomate();

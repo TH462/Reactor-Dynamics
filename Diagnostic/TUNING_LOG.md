@@ -29,6 +29,732 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-21-backshop-b (#479 — the CVCS balance point: the plant was right, the currency was wrong)
+
+**The work order** *(OWNER RULING, 2026-08-21: "Work next as recommended" — the CVCS balance
+point evidence pass + retune)*. Record: `Blueprint/PWR2_VALIDATION.md` §64. **The evidence
+pass found no retune to make**: Ginna ch15's own "charging flow is normally maintained at
+46 gpm" is already in `pwr2_cvcs.js`, volume-scaled to 7.5 gpm charging + the ruled 5 gpm
+seal = 12.5 gpm letdown, and the plant settles exactly there. The finish list's "120 gpm
+balance / standing Charging Flow High annunciator" was a **units-currency mistranslation in
+the Option B translation layer**, both directions:
+- the B1 shim published **kg/s** into `charging_flow_actual`, whose contract currency is the
+  #408 fraction-of-RCS-per-second (every consumer multiplies by the 450,000 literal) — 12 gpm
+  of charging read as ~343,000 gpm and the 36 gpm annunciator stood permanently;
+- the B2 shell read the board setter's `gpm/450,000` payload as a 0..1 demand fraction — any
+  dialed charging/letdown setpoint became ~zero flow, **a dead control wearing a working
+  control's face**.
+- **The trap for the standing list's class**: a finish-list item's own description can be a
+  measurement in the wrong currency — "120 gpm, 3–4× prototypical, needs a retune" was
+  filed off a mistranslated display; the evidence pass re-measured at the source and the
+  physics needed nothing.
+- Fixes are translation-only (`FRAC_PER_KGS` in the shim; both setter directions + the
+  control-state setpoints through the module's own sourced-scaled ratings). Measured end to
+  end: board reads true gallons (letdown 12.5 gpm), CHG FLOW HI input 4.9e-6 vs 8.0e-5 —
+  CLEAR; 20 gpm dialed = 20.0 gpm delivered (demand 0.681 = 20/29.4). A healthy plant can
+  never reach 36 gpm again (max charging is the sourced-scaled 29.4).
+- Gates: `run_pwr2_true_state` 61 → 63 / 17 · `run_pwr2_shell` 27 → 29 / 14 ·
+  `pwr2_cvcs.js` untouched · sweep at baseline.
+
+---
+
+## Session log — 2026-08-21-backshop-a (#479 — the feed train: feed ≡ steam retired, R6 re-adjudicated)
+
+**The work order** *(OWNER RULING, 2026-08-21: "Due next as recommended" — the feed train /
+steam-generator level dynamics)*. Record: `Blueprint/PWR2_VALIDATION.md` §63. New module
+`engines/pwr2/pwr2_feedwater.js`: two 60 % pumps (ch10), one regulating valve, the WTSM 11.1
+three-element controller (flow error + 5 s-lagged level through a 2-minute-integral PI — both
+time constants sourced; WTSM 11.1 itself LOCATED in corpus this session: it was the unnamed
+ML11223A293), the ruled 65 % program (#355 adopted; Ginna ch15's 52 % NRS declined-declared),
+SI feedwater isolation behind the sourced 32.0 s, hi-hi (P-14 class) as a new kind-'fwi'
+protection row closing the valve it finally has + tripping the turbine, and the
+loss-of-main-feed MDAFW start + turbine trip (the whole ch10 sentence).
+
+- **Traps recorded**: (1) INTEGRAL WINDUP is a plant-shaped defect — a one-pump boil-down
+  banked ~100 s of +40 % level error and the discharge refilled the SG to 100 % NR /
+  17,033 kg after the trip; fixed with the anti-windup PAIR (rail-inhibit + 0.25-flow-frac
+  cap), both halves mutation-pinned SEPARATELY (the cap masks a deleted inhibit — measured
+  blind until the check asserted the pre-rail bank, not the cap). (2) **The A/B's R6 verdict
+  was measured on a fixture artifact**: the harness's old engine runs WITHOUT automation
+  channels (engageDefaults is M5's), so its feed_sg level backbone was off and follow-mode
+  feed teleports — the shipped old plant on the same maneuver swings 63.5–67.8 % (measured,
+  full stack), not 41 points. The #209 layer caveat, found standing inside the A/B harness.
+  (3) A gate fixture's isolation drain must outwait the PUMP TAU it just railed — 20 s left
+  a ~130 kg tail that read as "AFW delivered 440 of 326".
+- Measured: settle 2227 psia / 65 ± 1 % NR / valve 0.76–0.91; load swing true level
+  58.0–66.9 → home; one-pump lo-lo trip + both AFW at 97.6 s ON PHYSICS; both-pumps =
+  turbine trip + P-9 + MDAFW instantly, stable at 53 %; SI-FWI 34.0 s; hi-hi at 98.4 s on a
+  manual overfeed; scram shrinks INDICATED 19.5 points below true (swell adopted verbatim
+  onto PWR2's channel via extras.shift — D3's lumped ruling and A9's pre-registration both
+  stand); A/B steady sg_level max Δ 1.03 points.
+- Shell: seven feed refusals retired to MAPPED; loss_of_feedwater in the failure menu; fw +
+  swell scalars in the bit-exact save. Gates: run_pwr2_feedwater NEW 24/12 ·
+  protection 95/49 · engine 41/26 · true_state 61/16 · shell 27/12 · sweep at baseline.
+
+---
+
+## Session log — 2026-08-20-backshop-i (#479 — the AFW starts + the lo-lo trip: one bistable, two consumers)
+
+**The work order** *(OWNER RULINGS, 2026-08-20, this session: "AFW auto-start (Recommended)"
+selected as the next finish-list item; then "Include the trip rung too" — the steam-generator
+lo-lo level reactor trip, whose "not buildable" declaration rested on an expired premise)*.
+Record: `Blueprint/PWR2_VALIDATION.md` §62. All sourced: Ginna UFSAR ch10 §10.5.3.1.3 (the
+INSTALLED 17 % narrow-range lo-lo; SI starts the MDAFW pumps only; loss-of-main-feed and
+loss-of-offsite-power starts recorded and DEFERRED to the feed-train and electrical work
+orders), TS Bases B 3.3.1 Function 13 (the trip Function "also performs the ESFAS function of
+starting the AFW pumps" — ONE `sg_lolo_level` row, kind rps, whose tripping drives the
+`afas_mdafw`/`afas_tdafw` latches), Table 15.0-6 (2.0 s delay; the 0 % NRS analysis limit
+declined in favor of the installed 17 %, choice declared at the SGLL block).
+
+- **AFW flow was hydraulically inert** — `stepAFW` computed, reported, never fed to the SG
+  (`{feed: out, steam: out}`, the same variable). Now a SECOND COLD stream into `stepSG`
+  (70 °F / 21 °C CST water). Measured: +326 kg in 60 s at rated vs ~326 predicted; manual
+  MDAFW at 100 % power for 300 s reads steam P 808.2 → 802.9 psia (−5.3), level 65.0 →
+  69.5 % NR, no trip.
+- **The lying-gauge payoff**: fail the new 15th channel (`sg_level`, narrow range) LOW and at
+  the sourced 2.0 s the reactor trips AND both pumps start on the lie; fail `primary_pressure`
+  LOW and the §55 chain gains its AFW leg (MDAFW cause `si`, TDAFW stays secured). Latch law
+  is SI's: secure-while-latched refused; `reset_protection` clears without securing.
+- **Two traps found and recorded**: (1) the protection header's "not buildable" paragraph —
+  a premise that expired when stage B1's `sg_mass_map` gave the shim a real `sg_level_pct`
+  (#460's lesson standing in a module header; also fixed the stale "P-9: no trip state"
+  line). (2) **A shared-kernel path only PWR2's config can reach**: `getAutomationState`'s
+  channel-less fast path dropped the `esf` dict, so the AUX FEED tile read SECURED over an
+  armed AFAS — invisible to every current-engine gate (its config always has channels),
+  caught by the headless probe, fixed with `_attachEsf` on both paths, pinned in
+  `run_pwr2_shell` at the exact seam, `run_m4` 46/46 + `run_autoctl` 30/30 after.
+- The esf arm is UNDISARMABLE by design (`commands: []` — the engine's AFAS is not
+  defeatable, a flippable display arm would be duplicate authority); `true_state` gains the
+  demand/delivery split (`afw_pump_running` = demand, was `total_kgs > 0` — a demanded pump
+  with avail 0 read SECURED, the self-healing shape).
+- Gates: `run_pwr2_protection` 79 → 90 / 44 mutations · `run_pwr2_engine` 26 → 33 / 21
+  (group E) · `run_pwr2_instruments` 16 → 17 / 9 · `run_pwr2_true_state` 59 → 60 ·
+  `run_pwr2_shell` 23 → 25 / 12 · contract 177 OK · headless both engines zero console
+  errors · full sweep at baseline.
+
+---
+
+## Session log — 2026-08-20-backshop-h (#479 — the menu card, and the 35 readings that were undefined)
+
+**The work order** *(OWNER, 2026-08-20: "I want to be able to use the new engine in the diagram
+like I can with the old one… choose either PWR plant. Let's finish the PWR2 build with
+indications and hook it up to the diagram.")*. Record: `Blueprint/PWR2_VALIDATION.md` §61.
+
+- **The card**: `ENGINES.pwr2` is a first-class Plant & Mission card ("PWR — New Physics"),
+  one initial condition, Free Play only — the guided-content tabs show a declared
+  free-play-only panel instead of content authored against the other plant's physics.
+- **The big defect a screenshot found and no gate did**: the shell passed `{}` as the
+  instruments `extras`, and `_copyStatus` reads ONLY extras — **all 35 status readings
+  undefined** (RCP handswitch OFF over a running pump, AUX FEED "SECURED", polisher
+  "STANDBY", the PORV light unable to say OPEN). Fixed by `pwr2_shell._instrExtras()`:
+  21 names pass through from the completed contract, 14 computed or honest constants;
+  `porv_commanded_open` is the COMMAND, keeping the TMI indicator lie (HR1). Gate now
+  asserts all 35 populated + a mutation replaying the exact defect.
+- **`pzr_level_dev` measured the wrong plant's program**: +6.4 % standing on a settled
+  on-program PWR2. `pwr_instruments._levelDev` accepts `extras.level_program_fn` (host
+  plant's own line, still at INDICATED Tavg — HR1; old engine passes nothing, unchanged).
+  Measured settle: −9.5 % @30 s → 0.15 % @900 s; the gate asserts CONSISTENCY, not
+  near-zero, because the fixture sits inside the known boot transient.
+- **Rod groups in the consumer's shape**: two groups (`control_rods` native 0..200 with
+  `max_steps`, `shutdown_rods` = banks-out-unless-scrammed). The board now renders the
+  step unit from `max_steps` instead of the authored "/912" (old engine unchanged: 912).
+- **Two SHARED-code defects live on the current engine**: the SG saturation-temp tile
+  printed raw °C under its authored "F" unit since 2026-08-05 (now `dT()` + `VALUE_UNIT`,
+  old board reads 541 °F); the DUMP SETPOINT box read 0 psi on PWR2 (now falls back to the
+  dump controller's live 7.03 MPa / 1019 psi Ginna anchor).
+- **Verified headless on BOTH engines** (driver-level tile reads + screenshots, zero console
+  errors); the Indications tab runs over PWR2 with both columns live. AUX FEED "SECURED" on
+  PWR2 is correct TODAY — `pwr2_afw` deliberately has no auto-start; AFAS is finish-list.
+- Gates: `run_pwr2_shell` 23 checks / 10 mutations (was 21/8), `verify_board_check` 222,
+  full sweep at baseline.
+
+---
+
+## Session log — 2026-08-20-backshop-g (#479 — the A/B pass: the pre-registered prediction holds)
+
+`test/run_pwr2_ab.js` built per PWR2_ARCHITECTURE ("a MEASUREMENT, not a gate"): 7 matched
+rides × 32 fields, A under its M4 layer at 0.1 s, B through the shell. **The D4 §2
+pre-registered prediction HOLDS: B's cold-vs-hot-leg break at the same 20 cm² diverges mean
+Δα 0.78/0.82 — locality the old engine cannot represent — with the naturals matched (power
+0.4 %).** Ten HR9 adjudications in `Blueprint/PWR2_VALIDATION.md` §60: nine side with B
+(TMI level deception 54 pts vs the affine proxy; A rides out a full-power turbine trip its
+own source says exceeds dump capacity; post-trip fuel temp shows the old fit through its
+translation downgrade; emergent natural circulation; the cold-leg-worse asymmetry falling
+out of topology) and one with A (SG level swing — B's feed≡steam simplification now carries
+its measured ~40-point cost). Engine hardening from the pass: the facade's outer
+catch-latch-hold with a SANITY screen (a wild state can stay technically finite — measured
+power 2.6e54 passing isFinite into the held snapshot). Harness lessons in §60 R10.
+
+## Session log — 2026-08-20-backshop-f (#479 Option B stage B3 — the control room runs PWR2)
+
+`ui/shell.html?engine=pwr2` boots the full board over `PWR2Engine`, zero console errors,
+headless-verified with a live stuck-PORV casualty (power 4.1 %, 1783 psia falling — the TMI
+signature through the reused gauges). The design decision that kept it small: `plant: 'pwr'`
+for the whole UI + `engine: 'pwr2'` resolved by `engId()` at the four selectPlant/reset seams,
+and one `uiPlantOf()` normalizer where snapshots meet `ui.plant` (the foreign-snapshot guards
+and the profile-crash catch-up path were both measured at first boot). `getProtectionConfig`
+supersedes D4's courier reading — M4's pwr automation would issue REFUSED-throwing commands;
+PWR2's config empties the acting parts and keeps the annunciator shape. No public trace
+(`hidden: true`, picker skips entirely; `?engine=pwr2` dev-override only, `pwr2` FIRST in the
+alternation). `run_portable` 142 → 169 (+27 clean files). Full record
+`Blueprint/PWR2_VALIDATION.md` §59.
+
+## Session log — 2026-08-20-backshop-e (#479 Option B stage B2 — PWR2Engine, the class the stack can hold)
+
+`pwr2_shell.js` (`Blueprint/PWR2_VALIDATION.md` §58): the full `RD.PWREngine` surface over
+the facade. Command partition 33 MAPPED / 7 REHOMED / 31 REFUSED-throwing, parsed against the
+current engine's own switch; save `pwr2-1.0` only (pwr-1.0 refused, D4 §5 verbatim), round
+trip BIT-EXACT physics + readings; the reused `pwr_instruments` member primed via `reset()`
+(measured: all 45 channels NaN without it); the internal instrument PRNG reworked to
+state-carrying uint32 (gate held green through it — stream-compatible). Fixture lessons
+recorded: a steady-plant band cannot see a frozen gauge (maneuver required), and the
+readings-save mutant is invisible while the prop ladder is railed in the startup-dip
+recovery — 700 s settle needed, measured. `run_pwr2_shell` NEW 21/7mut. Next: B3 shell wiring.
+
+## Session log — 2026-08-20-backshop-d (#479 Option B stage B1 — the contract completed, and the STATIC class)
+
+*(OWNER RULING, 2026-08-20: "Next: option B".)* Stage B1 of the shell integration
+(`Blueprint/PWR2_VALIDATION.md` §57): the shim emits **109/109** §6.3 fields — 22 new
+derivations (SG levels through the adopted sourced `sg_mass_map` over PWR2's real mass, H₂
+from the damage model's own oxidation, the sump on a declared ruler, HEM core-uncovery proxy,
+SR/IR display scales with the SR now de-energizing above the P-6 class point) + a new third
+class, the **STATIC registry** (a constant stating the model's truth about an unmodeled
+system, 19 of them, triple-gated). The RHR was wired into the facade — built and gated weeks
+ago, never instantiated. `run_pwr2_true_state` 47 → 59 / 16 mutations; the
+every-static-IS-a-contract-field check caught an invented name (`ctmt_fan_demand` vs the
+contract's `ctmt_fan_safety`) on its first run. Two mutations retired as proven no-ops
+(empty MISSING registry) with the gate's own precedent. Next: B2, the engine class.
+
+## Session log — 2026-08-20-backshop-c (#479 — the rod stop and the runback, and the gate that audited itself)
+
+The ch7-sourced approach rung (`Blueprint/PWR2_VALIDATION.md` §56): 3 % below either delta-T
+setpoint → rod stop (outward refused) + turbine runback (5 MWe per 30 s window), hysteresis
+3.0/3.5 % [open] added after measured noise-flicker degenerated the sourced duty cycle.
+Measured both ways: rods-in + one nibble recovers the margin with NO trip (the sourced purpose
+verbatim); no operator → trip ~51 s after onset because the load cut RAISES Tavg on this
+rods-MANUAL plant — **the runback buys time, not equilibrium, a plant-identity fact**. The
+engine gate's mutation replays are now SECTION-SCOPED (was 1074 s of contention), and the
+scoping exposed four latent self-test defects fixed this session — including a turbine-flag
+anchor that had been cutting the dump controller's identical line SINCE BIRTH, masked by
+full-suite side effects. Bonus fixture find: a stuck Tavg channel through a turbine trip drags
+the true plant to 406 °F while indicating 578 — C-8 chasing a lie, scenario-ready.
+`run_pwr2_protection` 79/37mut, `run_pwr2_engine` 26/17mut, run_all --fast at baseline.
+
+## Session log — 2026-08-20-backshop-b (#479 — the control switchover: ladder on the instrument, safeties on the metal)
+
+§54's owed follow-up (`Blueprint/PWR2_VALIDATION.md` §55). The heater/spray/PORV ladder, level
+PI, 17 % cut and the dump controller's Tavg/steam-pressure all read `indicated_*` (one step
+old); the code safeties stay on TRUE pressure, and both halves of that split are gate-proven
+on lies. Stability pass measured (600 s, noise on/off): heater duty +8 %, backup flips 5 vs 1,
+zero PORV lifts, band 43.8 vs 40.0 psi — nothing retuned. Payoffs: a lying-high pressure
+channel drives a REAL depressurization (2188 → 1084 psia); a lying-low one gets 2 s of heater
+misdrive before the RPS trips on the same lie; a lying-high Tavg opens the dumps and OTΔT
+trips on the same channel — the lumped-channel common-mode DECLARED (real plants' 2/4 logic
+prevents it; redundancy is future work). `run_pwr2_pressurizer` 59 → 63, `run_pwr2_engine`
+19 → 21; run_all --fast at baseline.
+
+## Session log — 2026-08-20-backshop-a (#479 — the instrument layer: what the plant says, and the RPS believes it)
+
+*(OWNER RULING, 2026-08-20: "Do option 1".)* Full record `Blueprint/PWR2_VALIDATION.md` §54.
+`pwr2_instruments.js` (14 channels: lag / cascaded lag / AR(1) noise / stuck-low-high-noisy
+failures; RTD 2.0 s and hot-leg filter 3.5 s [sourced, Table 15.0-6 fn b], the rest [open]);
+the RPS's analog drivers switched to `ins.reading` (one step old); the page shows INDICATED
+with a TRUE overlay and a failure panel. **Measured payoff: fail the pressure channel low on a
+healthy 2224-psia plant and the RPS trips + injects on the lie.** Design departure recorded:
+per-channel PRNG streams (id-hash seeds) — the `pwr_instruments.js` append-order trap
+engineered away, gate-proven (starve a sibling → bit-identical noise). Declared: control loops
+still read truth (each switchover owes a stability pass); save/restore waits for Option B.
+Gates: `run_pwr2_instruments` NEW 16/8mut; `run_pwr2_engine` 19/13 (prior 18 held unmoved
+through the switchover); run_all --fast at baseline (+1 runner).
+
+## Session log — 2026-08-19-backshop-k (#479 — OTΔT/OPΔT built the night they were unblocked)
+
+The delta-T trips, every coefficient UFSAR ch15 Table 15.0-7's (`Blueprint/PWR2_VALIDATION.md`
+§53): OTΔT sp = K1 + K2·(P−P′) − K3·(T−T′), OPΔT the flat K4 (K6 = 0.00 is the table's own
+value). f(ΔI) SOURCED ZERO (lumped ΔI = 0, inside the −14/+6 deadband); compensation and K5
+declared-deferred (instrument layer / COLR). **Full-chain: an uncontrolled dilution at
+rods-MANUAL 100 % is terminated by OTΔT at t = 2246 s, Tavg +16.8 °F vs the +16.4 the K3 slope
+predicts — UFSAR 15.4.4's credited trip, unfitted.** `run_pwr2_protection` 68 → 75 (+4
+mutations), `run_pwr2_engine` 18/12 (delta-T wiring + `eng.rpsReport`). Traps: the K2 fixture
+redded on its own arithmetic (asserted K2×200 for a 184.9 psi drop — the reference fixture
+sits at 2234.9 psia, not P′); the facade margin check needed the SETTLED plant (t = 5 s reads
+margin 0.013 from the startup ΔT overshoot); and the spFn rename broke two old mutation
+anchors, caught by the self-test's ANCHOR MISS, re-pointed.
+
+## Session log — 2026-08-19-backshop-j (#479 — the DELAYED-data evidence pass lands its document)
+
+Audit #488 C7.3's owed pass, run and CLOSED (`Blueprint/PWR2_VALIDATION.md` §52): the six-group
+delayed-neutron set is **[sourced]** to DOE-HDBK-1019/1-93 Table 3 (half-lives; ln2/T½ matches
+every shipped λ to its last digit, β total 0.0065 vs ours 0.006502), with WTSM 2.1
+(ML11223A207) aggregate anchors — β ≈ .007 and the ~13 s first-appearance figure our set
+reproduces at 13.04 s unfitted. Both documents fetched into `inbox/sources`. WCAP-16009 §8:
+form only, no values. And the pass KEPT GOING and un-blocked the last item: **OTΔT's "blocked
+on a source" was FALSE** — the complete setpoint table is **Ginna UFSAR ch15 Table 15.0-7**,
+in develop's corpus all along (K1 1.30, K2 0.00093/psi, K3 0.0185/°F, K4 1.15, K5 0.0014/°F
+increasing-only, K6 0.00, T′ 564.6–576.0 °F, P′ 2250 psia, f(ΔI) deadband −14/+6 % with gains
+−3.08/+2.27 %/%). The standing find-source-before-declaring-unsourced trap, hit again — the
+claim was inherited across sessions and nobody re-ran the search. UFSAR ch7 (ML20339A027,
+fetched this pass) sources the mechanism prose: DNB protection, 2/4 two-channels-per-loop,
+lo-pzr-press "limits the range of the overtemperature ΔT trip", and a 200 %/min turbine
+runback rung. OTΔT/OPΔT are now BUILDABLE; note this plant has a lumped core, so f(ΔI) has no
+ΔI to read — the deadband-zero declaration will need to carry that.
+
+## Session log — 2026-08-19-backshop-i (#479 — P-9: the turbine trip becomes a reactor trip)
+
+The owed protection item, built sourced end to end (`Blueprint/PWR2_VALIDATION.md` §51): P-9's
+TWO values — ~50 % RTP with the Steam Dump System available, ~8 % without (TS Bases B 3.3.1,
+the setpoint IS the dumps' capacity margin) — select on `steam_dumps_available`; above it a
+turbine trip trips the reactor ('turbine_trip', anticipatory, evaluated after the credited
+setpoint functions), below it the dumps carry the rejection and nothing trips. Measured: trip
+at 100 % rides to no-load at 555.2 °F on the C-8 controller; no trip at 40 % with dumps; trip
+at 40 % without. Recorded truth: below 8 % the low-flux trip fires first (P-10 auto-revoked),
+so a below-8 % no-trip case does not exist on this plant. `run_pwr2_protection` 64 → 68 with
++3 mutations; `run_pwr2_engine` 16 → 17 with +1 (the wiring half). run_all --fast at baseline.
+
+## Session log — 2026-08-19-backshop-h (#499 fixed — two beyond-model guards, thresholds measured, never fitted)
+
+Both #499 instances guarded in `pwr2_core.js`; full detail in `Blueprint/PWR2_VALIDATION.md`
+§50. The numbers that carry it: **root-tracking limit 2.0 MPa/step** (worst legitimate move
+0.67, a 500 cm² first step; the defect jumped 6.1) and the **both-walls latch** (benign 50 cm²
+episode: 45,087 clamped steps, ZERO two-sided — the signature is never legitimate). The 40 cm²
+full-lineup break latches at 46.9 s instead of NaN at 68.5; the drain trajectory latches with
+max |dP|/step 0.717 — no teleport. `run_pwr2_engine` 14 → 16 checks / 8 → 10 mutations (the
+new two substitute a mutated `pwr2_core` via `loadAll`); core-family gates all at baseline —
+neither guard fires on a legitimate fixture. Trap for the record: **the first drain-repro
+attempt (manual rod drive-in, no scram) did NOT reproduce** — the 200 s insertion is slow
+enough for charging to hold the pressurizer at 7.1 % and the plant rides through; the collapse
+needs the 2 s scram's fast contraction, so the gate fixture forces the pre-fix turbine wiring
+rather than pretending the door still reaches it. Second trap: `run_pwr2_sources`' affinity
+fixture reddened — its pressurizer-less sealed loop under an instant hand-pin moves 2.589 MPa
+in ONE step (a stiffness no full-plant trajectory has; the 500 cm2 worst is 0.67). Adjudicated
+fixture-side: the pin ramps over 400 steps and the identity holds exact, unlatched, at the
+same 18.000 MPa wall; the guard's constant carries the stiff-loop caveat.
+
+## Session log — 2026-08-19-backshop-g (#479 — the facade, the preview page, and the scram that bypassed the RPS)
+
+**Ruling executed:** *(OWNER, 2026-08-19: "A")* — PWR2 playable as a standalone dev page, not
+the full shell integration. Built: **`engines/pwr2/pwr2_engine.js`** (the gates' wiring written
+once — one `command()` door, canonical step order, true_state out) and **`test_pwr2.html`**
+(all 23 commands as levers, 24 true-value readouts US-first, lamps, 4-lane strip chart, 1–300×;
+a banner declares TRUE VALUES / no instrument layer). Gated by **`test/run_pwr2_engine.js` —
+14 checks, 8 mutations, all caught**; equivalence proven against a hand-retyped loadfollow ride.
+
+**The full wiring found two defects the partial-wiring gates could not reach:**
+- **#499 filed** — the 40 cm² break + ECCS + CVCS together NaN at ~68 s at 0.115 MPa: the #487
+  h-oscillation at a pressure the `flooredLow` latch never sees. Gate's break case scoped to
+  the 30 s latching window, issue named in place.
+- **The facade's `scram` bypassed the RPS** (measured: `scrammed` false, turbine pulling
+  100 MWe from a 2 % core, −240 °F/min cooldown, pressurizer drained to 9.2 % at 1724 psia,
+  then ONE step jumped the pressure solve +887 psi with surge +20,085 kg/s — solver root-jump,
+  posted as #499's second instance). Fixed sourced: manual trip is an RPS input (Ginna TS
+  Bases B 3.3.1 Fn 1), turbine trips with the reactor (UFSAR ch15 "zero delay is assumed"),
+  scram ramp monotone-down (kills the second-edge rod-teleport). Post-fix: dumps take the
+  load, Tavg 554.5 °F vs the 557 no-load program, finite through 10 min.
+
+**Site plumbing:** `test_pwr2.html` in `NOT_PUBLISHED`; the index.html link sits in a
+`DEV-ONLY-START/END` block `build_site.js` now DELETES at publish (a CSS-hidden dead link is
+still dead — the builder's completeness scan failed the CSS-only attempt, correctly, and the
+strip had to run BEFORE that scan, not in the later rewrite pass where it first landed).
+Headless-verified (Playwright): page runs, scram/PORV/lamps/chart live, zero console errors.
+Record: `Blueprint/PWR2_VALIDATION.md` §49. Gates: run_site_build 31, run_site_meta 164,
+run_portable 142, run_pwr2_engine 14/8mut; run_all --fast at baseline (+1 runner).
+
+## Session log — 2026-08-19-backshop-f (#479 — the ADV: the ladder's middle rung, and both declared gaps close)
+
+**Ask:** "Next" — the ADV recommended at the previous close. **Gates:** `run_pwr2_relief` 38
+checks / 23 mutations, `run_pwr2_loadfollow` 36 re-measured, `run_all --fast` at baseline.
+**Detail:** `PWR2_VALIDATION.md` §48.
+
+**Ginna TS Bases B 3.7.4 carries the whole valve** — 329,000 lb/hr (~4 % RTP), fail-closed,
+pneumatic cooldown control, block valve, and BOTH functions verbatim (overpressure below the
+MSSVs; cooldown when the condenser is unavailable). Per-MWt scaled to 8.18 kg/s, **the
+source's own ~4 %-of-RTP cross-check lands at 4.1 %** and is gated. Setpoint [derived] 1040
+psig — the WAT-05 plant's 45-psi ARV-below-safety margin applied under Ginna's 1085 pop.
+
+**Both of yesterday's declared gaps closed by measurement**: the 68 MWe dispatch overflow now
+rides the ADV alone (3.2 %, safeties SHUT); the post-turbine-trip secondary settles ON the ADV
+band (~1057 psig, safeties closed) where it previously lifted the safeties.
+
+**⚠ Trap: a mutation on a DISPLAY constant moves nothing.** `adv_setpoint_psig` and
+`adv_setpoint_mpa` are two literals (the safety pop has the same shape); the setpoint-drift
+mutation was blind until it targeted the derived MPa. The duplicated-constant failure mode,
+found inside my own constants block within the hour of writing it. Second trap, small: the
+ADV's arrival broke two of the relief gate's own mutation anchors (`total = safety + dump`) —
+a new term re-anchors the sums other mutations grip.
+
+**Still owed:** the P-9-class turbine-trip reactor trip in `pwr2_protection`.
+
+## Session log — 2026-08-19-backshop-e (#479 — the steam dump control system, and §42 criterion A met for the sourced reason)
+
+**Ask:** *(OWNER RULING, 2026-08-19: "Defer. A." — stratification deferred; §42 criterion A
+ruled: continuous load-following, rods MANUAL, power monotone in load.)* **Gates:**
+`run_pwr2_dumpctl` NEW 22 checks / 8 mutations, `run_pwr2_loadfollow` 36 / 8, `run_all --fast`
+at baseline. **Detail:** `PWR2_VALIDATION.md` §47 carries the sweep table; this entry the traps.
+
+**The criterion is met by the SOURCE'S OWN INTERLOCK, not by tuning**: WTSM 11.2 (fetched from
+ADAMS into this lane — it was cited from memory of a prior evidence pass but held nowhere) puts
+C-7 arming at ramp > 5 %/min or step > 10 %, so dispatch moves never arm the dumps, the
+parallel sink that pinned the old engine at 76 % (#489) is interlocked out, and power tracks
+load 1:1 down to 76 MWe with the dump at 0.0 % the whole way.
+
+**⚠ Trap 1: a guessed sensing dynamic collapsed two sourced criteria into one.** The C-7 rate
+unit with a 30 s lag read a clean 10 % step as 20 %/min and armed on the sweep's first move.
+The lag is DERIVABLE from the source's own two thresholds (step/ramp consistency → τ ≥ 120 s)
+— when a source gives two numbers about one detector, their ratio is a third number it gives
+for free.
+
+**⚠ Trap 2: a latch's fixture must keep the demand alive, or the honest disarm masks the
+detector.** Three gate fixtures in a row (the 12 %-step arm, the knife-edge no-arm, the
+arming-ignored mutation) were blind or wrong until the stub Tavg was made HOT — with demand at
+zero, C-7 correctly clears the tick it sets, and both a correct and a broken detector read
+`false`.
+
+**⚠ Trap 3: a comparison dies when a ruling changes one side.** The three "lands where the
+current engine lands" A1 checks compared two plants under the SAME stand-in dump law; the
+ruling gave PWR2 the real controller and not the old engine. Retired with the premise stated,
+the stand-in law kept in place as the record its literals were measured under; the A1 chain
+bands re-sized for the halved excursion, holding on BOTH plants.
+
+**Measured and declared**: below ~70 MWe the SG code safeties lift visibly and cap the
+rods-parked dispatch range (1066–1079 psia, up to 26 % of rated steam) — the real plant's
+secondary envelope, alarm-carrying, nothing hidden. Two owed items named: an ADV between dump
+and safeties, and the turbine-trip reactor trip (P-9 class) in `pwr2_protection`.
+
+## Session log — 2026-08-19-backshop-d (#479 stage 2c — the high-level trip and auxiliary spray)
+
+**Ask:** autonomous continuation of the ruled Option 1 stage 2 — the two remaining small
+sourced pieces. **Gates:** `run_pwr2_protection` 64 checks / 27 mutations,
+`run_pwr2_pressurizer` 59 / 21, `run_all --fast` at baseline. **Detail:**
+`PWR2_VALIDATION.md` §46.
+
+**The high pressurizer level trip** (Ginna 87 %, TS Bases B 3.4.9) landed in
+`pwr2_protection`, gated by **P-7** (WTSM 10.3.4.3, at-power ≥ 10 %). **⚠ The permissive-shape
+trap, named**: P-7 is a PLAIN automatic gate — no operator request exists anywhere in it — so
+the P-10 revoke-not-gate lesson deliberately does NOT transfer; modelling every permissive the
+same way would have been the real error. Pinned both sides (92 % level at 5 % power does not
+even assert; at 12 % it trips alone), and the function first landed with ZERO coverage — the
+gate passed 57/57 untouched, the coreRegime lesson repeating to the letter — before the checks
+and three mutations went in.
+
+**Auxiliary spray** (WTSM 3.2 verbatim) landed in the vessel: operator-commanded,
+RCP-independent by its whole point — 2,533 kW of VCT-cold condensing duty with the loop
+STOPPED, where main spray is dead. Capacity is the CVCS charging max written down twice and
+TIED BY THE GATE (the MDOT_RATED pattern).
+
+**Stage 2 remainder:** the two-h stratified vessel states only — the deepest piece, sequenced
+last because it re-measures everything above it.
+
+## Session log — 2026-08-19-backshop-c (#479 stage 2b — the TMI levers, and the deception emerges unscripted)
+
+**Ask:** autonomous continuation of the ruled Option 1 stage 2 — the drained/TMI machinery.
+**Gates:** `run_pwr2_pressurizer` 56 checks / 19 mutations; `run_pwr2_true_state` 47 (67 of 109
+supplied); `run_all --fast` at baseline. **Detail:** `PWR2_VALIDATION.md` §45 carries the
+measured deception table; this entry carries the read.
+
+**Built:** `drivers.porv_stick` (one valve of two — PWR2's first failure-injection machinery,
+a failure STATE beside an untouched controller), the block valve (one combined isolation,
+declared; never touches the code safeties), and the tailpipe temperature with its [open]
+fast-heat/slow-cool asymmetry — the asymmetry, not the taus, is the claim.
+
+**The measurement the curriculum tier waits on: THE TMI DECEPTION EMERGES UNSCRIPTED.** Stuck
+3–11 minutes, the indicated level reads 100 % — high-level alarm in — while true inventory
+falls 96 → 84 % through the open valve (2,900 kg gone). The depressurising loop saturates and
+swells into the vessel: the level instrument tells the truth about the vessel and lies about
+the plant. Closing the block valve freezes the loss instantly at 4,273 kg, and the tailpipe
+stays hot for minutes afterwards — why a hot pipe proves nothing about the valve. Nothing in
+any of that is scripted; it is the stage-1 machinery plus one stuck valve.
+
+**⚠ Operational trap: a 19-replay injection self-test rides the whole suite 20 times.** The
+gate crossed 600 s standalone when the TMI section landed; quiet-mode rides were trimmed
+(with quiet-loosened bands where a shorter ride samples mid-transient) to bring it to 445 s.
+A mutation-replay gate's cost is (suite cost) × (mutations + 1), and every scenario second
+added to the loud path is paid twentyfold.
+
+## Session log — 2026-08-19-backshop-b (#479 stage 2a — the level control system, and the integral that railed its own demand)
+
+**Ask:** autonomous continuation of the ruled Option 1 ("pressure control first, level machinery
+second") — the first stage-2 piece, the pressurizer level control system. **Gates:**
+`run_pwr2_pressurizer` 51 checks / 14 mutations; `run_all --fast` at baseline. **Detail:**
+`PWR2_VALIDATION.md` §44; this entry carries the traps.
+
+**Everything is WTSM 10.3, adopted in shape**: PI on charging (output = `charging_demand`, wired
+by the caller into `pwr2_cvcs` — letdown constant in the normal lineup), the 25 → 61.5 % program
+over Tavg — and the source's 557 °F no-load point IS the plant's own HZP anchor (291.67 °C) —
+the +5 % anticipatory backup-heater signal, the 17 % letdown-isolate/heater-cut, the 70 % alarm.
+Closed-loop with the real CVCS the plant holds 60.3 % against a 61.5 % program, answers a 6 kg/s
+drain with railed charging, and a hard drain latches the 17 % cut with letdown isolated.
+
+**⚠ Trap 1: an uncapped PI integral railed its own demand** — the startup transient wound the
+integrator to ±10 demand-units of stored authority and the controller sat at FULL charging with
+the level ABOVE program. Anti-windup caps it at ±0.5 of the demand range. The source's own
+sentence describes a controller a wound-up integral cannot be.
+
+**⚠ Trap 2, the one that generalises: a SOURCED protection added to the plant re-excited an
+adversarial fixture tuned to the unprotected plant.** The 17 % heater cut removes 158 kW of
+pressure support mid-outsurge, and `run_pwr2_reactor`'s rated-sink-on-scrammed-plant ride (no
+RPS wired, by design) now rings through a second moderator excursion — **477 % power at ~32 s**
+— before settling at ~100 % by 56 s. A real high-flux trip ends that ride at the first spike.
+Settle sample moved 38 → 60 s; the three-phase mechanism checks unchanged.
+
+Stage 2 remainder: two-h stratified states, aux spray, PORV block valve + tailpipe, drained/TMI
+machinery, and the high-level trip function owed to `pwr2_protection`.
+
+## Session log — 2026-08-19-backshop-a (#486 closed — the scenario fixtures pressurized, and twenty damage checks held without a band moving)
+
+**Ask:** autonomous continuation of the ruled Option 1 work — the #486 remainder named in the
+previous entry: put the staged pressurizer under the LOCA and core-damage scenario fixtures and
+adjudicate every moved timeline. **Gates:** `run_pwr2_coredamage` 20/20 and `run_pwr2_loca`
+14/14 on the pressurized fixtures; `run_all --fast` at baseline. **Detail:**
+`PWR2_VALIDATION.md` §43.5 carries the measured shift table; this entry carries the read.
+
+**Measured before the change landed** (both plants, five scenarios): the vessel **outsurges
+into the break and empties at 22.1 s** on the 20 cm² break, so every milestone shifts a
+near-uniform +5..11 s (2200 °F 635.7 → 646.6 s, melt 748 → 760 s); the 5 cm² slow leak is
+fought **~150 s longer** (1,682 kg of vessel inventory and full heaters are real against a
+small break, 2200 °F 1614.8 → 1763.0 s); the feedback-attribution property and the #487 floor
+endgame both survive.
+
+**The read worth keeping: a gate built on ORDINALS and MECHANISMS absorbs a deliberate fixture
+change for free.** All 20 core-damage checks — order of chain events, latch-at-crossing,
+attribution, stoichiometric identities — held with zero re-banding. The one LOCA band that
+moved (HHSI start 3.0 → 30 s) moved for a reason worth the line: the vessel holds the plant
+above the 9.58 MPa (1389 psia) shutoff head for a measured **12.0 s**, which is the SI-delay
+role a real pressurizer plays in a medium break — the fixture got MORE prototypical and the
+band followed the plant.
+
+#486 closed: steady-state fixtures at the design point (2026-08-18b) + scenario fixtures
+pressurized (this entry) is the issue's whole scope.
+
+## Session log — 2026-08-18-backshop-b (#479 — the pressurizer, stage 1: the plant holds its design point, and three formulations died getting there)
+
+**Ask:** *(OWNER RULING, 2026-08-18: "Option 1" — build PWR2's own pressurizer now, staged,
+pressure control first, #472's findings as evidence not code; supersedes D1 §25.3 / D3 §4's
+wait-for-#472 posture, which was option 3 of the set put to him.)* **Gates:** `run_all` full at
+baseline; `run_pwr2_pressurizer` NEW 39 checks / 10 mutations; loadfollow, reactor and
+true_state fixtures adjudicated per-check. **Detail:** `Blueprint/PWR2_VALIDATION.md` §43 —
+the sourced table, the three formulation post-mortems, the plant-coupled measurements. This
+entry carries the traps.
+
+**The evidence pass came first and the corpus had nearly everything**: the WTSM chapters this
+lane already held carry the entire pressure-control system — Fig 10.2-3's setpoint ladder
+(read from the PAGE IMAGE; the text layer does not carry figures), the 1794 kW heater banks
+with the source's own 414:1380 split, 840 gpm spray, the 25→61.5 % level program — and Ginna's
+TS Bases give the vessel volume by division ("650 cubic feet … equivalent to 87 %"). One
+number class is genuinely absent: nothing times interphase equilibration, and the surviving
+formulation deliberately needs no such constant.
+
+**⚠ Trap of the session: the FROZEN variable in a pressure projection must be INTENSIVE.**
+Three formulations were built and measured before the fourth survived (all recorded in the
+module header): a split from the spaces' own densities collapses the LEVEL under spray (a
+dense steam space reads as vanished liquid); fully-mixed two-space energy states INVERT the
+insurge response (compressed-liquid density does the bubble's job); and a (mass, total-H)
+projection at frozen H inverts the COMPLIANCE itself (∂m/∂P < 0 — freezing extensive energy
+drops the compression work) and ran the solve to the floor in one step. The survivor is one
+HEM vessel at specific h̄ through `rho_from_h` — the loop nodes' own discipline, the same
+audit-validated function.
+
+**⚠ Second trap: a fixture repair RELOCATES checks' subjects.** Two checks needed the boiling
+core the default fixture no longer has: the void-coefficient liveness check now rides a
+DELIBERATE rigid fixture (the old plant, kept as the adversarial one), and the scram-recovery
+SUR samples moved ~8 s later because the vessel fights the depressurisation that used to
+deliver the moderator insertion — mechanism unchanged, sample times re-measured, and the old
+times pass only on the old plant, which is the fixture change speaking rather than a refit.
+The loadfollow baseline check that PINNED the #486 defect ("NOT at its design pressure, core
+AT SATURATION") is TURNED AROUND: 2226 psia, 45 °F subcooling, sampled past the startup
+transient's heater recovery. A1 held unchanged through all of it.
+
+**Deliberately NOT done**: the LOCA/core-damage scenarios still ride pressurizer-less plants —
+integrating the vessel moves every blowdown timeline and is its own per-probe adjudication
+pass. #486 stays open scoped to that. Stage 2 (two-h stratification, CVCS level control, aux
+spray, block valve/tailpipe, drained/TMI machinery) queued behind it.
+
+## Session log — 2026-08-18-backshop-a (#479 — the as-built audit adjudicated, every confirmed finding landed, and #487 turned out already cured)
+
+**Ask:** pick up PWR2 after the #488 as-built audit completed; owner rulings this session: **no
+merges until explicitly ordered** (develop is 3 commits ahead of backshop — noted, untouched),
+run the **full D12 evidence pass**, and **include the #487 fix** in the batch.
+**Gates:** `run_all` full at baseline (see the commit for the tally), seven `BASELINES` entries
+moved, every one annotated. **Filed:** #490 (void-as-quality), #491 (dump valve %), #492
+(provenance umbrella) — all three resolved in the same commit, per charter §5.3. **#487**
+commented `status-work-complete`. **#488** adjudicated and closed, convergence row on #221.
+**Detail:** `Blueprint/PWR2_VALIDATION.md` §41–42; this entry carries the traps.
+
+**The audit held up under re-measurement.** Its three load-bearing harnesses (`d10_void`,
+`a1_hgap`, `c9_e18_fixture`) reproduce exactly on HEAD `ec051d1` — one commit past the audited
+SHA — so the RPS commit moved none of the findings. The fixes, in one line each: **quality is no
+longer published as void fraction** (Layer 0 `voidFraction(h,P)`; 1.53 % quality = 8.37 % void
+at 2235 psia, pinned against independent volume algebra at two layers, mutation replays of the
+shipped defect red 10 checks each); **`steam_dump_valve_pct` publishes `pwr2_relief`'s own
+`dump_demand`** (the retyped 0.28 is gone; pinned on a commanded-open dump with the condenser
+unavailable — 40 % open, 0 kg/s, where the flow form read 0 %); **`vapor_ratio` is [derived]**
+(WCAP-16009 Table 10-3 read from the page image puts the Dittus-Boelter group at 0.403–0.551
+over 502–1334 psia, so the shipped 0.5 stands as the band's representative — the value did not
+move, only its provenance); **`dittus_exp` is [sourced-form]** (Ginna names Dittus-Boelter
+verbatim); plus the stale-prose set (581.8 °C → 684.2, the β-mismatched kinetics validation
+claim, the B6 bound rewritten around its real ±12 % hydrogen width, the D11 h_stagnant
+rationale inverted, the E17.5 severity/timeline scoping, two shim caveats, the A3 nat-circ
+capability check).
+
+**⚠ The trap of the day: an issue's failure mode can be CURED INCIDENTALLY while the issue
+stays open, and nothing notices.** #487's 5 cm² floor NaN does not reproduce at HEAD — measured
+3600 s at 5/20/50 cm², the plant drains to 0.08 % inventory and floats finite at 15.7 psia —
+because the pump density coupling (`99ed53c`, landed hours after the issue was filed) changed
+the endgame it described. An incidental cure is one physics change from un-curing, so it is now
+PINNED (`run_pwr2_coredamage` third scenario: reaches the floor region AND stays finite) and
+the class is BACKSTOPPED (`pwr2_core` latches `beyond_model` when the solve pins at the floor
+while nodes clamp; later steps HOLD, state frozen, time flowing; `stepPlant` freezes rotor and
+momentum with it). The latch never fires on any reachable scenario today — it is reached in the
+gate by a sink drive the plant cannot produce, and both halves of the condition are required
+because each alone fires on a healthy plant (the clamp transiently in a 50 cm² break, the floor
+benignly while mass still closes).
+
+**⚠ Second trap, inherited but worth its own line: the discriminating fixture is in the LOW
+range, not the extreme.** A 40 % quality core cannot tell quality from void fraction (0.40 vs
+0.80, both clear any coarse band); 1.53 % can (0.0153 vs 0.084). The audit's harnesses, this
+session's checks and both mutations all live at low quality for that reason.
+
+**Housekeeping debt found:** the RPS session (`ec051d1`, 2026-08-17 evening) wrote its record
+to `PWR2_VALIDATION.md` §40 and the commit message but **no TUNING_LOG entry** — noted here
+rather than back-filled under a fabricated session heading. Its content: Ginna Table 15.0-6
+setpoints with delays, P-10 as a permissive-gated enable, OTΔT declared absent (the two corpus
+documents transpose units on the constants), and the finding that the settling fixture sits
+490 psia below the sourced low-pressure trip — #486 escalated accordingly.
+
+**Still open on #479, in rank order:** the pressurizer/pressure-control layer (blocks every
+protection and casualty scenario, #486; the owner decision point), the secondary dump/Tavg
+layer (needed before §42's #489 acceptance case can run at all), OTΔT (blocked on a document
+that types the equation and constants in one place), and the DELAYED group data evidence pass
+(now honestly [recalled]).
+
+## Session log — 2026-08-17-backshop-a (#479 — core damage built, and three defects that had to be cleared before it could work at all)
+
+**Ask:** core damage was chosen over the protection layer *(owner ruling, 2026-08-17, selecting the
+recommended option of two put to him)*, and the fuel model was to be changed under a second ruling:
+**"pin at rated"** — make the film coefficient respond to the coolant, normalised so the rated
+state, and therefore the gap conductance solved against the sourced Doppler defect, cannot move.
+**Gates:** `run_all` **75 runners at baseline** (full, not `--fast`). **Landed:** six commits
+`1d8ee11` → `bf6b74a`, nothing pushed. **Detail:** `Blueprint/PWR2_VALIDATION.md` §35–39, which
+carries the tables; this entry carries the traps.
+
+**The plan's premise got a probe before any code, and the probe found the plant was NaN 62 s into a
+50 cm² break.** Nothing had ever run a PWR2 break past ~60 s. Three defects came out of that, in
+sequence, each hidden behind the one before it — and all three are the SAME CLASS: **a term that
+silently assumes single-phase liquid and has no way to notice the fluid changed.** None needed a
+new constant. All three are exactly neutral at rated by construction, which is what let them be
+added to a calibrated model without re-solving anything.
+
+**1. The enthalpy state had no wall while every READER had one.** `a[i] = h + dt*dH[i]/m_n[i]`
+divides by a node mass a boil-off drives toward zero. The core node hit quality 1.0 at 0.4 kg of
+steam, `h` passed 1×10³⁰⁴ by t = 62 s and overflowed. *Invisible because `T_from_h`, `rho_from_h`
+and the vtable all saturate* — a node at 1e304 reported 800 °C and a sane density, so the state was
+absurd for tens of seconds while every gauge read plausibly. `solveP` in the same file argues at
+length for exactly this wall on the pressure SEARCH and nobody applied it to `h`.
+**⚠ The trap inside the fix, and I walked into it:** clamping the stored `h` AFTER the solve leaves
+the solve balancing one set of densities while the state holds another — the table saturates at a
+different value than `RHO(h_ceiling)`, 0.24 kg/m³ at 15.41 MPa, 0.5 kg on the core node,
+**re-introduced every step a node sits out of range**. The clamp has to be inside `F(P)`. The gate
+now checks it against the solve's OWN reported residual, which separates the two causes.
+
+**2. PWR2 had a POSITIVE reactivity excursion on every large break.** `moderatorReactivity` takes a
+**temperature** and rebuilds a density through the LIQUID branch, so a boiling core was invisible
+to it and there was no void coefficient at all. On a depressurising plant the coolant follows
+saturation DOWN — at t = 60 s the core was 241 °C and 92.5 % steam while the term read *"colder
+moderator, therefore denser"* and inserted **+3433 pcm**. Five times prompt critical; power 0.8 % →
+4.7×10¹² in ONE step. That is the inverse of the defining characteristic of an undermoderated PWR.
+The file's own header claimed it *"reads real density from L0"* — true only while subcooled, and
+nothing said so. Fixed with the **density deficit against saturated liquid**, using the
+already-calibrated `modCoeff`, exactly zero on a subcooled core.
+**⚠ Two things nearly caused a correct term to be "corrected":** *quality is not void fraction, and
+here they differ by 12×* — 1.53 % quality is 18.8 % void by volume, and normalising on quality puts
+the coefficient at −1100 pcm/% void, far outside every published range; measured properly it is
+**−89.4 pcm per % void**, inside the real-PWR band. And the first reference — "liquid at the node's
+own temperature" — **died in exactly the case it existed for**: `T_from_h` clamps a dry node to
+800 °C, `h_l` clamps that back to 358, and at 0.1 MPa the result is itself two-phase, so it reported
+**−7.6 pcm** on a completely dry core where the deficit is ~958 kg/m³. *A void coefficient that
+switches itself off in a voided core is worse than not having one, because it is invisible.*
+
+**3. The reactor coolant pump did not know it was pumping steam.** `pumpHead` returned
+`dP_rated * r*r` — pressure rise from shaft speed and nothing else. Measured, 5 cm² break, no ECCS:
+**`mdot_loop` held 1630 kg/s for the whole 840 s blowdown**, unchanged to four figures, with the core
+dry at 470 °C and 2.4 % of the inventory left. **The plant was circulating rated mass flow of
+steam.** Consequences: clad heat-up was 1 °C so core damage was *unreachable*, and natural
+circulation — a Tier A behaviour — could never be observed because forced flow never stopped. A
+centrifugal pump develops HEAD, `dP = ρgH`; friction for a given MASS flow runs as `1/ρ`. Neither
+term had a density, which is why the flow did not merely stay high but stayed EXACTLY at rated. The
+equilibrium that falls out is the textbook affinity result, **mass flow proportional to density**,
+checked as an identity to 1×10⁻³. **Blast radius: none — all 69 runners at baseline with the
+momentum equation changed**, which is the neutrality claim cashed rather than asserted.
+
+**What the fixes exposed: PWR2's fixtures have never been at their design point.** Measured with
+the void term disabled, i.e. the plant as it stood before this session, `run_pwr2_loadfollow`'s
+baseline sits at **11.096 MPa against a 15.41 MPa design with ZERO core subcooling**. It always
+did. The block asserting *"the plant is at its design point"* checked Tavg, secondary pressure and
+net reactivity and **never primary pressure or subcooling**, which is where the whole departure is;
+it passed a 579.30 °F Tavg check because a depressurised plant happened to land near that number.
+`run_pwr2_reactor` was worse — a check read a **saturation temperature** and its comment explained
+it as *"the core outlet doing exactly what it should"*. Cause is the fixture having no pressure
+control; **#472 owns it, filed as #486.** A1 itself is unchanged (71.1 % / 594.8 °F both plants),
+because the load cut repressurises the primary and the core goes subcooled.
+**⚠ A delta contaminated by a baseline is not a delta:** the "fuel cools with it" check asserted a
+≥80 °C drop; across the change the RESULT moved 0.5 °C while the BASELINE moved 21, so the delta
+went 94.7 → 73.9 and failed. Re-banding 80 to 60 would have fitted the check to whichever plant it
+last ran against. It is now an identity against `steadyFuelTemp` — **within 0.01 °C on both plants.**
+
+**Then the ruled work.** Clad became a thermal node (stack split so `r_fc + r_cw ≡ r_total` to full
+double precision — the Doppler solve untouched; clad τ 0.061 s against the fuel's 3.7, advanced by
+an exact 2×2 matrix exponential). `pwr2_damage.js` is Baker-Just with **nothing fitted** — rate law,
+both constants, 1510 cal/g, the stoichiometry, the UO₂ melting point and all three 10 CFR 50.46
+criteria quoted from the corpus. **The strongest check in it: the model agrees with both onset
+statements while having no threshold** — negligible at GEND-061's 1200 °F (0.066 %/100 s),
+appreciable at Ginna's 1800 °F (1.78 %), 7.04 % at the 2200 °F limit against 50.46's own 17 %
+ceiling, from one Arrhenius exponent. Zirconium inventory cross-checks to **83.6 %** of GEND-061's
+TMI-2 whole-core figure scaled on power, and it MUST land below because a whole-core figure includes
+thimbles and grids.
+
+**The chain, driven once** (20 cm², no injection): void 108 s → flow collapse 131 s → 1200 °F 334 s
+→ 1800 °F 507 s → 2200 °F 637 s → melt 749 s. **With the reaction heat fed back the 50.46 limit
+arrives 344 s earlier than without**, and 100 % of the cladding is consumed against 15.4 %. Both
+runs reach the onset at the same instant, which is what makes the divergence after it attributable.
+Energy closes to 1 kJ in 13,497,322.
+
+**NOT claimed, and both directions matter.** Timing depends on the unsourced low-flow film
+coefficient, so the times exist only so the *acceleration* can be measured as a difference between
+two runs of one model. And the terminal 100 % is **the one place this model runs PESSIMISTIC** where
+every other declared simplification runs optimistic: nothing models relocation or quench, and TMI-2
+stopped at ~45 % because injection was restored. Injection holds the core here for 1250 s.
+
+**⚠ Defects made and caught inside this session's own commits.** The shim's damage block first
+landed **inside the auxiliary-feedwater guard**, so a caller with damage and no AFW got all five
+fields silently dropped and read them as "no model" — `pwr2_true_state.js`'s own headline defect,
+reproduced in the commit whose subject is not doing that. Caught only because the wrecked-core
+fixture passes a MINIMAL context; a check written on the populated fixture would have passed. And
+the latches **reported `fuel_damaged` and `melted` on a plant whose state had been lost** — `NaN >= x`
+is false so NaN never latched, it fired on the diverging finite values on the way to the 0.1 MPa
+floor. `stepDamage` now refuses a non-finite temperature loudly.
+
+**Three more authoring traps, all mine:** a guess wearing an assertion's clothes (asked for >50 °C
+of oxidation-driven clad rise, measured 12.7 — the model was right, 5000 kW into 397 kW/K can only
+be 12.6); *every clad check read a SETTLED state*, so an instantly-slaving clad was invisible until
+a transient was added; and that transient's first fixture started both nodes cold, which measures
+the FUEL's time constant, not the clad's. A fourth: a construction fixture that varied nothing —
+`n_assemblies` leaves `rod_length_total_m` unchanged because the ENVELOPE is held fixed.
+
+**Filed:** **#486** (fixtures never at design point, blocked behind #472), **#487** (a blowdown
+reaching the 0.1 MPa property floor ends in NaN rather than a held state; `enthalpyClamped` fires
+one step before, so a caller can detect it). `core_uncovered_frac` stays declared-missing with its
+reason **rewritten** — not "no damage model" but that a level needs PHASE SEPARATION Layer 2's
+homogeneous-equilibrium water does not have, and that machinery is #472's.
+
+**Lane maintenance.** `develop` merged in at the end (8 commits, 7 conflicts). The one that would
+have gone wrong silently: `run_hardrules` conflicted at backshop **311** vs develop **286** and the
+answer is **NEITHER** — it is a static scan, so the merged tree carries the union of both lanes'
+sites. **Measured 316.** `Manuals/12_SIM_PHYSICS.md` auto-merged, which is the case that dropped a
+§5.5 in the 2026-08-03 merge; both lanes' content was grepped back out explicitly and both survived.
+
+**Still open on this issue:** the protection layer — the last substantial system not blocked behind
+another lane, and today's work sharpens the case, because PWR2 now models a core that damages itself
+but still rides out a full load rejection at ~67 % power where a real plant scrams. Needs a ruling;
+it was the option declined this morning.
 ## Session log — 2026-08-19-workbench-a (#494 — the release's deploy check read its authentication from the shell, and its own header said otherwise)
 
 **Ask:** owner, 2026-08-19: *"Next"* — the recommendation left outstanding at the end of the
@@ -935,6 +1661,740 @@ nothing else. Fixed by putting the build in the url; measured on the develop pre
   `lane_reference` 13,755). Being one directory deeper was their whole exemption. The check
   that keeps them out is a *declared-set* rule — every html in the output must be a declared
   page — because a deny-list cannot name the page nobody has written yet.
+
+## Session log — 2026-08-14-backshop-a (#479 — the review adjudicated, then six layers built)
+
+**Issue:** #479. The owner supplied an adversarial review of the PWR2 design set with the standing
+instruction that I did not write the design and should judge the findings on their own terms.
+
+**The adjudication (`Blueprint/PWR2_REVIEW_ADJUDICATION.md`).** All eleven findings independently
+re-tested rather than read. **Ten confirmed; one (F1) confirmed in substance with an overstated
+headline; two (F2, F10) confirmed and UNDERSTATED** — the review was, on its own terms, too
+generous twice. That is the useful direction for a review to be wrong in and it is why the
+re-test was worth the tokens: an adjudication that only ever softens findings is indistinguishable
+from a defence of the work.
+
+**Owner rulings taken this stretch** — the large break is **dropped as a design requirement, kept
+as a declared demonstration**; vessel proportions **scaled from a real plant**; loss coefficients
+**declared unsourced and proceeded on**; build scope **through the conservation core**; A/B testing
+**against the workbench tree**. And the one that governs everything after it: *(OWNER, 2026-08-14:
+"Do not merge until I explicitly tell you to. We are not going to merge until the new physics have
+been finished, tested and validated.")* — recorded in `CLAUDE.md`. The bar is the WHOLE engine.
+
+**Built: Layers 0 through 5**, each with its own gate and injection self-test.
+
+| layer | file | checks | mutations |
+|---|---|---|---|
+| 0 water properties | `pwr2_water.js` | 231 | 26 |
+| 0b property table | `pwr2_vtable.js` | 23 | 12 |
+| 1 geometry | `pwr2_geometry.js` | 29 | 13 |
+| 2 conservation core | `pwr2_core.js` | 33 | 12 |
+| 3 loop topology | `pwr2_loop.js` | 26 | 8 |
+| 4 sources | `pwr2_sources.js` | 16 | 9 |
+| 5 steam generator | `pwr2_sg.js` | 21 | 12 |
+
+**Layer 0 was REBUILT, not accepted, and the rebuild found two physics errors in the original.**
+Refit on 354 + 220 + 11×159 IAPWS-95 points from NIST SRD 69. The compressed-liquid enthalpy term
+had **the wrong SIGN** at operating temperature (−9.0 kJ/kg true against +6.2 assumed at 610 °F /
+321 °C), and the bulk modulus was **up to 8.7× too stiff**. Both were inside a library whose
+original 56 checks were green — 56 checks that asserted the correlations agreed with themselves.
+
+**The performance stop condition, and the finding that nearly got taken on the wrong terms.** The
+direct correlations ran the stack at 600 steps/s against a 61,700 budget — 3,617 s for 12 plant
+hours. A tabulated property lookup cleared it at 95,200 steps/s, and **every accuracy check
+passed while dρ/dP was −57.6 % wrong at the pressure scale a timestep actually moves.** Wiring it
+in reddened three layer gates on the pressure response — which is what **A3, "pressure follows
+temperature", is made of.** The cause was mine and structural: the subcooled wing stored `v` as a
+ratio to `v_f(P)`, so density came out as a difference of two large nearly-equal P-dependent terms
+and the residual *was* the compressibility. **An accuracy target on a VALUE says nothing about its
+DERIVATIVE**, and 17 green checks all measured the value. Rebuilt with the compressibility applied
+analytically on an enthalpy-indexed table: **0.0072 % on ρ, 0.1 % on dρ/dP, 119 ns/call, and the
+stack at 118,600 steps/s — 18 s for 12 plant hours against a 35 s budget.** `PWR2_DESIGN.md` §26–28.
+
+**Traps worth the lines:**
+- **A gate that PATCHES SOURCE has a second contract with that source.** Re-wiring `W.rho_from_h`
+  to a resolved-once `RHO` alias invalidated a mutation anchor in the core gate. It failed with
+  `anchor not found` — counted as a blind spot, not skipped. Had it skipped, the gate would have
+  gone on printing `12/12 caught` while testing eleven. A refactor breaks this without touching
+  behaviour, so anchor-miss must be a HARD ERROR.
+- **A one-pass correction missing a ruled threshold by 12 % is where thresholds get re-banded.**
+  −0.0674 % against 0.06 %. Raising the table resolution 600 → 2000 did not clear it, because the
+  residual was the correction and not the resolution. A second correction pass cleared it ninefold.
+  The number was not moved.
+- **Three of my own probes were UNPHYSICAL and one of them found a real defect** — 300 MW into a
+  closed loop with no sink drove the bracket to 1e15 MPa *reporting success*. An envelope guard
+  went in. The other two (a primary started 20 °C below the design point; a duty reversal probed
+  above the secondary saturation) were mine to fix, and a fourth "0.30 % subcooled error" was water
+  at 6 °C — below Layer 0's own declared 20 °C floor. **Probe inside the declared envelope, or you
+  are measuring the declaration.**
+- **Explicit lag on junction expansion flows was built as designed and diverged** in both sign
+  conventions (−2.97e+12, −4.42e+2). Reverted and recorded rather than tuned into submission.
+- **A buoyancy sign error returned exactly 0.0 kg/s natural circulation** — an exact zero from a
+  physics function is a structural tell, not a small number.
+- Benchmarks were reported in the wrong unit **twice** (ms × 1e9 instead of 1e6 — 145 µs claimed
+  where truth was 145 ns). Now on `process.hrtime.bigint()`.
+- **`git autocrlf` silently stopped multi-line mutation anchors from matching.** `.replace(/\r\n/g,
+  '\n')` before every anchor comparison.
+- **HR11 rejected two of my own citations** — one lacked the verbatim quote, one lacked the date.
+  The scan wants BOTH, and it was right to.
+
+**Corrected in the manuals:** RCS flow 24,000 → ≈34,500 gpm (`Manuals/12`).
+
+**The A/B harness is built and its first run found two defects (#482).** `tools/pwr2_ab.js`,
+against `RD_workbench` at `cd30778`. It prints the reference SHA, REFUSES a dirty or unreadable
+reference tree, and refuses to record a baseline while #472 is open — the ruled method, in code
+rather than in a person's memory. Exploratory result: loop deltaT agrees to **2.9 %** and duty to
+**0.6 %**, but the SG secondary sits **89.5 psi low** because `ratedU()` derives U at Tavg
+304.5 degC while `stepSG()` is called with the SG primary node at 297.4 degC — U is correct for a
+temperature the call site never passes. Separately the loop settles **16.0 degF above the ruled
+Tavg**, and that one is NOT the first in disguise: fixing the SG makes it worse, which is how the
+sign tells you they are two findings.
+
+**And the harness's own first error is the trap worth keeping.** It reported a loop deltaT of
+**-57.7 degF against +59.4 -- a -197 % divergence** with nothing wrong with the plant: it had
+mapped "hot leg" onto the node where heat is REMOVED. Swapped, the same numbers agree to 2.9 %.
+**-197 % is loud enough that somebody checks; the same mistake in a smaller place produces a 5 %
+divergence that gets filed and chased into the engine**, which is where nobody would find it
+because it is not there. **An A/B harness is a measuring instrument and its own errors present as
+physics findings.** It now asserts the node it calls hot is hotter, and refuses rather than prints.
+
+**AND IT HAPPENED A SECOND TIME, QUIETLY, IN THE TABLE UNDER THAT WARNING -- which is the entry
+that matters.** The secondary-temperature row read the reference's `t_sg_c`, which is NOT a
+saturation temperature: `CONTEXT.md` §6.3 defines it as the SG TUBE-BUNDLE node, a metal
+temperature 29.0 degF above saturation. It reported **-7.6 %** where the truth is **-2.5 %** --
+precisely the "5 % divergence that gets filed and chased into the engine" the paragraph above had
+just predicted, and it WAS filed, in #482, before it was caught. **A warning addressed to a
+careful reader is not a check.**
+
+**What catches it with no knowledge of field semantics: the rows disagreed WITH EACH OTHER.** For
+saturated water, pressure and temperature are locked, so a -10.8 % pressure divergence and an
+independent -7.6 % temperature divergence cannot both be true of one saturated secondary.
+Corrected, both are the same -7.3 degC on the saturation line. The harness now checks each side
+against its OWN saturation line, and DERIVES the reference's saturation temperature from its own
+pressure rather than reading a field -- deriving it cannot pick up the wrong field. Verified by
+injection. **The general rule: when two compared quantities are physically coupled, the harness
+can check the COUPLING without understanding either one** -- a stronger guard than knowing what
+the fields mean, because it survives someone renaming them.
+
+**AND A THIRD TIME, WHICH INVALIDATED MOST OF THE FIRST A/B: the plant was never at steady
+state.** The harness drove the secondary at a fixed feed = steam = 165 kg/s, open-loop, removing
+~302 MWt against 300 MWt of core power. The plant does not settle -- **it cools monotonically,
+Tavg falling 599 -> 509 degF over an hour**, and `runPWR2` described itself as reaching "a settled
+full-power condition" without ever testing that. **A drifting number is not wrong at any
+particular moment; it is meaningless.** Fixed with a steam demand that takes exactly the heat
+delivered (what the reference's control layer achieves): settles in under 10 min, bit-identical at
+30 and 60. Both sides now run 20 minutes PAST the read point and refuse if anything moved.
+
+**Corrected, everything agrees to 0.5 % except the loop deltaT at -5.3 %** -- the only real
+divergence in Layers 0-5, and a FLOW question (deltaT = Q/(W.cp)) belonging to Layer 3, not the SG.
+**#482 defect 2 is WITHDRAWN** (it was the cooldown read at an arbitrary moment: 596.1 degF at
+30,000 steps, 592.3 at 40,000). **Defect 1 is confirmed and its "open design question" is settled
+by measurement**: held at design pressure, driving on Tavg settles at 580.36 degF against a ruled
+580.1 and a reference 580.3 -- **0.01 %** -- while driving on the SG node lands 607.79. Tavg is
+not one option among three; it is the one that reproduces both. The defect was that the CONTRACT
+WAS UNSTATED, so `stepSG(sg, someTemperature, ...)` took whatever a call site held. Layer 5 now
+exports `primaryTavg(sys)` and the gate pins the SETTLED TEMPERATURE, not the argument -- an
+argument-shaped check passes for a helper that returns the wrong number.
+
+**The trap that outranks all three: I argued defect 2 was independent of defect 1 from the sign,
+and that argument was REPRODUCIBLE ON THE BROKEN HARNESS** -- driving off Tavg really did move
+Tavg the wrong way, 592.3 -> 598.5 degF. A consistent, repeatable, mechanistic-sounding argument
+built on a lying instrument. It did not feel like a guess. **Each of the three was caught only by
+a check that could FAIL -- never by care, and never by the warning written after the previous
+one.** §29.3 warned in prose and §29.4 happened one table below it.
+
+**AND THE LAST DIVERGENCE WAS NOT A DEFECT -- it was a `[tune]` CONSTANT (D1 §30).** The one row
+left after the steady-state fix was loop deltaT, 56.0 degF against the reference's 59.4. Chasing it
+found `delta_T_rated: 33.0, // hot/cold leg split at rated, degC [tune]` -- and 59.40 degF is
+EXACTLY 33.00 degC. **The reference does not arrive at that split; it is told it.** PWR2's falls out
+of an enthalpy balance across eleven nodes, and PWR2 has no `[tune]` at all by §3's ruling. So the
+comparison was emergent-vs-authored, which cannot tell you PWR2 is wrong.
+
+**What adjudicates it is the SOURCED flow, and PWR2 passes**: 35,092 gpm computed from geometry and
+hydraulics against the sourced ~34,500 (Manuals/12) -- **+1.7 %, without being told it**. The
+reference implies 34,472 (-0.1 %). Recorded and NOT chased: the reference's own
+`rcs_flow_gpm: 24000` disagrees with its own thermal model by **30 %**, and is the same figure this
+session corrected in the manual; it is `engines/pwr/` and #472's territory.
+
+**THE RULE THIS ESTABLISHES, and it is the durable part: before treating an A/B divergence as a
+PWR2 defect, check whether the REFERENCE's side of it is `[tune]`.** That engine has **89** of them.
+Each is a number somebody chose, and disagreeing with a chosen number is evidence that a choice was
+made, not evidence about physics. **This is HR9 pointed at the A/B itself** -- and getting it
+backwards would have fitted PWR2 to a tuning knob, the exact outcome §3 banned `[tune]` to prevent,
+arriving by a route §3 did not anticipate. D1 §30.4.
+
+**One more of the same family, caught by the same habit:** `primaryTavg()` -- built and gated an
+hour earlier -- averaged the core and SG LUMPS rather than the hot and cold LEGS, while the same
+gate's own `tavg()` helper had used the legs all along. It costs **0.14 degF** today. Fixed anyway,
+with a mutation re-arming it: **two helpers in one layer disagreeing about what Tavg MEANS** is how
+a rounding error becomes a real divergence the first time the lumps and the legs come apart.
+
+**RETRACTED, and it is the sharpest lesson of the session: I claimed four of the seven layer gates
+had NO injection self-test. All seven have one -- 92 mutations, 92 caught, no blind spots.** The
+claim came from the table above, where I had written "--" in the mutations column for four layers
+meaning *I did not look*. A later write-up read that dash as *there are none*, built an argument on
+it, and it propagated into `PWR2_DESIGN.md` §28.3, a commit message and TWO status reports to the
+owner as outstanding work. **Nobody had run the gates.** One command settled it.
+
+**`CLAUDE.md` names this exact class** -- *"A claim about COVERAGE is an unmeasured claim -- prove
+it by injection"* -- and the inherited claim was **my own, from ninety minutes earlier**, which is
+worse than inheriting someone else's: it carried no foreign provenance to make me suspicious.
+**And the argument built on it was good.** It reasoned that the gap mattered especially here
+because value-only checks had burned this session twice, and named Layer 4 -- whose buoyancy term
+returned exactly 0.0 from a sign error -- as uncovered. Every clause true except the premise.
+**A sound argument from a false premise reads exactly like a finding.**
+
+**MUTATION COUNT IS NOT COVERAGE -- measured, and all five layers with a constructor had blind
+spots (D1 §31).** §28.3's retraction left an honest question: all 92 mutations pass, but is 92
+enough? Layer 3 had 8 where Layer 0 had 26, and **all 8 passing says nothing about the 9th.** The
+only method that answers it is to write mutations the gate has never seen and count survivors.
+
+| layer | curated | adversarial written | **survived** |
+|---|---|---|---|
+| 1 geometry | 13 | 4 | **3** |
+| 2 core | 12 | 6 | **2** |
+| 3 loop | 8 | 8 | **4** |
+| 4 sources | 9 | 6 | **2** |
+| 5 SG | 12 | 5 | **2** |
+| 0b table | 12 | 4 | **1** |
+
+**Fourteen survivors. EVERY layer probed had them** -- including the conservation core with
+twelve curated mutations and the geometry table with thirteen.
+
+**AND EVERY SINGLE ONE WAS CONSTRUCTION OR STRUCTURE, NEVER PHYSICS.** The curated sets all attack
+the STEP -- ring order, junction derivation, buoyancy, coastdown, friction, momentum -- because
+that is what each layer is interesting FOR. **A mutation set written from "what is this layer for?"
+inherits that question's blind spot.** The step is where the physics is; construction is where the
+physics gets its INPUTS, and nothing was defending it because nothing was thinking about it.
+
+**Three of the thirteen would each have silently disarmed a whole casualty family:**
+`opts.pumpTripped` ignored (every loss-of-flow and blackout probe starts with a RUNNING pump),
+`opts.mass` ignored (every boil-dry stages a healthy generator), `opts.U` ignored (every fouling
+probe stages clean tubes). None of them touches the physics; all of them decide whether the physics
+is ever ASKED the question.
+
+**The four worth naming individually:**
+- **`extraMass` dropped at construction (Layer 2)** -- that is the seat the PRESSURIZER plugs into
+  (§25.3). Its existing check was named *"the compressible volume made pressure softer than a rigid
+  one"* and asserted `0 < dP < 3.0 MPa` -- **a band wide enough to accept the rigid case**, so the
+  check was named after a comparison it never made. Rebuilt to construct the rigid twin: 0.0409 MPa
+  with the bubble against 0.1292 rigid. **A check whose name describes a comparison should contain
+  a subtraction.**
+- **`createLoop(opts)` -> `createLoop({})` (Layer 4)** -- everything still runs and EVERY INITIAL
+  CONDITION IS A LIE.
+- **A segment dropped from the `LOOP` map (Layer 1)** -- Layer 4 computes SUM(L/A) from whatever
+  keys it finds, so momentum inertia silently shrinks. **Two tables that must describe the same
+  loop, with nothing asserting they do.**
+- **Junction flows seeded at ZERO (Layer 3)** -- **heals within one step**, so every settled-state
+  check is blind; it corrupts only the first step, where 8 of 9 junctions carry nothing. Same
+  family as the de-energization traps: **a wrong initial condition the next update repairs is not
+  benign, it is unobservable.**
+
+All thirteen closed, each keeping the check that catches it AND the mutation that found it. Two of
+the new checks failed first time against CORRECT physics -- a tripped pump still coasts at rated
+speed and makes 0.578 MPa at t=0, which is why the coastdown is modelled at all -- and now assert
+what actually distinguishes a trip: that the head DECAYS. Gates: geometry 33, core 36, loop 30,
+sources 21, SG 25. **AND THIS ALREADY HAPPENED ONCE, TO LAYER 0, RECORDED IN `BASELINES` ALL ALONG.** Found while
+updating baselines for this very pass, in the `note` on `run_pwr2_water.js`: *"hardened after an
+INDEPENDENT review applied 19 mutations of its own and 11 stayed green -- three on exported
+functions the suite never called."* Same experiment, same outcome, sitting in a file this session
+edited four times. **So all seven layers have now been probed and all seven had blind spots** --
+six here, one by an outside reviewer. That is no longer a pattern that might generalise; it is the
+result of every attempt anyone has made. **A hand-written mutation set is a record of what its
+author was thinking about**, and the only known way to find the rest is for someone else to attack
+it fresh.
+
+**THE FOURTEENTH SURVIVOR WAS NOT A DEFECT, AND IT IS THE MOST USEFUL ONE.** The property table's
+`NH` cut 2000 -> 200 reddened nothing -- because **`NH` does not matter.** Measured across the whole
+envelope, accuracy is FLAT from 100 to 4000: superheat bit-identical (it never reads that table),
+operating and subcooled moving in the 4th decimal, and the derivative wobbling NON-monotonically
+(best at 600, worst at 100 -- noise, not a trend). The line's comment said *"it is where the
+accuracy lives"*. **False** -- and the same file's note on `rho_sub`, forty lines away and by the
+same author, correctly says the accuracy comes from the two correction passes. **The file asserted
+both and neither was measured when written.** NH is now **400: 19 kB instead of 94**, in an engine
+that loads in a browser.
+
+**THE RULE: a surviving mutation has TWO meanings -- the gate is blind, or the mutated thing does
+not matter -- and only measurement separates them.** Adding a check that pins the mutated value is
+the reflex, and here it would have frozen 94 kB of waste behind a green gate and made the false
+comment permanent. The close is instead a check on the thing that DOES change (footprint), so a
+future inflation has to justify itself in the same terms.
+
+**CVCS BUILT -- charging, letdown and boron (Layer 5's second system).** Sourced from Ginna's own
+UFSAR (*"three positive displacement charging pumps can deliver a maximum of 180 gpm (charging
+flow is normally maintained at 46 gpm)"*, RCS 5123 ft3) and the Westinghouse Technology Systems
+Manual §4.1. Letdown is an ORIFICE, `mdot ~ sqrt(dP)` -- the same form `Manuals/12` §12.4b adopted
+for break discharge under 10 CFR 50 App. K -- so **letdown WEAKENS as the plant depressurises** and
+a set-and-forget lineup over-charges during a cooldown. Boron is a mass balance, and the SHAPE is
+the evidence: letdown carries the RCS concentration away, so ppm/min is proportional to
+concentration (4x boron -> 4x removal). 29 checks, 17/17 mutations.
+
+**THE SCALING BASIS IS VOLUME, NOT POWER, AND IT IS A DECLARED CHOICE.** Everything else in this
+design set power-scales; CVCS does not, because what charging and letdown DO is move a fraction of
+inventory per minute and boration moves ppm per minute -- both volume-normalised by definition.
+The bases disagree by 21 % because this plant carries 17 % less water per MWt than Ginna
+(0.0789 vs 0.0954 m3/MWt): volume gives **29.4 gpm**, power would give 35.5. **The gate prints
+both every run** so the choice cannot harden into a number nobody remembers making.
+Declared omissions: no volume control tank, no letdown HX, and **seal injection left OPEN** --
+WTSM gives 20 gpm across four pumps, this plant has one, and a seal flow is a property of the SEAL
+rather than of plant size, so it neither volume- nor power-scales cleanly.
+
+**AND CVCS FOUND TWO ENGINE DEFECTS NOTHING ELSE COULD REACH.**
+
+**(1) `extraMass` -- THE PRESSURIZER'S SEAT -- WAS UNREACHABLE FROM EVERY LAYER THAT WOULD USE IT.**
+Layer 2 owns the hook; **`createLoop` never forwarded `opts.extraMass`**, so every plant built at
+Layer 3 or above was RIGID -- including every plant in the A/B harness and every probe in four
+gates. D1 §25.3 said *"the interface is ready and the physics can be consumed"* and had been false
+for a fortnight. Found only by a CVCS probe that could not add 111 kg without pegging at the
+property table's 18 MPa ceiling. Fixed and guarded **by EFFECT, not by the option's presence** --
+an argument that arrives and is never read is the same defect wearing a passing check; the Layer 3
+gate now measures 0.1551 MPa with a bubble against 0.2115 rigid. **The claim had been verified by
+READING Layer 2, never by BUILDING a plant through Layer 3** -- same shape as the retracted
+coverage claim. **An interface is ready when something has come THROUGH it, not when both ends
+exist.** Flagged for #472 and deliberately not answered: an `f(P)` hook is a COMPRESSIBILITY term,
+not an inventory buffer -- a real pressurizer absorbs an insurge by its LEVEL rising, a state.
+
+**(2) THE LEDGER AND THE RECONSTRUCTED INVENTORY CAN DISAGREE, AND ONLY THE LEDGER IS RIGHT.**
+`sys.M_total` moves only by boundary sources and tracks charging exactly; `SUM V*rho(h,P)` is
+reconstructed, and a rigid loop pins V -- so it can only represent inventory the property table
+has a PRESSURE for. With letdown's sign flipped: ledger +31.0 kg (**caught it**), reconstruction
+16918.0 (**unchanged**), P pegged at 2611 psia = 18.0 MPa exactly. **61 kg diverged silently and
+the run looked entirely normal.** The gate now measures the LEDGER and asserts the two AGREE --
+a plant pinned at the table ceiling reads a plausible mass and is not one.
+
+**Two more of my own checks passed for reasons unrelated to their claims**, both written the same
+day while thinking about exactly this: the charging-temperature check compared against a FIXED
+304.5 degC reference and caught its mutation only because a 60 s run had heated the plant past it
+(shortening the window to stay in envelope made it go blind -- it now compares against **the node
+charging actually enters**); and the inventory probe ran 60 s where the envelope lasts 15,
+**fourth unphysical fixture this session**.
+
+**ECCS BUILT on Ginna's OWN PUMP CURVES** -- UFSAR Table 15.6-17, all 24 points of the high- and
+low-head safety injection flow-versus-pressure tables, verbatim. 28 checks, 17/17 mutations.
+
+**A CURVE, NOT A CONSTANT, AND THAT IS THE WHOLE POINT.** Both pumps have a SHUTOFF HEAD -- HHSI
+delivers nothing above **1389.7 psia**, LHSI nothing above **214.7**. So an RCS that has not
+depressurised gets NO emergency cooling however many pumps run, and the operator action that makes
+ECCS work is the one that lowers pressure. A constant-flow ECCS teaches that injection is automatic
+and unconditional: the opposite of the lesson, and the opposite of TMI. The curves also cross a
+regime boundary at ~215 psia -- above it only the high-head train contributes, below it the
+low-head train delivers ~3.5x as much, which is why "get below the cut-in" is a procedure step.
+**Nothing here decides WHEN to inject** (HR5): actuation is control.
+
+**SCALED BY POWER, DELIBERATELY THE OPPOSITE OF CVCS.** CVCS volume-scales because charging moves
+a fraction of inventory per minute; ECCS is sized to carry away DECAY HEAT, a fraction of rated
+power. Two systems, two purposes, two bases -- stated so a future session does not "tidy up" an
+apparent inconsistency. Both are reported by their gates every run.
+
+**THE GATE RETYPES THE SOURCE INDEPENDENTLY** rather than importing the engine's table -- importing
+it would check that a copy equals itself, the exact circularity Layer 0's original 56 green checks
+turned out to have. First check in PWR2 that can catch a MIS-TRANSCRIPTION rather than a misuse.
+**The other six sourced sets have never been diffed against their documents.**
+
+**AND IT FOUND AN ENGINE DEFECT THE 24-POINT DIFF COULD NOT SEE.** `interp()` opened with
+`if (P_psia >= tbl[last][0]) return 0;` -- redundant ABOVE the table (the bracket loop finds
+nothing and falls through to `return 0` anyway) but SHORT-CIRCUITING at exactly the shutoff
+pressure, so **the last row's value was never read**. Changing `[1389.7, 0]` to `[1389.7, 5]`
+passed every check including the document diff: the row that DEFINES the shutoff head was the one
+row the sourced-table check could not see. Removed; both shutoff mutations went from invisible to
+8 red and 1 red. **A guard that is redundant in the case it was written for, and load-bearing in a
+case nobody considered, is worse than no guard -- it makes the masked value untestable while
+looking like defence in depth.** Different from the NH and boron-floor cases, where the redundant
+code was merely inert; this actively hid something.
+
+**FIFTH UNPHYSICAL FIXTURE, and they all have one shape.** The "depressurised" plant was built by
+taking the nominal enthalpy and lowering P to 1.0 MPa -- at 1362 kJ/kg that is **quality 0.298**,
+thirty per cent steam, holding 494 kg instead of ~16,900, with the reconstruction NaN off the
+table. **P AND h ARE NOT INDEPENDENT**: needing a non-nominal state, I set the variable I was
+thinking about and inherited the other. The fixture now targets ~60 degC of subcooling at whatever
+pressure is asked for **and ASSERTS it is single-phase liquid before anything reads from it** --
+the first fixture in PWR2 that checks itself. The previous four were caught only because something
+downstream went visibly strange (an exact 0.0, an 800 degC leg, a NaN); nothing systematic was
+watching.
+
+**And I wrote a MULTI-LINE mutation anchor** -- the construct autocrlf silently broke earlier this
+session and which `CLAUDE.md` carries a standing trap about -- in a file whose own header cites
+§31. Rewritten single-line. **Knowing a trap and not tripping it are different things**; the only
+thing that caught it was the gate refusing to parse.
+
+**THE CONSERVATION CORE HAS A COURANT LIMIT AND NOTHING KNEW (D1 §32).** Donor-cell transport is
+stable only while a step moves LESS than a node's contents; the binding node is the smallest on the
+ring over the loop flow -- for the SLS-100 the cold leg, **dt <= 0.370 s at rated flow**. Nothing
+documented it and nothing checked it, because **every probe ever written for this engine used
+dt = 0.02 s and never came close.**
+
+**VIOLATING IT LOOKS LIKE PHYSICS.** At dt = 4 s the cold leg's enthalpy went
+`749 -> 806 -> -30 -> 8,999 -> -41,026,526 -> 358,286,850` kJ/kg -- while `duty` read 13,600 kW
+throughout, pressure read 425 psig, and `T_suction` read 350 degF. The RHR probe that found it
+reported *"reached the sourced 140 degF target"* -- **in 36 seconds instead of 16 hours** -- which
+reads as a plant cooling too fast, not as a solver that has exploded. **Smooth, plausible and
+wrong** is the worst thing an instability can be: an oscillation diverging to 1e8 in six steps is
+obvious if you print the node and invisible if you print the thing you were measuring.
+
+Now REPORTED every step (`courantLimit_s`, `courantOK`) and **not enforced** -- a caller may want a
+coarse survey and know what it is buying, but can no longer do so unknowingly. Same principle as
+the ledger/reconstruction guard. Gated ACROSS the boundary and against FLOW rather than as a
+constant: a quarter of the flow buys ~4x the step, so what binds is the plant. Layer 3: 37 checks,
+15/15 mutations.
+
+**TWO MORE FROM THE SAME PROBE.** **You cannot cool down a water-solid plant** -- with no
+compressible volume an RHR cooldown drove pressure 425 -> 2596 psig in twelve seconds before the
+solver gave up. A cooldown is precisely the evolution that needs the PRESSURIZER, the same
+dependency CVCS hit from the inventory side. And **a design basis stated as a TIME can be a BOUND
+rather than a time constant**: deriving RHR's UA by bisecting for "140 degF after exactly 16 hours"
+found a DEGENERATE solution -- the UA whose equilibrium FLOOR sits on 140 degF, reaching it in
+0.46 h and staying. The degeneracy was the physics objecting to the question: with ~1.2 MW of decay
+heat in ~22,000 kg, a UA fast enough to REACH 140 degF has a time constant near half an hour, and
+one slow enough to take 16 hours has a floor near 270 degC and never arrives. **Ginna is no
+different** (137,000 kg, 6.1 MW -> ~0.7 h). The source's own word is *"WITHIN 16 hours"*, and what
+sizes the system is that it must HOLD 140 degF against decay heat, PER TRAIN.
+
+**THE PATTERN, and it is the session's most useful output.** Seven layer gates were adversarially
+probed and found **fourteen defects -- every one of them in a GATE**. The three ENGINE defects
+found since all came from BUILDING THE NEXT SYSTEM and watching it fail to use the layers beneath:
+`extraMass` never forwarded (CVCS, invisible to 7 gates and the A/B), ledger-vs-reconstruction
+divergence at the table ceiling (CVCS, invisible to 7 gates), the Courant limit (RHR, invisible to
+7 gates and every probe). **Auditing the gates found gate defects; building on the layers found
+engine defects.** Both were worth doing; only one was going to find these.
+
+**RHR is PARKED, not committed** -- engine and gate written, all sourced figures verified, cooldown
+wiring unfinished. Committing a runner with no `BASELINES` entry reddens `run_all` for everyone.
+
+**Still parked:** the pressurizer, deliberately — #472 is rebuilding it on another lane and
+`PWR2_DESIGN.md` §6's risk register says *"D3 consumes its design; must not race it."* Layer 2's
+`extraMass` hook holds the seat and Layer 3 measured what it is worth (a rigid loop is 1.06 MPa
+stiff without a bubble).
+
+---
+
+## Session log — 2026-08-13-backshop-d (#479 — DESIGN phase; the evidence pass broke my own validation)
+
+**Issue:** #479. **No code.** *(OWNER, 2026-08-13: "We should be designing and not building. Once
+we have it designed I will have the design reviewed before we build it.")* Owner rulings taken:
+PWR2 **eventually replaces** `engines/pwr/`; **whole plant** scope; **homogeneous equilibrium**
+two-phase; **design the right contract and adapt afterwards** (shim to the 109 fields); **one RCS
+pressure state + per-node void**.
+
+**THE FINDING — the evidence pass destroyed the cross-check that appeared to validate the forward
+method.** `PWR_DESIGN_BASIS.md` §7 reported three cross-checks agreeing. One of its inputs, the
+downcomer annular gap **0.25 m**, was RECALLED. Re-derived from the reference plant's
+downcomer/hot-leg **area ratio** (2.37, from RPV ID 4.39 m vs barrel OD 3.76 m and four 29-in hot
+legs): **0.093 m — 2.7× smaller**. RPV volume 376.6 → **228.1 ft³**; RPV share **45.1 % → 33.3 %**,
+from inside the 40–45 % band to outside it. **The 45.1 % was an artifact and must not be cited.**
+
+**And the check was invalid anyway, independent of the constant.** The 40–45 % RPV-share band is a
+**4-loop-plant statistic** — a 4-loop plant splits ~55 % of RCS volume across four loops (~14 %
+each), so a single-loop plant has no reason to match. **It never transferred to SLS-100.** A
+reasoning error, not a data error, and the more embarrassing of the two. What survives: the energy
+balance. Loop transit now reads **~6.8 s** through the flow path against a real-PWR 10–12 s —
+live and unadjudicated.
+
+**Two constants genuinely improved.** Lattice coolant fraction is now **derived** from sourced
+Westinghouse 17×17 geometry (pitch 12.6 mm, rod OD 9.5 mm, 264 rods + 25 tubes) = **0.584**
+(recalled 0.58 — close, but now computed). And **power density is a CONSEQUENCE, not an input** —
+assuming it and back-solving core volume was the wrong direction; real design picks an **assembly
+count**. Adopted **21 assemblies** (5×5 less corners) → 1.11 m core, **85.1 kW/L**, below the
+100–110 typical band in the direction the plant's own ruled character already claims (*"small and
+generously margined by design"*, `Manuals/01`).
+
+**Design analysis that reversed a plan-stage decision: junction momentum is NOT stiff.** The plan
+leaned to quasi-steady-with-lag out of a fear of a second stiff term. Measured on design values,
+the hot-leg inertia coefficient L/A = 26.3 m⁻¹ gives τ = 0.43–43 s (22–2152 steps at dt = 0.02).
+**Full junction momentum is comfortably explicit** — and it makes RCP coastdown derived (pump
+inertia vs loop friction, not a fitted exponential) and makes **W ∝ Q^⅓ EMERGE** from the buoyancy
+balance rather than being imposed (`Manuals/12` §12.4 currently declares that scale fitted).
+Caveat named: `K·ṁ|ṁ|` damping vanishes at ṁ = 0, so friction goes semi-implicit with a laminar
+floor.
+
+**The structural choice with the most leverage: a two-phase GATHER-then-INTEGRATE step.** Phase 1
+reads only time n and writes nothing; Phase 2 writes only n+1. **There is no step ordering to get
+wrong** — no analogue of the current 27-step schedule where step 9 precedes step 8 and 14c
+precedes 14b, each load-bearing. It also dissolves the hardest existing coupling: break flow →
+containment pressure → break flow is an algebraic loop today, broken by a one-step-late read; in
+PWR2 containment is just another node and the break just another junction, both read at time n.
+**One-step-old couplings go ~23 → 2**, and both survivors are outside the engine (instrument lag
+is HR1 by design; control acts on last cycle's read, which is real plant behaviour).
+
+**Landed:** `Blueprint/PWR2_DESIGN.md` (D1 spine — rulings, risk register, stop criteria, 9 open
+questions) and `Blueprint/PWR2_PHYSICS.md` (D2 — settles 4 of the 9). **Owed:** D3 plant model,
+D4 interface + shim map, D5 validation. `PWR2_ARCHITECTURE.md` is superseded by D1.
+
+---
+
+## Session log — 2026-08-13-backshop-c (#479 — PWR2 Layer 0 built, 56/56)
+
+**Issue:** #479. **Gates:** `run_pwr2_water` **56/56 NEW** (baseline added) **and
+`run_hardrules` 281 → 284** — see the correction below. `engines/pwr/` **untouched**.
+
+*(OWNER DIRECTIVE, 2026-08-13: "I want a full new engine. We should design it in a logical
+fashion. An advantage to a new engine is that we don't screw up the current, mostly working
+one. We save the current one as a reference.")*
+
+**Landed.** `Blueprint/PWR2_ARCHITECTURE.md` (7 strict dependency layers, L0 water
+properties → L6 casualties-as-junctions), `engines/pwr2/pwr2_water.js`,
+`test/run_pwr2_water.js`.
+
+**The architectural rule that does the work: `[tune]` does not exist in PWR2.** Every
+number is `[ruled]`, `[derived]` or `[sourced]`, and carries its kind at its definition
+site. A number nobody can derive or cite is a number nobody can check — ~90 of those are
+why the current plant can answer "does it pass?" but not "is it right?".
+
+**Trap — the gate caught my own first pass, and that is the point.** The correlations were
+eyeballed, not fitted: **39 of 56 checks failed** on first run (`rho_l_sat` 90 kg/m³ high at
+321 °C, `h_v` 150 kJ/kg low, `h_fg` 200 kJ/kg low). Re-fitted by least squares against
+published steam-table points and re-ran: 56/56. **A gate written against external
+reference values caught what a gate written against the fit's own output could not have
+(HR10).** Two specifics worth keeping:
+- **A cubic is not enough for either liquid correlation.** Both `h_l_sat` and `rho_l_sat`
+  needed a QUARTIC — the cubic over-predicted density by ~50 kg/m³ at 300 °C, which is
+  precisely this plant's operating regime.
+- **The ideal-gas + single-Z form for `rho_v` ran 25 % low at 15.41 MPa** (72.4 vs 96.7
+  kg/m³). Near-critical steam is nowhere near ideal and no one-term Z covers 0.1–17 MPa;
+  replaced with a log-log fit, max error 1.56 %.
+
+**`cp_l` is the EXACT analytic derivative of `h_l_sat`, not an independent fit** — a
+deliberate trade, documented at the definition. It costs 5 % accuracy at 20 °C and buys
+the guarantee that cp and h can never disagree. An independently-fitted cp is more
+accurate *and* silently breaks the energy balance by the gap between the two fits, which
+is the exact class of defect this engine exists to make impossible.
+
+**The check `engines/pwr/` cannot make in any form, now runs every gate:** `Q = ṁΔh` on the
+plant's own ruled identity gives Δh **183.1 kJ/kg**, ṁ **1639 kg/s**, **36,817 gpm**, loop
+transit **10.2 s** (real-PWR band 10–12). It **rejects the declared `rcs_flow_gpm: 24000`
+at 1.53×** — written as an explicit **negative control**: if that assertion ever passes,
+the property library has drifted far enough to bless the defect #479 was filed over.
+
+**CORRECTION — I claimed "no existing baseline moves" and it was wrong.** `run_hardrules`
+went **281 → 284**. **Proven by removal, not assumed — and my first guess was also wrong:**
+pulling the whole `engines/pwr2/` directory changes the count by **zero**; pulling
+`Blueprint/PWR2_ARCHITECTURE.md` alone drops it to 283. `run_hardrules` walks
+`Blueprint`/`Diagnostic`/`Manuals` for `.md` as part of the HR11 provenance scan
+(`run_hardrules.js:355`), so the **three new Blueprint documents** are three new HR11
+sites. All three cite owner directives with dates and verbatim words and pass first try —
+the count moved, the compliance did not.
+
+Two things this earned: **"drift is symmetric" is what caught it** — the gate scored
+BETTER than baseline and still failed, and absorbing a +3 as "more checks, fine" would
+have shipped a stale baseline into CI. And **the `run_hardrules` baseline comment's own
+standing warning applied verbatim** — it already records this exact trap costing CI reds
+on 2026-08-07 and 2026-08-11 (a green aggregate is evidence only about the tree it ran on;
+editing markdown afterwards invalidates it). Caught locally here only because the docs
+were written BEFORE the aggregate re-ran.
+
+**Next:** L1 geometry (design basis as machine-readable data, ledger closure as
+assertions). Blocked on nothing. The §§2–3 design-practice constants are still RECALLED,
+not cited — an evidence pass is owed before L1's gate can reject anything.
+
+---
+
+## Session log — 2026-08-13-backshop-b (#479 — the plant has no conservation law)
+
+**Issue:** #479 filed (new). No code touched; no gate impact. Artifact:
+`Blueprint/PWR_DESIGN_BASIS.md`.
+
+**What forced it.** The closure failure in the -a entry below turned out to be a symptom,
+not the disease *(OWNER, 2026-08-13: "Currently this plant was built up overtime in a
+patchwork fashion and just made to work. I don't think we've ever sat down and just built
+or sketched out the entire plant and how it all works together.")*. Derived the plant
+FORWARD from its ruled identity instead of scaling components independently.
+
+**THE FINDING — there is no physical mass flow anywhere in `engines/pwr/`.** The engine
+runs on normalized `flow_frac` against `coolant_heat_capacity` (units:
+fraction-of-rated-heat per °C/s, not J/K). **No quantity exists that a `Q = ṁΔh` check
+could be run against.** That is the structural defect; individual wrong constants are
+downstream of it.
+
+Measured consequence: `Q = ṁΔh` on the plant's OWN ruled numbers (300 MWt, 321/288 °C at
+15.41 MPa, Δh = 188 kJ/kg) gives **ṁ = 1596 kg/s = 36,240 gpm**. The plant declares
+`rcs_flow_gpm: 24000` — **1.51× low**, or equivalently the declared flow implies a
+**50 °C core ΔT against the ruled 33 °C**. Verified it is INERT in physics (sits in a
+block headed *"NOT READ BY ANY CODE"*, `pwr_config.js:56`) but **player-facing** — it
+feeds the manuals. A 1.5× error in a number a player reads, that nothing could catch.
+
+**The forward derivation closes where the patchwork did not.** Core from power density
+(105 kW/L → 1.0 m × 3.66 m), RPV built up geometrically from the core outward (376.6 ft³),
+piping from flow at the reference plant's real 43 ft/s design velocity (hot leg ID 18.6"
+vs the 17.2" power-scaling gave), SG from heat-transfer area (50 ft²/MWt → 1,637 tubes).
+**Nothing fitted.** Three independent cross-checks:
+
+| Check | Derived | Expected | |
+|---|---|---|---|
+| RPV share of RCS | 45.1 % | 40–45 % real-plant band | PASS |
+| Loop transit time | 10.3 s | 10–12 s real PWR | PASS |
+| RCS total vs declared 998 ft³ | 834 ft³ (0.84×) | — | 16 % low |
+
+Patchwork got loop+SG+RCP = 213 ft³ and a 64 % RPV residual; forward gets **333 ft³ and
+45 %**. 16 % is an engineering disagreement; 2× was structural.
+
+**Trap worth the line — the A/B for this refactor is NOT #393's.** #393 (`chart_math`)
+pinned the old implementation and replayed 235 frames because its claim was *"nothing
+changed"*, making replay a regression harness. Here the claim is the opposite: things
+SHOULD change. The A/B is a **divergence measurement**, and it cannot adjudicate — HR9
+does (a derived number outranks a fitted one), one divergence at a time. Reading a
+divergence table as a pass/fail gate would either bless every change or reject every
+change, and both are wrong.
+
+**Also flagged:** every design-practice constant in `PWR_DESIGN_BASIS.md` §§2–3 (power
+density, lattice coolant fraction, downcomer gap, plena heights) is RECALLED, not cited —
+per the evidence-pass SOP they need sourcing before they can reject anything the as-built
+plant says. **Not started:** any code. Sequencing against #472 (pressurizer, live on
+workbench) and #474 needs an owner call.
+
+---
+
+## Session log — 2026-08-13-backshop-a (#474 — loop geometry table, no code)
+
+**Issue:** #474 (deferred behind #472, not scheduled — this is prep, not the node build).
+No engine files touched; no gate impact.
+
+**What landed.** `Blueprint/PWR_LOOP_GEOMETRY.md` — a sourced-where-possible geometry
+table for the hot leg, crossover, cold leg, RCP and SG primary tube bundle: flow area,
+metal wall area/mass per foot, fluid mass per foot. **Prerequisite finding, not a code
+gap:** there are no physical volumes/masses/areas anywhere in `engines/pwr/` today —
+every thermal constant (`coolant_heat_capacity`, `h_fc`, `h_sg`, `sg_tube_capacity`,
+`tau_hotleg_s`, `tau_coldleg_s`) is a normalized rate, not a derived quantity. A node
+model needs V/M_wall/A to write an energy balance at all.
+
+**Method (evidence-pass SOP).** Anchor = Westinghouse Technology Systems Manual §3.2,
+`ML11223A213` (already in this repo's `inbox/sources` corpus), a generic 4-loop
+reference plant, 3411 MWt / 852.75 MWt per loop (the 3411 MWt figure was web-sourced
+this session, not yet in the local corpus — flag for a corpus add).
+
+**Trap: this is NOT the Ginna anchor plant** the rest of `pwr_config.js` uses almost
+everywhere else. Checked both the local corpus and the web specifically for Ginna's own
+RCS piping dimensions before defaulting to WTSM — neither had them (Ginna is 2-loop and
+no UFSAR Ch.5-style diameter table for it turned up). Owner caught the departure from
+the established convention mid-session; the consequence is real, not cosmetic — this
+document's `r_P = 0.3518` is a *different* number from the codebase's established
+Ginna-anchored per-loop factor `300/908.5 = 0.3302` (`pwr_config.js:1435`), ~6.5% apart,
+two different real plants' per-loop power. Flagged prominently in the doc rather than
+silently reconciled either direction — see `PWR_LOOP_GEOMETRY.md` §1. Scaled to SLS-100
+(300 MWt, single loop, `r_P = 0.3518`) two different ways for two different physical
+quantities: **flow area / pipe ID by `sqrt(r_P)`** (holds coolant velocity constant at
+this plant's own 33 °C rated ΔT), **wall thickness by the same factor** (holds hoop
+stress constant at roughly the same design pressure), **SG tube count by `r_P` directly
+with real unscaled tube OD** (tube diameter is a manufacturing standard across plant
+sizes, not a per-plant dimension — scaling it down would imply custom-drawn tubing this
+plant wouldn't use).
+
+**What is NOT sourced:** SG average tube length (~39 ft, scaled from a commonly-cited
+~55 ft real-plant figure that isn't itself pinned to a citation). **Decided this session,
+owner delegated the call:** pipe run lengths + a full loop elevation layout (RCP suction
+lowest at −5 ft, SG tube top highest at ≈+50 ft — ~55 ft of natural-circ driving head),
+and RCP internal volume (≈9.5 ft³) + hydraulic-casing metal mass (≈5,300 lbm) via a
+stated ROM method. Real finding surfaced while deciding RCP flow: the geometry-derived
+rated flow (≈31,100 gpm, scaled from the reference plant's 88,500 gpm/pump) disagrees
+with the plant's own existing `rcs_flow_gpm: 24000` (`pwr_config.js:71`, #408) by ~23% in
+implied hot-leg velocity (43 ft/s reference vs 33 ft/s here) — not rounding noise,
+flagged in the doc, not resolved (touching `rcs_flow_gpm` is a tuning decision outside
+today's scope).
+
+**Also decided: a per-segment voided/flashed display flag**, generalizing the surge-line
+idea to hot leg, crossover, cold leg and the SG tube bundle. Not a new node and not new
+physics — it's the existing cavitation test (`stepCavitation`'s `T_sat(p_pumpsuction) −
+tcold_c`) evaluated at each segment's already-computed pressure node
+(`p_hotleg`/`p_pumpsuction`/`p_coldleg`) against its already-computed local temperature
+(`thot_c`/`tcold_c`/`t_sg_c`) — zero new state. Named limitation: crossover and cold leg
+share one lag temperature (`tcold_c`) today, so their voided flags would move in
+lockstep except for which pressure gates them, until the loop actually splits into
+separate temperature states (that split is #474's real scope, not this flag).
+
+**Trap worth naming:** the pressurizer is deliberately excluded from this table even
+though the user's original node list included it — #472 is actively rebuilding it on
+workbench right now, and inventing a competing pressurizer volume here would either
+duplicate or contradict that work. The surge line is modeled as the junction connecting
+this table's hot-leg node to whatever #472 lands, not as a node of its own — a node
+carries state (mass, enthalpy, wall temp) that persists; a surge line has negligible
+capacity and is pure flow resistance + elevation, so it's a junction (`{from, to, ṁ, K,
+Δz}`) by definition, not a fifth thing to give a state vector to.
+
+**THE FINDING — the geometry does not close against the plant's own declared RCS volume.**
+Ran the reconciliation the owner asked for and the scale-factor question turned out to be
+the small problem. `pwr_config.js:790` declares ~7,467 gal = **998.2 ft³** of RCS (#408's
+currency, power-scaled from Ginna's 38,323 gal). This document's components sum to
+**213.2 ft³** (piping 51.7 + SG bundle 152.0 + RCP 9.5) = 21.4 % of that; with the
+Ginna-scaled pressurizer at 147.4 ft³, the **residual left for the RPV is 637.5 ft³ —
+63.9 % of the RCS**, against a real-plant norm of ~40–45 %. Loop+SG+RCP should be
+~400–450 ft³; it is short by **~1.9–2.1×**.
+
+**It cannot be closed by lengthening pipe** — holding the SG bundle and RCP fixed, closure
+demands hot 46–56 ft / crossover 60–73 ft / cold 37–45 ft, longer than a full-size 4-loop
+plant's runs and plainly unphysical at 300 MWt single-loop. So the §5 layout is not the
+error. Most likely culprits in order: the SG tube bundle (the one component resting
+entirely on an unsourced tube length), the declared RCS volume itself (power-scaled from
+a whole-plant figure, never checked against component dimensions because none existed
+until now), and the RPV (a residual, not a measurement, and the dominant term).
+
+**Deliberately NOT resolved.** Fudging one number to force closure is the exact failure
+mode this document exists to prevent — fitting geometry to a declared constant instead of
+deriving it, which is how `coolant_heat_capacity` and friends became unfalsifiable. Three
+unknowns against one equation is not solvable; the disagreement is the output.
+
+**This reverses my own earlier line in this same entry** that no further research pass was
+needed before node code. **Next: an RPV/core geometry pass** (vessel ID, downcomer
+annulus, plenum and core coolant volumes, same evidence method), which turns the residual
+into a measurement and the problem into an over-determined, checkable one. Node code
+written against these volumes today would inherit an unexplained ~2× loop-to-vessel
+inventory split error — precisely the kind that gets absorbed into a fitted constant and
+vanishes. Still deferred behind #472; nothing here touches that lane.
+
+**Also flagged, unresolved:** the 0.3518 vs 0.3302 scale-factor split (§1) is deprioritized
+— 6.5 % is noise beside a 2× closure failure. And `pwr_config.js` itself carries both
+`300/1520` (whole-plant Ginna) and `300/908.5` ("one Ginna SG carries 1817/2 MWt") — 1520
+vs 1817 looks like pre- vs post-uprate Ginna ratings; the whole-plant and per-loop routes
+happen to coincide for a single-loop plant, so this may be benign, but it has not been
+verified and is worth a look by whoever next touches the scaling.
+
+---
+
+## Session log — 2026-08-12-backshop-a (#477 — the monitor list, and a red that could not go red)
+
+**Issue:** #477. **Gates:** `run_all` 47 runners at baseline; `verify_e2e_ui` gains
+`testMonitorList` (5 checks) with its score unchanged — the baseline is `16screenshots`, which
+counts screenshots, not checks, so a new test function in that gate needs no `BASELINES` edit.
+
+**What landed.** The Indications tab's tick no longer plots — it copies the row into a
+**Monitoring** block above every system group. `plotCell` → `monCell`, `syncPlotCells` →
+`syncIndCells`, a new `ui.monitor` map persisted per plant in `rd_monitor`, `rebuildMonitor()`
+rewriting only `#indMonitor`, and `paintIndRow()` carrying a per-frame memo so a duplicate row
+costs no divergence math and cannot disagree with the row it duplicates. The tick column keeps
+a passive dot for "trending". #454's chart-settings window is now the sole writer of
+`ui.series`.
+
+**THE CHECK THAT COULD NOT GO RED.** The assertion that carries the whole change is *"ticking a
+row does not touch the chart"* — a leftover `drawChart()` in the handler is invisible from the
+list, so nothing else can see it. It was written on **`tavg`**, and `tavg` is in
+`PROFILES.pwr.defaultSeries`: already plotted. Re-injecting the old handler verbatim
+(`ui.series[sid] = cb.checked; drawChart()`) and running the gate gave **PASS** — 3 traces
+before, 3 after, because the channel could not be added to a chart it was already on. Retargeted
+onto `thot` (outside the defaults) the same injection gives **3 → 4 traces, swatch=true**.
+
+Two things came out of that and are in the check now: the **precondition is measured**, not
+assumed — it throws if the subject channel is already plotted, naming why — and the assertion is
+**two facts, not one**, since the swatch catches a `ui.series` write in a state where the trace
+count happens not to move. The general shape is the standing "a passing check can be HOLLOW"
+bullet, but the mechanism is new: **a fixture that satisfies the assertion for a reason
+unrelated to the code under test**. Nothing about the check looked wrong; only injection found
+it. (`verify-checks-by-injection`, HR10.)
+
+**A SHARED CLASS WIDENS EVERY SELECTOR THAT NAMES IT.** The block is `.ind-grp .ind-monitor` —
+it takes `.ind-grp` deliberately, for the row metrics. That silently widened three separate
+things to include it: the filter CSS (`#indicationsList[data-filter=…] .ind-grp .num-line`),
+`buildIndications`'s element-cache query (`.ind-grp .num-line`, which would have spliced the
+duplicates into `indRows` and paired each cached ref with the wrong series — it survives only
+because the block is empty at that instant, one reorder from a silent mismatch), and every
+`querySelector` in the new gate, where `#indicationsList .ind-grp .num-line[data-ser="x"]`
+returns the **copy** rather than the source because the copy comes first in document order.
+That last one is how the check first ran red against CSS that was correct. All three now carry
+`:not(.ind-monitor)`.
+
+Also caught by re-rendering rather than by reading: `#indMonitor` taking the first-child slot
+broke `#indicationsList > .ind-grp:first-child { border-top: none }`, putting a rule above
+"Reactor core" on a board with nothing ticked. Fixed with `#indMonitor:empty + .ind-grp`, and
+the block's own separator dropped — the next group's border-top already draws it, and two lines
+2 px apart read as a defect.
+
+---
 
 ## Session log — 2026-08-12-workbench-c (#472 phases 1–3a — the dossier's headline was a sampling artifact, and a hollow gate I wrote myself)
 

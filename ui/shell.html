@@ -268,11 +268,13 @@
                FLAGGED rather than left to be noticed by comparing the right pair of rows
                across two panels. -->
           <div class="tabpane" data-pane="indications"
-            data-scanner-hint="Indications — every reading the plant produces, grouped by system, with the true state beside it and a checkbox to put either on the strip chart."
-            data-scanner-detail="The left value is the INSTRUMENT: it lags, it carries noise, and it can be failed from the Inject Failure tab. The right value is the true state behind that channel — no lag, no noise, unaffected by a failed sensor. When they disagree the row is flagged, which is how a stuck valve announces itself instead of waiting to be spotted. The true column is a debug view: it can be switched off, and it is off by default inside a mission or a campaign, because instrument deception only teaches while you are genuinely fooled.">
+            data-scanner-hint="Indications — every reading the plant produces, grouped by system, with the true state beside it and a checkbox to copy it into a monitor list at the top."
+            data-scanner-detail="The left value is the INSTRUMENT: it lags, it carries noise, and it can be failed from the Inject Failure tab. The right value is the true state behind that channel — no lag, no noise, unaffected by a failed sensor. When they disagree the row is flagged, which is how a stuck valve announces itself instead of waiting to be spotted. Ticking a row copies it into the Monitoring block above every group, so the seven or eight readings you are watching stay together instead of being hunted down the list; the copy carries both values and the same flag, and the row-type chips never hide it. What goes on the strip chart is chosen separately, in the chart's own settings window. The true column is a debug view: it can be switched off, and it is off by default inside a mission or a campaign, because instrument deception only teaches while you are genuinely fooled.">
             <div class="phys-note">Every channel the plant publishes — <b>indicated</b> on the
               left, <b>true state</b> on the right. A flagged row is an instrument that
-              disagrees with the plant. Tick a box to trend it on the strip chart.</div>
+              disagrees with the plant. Tick a box to copy that row into the
+              <b>Monitoring</b> list at the top; a coloured dot means the channel is
+              trending on the strip chart, which is chosen in the chart's own settings.</div>
             <div class="ind-tools">
               <div class="ind-filters" id="indFilters">
                 <button class="on" data-indfilter="all">All</button
@@ -720,6 +722,36 @@
   <script src="../engines/rbmk/rbmk_thermal.js"></script>
   <script src="../engines/rbmk/rbmk_rods.js"></script>
   <script src="../engines/rbmk/rbmk_instruments.js"></script>
+  <!-- PWR2, the physics rebuild's parallel phase (#479 Option B) — gate order, same as
+       every test/run_pwr2_*.js. Selected via ?engine=pwr2 only. -->
+  <script src="../engines/pwr2/pwr2_water.js"></script>
+  <script src="../engines/pwr2/pwr2_vtable.js"></script>
+  <script src="../engines/pwr2/pwr2_geometry.js"></script>
+  <script src="../engines/pwr2/pwr2_core.js"></script>
+  <script src="../engines/pwr2/pwr2_loop.js"></script>
+  <script src="../engines/pwr2/pwr2_kinetics.js"></script>
+  <script src="../engines/pwr2/pwr2_fuel.js"></script>
+  <script src="../engines/pwr2/pwr2_reactor.js"></script>
+  <script src="../engines/pwr2/pwr2_sources.js"></script>
+  <script src="../engines/pwr2/pwr2_sg.js"></script>
+  <script src="../engines/pwr2/pwr2_turbine.js"></script>
+  <script src="../engines/pwr2/pwr2_relief.js"></script>
+  <script src="../engines/pwr2/pwr2_condenser.js"></script>
+  <script src="../engines/pwr2/pwr2_cvcs.js"></script>
+  <script src="../engines/pwr2/pwr2_eccs.js"></script>
+  <script src="../engines/pwr2/pwr2_afw.js"></script>
+  <script src="../engines/pwr2/pwr2_damage.js"></script>
+  <script src="../engines/pwr2/pwr2_protection.js"></script>
+  <script src="../engines/pwr2/pwr2_pressurizer.js"></script>
+  <script src="../engines/pwr2/pwr2_dumpctl.js"></script>
+  <script src="../engines/pwr2/pwr2_break.js"></script>
+  <script src="../engines/pwr2/pwr2_containment.js"></script>
+  <script src="../engines/pwr2/pwr2_rhr.js"></script>
+  <script src="../engines/pwr2/pwr2_true_state.js"></script>
+  <script src="../engines/pwr2/pwr2_instruments.js"></script>
+  <script src="../engines/pwr2/pwr2_feedwater.js"></script>
+  <script src="../engines/pwr2/pwr2_engine.js"></script>
+  <script src="../engines/pwr2/pwr2_shell.js"></script>
   <script src="../engines/rbmk/rbmk_engine.js"></script>
   <!-- BWR (M3) -->
   <script src="../engines/bwr/bwr_config.js"></script>

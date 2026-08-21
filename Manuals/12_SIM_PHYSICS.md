@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-12  
 **Plant:** **SLS-100** (Single Loop Simulated, ≈ 100 MWe / ≈ 300 MWt)  
-**Revision:** 16  
+**Revision:** 17  
 
 ---
 
@@ -773,9 +773,28 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 | **Structural** — fixed physical constants and real-plant setpoints | High | β and Λ, six-group delayed data, fuel damage/melt thresholds, PORV and safety setpoints, the 600 psi (4.14 MPa) accumulator arming pressure, the 400 psi (2.76 MPa) RHR block-open permissive and its 600 psi (4.14 MPa) autoclose |
 | **Calibrated** — arbitrated by the physics acceptance suites | Directionally right, magnitude roughly right | Heat-transfer coefficients, decay-heat constants, level coefficients, dump and AFW capacities |
 | **Compressed** — deliberately faster than reality for training | Right in behaviour, wrong in duration | **This class has largely emptied** (#408 put the accident-inventory family — ECCS injection included — on the real Ginna scale; #419 retired the Mode 5↔1 pacing: the pressurisation slew now runs the sourced 0.23 psi/s heater rate, the boron rate is a derived physical ceiling, and the grab-sample turnaround is a real 30-minute lab). What remains: the **cooldown depressurisation rate** — see §14.1 |
-| **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (24 000 gpm RCS flow, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |
+| **Indicative** — display flavour derived from normalised internals | Illustrative | The gpm conversions (**≈ 34 500 gpm** RCS flow at cold-leg conditions — see the note below, 60 gpm charging, 30 gpm letdown, 100 gpm AFW) |
 
 > **NOTE.** The plant's absolute ratings — ≈ 300 MWt, ≈ 100 MWe, one loop, one SG, one RCP — are a **design choice**, not a measurement of any real unit. The SLS-100 is its own plant.
+
+> **NOTE — the RCS flow figure was CORRECTED in Rev 17, and it is worth knowing why.** This row
+> read **24 000 gpm** from the first revision until 2026-08-14. That figure was not derived from
+> anything: it disagreed with this plant's *own* ruled identity by about 1.5×. Take the ruled
+> numbers — 300 MWt, 610 °F hot leg, 550 °F cold leg, 2235 psia — and the energy balance
+> `Q = ṁ·Δh` gives a rise of **185 Btu/lb (185.4 kJ/kg)** across the core and therefore
+> **3 590 lbm/s (1 630 kg/s)**, which is **≈ 34 500 gpm** at cold-leg density. Nothing in the
+> simulator could detect the disagreement, because the model has no physical mass flow to check
+> it against — it runs on a normalised flow fraction. That is exactly why the figure sat wrong
+> for so long, and it is the defect that opened the physics-engine rewrite (**#479**).
+>
+> **A volumetric flow is meaningless without a temperature**, because the water expands as it
+> heats: the same 3 590 lbm/s reads ≈ 34 500 gpm cold-leg, ≈ 36 100 gpm at T-avg, and
+> ≈ 38 200 gpm hot-leg. Real plants quote cold-leg, and so does this row now. **The mass flow is
+> the unambiguous number** — quote that one if it matters.
+>
+> This row stays **Indicative**, and the class is the point: the value is now consistent with the
+> plant's identity, but the current model still does not *compute* a flow. It is a label on a
+> normalised fraction, not a measurement.
 
 ### 14.1 The one Compressed rate left worth knowing by name
 

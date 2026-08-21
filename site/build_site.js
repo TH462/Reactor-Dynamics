@@ -54,7 +54,7 @@ const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios'];
  * PAGES + NOT_PUBLISHED must TOTAL the root `*.html` glob: `test/run_site_meta.js` proves
  * the partition, so a new root page cannot exist without some file saying whether it ships.
  * That is the property `.vercelignore` used to provide, kept rather than dropped. */
-const NOT_PUBLISHED = ['test_pwr.html', 'test_bwr.html', 'test_rbmk.html'];
+const NOT_PUBLISHED = ['test_pwr.html', 'test_pwr2.html', 'test_bwr.html', 'test_rbmk.html'];
 
 /* THE SAME RULE, ONE DIRECTORY DOWN — and it was missing, which is not hypothetical (#476).
  * NOT_PUBLISHED partitions the root `*.html` glob and nothing else, while the DIRS loop below
@@ -135,6 +135,19 @@ for (const d of OPTIONAL_DIRS) {
 /* THE PART THAT MAKES THE ALLOWLIST SAFE. Follow every local reference in every
  * published page and confirm it resolves inside the output. Query strings are
  * stripped: `ui/shell.html?engine=pwr` is a reference to a file plus a parameter. */
+/* DEV-ONLY blocks are DELETED from published pages, not CSS-hidden: they may link at
+ * pages in NOT_PUBLISHED (the PWR2 preview, #479), and a hidden dead link is still a dead
+ * link — checkHtml below would (rightly) fail the build on it. This pass runs FIRST: both
+ * the completeness scan and the extensionless rewrite read the stripped copy. */
+let devOnlyStripped = 0;
+PAGES.forEach((rel) => {
+  const abs = path.join(OUT, rel);
+  let src = fs.readFileSync(abs, 'utf8');
+  const next = src.replace(/[ \t]*<!-- DEV-ONLY-START[\s\S]*?<!-- DEV-ONLY-END -->\r?\n?/g, '');
+  if (next !== src) { devOnlyStripped++; fs.writeFileSync(abs, next); }
+});
+if (devOnlyStripped) console.log(`stripped DEV-ONLY block(s) from ${devOnlyStripped} page(s)`);
+
 const problems = [];
 function checkHtml(rel) {
   const abs = path.join(OUT, rel);

@@ -1876,8 +1876,26 @@
 
   // The snapshot's automation section (M5 assembles it every cycle): channel
   // identity + live state, enough for the Automate tab to be a pure face.
+  // ESF arm state ('auto' | 'manual' per listed system) onto an automation snapshot — one
+  // writer for both getAutomationState paths, so a config with esf_systems and no channels
+  // (PWR2's shape) reads the same as one with both.
+  ControlLayer.prototype._attachEsf = function (result) {
+    if ((this.config.esf_systems || []).length) {
+      result.esf = {};
+      for (var ei = 0; ei < this.config.esf_systems.length; ei++) {
+        var sys = this.config.esf_systems[ei];
+        result.esf[sys.id] = this.esfAuto[sys.id] ? 'auto' : 'manual';
+      }
+    }
+    return result;
+  };
+
   ControlLayer.prototype.getAutomationState = function () {
-    if (!this.channels.length) return { channels: [] };
+    /* The channel-less fast path must still carry the ESF arm dict: PWR2's config has
+     * esf_systems and NO channels, and this early return silently dropped its arms — the
+     * board's AUX FEED word read SECURED over an armed AFAS (found headless, 2026-08-20).
+     * Unreachable for the current engine (its config always has channels). */
+    if (!this.channels.length) return this._attachEsf({ channels: [] });
     var ctx = this._ctx();
     var out = [];
     for (var i = 0; i < this.channels.length; i++) {
@@ -1909,14 +1927,7 @@
       }
       out.push(entry);
     }
-    var result = { channels: out };
-    if ((this.config.esf_systems || []).length) {
-      result.esf = {};
-      for (var ei = 0; ei < this.config.esf_systems.length; ei++) {
-        var sys = this.config.esf_systems[ei];
-        result.esf[sys.id] = this.esfAuto[sys.id] ? 'auto' : 'manual';
-      }
-    }
+    var result = this._attachEsf({ channels: out });
     // Actions this exercise has withheld (#125). Surfaced so the board can render a
     // control as LOCKED rather than dead — a button that silently does nothing is the
     // failure mode this repo keeps finding, not an acceptable way to disable something.

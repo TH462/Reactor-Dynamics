@@ -95,6 +95,14 @@
   staff &mdash; the physics is modelled to reward it.</p>
   <a class="cta" href="ui/shell.html?engine=pwr">▶&nbsp; Enter the Control Room</a>
   <div class="alpha-note">🚧 Alpha · desktop or laptop only — not for phones or tablets yet</div>
+  <!-- DEV-ONLY-START — build_site.js deletes this block from every published page.
+       The PWR2 physics-rebuild preview (#479): test_pwr2.html is in NOT_PUBLISHED, so a
+       published link to it would be dead (the builder's dead-link check proves that, which
+       is why this is a STRIP, not a CSS hide). The CSS gate (html[data-channel="dev"],
+       default-hidden like .dev-bar) still guards the local/preview copies. -->
+  <a class="pwr2-dev-link" href="test_pwr2.html">🧪 PWR2 physics rebuild &mdash; dev preview
+  (true values, no instruments)</a>
+  <!-- DEV-ONLY-END -->
   <div class="hero-shot">
     <!-- Full PWR control-room board (site/hero.png). onerror collapses the frame
          if the asset is missing so the page still reads cleanly. -->

@@ -161,7 +161,8 @@
     imsgti1p0rm: 'flow',  imsgti0gnpf: 'flow',   ims5gq44zgr: 'temp',  imro6qpci2d: 'tempd',
     imrppyp0wfo: 'press', imrqzuhzre3: 'vac',    ims3xp168iy: 'vac',   imrr1gwi93j: 'press',
     imrr1hecwq7: 'temp',  imrr4fnxhlc: 'temp',   imrr4g29a7c: 'temp',  imrsgch20pv: 'temp',
-    imrsgkz4lq0: 'flow',  ims31ngjkf8: 'flow',   ims3wm0d0bu: 'flow'
+    imrsgkz4lq0: 'flow',  ims31ngjkf8: 'flow',   ims3wm0d0bu: 'flow',
+    imsgt98wjjc: 'temp'   /* SG sat temp — same family as its sibling imrr1hecwq7 */
   };
 
   // Editable-input valid ranges [min, max], in each box's family BASE unit — converted to
@@ -992,8 +993,12 @@
       if (!isFinite(per) || Math.abs(per) > 9999) return { text: '∞', unit: 's' };
       return { text: String(Math.round(per)), unit: 's' };
     },
-    imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? g.steps : 0; },         // control rod steps
-    imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? g.steps : 0; },        // shutdown rod steps
+    // Rod steps. The unit comes from the group's OWN max_steps rather than the authored
+    // "/912": the scale is the engine's declaration, and the PWR2 shell publishes its native
+    // 0..200 bank — printing 200 under a /912 label would claim a rod position that does not
+    // exist. On the current engine max_steps IS 912, so the rendered unit is unchanged.
+    imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? { text: String(g.steps), unit: '/' + (g.max_steps || 912) } : '0'; },
+    imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? { text: String(g.steps), unit: '/' + (g.max_steps || 912) } : '0'; },
     imrppee04aj: function (s) { return r0(IN(s).turbine_rpm); },                                        // turbine rpm
     // ---- steam-side indications, authored in the 2026-08-05 diagram (#371) ----
     // Read positionally off the board: each sits beside the valve it reports, and the
@@ -1001,7 +1006,11 @@
     imsguptyg16: function (s) { return r0(IN(s).adv_valve); },          // ADV position — beside the ADV valve, SG side of the MSIV
     imsgunuyvon: function (s) { return r0(IN(s).steam_dump_valve); },   // condenser-dump position — beside that valve, downstream
     imsgupfprkp: function (s) { return r0(IN(s).steam_flow * 100); },   // turbine steam flow, % of rated — at the TCV/turbine inlet
-    imsgt98wjjc: function (s) { return r0(satTempC(IN(s).steam_pressure)); },  // SG saturation temperature
+    // SG saturation temperature. dT(), NOT bare r0(): this returned raw °C under the item's
+    // authored "F" unit from its 2026-08-05 birth — 274 °C rendered as "274 f" against the
+    // sibling steam-temp tile (imrr1hecwq7, same arithmetic) reading a correct 525 °F. Found
+    // on the PWR2 hookup, present on both engines.
+    imsgt98wjjc: function (s) { return dT(satTempC(IN(s).steam_pressure)); },
     // The two CVCS flows the authored doc replaced (the old readouts were deleted).
     // gpm via GPM_CHARGING/GPM_LETDOWN like every RCS-side flow: these rendered the raw
     // frac/s (#408 real currency, ~6.8e-5 at NOP) through r0(), which rounded every CVCS

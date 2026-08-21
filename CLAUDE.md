@@ -80,6 +80,19 @@ docs.
 > them if there are several. And do not ask at all when the call is routine: make it, state
 > the assumption, move on. Full guidance, including the cases where it genuinely blocks:
 > `Blueprint/SOP.md` §5.
+>
+> **RE-ISSUED, because the rule above was not enough** *(OWNER DIRECTIVE, 2026-08-14: "From now on,
+> whenever you need a ruling, tell me what you need me to decide, my options and your
+> recommendation. I'm tired of having to ask every time.")*. **The failure mode is specific and it
+> is NOT refusing to recommend — it is naming a blocker without the decision attached.** Writing
+> *"blocked on your ruling"* or *"needs your call"* in a status line, a STILL OUTSTANDING block or
+> an issue comment, and leaving the options in a document he has to go find, makes him ask. It
+> made him ask twice in one session against a rule already a fortnight old.
+>
+> **Every time you say a thing is blocked on him, the decision travels WITH it, in that message:**
+> what he is deciding · the options · your recommendation and why. **No exceptions for brevity** —
+> if it is worth telling him he is blocking something, it is worth telling him what to do about it.
+> A pointer to where the options are written is not the options.
 
 > **The First Principles section — a CANARY, not an essay** *(OWNER RULING, 2026-07-29: "I would
 > label it the 'First Principles' section. The start and end should be marked."; narrowed hours
@@ -150,6 +163,13 @@ docs.
 >   need a rule to never merge unless I say so. Develop was being worked")*. Applies to
 >   fast-forwards and anything else that moves `develop`. A clean `git status` is not permission.
 >   "Committed on the lane, gated, waiting" is the correct end state.
+> - **PWR2 (#479) HAS A STANDING HOLD ON TOP OF THAT RULE** *(OWNER DIRECTIVE, 2026-08-14: "Do not
+>   merge until I explicitly tell you to. We are not going to merge until the new physics have been
+>   finished, tested and validated.")*. **The bar is the whole engine — finished, tested AND
+>   validated — not a green lane and not a finished layer.** Do not propose a merge at each
+>   milestone; do not carve out "just the docs" or "just the manual fix" (asked and declined
+>   2026-08-14). The lane accumulating commits is the INTENDED state, so treat conflict management,
+>   not merging, as the maintenance job.
 > - **The lanes are LOCAL. Never `git push origin workbench` / `backshop`** *(OWNER DIRECTIVE,
 >   2026-07-31: "I don't want the workbench or backshop trees pushed to gh. Gh should only have
 >   main and develop.")*. The repo is public and a pushed lane also builds a Vercel preview site.
@@ -313,7 +333,7 @@ to read everything.
 
 _Last updated: **2026-08-10**._
 
-**Where the PWR is.** `run_all` is **52 runners, all at baseline** — read `BASELINES`, never a
+**Where the PWR is.** `run_all` is **86 runners, all at baseline** — read `BASELINES`, never a
 number written here. The PWR is the only active plant and is feature-complete through Mode 5 ↔
 Mode 1 on integrated physics: engines, control, service, instructor and the board are built; the
 #297 audit's build wave and the #221 audit slices are landed. **What is open, in one line each:**
@@ -344,6 +364,13 @@ re-querying. Run the query.
   contradiction inside the issue's own text and left `laneSplit`/`pinOrder`/`drawLanes`
   untouched. `ui.seriesSide` is the only new state; `sideOf()`'s fallback is the old global rule
   verbatim, pinned by replay at 50,160 comparisons/mode before the change landed.
+- **#477 — the Indications tick is a MONITOR LIST, built and gated** (2026-08-12). Ticking a row
+  copies it into a `Monitoring` block above every group (both values, same divergence flag);
+  the tick no longer writes `ui.series`, so **#454's chart-settings window is the only writer**
+  and the row keeps a passive "trending" dot. Saved per plant in `rd_monitor`. Trap worth the
+  line: the check that carries the change — *a tick must not touch the chart* — was **vacuous**
+  written on `tavg`, which is in `defaultSeries` and so already plotted; the old handler
+  re-injected passed it green. On `thot` the same injection reads 3 → 4 traces.
 - **Built, waiting on review or a close** — **#458** (shutdown cooling and low-head injection are
   the same pumps: the ALIGN is refused while SI runs — *(OWNER RULING, 2026-08-12: "A'")*. It is
   **not** a plant interlock and the code/manual/message all say so; declared `Manuals/12` §12.20),
@@ -352,6 +379,20 @@ re-querying. Run the query.
   #432/#431 (bug-report recorder, schema 1.1, see themes), #433, #429, #403, #399, #398, #397. **#413** the Cloudflare migration is DONE and
   merged — Vercel is out of the release path and `vercel.json`/`.vercelignore` are deleted;
   two owner actions remain (delete the Vercel project, revoke a token).
+- **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer through stage 2c**
+  (ruled 2026-08-18 "Option 1") built on `backshop` (local, under the standing no-merge hold
+  above). The #488 audit adjudicated and closed; #486/#487 resolved; **the plant settles at its
+  design point** (2226–2238 psia, 45 °F core subcooling) and **the TMI level deception is
+  emergent physics** (`PWR2_VALIDATION.md` §41–46: level control, stuck PORV + block valve +
+  tailpipe, 87 % high-level trip via P-7, aux spray). The two-h stratification is DEFERRED
+  and the §42 criterion RULED A *(OWNER RULING, 2026-08-19: "Defer. A.")* — the steam dump
+  control layer is built and **criterion A is met for the sourced reason** (C-7 keeps the dumps
+  shut on dispatch; power monotone, rods MANUAL — §47). The ADV rung is built (§48). **PWR2 is
+  PLAYABLE (ruled "A", 2026-08-19): `test_pwr2.html` + the `pwr2_engine` facade** — dev channel
+  only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
+  scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
+  = reactor trip above it, both sourced values), the #499 beyond-model guards and the
+  DELAYED-data sourcing are all LANDED (§50–52). Built since, each with its record in `PWR2_VALIDATION.md`: OTΔT/OPΔT (§53) · the instrument layer, control switchover and runback/rod stop (§54–56) · OPTION B COMPLETE — the control room runs PWR2 as a first-class menu card ("PWR — New Physics", Free Play only), 109/109 contract, bit-exact pwr2-1.0 saves (§57–59, §61) · the A/B pass adjudicated, the pre-registered topology prediction HOLDS (§60) · the AFW starts + the lo-lo trip — one sourced 17 % bistable, both consumers; the shared `control_kernel` esf fix (§62) · THE FEED TRAIN — feed ≡ steam RETIRED (§63: the WTSM 11.1 three-element controller at the ruled 65 % program, SI isolation, hi-hi closure, the loss-of-both chain; a one-pump boil-down reaches the lo-lo trip ON PHYSICS at 97.6 s; R6 re-adjudicated — the old 41-point verdict was the A/B harness's automation-less fixture, the #209 caveat) · the CVCS "120 gpm" finding (§64: the balance was right all along — sourced-scaled 12.5 gpm; the standing Charging Flow High annunciator was a #408-currency mistranslation in the shell, fixed translation-only). Remaining before replacement: R8's ambient source check, the free-play IC quirks, mission compatibility, and the owner's replacement ruling. Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, electrical/blackout (owns the deferred loss-of-offsite-power AFW start), the ESF arm display.
 - **RBMK and BWR** — on hold, and the source of most remaining backlog. Do not touch.
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
@@ -1099,6 +1140,20 @@ instructor + flagship scenarios).
 - **Two registers.** Every label/instructional string exists in a **Learning** register
   (plain language) and an **Industry** register (real plant terminology).
 - **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **US customary FIRST with SI in parentheses — `2235 psi (15.41 MPa)`, `565 °F (296 °C)` — in the `Manuals/` set AND in everything you hand the owner**: chat replies, issue bodies and comments, commit messages, `Diagnostic/` entries *(OWNER DIRECTIVE, 2026-07-29: "also add a gh issue to add to claude.md to always give me imperial numbers not SI.")*. Temperature DIFFERENCES and RATES (subcooling margin, leg ΔT, DNB margin, deadbands, heatup/cooldown rates) convert ×9/5 with NO offset — this is the one that gets written wrong: 41 °C of subcooling is 73.8 °F, not 105.8, and 21.8 °C/hr is 39.2 °F/hr. `test/run_manual_units.js` enforces it across the manual and the board-facing copy (`ui/manual_procedures.js`, `ui/diagram/board/pwr_board_inspect.js`); **agent prose is not gateable**, like HR10 and HR12 — a green run does not cover it. Engine internals stay SI and do not move: command payloads, config constants, `true_state`.
+- **SPELL OUT EVERY CODE — ALL OF THEM, not a favoured few** *(OWNER DIRECTIVE, 2026-08-14: "I
+  don't know what these letter number combos are (L0, D1). Always spell them out."; broadened
+  minutes later when a first pass named only two families: "Not just those to, spell out all of
+  them.")*. **The test: if a token abbreviates something that HAS a name, write the name the first
+  time it appears in anything the owner reads.** That covers the PWR2 build layers (`L0`→**Layer 0,
+  water properties**), the five PWR2 design documents (`D1`→**the design spine,
+  `PWR2_DESIGN.md`**), the Hard Rules (`HR9`→**Hard Rule 9, the plant is ground truth**), the Tier A
+  couplings (`A4`→**level is not inventory, the TMI coupling**), casualty ids (`E09`→**large
+  LOCA**), interlocks (`P-11`), probe and finding ids (`CA-15`, `MDS-2`, `F1`), and section refs
+  (`§8(2)`→**the stop condition in the design spine §8, item 2**). Agents invent these constantly
+  and go blind to them, then put them in decision briefs — so the owner is asked to rule on options
+  he cannot parse. **Bare codes are fine only INSIDE a document that defines them, and between
+  agents.** Never in chat, an issue body or comment, or a commit message. **Not gateable** — like
+  HR12 and the units rule, a green run does not cover it.
 - **Plant MODES** use commercial numbering, written **Mode N, Name** (e.g. *Mode 1, At
   Power*). Do not confuse with turbine load modes (Follow / Manual / Disconnected).
 - **This is an educational lumped-parameter plant,** not a full-scope replica of a

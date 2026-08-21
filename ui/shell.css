@@ -507,9 +507,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .ind-filters button.on { color: var(--text); border-color: var(--normal); background: rgba(91,179,196,.12); }
 .ind-truth { margin-left: auto; font-size: 11px; }
 .ind-truth.on { color: var(--normal); border-color: var(--normal); }
-#indicationsList[data-filter="paired"] .num-line:not([data-rowtype="paired"]),
-#indicationsList[data-filter="ind"] .num-line:not([data-rowtype="ind"]),
-#indicationsList[data-filter="phys"] .num-line:not([data-rowtype="phys"]) { display: none; }
+/* A MONITORED ROW IGNORES THE FILTER (#477): the chips are a way of narrowing a 120-row
+   list you are reading, and the Monitoring block is a list the reader has already narrowed
+   by hand. A chip that emptied it would hide a channel the operator explicitly asked to
+   watch — the one thing this block exists not to do. Hence the :not(.ind-monitor) scope. */
+#indicationsList[data-filter="paired"] .ind-grp:not(.ind-monitor) .num-line:not([data-rowtype="paired"]),
+#indicationsList[data-filter="ind"] .ind-grp:not(.ind-monitor) .num-line:not([data-rowtype="ind"]),
+#indicationsList[data-filter="phys"] .ind-grp:not(.ind-monitor) .num-line:not([data-rowtype="phys"]) { display: none; }
+/* The Monitoring block (#477) — the ticked channels, duplicated above every system group.
+   It keeps `.ind-grp` for the row metrics below, so it reads as part of the same list, and
+   is set apart by a live heading and extra space rather than by a rule: the group under it
+   already draws its own border-top, and a second line right above that reads as a mistake.
+   NOTE that it is wrapped in #indMonitor rather than being a direct child of the list, so
+   `#indicationsList > .ind-grp` does not reach it and it never draws a border of its own. */
+#indMonitor:not(:empty) { display: block; margin-bottom: 10px; }
+.ind-monitor h4 { color: var(--normal); }
+.ind-monitor .ind-mon-n { color: var(--muted); font-weight: 400; }
+/* …and with the block absent, the first system group must still look like the first thing
+   in the list. It stopped being `:first-child` the moment the (empty) #indMonitor took that
+   slot, which would have put a rule above "Reactor core" on a board nobody had ticked. */
+#indicationsList > #indMonitor:empty + .ind-grp { border-top: none; padding-top: 0; }
+/* The swatch is a READOUT, not a control (#477) — it says the channel is trending, which is
+   chosen in the chart's own settings window. Clicking it must reach the row underneath. */
+.plot-cell .ser-swatch { pointer-events: none; }
 .ff-badge { position: absolute; right: 10px; bottom: 8px; font-size: 11px; color: var(--caution);
   background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); border-radius: 4px; padding: 1px 6px; }
 
