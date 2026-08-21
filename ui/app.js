@@ -5884,9 +5884,10 @@
     'letdown-b-out': function () { cmd({ action: 'set_letdown_orifices', b: false }); },
     'cvcs-auto': function () { cmd({ action: 'set_cvcs_auto', active: true }); },
     'cvcs-manual': function () { cmd({ action: 'set_cvcs_auto', active: false }); },
-    'eccs-on': function () { ui.pdOp.eccs = true; cmd({ action: 'set_hpi', active: true }); }, 'eccs-off': function () { cmd({ action: 'set_hpi', active: false }); },
-    'eccs-auto': function () { cmd({ action: 'set_esf_auto', system: 'hpi', auto: true }); },
-    'afw-auto': function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); },
+    // (No eccs-on/off/auto or afw-auto handlers: the CG_ECCS card that emitted them was
+    // never wired into a diagram, and set_esf_auto now lives on the board's re-arm
+    // pushbuttons only — which disable themselves when the running engine declares no such
+    // arm, #503. rhr-auto went with #453's RHR arm removal.)
     'afw-flow-set': function () { cmd({ action: 'set_afw_flow', pct: inputVal('afwFlowSet') }); },
     // NIS: SR detector switch (P-6 interlocked) + startup-trip block toggles (P-10 gated)
     'sr-on': function () { cmd({ action: 'set_sr_detector', on: true }); },
@@ -5933,9 +5934,6 @@
     // (No dhr-on/dhr-off handlers: nothing emits them. The set_dhr COMMAND alias
     // still lives in the engine/kernel as a save-file contract — pinned by
     // run_e2e_controls — but the UI speaks RHR only. #145)
-    // synoptic emergency card: RHR — AUTO re-arms the ESF actuation (a manual
-    // On/Off flips it to MANUAL, like the HPI and AFW arms).
-    'rhr-auto': function () { cmd({ action: 'set_esf_auto', system: 'rhr', auto: true }); },
     'rhr-on': function () { cmd({ action: 'set_rhr', active: true }); }, 'rhr-off': function () { cmd({ action: 'set_rhr', active: false }); },
     'dump-set': function () { cmd({ action: 'set_steam_dump', pct: inputVal('dumpSet') }); },
     // No-load steam-dump pressure setpoint (MPa) — lowered on a cooldown; engine clamps to the SG-safety band.
@@ -7720,7 +7718,8 @@
   function R(k, get, opts) { var r = { k: k, get: get }; if (opts) for (var o in opts) r[o] = opts[o]; return r; }
 
   // control-group literals reused across the plant-display views
-  function CG_ECCS() { return { l: 'ECCS', emergency: 1, hint: 'Emergency Core Cooling — high-pressure injection. AUTO actuates on low pressure.', seg: [{ l: 'Auto', act: 'eccs-auto', on: 1, run: 1 }, { l: 'On', act: 'eccs-on' }, { l: 'Off', act: 'eccs-off' }] }; }
+  // (CG_ECCS deleted with #503 — it was never placed in any diagram list, and its three
+  // act ids were the only emitters of the handlers removed above.)
   function CG_MSIV() { return { l: 'MSIV', hint: 'Main Steam Isolation Valve' + (ui.plant === 'bwr' ? ' — isolates main steam (closes the turbine path).' : ' — (steam-line isolation; modeled on the BWR; placeholder here).'), seg: [{ l: 'Open', act: 'msiv-open', on: 1 }, { l: 'Close', act: 'msiv-close', warn: 1 }] }; }
 
   // (legacy PWR partial-loop diagrams retired — the V2 board in

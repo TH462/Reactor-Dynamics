@@ -427,6 +427,41 @@ async function testSteamFeedPair(page) {
  * would pass on all three defects; only clicking a specific mark and reading back
  * the clock pins the mapping. It aims at the second-oldest mark on purpose — the
  * newest and the oldest are both reachable by a broken inversion that clamps. */
+/* ESF AUTO re-arm buttons disable themselves when the running engine declares no such arm
+ * (#503). The kernel writes automation.esf keys only for config-declared systems; PWR2
+ * declares only afw (pwr2_shell.js), so its board must show the HPI AUTO pushbutton dark —
+ * the alternative is the shipped defect: a pressed button answered by an invisible
+ * COMMAND_ERROR. Counting `.bd-btn:disabled` per engine pins both directions: pwr2 gets
+ * exactly ONE disabled button (labelled AUTO), pwr gets ZERO — so the guard cannot silently
+ * disable everything, and cannot silently disable nothing. */
+async function testEsfArmButtons(page) {
+  var log = [];
+  var expect = { pwr: 0, pwr2: 1 };
+  for (var i = 0; i < 2; i++) {
+    var eng = ['pwr', 'pwr2'][i];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=' + eng,
+      { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await page.waitForTimeout(2500);
+    var st = await page.evaluate(function () {
+      var dis = Array.prototype.slice.call(document.querySelectorAll('.bd-btn:disabled'));
+      return { total: document.querySelectorAll('.bd-btn').length,
+               disabled: dis.map(function (b) { return (b.textContent || '').trim(); }) };
+    });
+    if (!st.total) throw new Error(eng + ': board rendered no buttons');
+    if (st.disabled.length !== expect[eng]) {
+      throw new Error(eng + ': expected ' + expect[eng] + ' disabled board button(s), found ' +
+        st.disabled.length + ' [' + st.disabled.join(',') + ']');
+    }
+    if (eng === 'pwr2' && st.disabled[0] !== 'AUTO') {
+      throw new Error('pwr2: the disabled button is "' + st.disabled[0] + '", not the ESF AUTO re-arm');
+    }
+    log.push(eng + ': ' + st.disabled.length + '/' + st.total + ' buttons disabled' +
+      (st.disabled.length ? ' (' + st.disabled.join(',') + ')' : ''));
+  }
+  return log.join('\n') + '\n';
+}
+
 /* The trend graphs open on a REAL 30 minutes, not a flat line *(OWNER, 2026-08-01: "when you
  * make preset starts, run them for 30 minutes to fill up the graph with real data before
  * saving")*.
@@ -1210,6 +1245,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'run-start-mark.log'), rsLog);
     var rpLog = await testRewindPicker(page);
     fs.writeFileSync(path.join(SCRATCH, 'rewind-picker.log'), rpLog);
+    var ebLog = await testEsfArmButtons(page);
+    fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
     var tpLog = await testTrendPreseed(page);
     fs.writeFileSync(path.join(SCRATCH, 'trend-preseed.log'), tpLog);
     var dbLog = await testDiagBundle(page);

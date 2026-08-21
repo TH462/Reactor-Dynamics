@@ -485,6 +485,9 @@
 
   // ================================================================ BUTTONS
   // Each entry: press(s) issues command(s); active(s) -> selected highlight.
+  // ESF AUTO re-arm buttons by esf system id — consumed by buttonDisabled below (#503).
+  var ESF_ARM_BUTTONS = { imrle1mc0lk: 'hpi', imrmssr9ihq: 'afw' };
+
   var BUTTONS = {
     // --- HPI / ECCS ---
     // AUTO/ON/OFF is a mutually-exclusive triad: AUTO lights
@@ -2930,7 +2933,18 @@
       var b = BUTTONS[item.id];
       return b && b.warn ? !!b.warn(s) : false;
     },
-    buttonDisabled: function () { return false; },
+    // Disabled: an ESF AUTO re-arm button whose system the RUNNING ENGINE does not declare.
+    // The kernel writes automation.esf keys only for config-listed systems, so a missing key
+    // means set_esf_auto would be refused ('unknown esf system') with nothing visible — the
+    // orphan-control case (#503: PWR2 declares only afw, and the HPI AUTO press ate the
+    // owner's click in silence). Keyed off the snapshot, not the engine name, so any engine
+    // that declares the arm gets the button back for free.
+    buttonDisabled: function (item, s) {
+      var sys = ESF_ARM_BUTTONS[item.id];
+      if (!sys) return false;
+      var e = s.automation && s.automation.esf;
+      return !(e && (sys in e));
+    },
     // Control tiles to append to the board that aren't in the generated board_data.js.
     // No driver-injected items and no doc patching since V2 — see EXTRA_ITEMS above for
     // what used to be here and where each piece is authored now.
