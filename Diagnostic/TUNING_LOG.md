@@ -29,6 +29,34 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-08-21-backshop-c (the backshop merge — the PWR2 arc joins the trunk, and CI outgrows its budget)
+
+**The order** *(OWNER DIRECTIVE, 2026-08-21: "Full merge and push. Don't publish to main
+yet.")* — the explicit lift of the 2026-08-14 standing no-merge hold. Merge commit `b4122a7`
+(134 backshop × 75 develop commits since the 2026-08-10 sync), CI budget fix `346cbe1`;
+pushed `develop` only, `main` untouched, lanes local. Workbench was identical to develop.
+
+- Five conflicts, the routine classes (record in the merge commit message). The two worth a
+  line: **the revision-collision resolution ran exactly as CLAUDE.md prescribes** — backshop's
+  RCS-flow item was authored against a pending Rev 15 that develop shipped WITHOUT it, so it
+  opens a new pending Rev 17 (and its Manuals/12 "corrected in Rev 15" note was corrected
+  too); and the two BASELINES conflicts were STATIC SCANS measured on the merged tree, not
+  picked (run_hardrules 307×334 → **356**; run_portable 143×170 → **171** — the 2026-08-17
+  trap, honored).
+- **One combination red, attributed then fixed**: `verify_pzr2_loadlists` (develop's #472
+  runner) green on develop's tip, red merged — backshop's A/B harnesses loaded the old engine
+  without the new `pwr_pressurizer2.js` swap. Both loaders fixed; the A-side of future A/B
+  runs now measures against develop's v2 pressurizer, which is the shipped old plant.
+- Gates: merge audit 27 artifacts nothing dropped · run_manual_rev 15/15 · full `run_all`
+  **86 runners at baseline** on the exact merge commit · doc budget OK (the status line now
+  reads 86).
+- **CI timed out at exactly 20:00 on the first push** — the step budget was measured for the
+  ~52-runner suite and the merge brought 86. Re-budgeted by the comment's own logic (step
+  20 → 45 min, job 25 → 55); the re-run passed in 42m47s. Thin headroom is real: the gate
+  step rides ~37 min on the slow runner class — the next suite growth pays this again.
+
+---
+
 ## Session log — 2026-08-21-backshop-b (#479 — the CVCS balance point: the plant was right, the currency was wrong)
 
 **The work order** *(OWNER RULING, 2026-08-21: "Work next as recommended" — the CVCS balance
