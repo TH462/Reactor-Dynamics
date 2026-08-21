@@ -885,7 +885,7 @@ var BASELINES = {
   // with `hi - lo` identically 0.0000 across the blowdown and 3 rows where there are now 131.
   // TR-8 is a SOURCE SCAN, because everything above drives the recorder directly and would
   // stay green if ui/app.js stopped calling it.
-  'run_diag_bundle.js':    { code: 0, score: '31checks 0failed', secs: 40 },
+  'run_diag_bundle.js':    { code: 0, score: '35checks 0failed', secs: 40 },
   // #437, the sequence-of-events stream. Two defects were red here before the file landed
   // and are what the numbers are pinned against: the recorder's own first-pass alarm sweep
   // arriving as 46 `alarm_clear` events at t=0 (TR-1 measured "a steady 20 s at power"
