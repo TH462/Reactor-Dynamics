@@ -82,7 +82,7 @@ env:
 jobs:
   aggregate-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 55
 
     steps:
       # ACTION MAJORS ARE ON THE NODE 24 RUNTIME (#389, 2026-08-06). All four were on `@v4`,
@@ -142,12 +142,13 @@ jobs:
           test ! -f package-lock.json || { echo "::error::a package-lock.json appeared in the repo root"; exit 1; }
           git status --porcelain
 
-      # 20 MINUTES. Measured on this runner class the gate step itself takes 7m42s to 14m53s —
-      # a ~2x spread on identical work, which is real and is the runner, not the suite. 20 gives
-      # the slow end headroom while still failing on its OWN name rather than the job's, so a
-      # genuinely slow suite and a stalled install are never again the same red.
+      # 45 MINUTES (was 20; re-budgeted 2026-08-21 when the backshop merge nearly doubled the
+      # suite — 52 -> 86 runners, and the first push timed out at exactly 20:00). The old basis
+      # was 7m42s-14m53s measured for ~52 runners with a ~2x runner-class spread; the merged
+      # suite measures ~19 min locally at 10-way parallel, so the same 2x slow-end logic gives
+      # ~38 — 45 keeps the step failing on its OWN name before the job's 55 does.
       - name: Aggregate gate (all runners)
-        timeout-minutes: 20
+        timeout-minutes: 45
         run: node test/run_all.js
 
       - name: Upload diagnostic reports
